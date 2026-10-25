@@ -19,7 +19,7 @@ import type { TaskFilter } from './core/filter.ts'
 import { createSession, type CacheState, type SessionFlags } from './core/session.ts'
 import type { SkillRow } from './core/skills.ts'
 import type { Unknown } from './core/unknowns.ts'
-import { CATALOG_DOCUMENT_VERSION } from './documents.ts'
+import { CATALOG_DOCUMENT_VERSION, type CatalogDocumentBody } from './documents.ts'
 import type { DocumentGroup } from './groups.ts'
 
 export { SessionError, type CacheState, type SessionFlags } from './core/session.ts'
@@ -86,9 +86,25 @@ export interface CatalogDocument {
   cache: CacheState[]
   /** What could not be read, each with the label every surface shows. */
   unknowns: Unknown[]
+  /**
+   * The tool ids trusted on their own here. Empty when the repository is
+   * trusted as a whole, or trust does not decide execution.
+   */
+  trustedTools: string[]
   /** The filter applied. Absent fields were not given. */
   filter: Pick<TaskFilter, 'servicesOnly' | 'declaredOnly' | 'maxDepth'>
 }
+
+/** True when `A` and `B` have the same field names. */
+type SameKeys<A, B> = [Exclude<keyof A, keyof B>, Exclude<keyof B, keyof A>] extends [never, never]
+  ? true
+  : false
+// Fails to compile when CatalogDocument and the document schema name different fields.
+const catalogFieldsMatch: SameKeys<
+  CatalogDocument,
+  CatalogDocumentBody & { schemaVersion: number; kind: 'catalog' }
+> = true
+void catalogFieldsMatch
 
 /**
  * The catalog for `dir`, as `way list --json` builds it: the same config,
@@ -119,5 +135,5 @@ export async function buildCatalog(options: BuildCatalogOptions): Promise<Catalo
     options.filter ?? {},
     session.settings().trustedTools,
   )
-  return { schemaVersion: CATALOG_DOCUMENT_VERSION, kind: 'catalog', ...body } as CatalogDocument
+  return { schemaVersion: CATALOG_DOCUMENT_VERSION, kind: 'catalog', ...body }
 }

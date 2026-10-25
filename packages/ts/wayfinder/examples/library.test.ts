@@ -55,6 +55,9 @@ test('buildCatalog gives the catalog document, filtered like the CLI', async () 
     '/review',
   ])
   expect(doc.groups.map((g) => g.id)).toContain('skills')
+  // The repository is not trusted, and no tool is trusted on its own.
+  const trusted: string[] = doc.trustedTools
+  expect(trusted).toEqual([])
 })
 
 test('buildCatalog takes the CLI filter, and refuses a directory that does not exist', async () => {

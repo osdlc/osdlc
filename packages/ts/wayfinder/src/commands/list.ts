@@ -11,20 +11,25 @@ import { filterSkills, skillLine, type SkillRow } from '../core/skills.ts'
 import type { CatalogSnapshot, Session } from '../core/session.ts'
 import type { Unknown } from '../core/unknowns.ts'
 import { CATALOG_DOCUMENT_VERSION, CatalogOutput, type CatalogDocumentBody } from '../documents.ts'
+import type { CatalogDocument } from '../index.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import { FILTER_FLAGS, filterFrom, kit, noteUnknowns, openSession } from './shared.ts'
 
+/** The catalog document without its `schemaVersion` and `kind`. */
+export type CatalogBody = Omit<CatalogDocument, 'schemaVersion' | 'kind'>
+
 /**
  * The catalog document for `snapshot`: the catalog with its groups, cache
- * verdicts, unknowns and the tools trusted on their own. With a filter, each report keeps only the tasks
- * that pass it. The CLI and the web view send the same document.
+ * verdicts, unknowns and the tools trusted on their own. With a filter, each
+ * report keeps only the tasks that pass it. The CLI and the web view send
+ * the same document.
  */
 export function catalogDocument(
   snapshot: Pick<CatalogSnapshot, 'catalog' | 'cache' | 'skills'>,
   unknowns: Unknown[],
   filter: TaskFilter = {},
   trustedTools: readonly string[] = [],
-): CatalogDocumentBody {
+): CatalogBody {
   const { kind: _kind, schemaVersion: _version, ...catalog } = snapshot.catalog
   const filtered = Object.keys(filter).length > 0
   const reports = filtered
