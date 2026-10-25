@@ -1,12 +1,134 @@
 {
   "schema": 1,
   "pr": 454,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "45762b9baafad565a706d279d0f75b47a38cdfc3",
+  "base": "0cf31de769c823fd1113351c95a1911e3c87ce44",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-r7m2qx",
     "at": "2026-10-25T05:36:34.390Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/typed-git/src/verbs.ts",
+      "line": 1952,
+      "title": "detail is keyed by dst only, so a multi-URL push gives every repeat of a ref the first URL's detail",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/typed-git/src/verbs.ts",
+      "line": 2007,
+      "title": "an empty forceWithLease list silently pushes with no lease",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/typed-git/src/verbs.ts",
+      "line": 1931,
+      "title": "(needs force) is unmapped and reads as other",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/typed-git/README.md",
+      "line": 397,
+      "title": "README example retries on already-exists, which includes a tag that already exists",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/ts/typed-git/tests/push.test.ts",
+      "line": 292,
+      "title": "no real-git test asserts detail is populated, so a LOCK_DETAIL regression passes",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/ts/typed-git/src/verbs.ts",
+      "line": 2006,
+      "title": "lease-argument block copied from push",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-7",
+      "round": 1,
+      "path": "packages/ts/typed-git/src/verbs.ts",
+      "line": 1875,
+      "title": "rejection set only on '!' is a doc fact a discriminated union should carry",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-8",
+      "round": 1,
+      "path": "packages/ts/typed-git/src/verbs.ts",
+      "line": 1909,
+      "title": "wording-to-rejection table written in four places",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-9",
+      "round": 1,
+      "path": "packages/ts/typed-git/src/verbs.ts",
+      "line": 1501,
+      "title": "comment pins a count and list of exception verbs",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-10",
+      "round": 1,
+      "path": "packages/ts/typed-git/README.md",
+      "line": 436,
+      "title": "LC_ALL=C for pushPorcelain stated three times in the README",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-11",
+      "round": 1,
+      "path": "packages/ts/typed-git/tests/push.test.ts",
+      "line": 347,
+      "title": "CANNED rejection typed as string, not PushRejection",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
