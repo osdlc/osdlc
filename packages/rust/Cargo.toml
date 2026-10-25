@@ -9,7 +9,7 @@
 [workspace]
 # resolver 3 picks dependency versions that support `rust-version` (the MSRV).
 resolver = "3"
-members = ["agent-adapt", "config-layers", "etag-write", "frontmatter-lossless", "markdown-contract", "markdown-link", "markdown-relink", "markdown-vault-fs", "path-guard", "slug-collate", "tiered-dirs", "typed-git", "yaml-splice", "yaml-splice-wasm"]
+members = ["agent-adapt", "config-layers", "etag-write", "frontmatter-lossless", "markdown-contract", "markdown-link", "markdown-relink", "markdown-vault-fs", "path-guard", "slug-collate", "tiered-dirs", "tradecraft", "tradecraft-core", "tradecraft-typegen", "tradecraft-wasm", "typed-git", "yaml-splice", "yaml-splice-wasm"]
 
 [workspace.package]
 edition = "2024"
@@ -27,18 +27,28 @@ missing_docs = "warn"
 [workspace.dependencies]
 # Pinned exactly: the line numbers markdown-contract reports are part of its
 # contract with @osdlc/markdown-contract, and a comrak release can move them.
+# `derive` for the tradecraft CLI's argument structs.
+clap = { version = "4.5.40", features = ["derive"] }
+# The RFC 3339 timestamps tradecraft writes.
+chrono = { version = "0.4.41", default-features = false, features = ["clock", "std"] }
 comrak = { version = "=0.53.0", default-features = false }
 globset = { version = "0.4", default-features = false }
 # js-sys 0.3.103 is the release that pairs with wasm-bindgen 0.2.126.
 js-sys = "0.3.103"
+# The file watcher behind `tradecraft build --watch`.
+notify = "8.2"
+# tradecraft-typegen reads Rust source with these.
+quote = "1.0.40"
 # 1.8 is the first regex that reads the `\/` escape in a contract pattern.
 regex = "1.8"
 saphyr-parser = "0.0.11"
 # 1.0.220 is the first serde that pins its own serde_derive (see config-layers).
 serde = { version = "1.0.220", features = ["derive"] }
 serde_json = "1.0.40"
-serde_yaml = "0.9"
-sha2 = "0.10"
+serde_yaml = "0.9.34"
+sha2 = "0.10.9"
+# `full` for function bodies, `extra-traits` for `Debug` on `syn::Type`.
+syn = { version = "2.0.100", features = ["full", "extra-traits"] }
 tempfile = "3"
 # 2.0.17 is what saphyr-parser 0.0.11 needs. The workspace resolves one
 # thiserror 2.x, so the minimal-versions job needs every member to agree.
@@ -55,12 +65,16 @@ wasm-bindgen = "=0.2.126"
 
 # Member crates, also named by version so a published manifest points at
 # crates.io. release-plz publishes a crate before the crates that depend on it.
+agent-adapt = { path = "agent-adapt", version = "0.19.1" }
+config-layers = { path = "config-layers", version = "0.7.0" }
 etag-write = { path = "etag-write", version = "0.2.3" }
 frontmatter-lossless = { path = "frontmatter-lossless", version = "1.1.0" }
 markdown-link = { path = "markdown-link", version = "0.5.0" }
+markdown-relink = { path = "markdown-relink", version = "0.1.5" }
 markdown-vault-fs = { path = "markdown-vault-fs", version = "0.3.1" }
 path-guard = { path = "path-guard", version = "0.3.1" }
 slug-collate = { path = "slug-collate", version = "0.1.1" }
 tiered-dirs = { path = "tiered-dirs", version = "0.3" }
+tradecraft-core = { path = "tradecraft-core", version = "0.39.1" }
 typed-git = { path = "typed-git", version = "0.4" }
 yaml-splice = { path = "yaml-splice", version = "0.3.1" }

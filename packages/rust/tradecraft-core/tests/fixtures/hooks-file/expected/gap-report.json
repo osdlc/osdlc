@@ -1,0 +1,213 @@
+{
+  "harnesses": {
+    "claude": {
+      "behaviours": {
+        "stop-continue": {
+          "note": "a `Stop` hook answering `decision: \"block\"` with a `reason` keeps the conversation going",
+          "spelling": "decision: \"block\"",
+          "support": "native"
+        }
+      },
+      "delivery": "plugin",
+      "events": {
+        "Notification": {
+          "note": "matcher: notification type",
+          "spelling": "Notification",
+          "support": "native"
+        },
+        "SessionEnd": {
+          "note": "matcher: why the session ended",
+          "spelling": "SessionEnd",
+          "support": "native"
+        },
+        "SessionStart": {
+          "note": "matcher: how the session started (startup, resume, clear, compact, fork)",
+          "spelling": "SessionStart",
+          "support": "native"
+        },
+        "Stop": {
+          "note": "no matcher",
+          "spelling": "Stop",
+          "support": "native"
+        },
+        "UserPromptSubmit": {
+          "note": "no matcher",
+          "spelling": "UserPromptSubmit",
+          "support": "native"
+        }
+      },
+      "file": "hooks/hooks.json",
+      "left_out": [],
+      "plugin_root_evidence": {
+        "note": null,
+        "observed_on": "2026-09-26",
+        "url": "https://code.claude.com/docs/en/plugins-reference"
+      },
+      "plugin_root_var": "CLAUDE_PLUGIN_ROOT"
+    },
+    "codex": {
+      "behaviours": {
+        "stop-continue": {
+          "note": "a `Stop` hook answering `decision: \"block\"` with a `reason` turns the reason into a continuation prompt",
+          "spelling": "decision: \"block\"",
+          "support": "native"
+        }
+      },
+      "delivery": "plugin",
+      "events": {
+        "Notification": {
+          "note": "the hooks page documents no event at this point in the loop",
+          "spelling": null,
+          "support": "ignored"
+        },
+        "SessionEnd": {
+          "note": "the same event vocabulary Claude Code uses, read from `.codex/hooks.json`, a `[hooks]` table in `config.toml`, or an enabled plugin's `hooks/hooks.json`",
+          "spelling": "SessionEnd",
+          "support": "native"
+        },
+        "SessionStart": {
+          "note": "the same event vocabulary Claude Code uses, read from `.codex/hooks.json`, a `[hooks]` table in `config.toml`, or an enabled plugin's `hooks/hooks.json`",
+          "spelling": "SessionStart",
+          "support": "native"
+        },
+        "Stop": {
+          "note": "the same event vocabulary Claude Code uses, read from `.codex/hooks.json`, a `[hooks]` table in `config.toml`, or an enabled plugin's `hooks/hooks.json`",
+          "spelling": "Stop",
+          "support": "native"
+        },
+        "UserPromptSubmit": {
+          "note": "the same event vocabulary Claude Code uses, read from `.codex/hooks.json`, a `[hooks]` table in `config.toml`, or an enabled plugin's `hooks/hooks.json`",
+          "spelling": "UserPromptSubmit",
+          "support": "native"
+        }
+      },
+      "file": "hooks/hooks.json",
+      "left_out": [
+        {
+          "hook": "hooks.Notification[0].hooks[0]",
+          "reason": "codex-cli does not carry the `Notification` hook event: the hooks page documents no event at this point in the loop"
+        }
+      ],
+      "plugin_root_evidence": {
+        "note": "a plugin hook also gets `CLAUDE_PLUGIN_ROOT` for compatibility, and runs in the session's working directory",
+        "observed_on": "2026-10-05",
+        "url": "https://learn.chatgpt.com/docs/hooks"
+      },
+      "plugin_root_var": "PLUGIN_ROOT"
+    },
+    "cursor": {
+      "behaviours": {
+        "stop-continue": {
+          "note": "a `stop` hook's `followup_message` is submitted as the next user message, up to `loop_limit` times (default 5)",
+          "spelling": "followup_message",
+          "support": "translated"
+        }
+      },
+      "delivery": "plugin",
+      "events": {
+        "Notification": {
+          "note": "Cursor documents no hook at this point in the loop",
+          "spelling": null,
+          "support": "ignored"
+        },
+        "SessionEnd": {
+          "note": "read from `.cursor/hooks.json` or a plugin's hooks file; not fired in cloud agents",
+          "spelling": "sessionEnd",
+          "support": "translated"
+        },
+        "SessionStart": {
+          "note": "read from `.cursor/hooks.json` or a plugin's hooks file; not fired in cloud agents",
+          "spelling": "sessionStart",
+          "support": "translated"
+        },
+        "Stop": {
+          "note": "read from `.cursor/hooks.json` or a plugin's hooks file",
+          "spelling": "stop",
+          "support": "translated"
+        },
+        "UserPromptSubmit": {
+          "note": "read from `.cursor/hooks.json` or a plugin's hooks file",
+          "spelling": "beforeSubmitPrompt",
+          "support": "translated"
+        }
+      },
+      "file": "hooks/hooks.json",
+      "left_out": [
+        {
+          "hook": "hooks.Notification[0].hooks[0]",
+          "reason": "cursor does not carry the `Notification` hook event: Cursor documents no hook at this point in the loop"
+        }
+      ],
+      "plugin_root_evidence": {
+        "note": "documented as expanded, beside `CLAUDE_PLUGIN_ROOT`, in a plugin's MCP server fields; not documented for hook commands",
+        "observed_on": "2026-10-05",
+        "url": "https://cursor.com/docs/reference/plugins"
+      },
+      "plugin_root_var": "CURSOR_PLUGIN_ROOT"
+    },
+    "pi": {
+      "behaviours": {
+        "stop-continue": {
+          "note": "Pi takes lifecycle events as TypeScript extensions, and this crate renders none",
+          "spelling": null,
+          "support": "ignored"
+        }
+      },
+      "delivery": "none",
+      "events": {
+        "Notification": {
+          "note": "Pi takes lifecycle events as TypeScript extensions, not a hooks file, so this crate renders none",
+          "spelling": null,
+          "support": "rejected"
+        },
+        "SessionEnd": {
+          "note": "Pi takes lifecycle events as TypeScript extensions, not a hooks file, so this crate renders none",
+          "spelling": null,
+          "support": "rejected"
+        },
+        "SessionStart": {
+          "note": "Pi takes lifecycle events as TypeScript extensions, not a hooks file, so this crate renders none",
+          "spelling": null,
+          "support": "rejected"
+        },
+        "Stop": {
+          "note": "Pi takes lifecycle events as TypeScript extensions, not a hooks file, so this crate renders none",
+          "spelling": null,
+          "support": "rejected"
+        },
+        "UserPromptSubmit": {
+          "note": "Pi takes lifecycle events as TypeScript extensions, not a hooks file, so this crate renders none",
+          "spelling": null,
+          "support": "rejected"
+        }
+      },
+      "file": null,
+      "left_out": [
+        {
+          "hook": "hooks.SessionStart[0].hooks[0]",
+          "reason": "pi does not carry the `SessionStart` hook event: Pi takes lifecycle events as TypeScript extensions, not a hooks file, so this crate renders none"
+        },
+        {
+          "hook": "hooks.UserPromptSubmit[0].hooks[0]",
+          "reason": "pi does not carry the `UserPromptSubmit` hook event: Pi takes lifecycle events as TypeScript extensions, not a hooks file, so this crate renders none"
+        },
+        {
+          "hook": "hooks.Stop[0].hooks[0]",
+          "reason": "pi does not carry the `Stop` hook event: Pi takes lifecycle events as TypeScript extensions, not a hooks file, so this crate renders none"
+        },
+        {
+          "hook": "hooks.Notification[0].hooks[0]",
+          "reason": "pi does not carry the `Notification` hook event: Pi takes lifecycle events as TypeScript extensions, not a hooks file, so this crate renders none"
+        },
+        {
+          "hook": "hooks.SessionEnd[0].hooks[0]",
+          "reason": "pi does not carry the `SessionEnd` hook event: Pi takes lifecycle events as TypeScript extensions, not a hooks file, so this crate renders none"
+        }
+      ],
+      "plugin_root_evidence": null,
+      "plugin_root_var": null
+    }
+  },
+  "source": "plugin/hooks.json",
+  "version": 1
+}
