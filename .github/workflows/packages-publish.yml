@@ -1,7 +1,8 @@
 # Releases the libraries under packages/ts/ with Changesets on every push to
 # main: the full packages-ci.yml matrix, then either the Version Packages pull
-# request or the publish of the versions not on npm yet. packages/README.md
-# describes the release steps.
+# request or the publish of the versions not on npm yet. The Windows tier-2
+# run (packages-windows-tier2.yml) runs beside it and does not gate the
+# release. packages/README.md describes the release steps.
 #
 # npm auth is trusted publishing (OIDC) only, with provenance. Each package's
 # trusted publisher on npmjs.com names this file, packages-publish.yml, so the
@@ -30,6 +31,15 @@ jobs:
     permissions:
       contents: read
     uses: ./.github/workflows/packages-ci.yml
+    with:
+      skip-windows-tier2: true
+
+  # Windows is tier 2 (S-0021). It runs and reports beside `verify`, but no
+  # job needs it, so a failure or a hang there cannot block a release.
+  windows-tier2:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/packages-windows-tier2.yml
 
   select-mode:
     needs: verify

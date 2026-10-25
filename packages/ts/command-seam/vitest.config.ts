@@ -16,6 +16,9 @@ export default defineConfig({
   test: {
     // Real git, sh and gh spawns on a loaded machine can pass the 5 s default.
     testTimeout: 20000,
+    hookTimeout: 20000,
+    // How long Vitest waits for its workers to close at the end of a run.
+    teardownTimeout: 5000,
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
     coverage: {
       provider: 'v8',

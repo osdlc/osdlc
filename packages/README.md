@@ -353,6 +353,9 @@ On a pull request it checks only the libraries the pull request changed and
 the ones that depend on them. `scripts/affected-packages.ts` picks them, and
 lists the shared files that make it check every library. path-guard also runs on
 Windows. The `verify` jobs always report, so they are the checks to require.
+The libraries that start programs or resolve paths also run on Windows as
+tier 2 (`.github/workflows/packages-windows-tier2.yml`). Tier 2 reports, but
+never fails a pull request or blocks a release.
 
 A library can have a smoke check: `tests/smoke.mjs`. It runs the built package
 under Node. It imports the package by name, so Node resolves it through
