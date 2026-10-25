@@ -47,6 +47,17 @@ describe('footerHints', () => {
   test('keeps an always hint even when nothing else fits', () => {
     expect(footerHints(keys, 3)).toBe('q quit')
   })
+
+  test('a skill row shows the skill form of a hint', () => {
+    const withSkill: KeyBinding[] = [{ ...keys[0]!, skillHint: 'a copy' }, ...keys.slice(1)]
+    expect(footerHints(withSkill, 80, '  ', 'skill')).toBe('a copy  b two  q quit')
+    expect(footerHints(withSkill, 80)).toBe('a one  b two  q quit')
+  })
+
+  test("the terminal UI's Enter hint reads copy on a skill row", () => {
+    expect(footerHints(keysFor('tui', 'list'), 200, '  ', 'skill')).toContain('enter copy /name')
+    expect(footerHints(keysFor('tui', 'list'), 200, '  ', 'skill')).not.toContain('enter run')
+  })
 })
 
 describe('keyLines', () => {

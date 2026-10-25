@@ -668,7 +668,7 @@ export function wireInput(): void {
   // becomes the field's accessible name, so the input keeps a name while the
   // user types.
   q.setAttribute('aria-label', q.placeholder)
-  q.placeholder = 'Search tasks'
+  // `render` sets the short form for the tab in view.
 
   for (const id of ['mode', 'depth']) rovingGroup($(id))
   rovingGroup($('tabs'), 'button[data-runner]')

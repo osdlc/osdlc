@@ -83,6 +83,10 @@ describe('withheldBar', () => {
   test('marks the runners as the subject of the sentence', () => {
     state.trustable = true
     expect(withheldBar([report('moon', true)])).toContain('class="who"')
+    // One colon: the label, then the runners in brackets.
+    expect(withheldBar([report('moon', true)]).replace(/<[^>]+>/g, '')).toMatch(
+      /^1 runner withheld: [^:]+ \(moon\)\./,
+    )
   })
 })
 

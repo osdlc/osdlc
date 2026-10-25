@@ -232,6 +232,24 @@ describe('the status line and tabs', () => {
     expect(lineOf(tui, 0)).toContain(' make 1 │ dependencies 1 │ git hooks 1 ')
   })
 
+  test("a row's chain names a group runner by its label, not its id", async () => {
+    const { tui } = await showing(
+      catalog(
+        [],
+        [
+          report('package-manager', [
+            task('package-manager', 'install', {
+              path: ['package-manager', '.', 'npm', 'install'],
+            }),
+          ]),
+        ],
+      ),
+    )
+    const text = screen(tui).join('\n')
+    expect(text).toContain('dependencies > . > npm > install')
+    expect(text).not.toContain('package-manager >')
+  })
+
   test('the selected tab is marked with brackets, which show without color', async () => {
     const { tui } = await showing(catalog(['build']))
     expect(lineOf(tui, 0)).toMatch(/^\[all 1\] make 1 /)

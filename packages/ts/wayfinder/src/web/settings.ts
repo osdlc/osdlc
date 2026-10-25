@@ -39,7 +39,6 @@ import { $, state, toolInfo } from './state.ts'
 import {
   escapeHtml,
   homepageLink,
-  languageText,
   openDialogAtTop,
   render,
   setThemeButton,
@@ -142,7 +141,9 @@ function runnersSection(): string {
   // Every runner the catalog knows, plus any named in `disabled`. A disabled
   // runner is not collected, so listing only collected runners would hide
   // the rows this section exists to show.
-  const names = [...new Set([...knownRunners, ...disabled])].sort()
+  const names = [...new Set([...knownRunners, ...disabled])].sort((a, b) =>
+    runnerLabel(a).localeCompare(runnerLabel(b)),
+  )
   const rows = names
     .map((name) => {
       const on = !disabled.has(name)
@@ -159,7 +160,7 @@ function runnersSection(): string {
               ? '<span class="set-desc">' + escapeHtml(tool.description) + '</span>'
               : '') +
             '<span class="set-tool">' +
-            escapeHtml(languageText(tool)) +
+            escapeHtml(tool.language) +
             (homepageLink(tool.homepage) !== ''
               ? ' · ' + homepageLink(tool.homepage, 'homepage')
               : '') +
@@ -193,7 +194,7 @@ function runnersSection(): string {
       : '<table class="set-table"><tbody>' + rows + '</tbody></table>') +
       '<p class="set-sub">Order: ' +
       (order.length === 0
-        ? 'the default'
+        ? 'alphabetical'
         : order.map((r) => '<code>' + escapeHtml(runnerLabel(r)) + '</code>').join(' ')) +
       ' ' +
       layerNote('runners.order') +

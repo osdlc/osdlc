@@ -27,6 +27,7 @@ import { footerHints, keyLines, keysFor } from '../keys.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import {
   countRunners,
+  displayPath,
   parametersUnknownLabel,
   probeTimeLabel,
   runnerLabel,
@@ -378,12 +379,23 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   /** The chain, dimmed except for the leaf, with matched characters marked. */
   function chainChunks(row: TaskHit): Chunk[] {
     const { path } = row.task
+    const shown = displayPath(path, row.task.runner)
     const marks = new Set(row.labelHits ?? [])
     const chunks: Chunk[] = []
     let at = 0
     for (let p = 0; p < path.length; p++) {
       const leaf = p === path.length - 1
       const plain = leaf ? s.bold : s.dim
+      if (shown[p] !== path[p]) {
+        // A runner id shown as its label: the marks index the id, so none apply.
+        chunks.push({ text: shown[p]!, paint: plain })
+        at += path[p]!.length
+        if (!leaf) {
+          chunks.push({ text: ' > ', paint: s.dim })
+          at++
+        }
+        continue
+      }
       let run = ''
       let marked = marks.has(at)
       for (const ch of path[p]!) {
@@ -562,8 +574,12 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     )
   }
 
-  const footer = (view: 'list' | 'arguments' | 'settings' | 'help', width: number): string =>
-    line([{ text: footerHints(keysFor('tui', view), width), paint: s.dim }], width)
+  const footer = (
+    view: 'list' | 'arguments' | 'settings' | 'help',
+    width: number,
+    row: 'task' | 'skill' = 'task',
+  ): string =>
+    line([{ text: footerHints(keysFor('tui', view), width, '  ', row), paint: s.dim }], width)
 
   /** The lines of the help screen. */
   function helpLines(): { text: string; heading?: boolean }[] {
@@ -795,7 +811,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
         ),
       )
     } else {
-      out.push(footer('list', width))
+      out.push(footer('list', width, currentEntry?.skill !== undefined ? 'skill' : 'task'))
     }
     return HOME + out.join('\r\n') + CLEAR_BELOW
   }

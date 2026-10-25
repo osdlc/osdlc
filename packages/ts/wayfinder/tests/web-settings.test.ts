@@ -34,6 +34,17 @@ beforeEach(() => {
   state.trustable = false
 })
 
+describe('the Runners section', () => {
+  test('lists runners by the name a person reads, and the default order in words', () => {
+    state.catalog = { allowExec: true, reports: [] } as never
+    const html = openSettings(config(), ['procfile', 'package-manager', 'node-scripts', 'just'])
+    const names = [...html.matchAll(/<td><code>([^<]+)<\/code>/g)].map((m) => m[1])
+    expect(names).toEqual(['dependencies', 'just', 'node-scripts', 'procfile'])
+    expect(html).toContain('Order: alphabetical')
+    expect(html).not.toContain('the default the default')
+  })
+})
+
 describe('the Execution section', () => {
   test('says execution is off for this session when a grant would not change it', () => {
     state.catalog = { allowExec: false, reports: [] } as never

@@ -29,6 +29,8 @@ export interface KeyBinding {
   action: string
   /** The footer's short form, such as `^y copy`. Absent: help only. */
   hint?: string | undefined
+  /** The footer's form while a skill row is selected, when the key does something else there. */
+  skillHint?: string | undefined
   /** The footer shows it at every width. */
   always?: boolean | undefined
   /** When the footer is short of room it drops the highest rank first. */
@@ -45,6 +47,7 @@ export const KEY_TABLE: readonly KeyBinding[] = Object.freeze([
     keys: ['enter'],
     action: 'run the task, asking for arguments first; copy a skill',
     hint: 'enter run',
+    skillHint: 'enter copy /name',
     rank: 1,
   },
   {
@@ -275,8 +278,11 @@ export function footerHints(
   bindings: readonly KeyBinding[],
   width: number,
   separator = '  ',
+  row: 'task' | 'skill' = 'task',
 ): string {
-  const hinted = bindings.filter((k) => k.hint !== undefined)
+  const hinted = bindings
+    .filter((k) => k.hint !== undefined)
+    .map((k) => (row === 'skill' && k.skillHint !== undefined ? { ...k, hint: k.skillHint } : k))
   const kept = new Set(hinted.filter((k) => k.always === true))
   const widthOf = (set: Set<KeyBinding>): number =>
     [...set].reduce((n, k) => n + k.hint!.length, 0) + Math.max(0, set.size - 1) * separator.length

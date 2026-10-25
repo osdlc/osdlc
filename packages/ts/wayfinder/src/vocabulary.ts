@@ -37,6 +37,15 @@ export function runnerLabel(runner: string): string {
   return group.runner === runner ? group.title.toLowerCase() : runner
 }
 
+/**
+ * A task's path as a person reads it: a runner id at its head becomes the
+ * runner's label, so `package-manager > . > npm > install` reads
+ * `dependencies > . > npm > install`.
+ */
+export function displayPath(path: readonly string[], runner: string): string[] {
+  return path[0] === runner ? [runnerLabel(runner), ...path.slice(1)] : [...path]
+}
+
 /** The word for a runner that was not read because reading it means running it. */
 export const WITHHELD = 'withheld'
 
