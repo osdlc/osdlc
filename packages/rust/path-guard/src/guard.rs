@@ -274,7 +274,13 @@ fn check_root(root: &Path, argument: &'static str) -> Result<(), PathError> {
 /// prefix. A rooted path is the absolute form on such a target. A host that
 /// runs the guard there supplies the filesystem, and its paths are `/`-rooted.
 fn is_absolute(p: &Path) -> bool {
-    p.is_absolute() || (cfg!(not(any(unix, windows, target_os = "wasi"))) && p.has_root())
+    absolute_given(p, cfg!(not(any(unix, windows, target_os = "wasi"))))
+}
+
+/// [`is_absolute`] with the target decided by the caller: `rooted_is_absolute`
+/// is true on a target with neither Unix nor Windows paths.
+fn absolute_given(p: &Path, rooted_is_absolute: bool) -> bool {
+    p.is_absolute() || (rooted_is_absolute && p.has_root())
 }
 
 /// [`PathError::NotAbsolute`] unless `p` is absolute.
@@ -558,4 +564,20 @@ fn deepest_existing<R: Resolver + ?Sized>(
         }
     }
     Some((found, real))
+}
+
+#[cfg(test)]
+mod absolute_tests {
+    use super::*;
+
+    #[test]
+    fn rooted_path_is_absolute_only_where_paths_have_no_platform() {
+        let rooted = Path::new("/vault");
+        assert!(absolute_given(rooted, true));
+        assert!(!absolute_given(Path::new("vault/notes"), true));
+        assert!(!absolute_given(Path::new(""), true));
+        // Off such a target, only `Path::is_absolute` decides.
+        assert_eq!(absolute_given(rooted, false), rooted.is_absolute());
+        assert!(!absolute_given(Path::new("vault/notes"), false));
+    }
 }
