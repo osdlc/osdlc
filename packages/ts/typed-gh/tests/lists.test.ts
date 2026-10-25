@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'vitest'
 
-import { issueList, labelList, prList, type CommandResult } from '../src/index.ts'
+import { issueList, labelList, prList, searchPrs, type CommandResult } from '../src/index.ts'
 
 const rows = (n: number): CommandResult => ({
   exitCode: 0,
@@ -55,5 +55,35 @@ describe('a list', () => {
     const verb = prList({ head: 'x', limit: 2 })
     const result = verb.parse(rows(3))
     expect(result).toEqual({ rows: [], truncated: true })
+  })
+})
+
+describe("a search stops at 1000 results, so 1000 rows may be GitHub search's cut", () => {
+  const hits = (n: number): CommandResult => ({
+    exitCode: 0,
+    stdout: JSON.stringify(
+      Array.from({ length: n }, (_, i) => ({
+        number: i + 1,
+        repository: { nameWithOwner: 'acme/widgets' },
+      })),
+    ),
+    stderr: '',
+  })
+
+  test('prList with search: 1000 rows at a limit of 1000 or more is truncated', () => {
+    expect(prList({ search: 'is:pr', limit: 1000 }).parse(rows(1000))?.truncated).toBe(true)
+    expect(prList({ search: 'is:pr', limit: 5000 }).parse(rows(1000))).toMatchObject({
+      truncated: true,
+    })
+    expect(prList({ search: 'is:pr', limit: 5000 }).parse(rows(999))?.truncated).toBe(false)
+  })
+
+  test('prList without search lists past 1000, so 1000 rows at limit 1000 is complete', () => {
+    expect(prList({ limit: 1000 }).parse(rows(1000))?.truncated).toBe(false)
+  })
+
+  test('searchPrs: 1000 hits is truncated at any limit', () => {
+    expect(searchPrs('is:open', { limit: 5000 }).parse(hits(1000))?.truncated).toBe(true)
+    expect(searchPrs('is:open', { limit: 5000 }).parse(hits(999))?.truncated).toBe(false)
   })
 })

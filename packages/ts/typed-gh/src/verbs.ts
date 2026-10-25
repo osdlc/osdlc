@@ -226,7 +226,9 @@ function manyOrNull(r: CommandResult): PullRequest[] | null {
 /**
  * A list query's answer: the rows, and whether `limit` cut the list short.
  * The verb asks gh for one row more than `limit`. `truncated` is true when
- * that row came back, and `rows` holds at most `limit`.
+ * that row came back, and `rows` holds at most `limit`. A query that goes
+ * through GitHub search, which returns at most 1000 results, is also
+ * `truncated` when 1000 rows came back.
  */
 export interface ListResult<T> {
   rows: T[]
@@ -240,10 +242,21 @@ function checkLimit(limit: number): void {
   }
 }
 
-/** `rows` cut to `limit`, with whether there were more. Null stays null. */
-function limited<T>(rows: T[] | null, limit: number): ListResult<T> | null {
+/**
+ * The most results GitHub search returns for one query. A call that goes
+ * through search (`prList` with `search`, `searchPrs`) and gets this many
+ * rows may have been cut off by search, whatever the `limit`.
+ */
+const SEARCH_RESULT_CAP = 1000
+
+/**
+ * `rows` cut to `limit`, with whether there were more. With `cap`, reaching
+ * it counts as more too, since the source stops there. Null stays null.
+ */
+function limited<T>(rows: T[] | null, limit: number, cap?: number): ListResult<T> | null {
   if (rows === null) return null
-  return { rows: rows.slice(0, limit), truncated: rows.length > limit }
+  const truncated = rows.length > limit || (cap !== undefined && rows.length >= cap)
+  return { rows: rows.slice(0, limit), truncated }
 }
 
 /** A mutation's result carries no value. */
@@ -370,7 +383,12 @@ export function prList(
     checked: false,
     readOnly: true,
     parse(r) {
-      const result = limited(manyOrNull(r), limit)
+      // A search stops at 1000 results, so 1000 rows may be a cut, not the end.
+      const result = limited(
+        manyOrNull(r),
+        limit,
+        opts.search === undefined ? undefined : SEARCH_RESULT_CAP,
+      )
       if (result === null || head === undefined) return result
       return { ...result, rows: result.rows.filter((pr) => pr.headRefName === head) }
     },
@@ -959,7 +977,7 @@ export function searchPrs(
     checked: false,
     readOnly: true,
     env: hostEnv(target),
-    parse: (r) => limited(rowsOrNull(r, parsePrSearchHit), limit),
+    parse: (r) => limited(rowsOrNull(r, parsePrSearchHit), limit, SEARCH_RESULT_CAP),
   }
 }
 

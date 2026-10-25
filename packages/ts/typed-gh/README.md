@@ -169,6 +169,11 @@ if (page.truncated) console.warn('more than 50 open PRs; raise the limit')
 `prList`, `issueList`, `labelList`, `repoList` and `searchPrs` all work this
 way. A `limit` that is not a positive integer throws `RangeError`.
 
+GitHub search returns at most 1000 results, whatever the `limit`. So a call
+that goes through search, `searchPrs` or `prList` with `search`, reports
+`truncated: true` when 1000 rows come back: there may be more that search
+would not return. Narrow the query to see them.
+
 ## A repository without a clone
 
 By default a client talks to the repository of the clone at its directory.
