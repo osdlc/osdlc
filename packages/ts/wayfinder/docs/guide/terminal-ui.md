@@ -92,7 +92,10 @@ A command or skill name that holds a control character is not copied, since
 it could end a terminal's bracketed paste and run what follows. It uses `pbcopy` on macOS, and `wl-copy`, `xclip` or `xsel` elsewhere. A
 clipboard program that hangs is given up on after two seconds.
 
-When the task exits, `way` exits with the task's exit code.
+When the task exits, `way` exits with the task's exit code. While the task runs,
+`way` ignores Ctrl+C, `SIGTERM` and `SIGHUP` and waits for it, so the task is
+never left running without its parent. Ctrl+C reaches the task. To stop both
+from elsewhere, signal the process group: `kill -TERM -<pgid>`.
 
 ## Tasks that take arguments
 
