@@ -39,7 +39,7 @@ decides execution against the trust store and loads tool modules. It throws
 | `session.revokeTrust(scope?)` | removes the grant, or one tool's. A whole-repository revoke leaves this session's execution as it is |
 | `session.missingScopes(runner)` | the tool grants a runner still needs; a withheld unknown carries the same list as `missing` |
 | `session.settings()` | every setting and its source (from `readSettings`, the reader `way config` uses), the effective `allowExec`, the gate's reason and trust, each tool's `homepage`, `description` and `language` (`tools`), and the tools trusted on their own (`trustedTools`) |
-| `session.resolveRun(catalog, id, args)` | the `RunPlan` (`argv`, `env`, `cwd`) for a task id, or a `command line` only one task has. Throws `task-not-found`, `not-runnable` (an editor variable) or `bad-arguments` |
+| `session.resolveRun(catalog, id, args)` | the `RunPlan` (`argv`, `env`, `cwd`) for a task id, or a `command line` only one task has. Throws `task-not-found`, `ambiguous-task` (two tasks share the id), `not-runnable` (an editor variable) or `bad-arguments` |
 
 `session.options` is the collect options object. A grant and a saved
 setting change it in place, so a probe always uses the current ones.

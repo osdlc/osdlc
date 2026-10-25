@@ -26,6 +26,7 @@ import { createRoutes, type RunResolution } from './routes.ts'
 /** The HTTP status for each `run` error code the page can act on. */
 const RUN_STATUS: Record<string, number> = {
   'task-not-found': 404,
+  'ambiguous-task': 409,
   'not-runnable': 422,
   'bad-arguments': 400,
   usage: 400,

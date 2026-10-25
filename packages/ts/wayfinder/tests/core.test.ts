@@ -220,6 +220,32 @@ describe('resolveRun', () => {
     }
   })
 
+  test('an unknown id is not matched to a task that only has its letters in order', () => {
+    const catalog = catalogOf([report('npm', [task({ id: 'node-scripts:package.json:evil' })])])
+    try {
+      resolveRun(project, '/repo', catalog, 'nope')
+      expect.unreachable()
+    } catch (err) {
+      expect((err as SessionError).hint).not.toContain('evil')
+      expect((err as SessionError).hint).toContain('list --json')
+    }
+  })
+
+  test('an id two tasks share is refused, naming both', () => {
+    const catalog = catalogOf([
+      report('npm', [
+        task({ id: 'a:b:c', display: 'npm run one' }),
+        task({ id: 'a:b:c', display: 'npm run two' }),
+      ]),
+    ])
+    expect(() => resolveRun(project, '/repo', catalog, 'a:b:c')).toThrow(
+      expect.objectContaining({
+        code: 'ambiguous-task',
+        hint: expect.stringContaining('npm run two'),
+      }),
+    )
+  })
+
   test('a task that uses an editor variable is not run', () => {
     const catalog = catalogOf([
       report('vscode', [
