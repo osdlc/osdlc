@@ -149,6 +149,7 @@ describe('originOwner as ownerOf', () => {
       trusted: true,
       by: 'owner',
       rule: 'gitlab.com/acmeowner',
+      scope: '*',
     })
   })
 
