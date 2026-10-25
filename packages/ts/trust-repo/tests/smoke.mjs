@@ -24,7 +24,7 @@ import {
 import { originOwner } from '@osdlc/trust-repo/git'
 
 // A throwaway home and env, so the smoke never touches a real trust store.
-const home = realpathSync(mkdtempSync(join(tmpdir(), 'trust-repo-smoke-')))
+const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'trust-repo-smoke-')))
 try {
   const repo = join(home, 'work', 'app')
   mkdirSync(repo, { recursive: true })

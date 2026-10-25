@@ -10,7 +10,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir, userInfo } from 'node:os'
-import { basename, isAbsolute, join } from 'node:path'
+import { basename, isAbsolute, join, sep } from 'node:path'
 
 import {
   homeDir,
@@ -43,23 +43,24 @@ async function home(): Promise<{ env: Record<string, string | undefined>; home: 
   return { env: { XDG_STATE_HOME: join(dir, '.local', 'state') }, home: dir }
 }
 
+// The platform's separators, so the expectations hold on Windows too.
+const DEV_STORE = join('/home/dev', '.local', 'state', 'tooly', 'trusted')
+
 describe('trustStoreDir', () => {
   test('puts the store under XDG_STATE_HOME when it is set', () => {
     expect(trustStoreDir('tooly', { XDG_STATE_HOME: '/state' }, '/home/dev')).toBe(
-      `/state/tooly/${TRUST_MARKER_DIR}`,
+      join('/state', 'tooly', TRUST_MARKER_DIR),
     )
   })
 
   test('falls back to ~/.local/state on every platform, macOS included', () => {
-    expect(trustStoreDir('tooly', {}, '/home/dev')).toBe('/home/dev/.local/state/tooly/trusted')
+    expect(trustStoreDir('tooly', {}, '/home/dev')).toBe(DEV_STORE)
   })
 
   test('treats an empty XDG_STATE_HOME as unset', () => {
     // An exported but empty variable is a common shell mistake. Joining onto
     // "" would put the store at /tooly/trusted.
-    expect(trustStoreDir('tooly', { XDG_STATE_HOME: '' }, '/home/dev')).toBe(
-      '/home/dev/.local/state/tooly/trusted',
-    )
+    expect(trustStoreDir('tooly', { XDG_STATE_HOME: '' }, '/home/dev')).toBe(DEV_STORE)
   })
 
   test('a relative HOME is treated as unset, and the account home is used', () => {
@@ -78,15 +79,13 @@ describe('trustStoreDir', () => {
     // Resolved against the cwd, `.state` would put the store inside the
     // repository being judged, where it could ship its own marker.
     for (const value of ['.state', 'state/x', './s']) {
-      expect(trustStoreDir('tooly', { XDG_STATE_HOME: value }, '/home/dev')).toBe(
-        '/home/dev/.local/state/tooly/trusted',
-      )
+      expect(trustStoreDir('tooly', { XDG_STATE_HOME: value }, '/home/dev')).toBe(DEV_STORE)
     }
   })
 
   test('expands a leading ~ rather than making a literal directory', () => {
     expect(trustStoreDir('tooly', { XDG_STATE_HOME: '~/state' }, '/home/dev')).toBe(
-      '/home/dev/state/tooly/trusted',
+      join('/home/dev', 'state', 'tooly', 'trusted'),
     )
   })
 
@@ -94,7 +93,7 @@ describe('trustStoreDir', () => {
     // Every test in this file depends on this: once a home is supplied, no
     // code path falls back to os.homedir().
     const dir = trustStoreDir('tooly', {}, '/injected/home')
-    expect(dir.startsWith('/injected/home/')).toBe(true)
+    expect(dir.startsWith(join('/injected/home', sep))).toBe(true)
   })
 
   test('scopes the directory by tool name', () => {

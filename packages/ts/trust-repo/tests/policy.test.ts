@@ -14,7 +14,8 @@ import { trustStore, type TrustStore } from '../src/store.ts'
 
 const dirs: string[] = []
 function tmp(): string {
-  const d = realpathSync(mkdtempSync(join(tmpdir(), 'trust-repo-policy-')))
+  // `.native` gives the long form of a Windows 8.3 name, as the store's resolve does.
+  const d = realpathSync.native(mkdtempSync(join(tmpdir(), 'trust-repo-policy-')))
   dirs.push(d)
   return d
 }

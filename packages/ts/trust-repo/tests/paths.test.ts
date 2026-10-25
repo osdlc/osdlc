@@ -18,7 +18,8 @@ import {
 
 const dirs: string[] = []
 function tmp(): string {
-  const d = realpathSync(mkdtempSync(join(tmpdir(), 'trust-repo-paths-')))
+  // `.native` gives the long form of a Windows 8.3 name, as the store's resolve does.
+  const d = realpathSync.native(mkdtempSync(join(tmpdir(), 'trust-repo-paths-')))
   dirs.push(d)
   return d
 }
@@ -108,7 +109,9 @@ describe('expandTrustPath on this platform', () => {
     const base = tmp()
     mkdirSync(join(base, 'real'))
     symlinkSync(join(base, 'real'), join(base, 'link'))
-    expect(await expandTrustPath(`${base}/link/sub/**`, base)).toBe(`${base}/real/sub/**`)
+    expect(await expandTrustPath(`${base}/link/sub/**`, base)).toBe(
+      `${normalizeTrustPath(base)}/real/sub/**`,
+    )
   })
 
   test('a glob at the filesystem root keeps a single slash', async () => {
