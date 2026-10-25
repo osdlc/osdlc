@@ -215,14 +215,16 @@ paint('failed', ansiColors('none', 'dark')['status-error']) // 'failed'
   sequences (CSI, and the OSC, DCS, SOS, PM and APC strings up to BEL or ST,
   or to the end of the text when there is no terminator), their 8-bit C1
   forms, every other C0 and C1 control, DEL, and the bidirectional
-  embedding, override and isolate controls (`U+202A`-`U+202E`,
-  `U+2066`-`U+2069`). `StripControlsOptions` keeps line feeds
+  controls (the marks `U+061C`, `U+200E` and `U+200F`, and the embedding,
+  override and isolate controls `U+202A`-`U+202E` and `U+2066`-`U+2069`). `StripControlsOptions` keeps line feeds
   (`newline: true`) or tabs (`tab: true`). A carriage return is always
   removed.
 - `displayWidth(text)` counts terminal columns per grapheme cluster: 2 for
   East Asian wide and fullwidth characters and emoji, 0 for combining marks
   and format characters such as a zero-width joiner, and 1 for the rest,
-  East Asian ambiguous characters included.
+  East Asian ambiguous characters included. Controls left in the text, a
+  tab among them, count 0, because a tab's width depends on where it
+  starts. Replace tabs with spaces before you measure.
 - `fitWidth(text, width, options)` cuts `text` to at most `width` columns
   and ends cut text in an ellipsis inside the width. The cut falls between
   grapheme clusters, so a combining mark stays with its letter and a wide
@@ -230,7 +232,7 @@ paint('failed', ansiColors('none', 'dark')['status-error']) // 'failed'
   `…`, `''` for none) and `pad`, which pads with spaces to exactly `width`.
   An ellipsis wider than `width` is dropped.
 
-Strip first, then fit: `fitWidth` expects one line with no controls.
+Strip first, then fit: `fitWidth` expects one line with no controls or tabs.
 
 ```ts
 import { displayWidth, fitWidth, stripControls } from '@osdlc/ux'

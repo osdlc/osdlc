@@ -28,12 +28,18 @@ describe('stripControls', () => {
     ['C0 controls, CR and DEL', 'a\x00b\x08c\x0bd\re\x7ff', 'abcdef'],
     ['tab and newline by default', 'a\tb\nc', 'abc'],
     ['bidi override and isolate', 'a‮b⁦c⁩d‪e', 'abcde'],
+    ['bidi marks ALM, LRM and RLM', 'a\u061cb\u200ec\u200fd', 'abcd'],
     ['a lone ESC at the end', `a${ESC}`, 'a'],
     ['ESC ESC', `a${ESC}${ESC}[31mb`, 'ab'],
     ['an unterminated OSC drops the rest', `a${ESC}]52;c;eA==`, 'a'],
     ['an unterminated CSI', `a${ESC}[31`, 'a'],
     ['an ESC inside OSC starts a new sequence', `a${ESC}]0;t${ESC}[31mb`, 'ab'],
     ['a control byte ends a CSI and is removed', `a${ESC}[3\x07b`, 'ab'],
+    ['U+001F ends a CSI and is removed', `a${ESC}[3\x1fb`, 'ab'],
+    ['DEL ends a CSI and is removed', `a${ESC}[3\x7fb`, 'ab'],
+    ['a character above U+007E ends a CSI and is kept', `a${ESC}[3éb`, 'aéb'],
+    ['a space is a CSI intermediate', `a${ESC}[2 qb`, 'ab'],
+    ['a ? is a CSI parameter', `a${ESC}[?25lb`, 'ab'],
   ])('removes %s', (_, input, expected) => {
     expect(stripControls(input)).toBe(expected)
   })
@@ -74,6 +80,7 @@ describe('displayWidth', () => {
     ['a zero-width space', 'a​b', 2],
     ['an East Asian ambiguous character', '±', 1],
     ['Hangul', '한국', 4],
+    ['a tab counts 0', 'a\tb', 2],
   ])('%s', (_, text, width) => {
     expect(displayWidth(text)).toBe(width)
   })

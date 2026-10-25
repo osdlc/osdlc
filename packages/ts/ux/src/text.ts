@@ -18,8 +18,11 @@ const C1_ST = 0x9c
 /** The C1 controls, 7-bit (after ESC) and 8-bit, that open a string ended by ST. */
 const STRING_7BIT = new Set([0x5d, 0x50, 0x58, 0x5e, 0x5f]) // ] P X ^ _
 const STRING_8BIT = new Set([0x9d, 0x90, 0x98, 0x9e, 0x9f]) // OSC DCS SOS PM APC
-/** Bidirectional embedding, override and isolate controls, which reorder the text around them. */
-const BIDI = /[‪-‮⁦-⁩]/
+/**
+ * Bidirectional controls, which reorder the text around them: the marks ALM,
+ * LRM and RLM, and the embeddings, overrides and isolates.
+ */
+const BIDI = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/
 
 /**
  * `text` with every terminal control removed, so printing it cannot move the
@@ -36,7 +39,8 @@ const BIDI = /[‪-‮⁦-⁩]/
  * - C0 controls, `U+0000`-`U+001F`, except a tab or line feed you keep with
  *   `options`. A carriage return is always removed.
  * - DEL, `U+007F`.
- * - The bidirectional controls `U+202A`-`U+202E` and `U+2066`-`U+2069`.
+ * - The bidirectional controls: the marks `U+061C`, `U+200E` and `U+200F`,
+ *   and `U+202A`-`U+202E` and `U+2066`-`U+2069`.
  *
  * Other text, including combining marks and emoji, is kept as is.
  */
@@ -121,7 +125,9 @@ function clusterWidth(cluster: string): number {
  * East Asian wide and fullwidth characters and emoji take 2 columns.
  * Combining marks and format characters such as a zero-width joiner take 0.
  * East Asian ambiguous characters take 1. Remove controls first with
- * {@link stripControls}; any left count 0.
+ * {@link stripControls}; any left count 0. A tab counts 0 too, because its
+ * width depends on the column it starts at, so replace tabs with spaces
+ * before you measure.
  */
 export function displayWidth(text: string): number {
   let width = 0
@@ -146,8 +152,8 @@ export interface FitWidthOptions {
  * with no ellipsis. With `pad`, the result is padded with spaces to exactly
  * `width` columns.
  *
- * `text` should be one line with no controls; run {@link stripControls}
- * first.
+ * `text` should be one line with no controls or tabs; run
+ * {@link stripControls} first.
  *
  * @throws RangeError when `width` is not a non-negative integer.
  */
