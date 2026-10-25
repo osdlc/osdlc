@@ -136,17 +136,25 @@ export function countSkills(n: number): string {
   return `${n} ${n === 1 ? SKILL_NOUN.one : SKILL_NOUN.many}`
 }
 
-const PARAMETERS_UNKNOWN: Record<ParametersUnknownReason, string> = {
+const PARAMETERS_UNKNOWN: Record<Exclude<ParametersUnknownReason, 'editor-variable'>, string> = {
   'exec-withheld': 'reading them needs execution, which is withheld',
   'tool-missing': 'the tool is not installed',
   'tool-failed': 'the tool could not list them',
   'not-read': 'this runner does not read them',
-  'editor-variable': 'the task uses an editor variable, so it cannot run here',
 }
 
-/** The label for a task whose parameters could not be read. */
+/** The label for a task that uses an editor variable: it cannot run outside the editor. */
+export const EDITOR_VARIABLE_LABEL = 'cannot run here: the task uses an editor variable'
+
+/**
+ * The label for a task whose parameters could not be read. An editor
+ * variable is not a gap in what is known: the task cannot run here at all,
+ * and the label says that ({@link EDITOR_VARIABLE_LABEL}).
+ */
 export function parametersUnknownLabel(reason: ParametersUnknownReason): string {
-  return `parameters unknown: ${PARAMETERS_UNKNOWN[reason]}`
+  return reason === 'editor-variable'
+    ? EDITOR_VARIABLE_LABEL
+    : `parameters unknown: ${PARAMETERS_UNKNOWN[reason]}`
 }
 
 const STALE_REASONS: Record<StaleReason, string> = {

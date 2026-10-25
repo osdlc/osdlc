@@ -188,6 +188,13 @@ describe('vocabulary', () => {
     expect(withheldLabel('exec-off')).toBe('withheld: execution is off')
   })
 
+  test('an editor variable reads as cannot run, not as unknown parameters', () => {
+    expect(parametersUnknownLabel('editor-variable')).toBe(
+      'cannot run here: the task uses an editor variable',
+    )
+    expect(parametersUnknownLabel('not-read')).toMatch(/^parameters unknown: /)
+  })
+
   test('exec-off names what turned execution off', () => {
     expect(withheldLabel('exec-off', [], 'flag')).toBe('withheld: --no-exec was given')
     expect(withheldLabel('exec-off', [], 'user')).toBe(

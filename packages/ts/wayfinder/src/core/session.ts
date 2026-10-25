@@ -42,7 +42,7 @@ import { readSkills } from '../skills.ts'
 import { toolSummary, type ToolSummary } from '../tool-info.ts'
 import { loadTools, ToolModuleError, type LoadedTool } from '../tools.ts'
 import { appTrustStore } from '../trust-store.ts'
-import type { WithheldReason } from '../vocabulary.ts'
+import { EDITOR_VARIABLE_LABEL, type WithheldReason } from '../vocabulary.ts'
 import { filterTasks, type TaskFilter, type TaskHit } from './filter.ts'
 import { filterSkills, type SkillHit, type SkillRow } from './skills.ts'
 import { execOffSource, unknownsOf, type Unknown } from './unknowns.ts'
@@ -633,10 +633,7 @@ export function resolveRun(
     )
   }
   if (task.parametersUnknown === 'editor-variable') {
-    throw new SessionError(
-      'not-runnable',
-      `${task.display}: the task uses an editor variable, so it cannot run here`,
-    )
+    throw new SessionError('not-runnable', `${task.display}: ${EDITOR_VARIABLE_LABEL}`)
   }
   let invocation: { argv: string[]; env: Record<string, string> }
   try {
