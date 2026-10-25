@@ -228,12 +228,13 @@ after the merge still finds it.
 
 ## Two payload differences it handles
 
-Author logins differ between GraphQL and REST. GraphQL (`gh pr view --json`)
-returns a login without a suffix (`github-actions`). REST (`gh api`) returns
-the suffixed one (`github-actions[bot]`). Comparing one with the other never
-matches, and no error shows it. Then a bot's comments are treated as human
-review feedback. Logins are cut to the form without the suffix once, when a
-payload is parsed.
+A bot's login is spelled three ways. GraphQL, and a comment's author in
+`gh pr view --json`, give the bare login (`github-actions`). gh's `--json`
+export of a pull request's author prefixes it (`app/github-actions`). REST
+(`gh api`) suffixes it (`github-actions[bot]`). Comparing one with another
+never matches, and no error shows it. Then a bot's comments are treated as
+human review feedback. Logins are cut to the bare form once, when a payload is
+parsed, and the prefix or suffix marks the author as a bot.
 
 `statusCheckRollup` holds two node types. A modern `CheckRun` carries
 `name`/`status`/`conclusion`. A legacy `StatusContext` carries
@@ -546,7 +547,7 @@ Each verb takes an optional `GhTarget` last. Each client method has a verb of th
 
 - `parsePullRequest`: reads a `gh --json` payload into a `PullRequest`, or `null`.
 - `anyCheckFailed`: true if any check in a list failed.
-- `normalizeAuthorLogin`: drops a `[bot]` suffix from a login.
+- `normalizeAuthorLogin`: drops a `[bot]` suffix or an `app/` prefix from a login.
 - `parseOwnerRepo`: reads a remote URL into `{ owner, repo }`, or `null`.
 - `ownerRepoSlug`: writes `{ owner, repo }` as `owner/repo`.
 - `parsePrUrl`: reads a pull request URL on any GitHub host into its host, owner, repository and
