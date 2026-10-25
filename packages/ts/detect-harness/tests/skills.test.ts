@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { join } from 'node:path'
 
-import { argumentHintOf } from '../src/frontmatter.ts'
+import { argumentHintOf, parseFrontmatter } from '../src/frontmatter.ts'
 import { readPlugin } from '../src/model/derive.ts'
 import { fixture, type Fixture } from './fixture.ts'
 
@@ -25,20 +25,81 @@ describe('argumentHintOf', () => {
     )
   })
 
-  test('an unquoted [list] is written back with its brackets', () => {
-    expect(argumentHintOf({ 'argument-hint': ['message'] })).toBe('[message]')
-    expect(argumentHintOf({ 'argument-hint': ['a', 'b'] })).toBe('[a, b]')
-  })
-
-  test('unset, blank or empty is null', () => {
+  test('unset, blank or not text is null', () => {
     expect(argumentHintOf({})).toBeNull()
     expect(argumentHintOf({ 'argument-hint': '   ' })).toBeNull()
     expect(argumentHintOf({ 'argument-hint': null })).toBeNull()
-    expect(argumentHintOf({ 'argument-hint': [] })).toBeNull()
+    expect(argumentHintOf({ 'argument-hint': ['message'] })).toBeNull()
+    expect(argumentHintOf({ 'argument-hint': { a: 1 } })).toBeNull()
+    expect(argumentHintOf({ 'argument-hint': 3 })).toBeNull()
+  })
+})
+
+describe('parseFrontmatter reads argument-hint as the author typed it', () => {
+  // The forms Claude Code skills and commands use. Most are not valid YAML,
+  // or are YAML lists, when left unquoted.
+  test.each([
+    ['[message]', '[message]'],
+    ['[pr-number] [priority]', '[pr-number] [priority]'],
+    ['[--fix] <path>', '[--fix] <path>'],
+    ['<pr-number> [--mode auto|ask]', '<pr-number> [--mode auto|ask]'],
+    ['[[a], b]', '[[a], b]'],
+    ['[a: 1]', '[a: 1]'],
+    ['[file] # the file to check', '[file]'],
+    ['[#123]', '[#123]'],
+    ['add [tagId] | remove [tagId] | list', 'add [tagId] | remove [tagId] | list'],
+    ['"[quoted] [hint]"', '[quoted] [hint]'],
+    ["'[single] [quoted]'", '[single] [quoted]'],
+    ['3', '3'],
+  ])('argument-hint: %s', (written, hint) => {
+    const fm = parseFrontmatter(skill(`name: s\ndescription: S.\nargument-hint: ${written}`))
+    expect(fm).toMatchObject({ name: 's', description: 'S.' })
+    expect(argumentHintOf(fm!)).toBe(hint)
   })
 
-  test('a scalar of another type is read as text', () => {
-    expect(argumentHintOf({ 'argument-hint': 3 })).toBe('3')
+  test('a block scalar hint is read as YAML', () => {
+    const fm = parseFrontmatter(skill('argument-hint: >-\n  [a]\n  [b]'))
+    expect(argumentHintOf(fm!)).toBe('[a] [b]')
+  })
+
+  test('the other keys still parse as YAML', () => {
+    const fm = parseFrontmatter(
+      skill('argument-hint: [a] [b]\nallowed-tools:\n  - Bash\n  - Read\nmodel: sonnet'),
+    )
+    expect(fm).toEqual({
+      'argument-hint': '[a] [b]',
+      'allowed-tools': ['Bash', 'Read'],
+      model: 'sonnet',
+    })
+  })
+})
+
+describe('parseFrontmatter on a block that is not valid YAML', () => {
+  test('keeps name, description and argument-hint from their raw lines', () => {
+    // `Use when: ...` is a second mapping on one line, which YAML refuses.
+    const fm = parseFrontmatter(
+      skill(
+        'name: review\ndescription: Use when: a PR needs review\nargument-hint: [pr]\nmodel: x',
+      ),
+    )
+    expect(fm).toEqual({
+      name: 'review',
+      description: 'Use when: a PR needs review',
+      'argument-hint': '[pr]',
+    })
+  })
+
+  test('strips matching quotes, keeps the first of a repeated key, and reads block scalars', () => {
+    const fm = parseFrontmatter(
+      skill(
+        `name: "quoted"\nname: second\nbad: [unclosed\ndescription: >\n  Folded\n  text.\nargument-hint: |\n  one\n  two`,
+      ),
+    )
+    expect(fm).toEqual({ name: 'quoted', description: 'Folded text.', 'argument-hint': 'one\ntwo' })
+  })
+
+  test('gives {} when none of the three keys is there', () => {
+    expect(parseFrontmatter(skill('bad: [unclosed'))).toEqual({})
   })
 })
 
@@ -97,13 +158,33 @@ describe('project mode lists the skills a repository ships', () => {
     ])
   })
 
-  test('a skill whose front matter does not parse still lists, with no hint', async () => {
+  test('a multi-group hint keeps the name and description', async () => {
     fx.write(fx.project, {
-      '.claude/skills/broken/SKILL.md': skill('argument-hint: [a] [b]'),
+      '.claude/skills/pick/SKILL.md': skill(
+        'name: pick\ndescription: Pick a PR.\nargument-hint: [pr-number] [priority]',
+      ),
     })
     const claude = await fx.report('claude', { mode: 'project' })
     expect(claude.skills).toEqual([
-      expect.objectContaining({ name: 'broken', description: null, argumentHint: null }),
+      expect.objectContaining({
+        name: 'pick',
+        description: 'Pick a PR.',
+        argumentHint: '[pr-number] [priority]',
+      }),
+    ])
+  })
+
+  test('a skill whose front matter is not YAML still lists, with its raw name and description', async () => {
+    fx.write(fx.project, {
+      '.claude/skills/broken/SKILL.md': skill('description: Use when: it breaks\nbad: [unclosed'),
+    })
+    const claude = await fx.report('claude', { mode: 'project' })
+    expect(claude.skills).toEqual([
+      expect.objectContaining({
+        name: 'broken',
+        description: 'Use when: it breaks',
+        argumentHint: null,
+      }),
     ])
   })
 })
