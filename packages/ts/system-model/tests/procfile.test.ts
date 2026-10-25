@@ -77,6 +77,13 @@ describe('procfile runner', () => {
     ])
   })
 
+  test('a sh -c line with more than one command takes no arguments', async () => {
+    const { project, catalog } = await run({ Procfile: 'web: make a && make b\n' })
+    expect(() => project.runners.invoke(named(tasks(catalog), 'web'), ['x'])).toThrow(
+      'procfile: this command line takes no arguments, because it has more than one command',
+    )
+  })
+
   test('a process manager takes no arguments', async () => {
     const { project, catalog } = await run({ Procfile: PROCFILE }, TOOLS, { overmind: '/o' })
     expect(() => project.runners.invoke(named(tasks(catalog), 'web'), ['x'])).toThrow(

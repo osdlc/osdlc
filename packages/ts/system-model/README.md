@@ -307,8 +307,9 @@ Every other runner reads files only, so it needs no trust. Known gaps:
   graph, which runs the workspace's plugins and the Nx daemon.
 - poe does not read `include` files.
 - VS Code tasks of other types (`gulp`, an extension's) and tasks that only
-  run their `dependsOn` are skipped with a diagnostic. Platform overrides are
-  not applied.
+  run their `dependsOn` are skipped with a diagnostic, as is the old `0.1.0`
+  format. The current platform's override is applied. `${workspaceFolder}`
+  expands to this machine's path, so a catalog names absolute paths.
 - procfile picks its process manager at collect time. A cached result reads
   as stale (`tool`) once another manager is installed or removed, as for any
   binary a runner looks up through `ctx.which`. A Procfile process takes no
@@ -344,8 +345,9 @@ Three synthesized runners turn role actions into tasks:
 arguments, bound the way its tool expects. Positional arguments go after `--`
 for npm run, cargo run, dotnet run, moon, turbo, nx, go-task and composer, and
 in `name[a,b]` form for rake, with `,`, `]` and `\` escaped. A `sh -c` task
-(VS Code, Procfile) takes them as `"$@"`, so each stays one word. Otherwise
-they are appended. `invoke` throws for a Procfile process run through a
+(VS Code, Procfile) takes them as `"$@"`, so each stays one word, and refuses
+them when the line has more than one command (`;`, `&&`, `|`) or ends in a `#`
+comment. Otherwise they are appended. `invoke` throws for a Procfile process run through a
 manager, which takes no arguments.
 `args` is a list of positional arguments, or values by parameter name:
 
