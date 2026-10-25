@@ -73,6 +73,8 @@ const BRAND: RunnerBrand = {
 
 export const sbtRunner: RunnerRole = {
   kind: 'exec',
+  // A cold sbt start compiles the build definition and can take minutes.
+  probe: { timeoutMs: 300_000, cost: 'slow' },
   chain: CHAIN,
   brand: BRAND,
   // Watch every `*.sbt`, not only the root ones this runner reads. sbt also
@@ -106,7 +108,10 @@ export const sbtRunner: RunnerRole = {
     // cold start, which is the usual case. So this parses the console listing.
     const res = await ctx
       .runner('sbt')
-      .run(['-batch', '-Dsbt.log.noformat=true', 'projects', 'tasks'], { cwd: ctx.root })
+      .run(['-batch', '-Dsbt.log.noformat=true', 'projects', 'tasks'], {
+        cwd: ctx.root,
+        signal: ctx.signal,
+      })
 
     if (res.exitCode !== 0) {
       return {

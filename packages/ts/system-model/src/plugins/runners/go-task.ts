@@ -280,7 +280,6 @@ async function listTasks(
   // exit code and the JSON parse need checking.
   const res = await ctx.runner('task').run(listArgv(file), {
     cwd: ctx.root,
-    timeoutMs: LIST_TIMEOUT_MS,
     signal: ctx.signal,
   })
   if (res.exitCode !== 0) {
@@ -444,6 +443,7 @@ export const goTaskRunner: RunnerRole = {
   // `parse`, not `exec`: the reader means this runner always has tasks to
   // offer. It runs `task` when allowed, and says when it did not.
   kind: 'parse',
+  probe: { timeoutMs: LIST_TIMEOUT_MS, cost: 'cheap' },
   chain: CHAIN,
   brand: BRAND,
 

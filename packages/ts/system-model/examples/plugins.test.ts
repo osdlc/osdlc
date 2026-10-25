@@ -11,6 +11,7 @@ import { afterEach, expect, test } from 'vitest'
 
 import {
   createProject,
+  DEFAULT_PROBE_TIMEOUT_MS,
   evidence,
   type EcosystemDef,
   type HookDef,
@@ -19,11 +20,13 @@ import {
   type ManifestDef,
   type Marker,
   type PackageManagerRole,
+  type ProbeCost,
   type ProviderContext,
   type ProviderKind,
   type ProviderResult,
   type RoleName,
   type RunnerContext,
+  type RunnerProbe,
   type RunnerRole,
   type ToolDef,
   type ToolFact,
@@ -140,9 +143,14 @@ test('moon describes its projects when execution is allowed', async () => {
 // A downstream tool: every `*.sh` under `scripts/` is a task.
 const SCRIPTS: Marker = { files: '/scripts/', tier: 'files' }
 const kind: ProviderKind = 'parse'
+// Each subprocess the runner starts gets this timeout (DEFAULT_PROBE_TIMEOUT_MS
+// when unset); `CollectOptions.timeouts` can replace it per runner.
+const cost: ProbeCost = 'cheap'
+const probe: RunnerProbe = { timeoutMs: DEFAULT_PROBE_TIMEOUT_MS / 6, cost }
 
 const bashScriptsRunner: RunnerRole = {
   kind,
+  probe,
   chain: [
     { label: 'runner', hint: 'Shell scripts under scripts/.' },
     { label: 'script', hint: 'The script name.' },

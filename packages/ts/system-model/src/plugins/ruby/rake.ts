@@ -136,6 +136,7 @@ export const rakeRunner: RunnerRole = {
   // `parse`, not `exec`: the scan means this runner always has tasks to offer.
   // It runs rake when allowed, and says when it did not.
   kind: 'parse',
+  probe: { timeoutMs: EXEC_TIMEOUT_MS, cost: 'slow' },
   chain: CHAIN,
   brand: BRAND,
 
@@ -350,7 +351,6 @@ interface ListedTask {
 async function listViaRake(ctx: ProviderContext): Promise<{ tasks: ListedTask[]; error?: string }> {
   const res = await ctx.runner('rake').run(EXEC_ARGV, {
     cwd: ctx.root,
-    timeoutMs: EXEC_TIMEOUT_MS,
     signal: ctx.signal,
   })
   if (res.exitCode !== 0) {

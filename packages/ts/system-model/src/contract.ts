@@ -110,6 +110,7 @@ export interface DetectOptions {
   makeRunner?: ((binary: string) => AsyncCommandRunner) | undefined
   /** PATH lookup. Defaults to a `node:fs` PATH walk. */
   which?: ((binary: string) => string | null) | undefined
+  /** Ends every subprocess detection starts, git included, when aborted. */
   signal?: AbortSignal | undefined
 }
 
@@ -130,9 +131,15 @@ export interface CollectOptions {
    * repo.
    */
   execWithheldHint?: string | undefined
+  /**
+   * Probe timeouts in ms, by runner id. Each replaces that runner's
+   * `RunnerRole.probe.timeoutMs`.
+   */
+  timeouts?: Readonly<Record<string, number>> | undefined
   /** Build the runner for a binary. Defaults to `spawnRunnerAsync` from `@osdlc/command-seam`. */
   makeRunner?: ((binary: string) => AsyncCommandRunner) | undefined
   /** PATH lookup. Defaults to a `node:fs` PATH walk. */
   which?: ((binary: string) => string | null) | undefined
+  /** Ends every subprocess a runner starts, git included, when aborted. */
   signal?: AbortSignal | undefined
 }

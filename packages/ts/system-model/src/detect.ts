@@ -17,7 +17,13 @@ import { resolve } from 'node:path'
 
 import { spawnRunnerAsync } from '@osdlc/command-seam'
 
-import { createContext, createContextState } from './context.ts'
+import {
+  boundRunners,
+  createContext,
+  createContextState,
+  DEFAULT_PROBE_TIMEOUT_MS,
+  GIT_TIMEOUT_MS,
+} from './context.ts'
 import type { DetectOptions, ProviderContext } from './contract.ts'
 import { createLister, resolveDiscovery, type WalkLimit } from './discovery.ts'
 import type { ManifestFacts } from './manifests.ts'
@@ -63,16 +69,19 @@ export async function detectProject(
   const excludePaths = opts.excludePaths ?? []
   const useBuiltinExcludes = opts.useBuiltinExcludes ?? true
 
-  const discovery = await resolveDiscovery(absRoot, opts.discovery ?? 'auto', makeRunner('git'))
-  const lister = createLister(
-    absRoot,
-    discovery,
-    makeRunner('git'),
-    excludePaths,
-    useBuiltinExcludes,
-  )
+  const git = boundRunners(makeRunner, signal, GIT_TIMEOUT_MS)
+  const discovery = await resolveDiscovery(absRoot, opts.discovery ?? 'auto', git('git'))
+  const lister = createLister(absRoot, discovery, git('git'), excludePaths, useBuiltinExcludes)
   const state = createContextState(lister)
-  const ctx = createContext({ absRoot, allowExec, makeRunner, which, signal, discovery, state })
+  const ctx = createContext({
+    absRoot,
+    allowExec,
+    makeRunner: boundRunners(makeRunner, signal, DEFAULT_PROBE_TIMEOUT_MS),
+    which,
+    signal,
+    discovery,
+    state,
+  })
   const all = await lister.all()
   const listed = new Set(all)
   const diagnostics: Diagnostic[] = []

@@ -90,8 +90,8 @@ const VERBS: ReadonlyArray<{ name: string }> = [
  * about a second. A cold JVM start plus configuration takes tens of seconds. A
  * first run with an empty dependency cache waits on the network and can take
  * minutes. Five minutes is longer than a normal cold run, and short enough
- * that a stuck daemon does not hang a catalog forever. The timeout is a hard
- * cap in `spawnRunnerAsync`. Hitting it falls back to the floor with a
+ * that a stuck daemon does not hang a catalog forever. `collect` applies it to
+ * the call as a hard cap. Hitting it falls back to the floor with a
  * diagnostic; the runner does not fail.
  */
 const PROBE_TIMEOUT_MS = 300_000
@@ -132,6 +132,7 @@ export const gradleRunner: RunnerRole = {
   // `parse`, not `exec`: the synthesized floor means this runner always has
   // tasks to offer. It asks the build's own tool when allowed.
   kind: 'parse',
+  probe: { timeoutMs: PROBE_TIMEOUT_MS, cost: 'slow' },
   chain: CHAIN,
   brand: BRAND,
   // This runner already reads these at any depth. The watch is for a newly
@@ -339,7 +340,6 @@ async function askGradle(
   ]
   const res = await ctx.runner(argv0).run(argv, {
     cwd: ctx.root,
-    timeoutMs: PROBE_TIMEOUT_MS,
     signal: ctx.signal,
   })
 

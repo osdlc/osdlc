@@ -77,6 +77,8 @@ const BRAND: RunnerBrand = {
 
 export const moonRunner: RunnerRole = {
   kind: 'exec',
+  // A first `moon query` can install a toolchain.
+  probe: { timeoutMs: 120_000, cost: 'slow' },
   chain: CHAIN,
   brand: BRAND,
   // moon merges every project's `moon.yml` and the `.moon/tasks/` layer into
@@ -88,7 +90,11 @@ export const moonRunner: RunnerRole = {
     // MOON_JSON, not `--json`: moon 2.x moved the JSON switch to the environment.
     const env = { MOON_JSON: 'true' }
 
-    const tasksRes = await runner.run(['query', 'tasks'], { cwd: ctx.root, env })
+    const tasksRes = await runner.run(['query', 'tasks'], {
+      cwd: ctx.root,
+      env,
+      signal: ctx.signal,
+    })
     if (tasksRes.exitCode !== 0) {
       return {
         status: 'error',
@@ -175,7 +181,9 @@ async function projectMeta(
     string,
     { source: string; layer?: string; stack?: string; language?: string; tags: string[] }
   >()
-  const res = await ctx.runner('moon').run(['query', 'projects'], { cwd: ctx.root, env })
+  const res = await ctx
+    .runner('moon')
+    .run(['query', 'projects'], { cwd: ctx.root, env, signal: ctx.signal })
   if (res.exitCode !== 0) {
     diagnostics.push({
       severity: 'warning',
@@ -257,9 +265,11 @@ export interface MoonProjectFact {
  */
 export async function moonDescribe(ctx: ProviderContext): Promise<ToolFact[]> {
   if (!ctx.allowExec) return []
-  const res = await ctx
-    .runner('moon')
-    .run(['query', 'projects'], { cwd: ctx.root, env: { MOON_JSON: 'true' } })
+  const res = await ctx.runner('moon').run(['query', 'projects'], {
+    cwd: ctx.root,
+    env: { MOON_JSON: 'true' },
+    signal: ctx.signal,
+  })
   if (res.exitCode !== 0) return []
   let parsed: { projects?: MoonProject[] }
   try {

@@ -15,9 +15,16 @@
  * The cache (`cached.ts`) sits above this and uses `probeObserver`.
  */
 
-import { spawnRunnerAsync } from '@osdlc/command-seam'
+import { spawnRunnerAsync, type AsyncCommandRunner } from '@osdlc/command-seam'
 
-import { createContext, createContextState, type ContextState } from './context.ts'
+import {
+  boundRunners,
+  createContext,
+  createContextState,
+  DEFAULT_PROBE_TIMEOUT_MS,
+  GIT_TIMEOUT_MS,
+  type ContextState,
+} from './context.ts'
 import type { CollectOptions, ProviderContext, ProviderKind, RunnerContext } from './contract.ts'
 import { createLister } from './discovery.ts'
 import type { Catalog, ChainSegment, RunnerBrand, RunnerReport, Task } from './model.ts'
@@ -97,17 +104,23 @@ export function selectRunners(
 /** New read state for one call, listing files the same way the profile was detected. */
 export function stateFor(
   profile: ProjectProfile,
-  makeGit: () => ReturnType<typeof spawnRunnerAsync>,
+  makeRunner: (binary: string) => AsyncCommandRunner,
+  signal: AbortSignal,
 ): ContextState {
   return createContextState(
     createLister(
       profile.root,
       profile.discovery,
-      makeGit(),
+      boundRunners(makeRunner, signal, GIT_TIMEOUT_MS)('git'),
       profile.excludePaths,
       profile.useBuiltinExcludes,
     ),
   )
+}
+
+/** The timeout each subprocess of `spec` gets: the caller's, the runner's, else the default. */
+export function probeTimeout(spec: RunnerSpec, options: CollectOptions): number {
+  return options.timeouts?.[spec.id] ?? spec.role.probe?.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
 }
 
 export async function collectRunners(
@@ -119,7 +132,7 @@ export async function collectRunners(
   const makeRunner = options.makeRunner ?? ((binary: string) => spawnRunnerAsync(binary))
   const which = options.which ?? whichOnPath
   const signal = options.signal ?? new AbortController().signal
-  const state = stateFor(profile, () => makeRunner('git'))
+  const state = stateFor(profile, makeRunner, signal)
   const base = createContext({
     absRoot: profile.root,
     allowExec,
@@ -145,7 +158,11 @@ export async function collectRunners(
       const head = reportHead(spec, which)
       const reads = new Set<string>()
       const queries = new Set<string>()
-      const recording = observer === undefined ? ctx : recordReads(ctx, reads, queries)
+      const own: RunnerContext = {
+        ...ctx,
+        runner: boundRunners(makeRunner, signal, probeTimeout(spec, options)),
+      }
+      const recording = observer === undefined ? own : recordReads(own, reads, queries)
 
       const startedAt = performance.now()
       let report: RunnerReport

@@ -29,13 +29,14 @@ import {
   selectRunners,
   stateFor,
   type ProbeRecord,
+  type RunnerSpec,
 } from './collect.ts'
 import type { CollectOptions } from './contract.ts'
 import { excludeList } from './discovery.ts'
 import { MAX_FINGERPRINT_FILES, fingerprint } from './fingerprint.ts'
 import type { Catalog, RunnerReport } from './model.ts'
 import type { Registry } from './registry.ts'
-import type { ProjectProfile } from './tool.ts'
+import type { ProbeCost, ProjectProfile } from './tool.ts'
 import { which as whichOnPath } from './which.ts'
 
 /**
@@ -62,6 +63,12 @@ export interface RunnerCacheState {
   estimateMs: number | null
   /** True when this repository has measured this runner as slow. */
   slow: boolean
+  /**
+   * The runner's declared cost, for a hint before anything is measured.
+   * Undeclared, an `exec` runner counts as `slow` and a `parse` runner as
+   * `cheap`. Always set by `readCached`.
+   */
+  cost?: ProbeCost | undefined
 }
 
 /**
@@ -76,6 +83,10 @@ export interface CachedCatalog {
   runners: RunnerCacheState[]
   /** True when every selected runner was fresh. */
   allFresh: boolean
+}
+
+function costOf(spec: RunnerSpec): ProbeCost {
+  return spec.role.probe?.cost ?? (spec.role.kind === 'exec' ? 'slow' : 'cheap')
 }
 
 function sameExcludes(current: string[], stored: string[] | undefined): boolean {
@@ -93,7 +104,13 @@ export async function readCachedCatalog(
   const selected = selectRunners(registry, profile, options)
   const allMiss = (): CachedCatalog => ({
     catalog: null,
-    runners: selected.map((s) => ({ runner: s.id, state: 'miss', estimateMs: null, slow: false })),
+    runners: selected.map((s) => ({
+      runner: s.id,
+      state: 'miss',
+      estimateMs: null,
+      slow: false,
+      cost: costOf(s),
+    })),
     allFresh: false,
   })
 
@@ -101,7 +118,8 @@ export async function readCachedCatalog(
     const allowExec = options.allowExec ?? false
     const makeRunner = options.makeRunner ?? ((binary: string) => spawnRunnerAsync(binary))
     const which = options.which ?? whichOnPath
-    const files = stateFor(profile, () => makeRunner('git')).lister
+    const signal = options.signal ?? new AbortController().signal
+    const files = stateFor(profile, makeRunner, signal).lister
 
     const now = Date.now()
     const runners: RunnerCacheState[] = []
@@ -111,14 +129,26 @@ export async function readCachedCatalog(
     for (const spec of selected) {
       // A withheld exec runner never probed this run, so it cannot be stale.
       if (spec.role.kind === 'exec' && !allowExec) {
-        runners.push({ runner: spec.id, state: 'fresh', estimateMs: null, slow: false })
+        runners.push({
+          runner: spec.id,
+          state: 'fresh',
+          estimateMs: null,
+          slow: false,
+          cost: costOf(spec),
+        })
         reports.push(execWithheldReport(spec, options.execWithheldHint, which))
         continue
       }
 
       const entry = await readEntry(cacheDir, profile.root, spec.id)
       if (entry === null) {
-        runners.push({ runner: spec.id, state: 'miss', estimateMs: null, slow: false })
+        runners.push({
+          runner: spec.id,
+          state: 'miss',
+          estimateMs: null,
+          slow: false,
+          cost: costOf(spec),
+        })
         continue
       }
 
@@ -157,7 +187,7 @@ export async function readCachedCatalog(
         reason = 'max-age'
       }
 
-      runners.push({ runner: spec.id, state, reason, ageMs, ...measured })
+      runners.push({ runner: spec.id, state, reason, ageMs, ...measured, cost: costOf(spec) })
       // A stale entry is kept. An answer that was true an hour ago is better
       // than nothing, as long as it is marked stale.
       reports.push(entry.report)

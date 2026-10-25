@@ -176,8 +176,8 @@ describe('runners.readCached', () => {
       expect(cached.catalog).toBeNull()
       expect(cached.allFresh).toBe(false)
       expect(cached.runners).toEqual([
-        { runner: 'alpha', state: 'miss', estimateMs: null, slow: false },
-        { runner: 'beta', state: 'miss', estimateMs: null, slow: false },
+        { runner: 'alpha', state: 'miss', estimateMs: null, slow: false, cost: 'cheap' },
+        { runner: 'beta', state: 'miss', estimateMs: null, slow: false, cost: 'cheap' },
       ])
     } finally {
       await removeRoot(root)
@@ -357,7 +357,7 @@ describe('runners.readCached', () => {
       const live = await s.project.runners.collect(profile, s.options)
 
       expect(cached.runners).toEqual([
-        { runner: 'gamma', state: 'fresh', estimateMs: null, slow: false },
+        { runner: 'gamma', state: 'fresh', estimateMs: null, slow: false, cost: 'slow' },
       ])
       expect(cached.allFresh).toBe(true)
       expect(cached.catalog?.reports).toEqual(live.reports)

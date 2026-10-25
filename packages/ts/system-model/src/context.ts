@@ -4,7 +4,7 @@
  * is listed and read once per call. `exists()` is not memoized.
  */
 
-import type { AsyncCommandRunner } from '@osdlc/command-seam'
+import { withDefaults, type AsyncCommandRunner } from '@osdlc/command-seam'
 
 import type { ProviderContext } from './contract.ts'
 import { pathExists, type Lister } from './discovery.ts'
@@ -16,6 +16,27 @@ export interface ContextState {
   lister: Lister
   textCache: Map<string, Promise<string | null>>
   jsonCache: Map<string, Promise<unknown>>
+}
+
+/**
+ * The timeout of a probe whose runner declares none, and of every subprocess
+ * detection starts: 60 s.
+ */
+export const DEFAULT_PROBE_TIMEOUT_MS = 60_000
+
+/** The timeout of each discovery git call: 30 s. */
+export const GIT_TIMEOUT_MS = 30_000
+
+/**
+ * `makeRunner` with `signal` and `timeoutMs` bound to every call. A call's own
+ * `signal` or `timeoutMs` replaces the bound one.
+ */
+export function boundRunners(
+  makeRunner: (binary: string) => AsyncCommandRunner,
+  signal: AbortSignal,
+  timeoutMs: number,
+): (binary: string) => AsyncCommandRunner {
+  return (binary) => withDefaults(makeRunner(binary), { signal, timeoutMs })
 }
 
 export function createContextState(lister: Lister): ContextState {

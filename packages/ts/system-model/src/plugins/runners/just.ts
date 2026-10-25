@@ -70,6 +70,7 @@ export const justRunner: RunnerRole = {
   // `parse`, not `exec`: the regex path means this runner always has tasks to
   // offer. It runs just when allowed, and says when it did not.
   kind: 'parse',
+  probe: { timeoutMs: 10_000, cost: 'cheap' },
   chain: CHAIN,
   brand: BRAND,
 
@@ -140,7 +141,10 @@ async function dumpRecipes(
 ): Promise<{ recipes: JustRecipe[]; error?: string }> {
   const res = await ctx
     .runner('just')
-    .run(['--justfile', file, '--dump', '--dump-format', 'json'], { cwd: ctx.root })
+    .run(['--justfile', file, '--dump', '--dump-format', 'json'], {
+      cwd: ctx.root,
+      signal: ctx.signal,
+    })
   if (res.exitCode !== 0) {
     return { recipes: [], error: firstLine(stderrOrError(res), 'unknown failure') }
   }

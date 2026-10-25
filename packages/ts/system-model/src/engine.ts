@@ -47,6 +47,8 @@ export type {
   PackageManagerRole,
   ProjectProfile,
   RoleName,
+  ProbeCost,
+  RunnerProbe,
   RunnerRole,
   ToolDef,
   ToolFact,
@@ -71,4 +73,5 @@ export type { CachedCatalog, RunnerCacheState, StaleReason } from './cached.ts'
 
 export { DEFAULT_EXCLUDES, MAX_WALK_DEPTH, MAX_WALK_FILES } from './discovery.ts'
 export { MAX_READ_BYTES } from './read.ts'
+export { DEFAULT_PROBE_TIMEOUT_MS } from './context.ts'
 export { SYNTHESIZED_RUNNERS } from './synthesized.ts'

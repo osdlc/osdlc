@@ -75,11 +75,29 @@ export interface PackageManagerRole {
 }
 
 /**
+ * What a runner's probe costs: `cheap` answers in about a second, `slow` can
+ * take much longer (a JVM start, a toolchain install). A hint shown before
+ * anything is measured; the cache's measured `slow` replaces it.
+ */
+export type ProbeCost = 'cheap' | 'slow'
+
+/** How a runner's probe is run. */
+export interface RunnerProbe {
+  /**
+   * The timeout for each subprocess the runner starts, in ms. Defaults to
+   * `DEFAULT_PROBE_TIMEOUT_MS`. `CollectOptions.timeouts` overrides it.
+   */
+  timeoutMs?: number | undefined
+  cost?: ProbeCost | undefined
+}
+
+/**
  * A tool that lists runnable tasks. The tool's id is the runner's id and
  * `Task.runner`.
  */
 export interface RunnerRole {
   kind: ProviderKind
+  probe?: RunnerProbe | undefined
   /** What each position of this runner's `Task.path` means. */
   chain?: ChainSegment[] | undefined
   brand?: RunnerBrand | undefined

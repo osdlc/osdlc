@@ -77,12 +77,15 @@ const BRAND: RunnerBrand = {
 
 export const miseRunner: RunnerRole = {
   kind: 'exec',
+  probe: { timeoutMs: 30_000, cost: 'cheap' },
   chain: CHAIN,
   brand: BRAND,
   watch: [...MISE_CONFIGS, ...MISE_TASK_DIRS],
 
   async collect(ctx): Promise<ProviderResult> {
-    const res = await ctx.runner('mise').run(['tasks', '--json'], { cwd: ctx.root })
+    const res = await ctx
+      .runner('mise')
+      .run(['tasks', '--json'], { cwd: ctx.root, signal: ctx.signal })
     if (res.exitCode !== 0) {
       // An untrusted config is the common cause. mise refuses to read a config
       // it has not been told to trust, which is correct behavior, so the
