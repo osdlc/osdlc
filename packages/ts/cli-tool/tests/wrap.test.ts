@@ -47,6 +47,14 @@ describe('wrapText', () => {
   })
 })
 
+describe('wrapText headings and quotes', () => {
+  test('a heading and each quote line are kept, not joined into the paragraph', () => {
+    const text = '# Usage\nRun it.\n> a quoted line\n> another\nAfter the quote.\n'
+    expect(wrapText(text, 80)).toBe(text)
+    expect(wrapText('#tag is prose\nhere', 80)).toBe('#tag is prose here')
+  })
+})
+
 describe('helpWidth', () => {
   test('clamps the terminal width, and is 80 when unknown', () => {
     expect(helpWidth()).toBe(80)

@@ -270,7 +270,7 @@ terminal's, or 80) and the epilogues print as written, as before.
 `wrapText(text, width)` reflows any text. Lines of prose are joined and filled
 again, and a line ending in `:` ends its paragraph. These are kept as written:
 an indented line, a list item (`- a`, `1. a`), a shell example (`$ cmd`), a
-table row (`| a |`) and a fenced block (``` or ~~~, indented or not). So prose
+table row (`| a |`), a heading (`# a`), a quote line (`> a`) and a fenced block (``` or ~~~, indented or not). So prose
 with names interpolated into it never comes out ragged. Widths are terminal
 columns: a wide character counts 2 and an escape sequence nothing, through
 `@osdlc/ux`'s `displayWidth`. `helpWidth(columns)` picks the width for a

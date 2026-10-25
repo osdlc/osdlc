@@ -72,9 +72,10 @@ function fill(words: readonly string[], width: number): string[] {
 const FENCE = /^\s*(```|~~~)/
 /**
  * A line kept as written: indented, a list item (`- a`, `* a`, `1. a`), a
- * shell example (`$ cmd`) or a table row (`| a |`).
+ * shell example (`$ cmd`), a table row (`| a |`), a heading (`# a`) or a
+ * quote (`> a`).
  */
-const KEPT = /^(\s|[-*+]\s|\d+[.)]\s|\$\s|\|)/
+const KEPT = /^(\s|[-*+]\s|\d+[.)]\s|\$\s|\||#{1,6}(\s|$)|>)/
 
 /**
  * Reflow `text` to `width` columns.
@@ -82,8 +83,8 @@ const KEPT = /^(\s|[-*+]\s|\d+[.)]\s|\$\s|\|)/
  * Paragraphs are separated by blank lines. Lines of prose are joined and
  * filled again. A line that ends in `:` ends its paragraph, so what follows
  * it starts a new line. These lines are kept as written: an indented line, a
- * list item (`- a`, `1. a`), a shell example (`$ cmd`), a table row (`| a |`)
- * and every line of a fenced block (``` or ~~~, indented or not). Widths count
+ * list item (`- a`, `1. a`), a shell example (`$ cmd`), a table row (`| a |`),
+ * a heading (`# a`), a quote line (`> a`) and every line of a fenced block (``` or ~~~, indented or not). Widths count
  * terminal columns, so wide characters count 2. The result keeps the trailing
  * newline of the input.
  * @experimental
