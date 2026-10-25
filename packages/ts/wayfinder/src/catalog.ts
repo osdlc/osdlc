@@ -35,6 +35,8 @@ export interface WayOptions {
   discovery?: DiscoveryMode | 'auto' | undefined
   excludePaths?: string[] | undefined
   signal?: AbortSignal | undefined
+  /** Called with each probed runner's measured time. */
+  onProbe?: ((probe: { runner: string; durationMs: number }) => void) | undefined
 }
 
 /** The built-in tools plus `extra`. Throws when two tools share an id. */
@@ -58,6 +60,7 @@ function collectOptions(o: WayOptions) {
     allowExec: o.allowExec ?? false,
     execWithheldHint: o.execWithheldHint,
     signal: o.signal,
+    onProbe: o.onProbe,
   }
 }
 
