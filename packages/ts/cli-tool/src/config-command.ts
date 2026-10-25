@@ -19,6 +19,7 @@ import {
 import type { FlagSpec } from './define-cli.ts'
 import { EXIT } from './exit.ts'
 import { safe } from './safe.ts'
+import { table } from './wrap.ts'
 
 /**
  * One setting and the layer its effective value came from.
@@ -191,13 +192,14 @@ const LocationSchema = z.object({
 })
 
 function layerLines(locations: readonly ConfigLocation[]): string {
-  const width = Math.max(...locations.map((l) => l.layer.length)) + 1
-  return locations
-    .map(
-      (l) =>
-        `${`${l.layer}:`.padEnd(width)} ${l.path} (${l.exists ? 'exists' : 'missing'})${l.envVar ? ` (from ${l.envVar})` : ''}\n`,
-    )
-    .join('')
+  return table(
+    locations.map((l) => [
+      `${l.layer}:`,
+      `${l.path} (${l.exists ? 'exists' : 'missing'})${l.envVar ? ` (from ${l.envVar})` : ''}`,
+    ]),
+    '',
+    ' ',
+  )
 }
 
 /**
@@ -268,17 +270,16 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
       return { settings, locations: await store.locations(ctx) }
     },
     text(output, ctx) {
-      const rows = output.settings.map((s) => ({
-        key: s.key,
-        value: JSON.stringify(s.value) ?? 'undefined',
-        source: s.source,
-      }))
-      const kw = Math.max(0, ...rows.map((r) => r.key.length))
-      const vw = Math.max(0, ...rows.map((r) => r.value.length))
       // The locations go to stderr so the listing stays greppable.
       ctx.io.stderr(safe(layerLines(output.locations)))
       return safe(
-        rows.map((r) => `${r.key.padEnd(kw)}  ${r.value.padEnd(vw)}  (${r.source})\n`).join(''),
+        table(
+          output.settings.map((s) => [
+            s.key,
+            JSON.stringify(s.value) ?? 'undefined',
+            `(${s.source})`,
+          ]),
+        ),
       )
     },
   })
@@ -395,27 +396,19 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
             return explained(key, found.layers)
           },
           text(o) {
-            const rows = o.layers.map((l) => ({
-              layer: l.layer,
-              value: l.set ? (JSON.stringify(l.value) ?? 'undefined') : '-',
-              mark: l.won
+            const rows = o.layers.map((l) => [
+              l.layer,
+              l.set ? (JSON.stringify(l.value) ?? 'undefined') : '-',
+              l.won
                 ? 'wins'
                 : !l.allowed && l.set
                   ? `ignored${l.note !== undefined ? `: ${l.note}` : ''}`
                   : l.set
                     ? 'overridden'
                     : '',
-            }))
-            const lw = Math.max(...rows.map((r) => r.layer.length))
-            const vw = Math.max(...rows.map((r) => r.value.length))
+            ])
             const head = `${o.key} = ${JSON.stringify(o.value) ?? 'undefined'}  (${o.reason})\n`
-            return safe(
-              head +
-                rows
-                  .map((r) => `  ${r.layer.padEnd(lw)}  ${r.value.padEnd(vw)}  ${r.mark}`.trimEnd())
-                  .join('\n') +
-                '\n',
-            )
+            return safe(head + table(rows, '  '))
           },
         })
 

@@ -9,6 +9,7 @@ import { z } from 'zod'
 import { UsageError, commandKit, type CommandContext, type DataCommand } from './command/index.ts'
 import type { FlagSpec } from './define-cli.ts'
 import { safe } from './safe.ts'
+import { table } from './wrap.ts'
 
 /**
  * One topic of a guide.
@@ -117,8 +118,7 @@ export function guideCommand<G extends FlagSpec = Record<never, never>>(
       `## ${t.title}\n\n${(t.body ?? '').trim()}\n`
     if (output.topic !== null) return section(output.topics[0]!)
     if (output.topics.every((t) => t.body === undefined)) {
-      const w = Math.max(...output.topics.map((t) => t.id.length))
-      return output.topics.map((t) => `${t.id.padEnd(w)}  ${t.summary}\n`).join('')
+      return table(output.topics.map((t) => [t.id, t.summary]))
     }
     const head = `# ${options.title}\n\n${options.intro !== undefined ? `${options.intro.trim()}\n\n` : ''}`
     return head + output.topics.map(section).join('\n')

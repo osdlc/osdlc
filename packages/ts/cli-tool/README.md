@@ -264,13 +264,19 @@ commander own `--help`.
 
 ### Help is wrapped when it is rendered
 
-`defineCli` reflows its epilogues to `width` (default 80) each time it renders
-help. `wrapText(text, width)` does the same for any text. A line that starts at
-column 0 is prose and is filled again. An indented line, a table row, a usage
-line or a fenced block is kept as written. So prose with names interpolated
-into it never comes out ragged. `helpWidth(columns)` picks the width for a
+Given a `width`, `defineCli` wraps its help to it and reflows its epilogues
+each time it renders help. Without one, commander picks the width (the
+terminal's, or 80) and the epilogues print as written, as before.
+`wrapText(text, width)` reflows any text. Lines of prose are joined and filled
+again, and a line ending in `:` ends its paragraph. These are kept as written:
+an indented line, a list item (`- a`, `1. a`), a shell example (`$ cmd`), a
+table row (`| a |`) and a fenced block (``` or ~~~, indented or not). So prose
+with names interpolated into it never comes out ragged. Widths are terminal
+columns: a wide character counts 2 and an escape sequence nothing, through
+`@osdlc/ux`'s `displayWidth`. `helpWidth(columns)` picks the width for a
 terminal: its width kept between 40 and 100, or 80 when stdout is not a
-terminal. `columns(rows, width)` lays out a two-column list.
+terminal. `columns(rows, width)` lays out a two-column list, no line wider
+than `width`.
 
 ### Terminals and color
 
