@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/ux",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Design tokens as data for web and terminal tools: a CSS custom-property sheet for light and dark, ANSI codes at the terminal's color level, color detection from the environment, and helpers that make untrusted text safe to print and fit it to a width.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

@@ -1,5 +1,11 @@
 # @osdlc/tiered-dirs
 
+## 0.4.0
+
+### Minor Changes
+
+- 9616994: New `ResolveOptions.conventionFromEnv`. Pass `false` to pin `convention`, so `<P>_CONVENTION` cannot override it. Use it for a file another program reads at a fixed path, such as a shell launcher that reads `~/.config/<tool>`. The default, `true`, keeps today's behaviour.
+
 ## 0.3.2
 
 ### Patch Changes

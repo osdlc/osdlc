@@ -1,5 +1,55 @@
 # @osdlc/cli-tool
 
+## 0.9.0
+
+### Minor Changes
+
+- 9616994: A command tree can now be served to an agent over MCP and to a local page over HTTP, and lists print as JSON lines.
+  
+  - `--output text|json|jsonl` on every command. `--output json` is `--json`. A command that declares `items: { field, kind }` prints one JSON line per element of that list under `jsonl`, each with `schemaVersion` and `kind`.
+  - A long-running command declares `events` and sends them with `ctx.emit`. They print as they happen, stream over HTTP and go to MCP clients as progress. `ctx.signal` is aborted when the caller cancels. `CliContext` takes an optional `signal`.
+  - Commands declare `destructive`, and `exposure: 'cli-only'` (or `exposureOf(input)` per call) for commands the adapters must not run. The shared `trust` command makes granting trust `cli-only`. `ConfigStore.cliOnlyKeys` does the same for `config set` and `config unset` of trust keys.
+  - `App.call(path, args, ctx, options)` runs a data command from a JSON object of its flags and positionals and enforces exposure. `App.argsSchema(path)` is the JSON Schema of that object. `schema` entries now carry `description`, `readOnly`, `destructive`, `exposure`, `items` and `events`.
+  - New entry `@osdlc/cli-tool/mcp`: `mcpCommand()` (mount it as `mcp`), `serveMcp`, `createMcpServer`, `mcpTools`, `toolName`. It needs `@modelcontextprotocol/sdk` 1.32 or later, an optional peer dependency; no other entry loads it.
+  - New entry `@osdlc/cli-tool/http`: `httpApiCommand()` (mount it as `serve-api`), `createHttpApi` for a handler an app mounts under a prefix beside its own page, and `serveHttp`. It binds 127.0.0.1, checks `Host` and `Origin`, requires a bearer token, and reads a body only after those checks. A mount may run named `cli-only` commands behind a one-time confirmation nonce.
+  - `config explain <key>`, when the store has an `explain` method: each layer's value, which one won and why, including a layer that may not set the key.
+  - MCP: two commands whose paths join to the same tool name (`a b` and `a_b`) make `mcpTools` and `createMcpServer` throw; rename one. A call to an unknown tool is a protocol error (`InvalidParams`). A failed call is an error result whose text is the error document as JSON, with `code` and the exit code in `_meta`.
+  - HTTP: an error body is the error document, with `code`, `message` and `exit`. A streamed (`application/x-ndjson`) call that fails before its first line answers with the error's own status and JSON body. `HttpApiOptions.port` makes the `Host` check require that port; `serve-api` sets it. `Authorization: bearer` is matched case-insensitively. `serve-api` prints a `curl` line that keeps the token out of the process list.
+  - `App.call` returns `code` on an error result. Its error text and the notes it captures have terminal controls removed.
+- 9616994: A CLI can now be declared as a tree of commands. The new `@osdlc/cli-tool/command` entry has `defineCommand`, `defineGroup`, `commandKit` (for typed global flags) and `defineApp`. Each command declares its flags, arguments and a Zod output once. The app routes the command line, prints the output as text, or under `--json` as one document that starts with `schemaVersion` and `kind`, and adds `help` (with `--depth`, `--full`, `--all` and a JSON form), `schema` (each command's input and output JSON Schema), `--help` on every command and `--version`. `loadCommandTree` builds the tree from a directory of command files. Zod is a peer dependency of these entries; the root entry still does not load it.
+  
+  Shared commands: `@osdlc/cli-tool/config-command` (`configCommands(store)`), `@osdlc/cli-tool/trust-command` (`trustCommand(service)`) and `@osdlc/cli-tool/guide` (`guideCommand(topics, { title })`). Each takes the tool's own store, trust service or topics. `@osdlc/cli-tool/testing` has `runApp`, `checkApp` and `checkGuide` for a tool's tests. All of these are experimental.
+  
+  Every command's context has `ctx.globals`, the app's global flags (such as `-C <dir>`), parsed once before the command runs. A command may throw a `UsageError`, a `CommandError`, a classified failure or any other error; each prints one line on stderr with terminal controls removed, and a plain `Error` exits 1. A group with no default, run with no command word, is a usage error. Under `--json` or `--output jsonl`, a failure prints one error document on stdout, `{ schemaVersion, kind: 'error', code, message, exit, hint? }`, as well as the message on stderr. `ErrorDocument`, `ErrorDocumentSchema` and `errorDocument()` describe it, and `CommandError` takes a `code` (a `UsageError` is `'usage'`). The `kind` and `schemaVersion` of a document always come from the command, whatever the output object holds.
+  
+  Checks when the app is declared: a flag may not reuse a built-in name (`help`, `json`, `output`, `version`) or the short `-h`, two flags may not share a short letter across the globals and a command, exit codes 22-25 are reserved, and an `items` element must be an object, or a union of objects, none of which declares `schemaVersion` or `kind`. `loadCommandTree` takes an absolute directory only, skips symbolic links, and refuses a file or directory name that is not a plain word (letters, digits, `-` and `_`).
+  
+  Shared-command details:
+  - `trust --scope` is checked: `TrustService.parseScope` (pass `@osdlc/trust-repo`'s `parseTrustScope`) or a default check, and `*` is refused; either refusal exits 2. A service with `untrustAll` adds `trust --untrust-all`, whose answer has `action: 'untrust-all'`. `trust --untrust` on a root that policy still trusts says so.
+  - `ConfigStore.resolveKey` maps a typed key to its canonical name, so `cliOnlyKeys` cannot be dodged by case or `a[b]` spelling. Without it, keys are compared lowercased with `[x]` read as `.x`. `parseConfigValue` refuses a number that is not finite, such as `1e400`.
+  - Text from a repository or a config file is printed with control characters removed.
+  - `runApp` runs in a scratch working directory and a scratch home by default, so a test never reads the real `~/.config`. Pass `cwd` and `env` to choose your own. Under `--json` or `--output json` it checks the document against the command's schema, and an error document against `ErrorDocumentSchema`.
+  
+  The root entry adds `wrapText`, `helpWidth`, `columns`, `colorEnabled` and an optional `CliContext.terminal`, which `processContext()` fills in; the new `@osdlc/cli-tool/wrap` entry has the text helpers alone. `wrapText` keeps list items, `$ ` command lines, tables, headings, quote lines, fenced code and lines ending in `:` as they are. `colorEnabled` uses `@osdlc/ux`'s `detectColorLevel`, now a dependency: a tool's own `--color` flag, passed as `override`, wins; then a non-empty `NO_COLOR` turns color off; then `FORCE_COLOR`, where `0` or `false` turns color off even on a terminal and any other value (`1`, `yes`, `4`, empty) turns it on, in a pipe too; then `TERM=dumb`; then whether stdout is a terminal. cli-tool adds no `--color` flag itself. `defineCli` takes an optional `width`; with it, epilogues are reflowed and help wraps at that width. Without it, help renders as before.
+  
+  Breaking, for devlink users on macOS: link state moves from `~/Library/Application Support/<tool>/` to `${XDG_CONFIG_HOME:-~/.config}/<tool>/`, the `xdg` convention, and the launcher reads it there. Run `<tool> dev link` again to restore a link, or move the `home` and `history.jsonl` files. Linux paths do not change. The convention is fixed: devlink sets `conventionFromEnv: false`, so a `<TOOL>_CONVENTION` variable does not move the state away from where the launcher reads it. The vendor's `<P>_CONFIG_DIR` and `<P>_ROOT` still move it, and the launcher reads them too. When a link is still in the old macOS place, `dev status` says so and prints the `mv` command that moves it. `runDevCli` on Windows now prints that `<tool> dev` is not available there and exits 1. A committed launcher must be rendered again (`launcherDrift` reports it).
+
+### Patch Changes
+
+- d243a32: A command can name the words it takes after `--` with `rest: { name: 'args' }`. Its usage line then ends in `[-- <args>...]`. Every command still gets those words as `rest`; the declaration only documents them.
+  
+  `trustCommand` takes `scopeHelp`, the help for `--scope`, so a tool can say which scopes it has.
+  
+  `config explain` says "no file, environment variable or flag sets it, so the default applies" when only the default sets a key, instead of "default is the highest layer that sets it".
+- Updated dependencies [9616994]
+- Updated dependencies [d243a32]
+- Updated dependencies [d243a32]
+- Updated dependencies [9616994]
+- Updated dependencies [9616994]
+  - @osdlc/command-seam@0.12.0
+  - @osdlc/ux@0.1.0
+  - @osdlc/config-layers@0.7.3
+
 ## 0.8.1
 
 ### Patch Changes

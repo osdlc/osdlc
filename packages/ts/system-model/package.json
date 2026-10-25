@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/system-model",
-  "version": "0.4.2",
+  "version": "0.5.0",
   "description": "A repository's system model: its structure on the wire (SystemGraph, aspects with tiered evidence) and the ports a host satisfies to serve it, plus detection of its packages, ecosystems and tools, each tool described once with the roles it plays, and the tasks its runners expose. Running a repository's own tools is off by default.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
