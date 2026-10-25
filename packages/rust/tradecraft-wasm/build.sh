@@ -5,12 +5,13 @@
 #   cargo build --profile wasm-release --target wasm32-unknown-unknown  (cdylib)
 #     -> wasm-bindgen --target nodejs                        (JS/TS glue)
 #       -> wasm-opt -Oz                                      (size)
-#         -> $OUT_DIR, default packages/rust/target/tradecraft-wasm/
+#         -> $OUT_DIR, default packages/ts/tradecraft-wasm/wasm/ (the npm
+#            package's committed copy)
 #
 # `wasm-release` is the size profile in packages/rust/Cargo.toml.
 #
-# No npm package ships this artifact yet. The package that does will set
-# OUT_DIR to its own folder.
+# The npm package @osdlc/tradecraft-wasm commits this output, and CI fails
+# when a rebuild differs from the committed files.
 #
 # Pinned tool versions. The artifact is only reproducible with these:
 #   * wasm-bindgen CLI : 0.2.126   (must equal the wasm-bindgen crate pin in
@@ -34,7 +35,7 @@ REQUIRED_WASM_OPT="131"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 WORKSPACE="$REPO_ROOT/packages/rust"
-OUT_DIR="${OUT_DIR:-$WORKSPACE/target/tradecraft-wasm}"
+OUT_DIR="${OUT_DIR:-$REPO_ROOT/packages/ts/tradecraft-wasm/wasm}"
 # Absolute, because the build below runs from the workspace.
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"

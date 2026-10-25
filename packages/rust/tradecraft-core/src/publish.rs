@@ -250,8 +250,7 @@ pub struct PublishRequest {
 /// boundary serializes a [`PublishRequest`], so `#[serde(default)]` lets a
 /// host opt in with one extra key while every existing caller keeps meaning
 /// `write`. A third argument would not ride the wire: the boundary would need
-/// a wrapper type for it, the second wire shape [[core-translation-engine]]
-/// exists to prevent.
+/// a wrapper type for it, a second wire shape for the same request.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PublishMode {

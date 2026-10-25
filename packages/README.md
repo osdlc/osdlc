@@ -134,7 +134,7 @@ Developed here, in this repository:
 - `packages/rust/tradecraft-typegen`, the generator of the TypeScript
   declarations for `tradecraft-wasm` (not published to crates.io)
 - `packages/rust/tradecraft-wasm`, the WebAssembly build of `tradecraft-core`
-  for a future npm package (not published to crates.io)
+  for its npm package (not published to crates.io)
 - `packages/rust/typed-git` (`typed-git` on crates.io, the Rust twin of
   `@osdlc/typed-git`: a typed git client)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
@@ -142,6 +142,9 @@ Developed here, in this repository:
   for its npm package (not published to crates.io)
 - `packages/ts/yaml-splice` (`@osdlc/yaml-splice` on npm, the crate built to
   WebAssembly, with the built `wasm/` committed)
+- `packages/ts/tradecraft-wasm` (`@osdlc/tradecraft-wasm` on npm, `tradecraft-core`
+  built to WebAssembly, with the built `wasm/` committed and a copy of the
+  generated `core.generated.ts`)
 - `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript twin)
 - `packages/ts/frontmatter-lossless` (`@osdlc/frontmatter-lossless` on npm,
   the TypeScript twin of the `frontmatter-lossless` crate)
@@ -413,8 +416,11 @@ pins the compiler, and rustup installs it on first use.
 `.github/workflows/rust-ci.yml` runs clippy and the tests on Linux, macOS
 and Windows, and the format check, docs and `cargo package` on Linux. It
 also tests on the MSRV and with minimal dependency versions, and rebuilds
-the `yaml-splice` wasm with `build.sh` and checks that it equals the one
-committed in `packages/ts/yaml-splice/wasm/`. On a pull request it checks
+the `yaml-splice` and `tradecraft-wasm` wasm with their `build.sh` and checks
+that each equals the one committed in `packages/ts/yaml-splice/wasm/` and
+`packages/ts/tradecraft-wasm/wasm/`. It also checks that
+`packages/ts/tradecraft-wasm/src/core.generated.ts` is the file
+`tradecraft-typegen` writes. On a pull request it checks
 that a breaking change bumps the version. Its `rust` job is the one check to
 require.
 

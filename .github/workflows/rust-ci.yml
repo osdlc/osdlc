@@ -1,6 +1,6 @@
 # Checks the Cargo workspace under packages/rust/, and the wasm built from it
-# that packages/ts/yaml-splice/ commits, on every pull request and push to
-# main. It also runs when the markdown-contract corpus changes, because the
+# that packages/ts/yaml-splice/ and packages/ts/tradecraft-wasm/ commit, on
+# every pull request and push to main. It also runs when the markdown-contract corpus changes, because the
 # markdown-contract crate's tests read that corpus.
 #
 # The workflow always runs, so its final `rust` job always reports. That job
@@ -87,7 +87,7 @@ jobs:
               files='*'
               ;;
           esac
-          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/ts/yaml-splice/wasm/|packages/ts/markdown-contract/corpus/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
+          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/ts/(yaml-splice|tradecraft-wasm)/wasm/|packages/ts/tradecraft-wasm/src/core\.generated\.ts|packages/ts/markdown-contract/corpus/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
@@ -259,11 +259,14 @@ jobs:
       - name: Test
         run: cargo test --workspace --locked
 
-  # yaml-splice-wasm is a wasm-bindgen crate. The other jobs build it for the
-  # host target only. This job runs the whole build.sh pipeline (cargo for
-  # wasm32, wasm-bindgen, wasm-opt) and checks that the result equals the
-  # wasm committed in packages/ts/yaml-splice/wasm/, so the npm package ships
-  # what its source builds. On a difference it uploads the rebuilt files.
+  # yaml-splice-wasm and tradecraft-wasm are wasm-bindgen crates. The other
+  # jobs build them for the host target only. This job runs each whole
+  # build.sh pipeline (cargo for wasm32, wasm-bindgen, wasm-opt) and checks
+  # that the result equals the wasm committed in packages/ts/yaml-splice/wasm/
+  # and packages/ts/tradecraft-wasm/wasm/, so each npm package ships what its
+  # source builds. It also checks that tradecraft-wasm's core.generated.ts is
+  # the file tradecraft-typegen writes. On a difference it uploads the rebuilt
+  # files.
   wasm:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
@@ -320,6 +323,35 @@ jobs:
         with:
           name: yaml-splice-wasm
           path: packages/ts/yaml-splice/wasm/
+
+      - name: Build the tradecraft wasm with build.sh
+        run: bash packages/rust/tradecraft-wasm/build.sh
+
+      - name: The committed tradecraft wasm matches the rebuild
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain -- packages/ts/tradecraft-wasm/wasm/)" ]; then
+            git status --short -- packages/ts/tradecraft-wasm/wasm/
+            echo "::error::packages/ts/tradecraft-wasm/wasm/ differs from a rebuild. Run packages/rust/tradecraft-wasm/build.sh and commit the result, or take the rebuilt files from this run's tradecraft-wasm artifact."
+            exit 1
+          fi
+
+      - name: The package's core.generated.ts is the generator's output
+        run: |
+          set -euo pipefail
+          cargo run --locked -q --manifest-path packages/rust/Cargo.toml -p tradecraft-typegen -- --check
+          if ! cmp -s packages/rust/tradecraft-typegen/generated/core.generated.ts packages/ts/tradecraft-wasm/src/core.generated.ts; then
+            diff -u packages/rust/tradecraft-typegen/generated/core.generated.ts packages/ts/tradecraft-wasm/src/core.generated.ts | head -40 || true
+            echo "::error::packages/ts/tradecraft-wasm/src/core.generated.ts differs from packages/rust/tradecraft-typegen/generated/core.generated.ts. Run cargo run -p tradecraft-typegen in packages/rust and copy the generated file over it."
+            exit 1
+          fi
+
+      - name: Upload the rebuilt tradecraft wasm
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tradecraft-wasm
+          path: packages/ts/tradecraft-wasm/wasm/
 
   # Runs release-plz as the release workflow does, but without publishing,
   # tagging or pushing, so a bad release-plz.toml fails here and not after
