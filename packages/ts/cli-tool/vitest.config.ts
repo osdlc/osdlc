@@ -11,6 +11,8 @@ export default defineConfig({
     alias: [
       { find: '@osdlc/cli-tool/devlink', replacement: src('./src/devlink/index.ts') },
       { find: '@osdlc/cli-tool/command', replacement: src('./src/command/index.ts') },
+      { find: '@osdlc/cli-tool/mcp', replacement: src('./src/mcp/index.ts') },
+      { find: '@osdlc/cli-tool/http', replacement: src('./src/http/index.ts') },
       { find: '@osdlc/cli-tool/config-command', replacement: src('./src/config-command.ts') },
       { find: '@osdlc/cli-tool/trust-command', replacement: src('./src/trust-command.ts') },
       { find: '@osdlc/cli-tool/guide', replacement: src('./src/guide.ts') },

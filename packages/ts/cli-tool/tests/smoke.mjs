@@ -12,7 +12,8 @@
 // Tests each entry point, because each is a separate file that can break on
 // its own: the root (flag parsing, exit codes, a captured context), ./devlink
 // (the tool spec and the PATH shim), and the command tree with its shared
-// commands, which load zod.
+// commands, which load zod. The http entry answers a call; the mcp entry
+// loads only when its optional peer, the MCP SDK, is installed.
 
 import { strict as assert } from 'node:assert'
 
@@ -28,6 +29,7 @@ import { configCommands } from '@osdlc/cli-tool/config-command'
 import { guideCommand } from '@osdlc/cli-tool/guide'
 import { runApp } from '@osdlc/cli-tool/testing'
 import { trustCommand } from '@osdlc/cli-tool/trust-command'
+import { createHttpApi } from '@osdlc/cli-tool/http'
 
 const { captureContext, captureIo, defineCli, EXIT, isDomainExit } = root
 
@@ -73,6 +75,29 @@ assert.equal(wrapEntry.wrapText, root.wrapText)
   })
   assert.match((await runApp(app, ['help'])).out, /commands:\n {2}config/)
   assert.equal((await runApp(app, ['schema', '--json'])).exit, 0)
+
+  const api = createHttpApi(app, { context: { cwd: '/r', env: {} } })
+  const res = await api.fetch(
+    new Request('http://127.0.0.1/commands/config/get', {
+      method: 'POST',
+      headers: {
+        host: '127.0.0.1',
+        authorization: `Bearer ${api.token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ key: 'a' }),
+    }),
+  )
+  assert.equal(res.status, 200)
+  assert.deepEqual(await res.json(), got.json())
+
+  let mcp = null
+  try {
+    mcp = await import('@osdlc/cli-tool/mcp')
+  } catch (err) {
+    if (!String(err).includes('@modelcontextprotocol/sdk')) throw err
+  }
+  if (mcp !== null) assert.ok(mcp.mcpTools(app).some((t) => t.name === 'config_get'))
 }
 
 // Flags are declared once and parsed to typed values.
