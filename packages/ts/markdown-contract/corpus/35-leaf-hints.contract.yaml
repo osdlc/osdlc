@@ -1,0 +1,26 @@
+mcVersion: 2
+kind: contract
+body:
+  sections:
+    - section: Files
+      description: The files this change touches.
+      content:
+        table:
+          columns: [File, Kind]
+          description: One row per file.
+          cells:
+            Kind:
+              enum: [add, modify, delete]
+              description: The kind of change.
+    - section: Owners
+      description: Who reviews the change.
+      content:
+        table:
+          columns: [Name]
+          cells:
+            Name: { type: string, minLength: 3 }
+    - section: Steps
+      content:
+        list:
+          description: One step per item.
+          items: { type: string, minLength: 5 }

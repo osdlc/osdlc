@@ -189,9 +189,30 @@ function projectParagraph(
   }
 }
 
+/** The code blocks `parse()` built from indented code, which has no fence line. */
+const indentedCode = new WeakSet<object>()
+
+/**
+ * The line a code block's `value` starts on: the line after the opening fence, or `pos.line`
+ * for an indented block.
+ */
+export function codeTextLine(block: Extract<BlockNode, { kind: 'code' }>): number {
+  return indentedCode.has(block) ? block.pos.line : block.pos.line + 1
+}
+
 /** A `code` BlockNode for a `code` node. `lang` is `null` for a fence with no language. */
-function projectCode(node: Code): Extract<BlockNode, { kind: 'code' }> {
-  return { kind: 'code', lang: node.lang ?? null, value: node.value, pos: posOf(node) }
+function projectCode(node: Code, source: string): Extract<BlockNode, { kind: 'code' }> {
+  const block: Extract<BlockNode, { kind: 'code' }> = {
+    kind: 'code',
+    lang: node.lang ?? null,
+    value: node.value,
+    pos: posOf(node),
+  }
+  const start = node.position?.start.offset
+  if (start !== undefined && !/^ {0,3}(`{3}|~{3})/.test(source.slice(start))) {
+    indentedCode.add(block)
+  }
+  return block
 }
 
 /** A `list` BlockNode for a `list` node. Each task list item keeps its `checked` state. */
@@ -280,7 +301,7 @@ function projectBlock(node: RootContent, source: string): BlockNode | null {
     case 'paragraph':
       return projectParagraph(node, source)
     case 'code':
-      return projectCode(node)
+      return projectCode(node, source)
     case 'list':
       return projectList(node)
     case 'table':

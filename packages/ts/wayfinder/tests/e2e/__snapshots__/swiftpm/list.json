@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "swiftpm",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "swift builds, tests and runs packages described by a Package.swift."
+        },
+        {
+          "label": "package",
+          "hint": "The directory holding the Package.swift. `.` is the root package."
+        },
+        {
+          "label": "verb",
+          "hint": "A conventional SwiftPM verb. Synthesized — not declared in the manifest."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#F05138"
+      },
+      "tool": {
+        "binary": "swift",
+        "found": true,
+        "path": "<bin>/swift"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "swiftpm:Package.swift:build",
+          "runner": "swiftpm",
+          "path": [
+            "swiftpm",
+            ".",
+            "build"
+          ],
+          "argv": [
+            "swift",
+            "build"
+          ],
+          "cwd": ".",
+          "display": "swift build",
+          "parameters": [],
+          "source": "Package.swift",
+          "origin": "synthesized",
+          "tags": [
+            "swiftpm",
+            "swift",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "swiftpm:Package.swift:test",
+          "runner": "swiftpm",
+          "path": [
+            "swiftpm",
+            ".",
+            "test"
+          ],
+          "argv": [
+            "swift",
+            "test"
+          ],
+          "cwd": ".",
+          "display": "swift test",
+          "parameters": [],
+          "source": "Package.swift",
+          "origin": "synthesized",
+          "tags": [
+            "swiftpm",
+            "swift",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "swiftpm:Package.swift:run",
+          "runner": "swiftpm",
+          "path": [
+            "swiftpm",
+            ".",
+            "run"
+          ],
+          "argv": [
+            "swift",
+            "run"
+          ],
+          "cwd": ".",
+          "display": "swift run",
+          "parameters": [],
+          "source": "Package.swift",
+          "origin": "synthesized",
+          "tags": [
+            "swiftpm",
+            "swift",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "source": "fresh",
+  "storedAt": null,
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "swiftpm"
+      ]
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "swiftpm",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "trustedTools": [],
+  "filter": {}
+}

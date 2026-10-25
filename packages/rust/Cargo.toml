@@ -45,7 +45,8 @@ saphyr-parser = "0.0.11"
 # 1.0.220 is the first serde that pins its own serde_derive (see config-layers).
 serde = { version = "1.0.220", features = ["derive"] }
 serde_json = "1.0.40"
-serde_yaml = "0.9"
+# 0.9.4 is the first serde_yaml that rejects a duplicate mapping key.
+serde_yaml = "0.9.4"
 sha2 = "0.10"
 # `full` for function bodies, `extra-traits` for `Debug` on `syn::Type`.
 syn = { version = "2.0.100", features = ["full", "extra-traits"] }

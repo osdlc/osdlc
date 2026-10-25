@@ -349,6 +349,9 @@ describe('trust', () => {
     const app = appWith(memoryStore(), svc)
     const r = await runApp(app, ['trust', '--untrust-all'], { cwd: '/repo' })
     expect(r).toMatchObject({ exit: 0, out: 'untrusted /repo\nuntrusted /repo (moon)\n' })
+    svc.marked.add('/repo')
+    const json = await runApp(app, ['trust', '--untrust-all', '--json'], { cwd: '/repo' })
+    expect(JSON.parse(json.out)).toMatchObject({ action: 'untrust-all', changed: true })
     const again = await runApp(app, ['trust', '--untrust-all'], { cwd: '/repo' })
     expect(again).toMatchObject({ exit: 1, err: 't: no grants to remove: /repo\n' })
     const both = await runApp(app, ['trust', '--untrust-all', '--scope', 'moon'], { cwd: '/repo' })
@@ -673,5 +676,21 @@ describe('trust --scope with a service parseScope', () => {
       const r = await runApp(app, ['trust', '--scope', scope], { cwd: '/a' })
       expect(r.exit).toBe(2)
     }
+  })
+})
+
+describe('trust --scope help', () => {
+  test('scopeHelp replaces the generic help of --scope', async () => {
+    const app = defineApp({
+      name: 'tooly',
+      version: '1.0.0',
+      summary: 'a test tool',
+      commands: {
+        trust: trustCommand(trustService(), { scopeHelp: 'a tool id, as "tooly tools" lists it' }),
+      },
+    })
+    const r = await runApp(app, ['help', 'trust'])
+    expect(r.out).toContain('a tool id, as "tooly tools" lists it')
+    expect(r.out).not.toContain('such as one tool')
   })
 })

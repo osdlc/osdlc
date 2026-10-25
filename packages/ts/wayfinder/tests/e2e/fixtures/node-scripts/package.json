@@ -1,0 +1,8 @@
+{
+  "name": "web",
+  "scripts": {
+    "build": "tsc -p .",
+    "test": "vitest run",
+    "dev": "vite"
+  }
+}

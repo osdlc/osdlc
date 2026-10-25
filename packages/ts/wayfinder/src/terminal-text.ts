@@ -13,20 +13,30 @@
  *
  * Each control character becomes one U+FFFD, so the text keeps its length and
  * a match offset into it still points at the same character.
+ *
+ * This is wayfinder's one filter for repository text. `stripControls` from
+ * `@osdlc/ux` covers the same characters but removes them, and whole escape
+ * sequences with them. That changes the length, so the terminal UI's match
+ * highlights would point at the wrong characters, and a person would not see
+ * that the name held anything. Both filters remove the same set of controls.
  */
 
 import { EXIT, type CliIo } from '@osdlc/cli-tool'
 
-import { APP } from './app.ts'
+import { BIN } from './app.ts'
 
-/** C0 (tab and newline included), DEL, C1, and bidi U+202A-202E and U+2066-2069. */
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g
+/**
+ * C0 (tab and newline included), DEL, C1, and the bidi controls: the marks
+ * U+061C, U+200E and U+200F, and U+202A-202E and U+2066-2069.
+ */
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g
 /** The same, but tab and newline are kept. */
-const CONTROL_KEEP_LINES = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g
+const CONTROL_KEEP_LINES =
+  /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g
 /** C0 without tab and newline. */
 const C0_KEEP_LINES = /[\u0000-\u0008\u000b-\u001f]/g
 /** What `JSON.stringify` leaves raw of the above: it escapes C0 itself. */
-const JSON_RAW = /[\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g
+const JSON_RAW = /[\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g
 
 const REPLACEMENT = '�'
 
@@ -37,6 +47,11 @@ const REPLACEMENT = '�'
  */
 export function terminalSafe(text: string, opts: { multiline?: boolean } = {}): string {
   return text.replace(opts.multiline === true ? CONTROL_KEEP_LINES : CONTROL, REPLACEMENT)
+}
+
+/** True when `text` holds a character {@link terminalSafe} replaces. */
+export function hasControls(text: string): boolean {
+  return new RegExp(CONTROL.source).test(text)
 }
 
 /**
@@ -98,7 +113,7 @@ export async function guardedExit(
     return await run()
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    stderr(`${APP}: ${terminalSafe(message)}\n`)
+    stderr(`${BIN}: ${terminalSafe(message)}\n`)
     return EXIT.error
   }
 }

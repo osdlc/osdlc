@@ -1,20 +1,21 @@
 /**
  * Repository text never reaches the terminal as a control sequence: the
  * helpers themselves, then `--list`, `query`, `trust`, `config`, `providers`,
- * the `--serve` summary, the terminal UI, the copied text and
+ * the `serve` summary, the terminal UI, the copied text and
  * stderr, with `--json` keeping every value exact.
  */
 
-import { afterAll, beforeEach, describe, expect, test } from 'vitest'
+import { afterAll, describe, expect, test } from 'vitest'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { captureIo } from '@osdlc/cli-tool'
+import { stripControls } from '@osdlc/ux'
 import { CATALOG_SCHEMA_VERSION, type Catalog, type Task } from '@osdlc/system-model/detect'
 
 import { main } from '../src/cli.ts'
-import { startupSummary } from '../src/serve.ts'
+import { startupSummary } from '../src/serve/index.ts'
 import {
   guardedExit,
   jsonText,
@@ -23,8 +24,8 @@ import {
   safeStdout,
   terminalSafe,
 } from '../src/terminal-text.ts'
-import { frame, recompute, state } from '../src/tui.ts'
-import { copyText } from '../src/web/view.ts'
+import { skillCopyText, taskCopyText, taskLine } from '../src/core/copy-text.ts'
+import { cleanupAll, testTui } from './tui-support.ts'
 
 /** OSC 52: put "echo hi" on the clipboard. */
 const CLIPBOARD = '\u001b]52;c;ZWNobyBoaQ==\u0007'
@@ -74,6 +75,30 @@ describe('terminalSafe', () => {
     expect(terminalSafe(`a${BIDI}b`, { multiline: true })).toBe('a��b')
   })
 
+  test('replaces the bidi marks ALM, LRM and RLM, as stripControls removes them', () => {
+    const marks = '\u061c\u200e\u200f'
+    expect(terminalSafe(`a${marks}b`)).toBe('a���b')
+    expect(stripControls(`a${marks}b`)).toBe('ab')
+    expect(jsonText(marks)).toBe('"\\u061c\\u200e\\u200f"')
+  })
+
+  test('replaces every character stripControls removes, one for one', () => {
+    const controls = [
+      ...Array.from({ length: 0x20 }, (_, i) => i),
+      ...Array.from({ length: 0x21 }, (_, i) => 0x7f + i),
+      0x061c,
+      0x200e,
+      0x200f,
+      ...Array.from({ length: 5 }, (_, i) => 0x202a + i),
+      ...Array.from({ length: 4 }, (_, i) => 0x2066 + i),
+    ].map((c) => String.fromCharCode(c))
+    // At the end of the text, so stripControls has no sequence to take with it.
+    for (const c of controls) {
+      expect(stripControls(`a${c}`)).toBe('a')
+      expect(terminalSafe(`a${c}`)).toBe('a�')
+    }
+  })
+
   test('jsonText escapes DEL, C1 and bidi, and parses to the same value', () => {
     const value = { name: `x${C1}${BIDI}${CLIPBOARD}`, n: [1, 'é'] }
     for (const indent of [undefined, 2]) {
@@ -110,7 +135,7 @@ describe('terminalSafe', () => {
     )
     expect(code).toBe(1)
     expect(lines).toHaveLength(1)
-    expect(lines[0]).toMatch(/^wayfinder: bad /)
+    expect(lines[0]).toMatch(/^way: bad /)
     expect(lines[0]?.slice(0, -1)).not.toMatch(RAW_CONTROL)
     expect(await guardedExit(async () => 3)).toBe(3)
   })
@@ -183,7 +208,9 @@ describe('trust, config and providers output', () => {
   /** A repository whose directory name, config key and config value carry escapes. */
   async function hostile(): Promise<{ dir: string; home: string }> {
     const parent = await temp()
-    const dir = join(parent, `repo${TITLE}${BIDI}`)
+    // Windows file names cannot hold control characters, so there only the
+    // config carries them.
+    const dir = join(parent, process.platform === 'win32' ? 'repo' : `repo${TITLE}${BIDI}`)
     await mkdir(dir)
     await writeFile(
       join(dir, 'package.json'),
@@ -223,7 +250,7 @@ describe('trust, config and providers output', () => {
   })
 })
 
-describe('the --serve summary', () => {
+describe('the serve summary', () => {
   test('prints the root and runner names without control characters', () => {
     const text = startupSummary('http://127.0.0.1:1', {
       catalog: {
@@ -251,13 +278,31 @@ describe('the --serve summary', () => {
 })
 
 describe('copied text', () => {
-  test('the web copy text has no control characters', () => {
-    const t = {
-      display: `npm run x${CLIPBOARD}\u001b[201~; rm -rf ~`,
-      cwd: `pkg${BIDI}`,
-    } as unknown as Task
-    expect(copyText(t)).not.toMatch(RAW_CONTROL)
-    expect(copyText({ ...t, cwd: '.' })).not.toMatch(RAW_CONTROL)
+  test('a task line with a control character is refused, on every surface', () => {
+    const t = { argv: ['npm', 'run', `x${CLIPBOARD}`], cwd: '.' } as unknown as Task
+    expect(taskCopyText(t, 'linux')).toBeNull()
+    expect(
+      taskCopyText({ argv: ['npm'], cwd: `pkg${BIDI}` } as unknown as Task, 'linux'),
+    ).toBeNull()
+  })
+
+  test('a skill with a control character is refused', () => {
+    expect(skillCopyText({ invoke: '/ok\u001b[201~\necho PWNED\n' })).toBeNull()
+    expect(skillCopyText({ invoke: '/review' })).toBe('/review')
+  })
+
+  test('the list line is the copied line, or it with controls replaced', () => {
+    expect(taskLine({ argv: ['npm', 'run', 'x y'], cwd: '.', display: 'npm run x y' })).toBe(
+      taskCopyText({ argv: ['npm', 'run', 'x y'], cwd: '.' }, process.platform),
+    )
+    const line = taskLine({ argv: ['echo', 'a\nb'], cwd: '.', display: 'echo a\u001bb' })
+    expect(line).not.toMatch(/[\u0000-\u001f]/)
+    expect(line).toMatch(process.platform === 'win32' ? /^& echo '/ : /^echo '/)
+  })
+
+  test('a task line quotes each word', () => {
+    const t = { argv: ['npm', 'run', 'x; rm -rf ~'], cwd: '.' } as unknown as Task
+    expect(taskCopyText(t, 'linux')).toBe("npm run 'x; rm -rf ~'")
   })
 })
 
@@ -280,16 +325,13 @@ describe('terminal UI', () => {
     }
   }
 
-  beforeEach(() => {
-    state.query = ''
-    state.runner = 'all'
-    state.servicesOnly = false
-    state.selectedId = null
-    state.scroll = 0
-    state.cache = []
-  })
+  afterAll(cleanupAll)
 
-  test('a frame holds no control sequence from a task name, doc or path', () => {
+  test('a frame holds no control sequence from a task name, doc or path', async () => {
+    // With color and attributes on, so only the UI's own paint adds escapes.
+    const { tui } = await testTui({
+      style: { level: 'truecolor', theme: 'dark', attributes: true },
+    })
     const catalog: Catalog = {
       kind: 'catalog',
       schemaVersion: CATALOG_SCHEMA_VERSION,
@@ -315,11 +357,11 @@ describe('terminal UI', () => {
         },
       ],
     }
-    state.catalog = catalog
-    recompute()
+    tui.state.catalog = catalog
+    tui.recompute()
     // frame() writes its own cursor and clear escapes; strip those first.
     const own = /\u001b\[(?:\?\d+[hl]|[HJK]|\d*(?:;\d+)*m)/g
-    const screen = frame(100, 20).replace(own, '').replace(/\r\n/g, '\n')
+    const screen = tui.frame(100, 20).replace(own, '').replace(/\r\n/g, '\n')
     expect(screen).toContain('build')
     expect(screen).not.toMatch(RAW_CONTROL)
   })

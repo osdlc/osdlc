@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/command-seam",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Injectable subprocess runner for Node: capture, stream and managed-process runners, hard timeouts, failures as results.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
@@ -39,6 +39,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./quote": {
+      "types": "./dist/quote-entry.d.ts",
+      "default": "./dist/quote-entry.js"
     },
     "./testing": {
       "types": "./dist/testing.d.ts",

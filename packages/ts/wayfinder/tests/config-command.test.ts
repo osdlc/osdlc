@@ -1,20 +1,17 @@
 /**
- * The shared `config` subcommand.
+ * `way config`: cli-tool's shared `config` group over wayfinder's store.
  *
- * Every case drives `runConfigCommand` directly with an INJECTED env and home,
- * both pointing at throwaway directories. The alternative — letting it fall
- * back to `process.env` and `os.homedir()` — would read the developer's own
- * `~/.config/wayfinder/config.json`, so the suite would pass or fail according to
- * what happens to be in it, and the `set` cases would edit it.
+ * Every case runs with HOME at a throwaway directory, so nothing reads or
+ * edits the developer's own `~/.config/wayfinder/config.json`.
  */
 
 import { afterAll, describe, expect, test } from 'vitest'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
-import type { TaskConfig } from '../src/config.ts'
-import { runConfigCommand, takeConfigDir } from '../src/config-command.ts'
-import { fixtureRoot, removeRoot } from './support.ts'
+import { CONFIG_SCHEMA_URL } from '../src/config.ts'
+import { runWay, wayApp } from './app-support.ts'
+import { USER_CONFIG, fixtureRoot, removeRoot } from './support.ts'
 
 const roots: string[] = []
 afterAll(async () => {
@@ -27,491 +24,326 @@ async function track(files: Record<string, string> = {}): Promise<string> {
   return dir
 }
 
-interface Ran {
-  code: number
-  out: string
-  err: string
-}
-
-interface Scenario {
-  run(argv: string[]): Promise<Ran>
-  root: string
-  /** Where the injected user layer lives, for asserting what `set --user` wrote. */
-  userFile: string
-  projectFile: string
-}
-
-/** A fresh project root and home directory, plus a runner bound to both. */
+/** A project root and a home, with optional files in each. */
 async function scenario(
-  files: {
-    project?: unknown
-    user?: unknown
-    /** Raw text for the project file, for the malformed-file case. */
-    projectText?: string
-    env?: Record<string, string | undefined>
-    /** The calling tool's own defaults, as wayfinder's `{ allowExec: true }`. */
-    defaults?: Partial<TaskConfig>
-  } = {},
-): Promise<Scenario> {
+  files: { project?: unknown; projectText?: string; user?: unknown } = {},
+  env: Record<string, string | undefined> = {},
+) {
   const root = await track({ 'package.json': '{}' })
   const home = await track()
-
-  const userFile = join(home, '.config/wayfinder/config.json')
+  const userFile = join(home, USER_CONFIG)
   const projectFile = join(root, 'wayfinder.config.json')
-
   const write = async (file: string, text: string): Promise<void> => {
     await mkdir(dirname(file), { recursive: true })
     await writeFile(file, text, 'utf-8')
   }
-  if (files.user !== undefined) await write(userFile, `${JSON.stringify(files.user)}\n`)
+  if (files.user !== undefined) await write(userFile, JSON.stringify(files.user))
   if (files.projectText !== undefined) await write(projectFile, files.projectText)
-  else if (files.project !== undefined)
-    await write(projectFile, `${JSON.stringify(files.project)}\n`)
-
+  else if (files.project !== undefined) await write(projectFile, JSON.stringify(files.project))
   return {
     root,
+    home,
     userFile,
     projectFile,
-    async run(argv: string[]): Promise<Ran> {
-      let out = ''
-      let err = ''
-      const code = await runConfigCommand('wayfinder', root, argv, {
-        stdout: (text) => {
-          out += text
-        },
-        stderr: (text) => {
-          err += text
-        },
-        env: files.env ?? {},
-        home,
-        ...(files.defaults !== undefined ? { defaults: files.defaults } : {}),
-      })
-      return { code, out, err }
-    },
+    run: (argv: string[]) => runWay(argv, { cwd: root, home, env }),
+    file: async (path: string) => JSON.parse(await readFile(path, 'utf-8')) as unknown,
   }
-}
-
-async function readJson(file: string): Promise<unknown> {
-  return JSON.parse(await readFile(file, 'utf-8'))
-}
-
-async function missing(file: string): Promise<boolean> {
-  try {
-    await readFile(file)
-    return false
-  } catch {
-    return true
-  }
-}
-
-/** The aligned listing, back as `key -> [value, "(layer)"]`. */
-function rows(stdout: string): Record<string, string[]> {
-  return Object.fromEntries(
-    stdout
-      .trimEnd()
-      .split('\n')
-      .map((line) => {
-        const [key = '', ...rest] = line.trim().split(/\s{2,}/)
-        return [key, rest.map((part) => part.trim())]
-      }),
-  )
 }
 
 describe('config list', () => {
-  test('names the layer that supplied each value', async () => {
-    // The question this command exists to answer is "why is this setting not
-    // what I set it to", so a value without its layer is only half an answer.
-    const s = await scenario({
-      user: { allowExec: true, runners: { order: ['moon'] } },
-      project: { allowExec: false, runners: { disabled: ['cargo'] } },
-    })
-    const ran = await s.run(['list'])
+  test('names the layer that supplied each value, defaults included', async () => {
+    const s = await scenario({ user: { open: 'web' }, project: { discovery: 'git' } })
+    const ran = await s.run(['config', 'list', '--json'])
+    expect(ran.exit).toBe(0)
+    const doc = ran.json<{ settings: { key: string; value: unknown; source: string }[] }>()
+    const by = Object.fromEntries(doc.settings.map((x) => [x.key, x]))
+    expect(by['open']).toEqual({ key: 'open', value: 'web', source: 'user' })
+    expect(by['discovery']).toEqual({ key: 'discovery', value: 'git', source: 'project' })
+    expect(by['allowExec']).toEqual({ key: 'allowExec', value: true, source: 'default' })
+    expect(by['trust.tools']).toEqual({ key: 'trust.tools', value: {}, source: 'default' })
+  })
 
-    expect(ran.code).toBe(0)
-    const listed = rows(ran.out)
-
-    // The project layer wins over the user layer for a key both set.
-    expect(listed['allowExec']).toEqual(['false', '(project)'])
-    expect(listed['runners.disabled']).toEqual(['["cargo"]', '(project)'])
-    // A key only the user file sets is labelled user, not project.
-    expect(listed['runners.order']).toEqual(['["moon"]', '(user)'])
-    // A key nobody set falls to the built-in defaults.
-    expect(listed['discovery']).toEqual(['"auto"', '(default)'])
-
-    // Locations are context, not data, so they stay off stdout.
-    expect(ran.err).toContain(s.projectFile)
+  test('bare config lists, with the files on stderr', async () => {
+    const s = await scenario()
+    const ran = await s.run(['config'])
+    expect(ran.exit).toBe(0)
+    expect(ran.out).toMatch(/^allowExec\s+true\s+\(default\)$/m)
     expect(ran.err).toContain(s.userFile)
-  })
-
-  test('--json emits effective, sources and locations', async () => {
-    const s = await scenario({ project: { discovery: 'walk' } })
-    const ran = await s.run(['list', '--json'])
-
-    expect(ran.code).toBe(0)
-    const parsed = JSON.parse(ran.out) as {
-      effective: { discovery: string }
-      sources: Record<string, string>
-      locations: { project: string; user: string; userFromEnv: boolean }
-    }
-    expect(parsed.effective.discovery).toBe('walk')
-    expect(parsed.sources['discovery']).toBe('project')
-    expect(parsed.sources['allowExec']).toBe('default')
-    expect(parsed.locations.project).toBe(s.projectFile)
-    expect(parsed.locations.userFromEnv).toBe(false)
-  })
-
-  test('an unknown key is a warning, and the rest of the file still lists', async () => {
-    const s = await scenario({ project: { discovery: 'walk', futureThing: 1 } })
-    const ran = await s.run(['list'])
-
-    expect(ran.code).toBe(0)
-    expect(ran.err).toContain('unknown setting "futureThing"')
-    expect(rows(ran.out)['discovery']).toEqual(['"walk"', '(project)'])
-  })
-
-  test('a malformed file fails, naming the file', async () => {
-    // Not a silent fallback: a setting that quietly did not apply is worse
-    // than one that refused to load.
-    const s = await scenario({ projectText: '{ not json' })
-    const ran = await s.run(['list'])
-
-    expect(ran.code).toBe(1)
     expect(ran.err).toContain(s.projectFile)
-    expect(ran.err).toContain('invalid JSON')
-    expect(ran.out).toBe('')
+  })
+
+  test('an unknown key is a warning with a did-you-mean, and the rest still lists', async () => {
+    const s = await scenario({ project: { discovry: 'git', allowExec: false } })
+    const ran = await s.run(['config', 'list'])
+    expect(ran.exit).toBe(0)
+    expect(ran.err).toContain('unknown setting "discovry" (ignored); did you mean discovery?')
+    expect(ran.out).toMatch(/^allowExec\s+false\s+\(project\)$/m)
+  })
+
+  test('a malformed file fails with exit 1, naming the file', async () => {
+    const s = await scenario({ projectText: '{ nope' })
+    const ran = await s.run(['config', 'list'])
+    expect(ran.exit).toBe(1)
+    expect(ran.err).toContain(s.projectFile)
+  })
+
+  test('-C names the project, and a directory that does not exist is an error', async () => {
+    const s = await scenario({ project: { discovery: 'walk' } })
+    const other = await track()
+    const ran = await runWay(['config', 'get', 'discovery', '-C', s.root], {
+      cwd: other,
+      home: s.home,
+    })
+    expect(ran.out).toBe('"walk"\n')
+    const missing = await runWay(['config', 'set', 'discovery', 'git', '-C', join(other, 'typo')], {
+      cwd: other,
+      home: s.home,
+    })
+    expect(missing.exit).toBe(1)
+    expect(missing.err).toContain('no such directory')
+    expect(await readdir(other)).toEqual([])
   })
 })
 
 describe('config get', () => {
-  test('reads a nested path from the effective config', async () => {
-    const s = await scenario({ project: { runners: { order: ['just', 'moon'] } } })
-    expect(await s.run(['get', 'runners.order'])).toMatchObject({
-      code: 0,
-      out: '["just","moon"]\n',
-    })
+  test('prints the effective value as JSON', async () => {
+    const s = await scenario({ project: { runners: { order: ['just'] } } })
+    expect((await s.run(['config', 'get', 'runners.order'])).out).toBe('["just"]\n')
   })
 
-  test('an unknown key exits non-zero rather than printing nothing', async () => {
+  test('a key with no value exits 1', async () => {
     const s = await scenario()
-    const ran = await s.run(['get', 'nope'])
-    expect(ran.code).toBe(1)
+    const ran = await s.run(['config', 'get', 'nope'])
+    expect(ran.exit).toBe(1)
     expect(ran.err).toContain('no value for nope')
-    expect(ran.out).toBe('')
-  })
-
-  test('an unset leaf of a known section exits non-zero too', async () => {
-    const s = await scenario()
-    const ran = await s.run(['get', 'runners.nothing'])
-    expect(ran.code).toBe(1)
-    expect(ran.err).toContain('no value for runners.nothing')
   })
 })
 
-describe('config set', () => {
-  test('--project round-trips through get', async () => {
+describe('config set and unset', () => {
+  test('--project is the default, and the file gets $schema', async () => {
     const s = await scenario()
-    const wrote = await s.run(['set', 'discovery', 'walk'])
-    expect(wrote.code).toBe(0)
-    expect(wrote.out).toContain(s.projectFile)
-
-    expect(await s.run(['get', 'discovery'])).toMatchObject({ code: 0, out: '"walk"\n' })
+    const ran = await s.run(['config', 'set', 'discovery', 'git'])
+    expect(ran.exit).toBe(0)
+    expect(ran.out).toBe(`${s.projectFile}: discovery = "git"\n`)
+    expect(await s.file(s.projectFile)).toEqual({ $schema: CONFIG_SCHEMA_URL, discovery: 'git' })
   })
 
-  test('a bare word needs no quoting, and JSON is read as JSON', async () => {
+  test('--user writes the user file, and JSON values keep their type', async () => {
     const s = await scenario()
-    await s.run(['set', 'runners.order', '["moon","just"]'])
-    await s.run(['set', 'allowExec', 'true'])
-
-    expect(await readJson(s.projectFile)).toEqual({
+    await s.run(['config', 'set', '--user', 'runners.order', '["moon","just"]'])
+    await s.run(['config', 'set', '--user', 'open', 'web'])
+    expect(await s.file(s.userFile)).toEqual({
+      $schema: CONFIG_SCHEMA_URL,
       runners: { order: ['moon', 'just'] },
-      allowExec: true,
+      open: 'web',
     })
   })
 
-  test('--user writes the injected user path, not the project file', async () => {
-    const s = await scenario()
-    const ran = await s.run(['set', '--user', 'discovery', 'git'])
-
-    expect(ran.code).toBe(0)
-    expect(ran.out).toContain(s.userFile)
-    expect(await readJson(s.userFile)).toEqual({ discovery: 'git' })
-    expect(await missing(s.projectFile)).toBe(true)
-  })
-
-  test('preserves a key this version does not know', async () => {
-    // The reason `set` edits the RAW record: validation drops unknown keys, so
-    // writing a validated document back would delete a setting a newer version
-    // had written into the same file.
-    const s = await scenario({ project: { futureThing: { deep: 1 }, allowExec: true } })
-    const ran = await s.run(['set', 'discovery', 'git'])
-
-    expect(ran.code).toBe(0)
-    expect(await readJson(s.projectFile)).toEqual({
-      allowExec: true,
-      discovery: 'git',
-      futureThing: { deep: 1 },
+  test('keeps a key this version does not know', async () => {
+    const s = await scenario({ project: { futureThing: { keep: true } } })
+    await s.run(['config', 'set', 'allowExec', 'false'])
+    expect(await s.file(s.projectFile)).toMatchObject({
+      futureThing: { keep: true },
+      allowExec: false,
     })
   })
 
-  test('refuses a bad value with a usage exit, leaving the file untouched', async () => {
-    // `notabool` is not valid JSON, so it arrives as the string "notabool".
-    // Refusing it here is the difference between one error message and a file
-    // that fails to load on every later run.
-    const s = await scenario({ project: { allowExec: true } })
-    const before = await readFile(s.projectFile, 'utf-8')
-
-    const ran = await s.run(['set', 'allowExec', 'notabool'])
-    expect(ran.code).toBe(2)
-    expect(ran.err).toContain('allowExec must be true or false')
-    expect(await readFile(s.projectFile, 'utf-8')).toBe(before)
-  })
-
-  test('an unknown key is a usage error, not a failed operation', async () => {
-    // Same reasoning as the bad value above, and the same code: a name that is
-    // not a setting cannot become one, whatever is on disk.
+  test('an unknown key is exit 2 with a did-you-mean', async () => {
     const s = await scenario()
-    const ran = await s.run(['set', 'nope', '1'])
-    expect(ran.code).toBe(2)
-    expect(ran.err).toContain('unknown setting: nope')
-    expect(await missing(s.projectFile)).toBe(true)
+    const ran = await s.run(['config', 'set', 'runners.ordr', '[]'])
+    expect(ran.exit).toBe(2)
+    expect(ran.err).toContain('unknown setting: runners.ordr; did you mean runners.order?')
   })
 
-  test('a bad value ALREADY in the file exits 1 — that one is about the file', async () => {
-    // The other side of the split. The typed command is fine; the file it has
-    // to edit is not, and its name is in the message.
-    const s = await scenario({ project: { discovery: 'sideways' } })
-    const ran = await s.run(['set', 'allowExec', 'true'])
-
-    expect(ran.code).toBe(1)
-    expect(ran.err).toContain(s.projectFile)
-    expect(ran.err).toContain('discovery must be one of')
-  })
-})
-
-describe('config unset', () => {
-  test('removes a nested key, pruning the container it emptied', async () => {
-    const s = await scenario({ project: { runners: { disabled: ['cargo'], order: ['moon'] } } })
-
-    expect((await s.run(['unset', 'runners.disabled'])).code).toBe(0)
-    expect(await readJson(s.projectFile)).toEqual({ runners: { order: ['moon'] } })
-
-    expect((await s.run(['unset', 'runners.order'])).code).toBe(0)
-    expect(await readJson(s.projectFile)).toEqual({})
-  })
-
-  test('says so when the key was not set, rather than succeeding silently', async () => {
-    // A silent success reads as "the setting is gone from where I meant",
-    // which is wrong whenever the value actually lives in the other layer.
+  test('a wrong value is exit 2, and the file is untouched', async () => {
     const s = await scenario({ project: { discovery: 'walk' } })
-    const ran = await s.run(['unset', 'allowExec'])
-
-    expect(ran.code).toBe(1)
-    expect(ran.err).toContain('allowExec is not set in')
-    expect(await readJson(s.projectFile)).toEqual({ discovery: 'walk' })
+    const ran = await s.run(['config', 'set', 'discovery', 'sideways'])
+    expect(ran.exit).toBe(2)
+    expect(ran.err).toContain('discovery must be one of git, walk, auto')
+    expect(await s.file(s.projectFile)).toEqual({ discovery: 'walk' })
   })
 
-  test('says so when the target file does not exist at all', async () => {
+  test('refuses what a project file may not hold, as the web view does', async () => {
     const s = await scenario()
-    expect((await s.run(['unset', '--user', 'discovery'])).code).toBe(1)
-    expect(await missing(s.userFile)).toBe(true)
+    for (const [key, value, says] of [
+      ['allowExec', 'true', 'way trust'],
+      ['trust.paths', '["/x/**"]', 'grant itself trust'],
+      ['trust.tools.mise.owners', '["org"]', 'grant itself trust'],
+      ['open', 'web', 'user config'],
+      ['theme', 'dark', 'user config'],
+    ] as const) {
+      const ran = await s.run(['config', 'set', key, value])
+      expect(ran.exit, key).toBe(2)
+      expect(ran.err).toContain(says)
+    }
+    expect(await readdir(s.root)).toEqual(['package.json'])
   })
-})
 
-describe('WAYFINDER_CONFIG as the write target', () => {
-  test('set --user creates the named file when it does not exist yet', async () => {
-    // `loadConfig` treats a WAYFINDER_CONFIG pointing at nothing as an error, which
-    // is why the write path resolves locations without loading — otherwise
-    // there would be no way to create the file the env var names.
-    const named = join(await track(), 'nested/elsewhere.json')
-    const s = await scenario({ env: { WAYFINDER_CONFIG: named } })
+  test('the same keys are accepted in the user file', async () => {
+    const s = await scenario()
+    const tools = await s.run(['config', 'set', '--user', 'trust.tools.mise.paths', '["~/w/**"]'])
+    expect(tools.exit).toBe(0)
+    expect((await s.run(['config', 'set', '--user', 'theme', 'light'])).exit).toBe(0)
+    expect(await s.file(s.userFile)).toEqual({
+      $schema: CONFIG_SCHEMA_URL,
+      trust: { tools: { mise: { paths: ['~/w/**'] } } },
+      theme: 'light',
+    })
+  })
 
-    const ran = await s.run(['set', '--user', 'discovery', 'git'])
-    expect(ran.code).toBe(0)
-    expect(ran.out).toContain(named)
-    expect(await readJson(named)).toEqual({ discovery: 'git' })
+  test('a bad value already in the file exits 1, naming the file', async () => {
+    const s = await scenario({ project: { excludePaths: 'not-a-list' } })
+    const ran = await s.run(['config', 'set', 'discovery', 'git'])
+    expect(ran.exit).toBe(1)
+    expect(ran.err).toContain(s.projectFile)
+  })
+
+  test('unset removes a nested key and the container it emptied', async () => {
+    const s = await scenario({ project: { runners: { order: ['x'] } } })
+    expect((await s.run(['config', 'unset', 'runners.order'])).exit).toBe(0)
+    expect(await s.file(s.projectFile)).toEqual({ $schema: CONFIG_SCHEMA_URL })
+  })
+
+  test('unset of a key that is not set exits 1', async () => {
+    const s = await scenario()
+    const ran = await s.run(['config', 'unset', 'discovery'])
+    expect(ran.exit).toBe(1)
+    expect(ran.err).toContain(`discovery is not set in ${s.projectFile}`)
+  })
+
+  test('--user and --project together are a usage error', async () => {
+    const s = await scenario()
+    const ran = await s.run(['config', 'set', '--user', '--project', 'discovery', 'git'])
+    expect(ran.exit).toBe(2)
+  })
+
+  test('set --user creates the file WAYFINDER_CONFIG names', async () => {
+    const elsewhere = await track()
+    const named = join(elsewhere, 'mine.json')
+    const s = await scenario({}, { WAYFINDER_CONFIG: named })
+    expect((await s.run(['config', 'set', '--user', 'open', 'web'])).exit).toBe(0)
+    expect(await s.file(named)).toMatchObject({ open: 'web' })
   })
 })
 
 describe('config path', () => {
-  test('names both files and whether each exists', async () => {
-    const s = await scenario({ project: { discovery: 'walk' } })
-    const ran = await s.run(['path'])
-
-    expect(ran.code).toBe(0)
-    expect(ran.out).toContain(`${s.projectFile} (exists)`)
-    expect(ran.out).toContain(`${s.userFile} (missing)`)
-    expect(ran.out).not.toContain('WAYFINDER_CONFIG')
-  })
-
-  test('says when the user path came from WAYFINDER_CONFIG', async () => {
-    const named = join(await track(), 'elsewhere.json')
-    const s = await scenario({ env: { WAYFINDER_CONFIG: named } })
-    const ran = await s.run(['path'])
-
-    expect(ran.code).toBe(0)
-    expect(ran.out).toContain(`${named} (missing)`)
-    expect(ran.out).toContain('from WAYFINDER_CONFIG')
-  })
-
-  test('rejects arguments instead of swallowing them', async () => {
-    // If it ignored its argv, it would be the one subcommand where a typo
-    // looked like it had worked.
-    const s = await scenario()
-    expect((await s.run(['path', '--nonsense'])).code).toBe(2)
-    expect((await s.run(['path', 'extra'])).code).toBe(2)
-    expect((await s.run(['path', '--nonsense'])).err).toContain('takes no arguments')
+  test('names both files, whether each exists, and the variable that moved one', async () => {
+    const elsewhere = await track({ 'mine.json': '{}' })
+    const s = await scenario({ project: {} }, { WAYFINDER_CONFIG: join(elsewhere, 'mine.json') })
+    const ran = await s.run(['config', 'path', '--json'])
+    expect(ran.json()).toMatchObject({
+      locations: [
+        {
+          layer: 'user',
+          path: join(elsewhere, 'mine.json'),
+          exists: true,
+          envVar: 'WAYFINDER_CONFIG',
+        },
+        { layer: 'project', path: s.projectFile, exists: true },
+      ],
+    })
   })
 
   test('still answers when the project file is broken', async () => {
-    // `path` is the command you reach for when a file will not load, so it
-    // resolves locations without reading either one.
-    const s = await scenario({ projectText: '{ not json' })
-    expect((await s.run(['path'])).code).toBe(0)
+    const s = await scenario({ projectText: '{ nope' })
+    expect((await s.run(['config', 'path'])).exit).toBe(0)
+  })
+
+  test('warns about a relative WAYFINDER_CONFIG', async () => {
+    const s = await scenario({}, { WAYFINDER_CONFIG: 'rel.json' })
+    const ran = await s.run(['config', 'path'])
+    expect(ran.err).toContain('WAYFINDER_CONFIG=rel.json is ignored')
   })
 })
 
-describe("the calling tool's own defaults", () => {
-  test("the default layer reports the tool's value, not the library's", async () => {
-    // wayfinder runs with allowExec true while the library's DEFAULT_CONFIG says
-    // false. Reporting the library's would make `config list` — whose entire
-    // job is saying what is in effect — say the opposite of what wayfinder will do.
-    const s = await scenario({ defaults: { allowExec: true } })
-
-    expect(rows((await s.run(['list'])).out)['allowExec']).toEqual(['true', '(default)'])
-    expect(await s.run(['get', 'allowExec'])).toMatchObject({ code: 0, out: 'true\n' })
+describe('config explain', () => {
+  test('shows each layer, the winner and why', async () => {
+    const s = await scenario({ user: { discovery: 'walk' }, project: { discovery: 'git' } })
+    const ran = await s.run(['config', 'explain', 'discovery', '--json'])
+    expect(ran.exit).toBe(0)
+    expect(ran.json()).toMatchObject({
+      key: 'discovery',
+      value: 'git',
+      source: 'project',
+      layers: [
+        { layer: 'default', set: true, value: 'auto', won: false },
+        { layer: 'user', set: true, value: 'walk', won: false, file: s.userFile },
+        { layer: 'project', set: true, value: 'git', won: true, file: s.projectFile },
+      ],
+    })
   })
 
-  test("a file still beats the tool's default, and is still labelled by its layer", async () => {
+  test('a project allowExec: true is shown as ignored, with the reason', async () => {
+    const s = await scenario({ project: { allowExec: true } })
+    const ran = await s.run(['config', 'explain', 'allowExec'])
+    expect(ran.exit).toBe(0)
+    expect(ran.out).toContain('allowExec = true  (default is the highest layer allowed to set it')
+    expect(ran.out).toMatch(/project\s+true\s+ignored: a repository cannot turn execution on/)
+  })
+
+  test('trust.tools: the user layer wins and a project block is ignored', async () => {
     const s = await scenario({
-      project: { allowExec: false },
-      defaults: { allowExec: true },
+      user: { trust: { tools: { mise: { paths: ['/u/**'] } } } },
+      project: { trust: { tools: { mise: { paths: ['/**'] } } } },
     })
-
-    expect(rows((await s.run(['list'])).out)['allowExec']).toEqual(['false', '(project)'])
-    expect(await s.run(['get', 'allowExec'])).toMatchObject({ code: 0, out: 'false\n' })
-  })
-
-  test("a tool that omits them sees the library's defaults unchanged", async () => {
-    const s = await scenario()
-    expect(rows((await s.run(['list'])).out)['allowExec']).toEqual(['false', '(default)'])
-  })
-})
-
-describe('argument mistakes', () => {
-  test('set rejects a missing value and an extra positional', async () => {
-    const s = await scenario()
-    expect((await s.run(['set', 'discovery'])).code).toBe(2)
-    expect((await s.run(['set', 'discovery', 'git', 'extra'])).code).toBe(2)
-    expect(await missing(s.projectFile)).toBe(true)
-  })
-
-  test('--user and --project together are refused, not last-one-wins', async () => {
-    // Both are destructive writes, so resolving a contradiction silently would
-    // edit whichever file the user did not mean.
-    const s = await scenario()
-    const ran = await s.run(['set', '--user', '--project', 'discovery', 'git'])
-
-    expect(ran.code).toBe(2)
-    expect(ran.err).toContain('--user and --project name different files')
-    expect(await missing(s.projectFile)).toBe(true)
-    expect(await missing(s.userFile)).toBe(true)
-  })
-
-  test('the same flag twice is fine — it is not a contradiction', async () => {
-    const s = await scenario()
-    expect((await s.run(['set', '--user', '--user', 'discovery', 'git'])).code).toBe(0)
-    expect(await readJson(s.userFile)).toEqual({ discovery: 'git' })
-  })
-
-  test('set and unset reject an unknown option', async () => {
-    const s = await scenario()
-    expect((await s.run(['set', '--wat', 'discovery', 'git'])).err).toContain(
-      'unknown option: --wat',
-    )
-    expect((await s.run(['set', '--wat', 'discovery', 'git'])).code).toBe(2)
-    expect((await s.run(['unset', '--wat', 'discovery'])).code).toBe(2)
-  })
-
-  test('get and unset take exactly one key', async () => {
-    const s = await scenario({ project: { discovery: 'walk' } })
-    expect((await s.run(['get'])).code).toBe(2)
-    expect((await s.run(['get', 'discovery', 'allowExec'])).code).toBe(2)
-    expect((await s.run(['unset'])).code).toBe(2)
-    expect((await s.run(['unset', 'discovery', 'allowExec'])).code).toBe(2)
-    // Nothing was written by the failed unsets.
-    expect(await readJson(s.projectFile)).toEqual({ discovery: 'walk' })
-  })
-
-  test('list rejects an unknown option', async () => {
-    const s = await scenario()
-    expect((await s.run(['list', '--wat'])).code).toBe(2)
-  })
-})
-
-describe('takeConfigDir', () => {
-  test('pulls the directory out wherever it appears, leaving the rest', () => {
-    expect(takeConfigDir(['path', '-C', '/tmp/x'])).toEqual({ dir: '/tmp/x', rest: ['path'] })
-    expect(takeConfigDir(['--dir', '/tmp/x', 'list', '--json'])).toEqual({
-      dir: '/tmp/x',
-      rest: ['list', '--json'],
+    const ran = await s.run(['config', 'explain', 'trust.tools.mise', '--json'])
+    expect(ran.json()).toMatchObject({
+      value: { paths: ['/u/**'] },
+      source: 'user',
+      layers: [
+        { layer: 'default', set: false },
+        { layer: 'user', set: true, won: true },
+        {
+          layer: 'project',
+          set: true,
+          allowed: false,
+          note: 'a repository cannot grant itself trust',
+        },
+      ],
     })
   })
 
-  test('is absent when no directory was named, so the caller can default', () => {
-    expect(takeConfigDir(['list'])).toEqual({ rest: ['list'] })
+  test('the user file named by WAYFINDER_CONFIG carries the variable', async () => {
+    const elsewhere = await track({ 'mine.json': '{"open":"web"}' })
+    const s = await scenario({}, { WAYFINDER_CONFIG: join(elsewhere, 'mine.json') })
+    const ran = await s.run(['config', 'explain', 'open', '--json'])
+    expect(ran.json<{ layers: unknown[] }>().layers[1]).toMatchObject({
+      layer: 'user',
+      envVar: 'WAYFINDER_CONFIG',
+      won: true,
+    })
   })
 
-  test('a directory flag with no path is an error, not a silent drop', () => {
-    expect(takeConfigDir(['path', '-C'])).toEqual({ error: '-C needs a path' })
-    expect(takeConfigDir(['--dir'])).toEqual({ error: '--dir needs a path' })
-    expect(takeConfigDir(['-C='])).toEqual({ error: '-C needs a path' })
-    expect(takeConfigDir(['--dir='])).toEqual({ error: '--dir needs a path' })
-  })
-
-  test('the attached spellings commander accepts are accepted here too', () => {
-    // The help lists one `-C, --dir <PATH>`. A user cannot know that a
-    // subcommand reads it with a different parser than the main one.
-    expect(takeConfigDir(['-C/tmp/x', 'list'])).toEqual({ dir: '/tmp/x', rest: ['list'] })
-    expect(takeConfigDir(['-C=/tmp/x', 'list'])).toEqual({ dir: '/tmp/x', rest: ['list'] })
-    expect(takeConfigDir(['--dir=/tmp/x', 'list'])).toEqual({ dir: '/tmp/x', rest: ['list'] })
+  test('an unknown key is exit 2 with a did-you-mean', async () => {
+    const s = await scenario()
+    const ran = await s.run(['config', 'explain', 'them'])
+    expect(ran.exit).toBe(2)
+    expect(ran.err).toContain('did you mean theme?')
   })
 })
 
-describe('dispatch', () => {
-  test('--help prints the usage on stdout and exits 0', async () => {
-    // The same text on stderr with a non-zero code would read as a failure to
-    // a script, which is what asking for help is not.
+describe('config over the adapters', () => {
+  test('trust, allowExec and tools cannot be written over MCP or HTTP', async () => {
     const s = await scenario()
-    for (const flag of ['--help', '-h']) {
-      const ran = await s.run([flag])
-      expect(ran.code).toBe(0)
-      expect(ran.out).toContain('usage: way config')
-      expect(ran.err).toBe('')
+    const app = wayApp()
+    const ctx = { cwd: s.root, env: { HOME: s.home } }
+    for (const key of [
+      'allowExec',
+      'tools',
+      'trust.paths',
+      'trust.tools.mise.paths',
+      'TRUST.owners',
+    ]) {
+      for (const surface of ['mcp', 'http'] as const) {
+        const result = await app.call(['config', 'set'], { key, value: '[]' }, ctx, { surface })
+        expect(result, `${surface} ${key}`).toMatchObject({ status: 'refused', reason: 'cli-only' })
+      }
     }
-  })
-
-  test('no subcommand lists, and an unknown one is a usage error', async () => {
-    const s = await scenario()
-    expect((await s.run([])).code).toBe(0)
-
-    const bad = await s.run(['frobnicate'])
-    expect(bad.code).toBe(2)
-    expect(bad.err).toContain('unknown config command: frobnicate')
-    expect(bad.err).toContain('usage: way config')
-  })
-
-  test("the tool name in messages is the caller's", async () => {
-    const s = await scenario()
-    let err = ''
-    const code = await runConfigCommand('other-tool', s.root, ['get', 'nope'], {
-      stdout: () => {},
-      stderr: (text) => {
-        err += text
-      },
-      env: {},
-      home: s.root,
+    const ok = await app.call(['config', 'set'], { key: 'discovery', value: 'git' }, ctx, {
+      surface: 'mcp',
     })
-    expect(code).toBe(1)
-    expect(err.startsWith('other-tool: ')).toBe(true)
+    expect(ok).toMatchObject({ status: 'ok' })
+    const read = await app.call(['config', 'get'], { key: 'allowExec' }, ctx, { surface: 'http' })
+    expect(read).toMatchObject({ status: 'ok', document: { value: true } })
   })
 })

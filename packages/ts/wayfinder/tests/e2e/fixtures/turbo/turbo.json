@@ -1,0 +1,6 @@
+{
+  "tasks": {
+    "build": { "dependsOn": ["^build"] },
+    "lint": {}
+  }
+}

@@ -61,53 +61,68 @@ describe('spawnRunnerAsync maxOutputBytes', () => {
     expect(r.reason === 'output' || r.outputIncomplete === true).toBe(true)
   }, 10_000)
 
-  test('passing the cap after the child exited keeps its exit code', async () => {
-    // The child exits at once; a process it started floods stdout during the
-    // exit grace, as soon as the child is gone.
-    const r = await sh.run(['-c', `${afterExit(zeros(5000))}\nexit 0`], {
-      cwd: CWD,
-      maxOutputBytes: 100,
-    })
-    expect(r).toMatchObject({ exitCode: 0, outputIncomplete: true, stdout: '0'.repeat(100) })
-    expect(r.neverExited).toBeUndefined()
-    expect(r.reason).toBeUndefined()
-    expect(r.error).toBe('stdout passed maxOutputBytes (100 bytes)')
-  }, 10_000)
+  // POSIX only: the test times its writes with `kill -0 $$`, which Git for Windows `sh` does not support the same way.
+  test.skipIf(process.platform === 'win32')(
+    'passing the cap after the child exited keeps its exit code',
+    async () => {
+      // The child exits at once; a process it started floods stdout during the
+      // exit grace, as soon as the child is gone.
+      const r = await sh.run(['-c', `${afterExit(zeros(5000))}\nexit 0`], {
+        cwd: CWD,
+        maxOutputBytes: 100,
+      })
+      expect(r).toMatchObject({ exitCode: 0, outputIncomplete: true, stdout: '0'.repeat(100) })
+      expect(r.neverExited).toBeUndefined()
+      expect(r.reason).toBeUndefined()
+      expect(r.error).toBe('stdout passed maxOutputBytes (100 bytes)')
+    },
+    10_000,
+  )
 
-  test('a child killed by a signal keeps that reason when output then passes the cap', async () => {
-    const r = await sh.run(['-c', `${afterExit(zeros(5000))}\nkill -9 $$`], {
-      cwd: CWD,
-      maxOutputBytes: 100,
-    })
-    expect(r).toMatchObject({ neverExited: true, reason: 'signal', signal: 'SIGKILL' })
-    expect(r.outputIncomplete).toBeUndefined()
-    // The cap fired: without these, a writer that missed the exit grace would pass too.
-    expect(r.error).toBe('stdout passed maxOutputBytes (100 bytes)')
-    expect(r.stdout).toBe('0'.repeat(100))
-  }, 10_000)
+  // POSIX only: the test times its writes with `kill -0 $$`, which Git for Windows `sh` does not support the same way.
+  test.skipIf(process.platform === 'win32')(
+    'a child killed by a signal keeps that reason when output then passes the cap',
+    async () => {
+      const r = await sh.run(['-c', `${afterExit(zeros(5000))}\nkill -9 $$`], {
+        cwd: CWD,
+        maxOutputBytes: 100,
+      })
+      expect(r).toMatchObject({ neverExited: true, reason: 'signal', signal: 'SIGKILL' })
+      expect(r.outputIncomplete).toBeUndefined()
+      // The cap fired: without these, a writer that missed the exit grace would pass too.
+      expect(r.error).toBe('stdout passed maxOutputBytes (100 bytes)')
+      expect(r.stdout).toBe('0'.repeat(100))
+    },
+    10_000,
+  )
 
   test('output at or under the cap is untouched', async () => {
     const r = await sh.run(['-c', xs(1000)], { cwd: CWD, maxOutputBytes: 1000 })
     expect(r).toEqual({ exitCode: 0, stdout: 'x'.repeat(1000), stderr: '' })
   })
 
-  test('with processGroup, the whole group is killed', async () => {
-    const pidFile = join(tmpdir(), `seam-cap-pid-${process.pid}`)
-    let pid = 0
-    try {
-      const r = await sh.run(['-c', `sleep 30 & echo $! > "${pidFile}"; ${xs(5000)}; wait`], {
-        cwd: CWD,
-        maxOutputBytes: 100,
-        processGroup: true,
-      })
-      pid = Number(readFileSync(pidFile, 'utf8').trim())
-      expect(r.reason).toBe('output')
-      expect(await gone(pid)).toBe(true)
-    } finally {
-      reap(pid)
-      rmSync(pidFile, { force: true })
-    }
-  }, 10_000)
+  // POSIX only: `processGroup` is POSIX only.
+  test.skipIf(process.platform === 'win32')(
+    'with processGroup, the whole group is killed',
+    async () => {
+      const pidFile = join(tmpdir(), `seam-cap-pid-${process.pid}`)
+      let pid = 0
+      try {
+        const r = await sh.run(['-c', `sleep 30 & echo $! > "${pidFile}"; ${xs(5000)}; wait`], {
+          cwd: CWD,
+          maxOutputBytes: 100,
+          processGroup: true,
+        })
+        pid = Number(readFileSync(pidFile, 'utf8').trim())
+        expect(r.reason).toBe('output')
+        expect(await gone(pid)).toBe(true)
+      } finally {
+        reap(pid)
+        rmSync(pidFile, { force: true })
+      }
+    },
+    10_000,
+  )
 
   test('Infinity is no cap, and a fraction rounds up', async () => {
     expect(

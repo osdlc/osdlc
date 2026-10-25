@@ -106,7 +106,11 @@ function sameExcludes(current: string[], stored: string[] | undefined): boolean 
   return current.length === stored.length && current.every((value, i) => stored[i] === value)
 }
 
-/** Read what is cached and check whether it is current, without probing. Never throws. */
+/**
+ * Read what is cached and check whether it is current, without probing.
+ * Throws only the abort reason, when `options.signal` aborts; it is checked
+ * before each runner's files are hashed.
+ */
 export async function readCachedCatalog(
   registry: Registry,
   profile: ProjectProfile,
@@ -139,6 +143,8 @@ export async function readCachedCatalog(
     const takenAts: number[] = []
 
     for (const spec of selected) {
+      // A caller that stopped waiting stops the hashing, one runner at a time.
+      signal.throwIfAborted()
       // A withheld exec runner never probed this run, so it cannot be stale.
       if (spec.role.kind === 'exec' && !allowExec) {
         runners.push({
@@ -249,7 +255,8 @@ export async function readCachedCatalog(
       runners,
       allFresh: runners.every((r) => r.state === 'fresh'),
     }
-  } catch {
+  } catch (err) {
+    if (options.signal?.aborted === true) throw err
     return allMiss()
   }
 }

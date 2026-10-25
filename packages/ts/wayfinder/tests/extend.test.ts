@@ -18,6 +18,7 @@ import { runArgv } from '../src/args.ts'
 import { makeProject } from '../src/catalog.ts'
 import { main } from '../src/cli.ts'
 import { providerRows, type ProviderRow } from '../src/providers-command.ts'
+import { CONFIG_HOME, shown } from './support.ts'
 
 const EXAMPLE = fileURLToPath(new URL('./guide-example.ts', import.meta.url))
 
@@ -72,9 +73,11 @@ async function run(argv: string[], home?: string) {
 describe('--config', () => {
   test('a module of ToolDefs adds its tasks to the catalog', async () => {
     const dir = await acmeRepo()
-    const ran = await run(['--list', '--config', EXAMPLE, '-C', dir])
+    const ran = await run(['list', '--config', EXAMPLE, '-C', dir])
     expect(ran.code).toBe(0)
-    expect(ran.out.split('\n')).toEqual(expect.arrayContaining(['acme run build', 'acme run ship']))
+    expect(ran.out.split('\n')).toEqual(
+      expect.arrayContaining([shown('acme run build'), shown('acme run ship')]),
+    )
   })
 
   test('without it the same repository has no acme tasks', async () => {
@@ -86,7 +89,7 @@ describe('--config', () => {
     const dir = await acmeRepo()
     const bad = join(dir, 'bad.mjs')
     await writeFile(bad, 'export const nothing = 1\n')
-    const ran = await run(['--list', '--config', bad, '-C', dir])
+    const ran = await run(['list', '--config', bad, '-C', dir])
     expect(ran.code).toBe(1)
     expect(ran.err).toContain('export `tools`')
   })
@@ -96,9 +99,9 @@ describe('tools in a config file', () => {
   test('the user file loads its modules', async () => {
     const home = await temp()
     const module = await acmeModule(home)
-    await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
+    await mkdir(join(home, CONFIG_HOME, 'wayfinder'), { recursive: true })
     await writeFile(
-      join(home, '.config', 'wayfinder', 'config.json'),
+      join(home, CONFIG_HOME, 'wayfinder', 'config.json'),
       JSON.stringify({ tools: [module] }),
     )
     const ran = await run(['--list', '-C', await acmeRepo()], home)
@@ -136,9 +139,9 @@ describe('tools that must not load', () => {
     const home = await temp()
     const marker = join(home, 'imported')
     await sideEffectModule(dir, marker)
-    await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
+    await mkdir(join(home, CONFIG_HOME, 'wayfinder'), { recursive: true })
     await writeFile(
-      join(home, '.config', 'wayfinder', 'config.json'),
+      join(home, CONFIG_HOME, 'wayfinder', 'config.json'),
       JSON.stringify({ allowExec: false }),
     )
     expect((await run(['trust', '-C', dir], home)).code).toBe(0)
@@ -169,9 +172,9 @@ describe('duplicate tool ids', () => {
     const dir = await temp()
     const file = join(dir, 'npm.mjs')
     await writeFile(file, "export const tools = [{ id: 'npm', roles: {} }]\n")
-    const ran = await run(['--list', '--config', file, '-C', dir])
+    const ran = await run(['list', '--config', file, '-C', dir])
     expect(ran.code).toBe(1)
-    expect(ran.err).toBe(`wayfinder: ${file}: tool "npm" is already a built-in tool\n`)
+    expect(ran.err).toBe(`way: ${file}: tool "npm" is already a built-in tool\n`)
   })
 
   test('a module whose ecosystem id a built-in uses is an error naming the module', async () => {
@@ -181,20 +184,18 @@ describe('duplicate tool ids', () => {
       file,
       "export const tools = [{ id: 'acme', roles: {}, ecosystem: { id: 'node', name: 'Node' } }]\n",
     )
-    const ran = await run(['--list', '--config', file, '-C', dir])
+    const ran = await run(['list', '--config', file, '-C', dir])
     expect(ran.code).toBe(1)
-    expect(ran.err).toMatch(/^wayfinder: .*"node".*\(from a tool module: .*eco\.mjs\)\n$/)
+    expect(ran.err).toMatch(/^way: .*"node".*\(from a tool module: .*eco\.mjs\)\n$/)
     expect(ran.err).not.toContain('    at ')
   })
 
   test('two modules that define one id are an error naming both', async () => {
     const dir = await acmeRepo()
     const second = await acmeModule(dir)
-    const ran = await run(['--list', '--config', EXAMPLE, '--config', second, '-C', dir])
+    const ran = await run(['list', '--config', EXAMPLE, '--config', second, '-C', dir])
     expect(ran.code).toBe(1)
-    expect(ran.err).toBe(
-      `wayfinder: tool "acme" is defined twice: in ${EXAMPLE} and in ${second}\n`,
-    )
+    expect(ran.err).toBe(`way: tool "acme" is defined twice: in ${EXAMPLE} and in ${second}\n`)
   })
 })
 
@@ -203,16 +204,17 @@ describe('way providers', () => {
     const ran = await run(['providers', '-C', await temp()])
     expect(ran.code).toBe(0)
     const [head, ...rows] = ran.out.trimEnd().split('\n')
-    expect(head).toMatch(/^tool\s+roles\s+kind\s+binary\s+on PATH\s+source$/)
+    expect(head).toMatch(/^tool\s+roles\s+kind\s+binary\s+on PATH\s+language\s+source\s+homepage$/)
     expect(rows.find((r) => r.startsWith('just '))).toMatch(
-      /runner\s+parse\s+just\s+no\s+built-in$/,
+      /runner\s+parse\s+just\s+no\s+any language\s+built-in\s+https:\/\/just\.systems/,
     )
+    expect(rows.find((r) => r.startsWith('npm '))).toMatch(/\sJavaScript\s/)
   })
 
   test('--json marks a tool from --config as custom, with its module', async () => {
     const ran = await run(['providers', '--json', '--config', EXAMPLE, '-C', await temp()])
     expect(ran.code).toBe(0)
-    const rows = JSON.parse(ran.out) as ProviderRow[]
+    const rows = (JSON.parse(ran.out) as { providers: ProviderRow[] }).providers
     expect(rows.find((r) => r.id === 'acme')).toEqual({
       id: 'acme',
       roles: ['runner'],
@@ -221,6 +223,10 @@ describe('way providers', () => {
       onPath: false,
       source: 'custom',
       module: EXAMPLE,
+      homepage: null,
+      description: null,
+      ecosystem: null,
+      language: 'any language',
     })
     expect(rows.find((r) => r.id === 'npm')?.source).toBe('built-in')
   })
@@ -228,8 +234,10 @@ describe('way providers', () => {
   test('on PATH counts absolute PATH entries only, as detection does', async () => {
     const dir = await temp()
     await mkdir(join(dir, 'bin'))
-    await writeFile(join(dir, 'bin', 'acme'), '#!/bin/sh\n')
-    chmodSync(join(dir, 'bin', 'acme'), 0o755)
+    // Windows finds a program by its PATHEXT extension.
+    const file = join(dir, 'bin', process.platform === 'win32' ? 'acme.cmd' : 'acme')
+    await writeFile(file, '#!/bin/sh\n')
+    chmodSync(file, 0o755)
     const tool = { id: 'acme', binary: 'acme', roles: {} } as unknown as ToolDef
     const saved = process.cwd()
     process.chdir(dir)

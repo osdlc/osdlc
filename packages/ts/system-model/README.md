@@ -320,7 +320,8 @@ Each subprocess a runner starts gets the caller's `signal` and a timeout. A
 runner declares its timeout and a cost hint (`cheap` or `slow`) in
 `RunnerRole.probe`. A runner that declares none gets `DEFAULT_PROBE_TIMEOUT_MS`.
 `CollectOptions.timeouts` replaces a runner's timeout by id, such as
-`{ moon: 300_000 }`.
+`{ moon: 300_000 }`. `CollectOptions.onProbe` is called once for each runner
+probed, with how long the probe took, so a host can report it.
 
 Each subprocess also runs with command-seam's `killTree: true`, so a timeout
 or an abort kills the processes it started as well (moon, gradle and sbt

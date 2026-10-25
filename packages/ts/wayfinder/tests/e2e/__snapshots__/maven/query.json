@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "package",
+    "mode": "fuzzy"
+  },
+  "source": "fresh",
+  "storedAt": null,
+  "tasks": [
+    {
+      "id": "maven:pom.xml:package",
+      "runner": "maven",
+      "path": [
+        "maven",
+        ".",
+        "package"
+      ],
+      "argv": [
+        "mvn",
+        "package"
+      ],
+      "cwd": ".",
+      "display": "mvn package",
+      "parameters": [],
+      "source": "pom.xml",
+      "origin": "synthesized",
+      "tags": [
+        "maven",
+        "java",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "maven",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

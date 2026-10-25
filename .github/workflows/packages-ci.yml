@@ -23,10 +23,12 @@
 # release.
 #
 # `windows-tier2` runs the libraries that start programs or resolve paths on
-# Windows (command-seam, trust-repo, tiered-dirs, cli-tool, system-model),
+# Windows (command-seam, trust-repo, tiered-dirs, cli-tool, system-model,
+# wayfinder),
 # when any of them is picked. Windows is tier 2 for them (S-0021), so the job
 # has `continue-on-error: true`: it reports, but never fails the workflow or
-# blocks a release.
+# blocks a release. Each package tests in its own step with its own time
+# limit, so a hung test stops only that package and the others still report.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: packages
@@ -210,14 +212,18 @@ jobs:
   windows-tier2:
     name: windows tier 2 (windows-latest, node ${{ matrix.node }})
     # A hung test process must not hold the job for the default six hours.
-    timeout-minutes: 20
+    # A full run takes about 2.5 minutes. The limit is the sum of the step
+    # limits below (install 5, build 5, six tests at 4, smoke 3) plus 3 for
+    # setup, so a hung step never cancels the steps after it.
+    timeout-minutes: 40
     needs: changes
     if: >-
       contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/command-seam') ||
       contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/trust-repo') ||
       contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/tiered-dirs') ||
       contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/cli-tool') ||
-      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/system-model')
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/system-model') ||
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/wayfinder')
     runs-on: windows-latest
     continue-on-error: true
     strategy:
@@ -230,6 +236,11 @@ jobs:
     env:
       PACKAGES: ${{ needs.changes.outputs.packages }}
     steps:
+      # Git for Windows checks text out with CRLF by default. The tests read
+      # their own sources and docs, written with LF.
+      - name: Keep LF line endings
+        run: git config --global core.autocrlf false
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -241,7 +252,7 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
 
-      # The picked packages among the five. `build` adds their workspace
+      # The picked packages among the six. `build` adds their workspace
       # dependencies, which pnpm's `...` suffix selects. A path selector needs
       # braces for the suffix: `{./path}...`.
       - name: Pick the tier-2 packages
@@ -249,7 +260,7 @@ jobs:
         run: |
           filter=''
           build=''
-          for p in command-seam trust-repo tiered-dirs cli-tool system-model; do
+          for p in command-seam trust-repo tiered-dirs cli-tool system-model wayfinder; do
             if grep -q "\"packages/ts/$p\"" <<< "$PACKAGES"; then
               filter="$filter --filter ./packages/ts/$p"
               build="$build --filter {./packages/ts/$p}..."
@@ -260,21 +271,53 @@ jobs:
 
       # $FILTER and $BUILD are several flags, so they are left unquoted.
       - name: Install
+        timeout-minutes: 5
         env:
           BUILD: ${{ steps.pick.outputs.build }}
         run: pnpm install --frozen-lockfile $BUILD
 
       - name: Build
+        id: build
+        timeout-minutes: 5
         env:
           BUILD: ${{ steps.pick.outputs.build }}
         run: pnpm $BUILD --if-present run build
 
-      - name: Test
-        env:
-          FILTER: ${{ steps.pick.outputs.filter }}
-        run: pnpm $FILTER --no-bail --if-present run test
+      # One step per package. `!cancelled()` runs each one after an earlier
+      # one failed or timed out, as long as the build passed.
+      - name: Test command-seam
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/command-seam"') }}
+        timeout-minutes: 4
+        run: pnpm --filter ./packages/ts/command-seam run test
+
+      - name: Test trust-repo
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/trust-repo"') }}
+        timeout-minutes: 4
+        run: pnpm --filter ./packages/ts/trust-repo run test
+
+      - name: Test tiered-dirs
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/tiered-dirs"') }}
+        timeout-minutes: 4
+        run: pnpm --filter ./packages/ts/tiered-dirs run test
+
+      - name: Test cli-tool
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/cli-tool"') }}
+        timeout-minutes: 4
+        run: pnpm --filter ./packages/ts/cli-tool run test
+
+      - name: Test system-model
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/system-model"') }}
+        timeout-minutes: 4
+        run: pnpm --filter ./packages/ts/system-model run test
+
+      - name: Test wayfinder
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/wayfinder"') }}
+        timeout-minutes: 4
+        run: pnpm --filter ./packages/ts/wayfinder run test
 
       - name: Smoke the built packages under Node
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 3
         env:
           FILTER: ${{ steps.pick.outputs.filter }}
-        run: pnpm $FILTER --if-present run smoke
+        run: pnpm $FILTER --no-bail --if-present run smoke

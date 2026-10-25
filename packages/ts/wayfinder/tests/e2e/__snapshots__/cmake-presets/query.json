@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "debug",
+    "mode": "fuzzy"
+  },
+  "source": "fresh",
+  "storedAt": null,
+  "tasks": [
+    {
+      "id": "cmake-presets:CMakePresets.json:configure:debug",
+      "runner": "cmake-presets",
+      "path": [
+        "cmake-presets",
+        ".",
+        "configure",
+        "debug"
+      ],
+      "argv": [
+        "cmake",
+        "--preset",
+        "debug"
+      ],
+      "cwd": ".",
+      "display": "cmake --preset debug",
+      "parameters": [],
+      "source": "CMakePresets.json",
+      "origin": "declared",
+      "tags": [
+        "cmake-presets",
+        ".",
+        "configure"
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    },
+    {
+      "id": "cmake-presets:CMakePresets.json:build:debug",
+      "runner": "cmake-presets",
+      "path": [
+        "cmake-presets",
+        ".",
+        "build",
+        "debug"
+      ],
+      "argv": [
+        "cmake",
+        "--build",
+        "--preset",
+        "debug"
+      ],
+      "cwd": ".",
+      "display": "cmake --build --preset debug",
+      "parameters": [],
+      "source": "CMakePresets.json",
+      "origin": "declared",
+      "dependsOn": [
+        "cmake-presets:CMakePresets.json:configure:debug"
+      ],
+      "tags": [
+        "cmake-presets",
+        ".",
+        "build"
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    },
+    {
+      "id": "cmake-presets:CMakePresets.json:test:debug",
+      "runner": "cmake-presets",
+      "path": [
+        "cmake-presets",
+        ".",
+        "test",
+        "debug"
+      ],
+      "argv": [
+        "ctest",
+        "--preset",
+        "debug"
+      ],
+      "cwd": ".",
+      "display": "ctest --preset debug",
+      "parameters": [],
+      "source": "CMakePresets.json",
+      "origin": "declared",
+      "dependsOn": [
+        "cmake-presets:CMakePresets.json:configure:debug"
+      ],
+      "tags": [
+        "cmake-presets",
+        ".",
+        "test"
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "cmake-presets",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

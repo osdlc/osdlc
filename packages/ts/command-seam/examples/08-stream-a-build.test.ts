@@ -102,9 +102,16 @@ const scratch = mkdtempSync(join(tmpdir(), 'examples-build-'))
 afterAll(() => rmSync(scratch, { recursive: true, force: true }))
 
 test('a real streamed build leaves its output on disk', () => {
-  // A stand-in `npm` that writes the bundle and prints nothing.
-  const npm = join(scratch, 'npm')
-  writeFileSync(npm, '#!/bin/sh\nmkdir -p dist && : > dist/index.js\n')
+  // A stand-in `npm` that writes the bundle and prints nothing. On Windows it
+  // is a batch file, as the real `npm.cmd` is, so it runs through `cmd.exe`.
+  const windows = process.platform === 'win32'
+  const npm = join(scratch, windows ? 'npm.cmd' : 'npm')
+  writeFileSync(
+    npm,
+    windows
+      ? '@mkdir dist\r\n@type nul > dist\\index.js\r\n'
+      : '#!/bin/sh\nmkdir -p dist && : > dist/index.js\n',
+  )
   chmodSync(npm, 0o755)
 
   build(scratch, streamRunner(npm))

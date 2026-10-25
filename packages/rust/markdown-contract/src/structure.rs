@@ -23,7 +23,7 @@ use crate::camel::to_camel_key;
 use crate::contract::{GapSpec, LeafSpec, Order, SectionContent, SectionOpts, SectionSeq, Spec};
 use crate::finding::Finding;
 use crate::registry::{Ctx, FindingSpec};
-use crate::tree::{BlockNode, SectionNode};
+use crate::tree::SectionNode;
 
 // ── Spec inspection helpers ──────────────────────────────────────────────────────────
 
@@ -49,34 +49,12 @@ impl<'a> Slot<'a> {
         self.names.join("’ / ‘")
     }
 
-    /// The slot's effective hint: its node `description`, else the enclosing
-    /// level's — `None` all the way up for v1 / description-free contracts.
+    /// The slot's effective hint: its node `description`, else the enclosing level's.
     fn hint<'h>(&self, level: Option<&'h str>) -> Option<&'h str>
     where
         'a: 'h,
     {
         self.opts.and_then(|o| o.description.as_deref()).or(level)
-    }
-}
-
-/// The effective hint for a heading name at one level: the admitting slot's, else the
-/// level's inherited hint (unknown sections fall through to the level).
-fn hint_for_name<'h>(slots: &[Slot<'h>], name: &str, level: Option<&'h str>) -> Option<&'h str> {
-    slots
-        .iter()
-        .find(|s| s.admits(name))
-        .and_then(|s| s.hint(level))
-        .or(level)
-}
-
-/// Unwrap `optional(spec)` to its inner spec, tracking optionality.
-fn unwrap(spec: &Spec) -> (&Spec, bool) {
-    match spec {
-        Spec::Optional(inner) => {
-            let (i, _) = unwrap(inner);
-            (i, true)
-        }
-        other => (other, false),
     }
 }
 
@@ -101,7 +79,7 @@ fn make_slot<'a>(
 fn slots_of(specs: &[Spec]) -> Vec<Slot<'_>> {
     let mut slots = Vec::new();
     for (spec_idx, spec) in specs.iter().enumerate() {
-        let (inner, optional) = unwrap(spec);
+        let (inner, optional) = spec.unwrap_optional();
         match inner {
             Spec::Section(s) => {
                 slots.push(make_slot(spec_idx, &s.names, optional, s.opts.as_ref()))
@@ -155,7 +133,7 @@ fn check_duplicate_headings(
                             ),
                         )
                         .pos(node.pos)
-                        .hint_opt(hint_for_name(slots, &node.name, level_hint)),
+                        .hint_opt(level_hint),
                     ),
                 );
             }
@@ -180,7 +158,7 @@ fn check_duplicate_headings(
                         ),
                     )
                     .pos(node.pos)
-                    .hint_opt(hint_for_name(slots, &node.name, level_hint)),
+                    .hint_opt(level_hint),
                 ));
             }
             Some(_) => {}
@@ -243,8 +221,8 @@ fn check_repeat_bounds(
 
 /// Match one level: `nodes` (the sibling sections at this depth) against the level's
 /// grammar. Emits findings, then recurses into declared sections' `children`.
-/// `inherited` is the nearest enclosing v2 `description` — the enclosing
-/// section's effective hint, `None` at the body root and throughout v1 contracts.
+/// `inherited` is the nearest enclosing `description`: the enclosing section's
+/// effective hint, `None` at the body root.
 fn match_level(
     nodes: &[SectionNode],
     seq: &SectionSeq,
@@ -303,7 +281,7 @@ fn check_alias_ambiguity(
                         ),
                     )
                     .pos(a.node.pos)
-                    .hint_opt(slot.hint(level_hint)),
+                    .hint_opt(level_hint),
                 ));
             }
             Some(_) => {}
@@ -354,9 +332,7 @@ fn check_order_and_unknowns(
     let allow_unknown = seq.opts.allow_unknown;
 
     match order {
-        Order::RecognizedRelative => {
-            check_recognized_relative(assigned, slots, level_hint, ctx, out)
-        }
+        Order::RecognizedRelative => check_recognized_relative(assigned, level_hint, ctx, out),
         Order::Strict => check_strict(
             nodes,
             &seq.specs,
@@ -377,7 +353,7 @@ fn check_order_and_unknowns(
     let has_gap = seq
         .specs
         .iter()
-        .any(|s| matches!(unwrap(s).0, Spec::Gap(_)));
+        .any(|s| matches!(s.unwrap_optional().0, Spec::Gap(_)));
     if !has_gap {
         emit_stray_unknowns(assigned, level_hint, ctx, out);
     } else {
@@ -432,7 +408,6 @@ fn run_present_slot_checks(
 /// already seen is the out-of-place one.
 fn check_recognized_relative(
     assigned: &[Assigned<'_>],
-    slots: &[Slot<'_>],
     level_hint: Option<&str>,
     ctx: &Ctx,
     out: &mut Vec<Finding>,
@@ -450,7 +425,7 @@ fn check_recognized_relative(
                     ),
                 )
                 .pos(a.node.pos)
-                .hint_opt(slots[slot_idx].hint(level_hint)),
+                .hint_opt(level_hint),
             ));
         } else {
             max_slot = Some(slot_idx);
@@ -483,7 +458,7 @@ fn check_strict(
     let mut gap_count: BTreeMap<usize, usize> = specs
         .iter()
         .enumerate()
-        .filter(|(_, s)| matches!(unwrap(s).0, Spec::Gap(_)))
+        .filter(|(_, s)| matches!(s.unwrap_optional().0, Spec::Gap(_)))
         .map(|(i, _)| (i, 0))
         .collect();
 
@@ -513,7 +488,7 @@ fn check_strict(
             continue;
         }
 
-        let (inner, _) = unwrap(&specs[spec_idx]);
+        let (inner, _) = specs[spec_idx].unwrap_optional();
         if matches!(inner, Spec::Gap(_)) {
             // Does this section anchor a later slot? Then close the gap and re-evaluate.
             if matches_slot_from(slots, &node.name, spec_idx + 1).is_some() {
@@ -558,7 +533,7 @@ fn check_strict(
                         ),
                     )
                     .pos(node.pos)
-                    .hint_opt(slot.hint(level_hint)),
+                    .hint_opt(level_hint),
                 ));
             }
             // Advance the cursor to the later slot and consume the section there.
@@ -614,7 +589,7 @@ fn admit_past_sequence(
 ) {
     let last_was_gap = specs
         .last()
-        .is_some_and(|s| matches!(unwrap(s).0, Spec::Gap(_)));
+        .is_some_and(|s| matches!(s.unwrap_optional().0, Spec::Gap(_)));
     let known = slot_for(slots, &node.name).is_some();
     if !known && !last_was_gap && !allow_unknown {
         out.push(
@@ -646,12 +621,11 @@ fn emit_gap_counts(
     out: &mut Vec<Finding>,
 ) {
     for (&gap_spec_idx, &count) in gap_count {
-        let Spec::Gap(gap) = unwrap(&specs[gap_spec_idx]).0 else {
+        let Spec::Gap(gap) = specs[gap_spec_idx].unwrap_optional().0 else {
             continue;
         };
         if let Some(message) = gap_bound_message(gap, count) {
-            let mut spec = FindingSpec::new("structure/gap-count", message)
-                .hint_opt(gap.description.as_deref().or(level_hint));
+            let mut spec = FindingSpec::new("structure/gap-count", message).hint_opt(level_hint);
             if let Some(pos) = gap_anchor_pos(slots, nodes, gap_spec_idx) {
                 spec = spec.pos(pos);
             }
@@ -687,7 +661,7 @@ fn check_unordered_gap(
     ctx: &Ctx,
     out: &mut Vec<Finding>,
 ) {
-    let Some(gap) = specs.iter().find_map(|s| match unwrap(s).0 {
+    let Some(gap) = specs.iter().find_map(|s| match s.unwrap_optional().0 {
         Spec::Gap(g) => Some(g),
         _ => None,
     }) else {
@@ -696,10 +670,7 @@ fn check_unordered_gap(
     let count = assigned.iter().filter(|a| a.slot_idx.is_none()).count();
     if let Some(message) = gap_bound_message(gap, count) {
         out.push(
-            ctx.finding(
-                FindingSpec::new("structure/gap-count", message)
-                    .hint_opt(gap.description.as_deref().or(level_hint)),
-            ),
+            ctx.finding(FindingSpec::new("structure/gap-count", message).hint_opt(level_hint)),
         );
     }
 }
@@ -788,7 +759,7 @@ fn kind_gate(
 ) {
     let expected = leaf.kind;
     let leaf_hint = leaf.description.as_deref().or(section_hint);
-    let Some(candidate) = pick_block(node, anchor) else {
+    let Some(candidate) = node.block_for(anchor) else {
         let message = match anchor {
             Some(a) => format!(
                 "section ‘{}’ is missing a {expected} block at ^{a}",
@@ -820,15 +791,6 @@ fn kind_gate(
                 .hint_opt(leaf_hint),
             ),
         );
-    }
-}
-
-/// The block a content slot addresses: the block carrying `anchor` when set, else the
-/// section's first block.
-fn pick_block<'a>(node: &'a SectionNode, anchor: Option<&str>) -> Option<&'a BlockNode> {
-    match anchor {
-        Some(a) => node.blocks.iter().find(|b| b.anchor() == Some(a)),
-        None => node.blocks.first(),
     }
 }
 

@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "release",
+    "mode": "fuzzy"
+  },
+  "source": "fresh",
+  "storedAt": null,
+  "tasks": [
+    {
+      "id": "github-actions:.github/workflows/release.yml:release.yml",
+      "runner": "github-actions",
+      "path": [
+        "github-actions",
+        "release.yml"
+      ],
+      "argv": [
+        "gh",
+        "workflow",
+        "run",
+        "release.yml"
+      ],
+      "cwd": ".",
+      "display": "gh workflow run release.yml",
+      "parameters": [],
+      "parametersUnknown": "not-read",
+      "source": ".github/workflows/release.yml",
+      "origin": "declared",
+      "doc": "release",
+      "tags": [
+        "github-actions",
+        "ci",
+        "remote"
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "remote"
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "github-actions",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [
+    {
+      "kind": "parameters",
+      "runner": "github-actions",
+      "reason": "not-read",
+      "tasks": [
+        "github-actions:.github/workflows/release.yml:release.yml"
+      ],
+      "label": "parameters unknown: this runner does not read them"
+    }
+  ]
+}

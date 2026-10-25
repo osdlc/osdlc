@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "lint",
+    "mode": "fuzzy"
+  },
+  "source": "fresh",
+  "storedAt": null,
+  "tasks": [
+    {
+      "id": "composer:composer.json:lint",
+      "runner": "composer",
+      "path": [
+        "composer",
+        ".",
+        "lint"
+      ],
+      "argv": [
+        "composer",
+        "run-script",
+        "lint"
+      ],
+      "cwd": ".",
+      "display": "composer run-script lint",
+      "parameters": [],
+      "source": "composer.json",
+      "origin": "declared",
+      "detail": "phpcs src && phpstan analyse",
+      "tags": [
+        "composer",
+        "php",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "composer",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

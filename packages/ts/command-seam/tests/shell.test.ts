@@ -14,7 +14,8 @@ describe('runShell', () => {
     expect(r.stderr).toBe('b\n')
   })
 
-  test('forwards cwd, env and input', () => {
+  // POSIX only: Git for Windows `sh` prints `/` as `/d`.
+  test.skipIf(process.platform === 'win32')('forwards cwd, env and input', () => {
     const r = runShell('printf "%s|%s|" "$PWD" "$X"; cat', {
       cwd: '/',
       env: { X: 'v' },
@@ -23,7 +24,8 @@ describe('runShell', () => {
     expect(r.stdout).toBe('/|v|in')
   })
 
-  test('args become $1.. and scriptName becomes $0', () => {
+  // POSIX only: Git for Windows `sh` re-parses its command line, quotes included.
+  test.skipIf(process.platform === 'win32')('args become $1.. and scriptName becomes $0', () => {
     const r = runShell('printf "%s|%s|%s" "$0" "$1" "$2"', {
       cwd: CWD,
       scriptName: 'hook',

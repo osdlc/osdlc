@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/wayfinder",
-  "version": "0.7.4",
+  "version": "0.8.0",
   "description": "Browse and run every task in a repository from one list: a terminal UI where Enter runs the selected task, a live web view, and JSON for scripts. Tasks, installs, tool trust and git hooks come from @osdlc/system-model.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
@@ -25,12 +25,24 @@
   },
   "type": "module",
   "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "default": "./dist/schema.js"
+    },
+    "./package.json": "./package.json"
+  },
   "bin": {
     "way": "./bin/way.js"
   },
   "files": [
     "dist/",
     "bin/",
+    "schema/",
     "README.md",
     "CHANGELOG.md",
     "LICENSE-MIT",
@@ -42,9 +54,10 @@
     "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node scripts/build-web.mjs",
+    "build": "node scripts/write-document-schemas.ts && tsc -p tsconfig.build.json && node scripts/build-web.mjs && node scripts/write-config-schema.mjs",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
+    "test:e2e": "vitest run tests/e2e",
     "smoke": "node tests/smoke.mjs",
     "coverage": "vitest run --coverage",
     "prepublishOnly": "npm run clean && npm run build",
@@ -57,11 +70,17 @@
     "@osdlc/cli-tool": "workspace:^",
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/config-layers": "workspace:^",
+    "@osdlc/detect-harness": "workspace:^",
+    "@osdlc/etag-write": "workspace:^",
     "@osdlc/system-model": "workspace:^",
+    "@osdlc/tiered-dirs": "workspace:^",
     "@osdlc/trust-repo": "workspace:^",
-    "@osdlc/typed-git": "workspace:^"
+    "@osdlc/typed-git": "workspace:^",
+    "@osdlc/ux": "workspace:^",
+    "zod": "catalog:"
   },
   "devDependencies": {
+    "@osdlc/color": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",

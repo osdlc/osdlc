@@ -130,7 +130,8 @@ const EntrySchema = z.object({
  * @experimental
  */
 export const TrustOutputSchema = z.object({
-  action: z.enum(['trust', 'untrust', 'show', 'list']),
+  /** The mode that ran. `untrust-all` is `--untrust-all`. */
+  action: z.enum(['trust', 'untrust', 'untrust-all', 'show', 'list']),
   /** Whether this run changed the store. */
   changed: z.boolean(),
   roots: z.array(EntrySchema),
@@ -160,7 +161,13 @@ export const TrustOutputSchema = z.object({
  */
 export function trustCommand<G extends FlagSpec = Record<never, never>>(
   service: TrustService,
-  options: { globals?: G; summary?: string; description?: string } = {},
+  options: {
+    globals?: G
+    summary?: string
+    description?: string
+    /** The `--scope` flag's help, to name the scopes this tool has. */
+    scopeHelp?: string
+  } = {},
 ): DataCommand {
   const kit = commandKit({ globals: options.globals ?? ({} as G) })
   const scoped = service.scopes === true
@@ -186,7 +193,7 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
           scope: {
             kind: 'string',
             valueName: 'name',
-            help: 'the scope of the grant, such as one tool',
+            help: options.scopeHelp ?? 'the scope of the grant, such as one tool',
           },
         }
       : {}),
@@ -222,7 +229,11 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
           return { action: 'show' as const, changed: false, roots: [await service.show(ctx, req)] }
         case 'untrustAll': {
           const { root, removed } = await service.untrustAll!(ctx)
-          const output = { action: 'untrust' as const, changed: removed.length > 0, roots: removed }
+          const output = {
+            action: 'untrust-all' as const,
+            changed: removed.length > 0,
+            roots: removed,
+          }
           if (removed.length === 0) {
             ctx.note(`no grants to remove: ${root}`)
             return outcome(output, EXIT.error)
@@ -272,6 +283,7 @@ function trustText(output: z.infer<typeof TrustOutputSchema>): string {
     case 'show':
       return `${first!.trusted ? 'trusted' : 'not trusted'} ${first!.root}${first!.by !== null && first!.trusted ? ` (by ${first!.by})` : ''}\n`
     case 'untrust':
+    case 'untrust-all':
       return output.changed
         ? output.roots
             .map((r) => `untrusted ${r.root}${r.scope !== undefined ? ` (${r.scope})` : ''}\n`)

@@ -19,7 +19,13 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { createHash } from 'node:crypto'
 
-import { parseTrustScope, resolveExecGate, trustStore, WHOLE_REPO_SCOPE } from '../src/index.ts'
+import {
+  normalizeTrustPath,
+  parseTrustScope,
+  resolveExecGate,
+  trustStore,
+  WHOLE_REPO_SCOPE,
+} from '../src/index.ts'
 
 const dirs: string[] = []
 async function tmp(): Promise<string> {
@@ -71,13 +77,15 @@ describe('per-scope grants', () => {
     await store.trust(repo)
     await store.trust(repo, 'just')
     await store.trust(other, 'mise')
-    expect(await store.list()).toEqual([repo])
+    // The store lists keys: on Windows with `/` and a lower-case drive letter.
+    const [repoKey, otherKey] = [normalizeTrustPath(repo), normalizeTrustPath(other)]
+    expect(await store.list()).toEqual([repoKey])
     const grants = await store.listGrants()
     expect(grants.map((g) => [g.root, g.scope])).toEqual([
-      [other, 'mise'],
-      [repo, '*'],
-      [repo, 'just'],
-      [repo, 'mise'],
+      [otherKey, 'mise'],
+      [repoKey, '*'],
+      [repoKey, 'just'],
+      [repoKey, 'mise'],
     ])
     for (const g of grants) expect(g.marker).toBe(await store.markerPath(g.root, g.scope))
   })
@@ -188,18 +196,20 @@ describe('per-scope grants', () => {
 describe('a store written before scopes existed', () => {
   test('its whole-repository markers read as they are, with no migration', async () => {
     const { repo, store } = await setup()
-    // The marker an older release wrote: `<basename>-<sha16>`, holding the root.
-    const digest = createHash('sha256').update(repo).digest('hex').slice(0, 16)
+    // The marker an older release wrote: `<basename>-<sha16>` of the root's
+    // key, holding the key.
+    const key = normalizeTrustPath(repo)
+    const digest = createHash('sha256').update(key).digest('hex').slice(0, 16)
     const marker = join(store.dir(), `${basename(repo)}-${digest}`)
     await mkdir(dirname(marker), { recursive: true })
-    await writeFile(marker, `${repo}\n`)
+    await writeFile(marker, `${key}\n`)
     expect(await store.markerPath(repo)).toBe(marker)
     expect(await store.markerPath(repo, WHOLE_REPO_SCOPE)).toBe(marker)
     expect(await store.isTrusted(repo)).toBe(true)
     expect(await store.isTrusted(repo, 'mise')).toBe(true)
-    expect(await store.listGrants()).toEqual([{ root: repo, scope: '*', marker }])
+    expect(await store.listGrants()).toEqual([{ root: key, scope: '*', marker }])
     expect((await store.trust(repo)).alreadyTrusted).toBe(true)
-    expect(await readFile(marker, 'utf-8')).toBe(`${repo}\n`)
+    expect(await readFile(marker, 'utf-8')).toBe(`${key}\n`)
   })
 })
 

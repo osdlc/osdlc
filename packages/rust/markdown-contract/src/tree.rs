@@ -1,7 +1,8 @@
 //! The projected document substrate — `DocTree` / `SectionNode` / `BlockNode`.
 //!
-//! The layer-1 tree every plane reads: flat headings become a nested section tree
-//! (H1 = document title, H2 = top-level body sections, deeper headings nested by depth),
+//! The tree every plane reads: flat headings become a nested section tree (the first
+//! H1 is the document title; H2s and any later H1 are top-level sections; deeper
+//! headings nest by depth),
 //! blocks are flattened (table cells → strings, list items → text, code verbatim,
 //! paragraph text flattened), each carrying a 1-based source position. `^block-id`
 //! anchors bind to blocks (`BlockNode` anchor) or sections (`SectionNode::anchors`).
@@ -13,14 +14,12 @@ use crate::finding::SourcePos;
 
 /// The block kinds the structure plane's kind-gate distinguishes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub enum BlockKind {
-    /// a table
     Table,
-    /// a list
     List,
-    /// a fenced code block
+    /// A fenced or indented code block.
     Code,
-    /// a paragraph
     Paragraph,
 }
 
@@ -73,12 +72,15 @@ pub enum BlockNode {
         /// where the list starts
         pos: SourcePos,
     },
-    /// A fenced code block.
+    /// A fenced or indented code block.
     Code {
         /// the info-string language, if any
         lang: Option<String>,
         /// the code, without the fences
         value: String,
+        /// `true` for a fenced block, whose `value` starts on the line after `pos`; an
+        /// indented block's `value` starts on `pos.line`
+        fenced: bool,
         /// the `^block-id` bound to the block, if any
         anchor: Option<String>,
         /// where the block starts
@@ -156,6 +158,15 @@ pub struct SectionNode {
 }
 
 impl SectionNode {
+    /// The block a content slot reads: the block bound to `anchor` when one is given,
+    /// else the section's first block.
+    pub(crate) fn block_for(&self, anchor: Option<&str>) -> Option<&BlockNode> {
+        match anchor {
+            Some(a) => self.blocks.iter().find(|b| b.anchor() == Some(a)),
+            None => self.blocks.first(),
+        }
+    }
+
     pub(crate) fn new(name: impl Into<String>, depth: u8, pos: SourcePos) -> Self {
         Self {
             name: name.into(),
@@ -168,11 +179,10 @@ impl SectionNode {
     }
 }
 
-/// The position-aware frontmatter block. `data` is the parsed YAML projected to the
-/// JSON value shape the TS `yaml` package's `toJS()` yields (`None` when the YAML does
-/// not parse — the undefined case). `pos` is the opening `---` fence (line 1). The
-/// key-path → source-line index the frontmatter plane uses is derived from `raw` by
-/// [`crate::frontmatter::line_for_path`].
+/// The frontmatter block. `data` is the parsed YAML in the JSON value shape the TS
+/// `yaml` package's `toJS()` gives, or `None` when the YAML does not parse. `pos` is
+/// the opening `---` fence (line 1). The frontmatter plane finds the line of a key, and
+/// the error of YAML that does not parse, by reading `raw`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Frontmatter {
     /// inter-fence YAML text, fences stripped

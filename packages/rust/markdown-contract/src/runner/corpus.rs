@@ -1,21 +1,19 @@
-//! Corpus runner — config (globs → contracts) → aggregated findings across a set of
-//! documents, plus a CI-meaningful exit code, mirroring the TS
-//! `runner/corpus.ts`.
+//! The corpus runner: route a set of documents to contracts by glob, and return the
+//! findings and an exit code, mirroring the TS `runner/corpus.ts`.
 //!
-//! The CORE is fs-free: [`run_corpus`] takes the file set as data — `(relative posix
-//! path, source)` pairs, in walk order — matches each path against the config's
-//! `include` / `exclude` globs, and validates the FIRST matching rule's contract over
-//! it (first-match for determinism). The std::fs walker that feeds it from a directory
-//! tree lives in the thin native layer ([`crate::runner::native`]).
+//! The core does no I/O: [`run_corpus`] takes `(relative posix path, source)` pairs in
+//! walk order, and validates each file against the first rule whose `include` matches
+//! and whose `exclude` does not. The native layer walks a directory and reads only the
+//! files a rule routes.
 //!
-//! Glob semantics replicate picomatch (`{ dot: true }`): `*` never crosses `/`
-//! (globset's `literal_separator`), `**/` spans zero or more directories (so one
-//! `**/*.md` covers the run root and nested files), dotfiles match like any other file,
-//! and `{a,b}` alternation works.
+//! Globs cover the common subset of picomatch with `{ dot: true }`: `*` never crosses
+//! `/`, `**/` spans zero or more directories (so `**/*.md` covers the root and nested
+//! files), dotfiles match, and `{a,b}` alternation works.
 //!
-//! Exit-code policy: `0` when no `error`-level finding exists, `1` when one
-//! does. `2` is reserved for usage/config errors and is raised by the hosting layer
-//! (e.g. a `DeclarativeError` from config loading), never here.
+//! The exit code is `0` when no finding has level `error`, else `1`. A host reports a
+//! config error (a [`GlobError`] or a `DeclarativeError`) on its own, such as with `2`.
+
+use std::borrow::Cow;
 
 use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 
@@ -23,18 +21,17 @@ use crate::contract::Contract;
 use crate::finding::{Finding, FindingLevel};
 use crate::validate::validate;
 
-/// One routing rule: an `include` glob set (minus an optional `exclude` set) mapped to
-/// the contract that governs the matched files. `name` is an optional human label
-/// (populated from a string contract ref by the declarative config loader); the runner
-/// never routes on it.
+/// One routing rule: the files that match `include` and not `exclude` are checked
+/// against `contract`.
 pub struct CorpusRule {
-    /// globs a file must match, relative to the run root
+    /// Globs relative to the run root. A file must match at least one.
     pub include: Vec<String>,
-    /// globs that take a file out of the rule
+    /// Globs that take a file out of the rule.
     pub exclude: Vec<String>,
-    /// the contract that checks the matched files
+    /// The contract that checks the matched files.
     pub contract: Contract,
-    /// a label for the rule
+    /// The contract's name when the config refers to it by a string, for a host to
+    /// print. The runner does not route on it.
     pub name: Option<String>,
 }
 
@@ -63,6 +60,7 @@ pub struct RunStats {
 
 /// The run outcome: aggregated findings (each already deterministically sorted within
 /// its file, stamped with its file path), the exit code, and the run counts.
+#[derive(Debug)]
 pub struct RunOutcome {
     /// every finding, grouped by file in the order the files were offered
     pub findings: Vec<Finding>,
@@ -94,9 +92,8 @@ pub struct GlobError {
     pub reason: String,
 }
 
-/// Compile a glob list into a matcher under the runner's picomatch-equivalent options:
-/// `literal_separator` (a `*` never crosses `/`) — dotfiles already match by default.
-pub fn compile_matcher(globs: &[String]) -> Result<GlobSet, GlobError> {
+/// Compile a glob list into a matcher: `*` never crosses `/`, and dotfiles match.
+pub(crate) fn compile_matcher(globs: &[String]) -> Result<GlobSet, GlobError> {
     let mut builder = GlobSetBuilder::new();
     for glob in globs {
         let compiled = GlobBuilder::new(glob)
@@ -145,16 +142,34 @@ fn first_matching_rule(rules: &[CompiledRule], path: &str) -> Option<usize> {
 
 /// Run a config across a file set and aggregate findings.
 ///
-/// `files` supplies `(relative posix path, source)` pairs in the caller's walk order
-/// (the native walker yields the TS runner's deterministic per-directory sort). For
-/// each file the FIRST rule whose `include` matches and whose `exclude` does not
-/// validates it, with the file's relative path stamped onto every finding. A file that
-/// matches no rule is skipped.
+/// `files` supplies `(relative posix path, source)` pairs in the caller's walk order.
+/// Each file is validated by the first rule whose `include` matches and whose `exclude`
+/// does not, with its path stamped on every finding. A file that matches no rule is
+/// skipped.
 pub fn run_corpus<'a>(
     config: &CorpusConfig,
     files: impl IntoIterator<Item = (&'a str, &'a str)>,
     opts: &RunOptions,
 ) -> Result<RunOutcome, GlobError> {
+    run_lazy(
+        config,
+        files
+            .into_iter()
+            .map(|(path, source)| (path, move || Ok(Cow::Borrowed(source)))),
+        opts,
+    )
+}
+
+/// [`run_corpus`] with each source loaded only when a rule routes its file.
+pub(crate) fn run_lazy<'a, E, F>(
+    config: &CorpusConfig,
+    files: impl IntoIterator<Item = (&'a str, F)>,
+    opts: &RunOptions,
+) -> Result<RunOutcome, E>
+where
+    E: From<GlobError>,
+    F: FnOnce() -> Result<Cow<'a, str>, E>,
+{
     let rules = compile(config)?;
     let include = if opts.include.is_empty() {
         None
@@ -185,7 +200,7 @@ pub fn run_corpus<'a>(
         };
         matched_by_rule[idx] += 1;
         files_matched += 1;
-        findings.extend(validate(source, &config.rules[idx].contract, path));
+        findings.extend(validate(&source()?, &config.rules[idx].contract, path));
     }
 
     let has_error = findings.iter().any(|f| f.level == FindingLevel::Error);

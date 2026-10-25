@@ -1,0 +1,338 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "just",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "just runs recipes declared in a justfile — the deterministic command tails a repo shares between humans, hooks and CI."
+        },
+        {
+          "label": "justfile",
+          "hint": "Which justfile declares the recipe. `.` is the one at the root; others are addressed with -f and -d."
+        },
+        {
+          "label": "recipe",
+          "hint": "The recipe name. Any <required> / [optional] / *variadic parameters follow it."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#384d54"
+      },
+      "tool": {
+        "binary": "just",
+        "found": true,
+        "path": "<bin>/just"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "just:justfile:safe",
+          "runner": "just",
+          "path": [
+            "just",
+            ".",
+            "safe"
+          ],
+          "argv": [
+            "just",
+            "safe"
+          ],
+          "cwd": ".",
+          "display": "just safe",
+          "parameters": [],
+          "parametersUnknown": "exec-withheld",
+          "source": "justfile",
+          "origin": "declared",
+          "tags": [
+            "just",
+            "root"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    },
+    {
+      "runner": "node-scripts",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "The package manager runs the `scripts` entries declared in a package.json."
+        },
+        {
+          "label": "directory",
+          "hint": "The directory the package sits in. A grouping this catalog adds, not part of the command."
+        },
+        {
+          "label": "package",
+          "hint": "The package's declared name, or its path when it has none."
+        },
+        {
+          "label": "script",
+          "hint": "The key under `scripts` in that package.json."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#5fa04e"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "node-scripts:package.json:build\u001b[2J",
+          "runner": "node-scripts",
+          "path": [
+            "node-scripts",
+            ".",
+            "hostile\u001b]0;pwned\u0007",
+            "build\u001b[2J"
+          ],
+          "argv": [
+            "npm",
+            "run",
+            "build\u001b[2J"
+          ],
+          "cwd": ".",
+          "display": "npm run build\u001b[2J",
+          "parameters": [],
+          "source": "package.json",
+          "origin": "declared",
+          "detail": "echo \u001b[31mred\u001b[0m",
+          "tags": [
+            "node-scripts",
+            "npm",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "node-scripts:package.json:rev\u202eesrever",
+          "runner": "node-scripts",
+          "path": [
+            "node-scripts",
+            ".",
+            "hostile\u001b]0;pwned\u0007",
+            "rev\u202eesrever"
+          ],
+          "argv": [
+            "npm",
+            "run",
+            "rev\u202eesrever"
+          ],
+          "cwd": ".",
+          "display": "npm run rev\u202eesrever",
+          "parameters": [],
+          "source": "package.json",
+          "origin": "declared",
+          "detail": "echo bidi",
+          "tags": [
+            "node-scripts",
+            "npm",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "node-scripts:package.json:bell\u0007",
+          "runner": "node-scripts",
+          "path": [
+            "node-scripts",
+            ".",
+            "hostile\u001b]0;pwned\u0007",
+            "bell\u0007"
+          ],
+          "argv": [
+            "npm",
+            "run",
+            "bell\u0007"
+          ],
+          "cwd": ".",
+          "display": "npm run bell\u0007",
+          "parameters": [],
+          "source": "package.json",
+          "origin": "declared",
+          "detail": "printf '\\a'",
+          "tags": [
+            "node-scripts",
+            "npm",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "node-scripts:package.json:c1\u009bcontrol",
+          "runner": "node-scripts",
+          "path": [
+            "node-scripts",
+            ".",
+            "hostile\u001b]0;pwned\u0007",
+            "c1\u009bcontrol"
+          ],
+          "argv": [
+            "npm",
+            "run",
+            "c1\u009bcontrol"
+          ],
+          "cwd": ".",
+          "display": "npm run c1\u009bcontrol",
+          "parameters": [],
+          "source": "package.json",
+          "origin": "declared",
+          "detail": "true",
+          "tags": [
+            "node-scripts",
+            "npm",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    },
+    {
+      "runner": "package-manager",
+      "chain": [
+        {
+          "label": "role",
+          "hint": "Commands the detected package managers offer, synthesized from the files that show them."
+        },
+        {
+          "label": "directory",
+          "hint": "The package the command is for. `.` is the root."
+        },
+        {
+          "label": "tool",
+          "hint": "The tool that runs the command."
+        },
+        {
+          "label": "action",
+          "hint": "What the command does."
+        }
+      ],
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "package-manager:package.json:npm:install",
+          "runner": "package-manager",
+          "path": [
+            "package-manager",
+            ".",
+            "npm",
+            "install"
+          ],
+          "argv": [
+            "npm",
+            "install"
+          ],
+          "cwd": ".",
+          "display": "npm install",
+          "parameters": [],
+          "source": "package.json",
+          "origin": "synthesized",
+          "tags": [
+            "package-manager",
+            "npm",
+            "node",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "source": "fresh",
+  "storedAt": null,
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "just",
+        "node-scripts"
+      ]
+    },
+    {
+      "id": "dependencies",
+      "title": "Dependencies",
+      "runners": [
+        "package-manager"
+      ]
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "just",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "node-scripts",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [
+    {
+      "kind": "parameters",
+      "runner": "just",
+      "reason": "exec-withheld",
+      "tasks": [
+        "just:justfile:safe"
+      ],
+      "label": "parameters unknown: reading them needs execution, which is withheld"
+    }
+  ],
+  "trustedTools": [],
+  "filter": {}
+}

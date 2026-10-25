@@ -1,0 +1,7 @@
+{
+  "name": "acme/site",
+  "scripts": {
+    "test": "phpunit",
+    "lint": ["phpcs src", "phpstan analyse"]
+  }
+}

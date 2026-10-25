@@ -266,14 +266,18 @@ describe('large and special files', () => {
     }
   })
 
-  test('a pipe hashes to a fixed label, not to missing', async () => {
-    const root = await fixtureRoot({})
-    try {
-      const withPipe = await digestOf(root, ['pipe'])
-      runChecked(spawnRunner('mkfifo'), [join(root, 'pipe')], { cwd: root })
-      expect(await digestOf(root, ['pipe'])).not.toBe(withPipe)
-    } finally {
-      await removeRoot(root)
-    }
-  })
+  // POSIX only: named pipes (`mkfifo`) are POSIX.
+  test.skipIf(process.platform === 'win32')(
+    'a pipe hashes to a fixed label, not to missing',
+    async () => {
+      const root = await fixtureRoot({})
+      try {
+        const withPipe = await digestOf(root, ['pipe'])
+        runChecked(spawnRunner('mkfifo'), [join(root, 'pipe')], { cwd: root })
+        expect(await digestOf(root, ['pipe'])).not.toBe(withPipe)
+      } finally {
+        await removeRoot(root)
+      }
+    },
+  )
 })

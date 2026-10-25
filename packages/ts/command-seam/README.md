@@ -500,7 +500,7 @@ commandString(argv, { platform: 'win32', shell: 'cmd' })
 
 | Shell        | Words                                                                                                                                                | With `cwd`                            |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| `posix`      | `shellJoin`: bare when only `A-Za-z0-9_@%+=:,./-`, else single-quoted with `'` written `'\''`                                                          | `cd <dir> && <line>` (`cd --` for a folder starting with `-`) |
+| `posix`      | `shellJoin`: bare when only `A-Za-z0-9_@%+=:,./-`, else single-quoted with `'` written `'\''` and `\` written `'\\'`                                                          | `cd <dir> && <line>` (`cd --` for a folder starting with `-`) |
 | `powershell` | `&` first, always. Bare when it starts with a letter or `_-./\` and holds only letters, digits and `_-./\:=`; else single-quoted, each `'` (and `‘ ’ ‚ ‛`) doubled | `if (Set-Location -LiteralPath <dir> -PassThru) { <line> }` |
 | `cmd`        | Bare when only `A-Za-z0-9_@+:./\-`; else quoted and `^`-escaped as in [Starting a program on Windows](#starting-a-program-on-windows). The program gets `^` escapes without quotes | `cd /d <dir> && <line>`               |
 
@@ -512,6 +512,13 @@ program. `commandString` throws `RangeError` for an empty `argv`, and for
 `cmd` when a word or `cwd` holds a line break or a `%`, which `cmd.exe` cannot
 quote. `cmd.exe` expands `%NAME%` in a pasted line before it reads any `^`.
 
+A POSIX line reads the same in fish, which treats `\'` and `\\` inside single
+quotes as escapes, so a backslash is always written outside the quotes.
+
+`@osdlc/command-seam/quote` exports `commandString`, `shellJoin` and
+`shellQuote` alone. It imports nothing from Node, so a browser bundle can use
+it.
+
 ## Platforms
 
 Linux and macOS are supported in full. On Windows the argv runners
@@ -521,7 +528,8 @@ These parts stay POSIX only:
 
 - `runShell` and `shellRunner` need `sh` on `PATH`.
 - The `processGroup` options and `installGroupSignalForwarding` use POSIX
-  process groups. Signals follow POSIX rules. To kill a process tree on
+  process groups. Signals follow POSIX rules. On Windows a `processGroup`
+  run's stop reaches the direct child only. To kill a process tree on
   Windows too, use `killTree`.
 - The `bun test` capture path runs through `/bin/sh`.
 
@@ -1076,7 +1084,8 @@ are settled, and Windows support has landed, if that is feasible.
 | `FakeRunner`, `FakeCall`, `FakeProcess`, `FakeProcessOptions`  | interface | `/testing`: the fakes' return, call and option types           |
 
 `/testing` marks an export of `@osdlc/command-seam/testing`; every other
-export is from `@osdlc/command-seam`. Every export has TSDoc in the source.
+export is from `@osdlc/command-seam`. The quoting functions are also exported
+from `@osdlc/command-seam/quote`. Every export has TSDoc in the source.
 Runnable examples for each export are in the
 [`examples` directory](https://github.com/osdlc/osdlc/tree/main/packages/ts/command-seam/examples).
 

@@ -1,0 +1,229 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "node-scripts",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "The package manager runs the `scripts` entries declared in a package.json."
+        },
+        {
+          "label": "directory",
+          "hint": "The directory the package sits in. A grouping this catalog adds, not part of the command."
+        },
+        {
+          "label": "package",
+          "hint": "The package's declared name, or its path when it has none."
+        },
+        {
+          "label": "script",
+          "hint": "The key under `scripts` in that package.json."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#5fa04e"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "node-scripts:package.json:build",
+          "runner": "node-scripts",
+          "path": [
+            "node-scripts",
+            ".",
+            "web",
+            "build"
+          ],
+          "argv": [
+            "npm",
+            "run",
+            "build"
+          ],
+          "cwd": ".",
+          "display": "npm run build",
+          "parameters": [],
+          "source": "package.json",
+          "origin": "declared",
+          "detail": "tsc -p .",
+          "tags": [
+            "node-scripts",
+            "npm",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "node-scripts:package.json:test",
+          "runner": "node-scripts",
+          "path": [
+            "node-scripts",
+            ".",
+            "web",
+            "test"
+          ],
+          "argv": [
+            "npm",
+            "run",
+            "test"
+          ],
+          "cwd": ".",
+          "display": "npm run test",
+          "parameters": [],
+          "source": "package.json",
+          "origin": "declared",
+          "detail": "vitest run",
+          "tags": [
+            "node-scripts",
+            "npm",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "node-scripts:package.json:dev",
+          "runner": "node-scripts",
+          "path": [
+            "node-scripts",
+            ".",
+            "web",
+            "dev"
+          ],
+          "argv": [
+            "npm",
+            "run",
+            "dev"
+          ],
+          "cwd": ".",
+          "display": "npm run dev",
+          "parameters": [],
+          "source": "package.json",
+          "origin": "declared",
+          "detail": "vite",
+          "tags": [
+            "node-scripts",
+            "npm",
+            "."
+          ],
+          "persistent": {
+            "value": true,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    },
+    {
+      "runner": "package-manager",
+      "chain": [
+        {
+          "label": "role",
+          "hint": "Commands the detected package managers offer, synthesized from the files that show them."
+        },
+        {
+          "label": "directory",
+          "hint": "The package the command is for. `.` is the root."
+        },
+        {
+          "label": "tool",
+          "hint": "The tool that runs the command."
+        },
+        {
+          "label": "action",
+          "hint": "What the command does."
+        }
+      ],
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "package-manager:package-lock.json:npm:install",
+          "runner": "package-manager",
+          "path": [
+            "package-manager",
+            ".",
+            "npm",
+            "install"
+          ],
+          "argv": [
+            "npm",
+            "ci"
+          ],
+          "cwd": ".",
+          "display": "npm ci",
+          "parameters": [],
+          "source": "package-lock.json",
+          "origin": "synthesized",
+          "tags": [
+            "package-manager",
+            "npm",
+            "node",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "source": "fresh",
+  "storedAt": null,
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "node-scripts"
+      ]
+    },
+    {
+      "id": "dependencies",
+      "title": "Dependencies",
+      "runners": [
+        "package-manager"
+      ]
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "node-scripts",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "trustedTools": [],
+  "filter": {}
+}

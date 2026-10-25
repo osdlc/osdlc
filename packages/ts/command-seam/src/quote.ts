@@ -11,7 +11,7 @@ const INERT = /^[A-Za-z0-9_@%+=:,./-]+$/
 /**
  * `word` as one shell word: unquoted when it holds only characters no POSIX
  * shell treats specially (letters, digits and `_@%+=:,./-`), single-quoted
- * otherwise.
+ * otherwise. The quoted form reads the same in fish.
  */
 export function shellQuote(word: string): string {
   if (INERT.test(word)) return word
@@ -27,8 +27,13 @@ export function shellJoin(argv: readonly string[]): string {
   return argv.map((w, i) => (i === 0 && w.includes('=') ? quoted(w) : shellQuote(w))).join(' ')
 }
 
+/**
+ * `word` single-quoted. A `'` is written `'\''`, and a `\` is written `'\\'`,
+ * outside the quotes: fish reads `\'` and `\\` inside single quotes as
+ * escapes, so a word ending in `\` would leave the quotes open.
+ */
 function quoted(word: string): string {
-  return `'${word.replaceAll("'", `'\\''`)}'`
+  return `'${word.replace(/['\\]/g, (c) => (c === "'" ? `'\\''` : `'\\\\'`))}'`
 }
 
 /**

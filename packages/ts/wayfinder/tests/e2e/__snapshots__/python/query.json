@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "ruff",
+    "mode": "fuzzy"
+  },
+  "source": "fresh",
+  "storedAt": null,
+  "tasks": [
+    {
+      "id": "python:pyproject.toml:ruff",
+      "runner": "python",
+      "path": [
+        "python",
+        ".",
+        "ruff"
+      ],
+      "argv": [
+        "ruff",
+        "check",
+        "."
+      ],
+      "cwd": ".",
+      "display": "ruff check .",
+      "parameters": [],
+      "source": "pyproject.toml",
+      "origin": "synthesized",
+      "tags": [
+        "python",
+        "ruff",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "python",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

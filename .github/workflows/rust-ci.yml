@@ -138,6 +138,12 @@ jobs:
           cargo test -p yaml-splice --no-default-features --locked
           RUSTDOCFLAGS='-D warnings' cargo doc --no-deps -p yaml-splice --no-default-features --locked
 
+      # Without `native`, the crate does no I/O; the corpus test still runs.
+      - name: markdown-contract without default features
+        run: |
+          cargo clippy -p markdown-contract --no-default-features --all-targets --locked -- -D warnings
+          cargo test -p markdown-contract --no-default-features --locked
+
       # Builds each crate from its packaged files only, so a file missing from
       # a crate's `include` list fails here and not on crates.io. Crates with
       # `publish = false` are left out: they never ship, and a crate held back
@@ -265,6 +271,7 @@ jobs:
   # source builds. It also checks that tradecraft-wasm's core.generated.ts is
   # the file tradecraft-typegen writes. On a difference it uploads the rebuilt
   # files.
+  # It also builds markdown-contract for wasm32 without default features.
   wasm:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
@@ -305,6 +312,10 @@ jobs:
 
       - name: Build the wasm with build.sh
         run: bash packages/rust/yaml-splice-wasm/build.sh
+
+      - name: Build markdown-contract for wasm32
+        working-directory: packages/rust
+        run: cargo build -p markdown-contract --no-default-features --target wasm32-unknown-unknown --locked
 
       - name: The committed wasm matches the rebuild
         run: |

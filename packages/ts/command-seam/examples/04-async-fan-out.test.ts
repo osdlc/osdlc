@@ -120,30 +120,35 @@ function standInGit(): AsyncCommandRunner {
   return spawnRunnerAsync(bin)
 }
 
-test('a real timeout and a real abort each stop only what they should', async () => {
-  const fast = join(scratch, 'fast')
-  const slow = join(scratch, 'slow')
-  for (const dir of [fast, slow]) mkdirSync(dir)
-  const git = standInGit()
-  const started: string[] = []
+// POSIX only: the stand-in `git` is a `sh` script, and `processGroup` is POSIX only.
+test.skipIf(process.platform === 'win32')(
+  'a real timeout and a real abort each stop only what they should',
+  async () => {
+    const fast = join(scratch, 'fast')
+    const slow = join(scratch, 'slow')
+    for (const dir of [fast, slow]) mkdirSync(dir)
+    const git = standInGit()
+    const started: string[] = []
 
-  const timed = await fetchAll([fast, slow], {
-    git,
-    // The fast fetch takes about 10 ms. The slow one would take 10 s.
-    timeoutMs: 1_000,
-    onStart: (repo) => started.push(repo),
-  })
+    const timed = await fetchAll([fast, slow], {
+      git,
+      // The fast fetch takes about 10 ms. The slow one would take 10 s.
+      timeoutMs: 1_000,
+      onStart: (repo) => started.push(repo),
+    })
 
-  expect(timed.map((o) => o.why ?? 'ok')).toEqual(['ok', 'timeout'])
-  expect(started.sort()).toEqual([fast, slow])
+    expect(timed.map((o) => o.why ?? 'ok')).toEqual(['ok', 'timeout'])
+    expect(started.sort()).toEqual([fast, slow])
 
-  // The user cancels as soon as the fetch starts.
-  const controller = new AbortController()
-  const cancelled = await fetchAll([slow], {
-    git,
-    signal: controller.signal,
-    onStart: () => controller.abort(),
-  })
+    // The user cancels as soon as the fetch starts.
+    const controller = new AbortController()
+    const cancelled = await fetchAll([slow], {
+      git,
+      signal: controller.signal,
+      onStart: () => controller.abort(),
+    })
 
-  expect(cancelled).toEqual([{ repo: slow, ok: false, why: 'abort' }])
-}, 15_000)
+    expect(cancelled).toEqual([{ repo: slow, ok: false, why: 'abort' }])
+  },
+  15_000,
+)

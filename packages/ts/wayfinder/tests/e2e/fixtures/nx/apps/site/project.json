@@ -1,0 +1,7 @@
+{
+  "name": "site",
+  "targets": {
+    "build": { "command": "vite build" },
+    "serve": { "command": "vite" }
+  }
+}

@@ -1,5 +1,15 @@
 # @osdlc/typed-git
 
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [9616994]
+- Updated dependencies [d243a32]
+- Updated dependencies [d243a32]
+- Updated dependencies [9616994]
+  - @osdlc/command-seam@0.12.0
+
 ## 0.8.0
 
 ### Minor Changes

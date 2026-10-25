@@ -4,86 +4,62 @@
  * project structure, whether execution is allowed, extra tools) are set once,
  * per user and per project. Flags are for one-off changes.
  *
+ * {@link WayfinderConfigSchema} is the one description of the file. Validation,
+ * the settable keys, the key order of a written file and `schema/config.json`
+ * all come from it.
+ *
  * ## Layers, lowest precedence first
  *
- *   1. `DEFAULT_CONFIG` — the built-in defaults.
- *   2. USER — `$XDG_CONFIG_HOME/wayfinder/config.json`, or `~/.config/wayfinder/config.json`
- *      when `XDG_CONFIG_HOME` is unset or relative.
- *   3. PROJECT — `wayfinder.config.json` at the root `findRoot` resolves.
+ *   1. {@link DEFAULT_CONFIG}: the built-in defaults.
+ *   2. USER: `<config>/wayfinder/config.json` (see `xdg.ts`), or the file
+ *      `WAYFINDER_CONFIG` names.
+ *   3. PROJECT: `wayfinder.config.json` at the project root.
  *   4. CLI flags, applied by the caller. {@link collectOptionsFromConfig}
  *      returns the options a caller spreads its own flags on top of.
  *
- * `allowExec` is an exception to this order. The project layer may lower it to
- * `false`, since a repository asking not to be run is safe to honour. It can
- * never raise it to `true`. `wayfinder.config.json` lives inside the repository
- * being scanned, so honouring `allowExec: true` from it would let a repository
- * authorize running its own code. So `allowExec: true` is removed from the
- * project layer before merging, with a warning. Only the user layer and the CLI
- * flags can turn execution on. To give a repository lasting permission, run
- * `way trust`, which records the consent outside the repository.
+ * The project file lives inside the repository being scanned, so it may not
+ * set what would let a repository authorize itself, or what is a person's own
+ * choice. Each of these is dropped from the project layer before the merge,
+ * with a warning, and `config set --project` refuses to write it:
+ *
+ *   - `allowExec: true`. A project may lower `allowExec` to `false`, never
+ *     raise it. Run `way trust` to give a repository lasting permission.
+ *   - `trust`, whole. A repository must not pre-authorize itself, or any group
+ *     of repositories that includes it.
+ *   - `open`, `theme` and `skills`, which say how a person likes to work.
  *
  * `tools` is gated too, because a tool module is code. User-layer entries
  * always load; project-layer entries load only when the repository is trusted
  * and execution is allowed (see `tools.ts`).
  *
- * `trust` is a stricter exception. It has no lower setting a project could
- * choose, so the whole project-layer `trust` block is dropped, with a warning
- * when it is not empty. A repository must not be able to pre-authorize itself,
- * or any group of repositories that includes it. Only the user layer's `trust`
- * reaches `@osdlc/trust-repo`'s `policyExecGate`, which combines it with the
- * marker store that `way trust` writes to. See that package's README for the
- * glob dialect, and `@osdlc/trust-repo/git` for the origin-remote lookup that
- * `trust.owners` uses.
- *
- * XDG paths are used on every platform, macOS included, as `gh` does. A
- * developer with a dotfiles repository expects this file beside their other
- * tool config.
- *
  * `WAYFINDER_CONFIG=/path/to/file` changes only where the user layer is read
- * from. The named file is read instead of the XDG path. The project layer is
- * still read from the project root and still merges on top. Naming a file that
- * does not exist is an error, not an empty layer: an env var that points at
- * nothing is a typo. A relative value is ignored with a warning, and the XDG
- * path is read instead.
- *
- * ## The old waypost names
- *
- * The tool was called waypost before its first release. Each old name is still
- * read when its new one is absent, so an existing setup keeps working:
- * `WAYPOST_CONFIG` when `WAYFINDER_CONFIG` is unset, `<config>/waypost/config.json`
- * when `<config>/wayfinder/config.json` does not exist, and `waypost.config.json`
- * when `wayfinder.config.json` does not exist. A file found this way is also the
- * one `config set` edits, so a setting never lands in a file that is not read.
- * Each fallback adds a warning that names the new location. When both the old
- * and the new file exist, the new one is read and a warning says the old one
- * is ignored.
+ * from. Naming a file that does not exist is an error, not an empty layer. A
+ * relative value is ignored with a warning, since from the project root it
+ * would name a file in the repository.
  *
  * ## Merge rule
  *
  * Objects merge key by key. Everything else, scalars and arrays alike,
- * replaces the lower value whole. Arrays replace because each array setting
- * answers "which ones, in what order". A project that says `order: ["just"]`
- * means that list, not that list appended to the user's.
- *
- *   user    { runners: { disabled: ["cargo"], order: ["moon"] } }
- *   project { runners: {                      order: ["just"] } }
- *   result  { runners: { disabled: ["cargo"], order: ["just"] } }
+ * replaces the lower value whole. A project that says `order: ["just"]` means
+ * that list, not that list appended to the user's.
  *
  * ## Unknown keys and broken files
  *
- * An unknown key is a warning naming the file and the key, and the rest of the
- * file still loads. A config written for a newer version must not break an
- * older one. A malformed file, or a value of the wrong type for a known key, is
- * a {@link ConfigError} naming the file and the problem. There is no silent
- * fallback: a setting that quietly did not apply is worse than one that refused
- * to load.
+ * An unknown key is a warning naming the file and the key, with the closest
+ * known key, and the rest of the file still loads: a file written for a newer
+ * version must not break an older one. A malformed file, or a value of the
+ * wrong type for a known key, is a {@link ConfigError} naming the file and the
+ * problem. `$schema` is accepted and ignored.
  */
 
-import { existsSync } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { constants, existsSync } from 'node:fs'
+import { lstat, open, readlink, realpath, type FileHandle } from 'node:fs/promises'
+import { dirname, isAbsolute, join as joinPath, resolve } from 'node:path'
 
-import { readParsedFile } from '@osdlc/config-layers'
+import { z } from 'zod'
+
+import { closestMatches } from '@osdlc/config-layers/did-you-mean'
+import { atomicWriteAsync } from '@osdlc/etag-write'
 import {
   expandTrustPath,
   homeDir,
@@ -92,146 +68,232 @@ import {
 } from '@osdlc/trust-repo'
 import { originOwner } from '@osdlc/trust-repo/git'
 
-import type { DiscoveryMode } from '@osdlc/system-model/detect'
-
-import {
-  APP,
-  BIN,
-  CONFIG_ENV_VAR,
-  LEGACY_APP,
-  LEGACY_CONFIG_ENV_VAR,
-  LEGACY_PROJECT_CONFIG_FILENAME,
-  PROJECT_CONFIG_FILENAME,
-} from './app.ts'
-import { expandTilde } from './xdg.ts'
+import { APP, BIN, CONFIG_ENV_VAR, PROJECT_CONFIG_FILENAME } from './app.ts'
+import { THEME_VALUES, type Theme } from './config-keys.ts'
+import { appDirs, expandTilde, pre08Bases, USER_CONFIG_FILENAME } from './xdg.ts'
 import type { WayOptions } from './catalog.ts'
+import { SKILLS_SETTING_VALUES, type SkillsSetting } from './core/skills.ts'
 
-export { CONFIG_ENV_VAR, PROJECT_CONFIG_FILENAME }
-
-/** Directory under `$XDG_CONFIG_HOME` holding the USER layer. */
-export const USER_CONFIG_DIR = APP
-
-/** The `tool` key of the trust store (`$XDG_STATE_HOME/<tool>/trusted/`). */
-export const TRUST_STORE_TOOL = APP
-
-/** The old {@link USER_CONFIG_DIR}, read when the new user file does not exist. */
-export const LEGACY_USER_CONFIG_DIR = LEGACY_APP
-
-/** The old {@link TRUST_STORE_TOOL}. Its grants are still honoured; see `trust-store.ts`. */
-export const LEGACY_TRUST_STORE_TOOL = LEGACY_APP
-
-/** The USER layer's filename inside {@link USER_CONFIG_DIR}. */
-export const USER_CONFIG_FILENAME = 'config.json'
-
-export interface RunnersConfig {
-  /** Built-in runner ids to skip entirely. Becomes `CollectOptions.exclude`. */
-  disabled?: string[]
-  /** Preferred display order. Runners not named here follow alphabetically. */
-  order?: string[]
-}
+export { CONFIG_ENV_VAR, PROJECT_CONFIG_FILENAME, USER_CONFIG_FILENAME }
 
 /**
- * The policy `@osdlc/trust-repo`'s `policyExecGate` decides trust over, on
- * top of the marker store `way trust` writes to. User layer only (see the
- * module docblock). A project-layer block is dropped before the merge.
+ * The URL a written file's `$schema` names: the schema this release line ships
+ * in `schema/config.json`. Raise it with each minor release.
  */
-export interface TrustConfig {
-  /**
-   * Glob patterns (`@osdlc/trust-repo`'s dialect: `*`, `?`, `**`, a trailing
-   * `/**` matching descendants only) over the repo root with symlinks resolved.
-   * A leading `~` expands against `home`. There are no `{name}` tokens.
-   */
-  paths?: string[]
-  /**
-   * Origin remote owners that trust a root without a marker: `host/owner`, or
-   * a bare `owner` for `github.com/owner`. Case-insensitive.
-   */
-  owners?: string[]
-}
+export const CONFIG_SCHEMA_URL = 'https://unpkg.com/@osdlc/wayfinder@0.8/schema/config.json'
+
+const strings = (description: string) => z.array(z.string()).describe(description)
+
+/** One set of trust rules: globs over the resolved root, and origin owners. */
+const TrustRulesSchema = z.object({
+  paths: strings(
+    'Glob patterns over the repository root, symlinks resolved: *, ?, ** and a trailing /** for ' +
+      'descendants only. A leading ~ is your home.',
+  ).optional(),
+  owners: strings(
+    'Origin remote owners, as host/owner, or a bare owner for github.com/owner. Case-insensitive.',
+  ).optional(),
+})
+
+/** The `discovery` values. */
+export const DISCOVERY_VALUES = ['git', 'walk', 'auto'] as const
+
+/** The `open` values: what the bare `way` command opens. */
+export const OPEN_VALUES = ['tui', 'web'] as const
+/** What the bare `way` command opens. */
+export type OpenSurface = (typeof OPEN_VALUES)[number]
+
+export { THEME_VALUES, type Theme } from './config-keys.ts'
 
 /**
- * The whole configuration document, schema v1.
- *
- * A type alias rather than an interface, so it has an implicit index
- * signature. That lets {@link setConfigValue} and the related functions take
- * both this and the raw record read from a file.
+ * The configuration file, as a Zod schema. Every key is optional; the defaults
+ * are {@link DEFAULT_CONFIG}.
  */
-export type TaskConfig = {
-  runners?: RunnersConfig
-  /** Default for the exec trust gate. A `--exec` / `--no-exec` flag still wins. */
-  allowExec?: boolean
-  discovery?: DiscoveryMode | 'auto'
-  /**
-   * Paths to leave out of discovery, on top of the built-in list. A bare name
-   * matches any path segment; a value with a slash matches a path prefix from
-   * the root, taking the tree beneath it.
-   *
-   * Use it to mark a tree as data rather than project structure, such as a
-   * fixture repo or a vendored sample. `runners.disabled` turns a runner off
-   * everywhere in the project. This leaves the runner on and narrows where it
-   * looks.
-   *
-   * It usually belongs in the project layer: which trees are fixtures is a fact
-   * about the repository, the same for everyone working in it. The user layer
-   * may set it too, and then the project value replaces the user value whole.
-   */
-  excludePaths?: string[]
-  /** User layer only. See {@link TrustConfig} and the module docblock. */
-  trust?: TrustConfig
-  /**
-   * Modules that export extra `ToolDef`s, as paths. A relative path resolves
-   * against the file that names it. Project entries load only when the
-   * repository is trusted and execution is allowed.
-   */
-  tools?: string[]
-}
+export const WayfinderConfigSchema = z
+  .object({
+    $schema: z.string().describe('The JSON Schema this file follows. Ignored by wayfinder.'),
+    runners: z
+      .object({
+        disabled: strings('Runner ids to skip entirely.'),
+        order: strings('Preferred display order. Runners not named follow alphabetically.'),
+      })
+      .partial()
+      .describe('Which runners are read, and in what order they are shown.'),
+    allowExec: z
+      .boolean()
+      .describe(
+        'Whether runners that must run a subprocess may be read. Execution also needs a trusted ' +
+          'repository. A project file may only set false.',
+      ),
+    discovery: z
+      .enum(DISCOVERY_VALUES)
+      .describe('How directories are found: git-tracked files, a directory walk, or auto.'),
+    excludePaths: strings(
+      'Paths to leave out of discovery. A bare name matches any path segment; a value with a ' +
+        'slash matches a path from the root and the tree beneath it.',
+    ),
+    trust: TrustRulesSchema.extend({
+      tools: z
+        .record(z.string().min(1), TrustRulesSchema)
+        .describe(
+          'Rules that trust one tool each, keyed by tool id. They are checked after the ' +
+            'top-level rules.',
+        )
+        .optional(),
+    }).describe(
+      'Repositories trusted without a marker. User config only: a project file cannot set it.',
+    ),
+    tools: strings(
+      'Modules that export extra tools. A relative path resolves against the file that names it.',
+    ),
+    open: z
+      .enum(OPEN_VALUES)
+      .describe(
+        'What the bare way command opens: the terminal UI or the web view. User config only.',
+      ),
+    theme: z.enum(THEME_VALUES).describe('The web view theme. User config only.'),
+    skills: z
+      .enum(SKILLS_SETTING_VALUES)
+      .describe(
+        "Which agent skills the Skills group lists: the repository's (project), those and your " +
+          "own and your plugins' (all), or none (off). User config only.",
+      ),
+  })
+  .partial()
+  .describe('wayfinder configuration: wayfinder.config.json or the user config file.')
+
+/** The configuration document. */
+export type WayfinderConfig = Omit<z.infer<typeof WayfinderConfigSchema>, '$schema'>
 
 /**
- * The built-in defaults layer.
- *
- * Every leaf is present, so {@link LoadedConfig.sources} has an entry for
- * every key. A key set in no file is attributed to this layer.
+ * The configuration document.
+ * @deprecated Use {@link WayfinderConfig}.
  */
-export const DEFAULT_CONFIG: Required<TaskConfig> = {
-  runners: { disabled: [], order: [] },
-  allowExec: false,
-  discovery: 'auto',
-  excludePaths: [],
-  trust: { paths: [], owners: [] },
-  tools: [],
+export type TaskConfig = WayfinderConfig
+
+/** `config.runners`. */
+export type RunnersConfig = NonNullable<WayfinderConfig['runners']>
+
+/** `config.trust`: the policy `@osdlc/trust-repo`'s `policyExecGate` decides over. User layer only. */
+export type TrustConfig = NonNullable<WayfinderConfig['trust']>
+
+/** The schema's JSON Schema, as shipped in `schema/config.json`. */
+export function configJsonSchema(): Record<string, unknown> {
+  const { $schema, ...schema } = z.toJSONSchema(WayfinderConfigSchema, { io: 'input' }) as Record<
+    string,
+    unknown
+  >
+  return { $schema, $id: CONFIG_SCHEMA_URL, title: 'wayfinder configuration', ...schema }
 }
 
-export type ConfigLayer = 'default' | 'user' | 'project'
+// ── Schema walking ──────────────────────────────────────────────────────────
 
-export interface ConfigLocations {
-  /** Absolute path of the user layer's file, whether or not it exists. */
-  user: string
-  /** True when an env var supplied that path instead of XDG. */
-  userFromEnv: boolean
-  /** The env var that supplied it: {@link CONFIG_ENV_VAR}, or the old one. Null when none did. */
-  userEnvVar: string | null
-  /** True when `user` is the old waypost file, found because the new one does not exist. */
-  userLegacy: boolean
-  /** The old waypost user file, when it exists beside the new one and is ignored. */
-  userIgnored: string | null
-  /**
-   * A relative {@link CONFIG_ENV_VAR} (or old-name) value, which is ignored:
-   * the variable and its value. Null when none was ignored.
-   */
-  userEnvIgnored: { variable: string; value: string } | null
-  /**
-   * Absolute path of `<root>/wayfinder.config.json`, whether or not it exists,
-   * or of `<root>/waypost.config.json` when only that one exists.
-   */
-  project: string
-  /** True when `project` is the old waypost file. */
-  projectLegacy: boolean
-  /** `<root>/waypost.config.json`, when it exists beside the new file and is ignored. */
-  projectIgnored: string | null
+function unwrap(schema: z.ZodType): z.ZodType {
+  let s = schema
+  while (s instanceof z.ZodOptional) s = s.unwrap() as z.ZodType
+  return s
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function describe(value: unknown): string {
+  if (value === null) return 'null'
+  if (Array.isArray(value)) return 'an array'
+  return `a ${typeof value}`
+}
+
+/** What a leaf expects, in words: `true or false`, `one of git, walk, auto`. */
+function expectation(schema: z.ZodType): string {
+  const s = unwrap(schema)
+  if (s instanceof z.ZodBoolean) return 'true or false'
+  if (s instanceof z.ZodEnum) return `one of ${s.options.join(', ')}`
+  if (s instanceof z.ZodArray) return 'an array of strings'
+  if (s instanceof z.ZodString) return 'a string'
+  return 'an object'
+}
+
+const join = (prefix: string, key: string): string => (prefix === '' ? key : `${prefix}.${key}`)
+
+/**
+ * The schema node a dotted key names, or undefined. A record (`trust.tools`)
+ * takes any key, so `trust.tools.mise.paths` names a node.
+ */
+function schemaAt(key: string): z.ZodType | undefined {
+  if (key === '' || key === '$schema') return undefined
+  let node: z.ZodType = WayfinderConfigSchema
+  for (const segment of key.split('.')) {
+    const s = unwrap(node)
+    if (s instanceof z.ZodObject) {
+      const next = (s.shape as Record<string, z.ZodType>)[segment]
+      if (next === undefined || !Object.hasOwn(s.shape, segment)) return undefined
+      node = next
+    } else if (s instanceof z.ZodRecord) {
+      if (!(s.keyType as z.ZodType).safeParse(segment).success) return undefined
+      node = s.valueType as z.ZodType
+    } else {
+      return undefined
+    }
+  }
+  return node
+}
+
+/** The dotted leaf keys under `schema`: an object is walked, anything else (a record too) is a leaf. */
+function leafKeys(schema: z.ZodType, prefix: string): string[] {
+  const s = unwrap(schema)
+  if (!(s instanceof z.ZodObject)) return [prefix]
+  return Object.entries(s.shape as Record<string, z.ZodType>).flatMap(([key, child]) =>
+    key === '$schema' ? [] : leafKeys(child, join(prefix, key)),
+  )
 }
 
 /**
- * A configuration file that cannot be honoured — unparseable, or holding a
+ * Every setting, in schema order: the dotted names `config list` shows and
+ * `config set` accepts. `trust.tools` is one setting whose value is an
+ * object; `config set` also takes a key under it, such as
+ * `trust.tools.mise.paths`.
+ */
+export const CONFIG_KEYS: readonly string[] = leafKeys(WayfinderConfigSchema, '')
+
+export { CLI_ONLY_KEYS, USER_ONLY_KEYS } from './config-keys.ts'
+
+/** Whether `key` is `top` or a key under it. */
+function under(key: string, top: string): boolean {
+  return key === top || key.startsWith(`${top}.`)
+}
+
+/**
+ * Why the project file may not hold `value` at `key`, in a few words, or null
+ * when it may. `config explain` shows it beside an ignored project value.
+ */
+export function projectIgnoreReason(key: string, value: unknown): string | null {
+  if (under(key, 'trust')) return 'a repository cannot grant itself trust'
+  if (under(key, 'open') || under(key, 'theme') || under(key, 'skills')) {
+    return 'a personal setting, for the user config'
+  }
+  if (key === 'allowExec' && value === true) return 'a repository cannot turn execution on'
+  return null
+}
+
+/**
+ * Why `value` may not be written at `key` in the project file, or null when
+ * it may. `config set --project` and the web view's save both ask this.
+ */
+export function projectWriteRefusal(key: string, value: unknown): string | null {
+  const reason = projectIgnoreReason(key, value)
+  if (reason === null) return null
+  const fix =
+    key === 'allowExec'
+      ? `run "${BIN} trust" to trust this repository`
+      : 'set it in your user config'
+  return `${key === 'allowExec' ? 'allowExec: true' : key} cannot be set in a project file: ${reason}; ${fix}`
+}
+
+// ── Errors and locations ────────────────────────────────────────────────────
+
+/**
+ * A configuration file that cannot be honoured: unparseable, or holding a
  * value of the wrong type.
  */
 export class ConfigError extends Error {
@@ -248,265 +310,179 @@ export class ConfigError extends Error {
   }
 }
 
-/** The type of one settable leaf, used by validation and by `set` alike. */
-type FieldType = 'boolean' | 'string-array' | 'discovery'
+export type ConfigLayer = 'default' | 'user' | 'project'
 
-/**
- * Every settable key, by dotted path. Validation, {@link setConfigValue} and
- * the known-key check all read this one list, so a setting cannot be accepted
- * in one place and rejected in another.
- */
-const FIELDS: Record<string, FieldType> = {
-  'runners.disabled': 'string-array',
-  'runners.order': 'string-array',
-  allowExec: 'boolean',
-  discovery: 'discovery',
-  excludePaths: 'string-array',
-  'trust.paths': 'string-array',
-  'trust.owners': 'string-array',
-  tools: 'string-array',
+export interface ConfigLocations {
+  /** Absolute path of the user layer's file, whether or not it exists. */
+  user: string
+  /** True when {@link CONFIG_ENV_VAR} supplied that path. */
+  userFromEnv: boolean
+  /** {@link CONFIG_ENV_VAR} when it supplied the path, else null. */
+  userEnvVar: string | null
+  /** A relative {@link CONFIG_ENV_VAR} value, which is ignored. Null when none was. */
+  userEnvIgnored: { variable: string; value: string } | null
+  /** Absolute path of `<root>/wayfinder.config.json`, whether or not it exists. */
+  project: string
 }
 
 /**
- * Every settable key, in schema order — the dotted names `config set` accepts.
+ * Where each layer's file lives. `env` and `home` are injectable so a test
+ * does not read the developer's own config. Nothing is read.
  *
- * Derived from {@link FIELDS}, so anything that lists the keys (the `guide`
- * command's config section) stays in step with the schema.
- */
-export const CONFIG_KEYS: readonly string[] = Object.keys(FIELDS)
-
-const DISCOVERY_VALUES = ['git', 'walk', 'auto'] as const
-
-/**
- * Key order for writing: schema order, not alphabetical, so a written file
- * reads like the documented schema. Keys not listed here are unknown to this
- * version. They are written after the known ones, in the order the file
- * already had them.
- */
-const KEY_ORDER: Record<string, readonly string[]> = {
-  '': ['runners', 'allowExec', 'discovery', 'excludePaths', 'trust', 'tools'],
-  runners: ['disabled', 'order'],
-  trust: ['paths', 'owners'],
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function describe(value: unknown): string {
-  if (value === null) return 'null'
-  if (Array.isArray(value)) return 'an array'
-  return `a ${typeof value}`
-}
-
-/** Check one leaf against its declared type, returning it narrowed. */
-function coerceField(key: string, value: unknown, file: string): unknown {
-  const type = FIELDS[key]
-  const where = file === '' ? '' : `${file}: `
-  switch (type) {
-    case 'boolean':
-      if (typeof value !== 'boolean') {
-        throw new ConfigError(`${where}${key} must be true or false, got ${describe(value)}`, file)
-      }
-      return value
-    case 'string-array': {
-      if (!Array.isArray(value)) {
-        throw new ConfigError(
-          `${where}${key} must be an array of strings, got ${describe(value)}`,
-          file,
-        )
-      }
-      // Name the offending element, not the container: "got an array" reads as
-      // a contradiction when an array is exactly what was asked for.
-      const bad = value.findIndex((item) => typeof item !== 'string')
-      if (bad !== -1) {
-        throw new ConfigError(
-          `${where}${key} must be an array of strings, got ${describe(value[bad])} at index ${bad}`,
-          file,
-        )
-      }
-      return [...value]
-    }
-    case 'discovery':
-      if (
-        typeof value !== 'string' ||
-        !DISCOVERY_VALUES.includes(value as DiscoveryMode | 'auto')
-      ) {
-        throw new ConfigError(
-          `${where}${key} must be one of ${DISCOVERY_VALUES.join(', ')}, got ${JSON.stringify(value)}`,
-          file,
-        )
-      }
-      return value
-    default:
-      throw new ConfigError(`${where}unknown setting: ${key}`, file)
-  }
-}
-
-function unknownKeyWarning(file: string, key: string): string {
-  return `${file}: unknown setting "${key}" (ignored)`
-}
-
-/**
- * Resolve where each layer's file lives. `env` and `home` are injectable so a
- * test does not read the developer's own `~/.config`. The only other input is
- * whether a file exists, which picks between a new name and its old waypost
- * name (see the module docblock).
- *
- * Rules for a path taken from the environment:
- *
- * A leading `~` is expanded against `home`. A shell expands it before exec, but
- * `.env` loaders, direnv and CI YAML pass the literal tilde through. Without
- * this, `~/config.json` would silently become `<somewhere>/~/config.json`.
- *
- * A relative `XDG_CONFIG_HOME` is ignored, as the XDG spec says. A relative
- * `WAYFINDER_CONFIG` is ignored too, and `userEnvIgnored` says so. Resolved
- * against the root, or against the cwd, which is usually the root, it would
- * name a file inside the repository being scanned, and the user layer can
- * turn execution on and load tools.
+ * A leading `~` in {@link CONFIG_ENV_VAR} is expanded against `home`: `.env`
+ * loaders, direnv and CI YAML pass a literal tilde through. A relative value
+ * is ignored and `userEnvIgnored` says so.
  */
 export function configLocations(
   root: string,
   env: Record<string, string | undefined> = process.env,
   home: string = homeDir(),
 ): ConfigLocations {
-  const base = resolve(root)
-
-  const fromVar = (name: string): string | null => {
-    const value = env[name]?.trim()
-    return value !== undefined && value !== '' ? value : null
-  }
-  const named = fromVar(CONFIG_ENV_VAR)
-  const legacyNamed = named === null ? fromVar(LEGACY_CONFIG_ENV_VAR) : null
-  const namedVar =
-    named !== null ? CONFIG_ENV_VAR : legacyNamed !== null ? LEGACY_CONFIG_ENV_VAR : null
-  const envValue = named ?? legacyNamed
-  const expanded = envValue === null ? null : expandTilde(envValue, home)
-  const envPath = expanded !== null && isAbsolute(expanded) ? expanded : null
-  const userEnvVar = envPath !== null ? namedVar : null
-  const userEnvIgnored =
-    namedVar !== null && envValue !== null && envPath === null
-      ? { variable: namedVar, value: envValue }
-      : null
-
-  const xdg = expandTilde(env['XDG_CONFIG_HOME']?.trim() ?? '', home)
-  const configHome = isAbsolute(xdg) ? xdg : join(home, '.config')
-
-  const xdgUser = preferNew(
-    join(configHome, USER_CONFIG_DIR, USER_CONFIG_FILENAME),
-    join(configHome, LEGACY_USER_CONFIG_DIR, USER_CONFIG_FILENAME),
-  )
-  const project = preferNew(
-    join(base, PROJECT_CONFIG_FILENAME),
-    join(base, LEGACY_PROJECT_CONFIG_FILENAME),
-  )
-
+  const raw = env[CONFIG_ENV_VAR]?.trim()
+  const named = raw !== undefined && raw !== '' ? raw : null
+  const expanded = named === null ? null : expandTilde(named, home)
+  const envPath = expanded !== null && isAbsolute(expanded) ? resolve(expanded) : null
   return {
-    user: envPath !== null ? resolve(envPath) : xdgUser.path,
+    user: envPath ?? appDirs({ env, home }).userConfig,
     userFromEnv: envPath !== null,
-    userEnvVar,
-    userLegacy: envPath === null && xdgUser.legacy,
-    userIgnored: envPath === null ? xdgUser.ignored : null,
-    userEnvIgnored,
-    project: project.path,
-    projectLegacy: project.legacy,
-    projectIgnored: project.ignored,
+    userEnvVar: envPath !== null ? CONFIG_ENV_VAR : null,
+    userEnvIgnored:
+      named !== null && envPath === null ? { variable: CONFIG_ENV_VAR, value: named } : null,
+    project: resolve(root, PROJECT_CONFIG_FILENAME),
   }
 }
 
 /**
- * The new path, unless only the old one exists. `ignored` names the old file
- * when both exist, so the caller can say it is not read.
+ * The warning for a Windows user config left where releases before 0.8 kept
+ * it (`~\.config\wayfinder\config.json`), when there is none at the new
+ * path. That file is not read, so its settings, `allowExec: false` among
+ * them, no longer apply. Null when there is nothing to say.
  */
-function preferNew(
-  path: string,
-  legacy: string,
-): { path: string; legacy: boolean; ignored: string | null } {
-  const hasNew = existsSync(path)
-  const hasLegacy = existsSync(legacy)
-  if (!hasNew && hasLegacy) return { path: legacy, legacy: true, ignored: null }
-  return { path, legacy: false, ignored: hasNew && hasLegacy ? legacy : null }
+export function movedUserConfigWarning(
+  locations: ConfigLocations,
+  env: Record<string, string | undefined>,
+  home: string,
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  if (platform !== 'win32' || locations.userFromEnv) return null
+  const old = joinPath(pre08Bases(env, home).config, APP, USER_CONFIG_FILENAME)
+  if (resolve(old) === resolve(locations.user) || !existsSync(old)) return null
+  if (existsSync(locations.user)) return null
+  return (
+    `${old}: this user config is from before 0.8 and is no longer read, so none of its ` +
+    `settings apply; move it to ${locations.user}`
+  )
+}
+
+/** The warning for a relative {@link CONFIG_ENV_VAR} that was ignored, or null. */
+export function envIgnoredWarning(locations: ConfigLocations): string | null {
+  if (locations.userEnvIgnored === null) return null
+  const { variable, value } = locations.userEnvIgnored
+  return (
+    `${variable}=${value} is ignored because it is not an absolute path; ` +
+    `use an absolute path or ~/. Reading ${locations.user} instead`
+  )
+}
+
+// ── Validation ──────────────────────────────────────────────────────────────
+
+/**
+ * Check `value` against `schema` at `key`, returning it with unknown keys
+ * removed. Unknown keys add a warning; a wrong value throws.
+ */
+function check(
+  schema: z.ZodType,
+  value: unknown,
+  key: string,
+  file: string,
+  warnings: string[],
+): unknown {
+  const where = file === '' ? '' : `${file}: `
+  const s = unwrap(schema)
+  if (s instanceof z.ZodObject) {
+    if (!isPlainObject(value)) {
+      throw new ConfigError(
+        key === ''
+          ? `${where}expected a JSON object, got ${describe(value)}`
+          : `${where}${key} must be an object, got ${describe(value)}`,
+        file,
+      )
+    }
+    const shape = s.shape as Record<string, z.ZodType>
+    const out: Record<string, unknown> = {}
+    for (const [inner, innerValue] of Object.entries(value)) {
+      if (innerValue === undefined) continue
+      const child = Object.hasOwn(shape, inner) ? shape[inner] : undefined
+      if (child === undefined) {
+        const close = closestMatches(
+          inner,
+          Object.keys(shape).filter((k) => k !== '$schema'),
+        ).map((k) => join(key, k))
+        warnings.push(
+          `${where}unknown setting "${join(key, inner)}" (ignored)` +
+            (close.length > 0 ? `; did you mean ${close.join(', ')}?` : ''),
+        )
+        continue
+      }
+      out[inner] = check(child, innerValue, join(key, inner), file, warnings)
+    }
+    return out
+  }
+  if (s instanceof z.ZodRecord) {
+    if (!isPlainObject(value)) {
+      throw new ConfigError(`${where}${key} must be an object, got ${describe(value)}`, file)
+    }
+    const out: Record<string, unknown> = {}
+    for (const [inner, innerValue] of Object.entries(value)) {
+      if (innerValue === undefined) continue
+      if (!(s.keyType as z.ZodType).safeParse(inner).success) {
+        throw new ConfigError(`${where}${key} has an empty key`, file)
+      }
+      // Assigning `__proto__` would set the object's prototype, not a key.
+      if (inner === '__proto__') {
+        warnings.push(`${where}"${join(key, inner)}" is not a usable key (ignored)`)
+        continue
+      }
+      out[inner] = check(s.valueType as z.ZodType, innerValue, join(key, inner), file, warnings)
+    }
+    return out
+  }
+  const parsed = s.safeParse(value)
+  if (parsed.success) return parsed.data
+  // Name the offending element, not the container: "got an array" reads as a
+  // contradiction when an array is what was asked for.
+  if (s instanceof z.ZodArray && Array.isArray(value)) {
+    const bad = value.findIndex((item) => !(s.element as z.ZodType).safeParse(item).success)
+    throw new ConfigError(
+      `${where}${key} must be ${expectation(s)}, got ${describe(value[bad])} at index ${bad}`,
+      file,
+    )
+  }
+  const got = s instanceof z.ZodEnum ? JSON.stringify(value) : describe(value)
+  throw new ConfigError(`${where}${key} must be ${expectation(s)}, got ${got}`, file)
 }
 
 /**
- * Validate a parsed JSON document against schema v1.
+ * Validate a parsed JSON document against {@link WayfinderConfigSchema}.
  *
- * Throws {@link ConfigError} on a type error. Returns the known keys plus one
- * warning per unknown key. Because the result holds only known keys, the write
- * path never goes through this shape (see {@link readRawConfigFile}).
+ * Throws {@link ConfigError} on a wrong value. Returns the known keys (without
+ * `$schema`) plus one warning per unknown key. Because the result holds only
+ * known keys, the write path never goes through this shape (see
+ * {@link readRawConfigFile}).
  */
 export function validateConfig(
   raw: unknown,
   file: string,
-): { config: TaskConfig; warnings: string[] } {
-  if (!isPlainObject(raw)) {
-    throw new ConfigError(`${file}: expected a JSON object, got ${describe(raw)}`, file)
-  }
-
+): { config: WayfinderConfig; warnings: string[] } {
   const warnings: string[] = []
-  const config: TaskConfig = {}
-
-  for (const [key, value] of Object.entries(raw)) {
-    if (value === undefined) continue
-    switch (key) {
-      case 'runners': {
-        if (!isPlainObject(value)) {
-          throw new ConfigError(`${file}: runners must be an object, got ${describe(value)}`, file)
-        }
-        const runners: RunnersConfig = {}
-        for (const [inner, innerValue] of Object.entries(value)) {
-          if (innerValue === undefined) continue
-          if (inner === 'disabled' || inner === 'order') {
-            runners[inner] = coerceField(`runners.${inner}`, innerValue, file) as string[]
-          } else {
-            warnings.push(unknownKeyWarning(file, `runners.${inner}`))
-          }
-        }
-        config.runners = runners
-        break
-      }
-      case 'allowExec':
-        config.allowExec = coerceField('allowExec', value, file) as boolean
-        break
-      case 'discovery':
-        config.discovery = coerceField('discovery', value, file) as DiscoveryMode | 'auto'
-        break
-      case 'excludePaths':
-        config.excludePaths = coerceField('excludePaths', value, file) as string[]
-        break
-      case 'trust': {
-        if (!isPlainObject(value)) {
-          throw new ConfigError(`${file}: trust must be an object, got ${describe(value)}`, file)
-        }
-        const trust: TrustConfig = {}
-        for (const [inner, innerValue] of Object.entries(value)) {
-          if (innerValue === undefined) continue
-          if (inner === 'paths' || inner === 'owners') {
-            trust[inner] = coerceField(`trust.${inner}`, innerValue, file) as string[]
-          } else {
-            warnings.push(unknownKeyWarning(file, `trust.${inner}`))
-          }
-        }
-        config.trust = trust
-        break
-      }
-      case 'tools':
-        config.tools = coerceField('tools', value, file) as string[]
-        break
-      default:
-        warnings.push(unknownKeyWarning(file, key))
-    }
-  }
-
-  return { config, warnings }
+  const checked = check(WayfinderConfigSchema, raw, '', file, warnings) as Record<string, unknown>
+  const { $schema: _schema, ...config } = checked
+  return { config: config as WayfinderConfig, warnings }
 }
 
-/**
- * Deep-copy a value so the result shares no mutable structure with its source.
- * A shallow spread is not enough. Every `loadConfig` merges on top of the
- * exported `DEFAULT_CONFIG` object, so a shared branch would let a caller that
- * mutates `effective` corrupt the defaults for every later load.
- */
+// ── Merge ───────────────────────────────────────────────────────────────────
+
+/** A deep copy that shares no object or array with `value`. */
 function cloneValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(cloneValue)
   if (isPlainObject(value)) {
@@ -523,60 +499,109 @@ function deepMerge(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const key of new Set([...Object.keys(base), ...Object.keys(over)])) {
-    const under = base[key]
+    const below = base[key]
     const above = over[key]
-    if (above === undefined) {
-      out[key] = cloneValue(under)
-    } else if (isPlainObject(under) && isPlainObject(above)) {
-      out[key] = deepMerge(under, above)
-    } else {
-      out[key] = cloneValue(above)
-    }
+    if (above === undefined) out[key] = cloneValue(below)
+    else if (isPlainObject(below) && isPlainObject(above)) out[key] = deepMerge(below, above)
+    else out[key] = cloneValue(above)
   }
   return out
 }
 
 /**
  * Merge `over` onto `base` per the module's rule: objects key by key, scalars
- * and arrays replaced whole.
- *
- * Neither argument is changed, and the result shares no object or array with
- * either, including branches `over` does not mention. Mutating a loaded config
- * must not change `DEFAULT_CONFIG`.
+ * and arrays replaced whole. Neither argument is changed, and the result
+ * shares no object or array with either, so mutating a loaded config cannot
+ * change {@link DEFAULT_CONFIG}.
  */
-export function mergeConfig(base: TaskConfig, over: TaskConfig): TaskConfig {
-  return deepMerge(base, over) as TaskConfig
+export function mergeConfig(base: WayfinderConfig, over: WayfinderConfig): WayfinderConfig {
+  return deepMerge(base, over) as WayfinderConfig
 }
 
 /**
- * One layer file as a plain object, read with `@osdlc/config-layers`'s
- * `readParsedFile`. `null` when the file does not exist. A file that is
- * unreadable, not JSON, or not an object throws {@link ConfigError} naming it.
+ * The built-in defaults layer. Every setting is present, so
+ * {@link LoadedConfig.sources} has an entry for each one.
+ *
+ * `allowExec: true` does not mean "run this repository's code". The
+ * repository must also be trusted, and a configured `false` still means no
+ * execution.
  */
-async function readJsonFile(file: string): Promise<Record<string, unknown> | null> {
-  const read = readParsedFile(file, 'json')
-  switch (read.kind) {
-    case 'absent':
-      return null
-    case 'unreadable':
-      throw new ConfigError(`${file}: cannot be read — ${read.message}`, file)
-    case 'unparsable':
-      throw new ConfigError(`${file}: invalid JSON — ${read.message}`, file)
-    case 'ok':
-      if (!isPlainObject(read.value)) {
-        throw new ConfigError(`${file}: expected a JSON object, got ${describe(read.value)}`, file)
-      }
-      return read.value
+export const DEFAULT_CONFIG: Required<WayfinderConfig> = {
+  runners: { disabled: [], order: [] },
+  allowExec: true,
+  discovery: 'auto',
+  excludePaths: [],
+  trust: { paths: [], owners: [], tools: {} },
+  tools: [],
+  open: 'tui',
+  theme: 'system',
+  skills: 'project',
+}
+
+// ── Files ───────────────────────────────────────────────────────────────────
+
+/** The largest config file read. A real one is a few kilobytes. */
+const MAX_CONFIG_BYTES = 1024 * 1024
+
+/**
+ * One layer file's text, or null when it does not exist. The project file is
+ * repository content, so only a regular file of at most
+ * {@link MAX_CONFIG_BYTES} is read: a committed link to `/dev/zero` or a FIFO
+ * must not hang or fill memory. Opened non-blocking, so a FIFO does not wait
+ * for a writer.
+ */
+async function readConfigText(file: string): Promise<string | null> {
+  let handle: FileHandle
+  try {
+    handle = await open(file, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0))
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw new ConfigError(`${file}: cannot be read — ${(err as Error).message}`, file)
+  }
+  try {
+    const info = await handle.stat()
+    if (!info.isFile()) {
+      throw new ConfigError(`${file}: cannot be read — it is not a regular file`, file)
+    }
+    const buffer = Buffer.alloc(MAX_CONFIG_BYTES + 1)
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
+    if (bytesRead > MAX_CONFIG_BYTES) {
+      throw new ConfigError(`${file}: cannot be read — it is larger than 1 MB`, file)
+    }
+    return buffer.subarray(0, bytesRead).toString('utf8')
+  } catch (err) {
+    if (err instanceof ConfigError) throw err
+    throw new ConfigError(`${file}: cannot be read — ${(err as Error).message}`, file)
+  } finally {
+    await handle.close()
   }
 }
 
 /**
- * The file's parsed object, unvalidated and with every key intact.
- *
- * `set` and `unset` edit this object, not the validated shape, because
- * validation drops unknown keys. Writing a validated document back would
- * silently delete a setting a newer version had written. `null` when the file
- * does not exist.
+ * One layer file as a plain object. `null` when the file does not exist. A
+ * file that is unreadable, not JSON, or not an object throws
+ * {@link ConfigError} naming it.
+ */
+async function readJsonFile(file: string): Promise<Record<string, unknown> | null> {
+  const text = await readConfigText(file)
+  if (text === null) return null
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch (err) {
+    throw new ConfigError(`${file}: invalid JSON — ${(err as Error).message}`, file)
+  }
+  if (!isPlainObject(value)) {
+    throw new ConfigError(`${file}: expected a JSON object, got ${describe(value)}`, file)
+  }
+  return value
+}
+
+/**
+ * The file's parsed object, unvalidated and with every key intact. `set` and
+ * `unset` edit this object, not the validated shape, because validation drops
+ * unknown keys: writing a validated document back would delete a setting a
+ * newer version had written. `null` when the file does not exist.
  */
 export async function readRawConfigFile(file: string): Promise<Record<string, unknown> | null> {
   return readJsonFile(file)
@@ -584,87 +609,130 @@ export async function readRawConfigFile(file: string): Promise<Record<string, un
 
 /**
  * Read, parse and validate one layer. `null` when the file does not exist,
- * which is normal and not an error. A file that exists and is broken throws
- * {@link ConfigError}.
+ * which is normal. A file that exists and is broken throws {@link ConfigError}.
  */
 export async function readConfigFile(
   file: string,
-): Promise<{ config: TaskConfig; warnings: string[] } | null> {
+): Promise<{ config: WayfinderConfig; warnings: string[] } | null> {
   const raw = await readJsonFile(file)
   if (raw === null) return null
   return validateConfig(raw, file)
 }
 
-function orderedKeys(record: Record<string, unknown>, section: string): string[] {
-  const canonical = KEY_ORDER[section] ?? []
-  const known = canonical.filter((key) => key in record)
-  const rest = Object.keys(record).filter((key) => !canonical.includes(key))
-  return [...known, ...rest]
-}
-
-function stabilize(record: Record<string, unknown>, section: string): Record<string, unknown> {
+/** `record` with known keys in schema order, unknown keys after them in their own order. */
+function stabilize(record: Record<string, unknown>, schema: z.ZodType): Record<string, unknown> {
+  const s = unwrap(schema)
   const out: Record<string, unknown> = {}
-  for (const key of orderedKeys(record, section)) {
+  if (s instanceof z.ZodRecord) {
+    for (const [key, value] of Object.entries(record)) {
+      out[key] = isPlainObject(value) ? stabilize(value, s.valueType as z.ZodType) : value
+    }
+    return out
+  }
+  const shape = s instanceof z.ZodObject ? (s.shape as Record<string, z.ZodType>) : {}
+  const known = Object.keys(shape).filter((key) => key in record)
+  const rest = Object.keys(record).filter((key) => !Object.hasOwn(shape, key))
+  for (const key of [...known, ...rest]) {
     const value = record[key]
-    const child = section === '' ? key : `${section}.${key}`
-    out[key] =
-      isPlainObject(value) && KEY_ORDER[child] !== undefined ? stabilize(value, child) : value
+    const child = Object.hasOwn(shape, key) ? shape[key] : undefined
+    out[key] = child !== undefined && isPlainObject(value) ? stabilize(value, child) : value
   }
   return out
 }
 
 /**
- * Write a configuration file: known keys in schema order, unknown keys after
- * them in the order they already had, two-space indent, trailing newline.
- * Parent directories are created.
+ * Write a configuration file atomically: a temporary file, then a rename, so
+ * a crash or two saves at once never leave a truncated file. Known keys come
+ * in schema order, unknown keys after them in the order they had, with a
+ * two-space indent and a trailing newline. A file with no `$schema` gets
+ * {@link CONFIG_SCHEMA_URL}. Parent directories are created.
  *
- * The order is fixed so that writing an unchanged document produces an
- * unchanged file. A config under version control should not show a diff
- * because a key moved.
- *
- * Accepts a raw record as well as a {@link TaskConfig}, so an edit can keep
- * unknown keys.
+ * Writing an unchanged document gives an unchanged file, so a config under
+ * version control shows no diff because a key moved. Accepts a raw record, so
+ * an edit can keep unknown keys.
  */
 export async function writeConfigFile(
   file: string,
-  config: TaskConfig | Record<string, unknown>,
+  config: WayfinderConfig | Record<string, unknown>,
 ): Promise<void> {
-  const body = JSON.stringify(stabilize(config as Record<string, unknown>, ''), null, 2)
-  await mkdir(dirname(file), { recursive: true })
-  await writeFile(file, `${body}\n`, 'utf-8')
+  const record = config as Record<string, unknown>
+  const withSchema = '$schema' in record ? record : { $schema: CONFIG_SCHEMA_URL, ...record }
+  const body = JSON.stringify(stabilize(withSchema, WayfinderConfigSchema), null, 2)
+  await atomicWriteAsync(file, `${body}\n`)
 }
+
+// ── Loading ─────────────────────────────────────────────────────────────────
 
 export interface LoadedConfig {
   /** Defaults, then user, then project, merged. The values a caller should use. */
-  effective: TaskConfig
+  effective: WayfinderConfig
   /**
-   * The layers as they were applied. `project` has already had a rejected
-   * `allowExec: true` and any `trust` block removed, so it matches `effective`
-   * and `sources`. Read the file itself with {@link readRawConfigFile} to see
-   * what was written.
+   * The layers as they were applied. `project` has already had the keys a
+   * project may not set removed, so it matches `effective` and `sources`.
    */
-  layers: { default: TaskConfig; user: TaskConfig | null; project: TaskConfig | null }
-  /**
-   * Dotted key to the layer that supplied the winning value. Every leaf of
-   * `effective` appears, so `way config list` can say where each value came
-   * from when a setting is not what the user expected.
-   */
+  layers: {
+    default: WayfinderConfig
+    user: WayfinderConfig | null
+    project: WayfinderConfig | null
+  }
+  /** The layers as their files say, validated but before any key was removed. */
+  files: { user: WayfinderConfig | null; project: WayfinderConfig | null }
+  /** Each key of {@link CONFIG_KEYS} to the layer that supplied its value. */
   sources: Map<string, ConfigLayer>
   locations: ConfigLocations
-  /** Warnings from every layer: unknown keys, ignored project keys, old waypost names. */
+  /** Warnings from every layer: unknown keys, ignored project keys, an ignored env path. */
   warnings: string[]
 }
 
-function leafPaths(value: unknown, prefix: string): string[] {
-  if (!isPlainObject(value)) return [prefix]
-  return Object.entries(value).flatMap(([key, inner]) =>
-    leafPaths(inner, prefix === '' ? key : `${prefix}.${key}`),
-  )
+/**
+ * The project layer with what a project may not set removed, and a warning
+ * for each removal that could have mattered.
+ */
+function projectRules(
+  project: WayfinderConfig,
+  locations: ConfigLocations,
+): { project: WayfinderConfig; warnings: string[] } {
+  const warnings: string[] = []
+  const out: Record<string, unknown> = { ...project }
+  if (project.allowExec === true) {
+    // Warned even when the user layer also says true: the file's setting is
+    // never honoured, and its author might rely on it.
+    warnings.push(
+      `${locations.project}: allowExec: true is ignored in a project file — a repository cannot grant itself permission to run subprocesses; run "${BIN} trust" to trust this repository`,
+    )
+    delete out['allowExec']
+  }
+  if (project.trust !== undefined) {
+    // Dropped whole: even an empty `paths: []` would replace the user's list
+    // in the merge. Warned only when it granted something.
+    const t = project.trust
+    const grants =
+      (t.paths?.length ?? 0) > 0 ||
+      (t.owners?.length ?? 0) > 0 ||
+      Object.keys(t.tools ?? {}).length > 0
+    if (grants) {
+      warnings.push(
+        `${locations.project}: trust is ignored in a project file — a repository cannot grant ` +
+          `itself trust; set it in your user config (${locations.user}) instead`,
+      )
+    }
+    delete out['trust']
+  }
+  for (const key of ['open', 'theme', 'skills'] as const) {
+    if (project[key] !== undefined) {
+      warnings.push(
+        `${locations.project}: ${key} is ignored in a project file — it is a personal setting; ` +
+          `set it in your user config (${locations.user}) instead`,
+      )
+      delete out[key]
+    }
+  }
+  return { project: out as WayfinderConfig, warnings }
 }
 
 /**
- * Load every layer and merge them. `env` and `home` are injectable for the same
- * reason {@link configLocations} takes them.
+ * Load every layer and merge them. `env` and `home` are injectable for the
+ * same reason {@link configLocations} takes them.
  */
 export async function loadConfig(
   root: string,
@@ -676,116 +744,214 @@ export async function loadConfig(
   const userRead = await readConfigFile(locations.user)
   if (userRead === null && locations.userFromEnv) {
     throw new ConfigError(
-      `${locations.user}: ${locations.userEnvVar ?? CONFIG_ENV_VAR} names a file that does not exist`,
+      `${locations.user}: ${CONFIG_ENV_VAR} names a file that does not exist`,
       locations.user,
     )
   }
   const projectRead = await readConfigFile(locations.project)
 
+  const warnings: string[] = []
+  const ignored = envIgnoredWarning(locations)
+  if (ignored !== null) warnings.push(ignored)
+  const moved = movedUserConfigWarning(locations, env, home)
+  if (moved !== null) warnings.push(moved)
+  warnings.push(...(userRead?.warnings ?? []), ...(projectRead?.warnings ?? []))
+
   const user = userRead?.config ?? null
-  let project = projectRead?.config ?? null
-  const warnings = [...(userRead?.warnings ?? []), ...(projectRead?.warnings ?? [])]
-  warnings.push(...legacyWarnings(locations))
-
-  // A repository cannot grant itself permission to run its own code. Lowering
-  // to false is honoured. Raising to true is dropped here, before the merge and
-  // before `sources`, so `config list` names the layer that really supplied the
-  // value, not the ignored file.
-  //
-  // Not in validateConfig: that check is the same for every layer and is also
-  // used by `config set`. This rule depends on which layer a value came from.
-  if (project?.allowExec === true) {
-    // Warn even when the user layer already said true. The file's setting is
-    // never honoured, and without a warning its author might rely on it in a
-    // repo where it has no effect.
-    warnings.push(
-      `${locations.project}: allowExec: true is ignored in a project file — a repository cannot grant itself permission to run subprocesses; run "${BIN} trust" to trust this repository`,
-    )
-    const { allowExec: _ignored, ...rest } = project
-    project = rest
-  }
-
-  // A stricter version of the same rule: a project-layer `trust` block is
-  // dropped whole, whatever it holds. A repository must not pre-authorize
-  // itself or any group of repositories. Even an empty `paths: []` would
-  // otherwise replace the user's list in the merge. Only a non-empty block is
-  // warned about, since an empty one granted nothing.
-  if (project?.trust !== undefined) {
-    if ((project.trust.paths?.length ?? 0) > 0 || (project.trust.owners?.length ?? 0) > 0) {
-      warnings.push(
-        `${locations.project}: trust is ignored in a project file — a repository cannot grant ` +
-          `itself trust; set trust.paths/trust.owners in your user config (${locations.user}) instead`,
-      )
-    }
-    const { trust: _ignoredTrust, ...rest } = project
-    project = rest
+  let project: WayfinderConfig | null = null
+  if (projectRead !== null) {
+    const ruled = projectRules(projectRead.config, locations)
+    project = ruled.project
+    warnings.push(...ruled.warnings)
   }
 
   const effective = mergeConfig(mergeConfig(DEFAULT_CONFIG, user ?? {}), project ?? {})
 
   const sources = new Map<string, ConfigLayer>()
-  for (const key of leafPaths(effective, '')) {
-    const layer: ConfigLayer =
+  for (const key of CONFIG_KEYS) {
+    sources.set(
+      key,
       project !== null && getConfigValue(project, key) !== undefined
         ? 'project'
         : user !== null && getConfigValue(user, key) !== undefined
           ? 'user'
-          : 'default'
-    sources.set(key, layer)
+          : 'default',
+    )
   }
 
   return {
     effective,
     layers: { default: DEFAULT_CONFIG, user, project },
+    files: { user, project: projectRead?.config ?? null },
     sources,
     locations,
     warnings,
   }
 }
 
-/** The warning for a relative `WAYFINDER_CONFIG` that was ignored, or null. */
-export function envIgnoredWarning(locations: ConfigLocations): string | null {
-  if (locations.userEnvIgnored === null) return null
-  const { variable, value } = locations.userEnvIgnored
-  return (
-    `${variable}=${value} is ignored because it is not an absolute path; ` +
-    `use an absolute path or ~/. Reading ${locations.user} instead`
-  )
+// ── The shared reader and writer ────────────────────────────────────────────
+
+/** One setting's effective value and where it came from. */
+export interface SettingValue<T = unknown> {
+  /** The dotted key: `runners.order`. */
+  key: string
+  value: T
+  /** The layer that set it, or `default`. */
+  source: ConfigLayer
+  /** The file that set it. Null for the default. */
+  file: string | null
 }
 
-/** One warning per old waypost name in use, naming the new one, and one for an ignored env path. */
-function legacyWarnings(locations: ConfigLocations): string[] {
-  const out: string[] = []
-  const ignored = envIgnoredWarning(locations)
-  if (ignored !== null) out.push(ignored)
-  if (locations.userEnvVar === LEGACY_CONFIG_ENV_VAR) {
-    out.push(`${LEGACY_CONFIG_ENV_VAR} is the old name; set ${CONFIG_ENV_VAR} instead`)
-  }
-  if (locations.userLegacy) {
-    const target = join(dirname(dirname(locations.user)), USER_CONFIG_DIR, USER_CONFIG_FILENAME)
-    out.push(`${locations.user}: read from the old waypost location; move it to ${target}`)
-  }
-  if (locations.userIgnored !== null) {
-    out.push(
-      `${locations.userIgnored} is ignored because ${locations.user} exists; merge it and delete it`,
-    )
-  }
-  if (locations.projectLegacy) {
-    out.push(`${locations.project}: the old file name; rename it to ${PROJECT_CONFIG_FILENAME}`)
-  }
-  if (locations.projectIgnored !== null) {
-    out.push(
-      `${locations.projectIgnored} is ignored because ${PROJECT_CONFIG_FILENAME} exists; merge it and delete it`,
-    )
-  }
-  return out
+/**
+ * The settings every surface shows, read once. The terminal UI, the web view
+ * and `way config list` all take their values from {@link readSettings}, so
+ * they show the same answer.
+ */
+export interface Settings {
+  /** The full load, for a caller that needs the layers. */
+  loaded: LoadedConfig
+  /** Every key of {@link CONFIG_KEYS}, in order. */
+  settings: SettingValue[]
+  /** The configured `allowExec`. Execution also needs a trusted repository. */
+  allowExec: SettingValue<boolean>
+  /** What the bare `way` command opens. */
+  open: SettingValue<OpenSurface>
+  /** The web view's theme. */
+  theme: SettingValue<Theme>
+  /** The runner display order. */
+  runnerOrder: SettingValue<string[]>
+  /** Which agent skills the Skills group lists. */
+  skills: SettingValue<SkillsSetting>
+  warnings: string[]
 }
 
-/** Read a dotted path — `"runners.order"`, `"allowExec"`. `undefined` when absent. */
+/** One setting of `loaded`. */
+function settingOf<T>(loaded: LoadedConfig, key: string): SettingValue<T> {
+  const source = loaded.sources.get(key) ?? 'default'
+  return {
+    key,
+    value: getConfigValue(loaded.effective, key) as T,
+    source,
+    file:
+      source === 'user'
+        ? loaded.locations.user
+        : source === 'project'
+          ? loaded.locations.project
+          : null,
+  }
+}
+
+/**
+ * Read every layer for `root` and return each setting's effective value and
+ * source. Throws {@link ConfigError} for a broken file.
+ */
+export async function readSettings(
+  root: string,
+  env: Record<string, string | undefined> = process.env,
+  home: string = homeDir(),
+): Promise<Settings> {
+  return settingsFrom(await loadConfig(root, env, home))
+}
+
+/** {@link Settings} from a config already loaded. */
+function settingsFrom(loaded: LoadedConfig): Settings {
+  return {
+    loaded,
+    settings: CONFIG_KEYS.map((key) => settingOf(loaded, key)),
+    allowExec: settingOf<boolean>(loaded, 'allowExec'),
+    open: settingOf<OpenSurface>(loaded, 'open'),
+    theme: settingOf<Theme>(loaded, 'theme'),
+    runnerOrder: settingOf<string[]>(loaded, 'runners.order'),
+    skills: settingOf<SkillsSetting>(loaded, 'skills'),
+    warnings: loaded.warnings,
+  }
+}
+
+/** A file layer a setting can be written to. */
+export type WritableLayer = 'user' | 'project'
+
+/** Where {@link writeSetting} and {@link removeSetting} write. */
+export interface WriteTarget {
+  layer: WritableLayer
+  /** The project root. Used for the project layer. */
+  root: string
+  env?: Record<string, string | undefined>
+  home?: string
+}
+
+/**
+ * Write `value` at `key` in one layer's file, atomically, keeping every other
+ * key. Throws {@link ConfigError} with an empty `file` for an unknown key, a
+ * wrong value, or a key the project file may not hold (see
+ * {@link projectWriteRefusal}); throws one naming the file when the file is
+ * broken. Returns the file and the value as written, and warnings for unknown
+ * keys inside the value.
+ */
+export async function writeSetting(
+  target: WriteTarget,
+  key: string,
+  value: unknown,
+): Promise<{ file: string; value: unknown; warnings: string[] }> {
+  const node = schemaAt(key)
+  if (node === undefined) throw new ConfigError(`unknown setting: ${key}`, '')
+  const warnings: string[] = []
+  const checked = check(node, value, key, '', warnings)
+  if (target.layer === 'project') {
+    const refused = projectWriteRefusal(key, checked)
+    if (refused !== null) throw new ConfigError(refused, '')
+  }
+  const file = fileOf(target)
+  const document = setConfigValue((await readRawConfigFile(file)) ?? {}, key, checked)
+  // The whole document is checked before it is written. A failure here is a
+  // bad value already in the file, so the error names the file.
+  validateConfig(document, file)
+  await writeConfigFile(await writePath(target, file), document)
+  return { file, value: checked, warnings }
+}
+
+/** Remove `key` from one layer's file. `removed: false` when it was not set there. */
+export async function removeSetting(
+  target: WriteTarget,
+  key: string,
+): Promise<{ file: string; removed: boolean }> {
+  const file = fileOf(target)
+  const document = await readRawConfigFile(file)
+  if (document === null || getConfigValue(document, key) === undefined) {
+    return { file, removed: false }
+  }
+  await writeConfigFile(await writePath(target, file), unsetConfigValue(document, key))
+  return { file, removed: true }
+}
+
+/**
+ * Where a write to `file` goes. The atomic write renames a new file into
+ * place, which would replace a link with a regular file. A user config is
+ * often a link into a dotfiles repository, so for the user layer the write
+ * goes to the link's target. A project file that is a link is replaced, not
+ * followed: the repository chose the link, and its target may be outside it.
+ */
+async function writePath(target: WriteTarget, file: string): Promise<string> {
+  if (target.layer !== 'user') return file
+  const info = await lstat(file).catch(() => null)
+  if (info === null || !info.isSymbolicLink()) return file
+  return realpath(file).catch(async () => resolve(dirname(file), await readlink(file)))
+}
+
+function fileOf(target: WriteTarget): string {
+  // Locations, not a load: where to write must not depend on the other layer
+  // parsing, and `--user` must work when WAYFINDER_CONFIG names a file that
+  // does not exist yet.
+  const locations = configLocations(target.root, target.env, target.home)
+  return target.layer === 'user' ? locations.user : locations.project
+}
+
+// ── Dotted paths ────────────────────────────────────────────────────────────
+
+/** Read a dotted path: `"runners.order"`, `"allowExec"`. `undefined` when absent. */
 export function getConfigValue(config: object, key: string): unknown {
   let cursor: unknown = config
   for (const segment of key.split('.')) {
-    if (!isPlainObject(cursor)) return undefined
+    if (!isPlainObject(cursor) || !Object.hasOwn(cursor, segment)) return undefined
     cursor = cursor[segment]
   }
   return cursor
@@ -796,25 +962,23 @@ export function getConfigValue(config: object, key: string): unknown {
  * Missing intermediate objects are created, so `set` works on an empty file.
  *
  * Throws {@link ConfigError} for an unknown key, a value of the wrong type, or
- * an existing intermediate value that is not an object, rather than writing a
- * file that will fail to load. Given a raw record, it returns a raw record with
- * its unknown keys untouched.
+ * an existing intermediate value that is not an object. Given a raw record, it
+ * returns a raw record with its unknown keys untouched.
  */
 export function setConfigValue<T extends object>(config: T, key: string, value: unknown): T {
-  if (!(key in FIELDS)) {
-    throw new ConfigError(`unknown setting: ${key}`, '')
-  }
-  const checked = coerceField(key, value, '')
+  const node = schemaAt(key)
+  if (node === undefined) throw new ConfigError(`unknown setting: ${key}`, '')
+  const checked = check(node, value, key, '', [])
 
   const segments = key.split('.')
   const root: Record<string, unknown> = { ...(config as Record<string, unknown>) }
   let cursor = root
   let walked = ''
   for (const segment of segments.slice(0, -1)) {
-    walked = walked === '' ? segment : `${walked}.${segment}`
+    walked = join(walked, segment)
     const existing = cursor[segment]
     // A container of the wrong type means the file is broken. Replacing it
-    // would silently delete whatever the user meant by it.
+    // would delete whatever the user meant by it.
     if (existing !== undefined && !isPlainObject(existing)) {
       throw new ConfigError(
         `cannot set ${key}: ${walked} is ${describe(existing)}, not an object`,
@@ -830,40 +994,31 @@ export function setConfigValue<T extends object>(config: T, key: string, value: 
 }
 
 /**
- * Remove a dotted path, returning a new document. A container left empty by the
- * removal is removed too, so unsetting the last `runners.*` key does not leave
- * `"runners": {}` behind.
- *
- * Unlike `set`, any key may be unset, including one this version does not
- * know, so a stale setting can be removed.
+ * Remove a dotted path, returning a new document. A container left empty by
+ * the removal is removed too. Any key may be unset, including one this
+ * version does not know, so a stale setting can be removed.
  */
 export function unsetConfigValue<T extends object>(config: T, key: string): T {
   const segments = key.split('.')
   const record = config as Record<string, unknown>
-
   const head = segments[0] as string
-  if (!(head in record)) return { ...record } as T
-
+  if (!Object.hasOwn(record, head)) return { ...record } as T
+  const out = { ...record }
   if (segments.length === 1) {
-    const out = { ...record }
     delete out[head]
     return out as T
   }
-
   const child = record[head]
-  if (!isPlainObject(child)) return { ...record } as T
-
+  if (!isPlainObject(child)) return out as T
   const pruned = unsetConfigValue(child, segments.slice(1).join('.'))
-  const out = { ...record }
   if (Object.keys(pruned).length === 0) delete out[head]
   else out[head] = pruned
   return out as T
 }
 
 /**
- * Parse a value typed on a command line. It is parsed as JSON first, so
- * `true`, `3` and `["a","b"]` keep their types. A bare word that is not valid
- * JSON is kept as a string, so `moon` need not be typed as `"moon"`.
+ * Parse a value typed on a command line: JSON first, so `true` and
+ * `["a","b"]` keep their types, else the bare string.
  */
 export function parseConfigValue(raw: string): unknown {
   try {
@@ -873,12 +1028,19 @@ export function parseConfigValue(raw: string): unknown {
   }
 }
 
+/** The key a typed key names, or undefined when it names no setting. */
+export function resolveConfigKey(key: string): string | undefined {
+  return schemaAt(key) === undefined ? undefined : key
+}
+
+// ── Uses of the config ──────────────────────────────────────────────────────
+
 /**
  * The {@link WayOptions} fields this configuration controls. Only keys the
  * config sets are present, so a caller spreads its own flags after it.
  */
 export function collectOptionsFromConfig(
-  config: TaskConfig,
+  config: WayfinderConfig,
 ): Pick<WayOptions, 'exclude' | 'allowExec' | 'discovery' | 'excludePaths'> {
   const options: Pick<WayOptions, 'exclude' | 'allowExec' | 'discovery' | 'excludePaths'> = {}
   const disabled = config.runners?.disabled
@@ -889,16 +1051,27 @@ export function collectOptionsFromConfig(
   return options
 }
 
-/** `config.trust`, defaulted to the empty policy `@osdlc/trust-repo` expects. */
-export function trustPolicyFromConfig(config: TaskConfig): TrustPolicy {
-  return { paths: config.trust?.paths ?? [], owners: config.trust?.owners ?? [] }
+/**
+ * `config.trust` as the policy `@osdlc/trust-repo` expects: the top-level
+ * rules, and `trust.tools` as its per-scope rules.
+ */
+export function trustPolicyFromConfig(config: WayfinderConfig): TrustPolicy {
+  const tools = config.trust?.tools ?? {}
+  const scopes: NonNullable<TrustPolicy['scopes']> = {}
+  for (const [id, rules] of Object.entries(tools)) {
+    scopes[id] = { paths: rules.paths ?? [], owners: rules.owners ?? [] }
+  }
+  return {
+    paths: config.trust?.paths ?? [],
+    owners: config.trust?.owners ?? [],
+    ...(Object.keys(scopes).length > 0 ? { scopes } : {}),
+  }
 }
 
 /**
  * The options every `@osdlc/trust-repo` gate call takes: `expandTrustPath`
- * against `home`, and the git-backed `originOwner` lookup that `trust.owners` needs.
- * Built in one place, so a call site cannot leave out `ownerOf` and silently
- * stop honouring `trust.owners`.
+ * against `home`, and the git-backed `originOwner` lookup that `trust.owners`
+ * needs. Built in one place, so a call site cannot leave out `ownerOf`.
  */
 export function trustPolicyOptions(home: string): PolicyDecisionOptions {
   return { expandPath: (raw) => expandTrustPath(raw, home), ownerOf: originOwner }
@@ -906,8 +1079,7 @@ export function trustPolicyOptions(home: string): PolicyDecisionOptions {
 
 /**
  * Sort runner-keyed items for display: the ids named in `order` first, in that
- * order, then everything else alphabetically. Alphabetical rather than
- * registry order, so adding a tool does not reorder the list.
+ * order, then everything else alphabetically.
  */
 export function orderRunners<T extends { runner: string }>(items: T[], order?: string[]): T[] {
   const rank = new Map((order ?? []).map((id, index) => [id, index]))

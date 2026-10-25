@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from 'vitest'
-import { mkdir, readFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
+import { lstat, mkdir, readFile, symlink } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
 
@@ -7,6 +8,7 @@ import { expandTrustPath, resolveTrustRoot } from '@osdlc/trust-repo'
 
 import {
   CONFIG_ENV_VAR,
+  CONFIG_SCHEMA_URL,
   ConfigError,
   DEFAULT_CONFIG,
   collectOptionsFromConfig,
@@ -14,17 +16,23 @@ import {
   getConfigValue,
   loadConfig,
   mergeConfig,
+  movedUserConfigWarning,
   orderRunners,
   parseConfigValue,
   readConfigFile,
   readRawConfigFile,
+  removeSetting,
   setConfigValue,
   trustPolicyFromConfig,
   unsetConfigValue,
   validateConfig,
   writeConfigFile,
+  writeSetting,
 } from '../src/config.ts'
-import { fixtureRoot, removeRoot } from './support.ts'
+import { expandTilde } from '../src/xdg.ts'
+import { CONFIG_HOME, USER_CONFIG, fixtureRoot, removeRoot } from './support.ts'
+
+const WINDOWS = process.platform === 'win32'
 
 const roots: string[] = []
 afterAll(async () => {
@@ -43,13 +51,15 @@ function env(vars: Record<string, string | undefined> = {}): Record<string, stri
 }
 
 describe('configLocations', () => {
-  test('puts the user layer under XDG_CONFIG_HOME when it is set', () => {
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)('puts the user layer under XDG_CONFIG_HOME when it is set', () => {
     const at = configLocations('/repo', env({ XDG_CONFIG_HOME: '/xdg' }), '/home/dev')
     expect(at.user).toBe('/xdg/wayfinder/config.json')
     expect(at.userFromEnv).toBe(false)
   })
 
-  test('falls back to ~/.config on every platform, macOS included', () => {
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)('falls back to ~/.config on every platform, macOS included', () => {
     // Deliberate, and a choice rather than a universal macOS convention: this
     // follows gh's layout, so a dotfiles repo finds config where the rest of a
     // developer's tool configuration already lives. See `xdgHome` for the cost.
@@ -57,35 +67,45 @@ describe('configLocations', () => {
     expect(at.user).toBe('/home/dev/.config/wayfinder/config.json')
   })
 
-  test('treats an empty XDG_CONFIG_HOME as unset', () => {
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)('treats an empty XDG_CONFIG_HOME as unset', () => {
     // An exported-but-empty variable is a common shell accident, and joining
     // onto "" would point the user layer at /wayfinder/config.json.
     const at = configLocations('/repo', env({ XDG_CONFIG_HOME: '' }), '/home/dev')
     expect(at.user).toBe('/home/dev/.config/wayfinder/config.json')
   })
 
-  test('WAYFINDER_CONFIG replaces the user location and leaves the project one alone', () => {
-    // The env var moves one layer's file. It is not a way to disable the
-    // project layer, and a user who set it in their shell profile must still
-    // get the project's settings in every repo they enter.
-    const at = configLocations(
-      '/repo',
-      env({ [CONFIG_ENV_VAR]: '/elsewhere/mine.json', XDG_CONFIG_HOME: '/xdg' }),
-      '/home/dev',
-    )
-    expect(at.user).toBe('/elsewhere/mine.json')
-    expect(at.userFromEnv).toBe(true)
-    expect(at.project).toBe('/repo/wayfinder.config.json')
-  })
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)(
+    'WAYFINDER_CONFIG replaces the user location and leaves the project one alone',
+    () => {
+      // The env var moves one layer's file. It is not a way to disable the
+      // project layer, and a user who set it in their shell profile must still
+      // get the project's settings in every repo they enter.
+      const at = configLocations(
+        '/repo',
+        env({ [CONFIG_ENV_VAR]: '/elsewhere/mine.json', XDG_CONFIG_HOME: '/xdg' }),
+        '/home/dev',
+      )
+      expect(at.user).toBe('/elsewhere/mine.json')
+      expect(at.userFromEnv).toBe(true)
+      expect(at.project).toBe('/repo/wayfinder.config.json')
+    },
+  )
 
-  test('expands a leading ~ in WAYFINDER_CONFIG rather than making a literal directory', () => {
-    // A shell expands ~ before exec, but .env loaders, direnv and CI YAML pass
-    // the tilde through literally, and <cwd>/~/cfg.json is a silent wrong answer.
-    const at = configLocations('/repo', env({ [CONFIG_ENV_VAR]: '~/cfg.json' }), '/home/dev')
-    expect(at.user).toBe('/home/dev/cfg.json')
-  })
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)(
+    'expands a leading ~ in WAYFINDER_CONFIG rather than making a literal directory',
+    () => {
+      // A shell expands ~ before exec, but .env loaders, direnv and CI YAML pass
+      // the tilde through literally, and <cwd>/~/cfg.json is a silent wrong answer.
+      const at = configLocations('/repo', env({ [CONFIG_ENV_VAR]: '~/cfg.json' }), '/home/dev')
+      expect(at.user).toBe('/home/dev/cfg.json')
+    },
+  )
 
-  test('ignores a relative WAYFINDER_CONFIG and says so', () => {
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)('ignores a relative WAYFINDER_CONFIG and says so', () => {
     for (const value of ['cfg/mine.json', './cfg.json', 'cfg.json']) {
       const at = configLocations('/repo', env({ [CONFIG_ENV_VAR]: value }), '/home/dev')
       expect(at.user).toBe('/home/dev/.config/wayfinder/config.json')
@@ -98,14 +118,15 @@ describe('configLocations', () => {
   test('a relative WAYFINDER_CONFIG never names a file in the root, even when the cwd is the root', async () => {
     // The usual way to run `way` is from the repository root. A repository
     // file named this way would be the user layer, which can turn exec on.
-    const dir = await root({ 'cfg.json': '{"allowExec": true}' })
+    const dir = await root({ 'cfg.json': '{"allowExec": false}' })
     const home = await root()
     const saved = process.cwd()
     process.chdir(dir)
     try {
       const loaded = await loadConfig(dir, env({ [CONFIG_ENV_VAR]: 'cfg.json' }), home)
-      expect(loaded.locations.user).toBe(join(home, '.config', 'wayfinder', 'config.json'))
-      expect(loaded.effective.allowExec).toBe(false)
+      expect(loaded.locations.user).toBe(join(home, CONFIG_HOME, 'wayfinder', 'config.json'))
+      // The repository file was not read: its false did not reach the merge.
+      expect(loaded.effective.allowExec).toBe(true)
       expect(loaded.warnings.some((w) => w.includes(`${CONFIG_ENV_VAR}=cfg.json is ignored`))).toBe(
         true,
       )
@@ -114,19 +135,32 @@ describe('configLocations', () => {
     }
   })
 
-  test('a relative HOME is treated as unset, so the user file is never under the cwd', () => {
-    const saved = process.env['HOME']
-    process.env['HOME'] = '.'
-    try {
-      expect(configLocations('/repo', env()).user).toBe(
-        join(userInfo().homedir, '.config', 'wayfinder', 'config.json'),
-      )
-    } finally {
-      process.env['HOME'] = saved
-    }
+  test('a WAYFINDER_CONFIG that names a missing file is an error', async () => {
+    const dir = await root({})
+    const missing = join(dir, 'missing.json')
+    await expect(loadConfig(dir, env({ [CONFIG_ENV_VAR]: missing }), dir)).rejects.toMatchObject({
+      message: `${missing}: ${CONFIG_ENV_VAR} names a file that does not exist`,
+    })
   })
 
-  test('ignores a relative XDG_CONFIG_HOME, as the XDG spec says', () => {
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)(
+    'a relative HOME is treated as unset, so the user file is never under the cwd',
+    () => {
+      const saved = process.env['HOME']
+      process.env['HOME'] = '.'
+      try {
+        expect(configLocations('/repo', env()).user).toBe(
+          join(userInfo().homedir, CONFIG_HOME, 'wayfinder', 'config.json'),
+        )
+      } finally {
+        process.env['HOME'] = saved
+      }
+    },
+  )
+
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)('ignores a relative XDG_CONFIG_HOME, as the XDG spec says', () => {
     for (const value of ['.config', 'cfg/x', './c']) {
       const at = configLocations('/repo', env({ XDG_CONFIG_HOME: value }), '/home/dev')
       expect(at.user).toBe('/home/dev/.config/wayfinder/config.json')
@@ -136,21 +170,58 @@ describe('configLocations', () => {
   test('a relative XDG_CONFIG_HOME cannot make a file in the repository the user layer', async () => {
     const home = await root()
     const project = await root({
-      '.config/wayfinder/config.json': JSON.stringify({ allowExec: true, tools: ['./x.mjs'] }),
+      [USER_CONFIG]: JSON.stringify({ tools: ['./x.mjs'] }),
     })
     const loaded = await loadConfig(project, env({ XDG_CONFIG_HOME: '.config' }), home)
     expect(loaded.layers.user).toBeNull()
-    expect(loaded.effective.allowExec).not.toBe(true)
     expect(loaded.effective.tools ?? []).toEqual([])
   })
 
-  test('trims a padded env value instead of resolving the whitespace into the path', () => {
-    const at = configLocations(
-      '/repo',
-      env({ [CONFIG_ENV_VAR]: '  /abs/mine.json  ' }),
-      '/home/dev',
-    )
-    expect(at.user).toBe('/abs/mine.json')
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)(
+    'trims a padded env value instead of resolving the whitespace into the path',
+    () => {
+      const at = configLocations(
+        '/repo',
+        env({ [CONFIG_ENV_VAR]: '  /abs/mine.json  ' }),
+        '/home/dev',
+      )
+      expect(at.user).toBe('/abs/mine.json')
+    },
+  )
+})
+
+describe('expandTilde', () => {
+  test('expands ~ and ~/, and ~\\ only on Windows', () => {
+    expect(expandTilde('~', '/h')).toBe('/h')
+    expect(expandTilde('~/x', '/h')).toBe(join('/h', 'x'))
+    expect(expandTilde('~\\x', '/h', 'win32')).toBe(join('/h', 'x'))
+    expect(expandTilde('~\\x', '/h', 'linux')).toBe('~\\x')
+  })
+})
+
+describe('movedUserConfigWarning', () => {
+  test('on Windows, names a pre-0.8 user config when none is at the new path', async () => {
+    const home = await root({ '.config/wayfinder/config.json': '{"allowExec": false}' })
+    const user = join(home, 'AppData', 'Roaming', 'wayfinder', 'config.json')
+    const at = { ...configLocations(home, env(), home), user }
+    const warning = movedUserConfigWarning(at, env(), home, 'win32')
+    expect(warning).toContain(join(home, '.config', 'wayfinder', 'config.json'))
+    expect(warning).toContain(`move it to ${user}`)
+    expect(movedUserConfigWarning(at, env(), home, 'linux')).toBeNull()
+  })
+
+  test('says nothing once the new file exists, or with no old one', async () => {
+    const home = await root({
+      '.config/wayfinder/config.json': '{}',
+      'AppData/Roaming/wayfinder/config.json': '{}',
+    })
+    const user = join(home, 'AppData', 'Roaming', 'wayfinder', 'config.json')
+    const at = { ...configLocations(home, env(), home), user }
+    expect(movedUserConfigWarning(at, env(), home, 'win32')).toBeNull()
+    const empty = await root()
+    const none = { ...configLocations(empty, env(), empty), user: join(empty, 'x.json') }
+    expect(movedUserConfigWarning(none, env(), empty, 'win32')).toBeNull()
   })
 })
 
@@ -200,7 +271,7 @@ describe('mergeConfig', () => {
   test('mutating the result never reaches back into DEFAULT_CONFIG', () => {
     const merged = mergeConfig(DEFAULT_CONFIG, {})
     merged.runners?.order?.push('moon')
-    expect(DEFAULT_CONFIG.runners.order).toEqual([])
+    expect(DEFAULT_CONFIG.runners?.order).toEqual([])
   })
 })
 
@@ -255,6 +326,15 @@ describe('validateConfig', () => {
     )
   })
 
+  test('warns about a __proto__ key in a map, and keeps it out', () => {
+    const raw = JSON.parse('{"trust":{"tools":{"__proto__":{"paths":["/x"]},"mise":{}}}}')
+    const { config, warnings } = validateConfig(raw, '/cfg.json')
+    expect(warnings).toEqual(['/cfg.json: "trust.tools.__proto__" is not a usable key (ignored)'])
+    const tools = config.trust!.tools!
+    expect(Object.keys(tools)).toEqual(['mise'])
+    expect(Object.getPrototypeOf(tools)).toBe(Object.prototype)
+  })
+
   test('rejects a discovery mode that is not one of the three', () => {
     expect(() => validateConfig({ discovery: 'sideways' }, '/cfg.json')).toThrow(/git, walk, auto/)
   })
@@ -264,6 +344,23 @@ describe('readConfigFile', () => {
   test('returns null for a file that does not exist, since absence is normal', async () => {
     const dir = await root()
     expect(await readConfigFile(join(dir, 'wayfinder.config.json'))).toBeNull()
+  })
+
+  test.skipIf(WINDOWS)('refuses a link to a device and a FIFO, without reading them', async () => {
+    const dir = await root()
+    const device = join(dir, 'wayfinder.config.json')
+    await symlink('/dev/zero', device)
+    await expect(readConfigFile(device)).rejects.toThrow(/not a regular file/)
+    const fifo = join(dir, 'fifo.json')
+    expect(spawnSync('mkfifo', [fifo]).status).toBe(0)
+    await expect(readConfigFile(fifo)).rejects.toThrow(/not a regular file/)
+  })
+
+  test('refuses a file larger than 1 MB', async () => {
+    const dir = await root({ 'wayfinder.config.json': `{"x": "${'a'.repeat(1024 * 1024)}"}` })
+    await expect(readConfigFile(join(dir, 'wayfinder.config.json'))).rejects.toThrow(
+      /larger than 1 MB/,
+    )
   })
 
   test('names the file and the parse problem when the JSON is malformed', async () => {
@@ -284,7 +381,7 @@ describe('readConfigFile', () => {
 describe('loadConfig', () => {
   test('merges defaults, user and project, and reports which layer won', async () => {
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({
+      [USER_CONFIG]: JSON.stringify({
         runners: { disabled: ['cargo'], order: ['moon'] },
         allowExec: true,
       }),
@@ -300,8 +397,11 @@ describe('loadConfig', () => {
       allowExec: true,
       discovery: 'auto',
       excludePaths: [],
-      trust: { paths: [], owners: [] },
+      trust: { paths: [], owners: [], tools: {} },
       tools: [],
+      open: 'tui',
+      theme: 'system',
+      skills: 'project',
     })
     expect(loaded.sources.get('runners.order')).toBe('project')
     expect(loaded.sources.get('runners.disabled')).toBe('user')
@@ -312,7 +412,7 @@ describe('loadConfig', () => {
     // Presence, not equality: a project restating a value the user already
     // chose still owns it, because deleting the project line would be a change.
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({ discovery: 'git' }),
+      [USER_CONFIG]: JSON.stringify({ discovery: 'git' }),
     })
     const project = await root({ 'wayfinder.config.json': JSON.stringify({ discovery: 'git' }) })
 
@@ -324,7 +424,7 @@ describe('loadConfig', () => {
     // wayfinder.config.json lives INSIDE the repository being scanned, so honouring
     // it here would let a repository authorize running its own code.
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({ allowExec: false }),
+      [USER_CONFIG]: JSON.stringify({ allowExec: false }),
     })
     const project = await root({ 'wayfinder.config.json': JSON.stringify({ allowExec: true }) })
 
@@ -349,7 +449,7 @@ describe('loadConfig', () => {
     // Safe in the other direction: a repository asking not to be shelled out
     // for is asking for less, so there is nothing to withhold.
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({ allowExec: true }),
+      [USER_CONFIG]: JSON.stringify({ allowExec: true }),
     })
     const project = await root({ 'wayfinder.config.json': JSON.stringify({ allowExec: false }) })
 
@@ -363,7 +463,7 @@ describe('loadConfig', () => {
     // `config list` must name the layer that really supplied the value; naming
     // the ignored file is how a user concludes the project file worked.
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({ allowExec: true }),
+      [USER_CONFIG]: JSON.stringify({ allowExec: true }),
     })
     const project = await root({ 'wayfinder.config.json': JSON.stringify({ allowExec: true }) })
 
@@ -387,7 +487,7 @@ describe('loadConfig', () => {
 
     const loaded = await loadConfig(project, env(), home)
 
-    expect(loaded.effective.trust).toEqual({ paths: [], owners: [] })
+    expect(loaded.effective.trust).toEqual({ paths: [], owners: [], tools: {} })
     expect(loaded.layers.project?.trust).toBeUndefined()
     expect(loaded.warnings.join('\n')).toContain(join(project, 'wayfinder.config.json'))
     expect(loaded.warnings.join('\n')).toContain('cannot grant itself trust')
@@ -401,7 +501,7 @@ describe('loadConfig', () => {
 
     const loaded = await loadConfig(project, env(), home)
 
-    expect(loaded.effective.trust).toEqual({ paths: [], owners: [] })
+    expect(loaded.effective.trust).toEqual({ paths: [], owners: [], tools: {} })
     expect(loaded.warnings.join('\n')).toContain('cannot grant itself trust')
   })
 
@@ -419,7 +519,7 @@ describe('loadConfig', () => {
     // `paths: []` is present as a key, so a plain deep-merge would overwrite
     // the user's list with nothing — the block is dropped whole instead.
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({
+      [USER_CONFIG]: JSON.stringify({
         trust: { paths: ['/home/me/work/**'], owners: ['my-org'] },
       }),
     })
@@ -428,7 +528,11 @@ describe('loadConfig', () => {
     })
 
     const loaded = await loadConfig(project, env(), home)
-    expect(loaded.effective.trust).toEqual({ paths: ['/home/me/work/**'], owners: ['my-org'] })
+    expect(loaded.effective.trust).toEqual({
+      paths: ['/home/me/work/**'],
+      owners: ['my-org'],
+      tools: {},
+    })
     expect(loaded.layers.project?.trust).toBeUndefined()
     expect(loaded.warnings).toEqual([])
   })
@@ -437,14 +541,18 @@ describe('loadConfig', () => {
     // The layer this block is FOR — see the gate integration in cli.test.ts
     // for proof it actually reaches `policyExecGate`.
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({
+      [USER_CONFIG]: JSON.stringify({
         trust: { paths: ['/home/me/work/**'], owners: ['my-org'] },
       }),
     })
     const project = await root()
 
     const loaded = await loadConfig(project, env(), home)
-    expect(loaded.effective.trust).toEqual({ paths: ['/home/me/work/**'], owners: ['my-org'] })
+    expect(loaded.effective.trust).toEqual({
+      paths: ['/home/me/work/**'],
+      owners: ['my-org'],
+      tools: {},
+    })
     expect(loaded.sources.get('trust.paths')).toBe('user')
     expect(loaded.sources.get('trust.owners')).toBe('user')
     expect(loaded.warnings).toEqual([])
@@ -462,7 +570,7 @@ describe('loadConfig', () => {
 
   test('WAYFINDER_CONFIG swaps the user file without disabling the project file', async () => {
     const home = await root({
-      '.config/wayfinder/config.json': JSON.stringify({ discovery: 'git' }),
+      [USER_CONFIG]: JSON.stringify({ discovery: 'git' }),
     })
     const other = await root({ 'mine.json': JSON.stringify({ discovery: 'walk' }) })
     const project = await root({
@@ -488,6 +596,42 @@ describe('loadConfig', () => {
     expect(loaded.layers.user).toBeNull()
     expect(loaded.layers.project).toBeNull()
   })
+})
+
+describe('writeSetting through a link', () => {
+  test.skipIf(WINDOWS)(
+    'a linked user config is written at its target, and stays a link',
+    async () => {
+      const home = await root({ 'dotfiles/way.json': '{}' })
+      const target = join(home, 'dotfiles', 'way.json')
+      const user = join(home, '.config', 'wayfinder', 'config.json')
+      await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
+      await symlink(target, user)
+      await writeSetting({ layer: 'user', root: home, env: env(), home }, 'theme', 'dark')
+      expect((await lstat(user)).isSymbolicLink()).toBe(true)
+      expect(JSON.parse(await readFile(target, 'utf8'))).toMatchObject({ theme: 'dark' })
+      await removeSetting({ layer: 'user', root: home, env: env(), home }, 'theme')
+      expect((await lstat(user)).isSymbolicLink()).toBe(true)
+      expect(JSON.parse(await readFile(target, 'utf8'))).not.toHaveProperty('theme')
+    },
+  )
+
+  test.skipIf(WINDOWS)(
+    'a linked project file is replaced, and its target is not written',
+    async () => {
+      const outside = await root({ 'elsewhere.json': '{}' })
+      const repo = await root()
+      const project = join(repo, 'wayfinder.config.json')
+      await symlink(join(outside, 'elsewhere.json'), project)
+      await writeSetting(
+        { layer: 'project', root: repo, env: env(), home: repo },
+        'discovery',
+        'walk',
+      )
+      expect((await lstat(project)).isSymbolicLink()).toBe(false)
+      expect(await readFile(join(outside, 'elsewhere.json'), 'utf8')).toBe('{}')
+    },
+  )
 })
 
 describe('get / set / unset', () => {
@@ -518,7 +662,11 @@ describe('get / set / unset', () => {
     await writeConfigFile(file, setConfigValue(raw ?? {}, 'allowExec', true))
 
     const after = await readRawConfigFile(file)
-    expect(after).toEqual({ futureThing: { keep: true }, allowExec: true })
+    expect(after).toEqual({
+      $schema: CONFIG_SCHEMA_URL,
+      futureThing: { keep: true },
+      allowExec: true,
+    })
   })
 
   test('refuses an unknown setting or a wrong-typed value', () => {
@@ -575,6 +723,7 @@ describe('writeConfigFile', () => {
     expect(text.endsWith('\n')).toBe(true)
     expect(text).toBe(
       `{
+  "$schema": "${CONFIG_SCHEMA_URL}",
   "runners": {
     "disabled": [
       "cargo"

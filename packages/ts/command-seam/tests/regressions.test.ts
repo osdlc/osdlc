@@ -5,9 +5,18 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  closeSync,
+  mkdtempSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { describe, expect, test, vi } from 'vitest'
 
@@ -25,7 +34,7 @@ import { gone, reap } from './support/procs.ts'
 import { NODE } from './support/runtimes.ts'
 
 const CWD = process.cwd()
-const INDEX = join(import.meta.dirname, '../src/index.ts')
+const INDEX = pathToFileURL(join(import.meta.dirname, '../src/index.ts')).href
 
 function withTempDir<T>(fn: (dir: string) => T): T {
   const dir = mkdtempSync(join(tmpdir(), 'seam-regression-'))
@@ -72,14 +81,13 @@ function runProbe(
       ...code,
     ].join('\n'),
   )
-  spawnSync(
-    '/bin/sh',
-    ['-c', 'e="$1"; shift; exec "$@" 2>"$e"', 'sh', errFile, ...runtime, probe],
-    {
-      cwd: CWD,
-      env,
-    },
-  )
+  const errFd = openSync(errFile, 'w')
+  try {
+    const [binary, ...flags] = runtime
+    spawnSync(binary!, [...flags, probe], { cwd: CWD, env, stdio: ['ignore', 'ignore', errFd] })
+  } finally {
+    closeSync(errFd)
+  }
   return {
     result: JSON.parse(readFileSync(outFile, 'utf-8')),
     stderr: readFileSync(errFile, 'utf-8'),
@@ -141,7 +149,8 @@ describe('a child that closes stdin early', () => {
       expect(res.exitCode).toBe(0)
       expect(res.reason).toBeUndefined()
       // EPIPE, or ENOTCONN with some timings. Both are a write to a closed peer.
-      expect(res.error).toMatch(/EPIPE|ENOTCONN/)
+      // Windows reports EOF.
+      expect(res.error).toMatch(/EPIPE|ENOTCONN|EOF/)
       expect(res.stderr).toBe('')
     })
   }, 20_000)
@@ -176,14 +185,18 @@ describe('a missing binary gives the same result on both sync paths', () => {
     expect(r.neverExited).toBe(true)
   })
 
-  test('an env.PATH without /bin still runs a binary given by path', () => {
-    // An existing binary, not a freshly written script: macOS scans a new
-    // executable on first run, which can take seconds under load.
-    withTempDir((dir) => {
-      const r = spawnRunner('/bin/echo').run(['ran'], { cwd: dir, env: { PATH: dir } })
-      expect(r).toEqual({ exitCode: 0, stdout: 'ran\n', stderr: '' })
-    })
-  })
+  // POSIX only: `/bin/echo` is a POSIX path.
+  test.skipIf(process.platform === 'win32')(
+    'an env.PATH without /bin still runs a binary given by path',
+    () => {
+      // An existing binary, not a freshly written script: macOS scans a new
+      // executable on first run, which can take seconds under load.
+      withTempDir((dir) => {
+        const r = spawnRunner('/bin/echo').run(['ran'], { cwd: dir, env: { PATH: dir } })
+        expect(r).toEqual({ exitCode: 0, stdout: 'ran\n', stderr: '' })
+      })
+    },
+  )
 })
 
 describe('the async runner settles on exit', () => {

@@ -1,0 +1,7 @@
+# Build the project
+build:
+    cargo build
+
+# Deploy to an environment
+deploy env='staging' *flags:
+    ./deploy.sh {{env}} {{flags}}

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "build",
+    "mode": "fuzzy"
+  },
+  "source": "fresh",
+  "storedAt": null,
+  "tasks": [],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "moon",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": null,
+      "slow": false
+    }
+  ],
+  "unknowns": [
+    {
+      "kind": "withheld",
+      "runner": "moon",
+      "reason": "untrusted",
+      "missing": [
+        "moon"
+      ],
+      "label": "withheld: this repository is not trusted"
+    }
+  ]
+}

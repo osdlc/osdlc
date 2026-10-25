@@ -91,8 +91,8 @@ where
 /// Whether undeclared table columns are tolerated or reported (`content/table/column-extra`).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum ExtraColumns {
-    #[default]
     /// Extra columns are allowed.
+    #[default]
     Ignore,
     /// Extra columns give a finding.
     Error,
@@ -101,9 +101,9 @@ pub enum ExtraColumns {
 /// A `table(...)` leaf's content config — the TS `TableConfig`.
 #[derive(Debug, Clone, Default)]
 pub struct TableConfig {
-    /// the column headings the table must have, in order
+    /// the column headings the table must have (their order is not checked)
     pub columns: Vec<String>,
-    /// carried for the typed-model surface; the validating anchor binding is the
+    /// parsed for parity with TS and unused; a table is bound to an anchor by its
     /// [`SectionContent::Anchored`] key
     pub anchor: Option<String>,
     /// the fewest body rows allowed
@@ -123,12 +123,10 @@ pub enum EveryItem {
     Schema(Schema),
 }
 
-/// A `list(...)` leaf's content config — the TS `ListConfig`. (`ordered` rides along
-/// for the typed-model surface; the TS content plane does not check it, so neither
-/// does this one.)
+/// A `list(...)` leaf's content config, the TS `ListConfig`.
 #[derive(Debug, Clone, Default)]
 pub struct ListConfig {
-    /// whether the list is ordered (not checked)
+    /// parsed for parity with TS and unused: neither engine checks it
     pub ordered: Option<bool>,
     /// the check applied to each item
     pub every_item: Option<EveryItem>,
@@ -143,17 +141,15 @@ pub struct CodeConfig {
     pub lang: Option<String>,
 }
 
-/// The typed content-plane config a leaf carries — what the TS builders stash on
-/// `LeafSpec.config`, with cell/item schemas already compiled.
+/// The content checks a leaf carries: what the TS builders put on `LeafSpec.config`,
+/// with cell and item schemas compiled.
 #[derive(Debug, Clone)]
+#[allow(missing_docs)]
 pub enum LeafConfig {
-    /// a table
     Table(TableConfig),
-    /// a list
     List(ListConfig),
-    /// a code block
     Code(CodeConfig),
-    /// a paragraph word-count bound — the TS `maxWords(n)`
+    /// The most words a paragraph in the section may have, the TS `maxWords(n)`.
     MaxWords(f64),
 }
 
@@ -165,7 +161,7 @@ pub struct LeafSpec {
     pub kind: BlockKind,
     /// the leaf's content config; `None` = kind-gate only (no data checks)
     pub config: Option<LeafConfig>,
-    /// the leaf's v2 `description:`, carried for `Finding.hint`
+    /// the leaf's `description:`, carried for `Finding.hint`
     pub description: Option<String>,
 }
 
@@ -263,7 +259,7 @@ pub struct SectionOpts {
     pub min: Option<usize>,
     /// maximum occurrence count for a repeatable slot (above → `structure/repeat-count`)
     pub max: Option<usize>,
-    /// the node's v2 `description:`, carried for `Finding.hint`
+    /// the node's `description:`, carried for `Finding.hint`
     pub description: Option<String>,
 }
 
@@ -298,19 +294,19 @@ impl Default for LevelOpts {
     }
 }
 
-/// A declared section slot: one or more admissible heading spellings plus options.
+/// A declared section slot: the heading and its aliases, plus options.
 pub struct SectionSpec {
-    /// the accepted heading spellings
+    /// the heading first, then its aliases; a document may use exactly one of them
     pub names: Vec<String>,
-    /// the section's options
+    #[allow(missing_docs)]
     pub opts: Option<SectionOpts>,
 }
 
-/// A `oneOf` slot: one required slot, several interchangeable spellings.
+/// A `oneOf` slot: exactly one of several headings must appear.
 pub struct OneOfSpec {
-    /// the accepted heading spellings
+    /// the headings, one of which must appear
     pub names: Vec<String>,
-    /// the section's options
+    #[allow(missing_docs)]
     pub opts: Option<SectionOpts>,
 }
 
@@ -321,8 +317,6 @@ pub struct GapSpec {
     pub min: Option<usize>,
     /// the most unknown sections admitted
     pub max: Option<usize>,
-    /// the gap node's v2 `description:`, carried for `Finding.hint`
-    pub description: Option<String>,
 }
 
 /// One element of a level's ordered content model — the output of the builder functions.
@@ -337,6 +331,16 @@ pub enum Spec {
     Gap(GapSpec),
 }
 
+impl Spec {
+    /// The spec inside any `optional(...)` wrappers, and whether there was one.
+    pub(crate) fn unwrap_optional(&self) -> (&Spec, bool) {
+        match self {
+            Spec::Optional(inner) => (inner.unwrap_optional().0, true),
+            other => (other, false),
+        }
+    }
+}
+
 /// The body grammar of one level — the output of [`sections`].
 #[derive(Default)]
 pub struct SectionSeq {
@@ -344,8 +348,8 @@ pub struct SectionSeq {
     pub opts: LevelOpts,
     /// the level's slots, in declaration order
     pub specs: Vec<Spec>,
-    /// the level's v2 `description:` — in practice the body root's, since v2
-    /// hoists nested levels onto their section node
+    /// the level's `description:`; only the body root has one, since a nested level's
+    /// description is its section node's
     pub description: Option<String>,
 }
 
@@ -403,11 +407,7 @@ pub fn gap() -> Spec {
 
 /// A bounded gap window — `gap({ min, max })`.
 pub fn gap_bounds(min: Option<usize>, max: Option<usize>) -> Spec {
-    Spec::Gap(GapSpec {
-        min,
-        max,
-        description: None,
-    })
+    Spec::Gap(GapSpec { min, max })
 }
 
 /// A level's ordered content model — `sections(opts, [ … ])`.
@@ -439,8 +439,8 @@ pub struct Contract {
     pub body: Option<SectionSeq>,
     /// cross-plane rules over the whole projected tree
     pub rules: Vec<Box<dyn DocRule>>,
-    /// the contract root's v2 `description:` — the outermost `Finding.hint`
-    /// fallback when no nearer description is in scope
+    /// the contract root's `description:`, the `Finding.hint` of a finding with no
+    /// nearer description in scope
     pub description: Option<String>,
 }
 

@@ -38,6 +38,12 @@ To run the CLI from a checkout, build the package and run
 `CAPTURE_FRAMES=1 pnpm exec vitest run tests/frames.test.ts` and review the
 diff.
 
+`tests/e2e/` runs `way` as its own process against the fixture projects in
+`tests/e2e/fixtures/`, one per runner plus edge cases, and compares its
+`--json` output with the golden files in `tests/e2e/__snapshots__/`. `pnpm
+test` includes it. After a deliberate change to the output, regenerate them
+with `pnpm run test:e2e -u` and review the diff.
+
 Other checks:
 
 ```sh

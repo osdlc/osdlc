@@ -1,13 +1,14 @@
-//! The matched Rust engine for markdown-contract, with finding parity to
-//! the TypeScript engine in `@osdlc/markdown-contract` (identical ids, level defaults, 1-based
-//! positions, deterministic sort, and JSON shape) — pinned by the shared corpus
-//! harness (`tests/corpus.rs`).
+//! The Rust engine for markdown-contract, the twin of the TypeScript package
+//! `@osdlc/markdown-contract`. The shared corpus in `packages/ts/markdown-contract/corpus/`
+//! pins the two to the same findings for every YAML-expressible fixture: the same count
+//! and ids in order, and the level, line and hint where a fixture records them
+//! (`tests/corpus.rs`).
 //!
-//! All planes run in one pass ([`validate()`]): the projection, the structure plane, the
-//! content plane (frontmatter schema + table/list/code/maxWords leaves), the
-//! declarative text constraints, and doc-scoped rules. Contracts come from the
-//! programmatic builders ([`contract`]) or the declarative YAML loader
-//! ([`declarative`]); the corpus [`runner`] routes documents to contracts by glob.
+//! [`validate()`] runs every check in one pass: the projection, the structure plane, the
+//! content plane (frontmatter schema; table, list, code and `maxWords` leaves), the
+//! text constraints and the document rules. Contracts come from the builders
+//! ([`Contract`], [`section`], [`rule`] and the rest) or the YAML loader
+//! ([`load_contract`]); [`run_corpus`] routes documents to contracts by glob.
 //!
 //! ```
 //! use markdown_contract::{load_contract, validate};
@@ -24,31 +25,35 @@
 //! # Ok::<(), markdown_contract::DeclarativeError>(())
 //! ```
 //!
-//! The core is fs-free and `wasm32-unknown-unknown`-compatible: strings in, findings
-//! out. fs walking and config/contract file loading live behind the `native` feature
-//! (default on, excluded from wasm builds).
+//! The core takes strings and does no I/O, so it builds for `wasm32-unknown-unknown`.
+//! Reading files lives behind the `native` feature (on by default; build with
+//! `default-features = false` for wasm32).
+//!
+//! A text rule's `regex` and a frontmatter string's `pattern` use the `regex` crate's
+//! dialect, not JavaScript's: no lookaround or backreferences, and `\w`, `\d` and `\b`
+//! are Unicode-aware. The loader rejects a source the crate cannot compile. The README
+//! lists the other differences from the TS package.
 //!
 //! This file is a barrel only: it re-exports, it holds no logic.
 
-pub mod camel;
-pub mod content;
-pub mod contract;
-pub mod declarative;
-pub mod dialect;
-pub mod finding;
-pub mod frontmatter;
-pub mod parse;
-pub mod registry;
-pub mod runner;
-pub mod schema;
-pub mod structure;
-pub mod text_constraints;
-pub mod text_match;
-pub mod tree;
-pub mod validate;
+mod camel;
+mod content;
+mod contract;
+mod declarative;
+mod dialect;
+mod finding;
+mod frontmatter;
+mod js;
+mod parse;
+mod registry;
+mod runner;
+mod schema;
+mod structure;
+mod text_constraints;
+mod text_match;
+mod tree;
+mod validate;
 
-pub use camel::to_camel_key;
-pub use content::match_content;
 pub use contract::{
     CodeConfig, Contract, DocRule, EveryItem, ExtraColumns, FrontmatterSpec, GapSpec, LeafConfig,
     LeafSpec, LevelOpts, ListConfig, OneOfSpec, Order, Rule, SectionContent, SectionOpts,
@@ -56,21 +61,21 @@ pub use contract::{
     optional, rule, section, section_with, sections,
 };
 pub use declarative::{
-    DeclarativeError, DeclarativeKind, compile_contract_object, load_config, load_contract,
-    parse_declarative_doc,
+    ContractResolver, DeclarativeError, compile_contract_object, load_config, load_contract,
 };
 #[cfg(feature = "native")]
 pub use declarative::{load_config_file, load_contract_file};
+pub use dialect::{VaultRef, VaultRefKind, extract_vault_refs};
 pub use finding::{EditRange, Finding, FindingLevel, Fix, SourcePos, TextEdit};
-pub use frontmatter::match_frontmatter;
 pub use parse::{FrontmatterSplit, parse_document, split_frontmatter};
 pub use registry::{Ctx, FindingSpec, Registry};
-pub use runner::{CorpusConfig, CorpusRule, RunOptions, RunOutcome, RunStats, run_corpus};
+pub use runner::{
+    CorpusConfig, CorpusRule, GlobError, RunOptions, RunOutcome, RunStats, run_corpus,
+};
 #[cfg(feature = "native")]
-pub use runner::{run_corpus_dir, walk_dir};
-pub use schema::{Schema, StringFormat};
-pub use structure::{match_structure, scan_heading_depth_jumps};
+pub use runner::{NativeRunError, run_corpus_dir, walk_dir};
+pub use schema::{ConstValue, Schema, StringFormat};
 pub use text_constraints::{TextRuleSpec, forbids, requires, text_rule};
-pub use text_match::{TextMatchSpec, match_text, synthesize_text_id};
+pub use text_match::TextMatchSpec;
 pub use tree::{BlockKind, BlockNode, DocTree, Frontmatter, ListItem, SectionNode};
-pub use validate::{sort_findings, validate, validate_tree};
+pub use validate::{validate, validate_tree};

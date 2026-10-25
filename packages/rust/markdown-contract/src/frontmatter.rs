@@ -15,6 +15,10 @@
 //!   `frontmatter/enum` / `unknown-key` / `type` / `required` findings with the same id
 //!   selection and position attribution as the TS plane.
 
+use std::sync::OnceLock;
+
+use regex::Regex;
+
 use crate::finding::{Finding, SourcePos};
 use crate::registry::{Ctx, FindingSpec};
 use crate::schema::{
@@ -28,7 +32,7 @@ use crate::tree::DocTree;
 /// `toJS()` would produce: scalars keep their resolved types (a date-looking plain
 /// scalar is already a *string* in both engines — neither resolves timestamps), map
 /// keys stringify, and a non-finite float (which JSON cannot carry) becomes `null`.
-pub fn yaml_to_json(v: serde_yaml::Value) -> serde_json::Value {
+pub(crate) fn yaml_to_json(v: serde_yaml::Value) -> serde_json::Value {
     match v {
         serde_yaml::Value::Null => serde_json::Value::Null,
         serde_yaml::Value::Bool(b) => serde_json::Value::Bool(b),
@@ -83,7 +87,9 @@ enum LineNode {
 }
 
 /// One content-bearing line of the raw YAML: `(indent, content, 1-based line)`.
-fn content_lines(raw: &str) -> Vec<(usize, String, u32)> {
+type Line = (usize, String, u32);
+
+fn content_lines(raw: &str) -> Vec<Line> {
     raw.lines()
         .enumerate()
         .filter_map(|(i, line)| {
@@ -124,34 +130,44 @@ fn split_key(content: &str) -> Option<(String, &str)> {
     Some((key_raw, rest.trim()))
 }
 
+fn is_dash(content: &str) -> bool {
+    content == "-" || content.starts_with("- ")
+}
+
+/// Advance `idx` past every line indented deeper than `indent`: the continuation
+/// lines of a wrapped or block scalar, or of a flow collection.
+fn skip_deeper(lines: &[Line], idx: &mut usize, indent: usize) {
+    while lines.get(*idx).is_some_and(|(i, _, _)| *i > indent) {
+        *idx += 1;
+    }
+}
+
 /// Parse the lines from `idx` at exactly `indent` into a node (map, seq, or scalar).
-fn parse_block(lines: &[(usize, String, u32)], idx: &mut usize, indent: usize) -> LineNode {
+fn parse_block(lines: &[Line], idx: &mut usize, indent: usize) -> LineNode {
     let Some((first_indent, first, _)) = lines.get(*idx) else {
         return LineNode::Scalar;
     };
     if *first_indent != indent {
         return LineNode::Scalar;
     }
-    if first == "-" || first.starts_with("- ") {
+    if is_dash(first) {
         parse_seq(lines, idx, indent)
     } else if split_key(first).is_some() {
         parse_map(lines, idx, indent)
     } else {
-        // A plain scalar continuation line — consume it and everything deeper.
+        *idx += 1;
         skip_deeper(lines, idx, indent);
         LineNode::Scalar
     }
 }
 
-/// Consume this line and every following line indented deeper than `indent`.
-fn skip_deeper(lines: &[(usize, String, u32)], idx: &mut usize, indent: usize) {
-    *idx += 1;
-    while lines.get(*idx).is_some_and(|(i, _, _)| *i > indent) {
-        *idx += 1;
-    }
+/// A value that is only an anchor (`&a`) or a tag (`!t`): the node itself follows on
+/// the next lines.
+fn is_node_property(value: &str) -> bool {
+    (value.starts_with('&') || value.starts_with('!')) && !value.contains(char::is_whitespace)
 }
 
-fn parse_map(lines: &[(usize, String, u32)], idx: &mut usize, indent: usize) -> LineNode {
+fn parse_map(lines: &[Line], idx: &mut usize, indent: usize) -> LineNode {
     let mut pairs = Vec::new();
     while let Some((line_indent, content, lineno)) = lines.get(*idx) {
         if *line_indent != indent {
@@ -162,43 +178,35 @@ fn parse_map(lines: &[(usize, String, u32)], idx: &mut usize, indent: usize) -> 
         };
         let lineno = *lineno;
         *idx += 1;
-        let child = if value.is_empty() {
-            // The value (if any) is the following deeper-indented block — or, for a
-            // sequence, dash lines at the SAME indent (YAML permits both).
+        let child = if value.is_empty() || is_node_property(value) {
+            // The value is the following deeper block, or a sequence whose dashes sit
+            // at the key's own indent (YAML permits both).
             match lines.get(*idx) {
-                Some((i, _, _)) if *i > indent => {
-                    let deeper = *i;
-                    parse_block(lines, idx, deeper)
-                }
-                Some((i, c, _)) if *i == indent && (c == "-" || c.starts_with("- ")) => {
-                    parse_seq(lines, idx, indent)
-                }
+                Some((i, _, _)) if *i > indent => parse_block(lines, idx, *i),
+                Some((i, c, _)) if *i == indent && is_dash(c) => parse_seq(lines, idx, indent),
                 _ => LineNode::Scalar,
             }
-        } else if value == "|" || value == ">" || value.starts_with('|') || value.starts_with('>') {
-            // A block scalar: its indented body is opaque.
-            while lines.get(*idx).is_some_and(|(i, _, _)| *i > indent) {
-                *idx += 1;
-            }
-            LineNode::Scalar
         } else {
-            LineNode::Scalar // an inline (possibly flow) value — no inner positions
+            // An inline value. A wrapped plain scalar, a block scalar or a multi-line
+            // flow collection continues on deeper lines.
+            skip_deeper(lines, idx, indent);
+            LineNode::Scalar
         };
         pairs.push((key, lineno, child));
     }
     LineNode::Map(pairs)
 }
 
-fn parse_seq(lines: &[(usize, String, u32)], idx: &mut usize, indent: usize) -> LineNode {
+fn parse_seq(lines: &[Line], idx: &mut usize, indent: usize) -> LineNode {
     let mut items = Vec::new();
     while let Some((line_indent, content, lineno)) = lines.get(*idx) {
-        if *line_indent != indent || !(content == "-" || content.starts_with("- ")) {
+        if *line_indent != indent || !is_dash(content) {
             break;
         }
         let lineno = *lineno;
         let rest = content[1..].trim_start().to_string();
+        *idx += 1;
         if rest.is_empty() {
-            *idx += 1;
             let child = match lines.get(*idx) {
                 Some((i, _, _)) if *i > indent => parse_block(lines, idx, *i),
                 _ => LineNode::Scalar,
@@ -208,8 +216,7 @@ fn parse_seq(lines: &[(usize, String, u32)], idx: &mut usize, indent: usize) -> 
             // A compact `- key: value` map: re-parse the remainder as a map whose
             // first pair sits on this line at the dash-adjusted indent.
             let inner_indent = line_indent + (content.len() - rest.len());
-            let mut virt: Vec<(usize, String, u32)> = vec![(inner_indent, rest, lineno)];
-            *idx += 1;
+            let mut virt: Vec<Line> = vec![(inner_indent, rest, lineno)];
             while lines.get(*idx).is_some_and(|(i, _, _)| *i >= inner_indent) {
                 virt.push(lines[*idx].clone());
                 *idx += 1;
@@ -217,29 +224,24 @@ fn parse_seq(lines: &[(usize, String, u32)], idx: &mut usize, indent: usize) -> 
             let mut vidx = 0;
             items.push((lineno, parse_map(&virt, &mut vidx, inner_indent)));
         } else {
-            *idx += 1;
-            skip_trailing_scalar(lines, idx, indent);
+            skip_deeper(lines, idx, indent);
             items.push((lineno, LineNode::Scalar));
         }
     }
     LineNode::Seq(items)
 }
 
-/// Consume a scalar seq item's deeper continuation lines.
-fn skip_trailing_scalar(lines: &[(usize, String, u32)], idx: &mut usize, indent: usize) {
-    while lines.get(*idx).is_some_and(|(i, _, _)| *i > indent) {
-        *idx += 1;
-    }
+fn line_tree(raw: &str) -> Option<LineNode> {
+    let lines = content_lines(raw);
+    let root_indent = lines.first().map(|(i, _, _)| *i)?;
+    Some(parse_block(&lines, &mut 0, root_indent))
 }
 
 /// The 1-based line within `raw` of the key / element `path` addresses, or `None` when
 /// the path does not resolve (a missing key, or a flow collection this best-effort
 /// block index does not see into).
-pub fn line_for_path(raw: &str, path: &[PathSeg]) -> Option<u32> {
-    let lines = content_lines(raw);
-    let mut idx = 0;
-    let root_indent = lines.first().map(|(i, _, _)| *i)?;
-    let root = parse_block(&lines, &mut idx, root_indent);
+pub(crate) fn line_for_path(raw: &str, path: &[PathSeg]) -> Option<u32> {
+    let root = line_tree(raw)?;
     let mut node = &root;
     let mut line: Option<u32> = None;
     for seg in path {
@@ -258,6 +260,65 @@ pub fn line_for_path(raw: &str, path: &[PathSeg]) -> Option<u32> {
         }
     }
     line
+}
+
+/// The line of the first repeated key in any block mapping, which the TS `yaml`
+/// package reports as `DUPLICATE_KEY`.
+fn duplicate_key_line(node: &LineNode) -> Option<u32> {
+    let mut best: Option<u32> = None;
+    let mut keep = |l: Option<u32>| {
+        if let Some(l) = l {
+            best = Some(best.map_or(l, |b| b.min(l)));
+        }
+    };
+    match node {
+        LineNode::Map(pairs) => {
+            for (i, (key, line, child)) in pairs.iter().enumerate() {
+                if pairs[..i].iter().any(|(k, _, _)| k == key) {
+                    keep(Some(*line));
+                }
+                keep(duplicate_key_line(child));
+            }
+        }
+        LineNode::Seq(items) => {
+            for (_, child) in items {
+                keep(duplicate_key_line(child));
+            }
+        }
+        LineNode::Scalar => {}
+    }
+    best
+}
+
+fn location_suffix() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r" at line \d+ column \d+").expect("static regex"))
+}
+
+/// A frontmatter YAML error: its 1-based line within `raw` and its message.
+pub(crate) struct YamlError {
+    pub(crate) line: u32,
+    pub(crate) message: String,
+}
+
+/// The `frontmatter/yaml` error for a block serde_yaml rejected: its line within
+/// `raw` and its message. The line is serde_yaml's, except for a duplicate key, which
+/// is placed on the repeated key as the TS engine does.
+pub(crate) fn yaml_error(raw: &str, err: &serde_yaml::Error) -> YamlError {
+    let message = location_suffix()
+        .replace_all(&err.to_string(), "")
+        .into_owned();
+    let last_line = raw.lines().count().max(1) as u32;
+    let mut line = err.location().map_or(1, |l| l.line() as u32);
+    if message.starts_with("duplicate entry")
+        && let Some(dup) = line_tree(raw).as_ref().and_then(duplicate_key_line)
+    {
+        line = dup;
+    }
+    YamlError {
+        line: line.clamp(1, last_line),
+        message,
+    }
 }
 
 // ── Issue → finding mapping (the TS `frontmatterIdFor` / `frontmatterMessage`) ───────
@@ -329,12 +390,41 @@ fn frontmatter_message(issue: &Issue, id: &str, data: Option<&serde_json::Value>
     }
 }
 
+/// Report a frontmatter block whose YAML does not parse as `frontmatter/yaml`, on the
+/// error's line. Returns true when the YAML parsed. `parse_document` leaves `data` as
+/// `None` for such a block, so only then is `raw` parsed again for the error. The
+/// finding has no hint: the TS engine reports it outside every `description` scope.
+pub(crate) fn match_frontmatter_yaml(tree: &DocTree, ctx: &Ctx, out: &mut Vec<Finding>) -> bool {
+    let Some(fm) = tree.frontmatter.as_ref().filter(|fm| fm.data.is_none()) else {
+        return true;
+    };
+    let Err(e) = serde_yaml::from_str::<serde_yaml::Value>(&fm.raw) else {
+        return true;
+    };
+    let err = yaml_error(&fm.raw, &e);
+    out.push(
+        ctx.finding(
+            FindingSpec::new(
+                "frontmatter/yaml",
+                format!("frontmatter is not valid YAML: {}", err.message),
+            )
+            .pos(SourcePos::line(fm.pos.line + err.line)),
+        ),
+    );
+    false
+}
+
 /// Validate the document frontmatter against the compiled schema, remapping each issue
 /// to its key's source line. A strict-object rejection fans out to one
 /// `frontmatter/unknown-key` per offending key; a missing required key surfaces as
 /// `frontmatter/required`. When no frontmatter block is present the schema runs over
 /// `{}` so required-key findings still fire (document-level, no pos).
-pub fn match_frontmatter(tree: &DocTree, schema: &Schema, ctx: &Ctx, out: &mut Vec<Finding>) {
+pub(crate) fn match_frontmatter(
+    tree: &DocTree,
+    schema: &Schema,
+    ctx: &Ctx,
+    out: &mut Vec<Finding>,
+) {
     let empty = serde_json::Value::Object(serde_json::Map::new());
     let data: Option<&serde_json::Value> = match &tree.frontmatter {
         Some(fm) => fm.data.as_ref(),
@@ -417,6 +507,30 @@ mod tests {
                 "related": ["a", "b"],
             })
         );
+    }
+
+    #[test]
+    fn lines_after_a_wrapped_value_and_an_anchor_resolve() {
+        let raw = "summary: a summary that\n  wraps onto a second line\ncount: three\nowner: &o\n  id: seven\n";
+        let key = |k: &str| PathSeg::Key(k.into());
+        assert_eq!(line_for_path(raw, &[key("count")]), Some(3));
+        assert_eq!(line_for_path(raw, &[key("owner"), key("id")]), Some(5));
+        let block = "notes: |\n  one\n  two\nafter: 1\n";
+        assert_eq!(line_for_path(block, &[key("after")]), Some(4));
+    }
+
+    #[test]
+    fn yaml_errors_carry_a_line_and_a_message_without_the_location() {
+        let err = |raw: &str| {
+            let e = serde_yaml::from_str::<serde_yaml::Value>(raw).unwrap_err();
+            yaml_error(raw, &e)
+        };
+        // A duplicate key is placed on the repeat, as the TS `yaml` package does.
+        let dup = err("title: a\nowner: b\ntitle: c\n");
+        assert_eq!(dup.line, 3);
+        assert!(!dup.message.contains(" at line "));
+        assert_eq!(err("title: 'unclosed\n").line, 1);
+        assert_eq!(err("a:\n\tb: 1\n").line, 2);
     }
 
     #[test]

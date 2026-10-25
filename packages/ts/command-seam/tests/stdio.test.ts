@@ -84,34 +84,42 @@ describe('managedProcessRunner stdio', () => {
     expect(readFileSync(log, 'utf-8')).toBe(ALTERNATED)
   })
 
-  test('stdout and stderr can go to different fds; stdin is /dev/null', async () => {
-    const [outFile, errFile, where] = [path('out'), path('err'), path('where')]
-    const out = openSync(outFile, 'w')
-    const err = openSync(errFile, 'w')
-    try {
-      const handle = managedProcessRunner('sh').run(
-        ['-c', `echo to-out; echo to-err >&2; ${WHERE}`, 'sh', where],
-        { cwd: CWD, stdio: { stdout: out, stderr: err } },
-      )
-      expect((await handle.exited).exitCode).toBe(0)
-    } finally {
-      closeSync(out)
-      closeSync(err)
-    }
-    expect(readFileSync(outFile, 'utf-8')).toBe('to-out\n')
-    expect(readFileSync(errFile, 'utf-8')).toBe('to-err\n')
-    expect(readFileSync(where, 'utf-8')).toBe('stdin null\nstdout other\nstderr other\n')
-  })
+  // POSIX only: Git for Windows `sh` cannot tell that a stream is the Windows NUL device (`test -ef /dev/null`).
+  test.skipIf(process.platform === 'win32')(
+    'stdout and stderr can go to different fds; stdin is /dev/null',
+    async () => {
+      const [outFile, errFile, where] = [path('out'), path('err'), path('where')]
+      const out = openSync(outFile, 'w')
+      const err = openSync(errFile, 'w')
+      try {
+        const handle = managedProcessRunner('sh').run(
+          ['-c', `echo to-out; echo to-err >&2; ${WHERE}`, 'sh', where],
+          { cwd: CWD, stdio: { stdout: out, stderr: err } },
+        )
+        expect((await handle.exited).exitCode).toBe(0)
+      } finally {
+        closeSync(out)
+        closeSync(err)
+      }
+      expect(readFileSync(outFile, 'utf-8')).toBe('to-out\n')
+      expect(readFileSync(errFile, 'utf-8')).toBe('to-err\n')
+      expect(readFileSync(where, 'utf-8')).toBe('stdin null\nstdout other\nstderr other\n')
+    },
+  )
 
-  test("'ignore' points stdin, stdout and stderr at /dev/null", async () => {
-    const where = path('where')
-    const handle = managedProcessRunner('sh').run(['-c', WHERE, 'sh', where], {
-      cwd: CWD,
-      stdio: 'ignore',
-    })
-    expect((await handle.exited).exitCode).toBe(0)
-    expect(readFileSync(where, 'utf-8')).toBe('stdin null\nstdout null\nstderr null\n')
-  })
+  // POSIX only: Git for Windows `sh` cannot tell that a stream is the Windows NUL device (`test -ef /dev/null`).
+  test.skipIf(process.platform === 'win32')(
+    "'ignore' points stdin, stdout and stderr at /dev/null",
+    async () => {
+      const where = path('where')
+      const handle = managedProcessRunner('sh').run(['-c', WHERE, 'sh', where], {
+        cwd: CWD,
+        stdio: 'ignore',
+      })
+      expect((await handle.exited).exitCode).toBe(0)
+      expect(readFileSync(where, 'utf-8')).toBe('stdin null\nstdout null\nstderr null\n')
+    },
+  )
 
   test('an fd that is not open is a failed spawn, not a throw', async () => {
     const fd = closedFd()
@@ -189,7 +197,8 @@ describe("a fire-and-forget launch: stdio 'ignore', unref and processGroup", () 
     ['Node', [NODE, '--no-warnings']],
   ]
   for (const [name, runtime] of runtimes) {
-    test.skipIf(runtime === undefined)(
+    // POSIX only on Windows hosts: the host starts through `/bin/sh` and the child is a `sh` script.
+    test.skipIf(runtime === undefined || process.platform === 'win32')(
       `${name}: the host exits at once, the child outlives it and never writes to the host's output`,
       async () => {
         const launch = launchFromHost(runtime!, FIRE_AND_FORGET)
@@ -232,15 +241,19 @@ describe('streamRunner stdio', () => {
     expect(readFileSync(log, 'utf-8')).toBe(ALTERNATED)
   })
 
-  test("'ignore' points stdin, stdout and stderr at /dev/null", () => {
-    const where = path('where')
-    expect(
-      streamRunner('sh').run(['-c', WHERE, 'sh', where], { cwd: CWD, stdio: 'ignore' }),
-    ).toEqual({
-      exitCode: 0,
-    })
-    expect(readFileSync(where, 'utf-8')).toBe('stdin null\nstdout null\nstderr null\n')
-  })
+  // POSIX only: Git for Windows `sh` cannot tell that a stream is the Windows NUL device (`test -ef /dev/null`).
+  test.skipIf(process.platform === 'win32')(
+    "'ignore' points stdin, stdout and stderr at /dev/null",
+    () => {
+      const where = path('where')
+      expect(
+        streamRunner('sh').run(['-c', WHERE, 'sh', where], { cwd: CWD, stdio: 'ignore' }),
+      ).toEqual({
+        exitCode: 0,
+      })
+      expect(readFileSync(where, 'utf-8')).toBe('stdin null\nstdout null\nstderr null\n')
+    },
+  )
 
   test('an fd that is not open is a failed spawn', () => {
     const fd = closedFd()
@@ -262,36 +275,44 @@ describe('streamRunner stdio', () => {
 })
 
 describe('streamRunner quiet', () => {
-  test('a failed spawn, a bad cwd, a signal and a timeout print nothing, and still say why', () => {
-    const results: unknown[] = []
-    const written = stderrOf(() => {
-      const opts = { cwd: CWD, quiet: true }
-      results.push(streamRunner('definitely-not-a-real-binary-quiet').run([], opts))
-      results.push(streamRunner('sh').run(['-c', 'true'], { ...opts, cwd: path('missing') }))
-      results.push(streamRunner('sh').run(['-c', 'kill -TERM $$'], opts))
-      results.push(streamRunner('sh').run(['-c', 'sleep 5'], { ...opts, timeoutMs: 100 }))
-    })
-    expect(written).toEqual([])
-    expect(results).toMatchObject([
-      { neverExited: true, reason: 'spawn', error: expect.stringContaining('definitely-not') },
-      { neverExited: true, reason: 'spawn', error: expect.stringContaining('does not exist') },
-      { neverExited: true, reason: 'signal', signal: 'SIGTERM' },
-      {
-        neverExited: true,
-        reason: 'timeout',
-        signal: 'SIGKILL',
-        error: expect.stringContaining('ETIMEDOUT'),
-      },
-    ])
-  })
+  // POSIX only: Windows has no signals; `sh` reports `kill -TERM $$` as an exit code.
+  test.skipIf(process.platform === 'win32')(
+    'a failed spawn, a bad cwd, a signal and a timeout print nothing, and still say why',
+    () => {
+      const results: unknown[] = []
+      const written = stderrOf(() => {
+        const opts = { cwd: CWD, quiet: true }
+        results.push(streamRunner('definitely-not-a-real-binary-quiet').run([], opts))
+        results.push(streamRunner('sh').run(['-c', 'true'], { ...opts, cwd: path('missing') }))
+        results.push(streamRunner('sh').run(['-c', 'kill -TERM $$'], opts))
+        results.push(streamRunner('sh').run(['-c', 'sleep 5'], { ...opts, timeoutMs: 100 }))
+      })
+      expect(written).toEqual([])
+      expect(results).toMatchObject([
+        { neverExited: true, reason: 'spawn', error: expect.stringContaining('definitely-not') },
+        { neverExited: true, reason: 'spawn', error: expect.stringContaining('does not exist') },
+        { neverExited: true, reason: 'signal', signal: 'SIGTERM' },
+        {
+          neverExited: true,
+          reason: 'timeout',
+          signal: 'SIGKILL',
+          error: expect.stringContaining('ETIMEDOUT'),
+        },
+      ])
+    },
+  )
 
-  test('without quiet, the same failures print one line each', () => {
-    const written = stderrOf(() => {
-      streamRunner('definitely-not-a-real-binary-quiet').run([], { cwd: CWD })
-      streamRunner('sh').run(['-c', 'kill -TERM $$'], { cwd: CWD, quiet: false })
-    })
-    expect(written).toHaveLength(2)
-    expect(written[0]).toContain('definitely-not-a-real-binary-quiet')
-    expect(written[1]).toBe('sh was killed by SIGTERM\n')
-  })
+  // POSIX only: Windows has no signals; `sh` reports `kill -TERM $$` as an exit code.
+  test.skipIf(process.platform === 'win32')(
+    'without quiet, the same failures print one line each',
+    () => {
+      const written = stderrOf(() => {
+        streamRunner('definitely-not-a-real-binary-quiet').run([], { cwd: CWD })
+        streamRunner('sh').run(['-c', 'kill -TERM $$'], { cwd: CWD, quiet: false })
+      })
+      expect(written).toHaveLength(2)
+      expect(written[0]).toContain('definitely-not-a-real-binary-quiet')
+      expect(written[1]).toBe('sh was killed by SIGTERM\n')
+    },
+  )
 })

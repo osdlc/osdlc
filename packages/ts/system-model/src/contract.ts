@@ -157,4 +157,10 @@ export interface CollectOptions {
   which?: ((binary: string) => string | null) | undefined
   /** Ends every subprocess a runner starts, git included, when aborted. */
   signal?: AbortSignal | undefined
+  /**
+   * Called once for each runner that was probed, with how long its probe
+   * took. Not called for a runner withheld because execution is not allowed.
+   * A callback that throws rejects the whole collect.
+   */
+  onProbe?: ((probe: { runner: string; durationMs: number }) => void) | undefined
 }

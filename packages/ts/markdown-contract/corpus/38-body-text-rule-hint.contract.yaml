@@ -1,0 +1,9 @@
+mcVersion: 2
+kind: contract
+description: A skill page.
+body:
+  description: The skill sections.
+  sections:
+    - section: Summary
+  forbids:
+    - pattern: TBD

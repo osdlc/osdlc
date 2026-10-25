@@ -44,20 +44,24 @@ describe('streamRunner', () => {
     expect(written[0]).toContain('ETIMEDOUT')
   })
 
-  test('a signal death is reported on the parent stderr', () => {
-    const written: string[] = []
-    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
-      written.push(String(chunk))
-      return true
-    })
-    try {
-      const r = streamRunner('sh').run(['-c', 'kill -TERM $$'], { cwd: CWD })
-      expect(r).toEqual({ exitCode: 1, neverExited: true, reason: 'signal', signal: 'SIGTERM' })
-    } finally {
-      spy.mockRestore()
-    }
-    expect(written).toEqual(['sh was killed by SIGTERM\n'])
-  })
+  // POSIX only: Windows has no signals; `sh` reports `kill -TERM $$` as an exit code.
+  test.skipIf(process.platform === 'win32')(
+    'a signal death is reported on the parent stderr',
+    () => {
+      const written: string[] = []
+      const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+        written.push(String(chunk))
+        return true
+      })
+      try {
+        const r = streamRunner('sh').run(['-c', 'kill -TERM $$'], { cwd: CWD })
+        expect(r).toEqual({ exitCode: 1, neverExited: true, reason: 'signal', signal: 'SIGTERM' })
+      } finally {
+        spy.mockRestore()
+      }
+      expect(written).toEqual(['sh was killed by SIGTERM\n'])
+    },
+  )
 
   test('a missing binary degrades to a non-zero exit, not a throw', () => {
     const nope = streamRunner('definitely-not-a-real-binary-stream-t1')
