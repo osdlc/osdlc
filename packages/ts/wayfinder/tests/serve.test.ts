@@ -689,6 +689,8 @@ describe('a new sign-in link', () => {
       cwd: dir,
       open: false,
       input,
+      foreground: async () => true,
+      jobSignals: null,
       signal: aborter.signal,
       stdout: (text) => {
         out += text
@@ -708,6 +710,38 @@ describe('a new sign-in link', () => {
     aborter.abort(130)
     expect(await finished).toBeNull()
     expect(input.listenerCount('data')).toBe(0)
+  })
+  test('in the background the terminal is not read, so SIGTTIN cannot stop the server', async () => {
+    const dir = await root({ 'package.json': JSON.stringify({ name: 'p', scripts: {} }) })
+    const home = await root()
+    const env = { HOME: home, PATH: process.env['PATH'] }
+    const { app } = createWayApp({ home })
+    const session = await createSession({ dir, cwd: dir, env, home })
+    const aborter = new AbortController()
+    const input = new PassThrough()
+    let out = ''
+    const finished = serve({
+      session,
+      app,
+      globals: {},
+      cwd: dir,
+      open: false,
+      input,
+      foreground: async () => false,
+      jobSignals: null,
+      signal: aborter.signal,
+      stdout: (text) => {
+        out += text
+      },
+      stderr: () => {},
+    })
+    await vi.waitFor(() => expect(out).toContain('?boot='))
+    expect(out).not.toContain('press Enter')
+    expect(input.listenerCount('data')).toBe(0)
+    const address = out.match(/(http:\/\/127\.0\.0\.1:\d+)/)![1]!
+    expect((await fetch(`${address}/`)).status).toBe(200)
+    aborter.abort(130)
+    expect(await finished).toBeNull()
   })
 })
 

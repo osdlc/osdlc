@@ -277,7 +277,9 @@ closes, and is never sent with a request. So a reload stays signed in, but a
 new tab or another browser is not. To sign one in, press Enter in the
 terminal `way serve` runs in: it opens a new link, or prints it under
 `--no-open`. Each new link retires the one before it. After a restart of
-the server the old tab answers `401` and says the same.
+the server the old tab answers `401` and says the same. The terminal is
+read only while `way serve` runs in the foreground, so `way serve &` keeps
+serving; bring it back with `fg` to press Enter.
 
 A header is used instead of a cookie on purpose. The browser sends a cookie
 with a cross-origin request from any site, which allows CSRF. A header does

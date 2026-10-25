@@ -21,6 +21,7 @@ import { terminalSafe } from '../terminal-text.ts'
 import { WITHHELD, runnerLabel, staleLabel } from '../vocabulary.ts'
 import { createSignIn, type SignIn } from './auth.ts'
 import { createRoutes, type RunResolution } from './routes.ts'
+import { readTerminalLines, type JobSignals } from './terminal-input.ts'
 
 /** The HTTP status for each `run` error code the page can act on. */
 const RUN_STATUS: Record<string, number> = {
@@ -56,9 +57,14 @@ export interface ServeOptions {
   stderr(text: string): void
   /**
    * The terminal's input, when stdin is a terminal. Each line read from it
-   * (Enter) prints a new sign-in link, for a new tab or another browser.
+   * (Enter) prints a new sign-in link, for a new tab or another browser. It
+   * is read only while the process is in the foreground.
    */
   input?: NodeJS.ReadableStream | undefined
+  /** Whether the process may read `input` now. Tests inject one. Default: a `ps` check. */
+  foreground?: (() => Promise<boolean>) | undefined
+  /** The job-control signals the reader follows. Tests inject a stand-in. */
+  jobSignals?: JobSignals | null | undefined
   /** Gives the terminal to a task. Tests inject one. Default: the core's `handOff`. */
   handOff?: ((plan: Pick<RunDocumentBody, 'argv' | 'env' | 'cwd'>) => HandOffResult) | undefined
 }
@@ -249,10 +255,6 @@ export async function serve(options: ServeOptions): Promise<number | null> {
   options.stdout(startupSummary(address, first))
   options.stdout(`  live       the page refreshes on focus and every 15s; Refresh re-reads\n`)
   options.stdout(`  stop       Ctrl-C\n`)
-  if (options.input !== undefined) {
-    options.stdout(`  new tab    press Enter here for a new sign-in link\n`)
-  }
-
   /** Open the current link, or print it when there is no browser to open. */
   const show = (): void => {
     if (options.open === false) {
@@ -276,21 +278,23 @@ export async function serve(options: ServeOptions): Promise<number | null> {
         }
       })
   }
-  show()
-
-  const input = options.input
-  if (input !== undefined) {
-    const onData = (chunk: Buffer | string): void => {
-      if (!String(chunk).includes('\n')) return
-      web.signIn.renew()
-      show()
-    }
-    input.on('data', onData)
-    // Stop reading before a task gets the terminal, and when the server stops.
-    void web.stopped.then(() => {
-      input.off('data', onData)
-      input.pause()
-    })
+  // Enter prints a new link. Read only in the foreground: see terminal-input.ts.
+  const lines =
+    options.input !== undefined
+      ? readTerminalLines(
+          options.input,
+          () => {
+            web.signIn.renew()
+            show()
+          },
+          { foreground: options.foreground, signals: options.jobSignals },
+        )
+      : undefined
+  // Stop reading before a task gets the terminal, and when the server stops.
+  void web.stopped.then(() => lines?.stop())
+  if (lines !== undefined && (await lines.ready)) {
+    options.stdout(`  new tab    press Enter here for a new sign-in link\n`)
   }
+  show()
   return web.finished
 }
