@@ -136,7 +136,7 @@ describe('terminalSafe', () => {
     )
     expect(code).toBe(1)
     expect(lines).toHaveLength(1)
-    expect(lines[0]).toMatch(/^wayfinder: bad /)
+    expect(lines[0]).toMatch(/^way: bad /)
     expect(lines[0]?.slice(0, -1)).not.toMatch(RAW_CONTROL)
     expect(await guardedExit(async () => 3)).toBe(3)
   })

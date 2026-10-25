@@ -9,7 +9,7 @@ import { chmod, mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterAll, describe, expect, test } from 'vitest'
+import { afterAll, describe, expect, test, vi } from 'vitest'
 
 import {
   CATALOG_SCHEMA_VERSION,
@@ -25,7 +25,7 @@ import { configLocations } from '../src/config.ts'
 import { KEY_TABLE, keysFor } from '../src/keys.ts'
 import { refreshNote } from '../src/tui/app.ts'
 import { clipboardCommands, copyText, writeClipboard } from '../src/tui/copy.ts'
-import { installQuitHandlers } from '../src/tui/index.ts'
+import { installQuitHandlers, runTui } from '../src/tui/index.ts'
 import { makeStyles, stylesFor, terminalTheme } from '../src/tui/style.ts'
 import { cleanupAll, lineOf, screen, temp, testTui } from './tui-support.ts'
 
@@ -792,6 +792,21 @@ describe('quitting', () => {
     expect(codes).toEqual([code])
     uninstall()
     expect(target.listenerCount(signal)).toBe(0)
+  })
+
+  test('without a TTY it refuses on stderr, with the way: prefix', async () => {
+    const { tui } = await testTui()
+    const was = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY')
+    Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true })
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      expect(await runTui(tui.session)).toBe(2)
+      expect(String(write.mock.calls[0]?.[0])).toMatch(/^way: the terminal UI needs a TTY/)
+    } finally {
+      write.mockRestore()
+      if (was === undefined) delete (process.stdin as { isTTY?: boolean }).isTTY
+      else Object.defineProperty(process.stdin, 'isTTY', was)
+    }
   })
 })
 

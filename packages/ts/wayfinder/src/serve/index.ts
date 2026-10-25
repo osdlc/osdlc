@@ -12,7 +12,7 @@ import type { App } from '@osdlc/cli-tool/command'
 import { createHttpApi, serveHttp, type HttpServer } from '@osdlc/cli-tool/http'
 import { commandString, spawnRunner } from '@osdlc/command-seam'
 
-import { APP } from '../app.ts'
+import { APP, BIN } from '../app.ts'
 import { handOff as defaultHandOff, type HandOffResult } from '../core/run.ts'
 import type { CatalogSnapshot, Session } from '../core/session.ts'
 import type { RunDocumentBody } from '../documents.ts'
@@ -151,7 +151,7 @@ export async function startServer(options: ServeOptions): Promise<WebServer> {
         options.stderr(`$ ${terminalSafe(commandString(plan.argv))}\n`)
         const ended = runHandOff(plan)
         if (ended.error !== undefined) {
-          options.stderr(`${APP}: ${terminalSafe(plan.argv[0] ?? '')}: ${ended.error}\n`)
+          options.stderr(`${BIN}: ${terminalSafe(plan.argv[0] ?? '')}: ${ended.error}\n`)
         }
         settle(ended.exit)
       })()

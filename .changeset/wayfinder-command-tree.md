@@ -18,5 +18,5 @@ Breaking changes, and what to do:
 - `--json` always carries `cache`, `unknowns` and `filter`, and `schemaVersion` and `kind`. A strict parser must allow these fields; `documentZod('catalog')` does.
 - `--serve`, `--list` and `--json` are aliases for `serve`, `list` and `list --json` in this release and will be removed later. Switch scripts to the commands. Two of them at once is now an error.
 - A start directory that does not exist is an error (exit 1) instead of an empty catalog. Check the path.
-- Messages on stderr from the tree commands start with `way:`, not `wayfinder:`. Update any pattern that matches the prefix.
+- Every message on stderr starts with `way:`, not `wayfinder:`: the commands, the terminal UI, the web view server and an uncaught error. Update any pattern that matches the prefix.
 - The package has an `exports` map, so deep imports into `dist/` no longer resolve. Use `@osdlc/wayfinder/schema` for the schemas.
