@@ -1,5 +1,20 @@
 # @osdlc/pr-update
 
+## 0.7.2
+
+### Patch Changes
+
+- Updated dependencies [910deca]
+- Updated dependencies [910deca]
+- Updated dependencies [910deca]
+- Updated dependencies [910deca]
+  - @osdlc/cli-tool@0.8.0
+  - @osdlc/command-seam@0.10.0
+  - @osdlc/config-layers@0.7.1
+  - @osdlc/trust-repo@0.3.0
+  - @osdlc/code-host@0.4.3
+  - @osdlc/typed-git@0.7.1
+
 ## 0.7.1
 
 ### Patch Changes
