@@ -7,7 +7,7 @@ description: The layered settings files and the config command.
 
 Settings you would otherwise retype on every run live in a file: which
 runners to skip, their order, whether execution is allowed, how files are
-found, and which extra tool modules to load.
+found, which extra tool modules to load, and how `way` opens.
 
 ## Layers
 
@@ -16,45 +16,48 @@ Lowest precedence first:
 | Layer    | Where                                                                                                   |
 | -------- | ------------------------------------------------------------------------------------------------------- |
 | defaults | built in                                                                                                |
-| user     | `$XDG_CONFIG_HOME/wayfinder/config.json`, or `~/.config/wayfinder/config.json` when that variable is unset or relative |
+| user     | `config.json` in wayfinder's config directory. See [Paths](#paths)                                 |
 | project  | `wayfinder.config.json` at the project root                                                               |
 | flags    | the command line                                                                                        |
 
 The project root is the one `way` resolved upward from the directory, not
-the working directory. XDG paths are used on every platform, macOS included.
+the working directory.
 
 `WAYFINDER_CONFIG=/path/to/file` replaces the user file's location and nothing
 else. It does not move the project file and does not add a layer. A leading
-`~` is expanded. A relative path is ignored with a warning, and the XDG
+`~` is expanded. A relative path is ignored with a warning, and the default
 path is read instead: you usually run `way` from the project root, so a
 relative path would name a file in the repository. Naming a file that does not
-exist is an error.
+exist is an error. Every command reads `WAYFINDER_CONFIG` the same way.
 
-A relative `XDG_CONFIG_HOME` is ignored, as the XDG spec says, and the user
-file falls back to `~/.config/wayfinder/config.json`. The same holds for
-`XDG_STATE_HOME` (the trust store) and `XDG_CACHE_HOME` (the cache). A relative
-`HOME` counts as unset, and your account's home is used. The user
-file can turn execution on and load tools, so it must never be a file inside a
-repository.
+The user file can turn execution on and load tools, so it must never be a
+file inside a repository.
 
 `way config path` prints where each layer's file lives.
 
-### Files from the waypost name
+## Paths
 
-The tool was called waypost before its first release. The old names still
-work when the new ones are absent:
+wayfinder keeps three directories outside your repositories. XDG paths are
+used on every platform, macOS included.
 
-- `WAYPOST_CONFIG` is read when `WAYFINDER_CONFIG` is unset.
-- `<config home>/waypost/config.json` is read when
-  `<config home>/wayfinder/config.json` does not exist.
-- `waypost.config.json` is read when `wayfinder.config.json` does not exist
-  at the project root.
+| Directory | Holds                    | Default                                              |
+| --------- | ------------------------ | ---------------------------------------------------- |
+| config    | the user config file     | `$XDG_CONFIG_HOME/wayfinder`, or `~/.config/wayfinder` |
+| state     | the trust store          | `$XDG_STATE_HOME/wayfinder`, or `~/.local/state/wayfinder` |
+| cache     | stored probe results     | `$XDG_CACHE_HOME/wayfinder`, or `~/.cache/wayfinder` |
 
-`way config set` edits the file that is read, old name or new. Each fallback
-prints a warning that names the new location. Rename the file to stop it.
-When both the old and the new file exist, only the new one is read, and a
-warning says the old one is ignored. Merge it into the new file and delete
-it.
+`WAYFINDER_ROOT=/some/dir` moves all three under one directory:
+`/some/dir/config/wayfinder`, `/some/dir/state/wayfinder` and
+`/some/dir/cache/wayfinder`. `WAYFINDER_CONFIG_DIR`, `WAYFINDER_STATE_DIR` and
+`WAYFINDER_CACHE_DIR` move one base each. These variables must hold absolute
+paths; a relative one is an error.
+
+A relative `XDG_*` value is ignored, as the XDG spec says. A leading `~` in an
+`XDG_*` value is not expanded. A relative `HOME` counts as unset, and your
+account's home is used.
+
+`way clean` reports and removes these directories. See
+[Trust and execution](trust.md#removing-what-is-stored).
 
 ## Merging
 
@@ -76,6 +79,8 @@ Every key is optional:
 
 ```jsonc
 {
+  // Added by "way config set". Editors use it to check the file.
+  "$schema": "https://unpkg.com/@osdlc/wayfinder@0.8/schema/config.json",
   "runners": {
     // Runner ids to skip.
     "disabled": ["cargo"],
@@ -94,12 +99,24 @@ Every key is optional:
   "trust": {
     "paths": ["/home/me/work/**"],
     "owners": ["my-org"],
+    // Trust for one tool only, such as mise.
+    "tools": { "mise": { "paths": ["/home/me/scratch/**"] } },
   },
+  // User file only. tui | web: what a bare "way" opens.
+  "open": "tui",
+  // User file only. system | light | dark: the web view's colour scheme.
+  "theme": "system",
 }
 ```
 
 The settable keys are `runners.disabled`, `runners.order`, `allowExec`,
-`discovery`, `excludePaths`, `trust.paths`, `trust.owners` and `tools`.
+`discovery`, `excludePaths`, `trust.paths`, `trust.owners`, `trust.tools`,
+`tools`, `open` and `theme`.
+
+The package ships the file's JSON Schema at `schema/config.json`. `way config
+set` writes `$schema` into a file that has none, and keeps the keys in the
+schema's order. A write replaces the file in one step, so a crash never
+leaves half a file.
 
 ### `runners.order`
 
@@ -163,11 +180,19 @@ labelled `(default)`.
 This settles the configured value only. Execution also needs a trusted
 repository, unless `--exec` is given. See [Trust and execution](trust.md).
 
-### `trust.paths` and `trust.owners`
+### `trust.paths`, `trust.owners` and `trust.tools`
 
 These pre-authorize a class of repositories without a per-repository grant.
-They count only in the user file. A project file's `trust` block is dropped
-with a warning. See [Trust and execution](trust.md#the-policy).
+`trust.tools.<tool>` takes the same `paths` and `owners`, and trusts that one
+tool only. They count only in the user file. A project file's `trust` block is
+dropped with a warning. See [Trust and execution](trust.md#the-policy).
+
+### `open` and `theme`
+
+`open` is what a bare `way` opens: `tui` (the default) or `web`. `theme` is
+the web view's colour scheme: `system` (the default), `light` or `dark`. Both
+are personal, so they count only in the user file. A project file's value is
+dropped with a warning, and `way config set --project` refuses them.
 
 ## The `config` command
 
@@ -177,6 +202,7 @@ way config get <key>                            one setting's effective value, a
 way config set <key> <value> [--user|--project] write a setting (default --project)
 way config unset <key> [--user|--project]       remove a setting (default --project)
 way config path                                 where each layer's file lives
+way config explain <key>                        how a setting got its value, layer by layer
 way config --help                               this list
 ```
 
@@ -189,8 +215,17 @@ locations and warnings go to stderr, so `--json` stays parseable.
 `-C` works here too: `way config path -C /elsewhere` reports that directory's
 files.
 
-An unknown key in a file is a warning naming the file and the key, and the
-rest of the file still loads. A malformed file or a wrong-typed value is an
+`explain` shows each layer from the default up, the value it sets, and which
+one won. A layer that may not set the key, such as `open` in a project file,
+is shown and marked ignored.
+
+`set --project` refuses what a project file may not hold: `allowExec: true`,
+`trust`, `open` and `theme`. The web view refuses the same writes.
+`trust`, `allowExec` and `tools` can only be changed from the command line:
+the MCP and HTTP adapters refuse those writes.
+
+An unknown key in a file is a warning naming the file and the key, with the
+closest known key when one is near, and the rest of the file still loads. A malformed file or a wrong-typed value is an
 error naming the file and the problem.
 
 ## Exit codes

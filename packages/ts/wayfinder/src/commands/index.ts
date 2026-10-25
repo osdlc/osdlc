@@ -2,8 +2,7 @@
  * The `way` command tree. See `src/core/README.md` for how a command is added.
  */
 
-import { defineApp, type App, type Node } from '@osdlc/cli-tool/command'
-import type { CliIo } from '@osdlc/cli-tool'
+import { defineApp, type App, type CommandContext, type Node } from '@osdlc/cli-tool/command'
 
 import { BIN, PROJECT_CONFIG_FILENAME } from '../app.ts'
 import { VERSION } from '../version.ts'
@@ -11,28 +10,12 @@ import { browseCommand, serveCommand } from './browse.ts'
 import { listCommand } from './list.ts'
 import { queryCommand } from './query.ts'
 import { runCommand } from './run.ts'
+import { cleanCommand } from '../clean-command.ts'
+import { configCommand } from '../config-command.ts'
+import { guideCommand, type GuideTool } from '../guide.ts'
 import { providersCommand } from '../providers-command.ts'
-import { GLOBALS, kit, setCommandWords } from './shared.ts'
-
-/** What a legacy command gets: its own words, and the run's streams and paths. */
-export interface LegacyContext {
-  io: CliIo
-  env: Record<string, string | undefined>
-  home: string
-  cwd: string
-}
-
-/**
- * A command that still parses its own arguments. `main` runs it before the
- * command tree sees the line; the tree holds a stub with the same summary, so
- * `help` lists it. Each one moves into the tree as a data command in time.
- */
-export interface LegacyCommand {
-  summary: string
-  /** Left out of help at every level. */
-  hidden?: boolean
-  run(argv: string[], ctx: LegacyContext): Promise<number> | number
-}
+import { trustCommand } from '../trust-command.ts'
+import { GLOBALS, setCommandWords } from './shared.ts'
 
 /** The root's long description: what `way help --full` adds. */
 const DESCRIPTION = `Defaults come from ${PROJECT_CONFIG_FILENAME} in the project root and from the user file "${BIN} config path" names; a flag beats both. --exclude REPLACES the configured runners.disabled rather than adding to it.
@@ -48,36 +31,24 @@ The flags --serve, --list and --json with no command still work in this release,
 /** What {@link createWayApp} returns. */
 export interface WayApp {
   app: App
-  /** Every command word at the root, hidden and legacy ones and `help` and `schema` included. */
+  /** Every command word at the root, hidden ones and `help` and `schema` included. */
   words: readonly string[]
-  /** The words of the commands the tree runs itself, for the complete help. */
+  /** The words of the commands the complete help shows. */
   treeWords: readonly string[]
-  /** The commands `main` runs before the tree, by command word. */
-  legacy: Readonly<Record<string, LegacyCommand>>
 }
 
 /**
  * Build the command tree. `home` is the base for config, trust and cache
- * paths, injected so a test never reads the developer's own. `legacy` are
- * the commands that still parse their own arguments.
+ * paths, injected so a test never reads the developer's own. `guide` gives
+ * the guide its usage topic; by default the root's complete help.
  */
 export function createWayApp(opts: {
   home: string
-  legacy: Readonly<Record<string, LegacyCommand>>
+  guide?: (ctx: CommandContext) => GuideTool
 }): WayApp {
-  const { home, legacy } = opts
+  const { home } = opts
+  const env = { globals: GLOBALS, home: () => home }
   const browse = browseCommand(home)
-  const stubs: Record<string, Node> = {}
-  for (const [word, command] of Object.entries(legacy)) {
-    // A hidden one has no stub, so no help level lists it.
-    if (command.hidden === true) continue
-    stubs[word] = kit.command({
-      summary: command.summary,
-      interactive: true,
-      // `main` runs these before the tree; a stub only gives `help` its line.
-      run: () => 2,
-    })
-  }
   const commands: Record<string, Node> = {
     browse: { ...browse, hidden: true },
     list: listCommand(home),
@@ -85,14 +56,15 @@ export function createWayApp(opts: {
     run: runCommand(home),
     serve: serveCommand(home),
     providers: providersCommand(home),
-    ...stubs,
+    config: configCommand(env),
+    trust: trustCommand(env),
+    guide: guideCommand({
+      globals: GLOBALS,
+      ...(opts.guide !== undefined ? { tool: opts.guide } : {}),
+    }),
+    clean: cleanCommand(env),
   }
-  const words = [
-    ...Object.keys(commands),
-    ...Object.keys(legacy).filter((w) => !Object.hasOwn(commands, w)),
-    'help',
-    'schema',
-  ]
+  const words = [...Object.keys(commands), 'help', 'schema']
   setCommandWords(words)
   const app = defineApp({
     name: BIN,
@@ -103,6 +75,6 @@ export function createWayApp(opts: {
     default: browse,
     commands,
   })
-  const treeWords = ['list', 'query', 'run', 'serve', 'providers']
-  return { app, words, treeWords, legacy }
+  const treeWords = Object.keys(commands).filter((w) => w !== 'browse')
+  return { app, words, treeWords }
 }

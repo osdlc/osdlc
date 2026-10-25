@@ -2,9 +2,9 @@
  * `way`: browse and run every task in a repository.
  *
  * The commands are a `@osdlc/cli-tool` command tree (`commands/index.ts`).
- * This module is the entry point: it runs the commands that still parse their
- * own arguments, maps the old surface flags onto commands, and hands the rest
- * to the tree.
+ * This module is the entry point: it runs `dev`, which parses its own
+ * arguments, maps the old surface flags onto commands, and hands the rest to
+ * the tree.
  *
  * wayfinder's `allowExec` default is `true`. You usually run it in your own
  * repository, and a task browser that cannot see the build graph is of little
@@ -12,109 +12,25 @@
  * execution: the repository must also be trusted (see `core/session.ts`).
  */
 
-import { stat } from 'node:fs/promises'
-import { resolve } from 'node:path'
-
 import { EXIT, processContext, processIo, type CliIo } from '@osdlc/cli-tool'
 import { runDevCli } from '@osdlc/cli-tool/devlink'
 import { installGroupSignalForwarding } from '@osdlc/command-seam'
 import { homeDir } from '@osdlc/trust-repo'
 
 import { APP, BIN } from './app.ts'
-import { makeProject } from './catalog.ts'
-import { runCleanCommand } from './clean-command.ts'
-import { createWayApp, type LegacyCommand, type LegacyContext } from './commands/index.ts'
+import { createWayApp } from './commands/index.ts'
 import { GLOBALS } from './commands/shared.ts'
-import { runConfigCommand, takeConfigDir } from './config-command.ts'
-import { WAYFINDER_DEFAULTS } from './core/session.ts'
 import { WAYFINDER_SPEC, checkoutRoot } from './devlink.ts'
-import { runGuideCommand, type GuideTool } from './guide.ts'
+import type { GuideTool } from './guide.ts'
 import { safeJsonStdout, safeStderr, safeStdout } from './terminal-text.ts'
-import { runTrustCommand } from './trust-command.ts'
 
 function usageError(io: CliIo, message: string): number {
   io.stderr(`${BIN}: ${message}\n  "${BIN} --help" lists the commands\n`)
   return EXIT.usage
 }
 
-/**
- * The project root a legacy command acts on: `-C`, else the cwd. The
- * directory must exist. Returns an error message instead.
- */
-async function legacyRoot(
-  dir: string | undefined,
-  cwd: string,
-): Promise<string | { error: string }> {
-  const start = resolve(cwd, dir ?? '.')
-  const isDir = await stat(start).then(
-    (s) => s.isDirectory(),
-    () => false,
-  )
-  if (!isDir) return { error: `${dir ?? start}: no such directory` }
-  // The root is found with the built-in tools only.
-  return makeProject().findRoot(start)
-}
-
-/** A legacy command that takes `-C`: config and trust. */
-function withRoot(
-  summary: string,
-  run: (root: string, rest: string[], ctx: LegacyContext) => Promise<number>,
-): LegacyCommand {
-  return {
-    summary,
-    async run(argv, ctx) {
-      // -C has to work here, so pointing at another directory shows that
-      // directory's configuration and trust.
-      const taken = takeConfigDir(argv)
-      if ('error' in taken) return usageError(ctx.io, taken.error)
-      const root = await legacyRoot(taken.dir, ctx.cwd)
-      if (typeof root !== 'string') {
-        ctx.io.stderr(`${APP}: ${root.error}\n`)
-        return EXIT.error
-      }
-      return run(root, taken.rest, ctx)
-    },
-  }
-}
-
-/**
- * The commands that still parse their own arguments. `main` runs one of
- * these before the command tree when its word is the command word.
- */
-const LEGACY: Readonly<Record<string, LegacyCommand>> = {
-  config: withRoot(
-    'read and write the layered settings file; see config --help',
-    (root, rest, { io, env, home }) =>
-      runConfigCommand(APP, root, rest, { ...io, env, home, defaults: WAYFINDER_DEFAULTS }),
-  ),
-  trust: withRoot(
-    "allow this repository's runners to be read by running them; see trust --help",
-    (root, rest, { io, env, home }) => runTrustCommand(APP, root, rest, { ...io, env, home }),
-  ),
-  guide: {
-    summary: 'how to use and extend this tool, in Markdown; see guide --help',
-    run: (argv, { io }) => runGuideCommand(GUIDE_TOOL, argv, io),
-  },
-  clean: {
-    summary: 'remove the data this tool stores outside your repositories; see clean --help',
-    run: (argv, { io, env, home }) => runCleanCommand(APP, argv, { ...io, env, home }),
-  },
-  // A contributor tool, so help does not list it. `self` is this checkout, so
-  // `dev install` and a bare `dev link` know what to point at.
-  dev: {
-    summary: 'link a checkout of this tool for development',
-    hidden: true,
-    run: (argv, { io, env }) =>
-      runDevCli(WAYFINDER_SPEC, argv, {
-        io: argv.includes('--json') ? safeJsonStdout(io) : safeStdout(io),
-        env,
-        self: checkoutRoot(),
-      }),
-  },
-}
-
 /** An app that only renders help, for the guide. It never runs a command. */
-const HELP = createWayApp({ home: '/', legacy: LEGACY })
+const HELP = createWayApp({ home: '/', guide: () => GUIDE_TOOL })
 
 /** The complete help: the root, then each command the tree runs, each in full. */
 const COMPLETE_HELP = [[], ...HELP.treeWords.map((w) => [w])]
@@ -203,19 +119,6 @@ export function rewriteAliases(
 }
 
 /**
- * A legacy command and its arguments, when its word is the command word.
- * Global flags before the word move after it, so `way -C x trust` is
- * `trust -C x`.
- */
-function findLegacy(
-  argv: readonly string[],
-): { command: LegacyCommand; argv: string[] } | undefined {
-  const at = commandWordIndex(argv)
-  if (at === -1 || !Object.hasOwn(LEGACY, argv[at]!)) return undefined
-  return { command: LEGACY[argv[at]!]!, argv: [...argv.slice(at + 1), ...argv.slice(0, at)] }
-}
-
-/**
  * Run `way` with `argv`, the words after the binary. Returns the exit code.
  * `env` and `home` are injectable so a test never reads the developer's own
  * config, cache or trust store. `io` defaults to the real process streams.
@@ -236,10 +139,20 @@ export async function main(
   io = safeStderr(io)
   const cwd = process.cwd()
 
-  const legacy = findLegacy(argv)
-  if (legacy !== undefined) return legacy.command.run(legacy.argv, { io, env, home, cwd })
+  // `dev` is a contributor tool that parses its own arguments, so help does
+  // not list it. `self` is this checkout, so `dev install` and a bare
+  // `dev link` know what to point at. Global flags before the word move after it.
+  const at = commandWordIndex(argv)
+  if (at !== -1 && argv[at] === 'dev') {
+    const rest = [...argv.slice(at + 1), ...argv.slice(0, at)]
+    return runDevCli(WAYFINDER_SPEC, rest, {
+      io: rest.includes('--json') ? safeJsonStdout(io) : safeStdout(io),
+      env,
+      self: checkoutRoot(),
+    })
+  }
 
-  const { app, words } = createWayApp({ home, legacy: LEGACY })
+  const { app, words } = createWayApp({ home, guide: () => GUIDE_TOOL })
   const aliased = rewriteAliases(argv, words)
   if ('error' in aliased) return usageError(io, aliased.error)
 

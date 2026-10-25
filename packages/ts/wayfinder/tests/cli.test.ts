@@ -141,9 +141,8 @@ async function allowExecOf(argv: string[], dir: string): Promise<boolean> {
 
 describe('main allowExec precedence', () => {
   test("wayfinder's own default applies when no file answered, once the repo is trusted", async () => {
-    // Step 3 of the chain. DEFAULT_CONFIG.allowExec is false and wayfinder's is
-    // true, and wayfinder's must win over the library's. The default alone does
-    // not allow execution, so the repository has to be trusted too.
+    // Step 3 of the chain: the default is true. It does not allow execution on
+    // its own, so the repository has to be trusted too.
     const home = await temp()
     const dir = await project()
     await trustStoreFor(home).trust(await findRoot(dir))
@@ -282,7 +281,7 @@ describe('main trust gate', () => {
 
     expect(await run(['trust', '-C', dir], undefined, home)).toMatchObject({ code: 0 })
     expect(await run(['trust', '--show', '-C', dir], undefined, home)).toMatchObject({
-      out: `trusted ${root}\n`,
+      out: `trusted ${root} (by marker)\n`,
     })
     expect(await run(['trust', '--list'], undefined, home)).toMatchObject({
       code: 0,
@@ -374,14 +373,14 @@ describe('main config wiring', () => {
   test('config -C with no path is an error rather than a silent drop', async () => {
     const ran = await run(['config', 'path', '-C'])
     expect(ran.code).toBe(2)
-    expect(ran.err).toContain('-C needs a path')
+    expect(ran.err).toContain("'-C, --dir <PATH>' argument missing")
   })
 })
 
 describe('guide', () => {
   // CLI wiring only. What the guide SAYS is checked in tests/guide.test.ts,
   // against the source each claim describes.
-  test('is claimed before the flag parse, so a topic is not read as a flag', async () => {
+  test('a topic is read as the topic, not as a flag', async () => {
     const ran = await run(['guide', 'extend'])
     expect(ran.code).toBe(0)
     expect(ran.out).toContain('## extend')

@@ -1,43 +1,23 @@
 /**
- * The `clean` subcommand.
- *
- * Every test injects its own `home` and an empty `env`. A test that let either
- * default would report on, and then delete, the developer's real cache, trust
- * store and configuration.
+ * `way clean`. HOME is a throwaway directory and the environment is empty in
+ * every test. A test that let either default would delete the developer's
+ * real stores.
  */
-import { describe, expect, test } from 'vitest'
-import { mkdir, stat, writeFile } from 'node:fs/promises'
+
+import { afterAll, describe, expect, test } from 'vitest'
+import { mkdir, readdir, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { runCleanCommand } from '../src/clean-command.ts'
+import { renderShim } from '@osdlc/cli-tool/devlink'
+
+import { WAYFINDER_SPEC } from '../src/devlink.ts'
+import { runWay, wayApp } from './app-support.ts'
 import { fixtureRoot, removeRoot } from './support.ts'
 
-/** A home with all three stores populated, at the paths the resolvers pick. */
-async function populatedHome(): Promise<string> {
-  const home = await fixtureRoot({})
-  await mkdir(join(home, '.cache', 'wayfinder', 'reports', 'v2'), { recursive: true })
-  await writeFile(join(home, '.cache', 'wayfinder', 'reports', 'v2', 'a.json'), '{}', 'utf-8')
-  await mkdir(join(home, '.local', 'state', 'wayfinder', 'trusted'), { recursive: true })
-  await writeFile(join(home, '.local', 'state', 'wayfinder', 'trusted', 'repo-abc'), '', 'utf-8')
-  await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
-  await writeFile(join(home, '.config', 'wayfinder', 'config.json'), '{}', 'utf-8')
-  return home
-}
-
-function capture(home: string) {
-  const out: string[] = []
-  const err: string[] = []
-  return {
-    out,
-    err,
-    io: {
-      stdout: (t: string) => void out.push(t),
-      stderr: (t: string) => void err.push(t),
-      env: {} as Record<string, string | undefined>,
-      home,
-    },
-  }
-}
+const roots: string[] = []
+afterAll(async () => {
+  await Promise.all(roots.map(removeRoot))
+})
 
 const exists = async (path: string): Promise<boolean> =>
   await stat(path).then(
@@ -45,242 +25,177 @@ const exists = async (path: string): Promise<boolean> =>
     () => false,
   )
 
-describe('clean', () => {
-  test('with no flags it reports and removes nothing', async () => {
-    // The whole point: a command about deleting things must not delete by
-    // default, and the safe behaviour must not sit behind a --dry-run people
-    // forget to pass.
-    const home = await populatedHome()
-    try {
-      const { out, io } = capture(home)
-      expect(await runCleanCommand('wayfinder', [], io)).toBe(0)
+async function put(path: string, body = '{}'): Promise<void> {
+  await mkdir(join(path, '..'), { recursive: true })
+  await writeFile(path, body)
+}
 
-      const text = out.join('')
-      expect(text).toContain('--cache')
-      expect(text).toContain('--trust')
-      expect(text).toContain('--config')
-      expect(text).toContain('Nothing was removed')
-      expect(await exists(join(home, '.cache', 'wayfinder', 'reports', 'v2', 'a.json'))).toBe(true)
-      expect(await exists(join(home, '.config', 'wayfinder', 'config.json'))).toBe(true)
-    } finally {
-      await removeRoot(home)
-    }
-  })
-
-  test('--cache removes only the cache', async () => {
-    const home = await populatedHome()
-    try {
-      const { io } = capture(home)
-      expect(await runCleanCommand('wayfinder', ['--cache'], io)).toBe(0)
-
-      expect(await exists(join(home, '.cache', 'wayfinder', 'reports', 'v2', 'a.json'))).toBe(false)
-      expect(await exists(join(home, '.local', 'state', 'wayfinder', 'trusted', 'repo-abc'))).toBe(
-        true,
-      )
-      expect(await exists(join(home, '.config', 'wayfinder', 'config.json'))).toBe(true)
-    } finally {
-      await removeRoot(home)
-    }
-  })
-
-  test('--trust forgets grants and says they will be asked for again', async () => {
-    const home = await populatedHome()
-    try {
-      const { out, io } = capture(home)
-      expect(await runCleanCommand('wayfinder', ['--trust'], io)).toBe(0)
-
-      expect(await exists(join(home, '.local', 'state', 'wayfinder', 'trusted', 'repo-abc'))).toBe(
-        false,
-      )
-      expect(await exists(join(home, '.cache', 'wayfinder', 'reports', 'v2', 'a.json'))).toBe(true)
-      expect(out.join('')).toContain('will ask again')
-    } finally {
-      await removeRoot(home)
-    }
-  })
-
-  test('--config refuses without --yes, and the file survives the refusal', async () => {
-    // The config is the only store a person wrote. Nothing regenerates it.
-    const home = await populatedHome()
-    try {
-      const { err, io } = capture(home)
-      expect(await runCleanCommand('wayfinder', ['--config'], io)).toBe(2)
-
-      expect(err.join('')).toContain('--yes')
-      expect(await exists(join(home, '.config', 'wayfinder', 'config.json'))).toBe(true)
-    } finally {
-      await removeRoot(home)
-    }
-  })
-
-  test('--config --yes removes it, and takes the emptied directory with it', async () => {
-    const home = await populatedHome()
-    try {
-      const { io } = capture(home)
-      expect(await runCleanCommand('wayfinder', ['--config', '--yes'], io)).toBe(0)
-
-      expect(await exists(join(home, '.config', 'wayfinder', 'config.json'))).toBe(false)
-      expect(await exists(join(home, '.config', 'wayfinder'))).toBe(false)
-    } finally {
-      await removeRoot(home)
-    }
-  })
-
-  test('--all needs --yes too, since it includes the config', async () => {
-    const home = await populatedHome()
-    try {
-      const { io } = capture(home)
-      expect(await runCleanCommand('wayfinder', ['--all'], io)).toBe(2)
-      expect(await exists(join(home, '.cache', 'wayfinder', 'reports', 'v2', 'a.json'))).toBe(true)
-
-      const second = capture(home)
-      expect(await runCleanCommand('wayfinder', ['--all', '--yes'], second.io)).toBe(0)
-      expect(await exists(join(home, '.cache', 'wayfinder', 'reports', 'v2', 'a.json'))).toBe(false)
-      expect(await exists(join(home, '.local', 'state', 'wayfinder', 'trusted', 'repo-abc'))).toBe(
-        false,
-      )
-      expect(await exists(join(home, '.config', 'wayfinder', 'config.json'))).toBe(false)
-    } finally {
-      await removeRoot(home)
-    }
-  })
-
-  test('an empty store is reported, not an error', async () => {
-    // A second `clean --cache` must be a no-op rather than a failure: the
-    // desired state is already the actual one.
-    const home = await fixtureRoot({})
-    try {
-      const { out, io } = capture(home)
-      expect(await runCleanCommand('wayfinder', ['--cache'], io)).toBe(0)
-      expect(out.join('')).toContain('nothing stored')
-    } finally {
-      await removeRoot(home)
-    }
-  })
-
-  test('XDG overrides are honoured, so the stores are found where the user put them', async () => {
-    const home = await fixtureRoot({})
-    try {
-      const elsewhere = join(home, 'xdg-cache')
-      await mkdir(join(elsewhere, 'wayfinder'), { recursive: true })
-      await writeFile(join(elsewhere, 'wayfinder', 'a.json'), '{}', 'utf-8')
-
-      const { io } = capture(home)
-      io.env['XDG_CACHE_HOME'] = elsewhere
-      expect(await runCleanCommand('wayfinder', ['--cache'], io)).toBe(0)
-      expect(await exists(join(elsewhere, 'wayfinder', 'a.json'))).toBe(false)
-    } finally {
-      await removeRoot(home)
-    }
-  })
-
-  test('an unknown option is refused rather than ignored', async () => {
-    const home = await fixtureRoot({})
-    try {
-      const { err, io } = capture(home)
-      expect(await runCleanCommand('wayfinder', ['--everything'], io)).toBe(2)
-      expect(err.join('')).toContain('unknown option')
-    } finally {
-      await removeRoot(home)
-    }
-  })
-})
-
-/**
- * The machine form.
- *
- * `clean` is the command whose human output is furthest from a data structure —
- * a paragraph, a padded two-line block per store, and a closing sentence — so
- * it is the one a script had no way to read.
- */
-describe('clean --json', () => {
-  /** The parsed `stores` array from a run's stdout, which is one document. */
-  function stores(out: string[]): Array<{
-    key: string
-    flag: string
-    what: string
-    path: string
-    bytes: number | null
-    removed: boolean
-  }> {
-    expect(out).toHaveLength(1)
-    return (JSON.parse(out.join('')) as { stores: ReturnType<typeof stores> }).stores
+/** A home with the cache, trust store and user config at their xdg paths. */
+async function populated(): Promise<{
+  home: string
+  cache: string
+  trust: string
+  config: string
+}> {
+  const home = await fixtureRoot({})
+  roots.push(home)
+  const p = {
+    home,
+    cache: join(home, '.cache', 'wayfinder'),
+    trust: join(home, '.local', 'state', 'wayfinder', 'trusted'),
+    config: join(home, '.config', 'wayfinder', 'config.json'),
   }
+  await put(join(p.cache, 'reports', 'v2', 'a.json'))
+  await put(join(p.trust, 'repo-abc'), '')
+  await put(p.config)
+  return p
+}
 
-  test('a bare report names all three stores and removes nothing', async () => {
-    const home = await populatedHome()
-    try {
-      const { out, io } = capture(home)
-      expect(await runCleanCommand('wayfinder', ['--json'], io)).toBe(0)
+const clean = (home: string, argv: string[], env: Record<string, string> = {}) =>
+  runWay(['clean', ...argv], { cwd: home, home, env, app: wayApp({ platform: 'linux' }) })
 
-      const rows = stores(out)
-      expect(rows.map((r) => r.key)).toEqual(['cache', 'trust', 'config'])
-      // Each store's entry names the flag that removes it, so a caller reading
-      // the report knows how to act on it without a second lookup.
-      expect(rows.map((r) => r.flag)).toEqual(['--cache', '--trust', '--config'])
-      expect(rows.every((r) => r.removed === false)).toBe(true)
-      expect(rows.every((r) => typeof r.bytes === 'number')).toBe(true)
-      expect(await exists(join(home, '.cache', 'wayfinder', 'reports', 'v2', 'a.json'))).toBe(true)
-    } finally {
-      await removeRoot(home)
-    }
+describe('way clean', () => {
+  test('with no flag it reports every store and removes nothing', async () => {
+    const p = await populated()
+    const ran = await clean(p.home, [])
+    expect(ran.exit).toBe(0)
+    for (const flag of ['--cache', '--trust', '--user-config', '--dev'])
+      expect(ran.out).toContain(flag)
+    expect(ran.out).toContain('Nothing was removed.')
+    expect(await exists(p.cache)).toBe(true)
+    expect(await exists(p.config)).toBe(true)
   })
 
-  test('a removal answers with only the stores it was asked about', async () => {
-    const home = await populatedHome()
-    try {
-      const { out, err, io } = capture(home)
-      expect(await runCleanCommand('wayfinder', ['--cache', '--json'], io)).toBe(0)
-
-      const rows = stores(out)
-      expect(rows).toHaveLength(1)
-      expect(rows[0]).toMatchObject({ key: 'cache', removed: true })
-      expect(rows[0]?.bytes).toBeGreaterThan(0)
-      expect(await exists(join(home, '.cache', 'wayfinder', 'reports', 'v2', 'a.json'))).toBe(false)
-      expect(err).toEqual([])
-    } finally {
-      await removeRoot(home)
-    }
+  test('--json reports sizes, and null for an empty store', async () => {
+    const p = await populated()
+    const ran = await clean(p.home, ['--json'])
+    const stores = (ran.json() as { stores: { key: string; bytes: number | null }[] }).stores
+    expect(stores.map((s) => s.key)).toEqual(['cache', 'trust', 'config', 'dev'])
+    expect(stores.find((s) => s.key === 'config')?.bytes).toBe(2)
+    expect(stores.find((s) => s.key === 'dev')?.bytes).toBeNull()
   })
 
-  test('an empty store is bytes null and removed false, not an omission', async () => {
-    // "Nothing was there" and "it would not delete" are different answers, and
-    // both are `removed: false` — the size is what separates them.
+  test('--cache removes the cache only, and prunes nothing above the base', async () => {
+    const p = await populated()
+    const ran = await clean(p.home, ['--cache'])
+    expect(ran.exit).toBe(0)
+    expect(ran.out).toContain('removed stored probe results')
+    expect(await exists(p.cache)).toBe(false)
+    expect(await exists(join(p.home, '.cache'))).toBe(true)
+    expect(await exists(p.trust)).toBe(true)
+  })
+
+  test('--trust removes the store, prunes its empty parent and says trust is asked again', async () => {
+    const p = await populated()
+    const ran = await clean(p.home, ['--trust'])
+    expect(ran.exit).toBe(0)
+    expect(ran.err).toContain('will ask again')
+    expect(await exists(join(p.home, '.local', 'state', 'wayfinder'))).toBe(false)
+    expect(await exists(join(p.home, '.local', 'state'))).toBe(true)
+  })
+
+  test('a parent that still holds something is kept', async () => {
+    const p = await populated()
+    await put(join(p.home, '.local', 'state', 'wayfinder', 'other'))
+    await clean(p.home, ['--trust'])
+    expect(await readdir(join(p.home, '.local', 'state', 'wayfinder'))).toEqual(['other'])
+  })
+
+  test('--config without --yes is a usage error naming the file, and removes nothing', async () => {
+    const p = await populated()
+    const ran = await clean(p.home, ['--user-config'])
+    expect(ran.exit).toBe(2)
+    expect(ran.err).toContain(p.config)
+    expect(ran.err).toContain('needs --yes')
+    expect(await exists(p.config)).toBe(true)
+  })
+
+  test('--config --yes removes the file and its empty directory', async () => {
+    const p = await populated()
+    expect((await clean(p.home, ['--user-config', '--yes'])).exit).toBe(0)
+    expect(await exists(join(p.home, '.config', 'wayfinder'))).toBe(false)
+  })
+
+  test('a config WAYFINDER_CONFIG names is named in the report, the refusal and before removal', async () => {
+    const p = await populated()
+    const own = join(p.home, 'dotfiles', 'way.json')
+    await put(own)
+    const env = { WAYFINDER_CONFIG: own }
+    expect((await clean(p.home, [], env)).out).toContain('from WAYFINDER_CONFIG')
+    const refused = await clean(p.home, ['--user-config'], env)
+    expect(refused.err).toContain('named by WAYFINDER_CONFIG')
+    const ran = await clean(p.home, ['--user-config', '--yes'], env)
+    expect(ran.err).toContain(`removing ${own}, which WAYFINDER_CONFIG names`)
+    expect(await exists(own)).toBe(false)
+    // Nothing above a file the variable names is removed.
+    expect(await exists(join(p.home, 'dotfiles'))).toBe(true)
+    expect(await exists(p.config)).toBe(true)
+  })
+
+  test('--dev removes link state and the marked shims, and leaves other files on PATH', async () => {
+    const p = await populated()
+    const state = join(p.home, '.config', 'way')
+    await put(join(state, 'link.json'))
+    const bin = join(p.home, '.local', 'bin')
+    await put(join(bin, 'way'), renderShim(WAYFINDER_SPEC, '/checkout/bin/way.js'))
+    await put(join(bin, 'wayfinder'), '#!/bin/sh\necho mine\n')
+    const report = await clean(p.home, [])
+    expect(report.out).toContain('the way shim')
+    expect(report.out).not.toContain('the wayfinder shim')
+    const ran = await clean(p.home, ['--dev'])
+    expect(ran.exit).toBe(0)
+    expect(await exists(state)).toBe(false)
+    expect(await exists(join(bin, 'way'))).toBe(false)
+    expect(await exists(join(bin, 'wayfinder'))).toBe(true)
+  })
+
+  test('--legacy removes the files under the old name, and is listed only when they exist', async () => {
+    const p = await populated()
+    expect((await clean(p.home, [])).out).not.toContain('--legacy')
+    const old = join(p.home, '.config', 'waypost', 'config.json')
+    await put(old)
+    expect((await clean(p.home, [])).out).toContain('--legacy')
+    expect((await clean(p.home, ['--legacy'])).exit).toBe(0)
+    expect(await exists(join(p.home, '.config', 'waypost'))).toBe(false)
+    expect(await exists(p.config)).toBe(true)
+  })
+
+  test('on macOS --legacy also removes the old native link state', async () => {
+    const p = await populated()
+    const native = join(p.home, 'Library', 'Application Support', 'way')
+    await put(join(native, 'link.json'))
+    const app = wayApp({ platform: 'darwin' })
+    expect((await runWay(['clean', '--legacy'], { cwd: p.home, home: p.home, app })).exit).toBe(0)
+    expect(await exists(native)).toBe(false)
+  })
+
+  test('--everything needs --yes, then removes every store', async () => {
+    const p = await populated()
+    expect((await clean(p.home, ['--everything'])).exit).toBe(2)
+    expect(await exists(p.cache)).toBe(true)
+    expect((await clean(p.home, ['--everything', '--yes'])).exit).toBe(0)
+    for (const path of [p.cache, p.trust, p.config]) expect(await exists(path)).toBe(false)
+  })
+
+  test('a flag for an empty store says nothing is stored and exits 0', async () => {
     const home = await fixtureRoot({})
-    try {
-      const { out, io } = capture(home)
-      expect(await runCleanCommand('wayfinder', ['--cache', '--json'], io)).toBe(0)
-      expect(stores(out)[0]).toMatchObject({ key: 'cache', bytes: null, removed: false })
-    } finally {
-      await removeRoot(home)
-    }
+    roots.push(home)
+    const ran = await clean(home, ['--cache'])
+    expect(ran.exit).toBe(0)
+    expect(ran.out).toContain('nothing stored at')
   })
 
-  test('the trust aside goes to stderr, leaving stdout one parseable object', async () => {
-    const home = await populatedHome()
-    try {
-      const { out, err, io } = capture(home)
-      expect(await runCleanCommand('wayfinder', ['--trust', '--json'], io)).toBe(0)
-
-      expect(stores(out)[0]).toMatchObject({ key: 'trust', removed: true })
-      expect(err.join('')).toContain('will ask again')
-    } finally {
-      await removeRoot(home)
+  test('the adapters get the report but cannot remove', async () => {
+    const p = await populated()
+    const app = wayApp({ platform: 'linux' })
+    const ctx = { cwd: p.home, env: { HOME: p.home } }
+    for (const surface of ['mcp', 'http'] as const) {
+      expect(await app.call(['clean'], { cache: true }, ctx, { surface })).toMatchObject({
+        status: 'refused',
+        reason: 'cli-only',
+      })
+      expect(await app.call(['clean'], {}, ctx, { surface })).toMatchObject({ status: 'ok' })
     }
-  })
-
-  test('the --yes guard still refuses, and prints no document to parse', async () => {
-    // There is no answer to hand back, so stdout stays empty rather than
-    // carrying a document about a run that never happened.
-    const home = await populatedHome()
-    try {
-      const { out, err, io } = capture(home)
-      expect(await runCleanCommand('wayfinder', ['--config', '--json'], io)).toBe(2)
-      expect(out).toEqual([])
-      expect(err.join('')).toContain('--yes')
-      expect(await exists(join(home, '.config', 'wayfinder', 'config.json'))).toBe(true)
-    } finally {
-      await removeRoot(home)
-    }
+    expect(await exists(p.cache)).toBe(true)
   })
 })

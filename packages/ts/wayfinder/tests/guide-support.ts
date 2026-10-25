@@ -27,20 +27,22 @@ export type GuideMain = (
  * a reason: subcommand flags, parsed by their own command.
  */
 export const FLAG_SKIP: readonly string[] = [
-  // `way trust --untrust` / `--show` / `--list`, parsed by trust-command.ts.
+  // `way trust --untrust` / `--untrust-all` / `--show` / `--list` / `--scope`, parsed by trust-command.ts.
   '--untrust',
+  '--untrust-all',
   '--show',
   '--list',
+  '--scope',
   // `way config set ... --user`, parsed by config-command.ts.
   '--user',
 ]
 
 /**
  * Backticked tokens in the config section that look like keys but are not
- * settings. Only filenames qualify: a dotted lowercase filename cannot be told
- * apart from a dotted setting name by pattern alone.
+ * settings: the project file's name, which a pattern cannot tell from a
+ * dotted key, and the command name.
  */
-const NON_KEY_TOKENS = new Set(['wayfinder.config.json', 'waypost.config.json'])
+const NON_KEY_TOKENS = new Set(['wayfinder.config.json', BIN])
 
 /**
  * Every flag token in a block of text.
@@ -166,7 +168,12 @@ export function guideSuite(tool: GuideTool, main: GuideMain): void {
     test('`topics` lists exactly GUIDE_TOPICS', async () => {
       const io = captureIo()
       expect(await main(['guide', 'topics'], {}, '/nonexistent-home', io)).toBe(0)
-      expect(io.out.trim().split('\n')).toEqual([...GUIDE_TOPICS])
+      // One line per topic: the id, then its summary.
+      const ids = io.out
+        .trim()
+        .split('\n')
+        .map((line) => line.split(/\s+/)[0])
+      expect(ids).toEqual([...GUIDE_TOPICS])
     })
 
     test('--help prints a short usage, not the document', async () => {
@@ -191,7 +198,7 @@ export function guideSuite(tool: GuideTool, main: GuideMain): void {
       const io = captureIo()
       expect(await main(['guide', 'usage', 'config'], {}, '/nonexistent-home', io)).toBe(2)
       expect(io.out).toBe('')
-      expect(io.err).toContain('at most one topic')
+      expect(io.err).toContain('too many arguments')
     })
   })
 }

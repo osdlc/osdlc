@@ -1,44 +1,44 @@
 /**
- * The `guide` subcommand: Markdown for a person or a model who has the binary
- * and not the README. `--help` lists the flags; this says what `--json` hands
- * you, why a runner is missing, and how to add a tool.
+ * `way guide`: cli-tool's shared `guide` command over wayfinder's topics,
+ * Markdown for a person or a model who has the binary and not the README.
+ * `--help` lists the flags; this says what `--json` hands you, why a runner is
+ * missing, and how to add a tool.
  *
  * Sections are data, so `tests/guide.test.ts` can check each one against the
  * code it describes. No roster is retyped: the built-in tools come from
  * `builtins` and the settable keys from `CONFIG_KEYS`.
  */
 
-import { EXIT, type CliIo } from '@osdlc/cli-tool'
+import type { CommandContext, DataCommand } from '@osdlc/cli-tool/command'
+import type { FlagSpec } from '@osdlc/cli-tool/define-cli'
+import { guideCommand as sharedGuideCommand, type GuideTopic } from '@osdlc/cli-tool/guide'
 import { builtins } from '@osdlc/system-model/builtins'
 
-import {
-  APP,
-  BIN,
-  CONFIG_ENV_VAR,
-  LEGACY_APP,
-  LEGACY_CONFIG_ENV_VAR,
-  LEGACY_PROJECT_CONFIG_FILENAME,
-  PROJECT_CONFIG_FILENAME,
-} from './app.ts'
-import { CONFIG_KEYS } from './config.ts'
+import { APP, BIN, CONFIG_ENV_VAR, PROJECT_CONFIG_FILENAME } from './app.ts'
+import { CONFIG_KEYS, OPEN_VALUES, THEME_VALUES } from './config.ts'
 import { GROUPS } from './groups.ts'
 
 /** One section of the guide. The document is these, in this order. */
-export type GuideTopic = 'usage' | 'config' | 'json' | 'trust' | 'extend'
+export type GuideTopicId = 'usage' | 'config' | 'json' | 'trust' | 'extend'
 
-export const GUIDE_TOPICS: readonly GuideTopic[] = ['usage', 'config', 'json', 'trust', 'extend']
+export const GUIDE_TOPICS: readonly GuideTopicId[] = ['usage', 'config', 'json', 'trust', 'extend']
+
+/** One line per topic, for `guide topics`. */
+const SUMMARIES: Record<GuideTopicId, string> = {
+  usage: 'the surfaces, the flags and the row groups',
+  config: 'the layered settings files and every key',
+  json: 'what --json prints, field by field',
+  trust: 'why some runners need trust, and how it is decided',
+  extend: 'adding your own tools',
+}
 
 /**
- * What the guide takes from the CLI. `usage` is the same string `--help --all`
- * prints, so the guide's flag list and the help cannot drift.
+ * What the guide takes from the CLI. `usage` is the same string the complete
+ * help prints, so the guide's flag list and the help cannot drift.
  */
 export interface GuideTool {
   usage: string
   extraUsage?: string | undefined
-}
-
-function isGuideTopic(value: string): value is GuideTopic {
-  return (GUIDE_TOPICS as readonly string[]).includes(value)
 }
 
 const code = '```'
@@ -146,11 +146,9 @@ const JSON_EXAMPLE = `{
   "filter": {}
 }`
 
-function usageSection(tool: GuideTool): string {
+function usageBody(tool: GuideTool): string {
   const extra = tool.extraUsage === undefined ? '' : `\n${tool.extraUsage.trim()}\n`
-  return `## usage
-
-\`${BIN}\` lists every task this repository can run, and runs one.
+  return `\`${BIN}\` lists every task this repository can run, and runs one.
 
 Point it at a directory; the directory is resolved upward to the project root,
 so running from a subdirectory still inspects the whole repository.
@@ -176,10 +174,8 @@ tool's flags.
 `
 }
 
-function configSection(): string {
-  return `## config
-
-Layers, lowest precedence first:
+function configBody(): string {
+  return `Layers, lowest precedence first:
 
 1. The built-in defaults, with \`allowExec: true\`: willing in principle,
    still gated on trust.
@@ -190,19 +186,26 @@ Layers, lowest precedence first:
 Files. The project file is \`${PROJECT_CONFIG_FILENAME}\` at the project root, the
 root this tool resolved, not the working directory. The user file is
 \`$XDG_CONFIG_HOME/${APP}/config.json\`, or \`~/.config/${APP}/config.json\` when
-that variable is unset or relative.
+that variable is unset or relative; on Windows it is under \`%APPDATA%\`.
+\`WAYFINDER_ROOT\` moves every file ${APP} keeps outside your repositories under
+one directory.
 
 \`${CONFIG_ENV_VAR}\` replaces the USER file's location and nothing else. It does
 not move the project file and it does not add a layer. A path in it may start
 with a tilde, which is expanded. A relative path is ignored with a warning,
 because from the project root it would name a file in the repository.
 
-Old names. The tool was called ${LEGACY_APP} before its first release.
-\`${LEGACY_CONFIG_ENV_VAR}\`, \`$XDG_CONFIG_HOME/${LEGACY_APP}/config.json\` and
-\`${LEGACY_PROJECT_CONFIG_FILENAME}\` are still read when the new name is absent,
-with a warning naming the new location.
+Settable keys: ${configKeyList()}. A key under \`trust.tools\` names one tool:
+\`trust.tools.<tool>.paths\`.
 
-Settable keys: ${configKeyList()}.
+\`open\` is what a bare \`${BIN}\` opens: ${OPEN_VALUES.map((v) => `"${v}"`).join(' or ')}.
+\`theme\` is the web view's theme: ${THEME_VALUES.map((v) => `"${v}"`).join(', ')}.
+Both are personal, so only the user file may set them.
+
+A file may start with \`"$schema"\`, naming the JSON Schema an editor checks it
+against; every file ${BIN} writes has one. An unknown key is a warning that
+names the closest known key, and the rest of the file still loads. A value of
+the wrong type is an error.
 
 Merging. Objects merge key by key. An ARRAY answers "which ones" wholesale, so
 a later layer replaces it rather than appending to it: \`--exclude\` REPLACES
@@ -217,16 +220,22 @@ takes the tree beneath it. Not glob syntax.
 \`tools\` names modules that export more tools (see extend). A relative path
 resolves against the file that names it.
 
+\`${BIN} config explain <key>\` shows each layer's value for a key, which one won,
+and why a project value was ignored.
+
 Exit codes. 2 means the command cannot be run as typed: an unknown
 subcommand, a wrong argument count, an unknown setting, a value of the wrong
-type. 1 means a well-formed command failed against the state: a file that
-will not parse, a key that is not set where you asked to unset it.
+type, a key the project file may not hold. 1 means a well-formed command
+failed against the state: a file that will not parse, a key that is not set
+where you asked to unset it.
 
 The project file cannot grant execution. It may LOWER \`allowExec\` to false,
 never raise it, because it lives inside the repository being scanned. A
-project file's \`allowExec: true\` and any trust block are dropped with a
-warning. Its \`tools\` load only when the repository is trusted and execution
-is allowed, since a tool module is code.
+project file's \`allowExec: true\`, its trust block, \`open\` and \`theme\` are
+dropped with a warning, and \`config set\` refuses to write them there. Its
+\`tools\` load only when the repository is trusted and execution is allowed,
+since a tool module is code. Over MCP or HTTP, \`config set\` refuses
+\`allowExec\`, \`tools\` and the trust keys.
 
 The effective gate: \`--no-exec\` forbids execution whatever is configured;
 \`--exec\` allows it for that one run; with neither flag, execution needs a
@@ -234,10 +243,8 @@ configured \`allowExec\` of true and a trusted repository.
 `
 }
 
-function jsonSection(): string {
-  return `## json
-
-Every command answers \`--json\` with one JSON document whose first fields are
+function jsonBody(): string {
+  return `Every command answers \`--json\` with one JSON document whose first fields are
 \`schemaVersion\` and \`kind\`. \`${BIN} schema\` prints each one's JSON Schema, and
 \`@osdlc/wayfinder/schema\` exports them. \`${BIN} list --json\` prints the
 catalog document (\`kind\` "catalog"). Field by field:
@@ -313,10 +320,8 @@ ${code}
 `
 }
 
-function trustSection(): string {
-  return `## trust
-
-Reading some runners means RUNNING them. Asking moon for its task graph
+function trustBody(): string {
+  return `Reading some runners means RUNNING them. Asking moon for its task graph
 evaluates the repository's toolchain configuration, and asking mise for its
 tasks can fire that repository's hooks. Pointing a tool at a repository you
 did not write is code execution before you have run anything from the list.
@@ -326,8 +331,7 @@ Built-ins that must shell out: ${execRoster()}.
 The store is \`$XDG_STATE_HOME/${APP}/trusted/\`, or
 \`~/.local/state/${APP}/trusted/\` when that variable is unset: state, not
 config, so consent does not travel in a dotfiles repository. One marker file
-per trusted root. Grants in the old \`$XDG_STATE_HOME/${LEGACY_APP}/trusted/\`
-store still count.
+per trusted root, and one per tool granted alone.
 
 It is PATH-KEYED: the key is the absolute, symlink-resolved root, not a hash
 of the contents. A repository you trusted that later pulls hostile changes
@@ -348,22 +352,26 @@ ${code}
 
 The exec flag grants execution for ONE run and records nothing.
 
-The command: \`${BIN} trust\` grants, \`--untrust\` revokes, \`--show\` reports
-this root, \`--list\` prints every trusted path. \`-C PATH\` reaches all of them.
+The command: \`${BIN} trust\` grants, \`--untrust\` revokes, \`--untrust-all\`
+revokes every grant of this root, \`--show\` reports this root, \`--list\`
+prints every grant. \`--scope <tool>\` grants, revokes or shows one tool's
+trust instead of the whole repository's. \`-C PATH\` reaches all of them.
+Granting works from the command line only: an agent over MCP or a page over
+HTTP cannot grant trust.
 
 A root can also be trusted with no marker, by a trust block in the USER
 config: \`trust.paths\` (a glob over the resolved root) and \`trust.owners\`
 (the \`origin\` remote's \`host/owner\`; a bare owner means github.com), decided in
-that order after the marker.
+that order after the marker. \`trust.tools.<tool>\` holds the same two lists for
+one tool. A run needs every tool it runs trusted: a mise task needs mise as
+well as its own runner.
 \`--show\` and \`--json\` name which layer decided (\`by\`:
 \`marker\`/\`path\`/\`owner\`, plus the matching \`rule\` for a policy hit).
 `
 }
 
-function extendSection(): string {
-  return `## extend
-
-A tool is a \`ToolDef\` from \`@osdlc/system-model/detect\`, the same shape as
+function extendBody(): string {
+  return `A tool is a \`ToolDef\` from \`@osdlc/system-model/detect\`, the same shape as
 the built-ins: an id, the binary, the files that show it is in use, and the
 roles it plays. A tool with a \`runner\` role adds tasks.
 
@@ -401,71 +409,63 @@ strips types. A tool whose id matches a built-in is an error.
 `
 }
 
-/** One section. Always ends with a newline. */
-export function guideSection(topic: GuideTopic, tool: GuideTool): string {
+/** One section's Markdown body, without its heading. */
+export function guideBody(topic: GuideTopicId, tool: GuideTool): string {
   switch (topic) {
     case 'usage':
-      return usageSection(tool)
+      return usageBody(tool)
     case 'config':
-      return configSection()
+      return configBody()
     case 'json':
-      return jsonSection()
+      return jsonBody()
     case 'trust':
-      return trustSection()
+      return trustBody()
     case 'extend':
-      return extendSection()
+      return extendBody()
   }
 }
 
-/** Every section, in {@link GUIDE_TOPICS} order, under one title. */
+/** One section with its heading, as `guide <topic>` prints it. */
+export function guideSection(topic: GuideTopicId, tool: GuideTool): string {
+  return `## ${topic}\n\n${guideBody(topic, tool).trim()}\n`
+}
+
+/** The guide's title. */
+export const GUIDE_TITLE = `${APP} guide`
+
+/** The paragraph under the title. */
+export const GUIDE_INTRO = `Instructions for using and extending this tool without the README. Topics: ${GUIDE_TOPICS.join(', ')}. Print one with \`${BIN} guide <topic>\`.`
+
+/** Every section, in {@link GUIDE_TOPICS} order, under the title, as `guide` prints it. */
 export function guideDocument(tool: GuideTool): string {
-  const header = `# ${APP} guide
-
-Instructions for using and extending this tool without the README. Topics:
-${GUIDE_TOPICS.join(', ')}. Print one with \`${BIN} guide <topic>\`.
-`
-  return [header, ...GUIDE_TOPICS.map((t) => guideSection(t, tool))].join('\n')
+  return (
+    `# ${GUIDE_TITLE}\n\n${GUIDE_INTRO}\n\n` +
+    GUIDE_TOPICS.map((t) => guideSection(t, tool)).join('\n')
+  )
 }
 
-/** `way guide --help`. Short on purpose: the document is the real help. */
-function guideUsage(): string {
-  return `${BIN} guide — how to use and extend ${APP}, without the README
-
-usage: ${BIN} guide [topic]
-
-  (no topic)          the whole document
-  topics              the topic names, one per line
-  <topic>             one section: ${GUIDE_TOPICS.join(', ')}
-  -h, --help          this text
-`
+/** The topics for cli-tool's `guide` command. `tool` gives the usage text for a run. */
+export function guideTopics(tool: (ctx: CommandContext) => GuideTool): GuideTopic[] {
+  return GUIDE_TOPICS.map((id) => ({
+    id,
+    title: id,
+    summary: SUMMARIES[id],
+    body: (ctx) => guideBody(id, tool(ctx)),
+  }))
 }
 
-/** `way guide …`. Returns the exit code. */
-export function runGuideCommand(tool: GuideTool, argv: string[], io: CliIo): number {
-  if (argv.length === 0) {
-    io.stdout(guideDocument(tool))
-    return EXIT.ok
-  }
-
-  const [first, ...rest] = argv as [string, ...string[]]
-  if (first === '-h' || first === '--help') {
-    io.stdout(guideUsage())
-    return EXIT.ok
-  }
-
-  const bad = (what: string): number => {
-    io.stderr(`${APP}: guide: ${what} — topics are: ${GUIDE_TOPICS.join(', ')} (or "topics")\n`)
-    return EXIT.usage
-  }
-
-  if (rest.length > 0) return bad('expected at most one topic')
-  if (first === 'topics') {
-    io.stdout(`${GUIDE_TOPICS.join('\n')}\n`)
-    return EXIT.ok
-  }
-  if (isGuideTopic(first)) {
-    io.stdout(guideSection(first, tool))
-    return EXIT.ok
-  }
-  return bad(`unknown topic "${first}"`)
+/**
+ * The `guide` command. Mount it as `guide: guideCommand({ globals })`. The
+ * usage topic shows `tool(ctx).usage`; by default that is the app's complete
+ * root help.
+ */
+export function guideCommand<G extends FlagSpec = Record<never, never>>(
+  options: { globals?: G; tool?: (ctx: CommandContext) => GuideTool } = {},
+): DataCommand {
+  const tool = options.tool ?? ((ctx) => ({ usage: ctx.app.helpText([], { full: true }) }))
+  return sharedGuideCommand(guideTopics(tool), {
+    title: GUIDE_TITLE,
+    intro: GUIDE_INTRO,
+    ...(options.globals !== undefined ? { globals: options.globals } : {}),
+  })
 }

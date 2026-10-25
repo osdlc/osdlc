@@ -934,9 +934,15 @@ importers:
       '@osdlc/config-layers':
         specifier: workspace:^
         version: link:../config-layers
+      '@osdlc/etag-write':
+        specifier: workspace:^
+        version: link:../etag-write
       '@osdlc/system-model':
         specifier: workspace:^
         version: link:../system-model
+      '@osdlc/tiered-dirs':
+        specifier: workspace:^
+        version: link:../tiered-dirs
       '@osdlc/trust-repo':
         specifier: workspace:^
         version: link:../trust-repo

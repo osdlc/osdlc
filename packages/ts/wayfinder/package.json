@@ -38,6 +38,7 @@
   "files": [
     "dist/",
     "bin/",
+    "schema/",
     "README.md",
     "CHANGELOG.md",
     "LICENSE-MIT",
@@ -49,7 +50,7 @@
     "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node scripts/build-web.mjs",
+    "build": "tsc -p tsconfig.build.json && node scripts/build-web.mjs && node scripts/write-config-schema.mjs",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
     "smoke": "node tests/smoke.mjs",
@@ -64,7 +65,9 @@
     "@osdlc/cli-tool": "workspace:^",
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/config-layers": "workspace:^",
+    "@osdlc/etag-write": "workspace:^",
     "@osdlc/system-model": "workspace:^",
+    "@osdlc/tiered-dirs": "workspace:^",
     "@osdlc/trust-repo": "workspace:^",
     "@osdlc/typed-git": "workspace:^",
     "zod": "catalog:"

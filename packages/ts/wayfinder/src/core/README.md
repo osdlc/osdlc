@@ -66,16 +66,16 @@ must leave alone.
    renders it. An interactive one says `interactive: true`.
 2. Call `openSession(globals, ctx, home)` for a session. Notes go to stderr
    through `ctx.note`; nothing writes stdout but `text`.
-3. Mount it in `createWayApp` in `commands/index.ts`, and add its word to
-   `treeWords` so the complete help shows it.
+3. Mount it in `createWayApp` in `commands/index.ts`. The complete help
+   shows every command the tree mounts.
 4. For a new document, add its Zod output to `documents.ts` and its kind to
    `DOCUMENT_SCHEMAS` in `schema.ts`. `tests/commands.test.ts` checks the
    exported schema is the one `way schema` prints.
 
-## Legacy commands
+## Shared commands
 
-`config`, `trust`, `guide`, `clean` and `dev` still parse their own
-arguments. They are the `LEGACY` table in `src/cli.ts`: `main` runs one when
-its word is the command word, and the tree holds a stub so `way help` lists
-it. To move one onto a shared `@osdlc/cli-tool` command, delete its `LEGACY`
-entry and mount the shared command in `createWayApp`.
+`config`, `trust`, `guide` and `clean` are `@osdlc/cli-tool`'s shared
+commands over wayfinder's stores (`config-command.ts`, `trust-command.ts`,
+`guide.ts`, `clean-command.ts`), mounted in `createWayApp` like the rest.
+`dev` parses its own arguments, so `main` in `src/cli.ts` runs it before the
+tree, and help does not list it.

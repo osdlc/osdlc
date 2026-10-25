@@ -75,8 +75,9 @@ A fingerprint covers at most 256 paths. A run that hits the cap adds an
 ## Where it lives
 
 `$XDG_CACHE_HOME/wayfinder/`, or `~/.cache/wayfinder/` when that variable is
-unset. Losing it costs one slow probe. `way clean --cache` removes it, and also
-the old `waypost` cache directory when one is left over.
+unset, or `$WAYFINDER_ROOT/cache/wayfinder/` when `WAYFINDER_ROOT` is set. See
+[Paths](configuration.md#paths). Losing it costs one slow probe. `way clean
+--cache` removes it.
 
 The cache is separate from the trust store and plays no part in deciding
 execution. A cached answer is never a trust grant, and clearing the cache does

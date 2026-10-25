@@ -103,7 +103,7 @@ describe('every command answers --json with schemaVersion and kind', () => {
 
 describe('./schema', () => {
   test('each exported schema is the one `way schema` prints for that command', () => {
-    const { app } = createWayApp({ home: '/', legacy: {} })
+    const { app } = createWayApp({ home: '/' })
     const byKind: Record<DocumentKind, string[]> = {
       catalog: ['list'],
       query: ['query'],
@@ -123,7 +123,7 @@ describe('./schema', () => {
   })
 
   test('the tree passes the framework checks', () => {
-    expect(checkApp(createWayApp({ home: '/', legacy: {} }).app)).toEqual([])
+    expect(checkApp(createWayApp({ home: '/' }).app)).toEqual([])
   })
 })
 
@@ -218,7 +218,7 @@ describe('run', () => {
   })
 
   test('a real run is refused to the adapters; a dry run is not', async () => {
-    const { app } = createWayApp({ home: '/', legacy: {} })
+    const { app } = createWayApp({ home: '/' })
     const refused = await app.call(['run'], { id: 'x' }, { cwd: '/', env: {} }, { surface: 'mcp' })
     expect(refused).toMatchObject({ status: 'refused', reason: 'cli-only' })
   })
