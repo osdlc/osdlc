@@ -88,8 +88,7 @@ impl Support {
 /// number, so a claim without a date is a claim with no shelf life.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Evidence {
-    /// The page the claim was read from — a URL, or a repo-relative path
-    /// when the observation is recorded in this repository.
+    /// The page the claim was read from.
     pub url: &'static str,
     /// ISO date the page was read.
     pub observed_on: &'static str,
@@ -636,11 +635,11 @@ pub(crate) const CODEX_ONLY_HOOK_EVENT_VOCABULARY: Evidence = Evidence {
     version: UNVERSIONED,
 };
 
-/// The in-repo harness survey. Its own header dates the research and warns
-/// that the field churns weekly, so it is cited with that date rather than
-/// with the date this module was written.
+/// The harness survey in this crate's `docs/`. Its own header dates the
+/// research and warns that the field churns weekly, so it is cited with that
+/// date rather than with the date this module was written.
 pub(crate) const HARNESS_SURVEY: Evidence = Evidence {
-    url: "solutions/agent-pants/docs/vault/reference/harness-comparison.md",
+    url: "https://github.com/osdlc/osdlc/blob/main/packages/rust/agent-adapt/docs/harness-survey.md",
     observed_on: "2026-08-08",
     version: "surveyed 2026-08-08 from each vendor's official documentation",
 };
