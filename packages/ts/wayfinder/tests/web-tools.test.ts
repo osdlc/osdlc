@@ -73,9 +73,13 @@ const WAITING = {
 }
 
 /** Resolve the microtasks the settings' async handlers run on. */
-const settle = async (): Promise<void> => {
-  for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0))
-}
+/** The settings notice, once a click's request has answered. */
+const notice = (): Promise<HTMLElement> =>
+  vi.waitFor(() => {
+    const el = document.querySelector<HTMLElement>('.set-notice')
+    if (el === null) throw new Error('no notice yet')
+    return el
+  })
 
 beforeEach(() => {
   mountPage()
@@ -271,27 +275,24 @@ describe('granting and revoking a tool', () => {
     state.trustable = true
     document.getElementById('settings-body')!.innerHTML = openSettings(config(), ['mise'])
     handleSettingsClick(document.querySelector('[data-trust-tool="mise"]') as HTMLElement)
-    await settle()
+    expect((await notice()).textContent).toContain('Trusted mise.')
     expect(trustCalls().filter((c) => c.confirm === 'n1')).toHaveLength(1)
-    expect(document.querySelector('.set-notice')!.textContent).toContain('Trusted mise.')
   })
 
   test("the settings' Untrust button revokes and says so", async () => {
     state.catalog = catalog({ trustedTools: ['mise'] })
     document.getElementById('settings-body')!.innerHTML = openSettings(config(), ['mise'])
     handleSettingsClick(document.querySelector('[data-untrust-tool="mise"]') as HTMLElement)
-    await settle()
+    expect((await notice()).textContent).toContain('Untrusted mise.')
     expect(trustCalls()[0]!.body).toEqual({ untrust: true, scope: 'mise' })
-    expect(document.querySelector('.set-notice')!.textContent).toContain('Untrusted mise.')
   })
 
   test("the settings' Untrust button shows a refusal", async () => {
     state.catalog = catalog({ trustedTools: ['gone'] })
     document.getElementById('settings-body')!.innerHTML = openSettings(config(), [])
     handleSettingsClick(document.querySelector('[data-untrust-tool="gone"]') as HTMLElement)
-    await settle()
-    const notice = document.querySelector('.set-notice')!
-    expect(notice.getAttribute('data-kind')).toBe('err')
-    expect(notice.textContent).toBe('untrust gone failed: no marker to remove')
+    const shown = await notice()
+    expect(shown.getAttribute('data-kind')).toBe('err')
+    expect(shown.textContent).toBe('untrust gone failed: no marker to remove')
   })
 })

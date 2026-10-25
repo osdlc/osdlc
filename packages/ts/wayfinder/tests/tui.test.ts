@@ -526,18 +526,31 @@ describe('copy', () => {
     'a clipboard program that leaves a child holding its output does not hold up the copy',
     async () => {
       const bin = await temp('wayfinder-clip-')
+      const pidFile = join(bin, 'child.pid')
       // As xclip does: fork a child that keeps the selection, and the pipes, then exit.
-      await writeFile(join(bin, 'xclip'), '#!/bin/sh\ncat > /dev/null\nsleep 20 &\nexit 0\n')
+      await writeFile(
+        join(bin, 'xclip'),
+        `#!/bin/sh\ncat > /dev/null\nsleep 30 &\necho $! > '${pidFile}'\nexit 0\n`,
+      )
       await chmod(join(bin, 'xclip'), 0o755)
-      const saved = process.env['PATH']
-      process.env['PATH'] = `${bin}:/usr/bin:/bin`
+      // The clipboard program is looked up on the process PATH.
+      vi.stubEnv('PATH', `${bin}:/usr/bin:/bin`)
+      let child = 0
       try {
-        const started = Date.now()
         const ok = await writeClipboard('hello', { cwd: bin, platform: 'linux', env: {} })
         expect(ok).toBe(true)
-        expect(Date.now() - started).toBeLessThan(1500)
+        child = Number((await readFile(pidFile, 'utf-8')).trim())
+        // The copy returned while the child still holds the pipes.
+        expect(() => process.kill(child, 0)).not.toThrow()
       } finally {
-        process.env['PATH'] = saved
+        vi.unstubAllEnvs()
+        if (child > 0) {
+          try {
+            process.kill(child, 'SIGKILL')
+          } catch {
+            // Already gone.
+          }
+        }
       }
     },
   )
