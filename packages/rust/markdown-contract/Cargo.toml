@@ -1,6 +1,10 @@
 [package]
 name = "markdown-contract"
 version = "0.3.2"
+# Held back from crates.io until the parity fixes from the #460 review land.
+# Its first release also needs a different crates.io credential from the
+# other crates, so it ships in a release-plz run of its own.
+publish = false
 edition.workspace = true
 rust-version.workspace = true
 description = "Contracts for markdown documents: declare the frontmatter, headings, tables and lists a document must have, and get findings with line numbers. The Rust twin of @osdlc/markdown-contract."
