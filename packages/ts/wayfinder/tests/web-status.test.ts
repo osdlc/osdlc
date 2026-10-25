@@ -79,7 +79,7 @@ describe('the unchanged-poll status line', () => {
   })
 
   test('counts the commands on screen, not every table row in the document', async () => {
-    await load(false)
+    await load()
     expect($('status').textContent).toContain('2 of 2')
 
     // The settings dialog is open behind the poll, and it draws its runner
@@ -88,7 +88,7 @@ describe('the unchanged-poll status line', () => {
       '<table class="set-table"><tbody><tr><td>a</td></tr><tr><td>b</td></tr>' +
       '<tr><td>c</td></tr></tbody></table>'
 
-    await load(false)
+    await load()
     expect($('status').textContent).toContain('2 of 2')
   })
 })

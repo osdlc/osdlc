@@ -75,7 +75,7 @@ you would type, and in the terminal UI, Enter runs it.
 
 ## Groups
 
-Rows come in four groups, in this order, on every surface:
+Rows come in five groups, in this order, on every surface:
 
 | Group | What fills it | Example rows |
 | --- | --- | --- |
@@ -83,26 +83,46 @@ Rows come in four groups, in this order, on every surface:
 | Dependencies | the detected package managers | `npm ci`, `cargo fetch` |
 | Tools | tool managers such as mise and proto | `mise install` |
 | Git hooks | lefthook, husky, pre-commit | `lefthook install` |
+| Skills | agent skills in `.claude/skills`, `.agents/skills`, `.cursor/skills` | `/review [pr-number]` |
 
 The terminal UI and the page show a break between groups in the tab bar.
 `--json` adds a `groups` array: `{id, title, runners}` for each group that has
 rows. `runners.order` reorders runners within a group; the groups keep their
 order.
 
+Skills are not tasks. An agent runs one when you type `/<name>`, so Run
+copies `/<name>` and nothing is spawned; `way run /review` says so and exits
+1. `list` and `query` print a `/<name> [hint]` line for each skill after the
+tasks, and search matches a skill's name and description as it matches a
+task. `--json` puts them in `skills`: `name`, `description`, `argumentHint`,
+`path`, `scope`, `origin` (`project`, `user` or `plugin:<id>`), `harnesses`
+and `invoke`. They are read from files by `@osdlc/detect-harness`; nothing
+runs. The `skills` setting chooses which: `project` (the default) lists the
+repository's own, `all` adds yours and your plugins' from the home folder, and
+`off` lists none.
+
 ## The terminal UI
 
 ```text
 enter  run the selected task, handing it this terminal
-       (a task with parameters asks for them first)
-^y     copy its command
-tab    next runner (all · just · node-scripts │ dependencies │ tools …)
-^e     exact search instead of fuzzy
-^t     only services — tasks that run until you stop them
-^s     trust this repository, when runners are hidden for want of it
+       (a task that takes arguments asks for them first)
+^y     copy its command line (on a skill: /<name>)
+tab    next tab (all · just · node-scripts │ dependencies │ tools … │ skills)
+,      settings: runners, discovery, excluded paths and trust
+^s     trust this repository, when runners are withheld for want of it
 ^r     re-probe (always a real probe, never the store)
-,      this project's configuration, read-only
+^t     only services — tasks that run until you stop them
+^e     exact search instead of fuzzy
+^d     only tasks a file declares
+^o     scope: all, the root only, or at most 2 or 3 levels down
+?      every key
 esc    quit
 ```
+
+The footer shows as many of these as fit, and always `? help` and `esc quit`.
+`?` lists every key; `way --help --all` prints the same list. Both come from
+one table, `KEY_TABLE` in `src/keys.ts`, which the web view's key help reads
+too.
 
 `^s` asks first. The status line becomes `trust this repository? y/n`, and
 only `y` records a grant. A single key press should not decide whether this
@@ -111,8 +131,9 @@ repository's code may run.
 A recipe that takes arguments asks for them first. Enter on
 `just deploy <env>` turns the key line into a command line, with the command
 already on it and the cursor after it. Type `staging` and press Enter to run
-`just deploy staging`, or press `esc` to go back. A task with no arguments
-runs as soon as you press Enter.
+`just deploy staging`, or press `esc` to go back. A task whose parameters
+could not be read is marked `?` and asks too; an empty line runs it as it
+is. A task with no arguments runs as soon as you press Enter.
 
 Fuzzy by default. Terms are ANDed, so `photo dev` narrows to a photo app's dev
 server. A leading `'` forces one term to match exactly.
@@ -157,10 +178,12 @@ It is a server, not a generated file, on purpose. A file goes out of date as
 soon as you add a task. The server re-probes, and the page refreshes when it
 gets focus and on a slow poll, so it shows what the repository has now.
 
-The first request is answered from the [stored probe](#the-cache) while a real
-probe runs in the background. So the page appears at once, even when the
-slowest runner takes seconds. The rows update in place when the probe
-finishes. Refresh always runs a real probe.
+Every action on the page is a command of `way` called over HTTP: the list
+is `way list`, a trust grant is `way trust`, a saved setting is `way config
+set`. The page first asks for the [stored probe](#the-cache), then for a
+real one. So the page appears at once, even when the slowest runner takes
+seconds. The rows update in place when the probe finishes. Refresh always
+runs a real probe.
 
 ## Execution, and trust
 
@@ -195,9 +218,16 @@ matching policy entry, present only when `by` is `"path"` or `"owner"`.
 remove still prints its object, and reports the miss with exit 1 and a line
 on stderr. So a parser never gets an empty stdout.
 
-A run needs every tool it runs trusted, such as mise for a mise task.
-`--scope mise` grants or removes mise's trust alone. A grant is made from the
-command line only: the MCP and HTTP adapters refuse it.
+A repository you do not trust as a whole can have single tools trusted.
+`way trust --scope just` lets just run its tool while moon stays withheld.
+A runner needs its own id trusted, and also each tool manager that runs
+commands through itself at the root: in a repository with a `mise.toml`,
+moon runs as `mise exec -- moon`, so it needs `--scope moon` and
+`--scope mise`. A withheld runner's entry in `unknowns` names what it still
+needs in `missing`, and once any tool is trusted its label says which, such
+as `withheld: mise is not trusted`. Detection itself never runs a tool under a
+tool grant. A grant is made from the command line only: the MCP and HTTP
+adapters refuse it.
 
 `-C` applies here too. Trust, with execution allowed, also lets the project
 file load tool modules; see
@@ -292,15 +322,15 @@ choose.
 
 `--exec` allows execution for one run and records nothing, which suits a
 script or a CI job. `--no-exec` turns execution off, however trusted the
-repository is. Both flags apply on every surface, including the web view. Its
-`POST /api/trust` returns `409` whenever a grant would have no effect, so the
-page cannot lift `--no-exec` or make an `--exec` run permanent. The page hides
-its trust button in those states, and the server refuses the request anyway.
-The session token proves who is asking, not that the request makes sense.
+repository is. Both flags apply on every surface, including the web view,
+whose every command runs with the flags `way serve` started with. The page
+offers a trust grant only when one would change what is read, and asks
+before it sends it.
 
 When runners are withheld, every surface says so and offers a way to grant
 trust. `list` and `query` print one line on stderr. The terminal UI shows
-`N hidden — repo not trusted (^s to trust)` beside the counts. The web view
+`2 runners withheld: this repository is not trusted (^s to trust)` beside the
+counts, and a `–` in place of the count on each withheld tab. The web view
 shows a **Trust this repository** button in a bar above the list, in each
 withheld runner's info panel and in the runner picker.
 
@@ -393,11 +423,12 @@ defaults, `$XDG_CONFIG_HOME/wayfinder/config.json` (or
 root, then the flags on the command line.
 
 The keys are `runners.disabled`, `runners.order`, `allowExec`, `discovery`,
-`excludePaths`, `trust.paths`, `trust.owners`, `trust.tools`, `tools`, `open`
-and `theme`. `open` (`tui` or `web`) is what a bare `way` opens. `theme`
-(`system`, `light` or `dark`) is the web view's colour scheme. `trust`, `open`
-and `theme` count only in the user file: a project file's value is dropped
-with a warning. An unknown key is a warning that names the closest known key.
+`excludePaths`, `trust.paths`, `trust.owners`, `trust.tools`, `tools`, `open`,
+`theme` and `skills`. `open` (`tui` or `web`) is what a bare `way` opens.
+`theme` (`system`, `light` or `dark`) is the web view's colour scheme.
+`skills` (`project`, `all` or `off`) chooses the agent skills listed (see
+[Groups](#groups)). `trust`, `open`, `theme` and `skills` count only in the
+user file: a project file's value is dropped with a warning. An unknown key is a warning that names the closest known key.
 
 The package ships the file's JSON Schema at `schema/config.json`, built from
 the same Zod schema that validates the file. `way config set` writes
@@ -428,7 +459,7 @@ way config --help                                 this list
 ```
 
 `set --project` refuses what a project file may not hold: `allowExec: true`,
-`trust`, `open` and `theme`. The web view refuses the same writes. The MCP and
+`trust`, `open`, `theme` and `skills`. The web view refuses the same writes. The MCP and
 HTTP adapters cannot change `trust`, `allowExec` or `tools` at all.
 
 `-C` applies here too, so `way config path -C /elsewhere` reports that
@@ -437,8 +468,8 @@ typed cannot run, such as an unknown key or a value of the wrong type. Exit
 code 1 means the command was valid but failed against the state it found.
 
 `runners.order` sets the runner order everywhere: `list`, `query`, the
-terminal UI's tab order, and the web view. In the web view, an order you set by
-dragging is saved in the browser and overrides it.
+terminal UI's tab order, and the web view. Dragging a tab in the web view saves
+the order to your user config. A project's order wins over the user's.
 
 ### `allowExec` here
 
@@ -600,11 +631,52 @@ repository is trusted and execution is allowed (`allowExec` not `false`, no
 
 `way providers` lists every registered tool: its roles, its runner kind
 (`parse` reads files, `exec` must run the tool and needs trust), its binary,
-whether that binary is on PATH, and whether it is built in or custom.
-`--json` gives the same rows as data. Only absolute PATH entries count, as in
+whether that binary is on PATH, its language (`any language` for make, just
+and the like), whether it is built in or custom, and its homepage. `--json`
+gives the same rows as data, with a one-line `description`. Only absolute PATH entries count, as in
 detection: a tool found only through a relative entry (`bin`, `.`,
 `node_modules/.bin`) reads as not installed. Put an absolute entry for it on
 PATH.
+
+## Library
+
+The package's root entry builds the same catalog from code, without spawning
+`way`. It runs on Node.
+
+```ts
+import { buildCatalog, filterTasks, terminalSafe } from '@osdlc/wayfinder'
+
+const doc = await buildCatalog({ dir: '.', flags: { allowExec: false } })
+for (const hit of filterTasks(doc.reports, { query: 'dev' })) {
+  console.log(terminalSafe(hit.task.display))
+}
+```
+
+`buildCatalog` takes what the CLI takes as flags (`flags`, `cached`,
+`filter`) and returns the `catalog` document `way list --json` prints. It
+reads the same config files, applies the same trust gate and writes the same
+probe store. Nothing in the repository runs unless it is trusted and
+execution is allowed. It throws `SessionError` with a `code` for a directory
+that does not exist, a config file that cannot be used, or a tool module that
+cannot be loaded.
+
+| Export | Is |
+|---|---|
+| `buildCatalog`, `BuildCatalogOptions`, `CatalogDocument` | the catalog for a directory |
+| `filterTasks`, `keepsTask`, `sourceDepth`, `hasQuery`, `TaskFilter`, `TaskHit` | the search and filters every surface uses |
+| `filterSkills`, `skillLine`, `SkillRow`, `SkillHit`, `SkillsSetting` | the Skills group |
+| `GROUPS`, `SKILLS_GROUP`, `groupOf`, `catalogGroups`, `documentGroups` | the groups and their order |
+| `unknownsOf`, `unknownLine`, `Unknown` | what could not be read, with its label |
+| `runnerLabel`, `withheldLabel`, `languageLabel`, `toolSummary` | the words a person reads |
+| `terminalSafe`, `jsonText` | repository text made safe for a terminal |
+| `SessionError` | why a catalog could not be built |
+| `Catalog`, `RunnerReport`, `Task`, `Param` | system-model's types |
+
+Repository text (task names, skill descriptions, paths) can hold terminal
+control characters. Pass it through `terminalSafe` before printing it.
+Other paths into the package are closed; `@osdlc/wayfinder/schema` is the
+other entry. Before 1.0 a minor release may change these names, and the
+changelog says how.
 
 ## How it compares
 

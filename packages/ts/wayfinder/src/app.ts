@@ -14,6 +14,3 @@ export const CONFIG_ENV_VAR = `${APP.toUpperCase()}_CONFIG`
 
 /** The project config file, read from the project root. */
 export const PROJECT_CONFIG_FILENAME = `${APP}.config.json`
-
-/** The request header that carries the web view's session token. */
-export const TOKEN_HEADER = `x-${APP}-token`

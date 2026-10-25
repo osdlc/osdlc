@@ -26,31 +26,51 @@ when they apply.
 
 ## Keys
 
-| Key                     | Action                                                             |
-| ----------------------- | ------------------------------------------------------------------ |
-| type                    | narrow the list                                                    |
-| `Enter`                 | run the selected task; a task with parameters asks for them first  |
-| `Ctrl+Y`                | copy the selected task's command                                   |
-| `Tab` / `Shift+Tab`     | next / previous tab                                                |
-| `Ctrl+E`                | toggle exact search                                                |
-| `Ctrl+T`                | show only services, tasks that run until you stop them             |
-| `Ctrl+S`                | trust this repository, after a `y`/`n` question                    |
-| `Ctrl+R`                | refresh: re-probe the repository                                   |
-| `,`                     | this project's configuration, read-only                            |
-| `↑` / `↓`               | move by one row (`Ctrl+P` / `Ctrl+N` also work)                    |
-| `Page Up` / `Page Down` | move by a screenful                                                |
-| `Home` / `End`          | first / last row                                                   |
-| `Backspace`             | delete the last character of the query                             |
-| `Ctrl+U`                | clear the query                                                    |
-| `Esc` / `Ctrl+C`        | quit                                                               |
+| Key                     | Action                                                   |
+| ----------------------- | -------------------------------------------------------- |
+| type                    | narrow the list                                          |
+| `Enter`                 | run the selected task, asking for its arguments first    |
+| `Ctrl+Y`                | copy the selected task's command line                    |
+| `Tab` / `Shift+Tab`     | next / previous runner tab                               |
+| `,`                     | settings: runners, discovery, excluded paths and trust   |
+| `Ctrl+S`                | trust this repository, after a `y`/`n` question          |
+| `Ctrl+R`                | refresh: probe the repository again                      |
+| `Ctrl+T`                | only services: tasks that run until you stop them        |
+| `Ctrl+E`                | exact search instead of fuzzy                            |
+| `Ctrl+D`                | only tasks a file declares, not inferred ones            |
+| `Ctrl+O`                | scope: all, the root only, or at most 2 or 3 levels down |
+| `↑` / `↓`               | move by one row (`Ctrl+P` / `Ctrl+N` also work)          |
+| `Page Up` / `Page Down` | move by a screenful                                      |
+| `Home` / `End`          | first / last row (`Ctrl+A` also works)                   |
+| `Backspace` / `Ctrl+U`  | delete a character / clear the query                     |
+| `?`                     | every key, and what each mark means                      |
+| `Esc` / `Ctrl+C`        | quit, stopping any probe that is running                 |
 
-The footer shows the main actions. Movement and line editing are not listed
-there, but they work as above.
+The footer shows as many hints as fit the width, and always `? help` and
+`esc quit`. `?` and `way --help --all` print the full list. All three come
+from one table in `src/keys.ts`.
+
+## Marks
+
+| Mark      | Means                                                         |
+| --------- | ------------------------------------------------------------- |
+| `>`       | the selected row                                              |
+| `[all 9]` | the selected tab                                              |
+| `*`       | a service: it runs until you stop it                          |
+| `?`       | parameters unknown; Enter asks for arguments                  |
+| `~`       | a tab whose rows came from the store and are out of date      |
+| `–`       | a withheld runner, in place of its count                      |
+
+Every mark is text, so the screen reads the same under `NO_COLOR`. Matched
+characters are bold and underlined. Colors come from the `@osdlc/ux` tokens,
+and yellow is used only for warnings.
 
 ## Tabs
 
 `Tab` and `Shift+Tab` cycle through an `all` tab and one tab per runner. Each
-tab shows how many tasks it holds. Switching tabs keeps the query.
+tab shows how many tasks it holds. Switching tabs keeps the query. When the
+tabs do not fit, the row scrolls to keep the selected tab in view, with `‹`
+and `›` where tabs are cut off.
 
 Tabs follow the row groups: Tasks first, then dependencies, tools and git
 hooks. A `│` separates one group from the next. The synthesized groups show
@@ -66,7 +86,10 @@ start an app, press `Ctrl+T`, type its name, then press Enter.
 
 The command Enter would run is always on screen above the key line, with any
 parameters it takes. Tasks are spawned from an argument vector, never through
-a shell. `Ctrl+Y` copies the command instead of running it.
+a shell. `Ctrl+Y` copies the command instead of running it: the argument vector
+quoted for your shell, after a `cd` when the task runs in its own directory.
+It uses `pbcopy` on macOS, and `wl-copy`, `xclip` or `xsel` elsewhere. A
+clipboard program that hangs is given up on after two seconds.
 
 When the task exits, `way` exits with the task's exit code.
 
@@ -84,8 +107,14 @@ $ just deploy ▮
 Type the arguments and press Enter to run. `Esc` goes back with nothing run.
 `Backspace` deletes a character and `Ctrl+U` clears what you typed.
 
+A task whose parameters could not be read, such as a just recipe read
+without execution, is marked `?` and asks the same way. The line under it
+names the reason. An empty line runs the task as it is. A VS Code task that
+uses an editor variable is not run, and the status line says why.
+
 Only the arguments are yours to type. The command is fixed. Quotes group
-words the way a shell does, so `"two words"` is one argument. Nothing else a
+words the way a shell does, so `"two words"` is one argument, and a backslash
+inside single quotes is kept as typed. Nothing else a
 shell does happens: no globbing, no variables, no operators. `*.log` reaches
 the command as typed.
 
@@ -96,11 +125,44 @@ A task with no parameters runs at once.
 
 ## Settings
 
-`,` replaces the list with this project's configuration as wayfinder resolved
-it. Each section names the layer that supplied its value. `Esc` goes back.
+`,` replaces the list with the settings, read the same way as `way config
+list`. Each section names the layer that supplied its value.
 
-The terminal view is read-only. Use `way config set` to change a value. The
-[web view](web-view.mdx#settings) can edit the same settings.
+| Key                | Action                                                     |
+| ------------------ | ---------------------------------------------------------- |
+| `↑` / `↓`          | move between settings; the screen scrolls                  |
+| `Space` / `Enter`  | turn a runner on or off, or change discovery               |
+| `[` / `]`          | move a runner earlier / later in the order                 |
+| `a`                | add an excluded path                                       |
+| `x`                | remove the selected excluded path                          |
+| `t` / `u`          | trust the repository or the selected tool (after a `y`/`n` question) / untrust |
+| `Esc` / `,`        | back to the list                                           |
+
+Each change is saved at once. Runners, discovery and excluded paths go to
+`wayfinder.config.json` in the project, as the [web view](web-view.mdx#settings)
+saves them; the runner order goes to the layer that sets it, else your user
+config. The list is then probed again. A setting a command-line flag decided,
+such as `--exclude`, is saved but keeps the flag's value until `way` starts
+again.
+
+Each runner shows `on` or `off`, and why it has no rows when it has none:
+withheld, or its tool is not installed. Otherwise it shows its tool's
+language, homepage and description. Removing trust with `u` keeps this
+run's execution setting; the next `way` withholds what needs trust.
+
+When runners are withheld for want of trust, a TOOL TRUST section lists each
+tool they need (`way trust --scope <tool>`), and each tool trusted on its own.
+`t` on a tool asks `trust mise here? y/n` and grants that tool only; a runner
+runs once it and each tool manager that wraps it are trusted. `u` on a trusted
+tool removes its grant, and the list is probed again.
+
+## Skills
+
+When the repository ships agent skills, a `skills` tab follows the runner
+tabs, and the `all` tab lists them after the tasks, as `/<name> [hint]`. The
+query matches them as it matches tasks; `^t` hides them. A skill runs in an
+agent, not here, so Enter and `^y` copy `/<name>` and nothing is spawned. The
+`skills` setting chooses which skills are listed.
 
 ## Startup and the cache
 
@@ -135,11 +197,13 @@ rows does not move the cursor to a different task.
 ## Trust from the keyboard
 
 When runners were withheld because the repository is not trusted, the status
-line says `N hidden — repo not trusted (^s to trust)`. `Ctrl+S` then asks
+line says `2 runners withheld: this repository is not trusted (^s to trust)`.
+Under `--no-exec` it says `withheld: --no-exec was given`, and trust is not
+offered, since it would change nothing. `Ctrl+S` then asks
 `trust this repository? y/n`. Only `y` records a grant. The question exists
 because `Ctrl+S` is flow control on many terminals and can arrive by
 accident.
 
 A `y` writes the same grant as `way trust`, then re-probes so the withheld
-runners appear. When nothing is withheld for lack of trust, `Ctrl+S` says
-`nothing is withheld` and does nothing. See [Trust and execution](trust.md).
+runners appear. When nothing is withheld, `Ctrl+S` says `nothing is withheld` and does
+nothing. See [Trust and execution](trust.md).

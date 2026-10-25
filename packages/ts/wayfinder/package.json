@@ -26,6 +26,10 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
     "./schema": {
       "types": "./dist/schema.d.ts",
       "default": "./dist/schema.js"
@@ -66,14 +70,17 @@
     "@osdlc/cli-tool": "workspace:^",
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/config-layers": "workspace:^",
+    "@osdlc/detect-harness": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
     "@osdlc/system-model": "workspace:^",
     "@osdlc/tiered-dirs": "workspace:^",
     "@osdlc/trust-repo": "workspace:^",
     "@osdlc/typed-git": "workspace:^",
+    "@osdlc/ux": "workspace:^",
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@osdlc/color": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",

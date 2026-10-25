@@ -934,6 +934,9 @@ importers:
       '@osdlc/config-layers':
         specifier: workspace:^
         version: link:../config-layers
+      '@osdlc/detect-harness':
+        specifier: workspace:^
+        version: link:../detect-harness
       '@osdlc/etag-write':
         specifier: workspace:^
         version: link:../etag-write
@@ -949,10 +952,16 @@ importers:
       '@osdlc/typed-git':
         specifier: workspace:^
         version: link:../typed-git
+      '@osdlc/ux':
+        specifier: workspace:^
+        version: link:../ux
       zod:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
+      '@osdlc/color':
+        specifier: workspace:^
+        version: link:../color
       '@osdlc/prettier-config':
         specifier: workspace:^
         version: link:../prettier-config

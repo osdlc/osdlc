@@ -26,7 +26,7 @@
  *     raise it. Run `way trust` to give a repository lasting permission.
  *   - `trust`, whole. A repository must not pre-authorize itself, or any group
  *     of repositories that includes it.
- *   - `open` and `theme`, which say how a person likes to work.
+ *   - `open`, `theme` and `skills`, which say how a person likes to work.
  *
  * `tools` is gated too, because a tool module is code. User-layer entries
  * always load; project-layer entries load only when the repository is trusted
@@ -68,8 +68,10 @@ import {
 import { originOwner } from '@osdlc/trust-repo/git'
 
 import { BIN, CONFIG_ENV_VAR, PROJECT_CONFIG_FILENAME } from './app.ts'
+import { THEME_VALUES, type Theme } from './config-keys.ts'
 import { appDirs, expandTilde, USER_CONFIG_FILENAME } from './xdg.ts'
 import type { WayOptions } from './catalog.ts'
+import { SKILLS_SETTING_VALUES, type SkillsSetting } from './core/skills.ts'
 
 export { CONFIG_ENV_VAR, PROJECT_CONFIG_FILENAME, USER_CONFIG_FILENAME }
 
@@ -100,10 +102,7 @@ export const OPEN_VALUES = ['tui', 'web'] as const
 /** What the bare `way` command opens. */
 export type OpenSurface = (typeof OPEN_VALUES)[number]
 
-/** The `theme` values for the web view. `system` follows the browser. */
-export const THEME_VALUES = ['system', 'light', 'dark'] as const
-/** The web view's theme. */
-export type Theme = (typeof THEME_VALUES)[number]
+export { THEME_VALUES, type Theme } from './config-keys.ts'
 
 /**
  * The configuration file, as a Zod schema. Every key is optional; the defaults
@@ -152,6 +151,12 @@ export const WayfinderConfigSchema = z
         'What the bare way command opens: the terminal UI or the web view. User config only.',
       ),
     theme: z.enum(THEME_VALUES).describe('The web view theme. User config only.'),
+    skills: z
+      .enum(SKILLS_SETTING_VALUES)
+      .describe(
+        "Which agent skills the Skills group lists: the repository's (project), those and your " +
+          "own and your plugins' (all), or none (off). User config only.",
+      ),
   })
   .partial()
   .describe('wayfinder configuration: wayfinder.config.json or the user config file.')
@@ -250,15 +255,7 @@ function leafKeys(schema: z.ZodType, prefix: string): string[] {
  */
 export const CONFIG_KEYS: readonly string[] = leafKeys(WayfinderConfigSchema, '')
 
-/**
- * The keys `config set` and `config unset` change from the command line only.
- * The MCP and HTTP adapters refuse a write of any of them: an agent or a page
- * must not grant trust, turn execution on, or name code to load.
- */
-export const CLI_ONLY_KEYS: readonly string[] = ['trust', 'allowExec', 'tools']
-
-/** The top-level keys only the user layer may set. */
-export const USER_ONLY_KEYS: readonly string[] = ['trust', 'open', 'theme']
+export { CLI_ONLY_KEYS, USER_ONLY_KEYS } from './config-keys.ts'
 
 /** Whether `key` is `top` or a key under it. */
 function under(key: string, top: string): boolean {
@@ -271,7 +268,9 @@ function under(key: string, top: string): boolean {
  */
 export function projectIgnoreReason(key: string, value: unknown): string | null {
   if (under(key, 'trust')) return 'a repository cannot grant itself trust'
-  if (under(key, 'open') || under(key, 'theme')) return 'a personal setting, for the user config'
+  if (under(key, 'open') || under(key, 'theme') || under(key, 'skills')) {
+    return 'a personal setting, for the user config'
+  }
   if (key === 'allowExec' && value === true) return 'a repository cannot turn execution on'
   return null
 }
@@ -508,6 +507,7 @@ export const DEFAULT_CONFIG: Required<WayfinderConfig> = {
   tools: [],
   open: 'tui',
   theme: 'system',
+  skills: 'project',
 }
 
 // ── Files ───────────────────────────────────────────────────────────────────
@@ -655,7 +655,7 @@ function projectRules(
     }
     delete out['trust']
   }
-  for (const key of ['open', 'theme'] as const) {
+  for (const key of ['open', 'theme', 'skills'] as const) {
     if (project[key] !== undefined) {
       warnings.push(
         `${locations.project}: ${key} is ignored in a project file — it is a personal setting; ` +
@@ -755,6 +755,8 @@ export interface Settings {
   theme: SettingValue<Theme>
   /** The runner display order. */
   runnerOrder: SettingValue<string[]>
+  /** Which agent skills the Skills group lists. */
+  skills: SettingValue<SkillsSetting>
   warnings: string[]
 }
 
@@ -795,6 +797,7 @@ export function settingsFrom(loaded: LoadedConfig): Settings {
     open: settingOf<OpenSurface>(loaded, 'open'),
     theme: settingOf<Theme>(loaded, 'theme'),
     runnerOrder: settingOf<string[]>(loaded, 'runners.order'),
+    skills: settingOf<SkillsSetting>(loaded, 'skills'),
     warnings: loaded.warnings,
   }
 }

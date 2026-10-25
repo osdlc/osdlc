@@ -30,9 +30,22 @@ export const RunnerReportZ = embedded(runnerReportSchema)
 
 /** One row group and the runners in it. */
 export const GroupZ = z.object({
-  id: z.enum(['tasks', 'dependencies', 'tools', 'hooks']),
+  id: z.enum(['tasks', 'dependencies', 'tools', 'hooks', 'skills']),
   title: z.string(),
-  runners: z.array(z.string()),
+  runners: z.array(z.string()).describe('The runners whose reports fill it. Empty for skills.'),
+})
+
+/** One agent skill. Its text comes from files, so filter it before a terminal shows it. */
+export const SkillZ = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  argumentHint: z.string().nullable().describe('What to type after /<name>.'),
+  path: z.string().describe('The skill file: relative to the root inside it, else absolute.'),
+  scope: z.string(),
+  origin: z.string().describe('project, user, local, managed, or plugin:<id>.'),
+  harnesses: z.array(z.string()).describe('The agents that read this skill file.'),
+  invoke: z.string().describe('What the run action copies: /<name>.'),
 })
 
 /** One runner's cache verdict. */
@@ -52,7 +65,11 @@ export const UnknownZ = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('withheld'),
     runner: z.string(),
-    reason: z.enum(['untrusted', 'exec-off']),
+    reason: z.enum(['untrusted', 'tool-untrusted', 'exec-off']),
+    missing: z
+      .array(z.string())
+      .optional()
+      .describe('The trust scopes the runner still needs: way trust --scope <id> for each.'),
     label: z.string(),
   }),
   z.object({
@@ -94,8 +111,16 @@ export const CatalogOutput = z.object({
   allowExec: z.boolean(),
   reports: z.array(RunnerReportZ),
   groups: z.array(GroupZ),
+  skills: z
+    .array(SkillZ)
+    .describe('Agent skills, the Skills group. The skills setting chooses which.'),
   cache: z.array(CacheStateZ),
   unknowns: z.array(UnknownZ),
+  trustedTools: z
+    .array(z.string())
+    .describe(
+      'The tool ids trusted on their own here. Empty when the repository is trusted as a whole.',
+    ),
   filter: FilterZ,
 })
 
@@ -107,6 +132,7 @@ export const QueryOutput = z.object({
   root: z.string(),
   filter: FilterZ,
   tasks: z.array(TaskZ),
+  skills: z.array(SkillZ).describe('The matching agent skills, best first.'),
   cache: z.array(CacheStateZ),
   unknowns: z.array(UnknownZ),
 })
@@ -120,6 +146,10 @@ export const ProviderZ = z.object({
   onPath: z.boolean().nullable().describe('Whether binary is on the PATH; null with no binary.'),
   source: z.enum(['built-in', 'custom']),
   module: z.string().optional().describe('The module a custom tool came from.'),
+  homepage: z.string().nullable().describe("The tool's site, http or https only."),
+  description: z.string().nullable(),
+  ecosystem: z.string().nullable(),
+  language: z.string().describe('The language label, or "any language".'),
 })
 
 /** `way providers --json`. */

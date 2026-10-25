@@ -10,6 +10,7 @@ import type { RoleName, ToolDef } from '@osdlc/system-model/detect'
 import { kit, openSession } from './commands/shared.ts'
 import { ProvidersOutput } from './documents.ts'
 import { terminalSafe } from './terminal-text.ts'
+import { toolSummary } from './tool-info.ts'
 import type { LoadedTool } from './tools.ts'
 
 /** One row of the listing, as `--json` prints it in `providers`. */
@@ -24,6 +25,14 @@ export interface ProviderRow {
   source: 'built-in' | 'custom'
   /** The module a custom tool came from. */
   module?: string
+  /** The tool's site, `http` or `https` only. Null when it names none. */
+  homepage: string | null
+  /** One sentence on what the tool is. */
+  description: string | null
+  /** The ecosystem id, such as `node`. Null for a tool of no one language. */
+  ecosystem: string | null
+  /** The language label, or `any language`. */
+  language: string
 }
 
 const ROLE_ORDER: RoleName[] = ['runner', 'packageManager', 'toolManager', 'hookManager']
@@ -42,6 +51,7 @@ export function providerRows(
 ): ProviderRow[] {
   return tools.map((t) => {
     const from = custom.find((c) => c.def === t)
+    const info = toolSummary(t)
     return {
       id: t.id,
       roles: ROLE_ORDER.filter((r) => t.roles[r] !== undefined),
@@ -50,6 +60,10 @@ export function providerRows(
       onPath: t.binary === undefined ? null : onPath(t.binary, env),
       source: from === undefined ? 'built-in' : 'custom',
       ...(from !== undefined ? { module: from.module } : {}),
+      homepage: info.homepage,
+      description: info.description,
+      ecosystem: info.ecosystem,
+      language: info.language,
     }
   })
 }
@@ -63,10 +77,12 @@ function table(rows: ProviderRow[]): string {
       r.kind ?? '-',
       r.binary ?? '-',
       r.onPath === null ? '-' : r.onPath ? 'yes' : 'no',
+      r.language,
       r.source === 'custom' && r.module !== undefined ? `custom ${r.module}` : r.source,
+      r.homepage ?? '-',
     ].map((cell) => terminalSafe(cell)),
   )
-  const head = ['tool', 'roles', 'kind', 'binary', 'on PATH', 'source']
+  const head = ['tool', 'roles', 'kind', 'binary', 'on PATH', 'language', 'source', 'homepage']
   const widths = head.map((h, i) => Math.max(h.length, ...cells.map((c) => c[i]!.length)))
   const fmt = (c: string[]) =>
     c
@@ -85,7 +101,8 @@ export function providersCommand(home: string) {
       'binary is on an absolute PATH entry. Reads files only; runs nothing. A custom tool comes ' +
       'from --config, from "tools" in the user config, or from "tools" in the project file when ' +
       "the repository is trusted and execution is allowed. kind is the runner role's: parse " +
-      "reads files, exec runs the repository's tools and needs trust.",
+      "reads files, exec runs the repository's tools and needs trust. Each tool has its " +
+      'language and homepage; --json adds its description.',
     output: ProvidersOutput,
     kind: 'providers',
     readOnly: true,

@@ -74,9 +74,11 @@ making `way` run code the user did not choose to run are in scope.
 - **Tasks run without a shell.** A task is spawned from an argument vector.
   Typed arguments are bound by the task's tool and never replace its binary.
 - **The web view listens on 127.0.0.1.** Any local process and any page the
-  browser visits can reach the port. A one-shot boot token and a session token
-  protect every route. `/api/run` takes a task id from the server's own catalog,
-  never a command. `/api/trust` refuses when a grant would not apply, so
-  `--no-exec` cannot be lifted from the page.
+  browser visits can reach the port. Requests must name a loopback `Host` and
+  carry no foreign `Origin`. A one-shot boot token signs the page in, and a
+  bearer token protects every command and `/run`. `/run` takes a task id from
+  the server's own catalog, never a command. Commands keep the flags `way
+  serve` started with, so `--no-exec` cannot be lifted from the page, and a
+  write of `allowExec` or a trust setting is refused.
 - **Trust is keyed on the resolved path.** A trusted repository that later
   pulls hostile changes stays trusted until `way trust --untrust`.

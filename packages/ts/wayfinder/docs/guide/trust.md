@@ -84,8 +84,8 @@ web view offers a **Trust this repository** button. Both are offered only
 when trust is what is missing.
 
 When runners are withheld for lack of trust, `--list` and `--json` print a
-line on stderr, the terminal UI shows `N hidden — repo not trusted (^s to
-trust)`, and the web view shows the button in a bar above the list, in each
+line on stderr, the terminal UI shows `2 runners withheld: this repository is
+not trusted (^s to trust)`, and the web view shows the button in a bar above the list, in each
 withheld runner's info panel and in the runner picker.
 
 ## The policy

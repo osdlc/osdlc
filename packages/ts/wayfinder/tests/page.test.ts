@@ -52,12 +52,15 @@ test('builds the page when the install path contains a space', async () => {
   await symlink(nodeModules(), join(install, 'node_modules'))
 
   const { buildPage } = (await import(join(install, 'src', 'page.ts'))) as {
-    buildPage(token: string): Promise<string>
+    buildPage(opts?: { theme?: string }): Promise<string>
   }
-  const html = await buildPage('tok')
+  const html = await buildPage({ theme: 'dark' })
 
   expect(html).toContain('<style>')
-  expect(html).toContain('window.__WAYFINDER_TOKEN__ = "tok"')
+  expect(html).toContain('<html lang="en" data-theme="dark">')
+  expect(html).toContain('--wf-bg-base')
+  expect(html).not.toContain('@APP@')
+  expect(html).not.toContain('@THEME@')
   expect(html).not.toContain('@STYLE@')
   expect(html).not.toContain('@SCRIPT@')
 })

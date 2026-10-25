@@ -53,7 +53,14 @@ describe('the web bundle', () => {
   }, 30_000)
 
   test('the browser-safe core modules import none either', async () => {
-    for (const path of ['vocabulary.ts', 'core/filter.ts', 'core/unknowns.ts', 'schema.ts']) {
+    for (const path of [
+      'vocabulary.ts',
+      'core/filter.ts',
+      'core/unknowns.ts',
+      'schema.ts',
+      'keys.ts',
+      'config-keys.ts',
+    ]) {
       expect(await nodeImports(src(path)), path).toEqual([])
     }
   }, 30_000)
