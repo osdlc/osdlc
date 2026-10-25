@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/trust-repo",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Per-repository consent to run a repository's own scripts: a marker store of grants for a whole repository or one tool, an exec gate, and a path and owner policy over it.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
