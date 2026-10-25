@@ -223,8 +223,10 @@ console.log(lines.stdout, same.stdout, later.stdout, sh.run('echo hi', { cwd }).
 `runShell` takes the capture options (`timeoutMs`, `env`, `input`,
 `maxOutputBytes`) and returns a `CommandResult`. A fake passed to `shellRunner`
 receives `['-c', '--', verb]`, then `scriptName` and `args` when given.
-`shellJoin(argv)` quotes a whole command line, for printing one a person can
-paste.
+`shellJoin(argv)` quotes a whole command line for a POSIX shell. For a line
+a person pastes, use `commandString` (see
+[Command lines to paste](#command-lines-to-paste)), which also handles
+Windows.
 
 ### Streaming
 
@@ -473,6 +475,38 @@ Windows rules on any OS.
 
 Bun's spawn skips empty `PATH` entries, so under Bun `which` can find a
 binary there that a spawn would not.
+
+## Command lines to paste
+
+`commandString(argv, opts?)` returns `argv` as one line a person can paste
+into a terminal, quoted for the shell that will read it. `opts.platform`
+(default `process.platform`) picks the shell: PowerShell on `win32`, a POSIX
+shell elsewhere. `opts.shell` (`'posix'`, `'powershell'` or `'cmd'`) names
+it directly. `opts.cwd` adds a change of folder first.
+
+```ts
+import { commandString } from '@osdlc/command-seam'
+
+const argv = ['git', 'commit', '-m', "it's done"]
+commandString(argv, { platform: 'linux', cwd: '/my repo' })
+// cd '/my repo' && git commit -m 'it'\''s done'
+commandString(argv, { platform: 'win32', cwd: 'C:\\my repo' })
+// Set-Location -LiteralPath 'C:\my repo'; & git commit -m 'it''s done'
+commandString(argv, { platform: 'win32', shell: 'cmd' })
+// git commit -m ^"it's^ done^"
+```
+
+| Shell        | Words                                                                                                                                                | With `cwd`                            |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `posix`      | `shellJoin`: bare when only `A-Za-z0-9_@%+=:,./-`, else single-quoted with `'` written `'\''`                                                          | `cd <dir> && <line>` (`cd --` for a folder starting with `-`) |
+| `powershell` | `&` first, always. Bare when it starts with a letter or `_-./\` and holds only letters, digits and `_-./\:=`; else single-quoted, each `'` (and `‘ ’ ‚ ‛`) doubled | `Set-Location -LiteralPath <dir>; <line>` |
+| `cmd`        | Bare when only `A-Za-z0-9_@+:./\-`; else quoted and `^`-escaped as in [Starting a program on Windows](#starting-a-program-on-windows). The program gets `^` escapes without quotes | `cd /d <dir> && <line>`               |
+
+In PowerShell the command runs even when `Set-Location` fails, since `;`
+does not stop on an error. Windows PowerShell 5.1, and PowerShell before
+7.3, drop an empty argument and mangle one holding `"` when they call a
+program. `commandString` throws `RangeError` for an empty `argv`, and for
+`cmd` when a word or `cwd` holds a line break, which `cmd.exe` cannot quote.
 
 ## Platforms
 
@@ -932,6 +966,7 @@ The experimental exports:
 - `runJson`, `runJsonAsync`, `parseJsonResult`, `JsonRun`, `JsonFailure`, `RunJsonOptions`
 - `withDefaults`, `DefaultedRunner`
 - `which`, `WhichOptions`
+- `commandString`, `CommandStringOptions`
 - `stopProcess`
 - `installGroupSignalForwarding`, `GroupSignalForwardingOptions`
 - `liveProcessGroups`, `forwardedSignal`, `forwardedExitCode`
@@ -970,6 +1005,8 @@ are settled, and Windows support has landed, if that is feasible.
 | `ShellRunner`, `AsyncShellRunner`                               | interface | Shell runner contracts                                         |
 | `ShellRunOptions`, `AsyncShellRunOptions`, `ShellPositionals`   | interface | Capture options plus `scriptName` (`$0`) and `args` (`$1`…)    |
 | `shellQuote`, `shellJoin`                                       | function  | POSIX quoting for one word or a command line                   |
+| `commandString`                                                 | function  | A command line to paste, quoted for POSIX, PowerShell or `cmd.exe` |
+| `CommandStringOptions`                                          | interface | `platform`, `shell`, `cwd`                                     |
 | `streamRunner`                                                  | function  | Default streaming runner (inherited stdio)                     |
 | `StreamRunner`, `StreamRunOptions`, `StreamResult`              | type      | Streaming runner contract; options add `stdio` and `quiet`; the result adds `reason`, `signal`, `error` |
 | `StdioOption`                                                   | type      | `'inherit' \| 'ignore' \| { stdout, stderr }` file descriptors   |
