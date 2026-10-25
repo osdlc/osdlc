@@ -328,6 +328,7 @@ export const GENERATED_SCHEMAS: Readonly<Record<string, Readonly<Record<string, 
         "enum": [
           "trust",
           "untrust",
+          "untrust-all",
           "show",
           "list"
         ]

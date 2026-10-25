@@ -215,7 +215,7 @@ describe('way trust --list and --untrust-all', () => {
     await s.store.trust(s.dir, 'just')
     const ran = await s.run(['trust', '--untrust-all', '--json'])
     expect(ran.exit).toBe(0)
-    expect(ran.json()).toMatchObject({ action: 'untrust', changed: true })
+    expect(ran.json()).toMatchObject({ action: 'untrust-all', changed: true })
     expect(await s.store.listGrants()).toEqual([])
     expect((await s.run(['trust', '--untrust-all'])).exit).toBe(1)
   })
