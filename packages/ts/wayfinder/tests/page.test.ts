@@ -57,7 +57,7 @@ test('builds the page when the install path contains a space', async () => {
   const html = await buildPage({ theme: 'dark' })
 
   expect(html).toContain('<style>')
-  expect(html).toContain('<html lang="en" data-theme="dark">')
+  expect(html).toContain(`<html lang="en" data-theme="dark" data-platform="${process.platform}">`)
   expect(html).toContain('--wf-bg-base')
   expect(html).not.toContain('@APP@')
   expect(html).not.toContain('@THEME@')

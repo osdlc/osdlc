@@ -16,6 +16,15 @@ export const ALL = 'all'
 export const SKILLS = '@skills'
 
 /**
+ * The platform the server runs on, which picks the shell a copied line is
+ * quoted for. The page is served with it on `<html data-platform>`; the
+ * page runs on the same machine.
+ */
+export function serverPlatform(): NodeJS.Platform {
+  return (document.documentElement.dataset['platform'] ?? 'linux') as NodeJS.Platform
+}
+
+/**
  * Every static element this page uses is declared in `page.html` and never
  * removed, so a failed lookup is a bug in the markup, not a case to handle at
  * runtime. The `!` states that rule rather than hiding a real null.

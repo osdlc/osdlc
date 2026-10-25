@@ -247,6 +247,20 @@ describe('Run and Copy on a skill', () => {
     expect(fetched).toEqual([])
   })
 
+  test('a skill name with a control character is not copied, by Copy or Shift+Enter', async () => {
+    state.catalog = catalog([skill('ok', { invoke: '/ok\u001b[201~\necho PWNED\n' })])
+    render()
+    const copy = document.querySelector(`${SKILL_ROWS} .copy`) as HTMLButtonElement
+    expect(copy.disabled).toBe(true)
+    copy.click()
+    const row = document.querySelector(SKILL_ROWS) as HTMLElement
+    row.focus()
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }))
+    await settle()
+    expect(copied).toEqual([])
+    expect(copy.textContent).toBe('refused')
+  })
+
   test('a refused clipboard write says blocked', async () => {
     Object.defineProperty(globalThis.navigator, 'clipboard', {
       value: { writeText: () => Promise.reject(new Error('denied')) },

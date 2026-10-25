@@ -11,10 +11,10 @@ import type {
 import { paramShape } from '@osdlc/system-model/params'
 
 import { filterTasks, type TaskFilter } from '../core/filter.ts'
-import { filterSkills, skillLine, type SkillHit, type SkillRow } from '../core/skills.ts'
+import { COPY_REFUSED, skillCopyText, taskCopyText } from '../core/copy-text.ts'
+import { filterSkills, skillLine, type SkillHit } from '../core/skills.ts'
 import { SKILLS_GROUP, groupOf, groupRank } from '../groups.ts'
 import { keysFor } from '../keys.ts'
-import { terminalSafe } from '../terminal-text.ts'
 import {
   APP,
   BIN,
@@ -30,7 +30,7 @@ import {
   withheldLabel,
 } from '../vocabulary.ts'
 
-import { $, ALL, OPEN, SEP, SHUT, SKILLS, state, toolInfo } from './state.ts'
+import { $, ALL, OPEN, SEP, SHUT, SKILLS, serverPlatform, state, toolInfo } from './state.ts'
 import type { Row, ToolInfo, TreeNode } from './state.ts'
 
 // The search is the core's `filterTasks`, bundled into the page, so the page,
@@ -238,25 +238,38 @@ function serviceIcon(declared: boolean): string {
 }
 
 /**
- * A directory in a form a shell will take. Quoted only when it needs to be,
- * so the common case stays readable.
+ * What Copy hands over, which is not always what the Command column shows:
+ * the argv quoted for the server's shell, as the CLI and the terminal UI
+ * copy it. A task bound to its own directory gets the `cd` it needs, since
+ * without it the copied command would fail. Null when the line holds a
+ * control character, so the button refuses to copy.
  */
-function quoteDir(dir: string): string {
-  return /^[\w.\-/@+]+$/.test(dir) ? dir : "'" + dir.replace(/'/g, "'\\''") + "'"
+export function copyText(task: Task): string | null {
+  return taskCopyText(task, serverPlatform())
 }
 
 /**
- * What Copy hands over, which is not always what the Command column shows.
- *
- * Most tasks are written to run from the repository root and are copied as
- * they are. A task bound to its own directory gets the `cd` it needs, since
- * without it the copied command would fail. `argv` is unchanged either way,
- * because anything that spawns a task already uses the directory.
+ * A Copy button for `text`. A null `text` held a control character: the
+ * button is disabled, says why, and carries nothing to copy.
  */
-export function copyText(task: Task): string {
-  // Control characters replaced, so none can reach the paste.
-  return terminalSafe(
-    task.cwd === '.' ? task.display : 'cd ' + quoteDir(task.cwd) + ' && ' + task.display,
+function copyButton(text: string | null, title: string): string {
+  if (text === null) {
+    return (
+      '<button class="copy" disabled title="' +
+      escapeHtml(COPY_REFUSED) +
+      '" aria-label="' +
+      escapeHtml(COPY_REFUSED) +
+      '">copy</button>'
+    )
+  }
+  return (
+    '<button class="copy" title="' +
+    escapeHtml(title) +
+    '" aria-label="' +
+    escapeHtml('Copy ' + text) +
+    '" data-run="' +
+    escapeHtml(text) +
+    '">copy</button>'
   )
 }
 
@@ -294,13 +307,10 @@ function paramsMark(task: Task): string {
 }
 
 /** Why a row's Copy is longer than its Command, said only when it is. */
-function copyTip(task: Task): string {
+function copyTip(task: Task, text: string): string {
   return task.cwd === '.'
     ? 'Copy the command to the clipboard.'
-    : // The same quoting copyText uses. An unquoted directory here would not
-      // match what is copied, and one with a space or a backtick would read as
-      // something else entirely.
-      'Copy — includes cd ' + quoteDir(task.cwd) + ' because this task must run from there.'
+    : 'Copy ' + text + ' — it changes directory first, because this task must run from there.'
 }
 
 /**
@@ -311,6 +321,7 @@ function copyTip(task: Task): string {
  * row's chain out of line with its neighbours.
  */
 function cells(e: Task, nameHtml: string, depth = 0): string {
+  const copied = copyText(e)
   // The runner saying a task is a service and this page guessing from its name
   // are different claims. A guess is drawn as the hollow icon and says so on
   // hover.
@@ -381,13 +392,7 @@ function cells(e: Task, nameHtml: string, depth = 0): string {
     '"' +
     (e.parametersUnknown === 'editor-variable' ? ' disabled' : '') +
     '>run</button>' +
-    '<button class="copy" title="' +
-    escapeHtml(copyTip(e)) +
-    '" aria-label="' +
-    escapeHtml('Copy ' + copyText(e)) +
-    '" data-run="' +
-    escapeHtml(copyText(e)) +
-    '">copy</button>' +
+    copyButton(copied, copied === null ? '' : copyTip(e, copied)) +
     '</td>'
   )
 }
@@ -660,11 +665,6 @@ function renderSearchRow(row: Row): string {
 
 // ---------------------------------------------------------------- skills
 
-/** What Copy and Run hand over for a skill: `/<name>`, control characters replaced. */
-export function skillCopyText(skill: SkillRow): string {
-  return terminalSafe(skill.invoke)
-}
-
 /**
  * One skill row, in the same columns as a task: the `/<name>` line, the
  * harnesses and description, the origin and file, and Copy. A skill has no
@@ -706,13 +706,10 @@ function renderSkillRow(hit: SkillHit, depth = 0): string {
         '</span></td>'
       : '') +
     '<td class="act">' +
-    '<button class="copy" title="' +
-    escapeHtml('Copy ' + copy + ' to type to ' + (s.harnesses.join(', ') || 'an agent') + '.') +
-    '" aria-label="' +
-    escapeHtml('Copy ' + copy) +
-    '" data-run="' +
-    escapeHtml(copy) +
-    '">copy</button>' +
+    copyButton(
+      copy,
+      'Copy ' + (copy ?? '') + ' to type to ' + (s.harnesses.join(', ') || 'an agent') + '.',
+    ) +
     '</td></tr>'
   )
 }

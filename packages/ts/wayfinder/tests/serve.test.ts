@@ -126,7 +126,9 @@ describe('the page', () => {
       expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
       const html = await res.text()
       expect(html).toContain('<title>wayfinder</title>')
-      expect(html).toContain('<html lang="en" data-theme="dark">')
+      expect(html).toContain(
+        `<html lang="en" data-theme="dark" data-platform="${process.platform}">`,
+      )
       expect(html).not.toContain(await s.token())
       expect(html).not.toContain(s.web.signIn.bootToken)
     } finally {

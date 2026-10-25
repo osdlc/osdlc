@@ -22,7 +22,7 @@ import { writeClipboard } from './copy.ts'
 import { stylesFor } from './style.ts'
 
 export { createTui, refreshNote, SCOPES, type Tui, type TuiHost, type TuiState } from './app.ts'
-export { copyText, clipboardCommands, writeClipboard } from './copy.ts'
+export { clipboardCommands, writeClipboard } from './copy.ts'
 export { splitKeys } from './keys-input.ts'
 
 const ALT_ON = '\x1b[?1049h'

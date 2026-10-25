@@ -18,6 +18,7 @@ import { BIN } from '../app.ts'
 import { splitArgs } from '../args.ts'
 import { fromStore, orderedCatalog, readCachedCatalog } from '../catalog.ts'
 import { collectOptionsFromConfig, readSettings, writeSetting, type Settings } from '../config.ts'
+import { COPY_REFUSED, skillCopyText, taskCopyText } from '../core/copy-text.ts'
 import type { TaskHit } from '../core/filter.ts'
 import type { HandOffResult } from '../core/run.ts'
 import { SessionError, type CacheState, type RunPlan, type Session } from '../core/session.ts'
@@ -32,7 +33,6 @@ import {
   runnerLabel,
   withheldLabel,
 } from '../vocabulary.ts'
-import { copyText } from './copy.ts'
 import { isText, namedKey, splitKeys } from './keys-input.ts'
 import {
   cycleDiscovery,
@@ -1024,18 +1024,23 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   }
 
   async function copy(task: Task): Promise<void> {
-    await toClipboard(copyText(task, host.platform), 'copied')
+    await toClipboard(taskCopyText(task, host.platform), 'copied')
   }
 
   /** A skill runs in an agent, so its action copies `/<name>` and spawns nothing. */
   async function copySkill(skill: SkillRow): Promise<void> {
     await toClipboard(
-      skill.invoke,
+      skillCopyText(skill),
       terminalSafe(`copied ${skill.invoke}; type it in ${skill.harnesses.join(', ')}`),
     )
   }
 
-  async function toClipboard(text: string, done: string): Promise<void> {
+  /** Copy `text`; null is text that holds a control character, which is refused. */
+  async function toClipboard(text: string | null, done: string): Promise<void> {
+    if (text === null) {
+      say(COPY_REFUSED, 'warning')
+      return
+    }
     say('copying…')
     let ok = false
     try {

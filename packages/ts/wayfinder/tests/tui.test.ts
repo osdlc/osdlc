@@ -24,7 +24,8 @@ import { openSurface } from '../src/commands/browse.ts'
 import { configLocations } from '../src/config.ts'
 import { KEY_TABLE, keysFor } from '../src/keys.ts'
 import { refreshNote } from '../src/tui/app.ts'
-import { clipboardCommands, copyText, writeClipboard } from '../src/tui/copy.ts'
+import { taskCopyText } from '../src/core/copy-text.ts'
+import { clipboardCommands, writeClipboard } from '../src/tui/copy.ts'
 import { installQuitHandlers } from '../src/tui/index.ts'
 import { makeStyles, stylesFor, terminalTheme } from '../src/tui/style.ts'
 import { cleanupAll, lineOf, screen, temp, testTui } from './tui-support.ts'
@@ -510,7 +511,9 @@ describe('copy', () => {
   })
 
   test('copy text quotes for PowerShell on Windows', () => {
-    expect(copyText(task('npm', 'x', { argv: ['npm', 'run', 'x'] }), 'win32')).toBe('& npm run x')
+    expect(taskCopyText(task('npm', 'x', { argv: ['npm', 'run', 'x'] }), 'win32')).toBe(
+      '& npm run x',
+    )
   })
 
   test('the clipboard programs per platform', () => {

@@ -165,7 +165,10 @@ as the Enter target. Enter copies that row's command and moves focus to the
 results list.
 
 In the list, `↑` and `↓` move between rows and `Enter` copies the focused
-row's command. `Shift+Enter` runs the top hit or the focused row. `Escape`
+row's command. Copy puts the argument vector on the clipboard quoted for the
+server's shell, as the terminal UI copies it, not the Command column. A
+command or skill name that holds a control character cannot be copied: its
+copy button is disabled and says why. `Shift+Enter` runs the top hit or the focused row. `Escape`
 returns to the search box and keeps the query. A second `Escape` in the
 search box clears it. `?` opens the help, which lists the same keys. Every
 copy button is also reachable with `Tab`.
