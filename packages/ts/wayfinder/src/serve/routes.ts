@@ -40,15 +40,37 @@ function text(body: string, status: number, extra: Record<string, string> = {}):
   })
 }
 
+/**
+ * At most `max` bytes of `request`'s body, or null when it is larger. Read as
+ * a stream and given up past `max`: `/session` needs no token, so a chunked
+ * body of any size must not be buffered first.
+ */
+async function readBody(request: Request, max: number): Promise<string | null> {
+  if (Number(request.headers.get('content-length') ?? '0') > max) return null
+  if (request.body === null) return ''
+  const reader = request.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size > max) {
+      void reader.cancel().catch(() => {})
+      return null
+    }
+    chunks.push(value)
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks))
+}
+
 /** The JSON body of `request`, or a Response refusing it. */
 async function readJson(request: Request): Promise<unknown> {
   if (!/^application\/json\b/i.test(request.headers.get('content-type') ?? '')) {
     return text('send application/json', 415)
   }
-  const length = Number(request.headers.get('content-length') ?? '0')
-  if (length > MAX_BODY) return text('the body is too large', 413)
-  const raw = await request.text()
-  if (raw.length > MAX_BODY) return text('the body is too large', 413)
+  const raw = await readBody(request, MAX_BODY)
+  if (raw === null) return text('the body is too large', 413)
   try {
     return JSON.parse(raw) as unknown
   } catch {

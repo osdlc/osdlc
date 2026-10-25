@@ -12,12 +12,14 @@ import { request as httpRequest } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
+import type { HttpApi } from '@osdlc/cli-tool/http'
 import { resolveTrustRoot } from '@osdlc/trust-repo'
 
 import { abortOnSignals } from '../src/commands/browse.ts'
 import { createWayApp } from '../src/commands/index.ts'
 import { createSession } from '../src/core/session.ts'
 import { createSignIn } from '../src/serve/auth.ts'
+import { createRoutes } from '../src/serve/routes.ts'
 import { startServer, type WebServer } from '../src/serve/index.ts'
 import { appTrustStore } from '../src/trust-store.ts'
 import { fixtureRoot, removeRoot } from './support.ts'
@@ -212,6 +214,40 @@ describe('POST /session', () => {
     } finally {
       await s.web.stop()
     }
+  })
+
+  test('a chunked body past the limit is refused without reading it all', async () => {
+    const routes = createRoutes({
+      api: {
+        handles: () => false,
+        checkOrigin: () => null,
+        hasToken: () => false,
+        token: 't',
+      } as unknown as HttpApi,
+      signIn: createSignIn(),
+      page: async () => '',
+      resolveRun: async () => ({ ok: false, status: 500, error: {} }),
+      handOff: () => {},
+    })
+    // 16 MB in 64 KB chunks. Reading stops soon after the 64 KB limit.
+    let pulled = 0
+    const endless = new ReadableStream<Uint8Array>({
+      pull: (c) => {
+        if (pulled >= 16 * 1024 * 1024) return c.close()
+        pulled += 64 * 1024
+        c.enqueue(new Uint8Array(64 * 1024))
+      },
+    })
+    const res = await routes(
+      new Request('http://127.0.0.1/session', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: endless,
+        duplex: 'half',
+      } as RequestInit),
+    )
+    expect(res.status).toBe(413)
+    expect(pulled).toBeLessThan(1024 * 1024)
   })
 
   test('GET is 405', async () => {
