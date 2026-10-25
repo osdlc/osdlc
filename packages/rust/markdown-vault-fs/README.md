@@ -26,7 +26,7 @@ modules, none of which parses YAML or Markdown:
 cargo add markdown-vault-fs
 ```
 
-## Use
+## Quick start
 
 ```rust
 use std::path::Path;

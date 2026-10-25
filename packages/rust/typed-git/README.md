@@ -145,7 +145,7 @@ and want its behaviour with typed results.
 ## Stability
 
 The crate is on 0.x. A breaking change ships only in a new 0.x minor release,
-with a CHANGELOG entry.
+with an entry in the [changelog](CHANGELOG.md).
 
 - `GitError`, `FileState`, `RepoState`, `StatusEntry`, `StatusReport`,
   `Checkout`, `GitInfo` and `Version` are `#[non_exhaustive]`. A later

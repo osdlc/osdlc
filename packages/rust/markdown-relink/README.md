@@ -21,7 +21,7 @@ is carried over byte for byte. Only the target span of a link changes.
 cargo add markdown-relink
 ```
 
-## Use
+## Quick start
 
 The vault directory must be an absolute path.
 

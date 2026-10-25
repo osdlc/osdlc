@@ -2,10 +2,12 @@
 # Build the tradecraft wasm artifact: tradecraft-core for JavaScript, with the
 # host filesystem supplied from JS.
 #
-#   cargo build --release --target wasm32-unknown-unknown   (the cdylib)
+#   cargo build --profile wasm-release --target wasm32-unknown-unknown  (cdylib)
 #     -> wasm-bindgen --target nodejs                        (JS/TS glue)
 #       -> wasm-opt -Oz                                      (size)
 #         -> $OUT_DIR, default packages/rust/target/tradecraft-wasm/
+#
+# `wasm-release` is the size profile in packages/rust/Cargo.toml.
 #
 # No npm package ships this artifact yet. The package that does will set
 # OUT_DIR to its own folder.
@@ -37,7 +39,7 @@ OUT_DIR="${OUT_DIR:-$WORKSPACE/target/tradecraft-wasm}"
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"
 TARGET_DIR="${CARGO_TARGET_DIR:-$WORKSPACE/target}"
-CRATE_WASM="$TARGET_DIR/wasm32-unknown-unknown/release/tradecraft_wasm.wasm"
+CRATE_WASM="$TARGET_DIR/wasm32-unknown-unknown/wasm-release/tradecraft_wasm.wasm"
 
 WASM_BINDGEN="${WASM_BINDGEN:-wasm-bindgen}"
 WASM_OPT="${WASM_OPT:-wasm-opt}"
@@ -85,9 +87,9 @@ SYSROOT="$(rustc --print sysroot)"
 RUSTC_COMMIT="$(rustc -vV | sed -n 's/^commit-hash: //p')"
 export RUSTFLAGS="--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo --remap-path-prefix=$SYSROOT/lib/rustlib/src/rust=/rustc/$RUSTC_COMMIT --remap-path-prefix=$WORKSPACE=/src"
 
-echo "[1/3] cargo build --release --target wasm32-unknown-unknown"
+echo "[1/3] cargo build --profile wasm-release --target wasm32-unknown-unknown"
 cargo build --locked \
-  -p tradecraft-wasm --release --target wasm32-unknown-unknown
+  -p tradecraft-wasm --profile wasm-release --target wasm32-unknown-unknown
 
 # --- 2. generate the nodejs glue -------------------------------------------
 # Rebuild the output dir from scratch so a removed file never lingers.

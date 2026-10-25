@@ -16,7 +16,7 @@ is no database. Rendering for each tool is done by
 cargo add tradecraft-core
 ```
 
-## Use
+## Quick start
 
 Every function that reads or writes files takes a `&dyn Vfs` first.
 `NativeVfs` works over `std::fs`. `MemVfs` is an in-memory tree.

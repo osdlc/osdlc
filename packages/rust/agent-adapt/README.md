@@ -28,7 +28,7 @@ cargo add agent-adapt
 | `compose` | Whole-plugin rendering |
 | `install` | The only module that touches the filesystem. Writes at project scope under a project root, or at user scope under the home directory |
 
-## Use
+## Quick start
 
 ```rust
 use agent_adapt::{RuntimeId, Skill, runtimes};
@@ -38,6 +38,13 @@ let renderer = runtimes::skill_renderer_for(RuntimeId::ClaudeCode).unwrap();
 let files = renderer.render_skill(&skill)?;
 // `files` is a `Vec<ExportedFile>` — paths + bytes. Write it yourself, or use `install`.
 ```
+
+More in [`examples/`](examples), each run with `cargo run --example <name>`:
+
+- `render_skill`: one skill for Claude Code.
+- `render_everywhere`: one skill for every runtime that supports skills.
+- `mcp_config`: one MCP server in the Claude Code, Codex CLI and Antigravity config formats.
+- `install_skill`: install a skill at project scope, in a temporary directory.
 
 ## Portable output vs the Claude Code superset
 

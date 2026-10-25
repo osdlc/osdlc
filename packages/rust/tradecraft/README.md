@@ -207,6 +207,10 @@ The crate is written for Linux, macOS and Windows. `adopt --from-git` and the
 `harness` verbs run `git` and each harness's own command, so those must be on
 `PATH`. The minimum supported Rust version is 1.89.
 
+## Changes
+
+Each release is listed in the [changelog](CHANGELOG.md).
+
 ## License
 
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
