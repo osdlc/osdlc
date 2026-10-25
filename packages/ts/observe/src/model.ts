@@ -41,9 +41,10 @@
  * replaces a name a person or the launcher chose.
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 
+import { atomicWrite } from '@osdlc/etag-write'
 import { z } from 'zod'
 
 import { LogSourceSchema } from './envelope.ts'
@@ -330,13 +331,13 @@ export function sessionEventsPath(sessionDirectory: string): string {
   return join(sessionDirectory, EVENTS_FILE)
 }
 
-/** Write `value` as JSON through a temp file and a rename, so a reader never sees half a file. */
+/**
+ * Write `value` as JSON through a fsynced temp file and a rename, so a reader
+ * never sees half a file and a crash never leaves one.
+ */
 function writeJsonAtomic(path: string, value: unknown): void {
-  mkdirSync(dirname(path), { recursive: true })
-  const tmp = `${path}.${process.pid}.tmp`
   // 0o600 like `events.jsonl`, which the record projects.
-  writeFileSync(tmp, JSON.stringify(value, null, 2), { mode: 0o600 })
-  renameSync(tmp, path)
+  atomicWrite(path, JSON.stringify(value, null, 2), { mode: 0o600 })
 }
 
 /** The parsed JSON at `path`, or `null` when it is absent or not JSON. */

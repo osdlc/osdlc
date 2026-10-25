@@ -76,8 +76,9 @@ npm install @osdlc/observe zod
 
 ESM only. Node.js 22 or later. `zod` 4 is a peer dependency:
 the session model takes your own zod schemas, so both must come from one zod.
-The one runtime dependency is `@osdlc/command-seam`, which runs `ps`, `ioreg`,
-`reg` and `git` without a shell.
+The runtime dependencies are `@osdlc/command-seam`, which runs `ps`, `ioreg`,
+`reg` and `git` without a shell, and `@osdlc/etag-write`, which writes the
+session record atomically.
 
 ## Entry points
 

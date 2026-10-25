@@ -65,7 +65,8 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
   },
   "dependencies": {
-    "@osdlc/command-seam": "workspace:^"
+    "@osdlc/command-seam": "workspace:^",
+    "@osdlc/etag-write": "workspace:^"
   },
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",

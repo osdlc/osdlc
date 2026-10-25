@@ -5,7 +5,15 @@
  * to one log.
  */
 
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
+import {
+  appendFileSync,
+  chmodSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -328,6 +336,16 @@ describe('reading a session directory', () => {
       model.recordSessionEventAppliedIn(dir, { kind: 'ended' }, '2026-10-09T10:00:02.000Z')
         ?.applied,
     ).toBe(false)
+  })
+
+  test('record.json is written owner-only and leaves no temp file behind', () => {
+    model.recordSessionEventIn(dir, launched, '2026-10-09T10:00:00.000Z')
+    chmodSync(join(dir, RECORD_FILE), 0o644)
+    model.recordSessionEventIn(dir, to('running'), '2026-10-09T10:00:01.000Z')
+    expect(readdirSync(dir).sort()).toEqual([EVENTS_FILE, RECORD_FILE])
+    if (process.platform !== 'win32') {
+      expect(statSync(join(dir, RECORD_FILE)).mode & 0o777).toBe(0o600)
+    }
   })
 
   test('a log with no launched event has no record', () => {

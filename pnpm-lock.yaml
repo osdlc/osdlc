@@ -537,6 +537,9 @@ importers:
       '@osdlc/command-seam':
         specifier: workspace:^
         version: link:../command-seam
+      '@osdlc/etag-write':
+        specifier: workspace:^
+        version: link:../etag-write
     devDependencies:
       '@osdlc/prettier-config':
         specifier: workspace:^
