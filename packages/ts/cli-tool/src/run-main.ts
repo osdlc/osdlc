@@ -7,7 +7,8 @@
  * once truncates buffered stdout. A piped run can lose its last lines, and the
  * bug only shows up under a pipe.
  *
- * A thrown error becomes one line on stderr and {@link EXIT.error}. A thrown
+ * A thrown error becomes one line on stderr, with terminal controls removed,
+ * and {@link EXIT.error}. A thrown
  * failure (a `FailureError`, which includes `CommandFailed`) is rendered by
  * {@link renderFailure} and exits with the code {@link exitCodeFor} gives its
  * kind. So a missing tool, a signed-out `gh` and a network failure read the
@@ -22,6 +23,7 @@
 import { EXIT } from './exit.ts'
 import { exitCodeFor, failureOf, renderFailure } from './failure.ts'
 import { processContext, type CliContext } from './io.ts'
+import { safe } from './safe.ts'
 
 /**
  * Options for running a main function: the tool's name, and the context and
@@ -51,12 +53,12 @@ export async function runMain(main: MainFn, options: RunMainOptions): Promise<vo
   } catch (err) {
     const failure = failureOf(err)
     if (failure !== null) {
-      ctx.io.stderr(renderFailure(failure, options.name))
+      ctx.io.stderr(safe(renderFailure(failure, options.name)))
       process.exitCode = exitCodeFor(failure)
       return
     }
     const message = err instanceof Error ? err.message : String(err)
-    ctx.io.stderr(`${options.name}: ${message}\n`)
+    ctx.io.stderr(`${options.name}: ${safe(message)}\n`)
     process.exitCode = EXIT.error
   }
 }

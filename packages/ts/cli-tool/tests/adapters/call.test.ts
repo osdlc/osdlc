@@ -285,6 +285,45 @@ describe('App.call', () => {
     })
   })
 
+  test('an error, its hint and the notes have terminal controls removed', async () => {
+    const { defineApp, defineCommand, CommandError } = await import('../../src/command/index.ts')
+    const { z } = await import('zod')
+    const ESC = '\u001b'
+    const app = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      commands: {
+        plain: defineCommand({
+          summary: 'plain',
+          output: z.object({}),
+          run(_input, ctx) {
+            ctx.warn(`w${ESC}[2J`)
+            throw new Error(`bad ${ESC}]0;title${ESC}\\file`)
+          },
+        }),
+        coded: defineCommand({
+          summary: 'coded',
+          output: z.object({}),
+          run() {
+            throw new CommandError(`m${ESC}[1A`, { hint: `h${ESC}[1A` })
+          },
+        }),
+      },
+    })
+    expect(await app.call(['plain'], {}, CTX, { surface: 'mcp' })).toEqual({
+      status: 'error',
+      exit: 1,
+      code: 'error',
+      message: 'bad file',
+      stderr: 't: warning: w\n',
+    })
+    expect(await app.call(['coded'], {}, CTX, { surface: 'http' })).toMatchObject({
+      message: 'm',
+      hint: 'h',
+    })
+  })
+
   test('refuses a missing, interactive or cli-only command', async () => {
     const { app } = fixture()
     expect(await app.call(['nope'], {}, CTX, { surface: 'mcp' })).toMatchObject({

@@ -235,6 +235,14 @@ describe('errors', () => {
     expect(r.exit).toBe(2)
     expect(r.out).toBe('')
     expect(r.err).toContain('commands:\n  deep')
+    expect(r.err.startsWith("tooly: 'tooly nested' needs a command\n")).toBe(true)
+  })
+
+  test('a group with no default under --json prints a usage error document', async () => {
+    const r = await runApp(app, ['nested', '--json'])
+    expect(r.exit).toBe(2)
+    expect(r.json()).toMatchObject({ kind: 'error', code: 'usage', exit: 2 })
+    expect(r.err).toContain("tooly: 'tooly nested' needs a command")
   })
 
   test('a CommandError prints its message and hint and exits with its code', async () => {
@@ -297,7 +305,7 @@ describe('errors', () => {
     })
   })
 
-  test('any other thrown error propagates to runMain', async () => {
+  test('any other thrown error is a safe line and, under --json, an error document', async () => {
     const broken = defineApp({
       name: 't',
       version: '0',
@@ -312,7 +320,9 @@ describe('errors', () => {
         }),
       },
     })
-    await expect(runApp(broken, ['x'])).rejects.toThrow('bug')
+    expect(await runApp(broken, ['x'])).toMatchObject({ exit: 1, out: '', err: 't: bug\n' })
+    const json = await runApp(broken, ['x', '--json'])
+    expect(json.json()).toMatchObject({ kind: 'error', code: 'error', message: 'bug', exit: 1 })
   })
 
   test('--all without --help is a usage error', async () => {
@@ -333,7 +343,10 @@ describe('errors', () => {
         }),
       },
     })
-    await expect(lying.run(['x'], captureContext())).rejects.toThrow('does not match its schema')
+    const ctx = captureContext()
+    expect(await lying.run(['x'], ctx)).toBe(1)
+    expect(ctx.io.out).toBe('')
+    expect(ctx.io.err).toContain('does not match its schema')
   })
 
   test('runApp checks a --json answer against the document schema', async () => {

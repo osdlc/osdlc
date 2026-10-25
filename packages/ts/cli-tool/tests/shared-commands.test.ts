@@ -1,8 +1,12 @@
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
 
 import { defineApp } from '../src/command/index.ts'
+import { captureContext } from '../src/io.ts'
+import { runMain } from '../src/run-main.ts'
 import {
   ConfigUsageError,
   configCommands,
@@ -208,9 +212,8 @@ describe('config', () => {
     store.set = async () => {
       throw new Error('cannot write /project.json')
     }
-    await expect(runApp(appWith(store), ['config', 'set', 'discovery', 'x'])).rejects.toThrow(
-      'cannot write',
-    )
+    const r = await runApp(appWith(store), ['config', 'set', 'discovery', 'x'])
+    expect(r).toMatchObject({ exit: 1, out: '', err: 't: cannot write /project.json\n' })
   })
 
   test('config unset removes a key, and exits 1 when it was not set there', async () => {
@@ -521,6 +524,59 @@ describe('text output drops terminal controls', () => {
     expect(list.err).toContain('t: warning: bad red')
     expect(show.out).toBe('not trusted /r\n')
     expect(guide.out).toContain('data here\n\tindented')
+  })
+})
+
+describe('a plain Error that quotes a repository file', () => {
+  const ESC = '\u001b'
+  const C1_CSI = '\u009b'
+  // V8's JSON.parse message quotes the bad text, escape sequences and all.
+  function fileStore(): ConfigStore {
+    const dir = mkdtempSync(join(tmpdir(), 'cli-tool-config-'))
+    const file = join(dir, 'config.json')
+    writeFileSync(file, `{"a": tru${ESC}]0;pwned${ESC}\\${ESC}[2J${C1_CSI}31m}`)
+    const store = memoryStore()
+    store.list = async () => {
+      JSON.parse(readFileSync(file, 'utf8'))
+      return { settings: [] }
+    }
+    return store
+  }
+
+  test('prints a safe line on stderr, exit 1', async () => {
+    const r = await runApp(appWith(fileStore()), ['config', 'list'])
+    expect(r.exit).toBe(1)
+    expect(r.out).toBe('')
+    expect(r.err).toMatch(/^t: Unexpected token/)
+    expect(r.err).not.toContain(ESC)
+    expect(r.err).not.toContain(C1_CSI)
+  })
+
+  test('under --json and --output jsonl, also prints a safe error document', async () => {
+    for (const mode of [['--json'], ['--output', 'json']]) {
+      const r = await runApp(appWith(fileStore()), ['config', 'list', ...mode])
+      expect(r.exit).toBe(1)
+      const doc = r.json<{ kind: string; code: string; message: string }>()
+      expect(doc).toMatchObject({ kind: 'error', code: 'error', exit: 1 })
+      expect(doc.message).not.toContain(ESC)
+      expect(doc.message).not.toContain(C1_CSI)
+      expect(r.out).not.toContain(C1_CSI)
+      expect(r.err).not.toContain(ESC)
+    }
+  })
+
+  test('runMain strips controls from an error that escapes main', async () => {
+    const ctx = captureContext()
+    const saved = process.exitCode
+    await runMain(
+      () => {
+        throw new Error(`bad ${ESC}]0;pwned${ESC}\\ ${C1_CSI}2J file`)
+      },
+      { name: 't', context: ctx, argv: [] },
+    )
+    expect(process.exitCode).toBe(1)
+    process.exitCode = saved
+    expect(ctx.io.err).toBe('t: bad   file\n')
   })
 })
 

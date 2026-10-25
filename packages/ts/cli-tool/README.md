@@ -423,10 +423,15 @@ Errors:
 | a parse error, or `UsageError` | `<name>: <message>`, the usage line and where the help is | 2 |
 | `CommandError(message, { exit, hint, code })` | `<name>: <message>` and the hint | `exit`, default 1 |
 | a `Failure`, or an error carrying one | the failure line | its category code (22-25), else 1 |
-| anything else | nothing; it propagates to `runMain` | 1 |
+| anything else, such as a plain `Error` | `<name>: <message>` | 1 |
 
-Under `--json` or `--output jsonl`, each of the first three also prints an
-error document on stdout, where a caller reads data:
+A group with no default, run with no command word, is a usage error too
+(exit 2): `<name>: '<group>' needs a command` and the group's help. Every
+message and hint has terminal controls removed before it is printed, since it
+often quotes a file from the repository.
+
+Under `--json` or `--output jsonl`, each of these also prints an error
+document on stdout, where a caller reads data:
 `{ schemaVersion: 1, kind: "error", code, message, exit, hint }`. `code` is
 `usage` for exit 2, the failure's kind for a `Failure`, the `CommandError`'s
 `code`, or else `error`. `ErrorDocumentSchema` is its Zod schema, and
