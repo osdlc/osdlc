@@ -18,7 +18,7 @@ import {
   type RunnerReport,
   type Task,
 } from '@osdlc/system-model/detect'
-import { trustStore } from '@osdlc/trust-repo'
+import { appTrustStore } from '../src/trust-store.ts'
 
 import { openSurface } from '../src/commands/browse.ts'
 import { configLocations } from '../src/config.ts'
@@ -579,7 +579,7 @@ describe('trust', () => {
     expect(tui.state.catalog?.allowExec).toBe(true)
     expect(tui.state.message).toBeNull()
     expect(tui.state.loading).toBe(false)
-    expect(await trustStore({ tool: 'wayfinder', env: {}, home }).isTrusted(root)).toBe(true)
+    expect(await appTrustStore({ env: {}, home }).isTrusted(root)).toBe(true)
   })
 
   test('any other key cancels the question and does nothing else', async () => {
@@ -614,7 +614,7 @@ describe('trust', () => {
     expect(screen(tui, 100, 40).join('\n')).toContain('trust: trusted (u removes the grant)')
     tui.handle('u')
     await tui.idle()
-    expect(await trustStore({ tool: 'wayfinder', env: {}, home }).isTrusted(root)).toBe(false)
+    expect(await appTrustStore({ env: {}, home }).isTrusted(root)).toBe(false)
     expect(screen(tui, 100, 40).join('\n')).toContain('trust: removed')
     expect(tui.state.message?.text).toContain('trust removed')
   })
@@ -626,7 +626,7 @@ describe('trust', () => {
     tui.handle(',')
     await tui.idle()
     expect(screen(tui, 100, 40).join('\n')).toContain('trust: trusted')
-    expect(await trustStore({ tool: 'wayfinder', env: {}, home }).isTrusted(root)).toBe(false)
+    expect(await appTrustStore({ env: {}, home }).isTrusted(root)).toBe(false)
   })
 })
 
