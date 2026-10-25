@@ -22,11 +22,17 @@ export function run(): void {
     })
     const ref = lost.refs[0]!
     assert.equal(ref.flag, '!')
-    assert.equal(ref.rejection, 'stale')
-
-    // A lease caller treats the race outcomes as "someone else won".
-    const lostRace: ReadonlySet<PushRejection> = new Set(['stale', 'already-exists', 'lock-failed'])
-    assert.equal(lostRace.has(ref.rejection!), true)
+    // Checking `flag` narrows the type: `rejection` is there on a rejected ref.
+    if (ref.flag === '!') {
+      assert.equal(ref.rejection, 'stale')
+      // A lease caller treats the race outcomes as "someone else won".
+      const lostRace: ReadonlySet<PushRejection> = new Set([
+        'stale',
+        'already-exists',
+        'lock-failed',
+      ])
+      assert.equal(lostRace.has(ref.rejection), true)
+    }
   } finally {
     pair.cleanup()
   }

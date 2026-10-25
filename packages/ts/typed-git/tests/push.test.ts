@@ -17,7 +17,10 @@ import {
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
+  type ForceLease,
   type PushRefResult,
+  type PushRejection,
+  type PushReport,
 } from '../src/index.ts'
 import { makeBareAndWorker, type BareAndWorker } from '../src/testing.ts'
 
@@ -87,6 +90,29 @@ describe('pushPorcelain — argv', () => {
     expect(() => new Git('/repo', { runner }).pushPorcelain('origin', [])).toThrow(TypeError)
     expect(calls).toEqual([])
   })
+
+  test('an empty lease list is refused before git runs, not pushed without a lease', () => {
+    const { runner, calls } = recorder({ exitCode: 0, stdout: '', stderr: '' })
+    const git = new Git('/repo', { runner })
+    expect(() => git.pushPorcelain('origin', '+HEAD:x', { forceWithLease: [] })).toThrow(
+      /pushPorcelain: forceWithLease list is empty/,
+    )
+    // `push` takes one lease, but shares the check with `pushPorcelain`.
+    const none = [] as unknown as ForceLease
+    expect(() => git.push('origin', '+HEAD:x', { forceWithLease: none })).toThrow(
+      /push: forceWithLease list is empty/,
+    )
+    expect(calls).toEqual([])
+  })
+
+  test('push and pushPorcelain spell the lease the same way', () => {
+    const { runner, calls } = recorder({ exitCode: 0, stdout: '', stderr: '' })
+    const git = new Git('/repo', { runner })
+    const lease = { ref: 'refs/heads/x', expect: 'abc' }
+    git.push('origin', 'HEAD:x', { forceWithLease: lease })
+    git.pushPorcelain('origin', 'HEAD:x', { forceWithLease: lease })
+    expect(calls[0]!.argv.slice(1)).toEqual(calls[1]!.argv.slice(2))
+  })
 })
 
 // ── real git ────────────────────────────────────────────────────────────────
@@ -118,6 +144,19 @@ describe('pushPorcelain — real git', () => {
   }
 
   /**
+   * When git's own stderr has a lock line for `dst`, the rejected ref must
+   * carry it as `detail`. Returns whether git printed one.
+   */
+  function expectDetailWhenPrinted(report: PushReport, dst: string): boolean {
+    const ref = report.refs.find((r) => r.dst === dst)!
+    expect(ref.flag).toBe('!')
+    const printed = report.stderr.includes(`cannot lock ref '${dst}'`)
+    if (printed) expect(ref.detail).toMatch(new RegExp(`^cannot lock ref '${dst}': \\S`))
+    else expect(ref.detail).toBeNull()
+    return printed
+  }
+
+  /**
    * A pre-receive hook that changes the ref itself. The lease check has
    * already passed, so this is another writer winning the race at the remote.
    * It leaves the quarantine first: git refuses ref updates inside it.
@@ -136,7 +175,6 @@ describe('pushPorcelain — real git', () => {
       flag: '*',
       summary: '[new branch]',
       rawReason: null,
-      detail: null,
     })
     expect(only(git.pushPorcelain('origin', `${a}:refs/heads/x`).refs).flag).toBe('=')
     const ff = only(git.pushPorcelain('origin', `${b}:refs/heads/x`).refs)
@@ -212,21 +250,28 @@ describe('pushPorcelain — real git', () => {
     expect(ref.flag).toBe('=')
   })
 
-  test('moving an existing tag is already-exists', () => {
+  test('moving an existing tag is tag-exists', () => {
     git.pushPorcelain('origin', `${a}:refs/tags/t`)
     const ref = only(git.pushPorcelain('origin', `${b}:refs/tags/t`).refs)
-    expect(ref).toMatchObject({ rejection: 'already-exists', rawReason: 'already exists' })
+    expect(ref).toMatchObject({ rejection: 'tag-exists', rawReason: 'already exists' })
+  })
+
+  test('a value that is not a commit needs force, read as non-fast-forward', () => {
+    git.pushPorcelain('origin', `${a}:refs/heads/x`)
+    const tree = git.revParse(`${b}^{tree}`)!
+    const ref = only(git.pushPorcelain('origin', `${tree}:refs/heads/x`).refs)
+    expect(ref).toMatchObject({ rejection: 'non-fast-forward', rawReason: 'needs force' })
   })
 
   test('<ref> beside an existing <ref>/child is ref-conflict', () => {
     git.pushPorcelain('origin', `${a}:refs/heads/d/child`)
-    const ref = only(
-      git.pushPorcelain('origin', `${a}:refs/heads/d`, {
-        forceWithLease: { ref: 'refs/heads/d', expect: null },
-      }).refs,
-    )
+    const report = git.pushPorcelain('origin', `${a}:refs/heads/d`, {
+      forceWithLease: { ref: 'refs/heads/d', expect: null },
+    })
+    const ref = only(report.refs)
     // git 2.53 and 2.54 say `refname conflict`; older git says `failed to update ref`.
     expect(ref).toMatchObject({ summary: '[remote rejected]', rejection: 'ref-conflict' })
+    expectDetailWhenPrinted(report, 'refs/heads/d')
   })
 
   test('a pre-receive decline is hook-declined, and stderr keeps the reason', () => {
@@ -286,11 +331,12 @@ describe('pushPorcelain — real git', () => {
   test('a stale .lock at the remote is not read as a race when the remote says so', () => {
     git.pushPorcelain('origin', `${a}:refs/heads/x`)
     writeFileSync(join(pair.bare.dir, 'refs', 'heads', 'x.lock'), '')
-    const ref = only(git.pushPorcelain('origin', `${b}:refs/heads/x`).refs)
+    const report = git.pushPorcelain('origin', `${b}:refs/heads/x`)
+    const ref = only(report.refs)
     // git 2.54 prints `Unable to create '….lock'`; 2.53 prints no detail, and
     // its reason is the same as a lost create.
-    if (ref.detail === null) expect(ref.rejection).toBe('already-exists')
-    else expect(ref).toMatchObject({ rejection: 'other' })
+    if (expectDetailWhenPrinted(report, 'refs/heads/x')) expect(ref.rejection).toBe('other')
+    else expect(ref.rejection).toBe('already-exists')
   })
 
   test('--atomic: the ref that failed keeps its reason, the rest say why they did not land', () => {
@@ -344,7 +390,7 @@ const CANNED: Array<{
   name: string
   line: string
   stderr?: string
-  rejection: string
+  rejection: PushRejection
 }> = [
   {
     name: 'older git: <ref>/child clash, failed to update ref + exists detail',
@@ -436,6 +482,21 @@ const CANNED: Array<{
     rejection: 'hook-declined',
   },
   {
+    name: 'an existing tag',
+    line: '!\trefs/tags/t:refs/tags/t\t[rejected] (already exists)',
+    rejection: 'tag-exists',
+  },
+  {
+    name: 'a value that is not a commit',
+    line: '!\tabc:refs/heads/x\t[rejected] (needs force)',
+    rejection: 'non-fast-forward',
+  },
+  {
+    name: 'the collateral ref of a failed --atomic push at the remote',
+    line: '!\tabc:refs/heads/m1\t[remote rejected] (atomic transaction failed)',
+    rejection: 'other',
+  },
+  {
     name: '--force-if-includes',
     line: '!\trefs/heads/x:refs/heads/x\t[rejected] (remote ref updated since checkout)',
     rejection: 'stale',
@@ -464,6 +525,29 @@ describe('pushPorcelain — canned wordings', () => {
     })
     const ref = only(new Git('/repo', { runner }).pushPorcelain('origin', 'HEAD:x').refs)
     expect(ref.detail).toBe("cannot lock ref 'refs/heads/x': is at 1 but expected 2")
+  })
+
+  test('with several push URLs, each rejected copy of a ref gets its own lock line', () => {
+    const { runner } = recorder({
+      exitCode: 1,
+      stdout:
+        'To /one.git\n!\tabc:refs/heads/x\t[remote rejected] (failed to update ref)\nDone\n' +
+        'To /two.git\n*\tabc:refs/heads/x\t[new branch]\nDone\n' +
+        'To /three.git\n!\tabc:refs/heads/x\t[remote rejected] (failed to update ref)\nDone\n',
+      stderr:
+        "remote: error: cannot lock ref 'refs/heads/x': is at 1 but expected 2\n" +
+        "remote: error: cannot lock ref 'refs/heads/x': Unable to create '/three.git/refs/heads/x.lock': File exists.\n",
+    })
+    const refs = new Git('/repo', { runner }).pushPorcelain('origin', 'HEAD:x').refs
+    expect(refs.map((r) => [r.flag, r.rejection, r.detail])).toEqual([
+      ['!', 'lock-failed', "cannot lock ref 'refs/heads/x': is at 1 but expected 2"],
+      ['*', undefined, undefined],
+      [
+        '!',
+        'other',
+        "cannot lock ref 'refs/heads/x': Unable to create '/three.git/refs/heads/x.lock': File exists.",
+      ],
+    ])
   })
 
   test('exit 1 without a rejected ref line throws', () => {

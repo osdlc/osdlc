@@ -37,10 +37,10 @@ export interface GitVerb<T> {
    * 1 for a missing object. Those codes reach {@link GitVerb.parse}, which
    * turns them into the verb's absence value; any other non-zero exit throws.
    *
-   * A mutation declares `[]`: nothing about a failed `push` is an answer.
-   * The exceptions are `configRemoveSection` (no such section) and
-   * `pushPorcelain` (a rejected ref). That is the whole checked/unchecked
-   * distinction, so there is no `checked` flag to contradict it.
+   * A mutation declares `[]`: nothing about a failed `push` is an answer,
+   * unless the verb declares a code whose failure is an answer (see its own
+   * `absent`). That is the whole checked/unchecked distinction, so there is
+   * no `checked` flag to contradict it.
    */
   absent: readonly number[]
   /**
@@ -1497,9 +1497,8 @@ export function remoteHead(remote: string): GitVerb<string | null> {
 
 // ── mutations ───────────────────────────────────────────────────────────────
 //
-// absent: [], so any non-zero exit throws the classified failure.
-// Two exceptions: `configRemoveSection` declares 128, and `pushPorcelain`
-// declares 1 for a rejected ref.
+// absent: [], so any non-zero exit throws the classified failure, unless the
+// verb declares a code whose failure is an answer (see its own `absent`).
 
 /** Options for {@link fetch}. */
 export interface FetchOptions {
@@ -1805,15 +1804,28 @@ export function push(
   refspec: string,
   opts: { forceWithLease?: boolean | ForceLease | undefined } = {},
 ): GitVerb<void> {
-  const argv = ['push']
-  const lease = opts.forceWithLease
-  if (lease === true) argv.push('--force-with-lease')
-  else if (typeof lease === 'object' && lease !== null) argv.push(forceWithLeaseArg(lease))
-  else if (lease !== undefined && lease !== false) {
-    throw new Error(`force-with-lease: unsupported value ${JSON.stringify(lease)}`)
-  }
+  const argv = ['push', ...forceWithLeaseArgs('push', opts.forceWithLease)]
   argv.push(positional('push', 'remote', remote), positional('push', 'refspec', refspec))
   return { argv, absent: NONE, parse: nothing }
+}
+
+/**
+ * The `--force-with-lease` arguments for a `forceWithLease` option: none, the
+ * bare flag, or one per pinned lease. An empty lease list throws a
+ * `TypeError`: git would push with no lease at all.
+ */
+function forceWithLeaseArgs(
+  verb: string,
+  lease: boolean | ForceLease | readonly ForceLease[] | undefined,
+): string[] {
+  if (lease === undefined || lease === false) return []
+  if (lease === true) return ['--force-with-lease']
+  if (Array.isArray(lease)) {
+    if (lease.length === 0) throw new TypeError(`typed-git: ${verb}: forceWithLease list is empty`)
+    return lease.map(forceWithLeaseArg)
+  }
+  if (typeof lease === 'object' && lease !== null) return [forceWithLeaseArg(lease as ForceLease)]
+  throw new Error(`force-with-lease: unsupported value ${JSON.stringify(lease)}`)
 }
 
 /** Options for {@link pushPorcelain}. */
@@ -1821,7 +1833,7 @@ export interface PushPorcelainOptions {
   /**
    * `--force-with-lease`: `true` for the bare form, a {@link ForceLease}, or
    * one lease per ref for a multi-ref push. See {@link push} for why `true` is
-   * the unsafe form.
+   * the unsafe form. An empty list throws a `TypeError`.
    */
   forceWithLease?: boolean | ForceLease | ForceLease[] | undefined
   /** `--atomic` — the remote updates every ref or none. */
@@ -1836,53 +1848,67 @@ export interface PushPorcelainOptions {
 export type PushFlag = ' ' | '+' | '-' | '*' | '!' | '='
 
 /**
- * Why a ref was rejected, read from git's reason text.
+ * Why a ref was rejected, read from git's reason text. The wording each value
+ * comes from, by git version, is in the README section "Pushing: a rejected
+ * ref is a value".
  *
- * - `stale`: the lease check failed before anything was sent (`stale info`,
- *   or `remote ref updated since checkout` from `--force-if-includes`).
- * - `non-fast-forward`: `non-fast-forward` or `fetch first`.
- * - `already-exists`: the ref was there and the push may not replace it: a
- *   tag (`already exists`), or a create the remote lost to another writer
- *   (`reference already exists`).
+ * - `stale`: the lease check failed before anything was sent.
+ * - `non-fast-forward`: the push needs a force (`non-fast-forward`, `fetch
+ *   first`, `needs force`).
+ * - `tag-exists`: the tag is there already. A retry fails the same way.
+ * - `already-exists`: a create the remote lost to another writer.
  * - `ref-conflict`: the remote cannot hold this ref beside another, such as
  *   `<ref>` beside `<ref>/child`. Nothing raced.
  * - `lock-failed`: another writer moved or deleted the ref at the remote
- *   after the lease check passed (`incorrect old value provided`, `reference
- *   does not exist`, or a `cannot lock ref` detail with `but expected` or
- *   `unable to resolve reference`).
+ *   after the lease check passed.
  * - `hook-declined`: a remote hook refused the ref.
- * - `other`: anything else. `rawReason` and `detail` keep the text.
+ * - `other`: anything else, kept in `rawReason` and `detail`. This includes
+ *   a lock file in the way, an unwritable refs directory, the collateral refs
+ *   of a failed `--atomic` push, and git's `new shallow roots not allowed`,
+ *   `remote does not support deleting refs` and `remote failed to report
+ *   status`.
  */
 export type PushRejection =
   | 'stale'
   | 'non-fast-forward'
+  | 'tag-exists'
   | 'already-exists'
   | 'ref-conflict'
   | 'lock-failed'
   | 'hook-declined'
   | 'other'
 
-/** One ref line of `git push --porcelain`. */
-export interface PushRefResult {
+/** The fields every ref line of `git push --porcelain` has. */
+interface PushRefFields {
   /** The local side as git printed it: a ref, `HEAD`, a sha, or `''` for a delete. */
   src: string
   /** The remote ref. */
   dst: string
-  flag: PushFlag
   /** The summary without the reason: `[rejected]`, `[new branch]`, `abc..def`. */
   summary: string
-  /** Set only when `flag` is `'!'`. */
-  rejection?: PushRejection
   /** The text in parentheses after the summary, or null when there is none. */
   rawReason: string | null
-  /**
-   * The remote's `cannot lock ref '<dst>': …` line for this ref, without the
-   * `remote: error: ` prefix, or null when the remote printed none. git
-   * prints it on stderr, apart from the ref line, and some versions not at
-   * all.
-   */
-  detail: string | null
 }
+
+/**
+ * One ref line of `git push --porcelain`. A rejected ref (`flag: '!'`)
+ * carries its `rejection` and `detail`; check `flag` and TypeScript knows
+ * which you have.
+ */
+export type PushRefResult =
+  | (PushRefFields & {
+      flag: '!'
+      rejection: PushRejection
+      /**
+       * The remote's `cannot lock ref '<dst>': …` line for this ref, without
+       * the `remote: error: ` prefix, or null when the remote printed none.
+       * git prints it on stderr, apart from the ref line, and some versions
+       * not at all. With several push URLs, a ref's lines are handed out in
+       * the order the rejected refs appear.
+       */
+      detail: string | null
+    })
+  | (PushRefFields & { flag: Exclude<PushFlag, '!'>; rejection?: never; detail?: never })
 
 /** What {@link pushPorcelain} returns. */
 export interface PushReport {
@@ -1904,32 +1930,23 @@ const LOCK_DETAIL = /^remote: (?:error: )?(cannot lock ref '([^']+)': .*?)\s*$/g
 const LOCK_FILE = /unable to create '[^']*\.lock'/
 
 /**
- * The rejection for a reason and its detail. Matched on text, never on the
- * local git version: a `[remote rejected]` reason is written by the remote's
- * git. The wordings, as git 2.53 and 2.54 print them and as older git did:
- *
- *   ref moved by another writer    `incorrect old value provided`;
- *                                  older `failed to update ref` + `… but expected …`
- *   ref deleted by another writer  `reference does not exist`;
- *                                  older `failed to update ref` + `unable to resolve reference`
- *   ref created by another writer  `reference already exists`;
- *                                  older `failed to update ref` + `reference already exists`
- *   `<ref>` beside `<ref>/child`   `refname conflict`;
- *                                  older `failed to update ref` + `'<ref>/child' exists; cannot create '<ref>'`
- *   a `.lock` file in the way      `reference already exists`; older `failed to update ref`
- *
- * `failed to update ref` alone is not a race: a ref clash, an unwritable refs
- * directory and a stale lock all end that way. A stale lock reads exactly
- * like a lost create on 2.53, which prints no detail; only 2.54's detail
- * (`Unable to create '….lock'`) tells them apart. A host may also put the
- * whole lock error in the reason, so the detail patterns are tried on both.
+ * The rejection for a reason and its detail. Two rules hold it together.
+ * It matches on text, never on the local git version, because a `[remote
+ * rejected]` reason is written by the remote's git. And `failed to update
+ * ref` alone is never a race: a ref clash, an unwritable refs directory and a
+ * stale lock all end that way, so only the detail can say more. A host may
+ * put the whole lock error in the reason, so the detail patterns are tried on
+ * both. The wordings are listed in the README section "Pushing: a rejected
+ * ref is a value" and tested in `CANNED` in `tests/push.test.ts`.
  */
 function pushRejection(reason: string | null, detail: string | null): PushRejection {
   const r = (reason ?? '').toLowerCase()
   const d = (detail ?? '').toLowerCase()
   if (r === 'stale info' || r === 'remote ref updated since checkout') return 'stale'
-  if (r === 'non-fast-forward' || r === 'fetch first') return 'non-fast-forward'
-  if (r === 'already exists') return 'already-exists'
+  if (r === 'non-fast-forward' || r === 'fetch first' || r === 'needs force') {
+    return 'non-fast-forward'
+  }
+  if (r === 'already exists') return 'tag-exists'
   if (r.includes('hook declined')) return 'hook-declined'
   if (r === 'refname conflict') return 'ref-conflict'
   if (r === 'incorrect old value provided' || r === 'reference does not exist') {
@@ -1947,9 +1964,13 @@ function pushRejection(reason: string | null, detail: string | null): PushReject
 
 /** Read `git push --porcelain` output into per-ref results. */
 function parsePushReport(stdout: string, stderr: string): PushReport {
-  const details = new Map<string, string>()
+  // Each dst's lock lines, in order: a remote with several push URLs prints
+  // one per URL that rejected it.
+  const details = new Map<string, string[]>()
   for (const m of stderr.matchAll(LOCK_DETAIL)) {
-    if (!details.has(m[2]!)) details.set(m[2]!, m[1]!)
+    const queue = details.get(m[2]!) ?? []
+    queue.push(m[1]!)
+    details.set(m[2]!, queue)
   }
   const refs: PushRefResult[] = []
   for (const line of stdout.split('\n')) {
@@ -1963,17 +1984,18 @@ function parsePushReport(stdout: string, stderr: string): PushReport {
     const open = status.indexOf(' (')
     const hasReason = open >= 0 && status.endsWith(')')
     const rawReason = hasReason ? status.slice(open + 2, -1) : null
-    const detail = details.get(dst) ?? null
-    const ref: PushRefResult = {
+    const fields: PushRefFields = {
       src: pair.slice(0, colon),
       dst,
-      flag,
       summary: hasReason ? status.slice(0, open) : status,
       rawReason,
-      detail,
     }
-    if (flag === '!') ref.rejection = pushRejection(rawReason, detail)
-    refs.push(ref)
+    if (flag === '!') {
+      const detail = details.get(dst)?.shift() ?? null
+      refs.push({ ...fields, flag, rejection: pushRejection(rawReason, detail), detail })
+    } else {
+      refs.push({ ...fields, flag })
+    }
   }
   return { refs, stderr }
 }
@@ -2002,13 +2024,7 @@ export function pushPorcelain(
   if (specs.length === 0) throw new TypeError('typed-git: pushPorcelain: refspec list is empty')
   const argv = ['push', '--porcelain']
   if (opts.atomic) argv.push('--atomic')
-  const lease = opts.forceWithLease
-  if (lease === true) argv.push('--force-with-lease')
-  else if (Array.isArray(lease)) argv.push(...lease.map(forceWithLeaseArg))
-  else if (typeof lease === 'object' && lease !== null) argv.push(forceWithLeaseArg(lease))
-  else if (lease !== undefined && lease !== false) {
-    throw new Error(`force-with-lease: unsupported value ${JSON.stringify(lease)}`)
-  }
+  argv.push(...forceWithLeaseArgs('pushPorcelain', opts.forceWithLease))
   argv.push(positional('pushPorcelain', 'remote', remote))
   for (const spec of specs) argv.push(positional('pushPorcelain', 'refspec', spec))
   return {

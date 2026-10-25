@@ -389,14 +389,14 @@ const report = git.pushPorcelain("origin", `${next}:refs/heads/lease`, {
   forceWithLease: { ref: "refs/heads/lease", expect: seen },
 });
 const ref = report.refs[0];
-// { src, dst, flag, summary, rejection?, rawReason, detail }
+// { src, dst, flag, summary, rawReason }, plus { rejection, detail } when flag is "!"
 if (ref.flag === "!") {
   switch (ref.rejection) {
     case "stale":           // the lease check failed before anything was sent
     case "lock-failed":     // another writer moved or deleted it at the remote
-    case "already-exists":  // a create lost to another writer, or a tag that exists
+    case "already-exists":  // a create lost to another writer
       return retry();
-    default:                // ref-conflict, hook-declined, non-fast-forward, other
+    default:                // tag-exists, ref-conflict, hook-declined, non-fast-forward, other
       throw new Error(`${ref.dst}: ${ref.rawReason} ${ref.detail ?? ""}`);
   }
 }
@@ -416,24 +416,27 @@ wording has changed across versions:
 | Case | git 2.53 / 2.54 | Older git | `rejection` |
 | --- | --- | --- | --- |
 | lease expects a sha the remote no longer holds | `[rejected] (stale info)` | same | `stale` |
-| behind the remote | `(non-fast-forward)`, `(fetch first)` | same | `non-fast-forward` |
-| existing tag | `[rejected] (already exists)` | same | `already-exists` |
+| behind the remote, or the old or new value is not a commit | `(non-fast-forward)`, `(fetch first)`, `(needs force)` | same | `non-fast-forward` |
+| existing tag | `[rejected] (already exists)` | same | `tag-exists` |
 | another writer moved the ref after the lease check | `(incorrect old value provided)` | `(failed to update ref)` + `… but expected …` | `lock-failed` |
 | another writer deleted it | `(reference does not exist)` | `(failed to update ref)` + `unable to resolve reference` | `lock-failed` |
 | another writer created it first | `(reference already exists)` | `(failed to update ref)` + `reference already exists` | `already-exists` |
 | `<ref>` beside an existing `<ref>/child` | `(refname conflict)` | `(failed to update ref)` + `'<ref>/child' exists; cannot create '<ref>'` | `ref-conflict` |
 | a remote hook refused it | `(pre-receive hook declined)`, `(hook declined)` | same | `hook-declined` |
 | a `.lock` file in the way, an unwritable refs directory | `(reference already exists)`, `(failed to update refs)` + `Unable to create '….lock'` | `(failed to update ref)` + the same | `other` |
+| the other refs of a failed `--atomic` push | `[rejected] (atomic push failed)`, `[remote rejected] (atomic transaction failed)` | same | `other` |
 
 The "+ …" text is the remote's `cannot lock ref '<ref>': …` line. git prints
 it on stderr, not on the ref line, and `detail` carries it for the ref it
-names. `(failed to update ref)` alone is never read as a race, because a ref
+names. With several push URLs, a ref's lines go to its rejected entries in
+order. `(failed to update ref)` alone is never read as a race, because a ref
 clash, an unwritable directory and a stale lock all end that way. One case
 the text cannot settle: a 2.53 remote prints no detail line, so a stale
 `.lock` there reads exactly like a lost create, `already-exists`. A 2.54
 remote prints the detail, and that reads as `other`.
 
-`pushPorcelain` runs with `LC_ALL=C`, like the integration verbs.
+This table is the one list of wordings. `tests/push.test.ts` covers each
+row, against real git or as a canned row in `CANNED`.
 
 ## `log` hands back bytes
 
@@ -625,7 +628,7 @@ other non-zero exit throws.
 | `rebaseContinue()` | `-c core.editor=true rebase --continue` | `RebaseOutcome` |
 | `mergeTree(ours, theirs, { mergeBase })` | `merge-tree --write-tree --name-only -z` | `MergeTreeOutcome` |
 | `lsFilesUnmerged()` | `ls-files -u -z` | `UnmergedEntry[]` — mode, sha, stage, path |
-| `pushPorcelain(remote, refspec \| refspecs, { atomic, forceWithLease })` | `push --porcelain` | `PushReport` — `{ refs, stderr }`, one `PushRefResult` per ref with a typed `rejection` on `'!'`; exit 1 without a rejected ref throws |
+| `pushPorcelain(remote, refspec \| refspecs, { atomic, forceWithLease })` | `push --porcelain` | `PushReport` — `{ refs, stderr }`, one `PushRefResult` per ref; a `'!'` ref also has `rejection` and `detail`; exit 1 without a rejected ref throws |
 
 ### Escape hatches and re-rooting
 
