@@ -883,12 +883,15 @@ describe('boot', () => {
     await vi.waitFor(() => expect(tui.state.rows.length).toBeGreaterThan(0))
     expect(tui.state.fromProbe).toBe(false)
     tui.handle('\r')
-    await vi.waitFor(() => expect(tui.state.message?.text).toMatch(/changed since .*echo two/))
+    // The "checking" note shows until the runner is read again, which can take
+    // seconds on a loaded runner: wait for the answer, then check it.
+    await vi.waitFor(() => expect(tui.state.message?.tone).toBe('error'), { timeout: 20_000 })
+    expect(tui.state.message?.text).toMatch(/changed since .*echo two/)
     expect(host.handedOff).toEqual([])
     expect(host.released).toBe(0)
     // The probe boot started is still running; its rows replace these.
     expect(tui.state.loading).toBe(true)
-  })
+  }, 30_000)
 
   test('Enter on a saved row that has not changed runs it once its runner agrees', async () => {
     const { tui, host } = await testTui({ files: { Procfile: 'web: echo one\n' } })
