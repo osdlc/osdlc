@@ -13,10 +13,36 @@ import { afterAll, describe, expect, test } from 'vitest'
 import { classifyFailure, spawnRunner, spawnRunnerAsync } from '../src/index.ts'
 import { cmdArg, cmdCommand } from '../src/quote.ts'
 import { spawnPlan } from '../src/spawn-plan.ts'
+import { spawnFailure } from '../src/sync.ts'
 
-/** What `cmd.exe` does to a line with no quoted sections: each `^x` becomes `x`. */
-function cmdUnescape(line: string): string {
-  return line.replace(/\^(.)/gs, '$1')
+/** Variables set while the model parses, so a `%NAME%` that expands is caught. */
+const SET = { PATH: 'C:\\Windows', VAR: 'expanded' }
+
+/**
+ * One `cmd.exe` parse of `line`, as a model. With `percent`, `%NAME%` expands
+ * first when NAME is set (the `cmd /c` line; a `%*` substitution is not
+ * scanned again). Then, outside a quoted section, `^x` becomes `x`, and an
+ * unescaped `&`, `|`, `<` or `>` is a command operator. A `"` opens or closes
+ * a quoted section, where `^` is literal.
+ */
+function cmdParse(line: string, percent: boolean): { text: string; operator: boolean } {
+  const expanded = percent
+    ? line.replace(/%([^%]+)%/g, (m, name: string) => SET[name as keyof typeof SET] ?? m)
+    : line
+  let text = ''
+  let quoted = false
+  let operator = false
+  for (let i = 0; i < expanded.length; i++) {
+    const c = expanded[i] as string
+    if (c === '"') quoted = !quoted
+    else if (!quoted && c === '^') {
+      i++
+      if (i < expanded.length) text += expanded[i]
+      continue
+    } else if (!quoted && /[&|<>]/.test(c)) operator = true
+    text += c
+  }
+  return { text, operator }
 }
 
 /** One argument split by the Microsoft C runtime rules. */
@@ -70,6 +96,21 @@ const HOSTILE = [
   'unicode héllo ✓ 中文',
   '--flag=a b',
   '^"&^"',
+  '"&calc',
+  'x"&calc&"',
+  '\\"&calc',
+  '%VAR%',
+  '"%VAR%"',
+  '^%VAR^%',
+  '^',
+  '^^',
+  'a|b',
+  '"|"',
+  '<in >out',
+  '"<>"',
+  'end\\',
+  'end\\\\\\',
+  '"quoted\\"',
 ]
 
 describe('cmdArg', () => {
@@ -91,9 +132,25 @@ describe('cmdArg', () => {
     expect(cmdArg('a&b', true)).toBe('^^^"a^^^&b^^^"')
   })
 
-  test.each(HOSTILE)('%j reaches the program unchanged', (arg) => {
-    expect(msvcrtArg(cmdUnescape(cmdArg(arg)))).toBe(arg)
-    expect(msvcrtArg(cmdUnescape(cmdUnescape(cmdArg(arg, true))))).toBe(arg)
+  test.each(HOSTILE)('%j, escaped once, reaches a program cmd.exe starts unchanged', (arg) => {
+    const first = cmdParse(cmdArg(arg), true)
+    expect(first.operator).toBe(false)
+    expect(msvcrtArg(first.text)).toBe(arg)
+  })
+
+  test.each(HOSTILE)('%j, escaped twice, survives a batch file passing it on with %%*', (arg) => {
+    // The `cmd /c` line, then the batch file's line after `%*` is substituted.
+    const first = cmdParse(cmdArg(arg, true), true)
+    expect(first.operator).toBe(false)
+    const second = cmdParse(first.text, false)
+    expect(second.operator).toBe(false)
+    expect(msvcrtArg(second.text)).toBe(arg)
+  })
+
+  test('one escape is not enough for a batch file that passes %* on', () => {
+    // The model must catch the attack the double escape stops.
+    const first = cmdParse(cmdArg('"&calc'), true)
+    expect(cmdParse(first.text, false).operator).toBe(true)
   })
 
   test.each(HOSTILE)('%j leaves no unescaped cmd.exe special character', (arg) => {
@@ -121,7 +178,14 @@ function file(rel: string, body = ''): string {
 const shim = file('node_modules/.bin/tsc.CMD')
 const bat = file('bin/build.BAT')
 const exe = file('bin/git.EXE')
-const env = { PATH: `${join(root, 'node_modules', '.bin')};${join(root, 'bin')}` }
+const globalNpm = file('AppData/Roaming/npm/pnpm.CMD')
+const env = {
+  PATH: [
+    join(root, 'node_modules', '.bin'),
+    join(root, 'bin'),
+    join(root, 'AppData', 'Roaming', 'npm'),
+  ].join(';'),
+}
 const win = { cwd: root, env, platform: 'win32', comspec: 'cmd.exe' } as const
 
 describe('spawnPlan', () => {
@@ -139,29 +203,29 @@ describe('spawnPlan', () => {
     })
   })
 
-  test('win32 runs a .bat through cmd.exe with one escape', () => {
-    expect(spawnPlan('build', ['a&b', ''], win)).toEqual({
-      file: 'cmd.exe',
-      args: ['/d', '/s', '/c', `"${cmdCommand(bat)} ^"a^&b^" ^"^""`],
-      windowsVerbatimArguments: true,
-    })
-  })
-
-  test('win32 escapes twice for a node_modules/.bin shim', () => {
-    expect(spawnPlan('tsc', ['-p', 'x&y'], win)).toEqual({
+  test.each([
+    ['a .bat', 'build', bat],
+    ['a node_modules/.bin shim', 'tsc', shim],
+    ['a global npm shim', 'pnpm', globalNpm],
+  ])('win32 runs %s through cmd.exe, escaping twice', (_, name, path) => {
+    expect(spawnPlan(name, ['-p', 'x&y', ''], win)).toEqual({
       file: 'cmd.exe',
       args: [
         '/d',
+        '/v:off',
         '/s',
         '/c',
-        `"${cmdCommand(shim)} ${cmdArg('-p', true)} ${cmdArg('x&y', true)}"`,
+        `"${cmdCommand(path)} ${cmdArg('-p', true)} ${cmdArg('x&y', true)} ${cmdArg('', true)}"`,
       ],
       windowsVerbatimArguments: true,
     })
   })
 
-  test('win32 leaves a binary it cannot find as given, so the spawn reports ENOENT', () => {
-    expect(spawnPlan('nope', ['x'], win)).toEqual({ file: 'nope', args: ['x'] })
+  test('win32 refuses a binary it cannot find, so the current folder is never searched', () => {
+    file('nope.exe')
+    const plan = spawnPlan('nope', ['x'], win)
+    expect(plan).toEqual({ refusal: 'spawn nope ENOENT' })
+    expect(classifyFailure(spawnFailure('spawn nope ENOENT'))?.kind).toBe('not-installed')
   })
 
   test('win32 refuses a line break in an argument to a batch file', () => {
@@ -184,13 +248,18 @@ describe('runners on this host', () => {
 describe.skipIf(process.platform !== 'win32')('a real .cmd shim (Windows hosts only)', () => {
   const script = file('echo-args.js', 'console.log(JSON.stringify(process.argv.slice(2)))\n')
   const npmShim = file('real/node_modules/.bin/echo-args.cmd', `@node "${script}" %*\r\n`)
-  test('every hostile argument reaches node unchanged', async () => {
-    const sync = spawnRunner(npmShim).run(HOSTILE, { cwd: root })
-    expect(sync.error).toBeUndefined()
-    expect(JSON.parse(sync.stdout)).toEqual(HOSTILE)
-    const later = await spawnRunnerAsync(npmShim).run(HOSTILE, { cwd: root })
-    expect(JSON.parse(later.stdout)).toEqual(HOSTILE)
-  })
+  // A batch file outside node_modules, as a global `npm.cmd` or `gradlew.bat` is.
+  const plainBat = file('real/bin/echo-args.bat', `@node "${script}" %*\r\n`)
+  test.each([npmShim, plainBat])(
+    'every hostile argument reaches node unchanged through %s',
+    async (target) => {
+      const sync = spawnRunner(target).run(HOSTILE, { cwd: root })
+      expect(sync.error).toBeUndefined()
+      expect(JSON.parse(sync.stdout)).toEqual(HOSTILE)
+      const later = await spawnRunnerAsync(target).run(HOSTILE, { cwd: root })
+      expect(JSON.parse(later.stdout)).toEqual(HOSTILE)
+    },
+  )
 
   test('a line break is refused as a spawn failure', () => {
     const r = spawnRunner(npmShim).run(['a\nb'], { cwd: root })

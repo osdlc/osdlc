@@ -51,16 +51,24 @@ Any CLI tool gets its own store by name.
 | `resolveRoot(root)` | the absolute, symlink-resolved key a root's grant is stored under |
 | `markerPath(root, scope?)` | the marker file's path for a grant, without creating it (for a `--show` command) |
 | `isTrusted(root, scope?)` | whether the root has a whole-repository grant or a grant for `scope` |
-| `trust(root, scope?)` | records a grant and returns `{ root, scope, marker, alreadyTrusted }`. Safe to repeat. `alreadyTrusted` says whether this exact grant already existed |
+| `trust(root, scope?)` | records a grant and returns `{ root, scope, marker, alreadyTrusted }`. With no `scope` the grant covers the whole repository; an explicit `'*'` throws. Safe to repeat. `alreadyTrusted` says whether this exact grant already existed |
 | `untrust(root, scope?)` | removes exactly that grant; `false` when there was none |
-| `untrustAll(root)` | removes every grant for the root and returns the scopes removed |
+| `untrustAll(root)` | removes every grant for the root (its marker and its whole `.scopes/` folder) and returns the scopes removed |
 | `list()` | every root with a whole-repository grant, sorted; `[]` when the store has never been written to |
 | `listGrants()` | every grant as `{ root, scope, marker }`, sorted by root, then scope with `*` first |
 | `tighten()` | sets the store directory to 0700 and each marker to 0600 where looser; returns the paths it changed |
 
 `scope` defaults to `WHOLE_REPO_SCOPE` (`'*'`), the whole repository. A scope
-that is empty, longer than 200 characters or holds a control character throws
-a `TypeError`.
+is trimmed first, so `'just '` and `'just'` are one grant. A scope that is
+then empty, longer than 200 characters or holds a control character throws a
+`TypeError`.
+
+`trust()` refuses an explicit `'*'`. A whole-repository grant is
+`trust(root)`, with no scope, so a scope a person typed can never widen into
+one. `isTrusted`, `untrust` and `markerPath` still take `'*'`, since reading
+or removing a grant widens nothing. `parseTrustScope(input)` applies the same
+rules to a `--scope` value before it reaches the store: it trims, checks and
+refuses `*`, and throws a `TypeError` a CLI can report as a usage error.
 
 `home` defaults to `homeDir()`: `os.homedir()` when it is absolute, else the
 OS account's home. A relative `HOME` is treated as unset, so the store never
@@ -266,6 +274,12 @@ this, and `resolveTrustRoot` and `expandTrustPath` apply it. The rest of the
 path keeps its case; `realpath` already gives an existing path its case on
 disk.
 
+Only the drive letter is folded. A root that no longer exists, typed in
+another case (`C:\work\App` for `C:\Work\app`), does not match its old
+marker, and a `paths` glob must use the case the folders have on disk. Two
+different folders never share a key this way; a mismatch only makes a
+grant miss.
+
 ## Wording
 
 `withheldHint` takes the trust verb and the per-run flag in an optional second
@@ -291,7 +305,7 @@ The experimental exports of `@osdlc/trust-repo`:
 `PolicyExecGate`, `ResolveExecGateArgs`, `TRUST_MARKER_DIR`, `TrustBy`, `TrustDecision`,
 `TrustGrant`, `TrustPlatform`, `TrustPolicy`, `TrustResult`, `TrustRules`, `TrustStore`,
 `TrustStoreOptions`, `WHOLE_REPO_SCOPE`, `expandTilde`, `expandTrustPath`, `homeDir`,
-`normalizeTrustPath`, `pathGlobToRegExp`, `policyDecision`, `policyExecGate`, `resolveExecGate`, `resolveTrustRoot`,
+`normalizeTrustPath`, `parseTrustScope`, `pathGlobToRegExp`, `policyDecision`, `policyExecGate`, `resolveExecGate`, `resolveTrustRoot`,
 `trustDecision`, `trustStore`, `trustStoreDir`, `withheldHint`, `xdgHome`
 
 The experimental exports of `@osdlc/trust-repo/git`:

@@ -119,16 +119,49 @@ export function trustStoreDir(
 export const WHOLE_REPO_SCOPE = '*'
 
 /**
- * Throws a `TypeError` unless `scope` can name a grant: a non-empty string of
- * at most 200 characters with no control characters.
+ * `scope` with leading and trailing whitespace removed, so `'just '` and
+ * `'just'` name one grant. Throws a `TypeError` unless the result can name a
+ * grant: 1-200 characters with no control characters. An empty or
+ * whitespace-only scope throws.
  */
-function checkScope(scope: string): void {
+function normalizeScope(scope: string): string {
   const control = (c: string): boolean => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f
-  if (typeof scope !== 'string' || scope === '' || scope.length > 200 || [...scope].some(control)) {
+  const trimmed = typeof scope === 'string' ? scope.trim() : scope
+  if (
+    typeof trimmed !== 'string' ||
+    trimmed === '' ||
+    trimmed.length > 200 ||
+    [...trimmed].some(control)
+  ) {
     throw new TypeError(
       `trust scope must be 1-200 characters with no control characters: ${JSON.stringify(scope)}`,
     )
   }
+  return trimmed
+}
+
+/**
+ * A scope a person typed (a `--scope` value), ready to grant: trimmed and
+ * checked as every store method checks it. `*` is refused, because a
+ * whole-repository grant is made by calling `trust(root)` with no scope, not
+ * by naming one. Throws a `TypeError` naming the problem, which a CLI can
+ * report as a usage error.
+ *
+ * @example
+ * ```ts
+ * parseTrustScope(' just ') // 'just'
+ * parseTrustScope('*') // throws TypeError
+ * ```
+ * @experimental
+ */
+export function parseTrustScope(input: string): string {
+  const scope = normalizeScope(input)
+  if (scope === WHOLE_REPO_SCOPE) {
+    throw new TypeError(
+      `trust scope "*" is reserved for the whole repository; trust it without a scope instead`,
+    )
+  }
+  return scope
 }
 
 /** A name safe on every filesystem, from any string. */
@@ -226,8 +259,9 @@ export interface TrustGrant {
 /**
  * A store of the grants a person has given to run a repository's commands,
  * kept as marker files under the state home. Every `scope` defaults to
- * {@link WHOLE_REPO_SCOPE}, and a scope that is empty, longer than 200
- * characters or holds a control character throws a `TypeError`.
+ * {@link WHOLE_REPO_SCOPE}. A scope is trimmed first, so `'just '` is
+ * `'just'`. A scope that is then empty, longer than 200 characters or holds a
+ * control character throws a `TypeError`.
  * @experimental
  */
 export interface TrustStore {
@@ -249,14 +283,23 @@ export interface TrustStore {
    * {@link list} and {@link listGrants} skip such markers too, so they agree.
    */
   isTrusted(root: string, scope?: string): Promise<boolean>
-  /** Record a grant. See {@link TrustResult.alreadyTrusted}. */
+  /**
+   * Record a grant. With no `scope`, the grant covers the whole repository.
+   * An explicit `'*'` throws a `TypeError`: a typed scope must never widen
+   * into a whole-repository grant (see {@link parseTrustScope}). See
+   * {@link TrustResult.alreadyTrusted}.
+   */
   trust(root: string, scope?: string): Promise<TrustResult>
   /**
    * Remove one grant, exactly the one `scope` names. `false` when it did not
    * exist. Removing the whole-repository grant leaves per-scope grants.
    */
   untrust(root: string, scope?: string): Promise<boolean>
-  /** Remove every grant for `root`. Returns the scopes removed, sorted. */
+  /**
+   * Remove every grant for `root`: its marker and its whole folder of
+   * per-scope markers. Returns the scopes {@link listGrants} listed for it,
+   * sorted.
+   */
   untrustAll(root: string): Promise<string[]>
   /** Every root with a whole-repository grant, sorted. Never throws. */
   list(): Promise<string[]>
@@ -309,8 +352,8 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
   const dir = (): string => override ?? trustStoreDir(tool, env, home)
   const scopesDir = (resolved: string): string =>
     join(dir(), `${markerName(resolved)}${SCOPES_SUFFIX}`)
+  /** `scope` must already be normalized. */
   const markerPath = (resolved: string, scope: string): string => {
-    checkScope(scope)
     return scope === WHOLE_REPO_SCOPE
       ? join(dir(), markerName(resolved))
       : join(scopesDir(resolved), scopeFileName(scope))
@@ -367,8 +410,15 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
         for (const inner of await entries(path)) {
           if (inner.endsWith('.tmp')) continue
           const grant = await readGrant(join(path, inner))
-          // A per-scope marker must name its scope.
-          if (grant !== null && grant.scope !== WHOLE_REPO_SCOPE) {
+          // A per-scope marker must name its scope, and its file name must be
+          // the one that scope maps to. A marker an older release wrote for
+          // `'just '` reads as `just` but sits under another name, so
+          // `isTrusted` never finds it; it is not listed either.
+          if (
+            grant !== null &&
+            grant.scope !== WHOLE_REPO_SCOPE &&
+            inner === scopeFileName(grant.scope)
+          ) {
             grants.push({ ...grant, marker: join(path, inner) })
           }
         }
@@ -389,11 +439,12 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
     resolveRoot: resolveTrustRoot,
 
     async markerPath(root, scope = WHOLE_REPO_SCOPE) {
-      return markerPath(await resolveTrustRoot(root), scope)
+      const normalized = normalizeScope(scope)
+      return markerPath(await resolveTrustRoot(root), normalized)
     },
 
-    async isTrusted(root, scope = WHOLE_REPO_SCOPE) {
-      checkScope(scope)
+    async isTrusted(root, given = WHOLE_REPO_SCOPE) {
+      const scope = normalizeScope(given)
       const resolved = await resolveTrustRoot(root)
       if (await hasGrant(resolved, WHOLE_REPO_SCOPE)) return true
       return scope !== WHOLE_REPO_SCOPE && hasGrant(resolved, scope)
@@ -403,7 +454,8 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
     // Overlapping calls for one grant can each report `alreadyTrusted: false`.
     // The store still ends with one marker. Only a caller that counts new
     // grants needs to care.
-    async trust(root, scope = WHOLE_REPO_SCOPE) {
+    async trust(root, given) {
+      const scope = given === undefined ? WHOLE_REPO_SCOPE : parseTrustScope(given)
       const resolved = await resolveTrustRoot(root)
       const marker = markerPath(resolved, scope)
       const alreadyTrusted = await hasGrant(resolved, scope)
@@ -419,18 +471,18 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
     },
 
     async untrust(root, scope = WHOLE_REPO_SCOPE) {
-      checkScope(scope)
-      return removeGrant(await resolveTrustRoot(root), scope)
+      const normalized = normalizeScope(scope)
+      return removeGrant(await resolveTrustRoot(root), normalized)
     },
 
+    // Removes by path, not by scope name: the root's marker and its whole
+    // `.scopes` folder. A marker whose name no scope maps to (an older
+    // release's `'just '`) goes too.
     async untrustAll(root) {
       const resolved = await resolveTrustRoot(root)
-      const removed: string[] = []
-      for (const grant of await listGrants()) {
-        if (grant.root === resolved && (await removeGrant(resolved, grant.scope))) {
-          removed.push(grant.scope)
-        }
-      }
+      const removed = (await listGrants()).filter((g) => g.root === resolved).map((g) => g.scope)
+      await rm(join(dir(), markerName(resolved)), { force: true })
+      await rm(scopesDir(resolved), { recursive: true, force: true })
       return removed
     },
 

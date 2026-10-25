@@ -216,8 +216,8 @@ export function rootedBaseDirs(root: string): BaseDirs {
 /**
  * How {@link systemBaseDirs} and `TieredDirs.fromEnv` resolve. Every input is
  * optional and injectable. The Rust crate's `ResolveOptions` has `convention`
- * and `testRoot`. `platform`, `env`, `home` and `overrides` exist only in this
- * package.
+ * and `testRoot`. `platform`, `env`, `home`, `overrides` and
+ * `conventionFromEnv` exist only in this package.
  *
  * Stable in 0.x.
  */
@@ -226,9 +226,16 @@ export interface ResolveOptions {
   platform?: string
   /**
    * The per-OS table to use. Defaults to `native`. {@link EnvVars.convention}
-   * overrides it when set.
+   * overrides it when set, unless `conventionFromEnv` is `false`.
    */
   convention?: Convention
+  /**
+   * Whether {@link EnvVars.convention} may override `convention`. Defaults to
+   * `true`. Pass `false` for a file another program also reads at a fixed
+   * path, such as a shell launcher that reads `~/.config/<tool>`: the
+   * variable would move the file away from where that program looks.
+   */
+  conventionFromEnv?: boolean
   /**
    * Defaults to `process.env`. When given, it is the only environment read.
    * The host's real home directory is not used. The override variables are
@@ -262,8 +269,9 @@ export interface ResolveOptions {
  * 2. The root's own variable, `vars.dirs[key]` ({@link EnvVars.dirs}).
  * 3. `vars.root` ({@link EnvVars.root}), with the {@link rootedBaseDirs} layout.
  * 4. The per-OS table below, for the convention: {@link EnvVars.convention}
- *    when set, else `opts.convention`, else `native`. The variable is
- *    trimmed, then must be exactly `native` or `xdg`; anything else throws.
+ *    when set (and `opts.conventionFromEnv` is not `false`), else
+ *    `opts.convention`, else `native`. The variable is trimmed, then must be
+ *    exactly `native` or `xdg`; anything else throws.
  *
  * Runtime follows durable: when the runtime variable is unset but durable is
  * moved by step 2 or 3, runtime is `<durable>/run`, never the OS runtime
@@ -355,7 +363,8 @@ export function systemBaseDirs(vars: EnvVars, opts: ResolveOptions = {}): BaseDi
   let cachedHome: string | undefined
   const home = (): string => (cachedHome ??= resolveHome(opts, platform, env))
 
-  const convention = envConvention(vars, env) ?? opts.convention ?? 'native'
+  const fromVar = opts.conventionFromEnv === false ? undefined : envConvention(vars, env)
+  const convention = fromVar ?? opts.convention ?? 'native'
   const fromEnv = envOverrides(vars, env, platform)
   const table = platformTable(platform, convention, env, home)
   const roots: Mutable<BaseDirs> = {
