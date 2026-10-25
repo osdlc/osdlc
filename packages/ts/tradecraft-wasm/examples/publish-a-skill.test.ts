@@ -20,7 +20,7 @@ test('publish a skill note, then see that it is current', () => {
     const note = path.join(folder, 'review.md')
     writeFileSync(
       path.join(vault, 'marketplaces/house/house.md'),
-      '---\nname: house\ndescription: The house marketplace.\nap-owner: acme\n---\n',
+      '---\nname: house\ndescription: The house marketplace.\ntc-owner: acme\n---\n',
     )
     writeFileSync(note, '---\nname: review\ndescription: Reviews a diff.\n---\n\n# Review\n')
 
