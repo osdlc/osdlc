@@ -48,7 +48,7 @@ test('state is resolved under the xdg convention', () => {
   })
   try {
     expect(stateDir(SPEC)).toBe(sb.stateDir)
-    expect(seen).toEqual([{ convention: 'xdg' }])
+    expect(seen).toEqual([{ convention: 'xdg', conventionFromEnv: false }])
   } finally {
     spy.mockRestore()
   }

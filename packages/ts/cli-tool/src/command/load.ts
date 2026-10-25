@@ -9,13 +9,16 @@
  * | `<name>/index.ts` | the group's own declaration (a `defineGroup` with no commands), or a command that becomes the group's default |
  * | `index.ts` at the top | the root's group declaration, or the root's default command |
  * | a name starting with `_` or `.`, a `.d.ts`, a `.test.` or `.spec.` file | ignored, for helpers and tests |
+ * | a symbolic link | ignored, so the tree cannot reach outside the directory |
  *
- * Only the tool's own directory is read. Nothing is loaded from other
- * packages.
+ * Only the directory passed in is read, and it must be a `file:` URL or an
+ * absolute path, so the tree never depends on the process's working
+ * directory. A command or group name is letters, digits, `-` and `_`, and does
+ * not start with `-` or `_`; any other file or directory name is an error.
  */
 
 import { readdir } from 'node:fs/promises'
-import { basename, extname, join } from 'node:path'
+import { basename, extname, isAbsolute, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { isGroup, type Command, type Group, type Node } from './define.ts'
@@ -30,6 +33,15 @@ function ignored(name: string): boolean {
     name.endsWith('.d.mts') ||
     /\.(test|spec)\.[mc]?[jt]s$/.test(name)
   )
+}
+
+/** A word a person can type as a command: letters, digits, `-` and `_`, starting with a letter or digit. */
+const WORD = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
+
+function checkWord(word: string, file: string): void {
+  if (!WORD.test(word)) {
+    throw new Error(`command tree: ${file} is not a command name; use letters, digits, - and _`)
+  }
 }
 
 function isNode(value: unknown): value is Node {
@@ -145,6 +157,11 @@ export async function loadCommandTree(
   dir: string | URL,
   root: { summary: string },
 ): Promise<Group> {
+  if (typeof dir === 'string' && !isAbsolute(dir)) {
+    throw new Error(
+      `command tree: '${dir}' is relative; pass new URL('./commands/', import.meta.url) or an absolute path`,
+    )
+  }
   const base = typeof dir === 'string' ? dir : fileURLToPath(dir)
   const files: CommandFile[] = []
   const visit = async (abs: string, path: readonly string[]): Promise<void> => {
@@ -155,12 +172,14 @@ export async function loadCommandTree(
     for (const entry of entries) {
       if (ignored(entry.name)) continue
       if (entry.isDirectory()) {
+        checkWord(entry.name, join(abs, entry.name))
         await visit(join(abs, entry.name), [...path, entry.name])
         continue
       }
       const ext = extname(entry.name)
       if (!entry.isFile() || !EXTENSIONS.has(ext)) continue
       const word = basename(entry.name, ext)
+      checkWord(word, join(abs, entry.name))
       const other = seen.get(word)
       if (other !== undefined) {
         throw new Error(

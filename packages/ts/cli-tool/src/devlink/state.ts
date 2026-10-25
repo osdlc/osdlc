@@ -65,6 +65,12 @@ export interface StateOptions {
    * running system. Tests inject a rooted one so files go under a temp dir.
    */
   dirs?: TieredDirs
+  /**
+   * Where releases before 0.8 kept the state: macOS's native config home
+   * (`~/Library/Application Support/<name>`). Defaults to that on macOS, and
+   * to none elsewhere or when `dirs` is given. Tests inject a rooted one.
+   */
+  legacyDirs?: TieredDirs | null
 }
 
 /**
@@ -75,8 +81,32 @@ export interface StateOptions {
  * @experimental
  */
 export function stateDir(spec: ToolSpec, opts: StateOptions = {}): string {
-  const dirs = opts.dirs ?? systemDirs(spec.vendorDirs, { convention: 'xdg' })
+  // Pinned: `<PREFIX>_CONVENTION` must not move the file away from where the
+  // bash launcher reads it.
+  const dirs =
+    opts.dirs ?? systemDirs(spec.vendorDirs, { convention: 'xdg', conventionFromEnv: false })
   return dirs.standalone(spec.name).config().path
+}
+
+/**
+ * The link file a release before 0.8 wrote on macOS, when it is still there
+ * and the current one is not. `dev status` then says how to move it. Null
+ * anywhere else.
+ * @internal
+ */
+export function legacyHomePath(spec: ToolSpec, opts: StateOptions = {}): string | null {
+  const legacy =
+    opts.legacyDirs !== undefined
+      ? opts.legacyDirs
+      : opts.dirs === undefined && process.platform === 'darwin'
+        ? systemDirs(spec.vendorDirs, { convention: 'native', conventionFromEnv: false })
+        : null
+  if (legacy === null) return null
+  const old = join(legacy.standalone(spec.name).config().path, HOME_FILE)
+  if (old === homePath(spec, opts) || !existsSync(old) || existsSync(homePath(spec, opts))) {
+    return null
+  }
+  return old
 }
 
 /**

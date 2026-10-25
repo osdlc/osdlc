@@ -116,6 +116,9 @@ importers:
       '@osdlc/result':
         specifier: workspace:^
         version: link:../result
+      '@osdlc/ux':
+        specifier: workspace:^
+        version: link:../ux
       commander:
         specifier: ^12.1.0
         version: 12.1.0
@@ -129,6 +132,9 @@ importers:
       '@osdlc/prettier-config':
         specifier: workspace:^
         version: link:../prettier-config
+      '@osdlc/trust-repo':
+        specifier: workspace:^
+        version: link:../trust-repo
       '@osdlc/tsconfig':
         specifier: workspace:^
         version: link:../tsconfig

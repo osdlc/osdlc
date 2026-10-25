@@ -100,7 +100,9 @@ export interface HelpEntry {
  * The Zod schema of {@link HelpEntry}.
  * @experimental
  */
-export const HelpEntrySchema: z.ZodType<unknown> = z.lazy(() =>
+// The cast is for `exactOptionalPropertyTypes`: Zod types an optional key as
+// `T | undefined`, where `HelpEntry` leaves it out. The shapes are the same.
+export const HelpEntrySchema: z.ZodType<HelpEntry, HelpEntry> = z.lazy(() =>
   z.object({
     name: z.string(),
     path: z.array(z.string()),
@@ -141,7 +143,7 @@ export const HelpEntrySchema: z.ZodType<unknown> = z.lazy(() =>
     commands: z.array(HelpEntrySchema).optional(),
     more: z.number().int().optional(),
   }),
-)
+) as unknown as z.ZodType<HelpEntry, HelpEntry>
 
 /**
  * The exit codes every app has, in order.

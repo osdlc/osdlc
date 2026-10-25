@@ -264,22 +264,29 @@ commander own `--help`.
 
 ### Help is wrapped when it is rendered
 
-`defineCli` reflows its epilogues to `width` (default 80) each time it renders
-help. `wrapText(text, width)` does the same for any text. A line that starts at
-column 0 is prose and is filled again. An indented line, a table row, a usage
-line or a fenced block is kept as written. So prose with names interpolated
-into it never comes out ragged. `helpWidth(columns)` picks the width for a
+Given a `width`, `defineCli` wraps its help to it and reflows its epilogues
+each time it renders help. Without one, commander picks the width (the
+terminal's, or 80) and the epilogues print as written, as before.
+`wrapText(text, width)` reflows any text. Lines of prose are joined and filled
+again, and a line ending in `:` ends its paragraph. These are kept as written:
+an indented line, a list item (`- a`, `1. a`), a shell example (`$ cmd`), a
+table row (`| a |`) and a fenced block (``` or ~~~, indented or not). So prose
+with names interpolated into it never comes out ragged. Widths are terminal
+columns: a wide character counts 2 and an escape sequence nothing, through
+`@osdlc/ux`'s `displayWidth`. `helpWidth(columns)` picks the width for a
 terminal: its width kept between 40 and 100, or 80 when stdout is not a
-terminal. `columns(rows, width)` lays out a two-column list.
+terminal. `columns(rows, width)` lays out a two-column list, no line wider
+than `width`.
 
 ### Terminals and color
 
 `CliContext.terminal` says which streams are terminals and how wide stdout is.
 `processContext()` fills it in. A context without it reads as "no terminal".
-`colorEnabled(ctx, { json })` is the color rule: `NO_COLOR` (non-empty) turns
-color off and wins, `FORCE_COLOR` (not `0` or `false`) turns it on, `TERM=dumb`
-turns it off, and otherwise color follows whether stdout is a terminal. A JSON
-answer is never colored.
+`colorEnabled(ctx, { json })` says whether stdout gets color. It is
+`@osdlc/ux`'s `detectColorLevel` for stdout, which reads `NO_COLOR`,
+`FORCE_COLOR`, `TERM=dumb` and whether stdout is a terminal, so a tool and its
+terminal UI follow one rule. A JSON answer is never colored. For the color
+level as well, call `detectColorLevel` directly.
 
 ### `runMain`
 
@@ -382,7 +389,7 @@ What a command declares:
 
 `input` holds `flags`, `globals` (typed by the kit), `positionals` and `rest`,
 the words after `--`. `ctx` is the `CliContext` plus `app` (the `App`),
-`path`, `json`, `output`, `surface` (`cli`, `mcp` or `http`), `signal`,
+`path`, `globals` (the same values as `input.globals`), `json`, `output`, `surface` (`cli`, `mcp` or `http`), `signal`,
 `color`, `width`, `emit`, and `warn`/`note`, which write `<name>: ...` lines to
 stderr. A command writes nothing to stdout itself.
 
@@ -414,9 +421,16 @@ Errors:
 | Thrown from `run` | Prints on stderr | Exit |
 |---|---|---|
 | a parse error, or `UsageError` | `<name>: <message>`, the usage line and where the help is | 2 |
-| `CommandError(message, { exit, hint })` | `<name>: <message>` and the hint | `exit`, default 1 |
+| `CommandError(message, { exit, hint, code })` | `<name>: <message>` and the hint | `exit`, default 1 |
 | a `Failure`, or an error carrying one | the failure line | its category code (22-25), else 1 |
 | anything else | nothing; it propagates to `runMain` | 1 |
+
+Under `--json` or `--output jsonl`, each of the first three also prints an
+error document on stdout, where a caller reads data:
+`{ schemaVersion: 1, kind: "error", code, message, exit, hint }`. `code` is
+`usage` for exit 2, the failure's kind for a `Failure`, the `CommandError`'s
+`code`, or else `error`. `ErrorDocumentSchema` is its Zod schema, and
+`App.call` and the HTTP adapter answer a failed call with the same fields.
 
 `checkOutput: true` on the app checks each output against its schema before
 printing it. `runApp` in `@osdlc/cli-tool/testing` always checks a `--json`
@@ -440,19 +454,24 @@ const tree = await loadCommandTree(new URL('./commands/', import.meta.url), { su
 const app = defineApp({ name: 'sweep', version, summary: 'sweep', commands: tree })
 ```
 
-It imports the tool's own files only. `treeFromFiles` takes the same files as
+It imports the files under `dir` only, and `dir` must be a `file:` URL or an
+absolute path, so the tree never depends on the working directory. Symbolic
+links are skipped, and a file or directory name that is not a command word
+(letters, digits, `-` and `_`) is an error. `treeFromFiles` takes the same files as
 a list, for a bundler that collects the modules itself.
 
 ### Shared commands
 
 | Entry | Mount it as | The tool supplies |
 |---|---|---|
-| `config-command` | `config: configCommands(store)` | a `ConfigStore`: `layers`, `defaultLayer`, `keys`, `list`, `locations`, `set`, `unset`, and optionally `cliOnlyKeys` and `explain` |
-| `trust-command` | `trust: trustCommand(service)` | a `TrustService`: `trust`, `untrust`, `show`, `list`, and `scopes` for `--scope` |
+| `config-command` | `config: configCommands(store)` | a `ConfigStore`: `layers`, `defaultLayer`, `keys`, `list`, `locations`, `set`, `unset`, and optionally `cliOnlyKeys`, `resolveKey` and `explain` |
+| `trust-command` | `trust: trustCommand(service)` | a `TrustService`: `trust`, `untrust`, `show`, `list`, and optionally `untrustAll` and `scopes` for `--scope` |
 | `guide` | `guide: guideCommand(topics, { title })` | `GuideTopic`s: `{ id, title, summary, body(ctx) }` |
 
 Each store method receives the command context, so it can read `ctx.cwd`,
-`ctx.env` and the tool's global flags.
+`ctx.env` and the tool's global flag values in `ctx.globals` (`-C <dir>` is
+`ctx.globals.dir`). Pass the app's globals to the command too
+(`configCommands(store, { globals })`), so its input is typed against them.
 
 - `config explain <key>` (when the store has `explain`) shows each layer from
   the default up, the value it sets, which layer won and why. A layer marked
@@ -460,16 +479,25 @@ Each store method receives the command context, so it can read `ctx.cwd`,
   ignored. It answers `{ key, value, source, reason, layers }` and exits 1 when
   no layer sets the key.
 - `cliOnlyKeys` on the store names keys `set` and `unset` write from the
-  command line only, such as `trust`. The adapters refuse a write of one.
+  command line only, such as `trust`. The adapters refuse a write of one, of
+  a key under one or of a key above one. Keys are compared without regard to
+  case, spaces or `a[b]` for `a.b`. A store that accepts other spellings
+  (aliases, say) gives `resolveKey(key)`, and the check runs on the key it
+  names; a key it does not know is refused. When the store lists `keys`, a
+  key under none of them is refused too.
 - `config` with no subcommand lists. Each writable layer is a flag
-  (`--user`, `--project`). A value is read as JSON, else as the bare string.
+  (`--user`, `--project`). A value is read as JSON, else as the bare string; a number too large for JSON (`1e400`) is a usage error.
   An unknown key or a wrong value (`ConfigUsageError` from `set`) exits 2 with a
   did-you-mean. A `get` with no value or an `unset` of a key not set in that
   layer exits 1.
 - `trust` answers `{ action, changed, roots }` for every mode, so a script does
   not branch on the flag it passed. Granting trust is `cli-only`; `--show`,
-  `--list` and `--untrust` are open to the adapters. `--untrust` with no marker prints the answer
-  and exits 1.
+  `--list`, `--untrust` and `--untrust-all` are open to the adapters.
+  `--untrust` removes one grant: the whole-repository one, or with `--scope`
+  that scope's. `--untrust-all` (when the service has `untrustAll`) removes
+  every grant of the root. Either one with nothing to remove prints the answer
+  and exits 1. A `--scope` that is empty, `*` or has controls or space at
+  either end is a usage error.
 - `guide` prints every topic; `guide topics` lists them; `guide <topic>` prints
   one. An unknown topic exits 2.
 
@@ -501,6 +529,11 @@ Each data command is a tool:
 | `outputSchema`, `structuredContent` | the `--json` document |
 | `readOnlyHint`, `destructiveHint` | `readOnly`, `destructive` |
 
+Tool names must be unique once joined: a group `a` with a command `b` and a
+root command `a_b`, or a command named after the app, make `mcpTools` and
+`createMcpServer` throw, naming both commands. A call to a name that is no
+tool is a JSON-RPC request error (`-32602`), as the protocol says.
+
 A failed run is an error result with the exit code and the hint. A document
 with a non-zero exit is an error result that keeps `structuredContent`; the
 exit code is in `_meta.exitCode`. Events go to the client as progress
@@ -522,7 +555,8 @@ should depend on it.
 import { httpApiCommand } from '@osdlc/cli-tool/http'
 
 commands: { ...commands, 'serve-api': httpApiCommand({ globals: GLOBALS }) }
-// `sweep serve-api` prints the address and a token made for this run.
+// `sweep serve-api` prints the address and a token made for this run, and a
+// `printf ... | curl -H @-` line that keeps the token out of the process list.
 ```
 
 | Route | Answers |
@@ -532,17 +566,19 @@ commands: { ...commands, 'serve-api': httpApiCommand({ globals: GLOBALS }) }
 | `POST /commands/<command>...` | the `--json` document, from a JSON body of flags and positionals |
 
 A call answers 200 with the document and its exit code in `X-Exit-Code`. A
-failure answers `{ schemaVersion, kind: "error", exit, message, hint }`: 400
+failure answers the error document, `{ schemaVersion, kind: "error", code, exit, message, hint }`: 400
 for wrong arguments, 422 for a failed run, 403 for a `cli-only` command, 404
 for no such command.
 
 The server binds 127.0.0.1 only. Every request passes, in order:
 
 1. `Host` names a loopback address (`127.0.0.1`, `localhost`, `[::1]`), so a
-   site that rebinds its domain to 127.0.0.1 is refused (403).
+   site that rebinds its domain to 127.0.0.1 is refused (403). Given the
+   `port` option (`serve-api` gives it), `Host` must name that port too.
 2. `Origin`, when sent, is the server's own origin, and `Sec-Fetch-Site` is
    not `cross-site` or `same-site` (403).
-3. `Authorization: Bearer <token>` (401, the same for every path). A header,
+3. `Authorization: Bearer <token>` (401, the same for every path; the scheme
+   name is case-insensitive). A header,
    so a page on another origin needs a CORS preflight, which is never
    answered. There is no CORS.
 
@@ -550,7 +586,9 @@ The body is read only after these checks, up to 1 MiB (413), and must be
 `application/json` (415).
 
 With `Accept: application/x-ndjson`, a call streams: one line per event, then
-the document or the error as the last line. Closing the connection aborts
+the document or the error as the last line. A call that fails or is refused
+before its first event answers as it would without streaming, with its own
+status; only a failure after an event is an in-stream line. Closing the connection aborts
 `ctx.signal`. NDJSON rather than Server-Sent Events, because `EventSource`
 can only GET and cannot send the token header, while `fetch` can read NDJSON
 line by line from a POST.
@@ -578,7 +616,7 @@ whose risk depends on it. Interactive commands are never exposed.
 
 Changing trust is `cli-only`, because an agent or a web page must not grant
 itself trust. The shared `trust` command refuses a grant through the
-adapters and allows `--show`, `--list` and `--untrust`. `config set` and
+adapters and allows `--show`, `--list`, `--untrust` and `--untrust-all`. `config set` and
 `config unset` refuse a key in the store's `cliOnlyKeys`.
 
 A person-facing page may need to grant trust. Its mount lists the command in
@@ -661,10 +699,10 @@ The experimental exports of `@osdlc/cli-tool/command`:
 
 `App`, `AppSpec`, `BUILTIN_FLAGS`, `CallOptions`, `CallResult`, `Command`, `CommandCommon`, `CommandContext`, `CommandError`,
 `CommandFile`, `CommandInput`, `CommandKit`, `CommandResult`, `DataCommand`, `DataCommandSpec`,
-`EventsSpec`, `Exposure`, `Group`, `GroupSpec`, `HelpEntry`, `HelpEntrySchema`, `HelpExit`, `HelpFlag`, `HelpPositional`,
+`ErrorDocument`, `ErrorDocumentSchema`, `EventsSpec`, `Exposure`, `Group`, `GroupSpec`, `HelpEntry`, `HelpEntrySchema`, `HelpExit`, `HelpFlag`, `HelpPositional`,
 `InteractiveCommand`, `InteractiveCommandSpec`, `JsonSchema`, `Node`, `Outcome`, `OutputMode`,
 `OutputSchema`, `SchemaEntry`, `Surface`, `UNIVERSAL_EXITS`, `UsageError`, `commandKit`, `defineApp`, `defineCommand`,
-`defineGroup`, `isGroup`, `isInteractive`, `loadCommandTree`, `outcome`, `treeFromFiles`
+`defineGroup`, `errorDocument`, `isGroup`, `isInteractive`, `loadCommandTree`, `outcome`, `treeFromFiles`
 
 The experimental exports of `@osdlc/cli-tool/config-command`:
 

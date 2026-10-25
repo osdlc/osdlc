@@ -8,7 +8,7 @@
 import { Command, CommanderError, Option } from 'commander'
 
 import type { CliIo } from './io.ts'
-import { DEFAULT_WIDTH, wrapText } from './wrap.ts'
+import { wrapText } from './wrap.ts'
 
 /** What every flag declares. */
 export interface FlagCommon {
@@ -160,9 +160,11 @@ export interface CliDecl<F extends FlagSpec> {
    */
   autoHelp?: boolean
   /**
-   * The width help is wrapped to. The epilogues are reflowed to it when the
-   * help is rendered: lines that start at column 0 are prose and are filled
-   * again, indented lines are kept as written (see `wrapText`). Default 80.
+   * The width help is wrapped to. When it is given, the epilogues are also
+   * reflowed to it when the help is rendered: prose lines are filled again,
+   * and lists, examples, tables, indented lines and fenced blocks are kept as
+   * written (see `wrapText`). Leave it out and commander picks the width
+   * (the terminal's, or 80), and the epilogues print as written.
    */
   width?: number
 }
@@ -303,10 +305,13 @@ export function defineCli<F extends FlagSpec>(decl: CliDecl<F>): Cli<F> {
         // Left on, commander prints the message as well as throwing it.
         outputError: () => {},
       })
-    const width = decl.width ?? DEFAULT_WIDTH
-    command.configureHelp({ helpWidth: width })
+    const width = decl.width
+    if (width !== undefined) command.configureHelp({ helpWidth: width })
     const epilogue = all ? decl.epilogue : decl.shortEpilogue
-    if (epilogue !== undefined) command.addHelpText('after', `\n${wrapText(epilogue, width)}`)
+    if (epilogue !== undefined) {
+      const text = width === undefined ? epilogue : wrapText(epilogue, width)
+      command.addHelpText('after', `\n${text}`)
+    }
     for (const [name, flag] of Object.entries(decl.flags)) {
       for (const option of buildOptions(name, flag)) {
         command.addOption(flag.hidden === true && !all ? option.hideHelp() : option)

@@ -1,3 +1,5 @@
+import { detectColorLevel } from '@osdlc/ux'
+
 /**
  * The output interface every CLI writes through, instead of naming
  * `process.stdout` / `process.stderr` itself.
@@ -107,22 +109,16 @@ export function processContext(): CliContext {
 }
 
 /**
- * Whether output to stdout should be colored.
- *
- * `NO_COLOR` set to anything but the empty string turns color off, and wins.
- * `FORCE_COLOR` set to anything but `0` or `false` turns it on. Otherwise
- * color follows whether stdout is a terminal, and `TERM=dumb` turns it off.
- * A JSON answer is never colored; the caller passes `json: true` for one.
+ * Whether output to stdout should be colored: `@osdlc/ux`'s
+ * `detectColorLevel` for stdout, from `ctx.env` and `ctx.terminal`, is not
+ * `none`. That reads `NO_COLOR`, `FORCE_COLOR`, `TERM=dumb` and whether stdout
+ * is a terminal. A JSON answer is never colored; the caller passes
+ * `json: true` for one.
  * @experimental
  */
 export function colorEnabled(ctx: CliContext, opts: { json?: boolean } = {}): boolean {
   if (opts.json === true) return false
-  const no = ctx.env['NO_COLOR']
-  if (no !== undefined && no !== '') return false
-  const force = ctx.env['FORCE_COLOR']
-  if (force !== undefined && force !== '0' && force !== 'false') return true
-  if (ctx.env['TERM'] === 'dumb') return false
-  return ctx.terminal?.stdout === true
+  return detectColorLevel({ env: ctx.env, isTTY: ctx.terminal?.stdout === true }) !== 'none'
 }
 
 /**

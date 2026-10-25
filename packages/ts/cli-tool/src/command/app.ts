@@ -13,11 +13,13 @@ import { defineCli, type FlagSpec, type FlagValues } from '../define-cli.ts'
 import { EXIT, type ExitCode } from '../exit.ts'
 import { exitCodeFor, failureOf, renderFailure } from '../failure.ts'
 import { colorEnabled, type CliContext } from '../io.ts'
+import { safe } from '../safe.ts'
 import { helpWidth } from '../wrap.ts'
 import {
   BUILTIN_FLAGS,
   CommandError,
   UsageError,
+  checkFlags,
   commandKit,
   isGroup,
   isInteractive,
@@ -40,7 +42,8 @@ import {
   type HelpScope,
   type Placed,
 } from './help.ts'
-import { documentSchema, documentZod, inputSchema, type JsonSchema } from './schema.ts'
+import { errorDocument } from './error.ts'
+import { documentSchema, documentZod, inputSchema, kebab, type JsonSchema } from './schema.ts'
 
 /**
  * What an app declares.
@@ -130,6 +133,8 @@ export type CallResult =
   | {
       status: 'error'
       exit: number
+      /** The error document's `code`: `usage`, a failure kind, a `CommandError`'s code, or `error`. */
+      code: string
       message: string
       hint?: string
       usage?: true
@@ -231,7 +236,7 @@ function valueTaking(flags: FlagSpec): Set<string> {
   const out = new Set<string>()
   for (const [name, decl] of Object.entries(flags)) {
     if (decl.kind === 'string' || decl.kind === 'enum' || decl.kind === 'list') {
-      out.add(`--${name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`)
+      out.add(`--${kebab(name)}`)
       if (decl.short !== undefined) out.add(`-${decl.short}`)
     }
   }
@@ -250,11 +255,7 @@ function kindOf(command: DataCommand, path: readonly string[], appName: string):
 export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSpec<G>): App {
   const globals: FlagSpec = spec.globals ?? {}
   const kit = commandKit({ globals })
-  for (const key of Object.keys(globals)) {
-    if (key in BUILTIN_FLAGS || key === 'version') {
-      throw new Error(`defineApp: global flag '${key}' is provided by the app; do not declare it`)
-    }
-  }
+  checkFlags(globals, 'defineApp: global flag')
 
   const userRoot: Group =
     'type' in spec.commands && (spec.commands as Group).type === 'group'
@@ -308,10 +309,9 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     }),
     kind: 'help',
     readOnly: true,
-    run({ flags, positionals }, ctx) {
-      const all = (ctx as CommandContext & { all?: boolean }).all === true
+    run({ flags, positionals }) {
       let depth = 1
-      if (all || flags.depth === 'all') depth = Number.POSITIVE_INFINITY
+      if (flags.depth === 'all') depth = Number.POSITIVE_INFINITY
       else if (flags.depth !== undefined) {
         if (!/^\d+$/.test(flags.depth)) throw new UsageError('--depth needs a number or "all"')
         depth = Number(flags.depth)
@@ -319,11 +319,11 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       const node = mustFind(positionals)
       return {
         tool: { name: spec.name, version: spec.version },
-        help: helpEntry(node, scope, { depth, full: all || flags.full }),
+        help: helpEntry(node, scope, { depth, full: flags.full }),
       }
     },
     text(output, ctx) {
-      return renderHelp(output.help as HelpEntry, ctx.width, spec.name)
+      return renderHelp(output.help, ctx.width, spec.name)
     },
   })
 
@@ -407,8 +407,8 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     },
   })
 
-  if (!('help' in userRoot.commands)) builtinCommands['help'] = helpCommand
-  if (!('schema' in userRoot.commands)) builtinCommands['schema'] = schemaCommand
+  if (!Object.hasOwn(userRoot.commands, 'help')) builtinCommands['help'] = helpCommand
+  if (!Object.hasOwn(userRoot.commands, 'schema')) builtinCommands['schema'] = schemaCommand
 
   const root: Group = {
     ...userRoot,
@@ -420,6 +420,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
   placedRef.root = place(spec.name, [], root)
   const placedRoot = placedRef.root
 
+  const globalShorts = new Set(Object.values(globals).flatMap((d) => d.short ?? []))
   // Check the whole tree once, so a bad declaration fails at start-up and in
   // tests, not when someone first types the command.
   for (const node of walk(placedRoot)) {
@@ -427,11 +428,13 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       throw new Error(`defineApp: '${[spec.name, ...node.path].join(' ')}' has no summary`)
     }
     if (node.command === undefined) continue
-    for (const key of Object.keys(node.command.flags ?? {})) {
-      if (key in globals) {
-        throw new Error(
-          `defineApp: '${[spec.name, ...node.path].join(' ')}' declares '${key}', which is a global flag`,
-        )
+    for (const [key, decl] of Object.entries((node.command.flags ?? {}) as FlagSpec)) {
+      const where = [spec.name, ...node.path].join(' ')
+      if (Object.hasOwn(globals, key)) {
+        throw new Error(`defineApp: '${where}' declares '${key}', which is a global flag`)
+      }
+      if (decl.short !== undefined && globalShorts.has(decl.short)) {
+        throw new Error(`defineApp: '${where}' declares -${decl.short}, which a global flag takes`)
       }
     }
   }
@@ -463,28 +466,58 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
   }
 
   const run = async (argv: readonly string[], base: CliContext): Promise<number> => {
-    const { node, words, rest } = route(argv)
-    const wantsHelp = words.includes('--help') || words.includes('-h')
+    const { node, words, rest: afterDash } = route(argv)
+    const command = node.command
+    const flags: FlagSpec = {
+      ...command?.flags,
+      ...globals,
+      ...(node.path.length === 0 ? VERSION_FLAGS : {}),
+      ...BUILTIN_FLAGS,
+    }
+    // The builtins are read from flag positions only, so `--name --help` gives
+    // `--name` the value `--help` rather than asking for help.
+    const scanned = scanWords(words, valueTaking(flags))
+    const has = (word: string): boolean => scanned.flags.includes(word)
+    const wantsHelp = has('--help') || has('-h')
     const wantsJson =
-      words.includes('--json') ||
-      words.includes('--output=json') ||
-      words.some((w, i) => w === '--output' && words[i + 1] === 'json')
+      has('--json') || scanned.values.get('--output') === 'json' || has('--output=json')
+    const wantsJsonl = scanned.values.get('--output') === 'jsonl' || has('--output=jsonl')
     const width = helpWidth(base.terminal?.stdout === true ? base.terminal.columns : undefined)
-    const fail = (message: string, exit: ExitCode, hint?: string): number => {
-      base.io.stderr(`${spec.name}: ${message}\n${hint ?? ''}`)
+    // How an error is reported: as read from the words, then as parsed.
+    let errorMode: OutputMode = wantsJson ? 'json' : wantsJsonl ? 'jsonl' : 'text'
+    /**
+     * Report a failure: a line on stderr, and under `--json` or `jsonl` an
+     * error document on stdout too, since that is where a caller reads data.
+     */
+    const fail = (code: string, message: string, exit: ExitCode, hint?: string): number => {
+      base.io.stderr(`${spec.name}: ${safe(message)}\n${safe(hint ?? '')}`)
+      if (errorMode !== 'text') {
+        const doc = errorDocument(code, message, exit, hint)
+        base.io.stdout(`${JSON.stringify(doc, null, errorMode === 'json' ? 2 : undefined)}\n`)
+      }
       return exit
     }
     const usageFail = (message: string): number =>
-      fail(message, EXIT.usage, usageHint(helpEntry(node, scope, { depth: 0 }), spec.name))
+      fail('usage', message, EXIT.usage, usageHint(helpEntry(node, scope, { depth: 0 }), spec.name))
 
+    // A word that names no subcommand, where nothing takes a positional.
+    const takesWords = (command?.positionals ?? []).length > 0
+    const stray = scanned.operands[0]
+    if (stray !== undefined && node.children.length > 0 && !takesWords) {
+      const names = node.children.filter((c) => !c.hidden).map((c) => c.name)
+      const close = closestMatches(stray, names)
+      return usageFail(
+        `unknown command '${[...node.path, stray].join(' ')}'${close.length > 0 ? `; did you mean ${close.join(', ')}?` : ''}`,
+      )
+    }
     if (wantsHelp) {
-      const all = words.includes('--all')
+      const all = has('--all')
       return run(
         ['help', ...node.path, ...(all ? ['--all'] : []), ...(wantsJson ? ['--json'] : [])],
         base,
       )
     }
-    if (node.path.length === 0 && words.includes('--version')) {
+    if (node.path.length === 0 && has('--version')) {
       if (wantsJson) {
         base.io.stdout(
           `${JSON.stringify({ schemaVersion: 1, kind: 'version', name: spec.name, version: spec.version }, null, 2)}\n`,
@@ -493,31 +526,12 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       return EXIT.ok
     }
 
-    const command = node.command
     if (command === undefined) {
-      let k = 0
-      while (k < words.length && words[k]!.startsWith('-')) {
-        k += globalValueFlags.has(words[k]!) ? 2 : 1
-      }
-      const word = words[k]
-      if (word !== undefined) {
-        const names = node.children.filter((c) => !c.hidden).map((c) => c.name)
-        const close = closestMatches(word, names)
-        return usageFail(
-          `unknown command '${[...node.path, word].join(' ')}'${close.length > 0 ? `; did you mean ${close.join(', ')}?` : ''}`,
-        )
-      }
       // A group with no default: name a command.
       base.io.stderr(renderHelp(helpEntry(node, scope), width, spec.name))
       return EXIT.usage
     }
 
-    const flags: FlagSpec = {
-      ...command.flags,
-      ...globals,
-      ...(node.path.length === 0 ? VERSION_FLAGS : {}),
-      ...BUILTIN_FLAGS,
-    }
     const cli = defineCli({
       name: [spec.name, ...node.path].join(' '),
       summary: node.summary,
@@ -525,7 +539,20 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       positionals: [...(command.positionals ?? [])],
       autoHelp: false,
     })
-    const parsed = cli.parse(words, base.io)
+    // A required positional still missing takes the next word after `--`, so
+    // a value that starts with a dash can be given: `config set n -- -5`.
+    const required = (command.positionals ?? []).filter((p) => p.required === true).length
+    let parsed = cli.parse(words, base.io)
+    let taken = 0
+    while (
+      parsed.status === 'error' &&
+      parsed.message.startsWith('missing required argument') &&
+      taken < Math.min(required, afterDash.length)
+    ) {
+      taken += 1
+      parsed = cli.parse([...words, '--', ...afterDash.slice(0, taken)], base.io)
+    }
+    const rest = afterDash.slice(parsed.status === 'ok' ? taken : 0)
     if (parsed.status === 'help') return EXIT.ok
     if (parsed.status === 'error') return usageFail(parsed.message)
     const values = parsed.values as FlagValues<FlagSpec> & {
@@ -533,7 +560,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       all: boolean
       output?: string
     }
-    // `help --all` reads it; anywhere else it only modifies `--help`.
+    // `--all` modifies `--help` only. `help --all` is `help --depth all --full`.
     if (values.all && command !== helpCommand) {
       return usageFail('--all goes with --help: "--help --all"')
     }
@@ -541,11 +568,13 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     const both = values.json && values.output !== undefined && values.output !== 'json'
     if (both) return usageFail(`--json and --output ${values.output} ask for different forms`)
     const mode: OutputMode = values.json ? 'json' : ((values.output as OutputMode) ?? 'text')
+    errorMode = mode
     const json = mode !== 'text'
     const own: Record<string, unknown> = {}
     const globalValues: Record<string, unknown> = {}
     for (const key of Object.keys(command.flags ?? {})) own[key] = values[key]
     for (const key of Object.keys(globals)) globalValues[key] = values[key]
+    if (values.all) Object.assign(own, { depth: 'all', full: true })
     const commandName = [spec.name, ...node.path].join(' ')
     if (isInteractive(command) && json) {
       return usageFail(`'${commandName}' is interactive and has no JSON form`)
@@ -555,19 +584,19 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
         return usageFail(`'${commandName}' prints one document; use --json`)
       }
     }
-    const ctx: CommandContext & { all: boolean } = {
+    const ctx: CommandContext = {
       ...base,
       app,
       path: node.path,
+      globals: globalValues,
       json,
       output: mode,
       surface: 'cli',
       signal: base.signal ?? new AbortController().signal,
       color: colorEnabled(base, { json }),
       width,
-      all: values.all,
-      warn: (message) => base.io.stderr(`${spec.name}: warning: ${message}\n`),
-      note: (message) => base.io.stderr(`${spec.name}: ${message}\n`),
+      warn: (message) => base.io.stderr(`${spec.name}: warning: ${safe(message)}\n`),
+      note: (message) => base.io.stderr(`${spec.name}: ${safe(message)}\n`),
       emit: noEvents(commandName),
     }
     const input = { flags: own, globals: globalValues, positionals: parsed.positionals, rest }
@@ -588,11 +617,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
         if (command.items !== undefined) {
           const list = (output as Record<string, unknown>)[command.items.field] as unknown[]
           for (const item of list) {
-            const line = {
-              schemaVersion: doc.schemaVersion,
-              kind: command.items.kind,
-              ...(item as object),
-            }
+            const line = envelope(item, doc.schemaVersion as number, command.items.kind)
             base.io.stdout(`${JSON.stringify(line)}\n`)
           }
         } else base.io.stdout(`${JSON.stringify(doc)}\n`)
@@ -602,25 +627,34 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     } catch (err) {
       if (err instanceof UsageError) return usageFail(err.message)
       if (err instanceof CommandError) {
-        return fail(err.message, err.exit, err.hint !== undefined ? `${err.hint}\n` : '')
+        return fail(err.code, err.message, err.exit, err.hint !== undefined ? `${err.hint}\n` : '')
       }
       const failure = failureOf(err)
       if (failure !== null) {
-        base.io.stderr(renderFailure(failure, spec.name))
+        base.io.stderr(safe(renderFailure(failure, spec.name)))
+        if (errorMode !== 'text') {
+          const doc = errorDocument(
+            failure.kind,
+            failure.message,
+            exitCodeFor(failure),
+            failure.hint,
+          )
+          base.io.stdout(`${JSON.stringify(doc, null, errorMode === 'json' ? 2 : undefined)}\n`)
+        }
         return exitCodeFor(failure)
       }
       throw err
     }
   }
 
-  /** The event `ctx.emit` sends, as one line: `schemaVersion` and `kind` in front. */
+  /** The event `ctx.emit` sends, as one line with the command's `schemaVersion` and the events' `kind`. */
   const eventLine = (
     command: DataCommand,
     event: Record<string, unknown>,
     name: string,
   ): Record<string, unknown> => {
     const events = command.events!
-    const line = { schemaVersion: command.schemaVersion ?? 1, kind: events.kind, ...event }
+    const line = envelope(event, command.schemaVersion ?? 1, events.kind)
     if (spec.checkOutput === true) {
       const checked = documentZod(events.schema, events.kind, line.schemaVersion).safeParse(line)
       if (!checked.success) {
@@ -641,7 +675,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     const output = isOutcome(result) ? result.output : result
     const exit = isOutcome(result) ? result.exit : EXIT.ok
     const kind = kindOf(command, path, spec.name)
-    const doc = { schemaVersion: command.schemaVersion ?? 1, kind, ...(output as object) }
+    const doc = envelope(output, command.schemaVersion ?? 1, kind)
     if (spec.checkOutput === true) {
       const checked = documentZod(command.output, kind, doc.schemaVersion).safeParse(doc)
       if (!checked.success) {
@@ -678,9 +712,10 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     const capture = (text: string): void => {
       stderr += text
     }
-    const failed = (exit: number, message: string, hint?: string): CallResult => ({
+    const failed = (code: string, exit: number, message: string, hint?: string): CallResult => ({
       status: 'error',
       exit,
+      code,
       message,
       ...(hint !== undefined ? { hint } : {}),
       stderr,
@@ -688,6 +723,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     const usageFailed = (message: string): CallResult => ({
       status: 'error',
       exit: EXIT.usage,
+      code: 'usage',
       message,
       usage: true,
       stderr,
@@ -707,6 +743,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
         io: { stdout: capture, stderr: capture },
         app,
         path: node.path,
+        globals: input.globals,
         json: true,
         output: 'json',
         surface: options.surface,
@@ -724,12 +761,12 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       return { status: 'ok', exit, document: doc, stderr }
     } catch (err) {
       if (err instanceof UsageError) return usageFailed(err.message)
-      if (err instanceof CommandError) return failed(err.exit, err.message, err.hint)
+      if (err instanceof CommandError) return failed(err.code, err.exit, err.message, err.hint)
       const failure = failureOf(err)
       if (failure !== null) {
-        return failed(exitCodeFor(failure), renderFailure(failure, spec.name).trimEnd())
+        return failed(failure.kind, exitCodeFor(failure), failure.message, failure.hint)
       }
-      return failed(EXIT.error, err instanceof Error ? err.message : String(err))
+      return failed('error', EXIT.error, err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -778,6 +815,45 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     },
   }
   return app
+}
+
+/**
+ * The words of a command line split into flags (with the value each
+ * value-taking flag was given) and operands. The value after a value-taking
+ * flag is neither.
+ */
+function scanWords(
+  words: readonly string[],
+  valueFlags: ReadonlySet<string>,
+): { flags: string[]; values: Map<string, string>; operands: string[] } {
+  const flags: string[] = []
+  const values = new Map<string, string>()
+  const operands: string[] = []
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i]!
+    if (!word.startsWith('-') || word === '-') {
+      operands.push(word)
+      continue
+    }
+    flags.push(word)
+    if (valueFlags.has(word) && i + 1 < words.length) {
+      values.set(word, words[i + 1]!)
+      i += 1
+    }
+  }
+  return { flags, values, operands }
+}
+
+/**
+ * `fields` with `schemaVersion` and `kind` in front. They are set again after
+ * the fields, so a field of the same name cannot replace them.
+ */
+function envelope(
+  fields: unknown,
+  schemaVersion: number,
+  kind: string,
+): Record<string, unknown> & { schemaVersion: number; kind: string } {
+  return Object.assign({ schemaVersion, kind }, fields as object, { schemaVersion, kind })
 }
 
 function noEvents(name: string): (event: Record<string, unknown>) => void {

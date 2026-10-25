@@ -10,6 +10,7 @@ Status: draft.
 - Every command answers `--json` with one document on stdout. The document is
   an object that starts with `schemaVersion` and `kind`. A list also answers
   `--output jsonl`: one object per line, each with `schemaVersion` and `kind`.
+  A failure under either is an error document with `kind: "error"`.
 - A `schema` command prints each command's input and output as JSON Schema,
   generated from the same declaration the parser and the renderer use.
 - `<tool> --version` prints the name and version.
@@ -37,7 +38,8 @@ A tool built on its command tree gets every rule below without writing it.
 | `<tool> help`, `<tool> --help` | the top-level commands, one line each, and the global flags |
 | `<tool> help <command> [<sub> ...]`, `<tool> <command> --help` | that command: usage, flags, arguments and its subcommands one level down |
 | `<tool> help --depth <n>`, `--depth all` | that many levels of subcommands |
-| `<tool> help <command> --full`, `<tool> <command> --help --all` | also the long description, hidden flags, exit codes and examples |
+| `<tool> help <command> --full` | also the long description, hidden flags, exit codes and examples |
+| `<tool> help <command> --all`, `<tool> <command> --help --all` | `--full` for the whole subtree: every level, with the long form |
 | `<tool> help ... --json` | the same content as one JSON document |
 
 Help is wrapped to the terminal width when it is rendered, between 40 and 100
@@ -70,6 +72,19 @@ JSON document on stdout:
   a server) has no JSON form. It refuses `--json` with exit 2.
 - `--json` does not change the exit code. A search that matched nothing prints
   its empty document and exits 1, as it would without `--json`.
+- A run that fails under `--json` prints an error document on stdout instead,
+  since stdout is where a caller reads data, and its usual line on stderr for
+  a person:
+
+  ```json
+  { "schemaVersion": 1, "kind": "error", "code": "usage", "message": "unknown command 'nosuch'", "exit": 2, "hint": "See \"tooly help\"." }
+  ```
+
+  `code` is a stable name to branch on: `usage` for exit 2, a classified
+  failure's kind (such as `not-installed`) for 22-25, or a name the command
+  chose, else `error`. `exit` is the exit code. Under `--output jsonl` the
+  error document is the last line. An adapter answers a failed call with the
+  same document.
 
 ### 2a. `--output text|json|jsonl`
 
@@ -128,8 +143,9 @@ return. Code uses named constants, never bare numbers.
 
 - stdout carries the answer: the text form or the JSON document. Nothing else.
 - stderr carries everything else: errors, warnings, progress, notes, and
-  context such as which file was read. Each line starts with `<tool>:`, and a
-  warning with `<tool>: warning:`.
+  context such as which file was read. Each message starts with `<tool>:`,
+  and a warning with `<tool>: warning:`. The lines that follow a message
+  (its hint, a usage line, where the help is) are printed as they are.
 - An error prints one line saying what went wrong, then a hint when there is
   one. No stack trace.
 - A run that prints a document and then fails (exit 1 or a domain code) still
@@ -137,10 +153,11 @@ return. Code uses named constants, never bare numbers.
 
 ### 7. Non-TTY and color
 
-- Color only when stdout is a terminal. `NO_COLOR` set to anything but the
-  empty string turns color off and wins over everything else. `FORCE_COLOR`
-  turns it on in a pipe. `TERM=dumb` turns it off. A JSON document is never
-  colored.
+- Color only when stdout is a terminal. A `--color` or `--no-color` flag wins.
+  Then `NO_COLOR` set to anything but the empty string turns color off. Then
+  `FORCE_COLOR` decides by its exact value: `0` or `false` turns color off,
+  `1` to `3` turn it on, in a pipe too. Then `TERM=dumb` turns it off. A JSON
+  document is never colored. `@osdlc/ux`'s `detectColorLevel` is this rule.
 - No prompt unless stdin and stderr are both terminals. A command that would
   ask takes a flag instead, and without the flag it fails with exit 2 and
   names the flag.
@@ -161,7 +178,7 @@ Where a tool has them, these commands work the same in every tool:
 |---|---|
 | `config [list]`, `config get <key>`, `config set <key> <value>`, `config unset <key>`, `config path` | read and write the tool's layered settings. `--user` or `--project` picks the file |
 | `config explain <key>` | show each layer from the default up (default, user file, project file, environment, flags), the value each sets, which one won and why, including a layer that may not set the key. `--json` has the same |
-| `trust`, `trust --untrust`, `trust --show`, `trust --list` | record, remove, show or list consent to run a repository's own code |
+| `trust`, `trust --untrust`, `trust --untrust-all`, `trust --show`, `trust --list` | record, remove, show or list consent to run a repository's own code |
 | `guide [topic]`, `guide topics` | long-form help in Markdown |
 
 ### 10. Adapters: MCP and local HTTP
@@ -178,7 +195,7 @@ a command the CLI lacks or answer a different shape.
 - **Output.** A call answers the same document `--json` prints. A failure
   carries the exit code, the message and the hint.
 - **MCP** (`<tool> mcp`, stdio). Each data command is a tool: its name is the
-  command path joined with `_`, its input schema comes from the flags and
+  command path joined with `_`, unique across the tree, its input schema comes from the flags and
   positionals, its output schema and `structuredContent` are the `--json`
   document, and `readOnlyHint` and `destructiveHint` come from the command's
   declaration. Interactive commands are not tools. Events are progress
@@ -266,19 +283,17 @@ Each of these was a choice. Overturn any of them in review.
    command's own object with `schemaVersion` and `kind` added in front, not
    `{ "schemaVersion", "kind", "data": {...} }`. Callers read `.tasks`, not
    `.data.tasks`. The cost is that a command's output may not use either name.
-2. **Errors are not JSON.** Under `--json`, an error is a line on stderr and an
-   exit code, the same as without it. A structured error document can come
-   later if callers need one.
-3. **`schemaVersion` starts at 1 per document.** Each kind is versioned on its
+2. **`schemaVersion` starts at 1 per document.** Each kind is versioned on its
    own, so a change to one document does not move the others.
-4. **`help` is a command and `--help` is its shorthand.** `<tool> x --help` and
-   `<tool> help x` print the same thing.
-5. **Streams are NDJSON, not Server-Sent Events.** `EventSource` can only send
+3. **`help` is a command and `--help` is its shorthand.** `<tool> x --help` and
+   `<tool> help x` print the same thing, and `<tool> x --help --all` is
+   `<tool> help x --all`.
+4. **Streams are NDJSON, not Server-Sent Events.** `EventSource` can only send
    GET and cannot send the token header. `fetch` can read NDJSON line by line
    from a POST, and the lines are the same as `--output jsonl`.
-6. **Globals are fixed per server.** An adapter does not let a caller set
+5. **Globals are fixed per server.** An adapter does not let a caller set
    `-C <dir>` or another global flag, so a server answers for the directory it
    was started in.
-7. **A non-zero exit with a document is still an answer.** HTTP sends 200 with
+6. **A non-zero exit with a document is still an answer.** HTTP sends 200 with
    the exit code in `X-Exit-Code`; MCP marks the result an error and keeps the
    document.

@@ -77,3 +77,35 @@ test('explain is there only when the store can explain', async () => {
   const { app } = fixture()
   expect(app.paths().map((p) => p.join(' '))).toContain('config explain')
 })
+
+test('explain: when only a layer that may not set the key sets it, the reason says so', async () => {
+  const { configCommands } = await import('../../src/config-command.ts')
+  const { defineApp } = await import('../../src/command/index.ts')
+  const app = defineApp({
+    name: 't',
+    version: '0',
+    summary: 's',
+    commands: {
+      config: configCommands({
+        layers: ['project'],
+        defaultLayer: 'project',
+        list: async () => ({ settings: [] }),
+        locations: async () => [],
+        set: async () => ({ file: '', value: null }),
+        unset: async () => ({ file: '', removed: false }),
+        explain: async () => ({
+          layers: [
+            { layer: 'default', set: false },
+            { layer: 'project', set: true, value: 1, allowed: false, note: 'user only' },
+          ],
+        }),
+      }),
+    },
+  })
+  const run = await runApp(app, ['config', 'explain', 'k', '--json'])
+  expect(run.exit).toBe(1)
+  expect(run.json()).toMatchObject({
+    source: null,
+    reason: 'no layer allowed to set it sets it; project is ignored (user only)',
+  })
+})

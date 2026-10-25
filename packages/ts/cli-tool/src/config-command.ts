@@ -18,6 +18,8 @@ import {
 } from './command/index.ts'
 import type { FlagSpec } from './define-cli.ts'
 import { EXIT } from './exit.ts'
+import { safe } from './safe.ts'
+import { table } from './wrap.ts'
 
 /**
  * One setting and the layer its effective value came from.
@@ -81,7 +83,7 @@ export class ConfigUsageError extends Error {
 /**
  * What the `config` commands need from a tool. Each method receives the
  * command context, so it can read `ctx.cwd`, `ctx.env` and the tool's global
- * flags (such as `-C`) from `ctx`. A method that cannot read a file throws a
+ * flag values (such as `-C`) from `ctx.globals`. A method that cannot read a file throws a
  * `CommandError` or an `Error`; the command reports it and exits 1.
  * @experimental
  */
@@ -101,8 +103,21 @@ export interface ConfigStore {
    * the trust policy. The MCP and HTTP adapters refuse a write of one of
    * these keys, of a key under one, or of a key above one. Read access is not
    * limited.
+   *
+   * The check runs on the key as {@link resolveKey} resolves it, compared
+   * without regard to case, spaces or `a[b]` for `a.b`. When the store lists
+   * {@link keys}, the adapters also refuse a write of a key not under any of
+   * them, since the store may read it as another spelling of a listed one.
    */
   cliOnlyKeys?: readonly string[]
+  /**
+   * The dotted key a typed `key` names, as the store reads and writes it, or
+   * `undefined` when it names no setting. Give it when the store accepts more
+   * than one spelling of a key (case, aliases, another path syntax), so the
+   * {@link cliOnlyKeys} check sees the key the store would write. The
+   * adapters refuse a write of a key it answers `undefined` for.
+   */
+  resolveKey?(key: string): string | undefined
   /**
    * How `key`'s effective value was resolved, layer by layer. Supplying it
    * adds `config explain <key>`. Throws {@link ConfigUsageError} for an
@@ -141,11 +156,17 @@ export interface ConfigStore {
  * @experimental
  */
 export function parseConfigValue(raw: string): unknown {
+  let value: unknown
   try {
-    return JSON.parse(raw) as unknown
+    value = JSON.parse(raw) as unknown
   } catch {
     return raw
   }
+  // JSON.parse reads 1e400 as Infinity, which JSON then prints as null.
+  if (typeof value === 'number' && !Number.isFinite(value)) {
+    throw new ConfigUsageError(`${raw} is too large for a number`)
+  }
+  return value
 }
 
 const ExplainLayerSchema = z.object({
@@ -181,6 +202,25 @@ function touches(key: string, keys: readonly string[]): boolean {
   return keys.some((k) => k === key || key.startsWith(`${k}.`) || k.startsWith(`${key}.`))
 }
 
+/**
+ * `key` in one spelling for comparing: lower case, no spaces, `a[b]` and
+ * `a["b"]` as `a.b`, and no empty segments.
+ */
+function normalizeKey(key: string): string {
+  return key
+    .toLowerCase()
+    .replace(/\[\s*(["']?)(.*?)\1\s*\]/g, '.$2')
+    .replace(/\s+/g, '')
+    .split('.')
+    .filter((part) => part !== '')
+    .join('.')
+}
+
+/** Whether `key` is one of `keys`, or under or above one, once both are normalized. */
+function touchesNormalized(key: string, keys: readonly string[]): boolean {
+  return touches(normalizeKey(key), keys.map(normalizeKey))
+}
+
 const SettingSchema = z.object({ key: z.string(), value: z.unknown(), source: z.string() })
 const LocationSchema = z.object({
   layer: z.string(),
@@ -190,13 +230,14 @@ const LocationSchema = z.object({
 })
 
 function layerLines(locations: readonly ConfigLocation[]): string {
-  const width = Math.max(...locations.map((l) => l.layer.length)) + 1
-  return locations
-    .map(
-      (l) =>
-        `${`${l.layer}:`.padEnd(width)} ${l.path} (${l.exists ? 'exists' : 'missing'})${l.envVar ? ` (from ${l.envVar})` : ''}\n`,
-    )
-    .join('')
+  return table(
+    locations.map((l) => [
+      `${l.layer}:`,
+      `${l.path} (${l.exists ? 'exists' : 'missing'})${l.envVar ? ` (from ${l.envVar})` : ''}`,
+    ]),
+    '',
+    ' ',
+  )
 }
 
 /**
@@ -250,8 +291,17 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
     const close = closestMatches(key, store.keys ?? [])
     return close.length > 0 ? `; did you mean ${close.join(', ')}?` : ''
   }
-  const cliOnly = (key: string | undefined): 'all' | 'cli-only' =>
-    key !== undefined && touches(key, store.cliOnlyKeys ?? []) ? 'cli-only' : 'all'
+  /** The exposure of a write of `key`: `cli-only` when it may reach one of `cliOnlyKeys`. */
+  const cliOnly = (key: string | undefined): 'all' | 'cli-only' => {
+    const guarded = store.cliOnlyKeys ?? []
+    if (key === undefined || guarded.length === 0) return 'all'
+    const resolved = store.resolveKey !== undefined ? store.resolveKey(key) : key
+    if (resolved === undefined) return 'cli-only'
+    if (touchesNormalized(resolved, guarded)) return 'cli-only'
+    // A key the store does not list may be its spelling of a guarded one.
+    if (store.keys !== undefined && !touchesNormalized(resolved, store.keys)) return 'cli-only'
+    return 'all'
+  }
   const warnAll = (ctx: CommandContext, warnings: readonly string[] | undefined): void => {
     for (const w of warnings ?? []) ctx.warn(w)
   }
@@ -267,16 +317,17 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
       return { settings, locations: await store.locations(ctx) }
     },
     text(output, ctx) {
-      const rows = output.settings.map((s) => ({
-        key: s.key,
-        value: JSON.stringify(s.value) ?? 'undefined',
-        source: s.source,
-      }))
-      const kw = Math.max(0, ...rows.map((r) => r.key.length))
-      const vw = Math.max(0, ...rows.map((r) => r.value.length))
       // The locations go to stderr so the listing stays greppable.
-      ctx.io.stderr(layerLines(output.locations))
-      return rows.map((r) => `${r.key.padEnd(kw)}  ${r.value.padEnd(vw)}  (${r.source})\n`).join('')
+      ctx.io.stderr(safe(layerLines(output.locations)))
+      return safe(
+        table(
+          output.settings.map((s) => [
+            s.key,
+            JSON.stringify(s.value) ?? 'undefined',
+            `(${s.source})`,
+          ]),
+        ),
+      )
     },
   })
 
@@ -295,13 +346,13 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
       // A key below a listed one (`runners` when `runners.order` is listed) is a real key.
       const below = settings.filter((s) => s.key.startsWith(`${key}.`))
       if (below.length > 0) {
-        const value: Record<string, unknown> = {}
-        for (const s of below) value[s.key.slice(key.length + 1)] = s.value
+        // fromEntries makes own keys, so a key named __proto__ stays a key.
+        const value = Object.fromEntries(below.map((s) => [s.key.slice(key.length + 1), s.value]))
         return { key, value, source: [...new Set(below.map((s) => s.source))].join(',') }
       }
       throw new CommandError(`no value for ${key}${unknownKey(key)}`)
     },
-    text: (output) => `${JSON.stringify(output.value)}\n`,
+    text: (output) => safe(`${JSON.stringify(output.value)}\n`),
   })
 
   const set = kit.command({
@@ -330,7 +381,7 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
         throw err
       }
     },
-    text: (o) => `${o.file}: ${o.key} = ${JSON.stringify(o.value)}\n`,
+    text: (o) => safe(`${o.file}: ${o.key} = ${JSON.stringify(o.value)}\n`),
   })
 
   const unset = kit.command({
@@ -348,7 +399,7 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
       if (!result.removed) throw new CommandError(`${key} is not set in ${result.file}`)
       return { key, layer, file: result.file }
     },
-    text: (o) => `${o.file}: removed ${o.key}\n`,
+    text: (o) => safe(`${o.file}: removed ${o.key}\n`),
   })
 
   const path = kit.command({
@@ -359,7 +410,7 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
     async run(_input, ctx) {
       return { locations: await store.locations(ctx) }
     },
-    text: (o) => layerLines(o.locations),
+    text: (o) => safe(layerLines(o.locations)),
   })
 
   const explainStore = store.explain?.bind(store)
@@ -392,27 +443,19 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
             return explained(key, found.layers)
           },
           text(o) {
-            const rows = o.layers.map((l) => ({
-              layer: l.layer,
-              value: l.set ? (JSON.stringify(l.value) ?? 'undefined') : '-',
-              mark: l.won
+            const rows = o.layers.map((l) => [
+              l.layer,
+              l.set ? (JSON.stringify(l.value) ?? 'undefined') : '-',
+              l.won
                 ? 'wins'
                 : !l.allowed && l.set
                   ? `ignored${l.note !== undefined ? `: ${l.note}` : ''}`
                   : l.set
                     ? 'overridden'
                     : '',
-            }))
-            const lw = Math.max(...rows.map((r) => r.layer.length))
-            const vw = Math.max(...rows.map((r) => r.value.length))
+            ])
             const head = `${o.key} = ${JSON.stringify(o.value) ?? 'undefined'}  (${o.reason})\n`
-            return (
-              head +
-              rows
-                .map((r) => `  ${r.layer.padEnd(lw)}  ${r.value.padEnd(vw)}  ${r.mark}`.trimEnd())
-                .join('\n') +
-              '\n'
-            )
+            return safe(head + table(rows, '  '))
           },
         })
 
@@ -437,7 +480,9 @@ function explained(key: string, layers: readonly ConfigLayerValue[]) {
   const ignored = counted.slice(won + 1).filter((l) => l.set && !l.allowed)
   let reason =
     winner === undefined
-      ? 'no layer sets it'
+      ? ignored.length > 0
+        ? 'no layer allowed to set it sets it'
+        : 'no layer sets it'
       : won === counted.length - 1 || counted.slice(won + 1).every((l) => !l.set)
         ? `${winner.layer} is the highest layer that sets it`
         : `${winner.layer} is the highest layer allowed to set it`

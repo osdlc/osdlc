@@ -100,6 +100,27 @@ describe('routing and output', () => {
     expect(r.json()).toEqual({ schemaVersion: 1, kind: 'config-get', key: 'size', value: 42 })
   })
 
+  test("a command's own fields cannot replace schemaVersion or kind", async () => {
+    const sneaky = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      commands: {
+        x: defineCommand({
+          summary: 'x',
+          output: z.object({ n: z.number() }),
+          kind: 'real',
+          run: () => ({ n: 1, kind: 'other', schemaVersion: 99 }) as never,
+        }),
+      },
+    })
+    const r = await runApp(sneaky, ['x', '--json'])
+    expect(r.json()).toEqual({ schemaVersion: 1, kind: 'real', n: 1 })
+    expect(Object.keys(r.json()).slice(0, 2)).toEqual(['schemaVersion', 'kind'])
+    const called = await sneaky.call(['x'], {}, { cwd: '/', env: {} }, { surface: 'mcp' })
+    expect(called).toMatchObject({ document: { schemaVersion: 1, kind: 'real' } })
+  })
+
   test('a declared kind wins, and a group runs its default', async () => {
     const r = await runApp(app, ['config', '--json'])
     expect(r.json()).toMatchObject({ kind: 'config-list', values: ['a', 'b'] })
@@ -122,6 +143,48 @@ describe('routing and output', () => {
     expect(seen.rest).toEqual(['--not-a-flag', 'x'])
   })
 
+  test('a missing required positional takes a dash-leading word after --', async () => {
+    const r = await runApp(app, ['config', 'get', '--', '-5'])
+    expect(r).toMatchObject({ exit: 0, out: '-5=42\n' })
+    expect(seen.rest).toEqual([])
+    await runApp(app, ['config', 'get', '--', '-5', '--more'])
+    expect(seen.rest).toEqual(['--more'])
+  })
+
+  test('the value of a flag is not read as --help or --json', async () => {
+    const echo = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      commands: {
+        echo: defineCommand({
+          summary: 'echo',
+          flags: { name: { kind: 'string', help: 'a name' } },
+          output: z.object({ name: z.string().nullable() }),
+          run: ({ flags }) => ({ name: flags.name ?? null }),
+          text: (o) => `${o.name}\n`,
+        }),
+      },
+    })
+    expect(await runApp(echo, ['echo', '--name', '--help'])).toMatchObject({
+      exit: 0,
+      out: '--help\n',
+    })
+    expect(await runApp(echo, ['echo', '--name', '--json'])).toMatchObject({
+      exit: 0,
+      out: '--json\n',
+    })
+  })
+
+  test('an unknown command with --help is still a usage error', async () => {
+    const r = await runApp(app, ['nested', 'nosuch', '--help'])
+    expect(r.exit).toBe(2)
+    expect(r.err).toContain("unknown command 'nested nosuch'")
+    const under = await runApp(app, ['config', 'nosuch'])
+    expect(under.exit).toBe(2)
+    expect(under.err).toContain("unknown command 'config nosuch'")
+  })
+
   test('the root default takes a word that names no command', async () => {
     const r = await runApp(app, ['somedir'])
     expect(r).toMatchObject({ exit: 0, out: 'ui somedir\n' })
@@ -130,7 +193,7 @@ describe('routing and output', () => {
   test('an interactive command refuses --json with exit 2', async () => {
     const r = await runApp(app, ['--json'])
     expect(r.exit).toBe(2)
-    expect(r.out).toBe('')
+    expect(r.json()).toMatchObject({ kind: 'error', code: 'usage', exit: 2 })
     expect(r.err).toContain('is interactive and has no JSON form')
   })
 
@@ -182,7 +245,28 @@ describe('errors', () => {
   test('a UsageError from run is exit 2', async () => {
     const r = await runApp(app, ['fails', '--usage', '--json'])
     expect(r.exit).toBe(2)
-    expect(r.out).toBe('')
+    expect(r.json()).toMatchObject({ kind: 'error', code: 'usage', message: 'bad combination' })
+  })
+
+  test('under --json or jsonl an error is also a document on stdout', async () => {
+    const text = await runApp(app, ['fails'])
+    expect(text.out).toBe('')
+    const json = await runApp(app, ['fails', '--json'])
+    expect(json).toMatchObject({ exit: 12, err: 'tooly: it broke\ntry again\n' })
+    expect(json.json()).toEqual({
+      schemaVersion: 1,
+      kind: 'error',
+      code: 'error',
+      message: 'it broke',
+      exit: 12,
+      hint: 'try again',
+    })
+    const jsonl = await runApp(app, ['config', 'get', '--output', 'jsonl'])
+    expect(jsonl.exit).toBe(2)
+    expect(jsonl.out.trimEnd().split('\n')).toHaveLength(1)
+    expect(JSON.parse(jsonl.out)).toMatchObject({ kind: 'error', code: 'usage' })
+    const unknown = await runApp(app, ['nosuch', '--json'])
+    expect(JSON.parse(unknown.out)).toMatchObject({ kind: 'error', code: 'usage' })
   })
 
   test('a thrown failure exits with its category code', async () => {
@@ -203,6 +287,14 @@ describe('errors', () => {
     const r = await runApp(broken, ['x'])
     expect(r.exit).toBe(22)
     expect(r.err).toContain('t: git is not installed')
+    const json = await runApp(broken, ['x', '--json'])
+    expect(json.json()).toEqual({
+      schemaVersion: 1,
+      kind: 'error',
+      code: 'not-installed',
+      message: 'git is not installed',
+      exit: 22,
+    })
   })
 
   test('any other thrown error propagates to runMain', async () => {
@@ -336,6 +428,78 @@ describe('declaration checks', () => {
     ).toThrow("declares 'dir', which is a global flag")
   })
 
+  test('a flag may not take -h, or a short a global takes', () => {
+    expect(() =>
+      defineCommand({
+        summary: 'x',
+        flags: { host: { kind: 'string', short: 'h', help: 'h' } },
+        output: z.object({}),
+        run: () => ({}),
+      }),
+    ).toThrow("'host' takes -h")
+    expect(() =>
+      defineApp({
+        name: 't',
+        version: '0',
+        summary: 's',
+        globals: { verbose: { kind: 'boolean', short: 'h', help: 'h' } },
+        commands: {},
+      }),
+    ).toThrow("'verbose' takes -h")
+    expect(() =>
+      defineApp({
+        name: 't',
+        version: '0',
+        summary: 's',
+        globals: GLOBALS,
+        commands: {
+          x: defineCommand({
+            summary: 'x',
+            flags: { color: { kind: 'boolean', short: 'C', help: 'h' } },
+            output: z.object({}),
+            run: () => ({}),
+          }),
+        },
+      }),
+    ).toThrow('declares -C, which a global flag takes')
+  })
+
+  test('a command may not give a meaning to the shared failure codes 22-25', () => {
+    for (const code of [22, 25]) {
+      expect(() =>
+        defineCommand({
+          summary: 'x',
+          exits: { [code]: 'mine' },
+          output: z.object({}),
+          run: () => ({}),
+        }),
+      ).toThrow(`exit code ${code} is one of the shared failure codes`)
+    }
+  })
+
+  test('a flag named after an Object.prototype member is not taken for a builtin', () => {
+    const c = defineCommand({
+      summary: 'x',
+      flags: { constructor: { kind: 'string', help: 'h' } } as const,
+      output: z.object({}),
+      run: () => ({}),
+    })
+    expect(() =>
+      defineApp({ name: 't', version: '0', summary: 's', globals: GLOBALS, commands: { c } }),
+    ).not.toThrow()
+  })
+
+  test('an items element may not declare schemaVersion or kind', () => {
+    expect(() =>
+      defineCommand({
+        summary: 'x',
+        output: z.object({ records: z.array(z.object({ kind: z.string() })) }),
+        items: { field: 'records', kind: 'record' },
+        run: () => ({ records: [] }),
+      }),
+    ).toThrow("an items element may not declare 'kind'")
+  })
+
   test('a global may not be a builtin', () => {
     expect(() =>
       defineApp({
@@ -389,12 +553,36 @@ describe('context', () => {
     })
     const tty = { stdin: true, stdout: true, stderr: true, columns: 120 }
     await runApp(probe, ['x'], { env: {}, terminal: tty })
-    await runApp(probe, ['x'], { env: { NO_COLOR: '1', FORCE_COLOR: '1' }, terminal: tty })
+    await runApp(probe, ['x'], { env: { FORCE_COLOR: '0' }, terminal: tty })
     await runApp(probe, ['x'], { env: { FORCE_COLOR: '1' } })
     await runApp(probe, ['x'], { env: {} })
     await runApp(probe, ['x', '--json'], { env: { FORCE_COLOR: '1' }, terminal: tty })
     await runApp(probe, ['x'], { env: { TERM: 'dumb' }, terminal: tty })
-    expect(colors).toEqual([true, false, true, false, false, false])
+    await runApp(probe, ['x'], { env: { NO_COLOR: '1' }, terminal: tty })
+    expect(colors).toEqual([true, false, true, false, false, false, false])
+  })
+
+  test('colorEnabled is @osdlc/ux detectColorLevel for stdout', async () => {
+    const { detectColorLevel } = await import('@osdlc/ux')
+    const { colorEnabled } = await import('../../src/io.ts')
+    const envs = [
+      {},
+      { NO_COLOR: '1' },
+      { NO_COLOR: '' },
+      { FORCE_COLOR: '0' },
+      { FORCE_COLOR: '3' },
+      { TERM: 'dumb' },
+      { NO_COLOR: '1', FORCE_COLOR: '2' },
+    ]
+    for (const env of envs) {
+      for (const stdout of [true, false]) {
+        const ctx = {
+          ...captureContext({ env }),
+          terminal: { stdin: stdout, stdout, stderr: stdout },
+        }
+        expect(colorEnabled(ctx)).toBe(detectColorLevel({ env, isTTY: stdout }) !== 'none')
+      }
+    }
   })
 
   test('warn and note write prefixed lines to stderr', async () => {

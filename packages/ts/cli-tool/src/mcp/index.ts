@@ -2,7 +2,8 @@
  * `@osdlc/cli-tool/mcp`: serve an app's command tree as an MCP server.
  *
  * Each data command is a tool. Its name is the command's path joined with
- * `_`, its input schema comes from the command's flags and positionals, and
+ * `_` (the app's name for the root command), and two commands that join to
+ * the same name are an error when the tools are listed. Its input schema comes from the command's flags and positionals, and
  * its output schema and `structuredContent` are the command's `--json`
  * document. Interactive commands and `cli-only` commands are not tools. A
  * command whose `exposureOf` marks an input `cli-only` is a tool, and a call
@@ -20,7 +21,9 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js'
 import {
   CallToolRequestSchema,
+  ErrorCode,
   ListToolsRequestSchema,
+  McpError,
   type CallToolResult,
   type Tool,
 } from '@modelcontextprotocol/sdk/types.js'
@@ -69,9 +72,29 @@ export function toolName(app: App, path: readonly string[]): string {
 
 /**
  * The tools `app` serves under `options`.
+ *
+ * Throws when two commands get the same tool name, such as a group `a` with a
+ * command `b` and a root command `a_b`, or a command named after the app.
+ * Rename one of them.
  * @experimental
  */
 export function mcpTools(app: App, options: McpOptions = {}): McpTool[] {
+  const tools = listTools(app, options)
+  const seen = new Map<string, readonly string[]>()
+  for (const tool of tools) {
+    const other = seen.get(tool.name)
+    if (other !== undefined) {
+      const show = (path: readonly string[]) => [app.name, ...path].join(' ')
+      throw new Error(
+        `mcp: '${show(other)}' and '${show(tool.path)}' are both the tool '${tool.name}'; rename one`,
+      )
+    }
+    seen.set(tool.name, tool.path)
+  }
+  return tools
+}
+
+function listTools(app: App, options: McpOptions): McpTool[] {
   return app
     .schema()
     .filter(
@@ -146,7 +169,15 @@ export function createMcpServer(
   ctx: Omit<CliContext, 'io'>,
   options: McpOptions = {},
 ): Server {
-  const tools = mcpTools(app, options)
+  return serverFor(app, ctx, options, mcpTools(app, options))
+}
+
+function serverFor(
+  app: App,
+  ctx: Omit<CliContext, 'io'>,
+  options: McpOptions,
+  tools: readonly McpTool[],
+): Server {
   const byName = new Map(tools.map((t) => [t.name, t]))
   const server = new Server(
     { name: app.name, version: app.version },
@@ -157,8 +188,9 @@ export function createMcpServer(
   }))
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const tool = byName.get(request.params.name)
+    // The protocol names an unknown tool as a request error, not a tool result.
     if (tool === undefined) {
-      return { content: [text(`no tool '${request.params.name}'`)], isError: true }
+      throw new McpError(ErrorCode.InvalidParams, `no tool '${request.params.name}'`)
     }
     const progressToken = request.params._meta?.progressToken
     let progress = 0
@@ -194,7 +226,8 @@ export async function serveMcp(
   options: McpOptions & { transport?: Transport } = {},
 ): Promise<void> {
   const { io: _io, ...rest } = ctx
-  const server = createMcpServer(app, rest, options)
+  const tools = mcpTools(app, options)
+  const server = serverFor(app, rest, options, tools)
   const closed = new Promise<void>((resolve) => {
     server.onclose = () => resolve()
   })
@@ -205,7 +238,7 @@ export async function serveMcp(
   ctx.signal?.addEventListener('abort', stop, { once: true })
   await server.connect(transport)
   if (ctx.signal?.aborted === true) stop()
-  ctx.io.stderr(`${app.name}: serving ${mcpTools(app, options).length} tools over MCP\n`)
+  ctx.io.stderr(`${app.name}: serving ${tools.length} tools over MCP\n`)
   await closed
   process.stdin.off('end', stop)
   ctx.signal?.removeEventListener('abort', stop)

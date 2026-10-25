@@ -41,6 +41,13 @@ export interface CommandContext extends CliContext {
   app: App
   /** The words that selected this command, such as `['config', 'get']`. */
   path: readonly string[]
+  /**
+   * The app's global flag values, keyed as declared, such as `dir` for `-C`.
+   * The same values as `input.globals`, here so a shared command's store or
+   * service can read them. Through an adapter they are the values the server
+   * was started with.
+   */
+  globals: Readonly<Record<string, unknown>>
   /** Whether the answer is JSON: `--json`, `--output json` or `--output jsonl`, or a call through an adapter. */
   json: boolean
   /** The output mode. A call through an adapter is `json`. */
@@ -126,17 +133,21 @@ export function isOutcome(value: unknown): value is Outcome<unknown> {
 /**
  * A command that cannot do what it was asked. The app prints
  * `<app>: <message>` and the hint on stderr and exits with `exit`
- * ({@link EXIT.error} unless given).
+ * ({@link EXIT.error} unless given). Under `--json` it also prints an error
+ * document whose `code` is `code` (default `error`).
  * @experimental
  */
 export class CommandError extends Error {
   readonly exit: ExitCode
   readonly hint: string | undefined
-  constructor(message: string, options: { exit?: ExitCode; hint?: string } = {}) {
+  /** A stable name for the error, for the error document. */
+  readonly code: string
+  constructor(message: string, options: { exit?: ExitCode; hint?: string; code?: string } = {}) {
     super(message)
     this.name = 'CommandError'
     this.exit = options.exit ?? 1
     this.hint = options.hint
+    this.code = options.code ?? 'error'
   }
 }
 
@@ -148,7 +159,7 @@ export class CommandError extends Error {
  */
 export class UsageError extends CommandError {
   constructor(message: string) {
-    super(message, { exit: 2 })
+    super(message, { exit: 2, code: 'usage' })
     this.name = 'UsageError'
   }
 }
@@ -367,11 +378,30 @@ export interface CommandKit<G extends FlagSpec> {
 
 const RESERVED_KEYS = ['schemaVersion', 'kind'] as const
 
+/** The shared failure codes (`EXIT_FAILURE`), which a command may not give a meaning of its own. */
+const RESERVED_EXIT_MIN = 22
+const RESERVED_EXIT_MAX = 25
+
+/**
+ * Refuse a flag the app provides: a builtin name, `version`, or the `-h` short.
+ * @internal
+ */
+export function checkFlags(flags: FlagSpec, what: string): void {
+  for (const [key, decl] of Object.entries(flags)) {
+    if (Object.hasOwn(BUILTIN_FLAGS, key) || key === 'version') {
+      throw new Error(`${what} '${key}' is provided by the app; do not declare it`)
+    }
+    if (decl.short === 'h') {
+      throw new Error(`${what} '${key}' takes -h, which is the app's short for --help`)
+    }
+  }
+}
+
 function checkReserved(schema: OutputSchema, what: string): void {
   const shape = schema.shape as Record<string, unknown> | undefined
   if (shape === undefined) throw new Error(`defineCommand: ${what} must be a z.object`)
   for (const key of RESERVED_KEYS) {
-    if (key in shape) {
+    if (Object.hasOwn(shape, key)) {
       throw new Error(`defineCommand: ${what} may not declare '${key}'; the app adds it`)
     }
   }
@@ -385,27 +415,33 @@ function checkCommand(
   },
 ): void {
   if (spec.summary.trim() === '') throw new Error('defineCommand: summary is empty')
-  for (const key of Object.keys(spec.flags ?? {})) {
-    if (key in BUILTIN_FLAGS || key === 'version') {
-      throw new Error(`defineCommand: flag '${key}' is provided by the app; do not declare it`)
-    }
-  }
+  checkFlags(spec.flags ?? {}, 'defineCommand: flag')
   for (const code of Object.keys(spec.exits ?? {}).map(Number)) {
     if (!(code === 1 || (Number.isInteger(code) && code >= 10 && code <= 63))) {
       throw new Error(`defineCommand: exit code ${code} must be 1 or in 10-63`)
+    }
+    if (code >= RESERVED_EXIT_MIN && code <= RESERVED_EXIT_MAX) {
+      throw new Error(
+        `defineCommand: exit code ${code} is one of the shared failure codes (22-25); pick another`,
+      )
     }
   }
   if (spec.output !== undefined) {
     checkReserved(spec.output, 'output')
     if (spec.items !== undefined) {
-      const field = (spec.output.shape as Record<string, { def?: { type?: string } }>)[
-        spec.items.field
-      ]
+      const shape = spec.output.shape as Record<
+        string,
+        { def?: { type?: string; element?: { shape?: unknown } } }
+      >
+      const field = Object.hasOwn(shape, spec.items.field) ? shape[spec.items.field] : undefined
       if (field?.def?.type !== 'array') {
         throw new Error(
           `defineCommand: items.field '${spec.items.field}' is not an array of the output`,
         )
       }
+      // Each jsonl line is an element with `schemaVersion` and `kind` set by the app.
+      const element = field.def.element
+      if (element?.shape !== undefined) checkReserved(element as OutputSchema, 'an items element')
     }
   }
   if (spec.events !== undefined) checkReserved(spec.events.schema, 'events.schema')

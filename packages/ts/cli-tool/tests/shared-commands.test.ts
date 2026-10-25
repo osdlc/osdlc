@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os'
+
 import { describe, expect, test } from 'vitest'
 
 import { defineApp } from '../src/command/index.ts'
@@ -118,6 +120,8 @@ describe('config', () => {
   test('parseConfigValue reads JSON, else the bare string', () => {
     expect(parseConfigValue('["a"]')).toEqual(['a'])
     expect(parseConfigValue('git')).toBe('git')
+    expect(() => parseConfigValue('1e400')).toThrow(ConfigUsageError)
+    expect(parseConfigValue('-5')).toBe(-5)
     expect(parseConfigValue('true')).toBe(true)
   })
 
@@ -216,11 +220,8 @@ describe('config', () => {
       '/project.json: removed discovery\n',
     )
     const again = await runApp(app, ['config', 'unset', 'discovery', '--json'])
-    expect(again).toMatchObject({
-      exit: 1,
-      out: '',
-      err: 't: discovery is not set in /project.json\n',
-    })
+    expect(again).toMatchObject({ exit: 1, err: 't: discovery is not set in /project.json\n' })
+    expect(again.json()).toMatchObject({ kind: 'error', code: 'error', exit: 1 })
   })
 
   test('config path names each file', async () => {
@@ -301,6 +302,64 @@ describe('trust', () => {
     const r = await runApp(appWith(), ['trust', '--show', '--list'])
     expect(r.exit).toBe(2)
     expect(r.err).toContain('--show and --list ask different things')
+  })
+
+  test('--untrust with no marker on a root a policy trusts says so', async () => {
+    const r = await runApp(appWith(), ['trust', '--untrust'], { cwd: '/policy/x' })
+    expect(r.exit).toBe(1)
+    expect(r.err).toBe(
+      "t: /policy/x has no marker to remove; it is trusted by path ('/policy/**'), which --untrust does not change\n",
+    )
+  })
+
+  test('a bad --scope is a usage error, and * is refused', async () => {
+    const app = appWith()
+    for (const scope of ['*', '', ' moon', 'a\u0007b']) {
+      const r = await runApp(app, ['trust', '--scope', scope], { cwd: '/repo' })
+      expect(r.exit).toBe(2)
+    }
+    const star = await runApp(app, ['trust', '--scope', '*'], { cwd: '/repo' })
+    expect(star.err).toContain("--scope '*' is the whole repository")
+    const called = await app.call(
+      ['trust'],
+      { show: true, scope: '' },
+      { cwd: '/r', env: {} },
+      {
+        surface: 'mcp',
+      },
+    )
+    expect(called).toMatchObject({ status: 'error', exit: 2 })
+  })
+
+  test('--untrust-all removes every grant, when the service can', async () => {
+    const svc = trustService()
+    svc.untrustAll = async (ctx) => ({
+      root: ctx.cwd,
+      removed: svc.marked.delete(ctx.cwd)
+        ? [
+            { root: ctx.cwd, trusted: false, by: null },
+            { root: ctx.cwd, trusted: false, by: null, scope: 'moon' },
+          ]
+        : [],
+    })
+    svc.marked.add('/repo')
+    const app = appWith(memoryStore(), svc)
+    const r = await runApp(app, ['trust', '--untrust-all'], { cwd: '/repo' })
+    expect(r).toMatchObject({ exit: 0, out: 'untrusted /repo\nuntrusted /repo (moon)\n' })
+    const again = await runApp(app, ['trust', '--untrust-all'], { cwd: '/repo' })
+    expect(again).toMatchObject({ exit: 1, err: 't: no grants to remove: /repo\n' })
+    const both = await runApp(app, ['trust', '--untrust-all', '--scope', 'moon'], { cwd: '/repo' })
+    expect(both.exit).toBe(2)
+    const viaMcp = await app.call(
+      ['trust'],
+      { untrustAll: true },
+      { cwd: '/repo', env: {} },
+      {
+        surface: 'mcp',
+      },
+    )
+    expect(viaMcp.status).not.toBe('refused')
+    expect((await runApp(appWith(), ['trust', '--untrust-all'])).exit).toBe(2)
   })
 
   test('without scopes there is no --scope flag', async () => {
@@ -384,5 +443,159 @@ describe('guide', () => {
         allow: ['--frobnicate', '-Z'],
       }),
     ).toEqual([])
+  })
+})
+
+describe('global flags reach the shared commands', () => {
+  const GLOBALS = {
+    dir: { kind: 'string', short: 'C', valueName: 'path', help: 'the directory' },
+  } as const
+  const rootOf = (ctx: { cwd: string; globals: Readonly<Record<string, unknown>> }): string =>
+    typeof ctx.globals['dir'] === 'string' ? ctx.globals['dir'] : ctx.cwd
+
+  test('trust and config see -C through ctx.globals', async () => {
+    const roots: string[] = []
+    const service: TrustService = {
+      async trust(ctx) {
+        roots.push(rootOf(ctx))
+        return { root: rootOf(ctx), trusted: true, by: 'marker', changed: true }
+      },
+      async untrust(ctx) {
+        return { root: rootOf(ctx), trusted: false, by: null, changed: true }
+      },
+      async show(ctx) {
+        return { root: rootOf(ctx), trusted: false, by: null }
+      },
+      async list() {
+        return []
+      },
+    }
+    const store = memoryStore()
+    const list = store.list.bind(store)
+    store.list = async (ctx) => {
+      roots.push(`config:${rootOf(ctx)}`)
+      return list(ctx)
+    }
+    const app = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      globals: GLOBALS,
+      commands: {
+        trust: trustCommand(service, { globals: GLOBALS }),
+        config: configCommands(store, { globals: GLOBALS }),
+      },
+    })
+    const ctx = { cwd: '/repo-a', env: {} }
+    const r = await runApp(app, ['-C', '/repo-b', 'trust'], ctx)
+    expect(r.out).toBe('trusted /repo-b\n')
+    await runApp(app, ['config', 'list', '--dir', '/repo-c'], ctx)
+    const called = await app.call(['trust'], { show: true }, ctx, {
+      surface: 'mcp',
+      globals: { dir: '/repo-d' },
+    })
+    expect(called).toMatchObject({ document: { roots: [{ root: '/repo-d' }] } })
+    expect(roots).toEqual(['/repo-b', 'config:/repo-c'])
+  })
+})
+
+describe('text output drops terminal controls', () => {
+  const ESC = '\u001b'
+  test('in config keys and warnings, trust roots and guide bodies', async () => {
+    const store = memoryStore()
+    store.list = async () => ({
+      settings: [{ key: `evil${ESC}]0;title${ESC}\\`, value: `x${ESC}[2J`, source: 'project' }],
+      warnings: [`bad ${ESC}[31mred`],
+    })
+    const trust = trustService()
+    trust.show = async () => ({ root: `/r${ESC}[1A`, trusted: false, by: null })
+    const topics: GuideTopic[] = [
+      { id: 'live', title: 'Live', summary: 's', body: () => `data ${ESC}[2Jhere\n\tindented` },
+    ]
+    const app = appWith(store, trust, topics)
+    const list = await runApp(app, ['config', 'list'])
+    const show = await runApp(app, ['trust', '--show'])
+    const guide = await runApp(app, ['guide', 'live'])
+    for (const text of [list.out, list.err, show.out, guide.out]) expect(text).not.toContain(ESC)
+    expect(list.out).toContain('evil')
+    expect(list.err).toContain('t: warning: bad red')
+    expect(show.out).toBe('not trusted /r\n')
+    expect(guide.out).toContain('data here\n\tindented')
+  })
+})
+
+describe('config edge cases', () => {
+  test('a number too large for JSON is a usage error', async () => {
+    const r = await runApp(appWith(), ['config', 'set', 'discovery', '1e400'])
+    expect(r.exit).toBe(2)
+    expect(r.err).toContain('1e400 is too large for a number')
+  })
+
+  test('get of a key above a listed one keeps a __proto__ part as a key', async () => {
+    const store = memoryStore()
+    store.list = async () => ({
+      settings: [{ key: 'a.__proto__', value: 1, source: 'user' }],
+    })
+    const r = await runApp(appWith(store), ['config', 'get', 'a', '--json'])
+    expect(r.json()).toMatchObject({ key: 'a', value: { ['__proto__']: 1 } })
+    expect(Object.hasOwn(r.json<{ value: object }>().value, '__proto__')).toBe(true)
+  })
+})
+
+describe('runApp', () => {
+  test('a run without overrides sees a scratch home and directory, not the real ones', async () => {
+    const seen: { cwd: string; home: string | undefined }[] = []
+    const store = memoryStore()
+    store.list = async (ctx) => {
+      seen.push({ cwd: ctx.cwd, home: ctx.env['HOME'] })
+      return { settings: [] }
+    }
+    await runApp(appWith(store), ['config', 'list'])
+    expect(seen[0]!.cwd).not.toBe(process.cwd())
+    expect(seen[0]!.home).toBeDefined()
+    expect(seen[0]!.home).not.toBe(process.env['HOME'])
+    expect(seen[0]!.home!.startsWith(tmpdir()) || seen[0]!.home!.includes('cli-tool-run-')).toBe(
+      true,
+    )
+  })
+
+  test('picks the schema by path when two commands share a kind', async () => {
+    const { defineCommand } = await import('../src/command/index.ts')
+    const { z } = await import('zod')
+    const app = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      commands: {
+        a: defineCommand({
+          summary: 'a',
+          kind: 'same',
+          output: z.object({ n: z.number() }),
+          run: () => ({ n: 1 }),
+        }),
+        b: defineCommand({
+          summary: 'b',
+          kind: 'same',
+          output: z.object({ s: z.string() }),
+          run: () => ({ s: 'x' }),
+        }),
+      },
+    })
+    await expect(runApp(app, ['b', '--json'])).resolves.toMatchObject({ exit: 0 })
+    await expect(runApp(app, ['a', '--json'])).resolves.toMatchObject({ exit: 0 })
+  })
+})
+
+describe('trust --scope with a service parseScope', () => {
+  test('the service reads the scope, and its refusal is a usage error', async () => {
+    const { parseTrustScope } = await import('@osdlc/trust-repo')
+    const svc = { ...trustService(), parseScope: parseTrustScope }
+    const app = appWith(memoryStore(), svc)
+    const ok = await runApp(app, ['trust', '--show', '--scope', ' moon ', '--json'], { cwd: '/a' })
+    expect(ok.json()).toMatchObject({ roots: [{ scope: 'moon' }] })
+    for (const scope of ['*', '']) {
+      const r = await runApp(app, ['trust', '--scope', scope], { cwd: '/a' })
+      expect(r.exit).toBe(2)
+    }
   })
 })

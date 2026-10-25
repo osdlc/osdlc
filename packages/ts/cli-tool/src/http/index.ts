@@ -10,12 +10,13 @@
  * Every request passes three checks, in this order, before anything else:
  *
  * 1. The `Host` header names a loopback address. A page on another site that
- *    rebinds its domain to 127.0.0.1 sends its own name, and is refused.
+ *    rebinds its domain to 127.0.0.1 sends its own name, and is refused. With
+ *    the `port` option, it names that port too.
  * 2. An `Origin` header, when present, is this server's own origin, and
  *    `Sec-Fetch-Site` is not `cross-site` or `same-site`.
- * 3. `Authorization: Bearer <token>`. A header, never a cookie or the URL, so
- *    a cross-origin page must pass a CORS preflight, which this server never
- *    answers.
+ * 3. `Authorization: Bearer <token>`, the scheme in any case. A header,
+ *    never a cookie or the URL, so a cross-origin page must pass a CORS
+ *    preflight, which this server never answers.
  *
  * Failing 1 or 2 answers 403; failing 3 answers 401, for every path, so an
  * unauthenticated caller learns nothing about the routes. A body is read only
@@ -27,6 +28,7 @@
  */
 
 import {
+  errorDocument,
   type App,
   type CallOptions,
   type CallResult,
@@ -65,6 +67,12 @@ export interface HttpApiOptions {
   confirmTtlMs?: number
   /** The largest request body read. Default 1 MiB. */
   maxBodyBytes?: number
+  /**
+   * The port the server listens on. When given, a `Host` header must name it
+   * too, so a request meant for another local server is refused. Default: any
+   * port.
+   */
+  port?: number
 }
 
 /**
@@ -116,8 +124,15 @@ function json(body: unknown, status = 200, extra: Record<string, string> = {}): 
   return Response.json(body, { status, headers: { ...HEADERS, ...extra } })
 }
 
-function errorDoc(exit: number, message: string, more: Record<string, unknown> = {}) {
-  return { schemaVersion: 1, kind: 'error', exit, message, ...more }
+/** The error document, with fields beyond it after. */
+function errorDoc(
+  code: string,
+  exit: number,
+  message: string,
+  hint?: string,
+  more: Record<string, unknown> = {},
+) {
+  return { ...errorDocument(code, message, exit, hint), ...more }
 }
 
 /** Read at most `max` bytes of `request`'s body, or null when it is larger. */
@@ -149,14 +164,23 @@ function statusOf(result: Exclude<CallResult, { status: 'ok' }>): number {
 
 function failureBody(result: Exclude<CallResult, { status: 'ok' }>): Record<string, unknown> {
   if (result.status === 'refused') {
-    return errorDoc(result.reason === 'cli-only' ? 1 : 2, result.message, {
-      refused: result.reason,
-    })
+    return errorDoc(
+      result.reason,
+      result.reason === 'cli-only' ? 1 : 2,
+      result.message,
+      undefined,
+      {
+        refused: result.reason,
+      },
+    )
   }
-  return errorDoc(result.exit, result.message, {
-    ...(result.hint !== undefined ? { hint: result.hint } : {}),
-    ...(result.stderr !== '' ? { stderr: result.stderr } : {}),
-  })
+  return errorDoc(
+    result.code,
+    result.exit,
+    result.message,
+    result.hint,
+    result.stderr !== '' ? { stderr: result.stderr } : {},
+  )
 }
 
 /**
@@ -171,7 +195,7 @@ function failureBody(result: Exclude<CallResult, { status: 'ok' }>): Record<stri
  *
  * With `Accept: application/x-ndjson`, the answer streams: one JSON line per
  * event the command sends, then the document (or the error) as the last
- * line. Closing the connection cancels the command through `ctx.signal`.
+ * line. A call that fails before its first event answers with its own status. Closing the connection cancels the command through `ctx.signal`.
  * @experimental
  */
 export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
@@ -195,21 +219,23 @@ export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
   const callablePaths = new Set(callable().map((e) => e.path.join(' ')))
 
   const checkOrigin = (request: Request): Response | null => {
-    const forbidden = new Response('forbidden', { status: 403, headers: HEADERS })
+    const forbidden = (): Response => new Response('forbidden', { status: 403, headers: HEADERS })
     const host = request.headers.get('host')
-    if (host === null) return forbidden
-    const hostname = host.replace(/:\d+$/, '').toLowerCase()
-    if (!LOOPBACK.has(hostname)) return forbidden
+    if (host === null) return forbidden()
+    const [, hostname = '', port] = /^(.*?)(?::(\d+))?$/.exec(host.toLowerCase()) ?? []
+    if (!LOOPBACK.has(hostname)) return forbidden()
+    if (options.port !== undefined && port !== String(options.port)) return forbidden()
     const origin = request.headers.get('origin')
-    if (origin !== null && origin !== `http://${host.toLowerCase()}`) return forbidden
+    if (origin !== null && origin !== `http://${host.toLowerCase()}`) return forbidden()
     const site = request.headers.get('sec-fetch-site')
-    if (site === 'cross-site' || site === 'same-site') return forbidden
+    if (site === 'cross-site' || site === 'same-site') return forbidden()
     return null
   }
 
   const hasToken = (request: Request): boolean => {
     const header = request.headers.get('authorization')
-    const match = header === null ? null : /^Bearer (\S+)$/.exec(header)
+    // The scheme name is case-insensitive (RFC 9110, section 11.1).
+    const match = header === null ? null : /^Bearer +(\S+)$/i.exec(header.trim())
     return match !== null && tokenEquals(match[1]!, token)
   }
 
@@ -238,26 +264,27 @@ export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
   const runCommand = async (request: Request, words: string[]): Promise<Response> => {
     const name = words.join(' ')
     if (!callablePaths.has(name)) {
-      return json(errorDoc(2, `no command '${[app.name, ...words].join(' ')}'`), 404)
+      return json(errorDoc('not-found', 2, `no command '${[app.name, ...words].join(' ')}'`), 404)
     }
     const type = request.headers.get('content-type') ?? ''
     if (!/^application\/json\b/i.test(type)) {
-      return json(errorDoc(2, 'send the arguments as application/json'), 415)
+      return json(errorDoc('usage', 2, 'send the arguments as application/json'), 415)
     }
     const raw = await readBody(request, maxBody)
-    if (raw === null) return json(errorDoc(2, `the body is larger than ${maxBody} bytes`), 413)
+    if (raw === null)
+      return json(errorDoc('usage', 2, `the body is larger than ${maxBody} bytes`), 413)
     let args: unknown
     try {
       args = raw.trim() === '' ? {} : JSON.parse(raw)
     } catch {
-      return json(errorDoc(2, 'the body is not JSON'), 400)
+      return json(errorDoc('usage', 2, 'the body is not JSON'), 400)
     }
 
     const key = `${name}\n${raw}`
     const confirmHeader = request.headers.get('x-confirm')
     const confirmed = confirmHeader !== null && spendNonce(confirmHeader, key)
     if (confirmHeader !== null && !confirmed) {
-      return json(errorDoc(1, 'the confirmation is not valid; ask again'), 403)
+      return json(errorDoc('cli-only', 1, 'the confirmation is not valid; ask again'), 403)
     }
 
     const stream = (request.headers.get('accept') ?? '').includes(NDJSON)
@@ -311,9 +338,11 @@ export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
 
     if (!stream) return plain(await done)
 
-    // Wait for the first event or the end, so a refusal still gets its own status.
+    // Wait for the first event or the end, so a call that fails or is refused
+    // before it sends anything still gets its own status. Only a failure after
+    // the first event is an in-stream line.
     const first = await Promise.race([eventSeen, done])
-    if (first !== 'event' && first.status !== 'ok' && first.status !== 'error') return plain(first)
+    if (first !== 'event' && first.status !== 'ok') return plain(first)
 
     const encoder = new TextEncoder()
     let open = true
@@ -331,7 +360,8 @@ export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
         push = write
         void done.then(
           (result) => end(result.status === 'ok' ? result.document : failureBody(result)),
-          (err: unknown) => end(errorDoc(1, err instanceof Error ? err.message : String(err))),
+          (err: unknown) =>
+            end(errorDoc('error', 1, err instanceof Error ? err.message : String(err))),
         )
       },
       cancel() {
@@ -355,7 +385,7 @@ export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
       })
     }
     const url = new URL(request.url)
-    if (!handles(request)) return json(errorDoc(2, 'not found'), 404)
+    if (!handles(request)) return json(errorDoc('not-found', 2, 'not found'), 404)
     const rest = url.pathname.slice(prefix.length)
     let words: string[]
     try {
@@ -364,12 +394,12 @@ export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
         .filter((w) => w !== '')
         .map((w) => decodeURIComponent(w))
     } catch {
-      return json(errorDoc(2, 'the path is not valid'), 400)
+      return json(errorDoc('usage', 2, 'the path is not valid'), 400)
     }
     const [route, ...path] = words
     const method = request.method
     const only = (allowed: string): Response =>
-      json(errorDoc(2, `use ${allowed}`), 405, { allow: allowed })
+      json(errorDoc('usage', 2, `use ${allowed}`), 405, { allow: allowed })
 
     if (route === 'schema' && path.length === 0) {
       if (method !== 'GET') return only('GET')
@@ -406,14 +436,14 @@ export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
           help,
         })
       } catch (err) {
-        return json(errorDoc(2, (err as Error).message), 404)
+        return json(errorDoc('not-found', 2, (err as Error).message), 404)
       }
     }
     if (route === 'commands') {
       if (method !== 'POST') return only('POST')
       return runCommand(request, path)
     }
-    return json(errorDoc(2, 'not found'), 404)
+    return json(errorDoc('not-found', 2, 'not found'), 404)
   }
 
   return { token, prefix, handles, fetch, checkOrigin, hasToken }
@@ -448,16 +478,21 @@ export function httpApiCommand<G extends FlagSpec = Record<never, never>>(
         ctx.io.stderr(`${ctx.app.name}: --port needs a number from 0 to 65535\n`)
         return 2
       }
-      const api = createHttpApi(ctx.app, {
+      // The API is made once the port is known, so it checks Host against it.
+      let api: HttpApi | undefined
+      const server = await serveHttp((request) => api!.fetch(request), { port })
+      api = createHttpApi(ctx.app, {
         context: { cwd: ctx.cwd, env: ctx.env },
         globals: globals as Record<string, unknown>,
         readOnly: flags.readOnly,
+        port: server.port,
       })
-      const server = await serveHttp(api.fetch, { port })
+      // printf is a shell builtin and curl reads the header from stdin, so
+      // the token never shows in the process list.
       ctx.io.stdout(
         `${ctx.app.name} api  ${server.url}\n` +
           `  token  ${api.token}\n` +
-          `  try    curl -H "Authorization: Bearer ${api.token}" ${server.url}/schema\n` +
+          `  try    printf 'Authorization: Bearer %s\\n' '${api.token}' | curl -H @- ${server.url}/schema\n` +
           `  stop   Ctrl-C\n`,
       )
       await new Promise<void>((resolve) => {

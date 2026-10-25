@@ -110,12 +110,14 @@
     "@osdlc/config-layers": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
     "@osdlc/result": "workspace:^",
+    "@osdlc/ux": "workspace:^",
     "commander": "^12.1.0"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/trust-repo": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",

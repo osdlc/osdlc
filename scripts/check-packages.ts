@@ -2,8 +2,11 @@
 // tarball. For each package it runs `pnpm pack` (which rewrites `workspace:`
 // ranges), checks the shared shape, runs publint, runs Are The Types Wrong if
 // the package ships types, and then tries a clean consumer. The consumer step
-// runs `npm install <tarball>` in an empty project, loads every entry point
-// under Node, and runs the package's smoke check if it has one. The smoke
+// runs `npm install <tarball>` in an empty project and loads every entry point
+// under Node. A package with optional peers is loaded twice: once without
+// them, where only an entry that needs a missing optional peer may fail, and
+// once with them installed. Then the package's smoke check runs, if it has
+// one. A stylesheet export must point at one `./dist/<name>.css` file. The smoke
 // check is `tests/smoke.mjs` in the package directory. It is not shipped. It
 // is copied into the consumer project and imports the package by name, so it
 // runs against the installed tarball.
@@ -107,12 +110,44 @@ function stylesheetEntries(pkg: Pkg): string[] {
   return Object.keys(pkg.exports).filter((k) => k.startsWith('./') && k.endsWith('.css'))
 }
 
+/** A stylesheet export whose target is not one `./dist/*.css` file. Such an
+ * entry is skipped by attw and only read by the consumer step, so its value
+ * is checked here. */
+function stylesheetProblems(pkg: Pkg): string[] {
+  const exports = pkg.exports as Record<string, unknown>
+  return stylesheetEntries(pkg)
+    .filter((key) => {
+      const target = exports[key]
+      return typeof target !== 'string' || !/^\.\/dist\/[^*]+\.css$/.test(target)
+    })
+    .map((key) => `exports["${key}"] must be a "./dist/<name>.css" path`)
+}
+
+/** The peers `peerDependenciesMeta` marks optional, as `name@range`. npm
+ * installs the other peers but not these. */
+function optionalPeers(pkg: Pkg): string[] {
+  const meta =
+    (pkg as { peerDependenciesMeta?: Record<string, { optional?: boolean }> })
+      .peerDependenciesMeta ?? {}
+  return Object.entries(meta)
+    .filter(([, m]) => m.optional === true)
+    .map(([name]) => `${name}@${pkg.peerDependencies?.[name] ?? '*'}`)
+}
+
+/** The bare package name of `name@range`. */
+const peerName = (spec: string): string => spec.slice(0, spec.lastIndexOf('@'))
+
 /** Installs `tarball` into an empty project and loads each entry point the
  * way a Node consumer would. Code loads through `import()`. An entry with no
  * values passes if its `.d.ts` exports something. A JSON entry (a config
  * preset, possibly with comments) or a stylesheet is only resolved and read,
- * because its consumer is a tool, not Node. Then copies in the package's smoke check, if
- * it has one, and runs it there. */
+ * because its consumer is a tool, not Node.
+ *
+ * A package with optional peers is probed twice. First without them: an
+ * entry may then fail only with ERR_MODULE_NOT_FOUND naming one of them, and
+ * every other entry must load. Then with each optional peer installed at its
+ * declared range: every entry must load. The package's smoke check, if it
+ * has one, is copied in and run last, with the optional peers installed. */
 function cleanConsumer(
   pkg: Pkg,
   pkgDir: string,
@@ -131,10 +166,22 @@ function cleanConsumer(
     )
     run('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts', tarball], consumer)
     const specs = entryPoints(pkg)
+    const peers = optionalPeers(pkg)
     // import.meta.resolve uses the `import` conditions, as import() does.
-    const probe = `
+    const probe = (missing: string[]): string => `
       import { readFileSync } from 'node:fs'
       import { fileURLToPath } from 'node:url'
+      const missing = ${JSON.stringify(missing)}
+      const load = async (spec) => {
+        try {
+          return await import(spec)
+        } catch (err) {
+          const peer = missing.find((m) => String(err?.message).includes("'" + m + "'"))
+          if (err?.code !== 'ERR_MODULE_NOT_FOUND' || peer === undefined) throw err
+          console.log('consumer: ' + spec + ' needs the optional peer ' + peer)
+          return null
+        }
+      }
       for (const spec of ${JSON.stringify(specs)}) {
         const resolved = fileURLToPath(import.meta.resolve(spec))
         // A types-only entry (interfaces, no values) loads empty; its
@@ -148,14 +195,24 @@ function cleanConsumer(
             return false
           }
         }
-        const ok = resolved.endsWith('.json') || resolved.endsWith('.css')
-          ? readFileSync(resolved, 'utf8').trim().length > 0
-          : Object.keys(await import(spec)).length > 0 || typesOnly()
-        if (!ok) throw new Error(spec + ' loaded empty')
+        if (resolved.endsWith('.json') || resolved.endsWith('.css')) {
+          if (readFileSync(resolved, 'utf8').trim().length === 0) throw new Error(spec + ' is empty')
+        } else {
+          const mod = await load(spec)
+          if (mod === null) continue
+          if (Object.keys(mod).length === 0 && !typesOnly()) throw new Error(spec + ' loaded empty')
+        }
         console.log('consumer: loaded ' + spec)
       }
     `
-    process.stdout.write(run('node', ['--input-type=module', '-e', probe], consumer))
+    process.stdout.write(
+      run('node', ['--input-type=module', '-e', probe(peers.map(peerName))], consumer),
+    )
+    if (peers.length > 0) {
+      run('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts', ...peers], consumer)
+      console.log(`consumer: installed the optional peers ${peers.join(', ')}`)
+      process.stdout.write(run('node', ['--input-type=module', '-e', probe([])], consumer))
+    }
     const smoke = smokeFile(pkgDir)
     if (smoke) {
       copyFileSync(smoke, join(consumer, 'smoke.mjs'))
@@ -269,6 +326,7 @@ for (const pkgDir of dirs) {
         engines,
       }),
       ...packedManifestProblems(packedManifest(tarball)),
+      ...stylesheetProblems(pkg),
     ]
     if (shape.length > 0) {
       throw Object.assign(

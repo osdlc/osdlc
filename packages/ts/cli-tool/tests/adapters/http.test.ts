@@ -179,15 +179,55 @@ describe('checks', () => {
     expect((await post(server, '/help', {}, auth)).status).toBe(405)
   })
 
-  test('there is no CORS', async () => {
-    const { server, auth } = await start()
+  test('there is no CORS: a preflight, which carries no token, gets no access-control headers', async () => {
+    const { server } = await start()
     const res = await send(server, {
       method: 'OPTIONS',
       path: '/commands/items',
-      headers: { ...auth, origin: `http://127.0.0.1:${server.port}` },
+      headers: {
+        origin: `http://127.0.0.1:${server.port}`,
+        'access-control-request-method': 'POST',
+        'access-control-request-headers': 'authorization, content-type',
+      },
     })
-    expect(res.headers['access-control-allow-origin']).toBeUndefined()
-    expect(res.status).toBe(405)
+    expect(Object.keys(res.headers).filter((h) => h.startsWith('access-control-'))).toEqual([])
+    expect(res.status).toBe(401)
+  })
+
+  test('the Bearer scheme is case-insensitive', async () => {
+    const { server, api } = await start()
+    for (const scheme of ['bearer', 'BEARER']) {
+      const res = await send(server, {
+        path: '/schema',
+        headers: { authorization: `${scheme} ${api.token}` },
+      })
+      expect(res.status).toBe(200)
+    }
+  })
+
+  test('[::1] with a port, and its own Origin, are accepted', async () => {
+    const { server, auth } = await start()
+    const host = `[::1]:${server.port}`
+    const res = await send(server, {
+      path: '/schema',
+      headers: { ...auth, host, origin: `http://${host}` },
+    })
+    expect(res.status).toBe(200)
+  })
+
+  test('with a port, a Host that names another port is refused', async () => {
+    const f = fixture()
+    let api: HttpApi | undefined
+    const server = await serveHttp((r) => api!.fetch(r))
+    running.push(server)
+    api = createHttpApi(f.app, { context: CTX, port: server.port })
+    const auth = { authorization: `Bearer ${api.token}` }
+    const right = await send(server, { path: '/schema', headers: auth })
+    expect(right.status).toBe(200)
+    for (const host of ['127.0.0.1:65000', '127.0.0.1', 'localhost:1']) {
+      const res = await send(server, { path: '/schema', headers: { ...auth, host } })
+      expect([host, res.status]).toEqual([host, 403])
+    }
   })
 })
 
@@ -232,12 +272,19 @@ describe('routes', () => {
     const usage = await post(server, '/commands/items/add', {}, auth)
     expect([usage.status, usage.json()]).toEqual([
       400,
-      { schemaVersion: 1, kind: 'error', exit: 2, message: "'name' is required" },
+      { schemaVersion: 1, kind: 'error', code: 'usage', exit: 2, message: "'name' is required" },
     ])
     const failed = await post(server, '/commands/fails', {}, auth)
     expect([failed.status, failed.json()]).toEqual([
       422,
-      { schemaVersion: 1, kind: 'error', exit: 1, message: 'it broke', hint: 'try again' },
+      {
+        schemaVersion: 1,
+        kind: 'error',
+        code: 'error',
+        exit: 1,
+        message: 'it broke',
+        hint: 'try again',
+      },
     ])
     expect((await post(server, '/commands/nope', {}, auth)).status).toBe(404)
     expect((await post(server, '/commands/tui', {}, auth)).status).toBe(404)
@@ -277,6 +324,7 @@ describe('cli-only commands', () => {
       {
         schemaVersion: 1,
         kind: 'error',
+        code: 'cli-only',
         exit: 1,
         message: "'tooly trust' runs from the command line only",
         refused: 'cli-only',
@@ -362,16 +410,52 @@ describe('streaming', () => {
     ])
   })
 
-  test('a failure ends the stream with an error line', async () => {
+  test('a failure before any event keeps its status: 422 for a failed run, 400 for usage', async () => {
     const { server, auth } = await start()
+    const stream = { ...auth, accept: 'application/x-ndjson' }
+    const failed = await post(server, '/commands/fails', {}, stream)
+    expect(failed.status).toBe(422)
+    expect(failed.json()).toMatchObject({ kind: 'error', message: 'it broke' })
+    const usage = await post(server, '/commands/items/add', { nope: 1 }, stream)
+    expect(usage.status).toBe(400)
+    expect(usage.json()).toMatchObject({ kind: 'error', code: 'usage' })
+  })
+
+  test('a failure after an event ends the stream with an error line', async () => {
+    const { defineApp, defineCommand, CommandError } = await import('../../src/command/index.ts')
+    const { z } = await import('zod')
+    const app = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      commands: {
+        late: defineCommand({
+          summary: 'fails after one event',
+          output: z.object({}),
+          events: { kind: 'tick', schema: z.object({ n: z.number() }) },
+          run(_i, ctx) {
+            ctx.emit({ n: 1 })
+            throw new CommandError('late failure')
+          },
+        }),
+      },
+    })
+    const { server, auth } = await start({ app } as Fixture)
     const res = await post(
       server,
-      '/commands/fails',
+      '/commands/late',
       {},
       { ...auth, accept: 'application/x-ndjson' },
     )
     expect(res.status).toBe(200)
-    expect(JSON.parse(res.body)).toMatchObject({ kind: 'error', message: 'it broke' })
+    const lines = res.body
+      .trimEnd()
+      .split('\n')
+      .map((l) => JSON.parse(l))
+    expect(lines).toEqual([
+      { schemaVersion: 1, kind: 'tick', n: 1 },
+      expect.objectContaining({ kind: 'error', message: 'late failure' }),
+    ])
   })
 
   test('a refusal keeps its status', async () => {
@@ -461,6 +545,17 @@ describe('mounting', () => {
     const token = /token {2}(\S+)/.exec(ctx.io.out)![1]!
     const res = await fetch(`${url}/schema`, { headers: { authorization: `Bearer ${token}` } })
     expect(res.status).toBe(200)
+    // The suggested command keeps the token out of curl's arguments.
+    expect(ctx.io.out).toContain(
+      `printf 'Authorization: Bearer %s\\n' '${token}' | curl -H @- ${url}/schema`,
+    )
+    expect(ctx.io.out).not.toContain('curl -H "Authorization')
+    const port = Number(new URL(url).port)
+    const other = await send({ port } as HttpServer, {
+      path: '/schema',
+      headers: { authorization: `Bearer ${token}`, host: '127.0.0.1:1' },
+    })
+    expect(other.status).toBe(403)
     aborter.abort()
     expect(await done).toBe(0)
   })
