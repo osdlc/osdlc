@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/osdlc/osdlc/compare/config-layers/v0.6.0...config-layers/v0.7.0) - 2026-10-25
+
+Aligned with `@osdlc/config-layers` 0.7.1. The twins share the major and minor
+version, so the crate skips 0.6.1 and goes to 0.7.0. The TypeScript 0.7.0 split
+its directory and did-you-mean helpers into subpaths. That has no Rust
+counterpart. The TypeScript 0.7.1 stopped reading a relative `HOME`. The crate
+never reads `$HOME`, so it needs no change for that.
+
+### Changed
+
+- **Breaking:** `resolve_config_path` expands only `~` and `~/…`. A `~user/x`
+  value used to become `<home>user/x`. It is now left as written and resolves
+  as a relative path, as in the TypeScript twin.
+- **Breaking:** `resolve_config_path` leaves `~` unexpanded when `home` is
+  empty. It used to give `/x` for `~/x`.
+- The shared `parity.json` fixture covers both cases, and a relative `home`.
+
 ## [0.6.1](https://github.com/osdlc/osdlc/compare/config-layers/v0.6.0...config-layers/v0.6.1) - 2026-10-24
 
 ### Other

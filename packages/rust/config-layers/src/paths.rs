@@ -21,8 +21,11 @@ const DEFAULT_DEFINE_HINT: &str = "define it under paths:";
 ///
 /// URLs (`scheme://…`) and bare words that do not look like paths are
 /// returned unchanged, because a value may be a name rather than a place. A
-/// leading `~` is replaced by `home`. That includes `~user/x`, which becomes
-/// `<home>user/x`. A relative path resolves against `base_dir`. For a project
+/// leading `~` or `~/…` is replaced by `home`. A `~user/…` form is not
+/// expanded and resolves as a relative path. If `home` is empty, `~` is left
+/// as written, because expanding it would give the file system root. `home`
+/// is used as given; this crate never reads `$HOME`. A relative path resolves
+/// against `base_dir`. For a project
 /// file that is the project root. For a machine file it is whatever directory
 /// the reading tool uses as its base.
 ///
@@ -40,8 +43,8 @@ pub fn resolve_config_path(value: &str, base_dir: &Path, home: &Path) -> String 
         return value.to_string();
     }
     let mut p = value.to_string();
-    if let Some(rest) = p.strip_prefix('~') {
-        p = format!("{}{}", home.to_string_lossy(), rest);
+    if !home.as_os_str().is_empty() && (p == "~" || p.starts_with("~/")) {
+        p = format!("{}{}", home.to_string_lossy(), &p[1..]);
     }
     if Path::new(&p).is_absolute() {
         p
@@ -222,6 +225,15 @@ mod tests {
             assert_eq!(resolve("~/Developer"), home().join("Developer"));
             assert_eq!(resolve("./checkouts"), root().join("checkouts"));
             assert_eq!(resolve("/srv/repos"), PathBuf::from("/srv/repos"));
+        }
+
+        #[test]
+        fn expands_only_tilde_and_tilde_slash_and_not_into_an_empty_home() {
+            let resolve = |v: &str, h: &str| resolve_config_path(v, &root(), Path::new(h));
+            assert_eq!(resolve("~user/x", "/home/me"), "/work/app/~user/x");
+            assert_eq!(resolve("~", "/home/me"), "/home/me");
+            assert_eq!(resolve("~/x", ""), "/work/app/~/x");
+            assert_eq!(resolve("~", ""), "/work/app/~");
         }
 
         #[test]

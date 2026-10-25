@@ -346,7 +346,7 @@ The crate has no zod to read, so a Rust tool lists its keys in a static `KeySpec
 The two share one test fixture,
 [`packages/rust/config-layers/tests/fixtures/parity.json`](https://github.com/osdlc/osdlc/blob/main/packages/rust/config-layers/tests/fixtures/parity.json).
 This package's `tests/parity.test.ts` and the crate's `tests/parity.rs` read it. It covers
-`valueIsSet`, `valueAt`, the YAML reading rules above, `resolveConfigPath` with a `home`,
+`valueIsSet`, `valueAt`, the YAML reading rules above, `resolveConfigPath` with a `home` (including `~user/x`, an empty home and a relative one),
 `substitutePathNames` and its error text, and the unmet-need message. Behaviour the two do not
 share is left out of the fixture and listed in this table.
 
@@ -357,8 +357,7 @@ share is left out of the fixture and listed in this table.
 | Project file | `assembleConfig` loads, validates and memoizes it, with a `.local` overlay deep-merged first | `read_mapping` reads it; `overlay_top_level` fills a missing or unset top-level key from the machine file, one level deep |
 | Finding the project file | the caller passes the project root (`resolveConfigFile(projectRoot, ...)`); there is no `findUp` | `find_up(cwd, file_name)` |
 | `substitutePathNames` | `substitutePathNames(value, names, where, { defineHint })`: one function, with the hint in an options object | `substitute_path_names(value, names, setting)` and `substitute_path_names_with_hint(value, names, setting, define_hint)` |
-| Home for `~` | `home` option, default `$HOME`, else the OS account's home (unset, empty or relative) | `home` argument, required |
-| An empty home | `~/x` is left unexpanded and resolves as a relative path | `~/x` becomes `/x` |
+| Home for `~` | `home` option, default `$HOME`, else the OS account's home (unset, empty or relative) | `home` argument, required; the crate never reads `$HOME` |
 | `1_000` and `0b11` | read as the strings `1_000` and `0b11` | read as the numbers 1000 and 3 |
 | Integers beyond 2^53 | read as a number and lose precision | read as `u64`, then as a lossy float |
 | Empty file | `readParsedFile` gives `null`; `readMappingFile` gives `{}` | `read_mapping` is an error ("found an empty document"); `load` treats it as an empty mapping |
@@ -366,7 +365,6 @@ share is left out of the fixture and listed in this table.
 | `1e999` | read as the string `1e999` | read as the string `.inf` |
 | `!!float 1` and an unknown tag such as `!custom 6` | the value reads as its text, a string | the value reads as a number |
 | A `{` inside a name, as in `{a{dev}` | replaces `{dev}` and keeps the `{a` before it | an unknown path name `{a{dev}` |
-| `~user/x` | not expanded; resolves as a relative path | rewritten to `<home>user/x`, which is wrong without a trailing slash on `home`; the crate should change |
 | Dotted `paths:` resolution in a map | not provided | `resolve_paths_at` |
 | Invalid config | `ConfigInvalidError`, exit code 14 | `FileProblem` |
 | Platforms | Linux and macOS | Linux, macOS and Windows |
