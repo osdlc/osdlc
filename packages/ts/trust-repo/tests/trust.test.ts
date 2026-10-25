@@ -61,6 +61,16 @@ describe('trustStoreDir', () => {
     )
   })
 
+  test('ignores a relative XDG_STATE_HOME, as the XDG spec says', () => {
+    // Resolved against the cwd, `.state` would put the store inside the
+    // repository being judged, where it could ship its own marker.
+    for (const value of ['.state', 'state/x', './s']) {
+      expect(trustStoreDir('tooly', { XDG_STATE_HOME: value }, '/home/dev')).toBe(
+        '/home/dev/.local/state/tooly/trusted',
+      )
+    }
+  })
+
   test('expands a leading ~ rather than making a literal directory', () => {
     expect(trustStoreDir('tooly', { XDG_STATE_HOME: '~/state' }, '/home/dev')).toBe(
       '/home/dev/state/tooly/trusted',

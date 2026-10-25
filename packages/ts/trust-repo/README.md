@@ -64,7 +64,9 @@ itself, not an `XDG_STATE_HOME` to add `tool` and `trusted` to.
 ### Where the store lives
 
 In the XDG state directory, not the config directory: `$XDG_STATE_HOME`, or
-`~/.local/state` when it is unset. This holds on every platform, macOS
+`~/.local/state` when it is unset. A relative `XDG_STATE_HOME` is ignored, as
+the XDG spec says, so the store never lands inside the directory a tool runs
+in. This holds on every platform, macOS
 included, and matches the paths `@osdlc/config-layers` uses. Trust is state
 a program keeps, not configuration a person edits, so it is not stored next
 to a tool's `config.yaml`. People sync config files between machines, for

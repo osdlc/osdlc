@@ -103,6 +103,16 @@ describe('bash launcher agrees with resolve()', () => {
     expect(sel.source).toBe('env')
   })
 
+  test('env: a relative TOOLY_HOME is ignored, in bash and in resolve()', () => {
+    const a = checkoutWithLauncher(join(sb.root, 'a'))
+    seedCheckout(join(sb.root, 'b'))
+    // From sb.root, `b` would name checkout b.
+    const r = run(join(a, SPEC.launcher), sb.root, { TOOLY_HOME: 'b' })
+    expect(r.out).toBe(`BUN run ${a}/src/cli.ts arg1 arg two`)
+    const sel = resolve(SPEC, { dirs: sb.dirs, env: { TOOLY_HOME: 'b' }, cwd: sb.root, self: a })
+    expect(sel.source).toBe('local')
+  })
+
   test('cwd: standing in another checkout runs that one', () => {
     const a = checkoutWithLauncher(join(sb.root, 'a'))
     const b = seedCheckout(join(sb.root, 'b'))

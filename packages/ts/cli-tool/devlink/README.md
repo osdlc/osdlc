@@ -33,7 +33,7 @@ Four layers. The first that matches wins. `<NAME>` is the tool name upper-cased
 
 | Layer | Wins when | Off when |
 |---|---|---|
-| env | `<NAME>_HOME` names a checkout | never. An explicit value always applies |
+| env | `<NAME>_HOME` names a checkout by absolute path | never. An explicit value always applies; a relative one is ignored |
 | cwd | the spec sets `cwdLayer: true` and the cwd is inside a checkout of this tool | the spec leaves `cwdLayer` unset, a suppressor is set, or `<NAME>_CWD_DEV=0` |
 | link | `<config>/<name>/home` names a checkout | a suppressor is set |
 | local | none of the above | never |

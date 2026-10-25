@@ -8,7 +8,7 @@
  *
  *   1. `DEFAULT_CONFIG` — the built-in defaults.
  *   2. USER — `$XDG_CONFIG_HOME/wayfinder/config.json`, or `~/.config/wayfinder/config.json`
- *      when `XDG_CONFIG_HOME` is unset.
+ *      when `XDG_CONFIG_HOME` is unset or relative.
  *   3. PROJECT — `wayfinder.config.json` at the root `findRoot` resolves.
  *   4. CLI flags, applied by the caller. {@link collectOptionsFromConfig}
  *      returns the options a caller spreads its own flags on top of.
@@ -43,7 +43,8 @@
  * from. The named file is read instead of the XDG path. The project layer is
  * still read from the project root and still merges on top. Naming a file that
  * does not exist is an error, not an empty layer: an env var that points at
- * nothing is a typo.
+ * nothing is a typo. A relative value resolves against the directory the
+ * process started in, never the scanned root.
  *
  * ## The old waypost names
  *
@@ -81,7 +82,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { readParsedFile } from '@osdlc/config-layers'
 import { resolveTrustRoot, type PolicyDecisionOptions, type TrustPolicy } from '@osdlc/trust-repo'
@@ -343,16 +344,17 @@ function unknownKeyWarning(file: string, key: string): string {
  * whether a file exists, which picks between a new name and its old waypost
  * name (see the module docblock).
  *
- * Two rules for a path taken from the environment:
+ * Rules for a path taken from the environment:
  *
  * A leading `~` is expanded against `home`. A shell expands it before exec, but
  * `.env` loaders, direnv and CI YAML pass the literal tilde through. Without
  * this, `~/config.json` would silently become `<somewhere>/~/config.json`.
  *
- * A relative path resolves against `root`, not the process working directory.
- * Reading `process.cwd()` would give a library caller that scans another
- * directory a user-layer path unrelated to that directory, while the project
- * layer followed it.
+ * A relative `XDG_CONFIG_HOME` is ignored, as the XDG spec says. A relative
+ * `WAYFINDER_CONFIG` resolves against `process.cwd()`, as any path a person
+ * types does. Neither ever resolves against `root`: the user layer can turn
+ * execution on and load tools, so it must never be a file inside the
+ * repository being scanned.
  */
 export function configLocations(
   root: string,
@@ -360,7 +362,6 @@ export function configLocations(
   home: string = homedir(),
 ): ConfigLocations {
   const base = resolve(root)
-  const absolute = (path: string): string => resolve(base, expandTilde(path, home))
 
   const fromVar = (name: string): string | null => {
     const value = env[name]?.trim()
@@ -372,8 +373,8 @@ export function configLocations(
     named !== null ? CONFIG_ENV_VAR : legacyNamed !== null ? LEGACY_CONFIG_ENV_VAR : null
   const envPath = named ?? legacyNamed
 
-  const xdg = env['XDG_CONFIG_HOME']?.trim()
-  const configHome = xdg !== undefined && xdg !== '' ? absolute(xdg) : join(home, '.config')
+  const xdg = expandTilde(env['XDG_CONFIG_HOME']?.trim() ?? '', home)
+  const configHome = isAbsolute(xdg) ? xdg : join(home, '.config')
 
   const xdgUser = preferNew(
     join(configHome, USER_CONFIG_DIR, USER_CONFIG_FILENAME),
@@ -385,7 +386,7 @@ export function configLocations(
   )
 
   return {
-    user: envPath !== null ? absolute(envPath) : xdgUser.path,
+    user: envPath !== null ? resolve(expandTilde(envPath, home)) : xdgUser.path,
     userFromEnv: envPath !== null,
     userEnvVar,
     userLegacy: envPath === null && xdgUser.legacy,

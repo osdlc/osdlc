@@ -84,7 +84,8 @@ export function envStem(spec: ToolSpec): string {
 }
 
 /**
- * The explicit override: an absolute checkout path that always wins.
+ * The explicit override: an absolute checkout path that always wins. A
+ * relative value is ignored.
  *
  * @experimental
  */

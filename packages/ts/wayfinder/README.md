@@ -366,7 +366,10 @@ root, then the flags on the command line.
 
 The keys are `runners.disabled`, `runners.order`, `allowExec`, `discovery`,
 `excludePaths`, `trust.paths`, `trust.owners` and `tools`. `WAYFINDER_CONFIG`
-names a different user file and changes nothing else.
+names a different user file and changes nothing else. A relative
+`WAYFINDER_CONFIG` resolves against the working directory, never the project
+root. A relative `XDG_CONFIG_HOME`, `XDG_STATE_HOME` or `XDG_CACHE_HOME` is
+ignored, as the XDG spec says.
 
 The tool was called waypost before its first release. `WAYPOST_CONFIG`,
 `~/.config/waypost/config.json` and `waypost.config.json` are still read when

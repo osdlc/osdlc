@@ -3,8 +3,10 @@
  *
  * Four layers. The first that matches wins:
  *
- *   env    `<NAME>_HOME` names a checkout. It is explicit, so it always
- *          applies, even when a suppressor is set.
+ *   env    `<NAME>_HOME` names a checkout by absolute path. It is explicit,
+ *          so it always applies, even when a suppressor is set. A relative
+ *          value is ignored: it would name a different directory, maybe the
+ *          repository you stand in, every time you `cd`.
  *   cwd    the cwd is inside a checkout of this tool, so run that source.
  *          Only when the spec sets `cwdLayer`. Off when a suppressor is set
  *          or `<NAME>_CWD_DEV=0`.
@@ -24,7 +26,7 @@
  */
 
 import { readFileSync, realpathSync, statSync } from 'node:fs'
-import { join, resolve as resolvePath } from 'node:path'
+import { isAbsolute, join, resolve as resolvePath } from 'node:path'
 
 import { readActive, type StateOptions } from './state.ts'
 import { cwdDevVar, entryOf, homeVar, type ToolSpec } from './spec.ts'
@@ -174,7 +176,7 @@ export function resolve(spec: ToolSpec, opts: ResolveOptions = {}): Selection {
   }
 
   const fromEnv = env[homeVar(spec)]
-  if (fromEnv !== undefined && fromEnv.length > 0) {
+  if (fromEnv !== undefined && isAbsolute(fromEnv)) {
     const hit = pick('env', fromEnv, `${homeVar(spec)}`)
     if (hit !== null) return hit
   }
