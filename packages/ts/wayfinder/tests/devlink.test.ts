@@ -42,6 +42,22 @@ describe('way dev', () => {
     expect(checkoutRoot()?.endsWith('wayfinder')).toBe(true)
   })
 
+  test('status replaces control characters in a linked path, and has no cwd line', async () => {
+    const checkout = join(tmp, 'co\u001b]0;pwned\u0007\u202e')
+    mkdirSync(join(checkout, 'src'), { recursive: true })
+    writeFileSync(join(checkout, 'src', 'cli.ts'), '')
+    writeFileSync(join(checkout, 'package.json'), JSON.stringify({ name: '@osdlc/wayfinder' }))
+    const link = captureIo()
+    expect(await main(['dev', 'link', checkout], { HOME: home }, home, link)).toBe(0)
+    const io = captureIo()
+    expect(await main(['dev', 'status'], { HOME: home }, home, io)).toBe(0)
+    const raw = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/
+    expect(io.out).toContain('co')
+    expect(io.out).not.toContain('cwd:')
+    expect(io.out).not.toMatch(raw)
+    expect(link.out).not.toMatch(raw)
+  })
+
   test('status reports local when nothing is linked', async () => {
     const io = captureIo()
     const code = await main(['dev', 'status', '--json'], { HOME: home }, home, io)

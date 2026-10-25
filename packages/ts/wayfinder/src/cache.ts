@@ -1,7 +1,6 @@
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 
-import { xdgHome } from '@osdlc/trust-repo'
+import { homeDir, xdgHome } from '@osdlc/trust-repo'
 
 import { APP, LEGACY_APP } from './app.ts'
 
@@ -11,7 +10,7 @@ import { APP, LEGACY_APP } from './app.ts'
  */
 export function cacheDir(
   env: Record<string, string | undefined> = process.env,
-  home: string = homedir(),
+  home: string = homeDir(),
 ): string {
   return join(xdgHome(env, home, 'XDG_CACHE_HOME', '.cache'), APP)
 }
@@ -19,7 +18,7 @@ export function cacheDir(
 /** The old waypost cache directory. Never read; `way clean` offers to remove it. */
 export function legacyCacheDir(
   env: Record<string, string | undefined> = process.env,
-  home: string = homedir(),
+  home: string = homeDir(),
 ): string {
   return join(xdgHome(env, home, 'XDG_CACHE_HOME', '.cache'), LEGACY_APP)
 }

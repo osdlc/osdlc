@@ -182,7 +182,7 @@ export function runDevCli(spec: ToolSpec, argv: readonly string[], opts: RunOpti
       }
       case 'status': {
         const out = status(spec, o)
-        emit(out, () => renderStatus(out))
+        emit(out, () => renderStatus(spec, out))
         return EXIT.ok
       }
       case 'history': {
@@ -227,7 +227,7 @@ function renderOff(spec: ToolSpec, previous: string | null, suffix: string): str
     : `unlinked ${previous}${suffix}\n${spec.name} runs the local install.\n`
 }
 
-function renderStatus(s: ReturnType<typeof status>): string {
+function renderStatus(spec: ToolSpec, s: ReturnType<typeof status>): string {
   const sel = s.selection
   const active =
     sel.source === 'local'
@@ -245,7 +245,8 @@ function renderStatus(s: ReturnType<typeof status>): string {
   return (
     `active: ${active}\n` +
     `  ${s.env.var}: ${s.env.value ?? '(unset)'}\n` +
-    `  cwd:      ${cwdLine}\n` +
+    // A spec without the cwd layer never looks there, so the line is left out.
+    (spec.cwdLayer === true ? `  cwd:      ${cwdLine}\n` : '') +
     `  link:     ${s.link.path} = ${linkLine}\n` +
     `  self:     ${s.self ?? '(not inside a checkout)'}\n` +
     `  history:  ${s.history.entries} checkout(s) in ${s.history.path}\n` +

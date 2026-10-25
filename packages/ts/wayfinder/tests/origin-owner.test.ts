@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, expect, test } from 'vitest'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -46,6 +46,25 @@ describe('originOwner', () => {
     expect(originOwner(repoWithOrigin('git@bitbucket.org:AcmeOwner/dev.git').dir)).toBe(
       'bitbucket.org/AcmeOwner',
     )
+  })
+
+  test('never runs a git the repository ships on a relative PATH entry', () => {
+    const repo = repoWithOrigin('https://github.com/AcmeOwner/dev.git')
+    mkdirSync(join(repo.dir, 'bin'))
+    const planted = join(repo.dir, 'bin', 'git')
+    writeFileSync(
+      planted,
+      `#!/bin/sh\ntouch "${join(repo.dir, 'ran')}"\necho https://github.com/trusted/x.git\n`,
+    )
+    chmodSync(planted, 0o755)
+    const saved = process.env['PATH']
+    process.env['PATH'] = `bin:.:${saved ?? ''}`
+    try {
+      expect(originOwner(repo.dir)).toBe('github.com/AcmeOwner')
+    } finally {
+      process.env['PATH'] = saved
+    }
+    expect(existsSync(join(repo.dir, 'ran'))).toBe(false)
   })
 
   test('runs git with core.fsmonitor off', () => {

@@ -138,9 +138,11 @@ that matches nothing exits 1, so `way query dev && …` works in a script. A bar
 flag applies (`-C`, `--only`, `--exclude`, `--cached` and the rest). Like
 `--list` and `--json`, it re-probes unless you pass `--cached`.
 
-`--list`, `query` and the terminal UI replace each control character in
-repository text with U+FFFD, so a task name cannot send escape sequences to
-your terminal. `--json` keeps the text exact.
+`--list`, `query` and the terminal UI replace each control character and bidi
+control in repository text with U+FFFD, so a task name cannot send escape
+sequences to your terminal or read in a different order from what runs.
+`--json` keeps the text exact, writing DEL, C1 and bidi controls as `\u`
+escapes, so it is safe to print too.
 
 ## The web view
 
@@ -217,6 +219,12 @@ means `github.com/owner`. Matching ignores case, and the host must match too:
 dialect. wayfinder adds only one thing: a leading `~` in a `trust.paths` entry
 expands to `$HOME`. An owner match trusts every repository whose remote names
 that owner, so list only owners whose repositories you would run.
+
+Owner trust believes the repository's own git config. The `origin` URL comes
+from the repository's `.git/config`, which arrives with the directory, so a
+folder unpacked from an archive or copied from a shared drive can name any
+owner. Owner trust fits clones you made yourself. `trust.paths` is the
+stronger form: a repository cannot choose where it sits on your disk.
 
 `way trust --show` reports which layer decided (`by` and `rule`). A plain
 `way trust` still writes a marker on a root the policy already trusts, because
@@ -371,8 +379,9 @@ root, then the flags on the command line.
 The keys are `runners.disabled`, `runners.order`, `allowExec`, `discovery`,
 `excludePaths`, `trust.paths`, `trust.owners` and `tools`. `WAYFINDER_CONFIG`
 names a different user file and changes nothing else. A relative
-`WAYFINDER_CONFIG` resolves against the working directory, never the project
-root. A relative `XDG_CONFIG_HOME`, `XDG_STATE_HOME` or `XDG_CACHE_HOME` is
+`WAYFINDER_CONFIG` is ignored with a warning: from the repository root it
+would name a file in the repository. Use an absolute path or `~/`. A relative
+`HOME` counts as unset, and the account's home is used. A relative `XDG_CONFIG_HOME`, `XDG_STATE_HOME` or `XDG_CACHE_HOME` is
 ignored, as the XDG spec says.
 
 The tool was called waypost before its first release. `WAYPOST_CONFIG`,

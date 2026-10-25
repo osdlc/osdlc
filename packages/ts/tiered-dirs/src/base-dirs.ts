@@ -1,5 +1,5 @@
 import { homedir, tmpdir, userInfo } from 'node:os'
-import { join } from 'node:path'
+import { join, win32 } from 'node:path'
 
 import { TieredDirsError } from './errors.ts'
 
@@ -637,30 +637,34 @@ function resolveHome(
   }
 
   // Rust's `dirs` ignores HOME on Windows, and under Cygwin or MSYS it can be
-  // a POSIX-style path, so Windows reads USERPROFILE only.
+  // a POSIX-style path, so Windows reads USERPROFILE only. A relative value
+  // counts as unset: every path built on it would land in the cwd.
   const fromEnv = platform === 'win32' ? env['USERPROFILE'] : env['HOME']
-  if (fromEnv) return fromEnv
+  if (fromEnv && isRootedHome(fromEnv, platform)) return fromEnv
 
   // With an injected environment, do not fall back to the host's real home.
   // That would make a test's paths depend on the machine running it.
   if (opts.env !== undefined) {
     throw new TieredDirsError(
       'MISSING_BASE_DIR',
-      'no home directory: the supplied environment sets neither HOME nor USERPROFILE',
+      'no home directory: the supplied environment sets neither HOME nor USERPROFILE to an absolute path',
     )
   }
 
-  let host = ''
-  try {
-    host = homedir()
-  } catch {
-    host = ''
+  // `os.homedir()` returns HOME as given, so the account's home comes first.
+  for (const read of [() => userInfo().homedir, homedir]) {
+    let host = ''
+    try {
+      host = read()
+    } catch {
+      host = ''
+    }
+    if (host && isRootedHome(host, platform)) return host
   }
-  if (host) return host
 
   throw new TieredDirsError(
     'MISSING_BASE_DIR',
-    'no home directory: HOME is unset and the OS reports none — pass `home` or `overrides`',
+    'no home directory: HOME is unset or relative and the OS reports none — pass `home` or `overrides`',
   )
 }
 
@@ -676,6 +680,14 @@ function absoluteEnv(
   const value = env[key]
   if (!value) return undefined
   return isAbsolutePath(value, platform) ? value : undefined
+}
+
+/**
+ * A home that does not depend on the cwd. Looser than {@link isAbsolutePath}
+ * on Windows, where a home such as `/h` or `\h` is on the current drive.
+ */
+function isRootedHome(value: string, platform: string): boolean {
+  return platform === 'win32' ? win32.isAbsolute(value) : value.startsWith('/')
 }
 
 /** `path.isAbsolute` for a named platform rather than the host's. */

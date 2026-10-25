@@ -6,7 +6,9 @@
  */
 
 import { accessSync, constants, statSync } from 'node:fs'
-import { delimiter, isAbsolute, join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
+
+import { spawnRunnerAsync, which as seamWhich, type AsyncCommandRunner } from '@osdlc/command-seam'
 
 function executable(path: string): boolean {
   try {
@@ -19,12 +21,16 @@ function executable(path: string): boolean {
 }
 
 /**
- * The resolved path of `binary`, or null. A relative PATH entry yields a
- * relative result.
+ * The absolute path of `binary`, or null.
+ *
+ * Only absolute PATH entries are searched. Detection runs inside a repository
+ * before it is trusted, and a relative or empty entry would find a file the
+ * repository ships. On Windows, PATHEXT suffixes are tried in turn, because
+ * the file on disk is `git.exe` while callers ask for `git`, and the current
+ * folder is not searched.
  *
  * A name containing a separator is checked as a path, not searched for on
- * PATH: `./bin/tool` names a file. On Windows, PATHEXT suffixes are tried in
- * turn, because the file on disk is `git.exe` while callers ask for `git`.
+ * PATH: `./bin/tool` names a file.
  */
 export function which(
   binary: string,
@@ -34,18 +40,17 @@ export function which(
     const direct = isAbsolute(binary) ? binary : join(process.cwd(), binary)
     return executable(direct) ? direct : null
   }
+  const found = seamWhich(binary, {
+    env: { PATH: env['PATH'], PATHEXT: env['PATHEXT'] },
+    absolutePathOnly: true,
+  })
+  return found ?? null
+}
 
-  const exts =
-    process.platform === 'win32'
-      ? (env['PATHEXT'] ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
-      : ['']
-
-  for (const dir of (env['PATH'] ?? '').split(delimiter)) {
-    if (dir === '') continue
-    for (const ext of exts) {
-      const candidate = join(dir, binary + ext)
-      if (executable(candidate)) return candidate
-    }
-  }
-  return null
+/**
+ * The default `makeRunner`: `spawnRunnerAsync` that runs a bare name only from
+ * an absolute PATH entry, for the reason {@link which} gives.
+ */
+export function defaultRunner(binary: string): AsyncCommandRunner {
+  return spawnRunnerAsync(binary, { absolutePathOnly: true })
 }

@@ -6,7 +6,7 @@
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 
 import { afterEach, beforeEach, expect, test } from 'vitest'
 
@@ -22,6 +22,7 @@ import {
   TRUST_MARKER_DIR,
   withheldHint,
   xdgHome,
+  homeDir,
   type ExecGate,
   type PolicyBy,
   type PolicyDecision,
@@ -55,6 +56,8 @@ test('where the store lives: XDG state, one directory per tool', () => {
   )
   expect(trustStoreDir('tooly', {}, home)).toBe(join(home, '.local', 'state', 'tooly', 'trusted'))
   expect(store.dir().endsWith(join('tooly', TRUST_MARKER_DIR))).toBe(true)
+  // The default home is always absolute, even when HOME is relative.
+  expect(isAbsolute(homeDir())).toBe(true)
 })
 
 test('trust a repository once, and the answer is remembered', async () => {

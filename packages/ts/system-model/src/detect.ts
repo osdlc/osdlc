@@ -16,8 +16,6 @@
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
-import { spawnRunnerAsync } from '@osdlc/command-seam'
-
 import { createContext, createContextState } from './context.ts'
 import type { DetectOptions, ProviderContext } from './contract.ts'
 import { createLister, resolveDiscovery } from './discovery.ts'
@@ -34,7 +32,7 @@ import type {
   ProjectProfile,
   ToolFact,
 } from './tool.ts'
-import { which as whichOnPath } from './which.ts'
+import { defaultRunner, which as whichOnPath } from './which.ts'
 
 interface Hit {
   path: string
@@ -57,7 +55,7 @@ export async function detectProject(
 ): Promise<ProjectProfile> {
   const absRoot = resolve(root)
   const allowExec = opts.allowExec ?? false
-  const makeRunner = opts.makeRunner ?? ((binary: string) => spawnRunnerAsync(binary))
+  const makeRunner = opts.makeRunner ?? defaultRunner
   const which = opts.which ?? whichOnPath
   const signal = opts.signal ?? new AbortController().signal
   const excludePaths = opts.excludePaths ?? []

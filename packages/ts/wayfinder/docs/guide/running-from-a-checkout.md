@@ -29,7 +29,9 @@ which entry it chose on stderr. `WAY_QUIET=1` silences that.
 
 A selected checkout runs from source under Bun, so `way dev` needs
 [Bun](https://bun.sh) on `PATH`. Without it, `way` says so and suggests
-`way dev off`.
+`way dev off`. Bun runs with `--no-env-file` and an empty config, so it reads
+no `.env` or `bunfig.toml`, neither the checkout's nor the directory's you
+stand in.
 
 ## The verbs
 

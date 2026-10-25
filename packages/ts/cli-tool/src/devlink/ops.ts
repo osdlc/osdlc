@@ -15,7 +15,7 @@
  */
 
 import { existsSync, lstatSync, readFileSync, realpathSync, type Stats } from 'node:fs'
-import { homedir } from 'node:os'
+import { homedir, userInfo } from 'node:os'
 import { isAbsolute, join, resolve as resolvePath } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
@@ -92,9 +92,21 @@ function stamp(opts: OpOptions): string {
  */
 export function defaultBinDir(env: Record<string, string | undefined> = process.env): string {
   const xdg = env['XDG_BIN_HOME']
-  // A relative XDG_BIN_HOME is ignored, as the XDG spec says. An empty HOME
-  // falls back to the account's home.
-  return xdg && isAbsolute(xdg) ? xdg : join(env['HOME'] || homedir(), '.local', 'bin')
+  // A relative XDG_BIN_HOME is ignored, as the XDG spec says. An empty or
+  // relative HOME falls back to the account's home.
+  const home = env['HOME']
+  return xdg && isAbsolute(xdg)
+    ? xdg
+    : join(home && isAbsolute(home) ? home : accountHome(), '.local', 'bin')
+}
+
+/** The OS account's home, which no environment variable changes. */
+function accountHome(): string {
+  try {
+    return userInfo().homedir
+  } catch {
+    return homedir()
+  }
 }
 
 /**

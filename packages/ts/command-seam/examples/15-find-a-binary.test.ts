@@ -14,7 +14,14 @@ import { join } from 'node:path'
 
 import { afterAll, expect, test } from 'vitest'
 
-import { which, type WhichOptions } from '@osdlc/command-seam'
+import {
+  absolutePathCandidates,
+  spawnRunnerAsync,
+  which,
+  type PathCandidateOptions,
+  type SpawnRunnerOptions,
+  type WhichOptions,
+} from '@osdlc/command-seam'
 
 // ---- Code under test -------------------------------------------------------
 
@@ -46,4 +53,26 @@ test('which returns the absolute path a spawn would run', () => {
   const file = install('codex')
   expect(which('codex', { env: { PATH: bin } })).toBe(file)
   expect(which('cursor-agent', { env: { PATH: bin } })).toBeUndefined()
+})
+
+// ---- Inside a folder you do not trust --------------------------------------
+
+test('absolutePathOnly skips a relative PATH entry, so a planted binary never runs', async () => {
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'seam-which-repo-')))
+  try {
+    writeFileSync(join(repo, 'codex'), '#!/bin/sh\necho planted\n')
+    chmodSync(join(repo, 'codex'), 0o755)
+    const env = { PATH: `.:${bin}` }
+    const opts: SpawnRunnerOptions = { absolutePathOnly: true }
+    const r = await spawnRunnerAsync('codex', opts).run([], { cwd: repo, env })
+    expect(r.stdout).toBe('')
+    expect(which('codex', { cwd: repo, env, absolutePathOnly: true })).toBe(join(bin, 'codex'))
+    const candidates: string[] = absolutePathCandidates('codex', {
+      path: env.PATH,
+      platform: 'linux',
+    } satisfies PathCandidateOptions)
+    expect(candidates).toEqual([join(bin, 'codex')])
+  } finally {
+    rmSync(repo, { recursive: true, force: true })
+  }
 })

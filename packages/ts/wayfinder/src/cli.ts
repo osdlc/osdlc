@@ -13,8 +13,6 @@
  * trusted the repository is.
  */
 
-import { homedir } from 'node:os'
-
 import { EXIT, defineCli, processIo, type CliIo } from '@osdlc/cli-tool'
 import { runDevCli } from '@osdlc/cli-tool/devlink'
 import {
@@ -26,7 +24,7 @@ import {
 } from '@osdlc/system-model/detect'
 import { humanAge, humanMs } from '@osdlc/system-model/duration'
 import { matchEntry, terms as searchTerms, type Mode } from '@osdlc/system-model/match'
-import { policyExecGate, withheldHint } from '@osdlc/trust-repo'
+import { homeDir, policyExecGate, withheldHint } from '@osdlc/trust-repo'
 
 import { APP, BIN, PROJECT_CONFIG_FILENAME } from './app.ts'
 import { cacheDir } from './cache.ts'
@@ -58,7 +56,7 @@ import { runProvidersCommand } from './providers-command.ts'
 import { serve } from './serve.ts'
 import { loadTools, ToolModuleError, type LoadedTool } from './tools.ts'
 import { runTrustCommand } from './trust-command.ts'
-import { safeStderr, terminalSafe } from './terminal-text.ts'
+import { jsonText, safeStderr, safeStdout, terminalSafe } from './terminal-text.ts'
 import { runTui } from './tui.ts'
 
 /** The prose under the flag list in the complete help. */
@@ -457,7 +455,7 @@ async function projectFor(
 export async function main(
   argv: string[],
   env: Record<string, string | undefined> = process.env,
-  home: string = homedir(),
+  home: string = homeDir(),
   io: CliIo = processIo,
 ): Promise<number> {
   // Every stderr line is human text that can quote repository content.
@@ -500,7 +498,11 @@ export async function main(
   // `dev` is a contributor tool, so the help does not list it. `self` is this
   // checkout, so `dev install` and a bare `dev link` know what to point at.
   if (argv[0] === 'dev') {
-    return runDevCli(WAYFINDER_SPEC, argv.slice(1), { io, env, self: checkoutRoot() })
+    return runDevCli(WAYFINDER_SPEC, argv.slice(1), {
+      io: safeStdout(io),
+      env,
+      self: checkoutRoot(),
+    })
   }
 
   const parsed = parseArgs(argv, io)
@@ -646,7 +648,7 @@ export async function main(
       })
     case 'json': {
       const { catalog, cache } = await dataCatalog()
-      io.stdout(`${JSON.stringify(catalogJson(catalog, cache), null, 2)}\n`)
+      io.stdout(`${jsonText(catalogJson(catalog, cache), 2)}\n`)
       reportWithheld(catalog)
       return EXIT.ok
     }
@@ -677,9 +679,8 @@ export async function main(
 
       if (parsed.json) {
         io.stdout(
-          `${JSON.stringify(
+          `${jsonText(
             hits.map((h) => h.task),
-            null,
             2,
           )}\n`,
         )

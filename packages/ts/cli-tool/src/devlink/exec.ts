@@ -11,10 +11,24 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { constants as osConstants } from 'node:os'
+import { devNull, constants as osConstants } from 'node:os'
 
 import type { Selection } from './resolve.ts'
 import { quietVar, type ToolSpec } from './spec.ts'
+
+/**
+ * Bun's flags for running a checkout's entry from any cwd. Bun reads `.env*`
+ * and `bunfig.toml` from the cwd, which is often a repository the user does
+ * not control: a `.env` sets the process environment and a `bunfig.toml`
+ * `preload` runs its code first. `--no-env-file` stops the first. An empty
+ * config file stops the second; Bun has no flag that turns config off, and
+ * passing the checkout's own `bunfig.toml` would not help, because Bun
+ * resolves the paths inside it against the cwd. Both flags must come before
+ * `run`, which reads its own flags differently.
+ */
+export function bunRunArgs(entry: string, nullFile: string = devNull): string[] {
+  return ['--no-env-file', `--config=${nullFile}`, 'run', entry]
+}
 
 /**
  * Options for running the selected checkout: the environment, the line
@@ -47,7 +61,7 @@ export function execSelection(
   if (env[quietVar(spec)] !== '1') {
     announce(`${spec.name}: running ${selection.entry} (${selection.reason})`)
   }
-  const result = spawnSync(opts.bun ?? 'bun', ['run', selection.entry, ...argv], {
+  const result = spawnSync(opts.bun ?? 'bun', [...bunRunArgs(selection.entry), ...argv], {
     stdio: 'inherit',
     env: env as NodeJS.ProcessEnv,
   })

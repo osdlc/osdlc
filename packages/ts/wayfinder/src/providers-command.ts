@@ -5,12 +5,11 @@
  */
 
 import { accessSync, constants, statSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
 
 import { EXIT, type CliIo } from '@osdlc/cli-tool'
 import type { Project, RoleName, ToolDef } from '@osdlc/system-model/detect'
-import { policyExecGate } from '@osdlc/trust-repo'
+import { homeDir, policyExecGate } from '@osdlc/trust-repo'
 
 import { APP, BIN } from './app.ts'
 import {
@@ -20,7 +19,7 @@ import {
   trustPolicyOptions,
   type LoadedConfig,
 } from './config.ts'
-import { terminalSafe } from './terminal-text.ts'
+import { jsonText, terminalSafe } from './terminal-text.ts'
 import { appTrustStore } from './trust-store.ts'
 import type { LoadedTool } from './tools.ts'
 
@@ -134,7 +133,7 @@ export async function runProvidersCommand(
   io: ProvidersCommandIO,
 ): Promise<number> {
   const env = io.env ?? process.env
-  const home = io.home ?? homedir()
+  const home = io.home ?? homeDir()
   let json = false
   const modules: string[] = []
   for (let i = 0; i < argv.length; i++) {
@@ -183,6 +182,6 @@ export async function runProvidersCommand(
   for (const warning of built.warnings) io.stderr(`warning: ${warning}\n`)
 
   const rows = providerRows(built.project.tools, built.tools, env)
-  io.stdout(json ? `${JSON.stringify(rows, null, 2)}\n` : table(rows))
+  io.stdout(json ? `${jsonText(rows, 2)}\n` : table(rows))
   return EXIT.ok
 }

@@ -8,11 +8,13 @@ import { execSelection, resolve } from '@osdlc/cli-tool/devlink'
 
 import { main } from '../dist/cli.js'
 import { WAYFINDER_SPEC, checkoutRoot } from '../dist/devlink.js'
+import { terminalSafe } from '../dist/terminal-text.js'
 
 const argv = process.argv.slice(2)
 const handedOff = execSelection(
   WAYFINDER_SPEC,
   resolve(WAYFINDER_SPEC, { self: checkoutRoot() }),
   argv,
+  { announce: (line) => process.stderr.write(`${terminalSafe(line)}\n`) },
 )
 process.exitCode = handedOff ?? (await main(argv))

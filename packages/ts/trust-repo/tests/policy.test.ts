@@ -105,6 +105,9 @@ describe('policyDecision', () => {
     expect(await owners(['github.com/acme'], 'bitbucket.org/acme')).toBe(false)
     expect(await owners(['gitlab.com/acme'], 'gitlab.com/ACME')).toBe(true)
     expect(await owners(['gitlab.com/acme'], 'github.com/acme')).toBe(false)
+    // Entries are trimmed and compared without case, host included.
+    expect(await owners(['  GitLab.COM/Acme  '], 'gitlab.com/acme')).toBe(true)
+    expect(await owners([' Acme '], 'GITHUB.COM/acme')).toBe(true)
   })
 })
 

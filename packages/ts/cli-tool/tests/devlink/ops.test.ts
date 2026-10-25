@@ -11,6 +11,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
+import { userInfo } from 'node:os'
 import { join } from 'node:path'
 
 import { gitHead } from '../../src/devlink/git-head.ts'
@@ -73,6 +74,8 @@ describe('defaultBinDir', () => {
   })
   test('a relative XDG_BIN_HOME is ignored; an absolute one wins', () => {
     expect(defaultBinDir({ HOME: '/h', XDG_BIN_HOME: 'bin' })).toBe('/h/.local/bin')
+    // A relative HOME is unset, not a folder under the cwd.
+    expect(defaultBinDir({ HOME: '.' })).toBe(join(userInfo().homedir, '.local', 'bin'))
     expect(defaultBinDir({ HOME: '/h', XDG_BIN_HOME: '/x/bin' })).toBe('/x/bin')
   })
 })

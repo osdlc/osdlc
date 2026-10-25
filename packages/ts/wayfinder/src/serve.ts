@@ -31,8 +31,6 @@
  * `--exec`. DELETE revokes and has no such check.
  */
 
-import { homedir } from 'node:os'
-
 import { spawnRunner, streamRunner } from '@osdlc/command-seam'
 import {
   tasks as allTasks,
@@ -42,7 +40,7 @@ import {
   type Task,
 } from '@osdlc/system-model/detect'
 import { humanAge } from '@osdlc/system-model/duration'
-import { trustDecision } from '@osdlc/trust-repo'
+import { homeDir, trustDecision } from '@osdlc/trust-repo'
 
 import { APP, BIN, PROJECT_CONFIG_FILENAME, TOKEN_HEADER } from './app.ts'
 import { acceptArgs, runArgv } from './args.ts'
@@ -426,7 +424,7 @@ export async function startServer(options: ServeOptions): Promise<{
   // `home` is resolved here, not passed through as `options.home`, because
   // `trustPolicyOptions` (unlike `appTrustStore`) needs a real string to
   // expand a leading `~` against.
-  const home = options.home ?? homedir()
+  const home = options.home ?? homeDir()
   const trustStoreInstance = appTrustStore({
     home,
     ...(options.env !== undefined ? { env: options.env } : {}),
@@ -740,15 +738,11 @@ export async function startServer(options: ServeOptions): Promise<{
   return { server, catalog, bootToken: bootToken as string, armBoot }
 }
 
-export async function serve(options: ServeOptions): Promise<number> {
-  const { server, catalog, bootToken, armBoot } = await startServer(options)
-  const address = `http://127.0.0.1:${server.port}`
-  const bootUrl = `${address}/?boot=${bootToken}`
-  // Not forced. This request decides how long the user waits for a URL, so it
-  // takes the store's answer when there is one and probes in the background,
-  // as the TUI does at start.
-  const first = await catalog(false)
-  armBoot()
+/**
+ * The first lines `--serve` prints: the address, the root, what was collected
+ * and what came from the cache. Repository text in them is terminal-safe.
+ */
+export function startupSummary(address: string, first: CatalogSnapshot): string {
   // A withheld runner has `status: "absent"` and `skippedForExec`. Printing
   // only its status would call it absent, the same word used for a runner the
   // repository does not have. Those are opposite facts: one means nothing is
@@ -761,15 +755,26 @@ export async function serve(options: ServeOptions): Promise<number> {
     })
     .join(', ')
   const stale = first.cache.filter((c) => c.state === 'stale')
-
-  process.stdout.write(`${APP}  ${address}\n`)
-  process.stdout.write(`  root       ${terminalSafe(first.catalog.root)}\n`)
-  process.stdout.write(`  collected  ${terminalSafe(counts)}\n`)
+  let out = `${APP}  ${address}\n`
+  out += `  root       ${terminalSafe(first.catalog.root)}\n`
+  out += `  collected  ${terminalSafe(counts)}\n`
   if (stale.length > 0) {
-    process.stdout.write(
-      `  cached     ${terminalSafe(stale.map((c) => `${c.runner} ${humanAge(c.ageMs)}`).join(', '))} — re-probing now\n`,
-    )
+    const aged = stale.map((c) => `${c.runner} ${humanAge(c.ageMs)}`).join(', ')
+    out += `  cached     ${terminalSafe(aged)} — re-probing now\n`
   }
+  return out
+}
+
+export async function serve(options: ServeOptions): Promise<number> {
+  const { server, catalog, bootToken, armBoot } = await startServer(options)
+  const address = `http://127.0.0.1:${server.port}`
+  const bootUrl = `${address}/?boot=${bootToken}`
+  // Not forced. This request decides how long the user waits for a URL, so it
+  // takes the store's answer when there is one and probes in the background,
+  // as the TUI does at start.
+  const first = await catalog(false)
+  armBoot()
+  process.stdout.write(startupSummary(address, first))
   // The first view may come from the store. The `cached` line above says so
   // when it does.
   process.stdout.write(
@@ -785,7 +790,9 @@ export async function serve(options: ServeOptions): Promise<number> {
   } else {
     // Best effort: a headless or remote shell has no browser.
     const opener = process.platform === 'darwin' ? 'open' : 'xdg-open'
-    const proc = spawnRunner(opener).run([bootUrl], { cwd: options.root })
+    const proc = spawnRunner(opener, { absolutePathOnly: true }).run([bootUrl], {
+      cwd: options.root,
+    })
     if (proc.exitCode !== 0) {
       process.stdout.write(`  (could not open a browser - visit ${bootUrl} within 60 seconds)\n`)
     }

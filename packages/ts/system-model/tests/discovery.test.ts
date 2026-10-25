@@ -10,7 +10,7 @@
  */
 
 import { afterAll, describe, expect, test } from 'vitest'
-import { chmodSync, existsSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { CommandFailed, runChecked, spawnRunner, spawnRunnerAsync } from '@osdlc/command-seam'
@@ -359,6 +359,29 @@ describe('detect and anchored literal markers', () => {
     await project.runners.readCached(await project.detect(dir), cacheDir)
 
     expect(profile.discovery).toBe('git')
+    expect(existsSync(join(dir, 'ran'))).toBe(false)
+  })
+
+  test('detection never runs a git the repository ships on a relative PATH entry', async () => {
+    // With `bin` on PATH, a spawn of a bare `git` from the repository root
+    // would find `<root>/bin/git` first.
+    const dir = await gitRepo({ 'package.json': '{"scripts":{"x":"true"}}' })
+    mkdirSync(join(dir, 'bin'))
+    const planted = join(dir, 'bin', 'git')
+    writeFileSync(planted, `#!/bin/sh\ntouch "${join(dir, 'ran')}"\nexit 1\n`)
+    chmodSync(planted, 0o755)
+
+    const saved = process.env['PATH']
+    process.env['PATH'] = `bin:.:${saved ?? ''}`
+    try {
+      const project = createProject({ tools: builtins })
+      const profile = await project.detect(dir, { discovery: 'auto' })
+      await project.runners.collect(profile, { allowExec: false })
+      expect(profile.discovery).toBe('git')
+      expect(profile.tools).toContain('node-scripts')
+    } finally {
+      process.env['PATH'] = saved
+    }
     expect(existsSync(join(dir, 'ran'))).toBe(false)
   })
 

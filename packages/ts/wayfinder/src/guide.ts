@@ -189,8 +189,8 @@ that variable is unset or relative.
 
 \`${CONFIG_ENV_VAR}\` replaces the USER file's location and nothing else. It does
 not move the project file and it does not add a layer. A path in it may start
-with a tilde, which is expanded, and a relative path resolves against the
-working directory, never the project root.
+with a tilde, which is expanded. A relative path is ignored with a warning,
+because from the project root it would name a file in the repository.
 
 Old names. The tool was called ${LEGACY_APP} before its first release.
 \`${LEGACY_CONFIG_ENV_VAR}\`, \`$XDG_CONFIG_HOME/${LEGACY_APP}/config.json\` and

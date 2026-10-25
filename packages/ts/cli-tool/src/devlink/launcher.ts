@@ -43,6 +43,13 @@ export interface LauncherOptions {
  * several: each segment is split on commas and its first quoted string is the
  * name. Stops at the closing brace so `devDependencies` is never read.
  */
+/**
+ * Bun reads `.env*` and `bunfig.toml` from the cwd, which can be a repository
+ * the user does not control. These flags stop both; `bunRunArgs` in
+ * `exec.ts` explains why.
+ */
+const BUN_FLAGS = '--no-env-file --config=/dev/null'
+
 const AWK_DEPS = [
   'function emit(s,  n,a,i){n=split(s,a,","); for(i=1;i<=n;i++) if(match(a[i],/"[^"]+"/)) print substr(a[i],RSTART+1,RLENGTH-2)}',
   '/"dependencies"[[:space:]]*:/ && !f {s=$0; sub(/^.*"dependencies"[[:space:]]*:[[:space:]]*[{]/,"",s); if((i=index(s,"}"))>0){emit(substr(s,1,i-1)); exit} emit(s); f=1; next}',
@@ -186,13 +193,16 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p('layer="local"')
   p()
   p(`# ── env: ${homeVar(spec)} ───────────────────────────────────────────────`)
-  p('# Only an absolute path counts, as in resolve().')
+  p('# Only an absolute path counts, as in resolve(). A drive path counts only')
+  p('# under Windows (Git Bash, MSYS, Cygwin); elsewhere it is relative.')
+  p('abs=0')
   p(`case "\${${homeVar(spec)}:-}" in`)
-  p('  /*)')
-  p(`    if is_checkout "\${${homeVar(spec)}}"; then`)
-  p(`      home="\${${homeVar(spec)}}"; via="${homeVar(spec)}"; layer="env"`)
-  p('    fi ;;')
+  p('  /*) abs=1 ;;')
+  p('  [A-Za-z]:[/\\\\]*) case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) abs=1 ;; esac ;;')
   p('esac')
+  p(`if [ "$abs" = "1" ] && is_checkout "\${${homeVar(spec)}}"; then`)
+  p(`  home="\${${homeVar(spec)}}"; via="${homeVar(spec)}"; layer="env"`)
+  p('fi')
   p()
   if (cwdLayer) {
     p('# ── cwd: a checkout above the working directory ─────────────────────────')
@@ -212,17 +222,28 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   }
   p('# ── link: `<config>/' + name + '/home`, written by `' + name + ' dev link|use` ─────')
   p('# Mirrors @osdlc/tiered-dirs standalone("' + name + '").config(): the launcher runs')
-  p('# before a runtime exists, so it cannot call the SDK. With no usable config')
-  p('# directory (HOME unset or empty) the layer is skipped.')
+  p('# before a runtime exists, so it cannot call the SDK. A HOME that is unset or')
+  p("# relative counts as unset, and the account's home is used, as there. With no")
+  p('# usable home the layer is skipped.')
   p(`if [ -z "$home" ]${guard}; then`)
+  p('  user_home="${HOME:-}"')
+  p('  case "$user_home" in')
+  p('    /*) ;;')
+  p('    *)')
+  p('      user_home=""')
+  p('      u="$(id -un 2>/dev/null || true)"')
+  p('      # A plain account name only, since it goes through eval for ~name.')
+  p('      case "$u" in ""|-*|*[!A-Za-z0-9._-]*) ;; *) eval "user_home=~$u" ;; esac')
+  p('      case "$user_home" in /*) ;; *) user_home="" ;; esac ;;')
+  p('  esac')
   p('  cfg=""')
   p('  case "$(uname -s)" in')
-  p(`    Darwin) [ -z "\${HOME:-}" ] || cfg="$HOME/Library/Application Support/${name}" ;;`)
+  p(`    Darwin) [ -z "$user_home" ] || cfg="$user_home/Library/Application Support/${name}" ;;`)
   p('    *)')
   p('      # Only an absolute XDG_CONFIG_HOME counts, as in @osdlc/tiered-dirs.')
   p('      case "${XDG_CONFIG_HOME:-}" in')
   p(`        /*) cfg="$XDG_CONFIG_HOME/${name}" ;;`)
-  p(`        *) [ -z "\${HOME:-}" ] || cfg="$HOME/.config/${name}" ;;`)
+  p(`        *) [ -z "$user_home" ] || cfg="$user_home/.config/${name}" ;;`)
   p('      esac ;;')
   p('  esac')
   p('  linked=""')
@@ -248,7 +269,7 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p(`    need_deps "$home_real" "$home_real/${entry}"`)
   p(`    announce "$home_real/${entry}" "$via"`)
   p(`    export ${layerVar}="$layer"`)
-  p(`    exec bun run "$home_real/${entry}" "$@"`)
+  p(`    exec bun ${BUN_FLAGS} run "$home_real/${entry}" "$@"`)
   p('  fi')
   p(
     "  # The selected checkout is this launcher's own: it reads as the install, not as a dev selection.",
@@ -287,7 +308,7 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p(`need_deps "$self" "$self/${entry}"`)
   p(`announce "$self/${entry}" "local, bun"`)
   p(`export ${layerVar}="$layer"`)
-  p(`exec bun run "$self/${entry}" "$@"`)
+  p(`exec bun ${BUN_FLAGS} run "$self/${entry}" "$@"`)
   return lines.join('\n') + '\n'
 }
 

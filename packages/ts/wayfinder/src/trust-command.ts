@@ -11,10 +11,8 @@
  * `takeConfigDir` and hands in a resolved root.
  */
 
-import { homedir } from 'node:os'
-
 import { EXIT, type CliIo } from '@osdlc/cli-tool'
-import { policyExecGate, type TrustBy, type TrustPolicy } from '@osdlc/trust-repo'
+import { homeDir, policyExecGate, type TrustBy, type TrustPolicy } from '@osdlc/trust-repo'
 
 import { APP, BIN } from './app.ts'
 import {
@@ -24,7 +22,7 @@ import {
   trustPolicyFromConfig,
   trustPolicyOptions,
 } from './config.ts'
-import { terminalSafe } from './terminal-text.ts'
+import { jsonText, terminalSafe } from './terminal-text.ts'
 import { appTrustStore } from './trust-store.ts'
 
 /**
@@ -33,7 +31,7 @@ import { appTrustStore } from './trust-store.ts'
 export interface TrustCommandIO extends CliIo {
   /** Defaults to `process.env`. Supplies `XDG_STATE_HOME`. */
   env?: Record<string, string | undefined>
-  /** Defaults to `os.homedir()`. The base for the non-XDG state path. */
+  /** Defaults to `homeDir()` from `@osdlc/trust-repo`. The base for the non-XDG state path. */
   home?: string
 }
 
@@ -149,7 +147,7 @@ export async function runTrustCommand(
   io: TrustCommandIO,
 ): Promise<number> {
   const env = io.env ?? process.env
-  const home = io.home ?? homedir()
+  const home = io.home ?? homeDir()
   // Keyed on the app name, not `toolName`, so every grant lands in one store
   // whatever name the caller prints.
   const store = appTrustStore({ env, home })
@@ -177,12 +175,12 @@ export async function runTrustCommand(
     changed: boolean,
     by: TrustBy | null,
     rule?: string,
-  ): string => `${JSON.stringify({ root: path, trusted, changed, by, rule })}\n`
+  ): string => `${jsonText({ root: path, trusted, changed, by, rule })}\n`
 
   switch (taken.mode) {
     case 'list': {
       const paths = await store.list()
-      if (taken.json) io.stdout(`${JSON.stringify({ trusted: paths })}\n`)
+      if (taken.json) io.stdout(`${jsonText({ trusted: paths })}\n`)
       else for (const path of paths) io.stdout(`${terminalSafe(path)}\n`)
       return EXIT.ok
     }

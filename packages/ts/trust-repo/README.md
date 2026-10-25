@@ -55,6 +55,10 @@ Any CLI tool gets its own store by name.
 | `untrust(root)` | removes a grant; `false` when there was none |
 | `list()` | every trusted path for this tool, sorted; `[]` when the store has never been written to |
 
+`home` defaults to `homeDir()`: `os.homedir()` when it is absolute, else the
+OS account's home. A relative `HOME` is treated as unset, so the store never
+lands inside the folder the tool runs in.
+
 A test passes its own `env` and `home`, so it never reads or writes the
 developer's real trust store. `dir` sets the store's directory directly and
 skips the `tool` and XDG lookup. Use it when a tool has its own environment
@@ -154,6 +158,14 @@ host and owner of the root's `origin` remote as `host/owner`. An entry is
 `my-org` does not match a clone from `gitlab.com/my-org`. This package knows no git, so without an `ownerOf` the
 `owners` rule never matches; the tool supplies a git-backed one.
 
+Owner trust believes the repository about itself. A git-backed `ownerOf`
+reads the remote URL the repository's own git config reports, and that
+config arrives with the directory. A folder unpacked from an archive, copied
+from a shared drive, or cloned by someone else can name any owner. So
+`owners` fits clones you made yourself. `paths` is the stronger form: it
+names where the repository is on your disk, which the repository cannot
+choose.
+
 ## Wording
 
 `withheldHint` takes the trust verb and the per-run flag in an optional second
@@ -176,7 +188,7 @@ The experimental exports of `@osdlc/trust-repo`:
 
 `ExecGate`, `PolicyBy`, `PolicyDecision`, `PolicyDecisionOptions`, `ResolveExecGateArgs`,
 `TRUST_MARKER_DIR`, `TrustBy`, `TrustDecision`, `TrustPolicy`, `TrustResult`, `TrustStore`,
-`TrustStoreOptions`, `pathGlobToRegExp`, `policyDecision`, `policyExecGate`, `resolveExecGate`,
+`TrustStoreOptions`, `homeDir`, `pathGlobToRegExp`, `policyDecision`, `policyExecGate`, `resolveExecGate`,
 `resolveTrustRoot`, `trustDecision`, `trustStore`, `trustStoreDir`, `withheldHint`, `xdgHome`
 
 A test compares this list with the `@experimental` tags in the source.

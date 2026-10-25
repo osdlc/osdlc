@@ -60,7 +60,9 @@ runs.
 `<config>` is the per-OS config home of the tool's standalone tier
 ([`@osdlc/tiered-dirs`](https://www.npmjs.com/package/@osdlc/tiered-dirs)):
 `~/Library/Application Support` on macOS, `${XDG_CONFIG_HOME:-~/.config}`
-elsewhere. The spec's `vendorDirs` (`{ vendor, envVars }`) names the override
+elsewhere. A relative `HOME` counts as unset there and in the bash launcher,
+and the account's home is used, so a link file under the cwd is never read.
+The spec's `vendorDirs` (`{ vendor, envVars }`) names the override
 variables that move it. Two files live under `<config>/<name>/`:
 
 | File | Holds | Read by |
@@ -109,16 +111,24 @@ process.exitCode = handedOff ?? (await main(argv))
 ```
 
 `execSelection` returns `null` for a `local` selection, meaning run your own
-code. Otherwise it spawns `bun run <entry>` with inherited stdio and returns
-its exit code. This is the one place the package spawns. The child is the
-program the user invoked.
+code. Otherwise it spawns `bun --no-env-file --config=<null device> run
+<entry>` with inherited stdio and returns its exit code. This is the one place
+the package spawns. The child is the program the user invoked. The two flags
+keep Bun from reading `.env*` and `bunfig.toml` in the cwd, which is often a
+repository the user does not control: a `.env` would set the tool's
+environment, and a `bunfig.toml` `preload` would run that repository's code
+first. The bash launcher passes the same flags. A checkout's own
+`bunfig.toml` is not read either.
 
 A bash launcher is for a tool whose canonical install is a compiled binary or
 built JavaScript, so the choice must be made before any runtime exists.
 `renderLauncher(spec)` writes the same layer checks in bash. It throws for a
 spec that sets `packageName`, because bash cannot read JSON reliably; use a
-JavaScript shim for such a tool. The tool
-commits the result, and `launcherDrift(spec, checkout)` in its test suite
+JavaScript shim for such a tool. So a bash-launcher tool that turns the cwd
+layer on has only its marker to tell its checkout from another project, and
+the marker must be unique. The bash launcher reads a drive path such as
+`C:/x` in `<NAME>_HOME` as absolute only under Git Bash, MSYS or Cygwin, as
+`resolve()` does only on Windows. The tool commits the result, and `launcherDrift(spec, checkout)` in its test suite
 fails when the committed file no longer matches the rendered one. Pass
 `{ builtEntry }` to prefer a built file under Node. A dev checkout of the
 tool itself (`node_modules` present, `bun` on PATH) still runs its own

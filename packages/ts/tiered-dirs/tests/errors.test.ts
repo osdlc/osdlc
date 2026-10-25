@@ -28,6 +28,11 @@ describe('every throw site sets its code', () => {
   const cases: [string, TieredDirsErrorCode, () => unknown][] = [
     ['no home', 'MISSING_BASE_DIR', () => systemBaseDirs(ENV, { platform: 'linux', env: {} })],
     [
+      'a relative injected HOME',
+      'MISSING_BASE_DIR',
+      () => systemBaseDirs(ENV, { platform: 'linux', env: { HOME: '.' } }),
+    ],
+    [
       'an empty injected home',
       'MISSING_BASE_DIR',
       () => systemBaseDirs(ENV, { platform: 'linux', env: {}, home: '' }),
