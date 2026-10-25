@@ -17,4 +17,8 @@ Other changes:
 - At phone width the toolbar wraps, the filters fold into one **Filters** menu and the tabs scroll on one row.
 - A task whose parameters could not be read is marked `?`, and Run asks for optional arguments. `Shift+Enter` runs a task and `?` opens the help, which lists the keys and opens at the top.
 - Colors come from `@osdlc/ux`, text is at least 11px, control borders meet 3:1 contrast, and each copy button names what it copies.
+- A Skills tab and group list the repository's agent skills. Copy, Enter and Shift+Enter put `/<name>` on the clipboard; nothing runs.
+- Each runner's info and its Settings row show its tool's description, language and homepage.
+- Settings grants or removes trust for one tool, with the same confirm as a repository grant.
+- `way list --json` carries `trustedTools`: the tools trusted on their own.
 - Ctrl-C stops `way serve` and any probe it is running. After a run, `way serve` exits with the task's exit code.

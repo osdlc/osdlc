@@ -16,13 +16,14 @@ import { FILTER_FLAGS, filterFrom, kit, noteUnknowns, openSession } from './shar
 
 /**
  * The catalog document for `snapshot`: the catalog with its groups, cache
- * verdicts and unknowns. With a filter, each report keeps only the tasks
+ * verdicts, unknowns and the tools trusted on their own. With a filter, each report keeps only the tasks
  * that pass it. The CLI and the web view send the same document.
  */
 export function catalogDocument(
   snapshot: Pick<CatalogSnapshot, 'catalog' | 'cache' | 'skills'>,
   unknowns: Unknown[],
   filter: TaskFilter = {},
+  trustedTools: readonly string[] = [],
 ): CatalogDocumentBody {
   const { kind: _kind, schemaVersion: _version, ...catalog } = snapshot.catalog
   const filtered = Object.keys(filter).length > 0
@@ -40,6 +41,7 @@ export function catalogDocument(
     skills,
     cache: snapshot.cache,
     unknowns,
+    trustedTools: [...trustedTools],
     filter: {
       ...(filter.servicesOnly === true ? { servicesOnly: true } : {}),
       ...(filter.declaredOnly === true ? { declaredOnly: true } : {}),
@@ -78,7 +80,7 @@ export function listCommand(home: string) {
       const snapshot = await session.catalog({ cached: flags.cached })
       const unknowns = session.unknowns(snapshot)
       noteUnknowns(ctx, session, snapshot, unknowns)
-      return catalogDocument(snapshot, unknowns, filter)
+      return catalogDocument(snapshot, unknowns, filter, session.settings().trustedTools)
     },
     text(doc) {
       const lines = [

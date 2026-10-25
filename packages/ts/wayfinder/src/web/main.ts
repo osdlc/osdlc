@@ -7,7 +7,7 @@
 import { $, state } from './state.ts'
 import { measureChrome, setThemeButton, showSignedOut } from './view.ts'
 import { wireInput } from './input.ts'
-import { load, readConfig, settingSource, settingValue, signIn } from './api.ts'
+import { load, loadTools, readConfig, settingSource, settingValue, signIn } from './api.ts'
 
 async function start(): Promise<void> {
   // Take the boot token out of the address bar first: it is spent by the
@@ -34,8 +34,9 @@ async function start(): Promise<void> {
 
   // The stored probe first, so the page has rows at once; then a fresh read.
   // The catalog arrives in the configured runner order. The setting itself
-  // is read beside it, so a drag knows which layer set it.
-  const [config] = await Promise.all([readConfig(), load({ cached: true })])
+  // is read beside it, so a drag knows which layer set it. The tool info is
+  // for the runner info and settings, which are opened later.
+  const [config] = await Promise.all([readConfig(), load({ cached: true }), loadTools()])
   const order = settingValue(config, 'runners.order')
   if (Array.isArray(order)) {
     state.runnerOrder = order.filter((r): r is string => typeof r === 'string')

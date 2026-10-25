@@ -1,7 +1,9 @@
 import type { Catalog, RunnerCacheState, Task } from '@osdlc/system-model/detect'
 import type { Mode } from '@osdlc/system-model/match'
 
+import type { SkillRow } from '../core/skills.ts'
 import type { Unknown } from '../core/unknowns.ts'
+import type { ToolSummary } from '../tool-info.ts'
 
 export const SEP = ' › ' // the chain separator shown between segments
 export const OPEN = '▾' // twisty, expanded
@@ -9,6 +11,9 @@ export const SHUT = '▸' // twisty, collapsed
 
 /** The tab id for the combined tab that shows every runner. */
 export const ALL = 'all'
+
+/** The tab id for the Skills tab. No runner id starts with `@`. */
+export const SKILLS = '@skills'
 
 /**
  * Every static element this page uses is declared in `page.html` and never
@@ -26,7 +31,17 @@ export function $(id: string): HTMLElement {
 export type CatalogDocument = Catalog & {
   cache?: RunnerCacheState[]
   unknowns?: Unknown[]
+  /** Agent skills: the Skills group. */
+  skills?: SkillRow[]
+  /** The tool ids trusted on their own, by `way trust --scope <tool>` or `trust.tools`. */
+  trustedTools?: string[]
 }
+
+/** What the page shows about a tool, from `way providers`. */
+export type ToolInfo = Pick<
+  ToolSummary,
+  'id' | 'homepage' | 'description' | 'ecosystem' | 'language'
+>
 
 /**
  * A ranked search hit, or a plain leaf under a tree group. `score` and
@@ -86,6 +101,8 @@ export interface AppState {
   cache: RunnerCacheState[]
   /** What the catalog could not read, each with the label every surface shows. */
   unknowns: Unknown[]
+  /** Every registered tool's description, language and homepage. Empty until read. */
+  tools: ToolInfo[]
   /**
    * The row in the results list that has keyboard focus, held as the task's
    * `id` rather than its position. render() rebuilds all of #out on a resize,
@@ -119,7 +136,13 @@ export const state: AppState = {
   trustable: false,
   cache: [],
   unknowns: [],
+  tools: [],
   focusedId: null,
+}
+
+/** A tool's info by id, when `way providers` listed it. */
+export function toolInfo(id: string): ToolInfo | undefined {
+  return state.tools.find((t) => t.id === id)
 }
 
 /** Every task in the catalog, in catalog order. */

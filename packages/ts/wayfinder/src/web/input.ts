@@ -1,7 +1,7 @@
 import type { Task } from '@osdlc/system-model/detect'
 import type { Mode } from '@osdlc/system-model/match'
 
-import { $, ALL, allTasks, OPEN, SHUT, state } from './state.ts'
+import { $, ALL, allTasks, OPEN, SHUT, SKILLS, state } from './state.ts'
 import { splitArgs } from '../args.ts'
 import type { Theme } from '../config-keys.ts'
 import { parametersUnknownLabel } from '../vocabulary.ts'
@@ -27,6 +27,7 @@ import type { SortKey } from './view.ts'
 import {
   failureText,
   load,
+  loadTools,
   readConfig,
   requestRun,
   setSetting,
@@ -221,6 +222,8 @@ export function wireInput(): void {
         ev.preventDefault()
         const task = taskOfRow(row as HTMLElement)
         if (task) runTask(task, row.querySelector<HTMLButtonElement>('.runbtn') ?? undefined)
+        // A skill row has no task: Run on it copies `/<name>`.
+        else copyRow(row as HTMLElement)
         return
       }
       copyRow(row as HTMLElement)
@@ -291,10 +294,13 @@ export function wireInput(): void {
       // nothing.
       $('settings-body').innerHTML = '<p class="set-empty">Reading configuration…</p>'
       openDialogAtTop('settings')
-      void readConfig().then((config) => {
-        $('settings-body').innerHTML = openSettings(config, [...state.knownRunners])
-        openDialogAtTop('settings')
-      })
+      // The tool info is read at startup; read again if that failed.
+      void Promise.all([readConfig(), state.tools.length === 0 ? loadTools() : null]).then(
+        ([config]) => {
+          $('settings-body').innerHTML = openSettings(config, [...state.knownRunners])
+          openDialogAtTop('settings')
+        },
+      )
       return
     }
 
@@ -388,7 +394,7 @@ export function wireInput(): void {
   const shownOrder = (surface: HTMLElement): string[] =>
     [...surface.children]
       .map((c) => runnerOf(c as HTMLElement))
-      .filter((r): r is string => r !== null && r !== ALL)
+      .filter((r): r is string => r !== null && r !== ALL && r !== SKILLS)
 
   /** Record the arrangement the frame about to be drawn will show. */
   function snapshotPainted(surface: HTMLElement): void {
@@ -462,7 +468,7 @@ export function wireInput(): void {
       '.tabs .tab, [data-drag-runner]',
     ) as HTMLElement | null
     if (!over || over === dragEl || over.parentElement !== surface) return
-    if (runnerOf(over) === null || runnerOf(over) === ALL) return
+    if (runnerOf(over) === null || runnerOf(over) === ALL || runnerOf(over) === SKILLS) return
     slideInto(surface, dragEl, isAfter(ev, over) ? over.nextSibling : over)
     snapshotPainted(surface)
   })

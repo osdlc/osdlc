@@ -43,7 +43,7 @@ export const KEY_TABLE: readonly KeyBinding[] = Object.freeze([
     surface: 'tui',
     view: 'list',
     keys: ['enter'],
-    action: 'run the selected task, asking for its arguments first; a skill is copied',
+    action: 'run the task, asking for arguments first; copy a skill',
     hint: 'enter run',
     rank: 1,
   },

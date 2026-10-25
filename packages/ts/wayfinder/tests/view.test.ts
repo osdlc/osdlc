@@ -32,6 +32,7 @@ function report(runner: string, skippedForExec: boolean): RunnerReport {
 describe('withheldBar', () => {
   beforeEach(() => {
     state.trustable = false
+    state.unknowns = []
   })
 
   test('says nothing when nothing was held back', () => {
@@ -60,6 +61,23 @@ describe('withheldBar', () => {
     const html = withheldBar([report('moon', true)])
     expect(html).toContain('data-trust-repo')
     expect(html).toContain(withheldLabel('untrusted'))
+  })
+
+  test("names a runner missing one tool with that runner's own label", () => {
+    state.trustable = true
+    state.unknowns = [
+      {
+        kind: 'withheld',
+        runner: 'mise',
+        reason: 'tool-untrusted',
+        missing: ['mise'],
+        label: withheldLabel('tool-untrusted', ['mise']),
+      },
+      { kind: 'withheld', runner: 'moon', reason: 'untrusted', label: withheldLabel('untrusted') },
+    ]
+    const html = withheldBar([report('mise', true), report('moon', true)])
+    expect(html).toContain('1 runner withheld: mise is not trusted')
+    expect(html).toContain('1 runner ' + withheldLabel('untrusted'))
   })
 
   test('marks the runners as the subject of the sentence', () => {

@@ -113,6 +113,11 @@ export async function buildCatalog(options: BuildCatalogOptions): Promise<Catalo
     signal: options.signal,
   })
   const snapshot = await session.catalog({ cached: options.cached === true })
-  const body = catalogDocument(snapshot, session.unknowns(snapshot), options.filter ?? {})
+  const body = catalogDocument(
+    snapshot,
+    session.unknowns(snapshot),
+    options.filter ?? {},
+    session.settings().trustedTools,
+  )
   return { schemaVersion: CATALOG_DOCUMENT_VERSION, kind: 'catalog', ...body } as CatalogDocument
 }

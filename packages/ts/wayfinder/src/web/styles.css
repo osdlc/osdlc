@@ -1364,7 +1364,8 @@ dialog#settings::backdrop {
   border-top: 1px solid var(--wf-border);
 }
 .set-actions button,
-.set-add button {
+.set-add button,
+.set-tools button {
   font: 12px/1 system-ui;
   padding: 6px 10px;
   cursor: pointer;
@@ -1576,4 +1577,53 @@ kbd {
     padding: 16px;
     max-width: calc(100vw - 16px);
   }
+}
+
+/* A skill row: the harnesses as small tags before the description. */
+.skill-for {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--wf-border);
+  border-radius: 3px;
+  font: 11px/1.5 system-ui;
+  color: var(--wf-text-muted);
+}
+
+/* What a tool is, in the runner info and the settings' runner rows. */
+.tool-desc {
+  color: var(--wf-text-secondary);
+}
+.tool-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+}
+.tool-facts dd {
+  margin: 0;
+}
+.set-desc,
+.set-tool {
+  display: block;
+  font-size: 12px;
+  color: var(--wf-text-secondary);
+}
+.set-tool {
+  color: var(--wf-text-muted);
+}
+.help-body a,
+.settings-body a {
+  color: var(--wf-accent);
+}
+.set-tools li {
+  flex-wrap: wrap;
+}
+.set-tools li + li {
+  margin-top: 4px;
+}
+.set-tools button {
+  padding: 3px 8px;
+}
+.tool-facts dt {
+  margin: 0;
 }

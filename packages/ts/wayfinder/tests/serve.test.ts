@@ -296,6 +296,67 @@ describe('the command routes', () => {
     }
   })
 
+  test('a tool grant answers 428, then grants that scope with the nonce', async () => {
+    const s = await start()
+    try {
+      const store = appTrustStore({ env: {}, home: s.home })
+      const first = await s.call(['trust'], { scope: 'mise' })
+      expect(first.status).toBe(428)
+      const { nonce } = (await first.json()) as { nonce: string }
+      expect(await store.listGrants()).toEqual([])
+      const second = await s.call(['trust'], { scope: 'mise' }, { 'x-confirm': nonce })
+      expect(second.status).toBe(200)
+      expect((await store.listGrants()).map((g) => g.scope)).toEqual(['mise'])
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test("a tool grant's nonce does not confirm a whole-repository grant", async () => {
+    const s = await start()
+    try {
+      const store = appTrustStore({ env: {}, home: s.home })
+      const first = await s.call(['trust'], { scope: 'mise' })
+      const { nonce } = (await first.json()) as { nonce: string }
+      const other = await s.call(['trust'], {}, { 'x-confirm': nonce })
+      expect(other.status).toBe(403)
+      expect(await store.listGrants()).toEqual([])
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test("a tool's untrust runs without a confirmation and leaves other grants", async () => {
+    const s = await start()
+    try {
+      const store = appTrustStore({ env: {}, home: s.home })
+      const resolved = await resolveTrustRoot(s.dir)
+      await store.trust(resolved, 'mise')
+      await store.trust(resolved)
+      const res = await s.call(['trust'], { untrust: true, scope: 'mise' })
+      expect(res.status).toBe(200)
+      expect((await store.listGrants()).map((g) => g.scope ?? '*')).toEqual(['*'])
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('providers answers each tool with its homepage, description and language', async () => {
+    const s = await start()
+    try {
+      const res = await s.call(['providers'])
+      expect(res.status).toBe(200)
+      const doc = (await res.json()) as {
+        providers: { id: string; homepage: string | null; language: string }[]
+      }
+      const npm = doc.providers.find((p) => p.id === 'npm')!
+      expect(npm.homepage).toMatch(/^https:\/\//)
+      expect(typeof npm.language).toBe('string')
+    } finally {
+      await s.web.stop()
+    }
+  })
+
   test('untrust runs without a confirmation', async () => {
     const s = await start()
     try {

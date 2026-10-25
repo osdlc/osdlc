@@ -34,7 +34,7 @@ every command needs a token. See [Security](#security).
 
 Every action on the page is a command of `way`, called over HTTP. The list
 and **Refresh** are `way list`, a trust grant is `way trust`, a saved setting
-is `way config set`. The page and the command line read and write the same
+is `way config set`, and the tool info is `way providers`. The page and the command line read and write the same
 files with the same rules.
 
 `--port N` fixes the port. `--no-open` prints the URL instead of opening a
@@ -43,8 +43,12 @@ browser. Ctrl-C stops the server and any probe it is running.
 ## Tabs
 
 There is an `all` tab and one tab per runner, each with a task count. Tabs
-follow the row groups: Tasks, then Dependencies, Tools and Git hooks, with a
-labelled break where one group ends and the next begins.
+follow the row groups: Tasks, then Dependencies, Tools and Git hooks, then
+Skills, with a labelled break where one group ends and the next begins.
+
+A runner's **i** button opens what the tool is: its description, its
+language and its homepage, then what each segment of its path means. The
+homepage is a link only when it is `http` or `https`.
 
 Only runners detected in the repository get a report. A detected runner that
 found no tasks folds into one "N empty runners" chip. **Runners** in the
@@ -59,6 +63,18 @@ tab row, the runner picker and the top of the combined tree. A project's
 `runners.order` wins over yours; the page says so when you drag. A saved
 order applies within a group. Groups always keep their own order. A runner
 missing from the saved order goes at the end of its group.
+
+## Skills
+
+The **Skills** tab lists the agent skills the `skills` setting chooses: the
+repository's own by default. Each row shows `/<name>` with its argument hint,
+the agents that read it, its description, and where it came from. In the
+`all` tab the skills are one group after the runners.
+
+A skill is not a command. An agent runs it when you type `/<name>`, so
+**copy**, `Enter` and `Shift+Enter` all put `/<name>` on the clipboard, and
+nothing runs. The search matches skills as it matches tasks, and a query
+ranks both in one list. **Services** and a runner's own tab show no skills.
 
 ## Narrow windows
 
@@ -188,8 +204,11 @@ names each key and the file it went to. **Revert** drops the edits, and so
 does closing the dialog. The project file is usually committed, so a change
 to it should be a deliberate act.
 
-`allowExec`, `trust` and `tools` are shown read-only, each with the command
-that changes it. The server refuses a write of them over HTTP.
+`allowExec`, the `trust` policy and `tools` are shown read-only, each with
+the command that changes it. The server refuses a write of them over HTTP.
+
+Each runner row also says what its tool is, its language and, for an `http`
+or `https` homepage, a link to it.
 
 Where your user config holds a dragged runner order, the Runners section
 offers to reset it.
@@ -204,6 +223,13 @@ the page sends the request again with it. The next probe runs trusted.
 
 **Untrust** is offered where a stored grant trusts the repository. It runs
 `way trust --untrust`, and the next probe runs without it.
+
+Trust can also be given to one tool. A runner that waits on one, such as a
+mise task once another tool is trusted, says `withheld: mise is not trusted`.
+The Execution section's **Tools** part lists those runners with a **Trust
+mise** button, which is `way trust --scope mise` and asks you first in the
+same way. It also lists the tools trusted on their own, each with
+**Untrust** (`way trust --untrust --scope <tool>`).
 
 Execution is shown, not offered as a toggle. A project file can only turn
 execution off. Turning it on is the trust grant. See

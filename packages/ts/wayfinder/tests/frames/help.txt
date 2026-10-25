@@ -3,9 +3,9 @@
 9/9  checked HH:MM:SS   
 LIST
   type            narrow the list
-  enter           run the selected task, asking for its arguments first
-  ^y              copy the selected task's command line
-  tab, shift+tab  next / previous runner tab
+  enter           run the task, asking for arguments first; copy a skill
+  ^y              copy the selected task's command line, or a skill's /name
+  tab, shift+tab  next / previous tab: all, each runner, skills
   ,               settings: runners, discovery, excluded paths and trust
   ^s              trust this repository, after a y/n question
   ^r              refresh: probe the repository again

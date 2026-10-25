@@ -7,8 +7,10 @@
  * written until Save. The project config is a committed file, so a click
  * must not silently change someone's working tree.
  *
- * Settings the page may not write (trust, `allowExec`, `tools`) are shown
- * read-only, each with the command that changes it.
+ * Trust of the repository, or of one tool, is granted here only after the
+ * person confirms (see `trustRepo`, `trustTool`). Settings the page may not
+ * write (`allowExec`, the trust policy, `tools`) are shown read-only, each
+ * with the command that changes it.
  *
  * It is not the runner picker. The picker in the header filters this visit
  * and is then forgotten. This screen sets which runners the project uses.
@@ -18,7 +20,7 @@
  */
 
 import { CLI_ONLY_KEYS, THEME_VALUES, type Theme } from '../config-keys.ts'
-import { APP, BIN, WITHHELD, runnerLabel, withheldLabel } from '../vocabulary.ts'
+import { APP, BIN, WITHHELD, runnerLabel } from '../vocabulary.ts'
 import {
   failureText,
   load,
@@ -27,12 +29,22 @@ import {
   settingSource,
   settingValue,
   trustRepo,
+  trustTool,
   unsetSetting,
   untrustRepo,
+  untrustTool,
   type ConfigView,
 } from './api.ts'
-import { $, state } from './state.ts'
-import { escapeHtml, openDialogAtTop, render, setThemeButton } from './view.ts'
+import { $, state, toolInfo } from './state.ts'
+import {
+  escapeHtml,
+  homepageLink,
+  languageText,
+  openDialogAtTop,
+  render,
+  setThemeButton,
+  withheldNote,
+} from './view.ts'
 
 /** What the server last said the configuration is. */
 let loaded: ConfigView | null = null
@@ -136,10 +148,22 @@ function runnersSection(): string {
       const on = !disabled.has(name)
       // On or off is the setting. Withheld is a separate fact: an enabled
       // runner that was not read this time.
-      const note =
-        on && withheld.has(name)
-          ? ', ' + withheldLabel(state.trustable ? 'untrusted' : 'exec-off')
-          : ''
+      const note = on && withheld.has(name) ? ', ' + withheldNote(name) : ''
+      // What the tool is, from `way providers`. Its text may come from the
+      // repository's own tool module, so it is escaped.
+      const tool = toolInfo(name)
+      const about =
+        tool === undefined
+          ? ''
+          : (tool.description !== null
+              ? '<span class="set-desc">' + escapeHtml(tool.description) + '</span>'
+              : '') +
+            '<span class="set-tool">' +
+            escapeHtml(languageText(tool)) +
+            (homepageLink(tool.homepage) !== ''
+              ? ' · ' + homepageLink(tool.homepage, 'homepage')
+              : '') +
+            '</span>'
       return (
         '<tr><td><input type="checkbox" data-set-runner="' +
         escapeHtml(name) +
@@ -150,7 +174,9 @@ function runnersSection(): string {
         '" /></td>' +
         '<td><code>' +
         escapeHtml(runnerLabel(name)) +
-        '</code></td>' +
+        '</code>' +
+        about +
+        '</td>' +
         '<td class="set-state">' +
         escapeHtml((on ? 'on' : 'off') + note) +
         '</td></tr>'
@@ -218,6 +244,7 @@ function executionSection(): string {
       escapeHtml(trust) +
       '</p>' +
       (action === '' ? '' : '<div class="set-actions set-inline">' + action + '</div>') +
+      toolTrust() +
       '<p class="set-sub"><code>allowExec</code>: <code>' +
       String(allowExec) +
       '</code>. It is changed from the command line only: ' +
@@ -226,6 +253,74 @@ function executionSection(): string {
       '<p class="set-sub">A project file can only turn execution <em>off</em>. ' +
       'Turning it on is the trust grant — a repository cannot grant itself ' +
       'permission to run its own code.</p>',
+  )
+}
+
+/**
+ * Trust one tool at a time: the tools trusted on their own, each with
+ * Untrust, and the withheld runners with the tools they still need, each
+ * with a grant. Empty when neither applies.
+ */
+function toolTrust(): string {
+  const trusted = state.catalog?.trustedTools ?? []
+  const waiting = state.unknowns.flatMap((u) =>
+    u.kind === 'withheld' && u.missing !== undefined && u.missing.length > 0 ? [u] : [],
+  )
+  if (trusted.length === 0 && waiting.length === 0) return ''
+  const trustedRows = trusted
+    .map(
+      (tool) =>
+        '<li><code>' +
+        escapeHtml(tool) +
+        '</code> trusted on its own ' +
+        '<button data-untrust-tool="' +
+        escapeHtml(tool) +
+        '" aria-label="' +
+        escapeHtml('Untrust ' + tool) +
+        '">Untrust</button></li>',
+    )
+    .join('')
+  // One button per tool, however many runners need it.
+  const offered = new Set<string>()
+  const waitingRows = waiting
+    .map((u) => {
+      const grants = (u.missing ?? [])
+        .filter((tool) => {
+          if (!state.trustable || offered.has(tool)) return false
+          offered.add(tool)
+          return true
+        })
+        .map(
+          (tool) =>
+            '<button data-trust-tool="' +
+            escapeHtml(tool) +
+            '">' +
+            escapeHtml('Trust ' + tool) +
+            '</button>',
+        )
+        .join('')
+      return (
+        '<li><code>' +
+        escapeHtml(runnerLabel(u.runner)) +
+        '</code> ' +
+        escapeHtml(u.label) +
+        ' ' +
+        grants +
+        '</li>'
+      )
+    })
+    .join('')
+  return (
+    '<h4>Tools</h4>' +
+    '<ul class="set-list set-tools">' +
+    trustedRows +
+    waitingRows +
+    '</ul>' +
+    '<p class="set-sub">Trusting one tool lets the runners that run it be read, and nothing else. ' +
+    command(`${BIN} trust --scope <tool>`) +
+    ' does the same; ' +
+    command(`${BIN} trust --untrust --scope <tool>`) +
+    ' removes it.</p>'
   )
 }
 
@@ -333,8 +428,8 @@ function cliOnlySection(): string {
   return section(
     'Command line only',
     null,
-    '<p class="set-sub">A page must not grant trust or name code to load, so these are changed ' +
-      'from the command line, for example ' +
+    '<p class="set-sub">A page must not change the trust policy or name code to load, so these ' +
+      'are changed from the command line, for example ' +
       command(`${BIN} config set trust.paths '["~/work"]' --user`) +
       ' or ' +
       command(`${BIN} trust`) +
@@ -467,6 +562,36 @@ export function handleSettingsClick(target: HTMLElement): boolean {
   if (target.closest('[data-trust-repo-settings]') !== null) {
     // `trustRepo` asks the person before the grant is sent.
     void trustRepo().then(reload)
+    return true
+  }
+
+  const grant = target.closest('[data-trust-tool]') as HTMLElement | null
+  if (grant !== null) {
+    const tool = grant.dataset['trustTool']!
+    // `trustTool` asks the person before the grant is sent.
+    void trustTool(tool).then((result) => {
+      notice = result.ok
+        ? { kind: 'ok', text: 'Trusted ' + tool + '. The runners that run it are read now.' }
+        : result.declined
+          ? null
+          : { kind: 'err', text: 'trust ' + tool + ' failed: ' + result.detail }
+      void reload()
+    })
+    return true
+  }
+
+  const revoke = target.closest('[data-untrust-tool]') as HTMLElement | null
+  if (revoke !== null) {
+    const tool = revoke.dataset['untrustTool']!
+    void untrustTool(tool).then((result) => {
+      notice = result.ok
+        ? {
+            kind: 'ok',
+            text: 'Untrusted ' + tool + '. The runners that run it are withheld again.',
+          }
+        : { kind: 'err', text: 'untrust ' + tool + ' failed: ' + (result.detail ?? '') }
+      void reload()
+    })
     return true
   }
 

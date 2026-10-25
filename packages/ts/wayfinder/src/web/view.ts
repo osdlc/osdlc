@@ -10,16 +10,19 @@ import type {
 } from '@osdlc/system-model/detect'
 import { paramShape } from '@osdlc/system-model/params'
 
-import { filterTasks } from '../core/filter.ts'
-import { groupOf, groupRank } from '../groups.ts'
+import { filterTasks, type TaskFilter } from '../core/filter.ts'
+import { filterSkills, skillLine, type SkillHit, type SkillRow } from '../core/skills.ts'
+import { SKILLS_GROUP, groupOf, groupRank } from '../groups.ts'
 import { keysFor } from '../keys.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import {
   APP,
   BIN,
   TASK_NOUN,
+  SKILL_NOUN,
   WITHHELD,
   countRunners,
+  countSkills,
   countTasks,
   parametersUnknownLabel,
   runnerLabel,
@@ -27,8 +30,8 @@ import {
   withheldLabel,
 } from '../vocabulary.ts'
 
-import { $, ALL, OPEN, SEP, SHUT, state } from './state.ts'
-import type { Row, TreeNode } from './state.ts'
+import { $, ALL, OPEN, SEP, SHUT, SKILLS, state, toolInfo } from './state.ts'
+import type { Row, ToolInfo, TreeNode } from './state.ts'
 
 // The search is the core's `filterTasks`, bundled into the page, so the page,
 // the terminal UI and `way query` keep and rank the same tasks.
@@ -97,6 +100,28 @@ function highlight(text: string, idx: number[] | null): string {
     out += escapeHtml(text[i]!)
   }
   return out + (open ? '</mark>' : '')
+}
+
+/**
+ * A tool's homepage as a link, or '' when it is not http or https. The core
+ * already drops other schemes; this checks again because the page renders it.
+ */
+export function homepageLink(url: string | null, text = url ?? ''): string {
+  if (url === null || !/^https?:\/\//i.test(url)) return ''
+  return (
+    '<a href="' +
+    escapeHtml(url) +
+    '" target="_blank" rel="noopener noreferrer">' +
+    escapeHtml(text) +
+    '</a>'
+  )
+}
+
+/** A tool's language, with its ecosystem id when that says more: `JavaScript (node)`. */
+export function languageText(tool: ToolInfo): string {
+  return tool.ecosystem !== null && tool.ecosystem.toLowerCase() !== tool.language.toLowerCase()
+    ? tool.language + ' (' + tool.ecosystem + ')'
+    : tool.language
 }
 
 // ---------------------------------------------------------------- tree
@@ -444,9 +469,19 @@ function textWidth(text: string): number | null {
 }
 
 /** Measure the rows a render is about to draw. See {@link measured}. */
-function measureRows(rows: readonly Row[], flat: boolean): void {
+function measureRows(rows: readonly Row[], flat: boolean, skills: readonly SkillHit[] = []): void {
   let nameW: number | null = 0
-  for (const row of rows) {
+  // A skill row sits one level down in the combined tree, else at the root.
+  const skillDepth = !flat && state.runner === ALL ? 1 : 0
+  for (const hit of skills) {
+    const w = textWidth(skillLine(hit.skill))
+    if (w === null) {
+      nameW = null
+      break
+    }
+    nameW = Math.max(nameW ?? 0, w + skillDepth * INDENT_PER_LEVEL)
+  }
+  for (const row of nameW === null ? [] : rows) {
     const e = row.entry
     // A search hit shows its whole chain at depth 0. A tree row shows the
     // part below its group headers, indented once per header.
@@ -457,10 +492,12 @@ function measureRows(rows: readonly Row[], flat: boolean): void {
       nameW = null
       break
     }
-    nameW = Math.max(nameW, w + depth * INDENT_PER_LEVEL)
+    nameW = Math.max(nameW ?? 0, w + depth * INDENT_PER_LEVEL)
   }
   measured = {
-    runsHaveText: rows.some((r) => (r.entry.doc ?? '') !== '' || (r.entry.detail ?? '') !== ''),
+    runsHaveText:
+      skills.length > 0 ||
+      rows.some((r) => (r.entry.doc ?? '') !== '' || (r.entry.detail ?? '') !== ''),
     nameW,
   }
 }
@@ -621,6 +658,119 @@ function renderSearchRow(row: Row): string {
   return '<tr' + rowAttrs(e) + '>' + cells(e, out) + '</tr>'
 }
 
+// ---------------------------------------------------------------- skills
+
+/** What Copy and Run hand over for a skill: `/<name>`, control characters replaced. */
+export function skillCopyText(skill: SkillRow): string {
+  return terminalSafe(skill.invoke)
+}
+
+/**
+ * One skill row, in the same columns as a task: the `/<name>` line, the
+ * harnesses and description, the origin and file, and Copy. A skill has no
+ * command line, so it has no Run button; Run on it (Shift+Enter) copies too
+ * (see input.ts). Nothing is sent to the server.
+ */
+function renderSkillRow(hit: SkillHit, depth = 0): string {
+  const s = hit.skill
+  const line = skillLine(s)
+  // labelHits index into the name; the line starts with the invoke's `/`.
+  const shift = s.invoke.endsWith(s.name) ? s.invoke.length - s.name.length : 0
+  const name = highlight(line, hit.labelHits === null ? null : hit.labelHits.map((i) => i + shift))
+  const description = s.description ?? ''
+  const copy = skillCopyText(s)
+  return (
+    '<tr data-skill="1" data-id="' +
+    escapeHtml(s.id) +
+    '" tabindex="-1">' +
+    '<td class="ind"><span class="inds"></span></td>' +
+    spacerCell(depth) +
+    '<td class="name" title="' +
+    escapeHtml(line) +
+    '">' +
+    name +
+    '</td>' +
+    '<td class="run skill-about" title="' +
+    escapeHtml(description) +
+    '">' +
+    s.harnesses.map((h) => '<span class="skill-for">' + escapeHtml(h) + '</span>').join('') +
+    escapeHtml(description) +
+    '</td>' +
+    (showRuns()
+      ? '<td class="doc">' +
+        escapeHtml(s.origin) +
+        '<span class="detail" title="' +
+        escapeHtml(s.path) +
+        '">' +
+        escapeHtml(s.path) +
+        '</span></td>'
+      : '') +
+    '<td class="act">' +
+    '<button class="copy" title="' +
+    escapeHtml('Copy ' + copy + ' to type to ' + (s.harnesses.join(', ') || 'an agent') + '.') +
+    '" aria-label="' +
+    escapeHtml('Copy ' + copy) +
+    '" data-run="' +
+    escapeHtml(copy) +
+    '">copy</button>' +
+    '</td></tr>'
+  )
+}
+
+/** The skills table at `depth`. */
+function skillTable(hits: readonly SkillHit[], depth: number): string {
+  return (
+    '<table style="' +
+    outdent(depth) +
+    '">' +
+    colgroup(depth) +
+    '<tbody>' +
+    hits.map((h) => renderSkillRow(h, depth)).join('') +
+    '</tbody></table>'
+  )
+}
+
+/** The Skills group in the combined tree: one header like a runner's, then its rows. */
+function skillsNode(hits: readonly SkillHit[]): string {
+  const key = SKILLS
+  const collapsed = state.collapsed.has(key)
+  return (
+    '<div class="node" data-collapsed="' +
+    collapsed +
+    '" data-key="' +
+    escapeHtml(key) +
+    '">' +
+    '<div class="head" style="top:calc(var(--chrome-h) + 0 * var(--head-h));z-index:20">' +
+    '<span class="twisty">' +
+    (collapsed ? SHUT : OPEN) +
+    '</span>' +
+    '<span class="seg-name">' +
+    escapeHtml(SKILLS_GROUP.title) +
+    '</span>' +
+    '<span class="node-count">' +
+    hits.length +
+    '</span>' +
+    '</div>' +
+    '<div class="kids">' +
+    skillTable(hits, 1) +
+    '</div>' +
+    '</div>'
+  )
+}
+
+/**
+ * The skills the current view shows: on the combined and Skills tabs, kept
+ * by the same filter as the tasks. A runner's tab shows none, and so does
+ * Services (see `filterSkills`).
+ */
+function skillHits(filter: TaskFilter): SkillHit[] {
+  if (state.runner !== ALL && state.runner !== SKILLS) return []
+  return filterSkills(state.catalog?.skills ?? [], filter)
+}
+
+/** Counts the status line shows for skills, set by the last render. */
+let skillCounts = { shown: 0, total: 0 }
+
 // ---------------------------------------------------------------- render
 
 /**
@@ -722,16 +872,21 @@ function treeStart(): number {
 }
 
 /**
+ * A withheld runner's label, from the catalog's unknowns: `withheld: mise is
+ * not trusted` when a tool it runs is what is missing.
+ */
+export function withheldNote(runner: string): string {
+  const held = state.unknowns.find((u) => u.kind === 'withheld' && u.runner === runner)
+  return held?.label ?? withheldLabel(state.trustable ? 'untrusted' : 'exec-off')
+}
+
+/**
  * Why a runner reports nothing when execution is off, in the words every
  * surface uses. Three places show it: the tab's tooltip, the picker's note
  * and the per-runner modal.
  */
-function execNote(): string {
-  return (
-    'This runner can only be read by running it. ' +
-    withheldLabel(state.trustable ? 'untrusted' : 'exec-off') +
-    '.'
-  )
+function execNote(runner: string): string {
+  return 'This runner can only be read by running it. ' + withheldNote(runner) + '.'
 }
 
 /**
@@ -778,6 +933,32 @@ function foldedChip(reports: RunnerReport[]): string {
   )
 }
 
+/**
+ * The Skills tab, after the runners' tabs under its own group label. It is
+ * not a runner: it is not dragged, has no info button and is not in the
+ * picker.
+ */
+function skillsTab(total: number, labelled: boolean): string {
+  if (total === 0) return ''
+  return (
+    (labelled ? '<span class="tabgroup">' + escapeHtml(SKILLS_GROUP.title) + '</span>' : '') +
+    '<span class="tab"><button data-runner="' +
+    SKILLS +
+    '" aria-pressed="' +
+    (state.runner === SKILLS) +
+    '" title="Agent skills: copy /name to type to an agent">' +
+    escapeHtml(SKILLS_GROUP.title) +
+    '<span class="count">' +
+    total +
+    '</span></button></span>'
+  )
+}
+
+/** Whether a runner has an info button: path segments to explain, or tool info. */
+function hasInfo(runner: string): boolean {
+  return chainOf(runner).length > 0 || toolInfo(runner) !== undefined
+}
+
 export function render(): void {
   const cat = state.catalog
   if (!cat) {
@@ -807,7 +988,11 @@ export function render(): void {
     }
   // A disabled runner cannot stay selected, or the view is empty with no
   // visible reason why.
-  if (state.runner !== ALL && !enabled.has(state.runner)) state.runner = ALL
+  const skillsTotal = cat.skills?.length ?? 0
+  if (
+    state.runner === SKILLS ? skillsTotal === 0 : state.runner !== ALL && !enabled.has(state.runner)
+  )
+    state.runner = ALL
 
   const byOrder = runnerOrder()
   const on = byOrder
@@ -861,7 +1046,11 @@ export function render(): void {
         // A runner withheld for exec keeps its tab so it can say so, through
         // the badge and the tooltip. The badge looks like a count, not the
         // error `!`, because nothing failed.
-        const tip = t.exec ? (shape ? shape + '. ' + execNote() : execNote()) : shape
+        const tip = t.exec
+          ? shape
+            ? shape + '. ' + execNote(t.runner)
+            : execNote(t.runner)
+          : shape
         const btn =
           '<button data-runner="' +
           t.runner +
@@ -882,18 +1071,20 @@ export function render(): void {
         // The info button sits beside the tab, not inside it. A button cannot
         // be inside a button, and the tab must stay one click target that
         // selects.
-        const info = chain.length
+        const info = hasInfo(t.runner)
           ? '<button class="tabinfo" data-info-runner="' +
             escapeHtml(t.runner) +
-            '" title="What ' +
+            '" title="About ' +
             escapeHtml(t.runner) +
-            '\'s path segments mean" aria-label="About ' +
+            ': the tool and its path segments" aria-label="About ' +
             escapeHtml(t.runner) +
             '">i</button>'
           : ''
         return header + '<span class="tab">' + btn + info + '</span>'
       })
-      .join('') + foldedChip(foldable)
+      .join('') +
+    skillsTab(skillsTotal, shown.length > 0) +
+    foldedChip(foldable)
   // The picker is a toolbar control, not a tab, so it renders into the Scope
   // cluster in the search row rather than at the end of the tab strip.
   //
@@ -921,14 +1112,24 @@ export function render(): void {
   const terms = splitTerms(state.query)
   // The same filter `way list` and `way query` apply: Services is
   // --services, Declared is --declared and Scope is --depth.
-  const rows: Row[] = filterTasks(scope, {
+  const filter: TaskFilter = {
     query: state.query,
     mode: state.mode,
     servicesOnly: state.servicesOnly,
     declaredOnly: state.declaredOnly,
     ...(state.depth < 99 ? { maxDepth: state.depth } : {}),
-  }).map((hit) => ({ entry: hit.task, score: hit.score, labelHits: hit.labelHits }))
-  measureRows(rows, terms.length > 0)
+  }
+  const rows: Row[] = filterTasks(scope, filter).map((hit) => ({
+    entry: hit.task,
+    score: hit.score,
+    labelHits: hit.labelHits,
+  }))
+  const skills = skillHits(filter)
+  skillCounts = {
+    shown: skills.length,
+    total: state.runner === ALL || state.runner === SKILLS ? skillsTotal : 0,
+  }
+  measureRows(rows, terms.length > 0, skills)
 
   let html = ''
   for (const sec of scope) {
@@ -949,21 +1150,34 @@ export function render(): void {
         '</div>'
     }
   }
-  if (rows.length === 0) {
+  const onSkills = state.runner === SKILLS
+  if (rows.length === 0 && skills.length === 0) {
+    const noun = onSkills ? SKILL_NOUN.one : TASK_NOUN.one
     html +=
       '<div class="empty">' +
-      (inScope ? 'No ' + TASK_NOUN.one + ' matches.' : 'Nothing collected.') +
+      (inScope || skillCounts.total ? 'No ' + noun + ' matches.' : 'Nothing collected.') +
       '</div>'
   } else if (terms.length) {
-    // Searching ranks results, best first, so the tree gives way to a flat list.
+    // Searching ranks results, best first, so the tree gives way to a flat
+    // list. Tasks and skills are scored by the same matcher, so they merge.
+    const hits: { score: number; html: () => string }[] = [
+      ...rows.map((r) => ({ score: r.score, html: () => renderSearchRow(r) })),
+      ...skills.map((h) => ({ score: h.score, html: () => renderSkillRow(h) })),
+    ]
+    hits.sort((a, b) => b.score - a.score)
     html +=
       '<table>' +
       colgroup(0) +
       '<tbody>' +
-      rows.slice(0, 400).map(renderSearchRow).join('') +
+      hits
+        .slice(0, 400)
+        .map((h) => h.html())
+        .join('') +
       '</tbody></table>'
+  } else if (onSkills) {
+    html += skillTable(skills, 0)
   } else {
-    html += renderNode(buildTree(rows), [])
+    html += renderNode(buildTree(rows), []) + (skills.length > 0 ? skillsNode(skills) : '')
   }
   // Whether focus is in the list must be read before the html is replaced,
   // because replacing it moves focus to <body>. Focus is restored only if it
@@ -1096,13 +1310,18 @@ export function helpHtml(): string {
     'A task that takes parameters, or whose parameters could not be read, asks for its arguments first. ',
     '<b>Copy</b> puts the command on the clipboard.</p>',
 
+    '<h3>Skills</h3>',
+    '<p>The Skills tab lists the agent skills this repository ships (the <code>skills</code> setting can add your own). ',
+    'A skill is not a command: an agent runs it when you type <code>/&lt;name&gt;</code>. So Copy, Enter and Run all put <code>/&lt;name&gt;</code> on the clipboard to paste into ',
+    'the agent the row names, and nothing runs here. The search and Services filter skills as they filter tasks.</p>',
+
     '<h3>Settings</h3>',
     "<p>The gear opens this project's settings (<code>" +
       BIN +
       ' config list</code>). Edits are staged until Save, which writes each one with <code>' +
       BIN +
       ' config set</code> and names the file it wrote. ',
-    'Trust, <code>allowExec</code> and <code>tools</code> are changed from the command line only; the screen shows the command for each.</p>',
+    'Trust this repository, or one tool, asks you to confirm first. <code>allowExec</code>, the trust policy and <code>tools</code> are changed from the command line only; the screen shows the command for each.</p>',
 
     '<h3>Why a runner might show nothing</h3>',
     "<p>Some runners can only be read by running them — <code>moon query tasks</code> evaluates this repository's own toolchain configuration. ",
@@ -1111,6 +1330,9 @@ export function helpHtml(): string {
       ', and their tab says so. Trust this repository asks you to confirm, then runs <code>' +
       BIN +
       ' trust</code>. ',
+    'A runner can also wait on one tool, such as mise for a mise task: Settings trusts that tool alone (<code>' +
+      BIN +
+      ' trust --scope &lt;tool&gt;</code>). ',
     'A repository cannot grant itself that: <code>allowExec</code> in its own config file cannot raise the gate.</p>',
 
     '<h3>Staying current</h3>',
@@ -1222,12 +1444,12 @@ function renderRunnerPicker(cat: Catalog): string {
       // info button. A <label> passes a click to its checkbox, so the button
       // sits outside the label, or clicking it would also turn the runner
       // off.
-      const info = s.chain.length
+      const info = hasInfo(s.runner)
         ? '<button class="tabinfo" data-info-runner="' +
           escapeHtml(s.runner) +
-          '" title="What ' +
+          '" title="About ' +
           escapeHtml(s.runner) +
-          '\'s path segments mean" aria-label="About ' +
+          ': the tool and its path segments" aria-label="About ' +
           escapeHtml(s.runner) +
           '">i</button>'
         : ''
@@ -1280,6 +1502,11 @@ export function listRows(): HTMLElement[] {
   return [...$('out').querySelectorAll<HTMLElement>('tbody tr')]
 }
 
+/** The task rows in #out: every body row but the skills'. */
+export function taskRows(): HTMLElement[] {
+  return listRows().filter((r) => !r.hasAttribute('data-skill'))
+}
+
 /**
  * Which row Enter takes, and where the single tab stop into the list sits.
  *
@@ -1328,12 +1555,32 @@ export function setFocusedRow(id: string | null): void {
 }
 
 /**
- * One runner's explanation: what each position of its path selects, how it
- * is read, and whether reading it means running anything.
+ * A tool's description, language and homepage, from `way providers`. The
+ * description and homepage of a custom tool are repository text, so both
+ * are escaped, and the homepage is a link only when it is http or https.
+ */
+export function toolAboutHtml(tool: ToolInfo): string {
+  const link = homepageLink(tool.homepage)
+  return (
+    (tool.description !== null
+      ? '<p class="tool-desc">' + escapeHtml(tool.description) + '</p>'
+      : '') +
+    '<dl class="tool-facts"><dt>Language</dt><dd>' +
+    escapeHtml(languageText(tool)) +
+    '</dd>' +
+    (link !== '' ? '<dt>Homepage</dt><dd>' + link + '</dd>' : '') +
+    '</dl>'
+  )
+}
+
+/**
+ * One runner's explanation: the tool it is, what each position of its path
+ * selects, and whether reading it means running anything.
  */
 export function showRunnerInfo(runner: string): void {
   const report = (state.catalog?.reports || []).find((r) => r.runner === runner)
   if (!report) return
+  const tool = toolInfo(runner)
   const shape = report.chain.map((c, i) => (i === 0 ? runner : c.label)).join(' › ')
   const rows = report.chain
     .map(
@@ -1347,7 +1594,7 @@ export function showRunnerInfo(runner: string): void {
     .join('')
   const notes: string[] = []
   if (report.skippedForExec) {
-    notes.push('<p>Not collected right now. ' + execNote() + '</p>')
+    notes.push('<p>Not collected right now. ' + escapeHtml(execNote(runner)) + '</p>')
     if (state.trustable) notes.push('<p>' + TRUST_BUTTON + '</p>')
   }
   if (report.status === 'error') {
@@ -1361,12 +1608,15 @@ export function showRunnerInfo(runner: string): void {
     '<h3 id="help-title">' +
     escapeHtml(runnerLabel(runner)) +
     '</h3>' +
-    '<p>A task from this runner reads <code>' +
-    escapeHtml(shape) +
-    '</code>.</p>' +
-    '<dl>' +
-    rows +
-    '</dl>' +
+    (tool !== undefined ? toolAboutHtml(tool) : '') +
+    (report.chain.length > 0
+      ? '<p>A task from this runner reads <code>' +
+        escapeHtml(shape) +
+        '</code>.</p>' +
+        '<dl>' +
+        rows +
+        '</dl>'
+      : '') +
     notes.join('') +
     '<p>' +
     escapeHtml(countTasks(report.tasks.length)) +
@@ -1445,17 +1695,26 @@ export function cacheSpan(rows: readonly RunnerCacheState[]): string {
 export function withheldBar(reports: readonly RunnerReport[]): string {
   const held = reports.filter((s) => s.skippedForExec)
   if (held.length === 0) return ''
-  const names = held.map((s) => runnerLabel(s.runner)).join(', ')
-  const label = withheldLabel(state.trustable ? 'untrusted' : 'exec-off')
+  // One sentence per label, so a runner missing one tool is named apart from
+  // the ones missing the repository's trust.
+  const byLabel = new Map<string, string[]>()
+  for (const s of held) {
+    const label = withheldNote(s.runner)
+    byLabel.set(label, [...(byLabel.get(label) ?? []), runnerLabel(s.runner)])
+  }
   return (
-    '<span>' +
-    escapeHtml(countRunners(held.length)) +
-    ' ' +
-    escapeHtml(label) +
-    ': <span class="who">' +
-    escapeHtml(names) +
-    '</span>.</span>' +
-    (state.trustable ? TRUST_BUTTON : '')
+    [...byLabel]
+      .map(
+        ([label, names]) =>
+          '<span>' +
+          escapeHtml(countRunners(names.length)) +
+          ' ' +
+          escapeHtml(label) +
+          ': <span class="who">' +
+          escapeHtml(names.join(', ')) +
+          '</span>.</span>',
+      )
+      .join(' ') + (state.trustable ? TRUST_BUTTON : '')
   )
 }
 
@@ -1479,10 +1738,15 @@ export function renderStatus(shown: number, total: number): void {
     .map((s) => s.runner)
   $('status').innerHTML =
     '<span>' +
-    shown +
-    ' of ' +
-    escapeHtml(countTasks(total)) +
-    (state.runner === ALL ? ', all runners' : ' in ' + escapeHtml(runnerLabel(state.runner))) +
+    (state.runner === SKILLS
+      ? skillCounts.shown + ' of ' + escapeHtml(countSkills(skillCounts.total))
+      : shown +
+        ' of ' +
+        escapeHtml(countTasks(total)) +
+        (state.runner === ALL ? ', all runners' : ' in ' + escapeHtml(runnerLabel(state.runner))) +
+        (skillCounts.total > 0
+          ? ', ' + skillCounts.shown + ' of ' + escapeHtml(countSkills(skillCounts.total))
+          : '')) +
     '</span>' +
     '<span>checked ' +
     new Date(state.checkedAt).toLocaleTimeString() +

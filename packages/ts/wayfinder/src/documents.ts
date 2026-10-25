@@ -116,6 +116,11 @@ export const CatalogOutput = z.object({
     .describe('Agent skills, the Skills group. The skills setting chooses which.'),
   cache: z.array(CacheStateZ),
   unknowns: z.array(UnknownZ),
+  trustedTools: z
+    .array(z.string())
+    .describe(
+      'The tool ids trusted on their own here. Empty when the repository is trusted as a whole.',
+    ),
   filter: FilterZ,
 })
 

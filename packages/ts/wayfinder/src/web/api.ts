@@ -7,21 +7,24 @@
  * |---|---|
  * | the list, Refresh, the poll | `way list` (`--cached` for the first view) |
  * | Trust this repository | `way trust`, confirmed by the person |
- * | Untrust | `way trust --untrust` |
+ * | Trust one tool | `way trust --scope <tool>`, confirmed by the person |
+ * | Untrust | `way trust --untrust`, with `--scope <tool>` for one tool |
  * | Settings | `way config list`, `way trust --show` |
+ * | Tool info | `way providers` |
+ * | Run on a skill | nothing is sent: the page copies `/<name>` |
  * | Save, theme, a dragged runner order | `way config set` / `way config unset` |
  * | Run | `POST /run`, which resolves the task with `way run --dry-run` |
  */
 
 import type { Unknown } from '../core/unknowns.ts'
-import { $, state, type CatalogDocument } from './state.ts'
+import { $, state, type CatalogDocument, type ToolInfo } from './state.ts'
 import {
   escapeHtml,
-  listRows,
   render,
   renderStatus,
   renderTrustBar,
   scopedReports,
+  taskRows,
 } from './view.ts'
 
 // ---------------------------------------------------------------- auth
@@ -129,9 +132,11 @@ function showError(prefix: string, detail: string): void {
 
 // ---------------------------------------------------------------- catalog
 
-/** Whether a withheld runner would be read once the repository is trusted. */
+/** Whether a withheld runner would be read once the repository, or a tool it runs, is trusted. */
 function trustableFrom(unknowns: readonly Unknown[]): boolean {
-  return unknowns.some((u) => u.kind === 'withheld' && u.reason === 'untrusted')
+  return unknowns.some(
+    (u) => u.kind === 'withheld' && (u.reason === 'untrusted' || u.reason === 'tool-untrusted'),
+  )
 }
 
 /**
@@ -164,6 +169,8 @@ export async function load(opts: { cached?: boolean } = {}): Promise<void> {
       s.tasks.map((e) => e.display + ' ' + (e.doc || '') + ' ' + (e.parametersUnknown ?? '')),
     ]),
     cat.unknowns?.map((u) => u.label),
+    cat.skills?.map((s) => [s.id, s.argumentHint, s.description, s.harnesses]),
+    cat.trustedTools,
   ])
   state.checkedAt = cat.generatedAt
   state.cache = cat.cache ?? []
@@ -173,7 +180,7 @@ export async function load(opts: { cached?: boolean } = {}): Promise<void> {
     // Nothing moved: advance the clock, leave the table and scroll alone.
     state.catalog = cat
     const inScope = scopedReports().reduce((n, s) => n + s.tasks.length, 0)
-    renderStatus(listRows().length, inScope)
+    renderStatus(taskRows().length, inScope)
     renderTrustBar()
     return
   }
@@ -188,40 +195,90 @@ export async function load(opts: { cached?: boolean } = {}): Promise<void> {
 export const TRUST_QUESTION =
   'Trust this repository? Its runners will be read by running them, now and on every later visit, until you untrust it.'
 
+/** What the person is asked before one tool's grant is sent. */
+export function toolTrustQuestion(tool: string): string {
+  return `Trust ${tool} in this repository? Runners that run it will be read by running it, now and on every later visit, until you untrust it.`
+}
+
 /**
- * Grant trust with `way trust`. The server answers 428 with a nonce, the
- * person is asked, and only then is the same request sent again with the
- * nonce. Returns true when the grant was made.
+ * What a grant came to. `declined` is the person saying no; nothing was sent
+ * a second time.
  */
-export async function trustRepo(ask: (question: string) => boolean = confirm): Promise<boolean> {
-  const first = await call<unknown>(['trust'], {})
-  if (first.ok) {
-    await load()
-    return true
+export type GrantResult = { ok: true } | { ok: false; declined: boolean; detail: string }
+
+/**
+ * Send a `way trust` grant. The server answers 428 with a nonce, the person
+ * is asked, and only then is the same request sent again with the nonce.
+ */
+async function grant(
+  args: Record<string, unknown>,
+  question: string,
+  ask: (question: string) => boolean,
+): Promise<GrantResult> {
+  const first = await call<unknown>(['trust'], args)
+  if (!first.ok && (first.status !== 428 || first.nonce === undefined)) {
+    return { ok: false, declined: false, detail: failureText(first) }
   }
-  if (first.status !== 428 || first.nonce === undefined) {
-    showError('trust failed', failureText(first))
-    return false
-  }
-  if (!ask(TRUST_QUESTION)) return false
-  const second = await call<unknown>(['trust'], {}, first.nonce)
-  if (!second.ok) {
-    showError('trust failed', failureText(second))
-    return false
+  if (!first.ok) {
+    if (!ask(question)) return { ok: false, declined: true, detail: 'not confirmed' }
+    const second = await call<unknown>(['trust'], args, first.nonce)
+    if (!second.ok) return { ok: false, declined: false, detail: failureText(second) }
   }
   // The next probe runs trusted, so the withheld runners appear.
   state.fingerprint = ''
   await load()
-  return true
+  return { ok: true }
+}
+
+/**
+ * Grant trust with `way trust`, confirmed by the person. Returns true when
+ * the grant was made.
+ */
+export async function trustRepo(ask: (question: string) => boolean = confirm): Promise<boolean> {
+  const result = await grant({}, TRUST_QUESTION, ask)
+  if (!result.ok && !result.declined) showError('trust failed', result.detail)
+  return result.ok
 }
 
 /** Remove the repository's trust with `way trust --untrust`. */
 export async function untrustRepo(): Promise<{ ok: boolean; detail?: string }> {
-  const result = await call<unknown>(['trust'], { untrust: true })
+  return untrust({ untrust: true })
+}
+
+/** Trust one tool with `way trust --scope <tool>`, confirmed by the person. */
+export function trustTool(
+  tool: string,
+  ask: (question: string) => boolean = confirm,
+): Promise<GrantResult> {
+  return grant({ scope: tool }, toolTrustQuestion(tool), ask)
+}
+
+/** Remove one tool's trust with `way trust --untrust --scope <tool>`. */
+export function untrustTool(tool: string): Promise<{ ok: boolean; detail?: string }> {
+  return untrust({ untrust: true, scope: tool })
+}
+
+async function untrust(args: Record<string, unknown>): Promise<{ ok: boolean; detail?: string }> {
+  const result = await call<unknown>(['trust'], args)
   if (!result.ok) return { ok: false, detail: failureText(result) }
   state.fingerprint = ''
   await load()
   return { ok: true }
+}
+
+// ---------------------------------------------------------------- tools
+
+/** Read every tool's description, language and homepage with `way providers`. */
+export async function loadTools(): Promise<void> {
+  const result = await call<{ providers: ToolInfo[] }>(['providers'])
+  if (!result.ok) return
+  state.tools = result.doc.providers.map((p) => ({
+    id: p.id,
+    homepage: p.homepage,
+    description: p.description,
+    ecosystem: p.ecosystem,
+    language: p.language,
+  }))
 }
 
 // ---------------------------------------------------------------- config

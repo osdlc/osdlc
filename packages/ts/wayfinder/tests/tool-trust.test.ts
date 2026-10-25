@@ -176,7 +176,9 @@ describe('per-tool trust', () => {
     const listed = await way(['list', '--json', '-C', dir])
     const doc = JSON.parse(listed.out) as {
       unknowns: Array<{ kind: string; runner: string; missing?: string[]; label: string }>
+      trustedTools: string[]
     }
+    expect(doc.trustedTools).toEqual(['mise'])
     const withheldNow = doc.unknowns.filter((u) => u.kind === 'withheld')
     expect(withheldNow).toEqual([
       {
@@ -187,5 +189,12 @@ describe('per-tool trust', () => {
         label: 'withheld: moon is not trusted',
       },
     ])
+  })
+
+  test('way list --json has no trusted tools before a tool grant', async () => {
+    const dir = await root(MISE_AND_MOON)
+    const io = captureIo()
+    expect(await main(['list', '--json', '-C', dir], {}, dir, io)).toBe(0)
+    expect((JSON.parse(io.out) as { trustedTools: string[] }).trustedTools).toEqual([])
   })
 })
