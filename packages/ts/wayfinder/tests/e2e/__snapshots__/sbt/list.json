@@ -51,6 +51,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "sbt",
@@ -68,5 +69,6 @@
       "label": "withheld: execution is off"
     }
   ],
+  "trustedTools": [],
   "filter": {}
 }

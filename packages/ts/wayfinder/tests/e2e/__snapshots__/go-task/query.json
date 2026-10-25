@@ -38,6 +38,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "go-task",

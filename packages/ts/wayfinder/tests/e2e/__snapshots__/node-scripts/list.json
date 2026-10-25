@@ -202,6 +202,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "node-scripts",
@@ -221,5 +222,6 @@
     }
   ],
   "unknowns": [],
+  "trustedTools": [],
   "filter": {}
 }

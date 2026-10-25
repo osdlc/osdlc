@@ -105,6 +105,7 @@
       "executes": "local"
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "cmake-presets",

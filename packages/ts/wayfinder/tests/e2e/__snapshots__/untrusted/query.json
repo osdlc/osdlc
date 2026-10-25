@@ -7,6 +7,7 @@
     "mode": "fuzzy"
   },
   "tasks": [],
+  "skills": [],
   "cache": [
     {
       "runner": "moon",
@@ -21,6 +22,9 @@
       "kind": "withheld",
       "runner": "moon",
       "reason": "untrusted",
+      "missing": [
+        "moon"
+      ],
       "label": "withheld: this repository is not trusted"
     }
   ]

@@ -104,6 +104,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "deno-tasks",
@@ -115,5 +116,6 @@
     }
   ],
   "unknowns": [],
+  "trustedTools": [],
   "filter": {}
 }

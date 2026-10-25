@@ -99,6 +99,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "vscode-tasks",
@@ -120,5 +121,6 @@
       "label": "parameters unknown: the task uses an editor variable, so it cannot run here"
     }
   ],
+  "trustedTools": [],
   "filter": {}
 }

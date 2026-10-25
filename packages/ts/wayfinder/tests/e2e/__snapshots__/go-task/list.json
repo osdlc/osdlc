@@ -169,6 +169,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "go-task",
@@ -188,5 +189,6 @@
     }
   ],
   "unknowns": [],
+  "trustedTools": [],
   "filter": {}
 }

@@ -107,6 +107,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "docker-compose",
@@ -118,5 +119,6 @@
     }
   ],
   "unknowns": [],
+  "trustedTools": [],
   "filter": {}
 }

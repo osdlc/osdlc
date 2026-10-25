@@ -35,6 +35,7 @@
       "executes": "local"
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "node-scripts",

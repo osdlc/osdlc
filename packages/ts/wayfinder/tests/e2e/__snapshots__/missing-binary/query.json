@@ -36,6 +36,7 @@
       "executes": "local"
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "just",

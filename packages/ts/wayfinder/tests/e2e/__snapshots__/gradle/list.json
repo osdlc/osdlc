@@ -187,6 +187,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "gradle",
@@ -198,5 +199,6 @@
     }
   ],
   "unknowns": [],
+  "trustedTools": [],
   "filter": {}
 }

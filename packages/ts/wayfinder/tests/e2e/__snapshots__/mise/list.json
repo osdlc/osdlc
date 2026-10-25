@@ -142,6 +142,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "mise",
@@ -167,5 +168,6 @@
       "label": "withheld: execution is off"
     }
   ],
+  "trustedTools": [],
   "filter": {}
 }

@@ -41,6 +41,7 @@
       "executes": "local"
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "rake",

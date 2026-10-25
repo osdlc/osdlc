@@ -272,6 +272,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "dotnet",
@@ -283,5 +284,6 @@
     }
   ],
   "unknowns": [],
+  "trustedTools": [],
   "filter": {}
 }

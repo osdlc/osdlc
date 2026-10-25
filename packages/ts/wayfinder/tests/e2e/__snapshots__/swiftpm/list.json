@@ -131,6 +131,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "swiftpm",
@@ -142,5 +143,6 @@
     }
   ],
   "unknowns": [],
+  "trustedTools": [],
   "filter": {}
 }

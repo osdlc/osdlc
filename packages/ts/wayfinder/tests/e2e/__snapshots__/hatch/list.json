@@ -137,6 +137,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "hatch",
@@ -148,5 +149,6 @@
     }
   ],
   "unknowns": [],
+  "trustedTools": [],
   "filter": {}
 }

@@ -70,6 +70,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "github-actions",
@@ -91,5 +92,6 @@
       "label": "parameters unknown: this runner does not read them"
     }
   ],
+  "trustedTools": [],
   "filter": {}
 }

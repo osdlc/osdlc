@@ -39,6 +39,7 @@
       "executes": "remote"
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "github-actions",

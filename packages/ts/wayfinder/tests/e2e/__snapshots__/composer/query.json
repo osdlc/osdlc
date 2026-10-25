@@ -38,6 +38,7 @@
       "executes": "local"
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "composer",

@@ -134,6 +134,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "python",
@@ -153,5 +154,6 @@
     }
   ],
   "unknowns": [],
+  "trustedTools": [],
   "filter": {}
 }

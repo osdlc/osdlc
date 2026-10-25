@@ -105,6 +105,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "devbox",
@@ -116,5 +117,6 @@
     }
   ],
   "unknowns": [],
+  "trustedTools": [],
   "filter": {}
 }

@@ -173,6 +173,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "rake",
@@ -203,5 +204,6 @@
       "label": "parameters unknown: reading them needs execution, which is withheld"
     }
   ],
+  "trustedTools": [],
   "filter": {}
 }

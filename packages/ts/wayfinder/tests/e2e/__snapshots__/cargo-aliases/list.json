@@ -369,6 +369,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "cargo",
@@ -396,5 +397,6 @@
     }
   ],
   "unknowns": [],
+  "trustedTools": [],
   "filter": {}
 }

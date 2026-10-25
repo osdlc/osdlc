@@ -102,6 +102,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "just",
@@ -130,5 +131,6 @@
       "label": "parameters unknown: reading them needs execution, which is withheld"
     }
   ],
+  "trustedTools": [],
   "filter": {}
 }

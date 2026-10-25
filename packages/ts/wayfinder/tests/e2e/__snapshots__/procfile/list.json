@@ -102,6 +102,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "procfile",
@@ -113,5 +114,6 @@
     }
   ],
   "unknowns": [],
+  "trustedTools": [],
   "filter": {}
 }

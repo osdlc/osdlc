@@ -148,6 +148,7 @@
       ]
     }
   ],
+  "skills": [],
   "cache": [
     {
       "runner": "cmake-presets",
@@ -159,5 +160,6 @@
     }
   ],
   "unknowns": [],
+  "trustedTools": [],
   "filter": {}
 }
