@@ -675,3 +675,19 @@ describe('trust --scope with a service parseScope', () => {
     }
   })
 })
+
+describe('trust --scope help', () => {
+  test('scopeHelp replaces the generic help of --scope', async () => {
+    const app = defineApp({
+      name: 'tooly',
+      version: '1.0.0',
+      summary: 'a test tool',
+      commands: {
+        trust: trustCommand(trustService(), { scopeHelp: 'a tool id, as "tooly tools" lists it' }),
+      },
+    })
+    const r = await runApp(app, ['help', 'trust'])
+    expect(r.out).toContain('a tool id, as "tooly tools" lists it')
+    expect(r.out).not.toContain('such as one tool')
+  })
+})
