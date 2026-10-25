@@ -17,6 +17,7 @@ import {
   pathGlobToRegExp,
   policyDecision,
   policyExecGate,
+  parseTrustScope,
   resolveExecGate,
   resolveTrustRoot,
   trustDecision,
@@ -142,9 +143,12 @@ test('grant one tool, and gate on every tool a command runs', async () => {
   expect(grants.map((g) => g.scope)).toEqual(['just', 'mise'])
   expect(await store.list()).toEqual([])
 
-  // A whole-repository grant covers every tool.
+  // A whole-repository grant covers every tool. It takes no scope: `'*'` as a
+  // typed scope is refused, so a `--scope` value cannot widen into one.
   await store.untrustAll(repo)
-  await store.trust(repo, WHOLE_REPO_SCOPE)
+  expect((await store.trust(repo)).scope).toBe(WHOLE_REPO_SCOPE)
+  expect(() => parseTrustScope('*')).toThrow(TypeError)
+  expect(parseTrustScope(' just ')).toBe('just')
   expect(await store.isTrusted(repo, 'cargo')).toBe(true)
   expect(await store.tighten()).toEqual([])
 })
