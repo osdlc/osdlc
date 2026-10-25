@@ -14,6 +14,7 @@
 import { strict as assert } from 'node:assert'
 
 import { AsyncGh, CommandFailed, Gh, parsePrUrl, parsePullRequest } from '@osdlc/typed-gh'
+import { ghResult, prRow, repoRow } from '@osdlc/typed-gh/testing'
 
 const answer = (stdout, exitCode = 0) => ({
   exitCode,
@@ -75,5 +76,16 @@ assert.deepEqual(await asyncGh.prList(), { rows: [], truncated: false })
 // Parsers are pure.
 assert.equal(parsePullRequest({ number: 7 })?.reviewDecision, null)
 assert.ok(parsePrUrl('https://github.com/osdlc/osdlc/pull/7'))
+
+// The testing entry's rows survive the real parsers.
+const rows = new Gh('/repo', {
+  runner: { run: () => ghResult([prRow({ number: 9, headRefName: 'task/foo' }), prRow()]) },
+}).prList({ head: 'task/foo' }).rows
+assert.deepEqual(
+  rows.map((pr) => pr.number),
+  [9],
+)
+const repos = new Gh('/repo', { runner: { run: () => ghResult([repoRow()]) } }).repoList('octo-org')
+assert.equal(repos.rows[0]?.defaultBranch, 'main')
 
 console.log('typed-gh smoke: OK')
