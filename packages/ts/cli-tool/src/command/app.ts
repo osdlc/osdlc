@@ -439,7 +439,8 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     }
   }
 
-  const globalValueFlags = valueTaking(globals)
+  // The builtins count too: `--output json config get` routes like `--json`.
+  const globalValueFlags = valueTaking({ ...globals, ...BUILTIN_FLAGS })
 
   /** Find the node the command line selects, and the words left for its parser. */
   const route = (argv: readonly string[]): { node: Placed; words: string[]; rest: string[] } => {

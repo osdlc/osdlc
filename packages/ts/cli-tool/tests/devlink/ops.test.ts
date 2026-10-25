@@ -70,6 +70,51 @@ describe('gitHead', () => {
   test('no .git → nulls', () => {
     expect(gitHead(sb.root)).toEqual({ branch: null, head: null })
   })
+  test('finds a ref in packed-refs, skipping comments and peeled lines', () => {
+    const a = seedCheckout(join(sb.root, 'a'))
+    mkdirSync(join(a, '.git'), { recursive: true })
+    writeFileSync(join(a, '.git', 'HEAD'), 'ref: refs/heads/main\n')
+    writeFileSync(
+      join(a, '.git', 'packed-refs'),
+      `# pack-refs with: peeled fully-peeled sorted\n${SHA_A} refs/heads/other\n${SHA_B} refs/heads/main\n^${SHA_A}\n`,
+    )
+    expect(gitHead(a)).toEqual({ branch: 'main', head: SHA_B.slice(0, 12) })
+  })
+  test('a ref in neither place gives a null head, keeping the branch', () => {
+    const a = seedCheckout(join(sb.root, 'a'))
+    mkdirSync(join(a, '.git'), { recursive: true })
+    writeFileSync(join(a, '.git', 'HEAD'), 'ref: refs/heads/gone\n')
+    expect(gitHead(a)).toEqual({ branch: 'gone', head: null })
+    writeFileSync(join(a, '.git', 'packed-refs'), `${SHA_A} refs/heads/main\n`)
+    expect(gitHead(a)).toEqual({ branch: 'gone', head: null })
+  })
+  test('a detached HEAD gives no branch and its short sha', () => {
+    const a = seedCheckout(join(sb.root, 'a'))
+    mkdirSync(join(a, '.git'), { recursive: true })
+    writeFileSync(join(a, '.git', 'HEAD'), `${SHA_A}\n`)
+    expect(gitHead(a)).toEqual({ branch: null, head: SHA_A.slice(0, 12) })
+  })
+  test('a ref that is not a 40-hex sha gives a null head', () => {
+    const a = seedCheckout(join(sb.root, 'a'))
+    seedGit(a, 'main', 'not-a-sha')
+    expect(gitHead(a)).toEqual({ branch: 'main', head: null })
+  })
+  test('follows a relative gitdir file', () => {
+    const main = seedCheckout(join(sb.root, 'main'))
+    seedGit(main, 'main', SHA_B)
+    const wt = seedCheckout(join(sb.root, 'wt'))
+    const wtGit = join(main, '.git', 'worktrees', 'wt')
+    mkdirSync(wtGit, { recursive: true })
+    writeFileSync(join(wt, '.git'), 'gitdir: ../main/.git/worktrees/wt\n')
+    writeFileSync(join(wtGit, 'commondir'), '../..\n')
+    writeFileSync(join(wtGit, 'HEAD'), 'ref: refs/heads/main\n')
+    expect(gitHead(wt)).toEqual({ branch: 'main', head: SHA_B.slice(0, 12) })
+  })
+  test('a .git file that is not a gitdir line gives nulls', () => {
+    const a = seedCheckout(join(sb.root, 'a'))
+    writeFileSync(join(a, '.git'), 'garbage\n')
+    expect(gitHead(a)).toEqual({ branch: null, head: null })
+  })
 })
 
 describe('defaultBinDir', () => {
@@ -267,6 +312,13 @@ describe('install', () => {
     writeFileSync(join(bin, 'tooly'), 'real file')
     expect(() => install(SPEC, { checkout: a, binDir: bin }, opts())).toThrow(DevlinkError)
     expect(readFileSync(join(bin, 'tooly'), 'utf-8')).toBe('real file')
+  })
+
+  test('a relative bin dir is relative to opts.cwd, like the checkout', () => {
+    seedCheckout(join(sb.root, 'a'))
+    const out = install(SPEC, { checkout: 'a', binDir: 'bin' }, opts({ dryRun: true }))
+    expect(out.binDir).toBe(join(sb.root, 'bin'))
+    expect(out.links[0]?.linkPath).toBe(join(sb.root, 'bin', 'tooly'))
   })
 
   test('dry-run creates nothing', () => {

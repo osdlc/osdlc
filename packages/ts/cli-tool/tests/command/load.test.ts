@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -59,6 +59,38 @@ describe('loadCommandTree', () => {
     symlinkSync(join(outside, 'evil.mjs'), join(dir, 'evil.mjs'))
     const tree = await loadCommandTree(dir, { summary: 's' })
     expect(Object.keys(tree.commands)).toEqual([])
+  })
+
+  test('a command file beside a directory of the same name is named as that clash', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'load-'))
+    const body = "export default { type: 'command', summary: 's', output: {}, run: () => ({}) }\n"
+    writeFileSync(join(dir, 'a.mjs'), body)
+    mkdirSync(join(dir, 'a'))
+    writeFileSync(join(dir, 'a', 'index.mjs'), body)
+    writeFileSync(join(dir, 'a', 'b.mjs'), body)
+    try {
+      await expect(loadCommandTree(dir, { summary: 's' })).rejects.toThrow(
+        "'a' is both a command file and a directory",
+      )
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('test, spec and declaration files are not imported', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'load-'))
+    const body = "export default { type: 'command', summary: 's', output: {}, run: () => ({}) }\n"
+    const boom = "throw new Error('imported')\n"
+    writeFileSync(join(dir, 'x.test.mjs'), boom)
+    writeFileSync(join(dir, 'x.spec.mjs'), boom)
+    writeFileSync(join(dir, 'x.d.mts'), boom)
+    writeFileSync(join(dir, 'y.mjs'), body)
+    try {
+      const tree = await loadCommandTree(dir, { summary: 's' })
+      expect(Object.keys(tree.commands)).toEqual(['y'])
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
   })
 
   test('two files for one command are refused', async () => {

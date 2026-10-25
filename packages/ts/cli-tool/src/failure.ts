@@ -37,6 +37,7 @@ import { describe, isFailure, type Failure } from '@osdlc/result'
 
 import { EXIT } from './exit.ts'
 import type { CliContext } from './io.ts'
+import { safe } from './safe.ts'
 
 /** The exit codes of the four failure categories. */
 export const EXIT_FAILURE = {
@@ -120,6 +121,7 @@ export function failWith(
   failure: Failure,
   options: { name?: string | undefined } = {},
 ): number {
-  ctx.io.stderr(renderFailure(failure, options.name))
+  // The message and hint may quote repository or service text, as in runMain.
+  ctx.io.stderr(safe(renderFailure(failure, options.name)))
   return exitCodeFor(failure)
 }

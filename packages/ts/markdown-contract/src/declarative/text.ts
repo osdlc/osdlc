@@ -22,6 +22,7 @@
 
 import type { TextMatchSpec } from '../core/text-constraints.js'
 import { forbids, requires, textRule } from '../core/text-constraints.js'
+import { patternKey } from '../core/text-match.js'
 import type { DocRule, Rule } from '../core/types.js'
 import { DeclarativeError } from './errors.js'
 
@@ -101,6 +102,15 @@ function assignNeedle(raw: Record<string, unknown>, spec: TextMatchSpec, path: s
   }
   if (hasRegex) {
     if (typeof raw.regex !== 'string') throw new DeclarativeError(`${path}.regex must be a string`)
+    // Compile it now, so a bad source fails when the contract loads, naming the key, and not as
+    // a raw SyntaxError on the first document.
+    try {
+      RegExp(raw.regex, 'g')
+    } catch (err) {
+      throw new DeclarativeError(
+        `${path}.regex is not a valid regular expression: ${(err as Error).message}`,
+      )
+    }
     spec.regex = raw.regex
   }
 }
@@ -145,19 +155,6 @@ function assertCountBound(spec: TextMatchSpec, kind: TextKind, path: string): vo
   }
 }
 
-/**
- * The search text plus the flags that change what matches (`normalize`, `ignoreCase`). Two
- * entries with the same value get the same finding id, so they are duplicates. It must match
- * `patternKey` in `text-match.ts`.
- */
-function matcherIdentity(spec: TextMatchSpec): string {
-  const fold = spec.ignoreCase ? 'i' : ''
-  if (spec.regex !== undefined) return `regex|${spec.regex}|${fold}`
-  const normalize = spec.normalize ?? true
-  const needle = normalize ? (spec.pattern ?? '').trim().replace(/\s+/g, ' ') : (spec.pattern ?? '')
-  return `pattern|${normalize ? 'n' : 'x'}|${needle}|${fold}`
-}
-
 /** Compiles a `requires` or `forbids` list. Throws on a duplicate entry. */
 function compileMatchSpecs(raw: unknown, kind: TextKind, path: string): TextMatchSpec[] {
   if (!Array.isArray(raw)) {
@@ -166,7 +163,7 @@ function compileMatchSpecs(raw: unknown, kind: TextKind, path: string): TextMatc
   const specs = raw.map((entry, i) => compileMatchSpec(entry, kind, `${path}[${i}]`))
   const seen = new Map<string, number>()
   specs.forEach((spec, i) => {
-    const key = matcherIdentity(spec)
+    const key = patternKey(spec)
     const prev = seen.get(key)
     if (prev !== undefined) {
       throw new DeclarativeError(
@@ -205,7 +202,7 @@ function compileScopeTextSpecs(
     'forbids' in node ? compileMatchSpecs(node.forbids, 'forbids', `${path}.forbids`) : []
 
   const literalId = (spec: TextMatchSpec): string | undefined =>
-    spec.regex === undefined ? matcherIdentity(spec) : undefined
+    spec.regex === undefined ? patternKey(spec) : undefined
   const required = new Set(reqSpecs.map(literalId).filter((k): k is string => k !== undefined))
   for (const spec of forbidsSpecs) {
     const key = literalId(spec)

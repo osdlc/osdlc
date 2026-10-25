@@ -432,10 +432,36 @@ function checkStrict(
     return null
   }
 
+  /** The slot before `beforeSpecIdx` that names `name`, or `undefined`. */
+  function passedSlot(name: string, beforeSpecIdx: number): Slot | undefined {
+    return slots.find((s) => s.specIdx < beforeSpecIdx && s.names.includes(name))
+  }
+
   let specIdx = 0
   let docIdx = 0
   while (docIdx < nodes.length) {
     const node = nodes[docIdx]!
+
+    // A declared section whose slot is already behind the walk. It is out of order when its slot
+    // was an optional one skipped for a later section, or a filled repeatable slot that a later
+    // section closed. A required slot skipped that way was reported on the early section, and a
+    // second section for a filled non-repeatable slot is `structure/duplicate-section`. Either
+    // way it neither moves the walk nor counts toward a gap.
+    const passed = passedSlot(node.name, specIdx)
+    if (passed !== undefined) {
+      const fill = slotFill.get(passed.specIdx) ?? 0
+      if ((passed.optional && fill === 0) || (passed.repeatable && fill > 0)) {
+        out.push(
+          ctx.finding({
+            id: 'structure/section-order',
+            message: `‘${node.name}’ appears after a later declared section; strict order is violated`,
+            pos: node.pos,
+          }),
+        )
+      }
+      docIdx++
+      continue
+    }
 
     if (specIdx >= specs.length) {
       // Past the last spec: a trailing gap takes extras, else an undeclared section is reported.
@@ -485,8 +511,11 @@ function checkStrict(
           }),
         )
       }
-      // Move past the later slot, which this section fills.
-      specIdx = later + 1
+      // This section fills the later slot. As for the current slot, a repeatable one stays
+      // current for the next matching section, and any other is done.
+      slotFill.set(later, (slotFill.get(later) ?? 0) + 1)
+      const laterSlot = slots.find((s) => s.specIdx === later)!
+      specIdx = laterSlot.repeatable ? later : later + 1
       docIdx++
       continue
     }
@@ -512,7 +541,8 @@ function checkStrict(
       continue
     }
 
-    // A declared section whose slot came earlier (filled or skipped): move to the next spec.
+    // Not reached: a declared section matches the current slot, a later one, or (handled at the
+    // top of the loop) an earlier one. Move on so the walk always ends.
     specIdx++
   }
 
@@ -521,8 +551,8 @@ function checkStrict(
 
 /**
  * Handles a section after the last spec. When the last spec is a gap, the gap takes it.
- * Otherwise an undeclared section is reported under `allowUnknown: false`. A declared section here
- * matches an earlier slot. Its order problem was already reported on the section that came early.
+ * Otherwise an undeclared section is reported under `allowUnknown: false`. `checkStrict` handles
+ * a declared section before calling this, so only undeclared sections reach it.
  */
 function admitPastSequence(
   node: SectionNode,

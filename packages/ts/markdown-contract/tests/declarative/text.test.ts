@@ -100,6 +100,15 @@ describe('declarative requires / forbids — rejected at compile time', () => {
     ).toThrow(DeclarativeError)
   })
 
+  it('rejects a regex that does not compile, naming the key', () => {
+    expect(() => loadContract(sectionWith('requires', "        - regex: '('\n"))).toThrow(
+      /regex is not a valid regular expression/,
+    )
+    expect(() => loadContract(sectionWith('forbids', "        - regex: '['\n"))).toThrow(
+      DeclarativeError,
+    )
+  })
+
   it('rejects two identical specs in one list (duplicate)', () => {
     expect(() =>
       loadContract(sectionWith('requires', '        - pattern: x\n        - pattern: x\n')),

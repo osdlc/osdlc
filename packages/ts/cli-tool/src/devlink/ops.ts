@@ -41,7 +41,7 @@ import {
   writeActive,
   type HistoryEvent,
 } from './state.ts'
-import { cwdDevVar, entryOf, homeVar, pathNames, type ToolSpec } from './spec.ts'
+import { cwdDevVar, cwdLayerActive, entryOf, homeVar, pathNames, type ToolSpec } from './spec.ts'
 
 /**
  * Options shared by the link operations, including a dry-run flag and a clock
@@ -205,7 +205,9 @@ export function install(spec: ToolSpec, input: InstallInput, opts: OpOptions = {
   } catch {
     throw new DevlinkError(`launcher not found: ${launcher}`)
   }
-  const binDir = input.binDir ? resolvePath(input.binDir) : defaultBinDir(env)
+  const binDir = input.binDir
+    ? resolvePath(opts.cwd ?? process.cwd(), input.binDir)
+    : defaultBinDir(env)
   const dryRun = opts.dryRun ?? false
 
   const shim = renderShim(spec, target)
@@ -588,7 +590,7 @@ export function status(spec: ToolSpec, opts: OpOptions = {}): StatusResult {
     cwd: {
       var: cwdDevVar(spec),
       checkout: cwdCheckout(spec, cwd),
-      suppressed: spec.cwdLayer !== true || isSuppressed || env[cwdDevVar(spec)] === '0',
+      suppressed: !cwdLayerActive(spec, env, isSuppressed),
     },
     link: {
       path: homePath(spec, opts),

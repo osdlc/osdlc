@@ -724,3 +724,87 @@ const nonRepeatSpec = contract({
 })
 type NonRepeatEntry = ReturnType<typeof nonRepeatSpec.read>['body']['Entry']
 expectTypeOf<NonRepeatEntry>().toEqualTypeOf<SectionView>()
+
+describe('named-leaf content record binds by the record key', () => {
+  test('a record leaf with no `anchor` is exposed under its key, as validation checks it', () => {
+    const c = contract({
+      body: sections({}, [
+        section('Decision', { content: { components: table({ columns: ['#'] }) } }),
+      ]),
+    })
+    const src = '## Decision\n\n| # |\n| - |\n| 1 |\n^components\n'
+    expect(c.validate(src, PATH).findings.filter((f) => f.level === 'error')).toEqual([])
+    const doc = c.read(src, PATH)
+    expect((doc.body as any).decision.components?.rowCount).toBe(1)
+  })
+})
+
+describe('declared sections named like Object.prototype members', () => {
+  test('`Constructor` and `To String` bind their SectionViews, not prototype members', () => {
+    const c = contract({
+      body: sections({ order: 'none' }, [section('Constructor'), section('To String')]),
+    })
+    const doc = c.read('## Constructor\n\nnew\n\n## To String\n\ntext\n', PATH)
+    const body = doc.body as any
+    expect(body.constructor.name).toBe('Constructor')
+    expect(body.toString.name).toBe('To String')
+    expect(Object.keys(body).sort()).toEqual([
+      'Constructor',
+      'To String',
+      'constructor',
+      'toString',
+    ])
+  })
+})
+
+describe('Doc.inlineSpans finds the row by identity', () => {
+  test('a repeated row resolves to its own line, not the first equal row', () => {
+    const c = contract({
+      body: sections({}, [section('Files', { content: table({ columns: ['A', 'B'] }) })]),
+    })
+    const src = [
+      '## Files',
+      '',
+      '| A | B |',
+      '| - | - |',
+      '| `a` | b |',
+      '| x | y |',
+      '| `a` | b |',
+    ].join('\n')
+    const doc = c.read(src, PATH)
+    const files = (doc.body as any).files as TableView
+    const first = (doc as any).inlineSpans(files.rows[0], 'A')
+    const third = (doc as any).inlineSpans(files.rows[2], 'A')
+    expect(first[0].start.line).toBe(5)
+    expect(third[0].start.line).toBe(7)
+  })
+
+  test('a row whose cells a schema transformed still finds its spans', () => {
+    const c = contract({
+      body: sections({}, [
+        section('Files', {
+          content: table({ columns: ['A'], cells: { A: z.string().transform((s) => ({ s })) } }),
+        }),
+      ]),
+    })
+    const doc = c.read('## Files\n\n| A |\n| - |\n| `a` |\n', PATH)
+    const files = (doc.body as any).files as TableView
+    expect((doc as any).inlineSpans(files.rows[0], 'A')).toHaveLength(1)
+  })
+})
+
+describe('repeatable slot with several spellings', () => {
+  test('every spelling joins one array, bound under each spelling seen', () => {
+    const c = contract({
+      body: sections({ order: 'none', allowUnknown: true }, [
+        section(['Entry', 'Item'], { repeatable: true }),
+      ]),
+    })
+    const doc = c.read('## Entry\n\na\n\n## Item\n\nb\n\n## Entry\n\nc\n', PATH)
+    const body = doc.body as any
+    expect(body.entry).toHaveLength(3)
+    expect(body.entry.map((v: SectionView) => v.text())).toEqual(['a', 'b', 'c'])
+    expect(body.item).toBe(body.entry)
+    expect(body.Item).toBe(body.entry)
+  })
+})

@@ -376,6 +376,21 @@ describe('cli-only commands', () => {
     ).toBe(403)
   })
 
+  test('at most 64 nonces are outstanding; the oldest is dropped first', async () => {
+    const { server, auth } = await start(fixture(), { confirm: [['trust']] })
+    const nonces: string[] = []
+    for (let i = 0; i < 65; i++) {
+      const asked = await post(server, '/commands/trust', {}, auth)
+      expect(asked.status).toBe(428)
+      nonces.push(asked.json<{ nonce: string }>().nonce)
+    }
+    const confirm = async (nonce: string) =>
+      (await post(server, '/commands/trust', {}, { ...auth, 'x-confirm': nonce })).status
+    expect(await confirm(nonces[0]!)).toBe(403)
+    expect(await confirm(nonces[64]!)).toBe(200)
+    expect(await confirm(nonces[1]!)).toBe(200)
+  })
+
   test('the schema marks a confirmable command', async () => {
     const { server, auth } = await start(fixture(), { confirm: [['secret']] })
     const doc = (await send(server, { path: '/schema', headers: auth })).json<{

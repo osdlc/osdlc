@@ -648,8 +648,8 @@ function zodHintAt(schema: ZodType, path: (string | number)[]): string | undefin
  * line (`tree.frontmatter.lineForPath(issue.path)`). A strict object that rejects unknown keys
  * gives one Zod issue listing them in `keys`. Each key becomes its own `frontmatter/unknown-key`
  * on that key's line. A missing required key (an `invalid_type` on an undefined value) becomes
- * `frontmatter/required`. With no frontmatter block, the schema runs on `{}`, so missing
- * required keys are still reported. Each finding's `hint` is the nearest `.describe()` text on
+ * `frontmatter/required`. With no frontmatter block, or an empty one, the schema runs on `{}`,
+ * so missing required keys are still reported. Each finding's `hint` is the nearest `.describe()` text on
  * the issue path, else `rootHint`.
  */
 function matchFrontmatter(
@@ -660,7 +660,10 @@ function matchFrontmatter(
   values: ParsedValues,
   rootHint?: string,
 ): void {
-  const data: unknown = tree.frontmatter ? tree.frontmatter.data : {}
+  // An empty or comment-only block parses to `null`. It holds no keys, so treat it like an absent
+  // block: missing keys are `frontmatter/required`, not one type error on the whole block.
+  const raw = tree.frontmatter?.data
+  const data: unknown = raw === null || raw === undefined ? {} : raw
   const res = asZod(schema).safeParse(data)
   if (res.success) {
     values.frontmatter = { data: res.data }

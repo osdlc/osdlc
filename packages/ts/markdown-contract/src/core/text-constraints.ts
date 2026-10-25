@@ -8,7 +8,8 @@
  *
  *   - `requires(specs)` and `forbids(specs)` return a section `Rule`. The text is every block
  *     (prose, list items, table cells, code) of the section and its subsections, placed on its
- *     source line, so a `forbids` hit reports the real line. The `scopeKey` is the section's
+ *     source line, so a `forbids` hit reports the real line (and no column, since the rebuilt
+ *     line's columns are not source columns). The `scopeKey` is the section's
  *     lowerCamelCase key. A `requires` miss or a count problem is placed on the section heading.
  *   - `textRule({ requires?, forbids? })` returns a `DocRule` over the whole document. Its text
  *     is built the same way from `tree.root`, so a `forbids` hit reports the real line. The
@@ -27,7 +28,7 @@
 import { toCamelKey } from './camel.js'
 import { ContractBuildError } from './grammar.js'
 import { codeTextLine } from './projection.js'
-import type { TextMatchSpec } from './text-match.js'
+import type { TextMatchResult, TextMatchSpec } from './text-match.js'
 import { buildTextFindings, matchText } from './text-match.js'
 import type { BlockNode, Ctx, Doc, DocRule, DocTree, Finding, Rule, SectionNode } from './types.js'
 
@@ -138,6 +139,16 @@ function sectionScopeText(node: SectionNode): string {
   return buf.render()
 }
 
+/**
+ * Matches `spec` against scope text built by `LineBuffer` and keeps only each hit's line. The
+ * buffer places each block's flattened text from column 1, without list markers, table pipes,
+ * indentation or inline markup, so a column in it is not a source column.
+ */
+function matchScopeText(text: string, spec: TextMatchSpec): TextMatchResult {
+  const match = matchText(text, spec)
+  return { ...match, positions: match.positions.map((p) => ({ line: p.line })) }
+}
+
 /** The text of the whole document, each block on its source line. */
 function docScopeText(tree: DocTree): string {
   return sectionScopeText(tree.root)
@@ -201,7 +212,7 @@ export function forbids(specs: TextMatchSpec[]): Rule {
           ...buildTextFindings({
             kind: 'forbids',
             spec,
-            match: matchText(text, spec),
+            match: matchScopeText(text, spec),
             scopeKey,
             scope: node.name,
             scopePos: node.pos,
@@ -250,7 +261,7 @@ export function textRule(spec: TextRuleSpec): DocRule {
           ...buildTextFindings({
             kind: 'forbids',
             spec: s,
-            match: matchText(text, s),
+            match: matchScopeText(text, s),
             scopeKey: 'doc',
             ctx,
           }),

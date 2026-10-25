@@ -8,7 +8,8 @@
 import type { z } from 'zod'
 
 import type { FlagSpec, FlagValues, PositionalDecl } from '../define-cli.ts'
-import type { ExitCode } from '../exit.ts'
+import { DOMAIN_EXIT_MAX, DOMAIN_EXIT_MIN, EXIT, isDomainExit, type ExitCode } from '../exit.ts'
+import { EXIT_FAILURE } from '../failure.ts'
 import type { CliContext } from '../io.ts'
 import type { App } from './app.ts'
 
@@ -145,7 +146,7 @@ export class CommandError extends Error {
   constructor(message: string, options: { exit?: ExitCode; hint?: string; code?: string } = {}) {
     super(message)
     this.name = 'CommandError'
-    this.exit = options.exit ?? 1
+    this.exit = options.exit ?? EXIT.error
     this.hint = options.hint
     this.code = options.code ?? 'error'
   }
@@ -159,7 +160,7 @@ export class CommandError extends Error {
  */
 export class UsageError extends CommandError {
   constructor(message: string) {
-    super(message, { exit: 2, code: 'usage' })
+    super(message, { exit: EXIT.usage, code: 'usage' })
     this.name = 'UsageError'
   }
 }
@@ -385,8 +386,8 @@ export interface CommandKit<G extends FlagSpec> {
 const RESERVED_KEYS = ['schemaVersion', 'kind'] as const
 
 /** The shared failure codes (`EXIT_FAILURE`), which a command may not give a meaning of its own. */
-const RESERVED_EXIT_MIN = 22
-const RESERVED_EXIT_MAX = 25
+const RESERVED_EXITS: readonly number[] = Object.values(EXIT_FAILURE)
+const RESERVED_EXIT_RANGE = `${Math.min(...RESERVED_EXITS)}-${Math.max(...RESERVED_EXITS)}`
 
 /**
  * Refuse a flag the app provides: a builtin name, `version`, or the `-h` short.
@@ -467,12 +468,14 @@ function checkCommand(
   if (spec.summary.trim() === '') throw new Error('defineCommand: summary is empty')
   checkFlags(spec.flags ?? {}, 'defineCommand: flag')
   for (const code of Object.keys(spec.exits ?? {}).map(Number)) {
-    if (!(code === 1 || (Number.isInteger(code) && code >= 10 && code <= 63))) {
-      throw new Error(`defineCommand: exit code ${code} must be 1 or in 10-63`)
-    }
-    if (code >= RESERVED_EXIT_MIN && code <= RESERVED_EXIT_MAX) {
+    if (!(code === EXIT.error || isDomainExit(code))) {
       throw new Error(
-        `defineCommand: exit code ${code} is one of the shared failure codes (22-25); pick another`,
+        `defineCommand: exit code ${code} must be ${EXIT.error} or in ${DOMAIN_EXIT_MIN}-${DOMAIN_EXIT_MAX}`,
+      )
+    }
+    if (RESERVED_EXITS.includes(code)) {
+      throw new Error(
+        `defineCommand: exit code ${code} is one of the shared failure codes (${RESERVED_EXIT_RANGE}); pick another`,
       )
     }
   }

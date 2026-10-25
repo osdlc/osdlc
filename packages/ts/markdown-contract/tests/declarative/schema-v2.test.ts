@@ -102,6 +102,17 @@ describe('compileSchemaV2 — the JSON Schema subset → Zod', () => {
   })
 })
 
+describe('compileSchemaV2 — an invalid pattern', () => {
+  it('throws a DeclarativeError naming the field, not a raw SyntaxError', () => {
+    expect(() => compileSchemaV2({ type: 'string', pattern: '[' }, 'frontmatter.id')).toThrow(
+      DeclarativeError,
+    )
+    expect(() => compileSchemaV2({ type: 'string', pattern: '[' }, 'frontmatter.id')).toThrow(
+      /frontmatter\.id\.pattern is not a valid regular expression/,
+    )
+  })
+})
+
 describe('compileSchemaV2 — the three rejection dialects (closed vocabulary)', () => {
   it('a v1 spelling gets a migration hint naming the v2 form', () => {
     expect(() => compileSchemaV2({ type: 'object', fields: { a: { type: 'string' } } })).toThrow(

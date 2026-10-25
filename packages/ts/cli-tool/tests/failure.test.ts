@@ -93,6 +93,21 @@ describe('failWith', () => {
     expect(ctx.io.err).toBe('tooly: not-installed happened. Install it.\n')
     expect(ctx.io.out).toBe('')
   })
+
+  test('strips terminal controls from the message and hint', () => {
+    const ctx = captureContext()
+    const code = failWith(
+      ctx,
+      { kind: 'not-found', message: 'no branch \u001b]0;pwned\u0007x.', hint: 'Check \u009b2Jit.' },
+      { name: 'tooly' },
+    )
+    expect(code).toBe(23)
+    expect(ctx.io.err).not.toContain('\u001b')
+    expect(ctx.io.err).not.toContain('\u009b')
+    expect(ctx.io.err).not.toContain('\u0007')
+    expect(ctx.io.err.startsWith('tooly: no branch ')).toBe(true)
+    expect(ctx.io.err.endsWith('\n')).toBe(true)
+  })
 })
 
 describe('runMain with failures', () => {

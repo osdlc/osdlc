@@ -14,7 +14,7 @@ import {
   type ConfigStore,
 } from '../src/config-command.ts'
 import { guideCommand, type GuideTopic } from '../src/guide.ts'
-import { checkGuide, runApp } from '../src/testing.ts'
+import { checkApp, checkGuide, runApp } from '../src/testing.ts'
 import { trustCommand, type TrustEntry, type TrustService } from '../src/trust-command.ts'
 
 const KEYS = ['discovery', 'runners.order', 'runners.disabled']
@@ -192,6 +192,16 @@ describe('config', () => {
       value: 'walk',
     })
     expect(store.files['user']!['discovery']).toBe('walk')
+  })
+
+  test('a hyphenated layer flag writes that layer', async () => {
+    const store = memoryStore()
+    store.files['project-local'] = {}
+    const app = appWith({ ...store, layers: ['user', 'project', 'project-local'] })
+    const r = await runApp(app, ['config', 'set', 'discovery', 'walk', '--project-local'])
+    expect(r).toMatchObject({ exit: 0, out: '/project-local.json: discovery = "walk"\n' })
+    expect(store.files['project-local']!['discovery']).toBe('walk')
+    expect(store.files['project']!['discovery']).toBe('git')
   })
 
   test('two layer flags, an unknown key or a bad value are usage errors', async () => {
@@ -449,6 +459,51 @@ describe('guide', () => {
         allow: ['--frobnicate', '-Z'],
       }),
     ).toEqual([])
+  })
+
+  test('checkGuide reports a topic that fails and a guide with no topics', async () => {
+    const topics: GuideTopic[] = [
+      ...TOPICS,
+      {
+        id: 'broken',
+        title: 'Broken',
+        summary: 'x',
+        body: () => {
+          throw new Error('no data')
+        },
+      },
+    ]
+    expect(await checkGuide(appWith(memoryStore(), trustService(), topics))).toEqual([
+      'guide broken exits 1 with 0 bytes',
+    ])
+    expect(await checkGuide(appWith(memoryStore(), trustService(), []))).toEqual([
+      'the guide has no topics',
+    ])
+  })
+
+  test('checkGuide stops at a guide path that does not list topics', async () => {
+    const problems = await checkGuide(appWith(), { path: ['nope'] })
+    expect(problems).toEqual([expect.stringMatching(/^nope topics exits 2: t: unknown command/)])
+  })
+
+  test('checkApp reports help and schema that do not render', () => {
+    const app = appWith()
+    expect(checkApp(app)).toEqual([])
+    const broken = {
+      ...app,
+      paths: () => [[], ['config']],
+      helpText: (path: readonly string[] = []) => {
+        if (path[0] === 'config') throw new Error('bad help')
+        return ''
+      },
+      schema: () => {
+        throw new Error('bad schema')
+      },
+    } as typeof app
+    expect(checkApp(broken)).toEqual([
+      't config: help does not render: bad help',
+      't schema does not render: bad schema',
+    ])
   })
 })
 

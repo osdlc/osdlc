@@ -576,4 +576,37 @@ describe('frontmatter plane', () => {
     const src = ['---', 'id: D-1', 'status: open', 'title: t', '---'].join('\n')
     expect(find(c, src)).toEqual([])
   })
+
+  test('format, length-bound and null/array messages name the field', () => {
+    const c2 = contract({
+      frontmatter: z.strictObject({
+        email: z.email().optional(),
+        short: z.string().min(3).optional(),
+        long: z.string().max(2).optional(),
+        n: z.number().optional(),
+        s: z.string().optional(),
+      }),
+    })
+    const messages = (yaml: string) => find(c2, `---\n${yaml}\n---\n`).map((f) => f.message)
+    expect(messages('email: nope')).toEqual(['frontmatter field ‘email’ is not a valid email'])
+    expect(messages('short: ab')).toEqual(['frontmatter field ‘short’ is too small'])
+    expect(messages('long: abc')).toEqual(['frontmatter field ‘long’ is too large'])
+    expect(messages('n: null')).toEqual(['frontmatter field ‘n’ must be a number (got null)'])
+    expect(messages('s: [1]')).toEqual(['frontmatter field ‘s’ must be a string (got array)'])
+  })
+
+  test('an empty or comment-only block reports each missing key, as an absent block does', () => {
+    const absent = find(c, '# t\n').map((f) => f.id)
+    expect(absent).toContain('frontmatter/required')
+    for (const src of ['---\n---\n# t\n', '---\n# TODO\n---\n# t\n']) {
+      const ids = find(c, src).map((f) => f.id)
+      expect(ids).toEqual(absent)
+      expect(ids).not.toContain('frontmatter/type')
+    }
+  })
+
+  test('an empty block passes a schema with no required keys', () => {
+    const loose = contract({ frontmatter: z.object({ title: z.string().optional() }) })
+    expect(find(loose, '---\n---\n# A\n')).toEqual([])
+  })
 })

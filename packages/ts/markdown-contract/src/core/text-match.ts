@@ -151,9 +151,9 @@ function shortHash(s: string): string {
  * regex source) and the flags that change what matches (`normalize`, `ignoreCase`). So two
  * different checks get different ids, and one check keeps its id when entries are reordered.
  * `min` and `max` are left out on purpose. They change the message, not which text the check is
- * about.
+ * about. The YAML compiler (`declarative/text.ts`) also uses it to find duplicate entries.
  */
-function patternKey(spec: TextMatchSpec): string {
+export function patternKey(spec: TextMatchSpec): string {
   const fold = spec.ignoreCase ? 'i' : ''
   if (spec.regex !== undefined) return `regex|${spec.regex}|${fold}`
   const normalize = spec.normalize ?? true
