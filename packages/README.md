@@ -113,12 +113,16 @@ Developed here, in this repository:
 - `packages/ts/prettier-config` (`@osdlc/prettier-config`)
 - `packages/ts/command-seam` (`@osdlc/command-seam`)
 - `packages/ts/gfm-table` (`@osdlc/gfm-table`)
+- `packages/rust/agent-adapt` (`agent-adapt` on crates.io)
 - `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/frontmatter-lossless` (`frontmatter-lossless` on crates.io)
 - `packages/rust/markdown-contract` (`markdown-contract` on crates.io, the Rust twin
   of `@osdlc/markdown-contract`: contracts for markdown documents, checked
   against the package's corpus)
+- `packages/rust/markdown-link` (`markdown-link` on crates.io)
+- `packages/rust/markdown-relink` (`markdown-relink` on crates.io)
+- `packages/rust/markdown-vault-fs` (`markdown-vault-fs` on crates.io)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)

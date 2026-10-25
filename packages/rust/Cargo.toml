@@ -9,7 +9,7 @@
 [workspace]
 # resolver 3 picks dependency versions that support `rust-version` (the MSRV).
 resolver = "3"
-members = ["config-layers", "etag-write", "frontmatter-lossless", "markdown-contract", "path-guard", "slug-collate", "tiered-dirs", "yaml-splice", "yaml-splice-wasm"]
+members = ["agent-adapt", "config-layers", "etag-write", "frontmatter-lossless", "markdown-contract", "markdown-link", "markdown-relink", "markdown-vault-fs", "path-guard", "slug-collate", "tiered-dirs", "yaml-splice", "yaml-splice-wasm"]
 
 [workspace.package]
 edition = "2024"
@@ -43,13 +43,23 @@ tempfile = "3"
 # 2.0.17 is what saphyr-parser 0.0.11 needs. The workspace resolves one
 # thiserror 2.x, so the minimal-versions job needs every member to agree.
 thiserror = "2.0.17"
+toml = "0.8"
+tracing = "0.1"
 # Pinned to the version slug-collate's NFKD code is built and tested against,
 # so the minimal-versions job does not resolve an older 0.1.x that predates it.
 unicode-normalization = "0.1.26"
-# A member crate, also named by version so the published manifest points at
-# crates.io. release-plz publishes it before the crates that depend on it.
-tiered-dirs = { path = "tiered-dirs", version = "0.3" }
+walkdir = "2"
 # Must equal the version of the wasm-bindgen CLI that
 # yaml-splice-wasm/build.sh runs, so it is pinned exactly.
 wasm-bindgen = "=0.2.126"
+
+# Member crates, also named by version so a published manifest points at
+# crates.io. release-plz publishes a crate before the crates that depend on it.
+etag-write = { path = "etag-write", version = "0.2.3" }
+frontmatter-lossless = { path = "frontmatter-lossless", version = "1.1.0" }
+markdown-link = { path = "markdown-link", version = "0.5.0" }
+markdown-vault-fs = { path = "markdown-vault-fs", version = "0.3.1" }
+path-guard = { path = "path-guard", version = "0.3.1" }
+slug-collate = { path = "slug-collate", version = "0.1.1" }
+tiered-dirs = { path = "tiered-dirs", version = "0.3" }
 yaml-splice = { path = "yaml-splice", version = "0.3.2" }
