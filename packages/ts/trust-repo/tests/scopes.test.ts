@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { createHash } from 'node:crypto'
 
-import { resolveExecGate, trustStore, WHOLE_REPO_SCOPE } from '../src/index.ts'
+import { parseTrustScope, resolveExecGate, trustStore, WHOLE_REPO_SCOPE } from '../src/index.ts'
 
 const dirs: string[] = []
 async function tmp(): Promise<string> {
@@ -104,14 +104,62 @@ describe('per-scope grants', () => {
     expect((await store.listGrants()).map((g) => g.scope)).toEqual(['npm-scripts', 'npm:scripts'])
   })
 
-  test('an empty, oversized or control-character scope is a TypeError', async () => {
+  test('an empty, blank, oversized or control-character scope is a TypeError', async () => {
     const { repo, store } = await setup()
-    for (const bad of ['', 'a\nb', 'x\u0000', 'z'.repeat(201)]) {
+    for (const bad of ['', ' ', '   ', 'a\nb', 'x\u0000', 'z'.repeat(201)]) {
       await expect(store.trust(repo, bad)).rejects.toThrow(TypeError)
       await expect(store.isTrusted(repo, bad)).rejects.toThrow(TypeError)
       await expect(store.untrust(repo, bad)).rejects.toThrow(TypeError)
       await expect(store.markerPath(repo, bad)).rejects.toThrow(TypeError)
     }
+  })
+
+  test('a scope is trimmed, so surrounding spaces name the same grant', async () => {
+    const { repo, store } = await setup()
+    expect(await store.trust(repo, ' just ')).toMatchObject({
+      scope: 'just',
+      alreadyTrusted: false,
+    })
+    expect(await store.isTrusted(repo, 'just')).toBe(true)
+    expect(await store.isTrusted(repo, 'just  ')).toBe(true)
+    expect((await store.trust(repo, 'just')).alreadyTrusted).toBe(true)
+    expect(await store.markerPath(repo, 'just ')).toBe(await store.markerPath(repo, 'just'))
+    expect((await store.listGrants()).map((g) => g.scope)).toEqual(['just'])
+    expect(await store.untrustAll(repo)).toEqual(['just'])
+    expect(await store.isTrusted(repo, 'just')).toBe(false)
+  })
+
+  test('an explicit * is refused as a grant; trust(root) grants the whole repository', async () => {
+    const { repo, store } = await setup()
+    for (const star of ['*', ' *', '* ']) {
+      await expect(store.trust(repo, star)).rejects.toThrow(/reserved/)
+      expect(() => parseTrustScope(star)).toThrow(TypeError)
+    }
+    expect(await store.listGrants()).toEqual([])
+    expect((await store.trust(repo)).scope).toBe(WHOLE_REPO_SCOPE)
+    // Reading and removing the whole-repository grant by name still work.
+    expect(await store.isTrusted(repo, WHOLE_REPO_SCOPE)).toBe(true)
+    expect(await store.untrust(repo, WHOLE_REPO_SCOPE)).toBe(true)
+  })
+
+  test('parseTrustScope trims and checks a typed scope', () => {
+    expect(parseTrustScope(' just ')).toBe('just')
+    for (const bad of ['', ' ', 'a\nb']) expect(() => parseTrustScope(bad)).toThrow(TypeError)
+  })
+
+  test('untrustAll removes markers an older release wrote for untrimmed scopes', async () => {
+    const { repo, store } = await setup()
+    await store.trust(repo, 'mise')
+    // What an older release wrote for `trust(repo, 'foo ')` and `trust(repo, ' *')`.
+    const folder = dirname(await store.markerPath(repo, 'mise'))
+    const sha = (t: string) => createHash('sha256').update(t).digest('hex').slice(0, 16)
+    await writeFile(join(folder, `foo--${sha('foo ')}`), `${repo}\nfoo \n`)
+    await writeFile(join(folder, `--${sha(' *')}`), `${repo}\n *\n`)
+    // Neither is a grant now: no scope maps to those names.
+    expect(await store.isTrusted(repo, 'foo')).toBe(false)
+    expect((await store.listGrants()).map((g) => g.scope)).toEqual(['mise'])
+    expect(await store.untrustAll(repo)).toEqual(['mise'])
+    expect(await readdir(store.dir())).toEqual([])
   })
 
   test('the gate asks the store about every scope', async () => {

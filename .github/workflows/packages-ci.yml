@@ -17,10 +17,16 @@
 # packages the picked ones depend on. Every package tests with Vitest on Node,
 # so the Node matrix is what a consumer sees.
 #
-# `windows` runs path-guard on Windows, when path-guard is picked. It is the
-# only library tested there. A run that is not a pull request picks every
-# package, so packages-publish.yml waits for the Windows jobs too, and a
-# Windows failure blocks a release.
+# `windows` runs path-guard on Windows, when path-guard is picked. A run that
+# is not a pull request picks every package, so packages-publish.yml waits
+# for the Windows jobs too, and a path-guard failure on Windows blocks a
+# release.
+#
+# `windows-tier2` runs the libraries that start programs or resolve paths on
+# Windows (command-seam, trust-repo, tiered-dirs, cli-tool, system-model),
+# when any of them is picked. Windows is tier 2 for them (S-0021), so the job
+# has `continue-on-error: true`: it reports, but never fails the workflow or
+# blocks a release.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: packages
@@ -200,3 +206,72 @@ jobs:
 
       - name: Smoke the built package under Node
         run: pnpm --filter ./packages/ts/path-guard run smoke
+
+  windows-tier2:
+    name: windows tier 2 (windows-latest, node ${{ matrix.node }})
+    needs: changes
+    if: >-
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/command-seam') ||
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/trust-repo') ||
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/tiered-dirs') ||
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/cli-tool') ||
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/system-model')
+    runs-on: windows-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    defaults:
+      run:
+        shell: bash
+    env:
+      PACKAGES: ${{ needs.changes.outputs.packages }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      # The picked packages among the five. `build` adds their workspace
+      # dependencies, which pnpm's `...` suffix selects.
+      - name: Pick the tier-2 packages
+        id: pick
+        run: |
+          filter=''
+          build=''
+          for p in command-seam trust-repo tiered-dirs cli-tool system-model; do
+            if grep -q "\"packages/ts/$p\"" <<< "$PACKAGES"; then
+              filter="$filter --filter ./packages/ts/$p"
+              build="$build --filter ./packages/ts/$p..."
+            fi
+          done
+          echo "filter=$filter" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
+      # $FILTER and $BUILD are several flags, so they are left unquoted.
+      - name: Install
+        env:
+          BUILD: ${{ steps.pick.outputs.build }}
+        run: pnpm install --frozen-lockfile $BUILD
+
+      - name: Build
+        env:
+          BUILD: ${{ steps.pick.outputs.build }}
+        run: pnpm $BUILD --if-present run build
+
+      - name: Test
+        env:
+          FILTER: ${{ steps.pick.outputs.filter }}
+        run: pnpm $FILTER --if-present run test
+
+      - name: Smoke the built packages under Node
+        env:
+          FILTER: ${{ steps.pick.outputs.filter }}
+        run: pnpm $FILTER --if-present run smoke

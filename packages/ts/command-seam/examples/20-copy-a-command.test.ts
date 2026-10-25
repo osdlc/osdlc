@@ -31,7 +31,7 @@ test('POSIX: cd, then the command, quoted for sh', () => {
 
 test('Windows: PowerShell by default', () => {
   expect(retryHint(argv, 'C:\\Users\\me\\my repo', { platform: 'win32' })).toBe(
-    "To run it again: Set-Location -LiteralPath 'C:\\Users\\me\\my repo'; & git commit -m 'it''s done'",
+    "To run it again: if (Set-Location -LiteralPath 'C:\\Users\\me\\my repo' -PassThru) { & git commit -m 'it''s done' }",
   )
 })
 

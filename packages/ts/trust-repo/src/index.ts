@@ -19,7 +19,13 @@
  * `./store.ts` and `./gate.ts` explain the design of the store and the gate.
  */
 
-export { TRUST_MARKER_DIR, WHOLE_REPO_SCOPE, trustStore, trustStoreDir } from './store.ts'
+export {
+  TRUST_MARKER_DIR,
+  WHOLE_REPO_SCOPE,
+  parseTrustScope,
+  trustStore,
+  trustStoreDir,
+} from './store.ts'
 export type { TrustGrant, TrustResult, TrustStore, TrustStoreOptions } from './store.ts'
 
 export { expandTilde, expandTrustPath, normalizeTrustPath, resolveTrustRoot } from './paths.ts'

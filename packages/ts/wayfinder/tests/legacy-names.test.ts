@@ -9,7 +9,7 @@
 
 import { afterAll, describe, expect, test } from 'vitest'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { captureIo } from '@osdlc/cli-tool'
@@ -269,6 +269,35 @@ describe('trust store', () => {
     expect(await legacy.isTrusted(repo)).toBe(false)
     expect(await current.isTrusted(repo)).toBe(false)
     expect(await app.untrust(repo)).toBe(false)
+  })
+
+  test('untrustAll removes every grant from both stores', async () => {
+    const { app, current, legacy, repo } = await stores()
+    await legacy.trust(repo)
+    await legacy.trust(repo, 'just')
+    await current.trust(repo, 'mise')
+    expect(await app.untrustAll(repo)).toEqual(['*', 'just', 'mise'])
+    expect(await app.isTrusted(repo)).toBe(false)
+    expect(await app.isTrusted(repo, 'just')).toBe(false)
+    expect(await legacy.listGrants()).toEqual([])
+    expect(await current.listGrants()).toEqual([])
+  })
+
+  test('listGrants reads both stores, a grant in both once', async () => {
+    const { app, current, legacy, repo } = await stores()
+    await legacy.trust(repo)
+    await legacy.trust(repo, 'just')
+    await current.trust(repo)
+    const grants = await app.listGrants()
+    expect(grants.map((g) => g.scope)).toEqual(['*', 'just'])
+    expect(grants[0]?.marker.startsWith(current.dir())).toBe(true)
+  })
+
+  test.skipIf(process.platform === 'win32')('tighten tightens both stores', async () => {
+    const { app, legacy, repo } = await stores()
+    const marker = (await legacy.trust(repo)).marker
+    await chmod(marker, 0o644)
+    expect(await app.tighten()).toContain(marker)
   })
 
   test('a root in both stores is listed once', async () => {
