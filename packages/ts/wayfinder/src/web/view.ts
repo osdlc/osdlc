@@ -49,10 +49,13 @@ function brandOf(runner: string): RunnerBrand | null {
 }
 
 /**
- * The runner's icon, inserted unescaped on purpose. It is inline SVG that the
- * server's own runners declare, which this page trusts as it trusts every
- * field it renders. Escaping it would print the markup as text instead of
- * drawing it.
+ * The runner's icon, inserted unescaped on purpose: it is inline SVG, and
+ * escaping it would print the markup instead of drawing it. It comes from the
+ * tool's definition, which is code this process already runs (a repository's
+ * own tool module loads only once it is trusted), so it is trusted as that
+ * code is. Text fields of the same tool are still escaped, as all text is.
+ * The page's content security policy keeps a script in the markup from
+ * running.
  */
 function iconHtml(runner: string): string {
   const icon = brandOf(runner)?.icon
@@ -1050,7 +1053,7 @@ export function render(): void {
           : shape
         const btn =
           '<button data-runner="' +
-          t.runner +
+          escapeHtml(t.runner) +
           '" aria-pressed="' +
           (t.runner === state.runner) +
           '"' +

@@ -115,6 +115,21 @@ describe('a row', () => {
   })
 })
 
+describe('the tabs', () => {
+  test('a runner id is escaped in its tab', () => {
+    const hostile = 'x"><img id="pwned">'
+    const doc = catalog([task('build', { runner: hostile, id: `${hostile}:f:build` })])
+    doc.reports[0]!.runner = hostile
+    state.catalog = doc
+    render()
+    expect(document.getElementById('pwned')).toBeNull()
+    const tab = [...$('tabs').querySelectorAll<HTMLElement>('button[data-runner]')].find(
+      (b) => b.dataset['runner'] === hostile,
+    )
+    expect(tab).toBeDefined()
+  })
+})
+
 describe('the run bar', () => {
   test('says the arguments are optional when the parameters could not be read', () => {
     showRunBar(task('deploy', { parametersUnknown: 'tool-missing' }))
