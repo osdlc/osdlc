@@ -228,7 +228,8 @@ function manyOrNull(r: CommandResult): PullRequest[] | null {
  * The verb asks gh for one row more than `limit`. `truncated` is true when
  * that row came back, and `rows` holds at most `limit`. A query that goes
  * through GitHub search, which returns at most 1000 results, is also
- * `truncated` when 1000 rows came back.
+ * `truncated` when 1000 rows came back: `prList` with a non-empty `search` or
+ * an `author`, `issueList` with a `label`, and `searchPrs`.
  */
 export interface ListResult<T> {
   rows: T[]
@@ -244,8 +245,10 @@ function checkLimit(limit: number): void {
 
 /**
  * The most results GitHub search returns for one query. A call that goes
- * through search (`prList` with `search`, `searchPrs`) and gets this many
- * rows may have been cut off by search, whatever the `limit`.
+ * through search and gets this many rows may have been cut off by search,
+ * whatever the `limit`. gh uses search for `pr list` with a non-empty
+ * `--search` or with `--author`, for `issue list` with `--label`, and for
+ * `search prs`.
  */
 const SEARCH_RESULT_CAP = 1000
 
@@ -387,7 +390,7 @@ export function prList(
       const result = limited(
         manyOrNull(r),
         limit,
-        opts.search === undefined ? undefined : SEARCH_RESULT_CAP,
+        (opts.search ?? '') !== '' || opts.author !== undefined ? SEARCH_RESULT_CAP : undefined,
       )
       if (result === null || head === undefined) return result
       return { ...result, rows: result.rows.filter((pr) => pr.headRefName === head) }
@@ -805,7 +808,14 @@ export function issueList(
   const argv = ['issue', 'list', ...repoArgs(target)]
   if (opts.label !== undefined) argv.push('--label', opts.label)
   argv.push('--json', ISSUE_FIELDS, '--limit', String(limit + 1))
-  return { argv, checked: false, readOnly: true, parse: (r) => limited(manyIssuesOrNull(r), limit) }
+  // gh lists issues by label through search, which stops at 1000 results.
+  const cap = opts.label === undefined ? undefined : SEARCH_RESULT_CAP
+  return {
+    argv,
+    checked: false,
+    readOnly: true,
+    parse: (r) => limited(manyIssuesOrNull(r), limit, cap),
+  }
 }
 
 /** `gh issue view <n> --json …`: one issue, same field set as {@link issueList}. */
@@ -970,7 +980,9 @@ export function searchPrs(
   if (opts.state === 'merged') argv.push('--merged')
   else if (opts.state !== undefined) argv.push('--state', opts.state)
   argv.push('--json', withFields(opts.fields ?? SEARCH_PR_FIELDS, ['number']).join(','))
-  argv.push('--limit', String(limit + 1))
+  // gh refuses a search limit over 1000, so ask for at most that. 1000 rows
+  // then read as truncated: search may hold more.
+  argv.push('--limit', String(Math.min(limit + 1, SEARCH_RESULT_CAP)))
   if (query !== '') argv.push('--', query)
   return {
     argv,
