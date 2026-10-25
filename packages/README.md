@@ -126,6 +126,8 @@ Developed here, in this repository:
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
+- `packages/rust/typed-git` (`typed-git` on crates.io, the Rust twin of
+  `@osdlc/typed-git`: a typed git client)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
   for its npm package (not published to crates.io)
