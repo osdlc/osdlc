@@ -5,11 +5,19 @@
  * host, so every key and every frame can be checked without a terminal.
  *
  * Collection is async, which is what much of the state handling is for: keys
- * arrive during a refresh, and a row can be stale.
+ * arrive during a refresh, and a row can be stale. With nothing on screen,
+ * each runner's rows are drawn as that runner answers. Over rows already on
+ * screen, a refresh replaces them all at once when it ends.
  */
 
 import { commandString } from '@osdlc/command-seam'
-import type { Catalog, ChainSegment, RunnerCacheState, Task } from '@osdlc/system-model/detect'
+import type {
+  Catalog,
+  ChainSegment,
+  RunnerCacheState,
+  RunnerReport,
+  Task,
+} from '@osdlc/system-model/detect'
 import { humanAge, humanMs } from '@osdlc/system-model/duration'
 import type { Mode } from '@osdlc/system-model/match'
 import { paramShape } from '@osdlc/system-model/params'
@@ -17,7 +25,7 @@ import { fitWidth } from '@osdlc/ux'
 
 import { BIN } from '../app.ts'
 import { splitArgs } from '../args.ts'
-import { orderedCatalog } from '../catalog.ts'
+import { inDisplayOrder, orderedCatalog } from '../catalog.ts'
 import type { Settings } from '../config.ts'
 import { COPY_REFUSED, skillCopyText, taskCopyText } from '../core/copy-text.ts'
 import type { TaskHit } from '../core/filter.ts'
@@ -112,6 +120,15 @@ export type ListEntry = { task: TaskHit; skill?: undefined } | { skill: SkillHit
 /** Everything the screen shows. */
 export interface TuiState {
   catalog: Catalog | null
+  /**
+   * The reports the first probe has sent so far, while there is no catalog
+   * to show. Null once there is one, and before a probe starts.
+   */
+  partial: RunnerReport[] | null
+  /** The runners the running probe has not heard from yet. */
+  pending: string[]
+  /** How many runners the running probe reports. */
+  expected: number
   /** Where each runner's rows came from, one entry per selected runner. */
   cache: CacheState[]
   /** The agent skills from the last probe. */
@@ -272,6 +289,9 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     commandString(argv, { platform: host.platform })
   const state: TuiState = {
     catalog: null,
+    partial: null,
+    pending: [],
+    expected: 0,
     cache: [],
     skills: [],
     runnerOrder: session.runnerOrder(),
@@ -317,24 +337,38 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
 
   // ------------------------------------------------------------ the catalog
 
-  const reports = () => state.catalog?.reports ?? []
+  /** The rows to show: the catalog's, else what the first probe has sent so far. */
+  const shown = (): Pick<Catalog, 'reports'> | null =>
+    state.catalog ?? (state.partial !== null ? { reports: state.partial } : null)
+  const reports = () => shown()?.reports ?? []
   const reportFor = (runner: string) => reports().find((r) => r.runner === runner)
-  const tabs = (): string[] => [
-    ALL,
-    ...reports().map((r) => r.runner),
-    ...(state.skills.length > 0 ? [SKILLS_TAB] : []),
-  ]
+  /** A runner the first probe will report but has not yet. It has a tab and a placeholder. */
+  const waiting = (): string[] =>
+    state.partial === null ? [] : state.pending.filter((r) => reportFor(r) === undefined)
+  const tabs = (): string[] => {
+    const held = waiting()
+    const runners =
+      held.length === 0
+        ? reports().map((r) => r.runner)
+        : inDisplayOrder(
+            [...reports().map((r) => r.runner), ...held].map((runner) => ({ runner })),
+            state.runnerOrder,
+          ).map((r) => r.runner)
+    return [ALL, ...runners, ...(state.skills.length > 0 ? [SKILLS_TAB] : [])]
+  }
   const showsSkills = (): boolean => state.runner === ALL || state.runner === SKILLS_TAB
   const cacheFor = (runner: string) => state.cache.find((c) => c.runner === runner)
   const chainOf = (runner: string): ChainSegment[] => reportFor(runner)?.chain ?? []
 
   /** Each withheld runner, with its label and the scopes it needs. */
-  const withheldRunners = (): WithheldRunner[] =>
-    state.catalog === null
+  const withheldRunners = (): WithheldRunner[] => {
+    const catalog = shown()
+    return catalog === null
       ? []
       : session
-          .unknowns({ catalog: state.catalog, cache: state.cache })
+          .unknowns({ catalog, cache: state.cache })
           .filter((u): u is WithheldRunner => u.kind === 'withheld')
+  }
 
   /** The withheld runners, and why, or null when execution is allowed. */
   const withheld = (): { count: number; cause: string; trustable: boolean } | null => {
@@ -375,12 +409,12 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
       declaredOnly: state.declaredOnly,
       maxDepth: SCOPES[state.scope]!.maxDepth,
     }
-    if (state.catalog === null || state.runner === SKILLS_TAB) {
+    if (shown() === null || state.runner === SKILLS_TAB) {
       state.rows = []
     } else {
       const scoped =
         state.runner === ALL ? reports() : reports().filter((r) => r.runner === state.runner)
-      state.rows = session.search({ ...state.catalog, reports: scoped }, filter)
+      state.rows = session.search({ reports: scoped }, filter)
     }
     state.skillRows = showsSkills() ? session.searchSkills(state.skills, filter) : []
     const all = entries()
@@ -492,8 +526,9 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
           ? state.cache.some((c) => c.state === 'stale')
           : cacheFor(name)?.state === 'stale'
       const held = name !== ALL && reportFor(name)?.skippedForExec === true
+      const loading = name !== ALL && name !== SKILLS_TAB && reportFor(name) === undefined
       const title = name === ALL ? ALL : name === SKILLS_TAB ? SKILLS_GROUP.id : runnerLabel(name)
-      const label = `${stale ? '~' : ''}${title} ${held ? '–' : count}`
+      const label = `${stale ? '~' : ''}${title} ${held ? '–' : loading ? '…' : count}`
       const selected = name === state.runner
       const chunks: Chunk[] = []
       const prev = names[i - 1]
@@ -555,7 +590,15 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     // so a warning after them is not cut.
     const clock: Chunk[] = []
     if (state.catalog === null) {
-      chunks.push({ text: '  collecting', paint: s.dim })
+      const left = state.pending
+      if (state.loading && state.partial !== null && left.length > 0) {
+        chunks.push({
+          text: `  loading ${left.length} of ${state.expected}: ${left.map(runnerLabel).join(', ')}`,
+          paint: s.note,
+        })
+      } else if (state.loading) {
+        chunks.push({ text: '  collecting', paint: s.dim })
+      }
     } else {
       clock.push({
         text: `  checked ${new Date(state.catalog.generatedAt).toLocaleTimeString()}`,
@@ -569,7 +612,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     }
     const note = refreshNote(state.cache, state.loading)
     if (state.loading && note === null && state.catalog !== null) {
-      chunks.push({ text: '  refreshing', paint: s.note })
+      chunks.push({ text: '  refreshing…', paint: s.note })
     }
     if (note !== null) {
       chunks.push({ text: `  ${note.text}`, paint: note.slow ? s.error : s.warning })
@@ -741,10 +784,19 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     if (at < state.scroll) state.scroll = at
     if (at >= state.scroll + listHeight) state.scroll = at - listHeight + 1
     if (state.scroll < 0) state.scroll = 0
+    // A runner the first probe has not heard from yet holds a line after the rows.
+    const placeholders =
+      state.runner === ALL ? waiting() : waiting().filter((r) => r === state.runner)
     for (let i = 0; i < listHeight; i++) {
       const entry = list[state.scroll + i]
       if (!entry) {
-        out.push(i === 0 ? emptyList(width) : CLEAR_EOL)
+        const at = state.scroll + i - list.length
+        const held = placeholders[at]
+        if (held !== undefined && state.runner === ALL) {
+          out.push(line([{ text: `    … ${runnerLabel(held)}  loading`, paint: s.dim }], width))
+        } else {
+          out.push(i === 0 ? emptyList(width) : CLEAR_EOL)
+        }
         continue
       }
       if (entry.skill !== undefined) {
@@ -861,7 +913,9 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   function emptyList(width: number): string {
     let text: string
     if (state.runner === SKILLS_TAB) text = state.query !== '' ? 'no match' : 'no skills'
-    else if (state.catalog === null) text = state.probed ? 'nothing collected' : 'collecting…'
+    else if (state.runner !== ALL && waiting().includes(state.runner)) {
+      text = `… loading ${runnerLabel(state.runner)}`
+    } else if (shown() === null) text = state.probed ? 'nothing collected' : 'collecting…'
     else if (state.runner !== ALL && reportFor(state.runner)?.skippedForExec === true) {
       const held = withheld()
       text = held === null ? 'withheld' : `${held.cause}${held.trustable ? ' — ^s to trust' : ''}`
@@ -905,10 +959,11 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
    */
   let confirming = false
   function run(task: Task, args: readonly string[]): void {
-    if (state.catalog === null) return
+    const catalog = shown()
+    if (catalog === null) return
     let plan: RunPlan
     try {
-      plan = session.resolveRun(state.catalog, task.id, args)
+      plan = session.resolveRun(catalog, task.id, args)
     } catch (err) {
       if (err instanceof SessionError) {
         say(err.message, 'error')
@@ -916,7 +971,8 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
       }
       throw err
     }
-    if (state.fromProbe) {
+    // Rows the first probe sent as it ran are as fresh as its final answer.
+    if (state.fromProbe || state.catalog === null) {
       handOver(task, plan, args)
       return
     }
@@ -983,13 +1039,44 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     state.inFlight = controller
     state.loading = true
     state.message = note ?? null
+    state.pending = []
+    state.expected = 0
+    // With nothing on screen, each runner is drawn as it answers. Rows
+    // already on screen stay until the whole answer replaces them.
+    const live = state.catalog === null
+    state.partial = live ? [] : null
+    const current = (): boolean => generation === state.generation
+    const progress = {
+      onRunners(runners: readonly string[]): void {
+        if (!current()) return
+        state.pending = inDisplayOrder(
+          runners.map((runner) => ({ runner })),
+          state.runnerOrder,
+        ).map((r) => r.runner)
+        state.expected = runners.length
+        draw()
+      },
+      onRunner(report: RunnerReport, cache: CacheState): void {
+        if (!current()) return
+        state.pending = state.pending.filter((r) => r !== report.runner)
+        if (live && state.partial !== null) {
+          state.partial = inDisplayOrder(
+            [...state.partial.filter((r) => r.runner !== report.runner), report],
+            state.runnerOrder,
+          )
+          state.cache = [...state.cache.filter((c) => c.runner !== report.runner), cache]
+        }
+        draw()
+      },
+    }
     draw()
     try {
       // Always a real probe. ^r means "ask again", and an answer from the
       // store would look the same as doing nothing.
-      const snapshot = await session.catalog({ signal: controller.signal })
+      const snapshot = await session.catalog({ signal: controller.signal, progress })
       if (generation !== state.generation) return
       state.catalog = orderedCatalog(snapshot.catalog, state.runnerOrder)
+      state.partial = null
       state.cache = snapshot.cache
       state.skills = snapshot.skills
       state.fromProbe = snapshot.origin === 'probe'
@@ -1003,27 +1090,26 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
         state.loading = false
         state.inFlight = null
         state.probed = true
+        state.pending = []
         if (note !== undefined && state.message === note) state.message = null
       }
     }
   }
 
   async function boot(): Promise<void> {
-    // The saved view first: one file, so the tasks show at once. Without
-    // one, the store: no probe, but it detects the project and hashes each
-    // runner's files, which takes seconds on a large repository.
-    try {
-      // savedCatalog never throws; a bad file reads as none.
-      const stored = (await session.savedCatalog()) ?? (await session.storedCatalog())
-      if (stored !== null) {
-        state.catalog = orderedCatalog(stored.catalog, state.runnerOrder)
-        state.cache = stored.cache
-        state.skills = stored.skills
-      }
-    } catch {
-      // A store that cannot be read is the same as an empty one.
-    }
+    // The frame at once, then the saved view: one file, so the tasks show
+    // at once. Without one, the probe draws each runner as it answers. The
+    // store is not read first: it detects the project and hashes each
+    // runner's files, which costs as long as the probe's own detection.
     draw()
+    // savedCatalog never throws; a bad file reads as none.
+    const saved = await session.savedCatalog()
+    if (saved !== null) {
+      state.catalog = orderedCatalog(saved.catalog, state.runnerOrder)
+      state.cache = saved.cache
+      state.skills = saved.skills
+      draw()
+    }
     await refresh()
     draw()
   }
@@ -1145,6 +1231,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   function adoptSettings(settings: Settings): void {
     state.runnerOrder = settings.runnerOrder.value
     if (state.catalog !== null) state.catalog = orderedCatalog(state.catalog, state.runnerOrder)
+    if (state.partial !== null) state.partial = inDisplayOrder(state.partial, state.runnerOrder)
   }
 
   async function openSettings(): Promise<void> {

@@ -30,6 +30,7 @@ decides execution against the trust store and loads tool modules. It throws
 | Call | Does |
 |---|---|
 | `session.catalog()` | probes every runner and stores the result. `cache[].probeMs` is each runner's measured time. `skills` holds the agent skills the `skills` setting chooses |
+| `session.catalog({ progress })` | the same, and as it probes: `progress.onRunners(ids)` once with every runner it probes, then `progress.onRunner(report, cache)` as each answers, withheld runners included. An answer from the saved view or the store calls neither |
 | `session.catalog({ cached: true })` | answers with `savedCatalog()` when there is one (`origin: 'saved'`, files unchecked); else reads the store and probes only the runners missing from it. `origin` says which happened |
 | `session.storedCatalog()` | the store alone, probing nothing, or null when it has no answer. It still detects the project and hashes each runner's files |
 | `session.savedCatalog()` | the catalog the last `catalog()` call showed, in any process, from one file (`saved-view.ts`), unchecked; null unless it was saved under the same `viewKey()`. The terminal UI and `serve` draw it first, and fall back to the store |
@@ -62,8 +63,9 @@ the tool registry, and `session.store` the directory probes are stored in.
   `commands/shared.ts`), which maps the global flags onto `createSession` and
   turns a `SessionError` into a `CommandError`.
 - The terminal UI: `runTui(session)` in `src/tui/` takes the `Session` and
-  calls `savedCatalog`, `storedCatalog`, `catalog`, `search`, `grantTrust`, `revokeTrust`,
-  `settings`, `reloadSettings`, `saveSetting` and `resolveRun`. A run hands
+  calls `savedCatalog`, `catalog`, `search`, `grantTrust`, `revokeTrust`,
+  `settings`, `reloadSettings`, `saveSetting` and `resolveRun`. With no saved
+  view it draws each runner as `catalog`'s `progress` reports it. A run hands
   off with `handOff(plan)` after the terminal is released.
 - The web view's server (`src/serve/`) takes the `Session` and the command
   tree. The page calls commands over HTTP, so each request opens its own

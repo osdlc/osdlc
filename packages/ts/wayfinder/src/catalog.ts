@@ -14,6 +14,7 @@ import {
   type DiscoveryMode,
   type Project,
   type ProjectProfile,
+  type RunnerReport,
   type ToolDef,
 } from '@osdlc/system-model/detect'
 
@@ -38,6 +39,10 @@ export interface WayOptions {
   signal?: AbortSignal | undefined
   /** Called with each probed runner's measured time. */
   onProbe?: ((probe: { runner: string; durationMs: number }) => void) | undefined
+  /** Called once, before any runner answers, with every runner the collection reports. */
+  onRunners?: ((runners: readonly string[]) => void) | undefined
+  /** Called with each runner's report as it answers, withheld runners included. */
+  onReport?: ((report: RunnerReport) => void) | undefined
   /**
    * Per-tool trust, for a repository that is not trusted as a whole. Used
    * only while `allowExec` is false. See {@link ToolTrust}.
@@ -90,6 +95,8 @@ function collectOptions(o: WayOptions) {
     execWithheldHint: o.execWithheldHint,
     signal: o.signal,
     onProbe: o.onProbe,
+    onRunners: o.onRunners,
+    onReport: o.onReport,
   }
 }
 
@@ -138,9 +145,27 @@ function grantedRunners(project: Project, profile: ProjectProfile, o: WayOptions
   return granted.length > 0 ? granted : null
 }
 
-/** The collect options for the runners a tool grant covers, and for the rest. */
+/**
+ * The collect options for the runners a tool grant covers, and for the rest.
+ * The two collections report as one: `onRunners` once, with both lists, and
+ * no report before it.
+ */
 function splitOptions(o: WayOptions, granted: string[]) {
-  const base = collectOptions(o)
+  const lists: (readonly string[])[] = []
+  const early: RunnerReport[] = []
+  const joined = {
+    onRunners: (ids: readonly string[]): void => {
+      lists.push(ids)
+      if (lists.length < 2) return
+      o.onRunners?.(lists.flat())
+      for (const report of early.splice(0)) o.onReport?.(report)
+    },
+    onReport: (report: RunnerReport): void => {
+      if (lists.length < 2) early.push(report)
+      else o.onReport?.(report)
+    },
+  }
+  const base = { ...collectOptions(o), ...joined }
   const { execWithheldHint: _hint, exclude: _exclude, ...rest } = base
   return {
     granted: { ...rest, allowExec: true, only: granted },
@@ -165,8 +190,11 @@ export async function collectAndCache(
     return project.runners.collectAndCache(profile, store, collectOptions(options))
   }
   const split = splitOptions(options, granted)
-  const a = await project.runners.collectAndCache(profile, store, split.granted)
-  const b = await project.runners.collectAndCache(profile, store, split.others)
+  // At the same time, so a progress count covers both from the start.
+  const [a, b] = await Promise.all([
+    project.runners.collectAndCache(profile, store, split.granted),
+    project.runners.collectAndCache(profile, store, split.others),
+  ])
   return mergeCatalogs(a, b)
 }
 
@@ -204,8 +232,13 @@ export function fromStore(cached: CachedCatalog): boolean {
  * git hooks) and, within a group, in the configured order.
  */
 export function orderedCatalog(catalog: Catalog, order: string[] | undefined): Catalog {
-  const reports = orderRunners(catalog.reports, order).sort(
-    (a, b) => groupRank(a.runner) - groupRank(b.runner),
-  )
-  return { ...catalog, reports }
+  return { ...catalog, reports: inDisplayOrder(catalog.reports, order) }
+}
+
+/** `items` by group, and within a group in the configured order. */
+export function inDisplayOrder<T extends { runner: string }>(
+  items: readonly T[],
+  order: string[] | undefined,
+): T[] {
+  return orderRunners([...items], order).sort((a, b) => groupRank(a.runner) - groupRank(b.runner))
 }

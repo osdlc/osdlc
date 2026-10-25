@@ -69,6 +69,22 @@ describe('per-tool trust', () => {
     expect(session.unknowns(snap).filter((u) => u.kind === 'withheld')).toEqual([])
   })
 
+  test('with a tool grant, progress names every runner once, before the first report', async () => {
+    const dir = await root(MISE_AND_MOON)
+    const session = await open(dir)
+    await session.grantTrust('mise')
+    const events: string[] = []
+    const snap = await session.catalog({
+      progress: {
+        onRunners: (runners) => events.push(`runners ${[...runners].sort().join(',')}`),
+        onRunner: (report) => events.push(`report ${report.runner}`),
+      },
+    })
+    const ids = snap.catalog.reports.map((r) => r.runner).sort()
+    expect(events[0]).toBe(`runners ${ids.join(',')}`)
+    expect(events.slice(1).sort()).toEqual(ids.map((id) => `report ${id}`))
+  })
+
   test('a tool-only grant lets that runner run and keeps the others withheld', async () => {
     const dir = await root(MISE_AND_MOON)
     const session = await open(dir)
