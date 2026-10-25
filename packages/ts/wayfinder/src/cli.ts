@@ -56,7 +56,7 @@ import { runProvidersCommand } from './providers-command.ts'
 import { serve } from './serve.ts'
 import { loadTools, ToolModuleError, type LoadedTool } from './tools.ts'
 import { runTrustCommand } from './trust-command.ts'
-import { jsonText, safeStderr, safeStdout, terminalSafe } from './terminal-text.ts'
+import { jsonText, safeJsonStdout, safeStderr, safeStdout, terminalSafe } from './terminal-text.ts'
 import { runTui } from './tui.ts'
 
 /** The prose under the flag list in the complete help. */
@@ -498,8 +498,9 @@ export async function main(
   // `dev` is a contributor tool, so the help does not list it. `self` is this
   // checkout, so `dev install` and a bare `dev link` know what to point at.
   if (argv[0] === 'dev') {
-    return runDevCli(WAYFINDER_SPEC, argv.slice(1), {
-      io: safeStdout(io),
+    const devArgs = argv.slice(1)
+    return runDevCli(WAYFINDER_SPEC, devArgs, {
+      io: devArgs.includes('--json') ? safeJsonStdout(io) : safeStdout(io),
       env,
       self: checkoutRoot(),
     })

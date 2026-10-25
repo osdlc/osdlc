@@ -43,7 +43,11 @@ making `way` run code the user did not choose to run are in scope.
   command detection and the owner lookup start is looked up on the absolute
   `PATH` entries only. A relative or empty entry (`bin`, `.`,
   `node_modules/.bin`) is skipped, and on Windows the current folder is not
-  searched.
+  searched. An absolute entry is still searched, even one inside the
+  repository: direnv's `PATH_add`, mise's `_.path` and `npx` add such
+  entries, and each is a choice you made. `way providers` uses the same
+  lookup, and a tool found only through a relative entry reads as not
+  installed.
 - **Owner trust believes the repository's own git config.** `trust.owners`
   matches the remote URL the repository's `.git/config` reports. That file
   comes with the directory: a folder from an archive or a shared drive can
@@ -53,12 +57,15 @@ making `way` run code the user did not choose to run are in scope.
   config values have their control characters (C0, DEL, C1) and bidi controls
   (U+202A-202E, U+2066-2069) replaced with U+FFFD before the terminal UI,
   `--list`, `query`, `trust`, `config`, `providers`, `dev`, the `--serve`
-  summary or stderr prints them. Copied commands get the same text. `--json`
-  keeps every value exact: C0 is escaped by JSON itself, and DEL, C1 and the
-  bidi controls are written as `\u` escapes, so the output is safe to print.
+  summary or stderr prints them. Copied commands get the same text. `--json`,
+  `way dev … --json` included, keeps every value exact: C0 is escaped by JSON
+  itself, and DEL, C1 and the bidi controls are written as `\u` escapes, so
+  the output is safe to print. An error no command catches is printed the
+  same way, on one line.
 - **The installed `way` runs its own code.** It hands off to a checkout only
   when `WAY_HOME` (an absolute path) or `way dev link` names one, and only when
-  that checkout's `package.json` is named `@osdlc/wayfinder`. The checkout runs
+  that checkout's `package.json` is named `@osdlc/wayfinder`. `bun` is looked
+  up on the absolute `PATH` entries only, like git. The checkout runs
   under Bun with `--no-env-file` and an empty config, so the `.env` and
   `bunfig.toml` of the directory you stand in are not read. A relative `HOME`,
   `XDG_*` or `WAYFINDER_CONFIG` is ignored, so no config, trust store or link

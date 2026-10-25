@@ -13,6 +13,8 @@
 import { spawnSync } from 'node:child_process'
 import { devNull, constants as osConstants } from 'node:os'
 
+import { which } from '@osdlc/command-seam'
+
 import type { Selection } from './resolve.ts'
 import { quietVar, type ToolSpec } from './spec.ts'
 
@@ -39,7 +41,11 @@ export interface ExecOptions {
   env?: Record<string, string | undefined>
   /** Writes the "running X (why)" line. Defaults to stderr. */
   announce?: (line: string) => void
-  /** Defaults to `bun`. */
+  /**
+   * The `bun` to run, used as given. Defaults to the `bun` found on the
+   * absolute entries of `env`'s `PATH`. A relative entry is skipped, and so
+   * is the cwd, so a `bun` in the repository the user stands in never runs.
+   */
   bun?: string
 }
 
@@ -61,13 +67,23 @@ export function execSelection(
   if (env[quietVar(spec)] !== '1') {
     announce(`${spec.name}: running ${selection.entry} (${selection.reason})`)
   }
-  const result = spawnSync(opts.bun ?? 'bun', [...bunRunArgs(selection.entry), ...argv], {
+  const bun =
+    opts.bun ??
+    which('bun', { absolutePathOnly: true, env: { PATH: env['PATH'], PATHEXT: env['PATHEXT'] } })
+  if (bun === undefined) {
+    announce(
+      `${spec.name}: the selected checkout runs from source and needs bun on an absolute PATH entry. ` +
+        `Install Bun (https://bun.sh), or run '${spec.name} dev off' to use the local install.`,
+    )
+    return 1
+  }
+  const result = spawnSync(bun, [...bunRunArgs(selection.entry), ...argv], {
     stdio: 'inherit',
     env: env as NodeJS.ProcessEnv,
   })
   if (result.error !== undefined) {
     announce(
-      `${spec.name}: the selected checkout runs from source and needs bun on PATH (${result.error.message}). ` +
+      `${spec.name}: the selected checkout runs from source and could not start ${bun} (${result.error.message}). ` +
         `Install Bun (https://bun.sh), or run '${spec.name} dev off' to use the local install.`,
     )
     return 1

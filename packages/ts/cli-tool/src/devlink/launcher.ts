@@ -38,18 +38,18 @@ export interface LauncherOptions {
 }
 
 /**
- * Prints the keys of a package.json `dependencies` object, one per line.
- * Handles the block opening, holding entries, and closing on one line or
- * several: each segment is split on commas and its first quoted string is the
- * name. Stops at the closing brace so `devDependencies` is never read.
- */
-/**
  * Bun reads `.env*` and `bunfig.toml` from the cwd, which can be a repository
  * the user does not control. These flags stop both; `bunRunArgs` in
  * `exec.ts` explains why.
  */
 const BUN_FLAGS = '--no-env-file --config=/dev/null'
 
+/**
+ * Prints the keys of a package.json `dependencies` object, one per line.
+ * Handles the block opening, holding entries, and closing on one line or
+ * several: each segment is split on commas and its first quoted string is the
+ * name. Stops at the closing brace so `devDependencies` is never read.
+ */
 const AWK_DEPS = [
   'function emit(s,  n,a,i){n=split(s,a,","); for(i=1;i<=n;i++) if(match(a[i],/"[^"]+"/)) print substr(a[i],RSTART+1,RLENGTH-2)}',
   '/"dependencies"[[:space:]]*:/ && !f {s=$0; sub(/^.*"dependencies"[[:space:]]*:[[:space:]]*[{]/,"",s); if((i=index(s,"}"))>0){emit(substr(s,1,i-1)); exit} emit(s); f=1; next}',
@@ -145,6 +145,22 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p()
   p('announce() {')
   p(`  [ "\${${quietVar(spec)}:-0}" = "1" ] || echo "${name}: running $1 ($2)" >&2`)
+  p('}')
+  p()
+  p('# Prints the path of $1 on the absolute PATH entries, as execSelection finds')
+  p('# bun. A relative or empty entry is searched from the cwd, which can be a')
+  p('# repository, so it is skipped. Git Bash, MSYS and Cygwin give PATH in')
+  p('# /c/x form with ":" between entries, so a drive form cannot appear.')
+  p('find_abs() {')
+  p('  local rest="${PATH:-}" dir')
+  p('  while [ -n "$rest" ]; do')
+  p('    dir="${rest%%:*}"')
+  p('    case "$rest" in *:*) rest="${rest#*:}" ;; *) rest="" ;; esac')
+  p('    case "$dir" in')
+  p('      /*) if [ -f "$dir/$1" ] && [ -x "$dir/$1" ]; then echo "$dir/$1"; return 0; fi ;;')
+  p('    esac')
+  p('  done')
+  p('  return 1')
   p('}')
   p()
   p('is_checkout() {')
@@ -257,9 +273,9 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p('if [ -n "$home" ]; then')
   p('  home_real="$(cd -P "$home" && pwd)"')
   p('  if [ "$home_real" != "$self" ]; then')
-  p('    if ! command -v bun >/dev/null 2>&1; then')
+  p('    if ! bun="$(find_abs bun)"; then')
   p(
-    `      echo "${name}: the selected checkout ($home_real) runs from source and needs bun on PATH." >&2`,
+    `      echo "${name}: the selected checkout ($home_real) runs from source and needs bun on an absolute PATH entry." >&2`,
   )
   p(
     `      echo "      Install Bun (https://bun.sh), or run '${name} dev off' to use the local install." >&2`,
@@ -269,7 +285,7 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p(`    need_deps "$home_real" "$home_real/${entry}"`)
   p(`    announce "$home_real/${entry}" "$via"`)
   p(`    export ${layerVar}="$layer"`)
-  p(`    exec bun ${BUN_FLAGS} run "$home_real/${entry}" "$@"`)
+  p(`    exec "$bun" ${BUN_FLAGS} run "$home_real/${entry}" "$@"`)
   p('  fi')
   p(
     "  # The selected checkout is this launcher's own: it reads as the install, not as a dev selection.",
@@ -287,28 +303,30 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
     p('# install, or an uninstalled clone — runs the built entry.')
     p('dev_checkout=0')
     p(
-      'if is_checkout "$self" && [ -d "$self/node_modules" ] && command -v bun >/dev/null 2>&1; then dev_checkout=1; fi',
+      'if is_checkout "$self" && [ -d "$self/node_modules" ] && find_abs bun >/dev/null; then dev_checkout=1; fi',
     )
     p(`if [ "$dev_checkout" = "0" ] && [ -f "$here/${builtRel}" ]; then`)
-    p('  if ! command -v node >/dev/null 2>&1; then')
+    p('  if ! node="$(find_abs node)"; then')
     p(
-      `    echo "${name}: the built entry '${posix.basename(built)}' is present but 'node' is not on PATH." >&2`,
+      `    echo "${name}: the built entry '${posix.basename(built)}' is present but 'node' is not on an absolute PATH entry." >&2`,
     )
     p('    exit 1')
     p('  fi')
     p(`  announce "$here/${builtRel}" "local, node"`)
     p(`  export ${layerVar}="$layer"`)
-    p(`  exec node "$here/${builtRel}" "$@"`)
+    p(`  exec "$node" "$here/${builtRel}" "$@"`)
     p('fi')
   }
-  p('if ! command -v bun >/dev/null 2>&1; then')
-  p(`  echo "${name}: the source entry needs bun on PATH. Install Bun (https://bun.sh)." >&2`)
+  p('if ! bun="$(find_abs bun)"; then')
+  p(
+    `  echo "${name}: the source entry needs bun on an absolute PATH entry. Install Bun (https://bun.sh)." >&2`,
+  )
   p('  exit 1')
   p('fi')
   p(`need_deps "$self" "$self/${entry}"`)
   p(`announce "$self/${entry}" "local, bun"`)
   p(`export ${layerVar}="$layer"`)
-  p(`exec bun ${BUN_FLAGS} run "$self/${entry}" "$@"`)
+  p(`exec "$bun" ${BUN_FLAGS} run "$self/${entry}" "$@"`)
   return lines.join('\n') + '\n'
 }
 

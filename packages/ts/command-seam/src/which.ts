@@ -112,7 +112,8 @@ export interface PathCandidateOptions {
  * The files a lookup with `absolutePathOnly` checks for the bare name
  * `binary`, in order. It reads no files. Only absolute `PATH` entries count:
  * on Windows, one with a drive (`C:\bin`) or a UNC prefix (`\\host\share`).
- * On Windows each entry is tried with every `PATHEXT` suffix, unless `binary`
+ * On Windows an entry in double quotes counts without its quotes, and each
+ * entry is tried with every `PATHEXT` suffix, unless `binary`
  * already ends in one, and the current folder is never searched, unlike a
  * Windows spawn of a bare name.
  *
@@ -132,7 +133,9 @@ export function absolutePathCandidates(binary: string, opts: PathCandidateOption
     !windows || exts.some((e) => binary.toLowerCase().endsWith(e.toLowerCase())) ? [''] : exts
   const join = windows ? win32.join : posix.join
   const out: string[] = []
-  for (const dir of opts.path.split(windows ? ';' : ':')) {
+  for (const entry of opts.path.split(windows ? ';' : ':')) {
+    // Windows strips the double quotes around an entry such as "C:\Program Files\x".
+    const dir = windows && /^".*"$/.test(entry) ? entry.slice(1, -1) : entry
     if (!isAbsoluteEntry(dir, windows)) continue
     for (const suffix of suffixes) out.push(join(dir, binary + suffix))
   }

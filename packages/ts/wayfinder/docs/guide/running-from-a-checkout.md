@@ -28,7 +28,8 @@ naming a directory that is no longer a checkout is skipped. The shim prints
 which entry it chose on stderr. `WAY_QUIET=1` silences that.
 
 A selected checkout runs from source under Bun, so `way dev` needs
-[Bun](https://bun.sh) on `PATH`. Without it, `way` says so and suggests
+[Bun](https://bun.sh) on an absolute `PATH` entry. A `bun` reachable only
+through a relative entry (`bin`, `.`) is not used. Without one, `way` says so and suggests
 `way dev off`. Bun runs with `--no-env-file` and an empty config, so it reads
 no `.env` or `bunfig.toml`, neither the checkout's nor the directory's you
 stand in.

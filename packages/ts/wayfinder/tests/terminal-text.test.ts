@@ -15,7 +15,14 @@ import type { Catalog, Task } from '@osdlc/system-model/detect'
 
 import { main } from '../src/cli.ts'
 import { startupSummary } from '../src/serve.ts'
-import { jsonText, safeStderr, safeStdout, terminalSafe } from '../src/terminal-text.ts'
+import {
+  guardedExit,
+  jsonText,
+  safeJsonStdout,
+  safeStderr,
+  safeStdout,
+  terminalSafe,
+} from '../src/terminal-text.ts'
 import { frame, recompute, state } from '../src/tui.ts'
 import { copyText } from '../src/web/view.ts'
 
@@ -83,6 +90,29 @@ describe('terminalSafe', () => {
     safeStdout(io).stdout(`a ${CLIPBOARD}\tb\n`)
     expect(io.out).not.toMatch(RAW_CONTROL)
     expect(io.out.endsWith('\tb\n')).toBe(true)
+  })
+
+  test('safeJsonStdout keeps JSON values exact and escapes DEL, C1 and bidi', () => {
+    const io = captureIo()
+    const value = { path: `a${C1}${BIDI}${CLIPBOARD}` }
+    safeJsonStdout(io).stdout(`${JSON.stringify(value, null, 2)}\n`)
+    expect(io.out).not.toMatch(RAW_CONTROL)
+    expect(JSON.parse(io.out)).toEqual(value)
+  })
+
+  test('guardedExit prints a thrown error as one terminal-safe line and returns 1', async () => {
+    const lines: string[] = []
+    const code = await guardedExit(
+      () => {
+        throw new Error(`bad ${CLIPBOARD}\nnext`)
+      },
+      (text) => lines.push(text),
+    )
+    expect(code).toBe(1)
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toMatch(/^wayfinder: bad /)
+    expect(lines[0]?.slice(0, -1)).not.toMatch(RAW_CONTROL)
+    expect(await guardedExit(async () => 3)).toBe(3)
   })
 
   test('leaves printable text, including non-ASCII, alone', () => {

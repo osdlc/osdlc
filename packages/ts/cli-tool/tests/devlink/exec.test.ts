@@ -40,6 +40,40 @@ describe('execSelection exit codes', () => {
   })
 })
 
+describe('execSelection finds bun on absolute PATH entries only', () => {
+  test('a bun on a relative PATH entry never runs', () => {
+    const repo = join(sb.root, 'repo')
+    mkdirSync(join(repo, 'bin'), { recursive: true })
+    const ran = join(sb.root, 'REPO_RAN')
+    writeFileSync(join(repo, 'bin', 'bun'), `#!/bin/sh\ntouch "${ran}"\n`)
+    chmodSync(join(repo, 'bin', 'bun'), 0o755)
+    const lines: string[] = []
+    const saved = process.cwd()
+    process.chdir(repo)
+    try {
+      const code = execSelection(SPEC, selection, [], {
+        env: { PATH: 'bin:.', TOOLY_QUIET: '1' },
+        announce: (line) => lines.push(line),
+      })
+      expect(code).toBe(1)
+    } finally {
+      process.chdir(saved)
+    }
+    expect(existsSync(ran)).toBe(false)
+    expect(lines.join('\n')).toContain('needs bun on an absolute PATH entry')
+  })
+
+  test('a bun on an absolute PATH entry runs by its absolute path', () => {
+    const report = join(sb.root, 'report')
+    fakeBun(`printf '%s' "$0" > "${report}"`)
+    const code = execSelection(SPEC, selection, [], {
+      env: { PATH: `bin:${sb.root}`, TOOLY_QUIET: '1' },
+    })
+    expect(code).toBe(0)
+    expect(readFileSync(report, 'utf-8')).toBe(join(sb.root, 'bun'))
+  })
+})
+
 describe('execSelection keeps Bun off the cwd', () => {
   test('bun gets --no-env-file and an empty --config, before run', () => {
     const args = join(sb.root, 'args')
