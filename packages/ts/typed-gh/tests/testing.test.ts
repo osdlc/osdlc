@@ -109,6 +109,15 @@ describe('overrides', () => {
     prRow({ title: 'changed' })
     expect(prRow().title).not.toBe('changed')
   })
+
+  test('a default nested object is new each call, so editing one row edits only it', () => {
+    const row = prRow()
+    row.author!.login = 'mutated'
+    row.labels.push(labelRow())
+    expect(prRow().author?.login).toBe('octocat')
+    expect(prRow().labels).toEqual([])
+    expect(searchPrRow().author?.login).toBe('octocat')
+  })
 })
 
 describe('prRow', () => {
@@ -148,7 +157,8 @@ describe('prRow', () => {
         isDraft: true,
         mergeable: 'CONFLICTING',
         reviewDecision: 'CHANGES_REQUESTED',
-        author: { login: 'dependabot[bot]' },
+        // gh prints a bot author this way. The parser keeps the `app/` login.
+        author: { is_bot: true, login: 'app/dependabot' },
         labels: [labelRow({ name: 'p1' })],
         comments: [commentRow({ body: 'why?' })],
         reviews: [reviewRow({ state: 'CHANGES_REQUESTED' })],
@@ -163,7 +173,7 @@ describe('prRow', () => {
       isDraft: true,
       mergeable: 'CONFLICTING',
       reviewDecision: 'CHANGES_REQUESTED',
-      author: { login: 'dependabot', isBot: true },
+      author: { login: 'app/dependabot', isBot: true },
       labels: [{ name: 'p1', color: 'd73a4a' }],
       comments: [{ id: 'IC_kwDOAbCdEf5xYz12', author: { login: 'octocat' }, body: 'why?' }],
       reviews: [{ id: 'PRR_kwDOAbCdEf5xYz34', state: 'CHANGES_REQUESTED' }],
@@ -302,6 +312,13 @@ describe('searchPrRow', () => {
       updatedAt: '2024-01-16T14:05:00Z',
       closedAt: null,
     })
+  })
+
+  test("gh's zero closedAt on an open hit reads as null; a real one is kept", () => {
+    expect(searchPrRow().closedAt).toBe('0001-01-01T00:00:00Z')
+    expect(parsePrSearchHit(searchPrRow())?.closedAt).toBeNull()
+    const closed = searchPrRow({ state: 'closed', closedAt: '2024-02-01T10:00:00Z' })
+    expect(parsePrSearchHit(closed)?.closedAt).toBe('2024-02-01T10:00:00Z')
   })
 
   test('overrides parse through searchPrs, and the url follows number and repository', () => {
