@@ -53,7 +53,7 @@ pub struct StatusRequest {
 /// The closed set the status spec specify, and the same five words on every
 /// surface. Two things that also need a cell in a grid are deliberately not
 /// members: a destination whose target has no renderer, and a destination this
-/// note's `ap-targets` excludes. Neither is a *manifest* state — one is
+/// note's `tc-targets` excludes. Neither is a *manifest* state — one is
 /// incapability and the other is deliberate exclusion — and folding them in
 /// here would make them look like conditions a publish could fix.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -105,18 +105,18 @@ pub struct UnitStatus {
     pub contributing_notes: Vec<String>,
     /// Recorded contributors that are no longer in the vault.
     pub missing_notes: Vec<String>,
-    /// Set when `ap-targets` excludes this destination — the `n/a` cell, which
+    /// Set when `tc-targets` excludes this destination — the `n/a` cell, which
     /// is not a state.
     pub not_published: Option<String>,
     /// A plugin whose members drifted since it was last published here, with
-    /// its own `ap-version` unmoved since. `None` for every non-plugin unit,
+    /// its own `tc-version` unmoved since. `None` for every non-plugin unit,
     /// and for a plugin that does not meet the rule — see
     /// [`VersionBumpSuggestion`].
     pub version_bump_suggestion: Option<VersionBumpSuggestion>,
 }
 
 /// A plugin whose members changed since it was last published here, with its
-/// own `ap-version` unmoved since — the callout
+/// own `tc-version` unmoved since — the callout
 /// [`UnitStatus::version_bump_suggestion`] carries so a publish screen can
 /// offer a one-click bump.
 ///
@@ -128,12 +128,12 @@ pub struct UnitStatus {
 ///
 /// The manifest records no version of its own — adding one would be a schema
 /// bump for a fact the destination already carries. A plugin's pack manifest
-/// (`plugin.json`) is written with whatever `ap-version` was current at
+/// (`plugin.json`) is written with whatever `tc-version` was current at
 /// publish time, so the installed file's own `"version"` field IS that
 /// record, read back rather than tracked twice.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VersionBumpSuggestion {
-    /// The note's current `ap-version`.
+    /// The note's current `tc-version`.
     pub current_version: String,
     /// The `version` the installed pack manifest carries. Equal to
     /// `current_version` by construction — a suggestion exists exactly
@@ -287,7 +287,7 @@ pub fn status_of(
 ///   own (a description, an author, a keyword) without any member having
 ///   moved, and that is not this rule — only a member file among `ours`
 ///   reading [`PublishStatus::Written`] counts;
-/// * `ap-version` is absent, or has already moved since the installed pack
+/// * `tc-version` is absent, or has already moved since the installed pack
 ///   manifest was written.
 fn plugin_version_bump_suggestion(
     vfs: &dyn Vfs,
@@ -619,14 +619,14 @@ mod tests {
         );
     }
 
-    // `ap-targets` excluding a destination is not a publish state — nothing is
+    // `tc-targets` excluding a destination is not a publish state — nothing is
     // wrong and nothing would be fixed by publishing.
     #[test]
     fn a_destination_the_note_excludes_reports_itself_separately() {
         let vfs = vault();
         vfs.write_file(
             Path::new("/vault/skills/code-review.md"),
-            b"---\nname: code-review\ndescription: d\nap-targets:\n  - codex\n---\n\nBody.\n",
+            b"---\nname: code-review\ndescription: d\ntc-targets:\n  - codex\n---\n\nBody.\n",
         )
         .unwrap();
 
@@ -646,7 +646,7 @@ mod tests {
             .unwrap();
         vfs.write_file(
             Path::new(&format!("{base}/git-tools.md")),
-            b"---\nname: git-tools\ndescription: Git helpers.\nap-kind: plugin\nap-version: 2.1.0\n---\n\nThe pack.\n",
+            b"---\nname: git-tools\ndescription: Git helpers.\ntc-kind: plugin\ntc-version: 2.1.0\n---\n\nThe pack.\n",
         )
         .unwrap();
         vfs.write_file(
@@ -691,7 +691,7 @@ mod tests {
     }
 
     // The case the callout exists for: a member changed and nothing moved
-    // `ap-version` to say so.
+    // `tc-version` to say so.
     #[test]
     fn a_changed_member_with_an_unmoved_version_suggests_a_bump() {
         let vfs = vault_with_plugin();
@@ -728,7 +728,7 @@ mod tests {
         .unwrap();
         vfs.write_file(
             Path::new(PLUGIN_NOTE),
-            b"---\nname: git-tools\ndescription: Git helpers.\nap-kind: plugin\nap-version: 2.2.0\n---\n\nThe pack.\n",
+            b"---\nname: git-tools\ndescription: Git helpers.\ntc-kind: plugin\ntc-version: 2.2.0\n---\n\nThe pack.\n",
         )
         .unwrap();
 

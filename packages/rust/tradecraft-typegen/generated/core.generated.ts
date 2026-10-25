@@ -23,7 +23,7 @@
  * A field on the request rather than a third parameter, so the exported arity
  * does not move: hosts call `publishSkill(vfs, requestJson)`.
  * `#[serde(default)]` makes the field optional, so a request serialized
- * without it still deserializes and publishes under `ap`.
+ * without it still deserializes and publishes under `tc`.
  *
  * It is a `String` stem rather than a `Namespace` because the core
  * deliberately gives `Namespace` no `Deserialize`: every construction goes
@@ -59,11 +59,11 @@ export interface PublishRequest {
    * this tree: passing `/vault/skills` here would shrink protection to
    * that subtree and make the real vault root a publishable ancestor.
    *
-   * Absent means "no structural layer" — the note's own `ap-kind`, or the
+   * Absent means "no structural layer" — the note's own `tc-kind`, or the
    * default, decides, and the rail falls back to the note's own directory
    * with the wider ancestor refusal. A caller that has the vault root
    * should pass it: a command sitting in `commands/` and
-   * declaring no `ap-kind` is a skill to a gate that only reads
+   * declaring no `tc-kind` is a skill to a gate that only reads
    * frontmatter, and publishing it writes a `SKILL.md` for something that
    * is not a skill.
    */
@@ -91,7 +91,7 @@ export interface PublishRequest {
   overwrite?: string[];
 
   /**
-   * The vault's frontmatter namespace, as a stem — `ap`, or whatever the
+   * The vault's frontmatter namespace, as a stem — `tc`, or whatever the
    * host configured. Absent means [`Namespace::default`].
    */
   namespace?: string;
@@ -119,7 +119,7 @@ export interface PublishReport {
   files: PublishedFile[];
 
   /**
-   * Why there are no files: set exactly when `ap-targets` excluded this
+   * Why there are no files: set exactly when `tc-targets` excluded this
    * destination, and `None` on every other report.
    *
    * Prose, not one of the publish spec's reason tokens. Those
@@ -145,7 +145,7 @@ export interface PublishReport {
   not_carried?: string[];
 
   /**
-   * `ap-overrides` keys this destination's render already wrote, each as
+   * `tc-overrides` keys this destination's render already wrote, each as
    * its own reason line.
    *
    * A diagnostic that travels with the report and never blocks a write:
@@ -270,7 +270,7 @@ export interface DiscoveryReport {
 /**
  * One component, as discovery hands it to the verbs.
  *
- * `targets` keeps the three-outcome `ap-targets` reading instead of being
+ * `targets` keeps the three-outcome `tc-targets` reading instead of being
  * expanded to an explicit all-targets list, so the layer that knows what
  * "every destination" means today is the one that decides it.
  */
@@ -308,7 +308,7 @@ export interface DiscoveredComponent {
   folder_kind: EntityKind | null;
 
   /**
-   * `ap-targets` exactly as [`VaultFrontmatter::targets`] read it, every
+   * `tc-targets` exactly as [`VaultFrontmatter::targets`] read it, every
    * name checked against [`KNOWN_TARGETS`]. `None` is absent — every
    * destination; `Some(vec![])` is nowhere.
    */
@@ -318,21 +318,21 @@ export interface DiscoveredComponent {
    * The plugin holding this component. `None` is a bare component, sitting
    * at the root and belonging to no plugin.
    *
-   * The containing folder decides it and `ap-plugin` overrules it. Where a
+   * The containing folder decides it and `tc-plugin` overrules it. Where a
    * marketplace needs every skill under *some* plugin directory,
    * [`crate::export`] supplies the configured default — that is a
    * publication concern, not a fact about the vault.
    */
   plugin: string | null;
 
-  /** The plugin the folder put it in, before `ap-plugin` was read. */
+  /** The plugin the folder put it in, before `tc-plugin` was read. */
   folder_plugin: string | null;
 
   /**
    * The marketplace this belongs to — the directory holding the `plugins/`
    * folder it sits under. `None` only for a marketplace's own note.
    *
-   * Structural, with no frontmatter counterpart. `ap-kind` and `ap-plugin`
+   * Structural, with no frontmatter counterpart. `tc-kind` and `tc-plugin`
    * exist because a note may reasonably disagree with where it sits about
    * *what* it is or *which pack* it joins; disagreeing about which
    * distribution it ships in is a move, not an annotation, and a key that
@@ -394,7 +394,7 @@ export interface DiscoveredComponent {
 }
 
 /**
- * Which publishable unit a note is — what `ap-kind` names.
+ * Which publishable unit a note is — what `tc-kind` names.
  *
  * Absent means [`EntityKind::Skill`]: a vault of skills declares nothing at
  * all, and the key appears only on the notes that are something else. That
@@ -479,31 +479,31 @@ export interface DiscoveredHook {
  * see [`crate::export::MarketplaceConfig::owner`].
  */
 export interface ContainerIdentity {
-  /** `ap-owner` — the marketplace's owner, free-shaped. */
+  /** `tc-owner` — the marketplace's owner, free-shaped. */
   owner: unknown;
 
   /**
-   * `ap-author` — the author a plugin publishes under, free-shaped. On a
+   * `tc-author` — the author a plugin publishes under, free-shaped. On a
    * marketplace note it is the default for every plugin under it.
    */
   author: unknown;
 
   /**
-   * `ap-display-name` — the human-facing name where a dialect carries one
+   * `tc-display-name` — the human-facing name where a dialect carries one
    * separately from the slug.
    */
   display_name: string | null;
 
-  /** `ap-license` — an SPDX identifier, unread and passed through. */
+  /** `tc-license` — an SPDX identifier, unread and passed through. */
   license: string | null;
 
-  /** `ap-keywords`. */
+  /** `tc-keywords`. */
   keywords: string[] | null;
 
-  /** `ap-category` — Codex's plugin category. */
+  /** `tc-category` — Codex's plugin category. */
   category: string | null;
 
-  /** `ap-version` — the plugin's own version. */
+  /** `tc-version` — the plugin's own version. */
   version: string | null;
 }
 
@@ -528,12 +528,12 @@ export interface SkippedNote {
   detail: string;
 
   /**
-   * The pack this note would have joined: its own `ap-plugin` where the
+   * The pack this note would have joined: its own `tc-plugin` where the
    * read got far enough to see that key, else the plugin folder holding
    * it.
    *
    * A pack publish checks its own members against this. The publish spec forbids
-   * installing a subset silently, and a member declaring `ap-plugin` from
+   * installing a subset silently, and a member declaring `tc-plugin` from
    * outside the pack's folder is still a member — so the declared key is
    * consulted first and the folder is the floor beneath it. `None` where
    * neither answers: the note joins no pack, and no pack is blocked.
@@ -696,7 +696,7 @@ export interface MarketplaceConfig {
    */
   license?: string;
 
-  /** The plugin a note with no `ap-plugin` belongs to. */
+  /** The plugin a note with no `tc-plugin` belongs to. */
   default_plugin: string;
 
   /** Per-plugin manifest overrides, keyed by plugin name. */
@@ -849,9 +849,9 @@ export type ExportUnit =
       status: UnitStatus;
       /**
        * This plugin's members drifted from what is installed here, with
-       * its own `ap-version` unmoved since — the one-click bump a build
+       * its own `tc-version` unmoved since — the one-click bump a build
        * report can offer alongside `drift`/`written`. `None` for a plugin
-       * that does not meet the rule, or that carries no `ap-version` to
+       * that does not meet the rule, or that carries no `tc-version` to
        * compare. See [`VersionBumpSuggestion`].
        */
       version_bump_suggestion: VersionBumpSuggestion | null;
@@ -895,7 +895,7 @@ export type ExportUnit =
    *
    * `root` is the root that cannot carry it — a command on Codex, say.
    * `None` when no root can, as for an agent: the reason is the layout's,
-   * so it is listed once. A member `ap-targets` narrowed away from a root
+   * so it is listed once. A member `tc-targets` narrowed away from a root
    * is not named there; the author asked for that.
    */
   | {
@@ -916,7 +916,7 @@ export type UnitStatus = "ok" | "drift" | "written" | "unchanged";
 
 /**
  * A plugin whose members changed since it was last published here, with its
- * own `ap-version` unmoved since — the callout
+ * own `tc-version` unmoved since — the callout
  * [`UnitStatus::version_bump_suggestion`] carries so a publish screen can
  * offer a one-click bump.
  *
@@ -928,12 +928,12 @@ export type UnitStatus = "ok" | "drift" | "written" | "unchanged";
  *
  * The manifest records no version of its own — adding one would be a schema
  * bump for a fact the destination already carries. A plugin's pack manifest
- * (`plugin.json`) is written with whatever `ap-version` was current at
+ * (`plugin.json`) is written with whatever `tc-version` was current at
  * publish time, so the installed file's own `"version"` field IS that
  * record, read back rather than tracked twice.
  */
 export interface VersionBumpSuggestion {
-  /** The note's current `ap-version`. */
+  /** The note's current `tc-version`. */
   current_version: string;
 
   /**
@@ -986,14 +986,14 @@ export interface AdoptRequest {
   skills_root?: string;
 
   /**
-   * The plugin group stamped as `ap-plugin`;
+   * The plugin group stamped as `tc-plugin`;
    * [`DEFAULT_ADOPTED_PLUGIN`] when `None`. Validated with the skills
    * spec's name rule — it becomes a directory name.
    */
   plugin?: string;
 
   /**
-   * What [`Self::source`] is CALLED in `ap-source`, when the path is not
+   * What [`Self::source`] is CALLED in `tc-source`, when the path is not
    * the honest answer.
    *
    * A source fetched from a repository lives in a cache directory whose
@@ -1009,7 +1009,7 @@ export interface AdoptRequest {
   source_label?: string;
 
   /**
-   * The harness layout stamped as `ap-format` — `claude`, `codex`, and
+   * The harness layout stamped as `tc-format` — `claude`, `codex`, and
    * the rest of [`crate::skill::RUNTIME_DIRS`]'s second column.
    *
    * `None` derives one from the source path, so a caller that knows the
@@ -1019,14 +1019,14 @@ export interface AdoptRequest {
   format?: string;
 
   /**
-   * Further roots to cross-reference for `ap-also-at`: every other place
+   * Further roots to cross-reference for `tc-also-at`: every other place
    * this machine holds the same skill. Three outcomes, like
-   * [`Self::targets`] — see the module doc's `ap-also-at` row.
+   * [`Self::targets`] — see the module doc's `tc-also-at` row.
    */
   also_scan?: string[];
 
   /**
-   * What lands in `ap-targets`, with the key's own three-outcome contract:
+   * What lands in `tc-targets`, with the key's own three-outcome contract:
    * `None` writes no key (every destination), an empty list writes `[]`
    * (nowhere), names are validated against [`KNOWN_TARGETS`].
    */
@@ -1053,7 +1053,7 @@ export interface AdoptRequest {
   mode?: AdoptMode;
 
   /**
-   * The timestamp stamped as `ap-adopted-at`, supplied by the caller —
+   * The timestamp stamped as `tc-adopted-at`, supplied by the caller —
    * the layer that has a clock. See the module doc.
    */
   adopted_at: string;
@@ -1095,7 +1095,7 @@ export interface AdoptedSkill {
    */
   name: string;
 
-  /** The plugin it was grouped under — stamped as `ap-plugin`. */
+  /** The plugin it was grouped under — stamped as `tc-plugin`. */
   plugin: string;
 
   /** Whether the source carried resources beside its `SKILL.md`. */

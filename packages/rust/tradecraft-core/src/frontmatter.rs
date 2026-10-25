@@ -1,4 +1,4 @@
-//! The `ap-` namespace — the frontmatter Tradecraft owns in a note.
+//! The `tc-` namespace — the frontmatter Tradecraft owns in a note.
 //!
 //! The namespace spec splits a note's frontmatter into
 //! three classes, and this module is the boundary between the first two and
@@ -6,26 +6,26 @@
 //!
 //! | Class | Where it goes | At publish |
 //! |---|---|---|
-//! | Ours — every key under the namespace (`ap-` by default) | [`VaultFrontmatter`], typed | **dropped** |
+//! | Ours — every key under the namespace (`tc-` by default) | [`VaultFrontmatter`], typed | **dropped** |
 //! | The standard's fields | [`crate::SkillContent`]'s modeled fields | emitted |
 //! | Anything else | `SkillContent::annotations`, verbatim | carried |
 //!
 //! # Which prefix, is the caller's to say
 //!
-//! `ap-` is the default and what every document spells, but it is not wired
+//! `tc-` is the default and what every document spells, but it is not wired
 //! in: the prefix is a [`Namespace`] this module takes as a parameter, and a
-//! vault that already has an `ap-` key of somebody else's configures its own
-//! stem. Nothing below writes a literal `ap-…` — every key is
+//! vault that already has an `tc-` key of somebody else's configures its own
+//! stem. Nothing below writes a literal `tc-…` — every key is
 //! [`Namespace::key`] of a field name, which is what keeps the keys the drain
-//! asks for inside the predicate the strip is built on. Below, "`ap-`" means
+//! asks for inside the predicate the strip is built on. Below, "`tc-`" means
 //! the configured prefix.
 //!
 //! # Why the prefix is claimed wholesale
 //!
-//! `ap-` is a **namespace we take**, not a list of keys we know. A key inside
+//! `tc-` is a **namespace we take**, not a list of keys we know. A key inside
 //! it is ours whether this build models it yet or not, which is what makes the
 //! publish-time strip one predicate instead of an allow-list that drifts every
-//! time a field is added. So an unmodeled `ap-` key is *consumed* here — it
+//! time a field is added. So an unmodeled `tc-` key is *consumed* here — it
 //! never reaches `annotations`, because a key that reached `annotations` would
 //! reach a destination — and parked in [`VaultFrontmatter::unknown_ours`]
 //! rather than refused or dropped:
@@ -40,17 +40,17 @@
 //!
 //! [`crate::vault`] carries a wrong-shaped *modeled* key verbatim rather than
 //! swallowing it — `name: [a]` stays in the note's own bytes and travels on.
-//! Inside `ap-` it cannot: our keys are stripped at emit, so "carry it
+//! Inside `tc-` it cannot: our keys are stripped at emit, so "carry it
 //! verbatim" and "lose it" are the same outcome. That leaves refusing, which is
-//! also the rule the decision states for `ap-kind` and `ap-targets` — **an
+//! also the rule the decision states for `tc-kind` and `tc-targets` — **an
 //! absent key and a present-but-wrong key must not share an outcome.**
-//! `ap-targets: claude` (a scalar where a list belongs) read as "no value, so
+//! `tc-targets: claude` (a scalar where a list belongs) read as "no value, so
 //! publish everywhere" would push files at destinations the author was trying
 //! to exclude, with nothing on screen.
 //!
 //! # The kind is resolved, not just read
 //!
-//! `ap-kind` is the primary source and the only one this crate implements, but
+//! `tc-kind` is the primary source and the only one this crate implements, but
 //! it is not the only one there will be: [`resolve_kind`] is the seam the
 //! other layers attach to. See its documentation for the precedence and for
 //! what a configured directory mapping would cost.
@@ -59,7 +59,7 @@
 //!
 //! The CLI writes flat keys, because the author edits them in vanilla Obsidian
 //! whose Properties panel renders a nested mapping through an inert read-only
-//! widget. the plugin supplies its own UI and may write a nested `ap:`
+//! widget. the plugin supplies its own UI and may write a nested `tc:`
 //! block. Both are read here from day one — `claim` normalises the nested
 //! shape onto the flat spelling and everything downstream sees one vocabulary
 //! — and a note carrying both is refused · `mixed-frontmatter-shape` rather
@@ -79,7 +79,7 @@ use serde_json::{Map, Value};
 use crate::error::CoreError;
 use crate::namespace::Namespace;
 
-/// Which publishable unit a note is — what `ap-kind` names.
+/// Which publishable unit a note is — what `tc-kind` names.
 ///
 /// Absent means [`EntityKind::Skill`]: a vault of skills declares nothing at
 /// all, and the key appears only on the notes that are something else. That
@@ -156,14 +156,14 @@ impl EntityKind {
     }
 }
 
-/// `ap-kind` named something this build does not publish.
+/// `tc-kind` named something this build does not publish.
 ///
 /// A distinct type rather than a bare `CoreError` so [`EntityKind::from_str`]
 /// stays usable without a path in hand; [`VaultFrontmatter::take_from`] is
 /// what pairs it with the note it came from and with the key it was spelled
 /// under — which is why nothing here names that key. The stem is
 /// configurable, and only the caller holding the [`Namespace`] knows whether
-/// the note said `ap-kind` or `x-kind`.
+/// the note said `tc-kind` or `x-kind`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnknownKind {
     /// The value as the note spelled it.
@@ -214,7 +214,7 @@ impl FromStr for EntityKind {
 pub enum KindSource {
     /// Layer 1 — the caller said so explicitly.
     Override,
-    /// Layer 2 — the note's own `ap-kind`.
+    /// Layer 2 — the note's own `tc-kind`.
     Frontmatter,
     /// Layer 3 — a configured directory mapping.
     Directory,
@@ -248,13 +248,13 @@ pub struct ResolvedKind {
 /// say. Both layers are the caller's to supply; neither is implemented here.
 ///
 /// Default is "the caller knows nothing", which is what
-/// [`VaultFrontmatter::kind`] passes and what makes `ap-kind` the whole story
+/// [`VaultFrontmatter::kind`] passes and what makes `tc-kind` the whole story
 /// until the other layers exist.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct KindHints {
     /// **Layer 1.** An explicit instruction — "treat this note as a skill" —
     /// from a flag, a prompt, or a conversion that is about to stamp
-    /// `ap-kind` into the note. Wins outright: nothing is more explicit than
+    /// `tc-kind` into the note. Wins outright: nothing is more explicit than
     /// being told.
     pub requested: Option<EntityKind>,
     /// **Layer 3.** What a configured directory mapping said, already
@@ -274,7 +274,7 @@ pub struct KindHints {
 /// | Layer | Source | Implemented here |
 /// |---|---|---|
 /// | 1 | A caller-supplied override ([`KindHints::requested`]) | no — a parameter |
-/// | 2 | `ap-kind` in the note ([`VaultFrontmatter::declared_kind`]) | **yes** |
+/// | 2 | `tc-kind` in the note ([`VaultFrontmatter::declared_kind`]) | **yes** |
 /// | 3 | A configured directory mapping ([`KindHints::configured`]) | no — a parameter |
 /// | 4 | The default, [`EntityKind::Skill`] | yes |
 ///
@@ -294,12 +294,12 @@ pub struct KindHints {
 /// That is acceptable on two conditions, both structural in the table above.
 /// It is **opt-in** — absent configuration, no rule matches and nothing
 /// changes — and frontmatter **outranks** it, so a note that says what it is
-/// is never overruled by where it sits. A vault that stamps `ap-kind` is
+/// is never overruled by where it sits. A vault that stamps `tc-kind` is
 /// unaffected by any mapping at all.
 ///
 /// # Why this is infallible
 ///
-/// Every way kind identification can fail is a *parse* failure — `ap-kind`
+/// Every way kind identification can fail is a *parse* failure — `tc-kind`
 /// naming a value this build does not know, refused · `unknown-kind` by
 /// [`VaultFrontmatter::take_from`] before a resolution is ever attempted — and
 /// the precedence above is total, so there is no disagreement left for this
@@ -338,20 +338,20 @@ pub fn resolve_kind(declared: Option<EntityKind>, hints: KindHints) -> ResolvedK
 /// a refusal rather than a clobber.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Provenance {
-    /// `ap-source` — the path adoption read the skill from.
+    /// `tc-source` — the path adoption read the skill from.
     pub source: Option<String>,
-    /// `ap-format` — the runtime layout it was read in (`claude`, `codex`,
+    /// `tc-format` — the runtime layout it was read in (`claude`, `codex`,
     /// `agents`, …), or `none`.
     pub format: Option<String>,
-    /// `ap-source-hash` — hash over the source folder as read. Answers "has
+    /// `tc-source-hash` — hash over the source folder as read. Answers "has
     /// the source moved on".
     pub source_hash: Option<String>,
-    /// `ap-adopted-hash` — hash over what adoption wrote. Answers "has the
+    /// `tc-adopted-hash` — hash over what adoption wrote. Answers "has the
     /// note been edited since".
     pub adopted_hash: Option<String>,
-    /// `ap-adopted-at` — when adoption wrote it.
+    /// `tc-adopted-at` — when adoption wrote it.
     pub adopted_at: Option<String>,
-    /// `ap-also-at` — other paths the same content was found at.
+    /// `tc-also-at` — other paths the same content was found at.
     pub also_at: Option<Vec<String>>,
 }
 
@@ -382,21 +382,21 @@ impl Provenance {
 /// see [`crate::export::MarketplaceConfig::owner`].
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ContainerIdentity {
-    /// `ap-owner` — the marketplace's owner, free-shaped.
+    /// `tc-owner` — the marketplace's owner, free-shaped.
     pub owner: Option<Value>,
-    /// `ap-author` — the author a plugin publishes under, free-shaped. On a
+    /// `tc-author` — the author a plugin publishes under, free-shaped. On a
     /// marketplace note it is the default for every plugin under it.
     pub author: Option<Value>,
-    /// `ap-display-name` — the human-facing name where a dialect carries one
+    /// `tc-display-name` — the human-facing name where a dialect carries one
     /// separately from the slug.
     pub display_name: Option<String>,
-    /// `ap-license` — an SPDX identifier, unread and passed through.
+    /// `tc-license` — an SPDX identifier, unread and passed through.
     pub license: Option<String>,
-    /// `ap-keywords`.
+    /// `tc-keywords`.
     pub keywords: Option<Vec<String>>,
-    /// `ap-category` — Codex's plugin category.
+    /// `tc-category` — Codex's plugin category.
     pub category: Option<String>,
-    /// `ap-version` — the plugin's own version.
+    /// `tc-version` — the plugin's own version.
     pub version: Option<String>,
 }
 
@@ -408,7 +408,7 @@ impl ContainerIdentity {
     }
 }
 
-/// Everything the `ap-` namespace said about one note, read out of its
+/// Everything the `tc-` namespace said about one note, read out of its
 /// frontmatter and typed.
 ///
 /// This is deliberately **not** part of [`crate::SkillContent`]. Our keys are
@@ -419,7 +419,7 @@ impl ContainerIdentity {
 /// strip structural: there is no field for them to leak through.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct VaultFrontmatter {
-    /// `ap-kind`, exactly as the note declared it — `None` when the key is
+    /// `tc-kind`, exactly as the note declared it — `None` when the key is
     /// absent, which is the ordinary vault.
     ///
     /// Deliberately not pre-defaulted to [`EntityKind::Skill`]: the default
@@ -428,13 +428,13 @@ pub struct VaultFrontmatter {
     /// indistinguishable to the layer that has to rank them. Use
     /// [`VaultFrontmatter::kind`] for the resolved answer.
     pub declared_kind: Option<EntityKind>,
-    /// `ap-targets`. **Three outcomes, not two:** `None` is absent and means
+    /// `tc-targets`. **Three outcomes, not two:** `None` is absent and means
     /// every destination; `Some(vec![])` is an empty list and means nowhere;
     /// `Some(names)` narrows to those. Collapsing absent into empty would
     /// stop a vault publishing at all, and empty into absent would publish
     /// where the author said not to.
     pub targets: Option<Vec<String>>,
-    /// `ap-plugin` — which plugin this note's skill belongs to when a
+    /// `tc-plugin` — which plugin this note's skill belongs to when a
     /// marketplace groups it. `None` is absent, and absent means *the caller's
     /// configured default plugin* — the default is configuration, not a
     /// property of the note, so it is not folded in here for the same reason
@@ -445,7 +445,7 @@ pub struct VaultFrontmatter {
     /// discovery ([`crate::discover`]) beside the identical rule for skill
     /// names, not to a frontmatter reader that types every vault's notes.
     pub plugin: Option<String>,
-    /// `ap-arguments` — what this skill or command's invocation takes,
+    /// `tc-arguments` — what this skill or command's invocation takes,
     /// validated: every name is a slug, every name is unique, no `values`
     /// list is empty, and every `default` is one of its own `values` when
     /// `values` is present. Empty when the key is absent, which is the
@@ -458,7 +458,7 @@ pub struct VaultFrontmatter {
     /// skill's own contract, which every destination needs to render.
     /// [`crate::content::SkillContent::apply_arguments`] is the one seam that
     /// does the carrying, and it is never called from
-    /// [`crate::vault::read_vault_skill`] — this field's raw `ap-arguments`
+    /// [`crate::vault::read_vault_skill`] — this field's raw `tc-arguments`
     /// key still never reaches a destination, only what is derived from it.
     pub arguments: Vec<Argument>,
     /// The six adoption-written keys.
@@ -466,7 +466,7 @@ pub struct VaultFrontmatter {
     /// The manifest fields a container note publishes under. Empty on the
     /// ordinary skill note, which has no manifest of its own.
     pub identity: ContainerIdentity,
-    /// `ap-overrides` — what one destination receives that the canonical
+    /// `tc-overrides` — what one destination receives that the canonical
     /// model cannot say, keyed by target name and then by that harness's own
     /// key names. Empty when the key is absent, which is the ordinary note.
     ///
@@ -484,14 +484,14 @@ pub struct VaultFrontmatter {
     /// is lost silently. A caller may warn on a non-empty map; nothing here
     /// does.
     ///
-    /// Named for the namespace rather than for `ap`, because which prefix
+    /// Named for the namespace rather than for `tc`, because which prefix
     /// these keys carry is the vault's to configure.
     pub unknown_ours: Map<String, Value>,
 }
 
 impl VaultFrontmatter {
     /// The kind this note publishes as, with no caller hints in play — the
-    /// note's own `ap-kind`, or [`EntityKind::Skill`] when it carries none.
+    /// note's own `tc-kind`, or [`EntityKind::Skill`] when it carries none.
     ///
     /// The convenience for callers that have no override and no directory
     /// configuration, which is every caller in this crate. Anything holding
@@ -511,7 +511,7 @@ impl VaultFrontmatter {
     /// `ns` is the namespace this vault configured, and it must be the same
     /// one the emit-side strip uses ([`crate::projection::project_skill`]).
     /// Two namespaces on one path is the failure this parameter exists to make
-    /// visible: a note read under `x` and emitted under `ap` publishes every
+    /// visible: a note read under `x` and emitted under `tc` publishes every
     /// `x-` key it declared.
     ///
     /// # Errors
@@ -557,7 +557,7 @@ impl VaultFrontmatter {
         // Read for every note, consulted only for a container. Taking them
         // here rather than in a container-only reader is what keeps them out
         // of `unknown_ours`: a key this build models is a key it must claim,
-        // or a marketplace note's `ap-owner` reads as unmodeled on the one
+        // or a marketplace note's `tc-owner` reads as unmodeled on the one
         // hand and is silently ignored on the other.
         let identity = ContainerIdentity {
             owner: ours.remove(&ns.key("owner")),
@@ -586,7 +586,7 @@ impl VaultFrontmatter {
 
 /// Splits the namespace off `fields` and normalises it onto the flat spelling.
 ///
-/// A nested `ap: {kind: plugin}` comes back as `{"ap-kind": "plugin"}`, which
+/// A nested `tc: {kind: plugin}` comes back as `{"tc-kind": "plugin"}`, which
 /// is what makes the two shapes parse identically rather than through two
 /// readers that drift.
 ///
@@ -637,7 +637,7 @@ fn claim(
     }
 
     match fields.remove(block_key).unwrap_or(Value::Null) {
-        // `ap:` with nothing under it is an empty block, not a broken one.
+        // `tc:` with nothing under it is an empty block, not a broken one.
         Value::Null => Ok(Map::new()),
         Value::Object(map) => Ok(map
             .into_iter()
@@ -887,7 +887,7 @@ fn take_override_blocks(
     Ok(blocks)
 }
 
-/// `take_string`, scoped to one field of one `ap-arguments` entry, so every
+/// `take_string`, scoped to one field of one `tc-arguments` entry, so every
 /// entry-level string error names the argument it is about.
 fn take_entry_string(
     entry: &mut Map<String, Value>,
@@ -909,7 +909,7 @@ fn take_entry_string(
     }
 }
 
-/// The four rules an `ap-arguments` list must satisfy beyond its shape,
+/// The four rules an `tc-arguments` list must satisfy beyond its shape,
 /// checked in this order so the first violation a caller sees is the first
 /// one in declaration order that is wrong.
 ///
@@ -1024,7 +1024,7 @@ fn type_name(value: &Value) -> &'static str {
     }
 }
 
-/// "flat key `ap-kind`" / "flat keys `ap-kind`, `ap-targets`" — a refusal has
+/// "flat key `tc-kind`" / "flat keys `tc-kind`, `tc-targets`" — a refusal has
 /// to name every offending key, because the fix is to move each one.
 fn listed(keys: &[String]) -> String {
     let quoted: Vec<String> = keys.iter().map(|k| format!("`{k}`")).collect();
@@ -1076,11 +1076,11 @@ mod tests {
     fn overrides_are_read_as_a_map_of_blocks_and_never_reach_annotations() {
         let (ours, rest) = read(json!({
             "description": "d",
-            "ap-overrides": {"claude": {"permissionMode": "plan"}},
+            "tc-overrides": {"claude": {"permissionMode": "plan"}},
         }))
         .unwrap();
         assert_eq!(ours.overrides["claude"]["permissionMode"], json!("plan"));
-        assert!(!rest.contains_key("ap-overrides"));
+        assert!(!rest.contains_key("tc-overrides"));
     }
 
     #[test]
@@ -1092,10 +1092,10 @@ mod tests {
     #[test]
     fn a_wrong_shaped_overrides_value_is_refused_naming_the_key() {
         for value in [json!("claude"), json!(["claude"]), json!(3)] {
-            let err = read(json!({"description": "d", "ap-overrides": value})).unwrap_err();
+            let err = read(json!({"description": "d", "tc-overrides": value})).unwrap_err();
             let message = err.to_string();
             assert!(
-                message.contains("`ap-overrides` must be a mapping"),
+                message.contains("`tc-overrides` must be a mapping"),
                 "{message}"
             );
         }
@@ -1105,11 +1105,11 @@ mod tests {
     fn a_wrong_shaped_block_is_refused_naming_its_destination() {
         let err = read(json!({
             "description": "d",
-            "ap-overrides": {"claude": "plan"},
+            "tc-overrides": {"claude": "plan"},
         }))
         .unwrap_err();
         let message = err.to_string();
-        assert!(message.contains("`ap-overrides.claude`"), "{message}");
+        assert!(message.contains("`tc-overrides.claude`"), "{message}");
     }
 
     #[test]
@@ -1126,7 +1126,7 @@ mod tests {
     #[test]
     fn both_known_kinds_parse() {
         for (spelled, expected) in [("skill", EntityKind::Skill), ("plugin", EntityKind::Plugin)] {
-            let (ours, _) = read(json!({ "ap-kind": spelled })).unwrap();
+            let (ours, _) = read(json!({ "tc-kind": spelled })).unwrap();
             assert_eq!(ours.declared_kind, Some(expected), "{spelled}");
             assert_eq!(ours.kind(), expected, "{spelled}");
             assert_eq!(expected.as_str(), spelled);
@@ -1205,7 +1205,7 @@ mod tests {
         // swallowed either would publish a `SKILL.md` for something that is
         // not a skill.
         for value in ["skil", "Skill", "mcp-server", ""] {
-            let err = read(json!({ "ap-kind": value })).unwrap_err();
+            let err = read(json!({ "tc-kind": value })).unwrap_err();
             let message = err.to_string();
             assert!(message.contains("unknown-kind"), "{message}");
             assert!(message.contains(NOTE), "{message}");
@@ -1218,8 +1218,8 @@ mod tests {
 
     #[test]
     fn a_wrong_shaped_kind_is_refused_rather_than_defaulted() {
-        let err = read(json!({"ap-kind": ["skill"]})).unwrap_err();
-        assert!(err.to_string().contains("ap-kind"), "{err}");
+        let err = read(json!({"tc-kind": ["skill"]})).unwrap_err();
+        assert!(err.to_string().contains("tc-kind"), "{err}");
         assert!(err.to_string().contains(NOTE), "{err}");
     }
 
@@ -1231,11 +1231,11 @@ mod tests {
 
         // Empty: nowhere. Distinct from absent, and it must stay distinct —
         // reading it as "all" publishes where the author said not to.
-        let (empty, _) = read(json!({"ap-targets": []})).unwrap();
+        let (empty, _) = read(json!({"tc-targets": []})).unwrap();
         assert_eq!(empty.targets, Some(vec![]));
 
         // Populated: exactly these.
-        let (some, _) = read(json!({"ap-targets": ["claude-code", "portable"]})).unwrap();
+        let (some, _) = read(json!({"tc-targets": ["claude-code", "portable"]})).unwrap();
         assert_eq!(
             some.targets,
             Some(vec!["claude-code".to_owned(), "portable".to_owned()])
@@ -1252,10 +1252,10 @@ mod tests {
         let (absent, _) = read(json!({"description": "d"})).unwrap();
         assert_eq!(absent.plugin, None);
 
-        let (named, foreign) = read(json!({"ap-plugin": "tools"})).unwrap();
+        let (named, foreign) = read(json!({"tc-plugin": "tools"})).unwrap();
         assert_eq!(named.plugin, Some("tools".to_owned()));
         // Consumed, like every key of ours: never an annotation.
-        assert!(!foreign.contains_key("ap-plugin"));
+        assert!(!foreign.contains_key("tc-plugin"));
 
         // The key follows the configured stem, as every key of ours does.
         let (ours, foreign) = read_as(&x(), json!({"x-plugin": "tools"})).unwrap();
@@ -1273,13 +1273,13 @@ mod tests {
         // present-but-wrong must not share an outcome. A list here read as
         // "no plugin, so the default" would group a skill into a plugin the
         // author never named.
-        let err = read(json!({"ap-plugin": ["tools"]})).unwrap_err();
+        let err = read(json!({"tc-plugin": ["tools"]})).unwrap_err();
         let message = err.to_string();
-        assert!(message.contains("ap-plugin"), "{message}");
+        assert!(message.contains("tc-plugin"), "{message}");
         assert!(message.contains(NOTE), "{message}");
 
         // A bare number gets the quoting rule, same as the hashes.
-        let err = read(json!({"ap-plugin": 2026})).unwrap_err();
+        let err = read(json!({"tc-plugin": 2026})).unwrap_err();
         assert!(err.to_string().contains("quote it"), "{err}");
     }
 
@@ -1287,26 +1287,26 @@ mod tests {
     fn a_scalar_targets_is_refused_not_read_as_everywhere() {
         // The dangerous shape: one destination that would silently become all
         // of them.
-        let err = read(json!({"ap-targets": "claude-code"})).unwrap_err();
+        let err = read(json!({"tc-targets": "claude-code"})).unwrap_err();
         let message = err.to_string();
-        assert!(message.contains("ap-targets"), "{message}");
+        assert!(message.contains("tc-targets"), "{message}");
         assert!(message.contains("must be a list"), "{message}");
 
         // A list with a non-string in it is refused whole, not partly lifted.
-        let err = read(json!({"ap-targets": ["claude-code", 3]})).unwrap_err();
-        assert!(err.to_string().contains("ap-targets"), "{err}");
+        let err = read(json!({"tc-targets": ["claude-code", 3]})).unwrap_err();
+        assert!(err.to_string().contains("tc-targets"), "{err}");
     }
 
     #[test]
     fn every_provenance_key_round_trips_into_the_struct() {
         let (ours, foreign) = read(json!({
             "description": "d",
-            "ap-source": "~/.claude/skills/review",
-            "ap-format": "claude",
-            "ap-source-hash": "3f9a",
-            "ap-adopted-hash": "b17c",
-            "ap-adopted-at": "2026-08-11T09:00:00Z",
-            "ap-also-at": ["~/.codex/skills/review", "~/other/review"],
+            "tc-source": "~/.claude/skills/review",
+            "tc-format": "claude",
+            "tc-source-hash": "3f9a",
+            "tc-adopted-hash": "b17c",
+            "tc-adopted-at": "2026-08-11T09:00:00Z",
+            "tc-also-at": ["~/.codex/skills/review", "~/other/review"],
         }))
         .unwrap();
 
@@ -1335,7 +1335,7 @@ mod tests {
 
     #[test]
     fn a_note_with_no_provenance_is_hand_authored() {
-        let (ours, _) = read(json!({"description": "d", "ap-kind": "skill"})).unwrap();
+        let (ours, _) = read(json!({"description": "d", "tc-kind": "skill"})).unwrap();
         assert!(ours.provenance.is_hand_authored());
         assert_eq!(Provenance::default(), ours.provenance);
     }
@@ -1345,9 +1345,9 @@ mod tests {
         // The float trap, caught rather than stored: by the time YAML has
         // typed `1234…` as a number the digest is already gone, so reading it
         // back as a hash would be reading a corrupted one.
-        let err = read(json!({"ap-source-hash": 1.2345678901234568e39})).unwrap_err();
+        let err = read(json!({"tc-source-hash": 1.2345678901234568e39})).unwrap_err();
         let message = err.to_string();
-        assert!(message.contains("ap-source-hash"), "{message}");
+        assert!(message.contains("tc-source-hash"), "{message}");
         assert!(message.contains("quote it"), "{message}");
     }
 
@@ -1355,21 +1355,21 @@ mod tests {
     fn a_nested_block_parses_identically_to_the_flat_form() {
         let flat = read(json!({
             "description": "d",
-            "ap-kind": "plugin",
-            "ap-targets": ["claude-code"],
-            "ap-plugin": "tools",
-            "ap-source": "/src",
-            "ap-format": "claude",
-            "ap-source-hash": "3f9a",
-            "ap-adopted-hash": "b17c",
-            "ap-adopted-at": "2026-08-11",
-            "ap-also-at": ["/elsewhere"],
+            "tc-kind": "plugin",
+            "tc-targets": ["claude-code"],
+            "tc-plugin": "tools",
+            "tc-source": "/src",
+            "tc-format": "claude",
+            "tc-source-hash": "3f9a",
+            "tc-adopted-hash": "b17c",
+            "tc-adopted-at": "2026-08-11",
+            "tc-also-at": ["/elsewhere"],
         }))
         .unwrap();
 
         let nested = read(json!({
             "description": "d",
-            "ap": {
+            "tc": {
                 "kind": "plugin",
                 "targets": ["claude-code"],
                 "plugin": "tools",
@@ -1387,22 +1387,22 @@ mod tests {
         assert_eq!(nested.0.declared_kind, Some(EntityKind::Plugin));
         assert_eq!(nested.0.plugin, Some("tools".to_owned()));
         // The block itself is consumed too, in either direction.
-        assert!(!nested.1.contains_key("ap"));
+        assert!(!nested.1.contains_key("tc"));
     }
 
     #[test]
     fn an_empty_nested_block_reads_as_the_defaults() {
-        let (ours, foreign) = read(json!({"description": "d", "ap": null})).unwrap();
+        let (ours, foreign) = read(json!({"description": "d", "tc": null})).unwrap();
         assert_eq!(ours, VaultFrontmatter::default());
-        assert!(!foreign.contains_key("ap"));
+        assert!(!foreign.contains_key("tc"));
 
-        let (ours, _) = read(json!({"ap": {}})).unwrap();
+        let (ours, _) = read(json!({"tc": {}})).unwrap();
         assert_eq!(ours, VaultFrontmatter::default());
     }
 
     #[test]
     fn a_nested_block_that_is_not_a_mapping_is_refused() {
-        let err = read(json!({"ap": "skill"})).unwrap_err();
+        let err = read(json!({"tc": "skill"})).unwrap_err();
         let message = err.to_string();
         assert!(message.contains("must be a mapping"), "{message}");
         assert!(message.contains(NOTE), "{message}");
@@ -1412,18 +1412,18 @@ mod tests {
     fn both_shapes_on_one_note_is_refused_naming_the_block_and_the_keys() {
         let err = read(json!({
             "description": "d",
-            "ap": {"kind": "skill"},
-            "ap-targets": ["claude-code"],
-            "ap-kind": "skill",
+            "tc": {"kind": "skill"},
+            "tc-targets": ["claude-code"],
+            "tc-kind": "skill",
         }))
         .unwrap_err();
         let message = err.to_string();
 
         assert!(message.contains("mixed-frontmatter-shape"), "{message}");
         assert!(message.contains(NOTE), "{message}");
-        assert!(message.contains("`ap:`"), "{message}");
-        assert!(message.contains("`ap-kind`"), "{message}");
-        assert!(message.contains("`ap-targets`"), "{message}");
+        assert!(message.contains("`tc:`"), "{message}");
+        assert!(message.contains("`tc-kind`"), "{message}");
+        assert!(message.contains("`tc-targets`"), "{message}");
         // Both ways out are named.
         assert!(message.contains("Move the flat keys"), "{message}");
         assert!(message.contains("remove the block"), "{message}");
@@ -1434,16 +1434,16 @@ mod tests {
         // No reconciliation: agreement is not a licence, because deciding what
         // *agree* means across shapes is the judgement call this avoids.
         let err = read(json!({
-            "ap": {"kind": "plugin"},
-            "ap-kind": "plugin",
+            "tc": {"kind": "plugin"},
+            "tc-kind": "plugin",
         }))
         .unwrap_err();
         assert!(err.to_string().contains("mixed-frontmatter-shape"), "{err}");
 
         // And when they carry disjoint fields.
         let err = read(json!({
-            "ap": {"kind": "plugin"},
-            "ap-source": "/src",
+            "tc": {"kind": "plugin"},
+            "tc-source": "/src",
         }))
         .unwrap_err();
         assert!(err.to_string().contains("mixed-frontmatter-shape"), "{err}");
@@ -1456,15 +1456,15 @@ mod tests {
         // `unknown_ours` where a caller can see it.
         let (ours, foreign) = read(json!({
             "description": "d",
-            "ap-future-field": "value",
-            "ap-nested-thing": {"a": 1},
+            "tc-future-field": "value",
+            "tc-nested-thing": {"a": 1},
         }))
         .unwrap();
 
-        assert_eq!(ours.unknown_ours["ap-future-field"], json!("value"));
-        assert_eq!(ours.unknown_ours["ap-nested-thing"], json!({"a": 1}));
-        assert!(!foreign.contains_key("ap-future-field"));
-        assert!(!foreign.contains_key("ap-nested-thing"));
+        assert_eq!(ours.unknown_ours["tc-future-field"], json!("value"));
+        assert_eq!(ours.unknown_ours["tc-nested-thing"], json!({"a": 1}));
+        assert!(!foreign.contains_key("tc-future-field"));
+        assert!(!foreign.contains_key("tc-nested-thing"));
         // An unmodeled key is not a wrong-shaped modeled one: no shape rule
         // applies to a field we have no shape for.
         assert_eq!(ours.declared_kind, None);
@@ -1472,8 +1472,8 @@ mod tests {
 
     #[test]
     fn an_unmodeled_key_in_the_nested_block_is_kept_under_its_flat_spelling() {
-        let (ours, _) = read(json!({"ap": {"future-field": "value"}})).unwrap();
-        assert_eq!(ours.unknown_ours["ap-future-field"], json!("value"));
+        let (ours, _) = read(json!({"tc": {"future-field": "value"}})).unwrap();
+        assert_eq!(ours.unknown_ours["tc-future-field"], json!("value"));
     }
 
     #[test]
@@ -1500,13 +1500,13 @@ mod tests {
     #[test]
     fn the_predicate_is_the_prefix_and_the_block() {
         let ns = Namespace::default();
-        assert!(ns.is_ours("ap-kind"));
-        assert!(ns.is_ours("ap-anything-at-all"));
-        assert!(ns.is_ours("ap"));
+        assert!(ns.is_ours("tc-kind"));
+        assert!(ns.is_ours("tc-anything-at-all"));
+        assert!(ns.is_ours("tc"));
         assert!(!ns.is_ours("apex"));
         assert!(!ns.is_ours("kind"));
         assert!(!ns.is_ours("targets"));
-        assert!(!ns.is_ours("AP-KIND"), "the prefix is not case-folded");
+        assert!(!ns.is_ours("TC-KIND"), "the prefix is not case-folded");
     }
 
     // --- a configured namespace ---------------------------------------------
@@ -1549,30 +1549,30 @@ mod tests {
         let message = err.to_string();
         assert!(message.contains("unknown-kind"), "{message}");
         assert!(message.contains("`x-kind`"), "{message}");
-        assert!(!message.contains("ap-kind"), "{message}");
+        assert!(!message.contains("tc-kind"), "{message}");
     }
 
     #[test]
     fn in_a_configured_vault_the_default_prefix_is_a_foreign_annotation() {
         // The airtight half of the strip, at the read: `x-` is drained, and
-        // `ap-kind` is somebody else's key — carried, not claimed, not typed.
+        // `tc-kind` is somebody else's key — carried, not claimed, not typed.
         let (ours, foreign) = read_as(
             &x(),
             json!({
                 "description": "d",
                 "x-kind": "plugin",
-                "ap-kind": "skill",
-                "ap-targets": ["claude-code"],
-                "ap": {"kind": "skill"},
+                "tc-kind": "skill",
+                "tc-targets": ["claude-code"],
+                "tc": {"kind": "skill"},
             }),
         )
         .unwrap();
 
         assert_eq!(ours.declared_kind, Some(EntityKind::Plugin));
         assert!(ours.unknown_ours.is_empty());
-        assert_eq!(foreign["ap-kind"], json!("skill"));
-        assert_eq!(foreign["ap-targets"], json!(["claude-code"]));
-        assert_eq!(foreign["ap"], json!({"kind": "skill"}));
+        assert_eq!(foreign["tc-kind"], json!("skill"));
+        assert_eq!(foreign["tc-targets"], json!(["claude-code"]));
+        assert_eq!(foreign["tc"], json!({"kind": "skill"}));
         assert!(!foreign.contains_key("x-kind"));
 
         // And the reverse, which is the same bug seen from the other side: in
@@ -1598,19 +1598,19 @@ mod tests {
         assert!(message.contains("`x:`"), "{message}");
         assert!(message.contains("`x-targets`"), "{message}");
 
-        // But `x:` beside `ap-kind` is not a mixed note. `ap-` is not a shape
+        // But `x:` beside `tc-kind` is not a mixed note. `tc-` is not a shape
         // of ours in this vault; it is a key somebody else owns, and refusing
         // it would refuse a note this vault has every right to hold.
         let (ours, foreign) =
-            read_as(&x(), json!({"x": {"kind": "plugin"}, "ap-kind": "skill"})).unwrap();
+            read_as(&x(), json!({"x": {"kind": "plugin"}, "tc-kind": "skill"})).unwrap();
         assert_eq!(ours.declared_kind, Some(EntityKind::Plugin));
-        assert_eq!(foreign["ap-kind"], json!("skill"));
+        assert_eq!(foreign["tc-kind"], json!("skill"));
 
-        // Symmetrically, `ap:` beside `x-kind` is not mixed either.
+        // Symmetrically, `tc:` beside `x-kind` is not mixed either.
         let (ours, foreign) =
-            read_as(&x(), json!({"ap": {"kind": "skill"}, "x-kind": "plugin"})).unwrap();
+            read_as(&x(), json!({"tc": {"kind": "skill"}, "x-kind": "plugin"})).unwrap();
         assert_eq!(ours.declared_kind, Some(EntityKind::Plugin));
-        assert_eq!(foreign["ap"], json!({"kind": "skill"}));
+        assert_eq!(foreign["tc"], json!({"kind": "skill"}));
     }
 
     #[test]
@@ -1627,19 +1627,19 @@ mod tests {
                 "description": "d",
                 "name": "n",
                 "allowed-tools": ["Read"],
-                "ap-kind": "skill",
-                "ap-not-modeled-yet": "v",
+                "tc-kind": "skill",
+                "tc-not-modeled-yet": "v",
                 "x-kind": "skill",
                 "x-not-modeled-yet": "v",
                 "apex": "near miss",
                 "xylophone": "near miss",
                 "kind": "no prefix at all",
-                "AP-KIND": "not case-folded",
+                "TC-KIND": "not case-folded",
                 block: {"kind": "skill"},
             })
         };
 
-        for (ns, block) in [(Namespace::default(), "x"), (x(), "ap")] {
+        for (ns, block) in [(Namespace::default(), "x"), (x(), "tc")] {
             // The block key belongs to the *other* namespace each time, so a
             // nested block that is not ours has to stay foreign as well.
             let before = fields(battery(block));
@@ -1662,7 +1662,7 @@ mod tests {
 
         // And the nested shape, where the drain removes one key and the
         // predicate has to claim exactly that one.
-        for (ns, block) in [(Namespace::default(), "ap"), (x(), "x")] {
+        for (ns, block) in [(Namespace::default(), "tc"), (x(), "x")] {
             let before = fields(json!({ "description": "d", block: {"kind": "skill"} }));
             let mut after = before.clone();
             let ours = VaultFrontmatter::take_from(&mut after, Path::new(NOTE), &ns).unwrap();
@@ -1684,7 +1684,7 @@ mod tests {
     fn a_minimal_argument_round_trips() {
         let (ours, foreign) = read(json!({
             "description": "d",
-            "ap-arguments": [{"name": "pr-number"}],
+            "tc-arguments": [{"name": "pr-number"}],
         }))
         .unwrap();
         assert_eq!(
@@ -1698,7 +1698,7 @@ mod tests {
             }]
         );
         assert!(
-            !foreign.contains_key("ap-arguments"),
+            !foreign.contains_key("tc-arguments"),
             "consumed like every key of ours"
         );
     }
@@ -1707,7 +1707,7 @@ mod tests {
     fn every_field_on_an_argument_round_trips() {
         let (ours, _) = read(json!({
             "description": "d",
-            "ap-arguments": [{
+            "tc-arguments": [{
                 "name": "format",
                 "description": "Output format",
                 "required": true,
@@ -1732,7 +1732,7 @@ mod tests {
     fn several_arguments_keep_declaration_order() {
         let (ours, _) = read(json!({
             "description": "d",
-            "ap-arguments": [{"name": "first"}, {"name": "second"}, {"name": "third"}],
+            "tc-arguments": [{"name": "first"}, {"name": "second"}, {"name": "third"}],
         }))
         .unwrap();
         let names: Vec<&str> = ours.arguments.iter().map(|a| a.name.as_str()).collect();
@@ -1741,8 +1741,8 @@ mod tests {
 
     #[test]
     fn arguments_not_a_list_is_malformed() {
-        let err = read(json!({"description": "d", "ap-arguments": "pr-number"})).unwrap_err();
-        assert!(err.to_string().contains("ap-arguments"), "{err}");
+        let err = read(json!({"description": "d", "tc-arguments": "pr-number"})).unwrap_err();
+        assert!(err.to_string().contains("tc-arguments"), "{err}");
         assert!(
             err.to_string().contains("list of argument objects"),
             "{err}"
@@ -1751,14 +1751,14 @@ mod tests {
 
     #[test]
     fn an_entry_not_a_mapping_is_malformed() {
-        let err = read(json!({"description": "d", "ap-arguments": ["pr-number"]})).unwrap_err();
+        let err = read(json!({"description": "d", "tc-arguments": ["pr-number"]})).unwrap_err();
         assert!(err.to_string().contains("mappings"), "{err}");
     }
 
     #[test]
     fn an_entry_missing_name_is_malformed() {
         let err =
-            read(json!({"description": "d", "ap-arguments": [{"description": "d"}]})).unwrap_err();
+            read(json!({"description": "d", "tc-arguments": [{"description": "d"}]})).unwrap_err();
         assert!(err.to_string().contains("missing `name`"), "{err}");
     }
 
@@ -1766,7 +1766,7 @@ mod tests {
     fn an_unrecognised_key_on_an_entry_is_malformed() {
         let err = read(json!({
             "description": "d",
-            "ap-arguments": [{"name": "a", "descripton": "typo"}],
+            "tc-arguments": [{"name": "a", "descripton": "typo"}],
         }))
         .unwrap_err();
         assert!(err.to_string().contains("descripton"), "{err}");
@@ -1784,7 +1784,7 @@ mod tests {
         ] {
             let err = read(json!({
                 "description": "d",
-                "ap-arguments": [{"name": bad}],
+                "tc-arguments": [{"name": bad}],
             }))
             .unwrap_err();
             let message = err.to_string();
@@ -1797,7 +1797,7 @@ mod tests {
     fn an_empty_values_list_is_refused() {
         let err = read(json!({
             "description": "d",
-            "ap-arguments": [{"name": "format", "values": []}],
+            "tc-arguments": [{"name": "format", "values": []}],
         }))
         .unwrap_err();
         let message = err.to_string();
@@ -1809,7 +1809,7 @@ mod tests {
     fn a_default_outside_values_is_refused() {
         let err = read(json!({
             "description": "d",
-            "ap-arguments": [{
+            "tc-arguments": [{
                 "name": "format",
                 "values": ["markdown", "json"],
                 "default": "yaml",
@@ -1826,7 +1826,7 @@ mod tests {
     fn a_default_matching_one_of_values_is_accepted() {
         let (ours, _) = read(json!({
             "description": "d",
-            "ap-arguments": [{
+            "tc-arguments": [{
                 "name": "format",
                 "values": ["markdown", "json"],
                 "default": "json",
@@ -1840,7 +1840,7 @@ mod tests {
     fn a_duplicate_name_is_refused() {
         let err = read(json!({
             "description": "d",
-            "ap-arguments": [{"name": "format"}, {"name": "format"}],
+            "tc-arguments": [{"name": "format"}, {"name": "format"}],
         }))
         .unwrap_err();
         let message = err.to_string();

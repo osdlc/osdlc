@@ -21,7 +21,7 @@
 //! |---|---|
 //! | `<dir>/SKILL.md` | `<root>/plugins/<plugin>/skills/<name>/<name>.md`, frontmatter rebuilt |
 //! | any other file under `<dir>` | the same relative path beside that entry, markdown bodies rewritten, bytes and execute bits otherwise verbatim |
-//! | — | `<root>/plugins/<plugin>/<plugin>.md`, a bare `ap-kind: plugin` note, created once and never rewritten |
+//! | — | `<root>/plugins/<plugin>/<plugin>.md`, a bare `tc-kind: plugin` note, created once and never rewritten |
 //!
 //! `<root>` is [`AdoptRequest::skills_root`], the vault root unless configured.
 //! `plugins/<plugin>/skills/<name>/<name>.md` is one of discovery's shapes, so
@@ -48,26 +48,26 @@
 //!
 //! The adopted entry note carries the Agent Skills spec's bare `name` and `description`,
 //! every *foreign* source key verbatim, and then our namespace's keys —
-//! `ap-kind: skill`, `ap-plugin`, `ap-targets` when the request narrows, and
+//! `tc-kind: skill`, `tc-plugin`, `tc-targets` when the request narrows, and
 //! every one of [`crate::frontmatter::Provenance`]'s six:
 //!
 //! | Key | What it records |
 //! |---|---|
-//! | `ap-source` | Where the skill came from: the directory read, or [`AdoptRequest::source_label`] where a caller fetched the tree from somewhere durable |
-//! | `ap-format` | The harness layout it was read in — [`AdoptRequest::format`], or [`detect_format`]'s answer |
-//! | `ap-source-hash` | [`crate::projection::content_hash`] over the source files as read |
-//! | `ap-adopted-hash` | The same formula over what adoption wrote |
-//! | `ap-adopted-at` | The caller's clock |
-//! | `ap-also-at` | Every other root in [`AdoptRequest::also_scan`] holding the same content |
+//! | `tc-source` | Where the skill came from: the directory read, or [`AdoptRequest::source_label`] where a caller fetched the tree from somewhere durable |
+//! | `tc-format` | The harness layout it was read in — [`AdoptRequest::format`], or [`detect_format`]'s answer |
+//! | `tc-source-hash` | [`crate::projection::content_hash`] over the source files as read |
+//! | `tc-adopted-hash` | The same formula over what adoption wrote |
+//! | `tc-adopted-at` | The caller's clock |
+//! | `tc-also-at` | Every other root in [`AdoptRequest::also_scan`] holding the same content |
 //!
-//! `ap-also-at` is the one with three outcomes rather than two, spelled the
-//! way `ap-targets` is: no roots to cross-reference writes no key at all,
+//! `tc-also-at` is the one with three outcomes rather than two, spelled the
+//! way `tc-targets` is: no roots to cross-reference writes no key at all,
 //! because a key would claim a scan that never ran; roots that turned up
 //! nothing write `[]`, which is a different and useful fact.
 //!
 //! # Re-adopt is a three-way comparison, not an existence check
 //!
-//! `ap-source-hash` answers "has the source moved on". `ap-adopted-hash`
+//! `tc-source-hash` answers "has the source moved on". `tc-adopted-hash`
 //! answers "has the note been edited since". Together they place a re-adopt
 //! in one of four quadrants (the publish spec): neither moved is
 //! [`AdoptStatus::Unchanged`] and writes nothing; only the source moved is
@@ -78,7 +78,7 @@
 //! A note carrying no provenance at all was written by hand, and is
 //! `refused: hand-authored` rather than compared. A note whose hashes are
 //! absent or unparseable proves nothing, and is `refused: diverged`. A note
-//! recording a *different* `ap-source` is `refused: foreign-provenance`: both
+//! recording a *different* `tc-source` is `refused: foreign-provenance`: both
 //! its hashes were taken against that other source, so the quadrant cannot
 //! speak about this one, and reading it through the quadrant anyway would
 //! replace somebody else's adoption without a word.
@@ -88,13 +88,13 @@
 //! is no run-wide force: discarding a note somebody edited is a decision about
 //! *that note*.
 //!
-//! `ap-adopted-hash` is computed over the entry note **with every key under
+//! `tc-adopted-hash` is computed over the entry note **with every key under
 //! the namespace prefix removed**, plus every peer file. The exclusion is what
 //! makes it satisfiable — one of those keys holds the hash — and it is also
-//! what makes hand-editing `ap-targets` in Obsidian not read as an edit to the
+//! what makes hand-editing `tc-targets` in Obsidian not read as an edit to the
 //! note's content.
 //!
-//! `ap-adopted-at` is the *caller's* clock, a field on [`AdoptRequest`]. This
+//! `tc-adopted-at` is the *caller's* clock, a field on [`AdoptRequest`]. This
 //! crate reads no clock, for the same reason it opens no file without a
 //! [`Vfs`]: `wasm32-unknown-unknown` has neither.
 //!
@@ -107,13 +107,13 @@
 //! * **A source key inside the namespace is refused.** A published `SKILL.md`
 //!   never carries our keys — the publish-time strip guarantees it — so one
 //!   that does was not made by this pipeline, and carrying it would let the
-//!   source dictate the vault's own configuration (`ap-kind: plugin` would
+//!   source dictate the vault's own configuration (`tc-kind: plugin` would
 //!   silently re-kind the note).
 //! * **What adoption writes is pre-validated with discovery's rules** — the
 //!   skills-spec name rule for skill and plugin names, the 1024-character
 //!   description cap — so the written vault discovers instead of failing one
 //!   scan later. Targets validate against [`KNOWN_TARGETS`] with the core's
-//!   three-outcome contract: `None` writes no `ap-targets` key at all.
+//!   three-outcome contract: `None` writes no `tc-targets` key at all.
 //! * **Collisions and misses are loud.** Two source directories adopting onto
 //!   one name are refused naming both; a requested skill that matches nothing
 //!   is refused by name; a symlink anywhere in the source is refused
@@ -172,12 +172,12 @@ pub struct AdoptRequest {
     /// that root reads.
     #[serde(default)]
     pub skills_root: Option<PathBuf>,
-    /// The plugin group stamped as `ap-plugin`;
+    /// The plugin group stamped as `tc-plugin`;
     /// [`DEFAULT_ADOPTED_PLUGIN`] when `None`. Validated with the skills
     /// spec's name rule — it becomes a directory name.
     #[serde(default)]
     pub plugin: Option<String>,
-    /// What [`Self::source`] is CALLED in `ap-source`, when the path is not
+    /// What [`Self::source`] is CALLED in `tc-source`, when the path is not
     /// the honest answer.
     ///
     /// A source fetched from a repository lives in a cache directory whose
@@ -191,7 +191,7 @@ pub struct AdoptRequest {
     /// `None` stamps the source path, which is what a local adoption wants.
     #[serde(default)]
     pub source_label: Option<String>,
-    /// The harness layout stamped as `ap-format` — `claude`, `codex`, and
+    /// The harness layout stamped as `tc-format` — `claude`, `codex`, and
     /// the rest of [`crate::skill::RUNTIME_DIRS`]'s second column.
     ///
     /// `None` derives one from the source path, so a caller that knows the
@@ -199,12 +199,12 @@ pub struct AdoptRequest {
     /// not gets the heuristic. See [`detect_format`].
     #[serde(default)]
     pub format: Option<String>,
-    /// Further roots to cross-reference for `ap-also-at`: every other place
+    /// Further roots to cross-reference for `tc-also-at`: every other place
     /// this machine holds the same skill. Three outcomes, like
-    /// [`Self::targets`] — see the module doc's `ap-also-at` row.
+    /// [`Self::targets`] — see the module doc's `tc-also-at` row.
     #[serde(default)]
     pub also_scan: Vec<PathBuf>,
-    /// What lands in `ap-targets`, with the key's own three-outcome contract:
+    /// What lands in `tc-targets`, with the key's own three-outcome contract:
     /// `None` writes no key (every destination), an empty list writes `[]`
     /// (nowhere), names are validated against [`KNOWN_TARGETS`].
     #[serde(default)]
@@ -225,7 +225,7 @@ pub struct AdoptRequest {
     /// Write, or classify only. Absent on the wire means [`AdoptMode::Write`].
     #[serde(default)]
     pub mode: AdoptMode,
-    /// The timestamp stamped as `ap-adopted-at`, supplied by the caller —
+    /// The timestamp stamped as `tc-adopted-at`, supplied by the caller —
     /// the layer that has a clock. See the module doc.
     pub adopted_at: String,
 }
@@ -272,7 +272,7 @@ pub struct AdoptedSkill {
     /// The adopted name: the source frontmatter's `name` slugified, or the
     /// source directory's basename where the frontmatter is silent.
     pub name: String,
-    /// The plugin it was grouped under — stamped as `ap-plugin`.
+    /// The plugin it was grouped under — stamped as `tc-plugin`.
     pub plugin: String,
     /// Whether the source carried resources beside its `SKILL.md`.
     pub bundle: bool,
@@ -374,7 +374,7 @@ fn adopt_onto(
         .plugin
         .clone()
         .unwrap_or_else(|| DEFAULT_ADOPTED_PLUGIN.to_owned());
-    // The plugin becomes a directory name and an `ap-plugin` value discovery
+    // The plugin becomes a directory name and an `tc-plugin` value discovery
     // re-validates, so a bad one fails here rather than as a broken vault.
     validate_name(&plugin, "plugin name", &source)?;
 
@@ -415,7 +415,7 @@ fn adopt_onto(
         skill_dirs = filter_requested(&source, skill_dirs, requested)?;
     }
 
-    // `ap-format` is a property of the SOURCE, read once: one adoption reads
+    // `tc-format` is a property of the SOURCE, read once: one adoption reads
     // one installation, and asking per skill would let two skills out of one
     // tree disagree about the tree they came from.
     let format = match request.format.as_deref() {
@@ -588,7 +588,7 @@ enum Existing {
 /// Places one re-adopt in the four-quadrant table, or refuses it.
 ///
 /// The comparison reads the vault note itself rather than trusting a name:
-/// `ap-source-hash` against the source as just read, and `ap-adopted-hash`
+/// `tc-source-hash` against the source as just read, and `tc-adopted-hash`
 /// against the note and its peers as they stand now. Absent provenance is not
 /// a match and not a miss — it is proof somebody else wrote the file.
 fn classify_existing(
@@ -741,7 +741,7 @@ fn acknowledged(
     })
 }
 
-/// `ap-adopted-hash`: [`content_hash`] over the entry note with every key
+/// `tc-adopted-hash`: [`content_hash`] over the entry note with every key
 /// under the namespace prefix removed, plus every peer file.
 ///
 /// One function, called from both sides — the write that stamps the hash and
@@ -803,11 +803,11 @@ struct SkillPlan {
     name: String,
     bundle: bool,
     source_dir: PathBuf,
-    /// What `ap-source` records: [`AdoptRequest::source_label`] where the
+    /// What `tc-source` records: [`AdoptRequest::source_label`] where the
     /// caller supplied one, and the source directory's path otherwise. The
     /// re-adopt comparison reads it, so it is held rather than re-derived.
     source_label: String,
-    /// `ap-source-hash` as just computed — what a recorded one is compared to.
+    /// `tc-source-hash` as just computed — what a recorded one is compared to.
     source_hash: String,
     /// `<plugin>/<name>`, relative to the skills root.
     dest_rel: String,
@@ -936,7 +936,7 @@ fn plan_one(
         Some(label) => label.to_owned(),
         None => skill_dir.display().to_string(),
     };
-    // `ap-also-at`: every other scanned root holding this exact content.
+    // `tc-also-at`: every other scanned root holding this exact content.
     // Compared by hash, not by name — two directories called `review` are not
     // the same skill, and one called `review` and one called `pr-review` may
     // be.
@@ -1022,15 +1022,15 @@ struct EntryNote<'a> {
     carried: &'a Map<String, Value>,
     plugin: &'a str,
     targets: Option<&'a [String]>,
-    /// `ap-source`: the source path, or what the caller called it.
+    /// `tc-source`: the source path, or what the caller called it.
     source_label: &'a str,
-    /// `ap-format`: the harness layout the source was read in.
+    /// `tc-format`: the harness layout the source was read in.
     format: &'a str,
     source_hash: &'a str,
     /// `None` for the throwaway render the hash itself is taken over.
     adopted_hash: Option<&'a str>,
     adopted_at: &'a str,
-    /// `ap-also-at`, with the key's own three outcomes: `None` writes no key
+    /// `tc-also-at`, with the key's own three outcomes: `None` writes no key
     /// (nothing was cross-referenced), a list writes it, empty included.
     also_at: Option<&'a [String]>,
     body: &'a str,
@@ -1084,11 +1084,11 @@ fn render_entry_note(note: &EntryNote<'_>) -> Result<String, CoreError> {
     compose_note(&map, note.body, note.entry_source)
 }
 
-/// The plugin note adoption creates when the group has none: `ap-kind:
+/// The plugin note adoption creates when the group has none: `tc-kind:
 /// plugin`, a `name`, a placeholder `description`, an empty body — a stub the
 /// author grows.
 ///
-/// `description` + `ap-kind` is the publishable contract for every kind, not
+/// `description` + `tc-kind` is the publishable contract for every kind, not
 /// for skills alone: a note carrying one and not the other is refused
 /// half-declared. The scan returns plugins, so a stub with no description would
 /// refuse the vault it was just written into.
@@ -1128,7 +1128,7 @@ fn compose_note(map: &serde_yaml::Mapping, body: &str, about: &Path) -> Result<S
 
 // --- Provenance the source itself answers -----------------------------------
 
-/// The layout stamped as `ap-format`, when nobody said.
+/// The layout stamped as `tc-format`, when nobody said.
 ///
 /// Two signals, in order, because they answer for different sources. A tree
 /// under a runtime's own directory names that runtime: `~/.claude/skills/x`
@@ -1153,7 +1153,7 @@ pub fn detect_format(vfs: &dyn Vfs, source: &Path) -> String {
     STANDARD_FORMAT.to_owned()
 }
 
-/// `ap-format` for a source that declares no harness: the published layout
+/// `tc-format` for a source that declares no harness: the published layout
 /// the Agent Skills spec itself describes, which is what adoption reads.
 pub const STANDARD_FORMAT: &str = "standard";
 
@@ -1168,7 +1168,7 @@ const PLUGIN_MARKERS: &[(&str, &str)] = &[
 ];
 
 /// Every skill directory under `roots`, paired with the hash of its contents
-/// — the index `ap-also-at` is answered from.
+/// — the index `tc-also-at` is answered from.
 ///
 /// `None` when the caller named no roots, which is the difference between a
 /// cross-reference that found nothing and one that never ran. A root that is
@@ -1708,7 +1708,7 @@ mod tests {
     use crate::vault::read_vault_skill;
     use crate::vfs::MemVfs;
 
-    fn ap() -> Namespace {
+    fn tc() -> Namespace {
         Namespace::default()
     }
 
@@ -1751,7 +1751,7 @@ mod tests {
             ..request()
         };
 
-        adopt_skills(&vfs, &rooted, &ap()).unwrap();
+        adopt_skills(&vfs, &rooted, &tc()).unwrap();
 
         assert!(vfs.exists(Path::new(
             "/vault/library/plugins/demos/skills/demo/demo.md"
@@ -1763,7 +1763,7 @@ mod tests {
             &vfs,
             Path::new("/vault"),
             Some(Path::new("/vault/library")),
-            &ap(),
+            &tc(),
         )
         .unwrap()
         .components;
@@ -1923,7 +1923,7 @@ mod tests {
     #[test]
     fn a_bundle_adopts_with_namespace_frontmatter_and_a_wikilinked_body() {
         let vfs = demo_source();
-        let report = adopt_skills(&vfs, &request(), &ap()).unwrap();
+        let report = adopt_skills(&vfs, &request(), &tc()).unwrap();
 
         assert_eq!(report.skills.len(), 1);
         let skill = &report.skills[0];
@@ -1945,16 +1945,16 @@ mod tests {
             "{entry}"
         );
         // Ours, at the namespace: the kind, the grouping, the narrowing.
-        assert!(entry.contains("ap-kind: skill"), "{entry}");
-        assert!(entry.contains("ap-plugin: demos"), "{entry}");
-        assert!(entry.contains("ap-targets:"), "{entry}");
+        assert!(entry.contains("tc-kind: skill"), "{entry}");
+        assert!(entry.contains("tc-plugin: demos"), "{entry}");
+        assert!(entry.contains("tc-targets:"), "{entry}");
         assert!(entry.contains("- codex"), "{entry}");
         assert!(entry.contains("- claude"), "{entry}");
         // The provenance the adopt step records.
-        assert!(entry.contains("ap-source: /src/skills/demo"), "{entry}");
-        assert!(entry.contains("ap-source-hash:"), "{entry}");
+        assert!(entry.contains("tc-source: /src/skills/demo"), "{entry}");
+        assert!(entry.contains("tc-source-hash:"), "{entry}");
         assert!(
-            entry.contains("ap-adopted-at: 2026-08-22T12:00:00Z"),
+            entry.contains("tc-adopted-at: 2026-08-22T12:00:00Z"),
             "{entry}"
         );
         // The rewrite: a relative link became a note-name wikilink.
@@ -1974,7 +1974,7 @@ mod tests {
         // And the plugin note exists, kinded at the namespace.
         let pack = read(&vfs, "/vault/plugins/demos/demos.md");
         assert!(pack.contains("name: demos"), "{pack}");
-        assert!(pack.contains("ap-kind: plugin"), "{pack}");
+        assert!(pack.contains("tc-kind: plugin"), "{pack}");
     }
 
     #[test]
@@ -1982,9 +1982,9 @@ mod tests {
         // The round trip the whole phase exists for: published shape → vault →
         // published shape, byte-identical.
         let vfs = demo_source();
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
 
-        let found = discover_components(&vfs, Path::new("/vault"), None, &ap())
+        let found = discover_components(&vfs, Path::new("/vault"), None, &tc())
             .unwrap()
             .components;
         // The scan returns both notes adoption wrote — the skill and the plugin
@@ -2015,7 +2015,7 @@ mod tests {
         );
 
         // Compile the adopted note back out — the inverse rewrite undone.
-        let note = read_vault_skill(&vfs, &skill.entry_path, &ap()).unwrap();
+        let note = read_vault_skill(&vfs, &skill.entry_path, &tc()).unwrap();
         let compiled = compile_note(
             &vfs,
             &CompileSource {
@@ -2047,12 +2047,12 @@ mod tests {
     #[test]
     fn the_stamped_provenance_reads_back_typed() {
         let vfs = demo_source();
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
 
         let note = read_vault_skill(
             &vfs,
             Path::new("/vault/plugins/demos/skills/demo/demo.md"),
-            &ap(),
+            &tc(),
         )
         .unwrap();
         let provenance = &note.frontmatter.provenance;
@@ -2069,12 +2069,12 @@ mod tests {
         assert_eq!(adopted.len(), 64, "a SHA-256 hex digest");
         assert!(adopted.bytes().all(|b| b.is_ascii_hexdigit()), "{adopted}");
         assert_ne!(adopted, hash, "two hashes over two file sets");
-        // Written through the same serialiser as `ap-source-hash`, which
+        // Written through the same serialiser as `tc-source-hash`, which
         // quotes exactly the values a reader would otherwise type as
         // something else — an all-digit digest among them.
         assert!(
             read(&vfs, "/vault/plugins/demos/skills/demo/demo.md")
-                .contains(&format!("ap-adopted-hash: {adopted}")),
+                .contains(&format!("tc-adopted-hash: {adopted}")),
         );
         // `/src` declares no runtime directory and carries no plugin
         // manifest, so the layout it was read in is the published standard.
@@ -2089,7 +2089,7 @@ mod tests {
         assert!(note.frontmatter.unknown_ours.is_empty());
     }
 
-    /// `ap-format`'s three sources, in the order [`detect_format`] asks.
+    /// `tc-format`'s three sources, in the order [`detect_format`] asks.
     #[test]
     fn the_format_comes_from_the_request_then_the_path_then_the_manifest() {
         // Named by the caller wins over everything the tree could say.
@@ -2098,9 +2098,9 @@ mod tests {
             format: Some("codex".to_owned()),
             ..request()
         };
-        adopt_skills(&vfs, &named, &ap()).unwrap();
+        adopt_skills(&vfs, &named, &tc()).unwrap();
         assert!(
-            read(&vfs, "/vault/plugins/demos/skills/demo/demo.md").contains("ap-format: codex")
+            read(&vfs, "/vault/plugins/demos/skills/demo/demo.md").contains("tc-format: codex")
         );
 
         // A runtime directory anywhere above the source names the runtime.
@@ -2114,9 +2114,9 @@ mod tests {
             source: PathBuf::from("/host/.claude/skills"),
             ..request()
         };
-        adopt_skills(&vfs, &under_claude, &ap()).unwrap();
+        adopt_skills(&vfs, &under_claude, &tc()).unwrap();
         assert!(
-            read(&vfs, "/vault/plugins/demos/skills/demo/demo.md").contains("ap-format: claude")
+            read(&vfs, "/vault/plugins/demos/skills/demo/demo.md").contains("tc-format: claude")
         );
 
         // No runtime directory, but a plugin manifest declaring the harness
@@ -2132,13 +2132,13 @@ mod tests {
             source: PathBuf::from("/pack"),
             ..request()
         };
-        adopt_skills(&vfs, &packed, &ap()).unwrap();
+        adopt_skills(&vfs, &packed, &tc()).unwrap();
         assert!(
-            read(&vfs, "/vault/plugins/demos/skills/demo/demo.md").contains("ap-format: codex")
+            read(&vfs, "/vault/plugins/demos/skills/demo/demo.md").contains("tc-format: codex")
         );
     }
 
-    /// `ap-also-at` is content-addressed and has three outcomes, not two.
+    /// `tc-also-at` is content-addressed and has three outcomes, not two.
     #[test]
     fn also_at_names_every_other_root_holding_the_same_bytes() {
         let vfs = demo_source();
@@ -2169,11 +2169,11 @@ mod tests {
             ],
             ..request()
         };
-        adopt_skills(&vfs, &scanned, &ap()).unwrap();
+        adopt_skills(&vfs, &scanned, &tc()).unwrap();
         let note = read_vault_skill(
             &vfs,
             Path::new("/vault/plugins/demos/skills/demo/demo.md"),
-            &ap(),
+            &tc(),
         )
         .unwrap();
         assert_eq!(
@@ -2191,11 +2191,11 @@ mod tests {
             also_scan: vec![PathBuf::from("/gone")],
             ..request()
         };
-        adopt_skills(&vfs, &scanned, &ap()).unwrap();
+        adopt_skills(&vfs, &scanned, &tc()).unwrap();
         let note = read_vault_skill(
             &vfs,
             Path::new("/vault/plugins/demos/skills/demo/demo.md"),
-            &ap(),
+            &tc(),
         )
         .unwrap();
         assert_eq!(note.frontmatter.provenance.also_at, Some(Vec::new()));
@@ -2211,11 +2211,11 @@ mod tests {
             source_label: Some("https://github.com/acme/agent-kit@4f1c9ab".to_owned()),
             ..request()
         };
-        adopt_skills(&vfs, &labelled(), &ap()).unwrap();
+        adopt_skills(&vfs, &labelled(), &tc()).unwrap();
         let note = read_vault_skill(
             &vfs,
             Path::new("/vault/plugins/demos/skills/demo/demo.md"),
-            &ap(),
+            &tc(),
         )
         .unwrap();
         assert_eq!(
@@ -2237,7 +2237,7 @@ mod tests {
             source: PathBuf::from("/cache-two/skills"),
             ..labelled()
         };
-        let report = adopt_skills(&vfs, &again, &ap()).unwrap();
+        let report = adopt_skills(&vfs, &again, &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Unchanged);
         assert_eq!(report.skills[0].reason, None);
 
@@ -2247,7 +2247,7 @@ mod tests {
             source: PathBuf::from("/cache-two/skills"),
             ..request()
         };
-        let report = adopt_skills(&vfs, &unlabelled, &ap()).unwrap();
+        let report = adopt_skills(&vfs, &unlabelled, &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Refused);
         assert!(
             report.skills[0]
@@ -2265,7 +2265,7 @@ mod tests {
         let vfs = demo_source();
         let mut inside = request();
         inside.vault_root = PathBuf::from("/src/vault");
-        let err = adopt_skills(&vfs, &inside, &ap()).unwrap_err();
+        let err = adopt_skills(&vfs, &inside, &tc()).unwrap_err();
         assert!(matches!(err, CoreError::Refused(_)), "{err}");
         assert!(err.to_string().contains("/src"), "{err}");
         assert!(!vfs.exists(Path::new("/src/vault")), "nothing was written");
@@ -2279,7 +2279,7 @@ mod tests {
         );
         let mut containing = request();
         containing.source = PathBuf::from("/vault/plugins/incoming");
-        let err = adopt_skills(&vfs, &containing, &ap()).unwrap_err();
+        let err = adopt_skills(&vfs, &containing, &tc()).unwrap_err();
         assert!(matches!(err, CoreError::Refused(_)), "{err}");
         assert!(!vfs.exists(Path::new("/vault/plugins/demos")));
 
@@ -2292,7 +2292,7 @@ mod tests {
         );
         let mut equal = request();
         equal.source = PathBuf::from("/vault/plugins");
-        let err = adopt_skills(&vfs, &equal, &ap()).unwrap_err();
+        let err = adopt_skills(&vfs, &equal, &tc()).unwrap_err();
         assert!(matches!(err, CoreError::Refused(_)), "{err}");
     }
 
@@ -2320,10 +2320,10 @@ mod tests {
     #[test]
     fn a_re_adopt_of_an_untouched_note_is_unchanged_and_writes_nothing() {
         let vfs = demo_source();
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
         let before = read(&vfs, ENTRY);
 
-        let report = adopt_skills(&vfs, &request(), &ap()).unwrap();
+        let report = adopt_skills(&vfs, &request(), &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Unchanged);
         assert_eq!(report.skills[0].reason, None);
         assert_eq!(read(&vfs, ENTRY), before, "not one byte was rewritten");
@@ -2332,25 +2332,25 @@ mod tests {
     #[test]
     fn a_key_under_the_prefix_is_outside_the_adopted_hash_and_a_body_edit_is_inside_it() {
         let vfs = demo_source();
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
 
         // Adding, removing, and hand-editing our own keys: still `unchanged`.
         let note = read(&vfs, ENTRY);
         let rewritten = note
             .replace(
-                "ap-plugin: demos",
-                "ap-plugin: something-else\nap-invented: 1",
+                "tc-plugin: demos",
+                "tc-plugin: something-else\ntc-invented: 1",
             )
-            .replace("ap-adopted-at: ", "ap-adopted-at-was: x\nap-adopted-at: ");
+            .replace("tc-adopted-at: ", "tc-adopted-at-was: x\ntc-adopted-at: ");
         vfs.write_file(Path::new(ENTRY), rewritten.as_bytes())
             .unwrap();
-        let report = adopt_skills(&vfs, &request(), &ap()).unwrap();
+        let report = adopt_skills(&vfs, &request(), &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Unchanged);
         assert_eq!(report.skills[0].reason, None, "our keys are not the note");
 
         // One byte of the body is inside it.
         edit_the_note(&vfs);
-        let report = adopt_skills(&vfs, &request(), &ap()).unwrap();
+        let report = adopt_skills(&vfs, &request(), &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Unchanged);
         let reason = report.skills[0].reason.as_deref().unwrap();
         assert!(reason.starts_with("edited: "), "{reason}");
@@ -2358,7 +2358,7 @@ mod tests {
         // And so is one byte of a peer.
         let peer = "/vault/plugins/demos/skills/demo/references/environments.md";
         write(&vfs, peer, "# Environments\n\nDetails there.\n");
-        let report = adopt_skills(&vfs, &request(), &ap()).unwrap();
+        let report = adopt_skills(&vfs, &request(), &tc()).unwrap();
         assert!(
             report.skills[0]
                 .reason
@@ -2372,27 +2372,27 @@ mod tests {
     #[test]
     fn only_the_source_moving_updates_the_note() {
         let vfs = demo_source();
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
         move_the_source(&vfs, "\nA new paragraph.\n");
 
-        let report = adopt_skills(&vfs, &request(), &ap()).unwrap();
+        let report = adopt_skills(&vfs, &request(), &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Updated);
         assert_eq!(report.skills[0].reason, None);
         assert!(read(&vfs, ENTRY).contains("A new paragraph."));
 
         // And the rewrite re-stamps a hash the next run agrees with.
-        let report = adopt_skills(&vfs, &request(), &ap()).unwrap();
+        let report = adopt_skills(&vfs, &request(), &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Unchanged);
     }
 
     #[test]
     fn only_the_note_moving_leaves_it_alone() {
         let vfs = demo_source();
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
         edit_the_note(&vfs);
         let edited = read(&vfs, ENTRY);
 
-        let report = adopt_skills(&vfs, &request(), &ap()).unwrap();
+        let report = adopt_skills(&vfs, &request(), &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Unchanged);
         assert_eq!(read(&vfs, ENTRY), edited, "the note is the user's");
     }
@@ -2400,12 +2400,12 @@ mod tests {
     #[test]
     fn naming_an_edited_note_replaces_it_and_says_it_was_edited() {
         let vfs = demo_source();
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
         edit_the_note(&vfs);
 
         let mut forced = request();
         forced.overwrite = vec![ENTRY.to_owned()];
-        let report = adopt_skills(&vfs, &forced, &ap()).unwrap();
+        let report = adopt_skills(&vfs, &forced, &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Updated);
         let reason = report.skills[0].reason.as_deref().unwrap();
         assert!(
@@ -2419,12 +2419,12 @@ mod tests {
     #[test]
     fn both_moving_is_refused_diverged_and_the_note_is_untouched() {
         let vfs = demo_source();
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
         move_the_source(&vfs, "\nA new paragraph.\n");
         edit_the_note(&vfs);
         let edited = read(&vfs, ENTRY);
 
-        let report = adopt_skills(&vfs, &request(), &ap()).unwrap();
+        let report = adopt_skills(&vfs, &request(), &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Refused);
         let reason = report.skills[0].reason.as_deref().unwrap();
         assert!(reason.starts_with("diverged: "), "{reason}");
@@ -2439,7 +2439,7 @@ mod tests {
     #[test]
     fn overwrite_names_one_note_and_says_what_it_discarded() {
         let vfs = demo_source();
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
         move_the_source(&vfs, "\nA new paragraph.\n");
         edit_the_note(&vfs);
         // A peer the source no longer has does not survive the replacement.
@@ -2453,13 +2453,13 @@ mod tests {
         let mut wrong = request();
         wrong.overwrite = vec!["/vault/plugins/demos/skills/other/other.md".to_owned()];
         assert_eq!(
-            adopt_skills(&vfs, &wrong, &ap()).unwrap().skills[0].status,
+            adopt_skills(&vfs, &wrong, &tc()).unwrap().skills[0].status,
             AdoptStatus::Refused
         );
 
         let mut forced = request();
         forced.overwrite = vec![ENTRY.to_owned()];
-        let report = adopt_skills(&vfs, &forced, &ap()).unwrap();
+        let report = adopt_skills(&vfs, &forced, &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Updated);
         let reason = report.skills[0].reason.as_deref().unwrap();
         assert!(reason.starts_with("overwritten · diverged: "), "{reason}");
@@ -2472,24 +2472,24 @@ mod tests {
     #[test]
     fn the_vault_relative_spelling_of_the_note_also_acknowledges_it() {
         let vfs = demo_source();
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
         move_the_source(&vfs, "\nA new paragraph.\n");
         edit_the_note(&vfs);
 
         let mut forced = request();
         forced.overwrite = vec!["plugins/demos/skills/demo/demo.md".to_owned()];
-        let report = adopt_skills(&vfs, &forced, &ap()).unwrap();
+        let report = adopt_skills(&vfs, &forced, &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Updated);
     }
 
     #[test]
     fn a_note_with_no_provenance_is_refused_hand_authored() {
         let vfs = demo_source();
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
         let hand = "---\nname: demo\ndescription: mine\n---\n\nI wrote this.\n";
         vfs.write_file(Path::new(ENTRY), hand.as_bytes()).unwrap();
 
-        let report = adopt_skills(&vfs, &request(), &ap()).unwrap();
+        let report = adopt_skills(&vfs, &request(), &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Refused);
         let reason = report.skills[0].reason.as_deref().unwrap();
         assert!(reason.starts_with("hand-authored: "), "{reason}");
@@ -2499,7 +2499,7 @@ mod tests {
         // Named, it is replaced — and the replacement says what it was.
         let mut forced = request();
         forced.overwrite = vec![ENTRY.to_owned()];
-        let report = adopt_skills(&vfs, &forced, &ap()).unwrap();
+        let report = adopt_skills(&vfs, &forced, &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Updated);
         assert!(
             report.skills[0]
@@ -2508,27 +2508,27 @@ mod tests {
                 .unwrap()
                 .starts_with("overwritten · hand-authored: ")
         );
-        assert!(read(&vfs, ENTRY).contains("ap-adopted-hash:"));
+        assert!(read(&vfs, ENTRY).contains("tc-adopted-hash:"));
     }
 
     #[test]
     fn absent_or_unparseable_hashes_are_diverged_rather_than_matching() {
-        for broken in ["", "ap-adopted-hash: not-a-digest\n"] {
+        for broken in ["", "tc-adopted-hash: not-a-digest\n"] {
             let vfs = demo_source();
-            adopt_skills(&vfs, &request(), &ap()).unwrap();
+            adopt_skills(&vfs, &request(), &tc()).unwrap();
             let note = read(&vfs, ENTRY);
             // Drop the recorded pair, then optionally put back a wrong one.
             let stripped: String = note
                 .lines()
-                .filter(|line| !line.starts_with("ap-adopted-hash:"))
+                .filter(|line| !line.starts_with("tc-adopted-hash:"))
                 .map(|line| format!("{line}\n"))
                 .collect();
             let stripped =
-                stripped.replacen("ap-source-hash:", &format!("{broken}ap-source-hash:"), 1);
+                stripped.replacen("tc-source-hash:", &format!("{broken}tc-source-hash:"), 1);
             vfs.write_file(Path::new(ENTRY), stripped.as_bytes())
                 .unwrap();
 
-            let report = adopt_skills(&vfs, &request(), &ap()).unwrap();
+            let report = adopt_skills(&vfs, &request(), &tc()).unwrap();
             assert_eq!(report.skills[0].status, AdoptStatus::Refused, "{broken:?}");
             let reason = report.skills[0].reason.as_deref().unwrap();
             assert!(reason.starts_with("diverged: "), "{reason}");
@@ -2538,7 +2538,7 @@ mod tests {
     #[test]
     fn a_note_adopted_from_another_source_is_refused_foreign_provenance() {
         let vfs = demo_source();
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
         let before = read(&vfs, ENTRY);
 
         // A second source, same skill name. Its hashes say nothing about the
@@ -2551,7 +2551,7 @@ mod tests {
         let mut elsewhere = request();
         elsewhere.source = PathBuf::from("/other");
 
-        let report = adopt_skills(&vfs, &elsewhere, &ap()).unwrap();
+        let report = adopt_skills(&vfs, &elsewhere, &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Refused);
         let reason = report.skills[0].reason.as_deref().unwrap();
         assert!(reason.starts_with("foreign-provenance: "), "{reason}");
@@ -2561,7 +2561,7 @@ mod tests {
 
         // Named, it is replaced — and the line says what it discarded.
         elsewhere.overwrite = vec![ENTRY.to_owned()];
-        let report = adopt_skills(&vfs, &elsewhere, &ap()).unwrap();
+        let report = adopt_skills(&vfs, &elsewhere, &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Updated);
         assert!(
             report.skills[0]
@@ -2578,7 +2578,7 @@ mod tests {
         let vfs = demo_source();
         write(&vfs, "/vault/plugins/demos/skills/demo/notes.md", "mine\n");
 
-        let report = adopt_skills(&vfs, &request(), &ap()).unwrap();
+        let report = adopt_skills(&vfs, &request(), &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Refused);
         let reason = report.skills[0].reason.as_deref().unwrap();
         assert!(reason.starts_with("folder-occupied: "), "{reason}");
@@ -2594,7 +2594,7 @@ mod tests {
         let mut preview = request();
         preview.mode = AdoptMode::DryRun;
 
-        let report = adopt_skills(&vfs, &preview, &ap()).unwrap();
+        let report = adopt_skills(&vfs, &preview, &tc()).unwrap();
         assert_eq!(report.skills.len(), 1);
         assert_eq!(report.skills[0].status, AdoptStatus::Adopted);
         assert_eq!(
@@ -2605,8 +2605,8 @@ mod tests {
 
         // And it classifies against the real tree: after a real adopt, the
         // same dry run reports the refusal a real re-run would.
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
-        let report = adopt_skills(&vfs, &preview, &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
+        let report = adopt_skills(&vfs, &preview, &tc()).unwrap();
         assert_eq!(report.skills[0].status, AdoptStatus::Unchanged);
     }
 
@@ -2617,7 +2617,7 @@ mod tests {
             let vfs = demo_source();
             let mut shaped = request();
             shaped.source = PathBuf::from(source);
-            let report = adopt_skills(&vfs, &shaped, &ap()).unwrap();
+            let report = adopt_skills(&vfs, &shaped, &tc()).unwrap();
             assert_eq!(report.skills.len(), 1, "{source}");
             assert_eq!(report.skills[0].name, "demo", "{source}");
             assert!(
@@ -2639,7 +2639,7 @@ mod tests {
         // By directory basename…
         let mut narrowed = request();
         narrowed.skills = Some(vec!["demo".to_owned()]);
-        let report = adopt_skills(&vfs, &narrowed, &ap()).unwrap();
+        let report = adopt_skills(&vfs, &narrowed, &tc()).unwrap();
         assert_eq!(report.skills.len(), 1);
         assert!(!vfs.exists(Path::new("/vault/plugins/demos/other")));
 
@@ -2652,13 +2652,13 @@ mod tests {
         );
         let mut by_path = request();
         by_path.skills = Some(vec!["skills/other".to_owned()]);
-        let report = adopt_skills(&vfs, &by_path, &ap()).unwrap();
+        let report = adopt_skills(&vfs, &by_path, &tc()).unwrap();
         assert_eq!(report.skills[0].name, "other");
 
         // A name that matches nothing is refused, never silently dropped.
         let mut missing = request();
         missing.skills = Some(vec!["demo".to_owned(), "absent".to_owned()]);
-        let err = adopt_skills(&vfs, &missing, &ap()).unwrap_err();
+        let err = adopt_skills(&vfs, &missing, &tc()).unwrap_err();
         assert!(matches!(err, CoreError::SkillNotFound(_)), "{err}");
         assert!(err.to_string().contains("absent"), "{err}");
     }
@@ -2671,7 +2671,7 @@ mod tests {
             "/src/skills/Workflow Checklist/SKILL.md",
             "---\ndescription: d\n---\nb\n",
         );
-        let report = adopt_skills(&vfs, &request(), &ap()).unwrap();
+        let report = adopt_skills(&vfs, &request(), &tc()).unwrap();
         assert_eq!(report.skills[0].name, "workflow-checklist");
         assert!(vfs.exists(Path::new(
             "/vault/plugins/demos/skills/workflow-checklist/workflow-checklist.md"
@@ -2687,7 +2687,7 @@ mod tests {
             "/src/skills/mute/SKILL.md",
             "---\nname: mute\n---\nb\n",
         );
-        let err = adopt_skills(&vfs, &request(), &ap())
+        let err = adopt_skills(&vfs, &request(), &tc())
             .unwrap_err()
             .to_string();
         assert!(err.contains("/src/skills/mute/SKILL.md"), "{err}");
@@ -2703,7 +2703,7 @@ mod tests {
             "/src/skills/odd/SKILL.md",
             "---\nname:\n  - a\ndescription: d\n---\nb\n",
         );
-        let err = adopt_skills(&vfs, &request(), &ap())
+        let err = adopt_skills(&vfs, &request(), &tc())
             .unwrap_err()
             .to_string();
         assert!(err.contains("`name` must be a string"), "{err}");
@@ -2718,7 +2718,7 @@ mod tests {
                 "d".repeat(1025)
             ),
         );
-        let err = adopt_skills(&vfs, &request(), &ap())
+        let err = adopt_skills(&vfs, &request(), &tc())
             .unwrap_err()
             .to_string();
         assert!(err.contains("1024"), "{err}");
@@ -2732,7 +2732,7 @@ mod tests {
             "/src/skills/x/SKILL.md",
             &format!("---\nname: {long}\ndescription: d\n---\nb\n"),
         );
-        let err = adopt_skills(&vfs, &request(), &ap())
+        let err = adopt_skills(&vfs, &request(), &tc())
             .unwrap_err()
             .to_string();
         assert!(err.contains("Agent Skills spec"), "{err}");
@@ -2748,12 +2748,12 @@ mod tests {
             "/src/skills/demo/SKILL.md",
             "---\nname: demo\ndescription: d\nlicense: MIT\nowner: kelly\nallowed-tools:\n  - Read\n---\nb\n",
         );
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
 
         let note = read_vault_skill(
             &vfs,
             Path::new("/vault/plugins/demos/skills/demo/demo.md"),
-            &ap(),
+            &tc(),
         )
         .unwrap();
         assert_eq!(note.projection.content.allowed_tools, vec!["Read"]);
@@ -2773,12 +2773,12 @@ mod tests {
         write(
             &vfs,
             "/src/skills/demo/SKILL.md",
-            "---\nname: demo\ndescription: d\nap-kind: plugin\n---\nb\n",
+            "---\nname: demo\ndescription: d\ntc-kind: plugin\n---\nb\n",
         );
-        let err = adopt_skills(&vfs, &request(), &ap())
+        let err = adopt_skills(&vfs, &request(), &tc())
             .unwrap_err()
             .to_string();
-        assert!(err.contains("ap-kind"), "{err}");
+        assert!(err.contains("tc-kind"), "{err}");
         assert!(err.contains("namespace"), "{err}");
         assert!(!vfs.exists(Path::new("/vault")));
     }
@@ -2787,11 +2787,11 @@ mod tests {
     fn a_configured_namespace_stamps_its_own_keys_and_carries_the_default_one() {
         let x = Namespace::new("x").unwrap();
         let vfs = MemVfs::new();
-        // `ap-kind` is somebody else's key in this vault — carried, not ours.
+        // `tc-kind` is somebody else's key in this vault — carried, not ours.
         write(
             &vfs,
             "/src/skills/demo/SKILL.md",
-            "---\nname: demo\ndescription: d\nap-kind: keep-me\n---\nb\n",
+            "---\nname: demo\ndescription: d\ntc-kind: keep-me\n---\nb\n",
         );
         adopt_skills(&vfs, &request(), &x).unwrap();
 
@@ -2799,7 +2799,7 @@ mod tests {
         assert!(entry.contains("x-kind: skill"), "{entry}");
         assert!(entry.contains("x-plugin: demos"), "{entry}");
         assert!(entry.contains("x-source: /src/skills/demo"), "{entry}");
-        assert!(entry.contains("ap-kind: keep-me"), "{entry}");
+        assert!(entry.contains("tc-kind: keep-me"), "{entry}");
 
         let note = read_vault_skill(
             &vfs,
@@ -2813,11 +2813,11 @@ mod tests {
             Some("/src/skills/demo")
         );
         assert_eq!(
-            note.projection.content.annotations["ap-kind"],
+            note.projection.content.annotations["tc-kind"],
             serde_json::json!("keep-me")
         );
 
-        // And under `x`, a source `x-` key is the refusal `ap-` was above.
+        // And under `x`, a source `x-` key is the refusal `tc-` was above.
         let vfs = MemVfs::new();
         write(
             &vfs,
@@ -2833,7 +2833,7 @@ mod tests {
         let vfs = demo_source();
         let mut unknown = request();
         unknown.targets = Some(vec!["codex".to_owned(), "emacs".to_owned()]);
-        let err = adopt_skills(&vfs, &unknown, &ap()).unwrap_err().to_string();
+        let err = adopt_skills(&vfs, &unknown, &tc()).unwrap_err().to_string();
         assert!(err.contains("unknown-target"), "{err}");
         assert!(err.contains("emacs"), "{err}");
         assert!(!vfs.exists(Path::new("/vault")));
@@ -2841,10 +2841,10 @@ mod tests {
         // No targets: no key at all — every destination, the ordinary vault.
         let mut open = request();
         open.targets = None;
-        adopt_skills(&vfs, &open, &ap()).unwrap();
+        adopt_skills(&vfs, &open, &tc()).unwrap();
         let entry = read(&vfs, "/vault/plugins/demos/skills/demo/demo.md");
-        assert!(!entry.contains("ap-targets"), "{entry}");
-        let found = discover_components(&vfs, Path::new("/vault"), None, &ap())
+        assert!(!entry.contains("tc-targets"), "{entry}");
+        let found = discover_components(&vfs, Path::new("/vault"), None, &tc())
             .unwrap()
             .components;
         assert_eq!(found[0].targets, None);
@@ -2863,7 +2863,7 @@ mod tests {
             "/src/skills/two/SKILL.md",
             "---\nname: demo\ndescription: d\n---\nb\n",
         );
-        let err = adopt_skills(&vfs, &request(), &ap())
+        let err = adopt_skills(&vfs, &request(), &tc())
             .unwrap_err()
             .to_string();
         assert!(err.contains("path-collision"), "{err}");
@@ -2878,12 +2878,12 @@ mod tests {
         write(
             &vfs,
             "/vault/plugins/demos/demos.md",
-            "---\nname: demos\nap-kind: plugin\n---\nThe author's own prose.\n",
+            "---\nname: demos\ntc-kind: plugin\n---\nThe author's own prose.\n",
         );
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
         assert_eq!(
             read(&vfs, "/vault/plugins/demos/demos.md"),
-            "---\nname: demos\nap-kind: plugin\n---\nThe author's own prose.\n",
+            "---\nname: demos\ntc-kind: plugin\n---\nThe author's own prose.\n",
             "an existing plugin note is the author's"
         );
     }
@@ -2893,7 +2893,7 @@ mod tests {
         let vfs = demo_source();
         let mut bad = request();
         bad.plugin = Some("Bad Name".to_owned());
-        let err = adopt_skills(&vfs, &bad, &ap()).unwrap_err().to_string();
+        let err = adopt_skills(&vfs, &bad, &tc()).unwrap_err().to_string();
         assert!(err.contains("plugin name"), "{err}");
         assert!(err.contains("Bad Name"), "{err}");
         assert!(!vfs.exists(Path::new("/vault")));
@@ -2901,7 +2901,7 @@ mod tests {
         // And the default plugin fills in when the request names none.
         let mut unnamed = request();
         unnamed.plugin = None;
-        let report = adopt_skills(&vfs, &unnamed, &ap()).unwrap();
+        let report = adopt_skills(&vfs, &unnamed, &tc()).unwrap();
         assert_eq!(report.skills[0].plugin, DEFAULT_ADOPTED_PLUGIN);
         assert!(vfs.exists(Path::new("/vault/plugins/adopted/skills/demo/demo.md")));
     }
@@ -2917,7 +2917,7 @@ mod tests {
             "/src/skills/broken/SKILL.md",
             "---\nname: broken\n---\nb\n",
         );
-        let err = adopt_skills(&vfs, &request(), &ap());
+        let err = adopt_skills(&vfs, &request(), &tc());
         assert!(err.is_err());
         assert!(!vfs.exists(Path::new("/vault")), "no partial import");
     }
@@ -2937,7 +2937,7 @@ mod tests {
         );
         write(&vfs, "/src/skills/demo/references/notes.md", "# Notes\n");
         write(&vfs, "/src/skills/demo/scripts/run.sh", "#!/bin/sh\n");
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
 
         let guide = read(&vfs, "/vault/plugins/demos/skills/demo/references/guide.md");
         // The resource's own frontmatter travels byte-for-byte…
@@ -2956,7 +2956,7 @@ mod tests {
             "/src/skills/demo/SKILL.md",
             "---\nname: demo\ndescription: d\n---\n<!-- Generated by skill-export v1.0 -->\n\n# Demo\n",
         );
-        adopt_skills(&vfs, &request(), &ap()).unwrap();
+        adopt_skills(&vfs, &request(), &tc()).unwrap();
         let entry = read(&vfs, "/vault/plugins/demos/skills/demo/demo.md");
         assert!(!entry.contains("Generated by"), "{entry}");
         assert!(entry.contains("# Demo"), "{entry}");
@@ -2969,9 +2969,9 @@ mod tests {
         // Same source, same request → the same bytes, run to run: nothing
         // here reads a clock or iterates a hash map.
         let first = demo_source();
-        adopt_skills(&first, &request(), &ap()).unwrap();
+        adopt_skills(&first, &request(), &tc()).unwrap();
         let second = demo_source();
-        adopt_skills(&second, &request(), &ap()).unwrap();
+        adopt_skills(&second, &request(), &tc()).unwrap();
         assert_eq!(
             read(&first, "/vault/plugins/demos/skills/demo/demo.md"),
             read(&second, "/vault/plugins/demos/skills/demo/demo.md")
@@ -2981,12 +2981,12 @@ mod tests {
     #[test]
     fn a_missing_source_and_an_empty_source_are_distinct_errors() {
         let vfs = MemVfs::new();
-        let err = adopt_skills(&vfs, &request(), &ap()).unwrap_err();
+        let err = adopt_skills(&vfs, &request(), &tc()).unwrap_err();
         assert!(matches!(err, CoreError::RootNotFound(_)), "{err}");
 
         let vfs = MemVfs::new();
         vfs.create_dir_all(Path::new("/src")).unwrap();
-        let err = adopt_skills(&vfs, &request(), &ap())
+        let err = adopt_skills(&vfs, &request(), &tc())
             .unwrap_err()
             .to_string();
         assert!(err.contains("SKILL.md"), "{err}");
@@ -3014,7 +3014,7 @@ mod tests {
         let mut real = request();
         real.source = dir.path().join("src");
         real.vault_root = dir.path().join("vault");
-        adopt_skills(&NativeVfs, &real, &ap()).unwrap();
+        adopt_skills(&NativeVfs, &real, &tc()).unwrap();
 
         let tool = dir
             .path()
@@ -3035,7 +3035,7 @@ mod tests {
         .unwrap();
         let mut second = real.clone();
         second.vault_root = dir.path().join("vault2");
-        let err = adopt_skills(&NativeVfs, &second, &ap())
+        let err = adopt_skills(&NativeVfs, &second, &tc())
             .unwrap_err()
             .to_string();
         assert!(err.contains("unsafe-path"), "{err}");
@@ -3067,7 +3067,7 @@ mod tests {
         linked.source = dir.path().join("src");
         linked.vault_root = vault.clone();
         linked.skills_root = Some(vault.join("library"));
-        let err = adopt_skills(&NativeVfs, &linked, &ap()).unwrap_err();
+        let err = adopt_skills(&NativeVfs, &linked, &tc()).unwrap_err();
 
         assert!(matches!(err, CoreError::PathEscapesRoot(_)), "{err}");
         assert_eq!(
@@ -3102,7 +3102,7 @@ mod tests {
         aliased.source = dir.path().join("src");
         aliased.vault_root = vault.clone();
         aliased.skills_root = Some(alias.join("lib"));
-        let err = adopt_skills(&NativeVfs, &aliased, &ap()).unwrap_err();
+        let err = adopt_skills(&NativeVfs, &aliased, &tc()).unwrap_err();
 
         assert!(matches!(err, CoreError::PathEscapesRoot(_)), "{err}");
         assert!(!vault.join("lib").exists(), "nothing was written");

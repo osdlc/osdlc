@@ -235,7 +235,7 @@ pub struct RuntimeCapabilities {
     /// Code and means nothing to ask another runtime about.
     ///
     /// It is the whole oracle for "does this harness know this key" — an
-    /// `ap-overrides` key absent from it is refused, naming the target and
+    /// `tc-overrides` key absent from it is refused, naming the target and
     /// the key. See `override_keys` for how a declaration assembles one.
     pub overrides: BTreeMap<String, Claim>,
     /// One claim per [`BEHAVIOURS`] key: what the harness does with a hook's
@@ -1168,7 +1168,7 @@ mod tests {
         }
     }
 
-    /// The override roster is the oracle `ap-overrides` refuses against, so
+    /// The override roster is the oracle `tc-overrides` refuses against, so
     /// the three states it has to produce are pinned here by name.
     #[test]
     fn the_override_roster_answers_set_redundant_and_refused() {

@@ -134,7 +134,7 @@ pub struct Hook {
     pub category: Option<String>,
     /// If `true`, this hook is a template.
     pub is_template: bool,
-    /// This render's own `ap-overrides.<target>` map, merged last over
+    /// This render's own `tc-overrides.<target>` map, merged last over
     /// everything else here. Same contract as [`crate::Skill::overrides`].
     #[serde(default)]
     pub overrides: serde_json::Map<String, serde_json::Value>,

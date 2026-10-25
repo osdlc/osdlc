@@ -90,7 +90,7 @@ pub use js_vfs::{HostVfs, JsVfs};
 /// A field on the request rather than a third parameter, so the exported arity
 /// does not move: hosts call `publishSkill(vfs, requestJson)`.
 /// `#[serde(default)]` makes the field optional, so a request serialized
-/// without it still deserializes and publishes under `ap`.
+/// without it still deserializes and publishes under `tc`.
 ///
 /// It is a `String` stem rather than a `Namespace` because the core
 /// deliberately gives `Namespace` no `Deserialize`: every construction goes
@@ -103,7 +103,7 @@ struct WireRequest {
     /// `target` are read by the core's own derive.
     #[serde(flatten)]
     request: PublishRequest,
-    /// The vault's frontmatter namespace, as a stem — `ap`, or whatever the
+    /// The vault's frontmatter namespace, as a stem — `tc`, or whatever the
     /// host configured. Absent means [`Namespace::default`].
     #[serde(default)]
     namespace: Option<String>,

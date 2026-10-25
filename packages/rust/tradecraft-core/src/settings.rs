@@ -1,4 +1,4 @@
-//! The `marketplace:` block of `agent-pants.yaml`, and its mapping onto a
+//! The `marketplace:` block of `tradecraft.yaml`, and its mapping onto a
 //! build's [`MarketplaceConfig`].
 //!
 //! The CLI and other hosts read this block. It lives here so they share one
@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use crate::export::{DEFAULT_SHIM_TARGET, MarketplaceConfig, PluginOverrides};
 
 /// The project file's name.
-pub const PROJECT_FILE: &str = "agent-pants.yaml";
+pub const PROJECT_FILE: &str = "tradecraft.yaml";
 
 /// What `build` and `check` render. Everything except `out` and
 /// `skills_root` becomes the core's [`MarketplaceConfig`] through
@@ -38,11 +38,11 @@ pub struct MarketplaceSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub author: Option<serde_yaml::Value>,
     /// Default plugin license, as an SPDX identifier; every plugin under the
-    /// marketplace inherits it. A marketplace note's `ap-license` wins over
+    /// marketplace inherits it. A marketplace note's `tc-license` wins over
     /// this, as it does for the other identity fields.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
-    /// The plugin a note with no `ap-plugin` belongs to.
+    /// The plugin a note with no `tc-plugin` belongs to.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_plugin: Option<String>,
     /// Per-plugin manifest overrides, keyed by plugin name.
@@ -206,7 +206,7 @@ mod tests {
     fn a_project_file_maps_onto_a_build_config() {
         let parsed = parse_project_marketplace(
             "vault: ./vault\n\
-             namespace: ap\n\
+             namespace: tc\n\
              marketplace:\n  \
                default_plugin: tools\n  \
                owner: { name: Ada }\n  \

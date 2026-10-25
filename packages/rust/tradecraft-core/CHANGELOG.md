@@ -193,7 +193,7 @@ name `agent-adapt-core`, and are rebuilt from its git history.
 #### Added
 
 - Adds semver module (next_version, BumpLevel) and authoring::read_field; version bump rewrites
-  ap-version.
+  tc-version.
 
 ### [0.25.2] - 2026-09-18 (unpublished)
 

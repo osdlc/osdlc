@@ -30,7 +30,7 @@
 //! `marketplaces/<m>/plugins/<p>/skills/<s>.md` is the full shape. A note
 //! that is not under a kind folder is a resource or the author's own writing.
 //!
-//! This is layer 3 of the kind decision's four: a note's own `ap-kind`
+//! This is layer 3 of the kind decision's four: a note's own `tc-kind`
 //! outranks whatever the folder said. Every component reports which layer
 //! answered, so a note that overruled its folder is visible as having done
 //! so.
@@ -77,15 +77,15 @@
 //!   onto one.
 //!
 //! * **Targets validate against [`KNOWN_TARGETS`]** — the names this
-//!   build publishes to — and the key is `ap-targets` read through
+//!   build publishes to — and the key is `tc-targets` read through
 //!   [`VaultFrontmatter`], not a bare `skill-targets`. With that key comes the
 //!   core's contract: absent means every destination, an empty list means
 //!   nowhere, and a scalar is refused rather than comma-split — the shape rules
 //!   [`crate::frontmatter`] already enforces on every read.
-//! * **An unknown `ap-kind` is refused.** That is [`crate::frontmatter`]'s rule
+//! * **An unknown `tc-kind` is refused.** That is [`crate::frontmatter`]'s rule
 //!   arriving with the reader: a typo that quietly unpublished a note is the
 //!   outcome the closed kind vocabulary exists to prevent.
-//! * **An empty or wrong-shaped `ap-plugin` is refused.** An absent key and a
+//! * **An empty or wrong-shaped `tc-plugin` is refused.** An absent key and a
 //!   present-but-wrong key must not share an outcome; delete the key to mean
 //!   the default.
 //! * **[`slugify`] folds ASCII only**, with no NFKD normalisation: `Café.md`
@@ -130,7 +130,7 @@ use crate::vfs::Vfs;
 
 /// One component, as discovery hands it to the verbs.
 ///
-/// `targets` keeps the three-outcome `ap-targets` reading instead of being
+/// `targets` keeps the three-outcome `tc-targets` reading instead of being
 /// expanded to an explicit all-targets list, so the layer that knows what
 /// "every destination" means today is the one that decides it.
 // No `Eq`: `identity` carries free-shaped JSON for the two manifest fields
@@ -160,24 +160,24 @@ pub struct DiscoveredComponent {
     /// tell "the folder and the note agree" from "the note overruled the
     /// folder".
     pub folder_kind: Option<EntityKind>,
-    /// `ap-targets` exactly as [`VaultFrontmatter::targets`] read it, every
+    /// `tc-targets` exactly as [`VaultFrontmatter::targets`] read it, every
     /// name checked against [`KNOWN_TARGETS`]. `None` is absent — every
     /// destination; `Some(vec![])` is nowhere.
     pub targets: Option<Vec<String>>,
     /// The plugin holding this component. `None` is a bare component, sitting
     /// at the root and belonging to no plugin.
     ///
-    /// The containing folder decides it and `ap-plugin` overrules it. Where a
+    /// The containing folder decides it and `tc-plugin` overrules it. Where a
     /// marketplace needs every skill under *some* plugin directory,
     /// [`crate::export`] supplies the configured default — that is a
     /// publication concern, not a fact about the vault.
     pub plugin: Option<String>,
-    /// The plugin the folder put it in, before `ap-plugin` was read.
+    /// The plugin the folder put it in, before `tc-plugin` was read.
     pub folder_plugin: Option<String>,
     /// The marketplace this belongs to — the directory holding the `plugins/`
     /// folder it sits under. `None` only for a marketplace's own note.
     ///
-    /// Structural, with no frontmatter counterpart. `ap-kind` and `ap-plugin`
+    /// Structural, with no frontmatter counterpart. `tc-kind` and `tc-plugin`
     /// exist because a note may reasonably disagree with where it sits about
     /// *what* it is or *which pack* it joins; disagreeing about which
     /// distribution it ships in is a move, not an annotation, and a key that
@@ -298,12 +298,12 @@ pub struct SkippedNote {
     pub reason: String,
     /// The sentence naming what is wrong, as the error stated it.
     pub detail: String,
-    /// The pack this note would have joined: its own `ap-plugin` where the
+    /// The pack this note would have joined: its own `tc-plugin` where the
     /// read got far enough to see that key, else the plugin folder holding
     /// it.
     ///
     /// A pack publish checks its own members against this. The publish spec forbids
-    /// installing a subset silently, and a member declaring `ap-plugin` from
+    /// installing a subset silently, and a member declaring `tc-plugin` from
     /// outside the pack's folder is still a member — so the declared key is
     /// consulted first and the folder is the floor beneath it. `None` where
     /// neither answers: the note joins no pack, and no pack is blocked.
@@ -347,8 +347,8 @@ impl SkippedNote {
 /// publishable note, sorted by name.
 ///
 /// `ns` is the vault's frontmatter namespace, the same value every other
-/// reader takes — a note whose `ap-targets` this scan validated must be the
-/// note whose `ap-targets` the publish reads, or the two disagree about where
+/// reader takes — a note whose `tc-targets` this scan validated must be the
+/// note whose `tc-targets` the publish reads, or the two disagree about where
 /// it goes.
 ///
 /// The content root must lie inside the vault. A root outside it has no
@@ -358,7 +358,7 @@ impl SkippedNote {
 /// # A bad note stops itself, not the scan
 ///
 /// Everything wrong with *one* note — an illegal name, an over-long
-/// description, an `ap-targets` this build does
+/// description, an `tc-targets` this build does
 /// not know, a declared note at no recognised shape, frontmatter that will
 /// not parse — lands in [`DiscoveryReport::skipped`] and the walk carries on.
 /// One person's half-written draft must not block everybody else's publish.
@@ -432,7 +432,7 @@ pub fn discover_components(
             Ok(None) => {}
             Err(err) => {
                 // Where the note said which pack it belongs to, that answer
-                // decides — a member declaring `ap-plugin` from outside the
+                // decides — a member declaring `tc-plugin` from outside the
                 // pack's folder is still a member, and a pack that shipped
                 // without it would be a silent subset.
                 let plugin =
@@ -542,7 +542,7 @@ fn refuse_stray(
     let source = read_utf8(vfs, entry_path)?;
     let (frontmatter, _body) = split_frontmatter(&source);
     let mut fields = frontmatter_map(frontmatter, entry_path)?;
-    // Drained for its refusals — an unknown `ap-kind` on a stray note is still
+    // Drained for its refusals — an unknown `tc-kind` on a stray note is still
     // a typo worth naming, and it names itself better than the shape does.
     VaultFrontmatter::take_from(&mut fields, entry_path, ns)?;
 
@@ -591,16 +591,16 @@ pub const KIND_DIRS: &[(&str, EntityKind)] = &[
 /// Every field is `None` where structure said nothing, and none of them is a
 /// default: this is the *structural* half of the answer, which a caller ranks
 /// against the note's own frontmatter ([`crate::frontmatter::resolve_kind`]
-/// for the kind, `ap-plugin` over [`Self::plugin`] for the pack).
+/// for the kind, `tc-plugin` over [`Self::plugin`] for the pack).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FolderPlacement {
     /// The kind folder above the note. `None` means none is, so the note's own
-    /// `ap-kind` — or the default — decides. Never a claim that it is a skill.
+    /// `tc-kind` — or the default — decides. Never a claim that it is a skill.
     pub kind: Option<EntityKind>,
     /// The marketplace whose tree this sits in. `None` for a component
     /// promoted above every marketplace, and for a marketplace's own note.
     pub marketplace: Option<String>,
-    /// The plugin directory holding it, before `ap-plugin` is read.
+    /// The plugin directory holding it, before `tc-plugin` is read.
     pub plugin: Option<String>,
 }
 
@@ -685,7 +685,7 @@ struct Placement {
 /// # The rule cannot name a bare component's kind
 ///
 /// Nothing sits above `<name>.md` at the root to say what it is, so
-/// [`Placement::kind`] is `None` and the note's own `ap-kind` — or the
+/// [`Placement::kind`] is `None` and the note's own `tc-kind` — or the
 /// default — decides. A directory at the root holding files but no kind
 /// folder has the same problem, and it is the rule's weak point: a plugin
 /// with no components yet is shaped exactly like a bare component that
@@ -955,7 +955,7 @@ fn read_source(
         .map(|dir| owned_resources(files, placed, dir))
         .unwrap_or_default();
 
-    // The folder puts a component in its plugin and `ap-plugin` overrules it —
+    // The folder puts a component in its plugin and `tc-plugin` overrules it —
     // the same ranking the kind follows, for the same reason: a note that says
     // where it belongs is never overruled by where it sits.
     let folder_plugin = placement.plugin.clone();
@@ -1120,7 +1120,7 @@ pub(crate) fn validate_name(value: &str, what: &str, path: &Path) -> Result<(), 
     }
 }
 
-/// The pack a note names for itself, read tolerantly: the `ap-plugin` key
+/// The pack a note names for itself, read tolerantly: the `tc-plugin` key
 /// alone, and `None` for anything that will not parse that far.
 ///
 /// The scan needs this on the failure path, where [`read_source`] gave up
@@ -1196,7 +1196,7 @@ mod tests {
     #[cfg(unix)]
     use crate::vfs::NativeVfs;
 
-    fn ap() -> Namespace {
+    fn tc() -> Namespace {
         Namespace::default()
     }
 
@@ -1214,26 +1214,26 @@ mod tests {
         vfs.write_file(&path, content.as_bytes()).unwrap();
     }
 
-    /// Source frontmatter using the `ap-targets` and `ap-plugin` keys. An empty
+    /// Source frontmatter using the `tc-targets` and `tc-plugin` keys. An empty
     /// target list here means "omit the key".
     fn source(name: &str, targets: &[&str], plugin: Option<&str>) -> String {
         let mut out =
             format!("---\nname: {name}\ndescription: Use this skill to test {name} exports.\n");
         if !targets.is_empty() {
-            out.push_str("ap-targets:\n");
+            out.push_str("tc-targets:\n");
             for target in targets {
                 out.push_str(&format!("  - {target}\n"));
             }
         }
         if let Some(plugin) = plugin {
-            out.push_str(&format!("ap-plugin: {plugin}\n"));
+            out.push_str(&format!("tc-plugin: {plugin}\n"));
         }
         out.push_str("---\n\n# Body\n");
         out
     }
 
     fn scan(vfs: &dyn Vfs) -> Result<DiscoveryReport, CoreError> {
-        discover_components(vfs, Path::new("/vault"), None, &ap())
+        discover_components(vfs, Path::new("/vault"), None, &tc())
     }
 
     /// The per-note assertions' shorthand: a scan that skipped anything reads
@@ -1324,7 +1324,7 @@ mod tests {
         write(
             &vfs,
             "marketplaces/house/plugins/tools/skills/workflow-checklist/workflow-checklist.md",
-            "---\nname: workflow-checklist\ndescription: A fixture skill for testing bundle export.\nap-targets:\n  - codex\n  - claude\n---\n\n# Workflow Checklist\n\n![[references/steps]]\n",
+            "---\nname: workflow-checklist\ndescription: A fixture skill for testing bundle export.\ntc-targets:\n  - codex\n  - claude\n---\n\n# Workflow Checklist\n\n![[references/steps]]\n",
         );
         write(
             &vfs,
@@ -1404,7 +1404,7 @@ mod tests {
         );
         assert!(found.iter().all(|s| s.bundle_root.is_none()));
         assert!(found.iter().all(|s| s.folder_plugin.is_none()));
-        // Absent `ap-targets` stays absent — every destination, decided by
+        // Absent `tc-targets` stays absent — every destination, decided by
         // the caller that knows what "every" means, not expanded here.
         assert_eq!(found[1].targets, None);
     }
@@ -1557,7 +1557,7 @@ mod tests {
         assert!(by("release-notes").resources.is_empty());
     }
     /// The kind folder above a note names it, at whatever level it sits, and
-    /// `ap-kind` still outranks the folder.
+    /// `tc-kind` still outranks the folder.
     #[test]
     fn the_kind_folder_above_a_note_names_it_and_the_note_may_overrule() {
         let vfs = vault();
@@ -1581,7 +1581,7 @@ mod tests {
         write(
             &vfs,
             "marketplaces/house/plugins/onboarding/onboarding.md",
-            "---\nname: onboarding\ndescription: d\nap-kind: skill\n---\nb\n",
+            "---\nname: onboarding\ndescription: d\ntc-kind: skill\n---\nb\n",
         );
         let found = discover(&vfs).unwrap();
         assert_eq!(found[0].kind, EntityKind::Skill);
@@ -1594,7 +1594,7 @@ mod tests {
     }
 
     /// AC-1 and AC-2: `hooks/` names what it holds, so a hook note needs no
-    /// `ap-kind`; a note that declares one anyway is read the same way, and
+    /// `tc-kind`; a note that declares one anyway is read the same way, and
     /// says which layer answered.
     #[test]
     fn a_hooks_folder_names_a_hook_and_the_note_need_not() {
@@ -1616,7 +1616,7 @@ mod tests {
         write(
             &vfs,
             "marketplaces/house/plugins/core/hooks/lint-on-write.md",
-            "---\nname: lint-on-write\ndescription: d\nap-kind: hook\nevent: PreToolUse\n---\njust lint\n",
+            "---\nname: lint-on-write\ndescription: d\ntc-kind: hook\nevent: PreToolUse\n---\njust lint\n",
         );
         let found = discover(&vfs).unwrap();
         let hook = found.iter().find(|c| c.name == "lint-on-write").unwrap();
@@ -1632,7 +1632,7 @@ mod tests {
         write(
             &vfs,
             "marketplaces/house/plugins/core/skills/odd-hook.md",
-            "---\nname: odd-hook\ndescription: d\nap-kind: hook\nevent: Stop\n---\njust go\n",
+            "---\nname: odd-hook\ndescription: d\ntc-kind: hook\nevent: Stop\n---\njust go\n",
         );
         let found = discover(&vfs).unwrap();
         let hook = found.iter().find(|c| c.name == "odd-hook").unwrap();
@@ -1654,13 +1654,13 @@ mod tests {
         write(
             &vfs,
             "marketplaces/house/plugins/alpha/skills/checklist.md",
-            "---\nname: checklist\ndescription: d\nap-plugin: core\n---\nb\n",
+            "---\nname: checklist\ndescription: d\ntc-plugin: core\n---\nb\n",
         );
         // A command folder holding a note that says it is a skill.
         write(
             &vfs,
             "marketplaces/house/plugins/alpha/commands/oddity.md",
-            "---\nname: oddity\ndescription: d\nap-kind: skill\n---\nb\n",
+            "---\nname: oddity\ndescription: d\ntc-kind: skill\n---\nb\n",
         );
 
         let found = discover(&vfs).unwrap();
@@ -1780,7 +1780,7 @@ mod tests {
         write(
             &vfs,
             "marketplaces/house/skills/typo.md",
-            "---\nname: typo\ndescription: d\nap-kind: skil\n---\nb\n",
+            "---\nname: typo\ndescription: d\ntc-kind: skil\n---\nb\n",
         );
         let err = discover(&vfs).unwrap_err().to_string();
         assert!(err.contains("unknown-kind"), "{err}");
@@ -2008,7 +2008,7 @@ mod tests {
         write(
             &vfs,
             "marketplaces/house/skills/aimed.md",
-            "---\nname: aimed\ndescription: d\nap-targets: [nowhere]\n---\nb\n",
+            "---\nname: aimed\ndescription: d\ntc-targets: [nowhere]\n---\nb\n",
         );
 
         let report = scan(&vfs).unwrap();
@@ -2031,14 +2031,14 @@ mod tests {
 
         assert_eq!(report.skipped[0].plugin.as_deref(), Some("tools"));
 
-        // The note's own `ap-plugin` outranks it, and reaches a pack whose
+        // The note's own `tc-plugin` outranks it, and reaches a pack whose
         // folder does not hold the note at all. Without this a pack ships a
         // silent subset over a member nobody can read.
         let vfs = vault();
         write(
             &vfs,
             "marketplaces/house/skills/draft.md",
-            "---\nname: Not A Legal Name\ndescription: d\nap-plugin: tools\n---\nb\n",
+            "---\nname: Not A Legal Name\ndescription: d\ntc-plugin: tools\n---\nb\n",
         );
 
         let report = scan(&vfs).unwrap();
@@ -2175,7 +2175,7 @@ mod tests {
     #[test]
     fn targets_keep_the_cores_three_outcomes() {
         // Absent means every destination and empty means nowhere — the core's
-        // `ap-targets` contract. A scalar is refused, never comma-split.
+        // `tc-targets` contract. A scalar is refused, never comma-split.
         let vfs = vault();
         write(
             &vfs,
@@ -2185,7 +2185,7 @@ mod tests {
         write(
             &vfs,
             "marketplaces/house/skills/mute.md",
-            "---\nname: mute\ndescription: d\nap-targets: []\n---\nb\n",
+            "---\nname: mute\ndescription: d\ntc-targets: []\n---\nb\n",
         );
         let found = discover(&vfs).unwrap();
         assert_eq!(found[0].targets, None);
@@ -2195,7 +2195,7 @@ mod tests {
         write(
             &vfs,
             "marketplaces/house/skills/scalar.md",
-            "---\nname: scalar\ndescription: d\nap-targets: codex, claude\n---\nb\n",
+            "---\nname: scalar\ndescription: d\ntc-targets: codex, claude\n---\nb\n",
         );
         let err = discover(&vfs).unwrap_err().to_string();
         assert!(err.contains("must be a list"), "{err}");
@@ -2208,7 +2208,7 @@ mod tests {
         write(
             &vfs,
             "marketplaces/house/skills/x.md",
-            "---\nname: x\ndescription: d\nap-plugin: Bad Name\n---\nb\n",
+            "---\nname: x\ndescription: d\ntc-plugin: Bad Name\n---\nb\n",
         );
         let err = discover(&vfs).unwrap_err().to_string();
         assert!(err.contains("plugin name"), "{err}");
@@ -2239,7 +2239,7 @@ mod tests {
         write(
             &vfs,
             "marketplaces/house/skills/x.md",
-            "---\nname: x\ndescription: d\nap-plugin: \"\"\n---\nb\n",
+            "---\nname: x\ndescription: d\ntc-plugin: \"\"\n---\nb\n",
         );
         assert!(discover(&vfs).is_err());
     }
@@ -2355,7 +2355,7 @@ mod tests {
             &vfs,
             Path::new("/vault"),
             Some(Path::new("/vault/elsewhere")),
-            &ap(),
+            &tc(),
         )
         .unwrap()
         .components;
@@ -2370,7 +2370,7 @@ mod tests {
             &vfs,
             Path::new("/vault"),
             Some(Path::new("/vault/absent")),
-            &ap(),
+            &tc(),
         )
         .unwrap_err();
         assert!(matches!(err, CoreError::RootNotFound(_)), "{err}");

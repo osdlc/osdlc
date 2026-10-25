@@ -75,12 +75,12 @@
 //! first file, so a skill whose third resource escapes leaves the first two
 //! unwritten.
 //!
-//! # `ap-targets` narrows publication, and it is not a per-file outcome
+//! # `tc-targets` narrows publication, and it is not a per-file outcome
 //!
 //! The publish spec gives the key three readings, and
 //! two of them stop a publish:
 //!
-//! | `ap-targets` | This destination |
+//! | `tc-targets` | This destination |
 //! |---|---|
 //! | absent | published — every destination, the ordinary vault |
 //! | present, naming it | published |
@@ -130,7 +130,7 @@
 //! branch inside the writer: it runs `publish_onto`, the ordinary path,
 //! against a [`crate::vfs::PreviewVfs`] wrapped around the caller's own
 //! filesystem. Reads fall through to the real tree; writes land in memory. The
-//! rail, the kind check, `ap-targets`, [`PublishReport::not_published`], the
+//! rail, the kind check, `tc-targets`, [`PublishReport::not_published`], the
 //! projection and the byte-and-execute-bit comparison are the same
 //! instructions in both modes, over different bytes.
 //!
@@ -214,11 +214,11 @@ pub struct PublishRequest {
     /// this tree: passing `/vault/skills` here would shrink protection to
     /// that subtree and make the real vault root a publishable ancestor.
     ///
-    /// Absent means "no structural layer" — the note's own `ap-kind`, or the
+    /// Absent means "no structural layer" — the note's own `tc-kind`, or the
     /// default, decides, and the rail falls back to the note's own directory
     /// with the wider ancestor refusal. A caller that has the vault root
     /// should pass it: a command sitting in `commands/` and
-    /// declaring no `ap-kind` is a skill to a gate that only reads
+    /// declaring no `tc-kind` is a skill to a gate that only reads
     /// frontmatter, and publishing it writes a `SKILL.md` for something that
     /// is not a skill.
     #[serde(default)]
@@ -311,7 +311,7 @@ pub enum ReasonToken {
     PathCollision,
     /// A targets key, or a request, names a target this build does not know.
     UnknownTarget,
-    /// An `ap-overrides` block names a key the receiving harness does not
+    /// An `tc-overrides` block names a key the receiving harness does not
     /// read. Its own token rather than `unknown-target`: the destination is
     /// fine and the key is not, and a reader has to be told which.
     UnknownOverrideKey,
@@ -329,7 +329,7 @@ pub enum ReasonToken {
     /// [`ReasonToken::REFUSALS`]; a `written` or `unchanged` line needs a way
     /// to say this, and it is a reason like any other.
     Claimed,
-    /// Not a refusal either: an `ap-overrides` key said what the projection
+    /// Not a refusal either: an `tc-overrides` key said what the projection
     /// already writes, so the file published unchanged and the author has a
     /// key they can delete.
     RedundantOverride,
@@ -537,7 +537,7 @@ pub struct PublishedFile {
 pub struct PublishReport {
     /// Every file considered, in path order.
     pub files: Vec<PublishedFile>,
-    /// Why there are no files: set exactly when `ap-targets` excluded this
+    /// Why there are no files: set exactly when `tc-targets` excluded this
     /// destination, and `None` on every other report.
     ///
     /// Prose, not one of the publish spec's reason tokens. Those
@@ -559,7 +559,7 @@ pub struct PublishReport {
     /// empty, so the ordinary report is the shape it always was.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub not_carried: Vec<String>,
-    /// `ap-overrides` keys this destination's render already wrote, each as
+    /// `tc-overrides` keys this destination's render already wrote, each as
     /// its own reason line.
     ///
     /// A diagnostic that travels with the report and never blocks a write:
@@ -586,7 +586,7 @@ pub struct PublishReport {
 /// # One namespace, both halves of the strip
 ///
 /// `ns` is this vault's frontmatter namespace ([`Namespace::default`] is the
-/// documented `ap`), and it is handed to *both* the read and the emit below —
+/// documented `tc`), and it is handed to *both* the read and the emit below —
 /// one parameter, not two: the read decides which keys never become
 /// `annotations`, the emit decides which `annotations` never reach disk, and
 /// the two answering differently is how a configured vault publishes its own
@@ -599,7 +599,7 @@ pub struct PublishReport {
 ///   and [`EntityKind::Plugin`]. Nothing is read past, projected, or written.
 /// * `refused: unknown-target` never reaches here — it is a blocker, so it
 ///   comes back *inside* the report, stamped on every projected file.
-/// * A destination the note's `ap-targets` excludes is `Ok` with an empty
+/// * A destination the note's `tc-targets` excludes is `Ok` with an empty
 ///   report and [`PublishReport::not_published`] set. See the module doc.
 pub fn publish_skill(
     vfs: &dyn Vfs,
@@ -828,7 +828,7 @@ fn publish_onto(
     )
 }
 
-/// The half every kind shares: the rail, the `ap-targets` narrowing, the
+/// The half every kind shares: the rail, the `tc-targets` narrowing, the
 /// manifest, and the write.
 ///
 /// One function rather than a step repeated per kind, because these are the
@@ -885,7 +885,7 @@ fn finish(
         Err(other) => return Err(other),
     }
 
-    // `ap-targets`, applied here so no caller can forget to.
+    // `tc-targets`, applied here so no caller can forget to.
     match publishes_to(frontmatter, &request.skill_path, &request.target, ns) {
         Ok(true) => {}
         Ok(false) => {
@@ -980,7 +980,7 @@ fn no_renderer_for(
     ns: &Namespace,
 ) -> CoreError {
     // Name the layer that actually decided, not the key. Quoting
-    // `ap-kind: command` at a note whose frontmatter never mentions `ap-kind`
+    // `tc-kind: command` at a note whose frontmatter never mentions `tc-kind`
     // sends its author to look for a line that is not there.
     let because = match source {
         KindSource::Frontmatter => format!("`{}: {}`", ns.key("kind"), kind.as_str()),
@@ -1425,10 +1425,10 @@ pub const PLUGIN_HOOKS_PATH: &str = "hooks/hooks.json";
 ///
 /// The members come from the vault scan rather than from the note's body,
 /// which is the same rule the build follows: a component's plugin is decided
-/// by the folder holding it and overruled by `ap-plugin`, so the pack's roster
+/// by the folder holding it and overruled by `tc-plugin`, so the pack's roster
 /// is a fact about the vault rather than a list the author maintains twice.
 ///
-/// A member narrowed away by its own `ap-targets` is absent from the pack
+/// A member narrowed away by its own `tc-targets` is absent from the pack
 /// here, exactly as it is absent from a build's root — the narrowing is the
 /// member's, and a pack does not override it.
 fn project_plugin(
@@ -1455,7 +1455,7 @@ fn project_plugin(
     // problem, and a shared vault always holds one. A note this pack holds
     // is: the publish spec forbids installing a subset silently, so a member the scan
     // could not read stops the pack rather than shrinking it. Membership is
-    // the note's own `ap-plugin` first and its folder second, the ranking a
+    // the note's own `tc-plugin` first and its folder second, the ranking a
     // readable member follows.
     let blocked: Vec<&str> = scan
         .skipped
@@ -1510,7 +1510,7 @@ fn project_plugin(
             "empty-plugin",
             format!(
                 "`{plugin_name}` has no member this destination admits — every member is either \
-                 absent or narrowed away by its own `ap-targets`"
+                 absent or narrowed away by its own `tc-targets`"
             ),
         ));
     }
@@ -1729,7 +1729,7 @@ fn overrides_from(identity: &ContainerIdentity) -> PluginOverrides {
     }
 }
 
-/// Does this member's `ap-targets` admit the destination being published to?
+/// Does this member's `tc-targets` admit the destination being published to?
 ///
 /// The same three readings [`publishes_to`] applies to a standalone publish —
 /// absent is every destination, empty is none — spelled over a discovered
@@ -1746,7 +1746,7 @@ fn admits_target(member: &DiscoveredComponent, canonical: &str) -> bool {
 
 /// Every skill the scan found, for a publish's calls. `namespaced` keeps each
 /// skill's plugin, as a pack's calls need; without it every call is bare. A
-/// skill counts as shipped when its `ap-targets` admit `canonical`; whether
+/// skill counts as shipped when its `tc-targets` admit `canonical`; whether
 /// its plugin is ever published there is beyond what one publish can see.
 fn publish_skill_index(
     components: &[DiscoveredComponent],
@@ -1886,7 +1886,7 @@ fn refuse_all(files: &[ProjectedFile], reason: &PublishReason) -> PublishReport 
 
 /// Does this note publish to `target`?
 ///
-/// `ap-targets`' three readings as one predicate — absent is every
+/// `tc-targets`' three readings as one predicate — absent is every
 /// destination, an empty list is none of them, a populated list is exactly the
 /// ones it names. [`publish_skill`]
 /// asks this itself; it is public so a preflight plan can show the same answer
@@ -1899,7 +1899,7 @@ fn refuse_all(files: &[ProjectedFile], reason: &PublishReason) -> PublishReport 
 /// # Both vocabularies, one answer
 ///
 /// A name is matched on the destination it resolves to, not on its letters, so
-/// `ap-targets: [claude-code]` narrows a publish requested as `claude` — the
+/// `tc-targets: [claude-code]` narrows a publish requested as `claude` — the
 /// same equivalence `runtime_target_for` already grants a caller holding a
 /// runtime name. `portable` stays its own destination even though it renders
 /// through `codex-cli` today: they are two destinations that currently agree,
@@ -1949,7 +1949,7 @@ pub fn publishes_to(
         .any(|name| canonical_target(name).is_some_and(|known| known == wanted)))
 }
 
-/// `ap-overrides`, folded onto canonical destination names and checked
+/// `tc-overrides`, folded onto canonical destination names and checked
 /// against the harness that will receive each block.
 ///
 /// The seam [`publishes_to`] is: a frontmatter reader types the key and this
@@ -1959,7 +1959,7 @@ pub fn publishes_to(
 /// # Two checks, at two scopes
 ///
 /// **Every target name is folded, whichever destination is being published**
-/// — the same rule `ap-targets` follows, and for the same reason: the
+/// — the same rule `tc-targets` follows, and for the same reason: the
 /// destination a typo hurts is never the one in front of you.
 ///
 /// **Only the named target's keys are checked.** A key legal for `claude` and
@@ -2033,7 +2033,7 @@ pub fn overrides_for(
     Ok(folded)
 }
 
-/// What one `ap-overrides` key is, at the destination it was written for.
+/// What one `tc-overrides` key is, at the destination it was written for.
 ///
 /// The read-side vocabulary for the same three answers [`overrides_for`] and
 /// the renderer produce between them: a surface showing a note's blocks needs
@@ -2183,7 +2183,7 @@ fn runtime_id_for_canonical(canonical: &str) -> Option<agent_adapt::RuntimeId> {
     })
 }
 
-/// Every name `ap-targets` and [`PublishRequest::target`] accept, sorted — the
+/// Every name `tc-targets` and [`PublishRequest::target`] accept, sorted — the
 /// list a refusal prints so the fix is on screen.
 ///
 /// the publish spec's four destinations plus the runtime spellings
@@ -2325,10 +2325,10 @@ mod tests {
 
     const NOTE: &str = "---\ndescription: reviews code\nlicense: MIT\n---\nReview the diff.\n";
 
-    /// The default namespace. Everything below runs under `ap` — the vault
+    /// The default namespace. Everything below runs under `tc` — the vault
     /// that configures nothing — except the two tests at the end that are
     /// about configuring it.
-    fn ap() -> Namespace {
+    fn tc() -> Namespace {
         Namespace::default()
     }
 
@@ -2516,7 +2516,7 @@ mod tests {
         let vfs = vault_with_peers();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
 
-        let report = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
 
         assert_eq!(
             statuses(&report),
@@ -2563,21 +2563,21 @@ mod tests {
         )));
     }
 
-    /// Every field the `ap-` namespace owns, on one note.
+    /// Every field the `tc-` namespace owns, on one note.
     const NOTE_WITH_OUR_KEYS: &str = "---\n\
          name: code-review\n\
          description: reviews code\n\
          license: MIT\n\
-         ap-kind: skill\n\
-         ap-targets:\n  - claude\n  - portable\n\
-         ap-plugin: marketplace-group\n\
-         ap-source: /src/code-review\n\
-         ap-format: claude\n\
-         ap-source-hash: \"3f9ab21c\"\n\
-         ap-adopted-hash: \"b17ce004\"\n\
-         ap-adopted-at: \"2026-08-11T09:00:00Z\"\n\
-         ap-also-at:\n  - /elsewhere/code-review\n\
-         ap-not-modeled-yet: whatever\n\
+         tc-kind: skill\n\
+         tc-targets:\n  - claude\n  - portable\n\
+         tc-plugin: marketplace-group\n\
+         tc-source: /src/code-review\n\
+         tc-format: claude\n\
+         tc-source-hash: \"3f9ab21c\"\n\
+         tc-adopted-hash: \"b17ce004\"\n\
+         tc-adopted-at: \"2026-08-11T09:00:00Z\"\n\
+         tc-also-at:\n  - /elsewhere/code-review\n\
+         tc-not-modeled-yet: whatever\n\
          ---\nReview the diff.\n";
 
     /// The same information in the shape the Obsidian plugin may write.
@@ -2585,7 +2585,7 @@ mod tests {
          name: code-review\n\
          description: reviews code\n\
          license: MIT\n\
-         ap:\n\
+         tc:\n\
         \x20 kind: skill\n\
         \x20 targets:\n    - claude\n\
         \x20 plugin: marketplace-group\n\
@@ -2616,7 +2616,7 @@ mod tests {
             .unwrap();
             vfs.create_dir_all(Path::new("/dest")).unwrap();
 
-            publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+            publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
             let text = String::from_utf8(
                 vfs.read_file(Path::new("/dest/.claude/skills/code-review/SKILL.md"))
                     .unwrap(),
@@ -2626,17 +2626,17 @@ mod tests {
             // The strip is the prefix, wholesale — including the key this
             // build does not model, and including the block itself.
             for ours in [
-                "ap-kind",
-                "ap-targets",
-                "ap-plugin",
+                "tc-kind",
+                "tc-targets",
+                "tc-plugin",
                 "marketplace-group",
-                "ap-source",
-                "ap-format",
-                "ap-source-hash",
-                "ap-adopted-hash",
-                "ap-adopted-at",
-                "ap-also-at",
-                "ap-not-modeled-yet",
+                "tc-source",
+                "tc-format",
+                "tc-source-hash",
+                "tc-adopted-hash",
+                "tc-adopted-at",
+                "tc-also-at",
+                "tc-not-modeled-yet",
                 "not-modeled-yet",
                 "3f9ab21c",
                 "b17ce004",
@@ -2648,9 +2648,9 @@ mod tests {
                     "{shape}: `{ours}` reached the destination:\n{text}"
                 );
             }
-            // Not as a bare `ap:` line either.
+            // Not as a bare `tc:` line either.
             assert!(
-                !text.contains("\nap:"),
+                !text.contains("\ntc:"),
                 "{shape}: the block survived:\n{text}"
             );
 
@@ -2675,8 +2675,8 @@ mod tests {
     /// End to end for the same reason as the test above: the read decides what
     /// never becomes an annotation and the emit decides what never reaches
     /// disk, and only the bytes on disk show that both used the same answer.
-    /// A publish that read under `x` and stripped under `ap` would fail this
-    /// twice over — every `x-` key of the author's published, and an `ap-kind`
+    /// A publish that read under `x` and stripped under `tc` would fail this
+    /// twice over — every `x-` key of the author's published, and an `tc-kind`
     /// that was never ours deleted.
     #[test]
     fn a_configured_namespace_is_stripped_and_the_default_prefix_is_left_alone() {
@@ -2691,7 +2691,7 @@ mod tests {
              x-source: /src/code-review\n\
              x-source-hash: \"3f9ab21c\"\n\
              x-not-modeled-yet: whatever\n\
-             ap-kind: somebody-elses-key\n\
+             tc-kind: somebody-elses-key\n\
              ---\nReview the diff.\n"
                 .as_bytes(),
         )
@@ -2720,16 +2720,16 @@ mod tests {
                 "`{ours}` reached the destination:\n{text}"
             );
         }
-        // `ap-` is nobody's namespace in this vault. It is an annotation, and
+        // `tc-` is nobody's namespace in this vault. It is an annotation, and
         // an annotation is carried verbatim.
-        assert!(text.contains("ap-kind"), "{text}");
+        assert!(text.contains("tc-kind"), "{text}");
         assert!(text.contains("somebody-elses-key"), "{text}");
         assert!(text.contains("license: MIT"), "{text}");
         assert!(text.trim_end().ends_with("Review the diff."), "{text}");
     }
 
     /// `x-targets: [claude]` narrows a configured vault's publish the same way
-    /// `ap-targets` narrows the default one — and the refusal names the key
+    /// `tc-targets` narrows the default one — and the refusal names the key
     /// the note actually carries.
     #[test]
     fn a_configured_namespace_narrows_and_refuses_under_its_own_key() {
@@ -2746,13 +2746,13 @@ mod tests {
         assert!(report.files.is_empty());
         let reason = report.not_published.unwrap();
         assert!(reason.contains("`x-targets`"), "{reason}");
-        assert!(!reason.contains("ap-targets"), "{reason}");
+        assert!(!reason.contains("tc-targets"), "{reason}");
 
         // And the same note read under the default namespace publishes
-        // everywhere, because `x-targets` is not a key `ap` claims — which is
+        // everywhere, because `x-targets` is not a key `tc` claims — which is
         // the mis-configuration this parameter makes visible rather than
         // silent.
-        let report = publish_skill(&vfs, &request("/dest", "codex"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &request("/dest", "codex"), &tc()).unwrap();
         assert!(report.not_published.is_none());
         assert!(!report.files.is_empty());
     }
@@ -2761,10 +2761,10 @@ mod tests {
     fn a_second_publish_is_unchanged_and_mutates_nothing() {
         let vfs = vault_with_peers();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
-        publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
 
         let before = snapshot(&vfs, Path::new("/dest"));
-        let report = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
 
         assert!(
             report
@@ -2782,12 +2782,12 @@ mod tests {
         // the bit, so this is not "unchanged".
         let vfs = vault_with_peers();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
-        publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
 
         let script = Path::new("/dest/.claude/skills/code-review/scripts/check.py");
         vfs.set_executable(script, false).unwrap();
 
-        let report = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         let script_line = report
             .files
             .iter()
@@ -2801,14 +2801,14 @@ mod tests {
     fn an_edited_note_rewrites_only_what_changed() {
         let vfs = vault_with_peers();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
-        publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
 
         vfs.write_file(
             Path::new("/vault/skills/code-review/code-review.md"),
             b"---\ndescription: reviews code\nlicense: MIT\n---\nReview the diff twice.\n",
         )
         .unwrap();
-        let report = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
 
         assert_eq!(
             statuses(&report),
@@ -2835,7 +2835,7 @@ mod tests {
         let before = snapshot(&vfs, Path::new("/vault"));
 
         for destination in ["/vault", "/vault/skills", "/vault/skills/code-review"] {
-            let report = publish_skill(&vfs, &request(destination, "claude"), &ap()).unwrap();
+            let report = publish_skill(&vfs, &request(destination, "claude"), &tc()).unwrap();
 
             assert_eq!(statuses(&report).len(), 3, "{destination}");
             for file in &report.files {
@@ -2859,7 +2859,7 @@ mod tests {
             ("antigravity", ".agents/skills/code-review/SKILL.md"),
         ] {
             vfs.create_dir_all(Path::new("/dest")).unwrap();
-            let report = publish_skill(&vfs, &request("/dest", target), &ap()).unwrap();
+            let report = publish_skill(&vfs, &request("/dest", target), &tc()).unwrap();
             assert!(
                 report.files.iter().any(|f| f.path == expected),
                 "{target}: {report:?}"
@@ -2873,7 +2873,7 @@ mod tests {
     fn cursor_publishes_its_own_tree_rather_than_a_neighbours() {
         let vfs = vault_with_peers();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
-        let report = publish_skill(&vfs, &request("/dest", "cursor"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &request("/dest", "cursor"), &tc()).unwrap();
         let paths: Vec<&str> = report.files.iter().map(|f| f.path.as_str()).collect();
         for expected in [
             ".cursor/skills/code-review/SKILL.md",
@@ -2887,7 +2887,7 @@ mod tests {
         assert!(
             paths
                 .iter()
-                .all(|p| p.starts_with(".cursor/skills/") || *p == ".agent-pants/manifest.json"),
+                .all(|p| p.starts_with(".cursor/skills/") || *p == ".tradecraft/manifest.json"),
             "{paths:?}"
         );
     }
@@ -2895,7 +2895,7 @@ mod tests {
     #[test]
     fn an_unknown_target_is_refused_not_skipped() {
         let vfs = vault_with_peers();
-        let err = publish_skill(&vfs, &request("/dest", "emacs"), &ap()).unwrap_err();
+        let err = publish_skill(&vfs, &request("/dest", "emacs"), &tc()).unwrap_err();
         assert!(matches!(err, CoreError::Projection(_)), "{err}");
     }
 
@@ -2911,7 +2911,7 @@ mod tests {
         .unwrap();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
 
-        let err = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap_err();
+        let err = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap_err();
         assert!(err.to_string().contains("description"), "{err}");
         assert!(snapshot(&vfs, Path::new("/dest")).is_empty());
     }
@@ -3034,7 +3034,7 @@ mod tests {
                 mode,
                 ..request.clone()
             };
-            let err = publish_skill(&NativeVfs, &asked, &ap()).unwrap_err();
+            let err = publish_skill(&NativeVfs, &asked, &tc()).unwrap_err();
             let message = err.to_string();
 
             assert!(matches!(err, CoreError::Refused(_)), "{mode:?}: {message}");
@@ -3055,7 +3055,7 @@ mod tests {
         // And with a real directory in place of the link, the same publish
         // lands — so what was refused was the escape, not the layout.
         std::fs::remove_file(dest.join(".claude")).unwrap();
-        let report = publish_skill(&NativeVfs, &request, &ap()).unwrap();
+        let report = publish_skill(&NativeVfs, &request, &tc()).unwrap();
         assert_eq!(statuses(&report).len(), 2, "{report:?}");
         assert!(dest.join(".claude/skills/code-review/SKILL.md").exists());
         assert_eq!(std::fs::read_dir(&outside).unwrap().count(), 0);
@@ -3081,7 +3081,7 @@ mod tests {
         let scanned = crate::CorpusRoot::new("dest", "Destination", "/dest", RootKind::Registered);
         crate::scan::scan_root(&vfs, &scanned, &crate::scan::ScanOptions::default());
 
-        let report = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
 
         assert_eq!(statuses(&report).len(), 3, "{report:?}");
         assert!(
@@ -3112,7 +3112,7 @@ mod tests {
         // it. `/` contains `/vault`, and the writes land under `/.claude/`,
         // disjoint from it.
         let vfs = vault_with_peers();
-        let report = publish_skill(&vfs, &vaulted("/", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &vaulted("/", "claude"), &tc()).unwrap();
         assert!(
             report
                 .files
@@ -3128,7 +3128,7 @@ mod tests {
         // The fallback tree is the note's parent, and the wider ancestor rule
         // still errs toward refusal when the rail cannot see the writes.
         let vfs = vault_with_peers();
-        let report = publish_skill(&vfs, &request("/", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &request("/", "claude"), &tc()).unwrap();
         assert!(
             report
                 .files
@@ -3142,7 +3142,7 @@ mod tests {
     fn the_vault_and_anything_inside_it_are_refused_as_destinations() {
         let vfs = vault_with_peers();
         for dest in ["/vault", "/vault/out"] {
-            let report = publish_skill(&vfs, &vaulted(dest, "claude"), &ap()).unwrap();
+            let report = publish_skill(&vfs, &vaulted(dest, "claude"), &tc()).unwrap();
             assert!(
                 report
                     .files
@@ -3179,7 +3179,7 @@ mod tests {
             published_at: Some("2026-08-29T10:00:00Z".to_owned()),
             overwrite: Vec::new(),
         };
-        let report = publish_skill(&vfs, &asked, &ap()).unwrap();
+        let report = publish_skill(&vfs, &asked, &tc()).unwrap();
         assert!(
             report
                 .files
@@ -3205,7 +3205,7 @@ mod tests {
         // not happen: an ancestor of the vault stays refused even with the
         // vault root on the request.
         let vfs = crate::vfs::LinkBlindVfs(vault_with_peers());
-        let report = publish_skill(&vfs, &vaulted("/", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &vaulted("/", "claude"), &tc()).unwrap();
         assert!(
             report
                 .files
@@ -3247,7 +3247,7 @@ mod tests {
                 published_at: Some("2026-08-29T10:00:00Z".to_owned()),
                 overwrite: Vec::new(),
             };
-            let report = publish_skill(&NativeVfs, &request, &ap()).unwrap();
+            let report = publish_skill(&NativeVfs, &request, &tc()).unwrap();
             assert!(
                 report
                     .files
@@ -3281,7 +3281,7 @@ mod tests {
             published_at: Some("2026-08-29T10:00:00Z".to_owned()),
             overwrite: Vec::new(),
         };
-        let report = publish_skill(&NativeVfs, &request, &ap()).unwrap();
+        let report = publish_skill(&NativeVfs, &request, &tc()).unwrap();
         assert!(
             report
                 .files
@@ -3332,7 +3332,7 @@ mod tests {
             published_at: Some("2026-08-29T10:00:00Z".to_owned()),
             overwrite: Vec::new(),
         };
-        let report = publish_skill(&NativeVfs, &request, &ap()).unwrap();
+        let report = publish_skill(&NativeVfs, &request, &tc()).unwrap();
         assert!(
             report
                 .files
@@ -3347,19 +3347,19 @@ mod tests {
         );
     }
 
-    // --- `ap-targets` ------------------------------------------------------
+    // --- `tc-targets` ------------------------------------------------------
 
-    /// A note declaring `ap-targets: <yaml>`, or none at all for `None`.
+    /// A note declaring `tc-targets: <yaml>`, or none at all for `None`.
     fn note_targeting(yaml: Option<&str>) -> String {
         match yaml {
             Some(list) => format!(
-                "---\ndescription: reviews code\nap-targets: {list}\n---\nReview the diff.\n"
+                "---\ndescription: reviews code\ntc-targets: {list}\n---\nReview the diff.\n"
             ),
             None => NOTE.to_owned(),
         }
     }
 
-    /// A vault whose note carries the given `ap-targets`.
+    /// A vault whose note carries the given `tc-targets`.
     fn vault_targeting(yaml: Option<&str>) -> MemVfs {
         let vfs = vault_with_peers();
         vfs.write_file(
@@ -3376,7 +3376,7 @@ mod tests {
         // The ordinary vault: no key, no narrowing, every destination.
         for target in ["claude", "codex", "portable", "antigravity"] {
             let vfs = vault_targeting(None);
-            let report = publish_skill(&vfs, &request("/dest", target), &ap()).unwrap();
+            let report = publish_skill(&vfs, &request("/dest", target), &tc()).unwrap();
 
             assert_eq!(statuses(&report).len(), 3, "{target}: {report:?}");
             assert!(report.not_published.is_none(), "{target}");
@@ -3396,11 +3396,11 @@ mod tests {
         // absent — read as "all" it would publish where the author said not to.
         for target in ["claude", "codex", "portable", "antigravity"] {
             let vfs = vault_targeting(Some("[]"));
-            let report = publish_skill(&vfs, &request("/dest", target), &ap()).unwrap();
+            let report = publish_skill(&vfs, &request("/dest", target), &tc()).unwrap();
 
             assert!(report.files.is_empty(), "{target}: {report:?}");
             let reason = report.not_published.expect("a reason, not a silent skip");
-            assert!(reason.contains("ap-targets"), "{reason}");
+            assert!(reason.contains("tc-targets"), "{reason}");
             assert!(reason.contains("nowhere"), "{reason}");
             // Not one byte at the destination.
             assert!(snapshot(&vfs, Path::new("/dest")).is_empty(), "{target}");
@@ -3413,7 +3413,7 @@ mod tests {
         // not a fourth per-file status, and not an orphan.
         let vfs = vault_targeting(Some("[claude]"));
 
-        let published = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let published = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         assert_eq!(statuses(&published).len(), 3, "{published:?}");
         assert!(published.not_published.is_none());
         assert!(
@@ -3423,7 +3423,7 @@ mod tests {
 
         let before = snapshot(&vfs, Path::new("/dest"));
         for excluded in ["codex", "portable", "antigravity"] {
-            let report = publish_skill(&vfs, &request("/dest", excluded), &ap()).unwrap();
+            let report = publish_skill(&vfs, &request("/dest", excluded), &tc()).unwrap();
 
             assert!(report.files.is_empty(), "{excluded}: {report:?}");
             let reason = report.not_published.expect("a reason");
@@ -3436,7 +3436,7 @@ mod tests {
 
     #[test]
     fn the_two_spellings_of_one_destination_are_one_destination() {
-        // `ap-targets: [claude-code]` narrows a publish requested as `claude`.
+        // `tc-targets: [claude-code]` narrows a publish requested as `claude`.
         // The decision's own example writes runtime names, `runtime_target_for`
         // accepts both, and a note that had to guess which one the caller would
         // type would be a note that silently stops publishing.
@@ -3447,7 +3447,7 @@ mod tests {
             ("[codex]", "codex-cli"),
         ] {
             let vfs = vault_targeting(Some(declared));
-            let report = publish_skill(&vfs, &request("/dest", requested), &ap()).unwrap();
+            let report = publish_skill(&vfs, &request("/dest", requested), &tc()).unwrap();
             assert_eq!(
                 statuses(&report).len(),
                 3,
@@ -3458,7 +3458,7 @@ mod tests {
         // `portable` is not `codex`, though they render alike today: two
         // destinations that agree by accident, not one destination.
         let vfs = vault_targeting(Some("[portable]"));
-        let report = publish_skill(&vfs, &request("/dest", "codex"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &request("/dest", "codex"), &tc()).unwrap();
         assert!(report.files.is_empty(), "{report:?}");
     }
 
@@ -3473,7 +3473,7 @@ mod tests {
         // Including at the destination the note *does* name — that is what
         // makes the typo visible on the first publish.
         for target in ["claude", "codex"] {
-            let report = publish_skill(&vfs, &request("/dest", target), &ap()).unwrap();
+            let report = publish_skill(&vfs, &request("/dest", target), &tc()).unwrap();
 
             assert_eq!(statuses(&report).len(), 3, "{target}: {report:?}");
             for file in &report.files {
@@ -3503,21 +3503,21 @@ mod tests {
             ..VaultFrontmatter::default()
         };
 
-        assert!(publishes_to(&with(None), path, "claude", &ap()).unwrap());
-        assert!(!publishes_to(&with(Some(vec![])), path, "claude", &ap()).unwrap());
-        assert!(publishes_to(&with(Some(vec!["claude"])), path, "claude", &ap()).unwrap());
-        assert!(!publishes_to(&with(Some(vec!["claude"])), path, "codex", &ap()).unwrap());
+        assert!(publishes_to(&with(None), path, "claude", &tc()).unwrap());
+        assert!(!publishes_to(&with(Some(vec![])), path, "claude", &tc()).unwrap());
+        assert!(publishes_to(&with(Some(vec!["claude"])), path, "claude", &tc()).unwrap());
+        assert!(!publishes_to(&with(Some(vec!["claude"])), path, "codex", &tc()).unwrap());
 
         // Every name the request vocabulary accepts is a name the key accepts.
         for name in KNOWN_TARGETS {
             assert!(
-                publishes_to(&with(Some(vec![name])), path, name, &ap()).unwrap(),
+                publishes_to(&with(Some(vec![name])), path, name, &tc()).unwrap(),
                 "{name}"
             );
         }
 
         let err =
-            publishes_to(&with(Some(vec!["npm-package"])), path, "claude", &ap()).unwrap_err();
+            publishes_to(&with(Some(vec!["npm-package"])), path, "claude", &tc()).unwrap_err();
         assert!(err.to_string().contains("unknown-target"), "{err}");
     }
 
@@ -3560,7 +3560,7 @@ mod tests {
     // block, in a test asserting what reaches a destination.
     const AGENT_NOTE: &str = concat!(
         "---\nname: senior-reviewer\ndescription: Reviews like a staff engineer.\n",
-        "allowed-tools:\n  - Read\n  - Grep\nmodel: opus\nap-kind: agent\n---\n\n",
+        "allowed-tools:\n  - Read\n  - Grep\nmodel: opus\ntc-kind: agent\n---\n\n",
         "You are a senior reviewer. Be specific.\n"
     );
 
@@ -3595,7 +3595,7 @@ mod tests {
     fn an_agent_note_publishes_into_the_agents_layout() {
         let vfs = vault_with_agent();
 
-        let report = publish_skill(&vfs, &agent_request(), &ap()).unwrap();
+        let report = publish_skill(&vfs, &agent_request(), &tc()).unwrap();
 
         assert_eq!(
             statuses(&report),
@@ -3612,7 +3612,7 @@ mod tests {
     #[test]
     fn the_body_becomes_the_system_prompt_and_the_modelled_fields_travel() {
         let vfs = vault_with_agent();
-        publish_skill(&vfs, &agent_request(), &ap()).unwrap();
+        publish_skill(&vfs, &agent_request(), &tc()).unwrap();
 
         let published = text_at(&vfs, "/dest/.claude/agents/senior-reviewer.md");
         assert!(
@@ -3628,7 +3628,7 @@ mod tests {
             "the tools did not travel: {published}"
         );
         // Ours never travels, whatever the kind.
-        assert!(!published.contains("ap-kind"), "{published}");
+        assert!(!published.contains("tc-kind"), "{published}");
     }
 
     // The compile pass is the note's, not the skill's: an agent that embeds a
@@ -3645,11 +3645,11 @@ mod tests {
         .unwrap();
         vfs.write_file(
             Path::new("/vault/skills/senior-reviewer.md"),
-            b"---\nname: senior-reviewer\ndescription: d\nap-kind: agent\n---\n\n![[tone]]\n",
+            b"---\nname: senior-reviewer\ndescription: d\ntc-kind: agent\n---\n\n![[tone]]\n",
         )
         .unwrap();
 
-        publish_skill(&vfs, &agent_request(), &ap()).unwrap();
+        publish_skill(&vfs, &agent_request(), &tc()).unwrap();
 
         let published = text_at(&vfs, "/dest/.claude/agents/senior-reviewer.md");
         assert!(published.contains("Be terse."), "{published}");
@@ -3677,7 +3677,7 @@ mod tests {
 
         let mut request = agent_request();
         request.skill_path = PathBuf::from("/vault/skills/senior-reviewer/senior-reviewer.md");
-        let err = publish_skill(&vfs, &request, &ap()).unwrap_err();
+        let err = publish_skill(&vfs, &request, &tc()).unwrap_err();
 
         let message = err.to_string();
         assert!(message.contains("no-renderer"), "{message}");
@@ -3690,7 +3690,7 @@ mod tests {
     #[test]
     fn an_agent_is_tracked_like_anything_else() {
         let vfs = vault_with_agent();
-        publish_skill(&vfs, &agent_request(), &ap()).unwrap();
+        publish_skill(&vfs, &agent_request(), &tc()).unwrap();
 
         let manifest = manifest_of(&vfs, "/dest");
         let entry = manifest
@@ -3700,7 +3700,7 @@ mod tests {
         assert!(!entry.source_hash.is_empty());
 
         // And a second publish is a no-op, as it is for a skill.
-        let again = publish_skill(&vfs, &agent_request(), &ap()).unwrap();
+        let again = publish_skill(&vfs, &agent_request(), &tc()).unwrap();
         assert!(
             again
                 .files
@@ -3726,7 +3726,7 @@ mod tests {
 
         let mut request = agent_request();
         request.skill_path = PathBuf::from("/vault/plugins/core/agents/triage.md");
-        publish_skill(&vfs, &request, &ap()).unwrap();
+        publish_skill(&vfs, &request, &tc()).unwrap();
 
         assert!(vfs.exists(Path::new("/dest/.claude/agents/triage.md")));
     }
@@ -3735,7 +3735,7 @@ mod tests {
 
     const COMMAND_NOTE: &str = concat!(
         "---\nname: ship\ndescription: Cuts a release.\n",
-        "argument-hint: <version>\nallowed-tools:\n  - Read\nap-kind: command\n---\n\n",
+        "argument-hint: <version>\nallowed-tools:\n  - Read\ntc-kind: command\n---\n\n",
         "Cut the release for $ARGUMENTS.\n"
     );
 
@@ -3764,7 +3764,7 @@ mod tests {
     fn a_command_publishes_into_the_commands_layout() {
         let vfs = vault_with_command();
 
-        let report = publish_skill(&vfs, &command_request("claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &command_request("claude"), &tc()).unwrap();
 
         assert_eq!(
             statuses(&report),
@@ -3777,7 +3777,7 @@ mod tests {
     #[test]
     fn the_argument_hint_finally_reaches_a_destination() {
         let vfs = vault_with_command();
-        publish_skill(&vfs, &command_request("claude"), &ap()).unwrap();
+        publish_skill(&vfs, &command_request("claude"), &tc()).unwrap();
 
         let published = text_at(&vfs, "/dest/.claude/commands/ship.md");
         assert!(published.contains("<version>"), "{published}");
@@ -3785,12 +3785,12 @@ mod tests {
             published.contains("Cut the release for $ARGUMENTS."),
             "{published}"
         );
-        assert!(!published.contains("ap-kind"), "{published}");
+        assert!(!published.contains("tc-kind"), "{published}");
     }
 
     const COMMAND_WITH_ARGUMENTS_NOTE: &str = concat!(
-        "---\nname: ship\ndescription: Cuts a release.\nap-kind: command\n",
-        "ap-arguments:\n  - name: version\n    description: The version to cut.\n    required: true\n",
+        "---\nname: ship\ndescription: Cuts a release.\ntc-kind: command\n",
+        "tc-arguments:\n  - name: version\n    description: The version to cut.\n    required: true\n",
         "  - name: channel\n    values: [stable, beta]\n    default: stable\n",
         "---\n\nCut the release.\n"
     );
@@ -3808,12 +3808,12 @@ mod tests {
     }
 
     // No hand-written `argument-hint`, so publish derives one from
-    // `ap-arguments` — never written back into the note, only into what is
+    // `tc-arguments` — never written back into the note, only into what is
     // published — and renders the body section beside it.
     #[test]
     fn an_absent_hint_is_derived_from_arguments_and_the_section_is_rendered() {
         let vfs = vault_with_command_arguments();
-        publish_skill(&vfs, &command_request("claude"), &ap()).unwrap();
+        publish_skill(&vfs, &command_request("claude"), &tc()).unwrap();
 
         let published = text_at(&vfs, "/dest/.claude/commands/ship.md");
         assert!(
@@ -3835,7 +3835,7 @@ mod tests {
             published.contains("- `channel` (optional, one of `stable`, `beta`, default `stable`)"),
             "{published}"
         );
-        assert!(!published.contains("ap-arguments"), "{published}");
+        assert!(!published.contains("tc-arguments"), "{published}");
 
         // The vault note itself is untouched — the hint and the section are
         // derived at publish time, never written back.
@@ -3851,9 +3851,9 @@ mod tests {
         vfs.write_file(
             Path::new("/vault/skills/ship.md"),
             concat!(
-                "---\nname: ship\ndescription: Cuts a release.\nap-kind: command\n",
+                "---\nname: ship\ndescription: Cuts a release.\ntc-kind: command\n",
                 "argument-hint: <handwritten>\n",
-                "ap-arguments:\n  - name: version\n",
+                "tc-arguments:\n  - name: version\n",
                 "---\n\nCut the release.\n"
             )
             .as_bytes(),
@@ -3861,7 +3861,7 @@ mod tests {
         .unwrap();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
 
-        publish_skill(&vfs, &command_request("claude"), &ap()).unwrap();
+        publish_skill(&vfs, &command_request("claude"), &tc()).unwrap();
 
         let published = text_at(&vfs, "/dest/.claude/commands/ship.md");
         assert!(
@@ -3881,9 +3881,9 @@ mod tests {
         vfs.write_file(
             Path::new("/vault/skills/ship.md"),
             concat!(
-                "---\nname: ship\ndescription: Cuts a release.\nap-kind: command\n",
+                "---\nname: ship\ndescription: Cuts a release.\ntc-kind: command\n",
                 "arguments: [handwritten]\n",
-                "ap-arguments:\n  - name: version\n",
+                "tc-arguments:\n  - name: version\n",
                 "---\n\nCut the release.\n"
             )
             .as_bytes(),
@@ -3891,7 +3891,7 @@ mod tests {
         .unwrap();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
 
-        publish_skill(&vfs, &command_request("claude"), &ap()).unwrap();
+        publish_skill(&vfs, &command_request("claude"), &tc()).unwrap();
 
         let published = text_at(&vfs, "/dest/.claude/commands/ship.md");
         assert!(
@@ -3918,7 +3918,7 @@ mod tests {
             Path::new("/vault/skills/review.md"),
             concat!(
                 "---\nname: review\ndescription: Reviews a PR.\n",
-                "ap-arguments:\n  - name: pr-number\n    required: true\n",
+                "tc-arguments:\n  - name: pr-number\n    required: true\n",
                 "---\n\nReview it.\n"
             )
             .as_bytes(),
@@ -3935,7 +3935,7 @@ mod tests {
             published_at: Some("2026-08-29T10:00:00Z".to_owned()),
             overwrite: Vec::new(),
         };
-        publish_skill(&vfs, &request, &ap()).unwrap();
+        publish_skill(&vfs, &request, &tc()).unwrap();
 
         let published = text_at(&vfs, "/dest/.claude/skills/review/SKILL.md");
         assert!(
@@ -3960,7 +3960,7 @@ mod tests {
         let vfs = vault_with_command();
 
         for target in ["amp", "cursor"] {
-            let err = publish_skill(&vfs, &command_request(target), &ap()).unwrap_err();
+            let err = publish_skill(&vfs, &command_request(target), &tc()).unwrap_err();
             let message = err.to_string();
             assert!(message.contains(target), "{target}: {message}");
         }
@@ -3980,21 +3980,21 @@ mod tests {
         ];
         for (target, expected_path) in cases {
             let vfs = vault_with_command();
-            let report = publish_skill(&vfs, &command_request(target), &ap()).unwrap();
+            let report = publish_skill(&vfs, &command_request(target), &tc()).unwrap();
             assert_eq!(
                 statuses(&report),
                 vec![(expected_path, PublishStatus::Written)],
                 "{target}"
             );
             let published = text_at(&vfs, &format!("/dest/{expected_path}"));
-            assert!(!published.contains("ap-kind"), "{target}: {published}");
+            assert!(!published.contains("tc-kind"), "{target}: {published}");
         }
     }
 
     #[test]
     fn codex_keeps_description_and_hint_but_no_name_model_or_tools() {
         let vfs = vault_with_command();
-        publish_skill(&vfs, &command_request("codex"), &ap()).unwrap();
+        publish_skill(&vfs, &command_request("codex"), &tc()).unwrap();
         let published = text_at(&vfs, "/dest/.codex/prompts/ship.md");
         assert!(
             published.contains("description: Cuts a release."),
@@ -4021,7 +4021,7 @@ mod tests {
             Path::new("/vault/skills/ship.md"),
             concat!(
                 "---\nname: ship\ndescription: Cuts a release.\nmodel: anthropic/claude\n",
-                "argument-hint: <version>\nallowed-tools:\n  - Read\nap-kind: command\n---\n\n",
+                "argument-hint: <version>\nallowed-tools:\n  - Read\ntc-kind: command\n---\n\n",
                 "Cut the release for $ARGUMENTS.\n"
             )
             .as_bytes(),
@@ -4029,7 +4029,7 @@ mod tests {
         .unwrap();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
 
-        publish_skill(&vfs, &command_request("opencode"), &ap()).unwrap();
+        publish_skill(&vfs, &command_request("opencode"), &tc()).unwrap();
         let published = text_at(&vfs, "/dest/.opencode/commands/ship.md");
         assert!(
             published.contains("description: Cuts a release."),
@@ -4044,7 +4044,7 @@ mod tests {
     #[test]
     fn copilot_keeps_every_documented_key_under_its_own_tools_name() {
         let vfs = vault_with_command();
-        publish_skill(&vfs, &command_request("copilot"), &ap()).unwrap();
+        publish_skill(&vfs, &command_request("copilot"), &tc()).unwrap();
         let published = text_at(&vfs, "/dest/.github/prompts/ship.prompt.md");
         assert!(published.contains("name: ship"), "{published}");
         assert!(
@@ -4060,25 +4060,25 @@ mod tests {
     }
 
     #[test]
-    fn ap_targets_narrows_a_command_the_same_way_it_narrows_a_skill() {
+    fn tc_targets_narrows_a_command_the_same_way_it_narrows_a_skill() {
         let vfs = MemVfs::new();
         vfs.create_dir_all(Path::new("/vault/skills")).unwrap();
         vfs.write_file(
             Path::new("/vault/skills/ship.md"),
             concat!(
-                "---\nname: ship\ndescription: Cuts a release.\nap-kind: command\n",
-                "ap-targets: [copilot]\n---\n\nCut the release.\n"
+                "---\nname: ship\ndescription: Cuts a release.\ntc-kind: command\n",
+                "tc-targets: [copilot]\n---\n\nCut the release.\n"
             )
             .as_bytes(),
         )
         .unwrap();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
 
-        let excluded = publish_skill(&vfs, &command_request("codex"), &ap()).unwrap();
+        let excluded = publish_skill(&vfs, &command_request("codex"), &tc()).unwrap();
         assert!(excluded.files.is_empty());
         assert!(excluded.not_published.is_some());
 
-        let admitted = publish_skill(&vfs, &command_request("copilot"), &ap()).unwrap();
+        let admitted = publish_skill(&vfs, &command_request("copilot"), &tc()).unwrap();
         assert_eq!(
             statuses(&admitted),
             vec![(".github/prompts/ship.prompt.md", PublishStatus::Written)]
@@ -4104,14 +4104,14 @@ mod tests {
 
         let mut request = command_request("claude");
         request.skill_path = PathBuf::from("/vault/skills/ship/ship.md");
-        let err = publish_skill(&vfs, &request, &ap()).unwrap_err();
+        let err = publish_skill(&vfs, &request, &tc()).unwrap_err();
 
         let message = err.to_string();
         assert!(message.contains("no-renderer"), "{message}");
         assert!(message.contains("scripts/tag.sh"), "{message}");
     }
 
-    // A command in a `commands/` folder needs no `ap-kind`, and is tracked
+    // A command in a `commands/` folder needs no `tc-kind`, and is tracked
     // like anything else.
     #[test]
     fn a_note_in_a_commands_folder_publishes_and_is_tracked() {
@@ -4127,7 +4127,7 @@ mod tests {
 
         let mut request = command_request("claude");
         request.skill_path = PathBuf::from("/vault/plugins/core/commands/ship.md");
-        publish_skill(&vfs, &request, &ap()).unwrap();
+        publish_skill(&vfs, &request, &tc()).unwrap();
 
         assert!(vfs.exists(Path::new("/dest/.claude/commands/ship.md")));
         let entry = manifest_of(&vfs, "/dest")
@@ -4149,7 +4149,7 @@ mod tests {
             .unwrap();
         vfs.write_file(
             Path::new(&format!("{base}/git-tools.md")),
-            b"---\nname: git-tools\ndescription: Git helpers.\nap-kind: plugin\nap-version: 2.1.0\nap-license: MIT\n---\n\nThe pack.\n",
+            b"---\nname: git-tools\ndescription: Git helpers.\ntc-kind: plugin\ntc-version: 2.1.0\ntc-license: MIT\n---\n\nThe pack.\n",
         )
         .unwrap();
         vfs.write_file(
@@ -4159,7 +4159,7 @@ mod tests {
         .unwrap();
         vfs.write_file(
             Path::new(&format!("{base}/skills/rebase-guide.md")),
-            b"---\nname: rebase-guide\ndescription: Rebases.\nap-targets:\n  - claude\n---\n\nRebase well.\n",
+            b"---\nname: rebase-guide\ndescription: Rebases.\ntc-targets:\n  - claude\n---\n\nRebase well.\n",
         )
         .unwrap();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
@@ -4185,7 +4185,7 @@ mod tests {
     fn a_plugin_publishes_its_members_and_its_pack_manifest() {
         let vfs = vault_with_plugin();
 
-        let report = publish_skill(&vfs, &plugin_request("claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &plugin_request("claude"), &tc()).unwrap();
 
         assert_eq!(
             statuses(&report),
@@ -4219,7 +4219,7 @@ mod tests {
         )
         .unwrap();
 
-        let report = publish_skill(&vfs, &plugin_request("claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &plugin_request("claude"), &tc()).unwrap();
 
         assert_eq!(
             statuses(&report),
@@ -4252,7 +4252,7 @@ mod tests {
         )
         .unwrap();
 
-        let err = publish_skill(&vfs, &plugin_request("claude"), &ap()).unwrap_err();
+        let err = publish_skill(&vfs, &plugin_request("claude"), &tc()).unwrap_err();
 
         let message = err.to_string();
         assert!(message.contains("unreadable-note"), "{message}");
@@ -4260,7 +4260,7 @@ mod tests {
     }
 
     // The same rule over a member that named this pack from outside its
-    // folder. `ap-plugin` decides membership for a readable note, so it has
+    // folder. `tc-plugin` decides membership for a readable note, so it has
     // to decide it for one the scan could not read too — otherwise the pack
     // ships without a member and says nothing.
     #[test]
@@ -4270,25 +4270,25 @@ mod tests {
             .unwrap();
         vfs.write_file(
             Path::new("/vault/marketplaces/house/skills/draft.md"),
-            b"---\nname: Not A Legal Name\ndescription: A draft.\nap-plugin: git-tools\n---\n\nHalf written.\n",
+            b"---\nname: Not A Legal Name\ndescription: A draft.\ntc-plugin: git-tools\n---\n\nHalf written.\n",
         )
         .unwrap();
 
-        let err = publish_skill(&vfs, &plugin_request("claude"), &ap()).unwrap_err();
+        let err = publish_skill(&vfs, &plugin_request("claude"), &tc()).unwrap_err();
 
         let message = err.to_string();
         assert!(message.contains("unreadable-note"), "{message}");
         assert!(message.contains("skills/draft.md"), "{message}");
     }
 
-    // A member's own `ap-targets` narrows it, and a pack does not override
+    // A member's own `tc-targets` narrows it, and a pack does not override
     // that: `rebase-guide` lists claude only, so codex gets the other member
     // and no mention of it.
     #[test]
     fn a_member_narrowed_away_by_its_own_targets_is_absent_from_the_pack() {
         let vfs = vault_with_plugin();
 
-        let report = publish_skill(&vfs, &plugin_request("codex"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &plugin_request("codex"), &tc()).unwrap();
 
         let paths: Vec<&str> = statuses(&report).into_iter().map(|(p, _)| p).collect();
         assert!(
@@ -4311,7 +4311,7 @@ mod tests {
     #[test]
     fn the_pack_manifest_reads_the_plugin_notes_own_identity() {
         let vfs = vault_with_plugin();
-        publish_skill(&vfs, &plugin_request("claude"), &ap()).unwrap();
+        publish_skill(&vfs, &plugin_request("claude"), &tc()).unwrap();
 
         let manifest = text_at(
             &vfs,
@@ -4332,7 +4332,7 @@ mod tests {
         request.skill_path =
             PathBuf::from("/vault/marketplaces/house/plugins/git-tools/skills/commit-helper.md");
 
-        let report = publish_skill(&vfs, &request, &ap()).unwrap();
+        let report = publish_skill(&vfs, &request, &tc()).unwrap();
 
         assert_eq!(
             statuses(&report),
@@ -4371,7 +4371,7 @@ mod tests {
     #[test]
     fn a_standalone_call_renders_without_a_namespace_and_is_recorded() {
         let vfs = vault_with_commit_body("Then run /[[rebase-guide]].\n");
-        publish_skill(&vfs, &commit_helper_request("claude"), &ap()).unwrap();
+        publish_skill(&vfs, &commit_helper_request("claude"), &tc()).unwrap();
 
         let body = text_at(&vfs, "/dest/.claude/skills/commit-helper/SKILL.md");
         assert!(body.contains("Then run `/rebase-guide`."), "{body}");
@@ -4385,7 +4385,7 @@ mod tests {
     #[test]
     fn a_pack_call_names_the_skill_under_its_plugin() {
         let vfs = vault_with_commit_body("Then run /[[rebase-guide]].\n");
-        publish_skill(&vfs, &plugin_request("claude"), &ap()).unwrap();
+        publish_skill(&vfs, &plugin_request("claude"), &tc()).unwrap();
 
         let path = ".claude/skills/git-tools/skills/commit-helper/SKILL.md";
         let body = text_at(&vfs, &format!("/dest/{path}"));
@@ -4404,7 +4404,7 @@ mod tests {
     fn a_call_to_a_skill_the_destination_does_not_take_is_refused() {
         let vfs = vault_with_commit_body("Then run /[[rebase-guide]].\n");
         for request in [commit_helper_request("codex"), plugin_request("codex")] {
-            let err = publish_skill(&vfs, &request, &ap())
+            let err = publish_skill(&vfs, &request, &tc())
                 .unwrap_err()
                 .to_string();
             assert!(err.contains("skill-call-not-shipped"), "{err}");
@@ -4431,16 +4431,16 @@ mod tests {
 
         let vfs = vault_with_plugin();
         with_dup(&vfs);
-        publish_skill(&vfs, &commit_helper_request("claude"), &ap()).unwrap();
+        publish_skill(&vfs, &commit_helper_request("claude"), &tc()).unwrap();
 
         // A plain link is read as a call only when the index can be built.
         let vfs = vault_with_commit_body("See [[rebase-guide]]. Also [[nowhere]].\n");
         with_dup(&vfs);
-        publish_skill(&vfs, &commit_helper_request("claude"), &ap()).unwrap();
+        publish_skill(&vfs, &commit_helper_request("claude"), &tc()).unwrap();
 
         let vfs = vault_with_commit_body("Then run /[[rebase-guide]].\n");
         with_dup(&vfs);
-        let err = publish_skill(&vfs, &commit_helper_request("claude"), &ap())
+        let err = publish_skill(&vfs, &commit_helper_request("claude"), &tc())
             .unwrap_err()
             .to_string();
         assert!(err.contains("dup"), "{err}");
@@ -4451,7 +4451,7 @@ mod tests {
     #[test]
     fn a_packs_rows_name_the_member_that_produced_each_file() {
         let vfs = vault_with_plugin();
-        publish_skill(&vfs, &plugin_request("claude"), &ap()).unwrap();
+        publish_skill(&vfs, &plugin_request("claude"), &tc()).unwrap();
 
         let manifest = manifest_of(&vfs, "/dest");
         let member = manifest
@@ -4474,7 +4474,7 @@ mod tests {
         );
 
         // And a second publish is a no-op, as it is for every other kind.
-        let again = publish_skill(&vfs, &plugin_request("claude"), &ap()).unwrap();
+        let again = publish_skill(&vfs, &plugin_request("claude"), &tc()).unwrap();
         assert!(
             again
                 .files
@@ -4495,7 +4495,7 @@ mod tests {
         )
         .unwrap();
 
-        let report = publish_skill(&vfs, &plugin_request("claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &plugin_request("claude"), &tc()).unwrap();
 
         let paths: Vec<&str> = statuses(&report).into_iter().map(|(p, _)| p).collect();
         assert!(
@@ -4537,7 +4537,7 @@ mod tests {
         )
         .unwrap();
 
-        let report = publish_skill(&vfs, &plugin_request("claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &plugin_request("claude"), &tc()).unwrap();
         let paths: Vec<&str> = statuses(&report).into_iter().map(|(p, _)| p).collect();
 
         // Beside the note, outside every kind folder: the pack's own.
@@ -4568,7 +4568,7 @@ mod tests {
         )
         .unwrap();
 
-        let report = publish_skill(&vfs, &plugin_request("claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &plugin_request("claude"), &tc()).unwrap();
 
         assert_eq!(
             report.not_carried,
@@ -4596,7 +4596,7 @@ mod tests {
         let vfs = vault_with_peers();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
 
-        let report = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
 
         assert!(report.not_carried.is_empty());
         assert!(!wire(&report).contains("not_carried"), "{}", wire(&report));
@@ -4607,7 +4607,7 @@ mod tests {
     #[test]
     fn editing_a_member_makes_the_pack_stale() {
         let vfs = vault_with_plugin();
-        publish_skill(&vfs, &plugin_request("claude"), &ap()).unwrap();
+        publish_skill(&vfs, &plugin_request("claude"), &tc()).unwrap();
 
         vfs.write_file(
             Path::new("/vault/marketplaces/house/plugins/git-tools/skills/commit-helper.md"),
@@ -4615,7 +4615,7 @@ mod tests {
         )
         .unwrap();
 
-        let report = publish_skill(&vfs, &plugin_request("claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &plugin_request("claude"), &tc()).unwrap();
         let member = report
             .files
             .iter()
@@ -4644,7 +4644,7 @@ mod tests {
     fn a_plugin_carries_its_command_where_the_layout_has_a_slot() {
         let vfs = vault_with_plugin_and_command();
 
-        let report = publish_skill(&vfs, &plugin_request("claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &plugin_request("claude"), &tc()).unwrap();
 
         let paths: Vec<&str> = statuses(&report).into_iter().map(|(p, _)| p).collect();
         assert!(
@@ -4659,7 +4659,7 @@ mod tests {
     fn a_plugin_leaves_its_command_uncarried_where_the_layout_has_no_slot() {
         let vfs = vault_with_plugin_and_command();
 
-        let report = publish_skill(&vfs, &plugin_request("codex"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &plugin_request("codex"), &tc()).unwrap();
 
         assert_eq!(
             report.not_carried,
@@ -4686,7 +4686,7 @@ mod tests {
             .unwrap();
         vfs.write_file(
             Path::new(&format!("{base}/git-tools.md")),
-            b"---\nname: git-tools\ndescription: Git helpers.\nap-kind: plugin\n---\n\nThe pack.\n",
+            b"---\nname: git-tools\ndescription: Git helpers.\ntc-kind: plugin\n---\n\nThe pack.\n",
         )
         .unwrap();
         vfs.write_file(
@@ -4696,7 +4696,7 @@ mod tests {
         .unwrap();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
 
-        let report = publish_skill(&vfs, &plugin_request("claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &plugin_request("claude"), &tc()).unwrap();
 
         let paths: Vec<&str> = statuses(&report).into_iter().map(|(p, _)| p).collect();
         assert!(
@@ -4724,7 +4724,7 @@ mod tests {
         let vfs = vault_with_peers();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
 
-        let report = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         let line = report
             .files
             .iter()
@@ -4739,12 +4739,12 @@ mod tests {
     fn a_second_publish_changes_nothing_including_the_manifest() {
         let vfs = vault_with_peers();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
-        publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         let first = vfs
             .read_file(&crate::manifest::manifest_path(Path::new("/dest")))
             .unwrap();
 
-        let again = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let again = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
 
         assert!(
             again
@@ -4770,11 +4770,11 @@ mod tests {
         vfs.create_dir_all(Path::new("/dest")).unwrap();
         // Publish, then delete only the manifest — exactly the shape an
         // earlier build left behind.
-        publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         vfs.remove(&crate::manifest::manifest_path(Path::new("/dest")))
             .unwrap();
 
-        let report = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
 
         for file in statuses(&report) {
             assert_eq!(file.1, PublishStatus::Unchanged, "{report:?}");
@@ -4794,14 +4794,14 @@ mod tests {
     #[test]
     fn a_corrupt_manifest_blocks_the_whole_destination() {
         let vfs = vault_with_peers();
-        vfs.create_dir_all(Path::new("/dest/.agent-pants")).unwrap();
+        vfs.create_dir_all(Path::new("/dest/.tradecraft")).unwrap();
         vfs.write_file(
             &crate::manifest::manifest_path(Path::new("/dest")),
             b"{ truncated",
         )
         .unwrap();
 
-        let report = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
 
         assert!(!report.files.is_empty());
         for file in &report.files {
@@ -4817,7 +4817,7 @@ mod tests {
         let vfs = vault_with_peers();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
 
-        publish_skill(&vfs, &dry("/dest", "claude"), &ap()).unwrap();
+        publish_skill(&vfs, &dry("/dest", "claude"), &tc()).unwrap();
 
         assert!(!vfs.exists(&crate::manifest::manifest_path(Path::new("/dest"))));
     }
@@ -4827,7 +4827,7 @@ mod tests {
     #[test]
     fn the_manifest_records_the_closure_that_fed_each_file() {
         let vfs = vault_with_links();
-        publish_skill(&vfs, &linked_request(), &ap()).unwrap();
+        publish_skill(&vfs, &linked_request(), &tc()).unwrap();
 
         let manifest = manifest_of(&vfs, "/dest");
         let skill = manifest
@@ -4851,7 +4851,7 @@ mod tests {
     #[test]
     fn editing_an_embedded_note_moves_the_source_hash_of_a_skill_that_did_not_change() {
         let vfs = vault_with_links();
-        publish_skill(&vfs, &linked_request(), &ap()).unwrap();
+        publish_skill(&vfs, &linked_request(), &tc()).unwrap();
         let before = manifest_of(&vfs, "/dest")
             .get(".claude/skills/code-review/SKILL.md")
             .expect("recorded")
@@ -4862,7 +4862,7 @@ mod tests {
             b"---\ntag: fragment\n---\n\nBe a *staff* reviewer.\n",
         )
         .unwrap();
-        publish_skill(&vfs, &linked_request(), &ap()).unwrap();
+        publish_skill(&vfs, &linked_request(), &tc()).unwrap();
         let after = manifest_of(&vfs, "/dest")
             .get(".claude/skills/code-review/SKILL.md")
             .expect("recorded")
@@ -4881,11 +4881,11 @@ mod tests {
     fn the_publish_time_moves_only_when_the_emitted_bytes_move() {
         let vfs = vault_with_peers();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
-        publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
 
         let mut later = request("/dest", "claude");
         later.published_at = Some("2027-01-01T00:00:00Z".to_owned());
-        publish_skill(&vfs, &later, &ap()).unwrap();
+        publish_skill(&vfs, &later, &tc()).unwrap();
 
         let entry = manifest_of(&vfs, "/dest")
             .get(".claude/skills/code-review/SKILL.md")
@@ -4944,7 +4944,7 @@ mod tests {
     #[test]
     fn an_embedded_note_is_inlined_rather_than_published_as_a_wikilink() {
         let vfs = vault_with_links();
-        publish_skill(&vfs, &linked_request(), &ap()).unwrap();
+        publish_skill(&vfs, &linked_request(), &tc()).unwrap();
 
         let published = text_at(&vfs, "/dest/.claude/skills/code-review/SKILL.md");
         assert!(
@@ -4962,7 +4962,7 @@ mod tests {
     #[test]
     fn a_linked_note_is_written_out_beside_the_skill_and_the_link_rewritten() {
         let vfs = vault_with_links();
-        let report = publish_skill(&vfs, &linked_request(), &ap()).unwrap();
+        let report = publish_skill(&vfs, &linked_request(), &tc()).unwrap();
 
         let reference = "references/vault/skills/house-style.md";
         let written: Vec<&str> = report.files.iter().map(|f| f.path.as_str()).collect();
@@ -4995,7 +4995,7 @@ mod tests {
     #[test]
     fn no_obsidian_syntax_reaches_any_emitted_file() {
         let vfs = vault_with_links();
-        let report = publish_skill(&vfs, &linked_request(), &ap()).unwrap();
+        let report = publish_skill(&vfs, &linked_request(), &tc()).unwrap();
 
         for file in &report.files {
             if !file.path.ends_with(".md") {
@@ -5019,7 +5019,7 @@ mod tests {
         let vfs = vault_with_links();
         let mut request = linked_request();
         request.skills_root = None;
-        publish_skill(&vfs, &request, &ap()).unwrap();
+        publish_skill(&vfs, &request, &tc()).unwrap();
 
         let published = text_at(&vfs, "/dest/.claude/skills/code-review/SKILL.md");
         assert!(!published.contains("[["), "{published}");
@@ -5031,10 +5031,10 @@ mod tests {
     fn a_note_with_no_links_is_unaffected_by_the_compile() {
         let vfs = vault_with_peers();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
-        publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         let first = text_at(&vfs, "/dest/.claude/skills/code-review/SKILL.md");
 
-        let second = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let second = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         assert!(
             second
                 .files
@@ -5049,12 +5049,12 @@ mod tests {
         );
     }
 
-    // --- `ap-kind` ---------------------------------------------------------
+    // --- `tc-kind` ---------------------------------------------------------
 
     /// The same note, declared a plugin.
     const PLUGIN_NOTE: &str = "---\n\
          description: the review pack\n\
-         ap-kind: plugin\n\
+         tc-kind: plugin\n\
          ---\nIt holds ![[code-review]].\n";
 
     #[test]
@@ -5073,7 +5073,7 @@ mod tests {
             .unwrap();
             vfs.create_dir_all(Path::new("/dest")).unwrap();
 
-            let err = publish_skill(&vfs, &request("/dest", target), &ap()).unwrap_err();
+            let err = publish_skill(&vfs, &request("/dest", target), &tc()).unwrap_err();
             let message = err.to_string();
 
             assert!(matches!(err, CoreError::Refused(_)), "{message}");
@@ -5097,22 +5097,22 @@ mod tests {
     #[test]
     fn a_note_that_declares_itself_a_skill_still_publishes() {
         // The gate is on the resolved kind, so the explicit spelling and the
-        // absent key must reach the same place — `ap-kind: skill` is what a
+        // absent key must reach the same place — `tc-kind: skill` is what a
         // vault writes once one note in it is a plugin.
         let vfs = vault_with_peers();
         vfs.write_file(
             Path::new("/vault/skills/code-review/code-review.md"),
-            b"---\ndescription: reviews code\nap-kind: skill\n---\nReview the diff.\n",
+            b"---\ndescription: reviews code\ntc-kind: skill\n---\nReview the diff.\n",
         )
         .unwrap();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
 
-        let report = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         assert_eq!(statuses(&report).len(), 3, "{report:?}");
         assert!(vfs.exists(Path::new("/dest/.claude/skills/code-review/SKILL.md")));
     }
 
-    // --- `ap-overrides` ----------------------------------------------------
+    // --- `tc-overrides` ----------------------------------------------------
 
     /// A vault whose one note carries a per-destination override block.
     fn vault_with_overrides(block: &str) -> MemVfs {
@@ -5139,9 +5139,9 @@ mod tests {
     fn an_override_reaches_the_target_it_names_and_no_other() {
         // AC-1. `permissionMode` is Claude Code's own key and no canonical
         // field maps onto it, which is the whole reason the block exists.
-        let block = "ap-overrides:\n  claude:\n    permissionMode: plan\n";
+        let block = "tc-overrides:\n  claude:\n    permissionMode: plan\n";
         let vfs = vault_with_overrides(block);
-        publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         let claude = published_skill_md(&vfs, "/dest/.claude/skills/code-review/SKILL.md");
         assert!(claude.contains("permissionMode: plan"), "{claude}");
 
@@ -5151,7 +5151,7 @@ mod tests {
             ("opencode", "/dest/.opencode/skills/code-review/SKILL.md"),
         ] {
             let vfs = vault_with_overrides(block);
-            publish_skill(&vfs, &request("/dest", target), &ap()).unwrap();
+            publish_skill(&vfs, &request("/dest", target), &tc()).unwrap();
             let text = published_skill_md(&vfs, path);
             assert!(!text.contains("permissionMode"), "{target}: {text}");
         }
@@ -5163,9 +5163,9 @@ mod tests {
         // keyed by the runtime rather than the destination would hand
         // `portable` the `codex` block. The block is keyed by the destination
         // it names, and `portable` is not that destination.
-        let block = "ap-overrides:\n  codex:\n    policy.allow_implicit_invocation: true\n";
+        let block = "tc-overrides:\n  codex:\n    policy.allow_implicit_invocation: true\n";
         let vfs = vault_with_overrides(block);
-        publish_skill(&vfs, &request("/dest", "portable"), &ap()).unwrap();
+        publish_skill(&vfs, &request("/dest", "portable"), &tc()).unwrap();
         let portable = published_skill_md(&vfs, "/dest/.agents/skills/code-review/SKILL.md");
         assert!(
             !portable.contains("policy.allow_implicit_invocation"),
@@ -5178,27 +5178,27 @@ mod tests {
         // The destination's own block does reach it: `license` is a key the
         // portable dialect writes from no model field, so the override is the
         // only way to set it, and publishing to `portable` lands it.
-        let block = "ap-overrides:\n  portable:\n    license: MIT\n";
+        let block = "tc-overrides:\n  portable:\n    license: MIT\n";
         let vfs = vault_with_overrides(block);
-        publish_skill(&vfs, &request("/dest", "portable"), &ap()).unwrap();
+        publish_skill(&vfs, &request("/dest", "portable"), &tc()).unwrap();
         let portable = published_skill_md(&vfs, "/dest/.agents/skills/code-review/SKILL.md");
         assert!(portable.contains("license: MIT"), "{portable}");
     }
 
     #[test]
     fn the_overrides_key_itself_reaches_no_destination() {
-        // AC-2. The emit-side namespace strip covers a modelled `ap-` key the
+        // AC-2. The emit-side namespace strip covers a modelled `tc-` key the
         // same way it covers an unmodelled one — there is no field on
         // `SkillContent::annotations` for it to leak through.
-        let block = "ap-overrides:\n  claude:\n    permissionMode: plan\n";
+        let block = "tc-overrides:\n  claude:\n    permissionMode: plan\n";
         for (target, path) in [
             ("claude", "/dest/.claude/skills/code-review/SKILL.md"),
             ("portable", "/dest/.agents/skills/code-review/SKILL.md"),
         ] {
             let vfs = vault_with_overrides(block);
-            publish_skill(&vfs, &request("/dest", target), &ap()).unwrap();
+            publish_skill(&vfs, &request("/dest", target), &tc()).unwrap();
             let text = published_skill_md(&vfs, path);
-            assert!(!text.contains("ap-overrides"), "{target}: {text}");
+            assert!(!text.contains("tc-overrides"), "{target}: {text}");
         }
     }
 
@@ -5207,8 +5207,8 @@ mod tests {
         // AC-3. Codex's dialect omits `argument-hint`, so the harness never
         // reads the key and the matrix does not list it — the refusal names
         // both the destination and the key.
-        let vfs = vault_with_overrides("ap-overrides:\n  codex:\n    argument-hint: <path>\n");
-        let err = publish_skill(&vfs, &request("/dest", "codex"), &ap()).unwrap_err();
+        let vfs = vault_with_overrides("tc-overrides:\n  codex:\n    argument-hint: <path>\n");
+        let err = publish_skill(&vfs, &request("/dest", "codex"), &tc()).unwrap_err();
         let message = err.to_string();
         assert!(matches!(err, CoreError::Refused(_)), "{message}");
         assert!(
@@ -5235,22 +5235,22 @@ mod tests {
                 .clone(),
             ..VaultFrontmatter::default()
         };
-        let err = overrides_for(&note, Path::new("/vault/a.md"), "cursor", &ap()).unwrap_err();
+        let err = overrides_for(&note, Path::new("/vault/a.md"), "cursor", &tc()).unwrap_err();
         let message = err.to_string();
         assert!(message.contains("unknown-override-key"), "{message}");
         assert!(message.contains("anything"), "{message}");
 
         // The same block is untouched at a destination it does not name.
-        let folded = overrides_for(&note, Path::new("/vault/a.md"), "claude", &ap()).unwrap();
+        let folded = overrides_for(&note, Path::new("/vault/a.md"), "claude", &tc()).unwrap();
         assert!(folded.contains_key("cursor"));
     }
 
     #[test]
     fn an_override_target_outside_the_roster_is_the_unknown_target_refusal() {
-        // AC-4, and the same blocker scope `ap-targets` has: the typo is
+        // AC-4, and the same blocker scope `tc-targets` has: the typo is
         // refused whichever destination is being published to.
-        let vfs = vault_with_overrides("ap-overrides:\n  claud:\n    permissionMode: plan\n");
-        let err = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap_err();
+        let vfs = vault_with_overrides("tc-overrides:\n  claud:\n    permissionMode: plan\n");
+        let err = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap_err();
         let message = err.to_string();
         assert!(
             message.starts_with("refused: unknown-target: "),
@@ -5263,8 +5263,8 @@ mod tests {
     fn a_redundant_override_is_a_diagnostic_and_still_publishes() {
         // AC-5. `allowed-tools` is what the projection already writes from
         // the note's own `allowed-tools`, so the key changes nothing.
-        let vfs = vault_with_overrides("ap-overrides:\n  claude:\n    allowed-tools: Read Grep\n");
-        let report = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let vfs = vault_with_overrides("tc-overrides:\n  claude:\n    allowed-tools: Read Grep\n");
+        let report = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         assert_eq!(report.redundant_overrides.len(), 1, "{report:?}");
         let reason = &report.redundant_overrides[0];
         assert_eq!(reason.token, ReasonToken::RedundantOverride);
@@ -5284,9 +5284,9 @@ mod tests {
         // `claude` are one destination, so their keys are one block rather
         // than one silently winning.
         let vfs = vault_with_overrides(
-            "ap-overrides:\n  claude:\n    permissionMode: plan\n  claude-code:\n    context: fork\n",
+            "tc-overrides:\n  claude:\n    permissionMode: plan\n  claude-code:\n    context: fork\n",
         );
-        publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         let text = published_skill_md(&vfs, "/dest/.claude/skills/code-review/SKILL.md");
         assert!(text.contains("permissionMode: plan"), "{text}");
         assert!(text.contains("context: fork"), "{text}");
@@ -5398,7 +5398,7 @@ mod tests {
         let vfs = vault_with_peers();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
 
-        let first = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let first = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         assert_eq!(outcome_of(&first, ENTRY), Some(PublishOutcome::FirstWrite));
 
         vfs.write_file(
@@ -5407,7 +5407,7 @@ mod tests {
         )
         .unwrap();
 
-        let again = publish_skill(&vfs, &dry("/dest", "claude"), &ap()).unwrap();
+        let again = publish_skill(&vfs, &dry("/dest", "claude"), &tc()).unwrap();
         let line = again.files.iter().find(|f| f.path == ENTRY).unwrap();
         assert_eq!(line.status, PublishStatus::Written);
         assert_eq!(line.outcome, PublishOutcome::Rewrite);
@@ -5423,7 +5423,7 @@ mod tests {
         let vfs = vault_with_peers();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
 
-        let first = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let first = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         assert_eq!(outcome_of(&first, SCRIPT), Some(PublishOutcome::FirstWrite));
 
         vfs.set_executable(
@@ -5432,7 +5432,7 @@ mod tests {
         )
         .unwrap();
 
-        let again = publish_skill(&vfs, &dry("/dest", "claude"), &ap()).unwrap();
+        let again = publish_skill(&vfs, &dry("/dest", "claude"), &tc()).unwrap();
         let line = again.files.iter().find(|f| f.path == SCRIPT).unwrap();
         assert_eq!(line.status, PublishStatus::Written);
         assert_eq!(line.outcome, PublishOutcome::Rewrite);
@@ -5445,11 +5445,11 @@ mod tests {
     fn our_own_bytes_with_no_manifest_are_claimed() {
         let vfs = vault_with_peers();
         vfs.create_dir_all(Path::new("/dest")).unwrap();
-        publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         vfs.remove(&crate::manifest::manifest_path(Path::new("/dest")))
             .unwrap();
 
-        let report = publish_skill(&vfs, &dry("/dest", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &dry("/dest", "claude"), &tc()).unwrap();
         let line = report.files.iter().find(|f| f.path == ENTRY).unwrap();
         assert_eq!(line.status, PublishStatus::Unchanged);
         assert_eq!(line.outcome, PublishOutcome::Claimed);
@@ -5482,14 +5482,14 @@ mod tests {
 
         let excluded = PublishReport {
             files: vec![],
-            not_published: Some("`ap-targets` does not name `codex`".into()),
+            not_published: Some("`tc-targets` does not name `codex`".into()),
             not_carried: Vec::new(),
             redundant_overrides: Vec::new(),
         };
         let json = serde_json::to_string(&excluded).unwrap();
         assert_eq!(
             json,
-            r#"{"files":[],"not_published":"`ap-targets` does not name `codex`"}"#
+            r#"{"files":[],"not_published":"`tc-targets` does not name `codex`"}"#
         );
     }
 
@@ -5502,14 +5502,14 @@ mod tests {
     /// A vault whose destination already holds this publish.
     fn already_published() -> MemVfs {
         let vfs = vault_targeting(None);
-        publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         vfs
     }
 
     #[test]
     fn a_dry_run_over_a_clean_destination_classifies_every_file_written() {
         let vfs = vault_targeting(None);
-        let report = publish_skill(&vfs, &dry("/dest", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &dry("/dest", "claude"), &tc()).unwrap();
 
         assert_eq!(
             statuses(&report),
@@ -5539,7 +5539,7 @@ mod tests {
         let vfs = already_published();
         let before = everything(&vfs);
 
-        let report = publish_skill(&vfs, &dry("/dest", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &dry("/dest", "claude"), &tc()).unwrap();
 
         assert_eq!(tally(&report), (0, 3, 0), "{report:?}");
         assert_eq!(everything(&vfs), before);
@@ -5598,14 +5598,14 @@ mod tests {
                 "{what}: the snapshot saw nothing at all"
             );
 
-            let report = publish_skill(&vfs, &dry(destination, "claude"), &ap()).unwrap();
+            let report = publish_skill(&vfs, &dry(destination, "claude"), &tc()).unwrap();
 
             assert_eq!(tally(&report), expected, "{what}: {report:?}");
             assert_eq!(everything(&vfs), before, "{what}");
 
             // And the snapshot is not blind: the same publish for real moves
             // the tree exactly when the plan said it would.
-            let performed = publish_skill(&vfs, &request(destination, "claude"), &ap()).unwrap();
+            let performed = publish_skill(&vfs, &request(destination, "claude"), &tc()).unwrap();
             assert_eq!(wire(&report), wire(&performed), "{what}");
             assert_eq!(
                 everything(&vfs) != before,
@@ -5631,7 +5631,7 @@ mod tests {
         vfs.write_file(theirs, b"# Hand-written, by somebody else\n")
             .unwrap();
 
-        let planned = publish_skill(&vfs, &dry("/dest", "claude"), &ap()).unwrap();
+        let planned = publish_skill(&vfs, &dry("/dest", "claude"), &tc()).unwrap();
         let line = planned
             .files
             .iter()
@@ -5643,7 +5643,7 @@ mod tests {
         assert_eq!(reason.token, ReasonToken::Foreign, "{reason}");
 
         // The real run does exactly what the plan said, and the bytes stand.
-        let performed = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let performed = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         assert_eq!(wire(&planned), wire(&performed));
         assert_eq!(
             vfs.read_file(theirs).unwrap(),
@@ -5661,7 +5661,7 @@ mod tests {
         vfs.write_file(ours, b"# Edited at the destination\n")
             .unwrap();
 
-        let report = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap();
+        let report = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap();
         let line = report
             .files
             .iter()
@@ -5693,7 +5693,7 @@ mod tests {
 
         let mut acknowledged = request("/dest", "claude");
         acknowledged.overwrite = vec![".claude/skills/code-review/references/style.md".to_owned()];
-        let report = publish_skill(&vfs, &acknowledged, &ap()).unwrap();
+        let report = publish_skill(&vfs, &acknowledged, &tc()).unwrap();
 
         let line = report
             .files
@@ -5721,7 +5721,7 @@ mod tests {
 
         let mut acknowledged = request("/dest", "claude");
         acknowledged.overwrite = vec![".claude/skills/code-review/references/style.md".to_owned()];
-        let report = publish_skill(&vfs, &acknowledged, &ap()).unwrap();
+        let report = publish_skill(&vfs, &acknowledged, &tc()).unwrap();
 
         let line = report
             .files
@@ -5748,7 +5748,7 @@ mod tests {
         let before = everything(&vfs);
 
         for destination in ["/vault", "/vault/skills", "/vault/skills/code-review"] {
-            let planned = publish_skill(&vfs, &dry(destination, "claude"), &ap()).unwrap();
+            let planned = publish_skill(&vfs, &dry(destination, "claude"), &tc()).unwrap();
 
             assert_eq!(statuses(&planned).len(), 3, "{destination}");
             for file in &planned.files {
@@ -5761,7 +5761,7 @@ mod tests {
                 );
             }
             // Same report, same reason, in both modes.
-            let performed = publish_skill(&vfs, &request(destination, "claude"), &ap()).unwrap();
+            let performed = publish_skill(&vfs, &request(destination, "claude"), &tc()).unwrap();
             assert_eq!(wire(&planned), wire(&performed), "{destination}");
             assert_eq!(everything(&vfs), before, "{destination}");
         }
@@ -5774,7 +5774,7 @@ mod tests {
         let vfs = vault_targeting(Some("[claude, claud]"));
         let before = everything(&vfs);
 
-        let planned = publish_skill(&vfs, &dry("/dest", "claude"), &ap()).unwrap();
+        let planned = publish_skill(&vfs, &dry("/dest", "claude"), &tc()).unwrap();
 
         assert_eq!(statuses(&planned).len(), 3, "{planned:?}");
         for file in &planned.files {
@@ -5793,7 +5793,7 @@ mod tests {
         let vfs = vault_targeting(Some("[claude]"));
         let before = everything(&vfs);
 
-        let planned = publish_skill(&vfs, &dry("/dest", "codex"), &ap()).unwrap();
+        let planned = publish_skill(&vfs, &dry("/dest", "codex"), &tc()).unwrap();
 
         assert!(planned.files.is_empty(), "{planned:?}");
         let reason = planned
@@ -5803,7 +5803,7 @@ mod tests {
         assert!(reason.contains("codex"), "{reason}");
         assert!(reason.contains("`claude`"), "{reason}");
 
-        let performed = publish_skill(&vfs, &request("/dest", "codex"), &ap()).unwrap();
+        let performed = publish_skill(&vfs, &request("/dest", "codex"), &tc()).unwrap();
         assert_eq!(wire(&planned), wire(&performed));
         assert_eq!(everything(&vfs), before);
     }
@@ -5818,7 +5818,7 @@ mod tests {
             ("empty-plugin", PLUGIN_NOTE),
             (
                 "mixed-frontmatter-shape",
-                "---\ndescription: reviews code\nap-kind: skill\nap:\n  targets:\n    - claude\n---\nReview the diff.\n",
+                "---\ndescription: reviews code\ntc-kind: skill\ntc:\n  targets:\n    - claude\n---\nReview the diff.\n",
             ),
         ] {
             let vfs = vault_with_peers();
@@ -5830,7 +5830,7 @@ mod tests {
             vfs.create_dir_all(Path::new("/dest")).unwrap();
             let before = everything(&vfs);
 
-            let planned = publish_skill(&vfs, &dry("/dest", "claude"), &ap()).unwrap_err();
+            let planned = publish_skill(&vfs, &dry("/dest", "claude"), &tc()).unwrap_err();
             let message = planned.to_string();
 
             assert!(matches!(planned, CoreError::Refused(_)), "{message}");
@@ -5838,7 +5838,7 @@ mod tests {
             assert_eq!(everything(&vfs), before, "{token}");
 
             // And the same sentence, word for word, from a real run.
-            let performed = publish_skill(&vfs, &request("/dest", "claude"), &ap()).unwrap_err();
+            let performed = publish_skill(&vfs, &request("/dest", "claude"), &tc()).unwrap_err();
             assert_eq!(message, performed.to_string(), "{token}");
         }
     }
@@ -5931,19 +5931,19 @@ mod tests {
                 "claude",
             ),
             (
-                "an unknown name in `ap-targets`",
+                "an unknown name in `tc-targets`",
                 Box::new(|| vault_targeting(Some("[claude, claud]"))),
                 "/dest",
                 "claude",
             ),
             (
-                "a destination `ap-targets` leaves out",
+                "a destination `tc-targets` leaves out",
                 Box::new(|| vault_targeting(Some("[claude]"))),
                 "/dest",
                 "codex",
             ),
             (
-                "an empty `ap-targets`",
+                "an empty `tc-targets`",
                 Box::new(|| vault_targeting(Some("[]"))),
                 "/dest",
                 "claude",
@@ -5974,7 +5974,7 @@ mod tests {
                     let vfs = vault_with_peers();
                     vfs.write_file(
                         Path::new("/vault/skills/code-review/code-review.md"),
-                        b"---\ndescription: reviews code\nap-kind: skill\nap:\n  targets:\n    - claude\n---\nReview the diff.\n",
+                        b"---\ndescription: reviews code\ntc-kind: skill\ntc:\n  targets:\n    - claude\n---\nReview the diff.\n",
                     )
                     .unwrap();
                     vfs
@@ -6003,14 +6003,14 @@ mod tests {
             let vfs = build();
             let before = everything(&vfs);
 
-            let planned = outcome(publish_skill(&vfs, &dry(destination, target), &ap()));
+            let planned = outcome(publish_skill(&vfs, &dry(destination, target), &tc()));
             assert_eq!(
                 everything(&vfs),
                 before,
                 "{name}: the dry run moved something"
             );
 
-            let performed = outcome(publish_skill(&vfs, &request(destination, target), &ap()));
+            let performed = outcome(publish_skill(&vfs, &request(destination, target), &tc()));
             assert_eq!(planned, performed, "{name}");
             seen.push(planned);
         }
@@ -6085,8 +6085,8 @@ mod tests {
 
         for (name, build, destination, target, expected) in cases {
             let vfs = build();
-            let planned = publish_skill(&vfs, &dry(destination, target), &ap()).unwrap();
-            let performed = publish_skill(&vfs, &request(destination, target), &ap()).unwrap();
+            let planned = publish_skill(&vfs, &dry(destination, target), &tc()).unwrap();
+            let performed = publish_skill(&vfs, &request(destination, target), &tc()).unwrap();
 
             assert_eq!(exit_code(&planned), expected, "{name}");
             assert_eq!(exit_code(&planned), exit_code(&performed), "{name}");
@@ -6120,7 +6120,7 @@ mod tests {
         );
 
         // A mode this build does not know is a deserialization failure, not a
-        // silent write — the same reading `ap-targets` gives an unknown name.
+        // silent write — the same reading `tc-targets` gives an unknown name.
         assert!(
             serde_json::from_str::<PublishRequest>(
                 r#"{"skill_path":"/v/a.md","destination_root":"/dest","target":"claude","mode":"maybe"}"#,

@@ -49,13 +49,16 @@ use serde::{Deserialize, Serialize};
 use crate::error::CoreError;
 use crate::vfs::Vfs;
 
+/// The pre-release manifest folder. Only named to refuse it with a rename hint.
+const OLD_FOLDER: &str = ".agent-pants";
+
 /// Where the manifest sits under a destination root.
 ///
 /// Namespaced under a dot-directory of our own rather than dropped at the
 /// root, because a destination root is a project root: it belongs to the user,
 /// and a bare `manifest.json` beside their source tree is a collision waiting
 /// to happen.
-pub const MANIFEST_RELATIVE_PATH: &str = ".agent-pants/manifest.json";
+pub const MANIFEST_RELATIVE_PATH: &str = ".tradecraft/manifest.json";
 
 /// The schema this build writes, and the highest it can read.
 pub const SCHEMA_VERSION: u32 = 1;
@@ -193,6 +196,9 @@ pub enum Unusable {
         /// The schema version found in the file.
         found: u32,
     },
+    /// The destination has a manifest under the old `.agent-pants/` folder and
+    /// none under `.tradecraft/`. Not read; the owner renames the folder.
+    OldFolder,
 }
 
 impl Unusable {
@@ -208,6 +214,10 @@ impl Unusable {
                 "{} was written by a newer build (schema {found}, this build reads \
                  {SCHEMA_VERSION}). Update rather than overwrite — writing it back would \
                  drop what this build cannot read",
+                path.display()
+            ),
+            Self::OldFolder => format!(
+                "{} is under the old .agent-pants/ folder: rename .agent-pants/ to .tradecraft/",
                 path.display()
             ),
         }
@@ -271,6 +281,10 @@ pub fn manifest_path(destination_root: &Path) -> PathBuf {
 pub fn read_manifest(vfs: &dyn Vfs, destination_root: &Path) -> ManifestState {
     let path = manifest_path(destination_root);
     if !vfs.exists(&path) {
+        let old = destination_root.join(OLD_FOLDER).join("manifest.json");
+        if vfs.exists(&old) {
+            return ManifestState::Unusable(Unusable::OldFolder);
+        }
         return ManifestState::Missing;
     }
     let bytes = match vfs.read_file(&path) {
@@ -382,7 +396,7 @@ mod tests {
     fn the_manifest_sits_under_the_destination_root() {
         assert_eq!(
             manifest_path(root()),
-            Path::new("/dest/.agent-pants/manifest.json")
+            Path::new("/dest/.tradecraft/manifest.json")
         );
     }
 
@@ -395,12 +409,31 @@ mod tests {
         assert!(read_manifest(&vfs, root()).is_usable());
     }
 
+    // The old folder is refused with a rename hint, not read.
+    #[test]
+    fn a_manifest_under_the_old_folder_is_unusable_with_a_rename_hint() {
+        let vfs = MemVfs::new();
+        vfs.create_dir_all(Path::new("/dest/.agent-pants")).unwrap();
+        vfs.write_file(Path::new("/dest/.agent-pants/manifest.json"), b"{}")
+            .unwrap();
+        let state = read_manifest(&vfs, root());
+        assert_eq!(state, ManifestState::Unusable(Unusable::OldFolder));
+        let ManifestState::Unusable(why) = state else {
+            unreachable!()
+        };
+        assert!(
+            why.message(root()).contains("rename .agent-pants/ to .tradecraft/"),
+            "{}",
+            why.message(root())
+        );
+    }
+
     // Corrupt is a partial fact — possibly a truncated file we wrote —
     // so it blocks where missing does not.
     #[test]
     fn a_manifest_that_is_not_json_is_unusable_and_says_why() {
         let vfs = MemVfs::new();
-        vfs.create_dir_all(Path::new("/dest/.agent-pants")).unwrap();
+        vfs.create_dir_all(Path::new("/dest/.tradecraft")).unwrap();
         vfs.write_file(&manifest_path(root()), b"{ truncated")
             .unwrap();
 
@@ -412,7 +445,7 @@ mod tests {
         assert!(matches!(reason, Unusable::Corrupt(_)), "{reason:?}");
         let message = reason.message(&manifest_path(root()));
         assert!(
-            message.contains("/dest/.agent-pants/manifest.json"),
+            message.contains("/dest/.tradecraft/manifest.json"),
             "{message}"
         );
         assert!(message.contains("Re-initialising is explicit"), "{message}");
@@ -423,7 +456,7 @@ mod tests {
     #[test]
     fn a_newer_schema_version_is_unusable_and_names_both_versions() {
         let vfs = MemVfs::new();
-        vfs.create_dir_all(Path::new("/dest/.agent-pants")).unwrap();
+        vfs.create_dir_all(Path::new("/dest/.tradecraft")).unwrap();
         vfs.write_file(
             &manifest_path(root()),
             br#"{"schema_version": 99, "entries": []}"#,
@@ -446,7 +479,7 @@ mod tests {
     #[test]
     fn json_without_a_schema_version_is_not_a_manifest() {
         let vfs = MemVfs::new();
-        vfs.create_dir_all(Path::new("/dest/.agent-pants")).unwrap();
+        vfs.create_dir_all(Path::new("/dest/.tradecraft")).unwrap();
         vfs.write_file(&manifest_path(root()), br#"{"hello": "world"}"#)
             .unwrap();
 
@@ -462,7 +495,7 @@ mod tests {
     #[test]
     fn an_entry_whose_path_escapes_the_root_is_dropped_and_reported() {
         let vfs = MemVfs::new();
-        vfs.create_dir_all(Path::new("/dest/.agent-pants")).unwrap();
+        vfs.create_dir_all(Path::new("/dest/.tradecraft")).unwrap();
         let mut manifest = DestinationManifest::new();
         manifest.insert(entry(".claude/skills/ok/SKILL.md"));
         let mut escaping = entry("../elsewhere/SKILL.md");
@@ -587,7 +620,7 @@ mod tests {
     #[test]
     fn an_unusable_manifest_answers_empty_but_is_not_usable() {
         let vfs = MemVfs::new();
-        vfs.create_dir_all(Path::new("/dest/.agent-pants")).unwrap();
+        vfs.create_dir_all(Path::new("/dest/.tradecraft")).unwrap();
         vfs.write_file(&manifest_path(root()), b"nonsense").unwrap();
 
         let state = read_manifest(&vfs, root());

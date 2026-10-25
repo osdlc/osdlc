@@ -139,7 +139,7 @@ pub enum AuthoringOp {
         scaffold: Vec<String>,
     },
     /// Rename a plugin: its folder, its own `name`, and every member whose
-    /// explicit `ap-plugin` named the old slug.
+    /// explicit `tc-plugin` named the old slug.
     ///
     /// `members` is keyed on the member's path in the OLD tree, since that is
     /// where a host reads their etags before anything moves; rebase each onto
@@ -609,7 +609,7 @@ pub fn rename_collision(
 ) -> Option<String> {
     let ours = find_component(vfs, vault_dir, entry, ns)?;
     let placement = folder_placement(vault_dir, &vault_dir.join(to));
-    // The publish key carries the RESOLVED plugin, and `ap-plugin` overrules
+    // The publish key carries the RESOLVED plugin, and `tc-plugin` overrules
     // the folder. A rename touches no frontmatter, so an overridden note
     // keeps its override and the folder's plugin is not its bucket; a note
     // that takes its plugin from the folder follows the destination, which is
@@ -721,7 +721,7 @@ fn container_scaffold_dirs(kind: EntityKind) -> Vec<&'static str> {
 ///
 /// Being *skipped* by discovery is not the same as being refused by it, and
 /// the difference is a whole kind of note. `read_source` gates on the kind
-/// before it checks anything else, so a note declaring `ap-kind: plugin` comes
+/// before it checks anything else, so a note declaring `tc-kind: plugin` comes
 /// back as a silent skip — the component list is not where it belongs, and its
 /// name never has to agree with its filename. The reader
 /// ([`read_vault_skill`]) is what judges those notes, and it is asked here so
@@ -982,7 +982,7 @@ fn convert_target(
     let to = convert_kind_destination(entry, to_kind, to_market.as_deref(), to_plugin.as_deref())?;
 
     // The key the destination publishes onto. A conversion that keeps the
-    // plugin level keeps whatever `ap-plugin` resolved to; one that drops it
+    // plugin level keeps whatever `tc-plugin` resolved to; one that drops it
     // publishes at the level the folders now put the note.
     let key_plugin = to_plugin.as_ref().and_then(|_| component.plugin.clone());
     if let Some(refusal) = key_collision(
@@ -1028,7 +1028,7 @@ fn create_scaffold(path: &str, kind: Option<EntityKind>) -> Vec<String> {
         .collect()
 }
 
-/// Every member note whose explicit `ap-plugin` key names `plugin_slug`
+/// Every member note whose explicit `tc-plugin` key names `plugin_slug`
 /// outright — the set a plugin rename must rewrite. Read from the OLD tree,
 /// before anything moves.
 fn stale_plugin_key_members(
@@ -1081,7 +1081,7 @@ fn with_name(edits: &[FieldEdit], slug: &str) -> Vec<FieldEdit> {
 ///
 /// `None` for no frontmatter block and for a key the frontmatter does not
 /// have. Exists so a caller can read one raw, unmodeled key — an
-/// author-managed `ap-version`, say — without this crate modeling that key
+/// author-managed `tc-version`, say — without this crate modeling that key
 /// as a typed field.
 pub fn read_field(source: &str, key: &str) -> Result<Option<String>, CoreError> {
     let yaml = match frontmatter_lossless::split(source).yaml {
@@ -1188,7 +1188,7 @@ pub fn plan_rename_component(
 
 /// Move a component to a new placement.
 ///
-/// **The rule:** a move always REMOVES an explicit `ap-plugin` key when the
+/// **The rule:** a move always REMOVES an explicit `tc-plugin` key when the
 /// note carries one — never sets or rewrites it, whatever `plugin` is. The
 /// physical folder now correctly names the destination (that is what the move
 /// does), so an explicit key left behind is stale by construction: it named
@@ -1304,7 +1304,7 @@ fn deletion(entry: &str) -> AuthoringOp {
 }
 
 /// Rename a plugin: move its folder, set its own `name`, then rewrite every
-/// member whose explicit `ap-plugin` key named the old slug. A member that
+/// member whose explicit `tc-plugin` key named the old slug. A member that
 /// takes its plugin from the folder needs no edit — the folder moved with it.
 pub fn plan_rename_plugin(
     vfs: &dyn Vfs,
@@ -1378,7 +1378,7 @@ pub fn plan_rename_marketplace(
 }
 
 /// Convert a note to another kind: move it into the new kind's folder, set
-/// `ap-kind`, remove the keys the new kind does not carry, and make the
+/// `tc-kind`, remove the keys the new kind does not carry, and make the
 /// member folders a container kind holds.
 ///
 /// `drop_keys` is the caller's list, not this crate's: the table saying which
@@ -1405,7 +1405,7 @@ pub fn plan_convert_kind(
         ));
     }
     let target = convert_target(vfs, vault, ns, entry, to_kind)?;
-    // `ap-kind` first, then the removals — one list, so a note never sits
+    // `tc-kind` first, then the removals — one list, so a note never sits
     // with its new kind declared and the old kind's keys still on it.
     let kind_key = ns.key("kind");
     let mut frontmatter = vec![FieldEdit::set(
@@ -1436,7 +1436,7 @@ mod tests {
 
     const VAULT: &str = "/vault";
 
-    fn ap() -> Namespace {
+    fn tc() -> Namespace {
         Namespace::default()
     }
 
@@ -1467,7 +1467,7 @@ mod tests {
             )
         };
 
-        let no_event = refusal_for(&vfs, &hook("", "npm run lint\n"), at, vault(), &ap());
+        let no_event = refusal_for(&vfs, &hook("", "npm run lint\n"), at, vault(), &tc());
         assert!(
             no_event
                 .as_deref()
@@ -1480,7 +1480,7 @@ mod tests {
             &hook("event: PostToolUse\ntype: http\n", ""),
             at,
             vault(),
-            &ap(),
+            &tc(),
         );
         assert!(
             no_url
@@ -1491,14 +1491,14 @@ mod tests {
 
         assert!(
             matches!(
-                scratch_scan(&hook("", ""), at, &ap()),
+                scratch_scan(&hook("", ""), at, &tc()),
                 ScratchVerdict::Listed(_)
             ),
             "the scan a form runs per keystroke still lists an incomplete hook"
         );
 
         assert_eq!(
-            draft_refusal_for(&vfs, &hook("", ""), at, vault(), &ap()),
+            draft_refusal_for(&vfs, &hook("", ""), at, vault(), &tc()),
             None,
             "a draft preview does not ask the renderer"
         );
@@ -1508,7 +1508,7 @@ mod tests {
             &hook("event: PostToolUse\n", "npm run lint\n"),
             at,
             vault(),
-            &ap(),
+            &tc(),
         );
         assert_eq!(complete, None);
     }
@@ -1538,7 +1538,7 @@ mod tests {
         write(
             &vfs,
             "marketplaces/house/plugins/tools/tools.md",
-            &note("tools", "ap-kind: plugin\n"),
+            &note("tools", "tc-kind: plugin\n"),
         );
         write(
             &vfs,
@@ -1662,7 +1662,7 @@ mod tests {
         let op = plan_create_note(
             &vfs,
             vault(),
-            &ap(),
+            &tc(),
             &NewNote {
                 placement: Some(&p),
                 name: "Code Review",
@@ -1695,7 +1695,7 @@ mod tests {
         let AuthoringOp::Create { path, .. } = plan_create_note(
             &vfs,
             vault(),
-            &ap(),
+            &tc(),
             &NewNote {
                 placement: Some(&p),
                 name: "deploy",
@@ -1725,7 +1725,7 @@ mod tests {
         let AuthoringOp::Create { path, scaffold, .. } = plan_create_note(
             &vfs,
             vault(),
-            &ap(),
+            &tc(),
             &NewNote {
                 placement: Some(&p),
                 name: "extras",
@@ -1756,7 +1756,7 @@ mod tests {
         let refusal = plan_create_note(
             &vfs,
             vault(),
-            &ap(),
+            &tc(),
             &NewNote {
                 placement: Some(&p),
                 name: "review",
@@ -1779,7 +1779,7 @@ mod tests {
         let refusal = plan_create_note(
             &vfs,
             vault(),
-            &ap(),
+            &tc(),
             &NewNote {
                 placement: Some(&p),
                 name: "audit",
@@ -1851,7 +1851,7 @@ mod tests {
         } = plan_rename_component(
             &vfs,
             vault(),
-            &ap(),
+            &tc(),
             "marketplaces/house/plugins/tools/skills/review.md",
             "Deep Audit",
         )
@@ -1879,7 +1879,7 @@ mod tests {
         let refusal = plan_rename_component(
             &vfs,
             vault(),
-            &ap(),
+            &tc(),
             "marketplaces/house/plugins/tools/skills/review.md",
             "audit",
         )
@@ -1897,7 +1897,7 @@ mod tests {
             plan_rename_component(
                 &vfs,
                 vault(),
-                &ap(),
+                &tc(),
                 "marketplaces/house/plugins/tools/skills/review.md",
                 "   ",
             )
@@ -1928,14 +1928,14 @@ mod tests {
         write(
             &vfs,
             "marketplaces/house/plugins/tools/skills/keyed.md",
-            &note("keyed", "ap-plugin: tools\n"),
+            &note("keyed", "tc-plugin: tools\n"),
         );
         let AuthoringOp::Move {
             frontmatter, to, ..
         } = plan_move_component(
             &vfs,
             vault(),
-            &ap(),
+            &tc(),
             "marketplaces/house/plugins/tools/skills/keyed.md",
             Some("house"),
             Some("extras"),
@@ -1945,7 +1945,7 @@ mod tests {
             panic!("expected a move");
         };
         assert_eq!(to, "marketplaces/house/plugins/extras/skills/keyed.md");
-        assert_eq!(frontmatter, vec![FieldEdit::remove("ap-plugin")]);
+        assert_eq!(frontmatter, vec![FieldEdit::remove("tc-plugin")]);
     }
 
     #[test]
@@ -1954,7 +1954,7 @@ mod tests {
         let AuthoringOp::Move { frontmatter, .. } = plan_move_component(
             &vfs,
             vault(),
-            &ap(),
+            &tc(),
             "marketplaces/house/plugins/tools/skills/review.md",
             Some("house"),
             Some("extras"),
@@ -1972,7 +1972,7 @@ mod tests {
             plan_move_component(
                 &vfs,
                 vault(),
-                &ap(),
+                &tc(),
                 "marketplaces/house/plugins/tools/skills/absent.md",
                 Some("house"),
                 Some("extras"),
@@ -1991,7 +1991,7 @@ mod tests {
         let AuthoringOp::Delete { paths, trash_dir } = plan_delete_component(
             &vfs,
             vault(),
-            &ap(),
+            &tc(),
             "marketplaces/house/plugins/tools/skills/review.md",
         )
         .unwrap() else {
@@ -2015,7 +2015,7 @@ mod tests {
         let AuthoringOp::Delete { paths, .. } = plan_delete_component(
             &vfs,
             vault(),
-            &ap(),
+            &tc(),
             "marketplaces/house/plugins/tools/skills/deploy/deploy.md",
         )
         .unwrap() else {
@@ -2034,7 +2034,7 @@ mod tests {
             plan_delete_component(
                 &vfs,
                 vault(),
-                &ap(),
+                &tc(),
                 "marketplaces/house/plugins/tools/tools.md",
             )
             .unwrap_err(),
@@ -2049,7 +2049,7 @@ mod tests {
         let AuthoringOp::Delete { paths, .. } = plan_delete_container(
             &vfs,
             vault(),
-            &ap(),
+            &tc(),
             "marketplaces/house/plugins/tools/tools.md",
             EntityKind::Plugin,
         )
@@ -2066,7 +2066,7 @@ mod tests {
             plan_delete_container(
                 &vfs,
                 vault(),
-                &ap(),
+                &tc(),
                 "marketplaces/house/plugins/tools/tools.md",
                 EntityKind::Marketplace,
             )
@@ -2083,7 +2083,7 @@ mod tests {
         write(
             &vfs,
             "marketplaces/house/plugins/tools/skills/keyed.md",
-            &note("keyed", "ap-plugin: tools\n"),
+            &note("keyed", "tc-plugin: tools\n"),
         );
         let AuthoringOp::RenamePlugin {
             from,
@@ -2095,7 +2095,7 @@ mod tests {
         } = plan_rename_plugin(
             &vfs,
             vault(),
-            &ap(),
+            &tc(),
             "marketplaces/house/plugins/tools/tools.md",
             "Gear",
         )
@@ -2116,7 +2116,7 @@ mod tests {
             members,
             vec![(
                 "marketplaces/house/plugins/tools/skills/keyed.md".to_owned(),
-                vec![FieldEdit::set("ap-plugin", Value::Str("gear".to_owned()))],
+                vec![FieldEdit::set("tc-plugin", Value::Str("gear".to_owned()))],
             )]
         );
     }
@@ -2128,7 +2128,7 @@ mod tests {
             plan_rename_plugin(
                 &vfs,
                 vault(),
-                &ap(),
+                &tc(),
                 "marketplaces/house/plugins/tools/skills/review.md",
                 "gear",
             )
@@ -2144,7 +2144,7 @@ mod tests {
             plan_rename_marketplace(
                 &vfs,
                 vault(),
-                &ap(),
+                &tc(),
                 "marketplaces/house/plugins/tools/tools.md",
                 "shop",
             )
@@ -2166,7 +2166,7 @@ mod tests {
         } = plan_convert_kind(
             &vfs,
             vault(),
-            &ap(),
+            &tc(),
             "marketplaces/house/plugins/tools/skills/review.md",
             EntityKind::Command,
             &[],
@@ -2178,7 +2178,7 @@ mod tests {
         assert_eq!(to, "marketplaces/house/plugins/tools/commands/review.md");
         assert_eq!(
             frontmatter,
-            vec![FieldEdit::set("ap-kind", Value::Str("command".to_owned()))]
+            vec![FieldEdit::set("tc-kind", Value::Str("command".to_owned()))]
         );
         assert!(scaffold.is_empty());
     }
@@ -2189,7 +2189,7 @@ mod tests {
         let AuthoringOp::ConvertKind { to, scaffold, .. } = plan_convert_kind(
             &vfs,
             vault(),
-            &ap(),
+            &tc(),
             "marketplaces/house/plugins/tools/skills/review.md",
             EntityKind::Plugin,
             &[],
@@ -2217,7 +2217,7 @@ mod tests {
             plan_convert_kind(
                 &vfs,
                 vault(),
-                &ap(),
+                &tc(),
                 "marketplaces/house/plugins/tools/skills/review.md",
                 EntityKind::Hook,
                 &[],
@@ -2234,7 +2234,7 @@ mod tests {
             plan_convert_kind(
                 &vfs,
                 vault(),
-                &ap(),
+                &tc(),
                 "marketplaces/house/plugins/tools/tools.md",
                 EntityKind::Skill,
                 &[],
@@ -2253,7 +2253,7 @@ mod tests {
                 plan_convert_kind(
                     &vfs,
                     vault(),
-                    &ap(),
+                    &tc(),
                     "marketplaces/house/plugins/tools/skills/review.md",
                     EntityKind::Command,
                     &[format!(" {key} ")],
@@ -2270,13 +2270,13 @@ mod tests {
         let AuthoringOp::ConvertKind { frontmatter, .. } = plan_convert_kind(
             &vfs,
             vault(),
-            &ap(),
+            &tc(),
             "marketplaces/house/plugins/tools/skills/review.md",
             EntityKind::Command,
             &[
                 "allowed-tools".to_owned(),
                 " allowed-tools ".to_owned(),
-                "ap-kind".to_owned(),
+                "tc-kind".to_owned(),
                 String::new(),
             ],
         )
@@ -2286,7 +2286,7 @@ mod tests {
         assert_eq!(
             frontmatter,
             vec![
-                FieldEdit::set("ap-kind", Value::Str("command".to_owned())),
+                FieldEdit::set("tc-kind", Value::Str("command".to_owned())),
                 FieldEdit::remove("allowed-tools"),
             ]
         );
@@ -2299,7 +2299,7 @@ mod tests {
             plan_convert_kind(
                 &vfs,
                 vault(),
-                &ap(),
+                &tc(),
                 "marketplaces/house/plugins/tools/skills/review.md",
                 EntityKind::Skill,
                 &[],
@@ -2322,16 +2322,16 @@ mod tests {
 
     #[test]
     fn applying_edits_keeps_the_body_and_the_unnamed_keys() {
-        let source = "---\nname: review\ndescription: d\nap-plugin: tools\n---\n\n# Body\n";
+        let source = "---\nname: review\ndescription: d\ntc-plugin: tools\n---\n\n# Body\n";
         let out = apply_field_edits(
             source,
             &[
-                FieldEdit::remove("ap-plugin"),
+                FieldEdit::remove("tc-plugin"),
                 FieldEdit::set("name", Value::Str("audit".to_owned())),
             ],
         )
         .unwrap();
-        // `ap-plugin` was the last key: removing it takes its whole line, so
+        // `tc-plugin` was the last key: removing it takes its whole line, so
         // no blank line is left before the closing fence.
         assert_eq!(out, "---\nname: audit\ndescription: d\n---\n\n# Body\n");
     }
@@ -2340,7 +2340,7 @@ mod tests {
     fn removing_a_key_that_is_not_there_is_a_no_op() {
         let source = "---\nname: review\n---\n\n# Body\n";
         assert_eq!(
-            apply_field_edits(source, &[FieldEdit::remove("ap-plugin")]).unwrap(),
+            apply_field_edits(source, &[FieldEdit::remove("tc-plugin")]).unwrap(),
             source
         );
     }

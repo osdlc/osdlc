@@ -222,7 +222,7 @@ fn claude_code_lead_in(out: &mut String, arguments: &[Argument]) {
 /// `$1` through `$9` expand from space-separated arguments"), `$ARGUMENTS`
 /// for the full tail, and a named `$KEY` set at invocation as `KEY=value`
 /// (same source: "Named placeholders: Use uppercase names like `$FILE` or
-/// `$TICKET_ID` and supply values as `KEY=value`"). An `ap-arguments` name
+/// `$TICKET_ID` and supply values as `KEY=value`"). An `tc-arguments` name
 /// is a lowercase slug, so the named form is derived by upper-casing it and
 /// turning hyphens into underscores — `pr-number` becomes `$PR_NUMBER`.
 fn codex_cli_lead_in(out: &mut String, arguments: &[Argument]) {

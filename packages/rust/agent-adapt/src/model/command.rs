@@ -45,7 +45,7 @@ pub struct Command {
     pub model: Option<String>,
     /// The prompt, rendered as the body.
     pub body: String,
-    /// This render's own `ap-overrides.<target>` map, merged last over
+    /// This render's own `tc-overrides.<target>` map, merged last over
     /// everything else here. Same contract as [`crate::Skill::overrides`].
     #[serde(default)]
     pub overrides: serde_json::Map<String, serde_json::Value>,

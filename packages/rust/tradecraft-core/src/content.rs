@@ -20,13 +20,13 @@ pub struct SkillContent {
     pub argument_hint: Option<String>,
     /// Claude Code's own `arguments:` frontmatter key — see
     /// [`agent_adapt::Skill::argument_names`]. Hand-written (read from the
-    /// note's literal `arguments:` key, never `ap-arguments`), or derived by
+    /// note's literal `arguments:` key, never `tc-arguments`), or derived by
     /// [`SkillContent::apply_arguments`] the same way [`Self::argument_hint`]
     /// is.
     pub argument_names: Option<Vec<String>>,
     /// What this skill or command's invocation takes.
     ///
-    /// The one field here sourced from our `ap-` namespace rather than from
+    /// The one field here sourced from our `tc-` namespace rather than from
     /// the standard's own frontmatter — see
     /// [`crate::frontmatter::VaultFrontmatter::arguments`] for why that is
     /// not the contradiction it looks like. `Vec::new()` by construction
@@ -41,7 +41,7 @@ pub struct SkillContent {
     /// Tools the skill may use without asking.
     pub allowed_tools: Vec<String>,
     /// The Agent Skills spec's `license:` — a licence name, or a reference to a bundled
-    /// licence file. Not `ap-license`, which is a container note's package
+    /// licence file. Not `tc-license`, which is a container note's package
     /// identity and never travels.
     #[serde(default)]
     pub license: Option<String>,
@@ -66,10 +66,10 @@ pub struct SkillContent {
     pub tags: Vec<String>,
     /// Unmodeled frontmatter, preserved as-is. A JSON object.
     pub annotations: serde_json::Map<String, serde_json::Value>,
-    /// `ap-overrides`, keyed by **canonical** destination name — what one
+    /// `tc-overrides`, keyed by **canonical** destination name — what one
     /// harness receives that the shared model cannot say.
     ///
-    /// The second field here sourced from our `ap-` namespace, and it is
+    /// The second field here sourced from our `tc-` namespace, and it is
     /// here for the same reason [`Self::arguments`] is: a renderer needs it.
     /// `BTreeMap::new()` by construction from
     /// [`crate::vault::read_vault_skill`]; only
@@ -77,14 +77,14 @@ pub struct SkillContent {
     /// [`crate::publish::overrides_for`] has folded the target names and
     /// checked every key against the harness that will receive it.
     ///
-    /// The raw `ap-overrides` key still reaches no destination — the strip
+    /// The raw `tc-overrides` key still reaches no destination — the strip
     /// is unaffected, because this is not `annotations`.
     #[serde(default)]
     pub overrides: std::collections::BTreeMap<String, serde_json::Map<String, serde_json::Value>>,
 }
 
 impl SkillContent {
-    /// Carries `arguments` (read from `ap-arguments`) onto this content, and
+    /// Carries `arguments` (read from `tc-arguments`) onto this content, and
     /// derives [`SkillContent::argument_hint`] and
     /// [`SkillContent::argument_names`] from it when the note wrote neither
     /// of its own.
