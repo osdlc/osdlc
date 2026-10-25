@@ -1,7 +1,8 @@
 /**
  * The parse tree on its own: `parse()`, the frontmatter split, the read helpers that find
- * sections, blocks and source lines, and `extractVaultRefs`, which finds `[[wikilinks]]` in text. These need no contract, and they live in the `./core`
- * entry, which imports no Node module.
+ * sections, blocks and source lines, and `extractVaultRefs`, which finds `[[wikilinks]]` in
+ * text. These need no contract, and they live in the `./core` entry, which imports no Node
+ * module.
  */
 import { describe, expect, test } from 'vitest'
 

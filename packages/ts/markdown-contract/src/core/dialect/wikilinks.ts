@@ -1,10 +1,4 @@
-/**
- * `[[wikilink]]` and `![[transclusion]]` recognition.
- *
- * `parse()` leaves these as ordinary text in the tree. `extractVaultRefs` is a string pass over
- * already-flattened text, such as `SectionView.text('all')`, that finds them and splits each
- * one into its target, alias and fragment.
- */
+/** `[[wikilink]]` and `![[transclusion]]` recognition. */
 
 /**
  * A recognized `[[wikilink]]` or `![[transclusion]]` reference, extracted from flattened text.
@@ -18,21 +12,26 @@ export interface VaultRef {
   alias?: string
   /** The heading or `^block` fragment after `#`, if present. */
   fragment?: string
-  /** The full matched token, verbatim, e.g. `[[target|alias#anchor]]`. */
+  /** The full matched token, verbatim, e.g. `[[target#fragment|alias]]`. */
   raw: string
 }
 
-// Tolerant of remark-stringify's backslash-escaping of `[` (`\[\[…]]`): the `\\*` before
+// Tolerant of remark-stringify's backslash-escaping of `[` (`\[\[…]]`): the optional `\` before
 // each bracket lets the construct be recognized after a parse, stringify, re-parse cycle.
-const VAULT_REF_RE = /(!?)\\*\[\\*\[([^\]]+)\]\]/g
+// The inner text excludes `[` and the backslash count is at most one, so a failed match scans
+// no further than the next `[` and the pass is linear in the input.
+const VAULT_REF_RE = /(!?)\\?\[\\?\[([^\][]+)\]\]/g
 
 /**
  * Finds every `[[wikilink]]` and `![[transclusion]]` in already-flattened text, in document
- * order. Each is split out of the `target|alias#fragment` form. A `^` after `#` stays in the
- * fragment, so `[[Note#^block-id]]` gives the fragment `^block-id`. Backslash-escaped brackets,
- * which `remark-stringify` writes, are recognized too. `raw` is the matched token verbatim.
+ * order. Each is split out of the `target#fragment|alias` form: the alias is everything after
+ * the first `|`, and the fragment is everything after the first `#` in what is left. So
+ * `[[Note#Part|alias]]` has a fragment, and `[[Note|alias#Part]]` has the alias `alias#Part` and
+ * no fragment. A `^` after `#` stays in the fragment, so `[[Note#^block-id]]` gives the fragment
+ * `^block-id`. The text between the brackets cannot contain `[`. One backslash before either
+ * bracket, as `remark-stringify` writes, is recognized and kept in `raw`.
  *
- * @param text The flattened text to search.
+ * @param text The flattened text to search, for example `SectionView.text('all')`.
  * @returns One `VaultRef` per reference, or an empty array when there are none.
  * @example
  * ```ts

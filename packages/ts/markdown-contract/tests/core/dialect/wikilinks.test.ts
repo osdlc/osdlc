@@ -68,14 +68,53 @@ describe('extractVaultRefs — recognize [[wikilink]] and ![[transclusion]]', ()
     ])
   })
 
-  test('backslash-escaped brackets, as remark-stringify writes them, are recognized', () => {
-    expect(extractVaultRefs('\\[\\[Note]] and !\\[\\[Embed]]').map((r) => r.kind)).toEqual([
-      'wikilink',
-      'transclusion',
+  test('one backslash before each bracket, as remark-stringify writes them, is recognized', () => {
+    expect(extractVaultRefs('\\[\\[Note]] and !\\[\\[Embed]]')).toEqual([
+      { kind: 'wikilink', target: 'Note', raw: '\\[\\[Note]]' },
+      { kind: 'transclusion', target: 'Embed', raw: '!\\[\\[Embed]]' },
     ])
+  })
+
+  test('`target|alias#frag` reads `alias#frag` as the alias, with no fragment', () => {
+    expect(extractVaultRefs('[[Note|alias#frag]]')).toEqual([
+      { kind: 'wikilink', target: 'Note', alias: 'alias#frag', raw: '[[Note|alias#frag]]' },
+    ])
+  })
+
+  test('the text between the brackets cannot contain `[`', () => {
+    expect(extractVaultRefs('[[a[[b]]')).toEqual([{ kind: 'wikilink', target: 'b', raw: '[[b]]' }])
+    expect(extractVaultRefs('[[[a]]')).toEqual([{ kind: 'wikilink', target: 'a', raw: '[[a]]' }])
+    expect(extractVaultRefs('[[Note [draft]]]')).toEqual([])
+  })
+
+  test('two backslashes before a bracket are not an escape', () => {
+    expect(extractVaultRefs('\\\\[[a]]')).toEqual([
+      { kind: 'wikilink', target: 'a', raw: '\\[[a]]' },
+    ])
+    expect(extractVaultRefs('[\\\\[a]]')).toEqual([])
   })
 
   test('text with no vault refs → empty array', () => {
     expect(extractVaultRefs('nothing to see here')).toEqual([])
   })
+})
+
+describe('extractVaultRefs on large hostile input', () => {
+  // Each input is about 200 KB. A pattern that backtracks takes tens of seconds on these.
+  const LIMIT_MS = 1000
+  const inputs: Record<string, string> = {
+    'many `[[a` with no close': '[[a'.repeat(70_000),
+    'a long run of backslashes': '\\'.repeat(200_000),
+    'backslashes before an open bracket': '\\'.repeat(100_000) + '[[a',
+    'an unclosed link with a long body': '[[' + 'a'.repeat(200_000),
+    'many open brackets': '['.repeat(200_000),
+  }
+
+  for (const [name, text] of Object.entries(inputs)) {
+    test(`${name} finishes in under ${LIMIT_MS} ms`, () => {
+      const start = performance.now()
+      expect(extractVaultRefs(text)).toEqual([])
+      expect(performance.now() - start).toBeLessThan(LIMIT_MS)
+    })
+  }
 })

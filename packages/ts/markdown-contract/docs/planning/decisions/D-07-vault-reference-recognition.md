@@ -15,8 +15,9 @@ created: 2026-10-25
 - They are stable, not experimental.
 - `parse()` still leaves these references as text in the tree. Recognition is
   a string pass the caller runs, for example over `SectionView.text('all')`.
-- The Rust peer of this package has the same function, `extract_vault_refs`,
-  with the same rules.
+- The Rust peer of this package, in sksizer/markdown-contract, has the same
+  function, `extract_vault_refs`, and is moving into this repository. The two
+  keep the same rules.
 
 ## Why
 
