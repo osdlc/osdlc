@@ -427,10 +427,11 @@ function cleanText(output: z.infer<typeof CleanOutputSchema>): string {
   const from = (r: StoreReport): string => (r.envVar !== undefined ? `, from ${r.envVar}` : '')
   if (output.mode === 'report') {
     const lines = [`${APP} stores these outside your repositories:`, '']
+    const width = Math.max(0, ...output.stores.map((r) => r.flag.length))
     for (const r of output.stores) {
       const held = r.bytes === null ? 'nothing stored' : humanBytes(r.bytes)
-      lines.push(`  ${r.flag.padEnd(9)} ${r.what}`)
-      lines.push(`  ${' '.repeat(9)} ${terminalSafe(r.path)}  (${held}${from(r)})`)
+      lines.push(`  ${r.flag.padEnd(width)}  ${r.what}`)
+      lines.push(`  ${' '.repeat(width)}  ${terminalSafe(r.path)}  (${held}${from(r)})`)
     }
     lines.push(
       '',

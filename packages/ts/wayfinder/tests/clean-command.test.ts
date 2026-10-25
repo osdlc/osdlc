@@ -67,6 +67,17 @@ describe('way clean', () => {
     expect(await exists(p.config)).toBe(true)
   })
 
+  test('the report lines up every store under the longest flag', async () => {
+    const p = await populated()
+    const lines = (await clean(p.home, [])).out.split('\n')
+    const starts = lines
+      .filter((l) => /^ {2}--/.test(l))
+      .map((l) => l.search(/(?<=^ {2}--\S+ +)\S/))
+    expect(new Set(starts).size).toBe(1)
+    const paths = lines.filter((l) => l.includes(p.home)).map((l) => l.search(/\S/))
+    expect(new Set([...paths, ...starts]).size).toBe(1)
+  })
+
   test('--json reports sizes, and null for an empty store', async () => {
     const p = await populated()
     const ran = await clean(p.home, ['--json'])
