@@ -67,8 +67,12 @@ export interface Invocation {
  *   - `tool-failed`: the tool ran and gave no usable answer.
  *   - `not-read`: the file declares them, and this runner does not read them
  *     (GitHub Actions dispatch inputs).
+ *   - `editor-variable`: the command uses a variable only an editor fills in
+ *     (VS Code's `${file}` or `${input:name}`). `argv` keeps it as written,
+ *     so the task does not run as is.
  */
-export type ParametersUnknownReason = 'exec-withheld' | 'tool-missing' | 'tool-failed' | 'not-read'
+export type ParametersUnknownReason =
+  'exec-withheld' | 'tool-missing' | 'tool-failed' | 'not-read' | 'editor-variable'
 
 /**
  * Where a task came from: declared in a file, or synthesized from a
@@ -96,7 +100,10 @@ export interface Task {
   runner: string
   /** Display and search chain, root first, with `runner` at index 0. */
   path: string[]
-  /** Executable form. Spawn it directly, never through a shell. No placeholders. */
+  /**
+   * Executable form. Spawn it directly, never through a shell. No
+   * placeholders, except when `parametersUnknown` is `editor-variable`.
+   */
   argv: string[]
   /**
    * Directory the command expects, relative to the profile root. `.` unless
