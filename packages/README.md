@@ -180,6 +180,10 @@ Developed here, in this repository:
 - `packages/ts/wayfinder` (`@osdlc/wayfinder` on npm, the `way` command: browse
   and run every task in a repository from a terminal UI, a live web view or
   JSON, built on `@osdlc/system-model`)
+- `packages/ts/ux` (`@osdlc/ux` on npm, design tokens for a tool's web page
+  and terminal UI: a CSS sheet for light and dark, ANSI codes at the
+  detected color level, color detection, and helpers for printing untrusted
+  text)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
