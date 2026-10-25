@@ -10,10 +10,11 @@
  * Every request passes three checks, in this order, before anything else:
  *
  * 1. The `Host` header names a loopback address. A page on another site that
- *    rebinds its domain to 127.0.0.1 sends its own name, and is refused.
+ *    rebinds its domain to 127.0.0.1 sends its own name, and is refused. With
+ *    the `port` option, it names that port too.
  * 2. An `Origin` header, when present, is this server's own origin, and
  *    `Sec-Fetch-Site` is not `cross-site` or `same-site`.
- * 3. `Authorization: Bearer <token>`. A header, never a cookie or the URL, so
+ * 3. `Authorization: Bearer <token>`, the scheme in any case. A header, never a cookie or the URL, so
  *    a cross-origin page must pass a CORS preflight, which this server never
  *    answers.
  *
@@ -66,6 +67,12 @@ export interface HttpApiOptions {
   confirmTtlMs?: number
   /** The largest request body read. Default 1 MiB. */
   maxBodyBytes?: number
+  /**
+   * The port the server listens on. When given, a `Host` header must name it
+   * too, so a request meant for another local server is refused. Default: any
+   * port.
+   */
+  port?: number
 }
 
 /**
@@ -184,7 +191,7 @@ function failureBody(result: Exclude<CallResult, { status: 'ok' }>): Record<stri
  *
  * With `Accept: application/x-ndjson`, the answer streams: one JSON line per
  * event the command sends, then the document (or the error) as the last
- * line. Closing the connection cancels the command through `ctx.signal`.
+ * line. A call that fails before its first event answers with its own status. Closing the connection cancels the command through `ctx.signal`.
  * @experimental
  */
 export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
@@ -208,21 +215,23 @@ export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
   const callablePaths = new Set(callable().map((e) => e.path.join(' ')))
 
   const checkOrigin = (request: Request): Response | null => {
-    const forbidden = new Response('forbidden', { status: 403, headers: HEADERS })
+    const forbidden = (): Response => new Response('forbidden', { status: 403, headers: HEADERS })
     const host = request.headers.get('host')
-    if (host === null) return forbidden
-    const hostname = host.replace(/:\d+$/, '').toLowerCase()
-    if (!LOOPBACK.has(hostname)) return forbidden
+    if (host === null) return forbidden()
+    const [, hostname = '', port] = /^(.*?)(?::(\d+))?$/.exec(host.toLowerCase()) ?? []
+    if (!LOOPBACK.has(hostname)) return forbidden()
+    if (options.port !== undefined && port !== String(options.port)) return forbidden()
     const origin = request.headers.get('origin')
-    if (origin !== null && origin !== `http://${host.toLowerCase()}`) return forbidden
+    if (origin !== null && origin !== `http://${host.toLowerCase()}`) return forbidden()
     const site = request.headers.get('sec-fetch-site')
-    if (site === 'cross-site' || site === 'same-site') return forbidden
+    if (site === 'cross-site' || site === 'same-site') return forbidden()
     return null
   }
 
   const hasToken = (request: Request): boolean => {
     const header = request.headers.get('authorization')
-    const match = header === null ? null : /^Bearer (\S+)$/.exec(header)
+    // The scheme name is case-insensitive (RFC 9110, section 11.1).
+    const match = header === null ? null : /^Bearer +(\S+)$/i.exec(header.trim())
     return match !== null && tokenEquals(match[1]!, token)
   }
 
@@ -325,9 +334,11 @@ export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
 
     if (!stream) return plain(await done)
 
-    // Wait for the first event or the end, so a refusal still gets its own status.
+    // Wait for the first event or the end, so a call that fails or is refused
+    // before it sends anything still gets its own status. Only a failure after
+    // the first event is an in-stream line.
     const first = await Promise.race([eventSeen, done])
-    if (first !== 'event' && first.status !== 'ok' && first.status !== 'error') return plain(first)
+    if (first !== 'event' && first.status !== 'ok') return plain(first)
 
     const encoder = new TextEncoder()
     let open = true
@@ -463,16 +474,21 @@ export function httpApiCommand<G extends FlagSpec = Record<never, never>>(
         ctx.io.stderr(`${ctx.app.name}: --port needs a number from 0 to 65535\n`)
         return 2
       }
-      const api = createHttpApi(ctx.app, {
+      // The API is made once the port is known, so it checks Host against it.
+      let api: HttpApi | undefined
+      const server = await serveHttp((request) => api!.fetch(request), { port })
+      api = createHttpApi(ctx.app, {
         context: { cwd: ctx.cwd, env: ctx.env },
         globals: globals as Record<string, unknown>,
         readOnly: flags.readOnly,
+        port: server.port,
       })
-      const server = await serveHttp(api.fetch, { port })
+      // printf is a shell builtin and curl reads the header from stdin, so
+      // the token never shows in the process list.
       ctx.io.stdout(
         `${ctx.app.name} api  ${server.url}\n` +
           `  token  ${api.token}\n` +
-          `  try    curl -H "Authorization: Bearer ${api.token}" ${server.url}/schema\n` +
+          `  try    printf 'Authorization: Bearer %s\\n' '${api.token}' | curl -H @- ${server.url}/schema\n` +
           `  stop   Ctrl-C\n`,
       )
       await new Promise<void>((resolve) => {

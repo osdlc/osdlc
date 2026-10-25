@@ -555,7 +555,8 @@ should depend on it.
 import { httpApiCommand } from '@osdlc/cli-tool/http'
 
 commands: { ...commands, 'serve-api': httpApiCommand({ globals: GLOBALS }) }
-// `sweep serve-api` prints the address and a token made for this run.
+// `sweep serve-api` prints the address and a token made for this run, and a
+// `printf ... | curl -H @-` line that keeps the token out of the process list.
 ```
 
 | Route | Answers |
@@ -565,17 +566,19 @@ commands: { ...commands, 'serve-api': httpApiCommand({ globals: GLOBALS }) }
 | `POST /commands/<command>...` | the `--json` document, from a JSON body of flags and positionals |
 
 A call answers 200 with the document and its exit code in `X-Exit-Code`. A
-failure answers `{ schemaVersion, kind: "error", exit, message, hint }`: 400
+failure answers the error document, `{ schemaVersion, kind: "error", code, exit, message, hint }`: 400
 for wrong arguments, 422 for a failed run, 403 for a `cli-only` command, 404
 for no such command.
 
 The server binds 127.0.0.1 only. Every request passes, in order:
 
 1. `Host` names a loopback address (`127.0.0.1`, `localhost`, `[::1]`), so a
-   site that rebinds its domain to 127.0.0.1 is refused (403).
+   site that rebinds its domain to 127.0.0.1 is refused (403). Given the
+   `port` option (`serve-api` gives it), `Host` must name that port too.
 2. `Origin`, when sent, is the server's own origin, and `Sec-Fetch-Site` is
    not `cross-site` or `same-site` (403).
-3. `Authorization: Bearer <token>` (401, the same for every path). A header,
+3. `Authorization: Bearer <token>` (401, the same for every path; the scheme
+   name is case-insensitive). A header,
    so a page on another origin needs a CORS preflight, which is never
    answered. There is no CORS.
 
@@ -583,7 +586,9 @@ The body is read only after these checks, up to 1 MiB (413), and must be
 `application/json` (415).
 
 With `Accept: application/x-ndjson`, a call streams: one line per event, then
-the document or the error as the last line. Closing the connection aborts
+the document or the error as the last line. A call that fails or is refused
+before its first event answers as it would without streaming, with its own
+status; only a failure after an event is an in-stream line. Closing the connection aborts
 `ctx.signal`. NDJSON rather than Server-Sent Events, because `EventSource`
 can only GET and cannot send the token header, while `fetch` can read NDJSON
 line by line from a POST.
