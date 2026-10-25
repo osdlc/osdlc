@@ -209,11 +209,14 @@ typo.
 
 ## Pieces
 
-`valueAt(obj, key)`, `valueIsSet(value)`, `leafSchema(schema, key)`,
+`valueAt(obj, key)`, `getIn(value, path)`, `valueIsSet(value)`, `leafSchema(schema, key)`,
 `keyExists(schema, key)`, `keyDescription(schema, key)` and `envStem(tool)` are exported for a
-tool that needs one of them without the rest. `leafSchema` walks a Zod object by dotted key. It
-keeps the outermost wrapper, since that is where `.describe()` sits. A key under a record
-resolves to the record itself.
+tool that needs one of them without the rest. `valueAt` and `getIn` walk own keys of plain
+mappings only: a list index or an inherited name such as `constructor` is not found. `leafSchema`
+walks a Zod object by dotted key, the same walk `resolveKeyPath` makes. It peels every wrapper
+(`optional`, `default`, `catch`, `readonly`, a pipe's input side and the rest) but returns the
+outermost one, since that is where `.describe()` sits. A key under a record resolves to the record
+itself, provided the rest of the key resolves in the record's value type.
 
 `systemDirs` and the `VendorDirs` type resolve a tool's machine-local directories over `TieredDirs`
 and `envVars`, which are re-exported from `@osdlc/tiered-dirs`. `closestMatches` and `didYouMean`
@@ -278,8 +281,8 @@ the machine config's salvage uses it as well. A file that does not exist is not 
 neither file present, the result is the all-defaults object.
 
 `readParsedFile(path, 'yaml' | 'json')` reads one config file and returns absent, unreadable,
-unparsable or the parsed value. Every project file read goes through it. The machine file is read
-with plain `yaml.parse` instead. `readMappingFile` is its mapping-only layer.
+unparsable or the parsed value. Every project file read goes through it, and the machine file is
+parsed by the same rules. `readMappingFile` is its mapping-only layer.
 
 ## Where the file is
 
@@ -313,7 +316,7 @@ The functions a `config` command is built from. None of them names a tool.
 |---|---|
 | `meta.ts`, `vocabulary.ts`, `meta-kit.ts` | the meta structure, `defineConfigVocabulary`, and `checkConfigMeta`/`readConfigMeta`. Also the test helpers a tool's meta test calls (`consumerProblems`, `enforcementProblems`, `machineLayerKeys`, `applierAndReservedProblems`), each returning its problems |
 | `provenance.ts` | `resolveLayeredSteps`/`resolveLayeredValue`: resolve a setting through the env (steps only), local, project and default layers, and record which layer each part came from as `{layer, mode}` (`ValueLayer`, `StepProvenance`) |
-| `explain.ts` | `resolveKeyPath`, `splitKeyPath`, `describeShape`, `defaultOf`, `nestedFields`, `jsonSchemaOf`, `getIn`, `omitPath` over a schema shape |
+| `explain.ts` | `resolveKeyPath`, `splitKeyPath`, `describeShape`, `defaultOf`, `nestedFields`, `jsonSchemaOf`, `omitPath` over a schema shape |
 | `edit.ts` | `setPath`/`unsetPath`: dotted-path edits that keep every byte outside the edited value, built on `@osdlc/yaml-splice` |
 | `scaffold.ts` | `scaffoldYaml`, `scaffoldLocalYaml`, `starterYaml`: an annotated file derived from the schema (the starter groups keys in the caller's category order) |
 | `reference.ts` | `renderReference`: a markdown reference page from the schema and its meta, grouped in the caller's category order |
@@ -364,10 +367,8 @@ this table.
 | `1_000` and `0b11` | read as the strings `1_000` and `0b11` | read as the numbers 1000 and 3 |
 | Integers beyond 2^53 | read as a number and lose precision | read as `u64`, then as a lossy float |
 | Empty file | `readParsedFile` gives `null`; `readMappingFile` gives `{}` | `read_mapping` is an error ("found an empty document"); `load` treats it as an empty mapping |
-| Looking up a list index (`list.0`) | `valueAt` finds the item | `value_at` gives `None` |
 | `1e999` | read as the string `1e999` | read as the string `.inf` |
 | `!!float 1` and an unknown tag such as `!custom 6` | the value reads as its text, a string | the value reads as a number |
-| Machine file YAML | read with plain `yaml.parse`, so the reading rules above do not apply: `.inf` and `.nan` read as numbers | read with the same rules as the project file |
 | A `{` inside a name, as in `{a{dev}` | replaces `{dev}` and keeps the `{a` before it | an unknown path name `{a{dev}` |
 | Dotted `paths:` resolution in a map | not provided | `resolve_paths_at` |
 | Invalid config | `ConfigInvalidError`, exit code 14 | `FileProblem` |

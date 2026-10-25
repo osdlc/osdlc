@@ -156,6 +156,16 @@ describe('machineConfigFile', () => {
     expect(() => sb.machine.load()).not.toThrow()
   })
 
+  test('the YAML is read by the project file rules, as the Rust crate reads it', () => {
+    // `.inf` reads as its text, not Infinity, and `yes` stays a string.
+    const read = loadText('repos: [.inf, yes]\npaths:\n  big: 1e999\n')
+    expect(read.issues).toEqual([])
+    expect(read.value.repos).toEqual(['.inf', 'yes'])
+    expect(read.value.paths).toEqual({ big: '1e999' })
+    // A null key is malformed, not an unknown key.
+    expect(loadText('~: x\n').issues.map((i) => i.code)).toEqual(['yaml'])
+  })
+
   test('an unreadable file gives defaults and one unreadable issue', () => {
     process.env[sb.machine.env] = sb.root
     sb.machine.clearCache()

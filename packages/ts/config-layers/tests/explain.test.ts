@@ -11,7 +11,6 @@ import { z } from 'zod'
 import {
   defaultOf,
   describeShape,
-  getIn,
   jsonSchemaOf,
   nestedFields,
   omitPath,
@@ -19,6 +18,7 @@ import {
   splitKeyPath,
   topLevelKeys,
 } from '../src/explain.ts'
+import { getIn } from '../src/value.ts'
 import type { ConfigKeyMeta } from '../src/meta.ts'
 
 const META: ConfigKeyMeta = {

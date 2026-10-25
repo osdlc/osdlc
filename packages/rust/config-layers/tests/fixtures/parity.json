@@ -361,6 +361,46 @@
       },
       "key": "",
       "found": false
+    },
+    {
+      "name": "a list is not walked into",
+      "obj": {
+        "a": {
+          "b": "",
+          "c": 0,
+          "d": null,
+          "e": [
+            1
+          ],
+          "f": {
+            "g": "deep"
+          }
+        },
+        "top": "t",
+        "dotted.key": "x"
+      },
+      "key": "a.e.0",
+      "found": false
+    },
+    {
+      "name": "an inherited name is not a key",
+      "obj": {
+        "a": {
+          "b": "",
+          "c": 0,
+          "d": null,
+          "e": [
+            1
+          ],
+          "f": {
+            "g": "deep"
+          }
+        },
+        "top": "t",
+        "dotted.key": "x"
+      },
+      "key": "a.constructor",
+      "found": false
     }
   ],
   "yaml": [

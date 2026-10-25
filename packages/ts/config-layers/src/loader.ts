@@ -89,8 +89,11 @@ export type ParsedFileRead =
  * and an unknown tag read as text (the crate reads a number), and an empty
  * document is `null` here (the crate calls it malformed; {@link readMappingFile}
  * turns it into `{}`).
+ *
+ * The one YAML reader: the machine file (`./machine.ts`) reads through it too.
+ * Internal, not in the package index.
  */
-function parseYamlText(text: string): unknown {
+export function parseYamlText(text: string): unknown {
   const doc = parseDocument(text, { logLevel: 'error' })
   const first = doc.errors[0]
   if (first) throw first
@@ -119,7 +122,8 @@ function parseYamlText(text: string): unknown {
  * unparsable, or a parsed value of any type. The tool decides what a value
  * that is not a mapping means and how to word each failure.
  * {@link readMappingFile} is the mapping-only layer over this. Every project
- * file read goes through this function; the machine file does not.
+ * file read goes through this function; the machine file reads its text with
+ * the same parser.
  *
  * YAML text is read as the README's "The Rust crate" section describes.
  * @experimental

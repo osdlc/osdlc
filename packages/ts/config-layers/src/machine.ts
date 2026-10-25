@@ -11,16 +11,19 @@
  * never throws. `loadWithIssues()` reports what it dropped. The result is
  * memoised per path. The path is computed on each call, so a test or a one-off
  * run can move the file with an environment variable and not write into the
- * developer's real config home.
+ * developer's real config home. The YAML is read by the same rules as a
+ * project file (`parseYamlText` in `./loader.ts`), so the Rust crate reads it
+ * the same way.
  */
 
 import { copyFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
-import { parse as yamlParse, stringify as yamlStringify } from 'yaml'
+import { stringify as yamlStringify } from 'yaml'
 import type { z } from 'zod'
 
+import { parseYamlText } from './loader.ts'
 import {
   currentMachineVersion,
   machineVersionOf,
@@ -193,7 +196,7 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
     }
     let raw: unknown
     try {
-      raw = yamlParse(text)
+      raw = parseYamlText(text)
     } catch (err) {
       return fail('yaml', err)
     }
@@ -229,7 +232,7 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
     const file = path()
     let current: unknown = {}
     try {
-      current = existsSync(file) ? (yamlParse(readFileSync(file, 'utf-8')) ?? {}) : {}
+      current = existsSync(file) ? (parseYamlText(readFileSync(file, 'utf-8')) ?? {}) : {}
     } catch {
       // An unparseable file has no issue a replacement could keep.
     }
@@ -239,7 +242,7 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
 
   const write = (text: string): void => {
     const file = path()
-    const raw: unknown = yamlParse(text) ?? {}
+    const raw: unknown = parseYamlText(text) ?? {}
     if (!isPlainObject(raw)) throw new Error(`${file}: the document is not a mapping`)
     const added = check(raw)
     if (added.length > 0) {
@@ -256,7 +259,7 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
     if (!existsSync(file)) {
       return { path: file, from: currentVersion, to: currentVersion, applied: [], written: false }
     }
-    const raw: unknown = yamlParse(readFileSync(file, 'utf-8')) ?? {}
+    const raw: unknown = parseYamlText(readFileSync(file, 'utf-8')) ?? {}
     if (!isPlainObject(raw)) throw new Error(`${file}: the document is not a mapping`)
     const from = machineVersionOf(raw)
     const migrated = migrateMachineRaw(raw, migrations)

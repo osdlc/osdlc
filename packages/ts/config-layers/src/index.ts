@@ -28,7 +28,7 @@ export { closestMatches, didYouMean } from './did-you-mean.ts'
 export { envVars, systemDirs, TieredDirs } from './dirs.ts'
 export type { EnvVars, ResolveOptions, VendorDirs } from './dirs.ts'
 
-export { valueAt, valueIsSet } from './value.ts'
+export { getIn, valueAt, valueIsSet } from './value.ts'
 
 export { deepMergeConfig } from './merge.ts'
 
@@ -132,7 +132,6 @@ export {
   defaultOf,
   descriptionOf,
   describeShape,
-  getIn,
   jsonSchemaOf,
   nestedFields,
   omitPath,

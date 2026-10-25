@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Map, Value};
 
 use crate::paths::resolve_config_path;
-use crate::value::value_is_set;
+use crate::value::{value_at_mut, value_is_set};
 
 /// What can go wrong loading a config file.
 ///
@@ -197,20 +197,10 @@ pub fn resolve_paths_at(
     home: &Path,
 ) {
     for dotted in dotted_keys {
-        let segments: Vec<&str> = dotted.split('.').collect();
-        if let Some(Value::String(s)) = value_at_mut(map, &segments) {
+        if let Some(Value::String(s)) = value_at_mut(map, dotted) {
             *s = resolve_config_path(s, base, home);
         }
     }
-}
-
-fn value_at_mut<'a>(map: &'a mut Map<String, Value>, segments: &[&str]) -> Option<&'a mut Value> {
-    let (first, rest) = segments.split_first()?;
-    let mut cur = map.get_mut(*first)?;
-    for seg in rest {
-        cur = cur.get_mut(*seg)?;
-    }
-    Some(cur)
 }
 
 #[cfg(test)]

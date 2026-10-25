@@ -9,17 +9,30 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
 }
 
 /**
+ * Read a dotted path out of a plain value: each segment is an own key of a
+ * plain mapping. A list is not walked into and an inherited name
+ * (`constructor`) is not a key, as in the Rust crate's `value_at`. The one
+ * dotted walk over a value; {@link valueAt} is built on it.
+ *
+ * @experimental
+ */
+export function getIn(value: unknown, path: readonly string[]): { found: boolean; value: unknown } {
+  let cur: unknown = value
+  for (const seg of path) {
+    if (!isPlainObject(cur) || !Object.hasOwn(cur, seg)) return { found: false, value: undefined }
+    cur = cur[seg]
+  }
+  return { found: true, value: cur }
+}
+
+/**
  * The value at `key` (`upload.endpoint`, `paths.dev`) in `obj`, or undefined.
+ * Walks as {@link getIn} does.
  *
  * @experimental
  */
 export function valueAt(obj: unknown, key: string): unknown {
-  let cur: unknown = obj
-  for (const seg of key.split('.')) {
-    if (cur === null || typeof cur !== 'object') return undefined
-    cur = (cur as Record<string, unknown>)[seg]
-  }
-  return cur
+  return getIn(obj, key.split('.')).value
 }
 
 /**
