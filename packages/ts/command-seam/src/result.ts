@@ -117,9 +117,9 @@ export type JsonFailure = CommandFailure | Failure<'unparseable' | 'invalid'>
 
 /**
  * Whether a {@link JsonFailure} is "the command ran, but its stdout was no
- * use" (`unparseable` or `invalid`) rather than a failed run. The first
- * usually wants the command's stderr shown, and the second a "could not read
- * the output" message. Checking for the two parse kinds here, instead of
+ * use" (`unparseable` or `invalid`) rather than a failed run. A failed run
+ * usually wants the command's stderr shown, and unusable output a "could not
+ * read the output" message. Checking for the two parse kinds here, instead of
  * listing every {@link CommandFailureKind}, keeps the branch right when a new
  * run-failure kind is added.
  *
