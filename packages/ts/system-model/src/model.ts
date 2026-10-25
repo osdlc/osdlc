@@ -23,6 +23,38 @@ export interface Param {
   variadic: boolean
   /** Literal default where the runner declares one. */
   default?: string | undefined
+  /** How a value reaches the command. Absent means `positional`. */
+  binding?: ParamBinding | undefined
+  /** What the parameter is for, where the runner says. */
+  doc?: string | undefined
+  /** The only values the runner accepts, where it declares a list. */
+  choices?: string[] | undefined
+}
+
+/**
+ * How a parameter's value reaches the command:
+ *
+ *   - `positional`: an argument, in parameter order, bound by the runner's
+ *     own rule (`just deploy prod`, `rake 'release[1.2]'`).
+ *   - `flag`: `flag value` (`--env prod`). With `key`, the value is passed as
+ *     `key=value` (`gh workflow run x.yml -f env=prod`).
+ *   - `assign`: one `name=value` argument, `name` defaulting to the
+ *     parameter's (`make deploy ENV=prod`, `task deploy ENV=prod`).
+ *   - `env`: the environment variable `name`.
+ */
+export type ParamBinding =
+  | { kind: 'positional' }
+  | { kind: 'flag'; flag: string; key?: string | undefined }
+  | { kind: 'assign'; name?: string | undefined }
+  | { kind: 'env'; name: string }
+
+/** Values for a task's parameters, by parameter name. A variadic takes a list. */
+export type ParamValues = Readonly<Record<string, string | readonly string[]>>
+
+/** What runs a task: its argv and the environment variables to add. */
+export interface Invocation {
+  argv: string[]
+  env: Record<string, string>
 }
 
 /**

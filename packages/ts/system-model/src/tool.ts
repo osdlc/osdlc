@@ -112,8 +112,9 @@ export interface RunnerRole {
    */
   collect(ctx: RunnerContext, packages: readonly Package[]): Promise<ProviderResult>
   /**
-   * The argv that runs `task` with `args` bound the way this tool expects.
-   * Defaults to appending them.
+   * The argv that runs `task` with positional `args` bound the way this tool
+   * expects. Defaults to appending them. Must keep `task.argv[0]`; `invoke`
+   * refuses a result that changes it.
    */
   invoke?: ((task: Task, args: readonly string[]) => string[]) | undefined
 }

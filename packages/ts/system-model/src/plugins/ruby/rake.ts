@@ -321,13 +321,21 @@ export const rakeRunner: RunnerRole = {
     }
   },
 
-  /** rake takes task arguments in brackets: `rake 'release[1.2,beta]'`. */
+  /**
+   * rake takes task arguments in brackets: `rake 'release[1.2,beta]'`. A `,`,
+   * `]` or `\` inside an argument is escaped with `\`, which rake removes
+   * (`Rake::Application#parse_task_string`), so `a,b` stays one argument.
+   */
   invoke(task, args) {
     if (args.length === 0) return [...task.argv]
     const argv = [...task.argv]
-    argv[argv.length - 1] = `${argv[argv.length - 1]}[${args.join(',')}]`
+    argv[argv.length - 1] = `${argv[argv.length - 1]}[${args.map(escapeRakeArg).join(',')}]`
     return argv
   },
+}
+
+function escapeRakeArg(arg: string): string {
+  return arg.replace(/[\\,\]]/g, (ch) => `\\${ch}`)
 }
 
 /** One row of `rake -AT`. */

@@ -18,7 +18,10 @@ import {
   type ChainSegment,
   type CollectOptions,
   type Diagnostic,
+  type Invocation,
   type Param,
+  type ParamBinding,
+  type ParamValues,
   type RunnerBrand,
   type RunnerCacheState,
   type RunnerReport,
@@ -41,7 +44,7 @@ import {
   type Matchable,
   type Mode,
 } from '@osdlc/system-model/match'
-import { paramShape } from '@osdlc/system-model/params'
+import { bindParams, paramShape, type BoundParams } from '@osdlc/system-model/params'
 
 const roots: string[] = []
 afterEach(() => {
@@ -123,6 +126,38 @@ test('invoke binds arguments the way each tool expects', async () => {
   // parameters; `paramShape` renders them when they are known.
   const params: Param[] = [{ name: 'env', required: true, variadic: false }]
   expect(paramShape(params)).toBe('<env>')
+})
+
+test('values by name are bound by each parameter binding', () => {
+  // A make target reads `NAME=value` arguments and the environment.
+  const assign: ParamBinding = { kind: 'assign' }
+  const env: ParamBinding = { kind: 'env', name: 'TOKEN' }
+  const deploy: Task = {
+    id: 'make:Makefile:deploy',
+    runner: 'make',
+    path: ['make', '.', 'deploy'],
+    argv: ['make', 'deploy'],
+    cwd: '.',
+    display: 'make deploy',
+    parameters: [
+      { name: 'ENV', required: true, variadic: false, binding: assign, choices: ['dev', 'prod'] },
+      { name: 'token', required: false, variadic: false, binding: env, doc: 'API token' },
+    ],
+    source: 'Makefile',
+    origin: 'declared',
+    tags: [],
+    persistent: { value: false, declared: false },
+    executes: 'local',
+  }
+  const values: ParamValues = { ENV: 'prod', token: 'abc' }
+
+  const bound: BoundParams = bindParams(deploy.parameters, values)
+  expect(bound).toEqual({ positional: [], named: ['ENV=prod'], env: { TOKEN: 'abc' } })
+
+  const run: Invocation = runners.invocation(deploy, values)
+  expect(run).toEqual({ argv: ['make', 'deploy', 'ENV=prod'], env: { TOKEN: 'abc' } })
+  expect(runners.invoke(deploy, { ENV: 'dev' })).toEqual(['make', 'deploy', 'ENV=dev'])
+  expect(() => runners.invoke(deploy, { ENV: 'qa' })).toThrow(/one of dev, prod/)
 })
 
 test('search ranks tasks against a query', async () => {

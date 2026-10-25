@@ -27,7 +27,16 @@ import {
 } from './context.ts'
 import type { CollectOptions, ProviderContext, ProviderKind, RunnerContext } from './contract.ts'
 import { createLister } from './discovery.ts'
-import type { Catalog, ChainSegment, RunnerBrand, RunnerReport, Task } from './model.ts'
+import type {
+  Catalog,
+  ChainSegment,
+  Invocation,
+  ParamValues,
+  RunnerBrand,
+  RunnerReport,
+  Task,
+} from './model.ts'
+import { bindParams } from './params.ts'
 import { manifestsOf, markersOf, type Registry } from './registry.ts'
 import { choosePackageManagers } from './roles.ts'
 import { synthesizedRunners } from './synthesized.ts'
@@ -291,11 +300,64 @@ function toolStatus(
   return path === null ? { binary, found: false } : { binary, found: true, path }
 }
 
-/** The argv that runs `task` with `args`, by the owning runner's rule. By default `args` are appended. */
-export function invokeTask(registry: Registry, task: Task, args: readonly string[]): string[] {
-  const invoke = registry.byId.get(task.runner)?.roles.runner?.invoke
-  if (invoke !== undefined) return invoke(task, args)
-  return [...task.argv, ...args]
+/**
+ * What runs `task` with `args`, by the owning runner's rule. A list of
+ * strings is positional arguments. Values by name are bound by each
+ * parameter's `binding` (see `bindParams`): positional values through the
+ * runner's rule, then `flag` and `assign` arguments straight after the task's
+ * own argv, so they come before any `--` the runner adds.
+ *
+ * Throws when the runner's rule changes `argv[0]`, the binary. The binary
+ * always comes from a catalog built by reading the repository, never from
+ * the caller.
+ */
+export function invocationOf(
+  registry: Registry,
+  task: Task,
+  args: readonly string[] | ParamValues,
+): Invocation {
+  const bound = isList(args)
+    ? { positional: [...args], named: [], env: {} }
+    : bindParams(task.parameters, args)
+  const rule = registry.byId.get(task.runner)?.roles.runner?.invoke
+  const base =
+    bound.positional.length === 0
+      ? [...task.argv]
+      : rule === undefined
+        ? [...task.argv, ...bound.positional]
+        : rule(task, bound.positional)
+  if (base[0] !== task.argv[0]) {
+    throw new Error(`${task.runner}: invoke changed the binary from ${task.argv[0]} to ${base[0]}`)
+  }
+  const argv =
+    bound.named.length === 0
+      ? base
+      : startsWith(base, task.argv)
+        ? [...task.argv, ...bound.named, ...base.slice(task.argv.length)]
+        : [...base, ...bound.named]
+  return { argv, env: bound.env }
+}
+
+/** {@link invocationOf}'s argv. Throws when a parameter is bound to the environment. */
+export function invokeTask(
+  registry: Registry,
+  task: Task,
+  args: readonly string[] | ParamValues,
+): string[] {
+  const { argv, env } = invocationOf(registry, task, args)
+  const names = Object.keys(env)
+  if (names.length > 0) {
+    throw new Error(`${names.join(', ')} must be set in the environment; use runners.invocation`)
+  }
+  return argv
+}
+
+function isList(args: readonly string[] | ParamValues): args is readonly string[] {
+  return Array.isArray(args)
+}
+
+function startsWith(argv: readonly string[], prefix: readonly string[]): boolean {
+  return prefix.every((word, i) => argv[i] === word)
 }
 
 function describe(err: unknown): string {
