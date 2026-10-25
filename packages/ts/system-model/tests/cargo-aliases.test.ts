@@ -111,6 +111,17 @@ describe('cargo-aliases runner', () => {
     expect(aliases('.', tasks(catalog))).toEqual(['ok'])
   })
 
+  test("built-ins are cargo's own list: clippy, fmt and miri aliases are kept", async () => {
+    const { catalog } = await run({
+      'Cargo.toml': '[package]\nname = "app"\n',
+      '.cargo/config.toml':
+        '[alias]\nclippy = "clippy -- -D warnings"\nfmt = "fmt --all"\nmiri = "miri test"\nread-manifest = "x"\ngit-checkout = "y"\n',
+    })
+    expect(aliases('.', tasks(catalog))).toEqual(['clippy', 'fmt', 'miri'])
+    const report = catalog.reports.find((r) => r.runner === 'cargo-aliases')!
+    expect(report.diagnostics.filter((d) => /built-in/.test(d.message))).toHaveLength(2)
+  })
+
   test('absent without a .cargo config', async () => {
     const { profile, catalog } = await run({ 'Cargo.toml': '[package]\nname = "app"\n' })
     expect(profile.tools).toEqual(['cargo'])

@@ -23,11 +23,23 @@ export interface Param {
   variadic: boolean
   /** Literal default where the runner declares one. */
   default?: string | undefined
-  /** How a value reaches the command. Absent means `positional`. */
+  /**
+   * How a value reaches the command. Absent means `positional`.
+   *
+   * @experimental
+   */
   binding?: ParamBinding | undefined
-  /** What the parameter is for, where the runner says. */
+  /**
+   * What the parameter is for, where the runner says.
+   *
+   * @experimental
+   */
   doc?: string | undefined
-  /** The only values the runner accepts, where it declares a list. */
+  /**
+   * The only values the runner accepts, where it declares a list.
+   *
+   * @experimental
+   */
   choices?: string[] | undefined
 }
 
@@ -38,13 +50,22 @@ export interface Param {
  *     own rule (`just deploy prod`, `rake 'release[1.2]'`).
  *   - `flag`: `flag value` (`--env prod`). With `key`, the value is passed as
  *     `key=value` (`gh workflow run x.yml -f env=prod`).
+ *   - `switch`: `flag` alone when the value is `true`, nothing when it is
+ *     `false` (poe's `boolean` args).
  *   - `assign`: one `name=value` argument, `name` defaulting to the
- *     parameter's (`make deploy ENV=prod`, `task deploy ENV=prod`).
+ *     parameter's (`make deploy ENV=prod`, `task deploy ENV=prod`). The
+ *     runner reads it, so it goes before any `--`.
  *   - `env`: the environment variable `name`.
+ *
+ * `positional`, `flag` and `switch` words are the task's own arguments and go
+ * through the runner's rule, after any `--` it adds.
+ *
+ * @experimental Only poe fills it today. The forms may change.
  */
 export type ParamBinding =
   | { kind: 'positional' }
   | { kind: 'flag'; flag: string; key?: string | undefined }
+  | { kind: 'switch'; flag: string }
   | { kind: 'assign'; name?: string | undefined }
   | { kind: 'env'; name: string }
 

@@ -42,6 +42,7 @@ const binding: JsonSchema = {
   oneOf: [
     object({ kind: { const: 'positional' } }, ['kind']),
     object({ kind: { const: 'flag' }, flag: str, key: str }, ['kind', 'flag']),
+    object({ kind: { const: 'switch' }, flag: str }, ['kind', 'flag']),
     object({ kind: { const: 'assign' }, name: str }, ['kind']),
     object({ kind: { const: 'env' }, name: str }, ['kind', 'name']),
   ],
@@ -159,7 +160,9 @@ export const catalogSchema: JsonSchema = {
       allowExec: bool,
       reports: { type: 'array', items: withoutDraft(runnerReportSchema) },
     },
-    ['kind', 'schemaVersion', 'root', 'generatedAt', 'discovery', 'allowExec', 'reports'],
+    // `kind` and `schemaVersion` are optional, as in the `Catalog` type:
+    // `collect` always sets them, but a catalog built by hand may not.
+    ['root', 'generatedAt', 'discovery', 'allowExec', 'reports'],
     'Every runner report for one profile.',
   ),
 }

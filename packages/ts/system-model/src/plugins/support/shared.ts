@@ -75,9 +75,86 @@ export function dependencies(
   }
 }
 
+/**
+ * {@link dependencies} for names that resolve to tasks of `runner` declared
+ * in the same `file`, when `names` holds them.
+ */
+export function dependenciesIn(
+  runner: string,
+  file: string,
+  deps: readonly string[],
+  names: ReadonlySet<string>,
+): Pick<Task, 'dependsOn' | 'dependsOnUnresolved'> {
+  return dependencies(deps, (dep) => (names.has(dep) ? taskId(runner, file, dep) : undefined))
+}
+
+/**
+ * Bind `args` to a `sh -c <line>` task as `"$@"`, so each stays one word.
+ * `null` when the task is not one bare `sh -c <line>`.
+ *
+ * Throws when `"$@"` would not reach the whole line: the line ends in a `#`
+ * comment (the arguments would be commented out), or it has a control
+ * operator (`;`, `&`, `|`, a line break), so the arguments would reach only
+ * its last command.
+ */
+export function shLineArgs(task: Task, args: readonly string[]): string[] | null {
+  const [binary, flag, line, ...rest] = task.argv
+  if (binary !== 'sh' || flag !== '-c' || line === undefined || rest.length > 0) return null
+  if (args.length === 0) return [...task.argv]
+  const why = shellLineProblem(line)
+  if (why !== undefined) {
+    throw new Error(`${task.runner}: this command line takes no arguments, because ${why}`)
+  }
+  return ['sh', '-c', `${line} "$@"`, 'sh', ...args]
+}
+
+/** Why `"$@"` appended to `line` would not reach all of it, or `undefined`. */
+function shellLineProblem(line: string): string | undefined {
+  let quote: string | null = null
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i]!
+    if (quote !== null) {
+      if (c === '\\' && quote === '"') i++
+      else if (c === quote) quote = null
+      continue
+    }
+    if (c === '\\') {
+      i++
+      continue
+    }
+    if (c === "'" || c === '"') quote = c
+    else if (c === '#' && (i === 0 || /\s/.test(line[i - 1]!))) return 'it ends in a # comment'
+    else if (c === ';' || c === '&' || c === '|' || c === '\n') {
+      return 'it has more than one command'
+    }
+  }
+  return undefined
+}
+
 /** Bind arguments after a `--`, for tools that read their own flags up to it. */
 export function afterSeparator(task: Task, args: readonly string[]): string[] {
   return args.length === 0 ? [...task.argv] : [...task.argv, '--', ...args]
+}
+
+/** The last segment of a `/` or `\\` path. */
+export function baseName(path: string): string {
+  return (
+    path
+      .split(/[\\/]/)
+      .filter((s) => s !== '')
+      .pop() ?? path
+  )
+}
+
+/** A command or a list of commands, as hatch and devbox scripts take; `null` for anything else. */
+export function commandList(body: unknown): string[] | null {
+  const commands = typeof body === 'string' ? [body] : Array.isArray(body) ? body : null
+  return commands !== null && commands.every((c) => typeof c === 'string') ? commands : null
+}
+
+/** `text` without a leading byte-order mark. */
+export function stripBom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text
 }
 
 /** A key/value table, not an array or null. */

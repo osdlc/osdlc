@@ -11,7 +11,7 @@ import type { ProviderContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
 import { parseJsonc } from '../support/jsonc.ts'
-import { dirOf, isTable, looksPersistent, taskId } from '../support/shared.ts'
+import { commandList, dirOf, isTable, looksPersistent, taskId } from '../support/shared.ts'
 
 export const DEVBOX_JSON = 'devbox.json'
 
@@ -49,8 +49,8 @@ export const devboxRunner: RunnerRole = {
       const scripts = isTable(shell) && isTable(shell['scripts']) ? shell['scripts'] : {}
       const dir = dirOf(file)
       for (const [name, body] of Object.entries(scripts)) {
-        const commands = typeof body === 'string' ? [body] : Array.isArray(body) ? body : null
-        if (commands === null || !commands.every((c) => typeof c === 'string')) {
+        const commands = commandList(body)
+        if (commands === null) {
           diagnostics.push({
             severity: 'warning',
             message: `devbox script ${name} is not a command or a list of commands, so it was skipped`,

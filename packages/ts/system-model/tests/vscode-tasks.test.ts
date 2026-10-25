@@ -117,12 +117,105 @@ describe('vscode-tasks runner', () => {
       '-p',
       'x',
     ])
-    expect(project.runners.invoke(named(found, 'pipe'), ['a b'])).toEqual([
+    // A pipe would pass "$@" to its last command only.
+    expect(() => project.runners.invoke(named(found, 'pipe'), ['a b'])).toThrow(
+      'vscode-tasks: this command line takes no arguments, because it has more than one command',
+    )
+  })
+
+  test('a sh -c line passes arguments as "$@", unless it ends in a comment', async () => {
+    const { project, catalog } = await run({
+      '.vscode/tasks.json': JSON.stringify({
+        version: '2.0.0',
+        tasks: [
+          { label: 'one', type: 'shell', command: 'make "test"' },
+          { label: 'comment', type: 'shell', command: 'make test # run "tests"' },
+          { label: 'hash', type: 'shell', command: "echo 'a#b'" },
+        ],
+      }),
+    })
+    const found = tasks(catalog)
+    expect(project.runners.invoke(named(found, 'one'), ['a b'])).toEqual([
       'sh',
       '-c',
-      `make | tee log 'it'\\''s' "$@"`,
+      'make "test" "$@"',
       'sh',
       'a b',
+    ])
+    expect(() => project.runners.invoke(named(found, 'comment'), ['x'])).toThrow(
+      /because it ends in a # comment/,
+    )
+    expect(project.runners.invoke(named(found, 'hash'), ['x'])).toEqual([
+      'sh',
+      '-c',
+      `echo 'a#b' "$@"`,
+      'sh',
+      'x',
+    ])
+  })
+
+  test('a leading NAME=value runs through sh', async () => {
+    const { catalog } = await run({
+      '.vscode/tasks.json': JSON.stringify({
+        tasks: [{ label: 'env', type: 'shell', command: 'FOO=bar make build' }],
+      }),
+    })
+    expect(named(tasks(catalog), 'env').argv).toEqual(['sh', '-c', 'FOO=bar make build'])
+  })
+
+  test('an editor variable in a line with shell syntax stays one sh -c line', async () => {
+    const { catalog } = await run({
+      '.vscode/tasks.json': JSON.stringify({
+        tasks: [{ label: 'count', type: 'shell', command: 'cat ${file} | wc -l' }],
+      }),
+    })
+    expect(named(tasks(catalog), 'count')).toMatchObject({
+      argv: ['sh', '-c', 'cat ${file} | wc -l'],
+      parametersUnknown: 'editor-variable',
+    })
+  })
+
+  test('top-level options and the current platform override apply', async () => {
+    const key =
+      process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'osx' : 'linux'
+    const { catalog } = await run({
+      'sub/x': '',
+      'other/x': '',
+      '.vscode/tasks.json': JSON.stringify({
+        options: { cwd: 'sub' },
+        tasks: [
+          { label: 'a', type: 'process', command: 'make' },
+          {
+            label: 'b',
+            type: 'process',
+            command: 'make',
+            args: ['all'],
+            [key]: { command: 'gmake', options: { cwd: 'other' } },
+          },
+          { label: 'c', type: 'process', command: 'make', unknownos: { command: 'no' } },
+        ],
+      }),
+    })
+    const found = tasks(catalog)
+    expect(named(found, 'a')).toMatchObject({ argv: ['make'], cwd: 'sub' })
+    expect(named(found, 'b')).toMatchObject({ argv: ['gmake', 'all'], cwd: 'other' })
+    expect(named(found, 'c').argv).toEqual(['make'])
+  })
+
+  test('a repeated label is skipped with a diagnostic, and 0.1.0 is not read', async () => {
+    const { catalog } = await run({
+      '.vscode/tasks.json': JSON.stringify({
+        tasks: [
+          { label: 'a', type: 'process', command: 'one' },
+          { label: 'a', type: 'process', command: 'two' },
+        ],
+      }),
+      'old/.vscode/tasks.json': JSON.stringify({ version: '0.1.0', command: 'make' }),
+    })
+    expect(tasks(catalog).map((t) => t.argv)).toEqual([['one']])
+    expect(catalog.reports[0]!.diagnostics.map((d) => d.message).sort()).toEqual([
+      'task a is declared more than once; the first was kept',
+      'tasks.json version 0.1.0 is not read; VS Code converts it to 2.0.0',
     ])
   })
 

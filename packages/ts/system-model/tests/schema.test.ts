@@ -112,6 +112,16 @@ describe('the catalog schema', () => {
         .success,
     ).toBe(false)
     expect(parse(catalogSchema, { kind: 'catalog', schemaVersion: 99 }).success).toBe(false)
+    // kind and schemaVersion are optional, as in the Catalog type.
+    expect(
+      parse(catalogSchema, {
+        root: '/r',
+        generatedAt: '2026-01-01T00:00:00.000Z',
+        discovery: 'walk',
+        allowExec: false,
+        reports: [],
+      }).success,
+    ).toBe(true)
   })
 })
 

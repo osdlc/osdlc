@@ -5,10 +5,15 @@
 
 import { afterAll, describe, expect, test } from 'vitest'
 
-import type { AsyncCommandRunOptions, AsyncCommandRunner } from '@osdlc/command-seam'
+import {
+  spawnRunner,
+  spawnRunnerAsync,
+  type AsyncCommandRunOptions,
+  type AsyncCommandRunner,
+} from '@osdlc/command-seam'
 
 import { builtins } from '../src/builtins.ts'
-import { DEFAULT_PROBE_TIMEOUT_MS, GIT_TIMEOUT_MS } from '../src/context.ts'
+import { boundRunners, DEFAULT_PROBE_TIMEOUT_MS, GIT_TIMEOUT_MS } from '../src/context.ts'
 import { createProject } from '../src/project.ts'
 import type { ToolDef } from '../src/tool.ts'
 import { detectAndCollect, fakeRunners, fakeWhich, fixtureRoot, removeRoot } from './support.ts'
@@ -130,7 +135,7 @@ describe('git and describe calls', () => {
     }
   })
 
-  test("moon's describe at detect time gets the signal and the default timeout", async () => {
+  test("moon's describe at detect time gets the signal and moon's own timeout", async () => {
     const dir = await root({ '.moon/workspace.yml': '' })
     const fake = fakeRunners([])
     const cancel = new AbortController()
@@ -143,7 +148,55 @@ describe('git and describe calls', () => {
     expect(fake.calls).toHaveLength(1)
     expect(fake.calls[0]?.opts).toMatchObject({
       signal: cancel.signal,
-      timeoutMs: DEFAULT_PROBE_TIMEOUT_MS,
+      timeoutMs: 120_000,
+      killTree: true,
     })
   })
+
+  test('every bound call kills its whole tree when stopped', async () => {
+    const dir = await root(ALL)
+    const fake = fakeRunners([])
+    await detectAndCollect(dir, {
+      discovery: 'walk',
+      allowExec: true,
+      makeRunner: fake.make,
+      which: fakeWhich({ moon: '/bin/moon', just: '/bin/just' }),
+    })
+    expect(fake.calls.length).toBeGreaterThan(0)
+    for (const call of fake.calls) expect(call.opts.killTree).toBe(true)
+  })
+})
+
+describe('a timed-out probe', () => {
+  // Uses sh, sleep and pgrep, so it runs on POSIX only. command-seam's own
+  // tests cover the Windows tree kill.
+  test.skipIf(process.platform === 'win32')(
+    'kills the processes the child started, not only the child',
+    async () => {
+      const tag = `${40 + Math.floor(Math.random() * 1000)}.${process.pid % 1000}`
+      const run = boundRunners(spawnRunnerAsync, new AbortController().signal, 300)('sh')
+      const res = await run.run(['-c', `sleep ${tag} & sleep ${tag}1; wait`], { cwd: '.' })
+      expect(res.neverExited).toBe(true)
+      // Give the kill a moment to land.
+      await new Promise((r) => setTimeout(r, 300))
+      const left = spawnRunner('pgrep').run(['-f', `sleep ${tag}`], { cwd: '.' })
+      expect(left.stdout.trim()).toBe('')
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'an abort of the caller signal, as a host does on Ctrl-C, kills the tree too',
+    async () => {
+      const tag = `${40 + Math.floor(Math.random() * 1000)}.${process.pid % 1000}7`
+      const cancel = new AbortController()
+      const run = boundRunners(spawnRunnerAsync, cancel.signal, 60_000)('sh')
+      const pending = run.run(['-c', `sleep ${tag} & sleep ${tag}1; wait`], { cwd: '.' })
+      setTimeout(() => cancel.abort(), 200)
+      const res = await pending
+      expect(res.reason).toBe('abort')
+      await new Promise((r) => setTimeout(r, 300))
+      const left = spawnRunner('pgrep').run(['-f', `sleep ${tag}`], { cwd: '.' })
+      expect(left.stdout.trim()).toBe('')
+    },
+  )
 })

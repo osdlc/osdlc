@@ -58,3 +58,24 @@ describe('validateToolDef', () => {
     expect(validateToolDef({ id: 'x' })).toEqual(['roles is not an object'])
   })
 })
+
+describe('brand', () => {
+  test('checks the icon type and the color pattern the schema enforces', () => {
+    expect(validateToolDef({ id: 'x', roles: {}, brand: { icon: 3, color: 'red' } })).toEqual([
+      'brand.icon is not a string',
+      'brand.color is not a #rrggbb color',
+    ])
+    expect(
+      validateToolDef({
+        id: 'x',
+        roles: {
+          runner: { kind: 'parse', collect() {}, brand: 'x', optionsEndAtTask: 'yes' },
+        },
+      }),
+    ).toEqual([
+      'roles.runner.brand is not an object',
+      'roles.runner.optionsEndAtTask is not a boolean',
+    ])
+    expect(validateToolDef({ id: 'x', roles: {}, brand: { color: '#3776ab' } })).toEqual([])
+  })
+})

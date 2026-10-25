@@ -15,6 +15,7 @@ import type { CollectOptions, DetectOptions } from '../src/contract.ts'
 import type { ProviderResult, Task } from '../src/model.ts'
 import { nodeScripts, pnpm } from '../src/plugins/node/index.ts'
 import { pythonTools } from '../src/plugins/python/index.ts'
+import { procfile } from '../src/plugins/runners/index.ts'
 import { createProject } from '../src/project.ts'
 import type { ProjectProfile, ToolDef } from '../src/tool.ts'
 import { fakeRunners, fixtureRoot, removeRoot } from './support.ts'
@@ -752,10 +753,14 @@ describe('how an entry was probed', () => {
         allowExec: true,
       })
       expect(trusted.runners[0]).toMatchObject({ state: 'stale', reason: 'exec' })
+      // A scan without exec is still a fair answer, marked stale.
+      expect(trusted.catalog?.reports).toHaveLength(1)
 
       await s.project.runners.collectAndCache(profile, cache, { ...s.options, allowExec: true })
       const untrusted = await s.project.runners.readCached(profile, cache, s.options)
       expect(untrusted.runners[0]).toMatchObject({ state: 'stale', reason: 'exec' })
+      // A report probed with exec does not answer a run without it.
+      expect(untrusted.catalog).toBeNull()
     } finally {
       await removeRoot(root)
       await removeRoot(cache)
@@ -804,6 +809,51 @@ describe('how an entry was probed', () => {
     } finally {
       await removeRoot(root)
       await removeRoot(cache)
+    }
+  })
+
+  test('an entry is stale when a binary the runner looked up appears', async () => {
+    // A Procfile picks its manager by what is on the PATH.
+    const root = await fixtureRoot({ Procfile: 'web: node server.js\n' })
+    const cache = await fixtureRoot({})
+    try {
+      const s = setup([procfile])
+      const profile = await detect(s, root)
+      const first = await s.project.runners.collectAndCache(profile, cache, s.options)
+      expect(first.reports[0]?.tasks[0]?.argv).toEqual(['sh', '-c', 'node server.js'])
+      expect((await s.project.runners.readCached(profile, cache, s.options)).allFresh).toBe(true)
+
+      const installed = {
+        ...s.options,
+        which: (b: string) => (b === 'overmind' ? '/bin/overmind' : null),
+      }
+      const after = await s.project.runners.readCached(profile, cache, installed)
+      expect(after.runners[0]).toMatchObject({ state: 'stale', reason: 'tool' })
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+    }
+  })
+
+  test('an entry is stale when the tool binary is replaced in place', async () => {
+    const root = await fixtureRoot({ 'alpha.txt': 'build\n' })
+    const cache = await fixtureRoot({})
+    const bin = await fixtureRoot({ alpha: '#!/bin/sh\necho 1\n' })
+    try {
+      const path = join(bin, 'alpha')
+      const tool = { ...parseTool('alpha'), binary: 'alpha' }
+      const s = setup([tool], { which: () => path })
+      const profile = await detect(s, root)
+      await s.project.runners.collectAndCache(profile, cache, s.options)
+      expect((await s.project.runners.readCached(profile, cache, s.options)).allFresh).toBe(true)
+
+      await writeFile(path, '#!/bin/sh\necho 2.0\n')
+      const after = await s.project.runners.readCached(profile, cache, s.options)
+      expect(after.runners[0]).toMatchObject({ state: 'stale', reason: 'tool' })
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+      await removeRoot(bin)
     }
   })
 })

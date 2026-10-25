@@ -14,13 +14,14 @@
  * manager is in the task's tags.
  *
  * A manager starts a process by name and takes no arguments for it, so
- * `invoke` throws when given any. The `sh -c` form takes them as `"$@"`.
+ * `invoke` throws when given any. The `sh -c` form takes them as `"$@"`, and
+ * throws when the line has more than one command or ends in a `#` comment.
  */
 
 import type { ProviderContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { dirOf, taskId } from '../support/shared.ts'
+import { dirOf, shLineArgs, stripBom, taskId } from '../support/shared.ts'
 
 export const PROCFILE_NAMES = ['Procfile', 'Procfile.dev']
 
@@ -52,8 +53,7 @@ export function readProcfile(text: string): {
   const entries: Array<{ name: string; command: string }> = []
   const bad: number[] = []
   const duplicates: string[] = []
-  text
-    .replace(/^﻿/, '')
+  stripBom(text)
     .split(/\r?\n/)
     .forEach((line, i) => {
       if (line.trim() === '' || line.trimStart().startsWith('#')) return
@@ -143,10 +143,9 @@ export const procfileRunner: RunnerRole = {
   },
 
   invoke(task, args) {
-    const [binary, flag, line, ...rest] = task.argv
-    if (binary === 'sh' && flag === '-c' && line !== undefined && rest.length === 0) {
-      return ['sh', '-c', `${line} "$@"`, 'sh', ...args]
-    }
+    const bound = shLineArgs(task, args)
+    if (bound !== null) return bound
+    if (args.length === 0) return [...task.argv]
     throw new Error(`${task.argv[0]} starts a Procfile process by name and takes no arguments`)
   },
 }

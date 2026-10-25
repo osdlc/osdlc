@@ -36,6 +36,7 @@ import type {
   MalformedManifest,
   Package,
   ProjectProfile,
+  ToolDef,
   ToolFact,
 } from './tool.ts'
 import { defaultRunner, which as whichOnPath } from './which.ts'
@@ -193,7 +194,13 @@ export async function detectProject(
     }
   }
 
-  await describeTools(registry, ctx, builders, all, nearest, addEvidence)
+  // A describe function gets its runner's probe timeout, the same one collect
+  // uses (moon's `query projects` can be slow on a large workspace).
+  const describeCtx = (tool: ToolDef): ProviderContext => {
+    const ms = tool.roles.runner?.probe?.timeoutMs
+    return ms === undefined ? ctx : { ...ctx, runner: boundRunners(makeRunner, signal, ms) }
+  }
+  await describeTools(registry, describeCtx, builders, all, nearest, addEvidence)
 
   const packages = snapshot(registry, builders, all)
   const union = (pick: (p: Package) => string[], order: readonly string[]): string[] => {
@@ -228,7 +235,7 @@ export async function detectProject(
 
 async function describeTools(
   registry: Registry,
-  ctx: ProviderContext,
+  ctxFor: (tool: ToolDef) => ProviderContext,
   builders: Map<string, Builder>,
   all: readonly string[],
   nearest: (dir: string) => Builder,
@@ -239,7 +246,7 @@ async function describeTools(
     if (tool.describe === undefined) continue
     const packages = afterDetect.filter((p) => p.tools.some((t) => t.tool === tool.id))
     if (packages.length === 0) continue
-    for (const fact of await tool.describe(ctx, packages)) {
+    for (const fact of await tool.describe(ctxFor(tool), packages)) {
       const b = nearest(fact.dir)
       addEvidence(b, tool.id, fact.evidence)
       b.tools.get(tool.id)?.facts.push(fact)

@@ -114,11 +114,48 @@ describe('nx runner', () => {
   test('a malformed project.json or nx.json is a diagnostic', async () => {
     const broken = await run({ 'nx.json': '{', 'project.json': '{}' })
     expect(broken.catalog.reports[0]!.diagnostics).toEqual([
-      expect.objectContaining({ message: 'unparseable nx.json', source: 'nx.json' }),
+      expect.objectContaining({
+        message: expect.stringMatching(/^unparseable nx\.json: /),
+        source: 'nx.json',
+      }),
     ])
     const { catalog } = await run({ 'nx.json': '{}', 'a/project.json': '{ nope' })
     expect(catalog.reports[0]!.diagnostics).toEqual([
-      expect.objectContaining({ message: 'unparseable project.json', source: 'a/project.json' }),
+      expect.objectContaining({
+        message: expect.stringMatching(/^unparseable project\.json: /),
+        source: 'a/project.json',
+      }),
+    ])
+  })
+
+  test('reads nx.json and project.json with comments and trailing commas', async () => {
+    const { catalog } = await run({
+      'nx.json':
+        '{\n  // defaults\n  "targetDefaults": { "test": { "dependsOn": ["build"] } },\n}\n',
+      'apps/web/project.json':
+        '{\n  "name": "web", /* the app */\n  "targets": { "build": {}, "test": {}, },\n}\n',
+    })
+    expect(catalog.reports[0]!.diagnostics).toEqual([])
+    expect(named(tasks(catalog), 'test').dependsOn).toEqual(['nx:apps/web/project.json:build'])
+  })
+
+  test('a second project with the same name is skipped with a diagnostic', async () => {
+    const { catalog } = await run({
+      'nx.json': '{}',
+      'a/project.json': JSON.stringify({ name: 'app', targets: { build: {} } }),
+      'b/project.json': JSON.stringify({
+        name: 'app',
+        targets: { build: { dependsOn: ['build'] } },
+      }),
+    })
+    const found = tasks(catalog)
+    expect(found.map((t) => t.id)).toEqual(['nx:a/project.json:build'])
+    expect(found[0]!.dependsOn).toBeUndefined()
+    expect(catalog.reports[0]!.diagnostics).toEqual([
+      expect.objectContaining({
+        message: 'project app is also declared in a; this one is skipped',
+        source: 'b/project.json',
+      }),
     ])
   })
 

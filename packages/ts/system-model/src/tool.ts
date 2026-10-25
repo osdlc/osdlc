@@ -117,11 +117,18 @@ export interface RunnerRole {
    */
   collect(ctx: RunnerContext, packages: readonly Package[]): Promise<ProviderResult>
   /**
-   * The argv that runs `task` with positional `args` bound the way this tool
+   * The argv that runs `task` with the task's own `args` (positional values and
+   * `flag` and `switch` words, in parameter order) bound the way this tool
    * expects. Defaults to appending them. Must keep `task.argv[0]`; `invoke`
    * refuses a result that changes it.
    */
   invoke?: ((task: Task, args: readonly string[]) => string[]) | undefined
+  /**
+   * True when the tool reads every word after the task name as the task's
+   * own argument (just). A value bound by name that starts with `-` is then
+   * safe without a `--`. Otherwise `invoke` refuses such a value.
+   */
+  optionsEndAtTask?: boolean | undefined
 }
 
 /**

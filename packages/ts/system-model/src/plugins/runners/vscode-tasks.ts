@@ -10,19 +10,26 @@
  *   - `type: process`: `command` is the program and `args` its arguments.
  *   - `type: shell`: `command` and `args` form one command line. A line of
  *     plain words is split into argv. A line with shell syntax (a pipe, a
- *     quote, a `$`) runs as `sh -c <line>`, on every platform.
+ *     quote, a `$`) or a leading `NAME=value` runs as `sh -c <line>`, on
+ *     every platform.
  *   - `type: npm`: the package script, through the package's manager, the
  *     same argv the node-scripts runner gives it.
  *
  * Other types (`gulp`, `typescript`, an extension's own) and a task with no
- * command, which only runs its `dependsOn`, need VS Code and are skipped.
- * Platform overrides (`windows`, `linux`, `osx`) are not applied.
+ * command, which only runs its `dependsOn`, need VS Code and are skipped. A
+ * second task with a label already seen is skipped with a diagnostic. The
+ * old `0.1.0` format is not read.
+ *
+ * The file's top-level `options` are each task's defaults. The override for
+ * the current platform (`windows`, `linux` or `osx`), at the top level and on
+ * the task, is applied over them, as VS Code does.
  *
  * `${workspaceFolder}` (and its old name `${workspaceRoot}`) and
- * `${workspaceFolderBasename}` are expanded. Any other `${...}` variable
- * (`${file}`, `${input:name}`, `${env:NAME}`) is filled in by the editor, so
- * the task keeps it as written and is marked `parametersUnknown:
- * 'editor-variable'`.
+ * `${workspaceFolderBasename}` are expanded to this machine's paths. Any
+ * other `${...}` variable (`${file}`, `${input:name}`, `${env:NAME}`) is
+ * filled in by the editor, so the task keeps it as written and is marked
+ * `parametersUnknown: 'editor-variable'`. A shell line with such a variable
+ * and shell syntax stays one `sh -c` line, with the variable in place.
  */
 
 import { join } from 'node:path'
@@ -31,7 +38,15 @@ import type { RunnerContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
 import { parseJsonc } from '../support/jsonc.ts'
-import { dependencies, dirOf, isTable, joinRel, taskId } from '../support/shared.ts'
+import {
+  baseName,
+  dependencies,
+  dirOf,
+  isTable,
+  joinRel,
+  shLineArgs,
+  taskId,
+} from '../support/shared.ts'
 
 const CHAIN = [
   { label: 'runner', hint: 'VS Code runs the tasks a `.vscode/tasks.json` declares.' },
@@ -49,6 +64,34 @@ export const VSCODE_TASKS_BRAND: RunnerBrand = {
 const SHELL_SYNTAX = /[|&;<>()$`\\"'*?[\]#~{}!\n]/
 
 const KNOWN = /\$\{(workspaceFolder|workspaceRoot|workspaceFolderBasename)\}/g
+
+/** A leading `NAME=value` word, which only a shell reads as an assignment. */
+const ASSIGNMENT = /^\s*[A-Za-z_][A-Za-z0-9_]*=/
+
+/** The key of the current platform's override in tasks.json. */
+const PLATFORM_KEY =
+  process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'osx' : 'linux'
+
+/**
+ * `entry` with `defaults` under it and its platform override over it. Keys
+ * merge one level deep, and `options` one more, as VS Code merges them.
+ */
+function withOverrides(
+  entry: Record<string, unknown>,
+  defaults: Record<string, unknown>,
+): Record<string, unknown> {
+  const layers = [defaults, entry, isTable(entry[PLATFORM_KEY]) ? entry[PLATFORM_KEY] : {}]
+  const out: Record<string, unknown> = {}
+  for (const layer of layers) {
+    for (const [key, value] of Object.entries(layer)) {
+      out[key] =
+        key === 'options' && isTable(value) && isTable(out[key])
+          ? { ...(out[key] as Record<string, unknown>), ...value }
+          : value
+    }
+  }
+  return out
+}
 
 export const vscodeTasksRunner: RunnerRole = {
   kind: 'parse',
@@ -68,14 +111,25 @@ export const vscodeTasksRunner: RunnerRole = {
         diagnostics.push({ severity: 'warning', message, source: file })
         continue
       }
+      if (isTable(doc) && doc['version'] === '0.1.0') {
+        diagnostics.push({
+          severity: 'warning',
+          message: 'tasks.json version 0.1.0 is not read; VS Code converts it to 2.0.0',
+          source: file,
+        })
+        continue
+      }
       const list = isTable(doc) && Array.isArray(doc['tasks']) ? doc['tasks'] : []
+      const top = isTable(doc) ? withOverrides(doc, {}) : {}
+      const defaults = isTable(top['options']) ? { options: top['options'] } : {}
       const folder = dirOf(dirOf(file))
       const labels = list.map(labelOf).filter((l): l is string => l !== undefined)
       const skipped: string[] = []
+      const seen = new Set<string>()
 
-      for (const entry of list) {
-        const label = labelOf(entry)
-        if (!isTable(entry) || label === undefined) {
+      for (const raw of list) {
+        const label = labelOf(raw)
+        if (!isTable(raw) || label === undefined) {
           diagnostics.push({
             severity: 'warning',
             message: 'a task with no label was skipped',
@@ -83,6 +137,16 @@ export const vscodeTasksRunner: RunnerRole = {
           })
           continue
         }
+        if (seen.has(label)) {
+          diagnostics.push({
+            severity: 'warning',
+            message: `task ${label} is declared more than once; the first was kept`,
+            source: file,
+          })
+          continue
+        }
+        seen.add(label)
+        const entry = withOverrides(raw, defaults)
         const expand = (s: string): string =>
           s.replace(KNOWN, (_m, name: string) =>
             name === 'workspaceFolderBasename'
@@ -138,15 +202,12 @@ export const vscodeTasksRunner: RunnerRole = {
   },
 
   /**
-   * A `sh -c` line takes its arguments as `"$@"`, so each stays one word.
-   * Anything else appends them.
+   * A `sh -c` line takes its arguments as `"$@"`, so each stays one word. It
+   * refuses them when the line has more than one command or ends in a `#`
+   * comment. Anything else appends them.
    */
   invoke(task, args) {
-    const [binary, flag, line, ...rest] = task.argv
-    if (binary === 'sh' && flag === '-c' && line !== undefined && rest.length === 0) {
-      return ['sh', '-c', `${line} "$@"`, 'sh', ...args]
-    }
-    return [...task.argv, ...args]
+    return shLineArgs(task, args) ?? [...task.argv, ...args]
   },
 }
 
@@ -188,10 +249,11 @@ function runOf(
   if (type === 'process') return { argv: [...command, ...literal].map(expand), cwd, type }
   // A shell task's command is a command line; its args are words VS Code quotes.
   const line = command.join(' ')
-  const unresolved = [line, ...literal].some((w) => /\$\{[^}]*\}/.test(w.replace(KNOWN, '')))
-  // A task the editor must fill in is never handed to a shell, which would
-  // read `${file}` as a variable of its own.
-  if (unresolved || !SHELL_SYNTAX.test(line.replace(KNOWN, ''))) {
+  const plain = line.replace(KNOWN, '').replace(/\$\{[^}]*\}/g, '')
+  // A line of plain words, an editor variable aside, is split. A shell would
+  // read `${file}` as a variable of its own, so such a word is not quoted
+  // into a shell line unless the line needs a shell anyway.
+  if (!SHELL_SYNTAX.test(plain) && !ASSIGNMENT.test(line)) {
     const words = line.split(/\s+/).filter((w) => w !== '')
     return { argv: [...words, ...literal].map(expand), cwd, type }
   }
@@ -248,13 +310,4 @@ function npmScript(ctx: RunnerContext, dir: string, script: string): string[] {
   if (run.dirFlagFirst !== true) return [...run.verb, run.dirFlag, dir, script]
   const [binary, ...rest] = run.verb
   return [binary!, run.dirFlag, dir, ...rest, script]
-}
-
-function baseName(path: string): string {
-  return (
-    path
-      .split(/[\\/]/)
-      .filter((s) => s !== '')
-      .pop() ?? path
-  )
 }

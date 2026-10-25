@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { tierOf } from '../src/plugins/support/shared.ts'
+import { dependenciesIn, tierOf } from '../src/plugins/support/shared.ts'
 
 describe('tierOf', () => {
   test('strips a ./ prefix but not a leading dot-directory', () => {
@@ -14,5 +14,15 @@ describe('tierOf', () => {
     expect(tierOf('./')).toBe('.')
     expect(tierOf('package.json')).toBe('.')
     expect(tierOf('./package.json')).toBe('.')
+  })
+})
+
+describe('dependenciesIn', () => {
+  test('resolves known names to ids, keeps the rest, and drops repeats', () => {
+    expect(dependenciesIn('just', 'justfile', ['a', 'x', 'a', 'x'], new Set(['a']))).toEqual({
+      dependsOn: ['just:justfile:a'],
+      dependsOnUnresolved: ['x'],
+    })
+    expect(dependenciesIn('just', 'justfile', [], new Set())).toEqual({})
   })
 })

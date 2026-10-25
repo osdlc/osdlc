@@ -10,9 +10,8 @@
  * A task name starting with `_` is private and not listed. A task's `args`
  * become parameters: an option argument is a `flag` (`--host value`), a
  * `positional` one is positional, and `multiple` makes it variadic. A
- * `boolean` argument is a flag with no value, which a parameter cannot
- * express, so it is not listed. `deps` fill `dependsOn`. `include` files are
- * not read.
+ * `boolean` argument is a `switch`: its flag alone, given for `true`. `deps`
+ * fill `dependsOn`. `include` files are not read.
  */
 
 import type { RunnerContext } from '../../contract.ts'
@@ -191,7 +190,6 @@ function paramsOf(args: unknown): Param[] {
   }
   const out: Param[] = []
   for (const [name, arg] of entries) {
-    if (arg['type'] === 'boolean') continue
     const options = Array.isArray(arg['options'])
       ? arg['options'].filter((o): o is string => typeof o === 'string')
       : []
@@ -203,6 +201,16 @@ function paramsOf(args: unknown): Param[] {
       ? arg['choices'].map(scalar).filter((c): c is string => c !== undefined)
       : []
     const fallback = scalar(arg['default'])
+    if (arg['type'] === 'boolean') {
+      out.push({
+        name,
+        required: false,
+        variadic: false,
+        binding: { kind: 'switch', flag },
+        ...(typeof arg['help'] === 'string' ? { doc: arg['help'] } : {}),
+      })
+      continue
+    }
     out.push({
       name,
       required: arg['required'] === true,

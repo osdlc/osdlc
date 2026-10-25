@@ -20,6 +20,7 @@ import {
   pushDuration,
   readEntry,
   resolveToolPath,
+  toolStampOf,
   writeEntry,
   type CacheEntry,
 } from './cache.ts'
@@ -46,10 +47,13 @@ import { defaultRunner, which as whichOnPath } from './which.ts'
  *   - `max-age`: an exec entry is past its age limit.
  *   - `excludes`: the exclude list changed.
  *   - `exec`: it was probed with execution allowed and now it is not, or the
- *     reverse.
+ *     reverse. An entry probed with execution allowed is not served to a run
+ *     without it: its report is left out, as for a miss.
  *   - `version`: another `@osdlc/system-model` version probed it.
- *   - `tool`: the tool's binary resolves to another file, such as after an
- *     upgrade, or was installed or removed.
+ *   - `tool`: the tool's binary resolves to another file or its size or
+ *     mtime changed, such as after an upgrade, or it was installed or removed.
+ *     Also when a binary the runner looked up through `ctx.which` (a Procfile
+ *     manager) is found elsewhere, or appears or goes.
  *
  * @experimental
  */
@@ -189,7 +193,17 @@ export async function readCachedCatalog(
       } else if (entry.modelVersion !== MODEL_VERSION) {
         state = 'stale'
         reason = 'version'
-      } else if (toolPath !== undefined && entry.toolPath !== toolPath) {
+      } else if (
+        toolPath !== undefined &&
+        (entry.toolPath !== toolPath || (entry.toolStamp ?? null) !== toolStampOf(toolPath))
+      ) {
+        state = 'stale'
+        reason = 'tool'
+      } else if (
+        Object.entries(entry.lookups ?? {}).some(([binary, found]) => which(binary) !== found)
+      ) {
+        // A runner that chose a tool by what is on the PATH (a Procfile
+        // manager) gives another answer once that changes.
         state = 'stale'
         reason = 'tool'
       } else if (!sameExcludes(current.excludes, entry.fingerprint?.excludes)) {
@@ -208,7 +222,10 @@ export async function readCachedCatalog(
       }
 
       runners.push({ runner: spec.id, state, reason, ageMs, ...measured, cost: costOf(spec) })
-      // A stale entry is kept. An answer that was true an hour ago is better
+      // A report that ran the repository's tools does not answer a run that
+      // may not run them.
+      if (reason === 'exec' && entry.allowExec) continue
+      // A stale entry is kept otherwise. An answer that was true an hour ago is better
       // than nothing, as long as it is marked stale.
       reports.push(entry.report)
       if (!Number.isNaN(takenAt)) takenAts.push(takenAt)
@@ -279,9 +296,10 @@ export async function collectAndCache(
         report: probe.report,
         allowExec: catalog.allowExec,
         modelVersion: MODEL_VERSION,
+        lookups: probe.lookups,
         ...(probe.report.tool === undefined
           ? {}
-          : { toolPath: resolveToolPath(probe.report.tool.path ?? null) }),
+          : toolFields(resolveToolPath(probe.report.tool.path ?? null))),
       }
       // `writeEntry` refuses errored and withheld reports.
       await writeEntry(cacheDir, entry)
@@ -311,4 +329,8 @@ export async function collectAndCache(
         : report,
     ),
   }
+}
+
+function toolFields(toolPath: string | null): Pick<CacheEntry, 'toolPath' | 'toolStamp'> {
+  return { toolPath, toolStamp: toolStampOf(toolPath) }
 }

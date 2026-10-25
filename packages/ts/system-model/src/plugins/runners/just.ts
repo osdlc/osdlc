@@ -33,7 +33,7 @@ import type {
 } from '../../model.ts'
 import { paramShape } from '../../params.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { dependencies, looksPersistent, onePerDir, sourcesOf, taskId } from '../support/shared.ts'
+import { dependenciesIn, looksPersistent, onePerDir, sourcesOf, taskId } from '../support/shared.ts'
 
 /** The names just looks for. */
 export const JUSTFILE_NAMES = ['justfile', 'Justfile', '.justfile']
@@ -81,6 +81,8 @@ export const justRunner: RunnerRole = {
   // offer. It runs just when allowed, and says when it did not.
   kind: 'parse',
   probe: { timeoutMs: 10_000, cost: 'cheap' },
+  // just reads every word after the recipe name as the recipe's argument.
+  optionsEndAtTask: true,
   chain: CHAIN,
 
   async collect(ctx, packages): Promise<ProviderResult> {
@@ -116,7 +118,10 @@ export const justRunner: RunnerRole = {
             const deps = (recipe.dependencies ?? [])
               .slice(0, recipe.priors)
               .flatMap((d) => (d.recipe ? [d.recipe] : []))
-            tasks.push({ ...fromDump(recipe, file, dir), ...depsIn(deps, names, file) })
+            tasks.push({
+              ...fromDump(recipe, file, dir),
+              ...dependenciesIn('just', file, deps, names),
+            })
           }
           continue
         }
@@ -140,7 +145,10 @@ export const justRunner: RunnerRole = {
       const scanned = scanRecipes(text)
       const names = new Set(scanned.map((r) => r.name))
       for (const { name, deps } of scanned) {
-        tasks.push({ ...fromScan(name, file, dir, unknown), ...depsIn(deps, names, file) })
+        tasks.push({
+          ...fromScan(name, file, dir, unknown),
+          ...dependenciesIn('just', file, deps, names),
+        })
       }
     }
 
@@ -187,14 +195,6 @@ function recipeName(recipe: JustRecipe): string {
 }
 
 /** A dependency resolves to a listed recipe of the same justfile. A private one is not listed. */
-function depsIn(
-  deps: readonly string[],
-  names: ReadonlySet<string>,
-  file: string,
-): Pick<Task, 'dependsOn' | 'dependsOnUnresolved'> {
-  return dependencies(deps, (dep) => (names.has(dep) ? taskId('just', file, dep) : undefined))
-}
-
 function fromDump(recipe: JustRecipe, file: string, dir: string): Task {
   const name = recipeName(recipe)
   const parameters = (recipe.parameters ?? []).map(toParam)
@@ -266,10 +266,31 @@ function renderParams(params: Param[]): string {
  *     release-lib lib bump *flags:      `*` must be in the character class
  *     ci base="main": ci-guards         text after the colon must not end it
  *
- * `:(?!=)` keeps assignments out: `alias b := build` and `set shell := [...]`
- * are not recipes.
+ * A colon inside a quoted default (`env="a:b"`) is skipped, and `:=` keeps
+ * assignments out: `alias b := build` and `set shell := [...]` are not recipes.
  */
-const RECIPE_HEADER = /^@?([a-zA-Z_][a-zA-Z0-9_-]*)(?:\s+[^:\n]*?)?:(?!=)/
+function recipeHeader(raw: string): { name: string; end: number } | null {
+  const m = /^@?([a-zA-Z_][a-zA-Z0-9_-]*)/.exec(raw)
+  if (m === null) return null
+  let quote: string | null = null
+  for (let i = m[0].length; i < raw.length; i++) {
+    const c = raw[i]!
+    if (quote !== null) {
+      if (c === '\\' && quote === '"') i++
+      else if (c === quote) quote = null
+    } else if (c === '"' || c === "'" || c === '`') {
+      quote = c
+    } else if (c === ':') {
+      if (raw[i + 1] === '=') return null
+      // Only whitespace may sit between the name and its parameters.
+      if (i > m[0].length && !/\s/.test(raw[m[0].length]!)) return null
+      return { name: m[1]!, end: i + 1 }
+    } else if (c === '#' && /\s/.test(raw[i - 1] ?? ' ')) {
+      return null
+    }
+  }
+  return null
+}
 
 export function scanRecipeNames(text: string): string[] {
   return scanRecipes(text).map((r) => r.name)
@@ -285,11 +306,11 @@ export function scanRecipes(text: string): Array<{ name: string; deps: string[] 
   const seen = new Set<string>()
   for (const raw of text.split(/\r?\n/)) {
     if (!raw || raw[0] === ' ' || raw[0] === '\t' || raw[0] === '#') continue
-    const m = RECIPE_HEADER.exec(raw)
-    const name = m?.[1]
-    if (name === undefined || seen.has(name)) continue
+    const header = recipeHeader(raw)
+    if (header === null || seen.has(header.name)) continue
+    const name = header.name
     seen.add(name)
-    const tail = raw.slice(m![0].length).replace(/#.*$/, '').split('&&')[0]!
+    const tail = raw.slice(header.end).replace(/#.*$/, '').split('&&')[0]!
     const deps = [...tail.matchAll(/\(\s*([A-Za-z_][\w-]*)[^)]*\)|([A-Za-z_][\w-]*)/g)].map(
       (d) => d[1] ?? d[2]!,
     )

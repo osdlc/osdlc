@@ -55,10 +55,25 @@ describe('bindParams', () => {
         token: 's3cret',
       }),
     ).toEqual({
+      args: ['web', '--env', 'prod', '-f', 'input=x'],
       positional: ['web'],
-      named: ['--env', 'prod', '-f', 'input=x', 'LEVEL=2', 'MODE=fast'],
+      assign: ['LEVEL=2', 'MODE=fast'],
       env: { TOKEN: 's3cret' },
     })
+  })
+
+  test('a switch gives its flag for true and nothing for false', () => {
+    const params = [p('verbose', { binding: { kind: 'switch', flag: '-v' } })]
+    expect(bindParams(params, { verbose: 'true' }).args).toEqual(['-v'])
+    expect(bindParams(params, { verbose: 'false' }).args).toEqual([])
+    expect(() => bindParams(params, { verbose: 'yes' })).toThrow(
+      'parameter verbose is a switch: true or false, not yes',
+    )
+  })
+
+  test('a parameter named after an Object.prototype member reads no inherited value', () => {
+    const params = [p('constructor'), p('toString'), p('__proto__')]
+    expect(bindParams(params, {})).toEqual({ args: [], positional: [], assign: [], env: {} })
   })
 
   test('a missing value takes the default, and a variadic takes a list', () => {
@@ -85,7 +100,7 @@ describe('bindParams', () => {
 describe('invoke', () => {
   const project = createProject({ tools: builtins })
 
-  test('positional values go through the runner rule, named ones before its `--`', () => {
+  test('positional values go through the runner rule, assign ones before its `--`', () => {
     const t = task(
       'go-task',
       ['task', 'deploy'],
@@ -99,6 +114,57 @@ describe('invoke', () => {
       'web',
     ])
     expect(project.runners.invoke(t, { ENV: 'prod' })).toEqual(['task', 'deploy', 'ENV=prod'])
+  })
+
+  test('flag values go after the runner `--`, with the positional ones', () => {
+    const npm = task(
+      'node-scripts',
+      ['npm', 'run', 'build'],
+      [p('target'), p('env', { binding: { kind: 'flag', flag: '--env' } })],
+    )
+    expect(project.runners.invoke(npm, { target: 'a', env: 'prod' })).toEqual([
+      'npm',
+      'run',
+      'build',
+      '--',
+      'a',
+      '--env',
+      'prod',
+    ])
+    const cargo = task(
+      'cargo',
+      ['cargo', 'run', '--bin', 'x'],
+      [p('env', { binding: { kind: 'flag', flag: '--env' } })],
+    )
+    expect(project.runners.invoke(cargo, { env: 'prod' })).toEqual([
+      'cargo',
+      'run',
+      '--bin',
+      'x',
+      '--',
+      '--env',
+      'prod',
+    ])
+  })
+
+  test('a named positional value starting with - is refused where the runner reads options', () => {
+    const make = task('make', ['make', 'deploy'], [p('target')])
+    expect(() => project.runners.invoke(make, { target: '--eval=x' })).toThrow(
+      'make: the value --eval=x starts with "-", and the runner would read it as an option',
+    )
+    // After a `--`, or for just, which ends its options at the recipe, it is safe.
+    const npm = task('node-scripts', ['npm', 'run', 'build'], [p('target')])
+    expect(project.runners.invoke(npm, { target: '-x' })).toEqual([
+      'npm',
+      'run',
+      'build',
+      '--',
+      '-x',
+    ])
+    const just = task('just', ['just', 'deploy'], [p('target')])
+    expect(project.runners.invoke(just, { target: '-x' })).toEqual(['just', 'deploy', '-x'])
+    // A list is the caller's own argv and passes as given.
+    expect(project.runners.invoke(make, ['-n'])).toEqual(['make', 'deploy', '-n'])
   })
 
   test('a list of strings is still positional arguments', () => {

@@ -64,6 +64,12 @@ export interface ProbeRecord {
   reads: string[]
   /** Every pattern passed to `ctx.files()`, plus the tool's own markers. */
   queries: string[]
+  /**
+   * Every binary looked up through `ctx.which`, with what it found. A runner
+   * that picks a tool by what is installed (Procfile's manager, poe's `uv run`)
+   * gives another answer once that changes.
+   */
+  lookups: Record<string, string | null>
   watch: string[]
   report: RunnerReport
   files: (pattern: string) => Promise<string[]>
@@ -170,11 +176,12 @@ export async function collectRunners(
       const head = reportHead(spec, which)
       const reads = new Set<string>()
       const queries = new Set<string>()
+      const lookups = new Map<string, string | null>()
       const own: RunnerContext = {
         ...ctx,
         runner: boundRunners(makeRunner, signal, probeTimeout(spec, options)),
       }
-      const recording = observer === undefined ? own : recordReads(own, reads, queries)
+      const recording = observer === undefined ? own : recordReads(own, reads, queries, lookups)
 
       const startedAt = performance.now()
       let report: RunnerReport
@@ -197,6 +204,7 @@ export async function collectRunners(
         durationMs: performance.now() - startedAt,
         reads: [...reads, ...evidencePaths(spec.packages)],
         queries: [...queries, ...spec.patterns],
+        lookups: Object.fromEntries([...lookups].sort(([a], [b]) => (a < b ? -1 : 1))),
         watch: spec.role.watch ?? [],
         report,
         files: ctx.files,
@@ -268,14 +276,20 @@ export function execWithheldReport(
   }
 }
 
-/** A copy of a context that records every path read and pattern listed through it. */
+/** A copy of a context that records every path read, pattern listed and binary looked up through it. */
 function recordReads<C extends ProviderContext>(
   ctx: C,
   reads: Set<string>,
   queries: Set<string>,
+  lookups: Map<string, string | null>,
 ): C {
   return {
     ...ctx,
+    which: (binary: string) => {
+      const found = ctx.which(binary)
+      lookups.set(binary, found)
+      return found
+    },
     files: async (pattern: string) => {
       const found = await ctx.files(pattern)
       queries.add(pattern)
@@ -307,14 +321,17 @@ function toolStatus(
 
 /**
  * What runs `task` with `args`, by the owning runner's rule. A list of
- * strings is positional arguments. Values by name are bound by each
- * parameter's `binding` (see `bindParams`): positional values through the
- * runner's rule, then `flag` and `assign` arguments straight after the task's
- * own argv, so they come before any `--` the runner adds.
+ * strings is positional arguments, passed as given. Values by name are bound
+ * by each parameter's `binding` (see `bindParams`): `positional`, `flag` and
+ * `switch` words go through the runner's rule, so they land after any `--` it
+ * adds. `assign` arguments go straight after the task's own argv, before any
+ * `--`, because the runner reads them.
  *
  * Throws when the runner's rule changes `argv[0]`, the binary. The binary
  * always comes from a catalog built by reading the repository, never from
- * the caller.
+ * the caller. Also throws when a positional value bound by name starts with
+ * `-` and would reach the runner as one of its own options: no `--` comes
+ * before it, and the runner does not set `optionsEndAtTask`.
  */
 export function invocationOf(
   registry: Registry,
@@ -322,24 +339,37 @@ export function invocationOf(
   args: readonly string[] | ParamValues,
 ): Invocation {
   const bound = isList(args)
-    ? { positional: [...args], named: [], env: {} }
+    ? { args: [...args], positional: [], assign: [], env: {} }
     : bindParams(task.parameters, args)
-  const rule = registry.byId.get(task.runner)?.roles.runner?.invoke
+  const runner = registry.byId.get(task.runner)?.roles.runner
+  const rule = runner?.invoke
   const base =
-    bound.positional.length === 0
+    bound.args.length === 0
       ? [...task.argv]
       : rule === undefined
-        ? [...task.argv, ...bound.positional]
-        : rule(task, bound.positional)
+        ? [...task.argv, ...bound.args]
+        : rule(task, bound.args)
   if (base[0] !== task.argv[0]) {
     throw new Error(`${task.runner}: invoke changed the binary from ${task.argv[0]} to ${base[0]}`)
   }
+  if (runner?.optionsEndAtTask !== true) {
+    const end = base.indexOf('--', task.argv.length)
+    for (const value of bound.positional) {
+      if (!value.startsWith('-')) continue
+      const at = base.indexOf(value, task.argv.length)
+      if (at !== -1 && (end === -1 || at < end)) {
+        throw new Error(
+          `${task.runner}: the value ${value} starts with "-", and the runner would read it as an option`,
+        )
+      }
+    }
+  }
   const argv =
-    bound.named.length === 0
+    bound.assign.length === 0
       ? base
       : startsWith(base, task.argv)
-        ? [...task.argv, ...bound.named, ...base.slice(task.argv.length)]
-        : [...base, ...bound.named]
+        ? [...task.argv, ...bound.assign, ...base.slice(task.argv.length)]
+        : [...base, ...bound.assign]
   return { argv, env: bound.env }
 }
 

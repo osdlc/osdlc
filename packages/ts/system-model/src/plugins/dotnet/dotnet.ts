@@ -3,13 +3,21 @@
  *
  * Synthesized, as for cargo and SwiftPM: nothing in a `.csproj` declares
  * `dotnet build`. A solution (`.sln`, `.slnx`) gets build, test, restore and
- * publish. A project (`.csproj`, `.fsproj`, `.vbproj`) gets those and run.
- * Each names its file, so `cwd` stays `.`.
+ * publish. A project (`.csproj`, `.fsproj`, `.vbproj`) gets build, restore and
+ * publish, plus `run` when it builds a program (`OutputType` `Exe` or
+ * `WinExe`, or the Web or Worker SDK) and `test` when it is a test project
+ * (`IsTestProject`, or a test SDK or package). A project file that cannot be
+ * read gets every verb. Each names its file, so `cwd` stays `.`.
+ *
+ * When the root `global.json` sets `test.runner` to
+ * `Microsoft.Testing.Platform`, `dotnet test` takes the file through
+ * `--project` or `--solution`, as .NET 10 requires in that mode.
  */
 
+import type { ProviderContext } from '../../contract.ts'
 import type { ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { Package, RunnerRole } from '../../tool.ts'
-import { afterSeparator, taskId } from '../support/shared.ts'
+import { afterSeparator, isTable, taskId } from '../support/shared.ts'
 
 const CHAIN = [
   { label: 'runner', hint: 'dotnet builds, tests and runs solutions and projects.' },
@@ -27,21 +35,51 @@ export const DOTNET_BRAND: RunnerBrand = {
 }
 
 const SOLUTION = /\.slnx?$/
+
+const PROGRAM =
+  /<OutputType>\s*(?:Exe|WinExe)\s*<|Sdk="Microsoft\.NET\.Sdk\.(?:Web|Worker|BlazorWebAssembly)"/i
+const TEST_PROJECT =
+  /<IsTestProject>\s*true\s*<|Sdk="MSTest\.Sdk|Include="(?:Microsoft\.NET\.Test\.Sdk|MSTest\.Sdk|TUnit|xunit\.v3)"/i
+
+/** Whether `global.json` puts `dotnet test` in Microsoft.Testing.Platform mode. */
+async function testingPlatform(ctx: ProviderContext): Promise<boolean> {
+  const doc = await ctx.readJson('global.json')
+  const test = isTable(doc) ? doc['test'] : undefined
+  return isTable(test) && test['runner'] === 'Microsoft.Testing.Platform'
+}
 const PROJECT = /\.(cs|fs|vb)proj$/
 
 export const dotnetRunner: RunnerRole = {
   kind: 'parse',
   chain: CHAIN,
 
-  async collect(_ctx, packages: readonly Package[]): Promise<ProviderResult> {
+  async collect(ctx, packages: readonly Package[]): Promise<ProviderResult> {
     const tasks: Task[] = []
     const files = packages.flatMap((p) => p.manifestFiles)
+    const mtp = await testingPlatform(ctx)
     for (const file of [...new Set(files)].sort()) {
       const solution = SOLUTION.test(file)
       if (!solution && !PROJECT.test(file)) continue
-      for (const verb of solution ? SOLUTION_VERBS : PROJECT_VERBS) {
+      const text = solution ? null : await ctx.readText(file)
+      const verbs = solution
+        ? SOLUTION_VERBS
+        : PROJECT_VERBS.filter(
+            (verb) =>
+              text === null ||
+              (verb === 'run'
+                ? PROGRAM.test(text)
+                : verb === 'test'
+                  ? TEST_PROJECT.test(text)
+                  : true),
+          )
+      for (const verb of verbs) {
         // `dotnet run` takes a project only through `--project`.
-        const argv = verb === 'run' ? ['dotnet', 'run', '--project', file] : ['dotnet', verb, file]
+        const argv =
+          verb === 'run'
+            ? ['dotnet', 'run', '--project', file]
+            : verb === 'test' && mtp
+              ? ['dotnet', 'test', solution ? '--solution' : '--project', file]
+              : ['dotnet', verb, file]
         tasks.push({
           id: taskId('dotnet', file, verb),
           runner: 'dotnet',
