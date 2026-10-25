@@ -117,6 +117,7 @@
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/trust-repo": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",

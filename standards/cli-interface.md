@@ -153,11 +153,11 @@ return. Code uses named constants, never bare numbers.
 
 ### 7. Non-TTY and color
 
-- Color only when stdout is a terminal. `NO_COLOR` set to anything but the
-  empty string turns color off. `FORCE_COLOR` set to a value other than `0`
-  turns it on, in a pipe too, and wins over `NO_COLOR`, as in Node.js.
-  `TERM=dumb` turns it off. A JSON document is never colored. The exact
-  reading of each value is `@osdlc/ux`'s `detectColorLevel`.
+- Color only when stdout is a terminal. A `--color` or `--no-color` flag wins.
+  Then `NO_COLOR` set to anything but the empty string turns color off. Then
+  `FORCE_COLOR` decides by its exact value: `0` or `false` turns color off,
+  `1` to `3` turn it on, in a pipe too. Then `TERM=dumb` turns it off. A JSON
+  document is never colored. `@osdlc/ux`'s `detectColorLevel` is this rule.
 - No prompt unless stdin and stderr are both terminals. A command that would
   ask takes a flag instead, and without the flag it fails with exit 2 and
   names the flag.

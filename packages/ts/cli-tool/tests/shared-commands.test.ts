@@ -585,3 +585,17 @@ describe('runApp', () => {
     await expect(runApp(app, ['a', '--json'])).resolves.toMatchObject({ exit: 0 })
   })
 })
+
+describe('trust --scope with a service parseScope', () => {
+  test('the service reads the scope, and its refusal is a usage error', async () => {
+    const { parseTrustScope } = await import('@osdlc/trust-repo')
+    const svc = { ...trustService(), parseScope: parseTrustScope }
+    const app = appWith(memoryStore(), svc)
+    const ok = await runApp(app, ['trust', '--show', '--scope', ' moon ', '--json'], { cwd: '/a' })
+    expect(ok.json()).toMatchObject({ roots: [{ scope: 'moon' }] })
+    for (const scope of ['*', '']) {
+      const r = await runApp(app, ['trust', '--scope', scope], { cwd: '/a' })
+      expect(r.exit).toBe(2)
+    }
+  })
+})

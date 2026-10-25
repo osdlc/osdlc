@@ -553,14 +553,13 @@ describe('context', () => {
     })
     const tty = { stdin: true, stdout: true, stderr: true, columns: 120 }
     await runApp(probe, ['x'], { env: {}, terminal: tty })
-    await runApp(probe, ['x'], { env: { NO_COLOR: '1', FORCE_COLOR: '1' }, terminal: tty })
+    await runApp(probe, ['x'], { env: { FORCE_COLOR: '0' }, terminal: tty })
     await runApp(probe, ['x'], { env: { FORCE_COLOR: '1' } })
     await runApp(probe, ['x'], { env: {} })
     await runApp(probe, ['x', '--json'], { env: { FORCE_COLOR: '1' }, terminal: tty })
     await runApp(probe, ['x'], { env: { TERM: 'dumb' }, terminal: tty })
     await runApp(probe, ['x'], { env: { NO_COLOR: '1' }, terminal: tty })
-    // FORCE_COLOR wins over NO_COLOR, as in Node.js and @osdlc/ux.
-    expect(colors).toEqual([true, true, true, false, false, false, false])
+    expect(colors).toEqual([true, false, true, false, false, false, false])
   })
 
   test('colorEnabled is @osdlc/ux detectColorLevel for stdout', async () => {

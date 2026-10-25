@@ -67,20 +67,45 @@ export interface TrustService {
   untrustAll?(ctx: CommandContext): Promise<{ root: string; removed: TrustEntry[] }>
   /** Whether `--scope` is offered. */
   scopes?: boolean
+  /**
+   * Read a typed `--scope` as the store reads it, and throw for one it
+   * refuses. Its error becomes a usage error (exit 2). With
+   * `@osdlc/trust-repo`, pass its `parseTrustScope`. Without it, a scope
+   * must be 1-200 characters with no control characters and no space at
+   * either end. `*`, the whole-repository grant, is refused either way.
+   */
+  parseScope?(scope: string): string
 }
 
 /** The longest scope name `--scope` takes. */
 const MAX_SCOPE = 200
 
 /**
- * Refuse a `--scope` the store cannot take, as a usage error: empty, too
- * long, with a control character or with space at either end, or `*`, which
- * is the whole-repository grant that no `--scope` asks for.
+ * The scope a typed `--scope` names: the service's `parseScope` answer, or
+ * the default check. Either refusal is a usage error, and so is `*`, the
+ * whole-repository grant that no `--scope` asks for.
  */
-function checkScope(scope: string): void {
+function readScope(service: TrustService, raw: string): string {
+  let scope = raw
+  if (service.parseScope !== undefined) {
+    try {
+      scope = service.parseScope(raw)
+    } catch (err) {
+      throw new UsageError(`--scope: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  } else checkScope(raw)
   if (scope === '*') {
     throw new UsageError("--scope '*' is the whole repository; leave out --scope for that")
   }
+  return scope
+}
+
+/**
+ * Refuse a `--scope` that is empty, too long, or has a control character or
+ * space at either end, as a usage error.
+ */
+function checkScope(scope: string): void {
+  if (scope === '*') return
   const control = [...scope].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f)
   if (scope === '' || scope.length > MAX_SCOPE || control || scope.trim() !== scope) {
     throw new UsageError(
@@ -180,9 +205,9 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
           `${modes.map((m) => `--${kebab(m)}`).join(' and ')} ask different things; give at most one`,
         )
       }
-      const scope = f['scope']
+      let scope = f['scope']
       if (typeof scope === 'string') {
-        checkScope(scope)
+        scope = readScope(service, scope)
         if (modes[0] === 'untrustAll') {
           throw new UsageError('--untrust-all removes every scope; leave out --scope')
         }

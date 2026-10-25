@@ -132,6 +132,9 @@ importers:
       '@osdlc/prettier-config':
         specifier: workspace:^
         version: link:../prettier-config
+      '@osdlc/trust-repo':
+        specifier: workspace:^
+        version: link:../trust-repo
       '@osdlc/tsconfig':
         specifier: workspace:^
         version: link:../tsconfig
