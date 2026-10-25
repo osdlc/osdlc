@@ -37,7 +37,7 @@ const way = (args) => spawnSync(process.execPath, [bin, ...args], { encoding: 'u
 try {
   const help = way(['--help'])
   assert.equal(help.status, 0, help.stderr)
-  assert.match(help.stdout, /^Usage: way /)
+  assert.match(help.stdout, /^usage: way /m)
 
   const dir = join(base, 'project')
   mkdirSync(dir)
@@ -57,7 +57,9 @@ try {
 
   const providers = way(['providers', '--json', '-C', dir])
   assert.equal(providers.status, 0, providers.stderr)
-  assert.ok(JSON.parse(providers.stdout).some((p) => p.id === 'npm' && p.source === 'built-in'))
+  assert.ok(
+    JSON.parse(providers.stdout).providers.some((p) => p.id === 'npm' && p.source === 'built-in'),
+  )
 
   // The web view's page, built from dist/ the way `way serve` builds it.
   const { buildPage } = await import(pathToFileURL(join(packageDir(), 'dist', 'page.js')).href)
