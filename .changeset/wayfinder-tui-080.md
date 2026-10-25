@@ -29,3 +29,4 @@ Breaking changes, and what to do:
 
 - An argument typed as `'a\b'` now passes `a\b`, not `ab`. Drop the backslash, or move it outside the quotes, if you relied on the old result.
 - Copied text quotes each word and no longer contains `<placeholders>`. Add the arguments after pasting.
+- A `SIGINT` sent to the terminal UI exits 130, as the CLI does, not 0. Ctrl-C and Esc typed in the UI still exit 0. A script that sends `SIGINT` and checks for 0 must accept 130.
