@@ -225,18 +225,23 @@ describe('way clean', () => {
     expect(await exists(native)).toBe(false)
   })
 
-  test('--legacy ignores the WAYFINDER_* overrides, so it never reaches a live store', async () => {
-    const p = await populated()
-    const env = { WAYFINDER_ROOT: join(p.home, 'Library', 'Application Support') }
-    const app = wayApp({ platform: 'darwin' })
-    const report = await runWay(['clean', '--json'], { cwd: p.home, home: p.home, env, app })
-    const stores = (report.json() as { stores: { key: string; path: string }[] }).stores
-    const dev = stores.find((s) => s.key === 'dev')!.path
-    await put(join(dev, 'link.json'))
-    const ran = await runWay(['clean', '--legacy'], { cwd: p.home, home: p.home, env, app })
-    expect(ran.exit).toBe(0)
-    expect(await exists(join(dev, 'link.json'))).toBe(true)
-  })
+  // Not on Windows: the injected darwin platform checks WAYFINDER_ROOT with
+  // POSIX rules, and a Windows temp path is not absolute under them.
+  test.skipIf(process.platform === 'win32')(
+    '--legacy ignores the WAYFINDER_* overrides, so it never reaches a live store',
+    async () => {
+      const p = await populated()
+      const env = { WAYFINDER_ROOT: join(p.home, 'Library', 'Application Support') }
+      const app = wayApp({ platform: 'darwin' })
+      const report = await runWay(['clean', '--json'], { cwd: p.home, home: p.home, env, app })
+      const stores = (report.json() as { stores: { key: string; path: string }[] }).stores
+      const dev = stores.find((s) => s.key === 'dev')!.path
+      await put(join(dev, 'link.json'))
+      const ran = await runWay(['clean', '--legacy'], { cwd: p.home, home: p.home, env, app })
+      expect(ran.exit).toBe(0)
+      expect(await exists(join(dev, 'link.json'))).toBe(true)
+    },
+  )
 
   test('--legacy finds the old cache where old releases kept it, not under WAYFINDER_CACHE_DIR', async () => {
     const p = await populated()
@@ -244,7 +249,13 @@ describe('way clean', () => {
     await put(mine, 'mine')
     const old = join(p.home, '.cache', 'waypost', 'a.json')
     await put(old)
-    const ran = await clean(p.home, ['--legacy'], { WAYFINDER_CACHE_DIR: p.home })
+    // The host platform, so WAYFINDER_CACHE_DIR is checked by the rules it is written in.
+    const ran = await runWay(['clean', '--legacy'], {
+      cwd: p.home,
+      home: p.home,
+      env: { WAYFINDER_CACHE_DIR: p.home },
+      app: wayApp(),
+    })
     expect(ran.exit).toBe(0)
     expect(await exists(mine)).toBe(true)
     expect(await exists(old)).toBe(false)
