@@ -1,5 +1,16 @@
 # @osdlc/typed-gh
 
+## 0.9.5
+
+### Patch Changes
+
+- Updated dependencies [9616994]
+- Updated dependencies [d243a32]
+- Updated dependencies [d243a32]
+- Updated dependencies [9616994]
+  - @osdlc/command-seam@0.12.0
+  - @osdlc/typed-git@0.8.1
+
 ## 0.9.4
 
 ### Patch Changes

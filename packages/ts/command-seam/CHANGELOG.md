@@ -1,5 +1,33 @@
 # @osdlc/command-seam
 
+## 0.12.0
+
+### Minor Changes
+
+- 9616994: Windows hardening, a process-tree kill, and a safer PowerShell line.
+  
+  - New `killTree` option on the async runners (`spawnRunnerAsync`, `spawnRunnerBytesAsync`, and the shell runners built on them). With `killTree: true`, a timeout, an abort or the output cap kills the child's whole process tree, not only the child. On POSIX it is `processGroup: true`. On Windows the runner runs `taskkill /pid <pid> /t /f` from `%SystemRoot%\System32`, by absolute path, then kills the child.
+  - `commandString` with `shell: 'powershell'` and `cwd` writes `if (Set-Location -LiteralPath <dir> -PassThru) { <line> }`, so the command does not run in the wrong folder when the change of folder fails.
+  
+  **Breaking changes**
+  
+  - On Windows, a binary `which` cannot find is no longer spawned by its bare name, which made Windows search the current folder first. The run fails at once with `spawn <binary> ENOENT`, which `classifyFailure` still reads as `not-installed`. What to do: nothing, unless you relied on a program in the current folder being found without a path; pass its path instead.
+- d243a32: Quoting that holds in fish, and an entry point a browser can load.
+  
+  - `shellQuote`, `shellJoin` and `commandString` (POSIX) write each `\` outside the single quotes, as `'\\'`. fish reads `\'` and `\\` inside single quotes as escapes, so a word ending in `\` used to leave the quotes open, and a pasted line could run the next word as a command. The line means the same in sh, bash and zsh.
+  - New entry point `@osdlc/command-seam/quote` with `commandString`, `shellJoin`, `shellQuote` and `CommandStringOptions`. It imports nothing from Node.
+- 9616994: The runners now start programs on Windows, `.cmd` and `.bat` files included. Node will not spawn a batch file without a shell, so on Windows a runner looks the binary up and, for a `.cmd` or `.bat` file, runs `cmd.exe /d /s /c` with each argument quoted by the C runtime rules and every `cmd.exe` special character escaped with `^`, so `%VAR%` does not expand. Every batch file is escaped twice, since most pass their arguments on with `%*` (npm, pnpm and yarn shims, global ones included, and `gradlew.bat`), and `cmd.exe` starts with `/v:off`, so `!VAR!` never expands, even when the registry turns delayed expansion on. An argument with a line break or a `%` cannot reach a batch file safely (`cmd.exe` expands `%NAME%`, `%NAME:a=b%` and `%NAME:~n,m%` before it reads any `^`), so that run is refused as a failed spawn with an `EINVAL` message. So is a batch file whose path holds a `%`. On POSIX nothing changes.
+  
+  `which` takes a `platform` option. With the Windows rules it splits `PATH` on `;`, applies `PATHEXT` (default `.COM;.EXE;.BAT;.CMD`) in any case, and treats `\` and `/` as path separators. `absolutePathOnly` follows the same option. Tests can run these rules on any OS.
+  
+  New: `commandString(argv, { platform, shell, cwd })` (experimental) quotes a command line for a person to paste: POSIX shells, PowerShell by default on Windows, or `cmd.exe` with `shell: 'cmd'`. `cwd` adds the change of folder each shell needs. With `shell: 'cmd'` it throws `RangeError` for a word or `cwd` holding a line break or a `%`, since `cmd.exe` expands `%NAME%` before it reads any `^`.
+  
+  On Windows, `killTree` runs `taskkill.exe` from `%SystemRoot%\System32` by absolute path, not from the run's `PATH`.
+
+### Patch Changes
+
+- d243a32: On Windows, `kill()` on a `managedProcessRunner` handle started with `processGroup: true` now stops the child. Windows has no process groups, so the group signal failed and nothing was stopped: the child kept running and `exited` never settled. It now signals the direct child, as the async runner already did. On POSIX nothing changes.
+
 ## 0.11.0
 
 ### Minor Changes

@@ -1,5 +1,12 @@
 # @osdlc/config-layers
 
+## 0.7.3
+
+### Patch Changes
+
+- Updated dependencies [9616994]
+  - @osdlc/tiered-dirs@0.4.0
+
 ## 0.7.2
 
 ### Patch Changes
