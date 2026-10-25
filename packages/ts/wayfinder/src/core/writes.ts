@@ -1,7 +1,7 @@
 /**
  * The writes this process starts without waiting: the saved view and the
  * probe store. A surface answers first and writes after. `process.exit`
- * would drop a write in flight, so every way out awaits {@link flushWrites}.
+ * would drop a write in flight, so every normal exit awaits {@link flushWrites}.
  */
 
 const pending = new Set<Promise<unknown>>()

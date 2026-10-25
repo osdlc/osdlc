@@ -151,6 +151,22 @@ describe('list progress lines', () => {
     ])
   })
 
+  test('--progress filters the skills line like the document', async () => {
+    const dir = await root({
+      ...SCRIPTS,
+      '.claude/skills/review/SKILL.md': '---\nname: review\ndescription: Review a PR\n---\n',
+    })
+    // --services keeps no skills, so the progress must not send one either.
+    const lines = (await way(['list', '--progress', '--output', 'jsonl', '--services'], dir)).out
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+    expect(lines.filter((l) => l['kind'] === 'catalog-progress').length).toBeGreaterThan(0)
+    expect(
+      lines.filter((l) => l['skills'] !== undefined && l['kind'] === 'catalog-progress'),
+    ).toEqual([])
+  })
+
   test('--progress sends the skills line with the runner lines, and it validates', async () => {
     const dir = await root({
       ...SCRIPTS,

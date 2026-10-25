@@ -144,8 +144,16 @@ runners are not affected, and a runner that timed out is not stored.
 Unset or `null`, each runner has its own limit: 10 seconds for just and task,
 30 for mise and rake, 120 for moon, 300 for gradle and sbt, and 60 for the
 rest. Set it lower to stop a hung tool sooner, or higher for a slow build,
-such as a cold gradle start. Either file may set it:
-`way config set runners.timeout 20`.
+such as a cold gradle start. It takes 1 to 3600 seconds.
+
+The user file sets the limit: `way config set --user runners.timeout 20`.
+A project file, which the web view's settings page also writes, can only
+lower it. Each runner takes the smaller of the project value and the limit
+it would have without it: its own, or the user value. With no user value, a
+project's `runners.timeout: 5` stops just at 5 seconds, and a project's
+`runners.timeout: 600` leaves just at 10. A project value above the user
+value, or a project `null` under a user value, is ignored with a warning, so
+a repository cannot make a hung tool hold up loading longer.
 
 ### `excludePaths`
 

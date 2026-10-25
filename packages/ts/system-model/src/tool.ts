@@ -86,7 +86,8 @@ export interface RunnerProbe {
   /**
    * The timeout for the probe and each subprocess it starts, in ms. Defaults
    * to `DEFAULT_PROBE_TIMEOUT_MS`. `CollectOptions.timeouts` and
-   * `CollectOptions.probeTimeoutMs` override it.
+   * `CollectOptions.probeTimeoutMs` override it; `CollectOptions.maxProbeTimeoutMs`
+   * caps it.
    */
   timeoutMs?: number | undefined
   cost?: ProbeCost | undefined

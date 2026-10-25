@@ -28,7 +28,7 @@ import { BIN, PROJECT_CONFIG_FILENAME } from '../app.ts'
 import { cacheDir } from '../cache.ts'
 import { settingLayer } from '../config-keys.ts'
 import {
-  collectAndCache,
+  collectAndStore,
   fromStore,
   makeProject,
   orderedCatalog,
@@ -488,7 +488,10 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
   const projectToolsPending = !projectAllowed && (config.layers.project?.tools?.length ?? 0) > 0
 
   // The config's own allowExec was consumed by the gate.
-  const { allowExec: _consumed, ...configOptions } = collectOptionsFromConfig(config.effective)
+  const { allowExec: _consumed, ...configOptions } = collectOptionsFromConfig(
+    config.effective,
+    config.layers,
+  )
   // Config first, flags second. --exclude REPLACES runners.disabled.
   const options: WayOptions = {
     ...configOptions,
@@ -548,9 +551,18 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
   /** Take `next` as the settings: the collect options follow, except where a flag decided. */
   const adopt = (next: Settings): void => {
     settings = next
-    const derived = collectOptionsFromConfig(next.loaded.effective) as Record<string, unknown>
+    const derived = collectOptionsFromConfig(next.loaded.effective, next.loaded.layers) as Record<
+      string,
+      unknown
+    >
     const target = options as unknown as Record<string, unknown>
-    for (const key of ['exclude', 'discovery', 'excludePaths', 'probeTimeoutMs'] as const) {
+    for (const key of [
+      'exclude',
+      'discovery',
+      'excludePaths',
+      'probeTimeoutMs',
+      'maxProbeTimeoutMs',
+    ] as const) {
       if (pinnedByFlag.includes(key)) continue
       if (derived[key] === undefined) delete target[key]
       else target[key] = derived[key]
@@ -578,7 +590,7 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
     progress?: CatalogProgress,
   ): Promise<{ catalog: Catalog; times: Map<string, number> }> => {
     const times = new Map<string, number>()
-    const catalog = await collectAndCache(
+    const catalog = await collectAndStore(
       project,
       root,
       {

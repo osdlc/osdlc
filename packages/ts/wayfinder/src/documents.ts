@@ -163,7 +163,7 @@ export const CatalogProgressOutput = z.object({
     .array(SkillZ)
     .optional()
     .describe(
-      'The agent skills, on a line of their own once they are read. Not filtered. No line when there are none or they are too large for one; they come with the catalog document.',
+      'The agent skills, on a line of their own once they are read, filtered like the document. No line when there are none or they are too large for one; they come with the catalog document.',
     ),
 })
 

@@ -138,18 +138,24 @@ export function stateFor(
   )
 }
 
+/** The longest delay `setTimeout` honours, in ms. A longer one fires at once. */
+export const MAX_TIMER_MS = 2 ** 31 - 1
+
 /**
  * The probe timeout of `spec`: the caller's for this runner, the caller's for
- * every runner, the runner's own, else the default. It bounds each
- * subprocess the runner starts and the whole probe.
+ * every runner, the runner's own, else the default, then at most
+ * `maxProbeTimeoutMs`. It bounds each subprocess the runner starts and the
+ * whole probe. `Infinity` means no limit. A finite value is at most
+ * {@link MAX_TIMER_MS}.
  */
 export function probeTimeout(spec: RunnerSpec, options: CollectOptions): number {
-  return (
+  const own =
     options.timeouts?.[spec.id] ??
     options.probeTimeoutMs ??
     spec.role.probe?.timeoutMs ??
     DEFAULT_PROBE_TIMEOUT_MS
-  )
+  const limit = Math.min(own, options.maxProbeTimeoutMs ?? Infinity)
+  return limit === Infinity ? limit : Math.min(limit, MAX_TIMER_MS)
 }
 
 /** The diagnostic of a probe stopped at its timeout: `timed out after 10 s`. */
@@ -184,6 +190,15 @@ export async function collectRunners(
     packageManagers: (dir) => choosePackageManagers(registry, profile, dir),
   }
   const observer = options.probeObserver
+  // The shared file listing, awaited before any runner's clock starts, so a
+  // slow listing does not count against a runner's own limit. A failed
+  // listing is the runners' to report when they ask for files.
+  let listed: Promise<void> | undefined
+  const listing = (): Promise<void> =>
+    (listed ??= state.lister.index().then(
+      () => undefined,
+      () => undefined,
+    ))
 
   const selected = selectRunners(registry, profile, options)
   options.onRunners?.(selected.map((s) => s.id))
@@ -195,10 +210,23 @@ export async function collectRunners(
         return withheld
       }
       const head = reportHead(spec, which)
+      const failed = (message: string): RunnerReport => ({
+        ...head,
+        status: 'error',
+        tasks: [],
+        skippedForExec: false,
+        diagnostics: [{ severity: 'error', message }],
+      })
       const reads = new Set<string>()
       const queries = new Set<string>()
       const lookups = new Map<string, string | null>()
       const limit = probeTimeout(spec, options)
+      if (!(limit > 0)) {
+        const invalid = failed(`probe timeout must be a positive number or Infinity, got ${limit}`)
+        options.onReport?.(invalid)
+        return invalid
+      }
+      await listing()
       // Aborted at the timeout, which kills every process tree this runner started.
       const stop = new AbortController()
       const ownSignal = AbortSignal.any([signal, stop.signal])
@@ -208,13 +236,6 @@ export async function collectRunners(
         runner: boundRunners(makeRunner, ownSignal, limit),
       }
       const recording = observer === undefined ? own : recordReads(own, reads, queries, lookups)
-      const failed = (message: string): RunnerReport => ({
-        ...head,
-        status: 'error',
-        tasks: [],
-        skippedForExec: false,
-        diagnostics: [{ severity: 'error', message }],
-      })
 
       const startedAt = performance.now()
       const work = (async (): Promise<RunnerReport> => {
@@ -226,12 +247,17 @@ export async function collectRunners(
         }
       })()
       let timer: ReturnType<typeof setTimeout> | undefined
-      const timedOut = new Promise<null>((resolve) => {
-        timer = setTimeout(() => resolve(null), limit)
-      })
-      const answer = await Promise.race([work, timedOut])
+      const timedOut =
+        limit === Infinity
+          ? null
+          : new Promise<null>((resolve) => {
+              timer = setTimeout(() => resolve(null), limit)
+            })
+      const answer = await (timedOut === null ? work : Promise.race([work, timedOut]))
       clearTimeout(timer)
       const report = answer ?? failed(timedOutMessage(limit))
+      // `work` is not cancelled, only its subprocesses are killed. A runner
+      // that hangs on something else stays pending until the process exits.
       if (answer === null) stop.abort(new Error(timedOutMessage(limit)))
 
       const durationMs = performance.now() - startedAt

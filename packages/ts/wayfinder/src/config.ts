@@ -28,6 +28,10 @@
  *     of repositories that includes it.
  *   - `open`, `theme` and `skills`, which say how a person likes to work.
  *
+ * `runners.timeout` from a project can only lower a limit: it caps each
+ * runner's own limit, or the user's value. A project value above the user's,
+ * or a project `null` that would undo it, is dropped with a warning.
+ *
  * `tools` is gated too, because a tool module is code. User-layer entries
  * always load; project-layer entries load only when the repository is trusted
  * and execution is allowed (see `tools.ts`).
@@ -98,6 +102,8 @@ const TrustRulesSchema = z.object({
 /** The `discovery` values. */
 export const DISCOVERY_VALUES = ['git', 'walk', 'auto'] as const
 
+/** The smallest `runners.timeout`, in seconds. */
+export const MIN_RUNNER_TIMEOUT_S = 1
 /** The largest `runners.timeout`, in seconds: one hour. */
 export const MAX_RUNNER_TIMEOUT_S = 3600
 
@@ -121,14 +127,15 @@ export const WayfinderConfigSchema = z
         order: strings('Preferred display order. Runners not named follow alphabetically.'),
         timeout: z
           .number()
-          .positive()
+          .min(MIN_RUNNER_TIMEOUT_S)
           .max(MAX_RUNNER_TIMEOUT_S)
           .nullable()
           .describe(
             'Seconds one runner may take to list its tasks, its subprocesses included. A runner ' +
               'still running then is stopped and shows "timed out". null (the default): each ' +
               'runner has its own limit, 10 for just and task, 30 for mise and rake, 120 for ' +
-              'moon, 300 for gradle and sbt, 60 for the rest.',
+              'moon, 300 for gradle and sbt, 60 for the rest. A project file can only lower a ' +
+              'limit: each runner takes the smaller of its value and the limit it would have.',
           ),
       })
       .partial()
@@ -223,7 +230,8 @@ function expectation(schema: z.ZodType): string {
   const s = unwrap(schema)
   if (s instanceof z.ZodBoolean) return 'true or false'
   if (s instanceof z.ZodNullable) return `${expectation(s.unwrap() as z.ZodType)}, or null`
-  if (s instanceof z.ZodNumber) return `a number above 0, at most ${MAX_RUNNER_TIMEOUT_S}`
+  if (s instanceof z.ZodNumber)
+    return `a number from ${MIN_RUNNER_TIMEOUT_S} to ${MAX_RUNNER_TIMEOUT_S}`
   if (s instanceof z.ZodEnum) return `one of ${s.options.join(', ')}`
   if (s instanceof z.ZodArray) return 'an array of strings'
   if (s instanceof z.ZodString) return 'a string'
@@ -707,10 +715,25 @@ export interface LoadedConfig {
  */
 function projectRules(
   project: WayfinderConfig,
+  user: WayfinderConfig | null,
   locations: ConfigLocations,
 ): { project: WayfinderConfig; warnings: string[] } {
   const warnings: string[] = []
   const out: Record<string, unknown> = { ...project }
+  const timeout = project.runners?.timeout
+  const userTimeout = user?.runners?.timeout
+  if (
+    timeout !== undefined &&
+    typeof userTimeout === 'number' &&
+    (timeout === null || timeout > userTimeout)
+  ) {
+    warnings.push(
+      `${locations.project}: runners.timeout ${JSON.stringify(timeout)} is ignored — a project ` +
+        `file can only lower the limit below your user value (${userTimeout})`,
+    )
+    const { timeout: _dropped, ...runners } = project.runners!
+    out['runners'] = runners
+  }
   if (project.allowExec === true) {
     // Warned even when the user layer also says true: the file's setting is
     // never honoured, and its author might rely on it.
@@ -777,7 +800,7 @@ export async function loadConfig(
   const user = userRead?.config ?? null
   let project: WayfinderConfig | null = null
   if (projectRead !== null) {
-    const ruled = projectRules(projectRead.config, locations)
+    const ruled = projectRules(projectRead.config, user, locations)
     project = ruled.project
     warnings.push(...ruled.warnings)
   }
@@ -1052,21 +1075,32 @@ export function resolveConfigKey(key: string): string | undefined {
 
 // ── Uses of the config ──────────────────────────────────────────────────────
 
+type ConfigOptions = Pick<
+  WayOptions,
+  'exclude' | 'allowExec' | 'discovery' | 'excludePaths' | 'probeTimeoutMs' | 'maxProbeTimeoutMs'
+>
+
 /**
  * The {@link WayOptions} fields this configuration controls. Only keys the
  * config sets are present, so a caller spreads its own flags after it.
+ *
+ * With `layers`, `runners.timeout` comes from them: the user's value replaces
+ * each runner's limit, and the project's caps it. Without, `config`'s value
+ * replaces each runner's limit.
  */
 export function collectOptionsFromConfig(
   config: WayfinderConfig,
-): Pick<WayOptions, 'exclude' | 'allowExec' | 'discovery' | 'excludePaths' | 'probeTimeoutMs'> {
-  const options: Pick<
-    WayOptions,
-    'exclude' | 'allowExec' | 'discovery' | 'excludePaths' | 'probeTimeoutMs'
-  > = {}
+  layers?: { user: WayfinderConfig | null; project: WayfinderConfig | null },
+): ConfigOptions {
+  const options: ConfigOptions = {}
   const disabled = config.runners?.disabled
   if (disabled !== undefined) options.exclude = [...disabled]
-  const timeout = config.runners?.timeout
-  if (timeout !== undefined && timeout !== null) options.probeTimeoutMs = Math.round(timeout * 1000)
+  const ms = (seconds: number | null | undefined): number | undefined =>
+    typeof seconds === 'number' ? Math.round(seconds * 1000) : undefined
+  const replace = ms(layers === undefined ? config.runners?.timeout : layers.user?.runners?.timeout)
+  if (replace !== undefined) options.probeTimeoutMs = replace
+  const cap = ms(layers?.project?.runners?.timeout)
+  if (cap !== undefined) options.maxProbeTimeoutMs = cap
   if (config.allowExec !== undefined) options.allowExec = config.allowExec
   if (config.discovery !== undefined) options.discovery = config.discovery
   if (config.excludePaths !== undefined) options.excludePaths = [...config.excludePaths]

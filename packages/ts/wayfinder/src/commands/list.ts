@@ -91,13 +91,14 @@ export const MAX_PROGRESS_LINE = 1024 * 1024
  * the runners first, in the order the catalog will list them, then each
  * runner as it answers, with its unknowns, and the agent skills on a line of
  * their own once they are read. Skills read before the runners are known
- * wait for the first line. No skills, or skills too large for a line, come
- * only with the document.
+ * wait for the first line. They pass `filter`, as in the document. No skills,
+ * or skills too large for a line, come only with the document.
  */
 export function progressLines(
   session: Session,
   emit: ProgressSink,
   maxLine = MAX_PROGRESS_LINE,
+  filter: TaskFilter = {},
 ): CatalogProgress {
   let pending: string[] = []
   let total = 0
@@ -119,10 +120,11 @@ export function progressLines(
       if (early !== null) sendSkills(early)
       early = null
     },
-    onSkills(skills) {
+    onSkills(all) {
+      const skills = filterSkills(all, filter).map((h) => h.skill)
       if (skills.length === 0) return
-      if (named) sendSkills([...skills])
-      else early = [...skills]
+      if (named) sendSkills(skills)
+      else early = skills
     },
     onRunner(report, cache) {
       pending = pending.filter((r) => r !== report.runner)
@@ -211,7 +213,9 @@ export function listCommand(home: string, share?: CatalogShare) {
         const snapshot = await session.catalog({
           cached,
           signal,
-          ...(emit !== undefined ? { progress: progressLines(session, emit) } : {}),
+          ...(emit !== undefined
+            ? { progress: progressLines(session, emit, MAX_PROGRESS_LINE, filter) }
+            : {}),
         })
         const unknowns = session.unknowns(snapshot)
         noteUnknowns(ctx, session, snapshot, unknowns)

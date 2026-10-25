@@ -3,9 +3,9 @@ import { join } from 'node:path'
 
 import { afterAll, describe, expect, test } from 'vitest'
 
-import { spawnRunner } from '@osdlc/command-seam'
+import { spawnRunner, type AsyncCommandRunner } from '@osdlc/command-seam'
 
-import { timedOutMessage } from '../src/collect.ts'
+import { MAX_TIMER_MS, probeTimeout, timedOutMessage, type RunnerSpec } from '../src/collect.ts'
 
 import type { RunnerContext } from '../src/contract.ts'
 import { diagnostics, tasks, type ProviderResult, type RunnerReport } from '../src/model.ts'
@@ -659,6 +659,80 @@ describe('a probe past its timeout', () => {
       expect(left).toBe('')
     },
   )
+})
+
+describe('probe timeout values', () => {
+  const slow = (ms: number) =>
+    toolOf('slow', {
+      collect: () => new Promise<ProviderResult>((r) => setTimeout(() => r(absent), ms)),
+    })
+
+  test.each([
+    ['Infinity', Infinity],
+    ['above the timer limit', 3_000_000_000],
+  ])('%s does not cut a probe off at once', async (_name, value) => {
+    const dir = await root({ 'slow.txt': '' })
+    for (const opts of [{ probeTimeoutMs: value }, { timeouts: { slow: value } }]) {
+      const catalog = await collect(dir, walkOpts({ tools: [slow(50)], ...opts }))
+      expect(catalog.reports[0]!.status).toBe('absent')
+    }
+  })
+
+  test('probeTimeout keeps Infinity and clamps a finite value to the timer limit', () => {
+    const spec = { id: 'x', role: { probe: { timeoutMs: 10_000 } } } as unknown as RunnerSpec
+    expect(probeTimeout(spec, { probeTimeoutMs: Infinity })).toBe(Infinity)
+    expect(probeTimeout(spec, { probeTimeoutMs: 3_000_000_000 })).toBe(MAX_TIMER_MS)
+    expect(probeTimeout(spec, {})).toBe(10_000)
+  })
+
+  test('maxProbeTimeoutMs only lowers a limit', () => {
+    const spec = { id: 'x', role: { probe: { timeoutMs: 10_000 } } } as unknown as RunnerSpec
+    expect(probeTimeout(spec, { maxProbeTimeoutMs: 5_000 })).toBe(5_000)
+    expect(probeTimeout(spec, { maxProbeTimeoutMs: 60_000 })).toBe(10_000)
+    expect(probeTimeout(spec, { probeTimeoutMs: 30_000, maxProbeTimeoutMs: 20_000 })).toBe(20_000)
+    expect(probeTimeout(spec, { timeouts: { x: Infinity }, maxProbeTimeoutMs: 1_000 })).toBe(1_000)
+  })
+
+  test.each([0, -1, Number.NaN])('%s fails the runner without probing it', async (value) => {
+    const dir = await root({ 'slow.txt': '' })
+    let probed = false
+    const tool = toolOf('slow', {
+      collect: async () => {
+        probed = true
+        return absent
+      },
+    })
+    const catalog = await collect(dir, walkOpts({ tools: [tool], probeTimeoutMs: value }))
+    expect(probed).toBe(false)
+    expect(catalog.reports[0]!.status).toBe('error')
+    expect(catalog.reports[0]!.diagnostics[0]!.message).toBe(
+      `probe timeout must be a positive number or Infinity, got ${value}`,
+    )
+  })
+
+  test("a slow file listing does not count against a runner's timeout", async () => {
+    const dir = await root({ 'lister.txt': '' })
+    const lister = toolOf('lister', {
+      collect: async (ctx: RunnerContext) => {
+        const files = await ctx.files('*.txt')
+        return { status: files.length > 0 ? 'ok' : 'absent', tasks: [], diagnostics: [] }
+      },
+    })
+    const project = createProject({ tools: [lister] })
+    const profile = await project.detect(dir, { discovery: 'walk' })
+    // A git listing that takes longer than the runner's own limit.
+    const slowGit = (): AsyncCommandRunner => ({
+      run: () =>
+        new Promise((r) =>
+          setTimeout(() => r({ exitCode: 0, stdout: 'lister.txt\0', stderr: '' }), 400),
+        ),
+    })
+    const catalog = await project.runners.collect(
+      { ...profile, discovery: 'git' },
+      { makeRunner: slowGit, timeouts: { lister: 150 } },
+    )
+    expect(catalog.reports[0]!.status).toBe('ok')
+  })
 })
 
 describe('timedOutMessage', () => {

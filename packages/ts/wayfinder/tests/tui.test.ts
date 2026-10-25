@@ -1092,6 +1092,23 @@ describe('step-by-step loading', () => {
     expect(tui.state.skills.map((r) => r.name)).toEqual(['review'])
   })
 
+  test('under a filter that hides every task so far, the skills wait for a shown row', async () => {
+    const { tui } = await testTui()
+    Object.assign(tui.session, { savedCatalog: async () => null })
+    tui.state.query = 'deploy'
+    const probe = stepped(tui)
+    void tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.runners(['make', 'just'])
+    probe.skills([skillRow('deploy-review')])
+    probe.answer(report('make', [task('make', 'build')]))
+    // make has a task, but the query hides it: no row for the skill to sit below.
+    expect(tui.state.skills).toEqual([])
+    probe.answer(report('just', [task('just', 'deploy')]))
+    expect(tui.state.skills.map((r) => r.name)).toEqual(['deploy-review'])
+    expect(tui.state.selectedId).toBe('just:deploy')
+  })
+
   test('skills read after a task show at once', async () => {
     const { tui } = await testTui()
     Object.assign(tui.session, { savedCatalog: async () => null })

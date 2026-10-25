@@ -321,11 +321,17 @@ runner declares its timeout and a cost hint (`cheap` or `slow`) in
 `RunnerRole.probe`. A runner that declares none gets `DEFAULT_PROBE_TIMEOUT_MS`.
 `CollectOptions.timeouts` replaces a runner's timeout by id, such as
 `{ moon: 300_000 }`, and `CollectOptions.probeTimeoutMs` replaces it for every
-runner `timeouts` does not name. The timeout bounds the whole probe too. A
-runner still running at its timeout is stopped: the processes it started are
-killed, and it reports `status: 'error'` with the diagnostic
-`timed out after 10 s`. The other runners go on. `CollectOptions.onProbe` is called once for each runner
-probed, with how long the probe took, so a host can report it.
+runner `timeouts` does not name. `CollectOptions.maxProbeTimeoutMs` caps
+every runner's timeout after both, so a host can take a value from a less
+trusted source, such as a project file, that only lowers the limit.
+`Infinity` means no limit, and a finite timeout is at most 2^31-1 ms.
+
+The timeout bounds the whole probe too. Its clock starts once the shared file
+listing is ready. A runner still running at its timeout is stopped: the
+processes it started are killed, and it reports `status: 'error'` with the
+diagnostic `timed out after 10 s`. The other runners go on.
+`CollectOptions.onProbe` is called once for each runner probed, with how long
+the probe took, so a host can report it.
 `CollectOptions.onRunners` is called once, before any probe, with the runners
 the collect reports, and `CollectOptions.onReport` once per runner as its
 report is ready, withheld runners included, so a host can show each runner

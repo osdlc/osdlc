@@ -44,6 +44,8 @@ export interface WayOptions {
    * and reports `timed out after <n> s`.
    */
   probeTimeoutMs?: number | undefined
+  /** The longest any runner may take, in ms: it only lowers a limit. For a project file's value. */
+  maxProbeTimeoutMs?: number | undefined
   signal?: AbortSignal | undefined
   /** Called with each probed runner's measured time. */
   onProbe?: ((probe: { runner: string; durationMs: number }) => void) | undefined
@@ -102,6 +104,7 @@ function collectOptions(o: WayOptions): CollectOptions {
     allowExec: o.allowExec ?? false,
     execWithheldHint: o.execWithheldHint,
     probeTimeoutMs: o.probeTimeoutMs,
+    maxProbeTimeoutMs: o.maxProbeTimeoutMs,
     signal: o.signal,
     onProbe: o.onProbe,
     onRunners: o.onRunners,
@@ -199,7 +202,7 @@ function mergeCatalogs(granted: Catalog, others: Catalog): Catalog {
  * background, and `flushWrites` waits for it. When a tool grant splits the
  * runners in two, both collections settle before a failure is thrown.
  */
-export async function collectAndCache(
+export async function collectAndStore(
   project: Project,
   root: string,
   options: WayOptions,
