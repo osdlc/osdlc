@@ -240,7 +240,8 @@ jobs:
           cache: pnpm
 
       # The picked packages among the five. `build` adds their workspace
-      # dependencies, which pnpm's `...` suffix selects.
+      # dependencies, which pnpm's `...` suffix selects. A path selector needs
+      # braces for the suffix: `{./path}...`.
       - name: Pick the tier-2 packages
         id: pick
         run: |
@@ -249,7 +250,7 @@ jobs:
           for p in command-seam trust-repo tiered-dirs cli-tool system-model; do
             if grep -q "\"packages/ts/$p\"" <<< "$PACKAGES"; then
               filter="$filter --filter ./packages/ts/$p"
-              build="$build --filter ./packages/ts/$p..."
+              build="$build --filter {./packages/ts/$p}..."
             fi
           done
           echo "filter=$filter" >> "$GITHUB_OUTPUT"
