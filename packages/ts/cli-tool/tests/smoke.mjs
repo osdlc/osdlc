@@ -12,8 +12,9 @@
 // Tests each entry point, because each is a separate file that can break on
 // its own: the root (flag parsing, exit codes, a captured context), ./devlink
 // (the tool spec and the PATH shim), and the command tree with its shared
-// commands, which load zod. The http entry answers a call; the mcp entry
-// loads only when its optional peer, the MCP SDK, is installed.
+// commands, which load zod. The http entry answers a call, and the mcp entry
+// lists the tools. check:packages runs this with the optional MCP SDK
+// installed.
 
 import { strict as assert } from 'node:assert'
 
@@ -91,13 +92,8 @@ assert.equal(wrapEntry.wrapText, root.wrapText)
   assert.equal(res.status, 200)
   assert.deepEqual(await res.json(), got.json())
 
-  let mcp = null
-  try {
-    mcp = await import('@osdlc/cli-tool/mcp')
-  } catch (err) {
-    if (!String(err).includes('@modelcontextprotocol/sdk')) throw err
-  }
-  if (mcp !== null) assert.ok(mcp.mcpTools(app).some((t) => t.name === 'config_get'))
+  const mcp = await import('@osdlc/cli-tool/mcp')
+  assert.ok(mcp.mcpTools(app).some((t) => t.name === 'config_get'))
 }
 
 // Flags are declared once and parsed to typed values.
