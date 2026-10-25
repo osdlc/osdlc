@@ -3,7 +3,7 @@
  *
  * Re-sweeps each repository and drops selected rows that are gone, no longer
  * deletable, changed, or lack a grant. Deletes the rest in a fixed order
- * (worktrees, local branches, remote branches, then one prune per repository)
+ * (worktrees, each unlocked first when its lock's owner is dead, local branches, remote branches, then one prune per repository)
  * and stops at the first failure. Branch deletes are compare-and-swap on the
  * planned sha. Every step is verified, and the receipt is rewritten after each.
  */
@@ -16,6 +16,7 @@ import { CommandFailed, Git } from '@osdlc/typed-git'
 
 import { localDeleteCommand, remoteDeleteCommand } from './branches.ts'
 import type { HostHooks } from './hooks.ts'
+import { defaultProcessProbe, parseLockOwner, type ProcessProbe } from './processes.ts'
 import {
   PLAN_CATEGORIES,
   fingerprint,
@@ -27,7 +28,7 @@ import {
 import type { Dropped, Receipt, RowRef, Step } from './receipt.ts'
 import { sweepRepo } from './sweep.ts'
 import { AUTHORIZATIONS, type Authorization, type SweepItem } from './types.ts'
-import { worktreePruneCommand, worktreeRemoveCommand } from './worktrees.ts'
+import { worktreePruneCommand, worktreeRemoveCommand, worktreeUnlockCommand } from './worktrees.ts'
 import { writeJsonAtomic } from './write-json.ts'
 
 /** An authorization the caller gave, for one row or (`row: null`) for all. */
@@ -40,6 +41,11 @@ export interface ApplyOptions extends HostHooks {
   /** Injected runners. Defaults spawn the real `git` and `gh`. */
   git?: CommandRunner | undefined
   gh?: CommandRunner | undefined
+  /**
+   * Answers lock-owner and working-directory questions, for the re-sweep and
+   * for the check just before an unlock. Defaults to `ps` and `lsof`.
+   */
+  probe?: ProcessProbe | undefined
   /** The caller's directory; the sweep never offers the worktree holding it. */
   callerCwd: string
   dryRun: boolean
@@ -131,6 +137,7 @@ function resweep(repo: PlanRepo, opts: ApplyOptions): SweepItem[] {
     cwd: opts.callerCwd,
     git: opts.git,
     gh: opts.gh,
+    probe: opts.probe,
   })
   if (sweep.repo === null || sweep.error !== null) {
     throw new Error(sweep.error ?? `could not read repository: ${repo.root}`)
@@ -205,33 +212,63 @@ function pending(
 const pruneStep = (repo: string, row: RowRef | null): Step =>
   pending(repo, row, 'prune-worktrees', worktreePruneCommand(repo))
 
-function stepFor({ repo, item, force }: Accepted): Step {
+function stepsFor({ repo, item, force }: Accepted): Step[] {
   const ref: RowRef = { category: item.category, id: item.id }
   const sha = typeof item.facts['sha'] === 'string' ? item.facts['sha'] : null
   switch (item.category) {
-    case 'worktree':
-      if (item.facts['on_disk'] === false) return pruneStep(repo, ref)
-      return pending(repo, ref, 'remove-worktree', worktreeRemoveCommand(repo, item.id, { force }))
+    case 'worktree': {
+      // Remove and prune both skip a locked worktree, so a stale lock goes first.
+      const unlock =
+        item.facts['stale_lock'] === true
+          ? [pending(repo, ref, 'unlock-worktree', worktreeUnlockCommand(repo, item.id))]
+          : []
+      if (item.facts['on_disk'] === false) return [...unlock, pruneStep(repo, ref)]
+      return [
+        ...unlock,
+        pending(repo, ref, 'remove-worktree', worktreeRemoveCommand(repo, item.id, { force })),
+      ]
+    }
     case 'local_branch':
-      return pending(repo, ref, 'delete-local', localDeleteCommand(item.id, sha ?? ''), sha)
+      return [pending(repo, ref, 'delete-local', localDeleteCommand(item.id, sha ?? ''), sha)]
     case 'remote_branch':
-      return pending(
-        repo,
-        ref,
-        'delete-remote',
-        remoteDeleteCommand(String(item.facts['remote']), String(item.facts['branch']), sha ?? ''),
-        sha,
-      )
+      return [
+        pending(
+          repo,
+          ref,
+          'delete-remote',
+          remoteDeleteCommand(
+            String(item.facts['remote']),
+            String(item.facts['branch']),
+            sha ?? '',
+          ),
+          sha,
+        ),
+      ]
   }
 }
 
 /** Run one step, then confirm it took. Throws with the reason on failure. */
-function execute(step: Step, row: Accepted | null, git: Git): string {
+function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe): string {
   const at = git.at(step.repo)
   const registered = (path: string): boolean =>
     at.worktrees().some((w) => resolve(w.path) === resolve(path))
 
   switch (step.action) {
+    case 'unlock-worktree': {
+      const path = row!.item.id
+      // The sweep that accepted this row is behind us; ask again just before
+      // acting, so an owner that came back keeps its lock.
+      const lockReason = row!.item.facts['lock_reason']
+      const owner = parseLockOwner(typeof lockReason === 'string' ? lockReason : null)
+      if (owner === null) throw new Error(`refused: lock on ${path} names no owner`)
+      if (probe.alive(owner.pid, owner.startedAt)) {
+        throw new Error(`refused: lock owner pid ${owner.pid} is alive`)
+      }
+      at.worktreeUnlock(path)
+      const entry = at.worktrees().find((w) => resolve(w.path) === resolve(path))
+      if (entry?.locked === true) throw new Error(`still locked: ${path}`)
+      return 'lock owner dead, unlocked'
+    }
     case 'prune-worktrees': {
       at.worktreePrune()
       if (row !== null && registered(row.item.id)) throw new Error('still registered after prune')
@@ -305,7 +342,9 @@ export function applyPlan(
   const ordered = PLAN_CATEGORIES.flatMap((category) =>
     accepted.filter((row) => row.item.category === category),
   )
-  const plannedSteps: Array<[Step, Accepted | null]> = ordered.map((row) => [stepFor(row), row])
+  const plannedSteps: Array<[Step, Accepted | null]> = ordered.flatMap((row) =>
+    stepsFor(row).map((step): [Step, Accepted | null] => [step, row]),
+  )
   for (const repo of new Set(ordered.map((row) => row.repo))) {
     plannedSteps.push([pruneStep(repo, null), null])
   }
@@ -320,9 +359,10 @@ export function applyPlan(
   const save = (): void => writeJsonAtomic(opts.receiptPath, receipt)
   save()
   const git = new Git(opts.callerCwd, { runner: opts.git })
+  const probe = opts.probe ?? defaultProcessProbe()
   for (const [step, row] of plannedSteps) {
     try {
-      step.verification = execute(step, row, git)
+      step.verification = execute(step, row, git, probe)
       step.result = 'ok'
     } catch (err) {
       step.result = 'failed'

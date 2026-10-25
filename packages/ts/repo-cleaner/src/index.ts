@@ -30,6 +30,7 @@ export {
   hasBlockers,
   worktreePruneCommand,
   worktreeRemoveCommand,
+  worktreeUnlockCommand,
   type WorktreeBlocker,
 } from './worktrees.ts'
 export { DiscoveryFailed, discoverRepo } from './discover.ts'
@@ -54,6 +55,16 @@ export {
   type PlannableRow,
 } from './plan.ts'
 export { ReceiptSchema, type Dropped, type Receipt, type RowRef, type Step } from './receipt.ts'
+export {
+  defaultProcessProbe,
+  isIdleShell,
+  parseLockOwner,
+  parseLsofCwd,
+  type DefaultProbeOptions,
+  type LockOwner,
+  type ProcessHolder,
+  type ProcessProbe,
+} from './processes.ts'
 export { fetchPrs } from './prs.ts'
 export {
   expandTilde,

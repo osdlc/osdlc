@@ -60,10 +60,44 @@ Some worktrees are held back whatever their branch says. Each lands in
 
 | Blocker | Why |
 | --- | --- |
-| `locked-worktree` | Someone ran `git worktree lock`; the reason is in `facts.lock_reason`. |
+| `locked-worktree` | Someone ran `git worktree lock` and the lock's owner is alive or unknown; the reason is in `facts.lock_reason`. A lock whose owner is dead is not a blocker (see below). |
+| `live-process` | A process other than an idle shell has its working directory in the worktree (`facts.live_processes`), lock or not. |
 | `hidden-index-flags` | Files marked skip-worktree or assume-unchanged hide edits from `status`. |
 | `nested-repository` | An untracked or ignored directory holds a repository with its own history. |
 | `branch-in-other-worktree` | Another worktree has the same branch checked out (`facts.other_worktrees`). |
+
+### Locks and running processes
+
+A crashed coding agent leaves its worktree locked. The sweep reads one generic
+token from the lock reason, `pid <N>`, optionally followed by `start <time>`,
+and asks whether that process is still running. It reads nothing else of the
+reason, so a free-form reason such as `keep, build running` always blocks.
+
+- The owner is dead: the lock is not a blocker. `facts.stale_lock` is `true`,
+  `facts.lock_owner` holds the pid and start time, and the row's commands begin
+  with `git worktree unlock`. `apply` unlocks, removes and verifies it, and the
+  receipt records the `unlock-worktree` step.
+- The owner is alive, or its start time cannot be read: `locked-worktree`.
+- With a start time, a live pid whose own start time differs by more than two
+  seconds is a reused pid and counts as dead. A start time that is not a date
+  or epoch seconds cannot rule the owner out, so the lock stays a blocker.
+- Before the unlock, `apply` asks again. If the owner is alive by then the
+  row is dropped and nothing is touched; if it comes back in the instant
+  between the check and the unlock, the step fails and the run stops with the
+  lock in place. `stale_lock` is part of a worktree row's fingerprint, so a
+  lock taken after the plan was written drops the row too.
+- Separately, any process whose working directory is inside the worktree blocks
+  it as `live-process`, lock or not. Idle shells (`sh`, `bash`, `zsh`, `fish`)
+  do not block; they are listed in `facts.idle_shells`.
+
+Both questions go to a `ProcessProbe` (`alive(pid, startedAt?)` and
+`holders(path)`), passed as `probe` in the options of `sweepRepo`, `sweepRepos`
+and `applyPlan`. The default, `defaultProcessProbe()`, runs `ps -o lstart=` and
+`lsof -d cwd` through `@osdlc/command-seam`, reads the process table once per
+sweep, and needs `ps` and `lsof` on `PATH`. Where `lsof` is missing, the
+process check is skipped, `facts.process_probe_error` says so, and the other
+blockers still apply. A host or test supplies its own probe.
+Nothing is ever killed.
 
 Without `gh`, or without authentication, classification proceeds on git
 evidence alone and the report says so.
