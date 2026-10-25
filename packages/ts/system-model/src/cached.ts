@@ -18,8 +18,10 @@ import {
   EXEC_MAX_AGE_MS,
   estimateMs,
   isSlow,
+  MODEL_VERSION,
   pushDuration,
   readEntry,
+  resolveToolPath,
   writeEntry,
   type CacheEntry,
 } from './cache.ts'
@@ -40,12 +42,20 @@ import type { ProbeCost, ProjectProfile } from './tool.ts'
 import { which as whichOnPath } from './which.ts'
 
 /**
- * Why a cached entry was not usable as it is: its files changed, an exec
- * entry is past its age limit, or the exclude list changed.
+ * Why a cached entry was not usable as it is:
+ *
+ *   - `changed`: its files changed.
+ *   - `max-age`: an exec entry is past its age limit.
+ *   - `excludes`: the exclude list changed.
+ *   - `exec`: it was probed with execution allowed and now it is not, or the
+ *     reverse.
+ *   - `version`: another `@osdlc/system-model` version probed it.
+ *   - `tool`: the tool's binary resolves to another file, such as after an
+ *     upgrade, or was installed or removed.
  *
  * @experimental
  */
-export type StaleReason = 'changed' | 'max-age' | 'excludes'
+export type StaleReason = 'changed' | 'max-age' | 'excludes' | 'exec' | 'version' | 'tool'
 
 /**
  * One runner's cache verdict.
@@ -172,9 +182,21 @@ export async function readCachedCatalog(
 
       let state: RunnerCacheState['state'] = 'fresh'
       let reason: StaleReason | undefined
-      // Checked before the digest. A changed exclude list explains a changed
-      // digest, and widening the list can leave the digest unchanged.
-      if (!sameExcludes(current.excludes, entry.fingerprint?.excludes)) {
+      const toolPath = spec.binary === undefined ? undefined : resolveToolPath(which(spec.binary))
+      // How it was probed is checked first: each one changes the answer
+      // whatever the files say.
+      if (entry.allowExec !== allowExec) {
+        state = 'stale'
+        reason = 'exec'
+      } else if (entry.modelVersion !== MODEL_VERSION) {
+        state = 'stale'
+        reason = 'version'
+      } else if (toolPath !== undefined && entry.toolPath !== toolPath) {
+        state = 'stale'
+        reason = 'tool'
+      } else if (!sameExcludes(current.excludes, entry.fingerprint?.excludes)) {
+        // Checked before the digest. A changed exclude list explains a changed
+        // digest, and widening the list can leave the digest unchanged.
         state = 'stale'
         reason = 'excludes'
       } else if (current.digest !== entry.fingerprint?.digest) {
@@ -255,6 +277,11 @@ export async function collectAndCache(
         durations: pushDuration(previous, probe.durationMs),
         fingerprint: print,
         report: probe.report,
+        allowExec: catalog.allowExec,
+        modelVersion: MODEL_VERSION,
+        ...(probe.report.tool === undefined
+          ? {}
+          : { toolPath: resolveToolPath(probe.report.tool.path ?? null) }),
       }
       // `writeEntry` refuses errored and withheld reports.
       await writeEntry(cacheDir, entry)
