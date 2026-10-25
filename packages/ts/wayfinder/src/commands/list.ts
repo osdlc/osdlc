@@ -6,15 +6,21 @@
 
 import type { Catalog } from '@osdlc/system-model/detect'
 
+import { inDisplayOrder } from '../catalog.ts'
 import { documentGroups } from '../groups.ts'
 import { filterTasks, type TaskFilter } from '../core/filter.ts'
 import { filterSkills, skillLine, type SkillRow } from '../core/skills.ts'
-import type { CatalogSnapshot, Session } from '../core/session.ts'
+import type { CatalogProgress, CatalogSnapshot, Session } from '../core/session.ts'
 import type { Unknown } from '../core/unknowns.ts'
-import { CATALOG_DOCUMENT_VERSION, CatalogOutput, type CatalogDocumentBody } from '../documents.ts'
+import {
+  CATALOG_DOCUMENT_VERSION,
+  CatalogOutput,
+  CatalogProgressOutput,
+  type CatalogDocumentBody,
+} from '../documents.ts'
 import type { CatalogDocument } from '../index.ts'
 import { taskLine } from '../core/copy-text.ts'
-import type { CatalogShare } from '../serve/catalog-share.ts'
+import type { CatalogShare, ProgressSink } from '../serve/catalog-share.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import { FILTER_FLAGS, filterFrom, kit, noteUnknowns, openSession } from './shared.ts'
 
@@ -73,6 +79,47 @@ export function sourceOf(snapshot: Pick<CatalogSnapshot, 'catalog' | 'origin'>):
     : { source: 'fresh', storedAt: null }
 }
 
+/**
+ * The largest progress line, in UTF-16 code units of its JSON. A runner
+ * whose line would be larger is sent without its report, as `omitted`; its
+ * rows come with the catalog document.
+ */
+export const MAX_PROGRESS_LINE = 1024 * 1024
+
+/**
+ * A {@link CatalogProgress} that sends `session`'s probe as progress lines:
+ * the runners first, in the order the catalog will list them, then each
+ * runner as it answers, with its unknowns.
+ */
+export function progressLines(
+  session: Session,
+  emit: ProgressSink,
+  maxLine = MAX_PROGRESS_LINE,
+): CatalogProgress {
+  let pending: string[] = []
+  let total = 0
+  return {
+    onRunners(runners) {
+      pending = inDisplayOrder(
+        runners.map((runner) => ({ runner })),
+        session.runnerOrder(),
+      ).map((r) => r.runner)
+      total = runners.length
+      emit({ pending: [...pending], total })
+    },
+    onRunner(report, cache) {
+      pending = pending.filter((r) => r !== report.runner)
+      const unknowns = session.unknowns({ catalog: { reports: [report] }, cache: [cache] })
+      const line = { pending: [...pending], total, report, cache, unknowns }
+      emit(
+        JSON.stringify(line).length <= maxLine
+          ? line
+          : { pending: [...pending], total, omitted: report.runner },
+      )
+    },
+  }
+}
+
 /** Every task in the document, in catalog order. */
 function documentTasks(doc: CatalogDocumentBody): Catalog['reports'][number]['tasks'] {
   return (doc.reports as Catalog['reports']).flatMap((r) => r.tasks)
@@ -89,7 +136,8 @@ export function listCommand(home: string, share?: CatalogShare) {
     description:
       'Each task line is the command Copy gives, quoted and with a cd when the task runs from ' +
       'its own directory, so it pastes into a shell; "run" takes that line or the task id, which ' +
-      '--json shows. --output jsonl prints one runner report per line; "query" with no terms ' +
+      '--json shows. --output jsonl prints one runner report per line; with --progress it first ' +
+      'prints a catalog-progress line as each runner answers. "query" with no terms ' +
       'prints one task per line. ' +
       'Probes every runner, so a script gets what the repository has now. --cached answers at ' +
       'once with the last listing saved under the same trust and settings, and does not check ' +
@@ -110,10 +158,17 @@ export function listCommand(home: string, share?: CatalogShare) {
         hidden: true,
         help: 'in the web view, answer with a probe already running for the same catalog',
       },
+      progress: {
+        kind: 'boolean',
+        help:
+          'send a catalog-progress line as each runner answers, before the document: with ' +
+          '--output jsonl, or as NDJSON over HTTP',
+      },
     },
     output: CatalogOutput,
     kind: 'catalog',
     schemaVersion: CATALOG_DOCUMENT_VERSION,
+    events: { schema: CatalogProgressOutput, kind: 'catalog-progress' },
     items: { field: 'reports', kind: 'report' },
     readOnly: true,
     examples: ['list', 'list --json', 'list --services', '-C ../repo list --cached --json'],
@@ -129,21 +184,39 @@ export function listCommand(home: string, share?: CatalogShare) {
         home,
         positionals[0],
       )
-      const read = async (cached: boolean, signal?: AbortSignal): Promise<CatalogBody> => {
-        const snapshot = await session.catalog({ cached, signal })
+      // Progress lines only when asked for, so --output jsonl is unchanged.
+      const own: ProgressSink | undefined = flags.progress ? (line) => ctx.emit(line) : undefined
+      const read = async (
+        cached: boolean,
+        signal?: AbortSignal,
+        emit?: ProgressSink,
+      ): Promise<CatalogBody> => {
+        const snapshot = await session.catalog({
+          cached,
+          signal,
+          ...(emit !== undefined ? { progress: progressLines(session, emit) } : {}),
+        })
         const unknowns = session.unknowns(snapshot)
         noteUnknowns(ctx, session, snapshot, unknowns)
         return catalogDocument(snapshot, unknowns, filter, session.settings().trustedTools)
       }
       if (sharing) {
         const key = session.viewKey()
-        if (flags.cached) return share.cached(key) ?? read(true, ctx.signal)
-        return share.fresh(key, (signal) => read(false, signal), {
-          join: flags.join,
-          signal: ctx.signal,
-        })
+        const shared = (join: boolean): Promise<CatalogBody> =>
+          share.fresh(key, (signal, emit) => read(false, signal, emit), {
+            join,
+            signal: ctx.signal,
+            onEvent: own,
+          })
+        if (flags.cached) {
+          // With nothing held yet, the probe serve started is the answer.
+          const held = share.cached(key)
+          if (held !== null) return held
+          return share.probing(key) ? shared(true) : read(true, ctx.signal, own)
+        }
+        return shared(flags.join)
       }
-      return read(flags.cached)
+      return read(flags.cached, undefined, own)
     },
     text(doc) {
       const lines = [

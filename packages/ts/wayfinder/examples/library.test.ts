@@ -71,6 +71,26 @@ test('buildCatalog takes the CLI filter, and refuses a directory that does not e
   )
 })
 
+test('buildCatalog reports each runner as it answers', async () => {
+  const { dir, home } = await repo()
+  const answered: string[] = []
+  let named: readonly string[] = []
+  const doc = await buildCatalog({
+    dir,
+    env: {},
+    home,
+    progress: {
+      onRunners: (runners) => {
+        named = runners
+      },
+      onRunner: (report) => answered.push(report.runner),
+    },
+  })
+  const ids = doc.reports.map((r) => r.runner).sort()
+  expect([...named].sort()).toEqual(ids)
+  expect(answered.sort()).toEqual(ids)
+})
+
 test('buildCatalog passes on config warnings', async () => {
   const { dir, home } = await repo()
   await writeFile(join(dir, 'wayfinder.config.json'), '{"skills":"all"}')

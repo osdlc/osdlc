@@ -38,6 +38,8 @@ export function $(id: string): HTMLElement {
  * came from and what could not be read.
  */
 export type CatalogDocument = Catalog & {
+  /** `fresh`: probed in this call. `cached`: the server's held catalog. */
+  source?: 'fresh' | 'cached'
   cache?: RunnerCacheState[]
   unknowns?: Unknown[]
   /** Agent skills: the Skills group. */
@@ -96,6 +98,22 @@ export interface AppState {
   checkedAt: number | string
   loading: boolean
   /**
+   * True while the first probe's runners arrive one by one, with nothing
+   * else on screen. `catalog` then holds only the runners that answered.
+   */
+  live: boolean
+  /** The runners the running probe has not heard from yet. */
+  pending: string[]
+  /** How many runners the running probe reports; -1 until its first line. */
+  expected: number
+  /**
+   * Every runner the live probe reports, in display order, from its first
+   * line. Tabs and groups take their final places from it while they load.
+   */
+  order: string[]
+  /** When the running load started, in ms, so a long refresh can name what it waits on. */
+  loadStarted: number
+  /**
    * Whether a trust grant would collect the withheld runners: the catalog
    * says a runner is withheld because the repository is not trusted. False
    * when execution is off for another reason, such as `--no-exec`, where a
@@ -142,6 +160,11 @@ export const state: AppState = {
   knownRunners: new Set(),
   checkedAt: Date.now(),
   loading: false,
+  live: false,
+  pending: [],
+  expected: 0,
+  order: [],
+  loadStarted: 0,
   trustable: false,
   cache: [],
   unknowns: [],

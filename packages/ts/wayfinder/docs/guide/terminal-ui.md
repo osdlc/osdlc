@@ -170,9 +170,25 @@ agent, not here, so Enter and `^y` copy `/<name>` and nothing is spawned. The
 
 ## Startup and the cache
 
-The first frame comes from the [stored probe](cache.md), so a repository
-with a slow runner shows its tasks at once. A real probe runs in the
-background and the rows update in place. Nothing is painted from an empty store.
+The frame appears at once. When an earlier run saved what it showed (see
+[the cache](cache.md)), its rows are drawn first and the status line says
+`refreshing…` until a real probe has heard from every runner; then the rows
+update in place.
+
+With nothing saved, each runner's rows appear as that runner answers. Until
+then the runner's tab shows `…` in place of its count, the list has a
+`… moon  loading` line for it, and the status line names what is still
+out: `loading 3 of 12: just, mise, moon`. Before the probe knows its runners
+it says `detecting the project…`, and after the last one it says `loading…`
+until the catalog is saved. A withheld runner shows `–` and its reason as
+soon as the probe reaches it. A failed one gets ` !` after its tab's count
+and its reason above the rows, in red: `boom: config is broken`. The status
+line names it too: `boom failed`.
+
+A row from this probe runs at once on Enter; a row from the saved view is
+checked first (see below). While rows arrive, the cursor stays on the task it
+is on, so a runner that answers between a look and a key press does not
+change what Enter runs.
 
 A runner whose stored rows are out of date gets a leading `~` on its tab. The
 status line beside the task count then says one of three things:
@@ -192,8 +208,9 @@ probe, the error is followed by a line naming the cached listing and its age.
 ## Refresh
 
 `Ctrl+R` always runs a real probe and writes the result to the store.
-`refreshing` appears beside the task count while it runs. A failed refresh
-reports the error there and keeps the list you had.
+`refreshing…` appears beside the task count while it runs. After 3 seconds
+it names the runners still out: `refreshing… waiting on moon`. A failed
+refresh reports the error there and keeps the list you had.
 
 The selection follows the task, not the row number. A refresh that reorders
 rows does not move the cursor to a different task.

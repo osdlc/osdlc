@@ -168,10 +168,14 @@ export async function collectRunners(
   }
   const observer = options.probeObserver
 
+  const selected = selectRunners(registry, profile, options)
+  options.onRunners?.(selected.map((s) => s.id))
   const reports = await Promise.all(
-    selectRunners(registry, profile, options).map(async (spec): Promise<RunnerReport> => {
+    selected.map(async (spec): Promise<RunnerReport> => {
       if (spec.role.kind === 'exec' && !allowExec) {
-        return execWithheldReport(spec, options.execWithheldHint, which)
+        const withheld = execWithheldReport(spec, options.execWithheldHint, which)
+        options.onReport?.(withheld)
+        return withheld
       }
       const head = reportHead(spec, which)
       const reads = new Set<string>()
@@ -211,6 +215,7 @@ export async function collectRunners(
         report,
         files: ctx.files,
       })
+      options.onReport?.(report)
       return report
     }),
   )

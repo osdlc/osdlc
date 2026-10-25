@@ -8,7 +8,13 @@ import { isAbsolute, relative, resolve, sep } from 'node:path'
 
 import { commandString } from '@osdlc/command-seam/quote'
 import { closestMatches } from '@osdlc/config-layers/did-you-mean'
-import type { Catalog, Project, RunnerCacheState, Task } from '@osdlc/system-model/detect'
+import type {
+  Catalog,
+  Project,
+  RunnerCacheState,
+  RunnerReport,
+  Task,
+} from '@osdlc/system-model/detect'
 import {
   homeDir,
   parseTrustScope,
@@ -29,6 +35,7 @@ import {
   projectRootFor,
   readCachedCatalog,
   runnerIds,
+  settledBoth,
   type WayOptions,
 } from '../catalog.ts'
 import {
@@ -115,6 +122,21 @@ export interface SessionOptions {
 export type CacheState = RunnerCacheState & {
   /** How long this runner's probe took, when it was probed in this call. */
   probeMs?: number | undefined
+}
+
+/**
+ * What a probe reports while it runs, so a surface can draw each runner as
+ * it answers. See {@link Session.catalog}.
+ */
+export interface CatalogProgress {
+  /** Once, before any runner answers: every runner this call probes. */
+  onRunners?(runners: readonly string[]): void
+  /**
+   * Once per runner, as it answers, a withheld runner included: its report
+   * and its cache state. The snapshot `catalog` resolves with is still the
+   * answer to show; it can add a diagnostic this report lacks.
+   */
+  onRunner?(report: RunnerReport, cache: CacheState): void
 }
 
 /** A catalog and where each runner's rows came from. */
@@ -225,8 +247,14 @@ export interface Session {
    * checks each runner's files, and probes only the runners missing from it.
    * A probe always writes the store. `signal`
    * stops this call's probes as well as the session's own signal.
+   * `progress` hears about each runner this call probes as it answers; an
+   * answer from the saved view or the store probes none.
    */
-  catalog(opts?: { cached?: boolean; signal?: AbortSignal | undefined }): Promise<CatalogSnapshot>
+  catalog(opts?: {
+    cached?: boolean
+    signal?: AbortSignal | undefined
+    progress?: CatalogProgress | undefined
+  }): Promise<CatalogSnapshot>
   /**
    * The catalog from the store alone, probing nothing: for a first paint
    * before a probe. Null when the store has no answer for this project. A
@@ -256,11 +284,11 @@ export interface Session {
    */
   viewKey(): string
   /** The tasks of `catalog` that pass `filter`, best first when there is a query. */
-  search(catalog: Catalog, filter: TaskFilter): TaskHit[]
+  search(catalog: Pick<Catalog, 'reports'>, filter: TaskFilter): TaskHit[]
   /** The skills that pass `filter`, matched as {@link search} matches tasks. */
   searchSkills(skills: readonly SkillRow[], filter: TaskFilter): SkillHit[]
   /** Everything this session could not know about `snapshot`. */
-  unknowns(snapshot: Pick<CatalogSnapshot, 'catalog' | 'cache'>): Unknown[]
+  unknowns(snapshot: { catalog: Pick<Catalog, 'reports'>; cache: readonly CacheState[] }): Unknown[]
   /** Whether a trust grant would change this session's execution. */
   trustable(): boolean
   /**
@@ -309,7 +337,7 @@ export interface Session {
    * {@link SessionError}: `task-not-found`, `ambiguous-task`, `not-runnable` or
    * `bad-arguments`.
    */
-  resolveRun(catalog: Catalog, id: string, args?: readonly string[]): RunPlan
+  resolveRun(catalog: Pick<Catalog, 'reports'>, id: string, args?: readonly string[]): RunPlan
 }
 
 /**
@@ -391,19 +419,21 @@ function asSessionError(err: unknown, prefix = ''): unknown {
   return err
 }
 
+/** The fresh state of a runner probed just now, with its measured time when it ran. */
+function probedState(runner: string, probeMs: number | undefined): CacheState {
+  return {
+    runner,
+    state: 'fresh',
+    ageMs: 0,
+    estimateMs: probeMs ?? null,
+    slow: false,
+    ...(probeMs !== undefined ? { probeMs } : {}),
+  }
+}
+
 /** Fresh states for a catalog probed just now, with each runner's measured time. */
 function probedStates(catalog: Catalog, times: ReadonlyMap<string, number>): CacheState[] {
-  return catalog.reports.map((r) => {
-    const probeMs = times.get(r.runner)
-    return {
-      runner: r.runner,
-      state: 'fresh' as const,
-      ageMs: 0,
-      estimateMs: probeMs ?? null,
-      slow: false,
-      ...(probeMs !== undefined ? { probeMs } : {}),
-    }
-  })
+  return catalog.reports.map((r) => probedState(r.runner, times.get(r.runner)))
 }
 
 /**
@@ -529,10 +559,11 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
     return signals.length > 0 ? { ...options, signal: AbortSignal.any(signals) } : options
   }
 
-  /** Probe the runners `only` names (all when absent), timing each. */
+  /** Probe the runners `only` names (all when absent), timing each and telling `progress`. */
   const probe = async (
     only?: string[],
     signal?: AbortSignal,
+    progress?: CatalogProgress,
   ): Promise<{ catalog: Catalog; times: Map<string, number> }> => {
     const times = new Map<string, number>()
     const catalog = await collectAndCache(
@@ -542,6 +573,15 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
         ...withSignal(signal),
         ...(only !== undefined ? { only } : {}),
         onProbe: ({ runner, durationMs }) => times.set(runner, durationMs),
+        ...(progress?.onRunners !== undefined
+          ? { onRunners: (runners) => progress.onRunners?.(runners) }
+          : {}),
+        ...(progress?.onRunner !== undefined
+          ? {
+              onReport: (report) =>
+                progress.onRunner?.(report, probedState(report.runner, times.get(report.runner))),
+            }
+          : {}),
       },
       store,
     )
@@ -601,11 +641,16 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
     },
     async catalog(opts = {}) {
       if (opts.cached !== true) {
-        const { catalog, times } = await probe(undefined, opts.signal)
+        // The skills are read beside the probe, so the answer does not wait
+        // for both in turn. Both settle before a failure is thrown.
+        const [{ catalog, times }, skillRows] = await settledBoth(
+          probe(undefined, opts.signal, opts.progress),
+          skills(),
+        )
         return saved({
           catalog: orderedCatalog(catalog, runnerOrder()),
           cache: probedStates(catalog, times),
-          skills: await skills(),
+          skills: skillRows,
           origin: 'probe',
         })
       }
@@ -614,7 +659,7 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
       // The call's signal too: a closed tab stops hashing the store.
       const stored = await readCachedCatalog(project, root, withSignal(opts.signal), store)
       if (stored.catalog === null || !fromStore(stored)) {
-        const { catalog, times } = await probe(undefined, opts.signal)
+        const { catalog, times } = await probe(undefined, opts.signal, opts.progress)
         return saved({
           catalog: orderedCatalog(catalog, runnerOrder()),
           cache: probedStates(catalog, times),
@@ -632,6 +677,8 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
           origin: 'store',
         })
       }
+      // No progress here: it would name only the missing runners, while the
+      // stored ones wait for the document.
       const { catalog: probed, times } = await probe(missing, opts.signal)
       const fresh = new Map(probedStates(probed, times).map((s) => [s.runner, s]))
       return saved({
@@ -833,7 +880,7 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
  * copied form, with its `cd` and quoting), else by its `display`. A line or
  * a display names a task only when no other task has it.
  */
-function findTask(catalog: Catalog, id: string): Task | undefined {
+function findTask(catalog: Pick<Catalog, 'reports'>, id: string): Task | undefined {
   const all = catalog.reports.flatMap((r) => r.tasks)
   const only = (tasks: Task[]): Task | undefined => (tasks.length === 1 ? tasks[0] : undefined)
   const lineOf = (t: Task): string | null => taskCopyText(t, process.platform)
@@ -865,7 +912,7 @@ function findTask(catalog: Catalog, id: string): Task | undefined {
 export function resolveRun(
   project: Project,
   root: string,
-  catalog: Catalog,
+  catalog: Pick<Catalog, 'reports'>,
   id: string,
   args: readonly string[] = [],
 ): RunPlan {

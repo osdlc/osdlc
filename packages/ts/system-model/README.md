@@ -322,6 +322,10 @@ runner declares its timeout and a cost hint (`cheap` or `slow`) in
 `CollectOptions.timeouts` replaces a runner's timeout by id, such as
 `{ moon: 300_000 }`. `CollectOptions.onProbe` is called once for each runner
 probed, with how long the probe took, so a host can report it.
+`CollectOptions.onRunners` is called once, before any probe, with the runners
+the collect reports, and `CollectOptions.onReport` once per runner as its
+report is ready, withheld runners included, so a host can show each runner
+as it answers.
 
 Each subprocess also runs with command-seam's `killTree: true`, so a timeout
 or an abort kills the processes it started as well (moon, gradle and sbt

@@ -519,6 +519,46 @@ describe('createSession', () => {
     await expect(session.grantTrust()).rejects.toMatchObject({ code: 'not-trustable' })
   })
 
+  test('catalog tells progress about every runner it probes, withheld ones included', async () => {
+    const dir = await root({
+      'package.json': '{"name":"p","scripts":{"b":"x"}}',
+      'mise.toml': '[tasks.hello]\nrun = "echo hi"\n',
+    })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    const heard: string[] = []
+    let listed: readonly string[] = []
+    const snapshot = await session.catalog({
+      progress: {
+        onRunners: (runners) => {
+          listed = runners
+        },
+        onRunner: (report, cache) => {
+          expect(listed).toContain(report.runner)
+          expect(cache).toMatchObject({ runner: report.runner, state: 'fresh' })
+          heard.push(report.runner)
+        },
+      },
+    })
+    const ids = snapshot.catalog.reports.map((r) => r.runner)
+    expect([...listed].sort()).toEqual([...ids].sort())
+    expect(heard.sort()).toEqual([...ids].sort())
+    expect(ids).toContain('mise')
+    expect(snapshot.catalog.reports.find((r) => r.runner === 'mise')?.skippedForExec).toBe(true)
+  })
+
+  test('an answer from the saved view probes nothing, so progress hears nothing', async () => {
+    const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    await session.catalog()
+    let calls = 0
+    const snapshot = await session.catalog({
+      cached: true,
+      progress: { onRunners: () => calls++, onRunner: () => calls++ },
+    })
+    expect(snapshot.origin).toBe('saved')
+    expect(calls).toBe(0)
+  })
+
   test('storedCatalog answers from the store alone, and is null before a probe', async () => {
     const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
     const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
