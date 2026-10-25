@@ -36,6 +36,10 @@ pnpm test
 `tests/smoke.mjs`, a short check of the built package under Node. Build first.
 It is not published.
 
+`pnpm test` runs from source and needs no build. `typecheck` and `build`
+read `@osdlc/color` from its `dist/`, so build it first:
+`pnpm --filter @osdlc/color build`.
+
 Other checks:
 
 ```sh
