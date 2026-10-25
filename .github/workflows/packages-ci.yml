@@ -211,7 +211,8 @@ jobs:
   windows-tier2:
     name: windows tier 2 (windows-latest, node ${{ matrix.node }})
     # A hung test process must not hold the job for the default six hours.
-    timeout-minutes: 20
+    # A full run takes about 2.5 minutes.
+    timeout-minutes: 10
     needs: changes
     if: >-
       contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/command-seam') ||
@@ -280,31 +281,31 @@ jobs:
       # one failed or timed out, as long as the build passed.
       - name: Test command-seam
         if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/command-seam"') }}
-        timeout-minutes: 8
+        timeout-minutes: 4
         run: pnpm --filter ./packages/ts/command-seam run test
 
       - name: Test trust-repo
         if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/trust-repo"') }}
-        timeout-minutes: 8
+        timeout-minutes: 4
         run: pnpm --filter ./packages/ts/trust-repo run test
 
       - name: Test tiered-dirs
         if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/tiered-dirs"') }}
-        timeout-minutes: 8
+        timeout-minutes: 4
         run: pnpm --filter ./packages/ts/tiered-dirs run test
 
       - name: Test cli-tool
         if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/cli-tool"') }}
-        timeout-minutes: 8
+        timeout-minutes: 4
         run: pnpm --filter ./packages/ts/cli-tool run test
 
       - name: Test system-model
         if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/system-model"') }}
-        timeout-minutes: 8
+        timeout-minutes: 4
         run: pnpm --filter ./packages/ts/system-model run test
 
       - name: Smoke the built packages under Node
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         env:
           FILTER: ${{ steps.pick.outputs.filter }}
-        run: pnpm $FILTER --if-present run smoke
+        run: pnpm $FILTER --no-bail --if-present run smoke
