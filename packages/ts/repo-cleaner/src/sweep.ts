@@ -12,6 +12,7 @@ import type { CommandRunner } from '@osdlc/command-seam'
 
 import { gatherLocalBranches, gatherRemoteBranches } from './branches.ts'
 import { DiscoveryFailed, discoverRepo } from './discover.ts'
+import { defaultProcessProbe, type ProcessProbe } from './processes.ts'
 import { fetchPrs } from './prs.ts'
 import { resolveEntries } from './resolve.ts'
 import {
@@ -53,6 +54,12 @@ export interface SweepOptions {
   /** Injected runners. Defaults spawn the real `git` and `gh`. */
   git?: CommandRunner | undefined
   gh?: CommandRunner | undefined
+  /**
+   * Answers whether a worktree lock's owner is alive and which processes work
+   * inside a worktree. Defaults to {@link defaultProcessProbe}, one per
+   * repository, over `ps` and `lsof`.
+   */
+  probe?: ProcessProbe | undefined
 }
 
 function scopeSet(scope: SweepOptions['scope']): Set<string> {
@@ -120,7 +127,14 @@ export function sweepRepo(path: string, opts: SweepOptions = {}): RepoSweep {
     let worktreeItems: SweepItem[] = []
     let worktreeBranches = new Set<string>()
     if (scope.has('worktrees') || scope.has('local-branches')) {
-      ;[worktreeItems, worktreeBranches] = gatherWorktrees(repo, prs, cwd, git, only)
+      ;[worktreeItems, worktreeBranches] = gatherWorktrees(
+        repo,
+        prs,
+        cwd,
+        git,
+        only,
+        opts.probe ?? defaultProcessProbe(),
+      )
     }
     if (scope.has('worktrees')) items.push(...worktreeItems)
 

@@ -20,7 +20,13 @@ export const StepSchema = z.object({
   repo: z.string(),
   /** Null for the closing prune, which belongs to no row. */
   row: RowRefSchema.nullable(),
-  action: z.enum(['remove-worktree', 'delete-local', 'delete-remote', 'prune-worktrees']),
+  action: z.enum([
+    'unlock-worktree',
+    'remove-worktree',
+    'delete-local',
+    'delete-remote',
+    'prune-worktrees',
+  ]),
   command: z.string(),
   expected_sha: z.string().nullable(),
   result: z.enum(['pending', 'would-run', 'ok', 'failed']),

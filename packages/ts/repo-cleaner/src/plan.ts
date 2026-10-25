@@ -59,7 +59,9 @@ export function isPlanCategory(category: string): category is PlanCategory {
 
 /**
  * The facts a row's verdict rests on. A branch: its sha and its PR's number
- * and state. A worktree: HEAD, branch and how much unlanded work it holds.
+ * and state. A worktree: HEAD, branch, how much unlanded work it holds and
+ * whether its lock was stale, so a lock taken or revived after planning drops
+ * the row.
  */
 export function fingerprint(item: PlannableRow): Record<string, unknown> {
   const f = item.facts
@@ -69,6 +71,7 @@ export function fingerprint(item: PlannableRow): Record<string, unknown> {
       branch: f['branch'] ?? null,
       dirty_files: f['dirty_files'] ?? null,
       unpushed_commits: f['unpushed_commits'] ?? null,
+      stale_lock: f['stale_lock'] ?? null,
     }
   }
   const pr = f['pr'] as { number?: unknown; state?: unknown } | undefined

@@ -91,6 +91,7 @@ describe('AsyncGit — parity with Git', () => {
     sync.deleteRef('refs/heads/b', { expected: 'abc' })
     sync.configRemoveSection('branch.b')
     sync.resetHard('HEAD~1')
+    sync.worktreeUnlock('/wt')
     sync.worktreePrune()
     sync.lsFiles({ cached: true, others: true, excludeStandard: true, paths: ['docs'] })
     sync.forEachRef(['refs/heads/', 'refs/tags/*'], {
@@ -184,6 +185,7 @@ describe('AsyncGit — parity with Git', () => {
     await asyncGit.deleteRef('refs/heads/b', { expected: 'abc' })
     await asyncGit.configRemoveSection('branch.b')
     await asyncGit.resetHard('HEAD~1')
+    await asyncGit.worktreeUnlock('/wt')
     await asyncGit.worktreePrune()
     await asyncGit.lsFiles({ cached: true, others: true, excludeStandard: true, paths: ['docs'] })
     await asyncGit.forEachRef(['refs/heads/', 'refs/tags/*'], {

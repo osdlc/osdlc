@@ -14,6 +14,7 @@ import { nodeGuard } from '@osdlc/path-guard/node'
 import type { Git } from '@osdlc/typed-git'
 
 import { gapSentence, recordPr } from './branches.ts'
+import { busyHolders, isIdleHolder, parseLockOwner, type ProcessProbe } from './processes.ts'
 import {
   authorizationsFor,
   landedRef,
@@ -40,6 +41,11 @@ export function worktreeRemoveCommand(
   ])
 }
 
+/** The command line, not run, that unlocks the worktree at `path`. */
+export function worktreeUnlockCommand(root: string, path: string): string {
+  return shellJoin(['git', '-C', root, 'worktree', 'unlock', path])
+}
+
 /** The command line, not run, that drops registrations of worktrees whose directories are gone. */
 export function worktreePruneCommand(root: string): string {
   return shellJoin(['git', '-C', root, 'worktree', 'prune'])
@@ -55,7 +61,12 @@ function isDir(path: string): boolean {
 
 /** A condition that rules out removing a worktree, whatever its branch says. */
 export type WorktreeBlocker =
-  'locked-worktree' | 'hidden-index-flags' | 'nested-repository' | 'branch-in-other-worktree'
+  | 'locked-worktree'
+  | 'live-process'
+  | 'process-probe-failed'
+  | 'hidden-index-flags'
+  | 'nested-repository'
+  | 'branch-in-other-worktree'
 
 /** True for a worktree row held back by `facts.blockers`. */
 export function hasBlockers(item: Pick<SweepItem, 'facts'>): boolean {
@@ -79,19 +90,54 @@ function readBlockers(opts: {
   otherWorktrees: string[]
   facts: Record<string, unknown>
   git: Git
+  probe: ProcessProbe
 }): [WorktreeBlocker, string][] {
-  const { path, branch, onDisk, locked, lockReason, otherWorktrees, facts, git } = opts
+  const { path, branch, onDisk, locked, lockReason, otherWorktrees, facts, git, probe } = opts
   const out: [WorktreeBlocker, string][] = []
 
   if (locked) {
     facts['lock_reason'] = lockReason
-    out.push([
-      'locked-worktree',
-      `Locked${lockReason ? ` (${lockReason})` : ''}; run \`git worktree unlock ${path}\` once it is no longer needed.`,
-    ])
+    // A lock whose owner is dead holds nothing. A lock that names no owner, or
+    // one that cannot be ruled out, stays a blocker.
+    const owner = parseLockOwner(lockReason)
+    if (owner !== null && !probe.alive(owner.pid, owner.startedAt)) {
+      facts['stale_lock'] = true
+      facts['lock_owner'] = { pid: owner.pid, started_at: owner.startedAt ?? null }
+    } else {
+      out.push([
+        'locked-worktree',
+        `Locked${lockReason ? ` (${lockReason})` : ''}; run \`git worktree unlock ${path}\` once it is no longer needed.`,
+      ])
+    }
   }
 
   if (onDisk) {
+    // A process working in the directory blocks removal, lock or not. Shells
+    // with nothing running under them only sit there, so they are listed and
+    // let the removal through.
+    try {
+      const live = probe.holders(path).sort((a, b) => a.pid - b.pid)
+      const shells = live.filter(isIdleHolder)
+      const busy = busyHolders(live)
+      if (shells.length > 0) facts['idle_shells'] = shells
+      if (busy.length > 0) {
+        facts['live_processes'] = busy
+        out.push([
+          'live-process',
+          `Running in the worktree: ${busy.map((h) => `${h.command} (pid ${h.pid})`).join(', ')}; stop them or wait for them to finish.`,
+        ])
+      }
+    } catch (err) {
+      // No process table to read (a host without `lsof`, a timeout): nobody
+      // can say the directory is idle, so the worktree is held back.
+      const message = err instanceof Error ? err.message : String(err)
+      facts['process_probe_error'] = message
+      out.push([
+        'process-probe-failed',
+        `Could not tell whether a process is running in the worktree (${message}); check by hand, or fix the probe and sweep again.`,
+      ])
+    }
+
     const at = git.at(path)
     // Status hides edits to these files, so "clean" cannot be trusted.
     const hidden = at
@@ -142,7 +188,8 @@ export function gatherWorktrees(
   prs: Map<string, PRInfo>,
   cwd: string,
   git: Git,
-  only?: string,
+  only: string | undefined,
+  probe: ProcessProbe,
 ): [SweepItem[], Set<string>] {
   const all = git.at(repo.root).worktrees()
   const pathsByBranch = new Map<string, string[]>()
@@ -171,6 +218,7 @@ export function gatherWorktrees(
         prs,
         cwd,
         git,
+        probe,
       }),
     )
   }
@@ -193,6 +241,8 @@ export function classifyWorktree(opts: {
   prs: Map<string, PRInfo>
   cwd: string
   git: Git
+  /** Answers lock-owner and working-directory questions. One per sweep: it caches the process table. */
+  probe: ProcessProbe
 }): SweepItem {
   const { path, branch, head, isBare, isDetached, isPrimary, repo, prs, cwd, git } = opts
   const facts: Record<string, unknown> = {
@@ -268,12 +318,18 @@ export function classifyWorktree(opts: {
     'confirm-open-pr': pr?.state === 'OPEN',
   })
 
-  const safeRemove = [worktreeRemoveCommand(repo.root, path)]
-  const forceRemove = [worktreeRemoveCommand(repo.root, path, { force: true })]
-  const pruneOnly = [worktreePruneCommand(repo.root)]
-
-  const blockers = readBlockers({ ...opts, onDisk, facts })
+  const blockers = readBlockers({
+    ...opts,
+    onDisk,
+    facts,
+  })
   const kinds = blockers.map(([kind]) => kind)
+  // `git worktree remove` and `prune` both skip a locked worktree, so a stale
+  // lock is cleared first.
+  const unlock = facts['stale_lock'] === true ? [worktreeUnlockCommand(repo.root, path)] : []
+  const safeRemove = [...unlock, worktreeRemoveCommand(repo.root, path)]
+  const forceRemove = [...unlock, worktreeRemoveCommand(repo.root, path, { force: true })]
+  const pruneOnly = [...unlock, worktreePruneCommand(repo.root)]
   facts['blockers'] = kinds
   if (kinds.length > 0) {
     return makeItem({
