@@ -14,7 +14,7 @@
  *
  * The tool supplies the header comment (its name, how to regenerate, where the
  * prose lives) and any tool-specific notes. Nothing here names a tool. Reads
- * of Zod internals go through `./schema.ts`, the one module that reads them.
+ * of Zod internals go through `./schema.ts`; `./secret.ts` also reads them.
  * The `.description` read is Zod's public getter, not an internal.
  */
 

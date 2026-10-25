@@ -24,8 +24,9 @@
  *
  * The verb table in `./verbs.ts` is the single definition of every argv,
  * every absence code and every parser, so the two clients cannot drift apart.
- * The one exception is `remoteOwnerRepo`, which calls `remoteGetUrl` and then
- * `parseRemoteUrl`, and is written in each client.
+ * The exceptions are helpers that compose other verbs (`remoteOwnerRepo`,
+ * `hasHistory`, `mainCheckout`, `isDirty`, `branchExists`, `refs`,
+ * `logLines`). Each client writes them, so a change must be made in both.
  *
  * Subpath exports: `./client` is everything here except the git-reference
  * parsers and the checkout walks (and so without `hosted-git-info` on the

@@ -116,8 +116,9 @@ stderr and stdout, as the classifier does.
 
 Setup checks return their failure as a value. `installed()`, `authenticated()`,
 `authStatus()`, `ready()` and `api()` return their failure as part of their
-value, in all three call styles. For them, "gh is not installed" is the answer
-to the question they ask.
+value, from the plain method and from `try`. They have no soft form:
+`gh.soft.api(...)` throws a `TypeError`. For them, "gh is not installed" is the
+answer to the question they ask.
 
 ```ts
 import { describe } from '@osdlc/result'
@@ -375,7 +376,8 @@ const repos = await runVerbAsync(repoList('acme', {}, { hostname: 'ghe.example.c
 })
 ```
 
-They take a `CommandRunner`. A plain `(binary, argv, opts) => result` function is wrapped as
+`runVerb` takes a `CommandRunner` and `runVerbAsync` an `AsyncCommandRunner`. A plain
+`(binary, argv, opts) => result` function is not a runner; wrap it yourself as
 `{ run: (argv, opts) => fn('gh', argv, opts) }`.
 
 ## `AsyncGh`

@@ -118,8 +118,8 @@ function parseYamlText(text: string): unknown {
  * The result is absent (the normal case, never an error), unreadable,
  * unparsable, or a parsed value of any type. The tool decides what a value
  * that is not a mapping means and how to word each failure.
- * {@link readMappingFile} is the mapping-only layer over this. Every config
- * file read goes through this function.
+ * {@link readMappingFile} is the mapping-only layer over this. Every project
+ * file read goes through this function; the machine file does not.
  *
  * YAML text is read as the README's "The Rust crate" section describes.
  * @experimental

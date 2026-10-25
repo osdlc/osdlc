@@ -46,9 +46,9 @@ export interface GhVerb<T> {
   env?: Record<string, string> | undefined
   /**
    * True for a read whose failure is part of its answer. `installed`,
-   * `authStatus` and `api` return what `parse` makes of any result, in all
-   * three call styles. Other reads throw from the plain method when gh exits
-   * non-zero.
+   * `authStatus` and `api` return what `parse` makes of any result, from the
+   * plain method and from `try`; they have no soft form. Other reads throw
+   * from the plain method when gh exits non-zero.
    */
   probe?: boolean | undefined
   /**

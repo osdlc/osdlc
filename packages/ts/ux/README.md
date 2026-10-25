@@ -160,9 +160,10 @@ So a flag wins over every variable, `NO_COLOR` wins over `FORCE_COLOR`, and
 case-sensitive: `FORCE_COLOR=FALSE` turns color on.
 
 The terminal's level is `truecolor` when `COLORTERM` is `truecolor` or
-`24bit`, `TERM` ends in `-direct`, `WT_SESSION` is set, or `TERM_PROGRAM`
-is iTerm.app, WezTerm or ghostty; `ansi256` when `TERM` contains
-`256color`; and `ansi16` otherwise.
+`24bit`, `TERM` ends in `-direct` or contains `truecolor`, `WT_SESSION` is
+set, or `TERM_PROGRAM` is iTerm.app, WezTerm or ghostty; `ansi256` when
+`TERM` contains `256color`; and `ansi16` otherwise. Unlike `FORCE_COLOR`,
+`COLORTERM` and `TERM` are compared case-insensitively.
 
 ```ts
 import { detectColorLevel } from '@osdlc/ux'
@@ -214,7 +215,8 @@ paint('failed', ansiColors('none', 'dark')['status-error']) // 'failed'
   the result cannot move the cursor, change colors, set the window title,
   write the clipboard or send any other command. It removes whole escape
   sequences (CSI, and the OSC, DCS, SOS, PM and APC strings up to BEL or ST,
-  or to the end of the text when there is no terminator), their 8-bit C1
+  or up to the next ESC, which ends the string and starts a new sequence, or
+  to the end of the text when there is no terminator), their 8-bit C1
   forms, every other C0 and C1 control, DEL, and the bidirectional
   controls (the marks `U+061C`, `U+200E` and `U+200F`, and the embedding,
   override and isolate controls `U+202A`-`U+202E` and `U+2066`-`U+2069`). `StripControlsOptions` keeps line feeds

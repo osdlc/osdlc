@@ -12,6 +12,10 @@ fixed order that does not depend on the host locale.
 marks, so `café` becomes `cafe`, not `caf`. A naive
 `[^a-z0-9]` filter would drop the whole accented letter and collapse `Ärzte`
 and `Rzte` to one slug, a filename collision in a folder a person reads.
+Only the combining-diacritic blocks are dropped (`U+0300`-`U+036F`,
+`U+1AB0`-`U+1AFF`, `U+1DC0`-`U+1DFF`, `U+20D0`-`U+20FF`, `U+FE20`-`U+FE2F`).
+Other scripts' marks that are not alphabetic, such as the Devanagari virama,
+Hebrew cantillation or Thai tone marks, become separators.
 
 `compare` is a substitute for JavaScript's `localeCompare`.
 `localeCompare` depends on ICU data and the host locale, so two machines can

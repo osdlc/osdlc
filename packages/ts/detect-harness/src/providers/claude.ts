@@ -27,7 +27,7 @@
  * Plugins come from the install registry (`plugins/installed_plugins.json`) and
  * the `enabledPlugins` of the settings; marketplaces from
  * `plugins/known_marketplaces.json` and `extraKnownMarketplaces`. A registry
- * record is reported when it applies here: user scope, or a project or local
+ * record is reported when it applies here: user or managed scope, or a project or local
  * install for this project root or for the main checkout of the linked worktree
  * at it. When several records of one plugin apply, the
  * one from the highest scope is kept. The skills, commands, agents, hooks and MCP

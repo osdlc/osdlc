@@ -124,7 +124,8 @@ which the loader returns for a missing, unreadable or non-mapping file. When a f
 schema, the loader keeps what it can. It drops each unknown key, then gives each section that is
 still invalid its default, and keeps the rest. Every drop is a `MachineConfigIssue` with a `path`,
 a `code` and a `message`. The code is `unknown_key`, `invalid`, `unreadable`, `yaml`,
-`not_mapping` or `newer_version`. The loader never prints issues. The tool decides how to show
+`not_mapping` or `newer_version`. An unknown key is found only when every object in the schema is
+`.strict()`; a plain `z.object` drops it silently, with no issue. The loader never prints issues. The tool decides how to show
 them. Options `env`, `fileName` and `dirs` change the variable, the file name and how the
 directories are resolved (a test passes a rooted one).
 
@@ -277,8 +278,8 @@ the machine config's salvage uses it as well. A file that does not exist is not 
 neither file present, the result is the all-defaults object.
 
 `readParsedFile(path, 'yaml' | 'json')` reads one config file and returns absent, unreadable,
-unparsable or the parsed value. Every config file read goes through it. `readMappingFile` is its
-mapping-only layer.
+unparsable or the parsed value. Every project file read goes through it. The machine file is read
+with plain `yaml.parse` instead. `readMappingFile` is its mapping-only layer.
 
 ## Where the file is
 
@@ -295,13 +296,14 @@ replaces that pair with the file it names and that file's overlay. Neither root 
 - A set variable that names a missing file is a `ConfigInvalidError`. An absent default file is not.
 - `scope: 'subtree'` resolves a directory beneath the root (a per-directory overlay file) to its own
   default pair, since the variable names the root file only.
-- The variable does not affect the machine file (`<STEM>_MACHINE_CONFIG`) or the trust store.
+- The variable does not affect the machine file (`<STEM>_MACHINE_CONFIG`).
 
 The package does not search upward for the project root. The caller passes it. The Rust crate has
 `find_up` for that. See the table in "The Rust crate".
 
-A repository-trust check treats a file named by the variable as project-sourced, exactly like
-the default file. Pointing the variable outside the repository does not get around the check.
+This package has no repository-trust check. A tool that has one should treat a file named by the
+variable as project-sourced, exactly like the default file, so pointing the variable outside the
+repository does not get around it.
 
 ## Meta, provenance, explain, edit, scaffold, reference
 
@@ -310,7 +312,7 @@ The functions a `config` command is built from. None of them names a tool.
 | Module | Exports |
 |---|---|
 | `meta.ts`, `vocabulary.ts`, `meta-kit.ts` | the meta structure, `defineConfigVocabulary`, and `checkConfigMeta`/`readConfigMeta`. Also the test helpers a tool's meta test calls (`consumerProblems`, `enforcementProblems`, `machineLayerKeys`, `applierAndReservedProblems`), each returning its problems |
-| `provenance.ts` | `resolveLayeredSteps`/`resolveLayeredValue`: resolve a setting through the env, local, project and default layers, and record which layer each part came from as `{layer, mode}` (`ValueLayer`, `StepProvenance`) |
+| `provenance.ts` | `resolveLayeredSteps`/`resolveLayeredValue`: resolve a setting through the env (steps only), local, project and default layers, and record which layer each part came from as `{layer, mode}` (`ValueLayer`, `StepProvenance`) |
 | `explain.ts` | `resolveKeyPath`, `splitKeyPath`, `describeShape`, `defaultOf`, `nestedFields`, `jsonSchemaOf`, `getIn`, `omitPath` over a schema shape |
 | `edit.ts` | `setPath`/`unsetPath`: dotted-path edits that keep every byte outside the edited value, built on `@osdlc/yaml-splice` |
 | `scaffold.ts` | `scaffoldYaml`, `scaffoldLocalYaml`, `starterYaml`: an annotated file derived from the schema (the starter groups keys in the caller's category order) |
@@ -365,6 +367,7 @@ this table.
 | Looking up a list index (`list.0`) | `valueAt` finds the item | `value_at` gives `None` |
 | `1e999` | read as the string `1e999` | read as the string `.inf` |
 | `!!float 1` and an unknown tag such as `!custom 6` | the value reads as its text, a string | the value reads as a number |
+| Machine file YAML | read with plain `yaml.parse`, so the reading rules above do not apply: `.inf` and `.nan` read as numbers | read with the same rules as the project file |
 | A `{` inside a name, as in `{a{dev}` | replaces `{dev}` and keeps the `{a` before it | an unknown path name `{a{dev}` |
 | Dotted `paths:` resolution in a map | not provided | `resolve_paths_at` |
 | Invalid config | `ConfigInvalidError`, exit code 14 | `FileProblem` |

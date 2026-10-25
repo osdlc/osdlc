@@ -143,7 +143,7 @@ export interface DetectOptions {
   makeRunner?: ((binary: string) => AsyncCommandRunner) | undefined
   /** Default `process.platform`. Decides the managed-settings folder. */
   platform?: NodeJS.Platform | undefined
-  /** The root for system paths (`/Library/…`, `/etc/…`). Default `/`. Tests point it at a temp folder. */
+  /** The root for system paths (`/Library/…`, `/etc/…`). Default `/`, or `%SystemDrive%\` (default `C:\`) on win32. Tests point it at a temp folder. */
   systemRoot?: string | undefined
   /** Aborts the `--version` run; providers see it as `ctx.signal`. Default: never aborted. */
   signal?: AbortSignal | undefined

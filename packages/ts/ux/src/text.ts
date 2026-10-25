@@ -32,8 +32,9 @@ const BIDI = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/
  * Removed:
  *
  * - Escape sequences, whole: CSI (`ESC [` … final byte), the strings opened
- *   by OSC, DCS, SOS, PM and APC up to BEL or ST (or the end of the text when
- *   there is no terminator), and two-character escapes such as `ESC c`.
+ *   by OSC, DCS, SOS, PM and APC up to BEL or ST, or up to the next ESC,
+ *   which ends the string and starts a new sequence (or the end of the text
+ *   when there is no terminator), and two-character escapes such as `ESC c`.
  * - The same sequences in their 8-bit C1 form (`U+009B` CSI, `U+009D` OSC
  *   and the rest), and every other C1 control, `U+0080`-`U+009F`.
  * - C0 controls, `U+0000`-`U+001F`, except a tab or line feed you keep with

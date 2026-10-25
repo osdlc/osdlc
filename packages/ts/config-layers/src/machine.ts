@@ -46,7 +46,10 @@ export function envStem(tool: string): string {
 export interface MachineConfigFileOptions<S extends z.ZodTypeAny> {
   /** The tool's standalone name: the directory segment under the config home. */
   tool: string
-  /** Every key with a default; the loader parses `{}` to get the defaults. */
+  /**
+   * Every key with a default; the loader parses `{}` to get the defaults.
+   * Unknown keys are reported only when every object in it is `.strict()`.
+   */
   schema: S
   /** Env var that relocates the file. Default `<STEM>_MACHINE_CONFIG`. */
   env?: string
@@ -119,7 +122,7 @@ export interface MachineConfigFile<S extends z.ZodTypeAny> {
   readonly schema: S
   /** The env var that relocates the file (tests, one-off runs). */
   readonly env: string
-  /** `<config-home>/<tool>/config.yaml`, unless {@link env} says otherwise. */
+  /** `<config-home>/<tool>/<fileName>` (default `config.yaml`), unless {@link env} says otherwise. */
   path(): string
   /**
    * The file, all defaults filled. An unknown key is dropped; an invalid
