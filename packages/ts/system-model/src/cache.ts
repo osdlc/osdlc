@@ -13,6 +13,7 @@
  */
 
 import { createHash } from 'node:crypto'
+import { readFileSync, realpathSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 
@@ -23,7 +24,7 @@ import type { Fingerprint } from './fingerprint.ts'
 import type { RunnerReport } from './model.ts'
 
 /** Bumped whenever a stored entry's shape changes, including `Task`'s shape. */
-export const CACHE_FORMAT_VERSION = 4
+export const CACHE_FORMAT_VERSION = 5
 
 /** How many probe durations are kept per entry. */
 export const DURATION_WINDOW = 5
@@ -61,6 +62,41 @@ export interface CacheEntry {
   durations: number[]
   fingerprint: Fingerprint
   report: RunnerReport
+  /** Whether the probe ran with execution allowed. A parse runner's answer can depend on it. */
+  allowExec: boolean
+  /** The `@osdlc/system-model` version that probed, since a runner's output changes between versions. */
+  modelVersion: string
+  /**
+   * The tool's binary with symlinks resolved, which names the installed
+   * version for most installers (`.../just/1.40.0/bin/just`). `null` when it
+   * was not on the PATH. Absent when the runner has no binary.
+   */
+  toolPath?: string | null | undefined
+}
+
+/** This package's version, or `unknown` when its package.json cannot be read. */
+export const MODEL_VERSION: string = readModelVersion()
+
+function readModelVersion(): string {
+  try {
+    // `src/` and `dist/` are both one level below the package root.
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8')) as {
+      version?: unknown
+    }
+    return typeof pkg.version === 'string' ? pkg.version : 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
+/** A PATH lookup's result with symlinks resolved, or as given when it cannot be resolved. */
+export function resolveToolPath(path: string | null): string | null {
+  if (path === null) return null
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
 }
 
 /** Where one (root, runner) entry lives under `dir`. */

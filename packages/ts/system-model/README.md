@@ -149,11 +149,13 @@ Evidence tiers run from the most direct to the least: `manifest` (1),
 | `@osdlc/system-model/match` | fuzzy and exact matching of a query against tasks |
 | `@osdlc/system-model/params` | `paramShape`, a task's parameters as one string |
 | `@osdlc/system-model/duration` | `humanMs` and `humanAge` |
+| `@osdlc/system-model/schema` | JSON Schemas for `Catalog`, `RunnerReport`, `Task`, `Param` and `ToolInfo` |
+| `@osdlc/system-model/groups` | `GROUPS`, `groupOf`, `catalogGroups` and `SYNTHESIZED_RUNNERS`: which group a report falls in |
 
 The core knows no tool. A plugin imports only the core, never another plugin.
 The root entry, `./graph`, `./aspect`, `./client`, `./saved-view`, `./match`,
-`./params` and `./duration` import no Node built-in and no dependency, so a
-browser bundle can use them. A test walks each one's imports to check.
+`./params`, `./duration`, `./groups` and `./schema` import no Node built-in
+and no dependency, so a browser bundle can use them. A test walks each one's imports to check.
 
 ## Detection
 
@@ -176,6 +178,13 @@ browser bundle can use them. A test walks each one's imports to check.
    the directory it is about and its evidence.
 7. Each package gets its ecosystems and languages. The profile gets the union.
 
+Reads are bounded, because a repository is untrusted input. A read skips a
+symlink whose target is outside the root, anything that is not a regular file
+(a device such as `/dev/zero`, a pipe), and a file larger than
+`MAX_READ_BYTES` (4 MiB). A directory walk stops at `MAX_WALK_FILES` files and
+does not enter a directory deeper than `MAX_WALK_DEPTH`. When it stops early,
+`profile.diagnostics` says so.
+
 | Option | Default | Does |
 |---|---|---|
 | `discovery` | `'auto'` | `'git'`, `'walk'`, or git when the root is a repository |
@@ -183,6 +192,9 @@ browser bundle can use them. A test walks each one's imports to check.
 | `useBuiltinExcludes` | `true` | add `DEFAULT_EXCLUDES` (`node_modules`, `target`, `dist`, ...) |
 | `allowExec` | `false` | let `describe` functions run the repository's tools |
 | `makeRunner`, `which`, `signal` | `@osdlc/command-seam`, a PATH walk, none | injection for tests and cancellation |
+
+Every subprocess detection starts gets `signal`. A `describe` call gets a
+timeout of `DEFAULT_PROBE_TIMEOUT_MS` (60 s), and each discovery git call 30 s.
 
 `project.findRoot(from)` walks up from a directory. A repository marker
 anywhere above wins over a package manifest. A repository marker is `.git`,
@@ -229,6 +241,34 @@ file, `origin` (`declared` or `synthesized`) and where it `executes`. A task's
 directory is in its `argv` (`just --justfile`, `pnpm run --dir`), so the
 command works when pasted at the root.
 
+A task's `parameters` list each `Param` with its `binding` (`positional`,
+`flag`, `assign` or `env`; absent means positional), and its `doc` and
+`choices` where the runner gives them. An empty list does not always mean
+"takes none". When the runner could not read them, `parametersUnknown` says
+why:
+
+| Value | Meaning |
+|---|---|
+| `exec-withheld` | only the tool lists them, and execution was not allowed |
+| `tool-missing` | execution was allowed, but the tool is not on the PATH |
+| `tool-failed` | the tool ran and gave no usable answer |
+| `not-read` | the file declares them, and this runner does not read them |
+
+`dependsOn` holds the ids of tasks in the same report that run first.
+`dependsOnUnresolved` keeps the dependencies that name no task, as written:
+a turbo `^build`, a moon `^:build`, a task an included Taskfile declares.
+turbo, moon, go-task, just and rake fill them.
+
+Each subprocess a runner starts gets the caller's `signal` and a timeout. A
+runner declares its timeout and a cost hint (`cheap` or `slow`) in
+`RunnerRole.probe`. A runner that declares none gets `DEFAULT_PROBE_TIMEOUT_MS`.
+`CollectOptions.timeouts` replaces a runner's timeout by id, such as
+`{ moon: 300_000 }`.
+
+A catalog carries `kind: 'catalog'` and `schemaVersion`
+(`CATALOG_SCHEMA_VERSION`). `@osdlc/system-model/schema` has JSON Schemas for
+`Catalog`, `RunnerReport`, `Task`, `Param` and `ToolInfo`.
+
 Three synthesized runners turn role actions into tasks:
 
 | Runner | Tasks |
@@ -238,9 +278,27 @@ Three synthesized runners turn role actions into tasks:
 | `hook-manager` | arming (`lefthook install`), and each configured hook (`lefthook run pre-push`) |
 
 `project.runners.invoke(task, args)` returns the argv that runs a task with
-arguments, bound the way its tool expects. Arguments go after `--` for npm
-run, cargo run, moon, turbo, go-task and composer, and in `name[a,b]` form for
-rake. Otherwise they are appended.
+arguments, bound the way its tool expects. Positional arguments go after `--`
+for npm run, cargo run, moon, turbo, go-task and composer, and in `name[a,b]`
+form for rake, with `,`, `]` and `\` escaped. Otherwise they are appended.
+`args` is a list of positional arguments, or values by parameter name:
+
+```ts
+runners.invoke(task, { target: 'web', ENV: 'prod' })
+// ['task', 'deploy', 'ENV=prod', '--', 'web'] for an `assign` ENV parameter
+```
+
+Values by name are bound by each parameter's `binding`: positional values
+through the tool's rule, `flag` and `assign` arguments straight after the
+task's own argv. `invoke` throws when a value does not fit the parameters,
+and when a tool's rule would change `argv[0]`, the binary.
+`project.runners.invocation(task, args)` returns `{ argv, env }`, for a
+parameter bound to an environment variable. `bindParams` in
+`@osdlc/system-model/params` does the same checks without the registry, so a
+web view can check values before it sends them.
+
+`@osdlc/system-model/groups` sorts reports into groups for display: `tasks`,
+then `dependencies`, `tools` and `hooks`, one per synthesized runner.
 
 `project.runners.search(catalog, query)` ranks tasks against a query.
 
@@ -251,7 +309,12 @@ runner's result under a directory you choose.
 `project.runners.readCached(profile, dir)` reads it back without running
 anything, and says per runner whether the entry is `fresh`, `stale` or a
 `miss`. An entry goes stale when a file it read or matched changes, when its
-detection evidence changes, or, for an `exec` runner, after a maximum age.
+detection evidence changes, or, for an `exec` runner, after a maximum age. It
+also goes stale when it was probed with execution allowed and now it is not
+(or the reverse), by another version of this package, or when the tool's
+binary resolves to another file, such as after an upgrade. `reason` names
+which. Each runner's `cost` gives the declared hint before anything is
+measured; `slow` and `estimateMs` come from this repository's measurements.
 
 ## Roles
 
@@ -315,6 +378,16 @@ Registering two tools with one id throws. A runner never spawns a process or
 reads the filesystem itself. It goes through `ctx`, so a test can give it
 canned output.
 
+Give a tool a `homepage`, a one-sentence `description` and a `brand` (an icon
+and a colour); every built-in has them. `RunnerRole.brand` still works, and is
+deprecated in favour of `ToolDef.brand`. A runner's `invoke` must keep
+`task.argv[0]`.
+
+`validateToolDef(value)` lists the problems that keep a value from being a
+`ToolDef`, without calling any of its functions, for a host that loads tools
+from a module. `toolInfo(tool)` returns a tool's data without its functions,
+safe to print as JSON.
+
 ## Runtime
 
 Runs under Node and Bun. It uses `node:fs`, `node:path`, `node:os` and
@@ -336,6 +409,10 @@ The experimental exports of `@osdlc/system-model/detect`:
 `PackageJsonFact`, `PackageManagerChoice`, `PackageManagerRole`, `PinnedInstall`,
 `PinnedInstallOptions`, `PinnedSource`, `PyprojectFact`, `RunnerCacheState`,
 `SYNTHESIZED_RUNNERS`, `StaleReason`, `ToolAction`, `ToolFact`, `ToolManagerRole`
+
+The experimental exports of `@osdlc/system-model/groups`:
+
+`GROUPS`, `Group`, `GroupId`, `SYNTHESIZED_RUNNERS`, `catalogGroups`, `groupOf`
 
 The experimental exports of `@osdlc/system-model/runners`:
 

@@ -18,8 +18,10 @@ import {
   EXEC_MAX_AGE_MS,
   estimateMs,
   isSlow,
+  MODEL_VERSION,
   pushDuration,
   readEntry,
+  resolveToolPath,
   writeEntry,
   type CacheEntry,
 } from './cache.ts'
@@ -29,22 +31,31 @@ import {
   selectRunners,
   stateFor,
   type ProbeRecord,
+  type RunnerSpec,
 } from './collect.ts'
 import type { CollectOptions } from './contract.ts'
 import { excludeList } from './discovery.ts'
 import { MAX_FINGERPRINT_FILES, fingerprint } from './fingerprint.ts'
-import type { Catalog, RunnerReport } from './model.ts'
+import { CATALOG_SCHEMA_VERSION, type Catalog, type RunnerReport } from './model.ts'
 import type { Registry } from './registry.ts'
-import type { ProjectProfile } from './tool.ts'
+import type { ProbeCost, ProjectProfile } from './tool.ts'
 import { which as whichOnPath } from './which.ts'
 
 /**
- * Why a cached entry was not usable as it is: its files changed, an exec
- * entry is past its age limit, or the exclude list changed.
+ * Why a cached entry was not usable as it is:
+ *
+ *   - `changed`: its files changed.
+ *   - `max-age`: an exec entry is past its age limit.
+ *   - `excludes`: the exclude list changed.
+ *   - `exec`: it was probed with execution allowed and now it is not, or the
+ *     reverse.
+ *   - `version`: another `@osdlc/system-model` version probed it.
+ *   - `tool`: the tool's binary resolves to another file, such as after an
+ *     upgrade, or was installed or removed.
  *
  * @experimental
  */
-export type StaleReason = 'changed' | 'max-age' | 'excludes'
+export type StaleReason = 'changed' | 'max-age' | 'excludes' | 'exec' | 'version' | 'tool'
 
 /**
  * One runner's cache verdict.
@@ -62,6 +73,12 @@ export interface RunnerCacheState {
   estimateMs: number | null
   /** True when this repository has measured this runner as slow. */
   slow: boolean
+  /**
+   * The runner's declared cost, for a hint before anything is measured.
+   * Undeclared, an `exec` runner counts as `slow` and a `parse` runner as
+   * `cheap`. Always set by `readCached`.
+   */
+  cost?: ProbeCost | undefined
 }
 
 /**
@@ -76,6 +93,10 @@ export interface CachedCatalog {
   runners: RunnerCacheState[]
   /** True when every selected runner was fresh. */
   allFresh: boolean
+}
+
+function costOf(spec: RunnerSpec): ProbeCost {
+  return spec.role.probe?.cost ?? (spec.role.kind === 'exec' ? 'slow' : 'cheap')
 }
 
 function sameExcludes(current: string[], stored: string[] | undefined): boolean {
@@ -93,7 +114,13 @@ export async function readCachedCatalog(
   const selected = selectRunners(registry, profile, options)
   const allMiss = (): CachedCatalog => ({
     catalog: null,
-    runners: selected.map((s) => ({ runner: s.id, state: 'miss', estimateMs: null, slow: false })),
+    runners: selected.map((s) => ({
+      runner: s.id,
+      state: 'miss',
+      estimateMs: null,
+      slow: false,
+      cost: costOf(s),
+    })),
     allFresh: false,
   })
 
@@ -101,7 +128,8 @@ export async function readCachedCatalog(
     const allowExec = options.allowExec ?? false
     const makeRunner = options.makeRunner ?? ((binary: string) => spawnRunnerAsync(binary))
     const which = options.which ?? whichOnPath
-    const files = stateFor(profile, () => makeRunner('git')).lister
+    const signal = options.signal ?? new AbortController().signal
+    const files = stateFor(profile, makeRunner, signal).lister
 
     const now = Date.now()
     const runners: RunnerCacheState[] = []
@@ -111,14 +139,26 @@ export async function readCachedCatalog(
     for (const spec of selected) {
       // A withheld exec runner never probed this run, so it cannot be stale.
       if (spec.role.kind === 'exec' && !allowExec) {
-        runners.push({ runner: spec.id, state: 'fresh', estimateMs: null, slow: false })
+        runners.push({
+          runner: spec.id,
+          state: 'fresh',
+          estimateMs: null,
+          slow: false,
+          cost: costOf(spec),
+        })
         reports.push(execWithheldReport(spec, options.execWithheldHint, which))
         continue
       }
 
       const entry = await readEntry(cacheDir, profile.root, spec.id)
       if (entry === null) {
-        runners.push({ runner: spec.id, state: 'miss', estimateMs: null, slow: false })
+        runners.push({
+          runner: spec.id,
+          state: 'miss',
+          estimateMs: null,
+          slow: false,
+          cost: costOf(spec),
+        })
         continue
       }
 
@@ -142,9 +182,21 @@ export async function readCachedCatalog(
 
       let state: RunnerCacheState['state'] = 'fresh'
       let reason: StaleReason | undefined
-      // Checked before the digest. A changed exclude list explains a changed
-      // digest, and widening the list can leave the digest unchanged.
-      if (!sameExcludes(current.excludes, entry.fingerprint?.excludes)) {
+      const toolPath = spec.binary === undefined ? undefined : resolveToolPath(which(spec.binary))
+      // How it was probed is checked first: each one changes the answer
+      // whatever the files say.
+      if (entry.allowExec !== allowExec) {
+        state = 'stale'
+        reason = 'exec'
+      } else if (entry.modelVersion !== MODEL_VERSION) {
+        state = 'stale'
+        reason = 'version'
+      } else if (toolPath !== undefined && entry.toolPath !== toolPath) {
+        state = 'stale'
+        reason = 'tool'
+      } else if (!sameExcludes(current.excludes, entry.fingerprint?.excludes)) {
+        // Checked before the digest. A changed exclude list explains a changed
+        // digest, and widening the list can leave the digest unchanged.
         state = 'stale'
         reason = 'excludes'
       } else if (current.digest !== entry.fingerprint?.digest) {
@@ -157,7 +209,7 @@ export async function readCachedCatalog(
         reason = 'max-age'
       }
 
-      runners.push({ runner: spec.id, state, reason, ageMs, ...measured })
+      runners.push({ runner: spec.id, state, reason, ageMs, ...measured, cost: costOf(spec) })
       // A stale entry is kept. An answer that was true an hour ago is better
       // than nothing, as long as it is marked stale.
       reports.push(entry.report)
@@ -171,6 +223,8 @@ export async function readCachedCatalog(
         reports.length === 0
           ? null
           : {
+              kind: 'catalog',
+              schemaVersion: CATALOG_SCHEMA_VERSION,
               root: profile.root,
               generatedAt: new Date(oldest).toISOString(),
               discovery: profile.discovery,
@@ -225,6 +279,11 @@ export async function collectAndCache(
         durations: pushDuration(previous, probe.durationMs),
         fingerprint: print,
         report: probe.report,
+        allowExec: catalog.allowExec,
+        modelVersion: MODEL_VERSION,
+        ...(probe.report.tool === undefined
+          ? {}
+          : { toolPath: resolveToolPath(probe.report.tool.path ?? null) }),
       }
       // `writeEntry` refuses errored and withheld reports.
       await writeEntry(cacheDir, entry)

@@ -47,8 +47,10 @@
  */
 
 import { createHash } from 'node:crypto'
-import { join } from 'node:path'
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { join, sep } from 'node:path'
+import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises'
+
+import { MAX_READ_BYTES } from './read.ts'
 
 /**
  * The maximum number of paths one fingerprint hashes.
@@ -133,7 +135,7 @@ export async function fingerprint(args: {
 
   const digest = createHash('sha256')
   for (const rel of kept) {
-    digest.update(`${rel}\n${await hashPath(join(root, rel))}\n`)
+    digest.update(`${rel}\n${await hashPath(root, join(root, rel))}\n`)
   }
 
   return {
@@ -145,18 +147,28 @@ export async function fingerprint(args: {
   }
 }
 
-/** A file hashes its bytes, a directory its immediate entry names. */
-async function hashPath(abs: string): Promise<string> {
+/**
+ * A file hashes its bytes, a directory its immediate entry names. It follows
+ * the reads' rules (`read.ts`): a symlink out of the root, a special file and a
+ * file over `MAX_READ_BYTES` are never read, so each hashes to a fixed label.
+ */
+async function hashPath(root: string, abs: string): Promise<string> {
+  let target = abs
   let info
   try {
-    info = await stat(abs)
+    if ((await lstat(abs)).isSymbolicLink()) {
+      target = await realpath(abs)
+      const realRoot = await realpath(root)
+      if (target !== realRoot && !target.startsWith(realRoot + sep)) return `outside\n${target}`
+    }
+    info = await stat(target)
   } catch {
     return MISSING
   }
 
   if (info.isDirectory()) {
     try {
-      const entries = (await readdir(abs)).sort()
+      const entries = (await readdir(target)).sort()
       return createHash('sha256')
         .update(`dir\n${entries.join('\n')}`)
         .digest('hex')
@@ -167,10 +179,13 @@ async function hashPath(abs: string): Promise<string> {
       return MISSING
     }
   }
+  if (!info.isFile()) return 'special'
+  // A runner sees a file this large as unreadable, whatever its bytes.
+  if (info.size > MAX_READ_BYTES) return 'large'
 
   try {
     return createHash('sha256')
-      .update(await readFile(abs))
+      .update(await readFile(target))
       .digest('hex')
   } catch {
     return MISSING

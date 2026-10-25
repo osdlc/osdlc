@@ -12,7 +12,7 @@
 import type { ProviderContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { afterSeparator, dirOf, looksPersistent, taskId } from '../support/shared.ts'
+import { afterSeparator, dependencies, dirOf, looksPersistent, taskId } from '../support/shared.ts'
 
 const CHAIN = [
   {
@@ -33,7 +33,7 @@ const CHAIN = [
  * cdn.jsdelivr.net/npm/simple-icons@latest/icons/turborepo.svg and its data
  * file (hex `#EF4444`).
  */
-const BRAND: RunnerBrand = {
+export const TURBO_BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M11.9906 4.1957c-4.2998 0-7.7981 3.501-7.7981 7.8043s3.4983 7.8043 7.7981 7.8043c4.2999 0 7.7982-3.501 7.7982-7.8043s-3.4983-7.8043-7.7982-7.8043m0 11.843c-2.229 0-4.0356-1.8079-4.0356-4.0387s1.8065-4.0387 4.0356-4.0387S16.0262 9.7692 16.0262 12s-1.8065 4.0388-4.0356 4.0388m.6534-13.1249V0C18.9726.3386 24 5.5822 24 12s-5.0274 11.66-11.356 12v-2.9139c4.7167-.3372 8.4516-4.2814 8.4516-9.0861s-3.735-8.749-8.4516-9.0861M5.113 17.9586c-1.2502-1.4446-2.0562-3.2845-2.2-5.3046H0c.151 2.8266 1.2808 5.3917 3.051 7.3668l2.0606-2.0622zM11.3372 24v-2.9139c-2.02-.1439-3.8584-.949-5.3019-2.2018l-2.0606 2.0623c1.975 1.773 4.538 2.9022 7.361 3.0534z"/></svg>',
   color: '#ef4444',
 }
@@ -51,7 +51,6 @@ export const TURBO_JSONC = 'turbo.jsonc'
 export const turboRunner: RunnerRole = {
   kind: 'parse',
   chain: CHAIN,
-  brand: BRAND,
 
   async collect(ctx: ProviderContext): Promise<ProviderResult> {
     const jsonFiles = await ctx.files(TURBO_JSON)
@@ -141,6 +140,22 @@ export const turboRunner: RunnerRole = {
           detailParts.push(`outputs: ${task.outputs.join(', ')}`)
         }
 
+        // A dependency resolves to a key in the same file: `lint`, or
+        // `web#lint` from a `web#build` key. A `^build` runs in the package's
+        // dependencies, so it names no single task.
+        const scope = hashAt === -1 ? undefined : key.slice(0, hashAt)
+        const deps = dependencies(
+          Array.isArray(task.dependsOn)
+            ? task.dependsOn.filter((d): d is string => typeof d === 'string')
+            : [],
+          (dep) => {
+            if (dep.startsWith('^')) return undefined
+            const scoped = scope === undefined || dep.includes('#') ? undefined : `${scope}#${dep}`
+            const hit = [scoped, dep].find((k) => k !== undefined && Object.hasOwn(map!, k))
+            return hit === undefined ? undefined : taskId('turbo', file, hit)
+          },
+        )
+
         const declaredPersistent = task.persistent === true
         const cacheDisabled = task.cache === false
 
@@ -155,6 +170,7 @@ export const turboRunner: RunnerRole = {
           source: file,
           origin: 'declared',
           ...(detailParts.length > 0 ? { detail: detailParts.join('; ') } : {}),
+          ...deps,
           tags: ['turbo', dir, ...(cacheDisabled ? ['cache-disabled'] : [])],
           persistent: {
             value: declaredPersistent || (cacheDisabled && looksPersistent(taskName)),

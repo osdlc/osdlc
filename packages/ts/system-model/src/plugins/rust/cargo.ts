@@ -36,7 +36,7 @@ const VERBS: ReadonlyArray<{ name: string; args: string[] }> = [
  * cannot pass that on. Its path is also about 4.1KB. Color is GitHub
  * Linguist's orange for Rust.
  */
-const BRAND: RunnerBrand = {
+export const CARGO_BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.9 20.4 7v10L12 21.1 3.6 17V7Z"/><path d="M3.6 7 12 11.2 20.4 7M12 11.2V21"/></svg>',
   color: '#dea584',
 }
@@ -44,7 +44,6 @@ const BRAND: RunnerBrand = {
 export const cargoRunner: RunnerRole = {
   kind: 'parse',
   chain: CHAIN,
-  brand: BRAND,
 
   async collect(_ctx, packages: readonly Package[]): Promise<ProviderResult> {
     const tasks: Task[] = []

@@ -70,19 +70,21 @@ interface MiseTask {
  * one task set. A glyph drawn here, because simple-icons has no `mise` icon.
  * Color is `--vp-c-brand-1` from mise.jdx.dev's stylesheet.
  */
-const BRAND: RunnerBrand = {
+export const MISE_BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3.5" y="4.2" width="17" height="4" rx="1.6"/><rect x="5.5" y="10" width="13" height="4" rx="1.6"/><rect x="7.5" y="15.8" width="9" height="4" rx="1.6"/></svg>',
   color: '#8b2252',
 }
 
 export const miseRunner: RunnerRole = {
   kind: 'exec',
+  probe: { timeoutMs: 30_000, cost: 'cheap' },
   chain: CHAIN,
-  brand: BRAND,
   watch: [...MISE_CONFIGS, ...MISE_TASK_DIRS],
 
   async collect(ctx): Promise<ProviderResult> {
-    const res = await ctx.runner('mise').run(['tasks', '--json'], { cwd: ctx.root })
+    const res = await ctx
+      .runner('mise')
+      .run(['tasks', '--json'], { cwd: ctx.root, signal: ctx.signal })
     if (res.exitCode !== 0) {
       // An untrusted config is the common cause. mise refuses to read a config
       // it has not been told to trust, which is correct behavior, so the

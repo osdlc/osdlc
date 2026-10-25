@@ -7,11 +7,11 @@
  */
 
 import { readCachedCatalog, collectAndCache, type CachedCatalog } from './cached.ts'
-import { collectRunners, invokeTask } from './collect.ts'
+import { collectRunners, invocationOf, invokeTask } from './collect.ts'
 import type { CollectOptions, DetectOptions } from './contract.ts'
 import { detectProject } from './detect.ts'
 import { matchEntry, terms, type Mode } from './match.ts'
-import type { Catalog, Task } from './model.ts'
+import type { Catalog, Invocation, ParamValues, Task } from './model.ts'
 import { pinnedInstall, type PinnedInstall, type PinnedInstallOptions } from './pinned.ts'
 import { buildRegistry } from './registry.ts'
 import {
@@ -38,8 +38,16 @@ export interface Runners {
    * The argv that runs `task` with `args` bound the way its tool expects:
    * appended for just and pnpm, after `--` for npm run, cargo run and moon
    * run. The library never spawns it.
+   *
+   * `args` is a list of positional arguments, or values by parameter name,
+   * bound by each parameter's `binding`. Throws when a value does not fit the
+   * parameters (see `bindParams`), when a parameter is bound to the
+   * environment (use {@link Runners.invocation}), and when the tool's rule
+   * would change the binary, `argv[0]`.
    */
-  invoke(task: Task, args: readonly string[]): string[]
+  invoke(task: Task, args: readonly string[] | ParamValues): string[]
+  /** {@link Runners.invoke}, with the environment variables `env` parameters set. */
+  invocation(task: Task, args: readonly string[] | ParamValues): Invocation
   /** The tasks matching a query, best first. An empty query matches everything. */
   search(catalog: Catalog, query: string, mode?: Mode): Task[]
   /**
@@ -125,6 +133,7 @@ export function createProject(options: ProjectOptions): Project {
     runners: {
       collect: (profile, opts) => collectRunners(registry, profile, opts),
       invoke: (task, args) => invokeTask(registry, task, args),
+      invocation: (task, args) => invocationOf(registry, task, args),
       search: (catalog, query, mode = 'fuzzy') => search(catalog, query, mode),
       readCached: (profile, dir, opts) => readCachedCatalog(registry, profile, dir, opts),
       collectAndCache: (profile, dir, opts) => collectAndCache(registry, profile, dir, opts),

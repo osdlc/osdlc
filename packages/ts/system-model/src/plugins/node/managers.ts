@@ -1,8 +1,8 @@
 /**
  * The node package managers. Each one's run verb and directory flag differ:
  * `npm run --prefix <dir>`, `pnpm run --dir <dir>`, `bun run --cwd <dir>`,
- * `yarn --cwd <dir>` (yarn 1; Berry dropped `--cwd`, and a lockfile does not
- * say which yarn wrote it).
+ * `yarn --cwd <dir> run` (yarn 1; Berry dropped `--cwd`, and a lockfile does
+ * not say which yarn wrote it).
  */
 
 import type { Evidence } from '../../aspect.ts'
@@ -44,6 +44,8 @@ const NODE_MODULES = 'node_modules'
 /** bun. */
 export const bun: ToolDef = {
   id: 'bun',
+  homepage: 'https://bun.com',
+  description: 'A JavaScript runtime, package manager and script runner.',
   binary: 'bun',
   commandWords: ['bunx'],
   ecosystem: nodeEcosystem,
@@ -64,6 +66,8 @@ export const bun: ToolDef = {
 /** pnpm. A `pnpm-workspace.yaml` selects it as surely as its lockfile. */
 export const pnpm: ToolDef = {
   id: 'pnpm',
+  homepage: 'https://pnpm.io',
+  description: 'A package manager for Node.js.',
   binary: 'pnpm',
   ecosystem: nodeEcosystem,
   markers: [{ files: PNPM_WORKSPACE, tier: 'files' }],
@@ -85,6 +89,8 @@ export const pnpm: ToolDef = {
 /** yarn. Plug'n'Play installs no `node_modules`; its `.pnp.cjs` shows an install. */
 export const yarn: ToolDef = {
   id: 'yarn',
+  homepage: 'https://yarnpkg.com',
+  description: 'A package manager for Node.js.',
   binary: 'yarn',
   ecosystem: nodeEcosystem,
   detect: pinDetect('yarn'),
@@ -96,7 +102,8 @@ export const yarn: ToolDef = {
       inDir: flagAfterBinary('--cwd'),
       depsDirs: [NODE_MODULES, '.pnp.cjs'],
       pin: pinOf('yarn'),
-      run: { verb: ['yarn'], dirFlag: '--cwd' },
+      // `run`, so a script named `version` or `pack` is not yarn's own command.
+      run: { verb: ['yarn', 'run'], dirFlag: '--cwd', dirFlagFirst: true },
     },
   },
 }
@@ -104,6 +111,8 @@ export const yarn: ToolDef = {
 /** npm. `npm ci` is already frozen; with no lockfile it is `npm install`. */
 export const npm: ToolDef = {
   id: 'npm',
+  homepage: 'https://www.npmjs.com',
+  description: 'The package manager that ships with Node.js.',
   binary: 'npm',
   ecosystem: nodeEcosystem,
   detect: pinDetect('npm'),

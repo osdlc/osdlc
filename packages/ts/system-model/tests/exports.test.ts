@@ -34,7 +34,17 @@ const ENTRIES = [
   { specifier: PACKAGE_NAME, entry: 'src/index.ts' },
   { specifier: `${PACKAGE_NAME}/detect`, entry: 'src/engine.ts' },
   { specifier: `${PACKAGE_NAME}/builtins`, entry: 'src/builtins.ts' },
-  ...['match', 'params', 'duration', 'graph', 'aspect', 'client', 'saved-view'].map((name) => ({
+  ...[
+    'match',
+    'params',
+    'duration',
+    'groups',
+    'schema',
+    'graph',
+    'aspect',
+    'client',
+    'saved-view',
+  ].map((name) => ({
     specifier: `${PACKAGE_NAME}/${name}`,
     entry: `src/${name}.ts`,
   })),

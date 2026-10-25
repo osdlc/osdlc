@@ -10,7 +10,14 @@
 import type { Evidence, EvidenceKind } from './aspect.ts'
 import type { ProviderContext, ProviderKind, RunnerContext } from './contract.ts'
 import type { ManifestFacts } from './manifests.ts'
-import type { ChainSegment, DiscoveryMode, ProviderResult, RunnerBrand, Task } from './model.ts'
+import type {
+  ChainSegment,
+  Diagnostic,
+  DiscoveryMode,
+  ProviderResult,
+  RunnerBrand,
+  Task,
+} from './model.ts'
 
 /**
  * A file pattern that indicates a tool is in use, and the evidence kind a
@@ -61,8 +68,27 @@ export interface PackageManagerRole {
         dirFlag: string
         /** Arguments go after `--` rather than straight after the script name. */
         separator?: boolean | undefined
+        /** `dirFlag` goes straight after the binary, before the rest of `verb` (`yarn --cwd dir run`). */
+        dirFlagFirst?: boolean | undefined
       }
     | undefined
+}
+
+/**
+ * What a runner's probe costs: `cheap` answers in about a second, `slow` can
+ * take much longer (a JVM start, a toolchain install). A hint shown before
+ * anything is measured; the cache's measured `slow` replaces it.
+ */
+export type ProbeCost = 'cheap' | 'slow'
+
+/** How a runner's probe is run. */
+export interface RunnerProbe {
+  /**
+   * The timeout for each subprocess the runner starts, in ms. Defaults to
+   * `DEFAULT_PROBE_TIMEOUT_MS`. `CollectOptions.timeouts` overrides it.
+   */
+  timeoutMs?: number | undefined
+  cost?: ProbeCost | undefined
 }
 
 /**
@@ -71,8 +97,14 @@ export interface PackageManagerRole {
  */
 export interface RunnerRole {
   kind: ProviderKind
+  probe?: RunnerProbe | undefined
   /** What each position of this runner's `Task.path` means. */
   chain?: ChainSegment[] | undefined
+  /**
+   * Used when the tool sets no `ToolDef.brand`.
+   *
+   * @deprecated Set `ToolDef.brand`, so the tool has one brand whatever role it plays.
+   */
   brand?: RunnerBrand | undefined
   /**
    * Patterns whose files decide whether a cached result is still good, for
@@ -85,8 +117,9 @@ export interface RunnerRole {
    */
   collect(ctx: RunnerContext, packages: readonly Package[]): Promise<ProviderResult>
   /**
-   * The argv that runs `task` with `args` bound the way this tool expects.
-   * Defaults to appending them.
+   * The argv that runs `task` with positional `args` bound the way this tool
+   * expects. Defaults to appending them. Must keep `task.argv[0]`; `invoke`
+   * refuses a result that changes it.
    */
   invoke?: ((task: Task, args: readonly string[]) => string[]) | undefined
 }
@@ -159,6 +192,12 @@ export interface ToolFact {
 export interface ToolDef {
   /** Stable id: `pnpm`, `cargo`, `mise`. */
   id: string
+  /** The project's official site, `https://...`. Every built-in has one. */
+  homepage?: string | undefined
+  /** One sentence on what the tool is, for a reader who does not know it. Every built-in has one. */
+  description?: string | undefined
+  /** An icon and colour for views that show more than text. `RunnerReport.brand` comes from here. */
+  brand?: RunnerBrand | undefined
   /** The binary its commands run through, for a PATH check. */
   binary?: string | undefined
   /** Other first words of a command that mean this tool (`bunx`, `pip3`). */
@@ -185,6 +224,33 @@ export interface ToolDef {
     toolManager?: ToolManagerRole | undefined
     hookManager?: HookManagerRole | undefined
   }
+}
+
+/**
+ * The JSON-safe part of a {@link ToolDef}: its data without its functions,
+ * as `toolInfo` builds it. `toolInfoSchema` in `./schema` describes it.
+ */
+export interface ToolInfo {
+  id: string
+  homepage?: string | undefined
+  description?: string | undefined
+  brand?: RunnerBrand | undefined
+  binary?: string | undefined
+  commandWords?: string[] | undefined
+  /** The ecosystem's id. Absent for a tool of no one language. */
+  ecosystem?: string | undefined
+  /** The tool's own markers, then its roles' lockfiles and configs. */
+  markers: Array<{ files: string; tier: EvidenceKind; workspaceRoot?: boolean | undefined }>
+  roles: RoleName[]
+  /** The runner role's data, when the tool has one. */
+  runner?:
+    | {
+        kind: ProviderKind
+        chain?: ChainSegment[] | undefined
+        probe?: RunnerProbe | undefined
+        watch?: string[] | undefined
+      }
+    | undefined
 }
 
 /**
@@ -290,4 +356,10 @@ export interface ProjectProfile {
   languages: string[]
   tools: string[]
   malformed: MalformedManifest[]
+  /**
+   * What detection could not cover, such as a directory walk that stopped at
+   * `MAX_WALK_FILES` or `MAX_WALK_DEPTH`. Always set by `detect`; optional so
+   * a profile stored by an older version still reads.
+   */
+  diagnostics?: Diagnostic[] | undefined
 }

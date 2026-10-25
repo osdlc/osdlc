@@ -23,7 +23,52 @@ export interface Param {
   variadic: boolean
   /** Literal default where the runner declares one. */
   default?: string | undefined
+  /** How a value reaches the command. Absent means `positional`. */
+  binding?: ParamBinding | undefined
+  /** What the parameter is for, where the runner says. */
+  doc?: string | undefined
+  /** The only values the runner accepts, where it declares a list. */
+  choices?: string[] | undefined
 }
+
+/**
+ * How a parameter's value reaches the command:
+ *
+ *   - `positional`: an argument, in parameter order, bound by the runner's
+ *     own rule (`just deploy prod`, `rake 'release[1.2]'`).
+ *   - `flag`: `flag value` (`--env prod`). With `key`, the value is passed as
+ *     `key=value` (`gh workflow run x.yml -f env=prod`).
+ *   - `assign`: one `name=value` argument, `name` defaulting to the
+ *     parameter's (`make deploy ENV=prod`, `task deploy ENV=prod`).
+ *   - `env`: the environment variable `name`.
+ */
+export type ParamBinding =
+  | { kind: 'positional' }
+  | { kind: 'flag'; flag: string; key?: string | undefined }
+  | { kind: 'assign'; name?: string | undefined }
+  | { kind: 'env'; name: string }
+
+/** Values for a task's parameters, by parameter name. A variadic takes a list. */
+export type ParamValues = Readonly<Record<string, string | readonly string[]>>
+
+/** What runs a task: its argv and the environment variables to add. */
+export interface Invocation {
+  argv: string[]
+  env: Record<string, string>
+}
+
+/**
+ * Why a task's parameters are not known. `parameters` is then empty, but the
+ * task may still take arguments:
+ *
+ *   - `exec-withheld`: only the tool can list them, and execution was not
+ *     allowed (a just recipe scanned from source).
+ *   - `tool-missing`: execution was allowed, but the tool is not on the PATH.
+ *   - `tool-failed`: the tool ran and gave no usable answer.
+ *   - `not-read`: the file declares them, and this runner does not read them
+ *     (GitHub Actions dispatch inputs).
+ */
+export type ParametersUnknownReason = 'exec-withheld' | 'tool-missing' | 'tool-failed' | 'not-read'
 
 /**
  * Where a task came from: declared in a file, or synthesized from a
@@ -60,7 +105,13 @@ export interface Task {
   cwd: string
   /** Human form for showing and copying. May hold parameter placeholders. */
   display: string
+  /** The parameters, in order. Empty when there are none or when they are unknown. */
   parameters: Param[]
+  /**
+   * Set when the parameters could not be read, so an empty `parameters` does
+   * not mean "takes none". Absent when `parameters` is the full list.
+   */
+  parametersUnknown?: ParametersUnknownReason | undefined
   /** File that declares it, relative to the profile root. */
   source: string
   origin: TaskOrigin
@@ -68,6 +119,16 @@ export interface Task {
   doc?: string | undefined
   /** What the task executes, when that differs from `display`. */
   detail?: string | undefined
+  /**
+   * Ids of tasks in the same report that run before this one, in declared
+   * order. Absent when there are none or the runner does not read them.
+   */
+  dependsOn?: string[] | undefined
+  /**
+   * Dependencies that name no task in the report, as written: a turbo
+   * `^build`, a moon `^:build`, a task an include declares.
+   */
+  dependsOnUnresolved?: string[] | undefined
   /** Free-text facets for search and filtering. */
   tags: string[]
   /**
@@ -109,8 +170,8 @@ export interface Diagnostic {
 }
 
 /**
- * A runner's icon and colour, for views that show more than text. Kept on
- * the report rather than on each task.
+ * A tool's icon and colour, for views that show more than text. Set on
+ * `ToolDef.brand`, and copied to each runner report rather than to each task.
  */
 export interface RunnerBrand {
   /** Inline SVG markup, viewBox only, `currentColor` where monochrome. */
@@ -152,9 +213,20 @@ export interface RunnerReport extends ProviderResult {
 export type DiscoveryMode = 'git' | 'walk'
 
 /**
+ * The version of the {@link Catalog} JSON shape, `Catalog.schemaVersion`.
+ * Raised when a field is removed or changes meaning; a new optional field
+ * keeps it.
+ */
+export const CATALOG_SCHEMA_VERSION = 1
+
+/**
  * Every runner report for one profile.
  */
 export interface Catalog {
+  /** `catalog`, so a JSON reader can tell the document apart. Always set by `collect`. */
+  kind?: 'catalog' | undefined
+  /** {@link CATALOG_SCHEMA_VERSION} when the catalog was built. Always set by `collect`. */
+  schemaVersion?: number | undefined
   /** Absolute path. Every `cwd` and `source` is relative to it. */
   root: string
   generatedAt: string

@@ -39,6 +39,8 @@
  *   - each task's `desc`, `summary`, `internal` scalar fields, one level
  *     under the task itself (deeper nesting — `cmds:`, `vars:`, … — is not
  *     descended into)
+ *   - each task's `deps:`, as a flow list (`[a, b]`) or a block list of names
+ *     or `- task: name` items
  *   - `#` comments (outside quoted strings) and single/double-quoted keys
  *     and values
  *
@@ -74,8 +76,8 @@ import { firstLine, stderrOrError } from '@osdlc/command-seam'
 import type { ProviderContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { afterSeparator, dirOf, looksPersistent, taskId } from '../support/shared.ts'
-import { leadingSpaces, matchKey, prepass, unquoteValue } from '../support/yaml-lite.ts'
+import { afterSeparator, dependencies, dirOf, looksPersistent, taskId } from '../support/shared.ts'
+import { leadingSpaces, matchKey, prepass, unquote, unquoteValue } from '../support/yaml-lite.ts'
 
 const CHAIN = [
   { label: 'runner', hint: "go-task runs tasks declared in a Taskfile's `tasks:` map." },
@@ -109,7 +111,7 @@ export const CONFIG_NAMES = [
  * (`https://taskfile.dev/img/logo.svg`). It also matches simple-icons' hex for
  * the mark, which has no per-icon license override.
  */
-const BRAND: RunnerBrand = {
+export const GO_TASK_BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="2"/><path d="M7 8.5h5M7 12h7M7 15.5h4"/><path d="m15 14.5 1.6 1.6L20 12.5"/></svg>',
   color: '#29beb0',
 }
@@ -128,6 +130,7 @@ interface TaskfileTaskEntry {
   desc?: string
   summary?: string
   internal: boolean
+  deps: string[]
 }
 
 interface ReadResult {
@@ -180,6 +183,7 @@ export function readTaskfile(text: string): ReadResult {
   let taskNameIndent = -1
   let currentTask: string | null = null
   let currentFieldIndent = -1
+  let inDeps = false
 
   for (let i = tasksLineIdx + 1; i < lines.length; i++) {
     const line = lines[i] ?? ''
@@ -194,20 +198,27 @@ export function readTaskfile(text: string): ReadResult {
       if (m === null) continue
       currentTask = m.key
       currentFieldIndent = -1
-      if (!tasks.has(currentTask)) tasks.set(currentTask, { internal: false })
+      if (!tasks.has(currentTask)) tasks.set(currentTask, { internal: false, deps: [] })
+      inDeps = false
       continue
     }
 
     if (indent < taskNameIndent) break
     if (currentTask === null) continue
-
-    if (currentFieldIndent === -1) currentFieldIndent = indent
-    if (indent !== currentFieldIndent) continue // deeper than the task's own fields
-
-    const m = matchKey(line, indent)
-    if (m === null) continue
     const entry = tasks.get(currentTask)
     if (entry === undefined) continue
+
+    if (currentFieldIndent === -1) currentFieldIndent = indent
+    if (indent !== currentFieldIndent) {
+      // Deeper than the task's own fields: read only a `deps:` block list.
+      const item = inDeps ? DEP_ITEM.exec(line) : null
+      if (item !== null) entry.deps.push(unquote(item[1]!))
+      continue
+    }
+
+    const m = matchKey(line, indent)
+    inDeps = m?.key === 'deps' && m.value.trim() === ''
+    if (m === null) continue
     if (m.key === 'desc') {
       const v = unquoteValue(m.value)
       if (v !== undefined) entry.desc = v
@@ -216,10 +227,27 @@ export function readTaskfile(text: string): ReadResult {
       if (v !== undefined) entry.summary = v
     } else if (m.key === 'internal') {
       entry.internal = m.value.trim() === 'true'
+    } else if (m.key === 'deps') {
+      entry.deps.push(...flowDeps(m.value))
     }
   }
 
   return { tasks, warnings: [...warnings] }
+}
+
+/** `- name` or `- task: name` in a `deps:` block list. */
+const DEP_ITEM = /^\s*-\s*(?:task\s*:\s*)?([^\s#{][^#]*?)\s*$/
+
+/** The names in a flow `deps: [a, "b", {task: c}]`. Anything else gives none. */
+function flowDeps(value: string): string[] {
+  const t = value.trim()
+  if (!t.startsWith('[') || !t.endsWith(']')) return []
+  return t
+    .slice(1, -1)
+    .split(',')
+    .map((part) => part.trim().replace(/^\{\s*task\s*:\s*(.*?)\s*\}$/, '$1'))
+    .filter((part) => part !== '' && !part.startsWith('{'))
+    .map((part) => unquote(part))
 }
 
 /**
@@ -280,7 +308,6 @@ async function listTasks(
   // exit code and the JSON parse need checking.
   const res = await ctx.runner('task').run(listArgv(file), {
     cwd: ctx.root,
-    timeoutMs: LIST_TIMEOUT_MS,
     signal: ctx.signal,
   })
   if (res.exitCode !== 0) {
@@ -397,6 +424,18 @@ function priorityWinners(files: string[]): Set<string> {
   return new Set([...best.values()].map((b) => b.file))
 }
 
+/**
+ * A dependency resolves to a task of the same Taskfile. One with a `:`
+ * names a task of an included file, and stays unresolved.
+ */
+function depsIn(
+  deps: readonly string[],
+  names: ReadonlySet<string>,
+  file: string,
+): Pick<Task, 'dependsOn' | 'dependsOnUnresolved'> {
+  return dependencies(deps, (dep) => (names.has(dep) ? taskId('go-task', file, dep) : undefined))
+}
+
 function makeTask(
   file: string,
   name: string,
@@ -444,8 +483,8 @@ export const goTaskRunner: RunnerRole = {
   // `parse`, not `exec`: the reader means this runner always has tasks to
   // offer. It runs `task` when allowed, and says when it did not.
   kind: 'parse',
+  probe: { timeoutMs: LIST_TIMEOUT_MS, cost: 'cheap' },
   chain: CHAIN,
-  brand: BRAND,
 
   async collect(ctx: ProviderContext): Promise<ProviderResult> {
     const found = await Promise.all(CONFIG_NAMES.map((name) => ctx.files(name)))
@@ -490,16 +529,22 @@ export const goTaskRunner: RunnerRole = {
         // `includes:` warning, which the listing just made false.
         if (listed.error === undefined && listed.entries.length > 0) {
           listingRan = true
-          for (const { name, doc } of ownEntries(listed.entries, file, files)) {
-            // go-task hides `internal: true` tasks from its listings ("Mark
-            // tasks as internal to prevent them from appearing in CLI lists",
-            // taskfile.dev/docs/guide), so this normally removes nothing. It
-            // guards against a version that stops filtering. `internal` is the
-            // one field the reader sees that the listing does not report, so
-            // without this the two paths could disagree about which tasks
-            // exist.
-            if (parsed.get(name)?.internal === true) continue
-            tasks.push(makeTask(file, name, doc, winners.has(file)))
+          // go-task hides `internal: true` tasks from its listings ("Mark
+          // tasks as internal to prevent them from appearing in CLI lists",
+          // taskfile.dev/docs/guide), so this filter normally removes nothing.
+          // It guards against a version that stops filtering. `internal` is
+          // the one field the reader sees that the listing does not report, so
+          // without this the two paths could disagree about which tasks exist.
+          const own = ownEntries(listed.entries, file, files).filter(
+            ({ name }) => parsed.get(name)?.internal !== true,
+          )
+          const names = new Set(own.map((e) => e.name))
+          for (const { name, doc } of own) {
+            // The listing has no dependencies, so they come from the reader.
+            tasks.push({
+              ...makeTask(file, name, doc, winners.has(file)),
+              ...depsIn(parsed.get(name)?.deps ?? [], names, file),
+            })
           }
           continue
         }
@@ -517,9 +562,13 @@ export const goTaskRunner: RunnerRole = {
       for (const message of warnings) {
         diagnostics.push({ severity: 'warning', message, source: file })
       }
+      const names = new Set([...parsed].filter(([, e]) => !e.internal).map(([name]) => name))
       for (const [name, entry] of parsed) {
         if (entry.internal) continue
-        tasks.push(makeTask(file, name, entry.desc ?? entry.summary, winners.has(file)))
+        tasks.push({
+          ...makeTask(file, name, entry.desc ?? entry.summary, winners.has(file)),
+          ...depsIn(entry.deps, names, file),
+        })
       }
     }
 

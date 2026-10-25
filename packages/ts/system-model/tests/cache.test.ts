@@ -74,6 +74,8 @@ function entryFor(
       excludes: [],
     },
     report,
+    allowExec: false,
+    modelVersion: '0.0.0',
     ...overrides,
   }
 }
@@ -95,8 +97,8 @@ describe('entryPath', () => {
     )
   })
 
-  test('the format version is 4', () => {
-    expect(CACHE_FORMAT_VERSION).toBe(4)
+  test('the format version is 5', () => {
+    expect(CACHE_FORMAT_VERSION).toBe(5)
   })
 })
 

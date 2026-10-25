@@ -179,7 +179,7 @@ describe('browser-safe entries', () => {
     return [...outside]
   }
 
-  test('the root, the wire-contract entries, ./match, ./params and ./duration reach no Node built-in or dependency', async () => {
+  test('the root, the wire-contract entries, ./match, ./params, ./duration, ./groups and ./schema reach no Node built-in or dependency', async () => {
     for (const entry of [
       'index',
       'graph',
@@ -189,6 +189,8 @@ describe('browser-safe entries', () => {
       'match',
       'params',
       'duration',
+      'groups',
+      'schema',
     ]) {
       expect(await reached(entry), entry).toEqual([])
     }

@@ -53,6 +53,28 @@ export function tierOf(source: string): string {
   return at === -1 ? '.' : norm.slice(0, at)
 }
 
+/**
+ * `dependsOn` and `dependsOnUnresolved` for a task that names `deps`, each
+ * looked up by `resolve`. Either field is left out when empty.
+ */
+export function dependencies(
+  deps: readonly string[],
+  resolve: (name: string) => string | undefined,
+): Pick<Task, 'dependsOn' | 'dependsOnUnresolved'> {
+  const ids: string[] = []
+  const unresolved: string[] = []
+  for (const dep of deps) {
+    const id = resolve(dep)
+    if (id === undefined) {
+      if (!unresolved.includes(dep)) unresolved.push(dep)
+    } else if (!ids.includes(id)) ids.push(id)
+  }
+  return {
+    ...(ids.length > 0 ? { dependsOn: ids } : {}),
+    ...(unresolved.length > 0 ? { dependsOnUnresolved: unresolved } : {}),
+  }
+}
+
 /** Bind arguments after a `--`, for tools that read their own flags up to it. */
 export function afterSeparator(task: Task, args: readonly string[]): string[] {
   return args.length === 0 ? [...task.argv] : [...task.argv, '--', ...args]

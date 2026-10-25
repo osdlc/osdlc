@@ -180,6 +180,19 @@ describe('collect', () => {
     expect(tasks(catalog).map((t) => t.display)).toEqual(['house go'])
   })
 
+  test("the report's brand comes from the tool, else from the deprecated role field", async () => {
+    const dir = await root({ 'a.txt': '', 'b.txt': '' })
+    const tools = [
+      toolOf('a', { brand: { color: '#000000' } }, { brand: { color: '#111111' } }),
+      toolOf('b', { brand: { color: '#222222' } }),
+    ]
+    const catalog = await collect(dir, walkOpts({ tools }))
+    expect(catalog.reports.map((r) => [r.runner, r.brand?.color])).toEqual([
+      ['a', '#111111'],
+      ['b', '#222222'],
+    ])
+  })
+
   test("a runner's brand is copied onto its report, and stays optional", async () => {
     const dir = await root(SAMPLE)
     const catalog = await collect(dir, walkOpts())
