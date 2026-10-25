@@ -921,5 +921,179 @@
         "expected": "28-v2-min-max-contains.fail-many.expected.json"
       }
     ]
+  },
+  {
+    "id": "v29",
+    "contract": "29-second-h1.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "29-second-h1.pass.md",
+        "expected": "29-second-h1.pass.expected.json"
+      },
+      {
+        "source": "29-second-h1.fail.md",
+        "expected": "29-second-h1.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v30",
+    "contract": "30-repeated-section-content.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "30-repeated-section-content.pass.md",
+        "expected": "30-repeated-section-content.pass.expected.json"
+      },
+      {
+        "source": "30-repeated-section-content.fail.md",
+        "expected": "30-repeated-section-content.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v31",
+    "contract": "31-frontmatter-yaml-error.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "31-frontmatter-yaml-error.pass.md",
+        "expected": "31-frontmatter-yaml-error.pass.expected.json"
+      },
+      {
+        "source": "31-frontmatter-yaml-error.fail-quote.md",
+        "expected": "31-frontmatter-yaml-error.fail-quote.expected.json"
+      },
+      {
+        "source": "31-frontmatter-yaml-error.fail-tab.md",
+        "expected": "31-frontmatter-yaml-error.fail-tab.expected.json"
+      },
+      {
+        "source": "31-frontmatter-yaml-error.fail-duplicate.md",
+        "expected": "31-frontmatter-yaml-error.fail-duplicate.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v32",
+    "contract": "32-frontmatter-line-after-wrapped-value.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "32-frontmatter-line-after-wrapped-value.pass.md",
+        "expected": "32-frontmatter-line-after-wrapped-value.pass.expected.json"
+      },
+      {
+        "source": "32-frontmatter-line-after-wrapped-value.fail.md",
+        "expected": "32-frontmatter-line-after-wrapped-value.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v33",
+    "contract": "33-structure-hints.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "33-structure-hints.pass.md",
+        "expected": "33-structure-hints.pass.expected.json"
+      },
+      {
+        "source": "33-structure-hints.fail-duplicate.md",
+        "expected": "33-structure-hints.fail-duplicate.expected.json"
+      },
+      {
+        "source": "33-structure-hints.fail-alias.md",
+        "expected": "33-structure-hints.fail-alias.expected.json"
+      },
+      {
+        "source": "33-structure-hints.fail-key-collision.md",
+        "expected": "33-structure-hints.fail-key-collision.expected.json"
+      },
+      {
+        "source": "33-structure-hints.fail-order.md",
+        "expected": "33-structure-hints.fail-order.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v34",
+    "contract": "34-strict-order-and-gap-hints.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "34-strict-order-and-gap-hints.pass.md",
+        "expected": "34-strict-order-and-gap-hints.pass.expected.json"
+      },
+      {
+        "source": "34-strict-order-and-gap-hints.fail-order.md",
+        "expected": "34-strict-order-and-gap-hints.fail-order.expected.json"
+      },
+      {
+        "source": "34-strict-order-and-gap-hints.fail-gap.md",
+        "expected": "34-strict-order-and-gap-hints.fail-gap.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v35",
+    "contract": "35-leaf-hints.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "35-leaf-hints.pass.md",
+        "expected": "35-leaf-hints.pass.expected.json"
+      },
+      {
+        "source": "35-leaf-hints.fail.md",
+        "expected": "35-leaf-hints.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v36",
+    "contract": "36-null-first-type-union.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "36-null-first-type-union.pass.md",
+        "expected": "36-null-first-type-union.pass.expected.json"
+      },
+      {
+        "source": "36-null-first-type-union.fail.md",
+        "expected": "36-null-first-type-union.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v37",
+    "contract": "37-code-block-value.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "37-code-block-value.pass.md",
+        "expected": "37-code-block-value.pass.expected.json"
+      },
+      {
+        "source": "37-code-block-value.fail.md",
+        "expected": "37-code-block-value.fail.expected.json"
+      }
+    ]
+  },
+  {
+    "id": "v38",
+    "contract": "38-body-text-rule-hint.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "38-body-text-rule-hint.pass.md",
+        "expected": "38-body-text-rule-hint.pass.expected.json"
+      },
+      {
+        "source": "38-body-text-rule-hint.fail.md",
+        "expected": "38-body-text-rule-hint.fail.expected.json"
+      }
+    ]
   }
 ]

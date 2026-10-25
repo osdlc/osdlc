@@ -1,0 +1,12 @@
+[
+  {
+    "id": "text/requires/entry/15q765s",
+    "level": "error",
+    "line": 6
+  },
+  {
+    "id": "content/list/min-items",
+    "level": "error",
+    "line": 8
+  }
+]

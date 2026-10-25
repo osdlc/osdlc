@@ -1,0 +1,11 @@
+mcVersion: 2
+kind: contract
+description: A note with a title.
+frontmatter:
+  type: object
+  properties:
+    title: { type: string }
+  required: [title]
+body:
+  sections:
+    - section: Notes

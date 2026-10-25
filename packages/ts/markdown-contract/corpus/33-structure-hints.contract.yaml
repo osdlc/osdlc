@@ -1,0 +1,13 @@
+mcVersion: 2
+kind: contract
+body:
+  description: The standard note sections.
+  order: recognized-relative
+  sections:
+    - section: Context
+      description: Why the note exists.
+    - section: Goal
+      aliases: [Aim]
+      description: What the work is for.
+    - section: Files to touch
+      description: One line per file.

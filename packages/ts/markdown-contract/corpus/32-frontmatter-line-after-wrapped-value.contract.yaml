@@ -1,0 +1,14 @@
+mcVersion: 2
+kind: contract
+frontmatter:
+  type: object
+  properties:
+    summary: { type: string }
+    count: { type: integer }
+    owner:
+      type: object
+      properties:
+        id: { type: integer }
+body:
+  sections:
+    - section: Notes

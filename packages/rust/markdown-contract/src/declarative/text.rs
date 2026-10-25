@@ -13,10 +13,11 @@
 use serde_yaml::Value;
 
 use super::errors::DeclarativeError;
+use super::yaml::{get, render};
 use crate::contract::{DocRule, Rule};
 use crate::finding::FindingLevel;
 use crate::text_constraints::{TextRuleSpec, forbids, requires, text_rule};
-use crate::text_match::TextMatchSpec;
+use crate::text_match::{NeedleError, TextMatchSpec, build_regex};
 
 /// The closed match-spec vocabulary.
 const SPEC_KEYS: &[&str] = &[
@@ -30,10 +31,6 @@ const SPEC_KEYS: &[&str] = &[
     "note",
     "level",
 ];
-
-fn get<'a>(map: &'a serde_yaml::Mapping, key: &str) -> Option<&'a Value> {
-    map.get(Value::String(key.into()))
-}
 
 fn err(msg: String) -> DeclarativeError {
     DeclarativeError::InvalidTextSpec(msg)
@@ -68,11 +65,13 @@ fn compile_match_spec(
     assign_scalar_fields(map, &mut spec, path)?;
     assign_level(map, &mut spec, path)?;
     assert_count_bound(&spec, kind, path)?;
-    // Screen the regex through the engine now, so an invalid source is an authoring
-    // error here rather than a matcher panic at validation time.
-    if let Some(src) = &spec.regex {
-        regex::Regex::new(src)
-            .map_err(|e| err(format!("{path}.regex: invalid regex /{src}/: {e}")))?;
+    // Compile the needle as the builders will, so a source the `regex` crate rejects is
+    // an error here, not a builder panic.
+    if let Err(NeedleError::Invalid(e)) = build_regex(&spec) {
+        return Err(err(format!(
+            "{path}.regex: invalid regex {}: {e}",
+            spec.repr()
+        )));
     }
     Ok(spec)
 }
@@ -171,8 +170,7 @@ fn assign_level(
             _ => {
                 return Err(err(format!(
                     "{path}.level must be \"error\" or \"warn\" (got {})",
-                    serde_json::to_string(&crate::frontmatter::yaml_to_json(v.clone()))
-                        .unwrap_or_else(|_| "?".into())
+                    render(Some(v))
                 )));
             }
         };
@@ -353,6 +351,8 @@ mod tests {
             "requires:\n  - pattern: a\n    max: 0\n",    // absence form
             "requires:\n  - pattern: a\n  - pattern: a\n", // duplicate
             "requires:\n  - regex: '('\n",                // invalid regex
+            "requires:\n  - regex: '(?=x)'\n",            // lookaround
+            "requires:\n  - regex: '\\w{1000}{1000}'\n",  // past the size limit
         ];
         for yaml in cases {
             let node = map(yaml);

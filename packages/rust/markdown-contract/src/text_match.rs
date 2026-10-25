@@ -1,22 +1,24 @@
-//! The text-match predicate core and the `text/*` finding area, ported from
-//! the TS `text-match.ts`:
+//! The text-match core and the `text/*` findings, ported from the TS `text-match.ts`:
 //!
-//! 1. [`match_text`] — a pure matcher: `(text, spec) → { count, positions }`. A literal
-//!    `pattern` (whitespace-run flexible under `normalize`, default true; exact under
-//!    `normalize: false`) or a `regex` source, `ignoreCase` folding, every occurrence
-//!    counted and pinned to its 1-based line / col (col in UTF-16 units — JS string
-//!    indexing — so positions agree with the TS engine byte-for-byte on ASCII and
-//!    character-for-character beyond it).
-//! 2. [`build_text_findings`] — maps a match result + the entry's `min` / `max` bound to
-//!    `text/requires` / `text/forbids` / `text/count` findings.
-//! 3. [`synthesize_text_id`] — the stable per-entry id
-//!    `text/<kind>/<scopeKey>/<patternHash>`: an FNV-1a 32-bit hash over the normalized
-//!    pattern key's UTF-16 code units, rendered base36 — **bit-identical to the TS
-//!    `shortHash`**, because the corpus goldens pin these ids.
+//! 1. [`build_regex`] compiles a spec's needle once: a literal `pattern` (any whitespace
+//!    run matches any whitespace run under `normalize`, the default; exact under
+//!    `normalize: false`) or a `regex` source, with `ignoreCase` folding.
+//! 2. [`match_text`] counts every occurrence and pins each to its 1-based line and
+//!    column. The column counts UTF-16 units, as JS string indexing does.
+//! 3. [`build_text_findings`] maps a match result and the entry's `min` / `max` to
+//!    `text/requires`, `text/forbids` and `text/count` findings.
+//! 4. [`synthesize_text_id`] gives the stable id `text/<kind>/<scopeKey>/<patternHash>`.
+//!    The hash is the TS `shortHash` exactly (FNV-1a 32-bit over UTF-16 units, in
+//!    base 36), because the corpus goldens pin these ids.
+//!
+//! `regex` sources use the `regex` crate's dialect, not JS's: there is no lookaround or
+//! backreference, and `\w`, `\d` and `\b` are Unicode-aware.
+
+use regex::{Regex, RegexBuilder};
 
 use crate::finding::{Finding, FindingLevel, SourcePos};
+use crate::js;
 use crate::registry::{Ctx, FindingSpec};
-use regex::RegexBuilder;
 
 // ── The match spec & result ───────────────────────────────────────────────────────────
 
@@ -46,33 +48,38 @@ pub struct TextMatchSpec {
     pub level: Option<FindingLevel>,
 }
 
+impl TextMatchSpec {
+    /// The needle as it reads in a message: `"literal"` or `/source/`.
+    pub(crate) fn repr(&self) -> String {
+        if let Some(regex) = &self.regex {
+            format!("/{regex}/")
+        } else {
+            format!("\"{}\"", self.pattern.as_deref().unwrap_or(""))
+        }
+    }
+}
+
 /// The result of [`match_text`]: the occurrence count and each hit's source position.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct TextMatchResult {
-    /// how many times the needle was found
-    pub count: usize,
-    /// one entry per hit, in document order (1-based line / col of the match start)
-    pub positions: Vec<SourcePos>,
+pub(crate) struct TextMatchResult {
+    pub(crate) count: usize,
+    /// One entry per hit, in document order: the 1-based line and column of its start.
+    pub(crate) positions: Vec<SourcePos>,
 }
 
-/// The entry kind a text constraint is authored as — presence or absence.
+/// Whether a text constraint requires or forbids its needle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TextKind {
-    /// the needle must appear.
+pub(crate) enum TextKind {
     Requires,
-    /// the needle must not appear.
     Forbids,
 }
 
-/// The finding-id discriminator: the pure presence / absence findings, or a `min`/`max`
-/// bound violation.
+/// The kind part of a text finding id: the presence and absence findings, or `count`
+/// when a `min` or `max` is not met.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TextFindingKind {
-    /// the needle is absent but required.
+pub(crate) enum TextFindingKind {
     Requires,
-    /// the needle is present but forbidden.
     Forbids,
-    /// the hit count is outside `min` / `max`.
     Count,
 }
 
@@ -104,37 +111,27 @@ fn escape_regex(s: &str) -> String {
     out
 }
 
-/// A literal pattern as a regex source whose internal whitespace runs match any run of
-/// whitespace — so a phrase wrapped across a line still matches.
+/// A literal pattern as a regex source in which each whitespace run matches any
+/// whitespace run, so a phrase wrapped across lines still matches. Whitespace is JS `\s`.
 fn normalized_pattern_source(pattern: &str) -> String {
-    let trimmed = pattern.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-    trimmed
-        .split_whitespace()
+    js::words(pattern)
         .map(escape_regex)
         .collect::<Vec<_>>()
-        .join(r"\s+")
+        .join(&format!("{}+", js::SPACE_CLASS))
 }
 
-/// Map a byte offset in `text` to a 1-based `{ line, col }`, `col` counted in UTF-16
-/// code units (JS string indexing) so the TS `offsetToPos` agrees exactly.
-fn offset_to_pos(text: &str, offset: usize) -> SourcePos {
-    let before = &text[..offset];
-    let line = before.bytes().filter(|&b| b == b'\n').count() as u32 + 1;
-    let line_start = before.rfind('\n').map_or(0, |i| i + 1);
-    let col = text[line_start..offset].encode_utf16().count() as u32 + 1;
-    SourcePos::at(line, col)
+/// Why a spec's needle could not be compiled.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum NeedleError {
+    /// The spec has neither `pattern` nor `regex`.
+    Missing,
+    /// The `regex` crate rejected the source (a syntax error or the size limit).
+    Invalid(String),
 }
 
-/// Match a spec against `text`, returning the occurrence count and each hit's position.
-/// Matching runs over the raw text including code spans and fenced blocks.
-///
-/// # Panics
-/// When the spec supplies neither `pattern` nor `regex`, or a `regex` source the regex
-/// engine rejects — both authoring errors the declarative compiler screens out.
-pub fn match_text(text: &str, spec: &TextMatchSpec) -> TextMatchResult {
+/// Compile a spec's needle, the one place every caller builds it. `Ok(None)` is an
+/// empty needle, which never matches.
+pub(crate) fn build_regex(spec: &TextMatchSpec) -> Result<Option<Regex>, NeedleError> {
     let source = if let Some(regex) = &spec.regex {
         regex.clone()
     } else if let Some(pattern) = &spec.pattern {
@@ -144,21 +141,79 @@ pub fn match_text(text: &str, spec: &TextMatchSpec) -> TextMatchResult {
             escape_regex(pattern)
         }
     } else {
-        panic!("match_text: a spec must supply one of `pattern` or `regex`");
+        return Err(NeedleError::Missing);
     };
-    // An empty needle never matches (avoids a zero-width regex looping over every position).
     if source.is_empty() {
-        return TextMatchResult::default();
+        return Ok(None);
     }
-
-    let re = RegexBuilder::new(&source)
+    RegexBuilder::new(&source)
         .case_insensitive(spec.ignore_case.unwrap_or(false))
         .build()
-        .unwrap_or_else(|e| panic!("match_text: invalid regex /{source}/: {e}"));
-    let positions: Vec<SourcePos> = re
-        .find_iter(text)
-        .map(|m| offset_to_pos(text, m.start()))
-        .collect();
+        .map(Some)
+        .map_err(|e| NeedleError::Invalid(e.to_string()))
+}
+
+/// [`build_regex`] for a builder: a contract-authoring error panics, as the TS builders
+/// throw.
+///
+/// # Panics
+/// When the spec has no needle or its `regex` does not compile.
+pub(crate) fn build_regex_or_panic(spec: &TextMatchSpec) -> Option<Regex> {
+    build_regex(spec).unwrap_or_else(|e| match e {
+        NeedleError::Missing => panic!("a match spec must supply one of `pattern` or `regex`"),
+        NeedleError::Invalid(e) => panic!("invalid regex {}: {e}", spec.repr()),
+    })
+}
+
+/// Maps increasing byte offsets in `text` to 1-based positions, scanning forward once.
+/// The column counts UTF-16 units, as the TS `positionMapper` does.
+struct PositionMapper<'a> {
+    text: &'a str,
+    scanned: usize,
+    line: u32,
+    col: u32,
+}
+
+impl PositionMapper<'_> {
+    fn at(&mut self, offset: usize) -> SourcePos {
+        for c in self.text[self.scanned..offset].chars() {
+            if c == '\n' {
+                self.line += 1;
+                self.col = 0;
+            } else {
+                self.col += c.len_utf16() as u32;
+            }
+        }
+        self.scanned = offset;
+        SourcePos::at(self.line, self.col + 1)
+    }
+}
+
+/// Every occurrence of `re` in `text`, as JS's global `exec` loop finds them: after an
+/// empty match the search moves on one character. `None` (an empty needle) never matches.
+pub(crate) fn match_text(text: &str, re: Option<&Regex>) -> TextMatchResult {
+    let Some(re) = re else {
+        return TextMatchResult::default();
+    };
+    let mut mapper = PositionMapper {
+        text,
+        scanned: 0,
+        line: 1,
+        col: 0,
+    };
+    let mut positions = Vec::new();
+    let mut start = 0;
+    while start <= text.len() {
+        let Some(m) = re.find_at(text, start) else {
+            break;
+        };
+        positions.push(mapper.at(m.start()));
+        start = if m.end() > m.start() {
+            m.end()
+        } else {
+            m.end() + text[m.end()..].chars().next().map_or(1, char::len_utf8)
+        };
+    }
     TextMatchResult {
         count: positions.len(),
         positions,
@@ -206,7 +261,7 @@ pub(crate) fn pattern_key(spec: &TextMatchSpec) -> String {
     let normalize = spec.normalize.unwrap_or(true);
     let pattern = spec.pattern.as_deref().unwrap_or("");
     let needle = if normalize {
-        pattern.split_whitespace().collect::<Vec<_>>().join(" ")
+        js::words(pattern).collect::<Vec<_>>().join(" ")
     } else {
         pattern.to_string()
     };
@@ -219,7 +274,11 @@ pub(crate) fn pattern_key(spec: &TextMatchSpec) -> String {
 /// The stable finding id for one text-constraint entry:
 /// `text/<kind>/<scopeKey>/<patternHash>` — stable across entry reordering, unique
 /// across scopes. An entry with an explicit `id` gets exactly that id back.
-pub fn synthesize_text_id(kind: TextFindingKind, scope_key: &str, spec: &TextMatchSpec) -> String {
+pub(crate) fn synthesize_text_id(
+    kind: TextFindingKind,
+    scope_key: &str,
+    spec: &TextMatchSpec,
+) -> String {
     if let Some(id) = &spec.id {
         return id.clone();
     }
@@ -231,15 +290,6 @@ pub fn synthesize_text_id(kind: TextFindingKind, scope_key: &str, spec: &TextMat
 }
 
 // ── The finding-builder ───────────────────────────────────────────────────────────────
-
-/// The needle as it reads in a finding message — `"literal"` / `/source/`.
-fn spec_repr(spec: &TextMatchSpec) -> String {
-    if let Some(regex) = &spec.regex {
-        format!("/{regex}/")
-    } else {
-        format!("\"{}\"", spec.pattern.as_deref().unwrap_or(""))
-    }
-}
 
 /// A human label for the scope a finding fires in — `doc` renders as `document`.
 fn scope_label<'a>(scope_key: &'a str, scope: Option<&'a str>) -> &'a str {
@@ -261,29 +311,18 @@ fn bounds_for(kind: TextKind, spec: &TextMatchSpec) -> (f64, Option<f64>) {
     }
 }
 
-/// The inputs to [`build_text_findings`] — one entry's match result plus its scope.
-pub struct TextFindingInput<'a> {
-    /// presence or absence
-    pub kind: TextKind,
-    /// the entry being checked
-    pub spec: &'a TextMatchSpec,
-    /// what matching found
-    pub result: TextMatchResult,
-    /// the scope's stable key, for id synthesis (`doc` for the whole document)
-    pub scope_key: &'a str,
-    /// a human label for the scope in messages (defaults from `scope_key`)
-    pub scope: Option<&'a str>,
-    /// the scope's heading position — a miss / count violation pins here; `None` ⇒ document-level
-    pub scope_pos: Option<SourcePos>,
-}
-
-/// Render a bound as JS `String(n)` would (no trailing `.0` on an integral bound).
-fn render_bound(n: f64) -> String {
-    if n.fract() == 0.0 && n.is_finite() {
-        format!("{}", n as i64)
-    } else {
-        format!("{n}")
-    }
+/// The inputs to [`build_text_findings`]: one entry's match result plus its scope.
+pub(crate) struct TextFindingInput<'a> {
+    pub(crate) kind: TextKind,
+    pub(crate) spec: &'a TextMatchSpec,
+    pub(crate) result: TextMatchResult,
+    /// The scope's stable key for the finding id (`doc` for the whole document).
+    pub(crate) scope_key: &'a str,
+    /// The scope's name in messages (defaults from `scope_key`).
+    pub(crate) scope: Option<&'a str>,
+    /// The scope's heading position, where a miss or count finding pins; `None` is
+    /// document-level.
+    pub(crate) scope_pos: Option<SourcePos>,
 }
 
 /// Turn one entry's match result into its findings:
@@ -291,9 +330,9 @@ fn render_bound(n: f64) -> String {
 /// `forbids` hit PER occurrence at the offending line, a bound violation as one
 /// `text/count` at the heading. Each message carries the spec's `note`; `level` rides
 /// from the spec when set, else the registry default.
-pub fn build_text_findings(input: TextFindingInput<'_>, ctx: &Ctx) -> Vec<Finding> {
+pub(crate) fn build_text_findings(input: TextFindingInput<'_>, ctx: &Ctx) -> Vec<Finding> {
     let (min, max) = bounds_for(input.kind, input.spec);
-    let repr = spec_repr(input.spec);
+    let repr = input.spec.repr();
     let note = input
         .spec
         .note
@@ -335,12 +374,12 @@ pub fn build_text_findings(input: TextFindingInput<'_>, ctx: &Ctx) -> Vec<Findin
                     }
                     return vec![ctx.finding(spec)];
                 }
-                return vec![count_finding(format!("at least {}", render_bound(min)))];
+                return vec![count_finding(format!("at least {}", js::num(min)))];
             }
             if let Some(max) = max
                 && (count as f64) > max
             {
-                return vec![count_finding(format!("at most {}", render_bound(max)))];
+                return vec![count_finding(format!("at most {}", js::num(max)))];
             }
             vec![]
         }
@@ -370,7 +409,7 @@ pub fn build_text_findings(input: TextFindingInput<'_>, ctx: &Ctx) -> Vec<Findin
                     })
                     .collect();
             }
-            vec![count_finding(format!("at most {}", render_bound(max)))]
+            vec![count_finding(format!("at most {}", js::num(max)))]
         }
     }
 }
@@ -387,10 +426,65 @@ mod tests {
         }
     }
 
+    fn run(text: &str, spec: &TextMatchSpec) -> TextMatchResult {
+        match_text(text, build_regex(spec).unwrap().as_ref())
+    }
+
+    fn regex(source: &str) -> TextMatchSpec {
+        TextMatchSpec {
+            regex: Some(source.into()),
+            ..Default::default()
+        }
+    }
+
+    // JS's global exec loop: an empty match counts, then the search moves on one
+    // character, so `x*` over "ab" matches at 0, 1 and 2.
+    #[test]
+    fn empty_matches_count_as_in_js() {
+        assert_eq!(run("ab", &regex("x*")).count, 3);
+        assert_eq!(run("ab", &regex("a*")).count, 3);
+        assert_eq!(run("é", &regex("")).count, 0); // an empty needle never matches
+        assert_eq!(run("éa", &regex("x?")).count, 3);
+    }
+
+    #[test]
+    fn columns_count_utf16_units_across_lines() {
+        let r = run("😀 x\n y x", &pattern("x"));
+        assert_eq!(r.positions, vec![SourcePos::at(1, 4), SourcePos::at(2, 4)]);
+    }
+
+    #[test]
+    fn normalize_uses_js_whitespace() {
+        // U+FEFF is JS whitespace; U+0085 is not.
+        assert_eq!(run("a\u{FEFF}b", &pattern("a b")).count, 1);
+        assert_eq!(run("a\u{85}b", &pattern("a b")).count, 0);
+    }
+
+    #[test]
+    fn a_needle_the_regex_crate_rejects_is_an_error() {
+        assert!(matches!(
+            build_regex(&regex("(")),
+            Err(NeedleError::Invalid(_))
+        ));
+        assert!(matches!(
+            build_regex(&regex(r"(?=x)")),
+            Err(NeedleError::Invalid(_))
+        ));
+        // Past the compiled-size limit.
+        assert!(matches!(
+            build_regex(&regex(r"\w{1000}{1000}")),
+            Err(NeedleError::Invalid(_))
+        ));
+        assert_eq!(
+            build_regex(&TextMatchSpec::default()).unwrap_err(),
+            NeedleError::Missing
+        );
+    }
+
     // Contract first: a literal matches, counts, and pins 1-based line/col.
     #[test]
     fn literal_pattern_counts_and_positions() {
-        let r = match_text("alpha beta\ngamma beta", &pattern("beta"));
+        let r = run("alpha beta\ngamma beta", &pattern("beta"));
         assert_eq!(r.count, 2);
         assert_eq!(r.positions, vec![SourcePos::at(1, 7), SourcePos::at(2, 7)]);
     }
@@ -398,18 +492,12 @@ mod tests {
     #[test]
     fn normalize_lets_a_wrapped_phrase_match() {
         let spec = pattern("the decision outcome");
-        assert_eq!(
-            match_text("we name the decision\noutcome here", &spec).count,
-            1
-        );
+        assert_eq!(run("we name the decision\noutcome here", &spec).count, 1);
         let exact = TextMatchSpec {
             normalize: Some(false),
             ..pattern("the decision outcome")
         };
-        assert_eq!(
-            match_text("we name the decision\noutcome here", &exact).count,
-            0
-        );
+        assert_eq!(run("we name the decision\noutcome here", &exact).count, 0);
     }
 
     #[test]
@@ -418,12 +506,12 @@ mod tests {
             ignore_case: Some(true),
             ..pattern("done")
         };
-        assert_eq!(match_text("DONE and Done", &spec).count, 2);
+        assert_eq!(run("DONE and Done", &spec).count, 2);
         let re = TextMatchSpec {
             regex: Some("LEASE-(CONFLICT|MISSING) ref=".into()),
             ..Default::default()
         };
-        assert_eq!(match_text("saw LEASE-CONFLICT ref=42", &re).count, 1);
+        assert_eq!(run("saw LEASE-CONFLICT ref=42", &re).count, 1);
     }
 
     // The load-bearing contract: hashes must equal the TS engine's — the corpus goldens
@@ -483,7 +571,7 @@ mod tests {
             TextFindingInput {
                 kind: TextKind::Requires,
                 spec: &pattern("outcome"),
-                result: match_text("nothing here", &pattern("outcome")),
+                result: run("nothing here", &pattern("outcome")),
                 scope_key: "summary",
                 scope: Some("Summary"),
                 scope_pos: Some(SourcePos::at(1, 1)),
@@ -504,7 +592,7 @@ mod tests {
             TextFindingInput {
                 kind: TextKind::Forbids,
                 spec: &spec,
-                result: match_text("TODO a\nb TODO", &spec),
+                result: run("TODO a\nb TODO", &spec),
                 scope_key: "doc",
                 scope: None,
                 scope_pos: None,
@@ -524,7 +612,7 @@ mod tests {
             TextFindingInput {
                 kind: TextKind::Requires,
                 spec: &spec,
-                result: match_text("DONE once", &spec),
+                result: run("DONE once", &spec),
                 scope_key: "checklist",
                 scope: Some("Checklist"),
                 scope_pos: Some(SourcePos::at(1, 1)),

@@ -1,30 +1,30 @@
-//! The compiled schema runtime — the engine's stand-in for the Zod subset the closed
-//! v1 vocabulary compiles to.
+//! The compiled schema runtime: the engine's stand-in for the Zod schemas the TS engine
+//! builds from the `mcVersion: 2` JSON Schema subset.
 //!
 //! A [`Schema`] validates one YAML-derived value (a frontmatter field, a table cell, a
 //! list item) and reports [`Issue`]s whose [`IssueKind`]s mirror the Zod issue codes the
-//! TS content plane maps to finding ids: `invalid_type`, `invalid_value` (enum/const),
-//! `too_small` / `too_big`, `invalid_format` (pattern + named formats), and
-//! `unrecognized_keys` (strict objects). The named [`StringFormat`]s replicate zod v4's
-//! validators (`node_modules/zod/v4/core/regexes.js`) — regexes ported verbatim where
-//! the `regex` crate allows, lookaheads hand-coded where it does not.
+//! TS content plane maps to finding ids. The named [`StringFormat`]s replicate zod v4's
+//! validators (`zod/v4/core/regexes.js`): regexes ported where the `regex` crate allows,
+//! lookaheads hand-coded where it does not, and JS's ASCII `\d` written as `[0-9]`.
 //!
-//! Values are `serde_json::Value`s (the YAML → JS `toJS()` fidelity target); "undefined"
-//! — a missing key — is modelled as `None`, distinct from JSON `null`.
+//! Values are `serde_json::Value`s. A missing key (JS `undefined`) is `None`, distinct
+//! from JSON `null`.
 //!
-//! The YAML → [`Schema`] compiler lives in [`crate::declarative::schema_v2`] (the
-//! JSON Schema subset); this module is the runtime only.
+//! The YAML-to-[`Schema`] compiler is `declarative/schema_v2.rs`; this module is the
+//! runtime only.
+
+use std::sync::OnceLock;
 
 use regex::Regex;
+
+use crate::js;
 
 // ── Path segments & issues (the Zod issue subset the planes consume) ─────────────────
 
 /// One segment of an issue path — a mapping key or a sequence index.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PathSeg {
-    /// a mapping key
+pub(crate) enum PathSeg {
     Key(String),
-    /// a sequence index
     Index(usize),
 }
 
@@ -39,7 +39,7 @@ impl std::fmt::Display for PathSeg {
 
 /// Render a path as a readable key reference: `[]` → `""`, `[a, b]` → `a.b`,
 /// `[related, 0]` → `related[0]` — the TS `formatKeyPath`.
-pub fn format_key_path(path: &[PathSeg]) -> String {
+pub(crate) fn format_key_path(path: &[PathSeg]) -> String {
     let mut s = String::new();
     for seg in path {
         match seg {
@@ -55,58 +55,39 @@ pub fn format_key_path(path: &[PathSeg]) -> String {
     s
 }
 
-/// The Zod issue codes the finding mapping distinguishes (`frontmatterIdFor` in the TS
-/// content plane). `Custom` exists for completeness (`.refine()` is not expressible in
-/// the v1 vocabulary, so the runtime never emits it).
+/// The Zod issue codes the TS content plane maps to finding ids (`frontmatterIdFor`).
 #[derive(Debug, Clone, PartialEq)]
-pub enum IssueKind {
-    /// wrong JS type (also a missing required key — received `undefined`)
-    InvalidType {
-        /// the type that was expected
-        expected: &'static str,
-    },
-    /// enum / const mismatch — `values` is the allowed set (one entry for a const)
-    InvalidValue {
-        /// the allowed values
-        values: Vec<String>,
-    },
-    /// a string, number or array below its minimum
+pub(crate) enum IssueKind {
+    /// Wrong JS type, including a missing required key (received `undefined`).
+    InvalidType { expected: &'static str },
+    /// An enum or const mismatch; `values` is the allowed set.
+    InvalidValue { values: Vec<String> },
+    /// A string, number or array below its minimum.
     TooSmall,
-    /// a string, number or array above its maximum
+    /// A string, number or array above its maximum.
     TooBig,
-    /// a `pattern` (`format: "regex"`) or named-format violation
-    InvalidFormat {
-        /// the format that failed
-        format: String,
-    },
-    /// a strict object rejecting unknown keys — all offenders in one issue
-    UnrecognizedKeys {
-        /// the keys that are not allowed
-        keys: Vec<String>,
-    },
+    /// A `pattern` (`format: "regex"`) or named-format violation.
+    InvalidFormat { format: String },
+    /// A strict object's unknown keys, all in one issue.
+    UnrecognizedKeys { keys: Vec<String> },
 }
 
 /// One validation issue: where (`path`) and what (`kind`).
 #[derive(Debug, Clone, PartialEq)]
-pub struct Issue {
-    /// where the issue is, from the root
-    pub path: Vec<PathSeg>,
-    /// what is wrong
-    pub kind: IssueKind,
+pub(crate) struct Issue {
+    pub(crate) path: Vec<PathSeg>,
+    pub(crate) kind: IssueKind,
 }
 
 // ── The schema model ──────────────────────────────────────────────────────────────────
 
 /// A literal value for `const` (YAML scalars only).
 #[derive(Debug, Clone, PartialEq)]
+#[allow(missing_docs)]
 pub enum ConstValue {
-    /// a string
     String(String),
-    /// a number
     Number(f64),
-    /// a boolean
     Bool(bool),
-    /// null
     Null,
 }
 
@@ -123,30 +104,22 @@ impl ConstValue {
         }
     }
 
-    /// The value as it reads in a message / `values` list.
-    pub fn render(&self) -> String {
+    /// The value as it reads in a message or `values` list.
+    pub(crate) fn render(&self) -> String {
         match self {
             ConstValue::String(s) => s.clone(),
-            ConstValue::Number(n) => render_number(*n),
+            ConstValue::Number(n) => js::num(*n),
             ConstValue::Bool(b) => b.to_string(),
             ConstValue::Null => "null".into(),
         }
     }
 }
 
-/// Render a number the way JS `String(n)` does for the common cases (no trailing `.0`).
-fn render_number(n: f64) -> String {
-    if n.fract() == 0.0 && n.is_finite() && n.abs() < 1e21 {
-        format!("{}", n as i64)
-    } else {
-        format!("{n}")
-    }
-}
-
-/// One compiled schema node — the closed v1 vocabulary as runtime data.
+/// One compiled schema node. Bounds are `f64` because JSON Schema bounds are numbers.
 #[derive(Debug, Clone)]
 pub enum Schema {
-    /// `type: string` with optional `min` / `max` (UTF-16 length) and `pattern`
+    /// `type: string` with optional `minLength` / `maxLength` (UTF-16 length) and
+    /// `pattern`.
     String {
         /// the shortest length
         min: Option<f64>,
@@ -155,10 +128,9 @@ pub enum Schema {
         /// a regular expression the string must match
         pattern: Option<Regex>,
     },
-    /// `type: string` + `format: <name>` — a named zod string format. In v2
-    /// the format COMPOSES with `minLength` / `maxLength` / `pattern` — the chained
-    /// `z.email().min(…).regex(…)` — so the bounds and pattern ride along; v1 compiles
-    /// the format alone (the other slots stay `None`).
+    /// `type: string` with `format: <name>`, a named zod string format. The format
+    /// composes with `minLength` / `maxLength` / `pattern`, as the chained
+    /// `z.email().min(…).regex(…)` does.
     Format {
         /// the named format
         format: StringFormat,
@@ -169,7 +141,8 @@ pub enum Schema {
         /// a regular expression the string must match
         pattern: Option<Regex>,
     },
-    /// `type: number` (`int: true` for integers) with optional `min` / `max`
+    /// `type: number`, or `type: integer` (`int: true`), with optional `minimum` /
+    /// `maximum`.
     Number {
         /// whether only integers are allowed
         int: bool,
@@ -180,7 +153,7 @@ pub enum Schema {
     },
     /// `type: boolean`
     Boolean,
-    /// `type: array` with an `of` element schema and optional `min` / `max` lengths
+    /// `type: array` with an `items` schema (`of`) and optional `minItems` / `maxItems`.
     Array {
         /// the schema for each element
         of: Box<Schema>,
@@ -189,25 +162,25 @@ pub enum Schema {
         /// the most elements
         max: Option<f64>,
     },
-    /// `type: object` — `fields` in declaration order; `strict` rejects unknown keys
+    /// `type: object`: `properties` in declaration order; `strict`
+    /// (`additionalProperties: false`) rejects unknown keys.
     Object {
         /// the fields, in declaration order
         fields: Vec<(String, Schema)>,
         /// whether unknown keys are rejected
         strict: bool,
     },
-    /// `enum: [...]` — a closed set of strings
+    /// `enum: [...]`: a closed set of strings.
     Enum(Vec<String>),
-    /// `const: <scalar>` — an exact literal
+    /// `const: <scalar>`: an exact literal.
     Const(ConstValue),
-    /// `nullable: true` — additionally admit `null`
+    /// `type: [T, "null"]`: also admit `null`.
     Nullable(Box<Schema>),
-    /// `default: <value>` — a missing value passes (the default substitutes)
+    /// `default: <value>`: a missing value passes (the default substitutes).
     Default(Box<Schema>),
-    /// `optional: true` — a missing value passes
+    /// A property not listed in `required`: a missing value passes.
     Optional(Box<Schema>),
-    /// a v2 `description:` — an annotation wrapper carried for `Finding.hint`;
-    /// validation delegates to the inner schema untouched
+    /// `description:`, carried for `Finding.hint`. Validation ignores it.
     Described {
         /// the wrapped schema
         inner: Box<Schema>,
@@ -217,9 +190,9 @@ pub enum Schema {
 }
 
 impl Schema {
-    /// Validate `value` (`None` = the JS `undefined` — a missing key), collecting every
-    /// issue — the Zod `safeParse` face: `Ok(())` on success, the issue list on failure.
-    pub fn safe_parse(&self, value: Option<&serde_json::Value>) -> Result<(), Vec<Issue>> {
+    /// Validate `value` (`None` is a missing key), collecting every issue, as Zod's
+    /// `safeParse` does.
+    pub(crate) fn safe_parse(&self, value: Option<&serde_json::Value>) -> Result<(), Vec<Issue>> {
         let mut issues = Vec::new();
         check(self, value, &mut Vec::new(), &mut issues);
         if issues.is_empty() {
@@ -249,19 +222,11 @@ fn unwrap_describing<'a>(mut schema: &'a Schema, best: &mut Option<&'a str>) -> 
     }
 }
 
-/// The schema node's own `description`, if any (wrappers unwrapped) — the leaf-level
-/// hint source for table cells and list items.
-pub fn schema_root_description(schema: &Schema) -> Option<&str> {
-    let mut best = None;
-    unwrap_describing(schema, &mut best);
-    best
-}
-
 /// The nearest enclosing `description` for an issue at `path`: walk the compiled schema
 /// from the root along the path, and return the DEEPEST description seen (the failing
 /// field's own, else its closest ancestor's). A path segment that does not resolve (an
 /// unknown key on a strict object) stops the walk and keeps what was collected.
-pub fn description_along_path<'a>(schema: &'a Schema, path: &[PathSeg]) -> Option<&'a str> {
+pub(crate) fn description_along_path<'a>(schema: &'a Schema, path: &[PathSeg]) -> Option<&'a str> {
     let mut best = None;
     let mut node = unwrap_describing(schema, &mut best);
     for seg in path {
@@ -282,7 +247,7 @@ pub fn description_along_path<'a>(schema: &'a Schema, path: &[PathSeg]) -> Optio
 
 /// The JS `typeof`-style type name of a value (distinguishing null and array from
 /// object) — the TS `typeName`, with `None` as `undefined`.
-pub fn type_name(v: Option<&serde_json::Value>) -> &'static str {
+pub(crate) fn type_name(v: Option<&serde_json::Value>) -> &'static str {
     match v {
         None => "undefined",
         Some(serde_json::Value::Null) => "null",
@@ -485,10 +450,21 @@ fn check_number(
         );
         return;
     };
-    // zod's z.int() is a safe-integer gate (Number.isSafeInteger).
-    if int && (n.fract() != 0.0 || n.abs() > 9_007_199_254_740_991.0) {
-        issue(issues, path, IssueKind::InvalidType { expected: "int" });
-        return;
+    // zod's z.int(): a fraction is invalid_type and stops; an integer outside the safe
+    // range is too_big or too_small, and the min/max checks still run.
+    if int {
+        if n.fract() != 0.0 {
+            issue(issues, path, IssueKind::InvalidType { expected: "int" });
+            return;
+        }
+        if n.abs() > 9_007_199_254_740_991.0 {
+            let kind = if n > 0.0 {
+                IssueKind::TooBig
+            } else {
+                IssueKind::TooSmall
+            };
+            issue(issues, path, kind);
+        }
     }
     if let Some(min) = min
         && n < min
@@ -564,58 +540,50 @@ fn check_object(
 
 // ── Named string formats (zod v4 parity) ──────────────────────────────────────────────
 
-/// The closed `format` vocabulary: the string formats zod exposes out of the
-/// box, each replicating zod v4's validator.
+/// A format regex, compiled on first use and cached for the life of the process.
+macro_rules! re {
+    ($source:expr $(,)?) => {{
+        static RE: OnceLock<Regex> = OnceLock::new();
+        RE.get_or_init(|| Regex::new(&$source).expect("static format regex compiles"))
+    }};
+}
+
+/// The `format` names, each replicating zod v4's validator for that format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub enum StringFormat {
-    // web / identity
-    /// an email address
+    /// zod's practical email: no leading dot, no `..`, a dotted domain.
     Email,
-    /// a URL
+    /// What the WHATWG `URL` constructor accepts, approximated.
     Url,
-    /// a UUID
+    /// Versions 1 to 8, plus the nil and max UUIDs.
     Uuid,
-    /// a hostname
     Hostname,
-    // ISO-8601 temporals
-    /// an ISO-8601 date and time
+    /// An ISO date and time in UTC: a trailing `Z` is required, seconds are optional.
     Datetime,
-    /// an ISO-8601 date
+    /// An ISO date, leap years included.
     Date,
-    /// an ISO-8601 time
+    /// `hh:mm`, with optional seconds and fraction.
     Time,
-    /// an ISO-8601 duration
+    /// An ISO 8601 duration, with weeks only on their own.
     Duration,
-    // network
-    /// an IPv4 address
     Ipv4,
-    /// an IPv6 address
     Ipv6,
-    /// an IPv4 CIDR range
     Cidrv4,
-    /// an IPv6 CIDR range
     Cidrv6,
-    // id forms
-    /// a nanoid
     Nanoid,
-    /// a cuid
     Cuid,
-    /// a cuid2
     Cuid2,
-    /// a ULID
     Ulid,
-    // misc
-    /// a base64 string
     Base64,
-    /// an emoji
     Emoji,
-    /// an E.164 phone number
+    /// An E.164 phone number: `+`, then 7 to 15 digits.
     E164,
 }
 
 /// Every supported format, in the TS `STRING_FORMATS` declaration order (error messages
 /// list them in this order).
-pub const STRING_FORMATS: &[(&str, StringFormat)] = &[
+pub(crate) const STRING_FORMATS: &[(&str, StringFormat)] = &[
     ("email", StringFormat::Email),
     ("url", StringFormat::Url),
     ("uuid", StringFormat::Uuid),
@@ -638,7 +606,7 @@ pub const STRING_FORMATS: &[(&str, StringFormat)] = &[
 ];
 
 impl StringFormat {
-    /// The format's vocabulary name (also the zod issue's `format`).
+    /// The format's name, as written in a contract and in the zod issue's `format`.
     pub fn name(&self) -> &'static str {
         STRING_FORMATS
             .iter()
@@ -648,61 +616,61 @@ impl StringFormat {
     }
 
     /// Parse a vocabulary name into its format.
-    pub fn from_name(name: &str) -> Option<Self> {
+    pub(crate) fn from_name(name: &str) -> Option<Self> {
         STRING_FORMATS
             .iter()
             .find(|(n, _)| *n == name)
             .map(|(_, f)| *f)
     }
 
-    /// Does `s` satisfy this format? Each arm replicates zod v4's validator
+    /// Whether `s` satisfies this format. Each arm replicates zod v4's validator
     /// (`v4/core/regexes.js`); lookaheads the `regex` crate lacks are hand-coded.
-    pub fn is_match(&self, s: &str) -> bool {
+    pub(crate) fn is_match(&self, s: &str) -> bool {
         match self {
             StringFormat::Email => is_email(s),
             StringFormat::Url => is_url(s),
-            StringFormat::Uuid => re(
+            StringFormat::Uuid => re!(
                 r"^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
             )
             .is_match(s),
             StringFormat::Hostname => is_hostname(s),
-            StringFormat::Datetime => re(&format!(
+            StringFormat::Datetime => re!(&format!(
                 "^{DATE_SOURCE}T(?:{TIME_SOURCE}(?:Z))$"
             ))
             .is_match(s),
-            StringFormat::Date => re(&format!("^{DATE_SOURCE}$")).is_match(s),
-            StringFormat::Time => re(&format!("^{TIME_SOURCE}$")).is_match(s),
+            StringFormat::Date => re!(&format!("^{DATE_SOURCE}$")).is_match(s),
+            StringFormat::Time => re!(&format!("^{TIME_SOURCE}$")).is_match(s),
             StringFormat::Duration => is_duration(s),
-            StringFormat::Ipv4 => re(
+            StringFormat::Ipv4 => re!(
                 r"^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$",
             )
             .is_match(s),
             StringFormat::Ipv6 => is_ipv6(s),
-            StringFormat::Cidrv4 => re(
+            StringFormat::Cidrv4 => re!(
                 r"^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])/([0-9]|[1-2][0-9]|3[0-2])$",
             )
             .is_match(s),
             StringFormat::Cidrv6 => is_cidrv6(s),
-            StringFormat::Nanoid => re(r"^[a-zA-Z0-9_-]{21}$").is_match(s),
-            StringFormat::Cuid => re(r"^[cC][0-9a-z]{6,}$").is_match(s),
-            StringFormat::Cuid2 => re(r"^[0-9a-z]+$").is_match(s),
-            StringFormat::Ulid => re(r"^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{26}$").is_match(s),
-            StringFormat::Base64 => re(
+            StringFormat::Nanoid => re!(r"^[a-zA-Z0-9_-]{21}$").is_match(s),
+            StringFormat::Cuid => re!(r"^[cC][0-9a-z]{6,}$").is_match(s),
+            StringFormat::Cuid2 => re!(r"^[0-9a-z]+$").is_match(s),
+            StringFormat::Ulid => re!(r"^[0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{26}$").is_match(s),
+            StringFormat::Base64 => re!(
                 r"^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$",
             )
             .is_match(s),
-            StringFormat::Emoji => re(r"^(\p{Extended_Pictographic}|\p{Emoji_Component})+$")
+            StringFormat::Emoji => re!(r"^(\p{Extended_Pictographic}|\p{Emoji_Component})+$")
                 .is_match(s),
-            StringFormat::E164 => re(r"^\+[1-9]\d{6,14}$").is_match(s),
+            StringFormat::E164 => re!(r"^\+[1-9][0-9]{6,14}$").is_match(s),
         }
     }
 }
 
 /// zod's leap-year-aware ISO date source (ported verbatim).
-const DATE_SOURCE: &str = r"(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))";
+const DATE_SOURCE: &str = r"(?:(?:[0-9][0-9][2468][048]|[0-9][0-9][13579][26]|[0-9][0-9]0[48]|[02468][048]00|[13579][26]00)-02-29|[0-9]{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12][0-9]|3[01])|(?:0[469]|11)-(?:0[1-9]|[12][0-9]|30)|(?:02)-(?:0[1-9]|1[0-9]|2[0-8])))";
 
 /// zod's default-precision time source: `hh:mm`, optional `:ss` and fraction.
-const TIME_SOURCE: &str = r"(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?";
+const TIME_SOURCE: &str = r"(?:[01][0-9]|2[0-3]):[0-5][0-9](?::[0-5][0-9](?:\.[0-9]+)?)?";
 
 /// zod validates ipv6 by WHATWG-URL-parsing `http://[value]` — RFC 4291 textual forms
 /// including `::` compression and embedded IPv4, which `std::net::Ipv6Addr` parses the
@@ -724,18 +692,13 @@ fn is_cidrv6(s: &str) -> bool {
     canonical && is_ipv6(address)
 }
 
-/// Compile a static regex source (all sources here are known-good; a failure is a bug).
-fn re(source: &str) -> Regex {
-    Regex::new(source).expect("static format regex compiles")
-}
-
 /// zod's practical email: `/^(?!\.)(?!.*\.\.)([A-Za-z0-9_'+\-\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/`
 /// — the two lookaheads (no leading dot, no `..`) hand-coded.
 fn is_email(s: &str) -> bool {
     if s.starts_with('.') || s.contains("..") {
         return false;
     }
-    re(r"^([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$")
+    re!(r"^([A-Za-z0-9_'+\-.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9-]*\.)+[A-Za-z]{2,}$")
         .is_match(s)
 }
 
@@ -743,7 +706,7 @@ fn is_email(s: &str) -> bool {
 /// pragmatic approximation: an absolute URL with a scheme; the special schemes
 /// (http/https/ws/wss/ftp/file) additionally follow WHATWG host rules.
 fn is_url(s: &str) -> bool {
-    let s = s.trim(); // WHATWG strips leading/trailing C0/space
+    let s = s.trim_matches(|c: char| c <= ' '); // WHATWG strips leading/trailing C0 and space
     let Some(colon) = s.find(':') else {
         return false;
     };
@@ -778,25 +741,25 @@ fn is_hostname(s: &str) -> bool {
     if len == 0 || len > 253 || s.is_empty() {
         return false;
     }
-    re(r"^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[-0-9a-zA-Z]{0,61}[0-9a-zA-Z])?)*\.?$").is_match(s)
+    re!(r"^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[-0-9a-zA-Z]{0,61}[0-9a-zA-Z])?)*\.?$").is_match(s)
 }
 
 /// zod's ISO-8601-1 duration:
-/// `/^P(?:(\d+W)|(?!.*W)(?=\d|T\d)(\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+([.,]\d+)?S)?)?)$/`
+/// `/^P(?:([0-9]+W)|(?!.*W)(?=[0-9]|T[0-9])([0-9]+Y)?([0-9]+M)?([0-9]+D)?(T(?=[0-9])([0-9]+H)?([0-9]+M)?([0-9]+([.,][0-9]+)?S)?)?)$/`
 /// — the weeks-only branch, else the lookaheads hand-coded around the component regex.
 fn is_duration(s: &str) -> bool {
     let Some(body) = s.strip_prefix('P') else {
         return false;
     };
-    if re(r"^\d+W$").is_match(body) {
+    if re!(r"^[0-9]+W$").is_match(body) {
         return true;
     }
-    // (?!.*W): no W in the non-week form; (?=\d|T\d): at least one leading component.
-    if body.contains('W') || !re(r"^(?:\d|T\d)").is_match(body) {
+    // (?!.*W): no W in the non-week form; (?=[0-9]|T[0-9]): at least one leading component.
+    if body.contains('W') || !re!(r"^(?:[0-9]|T[0-9])").is_match(body) {
         return false;
     }
-    re(r"^(\d+Y)?(\d+M)?(\d+D)?(T(\d+H)?(\d+M)?(\d+([.,]\d+)?S)?)?$").is_match(body)
-        // (?=\d) after T: a bare trailing `T` is invalid.
+    re!(r"^([0-9]+Y)?([0-9]+M)?([0-9]+D)?(T([0-9]+H)?([0-9]+M)?([0-9]+([.,][0-9]+)?S)?)?$").is_match(body)
+        // (?=[0-9]) after T: a bare trailing `T` is invalid.
         && !body.ends_with('T')
 }
 
@@ -916,6 +879,8 @@ mod tests {
         assert_eq!(issues[0].path, vec![PathSeg::Index(1)]);
     }
 
+    // zod's z.int(): a fraction is invalid_type and stops; an unsafe integer is too_big or
+    // too_small, and the bounds are still checked.
     #[test]
     fn number_int_is_a_safe_integer_gate() {
         let n = Schema::Number {
@@ -925,11 +890,38 @@ mod tests {
         };
         assert!(n.safe_parse(Some(&json!(5))).is_ok());
         assert_eq!(
-            kinds(&n, &json!(1.5))[0].kind,
-            IssueKind::InvalidType { expected: "int" }
+            kinds(&n, &json!(1.5)),
+            vec![Issue {
+                path: vec![],
+                kind: IssueKind::InvalidType { expected: "int" }
+            }]
         );
         assert_eq!(kinds(&n, &json!(-1))[0].kind, IssueKind::TooSmall);
         assert_eq!(kinds(&n, &json!(11))[0].kind, IssueKind::TooBig);
+        let big = kinds(&n, &json!(9_007_199_254_740_993u64));
+        assert_eq!(
+            big.iter().map(|i| i.kind.clone()).collect::<Vec<_>>(),
+            vec![IssueKind::TooBig, IssueKind::TooBig]
+        );
+        let small = kinds(&n, &json!(-9_007_199_254_740_993i64));
+        assert_eq!(
+            small.iter().map(|i| i.kind.clone()).collect::<Vec<_>>(),
+            vec![IssueKind::TooSmall, IssueKind::TooSmall]
+        );
+    }
+
+    // JS's `\d` is ASCII; a full-width digit is not a date.
+    #[test]
+    fn format_digits_are_ascii() {
+        assert!(!StringFormat::Date.is_match("\u{FF12}\u{FF10}\u{FF12}\u{FF14}-01-02"));
+        assert!(!StringFormat::E164.is_match("+1\u{0663}15550132"));
+    }
+
+    #[test]
+    fn const_numbers_render_as_js_does() {
+        assert_eq!(ConstValue::Number(1e21).render(), "1e+21");
+        assert_eq!(ConstValue::Number(9.3e18).render(), "9300000000000000000");
+        assert_eq!(ConstValue::Number(-0.0).render(), "0");
     }
 
     // ── Formats: zod v4 parity spot checks (precise for date/datetime/email/url/uuid) ──
@@ -1100,8 +1092,6 @@ mod tests {
             description_along_path(&root, &[key("nope")]),
             Some("the root")
         );
-        assert_eq!(schema_root_description(&root), Some("the root"));
-        assert_eq!(schema_root_description(&Schema::Boolean), None);
     }
 
     #[test]

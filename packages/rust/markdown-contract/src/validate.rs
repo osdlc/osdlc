@@ -79,12 +79,11 @@ pub fn validate_tree(tree: &DocTree, contract: &Contract, path: &str) -> Vec<Fin
         findings.extend(r.run(tree, &ctx));
     }
 
-    // The outermost hint fallback: a finding with no nearer description in
-    // scope inherits the contract root's. A no-op for v1 / description-free contracts,
-    // keeping their findings byte-identical.
+    // The outermost hint fallback: a finding with no nearer description in scope takes
+    // the contract root's. `frontmatter/yaml` is outside every description scope.
     if let Some(root_hint) = &contract.description {
         for finding in &mut findings {
-            if finding.hint.is_none() {
+            if finding.hint.is_none() && finding.id != "frontmatter/yaml" {
                 finding.hint = Some(root_hint.clone());
             }
         }
