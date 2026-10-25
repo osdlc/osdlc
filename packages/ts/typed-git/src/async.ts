@@ -59,6 +59,8 @@ import {
   type LsRemoteOptions,
   type LsTreeOptions,
   type NumstatEntry,
+  type PushPorcelainOptions,
+  type PushReport,
   type RemoteRef,
   type CleanOptions,
   type DiffCheckOptions,
@@ -600,6 +602,20 @@ export class AsyncGit {
       { kind: 'push', remote, refspec, forceWithLease: opts.forceWithLease },
       opts,
     )
+  }
+
+  /**
+   * `git push --porcelain`, read into one result per ref. A rejected ref comes
+   * back with a typed `rejection` rather than a rejection of the promise. See
+   * {@link Git.pushPorcelain}.
+   */
+  pushPorcelain(
+    remote: string,
+    refspec: string | string[],
+    opts: GitCallOptions & PushPorcelainOptions = {},
+  ): Promise<PushReport> {
+    const [call, req] = splitCallOptions(opts)
+    return this.backend.execute(this.cwd, { kind: 'pushPorcelain', remote, refspec, ...req }, call)
   }
 
   /** `git clean -f`, plus `-d` with `directories`. Ignored files are kept. */

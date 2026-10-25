@@ -60,6 +60,8 @@ import {
   type MergeTreeOptions,
   type MergeTreeOutcome,
   type NumstatEntry,
+  type PushPorcelainOptions,
+  type PushReport,
   type RebaseOptions,
   type RebaseOutcome,
   type RemoteGetUrlOptions,
@@ -176,6 +178,7 @@ export type GitRequest =
       refspec: string
       forceWithLease?: boolean | ForceLease | undefined
     }
+  | ({ kind: 'pushPorcelain'; remote: string; refspec: string | string[] } & PushPorcelainOptions)
   | { kind: 'resetHard'; rev: string }
   | ({ kind: 'clean' } & CleanOptions)
   | { kind: 'deleteBranch'; name: string; force?: boolean | undefined }
@@ -258,6 +261,7 @@ export interface GitResults {
   init: void
   clone: void
   push: void
+  pushPorcelain: PushReport
   resetHard: void
   clean: void
   deleteBranch: void
@@ -413,6 +417,8 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
       return v.push(request.remote, request.refspec, {
         forceWithLease: request.forceWithLease,
       })
+    case 'pushPorcelain':
+      return v.pushPorcelain(request.remote, request.refspec, request)
     case 'resetHard':
       return v.resetHard(request.rev)
     case 'clean':

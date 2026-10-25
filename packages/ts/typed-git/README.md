@@ -345,7 +345,8 @@ For the paths alone, `diffNameOnly({ diffFilter: "U" })` is cheaper.
 
 `merge`, `rebase` and `rebaseContinue` run with `LC_ALL=C`, over the client,
 backend and call `env`, so `fastForward`, `alreadyUpToDate` and `conflicts` do
-not change with the caller's locale. Other verbs keep the caller's locale.
+not change with the caller's locale. `pushPorcelain` does the same for its
+reasons. Other verbs keep the caller's locale.
 
 One trap in `checkoutSide`: on a path that is not conflicted, git exits 0 and
 does nothing. There is no error to catch, so take the path list from
@@ -376,6 +377,63 @@ the paths in a machine-readable section rather than in prose, so there is no
 need to call `lsFilesUnmerged()` after it. And it takes
 both sides as arguments rather than merging into the current branch, so
 nothing depends on where `HEAD` happens to be.
+
+## Pushing: a rejected ref is a value
+
+`push` throws when git exits non-zero. `pushPorcelain` runs
+`git push --porcelain` and returns one result per ref, so a lease that lost a
+race is an answer you can branch on, not stderr you grep:
+
+```ts
+const report = git.pushPorcelain("origin", `${next}:refs/heads/lease`, {
+  forceWithLease: { ref: "refs/heads/lease", expect: seen },
+});
+const ref = report.refs[0];
+// { src, dst, flag, summary, rejection?, rawReason, detail }
+if (ref.flag === "!") {
+  switch (ref.rejection) {
+    case "stale":           // the lease check failed before anything was sent
+    case "lock-failed":     // another writer moved or deleted it at the remote
+    case "already-exists":  // a create lost to another writer, or a tag that exists
+      return retry();
+    default:                // ref-conflict, hook-declined, non-fast-forward, other
+      throw new Error(`${ref.dst}: ${ref.rawReason} ${ref.detail ?? ""}`);
+  }
+}
+```
+
+It takes a refspec or a list, and `{ atomic, forceWithLease }`, where
+`forceWithLease` also takes one lease per ref. `flag` is git's status
+character: `' '` fast-forward, `'+'` forced, `'-'` deleted, `'*'` new, `'!'`
+rejected, `'='` up to date. A failure that reaches no ref still throws the
+classified failure: an unknown remote, auth, network, TLS, a refspec that
+matches nothing, or a local pre-push hook.
+
+`rejection` is read from the reason text, never from the local git version,
+because a `[remote rejected]` reason is written by the remote's git. The
+wording has changed across versions:
+
+| Case | git 2.53 / 2.54 | Older git | `rejection` |
+| --- | --- | --- | --- |
+| lease expects a sha the remote no longer holds | `[rejected] (stale info)` | same | `stale` |
+| behind the remote | `(non-fast-forward)`, `(fetch first)` | same | `non-fast-forward` |
+| existing tag | `[rejected] (already exists)` | same | `already-exists` |
+| another writer moved the ref after the lease check | `(incorrect old value provided)` | `(failed to update ref)` + `… but expected …` | `lock-failed` |
+| another writer deleted it | `(reference does not exist)` | `(failed to update ref)` + `unable to resolve reference` | `lock-failed` |
+| another writer created it first | `(reference already exists)` | `(failed to update ref)` + `reference already exists` | `already-exists` |
+| `<ref>` beside an existing `<ref>/child` | `(refname conflict)` | `(failed to update ref)` + `'<ref>/child' exists; cannot create '<ref>'` | `ref-conflict` |
+| a remote hook refused it | `(pre-receive hook declined)`, `(hook declined)` | same | `hook-declined` |
+| a `.lock` file in the way, an unwritable refs directory | `(reference already exists)`, `(failed to update refs)` + `Unable to create '….lock'` | `(failed to update ref)` + the same | `other` |
+
+The "+ …" text is the remote's `cannot lock ref '<ref>': …` line. git prints
+it on stderr, not on the ref line, and `detail` carries it for the ref it
+names. `(failed to update ref)` alone is never read as a race, because a ref
+clash, an unwritable directory and a stale lock all end that way. One case
+the text cannot settle: a 2.53 remote prints no detail line, so a stale
+`.lock` there reads exactly like a lost create, `already-exists`. A 2.54
+remote prints the detail, and that reads as `other`.
+
+`pushPorcelain` runs with `LC_ALL=C`, like the integration verbs.
 
 ## `log` hands back bytes
 
@@ -529,14 +587,15 @@ empty repository from a dangling HEAD or a missing object store. Use
 Every mutation except `configRemoveSection` declares no absence: a non-zero
 exit throws the classified failure, because the only sane handling of "the write did
 not happen" is to surface it. `configRemoveSection` declares 128 absent and
-returns `false` when there is no such section.
+returns `false` when there is no such section. `pushPorcelain`, listed under
+Integration, declares exit 1 absent and returns the rejected refs.
 
 | Method | git |
 | --- | --- |
 | `fetch(remote, refspec, { prune, quiet, noWriteFetchHead, depth, noTags })` | `fetch` |
 | `add(paths, { all, update, intentToAdd })` | `add` (paths go after `--`) |
 | `commit({ message, body } \| { messageFile } \| { messageStdin }, { allowEmpty, amend, noVerify, signoff })` | `commit` — one message source, enforced by the types; `messageStdin` is `-F -` with the string on stdin, no temp file |
-| `push(remote, refspec, { forceWithLease })` | `push` — `forceWithLease` takes `true` or a pinned `{ ref, expect }` (`expect: null` = ref must be absent); `forceWithLeaseArg(lease)` is the pure formatter. `true` is the bare form: it overwrites whatever is on the remote, so prefer the pinned form |
+| `push(remote, refspec, { forceWithLease })` | `push` — `forceWithLease` takes `true` or a pinned `{ ref, expect }` (`expect: null` = ref must be absent); `forceWithLeaseArg(lease)` is the pure formatter. `true` is the bare form: it overwrites whatever is on the remote, so prefer the pinned form. To learn why a push was rejected, use `pushPorcelain` |
 | `configSet(key, value, { scope })` | `config` |
 | `configRemoveSection(name)` | `config --remove-section` — `false` when there is no such section |
 | `init(path, { bare, initialBranch, quiet })` | `init` |
@@ -556,8 +615,8 @@ returns `false` when there is no such section.
 
 ### Integration
 
-Exit 1 is declared absence: a conflict is an answer. Every other non-zero exit
-throws.
+Exit 1 is declared absence: a conflict or a rejected ref is an answer. Every
+other non-zero exit throws.
 
 | Method | git | Returns |
 | --- | --- | --- |
@@ -566,6 +625,7 @@ throws.
 | `rebaseContinue()` | `-c core.editor=true rebase --continue` | `RebaseOutcome` |
 | `mergeTree(ours, theirs, { mergeBase })` | `merge-tree --write-tree --name-only -z` | `MergeTreeOutcome` |
 | `lsFilesUnmerged()` | `ls-files -u -z` | `UnmergedEntry[]` — mode, sha, stage, path |
+| `pushPorcelain(remote, refspec \| refspecs, { atomic, forceWithLease })` | `push --porcelain` | `PushReport` — `{ refs, stderr }`, one `PushRefResult` per ref with a typed `rejection` on `'!'`; exit 1 without a rejected ref throws |
 
 ### Escape hatches and re-rooting
 
@@ -792,7 +852,7 @@ de-duplicate.
   `CommandFailed`, with the raw `result`.
 - `UnsupportedRequest` is not a git failure, so `try` and `soft` let it
   through.
-- `merge`, `rebase` and `rebaseContinue` run with `LC_ALL=C`. Any other verb
+- `merge`, `rebase`, `rebaseContinue` and `pushPorcelain` run with `LC_ALL=C`. Any other verb
   that reads git's messages assumes English output, so a localized git can
   change what it returns.
 - Test fixtures need a manual `cleanup()`.
