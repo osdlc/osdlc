@@ -12,8 +12,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-// The package has no `exports`, so its files resolve by path once installed.
-// In this repo nothing installs it, so fall back to the directory above.
+// Installed, the package resolves by name. In this repo nothing installs it,
+// so fall back to the directory above.
 function packageDir() {
   try {
     return dirname(fileURLToPath(import.meta.resolve('@osdlc/wayfinder/package.json')))
@@ -37,7 +37,7 @@ const way = (args) => spawnSync(process.execPath, [bin, ...args], { encoding: 'u
 try {
   const help = way(['--help'])
   assert.equal(help.status, 0, help.stderr)
-  assert.match(help.stdout, /^Usage: way /)
+  assert.match(help.stdout, /^usage: way /m)
 
   const dir = join(base, 'project')
   mkdirSync(dir)
@@ -46,20 +46,22 @@ try {
     JSON.stringify({ name: 'p', scripts: { build: 'tsc', dev: 'vite' } }),
   )
 
-  const list = way(['--list', '-C', dir])
+  const list = way(['list', '-C', dir])
   assert.equal(list.status, 0, list.stderr)
   assert.match(list.stdout, /^npm run build$/m)
 
-  const json = way(['--json', '-C', dir])
+  const json = way(['list', '--json', '-C', dir])
   assert.equal(json.status, 0, json.stderr)
   const catalog = JSON.parse(json.stdout)
   assert.equal(catalog.groups[0].id, 'tasks')
 
   const providers = way(['providers', '--json', '-C', dir])
   assert.equal(providers.status, 0, providers.stderr)
-  assert.ok(JSON.parse(providers.stdout).some((p) => p.id === 'npm' && p.source === 'built-in'))
+  assert.ok(
+    JSON.parse(providers.stdout).providers.some((p) => p.id === 'npm' && p.source === 'built-in'),
+  )
 
-  // The web view's page, built from dist/ the way `way --serve` builds it.
+  // The web view's page, built from dist/ the way `way serve` builds it.
   const { buildPage } = await import(pathToFileURL(join(packageDir(), 'dist', 'page.js')).href)
   const html = await buildPage('tok')
   assert.ok(html.includes('window.__WAYFINDER_TOKEN__ = "tok"'))
