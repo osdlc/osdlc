@@ -130,6 +130,14 @@ describe('configLocations', () => {
     }
   })
 
+  test('a WAYFINDER_CONFIG that names a missing file is an error', async () => {
+    const dir = await root({})
+    const missing = join(dir, 'missing.json')
+    await expect(loadConfig(dir, env({ [CONFIG_ENV_VAR]: missing }), dir)).rejects.toMatchObject({
+      message: `${missing}: ${CONFIG_ENV_VAR} names a file that does not exist`,
+    })
+  })
+
   // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
   test.skipIf(WINDOWS)(
     'a relative HOME is treated as unset, so the user file is never under the cwd',

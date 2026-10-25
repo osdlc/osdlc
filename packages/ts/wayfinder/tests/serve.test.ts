@@ -386,6 +386,24 @@ describe('the command routes', () => {
     }
   })
 
+  test('tools cannot be set, and trust cannot be unset, over HTTP', async () => {
+    const s = await start()
+    try {
+      const tools = await s.call(['config', 'set'], {
+        key: 'tools',
+        value: '["./evil.js"]',
+        user: true,
+      })
+      expect(tools.status).toBe(403)
+      const trust = await s.call(['config', 'unset'], { key: 'trust', user: true })
+      expect(trust.status).toBe(403)
+      const exec = await s.call(['config', 'unset'], { key: 'allowExec', user: true })
+      expect(exec.status).toBe(403)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
   test('a project setting is written to the project file', async () => {
     const s = await start()
     try {

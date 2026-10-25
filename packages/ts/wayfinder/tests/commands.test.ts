@@ -4,7 +4,7 @@
  */
 
 import { readFile } from 'node:fs/promises'
-import { basename } from 'node:path'
+import { basename, join } from 'node:path'
 
 import { afterAll, describe, expect, test, vi } from 'vitest'
 
@@ -282,6 +282,15 @@ describe('the command line', () => {
     const io = captureIo()
     expect(await main(['trust', '--show', '-C', '/no/such/dir'], {}, '/', io)).toBe(1)
     expect(io.err).toContain('no such directory')
+  })
+
+  test('a WAYFINDER_CONFIG that names a missing file stops a command with exit 1', async () => {
+    const dir = await root(SCRIPTS)
+    const io = captureIo()
+    const env = { WAYFINDER_CONFIG: join(dir, 'missing.json') }
+    expect(await main(['list', '-C', dir], env, dir, io)).toBe(1)
+    expect(io.err).toContain('names a file that does not exist')
+    expect(io.out).toBe('')
   })
 
   test('two surface flags are refused', async () => {
