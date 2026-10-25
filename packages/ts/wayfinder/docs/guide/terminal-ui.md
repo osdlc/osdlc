@@ -88,10 +88,14 @@ The command Enter would run is always on screen above the key line, with any
 parameters it takes. Tasks are spawned from an argument vector, never through
 a shell. `Ctrl+Y` copies the command instead of running it: the argument vector
 quoted for your shell, after a `cd` when the task runs in its own directory.
-It uses `pbcopy` on macOS, and `wl-copy`, `xclip` or `xsel` elsewhere. A
+A command or skill name that holds a control character is not copied, since
+it could end a terminal's bracketed paste and run what follows. It uses `pbcopy` on macOS, and `wl-copy`, `xclip` or `xsel` elsewhere. A
 clipboard program that hangs is given up on after two seconds.
 
-When the task exits, `way` exits with the task's exit code.
+When the task exits, `way` exits with the task's exit code. While the task runs,
+`way` ignores Ctrl+C, `SIGTERM` and `SIGHUP` and waits for it, so the task is
+never left running without its parent. Ctrl+C reaches the task. To stop both
+from elsewhere, signal the process group: `kill -TERM -<pgid>`.
 
 ## Tasks that take arguments
 

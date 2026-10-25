@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from 'vitest'
-import { mkdir, readFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
+import { lstat, mkdir, readFile, symlink } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
 
@@ -15,16 +16,20 @@ import {
   getConfigValue,
   loadConfig,
   mergeConfig,
+  movedUserConfigWarning,
   orderRunners,
   parseConfigValue,
   readConfigFile,
   readRawConfigFile,
+  removeSetting,
   setConfigValue,
   trustPolicyFromConfig,
   unsetConfigValue,
   validateConfig,
   writeConfigFile,
+  writeSetting,
 } from '../src/config.ts'
+import { expandTilde } from '../src/xdg.ts'
 import { CONFIG_HOME, USER_CONFIG, fixtureRoot, removeRoot } from './support.ts'
 
 const WINDOWS = process.platform === 'win32'
@@ -186,6 +191,40 @@ describe('configLocations', () => {
   )
 })
 
+describe('expandTilde', () => {
+  test('expands ~ and ~/, and ~\\ only on Windows', () => {
+    expect(expandTilde('~', '/h')).toBe('/h')
+    expect(expandTilde('~/x', '/h')).toBe(join('/h', 'x'))
+    expect(expandTilde('~\\x', '/h', 'win32')).toBe(join('/h', 'x'))
+    expect(expandTilde('~\\x', '/h', 'linux')).toBe('~\\x')
+  })
+})
+
+describe('movedUserConfigWarning', () => {
+  test('on Windows, names a pre-0.8 user config when none is at the new path', async () => {
+    const home = await root({ '.config/wayfinder/config.json': '{"allowExec": false}' })
+    const user = join(home, 'AppData', 'Roaming', 'wayfinder', 'config.json')
+    const at = { ...configLocations(home, env(), home), user }
+    const warning = movedUserConfigWarning(at, env(), home, 'win32')
+    expect(warning).toContain(join(home, '.config', 'wayfinder', 'config.json'))
+    expect(warning).toContain(`move it to ${user}`)
+    expect(movedUserConfigWarning(at, env(), home, 'linux')).toBeNull()
+  })
+
+  test('says nothing once the new file exists, or with no old one', async () => {
+    const home = await root({
+      '.config/wayfinder/config.json': '{}',
+      'AppData/Roaming/wayfinder/config.json': '{}',
+    })
+    const user = join(home, 'AppData', 'Roaming', 'wayfinder', 'config.json')
+    const at = { ...configLocations(home, env(), home), user }
+    expect(movedUserConfigWarning(at, env(), home, 'win32')).toBeNull()
+    const empty = await root()
+    const none = { ...configLocations(empty, env(), empty), user: join(empty, 'x.json') }
+    expect(movedUserConfigWarning(none, env(), empty, 'win32')).toBeNull()
+  })
+})
+
 describe('mergeConfig', () => {
   test("a project scalar replaces the user's", () => {
     const merged = mergeConfig({ allowExec: false }, { allowExec: true })
@@ -287,6 +326,15 @@ describe('validateConfig', () => {
     )
   })
 
+  test('warns about a __proto__ key in a map, and keeps it out', () => {
+    const raw = JSON.parse('{"trust":{"tools":{"__proto__":{"paths":["/x"]},"mise":{}}}}')
+    const { config, warnings } = validateConfig(raw, '/cfg.json')
+    expect(warnings).toEqual(['/cfg.json: "trust.tools.__proto__" is not a usable key (ignored)'])
+    const tools = config.trust!.tools!
+    expect(Object.keys(tools)).toEqual(['mise'])
+    expect(Object.getPrototypeOf(tools)).toBe(Object.prototype)
+  })
+
   test('rejects a discovery mode that is not one of the three', () => {
     expect(() => validateConfig({ discovery: 'sideways' }, '/cfg.json')).toThrow(/git, walk, auto/)
   })
@@ -296,6 +344,23 @@ describe('readConfigFile', () => {
   test('returns null for a file that does not exist, since absence is normal', async () => {
     const dir = await root()
     expect(await readConfigFile(join(dir, 'wayfinder.config.json'))).toBeNull()
+  })
+
+  test.skipIf(WINDOWS)('refuses a link to a device and a FIFO, without reading them', async () => {
+    const dir = await root()
+    const device = join(dir, 'wayfinder.config.json')
+    await symlink('/dev/zero', device)
+    await expect(readConfigFile(device)).rejects.toThrow(/not a regular file/)
+    const fifo = join(dir, 'fifo.json')
+    expect(spawnSync('mkfifo', [fifo]).status).toBe(0)
+    await expect(readConfigFile(fifo)).rejects.toThrow(/not a regular file/)
+  })
+
+  test('refuses a file larger than 1 MB', async () => {
+    const dir = await root({ 'wayfinder.config.json': `{"x": "${'a'.repeat(1024 * 1024)}"}` })
+    await expect(readConfigFile(join(dir, 'wayfinder.config.json'))).rejects.toThrow(
+      /larger than 1 MB/,
+    )
   })
 
   test('names the file and the parse problem when the JSON is malformed', async () => {
@@ -531,6 +596,42 @@ describe('loadConfig', () => {
     expect(loaded.layers.user).toBeNull()
     expect(loaded.layers.project).toBeNull()
   })
+})
+
+describe('writeSetting through a link', () => {
+  test.skipIf(WINDOWS)(
+    'a linked user config is written at its target, and stays a link',
+    async () => {
+      const home = await root({ 'dotfiles/way.json': '{}' })
+      const target = join(home, 'dotfiles', 'way.json')
+      const user = join(home, '.config', 'wayfinder', 'config.json')
+      await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
+      await symlink(target, user)
+      await writeSetting({ layer: 'user', root: home, env: env(), home }, 'theme', 'dark')
+      expect((await lstat(user)).isSymbolicLink()).toBe(true)
+      expect(JSON.parse(await readFile(target, 'utf8'))).toMatchObject({ theme: 'dark' })
+      await removeSetting({ layer: 'user', root: home, env: env(), home }, 'theme')
+      expect((await lstat(user)).isSymbolicLink()).toBe(true)
+      expect(JSON.parse(await readFile(target, 'utf8'))).not.toHaveProperty('theme')
+    },
+  )
+
+  test.skipIf(WINDOWS)(
+    'a linked project file is replaced, and its target is not written',
+    async () => {
+      const outside = await root({ 'elsewhere.json': '{}' })
+      const repo = await root()
+      const project = join(repo, 'wayfinder.config.json')
+      await symlink(join(outside, 'elsewhere.json'), project)
+      await writeSetting(
+        { layer: 'project', root: repo, env: env(), home: repo },
+        'discovery',
+        'walk',
+      )
+      expect((await lstat(project)).isSymbolicLink()).toBe(false)
+      expect(await readFile(join(outside, 'elsewhere.json'), 'utf8')).toBe('{}')
+    },
+  )
 })
 
 describe('get / set / unset', () => {

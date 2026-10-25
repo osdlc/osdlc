@@ -10,7 +10,7 @@
 
 import type { App } from '@osdlc/cli-tool/command'
 import { createHttpApi, serveHttp, type HttpServer } from '@osdlc/cli-tool/http'
-import { commandString, spawnRunner } from '@osdlc/command-seam'
+import { commandString, spawnRunnerAsync } from '@osdlc/command-seam'
 
 import { APP, BIN } from '../app.ts'
 import { handOff as defaultHandOff, type HandOffResult } from '../core/run.ts'
@@ -25,6 +25,7 @@ import { createRoutes, type RunResolution } from './routes.ts'
 /** The HTTP status for each `run` error code the page can act on. */
 const RUN_STATUS: Record<string, number> = {
   'task-not-found': 404,
+  'ambiguous-task': 409,
   'not-runnable': 422,
   'bad-arguments': 400,
   usage: 400,
@@ -64,7 +65,8 @@ export interface WebServer {
   signIn: SignIn
   /**
    * Settles when the server has stopped: with the task's exit code after a
-   * run took the terminal, or null when it was stopped otherwise.
+   * run took the terminal, 1 when the sign-in link was used twice, or null
+   * when it was stopped otherwise.
    */
   finished: Promise<number | null>
   /** Stop the server. */
@@ -80,12 +82,20 @@ export async function startServer(options: ServeOptions): Promise<WebServer> {
   const { session, app } = options
   const globals = { ...options.globals, dir: session.root }
   const context = { cwd: options.cwd, env: session.env }
-  const signIn = createSignIn()
   const runHandOff = options.handOff ?? defaultHandOff
 
   let settle: (exit: number | null) => void = () => {}
   const finished = new Promise<number | null>((resolve) => {
     settle = resolve
+  })
+  // The browser was beaten to the boot token, so someone else holds the
+  // bearer token. Stop rather than serve them.
+  const signIn = createSignIn(Date.now, () => {
+    options.stderr(
+      `${APP}: the sign-in link was used twice, so another program signed in first; ` +
+        `stopping. Run "${BIN} serve" again\n`,
+    )
+    void stop().then(() => settle(1))
   })
 
   const resolveRun = async (id: string, args: string[]): Promise<RunResolution> => {
@@ -137,12 +147,12 @@ export async function startServer(options: ServeOptions): Promise<WebServer> {
   handler = createRoutes({
     api,
     signIn,
-    async page() {
+    async page(nonce) {
       const theme = await session.reloadSettings().then(
         (s) => s.settings.theme.value,
         () => 'system' as const,
       )
-      return buildPage({ theme })
+      return buildPage({ theme, nonce })
     },
     resolveRun,
     handOff(plan) {
@@ -203,6 +213,16 @@ export function startupSummary(address: string, first: Omit<CatalogSnapshot, 'or
   return out
 }
 
+/** How long the browser opener may run before it is left to the browser. */
+const OPENER_TIMEOUT_MS = 10_000
+
+/** The program that opens a URL in the default browser on `platform`, before the URL. */
+export function browserOpener(platform: NodeJS.Platform): { binary: string; args: string[] } {
+  if (platform === 'darwin') return { binary: 'open', args: [] }
+  if (platform === 'win32') return { binary: 'rundll32', args: ['url.dll,FileProtocolHandler'] }
+  return { binary: 'xdg-open', args: [] }
+}
+
 /**
  * Serve the page until the signal aborts or a run takes the terminal. Returns
  * the task's exit code after a run, or null when the server was stopped.
@@ -223,14 +243,18 @@ export async function serve(options: ServeOptions): Promise<number | null> {
     options.stdout(`  open       ${bootUrl}\n`)
     options.stdout(`             signs the browser in once; it expires in 60 seconds if unused\n`)
   } else {
-    // Best effort: a headless or remote shell has no browser.
-    const opener = process.platform === 'darwin' ? 'open' : 'xdg-open'
-    const proc = spawnRunner(opener, { absolutePathOnly: true }).run([bootUrl], {
-      cwd: options.session.root,
-    })
-    if (proc.exitCode !== 0) {
-      options.stdout(`  (could not open a browser; visit ${bootUrl} within 60 seconds)\n`)
-    }
+    // Best effort: a headless or remote shell has no browser. Not awaited: a
+    // generic xdg-open can wait on the browser it starts, and the server must
+    // answer meanwhile. An opener still running at the deadline is taken to
+    // have opened one.
+    const opener = browserOpener(process.platform)
+    void spawnRunnerAsync(opener.binary, { absolutePathOnly: true })
+      .run([...opener.args, bootUrl], { cwd: options.session.root, timeoutMs: OPENER_TIMEOUT_MS })
+      .then((proc) => {
+        if (proc.reason !== 'timeout' && proc.exitCode !== 0) {
+          options.stdout(`  (could not open a browser; visit ${bootUrl} within 60 seconds)\n`)
+        }
+      })
   }
   return web.finished
 }

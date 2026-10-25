@@ -12,13 +12,15 @@ import { request as httpRequest } from 'node:http'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
+import type { HttpApi } from '@osdlc/cli-tool/http'
 import { resolveTrustRoot } from '@osdlc/trust-repo'
 
 import { abortOnSignals } from '../src/commands/browse.ts'
 import { createWayApp } from '../src/commands/index.ts'
 import { createSession } from '../src/core/session.ts'
 import { createSignIn } from '../src/serve/auth.ts'
-import { startServer, type WebServer } from '../src/serve/index.ts'
+import { createRoutes } from '../src/serve/routes.ts'
+import { browserOpener, startServer, type WebServer } from '../src/serve/index.ts'
 import { appTrustStore } from '../src/trust-store.ts'
 import { fixtureRoot, removeRoot } from './support.ts'
 
@@ -40,6 +42,8 @@ interface Started {
   home: string
   /** Every plan the server handed off. */
   handed: { argv: string[]; cwd: string }[]
+  /** What the server wrote to stderr. */
+  err: string[]
   /** Sign in and return the bearer token. */
   token(): Promise<string>
   /** `POST /api/commands/<words>` with the bearer token. */
@@ -56,6 +60,7 @@ async function start(files: Record<string, string> = {}): Promise<Started> {
   const { app } = createWayApp({ home })
   const session = await createSession({ dir, cwd: dir, env, home })
   const handed: Started['handed'] = []
+  const err: string[] = []
   const web = await startServer({
     session,
     app,
@@ -64,7 +69,7 @@ async function start(files: Record<string, string> = {}): Promise<Started> {
     port: 0,
     open: false,
     stdout: () => {},
-    stderr: () => {},
+    stderr: (text) => err.push(text),
     handOff: (plan) => {
       handed.push({ argv: plan.argv, cwd: plan.cwd })
       return { exit: 0 }
@@ -88,6 +93,7 @@ async function start(files: Record<string, string> = {}): Promise<Started> {
     dir,
     home,
     handed,
+    err,
     token,
     async call(words, body = {}, headers = {}) {
       return fetch(`${address}/api/commands/${words.join('/')}`, {
@@ -126,9 +132,37 @@ describe('the page', () => {
       expect(res.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
       const html = await res.text()
       expect(html).toContain('<title>wayfinder</title>')
-      expect(html).toContain('<html lang="en" data-theme="dark">')
+      expect(html).toContain(
+        `<html lang="en" data-theme="dark" data-platform="${process.platform}">`,
+      )
       expect(html).not.toContain(await s.token())
       expect(html).not.toContain(s.web.signIn.bootToken)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('runs only its own script, with a fresh nonce per load', async () => {
+    const s = await start()
+    try {
+      const nonces: string[] = []
+      for (let i = 0; i < 2; i++) {
+        const res = await fetch(`${s.address}/`)
+        const policy = res.headers.get('content-security-policy') ?? ''
+        for (const part of [
+          "default-src 'none'",
+          "connect-src 'self'",
+          "base-uri 'none'",
+          "form-action 'none'",
+        ]) {
+          expect(policy).toContain(part)
+        }
+        const nonce = /script-src 'nonce-([^']+)'/.exec(policy)?.[1]
+        expect(nonce).toBeDefined()
+        expect(await res.text()).toContain(`<script type="module" nonce="${nonce}">`)
+        nonces.push(nonce!)
+      }
+      expect(nonces[0]).not.toBe(nonces[1])
     } finally {
       await s.web.stop()
     }
@@ -187,6 +221,16 @@ describe('POST /session', () => {
     }
   })
 
+  test('the boot token redeemed twice stops the server and says why', async () => {
+    const s = await start()
+    const first = await session(s.address, { boot: s.web.signIn.bootToken })
+    expect(first.status).toBe(200)
+    const again = await session(s.address, { boot: s.web.signIn.bootToken })
+    expect(again.status).toBe(401)
+    expect(await s.web.finished).toBe(1)
+    expect(s.err.join('')).toContain('the sign-in link was used twice')
+  })
+
   test('a wrong boot token is 401, and leaves the right one usable', async () => {
     const s = await start()
     try {
@@ -212,6 +256,40 @@ describe('POST /session', () => {
     }
   })
 
+  test('a chunked body past the limit is refused without reading it all', async () => {
+    const routes = createRoutes({
+      api: {
+        handles: () => false,
+        checkOrigin: () => null,
+        hasToken: () => false,
+        token: 't',
+      } as unknown as HttpApi,
+      signIn: createSignIn(),
+      page: async () => '',
+      resolveRun: async () => ({ ok: false, status: 500, error: {} }),
+      handOff: () => {},
+    })
+    // 16 MB in 64 KB chunks. Reading stops soon after the 64 KB limit.
+    let pulled = 0
+    const endless = new ReadableStream<Uint8Array>({
+      pull: (c) => {
+        if (pulled >= 16 * 1024 * 1024) return c.close()
+        pulled += 64 * 1024
+        c.enqueue(new Uint8Array(64 * 1024))
+      },
+    })
+    const res = await routes(
+      new Request('http://127.0.0.1/session', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: endless,
+        duplex: 'half',
+      } as RequestInit),
+    )
+    expect(res.status).toBe(413)
+    expect(pulled).toBeLessThan(1024 * 1024)
+  })
+
   test('GET is 405', async () => {
     const s = await start()
     try {
@@ -229,6 +307,17 @@ describe('the boot token', () => {
     signIn.arm()
     now += 60_001
     expect(signIn.redeem(signIn.bootToken)).toBe(false)
+  })
+
+  test('the right token sent again reports a replay; a wrong one does not', () => {
+    let replays = 0
+    const signIn = createSignIn(Date.now, () => replays++)
+    expect(signIn.redeem('f'.repeat(32))).toBe(false)
+    expect(signIn.redeem(signIn.bootToken)).toBe(true)
+    expect(signIn.redeem('f'.repeat(32))).toBe(false)
+    expect(replays).toBe(0)
+    expect(signIn.redeem(signIn.bootToken)).toBe(false)
+    expect(replays).toBe(1)
   })
 
   test('does not expire before it is armed', () => {
@@ -249,6 +338,19 @@ describe('the command routes', () => {
         body: '{}',
       })
       expect(res.status).toBe(401)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('list refuses a directory of its own: the served one is fixed', async () => {
+    const s = await start()
+    const other = await root({ justfile: 'secret:\n  echo s\n' })
+    try {
+      const res = await s.call(['list'], { dir: other })
+      expect(res.status).toBe(400)
+      expect(JSON.stringify(await res.json())).toContain('fixed when the web view starts')
+      expect((await s.call(['list'], {})).status).toBe(200)
     } finally {
       await s.web.stop()
     }
@@ -489,6 +591,17 @@ describe('POST /run', () => {
     } finally {
       await s.web.stop()
     }
+  })
+})
+
+describe('the browser opener', () => {
+  test('is open, xdg-open, or rundll32 on Windows', () => {
+    expect(browserOpener('darwin')).toEqual({ binary: 'open', args: [] })
+    expect(browserOpener('linux')).toEqual({ binary: 'xdg-open', args: [] })
+    expect(browserOpener('win32')).toEqual({
+      binary: 'rundll32',
+      args: ['url.dll,FileProtocolHandler'],
+    })
   })
 })
 

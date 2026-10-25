@@ -31,6 +31,10 @@ const TOKEN_PREFIX = 'wf'
 export interface PageOptions {
   /** The `theme` setting. `system` leaves the choice to the browser. */
   theme?: Theme | undefined
+  /** The server's platform, which picks the shell Copy quotes for. Default `process.platform`. */
+  platform?: NodeJS.Platform | undefined
+  /** The `nonce` on the script tag, which the page's content security policy names. */
+  nonce?: string | undefined
 }
 
 /** Build the page. Each replacement is a function, so a `$` in a part is kept as it is. */
@@ -41,6 +45,8 @@ export async function buildPage(options: PageOptions = {}): Promise<string> {
     buildScript(),
   ])
   const theme = options.theme ?? 'system'
+  const platform = (options.platform ?? process.platform).replace(/[^a-z0-9]/g, '')
+  const nonce = (options.nonce ?? '').replace(/[^A-Za-z0-9+/=]/g, '')
   return (
     skeleton
       // The template has no <html> tag, which keeps it plain for the
@@ -51,6 +57,7 @@ export async function buildPage(options: PageOptions = {}): Promise<string> {
         () =>
           '<!doctype html>\n<html lang="en"' +
           (theme === 'system' ? '' : ` data-theme="${theme}"`) +
+          ` data-platform="${platform}"` +
           '>\n',
       )
       .replaceAll('@APP@', () => APP)
@@ -60,7 +67,9 @@ export async function buildPage(options: PageOptions = {}): Promise<string> {
       )
       .replace(
         '<!-- @SCRIPT@ -->',
-        () => `<script type="module">\n${script.replaceAll('</script>', '<\\/script>')}</script>`,
+        () =>
+          `<script type="module"${nonce === '' ? '' : ` nonce="${nonce}"`}>\n` +
+          `${script.replaceAll('</script>', '<\\/script>')}</script>`,
       )
   )
 }

@@ -52,11 +52,12 @@
  * problem. `$schema` is accepted and ignored.
  */
 
-import { isAbsolute, resolve } from 'node:path'
+import { constants, existsSync } from 'node:fs'
+import { lstat, open, readlink, realpath, type FileHandle } from 'node:fs/promises'
+import { dirname, isAbsolute, join as joinPath, resolve } from 'node:path'
 
 import { z } from 'zod'
 
-import { readParsedFile } from '@osdlc/config-layers'
 import { closestMatches } from '@osdlc/config-layers/did-you-mean'
 import { atomicWriteAsync } from '@osdlc/etag-write'
 import {
@@ -67,9 +68,9 @@ import {
 } from '@osdlc/trust-repo'
 import { originOwner } from '@osdlc/trust-repo/git'
 
-import { BIN, CONFIG_ENV_VAR, PROJECT_CONFIG_FILENAME } from './app.ts'
+import { APP, BIN, CONFIG_ENV_VAR, PROJECT_CONFIG_FILENAME } from './app.ts'
 import { THEME_VALUES, type Theme } from './config-keys.ts'
-import { appDirs, expandTilde, USER_CONFIG_FILENAME } from './xdg.ts'
+import { appDirs, expandTilde, pre08Bases, USER_CONFIG_FILENAME } from './xdg.ts'
 import type { WayOptions } from './catalog.ts'
 import { SKILLS_SETTING_VALUES, type SkillsSetting } from './core/skills.ts'
 
@@ -351,6 +352,28 @@ export function configLocations(
   }
 }
 
+/**
+ * The warning for a Windows user config left where releases before 0.8 kept
+ * it (`~\.config\wayfinder\config.json`), when there is none at the new
+ * path. That file is not read, so its settings, `allowExec: false` among
+ * them, no longer apply. Null when there is nothing to say.
+ */
+export function movedUserConfigWarning(
+  locations: ConfigLocations,
+  env: Record<string, string | undefined>,
+  home: string,
+  platform: NodeJS.Platform = process.platform,
+): string | null {
+  if (platform !== 'win32' || locations.userFromEnv) return null
+  const old = joinPath(pre08Bases(env, home).config, APP, USER_CONFIG_FILENAME)
+  if (resolve(old) === resolve(locations.user) || !existsSync(old)) return null
+  if (existsSync(locations.user)) return null
+  return (
+    `${old}: this user config is from before 0.8 and is no longer read, so none of its ` +
+    `settings apply; move it to ${locations.user}`
+  )
+}
+
 /** The warning for a relative {@link CONFIG_ENV_VAR} that was ignored, or null. */
 export function envIgnoredWarning(locations: ConfigLocations): string | null {
   if (locations.userEnvIgnored === null) return null
@@ -414,6 +437,11 @@ function check(
       if (innerValue === undefined) continue
       if (!(s.keyType as z.ZodType).safeParse(inner).success) {
         throw new ConfigError(`${where}${key} has an empty key`, file)
+      }
+      // Assigning `__proto__` would set the object's prototype, not a key.
+      if (inner === '__proto__') {
+        warnings.push(`${where}"${join(key, inner)}" is not a usable key (ignored)`)
+        continue
       }
       out[inner] = check(s.valueType as z.ZodType, innerValue, join(key, inner), file, warnings)
     }
@@ -512,26 +540,61 @@ export const DEFAULT_CONFIG: Required<WayfinderConfig> = {
 
 // ── Files ───────────────────────────────────────────────────────────────────
 
+/** The largest config file read. A real one is a few kilobytes. */
+const MAX_CONFIG_BYTES = 1024 * 1024
+
+/**
+ * One layer file's text, or null when it does not exist. The project file is
+ * repository content, so only a regular file of at most
+ * {@link MAX_CONFIG_BYTES} is read: a committed link to `/dev/zero` or a FIFO
+ * must not hang or fill memory. Opened non-blocking, so a FIFO does not wait
+ * for a writer.
+ */
+async function readConfigText(file: string): Promise<string | null> {
+  let handle: FileHandle
+  try {
+    handle = await open(file, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0))
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw new ConfigError(`${file}: cannot be read — ${(err as Error).message}`, file)
+  }
+  try {
+    const info = await handle.stat()
+    if (!info.isFile()) {
+      throw new ConfigError(`${file}: cannot be read — it is not a regular file`, file)
+    }
+    const buffer = Buffer.alloc(MAX_CONFIG_BYTES + 1)
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0)
+    if (bytesRead > MAX_CONFIG_BYTES) {
+      throw new ConfigError(`${file}: cannot be read — it is larger than 1 MB`, file)
+    }
+    return buffer.subarray(0, bytesRead).toString('utf8')
+  } catch (err) {
+    if (err instanceof ConfigError) throw err
+    throw new ConfigError(`${file}: cannot be read — ${(err as Error).message}`, file)
+  } finally {
+    await handle.close()
+  }
+}
+
 /**
  * One layer file as a plain object. `null` when the file does not exist. A
  * file that is unreadable, not JSON, or not an object throws
  * {@link ConfigError} naming it.
  */
 async function readJsonFile(file: string): Promise<Record<string, unknown> | null> {
-  const read = readParsedFile(file, 'json')
-  switch (read.kind) {
-    case 'absent':
-      return null
-    case 'unreadable':
-      throw new ConfigError(`${file}: cannot be read — ${read.message}`, file)
-    case 'unparsable':
-      throw new ConfigError(`${file}: invalid JSON — ${read.message}`, file)
-    case 'ok':
-      if (!isPlainObject(read.value)) {
-        throw new ConfigError(`${file}: expected a JSON object, got ${describe(read.value)}`, file)
-      }
-      return read.value
+  const text = await readConfigText(file)
+  if (text === null) return null
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch (err) {
+    throw new ConfigError(`${file}: invalid JSON — ${(err as Error).message}`, file)
   }
+  if (!isPlainObject(value)) {
+    throw new ConfigError(`${file}: expected a JSON object, got ${describe(value)}`, file)
+  }
+  return value
 }
 
 /**
@@ -690,6 +753,8 @@ export async function loadConfig(
   const warnings: string[] = []
   const ignored = envIgnoredWarning(locations)
   if (ignored !== null) warnings.push(ignored)
+  const moved = movedUserConfigWarning(locations, env, home)
+  if (moved !== null) warnings.push(moved)
   warnings.push(...(userRead?.warnings ?? []), ...(projectRead?.warnings ?? []))
 
   const user = userRead?.config ?? null
@@ -840,7 +905,7 @@ export async function writeSetting(
   // The whole document is checked before it is written. A failure here is a
   // bad value already in the file, so the error names the file.
   validateConfig(document, file)
-  await writeConfigFile(file, document)
+  await writeConfigFile(await writePath(target, file), document)
   return { file, value: checked, warnings }
 }
 
@@ -854,8 +919,22 @@ export async function removeSetting(
   if (document === null || getConfigValue(document, key) === undefined) {
     return { file, removed: false }
   }
-  await writeConfigFile(file, unsetConfigValue(document, key))
+  await writeConfigFile(await writePath(target, file), unsetConfigValue(document, key))
   return { file, removed: true }
+}
+
+/**
+ * Where a write to `file` goes. The atomic write renames a new file into
+ * place, which would replace a link with a regular file. A user config is
+ * often a link into a dotfiles repository, so for the user layer the write
+ * goes to the link's target. A project file that is a link is replaced, not
+ * followed: the repository chose the link, and its target may be outside it.
+ */
+async function writePath(target: WriteTarget, file: string): Promise<string> {
+  if (target.layer !== 'user') return file
+  const info = await lstat(file).catch(() => null)
+  if (info === null || !info.isSymbolicLink()) return file
+  return realpath(file).catch(async () => resolve(dirname(file), await readlink(file)))
 }
 
 function fileOf(target: WriteTarget): string {

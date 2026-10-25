@@ -20,10 +20,16 @@
  * the project. A user config that `WAYFINDER_CONFIG` names is named with the
  * variable in the report and again before it is removed, since it may live in
  * a dotfiles repository.
+ *
+ * Clean removes only what it owns. A file store must be a file (a symbolic
+ * link is removed, not its target), a directory store a directory, and no
+ * store may be the home directory, a directory above it or a filesystem root.
+ * A file `WAYFINDER_CONFIG` names is removed only when its `$schema` names
+ * wayfinder's config schema, which every file wayfinder writes has.
  */
 
-import { lstat, readdir, rm, rmdir } from 'node:fs/promises'
-import { dirname, join, relative, isAbsolute } from 'node:path'
+import { lstat, readFile, readdir, rm, rmdir, stat } from 'node:fs/promises'
+import { dirname, join, relative, isAbsolute, resolve } from 'node:path'
 
 import { z } from 'zod'
 
@@ -43,7 +49,7 @@ import { commandEnv, type CommandEnvOptions } from './config-command.ts'
 import { configLocations } from './config.ts'
 import { WAYFINDER_SPEC } from './devlink.ts'
 import { terminalSafe } from './terminal-text.ts'
-import { appDirs, appTieredDirs } from './xdg.ts'
+import { appDirs, appTieredDirs, pre08Bases } from './xdg.ts'
 
 /** The tool's name before its first release. Used only to find and remove its files. */
 const OLD_NAME = 'waypost'
@@ -101,16 +107,58 @@ export const CleanOutputSchema = z.object({
 
 type StoreReport = z.infer<typeof StoreReportSchema>
 
-/** Bytes under a path, or null when it does not exist. Symbolic links are not followed. */
-async function weigh(path: string): Promise<number | null> {
+/**
+ * Bytes under a path, or null when it does not exist. Symbolic links are not
+ * followed. With `shallow`, a directory is not walked: a file store's path
+ * may name one by mistake.
+ */
+async function weigh(path: string, shallow = false): Promise<number | null> {
   const info = await lstat(path).catch(() => null)
   if (info === null) return null
-  if (!info.isDirectory()) return info.size
+  if (!info.isDirectory() || shallow) return info.size
   let total = 0
   for (const entry of await readdir(path, { withFileTypes: true }).catch(() => [])) {
     total += (await weigh(join(path, entry.name))) ?? 0
   }
   return total
+}
+
+/** The largest user config clean reads to look for the `$schema` marker. */
+const MARKER_READ_LIMIT = 1024 * 1024
+
+/** True when the JSON file at `path` has a `$schema` naming wayfinder's config schema. */
+async function writtenByWayfinder(path: string): Promise<boolean> {
+  const info = await stat(path).catch(() => null)
+  if (info === null || !info.isFile() || info.size > MARKER_READ_LIMIT) return false
+  try {
+    const value: unknown = JSON.parse(await readFile(path, 'utf8'))
+    const schema = (value as { $schema?: unknown } | null)?.$schema
+    return typeof schema === 'string' && SCHEMA_MARKER.test(schema)
+  } catch {
+    return false
+  }
+}
+
+/** A `$schema` URL for any release of wayfinder's config schema. */
+const SCHEMA_MARKER = /\/@osdlc\/wayfinder@[^/]+\/schema\/config\.json$/
+
+/** Why clean will not remove `store`, which exists, or null when it may. */
+async function refusal(store: Store, home: string): Promise<string | null> {
+  const path = resolve(store.path)
+  const up = relative(path, resolve(home))
+  if (dirname(path) === path || up === '' || (!up.startsWith('..') && !isAbsolute(up))) {
+    return 'it is the home directory, a directory above it or a filesystem root'
+  }
+  const info = await lstat(path)
+  if (store.file) {
+    if (!info.isFile() && !info.isSymbolicLink()) return 'it is not a file'
+    if (store.envVar !== undefined && !(await writtenByWayfinder(path))) {
+      return `its "$schema" does not name ${APP}'s config schema, so ${APP} did not write it; remove it yourself`
+    }
+  } else if (!info.isDirectory()) {
+    return 'it is not a directory'
+  }
+  return null
 }
 
 function humanBytes(bytes: number): string {
@@ -130,6 +178,15 @@ async function pruneEmptyParents(path: string, base: string): Promise<void> {
     await rmdir(dir).catch(() => undefined)
     dir = dirname(dir)
   }
+}
+
+/** True when `a` and `b` are the same path or one is inside the other. */
+function overlaps(a: string, b: string): boolean {
+  const inside = (outer: string, inner: string): boolean => {
+    const rel = relative(resolve(outer), resolve(inner))
+    return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+  }
+  return inside(a, b) || inside(b, a)
 }
 
 /** Every store, in report order. */
@@ -190,12 +247,16 @@ function storesFor(
       optional: true,
     })
   }
+  // Old releases' paths come from the rules those releases used, never from
+  // the current `WAYFINDER_*` overrides, which could point them at a live store.
+  const old = pre08Bases(env, home)
+  const legacy: Store[] = []
   for (const [base, what] of [
-    [dirs.bases.config, 'config'],
-    [dirs.bases.state, 'trust store'],
-    [dirs.bases.cache, 'cache'],
+    [old.config, 'config'],
+    [old.state, 'trust store'],
+    [old.cache, 'cache'],
   ] as const) {
-    stores.push({
+    legacy.push({
       key: 'legacy',
       what: `the ${what} from before the rename`,
       path: join(base, OLD_NAME),
@@ -204,17 +265,40 @@ function storesFor(
       optional: true,
     })
   }
+  const os = platform ?? process.platform
   // Link state before 0.8, on macOS only: the native convention's config home.
-  if ((platform ?? process.platform) === 'darwin') {
-    const native = appTieredDirs({ ...at, convention: 'native' })
-    stores.push({
+  if (os === 'darwin') {
+    const base = join(home, 'Library', 'Application Support')
+    legacy.push({
       key: 'legacy',
       what: `${BIN} dev link state from before 0.8`,
-      path: native.standalone(WAYFINDER_SPEC.name).config().path,
+      path: join(base, WAYFINDER_SPEC.name),
       file: false,
-      base: native.bases.config,
+      base,
       optional: true,
     })
+  }
+  // Windows before 0.8 used the XDG paths; 0.8 uses %APPDATA% and %LOCALAPPDATA%.
+  if (os === 'win32') {
+    for (const [base, what] of [
+      [old.config, 'user config'],
+      [old.state, 'trust store'],
+      [old.cache, 'cache'],
+    ] as const) {
+      legacy.push({
+        key: 'legacy',
+        what: `the ${what} from before 0.8`,
+        path: join(base, APP),
+        file: false,
+        base,
+        optional: true,
+      })
+    }
+  }
+  // An old path that is, holds or sits in a current store is not old.
+  const live = stores.map((s) => s.path)
+  for (const store of legacy) {
+    if (!live.some((path) => overlaps(path, store.path))) stores.push(store)
   }
   return stores
 }
@@ -255,7 +339,8 @@ export interface CleanCommandOptions extends CommandEnvOptions {
 
 /**
  * The `clean` command. Mount it as `clean: cleanCommand({ globals })`.
- * Removing is `cli-only`: the MCP and HTTP adapters only get the report.
+ * A call with a flag that removes something is `cli-only`: the MCP and HTTP
+ * adapters refuse it. A bare `clean`, the report, is open to them.
  */
 export function cleanCommand<G extends FlagSpec = Record<never, never>>(
   options: CleanCommandOptions & { globals?: G } = {},
@@ -280,12 +365,13 @@ export function cleanCommand<G extends FlagSpec = Record<never, never>>(
     exposureOf: ({ flags }) => (chosenOf(flags).size > 0 ? 'cli-only' : 'all'),
     async run({ flags }, ctx: CommandContext) {
       const chosen = chosenOf(flags)
-      const stores = storesFor(ctx.env, env.home(ctx), platform)
+      const home = env.home(ctx)
+      const stores = storesFor(ctx.env, home, platform)
 
       if (chosen.size === 0) {
         const reports: StoreReport[] = []
         for (const store of stores) {
-          const bytes = await weigh(store.path)
+          const bytes = await weigh(store.path, store.file)
           if (store.optional === true && bytes === null) continue
           reports.push(reportOf(store, bytes, false))
         }
@@ -302,16 +388,22 @@ export function cleanCommand<G extends FlagSpec = Record<never, never>>(
       const reports: StoreReport[] = []
       for (const store of stores) {
         if (!chosen.has(store.key)) continue
-        const size = await weigh(store.path)
+        const size = await weigh(store.path, store.file)
         if (size === null) {
           if (store.optional !== true) reports.push(reportOf(store, null, false))
           continue
+        }
+        const refused = await refusal(store, home)
+        if (refused !== null) {
+          ctx.warn(`not removing ${store.path}: ${refused}`)
+          reports.push(reportOf(store, size, false))
+          return outcome({ mode: 'remove' as const, stores: reports }, EXIT.error)
         }
         if (store.envVar !== undefined) {
           ctx.note(`removing ${store.path}, which ${store.envVar} names`)
         }
         try {
-          await rm(store.path, { recursive: true, force: true })
+          await rm(store.path, store.file ? { force: true } : { recursive: true, force: true })
         } catch (err) {
           ctx.warn(
             `could not remove ${store.path}: ${err instanceof Error ? err.message : String(err)}`,
@@ -336,10 +428,11 @@ function cleanText(output: z.infer<typeof CleanOutputSchema>): string {
   const from = (r: StoreReport): string => (r.envVar !== undefined ? `, from ${r.envVar}` : '')
   if (output.mode === 'report') {
     const lines = [`${APP} stores these outside your repositories:`, '']
+    const width = Math.max(0, ...output.stores.map((r) => r.flag.length))
     for (const r of output.stores) {
       const held = r.bytes === null ? 'nothing stored' : humanBytes(r.bytes)
-      lines.push(`  ${r.flag.padEnd(9)} ${r.what}`)
-      lines.push(`  ${' '.repeat(9)} ${terminalSafe(r.path)}  (${held}${from(r)})`)
+      lines.push(`  ${r.flag.padEnd(width)}  ${r.what}`)
+      lines.push(`  ${' '.repeat(width)}  ${terminalSafe(r.path)}  (${held}${from(r)})`)
     }
     lines.push(
       '',

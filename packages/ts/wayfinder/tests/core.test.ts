@@ -8,6 +8,8 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { afterAll, describe, expect, test } from 'vitest'
+import { spawnSync } from 'node:child_process'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import type { Catalog, RunnerReport, Task } from '@osdlc/system-model/detect'
 
@@ -222,6 +224,32 @@ describe('resolveRun', () => {
     }
   })
 
+  test('an unknown id is not matched to a task that only has its letters in order', () => {
+    const catalog = catalogOf([report('npm', [task({ id: 'node-scripts:package.json:evil' })])])
+    try {
+      resolveRun(project, '/repo', catalog, 'nope')
+      expect.unreachable()
+    } catch (err) {
+      expect((err as SessionError).hint).not.toContain('evil')
+      expect((err as SessionError).hint).toContain('list --json')
+    }
+  })
+
+  test('an id two tasks share is refused, naming both', () => {
+    const catalog = catalogOf([
+      report('npm', [
+        task({ id: 'a:b:c', display: 'npm run one' }),
+        task({ id: 'a:b:c', display: 'npm run two' }),
+      ]),
+    ])
+    expect(() => resolveRun(project, '/repo', catalog, 'a:b:c')).toThrow(
+      expect.objectContaining({
+        code: 'ambiguous-task',
+        hint: expect.stringContaining('npm run two'),
+      }),
+    )
+  })
+
   test('a task that uses an editor variable is not run', () => {
     const catalog = catalogOf([
       report('vscode', [
@@ -283,6 +311,27 @@ describe.skipIf(process.platform === 'win32')('handOff', () => {
       cwd: '/',
     }
     expect(handOff(plan).exit).toBe(0)
+  })
+
+  test('an argv holding a NUL never starts, and says why instead of throwing', () => {
+    const plan = { task: task({ id: 'x' }), argv: ['sh', 'n\u0000x'], env: {}, cwd: '/' }
+    const ended = handOff(plan)
+    expect(ended.exit).toBe(1)
+    expect(ended.error).toContain('null bytes')
+  })
+
+  test('a SIGTERM sent to this process waits for the task instead of orphaning it', () => {
+    // In a child process: the signal would otherwise end the test worker.
+    const run = pathToFileURL(fileURLToPath(new URL('../src/core/run.ts', import.meta.url))).href
+    const script =
+      `const { handOff } = await import(${JSON.stringify(run)});` +
+      `const r = handOff({ argv: ['sh', '-c', 'kill -TERM $PPID; sleep 0.3; echo task-done'], env: {}, cwd: '/' });` +
+      `console.log('exit', r.exit)`
+    const res = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+      encoding: 'utf8',
+    })
+    expect(res.signal).toBeNull()
+    expect(res.stdout).toBe('task-done\nexit 0\n')
   })
 
   test('a binary that does not exist never starts, and says why', () => {

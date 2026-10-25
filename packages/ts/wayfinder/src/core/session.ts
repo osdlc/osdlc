@@ -60,6 +60,7 @@ export class SessionError extends Error {
     | 'tool-module'
     | 'not-trustable'
     | 'task-not-found'
+    | 'ambiguous-task'
     | 'not-runnable'
     | 'bad-arguments'
   /** A sentence on what to do, when there is one. */
@@ -273,7 +274,8 @@ export interface Session {
   /**
    * The task `id` names, with `args` bound the way its tool expects. The
    * same rules as the terminal UI and the web view. Throws
-   * {@link SessionError}: `task-not-found`, `not-runnable` or `bad-arguments`.
+   * {@link SessionError}: `task-not-found`, `ambiguous-task`, `not-runnable` or
+   * `bad-arguments`.
    */
   resolveRun(catalog: Catalog, id: string, args?: readonly string[]): RunPlan
 }
@@ -689,8 +691,17 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
 /** The task `id` names: by id, else by a `display` only one task has. */
 function findTask(catalog: Catalog, id: string): Task | undefined {
   const all = catalog.reports.flatMap((r) => r.tasks)
-  const byId = all.find((t) => t.id === id)
-  if (byId !== undefined) return byId
+  // Ids are `runner:source:name`, and a name may hold a `:`, so two tasks can
+  // share one. Running the first would run a task the caller did not pick.
+  const byId = all.filter((t) => t.id === id)
+  if (byId.length > 1) {
+    throw new SessionError(
+      'ambiguous-task',
+      `'${id}' is the id of ${byId.length} tasks`,
+      `run one by its command line: ${byId.map((t) => `"${t.display}"`).join(', ')}`,
+    )
+  }
+  if (byId.length === 1) return byId[0]
   const byDisplay = all.filter((t) => t.display === id)
   return byDisplay.length === 1 ? byDisplay[0] : undefined
 }
@@ -706,8 +717,9 @@ export function resolveRun(
   const task = findTask(catalog, id)
   if (task === undefined) {
     const all = catalog.reports.flatMap((r) => r.tasks)
-    // A fuzzy match first; else a task whose name is a near miss of `id`.
-    let close = filterTasks(catalog.reports, { query: id })
+    // A task that contains `id` first; else one whose name is a near miss of
+    // it. Not a fuzzy match: letters in order find unrelated tasks.
+    let close = filterTasks(catalog.reports, { query: id, mode: 'exact' })
       .slice(0, 3)
       .map((h) => h.task.id)
     if (close.length === 0) {

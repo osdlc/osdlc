@@ -45,7 +45,7 @@ decides execution against the trust store and loads tool modules. It throws
 | `session.saveSetting(key, value)` | writes one setting to the file `settingLayer` (in `../config-keys.ts`) picks, then reloads. `pinned` says a flag decides it for this session |
 | `session.withheldReason()` | why withheld runners are withheld: `untrusted`, `exec-off`, or null |
 | `session.runnerOrder()` | `runners.order` from the config as last read |
-| `session.resolveRun(catalog, id, args)` | the `RunPlan` (`argv`, `env`, `cwd`) for a task id, or a `command line` only one task has. Throws `task-not-found`, `not-runnable` (an editor variable) or `bad-arguments` |
+| `session.resolveRun(catalog, id, args)` | the `RunPlan` (`argv`, `env`, `cwd`) for a task id, or a `command line` only one task has. Throws `task-not-found`, `ambiguous-task` (two tasks share the id), `not-runnable` (an editor variable) or `bad-arguments` |
 
 `session.options` is the collect options object. A grant, a saved setting
 and a reload change it in place, so a probe always uses the current ones.

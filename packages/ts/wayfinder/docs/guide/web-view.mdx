@@ -165,7 +165,10 @@ as the Enter target. Enter copies that row's command and moves focus to the
 results list.
 
 In the list, `↑` and `↓` move between rows and `Enter` copies the focused
-row's command. `Shift+Enter` runs the top hit or the focused row. `Escape`
+row's command. Copy puts the argument vector on the clipboard quoted for the
+server's shell, as the terminal UI copies it, not the Command column. A
+command or skill name that holds a control character cannot be copied: its
+copy button is disabled and says why. `Shift+Enter` runs the top hit or the focused row. `Escape`
 returns to the search box and keeps the query. A second `Escape` in the
 search box clears it. `?` opens the help, which lists the same keys. Every
 copy button is also reachable with `Tab`.
@@ -255,7 +258,10 @@ header, when present, must be this server's own. Either failing is a `403`.
 appears only in the URL `way` opens (`/?boot=…`). The page removes it from
 the address bar and sends it once, in a JSON body to `POST /session`. The
 first request that presents it uses it up, and it expires 60 seconds after
-the URL is shown.
+the URL is shown. The URL is in the browser opener's argv while the opener
+runs, so another local user could redeem it first. If the right boot token
+arrives a second time, `way` says the link was used twice and stops the
+server, exit code 1.
 
 **The bearer token** is what `POST /session` answers. It is also 128 random
 bits, one per server process. It never appears in a URL, an argv or the
@@ -270,4 +276,5 @@ not, and it forces a CORS preflight the server never answers.
 Commands that only the command line may run, such as a write of
 `allowExec`, are refused with `403`. A trust grant needs the confirmation
 described above. The page cannot lift `--no-exec`: every command the server
-runs carries the flags `way serve` started with.
+runs carries the flags `way serve` started with, and reads the directory it
+started in. A directory named in the body is refused with `400`.

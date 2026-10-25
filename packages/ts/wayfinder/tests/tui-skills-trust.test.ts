@@ -5,6 +5,7 @@
 
 import { afterAll, describe, expect, test } from 'vitest'
 
+import { COPY_REFUSED } from '../src/core/copy-text.ts'
 import { SKILLS_TAB } from '../src/tui/app.ts'
 import { toolNote } from '../src/tui/settings.ts'
 import type { ToolSummary } from '../src/tool-info.ts'
@@ -89,6 +90,19 @@ describe('the Skills tab', () => {
     await tui.idle()
     expect(host.copied).toEqual(['/review'])
     expect(tui.state.message).toEqual({ text: 'clipboard unavailable', tone: 'warning' })
+  })
+
+  test('a skill name with a control character is not copied', async () => {
+    const hostile = ['---', 'name: "ok\\e[201~\\necho PWNED\\n"', '---', 'Body.', ''].join('\n')
+    const { tui, host } = await booted({
+      files: { ...WITH_SKILL, '.claude/skills/ok/SKILL.md': hostile },
+    })
+    tui.feed('ok')
+    tui.handle('\x19')
+    await tui.idle()
+    expect(tui.state.skillRows.map((h) => h.skill.invoke)).toContain('/ok\u001b[201~\necho PWNED')
+    expect(host.copied).toEqual([])
+    expect(tui.state.message).toEqual({ text: COPY_REFUSED, tone: 'warning' })
   })
 
   test('the line under a skill shows its description, and control characters are filtered', async () => {

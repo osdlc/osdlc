@@ -9,6 +9,7 @@ import { mountPage } from './dom.ts'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { CATALOG_SCHEMA_VERSION, type Catalog, type Task } from '@osdlc/system-model/detect'
 
+import { COPY_REFUSED } from '../src/core/copy-text.ts'
 import { keysFor } from '../src/keys.ts'
 import { parametersUnknownLabel } from '../src/vocabulary.ts'
 import { $, state } from '../src/web/state.ts'
@@ -71,6 +72,57 @@ describe('a row', () => {
     expect(names).toEqual(['Copy just build', 'Copy just test'])
   })
 
+  test('Copy carries the quoted argv, not the display text', () => {
+    const name = 'x; touch PWNED #'
+    state.catalog = catalog([
+      task('evil', { argv: ['npm', 'run', name], display: `npm run ${name}` }),
+      task('sub', { argv: ['make'], display: 'make', cwd: '-pkg' }),
+    ])
+    render()
+    const runs = [...document.querySelectorAll<HTMLElement>('#out .copy')].map(
+      (b) => b.dataset['run'],
+    )
+    expect(runs).toEqual(["npm run 'x; touch PWNED #'", 'cd -- -pkg && make'])
+  })
+
+  test('Copy quotes for PowerShell when the server runs on Windows', () => {
+    document.documentElement.dataset['platform'] = 'win32'
+    try {
+      state.catalog = catalog([task('build', { argv: ['npm', 'run', 'a b'] })])
+      render()
+      const copy = document.querySelector<HTMLElement>('#out .copy')!
+      expect(copy.dataset['run']).toBe("& npm run 'a b'")
+    } finally {
+      delete document.documentElement.dataset['platform']
+    }
+  })
+
+  test('a task whose command holds a control character cannot be copied', () => {
+    state.catalog = catalog([task('bad', { argv: ['npm', 'run', 'x\u001b[201~\necho PWNED'] })])
+    render()
+    const copy = document.querySelector<HTMLElement>('#out .copy')!
+    expect(copy.hasAttribute('disabled')).toBe(true)
+    expect(copy.dataset['run']).toBeUndefined()
+    expect(copy.getAttribute('title')).toBe(COPY_REFUSED)
+  })
+
+  test('bidi and other controls in task text are shown replaced', () => {
+    const rlo = '\u202e'
+    state.catalog = catalog([
+      task('evil', {
+        display: `just evil${rlo}gnp.exe`,
+        doc: `About${rlo} it`,
+        path: ['just', `e${rlo}x`],
+      }),
+    ])
+    render()
+    const row = document.querySelector('#out tbody tr')!
+    expect(row.querySelector('td.run')!.textContent).toBe('just evil\ufffdgnp.exe')
+    expect(row.querySelector('td.run')!.getAttribute('title')).not.toContain(rlo)
+    expect(row.textContent).not.toContain(rlo)
+    expect(row.innerHTML).not.toContain(rlo)
+  })
+
   test('a task whose parameters could not be read is marked with the reason', () => {
     state.catalog = catalog([task('deploy', { parametersUnknown: 'exec-withheld' }), task('lint')])
     render()
@@ -80,7 +132,27 @@ describe('a row', () => {
   })
 })
 
+describe('the tabs', () => {
+  test('a runner id is escaped in its tab', () => {
+    const hostile = 'x"><img id="pwned">'
+    const doc = catalog([task('build', { runner: hostile, id: `${hostile}:f:build` })])
+    doc.reports[0]!.runner = hostile
+    state.catalog = doc
+    render()
+    expect(document.getElementById('pwned')).toBeNull()
+    const tab = [...$('tabs').querySelectorAll<HTMLElement>('button[data-runner]')].find(
+      (b) => b.dataset['runner'] === hostile,
+    )
+    expect(tab).toBeDefined()
+  })
+})
+
 describe('the run bar', () => {
+  test('shows the argv quoted, as the command line prints it', () => {
+    showRunBar(task('deploy', { argv: ['just', 'deploy', 'a b'] }))
+    expect($('runbar').querySelector('.runbar-cmd')!.textContent).toBe("just deploy 'a b'")
+  })
+
   test('says the arguments are optional when the parameters could not be read', () => {
     showRunBar(task('deploy', { parametersUnknown: 'tool-missing' }))
     expect($('runbar').getAttribute('aria-label')).toBe('Arguments for just deploy')

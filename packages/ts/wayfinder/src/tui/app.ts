@@ -8,6 +8,7 @@
  * arrive during a refresh, and a row can be stale.
  */
 
+import { commandString } from '@osdlc/command-seam'
 import type { Catalog, ChainSegment, RunnerCacheState, Task } from '@osdlc/system-model/detect'
 import { humanAge, humanMs } from '@osdlc/system-model/duration'
 import type { Mode } from '@osdlc/system-model/match'
@@ -18,6 +19,7 @@ import { BIN } from '../app.ts'
 import { splitArgs } from '../args.ts'
 import { orderedCatalog } from '../catalog.ts'
 import type { Settings } from '../config.ts'
+import { COPY_REFUSED, skillCopyText, taskCopyText } from '../core/copy-text.ts'
 import type { TaskHit } from '../core/filter.ts'
 import type { HandOffResult } from '../core/run.ts'
 import { SessionError, type CacheState, type RunPlan, type Session } from '../core/session.ts'
@@ -32,7 +34,6 @@ import {
   runnerLabel,
   withheldLabel,
 } from '../vocabulary.ts'
-import { copyText } from './copy.ts'
 import { isText, namedKey, splitKeys } from './keys-input.ts'
 import {
   cycleDiscovery,
@@ -238,6 +239,9 @@ const errorText = (err: unknown): string => (err instanceof Error ? err.message 
 
 /** Make a terminal UI. Nothing is drawn or probed until {@link Tui.boot}. */
 export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
+  /** `argv` quoted for the shell, as the CLI prints the run line. */
+  const commandLine = (argv: readonly string[]): string =>
+    commandString(argv, { platform: host.platform })
   const state: TuiState = {
     catalog: null,
     cache: [],
@@ -775,7 +779,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
         line(
           [
             { text: '$ ', paint: s.dim },
-            { text: task.argv.join(' ') + ' ', paint: s.bold },
+            { text: terminalSafe(commandLine(task.argv)) + ' ', paint: s.bold },
             { text },
             { text: '█', paint: s.accent },
           ],
@@ -860,7 +864,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     }
     state.inFlight?.abort()
     host.release()
-    host.write(`$ ${terminalSafe(plan.argv.join(' '))}\n`)
+    host.write(`$ ${terminalSafe(commandLine(plan.argv))}\n`)
     if (task.parameters.length > 0 && args.length === 0) {
       host.write(`  takes ${terminalSafe(paramShape(task.parameters))}\n`)
     }
@@ -1019,18 +1023,23 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   }
 
   async function copy(task: Task): Promise<void> {
-    await toClipboard(copyText(task, host.platform), 'copied')
+    await toClipboard(taskCopyText(task, host.platform), 'copied')
   }
 
   /** A skill runs in an agent, so its action copies `/<name>` and spawns nothing. */
   async function copySkill(skill: SkillRow): Promise<void> {
     await toClipboard(
-      skill.invoke,
+      skillCopyText(skill),
       terminalSafe(`copied ${skill.invoke}; type it in ${skill.harnesses.join(', ')}`),
     )
   }
 
-  async function toClipboard(text: string, done: string): Promise<void> {
+  /** Copy `text`; null is text that holds a control character, which is refused. */
+  async function toClipboard(text: string | null, done: string): Promise<void> {
+    if (text === null) {
+      say(COPY_REFUSED, 'warning')
+      return
+    }
     say('copying…')
     let ok = false
     try {

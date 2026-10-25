@@ -2,22 +2,7 @@
  * `^y`: a task's command line on the clipboard.
  */
 
-import { commandString, spawnRunnerAsync } from '@osdlc/command-seam'
-import type { Task } from '@osdlc/system-model/detect'
-
-import { terminalSafe } from '../terminal-text.ts'
-
-/**
- * The line to paste for `task`: its argv quoted for the platform's shell,
- * after a change to the task's directory when it has its own. Built from
- * `argv`, never from `display`, so a name like `dev; curl x | sh` pastes as
- * one quoted word. Control characters are replaced as they are on screen.
- */
-export function copyText(task: Task, platform: NodeJS.Platform = process.platform): string {
-  return terminalSafe(
-    commandString(task.argv, { platform, ...(task.cwd === '.' ? {} : { cwd: task.cwd }) }),
-  )
-}
+import { spawnRunnerAsync } from '@osdlc/command-seam'
 
 /** One clipboard program and its arguments. */
 export interface ClipboardCommand {

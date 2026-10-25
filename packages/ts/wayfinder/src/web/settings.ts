@@ -107,7 +107,13 @@ function layerNote(key: string): string {
   const layer = settingSource(loaded, key)
   const where =
     layer === 'project' ? 'this project' : layer === 'user' ? 'your user config' : 'the default'
-  return '<span class="set-layer" data-layer="' + layer + '">' + escapeHtml(where) + '</span>'
+  return (
+    '<span class="set-layer" data-layer="' +
+    escapeHtml(layer) +
+    '">' +
+    escapeHtml(where) +
+    '</span>'
+  )
 }
 
 function section(title: string, key: string | null, body: string): string {
@@ -145,8 +151,8 @@ function runnersSection(): string {
       // On or off is the setting. Withheld is a separate fact: an enabled
       // runner that was not read this time.
       const note = on && withheld.has(name) ? ', ' + withheldNote(name) : ''
-      // What the tool is, from `way providers`. Its text may come from the
-      // repository's own tool module, so it is escaped.
+      // What the tool is, from `way providers`. Text, so it is escaped, as
+      // all text is.
       const tool = toolInfo(name)
       const about =
         tool === undefined
@@ -450,7 +456,7 @@ function screen(): string {
     notice === null
       ? ''
       : '<p class="set-notice" role="status" data-kind="' +
-        notice.kind +
+        escapeHtml(notice.kind) +
         '">' +
         escapeHtml(notice.text) +
         '</p>'

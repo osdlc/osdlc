@@ -49,6 +49,11 @@ export function terminalSafe(text: string, opts: { multiline?: boolean } = {}): 
   return text.replace(opts.multiline === true ? CONTROL_KEEP_LINES : CONTROL, REPLACEMENT)
 }
 
+/** True when `text` holds a character {@link terminalSafe} replaces. */
+export function hasControls(text: string): boolean {
+  return new RegExp(CONTROL.source).test(text)
+}
+
 /**
  * `JSON.stringify(value, null, indent)` with DEL, C1 and the bidi controls
  * written as `\u` escapes. It parses to the same value, and is safe to print

@@ -671,13 +671,15 @@ export function wireInput(): void {
  * be reported as a copy. Returns whether the write succeeded.
  */
 async function copyCommand(copy: HTMLElement): Promise<boolean> {
-  let ok = true
+  // A button with no text to copy refused it: the text held a control character.
+  const text = copy.dataset.run
+  let ok = text !== undefined
   try {
-    await navigator.clipboard.writeText(copy.dataset.run ?? '')
+    if (text !== undefined) await navigator.clipboard.writeText(text)
   } catch {
     ok = false
   }
-  copy.textContent = ok ? 'copied' : 'blocked'
+  copy.textContent = ok ? 'copied' : text === undefined ? 'refused' : 'blocked'
   if (ok) copy.classList.add('done')
   setTimeout(() => {
     copy.textContent = 'copy'

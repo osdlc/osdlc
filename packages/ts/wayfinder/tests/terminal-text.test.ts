@@ -24,9 +24,8 @@ import {
   safeStdout,
   terminalSafe,
 } from '../src/terminal-text.ts'
-import { copyText as tuiCopyText } from '../src/tui/copy.ts'
+import { skillCopyText, taskCopyText } from '../src/core/copy-text.ts'
 import { cleanupAll, testTui } from './tui-support.ts'
-import { copyText } from '../src/web/view.ts'
 
 /** OSC 52: put "echo hi" on the clipboard. */
 const CLIPBOARD = '\u001b]52;c;ZWNobyBoaQ==\u0007'
@@ -279,22 +278,22 @@ describe('the serve summary', () => {
 })
 
 describe('copied text', () => {
-  test('the web copy text has no control characters', () => {
-    const t = {
-      display: `npm run x${CLIPBOARD}\u001b[201~; rm -rf ~`,
-      cwd: `pkg${BIDI}`,
-    } as unknown as Task
-    expect(copyText(t)).not.toMatch(RAW_CONTROL)
-    expect(copyText({ ...t, cwd: '.' })).not.toMatch(RAW_CONTROL)
+  test('a task line with a control character is refused, on every surface', () => {
+    const t = { argv: ['npm', 'run', `x${CLIPBOARD}`], cwd: '.' } as unknown as Task
+    expect(taskCopyText(t, 'linux')).toBeNull()
+    expect(
+      taskCopyText({ argv: ['npm'], cwd: `pkg${BIDI}` } as unknown as Task, 'linux'),
+    ).toBeNull()
   })
 
-  test("the terminal UI's copied text has no control character, and quotes each word", () => {
-    const t = {
-      argv: ['npm', 'run', `x${CLIPBOARD}; rm -rf ~`],
-      cwd: `pkg${BIDI}`,
-    } as unknown as Task
-    expect(tuiCopyText(t, 'linux')).not.toMatch(RAW_CONTROL)
-    expect(tuiCopyText({ ...t, cwd: '.' }, 'linux')).toMatch(/^npm run '.*; rm -rf ~'$/)
+  test('a skill with a control character is refused', () => {
+    expect(skillCopyText({ invoke: '/ok\u001b[201~\necho PWNED\n' })).toBeNull()
+    expect(skillCopyText({ invoke: '/review' })).toBe('/review')
+  })
+
+  test('a task line quotes each word', () => {
+    const t = { argv: ['npm', 'run', 'x; rm -rf ~'], cwd: '.' } as unknown as Task
+    expect(taskCopyText(t, 'linux')).toBe("npm run 'x; rm -rf ~'")
   })
 })
 

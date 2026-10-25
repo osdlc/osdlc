@@ -19,6 +19,7 @@
 import { join } from 'node:path'
 
 import { envVars, systemBaseDirs, TieredDirs, type EnvVars } from '@osdlc/tiered-dirs'
+import { xdgHome } from '@osdlc/trust-repo'
 
 import { APP } from './app.ts'
 
@@ -96,12 +97,37 @@ export function appDirs(opts: AppDirsOptions): AppDirs {
 }
 
 /**
- * Expand a leading `~` against `home`; anything else is returned unchanged.
+ * The base directories releases before 0.8 used, on every platform:
+ * `$XDG_CONFIG_HOME`, `$XDG_STATE_HOME` and `$XDG_CACHE_HOME`, else
+ * `~/.config`, `~/.local/state` and `~/.cache`. The `WAYFINDER_*` variables
+ * did not exist then and are not read. Only `way clean --legacy` and the
+ * Windows move warning use these.
+ */
+export function pre08Bases(
+  env: Record<string, string | undefined>,
+  home: string,
+): { config: string; state: string; cache: string } {
+  return {
+    config: xdgHome(env, home, 'XDG_CONFIG_HOME', '.config'),
+    state: xdgHome(env, home, 'XDG_STATE_HOME', '.local', 'state'),
+    cache: xdgHome(env, home, 'XDG_CACHE_HOME', '.cache'),
+  }
+}
+
+/**
+ * Expand a leading `~` against `home`, and `~\` too on Windows; anything
+ * else is returned unchanged.
  * direnv, `.env` loaders and CI YAML pass a literal tilde through, and
  * `<cwd>/~/x` would be a silent wrong answer.
  */
-export function expandTilde(path: string, home: string): string {
+export function expandTilde(
+  path: string,
+  home: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
   if (path === '~') return home
-  if (path.startsWith('~/')) return join(home, path.slice(2))
+  if (path.startsWith('~/') || (platform === 'win32' && path.startsWith('~\\'))) {
+    return join(home, path.slice(2))
+  }
   return path
 }

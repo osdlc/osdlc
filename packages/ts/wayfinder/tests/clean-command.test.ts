@@ -10,6 +10,7 @@ import { join } from 'node:path'
 
 import { renderShim } from '@osdlc/cli-tool/devlink'
 
+import { CONFIG_SCHEMA_URL } from '../src/config.ts'
 import { WAYFINDER_SPEC } from '../src/devlink.ts'
 import { runWay, wayApp } from './app-support.ts'
 import { fixtureRoot, removeRoot } from './support.ts'
@@ -66,6 +67,17 @@ describe('way clean', () => {
     expect(await exists(p.config)).toBe(true)
   })
 
+  test('the report lines up every store under the longest flag', async () => {
+    const p = await populated()
+    const lines = (await clean(p.home, [])).out.split('\n')
+    const starts = lines
+      .filter((l) => /^ {2}--/.test(l))
+      .map((l) => l.search(/(?<=^ {2}--\S+ +)\S/))
+    expect(new Set(starts).size).toBe(1)
+    const paths = lines.filter((l) => l.includes(p.home)).map((l) => l.search(/\S/))
+    expect(new Set([...paths, ...starts]).size).toBe(1)
+  })
+
   test('--json reports sizes, and null for an empty store', async () => {
     const p = await populated()
     const ran = await clean(p.home, ['--json'])
@@ -119,7 +131,7 @@ describe('way clean', () => {
   test('a config WAYFINDER_CONFIG names is named in the report, the refusal and before removal', async () => {
     const p = await populated()
     const own = join(p.home, 'dotfiles', 'way.json')
-    await put(own)
+    await put(own, JSON.stringify({ $schema: CONFIG_SCHEMA_URL }))
     const env = { WAYFINDER_CONFIG: own }
     expect((await clean(p.home, [], env)).out).toContain('from WAYFINDER_CONFIG')
     const refused = await clean(p.home, ['--user-config'], env)
@@ -130,6 +142,44 @@ describe('way clean', () => {
     // Nothing above a file the variable names is removed.
     expect(await exists(join(p.home, 'dotfiles'))).toBe(true)
     expect(await exists(p.config)).toBe(true)
+  })
+
+  test('a WAYFINDER_CONFIG that names the home or a directory is not removed', async () => {
+    // '/' is left out: a regression would then remove the real filesystem.
+    for (const named of ['~', '~/', 'dir']) {
+      const p = await populated()
+      const sentinel = join(p.home, 'keep.txt')
+      await put(sentinel, 'mine')
+      const dir = join(p.home, 'somedir')
+      await put(join(dir, 'inside.txt'), 'mine')
+      const value = named === 'dir' ? dir : named
+      const ran = await clean(p.home, ['--user-config', '--yes'], { WAYFINDER_CONFIG: value })
+      expect(ran.exit, named).toBe(1)
+      expect(ran.err).toContain('not removing')
+      expect(await exists(sentinel)).toBe(true)
+      expect(await exists(join(dir, 'inside.txt'))).toBe(true)
+    }
+  })
+
+  test('a WAYFINDER_CONFIG file wayfinder did not write is not removed', async () => {
+    const p = await populated()
+    const own = join(p.home, 'notes.json')
+    await put(own, '{"mine": true}')
+    const ran = await clean(p.home, ['--user-config', '--yes'], { WAYFINDER_CONFIG: own })
+    expect(ran.exit).toBe(1)
+    expect(ran.err).toContain('did not write it')
+    expect(await exists(own)).toBe(true)
+  })
+
+  test('a user config path that is a directory is not removed', async () => {
+    const home = await fixtureRoot({})
+    roots.push(home)
+    const config = join(home, '.config', 'wayfinder', 'config.json')
+    await put(join(config, 'inside.txt'))
+    const ran = await clean(home, ['--user-config', '--yes'])
+    expect(ran.exit).toBe(1)
+    expect(ran.err).toContain('it is not a file')
+    expect(await exists(join(config, 'inside.txt'))).toBe(true)
   })
 
   test('--dev removes link state and the marked shims, and leaves other files on PATH', async () => {
@@ -167,6 +217,42 @@ describe('way clean', () => {
     const app = wayApp({ platform: 'darwin' })
     expect((await runWay(['clean', '--legacy'], { cwd: p.home, home: p.home, app })).exit).toBe(0)
     expect(await exists(native)).toBe(false)
+  })
+
+  test('--legacy ignores the WAYFINDER_* overrides, so it never reaches a live store', async () => {
+    const p = await populated()
+    const env = { WAYFINDER_ROOT: join(p.home, 'Library', 'Application Support') }
+    const app = wayApp({ platform: 'darwin' })
+    const report = await runWay(['clean', '--json'], { cwd: p.home, home: p.home, env, app })
+    const stores = (report.json() as { stores: { key: string; path: string }[] }).stores
+    const dev = stores.find((s) => s.key === 'dev')!.path
+    await put(join(dev, 'link.json'))
+    const ran = await runWay(['clean', '--legacy'], { cwd: p.home, home: p.home, env, app })
+    expect(ran.exit).toBe(0)
+    expect(await exists(join(dev, 'link.json'))).toBe(true)
+  })
+
+  test('--legacy finds the old cache where old releases kept it, not under WAYFINDER_CACHE_DIR', async () => {
+    const p = await populated()
+    const mine = join(p.home, 'waypost', 'notes.txt')
+    await put(mine, 'mine')
+    const old = join(p.home, '.cache', 'waypost', 'a.json')
+    await put(old)
+    const ran = await clean(p.home, ['--legacy'], { WAYFINDER_CACHE_DIR: p.home })
+    expect(ran.exit).toBe(0)
+    expect(await exists(mine)).toBe(true)
+    expect(await exists(old)).toBe(false)
+  })
+
+  test('on Windows --legacy lists and removes the stores from before 0.8', async () => {
+    const p = await populated()
+    const app = wayApp({ platform: 'win32' })
+    const report = await runWay(['clean'], { cwd: p.home, home: p.home, app })
+    expect(report.out).toContain('the user config from before 0.8')
+    const ran = await runWay(['clean', '--legacy'], { cwd: p.home, home: p.home, app })
+    expect(ran.exit).toBe(0)
+    expect(await exists(p.config)).toBe(false)
+    expect(await exists(p.trust)).toBe(false)
   })
 
   test('--everything needs --yes, then removes every store', async () => {
