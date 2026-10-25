@@ -118,6 +118,8 @@ describe('config', () => {
   test('parseConfigValue reads JSON, else the bare string', () => {
     expect(parseConfigValue('["a"]')).toEqual(['a'])
     expect(parseConfigValue('git')).toBe('git')
+    expect(() => parseConfigValue('1e400')).toThrow(ConfigUsageError)
+    expect(parseConfigValue('-5')).toBe(-5)
     expect(parseConfigValue('true')).toBe(true)
   })
 
@@ -520,5 +522,23 @@ describe('text output drops terminal controls', () => {
     expect(list.err).toContain('t: warning: bad red')
     expect(show.out).toBe('not trusted /r\n')
     expect(guide.out).toContain('data here\n\tindented')
+  })
+})
+
+describe('config edge cases', () => {
+  test('a number too large for JSON is a usage error', async () => {
+    const r = await runApp(appWith(), ['config', 'set', 'discovery', '1e400'])
+    expect(r.exit).toBe(2)
+    expect(r.err).toContain('1e400 is too large for a number')
+  })
+
+  test('get of a key above a listed one keeps a __proto__ part as a key', async () => {
+    const store = memoryStore()
+    store.list = async () => ({
+      settings: [{ key: 'a.__proto__', value: 1, source: 'user' }],
+    })
+    const r = await runApp(appWith(store), ['config', 'get', 'a', '--json'])
+    expect(r.json()).toMatchObject({ key: 'a', value: { ['__proto__']: 1 } })
+    expect(Object.hasOwn(r.json<{ value: object }>().value, '__proto__')).toBe(true)
   })
 })

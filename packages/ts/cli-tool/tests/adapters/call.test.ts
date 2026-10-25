@@ -346,6 +346,53 @@ describe('App.call', () => {
     expect((await runApp(app, ['config', 'set', 'trust.paths', '[]', '--user'])).exit).toBe(0)
   })
 
+  test('another spelling of a trust key is still cli-only', async () => {
+    const { app } = fixture()
+    for (const key of ['TRUST.paths', ' trust.paths', 'trust .paths', 'trust[paths]', 'Trust']) {
+      expect(
+        await app.call(['config', 'set'], { key, value: '["/"]' }, CTX, { surface: 'mcp' }),
+      ).toMatchObject({ status: 'refused', reason: 'cli-only' })
+    }
+    // A key the store does not list may be its spelling of a guarded one.
+    expect(
+      await app.call(['config', 'set'], { key: 'trust_paths', value: '[]' }, CTX, {
+        surface: 'mcp',
+      }),
+    ).toMatchObject({ status: 'refused', reason: 'cli-only' })
+  })
+
+  test("the store's resolveKey decides which key a write reaches", async () => {
+    const { configCommands } = await import('../../src/config-command.ts')
+    const { defineApp } = await import('../../src/command/index.ts')
+    const written: string[] = []
+    const app = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      commands: {
+        config: configCommands({
+          layers: ['user'],
+          defaultLayer: 'user',
+          cliOnlyKeys: ['trust.paths'],
+          resolveKey: (key) => (key === 'allow' ? 'trust.paths' : key === 'nope' ? undefined : key),
+          list: async () => ({ settings: [] }),
+          locations: async () => [],
+          async set(_ctx, _layer, key, value) {
+            written.push(key)
+            return { file: '/u.json', value }
+          },
+          unset: async () => ({ file: '/u.json', removed: true }),
+        }),
+      },
+    })
+    const set = (key: string) =>
+      app.call(['config', 'set'], { key, value: '1' }, CTX, { surface: 'mcp' })
+    expect(await set('allow')).toMatchObject({ status: 'refused' })
+    expect(await set('nope')).toMatchObject({ status: 'refused' })
+    expect(await set('other')).toMatchObject({ status: 'ok' })
+    expect(written).toEqual(['other'])
+  })
+
   test("a call's events reach onEvent as lines, and its signal reaches the command", async () => {
     const f = fixture()
     const lines: unknown[] = []

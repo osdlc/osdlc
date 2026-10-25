@@ -454,7 +454,7 @@ a list, for a bundler that collects the modules itself.
 
 | Entry | Mount it as | The tool supplies |
 |---|---|---|
-| `config-command` | `config: configCommands(store)` | a `ConfigStore`: `layers`, `defaultLayer`, `keys`, `list`, `locations`, `set`, `unset`, and optionally `cliOnlyKeys` and `explain` |
+| `config-command` | `config: configCommands(store)` | a `ConfigStore`: `layers`, `defaultLayer`, `keys`, `list`, `locations`, `set`, `unset`, and optionally `cliOnlyKeys`, `resolveKey` and `explain` |
 | `trust-command` | `trust: trustCommand(service)` | a `TrustService`: `trust`, `untrust`, `show`, `list`, and optionally `untrustAll` and `scopes` for `--scope` |
 | `guide` | `guide: guideCommand(topics, { title })` | `GuideTopic`s: `{ id, title, summary, body(ctx) }` |
 
@@ -469,9 +469,14 @@ Each store method receives the command context, so it can read `ctx.cwd`,
   ignored. It answers `{ key, value, source, reason, layers }` and exits 1 when
   no layer sets the key.
 - `cliOnlyKeys` on the store names keys `set` and `unset` write from the
-  command line only, such as `trust`. The adapters refuse a write of one.
+  command line only, such as `trust`. The adapters refuse a write of one, of
+  a key under one or of a key above one. Keys are compared without regard to
+  case, spaces or `a[b]` for `a.b`. A store that accepts other spellings
+  (aliases, say) gives `resolveKey(key)`, and the check runs on the key it
+  names; a key it does not know is refused. When the store lists `keys`, a
+  key under none of them is refused too.
 - `config` with no subcommand lists. Each writable layer is a flag
-  (`--user`, `--project`). A value is read as JSON, else as the bare string.
+  (`--user`, `--project`). A value is read as JSON, else as the bare string; a number too large for JSON (`1e400`) is a usage error.
   An unknown key or a wrong value (`ConfigUsageError` from `set`) exits 2 with a
   did-you-mean. A `get` with no value or an `unset` of a key not set in that
   layer exits 1.
