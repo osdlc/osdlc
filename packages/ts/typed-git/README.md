@@ -56,6 +56,19 @@ and caches the answer. A client that never calls such a verb never runs it.
 version: `{ major, minor, patch, text }`, where `text` keeps a vendor suffix
 such as `2.39.3 (Apple Git-146)` or `2.45.1.windows.1`.
 
+The answer is cached per runner and per effective `PATH` (the call's `env`
+over the client's over the process's; `PATHEXT` too on Windows), because the
+default runner runs whichever `git` that `PATH` finds. The probe runs in the
+OS temp directory, so a missing cwd cannot fail it; the verb itself still
+runs in its own cwd. A failed probe is not cached, and its failure names the
+verb that asked (`git worktree: …`), not `--version`.
+
+`AsyncGit` callers that probe at the same time share one probe. It runs with
+no caller's `signal` and a fixed 15 s limit. Each caller waits under its own
+`timeoutMs` and `signal`, so one that gives up rejects alone. The sync client
+probes under the call's `timeoutMs` (15 s at most). Either way the first gated
+call can take up to the probe's time plus its own `timeoutMs`.
+
 The `gitVersion` option pins the version instead: `new Git(cwd, { runner,
 gitVersion: "2.55.0" })`, or `cliBackend({ runner, gitVersion: "2.55.0" })`.
 It takes a version string, either `"2.55.0"` or a whole

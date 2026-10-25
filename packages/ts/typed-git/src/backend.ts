@@ -531,8 +531,17 @@ export function cliBackend(
 ): GitBackend {
   const runner = opts.runner ?? spawnRunnerAsync('git', { absolutePathOnly: true })
   const pinned = pinnedGitVersion(opts.gitVersion)
-  const versionOf = (run: AsyncCommandRunOptions): Promise<GitVersion> =>
-    pinned === undefined ? probeGitVersionAsync(runner, run) : Promise.resolve(pinned)
+  // A failed probe names `report`: the gated verb's argv, so a missing git
+  // reads `git worktree: …` rather than `git --version: …`.
+  const versionOf = (run: AsyncCommandRunOptions, report: string[]): Promise<GitVersion> =>
+    pinned === undefined
+      ? probeGitVersionAsync(runner, {
+          env: run.env,
+          timeoutMs: run.timeoutMs,
+          signal: run.signal,
+          report,
+        })
+      : Promise.resolve(pinned)
   const prefix = repoPrefix(opts.gitDir, opts.workTree)
   return {
     async execute<R extends GitRequest>(
@@ -552,12 +561,14 @@ export function cliBackend(
       // `version` is answered from the per-runner cache, like the probe a
       // version-gated verb makes.
       if (req.kind === 'version') {
-        return (await versionOf(runOpts)) as GitResults[R['kind']]
+        return (await versionOf(runOpts, ['--version'])) as GitResults[R['kind']]
       }
       // A verb that needs a git feature runs in the form this git supports,
       // or rejects as `unsupported-git`. Others never probe.
       const verb =
-        gated.needs === undefined ? gated : versionedVerb(gated, await versionOf(runOpts), prefix)
+        gated.needs === undefined
+          ? gated
+          : versionedVerb(gated, await versionOf(runOpts, [...prefix, ...gated.argv]), prefix)
       if (verb.input !== undefined) runOpts.input = verb.input
       // The verb's own entries (the C locale) win over the backend's and the call's.
       if (verb.env !== undefined) runOpts.env = { ...runOpts.env, ...verb.env }

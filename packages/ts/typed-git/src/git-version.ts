@@ -7,17 +7,22 @@
  * `Git` and its `at()` copies, every `AsyncGit` over one `cliBackend`) probes
  * once between them.
  *
+ * The cache key is the runner and the effective `PATH`, because a runner
+ * that finds git on `PATH` runs whichever git the call's `PATH` names.
+ *
  * A failed probe is not cached: a missing git is reported on each call, as it
  * is for any other verb.
  */
 
+import { tmpdir } from 'node:os'
+
 import {
   CommandFailed,
   type AsyncCommandRunner,
-  type AsyncCommandRunOptions,
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
+  type EnvOverrides,
 } from '@osdlc/command-seam'
 
 import { gate, type GitVerb } from './verbs.ts'
@@ -82,54 +87,191 @@ export function versionVerb(): GitVerb<GitVersion> {
     env: { LC_ALL: 'C' },
     parse(r: CommandResult, ranArgv: string[]) {
       const version = parseGitVersion(r.stdout)
-      if (version === null) throw new CommandFailed(ranArgv, r)
+      if (version === null) {
+        // Exit 0 with no version line has no git error to show, so say what
+        // was wrong in the failure's own words.
+        const first = r.stdout.trim().split(/\r?\n/, 1)[0] ?? ''
+        const said = first === '' ? 'nothing' : JSON.stringify(first)
+        throw new CommandFailed(ranArgv, {
+          ...r,
+          stderr:
+            r.stderr.trim() === '' ? `git --version printed ${said}, not a version` : r.stderr,
+        })
+      }
       return version
     },
   }
 }
 
-function probeOptions<O extends CommandRunOptions | AsyncCommandRunOptions>(
-  run: O,
-  verb: GitVerb<GitVersion>,
-): O {
-  // The call's cwd, timeout, output cap and environment, but never its stdin.
-  const { input: _input, ...rest } = run
-  return { ...rest, env: { ...run.env, ...verb.env } } as O
+/**
+ * The time limit on the `git --version` probe itself. In the async client the
+ * probe is shared between concurrent callers, so no caller's own timeout or
+ * signal applies to it; each caller races its own against it instead.
+ */
+export const PROBE_TIMEOUT_MS = 15_000
+
+/**
+ * Where the probe runs: the OS temp directory, which always exists. The
+ * answer is cached per runner and `PATH`, not per directory, so a caller's
+ * cwd must not decide it, and a missing cwd must not fail it for others. The
+ * verb that asked still runs in its own cwd, and reports a bad one itself.
+ */
+function probeCwd(): string {
+  return tmpdir()
 }
 
-const syncCache = new WeakMap<CommandRunner, GitVersion>()
-const asyncCache = new WeakMap<AsyncCommandRunner, Promise<GitVersion>>()
+/** The probe's run options: the caller's environment, the C locale, the fixed cwd and time limit. */
+function probeOptions(
+  env: EnvOverrides | undefined,
+  verb: GitVerb<GitVersion>,
+  timeoutMs: number,
+): CommandRunOptions {
+  return { cwd: probeCwd(), env: { ...env, ...verb.env }, timeoutMs }
+}
 
-/** The version of the git `runner` runs: probed on the first call, then cached for that runner. */
-export function probeGitVersion(runner: CommandRunner, run: CommandRunOptions): GitVersion {
-  const cached = syncCache.get(runner)
-  if (cached !== undefined) return cached
-  const verb = versionVerb()
-  const version = gate(verb, runner.run(verb.argv, probeOptions(run, verb)), verb.argv)
-  syncCache.set(runner, version)
+/** `env[name]` from the environment the runner sees, without case on Windows (`Path`). */
+function effective(env: EnvOverrides | undefined, name: string): string | undefined {
+  const merged: Record<string, string | undefined> = { ...process.env, ...env }
+  if (process.platform !== 'win32') return merged[name]
+  // The last matching key wins, as a later spread would.
+  let value: string | undefined
+  for (const [key, v] of Object.entries(merged)) if (key.toUpperCase() === name) value = v
+  return value
+}
+
+/**
+ * The cache key within one runner: the effective `PATH` (and `PATHEXT` on
+ * Windows), the call's `env` over the process's. An absolute-path-only runner
+ * looks `git` up on that `PATH`, so one runner can run two gits.
+ */
+function pathKey(env: EnvOverrides | undefined): string {
+  const path = effective(env, 'PATH') ?? '\u0000unset'
+  return process.platform === 'win32' ? `${path}\u0000${effective(env, 'PATHEXT') ?? ''}` : path
+}
+
+/** Per runner, per `PATH`: the version once known. */
+const known = new WeakMap<object, Map<string, GitVersion>>()
+/** Per async runner, per `PATH`: the probe in flight, shared by concurrent callers. */
+const inFlight = new WeakMap<AsyncCommandRunner, Map<string, Promise<CommandResult>>>()
+
+function knownFor(runner: object, key: string): GitVersion | undefined {
+  return known.get(runner)?.get(key)
+}
+
+function remember(runner: object, key: string, version: GitVersion): GitVersion {
+  let byPath = known.get(runner)
+  if (byPath === undefined) known.set(runner, (byPath = new Map()))
+  byPath.set(key, version)
   return version
 }
 
 /**
- * {@link probeGitVersion} for an async runner. Concurrent first calls share
- * one probe. A probe that fails is dropped from the cache, so the next call
- * tries again.
+ * What a probe call needs from the call that asked: its environment, its
+ * time limit and signal, and the argv a probe failure reports.
  */
-export function probeGitVersionAsync(
-  runner: AsyncCommandRunner,
-  run: AsyncCommandRunOptions,
-): Promise<GitVersion> {
-  const cached = asyncCache.get(runner)
+export interface ProbeCall {
+  env?: EnvOverrides | undefined
+  timeoutMs?: number | undefined
+  signal?: AbortSignal | undefined
+  /**
+   * The argv the failure names when the probe fails: the gated verb's, with
+   * the client's repository flags, so a missing git reads `git worktree: …`
+   * rather than `git --version: …`. `['--version']` for `version()` itself.
+   */
+  report: string[]
+}
+
+/**
+ * The version of the git `runner` runs, for the call's `PATH`: probed on the
+ * first call, then cached. A failed probe is not cached. The probe runs under
+ * the call's `timeoutMs`, or {@link PROBE_TIMEOUT_MS} when it has none, so the
+ * first gated call can take up to the probe's time plus its own `timeoutMs`.
+ */
+export function probeGitVersion(runner: CommandRunner, call: ProbeCall): GitVersion {
+  const key = pathKey(call.env)
+  const cached = knownFor(runner, key)
   if (cached !== undefined) return cached
   const verb = versionVerb()
-  const probe = runner
-    .run(verb.argv, probeOptions(run, verb))
-    .then((result) => gate(verb, result, verb.argv))
-  asyncCache.set(runner, probe)
-  probe.catch(() => {
-    if (asyncCache.get(runner) === probe) asyncCache.delete(runner)
+  const timeoutMs = Math.min(call.timeoutMs ?? PROBE_TIMEOUT_MS, PROBE_TIMEOUT_MS)
+  const result = runner.run(verb.argv, probeOptions(call.env, verb, timeoutMs))
+  return remember(runner, key, gate(verb, result, call.report))
+}
+
+/** A result standing in for a probe this caller stopped waiting for. */
+function stopped(reason: 'timeout' | 'abort'): CommandResult {
+  return {
+    exitCode: 1,
+    stdout: '',
+    stderr: '',
+    neverExited: true,
+    reason,
+    error:
+      reason === 'abort'
+        ? 'The operation was aborted'
+        : 'timed out waiting for the git --version probe',
+  }
+}
+
+/** `probe`, or a stand-in result when the caller's own timeout or signal ends first. */
+function race(
+  probe: Promise<CommandResult>,
+  timeoutMs: number | undefined,
+  signal: AbortSignal | undefined,
+): Promise<CommandResult> {
+  if (signal?.aborted === true) return Promise.resolve(stopped('abort'))
+  const usable =
+    typeof timeoutMs === 'number' && Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? Math.min(timeoutMs, 2 ** 31 - 1)
+      : undefined
+  if (usable === undefined && signal === undefined) return probe
+  return new Promise((resolve, reject) => {
+    const timer =
+      usable === undefined ? undefined : setTimeout(() => done(stopped('timeout')), usable)
+    const onAbort = () => done(stopped('abort'))
+    function done(result: CommandResult): void {
+      if (timer !== undefined) clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+      resolve(result)
+    }
+    signal?.addEventListener('abort', onAbort, { once: true })
+    probe.then(done, (error: unknown) => {
+      if (timer !== undefined) clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+      reject(error)
+    })
   })
-  return probe
+}
+
+/**
+ * {@link probeGitVersion} for an async runner. Concurrent first calls with
+ * the same `PATH` share one probe, which runs with no caller's signal and a
+ * fixed {@link PROBE_TIMEOUT_MS} limit. Each caller waits for it under its own
+ * `timeoutMs` and `signal`, so a caller that gives up rejects alone and the
+ * probe goes on for the others. Each caller reads the shared result itself,
+ * so a failure names that caller's verb. A failed probe is not cached.
+ */
+export async function probeGitVersionAsync(
+  runner: AsyncCommandRunner,
+  call: ProbeCall,
+): Promise<GitVersion> {
+  const key = pathKey(call.env)
+  const cached = knownFor(runner, key)
+  if (cached !== undefined) return cached
+  const verb = versionVerb()
+  let byPath = inFlight.get(runner)
+  if (byPath === undefined) inFlight.set(runner, (byPath = new Map()))
+  let probe = byPath.get(key)
+  if (probe === undefined) {
+    const started = runner.run(verb.argv, probeOptions(call.env, verb, PROBE_TIMEOUT_MS))
+    probe = started
+    byPath.set(key, started)
+    const settle = () => {
+      if (byPath.get(key) === started) byPath.delete(key)
+    }
+    started.then(settle, settle)
+  }
+  const result = await race(probe, call.timeoutMs, call.signal)
+  return knownFor(runner, key) ?? remember(runner, key, gate(verb, result, call.report))
 }
 
 /**

@@ -268,14 +268,19 @@ export class Git {
    */
   private exec<T>(gated: GitVerb<T>, opts: GitSyncCallOptions = {}): T {
     const run = this.runOpts(opts)
-    const verb =
-      gated.needs === undefined
-        ? gated
-        : versionedVerb(
-            gated,
-            this.pinnedVersion ?? probeGitVersion(this.runner, run),
-            repoPrefix(this.boundGitDir, this.workTree),
-          )
+    let verb = gated
+    if (gated.needs !== undefined) {
+      const prefix = repoPrefix(this.boundGitDir, this.workTree)
+      // A failed probe names this verb's argv, not `--version`.
+      const have =
+        this.pinnedVersion ??
+        probeGitVersion(this.runner, {
+          env: run.env,
+          timeoutMs: run.timeoutMs,
+          report: [...prefix, ...gated.argv],
+        })
+      verb = versionedVerb(gated, have, prefix)
+    }
     if (verb.input !== undefined) run.input = verb.input
     // The verb's own entries (the C locale) win over the client's and the call's.
     if (verb.env !== undefined) run.env = { ...run.env, ...verb.env }
@@ -295,7 +300,13 @@ export class Git {
    * version, and nothing runs.
    */
   version(opts: GitSyncCallOptions = {}): GitVersion {
-    return this.pinnedVersion ?? probeGitVersion(this.runner, this.runOpts(opts))
+    if (this.pinnedVersion !== undefined) return this.pinnedVersion
+    const run = this.runOpts(opts)
+    return probeGitVersion(this.runner, {
+      env: run.env,
+      timeoutMs: run.timeoutMs,
+      report: ['--version'],
+    })
   }
 
   /** A file's content at a rev (`git show <rev>:<relPath>`), null if absent. */

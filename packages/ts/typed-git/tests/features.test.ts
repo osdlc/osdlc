@@ -7,8 +7,7 @@
  * gated verbs against the real git on this machine.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs'
-import { readFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -19,6 +18,7 @@ import { FailureError } from '@osdlc/result'
 import {
   AsyncGit,
   cliBackend,
+  spawnRunner,
   GIT_FEATURES,
   GIT_FLOOR,
   Git,
@@ -33,6 +33,7 @@ import {
   type GitFeatureSpec,
 } from '../src/index.ts'
 import { makeGitFixture } from '../src/testing.ts'
+import { PROBE_TIMEOUT_MS } from '../src/git-version.ts'
 import * as v from '../src/verbs.ts'
 import { LOCAL_GIT, missingGitFeature } from './local-git.ts'
 
@@ -104,10 +105,10 @@ describe('version()', () => {
   })
 
   test('the probe runs in the C locale, with the call options but no repository flags', () => {
-    const seen: Array<{ argv: string[]; env?: unknown; timeoutMs?: number }> = []
+    const seen: Array<{ argv: string[]; cwd: string; env?: unknown; timeoutMs?: number }> = []
     const runner: CommandRunner = {
       run(argv, opts) {
-        const call: (typeof seen)[number] = { argv: [...argv] }
+        const call: (typeof seen)[number] = { argv: [...argv], cwd: opts.cwd }
         if (opts.env !== undefined) call.env = opts.env
         if (opts.timeoutMs !== undefined) call.timeoutMs = opts.timeoutMs
         seen.push(call)
@@ -115,7 +116,10 @@ describe('version()', () => {
       },
     }
     new Git('/repo', { runner, gitDir: '/store.git', env: { A: '1' } }).version({ timeoutMs: 50 })
-    expect(seen).toEqual([{ argv: ['--version'], env: { A: '1', LC_ALL: 'C' }, timeoutMs: 50 }])
+    // The probe runs in the temp directory, which always exists, not in the client's cwd.
+    expect(seen).toEqual([
+      { argv: ['--version'], cwd: tmpdir(), env: { A: '1', LC_ALL: 'C' }, timeoutMs: 50 },
+    ])
   })
 
   test('a git that is not installed is not-installed, and is not cached', () => {
@@ -135,7 +139,11 @@ describe('version()', () => {
     }
     const git = new Git('/repo', { runner })
     expect(thrown(() => git.version()).kind).toBe('not-installed')
-    expect(thrown(() => git.worktrees()).kind).toBe('not-installed')
+    const viaVerb = thrown(() => git.worktrees())
+    expect(viaVerb.kind).toBe('not-installed')
+    // The probe's failure names the verb that asked, so the user sees `git worktree`.
+    expect(viaVerb.argv).toEqual(['worktree', 'list', '--porcelain', '-z'])
+    expect(() => git.worktrees()).toThrow(/^git worktree: /)
     installed = true
     expect(git.version().minor).toBe(50)
   })
@@ -144,7 +152,10 @@ describe('version()', () => {
     const git = new Git('/repo', { runner: fake(OK('')).sync })
     const failure = thrown(() => git.worktrees())
     expect(failure.kind).toBe('exit')
-    expect(failure.argv).toEqual(['--version'])
+    // The failure names the verb that asked, not the probe.
+    expect(failure.argv).toEqual(['worktree', 'list', '--porcelain', '-z'])
+    expect(failure.message).toBe('git --version printed nothing, not a version')
+    expect(thrown(() => git.version()).argv).toEqual(['--version'])
   })
 
   test('try.version reports the failure', () => {
@@ -387,6 +398,169 @@ describe('a backend other than the CLI', () => {
     expect(await git.mergeTree('a', 'b')).toEqual({ status: 'clean', tree: 't' })
     await expect(git.version()).rejects.toBeInstanceOf(UnsupportedRequest)
   })
+})
+
+describe('the shared async probe', () => {
+  /** An async runner whose `--version` answers only when released. */
+  function gated() {
+    const probes: Array<{ cwd: string; signal: unknown; timeoutMs: unknown }> = []
+    let release: () => void = () => {}
+    const released = new Promise<void>((r) => (release = r))
+    const runner: AsyncCommandRunner = {
+      async run(argv, opts) {
+        if (argv[0] !== '--version') return OK('')
+        probes.push({ cwd: opts.cwd, signal: opts.signal, timeoutMs: opts.timeoutMs })
+        await released
+        return VERSION('2.50.1')
+      },
+    }
+    return { runner, probes, release }
+  }
+
+  test('runs once, in the temp directory, with no caller signal and a fixed limit', async () => {
+    const g = gated()
+    const git = new AsyncGit('/no/such/dir', { backend: cliBackend({ runner: g.runner }) })
+    const both = Promise.all([
+      git.worktrees({ timeoutMs: 60_000 }),
+      git.worktrees({ signal: new AbortController().signal }),
+    ])
+    g.release()
+    await both
+    expect(g.probes).toEqual([{ cwd: tmpdir(), signal: undefined, timeoutMs: PROBE_TIMEOUT_MS }])
+  })
+
+  test('a caller that aborts rejects alone; the probe goes on for the others', async () => {
+    const g = gated()
+    const git = new AsyncGit('/repo', { backend: cliBackend({ runner: g.runner }) })
+    const ctl = new AbortController()
+    const a = git.worktrees({ signal: ctl.signal })
+    const b = git.worktrees()
+    ctl.abort()
+    const failure = await rejected(() => a)
+    expect(failure.kind).toBe('aborted')
+    expect(failure.argv).toEqual(['worktree', 'list', '--porcelain', '-z'])
+    g.release()
+    expect(await b).toEqual([])
+    expect(g.probes).toHaveLength(1)
+    // The answer was cached for the next caller.
+    expect((await git.version()).minor).toBe(50)
+    expect(g.probes).toHaveLength(1)
+  })
+
+  test('an already-aborted signal rejects without waiting', async () => {
+    const g = gated()
+    const git = new AsyncGit('/repo', { backend: cliBackend({ runner: g.runner }) })
+    const ctl = new AbortController()
+    ctl.abort()
+    expect((await rejected(() => git.worktrees({ signal: ctl.signal }))).kind).toBe('aborted')
+    g.release()
+  })
+
+  test('a caller that times out rejects alone; the probe goes on for the others', async () => {
+    const g = gated()
+    const git = new AsyncGit('/repo', { backend: cliBackend({ runner: g.runner }) })
+    const a = git.worktrees({ timeoutMs: 1 })
+    const b = git.worktrees()
+    const failure = await rejected(() => a)
+    expect(failure.kind).toBe('timeout')
+    expect(failure.argv).toEqual(['worktree', 'list', '--porcelain', '-z'])
+    g.release()
+    expect(await b).toEqual([])
+    expect(g.probes).toHaveLength(1)
+  })
+
+  test('real git: a caller with a missing cwd does not fail the others', async () => {
+    const fx = makeGitFixture()
+    try {
+      const backend = cliBackend()
+      const [bad, good] = await Promise.allSettled([
+        new AsyncGit(join(fx.dir, 'no-such-dir'), { backend }).worktrees(),
+        new AsyncGit(fx.dir, { backend }).worktrees(),
+      ])
+      expect(bad.status).toBe('rejected')
+      if (bad.status === 'rejected') {
+        const failure = (bad.reason as FailureError<GitFailure>).failure
+        expect(failure.kind).toBe('bad-cwd')
+        expect(failure.argv[0]).toBe('worktree')
+      }
+      expect(good.status).toBe('fulfilled')
+    } finally {
+      fx.cleanup()
+    }
+  })
+})
+
+describe('the cache is per runner and PATH', () => {
+  /** A runner whose git version depends on the PATH it is given. */
+  function byPath() {
+    const probes: Array<string | undefined> = []
+    const runner: CommandRunner = {
+      run(argv, opts) {
+        if (argv[0] !== '--version') return OK('')
+        const path = opts.env?.['PATH'] ?? process.env['PATH']
+        probes.push(path)
+        return VERSION(path === '/old/bin' ? '2.30.2' : '2.50.1')
+      },
+    }
+    return { runner, probes }
+  }
+
+  test('one runner, two PATHs: two probes, two versions', () => {
+    const { runner, probes } = byPath()
+    const git = new Git('/repo', { runner })
+    const old = new Git('/repo', { runner, env: { PATH: '/old/bin' } })
+    expect(git.version().minor).toBe(50)
+    expect(old.version().minor).toBe(30)
+    expect(thrown(() => old.worktrees()).unsupported?.feature).toBe('typed-git')
+    git.worktrees()
+    expect(git.version({ env: { PATH: '/old/bin' } }).minor).toBe(30)
+    expect(probes).toHaveLength(2)
+  })
+
+  test('at() keeps the client env, and so its cache entry', () => {
+    const { runner, probes } = byPath()
+    const old = new Git('/repo', { runner, env: { PATH: '/old/bin' } })
+    old.version()
+    expect(old.at('/elsewhere').version().minor).toBe(30)
+    expect(probes).toEqual(['/old/bin'])
+  })
+
+  test('async: the same, through one cliBackend runner', async () => {
+    const probes: Array<string | undefined> = []
+    const runner: AsyncCommandRunner = {
+      run: (argv, opts) => {
+        if (argv[0] !== '--version') return Promise.resolve(OK(''))
+        probes.push(opts.env?.['PATH'])
+        return Promise.resolve(VERSION(opts.env?.['PATH'] === '/old/bin' ? '2.30.2' : '2.50.1'))
+      },
+    }
+    const git = new AsyncGit('/repo', { backend: cliBackend({ runner }) })
+    expect((await git.version()).minor).toBe(50)
+    expect((await git.version({ env: { PATH: '/old/bin' } })).minor).toBe(30)
+    expect((await git.version({ env: { PATH: '/old/bin' } })).minor).toBe(30)
+    expect(probes).toHaveLength(2)
+  })
+
+  test.skipIf(process.platform === 'win32')(
+    'real runner: a `git` earlier on PATH is probed as its own git',
+    () => {
+      const bin = mkdtempSync(join(tmpdir(), 'typedgit-fake-git-'))
+      try {
+        const script = join(bin, 'git')
+        writeFileSync(script, '#!/bin/sh\necho "git version 2.30.2"\n')
+        chmodSync(script, 0o755)
+        const runner = spawnRunner('git', { absolutePathOnly: true })
+        const real = new Git(tmpdir(), { runner })
+        const fake = new Git(tmpdir(), { runner, env: { PATH: `${bin}:${process.env['PATH']}` } })
+        expect(real.version()).toEqual(LOCAL_GIT)
+        expect(fake.version().text).toBe('2.30.2')
+        expect(real.at(bin).version()).toEqual(LOCAL_GIT)
+        expect(fake.at(bin).version().text).toBe('2.30.2')
+      } finally {
+        rmSync(bin, { recursive: true, force: true })
+      }
+    },
+  )
 })
 
 describe('the gitVersion option pins the version', () => {

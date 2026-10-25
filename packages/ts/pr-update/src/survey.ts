@@ -269,8 +269,17 @@ export function measure(
  * Unknown counts as unsafe. A check that cannot read the refs has not shown
  * that a rewrite is fine. Being wrong one way costs a needless merge commit.
  * Being wrong the other way loses work that cannot be recovered.
+ *
+ * `worktrees` is `null` when they could not be listed (`git worktree list`
+ * failed, or the git is too old for typed-git). That is unknown too, not "no
+ * checkout of `head`", so it counts as unsafe.
  */
-export function unpushedLocalWork(git: Git, worktrees: readonly Worktree[], head: string): boolean {
+export function unpushedLocalWork(
+  git: Git,
+  worktrees: readonly Worktree[] | null,
+  head: string,
+): boolean {
+  if (worktrees === null) return true
   const wt = worktrees.find((w) => w.branch === head)
   if (wt === undefined) return false
   if (wt.head === null) return true
@@ -283,7 +292,13 @@ export function unpushedLocalWork(git: Git, worktrees: readonly Worktree[], head
 export function surveyRows(
   git: Git,
   prs: readonly CodeHostPrDetail[],
-  opts: { repo: string; worktrees: readonly Worktree[]; cfg: PrUpdateConfig; measurable: boolean },
+  opts: {
+    repo: string
+    /** `null` when they could not be listed; see {@link unpushedLocalWork}. */
+    worktrees: readonly Worktree[] | null
+    cfg: PrUpdateConfig
+    measurable: boolean
+  },
 ): { rows: SurveyRow[]; cycles: number[] } {
   const { order, cycles } = topoOrder(prs)
   const edges = parentEdges(prs)
@@ -673,7 +688,11 @@ export function runSurvey(args: SurveyArgs, env: SurveyEnv): SurveyReport {
           ? git.try.fetch(args.remote, scopedRefspecs(prs, args.remote)).ok
           : git.try.fetch(args.remote, undefined, { prune: true }).ok
         : false
-    const worktrees = measurable ? git.soft.worktrees() : []
+    // `try`, not `soft`: a failed listing must not read as "no checkout holds
+    // this branch", which would clear a force-push. `null` counts as unsafe.
+    const listedWorktrees = measurable ? git.try.worktrees() : null
+    const worktrees =
+      listedWorktrees === null ? [] : listedWorktrees.ok ? listedWorktrees.value : null
 
     const { rows, cycles } = surveyRows(git, prs, {
       repo: target.slug,
