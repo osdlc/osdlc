@@ -65,8 +65,8 @@ Giving two mode flags is a usage error. Trusting an already-trusted
 repository says so and changes nothing. `--untrust` on a root that was not
 trusted exits 1. `--show` exits 0 either way.
 
-A grant is made from the command line only. The MCP and HTTP adapters can
-show and list trust, and refuse a grant.
+A grant is made from the command line only. The web view can show and list
+trust, and its server refuses a grant.
 
 ### One tool's trust
 
@@ -83,7 +83,7 @@ The terminal UI grants trust with `Ctrl+S`, after a `y`/`n` question. The
 web view offers a **Trust this repository** button. Both are offered only
 when trust is what is missing.
 
-When runners are withheld for lack of trust, `--list` and `--json` print a
+When runners are withheld for lack of trust, `list` and `list --json` print a
 line on stderr, the terminal UI shows `2 runners withheld: this repository is
 not trusted (^s to trust)`, and the web view shows the button in a bar above the list, in each
 withheld runner's info panel and in the runner picker.
@@ -210,7 +210,7 @@ to the base directory such as `~/.config`.
 `{key, flag, what, path, bytes, removed, envVar}`. `bytes` is `null` when
 nothing was stored. `envVar` is present when a variable named the path.
 
-Removing is a command-line action: the MCP and HTTP adapters get the report
+Removing is a command-line action: the web view's server gets the report
 only. A store that cannot be removed stops the run with exit 1.
 
 Nothing inside a repository is touched. A project's `wayfinder.config.json`

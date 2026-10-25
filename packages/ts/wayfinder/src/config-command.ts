@@ -5,7 +5,7 @@
  * directory and the project root).
  *
  * `trust`, `allowExec` and `tools` are written from the command line only
- * ({@link CLI_ONLY_KEYS}): the MCP and HTTP adapters refuse them.
+ * ({@link CLI_ONLY_KEYS}): the web view's server refuses them.
  */
 
 import { stat } from 'node:fs/promises'

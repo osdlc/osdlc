@@ -45,7 +45,7 @@ contributor tool, so `way --help` does not list it.
 way dev install          # once: put shims for this checkout on PATH as way and wayfinder
 way dev link             # this checkout answers everywhere, until told otherwise
 way dev history          # every checkout ever linked, most recent first, with branch and HEAD
-way dev use #2           # back to an earlier one …
+way dev use '#2'         # back to an earlier one …
 way dev use canonical    # … or to the install itself
 way dev status           # which checkout runs now, and why
 ```
@@ -226,8 +226,8 @@ moon runs as `mise exec -- moon`, so it needs `--scope moon` and
 `--scope mise`. A withheld runner's entry in `unknowns` names what it still
 needs in `missing`, and once any tool is trusted its label says which, such
 as `withheld: mise is not trusted`. Detection itself never runs a tool under a
-tool grant. A grant is made from the command line only: the MCP and HTTP
-adapters refuse it.
+tool grant. A grant is made from the command line only: the web view's
+server refuses it.
 
 `-C` applies here too. Trust, with execution allowed, also lets the project
 file load tool modules; see
@@ -305,7 +305,7 @@ that `WAYFINDER_CONFIG` names is named again before it is removed, since it
 may live in a dotfiles repository. Once a store is gone, empty directories
 above it are removed, up to the base such as `~/.config`. `clean` never
 touches anything inside a repository: a project's own `wayfinder.config.json`
-belongs to that project. The MCP and HTTP adapters get the report only.
+belongs to that project. The web view's server gets the report only.
 
 The trust store is a directory of marker files at
 `$XDG_STATE_HOME/wayfinder/trusted/`, or `~/.local/state/wayfinder/trusted/`
@@ -418,35 +418,10 @@ describes the limits of this.
 Options you would otherwise type on every run can live in a file: which
 runners to skip, what order to show them in, whether execution is allowed, and
 how files are discovered. The layers, lowest precedence first: built-in
-defaults, `$XDG_CONFIG_HOME/wayfinder/config.json` (or
-`~/.config/wayfinder/config.json`), `wayfinder.config.json` at the project
-root, then the flags on the command line.
-
-The keys are `runners.disabled`, `runners.order`, `allowExec`, `discovery`,
-`excludePaths`, `trust.paths`, `trust.owners`, `trust.tools`, `tools`, `open`,
-`theme` and `skills`. `open` (`tui` or `web`) is what a bare `way` opens.
-`theme` (`system`, `light` or `dark`) is the web view's colour scheme.
-`skills` (`project`, `all` or `off`) chooses the agent skills listed (see
-[Groups](#groups)). `trust`, `open`, `theme` and `skills` count only in the
-user file: a project file's value is dropped with a warning. An unknown key is a warning that names the closest known key.
-
-The package ships the file's JSON Schema at `schema/config.json`, built from
-the same Zod schema that validates the file. `way config set` writes
-`$schema` into a file that has none, keeps the keys in the schema's order,
-and replaces the file in one atomic write.
-
-`WAYFINDER_CONFIG` names a different user file and changes nothing else. A
-relative `WAYFINDER_CONFIG` is ignored with a warning: from the repository
-root it would name a file in the repository. Use an absolute path or `~/`.
-Every command reads it the same way.
-
-The config, state and cache directories follow XDG on every platform.
-`WAYFINDER_ROOT=/dir` moves all three under one directory, and
-`WAYFINDER_CONFIG_DIR`, `WAYFINDER_STATE_DIR` and `WAYFINDER_CACHE_DIR` move
-one each. A relative value there is an error. A relative `HOME` counts as
-unset, and the account's home is used. A relative `XDG_*` value is ignored,
-as the XDG spec says, and a `~` in one is not expanded. See
-[Paths](docs/guide/configuration.md#paths).
+defaults, the user file (`~/.config/wayfinder/config.json` by default),
+`wayfinder.config.json` at the project root, then the flags on the command
+line. `trust`, `open`, `theme` and `skills` count only in the user file, and a
+project file can lower `allowExec` but never raise it.
 
 ```text
 way config list [--json]                          every setting, and the layer it came from
@@ -455,37 +430,11 @@ way config set <key> <value> [--user|--project]   write a setting (default --pro
 way config unset <key> [--user|--project]         remove a setting (default --project)
 way config path                                   where each layer's file lives
 way config explain <key>                          how a setting got its value, layer by layer
-way config --help                                 this list
 ```
 
-`set --project` refuses what a project file may not hold: `allowExec: true`,
-`trust`, `open`, `theme` and `skills`. The web view refuses the same writes. The MCP and
-HTTP adapters cannot change `trust`, `allowExec` or `tools` at all.
-
-`-C` applies here too, so `way config path -C /elsewhere` reports that
-directory's files rather than this one's. Exit code 2 means the command as
-typed cannot run, such as an unknown key or a value of the wrong type. Exit
-code 1 means the command was valid but failed against the state it found.
-
-`runners.order` sets the runner order everywhere: `list`, `query`, the
-terminal UI's tab order, and the web view. Dragging a tab in the web view saves
-the order to your user config. A project's order wins over the user's.
-
-### `allowExec` here
-
-wayfinder's execution default is `true`, and any file overrides it. Highest
-precedence first:
-
-1. `--exec` or `--no-exec` on this command line
-2. `allowExec: false` in `wayfinder.config.json`, then `allowExec` in the user file
-3. wayfinder's own default, `true`
-
-A file has to say `false` for execution to be off. `way config list` and
-`way config get allowExec` report that default, labelled `(default)`.
-
-This setting alone does not allow execution. The repository must also be
-[trusted](#execution-and-trust), so with `true` here, runners that must run to
-be read are still skipped until then.
+[Configuration](docs/guide/configuration.md) has every key, the merge rules,
+the paths and the variables that move them, and the exit codes. The package
+ships the file's JSON Schema at `schema/config.json`.
 
 ## Commands
 

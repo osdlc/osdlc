@@ -5,8 +5,8 @@
  * decided (`by`, `rule`).
  *
  * `--scope <tool>` grants, removes or shows one tool's trust instead of the
- * whole repository's. Granting is `cli-only`: the MCP and HTTP adapters
- * refuse it.
+ * whole repository's. Granting is `cli-only`: the web view's server refuses
+ * it.
  */
 
 import { CommandError, type CommandContext, type DataCommand } from '@osdlc/cli-tool/command'

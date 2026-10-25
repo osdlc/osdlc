@@ -10,8 +10,9 @@ export type Theme = (typeof THEME_VALUES)[number]
 
 /**
  * The keys `config set` and `config unset` change from the command line only.
- * The MCP and HTTP adapters refuse a write of any of them: an agent or a page
- * must not grant trust, turn execution on, or name code to load.
+ * cli-tool's adapters, such as the HTTP one the web view's server runs,
+ * refuse a write of any of them: an agent or a page must not grant trust,
+ * turn execution on, or name code to load.
  */
 export const CLI_ONLY_KEYS: readonly string[] = ['trust', 'allowExec', 'tools']
 

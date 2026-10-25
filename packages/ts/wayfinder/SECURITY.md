@@ -56,7 +56,7 @@ making `way` run code the user did not choose to run are in scope.
 - **Repository text cannot drive the terminal.** Task names, docs, paths and
   config values have their control characters (C0, DEL, C1) and bidi controls
   (U+202A-202E, U+2066-2069) replaced with U+FFFD before the terminal UI,
-  `--list`, `query`, `trust`, `config`, `providers`, `dev`, the `--serve`
+  `list`, `query`, `trust`, `config`, `providers`, `dev`, the `serve`
   summary or stderr prints them. Copied commands get the same text. `--json`,
   `way dev … --json` included, keeps every value exact: C0 is escaped by JSON
   itself, and DEL, C1 and the bidi controls are written as `\u` escapes, so
@@ -79,6 +79,6 @@ making `way` run code the user did not choose to run are in scope.
   bearer token protects every command and `/run`. `/run` takes a task id from
   the server's own catalog, never a command. Commands keep the flags `way
   serve` started with, so `--no-exec` cannot be lifted from the page, and a
-  write of `allowExec` or a trust setting is refused.
+  write of `allowExec`, a trust setting or `tools` is refused.
 - **Trust is keyed on the resolved path.** A trusted repository that later
   pulls hostile changes stays trusted until `way trust --untrust`.

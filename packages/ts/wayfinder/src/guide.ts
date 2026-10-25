@@ -231,11 +231,11 @@ where you asked to unset it.
 
 The project file cannot grant execution. It may LOWER \`allowExec\` to false,
 never raise it, because it lives inside the repository being scanned. A
-project file's \`allowExec: true\`, its trust block, \`open\` and \`theme\` are
-dropped with a warning, and \`config set\` refuses to write them there. Its
-\`tools\` load only when the repository is trusted and execution is allowed,
-since a tool module is code. Over MCP or HTTP, \`config set\` refuses
-\`allowExec\`, \`tools\` and the trust keys.
+project file's \`allowExec: true\`, its trust block, \`open\`, \`theme\` and
+\`skills\` are dropped with a warning, and \`config set\` refuses to write them
+there. Its \`tools\` load only when the repository is trusted and execution is
+allowed, since a tool module is code. The web view cannot set \`allowExec\`,
+\`tools\` or the trust keys.
 
 The effective gate: \`--no-exec\` forbids execution whatever is configured;
 \`--exec\` allows it for that one run; with neither flag, execution needs a
@@ -356,8 +356,8 @@ The command: \`${BIN} trust\` grants, \`--untrust\` revokes, \`--untrust-all\`
 revokes every grant of this root, \`--show\` reports this root, \`--list\`
 prints every grant. \`--scope <tool>\` grants, revokes or shows one tool's
 trust instead of the whole repository's. \`-C PATH\` reaches all of them.
-Granting works from the command line only: an agent over MCP or a page over
-HTTP cannot grant trust.
+Granting works from the command line only: the web view cannot grant
+trust.
 
 A root can also be trusted with no marker, by a trust block in the USER
 config: \`trust.paths\` (a glob over the resolved root) and \`trust.owners\`

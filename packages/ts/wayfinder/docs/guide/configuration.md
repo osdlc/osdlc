@@ -106,12 +106,14 @@ Every key is optional:
   "open": "tui",
   // User file only. system | light | dark: the web view's colour scheme.
   "theme": "system",
+  // User file only. project | all | off: which agent skills are listed.
+  "skills": "project",
 }
 ```
 
 The settable keys are `runners.disabled`, `runners.order`, `allowExec`,
 `discovery`, `excludePaths`, `trust.paths`, `trust.owners`, `trust.tools`,
-`tools`, `open` and `theme`.
+`tools`, `open`, `theme` and `skills`.
 
 The package ships the file's JSON Schema at `schema/config.json`. `way config
 set` writes `$schema` into a file that has none, and keeps the keys in the
@@ -120,10 +122,14 @@ leaves half a file.
 
 ### `runners.order`
 
-`runners.order` orders the reports in `--json`, `--list`, the terminal UI and
+`runners.order` orders the reports in `list`, `query`, the terminal UI and
 the web view, within each row group. In the web view, a tab order you drag
 in the browser takes precedence within its group. See
 [The web view](web-view.mdx#reordering-tabs).
+
+The terminal UI's settings screen and the web view save a new order to the
+file that sets `runners.order` now, else to the user file, so the new order
+always takes effect.
 
 ### `excludePaths`
 
@@ -187,12 +193,15 @@ These pre-authorize a class of repositories without a per-repository grant.
 tool only. They count only in the user file. A project file's `trust` block is
 dropped with a warning. See [Trust and execution](trust.md#the-policy).
 
-### `open` and `theme`
+### `open`, `theme` and `skills`
 
 `open` is what a bare `way` opens: `tui` (the default) or `web`. `theme` is
-the web view's colour scheme: `system` (the default), `light` or `dark`. Both
-are personal, so they count only in the user file. A project file's value is
-dropped with a warning, and `way config set --project` refuses them.
+the web view's colour scheme: `system` (the default), `light` or `dark`.
+`skills` chooses the agent skills the Skills group lists: `project` (the
+default), `all` (adds your own and your plugins' skills from the home folder)
+or `off`. All three are personal, so they count only in the user file. A
+project file's value is dropped with a warning, and `way config set
+--project` refuses them.
 
 ## The `config` command
 
@@ -220,9 +229,9 @@ one won. A layer that may not set the key, such as `open` in a project file,
 is shown and marked ignored.
 
 `set --project` refuses what a project file may not hold: `allowExec: true`,
-`trust`, `open` and `theme`. The web view refuses the same writes.
+`trust`, `open`, `theme` and `skills`. The web view refuses the same writes.
 `trust`, `allowExec` and `tools` can only be changed from the command line:
-the MCP and HTTP adapters refuse those writes.
+the web view's server refuses those writes.
 
 An unknown key in a file is a warning naming the file and the key, with the
 closest known key when one is near, and the rest of the file still loads. A malformed file or a wrong-typed value is an
