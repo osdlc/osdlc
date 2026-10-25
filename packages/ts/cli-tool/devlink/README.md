@@ -121,7 +121,11 @@ keep Bun from reading `.env*` and `bunfig.toml` in the cwd, which is often a
 repository the user does not control: a `.env` would set the tool's
 environment, and a `bunfig.toml` `preload` would run that repository's code
 first. The bash launcher passes the same flags. A checkout's own
-`bunfig.toml` is not read either.
+`bunfig.toml` is not read either. `bun` itself is looked up on the absolute
+`PATH` entries only, so a `bun` the cwd's repository ships is never run
+through a relative entry or, on Windows, the current folder. With none
+found, `execSelection` says so and returns 1. Pass `{ bun }` to name the
+binary yourself.
 
 A bash launcher is for a tool whose canonical install is a compiled binary or
 built JavaScript, so the choice must be made before any runtime exists.
@@ -131,7 +135,9 @@ JavaScript shim for such a tool. So a bash-launcher tool that turns the cwd
 layer on has only its marker to tell its checkout from another project, and
 the marker must be unique. The bash launcher reads a drive path such as
 `C:/x` in `<NAME>_HOME` as absolute only under Git Bash, MSYS or Cygwin, as
-`resolve()` does only on Windows. The tool commits the result, and `launcherDrift(spec, checkout)` in its test suite
+`resolve()` does only on Windows. It finds `bun` and `node` on the absolute
+`PATH` entries only, as `execSelection` does, and exits 1 with a message
+when none is found. The tool commits the result, and `launcherDrift(spec, checkout)` in its test suite
 fails when the committed file no longer matches the rendered one. Pass
 `{ builtEntry }` to prefer a built file under Node. A dev checkout of the
 tool itself (`node_modules` present, `bun` on PATH) still runs its own

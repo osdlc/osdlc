@@ -107,6 +107,9 @@ importers:
 
   packages/ts/cli-tool:
     dependencies:
+      '@osdlc/command-seam':
+        specifier: workspace:^
+        version: link:../command-seam
       '@osdlc/config-layers':
         specifier: workspace:^
         version: link:../config-layers
@@ -126,9 +129,6 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.2
         version: 1.32.2(zod@4.4.3)
-      '@osdlc/command-seam':
-        specifier: workspace:^
-        version: link:../command-seam
       '@osdlc/prettier-config':
         specifier: workspace:^
         version: link:../prettier-config

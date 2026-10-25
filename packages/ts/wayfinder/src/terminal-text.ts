@@ -15,12 +15,16 @@
  * a match offset into it still points at the same character.
  */
 
-import type { CliIo } from '@osdlc/cli-tool'
+import { EXIT, type CliIo } from '@osdlc/cli-tool'
+
+import { APP } from './app.ts'
 
 /** C0 (tab and newline included), DEL, C1, and bidi U+202A-202E and U+2066-2069. */
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g
 /** The same, but tab and newline are kept. */
 const CONTROL_KEEP_LINES = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g
+/** C0 without tab and newline. */
+const C0_KEEP_LINES = /[\u0000-\u0008\u000b-\u001f]/g
 /** What `JSON.stringify` leaves raw of the above: it escapes C0 itself. */
 const JSON_RAW = /[\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g
 
@@ -42,20 +46,34 @@ export function terminalSafe(text: string, opts: { multiline?: boolean } = {}): 
  */
 export function jsonText(value: unknown, indent?: number): string {
   const json: string | undefined = JSON.stringify(value, null, indent)
-  return (json ?? '').replace(
-    JSON_RAW,
-    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`,
-  )
+  return escapeJsonRaw(json ?? '')
+}
+
+function escapeJsonRaw(json: string): string {
+  return json.replace(JSON_RAW, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
 }
 
 /**
  * `io` with stdout made terminal-safe, tab and newline kept. For a command
  * whose stdout is human text that can name repository paths, such as
- * `way dev status`. Its `--json` output stays valid JSON: C0 is escaped
- * there already, and a DEL, C1 or bidi character in a path becomes U+FFFD.
+ * `way dev status`. For JSON output use {@link safeJsonStdout}.
  */
 export function safeStdout(io: CliIo): CliIo {
   return { ...io, stdout: (text) => io.stdout(terminalSafe(text, { multiline: true })) }
+}
+
+/**
+ * `io` with stdout made terminal-safe for JSON output, such as
+ * `way dev status --json`. DEL, C1 and the bidi controls are written as `\u`
+ * escapes, as {@link jsonText} writes them, so every JSON value stays exact.
+ * A raw C0 character other than tab and newline becomes U+FFFD; valid JSON
+ * has none, since `JSON.stringify` escapes C0.
+ */
+export function safeJsonStdout(io: CliIo): CliIo {
+  return {
+    ...io,
+    stdout: (text) => io.stdout(escapeJsonRaw(text.replace(C0_KEEP_LINES, REPLACEMENT))),
+  }
 }
 
 /**
@@ -64,4 +82,23 @@ export function safeStdout(io: CliIo): CliIo {
  */
 export function safeStderr(io: CliIo): CliIo {
   return { ...io, stderr: (text) => io.stderr(terminalSafe(text, { multiline: true })) }
+}
+
+/**
+ * Runs `run` and returns its exit code. An error it throws is printed to
+ * `stderr` as one terminal-safe line, and the code is `EXIT.error`. For the
+ * installed `way`, so an error no command caught cannot reach the terminal
+ * raw, as Node's own handler would print it.
+ */
+export async function guardedExit(
+  run: () => number | Promise<number>,
+  stderr: (text: string) => void = (text) => process.stderr.write(text),
+): Promise<number> {
+  try {
+    return await run()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    stderr(`${APP}: ${terminalSafe(message)}\n`)
+    return EXIT.error
+  }
 }

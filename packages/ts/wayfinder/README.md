@@ -56,8 +56,9 @@ in cannot choose the code that runs. A checkout must hold `src/cli.ts` and a
 prints which one it chose on stderr, and `WAY_QUIET=1` silences it. State
 is kept in `<config>/way/`, which is `~/Library/Application Support/way` on
 macOS and `${XDG_CONFIG_HOME:-~/.config}/way` elsewhere. A checkout runs from
-source, so it needs [Bun](https://bun.sh) on PATH and a `pnpm install` in the
-checkout.
+source, so it needs [Bun](https://bun.sh) on an absolute PATH entry and a
+`pnpm install` in the checkout. A `bun` found only through a relative entry
+such as `bin` or `.` is not used.
 
 ## Why
 
@@ -506,7 +507,10 @@ repository is trusted and execution is allowed (`allowExec` not `false`, no
 `way providers` lists every registered tool: its roles, its runner kind
 (`parse` reads files, `exec` must run the tool and needs trust), its binary,
 whether that binary is on PATH, and whether it is built in or custom.
-`--json` gives the same rows as data.
+`--json` gives the same rows as data. Only absolute PATH entries count, as in
+detection: a tool found only through a relative entry (`bin`, `.`,
+`node_modules/.bin`) reads as not installed. Put an absolute entry for it on
+PATH.
 
 ## How it compares
 

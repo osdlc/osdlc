@@ -1,5 +1,5 @@
 ---
-'@osdlc/trust-repo': patch
+'@osdlc/trust-repo': minor
 ---
 
 Security fixes.

@@ -435,6 +435,63 @@ describe('bash launcher agrees with resolve()', () => {
   })
 })
 
+describe('bash launcher finds bun and node on absolute PATH entries only', () => {
+  /** A repository the user stands in, with its own `bin/bun` and `bin/node`. */
+  function hostileRepo(): string {
+    const repo = join(sb.root, 'repo')
+    mkdirSync(join(repo, 'bin'), { recursive: true })
+    for (const name of ['bun', 'node']) {
+      writeFileSync(join(repo, 'bin', name), '#!/bin/sh\necho REPO_RAN\n')
+      chmodSync(join(repo, 'bin', name), 0o755)
+    }
+    return repo
+  }
+
+  /** A folder with only the utilities the launcher needs, so no real bun or node is found. */
+  function utilities(): string {
+    const dir = join(sb.root, 'utilities')
+    mkdirSync(dir, { recursive: true })
+    for (const name of ['bash', 'dirname', 'readlink', 'uname', 'cat', 'id', 'awk']) {
+      const found = spawnSync('bash', ['-c', `command -v ${name}`], { encoding: 'utf-8' })
+      symlinkSync(found.stdout.trim(), join(dir, name))
+    }
+    return dir
+  }
+
+  test('a bun on a relative PATH entry never runs for a selected checkout', () => {
+    const a = checkoutWithLauncher(join(sb.root, 'a'))
+    const b = seedCheckout(join(sb.root, 'b'))
+    const repo = hostileRepo()
+    const util = utilities()
+    const missing = run(join(a, SPEC.launcher), repo, { TOOLY_HOME: b, PATH: `bin:${util}` })
+    expect(missing.out).not.toContain('REPO_RAN')
+    expect(missing.code).toBe(1)
+    expect(missing.err).toContain('needs bun on an absolute PATH entry')
+    const found = run(join(a, SPEC.launcher), repo, {
+      TOOLY_HOME: b,
+      PATH: `bin:${fakeBin}:${util}`,
+    })
+    expect(found.out).toBe(`${BUN_RUN} ${b}/src/cli.ts arg1 arg two`)
+  })
+
+  test('a bun or node on a relative PATH entry never runs for the local entry', () => {
+    const a = seedCheckout(join(sb.root, 'a'))
+    writeFileSync(join(a, SPEC.launcher), renderLauncher(SPEC, { builtEntry: 'bin/tooly.js' }))
+    chmodSync(join(a, SPEC.launcher), 0o755)
+    writeFileSync(join(a, 'bin', 'tooly.js'), '')
+    const repo = hostileRepo()
+    const util = utilities()
+    const r = run(join(a, SPEC.launcher), repo, { PATH: `.:bin:${util}` })
+    expect(r.out).not.toContain('REPO_RAN')
+    expect(r.code).toBe(1)
+    expect(r.err).toContain("'node' is not on an absolute PATH entry")
+    const src = checkoutWithLauncher(join(sb.root, 'src-only'))
+    const s = run(join(src, SPEC.launcher), repo, { PATH: `bin:${util}` })
+    expect(s.out).not.toContain('REPO_RAN')
+    expect(s.err).toContain('needs bun on an absolute PATH entry')
+  })
+})
+
 describe('the exported launch layer', () => {
   /** A fake `bun` that reports the layer the launcher exported. */
   function layerOf(launcher: string, cwd: string, env: Record<string, string> = {}): string {

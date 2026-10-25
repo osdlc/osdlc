@@ -1,13 +1,11 @@
 /**
  * `way providers`: every registered tool, built-in or loaded from a module,
  * with its roles, its runner kind, its binary and whether that binary is on
- * the PATH. Reads files only; runs nothing.
+ * an absolute PATH entry. Reads files only; runs nothing.
  */
 
-import { accessSync, constants, statSync } from 'node:fs'
-import { delimiter, join } from 'node:path'
-
 import { EXIT, type CliIo } from '@osdlc/cli-tool'
+import { which } from '@osdlc/command-seam'
 import type { Project, RoleName, ToolDef } from '@osdlc/system-model/detect'
 import { homeDir, policyExecGate } from '@osdlc/trust-repo'
 
@@ -69,19 +67,10 @@ role's: parse reads files, exec runs the repository's tools and needs trust.
 `
 }
 
+/** Found on an absolute PATH entry, as detection finds a binary. */
 function onPath(binary: string, env: Record<string, string | undefined>): boolean {
-  for (const dir of (env['PATH'] ?? '').split(delimiter)) {
-    if (dir === '') continue
-    try {
-      const file = join(dir, binary)
-      if (!statSync(file).isFile()) continue
-      accessSync(file, constants.X_OK)
-      return true
-    } catch {
-      // Not here.
-    }
-  }
-  return false
+  const lookup = { absolutePathOnly: true, env: { PATH: env['PATH'], PATHEXT: env['PATHEXT'] } }
+  return which(binary, lookup) !== undefined
 }
 
 /** One row per registered tool, in registry order. */

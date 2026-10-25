@@ -107,6 +107,7 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
   },
   "dependencies": {
+    "@osdlc/command-seam": "workspace:^",
     "@osdlc/config-layers": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
     "@osdlc/result": "workspace:^",
@@ -115,7 +116,6 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "@osdlc/command-seam": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/trust-repo": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",

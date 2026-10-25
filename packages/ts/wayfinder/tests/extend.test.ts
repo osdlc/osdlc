@@ -5,7 +5,7 @@
  */
 
 import { afterAll, describe, expect, test } from 'vitest'
-import { existsSync } from 'node:fs'
+import { chmodSync, existsSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,7 +17,7 @@ import type { Task, ToolDef } from '@osdlc/system-model/detect'
 import { runArgv } from '../src/args.ts'
 import { makeProject } from '../src/catalog.ts'
 import { main } from '../src/cli.ts'
-import type { ProviderRow } from '../src/providers-command.ts'
+import { providerRows, type ProviderRow } from '../src/providers-command.ts'
 
 const EXAMPLE = fileURLToPath(new URL('./guide-example.ts', import.meta.url))
 
@@ -223,6 +223,22 @@ describe('way providers', () => {
       module: EXAMPLE,
     })
     expect(rows.find((r) => r.id === 'npm')?.source).toBe('built-in')
+  })
+
+  test('on PATH counts absolute PATH entries only, as detection does', async () => {
+    const dir = await temp()
+    await mkdir(join(dir, 'bin'))
+    await writeFile(join(dir, 'bin', 'acme'), '#!/bin/sh\n')
+    chmodSync(join(dir, 'bin', 'acme'), 0o755)
+    const tool = { id: 'acme', binary: 'acme', roles: {} } as unknown as ToolDef
+    const saved = process.cwd()
+    process.chdir(dir)
+    try {
+      expect(providerRows([tool], [], { PATH: 'bin' })[0]?.onPath).toBe(false)
+      expect(providerRows([tool], [], { PATH: join(dir, 'bin') })[0]?.onPath).toBe(true)
+    } finally {
+      process.chdir(saved)
+    }
   })
 
   test('an unknown option is a usage error', async () => {

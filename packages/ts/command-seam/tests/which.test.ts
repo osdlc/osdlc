@@ -129,6 +129,15 @@ describe('absolutePathCandidates', () => {
     ).toEqual(['C:\\Git\\git.exe'])
     expect(absolutePathCandidates('bin\\git', { path: 'C:\\Git', platform: 'win32' })).toEqual([])
   })
+
+  test('Windows: a quoted entry counts without its quotes; a quoted relative one does not', () => {
+    const path = '"C:\\Program Files\\Git\\cmd";"bin";""'
+    expect(absolutePathCandidates('git', { path, pathext: '.EXE', platform: 'win32' })).toEqual([
+      'C:\\Program Files\\Git\\cmd\\git.EXE',
+    ])
+    // POSIX keeps quotes: there they are part of the name.
+    expect(absolutePathCandidates('git', { path: '"/usr/bin"', platform: 'linux' })).toEqual([])
+  })
 })
 
 describe('runners with absolutePathOnly', () => {
