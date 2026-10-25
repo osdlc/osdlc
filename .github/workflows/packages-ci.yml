@@ -209,6 +209,8 @@ jobs:
 
   windows-tier2:
     name: windows tier 2 (windows-latest, node ${{ matrix.node }})
+    # A hung test process must not hold the job for the default six hours.
+    timeout-minutes: 20
     needs: changes
     if: >-
       contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/command-seam') ||

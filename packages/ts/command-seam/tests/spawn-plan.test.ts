@@ -275,10 +275,10 @@ describe.skipIf(process.platform !== 'win32')('a real .cmd shim (Windows hosts o
   // A batch file that only echoes its argument, with no node in between.
   const echoBat = file('real/bin/echo-one.bat', '@echo off\r\necho [%~1]\r\n')
 
-  test('a plain .bat echoes its argument', () => {
+  test('a plain .bat echoes its argument, with the quotes the escaping leaves (see README Platforms)', () => {
     for (const arg of ['plain', 'a b']) {
       const r = spawnRunner(echoBat).run([arg], { cwd: root })
-      expect(r.stdout.trim()).toBe(`[${arg}]`)
+      expect(r.stdout.trim()).toBe(`["${arg}"]`)
     }
   })
 
