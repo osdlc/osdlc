@@ -5,6 +5,8 @@
  * `@osdlc/wayfinder/schema` exports for that kind says.
  */
 
+import { join } from 'node:path'
+
 import { afterAll, describe, expect, test, vi } from 'vitest'
 
 import { captureIo } from '@osdlc/cli-tool'
@@ -32,9 +34,9 @@ const FILES = {
 }
 
 /** A temporary repository that is also the home directory, so nothing real is read or written. */
-async function way(argv: string[], dir: string) {
+async function way(argv: string[], dir: string, env: Record<string, string> = {}) {
   const io = captureIo()
-  const code = await main(['-C', dir, ...argv], {}, dir, io)
+  const code = await main(['-C', dir, ...argv], env, dir, io)
   return { code, out: io.out, err: io.err }
 }
 
@@ -121,6 +123,25 @@ describe('the command tree', () => {
     expect(ran.code).not.toBe(0)
     const doc = JSON.parse(ran.out) as unknown
     expect(doc).toMatchObject({ schemaVersion: 1, kind: 'error' })
+    expect(documentZod('error').safeParse(doc).success).toBe(true)
+  })
+
+  test('clean that refuses a store still answers --json with a clean document', async () => {
+    const dir = await root({ ...FILES, 'other.json': '{}' })
+    const env = { WAYFINDER_CONFIG: join(dir, 'other.json') }
+    const ran = await way(['clean', '--user-config', '--yes', '--json'], dir, env)
+    expect(ran.code).not.toBe(0)
+    expect(ran.err).toContain('not removing')
+    const checked = documentZod('clean').safeParse(JSON.parse(ran.out))
+    expect(checked.success, checked.error?.message).toBe(true)
+  })
+
+  test('run with an unknown task answers --json with an error document', async () => {
+    const dir = await root(FILES)
+    const ran = await way(['run', 'nope', '--dry-run', '--json'], dir)
+    expect(ran.code).not.toBe(0)
+    const doc = JSON.parse(ran.out) as unknown
+    expect(doc).toMatchObject({ kind: 'error', code: 'task-not-found' })
     expect(documentZod('error').safeParse(doc).success).toBe(true)
   })
 })
