@@ -44,6 +44,8 @@ export {
   REF_FORMAT,
   type AddOptions,
   type AheadBehind,
+  type CherryEntry,
+  type CommitTreeOptions,
   type CheckoutOptions,
   type CleanOptions,
   type CloneOptions,

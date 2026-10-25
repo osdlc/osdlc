@@ -574,6 +574,8 @@ exit throws the classified failure.
 | `grep(pattern, { extendedRegexp, lineNumber, noColor, paths })` | `grep` | `1` → `[]` (no match) |
 | `isAncestor(a, b)` | `merge-base --is-ancestor` | `1` → `false` |
 | `aheadBehind(base, tip)` | `rev-list --left-right --count <base>...<tip>` | none |
+| `cherry(upstream, head)` | `cherry <upstream> [<head>]` | none — `{ sha, equivalent }` per commit; empty output is `[]`, an unreadable line throws |
+| `commitTree(tree, { parents, message })` | `commit-tree <tree> [-p <parent>]... -m <message>` | none — writes an object and no ref; needs a git identity |
 | `remotes()` | `remote` | none — names, not remotes |
 | `remote()` | `remote` | none — deprecated alias of `remotes()` |
 | `remoteGetUrl(name, { push })` | `remote get-url [--push] <name>` | `2` → `null` (unknown remote) — the first URL |
