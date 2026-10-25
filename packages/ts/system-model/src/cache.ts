@@ -13,7 +13,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { readFileSync, realpathSync } from 'node:fs'
+import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 
@@ -67,11 +67,17 @@ export interface CacheEntry {
   /** The `@osdlc/system-model` version that probed, since a runner's output changes between versions. */
   modelVersion: string
   /**
-   * The tool's binary with symlinks resolved, which names the installed
-   * version for most installers (`.../just/1.40.0/bin/just`). `null` when it
-   * was not on the PATH. Absent when the runner has no binary.
+   * The tool's binary with symlinks resolved. Some installers put the version
+   * in it (`.../just/1.40.0/bin/just`). `null` when it was not on the PATH.
+   * Absent when the runner has no binary.
    */
   toolPath?: string | null | undefined
+  /**
+   * The resolved binary's size and mtime, so an upgrade in place (a proto
+   * shim, `~/.cargo/bin/just`) also reads as another tool. `null` when it
+   * cannot be read. Absent when the runner has no binary.
+   */
+  toolStamp?: string | null | undefined
 }
 
 /** This package's version, or `unknown` when its package.json cannot be read. */
@@ -96,6 +102,17 @@ export function resolveToolPath(path: string | null): string | null {
     return realpathSync(path)
   } catch {
     return path
+  }
+}
+
+/** A resolved binary's `size:mtimeMs`, or `null` when it cannot be read. */
+export function toolStampOf(path: string | null): string | null {
+  if (path === null) return null
+  try {
+    const info = statSync(path)
+    return `${info.size}:${info.mtimeMs}`
+  } catch {
+    return null
   }
 }
 

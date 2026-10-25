@@ -752,10 +752,14 @@ describe('how an entry was probed', () => {
         allowExec: true,
       })
       expect(trusted.runners[0]).toMatchObject({ state: 'stale', reason: 'exec' })
+      // A scan without exec is still a fair answer, marked stale.
+      expect(trusted.catalog?.reports).toHaveLength(1)
 
       await s.project.runners.collectAndCache(profile, cache, { ...s.options, allowExec: true })
       const untrusted = await s.project.runners.readCached(profile, cache, s.options)
       expect(untrusted.runners[0]).toMatchObject({ state: 'stale', reason: 'exec' })
+      // A report probed with exec does not answer a run without it.
+      expect(untrusted.catalog).toBeNull()
     } finally {
       await removeRoot(root)
       await removeRoot(cache)
@@ -804,6 +808,28 @@ describe('how an entry was probed', () => {
     } finally {
       await removeRoot(root)
       await removeRoot(cache)
+    }
+  })
+
+  test('an entry is stale when the tool binary is replaced in place', async () => {
+    const root = await fixtureRoot({ 'alpha.txt': 'build\n' })
+    const cache = await fixtureRoot({})
+    const bin = await fixtureRoot({ alpha: '#!/bin/sh\necho 1\n' })
+    try {
+      const path = join(bin, 'alpha')
+      const tool = { ...parseTool('alpha'), binary: 'alpha' }
+      const s = setup([tool], { which: () => path })
+      const profile = await detect(s, root)
+      await s.project.runners.collectAndCache(profile, cache, s.options)
+      expect((await s.project.runners.readCached(profile, cache, s.options)).allFresh).toBe(true)
+
+      await writeFile(path, '#!/bin/sh\necho 2.0\n')
+      const after = await s.project.runners.readCached(profile, cache, s.options)
+      expect(after.runners[0]).toMatchObject({ state: 'stale', reason: 'tool' })
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+      await removeRoot(bin)
     }
   })
 })
