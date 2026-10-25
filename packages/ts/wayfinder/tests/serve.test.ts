@@ -222,14 +222,24 @@ describe('POST /session', () => {
     }
   })
 
-  test('the boot token redeemed twice stops the server and says why', async () => {
+  test('the boot token redeemed twice is refused with a warning, and the server keeps serving', async () => {
     const s = await start()
-    const first = await session(s.address, { boot: s.web.signIn.bootToken })
-    expect(first.status).toBe(200)
-    const again = await session(s.address, { boot: s.web.signIn.bootToken })
-    expect(again.status).toBe(401)
-    expect(await s.web.finished).toBe(1)
-    expect(s.err.join('')).toContain('the sign-in link was used twice')
+    try {
+      const token = await s.token()
+      const again = await session(s.address, { boot: s.web.signIn.bootToken })
+      expect(again.status).toBe(401)
+      expect(s.err.join('')).toContain('way: warning: the sign-in link was used again')
+      expect(s.err.join('')).toContain('press Enter here for a new link')
+      const res = await fetch(`${s.address}/api/commands/config/path`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: '{}',
+      })
+      expect(res.status).toBe(200)
+    } finally {
+      await s.web.stop()
+    }
+    expect(await s.web.finished).toBe(null)
   })
 
   test('a wrong boot token is 401, and leaves the right one usable', async () => {

@@ -78,7 +78,9 @@ making `way` run code the user did not choose to run are in scope.
   carry no foreign `Origin`. A one-shot boot token signs the page in, and a
   bearer token protects every command and `/run`. The boot token is in the
   URL the server opens or prints; it works once and expires a minute after
-  it is shown. The bearer token is never in a URL or a cookie: the page keeps
+  it is shown. Sent again, it is refused and the server warns in its
+  terminal; sessions already signed in keep working. A program that redeemed
+  it first keeps its session until the server stops. The bearer token is never in a URL or a cookie: the page keeps
   it in `sessionStorage`, which belongs to one tab, survives a reload and is
   never sent with a request. A script running in the page could read it, so
   the page loads no third-party code. A new tab needs a new boot token:

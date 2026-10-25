@@ -70,8 +70,7 @@ export interface WebServer {
   signIn: SignIn
   /**
    * Settles when the server has stopped: with the task's exit code after a
-   * run took the terminal, 1 when the sign-in link was used twice, or null
-   * when it was stopped otherwise.
+   * run took the terminal, or null when it was stopped otherwise.
    */
   finished: Promise<number | null>
   /** Settles as soon as the server stops listening, before a run starts. */
@@ -95,14 +94,13 @@ export async function startServer(options: ServeOptions): Promise<WebServer> {
   const finished = new Promise<number | null>((resolve) => {
     settle = resolve
   })
-  // The browser was beaten to the boot token, so someone else holds the
-  // bearer token. Stop rather than serve them.
+  // The redeem is refused, so a replay cannot sign in. Warn in case it was
+  // not the person, and keep serving the sessions already signed in.
   const signIn = createSignIn(Date.now, () => {
     options.stderr(
-      `${BIN}: the sign-in link was used twice, so another program signed in first; ` +
-        `stopping. Run "${BIN} serve" again\n`,
+      `${BIN}: warning: the sign-in link was used again and refused. ` +
+        `If you did not open it twice, press Enter here for a new link\n`,
     )
-    void stop().then(() => settle(1))
   })
 
   const resolveRun = async (id: string, args: string[]): Promise<RunResolution> => {

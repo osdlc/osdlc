@@ -15,7 +15,8 @@
  *
  * The boot token is in the browser opener's argv while it runs, so another
  * local user could redeem it first. The right boot token sent a second time
- * means that happened: the server says so and stops (see `onReplay`).
+ * is refused, and the server warns in its terminal (see `onReplay`). Sessions
+ * already signed in keep working; a new link comes from {@link SignIn.renew}.
  *
  * A JSON body from another origin needs a CORS preflight, which the server
  * never answers, so a website cannot redeem the boot token either.
@@ -58,8 +59,8 @@ export interface SignIn {
 
 /**
  * Make a boot token. `now` is injectable for tests. `onReplay` is called when
- * the right boot token arrives after it was redeemed: someone else signed in
- * with it first.
+ * the right boot token arrives after it was redeemed: a second tab, or
+ * another program that read the link.
  */
 export function createSignIn(now: () => number = Date.now, onReplay?: () => void): SignIn {
   let bootToken = secret()
