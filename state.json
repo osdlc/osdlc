@@ -1,12 +1,24 @@
 {
   "schema": 1,
   "pr": 462,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "ce1f0830b30b1eb0a0fd89ee544752872f082ba8",
+  "base": "b9df2d4918d2b9fc5e6a8d3805a359268893c51c",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-wwi971",
     "at": "2026-10-25T07:21:53.269Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/rust/markdown-contract/Cargo.toml",
+      "line": 4,
+      "title": "Hold comment cites a bare #460 and restates the credential rule; link it and say what lifts the hold",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
