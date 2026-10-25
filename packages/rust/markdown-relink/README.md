@@ -25,7 +25,7 @@ cargo add markdown-relink
 
 The vault directory must be an absolute path.
 
-```rust
+```rust,no_run
 use std::path::Path;
 use markdown_relink::{VaultFacts, execute, plan};
 
@@ -41,10 +41,32 @@ if let Some(reason) = &p.conflict {
         eprintln!("skipped {}: {}", skip.path, skip.reason);
     }
 }
+Ok::<(), markdown_relink::TransformError>(())
 ```
 
 `plan_bundle` and `execute_bundle` move a folder shaped `<name>/<name>.md`
 together with the files beside its entry note.
+
+## Scope
+
+- Only `.md` notes are scanned for links, and a single-file move accepts only
+  a `.md` note as its source and destination. Links in other file types are
+  not found and not rewritten.
+- Only note bodies are rewritten. A link-shaped value in frontmatter is
+  reported as a `frontmatter_link_untouched` diagnostic and never changed.
+- Attachments (images, scripts and other non-note files) are link targets
+  only. Their own contents are never read. A bundle move carries them with
+  the folder and repoints the links that name them.
+- A bundle is a folder that holds one note named after the folder, such as
+  `review/review.md`, plus its other files and sub-folders. It moves as one
+  unit. The path you pass names the entry note, and the destination must
+  follow the same `<name>/<name>.md` shape.
+- A bundle move runs in three steps: rewrite the linking notes, move the
+  folder, then rename the entry file if its name changes. The last step can
+  fail after the folder has already moved, and nothing rolls the folder move
+  back. The result then reports `entry_rename_failed` in `skipped` and the
+  error in `conflict`, and the entry note keeps its old file name inside the
+  new folder.
 
 Link parsing comes from
 [`markdown-link`](https://crates.io/crates/markdown-link), the vault walk and

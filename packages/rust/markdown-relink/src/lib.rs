@@ -331,3 +331,9 @@ pub struct RenameResult {
     /// Empty for a single-file rename.
     pub peers_moved: Vec<BundlePeer>,
 }
+
+// Compiles the README's code blocks as doctests, so they cannot drift from the
+// API. Kept out of the rendered crate docs, which already say the same things.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
