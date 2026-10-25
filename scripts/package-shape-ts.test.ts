@@ -26,6 +26,8 @@ import {
   shapeProblems,
   shippedSource,
   shippedSourceMaps,
+  stylesheetEntries,
+  stylesheetProblems,
   tsconfigProblems,
 } from './package-shape-ts.ts'
 
@@ -321,4 +323,22 @@ test('a types-only entry counts only when its .d.ts exports something', () => {
   assert.equal(DECLARES_EXPORT.test('export interface Client {\n  graph(): void\n}\n'), true)
   assert.equal(DECLARES_EXPORT.test('export type { A } from "./a.js";\n'), true)
   assert.equal(DECLARES_EXPORT.test('export declare const x: number;\n'), true)
+})
+
+test('stylesheetProblems flags every ./*.css export not aimed at one ./dist/*.css file', () => {
+  const exports = {
+    '.': './dist/index.js',
+    './tokens.css': './dist/tokens.css',
+    './src.css': './src/tokens.css',
+    './cond.css': { default: './dist/x.css' },
+    './glob.css': './dist/*.css',
+  }
+  assert.deepEqual(stylesheetEntries(exports), ['./tokens.css'])
+  assert.deepEqual(stylesheetProblems(exports), [
+    'exports["./src.css"] must be a "./dist/<name>.css" path',
+    'exports["./cond.css"] must be a "./dist/<name>.css" path',
+    'exports["./glob.css"] must be a "./dist/<name>.css" path',
+  ])
+  assert.deepEqual(stylesheetProblems('./dist/index.js'), [])
+  assert.deepEqual(stylesheetProblems(undefined), [])
 })
