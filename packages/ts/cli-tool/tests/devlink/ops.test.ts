@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import {
   chmodSync,
@@ -12,7 +12,9 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { userInfo } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+
+import { systemDirs } from '@osdlc/config-layers/dirs'
 
 import { gitHead } from '../../src/devlink/git-head.ts'
 import {
@@ -27,7 +29,9 @@ import {
   status,
   use,
 } from '../../src/devlink/ops.ts'
-import { readActive, readHistory } from '../../src/devlink/state.ts'
+import { readActive, readHistory, stateDir } from '../../src/devlink/state.ts'
+import { runDevCli } from '../../src/devlink/cli.ts'
+import { captureIo } from '../../src/io.ts'
 import { SHA_A, SHA_B, SPEC, sandbox, seedCheckout, seedGit, type Sandbox } from './support.ts'
 
 let sb: Sandbox
@@ -307,6 +311,37 @@ describe('shim', () => {
 })
 
 describe('status', () => {
+  test('points at a pre-0.8 macOS link file when the current one is missing', () => {
+    const legacyDirs = systemDirs(SPEC.vendorDirs, {
+      home: sb.home,
+      env: {},
+      platform: 'darwin',
+      convention: 'native',
+    })
+    const old = join(legacyDirs.standalone(SPEC.name).config().path, 'home')
+    mkdirSync(dirname(old), { recursive: true })
+    writeFileSync(old, `${sb.root}\n`)
+    const s = status(SPEC, opts({ legacyDirs }))
+    expect(s.link.legacy).toBe(old)
+    const io = captureIo()
+    runDevCli(SPEC, ['status'], { ...opts({ legacyDirs }), io, platform: 'darwin' })
+    expect(io.out).toContain(`note: an old link file is at ${old}`)
+    expect(io.out).toContain(`mv '${old}' '${s.link.path}'`)
+    link(SPEC, { checkout: seedCheckout(join(sb.root, 'c')) }, opts())
+    expect(status(SPEC, opts({ legacyDirs })).link.legacy).toBeNull()
+  })
+
+  test('the state path ignores <PREFIX>_CONVENTION', () => {
+    vi.stubEnv('HOME', sb.home)
+    vi.stubEnv('XDG_CONFIG_HOME', '')
+    vi.stubEnv('TOOLY_CONVENTION', 'native')
+    try {
+      expect(stateDir(SPEC)).toBe(join(sb.home, '.config', 'tooly'))
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   test('reports every layer', () => {
     const a = seedCheckout(join(sb.root, 'a'))
     const b = seedCheckout(join(sb.root, 'b'))

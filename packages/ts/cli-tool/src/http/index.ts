@@ -14,9 +14,9 @@
  *    the `port` option, it names that port too.
  * 2. An `Origin` header, when present, is this server's own origin, and
  *    `Sec-Fetch-Site` is not `cross-site` or `same-site`.
- * 3. `Authorization: Bearer <token>`, the scheme in any case. A header, never a cookie or the URL, so
- *    a cross-origin page must pass a CORS preflight, which this server never
- *    answers.
+ * 3. `Authorization: Bearer <token>`, the scheme in any case. A header,
+ *    never a cookie or the URL, so a cross-origin page must pass a CORS
+ *    preflight, which this server never answers.
  *
  * Failing 1 or 2 answers 403; failing 3 answers 401, for every path, so an
  * unauthenticated caller learns nothing about the routes. A body is read only

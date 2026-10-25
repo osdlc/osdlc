@@ -62,7 +62,11 @@ convention ([`@osdlc/tiered-dirs`](https://www.npmjs.com/package/@osdlc/tiered-d
 `${XDG_CONFIG_HOME:-~/.config}` on Linux and macOS. A relative `HOME` counts
 as unset there and in the bash launcher, and the account's home is used, so a
 link file under the cwd is never read. The spec's `vendorDirs` (`{ vendor, envVars }`) names the override
-variables that move it. Two files live under `<config>/<name>/`:
+variables that move it. `<PREFIX>_CONVENTION` does not: the convention is
+pinned to `xdg`, where the bash launcher looks. On macOS, when a link file is
+still at the old `~/Library/Application Support/<name>/home` and not at the
+new path, `dev status` prints the `mv` command that moves it. Two files live
+under `<config>/<name>/`:
 
 | File | Holds | Read by |
 |---|---|---|

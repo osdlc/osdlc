@@ -5,6 +5,8 @@
  * directly and never reaches this.
  */
 
+import { dirname } from 'node:path'
+
 import { EXIT } from '../exit.ts'
 import { DevlinkError, history, install, link, off, status, use, type OpOptions } from './ops.ts'
 import type { ToolSpec } from './spec.ts'
@@ -257,7 +259,11 @@ function renderStatus(spec: ToolSpec, s: ReturnType<typeof status>): string {
     `  link:     ${s.link.path} = ${linkLine}\n` +
     `  self:     ${s.self ?? '(not inside a checkout)'}\n` +
     `  history:  ${s.history.entries} checkout(s) in ${s.history.path}\n` +
-    `  PATH:     ${names}\n`
+    `  PATH:     ${names}\n` +
+    (s.link.legacy !== null
+      ? `note: an old link file is at ${s.link.legacy}; this release reads ${s.link.path}.\n` +
+        `  move it: mkdir -p '${dirname(s.link.path)}' && mv '${s.link.legacy}' '${s.link.path}'\n`
+      : '')
   )
 }
 

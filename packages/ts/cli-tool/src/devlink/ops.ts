@@ -35,6 +35,7 @@ import {
   clearActive,
   historyPath,
   homePath,
+  legacyHomePath,
   readActive,
   readHistory,
   writeActive,
@@ -521,7 +522,17 @@ export interface StatusResult {
    * `cwdLayer`, a suppressor is set, or `<NAME>_CWD_DEV=0`.
    */
   cwd: { var: string; checkout: string | null; suppressed: boolean }
-  link: { path: string; value: string | null; valid: boolean; suppressed: boolean }
+  /**
+   * `legacy` is the link file a release before 0.8 wrote on macOS, when it is
+   * there and the current one is not; null otherwise.
+   */
+  link: {
+    path: string
+    value: string | null
+    valid: boolean
+    suppressed: boolean
+    legacy: string | null
+  }
   /** The launcher's own checkout, when it has one. */
   self: string | null
   history: { path: string; entries: number }
@@ -584,6 +595,7 @@ export function status(spec: ToolSpec, opts: OpOptions = {}): StatusResult {
       value: linked,
       valid: linked !== null && isCheckout(spec, linked),
       suppressed: isSuppressed,
+      legacy: legacyHomePath(spec, opts),
     },
     self: opts.self ?? null,
     history: { path: historyPath(spec, opts), entries: history(spec, opts).length },
