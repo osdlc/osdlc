@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "pr": 454,
+  "head": null,
+  "base": null,
+  "round": 0,
+  "claim": {
+    "owner": "Mac.local:claude-r7m2qx",
+    "at": "2026-10-25T05:36:34.390Z"
+  },
+  "findings": []
+}
