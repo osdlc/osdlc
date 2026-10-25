@@ -297,7 +297,7 @@ describe('copied text', () => {
     )
     const line = taskLine({ argv: ['echo', 'a\nb'], cwd: '.', display: 'echo a\u001bb' })
     expect(line).not.toMatch(/[\u0000-\u001f]/)
-    expect(line).toMatch(/^echo '/)
+    expect(line).toMatch(process.platform === 'win32' ? /^& echo '/ : /^echo '/)
   })
 
   test('a task line quotes each word', () => {

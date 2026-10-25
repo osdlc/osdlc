@@ -24,7 +24,7 @@ import {
   trustDocumentSchema,
   type DocumentKind,
 } from '../src/schema.ts'
-import { fixtureRoot, removeRoot } from './support.ts'
+import { fixtureRoot, removeRoot, shown } from './support.ts'
 
 // Each case probes a fixture repository, some several times.
 vi.setConfig({ testTimeout: 60_000 })
@@ -176,7 +176,7 @@ describe('filters', () => {
     expect(services.json()['filter']).toEqual({ servicesOnly: true })
 
     // The old --list takes --services too.
-    expect((await way(['--list', '--services'], dir)).out).toBe('npm run dev\n')
+    expect((await way(['--list', '--services'], dir)).out).toBe(`${shown('npm run dev')}\n`)
   })
 
   test('query takes the same filters', async () => {
@@ -214,10 +214,7 @@ describe('run', () => {
     const dir = await root(SCRIPTS)
     const ran = await way(['run', 'npm run exit-3'], dir)
     expect(ran.code).toBe(3)
-    // On Windows the echoed line is PowerShell's, with its call operator.
-    expect(ran.err).toContain(
-      process.platform === 'win32' ? '$ & npm run exit-3' : '$ npm run exit-3',
-    )
+    expect(ran.err).toContain(`$ ${shown('npm run exit-3')}`)
   })
 
   test('an unknown id exits 1 with the closest ids', async () => {
@@ -247,17 +244,18 @@ describe('run', () => {
     })
     const listed = await way(['list'], dir)
     const lines = listed.out.split('\n')
-    expect(lines).toContain("sh -c 'bundle exec puma -p $PORT'")
-    expect(lines).not.toContain('sh -c bundle exec puma -p $PORT')
+    expect(lines).toContain(shown("sh -c 'bundle exec puma -p $PORT'"))
+    expect(lines).not.toContain(shown('sh -c bundle exec puma -p $PORT'))
     const queried = await way(['query', 'puma'], dir)
-    expect(queried.out).toBe("sh -c 'bundle exec puma -p $PORT'\n")
+    expect(queried.out).toBe(`${shown("sh -c 'bundle exec puma -p $PORT'")}\n`)
   })
 
   test('run takes a line list printed, and --dry-run prints it back', async () => {
     const dir = await root({ ...SCRIPTS, Procfile: 'web: bundle exec puma -p $PORT\n' })
-    const ran = await way(['run', "sh -c 'bundle exec puma -p $PORT'", '--dry-run'], dir)
+    const line = shown("sh -c 'bundle exec puma -p $PORT'")
+    const ran = await way(['run', line, '--dry-run'], dir)
     expect(ran.code).toBe(0)
-    expect(ran.out).toBe("sh -c 'bundle exec puma -p $PORT'\n")
+    expect(ran.out).toBe(`${line}\n`)
     const json = await way(['run', 'just deploy', '--dry-run', '--json', '--', 'prod'], dir)
     expect(json.json()).toMatchObject({ display: 'just deploy', command: 'just deploy prod' })
   })

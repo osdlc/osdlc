@@ -18,7 +18,7 @@ import { runArgv } from '../src/args.ts'
 import { makeProject } from '../src/catalog.ts'
 import { main } from '../src/cli.ts'
 import { providerRows, type ProviderRow } from '../src/providers-command.ts'
-import { CONFIG_HOME } from './support.ts'
+import { CONFIG_HOME, shown } from './support.ts'
 
 const EXAMPLE = fileURLToPath(new URL('./guide-example.ts', import.meta.url))
 
@@ -75,7 +75,9 @@ describe('--config', () => {
     const dir = await acmeRepo()
     const ran = await run(['list', '--config', EXAMPLE, '-C', dir])
     expect(ran.code).toBe(0)
-    expect(ran.out.split('\n')).toEqual(expect.arrayContaining(['acme run build', 'acme run ship']))
+    expect(ran.out.split('\n')).toEqual(
+      expect.arrayContaining([shown('acme run build'), shown('acme run ship')]),
+    )
   })
 
   test('without it the same repository has no acme tasks', async () => {

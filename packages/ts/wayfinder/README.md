@@ -147,7 +147,9 @@ reinterpret a recipe that has `<placeholders>`.
 ## Searching from the shell
 
 `way query <terms>` is the terminal UI's search without the UI: the same
-matcher, the same ranking, one command line per match.
+matcher, the same ranking, one command line per match. Each line is the one
+Copy gives, quoted for your shell: sh quoting, or PowerShell's on Windows,
+where the line starts with the call operator `&`. `way run` takes it back.
 
 ```text
 way query dev             every task matching "dev", best match first

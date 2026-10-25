@@ -22,6 +22,15 @@ export async function removeRoot(root: string): Promise<void> {
 const WINDOWS = process.platform === 'win32'
 
 /**
+ * `line` as `list`, `query` and Copy print it on this platform: PowerShell's
+ * on Windows, which starts with the call operator `&`. Only for lines whose
+ * words quote the same way in sh and PowerShell.
+ */
+export function shown(line: string): string {
+  return WINDOWS ? `& ${line}` : line
+}
+
+/**
  * The config home below the home directory when no XDG or APPDATA variable is
  * set: `.config` under the xdg convention, `AppData/Roaming` on Windows.
  */

@@ -13,7 +13,7 @@ import { main } from '../src/cli.ts'
 import { filterSkills, skillLine, type SkillRow } from '../src/core/skills.ts'
 import { createSession } from '../src/core/session.ts'
 import { readSkills } from '../src/skills.ts'
-import { fixtureRoot, removeRoot } from './support.ts'
+import { fixtureRoot, removeRoot, shown } from './support.ts'
 
 const roots: string[] = []
 afterAll(async () => {
@@ -116,8 +116,8 @@ describe('the Skills group on the CLI', () => {
     const text = await way(['list', '-C', dir], dir)
     expect(text.code).toBe(0)
     expect(text.out.trimEnd().split('\n')).toEqual([
-      'npm run build',
-      'npm install',
+      shown('npm run build'),
+      shown('npm install'),
       '/release',
       '/review [pr-number]',
     ])

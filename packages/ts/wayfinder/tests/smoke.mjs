@@ -48,7 +48,11 @@ try {
 
   const list = way(['list', '-C', dir])
   assert.equal(list.status, 0, list.stderr)
-  assert.match(list.stdout, /^npm run build$/m)
+  // On Windows the line is PowerShell's, with its call operator.
+  assert.match(
+    list.stdout,
+    process.platform === 'win32' ? /^& npm run build$/m : /^npm run build$/m,
+  )
 
   const json = way(['list', '--json', '-C', dir])
   assert.equal(json.status, 0, json.stderr)

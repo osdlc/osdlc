@@ -16,7 +16,7 @@ import { makeGitFixture } from '@osdlc/typed-git/testing'
 import { main, quietOnBrokenPipe, rewriteAliases } from '../src/cli.ts'
 import { EventEmitter } from 'node:events'
 import { appTrustStore } from '../src/trust-store.ts'
-import { CONFIG_HOME } from './support.ts'
+import { CONFIG_HOME, shown } from './support.ts'
 
 const WORDS = ['list', 'query', 'run', 'serve', 'providers', 'config', 'trust', 'help']
 
@@ -562,7 +562,7 @@ describe('query', () => {
   test('prints one command line per match, best first', async () => {
     const ran = await run(['query', 'ploy'], await scripts())
     expect(ran.code).toBe(0)
-    expect(ran.out).toBe('npm run deploy\n')
+    expect(ran.out).toBe(`${shown('npm run deploy')}\n`)
   })
 
   test('ranks a leaf hit above one buried in the chain', async () => {
@@ -570,18 +570,18 @@ describe('query', () => {
     // is asserted is the ORDER, which is the whole reason to rank rather than
     // filter.
     const ran = await run(['query', 'de'], await scripts())
-    expect(ran.out.split('\n').slice(0, 2)).toEqual(['npm run dev', 'npm run deploy'])
+    expect(ran.out.split('\n').slice(0, 2)).toEqual([shown('npm run dev'), shown('npm run deploy')])
   })
 
   test('--exact drops the subsequence hits a fuzzy search keeps', async () => {
     const dir = await scripts()
-    expect((await run(['query', 'dploy'], dir)).out).toBe('npm run deploy\n')
+    expect((await run(['query', 'dploy'], dir)).out).toBe(`${shown('npm run deploy')}\n`)
     expect((await run(['query', 'dploy', '--exact'], dir)).code).toBe(1)
   })
 
   test('--services keeps only what runs until you stop it', async () => {
     const ran = await run(['query', '--services'], await scripts())
-    expect(ran.out).toBe('npm run dev\n')
+    expect(ran.out).toBe(`${shown('npm run dev')}\n`)
   })
 
   test('a search that matched nothing is exit 1 with an empty stdout', async () => {
@@ -617,7 +617,7 @@ describe('query', () => {
   test('says on stderr what trust would add, leaving stdout pipeable', async () => {
     const ran = await run(['query', 'lint'], await project())
     // The mise.toml fixture also brings a synthesized `mise install` row.
-    expect(ran.out.split('\n')[0]).toBe('make lint')
+    expect(ran.out.split('\n')[0]).toBe(shown('make lint'))
     expect(ran.out).not.toContain('mise hello')
     expect(ran.err).toContain('withheld')
   })

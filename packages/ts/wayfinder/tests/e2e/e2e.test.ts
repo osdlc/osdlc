@@ -411,7 +411,10 @@ async function check(c: Case): Promise<void> {
   if (c.text === true) {
     const text = way(['list', ...flags, '-C', root], env)
     expect(text.status, text.stderr).toBe(0)
-    await expect(normalize(text.stdout)).toMatchFileSnapshot(snap('list.txt'))
+    // On Windows each line is PowerShell's: its call operator goes, so one
+    // snapshot serves both. A word PowerShell quotes differently still shows.
+    const lines = WINDOWS ? text.stdout.replace(/^& /gm, '') : text.stdout
+    await expect(normalize(lines)).toMatchFileSnapshot(snap('list.txt'))
   }
 }
 
