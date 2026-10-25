@@ -136,15 +136,16 @@ Evidence tiers run from the most direct to the least: `manifest` (1),
 | `@osdlc/system-model/detect` | `createProject`, the task model, the profile and `ToolDef` types |
 | `@osdlc/system-model/builtins` | `builtins`, every built-in tool in report order, and `BUILTIN_TOOL_IDS` |
 | `@osdlc/system-model/node` | bun, pnpm, yarn, npm, `node-scripts`, and the node ecosystem |
-| `@osdlc/system-model/rust` | cargo and the rust ecosystem |
-| `@osdlc/system-model/python` | uv, poetry, pip, the `python` runner, and the python ecosystem |
+| `@osdlc/system-model/rust` | cargo, cargo aliases, and the rust ecosystem |
+| `@osdlc/system-model/python` | uv, poetry, pip, the `python` runner, Poe the Poet, PDM, Hatch, and the python ecosystem |
 | `@osdlc/system-model/jvm` | gradle, maven, sbt, and the jvm ecosystem |
 | `@osdlc/system-model/php` | composer and the php ecosystem |
 | `@osdlc/system-model/swift` | SwiftPM and the swift ecosystem |
 | `@osdlc/system-model/ruby` | bundler, rake, and the ruby ecosystem |
 | `@osdlc/system-model/go` | go and the go ecosystem |
 | `@osdlc/system-model/deno` | `deno task` and the deno ecosystem |
-| `@osdlc/system-model/runners` | moon, just, make, turbo, go-task, docker compose, GitHub Actions |
+| `@osdlc/system-model/dotnet` | the dotnet CLI and the dotnet ecosystem |
+| `@osdlc/system-model/runners` | moon, just, make, turbo, go-task, docker compose, GitHub Actions, Nx, VS Code tasks, Devbox, Procfile, CMake presets |
 | `@osdlc/system-model/tools` | mise, proto, direnv, lefthook, husky, pre-commit |
 | `@osdlc/system-model/match` | fuzzy and exact matching of a query against tasks |
 | `@osdlc/system-model/params` | `paramShape`, a task's parameters as one string |
@@ -253,11 +254,62 @@ why:
 | `tool-missing` | execution was allowed, but the tool is not on the PATH |
 | `tool-failed` | the tool ran and gave no usable answer |
 | `not-read` | the file declares them, and this runner does not read them |
+| `editor-variable` | the command uses a variable only an editor fills in (`${file}`); `argv` keeps it as written and does not run as is |
 
 `dependsOn` holds the ids of tasks in the same report that run first.
 `dependsOnUnresolved` keeps the dependencies that name no task, as written:
 a turbo `^build`, a moon `^:build`, a task an included Taskfile declares.
-turbo, moon, go-task, just and rake fill them.
+turbo, moon, go-task, just, rake, poe (`deps`), pdm (`pre_<name>`), nx, VS Code
+tasks and CMake presets (a build or test preset's `configurePreset`) fill them.
+
+The built-in runners, and where their tasks come from:
+
+| Runner | Reads | Runs |
+|---|---|---|
+| `moon` | `moon query tasks` (exec) | `moon run <project>:<task>` |
+| `mise` | `mise tasks --json` (exec) | `mise run <task>` |
+| `just` | `just --dump`, else the justfile | `just <recipe>` |
+| `node-scripts` | `package.json` `scripts` | the package's manager: `pnpm run <script>` |
+| `make` | Makefile targets | `make <target>` |
+| `cargo` | each `Cargo.toml` (synthesized) | `cargo test`, `cargo build`, ... |
+| `cargo-aliases` | `[alias]` in `.cargo/config.toml` and `.cargo/config` | `cargo <alias>` |
+| `sbt` | `sbt` (exec) | `sbt <task>` |
+| `python` | `pyproject.toml` `[tool.*]` and scripts | `ruff check`, `uv run <script>` |
+| `poe` | `[tool.poe.tasks]`, or `poe_tasks.toml`, `.yaml`, `.yml`, `.json` | `poe <task>`, through `uv run` or `poetry run` when one manages the package |
+| `pdm` | `[tool.pdm.scripts]` | `pdm run <script>` |
+| `hatch` | `[tool.hatch.envs.<env>.scripts]` and `hatch.toml` | `hatch run <env>:<script>` |
+| `composer` | `composer.json` `scripts` | `composer run-script <name>` |
+| `deno-tasks` | `deno.json` `tasks` | `deno task <name>` |
+| `turbo` | `turbo.json` `tasks` | `turbo run <task>` |
+| `nx` | `project.json` targets, `package.json` `nx.targets`, `nx.json` `targetDefaults` | `nx run <project>:<target>` |
+| `maven` | each `pom.xml` (synthesized) | `mvn <phase>` |
+| `gradle` | `gradle tasks --all`, else the build files | `gradle <task>` |
+| `swiftpm` | each `Package.swift` (synthesized) | `swift build`, ... |
+| `dotnet` | each `.sln`, `.slnx`, `.csproj`, `.fsproj`, `.vbproj` (synthesized) | `dotnet build <file>`, `dotnet run --project <file>`, ... |
+| `go-task` | `task --list-all --json`, else the Taskfile | `task <name>` |
+| `rake` | `rake -AT`, else the Rakefile | `rake <task>` |
+| `cmake-presets` | `CMakePresets.json`, `CMakeUserPresets.json` and their includes | `cmake --preset`, `cmake --build --preset`, `ctest --preset` |
+| `vscode-tasks` | `.vscode/tasks.json` | the task's command; a shell line with shell syntax as `sh -c` |
+| `devbox` | `devbox.json` `shell.scripts` | `devbox run <script>` |
+| `procfile` | `Procfile`, `Procfile.dev` | the first of overmind, foreman and honcho on the PATH, else `sh -c` |
+| `docker-compose` | compose file `services` | `docker compose up <service>` |
+| `github-actions` | dispatchable workflows | `gh workflow run <file>` |
+
+A runner that names its tool in the Reads column asks it only when execution
+is allowed and the tool is on the PATH; moon, mise and sbt have no other way.
+Every other runner reads files only, so it needs no trust. Known gaps:
+
+- nx lists declared targets only. Targets its plugins infer need Nx's project
+  graph, which runs the workspace's plugins and the Nx daemon.
+- poe does not list a `boolean` argument, which is a flag with no value, and
+  does not read `include` files.
+- VS Code tasks of other types (`gulp`, an extension's) and tasks that only
+  run their `dependsOn` are skipped with a diagnostic. Platform overrides are
+  not applied.
+- procfile picks its process manager at collect time, so a cached result
+  keeps the old one after you install another. A Procfile process takes no
+  arguments through a manager.
+- CMake package and workflow presets are not read.
 
 Each subprocess a runner starts gets the caller's `signal` and a timeout. A
 runner declares its timeout and a cost hint (`cheap` or `slow`) in
@@ -279,8 +331,11 @@ Three synthesized runners turn role actions into tasks:
 
 `project.runners.invoke(task, args)` returns the argv that runs a task with
 arguments, bound the way its tool expects. Positional arguments go after `--`
-for npm run, cargo run, moon, turbo, go-task and composer, and in `name[a,b]`
-form for rake, with `,`, `]` and `\` escaped. Otherwise they are appended.
+for npm run, cargo run, dotnet run, moon, turbo, nx, go-task and composer, and
+in `name[a,b]` form for rake, with `,`, `]` and `\` escaped. A `sh -c` task
+(VS Code, Procfile) takes them as `"$@"`, so each stays one word. Otherwise
+they are appended. `invoke` throws for a Procfile process run through a
+manager, which takes no arguments.
 `args` is a list of positional arguments, or values by parameter name:
 
 ```ts

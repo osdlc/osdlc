@@ -171,6 +171,7 @@ test('the built-in tools, by id', () => {
     'deno',
     'swift',
     'ruby',
+    'dotnet',
     'go',
   ])
 })

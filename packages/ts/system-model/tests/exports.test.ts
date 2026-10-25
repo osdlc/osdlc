@@ -25,6 +25,7 @@ const PLUGINS = [
   'ruby',
   'go',
   'deno',
+  'dotnet',
   'runners',
   'tools',
 ]
