@@ -77,7 +77,7 @@ const CLAUDE_PLUGINS: &str = "claude plugin list --json";
 fn write_project(dir: &Path) -> String {
     fs::create_dir_all(dir.join("vault")).unwrap();
     fs::write(
-        dir.join("agent-pants.yaml"),
+        dir.join("tradecraft.yaml"),
         "vault: vault\n\
          marketplace:\n  \
          out: published/acme\n  \
@@ -497,7 +497,7 @@ fn a_configured_marketplace_name_is_the_fallback_for_an_unbuilt_root() {
     let dir = tempfile::tempdir().unwrap();
     fs::create_dir_all(dir.path().join("vault")).unwrap();
     fs::write(
-        dir.path().join("agent-pants.yaml"),
+        dir.path().join("tradecraft.yaml"),
         "vault: vault\n\
          marketplace:\n  \
          out: published/acme\n  \

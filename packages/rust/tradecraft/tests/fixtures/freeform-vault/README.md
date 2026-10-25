@@ -17,14 +17,14 @@ marketplaces/
 │     │  ├─ core.md
 │     │  ├─ skills/
 │     │  │  ├─ review.md           narrowed to one target · foreign `license` key
-│     │  │  ├─ secret.md           `ap-targets: []` — publishes nowhere
-│     │  │  ├─ stray.md            `ap-plugin: side` — joins a plugin it is not in
+│     │  │  ├─ secret.md           `tc-targets: []` — publishes nowhere
+│     │  │  ├─ stray.md            `tc-plugin: side` — joins a plugin it is not in
 │     │  │  └─ bundled/            owns a directory · embeds, links, dangles
 │     │  │     ├─ bundled.md
 │     │  │     └─ scripts/run.sh   the execute bit travels
 │     │  ├─ commands/
 │     │  │  ├─ ship.md             a command — discovered, never published
-│     │  │  └─ oddity.md           `ap-kind: skill` overrules the folder
+│     │  │  └─ oddity.md           `tc-kind: skill` overrules the folder
 │     │  └─ agents/scout.md        an agent — same
 │     └─ noteless/skills/quick.md  a plugin with no note of its own
 └─ labs/plugins/spike/skills/probe.md   a marketplace with no note either
@@ -46,9 +46,9 @@ wins each time, and the folder it overruled is still reported — where a note
 actually sits is the one fact a resolved row cannot otherwise recover.
 
 **`side/` is a plugin that owns no directory**, named into being by one note's
-`ap-plugin` and nothing else.
+`tc-plugin` and nothing else.
 
-**`ap-targets`, all three readings.** Absent on most (`all`), an empty list on
+**`tc-targets`, all three readings.** Absent on most (`all`), an empty list on
 `secret` (`none`), one name on `review`. The badge cannot separate them alone,
 which is why the row carries the reading as a hover.
 
@@ -62,12 +62,12 @@ are the four things the Related tree groups — an embed, a link, a peer file an
 a dangling name — plus the plugin and marketplace holding it.
 
 **Frontmatter the model does not own.** `review` carries `license: MIT`, which
-survives a round trip untouched and is re-emitted at publish — the `ap-` prefix
+survives a round trip untouched and is re-emitted at publish — the `tc-` prefix
 is what gets stripped, not everything unrecognised.
 
 ## Nothing here is malformed
 
-Break one by hand — set `ap-kind: skil` — and that note alone drops out of the
+Break one by hand — set `tc-kind: skil` — and that note alone drops out of the
 tree. The others still list. Worth seeing once, because a note that is simply
 absent is easy to miss.
 

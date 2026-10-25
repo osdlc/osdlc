@@ -1,9 +1,9 @@
 ---
 name: review
 description: Reviews a diff.
-ap-targets: [claude]
+tc-targets: [claude]
 license: MIT
-ap-arguments:
+tc-arguments:
   - name: pr-number
     description: The pull request to review.
     required: true

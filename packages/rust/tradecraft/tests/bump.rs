@@ -42,8 +42,8 @@ fn vault_str(vault: &Path) -> String {
 /// One plugin note, discoverable by structure alone —
 /// `marketplaces/<mkt>/plugins/<plugin>/<plugin>.md` — the shape
 /// the shared `freeform-vault` fixture's `core.md`
-/// uses, with no `ap-kind` needed. `version_line` is spliced in as a whole
-/// frontmatter line, or omitted for a note with no `ap-version` at all.
+/// uses, with no `tc-kind` needed. `version_line` is spliced in as a whole
+/// frontmatter line, or omitted for a note with no `tc-version` at all.
 fn fixture(version_line: Option<&str>) -> (tempfile::TempDir, PathBuf) {
     let dir = tempfile::tempdir().unwrap();
     let vault = dir.path().join("vault");
@@ -74,7 +74,7 @@ const REL: &str = "marketplaces/acme/plugins/widget/widget.md";
 
 #[test]
 fn dry_run_prints_old_arrow_new_and_leaves_the_note_untouched() {
-    let (dir, vault) = fixture(Some("ap-version: 0.2.1"));
+    let (dir, vault) = fixture(Some("tc-version: 0.2.1"));
     let path = note_path(&vault);
     let before = fs::read(&path).unwrap();
 
@@ -98,7 +98,7 @@ fn dry_run_prints_old_arrow_new_and_leaves_the_note_untouched() {
 
 #[test]
 fn a_real_bump_rewrites_only_the_ap_version_line() {
-    let (dir, vault) = fixture(Some("ap-version: 0.2.1"));
+    let (dir, vault) = fixture(Some("tc-version: 0.2.1"));
     let path = note_path(&vault);
     let before = fs::read_to_string(&path).unwrap();
 
@@ -117,7 +117,7 @@ fn a_real_bump_rewrites_only_the_ap_version_line() {
     assert_eq!(result.code, 0, "{}", result.stderr);
     assert_eq!(
         result.stdout,
-        format!("{REL}  written · ap-version 0.2.1 -> 0.3.0\n")
+        format!("{REL}  written · tc-version 0.2.1 -> 0.3.0\n")
     );
 
     let after = fs::read_to_string(&path).unwrap();
@@ -132,8 +132,8 @@ fn a_real_bump_rewrites_only_the_ap_version_line() {
     for (b, a) in before_lines.iter().zip(after_lines.iter()) {
         if b != a {
             changed += 1;
-            assert_eq!(*b, "ap-version: 0.2.1");
-            assert_eq!(*a, "ap-version: 0.3.0");
+            assert_eq!(*b, "tc-version: 0.2.1");
+            assert_eq!(*a, "tc-version: 0.3.0");
         }
     }
     assert_eq!(changed, 1, "exactly one line may change");
@@ -144,7 +144,7 @@ fn no_ap_version_at_all_bumps_from_the_core_default() {
     let (dir, vault) = fixture(None);
     let path = note_path(&vault);
     let before = fs::read_to_string(&path).unwrap();
-    assert!(!before.contains("ap-version"));
+    assert!(!before.contains("tc-version"));
 
     let result = run(
         &[
@@ -161,7 +161,7 @@ fn no_ap_version_at_all_bumps_from_the_core_default() {
     assert_eq!(result.code, 0, "{}", result.stderr);
     assert_eq!(
         result.stdout,
-        format!("{REL}  written · ap-version 0.1.0 -> 0.1.1\n")
+        format!("{REL}  written · tc-version 0.1.0 -> 0.1.1\n")
     );
 
     let after = fs::read_to_string(&path).unwrap();
@@ -170,7 +170,7 @@ fn no_ap_version_at_all_bumps_from_the_core_default() {
     assert_eq!(
         after_lines.len(),
         before_lines.len() + 1,
-        "gaining a missing ap-version must add exactly one line, no stray \
+        "gaining a missing tc-version must add exactly one line, no stray \
          blank line alongside it\nbefore: {before_lines:?}\nafter: {after_lines:?}"
     );
 
@@ -182,19 +182,19 @@ fn no_ap_version_at_all_bumps_from_the_core_default() {
         .position(|(b, a)| b != a)
         .unwrap_or(before_lines.len());
     assert_eq!(before_lines[..insert_at], after_lines[..insert_at]);
-    assert_eq!(after_lines[insert_at], "ap-version: 0.1.1");
+    assert_eq!(after_lines[insert_at], "tc-version: 0.1.1");
     assert_eq!(before_lines[insert_at..], after_lines[insert_at + 1..]);
 }
 
 #[test]
 fn a_non_semver_ap_version_is_refused_and_the_note_is_untouched() {
-    // Quoted: unquoted `0.3` is a YAML float, and `ap-version` must be a
+    // Quoted: unquoted `0.3` is a YAML float, and `tc-version` must be a
     // string at discovery time (`frontmatter::take_string` on
     // `ContainerIdentity.version`) — a float there fails the whole note's
     // discovery, not just this field, so `bump` would never even find the
     // plugin to refuse. A quoted string is the shape that reaches `bump`'s
     // own non-semver refusal, which is what the CLI spec's transcript shows.
-    let (dir, vault) = fixture(Some("ap-version: \"0.3\""));
+    let (dir, vault) = fixture(Some("tc-version: \"0.3\""));
     let path = note_path(&vault);
     let before = fs::read(&path).unwrap();
 
@@ -213,7 +213,7 @@ fn a_non_semver_ap_version_is_refused_and_the_note_is_untouched() {
     assert_eq!(result.code, 1, "{}", result.stderr);
     assert_eq!(
         result.stdout,
-        format!("{REL}  refused · non-semver: `ap-version` reads `0.3`\n")
+        format!("{REL}  refused · non-semver: `tc-version` reads `0.3`\n")
     );
     let after = fs::read(&path).unwrap();
     assert_eq!(before, after, "a refusal must not touch the note's bytes");
@@ -221,7 +221,7 @@ fn a_non_semver_ap_version_is_refused_and_the_note_is_untouched() {
 
 #[test]
 fn no_yes_off_a_tty_is_a_usage_error_and_writes_nothing() {
-    let (dir, vault) = fixture(Some("ap-version: 0.2.1"));
+    let (dir, vault) = fixture(Some("tc-version: 0.2.1"));
     let path = note_path(&vault);
     let before = fs::read(&path).unwrap();
 

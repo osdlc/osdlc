@@ -1,10 +1,10 @@
-//! `tradecraft bump` — raise one plugin's `ap-version` by a semver level,
+//! `tradecraft bump` — raise one plugin's `tc-version` by a semver level,
 //! rewriting only that frontmatter key. Contract: the CLI spec's `bump`
 //! section.
 //!
 //! A version that does not parse as plain `MAJOR.MINOR.PATCH` is refused
 //! rather than guessed at ([`tradecraft_core::next_version`]); an absent
-//! `ap-version` starts from the core's own default, `0.1.0` — so a note that
+//! `tc-version` starts from the core's own default, `0.1.0` — so a note that
 //! has never carried the key is bumped, not refused.
 
 use serde::Serialize;
@@ -167,7 +167,7 @@ pub fn run_bump(flags: &BumpFlags, ctx: &mut CommandContext<'_>) -> i32 {
     let version_key = namespace.key("version");
     let current = match read_field(&source, &version_key) {
         Ok(Some(value)) => value,
-        // No `ap-version` at all is not a refusal — the core's stated
+        // No `tc-version` at all is not a refusal — the core's stated
         // default is what a bump starts from.
         Ok(None) => "0.1.0".to_string(),
         Err(err) => {

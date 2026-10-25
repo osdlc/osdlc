@@ -135,12 +135,12 @@ fn new_skill_writes_the_note_at_its_derived_path() {
 
     // Divergence from the spec transcript: `--plugin dev-agent` places the
     // note under the plugin's own folder, but the core does not mirror an
-    // `ap-plugin` key into the frontmatter on create — a skill's plugin is
+    // `tc-plugin` key into the frontmatter on create — a skill's plugin is
     // read off its folder alone, and `run_new_skill` never adds the key.
     // Only `name` (slugged) and the typed `description` land.
     let note = fs::read_to_string(vault.join(&path)).unwrap();
     assert_eq!(note, "---\nname: foo\ndescription: First skill.\n---\n");
-    assert!(!note.contains("ap-plugin"));
+    assert!(!note.contains("tc-plugin"));
 }
 
 #[test]
@@ -214,7 +214,7 @@ fn move_leaves_an_unrelated_link_byte_identical() {
     assert_eq!(
         result.stdout,
         "marketplaces/studio/plugins/tools/skills/dev-update-docs/dev-update-docs.md  \
-         written \u{b7} moved, ap-plugin removed\n"
+         written \u{b7} moved, tc-plugin removed\n"
     );
     let after = fs::read(&unrelated).unwrap();
     assert_eq!(before, after, "an unrelated note's bytes must not change");

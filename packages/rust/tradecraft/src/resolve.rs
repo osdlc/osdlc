@@ -41,7 +41,7 @@ pub struct ResolvedRun {
     /// The file that was read, or `None` when none was.
     pub config_path: Option<PathBuf>,
     /// The frontmatter namespace for this run, validated at [`resolve_run`].
-    /// Absent means the core's `ap`.
+    /// Absent means the core's `tc`.
     pub namespace: Option<Namespace>,
     /// The vault root, resolved and known to exist.
     pub vault: PathBuf,
@@ -242,7 +242,7 @@ mod tests {
             assert_eq!(code, crate::exit::EXIT_NO_CONFIG);
             let message = String::from_utf8(err).unwrap();
             let expected = format!(
-                "No vault: no `agent-pants.yaml` above {} names one, {} does not either, and no --vault was given.\n\
+                "No vault: no `tradecraft.yaml` above {} names one, {} does not either, and no --vault was given.\n\
                  Pass --vault, run `tradecraft init`, or set `vault` in {}.\n",
                 dir.path().display(),
                 machine_path.display(),

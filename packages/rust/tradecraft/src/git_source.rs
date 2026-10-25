@@ -35,10 +35,10 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-/// The suite segment of the checkout cache (`com.sizerllc.agentpants`),
+/// The suite segment of the checkout cache (`dev.osdlc.tradecraft`),
 /// shared with other tools that use the same cache. Changing it splits the
 /// caches. The digest half of the key is the same for every tool.
-const SUITE_KEY: &str = "agentpants";
+const SUITE_KEY: &str = "tradecraft";
 
 /// The host a bare `owner/repo` means.
 const DEFAULT_HOST: &str = "github.com";
@@ -59,7 +59,7 @@ pub struct GitSource {
 pub struct ResolvedGitSource {
     /// The directory the core reads — the checkout, plus the subpath.
     pub source: PathBuf,
-    /// What every adopted note's `ap-source` records: `<url>[/<subpath>]@<sha>`,
+    /// What every adopted note's `tc-source` records: `<url>[/<subpath>]@<sha>`,
     /// with the subpath in its [`path_guard::lexical::validate_relative`] form.
     pub stamped: String,
 }
@@ -249,7 +249,7 @@ pub fn fetch_git_source(source: &GitSource) -> Result<ResolvedGitSource, GitSour
 }
 
 /// The suite cache root a checkout lands under:
-/// `dirs::system().suite("agentpants").cache()`.
+/// `dirs::system().suite("tradecraft").cache()`.
 fn checkout_cache_root() -> Result<PathBuf, GitSourceError> {
     Ok(crate::dirs::system()?.suite(SUITE_KEY)?.cache().into_path())
 }
