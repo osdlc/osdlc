@@ -24,33 +24,17 @@ import {
 import {
   ConfigError,
   collectOptionsFromConfig,
-  loadConfig,
+  readSettings,
   trustPolicyFromConfig,
   trustPolicyOptions,
   type LoadedConfig,
-  type TaskConfig,
+  type Settings,
 } from '../config.ts'
 import { loadTools, ToolModuleError, type LoadedTool } from '../tools.ts'
 import { appTrustStore } from '../trust-store.ts'
 import type { WithheldReason } from '../vocabulary.ts'
 import { filterTasks, type TaskFilter, type TaskHit } from './filter.ts'
 import { unknownsOf, type Unknown } from './unknowns.ts'
-
-/**
- * wayfinder's own defaults, applied only where no config file answered. The
- * `config` command reports them too, so it shows the value this tool uses.
- *
- * `allowExec: true` does not mean "run this repository's code". The
- * repository must also be trusted, and a configured `false` still means no
- * execution.
- */
-export const WAYFINDER_DEFAULTS: Partial<TaskConfig> = { allowExec: true }
-
-/** `allowExec` from the config files, or wayfinder's default when none sets it. */
-export function configuredAllowExec(cfg: LoadedConfig): boolean {
-  if (cfg.sources.get('allowExec') === 'default') return WAYFINDER_DEFAULTS.allowExec ?? true
-  return cfg.effective.allowExec ?? WAYFINDER_DEFAULTS.allowExec ?? true
-}
 
 /**
  * Why a session could not start, or an operation was refused. `code` is
@@ -131,9 +115,8 @@ export interface CatalogSnapshot {
 /** The facts behind a settings screen. */
 export interface SettingsSnapshot {
   root: string
-  config: LoadedConfig
-  /** `allowExec` after layering and wayfinder's default, before trust. */
-  configuredAllowExec: boolean
+  /** Every setting and its source, from the reader `way config` uses. */
+  settings: Settings
   /** Whether this session runs the repository's tools. */
   allowExec: boolean
   /** Why {@link allowExec} came out as it did. */
@@ -292,19 +275,20 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
   // The root is found with the built-in tools only.
   const root = await makeProject().findRoot(start)
 
-  let config: LoadedConfig
+  let settings: Settings
   try {
-    config = await loadConfig(root, env, home)
+    settings = await readSettings(root, env, home)
   } catch (err) {
     if (err instanceof ConfigError) throw new SessionError('config', err.message)
     throw err
   }
+  const config = settings.loaded
 
   // Precedence for allowExec, highest first: --exec / --no-exec, then
   // allowExec in the project file (false only), then the user file, then
-  // wayfinder's own default (true). Trust is decided here; collection never
+  // the built-in default (true). Trust is decided here; collection never
   // reads the trust store.
-  const configured = configuredAllowExec(config)
+  const configured = settings.allowExec.value
   const trustStore = appTrustStore({ env, home })
   let gate = await policyExecGate(
     trustStore,
@@ -453,8 +437,7 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
     settings() {
       return {
         root,
-        config,
-        configuredAllowExec: configured,
+        settings,
         allowExec: gate.allowExec,
         reason: gate.reason,
         trusted: gate.trusted,

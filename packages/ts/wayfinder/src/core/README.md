@@ -7,7 +7,7 @@ run a task with the same argument rules.
 
 | Module | Holds | Browser-safe |
 |---|---|---|
-| `session.ts` | `createSession`, `Session`, `SessionError`, `resolveRun`, `WAYFINDER_DEFAULTS`, `configuredAllowExec` | no |
+| `session.ts` | `createSession`, `Session`, `SessionError`, `resolveRun` | no |
 | `run.ts` | `handOff`: give the terminal to a task and wait for it | no |
 | `filter.ts` | `filterTasks`, `keepsTask`, `sourceDepth`, `TaskFilter` | yes |
 | `unknowns.ts` | `unknownsOf`, `unknownLine`, `Unknown` | yes |
@@ -34,7 +34,7 @@ decides execution against the trust store and loads tool modules. It throws
 | `session.trustable()` | whether a grant would change this session's execution |
 | `session.grantTrust()` | writes the grant, turns execution on for this session and drops the withheld hint. Probe again after it. Throws `not-trustable` when trust is not what withholds execution |
 | `session.revokeTrust()` | removes the grant. This session's execution stays as it is |
-| `session.settings()` | the config, the configured and effective `allowExec`, the gate's reason and trust |
+| `session.settings()` | every setting and its source (from `readSettings`, the reader `way config` uses), the effective `allowExec`, the gate's reason and trust |
 | `session.resolveRun(catalog, id, args)` | the `RunPlan` (`argv`, `env`, `cwd`) for a task id, or a `command line` only one task has. Throws `task-not-found`, `not-runnable` (an editor variable) or `bad-arguments` |
 
 `session.options` is the collect options object. A grant and a saved

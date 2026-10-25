@@ -8,6 +8,7 @@ import { afterAll, describe, expect, test } from 'vitest'
 
 import type { Catalog, RunnerReport, Task } from '@osdlc/system-model/detect'
 
+import { CONFIG_ENV_VAR } from '../src/app.ts'
 import { makeProject } from '../src/catalog.ts'
 import { filterTasks, sourceDepth } from '../src/core/filter.ts'
 import { handOff } from '../src/core/run.ts'
@@ -328,6 +329,39 @@ describe('createSession', () => {
 
     expect(await session.revokeTrust()).toEqual({ changed: true })
     expect(await session.revokeTrust()).toEqual({ changed: false })
+  })
+
+  test('settings come from the shared reader: allowExec defaults to true, a project file only lowers it', async () => {
+    const plain = await root({ 'package.json': '{"name":"p"}' })
+    const byDefault = (
+      await createSession({ dir: plain, cwd: plain, env: {}, home: plain })
+    ).settings()
+    expect(byDefault.settings.allowExec).toMatchObject({ value: true, source: 'default' })
+    // The default alone does not run anything: the repository is not trusted.
+    expect(byDefault).toMatchObject({ allowExec: false, reason: 'untrusted', trusted: false })
+
+    const lowered = await root({
+      'package.json': '{"name":"p"}',
+      'wayfinder.config.json': '{"allowExec": false}',
+    })
+    const off = (
+      await createSession({ dir: lowered, cwd: lowered, env: {}, home: lowered })
+    ).settings()
+    expect(off.settings.allowExec).toMatchObject({ value: false, source: 'project' })
+
+    const user = await root({ 'config.json': '{"allowExec": false}' })
+    const raised = await root({
+      'package.json': '{"name":"p"}',
+      'wayfinder.config.json': '{"allowExec": true}',
+    })
+    const session = await createSession({
+      dir: raised,
+      cwd: raised,
+      env: { [CONFIG_ENV_VAR]: `${user}/config.json` },
+      home: raised,
+    })
+    expect(session.settings().settings.allowExec).toMatchObject({ value: false, source: 'user' })
+    expect(session.warnings.join('\n')).toContain('allowExec: true is ignored in a project file')
   })
 
   test('a grant that would change nothing is refused', async () => {
