@@ -102,23 +102,27 @@ describe('spawnRunnerAsync maxOutputBytes', () => {
   })
 
   // POSIX only: `processGroup` is POSIX only.
-  test.skipIf(process.platform === 'win32')('with processGroup, the whole group is killed', async () => {
-    const pidFile = join(tmpdir(), `seam-cap-pid-${process.pid}`)
-    let pid = 0
-    try {
-      const r = await sh.run(['-c', `sleep 30 & echo $! > "${pidFile}"; ${xs(5000)}; wait`], {
-        cwd: CWD,
-        maxOutputBytes: 100,
-        processGroup: true,
-      })
-      pid = Number(readFileSync(pidFile, 'utf8').trim())
-      expect(r.reason).toBe('output')
-      expect(await gone(pid)).toBe(true)
-    } finally {
-      reap(pid)
-      rmSync(pidFile, { force: true })
-    }
-  }, 10_000)
+  test.skipIf(process.platform === 'win32')(
+    'with processGroup, the whole group is killed',
+    async () => {
+      const pidFile = join(tmpdir(), `seam-cap-pid-${process.pid}`)
+      let pid = 0
+      try {
+        const r = await sh.run(['-c', `sleep 30 & echo $! > "${pidFile}"; ${xs(5000)}; wait`], {
+          cwd: CWD,
+          maxOutputBytes: 100,
+          processGroup: true,
+        })
+        pid = Number(readFileSync(pidFile, 'utf8').trim())
+        expect(r.reason).toBe('output')
+        expect(await gone(pid)).toBe(true)
+      } finally {
+        reap(pid)
+        rmSync(pidFile, { force: true })
+      }
+    },
+    10_000,
+  )
 
   test('Infinity is no cap, and a fraction rounds up', async () => {
     expect(

@@ -427,34 +427,42 @@ describe('spawnRunnerAsync — processGroup', () => {
   const GRANDCHILD = ['-c', `sh -c 'echo $$; exec sleep 30'; echo after`]
 
   // POSIX only: `processGroup` is POSIX only, and a `sh` pid is not a Windows pid.
-  test.skipIf(process.platform === 'win32')('a timeout kills the grandchild too', async () => {
-    const sh = spawnRunnerAsync('sh')
-    const r = await sh.run(GRANDCHILD, { cwd: CWD, timeoutMs: 500, processGroup: true })
-    const pid = Number(r.stdout.trim())
-    try {
-      expect(r.neverExited).toBe(true)
-      expect(pid).toBeGreaterThan(0)
-      expect(await gone(pid)).toBe(true)
-    } finally {
-      reap(pid)
-    }
-  }, 10_000)
+  test.skipIf(process.platform === 'win32')(
+    'a timeout kills the grandchild too',
+    async () => {
+      const sh = spawnRunnerAsync('sh')
+      const r = await sh.run(GRANDCHILD, { cwd: CWD, timeoutMs: 500, processGroup: true })
+      const pid = Number(r.stdout.trim())
+      try {
+        expect(r.neverExited).toBe(true)
+        expect(pid).toBeGreaterThan(0)
+        expect(await gone(pid)).toBe(true)
+      } finally {
+        reap(pid)
+      }
+    },
+    10_000,
+  )
 
   // POSIX only: `processGroup` is POSIX only, and a `sh` pid is not a Windows pid.
-  test.skipIf(process.platform === 'win32')('an abort kills the grandchild too', async () => {
-    const sh = spawnRunnerAsync('sh')
-    const ac = new AbortController()
-    setTimeout(() => ac.abort(), 500)
-    const r = await sh.run(GRANDCHILD, { cwd: CWD, signal: ac.signal, processGroup: true })
-    const pid = Number(r.stdout.trim())
-    try {
-      expect(r.exitCode).not.toBe(0)
-      expect(pid).toBeGreaterThan(0)
-      expect(await gone(pid)).toBe(true)
-    } finally {
-      reap(pid)
-    }
-  }, 10_000)
+  test.skipIf(process.platform === 'win32')(
+    'an abort kills the grandchild too',
+    async () => {
+      const sh = spawnRunnerAsync('sh')
+      const ac = new AbortController()
+      setTimeout(() => ac.abort(), 500)
+      const r = await sh.run(GRANDCHILD, { cwd: CWD, signal: ac.signal, processGroup: true })
+      const pid = Number(r.stdout.trim())
+      try {
+        expect(r.exitCode).not.toBe(0)
+        expect(pid).toBeGreaterThan(0)
+        expect(await gone(pid)).toBe(true)
+      } finally {
+        reap(pid)
+      }
+    },
+    10_000,
+  )
 
   // POSIX only: it checks a POSIX grandchild with `kill(pid, 0)` on a `sh` pid.
   test.skipIf(process.platform === 'win32')(
@@ -480,26 +488,30 @@ describe('spawnRunnerAsync — processGroup', () => {
   })
 
   // POSIX only: `processGroup` is POSIX only, and a `sh` pid is not a Windows pid.
-  test.skipIf(process.platform === 'win32')('a background member still holding the pipes is killed after the exit grace', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'seam-group-'))
-    const pidFile = join(dir, 'pid')
-    let pid = 0
-    try {
-      const sh = spawnRunnerAsync('sh')
-      const r = await sh.run(['-c', `sleep 30 & echo $! > "${pidFile}"; exit 0`], {
-        cwd: CWD,
-        timeoutMs: 5_000,
-        processGroup: true,
-      })
-      pid = Number(readFileSync(pidFile, 'utf8').trim())
-      expect(r.exitCode).toBe(0)
-      expect(pid).toBeGreaterThan(0)
-      expect(await gone(pid)).toBe(true)
-    } finally {
-      reap(pid)
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }, 10_000)
+  test.skipIf(process.platform === 'win32')(
+    'a background member still holding the pipes is killed after the exit grace',
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'seam-group-'))
+      const pidFile = join(dir, 'pid')
+      let pid = 0
+      try {
+        const sh = spawnRunnerAsync('sh')
+        const r = await sh.run(['-c', `sleep 30 & echo $! > "${pidFile}"; exit 0`], {
+          cwd: CWD,
+          timeoutMs: 5_000,
+          processGroup: true,
+        })
+        pid = Number(readFileSync(pidFile, 'utf8').trim())
+        expect(r.exitCode).toBe(0)
+        expect(pid).toBeGreaterThan(0)
+        expect(await gone(pid)).toBe(true)
+      } finally {
+        reap(pid)
+        rmSync(dir, { recursive: true, force: true })
+      }
+    },
+    10_000,
+  )
 })
 
 describe('spawnRunnerAsync — abort', () => {
