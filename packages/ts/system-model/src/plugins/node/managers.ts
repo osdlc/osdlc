@@ -1,8 +1,8 @@
 /**
  * The node package managers. Each one's run verb and directory flag differ:
  * `npm run --prefix <dir>`, `pnpm run --dir <dir>`, `bun run --cwd <dir>`,
- * `yarn --cwd <dir>` (yarn 1; Berry dropped `--cwd`, and a lockfile does not
- * say which yarn wrote it).
+ * `yarn --cwd <dir> run` (yarn 1; Berry dropped `--cwd`, and a lockfile does
+ * not say which yarn wrote it).
  */
 
 import type { Evidence } from '../../aspect.ts'
@@ -96,7 +96,8 @@ export const yarn: ToolDef = {
       inDir: flagAfterBinary('--cwd'),
       depsDirs: [NODE_MODULES, '.pnp.cjs'],
       pin: pinOf('yarn'),
-      run: { verb: ['yarn'], dirFlag: '--cwd' },
+      // `run`, so a script named `version` or `pack` is not yarn's own command.
+      run: { verb: ['yarn', 'run'], dirFlag: '--cwd', dirFlagFirst: true },
     },
   },
 }

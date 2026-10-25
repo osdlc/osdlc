@@ -61,6 +61,8 @@ export interface PackageManagerRole {
         dirFlag: string
         /** Arguments go after `--` rather than straight after the script name. */
         separator?: boolean | undefined
+        /** `dirFlag` goes straight after the binary, before the rest of `verb` (`yarn --cwd dir run`). */
+        dirFlagFirst?: boolean | undefined
       }
     | undefined
 }

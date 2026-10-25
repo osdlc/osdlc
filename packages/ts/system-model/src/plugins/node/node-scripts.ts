@@ -76,8 +76,7 @@ export const nodeScriptsRunner: RunnerRole = {
       for (const [script, body] of entries) {
         // The manager's own directory flag reaches any manifest, so the command
         // works when run from the root.
-        const argv =
-          dir === '.' ? [...manager.verb, script] : [...manager.verb, manager.dirFlag, dir, script]
+        const argv = dir === '.' ? [...manager.verb, script] : [...inDir(manager, dir), script]
         tasks.push({
           id: taskId('node-scripts', file, script),
           runner: 'node-scripts',
@@ -116,6 +115,14 @@ interface RunVerb {
   id: string
   verb: readonly string[]
   dirFlag: string
+  dirFlagFirst: boolean
+}
+
+/** The run verb aimed at `dir`: `npm run --prefix dir`, `yarn --cwd dir run`. */
+function inDir(manager: RunVerb, dir: string): string[] {
+  if (!manager.dirFlagFirst) return [...manager.verb, manager.dirFlag, dir]
+  const [binary, ...rest] = manager.verb
+  return [binary!, manager.dirFlag, dir, ...rest]
 }
 
 /** The run verb of the node manager chosen for `dir`, npm when none is. */
@@ -123,7 +130,12 @@ function managerFor(ctx: RunnerContext, dir: string): RunVerb {
   const choice = ctx.packageManagers(dir).find((c) => c.ecosystem === 'node')
   const tool = ctx.tools.find((t) => t.id === choice?.tool) ?? npm
   const run = tool.roles.packageManager?.run ?? npm.roles.packageManager!.run!
-  return { id: tool.id, verb: run.verb, dirFlag: run.dirFlag }
+  return {
+    id: tool.id,
+    verb: run.verb,
+    dirFlag: run.dirFlag,
+    dirFlagFirst: run.dirFlagFirst === true,
+  }
 }
 
 function parseOrUndefined(text: string, file: string): PackageJsonFact | undefined {
