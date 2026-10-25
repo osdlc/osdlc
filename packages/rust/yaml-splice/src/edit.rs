@@ -25,7 +25,7 @@ use saphyr_parser::{Event, Parser};
 
 use crate::parse::{self, KeySpan, ParseError, Parsed};
 use crate::render;
-use crate::splice::{apply_eol, fit_assignment, line_indent, line_start};
+use crate::splice::{line_indent, value_assignment, value_edit, without_entry};
 use crate::value::{Mapping, Value};
 
 /// The UTF-8 byte-order mark, `EF BB BF`.
@@ -613,22 +613,7 @@ fn remove(
     let hits = find_keys(current, &parsed.top_level, key, opts);
     match hits.len() {
         0 => Ok((current.to_string(), false)),
-        1 => {
-            let span = hits[0];
-            let start = line_start(current, span.key_range.start);
-            // From the value's last byte to the end of its line takes the
-            // trailing inline comment with it; preceding standalone comments
-            // sit above `start` and are preserved.
-            let after = span.value_range.end.max(span.key_range.end);
-            let end = match current[after..].find('\n') {
-                Some(i) => after + i + 1,
-                None => current.len(),
-            };
-            let mut out = String::with_capacity(current.len());
-            out.push_str(&current[..start]);
-            out.push_str(&current[end..]);
-            Ok((out, true))
-        }
+        1 => Ok((without_entry(current, hits[0]), true)),
         _ => Err(EditError::AmbiguousKey {
             key: key.to_string(),
             at: offset(hits[0].key_range.clone(), bom_len),
@@ -698,18 +683,11 @@ fn replace_value(
 ) -> Result<String, EditError> {
     let key_indent = line_indent(current, span.key_range.start);
     let text =
-        render::assignment(value, &key_indent).map_err(|e| EditError::UnrenderableValue {
+        value_assignment(value, &key_indent, eol).map_err(|e| EditError::UnrenderableValue {
             key: key.to_string(),
             message: e.to_string(),
         })?;
-    let text = apply_eol(&text, eol);
-    // From just past the `:` — the separator is part of the replaced range so
-    // a scalar/collection layout switch is a single edit.
-    let (range, text) = fit_assignment(
-        current,
-        span.assign_end..span.value_range.end.max(span.assign_end),
-        text,
-    );
+    let (range, text) = value_edit(current, span, text);
     let mut out = String::with_capacity(current.len());
     out.push_str(&current[..range.start]);
     out.push_str(&text);
@@ -728,11 +706,11 @@ fn append_entry(
         key: key.to_string(),
         message: e.to_string(),
     })?;
-    let assign = render::assignment(value, "").map_err(|e| EditError::UnrenderableValue {
+    let assign = value_assignment(value, "", eol).map_err(|e| EditError::UnrenderableValue {
         key: key.to_string(),
         message: e.to_string(),
     })?;
-    let entry = format!("{key_text}:{}", apply_eol(&assign, eol));
+    let entry = format!("{key_text}:{assign}");
 
     // Appended after the existing top-level entries, before any explicit
     // document-end marker.

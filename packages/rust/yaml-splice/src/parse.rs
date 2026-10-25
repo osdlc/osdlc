@@ -386,10 +386,17 @@ fn resolve_plain(text: &str, style: ScalarStyle) -> Value {
     if let Some(i) = parse_int(text) {
         return Value::Int(i);
     }
-    if let Some(f) = parse_float(text) {
+    if let Some(f) = parse_float(text).or_else(|| parse_wide_radix_int(text)) {
         return Value::Float(f);
     }
     Value::Str(text.to_string())
+}
+
+/// Whether a plain scalar spelled `text` reads back as anything but a string
+/// under the core schema. [`render`](crate::render) quotes a string exactly
+/// when this holds, so the emitter and this parser share one resolver.
+pub(crate) fn plain_is_non_string(text: &str) -> bool {
+    !matches!(resolve_plain(text, ScalarStyle::Plain), Value::Str(_))
 }
 
 /// Does this top-level [`KeySpan`] address a string key?
@@ -410,8 +417,8 @@ pub(crate) fn is_string_key(src: &str, span: &KeySpan) -> bool {
 }
 
 /// The integer spellings the core schema accepts: signed decimal, and unsigned
-/// `0x` / `0o` (yaml@2 takes no sign on those, so `-0x1F` is a string, as
-/// [`render`](crate::render)'s quoting rule assumes).
+/// `0x` / `0o` (yaml@2 takes no sign on those, so `-0x1F` is a string).
+/// Those too wide for `i64` are [`parse_wide_radix_int`]'s.
 fn parse_int(text: &str) -> Option<i64> {
     let unsigned = text.strip_prefix(['-', '+']).unwrap_or(text);
     if !unsigned.is_empty()
@@ -431,6 +438,39 @@ fn parse_int(text: &str) -> Option<i64> {
         if let Ok(i) = i64::from_str_radix(digits, radix) {
             return Some(i);
         }
+    }
+    None
+}
+
+/// A `0x` / `0o` integer too wide for `i64`, as the nearest `f64`.
+///
+/// yaml@2 reads such a spelling with `parseInt`, so it is a number there, not
+/// a string. Digits past the 128 bits a `u128` holds are dropped and counted
+/// as a power of the radix; the radix is a power of two, so scaling is exact.
+fn parse_wide_radix_int(text: &str) -> Option<f64> {
+    for (prefix, radix) in [("0x", 16u32), ("0o", 8)] {
+        let Some(digits) = text.strip_prefix(prefix) else {
+            continue;
+        };
+        if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
+            continue;
+        }
+        let mut acc: u128 = 0;
+        let mut dropped: i32 = 0;
+        for c in digits.chars() {
+            let d = u128::from(c.to_digit(radix).unwrap_or(0));
+            match acc
+                .checked_mul(u128::from(radix))
+                .and_then(|a| a.checked_add(d))
+            {
+                Some(next) if dropped == 0 => acc = next,
+                _ => dropped = dropped.saturating_add(1),
+            }
+        }
+        // Rounds to nearest, as `parseInt` does.
+        #[allow(clippy::cast_precision_loss)]
+        let base = acc as f64;
+        return Some(base * f64::from(radix).powi(dropped));
     }
     None
 }
@@ -965,6 +1005,30 @@ mod tests {
         assert_eq!(m.get("d"), Some(&Value::Str("+0o7".into())));
         assert_eq!(m.get("e"), Some(&Value::Str("0x-1".into())));
         assert_eq!(m.get("f"), Some(&Value::Int(-12)));
+    }
+
+    #[test]
+    fn hex_and_octal_too_wide_for_i64_read_as_numbers() {
+        // yaml@2 reads these with `parseInt`: a number, not a string.
+        let v = parse("a: 0xFFFFFFFFFFFFFFFF\nb: 0o7777777777777777777777777\nc: 0x1G\n").unwrap();
+        let m = v.as_mapping().unwrap();
+        assert_eq!(
+            m.get("a"),
+            Some(&Value::Float(18_446_744_073_709_551_615.0))
+        );
+        assert_eq!(
+            m.get("b"),
+            Some(&Value::Float(f64::from(8u8).powi(25) - 1.0))
+        );
+        assert_eq!(m.get("c"), Some(&Value::Str("0x1G".into())));
+        // Wider than 128 bits: the dropped digits scale the value.
+        let wide = format!("0x1{}", "0".repeat(40));
+        let v = parse(&format!("a: {wide}\n")).unwrap();
+        assert_eq!(
+            v.as_mapping().unwrap().get("a"),
+            Some(&Value::Float(16f64.powi(40)))
+        );
+        assert!(plain_is_non_string(&wide));
     }
 
     #[test]
