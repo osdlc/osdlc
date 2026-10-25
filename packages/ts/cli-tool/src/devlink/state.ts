@@ -76,7 +76,8 @@ export interface StateOptions {
 /**
  * `<config>/<name>` for this tool, under the `xdg` convention:
  * `${XDG_CONFIG_HOME:-~/.config}/<name>` on Linux and macOS, `%APPDATA%\<name>`
- * on Windows. The bash launcher reads the same path.
+ * on Windows. The vendor's `<P>_CONFIG_DIR` and `<P>_ROOT` move it, and the
+ * bash launcher reads them too, so it reads the same path.
  *
  * @experimental
  */
