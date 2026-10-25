@@ -15,8 +15,9 @@ does a task name from a repository do when it holds an escape sequence?
 
 This package answers them once:
 
-- The tokens are plain values, checked by a test: every text color meets
-  WCAG AA contrast on every background, in light and dark.
+- The tokens are plain values, checked by a test: every pair in
+  `CONTRAST_PAIRS`, which is each text color on each background, meets WCAG
+  AA contrast in light and dark.
 - The CSS sheet follows the system theme and an explicit `data-theme`
   choice.
 - Color detection follows `NO_COLOR`, `FORCE_COLOR`, `TERM=dumb`, the TTY

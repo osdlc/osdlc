@@ -25,17 +25,26 @@ describe('colors', () => {
     expect(failing).toEqual([])
   })
 
-  test('every text, accent and status token is paired with every ground', () => {
+  test('the pairs are every text, accent and status token on every ground, and the accent label on both fills', () => {
     const grounds = COLOR_TOKENS.filter((t) => t.startsWith('bg-'))
     const texts = COLOR_TOKENS.filter(
-      (t) => t.startsWith('text-') || t.startsWith('status-') || t === 'accent',
+      (t) => !t.startsWith('bg-') && !t.startsWith('border') && t !== 'accent-fg',
     )
-    for (const text of texts) {
-      for (const ground of grounds) {
-        expect(CONTRAST_PAIRS.some(([a, b]) => a === text && b === ground)).toBe(true)
+    const expected = [
+      ...texts.flatMap((text) => grounds.map((ground) => `${text} on ${ground}`)),
+      'accent-fg on accent',
+      'accent-fg on accent-hover',
+    ]
+    const actual = CONTRAST_PAIRS.map(([text, ground]) => `${text} on ${ground}`)
+    expect(actual.sort()).toEqual(expected.sort())
+  })
+
+  test.each(THEMES)('in %s, a border differs from every ground, so it shows', (theme) => {
+    for (const line of ['border', 'border-subtle'] as const) {
+      for (const ground of ['bg-base', 'bg-surface', 'bg-hover'] as const) {
+        expect(colors[theme][line]).not.toBe(colors[theme][ground])
       }
     }
-    expect(CONTRAST_PAIRS).toContainEqual(['accent-fg', 'accent'])
   })
 })
 

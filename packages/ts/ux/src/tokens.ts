@@ -65,11 +65,11 @@ export const colors: Readonly<Record<Theme, Palette>> = Object.freeze({
     'text-primary': '#eaeaee',
     'text-secondary': '#bcbcc4',
     'text-muted': '#a4a5ae',
-    border: '#31323c',
+    border: '#3b3c47',
     'border-subtle': '#272831',
     accent: '#6a9bff',
     'accent-hover': '#85adff',
-    // Dark on the accent: white on #6a9bff is 2.56:1 and fails AA.
+    // Dark on the accent: white on #6a9bff is 2.71:1 and fails AA.
     'accent-fg': '#24252d',
     'status-success': '#3fb27f',
     'status-warning': '#e0af68',
