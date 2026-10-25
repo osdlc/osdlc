@@ -177,9 +177,10 @@ export interface Session {
   /**
    * The catalog. Probed fresh by default, since a script must not get an old
    * answer without being told. `cached` reads the store first and probes only
-   * the runners missing from it. A probe always writes the store.
+   * the runners missing from it. A probe always writes the store. `signal`
+   * stops this call's probes as well as the session's own signal.
    */
-  catalog(opts?: { cached?: boolean }): Promise<CatalogSnapshot>
+  catalog(opts?: { cached?: boolean; signal?: AbortSignal | undefined }): Promise<CatalogSnapshot>
   /** The tasks of `catalog` that pass `filter`, best first when there is a query. */
   search(catalog: Catalog, filter: TaskFilter): TaskHit[]
   /** Everything this session could not know about `snapshot`. */
@@ -330,14 +331,17 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
   /** Probe the runners `only` names (all when absent), timing each. */
   const probe = async (
     only?: string[],
+    signal?: AbortSignal,
   ): Promise<{ catalog: Catalog; times: Map<string, number> }> => {
     const times = new Map<string, number>()
+    const signals = [options.signal, signal].filter((s) => s !== undefined)
     const catalog = await collectAndCache(
       project,
       root,
       {
         ...options,
         ...(only !== undefined ? { only } : {}),
+        ...(signals.length > 0 ? { signal: AbortSignal.any(signals) } : {}),
         onProbe: ({ runner, durationMs }) => times.set(runner, durationMs),
       },
       store,
@@ -368,7 +372,7 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
     },
     async catalog(opts = {}) {
       if (opts.cached !== true) {
-        const { catalog, times } = await probe()
+        const { catalog, times } = await probe(undefined, opts.signal)
         return {
           catalog: orderedCatalog(catalog, runnerOrder()),
           cache: probedStates(catalog, times),
@@ -377,7 +381,7 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
       }
       const stored = await readCachedCatalog(project, root, options, store)
       if (stored.catalog === null || !fromStore(stored)) {
-        const { catalog, times } = await probe()
+        const { catalog, times } = await probe(undefined, opts.signal)
         return {
           catalog: orderedCatalog(catalog, runnerOrder()),
           cache: probedStates(catalog, times),
@@ -393,7 +397,7 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
           origin: 'store',
         }
       }
-      const { catalog: probed, times } = await probe(missing)
+      const { catalog: probed, times } = await probe(missing, opts.signal)
       const fresh = new Map(probedStates(probed, times).map((s) => [s.runner, s]))
       return {
         catalog: orderedCatalog(

@@ -6,7 +6,7 @@ import { defineApp, type App, type CommandContext, type Node } from '@osdlc/cli-
 
 import { BIN, PROJECT_CONFIG_FILENAME } from '../app.ts'
 import { VERSION } from '../version.ts'
-import { browseCommand, serveCommand } from './browse.ts'
+import { TUI_KEYS_HELP, browseCommand, serveCommand } from './browse.ts'
 import { listCommand } from './list.ts'
 import { queryCommand } from './query.ts'
 import { runCommand } from './run.ts'
@@ -26,7 +26,9 @@ Reading some runners means running them, so a repository must be trusted before 
 
 --config loads a module of extra tools for this run, beside the built-ins and any the config's "tools" key names; "${BIN} providers" lists them all.
 
-The flags --serve, --list and --json with no command still work in this release, as "${BIN} serve", "${BIN} list" and "${BIN} list --json". They go away in a later release.`
+The flags --serve, --list and --json with no command still work in this release, as "${BIN} serve", "${BIN} list" and "${BIN} list --json". They go away in a later release.
+
+${TUI_KEYS_HELP}`
 
 /** What {@link createWayApp} returns. */
 export interface WayApp {
@@ -49,6 +51,8 @@ export function createWayApp(opts: {
   const { home } = opts
   const env = { globals: GLOBALS, home: () => home }
   const browse = browseCommand(home)
+  // The bare `way` follows the `open` setting; `way browse` is always the terminal UI.
+  const bare = browseCommand(home, { followOpen: true })
   const commands: Record<string, Node> = {
     browse: { ...browse, hidden: true },
     list: listCommand(home),
@@ -72,7 +76,7 @@ export function createWayApp(opts: {
     summary: 'Browse and run every task in this repository.',
     description: DESCRIPTION,
     globals: GLOBALS,
-    default: browse,
+    default: bare,
     commands,
   })
   const treeWords = Object.keys(commands).filter((w) => w !== 'browse')

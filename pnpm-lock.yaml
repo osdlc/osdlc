@@ -949,6 +949,9 @@ importers:
       '@osdlc/typed-git':
         specifier: workspace:^
         version: link:../typed-git
+      '@osdlc/ux':
+        specifier: workspace:^
+        version: link:../ux
       zod:
         specifier: 'catalog:'
         version: 4.4.3

@@ -1,22 +1,22 @@
- all 9  just 4  make 2  node-scripts 3                                  fuzzy
-> █
+[all 9] just 4  make 2  node-scripts 3                                   fuzzy
+> 
 9/9  checked HH:MM:SS   
-RUNNERS  (this project)
-  [x] just
-  [x] make
-  [ ] gradle   not collected
+RUNNERS  (on or off: default)
+> on   just          https://just.systems
+  on   make          https://www.gnu.org/software/make/
+  on   node-scripts  node  https://docs.npmjs.com/cli/using-npm/scripts/
   order: alphabetical  (default)
 
-EXECUTION  (trust store)
-  not trusted — runners that must be run to be read were skipped (^s to trust)
-  allowExec: false  (default)
+EXECUTION
+  trust: not trusted (t to trust)
+  this run: off — this repository is not trusted
+  allowExec: true  (default)
+  a project file can only turn execution off; trust is what turns it on
 
 DISCOVERY  (default)
   auto
 
-
-
-
-
+EXCLUDED PATHS  (default)
+  + add a path
 ──────────────────────────────────────────────────────────────────────────────
-reading only — edit with `way config set`    esc back
+space change  [ ] order  a add path  x remove  t/u trust  ? help  esc back

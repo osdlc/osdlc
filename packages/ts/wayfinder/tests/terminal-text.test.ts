@@ -5,7 +5,7 @@
  * stderr, with `--json` keeping every value exact.
  */
 
-import { afterAll, beforeEach, describe, expect, test } from 'vitest'
+import { afterAll, describe, expect, test } from 'vitest'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -23,7 +23,8 @@ import {
   safeStdout,
   terminalSafe,
 } from '../src/terminal-text.ts'
-import { frame, recompute, state } from '../src/tui.ts'
+import { copyText as tuiCopyText } from '../src/tui/copy.ts'
+import { cleanupAll, testTui } from './tui-support.ts'
 import { copyText } from '../src/web/view.ts'
 
 /** OSC 52: put "echo hi" on the clipboard. */
@@ -259,6 +260,15 @@ describe('copied text', () => {
     expect(copyText(t)).not.toMatch(RAW_CONTROL)
     expect(copyText({ ...t, cwd: '.' })).not.toMatch(RAW_CONTROL)
   })
+
+  test("the terminal UI's copied text has no control character, and quotes each word", () => {
+    const t = {
+      argv: ['npm', 'run', `x${CLIPBOARD}; rm -rf ~`],
+      cwd: `pkg${BIDI}`,
+    } as unknown as Task
+    expect(tuiCopyText(t, 'linux')).not.toMatch(RAW_CONTROL)
+    expect(tuiCopyText({ ...t, cwd: '.' }, 'linux')).toMatch(/^npm run '.*; rm -rf ~'$/)
+  })
 })
 
 describe('terminal UI', () => {
@@ -280,16 +290,13 @@ describe('terminal UI', () => {
     }
   }
 
-  beforeEach(() => {
-    state.query = ''
-    state.runner = 'all'
-    state.servicesOnly = false
-    state.selectedId = null
-    state.scroll = 0
-    state.cache = []
-  })
+  afterAll(cleanupAll)
 
-  test('a frame holds no control sequence from a task name, doc or path', () => {
+  test('a frame holds no control sequence from a task name, doc or path', async () => {
+    // With color and attributes on, so only the UI's own paint adds escapes.
+    const { tui } = await testTui({
+      style: { level: 'truecolor', theme: 'dark', attributes: true },
+    })
     const catalog: Catalog = {
       kind: 'catalog',
       schemaVersion: CATALOG_SCHEMA_VERSION,
@@ -315,11 +322,11 @@ describe('terminal UI', () => {
         },
       ],
     }
-    state.catalog = catalog
-    recompute()
+    tui.state.catalog = catalog
+    tui.recompute()
     // frame() writes its own cursor and clear escapes; strip those first.
     const own = /\u001b\[(?:\?\d+[hl]|[HJK]|\d*(?:;\d+)*m)/g
-    const screen = frame(100, 20).replace(own, '').replace(/\r\n/g, '\n')
+    const screen = tui.frame(100, 20).replace(own, '').replace(/\r\n/g, '\n')
     expect(screen).toContain('build')
     expect(screen).not.toMatch(RAW_CONTROL)
   })

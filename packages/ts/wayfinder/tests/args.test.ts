@@ -51,6 +51,18 @@ describe('splitArgs', () => {
     expect(splitArgs('two\\ words')).toEqual(['two words'])
   })
 
+  test('a backslash inside single quotes is literal, as in sh', () => {
+    expect(splitArgs("'C:\\tmp\\x'")).toEqual(['C:\\tmp\\x'])
+    // sh: 'a\' ends the quote after the backslash; b'c' joins on.
+    expect(splitArgs("'a\\'b'c'")).toEqual(['a\\bc'])
+  })
+
+  test('inside double quotes a backslash escapes only " \\ $ and a backtick', () => {
+    expect(splitArgs('"say \\"hi\\""')).toEqual(['say "hi"'])
+    expect(splitArgs('"a\\\\b"')).toEqual(['a\\b'])
+    expect(splitArgs('"C:\\tmp"')).toEqual(['C:\\tmp'])
+  })
+
   test('leading, trailing and repeated whitespace produce no empty arguments', () => {
     expect(splitArgs('   a    b  ')).toEqual(['a', 'b'])
     expect(splitArgs('')).toEqual([])
