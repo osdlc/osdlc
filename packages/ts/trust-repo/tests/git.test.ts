@@ -140,6 +140,18 @@ describe('originOwner as ownerOf', () => {
     })
   })
 
+  test('policy.owners does not match the same owner name on another host', async () => {
+    const repo = repoWithOrigin('https://gitlab.com/AcmeOwner/dev.git')
+    const decide = (owners: string[]) => policyDecision(repo.dir, { paths: [], owners }, withGit)
+    expect((await decide(['acmeowner'])).trusted).toBe(false)
+    expect((await decide(['github.com/acmeowner'])).trusted).toBe(false)
+    expect(await decide(['gitlab.com/acmeowner'])).toEqual({
+      trusted: true,
+      by: 'owner',
+      rule: 'gitlab.com/acmeowner',
+    })
+  })
+
   test('trustDecision falls through to the owner rule when there is no marker', async () => {
     const store = trustStore({ tool: 'tooly', dir: tmp() })
     const repo = repoWithOrigin('https://github.com/AcmeOwner/dev.git')
