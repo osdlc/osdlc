@@ -24,8 +24,9 @@ returns findings, each with a finding id, a level and a line number.
 
 This is the Rust twin of the npm package
 [`@osdlc/markdown-contract`](https://www.npmjs.com/package/@osdlc/markdown-contract).
-It reads the same YAML contracts and gives the same finding ids, levels and
-line numbers.
+It reads the same YAML contracts. A shared corpus checks that both give the
+same findings; see [Parity with the TypeScript package](#parity-with-the-typescript-package)
+for exactly what it checks.
 
 ## Install
 
@@ -85,18 +86,60 @@ assert!(findings.iter().all(|f| f.level == FindingLevel::Error));
 Both packages are checked against one corpus of contracts, documents and
 expected findings: `packages/ts/markdown-contract/corpus/` in the
 [osdlc/osdlc](https://github.com/osdlc/osdlc) repository. This crate's
-`tests/corpus.rs` loads each contract, validates each document and compares
-the findings with the expected ones: the count, each id in order, and the
-level, line and hint where the corpus pins them. Fixtures that need custom
-`rule` or `docRule` functions cannot be written in YAML, so the corpus marks
-them TypeScript-only and the crate skips them.
+`tests/corpus.rs` loads each shared contract, validates each document and
+compares the findings with the expected ones, as the TypeScript test does:
 
-The crate and the package share the major and minor version. The crate has
-no Zod; its schema runtime covers the JSON Schema subset that `mcVersion: 2`
-contracts use.
+- the number of findings;
+- each finding id, in order;
+- the level, line and hint, where the expected file records them.
 
-`comrak` is pinned to an exact version. The line numbers the crate reports
-come from its parser, and a release of `comrak` can move them.
+That is the whole claim. Message text, columns, `fix` edits and findings on
+documents outside the corpus are not checked. Fixtures that need custom `rule`
+or `docRule` functions cannot be written in YAML, so the corpus marks them
+TypeScript-only and the crate skips them.
+
+The crate and the package share the major and minor version. `comrak` is
+pinned to an exact version: the line numbers come from its parser, and a
+release of `comrak` can move them.
+
+### Regex dialect
+
+A text rule's `regex` and a frontmatter string's `pattern` are compiled with
+the [`regex`](https://docs.rs/regex) crate, not as JavaScript regexes:
+
+- lookaround (`(?=`, `(?!`, `(?<=`, `(?<!`) and backreferences are not
+  supported;
+- `\w`, `\d` and `\b` match Unicode letters and digits, where JavaScript
+  matches ASCII only.
+
+`load_contract` rejects a source the crate cannot compile and names its key.
+For a text rule's `regex`, the TypeScript package instead accepts the
+contract and throws when it validates.
+
+A text rule's `pattern` is a phrase, not a regex, so it does not depend on
+this dialect. Nor do the string `format`s or the whitespace rules (`\s` and
+trimming), which follow JavaScript.
+
+### What the crate does not share with the TypeScript package
+
+- No Zod and no typed frontmatter model. The schema runtime covers the JSON
+  Schema subset that `mcVersion: 2` contracts use.
+- No `read`, `inferConfig`, `migrate` or command-line tool.
+- `load_config` takes a resolver for the contract files it names, so it does
+  no I/O; `load_config_file` (with `native`) reads them from disk.
+- Frontmatter YAML is parsed with `serde_yaml`, not the `yaml` package. A
+  document whose frontmatter does not parse gets one `frontmatter/yaml`
+  finding, where the TypeScript package can report several. Its message text
+  differs, and its line can differ in cases the corpus does not cover.
+- A frontmatter finding on a value inside a flow collection (`{a: 1}`,
+  `[1, 2]`) has no line, and unknown keys in a flow mapping are reported in
+  sorted order rather than document order.
+- A `gap` bound must be a non-negative integer. The TypeScript package accepts
+  any number.
+- Contract load errors carry the same paths but not always the same text.
+  An unknown key gets no "did you mean" suggestion.
+- Globs in a config cover the common subset of picomatch (`*`, `**`, `?`,
+  `[...]`, `{a,b}`), through `globset`.
 
 ## Stability
 
