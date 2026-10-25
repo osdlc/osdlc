@@ -33,6 +33,17 @@ making `way` run code the user did not choose to run are in scope.
 - **Tool modules are code.** A module named by `--config` or the user file is
   the user's own choice. One named by the project file loads only when the
   repository is trusted and execution is allowed.
+- **Detection runs no repository config.** Discovery and the owner lookup
+  run git with `core.fsmonitor` off, so a `.git/config` that came with a
+  directory cannot run a command before trust.
+- **Repository text cannot drive the terminal.** Task names, docs, paths and
+  config values have their control characters replaced with U+FFFD before the
+  terminal UI, `--list`, `query` or stderr prints them. `--json` keeps them
+  exact, escaped as JSON.
+- **The installed `way` runs its own code.** It hands off to a checkout only
+  when `WAY_HOME` (an absolute path) or `way dev link` names one, and only when
+  that checkout's `package.json` is named `@osdlc/wayfinder`. The directory you
+  run it in never chooses.
 - **Tasks run without a shell.** A task is spawned from an argument vector.
   Typed arguments are bound by the task's tool and never replace its binary.
 - **The web view listens on 127.0.0.1.** Any local process and any page the

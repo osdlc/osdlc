@@ -24,6 +24,7 @@ import {
   trustPolicyFromConfig,
   trustPolicyOptions,
 } from './config.ts'
+import { terminalSafe } from './terminal-text.ts'
 import { appTrustStore } from './trust-store.ts'
 
 /**
@@ -182,7 +183,7 @@ export async function runTrustCommand(
     case 'list': {
       const paths = await store.list()
       if (taken.json) io.stdout(`${JSON.stringify({ trusted: paths })}\n`)
-      else for (const path of paths) io.stdout(`${path}\n`)
+      else for (const path of paths) io.stdout(`${terminalSafe(path)}\n`)
       return EXIT.ok
     }
     case 'show': {
@@ -202,7 +203,7 @@ export async function runTrustCommand(
       io.stdout(
         taken.json
           ? rootAnswer(gate.root, gate.trusted, false, gate.by, gate.rule)
-          : `${gate.trusted ? 'trusted' : 'not trusted'} ${gate.root}\n`,
+          : `${gate.trusted ? 'trusted' : 'not trusted'} ${terminalSafe(gate.root)}\n`,
       )
       return EXIT.ok
     }
@@ -229,7 +230,7 @@ export async function runTrustCommand(
         return EXIT.error
       }
       if (!taken.json) {
-        io.stdout(`untrusted ${resolved}\n`)
+        io.stdout(`untrusted ${terminalSafe(resolved)}\n`)
         // Matches `sdlc repo untrust`'s note: when a policy rule covers this
         // root, removing the marker did not change the answer.
         if (after.trusted) {
@@ -259,7 +260,7 @@ export async function runTrustCommand(
       io.stdout(
         taken.json
           ? rootAnswer(result.root, true, !result.alreadyTrusted, decision.by, decision.rule)
-          : `${result.alreadyTrusted ? 'already trusted' : 'trusted'} ${result.root}\n`,
+          : `${result.alreadyTrusted ? 'already trusted' : 'trusted'} ${terminalSafe(result.root)}\n`,
       )
       return EXIT.ok
     }

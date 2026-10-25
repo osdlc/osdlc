@@ -68,6 +68,7 @@ import {
   writeConfigFile,
   type TaskConfig,
 } from './config.ts'
+import { terminalSafe } from './terminal-text.ts'
 import { appTrustStore } from './trust-store.ts'
 import { serveFetch, type FetchServer } from './http.ts'
 import { buildPage } from './page.ts'
@@ -170,7 +171,7 @@ const bold = (s: string): string => (PAINT ? `\x1b[1m${s}\x1b[0m` : s)
  */
 function runAndExit(root: string, task: Task, argv: readonly string[]): never {
   // Echo what actually runs, not `display`.
-  process.stdout.write(`${dim('$')} ${bold(argv.join(' '))}\n`)
+  process.stdout.write(`${dim('$')} ${bold(terminalSafe(argv.join(' ')))}\n`)
   const [binary, ...rest] = argv
   const res = streamRunner(binary!).run(rest, {
     cwd: task.cwd === '.' ? root : `${root}/${task.cwd}`,
@@ -762,11 +763,11 @@ export async function serve(options: ServeOptions): Promise<number> {
   const stale = first.cache.filter((c) => c.state === 'stale')
 
   process.stdout.write(`${APP}  ${address}\n`)
-  process.stdout.write(`  root       ${first.catalog.root}\n`)
-  process.stdout.write(`  collected  ${counts}\n`)
+  process.stdout.write(`  root       ${terminalSafe(first.catalog.root)}\n`)
+  process.stdout.write(`  collected  ${terminalSafe(counts)}\n`)
   if (stale.length > 0) {
     process.stdout.write(
-      `  cached     ${stale.map((c) => `${c.runner} ${humanAge(c.ageMs)}`).join(', ')} — re-probing now\n`,
+      `  cached     ${terminalSafe(stale.map((c) => `${c.runner} ${humanAge(c.ageMs)}`).join(', '))} — re-probing now\n`,
     )
   }
   // The first view may come from the store. The `cached` line above says so

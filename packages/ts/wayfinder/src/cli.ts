@@ -58,6 +58,7 @@ import { runProvidersCommand } from './providers-command.ts'
 import { serve } from './serve.ts'
 import { loadTools, ToolModuleError, type LoadedTool } from './tools.ts'
 import { runTrustCommand } from './trust-command.ts'
+import { safeStderr, terminalSafe } from './terminal-text.ts'
 import { runTui } from './tui.ts'
 
 /** The prose under the flag list in the complete help. */
@@ -459,6 +460,8 @@ export async function main(
   home: string = homedir(),
   io: CliIo = processIo,
 ): Promise<number> {
+  // Every stderr line is human text that can quote repository content.
+  io = safeStderr(io)
   // Subcommands are matched before the flags are parsed, because their
   // arguments are not this parser's flags. The root is found with the
   // built-in tools only.
@@ -649,7 +652,7 @@ export async function main(
     }
     case 'list': {
       const { catalog } = await dataCatalog()
-      const lines = allTasks(catalog).map((t) => t.display)
+      const lines = allTasks(catalog).map((t) => terminalSafe(t.display))
       if (lines.length > 0) io.stdout(`${lines.join('\n')}\n`)
       reportWithheld(catalog)
       return EXIT.ok
@@ -681,7 +684,7 @@ export async function main(
           )}\n`,
         )
       } else if (hits.length > 0) {
-        io.stdout(`${hits.map((h) => h.task.display).join('\n')}\n`)
+        io.stdout(`${hits.map((h) => terminalSafe(h.task.display)).join('\n')}\n`)
       }
       reportWithheld(catalog)
       // As with grep, a search with terms that matched nothing exits 1.

@@ -26,6 +26,7 @@ import {
   type LoadedConfig,
   type TaskConfig,
 } from './config.ts'
+import { terminalSafe } from './terminal-text.ts'
 import { EXIT, type CliIo } from '@osdlc/cli-tool'
 
 /**
@@ -110,7 +111,7 @@ async function exists(file: string): Promise<boolean> {
 
 /** `<path> (exists)` or `<path> (missing)`, which is what `config path` reports. */
 async function describeFile(file: string): Promise<string> {
-  return `${file} ${(await exists(file)) ? '(exists)' : '(missing)'}`
+  return `${terminalSafe(file)} ${(await exists(file)) ? '(exists)' : '(missing)'}`
 }
 
 function pad(text: string, width: number): string {
@@ -264,9 +265,11 @@ async function listCommand(
       `${JSON.stringify({ effective: loaded.effective, sources, locations: loaded.locations }, null, 2)}\n`,
     )
   } else {
+    // JSON.stringify leaves DEL and C1 characters raw, so the human listing
+    // still goes through terminalSafe.
     const rows = [...loaded.sources].map(([key, layer]) => ({
-      key,
-      value: JSON.stringify(getConfigValue(loaded.effective, key)),
+      key: terminalSafe(key),
+      value: terminalSafe(JSON.stringify(getConfigValue(loaded.effective, key))),
       layer,
     }))
     const keyWidth = rows.reduce((n, r) => Math.max(n, r.key.length), 0)
@@ -383,7 +386,7 @@ async function setCommand(
     }
   }
 
-  io.stdout(`${file}: ${key} = ${JSON.stringify(getConfigValue(next, key))}\n`)
+  io.stdout(terminalSafe(`${file}: ${key} = ${JSON.stringify(getConfigValue(next, key))}`) + '\n')
   return EXIT.ok
 }
 
@@ -420,7 +423,7 @@ async function unsetCommand(
 
   const next = unsetConfigValue(document, key)
   await writeConfigFile(file, next)
-  io.stdout(`${file}: removed ${key}\n`)
+  io.stdout(terminalSafe(`${file}: removed ${key}`) + '\n')
   return EXIT.ok
 }
 

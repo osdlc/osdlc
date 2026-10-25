@@ -138,6 +138,10 @@ that matches nothing exits 1, so `way query dev && …` works in a script. A bar
 flag applies (`-C`, `--only`, `--exclude`, `--cached` and the rest). Like
 `--list` and `--json`, it re-probes unless you pass `--cached`.
 
+`--list`, `query` and the terminal UI replace each control character in
+repository text with U+FFFD, so a task name cannot send escape sequences to
+your terminal. `--json` keeps the text exact.
+
 ## The web view
 
 `way --serve` opens a page with the same catalog: a collapsible tree by call

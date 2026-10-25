@@ -57,7 +57,8 @@ way --json | --list  # the whole catalog, for a script or an agent
   command lines. A search that matched nothing exits 1, so `way query dev && …`
   works in a script.
 - **`--json`** prints the whole catalog as JSON. `--list` prints one command
-  per line. Both re-probe on every run. `--cached` answers them from the last
+  per line, with any control character in repository text replaced by
+  U+FFFD; `--json` keeps the text exact. Both re-probe on every run. `--cached` answers them from the last
   stored probe instead. See [The task model and JSON](task-model.md) and
   [The cache](cache.md).
 

@@ -20,6 +20,7 @@ import {
   trustPolicyOptions,
   type LoadedConfig,
 } from './config.ts'
+import { terminalSafe } from './terminal-text.ts'
 import { appTrustStore } from './trust-store.ts'
 import type { LoadedTool } from './tools.ts'
 
@@ -105,14 +106,17 @@ export function providerRows(
 }
 
 function table(rows: ProviderRow[]): string {
-  const cells = rows.map((r) => [
-    r.id,
-    r.roles.join(',') || '-',
-    r.kind ?? '-',
-    r.binary ?? '-',
-    r.onPath === null ? '-' : r.onPath ? 'yes' : 'no',
-    r.source === 'custom' && r.module !== undefined ? `custom ${r.module}` : r.source,
-  ])
+  // Tool ids and module paths can come from a project's config.
+  const cells = rows.map((r) =>
+    [
+      r.id,
+      r.roles.join(',') || '-',
+      r.kind ?? '-',
+      r.binary ?? '-',
+      r.onPath === null ? '-' : r.onPath ? 'yes' : 'no',
+      r.source === 'custom' && r.module !== undefined ? `custom ${r.module}` : r.source,
+    ].map((cell) => terminalSafe(cell)),
+  )
   const head = ['tool', 'roles', 'kind', 'binary', 'on PATH', 'source']
   const widths = head.map((h, i) => Math.max(h.length, ...cells.map((c) => c[i]!.length)))
   const fmt = (c: string[]) =>
