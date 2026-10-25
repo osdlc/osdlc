@@ -272,6 +272,76 @@ describe('way clean', () => {
     expect(await exists(p.trust)).toBe(false)
   })
 
+  describe("a store that overlaps another flag's store needs --yes", () => {
+    test.each([
+      // [flag, env, the store it would also touch, the path that must survive]
+      [
+        '--cache',
+        'holds the user config',
+        (h: string) => ({ WAYFINDER_CACHE_DIR: join(h, '.config') }),
+        'config',
+      ],
+      [
+        '--cache',
+        'holds the trust store',
+        (h: string) => ({ WAYFINDER_CACHE_DIR: join(h, '.local', 'state') }),
+        'trust',
+      ],
+      [
+        '--trust',
+        'sits in the cache',
+        (h: string) => ({ WAYFINDER_STATE_DIR: join(h, '.cache', 'wayfinder') }),
+        'cache',
+      ],
+      [
+        '--trust',
+        'holds the user config',
+        (h: string) => ({
+          WAYFINDER_CONFIG: join(h, '.local', 'state', 'wayfinder', 'trusted', 'c.json'),
+        }),
+        'config',
+      ],
+      [
+        '--dev',
+        'holds the cache',
+        (h: string) => ({ WAYFINDER_CACHE_DIR: join(h, '.config', 'way') }),
+        'cache',
+      ],
+    ] as const)('%s when it %s', async (flag, _what, envOf, kept) => {
+      const p = await populated()
+      const env = envOf(p.home)
+      const app = wayApp({ platform: 'linux' })
+      const report = (
+        await runWay(['clean', '--json'], { cwd: p.home, home: p.home, env, app })
+      ).json() as {
+        stores: { key: string; path: string }[]
+      }
+      const path = (key: string) => report.stores.find((s) => s.key === key)!.path
+      const other = path(kept)
+      if (kept === 'config') await put(other)
+      else await put(join(other, 'x'), '')
+      const target = path(flag === '--cache' ? 'cache' : flag === '--trust' ? 'trust' : 'dev')
+      await put(join(target, 'y'), '')
+      const ran = await runWay(['clean', flag], { cwd: p.home, home: p.home, env, app })
+      expect(ran.exit).toBe(2)
+      expect(ran.err).toContain(`not removing`)
+      expect(ran.err).toContain(target)
+      expect(ran.err).toContain(other)
+      expect(await exists(target)).toBe(true)
+      expect(await exists(other)).toBe(true)
+      expect(
+        (await runWay(['clean', flag, '--yes'], { cwd: p.home, home: p.home, env, app })).exit,
+      ).toBe(0)
+      expect(await exists(target)).toBe(false)
+    })
+
+    test('stores apart from each other need no --yes', async () => {
+      const p = await populated()
+      expect((await clean(p.home, ['--cache', '--trust', '--dev'])).exit).toBe(0)
+      expect(await exists(p.config)).toBe(true)
+    })
+  })
+
   test('--everything needs --yes, then removes every store', async () => {
     const p = await populated()
     expect((await clean(p.home, ['--everything'])).exit).toBe(2)

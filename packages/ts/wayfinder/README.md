@@ -305,7 +305,9 @@ probe. Losing trust means answering the trust question again for each
 repository. The configuration is the only store you wrote by hand. A config
 that `WAYFINDER_CONFIG` names is named again before it is removed, since it
 may live in a dotfiles repository. Once a store is gone, empty directories
-above it are removed, up to the base such as `~/.config`. `clean` never
+above it are removed, up to the base such as `~/.config`. A store whose
+path is, holds or sits in another store, as when `WAYFINDER_CACHE_DIR` is
+`~/.config`, is removed only with `--yes`. `clean` never
 touches anything inside a repository: a project's own `wayfinder.config.json`
 belongs to that project. The web view's server gets the report only.
 

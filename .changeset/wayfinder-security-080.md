@@ -4,7 +4,7 @@
 
 Safety fixes for running `way` in a repository you do not control.
 
-- `way clean` removes only what it owns. A file store must be a file and a directory store a directory, and no store may be your home directory, a directory above it or a filesystem root. It names the path it refused and exits 1.
+- `way clean` removes only what it owns. A file store must be a file and a directory store a directory, and no store may be your home directory, a directory above it or a filesystem root. It names the path it refused and exits 1. A store whose path is, holds or sits in another store, such as `WAYFINDER_CACHE_DIR=~/.config`, is removed only with `--yes`; without it `way clean` names both paths and exits 2.
 - Copy, in the terminal UI and the web view, puts the task's argv on the clipboard quoted for your shell. The web view copied the Command column as it was, so a script named `x; touch PWNED #` pasted as two commands. A command or skill name that holds a control character is not copied at all.
 - The web view shows repository text with control characters replaced, as the terminal does, so a bidi override cannot make a row read differently from what runs.
 - The web page is served with a strict content security policy: only its own script runs, and it talks only to the server.

@@ -24,6 +24,8 @@
  * Clean removes only what it owns. A file store must be a file (a symbolic
  * link is removed, not its target), a directory store a directory, and no
  * store may be the home directory, a directory above it or a filesystem root.
+ * A store whose path is, holds or sits in another flag's store is removed
+ * only with `--yes`.
  * A file `WAYFINDER_CONFIG` names is removed only when its `$schema` names
  * wayfinder's config schema, which every file wayfinder writes has.
  */
@@ -187,6 +189,20 @@ function overlaps(a: string, b: string): boolean {
     return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
   }
   return inside(a, b) || inside(b, a)
+}
+
+/**
+ * The first chosen store whose path is, holds or sits in another flag's
+ * store, with that store. Stores under one flag are removed together, so
+ * they are not compared.
+ */
+function overlapOf(stores: Store[], chosen: Set<StoreKey>): [Store, Store] | undefined {
+  for (const store of stores) {
+    if (!chosen.has(store.key)) continue
+    const other = stores.find((o) => o.key !== store.key && overlaps(o.path, store.path))
+    if (other !== undefined) return [store, other]
+  }
+  return undefined
 }
 
 /** Every store, in report order. */
@@ -376,6 +392,18 @@ export function cleanCommand<G extends FlagSpec = Record<never, never>>(
           reports.push(reportOf(store, bytes, false))
         }
         return { mode: 'report' as const, stores: reports }
+      }
+
+      // An override can put one store inside another, such as the cache at
+      // `~/.config`. Removing the outer one would remove the inner one too.
+      const overlap = flags.yes === true ? undefined : overlapOf(stores, chosen)
+      if (overlap !== undefined) {
+        const [a, b] = overlap
+        throw new UsageError(
+          `not removing ${a.what} (${a.path}): it overlaps ${b.what} (${b.path}), ` +
+            'since one path is or holds the other. Check the WAYFINDER_* and XDG_* variables, ' +
+            'or pass --yes to remove it anyway',
+        )
       }
 
       const config = stores.find((s) => s.key === 'config')
