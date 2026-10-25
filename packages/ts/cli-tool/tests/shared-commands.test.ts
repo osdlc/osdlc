@@ -439,3 +439,28 @@ describe('global flags reach the shared commands', () => {
     expect(roots).toEqual(['/repo-b', 'config:/repo-c'])
   })
 })
+
+describe('text output drops terminal controls', () => {
+  const ESC = '\u001b'
+  test('in config keys and warnings, trust roots and guide bodies', async () => {
+    const store = memoryStore()
+    store.list = async () => ({
+      settings: [{ key: `evil${ESC}]0;title${ESC}\\`, value: `x${ESC}[2J`, source: 'project' }],
+      warnings: [`bad ${ESC}[31mred`],
+    })
+    const trust = trustService()
+    trust.show = async () => ({ root: `/r${ESC}[1A`, trusted: false, by: null })
+    const topics: GuideTopic[] = [
+      { id: 'live', title: 'Live', summary: 's', body: () => `data ${ESC}[2Jhere\n\tindented` },
+    ]
+    const app = appWith(store, trust, topics)
+    const list = await runApp(app, ['config', 'list'])
+    const show = await runApp(app, ['trust', '--show'])
+    const guide = await runApp(app, ['guide', 'live'])
+    for (const text of [list.out, list.err, show.out, guide.out]) expect(text).not.toContain(ESC)
+    expect(list.out).toContain('evil')
+    expect(list.err).toContain('t: warning: bad red')
+    expect(show.out).toBe('not trusted /r\n')
+    expect(guide.out).toContain('data here\n\tindented')
+  })
+})

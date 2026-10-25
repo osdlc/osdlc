@@ -529,7 +529,29 @@ describe('context', () => {
     await runApp(probe, ['x'], { env: {} })
     await runApp(probe, ['x', '--json'], { env: { FORCE_COLOR: '1' }, terminal: tty })
     await runApp(probe, ['x'], { env: { TERM: 'dumb' }, terminal: tty })
-    expect(colors).toEqual([true, false, true, false, false, false])
+    await runApp(probe, ['x'], { env: { NO_COLOR: '1' }, terminal: tty })
+    // FORCE_COLOR wins over NO_COLOR, as in Node.js and @osdlc/ux.
+    expect(colors).toEqual([true, true, true, false, false, false, false])
+  })
+
+  test('colorEnabled is @osdlc/ux detectColorLevel for stdout', async () => {
+    const { detectColorLevel } = await import('@osdlc/ux')
+    const { colorEnabled } = await import('../../src/io.ts')
+    const envs = [
+      {},
+      { NO_COLOR: '1' },
+      { NO_COLOR: '' },
+      { FORCE_COLOR: '0' },
+      { FORCE_COLOR: '3' },
+      { TERM: 'dumb' },
+      { NO_COLOR: '1', FORCE_COLOR: '2' },
+    ]
+    for (const env of envs) {
+      for (const stdout of [true, false]) {
+        const ctx = { ...captureContext({ env }), terminal: { stdin: stdout, stdout, stderr: stdout } }
+        expect(colorEnabled(ctx)).toBe(detectColorLevel({ env, isTTY: stdout }) !== 'none')
+      }
+    }
   })
 
   test('warn and note write prefixed lines to stderr', async () => {

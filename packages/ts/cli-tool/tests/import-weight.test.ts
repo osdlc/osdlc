@@ -74,3 +74,15 @@ test('only the mcp entry loads the MCP SDK', () => {
   const mcp = packageSpecifiers('mcp/index.ts')
   expect([...mcp].some((s) => s.startsWith('@modelcontextprotocol/'))).toBe(true)
 }, 30_000)
+
+test('the root entry loads only these packages', () => {
+  // @osdlc/ux is the color and terminal-text rule; its root import costs a few
+  // milliseconds. Anything new here needs the same check.
+  expect([...packageSpecifiers('index.ts')].sort()).toEqual([
+    '@osdlc/config-layers/did-you-mean',
+    '@osdlc/config-layers/dirs',
+    '@osdlc/result',
+    '@osdlc/ux',
+    'commander',
+  ])
+})

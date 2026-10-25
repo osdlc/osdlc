@@ -13,6 +13,7 @@ import { defineCli, type FlagSpec, type FlagValues } from '../define-cli.ts'
 import { EXIT, type ExitCode } from '../exit.ts'
 import { exitCodeFor, failureOf, renderFailure } from '../failure.ts'
 import { colorEnabled, type CliContext } from '../io.ts'
+import { safe } from '../safe.ts'
 import { helpWidth } from '../wrap.ts'
 import {
   BUILTIN_FLAGS,
@@ -319,7 +320,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       }
     },
     text(output, ctx) {
-      return renderHelp(output.help as HelpEntry, ctx.width, spec.name)
+      return renderHelp(output.help, ctx.width, spec.name)
     },
   })
 
@@ -479,7 +480,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       has('--json') || scanned.values.get('--output') === 'json' || has('--output=json')
     const width = helpWidth(base.terminal?.stdout === true ? base.terminal.columns : undefined)
     const fail = (message: string, exit: ExitCode, hint?: string): number => {
-      base.io.stderr(`${spec.name}: ${message}\n${hint ?? ''}`)
+      base.io.stderr(`${spec.name}: ${safe(message)}\n${safe(hint ?? '')}`)
       return exit
     }
     const usageFail = (message: string): number =>
@@ -579,8 +580,8 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       signal: base.signal ?? new AbortController().signal,
       color: colorEnabled(base, { json }),
       width,
-      warn: (message) => base.io.stderr(`${spec.name}: warning: ${message}\n`),
-      note: (message) => base.io.stderr(`${spec.name}: ${message}\n`),
+      warn: (message) => base.io.stderr(`${spec.name}: warning: ${safe(message)}\n`),
+      note: (message) => base.io.stderr(`${spec.name}: ${safe(message)}\n`),
       emit: noEvents(commandName),
     }
     const input = { flags: own, globals: globalValues, positionals: parsed.positionals, rest }
@@ -615,7 +616,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       }
       const failure = failureOf(err)
       if (failure !== null) {
-        base.io.stderr(renderFailure(failure, spec.name))
+        base.io.stderr(safe(renderFailure(failure, spec.name)))
         return exitCodeFor(failure)
       }
       throw err

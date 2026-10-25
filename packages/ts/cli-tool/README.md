@@ -276,10 +276,11 @@ terminal. `columns(rows, width)` lays out a two-column list.
 
 `CliContext.terminal` says which streams are terminals and how wide stdout is.
 `processContext()` fills it in. A context without it reads as "no terminal".
-`colorEnabled(ctx, { json })` is the color rule: `NO_COLOR` (non-empty) turns
-color off and wins, `FORCE_COLOR` (not `0` or `false`) turns it on, `TERM=dumb`
-turns it off, and otherwise color follows whether stdout is a terminal. A JSON
-answer is never colored.
+`colorEnabled(ctx, { json })` says whether stdout gets color. It is
+`@osdlc/ux`'s `detectColorLevel` for stdout, which reads `NO_COLOR`,
+`FORCE_COLOR`, `TERM=dumb` and whether stdout is a terminal, so a tool and its
+terminal UI follow one rule. A JSON answer is never colored. For the color
+level as well, call `detectColorLevel` directly.
 
 ### `runMain`
 

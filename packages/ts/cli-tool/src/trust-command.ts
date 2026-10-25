@@ -17,6 +17,7 @@ import {
 } from './command/index.ts'
 import type { FlagSpec } from './define-cli.ts'
 import { EXIT } from './exit.ts'
+import { safe } from './safe.ts'
 
 /**
  * One root's trust, and what decided it.
@@ -165,20 +166,23 @@ export function trustCommand<G extends FlagSpec = Record<never, never>>(
         }
       }
     },
-    text(output) {
-      const [first] = output.roots
-      switch (output.action) {
-        case 'list':
-          return output.roots
-            .map((r) => `${r.root}${r.scope !== undefined ? ` (${r.scope})` : ''}\n`)
-            .join('')
-        case 'show':
-          return `${first!.trusted ? 'trusted' : 'not trusted'} ${first!.root}${first!.by !== null && first!.trusted ? ` (by ${first!.by})` : ''}\n`
-        case 'untrust':
-          return output.changed ? `untrusted ${first!.root}\n` : ''
-        case 'trust':
-          return `${output.changed ? 'trusted' : 'already trusted'} ${first!.root}\n`
-      }
-    },
+    // Roots and rules can come from a file in the repository, so controls are removed.
+    text: (output) => safe(trustText(output)),
   }) as DataCommand
+}
+
+function trustText(output: z.infer<typeof TrustOutputSchema>): string {
+  const [first] = output.roots
+  switch (output.action) {
+    case 'list':
+      return output.roots
+        .map((r) => `${r.root}${r.scope !== undefined ? ` (${r.scope})` : ''}\n`)
+        .join('')
+    case 'show':
+      return `${first!.trusted ? 'trusted' : 'not trusted'} ${first!.root}${first!.by !== null && first!.trusted ? ` (by ${first!.by})` : ''}\n`
+    case 'untrust':
+      return output.changed ? `untrusted ${first!.root}\n` : ''
+    case 'trust':
+      return `${output.changed ? 'trusted' : 'already trusted'} ${first!.root}\n`
+  }
 }

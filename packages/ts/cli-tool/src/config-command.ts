@@ -18,6 +18,7 @@ import {
 } from './command/index.ts'
 import type { FlagSpec } from './define-cli.ts'
 import { EXIT } from './exit.ts'
+import { safe } from './safe.ts'
 
 /**
  * One setting and the layer its effective value came from.
@@ -275,8 +276,10 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
       const kw = Math.max(0, ...rows.map((r) => r.key.length))
       const vw = Math.max(0, ...rows.map((r) => r.value.length))
       // The locations go to stderr so the listing stays greppable.
-      ctx.io.stderr(layerLines(output.locations))
-      return rows.map((r) => `${r.key.padEnd(kw)}  ${r.value.padEnd(vw)}  (${r.source})\n`).join('')
+      ctx.io.stderr(safe(layerLines(output.locations)))
+      return safe(
+        rows.map((r) => `${r.key.padEnd(kw)}  ${r.value.padEnd(vw)}  (${r.source})\n`).join(''),
+      )
     },
   })
 
@@ -301,7 +304,7 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
       }
       throw new CommandError(`no value for ${key}${unknownKey(key)}`)
     },
-    text: (output) => `${JSON.stringify(output.value)}\n`,
+    text: (output) => safe(`${JSON.stringify(output.value)}\n`),
   })
 
   const set = kit.command({
@@ -330,7 +333,7 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
         throw err
       }
     },
-    text: (o) => `${o.file}: ${o.key} = ${JSON.stringify(o.value)}\n`,
+    text: (o) => safe(`${o.file}: ${o.key} = ${JSON.stringify(o.value)}\n`),
   })
 
   const unset = kit.command({
@@ -348,7 +351,7 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
       if (!result.removed) throw new CommandError(`${key} is not set in ${result.file}`)
       return { key, layer, file: result.file }
     },
-    text: (o) => `${o.file}: removed ${o.key}\n`,
+    text: (o) => safe(`${o.file}: removed ${o.key}\n`),
   })
 
   const path = kit.command({
@@ -359,7 +362,7 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
     async run(_input, ctx) {
       return { locations: await store.locations(ctx) }
     },
-    text: (o) => layerLines(o.locations),
+    text: (o) => safe(layerLines(o.locations)),
   })
 
   const explainStore = store.explain?.bind(store)
@@ -406,12 +409,12 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
             const lw = Math.max(...rows.map((r) => r.layer.length))
             const vw = Math.max(...rows.map((r) => r.value.length))
             const head = `${o.key} = ${JSON.stringify(o.value) ?? 'undefined'}  (${o.reason})\n`
-            return (
+            return safe(
               head +
-              rows
-                .map((r) => `  ${r.layer.padEnd(lw)}  ${r.value.padEnd(vw)}  ${r.mark}`.trimEnd())
-                .join('\n') +
-              '\n'
+                rows
+                  .map((r) => `  ${r.layer.padEnd(lw)}  ${r.value.padEnd(vw)}  ${r.mark}`.trimEnd())
+                  .join('\n') +
+                '\n',
             )
           },
         })

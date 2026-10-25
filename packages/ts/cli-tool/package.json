@@ -110,6 +110,7 @@
     "@osdlc/config-layers": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
     "@osdlc/result": "workspace:^",
+    "@osdlc/ux": "workspace:^",
     "commander": "^12.1.0"
   },
   "devDependencies": {
