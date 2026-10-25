@@ -23,7 +23,8 @@ function executable(path: string): boolean {
 
 /**
  * The resolved path of `binary` on `env.PATH`, or `null`. A name with a path
- * separator is checked as a path. On Windows the `PATHEXT` suffixes are tried.
+ * separator is checked as a path. On Windows the `PATHEXT` suffixes are tried,
+ * after the name as given when it already ends in one (`tool.exe`).
  * A relative `PATH` entry is resolved against `cwd`, so the result is always
  * absolute and names the file a process started in `cwd` would run.
  */
@@ -36,10 +37,17 @@ export function which(
   if (binary.includes('/') || binary.includes('\\')) {
     return isAbsolute(binary) && executable(binary) ? binary : null
   }
-  const exts =
+  const pathExts =
     platform === 'win32'
       ? (env['PATHEXT'] ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
-      : ['']
+      : null
+  const lower = binary.toLowerCase()
+  const exts =
+    pathExts === null
+      ? ['']
+      : pathExts.some((e) => lower.endsWith(e.toLowerCase()))
+        ? ['', ...pathExts]
+        : pathExts
   for (const dir of (env['PATH'] ?? '').split(delimiter)) {
     if (dir === '') continue
     for (const ext of exts) {

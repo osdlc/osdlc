@@ -442,7 +442,7 @@ const prs = nodesAt(pages, ['repository', 'pullRequests'])
 ```
 
 With `paginate`, the query must take `$endCursor` and page one connection. gh follows only that
-one. `graphql` refuses a mutation with `RangeError`. Send one through `raw`.
+one. `graphql` refuses a document holding a mutation or subscription with `RangeError`. Send one through `raw`.
 
 ## Repositories and search
 

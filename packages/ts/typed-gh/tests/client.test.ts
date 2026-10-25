@@ -496,6 +496,17 @@ describe('branch matching and owner/repo', () => {
     expect(ownerRepoSlug(expected)).toBe('acme/widgets')
     expect(parseOwnerRepo('not a url')).toBeNull()
   })
+
+  test('an Enterprise remote resolves', () => {
+    expect(parseOwnerRepo('git@github.acme.com:acme/widgets.git')).toEqual({
+      owner: 'acme',
+      repo: 'widgets',
+    })
+    expect(parseOwnerRepo('https://github.acme.com/acme/widgets.git')).toEqual({
+      owner: 'acme',
+      repo: 'widgets',
+    })
+  })
 })
 
 describe('prMerge and prReviewThreads', () => {

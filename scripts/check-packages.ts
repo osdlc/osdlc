@@ -46,9 +46,12 @@ import { basename, join, relative, resolve } from 'node:path'
 import {
   DECLARES_EXPORT,
   conventionProblems,
+  entryPoints,
+  optionalPeers,
   packedManifestProblems,
   parseCatalog,
   parseJsonc,
+  peerName,
   shapeProblems,
   stylesheetEntries,
   stylesheetProblems,
@@ -92,32 +95,6 @@ function smokeFile(pkgDir: string): string | undefined {
   const file = join(pkgDir, 'tests', 'smoke.mjs')
   return existsSync(file) ? file : undefined
 }
-
-/** The specifiers a consumer can load: `name` plus each `exports` subpath
- * (pattern subpaths skipped), or `name` alone for a `main`-only package. */
-function entryPoints(pkg: Pkg): string[] {
-  if (pkg.exports === undefined) return pkg.main ? [pkg.name] : []
-  if (typeof pkg.exports === 'string') return [pkg.name]
-  const keys = Object.keys(pkg.exports as object)
-  if (!keys.some((k) => k.startsWith('.'))) return [pkg.name] // conditions only
-  return keys
-    .filter((k) => !k.includes('*') && k !== './package.json')
-    .map((k) => (k === '.' ? pkg.name : `${pkg.name}/${k.slice(2)}`))
-}
-
-/** The peers `peerDependenciesMeta` marks optional, as `name@range`. npm
- * installs the other peers but not these. */
-function optionalPeers(pkg: Pkg): string[] {
-  const meta =
-    (pkg as { peerDependenciesMeta?: Record<string, { optional?: boolean }> })
-      .peerDependenciesMeta ?? {}
-  return Object.entries(meta)
-    .filter(([, m]) => m.optional === true)
-    .map(([name]) => `${name}@${pkg.peerDependencies?.[name] ?? '*'}`)
-}
-
-/** The bare package name of `name@range`. */
-const peerName = (spec: string): string => spec.slice(0, spec.lastIndexOf('@'))
 
 /** Installs `tarball` into an empty project and loads each entry point the
  * way a Node consumer would. Code loads through `import()`. An entry with no

@@ -195,11 +195,54 @@ describe('write', () => {
     expect(existsSync(`${sb.machine.path()}.bak`)).toBe(false)
   })
 
+  test('a write that keeps an issue already in the file goes through', () => {
+    loadText('legacy: 1\nrepos: [/one]\n')
+    sb.machine.write('legacy: 1\nrepos: [/two]\n')
+    expect(readFileSync(sb.machine.path(), 'utf-8')).toBe('legacy: 1\nrepos: [/two]\n')
+  })
+
+  test('a write over an unparseable file goes through', () => {
+    loadText('repos: [\n')
+    sb.machine.write('repos: [/x]\n')
+    expect(sb.machine.load().repos).toEqual(['/x'])
+  })
+
+  test('text that is not a mapping throws and writes nothing', () => {
+    loadText('repos: [/one]\n')
+    expect(() => sb.machine.write('- a\n')).toThrow(/not a mapping/)
+    expect(readFileSync(sb.machine.path(), 'utf-8')).toBe('repos: [/one]\n')
+    expect(existsSync(`${sb.machine.path()}.bak`)).toBe(false)
+  })
+
   test('text that fails the schema throws and writes nothing', () => {
     loadText('repos: [/one]\n')
     expect(() => sb.machine.write('nope: 1\n')).toThrow()
     expect(readFileSync(sb.machine.path(), 'utf-8')).toBe('repos: [/one]\n')
     expect(existsSync(`${sb.machine.path()}.bak`)).toBe(false)
+  })
+})
+
+describe('check', () => {
+  test("does not change the caller's object", () => {
+    loadText('repos: [/one]\n')
+    const raw = { repos: 3, trust: { owners: ['me'] } }
+    expect(sb.machine.check(raw).map((i) => [i.code, i.path.join('.')])).toEqual([
+      ['invalid', 'repos'],
+    ])
+    expect(raw).toEqual({ repos: 3, trust: { owners: ['me'] } })
+  })
+
+  test('an issue already in the file is not reported again', () => {
+    loadText('legacy: 1\nrepos: [/one]\n')
+    expect(sb.machine.check({ legacy: 1, repos: ['/two'] })).toEqual([])
+    expect(sb.machine.check({ legacy: 1, nope: 2 }).map((i) => i.path.join('.'))).toEqual(['nope'])
+  })
+
+  test('an unparseable file grandfathers nothing', () => {
+    loadText('repos: [\n')
+    expect(sb.machine.check({ nope: 1 }).map((i) => [i.code, i.path.join('.')])).toEqual([
+      ['unknown_key', 'nope'],
+    ])
   })
 })
 
@@ -253,6 +296,24 @@ describe('migrations', () => {
     expect(m.migrate().written).toBe(true)
     expect(readFileSync(`${p}.bak`, 'utf-8')).toBe('dirs: [/a]\n')
     expect(m.migrate()).toMatchObject({ from: 3, to: 3, applied: [], written: false })
+  })
+
+  test('migrate on a missing file writes nothing and creates no file', () => {
+    const m = migrating()
+    const p = join(sb.root, 'absent.yaml')
+    process.env[m.env] = p
+    expect(m.migrate()).toEqual({ path: p, from: 3, to: 3, applied: [], written: false })
+    expect(existsSync(p)).toBe(false)
+  })
+
+  test('migrate on a non-mapping file throws and writes nothing', () => {
+    const m = migrating()
+    const p = join(sb.root, 'list.yaml')
+    writeFileSync(p, '- a\n')
+    process.env[m.env] = p
+    expect(() => m.migrate()).toThrow(/not a mapping/)
+    expect(readFileSync(p, 'utf-8')).toBe('- a\n')
+    expect(existsSync(`${p}.bak`)).toBe(false)
   })
 
   test('a newer file is read as-is with a newer_version issue', () => {

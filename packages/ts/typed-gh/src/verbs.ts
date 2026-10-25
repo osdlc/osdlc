@@ -207,20 +207,7 @@ function oneOrNull(r: CommandResult): PullRequest | null {
  * failed. A caller must be able to tell "no PRs" from "couldn't ask".
  */
 function manyOrNull(r: CommandResult): PullRequest[] | null {
-  if (r.exitCode !== 0) return null
-  let data: unknown
-  try {
-    data = JSON.parse(r.stdout || '[]')
-  } catch {
-    return null
-  }
-  if (!Array.isArray(data)) return null
-  const rows: PullRequest[] = []
-  for (const item of data) {
-    const pr = parsePullRequest(item)
-    if (pr !== null) rows.push(pr)
-  }
-  return rows
+  return rowsOrNull(r, (item) => parsePullRequest(item))
 }
 
 /**
@@ -301,20 +288,7 @@ function oneIssueOrNull(r: CommandResult): IssueRow | null {
  * on failure, as {@link manyOrNull} does for PRs.
  */
 function manyIssuesOrNull(r: CommandResult): IssueRow[] | null {
-  if (r.exitCode !== 0) return null
-  let data: unknown
-  try {
-    data = JSON.parse(r.stdout || '[]')
-  } catch {
-    return null
-  }
-  if (!Array.isArray(data)) return null
-  const rows: IssueRow[] = []
-  for (const item of data) {
-    const row = parseIssueRow(item)
-    if (row !== null) rows.push(row)
-  }
-  return rows
+  return rowsOrNull(r, parseIssueRow)
 }
 
 // ── queries ─────────────────────────────────────────────────────────────────
@@ -410,15 +384,15 @@ export function prView(
   // omits it would read as "no such PR". Always ask for it, and each field once.
   const asked = withFields(fields, ['number'])
   const isUrl = typeof ref === 'string' && parsePrUrl(ref) !== null
+  // gh reads a selector as a URL only with an http(s) scheme; a scheme-less
+  // one (`github.com/o/r/pull/7`, which parsePrUrl accepts) would be taken as
+  // a branch name.
+  const selector =
+    typeof ref === 'string' && isUrl && !/^https?:\/\//i.test(ref.trim())
+      ? `https://${ref.trim()}`
+      : String(ref)
   return {
-    argv: [
-      'pr',
-      'view',
-      String(ref),
-      ...(isUrl ? [] : repoArgs(target)),
-      '--json',
-      asked.join(','),
-    ],
+    argv: ['pr', 'view', selector, ...(isUrl ? [] : repoArgs(target)), '--json', asked.join(',')],
     checked: false,
     readOnly: true,
     absent: noSuch('pr'),
@@ -559,6 +533,25 @@ export interface GraphqlOptions {
 }
 
 /**
+ * True when any operation in a GraphQL document is a `mutation` or a
+ * `subscription`. Strings and comments are dropped first, and only the words
+ * outside every `{…}` and `(…)` are read, which is where an operation's
+ * keyword stands. So a leading fragment, a leading `,` (an ignored token) or a
+ * second operation after a query cannot hide one.
+ */
+function writesOrStreams(document: string): boolean {
+  const code = document.replace(/"""[\s\S]*?"""|"(?:[^"\\\n]|\\.)*"|#[^\n]*/g, ' ')
+  let depth = 0
+  for (const token of code.matchAll(/[{}()]|[_A-Za-z][_0-9A-Za-z]*/g)) {
+    const t = token[0]
+    if (t === '{' || t === '(') depth += 1
+    else if (t === '}' || t === ')') depth = Math.max(0, depth - 1)
+    else if (depth === 0 && (t === 'mutation' || t === 'subscription')) return true
+  }
+  return false
+}
+
+/**
  * `gh api graphql -f query=… [--paginate --slurp]`: a GraphQL query.
  *
  * Returns each page's `data`, one entry per page (one without `paginate`).
@@ -567,8 +560,10 @@ export interface GraphqlOptions {
  * connection across the pages with {@link nodesAt}.
  *
  * A string variable of exactly `{owner}` or `{repo}` is filled from the
- * target's repo, or by gh from the clone. A mutation document throws
- * `RangeError`. This is a read, and changes go through `raw`.
+ * target's repo, or by gh from the clone. A document holding any mutation or
+ * subscription throws `RangeError`, as does a variable named `query` or
+ * `operationName`, which gh would send as the request's own fields. This is a
+ * read, and changes go through `raw`.
  *
  * @experimental
  */
@@ -579,8 +574,7 @@ export function graphql(
   target?: GhTarget,
 ): GhVerb<unknown[] | null> {
   checkTarget(target)
-  const body = query.replace(/^(?:\s|#[^\n]*\n?)*/, '')
-  if (/^mutation\b/.test(body) || /^subscription\b/.test(body)) {
+  if (writesOrStreams(query)) {
     throw new RangeError('graphql: only queries are allowed; send a mutation through raw')
   }
   const paginate = opts.paginate === true
@@ -591,7 +585,10 @@ export function graphql(
   if (paginate) argv.push('--paginate', '--slurp')
   const [owner, name] = target?.repo?.split('/') ?? []
   for (const [key, value] of Object.entries(variables)) {
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+    // gh lifts `query` and `operationName` out of the variables into the
+    // request itself, so either would replace the checked document or pick
+    // another operation in it.
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || key === 'query' || key === 'operationName') {
       throw new RangeError(`graphql: bad variable name ${JSON.stringify(key)}`)
     }
     if (typeof value === 'string') {
@@ -894,7 +891,9 @@ export function repoView(
   const slug = repo ?? target?.repo
   const argv = ['repo', 'view']
   if (slug !== undefined) {
-    argv.push(target?.hostname === undefined ? slug : `${target.hostname}/${slug}`)
+    // Through hostOf, as repoArgs does: a hostname of '' is "not set".
+    const hostname = hostOf(target)
+    argv.push(hostname === undefined ? slug : `${hostname}/${slug}`)
   }
   argv.push('--json', withFields(fields, ['nameWithOwner']).join(','))
   return {
@@ -1187,6 +1186,7 @@ export interface CreateLabelOptions {
  * and description are set to these instead of failing.
  */
 export function createLabel(opts: CreateLabelOptions, target?: GhTarget): GhVerb<void> {
+  notAFlag('createLabel name', opts.name)
   const argv = [
     'label',
     'create',
@@ -1207,6 +1207,7 @@ export function editLabel(
   opts: { color?: string | undefined; description?: string | undefined },
   target?: GhTarget,
 ): GhVerb<void> {
+  notAFlag('editLabel name', name)
   const argv = ['label', 'edit', name, ...repoArgs(target)]
   if (opts.color !== undefined) argv.push('--color', opts.color)
   if (opts.description !== undefined) argv.push('--description', opts.description)

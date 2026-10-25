@@ -28,6 +28,7 @@ import {
   type MachineMigration,
 } from './machine-migrate.ts'
 import { stripUnknownKeys } from './unknown-keys.ts'
+import { isPlainObject } from './value.ts'
 import { systemDirs, type TieredDirs, type VendorDirs } from './dirs.ts'
 
 /**
@@ -197,7 +198,7 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
       return fail('yaml', err)
     }
     if (raw === null || raw === undefined) raw = {}
-    if (!isMapping(raw)) {
+    if (!isPlainObject(raw)) {
       const message = 'the document is not a mapping; using defaults'
       return { value: defaults(), issues: [{ path: [], code: 'not_mapping', message }] }
     }
@@ -232,14 +233,14 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
     } catch {
       // An unparseable file has no issue a replacement could keep.
     }
-    const known = new Set(isMapping(current) ? issuesOf(current).map(issueKey) : [])
+    const known = new Set(isPlainObject(current) ? issuesOf(current).map(issueKey) : [])
     return issuesOf(raw).filter((i) => !known.has(issueKey(i)))
   }
 
   const write = (text: string): void => {
     const file = path()
     const raw: unknown = yamlParse(text) ?? {}
-    if (!isMapping(raw)) throw new Error(`${file}: the document is not a mapping`)
+    if (!isPlainObject(raw)) throw new Error(`${file}: the document is not a mapping`)
     const added = check(raw)
     if (added.length > 0) {
       const lines = added.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
@@ -256,7 +257,7 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
       return { path: file, from: currentVersion, to: currentVersion, applied: [], written: false }
     }
     const raw: unknown = yamlParse(readFileSync(file, 'utf-8')) ?? {}
-    if (!isMapping(raw)) throw new Error(`${file}: the document is not a mapping`)
+    if (!isPlainObject(raw)) throw new Error(`${file}: the document is not a mapping`)
     const from = machineVersionOf(raw)
     const migrated = migrateMachineRaw(raw, migrations)
     const to = machineVersionOf(migrated.raw)
@@ -282,10 +283,6 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
   }
 }
 
-function isMapping(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 /**
  * Parse `raw`, dropping what fails: first every unknown key, then the
  * top-level section of each remaining issue. Full defaults only if that still
@@ -300,7 +297,9 @@ function salvage<S extends z.ZodTypeAny>(
 
   const stripped = stripUnknownKeys(schema, raw)
   const { unknown } = stripped
-  const draft = stripped.value
+  // The deletes below must not reach the caller's object, which is what
+  // stripUnknownKeys hands back when it found no unknown key.
+  const draft = stripped.value === raw ? { ...raw } : stripped.value
   const issues: MachineConfigIssue[] = unknown.map((path) => ({
     path,
     code: 'unknown_key',

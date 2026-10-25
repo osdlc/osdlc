@@ -15,11 +15,14 @@ import {
   DECLARES_EXPORT,
   docsProblems,
   enginesProblems,
+  entryPoints,
   gitignoreProblems,
   layoutProblems,
+  optionalPeers,
   packedManifestProblems,
   parseCatalog,
   parseJsonc,
+  peerName,
   readmeProblems,
   scriptProblems,
   section,
@@ -105,6 +108,13 @@ test('parseJsonc reads comments, trailing commas and slashes in strings', () => 
     "b": [1, 2,],
   }`
   assert.deepEqual(parseJsonc(text), { a: 'http://x', b: [1, 2] })
+})
+
+test('parseJsonc leaves commas inside strings alone and throws on unterminated input', () => {
+  assert.deepEqual(parseJsonc('{"a": "x,}", "b": "[1,]",}'), { a: 'x,}', b: '[1,]' })
+  // These used to loop forever.
+  assert.throws(() => parseJsonc('{"a": "never closed'), SyntaxError)
+  assert.throws(() => parseJsonc('{"a": 1 /* never closed'), /unterminated block comment/)
 })
 
 // ---------------------------------------------------------------------------
@@ -323,6 +333,32 @@ test('a types-only entry counts only when its .d.ts exports something', () => {
   assert.equal(DECLARES_EXPORT.test('export interface Client {\n  graph(): void\n}\n'), true)
   assert.equal(DECLARES_EXPORT.test('export type { A } from "./a.js";\n'), true)
   assert.equal(DECLARES_EXPORT.test('export declare const x: number;\n'), true)
+})
+
+test('entryPoints lists the specifiers a consumer can load', () => {
+  assert.deepEqual(entryPoints({ name: 'x' }), [])
+  assert.deepEqual(entryPoints({ name: 'x', main: 'index.js' }), ['x'])
+  assert.deepEqual(entryPoints({ name: 'x', exports: './dist/index.js' }), ['x'])
+  assert.deepEqual(entryPoints({ name: 'x', exports: { types: './a.d.ts', default: './a.js' } }), ['x'])
+  assert.deepEqual(
+    entryPoints({
+      name: '@s/x',
+      exports: { '.': './a.js', './fs': './fs.js', './*': './dist/*.js', './package.json': './package.json' },
+    }),
+    ['@s/x', '@s/x/fs'],
+  )
+})
+
+test('optionalPeers and peerName read peerDependenciesMeta', () => {
+  const pkg = {
+    name: 'x',
+    peerDependencies: { '@scope/y': '^1', z: '^2' },
+    peerDependenciesMeta: { '@scope/y': { optional: true }, z: { optional: false }, react: { optional: true } },
+  }
+  assert.deepEqual(optionalPeers(pkg), ['@scope/y@^1', 'react@*'])
+  assert.deepEqual(optionalPeers({ name: 'x' }), [])
+  assert.equal(peerName('@scope/y@^1'), '@scope/y')
+  assert.equal(peerName('react@*'), 'react')
 })
 
 test('stylesheetProblems flags every ./*.css export not aimed at one ./dist/*.css file', () => {

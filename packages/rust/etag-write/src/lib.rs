@@ -908,6 +908,31 @@ mod tests {
         assert!(std::error::Error::source(&err).is_some());
     }
 
+    #[test]
+    fn write_error_messages_match_the_typescript_twin() {
+        // packages/ts/etag-write pins the same wording; keep the two in step.
+        let conflict = WriteError::Conflict {
+            path: "x.md".into(),
+        };
+        assert_eq!(
+            conflict.to_string(),
+            "x.md changed on disk since it was read"
+        );
+        let exists = WriteError::ExistsWithoutEtag {
+            path: "x.md".into(),
+        };
+        assert_eq!(
+            exists.to_string(),
+            "x.md exists — send its etag to overwrite"
+        );
+        let io_err = WriteError::Io {
+            path: "x.md".into(),
+            source: io::Error::other("boom"),
+        };
+        assert_eq!(io_err.to_string(), "io error writing x.md: boom");
+        assert!(std::error::Error::source(&io_err).is_some());
+    }
+
     #[cfg(unix)]
     #[test]
     fn write_if_changed_refuses_to_overwrite_an_unreadable_file() {

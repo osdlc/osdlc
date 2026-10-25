@@ -13,7 +13,7 @@ import { describe, expect, test } from 'vitest'
 import { FailureError } from '@osdlc/result'
 import type { GitFailure } from '../src/failure.ts'
 
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -791,6 +791,21 @@ describe('AsyncGit — symbolicRef, mainCheckout, mergeBase, checkIgnoreVerbose'
       expect(await git.at(wt).mainCheckout()).toBe(primary)
     } finally {
       fx.cleanup()
+    }
+  })
+
+  test('mainCheckout names a --separate-git-dir checkout, and a bare store has none', async () => {
+    const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'typed-git-sepdir-')))
+    try {
+      const checkout = join(scratch, 'checkout')
+      const store = join(scratch, 'store.git')
+      await new AsyncGit(scratch).rawChecked(['init', '--separate-git-dir', store, checkout])
+      expect(await new AsyncGit(checkout).mainCheckout()).toBe(checkout)
+      const bare = join(scratch, 'bare.git')
+      await new AsyncGit(scratch).rawChecked(['init', '--bare', bare])
+      expect(await new AsyncGit(bare).mainCheckout()).toBeNull()
+    } finally {
+      rmSync(scratch, { recursive: true, force: true })
     }
   })
 

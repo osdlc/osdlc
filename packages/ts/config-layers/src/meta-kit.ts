@@ -36,8 +36,10 @@ export function consumerProblems(shape: Record<string, z.ZodType>, sourceRoot: s
         continue
       }
       // The consumer grammar allows only `[A-Za-z_$][\w$]*` in a symbol. `$` is a regex
-      // metacharacter, so the escape is needed.
-      const word = new RegExp(`\\b${symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`)
+      // metacharacter, so the escape is needed. `$` is also an identifier character but not
+      // a regex word character, so the boundaries are lookarounds over `[\w$]`, not `\b`.
+      const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const word = new RegExp(`(?<![\\w$])${escaped}(?![\\w$])`)
       if (!word.test(readFileSync(file, 'utf-8')))
         broken.push(`${key}: ${ref} (symbol not in file)`)
     }

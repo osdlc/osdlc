@@ -3,6 +3,11 @@
  * value counts as set.
  */
 
+/** A plain mapping: an object, not null and not an array. Internal, not in the package index. */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 /**
  * The value at `key` (`upload.endpoint`, `paths.dev`) in `obj`, or undefined.
  *

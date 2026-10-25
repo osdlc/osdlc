@@ -22,6 +22,7 @@ import type { z } from 'zod'
 
 import { assertKnownCategories, readConfigMeta } from './meta.ts'
 import { enumValues, fieldInfo, kindOf, shapeOf, unwrapSchema } from './schema.ts'
+import { isPlainObject } from './value.ts'
 
 const WRAP_COL = 78
 
@@ -54,7 +55,7 @@ function renderValue(v: unknown): string {
   if (typeof v === 'number') return String(v)
   if (Array.isArray(v)) {
     if (v.length === 0) return '[]'
-    return '[' + v.map((e) => renderScalarString(String(e))).join(', ') + ']'
+    return '[' + v.map((e) => renderValue(e)).join(', ') + ']'
   }
   if (typeof v === 'string') return renderScalarString(v)
   // A record leaf (`z.record(…)`, e.g. `paths:`) reaches here with a
@@ -79,7 +80,7 @@ function renderScalarString(s: string): string {
   const needsQuote =
     s === '' ||
     s !== s.trim() ||
-    /^(true|false|null|~|-|\d)/i.test(s) ||
+    /^(true|false|null|~|-|\+|\.|\d)/i.test(s) ||
     /[:#{}\[\]&*!|>'"%@,`]/.test(s)
   return needsQuote ? `'${s.replace(/'/g, "''")}'` : s
 }
@@ -106,12 +107,33 @@ function commentLines(text: string, indent: string): string[] {
   return out
 }
 
+/**
+ * The value an object field takes when its key is missing, or undefined when
+ * it has no default. A zod 4 `.default(v)` returns `v` without running the
+ * inner schema, so its children's own defaults do not apply; a `.prefault`
+ * runs it. Parsing `undefined` gives the right value for both.
+ */
+function objectDefault(
+  sub: z.ZodTypeAny,
+  defaultValue: unknown,
+): Record<string, unknown> | undefined {
+  if (defaultValue === undefined) return undefined
+  const parsed = sub.safeParse(undefined)
+  return parsed.success && isPlainObject(parsed.data) ? parsed.data : undefined
+}
+
+/**
+ * Render `shape`'s keys. `defaults`, when given, is the parsed value of the
+ * enclosing object: a key it holds renders that value, and a key it lacks
+ * renders commented out, whatever the key's own schema default.
+ */
 function renderShape(
   shape: Record<string, z.ZodTypeAny>,
   indent: string,
   lines: string[],
   opts: ScaffoldOptions,
   topLevel: boolean,
+  defaults?: Record<string, unknown>,
 ): void {
   let first = true
   for (const [key, sub] of Object.entries(shape)) {
@@ -125,11 +147,21 @@ function renderShape(
     // Optional with no default (e.g. a reserved section): the all-defaults
     // object has no such key, so the section renders commented out. An
     // uncommented `key: {}` would parse back as `{}`, not absent.
-    const unfield = fieldInfo(sub)
+    const own = fieldInfo(sub)
+    const unfield =
+      defaults === undefined
+        ? own
+        : { optional: true, defaultValue: Object.hasOwn(defaults, key) ? defaults[key] : undefined }
     const absent = unfield.optional && unfield.defaultValue === undefined
     if (kind === 'object') {
       const subLines: string[] = []
-      renderShape(shapeOf(unwrapSchema(sub)), indent + '  ', subLines, opts, false)
+      const childDefaults =
+        defaults === undefined
+          ? objectDefault(sub, unfield.defaultValue)
+          : isPlainObject(unfield.defaultValue)
+            ? unfield.defaultValue
+            : undefined
+      renderShape(shapeOf(unwrapSchema(sub)), indent + '  ', subLines, opts, false, childDefaults)
       if (absent) {
         lines.push(`${indent}# ${key}:`)
         lines.push(...commentOutLines(subLines))

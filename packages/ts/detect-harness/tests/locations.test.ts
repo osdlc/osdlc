@@ -8,6 +8,7 @@ import { join, resolve } from 'node:path'
 import { current } from '../src/current.ts'
 import { BUILTIN_HARNESSES, HARNESS_ALIASES, harnessId } from '../src/harnesses.ts'
 import {
+  defaultSystemRoot,
   LOCATIONS,
   resolveBase,
   resolveConfigDir,
@@ -64,6 +65,14 @@ describe('resolvers', () => {
     expect(at('darwin')).toBe(join('/s', 'Library', 'Application Support', 'ClaudeCode'))
     expect(at('linux')).toBe(join('/s', 'etc', 'claude-code'))
     expect(at('freebsd')).toBe(join('/s', 'etc', 'claude-code'))
+    expect(at('win32')).toBe(join('/s', 'Program Files', 'ClaudeCode'))
+  })
+
+  test('the default system root: the Windows system drive, else /', () => {
+    expect(defaultSystemRoot('win32', { SystemDrive: 'D:' })).toBe('D:\\')
+    expect(defaultSystemRoot('win32', {})).toBe('C:\\')
+    expect(defaultSystemRoot('linux', { SystemDrive: 'D:' })).toBe('/')
+    expect(defaultSystemRoot('darwin', {})).toBe('/')
   })
 
   test('a null home or project leaves those paths unresolved', () => {

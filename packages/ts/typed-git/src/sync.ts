@@ -16,7 +16,7 @@
  * service's compare-and-swap ref operations. That is not general git.
  */
 
-import { dirname } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 
 import {
   spawnRunner,
@@ -352,13 +352,22 @@ export class Git {
    * The primary checkout that owns this working directory, or null when it is
    * not inside a repository at all.
    *
-   * It is correct when the cwd is a linked worktree too. `gitCommonDir()` is
-   * worktree-aware and absolute, so its parent is the primary checkout in
-   * both cases.
+   * It is correct when the cwd is a linked worktree too: `gitCommonDir()` is
+   * worktree-aware and absolute. When that store is `<checkout>/.git`, its
+   * parent is the answer. Otherwise (a submodule's `.git/modules/<name>`, a
+   * `--separate-git-dir` clone, a bare store) it is `core.worktree`, this
+   * checkout when the cwd is the main worktree, or the first non-bare
+   * `worktree list` entry. A bare store with no main checkout answers null.
    */
   mainCheckout(opts: GitSyncCallOptions = {}): string | null {
     const common = this.gitCommonDir(opts)
-    return common === null ? null : dirname(common)
+    if (common === null) return null
+    if (basename(common) === '.git') return dirname(common)
+    const configured = this.configGet('core.worktree', opts)
+    if (configured !== null) return resolve(common, configured)
+    if (this.gitDir(opts) === common) return this.topLevel(opts)
+    const main = this.worktrees(opts)[0]
+    return main === undefined || main.bare ? null : main.path
   }
 
   /** Current branch shortname, or null when detached. Throws outside a repo. */

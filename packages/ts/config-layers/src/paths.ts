@@ -146,7 +146,8 @@ export function substitutePathNames(
 ): string {
   const defineHint = opts.defineHint ?? 'define it under paths:'
   return value.replace(/\{([^{}]*)\}/g, (_, name: string) => {
-    const hit = names[name]
+    // Own keys only: `{constructor}` must not resolve to Object.prototype's.
+    const hit = Object.hasOwn(names, name) ? names[name] : undefined
     if (hit === undefined) {
       const known = Object.keys(names).map((n) => `{${n}}`)
       throw new PathNameError(

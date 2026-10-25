@@ -6,6 +6,8 @@
 
 import { describe, expect, test } from 'vitest'
 
+import { parse } from 'yaml'
+
 import { setPath, unsetPath } from '../src/edit.ts'
 
 const FIXTURE = `# Project config.   Odd  spacing is deliberate.
@@ -133,6 +135,35 @@ z: 2
     expect(unsetPath(src, ['notify', 'author_notes'])).toBe(
       `a: 1\n# Explanatory comment about notify.\nz: 2\n`,
     )
+  })
+})
+
+describe('the whole-section fallback', () => {
+  // These paths cannot be spliced in place, so the section is re-rendered from
+  // its value. The exact bytes are the re-render's; the value is what counts.
+  test('a block with a line that cannot be dedented still takes the edit', () => {
+    const src = 'svc:\n  a: 1\n# a column-0 comment inside the block\n  b: 2\nz: 3\n'
+    expect(parse(setPath(src, ['svc', 'a'], 5))).toEqual({ svc: { a: 5, b: 2 }, z: 3 })
+    expect(parse(unsetPath(src, ['svc', 'a']))).toEqual({ svc: { b: 2 }, z: 3 })
+  })
+
+  test('setting under a scalar or a sequence replaces it with a mapping', () => {
+    expect(parse(setPath('a: 1\nz: 2\n', ['a', 'x'], 5))).toEqual({ a: { x: 5 }, z: 2 })
+    expect(parse(setPath('a: [1]\nz: 2\n', ['a', 'x'], 5))).toEqual({ a: { x: 5 }, z: 2 })
+    expect(parse(setPath('a:\n  - 1\nz: 2\n', ['a', 'x'], 5))).toEqual({ a: { x: 5 }, z: 2 })
+  })
+
+  test('unsetting inside a flow map keeps its siblings, and drops it when emptied', () => {
+    const src = 'a: 1\nhost: { default: t, other: 1 }\n'
+    expect(parse(unsetPath(src, ['host', 'default']))).toEqual({ a: 1, host: { other: 1 } })
+    expect(parse(unsetPath('a: 1\nhost: { default: t }\n', ['host', 'default']))).toEqual({
+      a: 1,
+    })
+  })
+
+  test('a nested edit of a file that does not parse throws', () => {
+    expect(() => setPath('a: [\n', ['a', 'x'], 1)).toThrow(/YAML parse error/)
+    expect(() => unsetPath('a: [\n', ['a', 'x'])).toThrow(/YAML parse error/)
   })
 })
 

@@ -362,6 +362,28 @@ describe('readPlugin — Claude Code plugin layouts', () => {
     expect(m.documents).toEqual([{ name: 'nested/guide', body: '# Guide\n' }])
   })
 
+  test('a bare plugin.json at the root is read when .claude-plugin/ has none', () => {
+    rmSync(join(root, '.claude-plugin'), { recursive: true })
+    writeFileSync(join(root, 'plugin.json'), JSON.stringify({ name: 'bare', version: '0.1.0' }))
+    const m = readPlugin(root)
+    expect([m.metadata.name, m.metadata.version]).toEqual(['bare', '0.1.0'])
+  })
+
+  test('allowed-tools as one string splits on commas and newlines', () => {
+    const write = (name: string, tools: string) => {
+      mkdirSync(join(root, 'skills', name), { recursive: true })
+      writeFileSync(
+        join(root, 'skills', name, 'SKILL.md'),
+        `---\nallowed-tools: ${tools}\n---\n\n# ${name}\n`,
+      )
+    }
+    write('comma', "'Read, Bash(git status:*)'")
+    write('block', '|\n  Read\n  Write\n')
+    const byName = Object.fromEntries(readPlugin(root).capabilities.map((c) => [c.name, c]))
+    expect(byName['comma']!.allowedTools).toEqual(['Read', 'Bash(git status:*)'])
+    expect(byName['block']!.allowedTools).toEqual(['Read', 'Write'])
+  })
+
   test('a missing manifest gives the placeholder metadata', () => {
     rmSync(join(root, '.claude-plugin'), { recursive: true })
     const m = readPlugin(root)

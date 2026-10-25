@@ -67,6 +67,11 @@ describe('insertCellSplice', () => {
     expect(at('a | b', 0)).toBe('|  |a | b')
   })
 
+  test('an indented opening pipe still opens the row', () => {
+    expect(at('  | a |', 0)).toBe('  |  | a |')
+    expect(splitRow(at('   | a |', 0)).cells).toHaveLength(2)
+  })
+
   test('past the last cell appends after the closing pipe', () => {
     expect(at('|a|b|', 2)).toBe('|a|b||')
   })
