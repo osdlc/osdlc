@@ -4,14 +4,16 @@
  * A script is a string (a `cmd`) or a table with one of `cmd`, `shell`,
  * `call` or `composite`, and an optional `help`. The `_` key holds options
  * shared by every script, and a name starting with `_` is internal; neither
- * is listed. `pre_<name>` runs before `<name>`, so it fills `dependsOn`.
- * Extra arguments are appended, which is how `pdm run` passes them.
+ * is listed. Hooks are not listed either: `pre_<name>` and `post_<name>` for a
+ * listed script (`pdm run <name>` runs them itself), and PDM's lifecycle
+ * hooks (`pre_install`, `post_lock`, `pre_run`, ...). Extra arguments are
+ * appended, which is how `pdm run` passes them.
  */
 
 import type { ProviderContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { dependencies, dirOf, isTable, looksPersistent, taskId } from '../support/shared.ts'
+import { dirOf, isTable, looksPersistent, taskId } from '../support/shared.ts'
 import { PYPROJECT_TOML } from './ecosystem.ts'
 import { readConfig, tableAt } from './read-config.ts'
 
@@ -29,6 +31,15 @@ export const PDM_BRAND: RunnerBrand = {
 
 const KINDS = ['cmd', 'shell', 'call', 'composite']
 
+/** The events PDM runs `pre_*` and `post_*` hooks for, besides each script. */
+const LIFECYCLE = new Set(['init', 'install', 'lock', 'build', 'publish', 'script', 'run', 'use'])
+
+/** Whether `name` is a hook PDM runs on its own, not a script to list. */
+function isHook(name: string, scripts: ReadonlySet<string>): boolean {
+  const m = /^(?:pre|post)_(.+)$/.exec(name)
+  return m !== null && (scripts.has(m[1]!) || LIFECYCLE.has(m[1]!))
+}
+
 export const pdmRunner: RunnerRole = {
   kind: 'parse',
   chain: CHAIN,
@@ -43,7 +54,8 @@ export const pdmRunner: RunnerRole = {
       const scripts = tableAt(read.doc, 'tool', 'pdm', 'scripts')
       if (scripts === undefined) continue
       const dir = dirOf(file)
-      const names = Object.keys(scripts).filter((name) => !name.startsWith('_'))
+      const all = new Set(Object.keys(scripts).filter((name) => !name.startsWith('_')))
+      const names = [...all].filter((name) => !isHook(name, all))
       for (const name of names) {
         const def = scripts[name]
         const shape = describeScript(def)
@@ -56,7 +68,6 @@ export const pdmRunner: RunnerRole = {
           continue
         }
         const argv = dir === '.' ? ['pdm', 'run', name] : ['pdm', 'run', '-p', dir, name]
-        const pre = `pre_${name}`
         tasks.push({
           id: taskId('pdm', file, name),
           runner: 'pdm',
@@ -69,7 +80,6 @@ export const pdmRunner: RunnerRole = {
           origin: 'declared',
           ...(shape.doc === undefined ? {} : { doc: shape.doc }),
           detail: shape.detail,
-          ...dependencies(names.includes(pre) ? [pre] : [], (dep) => taskId('pdm', file, dep)),
           tags: ['pdm', dir, shape.kind],
           persistent: { value: looksPersistent(name), declared: false },
           executes: 'local',

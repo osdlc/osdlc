@@ -263,7 +263,7 @@ why:
 `dependsOnUnresolved` keeps the dependencies that name no task, as written:
 a turbo `^build`, a moon target in a project the listing does not hold, a
 task an included Taskfile declares.
-turbo, moon, go-task, just, rake, poe (`deps`), pdm (`pre_<name>`), nx, VS Code
+turbo, moon, go-task, just, rake, poe (`deps`), nx, VS Code
 tasks and CMake presets (a build or test preset's `configurePreset`) fill them.
 
 The built-in runners, and where their tasks come from:
@@ -280,7 +280,7 @@ The built-in runners, and where their tasks come from:
 | `sbt` | `sbt` (exec) | `sbt <task>` |
 | `python` | `pyproject.toml` `[tool.*]` and scripts | `ruff check`, `uv run <script>` |
 | `poe` | `[tool.poe.tasks]`, or `poe_tasks.toml`, `.yaml`, `.yml`, `.json` | `poe <task>`, through `uv run` or `poetry run` when one manages the package |
-| `pdm` | `[tool.pdm.scripts]` | `pdm run <script>` |
+| `pdm` | `[tool.pdm.scripts]`, without its `pre_*` and `post_*` hooks | `pdm run <script>` |
 | `hatch` | `[tool.hatch.envs.<env>.scripts]` and `hatch.toml` | `hatch run <env>:<script>` |
 | `composer` | `composer.json` `scripts` | `composer run-script <name>` |
 | `deno-tasks` | `deno.json` `tasks` | `deno task <name>` |

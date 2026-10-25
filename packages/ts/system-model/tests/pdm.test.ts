@@ -48,7 +48,7 @@ describe('pdm runner', () => {
   test('lists scripts, skipping the shared `_` table and internal names', async () => {
     const { catalog } = await run({ 'pyproject.toml': PYPROJECT })
     const found = tasks(catalog)
-    expect(found.map((t) => t.path[2])).toEqual(['start', 'test', 'pre_test', 'all'])
+    expect(found.map((t) => t.path[2])).toEqual(['start', 'test', 'all'])
     expect(named(found, 'start')).toMatchObject({
       argv: ['pdm', 'run', 'start'],
       cwd: '.',
@@ -59,10 +59,23 @@ describe('pdm runner', () => {
     expect(named(found, 'all').detail).toBe('lint; test')
   })
 
-  test('a pre_ script runs first', async () => {
-    const { catalog } = await run({ 'pyproject.toml': PYPROJECT })
-    expect(named(tasks(catalog), 'test').dependsOn).toEqual(['pdm:pyproject.toml:pre_test'])
-    expect(named(tasks(catalog), 'start').dependsOn).toBeUndefined()
+  test('hooks are not listed and are not dependencies, since pdm run runs them', async () => {
+    const { catalog } = await run({
+      'pyproject.toml': [
+        '[tool.pdm.scripts]',
+        'test = "pytest"',
+        'pre_test = "echo a"',
+        'post_test = "echo b"',
+        'pre_install = "echo c"',
+        'post_lock = "echo d"',
+        'pre_flight = "echo e"',
+        '',
+      ].join('\n'),
+    })
+    const found = tasks(catalog)
+    // pre_flight names no script and no lifecycle event, so it is a script.
+    expect(found.map((t) => t.path[2])).toEqual(['test', 'pre_flight'])
+    expect(named(found, 'test').dependsOn).toBeUndefined()
   })
 
   test('arguments are appended; a nested project is named with -p', async () => {
