@@ -513,6 +513,29 @@ describe('declaration checks', () => {
     ).toThrow("an items element may not declare 'kind'")
   })
 
+  test('the check reaches each option of a union element, and refuses a non-object', () => {
+    const rows = (element: z.ZodType) =>
+      defineCommand({
+        summary: 'x',
+        output: z.object({ rows: z.array(element) }),
+        items: { field: 'rows', kind: 'row' },
+        run: () => ({ rows: [] }),
+      })
+    const a = z.object({ n: z.number() })
+    const tagged = z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('a') }),
+      z.object({ kind: z.literal('b') }),
+    ])
+    expect(() => rows(tagged)).toThrow("an items element may not declare 'kind'")
+    expect(() => rows(z.union([a, z.object({ schemaVersion: z.number() })]))).toThrow(
+      "may not declare 'schemaVersion'",
+    )
+    expect(() => rows(a.and(z.object({ kind: z.string() })))).toThrow("may not declare 'kind'")
+    expect(() => rows(z.lazy(() => tagged))).toThrow("may not declare 'kind'")
+    expect(() => rows(z.string())).toThrow("items.field 'rows' must hold objects")
+    expect(() => rows(z.union([a, z.object({ s: z.string() })]))).not.toThrow()
+  })
+
   test('a global may not be a builtin', () => {
     expect(() =>
       defineApp({

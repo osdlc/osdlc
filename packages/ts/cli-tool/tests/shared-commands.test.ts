@@ -531,7 +531,7 @@ describe('a plain Error that quotes a repository file', () => {
   const ESC = '\u001b'
   const C1_CSI = '\u009b'
   // V8's JSON.parse message quotes the bad text, escape sequences and all.
-  function fileStore(): ConfigStore {
+  function fileStore() {
     const dir = mkdtempSync(join(tmpdir(), 'cli-tool-config-'))
     const file = join(dir, 'config.json')
     writeFileSync(file, `{"a": tru${ESC}]0;pwned${ESC}\\${ESC}[2J${C1_CSI}31m}`)
