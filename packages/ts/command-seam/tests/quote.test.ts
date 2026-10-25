@@ -62,12 +62,17 @@ describe('shellJoin', () => {
 
   // fish reads `\'` and `\\` inside single quotes as escapes.
   const hostile = ['hello\\', '; touch FISH_PWNED; echo bye\\', "a\\'b", '\\\\']
+  // Not on Windows: Git for Windows `sh` re-parses its command line with its
+  // own quote rules, so a backslash does not arrive intact.
   for (const shell of ['sh', 'fish']) {
-    test.skipIf(which(shell) === undefined)(`keeps backslashes literal under ${shell}`, () => {
-      const out = spawnRunner(shell).run(['-c', `printf '%s\\n' ${shellJoin(hostile)}`], {
-        cwd: process.cwd(),
-      })
-      expect(out.stdout).toBe(hostile.map((w) => `${w}\n`).join(''))
-    })
+    test.skipIf(process.platform === 'win32' || which(shell) === undefined)(
+      `keeps backslashes literal under ${shell}`,
+      () => {
+        const out = spawnRunner(shell).run(['-c', `printf '%s\\n' ${shellJoin(hostile)}`], {
+          cwd: process.cwd(),
+        })
+        expect(out.stdout).toBe(hostile.map((w) => `${w}\n`).join(''))
+      },
+    )
   }
 })
