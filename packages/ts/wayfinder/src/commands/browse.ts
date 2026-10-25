@@ -150,7 +150,7 @@ export function serveCommand(home: string) {
  * nobody typed. Port 0 means "let the OS pick", which `--port` exists to
  * prevent.
  */
-export function parsePort(raw: string): number {
+function parsePort(raw: string): number {
   const trimmed = raw.trim()
   const port = /^\d+$/.test(trimmed) ? Number.parseInt(trimmed, 10) : Number.NaN
   if (!(port >= 1 && port <= 65535)) {

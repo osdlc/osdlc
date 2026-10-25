@@ -410,7 +410,7 @@ strips types. A tool whose id matches a built-in is an error.
 }
 
 /** One section's Markdown body, without its heading. */
-export function guideBody(topic: GuideTopicId, tool: GuideTool): string {
+function guideBody(topic: GuideTopicId, tool: GuideTool): string {
   switch (topic) {
     case 'usage':
       return usageBody(tool)
@@ -445,7 +445,7 @@ export function guideDocument(tool: GuideTool): string {
 }
 
 /** The topics for cli-tool's `guide` command. `tool` gives the usage text for a run. */
-export function guideTopics(tool: (ctx: CommandContext) => GuideTool): GuideTopic[] {
+function guideTopics(tool: (ctx: CommandContext) => GuideTool): GuideTopic[] {
   return GUIDE_TOPICS.map((id) => ({
     id,
     title: id,

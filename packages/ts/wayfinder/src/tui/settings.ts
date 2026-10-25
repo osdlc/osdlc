@@ -70,7 +70,7 @@ const LAYER_WORDS: Record<ConfigLayer, string> = {
 }
 
 /** `this project`, `your user config` or `default`. */
-export function layerWords(layer: ConfigLayer): string {
+function layerWords(layer: ConfigLayer): string {
   return LAYER_WORDS[layer]
 }
 

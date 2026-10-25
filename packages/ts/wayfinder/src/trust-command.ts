@@ -46,7 +46,7 @@ function entryOf(gate: PolicyExecGate, scope: string | undefined): TrustEntry {
 }
 
 /** wayfinder's {@link TrustService}. */
-export function trustService(opts: CommandEnvOptions = {}): TrustService {
+function trustService(opts: CommandEnvOptions = {}): TrustService {
   const env = commandEnv(opts)
   const setup = async (ctx: CommandContext) => {
     const home = env.home(ctx)

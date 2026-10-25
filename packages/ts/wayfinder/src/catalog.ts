@@ -14,7 +14,6 @@ import {
   type DiscoveryMode,
   type Project,
   type ProjectProfile,
-  type RunnerCacheState,
   type ToolDef,
 } from '@osdlc/system-model/detect'
 
@@ -98,7 +97,7 @@ function collectOptions(o: WayOptions) {
  * The tool managers detected at the root that run commands through
  * themselves (`mise exec -- <binary>`), as trust scopes.
  */
-export function wrapperScopes(project: Project, profile: ProjectProfile): string[] {
+function wrapperScopes(project: Project, profile: ProjectProfile): string[] {
   const exec = new Set(
     project.tools.filter((t) => t.roles.toolManager?.exec !== undefined).map((t) => t.id),
   )
@@ -109,7 +108,7 @@ export function wrapperScopes(project: Project, profile: ProjectProfile): string
 }
 
 /** Every scope `runner` needs trusted: its own id, then each wrapper. */
-export function runnerScopes(runner: string, wrappers: readonly string[]): string[] {
+function runnerScopes(runner: string, wrappers: readonly string[]): string[] {
   return [runner, ...wrappers.filter((w) => w !== runner)]
 }
 
@@ -193,16 +192,6 @@ export async function readCachedCatalog(
         ? a.catalog
         : mergeCatalogs(a.catalog, b.catalog)
   return { catalog, runners: [...a.runners, ...b.runners], allFresh: a.allFresh && b.allFresh }
-}
-
-/** Every report in `catalog`, marked fresh: the verdict right after a probe. */
-export function freshStates(catalog: Catalog): RunnerCacheState[] {
-  return catalog.reports.map((r) => ({
-    runner: r.runner,
-    state: 'fresh' as const,
-    estimateMs: null,
-    slow: false,
-  }))
 }
 
 /** True when something came out of the store, not only withheld reports. */

@@ -789,7 +789,7 @@ export async function readSettings(
 }
 
 /** {@link Settings} from a config already loaded. */
-export function settingsFrom(loaded: LoadedConfig): Settings {
+function settingsFrom(loaded: LoadedConfig): Settings {
   return {
     loaded,
     settings: CONFIG_KEYS.map((key) => settingOf(loaded, key)),

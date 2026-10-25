@@ -294,7 +294,7 @@ export function footerHints(
 }
 
 /** The key names of a binding as one column: `tab, shift+tab`. */
-export function keyNames(binding: KeyBinding): string {
+function keyNames(binding: KeyBinding): string {
   return binding.keys.join(', ')
 }
 

@@ -25,7 +25,7 @@ const DIR = new URL('./web/', import.meta.url)
 const path = (name: string): string => fileURLToPath(new URL(name, DIR))
 
 /** The custom-property prefix of the page's tokens: `--wf-bg-base`. */
-export const TOKEN_PREFIX = 'wf'
+const TOKEN_PREFIX = 'wf'
 
 /** What the page is built with. */
 export interface PageOptions {

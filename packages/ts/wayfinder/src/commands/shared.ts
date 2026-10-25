@@ -166,7 +166,7 @@ export async function openSession(
  * The `--cached` note, or null when there is nothing to say: which runners
  * were stale and which had nothing stored and were probed now.
  */
-export function cacheNote(snapshot: CatalogSnapshot): string | null {
+function cacheNote(snapshot: CatalogSnapshot): string | null {
   if (snapshot.origin === 'empty-store') {
     return '--cached: nothing cached for this repository yet; probed it now and stored the result'
   }
