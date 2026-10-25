@@ -339,7 +339,8 @@ export interface CleanCommandOptions extends CommandEnvOptions {
 
 /**
  * The `clean` command. Mount it as `clean: cleanCommand({ globals })`.
- * Removing is `cli-only`: the MCP and HTTP adapters only get the report.
+ * A call with a flag that removes something is `cli-only`: the MCP and HTTP
+ * adapters refuse it. A bare `clean`, the report, is open to them.
  */
 export function cleanCommand<G extends FlagSpec = Record<never, never>>(
   options: CleanCommandOptions & { globals?: G } = {},
