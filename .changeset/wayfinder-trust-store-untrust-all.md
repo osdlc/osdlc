@@ -2,4 +2,4 @@
 '@osdlc/wayfinder': patch
 ---
 
-The trust store now covers the old `waypost` store in `untrustAll`, `listGrants` and `tighten`, as it already did in `isTrusted`, `list` and `untrust`. Before, `untrustAll` left a grant made under the old name in place, so the repository stayed trusted.
+The trust store's new `untrustAll`, `listGrants` and `tighten`, from `@osdlc/trust-repo`, cover the old `waypost` store too, as `isTrusted`, `list` and `untrust` do. So removing every grant for a repository also removes a grant made under the old name.
