@@ -85,7 +85,10 @@ no PR.
 ## Runtime and platform
 
 Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, ESM only. Bun also runs it, through the compiled
-`dist/`. No `Bun.*` API is used. The GitHub adapter needs the `gh` CLI on `PATH`, signed in. The
+`dist/`. No `Bun.*` API is used. The GitHub adapter needs the `gh` CLI on `PATH`, signed in,
+at version 2.48 or later: `listComments` and the review comments `getPr` folds into activity read
+every page with `gh api --paginate --slurp`, and `--slurp` is new in 2.48. On an older `gh`,
+`listComments` fails and `getPr` reports no review comments. The
 Forgejo adapter needs `curl` and a personal access token in `FORGEJO_TOKEN` (or the variable named
 by the `forgejoTokenEnv` option). Both need `git` for drift counts. Linux and macOS are the tested
 platforms.

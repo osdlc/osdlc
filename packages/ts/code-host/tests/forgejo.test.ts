@@ -389,7 +389,8 @@ describe('ForgejoCodeHost.listPrs / prForBranch', () => {
       Array.from({ length: 60 }, (_, i) => ({ number: i + 1, head: { ref: `b${i + 1}` } })),
     )
     expect(unwrap(codeHost(runner).prForBranch('b55'))).toBe(55)
-    expect(calls.map((u) => new URL(u).searchParams.get('page'))).toEqual(['1', '2'])
+    // The short second page does not end the listing; the empty third one does.
+    expect(calls.map((u) => new URL(u).searchParams.get('page'))).toEqual(['1', '2', '3'])
   })
 
   test('author filters before the limit, so older PRs by the author still count', () => {
@@ -413,14 +414,47 @@ describe('ForgejoCodeHost.listPrs / prForBranch', () => {
     expect(unwrap(codeHost(runner).listPrs({ limit: 70 }))).toHaveLength(70)
     expect(calls.map((u) => new URL(u).searchParams.get('page'))).toEqual(['1', '2'])
   })
+
+  test('a server whose MAX_RESPONSE_ITEMS is below the page size still lists every PR', () => {
+    const rows = Array.from({ length: 25 }, (_, i) => ({
+      number: i + 1,
+      head: { ref: `b${i + 1}` },
+      user: { login: i % 2 === 0 ? 'bot' : 'other' },
+    }))
+    const { runner, calls } = pagedPulls(rows, { maxItems: 10 })
+    const host = codeHost(runner)
+    expect(unwrap(host.listPrs({})).map((p) => p.number)).toEqual(rows.map((r) => r.number))
+    expect(calls.map((u) => new URL(u).searchParams.get('page'))).toEqual(['1', '2', '3', '4'])
+    expect(unwrap(host.prForBranch('b25'))).toBe(25)
+    // The author filter still runs before the cap, across the short pages.
+    expect(unwrap(host.listPrs({ author: 'bot', limit: 8 })).map((p) => p.number)).toEqual([
+      1, 3, 5, 7, 9, 11, 13, 15,
+    ])
+    expect(unwrap(host.listPrs({ limit: 15 }))).toHaveLength(15)
+  })
+
+  test('a server that ignores page stops after one repeated page, with no duplicates', () => {
+    const { runner, calls } = fakeGh({
+      list: [
+        { number: 1, head: { ref: 'a' } },
+        { number: 2, head: { ref: 'b' } },
+      ],
+    })
+    expect(unwrap(codeHost(runner).listPrs({})).map((p) => p.number)).toEqual([1, 2])
+    expect(calls).toHaveLength(2)
+  })
 })
 
 /**
  * A `pulls` listing that honours `page` and `limit` the way Forgejo does, over
- * `rows`. Any other GET (a PR's reviews) answers `[]`. `calls` holds each
- * listing URL.
+ * `rows`. `maxItems` stands for the server's `MAX_RESPONSE_ITEMS`: a larger
+ * `limit` is cut down to it. Any other GET (a PR's reviews) answers `[]`.
+ * `calls` holds each listing URL.
  */
-function pagedPulls(rows: Record<string, unknown>[]): { runner: CommandRunner; calls: string[] } {
+function pagedPulls(
+  rows: Record<string, unknown>[],
+  opts: { maxItems?: number } = {},
+): { runner: CommandRunner; calls: string[] } {
   const calls: string[] = []
   return {
     calls,
@@ -431,7 +465,7 @@ function pagedPulls(rows: Record<string, unknown>[]): { runner: CommandRunner; c
         calls.push(url)
         const params = new URL(url).searchParams
         const page = Number(params.get('page') ?? '1')
-        const limit = Number(params.get('limit') ?? '30')
+        const limit = Math.min(Number(params.get('limit') ?? '30'), opts.maxItems ?? Infinity)
         return curlOk(200, rows.slice((page - 1) * limit, page * limit))
       },
     },
@@ -489,8 +523,9 @@ describe('ForgejoCodeHost.listPrDetails', () => {
     const rows = codeHost(runner).listPrDetails({ limit: 100 })
     expect(unwrap(rows)[0]!.isCrossRepository).toBe(false)
     expect(calls[0]![calls[0]!.length - 1]).toContain('page=1&limit=50')
+    const before = calls.length
     codeHost(runner).listPrDetails({ limit: 5 })
-    expect(calls.at(-2)![calls.at(-2)!.length - 1]).toContain('page=1&limit=5')
+    expect(calls[before]![calls[before]!.length - 1]).toContain('page=1&limit=5')
   })
 
   test('an unknown head repo reads as cross-repository, as getPr reads it as a fork', () => {

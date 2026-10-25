@@ -158,6 +158,7 @@ export function selectTargets(
 
 export const input = z.object({
   ...SCOPE_SHAPE,
+  remote: SCOPE_SHAPE.remote.describe('Remote to fetch from, measure against and push to.'),
   apply: z
     .boolean()
     .default(false)

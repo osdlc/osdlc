@@ -349,6 +349,11 @@ in `FORGEJO_TOKEN`. `code_host.override: github` or `forgejo` in the config
 forces the choice, for example for a GitHub Enterprise host. The token's
 variable name is not configurable here. It is always `FORGEJO_TOKEN`.
 
+`--remote` (default `origin`) names the remote whose URL gives the repository,
+the one fetched, the one whose remote-tracking refs (`<remote>/<branch>`) drift
+and conflicts are measured against, and, for `update`, the one pushed to. It
+does not change which code host is chosen: that always reads `origin`.
+
 A host that embeds the engine as a library supplies `SurveyEnv.codeHost`, and
 none of this applies to it. When `SurveyEnv.codeHost` is absent, the library
 uses GitHub over `gh`. It does not read the remote, so an embedding that never

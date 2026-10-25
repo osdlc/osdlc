@@ -31,8 +31,9 @@
  *   reached or rate-limited the caller.
  *
  * `selectCodeHost` chooses the code host from the `origin` remote, or from
- * `code_host.override`. A failed PR listing is an error, never "no open PRs".
- * `@osdlc/cli-tool` prints every classified failure and picks its exit code.
+ * `code_host.override`, whatever `--remote` names. `--remote` is the remote
+ * fetched, measured against (`<remote>/<branch>`) and, for `update`, pushed to.
+ * A failed PR listing is an error, never "no open PRs". `@osdlc/cli-tool` prints every classified failure and picks its exit code.
  */
 
 import { mkdirSync, rmSync } from 'node:fs'

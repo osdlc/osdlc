@@ -530,8 +530,11 @@ export class ForgejoCodeHost implements CodeHost {
   /**
    * Raw PR listing for `owner/repo`, filtered and capped. Forgejo's `pulls`
    * listing is paginated, so this reads page after page until `limit` matching
-   * rows are in or a short page says there are no more. The author filter runs
-   * on each page before the cap, as `gh pr list --author --limit` does, so
+   * rows are in or a page brings no PR it has not seen. A short page does not
+   * end the listing: a server whose `MAX_RESPONSE_ITEMS` is below the page size
+   * asked for answers every page short. An empty page ends it, and so does a
+   * page of repeats, as from a server that ignores `page`. The author filter
+   * runs on each page before the cap, as `gh pr list --author --limit` does, so
    * `limit` counts the author's PRs, not the newest PRs of anyone.
    */
   private listRawPrs(q: {
@@ -548,17 +551,24 @@ export class ForgejoCodeHost implements CodeHost {
         ? Math.max(1, Math.min(q.limit, PAGE_SIZE))
         : PAGE_SIZE
     const out: RawPr[] = []
+    // PR numbers already read, so a page that repeats an earlier one (pages
+    // shifting under a new PR, or `page` ignored) neither duplicates rows nor
+    // pages forever. A row with no number is keyed by its whole body.
+    const seen = new Set<unknown>()
     for (let page = 1; q.limit === undefined || out.length < q.limit; page++) {
       const rows = this.getArrayResult(
         `repos/${target}/pulls?state=${state}&page=${page}&limit=${pageSize}`,
       )
       if (!rows.ok) return rows
-      out.push(
-        ...(rows.value as RawPr[]).filter(
-          (pr) => q.author === undefined || str(pr.user?.login) === q.author,
-        ),
-      )
-      if (rows.value.length < pageSize) break
+      let fresh = 0
+      for (const pr of rows.value as RawPr[]) {
+        const key = typeof pr.number === 'number' ? pr.number : JSON.stringify(pr)
+        if (seen.has(key)) continue
+        seen.add(key)
+        fresh++
+        if (q.author === undefined || str(pr.user?.login) === q.author) out.push(pr)
+      }
+      if (fresh === 0) break
     }
     return ok(out.slice(0, q.limit ?? undefined))
   }

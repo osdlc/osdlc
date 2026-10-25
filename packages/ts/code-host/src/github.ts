@@ -430,7 +430,8 @@ export class GithubCodeHost implements CodeHost {
     ]
     const res = this.gh.raw(argv)
     // `gh api` through `raw`, not `gh.api`: the failure needs the whole run to be classified.
-    // `--slurp` prints every page as one array of pages, flattened below.
+    // `--slurp` prints every page as one array of pages, flattened below. It is
+    // the same flag `Gh.api`'s `paginate` passes, and needs gh 2.48 or later.
     if (classifyFailure(res, { binary: 'gh', argv }) !== null) {
       return {
         ok: false,
