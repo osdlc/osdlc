@@ -194,8 +194,6 @@ directory, `REPO_CLEANER_*` override variables):
 | Linux and other | `$XDG_CONFIG_HOME/repo-cleaner/config.yaml`, else `~/.config/repo-cleaner/config.yaml` |
 | Windows | `%APPDATA%\repo-cleaner\config.yaml` |
 
-The `FLEET_ROOT`, `FLEET_*` and `FLEET_MACHINE_CONFIG` variables are no longer read; there is no fallback, and the replacements are `REPO_CLEANER_ROOT`, `REPO_CLEANER_*` and `REPO_CLEANER_MACHINE_CONFIG`.
-
 `REPO_CLEANER_MACHINE_CONFIG`, or `--config <path>`, relocates it. A missing,
 unreadable or malformed file degrades to no repositories rather than failing
 the run.

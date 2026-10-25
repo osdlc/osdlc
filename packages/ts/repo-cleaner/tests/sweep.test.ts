@@ -73,8 +73,8 @@ function buildFixture(root: string): void {
 }
 
 /**
- * Four git fixtures, two of them with worktrees, is more than vitest's 5s
- * default allows for on a cold or loaded machine — and a suite that passes
+ * Four git fixtures, two of them with worktrees, is more than vitest's default
+ * hook timeout allows for on a cold or loaded machine — and a suite that passes
  * locally and times out in CI is worse than a slow one.
  */
 const HOOK_TIMEOUT_MS = 60_000
