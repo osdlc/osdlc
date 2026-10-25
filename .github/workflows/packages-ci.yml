@@ -23,7 +23,8 @@
 # release.
 #
 # `windows-tier2` runs the libraries that start programs or resolve paths on
-# Windows (command-seam, trust-repo, tiered-dirs, cli-tool, system-model),
+# Windows (command-seam, trust-repo, tiered-dirs, cli-tool, system-model,
+# wayfinder),
 # when any of them is picked. Windows is tier 2 for them (S-0021), so the job
 # has `continue-on-error: true`: it reports, but never fails the workflow or
 # blocks a release. Each package tests in its own step with its own time
@@ -219,7 +220,8 @@ jobs:
       contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/trust-repo') ||
       contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/tiered-dirs') ||
       contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/cli-tool') ||
-      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/system-model')
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/system-model') ||
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/wayfinder')
     runs-on: windows-latest
     continue-on-error: true
     strategy:
@@ -248,7 +250,7 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: pnpm
 
-      # The picked packages among the five. `build` adds their workspace
+      # The picked packages among the six. `build` adds their workspace
       # dependencies, which pnpm's `...` suffix selects. A path selector needs
       # braces for the suffix: `{./path}...`.
       - name: Pick the tier-2 packages
@@ -256,7 +258,7 @@ jobs:
         run: |
           filter=''
           build=''
-          for p in command-seam trust-repo tiered-dirs cli-tool system-model; do
+          for p in command-seam trust-repo tiered-dirs cli-tool system-model wayfinder; do
             if grep -q "\"packages/ts/$p\"" <<< "$PACKAGES"; then
               filter="$filter --filter ./packages/ts/$p"
               build="$build --filter {./packages/ts/$p}..."
@@ -303,6 +305,11 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/system-model"') }}
         timeout-minutes: 4
         run: pnpm --filter ./packages/ts/system-model run test
+
+      - name: Test wayfinder
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/wayfinder"') }}
+        timeout-minutes: 4
+        run: pnpm --filter ./packages/ts/wayfinder run test
 
       - name: Smoke the built packages under Node
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
