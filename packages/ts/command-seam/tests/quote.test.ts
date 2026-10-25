@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import { spawnRunner } from '../src/sync.ts'
 import { shellJoin, shellQuote } from '../src/quote.ts'
+import { which } from '../src/which.ts'
 
 describe('shellQuote', () => {
   test('leaves an inert word bare', () => {
@@ -39,10 +40,14 @@ describe('shellQuote', () => {
       '~',
       '*',
       'é',
-      '\\',
     ]) {
       expect(shellQuote(w)).toBe(old(w))
     }
+  })
+
+  test('writes a backslash outside the quotes', () => {
+    expect(shellQuote('a\\b')).toBe(`'a'\\\\'b'`)
+    expect(shellQuote('hello\\')).toBe(`'hello'\\\\''`)
   })
 })
 
@@ -54,4 +59,15 @@ describe('shellJoin', () => {
     })
     expect(out.stdout).toBe(words.map((w) => `${w}\n`).join(''))
   })
+
+  // fish reads `\'` and `\\` inside single quotes as escapes.
+  const hostile = ['hello\\', '; touch FISH_PWNED; echo bye\\', "a\\'b", '\\\\']
+  for (const shell of ['sh', 'fish']) {
+    test.skipIf(which(shell) === undefined)(`keeps backslashes literal under ${shell}`, () => {
+      const out = spawnRunner(shell).run(['-c', `printf '%s\\n' ${shellJoin(hostile)}`], {
+        cwd: process.cwd(),
+      })
+      expect(out.stdout).toBe(hostile.map((w) => `${w}\n`).join(''))
+    })
+  }
 })
