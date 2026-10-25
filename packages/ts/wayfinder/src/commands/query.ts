@@ -9,6 +9,7 @@ import type { Task } from '@osdlc/system-model/detect'
 import { hasQuery } from '../core/filter.ts'
 import { skillLine, type SkillRow } from '../core/skills.ts'
 import { QueryOutput } from '../documents.ts'
+import { sourceOf } from './list.ts'
 import { taskLine } from '../core/copy-text.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import { FILTER_FLAGS, filterFrom, kit, noteUnknowns, openSession } from './shared.ts'
@@ -22,7 +23,8 @@ export function queryCommand(home: string) {
       '--exact does that to all of them. No terms is every task. Matching agent skills follow ' +
       'the tasks as /<name> lines. Each task line is the one "list" prints. --output jsonl ' +
       'prints one task per line, every task when there are no terms. Exits 1 when terms ' +
-      'matched nothing, as grep does.',
+      'matched nothing, as grep does. --cached reads the stored probe as "list --cached" does; ' +
+      '"source" and "storedAt" in the document say which it was.',
     positionals: [{ name: 'terms', variadic: true, help: 'the search terms' }],
     flags: {
       ...FILTER_FLAGS,
@@ -56,6 +58,7 @@ export function queryCommand(home: string) {
           ...(filter.declaredOnly === true ? { declaredOnly: true } : {}),
           ...(filter.maxDepth !== undefined ? { maxDepth: filter.maxDepth } : {}),
         },
+        ...sourceOf(snapshot),
         tasks,
         skills,
         cache: snapshot.cache,

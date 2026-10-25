@@ -14,6 +14,7 @@ import type { Unknown } from '../core/unknowns.ts'
 import { CATALOG_DOCUMENT_VERSION, CatalogOutput, type CatalogDocumentBody } from '../documents.ts'
 import type { CatalogDocument } from '../index.ts'
 import { taskLine } from '../core/copy-text.ts'
+import type { CatalogShare } from '../serve/catalog-share.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import { FILTER_FLAGS, filterFrom, kit, noteUnknowns, openSession } from './shared.ts'
 
@@ -27,7 +28,7 @@ export type CatalogBody = Omit<CatalogDocument, 'schemaVersion' | 'kind'>
  * the same document.
  */
 export function catalogDocument(
-  snapshot: Pick<CatalogSnapshot, 'catalog' | 'cache' | 'skills'>,
+  snapshot: Pick<CatalogSnapshot, 'catalog' | 'cache' | 'skills' | 'origin'>,
   unknowns: Unknown[],
   filter: TaskFilter = {},
   trustedTools: readonly string[] = [],
@@ -43,6 +44,7 @@ export function catalogDocument(
   const skills = filterSkills(snapshot.skills, filter).map((h) => h.skill)
   return {
     ...catalog,
+    ...sourceOf(snapshot),
     reports,
     groups: documentGroups(catalog.reports, skills.length),
     skills,
@@ -57,13 +59,30 @@ export function catalogDocument(
   }
 }
 
+/**
+ * Whether the rows were probed in this call or came from the store, and when
+ * the stored ones were taken: the oldest stored runner's probe time.
+ */
+export function sourceOf(snapshot: Pick<CatalogSnapshot, 'catalog' | 'origin'>): {
+  source: 'fresh' | 'cached'
+  storedAt: string | null
+} {
+  const cached = snapshot.origin === 'store' || snapshot.origin === 'saved'
+  return cached
+    ? { source: 'cached', storedAt: snapshot.catalog.generatedAt }
+    : { source: 'fresh', storedAt: null }
+}
+
 /** Every task in the document, in catalog order. */
 function documentTasks(doc: CatalogDocumentBody): Catalog['reports'][number]['tasks'] {
   return (doc.reports as Catalog['reports']).flatMap((r) => r.tasks)
 }
 
-/** Make the `list` command. `home` is the base for config, trust and cache paths. */
-export function listCommand(home: string) {
+/**
+ * Make the `list` command. `home` is the base for config, trust and cache
+ * paths. `share` is the web view's held catalog (see `catalog-share.ts`).
+ */
+export function listCommand(home: string, share?: CatalogShare) {
   return kit.command({
     summary:
       'the whole catalog: one pasteable command line per task, or the catalog document with --json',
@@ -73,7 +92,10 @@ export function listCommand(home: string) {
       '--json shows. --output jsonl prints one runner report per line; "query" with no terms ' +
       'prints one task per line. ' +
       'Probes every runner, so a script gets what the repository has now. --cached answers from ' +
-      'the last stored probe and names the stale runners on stderr. --services, --declared and ' +
+      'the last stored probe without probing again and names the stale runners on stderr; a ' +
+      'runner with nothing stored is probed now, and with nothing stored at all it probes every ' +
+      'runner. The document says which it was: "source" is "fresh" or "cached", and "storedAt" ' +
+      'is when the oldest stored rows were probed. --services, --declared and ' +
       '--depth keep only some tasks; with --json each report keeps only those tasks. Notes on what ' +
       'could not be read (withheld runners, unknown parameters, missing tools) go to stderr; ' +
       'under --json the same notes are in "unknowns". Agent skills follow the tasks as /<name> ' +
@@ -89,10 +111,18 @@ export function listCommand(home: string) {
     async run({ flags, globals, positionals }, ctx) {
       const filter = filterFrom(flags)
       const session: Session = await openSession(globals, ctx, home, positionals[0])
-      const snapshot = await session.catalog({ cached: flags.cached })
-      const unknowns = session.unknowns(snapshot)
-      noteUnknowns(ctx, session, snapshot, unknowns)
-      return catalogDocument(snapshot, unknowns, filter, session.settings().trustedTools)
+      const read = async (cached: boolean): Promise<CatalogBody> => {
+        const snapshot = await session.catalog({ cached })
+        const unknowns = session.unknowns(snapshot)
+        noteUnknowns(ctx, session, snapshot, unknowns)
+        return catalogDocument(snapshot, unknowns, filter, session.settings().trustedTools)
+      }
+      if (share?.active === true && ctx.surface === 'http' && Object.keys(filter).length === 0) {
+        const key = session.viewKey()
+        if (flags.cached) return share.cached(key) ?? read(true)
+        return share.fresh(key, () => read(false))
+      }
+      return read(flags.cached)
     },
     text(doc) {
       const lines = [

@@ -511,6 +511,28 @@ describe('createSession', () => {
     expect(stored?.catalog.reports.map((r) => r.runner)).toContain('node-scripts')
   })
 
+  test('savedCatalog draws the last catalog, only under the same trust and settings', async () => {
+    const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    expect(await session.savedCatalog()).toBeNull()
+    await session.catalog()
+    const again = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    const saved = await again.savedCatalog()
+    expect(saved?.origin).toBe('saved')
+    expect(saved?.catalog.reports.map((r) => r.runner)).toContain('node-scripts')
+    expect(saved?.cache.every((c) => c.probeMs === undefined)).toBe(true)
+    // Another runner selection probes other rows, so it does not draw these.
+    const other = await createSession({
+      dir,
+      cwd: dir,
+      env: {},
+      home: dir,
+      flags: { exclude: ['node-scripts'] },
+    })
+    expect(other.viewKey()).not.toBe(session.viewKey())
+    expect(await other.savedCatalog()).toBeNull()
+  })
+
   test('saveSetting writes the file settingLayer picks and the options follow', async () => {
     const dir = await root({ 'package.json': '{"name":"p"}' })
     const session = await createSession({ dir, cwd: dir, env: {}, home: dir })

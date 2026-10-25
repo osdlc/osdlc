@@ -93,6 +93,14 @@ export interface CatalogDocument {
   discovery: DiscoveryMode
   /** Whether every runner was allowed to run subprocesses. */
   allowExec: boolean
+  /**
+   * `fresh`: every runner was probed in this call. `cached`: the rows came
+   * from the store (`cached: true`); `cache` says which runners were stale
+   * or probed now.
+   */
+  source: 'fresh' | 'cached'
+  /** With `source: "cached"`, when the oldest stored rows were probed (ISO 8601). Null when fresh. */
+  storedAt: string | null
   /** Grouped, and in the configured runner order. */
   reports: RunnerReport[]
   /** The groups with rows, in display order. */

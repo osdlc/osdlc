@@ -6,6 +6,8 @@
     "query": "ruff",
     "mode": "fuzzy"
   },
+  "source": "fresh",
+  "storedAt": null,
   "tasks": [
     {
       "id": "python:pyproject.toml:ruff",

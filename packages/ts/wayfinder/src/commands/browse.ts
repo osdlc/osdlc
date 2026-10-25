@@ -7,6 +7,7 @@ import { UsageError, type CommandContext } from '@osdlc/cli-tool/command'
 
 import type { Session } from '../core/session.ts'
 import { keyLines } from '../keys.ts'
+import type { CatalogShare } from '../serve/catalog-share.ts'
 import { serve } from '../serve/index.ts'
 import { runTui } from '../tui/index.ts'
 import { kit, openSession, type Globals } from './shared.ts'
@@ -42,9 +43,13 @@ export function abortOnSignals(parent: AbortSignal): { signal: AbortSignal; disp
 
 /**
  * Make the terminal UI command. With `followOpen` it is the bare `way`: it
- * opens the web view instead when the user config says `open: "web"`.
+ * opens the web view instead when the user config says `open: "web"`, with
+ * `share` as the catalog it holds between requests.
  */
-export function browseCommand(home: string, opts: { followOpen?: boolean } = {}) {
+export function browseCommand(
+  home: string,
+  opts: { followOpen?: boolean; share?: CatalogShare } = {},
+) {
   return kit.command({
     summary: 'the terminal UI; Enter runs the selected task',
     description:
@@ -61,7 +66,10 @@ export function browseCommand(home: string, opts: { followOpen?: boolean } = {})
       if (opts.followOpen === true && openSurface(session) === 'web') {
         const stopper = abortOnSignals(ctx.signal)
         try {
-          return await serveSession(session, globals, ctx, stopper.signal, { open: true })
+          return await serveSession(session, globals, ctx, stopper.signal, {
+            open: true,
+            share: opts.share,
+          })
         } finally {
           stopper.dispose()
         }
@@ -85,10 +93,11 @@ async function serveSession(
   globals: Globals,
   ctx: CommandContext,
   signal: AbortSignal,
-  opts: { open: boolean; port?: number },
+  opts: { open: boolean; port?: number; share?: CatalogShare | undefined },
 ): Promise<number> {
   const exit = await serve({
     session,
+    ...(opts.share !== undefined ? { share: opts.share } : {}),
     app: ctx.app,
     globals: globals as Record<string, unknown>,
     cwd: ctx.cwd,
@@ -106,7 +115,7 @@ async function serveSession(
 }
 
 /** Make the `serve` command: the same catalog as a live page. */
-export function serveCommand(home: string) {
+export function serveCommand(home: string, share?: CatalogShare) {
   return kit.command({
     summary: 'the same catalog as a live page in the browser',
     description:
@@ -138,6 +147,7 @@ export function serveCommand(home: string) {
         )
         return await serveSession(session, globals, ctx, stopper.signal, {
           open: flags.open,
+          share,
           ...(port !== undefined ? { port } : {}),
         })
       } finally {

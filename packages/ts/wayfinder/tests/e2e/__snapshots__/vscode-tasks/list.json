@@ -90,6 +90,8 @@
       "skippedForExec": false
     }
   ],
+  "source": "fresh",
+  "storedAt": null,
   "groups": [
     {
       "id": "tasks",

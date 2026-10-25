@@ -6,6 +6,8 @@
     "query": "deploy",
     "mode": "fuzzy"
   },
+  "source": "fresh",
+  "storedAt": null,
   "tasks": [
     {
       "id": "just:justfile:deploy",

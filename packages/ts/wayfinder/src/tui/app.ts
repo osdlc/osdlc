@@ -976,13 +976,15 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
   }
 
   async function boot(): Promise<void> {
-    // The store first: a few file hashes rather than a full probe, so the
-    // tasks show at once, marked as cached, even when a runner is slow.
+    // The saved view first: one file, so the tasks show at once. Without
+    // one, the store: no probe, but it detects the project and hashes each
+    // runner's files, which takes seconds on a large repository.
     try {
-      const stored = await session.storedCatalog()
+      const stored = (await session.savedCatalog()) ?? (await session.storedCatalog())
       if (stored !== null) {
         state.catalog = orderedCatalog(stored.catalog, state.runnerOrder)
         state.cache = stored.cache
+        state.skills = stored.skills
       }
     } catch {
       // A store that cannot be read is the same as an empty one.

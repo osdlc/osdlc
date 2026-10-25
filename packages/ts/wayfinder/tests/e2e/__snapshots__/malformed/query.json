@@ -6,6 +6,8 @@
     "query": "ok",
     "mode": "fuzzy"
   },
+  "source": "fresh",
+  "storedAt": null,
   "tasks": [
     {
       "id": "make:Makefile:ok",

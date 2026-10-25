@@ -6,6 +6,8 @@
     "query": "build",
     "mode": "fuzzy"
   },
+  "source": "fresh",
+  "storedAt": null,
   "tasks": [
     {
       "id": "swiftpm:Package.swift:build",

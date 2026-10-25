@@ -6,6 +6,8 @@
     "query": "serve",
     "mode": "fuzzy"
   },
+  "source": "fresh",
+  "storedAt": null,
   "tasks": [
     {
       "id": "nx:apps/site/project.json:serve",

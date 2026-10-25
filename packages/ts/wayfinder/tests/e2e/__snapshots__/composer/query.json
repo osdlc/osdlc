@@ -6,6 +6,8 @@
     "query": "lint",
     "mode": "fuzzy"
   },
+  "source": "fresh",
+  "storedAt": null,
   "tasks": [
     {
       "id": "composer:composer.json:lint",

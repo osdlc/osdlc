@@ -6,6 +6,8 @@
     "query": "b",
     "mode": "fuzzy"
   },
+  "source": "fresh",
+  "storedAt": null,
   "tasks": [
     {
       "id": "node-scripts:package.json:build\u001b[2J",

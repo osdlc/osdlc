@@ -6,6 +6,8 @@
     "query": "package",
     "mode": "fuzzy"
   },
+  "source": "fresh",
+  "storedAt": null,
   "tasks": [
     {
       "id": "maven:pom.xml:package",

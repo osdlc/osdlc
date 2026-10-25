@@ -362,12 +362,16 @@ Some runners are slow to ask (moon starts its toolchain, sbt starts a JVM),
 and a browser that waits for them looks broken. `wayfinder` stores the last
 answer for each root and runner, so the UI can show rows at once.
 
-The terminal UI and `serve` always start from the store. They read it, show
-the rows, then probe in the background and update in place. `list` and
-`query` re-probe on every run, because a script or an agent reading them needs
-what the repository has right now. Those runs also write the store, so the next
-UI start is instant. `--cached` makes `list` and `query` read the store for
-one run.
+The terminal UI and `serve` always start from what was last shown. Every
+`list`, `query` and refresh saves the catalog it showed in one file, and a
+start draws that file before it reads anything else, so the rows appear in
+well under a second even on a large repository. The file is used only under
+the same trust and settings that produced it. Without it they read the store,
+which needs no probe but detects the project and hashes each runner's files.
+Then they probe in the background and update in place. `list` and `query`
+re-probe on every run, because a script or an agent reading them needs what
+the repository has right now. `--cached` makes `list` and `query` read the
+store for one run, without probing again.
 
 A stored answer is in one of three states, and every surface shows them the
 same way:
@@ -388,7 +392,8 @@ elsewhere. When a repository has no measurement yet, the surface says so
 instead of guessing a number.
 
 `^r` in the terminal UI and Refresh on the page always run a real probe. They
-never answer from the store.
+never answer from the store. On the page, Refresh joins a probe that is
+already running rather than starting a second one.
 
 If you run a row whose task no longer exists, such as a task renamed since the
 stored probe, both surfaces tell you the row came from the store, instead of
@@ -402,7 +407,11 @@ way: --cached: just (stale: its files changed, 35s old; refresh usually about 14
 ```
 
 `--cached` with an empty store is not an error. It probes, stores the result,
-and says so. Every `--json` document has a `cache` array, with one entry per
+and says so. A runner with nothing stored is probed the same way. The `--json`
+document of `list` and `query` says which it was: `source` is `"fresh"` when
+every runner was probed in this call and `"cached"` when the rows came from the
+store, and `storedAt` is when the oldest stored rows were probed (null when
+fresh). Every `--json` document has a `cache` array, with one entry per
 selected runner. After a fresh probe each entry's `probeMs` is the time that
 runner took. Over HTTP the page always receives this array.
 
@@ -475,7 +484,7 @@ Messages on stderr start with `way:`.
 --services           only tasks that run until you stop them
 --declared           only tasks a file declares, not ones from a convention
 --depth N            only tasks whose source is at most N directories deep
---cached             answer from the last stored probe
+--cached             answer from the last stored probe; the document says source: cached
 ```
 
 ### Documents

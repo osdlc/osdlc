@@ -15,6 +15,7 @@ import { configCommand } from '../config-command.ts'
 import { guideCommand, type GuideTool } from '../guide.ts'
 import { providersCommand } from '../providers-command.ts'
 import { trustCommand } from '../trust-command.ts'
+import { createCatalogShare, type CatalogShare } from '../serve/catalog-share.ts'
 import { GLOBALS, setCommandWords } from './shared.ts'
 
 /** The root's long description: what `way help --full` adds. */
@@ -37,6 +38,8 @@ export interface WayApp {
   words: readonly string[]
   /** The words of the commands the complete help shows. */
   treeWords: readonly string[]
+  /** The catalog `list` shares between the web view's requests; `serve` fills it. */
+  share: CatalogShare
 }
 
 /**
@@ -50,15 +53,17 @@ export function createWayApp(opts: {
 }): WayApp {
   const { home } = opts
   const env = { globals: GLOBALS, home: () => home }
+  // The catalog the web view holds between requests; `serve` turns it on.
+  const share = createCatalogShare()
   const browse = browseCommand(home)
   // The bare `way` follows the `open` setting; `way browse` is always the terminal UI.
-  const bare = browseCommand(home, { followOpen: true })
+  const bare = browseCommand(home, { followOpen: true, share })
   const commands: Record<string, Node> = {
     browse: { ...browse, hidden: true },
-    list: listCommand(home),
+    list: listCommand(home, share),
     query: queryCommand(home),
     run: runCommand(home),
-    serve: serveCommand(home),
+    serve: serveCommand(home, share),
     providers: providersCommand(home),
     config: configCommand(env),
     trust: trustCommand(env),
@@ -80,5 +85,5 @@ export function createWayApp(opts: {
     commands,
   })
   const treeWords = Object.keys(commands).filter((w) => w !== 'browse')
-  return { app, words, treeWords }
+  return { app, words, treeWords, share }
 }

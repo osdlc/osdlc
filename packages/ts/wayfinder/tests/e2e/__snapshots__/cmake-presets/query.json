@@ -6,6 +6,8 @@
     "query": "debug",
     "mode": "fuzzy"
   },
+  "source": "fresh",
+  "storedAt": null,
   "tasks": [
     {
       "id": "cmake-presets:CMakePresets.json:configure:debug",

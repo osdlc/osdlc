@@ -43,11 +43,13 @@ import {
 } from '../config.ts'
 import { readSkills } from '../skills.ts'
 import { toolSummary, type ToolSummary } from '../tool-info.ts'
+import { VERSION } from '../version.ts'
 import { loadTools, ToolModuleError, type LoadedTool } from '../tools.ts'
 import { appTrustStore } from '../trust-store.ts'
 import { EDITOR_VARIABLE_LABEL, type WithheldReason } from '../vocabulary.ts'
 import { taskCopyText } from './copy-text.ts'
 import { filterTasks, type TaskFilter, type TaskHit } from './filter.ts'
+import { readView, viewKey, writeView } from './saved-view.ts'
 import { filterSkills, type SkillHit, type SkillRow } from './skills.ts'
 import { execOffSource, unknownsOf, type Unknown } from './unknowns.ts'
 
@@ -126,8 +128,10 @@ export interface CatalogSnapshot {
    * `probe`: every runner was probed now. `store`: from the stored probe,
    * with any runner missing from it probed now. `empty-store`: a stored
    * answer was asked for, but there was none, so it was probed now.
+   * `saved`: the view the last probe or store read showed, not checked
+   * against the files (see {@link Session.savedCatalog}).
    */
-  origin: 'probe' | 'store' | 'empty-store'
+  origin: 'probe' | 'store' | 'empty-store' | 'saved'
 }
 
 /** The facts behind a settings screen. */
@@ -226,6 +230,20 @@ export interface Session {
    * runner missing from the store is missing from the catalog.
    */
   storedCatalog(): Promise<CatalogSnapshot | null>
+  /**
+   * The catalog the last {@link catalog} call showed, in this process or
+   * another, read from one file without detecting or hashing anything: for
+   * a first paint in well under a second. Not checked against the files, so
+   * probe after drawing it. Null when nothing was saved under this session's
+   * trust and settings. Each `cache[].ageMs` counts from the probe.
+   */
+  savedCatalog(): Promise<CatalogSnapshot | null>
+  /**
+   * What decides which rows a probe returns here: trust, the collect
+   * options, the skills setting and the tools. Two sessions with the same
+   * key read the same catalog.
+   */
+  viewKey(): string
   /** The tasks of `catalog` that pass `filter`, best first when there is a query. */
   search(catalog: Catalog, filter: TaskFilter): TaskHit[]
   /** The skills that pass `filter`, matched as {@link search} matches tasks. */
@@ -516,6 +534,34 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
   }
 
   const { project, tools } = built
+
+  /** What decides which rows a probe returns; a saved view is used only under the same key. */
+  const currentViewKey = (): string =>
+    viewKey({
+      version: VERSION,
+      root,
+      allowExec: options.allowExec ?? false,
+      withheldHint: options.execWithheldHint !== undefined,
+      toolTrusted: [...toolTrusted].sort(),
+      only: options.only ?? null,
+      exclude: options.exclude ?? null,
+      discovery: options.discovery ?? null,
+      excludePaths: options.excludePaths ?? null,
+      skills: settings.skills.value,
+      tools: project.tools.map((t) => t.id),
+    })
+  /** Save `snapshot` as the view a first paint draws, then return it. */
+  const saved = async (snapshot: CatalogSnapshot): Promise<CatalogSnapshot> => {
+    await writeView(store, {
+      key: currentViewKey(),
+      savedAt: Date.now(),
+      catalog: snapshot.catalog,
+      cache: snapshot.cache.map(({ probeMs: _probeMs, ...rest }) => rest),
+      skills: snapshot.skills,
+      scopes: Object.fromEntries([...scopesByRunner].map(([r, s]) => [r, [...s]])),
+    })
+    return snapshot
+  }
   const session: Session = {
     root,
     get config() {
@@ -541,36 +587,36 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
     async catalog(opts = {}) {
       if (opts.cached !== true) {
         const { catalog, times } = await probe(undefined, opts.signal)
-        return {
+        return saved({
           catalog: orderedCatalog(catalog, runnerOrder()),
           cache: probedStates(catalog, times),
           skills: await skills(),
           origin: 'probe',
-        }
+        })
       }
       const stored = await readCachedCatalog(project, root, options, store)
       if (stored.catalog === null || !fromStore(stored)) {
         const { catalog, times } = await probe(undefined, opts.signal)
-        return {
+        return saved({
           catalog: orderedCatalog(catalog, runnerOrder()),
           cache: probedStates(catalog, times),
           skills: await skills(),
           origin: 'empty-store',
-        }
+        })
       }
       // A miss is a runner with nothing stored. Only the missing runners are probed.
       const missing = stored.runners.filter((r) => r.state === 'miss').map((r) => r.runner)
       if (missing.length === 0) {
-        return {
+        return saved({
           catalog: orderedCatalog(stored.catalog, runnerOrder()),
           cache: stored.runners,
           skills: await skills(),
           origin: 'store',
-        }
+        })
       }
       const { catalog: probed, times } = await probe(missing, opts.signal)
       const fresh = new Map(probedStates(probed, times).map((s) => [s.runner, s]))
-      return {
+      return saved({
         catalog: orderedCatalog(
           { ...stored.catalog, reports: [...stored.catalog.reports, ...probed.reports] },
           runnerOrder(),
@@ -578,7 +624,7 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
         cache: stored.runners.map((r) => fresh.get(r.runner) ?? r),
         skills: await skills(),
         origin: 'store',
-      }
+      })
     },
     async storedCatalog() {
       const stored = await readCachedCatalog(project, root, options, store)
@@ -588,6 +634,23 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
         cache: stored.runners,
         skills: await skills(),
         origin: 'store',
+      }
+    },
+    viewKey: currentViewKey,
+    async savedCatalog() {
+      const view = await readView(store, root, currentViewKey())
+      if (view === null) return null
+      // The withheld unknowns name the scopes each runner needs, which a
+      // probe would have reported.
+      if (toolScopes.length > 0) scopesByRunner = new Map(Object.entries(view.scopes))
+      const since = Math.max(0, Date.now() - view.savedAt)
+      return {
+        catalog: orderedCatalog(view.catalog, runnerOrder()),
+        cache: view.cache.map((r) =>
+          r.state === 'miss' ? r : { ...r, ageMs: (r.ageMs ?? 0) + since },
+        ),
+        skills: view.skills,
+        origin: 'saved',
       }
     },
     search(catalog, filter) {

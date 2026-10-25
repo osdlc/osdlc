@@ -109,6 +109,17 @@ export const CatalogOutput = z.object({
   generatedAt: embedded(catalogProperties['generatedAt']!),
   discovery: embedded(catalogProperties['discovery']!),
   allowExec: z.boolean(),
+  source: z
+    .enum(['fresh', 'cached'])
+    .describe(
+      'fresh: every runner was probed in this call. cached: the rows came from the store (--cached), and cache[] says which runners were stale or probed now.',
+    ),
+  storedAt: z
+    .string()
+    .nullable()
+    .describe(
+      'With source cached, when the oldest stored rows were probed (ISO 8601). Null when fresh.',
+    ),
   reports: z.array(RunnerReportZ),
   groups: z.array(GroupZ),
   skills: z
@@ -131,6 +142,17 @@ export const CATALOG_DOCUMENT_VERSION = CATALOG_SCHEMA_VERSION
 export const QueryOutput = z.object({
   root: z.string(),
   filter: FilterZ,
+  source: z
+    .enum(['fresh', 'cached'])
+    .describe(
+      'fresh: every runner was probed in this call. cached: the rows came from the store (--cached), and cache[] says which runners were stale or probed now.',
+    ),
+  storedAt: z
+    .string()
+    .nullable()
+    .describe(
+      'With source cached, when the oldest stored rows were probed (ISO 8601). Null when fresh.',
+    ),
   tasks: z.array(TaskZ),
   skills: z.array(SkillZ).describe('The matching agent skills, best first.'),
   cache: z.array(CacheStateZ),

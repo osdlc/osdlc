@@ -817,6 +817,34 @@ describe('boot', () => {
     expect(tui.state.rows.map((r) => r.task.id)).toContain('node-scripts:package.json:build')
     expect(lineOf(tui, 2)).toMatch(/probed in/)
   })
+
+  test('the first frame shows the saved view before the probe answers', async () => {
+    const { tui, host } = await testTui()
+    const session = tui.session
+    // An earlier run probed and saved what it showed.
+    await session.catalog()
+    // This run's probe never answers, and the store is not read.
+    const probe = vi.fn(() => new Promise<never>(() => {}))
+    const stored = vi.fn(() => session.storedCatalog())
+    Object.assign(session, { catalog: probe, storedCatalog: stored })
+    void tui.boot()
+    await vi.waitFor(() => expect(probe).toHaveBeenCalled())
+    expect(stored).not.toHaveBeenCalled()
+    expect(tui.state.loading).toBe(true)
+    expect(tui.state.rows.map((r) => r.task.id)).toContain('node-scripts:package.json:build')
+    expect(host.written.join('')).toContain('build')
+  })
+
+  test('without a saved view, the first frame comes from the store', async () => {
+    const { tui } = await testTui()
+    const session = tui.session
+    await session.catalog()
+    const probe = vi.fn(() => new Promise<never>(() => {}))
+    Object.assign(session, { catalog: probe, savedCatalog: async () => null })
+    void tui.boot()
+    await vi.waitFor(() => expect(probe).toHaveBeenCalled())
+    expect(tui.state.rows.map((r) => r.task.id)).toContain('node-scripts:package.json:build')
+  })
 })
 
 describe('the help screen', () => {

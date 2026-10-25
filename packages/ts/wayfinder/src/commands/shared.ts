@@ -67,7 +67,7 @@ export type Globals = FlagValues<typeof GLOBALS>
 export const FILTER_FLAGS = {
   cached: {
     kind: 'boolean',
-    help: 'answer from the last stored probe, not a new one',
+    help: 'answer from the last stored probe, not a new one; the document says source: cached',
   },
   services: { kind: 'boolean', help: 'only tasks that run until you stop them' },
   declared: {

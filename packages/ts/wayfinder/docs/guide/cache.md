@@ -11,8 +11,13 @@ interactive surfaces can show something at once.
 
 ## Who reads the store
 
-- **The terminal UI and `way serve`** always start from the store, then probe
-  in the background and update in place.
+- **The terminal UI and `way serve`** always start from what was last shown,
+  then probe in the background and update in place. Each `list`, `query` and
+  refresh saves the catalog it showed in one file
+  (`<cache>/views/v1/`), and a start draws it before reading anything else.
+  It is drawn only under the same trust and settings that produced it.
+  Without it, a start reads the store, which probes nothing but detects the
+  project and hashes each runner's files: seconds on a large repository.
 - **`way list` and `way query`** re-probe on every run, so a script
   gets what the repository has now. These runs also write the store.
 - **`--cached`** makes `list`, `query` or `run` answer from the store.
@@ -23,11 +28,13 @@ way: --cached: just (stale: its files changed, 35s old; refresh usually about 14
 ```
 
 `--cached` against an empty store probes, stores the result, and says so.
-Every `--json` document carries a `cache` array beside the catalog. See
+The `list` and `query` documents say which happened: `source` is `fresh` or
+`cached`, and `storedAt` is when the oldest stored rows were probed (null when
+fresh). Every `--json` document carries a `cache` array beside the catalog. See
 [The task model and JSON](task-model.md#the-cache-array).
 
 `Ctrl+R` in the terminal UI and **Refresh** in the web view always run a
-real probe.
+real probe. In the web view a Refresh joins a probe that is already running.
 
 ## States
 

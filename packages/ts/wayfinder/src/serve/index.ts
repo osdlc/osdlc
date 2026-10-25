@@ -4,22 +4,26 @@
  * It is a server rather than a generated file, because a file goes out of date
  * as soon as a task is added. The page calls the command tree over cli-tool's
  * HTTP adapter (`routes.ts`), so each request reads the repository as it is
- * now, with the same rules as the command line. The page signs in with a
+ * now, with the same rules as the command line. The catalog the server holds
+ * between those requests is `catalog-share.ts`. The page signs in with a
  * one-shot boot token (`auth.ts`).
  */
 
 import type { App } from '@osdlc/cli-tool/command'
 import { createHttpApi, serveHttp, type HttpServer } from '@osdlc/cli-tool/http'
 import { commandString, spawnRunnerAsync } from '@osdlc/command-seam'
+import { humanAge } from '@osdlc/system-model/duration'
 
 import { APP, BIN } from '../app.ts'
 import { handOff as defaultHandOff, type HandOffResult } from '../core/run.ts'
+import { catalogDocument } from '../commands/list.ts'
 import type { CatalogSnapshot, Session } from '../core/session.ts'
 import type { RunDocumentBody } from '../documents.ts'
 import { buildPage } from '../page.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import { WITHHELD, runnerLabel, staleLabel } from '../vocabulary.ts'
 import { createSignIn, type SignIn } from './auth.ts'
+import type { CatalogShare } from './catalog-share.ts'
 import { createRoutes, type RunResolution } from './routes.ts'
 import { readTerminalLines, type JobSignals } from './terminal-input.ts'
 
@@ -38,6 +42,12 @@ export interface ServeOptions {
   session: Session
   /** The command tree the page calls. */
   app: App
+  /**
+   * The catalog `app`'s `list` shares between requests. `serve` fills it
+   * with its first catalog and starts a probe, so the page's first two
+   * calls wait on neither a second store read nor a second probe.
+   */
+  share?: CatalogShare | undefined
   /**
    * The global flag values every call runs with, fixed at start. `dir` is
    * set to the session's root.
@@ -211,7 +221,10 @@ export async function startServer(options: ServeOptions): Promise<WebServer> {
  * The first lines `serve` prints: the address, the root, what was collected
  * and what came from the store. Repository text in them is terminal-safe.
  */
-export function startupSummary(address: string, first: Omit<CatalogSnapshot, 'origin'>): string {
+export function startupSummary(
+  address: string,
+  first: Omit<CatalogSnapshot, 'origin'> & { origin?: CatalogSnapshot['origin'] },
+): string {
   // A withheld runner reports `absent`. It is named withheld here, because
   // absent means the repository does not have it.
   const counts = first.catalog.reports
@@ -229,6 +242,10 @@ export function startupSummary(address: string, first: Omit<CatalogSnapshot, 'or
       .map((c) => `${runnerLabel(c.runner)} (${staleLabel(c.reason, c.ageMs)})`)
       .join(', ')
     out += `  cached     ${terminalSafe(aged)}; the page re-reads it\n`
+  } else if (first.origin === 'saved') {
+    const ages = first.cache.flatMap((c) => (c.ageMs !== undefined ? [c.ageMs] : []))
+    const age = ages.length > 0 ? ` from ${humanAge(Math.max(...ages))}` : ''
+    out += `  cached     the last listing${age}; the page re-reads it\n`
   }
   return out
 }
@@ -251,9 +268,19 @@ export async function serve(options: ServeOptions): Promise<number | null> {
   const web = await startServer(options)
   const address = web.server.url
   const bootUrl = (): string => `${address}/?boot=${web.signIn.bootToken}`
-  // From the store when it has an answer, so the address shows at once. The
-  // page reads the repository again as soon as it loads.
-  const first = await options.session.catalog({ cached: true })
+  // The saved view when there is one, else the store, so the address shows
+  // at once. A probe starts now; the page's first fresh read joins it.
+  const session = options.session
+  const first = (await session.savedCatalog()) ?? (await session.catalog({ cached: true }))
+  const share = options.share
+  if (share !== undefined) {
+    const key = session.viewKey()
+    const documentOf = (snapshot: CatalogSnapshot) =>
+      catalogDocument(snapshot, session.unknowns(snapshot), {}, session.settings().trustedTools)
+    share.remember(key, documentOf(first))
+    share.activate()
+    void share.fresh(key, async () => documentOf(await session.catalog())).catch(() => {})
+  }
   web.signIn.arm()
   options.stdout(startupSummary(address, first))
   options.stdout(`  live       the page refreshes on focus and every 15s; Refresh re-reads\n`)

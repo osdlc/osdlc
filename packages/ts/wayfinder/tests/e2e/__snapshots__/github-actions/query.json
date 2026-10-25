@@ -6,6 +6,8 @@
     "query": "release",
     "mode": "fuzzy"
   },
+  "source": "fresh",
+  "storedAt": null,
   "tasks": [
     {
       "id": "github-actions:.github/workflows/release.yml:release.yml",

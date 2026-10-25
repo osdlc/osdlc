@@ -175,10 +175,12 @@ copy button is also reachable with `Tab`.
 
 ## Startup and the cache
 
-The page first asks for `way list --cached`, which answers from the
-[stored probe](cache.md) when there is one, then for `way list`, which
-probes. The rows update in place when the probe finishes. **Refresh** always
-runs a real probe.
+The server reads the catalog once as it starts, from the view the last run
+saved or else the [stored probe](cache.md), and starts a probe at once. The
+page first asks for `way list --cached`, which the server answers with the
+newest catalog it holds, then for `way list`, which joins the probe already
+running or starts one. The rows update in place when the probe finishes.
+**Refresh** runs a probe, or joins one that is running.
 
 The status area reports stored rows the same way the terminal UI does:
 

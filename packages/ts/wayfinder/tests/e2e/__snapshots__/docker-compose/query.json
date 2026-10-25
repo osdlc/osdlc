@@ -6,6 +6,8 @@
     "query": "web",
     "mode": "fuzzy"
   },
+  "source": "fresh",
+  "storedAt": null,
   "tasks": [
     {
       "id": "docker-compose:compose.yaml:web",

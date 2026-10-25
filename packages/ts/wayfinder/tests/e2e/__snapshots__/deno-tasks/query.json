@@ -6,6 +6,8 @@
     "query": "test",
     "mode": "fuzzy"
   },
+  "source": "fresh",
+  "storedAt": null,
   "tasks": [
     {
       "id": "deno-tasks:deno.json:test",

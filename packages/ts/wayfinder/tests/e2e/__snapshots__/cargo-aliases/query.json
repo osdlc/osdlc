@@ -6,6 +6,8 @@
     "query": "xtask",
     "mode": "fuzzy"
   },
+  "source": "fresh",
+  "storedAt": null,
   "tasks": [
     {
       "id": "cargo-aliases:Cargo.toml:xtask",

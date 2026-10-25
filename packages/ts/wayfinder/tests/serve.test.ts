@@ -20,6 +20,7 @@ import { abortOnSignals } from '../src/commands/browse.ts'
 import { createWayApp } from '../src/commands/index.ts'
 import { createSession } from '../src/core/session.ts'
 import { createSignIn } from '../src/serve/auth.ts'
+import { createCatalogShare } from '../src/serve/catalog-share.ts'
 import { createRoutes } from '../src/serve/routes.ts'
 import { browserOpener, serve, startServer, type WebServer } from '../src/serve/index.ts'
 import { appTrustStore } from '../src/trust-store.ts'
@@ -663,6 +664,95 @@ describe('stopping', () => {
     aborter.abort(130)
     expect(await web.finished).toBeNull()
     await expect(fetch(`${address}/`)).rejects.toThrow()
+  })
+})
+
+describe('the held catalog', () => {
+  test("the page's first reads wait on neither a store read nor a second probe", async () => {
+    const dir = await root({
+      'package.json': JSON.stringify({ name: 'p', scripts: { build: 'echo b' } }),
+    })
+    const home = await root()
+    const env = { HOME: home, PATH: process.env['PATH'] }
+    const { app, share } = createWayApp({ home })
+    const session = await createSession({ dir, cwd: dir, env, home })
+    // An earlier run saved its view.
+    await session.catalog()
+    // The probe serve starts waits until the test lets it go.
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const probe = session.catalog.bind(session)
+    Object.assign(session, {
+      catalog: async (opts?: { cached?: boolean }) => {
+        if (opts?.cached !== true) await gate
+        return probe(opts)
+      },
+    })
+    const probes: string[] = []
+    const fresh = share.fresh.bind(share)
+    share.fresh = (key, run) =>
+      fresh(key, () => {
+        probes.push(key)
+        return run()
+      })
+
+    const aborter = new AbortController()
+    let out = ''
+    const finished = serve({
+      session,
+      app,
+      share,
+      globals: {},
+      cwd: dir,
+      open: false,
+      signal: aborter.signal,
+      stdout: (text) => {
+        out += text
+      },
+      stderr: () => {},
+    })
+    await vi.waitFor(() => expect(out).toMatch(/\?boot=[0-9a-f]+/))
+    expect(out).toContain('the last listing')
+    const address = out.match(/(http:\/\/127\.0\.0\.1:\d+)/)![1]!
+    const boot = out.match(/\?boot=([0-9a-f]+)/)![1]!
+    const signed = await fetch(`${address}/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ boot }),
+    })
+    const { token } = (await signed.json()) as { token: string }
+    const list = (body: object): Promise<Response> =>
+      fetch(`${address}/api/commands/list`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      })
+
+    // Answered while serve's probe is still held: from the held catalog.
+    const cached = (await (await list({ cached: true })).json()) as { source: string }
+    expect(cached.source).toBe('cached')
+    // The fresh read joins serve's probe rather than starting its own.
+    const pending = list({})
+    release()
+    const doc = (await (await pending).json()) as {
+      source: string
+      reports: { tasks: { display: string }[] }[]
+    }
+    expect(doc.source).toBe('fresh')
+    expect(doc.reports.flatMap((r) => r.tasks.map((t) => t.display))).toContain('npm run build')
+    expect(probes).toHaveLength(1)
+    aborter.abort(130)
+    expect(await finished).toBeNull()
+  })
+
+  test('a request under other trust or settings does not get the held catalog', () => {
+    const share = createCatalogShare()
+    share.activate()
+    share.remember('a', { generatedAt: 't' } as never)
+    expect(share.cached('a')).toMatchObject({ source: 'cached', storedAt: 't' })
+    expect(share.cached('b')).toBeNull()
   })
 })
 

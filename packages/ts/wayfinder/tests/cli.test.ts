@@ -538,6 +538,32 @@ describe('--cached', () => {
       expect(row.estimateMs === null || typeof row.estimateMs === 'number').toBe(true)
     }
   })
+
+  test('--json says source fresh by default, and cached with storedAt under --cached', async () => {
+    const home = await temp()
+    const dir = await project()
+    type Source = { source: string; storedAt: string | null; generatedAt: string }
+    const fresh = JSON.parse((await run(['list', '--json'], dir, home)).out) as Source
+    expect(fresh).toMatchObject({ source: 'fresh', storedAt: null })
+
+    const cached = JSON.parse((await run(['list', '--json', '--cached'], dir, home)).out) as Source
+    // The time the first run stored its probes.
+    const near = (at: string | null): boolean =>
+      at !== null && Math.abs(Date.parse(at) - Date.parse(fresh.generatedAt)) < 5_000
+    expect(cached.source).toBe('cached')
+    expect(near(cached.storedAt)).toBe(true)
+    const query = JSON.parse((await run(['query', '--json', '--cached'], dir, home)).out) as Source
+    expect(query.source).toBe('cached')
+    expect(near(query.storedAt)).toBe(true)
+  })
+
+  test('--cached with nothing stored probes and says source fresh, not cached', async () => {
+    const dir = await project()
+    const ran = await run(['list', '--json', '--cached'], dir, await temp())
+    expect(ran.code).toBe(0)
+    expect(JSON.parse(ran.out)).toMatchObject({ source: 'fresh', storedAt: null })
+    expect(ran.err).toContain('nothing cached for this repository yet')
+  })
 })
 
 /**

@@ -92,8 +92,8 @@ are independent. A GitHub Actions workflow is read by parsing YAML, but runs
 `schemaVersion`, `kind: "catalog"`, `cache`, `unknowns` and `filter`.
 `way schema list` prints its JSON Schema, and `@osdlc/wayfinder/schema`
 exports it as `catalogDocumentSchema`, with `documentZod('catalog')` to parse
-one. `way query --json` is the `query` document: `root`, `filter`, `tasks`,
-`cache` and `unknowns`.
+one. `way query --json` is the `query` document: `root`, `filter`, `source`,
+`storedAt`, `tasks`, `skills`, `cache` and `unknowns`.
 
 ```ts
 interface Catalog {
@@ -101,6 +101,8 @@ interface Catalog {
   generatedAt: string
   discovery: 'git' | 'walk'
   allowExec: boolean
+  source: 'fresh' | 'cached'
+  storedAt: string | null
   reports: RunnerReport[]
   groups: { id: string; title: string; runners: string[] }[]
 }
@@ -121,6 +123,11 @@ interface RunnerReport {
   `source` is relative to it.
 - **`generatedAt`**: when this collection ran. Under `--cached` it is the
   oldest contributing probe time.
+- **`source`**: `fresh` when every runner was probed in this call, `cached`
+  when the rows came from the store under `--cached`. With nothing stored,
+  `--cached` probes and says `fresh`.
+- **`storedAt`**: with `source: "cached"`, when the oldest stored rows were
+  probed. Null when fresh.
 - **`discovery`**: how files were found. `git` lists tracked and untracked,
   not ignored files. `walk` walks the tree.
 - **`allowExec`**: whether runners were allowed to run subprocesses.

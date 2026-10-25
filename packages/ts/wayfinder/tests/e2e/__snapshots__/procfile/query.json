@@ -6,6 +6,8 @@
     "query": "worker",
     "mode": "fuzzy"
   },
+  "source": "fresh",
+  "storedAt": null,
   "tasks": [
     {
       "id": "procfile:Procfile:worker",

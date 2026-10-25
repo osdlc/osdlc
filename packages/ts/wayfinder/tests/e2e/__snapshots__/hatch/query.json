@@ -6,6 +6,8 @@
     "query": "check",
     "mode": "fuzzy"
   },
+  "source": "fresh",
+  "storedAt": null,
   "tasks": [
     {
       "id": "hatch:hatch.toml:lint:check",

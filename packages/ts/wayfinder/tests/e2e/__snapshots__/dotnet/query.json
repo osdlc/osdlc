@@ -6,6 +6,8 @@
     "query": "run",
     "mode": "fuzzy"
   },
+  "source": "fresh",
+  "storedAt": null,
   "tasks": [
     {
       "id": "dotnet:src/App/App.csproj:run",
