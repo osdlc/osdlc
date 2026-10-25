@@ -487,7 +487,8 @@ export class CommandFailed extends FailureError<CommandFailure> {
    * stderr. Empty when there is no text at all. The same as
    * `failureText(e.result, { both: true })`.
    *
-   * `message` holds stderr only. Several commands explain the failure on
+   * `message` holds the command line and stderr (or the runner's `error`),
+   * never stdout. Several commands explain the failure on
    * stdout instead, such as a rejecting git hook, `git commit` on a clean
    * tree, or `git apply --check`. Read this rather than picking a stream at
    * the call site.
@@ -846,8 +847,9 @@ function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
  * change the data: invalid UTF-8 decodes to U+FFFD, so a hash of decoded
  * output is not the hash of the bytes. Stderr is decoded as UTF-8, so
  * `failureText` and `CommandFailed` read as they do for text. `maxOutputBytes`
- * cuts stdout at exactly the cap. Everything else is as for `spawnRunner`,
- * including the `bun test` capture path.
+ * cuts stdout at exactly the cap. It takes no {@link SpawnRunnerOptions}, so
+ * no `absolutePathOnly`. Everything else is as for `spawnRunner`, including
+ * the `bun test` capture path.
  *
  * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
  *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).

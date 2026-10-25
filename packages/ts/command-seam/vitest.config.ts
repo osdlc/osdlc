@@ -7,7 +7,8 @@ const src = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 export default defineConfig({
   resolve: {
     // The examples import the package by name; run them on the source, so they
-    // need no build. The subpaths first, then the bare name.
+    // need no build. The subpaths first, then the bare name. `./quote` has no
+    // alias: it resolves through the package exports to `dist/`.
     alias: [
       { find: /^@osdlc\/command-seam\/testing$/, replacement: src('./src/testing.ts') },
       { find: /^@osdlc\/command-seam$/, replacement: src('./src/index.ts') },

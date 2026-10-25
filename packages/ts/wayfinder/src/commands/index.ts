@@ -21,7 +21,7 @@ import { GLOBALS, setCommandWords } from './shared.ts'
 /** The root's long description: what `way help --full` adds. */
 const DESCRIPTION = `Defaults come from ${PROJECT_CONFIG_FILENAME} in the project root and from the user file "${BIN} config path" names; a flag beats both. --exclude REPLACES the configured runners.disabled rather than adding to it.
 
-"${BIN} list" and "${BIN} query" probe every time, so a script reading them gets what the repository has now; --cached asks for the stored answer instead and names the stale runners on stderr. The terminal UI and "${BIN} serve" start from the store and refresh behind you.
+"${BIN} list" and "${BIN} query" probe every time, so a script reading them gets what the repository has now; --cached answers from the last saved listing without checking files, or from the stored probes (naming stale runners on stderr) when nothing was saved. The terminal UI and "${BIN} serve" draw the saved listing first and refresh behind you.
 
 Reading some runners means running them, so a repository must be trusted before they are collected: "${BIN} trust" records that, once, per repository. Until then they are withheld and every surface says so. A repository cannot trust itself: allowExec in ${PROJECT_CONFIG_FILENAME} cannot raise the gate.
 

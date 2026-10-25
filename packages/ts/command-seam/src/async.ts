@@ -199,7 +199,8 @@ export function spawnRunnerAsync(
  * An {@link AsyncBytesCommandRunner}: {@link spawnRunnerAsync} with stdout
  * returned as the bytes the child wrote, never decoded. Stderr is decoded as
  * UTF-8, so `failureText` and `CommandFailed` read as they do for text.
- * `maxOutputBytes` cuts stdout at exactly the cap. Everything else is as for
+ * `maxOutputBytes` cuts stdout at exactly the cap. It takes no
+ * `SpawnRunnerOptions`, so no `absolutePathOnly`. Everything else is as for
  * `spawnRunnerAsync`. The sync form is `spawnRunnerBytes`.
  *
  * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`

@@ -151,9 +151,10 @@ if (r.exitCode === 0) console.log(r.stdout.trim())
 
 ### Capture, async
 
-The async runner adds three options: `signal` (an `AbortSignal`), `onSpawn`
-(called with the child's pid once it starts) and `processGroup` (see
-Timeouts and cancellation below).
+The async runner adds four options: `signal` (an `AbortSignal`), `onSpawn`
+(called with the child's pid once it starts), `processGroup` and `killTree`
+(stop the whole process tree when the run is stopped; see Timeouts and
+cancellation below).
 
 ```ts
 import { spawnRunnerAsync } from '@osdlc/command-seam'
@@ -175,8 +176,9 @@ change before you hash it, `spawnRunnerBytes` and `spawnRunnerBytesAsync`
 return stdout as the `Buffer` the child wrote. Their result type is
 `CommandResult<Buffer>`, so the compiler knows `stdout` is a `Buffer`. Stderr
 is still decoded as UTF-8: it is diagnostics, and `failureText`,
-`runChecked` and `CommandFailed` read it as they do for text. They take the
-same options as their text forms. `maxOutputBytes` cuts stdout at exactly the
+`runChecked` and `CommandFailed` read it as they do for text. Each run takes
+the same options as its text form, but the factories take no
+`SpawnRunnerOptions`, so no `absolutePathOnly`. `maxOutputBytes` cuts stdout at exactly the
 cap, since there is no character to keep whole.
 
 ```ts
@@ -464,7 +466,8 @@ It looks a binary up the way the runners' spawn does. `opts` takes `cwd`
 (default `process.cwd()`), `env`, merged over the parent's as the runners
 take it, so `which('tool', { env: { PATH: binDir } })` checks a test's own
 `PATH`, and `platform` (default `process.platform`), so a test can run the
-Windows rules on any OS.
+Windows rules on any OS. `absolutePathOnly` limits the search to absolute
+`PATH` entries (see Running a command inside an untrusted folder).
 
 | Rule              | POSIX                                     | Windows (`platform: 'win32'`)                                   |
 | ----------------- | ----------------------------------------- | --------------------------------------------------------------- |
@@ -813,7 +816,8 @@ production code does not import them. It also exports their types:
 `FakeRunner` (what `fakeRunner` returns), `FakeCall` (one recorded call),
 `FakeProcess` and `FakeProcessOptions`.
 
-- `fakeRunner(answers)` returns `{ runner, asyncRunner, calls }`. `runner`
+- `fakeRunner(answers)` returns `{ runner, asyncRunner, bytesRunner,
+  asyncBytesRunner, calls }`. `runner`
   is a `CommandRunner` that answers from a table keyed by the argv, each
   argument quoted with `shellQuote` and joined with spaces: a plain argument
   stays as it is, and one with a space or a shell character is single-quoted,
@@ -1049,6 +1053,8 @@ are settled, and Windows support has landed, if that is feasible.
 | `catchFailed`, `catchFailedAsync`                               | function  | Turn a `CommandFailed` into a value                            |
 | `asAsync`                                                       | function  | Wrap a sync runner (text or bytes) as an async one             |
 | `CommandFailed`                                                 | class     | Error with `binary`, `argv`, `result` and `detail`; `message` shows the command |
+| `isCommandFailed`                                               | function  | Recognise a `CommandFailed`, across copies of the package      |
+| `SpawnRunnerOptions`                                            | interface | `absolutePathOnly`: look a bare name up on absolute `PATH` entries only |
 | `CommandRunner`, `AsyncCommandRunner`                           | interface | Capture runner contracts; `binary` names the program          |
 | `BytesCommandRunner`, `AsyncBytesCommandRunner`                 | interface | The same, with stdout as a `Buffer`                            |
 | `CommandResult`                                                 | interface | `exitCode`, `stdout`, `stderr`, `neverExited`, `reason`, `signal`, `outputIncomplete`, `error`; `CommandResult<Buffer>` for bytes |
@@ -1059,6 +1065,11 @@ are settled, and Windows support has landed, if that is feasible.
 | `FailureTextOptions`                                            | interface | `both`: join both streams in `failureText`                     |
 | `runJson`, `runJsonAsync`, `parseJsonResult`                    | function  | Run and parse stdout as JSON                                   |
 | `JsonRun`, `RunJsonOptions`                                     | type      | `runJson` result and options                                   |
+| `isJsonParseFailure`                                            | function  | Whether a `runJson` failure is about the output, not the run   |
+| `JsonFailure`                                                   | type      | A `runJson` failure: a `CommandFailure`, `unparseable` or `invalid` |
+| `classifyFailure`                                               | function  | Classify a failed run (`not-installed`, `timeout`, `exit`, …)  |
+| `CommandFailure`, `CommandFailureKind`                          | type      | A classified failure with `message` and `detail`; its kinds    |
+| `ClassifiableRun`, `ClassifyContext`                            | interface | What `classifyFailure` reads; `binary`, `argv`, `okExitCodes`  |
 | `runShell`, `runShellAsync`                                     | function  | Run a shell string with `sh -c --`                             |
 | `shellRunner`, `shellRunnerAsync`                               | function  | Shell runner over a given `CommandRunner`                      |
 | `ShellRunner`, `AsyncShellRunner`                               | interface | Shell runner contracts                                         |
@@ -1078,7 +1089,9 @@ are settled, and Windows support has landed, if that is feasible.
 | `withDefaults`                                                  | function  | Bind default options to any runner                             |
 | `DefaultedRunner`                                               | interface | The runner `withDefaults` returns                              |
 | `which`                                                         | function  | The path a spawn of a binary would run, without running it     |
-| `WhichOptions`                                                  | interface | `cwd`, `env`, `platform`                                       |
+| `WhichOptions`                                                  | interface | `cwd`, `env`, `platform`, `absolutePathOnly`                   |
+| `absolutePathCandidates`                                        | function  | The absolute paths a safe lookup tries for a bare name, in order |
+| `PathCandidateOptions`                                          | interface | `absolutePathCandidates` inputs: `PATH`, `PATHEXT`, platform   |
 | `fakeRunner`                                                    | function  | `/testing`: a `CommandRunner` that answers from a table, with async and bytes forms |
 | `fakeNeverExited`                                               | function  | `/testing`: a fake answer for a run that never exited          |
 | `fakeProcess`                                                   | function  | `/testing`: a `ManagedProcessHandle` the test ends by hand     |
