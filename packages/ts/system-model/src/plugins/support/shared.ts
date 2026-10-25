@@ -93,6 +93,11 @@ export function afterSeparator(task: Task, args: readonly string[]): string[] {
   return args.length === 0 ? [...task.argv] : [...task.argv, '--', ...args]
 }
 
+/** `text` without a leading byte-order mark. */
+export function stripBom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text
+}
+
 /** A key/value table, not an array or null. */
 export function isTable(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

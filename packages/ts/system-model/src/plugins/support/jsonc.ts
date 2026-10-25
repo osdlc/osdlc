@@ -1,14 +1,18 @@
 /**
- * JSON with comments and trailing commas, the dialect VS Code's `tasks.json`
- * and devbox's `devbox.json` accept.
+ * JSON with comments and trailing commas, the dialect VS Code's `tasks.json`,
+ * devbox's `devbox.json` and Nx's `nx.json` and `project.json` accept.
  */
 
+import { stripBom } from './shared.ts'
+
 /**
- * Parse JSONC: `//` and `/* *\/` comments, and a trailing comma before `}` or
- * `]`, outside strings. Throws a `SyntaxError` when the rest is not JSON.
+ * Parse JSONC: `//` and `/* *\/` comments, and one trailing comma after a value
+ * before `}` or `]`, outside strings. Throws a `SyntaxError` when the rest is
+ * not JSON, for an unterminated block comment, and for a comma with no value
+ * before it (`[,]`, `{,}`).
  */
 export function parseJsonc(text: string): unknown {
-  return JSON.parse(stripJsonc(text.replace(/^﻿/, '')))
+  return JSON.parse(stripJsonc(stripBom(text)))
 }
 
 /** `text` with comments and trailing commas removed, strings left alone. */
@@ -16,6 +20,8 @@ function stripJsonc(text: string): string {
   let out = ''
   // Where a comma waits to be written: dropped if the next token closes.
   let pendingComma = ''
+  // The last character written that is not whitespace or a comment.
+  let last = ''
   for (let i = 0; i < text.length; i++) {
     const ch = text[i]!
     const next = text[i + 1]
@@ -24,6 +30,7 @@ function stripJsonc(text: string): string {
       while (end < text.length && text[end] !== '"') end += text[end] === '\\' ? 2 : 1
       out += pendingComma + text.slice(i, end + 1)
       pendingComma = ''
+      last = '"'
       i = end
       continue
     }
@@ -34,12 +41,19 @@ function stripJsonc(text: string): string {
     }
     if (ch === '/' && next === '*') {
       const end = text.indexOf('*/', i + 2)
-      i = end === -1 ? text.length : end + 1
+      if (end === -1) throw new SyntaxError('unterminated block comment')
+      i = end + 1
       out += ' '
       continue
     }
     if (ch === ',') {
-      out += pendingComma
+      if (last === '' || last === '[' || last === '{' || pendingComma !== '') {
+        // No value before it: write it as is, so JSON.parse refuses it.
+        out += pendingComma + ch
+        pendingComma = ''
+        last = ch
+        continue
+      }
       pendingComma = ','
       continue
     }
@@ -55,6 +69,7 @@ function stripJsonc(text: string): string {
     }
     pendingComma = ''
     out += ch
+    last = ch
   }
   return out + pendingComma
 }

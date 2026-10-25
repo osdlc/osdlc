@@ -20,7 +20,7 @@
 import type { ProviderContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { dirOf, taskId } from '../support/shared.ts'
+import { dirOf, stripBom, taskId } from '../support/shared.ts'
 
 export const PROCFILE_NAMES = ['Procfile', 'Procfile.dev']
 
@@ -52,8 +52,7 @@ export function readProcfile(text: string): {
   const entries: Array<{ name: string; command: string }> = []
   const bad: number[] = []
   const duplicates: string[] = []
-  text
-    .replace(/^﻿/, '')
+  stripBom(text)
     .split(/\r?\n/)
     .forEach((line, i) => {
       if (line.trim() === '' || line.trimStart().startsWith('#')) return
