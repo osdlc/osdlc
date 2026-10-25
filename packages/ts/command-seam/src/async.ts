@@ -72,6 +72,20 @@ export interface AsyncCommandRunOptions extends CommandRunOptions {
    * refused (`neverExited: true`, `reason: 'abort'`). POSIX only.
    */
   processGroup?: boolean | undefined
+  /**
+   * Kill the child's whole process tree, not only the child, when the run
+   * is stopped: on a timeout, an abort, the output cap or an `onSpawn` throw.
+   * Use it for a command that forks, such as a build tool, so a stopped run
+   * leaves nothing behind.
+   *
+   * On POSIX this is `processGroup: true`, with everything its doc says,
+   * Ctrl-C included. On Windows the runner first runs
+   * `taskkill /pid <pid> /t /f`, with `taskkill` found on absolute `PATH`
+   * entries only, and then kills the child. It does this only while the
+   * child is still running, since a pid can be reused after an exit. A
+   * process that has left the tree (its parent exited first) is not reached.
+   */
+  killTree?: boolean | undefined
 }
 
 /** The async form of {@link CommandRunner}: `run` returns a promise. */
@@ -261,7 +275,9 @@ function runAsync(
       resolve(emptyStdout(spawnFailure(plan.refusal), bytes))
       return
     }
-    const group = opts.processGroup === true
+    const windowsTree = opts.killTree === true && process.platform === 'win32'
+    const group =
+      opts.processGroup === true || (opts.killTree === true && process.platform !== 'win32')
     const refusal = group ? groupStartRefusal() : undefined
     if (refusal !== undefined) {
       const refused: CommandResult = {
@@ -293,6 +309,10 @@ function runAsync(
     let stopping = false
     const signalChild = (sig: NodeJS.Signals) => {
       stopping = true
+      if (windowsTree && child.pid !== undefined && exited === undefined) {
+        killWindowsTree(child.pid, opts, () => child.kill(sig))
+        return
+      }
       if (group && child.pid !== undefined) {
         try {
           process.kill(-child.pid, sig)
@@ -506,6 +526,21 @@ function runAsync(
   })
 }
 
+/** The `taskkill` arguments that kill `pid` and every process under it. */
+export function treeKillArgv(pid: number): string[] {
+  return ['/pid', String(pid), '/t', '/f']
+}
+
+/**
+ * Kill `pid`'s process tree with `taskkill`, then call `then`. `then` runs
+ * even when `taskkill` is missing or fails, so the child itself still dies.
+ */
+function killWindowsTree(pid: number, opts: AsyncCommandRunOptions, then: () => void): void {
+  void spawnRunnerAsync('taskkill', { absolutePathOnly: true })
+    .run(treeKillArgv(pid), { cwd: opts.cwd, env: opts.env, timeoutMs: 10_000 })
+    .then(then, then)
+}
+
 /**
  * The async version of `runChecked`: run a command and reject if it fails.
  * Like `runChecked`, it takes the runner's own options, so a `withDefaults`
@@ -550,7 +585,7 @@ export async function runCheckedAsync(
 
 /**
  * Wrap a sync runner as an async one, so one test fake works for both forms.
- * `signal`, `onSpawn` and `processGroup` are ignored, because a sync runner
+ * `signal`, `onSpawn`, `processGroup` and `killTree` are ignored, because a sync runner
  * cannot be cancelled while it runs and reports no pid. A throw from the sync runner
  * becomes a rejection. A `BytesCommandRunner` becomes an
  * {@link AsyncBytesCommandRunner}.

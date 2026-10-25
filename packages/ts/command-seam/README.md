@@ -520,7 +520,8 @@ These parts stay POSIX only:
 
 - `runShell` and `shellRunner` need `sh` on `PATH`.
 - The `processGroup` options and `installGroupSignalForwarding` use POSIX
-  process groups. Signals follow POSIX rules.
+  process groups. Signals follow POSIX rules. To kill a process tree on
+  Windows too, use `killTree`.
 - The `bun test` capture path runs through `/bin/sh`.
 
 ### Starting a program on Windows
@@ -892,6 +893,11 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
   `runShellAsync`, `shellRunnerAsync`) take `processGroup: true` to kill the
   child's whole process group on timeout or abort. `managedProcessRunner`
   takes it too, so `kill()` signals the group.
+- `killTree: true` on the async runners kills the child's process tree when
+  the run is stopped, on every platform. On POSIX it is `processGroup: true`.
+  On Windows the runner runs `taskkill /pid <pid> /t /f` (found on absolute
+  `PATH` entries only) while the child is still running, then kills the
+  child. Pass it for a command that forks, such as a build tool.
 - A `streamRunner` timeout prints its line to the parent's stderr, as a failed
   spawn or a signal does, unless `quiet` is set. With `stdio` set to an fd, the
   line still goes to the parent's stderr, not to the fd.
@@ -1031,7 +1037,7 @@ are settled, and Windows support has landed, if that is feasible.
 | `BytesCommandRunner`, `AsyncBytesCommandRunner`                 | interface | The same, with stdout as a `Buffer`                            |
 | `CommandResult`                                                 | interface | `exitCode`, `stdout`, `stderr`, `neverExited`, `reason`, `signal`, `outputIncomplete`, `error`; `CommandResult<Buffer>` for bytes |
 | `NeverExitedReason`                                             | type      | `'spawn' \| 'timeout' \| 'abort' \| 'signal' \| 'output'`       |
-| `CommandRunOptions`, `AsyncCommandRunOptions`                   | interface | `cwd`, `timeoutMs`, `input`, `env`, `maxOutputBytes`; async adds `signal`, `onSpawn`, `processGroup` |
+| `CommandRunOptions`, `AsyncCommandRunOptions`                   | interface | `cwd`, `timeoutMs`, `input`, `env`, `maxOutputBytes`; async adds `signal`, `onSpawn`, `processGroup`, `killTree` |
 | `EnvOverrides`                                                  | type      | `Record<string, string \| undefined>`                          |
 | `ran`, `failureText`, `firstLine`, `stderrOrError`              | function  | Read a result                                                  |
 | `FailureTextOptions`                                            | interface | `both`: join both streams in `failureText`                     |
