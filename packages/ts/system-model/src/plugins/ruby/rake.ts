@@ -111,7 +111,7 @@ const LISTING_LINE = /^rake ([A-Za-z0-9_][A-Za-z0-9_.:/-]*)(?:\[([^\]\n]*)\])? {
  * Constructs that create tasks a regex cannot see. Each one found adds a
  * warning, on the parse path only.
  */
-const DYNAMIC_CONSTRUCTS: Array<{ found: (text: string) => boolean; label: string }> = [
+export const DYNAMIC_CONSTRUCTS: Array<{ found: (text: string) => boolean; label: string }> = [
   {
     found: (text) => /\bRake::\w+Task\.new\b/.test(text),
     label: 'a Rake::*Task.new (e.g. Rake::TestTask) declaration',

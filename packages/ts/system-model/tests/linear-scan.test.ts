@@ -12,7 +12,7 @@ import { tasks } from '../src/model.ts'
 import { segmentMatcher } from '../src/pattern.ts'
 import { parseTaskRows } from '../src/plugins/jvm/sbt.ts'
 import { parseGemfile } from '../src/plugins/ruby/gemfile.ts'
-import { eachDefinesTask, scanTasks } from '../src/plugins/ruby/rake.ts'
+import { DYNAMIC_CONSTRUCTS, eachDefinesTask, scanTasks } from '../src/plugins/ruby/rake.ts'
 import { readTaskfile } from '../src/plugins/runners/go-task.ts'
 import { vscodeTasks } from '../src/plugins/runners/index.ts'
 import { scanRecipes } from '../src/plugins/runners/just.ts'
@@ -76,7 +76,9 @@ describe('linear scans', () => {
 
   test('rake: a file of blank lines', () => {
     // The `import` and `load` checks run over the whole text.
-    timed(() => scanTasks('\n'.repeat(N)))
+    const text = '\n'.repeat(N)
+    expect(timed(() => DYNAMIC_CONSTRUCTS.filter((c) => c.found(text)))).toEqual([])
+    timed(() => scanTasks(text))
   })
 
   test('Gemfile: a group line with many `do |`', () => {
@@ -84,9 +86,10 @@ describe('linear scans', () => {
   })
 
   test('Gemfile: many open groups', () => {
-    const text = "group :prod do\ngem 'a'\n".repeat(N / 24)
+    // Groups that are not dev, so a walk of the stack cannot stop early.
+    const text = "group :default do\ngem 'a'\n".repeat(100_000)
     const fact = timed(() => parseGemfile(text, 'Gemfile'))
-    expect(fact.deps!.every((d) => d.kind === 'dev')).toBe(true)
+    expect(fact.deps!.every((d) => d.kind === 'prod')).toBe(true)
   })
 
   test('go-task: a deps item with a long run of spaces', () => {
