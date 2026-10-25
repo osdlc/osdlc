@@ -240,6 +240,18 @@ describe('per-scope decisions', () => {
     })
   })
 
+  test('a scope named after an Object.prototype member is an ordinary, untrusted scope', async () => {
+    const root = tmp()
+    const policy = { paths: [], owners: [], scopes: { just: { paths: [root], owners: [] } } }
+    const store = freshStore()
+    for (const scope of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      expect((await policyDecision(root, policy, { scope })).trusted).toBe(false)
+      const gate = await policyExecGate(store, policy, { root, configured: true, scopes: [scope] })
+      expect(gate).toMatchObject({ allowExec: false, missing: [scope] })
+      expect(Object.keys(gate.decisions)).toEqual([scope])
+    }
+  })
+
   test('policy.scopes rules trust their scope only, after the top-level rules', async () => {
     const root = tmp()
     const policy = { paths: [], owners: [], scopes: { just: { paths: [root], owners: [] } } }
