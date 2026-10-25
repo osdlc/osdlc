@@ -57,6 +57,7 @@ export {
 export {
   failureText,
   firstLine,
+  isJsonParseFailure,
   parseJsonResult,
   ran,
   runJson,
