@@ -144,7 +144,7 @@ jobs:
 
       - name: Test
         if: env.PICKED == 'true'
-        run: pnpm $FILTER --if-present run test
+        run: pnpm $FILTER --no-bail --if-present run test
 
       - name: Smoke the built packages under Node
         if: env.PICKED == 'true'
@@ -270,7 +270,7 @@ jobs:
       - name: Test
         env:
           FILTER: ${{ steps.pick.outputs.filter }}
-        run: pnpm $FILTER --if-present run test
+        run: pnpm $FILTER --no-bail --if-present run test
 
       - name: Smoke the built packages under Node
         env:
