@@ -86,6 +86,8 @@ Every key is optional:
     "disabled": ["cargo"],
     // Preferred order. Runners not named here follow alphabetically.
     "order": ["moon", "just"],
+    // Seconds one runner may take. null: each runner's own limit.
+    "timeout": 20,
   },
   // The configured execution setting. --exec / --no-exec still win.
   "allowExec": false,
@@ -111,7 +113,7 @@ Every key is optional:
 }
 ```
 
-The settable keys are `runners.disabled`, `runners.order`, `allowExec`,
+The settable keys are `runners.disabled`, `runners.order`, `runners.timeout`, `allowExec`,
 `discovery`, `excludePaths`, `trust.paths`, `trust.owners`, `trust.tools`,
 `tools`, `open`, `theme` and `skills`.
 
@@ -130,6 +132,20 @@ in the browser takes precedence within its group. See
 The terminal UI's settings screen and the web view save a new order to the
 file that sets `runners.order` now, else to the user file, so the new order
 always takes effect.
+
+### `runners.timeout`
+
+`runners.timeout` is how many seconds one runner may take to list its tasks,
+its subprocesses included. A runner still running then is stopped: the
+processes it started are killed, and it shows `timed out after 20 s` in place
+of its rows, in the terminal UI, the web view and `list --json`. The other
+runners are not affected, and a runner that timed out is not stored.
+
+Unset or `null`, each runner has its own limit: 10 seconds for just and task,
+30 for mise and rake, 120 for moon, 300 for gradle and sbt, and 60 for the
+rest. Set it lower to stop a hung tool sooner, or higher for a slow build,
+such as a cold gradle start. Either file may set it:
+`way config set runners.timeout 20`.
 
 ### `excludePaths`
 

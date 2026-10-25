@@ -1,5 +1,5 @@
 ---
-'@osdlc/system-model': minor
+"@osdlc/system-model": minor
 ---
 
 A runner's probe timeout now bounds the whole probe, not only each subprocess. A runner still running at its timeout is stopped: the processes it started are killed with their trees, and it reports `status: 'error'` with the diagnostic `timed out after 10 s`. The other runners go on, and a timed-out runner is not stored in the cache. A runner whose subprocesses run one after another may now be cut off sooner than before; raise its limit with `CollectOptions.timeouts`.
