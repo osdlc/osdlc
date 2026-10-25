@@ -146,7 +146,10 @@ The order is marker, then `policy.paths`, then `policy.owners`. `paths` are glob
 (`**` crosses segments, `*` and `?` stay inside one; `pathGlobToRegExp`) matched as strings
 against the resolved, symlink-free root, after the caller's `expandPath` has expanded `~` and
 its own `{name}` tokens. `owners` match case-insensitively against `ownerOf(root)`, the
-owner of the root's `origin` remote. This package knows no git, so without an `ownerOf` the
+host and owner of the root's `origin` remote as `host/owner`. An entry is
+`host/owner` (`gitlab.com/my-org`) or a bare `owner`, which means
+`github.com/owner`. A bare owner from `ownerOf` is read the same way. So
+`my-org` does not match a clone from `gitlab.com/my-org`. This package knows no git, so without an `ownerOf` the
 `owners` rule never matches; the tool supplies a git-backed one.
 
 ## Wording

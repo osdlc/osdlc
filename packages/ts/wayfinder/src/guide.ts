@@ -338,7 +338,8 @@ this root, \`--list\` prints every trusted path. \`-C PATH\` reaches all of them
 
 A root can also be trusted with no marker, by a trust block in the USER
 config: \`trust.paths\` (a glob over the resolved root) and \`trust.owners\`
-(the \`origin\` remote's owner), decided in that order after the marker.
+(the \`origin\` remote's \`host/owner\`; a bare owner means github.com), decided in
+that order after the marker.
 \`--show\` and \`--json\` name which layer decided (\`by\`:
 \`marker\`/\`path\`/\`owner\`, plus the matching \`rule\` for a policy hit).
 `

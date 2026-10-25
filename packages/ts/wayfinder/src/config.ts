@@ -137,7 +137,10 @@ export interface TrustConfig {
    * A leading `~` expands against `home`. There are no `{name}` tokens.
    */
   paths?: string[]
-  /** Origin remote owners (case-insensitive) that trust a root without a marker. */
+  /**
+   * Origin remote owners that trust a root without a marker: `host/owner`, or
+   * a bare `owner` for `github.com/owner`. Case-insensitive.
+   */
   owners?: string[]
 }
 

@@ -199,15 +199,17 @@ itself trust, just as it cannot set `allowExec: true`.
 {
   "trust": {
     "paths": ["/home/me/work/**"], // @osdlc/trust-repo's glob dialect
-    "owners": ["my-org"] // case-insensitive `origin` remote owners
+    "owners": ["my-org", "gitlab.com/other-org"] // `origin` remote owners; bare means github.com
   }
 }
 ```
 
 `@osdlc/trust-repo`'s `policyExecGate` checks, in order: a marker in the
 store, then `trust.paths` (a glob over the root, with symlinks resolved), then
-`trust.owners` (the owner in the `origin` remote's URL, which wayfinder asks
-git for). `@osdlc/trust-repo`'s README documents the order and the glob
+`trust.owners` (the host and owner in the `origin` remote's URL, which
+wayfinder asks git for). An entry is `host/owner`, or a bare `owner`, which
+means `github.com/owner`. Matching ignores case, and the host must match too:
+`my-org` does not trust a clone from `gitlab.com/my-org`. `@osdlc/trust-repo`'s README documents the order and the glob
 dialect. wayfinder adds only one thing: a leading `~` in a `trust.paths` entry
 expands to `$HOME`. An owner match trusts every repository whose remote names
 that owner, so list only owners whose repositories you would run.

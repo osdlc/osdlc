@@ -3,7 +3,20 @@
  * Without it `trust.owners` never matches.
  */
 
+import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { Git, parseGitUrl } from '@osdlc/typed-git'
+
+/**
+ * `git` with `core.fsmonitor` off. The lookup runs before the repository is
+ * trusted, and `.git/config` belongs to whoever made the directory.
+ * `remote get-url` does not run fsmonitor today; the flag keeps it that way.
+ */
+function safeGit(git: CommandRunner): CommandRunner {
+  return {
+    binary: 'git',
+    run: (argv, opts) => git.run(['-c', 'core.fsmonitor=false', ...argv], opts),
+  }
+}
 
 /**
  * Git variables the caller's environment must not apply to the owner lookup:
@@ -48,19 +61,25 @@ const SCP_REMOTE = /^(?:[^@/:\s]+@)?[^@/:\s]+:(?!\/\/)/
 const SHORTCUT_REMOTE = /^(?:github|gitlab|bitbucket|gist|sourcehut):/
 
 /**
- * `root`'s `origin` remote owner, or null when there is none we can read.
+ * `root`'s `origin` remote host and owner as `host/owner`
+ * (`github.com/acme`), or null when there is none we can read. The host is
+ * part of the answer because the same owner name on another host is another
+ * account.
  * Git runs in `root` with the caller's git location and config variables
  * removed, so they cannot point it at another repository. Git still searches
  * upward from `root`, so a directory without its own `.git` inside a
  * repository gets that repository's owner. A remote that is neither a URL nor
  * scp-style is a local path (`owner/repo` is one) and has no owner. A host
  * hosted-git-info does not know (a self-hosted server) has no owner either.
+ * `git` is for tests; it defaults to the real binary.
  */
-export function originOwner(root: string): string | null {
-  const res = withoutGitOverrides(() => new Git(root).try.remoteGetUrl('origin'))
+export function originOwner(root: string, git: CommandRunner = spawnRunner('git')): string | null {
+  const res = withoutGitOverrides(() =>
+    new Git(root, { runner: safeGit(git) }).try.remoteGetUrl('origin'),
+  )
   if (!res.ok || res.value === null) return null
   if (SHORTCUT_REMOTE.test(res.value)) return null
   if (!URL_REMOTE.test(res.value) && !SCP_REMOTE.test(res.value)) return null
   const info = parseGitUrl(res.value)
-  return info?.user && info.project ? info.user : null
+  return info?.user && info.project ? `${info.domain}/${info.user}` : null
 }
