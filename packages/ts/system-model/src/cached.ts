@@ -36,7 +36,7 @@ import {
 import type { CollectOptions } from './contract.ts'
 import { excludeList } from './discovery.ts'
 import { MAX_FINGERPRINT_FILES, fingerprint } from './fingerprint.ts'
-import type { Catalog, RunnerReport } from './model.ts'
+import { CATALOG_SCHEMA_VERSION, type Catalog, type RunnerReport } from './model.ts'
 import type { Registry } from './registry.ts'
 import type { ProbeCost, ProjectProfile } from './tool.ts'
 import { which as whichOnPath } from './which.ts'
@@ -223,6 +223,8 @@ export async function readCachedCatalog(
         reports.length === 0
           ? null
           : {
+              kind: 'catalog',
+              schemaVersion: CATALOG_SCHEMA_VERSION,
               root: profile.root,
               generatedAt: new Date(oldest).toISOString(),
               discovery: profile.discovery,

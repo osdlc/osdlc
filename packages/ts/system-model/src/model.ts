@@ -213,9 +213,20 @@ export interface RunnerReport extends ProviderResult {
 export type DiscoveryMode = 'git' | 'walk'
 
 /**
+ * The version of the {@link Catalog} JSON shape, `Catalog.schemaVersion`.
+ * Raised when a field is removed or changes meaning; a new optional field
+ * keeps it.
+ */
+export const CATALOG_SCHEMA_VERSION = 1
+
+/**
  * Every runner report for one profile.
  */
 export interface Catalog {
+  /** `catalog`, so a JSON reader can tell the document apart. Always set by `collect`. */
+  kind?: 'catalog' | undefined
+  /** {@link CATALOG_SCHEMA_VERSION} when the catalog was built. Always set by `collect`. */
+  schemaVersion?: number | undefined
   /** Absolute path. Every `cwd` and `source` is relative to it. */
   root: string
   generatedAt: string

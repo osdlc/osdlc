@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path'
 import { afterEach, expect, test } from 'vitest'
 
 import {
+  CATALOG_SCHEMA_VERSION,
   createProject,
   diagnostics,
   SYNTHESIZED_RUNNERS,
@@ -32,7 +33,18 @@ import {
   type Task,
   type TaskExecutionTarget,
   type TaskOrigin,
+  type ToolInfo,
+  toolInfo,
 } from '@osdlc/system-model/detect'
+import {
+  CATALOG_SCHEMA_VERSION as SCHEMA_CATALOG_VERSION,
+  catalogSchema,
+  paramSchema,
+  runnerReportSchema,
+  taskSchema,
+  toolInfoSchema,
+  type JsonSchema,
+} from '@osdlc/system-model/schema'
 import { builtins } from '@osdlc/system-model/builtins'
 import { humanAge, humanMs } from '@osdlc/system-model/duration'
 import {
@@ -177,6 +189,37 @@ test('values by name are bound by each parameter binding', () => {
   expect(run).toEqual({ argv: ['make', 'deploy', 'ENV=prod'], env: { TOKEN: 'abc' } })
   expect(runners.invoke(deploy, { ENV: 'dev' })).toEqual(['make', 'deploy', 'ENV=dev'])
   expect(() => runners.invoke(deploy, { ENV: 'qa' })).toThrow(/one of dev, prod/)
+})
+
+test('the JSON a catalog and a tool print has a published schema', async () => {
+  const profile = await project.detect(repo(FILES), { discovery: 'walk' })
+  const catalog = await runners.collect(profile)
+  // A catalog says what it is, so a JSON reader can check before it reads.
+  expect([catalog.kind, catalog.schemaVersion]).toEqual(['catalog', CATALOG_SCHEMA_VERSION])
+  expect(SCHEMA_CATALOG_VERSION).toBe(CATALOG_SCHEMA_VERSION)
+
+  // Plain JSON Schema objects, to embed in a host's own document schema.
+  const schemas: JsonSchema[] = [
+    catalogSchema,
+    runnerReportSchema,
+    taskSchema,
+    paramSchema,
+    toolInfoSchema,
+  ]
+  expect(schemas.map((s) => s['title'])).toEqual([
+    'Catalog',
+    'RunnerReport',
+    'Task',
+    'Param',
+    'ToolInfo',
+  ])
+
+  // A ToolDef holds functions; toolInfo is its JSON-safe part.
+  const info: ToolInfo = toolInfo(builtins.find((t) => t.id === 'just')!)
+  expect([info.homepage, info.description]).toEqual([
+    'https://just.systems',
+    'A command runner for the recipes a justfile declares.',
+  ])
 })
 
 test('search ranks tasks against a query', async () => {

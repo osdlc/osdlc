@@ -27,14 +27,15 @@ import {
 } from './context.ts'
 import type { CollectOptions, ProviderContext, ProviderKind, RunnerContext } from './contract.ts'
 import { createLister } from './discovery.ts'
-import type {
-  Catalog,
-  ChainSegment,
-  Invocation,
-  ParamValues,
-  RunnerBrand,
-  RunnerReport,
-  Task,
+import {
+  CATALOG_SCHEMA_VERSION,
+  type Catalog,
+  type ChainSegment,
+  type Invocation,
+  type ParamValues,
+  type RunnerBrand,
+  type RunnerReport,
+  type Task,
 } from './model.ts'
 import { bindParams } from './params.ts'
 import { manifestsOf, markersOf, type Registry } from './registry.ts'
@@ -205,6 +206,8 @@ export async function collectRunners(
   )
 
   return {
+    kind: 'catalog',
+    schemaVersion: CATALOG_SCHEMA_VERSION,
     root: profile.root,
     generatedAt: new Date().toISOString(),
     discovery: profile.discovery,

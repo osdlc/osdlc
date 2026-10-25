@@ -227,6 +227,33 @@ export interface ToolDef {
 }
 
 /**
+ * The JSON-safe part of a {@link ToolDef}: its data without its functions,
+ * as `toolInfo` builds it. `toolInfoSchema` in `./schema` describes it.
+ */
+export interface ToolInfo {
+  id: string
+  homepage?: string | undefined
+  description?: string | undefined
+  brand?: RunnerBrand | undefined
+  binary?: string | undefined
+  commandWords?: string[] | undefined
+  /** The ecosystem's id. Absent for a tool of no one language. */
+  ecosystem?: string | undefined
+  /** The tool's own markers, then its roles' lockfiles and configs. */
+  markers: Array<{ files: string; tier: EvidenceKind; workspaceRoot?: boolean | undefined }>
+  roles: RoleName[]
+  /** The runner role's data, when the tool has one. */
+  runner?:
+    | {
+        kind: ProviderKind
+        chain?: ChainSegment[] | undefined
+        probe?: RunnerProbe | undefined
+        watch?: string[] | undefined
+      }
+    | undefined
+}
+
+/**
  * A manifest an ecosystem reads. A directory with one is a package.
  */
 export interface ManifestDef {

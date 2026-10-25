@@ -10,7 +10,7 @@
 export { createProject } from './project.ts'
 export type { Project, ProjectOptions, Runners } from './project.ts'
 
-export { diagnostics, evidence, tasks } from './model.ts'
+export { CATALOG_SCHEMA_VERSION, diagnostics, evidence, tasks } from './model.ts'
 export type {
   Catalog,
   ChainSegment,
@@ -56,6 +56,7 @@ export type {
   RunnerRole,
   ToolDef,
   ToolFact,
+  ToolInfo,
   ToolManagerRole,
 } from './tool.ts'
 
@@ -80,3 +81,4 @@ export { MAX_READ_BYTES } from './read.ts'
 export { DEFAULT_PROBE_TIMEOUT_MS } from './context.ts'
 export { SYNTHESIZED_RUNNERS } from './groups.ts'
 export { validateToolDef } from './validate.ts'
+export { toolInfo } from './registry.ts'

@@ -114,6 +114,10 @@
     "./groups": {
       "types": "./dist/groups.d.ts",
       "default": "./dist/groups.js"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "default": "./dist/schema.js"
     }
   },
   "files": [
@@ -154,6 +158,7 @@
     "oxlint": "catalog:",
     "prettier": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "zod": "catalog:"
   }
 }
