@@ -105,7 +105,9 @@ fn the_committed_file_matches_the_source() {
     let committed = std::fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR")).join(tradecraft_typegen::OUTPUT),
     )
-    .expect("reading the committed file");
+    .expect("reading the committed file")
+    // A Windows checkout can carry the file with CRLF line ends.
+    .replace("\r\n", "\n");
 
     if committed != generated {
         let first_difference = committed

@@ -30,6 +30,10 @@ with drift checks and commands to author and reorganise the vault. Install it wi
 - Git runs through `typed-git` 0.4, renames through `markdown-relink` 0.1, and path checks through
   `path-guard` 0.3, all published crates.
 
+### Known limitations
+
+- Windows is not supported yet. The tool builds there, but its tests are not run on Windows.
+
 ## History before the first public release
 
 These versions were never published. They were developed in a private repository under the

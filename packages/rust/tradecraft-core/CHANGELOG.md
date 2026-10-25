@@ -31,6 +31,10 @@ developed as `agent-adapt-core`; it is published as `tradecraft-core`, imported 
 - The crate turns on `serde_json`'s `preserve_order` feature. A parsed hooks
   file or manifest keeps its source order, so reports list entries as the author wrote them.
 
+### Known limitations
+
+- Windows is not supported yet. The crate builds there, but its tests are not run on Windows.
+
 ## History before the first public release
 
 These versions were never published. They were developed in a private repository under the

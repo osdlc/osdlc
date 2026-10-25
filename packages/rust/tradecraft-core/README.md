@@ -104,8 +104,10 @@ in the [CHANGELOG](CHANGELOG.md).
 
 ## Platforms
 
-The crate is tested on Linux and macOS. Windows is not supported yet: its
-tests fail there. Paths cross the `Vfs` seam in `/` form. The minimum supported Rust version is 1.89.
+The crate is tested on Linux and macOS. Windows is not supported yet. The
+crate builds there, but CI does not run its tests on Windows, because about
+300 of them fail: the path guard refuses the in-memory `/vault` roots the
+tests use, which are not absolute paths on Windows. Paths cross the `Vfs` seam in `/` form. The minimum supported Rust version is 1.89.
 
 ## License
 

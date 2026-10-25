@@ -33,7 +33,10 @@ fn run(check_only: bool) -> Result<String, String> {
     let generated = generate(&rust_root)?;
     let output = crate_dir.join(OUTPUT);
 
-    let current = std::fs::read_to_string(&output).unwrap_or_default();
+    // A Windows checkout can carry the file with CRLF line ends.
+    let current = std::fs::read_to_string(&output)
+        .unwrap_or_default()
+        .replace("\r\n", "\n");
     if current == generated {
         return Ok(format!("{OUTPUT} is up to date"));
     }

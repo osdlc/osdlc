@@ -180,9 +180,7 @@ jobs:
       - name: Test
         env:
           WINDOWS_UNTESTED: >-
-            --exclude=markdown-vault-fs --exclude=markdown-relink
             --exclude=tradecraft-core --exclude=tradecraft
-            --exclude=tradecraft-typegen --exclude=tradecraft-wasm
         run: |
           set -euo pipefail
           if [ "$RUNNER_OS" = Windows ]; then
