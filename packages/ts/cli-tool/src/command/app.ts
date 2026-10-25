@@ -18,6 +18,7 @@ import {
   BUILTIN_FLAGS,
   CommandError,
   UsageError,
+  checkFlags,
   commandKit,
   isGroup,
   isInteractive,
@@ -250,11 +251,7 @@ function kindOf(command: DataCommand, path: readonly string[], appName: string):
 export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSpec<G>): App {
   const globals: FlagSpec = spec.globals ?? {}
   const kit = commandKit({ globals })
-  for (const key of Object.keys(globals)) {
-    if (key in BUILTIN_FLAGS || key === 'version') {
-      throw new Error(`defineApp: global flag '${key}' is provided by the app; do not declare it`)
-    }
-  }
+  checkFlags(globals, 'defineApp: global flag')
 
   const userRoot: Group =
     'type' in spec.commands && (spec.commands as Group).type === 'group'
@@ -407,8 +404,8 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     },
   })
 
-  if (!('help' in userRoot.commands)) builtinCommands['help'] = helpCommand
-  if (!('schema' in userRoot.commands)) builtinCommands['schema'] = schemaCommand
+  if (!Object.hasOwn(userRoot.commands, 'help')) builtinCommands['help'] = helpCommand
+  if (!Object.hasOwn(userRoot.commands, 'schema')) builtinCommands['schema'] = schemaCommand
 
   const root: Group = {
     ...userRoot,
@@ -420,6 +417,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
   placedRef.root = place(spec.name, [], root)
   const placedRoot = placedRef.root
 
+  const globalShorts = new Set(Object.values(globals).flatMap((d) => d.short ?? []))
   // Check the whole tree once, so a bad declaration fails at start-up and in
   // tests, not when someone first types the command.
   for (const node of walk(placedRoot)) {
@@ -427,11 +425,13 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       throw new Error(`defineApp: '${[spec.name, ...node.path].join(' ')}' has no summary`)
     }
     if (node.command === undefined) continue
-    for (const key of Object.keys(node.command.flags ?? {})) {
-      if (key in globals) {
-        throw new Error(
-          `defineApp: '${[spec.name, ...node.path].join(' ')}' declares '${key}', which is a global flag`,
-        )
+    for (const [key, decl] of Object.entries(node.command.flags ?? {})) {
+      const where = [spec.name, ...node.path].join(' ')
+      if (Object.hasOwn(globals, key)) {
+        throw new Error(`defineApp: '${where}' declares '${key}', which is a global flag`)
+      }
+      if (decl.short !== undefined && globalShorts.has(decl.short)) {
+        throw new Error(`defineApp: '${where}' declares -${decl.short}, which a global flag takes`)
       }
     }
   }
@@ -588,11 +588,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
         if (command.items !== undefined) {
           const list = (output as Record<string, unknown>)[command.items.field] as unknown[]
           for (const item of list) {
-            const line = {
-              schemaVersion: doc.schemaVersion,
-              kind: command.items.kind,
-              ...(item as object),
-            }
+            const line = envelope(item, doc.schemaVersion, command.items.kind)
             base.io.stdout(`${JSON.stringify(line)}\n`)
           }
         } else base.io.stdout(`${JSON.stringify(doc)}\n`)
@@ -613,14 +609,14 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     }
   }
 
-  /** The event `ctx.emit` sends, as one line: `schemaVersion` and `kind` in front. */
+  /** The event `ctx.emit` sends, as one line with the command's `schemaVersion` and the events' `kind`. */
   const eventLine = (
     command: DataCommand,
     event: Record<string, unknown>,
     name: string,
   ): Record<string, unknown> => {
     const events = command.events!
-    const line = { schemaVersion: command.schemaVersion ?? 1, kind: events.kind, ...event }
+    const line = envelope(event, command.schemaVersion ?? 1, events.kind)
     if (spec.checkOutput === true) {
       const checked = documentZod(events.schema, events.kind, line.schemaVersion).safeParse(line)
       if (!checked.success) {
@@ -641,7 +637,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     const output = isOutcome(result) ? result.output : result
     const exit = isOutcome(result) ? result.exit : EXIT.ok
     const kind = kindOf(command, path, spec.name)
-    const doc = { schemaVersion: command.schemaVersion ?? 1, kind, ...(output as object) }
+    const doc = envelope(output, command.schemaVersion ?? 1, kind)
     if (spec.checkOutput === true) {
       const checked = documentZod(command.output, kind, doc.schemaVersion).safeParse(doc)
       if (!checked.success) {
@@ -778,6 +774,18 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     },
   }
   return app
+}
+
+/**
+ * `fields` with `schemaVersion` and `kind` in front. They are set again after
+ * the fields, so a field of the same name cannot replace them.
+ */
+function envelope(
+  fields: unknown,
+  schemaVersion: number,
+  kind: string,
+): Record<string, unknown> & { schemaVersion: number; kind: string } {
+  return Object.assign({ schemaVersion, kind }, fields as object, { schemaVersion, kind })
 }
 
 function noEvents(name: string): (event: Record<string, unknown>) => void {

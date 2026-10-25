@@ -21,6 +21,37 @@ describe('--output', () => {
     ])
   })
 
+  test("an element's or an event's own fields cannot replace a line's kind", async () => {
+    const { defineApp, defineCommand } = await import('../../src/command/index.ts')
+    const { z } = await import('zod')
+    const app = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      commands: {
+        rows: defineCommand({
+          summary: 'rows',
+          output: z.object({ rows: z.array(z.object({ n: z.number() })) }),
+          items: { field: 'rows', kind: 'row' },
+          run: () => ({ rows: [{ n: 1, kind: 'mine', schemaVersion: 9 }] as { n: number }[] }),
+        }),
+        tick: defineCommand({
+          summary: 'tick',
+          output: z.object({}),
+          events: { kind: 'tick', schema: z.object({ n: z.number() }) },
+          run(_i, ctx) {
+            ctx.emit({ n: 1, kind: 'mine', schemaVersion: 9 })
+            return {}
+          },
+        }),
+      },
+    })
+    const rows = await runApp(app, ['rows', '--output', 'jsonl'])
+    expect(JSON.parse(rows.out)).toEqual({ schemaVersion: 1, kind: 'row', n: 1 })
+    const tick = await runApp(app, ['tick', '--output', 'jsonl'])
+    expect(JSON.parse(tick.out.split('\n')[0]!)).toEqual({ schemaVersion: 1, kind: 'tick', n: 1 })
+  })
+
   test('jsonl on a list with no items prints nothing', async () => {
     const f = fixture()
     f.items.length = 0

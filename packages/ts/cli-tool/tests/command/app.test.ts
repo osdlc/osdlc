@@ -100,6 +100,27 @@ describe('routing and output', () => {
     expect(r.json()).toEqual({ schemaVersion: 1, kind: 'config-get', key: 'size', value: 42 })
   })
 
+  test("a command's own fields cannot replace schemaVersion or kind", async () => {
+    const sneaky = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      commands: {
+        x: defineCommand({
+          summary: 'x',
+          output: z.object({ n: z.number() }),
+          kind: 'real',
+          run: () => ({ n: 1, kind: 'other', schemaVersion: 99 }) as never,
+        }),
+      },
+    })
+    const r = await runApp(sneaky, ['x', '--json'])
+    expect(r.json()).toEqual({ schemaVersion: 1, kind: 'real', n: 1 })
+    expect(Object.keys(r.json()).slice(0, 2)).toEqual(['schemaVersion', 'kind'])
+    const called = await sneaky.call(['x'], {}, { cwd: '/', env: {} }, { surface: 'mcp' })
+    expect(called).toMatchObject({ document: { schemaVersion: 1, kind: 'real' } })
+  })
+
   test('a declared kind wins, and a group runs its default', async () => {
     const r = await runApp(app, ['config', '--json'])
     expect(r.json()).toMatchObject({ kind: 'config-list', values: ['a', 'b'] })
@@ -334,6 +355,78 @@ describe('declaration checks', () => {
         },
       }),
     ).toThrow("declares 'dir', which is a global flag")
+  })
+
+  test('a flag may not take -h, or a short a global takes', () => {
+    expect(() =>
+      defineCommand({
+        summary: 'x',
+        flags: { host: { kind: 'string', short: 'h', help: 'h' } },
+        output: z.object({}),
+        run: () => ({}),
+      }),
+    ).toThrow("'host' takes -h")
+    expect(() =>
+      defineApp({
+        name: 't',
+        version: '0',
+        summary: 's',
+        globals: { verbose: { kind: 'boolean', short: 'h', help: 'h' } },
+        commands: {},
+      }),
+    ).toThrow("'verbose' takes -h")
+    expect(() =>
+      defineApp({
+        name: 't',
+        version: '0',
+        summary: 's',
+        globals: GLOBALS,
+        commands: {
+          x: defineCommand({
+            summary: 'x',
+            flags: { color: { kind: 'boolean', short: 'C', help: 'h' } },
+            output: z.object({}),
+            run: () => ({}),
+          }),
+        },
+      }),
+    ).toThrow('declares -C, which a global flag takes')
+  })
+
+  test('a command may not give a meaning to the shared failure codes 22-25', () => {
+    for (const code of [22, 25]) {
+      expect(() =>
+        defineCommand({
+          summary: 'x',
+          exits: { [code]: 'mine' },
+          output: z.object({}),
+          run: () => ({}),
+        }),
+      ).toThrow(`exit code ${code} is one of the shared failure codes`)
+    }
+  })
+
+  test('a flag named after an Object.prototype member is not taken for a builtin', () => {
+    const c = defineCommand({
+      summary: 'x',
+      flags: { constructor: { kind: 'string', help: 'h' } },
+      output: z.object({}),
+      run: () => ({}),
+    })
+    expect(() =>
+      defineApp({ name: 't', version: '0', summary: 's', globals: GLOBALS, commands: { c } }),
+    ).not.toThrow()
+  })
+
+  test('an items element may not declare schemaVersion or kind', () => {
+    expect(() =>
+      defineCommand({
+        summary: 'x',
+        output: z.object({ records: z.array(z.object({ kind: z.string() })) }),
+        items: { field: 'records', kind: 'record' },
+        run: () => ({ records: [] }),
+      }),
+    ).toThrow("an items element may not declare 'kind'")
   })
 
   test('a global may not be a builtin', () => {
