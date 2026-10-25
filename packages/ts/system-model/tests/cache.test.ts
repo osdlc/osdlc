@@ -82,13 +82,15 @@ function entryFor(
 
 describe('entryPath', () => {
   test('is versioned and one file per runner', () => {
-    const path = entryPath('/c/dir', '/repos/dev', 'moon')
+    // With `/`, so the checks read the same on Windows.
+    const slashed = (p: string) => p.replaceAll('\\', '/')
+    const path = slashed(entryPath('/c/dir', '/repos/dev', 'moon'))
     expect(path).toContain(`/reports/v${CACHE_FORMAT_VERSION}/`)
     expect(path.startsWith('/c/dir/')).toBe(true)
     expect(path.endsWith('/moon.json')).toBe(true)
     expect(dirname(path).split('/').pop()).toMatch(/^dev-[0-9a-f]{16}$/)
     // Two runners under one root share a directory but never a file.
-    expect(dirname(entryPath('/c/dir', '/repos/dev', 'just'))).toBe(dirname(path))
+    expect(dirname(slashed(entryPath('/c/dir', '/repos/dev', 'just')))).toBe(dirname(path))
   })
 
   test('same-named roots in different places get different directories', () => {

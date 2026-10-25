@@ -153,9 +153,13 @@ describe('withDefaults', () => {
     expect(seen).toEqual([{ cwd: '/repo' }])
   })
 
-  test('the result is still a runner of the original type', () => {
-    const runner: CommandRunner = withDefaults(spawnRunner('sh'), { cwd: '/' })
-    expect(runner.run(['-c', 'pwd -P'], { cwd: process.cwd() }).stdout.trim()).not.toBe('/')
-    expect(runner.run(['-c', 'pwd -P'], { cwd: '/' }).stdout).toBe('/\n')
-  })
+  // POSIX only: `/` is a POSIX path.
+  test.skipIf(process.platform === 'win32')(
+    'the result is still a runner of the original type',
+    () => {
+      const runner: CommandRunner = withDefaults(spawnRunner('sh'), { cwd: '/' })
+      expect(runner.run(['-c', 'pwd -P'], { cwd: process.cwd() }).stdout.trim()).not.toBe('/')
+      expect(runner.run(['-c', 'pwd -P'], { cwd: '/' }).stdout).toBe('/\n')
+    },
+  )
 })

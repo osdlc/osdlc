@@ -32,7 +32,7 @@
  * and shell syntax stays one `sh -c` line, with the variable in place.
  */
 
-import { join } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 import type { RunnerContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
@@ -329,12 +329,12 @@ function cwdOf(
 ): string | null {
   const options = isTable(entry['options']) ? entry['options'] : {}
   if (typeof options['cwd'] !== 'string') return folder
-  const raw = expand(options['cwd'])
-  const abs = raw.startsWith('/') ? raw : join(ctx.root, folder, raw)
-  const root = join(ctx.root)
-  if (abs === root) return '.'
-  if (!abs.startsWith(`${root}/`)) return null
-  return abs.slice(root.length + 1).replace(/(?<!\/)\/+$/, '')
+  // Resolved by `node:path` rules, so a Windows root and a
+  // `${workspaceFolder}/src` that mixes separators both work.
+  const rel = relative(resolve(ctx.root), resolve(ctx.root, folder, expand(options['cwd'])))
+  if (rel === '') return '.'
+  if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null
+  return rel.split(sep).join('/')
 }
 
 /** The argv that runs a package script, through the manager chosen for `dir`. */

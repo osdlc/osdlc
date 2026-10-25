@@ -521,7 +521,8 @@ These parts stay POSIX only:
 
 - `runShell` and `shellRunner` need `sh` on `PATH`.
 - The `processGroup` options and `installGroupSignalForwarding` use POSIX
-  process groups. Signals follow POSIX rules. To kill a process tree on
+  process groups. Signals follow POSIX rules. On Windows a `processGroup`
+  run's stop reaches the direct child only. To kill a process tree on
   Windows too, use `killTree`.
 - The `bun test` capture path runs through `/bin/sh`.
 

@@ -23,6 +23,13 @@ export default defineConfig({
   },
   test: {
     include: ['tests/**/*.test.ts', 'devlink/tests/**/*.test.ts', 'examples/**/*.test.ts'],
+    // POSIX only: the devlink launcher is a POSIX shell script, and `dev`
+    // reports itself unavailable on Windows. Its tests drive the real script.
+    // tests/devlink/cli.test.ts checks the Windows report with `platform`.
+    exclude:
+      process.platform === 'win32'
+        ? ['**/node_modules/**', 'tests/devlink/**', 'devlink/tests/**', 'examples/devlink.test.ts']
+        : ['**/node_modules/**'],
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

@@ -45,20 +45,28 @@ function compilerOptions(): ts.CompilerOptions {
 export function typecheck(files: Record<string, string>): Record<string, string[]> {
   const options = compilerOptions()
   const host = ts.createCompilerHost(options)
+  // The compiler asks for paths with `/`, also on Windows. Key the sources the same way.
+  const slashed = (p: string) => p.replaceAll('\\', '/')
+  const sources = new Map(Object.entries(files).map(([p, source]) => [slashed(p), source]))
   const readFile = host.readFile.bind(host)
   const fileExists = host.fileExists.bind(host)
-  host.readFile = (p) => files[p] ?? readFile(p)
-  host.fileExists = (p) => p in files || fileExists(p)
+  host.readFile = (p) => sources.get(slashed(p)) ?? readFile(p)
+  host.fileExists = (p) => sources.has(slashed(p)) || fileExists(p)
   const getSourceFile = host.getSourceFile.bind(host)
-  host.getSourceFile = (p, lang, ...rest) =>
-    p in files ? ts.createSourceFile(p, files[p]!, lang) : getSourceFile(p, lang, ...rest)
+  host.getSourceFile = (p, lang, ...rest) => {
+    const source = sources.get(slashed(p))
+    return source === undefined
+      ? getSourceFile(p, lang, ...rest)
+      : ts.createSourceFile(p, source, lang)
+  }
 
   const program = ts.createProgram(Object.keys(files), options, host)
   const out: Record<string, string[]> = Object.fromEntries(Object.keys(files).map((p) => [p, []]))
+  const original = new Map(Object.keys(files).map((p) => [slashed(p), p]))
   for (const d of ts.getPreEmitDiagnostics(program)) {
     const message = ts.flattenDiagnosticMessageText(d.messageText, '\n')
-    const file = d.file?.fileName
-    if (file === undefined || !(file in out)) {
+    const file = d.file === undefined ? undefined : original.get(slashed(d.file.fileName))
+    if (file === undefined) {
       // A diagnostic outside the checked files (a broken tsconfig, say) fails every file.
       for (const list of Object.values(out)) list.push(message)
       continue
