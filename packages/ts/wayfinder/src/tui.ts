@@ -676,6 +676,22 @@ function quit(code: number): never {
   process.exit(code)
 }
 
+/**
+ * Quit on SIGINT, SIGTERM and SIGHUP with the shell's code for the signal
+ * (128 + its number), as the CLI does. Raw mode turns the terminal's Ctrl-C
+ * into a key, so these come from another process.
+ *
+ * With a listener here, each signal's exit is this one's. command-seam's
+ * forwarding (installed by main) still kills the probe groups: it signals
+ * them at once, and its exit hook kills any still running. Exported so a test
+ * can pass its own emitter.
+ */
+export function installQuitHandlers(target: NodeJS.EventEmitter = process): void {
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
+    target.on(signal, () => quit(128 + constants.signals[signal]))
+  }
+}
+
 /** Idempotent: both `runAndExit` and the exit hook call it. */
 function restoreTerminal(): void {
   if (restored) return
@@ -1028,12 +1044,7 @@ export async function runTui({
   process.stdin.setEncoding('utf8')
 
   process.on('exit', restoreTerminal)
-  // With a listener here, each signal's exit is this one's. command-seam's
-  // forwarding (installed by main) still kills the probe groups: it signals
-  // them at once, and its exit hook kills any still running.
-  process.on('SIGINT', () => quit(0))
-  process.on('SIGTERM', () => quit(128 + constants.signals.SIGTERM))
-  process.on('SIGHUP', () => quit(128 + constants.signals.SIGHUP))
+  installQuitHandlers()
   process.stdout.on('resize', draw)
 
   process.stdin.on('data', (chunk: string) => {
