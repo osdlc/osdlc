@@ -454,7 +454,10 @@ const tree = await loadCommandTree(new URL('./commands/', import.meta.url), { su
 const app = defineApp({ name: 'sweep', version, summary: 'sweep', commands: tree })
 ```
 
-It imports the tool's own files only. `treeFromFiles` takes the same files as
+It imports the files under `dir` only, and `dir` must be a `file:` URL or an
+absolute path, so the tree never depends on the working directory. Symbolic
+links are skipped, and a file or directory name that is not a command word
+(letters, digits, `-` and `_`) is an error. `treeFromFiles` takes the same files as
 a list, for a bundler that collects the modules itself.
 
 ### Shared commands

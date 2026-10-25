@@ -1,3 +1,5 @@
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
@@ -35,6 +37,28 @@ describe('loadCommandTree', () => {
     })
     expect(app.help(['config']).summary).toBe('settings')
     expect(app.help([]).interactive).toBe(true)
+  })
+
+  test('a relative directory is refused', async () => {
+    await expect(loadCommandTree('tests/fixtures/commands', { summary: 's' })).rejects.toThrow(
+      'is relative',
+    )
+  })
+
+  test('a file name that is not a command word is refused; a symlink is skipped', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'load-'))
+    const body = "export default { type: 'command', summary: 's', output: {}, run: () => ({}) }\n"
+    writeFileSync(join(dir, 'with space.mjs'), body)
+    await expect(loadCommandTree(dir, { summary: 's' })).rejects.toThrow('is not a command name')
+    rmSync(join(dir, 'with space.mjs'))
+    writeFileSync(join(dir, '-x.mjs'), body)
+    await expect(loadCommandTree(dir, { summary: 's' })).rejects.toThrow('is not a command name')
+    rmSync(join(dir, '-x.mjs'))
+    const outside = mkdtempSync(join(tmpdir(), 'outside-'))
+    writeFileSync(join(outside, 'evil.mjs'), body)
+    symlinkSync(join(outside, 'evil.mjs'), join(dir, 'evil.mjs'))
+    const tree = await loadCommandTree(dir, { summary: 's' })
+    expect(Object.keys(tree.commands)).toEqual([])
   })
 
   test('two files for one command are refused', async () => {
