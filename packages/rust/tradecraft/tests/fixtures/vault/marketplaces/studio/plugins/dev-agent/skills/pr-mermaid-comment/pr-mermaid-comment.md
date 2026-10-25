@@ -45,7 +45,7 @@ Rules that decide whether a diagram renders and reads:
   Prefer several small diagrams over one large one; a diagram wider than
   about 1000 px shrinks to unreadable text at comment width.
 - **Line breaks in a label** are a literal `<br/>` inside a quoted label:
-  `a["Vault<br/>content/agent-vault/"]`. Markdown does not work in labels.
+  `a["Vault<br/>notes/"]`. Markdown does not work in labels.
 - **Quote every label** that holds a space, slash, dot, colon, parenthesis
   or angle bracket. Write `<` and `>` inside a label as `&lt;` and `&gt;`.
 - **Links.** Flowchart nodes take `click id "https://…" "tooltip"`. Use full
@@ -62,10 +62,10 @@ Rules that decide whether a diagram renders and reads:
 
 ## 2. Verify with the render script
 
-From the repo root:
+Run the script that sits next to this skill:
 
 ```text
-bun content/agent-vault/marketplaces/studio/plugins/dev-agent/skills/pr-mermaid-comment/render_mermaid.mjs <file.md> --github <owner/repo>
+bun <skill dir>/render_mermaid.mjs <file.md> --github <owner/repo>
 ```
 
 `--github` sends the file through GitHub's Markdown API so the blocks

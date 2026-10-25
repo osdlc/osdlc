@@ -1,7 +1,6 @@
 //! Differential tests: `markdown_link::LinkIndex` versus Obsidian 1.13.4.
 //!
-//! The oracle is the **behaviour table** in the Obsidian link-resolution
-//! research (`solutions/agent-pants/docs/vault/research/`): a set of
+//! The oracle is a **behaviour table** observed in Obsidian: a set of
 //! input → output cases — given this vault and this reference, that file
 //! opens. This file is the executable form of that table. It records what
 //! Obsidian *does*, never how; `LinkIndex` is written from these cases rather
