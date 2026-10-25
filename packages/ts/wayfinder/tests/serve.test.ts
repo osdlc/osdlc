@@ -20,7 +20,7 @@ import { createWayApp } from '../src/commands/index.ts'
 import { createSession } from '../src/core/session.ts'
 import { createSignIn } from '../src/serve/auth.ts'
 import { createRoutes } from '../src/serve/routes.ts'
-import { startServer, type WebServer } from '../src/serve/index.ts'
+import { browserOpener, startServer, type WebServer } from '../src/serve/index.ts'
 import { appTrustStore } from '../src/trust-store.ts'
 import { fixtureRoot, removeRoot } from './support.ts'
 
@@ -573,6 +573,17 @@ describe('POST /run', () => {
     } finally {
       await s.web.stop()
     }
+  })
+})
+
+describe('the browser opener', () => {
+  test('is open, xdg-open, or rundll32 on Windows', () => {
+    expect(browserOpener('darwin')).toEqual({ binary: 'open', args: [] })
+    expect(browserOpener('linux')).toEqual({ binary: 'xdg-open', args: [] })
+    expect(browserOpener('win32')).toEqual({
+      binary: 'rundll32',
+      args: ['url.dll,FileProtocolHandler'],
+    })
   })
 })
 
