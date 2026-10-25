@@ -92,10 +92,13 @@ export function dependenciesIn(
  * Bind `args` to a `sh -c <line>` task as `"$@"`, so each stays one word.
  * `null` when the task is not one bare `sh -c <line>`.
  *
- * Throws when `"$@"` would not reach the whole line: the line ends in a `#`
- * comment (the arguments would be commented out), or it has a control
- * operator (`;`, `&`, `|`, a line break), so the arguments would reach only
- * its last command.
+ * Throws when `"$@"` would not reach the whole line in every POSIX `sh`:
+ * the line ends in a `#` comment (the arguments would be commented out), it
+ * has a control operator (`;`, `&`, `|`, a line break), so the arguments would
+ * reach only its last command, or it uses syntax that only some shells read
+ * the same way. Under dash, `cmd &>log "$@"` is `cmd &` then `>log "$@"`, so
+ * the first argument would run as a program. The only `&` accepted is a file
+ * descriptor copy: `2>&1`, `<&3`, `>&-`.
  */
 export function shLineArgs(task: Task, args: readonly string[]): string[] | null {
   const [binary, flag, line, ...rest] = task.argv
@@ -107,6 +110,9 @@ export function shLineArgs(task: Task, args: readonly string[]): string[] | null
   }
   return ['sh', '-c', `${line} "$@"`, 'sh', ...args]
 }
+
+/** A file descriptor copy target after `>&` or `<&`: digits or `-`, then a word end. */
+const FD_COPY = /^(?:\d+|-)(?=$|[\s;&|<>()])/
 
 /** Why `"$@"` appended to `line` would not reach all of it, or `undefined`. */
 function shellLineProblem(line: string): string | undefined {
@@ -122,16 +128,27 @@ function shellLineProblem(line: string): string | undefined {
       i++
       continue
     }
-    if (c === "'" || c === '"') quote = c
-    else if (c === '#' && (i === 0 || /\s/.test(line[i - 1]!))) return 'it ends in a # comment'
-    else if (c === '&' && (line[i - 1] === '>' || line[i - 1] === '<' || line[i + 1] === '>')) {
-      // A redirection (`2>&1`, `<&3`, `&>log`), not a command separator.
+    const prev = line[i - 1]
+    if (c === "'" || c === '"') {
+      // Bash reads `\'` inside `$'…'` as a quote; POSIX sh does not.
+      if (c === "'" && prev === '$') return "it uses $'…' quoting, which only some shells read"
+      quote = c
+    } else if (c === '#' && (prev === undefined || /[\s()<>;&|]/.test(prev))) {
+      return 'it ends in a # comment'
+    } else if (c === '&' && (prev === '>' || prev === '<') && FD_COPY.test(line.slice(i + 1))) {
+      // A file descriptor copy (`2>&1`, `<&3`, `>&-`), not a command separator.
       continue
+    } else if (c === '&' && (prev === '>' || prev === '<' || line[i + 1] === '>')) {
+      return 'it has a redirection that only some shells read'
+    } else if (c === '(' && (prev === '<' || prev === '>')) {
+      return 'it uses process substitution, which only some shells read'
+    } else if (c === '<' && line.startsWith('<<<', i)) {
+      return 'it uses a <<< here-string, which only some shells read'
     } else if (c === ';' || c === '&' || c === '|' || c === '\n') {
       return 'it has more than one command'
     }
   }
-  return undefined
+  return quote === null ? undefined : 'it has an unclosed quote'
 }
 
 /** Bind arguments after a `--`, for tools that read their own flags up to it. */

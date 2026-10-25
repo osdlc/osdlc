@@ -45,5 +45,6 @@ New:
   - `vscode-tasks`: `.vscode/tasks.json` shell, process and npm tasks, with `dependsOn`, `isBackground`, top-level `options` and the current platform's override. In a `sh -c` line, `${workspaceFolder}` is quoted for where it sits: a word outside quotes, escaped inside `"…"`, spliced between `'…'`.
   - `devbox`: `devbox.json` `shell.scripts`.
   - `procfile`: each `Procfile` and `Procfile.dev` entry as a declared service, run through overmind, foreman or honcho, else `sh -c`.
+  - `runners.invoke` on a `sh -c` task (VS Code, Procfile) passes arguments as `"$@"`. It refuses them when the line has more than one command, ends in a comment, or uses syntax that bash and dash read differently, such as `&>log`. The only `&` redirections it accepts are `2>&1`-style copies.
   - `cmake-presets`: configure, build and test presets, with `include` files and each preset's `configurePreset` as `dependsOn`. A preset whose `condition`, its own or inherited, is false here is not listed, and an `inherits` walk is capped.
   - `dotnet`: build, restore and publish for each solution and project file, `run` for a program and `test` for a test project, in a new `./dotnet` entry with the dotnet ecosystem.

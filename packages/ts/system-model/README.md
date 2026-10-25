@@ -349,9 +349,12 @@ Three synthesized runners turn role actions into tasks:
 arguments, bound the way its tool expects. Positional arguments go after `--`
 for npm run, cargo run, dotnet run, moon, turbo, nx, go-task and composer, and
 in `name[a,b]` form for rake, with `,`, `]` and `\` escaped. A `sh -c` task
-(VS Code, Procfile) takes them as `"$@"`, so each stays one word, and refuses
-them when the line has more than one command (`;`, `&&`, `|`) or ends in a `#`
-comment. Otherwise they are appended. `invoke` throws for a Procfile process run through a
+(VS Code, Procfile) takes them as `"$@"`, so each stays one word. It refuses
+them when the line has more than one command (`;`, `&&`, `|`), ends in a `#`
+comment, or uses syntax that bash and dash read differently (`&>log`, `>&log`,
+`<(…)`, `<<<`, `$'…'`). Under dash, `cmd &>log "$@"` would run the first
+argument as a program. The only redirections with `&` it accepts are file
+descriptor copies such as `2>&1` and `>&-`. Otherwise they are appended. `invoke` throws for a Procfile process run through a
 manager, which takes no arguments.
 `args` is a list of positional arguments, or values by parameter name:
 
