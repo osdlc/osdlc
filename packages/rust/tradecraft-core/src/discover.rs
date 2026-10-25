@@ -1191,7 +1191,10 @@ fn quoted(names: &[&str]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::vfs::{MemVfs, NativeVfs};
+    use crate::vfs::MemVfs;
+    // Only the tests that need a real filesystem (unix: symlinks) use it.
+    #[cfg(unix)]
+    use crate::vfs::NativeVfs;
 
     fn ap() -> Namespace {
         Namespace::default()

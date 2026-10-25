@@ -2319,7 +2319,10 @@ mod tests {
 
     use super::*;
     use crate::corpus::RootKind;
-    use crate::vfs::{MemVfs, NativeVfs};
+    use crate::vfs::MemVfs;
+    // Only the tests that need a real filesystem (unix: symlinks) use it.
+    #[cfg(unix)]
+    use crate::vfs::NativeVfs;
 
     const NOTE: &str = "---\ndescription: reviews code\nlicense: MIT\n---\nReview the diff.\n";
 

@@ -17,7 +17,6 @@ mod common;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use common::with_machine_env;
@@ -54,8 +53,16 @@ fn walk(root: &Path) -> Vec<PathBuf> {
     out
 }
 
+#[cfg(unix)]
 fn is_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
     fs::metadata(path).unwrap().permissions().mode() & 0o111 != 0
+}
+
+/// Windows has no executable bit, so both trees read as not executable.
+#[cfg(not(unix))]
+fn is_executable(_path: &Path) -> bool {
+    false
 }
 
 #[test]
