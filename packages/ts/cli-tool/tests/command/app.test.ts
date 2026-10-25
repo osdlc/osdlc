@@ -161,6 +161,12 @@ describe('errors', () => {
     expect(r.err).toContain("unknown command 'nested deap'; did you mean deep?")
   })
 
+  test('the value of a global flag is not read as a command word', async () => {
+    const r = await runApp(app, ['nested', '-C', 'dir'])
+    expect(r.exit).toBe(2)
+    expect(r.err).not.toContain('unknown command')
+  })
+
   test('a group with no default and no word prints its help on stderr, exit 2', async () => {
     const r = await runApp(app, ['nested'])
     expect(r.exit).toBe(2)

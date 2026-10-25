@@ -395,7 +395,11 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
 
     const command = node.command
     if (command === undefined) {
-      const word = words.find((w) => !w.startsWith('-'))
+      let k = 0
+      while (k < words.length && words[k]!.startsWith('-')) {
+        k += globalValueFlags.has(words[k]!) ? 2 : 1
+      }
+      const word = words[k]
       if (word !== undefined) {
         const names = node.children.filter((c) => !c.hidden).map((c) => c.name)
         const close = closestMatches(word, names)
