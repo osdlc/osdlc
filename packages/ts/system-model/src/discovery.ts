@@ -240,6 +240,8 @@ export interface Lister {
   (pattern: string): Promise<string[]>
   /** Every file discovery found, root-relative. */
   all(): Promise<string[]>
+  /** {@link all}, indexed for pattern matching. Built once. */
+  index(): Promise<{ files: string[]; index: PathIndex }>
   /** The walk cap the listing reached, once `all` has resolved. Never set in git mode. */
   limit(): WalkLimit | undefined
 }
@@ -272,19 +274,18 @@ export function createLister(
     ))
 
   let indexed: Promise<{ files: string[]; index: PathIndex }> | null = null
+  const index = (): Promise<{ files: string[]; index: PathIndex }> =>
+    (indexed ??= list().then((files) => ({ files, index: pathIndex(files) })))
   const lister = async (pattern: string): Promise<string[]> => {
     const compiled = compilePattern(pattern)
-    const { files, index } = await (indexed ??= list().then((files) => ({
-      files,
-      index: pathIndex(files),
-    })))
+    const { files, index: byPattern } = await index()
     const out: string[] = []
-    for (const i of index.candidates(compiled)) {
+    for (const i of byPattern.candidates(compiled)) {
       if (compiled.base(files[i]!) !== null) out.push(files[i]!)
     }
     return out
   }
-  return Object.assign(lister, { all: list, limit: () => limit.hit })
+  return Object.assign(lister, { all: list, index, limit: () => limit.hit })
 }
 
 /** True when a root-relative path exists on disk. */
