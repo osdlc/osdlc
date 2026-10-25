@@ -116,6 +116,34 @@ export function firstLine(text: string, fallback = ''): string {
 export type JsonFailure = CommandFailure | Failure<'unparseable' | 'invalid'>
 
 /**
+ * Whether a {@link JsonFailure} is "the command ran, but its stdout was no
+ * use" (`unparseable` or `invalid`) rather than a failed run. The first
+ * usually wants the command's stderr shown, and the second a "could not read
+ * the output" message. Checking for the two parse kinds here, instead of
+ * listing every {@link CommandFailureKind}, keeps the branch right when a new
+ * run-failure kind is added.
+ *
+ * Narrows both ways: `true` gives the `unparseable` / `invalid` failure, and
+ * `false` gives the {@link CommandFailure}.
+ *
+ * @param error - The `error` of a failed {@link JsonRun}.
+ * @experimental
+ *
+ * @example
+ * ```ts
+ * const r = runJson<Release>(gh, ['release', 'view', '--json', 'tagName'], { cwd: '.' })
+ * if (!r.ok) {
+ *   console.error(isJsonParseFailure(r.error) ? 'could not read output' : failureText(r.result))
+ * }
+ * ```
+ */
+export function isJsonParseFailure(
+  error: JsonFailure,
+): error is Failure<'unparseable' | 'invalid'> {
+  return error.kind === 'unparseable' || error.kind === 'invalid'
+}
+
+/**
  * Outcome of {@link runJson}: a `Result` with the finished run alongside it.
  * `ok` narrows to `value` or `error` (a {@link JsonFailure}), and `result` is
  * the {@link CommandResult} either way, for the exit code or the raw output.

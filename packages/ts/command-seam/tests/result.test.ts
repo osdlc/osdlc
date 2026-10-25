@@ -5,6 +5,7 @@ import {
   CommandFailed,
   failureText,
   firstLine,
+  isJsonParseFailure,
   parseJsonResult,
   ran,
   runJson,
@@ -420,5 +421,38 @@ describe('runJson with a runner that needs no options', () => {
       void runJsonAsync<{ n: number }>(asAsync(fake(res({}))), [])
     }
     expect(typeof _unused).toBe('function')
+  })
+})
+
+describe('isJsonParseFailure', () => {
+  const failureOf = (r: CommandResult, parse?: (v: unknown) => unknown) => {
+    const out = parseJsonResult(r, { parse })
+    if (out.ok) throw new Error('expected a failure')
+    return out.error
+  }
+
+  test('is true for unparseable output and for a parse that threw', () => {
+    expect(isJsonParseFailure(failureOf(res({ stdout: 'nope' })))).toBe(true)
+    const rejected = failureOf(res({ stdout: '{}' }), () => {
+      throw new Error('bad shape')
+    })
+    expect(rejected.kind).toBe('invalid')
+    expect(isJsonParseFailure(rejected)).toBe(true)
+  })
+
+  test('is false for every failed run, whatever its kind', () => {
+    const runs: CommandResult[] = [
+      res({ exitCode: 2, stderr: 'boom' }),
+      res({ neverExited: true, reason: 'timeout' }),
+      res({ neverExited: true, reason: 'spawn' }),
+      res({ neverExited: true, reason: 'abort' }),
+    ]
+    for (const r of runs) expect(isJsonParseFailure(failureOf(r))).toBe(false)
+  })
+
+  test('narrows both ways', () => {
+    const error = failureOf(res({ exitCode: 2 }))
+    if (isJsonParseFailure(error)) expect.unreachable()
+    else expect(error.exitCode).toBe(2)
   })
 })

@@ -499,6 +499,10 @@ not in `okExitCodes`, it is the `CommandFailure` for that run (`kind`
 `'not-installed'`, `'exit'`, `'timeout'` and so on, see "Classifying a
 failure"). Otherwise its `kind` is `'unparseable'` (stdout is not JSON) or
 `'invalid'` (the `parse` option threw, and `error.cause` holds what it threw).
+To tell the two apart, call `isJsonParseFailure(error)`: `true` means the
+command ran but its output was no use, `false` means the run itself failed
+(and `error` narrows to `CommandFailure`). It stays right if a new run-failure
+kind is added, which a hand-written list of kinds would not.
 `tolerateLeadingLog: true` skips log lines printed before the JSON.
 
 Some tools print JSON and exit non-zero on purpose: `npm outdated --json`
@@ -873,7 +877,7 @@ The experimental exports:
 - `spawnRunnerBytes`, `spawnRunnerBytesAsync`, `BytesCommandRunner`, `AsyncBytesCommandRunner`
 - `catchFailedAsync`, `mapFailedAsync`
 - `firstLine`, `stderrOrError`
-- `runJson`, `runJsonAsync`, `parseJsonResult`, `JsonRun`, `JsonFailure`, `RunJsonOptions`
+- `runJson`, `runJsonAsync`, `parseJsonResult`, `isJsonParseFailure`, `JsonRun`, `JsonFailure`, `RunJsonOptions`
 - `withDefaults`, `DefaultedRunner`
 - `which`, `WhichOptions`
 - `stopProcess`
