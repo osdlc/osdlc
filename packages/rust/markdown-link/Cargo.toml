@@ -1,0 +1,39 @@
+[package]
+name = "markdown-link"
+version = "0.5.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Parse and resolve Markdown and wiki-style links in notes: every `[[link]]`, `![[embed]]`, and relative Markdown link in a note body or its frontmatter, with code spans excluded, plus a LinkIndex that resolves a target against a set of file paths."
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/markdown-link"
+readme = "README.md"
+keywords = ["markdown", "wikilink", "links", "parser", "resolver"]
+categories = ["parser-implementations", "text-processing"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+  # `README.md` above matches at any depth, so the fixture vault is left out.
+  "!tests/fixtures/**",
+]
+
+[package.metadata.docs.rs]
+# Build the docs for the default target only; the crate has no platform code.
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+yaml-splice = { workspace = true }
+slug-collate = { workspace = true }
+
+[dev-dependencies]
+# Frontmatter framing for the differential test.
+frontmatter-lossless = { workspace = true }
+# Reads the shared case file, tests/fixtures/conformance.json.
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
