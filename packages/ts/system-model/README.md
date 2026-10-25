@@ -329,6 +329,10 @@ child then leads its own process group and no longer gets the terminal's
 Ctrl-C. A CLI host should abort `signal` on `SIGINT`, or call
 `installGroupSignalForwarding` from `@osdlc/command-seam` once at start-up.
 
+Every string in a catalog or a profile comes from the repository: task
+names, docs, argv and diagnostics. Escape it before it reaches a terminal
+(control characters) or a page (HTML).
+
 A catalog carries `kind: 'catalog'` and `schemaVersion`
 (`CATALOG_SCHEMA_VERSION`). `@osdlc/system-model/schema` has JSON Schemas for
 `Catalog`, `RunnerReport`, `Task`, `Param` and `ToolInfo`.

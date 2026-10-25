@@ -250,11 +250,11 @@ function describeTask(task: MoonTask, root: string): string {
  * the error class, and the details needed to act on it are in the lines
  * below.
  */
-function probeError(stderr: string): string {
+export function probeError(stderr: string): string {
   const lines = stderr
     .split('\n')
     .filter((l) => !/^\s*\[\s*(WARN|INFO|DEBUG|TRACE)\b/.test(l))
-    .map((l) => l.replace(/\s+$/, ''))
+    .map((l) => l.trimEnd())
   const text = lines
     .map((l) => l.replace(/^\s*[|│╭╰─>×]+\s?/, '  '))
     .join('\n')

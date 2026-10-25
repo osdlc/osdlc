@@ -98,6 +98,12 @@ export const cmakePresetsRunner: RunnerRole = {
           inheritance(presets.get(k.kind)!, 'configurePreset', budget),
         ]),
       )
+      // CMake inherits `condition` like any other field.
+      const conditionOf = new Map<Kind, (name: string) => unknown>(
+        KINDS.map((k) => [k.kind, inheritance(presets.get(k.kind)!, 'condition', budget)]),
+      )
+      // One evaluation per condition object, however many presets inherit it.
+      const evaluated = new Map<unknown, boolean | undefined>()
       const ids = new Map<string, string>()
       for (const [kind, byName] of presets) {
         for (const [name, p] of byName)
@@ -106,7 +112,9 @@ export const cmakePresetsRunner: RunnerRole = {
       for (const { kind } of KINDS) {
         for (const [name, p] of presets.get(kind)!) {
           if (p.def['hidden'] === true) continue
-          const condition = evaluate(p.def['condition'])
+          const raw = conditionOf.get(kind)!(name)
+          if (!evaluated.has(raw)) evaluated.set(raw, evaluate(raw))
+          const condition = evaluated.get(raw)
           if (condition === false) continue
           const argv =
             kind === 'configure'

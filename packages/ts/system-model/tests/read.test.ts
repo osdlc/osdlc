@@ -3,14 +3,15 @@
  * Each case uses a real tree, since the rules are about what is on disk.
  */
 
-import { mkdir, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, open, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { afterAll, describe, expect, test } from 'vitest'
+import { afterAll, describe, expect, test, vi } from 'vitest'
 
 import { runChecked, spawnRunner } from '@osdlc/command-seam'
 
 import { builtins } from '../src/builtins.ts'
+import { createContext, createContextState } from '../src/context.ts'
 import { createLister } from '../src/discovery.ts'
 import { fingerprint } from '../src/fingerprint.ts'
 import { tasks } from '../src/model.ts'
@@ -182,5 +183,72 @@ describe('containment', () => {
     await writeFile(join(outside, 'sub/justfile'), 'two')
     const after = await fingerprint({ root: dir, paths: ['sub/justfile'], patterns: [], files })
     expect(after.digest).toBe(before.digest)
+  })
+
+  test('readRegular refuses a file that grew after the handle was checked', async () => {
+    const dir = await root({ justfile: 'build:\n' })
+    const probe = await open(join(dir, 'justfile'))
+    const proto = Object.getPrototypeOf(probe) as { stat: typeof probe.stat }
+    await probe.close()
+    const real = proto.stat
+    // The handle reports one byte less than the file holds, as if it grew.
+    const spy = vi.spyOn(proto, 'stat').mockImplementation(async function (this: typeof probe) {
+      const info = await real.call(this)
+      return Object.assign(info, { size: Number(info.size) - 1 })
+    })
+    try {
+      expect(await readRegular(join(dir, 'justfile'))).toEqual({
+        skipped: 'changed while it was read',
+      })
+    } finally {
+      spy.mockRestore()
+    }
+  })
+})
+
+describe('createContext', () => {
+  async function context(dir: string, allowExec: boolean) {
+    const made: string[] = []
+    const fake = fakeRunners([])
+    const ctx = createContext({
+      absRoot: dir,
+      allowExec,
+      makeRunner: (binary) => {
+        made.push(binary)
+        return fake.make(binary)
+      },
+      which: () => null,
+      signal: new AbortController().signal,
+      discovery: 'walk',
+      state: createContextState(createLister(dir, 'walk', fake.make('git'))),
+    })
+    return { ctx, made }
+  }
+
+  test('exists answers only for paths inside the root', async () => {
+    const outside = await root({ 'secret/key': 'x' })
+    const dir = await root({ justfile: 'build:\n' })
+    await symlink(join(outside, 'secret'), join(dir, 'link'))
+    const { ctx } = await context(dir, false)
+    expect(await ctx.exists('justfile')).toBe(true)
+    expect(await ctx.exists('missing')).toBe(false)
+    expect(await ctx.exists('link/key')).toBe(false)
+    expect(await ctx.exists(`../${outside.split('/').pop()}/secret/key`)).toBe(false)
+    expect(await ctx.exists(join(outside, 'secret/key'))).toBe(false)
+  })
+
+  test('without exec, the runner a context hands out runs nothing', async () => {
+    const dir = await root({})
+    const { ctx, made } = await context(dir, false)
+    const res = await ctx.runner('sh').run(['-c', 'touch ran'], { cwd: dir })
+    expect(res).toMatchObject({ exitCode: 1, neverExited: true, reason: 'spawn' })
+    expect(made).toEqual([])
+  })
+
+  test('with exec, the context hands out the injected runner', async () => {
+    const dir = await root({})
+    const { ctx, made } = await context(dir, true)
+    ctx.runner('sh')
+    expect(made).toEqual(['sh'])
   })
 })

@@ -8,7 +8,8 @@
 - Each subprocess runs with command-seam's `killTree: true`, so a timeout or abort kills the processes it started too. On POSIX the child leads its own process group and no longer gets the terminal's Ctrl-C. A CLI host must abort the `signal` it passes on `SIGINT`, or call `installGroupSignalForwarding` from `@osdlc/command-seam` once at start-up.
 - `Runners` has a new required member, `invocation(task, args)`. A class that implements `Runners`, or a mock of it, must add it; forward it to `invocationOf` or return `{ argv: runners.invoke(task, args), env: {} }`.
 - A cached report probed with execution allowed is no longer served to a run without it. `readCached` reports the runner `stale` with reason `exec` and leaves its report out. Probe again to get one.
-- A read refuses an absolute path and a path with `..`, and follows every symlink on the path, not only the last one. A file behind a symlinked directory that points out of the root reads as `null`.
+- A read refuses an absolute path and a path with `..`, and follows every symlink on the path, not only the last one. A file behind a symlinked directory that points out of the root reads as `null`. `ctx.exists` follows the same rule, so it is `false` for such a path.
+- With execution off, `ctx.runner(binary)` hands a parse runner or a `detect` function a runner that runs nothing: every call resolves as a spawn failure (`neverExited: true`, `reason: 'spawn'`). The contract already said not to spawn without `ctx.allowExec`; a runner that did must check it first.
 - `Catalog` requires `kind: 'catalog'` and `schemaVersion`, and so does its JSON Schema. Code that builds a `Catalog` by hand, such as a test fixture, must set both; use `CATALOG_SCHEMA_VERSION` from `./detect`.
 
 - yarn scripts now run as `yarn run <name>` (`yarn --cwd <dir> run <name>` below the root), so a script named `version` or `pack` no longer runs yarn's own command. Update any test or stored argv that expects `yarn <name>`.
@@ -28,7 +29,8 @@ New:
 - `RunnerRole.probe` declares a timeout and a cost hint (`cheap` or `slow`). Every subprocess a runner, a `describe` function or discovery's git starts gets the caller's `signal` and a timeout; `DEFAULT_PROBE_TIMEOUT_MS` is the default, and `CollectOptions.timeouts` overrides it per runner. moon, just, mise and sbt now have one. `RunnerCacheState.cost` carries the hint.
 - A stored probe records whether exec was allowed, this package's version, the tool binary it found with its size and mtime, and every binary the runner looked up through `ctx.which`. A mismatch reads as stale. A file over `MAX_READ_BYTES` stales an entry by its size and mtime.
 - The directory walk stops at `MAX_WALK_FILES` files and `MAX_WALK_DEPTH` levels, and `ProjectProfile.diagnostics` says when it did.
-- rake arguments escape `,`, `]` and `\`. rake's scanner reads prerequisites and the `task name:` form.
+- rake arguments escape `,`, `]` and `\`. rake's scanner reads prerequisites and the `task name:` form. A task whose path is longer than 4096 characters is left out.
+- Every file scanner takes time linear in the file, so a hostile repository cannot stall detection in-process: just, rake, the Gemfile, go-task, the YAML scanner, pre-commit, VS Code tasks and workspace globs with many `*` or `**`.
 - `ToolDef` gains `homepage`, `description` and `brand`. Every built-in has a homepage and a description, and most have a brand.
 - `Catalog` carries `kind: 'catalog'` and `schemaVersion` (`CATALOG_SCHEMA_VERSION`). The new `./schema` entry has JSON Schemas for `Catalog`, `RunnerReport`, `Task`, `Param` and `ToolInfo`. `toolInfo(tool)` in `./detect` returns a tool's JSON-safe part.
 - The new browser-safe `./groups` entry holds the group table (`GROUPS`, `groupOf`, `catalogGroups`, `SYNTHESIZED_RUNNERS`).
@@ -40,8 +42,8 @@ New:
   - `hatch`: each environment's scripts from pyproject.toml or hatch.toml, as `hatch run <env>:<script>`.
   - `cargo-aliases`: the `[alias]` table of `.cargo/config.toml` files, merged from a crate up to the root, `xtask` included.
   - `nx`: declared targets from `project.json` and `package.json` `nx.targets`, with `dependsOn` and `nx.json` `targetDefaults`, all read as JSONC. Inferred targets are not listed.
-  - `vscode-tasks`: `.vscode/tasks.json` shell, process and npm tasks, with `dependsOn`, `isBackground`, top-level `options` and the current platform's override.
+  - `vscode-tasks`: `.vscode/tasks.json` shell, process and npm tasks, with `dependsOn`, `isBackground`, top-level `options` and the current platform's override. In a `sh -c` line, `${workspaceFolder}` is quoted for where it sits: a word outside quotes, escaped inside `"…"`, spliced between `'…'`.
   - `devbox`: `devbox.json` `shell.scripts`.
   - `procfile`: each `Procfile` and `Procfile.dev` entry as a declared service, run through overmind, foreman or honcho, else `sh -c`.
-  - `cmake-presets`: configure, build and test presets, with `include` files and each preset's `configurePreset` as `dependsOn`. A preset whose `condition` is false here is not listed, and an `inherits` walk is capped.
+  - `cmake-presets`: configure, build and test presets, with `include` files and each preset's `configurePreset` as `dependsOn`. A preset whose `condition`, its own or inherited, is false here is not listed, and an `inherits` walk is capped.
   - `dotnet`: build, restore and publish for each solution and project file, `run` for a program and `test` for a test project, in a new `./dotnet` entry with the dotnet ecosystem.

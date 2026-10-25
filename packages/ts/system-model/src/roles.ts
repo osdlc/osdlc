@@ -6,7 +6,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { compilePattern, dirOf, joinRel, segmentRegExp } from './pattern.ts'
+import { compilePattern, dirOf, joinRel, segmentMatcher } from './pattern.ts'
 import type { Registry } from './registry.ts'
 import type { Evidence } from './aspect.ts'
 import type { Detected, EcosystemDef, Package, ProjectProfile, ToolDef } from './tool.ts'
@@ -230,20 +230,27 @@ function memberMatches(globs: readonly string[], rel: string): boolean {
   return member
 }
 
-function globMatches(glob: string, rel: string): boolean {
+/** Whether `rel` matches one workspace glob, where `**` is any number of segments. */
+export function globMatches(glob: string, rel: string): boolean {
   const g = glob
     .replace(/^\.\//, '')
     .replace(/\/$/, '')
     .split('/')
-    .map((seg) => (seg === '**' ? ANY_DEPTH : segmentRegExp(seg)))
+    .map((seg) => (seg === '**' ? ANY_DEPTH : segmentMatcher(seg)))
   const r = rel.split('/')
-  const match = (i: number, j: number): boolean => {
-    if (i === g.length) return j === r.length
-    const seg = g[i]!
-    if (seg === ANY_DEPTH) return match(i + 1, j) || (j < r.length && match(i, j + 1))
-    return j < r.length && seg.test(r[j]!) && match(i + 1, j + 1)
+  // reach[j]: the first j path segments match the glob segments so far. One
+  // row per glob segment, so several `**` cost the product of the two lengths.
+  let reach = r.map(() => false).concat(false)
+  reach[0] = true
+  for (const seg of g) {
+    const next = reach.map(() => false)
+    for (let j = 0; j <= r.length; j++) {
+      if (seg === ANY_DEPTH) next[j] = reach[j]! || (j > 0 && next[j - 1]!)
+      else if (j > 0) next[j] = reach[j - 1]! && seg.test(r[j - 1]!)
+    }
+    reach = next
   }
-  return match(0, 0)
+  return reach[r.length]!
 }
 
 const ANY_DEPTH = Symbol('**')

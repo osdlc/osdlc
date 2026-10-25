@@ -172,7 +172,7 @@ export const vscodeTasksRunner: RunnerRole = {
           cwd: run.cwd,
           display: run.argv.join(' '),
           parameters: [],
-          ...(run.argv.some((a) => /\$\{[^}]*\}/.test(a))
+          ...(run.argv.some((a) => /\$\{[^{}]*\}/.test(a))
             ? { parametersUnknown: 'editor-variable' as const }
             : {}),
           source: file,
@@ -234,7 +234,7 @@ function runOf(
   if (type === 'npm') {
     const script = entry['script']
     if (typeof script !== 'string') return null
-    const rel = typeof entry['path'] === 'string' ? entry['path'].replace(/\/+$/, '') : ''
+    const rel = typeof entry['path'] === 'string' ? entry['path'].replace(/(?<!\/)\/+$/, '') : ''
     const dir = rel === '' ? folder : joinRel(folder, rel)
     return { argv: npmScript(ctx, dir, script), cwd: '.', type, detail: `npm script ${script}` }
   }
@@ -249,7 +249,7 @@ function runOf(
   if (type === 'process') return { argv: [...command, ...literal].map(expand), cwd, type }
   // A shell task's command is a command line; its args are words VS Code quotes.
   const line = command.join(' ')
-  const plain = line.replace(KNOWN, '').replace(/\$\{[^}]*\}/g, '')
+  const plain = line.replace(KNOWN, '').replace(/\$\{[^{}]*\}/g, '')
   // A line of plain words, an editor variable aside, is split. A shell would
   // read `${file}` as a variable of its own, so such a word is not quoted
   // into a shell line unless the line needs a shell anyway.
@@ -257,11 +257,48 @@ function runOf(
     const words = line.split(/\s+/).filter((w) => w !== '')
     return { argv: [...words, ...literal].map(expand), cwd, type }
   }
-  const full = [
-    line.replace(KNOWN, (m) => shellQuote(expand(m))),
-    ...literal.map((a) => shellQuote(expand(a))),
-  ]
+  const full = [substituteInShell(line, expand), ...literal.map((a) => shellQuote(expand(a)))]
   return { argv: ['sh', '-c', full.join(' ')], cwd, type, detail: full.join(' ') }
+}
+
+const KNOWN_AT = new RegExp(KNOWN.source, 'y')
+
+/**
+ * `line` with each known variable replaced by its value, quoted for where it
+ * sits: a whole word outside quotes, escaped inside `"…"`, and spliced between
+ * a closed and a reopened `'…'`. An escaped character (`\\$`) is left alone.
+ */
+function substituteInShell(line: string, expand: (s: string) => string): string {
+  let out = ''
+  let quote: '"' | "'" | null = null
+  for (let i = 0; i < line.length;) {
+    const c = line[i]!
+    if (c === '$') {
+      KNOWN_AT.lastIndex = i
+      const m = KNOWN_AT.exec(line)
+      if (m !== null) {
+        const value = expand(m[0])
+        out +=
+          quote === '"'
+            ? value.replace(/[\\$`"]/g, '\\$&')
+            : quote === "'"
+              ? `'${shellQuote(value)}'`
+              : shellQuote(value)
+        i += m[0].length
+        continue
+      }
+    }
+    if (c === '\\' && quote !== "'") {
+      out += line.slice(i, i + 2)
+      i += 2
+      continue
+    }
+    if (c === "'" && quote !== '"') quote = quote === null ? "'" : null
+    else if (c === '"' && quote !== "'") quote = quote === null ? '"' : null
+    out += c
+    i++
+  }
+  return out
 }
 
 /** `word` as one POSIX shell word. */
@@ -297,7 +334,7 @@ function cwdOf(
   const root = join(ctx.root)
   if (abs === root) return '.'
   if (!abs.startsWith(`${root}/`)) return null
-  return abs.slice(root.length + 1).replace(/\/+$/, '')
+  return abs.slice(root.length + 1).replace(/(?<!\/)\/+$/, '')
 }
 
 /** The argv that runs a package script, through the manager chosen for `dir`. */

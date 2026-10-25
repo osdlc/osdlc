@@ -73,9 +73,11 @@ export interface CacheEntry {
    */
   toolPath?: string | null | undefined
   /**
-   * The resolved binary's size and mtime, so an upgrade in place (a proto
-   * shim, `~/.cargo/bin/just`) also reads as another tool. `null` when it
-   * cannot be read. Absent when the runner has no binary.
+   * The resolved binary's size and mtime, so a binary replaced in place
+   * (`~/.cargo/bin/just`) also reads as another tool. A version manager's
+   * shim (proto, asdf, mise) does not change when the version it selects
+   * does, so that upgrade is not seen. `null` when it cannot be read. Absent
+   * when the runner has no binary.
    */
   toolStamp?: string | null | undefined
   /** Each binary the runner looked up through `ctx.which`, and what it found. */

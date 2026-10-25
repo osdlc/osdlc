@@ -16,6 +16,8 @@
  * keystrokes arrive during a refresh, and a row can be stale.
  */
 
+import { constants } from 'node:os'
+
 import { spawnRunner, streamRunner } from '@osdlc/command-seam'
 import {
   tasks as allTasks,
@@ -667,6 +669,13 @@ function copy(task: Task): boolean {
 
 let restored = false
 
+/** Stop the probe in flight, give the terminal back, and exit. */
+function quit(code: number): never {
+  state.inFlight?.abort()
+  restoreTerminal()
+  process.exit(code)
+}
+
 /** Idempotent: both `runAndExit` and the exit hook call it. */
 function restoreTerminal(): void {
   if (restored) return
@@ -875,8 +884,7 @@ export function handle(key: string): void {
   switch (key) {
     case '\x03': // ctrl-c
     case '\x1b': // esc
-      restoreTerminal()
-      process.exit(0)
+      quit(0)
       break
     case '\r':
     case '\n': {
@@ -1020,10 +1028,12 @@ export async function runTui({
   process.stdin.setEncoding('utf8')
 
   process.on('exit', restoreTerminal)
-  process.on('SIGINT', () => {
-    restoreTerminal()
-    process.exit(0)
-  })
+  // With a listener here, each signal's exit is this one's. command-seam's
+  // forwarding (installed by main) still kills the probe groups: it signals
+  // them at once, and its exit hook kills any still running.
+  process.on('SIGINT', () => quit(0))
+  process.on('SIGTERM', () => quit(128 + constants.signals.SIGTERM))
+  process.on('SIGHUP', () => quit(128 + constants.signals.SIGHUP))
   process.stdout.on('resize', draw)
 
   process.stdin.on('data', (chunk: string) => {

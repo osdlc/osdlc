@@ -311,12 +311,51 @@ export function scanRecipes(text: string): Array<{ name: string; deps: string[] 
     const name = header.name
     seen.add(name)
     const tail = raw.slice(header.end).replace(/#.*$/, '').split('&&')[0]!
-    const deps = [...tail.matchAll(/\(\s*([A-Za-z_][\w-]*)[^)]*\)|([A-Za-z_][\w-]*)/g)].map(
-      (d) => d[1] ?? d[2]!,
-    )
-    out.push({ name, deps })
+    out.push({ name, deps: dependencyNames(tail) })
   }
   return out
+}
+
+const WORD = /[A-Za-z_][\w-]*/y
+
+/**
+ * The dependency names in a header's tail: bare words, and the first word of
+ * each `(name args…)`. One pass, so a hostile line costs linear time. An
+ * unclosed `(` ends the scan.
+ */
+function dependencyNames(tail: string): string[] {
+  const deps: string[] = []
+  let i = 0
+  while (i < tail.length) {
+    if (tail[i] === '(') {
+      let j = i + 1
+      while (j < tail.length && /\s/.test(tail[j]!)) j++
+      WORD.lastIndex = j
+      const first = WORD.exec(tail)?.[0]
+      let depth = 1
+      let quote: string | null = null
+      for (j = i + 1; j < tail.length && depth > 0; j++) {
+        const c = tail[j]!
+        if (quote !== null) {
+          if (c === '\\' && quote === '"') j++
+          else if (c === quote) quote = null
+        } else if (c === '"' || c === "'") quote = c
+        else if (c === '(') depth++
+        else if (c === ')') depth--
+      }
+      if (depth > 0) break
+      if (first !== undefined) deps.push(first)
+      i = j
+      continue
+    }
+    WORD.lastIndex = i
+    const word = WORD.exec(tail)?.[0]
+    if (word !== undefined) {
+      deps.push(word)
+      i += word.length
+    } else i++
+  }
+  return deps
 }
 
 /**

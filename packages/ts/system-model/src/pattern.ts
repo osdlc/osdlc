@@ -36,7 +36,7 @@ export function compilePattern(pattern: string): CompiledPattern {
   const trimmed = pattern.replace(/\/+$/, '')
   const anchored = trimmed.includes('/')
   const body = trimmed.replace(/^\/+/, '')
-  const segments = body.split('/').map(segmentRegExp)
+  const segments = body.split('/').map(segmentMatcher)
   const literal = !pattern.includes('*')
 
   const base = (path: string): string | null => {
@@ -71,10 +71,41 @@ export function compilePattern(pattern: string): CompiledPattern {
   return compiled
 }
 
-/** One path segment as a regex: `*` matches within the segment, everything else is literal. */
-export function segmentRegExp(segment: string): RegExp {
-  const escaped = segment.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '[^/]*')
-  return new RegExp(`^${escaped}$`)
+/** A test of one path segment against a glob segment. */
+export interface SegmentMatcher {
+  test(segment: string): boolean
+}
+
+/**
+ * One path segment as a matcher: `*` matches any run of characters, everything
+ * else is literal. It is a two-pointer match, not a regex, so a glob from a
+ * repository (`a*a*a*…b`) costs at most the product of the two lengths.
+ */
+export function segmentMatcher(glob: string): SegmentMatcher {
+  return { test: (segment) => wildcardMatch(glob, segment) }
+}
+
+function wildcardMatch(glob: string, text: string): boolean {
+  let g = 0
+  let t = 0
+  let star = -1
+  let mark = 0
+  while (t < text.length) {
+    if (g < glob.length && glob[g] === '*') {
+      star = g++
+      mark = t
+    } else if (g < glob.length && glob[g] === text[t]) {
+      g++
+      t++
+    } else if (star !== -1) {
+      g = star + 1
+      t = ++mark
+    } else {
+      return false
+    }
+  }
+  while (glob[g] === '*') g++
+  return g === glob.length
 }
 
 function dirOfParts(parts: string[]): string {

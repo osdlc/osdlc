@@ -79,7 +79,7 @@ export async function huskyHooks(ctx: ProviderContext): Promise<HookDef[]> {
 export async function preCommitHooks(ctx: ProviderContext, config: string): Promise<HookDef[]> {
   const text = await ctx.readText(config)
   if (text === null) return []
-  const ids = [...text.matchAll(/^\s*-\s*id:\s*['"]?([^'"\s#]+)/gm)].map((m) => m[1]!)
+  const ids = [...text.matchAll(/^[ \t]*-\s*id:\s*['"]?([^'"\s#]+)/gm)].map((m) => m[1]!)
   return unique(ids).map((id) => ({
     name: id,
     argv: ['pre-commit', 'run', id, '--all-files'],
