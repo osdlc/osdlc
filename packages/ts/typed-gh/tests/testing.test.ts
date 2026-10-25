@@ -157,7 +157,7 @@ describe('prRow', () => {
         isDraft: true,
         mergeable: 'CONFLICTING',
         reviewDecision: 'CHANGES_REQUESTED',
-        // gh prints a bot author this way. The parser keeps the `app/` login.
+        // gh prints a bot author this way.
         author: { is_bot: true, login: 'app/dependabot' },
         labels: [labelRow({ name: 'p1' })],
         comments: [commentRow({ body: 'why?' })],
@@ -173,7 +173,8 @@ describe('prRow', () => {
       isDraft: true,
       mergeable: 'CONFLICTING',
       reviewDecision: 'CHANGES_REQUESTED',
-      author: { login: 'app/dependabot', isBot: true },
+      // Only isBot: whether the login keeps `app/` is the parser's business (#484).
+      author: { isBot: true },
       labels: [{ name: 'p1', color: 'd73a4a' }],
       comments: [{ id: 'IC_kwDOAbCdEf5xYz12', author: { login: 'octocat' }, body: 'why?' }],
       reviews: [{ id: 'PRR_kwDOAbCdEf5xYz34', state: 'CHANGES_REQUESTED' }],
