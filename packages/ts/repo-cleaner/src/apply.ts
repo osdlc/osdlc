@@ -1,0 +1,341 @@
+/**
+ * Apply an approved cleanup plan.
+ *
+ * Re-sweeps each repository and drops selected rows that are gone, no longer
+ * deletable, changed, or lack a grant. Deletes the rest in a fixed order
+ * (worktrees, local branches, remote branches, then one prune per repository)
+ * and stops at the first failure. Branch deletes are compare-and-swap on the
+ * planned sha. Every step is verified, and the receipt is rewritten after each.
+ */
+
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+
+import type { CommandRunner } from '@osdlc/command-seam'
+import { CommandFailed, Git } from '@osdlc/typed-git'
+
+import { localDeleteCommand, remoteDeleteCommand } from './branches.ts'
+import type { HostHooks } from './hooks.ts'
+import {
+  PLAN_CATEGORIES,
+  fingerprint,
+  isPlanCategory,
+  sameFingerprint,
+  type Plan,
+  type PlanRepo,
+} from './plan.ts'
+import type { Dropped, Receipt, RowRef, Step } from './receipt.ts'
+import { sweepRepo } from './sweep.ts'
+import { AUTHORIZATIONS, type Authorization, type SweepItem } from './types.ts'
+import { worktreePruneCommand, worktreeRemoveCommand } from './worktrees.ts'
+import { writeJsonAtomic } from './write-json.ts'
+
+/** An authorization the caller gave, for one row or (`row: null`) for all. */
+export interface Grant {
+  name: Authorization
+  row: RowRef | null
+}
+
+export interface ApplyOptions extends HostHooks {
+  /** Injected runners. Defaults spawn the real `git` and `gh`. */
+  git?: CommandRunner | undefined
+  gh?: CommandRunner | undefined
+  /** The caller's directory; the sweep never offers the worktree holding it. */
+  callerCwd: string
+  dryRun: boolean
+  /** Where the receipt goes. Unused under `dryRun`. */
+  receiptPath: string
+  /** Shown in the receipt. */
+  planPath: string
+  /** Limit the run to the plan repository rooted here. */
+  repoRoot?: string | undefined
+  now?: () => Date
+}
+
+/** A selection or grant the plan cannot satisfy. Nothing has been touched. */
+export class ApplyArgumentError extends Error {}
+
+/** `<category>:<id>`, split at the first colon. */
+export function parseRowRef(text: string): RowRef {
+  const colon = text.indexOf(':')
+  const category = colon < 0 ? '' : text.slice(0, colon)
+  const id = colon < 0 ? '' : text.slice(colon + 1)
+  if (!isPlanCategory(category) || id === '') {
+    throw new ApplyArgumentError(
+      `bad row ${JSON.stringify(text)}: expected <category>:<id> with category one of ${PLAN_CATEGORIES.join(', ')}`,
+    )
+  }
+  return { category, id }
+}
+
+/** `<name>` for every row, or `<name>=<category>:<id>` for one. */
+export function parseGrant(text: string): Grant {
+  const eq = text.indexOf('=')
+  const name = eq < 0 ? text : text.slice(0, eq)
+  if (!(AUTHORIZATIONS as readonly string[]).includes(name)) {
+    throw new ApplyArgumentError(
+      `unknown authorization ${JSON.stringify(name)}: expected one of ${AUTHORIZATIONS.join(', ')}`,
+    )
+  }
+  return { name: name as Authorization, row: eq < 0 ? null : parseRowRef(text.slice(eq + 1)) }
+}
+
+const sameRow = (a: RowRef, b: RowRef): boolean => a.category === b.category && a.id === b.id
+const label = (row: RowRef): string => `${row.category}:${row.id}`
+
+function errorText(err: unknown): string {
+  if (err instanceof CommandFailed) return err.detail.trim() || err.message
+  return err instanceof Error ? err.message : String(err)
+}
+
+interface Selected {
+  repo: PlanRepo
+  ref: RowRef
+}
+
+/** Each selected row's plan repository. Unknown and ambiguous rows are errors. */
+function locate(plan: Plan, rows: readonly RowRef[], repoRoot: string | undefined): Selected[] {
+  const repos =
+    repoRoot === undefined
+      ? plan.repos
+      : plan.repos.filter((r) => resolve(r.root) === resolve(repoRoot))
+  if (repos.length === 0) throw new ApplyArgumentError(`no plan repository at ${repoRoot}`)
+  return rows.map((ref) => {
+    const hits = repos.filter((r) => r.rows.some((row) => sameRow(row, ref)))
+    if (hits.length === 0) throw new ApplyArgumentError(`row ${label(ref)} is not in the plan`)
+    if (hits.length > 1) {
+      throw new ApplyArgumentError(
+        `row ${label(ref)} is in ${hits.length} plan repositories; pass --repo-root`,
+      )
+    }
+    return { repo: hits[0]!, ref }
+  })
+}
+
+function granted(grants: readonly Grant[], ref: RowRef, name: Authorization): boolean {
+  return grants.some((g) => g.name === name && (g.row === null || sameRow(g.row, ref)))
+}
+
+interface Accepted {
+  repo: string
+  item: SweepItem
+  force: boolean
+}
+
+/** The plan repository's rows as they stand now, with the host's overlay applied. */
+function resweep(repo: PlanRepo, opts: ApplyOptions): SweepItem[] {
+  const sweep = sweepRepo(repo.root, {
+    remote: repo.remote,
+    noGh: repo.no_gh,
+    branch: repo.branch ?? undefined,
+    cwd: opts.callerCwd,
+    git: opts.git,
+    gh: opts.gh,
+  })
+  if (sweep.repo === null || sweep.error !== null) {
+    throw new Error(sweep.error ?? `could not read repository: ${repo.root}`)
+  }
+  return opts.annotate === undefined ? sweep.items : opts.annotate(sweep.repo, sweep.items)
+}
+
+/** Re-sweep, then split the selection into rows to run and rows dropped. */
+function recheck(
+  selected: readonly Selected[],
+  grants: readonly Grant[],
+  opts: ApplyOptions,
+): { accepted: Accepted[]; dropped: Dropped[] } {
+  const swept = new Map<PlanRepo, SweepItem[]>()
+  for (const { repo } of selected) {
+    if (!swept.has(repo)) swept.set(repo, resweep(repo, opts))
+  }
+
+  const accepted: Accepted[] = []
+  const dropped: Dropped[] = []
+  for (const { repo, ref } of selected) {
+    const drop = (reason: Dropped['reason'], detail: string): void => {
+      dropped.push({ repo: repo.root, ...ref, reason, detail })
+    }
+    const planned = repo.rows.find((row) => sameRow(row, ref))!
+    const item = swept.get(repo)!.find((it) => sameRow(it as RowRef, ref))
+    if (item === undefined) {
+      drop('gone', 'no longer in the sweep')
+      continue
+    }
+    if (!item.deletable) {
+      drop('not-deletable', item.reason)
+      continue
+    }
+    const now = fingerprint(item)
+    if (!sameFingerprint(planned.fingerprint, now)) {
+      drop(
+        'facts-changed',
+        `planned ${JSON.stringify(planned.fingerprint)}, now ${JSON.stringify(now)}`,
+      )
+      continue
+    }
+    const missing = item.requires.filter((name) => !granted(grants, ref, name))
+    if (missing.length > 0) {
+      drop('not-authorized', `needs ${missing.join(', ')}`)
+      continue
+    }
+    accepted.push({ repo: repo.root, item, force: granted(grants, ref, 'discard-changes') })
+  }
+  return { accepted, dropped }
+}
+
+function pending(
+  repo: string,
+  row: RowRef | null,
+  action: Step['action'],
+  command: string,
+  expectedSha: string | null = null,
+): Step {
+  return {
+    repo,
+    row,
+    action,
+    command,
+    expected_sha: expectedSha,
+    result: 'pending',
+    error: null,
+    verification: null,
+  }
+}
+
+const pruneStep = (repo: string, row: RowRef | null): Step =>
+  pending(repo, row, 'prune-worktrees', worktreePruneCommand(repo))
+
+function stepFor({ repo, item, force }: Accepted): Step {
+  const ref: RowRef = { category: item.category, id: item.id }
+  const sha = typeof item.facts['sha'] === 'string' ? item.facts['sha'] : null
+  switch (item.category) {
+    case 'worktree':
+      if (item.facts['on_disk'] === false) return pruneStep(repo, ref)
+      return pending(repo, ref, 'remove-worktree', worktreeRemoveCommand(repo, item.id, { force }))
+    case 'local_branch':
+      return pending(repo, ref, 'delete-local', localDeleteCommand(item.id, sha ?? ''), sha)
+    case 'remote_branch':
+      return pending(
+        repo,
+        ref,
+        'delete-remote',
+        remoteDeleteCommand(String(item.facts['remote']), String(item.facts['branch']), sha ?? ''),
+        sha,
+      )
+  }
+}
+
+/** Run one step, then confirm it took. Throws with the reason on failure. */
+function execute(step: Step, row: Accepted | null, git: Git): string {
+  const at = git.at(step.repo)
+  const registered = (path: string): boolean =>
+    at.worktrees().some((w) => resolve(w.path) === resolve(path))
+
+  switch (step.action) {
+    case 'prune-worktrees': {
+      at.worktreePrune()
+      if (row !== null && registered(row.item.id)) throw new Error('still registered after prune')
+      return row === null ? 'pruned' : 'unregistered'
+    }
+    case 'remove-worktree': {
+      const path = row!.item.id
+      at.worktreeRemove(path, { force: row!.force })
+      if (existsSync(path)) throw new Error(`directory still exists: ${path}`)
+      if (registered(path)) throw new Error(`still registered: ${path}`)
+      return 'directory gone and unregistered'
+    }
+    case 'delete-local': {
+      const name = row!.item.id
+      const holder = at.worktrees().find((w) => w.branch === name)
+      if (holder !== undefined) throw new Error(`refused: checked out in ${holder.path}`)
+      at.deleteRef(`refs/heads/${name}`, { expected: step.expected_sha! })
+      // `update-ref -d` does not remove the `branch.<name>` config section.
+      at.configRemoveSection(`branch.${name}`)
+      if (at.resolveRef(`refs/heads/${name}`) !== null) throw new Error('ref still resolves')
+      return 'ref does not resolve'
+    }
+    case 'delete-remote': {
+      const remote = String(row!.item.facts['remote'])
+      const ref = `refs/heads/${String(row!.item.facts['branch'])}`
+      at.push(remote, `:${ref}`, { forceWithLease: { ref, expect: step.expected_sha! } })
+      if (at.lsRemote(remote, ref).some((r) => r.ref === ref)) {
+        throw new Error(`ls-remote still lists ${ref}`)
+      }
+      return 'ls-remote lists nothing'
+    }
+  }
+}
+
+/**
+ * Apply the `requested` rows of `plan` under `grants`. A row named twice runs once.
+ *
+ * @throws ApplyArgumentError before touching anything, when a row or grant does
+ *   not fit the plan.
+ */
+export function applyPlan(
+  plan: Plan,
+  requested: readonly RowRef[],
+  grants: readonly Grant[],
+  opts: ApplyOptions,
+): Receipt {
+  const now = opts.now ?? (() => new Date())
+  const rows = requested.filter(
+    (row, i) => requested.findIndex((other) => sameRow(other, row)) === i,
+  )
+  if (rows.length === 0) throw new ApplyArgumentError('no rows selected')
+  const selected = locate(plan, rows, opts.repoRoot)
+  for (const grant of grants) {
+    if (grant.row !== null && !rows.some((r) => sameRow(r, grant.row!))) {
+      throw new ApplyArgumentError(`--authorize names unselected row ${label(grant.row)}`)
+    }
+  }
+
+  const receipt: Receipt = {
+    version: 1,
+    plan: opts.planPath,
+    status: opts.dryRun ? 'dry-run' : 'applying',
+    started_at: now().toISOString(),
+    finished_at: null,
+    dropped: [],
+    steps: [],
+  }
+  const { accepted, dropped } = recheck(selected, grants, opts)
+  receipt.dropped = dropped
+
+  const ordered = PLAN_CATEGORIES.flatMap((category) =>
+    accepted.filter((row) => row.item.category === category),
+  )
+  const plannedSteps: Array<[Step, Accepted | null]> = ordered.map((row) => [stepFor(row), row])
+  for (const repo of new Set(ordered.map((row) => row.repo))) {
+    plannedSteps.push([pruneStep(repo, null), null])
+  }
+  receipt.steps = plannedSteps.map(([step]) => step)
+
+  if (opts.dryRun) {
+    for (const step of receipt.steps) step.result = 'would-run'
+    receipt.finished_at = now().toISOString()
+    return receipt
+  }
+
+  const save = (): void => writeJsonAtomic(opts.receiptPath, receipt)
+  save()
+  const git = new Git(opts.callerCwd, { runner: opts.git })
+  for (const [step, row] of plannedSteps) {
+    try {
+      step.verification = execute(step, row, git)
+      step.result = 'ok'
+    } catch (err) {
+      step.result = 'failed'
+      step.error = errorText(err)
+      receipt.status = 'failed'
+      receipt.finished_at = now().toISOString()
+      save()
+      return receipt
+    }
+    save()
+  }
+  receipt.status = 'complete'
+  receipt.finished_at = now().toISOString()
+  save()
+  return receipt
+}
