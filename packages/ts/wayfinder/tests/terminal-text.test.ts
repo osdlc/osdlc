@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { captureIo } from '@osdlc/cli-tool'
+import { stripControls } from '@osdlc/ux'
 import { CATALOG_SCHEMA_VERSION, type Catalog, type Task } from '@osdlc/system-model/detect'
 
 import { main } from '../src/cli.ts'
@@ -72,6 +73,30 @@ describe('terminalSafe', () => {
     const all = '\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069'
     expect(terminalSafe(`a${all}b`)).toBe(`a${'�'.repeat(9)}b`)
     expect(terminalSafe(`a${BIDI}b`, { multiline: true })).toBe('a��b')
+  })
+
+  test('replaces the bidi marks ALM, LRM and RLM, as stripControls removes them', () => {
+    const marks = '\u061c\u200e\u200f'
+    expect(terminalSafe(`a${marks}b`)).toBe('a���b')
+    expect(stripControls(`a${marks}b`)).toBe('ab')
+    expect(jsonText(marks)).toBe('"\\u061c\\u200e\\u200f"')
+  })
+
+  test('replaces every character stripControls removes, one for one', () => {
+    const controls = [
+      ...Array.from({ length: 0x20 }, (_, i) => i),
+      ...Array.from({ length: 0x21 }, (_, i) => 0x7f + i),
+      0x061c,
+      0x200e,
+      0x200f,
+      ...Array.from({ length: 5 }, (_, i) => 0x202a + i),
+      ...Array.from({ length: 4 }, (_, i) => 0x2066 + i),
+    ].map((c) => String.fromCharCode(c))
+    // At the end of the text, so stripControls has no sequence to take with it.
+    for (const c of controls) {
+      expect(stripControls(`a${c}`)).toBe('a')
+      expect(terminalSafe(`a${c}`)).toBe('a�')
+    }
   })
 
   test('jsonText escapes DEL, C1 and bidi, and parses to the same value', () => {

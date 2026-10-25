@@ -959,6 +959,9 @@ importers:
       '@osdlc/tsconfig':
         specifier: workspace:^
         version: link:../tsconfig
+      '@osdlc/ux':
+        specifier: workspace:^
+        version: link:../ux
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.5
