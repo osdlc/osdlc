@@ -66,6 +66,8 @@ function envStemOf(name: string): string {
  */
 export interface RunOptions extends OpOptions {
   io?: CliIo
+  /** Defaults to `process.platform`. On `win32` the command reports itself unavailable. */
+  platform?: NodeJS.Platform
 }
 
 /**
@@ -77,6 +79,11 @@ export interface RunOptions extends OpOptions {
  */
 export function runDevCli(spec: ToolSpec, argv: readonly string[], opts: RunOptions = {}): number {
   const io = opts.io ?? processIo
+  // The launcher and the shims are POSIX shell scripts.
+  if ((opts.platform ?? process.platform) === 'win32') {
+    io.stderr(`${spec.name} dev: not available on Windows; the launcher is a POSIX shell script\n`)
+    return EXIT.error
+  }
   const args = [...argv]
   let json = false
   let dryRun = opts.dryRun ?? false
