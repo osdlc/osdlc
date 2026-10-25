@@ -237,7 +237,7 @@ describe('the command line', () => {
     expect((await way(['list', '/no/such/dir'])).code).toBe(1)
   })
 
-  test('a command word after global flags is the command, for legacy commands too', async () => {
+  test('a command word after global flags is the command, for shared commands too', async () => {
     const dir = await root(SCRIPTS)
     const home = await root({})
     for (const argv of [
@@ -253,7 +253,7 @@ describe('the command line', () => {
     expect(io.out).toContain(basename(dir))
   })
 
-  test('a legacy command refuses a directory that does not exist', async () => {
+  test('a shared command refuses a directory that does not exist', async () => {
     const io = captureIo()
     expect(await main(['trust', '--show', '-C', '/no/such/dir'], {}, '/', io)).toBe(1)
     expect(io.err).toContain('no such directory')
@@ -263,6 +263,21 @@ describe('the command line', () => {
     const ran = await way(['--serve', '--list'])
     expect(ran.code).toBe(2)
     expect(ran.err).toContain('each choose a surface')
+    expect(ran.out).toBe('')
+  })
+
+  test('two surface flags with --json print the error document too', async () => {
+    const ran = await way(['--list', '--json'])
+    expect(ran.code).toBe(2)
+    expect(ran.err).toContain('--list and --json each choose a surface')
+    expect(JSON.parse(ran.out)).toEqual({
+      schemaVersion: 1,
+      kind: 'error',
+      code: 'usage',
+      message: '--list and --json each choose a surface; give one',
+      exit: 2,
+      hint: '"way --help" lists the commands',
+    })
   })
 
   test('the help lists the commands but not the contributor ones', async () => {

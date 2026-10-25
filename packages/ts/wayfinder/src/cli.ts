@@ -13,6 +13,7 @@
  */
 
 import { EXIT, processContext, processIo, type CliIo } from '@osdlc/cli-tool'
+import { errorDocument } from '@osdlc/cli-tool/command'
 import { runDevCli } from '@osdlc/cli-tool/devlink'
 import { installGroupSignalForwarding } from '@osdlc/command-seam'
 import { homeDir } from '@osdlc/trust-repo'
@@ -24,8 +25,18 @@ import { WAYFINDER_SPEC, checkoutRoot } from './devlink.ts'
 import type { GuideTool } from './guide.ts'
 import { safeJsonStdout, safeStderr, safeStdout } from './terminal-text.ts'
 
-function usageError(io: CliIo, message: string): number {
-  io.stderr(`${BIN}: ${message}\n  "${BIN} --help" lists the commands\n`)
+/**
+ * Refuse a command line before the tree runs: a line on stderr, and with
+ * `--json` before any `--` the error document on stdout, as the tree does.
+ */
+function usageError(io: CliIo, argv: readonly string[], message: string): number {
+  const hint = `"${BIN} --help" lists the commands`
+  io.stderr(`${BIN}: ${message}\n  ${hint}\n`)
+  const dash = argv.indexOf('--')
+  const head = dash === -1 ? argv : argv.slice(0, dash)
+  if (head.includes('--json')) {
+    io.stdout(`${JSON.stringify(errorDocument('usage', message, EXIT.usage, hint), null, 2)}\n`)
+  }
   return EXIT.usage
 }
 
@@ -154,7 +165,7 @@ export async function main(
 
   const { app, words } = createWayApp({ home, guide: () => GUIDE_TOOL })
   const aliased = rewriteAliases(argv, words)
-  if ('error' in aliased) return usageError(io, aliased.error)
+  if ('error' in aliased) return usageError(io, argv, aliased.error)
 
   return app.run(aliased.argv, {
     // JSON keeps every value exact, with DEL, C1 and bidi controls escaped.
