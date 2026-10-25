@@ -1,0 +1,33 @@
+[package]
+name = "markdown-vault-fs"
+version = "0.3.1"
+edition.workspace = true
+rust-version.workspace = true
+description = "Vault filesystem primitives: the visibility-policy walk, the excluded-files rules, the `_system/` rules, statSync-shaped timestamps, and a re-export of the path-guard containment guard"
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/markdown-vault-fs"
+readme = "README.md"
+keywords = ["markdown", "vault", "obsidian", "walk", "filesystem"]
+categories = ["filesystem"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+# Deliberately YAML-free: nothing here parses vault content, so the crate stays
+# small and pulls in no markdown or YAML stack.
+[dependencies]
+path-guard = { workspace = true }
+regex = { workspace = true }
+walkdir = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
