@@ -614,7 +614,7 @@ Integration, declares exit 1 absent and returns the rejected refs.
 | `clean({ directories })` | `clean -f`, or `-fd` — ignored files are kept |
 | `deleteBranch(name, { force })` | `branch -d` / `-D` |
 | `deleteRef(ref, { expected })` | `update-ref -d <ref> <expected>` — refuses when `ref` has moved |
-| `worktreeAdd(path, { branch, resetBranch, startPoint, detach })` | `worktree add` — `branch` is `-b`, `resetBranch` is `-B` (create, or reset an existing branch); passing both throws a `TypeError` |
+| `worktreeAdd(path, { branch, resetBranch, startPoint, detach })` | `worktree add` — `branch` is `-b`; `resetBranch` picks `-B` (create, or reset an existing branch), as for `checkout` |
 | `worktreeRemove(path, { force })` | `worktree remove` |
 | `worktreeMove(from, to, { force })` | `worktree move` |
 | `worktreePrune()` | `worktree prune` |

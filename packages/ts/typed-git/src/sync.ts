@@ -754,7 +754,7 @@ export class Git {
 
   /**
    * `git worktree add [--detach] [-b|-B branch] <path> [startPoint]`.
-   * `resetBranch` is `-B`: create the branch, or reset it if it exists.
+   * `resetBranch` picks `-B`: create `branch`, or reset it if it exists.
    */
   worktreeAdd(path: string, opts: GitSyncCallOptions & WorktreeAddOptions = {}): void {
     this.exec(v.worktreeAdd(path, opts), opts)

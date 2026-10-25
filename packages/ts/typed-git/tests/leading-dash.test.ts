@@ -114,7 +114,11 @@ const MORE_CASES: Array<[string, unknown[]]> = [
   ['remoteSetHead', ['origin', { branch: '-x' }]],
   ['remoteSetBranches', ['origin', ['main', '-x']]],
   ['push', ['origin', '-x', { delete: true }]],
-  ['worktreeAdd', ['/wt', { resetBranch: 'b', startPoint: '-x' }]],
+  ['worktreeAdd', ['/wt', { branch: 'b', resetBranch: true, startPoint: '-x' }]],
+  // worktree add hands the name to a child `git branch`: `-B -M` renames HEAD's branch.
+  ['worktreeAdd', ['/wt', { branch: '-M' }]],
+  ['worktreeAdd', ['/wt', { branch: '-M', resetBranch: true }]],
+  ['checkout', ['main', { branch: '-x' }]],
   ['mergeTree', ['-x', 'main']],
   ['log', [{ range: '-x' }]],
   ['log', [{ rev: 'main', notRefs: ['origin/main', '-x'] }]],

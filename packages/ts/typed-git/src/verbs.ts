@@ -2166,11 +2166,12 @@ export interface WorktreeAddOptions {
   /** `-b <branch>` — create this branch at `startPoint`; git refuses if it exists. */
   branch?: string | undefined
   /**
-   * `-B <branch>` — create this branch, or reset an existing one, at
+   * `-B` rather than `-b`: create `branch`, or reset an existing one, at
    * `startPoint`. git still refuses a branch checked out in another
-   * worktree. Passing it with `branch` throws a `TypeError`.
+   * worktree. Without `branch` it throws a `TypeError`. The same shape as
+   * {@link CheckoutOptions.resetBranch}.
    */
-  resetBranch?: string | undefined
+  resetBranch?: boolean | undefined
   /** The commit the new worktree (and branch) starts at; HEAD when omitted. */
   startPoint?: string | undefined
   /** `--detach` — check out `startPoint` with no branch. */
@@ -2179,13 +2180,16 @@ export interface WorktreeAddOptions {
 
 /** `git worktree add [--detach] [-b|-B branch] <path> [startPoint]`. */
 export function worktreeAdd(path: string, opts: WorktreeAddOptions = {}): GitVerb<void> {
-  if (opts.branch !== undefined && opts.resetBranch !== undefined) {
-    throw new TypeError('typed-git: worktreeAdd: pass branch or resetBranch, not both')
+  if (opts.resetBranch && opts.branch === undefined) {
+    throw new TypeError('typed-git: worktreeAdd: resetBranch needs a branch')
   }
   const argv = ['worktree', 'add']
   if (opts.detach) argv.push('--detach')
-  if (opts.branch !== undefined) argv.push('-b', opts.branch)
-  if (opts.resetBranch !== undefined) argv.push('-B', opts.resetBranch)
+  // Guarded: worktree add hands the name to a child `git branch`, which would
+  // read a leading-dash value such as `-M` as an option.
+  if (opts.branch !== undefined) {
+    argv.push(opts.resetBranch ? '-B' : '-b', positional('worktreeAdd', 'branch', opts.branch))
+  }
   argv.push(positional('worktreeAdd', 'path', path))
   const start = optionalPositional('worktreeAdd', 'startPoint', opts.startPoint)
   if (start !== undefined) argv.push(start)
@@ -2256,7 +2260,8 @@ export type RemoteSetHeadOptions =
  *
  * `absent: []`. A `branch` with no remote-tracking ref `<remote>/<branch>`
  * exits 1 and throws, and so does an unknown remote with `branch`. `auto` asks
- * the remote, so an unknown or unreachable one exits 128 and throws. `delete`
+ * the remote, so an unknown or unreachable one exits 128, and a remote whose
+ * HEAD cannot be determined exits 1; both throw. `delete`
  * when the ref is not set exits 0 (measured on git 2.34).
  */
 export function remoteSetHead(remote: string, opts: RemoteSetHeadOptions): GitVerb<void> {
@@ -2302,7 +2307,13 @@ export function remoteSetBranches(
 
 /** Options for {@link gc}. */
 export interface GcOptions {
-  /** `--auto` — do nothing unless git's thresholds say housekeeping is due. */
+  /**
+   * `--auto` — do nothing unless git's thresholds say housekeeping is due.
+   * With git's default `gc.autoDetach=true`, the work then runs in the
+   * background after this call returns. A caller about to delete or reuse the
+   * repository sets `env: { GIT_CONFIG_PARAMETERS: "'gc.autoDetach=false'" }`
+   * or omits `auto`.
+   */
   auto?: boolean | undefined
   /** `--aggressive` — optimize harder, at much more time. */
   aggressive?: boolean | undefined
@@ -2693,7 +2704,9 @@ export interface CheckoutOptions {
 export function checkout(ref: string, opts: CheckoutOptions = {}): GitVerb<void> {
   const argv = ['checkout']
   if (opts.force) argv.push('--force')
-  if (opts.branch !== undefined) argv.push(opts.resetBranch ? '-B' : '-b', opts.branch)
+  if (opts.branch !== undefined) {
+    argv.push(opts.resetBranch ? '-B' : '-b', positional('checkout', 'branch', opts.branch))
+  }
   argv.push(positional('checkout', 'ref', ref))
   return { argv, absent: NONE, parse: nothing }
 }

@@ -163,7 +163,7 @@ describe('AsyncGit — parity with Git', () => {
     sync.checkout('origin/x', { branch: 'x', resetBranch: true, force: true })
     sync.mergeTree('x', 'main', { mergeBase: 'abc' })
     sync.push('origin', 'HEAD:x', { forceWithLease: { ref: 'refs/heads/x', expect: 'abc' } })
-    sync.worktreeAdd('/wt', { resetBranch: 'b', startPoint: 'main', detach: false })
+    sync.worktreeAdd('/wt', { branch: 'b', resetBranch: true, startPoint: 'main', detach: false })
     sync.commit({ message: 'm', paths: ['a.ts', 'b.ts'] })
     sync.commit({ messageStdin: 'm\n', paths: ['a.ts'] })
     sync.push('origin', 'x', { delete: true, forceWithLease: { ref: 'refs/heads/x', expect: 'a' } })
@@ -270,7 +270,12 @@ describe('AsyncGit — parity with Git', () => {
     await asyncGit.push('origin', 'HEAD:x', {
       forceWithLease: { ref: 'refs/heads/x', expect: 'abc' },
     })
-    await asyncGit.worktreeAdd('/wt', { resetBranch: 'b', startPoint: 'main', detach: false })
+    await asyncGit.worktreeAdd('/wt', {
+      branch: 'b',
+      resetBranch: true,
+      startPoint: 'main',
+      detach: false,
+    })
     await asyncGit.commit({ message: 'm', paths: ['a.ts', 'b.ts'] })
     await asyncGit.commit({ messageStdin: 'm\n', paths: ['a.ts'] })
     await asyncGit.push('origin', 'x', {

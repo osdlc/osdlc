@@ -70,10 +70,10 @@ function clients(replies: Record<string, Partial<CommandResult>> = {}) {
 describe('argv, the same on both clients', () => {
   test('worktreeAdd with resetBranch is -B', async () => {
     const { s, a, sync, asyncGit } = clients()
-    sync.worktreeAdd('/wt', { resetBranch: 'reuse', startPoint: 'main' })
-    sync.worktreeAdd('/wt2', { resetBranch: 'reuse' })
-    await asyncGit.worktreeAdd('/wt', { resetBranch: 'reuse', startPoint: 'main' })
-    await asyncGit.worktreeAdd('/wt2', { resetBranch: 'reuse' })
+    sync.worktreeAdd('/wt', { branch: 'reuse', resetBranch: true, startPoint: 'main' })
+    sync.worktreeAdd('/wt2', { branch: 'reuse', resetBranch: true })
+    await asyncGit.worktreeAdd('/wt', { branch: 'reuse', resetBranch: true, startPoint: 'main' })
+    await asyncGit.worktreeAdd('/wt2', { branch: 'reuse', resetBranch: true })
     expect(s.calls).toEqual([
       ['worktree', 'add', '-B', 'reuse', '/wt', 'main'],
       ['worktree', 'add', '-B', 'reuse', '/wt2'],
@@ -81,14 +81,12 @@ describe('argv, the same on both clients', () => {
     expect(a.calls).toEqual(s.calls)
   })
 
-  test('worktreeAdd refuses branch with resetBranch before spawning', async () => {
+  test('worktreeAdd refuses resetBranch without a branch before spawning', async () => {
     const { s, a, sync, asyncGit } = clients()
-    expect(() => sync.worktreeAdd('/wt', { branch: 'x', resetBranch: 'x' })).toThrow(
-      'typed-git: worktreeAdd: pass branch or resetBranch, not both',
+    expect(() => sync.worktreeAdd('/wt', { resetBranch: true })).toThrow(
+      'typed-git: worktreeAdd: resetBranch needs a branch',
     )
-    await expect(asyncGit.worktreeAdd('/wt', { branch: 'x', resetBranch: 'x' })).rejects.toThrow(
-      TypeError,
-    )
+    await expect(asyncGit.worktreeAdd('/wt', { resetBranch: true })).rejects.toThrow(TypeError)
     expect(s.calls).toEqual([])
     expect(a.calls).toEqual([])
   })
@@ -341,7 +339,7 @@ describe('against real git', () => {
       ).toThrow(FailureError)
 
       const wt = join(scratch, 'wt-B')
-      fx.git.worktreeAdd(wt, { resetBranch: 'reuse', startPoint: 'main' })
+      fx.git.worktreeAdd(wt, { branch: 'reuse', resetBranch: true, startPoint: 'main' })
       expect(fx.git.resolveRef('refs/heads/reuse')).toBe(second)
       expect(new Git(wt).currentBranch()).toBe('reuse')
       fx.git.worktreeRemove(wt, { force: true })
