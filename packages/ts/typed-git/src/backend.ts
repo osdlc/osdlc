@@ -192,6 +192,7 @@ export type GitRequest =
     }
   | { kind: 'worktreeRemove'; path: string; force?: boolean | undefined }
   | ({ kind: 'worktreeMove'; from: string; to: string } & WorktreeMoveOptions)
+  | { kind: 'worktreeUnlock'; path: string }
   | { kind: 'worktreePrune' }
   | ({ kind: 'merge'; ref: string } & MergeOptions)
   | { kind: 'mergeAbort' }
@@ -269,6 +270,7 @@ export interface GitResults {
   worktreeAdd: void
   worktreeRemove: void
   worktreeMove: void
+  worktreeUnlock: void
   worktreePrune: void
   merge: MergeOutcome
   mergeAbort: void
@@ -433,6 +435,8 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
       return v.worktreeRemove(request.path, { force: request.force })
     case 'worktreeMove':
       return v.worktreeMove(request.from, request.to, request)
+    case 'worktreeUnlock':
+      return v.worktreeUnlock(request.path)
     case 'worktreePrune':
       return v.worktreePrune()
     case 'merge':

@@ -610,6 +610,7 @@ Integration, declares exit 1 absent and returns the rejected refs.
 | `worktreeAdd(path, { branch, startPoint, detach })` | `worktree add` |
 | `worktreeRemove(path, { force })` | `worktree remove` |
 | `worktreeMove(from, to, { force })` | `worktree move` |
+| `worktreeUnlock(path)` | `worktree unlock` |
 | `worktreePrune()` | `worktree prune` |
 | `remoteAdd(name, url)` | `remote add` |
 | `checkout(ref, { branch, resetBranch, force })` | `checkout` — `resetBranch` picks `-B` |

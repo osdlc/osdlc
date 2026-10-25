@@ -765,6 +765,11 @@ export class Git {
     this.exec(v.worktreeMove(from, to, opts), opts)
   }
 
+  /** `git worktree unlock <path>`. */
+  worktreeUnlock(path: string, opts: GitSyncCallOptions = {}): void {
+    this.exec(v.worktreeUnlock(path), opts)
+  }
+
   /** `git worktree prune`. */
   worktreePrune(opts: GitSyncCallOptions = {}): void {
     this.exec(v.worktreePrune(), opts)
