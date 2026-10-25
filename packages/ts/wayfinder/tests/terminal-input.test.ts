@@ -3,14 +3,15 @@
  * is stopped by `SIGTTIN`, so the reader reads only in the foreground.
  */
 
-import { EventEmitter } from 'node:events'
+import { spawn } from 'node:child_process'
+import { EventEmitter, once } from 'node:events'
 import { PassThrough } from 'node:stream'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { describe, expect, test, vi } from 'vitest'
 
 import {
   foregroundFromPs,
-  inForeground,
   readTerminalLines,
   type JobSignals,
 } from '../src/serve/terminal-input.ts'
@@ -44,9 +45,25 @@ describe('foregroundFromPs', () => {
   })
 
   test.skipIf(process.platform === 'win32')(
-    'a test run, which has no terminal, is not in the foreground',
+    'a process with no terminal is not in the foreground',
     async () => {
-      expect(await inForeground()).toBe(process.stdin.isTTY === true)
+      // A detached child starts a new session, so it has no controlling
+      // terminal even when the test run has one. Stdin says nothing here: a
+      // test worker's stdin is a pipe, yet it shares the shell's terminal.
+      const mod = pathToFileURL(
+        fileURLToPath(new URL('../src/serve/terminal-input.ts', import.meta.url)),
+      ).href
+      const script =
+        `const { inForeground } = await import(${JSON.stringify(mod)});` +
+        `console.log(await inForeground())`
+      const child = spawn(process.execPath, ['--input-type=module', '-e', script], {
+        detached: true,
+        stdio: ['ignore', 'pipe', 'inherit'],
+      })
+      let out = ''
+      child.stdout.setEncoding('utf8').on('data', (chunk: string) => (out += chunk))
+      await once(child, 'close')
+      expect(out).toBe('false\n')
     },
   )
 })
