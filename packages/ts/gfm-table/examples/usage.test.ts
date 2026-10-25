@@ -36,6 +36,7 @@ import {
   readTable,
   rectangular,
   renderTable,
+  rowCellSources,
   rowCellTexts,
   rowFromPipes,
   rowLineText,
@@ -141,6 +142,7 @@ describe('read a table', () => {
 
   test('row helpers', () => {
     expect(rowCellTexts('| x | y |')).toEqual(['x', 'y'])
+    expect(rowCellSources('| `x` | a \\| b |')).toEqual(['`x`', 'a \\| b'])
     expect(isDelimiterRow('| --- | :-: |')).toBe(true)
     expect(parseAlign(':-:')).toBe('center')
     expect(rowPipes('a|b\\|c|', 10)).toEqual([11, 16])

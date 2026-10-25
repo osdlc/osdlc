@@ -65,8 +65,8 @@ larger document and use the result against the document.
 - Rows: `splitRow`, `rowPipes`, `rowFromPipes`, `isDelimiterRow`,
   `parseAlign`, with the types `TableRowSpan`, `TableCellSpan` and
   `ColumnAlign`.
-- Whole tables: `readTable`, `rowCellTexts`, `renderTable` and `tableGrid`,
-  with the types `TableData`, `TableCell`, `TableInput`, `RenderTableOptions`
+- Whole tables: `readTable`, `rowCellTexts`, `rowCellSources`, `renderTable`
+  and `tableGrid`, with the types `TableData`, `TableCell`, `TableInput`, `RenderTableOptions`
   and `TableGrid`.
 - Padding: `padTable` pads a table's cells so its pipes line up in the
   source, with the option type `PadTableOptions`. Its output is the
