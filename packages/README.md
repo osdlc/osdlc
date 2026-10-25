@@ -322,9 +322,6 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    `packages/rust/release-plz.toml`.
    Once what it waits for is out, remove both in a pull request of its own.
    Held now, in three steps (each crate's `Cargo.toml` names its step):
-   - Step 1, after the trusted-publishing run that publishes agent-adapt
-     0.19.1 and yaml-splice 0.3.2: `typed-git`, `markdown-link`,
-     `markdown-vault-fs`.
    - Step 2, after step 1: `markdown-relink`, `tradecraft-core`.
    - Step 3, after step 2: `tradecraft`.
    - `markdown-contract`, until the parity fixes from the review of
