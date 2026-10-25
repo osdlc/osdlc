@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  normalizeTrustPath,
   pathGlobToRegExp,
   resolveExecGate,
   trustStore,
@@ -28,6 +29,8 @@ const home = realpathSync.native(mkdtempSync(join(tmpdir(), 'trust-repo-smoke-')
 try {
   const repo = join(home, 'work', 'app')
   mkdirSync(repo, { recursive: true })
+  // The store reports keys: on Windows with `/` and a lower-case drive letter.
+  const key = normalizeTrustPath(repo)
 
   const store = trustStore({ tool: 'tooly', env: {}, home })
   assert.equal(store.dir(), trustStoreDir('tooly', {}, home))
@@ -35,10 +38,10 @@ try {
 
   const first = await store.trust(repo)
   assert.equal(first.alreadyTrusted, false)
-  assert.equal(first.root, repo)
+  assert.equal(first.root, key)
   assert.equal((await store.trust(repo)).alreadyTrusted, true)
   assert.equal(await store.isTrusted(repo), true)
-  assert.deepEqual(await store.list(), [repo])
+  assert.deepEqual(await store.list(), [key])
 
   // A trusted root allows execution the config asks for; an untrusted one withholds it.
   const gate = await resolveExecGate(store, { root: repo, configured: true })

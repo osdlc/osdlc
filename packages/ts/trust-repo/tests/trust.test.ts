@@ -14,6 +14,7 @@ import { basename, isAbsolute, join, sep } from 'node:path'
 
 import {
   homeDir,
+  normalizeTrustPath,
   resolveExecGate,
   resolveTrustRoot,
   trustStore,
@@ -262,7 +263,9 @@ describe('resolveRoot', () => {
   test('resolves symlinked ancestors when the root itself does not exist', async () => {
     const parent = await root()
     const gone = join(parent, 'never-existed')
-    expect(await resolveTrustRoot(gone)).toBe(join(await realpath(parent), 'never-existed'))
+    expect(await resolveTrustRoot(gone)).toBe(
+      normalizeTrustPath(join(await realpath(parent), 'never-existed')),
+    )
   })
 
   test("a deleted repository's marker stays reachable", async () => {
@@ -281,7 +284,7 @@ describe('resolveRoot', () => {
     await rm(repo, { recursive: true, force: true })
 
     expect(await store.isTrusted(viaLink)).toBe(true)
-    expect(await store.list()).toEqual([join(await realpath(parent), 'repo')])
+    expect(await store.list()).toEqual([normalizeTrustPath(join(await realpath(parent), 'repo'))])
     expect(await store.untrust(viaLink)).toBe(true)
     expect(await store.list()).toEqual([])
   })
