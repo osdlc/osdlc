@@ -1,3 +1,4 @@
+import { commandString } from '@osdlc/command-seam/quote'
 import { humanAge, humanMs } from '@osdlc/system-model/duration'
 import { terms as splitTerms } from '@osdlc/system-model/match'
 import type {
@@ -15,6 +16,7 @@ import { COPY_REFUSED, skillCopyText, taskCopyText } from '../core/copy-text.ts'
 import { filterSkills, skillLine, type SkillHit } from '../core/skills.ts'
 import { SKILLS_GROUP, groupOf, groupRank } from '../groups.ts'
 import { keysFor } from '../keys.ts'
+import { terminalSafe } from '../terminal-text.ts'
 import {
   APP,
   BIN,
@@ -85,7 +87,9 @@ function rowAttrs(e: Task): string {
 }
 
 /** Wrap the matched character positions of `text` in <mark>. */
-function highlight(text: string, idx: number[] | null): string {
+function highlight(raw: string, idx: number[] | null): string {
+  // Length-preserving, so the match offsets still point at the same characters.
+  const text = terminalSafe(raw)
   if (!idx || !idx.length) return escapeHtml(text)
   const set = new Set(idx)
   let out = '',
@@ -103,6 +107,15 @@ function highlight(text: string, idx: number[] | null): string {
     out += escapeHtml(text[i]!)
   }
   return out + (open ? '</mark>' : '')
+}
+
+/**
+ * Repository text as HTML: escaped, with the control characters a terminal
+ * would get replaced, so a bidi override cannot make a row read differently
+ * from what runs. `multiline` keeps tab and newline, for prose.
+ */
+function shown(text: string, multiline = false): string {
+  return escapeHtml(terminalSafe(text, { multiline }))
 }
 
 /**
@@ -279,11 +292,11 @@ function copyButton(text: string | null, title: string): string {
 /** What Run does, stated up front: the page ends and the task takes the terminal. */
 function runTip(task: Task): string {
   if (task.parametersUnknown === 'editor-variable') {
-    return task.display + ': ' + parametersUnknownLabel('editor-variable') + '.'
+    return terminalSafe(task.display) + ': ' + parametersUnknownLabel('editor-variable') + '.'
   }
   return (
     'Run ' +
-    task.display +
+    terminalSafe(task.display) +
     ' in the terminal ' +
     APP +
     ' is serving from. ' +
@@ -356,25 +369,25 @@ function cells(e: Task, nameHtml: string, depth = 0): string {
     '</span></td>' +
     spacerCell(depth) +
     '<td class="name" title="' +
-    escapeHtml(e.path.join(SEP)) +
+    shown(e.path.join(SEP)) +
     '">' +
     nameHtml +
     '</td>' +
     '<td class="run" title="' +
-    escapeHtml(e.display) +
+    shown(e.display) +
     '">' +
-    escapeHtml(e.display) +
+    shown(e.display) +
     '</td>' +
     // Left out, not emptied: an empty cell would still take a column, and the
     // row would no longer match the table's colgroup.
     (showRuns()
       ? '<td class="doc">' +
-        escapeHtml(e.doc || '') +
+        shown(e.doc || '', true) +
         (e.detail && e.detail !== e.display
           ? '<span class="detail" title="' +
-            escapeHtml(e.detail) +
+            shown(e.detail, true) +
             '">' +
-            escapeHtml(e.detail) +
+            shown(e.detail, true) +
             '</span>'
           : '') +
         '</td>'
@@ -391,7 +404,7 @@ function cells(e: Task, nameHtml: string, depth = 0): string {
     '" title="' +
     escapeHtml(runTip(e)) +
     '" aria-label="' +
-    escapeHtml('Run ' + e.display + ' in the terminal') +
+    shown('Run ' + e.display + ' in the terminal') +
     '"' +
     (e.parametersUnknown === 'editor-variable' ? ' disabled' : '') +
     '>run</button>' +
@@ -689,23 +702,23 @@ function renderSkillRow(hit: SkillHit, depth = 0): string {
     '<td class="ind"><span class="inds"></span></td>' +
     spacerCell(depth) +
     '<td class="name" title="' +
-    escapeHtml(line) +
+    shown(line) +
     '">' +
     name +
     '</td>' +
     '<td class="run skill-about" title="' +
-    escapeHtml(description) +
+    shown(description, true) +
     '">' +
     s.harnesses.map((h) => '<span class="skill-for">' + escapeHtml(h) + '</span>').join('') +
-    escapeHtml(description) +
+    shown(description, true) +
     '</td>' +
     (showRuns()
       ? '<td class="doc">' +
         escapeHtml(s.origin) +
         '<span class="detail" title="' +
-        escapeHtml(s.path) +
+        shown(s.path) +
         '">' +
-        escapeHtml(s.path) +
+        shown(s.path) +
         '</span></td>'
       : '') +
     '<td class="act">' +
@@ -1778,7 +1791,7 @@ export function showRunBar(task: Task): HTMLInputElement {
   const el = document.createElement('div')
   el.id = 'runbar'
   el.setAttribute('role', 'group')
-  el.setAttribute('aria-label', 'Arguments for ' + task.display)
+  el.setAttribute('aria-label', 'Arguments for ' + terminalSafe(task.display))
   // A task whose parameters could not be read may still need some, so the
   // bar says why it asked, and Enter with nothing typed runs it as it is.
   const shape =
@@ -1789,7 +1802,7 @@ export function showRunBar(task: Task): HTMLInputElement {
     '<div class="runbar-line">' +
     '<span class="runbar-sigil" aria-hidden="true">$</span>' +
     '<span class="runbar-cmd">' +
-    escapeHtml(task.argv.join(' ')) +
+    shown(commandString(task.argv, { platform: serverPlatform() })) +
     '</span>' +
     '<input class="runbar-args" type="text" autocomplete="off" spellcheck="false"' +
     ' aria-label="Arguments" />' +

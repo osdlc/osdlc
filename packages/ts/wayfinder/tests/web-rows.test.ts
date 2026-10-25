@@ -106,6 +106,23 @@ describe('a row', () => {
     expect(copy.getAttribute('title')).toBe(COPY_REFUSED)
   })
 
+  test('bidi and other controls in task text are shown replaced', () => {
+    const rlo = '\u202e'
+    state.catalog = catalog([
+      task('evil', {
+        display: `just evil${rlo}gnp.exe`,
+        doc: `About${rlo} it`,
+        path: ['just', `e${rlo}x`],
+      }),
+    ])
+    render()
+    const row = document.querySelector('#out tbody tr')!
+    expect(row.querySelector('td.run')!.textContent).toBe('just evil\ufffdgnp.exe')
+    expect(row.querySelector('td.run')!.getAttribute('title')).not.toContain(rlo)
+    expect(row.textContent).not.toContain(rlo)
+    expect(row.innerHTML).not.toContain(rlo)
+  })
+
   test('a task whose parameters could not be read is marked with the reason', () => {
     state.catalog = catalog([task('deploy', { parametersUnknown: 'exec-withheld' }), task('lint')])
     render()
@@ -131,6 +148,11 @@ describe('the tabs', () => {
 })
 
 describe('the run bar', () => {
+  test('shows the argv quoted, as the command line prints it', () => {
+    showRunBar(task('deploy', { argv: ['just', 'deploy', 'a b'] }))
+    expect($('runbar').querySelector('.runbar-cmd')!.textContent).toBe("just deploy 'a b'")
+  })
+
   test('says the arguments are optional when the parameters could not be read', () => {
     showRunBar(task('deploy', { parametersUnknown: 'tool-missing' }))
     expect($('runbar').getAttribute('aria-label')).toBe('Arguments for just deploy')
