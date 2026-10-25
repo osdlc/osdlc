@@ -115,12 +115,19 @@ export function pre08Bases(
 }
 
 /**
- * Expand a leading `~` against `home`; anything else is returned unchanged.
+ * Expand a leading `~` against `home`, and `~\` too on Windows; anything
+ * else is returned unchanged.
  * direnv, `.env` loaders and CI YAML pass a literal tilde through, and
  * `<cwd>/~/x` would be a silent wrong answer.
  */
-export function expandTilde(path: string, home: string): string {
+export function expandTilde(
+  path: string,
+  home: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
   if (path === '~') return home
-  if (path.startsWith('~/')) return join(home, path.slice(2))
+  if (path.startsWith('~/') || (platform === 'win32' && path.startsWith('~\\'))) {
+    return join(home, path.slice(2))
+  }
   return path
 }

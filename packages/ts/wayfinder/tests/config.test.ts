@@ -29,6 +29,7 @@ import {
   writeConfigFile,
   writeSetting,
 } from '../src/config.ts'
+import { expandTilde } from '../src/xdg.ts'
 import { CONFIG_HOME, USER_CONFIG, fixtureRoot, removeRoot } from './support.ts'
 
 const WINDOWS = process.platform === 'win32'
@@ -180,6 +181,15 @@ describe('configLocations', () => {
       expect(at.user).toBe('/abs/mine.json')
     },
   )
+})
+
+describe('expandTilde', () => {
+  test('expands ~ and ~/, and ~\\ only on Windows', () => {
+    expect(expandTilde('~', '/h')).toBe('/h')
+    expect(expandTilde('~/x', '/h')).toBe(join('/h', 'x'))
+    expect(expandTilde('~\\x', '/h', 'win32')).toBe(join('/h', 'x'))
+    expect(expandTilde('~\\x', '/h', 'linux')).toBe('~\\x')
+  })
 })
 
 describe('movedUserConfigWarning', () => {
