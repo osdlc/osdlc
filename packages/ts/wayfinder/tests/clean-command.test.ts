@@ -208,6 +208,42 @@ describe('way clean', () => {
     expect(await exists(native)).toBe(false)
   })
 
+  test('--legacy ignores the WAYFINDER_* overrides, so it never reaches a live store', async () => {
+    const p = await populated()
+    const env = { WAYFINDER_ROOT: join(p.home, 'Library', 'Application Support') }
+    const app = wayApp({ platform: 'darwin' })
+    const report = await runWay(['clean', '--json'], { cwd: p.home, home: p.home, env, app })
+    const stores = (report.json() as { stores: { key: string; path: string }[] }).stores
+    const dev = stores.find((s) => s.key === 'dev')!.path
+    await put(join(dev, 'link.json'))
+    const ran = await runWay(['clean', '--legacy'], { cwd: p.home, home: p.home, env, app })
+    expect(ran.exit).toBe(0)
+    expect(await exists(join(dev, 'link.json'))).toBe(true)
+  })
+
+  test('--legacy finds the old cache where old releases kept it, not under WAYFINDER_CACHE_DIR', async () => {
+    const p = await populated()
+    const mine = join(p.home, 'waypost', 'notes.txt')
+    await put(mine, 'mine')
+    const old = join(p.home, '.cache', 'waypost', 'a.json')
+    await put(old)
+    const ran = await clean(p.home, ['--legacy'], { WAYFINDER_CACHE_DIR: p.home })
+    expect(ran.exit).toBe(0)
+    expect(await exists(mine)).toBe(true)
+    expect(await exists(old)).toBe(false)
+  })
+
+  test('on Windows --legacy lists and removes the stores from before 0.8', async () => {
+    const p = await populated()
+    const app = wayApp({ platform: 'win32' })
+    const report = await runWay(['clean'], { cwd: p.home, home: p.home, app })
+    expect(report.out).toContain('the user config from before 0.8')
+    const ran = await runWay(['clean', '--legacy'], { cwd: p.home, home: p.home, app })
+    expect(ran.exit).toBe(0)
+    expect(await exists(p.config)).toBe(false)
+    expect(await exists(p.trust)).toBe(false)
+  })
+
   test('--everything needs --yes, then removes every store', async () => {
     const p = await populated()
     expect((await clean(p.home, ['--everything'])).exit).toBe(2)

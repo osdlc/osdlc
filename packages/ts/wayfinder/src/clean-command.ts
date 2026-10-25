@@ -49,7 +49,7 @@ import { commandEnv, type CommandEnvOptions } from './config-command.ts'
 import { configLocations } from './config.ts'
 import { WAYFINDER_SPEC } from './devlink.ts'
 import { terminalSafe } from './terminal-text.ts'
-import { appDirs, appTieredDirs } from './xdg.ts'
+import { appDirs, appTieredDirs, pre08Bases } from './xdg.ts'
 
 /** The tool's name before its first release. Used only to find and remove its files. */
 const OLD_NAME = 'waypost'
@@ -180,6 +180,15 @@ async function pruneEmptyParents(path: string, base: string): Promise<void> {
   }
 }
 
+/** True when `a` and `b` are the same path or one is inside the other. */
+function overlaps(a: string, b: string): boolean {
+  const inside = (outer: string, inner: string): boolean => {
+    const rel = relative(resolve(outer), resolve(inner))
+    return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
+  }
+  return inside(a, b) || inside(b, a)
+}
+
 /** Every store, in report order. */
 function storesFor(
   env: Record<string, string | undefined>,
@@ -238,12 +247,16 @@ function storesFor(
       optional: true,
     })
   }
+  // Old releases' paths come from the rules those releases used, never from
+  // the current `WAYFINDER_*` overrides, which could point them at a live store.
+  const old = pre08Bases(env, home)
+  const legacy: Store[] = []
   for (const [base, what] of [
-    [dirs.bases.config, 'config'],
-    [dirs.bases.state, 'trust store'],
-    [dirs.bases.cache, 'cache'],
+    [old.config, 'config'],
+    [old.state, 'trust store'],
+    [old.cache, 'cache'],
   ] as const) {
-    stores.push({
+    legacy.push({
       key: 'legacy',
       what: `the ${what} from before the rename`,
       path: join(base, OLD_NAME),
@@ -252,17 +265,40 @@ function storesFor(
       optional: true,
     })
   }
+  const os = platform ?? process.platform
   // Link state before 0.8, on macOS only: the native convention's config home.
-  if ((platform ?? process.platform) === 'darwin') {
-    const native = appTieredDirs({ ...at, convention: 'native' })
-    stores.push({
+  if (os === 'darwin') {
+    const base = join(home, 'Library', 'Application Support')
+    legacy.push({
       key: 'legacy',
       what: `${BIN} dev link state from before 0.8`,
-      path: native.standalone(WAYFINDER_SPEC.name).config().path,
+      path: join(base, WAYFINDER_SPEC.name),
       file: false,
-      base: native.bases.config,
+      base,
       optional: true,
     })
+  }
+  // Windows before 0.8 used the XDG paths; 0.8 uses %APPDATA% and %LOCALAPPDATA%.
+  if (os === 'win32') {
+    for (const [base, what] of [
+      [old.config, 'user config'],
+      [old.state, 'trust store'],
+      [old.cache, 'cache'],
+    ] as const) {
+      legacy.push({
+        key: 'legacy',
+        what: `the ${what} from before 0.8`,
+        path: join(base, APP),
+        file: false,
+        base,
+        optional: true,
+      })
+    }
+  }
+  // An old path that is, holds or sits in a current store is not old.
+  const live = stores.map((s) => s.path)
+  for (const store of legacy) {
+    if (!live.some((path) => overlaps(path, store.path))) stores.push(store)
   }
   return stores
 }

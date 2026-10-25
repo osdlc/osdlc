@@ -19,6 +19,7 @@
 import { join } from 'node:path'
 
 import { envVars, systemBaseDirs, TieredDirs, type EnvVars } from '@osdlc/tiered-dirs'
+import { xdgHome } from '@osdlc/trust-repo'
 
 import { APP } from './app.ts'
 
@@ -92,6 +93,24 @@ export function appDirs(opts: AppDirsOptions): AppDirs {
     userConfig: join(config, USER_CONFIG_FILENAME),
     trustStore: join(state, TRUST_DIR),
     bases: { config: bases.config, state: bases.state, cache: bases.cache },
+  }
+}
+
+/**
+ * The base directories releases before 0.8 used, on every platform:
+ * `$XDG_CONFIG_HOME`, `$XDG_STATE_HOME` and `$XDG_CACHE_HOME`, else
+ * `~/.config`, `~/.local/state` and `~/.cache`. The `WAYFINDER_*` variables
+ * did not exist then and are not read. Only `way clean --legacy` and the
+ * Windows move warning use these.
+ */
+export function pre08Bases(
+  env: Record<string, string | undefined>,
+  home: string,
+): { config: string; state: string; cache: string } {
+  return {
+    config: xdgHome(env, home, 'XDG_CONFIG_HOME', '.config'),
+    state: xdgHome(env, home, 'XDG_STATE_HOME', '.local', 'state'),
+    cache: xdgHome(env, home, 'XDG_CACHE_HOME', '.cache'),
   }
 }
 
