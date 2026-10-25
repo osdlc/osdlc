@@ -80,9 +80,9 @@ export interface AsyncCommandRunOptions extends CommandRunOptions {
    *
    * On POSIX this is `processGroup: true`, with everything its doc says,
    * Ctrl-C included. On Windows the runner first runs
-   * `taskkill /pid <pid> /t /f`, with `taskkill` found on absolute `PATH`
-   * entries only, and then kills the child. It does this only while the
-   * child is still running, since a pid can be reused after an exit. A
+   * `taskkill /pid <pid> /t /f`, with `taskkill.exe` taken from
+   * `%SystemRoot%\System32` and never from the run's `PATH`, and then
+   * kills the child. It does this only while the child is still running, since a pid can be reused after an exit. A
    * process that has left the tree (its parent exited first) is not reached.
    */
   killTree?: boolean | undefined
@@ -526,6 +526,16 @@ function runAsync(
   })
 }
 
+/**
+ * `taskkill.exe` in `%SystemRoot%\System32`, as an absolute path. It is not
+ * looked up on the run's own `PATH`, which the caller or a project can set to
+ * put another `taskkill` first.
+ */
+export function taskkillPath(): string {
+  const root = process.env['SystemRoot'] ?? process.env['windir'] ?? 'C:\\Windows'
+  return `${root}\\System32\\taskkill.exe`
+}
+
 /** The `taskkill` arguments that kill `pid` and every process under it. */
 export function treeKillArgv(pid: number): string[] {
   return ['/pid', String(pid), '/t', '/f']
@@ -536,7 +546,7 @@ export function treeKillArgv(pid: number): string[] {
  * even when `taskkill` is missing or fails, so the child itself still dies.
  */
 function killWindowsTree(pid: number, opts: AsyncCommandRunOptions, then: () => void): void {
-  void spawnRunnerAsync('taskkill', { absolutePathOnly: true })
+  void spawnRunnerAsync(taskkillPath(), { absolutePathOnly: true })
     .run(treeKillArgv(pid), { cwd: opts.cwd, env: opts.env, timeoutMs: 10_000 })
     .then(then, then)
 }

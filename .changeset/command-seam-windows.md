@@ -7,3 +7,5 @@ The runners now start programs on Windows, `.cmd` and `.bat` files included. Nod
 `which` takes a `platform` option. With the Windows rules it splits `PATH` on `;`, applies `PATHEXT` (default `.COM;.EXE;.BAT;.CMD`) in any case, and treats `\` and `/` as path separators. `absolutePathOnly` follows the same option. Tests can run these rules on any OS.
 
 New: `commandString(argv, { platform, shell, cwd })` (experimental) quotes a command line for a person to paste: POSIX shells, PowerShell by default on Windows, or `cmd.exe` with `shell: 'cmd'`. `cwd` adds the change of folder each shell needs.
+
+On Windows, `killTree` runs `taskkill.exe` from `%SystemRoot%\System32` by absolute path, not from the run's `PATH`.

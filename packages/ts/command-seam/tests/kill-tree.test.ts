@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, test } from 'vitest'
 
 import { spawnRunnerAsync } from '../src/index.ts'
-import { treeKillArgv } from '../src/async.ts'
+import { taskkillPath, treeKillArgv } from '../src/async.ts'
 import { alive, gone, reap } from './support/procs.ts'
 
 // Starts a grandchild that holds no pipe, prints its pid, then waits.
@@ -56,6 +56,17 @@ describe('killTree', () => {
     const pid = await stopped({ killTree: true, abort: true })
     expect(await gone(pid, 5_000)).toBe(true)
   }, 15_000)
+
+  test('taskkill is an absolute path under SystemRoot, not found on PATH', () => {
+    const saved = process.env['SystemRoot']
+    process.env['SystemRoot'] = 'D:\\Win'
+    try {
+      expect(taskkillPath()).toBe('D:\\Win\\System32\\taskkill.exe')
+    } finally {
+      if (saved === undefined) delete process.env['SystemRoot']
+      else process.env['SystemRoot'] = saved
+    }
+  })
 
   test('taskkill gets the pid, the tree flag and force', () => {
     expect(treeKillArgv(42)).toEqual(['/pid', '42', '/t', '/f'])
