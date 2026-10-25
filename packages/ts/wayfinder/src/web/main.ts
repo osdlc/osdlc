@@ -47,7 +47,8 @@ async function start(): Promise<void> {
   measureChrome()
   ;($('q') as HTMLInputElement).focus()
 
-  // The stored probe first, so the page has rows at once; then a fresh read.
+  // The server's held catalog first, so the page has rows at once; then a
+  // fresh read, which joins the probe the server started.
   // The catalog arrives in the configured runner order. The setting itself
   // is read beside it, so a drag knows which layer set it. The tool info is
   // for the runner info and settings, which are opened later.
@@ -58,7 +59,7 @@ async function start(): Promise<void> {
     state.runnerOrder = order.filter((r): r is string => typeof r === 'string')
   }
   state.runnerOrderSource = settingSource(config, 'runners.order')
-  await load()
+  await load({ join: true })
 }
 
 void start()

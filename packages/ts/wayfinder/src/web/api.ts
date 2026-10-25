@@ -182,20 +182,49 @@ function trustableFrom(unknowns: readonly Unknown[]): boolean {
   )
 }
 
+/** A load that was asked for while another ran, to run once that one is done. */
+let again: { cached?: boolean; join?: boolean } | null = null
+/** True while a load runs. `state.loading` is the part the status line shows. */
+let busy = false
+
 /**
  * Pull the catalog with `way list`.
  *
- * `cached` answers from the stored probe, so the first view appears at once
- * on a repository whose slowest runner takes seconds; `state.cache` says
- * which rows those were. Everything else probes every runner.
+ * `cached` answers with the newest catalog the server holds (the saved
+ * listing at first), so the first view appears at once on a repository whose
+ * slowest runner takes seconds. `join` lets the answer be a probe the server
+ * is already running, for the first fresh read and the polls. Without it (a
+ * Refresh, or a read after a change) the server starts a probe, so the
+ * answer is never from before the click. A load asked for while one runs
+ * runs after it, so a Refresh during a poll is not lost.
  *
  * The fingerprint check stops an unchanged poll from resetting the scroll
  * position and open groups.
  */
-export async function load(opts: { cached?: boolean } = {}): Promise<void> {
-  if (state.loading) return
+export async function load(opts: { cached?: boolean; join?: boolean } = {}): Promise<void> {
+  if (busy) {
+    // A plain load wins over a joining one: it is the one that must not be stale.
+    if (again === null || opts.join !== true) again = opts
+    return
+  }
+  busy = true
+  try {
+    await loadOnce(opts)
+  } finally {
+    busy = false
+  }
+  const next = again
+  again = null
+  if (next !== null) await load(next)
+}
+
+async function loadOnce(opts: { cached?: boolean; join?: boolean }): Promise<void> {
+  const args = {
+    ...(opts.cached === true ? { cached: true } : {}),
+    ...(opts.join === true ? { join: true } : {}),
+  }
   state.loading = true
-  const result = await call<CatalogDocument>(['list'], opts.cached === true ? { cached: true } : {})
+  const result = await call<CatalogDocument>(['list'], args)
   state.loading = false
   if (!result.ok) {
     showError(
@@ -435,10 +464,13 @@ export async function requestRun(id: string, args: readonly string[] = []): Prom
   const body = (await res.json().catch(() => null)) as {
     argv?: string[]
     display?: string
+    code?: string
     message?: string
     hint?: string
   } | null
   if (!res.ok) {
+    // The rows were out of date: read them again, so the page shows what runs now.
+    if (body?.code === 'task-changed') void load()
     const message = body?.message ?? `the server answered ${res.status}`
     return {
       outcome: 'failed',

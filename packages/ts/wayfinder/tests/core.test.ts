@@ -4,7 +4,7 @@
  * tested here once rather than through each surface.
  */
 
-import { readFile, rm, writeFile } from 'node:fs/promises'
+import { readFile, rm, stat, truncate, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
 import { afterAll, describe, expect, test } from 'vitest'
@@ -20,7 +20,7 @@ import { settingLayer } from '../src/config-keys.ts'
 import { taskCopyText } from '../src/core/copy-text.ts'
 import { filterTasks, sourceDepth } from '../src/core/filter.ts'
 import { handOff } from '../src/core/run.ts'
-import { viewPath } from '../src/core/saved-view.ts'
+import { MAX_VIEW_BYTES, viewPath } from '../src/core/saved-view.ts'
 import { SessionError, createSession, resolveRun } from '../src/core/session.ts'
 import { execOffSource, unknownLine, unknownsOf } from '../src/core/unknowns.ts'
 import { withheldTrustHint } from '../src/commands/shared.ts'
@@ -279,6 +279,17 @@ describe('resolveRun', () => {
     }
   })
 
+  test('a task whose directory is outside the root is refused, whatever the catalog says', () => {
+    for (const cwd of ['../..', '/etc', 'a/../../b']) {
+      const catalog = catalogOf([report('npm', [task({ id: 'build', cwd })])])
+      expect(() => resolveRun(project, '/repo', catalog, 'build')).toThrow(
+        expect.objectContaining({ code: 'not-runnable' }),
+      )
+    }
+    const inside = catalogOf([report('npm', [task({ id: 'build', cwd: 'a/../b' })])])
+    expect(resolveRun(project, '/repo', inside, 'build').cwd).toBe(resolve('/repo', 'b'))
+  })
+
   test('an id two tasks share is refused, naming the line that runs each', () => {
     const two = task({ id: 'a:b:c', argv: ['npm', 'run', 'two'] })
     const catalog = catalogOf([
@@ -437,7 +448,7 @@ describe('createSession', () => {
     expect(saved.cache.find((c) => c.runner === 'node-scripts')?.probeMs).toBeUndefined()
 
     // With no saved listing, the store answers.
-    await rm(viewPath(session.store, session.root), { force: true })
+    await rm(viewPath(session.store, session.root, session.viewKey()), { force: true })
     const stored = await session.catalog({ cached: true })
     expect(stored.origin).toBe('store')
     expect(stored.cache.find((c) => c.runner === 'node-scripts')?.probeMs).toBeUndefined()
@@ -538,6 +549,81 @@ describe('createSession', () => {
     })
     expect(other.viewKey()).not.toBe(session.viewKey())
     expect(await other.savedCatalog()).toBeNull()
+  })
+
+  test('a trust revoke, a tool revoke or --no-exec does not draw the view saved under trust', async () => {
+    const dir = await root({ 'mise.toml': '[tasks.hello]\nrun = "echo hi"\n' })
+    const open = (flags?: { allowExec?: boolean }) =>
+      createSession({ dir, cwd: dir, env: {}, home: dir, ...(flags ? { flags } : {}) })
+
+    const granted = await open()
+    await granted.grantTrust()
+    await granted.catalog()
+    expect((await (await open()).savedCatalog())?.origin).toBe('saved')
+    expect(await (await open({ allowExec: false })).savedCatalog()).toBeNull()
+    await (await open()).revokeTrust()
+    expect(await (await open()).savedCatalog()).toBeNull()
+
+    const tool = await open()
+    await tool.grantTrust('mise')
+    await tool.catalog()
+    expect((await (await open()).savedCatalog())?.origin).toBe('saved')
+    await (await open()).revokeTrust('mise')
+    expect(await (await open()).savedCatalog()).toBeNull()
+  })
+
+  test('a malformed or oversized view file is deleted and the store answers', async () => {
+    const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    await session.catalog()
+    // The write is not awaited by catalog(); a read waits for it.
+    expect(await session.savedCatalog()).not.toBeNull()
+    const file = viewPath(session.store, session.root, session.viewKey())
+    const good = JSON.parse(await readFile(file, 'utf-8')) as Record<string, unknown>
+    const bad = [
+      '{ not json',
+      JSON.stringify({ ...good, cache: undefined }),
+      JSON.stringify({ ...good, scopes: { mise: 'all' } }),
+      JSON.stringify({ ...good, version: 2 }),
+    ]
+    for (const text of bad) {
+      await writeFile(file, text, 'utf-8')
+      const again = await createSession({ dir, cwd: dir, env: {}, home: dir })
+      expect(await again.savedCatalog()).toBeNull()
+      await expect(stat(file)).rejects.toThrow()
+      await writeFile(file, text, 'utf-8')
+      expect((await again.catalog({ cached: true })).origin).toBe('store')
+      // That read saves the view again; let the write finish before the next case.
+      await again.savedCatalog()
+    }
+    // Sparse, so the test writes almost nothing.
+    await writeFile(file, '{', 'utf-8')
+    await truncate(file, MAX_VIEW_BYTES + 1)
+    const big = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    expect(await big.savedCatalog()).toBeNull()
+    await expect(stat(file)).rejects.toThrow()
+  })
+
+  test('confirmRun probes the task runner again and refuses a task that changed', async () => {
+    const dir = await root({ Procfile: 'web: echo one\n' })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    await session.catalog()
+    const saved = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    const { catalog } = (await saved.catalog({ cached: true })) as { catalog: Catalog }
+    const id = catalog.reports.flatMap((r) => r.tasks)[0]!.id
+    const plan = resolveRun(saved.project, saved.root, catalog, id)
+    expect((await saved.confirmRun(plan)).argv).toEqual(plan.argv)
+
+    await writeFile(join(dir, 'Procfile'), 'web: echo two\n', 'utf-8')
+    await expect(saved.confirmRun(plan)).rejects.toMatchObject({
+      code: 'task-changed',
+      message: expect.stringContaining('echo two'),
+    })
+    await writeFile(join(dir, 'Procfile'), 'worker: echo w\n', 'utf-8')
+    await expect(saved.confirmRun(plan)).rejects.toMatchObject({
+      code: 'task-changed',
+      message: expect.stringContaining('not found'),
+    })
   })
 
   test('saveSetting writes the file settingLayer picks and the options follow', async () => {

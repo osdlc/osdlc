@@ -27,6 +27,8 @@ const catalogProperties = (catalogSchema as { properties: Record<string, JsonSch
 export const TaskZ = embedded(taskSchema)
 /** A `RunnerReport` from system-model. */
 export const RunnerReportZ = embedded(runnerReportSchema)
+/** A `Catalog` from system-model: what a probe returns. */
+export const CatalogZ = embedded(catalogSchema)
 
 /** One row group and the runners in it. */
 export const GroupZ = z.object({
@@ -112,7 +114,7 @@ export const CatalogOutput = z.object({
   source: z
     .enum(['fresh', 'cached'])
     .describe(
-      'fresh: every runner was probed in this call. cached: the rows came from the store (--cached), and cache[] says which runners were stale or probed now.',
+      'fresh: every runner was probed in this call. cached: under --cached, the rows came from the last saved listing, which checks no files, or else from the stored probes, where cache[] says which runners were stale or probed now.',
     ),
   storedAt: z
     .string()
@@ -145,7 +147,7 @@ export const QueryOutput = z.object({
   source: z
     .enum(['fresh', 'cached'])
     .describe(
-      'fresh: every runner was probed in this call. cached: the rows came from the store (--cached), and cache[] says which runners were stale or probed now.',
+      'fresh: every runner was probed in this call. cached: under --cached, the rows came from the last saved listing, which checks no files, or else from the stored probes, where cache[] says which runners were stale or probed now.',
     ),
   storedAt: z
     .string()

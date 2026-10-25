@@ -58,6 +58,11 @@ export function runCommand(home: string) {
         help: 'find the task in the last saved listing, not a new probe; files are not checked',
       },
       dryRun: { kind: 'boolean', help: 'print what would run, and run nothing' },
+      check: {
+        kind: 'boolean',
+        hidden: true,
+        help: "with --cached --dry-run, probe the task's runner again as a run does",
+      },
     },
     output: RunOutput,
     kind: 'run',
@@ -95,6 +100,22 @@ export function runCommand(home: string) {
           })
         }
         throw err
+      }
+      // A task from a saved or stored listing runs only as its runner reads it
+      // now. A dry run is a preview, so it may come from the listing.
+      const probedNow = snapshot.origin === 'probe' || snapshot.origin === 'empty-store'
+      if (!probedNow && (!flags.dryRun || flags.check)) {
+        try {
+          plan = await session.confirmRun(plan, rest, ctx.signal)
+        } catch (err) {
+          if (err instanceof SessionError) {
+            throw new CommandError(err.message, {
+              code: err.code,
+              ...(err.hint !== undefined ? { hint: err.hint } : {}),
+            })
+          }
+          throw err
+        }
       }
       const unknowns = session
         .unknowns(snapshot)

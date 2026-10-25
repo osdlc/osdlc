@@ -1,5 +1,5 @@
-import { afterAll, describe, expect, test } from 'vitest'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { afterAll, describe, expect, test, vi } from 'vitest'
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -449,6 +449,16 @@ function cacheLines(err: string): string[] {
  * Every case injects `env: {}` and a temp `home`, so the store is
  * `<temp home>/.cache/wayfinder` and the real `~/.cache/wayfinder` is never touched.
  */
+/** The saved view files, once written: main() answers before the write ends. */
+async function savedViews(home: string): Promise<string[]> {
+  const views = join(cacheDir({}, home), 'views', 'v1')
+  return vi.waitFor(async () => {
+    const found = await readdir(views)
+    expect(found).toHaveLength(1)
+    return found
+  })
+}
+
 describe('--cached', () => {
   test('is off by default, and a default run WARMS the store', async () => {
     const home = await temp()
@@ -570,6 +580,39 @@ describe('--cached', () => {
     const query = JSON.parse((await run(['query', '--json', '--cached'], dir, home)).out) as Source
     expect(query.source).toBe('cached')
     expect(near(query.storedAt)).toBe(true)
+  })
+
+  test('a saved listing that is not a view is deleted, and the stored probes answer', async () => {
+    const home = await temp()
+    const dir = await project()
+    await run(['--list'], dir, home)
+    const views = join(cacheDir({}, home), 'views', 'v1')
+    const files = await savedViews(home)
+    await writeFile(join(views, files[0]!), '{"version":1,"catalog":[]}', 'utf-8')
+    const cached = await run(['--list', '--cached'], dir, home)
+    expect(cached.code).toBe(0)
+    expect(cached.out).toContain('make lint')
+    expect(cacheLines(cached.err).join('\n')).not.toContain('the last listing')
+  })
+
+  test('run --cached probes the task runner again and refuses a task that changed', async () => {
+    const home = await temp()
+    const dir = await temp()
+    await writeFile(join(dir, 'Procfile'), 'web: echo one\n', 'utf-8')
+    const listed = JSON.parse((await run(['list', '--json'], dir, home)).out) as {
+      reports: { tasks: { id: string }[] }[]
+    }
+    const id = listed.reports.flatMap((r) => r.tasks)[0]!.id
+    await savedViews(home)
+    await writeFile(join(dir, 'Procfile'), 'web: echo two\n', 'utf-8')
+    // A dry run is a preview from the saved listing, and is not checked.
+    const preview = await run(['run', id, '--cached', '--dry-run'], dir, home)
+    expect(preview.code).toBe(0)
+    expect(preview.out).toContain('echo one')
+    const refused = await run(['run', id, '--cached'], dir, home)
+    expect(refused.code).not.toBe(0)
+    expect(refused.err).toMatch(/changed since .*echo two/)
+    expect(refused.err).toContain('nothing ran')
   })
 
   test('--cached with nothing stored probes and says source fresh, not cached', async () => {

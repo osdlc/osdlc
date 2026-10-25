@@ -4,7 +4,7 @@
  * for how the CLI, the terminal UI and the web view use it.
  */
 
-import { isAbsolute, resolve } from 'node:path'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 
 import { commandString } from '@osdlc/command-seam/quote'
 import { closestMatches } from '@osdlc/config-layers/did-you-mean'
@@ -67,6 +67,7 @@ export class SessionError extends Error {
     | 'ambiguous-task'
     | 'not-runnable'
     | 'bad-arguments'
+    | 'task-changed'
   /** A sentence on what to do, when there is one. */
   readonly hint: string | undefined
   constructor(code: SessionError['code'], message: string, hint?: string) {
@@ -240,6 +241,14 @@ export interface Session {
    * trust and settings. Each `cache[].ageMs` counts from the probe.
    */
   savedCatalog(): Promise<CatalogSnapshot | null>
+  /**
+   * Before a task from a saved or stored listing runs: probe its runner
+   * alone, and return the plan for the task as that probe sees it. Throws
+   * {@link SessionError} `task-changed` when the task is gone, or its argv or
+   * cwd differ from `plan`'s; the message shows the new command line. A
+   * dry run does not need this.
+   */
+  confirmRun(plan: RunPlan, args?: readonly string[], signal?: AbortSignal): Promise<RunPlan>
   /**
    * What decides which rows a probe returns here: trust, the collect
    * options, the skills setting and the tools. Two sessions with the same
@@ -552,9 +561,9 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
       skills: settings.skills.value,
       tools: project.tools.map((t) => t.id),
     })
-  /** Save `snapshot` as the view a first paint draws, then return it. */
-  const saved = async (snapshot: CatalogSnapshot): Promise<CatalogSnapshot> => {
-    await writeView(store, {
+  /** Save `snapshot` as the view a first paint draws, without waiting, and return it. */
+  const saved = (snapshot: CatalogSnapshot): CatalogSnapshot => {
+    void writeView(store, {
       key: currentViewKey(),
       savedAt: Date.now(),
       catalog: snapshot.catalog,
@@ -642,20 +651,58 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
     },
     viewKey: currentViewKey,
     async savedCatalog() {
-      const view = await readView(store, root, currentViewKey())
-      if (view === null) return null
-      // The withheld unknowns name the scopes each runner needs, which a
-      // probe would have reported.
-      if (toolScopes.length > 0) scopesByRunner = new Map(Object.entries(view.scopes))
-      const since = Math.max(0, Date.now() - view.savedAt)
-      return {
-        catalog: orderedCatalog(view.catalog, runnerOrder()),
-        cache: view.cache.map((r) =>
-          r.state === 'miss' ? r : { ...r, ageMs: (r.ageMs ?? 0) + since },
-        ),
-        skills: view.skills,
-        origin: 'saved',
+      try {
+        const view = await readView(store, root, currentViewKey())
+        if (view === null) return null
+        // The withheld unknowns name the scopes each runner needs, which a
+        // probe would have reported. Only runner ids this session knows.
+        if (toolScopes.length > 0) {
+          const known = new Set(toolScopes)
+          scopesByRunner = new Map(
+            Object.entries(view.scopes)
+              .filter(([runner]) => known.has(runner))
+              .map(([runner, scopes]) => [runner, scopes.filter((s) => known.has(s))]),
+          )
+        }
+        const since = Math.max(0, Date.now() - view.savedAt)
+        return {
+          catalog: orderedCatalog(view.catalog, runnerOrder()),
+          cache: view.cache.map((r) =>
+            r.state === 'miss' ? r : { ...r, ageMs: (r.ageMs ?? 0) + since },
+          ),
+          skills: view.skills,
+          origin: 'saved',
+        }
+      } catch {
+        return null
       }
+    },
+    async confirmRun(plan, args = [], signal) {
+      const { catalog } = await probe([plan.task.runner], signal)
+      const now = catalog.reports.flatMap((r) => r.tasks).filter((t) => t.id === plan.task.id)
+      const shown = plan.task.display
+      if (now.length !== 1) {
+        throw new SessionError(
+          'task-changed',
+          `${shown}: not found when ${plan.task.runner} was read again; ` +
+            'the listing it came from is out of date',
+          `"${BIN} list" shows the tasks now`,
+        )
+      }
+      const task = now[0]!
+      const same =
+        task.cwd === plan.task.cwd &&
+        task.argv.length === plan.task.argv.length &&
+        task.argv.every((a, i) => a === plan.task.argv[i])
+      if (!same) {
+        const line = taskCopyText(task, process.platform) ?? commandString(task.argv)
+        throw new SessionError(
+          'task-changed',
+          `${shown}: changed since the listing it came from; it now runs: ${line}`,
+          'nothing ran; run it again to run the new command',
+        )
+      }
+      return resolveRun(project, root, catalog, task.id, args)
     },
     search(catalog, filter) {
       return filterTasks(catalog.reports, filter)
@@ -835,17 +882,24 @@ export function resolveRun(
   } catch (err) {
     throw new SessionError('bad-arguments', err instanceof Error ? err.message : String(err))
   }
-  // The binary is always the task's own, from a catalog this process built.
+  // The binary is always the task's own: invoke may not change it.
   if (invocation.argv[0] !== task.argv[0]) {
     throw new SessionError(
       'bad-arguments',
       `${task.runner}: invoke changed the binary from ${task.argv[0]} to ${invocation.argv[0]}`,
     )
   }
-  return {
-    task,
-    argv: invocation.argv,
-    env: invocation.env,
-    cwd: task.cwd === '.' ? root : resolve(root, task.cwd),
+  // A catalog can come from a file (the saved view, the store), so its cwd
+  // is checked here, whatever the catalog's source.
+  const cwd = task.cwd === '.' ? root : resolve(root, task.cwd)
+  const inside = relative(root, cwd)
+  if (
+    isAbsolute(task.cwd) ||
+    inside === '..' ||
+    inside.startsWith(`..${sep}`) ||
+    isAbsolute(inside)
+  ) {
+    throw new SessionError('not-runnable', `${task.display}: its directory is outside ${root}`)
   }
+  return { task, argv: invocation.argv, env: invocation.env, cwd }
 }

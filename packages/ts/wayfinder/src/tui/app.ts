@@ -120,6 +120,12 @@ export interface TuiState {
   runnerOrder: string[] | undefined
   /** True once a probe has finished, so an empty list is an answer. */
   probed: boolean
+  /**
+   * True when the rows came from a probe in this run. Until then they come
+   * from the saved listing or the store, and a task is probed again before
+   * it runs.
+   */
+  fromProbe: boolean
   /** The selected tab: `all`, a runner id or {@link SKILLS_TAB}. */
   runner: string
   query: string
@@ -270,6 +276,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     skills: [],
     runnerOrder: session.runnerOrder(),
     probed: false,
+    fromProbe: false,
     runner: ALL,
     query: '',
     mode: 'fuzzy',
@@ -896,6 +903,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
    * first, so a refusal (an editor variable, arguments the tool will not
    * take) is shown on the status line and nothing is handed over.
    */
+  let confirming = false
   function run(task: Task, args: readonly string[]): void {
     if (state.catalog === null) return
     let plan: RunPlan
@@ -908,6 +916,30 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
       }
       throw err
     }
+    if (state.fromProbe) {
+      handOver(task, plan, args)
+      return
+    }
+    // The row came from the saved listing or the store: read its runner
+    // again first, and refuse a task that changed. One check at a time, so a
+    // second Enter cannot hand off twice.
+    if (confirming) return
+    confirming = true
+    say(`checking ${task.display} — ${runnerLabel(task.runner)} is read again first`, 'note')
+    draw()
+    void session.confirmRun(plan, args).then(
+      (confirmed) => handOver(task, confirmed, args),
+      (err: unknown) => {
+        confirming = false
+        say(err instanceof Error ? err.message : String(err), 'error')
+        draw()
+        if (err instanceof SessionError && err.code === 'task-changed') track(refresh())
+      },
+    )
+  }
+
+  /** Hand the terminal to `plan`'s task and exit with its code. */
+  function handOver(task: Task, plan: RunPlan, args: readonly string[]): void {
     state.inFlight?.abort()
     host.release()
     host.write(`$ ${terminalSafe(commandLine(plan.argv))}\n`)
@@ -960,6 +992,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
       state.catalog = orderedCatalog(snapshot.catalog, state.runnerOrder)
       state.cache = snapshot.cache
       state.skills = snapshot.skills
+      state.fromProbe = snapshot.origin === 'probe'
       if (state.runner === SKILLS_TAB && state.skills.length === 0) state.runner = ALL
     } catch (err) {
       if (generation === state.generation && !controller.signal.aborted) {
@@ -980,6 +1013,7 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     // one, the store: no probe, but it detects the project and hashes each
     // runner's files, which takes seconds on a large repository.
     try {
+      // savedCatalog never throws; a bad file reads as none.
       const stored = (await session.savedCatalog()) ?? (await session.storedCatalog())
       if (stored !== null) {
         state.catalog = orderedCatalog(stored.catalog, state.runnerOrder)

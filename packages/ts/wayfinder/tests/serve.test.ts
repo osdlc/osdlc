@@ -17,10 +17,12 @@ import type { HttpApi } from '@osdlc/cli-tool/http'
 import { resolveTrustRoot } from '@osdlc/trust-repo'
 
 import { abortOnSignals } from '../src/commands/browse.ts'
+import type { CatalogBody } from '../src/commands/list.ts'
 import { createWayApp } from '../src/commands/index.ts'
 import { createSession } from '../src/core/session.ts'
 import { createSignIn } from '../src/serve/auth.ts'
 import { createCatalogShare } from '../src/serve/catalog-share.ts'
+import { viewPath } from '../src/core/saved-view.ts'
 import { createRoutes } from '../src/serve/routes.ts'
 import { browserOpener, serve, startServer, type WebServer } from '../src/serve/index.ts'
 import { appTrustStore } from '../src/trust-store.ts'
@@ -598,18 +600,41 @@ describe('POST /run', () => {
     }
   })
 
-  test('resolves the task from the saved listing, without the stored probes', async () => {
+  test('runs a task from the saved listing once its runner, probed again, agrees', async () => {
     const s = await start()
     try {
-      // The listing saves the view. Then the stored probes go, and a new
-      // probe would not find the task.
       const id = await taskId(s)
+      // The stored probes are gone: the run reads the saved listing, then
+      // probes node-scripts alone.
       await rm(join(s.home, '.cache', 'wayfinder', 'reports'), { recursive: true, force: true })
-      await writeFile(join(s.dir, 'package.json'), JSON.stringify({ name: 'p', scripts: {} }))
       const res = await run(s, { id })
       expect(res.status).toBe(200)
       expect(await s.web.finished).toBe(0)
       expect(s.handed).toHaveLength(1)
+    } finally {
+      await s.web.stop()
+    }
+  })
+
+  test('refuses a task that changed since the listing, with the command it runs now', async () => {
+    const s = await start({ Procfile: 'web: echo one\n' })
+    try {
+      await s.call(['list'])
+      const id = 'procfile:Procfile:web'
+      // The id is the same; the command it runs is not.
+      await writeFile(join(s.dir, 'Procfile'), 'web: echo two\n')
+      const changed = await run(s, { id })
+      expect(changed.status).toBe(412)
+      const body = (await changed.json()) as { code: string; message: string }
+      expect(body.code).toBe('task-changed')
+      expect(body.message).toContain('changed since the listing')
+      expect(body.message).toContain('echo two')
+      await s.call(['list'])
+      await writeFile(join(s.dir, 'Procfile'), 'worker: echo w\n')
+      const gone = await run(s, { id })
+      expect(gone.status).toBe(412)
+      expect(((await gone.json()) as { message: string }).message).toContain('not found')
+      expect(s.handed).toEqual([])
     } finally {
       await s.web.stop()
     }
@@ -709,11 +734,15 @@ describe('the held catalog', () => {
     })
     const probes: string[] = []
     const fresh = share.fresh.bind(share)
-    share.fresh = (key, run) =>
-      fresh(key, () => {
-        probes.push(key)
-        return run()
-      })
+    share.fresh = (key, run, opts) =>
+      fresh(
+        key,
+        (signal) => {
+          probes.push(key)
+          return run(signal)
+        },
+        opts,
+      )
 
     const aborter = new AbortController()
     let out = ''
@@ -750,8 +779,10 @@ describe('the held catalog', () => {
     // Answered while serve's probe is still held: from the held catalog.
     const cached = (await (await list({ cached: true })).json()) as { source: string }
     expect(cached.source).toBe('cached')
-    // The fresh read joins serve's probe rather than starting its own.
-    const pending = list({})
+    // The page's first fresh read joins serve's probe rather than starting its own.
+    const pending = list({ join: true })
+    // serve itself and the request both wait on it before it is let go.
+    await vi.waitFor(() => expect(share.waiting(session.viewKey())).toBe(2))
     release()
     const doc = (await (await pending).json()) as {
       source: string
@@ -760,6 +791,156 @@ describe('the held catalog', () => {
     expect(doc.source).toBe('fresh')
     expect(doc.reports.flatMap((r) => r.tasks.map((t) => t.display))).toContain('npm run build')
     expect(probes).toHaveLength(1)
+    aborter.abort(130)
+    expect(await finished).toBeNull()
+  })
+
+  const body = (generatedAt: string): CatalogBody => ({ generatedAt }) as never
+  const held = (): {
+    promise: Promise<CatalogBody>
+    resolve: (b: CatalogBody) => void
+    reject: (e: unknown) => void
+  } => {
+    let resolve: (b: CatalogBody) => void = () => {}
+    let reject: (e: unknown) => void = () => {}
+    const promise = new Promise<CatalogBody>((ok, fail) => {
+      resolve = ok
+      reject = fail
+    })
+    return { promise, resolve, reject }
+  }
+
+  test('a failed shared probe fails every waiter, and the next request probes again', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const first = held()
+    let probes = 0
+    const probe = (): Promise<CatalogBody> => {
+      probes++
+      return probes === 1 ? first.promise : Promise.resolve(body('second'))
+    }
+    const a = share.fresh('k', probe, { join: true })
+    const b = share.fresh('k', probe, { join: true })
+    expect(share.waiting('k')).toBe(2)
+    first.reject(new Error('moon failed'))
+    await expect(a).rejects.toThrow('moon failed')
+    await expect(b).rejects.toThrow('moon failed')
+    expect(share.waiting('k')).toBe(0)
+    expect(share.cached('k')).toBeNull()
+    await expect(share.fresh('k', probe, { join: true })).resolves.toEqual(body('second'))
+    expect(probes).toBe(2)
+  })
+
+  test('a waiter that leaves does not stop the probe for the others; the last one does', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const gate = held()
+    let seen: AbortSignal | undefined
+    const probe = (signal: AbortSignal): Promise<CatalogBody> => {
+      seen = signal
+      return gate.promise
+    }
+    const tabA = new AbortController()
+    const tabB = new AbortController()
+    const a = share.fresh('k', probe, { join: true, signal: tabA.signal })
+    const b = share.fresh('k', probe, { join: true, signal: tabB.signal })
+    await vi.waitFor(() => expect(seen).toBeDefined())
+    tabA.abort(new Error('tab closed'))
+    await expect(a).rejects.toThrow('tab closed')
+    expect(seen!.aborted).toBe(false)
+    gate.resolve(body('one'))
+    await expect(b).resolves.toEqual(body('one'))
+
+    const gate2 = held()
+    let seen2: AbortSignal | undefined
+    const c = share.fresh(
+      'k',
+      (signal) => {
+        seen2 = signal
+        return gate2.promise
+      },
+      { join: false, signal: tabB.signal },
+    )
+    await vi.waitFor(() => expect(seen2).toBeDefined())
+    tabB.abort(new Error('tab closed'))
+    await expect(c).rejects.toThrow('tab closed')
+    expect(seen2!.aborted).toBe(true)
+  })
+
+  test('a refresh does not join a probe that began earlier, and an older probe never replaces a newer answer', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const older = held()
+    const poll = share.fresh('k', () => older.promise, { join: true })
+    // The user edits a file, then clicks Refresh.
+    let probes = 0
+    const refresh = share.fresh(
+      'k',
+      () => {
+        probes++
+        return Promise.resolve(body('after the edit'))
+      },
+      { join: false },
+    )
+    await expect(refresh).resolves.toEqual(body('after the edit'))
+    expect(probes).toBe(1)
+    older.resolve(body('before the edit'))
+    await expect(poll).resolves.toEqual(body('before the edit'))
+    expect(share.cached('k')).toMatchObject({ generatedAt: 'after the edit' })
+  })
+
+  test('stop aborts a running shared probe', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    let seen: AbortSignal | undefined
+    const run = share.fresh(
+      'k',
+      (signal) => {
+        seen = signal
+        return new Promise<CatalogBody>((_, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason))
+        })
+      },
+      { join: true, signal: share.signal },
+    )
+    await vi.waitFor(() => expect(seen).toBeDefined())
+    share.stop()
+    expect(seen!.aborted).toBe(true)
+    await expect(run).rejects.toThrow()
+    expect(share.active).toBe(false)
+  })
+
+  test('a malformed saved view does not stop serve from starting; the store answers', async () => {
+    const dir = await root({
+      'package.json': JSON.stringify({ name: 'p', scripts: { build: 'echo b' } }),
+    })
+    const home = await root()
+    const env = { HOME: home, PATH: process.env['PATH'] }
+    const { app, share } = createWayApp({ home })
+    const session = await createSession({ dir, cwd: dir, env, home })
+    await session.catalog()
+    expect(await session.savedCatalog()).not.toBeNull()
+    const file = viewPath(session.store, session.root, session.viewKey())
+    await writeFile(file, JSON.stringify({ version: 1, key: session.viewKey(), cache: 3 }), 'utf-8')
+
+    const aborter = new AbortController()
+    let out = ''
+    const finished = serve({
+      session,
+      app,
+      share,
+      globals: {},
+      cwd: dir,
+      open: false,
+      signal: aborter.signal,
+      stdout: (text) => {
+        out += text
+      },
+      stderr: () => {},
+    })
+    await vi.waitFor(() => expect(out).toMatch(/\?boot=[0-9a-f]+/))
+    expect(out).not.toContain('the last listing')
+    expect(share.cached(session.viewKey())).not.toBeNull()
     aborter.abort(130)
     expect(await finished).toBeNull()
   })

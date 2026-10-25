@@ -5,7 +5,7 @@
  */
 
 import { EventEmitter } from 'node:events'
-import { chmod, mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -25,6 +25,7 @@ import { configLocations } from '../src/config.ts'
 import { KEY_TABLE, keysFor } from '../src/keys.ts'
 import { refreshNote, wrapHanging } from '../src/tui/app.ts'
 import { taskCopyText } from '../src/core/copy-text.ts'
+import { viewPath } from '../src/core/saved-view.ts'
 import { clipboardCommands, writeClipboard } from '../src/tui/copy.ts'
 import { installQuitHandlers, runTui } from '../src/tui/index.ts'
 import { makeStyles, stylesFor, terminalTheme } from '../src/tui/style.ts'
@@ -85,6 +86,7 @@ async function showing(cat: Catalog, opts: Parameters<typeof testTui>[0] = {}) {
   const made = await testTui(opts)
   made.tui.state.catalog = cat
   made.tui.state.probed = true
+  made.tui.state.fromProbe = true
   made.tui.state.cache = cat.reports.map((r) => ({
     runner: r.runner,
     state: 'fresh' as const,
@@ -833,6 +835,53 @@ describe('boot', () => {
     expect(tui.state.loading).toBe(true)
     expect(tui.state.rows.map((r) => r.task.id)).toContain('node-scripts:package.json:build')
     expect(host.written.join('')).toContain('build')
+  })
+
+  test('a malformed saved view is skipped and the first frame comes from the store', async () => {
+    const { tui } = await testTui()
+    const session = tui.session
+    await session.catalog()
+    expect(await session.savedCatalog()).not.toBeNull()
+    const file = viewPath(session.store, session.root, session.viewKey())
+    await writeFile(file, JSON.stringify({ version: 1, key: session.viewKey() }), 'utf-8')
+    const probe = vi.fn(() => new Promise<never>(() => {}))
+    Object.assign(session, { catalog: probe })
+    void tui.boot()
+    await vi.waitFor(() => expect(probe).toHaveBeenCalled())
+    expect(tui.state.rows.map((r) => r.task.id)).toContain('node-scripts:package.json:build')
+    await expect(stat(file)).rejects.toThrow()
+  })
+
+  test('Enter on a saved row reads its runner again, and refuses a task that changed', async () => {
+    const { tui, host, root } = await testTui({ files: { Procfile: 'web: echo one\n' } })
+    const session = tui.session
+    await session.catalog()
+    expect(await session.savedCatalog()).not.toBeNull()
+    await writeFile(join(root, 'Procfile'), 'web: echo two\n', 'utf-8')
+    const probe = vi.fn(() => new Promise<never>(() => {}))
+    Object.assign(session, { catalog: probe })
+    void tui.boot()
+    await vi.waitFor(() => expect(tui.state.rows.length).toBeGreaterThan(0))
+    expect(tui.state.fromProbe).toBe(false)
+    tui.handle('\r')
+    await vi.waitFor(() => expect(tui.state.message?.text).toMatch(/changed since .*echo two/))
+    expect(host.handedOff).toEqual([])
+    expect(host.released).toBe(0)
+    // The probe boot started is still running; its rows replace these.
+    expect(tui.state.loading).toBe(true)
+  })
+
+  test('Enter on a saved row that has not changed runs it once its runner agrees', async () => {
+    const { tui, host } = await testTui({ files: { Procfile: 'web: echo one\n' } })
+    const session = tui.session
+    await session.catalog()
+    expect(await session.savedCatalog()).not.toBeNull()
+    Object.assign(session, { catalog: vi.fn(() => new Promise<never>(() => {})) })
+    void tui.boot()
+    await vi.waitFor(() => expect(tui.state.rows.length).toBeGreaterThan(0))
+    tui.handle('\r')
+    await vi.waitFor(() => expect(host.handedOff).toHaveLength(1))
+    expect(host.handedOff[0]!.argv.join(' ')).toContain('echo one')
   })
 
   test('without a saved view, the first frame comes from the store', async () => {

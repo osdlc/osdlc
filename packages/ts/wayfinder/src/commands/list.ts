@@ -103,7 +103,14 @@ export function listCommand(home: string, share?: CatalogShare) {
       'under --json the same notes are in "unknowns". Agent skills follow the tasks as /<name> ' +
       'lines; the skills setting chooses which (project, all or off).',
     positionals: [{ name: 'dir', help: 'the directory to inspect (beats -C)' }],
-    flags: FILTER_FLAGS,
+    flags: {
+      ...FILTER_FLAGS,
+      join: {
+        kind: 'boolean',
+        hidden: true,
+        help: 'in the web view, answer with a probe already running for the same catalog',
+      },
+    },
     output: CatalogOutput,
     kind: 'catalog',
     schemaVersion: CATALOG_DOCUMENT_VERSION,
@@ -112,17 +119,29 @@ export function listCommand(home: string, share?: CatalogShare) {
     examples: ['list', 'list --json', 'list --services', '-C ../repo list --cached --json'],
     async run({ flags, globals, positionals }, ctx) {
       const filter = filterFrom(flags)
-      const session: Session = await openSession(globals, ctx, home, positionals[0])
-      const read = async (cached: boolean): Promise<CatalogBody> => {
-        const snapshot = await session.catalog({ cached })
+      const sharing =
+        share?.active === true && ctx.surface === 'http' && Object.keys(filter).length === 0
+      // A shared probe outlives the request that started it, so the session
+      // runs on the share's signal; this request's own is passed to the share.
+      const session: Session = await openSession(
+        globals,
+        sharing ? { ...ctx, signal: share.signal } : ctx,
+        home,
+        positionals[0],
+      )
+      const read = async (cached: boolean, signal?: AbortSignal): Promise<CatalogBody> => {
+        const snapshot = await session.catalog({ cached, signal })
         const unknowns = session.unknowns(snapshot)
         noteUnknowns(ctx, session, snapshot, unknowns)
         return catalogDocument(snapshot, unknowns, filter, session.settings().trustedTools)
       }
-      if (share?.active === true && ctx.surface === 'http' && Object.keys(filter).length === 0) {
+      if (sharing) {
         const key = session.viewKey()
-        if (flags.cached) return share.cached(key) ?? read(true)
-        return share.fresh(key, () => read(false))
+        if (flags.cached) return share.cached(key) ?? read(true, ctx.signal)
+        return share.fresh(key, (signal) => read(false, signal), {
+          join: flags.join,
+          signal: ctx.signal,
+        })
       }
       return read(flags.cached)
     },

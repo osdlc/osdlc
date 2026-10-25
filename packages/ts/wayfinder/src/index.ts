@@ -70,7 +70,10 @@ export interface BuildCatalogOptions {
    * `toolModules` is `--config`. Absent fields come from the config files.
    */
   flags?: SessionFlags | undefined
-  /** Answer from the stored probe, probing only the runners missing from it, as `--cached`. */
+  /**
+   * Answer as `--cached` does: from the last saved listing, which checks no
+   * files, else from the stored probe, probing only the runners missing from it.
+   */
   cached?: boolean | undefined
   /** Keep only some tasks and skills, as `--services`, `--declared` and `--depth`. */
   filter?: TaskFilter | undefined
@@ -94,9 +97,10 @@ export interface CatalogDocument {
   /** Whether every runner was allowed to run subprocesses. */
   allowExec: boolean
   /**
-   * `fresh`: every runner was probed in this call. `cached`: the rows came
-   * from the store (`cached: true`); `cache` says which runners were stale
-   * or probed now.
+   * `fresh`: every runner was probed in this call. `cached` (under `cached:
+   * true`): the rows came from the last saved listing, which checks no
+   * files, or else from the stored probes, where `cache` says which runners
+   * were stale or probed now.
    */
   source: 'fresh' | 'cached'
   /** With `source: "cached"`, when the oldest stored rows were probed (ISO 8601). Null when fresh. */

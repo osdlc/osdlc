@@ -394,8 +394,13 @@ elsewhere. When a repository has no measurement yet, the surface says so
 instead of guessing a number.
 
 `^r` in the terminal UI and Refresh on the page always run a real probe. They
-never answer from the store. On the page, Refresh joins a probe that is
-already running rather than starting a second one.
+never answer from the store. On the page, the polls join a probe that is
+already running; Refresh always starts its own, so it never answers with a
+probe that began before an edit.
+
+A row from the saved listing or the store is checked before it runs: its
+runner is probed again, and a task that is gone or changed is refused with
+the command it runs now. A dry run is not checked.
 
 If you run a row whose task no longer exists, such as a task renamed since the
 stored probe, both surfaces tell you the row came from the store, instead of

@@ -642,10 +642,10 @@ export function wireInput(): void {
   // Stay current on window focus and on a slow poll. Both stop for good once
   // the terminal has been handed off (see stopPolling).
   window.addEventListener('focus', () => {
-    if (polling) void load()
+    if (polling) void load({ join: true })
   })
   pollTimer = setInterval(() => {
-    if (polling && !document.hidden) void load()
+    if (polling && !document.hidden) void load({ join: true })
   }, 15000)
 
   // The placeholder in the markup is a sentence, which is cut off mid-word at

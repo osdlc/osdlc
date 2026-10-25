@@ -33,6 +33,8 @@ const RUN_STATUS: Record<string, number> = {
   'ambiguous-task': 409,
   'not-runnable': 422,
   'bad-arguments': 400,
+  // Not 409: the page reads 409 as another run holding the terminal.
+  'task-changed': 412,
   usage: 400,
 }
 
@@ -125,7 +127,9 @@ export async function startServer(options: ServeOptions): Promise<WebServer> {
   const resolveRun = async (id: string, args: string[]): Promise<RunResolution> => {
     const result = await app.call(
       ['run'],
-      { id, rest: args, dryRun: true, cached: true },
+      // From the saved listing, then its runner probed again, so a task that
+      // changed since the page drew it is refused rather than run.
+      { id, rest: args, dryRun: true, cached: true, check: true },
       context,
       { surface: 'http', globals },
     )
@@ -169,6 +173,8 @@ export async function startServer(options: ServeOptions): Promise<WebServer> {
   const stop = async (): Promise<void> => {
     if (stopped) return
     stopped = true
+    // A probe still running would share the terminal with a handed-off task.
+    options.share?.stop()
     await server.stop()
     markStopped()
   }
@@ -279,7 +285,14 @@ export async function serve(options: ServeOptions): Promise<number | null> {
       catalogDocument(snapshot, session.unknowns(snapshot), {}, session.settings().trustedTools)
     share.remember(key, documentOf(first))
     share.activate()
-    void share.fresh(key, async () => documentOf(await session.catalog())).catch(() => {})
+    // It waits on the share's own signal, so it runs to the end unless the
+    // server stops, as on a hand-off.
+    void share
+      .fresh(key, async (signal) => documentOf(await session.catalog({ signal })), {
+        join: true,
+        signal: share.signal,
+      })
+      .catch(() => {})
   }
   web.signIn.arm()
   options.stdout(startupSummary(address, first))

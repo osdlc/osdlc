@@ -42,7 +42,10 @@ fresh). Every `--json` document carries a `cache` array beside the catalog. See
 [The task model and JSON](task-model.md#the-cache-array).
 
 `Ctrl+R` in the terminal UI and **Refresh** in the web view always run a
-real probe. In the web view a Refresh joins a probe that is already running.
+real probe. In the web view the polls join a probe that is already running;
+a Refresh starts its own. A task from a saved or stored listing is probed
+again before it runs (`run --cached`, Enter before the first probe ends, Run
+in the web view), and a task that changed is refused.
 
 ## States
 

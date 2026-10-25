@@ -33,6 +33,7 @@ decides execution against the trust store and loads tool modules. It throws
 | `session.catalog({ cached: true })` | answers with `savedCatalog()` when there is one (`origin: 'saved'`, files unchecked); else reads the store and probes only the runners missing from it. `origin` says which happened |
 | `session.storedCatalog()` | the store alone, probing nothing, or null when it has no answer. It still detects the project and hashes each runner's files |
 | `session.savedCatalog()` | the catalog the last `catalog()` call showed, in any process, from one file (`saved-view.ts`), unchecked; null unless it was saved under the same `viewKey()`. The terminal UI and `serve` draw it first, and fall back to the store |
+| `session.confirmRun(plan, args)` | before a task from a saved or stored listing runs: probes its runner alone and returns the plan as that probe sees it. Throws `task-changed` when the task is gone or its argv or cwd changed |
 | `session.viewKey()` | what decides which rows a probe returns: trust, the collect options, the `skills` setting and the tools |
 | `session.search(catalog, filter)` | `filterTasks` over the catalog, best first with a query |
 | `session.searchSkills(skills, filter)` | the same for `snapshot.skills` |
@@ -68,10 +69,12 @@ the tool registry, and `session.store` the directory probes are stored in.
   tree. The page calls commands over HTTP, so each request opens its own
   session, as a CLI run does. `list` shares one catalog between those
   requests (`serve/catalog-share.ts`): `--cached` gets the newest one the
-  server holds, and a fresh read joins a probe already running, both only
-  under the same `viewKey()`. Its settings screen saves with `config set`,
-  to the file `settingLayer` picks, the rule `saveSetting` uses. A run resolves with `run --dry-run` and hands
-  off with `handOff(plan)` after the server has stopped.
+  server holds, and `list --join` joins a probe already running, both only
+  under the same `viewKey()`. A shared probe runs on the share's signal and
+  stops when no request waits for it or the server stops. Its settings screen saves with `config set`,
+  to the file `settingLayer` picks, the rule `saveSetting` uses. A run resolves with `run --dry-run --cached --check`,
+  which probes the task's runner again, and hands off with `handOff(plan)`
+  after the server has stopped.
 - The page: `filterTasks`, `unknownsOf`, `unknownLine` and the vocabulary
   module are browser-safe, so the page imports them directly.
   `tests/web-bundle.test.ts` fails if the page's bundle imports a Node
