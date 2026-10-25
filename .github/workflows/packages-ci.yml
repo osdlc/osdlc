@@ -25,8 +25,8 @@
 # `windows-tier2` calls packages-windows-tier2.yml, which runs the libraries
 # that start programs or resolve paths on Windows, when any of them is picked.
 # Windows is tier 2 for them (S-0021): it reports, but never fails a pull
-# request. packages-publish.yml sets `skip-windows-tier2` and runs tier 2 as
-# its own job, which the release does not wait for.
+# request. packages-publish.yml sets `skip-windows-tier2`; on main, tier 2
+# runs from its own push trigger.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: packages

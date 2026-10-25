@@ -3,9 +3,9 @@
 # Windows is tier 2 for them (S-0021): this workflow reports, but never blocks
 # a pull request or a release.
 #
-# packages-ci.yml calls it on a pull request with the packages it picked.
-# packages-publish.yml calls it with no packages, which runs all six, as a job
-# the release does not wait for.
+# packages-ci.yml calls it on a pull request with the packages it picked. A
+# push to main runs it on its own, with all six, in a run apart from
+# packages-publish.yml: the release neither waits for it nor queues behind it.
 #
 # `continue-on-error: true` keeps a failed test from failing the run. Each
 # package tests in its own step under scripts/bounded-run.ts, which kills the
@@ -17,6 +17,8 @@
 name: packages-windows-tier2
 
 on:
+  push:
+    branches: [main]
   workflow_call:
     inputs:
       packages:
@@ -26,6 +28,12 @@ on:
 
 permissions:
   contents: read
+
+# On main a newer push replaces a tier-2 run still in progress. A pull
+# request's call gets a group of its own run, so it is never cancelled.
+concurrency:
+  group: ${{ github.event_name == 'push' && format('packages-windows-tier2-{0}', github.ref) || format('packages-windows-tier2-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 
 jobs:
   windows-tier2:
@@ -80,6 +88,9 @@ jobs:
           echo "filter=$filter" >> "$GITHUB_OUTPUT"
           echo "build=$build" >> "$GITHUB_OUTPUT"
 
+      # Not under bounded-run on purpose: it is the canary. Its tests start
+      # bounded-run from bash with a leftover holding the pipes, so if that
+      # leaked to this step, the step would hang here and show it.
       - name: Test the bounded runner
         timeout-minutes: 2
         run: node --test scripts/bounded-run.test.ts

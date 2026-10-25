@@ -15,6 +15,7 @@
 // the process tree itself.
 import { spawn, spawnSync } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
+import { constants } from 'node:os'
 import { pathToFileURL } from 'node:url'
 
 /** How long to wait for the pipes to close after the command exits. */
@@ -44,18 +45,6 @@ function killTree(child: ChildProcess): void {
   }
 }
 
-/** Resolve when `stream` closes or `ms` passes. */
-function closed(stream: NodeJS.ReadableStream | null, ms: number): Promise<void> {
-  if (stream === null) return Promise.resolve()
-  return new Promise((done) => {
-    const timer = setTimeout(done, ms)
-    stream.once('close', () => {
-      clearTimeout(timer)
-      done()
-    })
-  })
-}
-
 /** Run `command` under a limit of `seconds`; resolve with the exit code to use. */
 export function boundedRun(command: string, seconds: number): Promise<number> {
   const child = spawn(command, {
@@ -69,6 +58,7 @@ export function boundedRun(command: string, seconds: number): Promise<number> {
 
   return new Promise((resolve) => {
     let settled = false
+    let timedOut = false
     const settle = (code: number) => {
       if (settled) return
       settled = true
@@ -82,9 +72,9 @@ export function boundedRun(command: string, seconds: number): Promise<number> {
       process.stderr.write(
         `::error::bounded-run: "${command}" passed its ${seconds}s limit; killing its process tree\n`,
       )
+      timedOut = true
       killTree(child)
       setTimeout(() => settle(TIMED_OUT), KILL_GRACE_MS).unref()
-      child.once('exit', () => settle(TIMED_OUT))
     }, seconds * 1000)
 
     child.once('error', (err) => {
@@ -92,12 +82,19 @@ export function boundedRun(command: string, seconds: number): Promise<number> {
       settle(1)
     })
     child.once('exit', (code, signal) => {
-      if (settled) return
-      const result = code ?? (signal === null ? 1 : 128)
-      void Promise.all([
-        closed(child.stdout, EXIT_GRACE_MS),
-        closed(child.stderr, EXIT_GRACE_MS),
-      ]).then(() => {
+      if (timedOut) return settle(TIMED_OUT)
+      // The limit must not fire while the pipes drain: the pid is gone.
+      clearTimeout(limit)
+      const result = code ?? (signal === null ? 1 : 128 + (constants.signals[signal] ?? 0))
+      // `close` follows `exit` once both pipes have closed.
+      const drained = new Promise<void>((done) => {
+        const timer = setTimeout(done, EXIT_GRACE_MS)
+        child.once('close', () => {
+          clearTimeout(timer)
+          done()
+        })
+      })
+      void drained.then(() => {
         // Leftovers in the process group go too. Not on Windows: the pid may
         // already belong to another process.
         if (!windows) killTree(child)
@@ -114,7 +111,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.stderr.write('usage: node scripts/bounded-run.ts <seconds> "<command>"\n')
     process.exit(2)
   }
-  // process.exit, not a natural exit: a handle a leftover process keeps open
-  // must not hold this script.
-  process.exit(await boundedRun(command, limit))
+  const code = await boundedRun(command, limit)
+  // Flush first: pipe writes can be async. Then process.exit, not a natural
+  // exit, so a handle a leftover process keeps open cannot hold this script.
+  await new Promise((done) => process.stdout.write('', done))
+  await new Promise((done) => process.stderr.write('', done))
+  process.exit(code)
 }

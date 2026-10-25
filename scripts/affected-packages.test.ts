@@ -47,6 +47,7 @@ test('a shared root input picks every package', () => {
     '.github/workflows/packages-ci.yml',
     '.github/workflows/packages-windows-tier2.yml',
     'scripts/bounded-run.ts',
+    'scripts/bounded-run.test.ts',
     'scripts/check-packages.ts',
     'scripts/package-shape-ts.ts',
     'scripts/package-shape-ts.test.ts',
