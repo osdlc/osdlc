@@ -183,7 +183,7 @@ test('values by name are bound by each parameter binding', () => {
   const values: ParamValues = { ENV: 'prod', token: 'abc' }
 
   const bound: BoundParams = bindParams(deploy.parameters, values)
-  expect(bound).toEqual({ positional: [], named: ['ENV=prod'], env: { TOKEN: 'abc' } })
+  expect(bound).toEqual({ args: [], positional: [], assign: ['ENV=prod'], env: { TOKEN: 'abc' } })
 
   const run: Invocation = runners.invocation(deploy, values)
   expect(run).toEqual({ argv: ['make', 'deploy', 'ENV=prod'], env: { TOKEN: 'abc' } })

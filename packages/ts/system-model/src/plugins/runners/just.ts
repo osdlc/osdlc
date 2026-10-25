@@ -81,6 +81,8 @@ export const justRunner: RunnerRole = {
   // offer. It runs just when allowed, and says when it did not.
   kind: 'parse',
   probe: { timeoutMs: 10_000, cost: 'cheap' },
+  // just reads every word after the recipe name as the recipe's argument.
+  optionsEndAtTask: true,
   chain: CHAIN,
 
   async collect(ctx, packages): Promise<ProviderResult> {

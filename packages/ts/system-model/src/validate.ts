@@ -65,6 +65,8 @@ export function validateToolDef(value: unknown): string[] {
     if (r['kind'] !== 'parse' && r['kind'] !== 'exec') out.push(`${at}kind is not parse or exec`)
     if (typeof r['collect'] !== 'function') out.push(`${at}collect is not a function`)
     optionalFunction(r, 'invoke', at, out)
+    if (r['optionsEndAtTask'] !== undefined && typeof r['optionsEndAtTask'] !== 'boolean')
+      out.push(`${at}optionsEndAtTask is not a boolean`)
     if (r['chain'] !== undefined && !Array.isArray(r['chain']))
       out.push(`${at}chain is not an array`)
     optionalStrings(r, 'watch', at, out)

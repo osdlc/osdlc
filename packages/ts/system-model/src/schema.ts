@@ -42,6 +42,7 @@ const binding: JsonSchema = {
   oneOf: [
     object({ kind: { const: 'positional' } }, ['kind']),
     object({ kind: { const: 'flag' }, flag: str, key: str }, ['kind', 'flag']),
+    object({ kind: { const: 'switch' }, flag: str }, ['kind', 'flag']),
     object({ kind: { const: 'assign' }, name: str }, ['kind']),
     object({ kind: { const: 'env' }, name: str }, ['kind', 'name']),
   ],

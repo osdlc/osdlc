@@ -81,6 +81,12 @@ describe('poe runner', () => {
         binding: { kind: 'flag', flag: '--mode' },
         choices: ['dev', 'prod'],
       },
+      {
+        name: 'verbose',
+        required: false,
+        variadic: false,
+        binding: { kind: 'switch', flag: '--verbose' },
+      },
       { name: 'files', required: false, variadic: true },
     ])
   })
@@ -88,15 +94,16 @@ describe('poe runner', () => {
   test('invoke binds named values and appends positional ones', async () => {
     const { project, catalog } = await run({ 'pyproject.toml': PYPROJECT })
     const serve = named(tasks(catalog), 'serve')
-    expect(project.runners.invoke(serve, { mode: 'dev', files: ['a', 'b'] })).toEqual([
+    expect(
+      project.runners.invoke(serve, { mode: 'dev', verbose: 'true', files: ['a', 'b'] }),
+    ).toEqual(['poe', 'serve', '--host', 'localhost', '--mode', 'dev', '--verbose', 'a', 'b'])
+    expect(project.runners.invoke(serve, { mode: 'dev', verbose: 'false' })).toEqual([
       'poe',
       'serve',
       '--host',
       'localhost',
       '--mode',
       'dev',
-      'a',
-      'b',
     ])
     expect(() => project.runners.invoke(serve, { mode: 'staging' })).toThrow(/one of dev, prod/)
     expect(project.runners.invoke(named(tasks(catalog), 'test'), ['-k', 'fast'])).toEqual([

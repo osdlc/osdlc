@@ -307,14 +307,17 @@ function toolStatus(
 
 /**
  * What runs `task` with `args`, by the owning runner's rule. A list of
- * strings is positional arguments. Values by name are bound by each
- * parameter's `binding` (see `bindParams`): positional values through the
- * runner's rule, then `flag` and `assign` arguments straight after the task's
- * own argv, so they come before any `--` the runner adds.
+ * strings is positional arguments, passed as given. Values by name are bound
+ * by each parameter's `binding` (see `bindParams`): `positional`, `flag` and
+ * `switch` words go through the runner's rule, so they land after any `--` it
+ * adds. `assign` arguments go straight after the task's own argv, before any
+ * `--`, because the runner reads them.
  *
  * Throws when the runner's rule changes `argv[0]`, the binary. The binary
  * always comes from a catalog built by reading the repository, never from
- * the caller.
+ * the caller. Also throws when a positional value bound by name starts with
+ * `-` and would reach the runner as one of its own options: no `--` comes
+ * before it, and the runner does not set `optionsEndAtTask`.
  */
 export function invocationOf(
   registry: Registry,
@@ -322,24 +325,37 @@ export function invocationOf(
   args: readonly string[] | ParamValues,
 ): Invocation {
   const bound = isList(args)
-    ? { positional: [...args], named: [], env: {} }
+    ? { args: [...args], positional: [], assign: [], env: {} }
     : bindParams(task.parameters, args)
-  const rule = registry.byId.get(task.runner)?.roles.runner?.invoke
+  const runner = registry.byId.get(task.runner)?.roles.runner
+  const rule = runner?.invoke
   const base =
-    bound.positional.length === 0
+    bound.args.length === 0
       ? [...task.argv]
       : rule === undefined
-        ? [...task.argv, ...bound.positional]
-        : rule(task, bound.positional)
+        ? [...task.argv, ...bound.args]
+        : rule(task, bound.args)
   if (base[0] !== task.argv[0]) {
     throw new Error(`${task.runner}: invoke changed the binary from ${task.argv[0]} to ${base[0]}`)
   }
+  if (runner?.optionsEndAtTask !== true) {
+    const end = base.indexOf('--', task.argv.length)
+    for (const value of bound.positional) {
+      if (!value.startsWith('-')) continue
+      const at = base.indexOf(value, task.argv.length)
+      if (at !== -1 && (end === -1 || at < end)) {
+        throw new Error(
+          `${task.runner}: the value ${value} starts with "-", and the runner would read it as an option`,
+        )
+      }
+    }
+  }
   const argv =
-    bound.named.length === 0
+    bound.assign.length === 0
       ? base
       : startsWith(base, task.argv)
-        ? [...task.argv, ...bound.named, ...base.slice(task.argv.length)]
-        : [...base, ...bound.named]
+        ? [...task.argv, ...bound.assign, ...base.slice(task.argv.length)]
+        : [...base, ...bound.assign]
   return { argv, env: bound.env }
 }
 

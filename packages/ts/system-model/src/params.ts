@@ -38,32 +38,44 @@ export function paramShape(parameters: readonly Param[]): string {
 
 /** Parameter values sorted by where they go, from {@link bindParams}. */
 export interface BoundParams {
-  /** Values of `positional` parameters, in parameter order, for the runner's own rule. */
+  /**
+   * The task's own arguments, in parameter order: `positional` values and
+   * `flag` and `switch` words. They go through the runner's rule, so they land
+   * after any `--` the runner adds (`npm run build -- --env prod`).
+   */
+  args: string[]
+  /** The `positional` values alone, in order. Each is also in `args`. */
   positional: string[]
-  /** `flag` and `assign` arguments, in parameter order. */
-  named: string[]
+  /**
+   * `assign` arguments (`ENV=prod`), in parameter order. They are read by the
+   * runner itself (make, go-task), so they go straight after the task's argv,
+   * before any `--`.
+   */
+  assign: string[]
   /** `env` values. */
   env: Record<string, string>
 }
 
 /**
  * Sort `values` by each parameter's `binding`. A missing value takes the
- * parameter's default, if it has one.
+ * parameter's default, if it has one. A `switch` takes `true` or `false`.
  *
  * Throws when a name is not a parameter, a required parameter has no value,
- * a value is not one of the parameter's `choices`, or a list is given to a
- * parameter that is not variadic.
+ * a value is not one of the parameter's `choices`, a list is given to a
+ * parameter that is not variadic, or a switch gets another value.
  */
 export function bindParams(parameters: readonly Param[], values: ParamValues): BoundParams {
   const known = new Set(parameters.map((p) => p.name))
   const unknown = Object.keys(values).filter((name) => !known.has(name))
   if (unknown.length > 0) throw new Error(`unknown parameter: ${unknown.join(', ')}`)
 
-  const out: BoundParams = { positional: [], named: [], env: {} }
+  const out: BoundParams = { args: [], positional: [], assign: [], env: {} }
   // A skipped positional would shift every later one into its slot.
   let skipped: string | undefined
   for (const p of parameters) {
-    const given = values[p.name]
+    // Own keys only, so a parameter named `constructor` or `toString` does
+    // not read a function from the prototype.
+    const given = Object.hasOwn(values, p.name) ? values[p.name] : undefined
     if (given !== undefined && typeof given !== 'string' && !p.variadic) {
       throw new Error(`parameter ${p.name} takes one value`)
     }
@@ -89,15 +101,19 @@ export function bindParams(parameters: readonly Param[], values: ParamValues): B
       switch (binding.kind) {
         case 'positional':
           out.positional.push(value)
+          out.args.push(value)
           break
         case 'flag':
-          out.named.push(
-            binding.flag,
-            binding.key === undefined ? value : `${binding.key}=${value}`,
-          )
+          out.args.push(binding.flag, binding.key === undefined ? value : `${binding.key}=${value}`)
+          break
+        case 'switch':
+          if (value !== 'true' && value !== 'false') {
+            throw new Error(`parameter ${p.name} is a switch: true or false, not ${value}`)
+          }
+          if (value === 'true') out.args.push(binding.flag)
           break
         case 'assign':
-          out.named.push(`${binding.name ?? p.name}=${value}`)
+          out.assign.push(`${binding.name ?? p.name}=${value}`)
           break
       }
     }

@@ -243,7 +243,7 @@ directory is in its `argv` (`just --justfile`, `pnpm run --dir`), so the
 command works when pasted at the root.
 
 A task's `parameters` list each `Param` with its `binding` (`positional`,
-`flag`, `assign` or `env`; absent means positional), and its `doc` and
+`flag`, `switch`, `assign` or `env`; absent means positional), and its `doc` and
 `choices` where the runner gives them. An empty list does not always mean
 "takes none". When the runner could not read them, `parametersUnknown` says
 why:
@@ -339,13 +339,19 @@ manager, which takes no arguments.
 `args` is a list of positional arguments, or values by parameter name:
 
 ```ts
-runners.invoke(task, { target: 'web', ENV: 'prod' })
-// ['task', 'deploy', 'ENV=prod', '--', 'web'] for an `assign` ENV parameter
+// A task with a positional `target` and a `flag` --env parameter
+runners.invoke(npmBuild, { target: 'web', env: 'prod' })
+// ['npm', 'run', 'build', '--', 'web', '--env', 'prod']
 ```
 
-Values by name are bound by each parameter's `binding`: positional values
-through the tool's rule, `flag` and `assign` arguments straight after the
-task's own argv. `invoke` throws when a value does not fit the parameters,
+Values by name are bound by each parameter's `binding`. Positional values and
+`flag` and `switch` words are the task's own arguments: they go through the
+tool's rule, after any `--` it adds. `assign` arguments (`ENV=prod`) are read
+by the tool itself, so they go straight after the task's own argv. Only poe
+declares bindings today; other runners' parameters are positional. A
+positional value bound by name that starts with `-` is refused when the tool
+would read it as its own option (no `--` before it). just is exempt, because
+it ends its options at the recipe name. A list of strings passes as given. `invoke` throws when a value does not fit the parameters,
 and when a tool's rule would change `argv[0]`, the binary.
 `project.runners.invocation(task, args)` returns `{ argv, env }`, for a
 parameter bound to an environment variable. `bindParams` in
@@ -461,8 +467,8 @@ The experimental exports of `@osdlc/system-model/detect`:
 
 `CachedCatalog`, `CargoFact`, `DepFact`, `DepFactKind`, `DepFactSpecifierKind`,
 `GemfileFact`, `GoModFact`, `HookDef`, `HookManagerRole`, `ManifestFacts`,
-`PackageJsonFact`, `PackageManagerChoice`, `PackageManagerRole`, `PinnedInstall`,
-`PinnedInstallOptions`, `PinnedSource`, `PyprojectFact`, `RunnerCacheState`,
+`PackageJsonFact`, `PackageManagerChoice`, `PackageManagerRole`, `ParamBinding`,
+`PinnedInstall`, `PinnedInstallOptions`, `PinnedSource`, `PyprojectFact`, `RunnerCacheState`,
 `SYNTHESIZED_RUNNERS`, `StaleReason`, `ToolAction`, `ToolFact`, `ToolManagerRole`
 
 The experimental exports of `@osdlc/system-model/groups`:
@@ -476,8 +482,8 @@ The experimental exports of `@osdlc/system-model/runners`:
 The `Project` members `packageManagers`, `install`, `frozenInstall`,
 `missingDeps`, `pinnedInstall`, `toolManagers`, `execPrefix`, `trust`,
 `hookManagers` and `armHooks`, the `Runners` members `readCached` and
-`collectAndCache`, `RunnerContext.packageManagers` and `ToolDef.describe` are
-experimental too. A test compares the lists above with the `@experimental`
+`collectAndCache`, `RunnerContext.packageManagers`, `ToolDef.describe` and the `Param` fields
+`binding`, `doc` and `choices` are experimental too. A test compares the lists above with the `@experimental`
 tags in the source.
 
 ## Platforms and runtimes
