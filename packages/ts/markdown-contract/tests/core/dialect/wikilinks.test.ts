@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'vitest'
 
-import { extractVaultRefs } from './wikilinks.js'
+import { extractVaultRefs } from '../../../src/core/dialect/wikilinks.js'
 
-// wikilinks.ts recognizes Obsidian vault references in already-flattened text. Each case is
-// an input string and the exact VaultRef[] it returns.
+// wikilinks.ts recognizes `[[wikilink]]` and `![[transclusion]]` references in already-flattened
+// text. Each case is an input string and the exact VaultRef[] it returns.
 
 describe('extractVaultRefs — recognize [[wikilink]] and ![[transclusion]]', () => {
   test('a plain [[wikilink]] → one wikilink ref whose target is the inner text', () => {
@@ -40,6 +40,38 @@ describe('extractVaultRefs — recognize [[wikilink]] and ![[transclusion]]', ()
     expect(extractVaultRefs('[[A]] and then ![[B]]').map((r) => `${r.kind}:${r.target}`)).toEqual([
       'wikilink:A',
       'transclusion:B',
+    ])
+  })
+
+  test('alias and fragment together: `[[Note#Section|alias]]` and `![[Note#^id|alias]]`', () => {
+    expect(extractVaultRefs('[[Note#Section|alias]] ![[Note#^id|alias]]')).toEqual([
+      {
+        kind: 'wikilink',
+        target: 'Note',
+        alias: 'alias',
+        fragment: 'Section',
+        raw: '[[Note#Section|alias]]',
+      },
+      {
+        kind: 'transclusion',
+        target: 'Note',
+        alias: 'alias',
+        fragment: '^id',
+        raw: '![[Note#^id|alias]]',
+      },
+    ])
+  })
+
+  test('a same-document link `[[#^id]]` has an empty target', () => {
+    expect(extractVaultRefs('[[#^id]]')).toEqual([
+      { kind: 'wikilink', target: '', fragment: '^id', raw: '[[#^id]]' },
+    ])
+  })
+
+  test('backslash-escaped brackets, as remark-stringify writes them, are recognized', () => {
+    expect(extractVaultRefs('\\[\\[Note]] and !\\[\\[Embed]]').map((r) => r.kind)).toEqual([
+      'wikilink',
+      'transclusion',
     ])
   })
 

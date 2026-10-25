@@ -1,12 +1,15 @@
 /**
- * `[[wikilink]]` / `![[transclusion]]` recognition, as a test helper. `parse()` leaves these as
- * ordinary text; the tests use this string pass over flattened text to extract their targets,
- * for example to check that a wikilink survives a parse, stringify, re-parse cycle. It is not
- * part of the package.
+ * `[[wikilink]]` and `![[transclusion]]` recognition.
+ *
+ * `parse()` leaves these as ordinary text in the tree. `extractVaultRefs` is a string pass over
+ * already-flattened text, such as `SectionView.text('all')`, that finds them and splits each
+ * one into its target, alias and fragment.
  */
 
-/** A recognized `[[wikilink]]` or `![[transclusion]]` reference, extracted from flattened text. */
-interface VaultRef {
+/**
+ * A recognized `[[wikilink]]` or `![[transclusion]]` reference, extracted from flattened text.
+ */
+export interface VaultRef {
   /** `"wikilink"` for `[[…]]`, `"transclusion"` for `![[…]]`. */
   kind: 'wikilink' | 'transclusion'
   /** The link target: the part before any `|alias`, `#heading`, or `#^block` suffix. */
@@ -24,9 +27,21 @@ interface VaultRef {
 const VAULT_REF_RE = /(!?)\\*\[\\*\[([^\]]+)\]\]/g
 
 /**
- * Recognize every `[[wikilink]]` / `![[transclusion]]` in already-flattened text. The targets are
- * parsed out of the `target|alias#fragment` form, tolerating remark-stringify's backslash
- * escaping.
+ * Finds every `[[wikilink]]` and `![[transclusion]]` in already-flattened text, in document
+ * order. Each is split out of the `target|alias#fragment` form. A `^` after `#` stays in the
+ * fragment, so `[[Note#^block-id]]` gives the fragment `^block-id`. Backslash-escaped brackets,
+ * which `remark-stringify` writes, are recognized too. `raw` is the matched token verbatim.
+ *
+ * @param text The flattened text to search.
+ * @returns One `VaultRef` per reference, or an empty array when there are none.
+ * @example
+ * ```ts
+ * extractVaultRefs("see [[Note#^id|the note]] and ![[Diagram]]");
+ * // [
+ * //   { kind: "wikilink", target: "Note", alias: "the note", fragment: "^id", raw: "[[Note#^id|the note]]" },
+ * //   { kind: "transclusion", target: "Diagram", raw: "![[Diagram]]" },
+ * // ]
+ * ```
  */
 export function extractVaultRefs(text: string): VaultRef[] {
   const refs: VaultRef[] = []

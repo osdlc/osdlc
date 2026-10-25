@@ -1,10 +1,9 @@
-import { extractVaultRefs } from '../../support/wikilinks.js'
-import { contract, docRule, section, sections } from '../../../src/index.js'
+import { contract, docRule, extractVaultRefs, section, sections } from '../../../src/index.js'
 import type { ValidationFixture } from '../../harness.js'
 import { loadCorpusSource, loadExpected } from '../../harness.js'
 
 // Referential integrity, in-document arm: a docRule that pairs
-// `extractVaultRefs` (the dialect's wikilink recognizer) with `doc.byAnchor` (the doc-wide
+// `extractVaultRefs` (the wikilink recognizer) with `doc.byAnchor` (the doc-wide
 // `^anchor` index) to flag a `[[#^anchor]]` fragment whose target block does not exist IN THE
 // SAME DOCUMENT. Both primitives already ship; this fixture documents the composition and
 // guards it from regression.
