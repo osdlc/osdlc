@@ -71,6 +71,8 @@ import {
   type LsRemoteOptions,
   type LsTreeOptions,
   type NumstatEntry,
+  type PushPorcelainOptions,
+  type PushReport,
   type RemoteRef,
   type CleanOptions,
   type DiffCheckOptions,
@@ -685,6 +687,20 @@ export class Git {
     opts: GitSyncCallOptions & { forceWithLease?: boolean | ForceLease | undefined } = {},
   ): void {
     this.exec(v.push(remote, refspec, opts), opts)
+  }
+
+  /**
+   * `git push --porcelain`, read into one result per ref. A rejected ref comes
+   * back with a typed `rejection` rather than a throw; a failure that reaches
+   * no ref (an unknown remote, auth, network) still throws. See
+   * `pushPorcelain` in `verbs.ts`.
+   */
+  pushPorcelain(
+    remote: string,
+    refspec: string | string[],
+    opts: GitSyncCallOptions & PushPorcelainOptions = {},
+  ): PushReport {
+    return this.exec(v.pushPorcelain(remote, refspec, opts), opts)
   }
 
   /** `git clean -f`, plus `-d` with `directories`. Ignored files are kept. */
