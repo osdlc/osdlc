@@ -1,12 +1,68 @@
 {
   "schema": 1,
   "pr": 455,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "3202141c6134792cb37971083c8c87ce91a6c7db",
+  "base": "0cf31de769c823fd1113351c95a1911e3c87ce44",
+  "round": 1,
   "claim": {
     "owner": "mac:claude-k7q2xw",
     "at": "2026-10-25T05:50:29.614Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/rust/config-layers/src/paths.rs",
+      "line": 231,
+      "title": "New unit test fails on Windows and duplicates the parity fixture",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "D-04 still lists an empty home and ~user/x as unshared",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/rust/config-layers/src/paths.rs",
+      "line": 28,
+      "title": "Doc comment rewrap leaves a short orphan line",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/config-layers/README.md",
+      "line": 349,
+      "title": "README line is far longer than its neighbours",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/rust/config-layers/CHANGELOG.md",
+      "line": 10,
+      "title": "Release date is hard-coded",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
