@@ -1,19 +1,9 @@
 /**
  * The page's calls to the server. Every action but Run is a command of the
  * tree, sent to `POST /api/commands/<command>` with a JSON body of its flags
- * and positionals, exactly as `way <command> --json` would run it:
- *
- * | Page action | Command |
- * |---|---|
- * | the list, Refresh, the poll | `way list` (`--cached` for the first view) |
- * | Trust this repository | `way trust`, confirmed by the person |
- * | Trust one tool | `way trust --scope <tool>`, confirmed by the person |
- * | Untrust | `way trust --untrust`, with `--scope <tool>` for one tool |
- * | Settings | `way config list`, `way trust --show` |
- * | Tool info | `way providers` |
- * | Run on a skill | nothing is sent: the page copies `/<name>` |
- * | Save, theme, a dragged runner order | `way config set` / `way config unset` |
- * | Run | `POST /run`, which resolves the task with `way run --dry-run` |
+ * and positionals, exactly as `way <command> --json` would run it. Run is
+ * `POST /run`, which resolves the task with `way run --dry-run`. Which
+ * command each action is lives in `../actions.ts`, where a test checks it.
  */
 
 import type { Unknown } from '../core/unknowns.ts'
