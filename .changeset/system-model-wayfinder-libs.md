@@ -9,6 +9,7 @@
 - `Runners` has a new required member, `invocation(task, args)`. A class that implements `Runners`, or a mock of it, must add it; forward it to `invocationOf` or return `{ argv: runners.invoke(task, args), env: {} }`.
 - A cached report probed with execution allowed is no longer served to a run without it. `readCached` reports the runner `stale` with reason `exec` and leaves its report out. Probe again to get one.
 - A read refuses an absolute path and a path with `..`, and follows every symlink on the path, not only the last one. A file behind a symlinked directory that points out of the root reads as `null`.
+- `Catalog` requires `kind: 'catalog'` and `schemaVersion`, and so does its JSON Schema. Code that builds a `Catalog` by hand, such as a test fixture, must set both; use `CATALOG_SCHEMA_VERSION` from `./detect`.
 
 - yarn scripts now run as `yarn run <name>` (`yarn --cwd <dir> run <name>` below the root), so a script named `version` or `pack` no longer runs yarn's own command. Update any test or stored argv that expects `yarn <name>`.
 - `ProviderContext.readText` (and `readJson`) now return `null` for a symlink that leaves the root, anything that is not a regular file, and a file over `MAX_READ_BYTES` (4 MiB). Detection reports such a manifest in `profile.malformed`.
