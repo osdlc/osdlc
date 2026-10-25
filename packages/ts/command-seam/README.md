@@ -503,7 +503,7 @@ commandString(argv, { platform: 'win32', shell: 'cmd' })
 
 | Shell        | Words                                                                                                                                                | With `cwd`                            |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
-| `posix`      | `shellJoin`: bare when only `A-Za-z0-9_@%+=:,./-`, else single-quoted with `'` written `'\''` and `\` written `'\\'`                                                          | `cd <dir> && <line>` (`cd --` for a folder starting with `-`) |
+| `posix`      | `shellJoin`: bare when only `A-Za-z0-9_@%+=:,./-`, else single-quoted with `'` written `'\''` and `\` written `'\\'`                                                          | `cd <dir> && <line>` (`cd --` for a folder starting with `-`, `cd ./-` for `-`) |
 | `powershell` | `&` first, always. Bare when it starts with a letter or `_-./\` and holds only letters, digits and `_-./\:=`; else single-quoted, each `'` (and `‘ ’ ‚ ‛`) doubled | `if (Set-Location -LiteralPath <dir> -PassThru) { <line> }` |
 | `cmd`        | Bare when only `A-Za-z0-9_@+:./\-`; else quoted and `^`-escaped as in [Starting a program on Windows](#starting-a-program-on-windows). The program gets `^` escapes without quotes | `cd /d <dir> && <line>`               |
 
@@ -691,7 +691,7 @@ runner's `CommandResult`, a `StreamResult` or a `ManagedProcessExit`. A
 | ---------------- | -------------------------------------------------------------------- | -------------------------------------------------------------- |
 | `not-installed`  | spawn `ENOENT` on the binary                                         | `` `gh` is not installed or not on PATH. ``                    |
 | `not-executable` | spawn `EACCES`, `EPERM` or `ENOEXEC`                                 | `` `gh` cannot be run: permission denied or not an executable. `` |
-| `bad-cwd`        | the working directory is missing or is not a directory               | `The working directory "/x" is missing or is not a directory.` |
+| `bad-cwd`        | the working directory is missing, is not a directory, or cannot be entered | `The working directory "/x" is missing or is not a directory.` |
 | `timeout`        | `timeoutMs` ran out                                                  | `` `gh` timed out and was stopped. ``                          |
 | `output-cap`     | the child passed `maxOutputBytes`                                    | `` `gh` wrote more output than allowed and was stopped. ``     |
 | `signal`         | a signal from elsewhere ended the child                              | `` `gh` was ended by SIGTERM. ``                               |

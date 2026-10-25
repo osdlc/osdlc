@@ -64,6 +64,7 @@ import { z } from 'zod'
 
 import { closestMatches } from '@osdlc/config-layers/did-you-mean'
 import { atomicWriteAsync } from '@osdlc/etag-write'
+import { expandTilde } from '@osdlc/tiered-dirs'
 import {
   expandTrustPath,
   homeDir,
@@ -73,8 +74,14 @@ import {
 import { originOwner } from '@osdlc/trust-repo/git'
 
 import { APP, BIN, CONFIG_ENV_VAR, PROJECT_CONFIG_FILENAME } from './app.ts'
-import { THEME_VALUES, type Theme } from './config-keys.ts'
-import { appDirs, expandTilde, pre08Bases, USER_CONFIG_FILENAME } from './xdg.ts'
+import {
+  DISCOVERY_VALUES,
+  OPEN_VALUES,
+  THEME_VALUES,
+  USER_ONLY_KEYS,
+  type Theme,
+} from './config-keys.ts'
+import { appDirs, pre08Bases, USER_CONFIG_FILENAME } from './xdg.ts'
 import type { WayOptions } from './catalog.ts'
 import { SKILLS_SETTING_VALUES, type SkillsSetting } from './core/skills.ts'
 
@@ -100,20 +107,14 @@ const TrustRulesSchema = z.object({
   ).optional(),
 })
 
-/** The `discovery` values. */
-export const DISCOVERY_VALUES = ['git', 'walk', 'auto'] as const
-
 /** The smallest `runners.timeout`, in seconds. */
 export const MIN_RUNNER_TIMEOUT_S = 1
 /** The largest `runners.timeout`, in seconds: one hour. */
 export const MAX_RUNNER_TIMEOUT_S = 3600
-
-/** The `open` values: what the bare `way` command opens. */
-export const OPEN_VALUES = ['tui', 'web'] as const
 /** What the bare `way` command opens. */
 export type OpenSurface = (typeof OPEN_VALUES)[number]
 
-export { THEME_VALUES, type Theme } from './config-keys.ts'
+export { DISCOVERY_VALUES, OPEN_VALUES, THEME_VALUES, type Theme } from './config-keys.ts'
 
 /**
  * The configuration file, as a Zod schema. Every key is optional; the defaults
@@ -294,7 +295,7 @@ function under(key: string, top: string): boolean {
  */
 export function projectIgnoreReason(key: string, value: unknown): string | null {
   if (under(key, 'trust')) return 'a repository cannot grant itself trust'
-  if (under(key, 'open') || under(key, 'theme') || under(key, 'skills')) {
+  if (USER_ONLY_KEYS.some((top) => under(key, top))) {
     return 'a personal setting, for the user config'
   }
   if (key === 'allowExec' && value === true) return 'a repository cannot turn execution on'
@@ -759,8 +760,9 @@ function projectRules(
     }
     delete out['trust']
   }
-  for (const key of ['open', 'theme', 'skills'] as const) {
-    if (project[key] !== undefined) {
+  // `trust` is dropped above, with its own warning.
+  for (const key of USER_ONLY_KEYS) {
+    if (key !== 'trust' && out[key] !== undefined) {
       warnings.push(
         `${locations.project}: ${key} is ignored in a project file — it is a personal setting; ` +
           `set it in your user config (${locations.user}) instead`,

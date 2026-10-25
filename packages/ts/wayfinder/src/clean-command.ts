@@ -31,7 +31,7 @@
  */
 
 import { lstat, readFile, readdir, rm, rmdir, stat } from 'node:fs/promises'
-import { dirname, join, relative, isAbsolute, resolve } from 'node:path'
+import { dirname, join, relative, isAbsolute, resolve, sep } from 'node:path'
 
 import { z } from 'zod'
 
@@ -144,11 +144,19 @@ async function writtenByWayfinder(path: string): Promise<boolean> {
 /** A `$schema` URL for any release of wayfinder's config schema. */
 const SCHEMA_MARKER = /\/@osdlc\/wayfinder@[^/]+\/schema\/config\.json$/
 
+/**
+ * True when `inner` is `outer` or inside it. A child named `..x` is inside:
+ * only `..` itself, or `..` then a separator, leaves `outer`.
+ */
+function isInside(outer: string, inner: string): boolean {
+  const rel = relative(resolve(outer), resolve(inner))
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
+}
+
 /** Why clean will not remove `store`, which exists, or null when it may. */
 async function refusal(store: Store, home: string): Promise<string | null> {
   const path = resolve(store.path)
-  const up = relative(path, resolve(home))
-  if (dirname(path) === path || up === '' || (!up.startsWith('..') && !isAbsolute(up))) {
+  if (dirname(path) === path || isInside(path, home)) {
     return 'it is the home directory, a directory above it or a filesystem root'
   }
   const info = await lstat(path)
@@ -173,8 +181,7 @@ function humanBytes(bytes: number): string {
 async function pruneEmptyParents(path: string, base: string): Promise<void> {
   let dir = dirname(path)
   for (;;) {
-    const rel = relative(base, dir)
-    if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return
+    if (resolve(dir) === resolve(base) || !isInside(base, dir)) return
     const entries = await readdir(dir).catch(() => null)
     if (entries === null || entries.length > 0) return
     await rmdir(dir).catch(() => undefined)
@@ -184,11 +191,7 @@ async function pruneEmptyParents(path: string, base: string): Promise<void> {
 
 /** True when `a` and `b` are the same path or one is inside the other. */
 function overlaps(a: string, b: string): boolean {
-  const inside = (outer: string, inner: string): boolean => {
-    const rel = relative(resolve(outer), resolve(inner))
-    return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
-  }
-  return inside(a, b) || inside(b, a)
+  return isInside(a, b) || isInside(b, a)
 }
 
 /**

@@ -214,8 +214,11 @@ export function managedProcessRunner(binary: string): ManagedProcessRunner {
           settled = true
           resolve(result)
         }
-        // A spawn failure (such as ENOENT). No exit was reported.
+        // A spawn failure (such as ENOENT). No exit was reported. A failed
+        // `kill()` (such as EPERM) also emits `error`, but the process is
+        // still running, so its exit settles this.
         child.on('error', (err) => {
+          if ((err as NodeJS.ErrnoException).syscall === 'kill') return
           untrackGroup?.()
           finish(spawnExit(err.message))
         })

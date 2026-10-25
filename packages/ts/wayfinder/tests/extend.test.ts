@@ -18,7 +18,9 @@ import type { Task, ToolDef } from '@osdlc/system-model/detect'
 import { runArgv } from '../src/args.ts'
 import { makeProject } from '../src/catalog.ts'
 import { main } from '../src/cli.ts'
+import { createSession } from '../src/core/session.ts'
 import { providerRows, type ProviderRow } from '../src/providers-command.ts'
+import { loadToolModule } from '../src/tools.ts'
 import { CONFIG_HOME, shown } from './support.ts'
 
 const EXAMPLE = fileURLToPath(new URL('./guide-example.ts', import.meta.url))
@@ -94,6 +96,35 @@ describe('--config', () => {
     expect(ran.code).toBe(1)
     expect(ran.err).toContain('export `tools`')
   })
+
+  test('a module that cannot be imported is an error naming it, not a stack trace', async () => {
+    const dir = await acmeRepo()
+    const bad = join(dir, 'broken.mjs')
+    await writeFile(bad, 'export const tools = [\n')
+    const ran = await run(['list', '--config', bad, '-C', dir])
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain(`${bad}: cannot be loaded:`)
+    expect(ran.err).not.toMatch(/\n\s+at /)
+  })
+
+  test('an entry that is not a ToolDef is an error naming its index', async () => {
+    const dir = await acmeRepo()
+    const bad = join(dir, 'malformed.mjs')
+    await writeFile(bad, "export const tools = [{ id: 'ok', roles: {} }, { id: 'no-roles' }]\n")
+    await expect(loadToolModule(bad)).rejects.toThrow(
+      `${bad}: tools[1] is not a ToolDef (needs an id and roles)`,
+    )
+  })
+
+  test('a default export that is an array, or has tools, is read too', async () => {
+    const dir = await temp()
+    const list = join(dir, 'default-list.mjs')
+    await writeFile(list, "export default [{ id: 'acme', roles: {} }]\n")
+    expect((await loadToolModule(list)).map((t) => t.id)).toEqual(['acme'])
+    const object = join(dir, 'default-object.mjs')
+    await writeFile(object, "export default { tools: [{ id: 'acme', roles: {} }] }\n")
+    expect((await loadToolModule(object)).map((t) => t.id)).toEqual(['acme'])
+  })
 })
 
 describe('tools in a config file', () => {
@@ -106,6 +137,17 @@ describe('tools in a config file', () => {
       JSON.stringify({ tools: [module] }),
     )
     const ran = await run(['--list', '-C', await acmeRepo()], home)
+    expect(ran.out).toContain('acme run build')
+  })
+
+  test("a relative path in the user file is resolved against the file's directory", async () => {
+    const home = await temp()
+    const configDir = join(home, CONFIG_HOME, 'wayfinder')
+    await mkdir(configDir, { recursive: true })
+    await acmeModule(configDir)
+    await writeFile(join(configDir, 'config.json'), JSON.stringify({ tools: ['./acme-tools.mjs'] }))
+    const ran = await run(['--list', '-C', await acmeRepo()], home)
+    expect(ran.code).toBe(0)
     expect(ran.out).toContain('acme run build')
   })
 
@@ -165,6 +207,21 @@ describe('tools that must not load', () => {
     // And the same repository with execution on does import it.
     await run(['--list', '-C', dir], home)
     expect(existsSync(marker)).toBe(true)
+  })
+
+  test('a trust grant does not import the project file tools; it says when they load', async () => {
+    const dir = await acmeRepo({ tools: ['./side.mjs'] })
+    const home = await temp()
+    const marker = join(home, 'imported')
+    await sideEffectModule(dir, marker)
+    const session = await createSession({ dir, cwd: dir, env: {}, home })
+    expect(session.projectToolsPending).toBe(true)
+    expect(await session.grantTrust()).toEqual({
+      changed: true,
+      note: 'the tools wayfinder.config.json names load the next time way starts with execution allowed',
+    })
+    await session.catalog()
+    expect(existsSync(marker)).toBe(false)
   })
 })
 
@@ -248,6 +305,18 @@ describe('way providers', () => {
     } finally {
       process.chdir(saved)
     }
+  })
+
+  test('a homepage that is not http or https is null, so no page links it', () => {
+    const homepage = (url: string) =>
+      providerRows([{ id: 'acme', homepage: url, roles: {} } as unknown as ToolDef], [], {})[0]
+        ?.homepage
+    expect(homepage('javascript:alert(1)')).toBeNull()
+    expect(homepage('ftp://x')).toBeNull()
+    expect(homepage('//x')).toBeNull()
+    expect(homepage('data:text/html,hi')).toBeNull()
+    expect(homepage('HTTPS://ok.dev')).toBe('HTTPS://ok.dev')
+    expect(homepage('http://ok.dev')).toBe('http://ok.dev')
   })
 
   test('an unknown option is a usage error', async () => {

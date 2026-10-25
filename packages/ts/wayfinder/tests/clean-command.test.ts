@@ -5,7 +5,17 @@
  */
 
 import { afterAll, describe, expect, test } from 'vitest'
-import { mkdir, readdir, stat, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 import { renderShim } from '@osdlc/cli-tool/devlink'
@@ -187,6 +197,70 @@ describe('way clean', () => {
     expect(ran.err).toContain('it is not a file')
     expect(await exists(join(config, 'inside.txt'))).toBe(true)
   })
+
+  test.skipIf(process.platform === 'win32')(
+    'a user config that is a symbolic link is removed, not the file it points at',
+    async () => {
+      const p = await populated()
+      const target = join(p.home, 'dotfiles', 'config.json')
+      await put(target, '{"mine": true}')
+      await rm(p.config)
+      await symlink(target, p.config)
+      const ran = await clean(p.home, ['--user-config', '--yes'])
+      expect(ran.exit).toBe(0)
+      await expect(lstat(p.config)).rejects.toThrow()
+      expect(await readFile(target, 'utf-8')).toBe('{"mine": true}')
+    },
+  )
+
+  test('a cache path that is a file is not removed', async () => {
+    const home = await fixtureRoot({})
+    roots.push(home)
+    const cache = join(home, '.cache', 'wayfinder')
+    await put(cache, 'mine')
+    const ran = await clean(home, ['--cache'])
+    expect(ran.exit).toBe(1)
+    expect(ran.err).toContain('it is not a directory')
+    expect(await readFile(cache, 'utf-8')).toBe('mine')
+  })
+
+  test.skipIf(process.platform === 'win32')(
+    'a cache path that is a symbolic link to a directory is not followed or removed',
+    async () => {
+      const home = await fixtureRoot({})
+      roots.push(home)
+      const elsewhere = join(home, 'elsewhere')
+      await put(join(elsewhere, 'keep.txt'), 'mine')
+      const cache = join(home, '.cache', 'wayfinder')
+      await mkdir(dirname(cache), { recursive: true })
+      await symlink(elsewhere, cache)
+      const ran = await clean(home, ['--cache'])
+      expect(ran.exit).toBe(1)
+      expect(ran.err).toContain('it is not a directory')
+      expect((await lstat(cache)).isSymbolicLink()).toBe(true)
+      expect(await readFile(join(elsewhere, 'keep.txt'), 'utf-8')).toBe('mine')
+    },
+  )
+
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'a store that will not delete stops the run before the next store',
+    async () => {
+      const p = await populated()
+      // The cache's reports directory cannot lose its entries.
+      const reports = join(p.cache, 'reports')
+      await chmod(reports, 0o500)
+      try {
+        const ran = await clean(p.home, ['--cache', '--trust', '--json'])
+        expect(ran.exit).toBe(1)
+        expect(ran.err).toContain(`could not remove ${p.cache}`)
+        const { stores } = ran.json() as { stores: { key: string; removed: boolean }[] }
+        expect(stores).toEqual([expect.objectContaining({ key: 'cache', removed: false })])
+        expect(await exists(p.trust)).toBe(true)
+      } finally {
+        await chmod(reports, 0o700)
+      }
+    },
+  )
 
   test('--dev removes link state and the marked shims, and leaves other files on PATH', async () => {
     const p = await populated()

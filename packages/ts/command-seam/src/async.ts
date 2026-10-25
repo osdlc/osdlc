@@ -262,8 +262,8 @@ function runAsync(
   bytes: boolean,
 ): Promise<CommandResult<string | Buffer>> {
   return new Promise((resolve) => {
-    // Inside the executor, so an invalid timeoutMs (or a throw from spawn)
-    // rejects and nothing is spawned.
+    // Inside the executor, so an invalid timeoutMs (or a programmer error
+    // that spawn throws, such as a NUL byte) rejects and nothing is spawned.
     const timeoutMs = normalizeTimeout(opts.timeoutMs)
     const cap = normalizeOutputCap(opts.maxOutputBytes) ?? Infinity
     const cwdMessage = cwdError(`spawn ${binary}`, binary, argv, opts)
@@ -302,9 +302,18 @@ function runAsync(
         detached: group,
         ...mergedEnv(opts),
       })
-    const { child, untrack: untrackGroup } = group
-      ? spawnTrackedGroup(start)
-      : { child: start(), untrack: undefined }
+    let spawned: { child: ReturnType<typeof start>; untrack: (() => void) | undefined }
+    try {
+      spawned = group ? spawnTrackedGroup(start) : { child: start(), untrack: undefined }
+    } catch (e) {
+      // `spawn` throws, rather than emitting `error`, for some failures, such
+      // as an argument list over the OS limit (E2BIG). A system error has an
+      // `errno`. A programmer error, such as a NUL byte, does not.
+      if (typeof (e as NodeJS.ErrnoException).errno !== 'number') throw e
+      resolve(emptyStdout(spawnFailure((e as Error).message), bytes))
+      return
+    }
+    const { child, untrack: untrackGroup } = spawned
     // Set once this runner signals the child. A group it is stopping stays
     // in flight for the host's exit handler.
     let stopping = false
@@ -425,6 +434,10 @@ function runAsync(
       err.write(d)
     })
     child.on('error', (err) => {
+      // A failed `kill()` (such as EPERM) also emits `error`. The child is
+      // still running, and the timeout, abort or exit that sent the signal
+      // settles the run.
+      if ((err as NodeJS.ErrnoException).syscall === 'kill') return
       // A spawn failure. No exit code was reported, so the 1 is a stand-in.
       finish({ exitCode: 1, neverExited: true, reason: 'spawn' }, err.message)
     })

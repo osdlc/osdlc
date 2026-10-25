@@ -15,7 +15,7 @@ import type { NeverExitedReason } from './sync.ts'
  * - `not-installed`: the binary is not on `PATH` (spawn `ENOENT`).
  * - `not-executable`: the binary exists but cannot be run (`EACCES`, `EPERM`,
  *   `ENOEXEC`).
- * - `bad-cwd`: the working directory is missing or not a directory.
+ * - `bad-cwd`: the working directory is missing, not a directory, or cannot be entered.
  * - `timeout`: `timeoutMs` ran out and the runner killed the child.
  * - `output-cap`: the child wrote more than `maxOutputBytes` and was killed.
  * - `signal`: a signal from elsewhere ended the child.
@@ -151,6 +151,15 @@ function spawnFailure(
   // The cwd check comes first: its text also says ENOENT.
   if (/: cwd /.test(error)) {
     const dir = /cwd ("(?:[^"\\]|\\.)*")/.exec(error)?.[1]
+    if (/\bEACCES: cwd /.test(error)) {
+      return make(
+        'bad-cwd',
+        dir === undefined
+          ? 'The working directory cannot be entered: permission denied.'
+          : `The working directory ${dir} cannot be entered: permission denied.`,
+        detail,
+      )
+    }
     return make(
       'bad-cwd',
       dir === undefined

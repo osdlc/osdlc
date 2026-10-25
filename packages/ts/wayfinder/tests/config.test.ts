@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
-import { lstat, mkdir, readFile, symlink } from 'node:fs/promises'
+import { lstat, mkdir, readFile, symlink, writeFile } from 'node:fs/promises'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
 
@@ -127,8 +127,9 @@ describe('configLocations', () => {
       expect(loaded.locations.user).toBe(join(home, CONFIG_HOME, 'wayfinder', 'config.json'))
       // The repository file was not read: its false did not reach the merge.
       expect(loaded.effective.allowExec).toBe(true)
-      expect(loaded.warnings.some((w) => w.includes(`${CONFIG_ENV_VAR}=cfg.json is ignored`))).toBe(
-        true,
+      expect(loaded.warnings).toContain(
+        `${CONFIG_ENV_VAR}=cfg.json is ignored because it is not an absolute path; ` +
+          `use an absolute path or ~/. Reading ${loaded.locations.user} instead`,
       )
     } finally {
       process.chdir(saved)
@@ -397,6 +398,24 @@ describe('readConfigFile', () => {
       expect((error as ConfigError).file).toBe(file)
       expect((error as Error).message).toContain(file)
       expect((error as Error).message).toContain('invalid JSON')
+    }
+  })
+
+  test('refuses JSON that is not an object, naming what it is', async () => {
+    const dir = await root()
+    const file = join(dir, 'wayfinder.config.json')
+    const cases: [string, string][] = [
+      ['null', 'null'],
+      ['[]', 'an array'],
+      ['"x"', 'a string'],
+      ['42', 'a number'],
+    ]
+    for (const [text, got] of cases) {
+      await writeFile(file, text, 'utf-8')
+      await expect(readConfigFile(file)).rejects.toMatchObject({
+        file,
+        message: `${file}: expected a JSON object, got ${got}`,
+      })
     }
   })
 })

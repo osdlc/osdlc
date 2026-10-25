@@ -98,6 +98,8 @@ export function commandString(argv: readonly string[], opts: CommandStringOption
     case 'posix': {
       const line = shellJoin(argv)
       if (cwd === undefined) return line
+      // `cd -` goes to $OLDPWD, even after `--`, so a folder named `-` is `./-`.
+      if (cwd === '-') return `cd ./- && ${line}`
       return `cd ${cwd.startsWith('-') ? '-- ' : ''}${shellQuote(cwd)} && ${line}`
     }
     case 'powershell': {

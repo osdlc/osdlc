@@ -479,6 +479,47 @@ describe('posix', () => {
       })
     }
 
+    test('an onSpawn that throws a non-Error kills the whole group', async () => {
+      const pidFile = join(scratch, `onspawn-${Math.random().toString(36).slice(2)}`)
+      const readPid = (): number => {
+        try {
+          return Number(readFileSync(pidFile, 'utf8').trim()) || 0
+        } catch {
+          return 0
+        }
+      }
+      let pid = 0
+      try {
+        const r = await spawnRunnerAsync('sh').run(
+          ['-c', `sleep 30 & echo $! > "${pidFile}"; wait`],
+          {
+            cwd: CWD,
+            processGroup: true,
+            onSpawn: () => {
+              // onSpawn runs right after the spawn, before `sh` has started
+              // `sleep`. Block until the grandchild exists, so only a kill of
+              // the group, not of the direct child, can reach it.
+              const end = performance.now() + 5_000
+              while (readPid() === 0 && performance.now() < end) {
+                Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)
+              }
+              throw 'nope'
+            },
+          },
+        )
+        pid = readPid()
+        expect(r).toMatchObject({
+          neverExited: true,
+          reason: 'abort',
+          error: 'onSpawn threw: nope',
+        })
+        expect(pid).toBeGreaterThan(0)
+        expect(await gone(pid)).toBe(true)
+      } finally {
+        reap(pid)
+      }
+    }, 15_000)
+
     test('sync and stream runners do not offer processGroup (documented limit)', () => {
       // Nothing to check at runtime. The option does not exist on these
       // runners (the async and managed runners have it). The directives below

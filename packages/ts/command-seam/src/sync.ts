@@ -12,7 +12,15 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  accessSync,
+  constants,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -290,9 +298,18 @@ export interface BytesCommandRunner {
  * that points a variable at a new temp dir just before spawning would then
  * see the old value. Copying `process.env` into a new plain object at the
  * call avoids the snapshot.
+ *
+ * On Windows, where names match in any case, an override replaces the
+ * parent's variable whatever its case: `{ PATH: undefined }` unsets the
+ * parent's `Path`, and `{ path: 'x' }` replaces it.
  */
 export function mergedEnv(opts: Pick<CommandRunOptions, 'env'>): { env: NodeJS.ProcessEnv } {
-  const env: NodeJS.ProcessEnv = { ...process.env, ...opts.env }
+  const env: NodeJS.ProcessEnv = { ...process.env }
+  if (process.platform === 'win32' && opts.env !== undefined) {
+    const names = new Set(Object.keys(opts.env).map((k) => k.toUpperCase()))
+    for (const key of Object.keys(env)) if (names.has(key.toUpperCase())) delete env[key]
+  }
+  Object.assign(env, opts.env)
   for (const [key, value] of Object.entries(env)) if (value === undefined) delete env[key]
   return { env }
 }
@@ -375,10 +392,12 @@ export function timerMs(name: string, ms: number, min: 'positive' | 'zero'): num
 }
 
 /**
- * A spawn error message when `cwd` is missing or not a directory, else
- * `undefined`. It is checked before spawning for two reasons. A spawn
- * reports a missing `cwd` as `spawn <binary> ENOENT`, which reads as a
- * missing binary. And Node's async `spawn` throws for a `cwd` that is a file.
+ * A spawn error message when `cwd` is missing, not a directory or cannot be
+ * entered, else `undefined`. It is checked before spawning for three
+ * reasons. A spawn reports a missing `cwd` as `spawn <binary> ENOENT`, which
+ * reads as a missing binary. Node's async `spawn` throws for a `cwd` that is
+ * a file. And a `cwd` without search permission fails the spawn with
+ * `EACCES`, which reads as a binary that cannot be run.
  *
  * @param spawnName - The message prefix: `spawn` or `spawnSync`, then the binary.
  * @throws `TypeError` for a NUL byte in `binary`, `argv` or `opts.env`, as the
@@ -391,16 +410,30 @@ export function cwdError(
   opts: { cwd: string; env?: EnvOverrides | undefined },
 ): string | undefined {
   let problem: string
+  const denied = 'EACCES: cwd %s cannot be entered'
   try {
-    if (statSync(opts.cwd).isDirectory()) return undefined
-    problem = 'ENOTDIR: cwd %s is not a directory'
+    if (!statSync(opts.cwd).isDirectory()) problem = 'ENOTDIR: cwd %s is not a directory'
+    else if (canEnter(opts.cwd)) return undefined
+    else problem = denied
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code
-    if (code !== 'ENOENT' && code !== 'ENOTDIR') return undefined // the spawn reports it
-    problem = 'ENOENT: cwd %s does not exist'
+    if (code === 'EACCES') problem = denied
+    else if (code !== 'ENOENT' && code !== 'ENOTDIR')
+      return undefined // the spawn reports it
+    else problem = 'ENOENT: cwd %s does not exist'
   }
   assertNoNulByte(binary, argv, opts.env)
   return `${spawnName} ${problem.replace('%s', JSON.stringify(opts.cwd))}`
+}
+
+/** Whether `dir` has search permission, so a child can start in it. */
+function canEnter(dir: string): boolean {
+  try {
+    accessSync(dir, constants.X_OK)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** Throw the `TypeError` a spawn throws for a NUL byte in its arguments. */
@@ -822,23 +855,12 @@ export function lookupBinary(
   if (binary.includes('/') || (process.platform === 'win32' && binary.includes('\\'))) {
     return binary
   }
-  const { env } = mergedEnv(opts)
-  return which(binary, {
-    env: { PATH: envValue(env, 'PATH'), PATHEXT: envValue(env, 'PATHEXT') },
-    absolutePathOnly: true,
-  })
+  return which(binary, { env: opts.env, absolutePathOnly: true })
 }
 
 /** The spawn error text for a binary {@link lookupBinary} did not find. */
 export function notOnAbsolutePath(spawnName: string, binary: string): string {
   return `${spawnName} ${binary} ENOENT: not found on an absolute PATH entry`
-}
-
-/** `env[name]`, matched without case on Windows, where `Path` is `PATH`. */
-function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
-  if (process.platform !== 'win32') return env[name]
-  const key = Object.keys(env).find((k) => k.toUpperCase() === name)
-  return key === undefined ? undefined : env[key]
 }
 
 /**

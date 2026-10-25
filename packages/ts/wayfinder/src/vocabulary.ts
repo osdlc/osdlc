@@ -66,7 +66,7 @@ const WITHHELD_REASONS: Record<WithheldReason, string> = {
 }
 
 /** `a`, `a and b`, `a, b and c`. */
-function listWords(words: readonly string[]): string {
+export function listWords(words: readonly string[]): string {
   if (words.length <= 1) return words.join('')
   return `${words.slice(0, -1).join(', ')} and ${words.at(-1)}`
 }
