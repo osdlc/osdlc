@@ -7,9 +7,9 @@
  * in bash. The template is the single source. A tool renders it into its repo,
  * and a test checks that the committed file still matches (`launcherDrift`).
  *
- * The per-OS config directory is inlined for the same reason: the launcher
- * cannot call TypeScript code. It matches `@osdlc/tiered-dirs`' `config` home
- * for darwin and XDG. The launcher does not run on Windows.
+ * The config directory is inlined for the same reason: the launcher cannot
+ * call TypeScript code. It matches `@osdlc/tiered-dirs`' `config` home under
+ * the `xdg` convention. The launcher does not run on Windows.
  *
  * The `local` case: a built entry beside the launcher
  * (`<launcherDir>/<name>.js`) runs under Node when present, else the source
@@ -216,14 +216,11 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p('# directory (HOME unset or empty) the layer is skipped.')
   p(`if [ -z "$home" ]${guard}; then`)
   p('  cfg=""')
-  p('  case "$(uname -s)" in')
-  p(`    Darwin) [ -z "\${HOME:-}" ] || cfg="$HOME/Library/Application Support/${name}" ;;`)
-  p('    *)')
-  p('      # Only an absolute XDG_CONFIG_HOME counts, as in @osdlc/tiered-dirs.')
-  p('      case "${XDG_CONFIG_HOME:-}" in')
-  p(`        /*) cfg="$XDG_CONFIG_HOME/${name}" ;;`)
-  p(`        *) [ -z "\${HOME:-}" ] || cfg="$HOME/.config/${name}" ;;`)
-  p('      esac ;;')
+  p('  # The xdg convention on every POSIX system. Only an absolute XDG_CONFIG_HOME')
+  p('  # counts, as in @osdlc/tiered-dirs.')
+  p('  case "${XDG_CONFIG_HOME:-}" in')
+  p(`    /*) cfg="$XDG_CONFIG_HOME/${name}" ;;`)
+  p(`    *) [ -z "\${HOME:-}" ] || cfg="$HOME/.config/${name}" ;;`)
   p('  esac')
   p('  linked=""')
   p('  [ -z "$cfg" ] || linked="$(cat "$cfg/home" 2>/dev/null || true)"')

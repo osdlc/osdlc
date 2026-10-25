@@ -1,6 +1,6 @@
 /**
  * The two files devlink keeps per tool, in the config home of the tool's
- * standalone tier (`<config>/<name>/`):
+ * standalone tier (`<config>/<name>/`, under the `xdg` convention):
  *
  *   home             the active link: one absolute checkout path, or absent.
  *                    A bash launcher reads it with `cat`, which is why it is a
@@ -68,12 +68,14 @@ export interface StateOptions {
 }
 
 /**
- * `<config>/<name>` for this tool.
+ * `<config>/<name>` for this tool, under the `xdg` convention:
+ * `${XDG_CONFIG_HOME:-~/.config}/<name>` on Linux and macOS, `%APPDATA%\<name>`
+ * on Windows. The bash launcher reads the same path.
  *
  * @experimental
  */
 export function stateDir(spec: ToolSpec, opts: StateOptions = {}): string {
-  const dirs = opts.dirs ?? systemDirs(spec.vendorDirs)
+  const dirs = opts.dirs ?? systemDirs(spec.vendorDirs, { convention: 'xdg' })
   return dirs.standalone(spec.name).config().path
 }
 

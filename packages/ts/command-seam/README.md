@@ -58,9 +58,7 @@ These are the facts today, not a support promise.
   runtime.
 - **Bun** also works, through the compiled `dist/`.
 - **ESM only.** There is no CommonJS build.
-- **POSIX only (Linux, macOS).** `runShell` needs `sh` on `PATH`. The
-  `processGroup` options use POSIX process groups. Signals
-  follow POSIX rules. Windows is untested and not supported for now.
+- **Linux and macOS, and spawning on Windows.** See [Platforms](#platforms).
 - **TypeScript 5.4 or later.** The types use the `NodeJS` namespace, so
   install `@types/node` (an optional peer dependency).
 
@@ -225,8 +223,10 @@ console.log(lines.stdout, same.stdout, later.stdout, sh.run('echo hi', { cwd }).
 `runShell` takes the capture options (`timeoutMs`, `env`, `input`,
 `maxOutputBytes`) and returns a `CommandResult`. A fake passed to `shellRunner`
 receives `['-c', '--', verb]`, then `scriptName` and `args` when given.
-`shellJoin(argv)` quotes a whole command line, for printing one a person can
-paste.
+`shellJoin(argv)` quotes a whole command line for a POSIX shell. For a line
+a person pastes, use `commandString` (see
+[Command lines to paste](#command-lines-to-paste)), which also handles
+Windows.
 
 ### Streaming
 
@@ -458,14 +458,102 @@ import { which } from '@osdlc/command-seam'
 const harnesses = ['codex', 'claude', 'cursor-agent'].filter((b) => which(b) !== undefined)
 ```
 
-It looks a binary up the way the runners' spawn does: a name with a `/` is
-resolved against `cwd`, a bare name is searched on `PATH`, and a match must
-be an executable file. `opts` takes `cwd` (default `process.cwd()`) and
-`env`, merged over the parent's as the runners take it, so
-`which('tool', { env: { PATH: binDir } })` checks a test's own `PATH`.
-An empty `PATH` entry means `cwd`, as it does for Node's spawn. Bun's spawn
-skips empty entries, so under Bun `which` can find a binary there that a
-spawn would not.
+It looks a binary up the way the runners' spawn does. `opts` takes `cwd`
+(default `process.cwd()`), `env`, merged over the parent's as the runners
+take it, so `which('tool', { env: { PATH: binDir } })` checks a test's own
+`PATH`, and `platform` (default `process.platform`), so a test can run the
+Windows rules on any OS.
+
+| Rule              | POSIX                                     | Windows (`platform: 'win32'`)                                   |
+| ----------------- | ----------------------------------------- | --------------------------------------------------------------- |
+| A path            | a name with `/`, resolved against `cwd`   | a name with `\` or `/`, resolved against `cwd`                  |
+| `PATH` separator  | `:`                                       | `;`                                                             |
+| Empty entry       | means `cwd`, as for Node's spawn          | skipped; `cwd` is searched only when `PATH` names it            |
+| `PATH` unset      | `/usr/bin:/bin`                           | nothing is searched                                             |
+| Extensions        | none                                      | a name ending in a `PATHEXT` extension is tried as given; any other name with each one appended, in order. Default `.COM;.EXE;.BAT;.CMD`. Any case. |
+| A match           | an executable file                        | a file                                                          |
+
+Bun's spawn skips empty `PATH` entries, so under Bun `which` can find a
+binary there that a spawn would not.
+
+## Command lines to paste
+
+`commandString(argv, opts?)` returns `argv` as one line a person can paste
+into a terminal, quoted for the shell that will read it. `opts.platform`
+(default `process.platform`) picks the shell: PowerShell on `win32`, a POSIX
+shell elsewhere. `opts.shell` (`'posix'`, `'powershell'` or `'cmd'`) names
+it directly. `opts.cwd` adds a change of folder first.
+
+```ts
+import { commandString } from '@osdlc/command-seam'
+
+const argv = ['git', 'commit', '-m', "it's done"]
+commandString(argv, { platform: 'linux', cwd: '/my repo' })
+// cd '/my repo' && git commit -m 'it'\''s done'
+commandString(argv, { platform: 'win32', cwd: 'C:\\my repo' })
+// Set-Location -LiteralPath 'C:\my repo'; & git commit -m 'it''s done'
+commandString(argv, { platform: 'win32', shell: 'cmd' })
+// git commit -m ^"it's^ done^"
+```
+
+| Shell        | Words                                                                                                                                                | With `cwd`                            |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `posix`      | `shellJoin`: bare when only `A-Za-z0-9_@%+=:,./-`, else single-quoted with `'` written `'\''`                                                          | `cd <dir> && <line>` (`cd --` for a folder starting with `-`) |
+| `powershell` | `&` first, always. Bare when it starts with a letter or `_-./\` and holds only letters, digits and `_-./\:=`; else single-quoted, each `'` (and `‘ ’ ‚ ‛`) doubled | `Set-Location -LiteralPath <dir>; <line>` |
+| `cmd`        | Bare when only `A-Za-z0-9_@+:./\-`; else quoted and `^`-escaped as in [Starting a program on Windows](#starting-a-program-on-windows). The program gets `^` escapes without quotes | `cd /d <dir> && <line>`               |
+
+In PowerShell the command runs even when `Set-Location` fails, since `;`
+does not stop on an error. Windows PowerShell 5.1, and PowerShell before
+7.3, drop an empty argument and mangle one holding `"` when they call a
+program. `commandString` throws `RangeError` for an empty `argv`, and for
+`cmd` when a word or `cwd` holds a line break, which `cmd.exe` cannot quote.
+
+## Platforms
+
+Linux and macOS are supported in full. On Windows the argv runners
+(`spawnRunner`, `spawnRunnerAsync`, the bytes runners, `streamRunner` and
+`managedProcessRunner`) start programs, `.cmd` and `.bat` files included.
+These parts stay POSIX only:
+
+- `runShell` and `shellRunner` need `sh` on `PATH`.
+- The `processGroup` options and `installGroupSignalForwarding` use POSIX
+  process groups. Signals follow POSIX rules.
+- The `bun test` capture path runs through `/bin/sh`.
+
+### Starting a program on Windows
+
+On Windows each runner looks the binary up with `which` and its Windows
+rules. An `.exe` or `.com` it finds is spawned by that path, with argv
+passed directly. A binary it cannot find is spawned as given, so the
+failure is `ENOENT` and `classifyFailure` reports `not-installed`, as on
+POSIX.
+
+Node will not spawn a `.cmd` or `.bat` file directly. The runner starts
+`cmd.exe /d /s /c "<line>"` instead (`ComSpec` when set), with
+`windowsVerbatimArguments`, and quotes each argument in two steps:
+
+1. Microsoft C runtime quoting: backslashes before a `"` are doubled and the
+   `"` becomes `\"`, trailing backslashes are doubled, and the argument is
+   wrapped in `"`.
+2. `cmd.exe` escaping: each of ``( ) [ ] % ! ^ " ` < > & | ; , * ?`` and
+   space gets a `^`. The quotes are escaped too, so `cmd.exe` never enters a
+   quoted section and every `^` applies.
+
+Step 2 is what keeps `%VAR%` from expanding. `cmd.exe` expands `%VAR%` even
+inside quotes, and a `^` does not help there. With every quote escaped,
+`%PATH%` is written `^%PATH^%`, which names the variable `PATH^`; that is
+not set, so the text passes through and the carets are removed.
+
+A shim in `node_modules/.bin` (the `.cmd` files npm writes) passes its
+arguments on with `%*`, which `cmd.exe` parses a second time, so step 2 is
+applied twice for it. Another batch file that passes `%*` on gets one
+escape, so a `"` or a special character in an argument can reach its
+second parse unprotected.
+
+An argument with a line break cannot be passed to a batch file: `cmd.exe`
+ends the command there. The run is refused before anything starts, as a
+failed spawn (`reason: 'spawn'`, `classifyFailure` kind `spawn`). A NUL
+byte throws, as on every platform.
 
 ## Reading results
 
@@ -804,6 +892,8 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
   `cwd`.
 - **`argv` is never parsed by a shell.** Spaces, quotes and `$()` in an
   argument reach the binary unchanged. Only `runShell` runs a shell string.
+  On Windows a `.cmd` or `.bat` file runs through `cmd.exe`, with each
+  argument quoted for it (see [Platforms](#platforms)).
 - **`env` merges over `process.env`**, read at call time. A value of
   `undefined` removes that variable from the child's environment.
 - **Early stdin close.** If the child closes stdin before `input` is fully
@@ -876,6 +966,7 @@ The experimental exports:
 - `runJson`, `runJsonAsync`, `parseJsonResult`, `JsonRun`, `JsonFailure`, `RunJsonOptions`
 - `withDefaults`, `DefaultedRunner`
 - `which`, `WhichOptions`
+- `commandString`, `CommandStringOptions`
 - `stopProcess`
 - `installGroupSignalForwarding`, `GroupSignalForwardingOptions`
 - `liveProcessGroups`, `forwardedSignal`, `forwardedExitCode`
@@ -914,6 +1005,8 @@ are settled, and Windows support has landed, if that is feasible.
 | `ShellRunner`, `AsyncShellRunner`                               | interface | Shell runner contracts                                         |
 | `ShellRunOptions`, `AsyncShellRunOptions`, `ShellPositionals`   | interface | Capture options plus `scriptName` (`$0`) and `args` (`$1`…)    |
 | `shellQuote`, `shellJoin`                                       | function  | POSIX quoting for one word or a command line                   |
+| `commandString`                                                 | function  | A command line to paste, quoted for POSIX, PowerShell or `cmd.exe` |
+| `CommandStringOptions`                                          | interface | `platform`, `shell`, `cwd`                                     |
 | `streamRunner`                                                  | function  | Default streaming runner (inherited stdio)                     |
 | `StreamRunner`, `StreamRunOptions`, `StreamResult`              | type      | Streaming runner contract; options add `stdio` and `quiet`; the result adds `reason`, `signal`, `error` |
 | `StdioOption`                                                   | type      | `'inherit' \| 'ignore' \| { stdout, stderr }` file descriptors   |
@@ -926,7 +1019,7 @@ are settled, and Windows support has landed, if that is feasible.
 | `withDefaults`                                                  | function  | Bind default options to any runner                             |
 | `DefaultedRunner`                                               | interface | The runner `withDefaults` returns                              |
 | `which`                                                         | function  | The path a spawn of a binary would run, without running it     |
-| `WhichOptions`                                                  | interface | `cwd`, `env`                                                   |
+| `WhichOptions`                                                  | interface | `cwd`, `env`, `platform`                                       |
 | `fakeRunner`                                                    | function  | `/testing`: a `CommandRunner` that answers from a table, with async and bytes forms |
 | `fakeNeverExited`                                               | function  | `/testing`: a fake answer for a run that never exited          |
 | `fakeProcess`                                                   | function  | `/testing`: a `ManagedProcessHandle` the test ends by hand     |

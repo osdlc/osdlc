@@ -20,6 +20,11 @@ const PACKAGE_NAME = (
 const ENTRIES = [
   { specifier: PACKAGE_NAME, entry: 'src/index.ts' },
   { specifier: `${PACKAGE_NAME}/devlink`, entry: 'src/devlink/index.ts' },
+  { specifier: `${PACKAGE_NAME}/command`, entry: 'src/command/index.ts' },
+  { specifier: `${PACKAGE_NAME}/config-command`, entry: 'src/config-command.ts' },
+  { specifier: `${PACKAGE_NAME}/trust-command`, entry: 'src/trust-command.ts' },
+  { specifier: `${PACKAGE_NAME}/guide`, entry: 'src/guide.ts' },
+  { specifier: `${PACKAGE_NAME}/testing`, entry: 'src/testing.ts' },
 ] as const
 
 const COMPILER_OPTIONS: ts.CompilerOptions = {
@@ -114,7 +119,7 @@ function importedByExamples(): Map<string, Set<string>> {
 const IMPORTED = importedByExamples()
 
 test('examples/ imports the package name only', () => {
-  const allowed = new Set<string>([...ENTRIES.map((e) => e.specifier), 'vitest'])
+  const allowed = new Set<string>([...ENTRIES.map((e) => e.specifier), 'vitest', 'zod'])
   const stray = [...IMPORTED.keys()].filter((s) => !allowed.has(s) && !s.startsWith('node:'))
   expect(stray).toEqual([])
 })

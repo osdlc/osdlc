@@ -118,3 +118,19 @@ describe('runDevCli', () => {
     expect(io.out).toContain('not on your PATH')
   })
 })
+
+describe('runDevCli on Windows', () => {
+  test('reports itself unavailable and exits 1, writing nothing', () => {
+    const io = capture()
+    expect(runDevCli(SPEC, ['status'], { ...base(), io, platform: 'win32' })).toBe(1)
+    expect(io.out).toBe('')
+    expect(io.err).toBe(
+      'tooly dev: not available on Windows; the launcher is a POSIX shell script\n',
+    )
+  })
+
+  test('runs elsewhere', () => {
+    const io = capture()
+    expect(runDevCli(SPEC, ['status', '--json'], { ...base(), io, platform: 'linux' })).toBe(0)
+  })
+})

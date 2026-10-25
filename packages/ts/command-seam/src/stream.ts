@@ -17,6 +17,7 @@
 
 import { spawnSync } from 'node:child_process'
 
+import { planOptions, spawnPlan } from './spawn-plan.ts'
 import {
   childStdio,
   cwdError,
@@ -114,7 +115,8 @@ export interface StreamRunner {
  * `stdio` sends the child's output elsewhere: `'ignore'` drops it, and
  * `{ stdout, stderr }` writes it to file descriptors the caller opened.
  *
- * @param binary - A name looked up on `PATH`, or a path.
+ * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
+ *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
  * @returns A runner for that binary.
  *
  * @example
@@ -142,7 +144,13 @@ export function streamRunner(binary: string): StreamRunner {
         say(cwdMessage)
         return { exitCode: 1, neverExited: true, reason: 'spawn', error: cwdMessage }
       }
-      const proc = spawnSync(binary, argv, {
+      const plan = spawnPlan(binary, argv, opts)
+      if ('refusal' in plan) {
+        say(plan.refusal)
+        return { exitCode: 1, neverExited: true, reason: 'spawn', error: plan.refusal }
+      }
+      const proc = spawnSync(plan.file, plan.args, {
+        ...planOptions(plan),
         cwd: opts.cwd,
         stdio,
         timeout,

@@ -67,11 +67,57 @@ export interface CliContext {
   io: CliIo
   cwd: string
   env: Record<string, string | undefined>
+  /**
+   * What the streams are connected to. Absent means none is a terminal, which
+   * is the safe reading: no color, no prompt, help wrapped at 80 columns.
+   */
+  terminal?: Terminal
+}
+
+/**
+ * Which of the process streams are terminals, and how wide stdout is.
+ * @experimental
+ */
+export interface Terminal {
+  stdin: boolean
+  stdout: boolean
+  stderr: boolean
+  /** The width of stdout in columns, when it is a terminal. */
+  columns?: number
 }
 
 /** The real ambient context: this process's streams, directory and environment. */
 export function processContext(): CliContext {
-  return { io: processIo, cwd: process.cwd(), env: process.env }
+  return {
+    io: processIo,
+    cwd: process.cwd(),
+    env: process.env,
+    terminal: {
+      stdin: process.stdin.isTTY === true,
+      stdout: process.stdout.isTTY === true,
+      stderr: process.stderr.isTTY === true,
+      ...(process.stdout.columns !== undefined ? { columns: process.stdout.columns } : {}),
+    },
+  }
+}
+
+/**
+ * Whether output to stdout should be colored.
+ *
+ * `NO_COLOR` set to anything but the empty string turns color off, and wins.
+ * `FORCE_COLOR` set to anything but `0` or `false` turns it on. Otherwise
+ * color follows whether stdout is a terminal, and `TERM=dumb` turns it off.
+ * A JSON answer is never colored; the caller passes `json: true` for one.
+ * @experimental
+ */
+export function colorEnabled(ctx: CliContext, opts: { json?: boolean } = {}): boolean {
+  if (opts.json === true) return false
+  const no = ctx.env['NO_COLOR']
+  if (no !== undefined && no !== '') return false
+  const force = ctx.env['FORCE_COLOR']
+  if (force !== undefined && force !== '0' && force !== 'false') return true
+  if (ctx.env['TERM'] === 'dumb') return false
+  return ctx.terminal?.stdout === true
 }
 
 /**
@@ -85,5 +131,6 @@ export function captureContext(
     io: captureIo(),
     cwd: overrides.cwd ?? process.cwd(),
     env: overrides.env ?? process.env,
+    ...(overrides.terminal !== undefined ? { terminal: overrides.terminal } : {}),
   }
 }
