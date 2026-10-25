@@ -166,8 +166,10 @@ export const moonRunner: RunnerRole = {
       }
     }
 
-    // A target names a task by `project:task`. `~:task` is the same project.
-    // `^:task` runs in every dependency project, so it names no single task.
+    // A target names a task by `project:task`. moon 2's `query tasks` already
+    // expands `~:` and `^:` into concrete targets. The `~:` and `^:` cases
+    // below are a fallback for output that does not: `~:task` is the same
+    // project, and `^:task` names no single task.
     const byTarget = new Map(tasks.map((t) => [t.argv[2]!, t.id]))
     for (const [item, { projectId, deps }] of depsOf) {
       Object.assign(

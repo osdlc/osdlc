@@ -261,7 +261,8 @@ why:
 
 `dependsOn` holds the ids of tasks in the same report that run first.
 `dependsOnUnresolved` keeps the dependencies that name no task, as written:
-a turbo `^build`, a moon `^:build`, a task an included Taskfile declares.
+a turbo `^build`, a moon target in a project the listing does not hold, a
+task an included Taskfile declares.
 turbo, moon, go-task, just, rake, poe (`deps`), pdm (`pre_<name>`), nx, VS Code
 tasks and CMake presets (a build or test preset's `configurePreset`) fill them.
 

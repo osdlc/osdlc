@@ -66,7 +66,7 @@ test('turbo: same-file keys resolve, `^` and missing names do not', async () => 
   })
 })
 
-test('moon: targets resolve across projects, `~:` is the same project', async () => {
+test('moon: targets resolve across projects; unexpanded `~:` (a fallback) is the same project', async () => {
   const dir = await root({ '.moon/workspace.yml': '' })
   const fake = fakeRunners([
     {
