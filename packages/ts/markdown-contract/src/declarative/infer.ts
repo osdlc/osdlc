@@ -62,7 +62,10 @@ export interface InferOptions {
   depth?: number
   /** Loosen the result: no section order, extra sections and keys allowed, no enums. */
   relax?: boolean
-  /** Put the contracts inline in one config file, instead of one file per contract. */
+  /**
+   * `meta` mode only (ignored otherwise, and with `depth: 0`): put the contracts inline in one
+   * config file, instead of one file per contract.
+   */
   inline?: boolean
   /** Strings longer than this never become a `const` or an `enum` value. Default `64`. */
   maxConstStringLength?: number
@@ -106,7 +109,8 @@ interface InferSink {
  *   { frontmatter?: { type: "object"; required?: string[]; additionalProperties?: boolean;
  *                     properties?: Record<string, unknown> },
  *     body?: { order?: "none"|"recognized-relative"|"strict"; additionalSections?: boolean;
- *              sections?: Array<{ section: string; minContains?: number; maxContains?: number }> } }
+ *              sections?: Array<{ section: string; aliases?: string[]; minContains?: number;
+ *                                maxContains?: number }> } }
  *
  * @experimental
  */

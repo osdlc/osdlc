@@ -12,8 +12,8 @@
  * the `xdg` convention, including the vendor's `<P>_CONFIG_DIR` and `<P>_ROOT`
  * overrides. The launcher does not run on Windows.
  *
- * The `local` case: a built entry beside the launcher
- * (`<launcherDir>/<name>.js`) runs under Node when present, else the source
+ * The `local` case: when rendered with `{ builtEntry }` (a path relative to
+ * the checkout root), that file runs under Node when present, else the source
  * entry runs under Bun. A dev checkout (installed with `node_modules`, and
  * with Bun on PATH) skips the built entry, so a committed bundle never hides
  * the source being edited. This is the canonical-install shape for a tool

@@ -478,8 +478,9 @@ Registering two tools with one id throws. A runner never spawns a process or
 reads the filesystem itself. It goes through `ctx`, so a test can give it
 canned output.
 
-Give a tool a `homepage`, a one-sentence `description` and a `brand` (an icon
-and a colour); every built-in has them. `RunnerRole.brand` still works, and is
+Give a tool a `homepage` and a one-sentence `description`; every built-in has
+them. A `brand` (an icon and a colour) is optional, and some built-ins, such as
+`deno-tasks`, `docker-compose` and `github-actions`, have none. `RunnerRole.brand` still works, and is
 deprecated in favour of `ToolDef.brand`. A runner's `invoke` must keep
 `task.argv[0]`.
 

@@ -83,7 +83,7 @@ function parseCliArgs(argv: string[]) {
       meta: { type: 'boolean' }, // one contract per folder, plus a config (default: one contract)
       depth: { type: 'string' }, // folder depth for --meta (default 1; 0 means one contract)
       relax: { type: 'boolean' }, // make the inferred contracts looser
-      inline: { type: 'boolean' }, // one config with the contracts inline, no contracts/ files
+      inline: { type: 'boolean' }, // --meta only: one config with the contracts inline, no contracts/ files
       out: { type: 'string' }, // where to write (default: the one root; cwd for several roots)
       force: { type: 'boolean' }, // overwrite existing files (default: refuse)
       'dry-run': { type: 'boolean' }, // print the files to stdout and write nothing
@@ -415,17 +415,20 @@ const INIT_CONFIG_NAME = 'markdown-contract.yaml'
  *  - Write: otherwise write `result.files` under `--out`. The default is the one root, so
  *    `init <dir> --check` finds the config from any cwd and `validate` finds it when run inside
  *    `<dir>`. With several roots there is no one base, so it uses cwd and warns on stderr. It
- *    refuses to overwrite an existing config without `--force` (exit 2). Single-contract mode
+ *    refuses to overwrite any existing file it would write (the config or a contract) without
+ *    `--force` (exit 2). Single-contract mode
  *    also writes a `markdown-contract.yaml` config, which `validate` loads when run inside
  *    `<dir>` or given `--config <dir>/markdown-contract.yaml`.
- *  - Self-check: after writing, load the config back with `loadConfigFile` and run it over the
- *    files with `runCorpus`. An error-level finding means inference has a bug, and exits 1.
+ *  - Self-check: after writing, compile each root's inferred contracts in memory with
+ *    `compileContractObject` and run them over that root with `runCorpus`. The written YAML is
+ *    not reloaded. An error-level finding means inference has a bug, and exits 1.
  *  - `--check`: do not infer or write. Load the existing config and run it over the files. Exit 0
  *    when clean, 1 on any error-level finding. Use it in CI to catch drift.
  *
  * Several roots run together. Each root is inferred and self-checked on its own files (globs are
- * relative to the root, so each root's contracts run with that root as cwd). The written files
- * hold every root's contracts. A summary (groups, files, warnings, self-check) goes to stdout.
+ * relative to the root, so each root's contracts run with that root as cwd). In single-contract
+ * mode the written config lists every root's contract. In `--meta` mode the first root's file
+ * wins at each path, so later roots' configs are dropped. A summary (groups, files, warnings, self-check) goes to stdout.
  * Usage and config errors exit 2.
  */
 function runInit(cwd: string, roots: string[], flags: InitFlags): CliResult {
@@ -471,7 +474,7 @@ function runInit(cwd: string, roots: string[], flags: InitFlags): CliResult {
   const writeError = writeInitFiles(files, outDir, flags.force === true)
   if (writeError) return writeError
 
-  // Self-check: load each root's contracts back and run them over that root.
+  // Self-check: compile each root's inferred contracts in memory and run them over that root.
   const selfCheckErrors = selfCheck(results, absRoots, scope)
 
   const summary = renderSummary(results, files, selfCheckErrors)

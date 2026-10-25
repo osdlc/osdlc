@@ -362,7 +362,9 @@ export interface ProjectProfile {
   packages: Package[]
   /** The union over packages, in registry order. */
   ecosystems: string[]
+  /** The union over packages, in first-seen package order (root first). */
   languages: string[]
+  /** The union over packages, in registry order. */
   tools: string[]
   malformed: MalformedManifest[]
   /**

@@ -189,8 +189,9 @@ function failureBody(result: Exclude<CallResult, { status: 'ok' }>): Record<stri
  * the prefix.
  *
  * A command call answers its `--json` document with status 200 and its exit
- * code in `X-Exit-Code`. A failed call answers `{ kind: "error", exit,
- * message, hint }`: 400 for wrong arguments, 422 for a failed run, 403 for a
+ * code in `X-Exit-Code`. A failed call answers `{ schemaVersion, kind:
+ * "error", code, exit, message, hint? }`, plus `refused` on a refusal and
+ * `stderr` when the run wrote to stderr: 400 for wrong arguments, 422 for a failed run, 403 for a
  * `cli-only` command and 404 for no such command.
  *
  * With `Accept: application/x-ndjson`, the answer streams: one JSON line per

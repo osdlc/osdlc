@@ -182,7 +182,8 @@ export interface CommandCommon<F extends FlagSpec> {
   rest?: { name: string }
   /**
    * The command's own exit codes beyond 0, 1 and 2, with what each means:
-   * `{ 10: 'nothing to do' }`. A code must be 1 or in 10-63.
+   * `{ 10: 'nothing to do' }`. A code must be 1, or in 10-63 except the shared
+   * failure codes 22-25.
    */
   exits?: Readonly<Record<number, string>>
   /** Command lines shown under `help --full`, without the leading app name. */

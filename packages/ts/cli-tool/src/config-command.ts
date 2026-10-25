@@ -90,8 +90,8 @@ export class ConfigUsageError extends Error {
 export interface ConfigStore {
   /**
    * The layers `set` and `unset` may write, lowest precedence first. Each
-   * becomes a flag (`--user`, `--project`). The first one named in
-   * {@link defaultLayer} is used when no flag is given.
+   * becomes a flag (`--user`, `--project`). {@link defaultLayer} is written
+   * when no flag is given; it must be one of these.
    */
   layers: readonly string[]
   /** The layer written when no layer flag is given. */
@@ -248,7 +248,7 @@ function layerLines(locations: readonly ConfigLocation[]): string {
  * | Command | Output | Fails with 1 when |
  * |---|---|---|
  * | `config` / `config list` | `{ settings, locations }` | a file will not parse |
- * | `config get <key>` | `{ key, value }` | the key has no value |
+ * | `config get <key>` | `{ key, value, source }` | the key has no value |
  * | `config set <key> <value>` | `{ key, value, layer, file }` | a file will not parse or write |
  * | `config unset <key>` | `{ key, layer, file }` | the key is not set in that layer |
  * | `config path` | `{ locations }` | never |

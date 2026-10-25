@@ -99,9 +99,8 @@ const PROBE_TIMEOUT_MS = 300_000
 /**
  * A plain glyph of stepped blocks, not Gradle's elephant logo. simple-icons
  * has a CC0 `gradle` entry (no license problem, unlike cargo.ts's `rust` or
- * maven.ts's `apachemaven`), but this package does not copy artwork from any
- * icon set, whatever its license. Every brand glyph here is drawn fresh. The
- * color (`#02303A`) comes from Gradle's documentation stylesheet
+ * maven.ts's `apachemaven`), but this glyph is drawn fresh rather than taken
+ * from it. The color (`#02303A`) comes from Gradle's documentation stylesheet
  * (gradle/gradle, `platforms/documentation/docs/src/docs/css/base.css`), not
  * from simple-icons.
  */

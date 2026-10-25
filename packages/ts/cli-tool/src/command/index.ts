@@ -5,8 +5,8 @@
  * routes a command line to it, parses the input, and prints the output as text
  * or, under `--json`, as one document with `schemaVersion` and `kind`, and a
  * list as JSON lines under `--output jsonl`. The app adds a `help` command
- * with progressive disclosure, a `schema` command, and `--help`, `--json`,
- * `--output` and `--version` everywhere. `App.call` runs a command from a JSON
+ * with progressive disclosure, a `schema` command, `--help`, `--json` and
+ * `--output` on every command, and `--version` on the root. `App.call` runs a command from a JSON
  * object, for the MCP and HTTP adapters. {@link loadCommandTree} builds
  * the tree from a directory of command files.
  */

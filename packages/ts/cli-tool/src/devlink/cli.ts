@@ -40,10 +40,11 @@ export function usage(spec: ToolSpec): string {
 
 usage: ${n} dev <verb> [options]
 
-  install [--bin-dir DIR]   put a shim for this checkout's launcher onto PATH
+  install [PATH] [--bin-dir DIR]
+                            put a shim for this checkout's launcher onto PATH
                             (default DIR: \${XDG_BIN_HOME:-$HOME/.local/bin})
   link [PATH] [--label L]   make a checkout the one every '${n}' runs
-                            (default: the checkout above the cwd)
+                            (default: the checkout above the cwd, else this one)
   use <#N|PATH|canonical>   switch to history entry N, a path, or back to
                             the canonical install
   off                       back to the canonical install

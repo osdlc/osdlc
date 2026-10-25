@@ -381,7 +381,7 @@ What a command declares:
 | `kind`, `schemaVersion` | the document's `kind` (default: the path joined with `-`) and version (default 1) |
 | `run(input, ctx)` | returns the output, or `outcome(output, exit)` to print it and exit non-zero |
 | `text(output, ctx)` | the text form. Default: the output as indented JSON |
-| `exits` | the command's own exit codes (1 or 10-63) and their meanings |
+| `exits` | the command's own exit codes (1, or 10-63 except 22-25) and their meanings |
 | `examples`, `hidden`, `readOnly` | shown under `help --full`; left out of lists; changes nothing |
 | `destructive` | deletes or overwrites something that cannot be got back. MCP's `destructiveHint` |
 | `items: { field, kind }` | the array field `--output jsonl` prints one line per element of, and each line's `kind` |
@@ -455,6 +455,7 @@ directory tree is the command tree.
 | `commands/config/index.ts` | the `config` group's `defineGroup` (summary, order, no commands), or a command that runs as `config` |
 | `commands/index.ts` | the root's group declaration, or the root's default command |
 | `_helpers.ts`, `.d.ts`, `*.test.ts` | ignored |
+| other files (`.md`, `.json`, ...) | ignored |
 
 ```ts
 const tree = await loadCommandTree(new URL('./commands/', import.meta.url), { summary: 'sweep' })
@@ -463,7 +464,8 @@ const app = defineApp({ name: 'sweep', version, summary: 'sweep', commands: tree
 
 It imports the files under `dir` only, and `dir` must be a `file:` URL or an
 absolute path, so the tree never depends on the working directory. Symbolic
-links are skipped, and a file or directory name that is not a command word
+links are skipped, a file without a `.ts`, `.mts`, `.js` or `.mjs` extension
+is ignored, and a directory or module file name that is not a command word
 (letters, digits, `-` and `_`) is an error. `treeFromFiles` takes the same files as
 a list, for a bundler that collects the modules itself.
 
@@ -644,7 +646,8 @@ commands never confirm.
 
 `runApp(app, argv, { cwd, env, terminal })` runs in process and returns
 `{ exit, out, err, json() }`. `checkApp(app)` reports a node whose help does
-not render or a data command with no output schema. `checkGuide(app)` runs the
+not render or a `schema` document that does not render (a missing output
+schema already fails when the app is declared). `checkGuide(app)` runs the
 checks every guide shares: each topic prints, an unknown topic exits 2,
 `guide --help` works, and the prose names no flag that no command takes.
 

@@ -24,9 +24,9 @@ import type { Ctx, Finding, FindingLevel, SourcePos } from './types.js'
 
 /**
  * One text check. Exactly one of `pattern` (a literal substring) or `regex` (a regular expression
- * source) gives the text to find. `min` and `max` bound the count. `requires` defaults to
- * `min: 1` with no `max`. `forbids` defaults to `max: 0`. `id` keeps the finding id fixed when
- * the pattern changes. `note` is added to the message. `level` overrides the default level.
+ * source) gives the text to find. `min` and `max` bound the count (`forbids` checks only `max`).
+ * `requires` defaults to `min: 1` with no `max`. `forbids` defaults to `max: 0`. `id` keeps the
+ * finding id fixed when the pattern changes. `note` is added to the message. `level` overrides the default level.
  */
 export interface TextMatchSpec {
   /** The literal substring to find. One of `pattern` or `regex` is required. */
@@ -221,7 +221,7 @@ export interface TextFindingInput {
  *     at `scopePos` (the section heading), or with no position when `scopePos` is omitted.
  *   - `forbids` with hits (`max: 0`): one `text/forbids`, "forbidden phrase … present", for each
  *     hit, on that hit's line.
- *   - Any other `min` or `max` not met: one `text/count`, "… found N times, expected …", at
+ *   - Any other `min` or `max` not met (`forbids` ignores `min`): one `text/count`, "… found N times, expected …", at
  *     `scopePos`.
  *
  * Each message ends with the spec's `note`. The level is the spec's `level` when set, else the

@@ -26,6 +26,8 @@ const isMap = (v: unknown): v is Record<string, unknown> =>
  * @param baseDir The folder that relative contract paths resolve against.
  * @returns The rules, each with a compiled contract.
  * @throws {DeclarativeError} When the YAML is not a valid config, or a contract it names is not valid.
+ * @throws {ContractBuildError} When a contract's compiled grammar is malformed, such as two
+ *   sections with the same camelCase key (`contract/key-collision`).
  * @throws {Error} When a contract file it names cannot be read.
  */
 export function loadConfig(yamlText: string, baseDir: string): CorpusConfig {
@@ -43,6 +45,8 @@ export function loadConfig(yamlText: string, baseDir: string): CorpusConfig {
  * @param path The config file's path.
  * @returns The rules, each with a compiled contract.
  * @throws {DeclarativeError} When the YAML is not a valid config, or a contract it names is not valid.
+ * @throws {ContractBuildError} When a contract's compiled grammar is malformed, such as two
+ *   sections with the same camelCase key (`contract/key-collision`).
  * @throws {Error} When the file, or a contract file it names, cannot be read.
  */
 export function loadConfigFile(path: string): CorpusConfig {
