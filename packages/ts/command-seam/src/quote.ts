@@ -138,8 +138,8 @@ const CMD_META = /[()[\]%!^"`<>&|;, *?]/g
  *    passes through and the carets are then removed.
  *
  * `doubleEscape` applies step 2 twice, for a batch file that passes its
- * arguments on with `%*`, which `cmd.exe` parses again. The shims npm writes
- * to `node_modules/.bin` do this.
+ * arguments on with `%*` or `%1`, which `cmd.exe` parses again. The runners
+ * use it for every batch file.
  *
  * A line break cannot be passed: `cmd.exe` ends the command there. Callers
  * refuse one before calling this.
