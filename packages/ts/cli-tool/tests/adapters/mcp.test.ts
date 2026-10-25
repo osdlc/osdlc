@@ -2,6 +2,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { describe, expect, test } from 'vitest'
 
+import { ErrorDocumentSchema } from '../../src/command/index.ts'
 import { captureContext } from '../../src/io.ts'
 import { createMcpServer, mcpTools, serveMcp, toolName } from '../../src/mcp/index.ts'
 import { fixture } from './fixture.ts'
@@ -121,15 +122,33 @@ describe('tools/call', () => {
     const { client } = await connect()
     const result = await client.callTool({ name: 'items_list', arguments: { dir: '/elsewhere' } })
     expect(result.isError).toBe(true)
-    expect(result.content).toEqual([{ type: 'text', text: "exit 2: unknown argument 'dir'" }])
+    expect(result.content).toEqual([
+      {
+        type: 'text',
+        text: JSON.stringify({
+          schemaVersion: 1,
+          kind: 'error',
+          code: 'usage',
+          message: "unknown argument 'dir'",
+          exit: 2,
+        }),
+      },
+    ])
+    expect(result._meta).toEqual({ exitCode: 2, code: 'usage' })
   })
 
-  test('a failed command is an error result with its exit code and hint', async () => {
+  test('a failed command is an error result carrying its error document', async () => {
     const { client } = await connect()
     const result = await client.callTool({ name: 'fails', arguments: {} })
-    expect(result).toMatchObject({
-      isError: true,
-      content: [{ type: 'text', text: 'exit 1: it broke\ntry again' }],
+    expect(result).toMatchObject({ isError: true, _meta: { exitCode: 1, code: 'error' } })
+    const [first] = result.content as { text: string }[]
+    expect(ErrorDocumentSchema.parse(JSON.parse(first!.text))).toEqual({
+      schemaVersion: 1,
+      kind: 'error',
+      code: 'error',
+      message: 'it broke',
+      exit: 1,
+      hint: 'try again',
     })
   })
 
