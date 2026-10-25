@@ -510,7 +510,8 @@ export interface ApiOptions {
 /**
  * `gh api [-i] [-H If-None-Match: …] <endpoint>`: a GET against the REST API. `{owner}` and
  * `{repo}` placeholders in the endpoint are filled from the target's repo, or by gh from the
- * cwd's repo when the target names none.
+ * cwd's repo when the target names none. gh fills `{branch}` from the cwd's checked-out branch
+ * whatever the target, so it reads the working directory even on a client built from `repo`.
  * Unchecked. Failure is a value (`ok: false`), so a caller can tell a 304
  * from an outage.
  */
@@ -906,7 +907,8 @@ export function repoView(
   const slug = repo ?? target?.repo
   const argv = ['repo', 'view']
   if (slug !== undefined) {
-    argv.push(target?.hostname === undefined ? slug : `${target.hostname}/${slug}`)
+    const host = hostOf(target)
+    argv.push(host === undefined ? slug : `${host}/${slug}`)
   }
   argv.push('--json', withFields(fields, ['nameWithOwner']).join(','))
   return {

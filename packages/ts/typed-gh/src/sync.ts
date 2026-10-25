@@ -79,9 +79,11 @@ export interface GhRepoOptions extends GhOptions {
  *
  * `new Gh({ repo, hostname?, runner? })` names a repository and no
  * directory. Each call runs in `process.cwd()`, read when the call is made,
- * because a runner needs a directory, but no call depends on it: every verb
+ * because a runner needs a directory. No typed verb depends on it: each one
  * names `repo`, and the host-only verbs (`repoList`, `searchPrs`) read no
- * clone. `repo` is required in this form, so `new Gh({})` does not
+ * clone. Two escape hatches do: `raw` and `rawChecked` add no `--repo`, and
+ * an `api` endpoint's `{branch}` is filled by gh from the directory's
+ * checkout. `repo` is required in this form, so `new Gh({})` does not
  * typecheck and throws `TypeError`.
  *
  * With `hostname`, every call goes to that GitHub host. An invalid `repo` or
@@ -104,6 +106,8 @@ export class Gh {
   constructor(options: GhRepoOptions)
   /** A client rooted at `cwd`: the clone gh reads, unless `options.repo` names another repository. */
   constructor(cwd: string, options?: GhOptions)
+  /** Either form, for a value typed `string | GhRepoOptions`. */
+  constructor(cwdOrOptions: string | GhRepoOptions)
   constructor(cwdOrOptions: string | GhRepoOptions, options: GhOptions = {}) {
     const opts = typeof cwdOrOptions === 'string' ? options : cwdOrOptions
     if (typeof cwdOrOptions !== 'string') v.requireRepo('Gh', opts)
@@ -163,12 +167,17 @@ export class Gh {
 
   // ── raw calls ─────────────────────────────────────────────────────────────
 
-  /** Run any `gh` call and return the result, whatever the exit code. */
+  /**
+   * Run any `gh` call and return the result, whatever the exit code. It adds
+   * no `--repo`: on a client built without a directory it runs in
+   * `process.cwd()`, so gh reads that clone. Add `--repo` to `argv`, or call
+   * `.at(dir)` first.
+   */
   raw(argv: string[], opts: { timeoutMs?: number | undefined } = {}): CommandResult {
     return this.runner.run(argv, { cwd: this.cwd, ...opts })
   }
 
-  /** Run any `gh` call. Throws the classified failure on a non-zero exit. */
+  /** Run any `gh` call. Throws the classified failure on a non-zero exit. Adds no `--repo`, as {@link Gh.raw}. */
   rawChecked(argv: string[], opts: { timeoutMs?: number | undefined } = {}): CommandResult {
     return runCheckedGh(this.runner, argv, { cwd: this.cwd, ...opts })
   }

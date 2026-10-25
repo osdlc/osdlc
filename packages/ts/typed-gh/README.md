@@ -188,9 +188,11 @@ without `repo` gh reads the repository from the clone there.
 `new Gh({ repo, hostname?, runner? })` names a repository and no directory.
 `repo` is required in that form: `new Gh({})` and `new Gh({ hostname })` do
 not typecheck and throw `TypeError`, so a client that reads a clone always
-says which one. Its calls run in `process.cwd()`, read when each call is made,
-since nothing they do depends on it. `gh.cwd` is that directory, a `string` in
-both forms. `AsyncGh` takes the same two forms.
+says which one. Its calls run in `process.cwd()`, read when each call is made.
+No typed verb depends on that directory, but `raw` and `rawChecked` add no
+`--repo`, and gh fills an `api` endpoint's `{branch}` from that directory's
+checkout, so add `--repo` to a raw call or use `.at(dir)`. `gh.cwd` is that
+directory, a `string` in both forms. `AsyncGh` takes the same two forms.
 
 ```ts
 const local = new Gh('/path/to/clone') // reads acme/widgets from the clone's remote

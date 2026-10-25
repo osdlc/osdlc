@@ -59,7 +59,6 @@ function runSync(gh: Gh): void {
   gh.soft.repoView()
   gh.repoList('acme')
   gh.searchPrs('is:open')
-  gh.raw(['pr', 'status'])
 }
 
 /** {@link runSync} for an async client. */
@@ -71,7 +70,6 @@ async function runAsync(gh: AsyncGh): Promise<void> {
   await gh.soft.repoView()
   await gh.repoList('acme')
   await gh.searchPrs('is:open')
-  await gh.raw(['pr', 'status'])
 }
 
 const strip = (calls: Call[]) => calls.map(({ argv, env }) => ({ argv, env }))
@@ -124,6 +122,19 @@ describe('new Gh({ repo }) and new AsyncGh({ repo })', () => {
     expect(agh.cwd).toBe('/second')
     expect(sync.calls.map((c) => c.cwd)).toEqual(['/second', '/second', '/second'])
     expect(as.calls.map((c) => c.cwd)).toEqual(['/second', '/second', '/second'])
+  })
+
+  test('raw adds no --repo: it runs in process.cwd(), as documented', () => {
+    vi.spyOn(process, 'cwd').mockReturnValue('/elsewhere')
+    const sync = syncRecorder()
+    new Gh({ repo: 'acme/widgets', runner: sync.runner }).raw(['pr', 'close', '42'])
+    expect(sync.calls).toEqual([{ argv: ['pr', 'close', '42'], cwd: '/elsewhere', env: undefined }])
+  })
+
+  test("repoView treats hostname '' as no host, as every other verb does", () => {
+    const sync = syncRecorder('{"nameWithOwner":"acme/widgets"}')
+    new Gh({ repo: 'acme/widgets', hostname: '', runner: sync.runner }).repoView()
+    expect(sync.calls[0]!.argv.slice(0, 3)).toEqual(['repo', 'view', 'acme/widgets'])
   })
 
   test('keep repo and hostname on the instance', () => {
@@ -236,5 +247,10 @@ describe('the constructor types', () => {
     expectTypeOf<AsyncGh['cwd']>().toEqualTypeOf<string>()
     expectTypeOf<GhRepoOptions['repo']>().toEqualTypeOf<string>()
     expectTypeOf<AsyncGhRepoOptions['repo']>().toEqualTypeOf<string>()
+    // A value typed as either form is accepted.
+    const either = '/clone' as string | GhRepoOptions
+    expectTypeOf(new Gh(either)).toEqualTypeOf<Gh>()
+    const eitherAsync = '/clone' as string | AsyncGhRepoOptions
+    expectTypeOf(new AsyncGh(eitherAsync)).toEqualTypeOf<AsyncGh>()
   })
 })

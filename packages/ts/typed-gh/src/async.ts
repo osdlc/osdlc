@@ -63,7 +63,8 @@ export interface AsyncGhRepoOptions extends AsyncGhOptions {
  * repository, and optionally to one host. The two constructor forms, `repo`
  * and `hostname` work as on `Gh`: `new AsyncGh(cwd, options?)` runs in
  * `cwd`, and `new AsyncGh({ repo, hostname?, runner? })` runs each call in
- * `process.cwd()`, read when the call is made.
+ * `process.cwd()`, read when the call is made. As on `Gh`, `raw`,
+ * `rawChecked` and an `api` endpoint's `{branch}` still read that directory.
  */
 export class AsyncGh {
   readonly repo: string | undefined
@@ -78,6 +79,8 @@ export class AsyncGh {
   constructor(options: AsyncGhRepoOptions)
   /** A client rooted at `cwd`: the clone gh reads, unless `options.repo` names another repository. */
   constructor(cwd: string, options?: AsyncGhOptions)
+  /** Either form, for a value typed `string | AsyncGhRepoOptions`. */
+  constructor(cwdOrOptions: string | AsyncGhRepoOptions)
   constructor(cwdOrOptions: string | AsyncGhRepoOptions, options: AsyncGhOptions = {}) {
     const opts = typeof cwdOrOptions === 'string' ? options : cwdOrOptions
     if (typeof cwdOrOptions !== 'string') v.requireRepo('AsyncGh', opts)
@@ -124,12 +127,17 @@ export class AsyncGh {
 
   // ── raw calls ─────────────────────────────────────────────────────────────
 
-  /** Run any `gh` call and return the result, whatever the exit code. */
+  /**
+   * Run any `gh` call and return the result, whatever the exit code. It adds
+   * no `--repo`: on a client built without a directory it runs in
+   * `process.cwd()`, so gh reads that clone. Add `--repo` to `argv`, or call
+   * `.at(dir)` first.
+   */
   raw(argv: string[], opts: AsyncCallOptions = {}): Promise<CommandResult> {
     return this.runner.run(argv, { cwd: this.cwd, ...opts })
   }
 
-  /** Run any `gh` call. Rejects with the classified failure on a non-zero exit. */
+  /** Run any `gh` call. Rejects with the classified failure on a non-zero exit. Adds no `--repo`, as {@link AsyncGh.raw}. */
   rawChecked(argv: string[], opts: AsyncCallOptions = {}): Promise<CommandResult> {
     return runCheckedGhAsync(this.runner, argv, { cwd: this.cwd, ...opts })
   }
