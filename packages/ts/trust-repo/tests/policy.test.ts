@@ -95,8 +95,7 @@ describe('policyDecision', () => {
   test('owners: an entry matches the host as well as the owner', async () => {
     const root = tmp()
     const owners = async (entries: string[], owner: string): Promise<boolean> =>
-      (await policyDecision(root, { paths: [], owners: entries }, { ownerOf: () => owner }))
-        .trusted
+      (await policyDecision(root, { paths: [], owners: entries }, { ownerOf: () => owner })).trusted
     // A bare entry is a GitHub owner, and a bare ownerOf answer is too.
     expect(await owners(['acme'], 'github.com/Acme')).toBe(true)
     expect(await owners(['acme'], 'acme')).toBe(true)
