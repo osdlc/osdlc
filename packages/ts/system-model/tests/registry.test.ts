@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url'
+
 import { afterAll, describe, expect, test } from 'vitest'
 
 import { builtins } from '../src/builtins.ts'
@@ -175,7 +177,7 @@ describe('browser-safe entries', () => {
         else outside.add(spec)
       }
     }
-    walk(new URL(`../src/${entry}.ts`, import.meta.url).pathname)
+    walk(fileURLToPath(new URL(`../src/${entry}.ts`, import.meta.url)))
     return [...outside]
   }
 

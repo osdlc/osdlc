@@ -36,6 +36,9 @@ function opts(canned: Canned[] = [], extra: Record<string, unknown> = {}) {
   }
 }
 
+/** `path` as it sits inside a JSON string: a Windows `\` is escaped. */
+const inJson = (path: string): string => JSON.stringify(path).slice(1, -1)
+
 function byName(list: Task[], name: string): Task | undefined {
   return list.find((t) => t.path[t.path.length - 1] === name)
 }
@@ -77,7 +80,7 @@ describe('mise runner', () => {
   test('reads config tasks and file tasks, dropping hidden ones', async () => {
     const dir = await root({ 'mise.toml': CONFIG })
     const { options } = opts([
-      { binary: 'mise', argv: ['tasks', '--json'], stdout: TASKS.replaceAll('%ROOT%', dir) },
+      { binary: 'mise', argv: ['tasks', '--json'], stdout: TASKS.replaceAll('%ROOT%', inJson(dir)) },
     ])
     const found = tasks(await collect(dir, { ...options, only: ['mise'], allowExec: true }))
 
@@ -115,7 +118,7 @@ describe('mise runner', () => {
   test('omits global tasks: they belong to the machine, not the project', async () => {
     const dir = await root({ 'mise.toml': CONFIG })
     const { options } = opts([
-      { binary: 'mise', argv: ['tasks', '--json'], stdout: TASKS.replaceAll('%ROOT%', dir) },
+      { binary: 'mise', argv: ['tasks', '--json'], stdout: TASKS.replaceAll('%ROOT%', inJson(dir)) },
     ])
     const report = (await collect(dir, { ...options, only: ['mise'], allowExec: true })).reports[0]!
 
@@ -213,7 +216,7 @@ describe('mise runner', () => {
   test('invoke appends arguments to the task', async () => {
     const dir = await root({ 'mise.toml': CONFIG })
     const { options } = opts([
-      { binary: 'mise', argv: ['tasks', '--json'], stdout: TASKS.replaceAll('%ROOT%', dir) },
+      { binary: 'mise', argv: ['tasks', '--json'], stdout: TASKS.replaceAll('%ROOT%', inJson(dir)) },
     ])
     const { project, catalog } = await detectAndCollect(dir, {
       ...options,
