@@ -36,7 +36,7 @@ import type {
   Task,
 } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { dirOf, taskId } from '../support/shared.ts'
+import { dependencies, dirOf, taskId } from '../support/shared.ts'
 
 const CHAIN = [
   { label: 'runner', hint: 'rake runs tasks declared in a Rakefile.' },
@@ -233,8 +233,17 @@ export const rakeRunner: RunnerRole = {
     }
 
     if (listed !== undefined && rootRakefile !== undefined) {
+      // `rake -AT` prints no prerequisites, so they come from the root file's scan.
+      const rootText = await ctx.readText(rootRakefile)
+      const scannedDeps = new Map(
+        (rootText === null ? [] : scanTasks(rootText)).map((t) => [t.path, t.deps]),
+      )
+      const names = new Set(listed.map((t) => t.name))
       for (const item of listed) {
-        tasks.push(fromListing(item, rootRakefile))
+        tasks.push({
+          ...fromListing(item, rootRakefile),
+          ...depsIn(item.name, scannedDeps.get(item.name) ?? [], names, rootRakefile),
+        })
       }
       diagnostics.push({
         severity: 'info',
@@ -290,6 +299,7 @@ export const rakeRunner: RunnerRole = {
         continue
       }
 
+      const names = new Set(scanned.map((t) => t.path))
       for (const name of scanned) {
         const argv = dir === '.' ? ['rake', name.path] : ['rake', '-C', dir, name.path]
         tasks.push({
@@ -304,6 +314,7 @@ export const rakeRunner: RunnerRole = {
           source: file,
           origin: 'declared',
           ...(name.doc ? { doc: name.doc } : {}),
+          ...depsIn(name.path, name.deps, names, file),
           tags: ['rake', 'ruby', dir],
           persistent: { value: false, declared: false },
           executes: 'local',
@@ -347,6 +358,26 @@ export const rakeRunner: RunnerRole = {
     argv[argv.length - 1] = `${argv[argv.length - 1]}[${args.map(escapeRakeArg).join(',')}]`
     return argv
   },
+}
+
+/**
+ * A prerequisite resolves as rake looks it up: in the task's own namespace
+ * first, then each enclosing one, then at the top level.
+ */
+function depsIn(
+  path: string,
+  deps: readonly string[],
+  names: ReadonlySet<string>,
+  file: string,
+): Pick<Task, 'dependsOn' | 'dependsOnUnresolved'> {
+  const scopes = path.split(':').slice(0, -1)
+  return dependencies(deps, (dep) => {
+    for (let i = scopes.length; i >= 0; i--) {
+      const candidate = [...scopes.slice(0, i), dep].join(':')
+      if (names.has(candidate)) return taskId('rake', file, candidate)
+    }
+    return undefined
+  })
 }
 
 function escapeRakeArg(arg: string): string {
@@ -447,15 +478,39 @@ interface ScannedTask {
   /** Namespaced with `:` — `db:migrate`, `db:seed:demo`. */
   path: string
   doc?: string | undefined
+  /** Prerequisites as written, before namespace lookup. */
+  deps: string[]
 }
 
 /**
- * `task :name`, `task "name"`, `task 'name'`, optionally followed by a `=>`
- * or `name:` dependency clause. Captures only the name. Dependencies are not
- * `Task.parameters`, because rake dependencies are not runtime inputs the way
- * a just parameter is.
+ * `task :name`, `task "name"`, `task 'name'` or `task name:`, optionally
+ * followed by a `=>` dependency clause (or, for `name:`, the value). The
+ * fourth group is the `name:` form, whose value is the dependency list.
+ * Dependencies are not `Task.parameters`, because rake dependencies are not
+ * runtime inputs the way a just parameter is.
  */
-const TASK_DECL = /^\s*task\s*\(?\s*(?::([A-Za-z0-9_]+)|"([^"]+)"|'([^']+)')/
+const TASK_DECL = /^\s*task\s*\(?\s*(?::([A-Za-z0-9_]+)|"([^"]+)"|'([^']+)'|([A-Za-z0-9_]+):(?!:))/
+
+/** One dependency name: `:sym`, `"str"` or `'str'`. */
+const DEP_NAME = /:([A-Za-z0-9_:]+)|"([^"]+)"|'([^']+)'/g
+
+/**
+ * The prerequisites after a task's name: `=> [:a, :b]`, `=> :a`, the value of
+ * `name: %w[a b]`. Stops at a `do` or `{` block.
+ */
+function scanDeps(rest: string, keyForm: boolean): string[] {
+  let rhs = rest
+  if (!keyForm) {
+    const arrow = rest.indexOf('=>')
+    if (arrow === -1) return []
+    rhs = rest.slice(arrow + 2)
+  }
+  rhs = rhs.replace(/\s(do\b|\{).*$/, '').trim()
+  const words = /^%[wi][[(]([^\])]*)[\])]/.exec(rhs)
+  if (words !== null) return words[1]!.trim().split(/\s+/).filter(Boolean)
+  const list = rhs.startsWith('[') ? rhs.slice(1, rhs.indexOf(']')) : rhs.split(/[\s,)]/)[0]!
+  return [...list.matchAll(DEP_NAME)].map((m) => m[1] ?? m[2] ?? m[3]!)
+}
 
 /** `namespace :name do` / `namespace "name" do` — a namespace always opens a `do` block. */
 const NAMESPACE_OPEN = /^\s*namespace\s*\(?\s*(?::([A-Za-z0-9_]+)|"([^"]+)"|'([^']+)')\)?\s*do\b/
@@ -519,10 +574,11 @@ export function scanTasks(text: string): ScannedTask[] {
 
     const taskMatch = TASK_DECL.exec(raw)
     if (taskMatch) {
-      const name = taskMatch[1] ?? taskMatch[2] ?? taskMatch[3]
+      const name = taskMatch[1] ?? taskMatch[2] ?? taskMatch[3] ?? taskMatch[4]
       if (name !== undefined) {
         const path = [...namespacePath(), name].join(':')
-        out.push({ path, ...(pendingDesc ? { doc: pendingDesc } : {}) })
+        const deps = scanDeps(raw.slice(taskMatch[0].length), taskMatch[4] !== undefined)
+        out.push({ path, ...(pendingDesc ? { doc: pendingDesc } : {}), deps })
       }
       pendingDesc = undefined
       if (ENDS_WITH_DO.test(raw)) stack.push({ kind: 'other' })

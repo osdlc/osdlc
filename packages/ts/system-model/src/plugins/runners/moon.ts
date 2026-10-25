@@ -27,7 +27,7 @@ import {
   type Task,
 } from '../../model.ts'
 import type { RunnerRole, ToolFact } from '../../tool.ts'
-import { afterSeparator, looksPersistent, taskId, tierOf } from '../support/shared.ts'
+import { afterSeparator, dependencies, looksPersistent, taskId, tierOf } from '../support/shared.ts'
 
 const CHAIN = [
   { label: 'runner', hint: 'moon owns the build graph, its cache and task inheritance.' },
@@ -53,6 +53,8 @@ interface MoonTask {
   script?: string
   type?: string
   preset?: string
+  /** Targets this task runs first: strings, or `{ target }` objects in moon 1.x and later. */
+  deps?: Array<string | { target?: string }>
   options?: { internal?: boolean; persistent?: boolean }
 }
 
@@ -120,6 +122,8 @@ export const moonRunner: RunnerRole = {
     const meta = await projectMeta(ctx, env, diagnostics)
 
     const tasks: Task[] = []
+    // Each task's dependency targets, resolved once every task's id is known.
+    const depsOf = new Map<Task, { projectId: string; deps: string[] }>()
     for (const [projectId, projectTasks] of Object.entries(parsed.tasks ?? {})) {
       const m = meta.get(projectId)
       const tier = tierOf(m?.source ?? '.')
@@ -128,7 +132,7 @@ export const moonRunner: RunnerRole = {
         if (task.options?.internal) continue
         const target = task.target ?? `${projectId}:${task.id}`
         const argv = ['moon', 'run', target]
-        tasks.push({
+        const item: Task = {
           id: taskId('moon', m?.source ?? '.', target),
           runner: 'moon',
           path: ['moon', tier, projectId, task.id],
@@ -154,8 +158,25 @@ export const moonRunner: RunnerRole = {
             ? { value: true, declared: true }
             : { value: looksPersistent(task.id), declared: false },
           executes: 'local',
-        })
+        }
+        tasks.push(item)
+        const deps = (task.deps ?? [])
+          .map((d) => (typeof d === 'string' ? d : d.target))
+          .filter((d): d is string => typeof d === 'string' && d !== '')
+        if (deps.length > 0) depsOf.set(item, { projectId, deps })
       }
+    }
+
+    // A target names a task by `project:task`. `~:task` is the same project.
+    // `^:task` runs in every dependency project, so it names no single task.
+    const byTarget = new Map(tasks.map((t) => [t.argv[2]!, t.id]))
+    for (const [item, { projectId, deps }] of depsOf) {
+      Object.assign(
+        item,
+        dependencies(deps, (dep) =>
+          byTarget.get(dep.startsWith('~:') ? `${projectId}${dep.slice(1)}` : dep),
+        ),
+      )
     }
 
     return {

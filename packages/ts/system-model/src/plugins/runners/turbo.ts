@@ -12,7 +12,7 @@
 import type { ProviderContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { afterSeparator, dirOf, looksPersistent, taskId } from '../support/shared.ts'
+import { afterSeparator, dependencies, dirOf, looksPersistent, taskId } from '../support/shared.ts'
 
 const CHAIN = [
   {
@@ -141,6 +141,22 @@ export const turboRunner: RunnerRole = {
           detailParts.push(`outputs: ${task.outputs.join(', ')}`)
         }
 
+        // A dependency resolves to a key in the same file: `lint`, or
+        // `web#lint` from a `web#build` key. A `^build` runs in the package's
+        // dependencies, so it names no single task.
+        const scope = hashAt === -1 ? undefined : key.slice(0, hashAt)
+        const deps = dependencies(
+          Array.isArray(task.dependsOn)
+            ? task.dependsOn.filter((d): d is string => typeof d === 'string')
+            : [],
+          (dep) => {
+            if (dep.startsWith('^')) return undefined
+            const scoped = scope === undefined || dep.includes('#') ? undefined : `${scope}#${dep}`
+            const hit = [scoped, dep].find((k) => k !== undefined && Object.hasOwn(map!, k))
+            return hit === undefined ? undefined : taskId('turbo', file, hit)
+          },
+        )
+
         const declaredPersistent = task.persistent === true
         const cacheDisabled = task.cache === false
 
@@ -155,6 +171,7 @@ export const turboRunner: RunnerRole = {
           source: file,
           origin: 'declared',
           ...(detailParts.length > 0 ? { detail: detailParts.join('; ') } : {}),
+          ...deps,
           tags: ['turbo', dir, ...(cacheDisabled ? ['cache-disabled'] : [])],
           persistent: {
             value: declaredPersistent || (cacheDisabled && looksPersistent(taskName)),

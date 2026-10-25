@@ -33,7 +33,7 @@ import type {
 } from '../../model.ts'
 import { paramShape } from '../../params.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { looksPersistent, onePerDir, sourcesOf, taskId } from '../support/shared.ts'
+import { dependencies, looksPersistent, onePerDir, sourcesOf, taskId } from '../support/shared.ts'
 
 /** The names just looks for. */
 export const JUSTFILE_NAMES = ['justfile', 'Justfile', '.justfile']
@@ -59,6 +59,9 @@ interface JustRecipe {
   doc?: string | null
   private?: boolean
   parameters?: { name: string; kind?: string; default?: string | null }[]
+  dependencies?: { recipe?: string }[]
+  /** How many of `dependencies` run before the recipe. The rest follow `&&` and run after. */
+  priors?: number
   body?: unknown[][]
 }
 
@@ -108,9 +111,13 @@ export const justRunner: RunnerRole = {
       if (usable) {
         const parsed = await dumpRecipes(ctx, file)
         if (parsed.error === undefined) {
+          const names = new Set(parsed.recipes.filter((r) => !r.private).map(recipeName))
           for (const recipe of parsed.recipes) {
             if (recipe.private) continue
-            tasks.push(fromDump(recipe, file, dir))
+            const deps = (recipe.dependencies ?? [])
+              .slice(0, recipe.priors)
+              .flatMap((d) => (d.recipe ? [d.recipe] : []))
+            tasks.push({ ...fromDump(recipe, file, dir), ...depsIn(deps, names, file) })
           }
           continue
         }
@@ -131,8 +138,10 @@ export const justRunner: RunnerRole = {
         diagnostics.push({ severity: 'error', message: 'unreadable', source: file })
         continue
       }
-      for (const name of scanRecipeNames(text)) {
-        tasks.push(fromScan(name, file, dir, unknown))
+      const scanned = scanRecipes(text)
+      const names = new Set(scanned.map((r) => r.name))
+      for (const { name, deps } of scanned) {
+        tasks.push({ ...fromScan(name, file, dir, unknown), ...depsIn(deps, names, file) })
       }
     }
 
@@ -174,8 +183,21 @@ function baseArgv(file: string, dir: string): string[] {
   return dir === '.' ? ['just'] : ['just', '--justfile', file, '--working-directory', dir]
 }
 
+function recipeName(recipe: JustRecipe): string {
+  return recipe.namepath ?? recipe.name
+}
+
+/** A dependency resolves to a listed recipe of the same justfile. A private one is not listed. */
+function depsIn(
+  deps: readonly string[],
+  names: ReadonlySet<string>,
+  file: string,
+): Pick<Task, 'dependsOn' | 'dependsOnUnresolved'> {
+  return dependencies(deps, (dep) => (names.has(dep) ? taskId('just', file, dep) : undefined))
+}
+
 function fromDump(recipe: JustRecipe, file: string, dir: string): Task {
-  const name = recipe.namepath ?? recipe.name
+  const name = recipeName(recipe)
   const parameters = (recipe.parameters ?? []).map(toParam)
   const argv = [...baseArgv(file, dir), name]
   return {
@@ -251,7 +273,16 @@ function renderParams(params: Param[]): string {
 const RECIPE_HEADER = /^@?([a-zA-Z_][a-zA-Z0-9_-]*)(?:\s+[^:\n]*?)?:(?!=)/
 
 export function scanRecipeNames(text: string): string[] {
-  const out: string[] = []
+  return scanRecipes(text).map((r) => r.name)
+}
+
+/**
+ * Recipe headers with the dependencies after the colon: `test: build lint`,
+ * `push: (deploy "prod") && notify`. A parenthesized dependency counts by its
+ * first word. Recipes after `&&` run after the recipe, so they are left out.
+ */
+export function scanRecipes(text: string): Array<{ name: string; deps: string[] }> {
+  const out: Array<{ name: string; deps: string[] }> = []
   const seen = new Set<string>()
   for (const raw of text.split(/\r?\n/)) {
     if (!raw || raw[0] === ' ' || raw[0] === '\t' || raw[0] === '#') continue
@@ -259,7 +290,11 @@ export function scanRecipeNames(text: string): string[] {
     const name = m?.[1]
     if (name === undefined || seen.has(name)) continue
     seen.add(name)
-    out.push(name)
+    const tail = raw.slice(m![0].length).replace(/#.*$/, '').split('&&')[0]!
+    const deps = [...tail.matchAll(/\(\s*([A-Za-z_][\w-]*)[^)]*\)|([A-Za-z_][\w-]*)/g)].map(
+      (d) => d[1] ?? d[2]!,
+    )
+    out.push({ name, deps })
   }
   return out
 }

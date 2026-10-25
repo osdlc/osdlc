@@ -119,6 +119,16 @@ export interface Task {
   doc?: string | undefined
   /** What the task executes, when that differs from `display`. */
   detail?: string | undefined
+  /**
+   * Ids of tasks in the same report that run before this one, in declared
+   * order. Absent when there are none or the runner does not read them.
+   */
+  dependsOn?: string[] | undefined
+  /**
+   * Dependencies that name no task in the report, as written: a turbo
+   * `^build`, a moon `^:build`, a task an include declares.
+   */
+  dependsOnUnresolved?: string[] | undefined
   /** Free-text facets for search and filtering. */
   tags: string[]
   /**
