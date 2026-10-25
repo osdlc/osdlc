@@ -438,6 +438,11 @@ function check(
       if (!(s.keyType as z.ZodType).safeParse(inner).success) {
         throw new ConfigError(`${where}${key} has an empty key`, file)
       }
+      // Assigning `__proto__` would set the object's prototype, not a key.
+      if (inner === '__proto__') {
+        warnings.push(`${where}"${join(key, inner)}" is not a usable key (ignored)`)
+        continue
+      }
       out[inner] = check(s.valueType as z.ZodType, innerValue, join(key, inner), file, warnings)
     }
     return out

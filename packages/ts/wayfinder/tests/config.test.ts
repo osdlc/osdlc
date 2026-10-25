@@ -318,6 +318,15 @@ describe('validateConfig', () => {
     )
   })
 
+  test('warns about a __proto__ key in a map, and keeps it out', () => {
+    const raw = JSON.parse('{"trust":{"tools":{"__proto__":{"paths":["/x"]},"mise":{}}}}')
+    const { config, warnings } = validateConfig(raw, '/cfg.json')
+    expect(warnings).toEqual(['/cfg.json: "trust.tools.__proto__" is not a usable key (ignored)'])
+    const tools = config.trust!.tools!
+    expect(Object.keys(tools)).toEqual(['mise'])
+    expect(Object.getPrototypeOf(tools)).toBe(Object.prototype)
+  })
+
   test('rejects a discovery mode that is not one of the three', () => {
     expect(() => validateConfig({ discovery: 'sideways' }, '/cfg.json')).toThrow(/git, walk, auto/)
   })
