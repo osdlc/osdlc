@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.5](https://github.com/osdlc/osdlc/compare/tiered-dirs/v0.3.4...tiered-dirs/v0.3.5) - 2026-10-25
+
+### Other
+
+- wayfinder 0.7.2: security fixes for the launcher, git discovery, terminal output, env paths and owner trust ([#450](https://github.com/osdlc/osdlc/pull/450))
+
 ## [0.3.4](https://github.com/osdlc/osdlc/compare/tiered-dirs/v0.3.3...tiered-dirs/v0.3.4) - 2026-10-24
 
 ### Other
