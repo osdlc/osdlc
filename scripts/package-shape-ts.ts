@@ -2,7 +2,7 @@
 // check-packages.ts reads from disk and from the packed tarball:
 //
 //   - `exports` has no `bun` condition. Every entry is `types` and `default`,
-//     both under dist/.
+//     both under dist/, except a stylesheet (`./X.css`), which is a plain path.
 //   - The tarball ships no TypeScript source. A hand-written `.d.ts` is fine.
 //   - The tarball ships no source maps: they would point at the unshipped source.
 //   - No script invokes bun, and `@types/bun` is not a dependency.
@@ -463,3 +463,30 @@ export function conventionProblems({
  * with no exports, so that line alone does not count.
  */
 export const DECLARES_EXPORT = /^export (?!\{\s*\};?\s*$)/m
+
+const STYLESHEET_TARGET = /^\.\/dist\/[^*]+\.css$/
+
+/** The `exports` keys that name a stylesheet: every `./*.css` key. */
+function stylesheetKeys(exportsField: unknown): string[] {
+  if (exportsField === null || typeof exportsField !== 'object') return []
+  return Object.keys(exportsField).filter((k) => k.startsWith('./') && k.endsWith('.css'))
+}
+
+/** The stylesheet exports whose target is one `./dist/*.css` file. attw skips
+ * them: a stylesheet is a file a tool reads, not a module, so it has no types. */
+export function stylesheetEntries(exportsField: unknown): string[] {
+  const exports = exportsField as Record<string, unknown>
+  return stylesheetKeys(exportsField).filter((k) => {
+    const target = exports[k]
+    return typeof target === 'string' && STYLESHEET_TARGET.test(target)
+  })
+}
+
+/** A `./*.css` export whose target is not one `./dist/<name>.css` file, such
+ * as a conditions object, a pattern or a path outside `dist`. */
+export function stylesheetProblems(exportsField: unknown): string[] {
+  const good = new Set(stylesheetEntries(exportsField))
+  return stylesheetKeys(exportsField)
+    .filter((k) => !good.has(k))
+    .map((k) => `exports["${k}"] must be a "./dist/<name>.css" path`)
+}

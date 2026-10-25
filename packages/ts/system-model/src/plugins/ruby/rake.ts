@@ -27,9 +27,16 @@
 import { firstLine, stderrOrError } from '@osdlc/command-seam'
 
 import type { ProviderContext } from '../../contract.ts'
-import type { Diagnostic, Param, ProviderResult, RunnerBrand, Task } from '../../model.ts'
+import type {
+  Diagnostic,
+  Param,
+  ParametersUnknownReason,
+  ProviderResult,
+  RunnerBrand,
+  Task,
+} from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { dirOf, taskId } from '../support/shared.ts'
+import { dependencies, dirOf, taskId } from '../support/shared.ts'
 
 const CHAIN = [
   { label: 'runner', hint: 'rake runs tasks declared in a Rakefile.' },
@@ -104,22 +111,31 @@ const LISTING_LINE = /^rake ([A-Za-z0-9_][A-Za-z0-9_.:/-]*)(?:\[([^\]\n]*)\])? {
  * Constructs that create tasks a regex cannot see. Each one found adds a
  * warning, on the parse path only.
  */
-const DYNAMIC_CONSTRUCTS: Array<{ pattern: RegExp; label: string }> = [
+export const DYNAMIC_CONSTRUCTS: Array<{ found: (text: string) => boolean; label: string }> = [
   {
-    pattern: /\bRake::\w+Task\.new\b/,
+    found: (text) => /\bRake::\w+Task\.new\b/.test(text),
     label: 'a Rake::*Task.new (e.g. Rake::TestTask) declaration',
   },
-  { pattern: /^\s*import\s/m, label: 'an `import` of another rake file' },
-  { pattern: /^\s*load\s+["']/m, label: 'a `load` of another file' },
+  { found: (text) => /^[ \t]*import\s/m.test(text), label: 'an `import` of another rake file' },
+  { found: (text) => /^[ \t]*load\s+["']/m.test(text), label: 'a `load` of another file' },
   {
-    pattern: /\bDir\.\[?glob\b|\bDir\[/,
+    found: (text) => /\bDir\.\[?glob\b|\bDir\[/.test(text),
     label: 'a `Dir.glob` (or `Dir[...]`) building tasks dynamically',
   },
-  {
-    pattern: /\.each\s*(do|\{)\s*\|[^|]*\|[^\n]*\btask\b/,
-    label: 'a loop (`.each`) defining tasks dynamically',
-  },
+  { found: eachDefinesTask, label: 'a loop (`.each`) defining tasks dynamically' },
 ]
+
+/**
+ * A line with an `.each` block that names `task` after its `|params|`. Only the
+ * first `.each` on a line needs checking, so the scan stays linear.
+ */
+export function eachDefinesTask(text: string): boolean {
+  for (const line of text.split('\n')) {
+    const each = /\.each\s*(?:do|\{)\s*\|[^|]*\|/.exec(line)
+    if (each !== null && /\btask\b/.test(line.slice(each.index + each[0].length))) return true
+  }
+  return false
+}
 
 /**
  * A glyph drawn here. simple-icons has no mark for rake (the `rake.com` and
@@ -127,7 +143,7 @@ const DYNAMIC_CONSTRUCTS: Array<{ pattern: RegExp; label: string }> = [
  * artwork to license. The red is Ruby's community color, used on ruby-lang.org
  * and by rbenv. rake has no brand color of its own.
  */
-const BRAND: RunnerBrand = {
+export const RAKE_BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="11" y="9" width="2" height="13" rx="1"/><path d="M5 3h2l1.2 5H7L5.8 4H5V3Zm12 0h-2l-1.2 5H15l1.2-4H17V3ZM11 3h2l.6 5h-3.2L11 3Z"/><rect x="4" y="8" width="16" height="2.4" rx="1.2"/></svg>',
   color: '#cc342d',
 }
@@ -136,8 +152,8 @@ export const rakeRunner: RunnerRole = {
   // `parse`, not `exec`: the scan means this runner always has tasks to offer.
   // It runs rake when allowed, and says when it did not.
   kind: 'parse',
+  probe: { timeoutMs: EXEC_TIMEOUT_MS, cost: 'slow' },
   chain: CHAIN,
-  brand: BRAND,
 
   async collect(ctx: ProviderContext): Promise<ProviderResult> {
     const named = new Set<string>()
@@ -188,9 +204,16 @@ export const rakeRunner: RunnerRole = {
     // Rakefile outside the tree. `-N` prevents the second case; this check
     // avoids the first.
     let listed: ListedTask[] | undefined
+    // Why a scanned task's arguments are unknown: only rake lists them.
+    let unknown: ParametersUnknownReason = !ctx.allowExec
+      ? 'exec-withheld'
+      : usable
+        ? 'not-read'
+        : 'tool-missing'
     if (usable && rootRakefile !== undefined) {
       const outcome = await listViaRake(ctx)
       if (outcome.error !== undefined) {
+        unknown = 'tool-failed'
         diagnostics.push({
           severity: 'warning',
           message:
@@ -218,8 +241,17 @@ export const rakeRunner: RunnerRole = {
     }
 
     if (listed !== undefined && rootRakefile !== undefined) {
+      // `rake -AT` prints no prerequisites, so they come from the root file's scan.
+      const rootText = await ctx.readText(rootRakefile)
+      const scannedDeps = new Map(
+        (rootText === null ? [] : scanTasks(rootText)).map((t) => [t.path, t.deps]),
+      )
+      const names = new Set(listed.map((t) => t.name))
       for (const item of listed) {
-        tasks.push(fromListing(item, rootRakefile))
+        tasks.push({
+          ...fromListing(item, rootRakefile),
+          ...depsIn(item.name, scannedDeps.get(item.name) ?? [], names, rootRakefile),
+        })
       }
       diagnostics.push({
         severity: 'info',
@@ -275,6 +307,7 @@ export const rakeRunner: RunnerRole = {
         continue
       }
 
+      const names = new Set(scanned.map((t) => t.path))
       for (const name of scanned) {
         const argv = dir === '.' ? ['rake', name.path] : ['rake', '-C', dir, name.path]
         tasks.push({
@@ -285,9 +318,11 @@ export const rakeRunner: RunnerRole = {
           cwd: '.',
           display: argv.join(' '),
           parameters: [],
+          parametersUnknown: unknown,
           source: file,
           origin: 'declared',
           ...(name.doc ? { doc: name.doc } : {}),
+          ...depsIn(name.path, name.deps, names, file),
           tags: ['rake', 'ruby', dir],
           persistent: { value: false, declared: false },
           executes: 'local',
@@ -295,7 +330,7 @@ export const rakeRunner: RunnerRole = {
       }
 
       for (const construct of DYNAMIC_CONSTRUCTS) {
-        if (construct.pattern.test(text)) {
+        if (construct.found(text)) {
           diagnostics.push({
             severity: 'warning',
             message:
@@ -320,13 +355,41 @@ export const rakeRunner: RunnerRole = {
     }
   },
 
-  /** rake takes task arguments in brackets: `rake 'release[1.2,beta]'`. */
+  /**
+   * rake takes task arguments in brackets: `rake 'release[1.2,beta]'`. A `,`,
+   * `]` or `\` inside an argument is escaped with `\`, which rake removes
+   * (`Rake::Application#parse_task_string`), so `a,b` stays one argument.
+   */
   invoke(task, args) {
     if (args.length === 0) return [...task.argv]
     const argv = [...task.argv]
-    argv[argv.length - 1] = `${argv[argv.length - 1]}[${args.join(',')}]`
+    argv[argv.length - 1] = `${argv[argv.length - 1]}[${args.map(escapeRakeArg).join(',')}]`
     return argv
   },
+}
+
+/**
+ * A prerequisite resolves as rake looks it up: in the task's own namespace
+ * first, then each enclosing one, then at the top level.
+ */
+function depsIn(
+  path: string,
+  deps: readonly string[],
+  names: ReadonlySet<string>,
+  file: string,
+): Pick<Task, 'dependsOn' | 'dependsOnUnresolved'> {
+  const scopes = path.split(':').slice(0, -1)
+  return dependencies(deps, (dep) => {
+    for (let i = scopes.length; i >= 0; i--) {
+      const candidate = [...scopes.slice(0, i), dep].join(':')
+      if (names.has(candidate)) return taskId('rake', file, candidate)
+    }
+    return undefined
+  })
+}
+
+function escapeRakeArg(arg: string): string {
+  return arg.replace(/[\\,\]]/g, (ch) => `\\${ch}`)
 }
 
 /** One row of `rake -AT`. */
@@ -350,7 +413,6 @@ interface ListedTask {
 async function listViaRake(ctx: ProviderContext): Promise<{ tasks: ListedTask[]; error?: string }> {
   const res = await ctx.runner('rake').run(EXEC_ARGV, {
     cwd: ctx.root,
-    timeoutMs: EXEC_TIMEOUT_MS,
     signal: ctx.signal,
   })
   if (res.exitCode !== 0) {
@@ -424,18 +486,44 @@ interface ScannedTask {
   /** Namespaced with `:` — `db:migrate`, `db:seed:demo`. */
   path: string
   doc?: string | undefined
+  /** Prerequisites as written, before namespace lookup. */
+  deps: string[]
 }
 
 /**
- * `task :name`, `task "name"`, `task 'name'`, optionally followed by a `=>`
- * or `name:` dependency clause. Captures only the name. Dependencies are not
- * `Task.parameters`, because rake dependencies are not runtime inputs the way
- * a just parameter is.
+ * `task :name`, `task "name"`, `task 'name'` or `task name:`, optionally
+ * followed by a `=>` dependency clause (or, for `name:`, the value). The
+ * fourth group is the `name:` form, whose value is the dependency list.
+ * Dependencies are not `Task.parameters`, because rake dependencies are not
+ * runtime inputs the way a just parameter is.
  */
-const TASK_DECL = /^\s*task\s*\(?\s*(?::([A-Za-z0-9_]+)|"([^"]+)"|'([^']+)')/
+const TASK_DECL =
+  /^\s*task\s*(?:\(\s*)?(?::([A-Za-z0-9_]+)|"([^"]+)"|'([^']+)'|([A-Za-z0-9_]+):(?!:))/
+
+/** One dependency name: `:sym`, `"str"` or `'str'`. */
+const DEP_NAME = /:([A-Za-z0-9_:]+)|"([^"]+)"|'([^']+)'/g
+
+/**
+ * The prerequisites after a task's name: `=> [:a, :b]`, `=> :a`, the value of
+ * `name: %w[a b]`. Stops at a `do` or `{` block.
+ */
+function scanDeps(rest: string, keyForm: boolean): string[] {
+  let rhs = rest
+  if (!keyForm) {
+    const arrow = rest.indexOf('=>')
+    if (arrow === -1) return []
+    rhs = rest.slice(arrow + 2)
+  }
+  rhs = rhs.replace(/\s(do\b|\{).*$/, '').trim()
+  const words = /^%[wi][[(]([^\])]*)[\])]/.exec(rhs)
+  if (words !== null) return words[1]!.trim().split(/\s+/).filter(Boolean)
+  const list = rhs.startsWith('[') ? rhs.slice(1, rhs.indexOf(']')) : rhs.split(/[\s,)]/)[0]!
+  return [...list.matchAll(DEP_NAME)].map((m) => m[1] ?? m[2] ?? m[3]!)
+}
 
 /** `namespace :name do` / `namespace "name" do` — a namespace always opens a `do` block. */
-const NAMESPACE_OPEN = /^\s*namespace\s*\(?\s*(?::([A-Za-z0-9_]+)|"([^"]+)"|'([^']+)')\)?\s*do\b/
+const NAMESPACE_OPEN =
+  /^\s*namespace\s*(?:\(\s*)?(?::([A-Za-z0-9_]+)|"([^"]+)"|'([^']+)')\)?\s*do\b/
 
 /** `desc "..."` / `desc '...'`, the line immediately before a `task`. */
 const DESC_DECL = /^\s*desc\s+"([^"]*)"|^\s*desc\s+'([^']*)'/
@@ -446,7 +534,7 @@ const END_LINE = /^\s*end\b/
 /** A line that opens some OTHER Ruby block a later `end` will close. */
 const OTHER_BLOCK_KEYWORD = /^\s*(if|unless|case|begin|while|until|def|class|module|for)\b/
 /** A line ending in a bare `do` (with optional block params), e.g. `task :t do |t|`. */
-const ENDS_WITH_DO = /\bdo\s*(\|[^|]*\|)?\s*(#.*)?$/
+const ENDS_WITH_DO = /\bdo\s*(?:\|[^|]*\|\s*)?(?:#.*)?$/
 
 /**
  * One entry on the block stack: a namespace (part of the task path) or some
@@ -456,6 +544,9 @@ const ENDS_WITH_DO = /\bdo\s*(\|[^|]*\|)?\s*(#.*)?$/
  * `namespace :ns do … end`, so a scanner that popped a namespace on every
  * `end` would go wrong at the first multi-line task.
  */
+/** The longest task path `scanTasks` reports. */
+const MAX_TASK_PATH = 4096
+
 type BlockEntry = { kind: 'namespace'; name: string } | { kind: 'other' }
 
 /**
@@ -468,12 +559,11 @@ type BlockEntry = { kind: 'namespace'; name: string } | { kind: 'other' }
 export function scanTasks(text: string): ScannedTask[] {
   const out: ScannedTask[] = []
   const stack: BlockEntry[] = []
+  // The names of the namespaces on `stack`, kept beside it so a task does not
+  // walk the whole stack.
+  const namespaces: string[] = []
+  let prefixLength = 0
   let pendingDesc: string | undefined
-
-  const namespacePath = (): string[] =>
-    stack
-      .filter((e): e is { kind: 'namespace'; name: string } => e.kind === 'namespace')
-      .map((e) => e.name)
 
   for (const raw of text.split(/\r?\n/)) {
     const nsOpen = NAMESPACE_OPEN.exec(raw)
@@ -483,7 +573,11 @@ export function scanTasks(text: string): ScannedTask[] {
       // by block params or a comment). `namespace :db do; end` closes on the
       // same line. Pushing it anyway would put every later task in the file
       // under `db`.
-      if (ns !== undefined && ENDS_WITH_DO.test(raw)) stack.push({ kind: 'namespace', name: ns })
+      if (ns !== undefined && ENDS_WITH_DO.test(raw)) {
+        stack.push({ kind: 'namespace', name: ns })
+        namespaces.push(ns)
+        prefixLength += ns.length + 1
+      }
       pendingDesc = undefined
       continue
     }
@@ -496,10 +590,13 @@ export function scanTasks(text: string): ScannedTask[] {
 
     const taskMatch = TASK_DECL.exec(raw)
     if (taskMatch) {
-      const name = taskMatch[1] ?? taskMatch[2] ?? taskMatch[3]
-      if (name !== undefined) {
-        const path = [...namespacePath(), name].join(':')
-        out.push({ path, ...(pendingDesc ? { doc: pendingDesc } : {}) })
+      const name = taskMatch[1] ?? taskMatch[2] ?? taskMatch[3] ?? taskMatch[4]
+      // A path longer than MAX_TASK_PATH is left out, so deep nesting cannot
+      // make the output grow with the square of the file.
+      if (name !== undefined && prefixLength + name.length <= MAX_TASK_PATH) {
+        const path = [...namespaces, name].join(':')
+        const deps = scanDeps(raw.slice(taskMatch[0].length), taskMatch[4] !== undefined)
+        out.push({ path, ...(pendingDesc ? { doc: pendingDesc } : {}), deps })
       }
       pendingDesc = undefined
       if (ENDS_WITH_DO.test(raw)) stack.push({ kind: 'other' })
@@ -507,7 +604,7 @@ export function scanTasks(text: string): ScannedTask[] {
     }
 
     if (END_LINE.test(raw)) {
-      stack.pop()
+      if (stack.pop()?.kind === 'namespace') prefixLength -= namespaces.pop()!.length + 1
       pendingDesc = undefined
       continue
     }

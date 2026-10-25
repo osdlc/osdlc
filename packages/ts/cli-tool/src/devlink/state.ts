@@ -1,6 +1,6 @@
 /**
  * The two files devlink keeps per tool, in the config home of the tool's
- * standalone tier (`<config>/<name>/`):
+ * standalone tier (`<config>/<name>/`, under the `xdg` convention):
  *
  *   home             the active link: one absolute checkout path, or absent.
  *                    A bash launcher reads it with `cat`, which is why it is a
@@ -65,16 +65,49 @@ export interface StateOptions {
    * running system. Tests inject a rooted one so files go under a temp dir.
    */
   dirs?: TieredDirs
+  /**
+   * Where releases before 0.8 kept the state: macOS's native config home
+   * (`~/Library/Application Support/<name>`). Defaults to that on macOS, and
+   * to none elsewhere or when `dirs` is given. Tests inject a rooted one.
+   */
+  legacyDirs?: TieredDirs | null
 }
 
 /**
- * `<config>/<name>` for this tool.
+ * `<config>/<name>` for this tool, under the `xdg` convention:
+ * `${XDG_CONFIG_HOME:-~/.config}/<name>` on Linux and macOS, `%APPDATA%\<name>`
+ * on Windows. The vendor's `<P>_CONFIG_DIR` and `<P>_ROOT` move it, and the
+ * bash launcher reads them too, so it reads the same path.
  *
  * @experimental
  */
 export function stateDir(spec: ToolSpec, opts: StateOptions = {}): string {
-  const dirs = opts.dirs ?? systemDirs(spec.vendorDirs)
+  // Pinned: `<PREFIX>_CONVENTION` must not move the file away from where the
+  // bash launcher reads it.
+  const dirs =
+    opts.dirs ?? systemDirs(spec.vendorDirs, { convention: 'xdg', conventionFromEnv: false })
   return dirs.standalone(spec.name).config().path
+}
+
+/**
+ * The link file a release before 0.8 wrote on macOS, when it is still there
+ * and the current one is not. `dev status` then says how to move it. Null
+ * anywhere else.
+ * @internal
+ */
+export function legacyHomePath(spec: ToolSpec, opts: StateOptions = {}): string | null {
+  const legacy =
+    opts.legacyDirs !== undefined
+      ? opts.legacyDirs
+      : opts.dirs === undefined && process.platform === 'darwin'
+        ? systemDirs(spec.vendorDirs, { convention: 'native', conventionFromEnv: false })
+        : null
+  if (legacy === null) return null
+  const old = join(legacy.standalone(spec.name).config().path, HOME_FILE)
+  if (old === homePath(spec, opts) || !existsSync(old) || existsSync(homePath(spec, opts))) {
+    return null
+  }
+  return old
 }
 
 /**

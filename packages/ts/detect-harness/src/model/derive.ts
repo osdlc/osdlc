@@ -19,7 +19,12 @@
 import { existsSync, readFileSync, readdirSync, statSync, type Dirent } from 'node:fs'
 import { join, relative } from 'node:path'
 
-import { splitFrontmatter, parseFrontmatter } from '../frontmatter.ts'
+import {
+  argumentHintOf,
+  frontmatterString,
+  parseFrontmatter,
+  splitFrontmatter,
+} from '../frontmatter.ts'
 import { loadJson } from '../json.ts'
 
 import {
@@ -34,13 +39,6 @@ import { readPluginControlPlane, type ControlPlaneOptions } from './control-plan
 
 /** Frontmatter keys the model turns into fields of their own. */
 const NORMALIZED_KEYS = new Set(['description', 'allowed-tools', 'argument-hint'])
-
-/** Coerce a frontmatter value to a trimmed string (block scalars arrive parsed). */
-function asString(value: unknown): string {
-  if (typeof value === 'string') return value.trim()
-  if (value === undefined || value === null) return ''
-  return String(value).trim()
-}
 
 /** Coerce a frontmatter `allowed-tools` value to a string[]. */
 function asToolList(value: unknown): string[] {
@@ -99,15 +97,15 @@ function capabilityFromText(
     if (!NORMALIZED_KEYS.has(k)) annotations[k] = v
   }
 
-  const argumentHint = asString(fm['argument-hint'])
+  const argumentHint = argumentHintOf(fm)
 
   return {
     name,
     kind,
-    description: asString(fm['description']),
+    description: frontmatterString(fm['description']),
     instructions: body.replace(/^\n+/, ''),
     allowedTools: asToolList(fm['allowed-tools']),
-    ...(argumentHint ? { argumentHint } : {}),
+    ...(argumentHint !== null ? { argumentHint } : {}),
     resources,
     annotations,
   }

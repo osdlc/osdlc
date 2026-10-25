@@ -19,7 +19,12 @@
  * capture-time inconvenience rather than a failing gate.
  */
 
-import type { Catalog, RunnerReport, Task } from '@osdlc/system-model/detect'
+import {
+  CATALOG_SCHEMA_VERSION,
+  type Catalog,
+  type RunnerReport,
+  type Task,
+} from '@osdlc/system-model/detect'
 
 function task(
   partial: Omit<Task, 'cwd' | 'origin' | 'tags' | 'persistent' | 'executes'> &
@@ -180,6 +185,8 @@ const NODE_SCRIPTS: RunnerReport = {
 /** The catalog the frame snapshots render. Nine tasks, three runners. */
 export function showcaseCatalog(): Catalog {
   return {
+    kind: 'catalog',
+    schemaVersion: CATALOG_SCHEMA_VERSION,
     root: '/showcase',
     // Pinned: the status line prints this, and a live clock would put the wall
     // time into every committed frame.

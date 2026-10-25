@@ -47,6 +47,38 @@
     "./exit": {
       "types": "./dist/exit.d.ts",
       "default": "./dist/exit.js"
+    },
+    "./wrap": {
+      "types": "./dist/wrap.d.ts",
+      "default": "./dist/wrap.js"
+    },
+    "./command": {
+      "types": "./dist/command/index.d.ts",
+      "default": "./dist/command/index.js"
+    },
+    "./config-command": {
+      "types": "./dist/config-command.d.ts",
+      "default": "./dist/config-command.js"
+    },
+    "./trust-command": {
+      "types": "./dist/trust-command.d.ts",
+      "default": "./dist/trust-command.js"
+    },
+    "./guide": {
+      "types": "./dist/guide.d.ts",
+      "default": "./dist/guide.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "default": "./dist/mcp/index.js"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "default": "./dist/http/index.js"
     }
   },
   "files": [
@@ -79,10 +111,13 @@
     "@osdlc/config-layers": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
     "@osdlc/result": "workspace:^",
+    "@osdlc/ux": "workspace:^",
     "commander": "^12.1.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/trust-repo": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
@@ -93,6 +128,12 @@
     "zod": "catalog:"
   },
   "peerDependencies": {
-    "zod": "^4"
+    "zod": "^4",
+    "@modelcontextprotocol/sdk": "^1.32.0"
+  },
+  "peerDependenciesMeta": {
+    "@modelcontextprotocol/sdk": {
+      "optional": true
+    }
   }
 }

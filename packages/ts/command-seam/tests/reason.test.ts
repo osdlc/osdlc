@@ -192,7 +192,8 @@ describe('spawnRunnerAsync', () => {
     })
     expect(r.exitCode).toBe(0)
     expect(r.reason).toBeUndefined()
-    expect(r.error).toContain('EPIPE')
+    // macOS reports ENOTCONN instead of EPIPE with some timings.
+    expect(r.error).toMatch(/\b(EPIPE|ENOTCONN)\b/)
     expect(r.stderr).toBe('')
   }, 10_000)
 

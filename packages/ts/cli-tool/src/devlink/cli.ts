@@ -5,6 +5,8 @@
  * directly and never reaches this.
  */
 
+import { dirname } from 'node:path'
+
 import { EXIT } from '../exit.ts'
 import { DevlinkError, history, install, link, off, status, use, type OpOptions } from './ops.ts'
 import type { ToolSpec } from './spec.ts'
@@ -74,6 +76,8 @@ function envStemOf(name: string): string {
  */
 export interface RunOptions extends OpOptions {
   io?: CliIo
+  /** Defaults to `process.platform`. On `win32` the command reports itself unavailable. */
+  platform?: NodeJS.Platform
 }
 
 /**
@@ -85,6 +89,11 @@ export interface RunOptions extends OpOptions {
  */
 export function runDevCli(spec: ToolSpec, argv: readonly string[], opts: RunOptions = {}): number {
   const io = opts.io ?? processIo
+  // The launcher and the shims are POSIX shell scripts.
+  if ((opts.platform ?? process.platform) === 'win32') {
+    io.stderr(`${spec.name} dev: not available on Windows; the launcher is a POSIX shell script\n`)
+    return EXIT.error
+  }
   const args = [...argv]
   let json = false
   let dryRun = opts.dryRun ?? false
@@ -250,8 +259,17 @@ function renderStatus(spec: ToolSpec, s: ReturnType<typeof status>): string {
     `  link:     ${s.link.path} = ${linkLine}\n` +
     `  self:     ${s.self ?? '(not inside a checkout)'}\n` +
     `  history:  ${s.history.entries} checkout(s) in ${s.history.path}\n` +
-    `  PATH:     ${names}\n`
+    `  PATH:     ${names}\n` +
+    (s.link.legacy !== null
+      ? `note: an old link file is at ${s.link.legacy}; this release reads ${s.link.path}.\n` +
+        `  move it: mkdir -p ${sq(dirname(s.link.path))} && mv ${sq(s.link.legacy)} ${sq(s.link.path)}\n`
+      : '')
   )
+}
+
+/** `text` as one single-quoted POSIX shell word. */
+function sq(text: string): string {
+  return `'${text.replaceAll("'", "'\\''")}'`
 }
 
 function renderHistory(rows: ReturnType<typeof history>): string {

@@ -16,6 +16,8 @@
  *   period.
  * - `withDefaults` binds default options to any of them.
  * - `which` finds a binary on `PATH` without running it.
+ * - `commandString` quotes a command line for POSIX shells, PowerShell or
+ *   `cmd.exe`, for a person to paste.
  *
  * The capture runners share {@link CommandResult}, {@link CommandRunOptions}
  * and {@link CommandFailed}, so one {@link isCommandFailed} check covers
@@ -77,7 +79,7 @@ export {
   type CommandFailureKind,
 } from './failure.ts'
 
-export { shellJoin, shellQuote } from './quote.ts'
+export { commandString, shellJoin, shellQuote, type CommandStringOptions } from './quote.ts'
 
 export {
   runShell,

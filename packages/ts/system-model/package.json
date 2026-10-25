@@ -91,6 +91,10 @@
       "types": "./dist/plugins/deno/index.d.ts",
       "default": "./dist/plugins/deno/index.js"
     },
+    "./dotnet": {
+      "types": "./dist/plugins/dotnet/index.d.ts",
+      "default": "./dist/plugins/dotnet/index.js"
+    },
     "./runners": {
       "types": "./dist/plugins/runners/index.d.ts",
       "default": "./dist/plugins/runners/index.js"
@@ -110,6 +114,14 @@
     "./duration": {
       "types": "./dist/duration.d.ts",
       "default": "./dist/duration.js"
+    },
+    "./groups": {
+      "types": "./dist/groups.d.ts",
+      "default": "./dist/groups.js"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "default": "./dist/schema.js"
     }
   },
   "files": [
@@ -150,6 +162,7 @@
     "oxlint": "catalog:",
     "prettier": "catalog:",
     "typescript": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "zod": "catalog:"
   }
 }

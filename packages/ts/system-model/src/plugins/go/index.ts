@@ -50,6 +50,8 @@ export const goEcosystem: EcosystemDef = {
 /** go modules: downloads a module's dependencies. */
 export const go: ToolDef = {
   id: 'go',
+  homepage: 'https://go.dev',
+  description: "Go's toolchain: builds, tests and manages modules.",
   binary: 'go',
   ecosystem: goEcosystem,
   roles: {

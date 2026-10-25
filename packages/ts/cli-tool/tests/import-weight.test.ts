@@ -21,8 +21,11 @@ const COMPILER_OPTIONS: ts.CompilerOptions = {
 }
 
 /** Every package specifier (not relative) imported by the `src/` files reachable from `entry`. */
-function packageSpecifiers(entry: string): Set<string> {
-  const program = ts.createProgram([join(SRC, entry)], COMPILER_OPTIONS)
+function packageSpecifiers(...entries: string[]): Set<string> {
+  const program = ts.createProgram(
+    entries.map((e) => join(SRC, e)),
+    COMPILER_OPTIONS,
+  )
   const out = new Set<string>()
   for (const sf of program.getSourceFiles()) {
     if (!sf.fileName.startsWith(SRC)) continue
@@ -56,3 +59,30 @@ for (const entry of [
     expect(heavy).toEqual([])
   })
 }
+
+test('only the mcp entry loads the MCP SDK', () => {
+  const others = packageSpecifiers(
+    'index.ts',
+    'command/index.ts',
+    'config-command.ts',
+    'trust-command.ts',
+    'guide.ts',
+    'testing.ts',
+    'http/index.ts',
+  )
+  expect([...others].filter((s) => s.startsWith('@modelcontextprotocol/'))).toEqual([])
+  const mcp = packageSpecifiers('mcp/index.ts')
+  expect([...mcp].some((s) => s.startsWith('@modelcontextprotocol/'))).toBe(true)
+}, 30_000)
+
+test('the root entry loads only these packages', () => {
+  // @osdlc/ux is the color and terminal-text rule; its root import costs a few
+  // milliseconds. Anything new here needs the same check.
+  expect([...packageSpecifiers('index.ts')].sort()).toEqual([
+    '@osdlc/config-layers/did-you-mean',
+    '@osdlc/config-layers/dirs',
+    '@osdlc/result',
+    '@osdlc/ux',
+    'commander',
+  ])
+})

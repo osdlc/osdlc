@@ -170,8 +170,9 @@ the OS account's home is used, or, with an injected `env`,
   owns it, under that program's convention.
 
 Pass `{ convention: 'xdg' }` to `systemBaseDirs` or `TieredDirs.fromEnv`.
-`<P>_CONVENTION=native` or `xdg` overrides the caller's choice. Any other value
-throws `TieredDirsError`. The value is trimmed, then must match exactly, in
+`<P>_CONVENTION=native` or `xdg` overrides the caller's choice, unless the
+caller also passes `conventionFromEnv: false`. Do that for a file another
+program reads at a fixed path. Any other value throws `TieredDirsError`. The value is trimmed, then must match exactly, in
 lower case. `parseConvention(value)` parses a convention from anywhere else,
 such as a flag: exactly `native` or `xdg`, untrimmed, like the Rust crate's
 `FromStr`. `xdgBaseDirs(home, env)` builds the XDG table under any home, on
@@ -323,6 +324,7 @@ interface BaseDirs {
 interface ResolveOptions {
   platform?: string
   convention?: Convention
+  conventionFromEnv?: boolean // default true
   env?: Record<string, string | undefined>
   home?: string
   overrides?: Partial<BaseDirs>

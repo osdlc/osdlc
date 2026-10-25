@@ -11,7 +11,7 @@
 import { mountPage } from './dom.ts'
 
 import { afterAll, beforeEach, describe, expect, test } from 'vitest'
-import type { Catalog, Task } from '@osdlc/system-model/detect'
+import { CATALOG_SCHEMA_VERSION, type Catalog, type Task } from '@osdlc/system-model/detect'
 
 import { load } from '../src/web/api.ts'
 import { $, state } from '../src/web/state.ts'
@@ -35,6 +35,8 @@ function task(name: string): Task {
 
 function catalog(names: string[]): Catalog {
   return {
+    kind: 'catalog',
+    schemaVersion: CATALOG_SCHEMA_VERSION,
     root: '/tmp/repo',
     generatedAt: new Date(0).toISOString(),
     discovery: 'walk',

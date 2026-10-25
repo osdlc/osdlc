@@ -1,5 +1,5 @@
 /**
- * Checks on the public surface as a whole, for each of the two entries: every
+ * Checks on the public surface as a whole, for each entry: every
  * export has a documentation comment, every export is used in examples/, and
  * the README's experimental list for the entry matches the `@experimental`
  * tags.
@@ -20,6 +20,13 @@ const PACKAGE_NAME = (
 const ENTRIES = [
   { specifier: PACKAGE_NAME, entry: 'src/index.ts' },
   { specifier: `${PACKAGE_NAME}/devlink`, entry: 'src/devlink/index.ts' },
+  { specifier: `${PACKAGE_NAME}/command`, entry: 'src/command/index.ts' },
+  { specifier: `${PACKAGE_NAME}/config-command`, entry: 'src/config-command.ts' },
+  { specifier: `${PACKAGE_NAME}/trust-command`, entry: 'src/trust-command.ts' },
+  { specifier: `${PACKAGE_NAME}/guide`, entry: 'src/guide.ts' },
+  { specifier: `${PACKAGE_NAME}/testing`, entry: 'src/testing.ts' },
+  { specifier: `${PACKAGE_NAME}/mcp`, entry: 'src/mcp/index.ts' },
+  { specifier: `${PACKAGE_NAME}/http`, entry: 'src/http/index.ts' },
 ] as const
 
 const COMPILER_OPTIONS: ts.CompilerOptions = {
@@ -30,9 +37,21 @@ const COMPILER_OPTIONS: ts.CompilerOptions = {
   module: ts.ModuleKind.ESNext,
 }
 
+const programs = new Map<string, ts.Program>()
+
+/** One program per entry, shared by the checks: building one is slow. */
+function programFor(entryFile: string): ts.Program {
+  let program = programs.get(entryFile)
+  if (program === undefined) {
+    program = ts.createProgram([entryFile], COMPILER_OPTIONS)
+    programs.set(entryFile, program)
+  }
+  return program
+}
+
 /** Every export of an entry point, mapped to whether it is tagged `@experimental`. */
 function taggedExports(entryFile: string): Map<string, boolean> {
-  const program = ts.createProgram([entryFile], COMPILER_OPTIONS)
+  const program = programFor(entryFile)
   const checker = program.getTypeChecker()
   const module = checker.getSymbolAtLocation(program.getSourceFile(entryFile)!)!
   const out = new Map<string, boolean>()
@@ -49,7 +68,7 @@ function taggedExports(entryFile: string): Map<string, boolean> {
 
 /** Names of the entry point's exports that have no documentation comment. */
 function undocumentedExports(entryFile: string): string[] {
-  const program = ts.createProgram([entryFile], COMPILER_OPTIONS)
+  const program = programFor(entryFile)
   const checker = program.getTypeChecker()
   const module = checker.getSymbolAtLocation(program.getSourceFile(entryFile)!)!
   return checker
@@ -114,8 +133,11 @@ function importedByExamples(): Map<string, Set<string>> {
 const IMPORTED = importedByExamples()
 
 test('examples/ imports the package name only', () => {
-  const allowed = new Set<string>([...ENTRIES.map((e) => e.specifier), 'vitest'])
-  const stray = [...IMPORTED.keys()].filter((s) => !allowed.has(s) && !s.startsWith('node:'))
+  const allowed = new Set<string>([...ENTRIES.map((e) => e.specifier), 'vitest', 'zod'])
+  // The MCP SDK is the `mcp` entry's peer; the example connects a client from it.
+  const stray = [...IMPORTED.keys()].filter(
+    (s) => !allowed.has(s) && !s.startsWith('node:') && !s.startsWith('@modelcontextprotocol/sdk/'),
+  )
   expect(stray).toEqual([])
 })
 

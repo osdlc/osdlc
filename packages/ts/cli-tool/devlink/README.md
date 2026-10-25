@@ -57,13 +57,16 @@ link layers. A tool that a host program runs names the host's root
 variable, so a machine-wide link never silently changes which code the host
 runs.
 
-`<config>` is the per-OS config home of the tool's standalone tier
-([`@osdlc/tiered-dirs`](https://www.npmjs.com/package/@osdlc/tiered-dirs)):
-`~/Library/Application Support` on macOS, `${XDG_CONFIG_HOME:-~/.config}`
-elsewhere. A relative `HOME` counts as unset there and in the bash launcher,
-and the account's home is used, so a link file under the cwd is never read.
-The spec's `vendorDirs` (`{ vendor, envVars }`) names the override
-variables that move it. Two files live under `<config>/<name>/`:
+`<config>` is the config home of the tool's standalone tier under the `xdg`
+convention ([`@osdlc/tiered-dirs`](https://www.npmjs.com/package/@osdlc/tiered-dirs)):
+`${XDG_CONFIG_HOME:-~/.config}` on Linux and macOS. A relative `HOME` counts
+as unset there and in the bash launcher, and the account's home is used, so a
+link file under the cwd is never read. The spec's `vendorDirs` (`{ vendor, envVars }`) names the override
+variables that move it. `<PREFIX>_CONVENTION` does not: the convention is
+pinned to `xdg`, where the bash launcher looks. On macOS, when a link file is
+still at the old `~/Library/Application Support/<name>/home` and not at the
+new path, `dev status` prints the `mv` command that moves it. Two files live
+under `<config>/<name>/`:
 
 | File | Holds | Read by |
 |---|---|---|
@@ -170,8 +173,9 @@ Branch and HEAD are read from `.git` directly (a plain repo or a worktree's
 - Version pinning or installation. This links checkouts. It does not fetch
   them. The canonical install is whatever `npm i -g` or a compiled binary put
   on PATH.
-- Windows launchers. The bash template is Unix only. The JavaScript shim
-  works anywhere bun does.
+- Windows launchers. The bash template and the shims are Unix only, so
+  `runDevCli` on Windows prints that `<tool> dev` is not available there and
+  exits 1. The JavaScript shim works anywhere bun does.
 
 ## Development
 

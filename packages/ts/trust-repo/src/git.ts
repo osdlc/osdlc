@@ -1,6 +1,7 @@
 /**
- * The git-backed `ownerOf` handed to `@osdlc/trust-repo`, which knows no git.
- * Without it `trust.owners` never matches.
+ * `@osdlc/trust-repo/git`: the git-backed `ownerOf` that the `owners` rule
+ * needs. The main entry point runs no program. This entry point runs `git`
+ * through `@osdlc/command-seam`, so only a tool that imports it runs git.
  */
 
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
@@ -72,6 +73,7 @@ const SHORTCUT_REMOTE = /^(?:github|gitlab|bitbucket|gist|sourcehut):/
  * scp-style is a local path (`owner/repo` is one) and has no owner. A host
  * hosted-git-info does not know (a self-hosted server) has no owner either.
  * `git` is for tests; it defaults to the real binary.
+ * @experimental
  */
 export function originOwner(
   root: string,

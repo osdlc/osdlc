@@ -18,6 +18,7 @@ import {
   settleGroup,
   spawnTrackedGroup,
 } from './groups.ts'
+import { planOptions, spawnPlan } from './spawn-plan.ts'
 import {
   CommandFailed,
   cwdError,
@@ -71,6 +72,20 @@ export interface AsyncCommandRunOptions extends CommandRunOptions {
    * refused (`neverExited: true`, `reason: 'abort'`). POSIX only.
    */
   processGroup?: boolean | undefined
+  /**
+   * Kill the child's whole process tree, not only the child, when the run
+   * is stopped: on a timeout, an abort, the output cap or an `onSpawn` throw.
+   * Use it for a command that forks, such as a build tool, so a stopped run
+   * leaves nothing behind.
+   *
+   * On POSIX this is `processGroup: true`, with everything its doc says,
+   * Ctrl-C included. On Windows the runner first runs
+   * `taskkill /pid <pid> /t /f`, with `taskkill.exe` taken from
+   * `%SystemRoot%\System32` and never from the run's `PATH`, and then
+   * kills the child. It does this only while the child is still running, since a pid can be reused after an exit. A
+   * process that has left the tree (its parent exited first) is not reached.
+   */
+  killTree?: boolean | undefined
 }
 
 /** The async form of {@link CommandRunner}: `run` returns a promise. */
@@ -148,7 +163,8 @@ const ABORT_KILL_GRACE_MS = 1000
  * return empty output from child pipes.
  * The sync `spawnRunner` works around this; this runner does not.
  *
- * @param binary - A name looked up on `PATH`, or a path.
+ * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
+ *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
  * @param options - See `SpawnRunnerOptions`; `absolutePathOnly` searches
  *   absolute `PATH` entries only.
  * @returns A runner for that binary.
@@ -186,7 +202,8 @@ export function spawnRunnerAsync(
  * `maxOutputBytes` cuts stdout at exactly the cap. Everything else is as for
  * `spawnRunnerAsync`. The sync form is `spawnRunnerBytes`.
  *
- * @param binary - A name looked up on `PATH`, or a path.
+ * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
+ *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
  * @returns A runner for that binary.
  *
  * @example
@@ -253,7 +270,14 @@ function runAsync(
       resolve(emptyStdout(spawnFailure(cwdMessage), bytes))
       return
     }
-    const group = opts.processGroup === true
+    const plan = spawnPlan(binary, argv, opts)
+    if ('refusal' in plan) {
+      resolve(emptyStdout(spawnFailure(plan.refusal), bytes))
+      return
+    }
+    const windowsTree = opts.killTree === true && process.platform === 'win32'
+    const group =
+      opts.processGroup === true || (opts.killTree === true && process.platform !== 'win32')
     const refusal = group ? groupStartRefusal() : undefined
     if (refusal !== undefined) {
       const refused: CommandResult = {
@@ -271,7 +295,8 @@ function runAsync(
     // which sends one SIGTERM to the direct child only: no SIGKILL
     // follow-up and no group.
     const start = () =>
-      spawn(binary, argv, {
+      spawn(plan.file, plan.args, {
+        ...planOptions(plan),
         cwd: opts.cwd,
         detached: group,
         ...mergedEnv(opts),
@@ -284,6 +309,10 @@ function runAsync(
     let stopping = false
     const signalChild = (sig: NodeJS.Signals) => {
       stopping = true
+      if (windowsTree && child.pid !== undefined && exited === undefined) {
+        killWindowsTree(child.pid, opts, () => child.kill(sig))
+        return
+      }
       if (group && child.pid !== undefined) {
         try {
           process.kill(-child.pid, sig)
@@ -498,6 +527,31 @@ function runAsync(
 }
 
 /**
+ * `taskkill.exe` in `%SystemRoot%\System32`, as an absolute path. It is not
+ * looked up on the run's own `PATH`, which the caller or a project can set to
+ * put another `taskkill` first.
+ */
+export function taskkillPath(): string {
+  const root = process.env['SystemRoot'] ?? process.env['windir'] ?? 'C:\\Windows'
+  return `${root}\\System32\\taskkill.exe`
+}
+
+/** The `taskkill` arguments that kill `pid` and every process under it. */
+export function treeKillArgv(pid: number): string[] {
+  return ['/pid', String(pid), '/t', '/f']
+}
+
+/**
+ * Kill `pid`'s process tree with `taskkill`, then call `then`. `then` runs
+ * even when `taskkill` is missing or fails, so the child itself still dies.
+ */
+function killWindowsTree(pid: number, opts: AsyncCommandRunOptions, then: () => void): void {
+  void spawnRunnerAsync(taskkillPath(), { absolutePathOnly: true })
+    .run(treeKillArgv(pid), { cwd: opts.cwd, env: opts.env, timeoutMs: 10_000 })
+    .then(then, then)
+}
+
+/**
  * The async version of `runChecked`: run a command and reject if it fails.
  * Like `runChecked`, it takes the runner's own options, so a `withDefaults`
  * runner needs only the options it did not bind. An
@@ -541,7 +595,7 @@ export async function runCheckedAsync(
 
 /**
  * Wrap a sync runner as an async one, so one test fake works for both forms.
- * `signal`, `onSpawn` and `processGroup` are ignored, because a sync runner
+ * `signal`, `onSpawn`, `processGroup` and `killTree` are ignored, because a sync runner
  * cannot be cancelled while it runs and reports no pid. A throw from the sync runner
  * becomes a rejection. A `BytesCommandRunner` becomes an
  * {@link AsyncBytesCommandRunner}.

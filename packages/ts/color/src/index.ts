@@ -288,3 +288,19 @@ export function contrastRatio(a: Rgba | string, b: Rgba | string): number {
   const [hi, lo] = la >= lb ? [la, lb] : [lb, la]
   return (hi + 0.05) / (lo + 0.05)
 }
+
+/**
+ * Euclidean distance between two colours in gamma-encoded sRGB, over the
+ * 0-255 channels: 0 for the same colour, about 441.7 for black to white.
+ * Alpha is ignored. It is the measure for picking the nearest colour of a
+ * fixed palette, such as a terminal's 256 colours. It is not a perceptual
+ * difference.
+ *
+ * @throws Error when a string side cannot be parsed, as {@link parseColor}
+ * throws.
+ */
+export function colorDistance(a: Rgba | string, b: Rgba | string): number {
+  const ca = typeof a === 'string' ? parseColor(a) : a
+  const cb = typeof b === 'string' ? parseColor(b) : b
+  return Math.hypot(ca.r - cb.r, ca.g - cb.g, ca.b - cb.b)
+}

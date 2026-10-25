@@ -11,6 +11,7 @@ import { afterEach, expect, test } from 'vitest'
 
 import {
   createProject,
+  DEFAULT_PROBE_TIMEOUT_MS,
   evidence,
   type EcosystemDef,
   type HookDef,
@@ -19,17 +20,21 @@ import {
   type ManifestDef,
   type Marker,
   type PackageManagerRole,
+  type ProbeCost,
   type ProviderContext,
   type ProviderKind,
   type ProviderResult,
   type RoleName,
   type RunnerContext,
+  type RunnerProbe,
   type RunnerRole,
   type ToolDef,
   type ToolFact,
   type ToolManagerRole,
+  validateToolDef,
 } from '@osdlc/system-model/detect'
 import { denoEcosystem, denoTasks, denoTools } from '@osdlc/system-model/deno'
+import { dotnet, dotnetEcosystem, dotnetTools } from '@osdlc/system-model/dotnet'
 import { go, goEcosystem, goTools } from '@osdlc/system-model/go'
 import { gradle, jvmEcosystem, jvmTools, maven, sbt } from '@osdlc/system-model/jvm'
 import {
@@ -42,20 +47,35 @@ import {
   yarn,
 } from '@osdlc/system-model/node'
 import { composer, phpEcosystem, phpTools } from '@osdlc/system-model/php'
-import { pip, poetry, python, pythonEcosystem, pythonTools, uv } from '@osdlc/system-model/python'
+import {
+  hatch,
+  pdm,
+  pip,
+  poe,
+  poetry,
+  python,
+  pythonEcosystem,
+  pythonTools,
+  uv,
+} from '@osdlc/system-model/python'
 import { bundler, rake, rubyEcosystem, rubyTools } from '@osdlc/system-model/ruby'
 import {
+  cmakePresets,
+  devbox,
   dockerCompose,
   githubActions,
   goTask,
   just,
   make,
   moon,
+  nx,
+  procfile,
   runnerTools,
   turbo,
+  vscodeTasks,
   type MoonProjectFact,
 } from '@osdlc/system-model/runners'
-import { cargo, rustEcosystem, rustTools } from '@osdlc/system-model/rust'
+import { cargo, cargoAliases, rustEcosystem, rustTools } from '@osdlc/system-model/rust'
 import { swiftEcosystem, swiftpm, swiftTools } from '@osdlc/system-model/swift'
 import {
   direnv,
@@ -98,15 +118,33 @@ test('register only the plugins you need', async () => {
 test('each plugin exports its tools and its ecosystem', () => {
   const groups: Array<[readonly ToolDef[], ToolDef[], EcosystemDef | undefined]> = [
     [nodeTools, [bun, pnpm, yarn, npm, nodeScripts], nodeEcosystem],
-    [rustTools, [cargo], rustEcosystem],
-    [pythonTools, [uv, poetry, pip, python], pythonEcosystem],
+    [rustTools, [cargo, cargoAliases], rustEcosystem],
+    [pythonTools, [uv, poetry, pip, python, poe, pdm, hatch], pythonEcosystem],
     [jvmTools, [gradle, maven, sbt], jvmEcosystem],
     [phpTools, [composer], phpEcosystem],
     [swiftTools, [swiftpm], swiftEcosystem],
     [rubyTools, [bundler, rake], rubyEcosystem],
     [goTools, [go], goEcosystem],
     [denoTools, [denoTasks], denoEcosystem],
-    [runnerTools, [moon, just, make, turbo, goTask, dockerCompose, githubActions], undefined],
+    [dotnetTools, [dotnet], dotnetEcosystem],
+    [
+      runnerTools,
+      [
+        moon,
+        just,
+        make,
+        turbo,
+        goTask,
+        dockerCompose,
+        githubActions,
+        nx,
+        vscodeTasks,
+        devbox,
+        procfile,
+        cmakePresets,
+      ],
+      undefined,
+    ],
     [toolTools, [mise, proto, direnv, lefthook, husky, preCommit], undefined],
   ]
   for (const [all, named, ecosystem] of groups) {
@@ -140,9 +178,14 @@ test('moon describes its projects when execution is allowed', async () => {
 // A downstream tool: every `*.sh` under `scripts/` is a task.
 const SCRIPTS: Marker = { files: '/scripts/', tier: 'files' }
 const kind: ProviderKind = 'parse'
+// Each subprocess the runner starts gets this timeout (DEFAULT_PROBE_TIMEOUT_MS
+// when unset); `CollectOptions.timeouts` can replace it per runner.
+const cost: ProbeCost = 'cheap'
+const probe: RunnerProbe = { timeoutMs: DEFAULT_PROBE_TIMEOUT_MS / 6, cost }
 
 const bashScriptsRunner: RunnerRole = {
   kind,
+  probe,
   chain: [
     { label: 'runner', hint: 'Shell scripts under scripts/.' },
     { label: 'script', hint: 'The script name.' },
@@ -186,6 +229,9 @@ const nimbleInstall: PackageManagerRole = {
 
 const bashScripts: ToolDef = {
   id: 'bash-scripts',
+  homepage: 'https://www.gnu.org/software/bash/',
+  description: 'Shell scripts kept under scripts/.',
+  brand: { color: '#4eaa25' },
   binary: 'bash',
   markers: [SCRIPTS],
   // Evidence a file name cannot give: a script with a bash shebang outside scripts/.
@@ -206,6 +252,11 @@ const nimble: ToolDef = {
 }
 
 test('a downstream tool registered beside the built-ins', async () => {
+  // A host loading tools from a module checks their shape first.
+  expect(validateToolDef(bashScripts)).toEqual([])
+  expect(validateToolDef({ id: 'broken', roles: { runner: {} } })).toContain(
+    'roles.runner.collect is not a function',
+  )
   const project = createProject({ tools: [bashScripts, nimble] })
   const root = repo({
     'scripts/deploy.sh': 'echo deploy\n',

@@ -1,3 +1,5 @@
+import { detectColorLevel } from '@osdlc/ux'
+
 /**
  * The output interface every CLI writes through, instead of naming
  * `process.stdout` / `process.stderr` itself.
@@ -67,11 +69,67 @@ export interface CliContext {
   io: CliIo
   cwd: string
   env: Record<string, string | undefined>
+  /**
+   * What the streams are connected to. Absent means none is a terminal, which
+   * is the safe reading: no color, no prompt, help wrapped at 80 columns.
+   */
+  terminal?: Terminal
+  /**
+   * Aborted to stop the run, such as a long-running server command. Absent
+   * means nothing stops it but the process ending.
+   */
+  signal?: AbortSignal
+}
+
+/**
+ * Which of the process streams are terminals, and how wide stdout is.
+ * @experimental
+ */
+export interface Terminal {
+  stdin: boolean
+  stdout: boolean
+  stderr: boolean
+  /** The width of stdout in columns, when it is a terminal. */
+  columns?: number
 }
 
 /** The real ambient context: this process's streams, directory and environment. */
 export function processContext(): CliContext {
-  return { io: processIo, cwd: process.cwd(), env: process.env }
+  return {
+    io: processIo,
+    cwd: process.cwd(),
+    env: process.env,
+    terminal: {
+      stdin: process.stdin.isTTY === true,
+      stdout: process.stdout.isTTY === true,
+      stderr: process.stderr.isTTY === true,
+      ...(process.stdout.columns !== undefined ? { columns: process.stdout.columns } : {}),
+    },
+  }
+}
+
+/**
+ * Whether output to stdout should be colored: `@osdlc/ux`'s
+ * `detectColorLevel` for stdout, from `ctx.env` and `ctx.terminal`, is not
+ * `none`. That reads `NO_COLOR`, `FORCE_COLOR`, `TERM=dumb` and whether stdout
+ * is a terminal. A JSON answer is never colored; the caller passes
+ * `json: true` for one. `override` is the tool's own `--color` or
+ * `--no-color` flag, which wins over the environment; cli-tool adds no such
+ * flag itself.
+ * @experimental
+ */
+export function colorEnabled(
+  ctx: CliContext,
+  opts: { json?: boolean; override?: boolean } = {},
+): boolean {
+  if (opts.json === true) return false
+  return (
+    detectColorLevel({
+      env: ctx.env,
+      isTTY: ctx.terminal?.stdout === true,
+      ...(opts.override !== undefined ? { override: opts.override } : {}),
+    }) !== 'none'
+  )
 }
 
 /**
@@ -85,5 +143,6 @@ export function captureContext(
     io: captureIo(),
     cwd: overrides.cwd ?? process.cwd(),
     env: overrides.env ?? process.env,
+    ...(overrides.terminal !== undefined ? { terminal: overrides.terminal } : {}),
   }
 }

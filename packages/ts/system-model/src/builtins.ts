@@ -6,22 +6,28 @@
  */
 
 import { denoTasks } from './plugins/deno/index.ts'
+import { dotnet } from './plugins/dotnet/index.ts'
 import { go } from './plugins/go/index.ts'
 import { gradle, maven, sbt } from './plugins/jvm/index.ts'
 import { bun, nodeScripts, npm, pnpm, yarn } from './plugins/node/index.ts'
 import { composer } from './plugins/php/index.ts'
-import { pip, poetry, python, uv } from './plugins/python/index.ts'
+import { hatch, pdm, pip, poe, poetry, python, uv } from './plugins/python/index.ts'
 import { bundler, rake } from './plugins/ruby/index.ts'
 import {
+  cmakePresets,
+  devbox,
   dockerCompose,
   githubActions,
   goTask,
   just,
   make,
   moon,
+  nx,
+  procfile,
   turbo,
+  vscodeTasks,
 } from './plugins/runners/index.ts'
-import { cargo } from './plugins/rust/index.ts'
+import { cargo, cargoAliases } from './plugins/rust/index.ts'
 import { swiftpm } from './plugins/swift/index.ts'
 import { direnv, husky, lefthook, mise, preCommit, proto } from './plugins/tools/index.ts'
 import type { ToolDef } from './tool.ts'
@@ -47,6 +53,16 @@ export const builtins: readonly ToolDef[] = [
   rake,
   dockerCompose,
   githubActions,
+  poe,
+  pdm,
+  hatch,
+  cargoAliases,
+  nx,
+  vscodeTasks,
+  devbox,
+  procfile,
+  cmakePresets,
+  dotnet,
   bun,
   pnpm,
   yarn,
@@ -87,6 +103,16 @@ export const BUILTIN_TOOL_IDS = [
   'rake',
   'docker-compose',
   'github-actions',
+  'poe',
+  'pdm',
+  'hatch',
+  'cargo-aliases',
+  'nx',
+  'vscode-tasks',
+  'devbox',
+  'procfile',
+  'cmake-presets',
+  'dotnet',
   'bun',
   'pnpm',
   'yarn',

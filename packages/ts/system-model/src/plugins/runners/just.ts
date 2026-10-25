@@ -23,10 +23,17 @@ import { dirname } from 'node:path'
 import { firstLine, stderrOrError } from '@osdlc/command-seam'
 
 import type { ProviderContext } from '../../contract.ts'
-import type { Diagnostic, Param, ProviderResult, RunnerBrand, Task } from '../../model.ts'
+import type {
+  Diagnostic,
+  Param,
+  ParametersUnknownReason,
+  ProviderResult,
+  RunnerBrand,
+  Task,
+} from '../../model.ts'
 import { paramShape } from '../../params.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { looksPersistent, onePerDir, sourcesOf, taskId } from '../support/shared.ts'
+import { dependenciesIn, looksPersistent, onePerDir, sourcesOf, taskId } from '../support/shared.ts'
 
 /** The names just looks for. */
 export const JUSTFILE_NAMES = ['justfile', 'Justfile', '.justfile']
@@ -52,6 +59,9 @@ interface JustRecipe {
   doc?: string | null
   private?: boolean
   parameters?: { name: string; kind?: string; default?: string | null }[]
+  dependencies?: { recipe?: string }[]
+  /** How many of `dependencies` run before the recipe. The rest follow `&&` and run after. */
+  priors?: number
   body?: unknown[][]
 }
 
@@ -61,7 +71,7 @@ interface JustRecipe {
  * path: simple-icons v16 (CC0), slug `just`. simple-icons lists plain
  * black for it, so the color stays GitHub Linguist's Just color.
  */
-const BRAND: RunnerBrand = {
+export const JUST_BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0m0 2.35a3.25 3.35 0 0 1 3.25 3.35A3.25 3.35 0 0 1 12 9.05 3.25 3.35 0 0 1 8.75 5.7 3.25 3.35 0 0 1 12 2.35m0 12.6a3.25 3.35 0 0 1 3.25 3.35A3.25 3.35 0 0 1 12 21.65a3.25 3.35 0 0 1-3.25-3.35A3.25 3.35 0 0 1 12 14.95"/></svg>',
   color: '#384d54',
 }
@@ -70,8 +80,10 @@ export const justRunner: RunnerRole = {
   // `parse`, not `exec`: the regex path means this runner always has tasks to
   // offer. It runs just when allowed, and says when it did not.
   kind: 'parse',
+  probe: { timeoutMs: 10_000, cost: 'cheap' },
+  // just reads every word after the recipe name as the recipe's argument.
+  optionsEndAtTask: true,
   chain: CHAIN,
-  brand: BRAND,
 
   async collect(ctx, packages): Promise<ProviderResult> {
     const justfiles = onePerDir(sourcesOf(packages, 'just', JUSTFILE_NAMES))
@@ -96,12 +108,20 @@ export const justRunner: RunnerRole = {
 
     for (const file of justfiles) {
       const dir = dirname(file) === '.' ? '.' : dirname(file)
+      let unknown: ParametersUnknownReason = ctx.allowExec ? 'tool-missing' : 'exec-withheld'
       if (usable) {
         const parsed = await dumpRecipes(ctx, file)
         if (parsed.error === undefined) {
+          const names = new Set(parsed.recipes.filter((r) => !r.private).map(recipeName))
           for (const recipe of parsed.recipes) {
             if (recipe.private) continue
-            tasks.push(fromDump(recipe, file, dir))
+            const deps = (recipe.dependencies ?? [])
+              .slice(0, recipe.priors)
+              .flatMap((d) => (d.recipe ? [d.recipe] : []))
+            tasks.push({
+              ...fromDump(recipe, file, dir),
+              ...dependenciesIn('just', file, deps, names),
+            })
           }
           continue
         }
@@ -114,6 +134,7 @@ export const justRunner: RunnerRole = {
           message: `\`just --dump\` did not answer for this file (${parsed.error}) — recipes were parsed from source, so docs, parameters and private flags are missing`,
           source: file,
         })
+        unknown = 'tool-failed'
       }
 
       const text = await ctx.readText(file)
@@ -121,8 +142,13 @@ export const justRunner: RunnerRole = {
         diagnostics.push({ severity: 'error', message: 'unreadable', source: file })
         continue
       }
-      for (const name of scanRecipeNames(text)) {
-        tasks.push(fromScan(name, file, dir))
+      const scanned = scanRecipes(text)
+      const names = new Set(scanned.map((r) => r.name))
+      for (const { name, deps } of scanned) {
+        tasks.push({
+          ...fromScan(name, file, dir, unknown),
+          ...dependenciesIn('just', file, deps, names),
+        })
       }
     }
 
@@ -140,7 +166,10 @@ async function dumpRecipes(
 ): Promise<{ recipes: JustRecipe[]; error?: string }> {
   const res = await ctx
     .runner('just')
-    .run(['--justfile', file, '--dump', '--dump-format', 'json'], { cwd: ctx.root })
+    .run(['--justfile', file, '--dump', '--dump-format', 'json'], {
+      cwd: ctx.root,
+      signal: ctx.signal,
+    })
   if (res.exitCode !== 0) {
     return { recipes: [], error: firstLine(stderrOrError(res), 'unknown failure') }
   }
@@ -161,8 +190,13 @@ function baseArgv(file: string, dir: string): string[] {
   return dir === '.' ? ['just'] : ['just', '--justfile', file, '--working-directory', dir]
 }
 
+function recipeName(recipe: JustRecipe): string {
+  return recipe.namepath ?? recipe.name
+}
+
+/** A dependency resolves to a listed recipe of the same justfile. A private one is not listed. */
 function fromDump(recipe: JustRecipe, file: string, dir: string): Task {
-  const name = recipe.namepath ?? recipe.name
+  const name = recipeName(recipe)
   const parameters = (recipe.parameters ?? []).map(toParam)
   const argv = [...baseArgv(file, dir), name]
   return {
@@ -184,7 +218,7 @@ function fromDump(recipe: JustRecipe, file: string, dir: string): Task {
   }
 }
 
-function fromScan(name: string, file: string, dir: string): Task {
+function fromScan(name: string, file: string, dir: string, unknown: ParametersUnknownReason): Task {
   const argv = [...baseArgv(file, dir), name]
   return {
     id: taskId('just', file, name),
@@ -193,9 +227,9 @@ function fromScan(name: string, file: string, dir: string): Task {
     argv,
     cwd: '.',
     display: argv.join(' '),
-    // Empty, not absent: the regex path cannot see parameters, and an empty
-    // list means "none known".
+    // The scan cannot see parameters, so it says so.
     parameters: [],
+    parametersUnknown: unknown,
     source: file,
     origin: 'declared',
     tags: ['just', dir === '.' ? 'root' : dir],
@@ -232,23 +266,96 @@ function renderParams(params: Param[]): string {
  *     release-lib lib bump *flags:      `*` must be in the character class
  *     ci base="main": ci-guards         text after the colon must not end it
  *
- * `:(?!=)` keeps assignments out: `alias b := build` and `set shell := [...]`
- * are not recipes.
+ * A colon inside a quoted default (`env="a:b"`) is skipped, and `:=` keeps
+ * assignments out: `alias b := build` and `set shell := [...]` are not recipes.
  */
-const RECIPE_HEADER = /^@?([a-zA-Z_][a-zA-Z0-9_-]*)(?:\s+[^:\n]*?)?:(?!=)/
+function recipeHeader(raw: string): { name: string; end: number } | null {
+  const m = /^@?([a-zA-Z_][a-zA-Z0-9_-]*)/.exec(raw)
+  if (m === null) return null
+  let quote: string | null = null
+  for (let i = m[0].length; i < raw.length; i++) {
+    const c = raw[i]!
+    if (quote !== null) {
+      if (c === '\\' && quote === '"') i++
+      else if (c === quote) quote = null
+    } else if (c === '"' || c === "'" || c === '`') {
+      quote = c
+    } else if (c === ':') {
+      if (raw[i + 1] === '=') return null
+      // Only whitespace may sit between the name and its parameters.
+      if (i > m[0].length && !/\s/.test(raw[m[0].length]!)) return null
+      return { name: m[1]!, end: i + 1 }
+    } else if (c === '#' && /\s/.test(raw[i - 1] ?? ' ')) {
+      return null
+    }
+  }
+  return null
+}
 
 export function scanRecipeNames(text: string): string[] {
-  const out: string[] = []
+  return scanRecipes(text).map((r) => r.name)
+}
+
+/**
+ * Recipe headers with the dependencies after the colon: `test: build lint`,
+ * `push: (deploy "prod") && notify`. A parenthesized dependency counts by its
+ * first word. Recipes after `&&` run after the recipe, so they are left out.
+ */
+export function scanRecipes(text: string): Array<{ name: string; deps: string[] }> {
+  const out: Array<{ name: string; deps: string[] }> = []
   const seen = new Set<string>()
   for (const raw of text.split(/\r?\n/)) {
     if (!raw || raw[0] === ' ' || raw[0] === '\t' || raw[0] === '#') continue
-    const m = RECIPE_HEADER.exec(raw)
-    const name = m?.[1]
-    if (name === undefined || seen.has(name)) continue
+    const header = recipeHeader(raw)
+    if (header === null || seen.has(header.name)) continue
+    const name = header.name
     seen.add(name)
-    out.push(name)
+    const tail = raw.slice(header.end).replace(/#.*$/, '').split('&&')[0]!
+    out.push({ name, deps: dependencyNames(tail) })
   }
   return out
+}
+
+const WORD = /[A-Za-z_][\w-]*/y
+
+/**
+ * The dependency names in a header's tail: bare words, and the first word of
+ * each `(name args…)`. One pass, so a hostile line costs linear time. An
+ * unclosed `(` ends the scan.
+ */
+function dependencyNames(tail: string): string[] {
+  const deps: string[] = []
+  let i = 0
+  while (i < tail.length) {
+    if (tail[i] === '(') {
+      let j = i + 1
+      while (j < tail.length && /\s/.test(tail[j]!)) j++
+      WORD.lastIndex = j
+      const first = WORD.exec(tail)?.[0]
+      let depth = 1
+      let quote: string | null = null
+      for (j = i + 1; j < tail.length && depth > 0; j++) {
+        const c = tail[j]!
+        if (quote !== null) {
+          if (c === '\\' && quote === '"') j++
+          else if (c === quote) quote = null
+        } else if (c === '"' || c === "'") quote = c
+        else if (c === '(') depth++
+        else if (c === ')') depth--
+      }
+      if (depth > 0) break
+      if (first !== undefined) deps.push(first)
+      i = j
+      continue
+    }
+    WORD.lastIndex = i
+    const word = WORD.exec(tail)?.[0]
+    if (word !== undefined) {
+      deps.push(word)
+      i += word.length
+    } else i++
+  }
+  return deps
 }
 
 /**

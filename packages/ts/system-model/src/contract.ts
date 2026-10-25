@@ -34,7 +34,10 @@ export type ProviderKind = 'parse' | 'exec'
 export interface ProviderContext {
   /** Absolute. Every path a runner returns is relative to this. */
   root: string
-  /** A runner for one binary, injected. */
+  /**
+   * A runner for one binary, injected. When `allowExec` is false, every call
+   * resolves as a spawn failure and runs nothing.
+   */
   runner(binary: string): AsyncCommandRunner
   /**
    * Root-relative paths matching a pattern, memoized for the call.
@@ -46,11 +49,19 @@ export interface ProviderContext {
    * directory. `*` matches within one path segment.
    */
   files(pattern: string): Promise<string[]>
-  /** Read and parse a JSON file, root-relative. `null` when absent or malformed. */
+  /** Read and parse a JSON file, root-relative. `null` when `readText` gives `null` or the JSON is malformed. */
   readJson(relPath: string): Promise<unknown>
-  /** Read a text file, root-relative. `null` when absent. */
+  /**
+   * Read a text file, root-relative. `null` when it is absent, is not a
+   * regular file, is a symlink that leaves the root, or is larger than
+   * `MAX_READ_BYTES`.
+   */
   readText(relPath: string): Promise<string | null>
-  /** True when a root-relative path exists. */
+  /**
+   * True when a root-relative path exists inside the root. A path with `..`,
+   * an absolute path, and a path through a symlink that leaves the root are
+   * false.
+   */
   exists(relPath: string): Promise<boolean>
   /** PATH lookup for a binary, with no subprocess. */
   which(binary: string): string | null
@@ -110,6 +121,7 @@ export interface DetectOptions {
   makeRunner?: ((binary: string) => AsyncCommandRunner) | undefined
   /** PATH lookup. Defaults to a walk of the absolute PATH entries. */
   which?: ((binary: string) => string | null) | undefined
+  /** Ends every subprocess detection starts, git included, when aborted. */
   signal?: AbortSignal | undefined
 }
 
@@ -131,6 +143,11 @@ export interface CollectOptions {
    */
   execWithheldHint?: string | undefined
   /**
+   * Probe timeouts in ms, by runner id. Each replaces that runner's
+   * `RunnerRole.probe.timeoutMs`.
+   */
+  timeouts?: Readonly<Record<string, number>> | undefined
+  /**
    * Build the runner for a binary. Defaults to `spawnRunnerAsync` from
    * `@osdlc/command-seam` with `absolutePathOnly`, so a bare name runs only
    * from an absolute PATH entry.
@@ -138,5 +155,6 @@ export interface CollectOptions {
   makeRunner?: ((binary: string) => AsyncCommandRunner) | undefined
   /** PATH lookup. Defaults to a walk of the absolute PATH entries. */
   which?: ((binary: string) => string | null) | undefined
+  /** Ends every subprocess a runner starts, git included, when aborted. */
   signal?: AbortSignal | undefined
 }

@@ -16,7 +16,10 @@ const PACKAGE_NAME = (
 ).name
 
 /** One entry point: its source file and the specifier consumers import. */
-const ENTRIES = [{ specifier: PACKAGE_NAME, entry: 'src/index.ts' }] as const
+const ENTRIES = [
+  { specifier: PACKAGE_NAME, entry: 'src/index.ts' },
+  { specifier: `${PACKAGE_NAME}/git`, entry: 'src/git.ts' },
+] as const
 
 const COMPILER_OPTIONS: ts.CompilerOptions = {
   allowImportingTsExtensions: true,

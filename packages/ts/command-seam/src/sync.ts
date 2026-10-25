@@ -21,6 +21,7 @@ import { FailureError, isFailure } from '@osdlc/result'
 import { buildFailure, type CommandFailure } from './failure.ts'
 import { shellJoin } from './quote.ts'
 import { failureText, stderrOrError } from './result.ts'
+import { planOptions, spawnPlan } from './spawn-plan.ts'
 import { which } from './which.ts'
 
 /**
@@ -765,7 +766,8 @@ export function resolveRunner(binary: string, injected?: CommandRunner | undefin
  * runtime with `NODE_ENV=test`) it captures through `/bin/sh` and temp files
  * instead of pipes (see `runViaChildRedirect`).
  *
- * @param binary - A name looked up on `PATH`, or a path.
+ * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
+ *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
  * @param options - See {@link SpawnRunnerOptions}.
  * @returns A runner for that binary.
  *
@@ -847,7 +849,8 @@ function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
  * cuts stdout at exactly the cap. Everything else is as for `spawnRunner`,
  * including the `bun test` capture path.
  *
- * @param binary - A name looked up on `PATH`, or a path.
+ * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
+ *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
  * @returns A runner for that binary.
  *
  * @example
@@ -878,7 +881,10 @@ function runSync(
   const cwdMessage = cwdError(`spawnSync ${binary}`, binary, argv, opts)
   if (cwdMessage !== undefined) return emptyStdout(spawnFailure(cwdMessage), bytes)
   if (CHILD_STDIO_CORRUPTED) return runViaChildRedirect(binary, argv, opts, timeoutMs, bytes)
-  const proc = spawnSync(binary, argv, {
+  const plan = spawnPlan(binary, argv, opts)
+  if ('refusal' in plan) return emptyStdout(spawnFailure(plan.refusal), bytes)
+  const proc = spawnSync(plan.file, plan.args, {
+    ...planOptions(plan),
     cwd: opts.cwd,
     maxBuffer: cap,
     timeout: timeoutMs,

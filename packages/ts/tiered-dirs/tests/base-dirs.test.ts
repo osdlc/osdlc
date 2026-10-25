@@ -106,16 +106,20 @@ describe('Linux', () => {
     )
   })
 
-  test('a relative HOME counts as unset, so the account home is used', () => {
-    const saved = process.env['HOME']
-    process.env['HOME'] = '.'
-    try {
-      const bases = systemBaseDirs(ENV, { platform: 'darwin', testRoot: false })
-      expect(bases.durable).toBe(join(userInfo().homedir, 'Library', 'Application Support'))
-    } finally {
-      process.env['HOME'] = saved
-    }
-  })
+  // The darwin table reads a POSIX-rooted account home; a Windows host's is `C:\...`.
+  test.skipIf(process.platform === 'win32')(
+    'a relative HOME counts as unset, so the account home is used [skipped on win32: account home is not POSIX-rooted]',
+    () => {
+      const saved = process.env['HOME']
+      process.env['HOME'] = '.'
+      try {
+        const bases = systemBaseDirs(ENV, { platform: 'darwin', testRoot: false })
+        expect(bases.durable).toBe(join(userInfo().homedir, 'Library', 'Application Support'))
+      } finally {
+        process.env['HOME'] = saved
+      }
+    },
+  )
 
   test('a relative XDG value is invalid and ignored', () => {
     const bases = systemBaseDirs(ENV, {
@@ -163,8 +167,11 @@ describe('Windows', () => {
 
 describe('conventions', () => {
   const env = { HOME: '/Users/x', XDG_CONFIG_HOME: '/xc' }
-  const on = (platform: string, opts: { convention?: 'native' | 'xdg' }, extra = {}) =>
-    systemBaseDirs(ENV, { platform, env: { ...env, ...extra }, ...opts })
+  const on = (
+    platform: string,
+    opts: { convention?: 'native' | 'xdg'; conventionFromEnv?: boolean },
+    extra = {},
+  ) => systemBaseDirs(ENV, { platform, env: { ...env, ...extra }, ...opts })
 
   test('xdg on macOS is the XDG table', () => {
     const bases = on('darwin', { convention: 'xdg' })
@@ -200,6 +207,17 @@ describe('conventions', () => {
       on('darwin', {}),
     )
     expect(on('darwin', { convention: 'xdg' }, { EXAMPLE_CONVENTION: '' })).toEqual(
+      on('darwin', { convention: 'xdg' }),
+    )
+  })
+
+  test("conventionFromEnv: false pins the caller's convention and ignores the variable", () => {
+    const pinned = { convention: 'xdg' as const, conventionFromEnv: false }
+    expect(on('darwin', pinned, { EXAMPLE_CONVENTION: 'native' })).toEqual(
+      on('darwin', { convention: 'xdg' }),
+    )
+    // Not read at all, so a bad value does not throw either.
+    expect(on('darwin', pinned, { EXAMPLE_CONVENTION: 'apple' })).toEqual(
       on('darwin', { convention: 'xdg' }),
     )
   })
@@ -467,6 +485,8 @@ describe('the README example with an injected HOME', () => {
       platform: 'darwin',
       env: { HOME: '/Users/ada' },
     })
-    expect(cli.standalone('tool').config().path).toBe('/Users/ada/.config/tool')
+    expect(normalize(cli.standalone('tool').config().path)).toBe(
+      normalize('/Users/ada/.config/tool'),
+    )
   })
 })

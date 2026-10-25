@@ -10,13 +10,17 @@
 export { createProject } from './project.ts'
 export type { Project, ProjectOptions, Runners } from './project.ts'
 
-export { diagnostics, evidence, tasks } from './model.ts'
+export { CATALOG_SCHEMA_VERSION, diagnostics, evidence, tasks } from './model.ts'
 export type {
   Catalog,
   ChainSegment,
   Diagnostic,
   DiscoveryMode,
+  Invocation,
   Param,
+  ParamBinding,
+  ParamValues,
+  ParametersUnknownReason,
   ProviderResult,
   RunnerBrand,
   RunnerReport,
@@ -47,9 +51,12 @@ export type {
   PackageManagerRole,
   ProjectProfile,
   RoleName,
+  ProbeCost,
+  RunnerProbe,
   RunnerRole,
   ToolDef,
   ToolFact,
+  ToolInfo,
   ToolManagerRole,
 } from './tool.ts'
 
@@ -69,5 +76,9 @@ export type { PackageManagerChoice, ToolAction } from './roles.ts'
 export type { PinnedInstall, PinnedInstallOptions, PinnedSource } from './pinned.ts'
 export type { CachedCatalog, RunnerCacheState, StaleReason } from './cached.ts'
 
-export { DEFAULT_EXCLUDES } from './discovery.ts'
-export { SYNTHESIZED_RUNNERS } from './synthesized.ts'
+export { DEFAULT_EXCLUDES, MAX_WALK_DEPTH, MAX_WALK_FILES } from './discovery.ts'
+export { MAX_READ_BYTES } from './read.ts'
+export { DEFAULT_PROBE_TIMEOUT_MS } from './context.ts'
+export { SYNTHESIZED_RUNNERS } from './groups.ts'
+export { validateToolDef } from './validate.ts'
+export { toolInfo } from './registry.ts'

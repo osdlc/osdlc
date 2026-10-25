@@ -13,6 +13,9 @@
  * An mtime-based cache would miss on all of those and pay for a JVM start for
  * nothing.
  *
+ * The one exception is a file over `MAX_READ_BYTES`. It is not read, so its
+ * size and mtime stand in for its bytes. A touched large file reads as stale.
+ *
  * ## What it covers
  *
  * For a `parse` runner, exactly what it read. Every read goes through `ctx`,
@@ -47,8 +50,9 @@
  */
 
 import { createHash } from 'node:crypto'
-import { join } from 'node:path'
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
+
+import { MAX_READ_BYTES, readRegular, resolveInside } from './read.ts'
 
 /**
  * The maximum number of paths one fingerprint hashes.
@@ -133,7 +137,7 @@ export async function fingerprint(args: {
 
   const digest = createHash('sha256')
   for (const rel of kept) {
-    digest.update(`${rel}\n${await hashPath(join(root, rel))}\n`)
+    digest.update(`${rel}\n${await hashPath(root, rel)}\n`)
   }
 
   return {
@@ -145,18 +149,27 @@ export async function fingerprint(args: {
   }
 }
 
-/** A file hashes its bytes, a directory its immediate entry names. */
-async function hashPath(abs: string): Promise<string> {
+/**
+ * A file hashes its bytes, a directory its immediate entry names. It follows
+ * the reads' rules (`read.ts`): a path that leaves the root and a special file
+ * are never read, so each hashes to a fixed label. A file over
+ * `MAX_READ_BYTES` is never read by a runner either, but its size and mtime
+ * are hashed, so rewriting a large lockfile still changes the digest.
+ */
+async function hashPath(root: string, rel: string): Promise<string> {
+  const resolved = await resolveInside(root, rel)
+  if (!('real' in resolved)) return resolved.outside ? 'outside' : MISSING
+  const target = resolved.real
   let info
   try {
-    info = await stat(abs)
+    info = await stat(target)
   } catch {
     return MISSING
   }
 
   if (info.isDirectory()) {
     try {
-      const entries = (await readdir(abs)).sort()
+      const entries = (await readdir(target)).sort()
       return createHash('sha256')
         .update(`dir\n${entries.join('\n')}`)
         .digest('hex')
@@ -167,12 +180,10 @@ async function hashPath(abs: string): Promise<string> {
       return MISSING
     }
   }
+  if (!info.isFile()) return 'special'
+  if (info.size > MAX_READ_BYTES) return `large\n${info.size}\n${info.mtimeMs}`
 
-  try {
-    return createHash('sha256')
-      .update(await readFile(abs))
-      .digest('hex')
-  } catch {
-    return MISSING
-  }
+  const read = await readRegular(target)
+  if (!('bytes' in read)) return read.missing ? MISSING : 'special'
+  return createHash('sha256').update(read.bytes).digest('hex')
 }

@@ -123,7 +123,9 @@ describe('choose the per-OS table', () => {
 
   test('a convention from a flag or a config file is parsed exactly', () => {
     const convention: Convention = parseConvention('xdg')
-    expect(systemBaseDirs(VARS, { ...LINUX, convention }).config).toBe('/home/ada/.config')
+    expect(normalize(systemBaseDirs(VARS, { ...LINUX, convention }).config)).toBe(
+      normalize('/home/ada/.config'),
+    )
     expect(() => parseConvention(' xdg')).toThrow(TieredDirsError)
   })
 })

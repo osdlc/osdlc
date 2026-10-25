@@ -43,6 +43,7 @@ The standards are delivered three ways:
 | [sdlc-yaml.md](./sdlc-yaml.md) | `sdlc.yaml` as a structured README: which questions it answers and where |
 | [doc-locations.md](./doc-locations.md) | Where each kind of document lives: root files, the `docs/` tree, decision records |
 | [review.md](./review.md) | How changes are reviewed: risk tiers, review layers, findings, responses, merging |
+| [cli-interface.md](./cli-interface.md) | What every command line provides: progressive help, `--json` documents, `schema`, `--version`, exit codes, streams, color |
 
 ## Where these come from
 

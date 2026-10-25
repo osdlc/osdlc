@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { dirname, join, sep } from 'node:path'
+import { dirname, join, normalize, sep } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
@@ -17,6 +17,13 @@ import { isTestRunnerProcess } from '../src/base-dirs.ts'
 
 const VENDOR = 'com.example'
 const ENV = envVars('EXAMPLE')
+
+// Fixture paths such as '/explicit' are POSIX-absolute, and a POSIX absolute
+// path is relative on a Windows host. Tests that feed one to the host platform
+// are skipped there, with this reason in the title.
+const WIN = process.platform === 'win32'
+const posixOnly = (name: string): string =>
+  WIN ? `${name} [skipped on win32: POSIX-style absolute paths]` : name
 
 // These tests drive the real process env, which the test rules read. Every
 // variable they touch is restored after each test.
@@ -88,14 +95,16 @@ describe('under a test runner', () => {
     expect(JSON.parse(child.stdout).durable.includes('tiered-dirs-test-')).toBe(false)
   })
 
-  test('an explicit EXAMPLE_ROOT wins', () => {
+  test.skipIf(WIN)(posixOnly('an explicit EXAMPLE_ROOT wins'), () => {
     process.env['EXAMPLE_ROOT'] = '/explicit'
     expect(systemBaseDirs(ENV).durable).toBe('/explicit/durable')
   })
 
   test('a test that moved HOME keeps it', () => {
     process.env['HOME'] = '/moved-home'
-    expect(systemBaseDirs(ENV, { platform: 'linux' }).durable).toBe('/moved-home/.local/share')
+    expect(normalize(systemBaseDirs(ENV, { platform: 'linux' }).durable)).toBe(
+      normalize('/moved-home/.local/share'),
+    )
   })
 
   test('testRoot() is the root the default uses', () => {
@@ -112,17 +121,20 @@ describe('under a test runner', () => {
     expect(JSON.parse(child.stdout)).toBeNull()
   })
 
-  test('testRoot: false skips the default and resolves the per-OS table', () => {
-    expect(systemBaseDirs(ENV, { platform: 'linux', testRoot: true }).durable).toBe(
-      join(testRoot()!, 'durable'),
-    )
-    const bases = systemBaseDirs(ENV, { platform: 'linux', testRoot: false })
-    // An injected environment runs no test rule, so this is the plain per-OS table.
-    expect(bases).toEqual(systemBaseDirs(ENV, { platform: 'linux', env: { ...process.env } }))
-    expect(bases.durable.startsWith(testRoot()!)).toBe(false)
-  })
+  test.skipIf(WIN)(
+    posixOnly('testRoot: false skips the default and resolves the per-OS table'),
+    () => {
+      expect(systemBaseDirs(ENV, { platform: 'linux', testRoot: true }).durable).toBe(
+        join(testRoot()!, 'durable'),
+      )
+      const bases = systemBaseDirs(ENV, { platform: 'linux', testRoot: false })
+      // An injected environment runs no test rule, so this is the plain per-OS table.
+      expect(bases).toEqual(systemBaseDirs(ENV, { platform: 'linux', env: { ...process.env } }))
+      expect(bases.durable.startsWith(testRoot()!)).toBe(false)
+    },
+  )
 
-  test('testRoot: false still honours EXAMPLE_ROOT', () => {
+  test.skipIf(WIN)(posixOnly('testRoot: false still honours EXAMPLE_ROOT'), () => {
     process.env['EXAMPLE_ROOT'] = '/explicit'
     expect(systemBaseDirs(ENV, { testRoot: false }).durable).toBe('/explicit/durable')
   })
@@ -143,7 +155,7 @@ describe('under a test runner', () => {
 
   test('an injected environment is the whole story', () => {
     const bases = systemBaseDirs(ENV, { platform: 'linux', env: { HOME: '/h', NODE_ENV: 'test' } })
-    expect(bases.durable).toBe('/h/.local/share')
+    expect(normalize(bases.durable)).toBe(normalize('/h/.local/share'))
   })
 })
 
@@ -156,7 +168,7 @@ describe(ENV.requireOverride, () => {
     expect(child.stderr).toMatch(/EXAMPLE_DURABLE_DIR.*set EXAMPLE_ROOT/)
   })
 
-  test('passes when every home is moved', () => {
+  test.skipIf(WIN)(posixOnly('passes when every home is moved'), () => {
     const child = resolveInChild({
       [ENV.requireOverride]: '1',
       EXAMPLE_DURABLE_DIR: '/d',

@@ -6,6 +6,7 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  colorDistance,
   compositeOver,
   contrastRatio,
   formatHex,
@@ -56,6 +57,17 @@ describe('build colours from other colours', () => {
   test('read a canvas pixel from getImageData', () => {
     const data = new Uint8ClampedArray([26, 115, 232, 255])
     expect(formatHex(fromPixel(data))).toBe('#1a73e8')
+  })
+})
+
+describe('pick the nearest colour of a palette', () => {
+  test('the palette entry with the smallest distance is the nearest', () => {
+    const palette = ['#000000', '#cd0000', '#00cd00', '#ffffff']
+    const target = '#188a46'
+    const nearest = palette.reduce((best, c) =>
+      colorDistance(target, c) < colorDistance(target, best) ? c : best,
+    )
+    expect(nearest).toBe('#00cd00')
   })
 })
 

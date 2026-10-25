@@ -15,17 +15,32 @@
  * live singleton the running UI uses, not a copy built for the test.
  */
 
-import { afterAll, beforeEach, describe, expect, test } from 'vitest'
+import { EventEmitter } from 'node:events'
+
+import { afterAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { join } from 'node:path'
 
-import type { Catalog, RunnerCacheState, Task } from '@osdlc/system-model/detect'
+import {
+  CATALOG_SCHEMA_VERSION,
+  type Catalog,
+  type RunnerCacheState,
+  type Task,
+} from '@osdlc/system-model/detect'
 import { cacheDir } from '../src/cache.ts'
 import { trustStore } from '@osdlc/trust-repo'
 
-import { cursor, frame, handle, recompute, refreshNote, state } from '../src/tui.ts'
+import {
+  cursor,
+  frame,
+  handle,
+  installQuitHandlers,
+  recompute,
+  refreshNote,
+  state,
+} from '../src/tui.ts'
 
 function task(runner: string, name: string): Task {
   return {
@@ -46,6 +61,8 @@ function task(runner: string, name: string): Task {
 
 function catalog(names: string[]): Catalog {
   return {
+    kind: 'catalog',
+    schemaVersion: CATALOG_SCHEMA_VERSION,
     root: '/tmp/repo',
     generatedAt: new Date(0).toISOString(),
     discovery: 'walk',
@@ -376,7 +393,15 @@ describe('keys that reach disk', () => {
     state.root = root
     state.home = home
     state.store = cacheDir({}, home)
-    state.gate = { allowExec: false, trusted: false, reason: 'untrusted', configured: true, root }
+    state.gate = {
+      allowExec: false,
+      trusted: false,
+      reason: 'untrusted',
+      configured: true,
+      root,
+      scopes: ['*'],
+      missing: ['*'],
+    }
     state.loading = true
     state.inFlight = new AbortController()
     state.confirmingTrust = true
@@ -395,7 +420,15 @@ describe('keys that reach disk', () => {
     state.root = root
     state.home = home
     state.store = cacheDir({}, home)
-    state.gate = { allowExec: false, trusted: false, reason: 'untrusted', configured: true, root }
+    state.gate = {
+      allowExec: false,
+      trusted: false,
+      reason: 'untrusted',
+      configured: true,
+      root,
+      scopes: ['*'],
+      missing: ['*'],
+    }
     state.loading = true
     state.inFlight = new AbortController()
     state.confirmingTrust = true
@@ -417,7 +450,15 @@ describe('keys that reach disk', () => {
     state.root = root
     state.home = home
     state.store = cacheDir({}, home)
-    state.gate = { allowExec: true, trusted: true, reason: 'allowed', configured: true, root }
+    state.gate = {
+      allowExec: true,
+      trusted: true,
+      reason: 'allowed',
+      configured: true,
+      root,
+      scopes: ['*'],
+      missing: [],
+    }
     state.catalog = catalog(['build'])
     recompute()
 
@@ -453,5 +494,53 @@ describe('tabs by group', () => {
     recompute()
     const tabs = frame(100, 10).split('\n')[0]!
     expect(tabs).toContain(' make 1 │ dependencies 1 │ git hooks 1 ')
+  })
+})
+
+describe('quitting', () => {
+  /** Run `act` with `process.exit` stubbed; the exit code it was called with. */
+  function exitCode(act: () => void): number | undefined {
+    const exit = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw Object.assign(new Error('exit'), { code })
+    }) as typeof process.exit)
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    try {
+      act()
+      return undefined
+    } catch (err) {
+      return (err as { code?: number }).code
+    } finally {
+      exit.mockRestore()
+      write.mockRestore()
+    }
+  }
+
+  beforeEach(() => {
+    state.entering = null
+    state.settings = null
+    state.confirmingTrust = false
+  })
+
+  test.each([
+    ['^C', '\x03'],
+    ['Esc', '\x1b'],
+  ])('%s aborts the probe in flight and exits 0', (_, key) => {
+    const probe = new AbortController()
+    state.inFlight = probe
+    expect(exitCode(() => handle(key))).toBe(0)
+    expect(probe.signal.aborted).toBe(true)
+  })
+
+  test.each([
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+    ['SIGHUP', 129],
+  ] as const)('%s aborts the probe in flight and exits %i', (signal, code) => {
+    const target = new EventEmitter()
+    installQuitHandlers(target)
+    const probe = new AbortController()
+    state.inFlight = probe
+    expect(exitCode(() => target.emit(signal))).toBe(code)
+    expect(probe.signal.aborted).toBe(true)
   })
 })

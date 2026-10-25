@@ -1,7 +1,7 @@
 {
   "name": "@osdlc/trust-repo",
   "version": "0.3.0",
-  "description": "Per-repository consent to run a repository's own scripts: a marker store remembered across runs, an exec gate, and a path and owner policy over it.",
+  "description": "Per-repository consent to run a repository's own scripts: a marker store of grants for a whole repository or one tool, an exec gate, and a path and owner policy over it.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
   "repository": {
@@ -27,6 +27,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./git": {
+      "types": "./dist/git.d.ts",
+      "default": "./dist/git.js"
     }
   },
   "files": [
@@ -39,7 +43,7 @@
     "CONTRIBUTING.md"
   ],
   "engines": {
-    "node": ">=22"
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -54,8 +58,10 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
   },
   "dependencies": {
+    "@osdlc/command-seam": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
-    "@osdlc/path-guard": "workspace:^"
+    "@osdlc/path-guard": "workspace:^",
+    "@osdlc/typed-git": "workspace:^"
   },
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",

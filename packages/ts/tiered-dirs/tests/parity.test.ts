@@ -265,16 +265,24 @@ describe('parity fixture', () => {
     unmoved(key) && key !== ENV.convention && !key.startsWith('XDG_')
   const hostEnv = only(process.env, unmoved)
 
-  test.each(envCases.map((c) => [c.name, c] as const))('env: %s', (_name, c) => {
-    const windowsNative = process.platform === 'win32' && c.windows_native === true
-    const bases = systemBaseDirs(ENV, {
-      env: { ...hostEnv, ...c.env },
-      ...(c.convention === undefined ? {} : { convention: c.convention }),
+  // Rows whose values are POSIX paths ('/fr') are relative on a Windows host,
+  // so only the `windows_native` rows run there.
+  for (const c of envCases) {
+    const skip = process.platform === 'win32' && c.windows_native !== true
+    const title = skip
+      ? `env: ${c.name} [skipped on win32: POSIX-style absolute paths]`
+      : `env: ${c.name}`
+    test.skipIf(skip)(title, () => {
+      const windowsNative = process.platform === 'win32' && c.windows_native === true
+      const bases = systemBaseDirs(ENV, {
+        env: { ...hostEnv, ...c.env },
+        ...(c.convention === undefined ? {} : { convention: c.convention }),
+      })
+      const keep = windowsNative ? noConvention : unmoved
+      const osDefault = systemBaseDirs(ENV, { env: only({ ...hostEnv, ...c.env }, keep) })
+      expect(bases).toEqual({ ...osDefault, ...(windowsNative ? {} : c.expected) })
     })
-    const keep = windowsNative ? noConvention : unmoved
-    const osDefault = systemBaseDirs(ENV, { env: only({ ...hostEnv, ...c.env }, keep) })
-    expect(bases).toEqual({ ...osDefault, ...(windowsNative ? {} : c.expected) })
-  })
+  }
 
   test('every override variable has an env case', () => {
     const covered = new Set(envCases.flatMap((c) => Object.keys(c.env)))

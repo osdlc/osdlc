@@ -7,6 +7,7 @@
 import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { expect, test } from 'vitest'
 import ts from 'typescript'
@@ -83,7 +84,7 @@ test('the README names every export', () => {
 
 // The API listing is typed `typescript`: it is signatures, not runnable code.
 test('every README ts block runs against the package', async () => {
-  const blocks = [...README.matchAll(/```ts\n([\s\S]*?)```/g)].map((m) => m[1]!)
+  const blocks = [...README.matchAll(/```ts\r?\n([\s\S]*?)```/g)].map((m) => m[1]!)
   expect(blocks.length).toBeGreaterThan(0)
   // The Vitest alias resolves the package name from any directory.
   const dir = mkdtempSync(join(tmpdir(), 'tiered-dirs-readme-'))
@@ -91,7 +92,7 @@ test('every README ts block runs against the package', async () => {
     for (const [i, block] of blocks.entries()) {
       const file = join(dir, `block-${i}.ts`)
       writeFileSync(file, block)
-      await import(file)
+      await import(pathToFileURL(file).href)
     }
   } finally {
     rmSync(dir, { recursive: true, force: true })

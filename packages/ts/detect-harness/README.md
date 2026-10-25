@@ -84,6 +84,17 @@ probe and no sign-in evidence. A read outside the root, including through a
 symbolic link, answers "absent" without reading it. Only the `project`
 and `local` scopes are reported, and `install.probed` is `false`.
 
+Project mode lists the skills a repository ships: `.claude/skills`,
+`.agents/skills` and `.cursor/skills` in the project. Each entry has `name`,
+`description`, `argumentHint`, `origin`, `scope` and `path`. A tool can show
+them as tasks without reading any file outside the project:
+
+```ts
+const catalog = await detect({ projectRoot, mode: 'project' })
+const skills = catalog.reports.flatMap((r) => r.skills)
+// [{ name: 'review', description: 'Review a PR.', argumentHint: '[pr-number]', origin: 'project', ... }]
+```
+
 ## The report
 
 Every field is always present. A harness that has no such thing, or one this
@@ -96,7 +107,7 @@ release does not read yet, reports it empty.
 | `sources`      | Every config file looked at: path, scope, kind, `parsed`/`absent`/`error`, rank.       |
 | `plugins`      | Installed and enabled plugins, with scope, version, install path and enabling file.    |
 | `marketplaces` | Known marketplaces and their source.                                                   |
-| `skills`       | Skill folders (`<name>/SKILL.md`): name, description, path, scope, origin.             |
+| `skills`       | Skill folders (`<name>/SKILL.md`): name, description, argument hint, path, scope, origin. |
 | `commands`     | Commands, the same shape.                                                              |
 | `agents`       | Agent definitions, the same shape.                                                     |
 | `hooks`        | Hook handlers: event as the harness spells it, matcher, command, source, trust.        |
@@ -105,6 +116,21 @@ release does not read yet, reports it empty.
 | `instructions` | Instruction files: `CLAUDE.md`, `AGENTS.md`, rules folders.                            |
 | `auth`         | Offline sign-in evidence; see below.                                                   |
 | `diagnostics`  | Unreadable files and other things worth a look.                                        |
+
+Each skill, command and agent has an `argumentHint`: the `argument-hint`
+front matter field, such as `[pr-number]`, or `null`. Claude Code reads the
+field as text, so an unquoted value is reported as written:
+`argument-hint: [pr-number] [priority]` gives `[pr-number] [priority]`,
+though it is not valid YAML. A value that is not text, such as a block
+list, gives `null`. When front matter is still not valid YAML (for example
+`description: Use when: ...`), `name`, `description` and `argument-hint`
+are read from their raw lines and the other keys are dropped. The `./model`
+entry point reads the front matter the same way.
+
+Names, descriptions, hints and other strings in the report come from files
+in the repository and the user's config. They can hold terminal control
+characters. Strip them before printing to a terminal, for example with
+`stripControls` from `@osdlc/ux`.
 
 Each skill, command, agent, hook and server has an `origin`: `user`,
 `project`, `local`, `managed`, or `plugin:<id>` for one a plugin brought.

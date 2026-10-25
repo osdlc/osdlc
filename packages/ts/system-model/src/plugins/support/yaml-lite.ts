@@ -47,7 +47,7 @@ export function leadingSpaces(line: string): number {
  * of the line is still scanned.
  */
 export function plainScalarStart(line: string): number {
-  const m = /^(?:\s*(?:-\s+)?(?:'[^']*'|"[^"]*"|[^-'"#:\s][^:]*?)\s*:(?:\s+|$)|\s*-\s+)/.exec(line)
+  const m = /^(?:\s*(?:-\s+)?(?:'[^']*'|"[^"]*"|[^-'"#:\s][^:]*):(?:\s+|$)|\s*-\s+)/.exec(line)
   if (m === null) return Infinity
   const head = m[0].length
   const first = line[head]
@@ -187,7 +187,7 @@ export function matchKey(line: string, indent: number): { key: string; value: st
   if (m) return { key: m[1] ?? '', value: m[2] ?? '' }
   m = /^"([^"]*)"\s*:\s*(.*)$/.exec(content)
   if (m) return { key: m[1] ?? '', value: m[2] ?? '' }
-  m = /^([^:\s][^:]*?)\s*:\s*(.*)$/.exec(content)
+  m = /^([^:\s][^:]*):\s*(.*)$/.exec(content)
   if (m) return { key: (m[1] ?? '').trim(), value: m[2] ?? '' }
   return null
 }
