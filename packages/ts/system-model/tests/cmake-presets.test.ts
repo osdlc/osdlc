@@ -190,6 +190,37 @@ describe('cmake-presets runner', () => {
     ])
   })
 
+  test("past the cap, a preset's own false condition still hides it", async () => {
+    const configurePresets: Array<Record<string, unknown>> = []
+    for (let i = 0; i <= MAX_INHERIT_NODES; i++) configurePresets.push({ name: `p${i}` })
+    configurePresets.push({ name: 'off', condition: false })
+    const { catalog } = await run({
+      'CMakePresets.json': JSON.stringify({ version: 6, configurePresets }),
+    })
+    const found = tasks(catalog).map(key)
+    expect(found).toHaveLength(MAX_INHERIT_NODES + 1)
+    expect(found).not.toContain('configure:off')
+    expect(catalog.reports[0]!.diagnostics).toHaveLength(1)
+  })
+
+  test('the condition walk does not use up the configurePreset budget', async () => {
+    const half = MAX_INHERIT_NODES * 0.6
+    const buildPresets: Array<Record<string, unknown>> = []
+    for (let i = 0; i < half; i++) buildPresets.push({ name: `b${i}`, configurePreset: 'dev' })
+    const { catalog } = await run({
+      'CMakePresets.json': JSON.stringify({
+        version: 6,
+        configurePresets: [{ name: 'dev' }],
+        buildPresets,
+      }),
+    })
+    expect(tasks(catalog)).toHaveLength(half + 1)
+    expect(
+      tasks(catalog).every((t) => t.path[2] === 'configure' || t.dependsOn?.length === 1),
+    ).toBe(true)
+    expect(catalog.reports[0]!.diagnostics).toEqual([])
+  })
+
   test('include expands ${sourceDir} and ${fileDir}, and skips other macros', async () => {
     const { catalog } = await run({
       'sub/CMakePresets.json': JSON.stringify({

@@ -14,7 +14,8 @@
  *
  * An `inherits` walk visits each preset once per field. It stops at
  * {@link MAX_INHERIT_DEPTH} levels or {@link MAX_INHERIT_NODES} presets, with
- * a diagnostic, so an untrusted file cannot stall detection.
+ * a diagnostic, so an untrusted file cannot stall detection. A preset's own
+ * value is always read, even past the cap.
  *
  * Commands: `cmake --preset <name>` configures, `cmake --build --preset
  * <name>` builds and `ctest --preset <name>` tests. Configure names its
@@ -61,7 +62,7 @@ type Kind = (typeof KINDS)[number]['kind']
 /** The deepest `inherits` chain followed. */
 export const MAX_INHERIT_DEPTH = 32
 
-/** The most presets one directory's `inherits` walks visit in total. */
+/** The most presets one directory's `inherits` walks visit in total, per field. */
 export const MAX_INHERIT_NODES = 10_000
 
 /** CMake's `${hostSystemName}`: the value `uname -s` gives, `Windows` on Windows. */
@@ -98,9 +99,11 @@ export const cmakePresetsRunner: RunnerRole = {
           inheritance(presets.get(k.kind)!, 'configurePreset', budget),
         ]),
       )
-      // CMake inherits `condition` like any other field.
+      // CMake inherits `condition` like any other field. Its walk has its own
+      // budget, so it does not halve the cap of the `configurePreset` walk.
+      const conditionBudget: InheritBudget = { nodes: 0, reported: false }
       const conditionOf = new Map<Kind, (name: string) => unknown>(
-        KINDS.map((k) => [k.kind, inheritance(presets.get(k.kind)!, 'condition', budget)]),
+        KINDS.map((k) => [k.kind, inheritance(presets.get(k.kind)!, 'condition', conditionBudget)]),
       )
       // One evaluation per condition object, however many presets inherit it.
       const evaluated = new Map<unknown, boolean | undefined>()
@@ -151,7 +154,7 @@ export const cmakePresetsRunner: RunnerRole = {
           })
         }
       }
-      if (budget.reported) {
+      if (budget.reported || conditionBudget.reported) {
         diagnostics.push({
           severity: 'warning',
           message: `a preset's inherits chain is deeper than ${MAX_INHERIT_DEPTH} levels or visits more than ${MAX_INHERIT_NODES} presets, so it was cut short`,
@@ -251,29 +254,31 @@ function inheritance(
   const visit = (at: string, depth: number): unknown => {
     if (memo.has(at)) return memo.get(at)
     if (active.has(at)) return undefined
+    const def = byName.get(at)?.def
+    // A preset's own value needs no walk, so the cap never hides it.
+    if (def !== undefined && def[field] !== undefined) {
+      memo.set(at, def[field])
+      return def[field]
+    }
     if (depth > MAX_INHERIT_DEPTH || budget.nodes >= MAX_INHERIT_NODES) {
       budget.reported = true
       return undefined
     }
     budget.nodes++
-    const def = byName.get(at)?.def
     let found: unknown
     if (def !== undefined) {
-      if (def[field] !== undefined) found = def[field]
-      else {
-        active.add(at)
-        const parents = def['inherits']
-        for (const parent of typeof parents === 'string'
-          ? [parents]
-          : Array.isArray(parents)
-            ? parents
-            : []) {
-          if (typeof parent !== 'string') continue
-          found = visit(parent, depth + 1)
-          if (found !== undefined) break
-        }
-        active.delete(at)
+      active.add(at)
+      const parents = def['inherits']
+      for (const parent of typeof parents === 'string'
+        ? [parents]
+        : Array.isArray(parents)
+          ? parents
+          : []) {
+        if (typeof parent !== 'string') continue
+        found = visit(parent, depth + 1)
+        if (found !== undefined) break
       }
+      active.delete(at)
     }
     memo.set(at, found)
     return found
