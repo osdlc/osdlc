@@ -4,6 +4,7 @@ import { tasks, type Task } from '../src/model.ts'
 import type { ToolDef } from '../src/tool.ts'
 import { detectAndCollect, fakeWhich, fixtureRoot, removeRoot } from './support.ts'
 import { cmakePresets } from '../src/plugins/runners/index.ts'
+import { MAX_INHERIT_DEPTH, MAX_INHERIT_NODES } from '../src/plugins/runners/cmake-presets.ts'
 
 const TOOLS = [cmakePresets]
 
@@ -139,6 +140,100 @@ describe('cmake-presets runner', () => {
       ['b/CMakePresets.json', 'unparseable CMake presets file'],
     ])
     expect(tasks(catalog).map(key)).toEqual(['configure:a'])
+  })
+
+  test('a diamond-shaped inherits graph is walked once per preset', async () => {
+    // Each layer inherits from both presets of the layer below: 2^40 paths.
+    const layers = 40
+    const configurePresets: Array<Record<string, unknown>> = [
+      { name: 'l0a', hidden: true },
+      { name: 'l0b', hidden: true },
+    ]
+    for (let i = 1; i <= layers; i++) {
+      for (const side of ['a', 'b']) {
+        configurePresets.push({
+          name: `l${i}${side}`,
+          hidden: true,
+          inherits: [`l${i - 1}a`, `l${i - 1}b`],
+        })
+      }
+    }
+    configurePresets.push({ name: 'dev' })
+    const started = performance.now()
+    const { catalog } = await run({
+      'CMakePresets.json': JSON.stringify({
+        version: 6,
+        configurePresets,
+        buildPresets: [{ name: 'top', inherits: `l${layers}a` }],
+      }),
+    })
+    expect(performance.now() - started).toBeLessThan(2000)
+    expect(tasks(catalog).map(key)).toEqual(['configure:dev', 'build:top'])
+  })
+
+  test('an inherits chain past the depth cap is cut short with a diagnostic', async () => {
+    const buildPresets: Array<Record<string, unknown>> = [{ name: 'p0', configurePreset: 'dev' }]
+    for (let i = 1; i <= MAX_INHERIT_DEPTH + 5; i++) {
+      buildPresets.push({ name: `p${i}`, inherits: `p${i - 1}`, hidden: i < MAX_INHERIT_DEPTH + 5 })
+    }
+    const { catalog } = await run({
+      'CMakePresets.json': JSON.stringify({
+        version: 6,
+        configurePresets: [{ name: 'dev' }],
+        buildPresets,
+      }),
+    })
+    const deep = tasks(catalog).find((t) => key(t) === `build:p${MAX_INHERIT_DEPTH + 5}`)!
+    expect(deep.dependsOn).toBeUndefined()
+    expect(catalog.reports[0]!.diagnostics.map((d) => d.message)).toEqual([
+      `a preset's inherits chain is deeper than ${MAX_INHERIT_DEPTH} levels or visits more than ${MAX_INHERIT_NODES} presets, so it was cut short`,
+    ])
+  })
+
+  test('include expands ${sourceDir} and ${fileDir}, and skips other macros', async () => {
+    const { catalog } = await run({
+      'sub/CMakePresets.json': JSON.stringify({
+        version: 9,
+        include: [
+          '${sourceDir}/cmake/a.json',
+          '${fileDir}/b.json',
+          '$penv{HOME}/c.json',
+          '${sourceDir}/../../x.json',
+        ],
+      }),
+      'sub/cmake/a.json': JSON.stringify({ configurePresets: [{ name: 'a' }] }),
+      'sub/b.json': JSON.stringify({ configurePresets: [{ name: 'b' }] }),
+    })
+    expect(tasks(catalog).map(key)).toEqual(['configure:a', 'configure:b'])
+    expect(catalog.reports[0]!.diagnostics.map((d) => d.message)).toEqual([
+      'include $penv{HOME}/c.json uses a macro this runner does not expand, so it was not read',
+      'include ${sourceDir}/../../x.json is outside the repository and was not read',
+    ])
+  })
+
+  test('a preset whose condition is false here is not listed', async () => {
+    const { catalog } = await run({
+      'CMakePresets.json': JSON.stringify({
+        version: 6,
+        configurePresets: [
+          { name: 'off', condition: { type: 'const', value: false } },
+          {
+            name: 'nowhere',
+            condition: { type: 'equals', lhs: '${hostSystemName}', rhs: 'Plan9' },
+          },
+          {
+            name: 'here',
+            condition: { type: 'notEquals', lhs: '${hostSystemName}', rhs: 'Plan9' },
+          },
+          { name: 'maybe', condition: { type: 'matches', string: 'x', regex: 'x' } },
+          { name: 'plain' },
+        ],
+      }),
+    })
+    const found = tasks(catalog)
+    expect(found.map(key)).toEqual(['configure:here', 'configure:maybe', 'configure:plain'])
+    expect(found.find((t) => key(t) === 'configure:maybe')!.tags).toContain('conditional')
+    expect(found.find((t) => key(t) === 'configure:here')!.tags).not.toContain('conditional')
   })
 
   test('absent without a presets file', async () => {

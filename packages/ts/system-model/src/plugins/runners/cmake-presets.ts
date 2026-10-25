@@ -4,9 +4,17 @@
  * `include` lists.
  *
  * `CMakeUserPresets.json` includes `CMakePresets.json` without saying so, as
- * CMake does. An include path is relative to the file that names it; one
- * outside the repository is not read. A `hidden` preset exists only to be
- * inherited and is not a task. Package and workflow presets are not read.
+ * CMake does. An include path is relative to the file that names it, after
+ * `${sourceDir}` and `${fileDir}` are expanded; one outside the repository is
+ * not read, and one with any other macro is skipped with a diagnostic. A
+ * `hidden` preset exists only to be inherited and is not a task. A preset
+ * whose `condition` is false on this host is not listed; a condition this
+ * runner cannot evaluate leaves the preset listed and tagged `conditional`.
+ * Package and workflow presets are not read.
+ *
+ * An `inherits` walk visits each preset once per field. It stops at
+ * {@link MAX_INHERIT_DEPTH} levels or {@link MAX_INHERIT_NODES} presets, with
+ * a diagnostic, so an untrusted file cannot stall detection.
  *
  * Commands: `cmake --preset <name>` configures, `cmake --build --preset
  * <name>` builds and `ctest --preset <name>` tests. Configure names its
@@ -50,6 +58,16 @@ const KINDS = [
 
 type Kind = (typeof KINDS)[number]['kind']
 
+/** The deepest `inherits` chain followed. */
+export const MAX_INHERIT_DEPTH = 32
+
+/** The most presets one directory's `inherits` walks visit in total. */
+export const MAX_INHERIT_NODES = 10_000
+
+/** CMake's `${hostSystemName}`: the value `uname -s` gives, `Windows` on Windows. */
+const HOST_SYSTEM =
+  process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'Darwin' : 'Linux'
+
 interface Preset {
   def: Record<string, unknown>
   source: string
@@ -70,9 +88,16 @@ export const cmakePresetsRunner: RunnerRole = {
       // CMakePresets.json first: CMakeUserPresets.json includes it.
       for (const name of [PRESETS_FILE, USER_PRESETS_FILE]) {
         const file = joinRel(dir, name)
-        if (files.includes(file)) await load(ctx, file, seen, presets, diagnostics)
+        if (files.includes(file)) await load(ctx, dir, file, seen, presets, diagnostics)
       }
 
+      const budget: InheritBudget = { nodes: 0, reported: false }
+      const configureOf = new Map<Kind, (name: string) => unknown>(
+        KINDS.filter((k) => k.kind !== 'configure').map((k) => [
+          k.kind,
+          inheritance(presets.get(k.kind)!, 'configurePreset', budget),
+        ]),
+      )
       const ids = new Map<string, string>()
       for (const [kind, byName] of presets) {
         for (const [name, p] of byName)
@@ -81,6 +106,8 @@ export const cmakePresetsRunner: RunnerRole = {
       for (const { kind } of KINDS) {
         for (const [name, p] of presets.get(kind)!) {
           if (p.def['hidden'] === true) continue
+          const condition = evaluate(p.def['condition'])
+          if (condition === false) continue
           const argv =
             kind === 'configure'
               ? dir === '.'
@@ -89,10 +116,7 @@ export const cmakePresetsRunner: RunnerRole = {
               : kind === 'build'
                 ? ['cmake', '--build', '--preset', name]
                 : ['ctest', '--preset', name]
-          const configure =
-            kind === 'configure'
-              ? undefined
-              : inherited(presets.get(kind)!, name, 'configurePreset')
+          const configure = configureOf.get(kind)?.(name)
           const doc = [p.def['displayName'], p.def['description']].find(
             (d): d is string => typeof d === 'string' && d !== '',
           )
@@ -113,11 +137,18 @@ export const cmakePresetsRunner: RunnerRole = {
                 ? undefined
                 : ids.get(`configure:${dep}`)
             }),
-            tags: ['cmake-presets', dir, kind],
+            tags: ['cmake-presets', dir, kind, ...(condition === undefined ? ['conditional'] : [])],
             persistent: { value: false, declared: false },
             executes: 'local',
           })
         }
+      }
+      if (budget.reported) {
+        diagnostics.push({
+          severity: 'warning',
+          message: `a preset's inherits chain is deeper than ${MAX_INHERIT_DEPTH} levels or visits more than ${MAX_INHERIT_NODES} presets, so it was cut short`,
+          source: joinRel(dir, PRESETS_FILE),
+        })
       }
     }
     return { status: tasks.length > 0 ? 'ok' : 'absent', tasks, diagnostics }
@@ -127,6 +158,7 @@ export const cmakePresetsRunner: RunnerRole = {
 /** Read `file` and every file it includes, once each, into `presets`. */
 async function load(
   ctx: ProviderContext,
+  sourceDir: string,
   file: string,
   seen: Set<string>,
   presets: Map<Kind, Map<string, Preset>>,
@@ -144,8 +176,24 @@ async function load(
   }
   for (const inc of Array.isArray(doc['include']) ? doc['include'] : []) {
     if (typeof inc !== 'string') continue
-    const target = posix.normalize(posix.join(dirOf(file), inc))
-    if (posix.isAbsolute(inc) || target === '..' || target.startsWith('../')) {
+    // `${sourceDir}` and `${fileDir}` are absolute in CMake. Here they stand
+    // for root-relative directories, so the root check below still applies.
+    const expanded = inc
+      .replaceAll('${sourceDir}', sourceDir === '.' ? '' : sourceDir)
+      .replaceAll('${fileDir}', dirOf(file) === '.' ? '' : dirOf(file))
+    // An expanded macro makes the path root-relative.
+    const fromRoot = expanded !== inc
+    const relative = fromRoot ? expanded.replace(/^\/+/, '') : expanded
+    if (relative.includes('$')) {
+      diagnostics.push({
+        severity: 'warning',
+        message: `include ${inc} uses a macro this runner does not expand, so it was not read`,
+        source: file,
+      })
+      continue
+    }
+    const target = posix.normalize(posix.join(fromRoot ? '.' : dirOf(file), relative))
+    if (posix.isAbsolute(relative) || target === '..' || target.startsWith('../')) {
       diagnostics.push({
         severity: 'warning',
         message: `include ${inc} is outside the repository and was not read`,
@@ -153,7 +201,7 @@ async function load(
       })
       continue
     }
-    await load(ctx, target, seen, presets, diagnostics)
+    await load(ctx, sourceDir, target, seen, presets, diagnostics)
   }
   for (const { kind, key } of KINDS) {
     const byName = presets.get(kind)!
@@ -173,24 +221,105 @@ async function load(
   }
 }
 
-/** `field` of preset `name`, or of the first preset it inherits from that sets it. */
-function inherited(byName: Map<string, Preset>, name: string, field: string): unknown {
-  const visit = (at: string, path: Set<string>): unknown => {
-    if (path.has(at)) return undefined
-    const def = byName.get(at)?.def
-    if (def === undefined) return undefined
-    if (def[field] !== undefined) return def[field]
-    const parents = def['inherits']
-    for (const parent of typeof parents === 'string'
-      ? [parents]
-      : Array.isArray(parents)
-        ? parents
-        : []) {
-      if (typeof parent !== 'string') continue
-      const found = visit(parent, new Set([...path, at]))
-      if (found !== undefined) return found
+interface InheritBudget {
+  nodes: number
+  reported: boolean
+}
+
+/**
+ * A lookup of `field` for a preset name: its own value, or that of the first
+ * preset it inherits from that sets it, depth first in `inherits` order.
+ * Each preset's answer is computed once, so a diamond-shaped graph is walked
+ * in linear time. A cycle gives no value. `budget` caps the depth and the
+ * total presets visited.
+ */
+function inheritance(
+  byName: Map<string, Preset>,
+  field: string,
+  budget: InheritBudget,
+): (name: string) => unknown {
+  const memo = new Map<string, unknown>()
+  const active = new Set<string>()
+  const visit = (at: string, depth: number): unknown => {
+    if (memo.has(at)) return memo.get(at)
+    if (active.has(at)) return undefined
+    if (depth > MAX_INHERIT_DEPTH || budget.nodes >= MAX_INHERIT_NODES) {
+      budget.reported = true
+      return undefined
     }
-    return undefined
+    budget.nodes++
+    const def = byName.get(at)?.def
+    let found: unknown
+    if (def !== undefined) {
+      if (def[field] !== undefined) found = def[field]
+      else {
+        active.add(at)
+        const parents = def['inherits']
+        for (const parent of typeof parents === 'string'
+          ? [parents]
+          : Array.isArray(parents)
+            ? parents
+            : []) {
+          if (typeof parent !== 'string') continue
+          found = visit(parent, depth + 1)
+          if (found !== undefined) break
+        }
+        active.delete(at)
+      }
+    }
+    memo.set(at, found)
+    return found
   }
-  return visit(name, new Set())
+  return (name) => visit(name, 0)
+}
+
+/**
+ * A preset `condition`: `true`, `false`, or `undefined` when it uses a form
+ * or a macro this runner cannot evaluate. No condition is `true`. Macros
+ * other than `${hostSystemName}` are not expanded.
+ */
+export function evaluate(condition: unknown, depth = 0): boolean | undefined {
+  if (condition === undefined || condition === null) return true
+  if (typeof condition === 'boolean') return condition
+  if (!isTable(condition) || depth > MAX_INHERIT_DEPTH) return undefined
+  const str = (v: unknown): string | undefined => {
+    if (typeof v !== 'string') return undefined
+    const out = v.replaceAll('${hostSystemName}', HOST_SYSTEM)
+    return out.includes('$') ? undefined : out
+  }
+  const not = (v: boolean | undefined) => (v === undefined ? undefined : !v)
+  switch (condition['type']) {
+    case 'const':
+      return typeof condition['value'] === 'boolean' ? condition['value'] : undefined
+    case 'equals':
+    case 'notEquals': {
+      const lhs = str(condition['lhs'])
+      const rhs = str(condition['rhs'])
+      if (lhs === undefined || rhs === undefined) return undefined
+      return condition['type'] === 'equals' ? lhs === rhs : lhs !== rhs
+    }
+    case 'inList':
+    case 'notInList': {
+      const value = str(condition['string'])
+      const list = Array.isArray(condition['list']) ? condition['list'].map(str) : undefined
+      if (value === undefined || list === undefined || list.includes(undefined)) return undefined
+      const hit = list.includes(value)
+      return condition['type'] === 'inList' ? hit : !hit
+    }
+    case 'not':
+      return not(evaluate(condition['condition'], depth + 1))
+    case 'anyOf':
+    case 'allOf': {
+      if (!Array.isArray(condition['conditions'])) return undefined
+      const results = condition['conditions'].map((c) => evaluate(c, depth + 1))
+      if (condition['type'] === 'anyOf') {
+        if (results.includes(true)) return true
+        return results.includes(undefined) ? undefined : false
+      }
+      if (results.includes(false)) return false
+      return results.includes(undefined) ? undefined : true
+    }
+    default:
+      return undefined
+  }
 }
