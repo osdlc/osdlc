@@ -76,6 +76,10 @@ export type RegularRead = { bytes: Buffer } | { skipped: string; missing?: true 
  * is then opened with `O_NONBLOCK` and `O_NOFOLLOW` and checked again on the
  * handle, so a file swapped for a pipe or a symlink between the two steps is
  * still refused.
+ *
+ * `O_NOFOLLOW` guards only the last component. A parent directory swapped for
+ * a symlink after `resolveInside` resolved `real` and before the open is
+ * followed. Closing that window needs a walk with `openat`, which Node lacks.
  */
 export async function readRegular(
   real: string,
