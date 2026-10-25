@@ -1,0 +1,8 @@
+[
+  {
+    "id": "structure/duplicate-section",
+    "level": "error",
+    "line": 9,
+    "hint": "The standard note sections."
+  }
+]

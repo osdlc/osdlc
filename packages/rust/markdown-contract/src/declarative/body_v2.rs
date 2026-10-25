@@ -1,25 +1,22 @@
-//! The v2 body-grammar + content-leaf compiler — the `mcVersion: 2` body DSL
-//! compiled to the SAME internal grammar v1 targets, mirroring the TS
-//! v2 `compileBodyV2`.
+//! The `mcVersion: 2` body compiler: section grammar and content leaves, mirroring the
+//! TS `compileBodyV2`.
 //!
-//! The v2 respell: `additionalSections` replaces `allowUnknown`; occurrence is spelled
-//! `minContains` / `maxContains` (both absent = exactly-once, JSON Schema's own
-//! defaults for a missing bound once either appears); nesting is HOISTED — `sections`
-//! (with `order` / `additionalSections`) sits directly on the section node instead of
-//! v1's `children:` wrapper; the list leaf's per-item check is `items` (checkbox | a
-//! v2 schema node) instead of `everyItem`; and `description` is accepted on levels,
-//! nodes, and leaves, stored for `Finding.hint`.
+//! Occurrence is `minContains` / `maxContains` (both absent means exactly once; once
+//! either appears, the other takes JSON Schema's default). Nesting sits on the section
+//! node: `sections`, with `order` / `additionalSections`. The list leaf's per-item check
+//! is `items` (checkbox or a schema). `description` is accepted on levels, nodes and
+//! leaves, and stored for `Finding.hint`.
 //!
-//! v2 is CLOSED at the node level: a v1 key gets a migration hint, anything else is an
-//! unknown key. Table `cells` and list `items` schemas compile through the v2 schema
-//! subset ([`super::schema_v2`]); `requires:` / `forbids:` reuse the (unchanged) text
-//! compiler ([`super::text`]).
+//! Every node is closed: a v1 key gets a pointer to its v2 spelling, anything else is an
+//! unknown key. Table `cells` and list `items` compile through [`super::schema_v2`];
+//! `requires:` / `forbids:` through [`super::text`].
 
 use serde_yaml::Value;
 
 use super::errors::DeclarativeError;
 use super::schema_v2::compile_schema_v2;
 use super::text::{compile_section_text_rules, has_text_keys};
+use super::yaml::{self, boolean, num, scalar_string, string, strings};
 use crate::camel::to_camel_key;
 use crate::contract::{
     CodeConfig, EveryItem, ExtraColumns, GapSpec, LeafSpec, LevelOpts, ListConfig, OneOfSpec,
@@ -72,73 +69,39 @@ const ONE_OF_KEYS: &[&str] = &[
 /// The keys admitted on a `gap:` node.
 const GAP_KEYS: &[&str] = &["gap"];
 
-/// The v1 body spellings and their v2 counterparts — the migration hints.
+/// The v1 body spellings and their v2 counterparts, for the error message.
 const V1_SPELLINGS: &[(&str, &str)] = &[
-    ("optional", "'minContains: 0, maxContains: 1'"),
+    ("optional", "'minContains: 0'"),
     ("repeatable", "'minContains' / 'maxContains'"),
     ("min", "'minContains'"),
     ("max", "'maxContains'"),
-    (
-        "children",
-        "'sections' (with 'order' / 'additionalSections') directly on the node",
-    ),
+    ("children", "a hoisted 'sections' list on the node"),
     ("allowUnknown", "'additionalSections'"),
     ("everyItem", "'items'"),
 ];
-
-fn get<'a>(map: &'a serde_yaml::Mapping, key: &str) -> Option<&'a Value> {
-    map.get(Value::String(key.into()))
-}
 
 fn err(msg: String) -> DeclarativeError {
     DeclarativeError::InvalidBody(msg)
 }
 
-fn num(map: &serde_yaml::Mapping, key: &str) -> Option<f64> {
-    get(map, key).and_then(Value::as_f64)
-}
-
-/// Reject every key of `map` outside `allowed` — v2 is closed at the node level: a v1
-/// spelling gets its migration hint, anything else is an unknown key.
 fn check_keys(
     map: &serde_yaml::Mapping,
     allowed: &[&str],
     path: &str,
 ) -> Result<(), DeclarativeError> {
-    for key in map.keys() {
-        let Some(k) = key.as_str() else {
-            return Err(err(format!("{path}: keys must be strings")));
-        };
-        if allowed.contains(&k) {
-            continue;
-        }
-        if let Some((_, v2)) = V1_SPELLINGS.iter().find(|(v1, _)| *v1 == k) {
-            return Err(err(format!(
-                "{path}: '{k}' is the v1 spelling — mcVersion 2 uses {v2}"
-            )));
-        }
-        return Err(err(format!("{path}: unknown key '{k}'")));
-    }
-    Ok(())
+    yaml::check_keys(map, allowed, path, V1_SPELLINGS, &[], err)
 }
 
-/// The `description:` annotation — a string, stored for `Finding.hint`.
 fn description_of(
     map: &serde_yaml::Mapping,
     path: &str,
 ) -> Result<Option<String>, DeclarativeError> {
-    match get(map, "description") {
-        None => Ok(None),
-        Some(v) => match v.as_str() {
-            Some(s) => Ok(Some(s.to_string())),
-            None => Err(err(format!("{path}.description must be a string"))),
-        },
-    }
+    yaml::description_of(map, path, err)
 }
 
 /// Compile a v2 `body:` mapping into a body grammar. The root's `requires:` /
 /// `forbids:` are the loader's to attach (they compile to a doc-scoped rule).
-pub fn compile_body_v2(node: &Value, path: &str) -> Result<SectionSeq, DeclarativeError> {
+pub(super) fn compile_body_v2(node: &Value, path: &str) -> Result<SectionSeq, DeclarativeError> {
     let Value::Mapping(map) = node else {
         return Err(err(format!(
             "{path}: must be a mapping with a 'sections' list"
@@ -154,10 +117,10 @@ pub fn compile_body_v2(node: &Value, path: &str) -> Result<SectionSeq, Declarati
     })
 }
 
-/// Parse a level's `order` / `additionalSections` knobs (v1 semantics, v2 spelling).
+/// Parse a level's `order` / `additionalSections`.
 fn level_opts(map: &serde_yaml::Mapping, path: &str) -> Result<LevelOpts, DeclarativeError> {
     let mut opts = LevelOpts::default();
-    if let Some(order) = get(map, "order") {
+    if let Some(order) = map.get("order") {
         opts.order = match order.as_str() {
             Some("none") => Order::None,
             Some("recognized-relative") => Order::RecognizedRelative,
@@ -165,16 +128,13 @@ fn level_opts(map: &serde_yaml::Mapping, path: &str) -> Result<LevelOpts, Declar
             _ => {
                 return Err(err(format!(
                     "{path}.order must be none | recognized-relative | strict (got {})",
-                    serde_json::to_string(&crate::frontmatter::yaml_to_json(order.clone()))
-                        .unwrap_or_else(|_| "?".into())
+                    yaml::render(Some(order))
                 )));
             }
         };
     }
-    if let Some(v) = get(map, "additionalSections") {
-        opts.allow_unknown = v
-            .as_bool()
-            .ok_or_else(|| err(format!("{path}.additionalSections must be a boolean")))?;
+    if let Some(v) = boolean(map, "additionalSections", path, err)? {
+        opts.allow_unknown = v;
     }
     Ok(opts)
 }
@@ -216,22 +176,9 @@ fn unwrap_inner(spec: &Spec) -> &Spec {
     }
 }
 
-/// A YAML scalar as its string spelling (the TS `String(node.anchor)`).
-fn scalar_string(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        Value::Bool(b) => b.to_string(),
-        Value::Number(n) => n.to_string(),
-        Value::Null => "null".into(),
-        other => serde_yaml::to_string(other)
-            .map(|s| s.trim_end().to_string())
-            .unwrap_or_default(),
-    }
-}
-
 /// Compile a `sections:` list (required) into specs, running the key-collision guard.
 fn compile_sections(map: &serde_yaml::Mapping, path: &str) -> Result<Vec<Spec>, DeclarativeError> {
-    let Some(Value::Sequence(nodes)) = get(map, "sections") else {
+    let Some(Value::Sequence(nodes)) = map.get("sections") else {
         return Err(err(format!("{path}.sections must be a list of nodes")));
     };
     let specs: Vec<Spec> = nodes
@@ -249,47 +196,76 @@ fn compile_node(node: &Value, path: &str) -> Result<Spec, DeclarativeError> {
             "{path}: a body node must be a mapping (section / oneOf / gap)"
         )));
     };
-    if get(map, "oneOf").is_some() {
-        check_keys(map, ONE_OF_KEYS, path)?;
-        compile_one_of(map, path)
-    } else if get(map, "gap").is_some() {
-        check_keys(map, GAP_KEYS, path)?;
-        compile_gap(map, path)
-    } else if get(map, "section").is_some() {
-        check_keys(map, SECTION_KEYS, path)?;
-        compile_section_node(map, path)
-    } else {
-        Err(err(format!(
-            "{path}: a body node needs one of section / oneOf / gap"
-        )))
+    let selectors: Vec<&str> = ["section", "oneOf", "gap"]
+        .into_iter()
+        .filter(|k| map.get(k).is_some())
+        .collect();
+    match selectors.as_slice() {
+        ["gap"] => {
+            check_keys(map, GAP_KEYS, path)?;
+            compile_gap(map, path)
+        }
+        ["oneOf"] => {
+            check_keys(map, ONE_OF_KEYS, path)?;
+            compile_one_of(map, path)
+        }
+        ["section"] => {
+            check_keys(map, SECTION_KEYS, path)?;
+            compile_section_node(map, path)
+        }
+        [] => Err(err(format!(
+            "{path}: a body node needs exactly one of section / oneOf / gap"
+        ))),
+        many => Err(err(format!(
+            "{path}: a body node needs exactly one of section / oneOf / gap (got {})",
+            many.join(" + ")
+        ))),
     }
 }
 
-/// Compile a `gap: { min?, max? }` node (unchanged from v1). A gap admits no
-/// `description` — the TS compiler rejects it, and the portable vocabulary is the
-/// intersection (the docs and meta-schema document `gap` as the node's only key).
-fn compile_gap(map: &serde_yaml::Mapping, _path: &str) -> Result<Spec, DeclarativeError> {
-    let (min, max) = match get(map, "gap") {
-        Some(Value::Mapping(g)) => (
-            g.get(Value::String("min".into())).and_then(Value::as_u64),
-            g.get(Value::String("max".into())).and_then(Value::as_u64),
-        ),
-        _ => (None, None),
+/// Compile a `gap: { min?, max? }` node. A gap admits no `description`, as in TS.
+/// The bounds count sections, so a fractional or negative bound is rejected (TS
+/// accepts any number there).
+fn compile_gap(map: &serde_yaml::Mapping, path: &str) -> Result<Spec, DeclarativeError> {
+    let g = match map.get("gap") {
+        None | Some(Value::Null) => return Ok(Spec::Gap(GapSpec::default())),
+        Some(Value::Mapping(g)) => g,
+        Some(_) => {
+            return Err(err(format!(
+                "{path}.gap must be a mapping ({{ min?, max? }}) or empty"
+            )));
+        }
+    };
+    let gap_path = format!("{path}.gap");
+    for key in g.keys() {
+        if !matches!(key.as_str(), Some("min" | "max")) {
+            return Err(err(format!(
+                "{gap_path}: unknown key '{}'",
+                yaml::scalar_string(key)
+            )));
+        }
+    }
+    let bound = |key: &str| -> Result<Option<usize>, DeclarativeError> {
+        let Some(n) = num(g, key, &gap_path, err)? else {
+            return Ok(None);
+        };
+        if n.fract() != 0.0 || n < 0.0 {
+            return Err(err(format!(
+                "{gap_path}.{key} must be a non-negative integer (got {})",
+                crate::js::num(n)
+            )));
+        }
+        Ok(Some(n as usize))
     };
     Ok(Spec::Gap(GapSpec {
-        min: min.map(|n| n as usize),
-        max: max.map(|n| n as usize),
-        description: None,
+        min: bound("min")?,
+        max: bound("max")?,
     }))
 }
 
 /// Compile a `oneOf: [...]` node.
 fn compile_one_of(map: &serde_yaml::Mapping, path: &str) -> Result<Spec, DeclarativeError> {
-    let names: Option<Vec<String>> = get(map, "oneOf")
-        .and_then(Value::as_sequence)
-        .map(|seq| seq.iter().map(|v| v.as_str().map(str::to_string)).collect())
-        .unwrap_or(None);
-    let names = match names {
+    let names = match strings(map, "oneOf") {
         Some(n) if !n.is_empty() => n,
         _ => {
             return Err(err(format!(
@@ -297,7 +273,7 @@ fn compile_one_of(map: &serde_yaml::Mapping, path: &str) -> Result<Spec, Declara
             )));
         }
     };
-    let opts = section_opts(map, path)?;
+    let opts = section_opts(map, path, &names[0])?;
     finish_slot(
         map,
         path,
@@ -308,18 +284,14 @@ fn compile_one_of(map: &serde_yaml::Mapping, path: &str) -> Result<Spec, Declara
 
 /// Compile a `section: <name>` node (with optional `aliases`).
 fn compile_section_node(map: &serde_yaml::Mapping, path: &str) -> Result<Spec, DeclarativeError> {
-    let Some(name) = get(map, "section").and_then(Value::as_str) else {
+    let Some(name) = map.get("section").and_then(Value::as_str) else {
         return Err(err(format!(
             "{path}.section must be a heading name (string)"
         )));
     };
     let mut names = vec![name.to_string()];
-    if let Some(aliases) = get(map, "aliases") {
-        let list: Option<Vec<String>> = aliases
-            .as_sequence()
-            .map(|seq| seq.iter().map(|v| v.as_str().map(str::to_string)).collect())
-            .unwrap_or(None);
-        match list {
+    if map.get("aliases").is_some() {
+        match strings(map, "aliases") {
             Some(mut l) => names.append(&mut l),
             None => {
                 return Err(err(format!(
@@ -328,7 +300,7 @@ fn compile_section_node(map: &serde_yaml::Mapping, path: &str) -> Result<Spec, D
             }
         }
     }
-    let opts = section_opts(map, path)?;
+    let opts = section_opts(map, path, name)?;
     finish_slot(
         map,
         path,
@@ -376,8 +348,8 @@ fn occurrence(
     map: &serde_yaml::Mapping,
     path: &str,
 ) -> Result<Option<(usize, Option<usize>)>, DeclarativeError> {
-    let min_v = get(map, "minContains");
-    let max_v = get(map, "maxContains");
+    let min_v = map.get("minContains");
+    let max_v = map.get("maxContains");
     if min_v.is_none() && max_v.is_none() {
         return Ok(None);
     }
@@ -417,42 +389,42 @@ fn occurrence_bound(v: &Value, key: &str, path: &str) -> Result<usize, Declarati
     Ok(n as usize)
 }
 
-/// A slot's options: anchor / content / text rules / description, plus the HOISTED
-/// nested level (`sections` + `order` / `additionalSections` directly on the node).
+/// A slot's options: anchor, content, text rules, description, and the nested level
+/// (`sections` with `order` / `additionalSections` on the node). `label` names the slot
+/// in text-rule messages: the section name, or a oneOf's first name.
 fn section_opts(
     map: &serde_yaml::Mapping,
     path: &str,
+    label: &str,
 ) -> Result<Option<SectionOpts>, DeclarativeError> {
     let mut opts = SectionOpts::default();
     let mut any = false;
-    if let Some(anchor) = get(map, "anchor") {
+    if let Some(anchor) = map.get("anchor") {
         opts.anchor = Some(scalar_string(anchor));
         any = true;
     }
-    if let Some(content) = get(map, "content") {
+    if let Some(content) = map.get("content") {
         opts.content = Some(compile_content(content, &format!("{path}.content"))?);
         any = true;
     }
-    if get(map, "sections").is_some() {
+    if map.get("sections").is_some() {
         opts.children = Some(nested_level(map, path)?);
         any = true;
-    } else if get(map, "order").is_some() || get(map, "additionalSections").is_some() {
+    } else if let Some(key) = ["order", "additionalSections"]
+        .into_iter()
+        .find(|k| map.get(k).is_some())
+    {
         return Err(err(format!(
-            "{path}: 'order' / 'additionalSections' apply to a nested 'sections' list — add 'sections'"
+            "{path}: '{key}' requires a nested 'sections' list on the node"
         )));
     }
     if let Some(description) = description_of(map, path)? {
         opts.description = Some(description);
         any = true;
     }
-    // `requires:` / `forbids:` on a node → node-local rules over that section's subtree
-    // (the text vocabulary is unchanged in v2).
+    // `requires:` / `forbids:` on a node: rules over that section's subtree.
     if has_text_keys(map) {
-        let label = get(map, "section")
-            .and_then(Value::as_str)
-            .unwrap_or(path)
-            .to_string();
-        let rules = compile_section_text_rules(map, path, &label)?;
+        let rules = compile_section_text_rules(map, path, label)?;
         if !rules.is_empty() {
             opts.rules = rules;
             any = true;
@@ -461,10 +433,8 @@ fn section_opts(
     Ok(any.then_some(opts))
 }
 
-/// The hoisted nested level: `sections` / `order` / `additionalSections` read straight
-/// off the section node (v1's `children:` wrapper, flattened) — compiles to the same
-/// nested `SectionSeq`. The node's own `description` covers the level, so none is
-/// stored here.
+/// The nested level: `sections` / `order` / `additionalSections` read off the section
+/// node. The node's own `description` covers the level, so none is stored here.
 fn nested_level(map: &serde_yaml::Mapping, path: &str) -> Result<SectionSeq, DeclarativeError> {
     Ok(SectionSeq {
         opts: level_opts(map, path)?,
@@ -522,9 +492,7 @@ fn compile_leaf(map: &serde_yaml::Mapping, path: &str) -> Result<LeafSpec, Decla
     let (key, cfg) = map.iter().next().expect("len == 1");
     match key.as_str() {
         Some("maxWords") => {
-            let n = cfg
-                .as_f64()
-                .ok_or_else(|| err(format!("{path}.maxWords must be a number")))?;
+            let n = num(map, "maxWords", path, err)?.expect("the leaf's only key");
             Ok(LeafSpec::max_words(n))
         }
         Some("code") => code_leaf(cfg, path),
@@ -538,14 +506,17 @@ fn compile_leaf(map: &serde_yaml::Mapping, path: &str) -> Result<LeafSpec, Decla
 }
 
 fn code_leaf(cfg: &Value, path: &str) -> Result<LeafSpec, DeclarativeError> {
-    let mut leaf = LeafSpec::code_with(CodeConfig::default());
-    if let Value::Mapping(map) = cfg {
-        check_keys(map, &["lang", "description"], &format!("{path}.code"))?;
-        leaf = LeafSpec::code_with(CodeConfig {
-            lang: get(map, "lang").and_then(Value::as_str).map(str::to_string),
-        });
-        leaf.description = description_of(map, &format!("{path}.code"))?;
-    }
+    let map = match cfg {
+        Value::Null => return Ok(LeafSpec::code_with(CodeConfig::default())),
+        Value::Mapping(map) => map,
+        _ => return Err(err(format!("{path}.code must be a mapping"))),
+    };
+    let code_path = format!("{path}.code");
+    check_keys(map, &["lang", "description"], &code_path)?;
+    let mut leaf = LeafSpec::code_with(CodeConfig {
+        lang: string(map, "lang", &code_path, err)?.map(str::to_string),
+    });
+    leaf.description = description_of(map, &code_path)?;
     Ok(leaf)
 }
 
@@ -565,11 +536,7 @@ fn table_leaf(cfg: &Value, path: &str) -> Result<LeafSpec, DeclarativeError> {
         ],
         &format!("{path}.table"),
     )?;
-    let columns: Option<Vec<String>> = get(map, "columns")
-        .and_then(Value::as_sequence)
-        .map(|seq| seq.iter().map(|v| v.as_str().map(str::to_string)).collect())
-        .unwrap_or(None);
-    let Some(columns) = columns else {
+    let Some(columns) = strings(map, "columns") else {
         return Err(err(format!(
             "{path}.table.columns must be a list of column names"
         )));
@@ -578,15 +545,21 @@ fn table_leaf(cfg: &Value, path: &str) -> Result<LeafSpec, DeclarativeError> {
         columns,
         ..Default::default()
     };
-    if let Some(anchor) = get(map, "anchor") {
+    if let Some(anchor) = map.get("anchor") {
         out.anchor = Some(scalar_string(anchor));
     }
-    out.min_rows = num(map, "minRows");
-    out.extra_columns = match get(map, "extraColumns").and_then(Value::as_str) {
-        Some("error") => ExtraColumns::Error,
-        _ => ExtraColumns::Ignore,
+    let table_path = format!("{path}.table");
+    out.min_rows = num(map, "minRows", &table_path, err)?;
+    out.extra_columns = match map.get("extraColumns").map(Value::as_str) {
+        None | Some(Some("ignore")) => ExtraColumns::Ignore,
+        Some(Some("error")) => ExtraColumns::Error,
+        Some(_) => {
+            return Err(err(format!(
+                "{table_path}.extraColumns must be \"ignore\" or \"error\""
+            )));
+        }
     };
-    if let Some(cells) = get(map, "cells") {
+    if let Some(cells) = map.get("cells") {
         let Value::Mapping(cells) = cells else {
             return Err(err(format!(
                 "{path}.table.cells must be a mapping of column → schema"
@@ -603,12 +576,11 @@ fn table_leaf(cfg: &Value, path: &str) -> Result<LeafSpec, DeclarativeError> {
         }
     }
     let mut leaf = LeafSpec::table_with(out);
-    leaf.description = description_of(map, &format!("{path}.table"))?;
+    leaf.description = description_of(map, &table_path)?;
     Ok(leaf)
 }
 
-/// The v2 list leaf: `items` (checkbox | a v2 schema node) replaces v1's `everyItem`;
-/// `minItems` / `ordered` are unchanged.
+/// The list leaf: `items` (checkbox or a schema), `minItems` and `ordered`.
 fn list_leaf(cfg: &Value, path: &str) -> Result<LeafSpec, DeclarativeError> {
     let Value::Mapping(map) = cfg else {
         return Err(err(format!("{path}.list must be a mapping")));
@@ -618,12 +590,13 @@ fn list_leaf(cfg: &Value, path: &str) -> Result<LeafSpec, DeclarativeError> {
         &["items", "minItems", "ordered", "description"],
         &format!("{path}.list"),
     )?;
+    let list_path = format!("{path}.list");
     let mut out = ListConfig {
-        ordered: get(map, "ordered").and_then(Value::as_bool),
-        min_items: num(map, "minItems"),
+        ordered: boolean(map, "ordered", &list_path, err)?,
+        min_items: num(map, "minItems", &list_path, err)?,
         every_item: None,
     };
-    if let Some(items) = get(map, "items") {
+    if let Some(items) = map.get("items") {
         out.every_item = Some(if items.as_str() == Some("checkbox") {
             EveryItem::Checkbox
         } else {
@@ -671,8 +644,7 @@ mod tests {
         )
     }
 
-    // Contract first: the canonical v2 body compiles onto the same combinator shapes v1
-    // targets — v2 spelling in, identical IR out.
+    // The canonical body compiles to the shapes the builders produce.
     #[test]
     fn sections_one_of_gap_and_additional_sections_compile() {
         let seq = body(
@@ -688,7 +660,7 @@ mod tests {
         assert!(matches!(&seq.specs[3], Spec::Optional(_)));
     }
 
-    // The occurrence recipe — every row of the v1 to v2 mapping.
+    // The occurrence recipe: each minContains / maxContains pair and its slot shape.
     #[test]
     fn occurrence_recipe_compiles_each_window() {
         let compiled = |occ: &str| {
@@ -832,10 +804,7 @@ mod tests {
             panic!()
         };
         assert_eq!(leaf.description.as_deref(), Some("the checklist"));
-        let Spec::Gap(g) = &seq.specs[1] else {
-            panic!()
-        };
-        assert_eq!(g.description, None);
+        assert!(matches!(seq.specs[1], Spec::Gap(_)));
     }
 
     #[test]
@@ -860,11 +829,11 @@ mod tests {
     fn v1_keys_get_migration_hints() {
         assert_eq!(
             msg(body("sections:\n  - section: A\n    optional: true\n")),
-            "body.sections[0]: 'optional' is the v1 spelling — mcVersion 2 uses 'minContains: 0, maxContains: 1'"
+            "body.sections[0]: 'optional' is the v1 spelling — v2 uses 'minContains: 0' (markdown-contract migrate rewrites v1 files)"
         );
         assert_eq!(
             msg(body("sections:\n  - section: A\n    repeatable: true\n")),
-            "body.sections[0]: 'repeatable' is the v1 spelling — mcVersion 2 uses 'minContains' / 'maxContains'"
+            "body.sections[0]: 'repeatable' is the v1 spelling — v2 uses 'minContains' / 'maxContains' (markdown-contract migrate rewrites v1 files)"
         );
         assert_eq!(
             msg(body(
@@ -878,17 +847,17 @@ mod tests {
             msg(body(
                 "sections:\n  - section: A\n    children:\n      sections: []\n"
             )),
-            "body.sections[0]: 'children' is the v1 spelling — mcVersion 2 uses 'sections' (with 'order' / 'additionalSections') directly on the node"
+            "body.sections[0]: 'children' is the v1 spelling — v2 uses a hoisted 'sections' list on the node (markdown-contract migrate rewrites v1 files)"
         );
         assert_eq!(
             msg(body("allowUnknown: true\nsections: []\n")),
-            "body: 'allowUnknown' is the v1 spelling — mcVersion 2 uses 'additionalSections'"
+            "body: 'allowUnknown' is the v1 spelling — v2 uses 'additionalSections' (markdown-contract migrate rewrites v1 files)"
         );
         assert_eq!(
             msg(body(
                 "sections:\n  - section: A\n    content:\n      list:\n        everyItem: checkbox\n"
             )),
-            "body.sections[0].content.list: 'everyItem' is the v1 spelling — mcVersion 2 uses 'items'"
+            "body.sections[0].content.list: 'everyItem' is the v1 spelling — v2 uses 'items' (markdown-contract migrate rewrites v1 files)"
         );
     }
 
@@ -900,9 +869,9 @@ mod tests {
         );
         assert_eq!(
             msg(body("sections:\n  - section: A\n    order: strict\n")),
-            "body.sections[0]: 'order' / 'additionalSections' apply to a nested 'sections' list — add 'sections'"
+            "body.sections[0]: 'order' requires a nested 'sections' list on the node"
         );
-        // key collision among declared names (same guard as v1)
+        // key collision among declared names
         assert!(
             body("sections:\n  - section: Files to touch\n  - section: Files To Touch\n").is_err()
         );
@@ -910,5 +879,67 @@ mod tests {
         assert!(body("order: alphabetical\nsections: []\n").is_err());
         assert!(body("order: none\n").is_err());
         assert!(body("sections:\n  - wibble: 1\n").is_err());
+        assert_eq!(
+            msg(body("sections:\n  - section: A\n    gap: {}\n")),
+            "body.sections[0]: a body node needs exactly one of section / oneOf / gap (got section + gap)"
+        );
+    }
+
+    // Each known key must have the type TS requires.
+    #[test]
+    fn leaf_and_gap_values_are_type_checked() {
+        let leaf = |content: &str| {
+            msg(body(&format!(
+                "sections:\n  - section: A\n    content:\n      {content}\n"
+            )))
+        };
+        assert_eq!(
+            leaf("table: {columns: [A], minRows: two}"),
+            "body.sections[0].content.table.minRows must be a number"
+        );
+        assert_eq!(
+            leaf("table: {columns: [A], extraColumns: warn}"),
+            "body.sections[0].content.table.extraColumns must be \"ignore\" or \"error\""
+        );
+        assert_eq!(
+            leaf("list: {ordered: yes}"),
+            "body.sections[0].content.list.ordered must be a boolean"
+        );
+        assert_eq!(
+            leaf("list: {minItems: '3'}"),
+            "body.sections[0].content.list.minItems must be a number"
+        );
+        assert_eq!(
+            leaf("code: x"),
+            "body.sections[0].content.code must be a mapping"
+        );
+        assert_eq!(
+            leaf("code: {lang: 3}"),
+            "body.sections[0].content.code.lang must be a string"
+        );
+        assert!(body("sections:\n  - section: A\n    content:\n      code:\n").is_ok());
+        let gap = |g: &str| msg(body(&format!("sections:\n  - gap: {g}\n")));
+        assert_eq!(gap("{min: x}"), "body.sections[0].gap.min must be a number");
+        assert_eq!(
+            gap("{least: 1}"),
+            "body.sections[0].gap: unknown key 'least'"
+        );
+        assert_eq!(
+            gap("3"),
+            "body.sections[0].gap must be a mapping ({ min?, max? }) or empty"
+        );
+        assert_eq!(
+            gap("{max: 1.5}"),
+            "body.sections[0].gap.max must be a non-negative integer (got 1.5)"
+        );
+    }
+
+    // A oneOf's text rules name the slot by its first name, as in TS.
+    #[test]
+    fn one_of_text_rules_are_labelled_by_the_first_name() {
+        let r = body(
+            "sections:\n  - oneOf: [Plan, Approach]\n    requires:\n      - pattern: x\n    forbids:\n      - pattern: x\n",
+        );
+        assert!(msg(r).contains("contradiction in Plan"));
     }
 }

@@ -1,42 +1,35 @@
-//! Parse a declarative YAML document and validate its envelope — the `mcVersion`
-//! version gate and the `kind` discriminant, mirroring the TS
-//! `parseDeclarativeDoc`. This is the single entry where the format version is checked:
-//! `mcVersion: 2` is the only supported version; `mcVersion: 1` is retired and gets a
-//! dedicated error naming the v1→v2 codemod. The document body is handed to
-//! the kind-specific compiler.
+//! Parse a declarative YAML document and check its envelope (`mcVersion` and `kind`),
+//! mirroring the TS `parseDeclarativeDoc`. `mcVersion: 2` is the only supported
+//! version; `mcVersion: 1` gets an error naming the migrate command.
 
 use serde_yaml::Value;
 
 use super::errors::DeclarativeError;
+use super::yaml::render;
 
-/// The supported format versions of the declarative DSL — v2, the JSON-Schema-idiom
-/// vocabulary. v1 is retired.
-const SUPPORTED_VERSIONS: &[i64] = &[2];
+/// The supported format versions. A YAML `2.0` is the number 2, as in JS.
+const SUPPORTED_VERSIONS: &[f64] = &[2.0];
 
 /// The document kind a declarative envelope declares.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeclarativeKind {
+pub(super) enum DeclarativeKind {
     /// A contract document.
     Contract,
     /// A config document that maps globs to contracts.
     Config,
 }
 
-/// A parsed declarative envelope: the version, the kind, and the raw mapping.
-pub struct DeclarativeDoc {
-    /// the declared `mcVersion`
-    pub mc_version: i64,
-    /// the declared `kind`
-    pub kind: DeclarativeKind,
-    /// the parsed YAML mapping, envelope validated
-    pub raw: serde_yaml::Mapping,
+/// A parsed declarative document with a valid envelope.
+pub(super) struct DeclarativeDoc {
+    pub(super) kind: DeclarativeKind,
+    pub(super) raw: serde_yaml::Mapping,
 }
 
 /// Parse YAML text into a validated declarative envelope. Errors on invalid YAML, a
 /// non-mapping document, an unsupported `mcVersion`, or a `kind` that is neither
 /// `contract` nor `config`. `mcVersion: 1` gets its dedicated retirement error, which
 /// names the migrate command. An unknown version is never best-effort parsed.
-pub fn parse_declarative_doc(yaml_text: &str) -> Result<DeclarativeDoc, DeclarativeError> {
+pub(super) fn parse_declarative_doc(yaml_text: &str) -> Result<DeclarativeDoc, DeclarativeError> {
     let raw: Value = serde_yaml::from_str(yaml_text)
         .map_err(|e| DeclarativeError::InvalidYaml(e.to_string()))?;
     let Value::Mapping(map) = raw else {
@@ -46,13 +39,11 @@ pub fn parse_declarative_doc(yaml_text: &str) -> Result<DeclarativeDoc, Declarat
     };
 
     let version = map.get(Value::String("mcVersion".into()));
-    let mc_version = match version.and_then(Value::as_i64) {
-        Some(1) => return Err(DeclarativeError::RetiredVersion),
-        Some(v) if SUPPORTED_VERSIONS.contains(&v) => v,
-        _ => {
-            return Err(DeclarativeError::UnsupportedVersion(render(version)));
-        }
-    };
+    match version.and_then(Value::as_f64) {
+        Some(1.0) => return Err(DeclarativeError::RetiredVersion),
+        Some(v) if SUPPORTED_VERSIONS.contains(&v) => {}
+        _ => return Err(DeclarativeError::UnsupportedVersion(render(version))),
+    }
 
     let kind_val = map.get(Value::String("kind".into()));
     let kind = match kind_val.and_then(Value::as_str) {
@@ -61,20 +52,7 @@ pub fn parse_declarative_doc(yaml_text: &str) -> Result<DeclarativeDoc, Declarat
         _ => return Err(DeclarativeError::InvalidKind(render(kind_val))),
     };
 
-    Ok(DeclarativeDoc {
-        mc_version,
-        kind,
-        raw: map,
-    })
-}
-
-/// Render an envelope value for an error message (JSON-ish, `undefined` when absent).
-fn render(v: Option<&Value>) -> String {
-    match v {
-        None => "undefined".into(),
-        Some(v) => serde_json::to_string(&crate::frontmatter::yaml_to_json(v.clone()))
-            .unwrap_or_else(|_| "?".into()),
-    }
+    Ok(DeclarativeDoc { kind, raw: map })
 }
 
 #[cfg(test)]
@@ -87,8 +65,10 @@ mod tests {
     fn valid_envelope_parses() {
         let doc =
             parse_declarative_doc("mcVersion: 2\nkind: contract\nbody:\n  sections: []\n").unwrap();
-        assert_eq!(doc.mc_version, 2);
         assert_eq!(doc.kind, DeclarativeKind::Contract);
+        // YAML `2.0` is the number 2, as in JS.
+        let doc = parse_declarative_doc("mcVersion: 2.0\nkind: config\n").unwrap();
+        assert_eq!(doc.kind, DeclarativeKind::Config);
     }
 
     fn expect_err(r: Result<DeclarativeDoc, DeclarativeError>) -> DeclarativeError {
@@ -99,7 +79,7 @@ mod tests {
     }
 
     #[test]
-    fn the_retired_mc_version_1_names_the_codemod() {
+    fn the_retired_mc_version_1_names_the_migrate_command() {
         let err = expect_err(parse_declarative_doc("mcVersion: 1\nkind: contract\n"));
         assert!(matches!(err, DeclarativeError::RetiredVersion));
         assert_eq!(

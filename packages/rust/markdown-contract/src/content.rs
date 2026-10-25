@@ -20,26 +20,19 @@ use crate::contract::{
     SectionContent, SectionOpts, SectionSeq, Spec, TableConfig,
 };
 use crate::finding::Finding;
-use crate::frontmatter::match_frontmatter;
+use crate::frontmatter::{match_frontmatter, match_frontmatter_yaml};
+use crate::js;
 use crate::registry::{Ctx, FindingSpec};
 use crate::tree::{BlockNode, DocTree, SectionNode};
 
 // ── Spec walking (mirrors the structure plane's slot resolution) ──────────────────────
 
-/// Unwrap `optional(spec)` to its inner spec.
-fn inner_of(spec: &Spec) -> &Spec {
-    match spec {
-        Spec::Optional(inner) => inner_of(inner),
-        other => other,
-    }
-}
-
-/// The section/oneOf slots at one level that carry a `SectionOpts` (content / children /
-/// rules), as `(names, opts)` pairs — the TS `contentSlots`.
+/// The section/oneOf slots at one level that carry a `SectionOpts`, as `(names, opts)`
+/// pairs — the TS `contentSlots`.
 fn content_slots(specs: &[Spec]) -> Vec<(&[String], &SectionOpts)> {
     let mut slots = Vec::new();
     for spec in specs {
-        match inner_of(spec) {
+        match spec.unwrap_optional().0 {
             Spec::Section(s) => {
                 if let Some(opts) = &s.opts {
                     slots.push((s.names.as_slice(), opts));
@@ -56,14 +49,21 @@ fn content_slots(specs: &[Spec]) -> Vec<(&[String], &SectionOpts)> {
     slots
 }
 
-/// The first doc section at this level whose name is in `names` (first-occurrence binds).
-fn find_section<'a>(nodes: &'a [SectionNode], names: &[String]) -> Option<&'a SectionNode> {
-    nodes.iter().find(|n| names.contains(&n.name))
+/// The sections at this level that fill a slot: every occurrence for a repeatable
+/// slot, else the first. The structure plane reports a second occurrence of a
+/// non-repeatable slot as `structure/duplicate-section`.
+fn sections_for<'a>(
+    nodes: &'a [SectionNode],
+    names: &'a [String],
+    opts: &SectionOpts,
+) -> impl Iterator<Item = &'a SectionNode> {
+    let hits = nodes.iter().filter(move |n| names.contains(&n.name));
+    hits.take(if opts.repeatable { usize::MAX } else { 1 })
 }
 
-/// Walk one level: pair each content slot with the doc section filling it, validate that
-/// section's content leaf(s), then recurse into declared children. `inherited` is the
-/// nearest enclosing v2 `description` — `None` throughout v1 contracts.
+/// Walk one level: pair each content slot with the doc sections filling it, validate
+/// their content leaves, then recurse into declared children. `inherited` is the
+/// nearest enclosing `description`.
 fn match_level(
     nodes: &[SectionNode],
     seq: &SectionSeq,
@@ -73,13 +73,13 @@ fn match_level(
 ) {
     let level_hint = seq.description.as_deref().or(inherited);
     for (names, opts) in content_slots(&seq.specs) {
-        let Some(node) = find_section(nodes, names) else {
-            continue; // absence is structure's concern (structure/section-missing)
-        };
-        let section_hint = opts.description.as_deref().or(level_hint);
-        validate_section_content(node, opts, section_hint, ctx, out);
-        if let Some(children) = &opts.children {
-            match_level(&node.sections, children, section_hint, ctx, out);
+        // A missing section is the structure plane's finding (structure/section-missing).
+        for node in sections_for(nodes, names, opts) {
+            let section_hint = opts.description.as_deref().or(level_hint);
+            validate_section_content(node, opts, section_hint, ctx, out);
+            if let Some(children) = &opts.children {
+                match_level(&node.sections, children, section_hint, ctx, out);
+            }
         }
     }
 }
@@ -105,15 +105,6 @@ fn validate_section_content(
     }
 }
 
-/// The block a content slot addresses: when `anchor` is set, the block carrying that
-/// anchor; otherwise the section's first block.
-fn pick_block<'a>(node: &'a SectionNode, anchor: Option<&str>) -> Option<&'a BlockNode> {
-    match anchor {
-        Some(a) => node.blocks.iter().find(|b| b.anchor() == Some(a)),
-        None => node.blocks.first(),
-    }
-}
-
 /// Validate one leaf against the block that fills it. The leaf runs ONLY when a block of
 /// the expected kind is present: an absent block (→ `structure/block-missing`) or
 /// a wrong-kind block (→ `structure/block-kind`) is the structure plane's to report.
@@ -125,7 +116,7 @@ fn validate_leaf(
     ctx: &Ctx,
     out: &mut Vec<Finding>,
 ) {
-    let Some(block) = pick_block(node, anchor) else {
+    let Some(block) = node.block_for(anchor) else {
         return; // structure/block-missing
     };
     if block.kind() != leaf.kind {
@@ -220,7 +211,7 @@ fn validate_table(
                     format!(
                         "table has {} rows; expected at least {}",
                         rows.len(),
-                        min_rows
+                        js::num(min_rows)
                     ),
                 )
                 .pos(*pos)
@@ -230,11 +221,11 @@ fn validate_table(
     }
 
     // Typed cells — run each declared cell schema over every row's value in that column.
+    // A cell finding's hint is the leaf's, as in the TS engine.
     for (col, schema) in &cfg.cells {
         let Some(col_idx) = columns.iter().position(|c| c == col) else {
             continue; // a declared cell on a missing column → column-missing covers it
         };
-        let cell_hint = crate::schema::schema_root_description(schema).or(leaf_hint);
         for (i, row) in rows.iter().enumerate() {
             let value = row.get(col_idx).cloned().unwrap_or_default();
             let json = serde_json::Value::String(value.clone());
@@ -243,7 +234,7 @@ fn validate_table(
                     "content/table/cell",
                     format!("cell ‘{value}’ in column ‘{col}’ is invalid"),
                 )
-                .hint_opt(cell_hint);
+                .hint_opt(leaf_hint);
                 if let Some(pos) = row_pos.get(i) {
                     spec = spec.pos(*pos); // localize to the offending row
                 }
@@ -288,8 +279,8 @@ fn validate_list(
                 }
             }
         }
+        // An item finding's hint is the leaf's, as in the TS engine.
         Some(EveryItem::Schema(schema)) => {
-            let item_hint = crate::schema::schema_root_description(schema).or(leaf_hint);
             for item in items {
                 let json = serde_json::Value::String(item.text.clone());
                 if schema.safe_parse(Some(&json)).is_err() {
@@ -300,7 +291,7 @@ fn validate_list(
                                 format!("list item ‘{}’ is invalid", item.text),
                             )
                             .pos(item.pos)
-                            .hint_opt(item_hint),
+                            .hint_opt(leaf_hint),
                         ),
                     );
                 }
@@ -319,7 +310,7 @@ fn validate_list(
                     format!(
                         "list has {} items; expected at least {}",
                         items.len(),
-                        min_items
+                        js::num(min_items)
                     ),
                 )
                 .pos(*pos)
@@ -375,13 +366,16 @@ fn validate_paragraph(
     let BlockNode::Paragraph { text, pos, .. } = block else {
         return;
     };
-    let words = text.split_whitespace().count();
+    let words = js::words(text).count();
     if (words as f64) > max_words {
         out.push(
             ctx.finding(
                 FindingSpec::new(
                     "content/max-words",
-                    format!("paragraph runs to {words} words; expected at most {max_words}"),
+                    format!(
+                        "paragraph runs to {words} words; expected at most {}",
+                        js::num(max_words)
+                    ),
                 )
                 .pos(*pos)
                 .hint_opt(leaf_hint),
@@ -392,12 +386,13 @@ fn validate_paragraph(
 
 // ── Public entry ──────────────────────────────────────────────────────────────────────
 
-/// Run the content plane: the frontmatter schema (if declared) plus every section's
-/// content leaf. Returns findings in emission order; `validate` applies the
-/// deterministic cross-plane sort.
-pub fn match_content(tree: &DocTree, contract: &Contract, ctx: &Ctx) -> Vec<Finding> {
+/// Run the content plane: the frontmatter YAML check, the frontmatter schema (when
+/// declared and the YAML parsed) and every section's content leaf. Returns findings
+/// in emission order; `validate` sorts them.
+pub(crate) fn match_content(tree: &DocTree, contract: &Contract, ctx: &Ctx) -> Vec<Finding> {
     let mut out = Vec::new();
-    if let Some(fm) = &contract.frontmatter {
+    let yaml_ok = match_frontmatter_yaml(tree, ctx, &mut out);
+    if yaml_ok && let Some(fm) = &contract.frontmatter {
         match_frontmatter(tree, &fm.schema, ctx, &mut out);
     }
     if let Some(body) = &contract.body {
@@ -571,6 +566,45 @@ mod tests {
         assert_eq!(
             brief(&validate(fail, &prose, "p.md")),
             vec![("content/max-words", FindingLevel::Error, Some(3))]
+        );
+    }
+
+    // Numbers in messages print as JS `String(n)`, and words split on JS whitespace.
+    #[test]
+    fn messages_and_word_counts_follow_js() {
+        let table = table_contract(TableConfig {
+            columns: vec!["A".into()],
+            min_rows: Some(f64::INFINITY),
+            ..Default::default()
+        });
+        let out = validate("## Files\n\n| A |\n| - |\n| 1 |\n", &table, "t.md");
+        assert_eq!(
+            out[0].message,
+            "table has 1 rows; expected at least Infinity"
+        );
+
+        let prose = |n: f64| {
+            Contract::new().body(sections(
+                LevelOpts::default(),
+                vec![section_with(
+                    "P",
+                    SectionOpts {
+                        content: Some(SectionContent::Single(LeafSpec::max_words(n))),
+                        ..Default::default()
+                    },
+                )],
+            ))
+        };
+        // U+0085 is not JS whitespace, so `a\u{85}b c` is two words.
+        let out = validate("## P\n\na\u{85}b c\n", &prose(1.0), "p.md");
+        assert_eq!(
+            out[0].message,
+            "paragraph runs to 2 words; expected at most 1"
+        );
+        let out = validate("## P\n\na b c\n", &prose(1.5), "p.md");
+        assert_eq!(
+            out[0].message,
+            "paragraph runs to 3 words; expected at most 1.5"
         );
     }
 

@@ -1,14 +1,13 @@
-//! The `Finding` model — the JSON interchange shape both engines emit.
-//!
-//! Serialization parity with the TypeScript engine is the hard contract:
-//! `{"id","level","path","pos":{"line","col"?}?,"message","fix"?}` — optional fields are
-//! **omitted** (never `null`), `pos.line`/`pos.col` are 1-based, and `level` is one of
-//! `"error" | "warn" | "report"`. A `Finding` serialized here deserializes from the TS
-//! engine's `--format json` output and vice versa.
+//! The `Finding` model: the JSON shape both engines emit,
+//! `{"id","level","path","pos":{"line","col"?}?,"message","hint"?,"fix"?}`. Optional
+//! fields are omitted, never `null`; `pos.line` and `pos.col` are 1-based; `level` is
+//! `"error" | "warn" | "report"`. A `Finding` serialized here reads back from the TS
+//! engine's `--format json` output and the other way round.
 
 use serde::{Deserialize, Serialize};
 
-/// Severity is **contract data**, not a call-site choice (the commitlint model).
+/// A finding's severity. Each id has a default level in the registry; a rule or a text
+/// constraint's `level:` can set another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FindingLevel {
@@ -26,8 +25,8 @@ pub enum FindingLevel {
 pub struct SourcePos {
     /// 1-based line
     pub line: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     /// 1-based column, when known
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub col: Option<u32>,
 }
 
@@ -61,8 +60,8 @@ pub struct EditRange {
 pub struct TextEdit {
     /// the range to replace
     pub range: EditRange,
-    #[serde(rename = "newText")]
     /// the text that replaces the range
+    #[serde(rename = "newText")]
     pub new_text: String,
 }
 
@@ -71,8 +70,8 @@ pub struct TextEdit {
 pub struct Fix {
     /// what the repair does
     pub description: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     /// the concrete edit, when there is one
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edit: Option<TextEdit>,
 }
 
@@ -81,7 +80,8 @@ pub struct Fix {
 pub struct Finding {
     /// namespaced `area/.../name`, e.g. `"structure/section-missing"`
     pub id: String,
-    /// `error`, `warn` or `report`; it comes from the contract
+    /// the id's default level from the registry, unless the rule or text constraint
+    /// sets one
     pub level: FindingLevel,
     /// the source document's file path (`ctx.path`), for `<path>:<line>` — not a structural path
     pub path: String,
@@ -90,8 +90,8 @@ pub struct Finding {
     pub pos: Option<SourcePos>,
     /// what is wrong, in a sentence
     pub message: String,
-    /// the nearest enclosing `description:` of a v2 contract — omitted when no
-    /// description is in scope
+    /// the nearest enclosing `description:` in the contract; omitted when none is in
+    /// scope
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
     /// describes only; applying is a separate repair pass
@@ -103,8 +103,7 @@ pub struct Finding {
 mod tests {
     use super::*;
 
-    // Contract first: the exact JSON a positioned finding serializes to — the interchange
-    // shape the TS engine emits and the corpus goldens are written against.
+    // The exact JSON a positioned finding serializes to: the shape the TS engine emits.
     #[test]
     fn positioned_finding_serializes_to_the_interchange_shape() {
         let f = Finding {
@@ -139,8 +138,7 @@ mod tests {
         assert!(!json.contains("fix"));
     }
 
-    // The v2 `hint` slot: present it serializes under the TS field name;
-    // absent it is omitted entirely (asserted above), keeping v1 output byte-identical.
+    // `hint` serializes under the TS field name when present, and is omitted when absent.
     #[test]
     fn hint_serializes_when_present() {
         let f = Finding {

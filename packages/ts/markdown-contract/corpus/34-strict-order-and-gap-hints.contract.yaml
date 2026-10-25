@@ -1,0 +1,11 @@
+mcVersion: 2
+kind: contract
+body:
+  description: The release sections, in order.
+  order: strict
+  additionalSections: false
+  sections:
+    - section: Summary
+      description: One paragraph.
+    - gap: { max: 1 }
+    - section: Sign-off

@@ -1,11 +1,8 @@
-//! Unicode-aware camelCase key derivation.
-//!
-//! A section's heading text gets a generated `lowerCamelCase` key; two headings at one
-//! level whose keys collide are a `structure/key-collision`. The rule mirrors the TS
-//! `camel.ts` exactly: split on runs of non-alphanumeric characters (`[^\p{L}\p{N}]+`,
-//! Unicode-aware), drop empties, lowercase the first word, capitalize each subsequent
-//! word (first letter up, remainder down). A heading with no alphanumeric run yields
-//! `""` — "no generated alias".
+//! The lowerCamelCase key a heading generates. Two headings at one level with the same
+//! key are a `structure/key-collision`. The rule is the TS `camel.ts`: split on runs of
+//! characters that are not letters or digits (`[^\p{L}\p{N}]+`), drop empties,
+//! lowercase the first word, and capitalize each later word (first character up, the
+//! rest down). A heading with no letter or digit gives `""`.
 
 use std::sync::OnceLock;
 
@@ -16,32 +13,25 @@ fn non_alnum() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r"[^\p{L}\p{N}]+").expect("static regex"))
 }
 
-/// Lowercase the first character of `word`, leaving the rest as-is.
-fn lower_first(word: &str) -> String {
-    let mut chars = word.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(c) => c.to_lowercase().chain(chars).collect(),
-    }
-}
-
-/// Capitalize the first character of `word` and lowercase the remainder.
+/// Uppercase the first character of `word` and lowercase the rest, as JS
+/// `word[0].toUpperCase() + word.slice(1).toLowerCase()` does. JS indexes UTF-16 units,
+/// so a first character outside the BMP is left as it is.
 fn capitalize(word: &str) -> String {
     let mut chars = word.chars();
     match chars.next() {
         None => String::new(),
+        Some(c) if c.len_utf16() == 2 => c.to_string() + &chars.as_str().to_lowercase(),
         Some(c) => c.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
     }
 }
 
-/// Derive the lowerCamelCase key for a heading; `""` when the heading carries no
-/// alphanumeric content.
-pub fn to_camel_key(name: &str) -> String {
+/// The lowerCamelCase key for a heading; `""` when it has no letter or digit.
+pub(crate) fn to_camel_key(name: &str) -> String {
     let mut words = non_alnum().split(name).filter(|w| !w.is_empty());
     let Some(first) = words.next() else {
         return String::new();
     };
-    let mut key = lower_first(&first.to_lowercase());
+    let mut key = first.to_lowercase();
     for w in words {
         key.push_str(&capitalize(w));
     }
@@ -52,7 +42,7 @@ pub fn to_camel_key(name: &str) -> String {
 mod tests {
     use super::to_camel_key;
 
-    // Contract first: the three examples from the TS module's docstring.
+    // The three examples from the TS module's docstring.
     #[test]
     fn heading_to_lower_camel() {
         assert_eq!(to_camel_key("Files to touch"), "filesToTouch");
@@ -78,5 +68,12 @@ mod tests {
     #[test]
     fn digits_count_as_word_characters() {
         assert_eq!(to_camel_key("Phase 2 rollout"), "phase2Rollout");
+    }
+
+    // JS uppercases by UTF-16 unit, so an astral first letter stays as it is.
+    #[test]
+    fn an_astral_first_letter_is_not_uppercased() {
+        assert_eq!(to_camel_key("a \u{10428}BC"), "a\u{10428}bc");
+        assert_eq!(to_camel_key("a \u{E9}t\u{C9}"), "a\u{C9}t\u{E9}");
     }
 }

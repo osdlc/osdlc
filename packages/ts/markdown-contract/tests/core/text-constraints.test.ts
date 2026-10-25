@@ -110,6 +110,18 @@ describe('forbids — a section must NOT contain a phrase, reported at the sourc
     const node = sectionNode('Notes', 1, [para(3, 'all clear')])
     expect(forbids([{ pattern: 'TODO' }]).run(node, ctx)).toEqual([])
   })
+
+  it('reports a hit in code on its own line, after a fence or in indented code', () => {
+    const lines = (source: string): (number | undefined)[] => {
+      const node = parse(source).root.sections[0]!
+      return forbids([{ pattern: 'TODO' }])
+        .run(node, ctx)
+        .map((f) => f.pos?.line)
+    }
+    expect(lines('## Notes\n\n```sh\nok\nTODO\n```\n')).toEqual([5])
+    expect(lines('## Notes\n\n~~~\nTODO\n~~~\n')).toEqual([4])
+    expect(lines('## Notes\n\n    ok\n    TODO\n')).toEqual([4])
+  })
 })
 
 // ── counts, regex, normalize, ignoreCase, note, level ────────────────────────────────

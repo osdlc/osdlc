@@ -1,0 +1,10 @@
+mcVersion: 2
+kind: contract
+frontmatter:
+  type: object
+  properties:
+    supersededBy: { type: ['null', string] }
+  required: [supersededBy]
+body:
+  sections:
+    - section: Notes

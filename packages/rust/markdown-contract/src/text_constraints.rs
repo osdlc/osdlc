@@ -1,42 +1,33 @@
-//! Declarative text-constraint builders — [`requires`] / [`forbids`] (section-scoped
-//! node rules) and [`text_rule`] (a document-scoped rule), ported from the TS
-//! `text-constraints.ts`.
+//! Text-constraint builders: [`requires`] and [`forbids`] (section rules) and
+//! [`text_rule`] (a document rule), ported from the TS `text-constraints.ts`.
 //!
-//! Each builder is a thin scope-resolver over the text-match core
-//! ([`crate::text_match`]): the matcher runs over the bound scope's text, reconstructed
-//! **line-faithfully** from the projected tree — every block (prose, list items, table
-//! cells, code) placed at its real source line — so a `forbids` hit reports its true
-//! source line. A section scope's `scope_key` is the heading's generated
-//! lowerCamelCase key; the document scope's is the literal `"doc"`.
+//! Each builder runs the text-match core ([`crate::text_match`]) over its scope's text.
+//! The text is rebuilt from the projected tree with every block (prose, list items,
+//! table cells, code) on its real source line, so a `forbids` hit reports its true
+//! line. A section scope's key is the heading's lowerCamelCase key; the document's is
+//! `"doc"`.
 //!
-//! Purity: a `requires` entry whose bound expresses ABSENCE (`max: 0`, or
-//! `max` below the effective minimum) panics at construction — the absence form is
-//! `forbids`. This mirrors the TS builders' `ContractBuildError` throw; the declarative
-//! compiler screens the same shape out ahead of time as a `DeclarativeError`.
+//! A builder panics on an authoring error, as the TS builders throw: a `requires` entry
+//! whose bound means absence (`max: 0`, or `max` below the minimum), an entry with no
+//! needle, or a `regex` the `regex` crate rejects. The declarative compiler screens the
+//! same errors out first as a `DeclarativeError`.
+
+use regex::Regex;
 
 use crate::camel::to_camel_key;
 use crate::contract::{DocRule, Rule};
 use crate::finding::Finding;
 use crate::registry::Ctx;
 use crate::text_match::{
-    TextFindingInput, TextKind, TextMatchSpec, build_text_findings, match_text,
+    TextFindingInput, TextKind, TextMatchSpec, build_regex_or_panic, build_text_findings,
+    match_text,
 };
 use crate::tree::{BlockNode, DocTree, SectionNode};
 
 // ── Purity: a `requires` entry may not express absence ───────────────────────
 
-/// The needle as it reads in an error message.
-fn spec_repr(spec: &TextMatchSpec) -> String {
-    if let Some(regex) = &spec.regex {
-        format!("/{regex}/")
-    } else {
-        format!("\"{}\"", spec.pattern.as_deref().unwrap_or(""))
-    }
-}
-
-/// Reject a `requires` entry whose count bound expresses ABSENCE (`max: 0`, or any
-/// `max` below the entry's effective minimum). Panics at construction — a
-/// contract-authoring error, mirroring the TS `ContractBuildError`.
+/// Reject a `requires` entry whose count bound means absence (`max: 0`, or any `max`
+/// below the entry's minimum). Panics, as the TS builders throw `ContractBuildError`.
 fn assert_requires_purity(specs: &[TextMatchSpec]) {
     for spec in specs {
         let floor = spec.min.unwrap_or(1.0).max(1.0);
@@ -45,7 +36,7 @@ fn assert_requires_purity(specs: &[TextMatchSpec]) {
         {
             panic!(
                 "contract/text-requires-purity: requires({}): a requires entry may not express absence (max {max} < {floor}); use forbids(...) for an absence check",
-                spec_repr(spec)
+                spec.repr()
             );
         }
     }
@@ -100,7 +91,9 @@ fn place_block(buf: &mut LineBuffer, block: &BlockNode) {
                 buf.place(item.pos.line, &item.text);
             }
         }
-        BlockNode::Code { value, pos, .. } => buf.place(pos.line, value),
+        BlockNode::Code {
+            value, fenced, pos, ..
+        } => buf.place(pos.line + u32::from(*fenced), value),
         BlockNode::Table {
             columns,
             rows,
@@ -141,10 +134,27 @@ fn doc_scope_text(tree: &DocTree) -> String {
 
 // ── The builders ──────────────────────────────────────────────────────────────────────
 
+/// A spec with its needle compiled.
+pub(crate) type CompiledSpec = (TextMatchSpec, Option<Regex>);
+
+type Compiled = Vec<CompiledSpec>;
+
+/// # Panics
+/// When a spec has no needle or its `regex` does not compile.
+fn compile(specs: Vec<TextMatchSpec>) -> Compiled {
+    specs
+        .into_iter()
+        .map(|spec| {
+            let re = build_regex_or_panic(&spec);
+            (spec, re)
+        })
+        .collect()
+}
+
 struct TextNodeRule {
     kind: TextKind,
     id: &'static str,
-    specs: Vec<TextMatchSpec>,
+    specs: Compiled,
 }
 
 impl Rule for TextNodeRule {
@@ -156,12 +166,12 @@ impl Rule for TextNodeRule {
         let scope_key = to_camel_key(&node.name);
         let text = section_scope_text(node);
         let mut out = Vec::new();
-        for spec in &self.specs {
+        for (spec, re) in &self.specs {
             out.extend(build_text_findings(
                 TextFindingInput {
                     kind: self.kind,
                     spec,
-                    result: match_text(&text, spec),
+                    result: match_text(&text, re.as_ref()),
                     scope_key: &scope_key,
                     scope: Some(&node.name),
                     scope_pos: Some(node.pos),
@@ -179,9 +189,15 @@ impl Rule for TextNodeRule {
 /// `text/count` when a `min` / `max` bound is violated).
 ///
 /// # Panics
-/// On an absence-form entry (`max: 0` / `max < min`) — use [`forbids`].
+/// On an absence-form entry (`max: 0` or `max < min`; use [`forbids`]), an entry with
+/// no needle, or a `regex` the `regex` crate rejects.
 pub fn requires(specs: Vec<TextMatchSpec>) -> Box<dyn Rule> {
     assert_requires_purity(&specs);
+    requires_compiled(compile(specs))
+}
+
+/// [`requires`] over specs the declarative loader has already screened and compiled.
+pub(crate) fn requires_compiled(specs: Compiled) -> Box<dyn Rule> {
     Box::new(TextNodeRule {
         kind: TextKind::Requires,
         id: "text/requires",
@@ -192,7 +208,15 @@ pub fn requires(specs: Vec<TextMatchSpec>) -> Box<dyn Rule> {
 /// Forbid each listed phrase from appearing in the bound section's subtree text — a
 /// node-local [`Rule`]. Each entry emits a `text/forbids` finding at the offending line
 /// for every hit (or `text/count` at the heading when a positive `max` cap is exceeded).
+///
+/// # Panics
+/// On an entry with no needle, or a `regex` the `regex` crate rejects.
 pub fn forbids(specs: Vec<TextMatchSpec>) -> Box<dyn Rule> {
+    forbids_compiled(compile(specs))
+}
+
+/// [`forbids`] over specs the declarative loader has already compiled.
+pub(crate) fn forbids_compiled(specs: Compiled) -> Box<dyn Rule> {
     Box::new(TextNodeRule {
         kind: TextKind::Forbids,
         id: "text/forbids",
@@ -211,7 +235,8 @@ pub struct TextRuleSpec {
 }
 
 struct TextDocRule {
-    spec: TextRuleSpec,
+    requires: Compiled,
+    forbids: Compiled,
 }
 
 impl DocRule for TextDocRule {
@@ -222,12 +247,12 @@ impl DocRule for TextDocRule {
     fn run(&self, tree: &DocTree, ctx: &Ctx) -> Vec<Finding> {
         let text = doc_scope_text(tree);
         let mut out = Vec::new();
-        for spec in &self.spec.requires {
+        for (spec, re) in &self.requires {
             out.extend(build_text_findings(
                 TextFindingInput {
                     kind: TextKind::Requires,
                     spec,
-                    result: match_text(&text, spec),
+                    result: match_text(&text, re.as_ref()),
                     scope_key: "doc",
                     scope: None,
                     scope_pos: None,
@@ -235,12 +260,12 @@ impl DocRule for TextDocRule {
                 ctx,
             ));
         }
-        for spec in &self.spec.forbids {
+        for (spec, re) in &self.forbids {
             out.extend(build_text_findings(
                 TextFindingInput {
                     kind: TextKind::Forbids,
                     spec,
-                    result: match_text(&text, spec),
+                    result: match_text(&text, re.as_ref()),
                     scope_key: "doc",
                     scope: None,
                     scope_pos: None,
@@ -257,10 +282,15 @@ impl DocRule for TextDocRule {
 /// position); each `forbids` hit anchors at the exact offending source line.
 ///
 /// # Panics
-/// On an absence-form `requires` entry (same purity as [`requires`]).
+/// As [`requires`] and [`forbids`] do.
 pub fn text_rule(spec: TextRuleSpec) -> Box<dyn DocRule> {
     assert_requires_purity(&spec.requires);
-    Box::new(TextDocRule { spec })
+    text_rule_compiled(compile(spec.requires), compile(spec.forbids))
+}
+
+/// [`text_rule`] over specs the declarative loader has already screened and compiled.
+pub(crate) fn text_rule_compiled(requires: Compiled, forbids: Compiled) -> Box<dyn DocRule> {
+    Box::new(TextDocRule { requires, forbids })
 }
 
 #[cfg(test)]
@@ -350,11 +380,32 @@ mod tests {
     }
 
     #[test]
+    fn code_text_starts_after_the_fence_and_on_the_line_of_indented_code() {
+        let line_of_todo = |src: &str| {
+            let tree = crate::parse::parse_document(src);
+            let text = section_scope_text(&tree.root.sections[0]);
+            text.split('\n').position(|l| l == "TODO").map(|i| i + 1)
+        };
+        assert_eq!(line_of_todo("## N\n\n```sh\nok\nTODO\n```\n"), Some(5));
+        assert_eq!(line_of_todo("## N\n\n~~~\nTODO\n~~~\n"), Some(4));
+        assert_eq!(line_of_todo("## N\n\n    ok\n    TODO\n"), Some(4));
+    }
+
+    #[test]
     #[should_panic(expected = "text-requires-purity")]
     fn requires_rejects_the_absence_form() {
         requires(vec![TextMatchSpec {
             max: Some(0.0),
             ..pattern("x")
+        }]);
+    }
+
+    #[test]
+    #[should_panic(expected = "invalid regex /(/")]
+    fn a_bad_regex_panics_at_construction() {
+        forbids(vec![TextMatchSpec {
+            regex: Some("(".into()),
+            ..Default::default()
         }]);
     }
 }

@@ -1,16 +1,13 @@
-//! `load_config` — compile a declarative YAML meta-config (`kind: config`) into the
-//! runner's [`CorpusConfig`], mirroring the TS `loadConfig`: a
-//! `rules` list mapping `include` / `exclude` globs to a contract, plus an optional
-//! `contracts` name map.
+//! `load_config`: compile a YAML config (`kind: config`) into the runner's
+//! [`CorpusConfig`], mirroring the TS `loadConfig`. A `rules` list maps `include` /
+//! `exclude` globs to a contract, with an optional `contracts` name map.
 //!
-//! A contract ref is a `.yaml` contract file or an inline contract object. Referencing
-//! a code-authored `.js` / `.ts` contract module is the deferred code escape and is
-//! rejected with the typed [`DeclarativeError::CodeContractRef`] (the "vault needs the
-//! TS engine" hook).
+//! A contract ref is a `.yaml` contract file or an inline contract object. Any other
+//! file, such as a `.ts` module, is rejected with [`DeclarativeError::CodeContractRef`].
 //!
-//! The core loader is fs-free: file-backed contract refs resolve through a caller
-//! `resolver` (`target ref → yaml text`); the native layer's [`load_config_file`]
-//! supplies the std::fs resolver anchored at the config file's directory.
+//! The core loader does no I/O: a file ref resolves through the caller's `resolver`
+//! (ref to YAML text). [`load_config_file`] supplies a `std::fs` resolver anchored at
+//! the config file's directory.
 
 use serde_yaml::Value;
 
@@ -22,10 +19,6 @@ use crate::runner::{CorpusConfig, CorpusRule};
 
 /// Resolves a contract-file ref (a `.yaml` path, possibly relative) to its YAML text.
 pub type ContractResolver<'a> = dyn FnMut(&str) -> Result<String, String> + 'a;
-
-fn get<'a>(map: &'a serde_yaml::Mapping, key: &str) -> Option<&'a Value> {
-    map.get(Value::String(key.into()))
-}
 
 fn err(msg: String) -> DeclarativeError {
     DeclarativeError::InvalidConfig(msg)
@@ -50,11 +43,11 @@ fn compile_config(
     raw: &serde_yaml::Mapping,
     resolver: &mut ContractResolver<'_>,
 ) -> Result<CorpusConfig, DeclarativeError> {
-    let contracts = match get(raw, "contracts") {
+    let contracts = match raw.get("contracts") {
         Some(Value::Mapping(m)) => m.clone(),
         _ => serde_yaml::Mapping::new(),
     };
-    let Some(Value::Sequence(rules)) = get(raw, "rules") else {
+    let Some(Value::Sequence(rules)) = raw.get("rules") else {
         return Err(err(
             "config.rules must be a list of { include, exclude?, contract }".into(),
         ));
@@ -82,7 +75,7 @@ fn compile_rule(
     let Value::Mapping(map) = rule else {
         return Err(err(format!("{path}: a rule must be a mapping")));
     };
-    let include = match glob_list(get(map, "include")) {
+    let include = match glob_list(map.get("include")) {
         Some(globs) if !globs.is_empty() => globs,
         _ => {
             return Err(err(format!(
@@ -90,20 +83,20 @@ fn compile_rule(
             )));
         }
     };
-    let exclude = match get(map, "exclude") {
+    let exclude = match map.get("exclude") {
         None => Vec::new(),
         some => {
             glob_list(some).ok_or_else(|| err(format!("{path}.exclude must be a list of globs")))?
         }
     };
-    let contract_ref = get(map, "contract");
+    let contract_ref = map.get("contract");
     let contract = resolve_contract(
         contract_ref,
         &format!("{path}.contract"),
         contracts,
         resolver,
     )?;
-    // A string contract ref IS the human contract name — carried as the rule's label.
+    // A string contract ref is the contract's name, kept as the rule's label.
     let name = contract_ref.and_then(Value::as_str).map(str::to_string);
     Ok(CorpusRule {
         include,
@@ -125,8 +118,7 @@ fn resolve_contract(
         )));
     };
     if let Value::Mapping(inline) = reference {
-        // An inline contract object (frontmatter? / body?) — no envelope needed here;
-        // it compiles with the v2 compiler set like everything else.
+        // An inline contract object needs no envelope.
         return compile_contract_object(inline);
     }
     let Some(name) = reference.as_str() else {
@@ -153,20 +145,17 @@ fn resolve_contract(
     load_contract(&text)
 }
 
-/// Read a YAML config file and compile it; contract refs resolve relative to the config
-/// file's directory (fs — the thin native layer).
+/// Read a YAML config file and compile it. Contract refs resolve relative to the
+/// config file's directory, which is made absolute without resolving symlinks, as
+/// Node's `path.resolve` does.
 #[cfg(feature = "native")]
 pub fn load_config_file(path: &std::path::Path) -> Result<CorpusConfig, DeclarativeError> {
-    let abs = path
-        .canonicalize()
-        .map_err(|e| DeclarativeError::ContractRefRead {
-            target: path.display().to_string(),
-            reason: e.to_string(),
-        })?;
-    let text = std::fs::read_to_string(&abs).map_err(|e| DeclarativeError::ContractRefRead {
-        target: abs.display().to_string(),
+    let read_err = |e: std::io::Error| DeclarativeError::FileRead {
+        path: path.display().to_string(),
         reason: e.to_string(),
-    })?;
+    };
+    let abs = std::path::absolute(path).map_err(read_err)?;
+    let text = std::fs::read_to_string(&abs).map_err(read_err)?;
     let base = abs
         .parent()
         .map(std::path::Path::to_path_buf)

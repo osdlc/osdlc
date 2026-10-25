@@ -13,10 +13,13 @@
 use serde_yaml::Value;
 
 use super::errors::DeclarativeError;
+use super::yaml::render;
 use crate::contract::{DocRule, Rule};
 use crate::finding::FindingLevel;
-use crate::text_constraints::{TextRuleSpec, forbids, requires, text_rule};
-use crate::text_match::TextMatchSpec;
+use crate::text_constraints::{
+    CompiledSpec, forbids_compiled, requires_compiled, text_rule_compiled,
+};
+use crate::text_match::{NeedleError, TextMatchSpec, build_regex};
 
 /// The closed match-spec vocabulary.
 const SPEC_KEYS: &[&str] = &[
@@ -31,20 +34,17 @@ const SPEC_KEYS: &[&str] = &[
     "level",
 ];
 
-fn get<'a>(map: &'a serde_yaml::Mapping, key: &str) -> Option<&'a Value> {
-    map.get(Value::String(key.into()))
-}
-
 fn err(msg: String) -> DeclarativeError {
     DeclarativeError::InvalidTextSpec(msg)
 }
 
-/// Compile and validate ONE match-spec entry against the closed vocabulary.
+/// Compile and validate ONE match-spec entry against the closed vocabulary, with its
+/// needle compiled for the builders.
 fn compile_match_spec(
     raw: &Value,
     kind: &str,
     path: &str,
-) -> Result<TextMatchSpec, DeclarativeError> {
+) -> Result<CompiledSpec, DeclarativeError> {
     let Value::Mapping(map) = raw else {
         return Err(err(format!(
             "{path}: a match spec must be a mapping (pattern | regex, …)"
@@ -68,13 +68,17 @@ fn compile_match_spec(
     assign_scalar_fields(map, &mut spec, path)?;
     assign_level(map, &mut spec, path)?;
     assert_count_bound(&spec, kind, path)?;
-    // Screen the regex through the engine now, so an invalid source is an authoring
-    // error here rather than a matcher panic at validation time.
-    if let Some(src) = &spec.regex {
-        regex::Regex::new(src)
-            .map_err(|e| err(format!("{path}.regex: invalid regex /{src}/: {e}")))?;
+    // A needle the `regex` crate rejects is an error here, not a builder panic. A
+    // `pattern` can fail too, on the size limit.
+    match build_regex(&spec) {
+        Ok(re) => Ok((spec, re)),
+        Err(NeedleError::Invalid(e)) => Err(err(if spec.regex.is_some() {
+            format!("{path}.regex: invalid regex {}: {e}", spec.repr())
+        } else {
+            format!("{path}.pattern: {} does not compile: {e}", spec.repr())
+        })),
+        Err(NeedleError::Missing) => Err(err(format!("{path}: a match spec needs a needle"))),
     }
-    Ok(spec)
 }
 
 /// Resolve the needle: exactly one of `pattern` (a literal) or `regex` (a source).
@@ -83,8 +87,8 @@ fn assign_needle(
     spec: &mut TextMatchSpec,
     path: &str,
 ) -> Result<(), DeclarativeError> {
-    let pattern = get(map, "pattern");
-    let regex = get(map, "regex");
+    let pattern = map.get("pattern");
+    let regex = map.get("regex");
     match (pattern, regex) {
         (Some(_), Some(_)) => Err(err(format!(
             "{path}: a match spec needs exactly one of 'pattern' / 'regex', not both"
@@ -117,38 +121,38 @@ fn assign_scalar_fields(
     spec: &mut TextMatchSpec,
     path: &str,
 ) -> Result<(), DeclarativeError> {
-    if let Some(v) = get(map, "normalize") {
+    if let Some(v) = map.get("normalize") {
         spec.normalize = Some(
             v.as_bool()
                 .ok_or_else(|| err(format!("{path}.normalize must be a boolean")))?,
         );
     }
-    if let Some(v) = get(map, "ignoreCase") {
+    if let Some(v) = map.get("ignoreCase") {
         spec.ignore_case = Some(
             v.as_bool()
                 .ok_or_else(|| err(format!("{path}.ignoreCase must be a boolean")))?,
         );
     }
-    if let Some(v) = get(map, "min") {
+    if let Some(v) = map.get("min") {
         spec.min = Some(
             v.as_f64()
                 .ok_or_else(|| err(format!("{path}.min must be a number")))?,
         );
     }
-    if let Some(v) = get(map, "max") {
+    if let Some(v) = map.get("max") {
         spec.max = Some(
             v.as_f64()
                 .ok_or_else(|| err(format!("{path}.max must be a number")))?,
         );
     }
-    if let Some(v) = get(map, "id") {
+    if let Some(v) = map.get("id") {
         spec.id = Some(
             v.as_str()
                 .ok_or_else(|| err(format!("{path}.id must be a string")))?
                 .to_string(),
         );
     }
-    if let Some(v) = get(map, "note") {
+    if let Some(v) = map.get("note") {
         spec.note = Some(
             v.as_str()
                 .ok_or_else(|| err(format!("{path}.note must be a string")))?
@@ -164,15 +168,14 @@ fn assign_level(
     spec: &mut TextMatchSpec,
     path: &str,
 ) -> Result<(), DeclarativeError> {
-    if let Some(v) = get(map, "level") {
+    if let Some(v) = map.get("level") {
         spec.level = match v.as_str() {
             Some("error") => Some(FindingLevel::Error),
             Some("warn") => Some(FindingLevel::Warn),
             _ => {
                 return Err(err(format!(
                     "{path}.level must be \"error\" or \"warn\" (got {})",
-                    serde_json::to_string(&crate::frontmatter::yaml_to_json(v.clone()))
-                        .unwrap_or_else(|_| "?".into())
+                    render(Some(v))
                 )));
             }
         };
@@ -218,17 +221,17 @@ fn compile_match_specs(
     raw: &Value,
     kind: &str,
     path: &str,
-) -> Result<Vec<TextMatchSpec>, DeclarativeError> {
+) -> Result<Vec<CompiledSpec>, DeclarativeError> {
     let Value::Sequence(entries) = raw else {
         return Err(err(format!("{path}: {kind} must be a list of match specs")));
     };
-    let specs: Vec<TextMatchSpec> = entries
+    let specs: Vec<CompiledSpec> = entries
         .iter()
         .enumerate()
         .map(|(i, entry)| compile_match_spec(entry, kind, &format!("{path}[{i}]")))
         .collect::<Result<_, _>>()?;
     let mut seen: Vec<(String, usize)> = Vec::new();
-    for (i, spec) in specs.iter().enumerate() {
+    for (i, (spec, _)) in specs.iter().enumerate() {
         let key = matcher_identity(spec);
         if let Some((_, prev)) = seen.iter().find(|(k, _)| *k == key) {
             return Err(err(format!(
@@ -242,7 +245,7 @@ fn compile_match_specs(
 
 /// Does this node carry either text-constraint key?
 pub fn has_text_keys(node: &serde_yaml::Mapping) -> bool {
-    get(node, "requires").is_some() || get(node, "forbids").is_some()
+    node.get("requires").is_some() || node.get("forbids").is_some()
 }
 
 /// Compile one scope's `requires` / `forbids` lists and run the cross-list
@@ -252,12 +255,12 @@ fn compile_scope_text_specs(
     node: &serde_yaml::Mapping,
     path: &str,
     scope_label: &str,
-) -> Result<(Vec<TextMatchSpec>, Vec<TextMatchSpec>), DeclarativeError> {
-    let req = match get(node, "requires") {
+) -> Result<(Vec<CompiledSpec>, Vec<CompiledSpec>), DeclarativeError> {
+    let req = match node.get("requires") {
         Some(v) => compile_match_specs(v, "requires", &format!("{path}.requires"))?,
         None => Vec::new(),
     };
-    let forb = match get(node, "forbids") {
+    let forb = match node.get("forbids") {
         Some(v) => compile_match_specs(v, "forbids", &format!("{path}.forbids"))?,
         None => Vec::new(),
     };
@@ -265,8 +268,8 @@ fn compile_scope_text_specs(
     let literal_id = |spec: &TextMatchSpec| -> Option<String> {
         spec.regex.is_none().then(|| matcher_identity(spec))
     };
-    let required: Vec<String> = req.iter().filter_map(literal_id).collect();
-    for spec in &forb {
+    let required: Vec<String> = req.iter().map(|(s, _)| s).filter_map(literal_id).collect();
+    for (spec, _) in &forb {
         if let Some(key) = literal_id(spec)
             && required.contains(&key)
         {
@@ -290,10 +293,10 @@ pub fn compile_section_text_rules(
     let (req, forb) = compile_scope_text_specs(node, path, scope_label)?;
     let mut rules: Vec<Box<dyn Rule>> = Vec::new();
     if !req.is_empty() {
-        rules.push(requires(req));
+        rules.push(requires_compiled(req));
     }
     if !forb.is_empty() {
-        rules.push(forbids(forb));
+        rules.push(forbids_compiled(forb));
     }
     Ok(rules)
 }
@@ -308,10 +311,7 @@ pub fn compile_body_text_rule(
     if req.is_empty() && forb.is_empty() {
         return Ok(None);
     }
-    Ok(Some(text_rule(TextRuleSpec {
-        requires: req,
-        forbids: forb,
-    })))
+    Ok(Some(text_rule_compiled(req, forb)))
 }
 
 #[cfg(test)]
@@ -353,6 +353,8 @@ mod tests {
             "requires:\n  - pattern: a\n    max: 0\n",    // absence form
             "requires:\n  - pattern: a\n  - pattern: a\n", // duplicate
             "requires:\n  - regex: '('\n",                // invalid regex
+            "requires:\n  - regex: '(?=x)'\n",            // lookaround
+            "requires:\n  - regex: '\\w{1000}{1000}'\n",  // past the size limit
         ];
         for yaml in cases {
             let node = map(yaml);
@@ -361,6 +363,24 @@ mod tests {
                 "expected rejection for: {yaml}"
             );
         }
+    }
+
+    // A needle that does not compile is named by its key: a `regex` by its syntax, a
+    // `pattern` by the size limit.
+    #[test]
+    fn a_needle_error_names_its_key() {
+        let message = |yaml: &str| match compile_section_text_rules(&map(yaml), "p", "S") {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected rejection for: {yaml}"),
+        };
+        assert!(
+            message("forbids:\n  - regex: '('\n").contains("p.forbids[0].regex: invalid regex")
+        );
+        let long = "x ".repeat(20_000);
+        assert!(
+            message(&format!("forbids:\n  - pattern: '{long}'\n"))
+                .contains("p.forbids[0].pattern: ")
+        );
     }
 
     #[test]

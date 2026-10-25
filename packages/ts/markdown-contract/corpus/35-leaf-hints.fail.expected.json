@@ -1,0 +1,20 @@
+[
+  {
+    "id": "content/table/cell",
+    "level": "error",
+    "line": 5,
+    "hint": "One row per file."
+  },
+  {
+    "id": "content/table/cell",
+    "level": "error",
+    "line": 11,
+    "hint": "Who reviews the change."
+  },
+  {
+    "id": "content/list/item-kind",
+    "level": "error",
+    "line": 15,
+    "hint": "One step per item."
+  }
+]

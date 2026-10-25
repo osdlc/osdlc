@@ -1,16 +1,14 @@
-//! The shared corpus harness — the cross-language parity gate.
+//! The shared corpus harness: the parity gate with the TS engine.
 //!
-//! Reads `corpus-manifest.json` from the corpus of the `@osdlc/markdown-contract`
-//! package (`packages/ts/markdown-contract/corpus/`, the one canonical copy) and, for every
-//! entry marked `"shared": true`, loads the `.contract.yaml` through the declarative
-//! loader, runs each case's `.md` (bytes verbatim), and asserts the language-neutral
-//! `.expected.json` golden exactly as the TS harness's `assertFindings` does: the
-//! total finding count must equal the golden's length, each entry's `id` must match in
-//! order, and `level` / `line` are asserted only when the golden pins them. The
-//! ts-only entries (custom `rule` / `docRule` fixtures the YAML DSL cannot express)
-//! are skipped with a printed line.
-
-#![cfg(feature = "native")]
+//! Reads `corpus-manifest.json` from the `@osdlc/markdown-contract` corpus
+//! (`packages/ts/markdown-contract/corpus/`, read in place). For every entry marked
+//! `"shared": true`, it loads the `.contract.yaml`, validates each case's `.md` (bytes
+//! verbatim), and checks the `.expected.json` golden as the TS harness's
+//! `assertFindings` does: the finding count, each `id` in order, and `level` / `line` /
+//! `hint` only when the golden pins them. The ts-only entries (custom `rule` /
+//! `docRule` fixtures that YAML cannot express) are skipped with a printed line.
+//!
+//! It needs no `native` feature, so it also runs under `--no-default-features`.
 
 use std::path::{Path, PathBuf};
 
@@ -36,7 +34,6 @@ struct ExpectedFinding {
     id: String,
     level: Option<FindingLevel>,
     line: Option<u32>,
-    /// The v2 `description:`-derived hint; asserted only when the golden pins it.
     hint: Option<String>,
 }
 
@@ -49,17 +46,19 @@ fn brief(findings: &[Finding]) -> String {
         .iter()
         .map(|f| {
             format!(
-                "{{id: {}, level: {:?}, line: {:?}}}",
+                "{{id: {}, level: {:?}, line: {:?}, hint: {:?}}}",
                 f.id,
                 f.level,
-                f.pos.map(|p| p.line)
+                f.pos.map(|p| p.line),
+                f.hint
             )
         })
         .collect::<Vec<_>>()
         .join(", ")
 }
 
-/// The TS harness's `assertFindings`: count, then per-index id (+ pinned level/line).
+/// The TS harness's `assertFindings`: the count, then each id, and the level, line and
+/// hint where pinned.
 fn assert_findings(actual: &[Finding], expected: &[ExpectedFinding], label: &str) {
     assert_eq!(
         actual.len(),
@@ -90,7 +89,8 @@ fn assert_findings(actual: &[Finding], expected: &[ExpectedFinding], label: &str
             assert_eq!(
                 a.hint.as_deref(),
                 Some(hint.as_str()),
-                "{label}: finding[{i}].hint"
+                "{label}: finding[{i}].hint — actual: [{}]",
+                brief(actual)
             );
         }
     }
@@ -151,9 +151,10 @@ fn shared_corpus_fixtures_match_the_goldens() {
     println!(
         "corpus: {shared} shared fixtures ({cases_run} cases) green, {skipped} ts-only skipped"
     );
+    assert!(cases_run > 0, "no corpus case ran");
     assert_eq!(
-        shared, 53,
-        "the corpus holds 53 shared fixtures; update this count when it changes"
+        shared, 63,
+        "the corpus holds 63 shared fixtures; update this count when it changes"
     );
     assert_eq!(
         skipped, 8,

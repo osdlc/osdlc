@@ -1,78 +1,42 @@
-//! The v2 schema-node compiler — the JSON Schema 2020-12 subset of `mcVersion: 2`:
-//! YAML mapping in, a compiled [`Schema`] out, mirroring the
-//! TS v2 `compileSchemaV2`.
+//! The schema compiler for the `mcVersion: 2` JSON Schema subset: a YAML mapping in, a
+//! [`Schema`] out, mirroring the TS `compileSchemaV2`.
 //!
-//! The vocabulary is the JSON Schema idiom compiled to the same runtime targets v1
-//! hits: `properties` / `required` (optional-by-default — the JSON Schema inversion of
-//! v1's implicit-required) / `additionalProperties`, `minLength`–`maxLength` /
-//! `minimum`–`maximum` / `minItems`–`maxItems`, `items`, `type: integer`, the null
-//! union `type: [T, "null"]`, and a `format` that now COMPOSES with bounds and
-//! `pattern` (the Zod-chained constructor). `description` is stored on every node for
-//! `Finding.hint`.
+//! The subset: `properties` / `required` (a property is optional unless listed) /
+//! `additionalProperties`, `minLength`–`maxLength`, `minimum`–`maximum`,
+//! `minItems`–`maxItems`, `items`, `type: integer`, the null union `type: [T, "null"]`,
+//! `enum`, `const`, `default`, and a `format` that composes with the length bounds and
+//! `pattern`. `description` is stored on every node for `Finding.hint`.
 //!
-//! Every node is checked against its type's allowed-key set (closing v1's silent-ignore
-//! hole) with three rejection classes: a v1 spelling gets a migration hint, recognized
-//! JSON Schema outside the subset is named as such (the seam full 2020-12 support would
-//! later slot into), and anything else is an unknown key.
+//! Every node is checked against its type's allowed keys. A v1 spelling gets a pointer to
+//! its v2 form, JSON Schema outside the subset is named as such, and anything else is an
+//! unknown key. Each known key must have the type TS requires.
 
 use regex::Regex;
 use serde_yaml::Value;
 
 use super::errors::DeclarativeError;
+use super::yaml::{self, describe, num, render, string, strings};
 use crate::schema::{ConstValue, STRING_FORMATS, Schema, StringFormat};
-
-/// A human word for a YAML value's shape, for error messages (the TS `describe`).
-fn describe(v: &Value) -> &'static str {
-    match v {
-        Value::Null => "null",
-        Value::Sequence(_) => "a list",
-        Value::Mapping(_) => "object",
-        Value::String(_) => "string",
-        Value::Number(_) => "number",
-        Value::Bool(_) => "boolean",
-        Value::Tagged(_) => "a tagged value",
-    }
-}
-
-fn get<'a>(map: &'a serde_yaml::Mapping, key: &str) -> Option<&'a Value> {
-    map.get(Value::String(key.into()))
-}
 
 fn err(msg: String) -> DeclarativeError {
     DeclarativeError::InvalidSchema(msg)
 }
 
-/// A number-or-`None` reader for the optional bound knobs (a non-number is silently
-/// ignored, as in the v1 `num`).
-fn num(map: &serde_yaml::Mapping, key: &str) -> Option<f64> {
-    get(map, key).and_then(Value::as_f64)
-}
-
 // ── The per-node allowed-key check (three rejection classes) ─────────────────────────
 
-/// The v1 spellings and their v2 counterparts — class (a): the migration hint.
+/// The v1 spellings and their v2 counterparts, for the error message.
 const V1_SPELLINGS: &[(&str, &str)] = &[
     ("fields", "'properties'"),
     ("of", "'items'"),
     ("strict", "'additionalProperties: false'"),
     ("int", "'type: integer'"),
-    ("nullable", "'type: [T, \"null\"]'"),
-    (
-        "optional",
-        "'required' (a property is optional unless listed there)",
-    ),
-    (
-        "min",
-        "'minLength' (string), 'minimum' (number), or 'minItems' (array)",
-    ),
-    (
-        "max",
-        "'maxLength' (string), 'maximum' (number), or 'maxItems' (array)",
-    ),
+    ("nullable", "a [T, \"null\"] type union"),
+    ("optional", "omission from 'required'"),
+    ("min", "'minLength' / 'minimum' / 'minItems'"),
+    ("max", "'maxLength' / 'maximum' / 'maxItems'"),
 ];
 
-/// Recognized JSON Schema keywords outside the supported v2 subset — class (b): the
-/// seam a later full-2020-12 evaluator slots into.
+/// JSON Schema keywords outside the supported subset.
 const OUTSIDE_SUBSET: &[&str] = &[
     "oneOf",
     "anyOf",
@@ -111,39 +75,18 @@ const OUTSIDE_SUBSET: &[&str] = &[
     "writeOnly",
 ];
 
-/// Reject every key of `n` outside `allowed`: a v1 spelling → the migration hint,
-/// recognized JSON Schema outside the subset → named as such, else an unknown key.
 fn check_keys(
     n: &serde_yaml::Mapping,
     allowed: &[&str],
     path: &str,
 ) -> Result<(), DeclarativeError> {
-    for key in n.keys() {
-        let Some(k) = key.as_str() else {
-            return Err(err(format!("{path}: schema keys must be strings")));
-        };
-        if allowed.contains(&k) {
-            continue;
-        }
-        if let Some((_, v2)) = V1_SPELLINGS.iter().find(|(v1, _)| *v1 == k) {
-            return Err(err(format!(
-                "{path}: '{k}' is the v1 spelling — mcVersion 2 uses {v2}"
-            )));
-        }
-        if OUTSIDE_SUBSET.contains(&k) {
-            return Err(err(format!(
-                "{path}: '{k}' is JSON Schema outside the supported v2 subset"
-            )));
-        }
-        return Err(err(format!("{path}: unknown key '{k}'")));
-    }
-    Ok(())
+    yaml::check_keys(n, allowed, path, V1_SPELLINGS, OUTSIDE_SUBSET, err)
 }
 
 // ── The node compiler ─────────────────────────────────────────────────────────────────
 
 /// Compile one v2 schema node (the JSON Schema subset) into a [`Schema`].
-pub fn compile_schema_v2(node: &Value, path: &str) -> Result<Schema, DeclarativeError> {
+pub(super) fn compile_schema_v2(node: &Value, path: &str) -> Result<Schema, DeclarativeError> {
     let Value::Mapping(n) = node else {
         return Err(err(format!(
             "{path}: a schema must be a mapping (got {})",
@@ -154,11 +97,16 @@ pub fn compile_schema_v2(node: &Value, path: &str) -> Result<Schema, Declarative
     // Exactly one of type / enum / const supplies the base.
     let bases: Vec<&str> = ["type", "enum", "const"]
         .into_iter()
-        .filter(|k| get(n, k).is_some())
+        .filter(|k| n.get(k).is_some())
         .collect();
     if bases.len() != 1 {
+        let got = if bases.len() > 1 {
+            format!(" (got {})", bases.join(" + "))
+        } else {
+            String::new()
+        };
         return Err(err(format!(
-            "{path}: a schema needs exactly one of type / enum / const"
+            "{path}: a schema needs exactly one of type / enum / const{got}"
         )));
     }
 
@@ -176,10 +124,10 @@ pub fn compile_schema_v2(node: &Value, path: &str) -> Result<Schema, Declarative
 
     // Wrappers outward: (nullable is applied by `compile_typed` for the null union),
     // then `default`, then the stored `description`.
-    if get(n, "default").is_some() {
+    if n.get("default").is_some() {
         schema = Schema::Default(Box::new(schema));
     }
-    if let Some(description) = description_of(n, path)? {
+    if let Some(description) = yaml::description_of(n, path, err)? {
         schema = Schema::Described {
             inner: Box::new(schema),
             description,
@@ -188,24 +136,8 @@ pub fn compile_schema_v2(node: &Value, path: &str) -> Result<Schema, Declarative
     Ok(schema)
 }
 
-/// The `description:` annotation — a string, stored for `Finding.hint`.
-fn description_of(n: &serde_yaml::Mapping, path: &str) -> Result<Option<String>, DeclarativeError> {
-    match get(n, "description") {
-        None => Ok(None),
-        Some(v) => match v.as_str() {
-            Some(s) => Ok(Some(s.to_string())),
-            None => Err(err(format!("{path}.description must be a string"))),
-        },
-    }
-}
-
 fn compile_enum(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, DeclarativeError> {
-    let values = get(n, "enum").expect("base checked");
-    let strings: Option<Vec<String>> = values
-        .as_sequence()
-        .map(|seq| seq.iter().map(|v| v.as_str().map(str::to_string)).collect())
-        .unwrap_or(None);
-    match strings {
+    match strings(n, "enum") {
         Some(s) if !s.is_empty() => Ok(Schema::Enum(s)),
         _ => Err(err(format!(
             "{path}: enum must be a non-empty list of strings"
@@ -213,9 +145,9 @@ fn compile_enum(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, Declarati
     }
 }
 
-/// `const` — string | number | boolean, value-type validated (v2 drops v1's null).
+/// `const`: a string, number or boolean.
 fn compile_const(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, DeclarativeError> {
-    let value = match get(n, "const").expect("base checked") {
+    let value = match n.get("const").expect("base checked") {
         Value::String(s) => ConstValue::String(s.clone()),
         Value::Number(x) => ConstValue::Number(x.as_f64().unwrap_or(f64::NAN)),
         Value::Bool(b) => ConstValue::Bool(*b),
@@ -231,31 +163,29 @@ fn compile_const(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, Declarat
 
 const TYPE_NAMES: &[&str] = &["string", "number", "integer", "boolean", "array", "object"];
 
-/// Resolve the `type` keyword: a plain type name, or the two-element null union
-/// `[T, "null"]` → `(T, nullable)`. Any other union is outside the v2 subset.
+/// Resolve the `type` keyword: a type name, or the two-element null union, `[T, "null"]`
+/// or `["null", T]`, as `(T, nullable)`. Any other union is outside the subset.
 fn resolve_type<'a>(
     n: &'a serde_yaml::Mapping,
     path: &str,
 ) -> Result<(&'a str, bool), DeclarativeError> {
-    let ty = get(n, "type").expect("base checked");
+    let ty = n.get("type").expect("base checked");
     match ty {
         Value::String(t) if TYPE_NAMES.contains(&t.as_str()) => Ok((t, false)),
         Value::String(t) => Err(err(format!(
             "{path}: unsupported type '{t}' (string | number | integer | boolean | array | object)"
         ))),
         Value::Sequence(seq) => {
-            let parts: Option<Vec<&str>> = seq.iter().map(Value::as_str).collect();
-            if let Some(parts) = &parts
-                && parts.len() == 2
-                && parts[1] == "null"
-                && TYPE_NAMES.contains(&parts[0])
+            let others: Vec<&Value> = seq.iter().filter(|v| v.as_str() != Some("null")).collect();
+            if let ([base], 2) = (others.as_slice(), seq.len())
+                && let Some(base) = base.as_str()
+                && TYPE_NAMES.contains(&base)
             {
-                return Ok((seq[0].as_str().expect("checked"), true));
+                return Ok((base, true));
             }
             Err(err(format!(
-                "{path}: type {} is outside the supported v2 subset (only the two-element union [T, \"null\"])",
-                serde_json::to_string(&crate::frontmatter::yaml_to_json(ty.clone()))
-                    .unwrap_or_else(|_| "?".into())
+                "{path}: type {} is outside the supported v2 subset (a type union may only pair one base type with \"null\")",
+                render(Some(ty))
             )))
         }
         other => Err(err(format!(
@@ -292,8 +222,8 @@ fn compile_typed(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, Declarat
             )?;
             Schema::Number {
                 int: ty == "integer",
-                min: num(n, "minimum"),
-                max: num(n, "maximum"),
+                min: num(n, "minimum", path, err)?,
+                max: num(n, "maximum", path, err)?,
             }
         }
         "boolean" => {
@@ -313,15 +243,15 @@ fn compile_typed(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, Declarat
                 ],
                 path,
             )?;
-            let Some(items) = get(n, "items") else {
+            let Some(items) = n.get("items") else {
                 return Err(err(format!(
-                    "{path}: an array schema needs an 'items' schema"
+                    "{path}: an array schema needs an 'items' element schema"
                 )));
             };
             Schema::Array {
-                of: Box::new(compile_schema_v2(items, &format!("{path}[]"))?),
-                min: num(n, "minItems"),
-                max: num(n, "maxItems"),
+                of: Box::new(compile_schema_v2(items, &format!("{path}.items"))?),
+                min: num(n, "minItems", path, err)?,
+                max: num(n, "maxItems", path, err)?,
             }
         }
         "object" => {
@@ -348,19 +278,19 @@ fn compile_typed(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, Declarat
     })
 }
 
-/// `type: string` — the named `format` now COMPOSES with `minLength` / `maxLength` /
-/// `pattern`: each violated constraint reports
-/// its own issue.
+/// `type: string`. A named `format` composes with `minLength` / `maxLength` / `pattern`:
+/// each violated constraint reports its own issue.
 fn string_schema(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, DeclarativeError> {
-    let pattern = match get(n, "pattern").and_then(Value::as_str) {
+    let format = string(n, "format", path, err)?;
+    let min = num(n, "minLength", path, err)?;
+    let max = num(n, "maxLength", path, err)?;
+    let pattern = match string(n, "pattern", path, err)? {
         Some(src) => Some(
             Regex::new(src).map_err(|e| err(format!("{path}: invalid pattern /{src}/: {e}")))?,
         ),
         None => None,
     };
-    let min = num(n, "minLength");
-    let max = num(n, "maxLength");
-    if let Some(format) = get(n, "format").and_then(Value::as_str) {
+    if let Some(format) = format {
         let Some(f) = StringFormat::from_name(format) else {
             return Err(err(format!(
                 "{path}: unsupported string format '{format}' (expected one of: {})",
@@ -381,93 +311,67 @@ fn string_schema(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, Declarat
     Ok(Schema::String { min, max, pattern })
 }
 
-/// `type: object` — `properties` / `required` / `additionalProperties`. Properties are
-/// optional unless listed in `required` (the JSON Schema inversion); each `required`
-/// entry must name a declared property; `additionalProperties: false` is strict.
+/// `type: object`: `properties` (required), `required` and `additionalProperties`. A
+/// property is optional unless listed in `required`, and each `required` entry must name
+/// a declared property. `additionalProperties: false` rejects unknown keys.
 fn object_schema(n: &serde_yaml::Mapping, path: &str) -> Result<Schema, DeclarativeError> {
-    let properties = match get(n, "properties") {
-        None => None,
-        Some(Value::Mapping(map)) => Some(map),
-        Some(other) => {
+    let properties = match n.get("properties") {
+        None => {
             return Err(err(format!(
-                "{path}: properties must be a mapping of key → schema (got {})",
-                describe(other)
+                "{path}: an object schema needs a 'properties' map of key → schema"
+            )));
+        }
+        Some(Value::Mapping(map)) => map,
+        Some(_) => {
+            return Err(err(format!(
+                "{path}.properties must be a mapping of key → schema"
             )));
         }
     };
 
-    let required: Vec<String> = match get(n, "required") {
+    let required: Vec<String> = match n.get("required") {
         None => Vec::new(),
-        Some(v) => {
-            let names: Option<Vec<String>> = v
-                .as_sequence()
-                .map(|seq| seq.iter().map(|e| e.as_str().map(str::to_string)).collect())
-                .unwrap_or(None);
-            names
-                .ok_or_else(|| err(format!("{path}: required must be a list of property names")))?
-        }
+        Some(_) => strings(n, "required")
+            .ok_or_else(|| err(format!("{path}.required must be a list of property names")))?,
     };
     for name in &required {
-        let declared = properties.is_some_and(|map| get(map, name).is_some());
-        if !declared {
+        if properties.get(name).is_none() {
             return Err(err(format!(
-                "{path}: required lists '{name}', which is not a declared property"
+                "{path}.required names '{name}', which is not declared in properties"
             )));
         }
     }
 
-    let strict = match get(n, "additionalProperties") {
+    let strict = match n.get("additionalProperties") {
         None => false,
-        Some(v) => !v
-            .as_bool()
-            .ok_or_else(|| err(format!("{path}: additionalProperties must be a boolean")))?,
+        Some(Value::Bool(b)) => !b,
+        Some(_) => {
+            return Err(err(format!(
+                "{path}.additionalProperties must be a boolean in the v2 subset (a schema form is not supported)"
+            )));
+        }
     };
 
-    let mut fields = Vec::new();
-    if let Some(map) = properties {
-        fields.reserve(map.len());
-        for (key, value) in map {
-            let Some(key) = key.as_str() else {
-                return Err(err(format!("{path}: property keys must be strings")));
-            };
-            let mut field = compile_schema_v2(value, &format!("{path}.{key}"))?;
-            if !required.iter().any(|r| r == key) {
-                field = Schema::Optional(Box::new(field));
-            }
-            fields.push((key.to_string(), field));
+    let mut fields = Vec::with_capacity(properties.len());
+    for (key, value) in properties {
+        let Some(key) = key.as_str() else {
+            return Err(err(format!("{path}: property keys must be strings")));
+        };
+        let mut field = compile_schema_v2(value, &format!("{path}.{key}"))?;
+        if !required.iter().any(|r| r == key) {
+            field = Schema::Optional(Box::new(field));
         }
+        fields.push((key.to_string(), field));
     }
     Ok(Schema::Object { fields, strict })
 }
 
-/// Compile the v2 `frontmatter:` block — itself a schema node, required to be an
-/// explicit `type: object` (what makes the block literal JSON Schema).
-pub fn compile_frontmatter_v2(fm: &Value) -> Result<Schema, DeclarativeError> {
-    let Value::Mapping(node) = fm else {
-        return Err(err(format!(
-            "frontmatter: a v2 frontmatter must be a schema node with 'type: object' (got {})",
-            describe(fm)
-        )));
-    };
-    if get(node, "type").and_then(Value::as_str) != Some("object") {
-        // Surface the sharper per-key rejection (a v1 `fields:` / `strict:` gets its
-        // migration hint) before the blunt root-shape error.
-        check_keys(
-            node,
-            &[
-                "type",
-                "properties",
-                "required",
-                "additionalProperties",
-                "description",
-                "default",
-            ],
-            "frontmatter",
-        )?;
-        return Err(err(
-            "frontmatter: a v2 frontmatter must be a schema node with explicit 'type: object'"
-                .into(),
-        ));
+/// Compile the `frontmatter:` block: a schema node that must be an explicit
+/// `type: object`, as the TS `compileObjectSchemaV2` requires.
+pub(super) fn compile_frontmatter_v2(fm: &Value) -> Result<Schema, DeclarativeError> {
+    let is_object = matches!(fm, Value::Mapping(node) if node.get("type").and_then(Value::as_str) == Some("object"));
+    if !is_object {
+        return Err(err("frontmatter: a v2 frontmatter is an object schema — a mapping with an explicit 'type: object' (plus 'properties' / 'required' / 'additionalProperties'); the v1 'strict' / 'fields' form is not v2 (markdown-contract migrate rewrites v1 files)".into()));
     }
     compile_schema_v2(fm, "frontmatter")
 }
@@ -589,7 +493,7 @@ mod tests {
         );
         assert_eq!(
             msg(compile("type: array")),
-            "schema: an array schema needs an 'items' schema"
+            "schema: an array schema needs an 'items' element schema"
         );
     }
 
@@ -615,31 +519,31 @@ mod tests {
     fn v1_spellings_get_migration_hints() {
         assert_eq!(
             msg(compile("type: object\nfields:\n  id: { type: string }")),
-            "schema: 'fields' is the v1 spelling — mcVersion 2 uses 'properties'"
+            "schema: 'fields' is the v1 spelling — v2 uses 'properties' (markdown-contract migrate rewrites v1 files)"
         );
         assert_eq!(
             msg(compile("type: array\nof: { type: string }")),
-            "schema: 'of' is the v1 spelling — mcVersion 2 uses 'items'"
+            "schema: 'of' is the v1 spelling — v2 uses 'items' (markdown-contract migrate rewrites v1 files)"
         );
         assert_eq!(
             msg(compile("type: object\nstrict: true")),
-            "schema: 'strict' is the v1 spelling — mcVersion 2 uses 'additionalProperties: false'"
+            "schema: 'strict' is the v1 spelling — v2 uses 'additionalProperties: false' (markdown-contract migrate rewrites v1 files)"
         );
         assert_eq!(
             msg(compile("type: number\nint: true")),
-            "schema: 'int' is the v1 spelling — mcVersion 2 uses 'type: integer'"
+            "schema: 'int' is the v1 spelling — v2 uses 'type: integer' (markdown-contract migrate rewrites v1 files)"
         );
         assert_eq!(
             msg(compile("type: string\nnullable: true")),
-            "schema: 'nullable' is the v1 spelling — mcVersion 2 uses 'type: [T, \"null\"]'"
+            "schema: 'nullable' is the v1 spelling — v2 uses a [T, \"null\"] type union (markdown-contract migrate rewrites v1 files)"
         );
         assert_eq!(
             msg(compile("type: string\noptional: true")),
-            "schema: 'optional' is the v1 spelling — mcVersion 2 uses 'required' (a property is optional unless listed there)"
+            "schema: 'optional' is the v1 spelling — v2 uses omission from 'required' (markdown-contract migrate rewrites v1 files)"
         );
         assert_eq!(
             msg(compile("type: string\nmin: 3")),
-            "schema: 'min' is the v1 spelling — mcVersion 2 uses 'minLength' (string), 'minimum' (number), or 'minItems' (array)"
+            "schema: 'min' is the v1 spelling — v2 uses 'minLength' / 'minimum' / 'minItems' (markdown-contract migrate rewrites v1 files)"
         );
     }
 
@@ -671,11 +575,56 @@ mod tests {
         assert!(compile("type: string\nenum: [a]").is_err());
         // Union shapes outside [T, "null"].
         assert!(msg(compile("type: [string, number]")).contains("outside the supported v2 subset"));
-        assert!(msg(compile("type: ['null', string]")).contains("outside the supported v2 subset"));
+        // `null` may come first or second, as in TS.
+        let s = compile("type: ['null', string]").unwrap();
+        assert!(s.safe_parse(Some(&json!(null))).is_ok());
+        assert!(s.safe_parse(Some(&json!(1))).is_err());
+        assert!(msg(compile("type: ['null', 'null']")).contains("outside the supported v2 subset"));
         assert!(compile("type: wibble").is_err());
         assert!(compile("type: string\nformat: zipcode").is_err());
         let v: Value = serde_yaml::from_str("- a").unwrap();
         assert!(compile_schema_v2(&v, "schema").is_err());
+        assert_eq!(
+            msg(compile("type: string\nenum: [a]")),
+            "schema: a schema needs exactly one of type / enum / const (got type + enum)"
+        );
+    }
+
+    // Each known key must have the type TS requires.
+    #[test]
+    fn known_keys_are_type_checked() {
+        assert_eq!(
+            msg(compile("type: string\nminLength: '3'")),
+            "schema.minLength must be a number"
+        );
+        assert_eq!(
+            msg(compile("type: integer\nmaximum: ten")),
+            "schema.maximum must be a number"
+        );
+        assert_eq!(
+            msg(compile(
+                "type: array\nitems: { type: string }\nmaxItems: []"
+            )),
+            "schema.maxItems must be a number"
+        );
+        assert_eq!(
+            msg(compile("type: string\nformat: [email]")),
+            "schema.format must be a string"
+        );
+        assert_eq!(
+            msg(compile("type: string\npattern: 3")),
+            "schema.pattern must be a string"
+        );
+        assert_eq!(
+            msg(compile("type: object")),
+            "schema: an object schema needs a 'properties' map of key → schema"
+        );
+        assert_eq!(
+            msg(compile(
+                "type: object\nproperties: {}\nadditionalProperties: {}"
+            )),
+            "schema.additionalProperties must be a boolean in the v2 subset (a schema form is not supported)"
+        );
     }
 
     // `description` is STORED (needed for Finding.hint) and validation-transparent.
@@ -710,15 +659,7 @@ mod tests {
         let missing: Value = serde_yaml::from_str("properties:\n  id: { type: string }").unwrap();
         assert_eq!(
             compile_frontmatter_v2(&missing).unwrap_err().to_string(),
-            "frontmatter: a v2 frontmatter must be a schema node with explicit 'type: object'"
-        );
-
-        // A v1-shaped frontmatter gets the migration hint, not the blunt shape error.
-        let v1: Value =
-            serde_yaml::from_str("strict: true\nfields:\n  id: { type: string }").unwrap();
-        assert_eq!(
-            compile_frontmatter_v2(&v1).unwrap_err().to_string(),
-            "frontmatter: 'strict' is the v1 spelling — mcVersion 2 uses 'additionalProperties: false'"
+            "frontmatter: a v2 frontmatter is an object schema — a mapping with an explicit 'type: object' (plus 'properties' / 'required' / 'additionalProperties'); the v1 'strict' / 'fields' form is not v2 (markdown-contract migrate rewrites v1 files)"
         );
     }
 
@@ -728,7 +669,7 @@ mod tests {
             msg(compile(
                 "type: object\nproperties:\n  id: { type: string }\nrequired: [id, missing]"
             )),
-            "schema: required lists 'missing', which is not a declared property"
+            "schema.required names 'missing', which is not declared in properties"
         );
         assert!(compile("type: object\nrequired: [id]").is_err()); // no properties at all
     }
