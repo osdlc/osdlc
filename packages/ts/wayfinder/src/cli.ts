@@ -15,6 +15,7 @@
 
 import { EXIT, defineCli, processIo, type CliIo } from '@osdlc/cli-tool'
 import { runDevCli } from '@osdlc/cli-tool/devlink'
+import { installGroupSignalForwarding } from '@osdlc/command-seam'
 import {
   tasks as allTasks,
   type Catalog,
@@ -458,6 +459,11 @@ export async function main(
   home: string = homeDir(),
   io: CliIo = processIo,
 ): Promise<number> {
+  // Each probe runs in its own process group, so the terminal's Ctrl-C does
+  // not reach it. On SIGINT, SIGTERM or SIGHUP this kills every live probe
+  // group before wayfinder exits. Only the real process installs it: a test
+  // that passes its own io keeps the process's signal handling as it was.
+  if (io === processIo) installGroupSignalForwarding()
   // Every stderr line is human text that can quote repository content.
   io = safeStderr(io)
   // Subcommands are matched before the flags are parsed, because their
