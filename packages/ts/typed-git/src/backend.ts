@@ -46,7 +46,7 @@ import {
   type DiffTreeOptions,
   type FetchOptions,
   type ForEachRefOptions,
-  type ForceLease,
+  type GcOptions,
   type GitVerb,
   type GrepOptions,
   type InitOptions,
@@ -60,8 +60,12 @@ import {
   type MergeTreeOptions,
   type MergeTreeOutcome,
   type NumstatEntry,
+  type PushOptions,
   type PushPorcelainOptions,
   type PushReport,
+  type RemoteSetBranchesOptions,
+  type RemoteSetHeadOptions,
+  type WorktreeAddOptions,
   type RebaseOptions,
   type RebaseOutcome,
   type RemoteGetUrlOptions,
@@ -118,6 +122,7 @@ export interface GitCallOptions {
  */
 export type GitRequest =
   | { kind: 'showAtRev'; rev: string; relPath: string }
+  | { kind: 'showAtRevChecked'; rev: string; relPath: string }
   | { kind: 'revParse'; args: string[] }
   | { kind: 'resolveRef'; ref: string }
   | { kind: 'headRef' }
@@ -153,6 +158,7 @@ export type GitRequest =
   | ({ kind: 'diffNameOnly' } & DiffNameOnlyOptions)
   | ({ kind: 'diffStat' } & DiffStatOptions)
   | ({ kind: 'diffCheck' } & DiffCheckOptions)
+  | { kind: 'hasStagedChanges' }
   | ({ kind: 'diffNameStatus' } & DiffNameStatusOptions)
   | ({ kind: 'log' } & LogOptions)
   | ({ kind: 'lsTree'; rev: string } & LsTreeOptions)
@@ -172,24 +178,13 @@ export type GitRequest =
   | { kind: 'configRemoveSection'; name: string }
   | ({ kind: 'init'; path?: string | undefined } & InitOptions)
   | ({ kind: 'clone'; url: string; dest?: string | undefined } & CloneOptions)
-  | {
-      kind: 'push'
-      remote: string
-      refspec: string
-      forceWithLease?: boolean | ForceLease | undefined
-    }
+  | ({ kind: 'push'; remote: string; refspec: string } & PushOptions)
   | ({ kind: 'pushPorcelain'; remote: string; refspec: string | string[] } & PushPorcelainOptions)
   | { kind: 'resetHard'; rev: string }
   | ({ kind: 'clean' } & CleanOptions)
   | { kind: 'deleteBranch'; name: string; force?: boolean | undefined }
   | { kind: 'deleteRef'; ref: string; expected: string }
-  | {
-      kind: 'worktreeAdd'
-      path: string
-      branch?: string | undefined
-      startPoint?: string | undefined
-      detach?: boolean | undefined
-    }
+  | ({ kind: 'worktreeAdd'; path: string } & WorktreeAddOptions)
   | { kind: 'worktreeRemove'; path: string; force?: boolean | undefined }
   | ({ kind: 'worktreeMove'; from: string; to: string } & WorktreeMoveOptions)
   | { kind: 'worktreePrune' }
@@ -207,6 +202,9 @@ export type GitRequest =
   | ({ kind: 'remoteGetUrls'; name: string } & RemoteGetUrlOptions)
   | { kind: 'remoteHead'; remote: string }
   | { kind: 'remoteAdd'; name: string; url: string }
+  | ({ kind: 'remoteSetHead'; remote: string } & RemoteSetHeadOptions)
+  | ({ kind: 'remoteSetBranches'; remote: string; branches: string[] } & RemoteSetBranchesOptions)
+  | ({ kind: 'gc' } & GcOptions)
   | { kind: 'raw'; argv: string[]; input?: string | undefined; checked?: boolean | undefined }
 
 /**
@@ -216,6 +214,7 @@ export type GitRequest =
  */
 export interface GitResults {
   showAtRev: string | null
+  showAtRevChecked: string
   revParse: string | null
   resolveRef: string | null
   headRef: string | null
@@ -245,6 +244,7 @@ export interface GitResults {
   diffNameOnly: string[]
   diffStat: string
   diffCheck: DiffCheckResult
+  hasStagedChanges: boolean
   diffNameStatus: DiffEntry[]
   log: string
   lsTree: TreeEntry[]
@@ -284,6 +284,9 @@ export interface GitResults {
   remoteGetUrls: string[]
   remoteHead: string | null
   remoteAdd: void
+  remoteSetHead: void
+  remoteSetBranches: void
+  gc: void
   raw: CommandResult
 }
 
@@ -325,6 +328,8 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
   switch (request.kind) {
     case 'showAtRev':
       return v.showAtRev(request.rev, request.relPath)
+    case 'showAtRevChecked':
+      return v.showAtRevChecked(request.rev, request.relPath)
     case 'revParse':
       return v.revParse(...request.args)
     case 'resolveRef':
@@ -383,6 +388,8 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
       return v.diffStat(request)
     case 'diffCheck':
       return v.diffCheck(request)
+    case 'hasStagedChanges':
+      return v.hasStagedChanges()
     case 'diffNameStatus':
       return v.diffNameStatus(request)
     case 'log':
@@ -414,9 +421,7 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
     case 'clone':
       return v.clone(request.url, request.dest, request)
     case 'push':
-      return v.push(request.remote, request.refspec, {
-        forceWithLease: request.forceWithLease,
-      })
+      return v.push(request.remote, request.refspec, request)
     case 'pushPorcelain':
       return v.pushPorcelain(request.remote, request.refspec, request)
     case 'resetHard':
@@ -463,6 +468,12 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
       return v.remoteHead(request.remote)
     case 'remoteAdd':
       return v.remoteAdd(request.name, request.url)
+    case 'remoteSetHead':
+      return v.remoteSetHead(request.remote, request)
+    case 'remoteSetBranches':
+      return v.remoteSetBranches(request.remote, request.branches, request)
+    case 'gc':
+      return v.gc(request)
     case 'raw': {
       const verb: GitVerb<CommandResult> = {
         argv: request.argv,

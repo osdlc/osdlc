@@ -49,6 +49,7 @@ function call(client: Git | AsyncGit, name: string, args: unknown[]): unknown {
 /** One case per verb on the list: the verb and arguments with one `-` value. */
 const CASES: Array<[string, unknown[]]> = [
   ['showAtRev', ['-x', 'a.md']],
+  ['showAtRevChecked', ['-x', 'a.md']],
   ['resolveRef', ['-x']],
   ['symbolicRef', ['-x']],
   ['mergeBase', ['main', '-x']],
@@ -69,6 +70,8 @@ const CASES: Array<[string, unknown[]]> = [
   ['worktreeRemove', ['-x']],
   ['worktreeMove', ['/wt', '-x']],
   ['remoteAdd', ['origin', '--x']],
+  ['remoteSetHead', ['--x', { auto: true }]],
+  ['remoteSetBranches', ['--x', ['main']]],
   ['merge', ['-x']],
   ['rebase', ['-x']],
   ['mergeTree', ['main', '-x']],
@@ -108,6 +111,10 @@ const MORE_CASES: Array<[string, unknown[]]> = [
   ['worktreeAdd', ['/wt', { startPoint: '-x' }]],
   ['worktreeMove', ['-x', '/wt']],
   ['remoteAdd', ['-x', '/store.git']],
+  ['remoteSetHead', ['origin', { branch: '-x' }]],
+  ['remoteSetBranches', ['origin', ['main', '-x']]],
+  ['push', ['origin', '-x', { delete: true }]],
+  ['worktreeAdd', ['/wt', { resetBranch: 'b', startPoint: '-x' }]],
   ['mergeTree', ['-x', 'main']],
   ['log', [{ range: '-x' }]],
   ['log', [{ rev: 'main', notRefs: ['origin/main', '-x'] }]],
@@ -132,7 +139,7 @@ describe('leading-dash positionals', () => {
   test('the cases cover every guarded verb in verbs.ts', () => {
     const cased = new Set(CASES.map(([name]) => name))
     expect([...cased].sort()).toEqual([...guardedVerbs()].sort())
-    expect(cased.size).toBe(43)
+    expect(cased.size).toBe(46)
   })
 
   test.each([...CASES, ...MORE_CASES])('Git.%s refuses before spawning', (name, args) => {
