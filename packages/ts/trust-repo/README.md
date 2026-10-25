@@ -62,6 +62,10 @@ Any CLI tool gets its own store by name.
 that is empty, longer than 200 characters or holds a control character throws
 a `TypeError`.
 
+`home` defaults to `homeDir()`: `os.homedir()` when it is absolute, else the
+OS account's home. A relative `HOME` is treated as unset, so the store never
+lands inside the folder the tool runs in.
+
 A test passes its own `env` and `home`, so it never reads or writes the
 developer's real trust store. `dir` sets the store's directory directly and
 skips the `tool` and XDG lookup. Use it when a tool has its own environment
@@ -212,6 +216,14 @@ host and owner of the root's `origin` remote as `host/owner`. An entry is
 `my-org` does not match a clone from `gitlab.com/my-org`. Without an `ownerOf`
 the `owners` rule never matches.
 
+Owner trust believes the repository about itself. A git-backed `ownerOf`
+reads the remote URL the repository's own git config reports, and that
+config arrives with the directory. A folder unpacked from an archive, copied
+from a shared drive, or cloned by someone else can name any owner. So
+`owners` fits clones you made yourself. `paths` is the stronger form: it
+names where the repository is on your disk, which the repository cannot
+choose.
+
 ### Expanding paths
 
 `expandTrustPath(raw, home, { platform?, resolveRoot? })` is the `expandPath`
@@ -278,8 +290,8 @@ The experimental exports of `@osdlc/trust-repo`:
 `ExecGate`, `ExpandTrustPathOptions`, `PolicyBy`, `PolicyDecision`, `PolicyDecisionOptions`,
 `PolicyExecGate`, `ResolveExecGateArgs`, `TRUST_MARKER_DIR`, `TrustBy`, `TrustDecision`,
 `TrustGrant`, `TrustPlatform`, `TrustPolicy`, `TrustResult`, `TrustRules`, `TrustStore`,
-`TrustStoreOptions`, `WHOLE_REPO_SCOPE`, `expandTilde`, `expandTrustPath`, `normalizeTrustPath`,
-`pathGlobToRegExp`, `policyDecision`, `policyExecGate`, `resolveExecGate`, `resolveTrustRoot`,
+`TrustStoreOptions`, `WHOLE_REPO_SCOPE`, `expandTilde`, `expandTrustPath`, `homeDir`,
+`normalizeTrustPath`, `pathGlobToRegExp`, `policyDecision`, `policyExecGate`, `resolveExecGate`, `resolveTrustRoot`,
 `trustDecision`, `trustStore`, `trustStoreDir`, `withheldHint`, `xdgHome`
 
 The experimental exports of `@osdlc/trust-repo/git`:

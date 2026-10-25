@@ -654,10 +654,14 @@ async function settingsLines(): Promise<string[]> {
  */
 function copy(task: Task): boolean {
   const dir = /^[\w.\-/@+]+$/.test(task.cwd) ? task.cwd : `'${task.cwd.replace(/'/g, "'\\''")}'`
-  const text = task.cwd === '.' ? task.display : `cd ${dir} && ${task.display}`
+  // The text shown, so a control character in it cannot reach the paste.
+  const text = terminalSafe(task.cwd === '.' ? task.display : `cd ${dir} && ${task.display}`)
   const bin = process.platform === 'darwin' ? 'pbcopy' : 'xclip'
   const args = process.platform === 'darwin' ? [] : ['-selection', 'clipboard']
-  const res = spawnRunner(bin).run(args, { input: text, cwd: state.root })
+  const res = spawnRunner(bin, { absolutePathOnly: true }).run(args, {
+    input: text,
+    cwd: state.root,
+  })
   return res.exitCode === 0
 }
 

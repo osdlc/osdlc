@@ -34,20 +34,20 @@
  */
 
 import { readdir, rm, rmdir, stat } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { dirname } from 'node:path'
 
 import { BIN } from './app.ts'
 import { cacheDir, legacyCacheDir } from './cache.ts'
 import { LEGACY_TRUST_STORE_TOOL, TRUST_STORE_TOOL, configLocations } from './config.ts'
 import { EXIT, type CliIo } from '@osdlc/cli-tool'
-import { trustStoreDir } from '@osdlc/trust-repo'
+import { homeDir, trustStoreDir } from '@osdlc/trust-repo'
+import { jsonText } from './terminal-text.ts'
 
 /** `CliIo` plus the environment this command needs injected. */
 export interface CleanCommandIO extends CliIo {
   /** Defaults to `process.env`. Supplies the XDG overrides. */
   env?: Record<string, string | undefined>
-  /** Defaults to `os.homedir()`. The base for every non-XDG path. */
+  /** Defaults to `homeDir()` from `@osdlc/trust-repo`. The base for every non-XDG path. */
   home?: string
 }
 
@@ -231,7 +231,7 @@ export async function runCleanCommand(
   }
 
   const env = io.env ?? process.env
-  const home = io.home ?? homedir()
+  const home = io.home ?? homeDir()
   const stores = storesFor(env, home)
 
   // A bare `clean` prints the report and removes nothing.
@@ -243,7 +243,7 @@ export async function runCleanCommand(
       reports.push(reportOf(store, bytes, false))
     }
     if (parsed.json) {
-      io.stdout(`${JSON.stringify({ stores: reports }, null, 2)}\n`)
+      io.stdout(`${jsonText({ stores: reports }, 2)}\n`)
       return EXIT.ok
     }
     const lines: string[] = [`${toolName} stores three things outside your repositories:\n`]
@@ -308,7 +308,7 @@ export async function runCleanCommand(
 
   // One document, printed once, so a --json caller parses a single object
   // whether the run finished or stopped on a failure.
-  if (parsed.json) io.stdout(`${JSON.stringify({ stores: reports }, null, 2)}\n`)
+  if (parsed.json) io.stdout(`${jsonText({ stores: reports }, 2)}\n`)
   if (failed) return EXIT.error
 
   if (removed > 0 && parsed.chosen.has('trust')) {

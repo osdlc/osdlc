@@ -11,6 +11,7 @@ import type {
 import { paramShape } from '@osdlc/system-model/params'
 
 import { groupOf, groupRank, runnerLabel } from '../groups.ts'
+import { terminalSafe } from '../terminal-text.ts'
 
 import { $, ALL, OPEN, persistRunnerOrder, SEP, SHUT, state } from './state.ts'
 import type { Row, TreeNode } from './state.ts'
@@ -214,7 +215,10 @@ function quoteDir(dir: string): string {
  * because anything that spawns a task already uses the directory.
  */
 export function copyText(task: Task): string {
-  return task.cwd === '.' ? task.display : 'cd ' + quoteDir(task.cwd) + ' && ' + task.display
+  // Control characters replaced, so none can reach the paste.
+  return terminalSafe(
+    task.cwd === '.' ? task.display : 'cd ' + quoteDir(task.cwd) + ' && ' + task.display,
+  )
 }
 
 /** What Run does, stated up front: the page ends and the task takes the terminal. */

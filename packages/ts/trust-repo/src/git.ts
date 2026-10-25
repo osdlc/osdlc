@@ -75,7 +75,10 @@ const SHORTCUT_REMOTE = /^(?:github|gitlab|bitbucket|gist|sourcehut):/
  * `git` is for tests; it defaults to the real binary.
  * @experimental
  */
-export function originOwner(root: string, git: CommandRunner = spawnRunner('git')): string | null {
+export function originOwner(
+  root: string,
+  git: CommandRunner = spawnRunner('git', { absolutePathOnly: true }),
+): string | null {
   const res = withoutGitOverrides(() =>
     new Git(root, { runner: safeGit(git) }).try.remoteGetUrl('origin'),
   )

@@ -11,8 +11,6 @@
  * the same one `collect` makes from the profile.
  */
 
-import { spawnRunnerAsync } from '@osdlc/command-seam'
-
 import {
   CACHE_FORMAT_VERSION,
   EXEC_MAX_AGE_MS,
@@ -39,7 +37,7 @@ import { MAX_FINGERPRINT_FILES, fingerprint } from './fingerprint.ts'
 import { CATALOG_SCHEMA_VERSION, type Catalog, type RunnerReport } from './model.ts'
 import type { Registry } from './registry.ts'
 import type { ProbeCost, ProjectProfile } from './tool.ts'
-import { which as whichOnPath } from './which.ts'
+import { defaultRunner, which as whichOnPath } from './which.ts'
 
 /**
  * Why a cached entry was not usable as it is:
@@ -126,7 +124,7 @@ export async function readCachedCatalog(
 
   try {
     const allowExec = options.allowExec ?? false
-    const makeRunner = options.makeRunner ?? ((binary: string) => spawnRunnerAsync(binary))
+    const makeRunner = options.makeRunner ?? defaultRunner
     const which = options.which ?? whichOnPath
     const signal = options.signal ?? new AbortController().signal
     const files = stateFor(profile, makeRunner, signal).lister

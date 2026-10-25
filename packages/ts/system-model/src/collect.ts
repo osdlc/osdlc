@@ -42,7 +42,7 @@ import { manifestsOf, markersOf, type Registry } from './registry.ts'
 import { choosePackageManagers } from './roles.ts'
 import { synthesizedRunners } from './synthesized.ts'
 import type { Package, ProjectProfile, RunnerRole } from './tool.ts'
-import { which as whichOnPath } from './which.ts'
+import { defaultRunner, which as whichOnPath } from './which.ts'
 
 /** One runner to run: a tool's runner role, or a synthesized role group. */
 export interface RunnerSpec {
@@ -141,7 +141,7 @@ export async function collectRunners(
   options: InternalCollectOptions = {},
 ): Promise<Catalog> {
   const allowExec = options.allowExec ?? false
-  const makeRunner = options.makeRunner ?? ((binary: string) => spawnRunnerAsync(binary))
+  const makeRunner = options.makeRunner ?? defaultRunner
   const which = options.which ?? whichOnPath
   const signal = options.signal ?? new AbortController().signal
   const state = stateFor(profile, makeRunner, signal)

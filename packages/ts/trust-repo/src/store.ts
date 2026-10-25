@@ -80,11 +80,11 @@
 
 import { createHash } from 'node:crypto'
 import { chmod, mkdir, readdir, readFile, rm, rmdir, stat } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 
 import { atomicWriteAsync } from '@osdlc/etag-write'
 
+import { homeDir } from './home.ts'
 import { resolveTrustRoot } from './paths.ts'
 import { xdgHome } from './xdg.ts'
 
@@ -104,7 +104,7 @@ export const TRUST_MARKER_DIR = 'trusted'
 export function trustStoreDir(
   tool: string,
   env: Record<string, string | undefined> = process.env,
-  home: string = homedir(),
+  home: string = homeDir(),
 ): string {
   const stateHome = xdgHome(env, home, 'XDG_STATE_HOME', '.local', 'state')
   return join(stateHome, tool, TRUST_MARKER_DIR)
@@ -181,7 +181,7 @@ export interface TrustStoreOptions {
   tool: string
   /** Injected for tests; defaults to `process.env`. */
   env?: Record<string, string | undefined>
-  /** Injected for tests; defaults to `os.homedir()`. */
+  /** Injected for tests; defaults to {@link homeDir}. */
   home?: string
   /**
    * Sets the store's directory directly and skips the `tool` and XDG lookup.
@@ -303,7 +303,7 @@ async function entries(dir: string): Promise<string[]> {
 export function trustStore(opts: TrustStoreOptions): TrustStore {
   const { tool } = opts
   const env = opts.env ?? process.env
-  const home = opts.home ?? homedir()
+  const home = opts.home ?? homeDir()
   const override = opts.dir
 
   const dir = (): string => override ?? trustStoreDir(tool, env, home)

@@ -1,11 +1,12 @@
 /**
  * Repository text never reaches the terminal as a control sequence: the
- * helper itself, then `--list`, `query`, the terminal UI and stderr, with
- * `--json` printed exactly.
+ * helpers themselves, then `--list`, `query`, `trust`, `config`, `providers`,
+ * the `--serve` summary, the terminal UI, the copied text and
+ * stderr, with `--json` keeping every value exact.
  */
 
 import { afterAll, beforeEach, describe, expect, test } from 'vitest'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -13,8 +14,10 @@ import { captureIo } from '@osdlc/cli-tool'
 import type { Catalog, Task } from '@osdlc/system-model/detect'
 
 import { main } from '../src/cli.ts'
-import { safeStderr, terminalSafe } from '../src/terminal-text.ts'
+import { startupSummary } from '../src/serve.ts'
+import { jsonText, safeStderr, safeStdout, terminalSafe } from '../src/terminal-text.ts'
 import { frame, recompute, state } from '../src/tui.ts'
+import { copyText } from '../src/web/view.ts'
 
 /** OSC 52: put "echo hi" on the clipboard. */
 const CLIPBOARD = '\u001b]52;c;ZWNobyBoaQ==\u0007'
@@ -23,8 +26,13 @@ const TITLE = '\u001b]0;pwned\u001b\\'
 /** C1 CSI, then DEL. */
 const C1 = '\u009b2J\u007f'
 
-/** Any C0 except tab and newline, DEL, or C1. */
-const RAW_CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/
+/** Right-to-left override and first-strong isolate: text that reads in another order. */
+const BIDI = '\u202e\u2066'
+
+/** Any C0 except tab and newline, DEL, C1, or a bidi control. */
+const RAW_CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/
+/** What `JSON.stringify` leaves raw: DEL, C1 and the bidi controls. */
+const RAW_IN_JSON = /[\u007f-\u009f\u202a-\u202e\u2066-\u2069]/
 
 const dirs: string[] = []
 afterAll(async () => {
@@ -51,6 +59,30 @@ describe('terminalSafe', () => {
   test('single-line output loses tab, newline and CR; multiline keeps tab and newline', () => {
     expect(terminalSafe('a\tb\nc\rd')).toBe('a�b�c�d')
     expect(terminalSafe('a\tb\nc\rd', { multiline: true })).toBe('a\tb\nc�d')
+  })
+
+  test('replaces bidi embedding, override and isolate characters', () => {
+    const all = '\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069'
+    expect(terminalSafe(`a${all}b`)).toBe(`a${'�'.repeat(9)}b`)
+    expect(terminalSafe(`a${BIDI}b`, { multiline: true })).toBe('a��b')
+  })
+
+  test('jsonText escapes DEL, C1 and bidi, and parses to the same value', () => {
+    const value = { name: `x${C1}${BIDI}${CLIPBOARD}`, n: [1, 'é'] }
+    for (const indent of [undefined, 2]) {
+      const text = jsonText(value, indent)
+      expect(text).not.toMatch(RAW_IN_JSON)
+      expect(text).not.toMatch(RAW_CONTROL)
+      expect(JSON.parse(text)).toEqual(value)
+    }
+    expect(jsonText('\u007f\u009b\u202e')).toBe('"\\u007f\\u009b\\u202e"')
+  })
+
+  test('safeStdout cleans stdout and keeps lines', () => {
+    const io = captureIo()
+    safeStdout(io).stdout(`a ${CLIPBOARD}\tb\n`)
+    expect(io.out).not.toMatch(RAW_CONTROL)
+    expect(io.out.endsWith('\tb\n')).toBe(true)
   })
 
   test('leaves printable text, including non-ASCII, alone', () => {
@@ -101,12 +133,101 @@ describe('CLI output', () => {
     expect(r.out).not.toMatch(RAW_CONTROL)
   })
 
-  test('--json keeps the name exactly', async () => {
+  test('--json keeps the name exactly, with no raw DEL, C1 or bidi character', async () => {
     const r = await run(['--json'])
+    expect(r.out).not.toMatch(RAW_CONTROL)
     const tasks = (
       JSON.parse(r.out) as { reports: Array<{ tasks: Array<{ path: string[] }> }> }
     ).reports.flatMap((rep) => rep.tasks)
     expect(tasks.some((t) => t.path.includes(name))).toBe(true)
+  })
+
+  test('query --json has no raw DEL, C1 or bidi character', async () => {
+    const r = await run(['query', 'build', '--json'])
+    expect(r.out).not.toMatch(RAW_CONTROL)
+    expect(JSON.stringify(JSON.parse(r.out))).toContain('build')
+  })
+})
+
+describe('trust, config and providers output', () => {
+  /** A repository whose directory name, config key and config value carry escapes. */
+  async function hostile(): Promise<{ dir: string; home: string }> {
+    const parent = await temp()
+    const dir = join(parent, `repo${TITLE}${BIDI}`)
+    await mkdir(dir)
+    await writeFile(
+      join(dir, 'package.json'),
+      JSON.stringify({ name: 'esc', scripts: { x: 'true' } }),
+    )
+    await writeFile(
+      join(dir, 'wayfinder.config.json'),
+      JSON.stringify({ [`key${CLIPBOARD}`]: 1, excludePaths: [`dir${C1}${BIDI}`] }),
+    )
+    return { dir, home: await temp() }
+  }
+
+  async function run(argv: string[], dir: string, home: string) {
+    const io = captureIo()
+    const code = await main(argv, {}, home, io)
+    return { code, out: io.out, err: io.err, dir }
+  }
+
+  test.each([
+    [['trust', '--show']],
+    [['trust']],
+    [['trust', '--list']],
+    [['trust', '--show', '--json']],
+    [['config', 'list']],
+    [['config', 'list', '--json']],
+    [['config', 'path']],
+    [['config', 'get', 'excludePaths']],
+    [['providers']],
+    [['providers', '--json']],
+  ])('%j prints no control character from the repository', async (argv) => {
+    const { dir, home } = await hostile()
+    // Trust first, so `trust --list` has the hostile path to print.
+    await run(['trust', '-C', dir], dir, home)
+    const r = await run([...argv, '-C', dir], dir, home)
+    expect(r.out).not.toMatch(RAW_CONTROL)
+    expect(r.err).not.toMatch(RAW_CONTROL)
+  })
+})
+
+describe('the --serve summary', () => {
+  test('prints the root and runner names without control characters', () => {
+    const text = startupSummary('http://127.0.0.1:1', {
+      catalog: {
+        root: `/tmp/repo${TITLE}${BIDI}`,
+        generatedAt: new Date(0).toISOString(),
+        discovery: 'walk',
+        allowExec: false,
+        reports: [
+          {
+            runner: `npm${C1}`,
+            status: 'ok',
+            chain: [],
+            tasks: [],
+            skippedForExec: false,
+            diagnostics: [],
+          },
+        ],
+      },
+      cache: [{ runner: `just${CLIPBOARD}`, state: 'stale', ageMs: 1000 }],
+    } as unknown as Parameters<typeof startupSummary>[1])
+    expect(text).toContain('root')
+    expect(text).toContain('cached')
+    expect(text).not.toMatch(RAW_CONTROL)
+  })
+})
+
+describe('copied text', () => {
+  test('the web copy text has no control characters', () => {
+    const t = {
+      display: `npm run x${CLIPBOARD}\u001b[201~; rm -rf ~`,
+      cwd: `pkg${BIDI}`,
+    } as unknown as Task
+    expect(copyText(t)).not.toMatch(RAW_CONTROL)
+    expect(copyText({ ...t, cwd: '.' })).not.toMatch(RAW_CONTROL)
   })
 })
 

@@ -61,6 +61,10 @@ export const DEFAULT_EXCLUDES: readonly string[] = [
  * so it is turned off. The other config keys that run commands (hooks,
  * `diff.external`, `filter.*`, `core.sshCommand`, `core.pager`) do not apply
  * to `rev-parse` or `ls-files` without a TTY.
+ *
+ * Which `git` binary runs is a separate exposure. The default runner finds it
+ * on absolute PATH entries only (see `defaultRunner` in `which.ts`), so a
+ * `git` the repository ships is never run.
  */
 const SAFE_GIT_CONFIG: readonly string[] = ['-c', 'core.fsmonitor=false']
 

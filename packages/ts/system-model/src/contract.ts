@@ -106,9 +106,13 @@ export interface DetectOptions {
    * `false` when `excludePaths` must be the whole list.
    */
   useBuiltinExcludes?: boolean | undefined
-  /** Build the runner for a binary. Defaults to `spawnRunnerAsync` from `@osdlc/command-seam`. */
+  /**
+   * Build the runner for a binary. Defaults to `spawnRunnerAsync` from
+   * `@osdlc/command-seam` with `absolutePathOnly`, so a bare name runs only
+   * from an absolute PATH entry.
+   */
   makeRunner?: ((binary: string) => AsyncCommandRunner) | undefined
-  /** PATH lookup. Defaults to a `node:fs` PATH walk. */
+  /** PATH lookup. Defaults to a walk of the absolute PATH entries. */
   which?: ((binary: string) => string | null) | undefined
   /** Ends every subprocess detection starts, git included, when aborted. */
   signal?: AbortSignal | undefined
@@ -136,9 +140,13 @@ export interface CollectOptions {
    * `RunnerRole.probe.timeoutMs`.
    */
   timeouts?: Readonly<Record<string, number>> | undefined
-  /** Build the runner for a binary. Defaults to `spawnRunnerAsync` from `@osdlc/command-seam`. */
+  /**
+   * Build the runner for a binary. Defaults to `spawnRunnerAsync` from
+   * `@osdlc/command-seam` with `absolutePathOnly`, so a bare name runs only
+   * from an absolute PATH entry.
+   */
   makeRunner?: ((binary: string) => AsyncCommandRunner) | undefined
-  /** PATH lookup. Defaults to a `node:fs` PATH walk. */
+  /** PATH lookup. Defaults to a walk of the absolute PATH entries. */
   which?: ((binary: string) => string | null) | undefined
   /** Ends every subprocess a runner starts, git included, when aborted. */
   signal?: AbortSignal | undefined

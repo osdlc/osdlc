@@ -768,6 +768,7 @@ export function resolveRunner(binary: string, injected?: CommandRunner | undefin
  *
  * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
  *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
+ * @param options - See {@link SpawnRunnerOptions}.
  * @returns A runner for that binary.
  *
  * @example
@@ -777,11 +778,66 @@ export function resolveRunner(binary: string, injected?: CommandRunner | undefin
  * if (r.exitCode === 0) console.log(r.stdout)
  * ```
  */
-export function spawnRunner(binary: string): CommandRunner {
+export function spawnRunner(binary: string, options: SpawnRunnerOptions = {}): CommandRunner {
   return {
     binary,
-    run: (argv, opts) => runSync(binary, argv, opts, false) as CommandResult,
+    run: (argv, opts) => {
+      const target = lookupBinary(binary, options, opts)
+      if (target === undefined) return spawnFailure(notOnAbsolutePath('spawnSync', binary))
+      return runSync(target, argv, opts, false) as CommandResult
+    },
   }
+}
+
+/**
+ * Options for {@link spawnRunner} and `spawnRunnerAsync`.
+ *
+ * @experimental
+ */
+export interface SpawnRunnerOptions {
+  /**
+   * Find a bare `binary` on absolute `PATH` entries only, and spawn the
+   * absolute path found. A relative or empty entry is looked up from the
+   * child's `cwd`, and a Windows spawn of a bare name searches `cwd` first,
+   * so without this a file planted in that folder can run in its place. Use
+   * it for a command run inside a folder you do not trust. Not found reads as
+   * a missing binary (`ENOENT`). A `binary` with a separator is a path and is
+   * run as given. See `which` with `absolutePathOnly`. Default `false`.
+   */
+  absolutePathOnly?: boolean | undefined
+}
+
+/**
+ * The file to spawn for `binary`: itself, or with `absolutePathOnly` the
+ * absolute match on `PATH` (from `opts.env` over the parent's), or
+ * `undefined` when there is none.
+ */
+export function lookupBinary(
+  binary: string,
+  options: SpawnRunnerOptions,
+  opts: Pick<CommandRunOptions, 'env'>,
+): string | undefined {
+  if (options.absolutePathOnly !== true) return binary
+  if (binary.includes('/') || (process.platform === 'win32' && binary.includes('\\'))) {
+    return binary
+  }
+  const { env } = mergedEnv(opts)
+  return which(binary, {
+    env: { PATH: envValue(env, 'PATH'), PATHEXT: envValue(env, 'PATHEXT') },
+    absolutePathOnly: true,
+  })
+}
+
+/** The spawn error text for a binary {@link lookupBinary} did not find. */
+export function notOnAbsolutePath(spawnName: string, binary: string): string {
+  return `${spawnName} ${binary} ENOENT: not found on an absolute PATH entry`
+}
+
+/** `env[name]`, matched without case on Windows, where `Path` is `PATH`. */
+function envValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  if (process.platform !== 'win32') return env[name]
+  const key = Object.keys(env).find((k) => k.toUpperCase() === name)
+  return key === undefined ? undefined : env[key]
 }
 
 /**

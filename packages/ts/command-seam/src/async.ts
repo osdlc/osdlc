@@ -24,14 +24,17 @@ import {
   cwdError,
   emptyStdout,
   isCommandFailed,
+  lookupBinary,
   mergedEnv,
   normalizeOutputCap,
   normalizeTimeout,
+  notOnAbsolutePath,
   spawnFailure,
   type BytesCommandRunner,
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
+  type SpawnRunnerOptions,
 } from './sync.ts'
 
 /** {@link CommandRunOptions} plus cancellation, a spawn hook and process-group kill. */
@@ -148,6 +151,8 @@ const ABORT_KILL_GRACE_MS = 1000
  *
  * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
  *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
+ * @param options - See `SpawnRunnerOptions`; `absolutePathOnly` searches
+ *   absolute `PATH` entries only.
  * @returns A runner for that binary.
  *
  * @example
@@ -162,10 +167,17 @@ const ABORT_KILL_GRACE_MS = 1000
  * if (r.neverExited) console.error(r.error)
  * ```
  */
-export function spawnRunnerAsync(binary: string): AsyncCommandRunner {
+export function spawnRunnerAsync(
+  binary: string,
+  options: SpawnRunnerOptions = {},
+): AsyncCommandRunner {
   return {
     binary,
-    run: (argv, opts) => runAsync(binary, argv, opts, false) as Promise<CommandResult>,
+    run: async (argv, opts) => {
+      const target = lookupBinary(binary, options, opts)
+      if (target === undefined) return spawnFailure(notOnAbsolutePath('spawn', binary))
+      return (await runAsync(target, argv, opts, false)) as CommandResult
+    },
   }
 }
 

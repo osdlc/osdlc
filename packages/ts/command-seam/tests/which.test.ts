@@ -1,5 +1,6 @@
 /**
- * `which`: the lookup rules a spawn uses, without spawning. POSIX-only.
+ * `which`: the lookup rules a spawn uses, without spawning. POSIX, except the
+ * pure `absolutePathCandidates` cases, which cover Windows.
  */
 
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -8,7 +9,13 @@ import { join } from 'node:path'
 
 import { afterAll, describe, expect, test } from 'vitest'
 
-import { spawnRunner, which } from '../src/index.ts'
+import {
+  absolutePathCandidates,
+  classifyFailure,
+  spawnRunner,
+  spawnRunnerAsync,
+  which,
+} from '../src/index.ts'
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'seam-which-')))
 afterAll(() => rmSync(root, { recursive: true, force: true }))
@@ -75,5 +82,79 @@ describe('which', () => {
     expect(r.stdout).toBe('ran\n')
     const missing = spawnRunner('dir-tool').run([], { cwd: root, env: { PATH } })
     expect(missing.neverExited).toBe(true)
+  })
+})
+
+describe('which with absolutePathOnly', () => {
+  const a = join(root, 'a')
+
+  test('skips relative and empty PATH entries, and never searches cwd', () => {
+    const opts = { cwd: a, absolutePathOnly: true }
+    expect(which('tool', { ...opts, env: { PATH: 'b' } })).toBeUndefined()
+    expect(which('tool', { ...opts, env: { PATH: '' } })).toBeUndefined()
+    expect(which('tool', { ...opts, env: { PATH: `.:b::${join(root, 'b')}` } })).toBe(second)
+  })
+
+  test('a name with a slash is still a path', () => {
+    expect(which('./tool', { cwd: a, env: { PATH: '' }, absolutePathOnly: true })).toBe(first)
+  })
+})
+
+describe('absolutePathCandidates', () => {
+  test('POSIX: absolute entries only, in order', () => {
+    expect(
+      absolutePathCandidates('git', { path: 'bin:/usr/bin::.:/opt/git/bin', platform: 'linux' }),
+    ).toEqual(['/usr/bin/git', '/opt/git/bin/git'])
+    expect(absolutePathCandidates('git', { path: undefined, platform: 'linux' })).toEqual([])
+    expect(absolutePathCandidates('./git', { path: '/usr/bin', platform: 'linux' })).toEqual([])
+  })
+
+  test('Windows: PATHEXT on absolute entries, no cwd and no drive-relative entry', () => {
+    const path = 'C:\\Git\\cmd;bin;;.;\\tools;D:/x;\\\\host\\share'
+    expect(
+      absolutePathCandidates('git', { path, pathext: '.EXE;.CMD', platform: 'win32' }),
+    ).toEqual([
+      'C:\\Git\\cmd\\git.EXE',
+      'C:\\Git\\cmd\\git.CMD',
+      'D:\\x\\git.EXE',
+      'D:\\x\\git.CMD',
+      '\\\\host\\share\\git.EXE',
+      '\\\\host\\share\\git.CMD',
+    ])
+  })
+
+  test('Windows: a name that already has a PATHEXT suffix is tried as given', () => {
+    expect(
+      absolutePathCandidates('git.exe', { path: 'C:\\Git', pathext: '.EXE', platform: 'win32' }),
+    ).toEqual(['C:\\Git\\git.exe'])
+    expect(absolutePathCandidates('bin\\git', { path: 'C:\\Git', platform: 'win32' })).toEqual([])
+  })
+})
+
+describe('runners with absolutePathOnly', () => {
+  const a = join(root, 'a')
+
+  test('a binary on a relative PATH entry does not run, and reads as not installed', async () => {
+    const sync = spawnRunner('tool', { absolutePathOnly: true }).run([], {
+      cwd: a,
+      env: { PATH: `.:${join(root, 'nope')}` },
+    })
+    expect(sync.neverExited).toBe(true)
+    expect(sync.error).toMatch(/ENOENT/)
+    const async_ = await spawnRunnerAsync('tool', { absolutePathOnly: true }).run([], {
+      cwd: a,
+      env: { PATH: '.' },
+    })
+    expect(async_.neverExited).toBe(true)
+    expect(classifyFailure(async_, { binary: 'tool', argv: [] })?.kind).toBe('not-installed')
+  })
+
+  test('the absolute match runs', async () => {
+    const env = { PATH: `.:${join(root, 'b')}` }
+    expect(spawnRunner('tool', { absolutePathOnly: true }).run([], { cwd: a, env }).stdout).toBe(
+      'ran\n',
+    )
+    const r = await spawnRunnerAsync('tool', { absolutePathOnly: true }).run([], { cwd: a, env })
+    expect(r.stdout).toBe('ran\n')
   })
 })

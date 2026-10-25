@@ -26,6 +26,7 @@ export { expandTilde, expandTrustPath, normalizeTrustPath, resolveTrustRoot } fr
 export type { ExpandTrustPathOptions, TrustPlatform } from './paths.ts'
 
 export { xdgHome } from './xdg.ts'
+export { homeDir } from './home.ts'
 
 export { resolveExecGate, withheldHint } from './gate.ts'
 export type { ExecGate, ResolveExecGateArgs } from './gate.ts'

@@ -6,7 +6,7 @@
  */
 
 import { accessSync, constants, statSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { posix, resolve, win32 } from 'node:path'
 
 import type { EnvOverrides } from './sync.ts'
 
@@ -33,6 +33,14 @@ export interface WhichOptions {
    * `node:path`, so a test can run the Windows rules on a POSIX folder.
    */
   platform?: NodeJS.Platform | undefined
+  /**
+   * Search only absolute `PATH` entries for a bare name. A relative or empty
+   * entry is skipped, and so is the current folder, so a binary planted in
+   * the folder a command runs in is never picked. On Windows, `PATHEXT`
+   * suffixes are tried. A name with a separator is still taken as a path.
+   * Default `false`.
+   */
+  absolutePathOnly?: boolean | undefined
 }
 
 /** `PATHEXT` when it is unset or empty, as `cmd.exe` uses it. */
@@ -57,8 +65,11 @@ const DEFAULT_PATHEXT = '.COM;.EXE;.BAT;.CMD'
  * each `PATHEXT` extension appended, in order. Extensions compare in any
  * case. A match must be a file; there is no execute bit to check.
  *
+ * With `absolutePathOnly`, a bare name is looked up in the absolute `PATH`
+ * entries only (see {@link absolutePathCandidates}), on either platform.
+ *
  * @param binary - A name looked up on `PATH`, or a path.
- * @param opts - `cwd`, `env` and `platform`.
+ * @param opts - `cwd`, `env`, `platform` and `absolutePathOnly`.
  * @returns The absolute path, or `undefined`.
  * @experimental
  *
@@ -70,7 +81,27 @@ const DEFAULT_PATHEXT = '.COM;.EXE;.BAT;.CMD'
 export function which(binary: string, opts: WhichOptions = {}): string | undefined {
   const cwd = opts.cwd ?? process.cwd()
   if (binary === '') return undefined
-  if ((opts.platform ?? process.platform) === 'win32') return whichWindows(binary, cwd, opts.env)
+  const platform = opts.platform ?? process.platform
+  if (opts.absolutePathOnly === true && !hasSeparator(binary, platform)) {
+    const windows = platform === 'win32'
+    const read = (name: string): string | undefined =>
+      windows
+        ? envValue(opts.env, name)
+        : opts.env !== undefined && name in opts.env
+          ? opts.env[name]
+          : process.env[name]
+    const candidates = absolutePathCandidates(binary, {
+      path: read('PATH'),
+      pathext: read('PATHEXT'),
+      platform,
+    })
+    for (const candidate of candidates) {
+      const found = windows ? file(candidate) : executable(candidate)
+      if (found !== undefined) return found
+    }
+    return undefined
+  }
+  if (platform === 'win32') return whichWindows(binary, cwd, opts.env)
   if (binary.includes('/')) return executable(resolve(cwd, binary))
   const path = opts.env !== undefined && 'PATH' in opts.env ? opts.env['PATH'] : process.env['PATH']
   for (const dir of (path ?? '/usr/bin:/bin').split(':')) {
@@ -127,4 +158,59 @@ function file(p: string): string | undefined {
   } catch {
     return undefined
   }
+}
+
+/**
+ * Inputs to {@link absolutePathCandidates}.
+ *
+ * @experimental
+ */
+export interface PathCandidateOptions {
+  /** The `PATH` value. Unset means no candidates. */
+  path: string | undefined
+  /** The `PATHEXT` value, read on Windows only. Unset or empty means `.COM;.EXE;.BAT;.CMD`. */
+  pathext?: string | undefined
+  /** The platform whose rules apply. Default `process.platform`. */
+  platform?: NodeJS.Platform | undefined
+}
+
+/**
+ * The files a lookup with `absolutePathOnly` checks for the bare name
+ * `binary`, in order. It reads no files. Only absolute `PATH` entries count:
+ * on Windows, one with a drive (`C:\bin`) or a UNC prefix (`\\host\share`).
+ * On Windows each entry is tried with every `PATHEXT` suffix, unless `binary`
+ * already ends in one, and the current folder is never searched, unlike a
+ * Windows spawn of a bare name.
+ *
+ * @param binary - A bare name, such as `git`.
+ * @param opts - `PATH`, `PATHEXT` and the platform.
+ * @returns Absolute candidate paths.
+ * @experimental
+ */
+export function absolutePathCandidates(binary: string, opts: PathCandidateOptions): string[] {
+  const platform = opts.platform ?? process.platform
+  const windows = platform === 'win32'
+  if (binary === '' || hasSeparator(binary, platform) || opts.path === undefined) return []
+  const exts = windows
+    ? (opts.pathext || DEFAULT_PATHEXT).split(';').filter((e) => e !== '')
+    : []
+  const suffixes =
+    !windows || exts.some((e) => binary.toLowerCase().endsWith(e.toLowerCase())) ? [''] : exts
+  const join = windows ? win32.join : posix.join
+  const out: string[] = []
+  for (const dir of opts.path.split(windows ? ';' : ':')) {
+    if (!isAbsoluteEntry(dir, windows)) continue
+    for (const suffix of suffixes) out.push(join(dir, binary + suffix))
+  }
+  return out
+}
+
+function hasSeparator(binary: string, platform: NodeJS.Platform): boolean {
+  return binary.includes('/') || (platform === 'win32' && binary.includes('\\'))
+}
+
+/** Absolute, and not drive-relative (`\bin`) on Windows. */
+function isAbsoluteEntry(dir: string, windows: boolean): boolean {
+  if (!windows) return dir.startsWith('/')
+  return /^[a-z]:[\\/]/i.test(dir) || dir.startsWith('\\\\') || dir.startsWith('//')
 }

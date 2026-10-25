@@ -6,13 +6,16 @@
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { launcherCheckout, launcherDrift, renderLauncher } from '../../src/devlink/launcher.ts'
 import { resolve } from '../../src/devlink/resolve.ts'
 import { writeActive } from '../../src/devlink/state.ts'
 import { SPEC, sandbox, seedCheckout, type Sandbox } from './support.ts'
+
+/** What the fake bun prints for a run: the flags that keep Bun off the cwd's config. */
+const BUN_RUN = 'BUN --no-env-file --config=/dev/null run'
 
 let sb: Sandbox
 let fakeBin: string
@@ -69,7 +72,7 @@ describe('bash launcher without the cwd layer', () => {
     chmodSync(join(a, OFF.launcher), 0o755)
     const b = seedCheckout(join(sb.root, 'b'))
     const r = run(join(a, OFF.launcher), join(b, 'src'))
-    expect(r.out).toBe(`BUN run ${a}/src/cli.ts arg1 arg two`)
+    expect(r.out).toBe(`${BUN_RUN} ${a}/src/cli.ts arg1 arg two`)
     expect(resolve(OFF, { dirs: sb.dirs, env: {}, cwd: join(b, 'src'), self: a }).source).toBe(
       'local',
     )
@@ -85,7 +88,7 @@ describe('bash launcher agrees with resolve()', () => {
     const a = checkoutWithLauncher(join(sb.root, 'a'))
     const r = run(join(a, SPEC.launcher), sb.root)
     expect(r.code).toBe(0)
-    expect(r.out).toBe(`BUN run ${a}/src/cli.ts arg1 arg two`)
+    expect(r.out).toBe(`${BUN_RUN} ${a}/src/cli.ts arg1 arg two`)
     expect(resolve(SPEC, { dirs: sb.dirs, env: {}, cwd: sb.root, self: a }).source).toBe('local')
   })
 
@@ -93,7 +96,7 @@ describe('bash launcher agrees with resolve()', () => {
     const a = checkoutWithLauncher(join(sb.root, 'a'))
     const b = seedCheckout(join(sb.root, 'b'))
     const r = run(join(a, SPEC.launcher), sb.root, { TOOLY_HOME: b, TOOLY_HARNESS: '1' })
-    expect(r.out).toBe(`BUN run ${b}/src/cli.ts arg1 arg two`)
+    expect(r.out).toBe(`${BUN_RUN} ${b}/src/cli.ts arg1 arg two`)
     const sel = resolve(SPEC, {
       dirs: sb.dirs,
       env: { TOOLY_HOME: b, TOOLY_HARNESS: '1' },
@@ -108,7 +111,7 @@ describe('bash launcher agrees with resolve()', () => {
     seedCheckout(join(sb.root, 'b'))
     // From sb.root, `b` would name checkout b.
     const r = run(join(a, SPEC.launcher), sb.root, { TOOLY_HOME: 'b' })
-    expect(r.out).toBe(`BUN run ${a}/src/cli.ts arg1 arg two`)
+    expect(r.out).toBe(`${BUN_RUN} ${a}/src/cli.ts arg1 arg two`)
     const sel = resolve(SPEC, { dirs: sb.dirs, env: { TOOLY_HOME: 'b' }, cwd: sb.root, self: a })
     expect(sel.source).toBe('local')
   })
@@ -117,7 +120,7 @@ describe('bash launcher agrees with resolve()', () => {
     const a = checkoutWithLauncher(join(sb.root, 'a'))
     const b = seedCheckout(join(sb.root, 'b'))
     const r = run(join(a, SPEC.launcher), join(b, 'src'))
-    expect(r.out).toBe(`BUN run ${b}/src/cli.ts arg1 arg two`)
+    expect(r.out).toBe(`${BUN_RUN} ${b}/src/cli.ts arg1 arg two`)
     expect(resolve(SPEC, { dirs: sb.dirs, env: {}, cwd: join(b, 'src'), self: a }).source).toBe(
       'cwd',
     )
@@ -132,7 +135,7 @@ describe('bash launcher agrees with resolve()', () => {
     const via = join(b, 'via')
     symlinkSync(plain, via)
     const r = run(join(a, SPEC.launcher), via, { PWD: via })
-    expect(r.out).toBe(`BUN run ${a}/src/cli.ts arg1 arg two`)
+    expect(r.out).toBe(`${BUN_RUN} ${a}/src/cli.ts arg1 arg two`)
     expect(resolve(SPEC, { dirs: sb.dirs, env: {}, cwd: plain, self: a }).source).toBe('local')
   })
 
@@ -141,14 +144,19 @@ describe('bash launcher agrees with resolve()', () => {
     const d = join(sb.root, 'd')
     mkdirSync(join(d, 'src', 'cli.ts'), { recursive: true })
     const r = run(join(a, SPEC.launcher), d)
-    expect(r.out).toBe(`BUN run ${a}/src/cli.ts arg1 arg two`)
+    expect(r.out).toBe(`${BUN_RUN} ${a}/src/cli.ts arg1 arg two`)
     expect(resolve(SPEC, { dirs: sb.dirs, env: {}, cwd: d, self: a }).source).toBe('local')
   })
 
   describe('link layer without a usable config directory', () => {
-    /** Runs the launcher with `uname` reporting Linux and `HOME` as given (unset when undefined). */
-    function runLinux(launcher: string, home: string | undefined, extra: Record<string, string>) {
-      writeFileSync(join(fakeBin, 'uname'), '#!/bin/sh\necho Linux\n')
+    /** Runs the launcher with `uname` reporting `os` and `HOME` as given (unset when undefined). */
+    function runLinux(
+      launcher: string,
+      home: string | undefined,
+      extra: Record<string, string>,
+      os = 'Linux',
+    ) {
+      writeFileSync(join(fakeBin, 'uname'), `#!/bin/sh\necho ${os}\n`)
       chmodSync(join(fakeBin, 'uname'), 0o755)
       const env: Record<string, string> = {
         PATH: `${fakeBin}:/usr/bin:/bin`,
@@ -160,11 +168,38 @@ describe('bash launcher agrees with resolve()', () => {
       return { code: r.status, out: r.stdout.trim(), err: r.stderr.trim() }
     }
 
-    test('an unset HOME skips the link layer instead of aborting under set -u', () => {
+    test('an unset HOME does not abort under set -u', () => {
       const a = checkoutWithLauncher(join(sb.root, 'a'))
       const r = runLinux(join(a, SPEC.launcher), undefined, {})
       expect(r.err).toBe('')
-      expect(r.out).toBe(`BUN run ${a}/src/cli.ts`)
+      expect(r.out).toBe(`${BUN_RUN} ${a}/src/cli.ts`)
+    })
+
+    test('a relative HOME is never read from the cwd, on Linux or macOS', () => {
+      const a = checkoutWithLauncher(join(sb.root, 'a'))
+      const b = seedCheckout(join(sb.root, 'b'))
+      // Link files a repository could ship, found from the cwd with HOME=.
+      for (const dir of [
+        join('.config', 'tooly'),
+        join('Library', 'Application Support', 'tooly'),
+      ]) {
+        mkdirSync(join(sb.root, dir), { recursive: true })
+        writeFileSync(join(sb.root, dir, 'home'), `${b}\n`)
+      }
+      for (const os of ['Linux', 'Darwin']) {
+        const r = runLinux(join(a, SPEC.launcher), '.', {}, os)
+        expect(r.out).toBe(`${BUN_RUN} ${a}/src/cli.ts`)
+      }
+    })
+
+    test('a drive path in TOOLY_HOME counts only under Windows bash', () => {
+      const a = checkoutWithLauncher(join(sb.root, 'a'))
+      // On a POSIX system `C:/x` is a relative path, here a checkout under the cwd.
+      const drive = seedCheckout(join(sb.root, 'C:', 'x'))
+      const linux = runLinux(join(a, SPEC.launcher), sb.home, { TOOLY_HOME: 'C:/x' })
+      expect(linux.out).toBe(`${BUN_RUN} ${a}/src/cli.ts`)
+      const mingw = runLinux(join(a, SPEC.launcher), sb.home, { TOOLY_HOME: 'C:/x' }, 'MINGW64_NT')
+      expect(mingw.out).toBe(`${BUN_RUN} ${realpathSync(drive)}/src/cli.ts`)
     })
 
     test('a relative XDG_CONFIG_HOME is ignored, as resolve() ignores it', () => {
@@ -174,7 +209,7 @@ describe('bash launcher agrees with resolve()', () => {
       mkdirSync(join(sb.root, 'rel', 'tooly'), { recursive: true })
       writeFileSync(join(sb.root, 'rel', 'tooly', 'home'), `${b}\n`)
       const r = runLinux(join(a, SPEC.launcher), sb.home, { XDG_CONFIG_HOME: 'rel' })
-      expect(r.out).toBe(`BUN run ${a}/src/cli.ts`)
+      expect(r.out).toBe(`${BUN_RUN} ${a}/src/cli.ts`)
     })
 
     test('an absolute XDG_CONFIG_HOME is honoured', () => {
@@ -183,7 +218,7 @@ describe('bash launcher agrees with resolve()', () => {
       mkdirSync(join(sb.root, 'xdg', 'tooly'), { recursive: true })
       writeFileSync(join(sb.root, 'xdg', 'tooly', 'home'), `${b}\n`)
       const r = runLinux(join(a, SPEC.launcher), sb.home, { XDG_CONFIG_HOME: join(sb.root, 'xdg') })
-      expect(r.out).toBe(`BUN run ${b}/src/cli.ts`)
+      expect(r.out).toBe(`${BUN_RUN} ${b}/src/cli.ts`)
     })
   })
 
@@ -197,7 +232,7 @@ describe('bash launcher agrees with resolve()', () => {
     expect(r.err).toBe(`tooly: ${b} has no node_modules. Run 'bun install' there.`)
     mkdirSync(join(b, 'node_modules'))
     expect(run(join(a, SPEC.launcher), join(b, 'src')).out).toBe(
-      `BUN run ${b}/src/cli.ts arg1 arg two`,
+      `${BUN_RUN} ${b}/src/cli.ts arg1 arg two`,
     )
   })
 
@@ -218,7 +253,7 @@ describe('bash launcher agrees with resolve()', () => {
     const ok = run(join(a, SPEC.launcher), join(b, 'src'))
     expect(ok.code).toBe(0)
     expect(ok.err).toBe('')
-    expect(ok.out).toBe(`BUN run ${b}/src/cli.ts arg1 arg two`)
+    expect(ok.out).toBe(`${BUN_RUN} ${b}/src/cli.ts arg1 arg two`)
   })
 
   test('one-line dependencies blocks are read, and never spill into devDependencies', () => {
@@ -257,7 +292,7 @@ describe('bash launcher agrees with resolve()', () => {
     const r = run(join(a, SPEC.launcher), join(b, 'src'))
     expect(r.code).toBe(0)
     expect(r.err).toBe('')
-    expect(r.out).toBe(`BUN run ${b}/src/cli.ts arg1 arg two`)
+    expect(r.out).toBe(`${BUN_RUN} ${b}/src/cli.ts arg1 arg two`)
   })
 
   test('a nested package between the entry and the root is checked, and resolves from its own node_modules', () => {
@@ -280,7 +315,7 @@ describe('bash launcher agrees with resolve()', () => {
     const ok = run(join(a, SPEC.launcher), join(b, 'src'))
     expect(ok.code).toBe(0)
     expect(ok.err).toBe('')
-    expect(ok.out).toBe(`BUN run ${b}/src/cli.ts arg1 arg two`)
+    expect(ok.out).toBe(`${BUN_RUN} ${b}/src/cli.ts arg1 arg two`)
   })
 
   test('a nested dependency is satisfied from an intermediate node_modules, not the root', () => {
@@ -307,16 +342,16 @@ describe('bash launcher agrees with resolve()', () => {
     const ok = run(join(a, SPEC.launcher), sb.root, { TOOLY_HOME: b })
     expect(ok.code).toBe(0)
     expect(ok.err).toBe('')
-    expect(ok.out).toBe(`BUN run ${b}/pkg/app/src/cli.ts arg1 arg two`)
+    expect(ok.out).toBe(`${BUN_RUN} ${b}/pkg/app/src/cli.ts arg1 arg two`)
   })
 
   test('link: the home file redirects; a suppressor turns it off', () => {
     const a = checkoutWithLauncher(join(sb.root, 'a'))
     const b = seedCheckout(join(sb.root, 'b'))
     writeActive(SPEC, b, { dirs: sb.dirs })
-    expect(run(join(a, SPEC.launcher), sb.root).out).toBe(`BUN run ${b}/src/cli.ts arg1 arg two`)
+    expect(run(join(a, SPEC.launcher), sb.root).out).toBe(`${BUN_RUN} ${b}/src/cli.ts arg1 arg two`)
     expect(run(join(a, SPEC.launcher), sb.root, { TOOLY_HARNESS: '' }).out).toBe(
-      `BUN run ${a}/src/cli.ts arg1 arg two`,
+      `${BUN_RUN} ${a}/src/cli.ts arg1 arg two`,
     )
     expect(resolve(SPEC, { dirs: sb.dirs, env: {}, cwd: sb.root, self: a }).source).toBe('link')
     expect(
@@ -331,7 +366,7 @@ describe('bash launcher agrees with resolve()', () => {
     mkdirSync(bin, { recursive: true })
     symlinkSync(join(a, SPEC.launcher), join(bin, 'tooly'))
     const r = run(join(bin, 'tooly'), sb.root)
-    expect(r.out).toBe(`BUN run ${a}/src/cli.ts arg1 arg two`)
+    expect(r.out).toBe(`${BUN_RUN} ${a}/src/cli.ts arg1 arg two`)
   })
 
   test('a built sibling runs under node when present', () => {
@@ -342,8 +377,8 @@ describe('bash launcher agrees with resolve()', () => {
     writeFileSync(join(fakeBin, 'node'), '#!/bin/sh\necho "NODE $*"\n')
     chmodSync(join(fakeBin, 'node'), 0o755)
     expect(run(join(a, SPEC.launcher), sb.root).out).toBe(
-      `BUN run ${a}/src/cli.ts arg1 arg two`
-        .replace('BUN run', 'NODE')
+      `${BUN_RUN} ${a}/src/cli.ts arg1 arg two`
+        .replace(BUN_RUN, 'NODE')
         .replace('src/cli.ts', 'bin/tooly.js'),
     )
   })
@@ -356,7 +391,7 @@ describe('bash launcher agrees with resolve()', () => {
     writeFileSync(join(a, 'bin', 'tooly.js'), '')
     writeFileSync(join(fakeBin, 'node'), '#!/bin/sh\necho "NODE $*"\n')
     chmodSync(join(fakeBin, 'node'), 0o755)
-    expect(run(join(a, SPEC.launcher), sb.root).out).toBe(`BUN run ${a}/src/cli.ts arg1 arg two`)
+    expect(run(join(a, SPEC.launcher), sb.root).out).toBe(`${BUN_RUN} ${a}/src/cli.ts arg1 arg two`)
   })
 
   test('node_modules present but bun ABSENT still takes the built entry under node (dev_checkout needs BOTH)', () => {
@@ -382,8 +417,8 @@ describe('bash launcher agrees with resolve()', () => {
       TOOLY_QUIET: '0',
     })
     expect(r.out).toBe(
-      `BUN run ${a}/src/cli.ts arg1 arg two`
-        .replace('BUN run', 'NODE')
+      `${BUN_RUN} ${a}/src/cli.ts arg1 arg two`
+        .replace(BUN_RUN, 'NODE')
         .replace('src/cli.ts', 'bin/tooly.js'),
     )
     expect(r.err).toBe(`tooly: running ${a}/bin/tooly.js (local, node)`)

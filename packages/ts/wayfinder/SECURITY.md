@@ -33,17 +33,37 @@ making `way` run code the user did not choose to run are in scope.
 - **Tool modules are code.** A module named by `--config` or the user file is
   the user's own choice. One named by the project file loads only when the
   repository is trusted and execution is allowed.
-- **Detection runs no repository config.** Discovery and the owner lookup
-  run git with `core.fsmonitor` off, so a `.git/config` that came with a
-  directory cannot run a command before trust.
+- **Detection turns off the git config keys that run commands.** Discovery and
+  the owner lookup run git with `core.fsmonitor` off. The other keys that run
+  commands (hooks, `diff.external`, `filter.*`, `core.sshCommand`,
+  `core.pager`) do not apply to the git commands detection runs. git still
+  reads the rest of `.git/config`, such as the `origin` URL and `insteadOf`
+  rewrites.
+- **Detection runs the git on your PATH, not one in the repository.** Every
+  command detection and the owner lookup start is looked up on the absolute
+  `PATH` entries only. A relative or empty entry (`bin`, `.`,
+  `node_modules/.bin`) is skipped, and on Windows the current folder is not
+  searched.
+- **Owner trust believes the repository's own git config.** `trust.owners`
+  matches the remote URL the repository's `.git/config` reports. That file
+  comes with the directory: a folder from an archive or a shared drive can
+  name any owner. Owner trust fits clones you made yourself. `trust.paths` is
+  the stronger form, since a repository cannot choose where it is on your disk.
 - **Repository text cannot drive the terminal.** Task names, docs, paths and
-  config values have their control characters replaced with U+FFFD before the
-  terminal UI, `--list`, `query` or stderr prints them. `--json` keeps them
-  exact, escaped as JSON.
+  config values have their control characters (C0, DEL, C1) and bidi controls
+  (U+202A-202E, U+2066-2069) replaced with U+FFFD before the terminal UI,
+  `--list`, `query`, `trust`, `config`, `providers`, `dev`, the `--serve`
+  summary or stderr prints them. Copied commands get the same text. `--json`
+  keeps every value exact: C0 is escaped by JSON itself, and DEL, C1 and the
+  bidi controls are written as `\u` escapes, so the output is safe to print.
 - **The installed `way` runs its own code.** It hands off to a checkout only
   when `WAY_HOME` (an absolute path) or `way dev link` names one, and only when
-  that checkout's `package.json` is named `@osdlc/wayfinder`. The directory you
-  run it in never chooses.
+  that checkout's `package.json` is named `@osdlc/wayfinder`. The checkout runs
+  under Bun with `--no-env-file` and an empty config, so the `.env` and
+  `bunfig.toml` of the directory you stand in are not read. A relative `HOME`,
+  `XDG_*` or `WAYFINDER_CONFIG` is ignored, so no config, trust store or link
+  file is looked up under that directory. The directory you run it in does not
+  choose the code that runs.
 - **Tasks run without a shell.** A task is spawned from an argument vector.
   Typed arguments are bound by the task's tool and never replace its binary.
 - **The web view listens on 127.0.0.1.** Any local process and any page the
