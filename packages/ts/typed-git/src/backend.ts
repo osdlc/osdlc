@@ -19,7 +19,7 @@
  */
 
 import {
-  resolveRunnerAsync,
+  spawnRunnerAsync,
   type AsyncCommandRunner,
   type AsyncCommandRunOptions,
   type CommandResult,
@@ -187,6 +187,7 @@ export type GitRequest =
   | ({ kind: 'worktreeAdd'; path: string } & WorktreeAddOptions)
   | { kind: 'worktreeRemove'; path: string; force?: boolean | undefined }
   | ({ kind: 'worktreeMove'; from: string; to: string } & WorktreeMoveOptions)
+  | { kind: 'worktreeUnlock'; path: string }
   | { kind: 'worktreePrune' }
   | ({ kind: 'merge'; ref: string } & MergeOptions)
   | { kind: 'mergeAbort' }
@@ -269,6 +270,7 @@ export interface GitResults {
   worktreeAdd: void
   worktreeRemove: void
   worktreeMove: void
+  worktreeUnlock: void
   worktreePrune: void
   merge: MergeOutcome
   mergeAbort: void
@@ -438,6 +440,8 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
       return v.worktreeRemove(request.path, { force: request.force })
     case 'worktreeMove':
       return v.worktreeMove(request.from, request.to, request)
+    case 'worktreeUnlock':
+      return v.worktreeUnlock(request.path)
     case 'worktreePrune':
       return v.worktreePrune()
     case 'merge':
@@ -491,7 +495,9 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
 /**
  * The default backend: every request becomes a `git` subprocess, run through
  * an {@link AsyncCommandRunner} so the caller decides how spawning happens
- * (and tests inject a fake).
+ * (and tests inject a fake). The default runner spawns the `git` found on an
+ * absolute `PATH` entry, so a `git` file in the checkout cannot run in its
+ * place.
  */
 export function cliBackend(
   opts: {
@@ -512,7 +518,7 @@ export function cliBackend(
     env?: Record<string, string> | undefined
   } = {},
 ): GitBackend {
-  const runner = resolveRunnerAsync('git', opts.runner)
+  const runner = opts.runner ?? spawnRunnerAsync('git', { absolutePathOnly: true })
   const prefix = repoPrefix(opts.gitDir, opts.workTree)
   return {
     async execute<R extends GitRequest>(

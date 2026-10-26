@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://unpkg.com/@osdlc/wayfinder@0.8/schema/config.json",
+  "$id": "https://unpkg.com/@osdlc/wayfinder@0.9/schema/config.json",
   "title": "wayfinder configuration",
   "type": "object",
   "properties": {

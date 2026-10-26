@@ -18,6 +18,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { FailureError } from '@osdlc/result'
 import type { GitFailure } from '../src/failure.ts'
 
+import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -1243,6 +1244,19 @@ describe('Git — real repo round trips', () => {
     git.worktreePrune()
     git.deleteBranch('task/x', { force: true })
     expect(git.branchExists('task/x')).toBe(false)
+  })
+
+  test('worktreeUnlock clears a lock so the worktree can be removed', () => {
+    const git = new Git(repo)
+    const wt = join(repo, 'wt-locked')
+    git.worktreeAdd(wt, { branch: 'task/locked', startPoint: 'main' })
+    execFileSync('git', ['worktree', 'lock', '--reason', 'pid 1', wt], { cwd: repo })
+    expect(git.worktrees().find((w) => w.path.endsWith('wt-locked'))?.locked).toBe(true)
+    expect(() => git.worktreeRemove(wt)).toThrow(FailureError)
+    git.worktreeUnlock(wt)
+    expect(git.worktrees().find((w) => w.path.endsWith('wt-locked'))?.locked).toBe(false)
+    git.worktreeRemove(wt)
+    git.deleteBranch('task/locked', { force: true })
   })
 
   test('configRemoveSection reports whether the section existed', () => {

@@ -16,6 +16,9 @@ export default defineConfig({
   test: {
     // Real git, sh and gh spawns on a loaded machine can pass the 5 s default.
     testTimeout: 20000,
+    // Half the 10 s default: a worker a leftover process keeps alive is given
+    // up on sooner, so the run ends inside the Windows tier-2 step limit.
+    teardownTimeout: 5000,
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
     coverage: {
       provider: 'v8',

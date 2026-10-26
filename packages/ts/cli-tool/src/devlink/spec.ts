@@ -68,8 +68,12 @@ export interface ToolSpec {
   suppressors?: readonly string[]
   /**
    * Whose config home the state lives in: the vendor and its override
-   * variables. The bash launcher reads the `xdg` default and ignores the
-   * override variables.
+   * variables. The bash launcher reads the same path: the vendor's
+   * `<P>_CONFIG_DIR`, then `<P>_ROOT`, then the `xdg` default. A relative
+   * value of the one in use reads no link. The launcher reads only those two:
+   * a relative override of another kind (such as `<P>_CACHE_DIR`), or
+   * `<P>_REQUIRE_OVERRIDE`, makes `dev link` throw but does not stop the
+   * launcher following a link written before.
    */
   vendorDirs: VendorDirs
 }

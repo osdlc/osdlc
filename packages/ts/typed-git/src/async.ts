@@ -684,6 +684,11 @@ export class AsyncGit {
     return this.backend.execute(this.cwd, { kind: 'worktreeMove', from, to, ...req }, call)
   }
 
+  /** `git worktree unlock <path>`. */
+  worktreeUnlock(path: string, opts: GitCallOptions = {}): Promise<void> {
+    return this.backend.execute(this.cwd, { kind: 'worktreeUnlock', path }, opts)
+  }
+
   /** `git worktree prune`. */
   worktreePrune(opts: GitCallOptions = {}): Promise<void> {
     return this.backend.execute(this.cwd, { kind: 'worktreePrune' }, opts)

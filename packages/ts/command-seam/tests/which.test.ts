@@ -107,7 +107,11 @@ describe('absolutePathCandidates', () => {
     expect(
       absolutePathCandidates('git', { path: 'bin:/usr/bin::.:/opt/git/bin', platform: 'linux' }),
     ).toEqual(['/usr/bin/git', '/opt/git/bin/git'])
-    expect(absolutePathCandidates('git', { path: undefined, platform: 'linux' })).toEqual([])
+    expect(absolutePathCandidates('git', { path: undefined, platform: 'linux' })).toEqual([
+      '/usr/bin/git',
+      '/bin/git',
+    ])
+    expect(absolutePathCandidates('git', { path: undefined, platform: 'win32' })).toEqual([])
     expect(absolutePathCandidates('./git', { path: '/usr/bin', platform: 'linux' })).toEqual([])
   })
 

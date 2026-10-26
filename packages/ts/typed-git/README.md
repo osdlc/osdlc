@@ -617,6 +617,7 @@ Integration, declares exit 1 absent and returns the rejected refs.
 | `worktreeAdd(path, { branch, resetBranch, startPoint, detach })` | `worktree add` — `branch` is `-b`; `resetBranch` picks `-B` (create, or reset an existing branch), as for `checkout` |
 | `worktreeRemove(path, { force })` | `worktree remove` |
 | `worktreeMove(from, to, { force })` | `worktree move` |
+| `worktreeUnlock(path)` | `worktree unlock` |
 | `worktreePrune()` | `worktree prune` |
 | `remoteAdd(name, url)` | `remote add` |
 | `remoteSetHead(remote, { branch } \| { auto: true } \| { delete: true })` | `remote set-head <remote> <branch>\|--auto\|--delete` — exactly one, enforced by the types and at run time |
@@ -707,6 +708,10 @@ const failing: CommandRunner = {
 };
 new Git("/nowhere", { runner: failing }).currentBranch(); // throws FailureError (kind "not-a-repo")
 ```
+
+The default runner finds `git` on absolute `PATH` entries only, so a file named
+`git` in the checkout cannot run in its place. A real runner you build yourself
+should do the same: `spawnRunner("git", { absolutePathOnly: true })`.
 
 `runner: undefined` is the same as omitting it, so a caller holding an optional
 runner passes it straight through, without a conditional spread. `cliBackend`

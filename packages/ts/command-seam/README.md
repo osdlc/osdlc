@@ -589,8 +589,9 @@ named `git` can run in place of git. Pass `absolutePathOnly: true` to
 `spawnRunner` or `spawnRunnerAsync`. The runner then looks the bare name up
 on absolute `PATH` entries only, using `PATHEXT` on Windows, and spawns the
 absolute path it finds. When there is none, the run fails as a missing
-binary does (`ENOENT`, kind `not-installed`). A name with a separator, such
-as `./gradlew`, is a path and runs as given.
+binary does (`ENOENT`, kind `not-installed`). With `PATH` unset, POSIX
+searches `/usr/bin:/bin`, as a spawn does, and Windows searches nothing. A
+name with a separator, such as `./gradlew`, is a path and runs as given.
 
 ```ts
 import { spawnRunnerAsync } from '@osdlc/command-seam'

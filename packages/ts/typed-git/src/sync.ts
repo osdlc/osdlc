@@ -19,7 +19,7 @@
 import { dirname } from 'node:path'
 
 import {
-  resolveRunner,
+  spawnRunner,
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
@@ -139,7 +139,9 @@ export class Git {
    * `backend.ts`.
    *
    * This client takes a `runner`, where `AsyncGit` takes a `backend`. The
-   * default runner spawns `git`; tests pass a fake `CommandRunner`.
+   * default runner spawns the `git` found on an absolute `PATH` entry, so a
+   * `git` file in the checkout cannot run in its place. Tests pass a fake
+   * `CommandRunner`.
    *
    * Neither client has a default timeout. This client kills a child whose
    * output on one stream passes 256 MB; `AsyncGit` has no output cap. The
@@ -155,7 +157,7 @@ export class Git {
     } = {},
   ) {
     this.cwd = cwd
-    this.runner = resolveRunner('git', opts.runner)
+    this.runner = opts.runner ?? spawnRunner('git', { absolutePathOnly: true })
     this.boundGitDir = opts.gitDir
     this.workTree = opts.workTree
     this.env = opts.env
@@ -775,6 +777,11 @@ export class Git {
     opts: GitSyncCallOptions & WorktreeMoveOptions = {},
   ): void {
     this.exec(v.worktreeMove(from, to, opts), opts)
+  }
+
+  /** `git worktree unlock <path>`. */
+  worktreeUnlock(path: string, opts: GitSyncCallOptions = {}): void {
+    this.exec(v.worktreeUnlock(path), opts)
   }
 
   /** `git worktree prune`. */

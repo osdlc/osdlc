@@ -2225,6 +2225,15 @@ export function worktreeMove(
   return { argv, absent: NONE, parse: nothing }
 }
 
+/** `git worktree unlock <path>`. */
+export function worktreeUnlock(path: string): GitVerb<void> {
+  return {
+    argv: ['worktree', 'unlock', positional('worktreeUnlock', 'path', path)],
+    absent: NONE,
+    parse: nothing,
+  }
+}
+
 /** `git worktree prune`. */
 export function worktreePrune(): GitVerb<void> {
   return { argv: ['worktree', 'prune'], absent: NONE, parse: nothing }
