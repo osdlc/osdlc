@@ -11,6 +11,7 @@ import { join } from 'node:path'
 
 import type { ProviderContext } from '../contract.ts'
 import { argumentHintOf, parseFrontmatter, splitFrontmatter } from '../frontmatter.ts'
+import { isInside } from '../inside.ts'
 import type { Scope } from '../locations.ts'
 import type { Artifact, Instruction } from '../report.ts'
 import type { Located } from './sources.ts'
@@ -32,12 +33,26 @@ export interface Provenance {
   managerOwned: boolean
 }
 
+/** Options shared by the scanners. */
+interface ScanOptions {
+  /**
+   * A real path. A file whose real path is not inside it is not read or listed,
+   * so a symbolic link cannot carry a file from outside it into the report.
+   */
+  within?: string | undefined
+}
+
 function artifactOf(
   ctx: ArtifactReader,
   path: string,
   fallbackName: string,
   from: Provenance,
+  options: ScanOptions,
 ): Artifact | null {
+  if (options.within !== undefined) {
+    const real = ctx.realpath(path)
+    if (real === null || !isInside(options.within, real)) return null
+  }
   const read = ctx.readText(path)
   if (read.status !== 'parsed') return null
   const fm = parseFrontmatter(read.text) ?? {}
@@ -57,10 +72,15 @@ function artifactOf(
 }
 
 /** Every `<dir>/<name>/SKILL.md`, named by its frontmatter `name`, else the folder name. */
-export function scanSkills(ctx: ArtifactReader, dir: string, from: Provenance): Artifact[] {
+export function scanSkills(
+  ctx: ArtifactReader,
+  dir: string,
+  from: Provenance,
+  options: ScanOptions = {},
+): Artifact[] {
   return ctx.listDir(dir).flatMap((e) => {
     if (!e.isDirectory) return []
-    const a = artifactOf(ctx, join(dir, e.name, 'SKILL.md'), e.name, from)
+    const a = artifactOf(ctx, join(dir, e.name, 'SKILL.md'), e.name, from, options)
     return a ? [a] : []
   })
 }
@@ -86,7 +106,7 @@ export function scanMarkdown(
   ctx: ArtifactReader,
   dir: string,
   from: Provenance,
-  options: { recursive?: boolean; useFrontmatterName?: boolean } = {},
+  options: ScanOptions & { recursive?: boolean; useFrontmatterName?: boolean } = {},
 ): Artifact[] {
   const out: Artifact[] = []
   const seen = new Set<string>()
@@ -97,7 +117,7 @@ export function scanMarkdown(
       if (e.isDirectory && options.recursive) walk(abs)
       else if (e.isFile && e.name.endsWith('.md')) {
         const fallback = e.name.slice(0, -'.md'.length)
-        const a = artifactOf(ctx, abs, fallback, from)
+        const a = artifactOf(ctx, abs, fallback, from, options)
         if (!a) continue
         out.push(options.useFrontmatterName === false ? { ...a, name: fallback } : a)
       }
@@ -119,24 +139,38 @@ export interface PluginArtifacts {
  * `skills/<name>/SKILL.md`; every `commands/<name>/SKILL.md` and flat
  * `commands/<name>.md` (not recursive); every `agents/*.md`. Skills, folder
  * commands and agents are named by their frontmatter `name`, else the folder or
- * file name; a flat command by its file name. Of commands with one name the
- * first is kept, so a folder wins over a flat file. Symbolic links are followed.
- * `detect()` and `readPlugin` both read a plugin through here.
+ * file name; a flat command by its file name. Of skills, or of commands, with
+ * one name the first is kept (by folder name; a folder command before a flat
+ * one), so names are unique and a folder wins over a flat file. A symbolic link
+ * is followed only while its real path stays inside the real plugin root; an
+ * entry that leads out is neither read nor listed. `detect()` and `readPlugin`
+ * both read a plugin through here.
  */
 export function scanPluginArtifacts(
   ctx: ArtifactReader,
   root: string,
   from: Provenance,
 ): PluginArtifacts {
-  const commands = [
-    ...scanSkills(ctx, join(root, 'commands'), from),
-    ...scanMarkdown(ctx, join(root, 'commands'), from, { useFrontmatterName: false }),
-  ].filter((c, i, all) => all.findIndex((o) => o.name === c.name) === i)
+  const within = { within: ctx.realpath(root) ?? root }
+  const commands = firstByName([
+    ...scanSkills(ctx, join(root, 'commands'), from, within),
+    ...scanMarkdown(ctx, join(root, 'commands'), from, { ...within, useFrontmatterName: false }),
+  ])
   return {
-    skills: scanSkills(ctx, join(root, 'skills'), from),
+    skills: firstByName(scanSkills(ctx, join(root, 'skills'), from, within)),
     commands,
-    agents: scanMarkdown(ctx, join(root, 'agents'), from),
+    agents: scanMarkdown(ctx, join(root, 'agents'), from, within),
   }
+}
+
+/** `artifacts` without any whose name an earlier one has. */
+function firstByName(artifacts: Artifact[]): Artifact[] {
+  const seen = new Set<string>()
+  return artifacts.filter((a) => {
+    if (seen.has(a.name)) return false
+    seen.add(a.name)
+    return true
+  })
 }
 
 /** Instruction files at `locs`: a file location when it exists, a folder's `.md`/`.mdc` files. */

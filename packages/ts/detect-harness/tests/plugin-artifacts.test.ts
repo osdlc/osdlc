@@ -1,7 +1,8 @@
 /**
  * `detect()` and `readPlugin` read one plugin folder through one reader
  * (`scanPluginArtifacts`), so they list the same skills and commands under the
- * same names. Each case below is one where the two used to disagree.
+ * same names, and neither reads a file a link carries in from outside the plugin.
+ * Most cases below are ones where the two used to disagree.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -72,19 +73,54 @@ describe('detect() and readPlugin agree on a plugin', () => {
     expect(folded.description).toBe('Folder.')
   })
 
-  test('a symbolic link to a skill folder or a command file is followed', async () => {
-    const elsewhere = join(f.root, 'elsewhere')
-    f.write(elsewhere, {
-      'linked/SKILL.md': '---\ndescription: Linked.\n---\n',
-      'go.md': '---\ndescription: Go.\n---\n',
+  test('of skill folders that share a frontmatter name, the first by folder name is kept', async () => {
+    f.write(install, {
+      'skills/a/SKILL.md': '---\nname: plan\ndescription: First.\n---\n',
+      'skills/b/SKILL.md': '---\nname: plan\ndescription: Second.\n---\n',
+    })
+    const v = await bothViews()
+    expect(v.detect.skills).toEqual(['plan'])
+    expect(v.model.skills).toEqual(v.detect.skills)
+    const r = await f.report('claude')
+    expect(r.skills.find((s) => s.name === 'plan')?.description).toBe('First.')
+    const plan = readPlugin(install).capabilities.find((c) => c.name === 'plan')!
+    expect(plan.description).toBe('First.')
+  })
+
+  test('a symbolic link that stays inside the plugin is followed', async () => {
+    f.write(install, {
+      'shared/linked/SKILL.md': '---\ndescription: Linked.\n---\n',
+      'shared/go.md': '---\ndescription: Go.\n---\n',
     })
     mkdirSync(join(install, 'skills'), { recursive: true })
     mkdirSync(join(install, 'commands'), { recursive: true })
-    symlinkSync(join(elsewhere, 'linked'), join(install, 'skills', 'linked'))
-    symlinkSync(join(elsewhere, 'go.md'), join(install, 'commands', 'go.md'))
+    symlinkSync(join(install, 'shared', 'linked'), join(install, 'skills', 'linked'))
+    symlinkSync(join('..', 'shared', 'go.md'), join(install, 'commands', 'go.md'))
     const v = await bothViews()
     expect(v.detect).toEqual({ skills: ['linked'], commands: ['go'] })
     expect(v.model).toEqual(v.detect)
+  })
+
+  test('a symbolic link that leads out of the plugin is neither read nor listed', async () => {
+    const elsewhere = join(f.root, 'elsewhere')
+    f.write(elsewhere, {
+      'linked/SKILL.md': '---\ndescription: Secret skill.\n---\n\nSECRET\n',
+      credentials: 'SECRET\n',
+      'out.md': '---\ndescription: Secret command.\n---\n\nSECRET\n',
+    })
+    f.write(install, { 'commands/held/SKILL.md': '---\n---\n' })
+    mkdirSync(join(install, 'skills'), { recursive: true })
+    symlinkSync(join(elsewhere, 'linked'), join(install, 'skills', 'linked'))
+    symlinkSync(join(elsewhere, 'credentials'), join(install, 'commands', 'x.md'))
+    symlinkSync(join(elsewhere, 'out.md'), join(install, 'commands', 'held', 'SKILL.md.bak'))
+    symlinkSync(join(elsewhere, 'out.md'), join(install, 'commands', 'out.md'))
+    const v = await bothViews()
+    expect(v.detect).toEqual({ skills: [], commands: ['held'] })
+    expect(v.model).toEqual(v.detect)
+    const m = readPlugin(install)
+    expect(JSON.stringify(m)).not.toContain('SECRET')
+    const r = await f.report('claude', { readContents: true })
+    expect(JSON.stringify(r)).not.toContain('SECRET')
   })
 
   test('a folder without SKILL.md, and a non-markdown file, are neither skill nor command', async () => {
