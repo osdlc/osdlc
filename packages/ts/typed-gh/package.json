@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/typed-gh",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "A typed GitHub client for TypeScript over the gh CLI. A total PullRequest/Review/CheckRun model, pure argv builders and parsers, and a tri-modal client \u2014 queries return parsed values, mutations throw, raw() is the escape hatch. Uses gh's own credentials; reads no token.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

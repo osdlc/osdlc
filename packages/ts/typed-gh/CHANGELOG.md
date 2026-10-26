@@ -1,5 +1,19 @@
 # @osdlc/typed-gh
 
+## 0.11.0
+
+### Minor Changes
+
+- da5e6a3: `parseOwnerRepo` is now `@osdlc/typed-git`'s `parseRemoteRepo` without the host. Behaviour change: a remote that `parseGitUrl` recognises but names no owner and repository for is read host-agnostically (`host/owner/repo`) instead of answering null; every other remote reads as before.
+  `settle`, `runCheckedGh`, `runCheckedGhAsync`, `gh.try`, `gh.soft`, `classifyGhFailure` and the leading-dash guard now use `@osdlc/command-seam`'s `runFailed`, `tryMethods`, `methodFacade`, `classifyFailed` and `notAnOption`, with no change a caller sees: the same failures, and the same `RangeError` and message for an argument that starts with `-`. `repoView` and every `--repo` verb build `[host/]owner/name` through one helper.
+
+### Patch Changes
+
+- Updated dependencies [da5e6a3]
+- Updated dependencies [da5e6a3]
+  - @osdlc/command-seam@0.14.0
+  - @osdlc/typed-git@0.10.0
+
 ## 0.10.0
 
 ### Minor Changes
