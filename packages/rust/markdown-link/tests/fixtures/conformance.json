@@ -1,0 +1,998 @@
+{
+  "code": [
+    {
+      "name": "backtick_fence",
+      "source": "a\n```\n[[x]]\n```\nb\n",
+      "stripped": "a\n   \n     \n   \nb\n"
+    },
+    {
+      "name": "tilde_fence",
+      "source": "a\n~~~\n[[x]]\n~~~\nb\n",
+      "stripped": "a\n   \n     \n   \nb\n"
+    },
+    {
+      "name": "fence_with_info_string",
+      "source": "```md\n[[x]]\n```\nb\n",
+      "stripped": "     \n     \n   \nb\n"
+    },
+    {
+      "name": "longer_fence_needs_a_close_at_least_as_long",
+      "source": "````\n[[x]]\n```\n[[y]]\n`````\nb\n",
+      "stripped": "    \n     \n   \n     \n     \nb\n"
+    },
+    {
+      "name": "fence_closes_only_on_its_own_character",
+      "source": "```\n~~~\n[[x]]\n```\nb\n",
+      "stripped": "   \n   \n     \n   \nb\n"
+    },
+    {
+      "name": "fence_indented_up_to_three_spaces",
+      "source": "   ~~~\n[[x]]\n   ~~~\nb\n",
+      "stripped": "      \n     \n      \nb\n"
+    },
+    {
+      "name": "unclosed_fence_runs_to_the_end",
+      "source": "a\n```\n[[x]]\n\n[[y]]\n",
+      "stripped": "a\n   \n     \n\n     \n"
+    },
+    {
+      "name": "crlf_fence",
+      "source": "```\r\n[[x]]\r\n```\r\nb\r\n",
+      "stripped": "    \n      \n    \nb\r\n"
+    },
+    {
+      "name": "inline_span",
+      "source": "a `[[x]]` b",
+      "stripped": "a         b"
+    },
+    {
+      "name": "double_backtick_span_holds_a_backtick",
+      "source": "a ``x ` [[y]]`` b",
+      "stripped": "a               b"
+    },
+    {
+      "name": "triple_backtick_span_inside_a_line",
+      "source": "a ```[[x]]``` b",
+      "stripped": "a             b"
+    },
+    {
+      "name": "unmatched_backtick_is_text",
+      "source": "a `[[x]] b",
+      "stripped": "a `[[x]] b"
+    },
+    {
+      "name": "unmatched_double_backtick_is_text",
+      "source": "a ``[[x]]` b",
+      "stripped": "a ``[[x]]` b"
+    },
+    {
+      "name": "span_crosses_a_line_break",
+      "source": "a `x\n[[y]]` b",
+      "stripped": "a   \n       b"
+    },
+    {
+      "name": "span_stops_at_a_blank_line",
+      "source": "a `x\n\n[[y]]` b",
+      "stripped": "a `x\n\n[[y]]` b"
+    },
+    {
+      "name": "span_stops_at_a_fence_line",
+      "source": "a `x\n~~~\n[[y]]`\n",
+      "stripped": "a `x\n   \n      \n"
+    },
+    {
+      "name": "multibyte_inside_a_span",
+      "source": "`日本語` [[x]]",
+      "stripped": "      [[x]]"
+    },
+    {
+      "name": "multibyte_inside_a_fence",
+      "source": "~~~\nsanté [[x]]\n~~~\n",
+      "stripped": "   \n           \n   \n"
+    },
+    {
+      "name": "plain_text_is_unchanged",
+      "source": "[[x]] and #tag, no code\n",
+      "stripped": "[[x]] and #tag, no code\n"
+    },
+    {
+      "name": "span_stops_at_a_list_item",
+      "source": "- press the ` key\n- see [[x]] with `ls`",
+      "stripped": "- press the ` key\n- see [[x]] with     ",
+      "strippedSkillExport": "- press the      \n                  ls`"
+    },
+    {
+      "name": "span_stops_at_an_ordered_list_item",
+      "source": "a `b\n1. item `c`",
+      "stripped": "a `b\n1. item    ",
+      "strippedSkillExport": "a   \n         c`"
+    },
+    {
+      "name": "span_stops_at_a_heading",
+      "source": "Some `text\n## Heading `x`",
+      "stripped": "Some `text\n## Heading    ",
+      "strippedSkillExport": "Some      \n            x`"
+    },
+    {
+      "name": "span_stops_at_a_block_quote",
+      "source": "Some `text\n> quote [[q]] `y`",
+      "stripped": "Some `text\n> quote [[q]]    ",
+      "strippedSkillExport": "Some      \n               y`"
+    },
+    {
+      "name": "span_stops_at_a_thematic_break",
+      "source": "a `b\n***\nc`",
+      "stripped": "a `b\n***\nc`",
+      "strippedSkillExport": "a   \n   \n  "
+    },
+    {
+      "name": "line_start_triple_backtick_span_is_inline",
+      "source": "```js``` is inline\n[[a]]\n\n[[b]]\n",
+      "stripped": "         is inline\n[[a]]\n\n[[b]]\n",
+      "strippedSkillExport": "                  \n     \n\n     \n"
+    },
+    {
+      "name": "closing_fence_line_holds_only_the_marker",
+      "source": "```\na\n```python\n[[x]]\n```\n[[y]]\n",
+      "stripped": "   \n \n         \n     \n   \n[[y]]\n",
+      "strippedSkillExport": "   \n \n         \n[[x]]\n   \n     \n"
+    },
+    {
+      "name": "longer_run_does_not_close_a_shorter_span",
+      "source": "``a```b``",
+      "stripped": "         ",
+      "strippedSkillExport": "        `"
+    },
+    {
+      "name": "span_does_not_leave_a_heading_line",
+      "source": "# Title `a\nsee [[x]] and `b`",
+      "stripped": "# Title `a\nsee [[x]] and    ",
+      "strippedSkillExport": "# Title   \n               b`"
+    },
+    {
+      "name": "span_does_not_cross_table_rows",
+      "source": "| key | note |\n|---|---|\n| ` | backtick |\n| [[x]] | `code` |",
+      "stripped": "| key | note |\n|---|---|\n| ` | backtick |\n| [[x]] |        |",
+      "strippedSkillExport": "| key | note |\n|---|---|\n|               \n           code` |"
+    },
+    {
+      "name": "span_stops_at_a_line_starting_with_a_pipe",
+      "note": "Diverges from CommonMark and GFM, which read this as one paragraph with [[x]] inside the span. A line starting with a pipe is a one-line block here, so [[x]] stays visible.",
+      "source": "a `b\n| [[x]] | `c` |",
+      "stripped": "a `b\n| [[x]] |     |",
+      "strippedSkillExport": "a   \n           c` |"
+    },
+    {
+      "name": "a_later_span_closes_after_an_unclosed_run",
+      "source": "`` a `[[x]]` b",
+      "stripped": "`` a         b"
+    },
+    {
+      "name": "a_later_span_closes_on_a_longer_run_after_an_unclosed_run",
+      "source": "x ``` ` [[x]] `` y",
+      "stripped": "x ``` ` [[x]] `` y",
+      "strippedSkillExport": "x ```          ` y"
+    },
+    {
+      "name": "astral_character_inside_a_span",
+      "note": "One space per character, not per UTF-16 code unit.",
+      "source": "`😀` [[x]]",
+      "stripped": "    [[x]]"
+    }
+  ],
+  "parse": [
+    {
+      "name": "plain_target",
+      "inner": "Note",
+      "parsed": {
+        "target": "Note",
+        "heading": null,
+        "alias": null,
+        "targetAt": 0
+      }
+    },
+    {
+      "name": "heading_and_alias",
+      "inner": "a#h|Alias",
+      "parsed": {
+        "target": "a",
+        "heading": "h",
+        "alias": "Alias",
+        "targetAt": 0
+      }
+    },
+    {
+      "name": "whitespace_is_trimmed",
+      "inner": " Note | a ",
+      "parsed": {
+        "target": "Note",
+        "heading": null,
+        "alias": "a",
+        "targetAt": 1
+      }
+    },
+    {
+      "name": "escaped_pipe",
+      "inner": "Note\\|a",
+      "parsed": {
+        "target": "Note",
+        "heading": null,
+        "alias": "a",
+        "targetAt": 0
+      }
+    },
+    {
+      "name": "escaped_pipe_after_a_heading",
+      "inner": "Note#H\\|a",
+      "parsed": {
+        "target": "Note",
+        "heading": "H",
+        "alias": "a",
+        "targetAt": 0
+      }
+    },
+    {
+      "name": "only_one_backslash_is_the_escape",
+      "inner": "Note\\\\|a",
+      "parsed": {
+        "target": "Note\\",
+        "heading": null,
+        "alias": "a",
+        "targetAt": 0
+      }
+    },
+    {
+      "name": "backslash_without_a_pipe_stays",
+      "inner": "Note\\",
+      "parsed": {
+        "target": "Note\\",
+        "heading": null,
+        "alias": null,
+        "targetAt": 0
+      }
+    },
+    {
+      "name": "heading_keeps_later_hashes",
+      "inner": "a#b#c",
+      "parsed": {
+        "target": "a",
+        "heading": "b#c",
+        "alias": null,
+        "targetAt": 0
+      }
+    },
+    {
+      "name": "alias_keeps_later_pipes",
+      "inner": "a|b|c",
+      "parsed": {
+        "target": "a",
+        "heading": null,
+        "alias": "b|c",
+        "targetAt": 0
+      }
+    },
+    {
+      "name": "hash_in_the_alias_is_not_a_heading",
+      "inner": "a#b|c#d",
+      "parsed": {
+        "target": "a",
+        "heading": "b",
+        "alias": "c#d",
+        "targetAt": 0
+      }
+    },
+    {
+      "name": "block_reference_is_a_heading",
+      "inner": "Note#^block",
+      "parsed": {
+        "target": "Note",
+        "heading": "^block",
+        "alias": null,
+        "targetAt": 0
+      }
+    },
+    {
+      "name": "heading_only_has_no_target",
+      "inner": "#H",
+      "parsed": null
+    },
+    {
+      "name": "escaped_pipe_only_has_no_target",
+      "inner": "\\|a",
+      "parsed": null
+    },
+    {
+      "name": "blank_has_no_target",
+      "inner": " ",
+      "parsed": null
+    },
+    {
+      "name": "alias_only_has_no_target",
+      "inner": "|alias",
+      "parsed": null
+    },
+    {
+      "name": "unicode_whitespace_is_trimmed",
+      "inner": "\u00a0Note\u0085|a",
+      "parsed": {
+        "target": "Note",
+        "heading": null,
+        "alias": "a",
+        "targetAt": 1
+      }
+    },
+    {
+      "name": "byte_order_mark_is_not_whitespace",
+      "inner": "\ufeffNote",
+      "parsed": {
+        "target": "\ufeffNote",
+        "heading": null,
+        "alias": null,
+        "targetAt": 0
+      }
+    },
+    {
+      "name": "target_offset_counts_characters",
+      "inner": " Café#x",
+      "parsed": {
+        "target": "Café",
+        "heading": "x",
+        "alias": null,
+        "targetAt": 1
+      }
+    },
+    {
+      "name": "note",
+      "url": "Notes/x.md",
+      "vaultLink": true,
+      "target": "Notes/x"
+    },
+    {
+      "name": "bare_extension_is_not_a_note",
+      "url": ".md",
+      "vaultLink": false,
+      "target": ""
+    },
+    {
+      "name": "upper_case_extension_is_not_a_note",
+      "url": "x.MD",
+      "vaultLink": false,
+      "target": "x"
+    },
+    {
+      "name": "repeated_extension_is_stripped_repeatedly",
+      "url": "a.md.md",
+      "vaultLink": true,
+      "target": "a"
+    },
+    {
+      "name": "lower_then_upper_extension",
+      "url": "a.md.MD",
+      "vaultLink": false,
+      "target": "a.md"
+    },
+    {
+      "name": "mixed_case_extension_is_stripped_once",
+      "url": "a.Md",
+      "vaultLink": false,
+      "target": "a"
+    },
+    {
+      "name": "percent_encoded_space",
+      "url": "My%20Note.md",
+      "vaultLink": true,
+      "target": "My Note"
+    },
+    {
+      "name": "percent_encoded_utf8",
+      "url": "Caf%C3%A9.md",
+      "vaultLink": true,
+      "target": "Café"
+    },
+    {
+      "name": "invalid_utf8_keeps_the_url",
+      "url": "%C3.md",
+      "vaultLink": true,
+      "target": "%C3"
+    },
+    {
+      "name": "bad_hex_stays",
+      "url": "%ZZ.md",
+      "vaultLink": true,
+      "target": "%ZZ"
+    },
+    {
+      "name": "short_escape_at_the_end_stays",
+      "url": "a%2",
+      "vaultLink": false,
+      "target": "a%2"
+    },
+    {
+      "name": "plus_sign_reads_as_a_hex_byte",
+      "url": "a%+41.md",
+      "vaultLink": true,
+      "target": "a\u00041"
+    },
+    {
+      "name": "byte_order_mark_survives_decoding",
+      "url": "%EF%BB%BFa.md",
+      "vaultLink": true,
+      "target": "\ufeffa"
+    },
+    {
+      "name": "attachment_extension_ignores_case",
+      "url": "img/photo.PNG",
+      "vaultLink": true,
+      "target": "img/photo.PNG"
+    },
+    {
+      "name": "no_extension",
+      "url": "folder.png/README",
+      "vaultLink": false,
+      "target": "folder.png/README"
+    },
+    {
+      "name": "hidden_file_is_not_an_extension",
+      "url": "dir/.png",
+      "vaultLink": false,
+      "target": "dir/.png"
+    },
+    {
+      "name": "trailing_dot_is_no_extension",
+      "url": "file.",
+      "vaultLink": false,
+      "target": "file."
+    },
+    {
+      "name": "scheme_is_not_checked_here",
+      "url": "https://example.com/y.md",
+      "vaultLink": true,
+      "target": "https://example.com/y"
+    },
+    {
+      "name": "wikilinks_embeds_headings_and_aliases",
+      "body": "See [[Target]] and ![[img.png]] and [[a#h|Alias]].",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "Target",
+          "target": "Target",
+          "alias": null,
+          "at": 4,
+          "text": "[[Target]]"
+        },
+        {
+          "kind": "embed",
+          "raw": "img.png",
+          "target": "img.png",
+          "alias": null,
+          "at": 19,
+          "text": "![[img.png]]"
+        },
+        {
+          "kind": "wikilink",
+          "raw": "a#h|Alias",
+          "target": "a",
+          "alias": "Alias",
+          "at": 36,
+          "text": "[[a#h|Alias]]"
+        }
+      ]
+    },
+    {
+      "name": "links_come_in_order",
+      "body": "[a](x.md) [[y]] [b](z.md)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "x.md",
+          "target": "x",
+          "alias": null,
+          "at": 0,
+          "text": "[a](x.md)"
+        },
+        {
+          "kind": "wikilink",
+          "raw": "y",
+          "target": "y",
+          "alias": null,
+          "at": 10,
+          "text": "[[y]]"
+        },
+        {
+          "kind": "markdown",
+          "raw": "z.md",
+          "target": "z",
+          "alias": null,
+          "at": 16,
+          "text": "[b](z.md)"
+        }
+      ]
+    },
+    {
+      "name": "links_in_code_are_not_harvested",
+      "body": "real [[Yes]]\n\n```\nfake [[No]]\n```\n\ninline `[[AlsoNo]]` done\n",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "Yes",
+          "target": "Yes",
+          "alias": null,
+          "at": 5,
+          "text": "[[Yes]]"
+        }
+      ]
+    },
+    {
+      "name": "absolute_urls_and_spaces_are_not_links",
+      "body": "[a](Notes/x.md) [b](https://example.com/y.md) [c](<sp ace.md>)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "Notes/x.md",
+          "target": "Notes/x",
+          "alias": null,
+          "at": 0,
+          "text": "[a](Notes/x.md)"
+        }
+      ]
+    },
+    {
+      "name": "other_schemes_are_not_links",
+      "body": "[a](app:note.md) [b](mailto:x.md)",
+      "links": []
+    },
+    {
+      "name": "angled_url",
+      "body": "[a](<x.md>)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "x.md",
+          "target": "x",
+          "alias": null,
+          "at": 0,
+          "text": "[a](<x.md>)"
+        }
+      ]
+    },
+    {
+      "name": "percent_encoded_url",
+      "body": "[a](Notes/My%20Note.md)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "Notes/My%20Note.md",
+          "target": "Notes/My Note",
+          "alias": null,
+          "at": 0,
+          "text": "[a](Notes/My%20Note.md)"
+        }
+      ]
+    },
+    {
+      "name": "attachment_url",
+      "body": "[p](img/photo.PNG) [see](README)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "img/photo.PNG",
+          "target": "img/photo.PNG",
+          "alias": null,
+          "at": 0,
+          "text": "[p](img/photo.PNG)"
+        }
+      ]
+    },
+    {
+      "name": "empty_targets_are_dropped",
+      "body": "[[]] [[ ]] [[|alias]]",
+      "links": []
+    },
+    {
+      "name": "a_bracket_inside_ends_the_link",
+      "body": "[[a[b]] [[c]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "c",
+          "target": "c",
+          "alias": null,
+          "at": 8,
+          "text": "[[c]]"
+        }
+      ]
+    },
+    {
+      "name": "markdown_link_starts_at_an_inner_bracket",
+      "body": "[a[b](x.md)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "x.md",
+          "target": "x",
+          "alias": null,
+          "at": 2,
+          "text": "[b](x.md)"
+        }
+      ]
+    },
+    {
+      "name": "unclosed_links",
+      "body": "[[abc [a](x.md",
+      "links": []
+    },
+    {
+      "name": "wikilink_may_cross_a_line_break",
+      "body": "[[a\nb]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "a\nb",
+          "target": "a\nb",
+          "alias": null,
+          "at": 0,
+          "text": "[[a\nb]]"
+        }
+      ]
+    },
+    {
+      "name": "embed_span_includes_the_bang",
+      "body": "x ![[img.png|100]]",
+      "links": [
+        {
+          "kind": "embed",
+          "raw": "img.png|100",
+          "target": "img.png",
+          "alias": "100",
+          "at": 2,
+          "text": "![[img.png|100]]"
+        }
+      ]
+    },
+    {
+      "name": "escaped_pipe_in_a_table_cell",
+      "body": "| [[Note\\|alias]] |",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "Note\\|alias",
+          "target": "Note",
+          "alias": "alias",
+          "at": 2,
+          "text": "[[Note\\|alias]]"
+        }
+      ]
+    },
+    {
+      "name": "code_inside_a_wikilink_is_blanked_in_raw",
+      "body": "[[a `x` b]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "a     b",
+          "target": "a     b",
+          "alias": null,
+          "at": 0,
+          "text": "[[a `x` b]]"
+        }
+      ]
+    },
+    {
+      "name": "offsets_count_characters",
+      "body": "日本 [[x]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "x",
+          "target": "x",
+          "alias": null,
+          "at": 3,
+          "text": "[[x]]"
+        }
+      ]
+    },
+    {
+      "name": "offsets_after_astral_characters_and_code",
+      "body": "📝 [[x]] `😀` [[y]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "x",
+          "target": "x",
+          "alias": null,
+          "at": 2,
+          "text": "[[x]]"
+        },
+        {
+          "kind": "wikilink",
+          "raw": "y",
+          "target": "y",
+          "alias": null,
+          "at": 12,
+          "text": "[[y]]"
+        }
+      ]
+    },
+    {
+      "name": "next_line_character_ends_a_url",
+      "body": "[a](x\u0085y.md)",
+      "links": []
+    },
+    {
+      "name": "byte_order_mark_does_not_end_a_url",
+      "body": "[a](x\ufeffy.md)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "x\ufeffy.md",
+          "target": "x\ufeffy",
+          "alias": null,
+          "at": 0,
+          "text": "[a](x\ufeffy.md)"
+        }
+      ]
+    },
+    {
+      "name": "alias_keeps_code_inside_it",
+      "body": "[[Note|the `a|b` label]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "Note|the       label",
+          "target": "Note",
+          "alias": "the `a|b` label",
+          "at": 0,
+          "text": "[[Note|the `a|b` label]]"
+        }
+      ]
+    },
+    {
+      "name": "an_empty_alias_is_none",
+      "body": "[[Note|]] and [[Other| ]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "Note|",
+          "target": "Note",
+          "alias": null,
+          "at": 0,
+          "text": "[[Note|]]"
+        },
+        {
+          "kind": "wikilink",
+          "raw": "Other| ",
+          "target": "Other",
+          "alias": null,
+          "at": 14,
+          "text": "[[Other| ]]"
+        }
+      ]
+    },
+    {
+      "name": "a_pipe_in_code_in_the_target_is_not_the_alias_pipe",
+      "body": "[[a `x|y` b|Label]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "a       b|Label",
+          "target": "a       b",
+          "alias": "Label",
+          "at": 0,
+          "text": "[[a `x|y` b|Label]]"
+        }
+      ]
+    },
+    {
+      "name": "a_pipe_only_in_code_gives_no_alias",
+      "body": "[[a`|`b]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "a   b",
+          "target": "a   b",
+          "alias": null,
+          "at": 0,
+          "text": "[[a`|`b]]"
+        }
+      ]
+    }
+  ],
+  "display": [
+    {
+      "name": "alias_or_target",
+      "text": "See [[Target|the thing]] and ![[img.png]] and [[Plain]].",
+      "display": "See the thing and img.png and Plain."
+    },
+    {
+      "name": "embed_width",
+      "note": "An embed size is not display text.",
+      "text": "![[img.png|300]]",
+      "display": "img.png"
+    },
+    {
+      "name": "embed_width_and_height",
+      "text": "![[assets/diagram.png|300x200]]",
+      "display": "assets/diagram.png"
+    },
+    {
+      "name": "embed_caption_then_size",
+      "note": "The size is read from the last |.",
+      "text": "![[img.png|a caption|300]]",
+      "display": "a caption"
+    },
+    {
+      "name": "embed_alias_that_is_not_a_size",
+      "text": "![[img.png|300px]]",
+      "display": "300px"
+    },
+    {
+      "name": "link_alias_that_looks_like_a_size",
+      "note": "Only an embed has a size.",
+      "text": "[[Note|300]]",
+      "display": "300"
+    },
+    {
+      "name": "empty_alias",
+      "text": "[[Note|]]",
+      "display": "Note"
+    },
+    {
+      "name": "heading_shows_the_target",
+      "text": "[[Note#Heading]]",
+      "display": "Note"
+    },
+    {
+      "name": "escaped_pipe",
+      "text": "[[Note\\|alias]]",
+      "display": "alias"
+    },
+    {
+      "name": "empty_link_is_dropped",
+      "text": "a [[]] b",
+      "display": "a  b"
+    },
+    {
+      "name": "unclosed_link_is_kept",
+      "text": "[[Note and ![[img",
+      "display": "[[Note and ![[img"
+    },
+    {
+      "name": "bang_before_a_link",
+      "text": "Hi! [[A]]",
+      "display": "Hi! A"
+    },
+    {
+      "name": "markdown_link_is_kept",
+      "text": "[a](b.md)",
+      "display": "[a](b.md)"
+    }
+  ],
+  "typedRef": [
+    {
+      "name": "plain",
+      "value": "[[location/home]]",
+      "typedRef": {
+        "kind": "location",
+        "slug": "home",
+        "alias": null
+      }
+    },
+    {
+      "name": "alias",
+      "value": "[[location/home|Home Base]]",
+      "typedRef": {
+        "kind": "location",
+        "slug": "home",
+        "alias": "Home Base"
+      }
+    },
+    {
+      "name": "nested_slug",
+      "value": "[[events/2026/spring]]",
+      "typedRef": {
+        "kind": "events",
+        "slug": "2026/spring",
+        "alias": null
+      }
+    },
+    {
+      "name": "escaped_pipe",
+      "note": "The \\ that escapes the pipe is dropped, as in parseInner.",
+      "value": "[[events/a\\|Alias]]",
+      "typedRef": {
+        "kind": "events",
+        "slug": "a",
+        "alias": "Alias"
+      }
+    },
+    {
+      "name": "alias_holding_a_pipe",
+      "value": "[[events/a|b|c]]",
+      "typedRef": {
+        "kind": "events",
+        "slug": "a",
+        "alias": "b|c"
+      }
+    },
+    {
+      "name": "empty_alias",
+      "value": "[[events/a|]]",
+      "typedRef": {
+        "kind": "events",
+        "slug": "a",
+        "alias": ""
+      }
+    },
+    {
+      "name": "heading_stays_in_the_slug",
+      "note": "Shape only: the slug is checked as written.",
+      "value": "[[events/a#h]]",
+      "typedRef": {
+        "kind": "events",
+        "slug": "a#h",
+        "alias": null
+      }
+    },
+    {
+      "name": "no_slash",
+      "value": "[[home]]",
+      "typedRef": null
+    },
+    {
+      "name": "empty_type",
+      "value": "[[/home]]",
+      "typedRef": null
+    },
+    {
+      "name": "empty_slug",
+      "value": "[[events/]]",
+      "typedRef": null
+    },
+    {
+      "name": "empty_slug_segment",
+      "value": "[[events/a//b]]",
+      "typedRef": null
+    },
+    {
+      "name": "space_in_slug",
+      "value": "[[events/a b]]",
+      "typedRef": null
+    },
+    {
+      "name": "space_in_type",
+      "value": "[[my events/a]]",
+      "typedRef": null
+    },
+    {
+      "name": "unicode_space_in_slug",
+      "value": "[[events/a\u00a0b]]",
+      "typedRef": null
+    },
+    {
+      "name": "text_before",
+      "value": "see [[events/a]]",
+      "typedRef": null
+    },
+    {
+      "name": "text_after",
+      "value": "[[events/a]] x",
+      "typedRef": null
+    },
+    {
+      "name": "bracket_inside",
+      "value": "[[events/a]]b]]",
+      "typedRef": null
+    },
+    {
+      "name": "line_break_in_alias",
+      "value": "[[events/a|x\ny]]",
+      "typedRef": null
+    },
+    {
+      "name": "empty",
+      "value": "[[]]",
+      "typedRef": null
+    }
+  ]
+}

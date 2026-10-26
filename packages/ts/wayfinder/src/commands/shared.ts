@@ -9,6 +9,7 @@ import { closestMatches } from '@osdlc/config-layers/did-you-mean'
 import { humanAge } from '@osdlc/system-model/duration'
 
 import { BIN } from '../app.ts'
+import { DISCOVERY_VALUES } from '../config-keys.ts'
 import type { TaskFilter } from '../core/filter.ts'
 import { SessionError, createSession, type CatalogSnapshot, type Session } from '../core/session.ts'
 import { unknownLine, type Unknown } from '../core/unknowns.ts'
@@ -46,7 +47,7 @@ export const GLOBALS = {
   },
   discovery: {
     kind: 'enum',
-    choices: ['git', 'walk', 'auto'] as const,
+    choices: DISCOVERY_VALUES,
     valueName: 'M',
     hidden: true,
     help: 'how to find directories. Default: auto',

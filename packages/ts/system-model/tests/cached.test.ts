@@ -11,6 +11,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { EXEC_MAX_AGE_MS, MODEL_VERSION, entryPath, type CacheEntry } from '../src/cache.ts'
+import { MAX_FINGERPRINT_FILES } from '../src/fingerprint.ts'
 import type { CollectOptions, DetectOptions } from '../src/contract.ts'
 import type { ProviderResult, Task } from '../src/model.ts'
 import { nodeScripts, pnpm } from '../src/plugins/node/index.ts'
@@ -469,6 +470,35 @@ describe('runners.readCached', () => {
     }
   })
 
+  // 257 files to write and hash, which Windows runners take seconds over.
+  test(
+    'a truncated fingerprint is an info diagnostic on the runner',
+    { timeout: 30_000 },
+    async () => {
+      const jobs: Record<string, string> = { 'alpha.txt': 'build' }
+      for (let i = 0; i <= MAX_FINGERPRINT_FILES; i++) jobs[`job-${i}.job`] = 'x'
+      const root = await fixtureRoot(jobs)
+      const cache = await fixtureRoot({})
+      try {
+        const s = setup([listingTool('jobs'), parseTool('alpha')])
+        const profile = await detect(s, root)
+        const live = await s.project.runners.collectAndCache(profile, cache, s.options)
+        const diagnosticsOf = (id: string) =>
+          live.reports.find((r) => r.runner === id)?.diagnostics ?? []
+
+        expect(diagnosticsOf('jobs')).toEqual([
+          {
+            severity: 'info',
+            message: expect.stringContaining(`first ${MAX_FINGERPRINT_FILES} files`),
+          },
+        ])
+      } finally {
+        await removeRoot(root)
+        await removeRoot(cache)
+      }
+    },
+  )
+
   test('a queried pattern that matches nothing new leaves the entry fresh', async () => {
     // Re-expanding the query must not make every entry stale.
     const root = await fixtureRoot({ 'one.job': 'x' })
@@ -872,6 +902,86 @@ describe('how an entry was probed', () => {
       await removeRoot(root)
       await removeRoot(cache)
       await removeRoot(bin)
+    }
+  })
+})
+
+describe('runners.collectAndStore', () => {
+  test('the catalog comes before the store is written, and stored settles once it is', async () => {
+    const root = await fixtureRoot({ 'alpha.txt': 'build\n', 'beta.txt': 'test\n' })
+    const cache = await fixtureRoot({})
+    try {
+      const s = setup([parseTool('alpha'), parseTool('beta')])
+      const profile = await detect(s, root)
+      const { catalog, stored } = await s.project.runners.collectAndStore(profile, cache, s.options)
+      expect(catalog.reports.map((r) => r.runner)).toEqual(['alpha', 'beta'])
+      // The writes need file I/O, so they cannot have ended yet.
+      const first = await Promise.race([stored.then(() => 'stored'), Promise.resolve('catalog')])
+      expect(first).toBe('catalog')
+
+      await stored
+      const cached = await s.project.runners.readCached(profile, cache, s.options)
+      expect(cached.allFresh).toBe(true)
+      expect(cached.catalog?.reports).toEqual(catalog.reports)
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+    }
+  })
+
+  test('a fingerprint over the cap is noted in the catalog at once', async () => {
+    const files: Record<string, string> = {}
+    for (let i = 0; i < 300; i++) files[`job-${String(i).padStart(3, '0')}.job`] = ''
+    const root = await fixtureRoot(files)
+    const cache = await fixtureRoot({})
+    try {
+      const s = setup([listingTool('jobs')])
+      const profile = await detect(s, root)
+      const { catalog, stored } = await s.project.runners.collectAndStore(profile, cache, s.options)
+      const messages = catalog.reports[0]!.diagnostics.map((d) => d.message)
+      expect(messages.some((m) => m.includes('fingerprint covers only the first'))).toBe(true)
+      await stored
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+    }
+  })
+
+  test('two probes in a row store in order: the later one is what stays', async () => {
+    const root = await fixtureRoot({ 'alpha.txt': 'build\n' })
+    const cache = await fixtureRoot({})
+    try {
+      const s = setup([parseTool('alpha')])
+      const profile = await detect(s, root)
+      const a = await s.project.runners.collectAndStore(profile, cache, s.options)
+      await writeFile(join(root, 'alpha.txt'), 'release\n')
+      const b = await s.project.runners.collectAndStore(profile, cache, s.options)
+      await Promise.all([a.stored, b.stored])
+      const entry = JSON.parse(
+        await readFile(entryPath(cache, profile.root, 'alpha'), 'utf-8'),
+      ) as CacheEntry
+      expect(entry.report.tasks.map((t) => t.path.at(-1))).toEqual(['release'])
+      expect(entry.durations).toHaveLength(2)
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+    }
+  })
+
+  test('a failed write never rejects stored', async () => {
+    const root = await fixtureRoot({ 'alpha.txt': 'build\n' })
+    const cache = await fixtureRoot({})
+    try {
+      const s = setup([parseTool('alpha')])
+      const profile = await detect(s, root)
+      // A file where the cache directory should be: every write fails.
+      const blocked = join(cache, 'file')
+      await writeFile(blocked, '')
+      const { stored } = await s.project.runners.collectAndStore(profile, blocked, s.options)
+      await expect(stored).resolves.toBeUndefined()
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
     }
   })
 })

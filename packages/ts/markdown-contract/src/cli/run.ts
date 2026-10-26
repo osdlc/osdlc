@@ -2,8 +2,8 @@
  * The CLI as a function. It parses the arguments, runs the command and returns the exit code and
  * the output. It never exits the process or writes to the real streams. `./bin.ts` does that.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, isAbsolute, resolve } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 
@@ -83,7 +83,7 @@ function parseCliArgs(argv: string[]) {
       meta: { type: 'boolean' }, // one contract per folder, plus a config (default: one contract)
       depth: { type: 'string' }, // folder depth for --meta (default 1; 0 means one contract)
       relax: { type: 'boolean' }, // make the inferred contracts looser
-      inline: { type: 'boolean' }, // one config with the contracts inline, no contracts/ files
+      inline: { type: 'boolean' }, // --meta only: one config with the contracts inline, no contracts/ files
       out: { type: 'string' }, // where to write (default: the one root; cwd for several roots)
       force: { type: 'boolean' }, // overwrite existing files (default: refuse)
       'dry-run': { type: 'boolean' }, // print the files to stdout and write nothing
@@ -213,6 +213,14 @@ async function runValidate(cwd: string, rest: string[], values: CliValues): Prom
       code: 2,
       stdout: '',
       stderr: `markdown-contract: path not found: ${pathArg ?? runRoot}`,
+    }
+  }
+  // The runner walks a folder. A file would fail inside it with a raw ENOTDIR.
+  if (!statSync(runRoot).isDirectory()) {
+    return {
+      code: 2,
+      stdout: '',
+      stderr: `markdown-contract: validate <path> must be a folder, not a file: ${pathArg ?? runRoot}`,
     }
   }
 
@@ -415,17 +423,21 @@ const INIT_CONFIG_NAME = 'markdown-contract.yaml'
  *  - Write: otherwise write `result.files` under `--out`. The default is the one root, so
  *    `init <dir> --check` finds the config from any cwd and `validate` finds it when run inside
  *    `<dir>`. With several roots there is no one base, so it uses cwd and warns on stderr. It
- *    refuses to overwrite an existing config without `--force` (exit 2). Single-contract mode
+ *    refuses to overwrite any existing file it would write (the config or a contract) without
+ *    `--force` (exit 2). Single-contract mode
  *    also writes a `markdown-contract.yaml` config, which `validate` loads when run inside
  *    `<dir>` or given `--config <dir>/markdown-contract.yaml`.
- *  - Self-check: after writing, load the config back with `loadConfigFile` and run it over the
- *    files with `runCorpus`. An error-level finding means inference has a bug, and exits 1.
+ *  - Self-check: after writing, compile each root's inferred contracts in memory with
+ *    `compileContractObject` and run them over that root with `runCorpus`. The written YAML is
+ *    not reloaded. An error-level finding means inference has a bug, and exits 1.
  *  - `--check`: do not infer or write. Load the existing config and run it over the files. Exit 0
  *    when clean, 1 on any error-level finding. Use it in CI to catch drift.
  *
  * Several roots run together. Each root is inferred and self-checked on its own files (globs are
- * relative to the root, so each root's contracts run with that root as cwd). The written files
- * hold every root's contracts. A summary (groups, files, warnings, self-check) goes to stdout.
+ * relative to the root, so each root's contracts run with that root as cwd). In single-contract
+ * mode the written config lists every root's contract, each rule's globs prefixed with the
+ * root's path from the output folder. In `--meta` mode the first root's file
+ * wins at each path, so later roots' configs are dropped. A summary (groups, files, warnings, self-check) goes to stdout.
  * Usage and config errors exit 2.
  */
 function runInit(cwd: string, roots: string[], flags: InitFlags): CliResult {
@@ -461,7 +473,7 @@ function runInit(cwd: string, roots: string[], flags: InitFlags): CliResult {
   if ('error' in inferred) return inferred.error
   const results = inferred.results
 
-  const files = mergeFiles(results, opts)
+  const files = mergeFiles(results, opts, outDir, absRoots)
 
   // --dry-run: print the files and write nothing.
   if (flags['dry-run'] === true) {
@@ -471,7 +483,7 @@ function runInit(cwd: string, roots: string[], flags: InitFlags): CliResult {
   const writeError = writeInitFiles(files, outDir, flags.force === true)
   if (writeError) return writeError
 
-  // Self-check: load each root's contracts back and run them over that root.
+  // Self-check: compile each root's inferred contracts in memory and run them over that root.
   const selfCheckErrors = selfCheck(results, absRoots, scope)
 
   const summary = renderSummary(results, files, selfCheckErrors)
@@ -526,7 +538,8 @@ function parseIntFlag(
   message: (raw: string) => string,
 ): { value: number | undefined } | { error: CliResult } {
   if (raw === undefined) return { value: undefined }
-  const value = Number(raw)
+  // Plain decimal digits only. `Number` alone reads '' as 0, '1e1' as 10 and '0x2' as 2.
+  const value = /^-?\d+$/.test(raw) ? Number(raw) : Number.NaN
   if (!Number.isInteger(value) || value < min) {
     return { error: { code: 2, stdout: '', stderr: message(raw) } }
   }
@@ -681,9 +694,17 @@ function runInitCheck(
  * roots the first root's file wins for each path, and the self-check runs on each root on its
  * own. In single-contract mode each root gives one `<name>.contract.yaml`, and this adds a
  * `markdown-contract.yaml` config that lists those contracts, so `validate` finds them when run
- * inside `<dir>`.
+ * inside `<dir>`. With several roots the config sits in `outDir`, so each rule's root-relative
+ * globs get the root's path from `outDir` as a prefix (`api/**\/*.md`); without it every rule
+ * would match every root and send all files to the first contract. Contract names that repeat
+ * across roots (`a/docs` and `b/docs`) get `-2`, `-3`, … so no contract file is overwritten.
  */
-function mergeFiles(results: InferResult[], opts: InferOptions): InferredFile[] {
+function mergeFiles(
+  results: InferResult[],
+  opts: InferOptions,
+  outDir: string,
+  absRoots: string[],
+): InferredFile[] {
   if (opts.meta === true) {
     // Meta mode: keep the first file for each path.
     const seen = new Set<string>()
@@ -700,8 +721,20 @@ function mergeFiles(results: InferResult[], opts: InferOptions): InferredFile[] 
   }
 
   // Single mode: each root's contract file, plus a config that lists them all.
-  const contracts: InferredContract[] = results.flatMap((r) => r.contracts)
-  const files: InferredFile[] = results.flatMap((r) => r.files)
+  const contracts: InferredContract[] = []
+  const files: InferredFile[] = []
+  const taken = new Set<string>()
+  results.forEach((r, i) => {
+    const prefix = results.length > 1 ? rootGlobPrefix(outDir, absRoots[i]!) : ''
+    for (const c of r.contracts) {
+      let name = c.name
+      for (let n = 2; taken.has(name); n++) name = `${c.name}-${n}`
+      taken.add(name)
+      const file = r.files.find((f) => f.path === `${c.name}.contract.yaml`)
+      if (file) files.push({ path: `${name}.contract.yaml`, content: file.content })
+      contracts.push({ ...c, name, include: c.include.map((g) => `${prefix}${g}`) })
+    }
+  })
   const registry: Record<string, string> = {}
   for (const c of contracts) registry[c.name] = `./${c.name}.contract.yaml`
   const router = {
@@ -711,6 +744,17 @@ function mergeFiles(results: InferResult[], opts: InferOptions): InferredFile[] 
     rules: contracts.map((c) => ({ include: c.include, contract: c.name })),
   }
   return [{ path: INIT_CONFIG_NAME, content: stringifyYaml(router) }, ...files]
+}
+
+/**
+ * The glob prefix (`api/`) for a root's rules in a config written to `outDir`: the root's path
+ * from `outDir`, with `/` separators. Empty when the root is `outDir` itself, or not inside it
+ * (a glob cannot reach a folder above the run folder).
+ */
+function rootGlobPrefix(outDir: string, absRoot: string): string {
+  const rel = relative(outDir, absRoot)
+  if (rel === '' || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return ''
+  return `${rel.split(sep).join('/')}/`
 }
 
 /**
@@ -792,7 +836,8 @@ function renderSummary(
  * - One contract, no `--path`: the contract applies to every `*.md` under the positional
  *   `<path>` (the run folder), as one rule with `include: ['**\/*.md']`.
  * - `--contract` and `--path` pairs: one rule per pair, `include: ['<dir>/**\/*.md']`, relative
- *   to the cwd. A positional `<path>` is not allowed here.
+ *   to the cwd. Each `<dir>` must be a folder inside the cwd. A positional `<path>` is not
+ *   allowed here.
  *
  * Contract refs must be `.yaml` or `.yml`. A contract written in code goes in a `.js` or `.mjs`
  * config. Throws on a count mismatch or another file type. The caller turns the throw into exit 2.
@@ -838,8 +883,21 @@ function buildInlineConfig(
     )
   }
   const rules: Rule[] = contracts.map((ref, i) => {
-    const dir = paths[i]!.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
-    const include = dir === '' || dir === '.' ? '**/*.md' : `${dir}/**/*.md`
+    // The glob is relative to the run folder (cwd), so a `--path` must be a folder inside it.
+    // Anything else would match no file and pass with nothing checked.
+    const raw = paths[i]!
+    const abs = resolve(cwd, raw)
+    if (!existsSync(abs) || !statSync(abs).isDirectory()) {
+      throw new Error(`--path '${raw}' is not a folder`)
+    }
+    const rel = relative(cwd, abs)
+    if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
+      throw new Error(
+        `--path '${raw}' is outside the current folder; run validate from a folder that holds it`,
+      )
+    }
+    const dir = rel.split(sep).join('/')
+    const include = dir === '' ? '**/*.md' : `${dir}/**/*.md`
     return { include: [include], contract: load(ref) }
   })
   return { config: { rules }, runRoot: cwd }

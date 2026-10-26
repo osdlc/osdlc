@@ -7,8 +7,10 @@
  * call is for: the shared prompt, a permission mode that lets the agent edit
  * files without asking, and the repair timeout.
  *
- * The permission mode is `edits`: file edits allowed, no shell commands, no
- * prompts. That is all a repair needs. The executor (`../update/execute.ts`)
+ * The permission mode is `edits`: file edits without prompts. agent-call
+ * translates it per agent and notes any approximation; codex maps it to
+ * `--sandbox workspace-write`, which also allows workspace commands. That is
+ * all a repair needs. The executor (`../update/execute.ts`)
  * checks the result afterwards (no commit, no new ref, no conflict markers), so
  * the agent's own sandbox is a second check, not the only one.
  */
@@ -94,7 +96,8 @@ export function agentRepair(
     try {
       result = await call(ADAPTERS[agent](), repairCallSpec(req, opts))
     } catch (e) {
-      // agent-call rejects only for a call it could not plan.
+      // agent-call rejects for a call it could not plan or set up (bad spec, temp
+      // directory failure); see callAgent's @throws.
       return { ok: false, note: `${agent}: ${e instanceof Error ? e.message : String(e)}` }
     }
     const said = lastLine(result.text)

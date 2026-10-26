@@ -59,6 +59,14 @@ describe('prView', () => {
     expect(prView(url, ['number']).argv.slice(0, 3)).toEqual(['pr', 'view', url])
   })
 
+  test('a scheme-less URL is sent with https://, so gh does not read it as a branch', () => {
+    expect(prView('github.com/acme/widgets/pull/7', ['number']).argv.slice(0, 3)).toEqual([
+      'pr',
+      'view',
+      'https://github.com/acme/widgets/pull/7',
+    ])
+  })
+
   test('a URL names its own repo, so the target is left off', () => {
     const url = 'https://github.com/acme/widgets/pull/7'
     expect(prView(url, ['number'], { repo: 'acme/other' }).argv).not.toContain('--repo')
@@ -131,6 +139,13 @@ describe('prList with head', () => {
     for (const bad of ['fix(ui)/', 'a"b', 'x)']) {
       expect(() => prList({ headPrefix: bad })).toThrow(RangeError)
     }
+  })
+
+  test('headPrefix goes through search, so 1000 rows read as truncated', () => {
+    const many = ok(
+      Array.from({ length: 1000 }, (_, i) => ({ number: i + 1, headRefName: 'task/x' })),
+    )
+    expect(prList({ headPrefix: 'task/', limit: 999 }).parse(many)?.truncated).toBe(true)
   })
 
   test('headPrefix refuses a limit search cannot honour', () => {
@@ -224,6 +239,16 @@ describe('prFind', () => {
     number,
     state,
     headRefName: head,
+  })
+
+  test('a scheme-less URL is a prView of the https:// URL', async () => {
+    const { gh, agh, calls } = clients(() => ok(pr(7, 'OPEN')))
+    expect(gh.prFind('github.com/acme/widgets/pull/7')?.number).toBe(7)
+    expect((await agh.prFind('github.com/acme/widgets/pull/7'))?.number).toBe(7)
+    expect(calls.map((c) => c[2])).toEqual([
+      'https://github.com/acme/widgets/pull/7',
+      'https://github.com/acme/widgets/pull/7',
+    ])
   })
 
   test('a number is one prView call', async () => {

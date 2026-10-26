@@ -23,6 +23,7 @@ import type { ZodType } from 'zod'
 import type { ParsedValues } from './parsed-values.js'
 import { frontmatterYamlErrors } from './projection.js'
 import { withHint } from './registry.js'
+import { bindSlots, isLeafSpec, pickBlock, slotsOf } from './slots.js'
 import { leafHintOf } from './structure.js'
 import type {
   BlockNode,
@@ -30,16 +31,11 @@ import type {
   Ctx,
   DocTree,
   Finding,
-  GapSpec,
   LeafSpec,
-  OneOfSpec,
-  OptionalSpec,
   SectionNode,
   SectionOpts,
   SectionSeq,
-  SectionSpec,
   SourcePos,
-  Spec,
 } from './types.js'
 
 // ── The runtime shape of a Zod schema, as this module reads it ──
@@ -89,48 +85,12 @@ interface MaxWordsConfig {
   maxWords: number
 }
 
-// ── Walking the specs (matches how the structure plane finds slots) ──────────────────
-
-/** A declared section slot with options, after `optional(...)` is unwrapped. */
-interface ContentSlot {
-  names: string[]
-  opts: SectionOpts
-}
-
-/** Unwraps `optional(spec)` to the spec inside it. */
-function innerOf(spec: Spec): SectionSpec | OneOfSpec | GapSpec {
-  if (spec.kind === 'optional') return innerOf((spec as OptionalSpec).spec)
-  return spec
-}
-
-/** The `section` and `oneOf` slots at one level that have options (content or children). */
-function contentSlots(specs: readonly Spec[]): ContentSlot[] {
-  const slots: ContentSlot[] = []
-  for (const spec of specs) {
-    const inner = innerOf(spec)
-    if (inner.kind === 'section') {
-      const s = inner as SectionSpec
-      if (s.opts) slots.push({ names: s.names, opts: s.opts })
-    } else if (inner.kind === 'oneOf') {
-      const o = inner as OneOfSpec
-      if (o.opts) slots.push({ names: o.names, opts: o.opts })
-    }
-  }
-  return slots
-}
+// ── Walking the specs (the shared resolver in `slots.ts`) ──────────────────────────────
 
 /**
- * The sections at this level that fill a slot: every occurrence for a repeatable slot, else the
- * first one. The structure plane reports a second occurrence as `duplicate-section`.
- */
-function sectionsFor(nodes: SectionNode[], slot: ContentSlot): SectionNode[] {
-  const hits = nodes.filter((n) => slot.names.includes(n.name))
-  return slot.opts.repeatable === true ? hits : hits.slice(0, 1)
-}
-
-/**
- * Checks one level: pairs each slot with the section that fills it, checks that section's
- * content leaves, then checks its declared children. `inheritedHint` is the nearest description
+ * Checks one level: pairs each slot with the sections that fill it (`bindSlots`: every
+ * occurrence of a repeatable slot, else the first, each section to the first slot that names
+ * it), checks those sections' content leaves, then checks their declared children. `inheritedHint` is the nearest description
  * above this level.
  */
 function matchLevel(
@@ -142,16 +102,22 @@ function matchLevel(
   inheritedHint?: string,
 ): void {
   const levelHint = seq.opts.description ?? inheritedHint
-  for (const slot of contentSlots(seq.specs)) {
-    // The structure plane reports a missing section (structure/section-missing).
-    for (const node of sectionsFor(nodes, slot)) {
-      const sectionHint = slot.opts.description ?? levelHint
-      validateSectionContent(node, slot.opts, ctx, out, values, sectionHint)
-      if (slot.opts.children) {
-        matchLevel(node.sections, slot.opts.children, ctx, out, values, sectionHint)
+  const slots = slotsOf(seq.specs)
+  const bindings = bindSlots(nodes, slots)
+  slots.forEach((slot, slotIdx) => {
+    const opts = slot.opts
+    if (!opts) return
+    // The sections that fill the slot. The structure plane reports a missing section
+    // (structure/section-missing) and a duplicate one (structure/duplicate-section).
+    for (const b of bindings) {
+      if (b.slotIdx !== slotIdx || !b.fills) continue
+      const sectionHint = opts.description ?? levelHint
+      validateSectionContent(b.node, opts, ctx, out, values, sectionHint)
+      if (opts.children) {
+        matchLevel(b.node.sections, opts.children, ctx, out, values, sectionHint)
       }
     }
-  }
+  })
 }
 
 /** Checks a section's content: a single leaf, or named leaves bound by `^anchor`. */
@@ -171,20 +137,6 @@ function validateSectionContent(
       validateLeaf(node, leaf, anchor, ctx, out, values, sectionHint)
     }
   }
-}
-
-/** True for a single `LeafSpec`, false for a `Record<string, LeafSpec>`. */
-function isLeafSpec(c: LeafSpec | Record<string, LeafSpec>): c is LeafSpec {
-  return typeof (c as LeafSpec).kind === 'string'
-}
-
-/**
- * The block a leaf checks: the block with `anchor` when it is set, otherwise the section's
- * first block.
- */
-function pickBlock(node: SectionNode, anchor: string | undefined): BlockNode | null {
-  if (anchor !== undefined) return node.blocks.find((b) => b.anchor === anchor) ?? null
-  return node.blocks[0] ?? null
 }
 
 /**
@@ -648,8 +600,8 @@ function zodHintAt(schema: ZodType, path: (string | number)[]): string | undefin
  * line (`tree.frontmatter.lineForPath(issue.path)`). A strict object that rejects unknown keys
  * gives one Zod issue listing them in `keys`. Each key becomes its own `frontmatter/unknown-key`
  * on that key's line. A missing required key (an `invalid_type` on an undefined value) becomes
- * `frontmatter/required`. With no frontmatter block, the schema runs on `{}`, so missing
- * required keys are still reported. Each finding's `hint` is the nearest `.describe()` text on
+ * `frontmatter/required`. With no frontmatter block, or an empty one, the schema runs on `{}`,
+ * so missing required keys are still reported. Each finding's `hint` is the nearest `.describe()` text on
  * the issue path, else `rootHint`.
  */
 function matchFrontmatter(
@@ -660,7 +612,10 @@ function matchFrontmatter(
   values: ParsedValues,
   rootHint?: string,
 ): void {
-  const data: unknown = tree.frontmatter ? tree.frontmatter.data : {}
+  // An empty or comment-only block parses to `null`. It holds no keys, so treat it like an absent
+  // block: missing keys are `frontmatter/required`, not one type error on the whole block.
+  const raw = tree.frontmatter?.data
+  const data: unknown = raw === null || raw === undefined ? {} : raw
   const res = asZod(schema).safeParse(data)
   if (res.success) {
     values.frontmatter = { data: res.data }

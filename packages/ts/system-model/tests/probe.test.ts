@@ -57,9 +57,12 @@ describe('exec probes', () => {
 
     const timeouts = new Map<string, number | undefined>()
     for (const call of fake.calls) {
-      expect(call.opts.signal).toBe(cancel.signal)
+      expect(call.opts.signal?.aborted).toBe(false)
       timeouts.set(call.binary, call.opts.timeoutMs)
     }
+    // Each call's signal follows the caller's.
+    cancel.abort()
+    for (const call of fake.calls) expect(call.opts.signal?.aborted).toBe(true)
     expect(Object.fromEntries(timeouts)).toEqual({
       moon: 120_000,
       mise: 30_000,

@@ -38,6 +38,25 @@ describe('execSelection exit codes', () => {
     const bun = fakeBun('exit 7')
     expect(execSelection(SPEC, selection, [], { env: { TOOLY_QUIET: '1' }, bun })).toBe(7)
   })
+
+  test('a bun that cannot start returns 1 and says so after the running line', () => {
+    const missing = join(sb.root, 'no-such-bun')
+    const notExecutable = join(sb.root, 'plain-bun')
+    writeFileSync(notExecutable, '#!/bin/sh\nexit 0\n', { mode: 0o644 })
+    for (const bun of [missing, notExecutable]) {
+      const lines: string[] = []
+      const code = execSelection(SPEC, selection, [], {
+        env: {},
+        bun,
+        announce: (line) => lines.push(line),
+      })
+      expect(code).toBe(1)
+      expect(lines).toHaveLength(2)
+      expect(lines[0]).toBe('tooly: running /x/src/cli.ts (test)')
+      expect(lines[1]).toContain(`could not start ${bun}`)
+      expect(lines[1]).toContain("run 'tooly dev off'")
+    }
+  })
 })
 
 describe('execSelection finds bun on absolute PATH entries only', () => {

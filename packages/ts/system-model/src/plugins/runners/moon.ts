@@ -27,7 +27,14 @@ import {
   type Task,
 } from '../../model.ts'
 import type { RunnerRole, ToolFact } from '../../tool.ts'
-import { afterSeparator, dependencies, looksPersistent, taskId, tierOf } from '../support/shared.ts'
+import {
+  afterSeparator,
+  dependencies,
+  looksPersistent,
+  taskId,
+  tierOf,
+  unique,
+} from '../support/shared.ts'
 
 const CHAIN = [
   { label: 'runner', hint: 'moon owns the build graph, its cache and task inheritance.' },
@@ -261,10 +268,6 @@ export function probeError(stderr: string): string {
     .replace(/\n{3,}/g, '\n\n')
     .trim()
   return (text || 'unknown failure').slice(0, 2000)
-}
-
-function unique(values: string[]): string[] {
-  return [...new Set(values)]
 }
 
 /**

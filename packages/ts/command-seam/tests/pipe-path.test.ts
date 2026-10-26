@@ -37,6 +37,8 @@ type Probe = {
   /** `spawnRunnerBytes` results, stdout as base64. */
   bytes: CommandResult
   bytesCap: CommandResult
+  stderrCap: CommandResult
+  bytesStderrCap: CommandResult
   signalDeath: CommandResult
   genuineExit1: CommandResult
   badCwd: CommandResult
@@ -173,6 +175,16 @@ describe('spawnRunner — production pipe path (NODE_ENV unset)', () => {
     expect(r.stdout).toBe(Buffer.from('€'.repeat(34)).subarray(0, 100).toString('base64'))
     expect(r.reason === 'output' || r.outputIncomplete === true).toBe(true)
     expect(r.error).toContain('ENOBUFS')
+  })
+
+  test('maxOutputBytes cuts stderr on a character boundary too, on both sync runners', () => {
+    for (const r of [probe.stderrCap, probe.bytesStderrCap]) {
+      expect(r.stderr).toBe('€'.repeat(33))
+      expect(r.reason === 'output' || r.outputIncomplete === true).toBe(true)
+      expect(r.error).toContain('ENOBUFS')
+    }
+    expect(probe.stderrCap.stdout).toBe('')
+    expect(probe.bytesStderrCap.stdout).toBe('')
   })
 
   // POSIX only: Windows has no signals; `sh` reports `kill -TERM $$` as an exit code.

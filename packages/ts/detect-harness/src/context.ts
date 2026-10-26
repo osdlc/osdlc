@@ -14,9 +14,9 @@ import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from 'n
 import { resolve } from 'node:path'
 
 import type { AsyncCommandRunner } from '@osdlc/command-seam'
+import { nodeGuard } from '@osdlc/path-guard/node'
 
 import type { DirEntry, JsonRead, ProviderContext, TextRead } from './contract.ts'
-import { isInside } from './inside.ts'
 import { asObject, errorMessage } from './json.ts'
 import type { DetectMode } from './report.ts'
 
@@ -46,16 +46,12 @@ export interface ContextArgs {
 /** The shared context; {@link forHarness} gives each provider its own view. */
 export function createContext(args: ContextArgs): ProviderContext {
   const { projectRoot, mode } = args
-  const realRoot = safeRealpath(projectRoot) ?? projectRoot
-  // In project mode a path must be inside the root by text and, when it exists,
-  // by its real path too, so a symbolic link out of the project is not followed.
-  const allowed = (path: string): boolean => {
-    if (mode === 'full') return true
-    const abs = resolve(path)
-    if (!isInside(projectRoot, abs) && !isInside(realRoot, abs)) return false
-    const real = safeRealpath(abs)
-    return real === null || isInside(realRoot, real)
-  }
+  const absRoot = resolve(projectRoot)
+  // In project mode a path must be inside the root once both are reduced to the
+  // real path of what exists, so a symbolic link out of the project, at the
+  // path or above it, is not followed.
+  const allowed = (path: string): boolean =>
+    mode === 'full' || nodeGuard.contains(absRoot, resolve(path))
 
   const texts = new Map<string, TextRead>()
   const readText = (path: string): TextRead => {

@@ -1,0 +1,46 @@
+[package]
+name = "markdown-link"
+version = "0.5.0"
+# Held back from crates.io: first-release step 1 of 3. A first release needs
+# CARGO_REGISTRY_TOKEN, a new version of a published crate needs trusted
+# publishing, and one release-plz run uses one credential. Remove this line
+# and the entry in packages/rust/release-plz.toml in a pull request of their
+# own, after the trusted-publishing run that publishes agent-adapt 0.19.1 and
+# yaml-splice 0.3.2.
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+description = "Parse and resolve Markdown and wiki-style links in notes: every `[[link]]`, `![[embed]]`, and relative Markdown link in a note body or its frontmatter, with code spans excluded, plus a LinkIndex that resolves a target against a set of file paths."
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/markdown-link"
+readme = "README.md"
+keywords = ["markdown", "wikilink", "links", "parser", "resolver"]
+categories = ["parser-implementations", "text-processing"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+  # `README.md` above matches at any depth, so the fixture vault is left out.
+  "!tests/fixtures/**",
+]
+
+[package.metadata.docs.rs]
+# Build the docs for the default target only; the crate has no platform code.
+targets = ["x86_64-unknown-linux-gnu"]
+
+[dependencies]
+yaml-splice = { workspace = true }
+slug-collate = { workspace = true }
+
+[dev-dependencies]
+# Frontmatter framing for the differential test.
+frontmatter-lossless = { workspace = true }
+# Reads the shared case file, tests/fixtures/conformance.json.
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

@@ -278,6 +278,17 @@ describe('migrateV1ToV2 branches the corpus contracts do not use', () => {
     expect(fm(out, '---\ns: null\n---\n')).toEqual([])
   })
 
+  it('drops `nullable: false` without making the field nullable', () => {
+    const { out, warnings } = migrate(
+      '    status: { type: string, nullable: false }\n    kind: { enum: [a, b], nullable: false }',
+    )
+    expect(warnings).toEqual([])
+    const p = parseYaml(out).frontmatter.properties
+    expect(p.status).toEqual({ type: 'string' })
+    expect(p.kind).toEqual({ enum: ['a', 'b'] })
+    expect(fm(out, '---\nstatus: null\nkind: a\n---\n')).toEqual(['frontmatter/type'])
+  })
+
   it('renames min and max on numbers and arrays, and of to items', () => {
     const { out } = migrate(
       '    n: { type: number, min: 1, max: 9 }\n    a: { type: array, of: { type: string }, min: 1, max: 2 }',

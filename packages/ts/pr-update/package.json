@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/pr-update",
-  "version": "0.7.5",
+  "version": "0.8.1",
   "description": "Survey and update out-of-date, stacked pull requests against their base: drift measured locally, conflicts predicted with merge-tree, PRs read through the @osdlc/code-host port.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

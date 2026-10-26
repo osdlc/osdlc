@@ -4,9 +4,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { mkdirSync, realpathSync, symlinkSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { codexHookHash } from '../src/read/hooks.ts'
+import { codexHookHash, codexTrust } from '../src/read/hooks.ts'
 import { REDACTED } from '../src/read/redact.ts'
 import { fixture, type Fixture } from './fixture.ts'
 
@@ -26,6 +27,72 @@ describe('codex', () => {
     expect(codexHookHash('SessionStart', { hooks: [hook] }, hook)).toBe(
       'sha256:8f48ba5d0ee2b77650f3d72f1b6449ecc8acae0d82831a3b7a4816debd769d03',
     )
+  })
+
+  test('codexHookHash normalises the handler and the group before hashing', () => {
+    type Json = Record<string, unknown>
+    const hash = (event: string, hook: Json, group: Json = {}) =>
+      codexHookHash(event, { ...group, hooks: [hook] }, hook)
+    const cmd = { type: 'command', command: 'true' }
+    // timeout: 600 s by default, at least 1 s.
+    expect(hash('Stop', cmd)).toBe(hash('Stop', { ...cmd, timeout: 600 }))
+    expect(hash('Stop', { ...cmd, timeout: 0 })).toBe(hash('Stop', { ...cmd, timeout: 1 }))
+    expect(hash('Stop', { ...cmd, timeout: 5 })).not.toBe(hash('Stop', cmd))
+    expect(hash('Stop', { ...cmd, timeout: '5' })).toBe(hash('Stop', cmd))
+    // Interrupt and SessionEnd: 1 s by default, clamped to 1–3 s.
+    for (const event of ['Interrupt', 'SessionEnd']) {
+      expect(hash(event, { ...cmd, timeout: 10 })).toBe(hash(event, { ...cmd, timeout: 3 }))
+      expect(hash(event, { ...cmd, timeout: 0 })).toBe(hash(event, cmd))
+      expect(hash(event, { ...cmd, timeout: 1 })).toBe(hash(event, cmd))
+      expect(hash(event, { ...cmd, timeout: 2 })).not.toBe(hash(event, cmd))
+    }
+    // A string matcher counts; any other matcher is dropped.
+    expect(hash('Stop', cmd, { matcher: 'Bash' })).not.toBe(hash('Stop', cmd))
+    expect(hash('Stop', cmd, { matcher: 5 })).toBe(hash('Stop', cmd))
+    // command_windows is an alias of commandWindows; null is the same as unset.
+    expect(hash('Stop', { ...cmd, command_windows: 'w' })).toBe(
+      hash('Stop', { ...cmd, commandWindows: 'w' }),
+    )
+    expect(hash('Stop', { ...cmd, commandWindows: 'w' })).not.toBe(hash('Stop', cmd))
+    expect(hash('Stop', { ...cmd, statusMessage: null })).toBe(hash('Stop', cmd))
+    // async is true only when it is the boolean true.
+    expect(hash('Stop', { ...cmd, async: 'yes' })).toBe(hash('Stop', cmd))
+    expect(hash('Stop', { ...cmd, async: true })).not.toBe(hash('Stop', cmd))
+    // The event name is part of the identity.
+    expect(hash('Stop', cmd)).not.toBe(hash('PostToolUse', cmd))
+  })
+
+  test('codexTrust: a disabled entry or an empty hash counts as never approved', () => {
+    const state = {
+      off: { trusted_hash: 'sha256:h', enabled: false },
+      empty: { trusted_hash: '' },
+      on: { trusted_hash: 'sha256:h', enabled: true },
+      old: { trusted_hash: 'sha256:old' },
+    }
+    expect(codexTrust(state, ['off'], 'sha256:h')).toBe('untrusted')
+    expect(codexTrust(state, ['empty'], 'sha256:h')).toBe('untrusted')
+    expect(codexTrust(state, ['on'], 'sha256:h')).toBe('trusted')
+    expect(codexTrust(state, ['old'], 'sha256:h')).toBe('modified')
+    expect(codexTrust(state, ['off', 'old'], 'sha256:h')).toBe('modified')
+    expect(codexTrust(state, ['old', 'on'], 'sha256:h')).toBe('trusted')
+    expect(codexTrust(state, ['missing'], 'sha256:h')).toBe('untrusted')
+  })
+
+  test('a symlinked hooks.json takes the trust recorded under its real path', async () => {
+    const hook = { type: 'command', command: 'ok' }
+    const shared = join(f.root, 'shared')
+    f.write(shared, { 'hooks.json': { hooks: { Stop: [{ hooks: [hook] }] } } })
+    mkdirSync(join(f.home, '.codex'), { recursive: true })
+    symlinkSync(join(shared, 'hooks.json'), join(f.home, '.codex', 'hooks.json'))
+    const real = realpathSync(join(shared, 'hooks.json'))
+    f.write(f.home, {
+      '.codex/config.toml': [
+        `[hooks.state."${real}:stop:0:0"]`,
+        `trusted_hash = "${codexHookHash('Stop', { hooks: [hook] }, hook)}"`,
+      ].join('\n'),
+    })
+    const r = await f.report('codex')
+    expect(r.hooks.map((h) => [h.command, h.trust])).toEqual([['ok', 'trusted']])
   })
 
   test('MCP servers from user and project config.toml; project wins; values redacted', async () => {

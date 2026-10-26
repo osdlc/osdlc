@@ -50,6 +50,20 @@ describe('AsyncGh — the three doors', () => {
     expect((await gh.try.prList()).ok).toBe(false)
   })
 
+  test('a bad argument rejects the Promise instead of throwing at the call site', async () => {
+    const { runner, calls } = recorder()
+    const gh = new AsyncGh('/repo', { runner })
+    // Each call must return a Promise; a synchronous throw would escape here.
+    const pending = [
+      gh.prList({ limit: 0 }),
+      gh.prView('-x'),
+      gh.repoView('not-a-slug'),
+      gh.graphql('mutation { x }'),
+    ]
+    for (const p of pending) await expect(p).rejects.toBeInstanceOf(RangeError)
+    expect(calls).toEqual([])
+  })
+
   test('mutations reject with the classified failure', async () => {
     const { runner } = recorder([FAIL])
     const gh = new AsyncGh('/repo', { runner })

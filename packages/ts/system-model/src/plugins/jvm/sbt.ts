@@ -14,8 +14,9 @@
  * while leaving out `test`. Reporting nothing is better. `mise` makes the same
  * choice.
  *
- * The cost is high. Every other exec runner here answers in milliseconds. sbt
- * starts a JVM, resolves the build's own dependencies and compiles the build
+ * The cost is high. sbt is the slowest exec runner here: mise answers in
+ * milliseconds, and moon is slow only when a first query installs a toolchain.
+ * sbt starts a JVM, resolves the build's own dependencies and compiles the build
  * definition. That takes 10-30s cold, and can take minutes on a first run with
  * an empty ivy/coursier cache. So this asks sbt once, with both commands in a
  * single JVM, and accepts a coarser answer instead of asking per project (see

@@ -9,16 +9,11 @@
  * closing fence at the end of the file), so the two suites cover the same
  * cases even where the corpus JSON has no field for them.
  *
- * `fixtures/conformance.json` is a copy of the Rust crate's corpus
- * (packages/rust/frontmatter-lossless/tests/fixtures/conformance.json), pinned
- * by `CORPUS_SHA256` below. The pin only stops the copy changing by accident.
- * A change to the crate's corpus does not reach this suite, and a change made
- * only here fails nothing in the crate. The copy is re-synced by hand until
- * both suites read one file. See docs/planning/decisions/D-07-conformance-corpus.md.
+ * The corpus is the crate's,
+ * packages/rust/frontmatter-lossless/tests/fixtures/conformance.json, and this
+ * suite reads it in place, so a case added to it reaches both suites. See
+ * docs/planning/decisions/D-07-conformance-corpus.md.
  */
-import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
-
 import { test, expect, describe } from 'vitest'
 import {
   split,
@@ -28,15 +23,8 @@ import {
   type CloseEol,
   type OpenEol,
 } from '../src/index.ts'
-import corpus from './fixtures/conformance.json'
-
-/** The Rust crate's corpus this copy was taken from. Change it only with the crate's. */
-const CORPUS_SHA256 = '75f48441a439f578b1f5207e273454c4ca9e298c91179c3a23d9c1c3958e606d'
-
-test('the corpus copy matches the revision it was copied from', () => {
-  const bytes = readFileSync(new URL('./fixtures/conformance.json', import.meta.url))
-  expect(createHash('sha256').update(bytes).digest('hex')).toBe(CORPUS_SHA256)
-})
+// The corpus is the crate's; this suite reads it in place.
+import corpus from '../../../rust/frontmatter-lossless/tests/fixtures/conformance.json'
 
 interface Fixture {
   name: string

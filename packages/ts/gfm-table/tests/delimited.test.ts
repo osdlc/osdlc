@@ -76,6 +76,15 @@ describe('parseDelimited', () => {
     expect(issues.map((i) => i.line)).toEqual([1])
   })
 
+  test('a quoted field may span 50 line breaks but not 51', () => {
+    const fifty = parseDelimited('"' + 'x\n'.repeat(50) + '",1\n', ',')
+    expect(fifty.records[0]!.fields).toEqual(['x\n'.repeat(50), '1'])
+    expect(fifty.issues).toEqual([])
+    const fiftyOne = parseDelimited('"' + 'x\n'.repeat(51) + '",1\n', ',')
+    expect(fiftyOne.issues[0]).toEqual({ line: 1, message: 'Unclosed quote; read as text' })
+    expect(fiftyOne.records[0]!.fields[0]).toBe('"x')
+  })
+
   test('text after a closing quote is kept and reported', () => {
     const { records, issues } = parseDelimited('"ab"cd,e\n', ',')
     expect(records[0]!.fields).toEqual(['abcd', 'e'])

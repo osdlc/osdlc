@@ -198,12 +198,17 @@ export class Gh {
    */
   openPrFor(
     branch: string,
-    opts: { limit?: number | undefined; fields?: readonly string[] | undefined } = {},
+    opts: {
+      limit?: number | undefined
+      fields?: readonly string[] | undefined
+      timeoutMs?: number | undefined
+    } = {},
   ): PullRequest | null {
     const rows = this.prList({
       head: branch,
       limit: opts.limit ?? 5,
       fields: opts.fields ?? v.PR_REF_FIELDS,
+      timeoutMs: opts.timeoutMs,
     })
     return v.pickPrForBranch(rows.rows, branch)
   }

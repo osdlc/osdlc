@@ -1,5 +1,45 @@
 # @osdlc/typed-gh
 
+## 0.11.0
+
+### Minor Changes
+
+- da5e6a3: `parseOwnerRepo` is now `@osdlc/typed-git`'s `parseRemoteRepo` without the host. Behaviour change: a remote that `parseGitUrl` recognises but names no owner and repository for is read host-agnostically (`host/owner/repo`) instead of answering null; every other remote reads as before.
+  `settle`, `runCheckedGh`, `runCheckedGhAsync`, `gh.try`, `gh.soft`, `classifyGhFailure` and the leading-dash guard now use `@osdlc/command-seam`'s `runFailed`, `tryMethods`, `methodFacade`, `classifyFailed` and `notAnOption`, with no change a caller sees: the same failures, and the same `RangeError` and message for an argument that starts with `-`. `repoView` and every `--repo` verb build `[host/]owner/name` through one helper.
+
+### Patch Changes
+
+- Updated dependencies [da5e6a3]
+- Updated dependencies [da5e6a3]
+  - @osdlc/command-seam@0.14.0
+  - @osdlc/typed-git@0.10.0
+
+## 0.10.0
+
+### Minor Changes
+
+- b835ae4: Behaviour change: output that the runner cut short (`outputIncomplete`, at the output cap or a timeout) now fails as `CommandFailed` for every verb but a probe, and in `runCheckedGh`/`runCheckedGhAsync`, instead of being parsed as whole. Behaviour change: every `AsyncGh` method that builds a verb now rejects its Promise on a bad argument (a verb's `RangeError`) instead of throwing at the call site.
+  `parseOwnerRepo` now reads a GitHub Enterprise remote (a host `parseGitUrl` does not know) through `parseRemoteUrl` instead of answering null. `graphql` refuses a document holding a mutation or subscription anywhere (after a fragment, a leading `,`, or a second operation), and a variable named `query` or `operationName`. `prView` passes a scheme-less PR URL (`github.com/o/r/pull/7`) to gh with `https://`, so gh no longer takes it for a branch name. `repoView` treats a hostname of `''` as not set. `createLabel` and `editLabel` refuse a name that starts with `-`. `openPrFor` takes `timeoutMs`.
+
+### Patch Changes
+
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [fdef74f]
+  - @osdlc/command-seam@0.13.0
+  - @osdlc/typed-git@0.9.0
+
+## 0.9.6
+
+### Patch Changes
+
+- 3d6d087: Document that a `Repository`'s `owner` and `name`, and a `PrSearchHit`'s `repository`, come back in GitHub's casing, not as the caller wrote them. The `Repository` and `PrSearchHit` type docs, the `repoList` and `repoView` doc comments and the README say so.
+- f013f38: The default runners now find `git` and `gh` on absolute `PATH` entries only, and spawn the absolute path found. Before, a bare `git` or `gh` was spawned by name with the child's `cwd` set to the checkout, so a file of that name in the checkout could run in place of the real binary: on Windows, where a bare name is searched in `cwd` first, and on every platform through a relative or empty `PATH` entry. A binary that is not found on an absolute entry fails as a missing binary (`not-installed`). typed-gh's `defaultRunnerFactory` does the same lookup. An injected runner is unchanged.
+- Updated dependencies [f013f38]
+- Updated dependencies [f013f38]
+  - @osdlc/command-seam@0.12.1
+  - @osdlc/typed-git@0.8.2
+
 ## 0.9.5
 
 ### Patch Changes

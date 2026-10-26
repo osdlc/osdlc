@@ -188,7 +188,7 @@ path was refused.
 
 ## Twin
 
-`@osdlc/path-guard` 0.3.0 is the TypeScript twin. Both read one conformance
+`@osdlc/path-guard` 0.3.x is the TypeScript twin. Both read one conformance
 fixture, so they agree on every case. Its `lexical` namespace,
 `PathGuard` class and `nodeGuard` match this crate's `lexical` module, `Guard`
 and `Guard::std()`. Its race-checked file helpers in `@osdlc/path-guard/node`

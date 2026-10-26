@@ -15,6 +15,8 @@ const manifests = new Map<string, Manifest>([
   ['packages/ts/tsconfig', { name: '@x/tsconfig' }],
   ['packages/ts/twin', { name: '@x/twin', devDependencies: { vitest: '^5' } }],
   ['packages/ts/wasm', { name: '@x/wasm' }],
+  ['packages/ts/feed-wasm', { name: '@x/feed-wasm' }],
+  ['packages/ts/tradecraft-wasm', { name: '@x/tradecraft-wasm' }],
 ])
 const ALL = [...manifests.keys()].sort()
 const pr = (files: string[] | null) => pick({ event: 'pull_request', files, manifests })
@@ -33,6 +35,12 @@ test('a Rust twin maps to its TypeScript twin', () => {
   assert.deepEqual(pr(['packages/rust/twin/tests/fixtures/parity.json']), ['packages/ts/twin'])
   assert.deepEqual(pr(['packages/rust/wasm-wasm/src/lib.rs']), ['packages/ts/wasm'])
   assert.deepEqual(pr(['packages/rust/only-rust/src/lib.rs']), [])
+  // A `-wasm` crate whose package keeps the suffix, and the crates that feed it.
+  assert.deepEqual(pr(['packages/rust/feed-wasm/src/lib.rs']), ['packages/ts/feed-wasm'])
+  assert.deepEqual(pr(['packages/rust/tradecraft-core/src/lib.rs']), ['packages/ts/tradecraft-wasm'])
+  assert.deepEqual(pr(['packages/rust/tradecraft-typegen/generated/core.generated.ts']), [
+    'packages/ts/tradecraft-wasm',
+  ])
 })
 
 test('a file outside every package picks nothing', () => {
@@ -45,6 +53,9 @@ test('a shared root input picks every package', () => {
     'package.json',
     '.oxlintrc.json',
     '.github/workflows/packages-ci.yml',
+    '.github/workflows/packages-windows-tier2.yml',
+    'scripts/bounded-run.ts',
+    'scripts/bounded-run.test.ts',
     'scripts/check-packages.ts',
     'scripts/package-shape-ts.ts',
     'scripts/package-shape-ts.test.ts',

@@ -194,6 +194,46 @@ describe('CLI — config-less --contract parameterization', () => {
     expect(res.code).toBe(1)
   })
 
+  it('an absolute --path inside cwd routes like the relative one', async () => {
+    const res = await runCli(['validate', '--contract', contract(), '--path', join(dir, 'clean')], {
+      cwd: dir,
+    })
+    expect(res.code).toBe(0)
+  })
+
+  it('a --path that does not exist → exit 2, not a silent pass', async () => {
+    const res = await runCli(['validate', '--contract', contract(), '--path', 'no-such-dir'], {
+      cwd: dir,
+    })
+    expect(res.code).toBe(2)
+    expect(res.stderr).toContain('is not a folder')
+  })
+
+  it('a --path outside cwd → exit 2, not a silent pass', async () => {
+    const res = await runCli(['validate', '--contract', contract(), '--path', '..'], {
+      cwd: join(dir, 'clean'),
+    })
+    expect(res.code).toBe(2)
+    expect(res.stderr).toContain('outside the current folder')
+  })
+
+  it('a file as the positional <path> → exit 2 with a usage message', async () => {
+    const file = join(dir, 'bad.md')
+    const res = await runCli(['validate', file, '--contract', contract()], { cwd: dir })
+    expect(res.code).toBe(2)
+    expect(res.stderr).toContain('must be a folder')
+  })
+
+  it.each([
+    ['no-default.mjs', 'export const rules = []\n'],
+    ['bad-default.mjs', "export default { rules: 'x' }\n"],
+  ])('a .mjs config without a CorpusConfig default export (%s) → exit 2', async (name, src) => {
+    writeFileSync(join(dir, name), src)
+    const res = await runCli(['validate', dir, '--config', join(dir, name)], { cwd: dir })
+    expect(res.code).toBe(2)
+    expect(res.stderr).toMatch(/must `export default` a CorpusConfig/)
+  })
+
   it('--contract and --config together → exit 2', async () => {
     const res = await runCli(
       ['validate', dir, '--contract', contract(), '--config', join(dir, 'mc.yaml')],

@@ -169,6 +169,7 @@ test('the functions that can throw say so with @throws, and no others do', () =>
   expect(throwing.sort()).toEqual(
     [
       'compileContractObject',
+      'forbids',
       'inferConfig',
       'loadConfig',
       'loadConfigFile',

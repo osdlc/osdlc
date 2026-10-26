@@ -47,6 +47,7 @@ describe('the schema', () => {
     expect(CONFIG_KEYS).toEqual([
       'runners.disabled',
       'runners.order',
+      'runners.timeout',
       'allowExec',
       'discovery',
       'excludePaths',
@@ -83,6 +84,11 @@ describe('the schema', () => {
     expect(line(url!)).toBeGreaterThanOrEqual(line(pkg.version))
     expect(line(url!) - line(pkg.version)).toBeLessThanOrEqual(1)
     expect(configJsonSchema()['$id']).toBe(CONFIG_SCHEMA_URL)
+  })
+
+  test('the configuration guide names the current schema URL', async () => {
+    const guide = await readFile(new URL('../docs/guide/configuration.md', import.meta.url), 'utf8')
+    expect(guide).toContain(`"$schema": "${CONFIG_SCHEMA_URL}"`)
   })
 
   test('$schema is accepted and is not a setting', () => {
@@ -299,5 +305,14 @@ describe('paths', () => {
     expect(() => appDirs({ env: { WAYFINDER_ROOT: 'rel' }, home: '/home/ada' })).toThrow(
       'WAYFINDER_ROOT',
     )
+  })
+
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)('a relative WAYFINDER_<HOME>_DIR is an error too', () => {
+    for (const name of ['WAYFINDER_CACHE_DIR', 'WAYFINDER_STATE_DIR', 'WAYFINDER_CONFIG_DIR']) {
+      expect(() => appDirs({ env: { [name]: 'rel' }, home: '/home/ada' })).toThrow(
+        `${name} must be an absolute path`,
+      )
+    }
   })
 })

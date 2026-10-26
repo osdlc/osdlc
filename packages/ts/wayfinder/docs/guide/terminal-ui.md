@@ -179,11 +179,17 @@ With nothing saved, each runner's rows appear as that runner answers. Until
 then the runner's tab shows `…` in place of its count, the list has a
 `… moon  loading` line for it, and the status line names what is still
 out: `loading 3 of 12: just, mise, moon`. Before the probe knows its runners
-it says `detecting the project…`, and after the last one it says `loading…`
-until the catalog is saved. A withheld runner shows `–` and its reason as
-soon as the probe reaches it. A failed one gets ` !` after its tab's count
+it says `detecting the project…`. Once the last one answers, the status line
+shows the result. The store is written after that, before `way` exits. A
+withheld runner shows `–` and its reason as soon as the probe reaches it. A failed one gets ` !` after its tab's count
 and its reason above the rows, in red: `boom: config is broken`. The status
-line names it too: `boom failed`.
+line names it too: `boom failed`. A runner that runs past its time limit
+fails the same way: `moon: timed out after 120 s` (see
+[`runners.timeout`](configuration.md#runnerstimeout)).
+
+The agent skills and the **Skills** tab appear with the first task rows, even
+when the skills were read before them, and stay after the tasks. A task that
+lands later goes above them, so the cursor stays where it is.
 
 A row from this probe runs at once on Enter; a row from the saved view is
 checked first (see below). While rows arrive, the cursor stays on the task it

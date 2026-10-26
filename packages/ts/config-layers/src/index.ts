@@ -25,10 +25,10 @@
  */
 
 export { closestMatches, didYouMean } from './did-you-mean.ts'
-export { envVars, systemDirs, TieredDirs } from './dirs.ts'
+export { envStem, envVars, systemDirs, TieredDirs } from './dirs.ts'
 export type { EnvVars, ResolveOptions, VendorDirs } from './dirs.ts'
 
-export { valueAt, valueIsSet } from './value.ts'
+export { getIn, valueAt, valueIsSet } from './value.ts'
 
 export { deepMergeConfig } from './merge.ts'
 
@@ -132,7 +132,6 @@ export {
   defaultOf,
   descriptionOf,
   describeShape,
-  getIn,
   jsonSchemaOf,
   nestedFields,
   omitPath,
@@ -155,7 +154,7 @@ export type {
   ValueLayer,
 } from './provenance.ts'
 
-export { MACHINE_CONFIG_ISSUE_CODES, envStem, machineConfigFile } from './machine.ts'
+export { MACHINE_CONFIG_ISSUE_CODES, machineConfigFile } from './machine.ts'
 export type {
   MachineConfigFile,
   MachineConfigFileOptions,

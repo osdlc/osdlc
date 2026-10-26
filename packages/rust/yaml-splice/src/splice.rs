@@ -24,7 +24,8 @@
 //!
 //! # The shape of the returned text
 //!
-//! Every function here returns the block in split form: the last line is
+//! Every function here except [`remove_key`] (see its doc) returns the
+//! block in split form: the last line is
 //! not terminated, because the terminator is the caller's framing and not
 //! the block's content. That is the text between the `---` fences of a
 //! Markdown file, without the line ending before the closing fence. Under
@@ -42,7 +43,7 @@
 //! [`edit_yaml`](crate::edit::edit_yaml), which treats its input as a whole
 //! document.
 
-use crate::parse::{self, ParseError};
+use crate::parse::{self, KeySpan, ParseError};
 use crate::render::{self, RenderError};
 use crate::value::Value;
 use std::ops::Range;
@@ -116,27 +117,35 @@ pub fn splice_key(
 /// The result is in split form whether or not anything was appended (see the
 /// module docs).
 ///
+/// A key named more than once is written once: the last edit for it wins.
+///
 /// # Errors
 ///
 /// The same as [`splice_key`].
 pub fn splice_keys(yaml: &str, edits: Vec<(String, Replacement)>) -> Result<String, SpliceError> {
     let parsed = parse::parse_with_spans(yaml)?;
+    let eol = block_eol(yaml);
+
+    // One entry per key, the last edit winning, at the key's first position.
+    // Every range comes from the one parse above, so two edits for the same
+    // key would both be applied at offsets the first one already shifted.
+    let mut unique: Vec<(String, Replacement)> = Vec::with_capacity(edits.len());
+    for (key, replacement) in edits {
+        match unique.iter_mut().find(|(k, _)| *k == key) {
+            Some(slot) => slot.1 = replacement,
+            None => unique.push((key, replacement)),
+        }
+    }
 
     let mut applied: Vec<(std::ops::Range<usize>, String)> = Vec::new();
     let mut appended: Vec<(String, Replacement)> = Vec::new();
 
-    for (key, replacement) in edits {
+    for (key, replacement) in unique {
         match parsed.top_level.iter().find(|k| k.key == key) {
             Some(span) => {
                 let key_indent = line_indent(yaml, span.key_range.start);
-                let text = render_assignment(&replacement, &key_indent)?;
-                // From just past the `:`. See `KeySpan::assign_end` for why
-                // the separator has to be part of the replaced range.
-                applied.push(fit_assignment(
-                    yaml,
-                    span.assign_end..span.value_range.end.max(span.assign_end),
-                    text,
-                ));
+                let text = render_assignment(&replacement, &key_indent, eol)?;
+                applied.push(value_edit(yaml, span, text));
             }
             None => appended.push((key, replacement)),
         }
@@ -150,7 +159,6 @@ pub fn splice_keys(yaml: &str, edits: Vec<(String, Replacement)>) -> Result<Stri
     }
 
     if !appended.is_empty() {
-        let eol = block_eol(yaml);
         for (key, replacement) in appended {
             // Finish the block's last line so the new entry starts on one of
             // its own. In split form that line is missing exactly its `\n`
@@ -163,14 +171,7 @@ pub fn splice_keys(yaml: &str, edits: Vec<(String, Replacement)>) -> Result<Stri
             // Render the key through the emitter so a key needing quotes gets
             // them, then reuse the same assignment renderer as the splice path.
             let key_text = render::key_token(&key)?;
-            let assign = render_assignment(&replacement, "")?;
-            // The emitter always writes `\n`; a new line in a CRLF block has to
-            // arrive as CRLF or the block gains a single LF line. `Raw` is
-            // inserted verbatim, here as on the splice path.
-            let assign = match replacement {
-                Replacement::Raw(_) => assign,
-                Replacement::Value(_) => apply_eol(&assign, eol),
-            };
+            let assign = render_assignment(&replacement, "", eol)?;
             out.push_str(&key_text);
             out.push(':');
             out.push_str(&assign);
@@ -201,7 +202,7 @@ fn block_eol(yaml: &str) -> &'static str {
 }
 
 /// Re-point an emitter's always-LF text at the document's own line ending.
-pub(crate) fn apply_eol(text: &str, eol: &'static str) -> String {
+fn apply_eol(text: &str, eol: &'static str) -> String {
     if eol == "\n" {
         text.to_string()
     } else {
@@ -212,6 +213,9 @@ pub(crate) fn apply_eol(text: &str, eol: &'static str) -> String {
 /// Removes a top-level key and the whole lines it occupied. An absent key
 /// returns `yaml` unchanged. The key is matched exactly.
 ///
+/// Unlike the rest of this module, the result is not always in split form:
+/// removing the last key leaves the line ending of the line before it.
+///
 /// # Errors
 ///
 /// [`SpliceError::Parse`] when `yaml` does not parse.
@@ -220,18 +224,52 @@ pub fn remove_key(yaml: &str, key: &str) -> Result<String, SpliceError> {
     let Some(span) = parsed.top_level.iter().find(|k| k.key == key) else {
         return Ok(yaml.to_string());
     };
-    let start = line_start(yaml, span.key_range.start);
-    let end = {
-        let after = span.value_range.end.max(span.key_range.end);
-        match yaml[after..].find('\n') {
-            Some(i) => after + i + 1,
-            None => yaml.len(),
-        }
+    Ok(without_entry(yaml, span))
+}
+
+/// `src` with the whole lines of one top-level entry cut out. Shared with
+/// [`crate::edit`]'s `Remove`.
+///
+/// From the start of the key's line to the end of the value's last line, so
+/// a trailing inline comment goes with it; standalone comments above the key
+/// sit before the cut and are kept.
+pub(crate) fn without_entry(src: &str, span: &KeySpan) -> String {
+    let start = line_start(src, span.key_range.start);
+    let after = span.value_range.end.max(span.key_range.end);
+    let end = match src[after..].find('\n') {
+        Some(i) => after + i + 1,
+        None => src.len(),
     };
-    let mut out = String::with_capacity(yaml.len());
-    out.push_str(&yaml[..start]);
-    out.push_str(&yaml[end..]);
-    Ok(out)
+    let mut out = String::with_capacity(src.len());
+    out.push_str(&src[..start]);
+    out.push_str(&src[end..]);
+    out
+}
+
+/// A typed value rendered as everything after its key's `:`, in the
+/// document's line ending. Shared with [`crate::edit`]'s `Set`.
+///
+/// The emitter always writes `\n`; a line written into a CRLF block has to
+/// arrive as CRLF or the block gains a lone LF line.
+pub(crate) fn value_assignment(
+    value: &Value,
+    key_indent: &str,
+    eol: &'static str,
+) -> Result<String, RenderError> {
+    Ok(apply_eol(&render::assignment(value, key_indent)?, eol))
+}
+
+/// The range of `src` an assignment for `span` replaces, and the text that
+/// goes there. Shared with [`crate::edit`]'s `Set`.
+///
+/// The range starts just past the `:`: see `KeySpan::assign_end` for why the
+/// separator has to be part of it. [`fit_assignment`] may widen it.
+pub(crate) fn value_edit(src: &str, span: &KeySpan, text: String) -> (Range<usize>, String) {
+    fit_assignment(
+        src,
+        span.assign_end..span.value_range.end.max(span.assign_end),
+        text,
+    )
 }
 
 /// Render everything that follows the `:`, the separator included.
@@ -242,14 +280,19 @@ pub fn remove_key(yaml: &str, key: &str) -> Result<String, SpliceError> {
 /// re-indented under the key. A renderer that only produced the value would
 /// have to leave `key: ` intact and could never turn `tags: []` into a block
 /// list without leaving a trailing space behind.
-fn render_assignment(replacement: &Replacement, key_indent: &str) -> Result<String, RenderError> {
+fn render_assignment(
+    replacement: &Replacement,
+    key_indent: &str,
+    eol: &'static str,
+) -> Result<String, RenderError> {
     match replacement {
-        // Raw text is inserted verbatim on the key's line; a caller passing
-        // multi-line raw text is responsible for its own indentation.
+        // Raw text is inserted verbatim on the key's line, line endings and
+        // all; a caller passing multi-line raw text is responsible for its
+        // own indentation.
         Replacement::Raw(s) => Ok(format!(" {s}")),
         // A typed value goes through the shared value emitter, which owns the
         // scalar-vs-block layout decision.
-        Replacement::Value(v) => render::assignment(v, key_indent),
+        Replacement::Value(v) => value_assignment(v, key_indent, eol),
     }
 }
 
@@ -262,11 +305,7 @@ fn render_assignment(replacement: &Replacement, key_indent: &str) -> Result<Stri
 /// is moved to the end of the first line, where a comment is allowed. Any
 /// other multi-line text (a quoted or plain scalar that continues on the next
 /// line) is left as it is, since its first line is not a place for a comment.
-pub(crate) fn fit_assignment(
-    src: &str,
-    range: Range<usize>,
-    text: String,
-) -> (Range<usize>, String) {
+fn fit_assignment(src: &str, range: Range<usize>, text: String) -> (Range<usize>, String) {
     let Some((head, rest)) = text.split_once('\n') else {
         return (range, text);
     };
@@ -317,7 +356,7 @@ pub(crate) fn line_indent(yaml: &str, pos: usize) -> String {
         .collect()
 }
 
-pub(crate) fn line_start(s: &str, pos: usize) -> usize {
+fn line_start(s: &str, pos: usize) -> usize {
     s[..pos].rfind('\n').map(|i| i + 1).unwrap_or(0)
 }
 
@@ -452,6 +491,51 @@ alpha: 2
         )
         .unwrap();
         assert_eq!(out, "# hi\na: 10\nb: 2\nc: three\n");
+    }
+
+    #[test]
+    fn a_key_named_twice_is_written_once_with_the_last_value() {
+        let out = splice_keys(
+            "a: 1\nb: 2",
+            vec![
+                ("a".into(), Value::Int(10).into()),
+                ("a".into(), Value::Int(2000).into()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(out, "a: 2000\nb: 2");
+
+        // A multi-byte first value must not leave a stale range behind.
+        let out = splice_keys(
+            "a: 1\nb: 2",
+            vec![
+                ("a".into(), s("éé").into()),
+                ("a".into(), Value::Int(3).into()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(out, "a: 3\nb: 2");
+
+        let out = splice_keys(
+            "a: 1",
+            vec![
+                ("z".into(), Value::Int(1).into()),
+                ("z".into(), Value::Int(2).into()),
+            ],
+        )
+        .unwrap();
+        assert_eq!(out, "a: 1\nz: 2");
+    }
+
+    #[test]
+    fn a_crlf_block_gets_a_replaced_collection_in_crlf() {
+        let src = "a: 1\r\ntags: []\r\nb: 2\r";
+        let out = splice_key(src, "tags", Value::Seq(vec![s("x")])).unwrap();
+        assert_eq!(out, "a: 1\r\ntags:\r\n  - x\r\nb: 2\r");
+        assert!(
+            !out.replace("\r\n", "").contains('\n'),
+            "a lone LF leaked into a CRLF block: {out:?}"
+        );
     }
 
     #[test]

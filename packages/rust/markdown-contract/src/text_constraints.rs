@@ -8,8 +8,9 @@
 //! `"doc"`.
 //!
 //! A builder panics on an authoring error, as the TS builders throw: a `requires` entry
-//! whose bound means absence (`max: 0`, or `max` below the minimum), an entry with no
-//! needle, or a `regex` the `regex` crate rejects. The declarative compiler screens the
+//! whose bound means absence (`max: 0`, or `max` below the minimum), a `forbids` entry
+//! with a negative `max`, an entry with no needle, or a `regex` the `regex` crate
+//! rejects. The declarative compiler screens the
 //! same errors out first as a `DeclarativeError`.
 
 use regex::Regex;
@@ -20,24 +21,20 @@ use crate::finding::Finding;
 use crate::registry::Ctx;
 use crate::text_match::{
     TextFindingInput, TextKind, TextMatchSpec, build_regex_or_panic, build_text_findings,
-    match_text,
+    count_bound_problem, match_text,
 };
 use crate::tree::{BlockNode, DocTree, SectionNode};
 
-// ── Purity: a `requires` entry may not express absence ───────────────────────
+// ── Count bounds that can never be met ─────────────────────────────────────────────
 
-/// Reject a `requires` entry whose count bound means absence (`max: 0`, or any `max`
-/// below the entry's minimum). Panics, as the TS builders throw `ContractBuildError`.
-fn assert_requires_purity(specs: &[TextMatchSpec]) {
+/// Reject the first entry whose count bound [`count_bound_problem`] refuses: a
+/// `requires` whose bound means absence (`max: 0`, or any `max` below the entry's
+/// minimum), or a `forbids` with a negative `max`. Panics, as the TS builders throw
+/// `ContractBuildError`.
+fn assert_count_bounds(kind: TextKind, specs: &[TextMatchSpec]) {
     for spec in specs {
-        let floor = spec.min.unwrap_or(1.0).max(1.0);
-        if let Some(max) = spec.max
-            && max < floor
-        {
-            panic!(
-                "contract/text-requires-purity: requires({}): a requires entry may not express absence (max {max} < {floor}); use forbids(...) for an absence check",
-                spec.repr()
-            );
+        if let Some(problem) = count_bound_problem(kind, spec) {
+            panic!("{}: {}", problem.id, problem.message);
         }
     }
 }
@@ -192,7 +189,7 @@ impl Rule for TextNodeRule {
 /// On an absence-form entry (`max: 0` or `max < min`; use [`forbids`]), an entry with
 /// no needle, or a `regex` the `regex` crate rejects.
 pub fn requires(specs: Vec<TextMatchSpec>) -> Box<dyn Rule> {
-    assert_requires_purity(&specs);
+    assert_count_bounds(TextKind::Requires, &specs);
     requires_compiled(compile(specs))
 }
 
@@ -210,8 +207,10 @@ pub(crate) fn requires_compiled(specs: Compiled) -> Box<dyn Rule> {
 /// for every hit (or `text/count` at the heading when a positive `max` cap is exceeded).
 ///
 /// # Panics
-/// On an entry with no needle, or a `regex` the `regex` crate rejects.
+/// On an entry with a negative `max`, an entry with no needle, or a `regex` the `regex`
+/// crate rejects.
 pub fn forbids(specs: Vec<TextMatchSpec>) -> Box<dyn Rule> {
+    assert_count_bounds(TextKind::Forbids, &specs);
     forbids_compiled(compile(specs))
 }
 
@@ -284,7 +283,8 @@ impl DocRule for TextDocRule {
 /// # Panics
 /// As [`requires`] and [`forbids`] do.
 pub fn text_rule(spec: TextRuleSpec) -> Box<dyn DocRule> {
-    assert_requires_purity(&spec.requires);
+    assert_count_bounds(TextKind::Requires, &spec.requires);
+    assert_count_bounds(TextKind::Forbids, &spec.forbids);
     text_rule_compiled(compile(spec.requires), compile(spec.forbids))
 }
 
@@ -396,6 +396,15 @@ mod tests {
     fn requires_rejects_the_absence_form() {
         requires(vec![TextMatchSpec {
             max: Some(0.0),
+            ..pattern("x")
+        }]);
+    }
+
+    #[test]
+    #[should_panic(expected = "contract/text-count-bound")]
+    fn forbids_rejects_a_negative_max() {
+        forbids(vec![TextMatchSpec {
+            max: Some(-1.0),
             ..pattern("x")
         }]);
     }

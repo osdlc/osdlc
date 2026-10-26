@@ -16,10 +16,10 @@ import { pathToFileURL } from 'node:url'
 
 import { BUILTIN_TOOL_IDS } from '@osdlc/system-model/builtins'
 import type { ToolDef } from '@osdlc/system-model/detect'
+import { expandTilde } from '@osdlc/tiered-dirs'
 
 import { BIN } from './app.ts'
 import type { LoadedConfig } from './config.ts'
-import { expandTilde } from './xdg.ts'
 
 /** A tool module that could not be loaded or does not export tools. */
 export class ToolModuleError extends Error {

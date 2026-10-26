@@ -1,0 +1,53 @@
+[package]
+name = "markdown-relink"
+version = "0.1.5"
+# Held back from crates.io: first-release step 2 of 3. `cargo publish` needs
+# markdown-link and markdown-vault-fs on crates.io first. Remove this line and
+# the entry in packages/rust/release-plz.toml in a pull request of their own,
+# once step 1 is out.
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+description = "Rename and move a note without breaking the vault: the inbound-wikilink rewrite set, computed as a reviewable plan and applied under per-file compare-and-swap"
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/markdown-relink"
+readme = "README.md"
+keywords = ["markdown", "wikilink", "rename", "refactoring", "links"]
+categories = ["filesystem", "text-processing"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+# The planner is path-and-bytes only.
+[dependencies]
+# The planner builds its own key -> candidates multimap (see `plan::Corpus`).
+# It must key it the way `LinkIndex::build` does, so it shares
+# `markdown_link::{normalize_target, suffixes, strip_md_ext, percent_decode}`
+# and spells none of them a second time.
+markdown-link = { workspace = true }
+# The vault walk and the two-layer vault-relative path guard.
+markdown-vault-fs = { workspace = true }
+slug-collate = { workspace = true }
+# The atomic compare-and-swap write the plan is applied under.
+etag-write = { workspace = true }
+# Byte-exact frontmatter split, and the YAML parse behind `VaultFacts`.
+frontmatter-lossless = { workspace = true }
+yaml-splice = { workspace = true }
+thiserror = { workspace = true }
+
+# The offset-tracking scanner this crate enumerates links with lives in
+# `markdown-link`, so there is one answer to "is this a link". `VaultFacts` is
+# the seam that lets a caller hand over an already-built link graph and
+# frontmatter index instead of this crate re-reading the vault.
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

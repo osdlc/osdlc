@@ -11,16 +11,19 @@
  * never throws. `loadWithIssues()` reports what it dropped. The result is
  * memoised per path. The path is computed on each call, so a test or a one-off
  * run can move the file with an environment variable and not write into the
- * developer's real config home.
+ * developer's real config home. The YAML is read by the same rules as a
+ * project file (`parseYamlText` in `./loader.ts`), so the Rust crate reads it
+ * the same way.
  */
 
 import { copyFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
-import { parse as yamlParse, stringify as yamlStringify } from 'yaml'
+import { stringify as yamlStringify } from 'yaml'
 import type { z } from 'zod'
 
+import { parseYamlText } from './loader.ts'
 import {
   currentMachineVersion,
   machineVersionOf,
@@ -28,16 +31,8 @@ import {
   type MachineMigration,
 } from './machine-migrate.ts'
 import { stripUnknownKeys } from './unknown-keys.ts'
-import { systemDirs, type TieredDirs, type VendorDirs } from './dirs.ts'
-
-/**
- * `tooly` → `TOOLY`; `pr-updater` → `PR_UPDATER`. The stem the tool's override variables are built from.
- *
- * @experimental
- */
-export function envStem(tool: string): string {
-  return tool.toUpperCase().replace(/[^A-Z0-9]+/g, '_')
-}
+import { isPlainObject } from './value.ts'
+import { envStem, systemDirs, type TieredDirs, type VendorDirs } from './dirs.ts'
 
 /**
  * Options for describing a tool's machine file: the tool name, its schema, and where it lives.
@@ -46,7 +41,10 @@ export function envStem(tool: string): string {
 export interface MachineConfigFileOptions<S extends z.ZodTypeAny> {
   /** The tool's standalone name: the directory segment under the config home. */
   tool: string
-  /** Every key with a default; the loader parses `{}` to get the defaults. */
+  /**
+   * Every key with a default; the loader parses `{}` to get the defaults.
+   * Unknown keys are reported only when every object in it is `.strict()`.
+   */
   schema: S
   /** Env var that relocates the file. Default `<STEM>_MACHINE_CONFIG`. */
   env?: string
@@ -119,7 +117,7 @@ export interface MachineConfigFile<S extends z.ZodTypeAny> {
   readonly schema: S
   /** The env var that relocates the file (tests, one-off runs). */
   readonly env: string
-  /** `<config-home>/<tool>/config.yaml`, unless {@link env} says otherwise. */
+  /** `<config-home>/<tool>/<fileName>` (default `config.yaml`), unless {@link env} says otherwise. */
   path(): string
   /**
    * The file, all defaults filled. An unknown key is dropped; an invalid
@@ -189,12 +187,12 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
     }
     let raw: unknown
     try {
-      raw = yamlParse(text)
+      raw = parseYamlText(text)
     } catch (err) {
       return fail('yaml', err)
     }
     if (raw === null || raw === undefined) raw = {}
-    if (!isMapping(raw)) {
+    if (!isPlainObject(raw)) {
       const message = 'the document is not a mapping; using defaults'
       return { value: defaults(), issues: [{ path: [], code: 'not_mapping', message }] }
     }
@@ -225,18 +223,18 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
     const file = path()
     let current: unknown = {}
     try {
-      current = existsSync(file) ? (yamlParse(readFileSync(file, 'utf-8')) ?? {}) : {}
+      current = existsSync(file) ? (parseYamlText(readFileSync(file, 'utf-8')) ?? {}) : {}
     } catch {
       // An unparseable file has no issue a replacement could keep.
     }
-    const known = new Set(isMapping(current) ? issuesOf(current).map(issueKey) : [])
+    const known = new Set(isPlainObject(current) ? issuesOf(current).map(issueKey) : [])
     return issuesOf(raw).filter((i) => !known.has(issueKey(i)))
   }
 
   const write = (text: string): void => {
     const file = path()
-    const raw: unknown = yamlParse(text) ?? {}
-    if (!isMapping(raw)) throw new Error(`${file}: the document is not a mapping`)
+    const raw: unknown = parseYamlText(text) ?? {}
+    if (!isPlainObject(raw)) throw new Error(`${file}: the document is not a mapping`)
     const added = check(raw)
     if (added.length > 0) {
       const lines = added.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
@@ -252,8 +250,8 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
     if (!existsSync(file)) {
       return { path: file, from: currentVersion, to: currentVersion, applied: [], written: false }
     }
-    const raw: unknown = yamlParse(readFileSync(file, 'utf-8')) ?? {}
-    if (!isMapping(raw)) throw new Error(`${file}: the document is not a mapping`)
+    const raw: unknown = parseYamlText(readFileSync(file, 'utf-8')) ?? {}
+    if (!isPlainObject(raw)) throw new Error(`${file}: the document is not a mapping`)
     const from = machineVersionOf(raw)
     const migrated = migrateMachineRaw(raw, migrations)
     const to = machineVersionOf(migrated.raw)
@@ -279,10 +277,6 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
   }
 }
 
-function isMapping(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
 /**
  * Parse `raw`, dropping what fails: first every unknown key, then the
  * top-level section of each remaining issue. Full defaults only if that still
@@ -297,7 +291,9 @@ function salvage<S extends z.ZodTypeAny>(
 
   const stripped = stripUnknownKeys(schema, raw)
   const { unknown } = stripped
-  const draft = stripped.value
+  // The deletes below must not reach the caller's object, which is what
+  // stripUnknownKeys hands back when it found no unknown key.
+  const draft = stripped.value === raw ? { ...raw } : stripped.value
   const issues: MachineConfigIssue[] = unknown.map((path) => ({
     path,
     code: 'unknown_key',

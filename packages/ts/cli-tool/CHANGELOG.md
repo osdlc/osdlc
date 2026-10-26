@@ -1,5 +1,44 @@
 # @osdlc/cli-tool
 
+## 0.10.1
+
+### Patch Changes
+
+- Updated dependencies [da5e6a3]
+  - @osdlc/command-seam@0.14.0
+
+## 0.10.0
+
+### Minor Changes
+
+- b835ae4: A hyphenated flag key (`'project-local'`) is read back under its own key, not commander's camelCased one. `--output json` before the command word routes like `--json`. `captureContext` passes the abort `signal` through. `failWith` strips terminal control characters from what it prints. A command that is both a file and a directory in the command tree is an error.
+  devlink (experimental): a relative `--bin-dir` resolves against the given cwd. `validateSpec` is stricter: `marker`, `entry` and `launcher` may not hold `.` or empty segments (so `./bin/x` and a trailing slash are refused), and each alias must be a single path segment. `CliIo` from the devlink entry is now the package's stable `CliIo`.
+  Exit code change: through `@osdlc/command-seam`, a working directory that cannot be entered is now `bad-cwd` rather than `not-executable`, so a CLI built on cli-tool exits with the `repository` code there instead of `missingTool`.
+  devlink (experimental), stricter: `findOnPath`, and so `dev status`, now reports only an executable file on an absolute `PATH` entry, through `@osdlc/command-seam`'s `which`. A relative entry, a file without the execute bit and a dangling symlink are no longer reported. `dev status`'s "move it" line quotes paths with `@osdlc/command-seam`'s `shellQuote`, so a path of plain characters is printed bare and a `\` is quoted so the line also pastes into fish.
+  New: `renderError(message, name?)`, the one renderer for an error line (`<name>: <message>` and a newline, terminal controls removed). `renderFailure`, `failWith`, `runMain` and an app's own error lines all go through it. Behaviour change: `renderFailure` itself now strips terminal controls from what it returns, not only the callers that print it.
+  http (experimental): `newToken`, `tokenEquals` and `readBody`, the token and capped-body helpers the API is built from, are exported for an app's own routes.
+  config-command (experimental): a store with `dryRun: true` gets `--dry-run` on `config set` and `config unset`; the store's `set` and `unset` receive `{ dryRun: true }` and the answer carries `dryRun: true` (text: `would set`, `would remove`). Behaviour change: `get`, `set`, `unset` and `explain` name the key as the store's `resolveKey` gives it, and `get` looks it up under that name. Behaviour change: `config get` of a key below a listed setting (`runners.order` when `runners` is listed) reads it out of that setting's value instead of exiting 1.
+  config-command (experimental), behaviour change: a key the store's `resolveKey` cannot resolve is a usage error (exit 2) for `config get` and `config unset`, as it already was for `set` and `explain`, and `unset` reports a store's `ConfigUsageError` as a usage error instead of exit 1. A known key with no value still exits 1.
+
+### Patch Changes
+
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+  - @osdlc/command-seam@0.13.0
+  - @osdlc/config-layers@0.8.0
+  - @osdlc/etag-write@0.3.0
+  - @osdlc/ux@0.1.1
+
+## 0.9.1
+
+### Patch Changes
+
+- 7addea1: Doc comments only. `ToolSpec.vendorDirs` no longer says the bash launcher ignores the vendor's override variables: it reads `<P>_CONFIG_DIR`, then `<P>_ROOT`, then the `xdg` default, as `dev link` does. `StateOptions.dirs` says the launcher cannot see it, and points at those variables for moving the state.
+- Updated dependencies [f013f38]
+  - @osdlc/command-seam@0.12.1
+
 ## 0.9.0
 
 ### Minor Changes

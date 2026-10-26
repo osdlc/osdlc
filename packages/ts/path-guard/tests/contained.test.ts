@@ -60,6 +60,18 @@ describe('existingPathInside', () => {
       existingPathInside(contentDir, realContentDir, join(contentDir, 'missing.md')),
     ).resolves.toBeNull()
   })
+
+  it('returns null for an existing file lexically outside the root', async () => {
+    await expect(
+      existingPathInside(contentDir, realContentDir, join(contentDir, '..', 'outside.md')),
+    ).resolves.toBeNull()
+  })
+
+  it('returns null for a link inside the root whose target is outside', async () => {
+    await expect(
+      existingPathInside(contentDir, realContentDir, join(contentDir, 'outside-link.md')),
+    ).resolves.toBeNull()
+  })
 })
 
 describe('readContainedFile', () => {

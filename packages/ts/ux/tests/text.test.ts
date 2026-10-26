@@ -1,7 +1,7 @@
-/** stripControls, displayWidth and fitWidth on hostile and wide text. */
+/** stripControls, controlPattern, displayWidth and fitWidth on hostile and wide text. */
 import { describe, expect, test } from 'vitest'
 
-import { displayWidth, fitWidth, stripControls } from '../src/index.ts'
+import { controlPattern, displayWidth, fitWidth, stripControls } from '../src/index.ts'
 
 const ESC = '\x1b'
 const BEL = '\x07'
@@ -61,6 +61,31 @@ describe('stripControls', () => {
     const out = stripControls(`${all}${all}`)
     // eslint-disable-next-line no-control-regex
     expect(out).not.toMatch(/[\x00-\x1f\x7f-\x9f]/)
+  })
+})
+
+describe('controlPattern', () => {
+  const OPTIONS = [{}, { newline: true }, { tab: true }, { newline: true, tab: true }]
+
+  test.each(OPTIONS)('matches the single characters stripControls removes, %o', (options) => {
+    // Every BMP code unit taken alone: an ESC or C1 introducer on its own is
+    // one character stripControls drops, so the two must agree on each.
+    const pattern = controlPattern(options)
+    const differ: number[] = []
+    for (let c = 0; c < 0x10000; c++) {
+      if (c >= 0xd800 && c <= 0xdfff) continue
+      const ch = String.fromCharCode(c)
+      pattern.lastIndex = 0
+      if (pattern.test(ch) !== (stripControls(ch, options) === '')) differ.push(c)
+    }
+    expect(differ).toEqual([])
+  })
+
+  test('is global and matches one character at a time', () => {
+    const text = 'a\x1b[31mb\u202ec\r\n'
+    expect(text.replace(controlPattern(), '\ufffd')).toBe('a\ufffd[31mb\ufffdc\ufffd\ufffd')
+    expect(text.replace(controlPattern({ newline: true }), '')).toBe('a[31mbc\n')
+    expect(controlPattern().flags).toBe('g')
   })
 })
 

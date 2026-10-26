@@ -17,53 +17,21 @@
 
 use crate::contract::{
     CodeConfig, Contract, EveryItem, ExtraColumns, LeafConfig, LeafSpec, ListConfig,
-    SectionContent, SectionOpts, SectionSeq, Spec, TableConfig,
+    SectionContent, SectionOpts, SectionSeq, TableConfig,
 };
 use crate::finding::Finding;
 use crate::frontmatter::{match_frontmatter, match_frontmatter_yaml};
 use crate::js;
 use crate::registry::{Ctx, FindingSpec};
+use crate::slots::{bind_slots, slots_of};
 use crate::tree::{BlockNode, DocTree, SectionNode};
 
-// ── Spec walking (mirrors the structure plane's slot resolution) ──────────────────────
+// ── Spec walking (the shared resolver in [`crate::slots`]) ────────────────────────────
 
-/// The section/oneOf slots at one level that carry a `SectionOpts`, as `(names, opts)`
-/// pairs — the TS `contentSlots`.
-fn content_slots(specs: &[Spec]) -> Vec<(&[String], &SectionOpts)> {
-    let mut slots = Vec::new();
-    for spec in specs {
-        match spec.unwrap_optional().0 {
-            Spec::Section(s) => {
-                if let Some(opts) = &s.opts {
-                    slots.push((s.names.as_slice(), opts));
-                }
-            }
-            Spec::OneOf(o) => {
-                if let Some(opts) = &o.opts {
-                    slots.push((o.names.as_slice(), opts));
-                }
-            }
-            _ => {}
-        }
-    }
-    slots
-}
-
-/// The sections at this level that fill a slot: every occurrence for a repeatable
-/// slot, else the first. The structure plane reports a second occurrence of a
-/// non-repeatable slot as `structure/duplicate-section`.
-fn sections_for<'a>(
-    nodes: &'a [SectionNode],
-    names: &'a [String],
-    opts: &SectionOpts,
-) -> impl Iterator<Item = &'a SectionNode> {
-    let hits = nodes.iter().filter(move |n| names.contains(&n.name));
-    hits.take(if opts.repeatable { usize::MAX } else { 1 })
-}
-
-/// Walk one level: pair each content slot with the doc sections filling it, validate
-/// their content leaves, then recurse into declared children. `inherited` is the
-/// nearest enclosing `description`.
+/// Walk one level: pair each content slot with the doc sections filling it
+/// ([`bind_slots`]: every occurrence of a repeatable slot, else the first, each section
+/// to the first slot that names it), validate their content leaves, then recurse into
+/// declared children. `inherited` is the nearest enclosing `description`.
 fn match_level(
     nodes: &[SectionNode],
     seq: &SectionSeq,
@@ -72,13 +40,20 @@ fn match_level(
     out: &mut Vec<Finding>,
 ) {
     let level_hint = seq.description.as_deref().or(inherited);
-    for (names, opts) in content_slots(&seq.specs) {
-        // A missing section is the structure plane's finding (structure/section-missing).
-        for node in sections_for(nodes, names, opts) {
+    let slots = slots_of(&seq.specs);
+    let bindings = bind_slots(nodes, &slots);
+    for (slot_idx, slot) in slots.iter().enumerate() {
+        let Some(opts) = slot.opts else { continue };
+        // The sections that fill the slot. A missing section (structure/section-missing)
+        // and a duplicate one (structure/duplicate-section) are the structure plane's.
+        for b in bindings
+            .iter()
+            .filter(|b| b.slot_idx == Some(slot_idx) && b.fills)
+        {
             let section_hint = opts.description.as_deref().or(level_hint);
-            validate_section_content(node, opts, section_hint, ctx, out);
+            validate_section_content(b.node, opts, section_hint, ctx, out);
             if let Some(children) = &opts.children {
-                match_level(&node.sections, children, section_hint, ctx, out);
+                match_level(&b.node.sections, children, section_hint, ctx, out);
             }
         }
     }
@@ -404,7 +379,7 @@ pub(crate) fn match_content(tree: &DocTree, contract: &Contract, ctx: &Ctx) -> V
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::contract::{LevelOpts, SectionOpts, section_with, sections};
+    use crate::contract::{LevelOpts, SectionOpts, Spec, optional, section_with, sections};
     use crate::finding::FindingLevel;
     use crate::schema::Schema;
     use crate::validate::validate;
@@ -620,6 +595,43 @@ mod tests {
         assert_eq!(
             brief(&validate(wrong_kind, &c, "t.md")),
             vec![("structure/block-kind", FindingLevel::Error, Some(3))]
+        );
+    }
+
+    fn notes(max: f64) -> Spec {
+        section_with(
+            "Notes",
+            SectionOpts {
+                content: Some(SectionContent::Single(LeafSpec::max_words(max))),
+                ..Default::default()
+            },
+        )
+    }
+
+    // A section is checked against the slot the structure plane binds it to: the first
+    // slot that names it, and only when it fills that slot (the TS twin's case).
+    #[test]
+    fn a_heading_two_slots_name_is_checked_against_the_first_only() {
+        let c = Contract::new().body(sections(
+            LevelOpts::default(),
+            vec![notes(100.0), optional(notes(1.0))],
+        ));
+        assert_eq!(
+            validate("## Notes\n\nthree words here\n", &c, "n.md"),
+            vec![]
+        );
+    }
+
+    #[test]
+    fn a_duplicate_of_a_filled_slot_is_not_content_checked_again() {
+        let c = Contract::new().body(sections(LevelOpts::default(), vec![notes(2.0)]));
+        assert_eq!(
+            brief(&validate(
+                "## Notes\n\nok\n\n## Notes\n\nfar too many words here\n",
+                &c,
+                "n.md"
+            )),
+            vec![("structure/duplicate-section", FindingLevel::Error, Some(5))]
         );
     }
 }

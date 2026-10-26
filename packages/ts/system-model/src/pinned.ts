@@ -16,7 +16,7 @@
 
 import { tmpdir } from 'node:os'
 
-import { type CommandRunner, spawnRunner } from '@osdlc/command-seam'
+import { type CommandRunner, shellJoin, spawnRunner } from '@osdlc/command-seam'
 
 import type { Registry } from './registry.ts'
 import { packageAt, rootTools, type ToolAction } from './roles.ts'
@@ -38,8 +38,9 @@ export interface PinnedInstall {
   /** The frozen install argv through the resolved executable. */
   argv: string[]
   /**
-   * `argv` as one shell string. On a version mismatch it starts with an
-   * `echo … >&2;` warning, so whoever runs it later sees the mismatch.
+   * `argv` as one shell string, each word quoted where the shell would split
+   * or expand it. On a version mismatch it starts with an `echo … >&2;`
+   * warning, so whoever runs it later sees the mismatch.
    */
   command: string
   source: PinnedSource
@@ -56,7 +57,10 @@ export interface PinnedInstall {
 export interface PinnedInstallOptions {
   /** Allow the tool-manager probes. Pass the caller's own trust decision. */
   allowExec: boolean
-  /** Defaults to `spawnRunner`. Tests inject a fake per binary. */
+  /**
+   * Defaults to `spawnRunner` that runs a bare name only from an absolute PATH
+   * entry, as `defaultRunner` does. Tests inject a fake per binary.
+   */
   runnerFor?: ((binary: string) => CommandRunner) | undefined
 }
 
@@ -110,7 +114,7 @@ export function pinnedInstall(
     }
   }
 
-  const runnerFor = options.runnerFor ?? spawnRunner
+  const runnerFor = options.runnerFor ?? ((b: string) => spawnRunner(b, { absolutePathOnly: true }))
   let fallback: { source: PinnedSource; prefix: string[]; version: string } | null = null
   for (const probe of probes) {
     const result = runnerFor(probe.binary).run(probe.versionArgs, { cwd: probe.cwd })
@@ -121,7 +125,7 @@ export function pinnedInstall(
       const argv = [...probe.prefix, ...rest]
       return {
         argv,
-        command: argv.join(' '),
+        command: shellJoin(argv),
         source: probe.source,
         resolvedVersion: version,
         versionMismatch: false,
@@ -137,7 +141,7 @@ export function pinnedInstall(
     ` ${pin} (packageManager)" >&2;`
   return {
     argv,
-    command: `${warning} ${argv.join(' ')}`,
+    command: `${warning} ${shellJoin(argv)}`,
     source: fallback.source,
     resolvedVersion: fallback.version,
     versionMismatch: true,
