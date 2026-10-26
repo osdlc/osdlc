@@ -25,8 +25,13 @@ import {
   type DiffCheckOptions,
   type DiffCheckResult,
   type DiffTextOptions,
+  type GcOptions,
+  type PushOptions,
   type RemoteGetUrlOptions,
+  type RemoteSetBranchesOptions,
+  type RemoteSetHeadOptions,
   type StatusEntry,
+  type WorktreeAddOptions,
 } from '../src/index.ts'
 import type {
   BareAndWorker,
@@ -118,6 +123,11 @@ describe('public surface', () => {
     const scope: ConfigScope = 'global'
     const configGet: ConfigGetOptions = { scope }
     const remoteUrl: RemoteGetUrlOptions = { push: true }
+    const worktreeAdd: WorktreeAddOptions = { branch: 'b', resetBranch: true }
+    const push: PushOptions = { delete: true }
+    const setHead: RemoteSetHeadOptions = { auto: true }
+    const setBranches: RemoteSetBranchesOptions = { add: true }
+    const gc: GcOptions = { prune: false }
     expect([
       status,
       clean,
@@ -129,7 +139,12 @@ describe('public surface', () => {
       shapes,
       configGet,
       remoteUrl,
-    ]).toHaveLength(10)
+      worktreeAdd,
+      push,
+      setHead,
+      setBranches,
+      gc,
+    ]).toHaveLength(15)
   })
 
   test('the backend seam is marked experimental', () => {

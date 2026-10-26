@@ -50,7 +50,6 @@ import {
   type DiffTreeOptions,
   type FetchOptions,
   type ForEachRefOptions,
-  type ForceLease,
   type GrepOptions,
   type InitOptions,
   type LogOptions,
@@ -69,7 +68,12 @@ import {
   type StatusPorcelainOptions,
   type TreeEntry,
   type Worktree,
+  type WorktreeAddOptions,
   type WorktreeMoveOptions,
+  type GcOptions,
+  type PushOptions,
+  type RemoteSetBranchesOptions,
+  type RemoteSetHeadOptions,
 } from './verbs.ts'
 
 /** `Omit` applied per union arm, so a discriminated option type stays a union. */
@@ -181,6 +185,11 @@ export class AsyncGit {
     return this.backend.execute(this.cwd, { kind: 'showAtRev', rev, relPath }, opts)
   }
 
+  /** A file's content at a rev, rejecting when the path is missing. See {@link Git.showAtRevChecked}. */
+  showAtRevChecked(rev: string, relPath: string, opts: GitCallOptions = {}): Promise<string> {
+    return this.backend.execute(this.cwd, { kind: 'showAtRevChecked', rev, relPath }, opts)
+  }
+
   /**
    * See {@link Git.revParse}. Call options go last, as an object. For a ref,
    * prefer {@link AsyncGit.resolveRef}.
@@ -260,6 +269,11 @@ export class AsyncGit {
   /** Every changed or untracked file, from `status --porcelain -z`. */
   statusEntries(opts: GitCallOptions = {}): Promise<StatusEntry[]> {
     return this.backend.execute(this.cwd, { kind: 'statusEntries' }, opts)
+  }
+
+  /** True iff anything is staged. See {@link Git.hasStagedChanges}. */
+  hasStagedChanges(opts: GitCallOptions = {}): Promise<boolean> {
+    return this.backend.execute(this.cwd, { kind: 'hasStagedChanges' }, opts)
   }
 
   /** True iff the working tree has any staged/unstaged/untracked change. */
@@ -589,17 +603,13 @@ export class AsyncGit {
 
   /**
    * Push a refspec. A {@link ForceLease} pins `--force-with-lease`.
-   * `{forceWithLease: true}` adds the bare flag, which is the unsafe form. See
-   * {@link Git.push}.
+   * `{forceWithLease: true}` adds the bare flag, which is the unsafe form.
+   * `{delete: true}` deletes `refspec` on the remote. See {@link Git.push}.
    */
-  push(
-    remote: string,
-    refspec: string,
-    opts: GitCallOptions & { forceWithLease?: boolean | ForceLease | undefined } = {},
-  ): Promise<void> {
+  push(remote: string, refspec: string, opts: GitCallOptions & PushOptions = {}): Promise<void> {
     return this.backend.execute(
       this.cwd,
-      { kind: 'push', remote, refspec, forceWithLease: opts.forceWithLease },
+      { kind: 'push', remote, refspec, forceWithLease: opts.forceWithLease, delete: opts.delete },
       opts,
     )
   }
@@ -650,26 +660,10 @@ export class AsyncGit {
     return this.backend.execute(this.cwd, { kind: 'deleteRef', ref, expected: opts.expected }, opts)
   }
 
-  /** `git worktree add [--detach] [-b branch] <path> [startPoint]`. */
-  worktreeAdd(
-    path: string,
-    opts: GitCallOptions & {
-      branch?: string | undefined
-      startPoint?: string | undefined
-      detach?: boolean | undefined
-    } = {},
-  ): Promise<void> {
-    return this.backend.execute(
-      this.cwd,
-      {
-        kind: 'worktreeAdd',
-        path,
-        branch: opts.branch,
-        startPoint: opts.startPoint,
-        detach: opts.detach,
-      },
-      opts,
-    )
+  /** `git worktree add [--detach] [-b|-B branch] <path> [startPoint]`. See {@link Git.worktreeAdd}. */
+  worktreeAdd(path: string, opts: GitCallOptions & WorktreeAddOptions = {}): Promise<void> {
+    const [call, req] = splitCallOptions(opts)
+    return this.backend.execute(this.cwd, { kind: 'worktreeAdd', path, ...req }, call)
   }
 
   /** `git worktree remove [--force] <path>`. */
@@ -703,6 +697,32 @@ export class AsyncGit {
   /** `git remote add <name> <url>`. */
   remoteAdd(name: string, url: string, opts: GitCallOptions = {}): Promise<void> {
     return this.backend.execute(this.cwd, { kind: 'remoteAdd', name, url }, opts)
+  }
+
+  /** `git remote set-head <remote> <branch> | --auto | --delete`. See {@link Git.remoteSetHead}. */
+  remoteSetHead(remote: string, opts: GitCallOptions & RemoteSetHeadOptions): Promise<void> {
+    const [call, req] = splitCallOptions(opts)
+    return this.backend.execute(this.cwd, { kind: 'remoteSetHead', remote, ...req }, call)
+  }
+
+  /** `git remote set-branches [--add] <remote> <branch…>`; an empty list rejects. */
+  remoteSetBranches(
+    remote: string,
+    branches: string[],
+    opts: GitCallOptions & RemoteSetBranchesOptions = {},
+  ): Promise<void> {
+    const [call, req] = splitCallOptions(opts)
+    return this.backend.execute(
+      this.cwd,
+      { kind: 'remoteSetBranches', remote, branches, ...req },
+      call,
+    )
+  }
+
+  /** `git gc [--auto] [--aggressive] [--prune=<date> | --no-prune] [--quiet]`. */
+  gc(opts: GitCallOptions & GcOptions = {}): Promise<void> {
+    const [call, req] = splitCallOptions(opts)
+    return this.backend.execute(this.cwd, { kind: 'gc', ...req }, call)
   }
 
   // ── integration ───────────────────────────────────────────────────────────

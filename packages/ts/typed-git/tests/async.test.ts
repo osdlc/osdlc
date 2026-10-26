@@ -164,6 +164,18 @@ describe('AsyncGit — parity with Git', () => {
     sync.checkout('origin/x', { branch: 'x', resetBranch: true, force: true })
     sync.mergeTree('x', 'main', { mergeBase: 'abc' })
     sync.push('origin', 'HEAD:x', { forceWithLease: { ref: 'refs/heads/x', expect: 'abc' } })
+    sync.worktreeAdd('/wt', { branch: 'b', resetBranch: true, startPoint: 'main', detach: false })
+    sync.commit({ message: 'm', paths: ['a.ts', 'b.ts'] })
+    sync.commit({ messageStdin: 'm\n', paths: ['a.ts'] })
+    sync.push('origin', 'x', { delete: true, forceWithLease: { ref: 'refs/heads/x', expect: 'a' } })
+    sync.hasStagedChanges()
+    sync.showAtRevChecked('HEAD', 'README.md')
+    sync.remoteSetHead('origin', { branch: 'main' })
+    sync.remoteSetHead('origin', { auto: true })
+    sync.remoteSetHead('origin', { delete: true })
+    sync.remoteSetBranches('origin', ['main', 'dev'], { add: true })
+    sync.gc({ auto: true, aggressive: true, prune: 'now', quiet: true })
+    sync.gc({ prune: false })
 
     await asyncGit.currentBranch()
     await asyncGit.topLevel()
@@ -260,6 +272,26 @@ describe('AsyncGit — parity with Git', () => {
     await asyncGit.push('origin', 'HEAD:x', {
       forceWithLease: { ref: 'refs/heads/x', expect: 'abc' },
     })
+    await asyncGit.worktreeAdd('/wt', {
+      branch: 'b',
+      resetBranch: true,
+      startPoint: 'main',
+      detach: false,
+    })
+    await asyncGit.commit({ message: 'm', paths: ['a.ts', 'b.ts'] })
+    await asyncGit.commit({ messageStdin: 'm\n', paths: ['a.ts'] })
+    await asyncGit.push('origin', 'x', {
+      delete: true,
+      forceWithLease: { ref: 'refs/heads/x', expect: 'a' },
+    })
+    await asyncGit.hasStagedChanges()
+    await asyncGit.showAtRevChecked('HEAD', 'README.md')
+    await asyncGit.remoteSetHead('origin', { branch: 'main' })
+    await asyncGit.remoteSetHead('origin', { auto: true })
+    await asyncGit.remoteSetHead('origin', { delete: true })
+    await asyncGit.remoteSetBranches('origin', ['main', 'dev'], { add: true })
+    await asyncGit.gc({ auto: true, aggressive: true, prune: 'now', quiet: true })
+    await asyncGit.gc({ prune: false })
 
     expect(a.calls).toEqual(s.calls)
   })
