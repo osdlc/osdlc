@@ -1,0 +1,77 @@
+{
+  "name": "@osdlc/tradecraft-wasm",
+  "version": "0.0.0",
+  "description": "Tradecraft's core, built to WebAssembly, for Node.js and Bun: publish, export, adopt and status calls over agent skills, with a Node filesystem adapter.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/tradecraft-wasm"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/tradecraft-wasm#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "tradecraft",
+    "agent",
+    "skills",
+    "claude",
+    "codex",
+    "cursor",
+    "marketplace",
+    "wasm",
+    "webassembly"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "imports": {
+    "#wasm": {
+      "types": "./wasm/tradecraft_wasm.d.ts",
+      "default": "./dist/wasm/tradecraft_wasm.js"
+    }
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node -e \"const fs=require('node:fs');fs.rmSync('dist/wasm',{recursive:true,force:true});fs.cpSync('wasm','dist/wasm',{recursive:true})\"",
+    "build:wasm": "bash ../../rust/tradecraft-wasm/build.sh",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

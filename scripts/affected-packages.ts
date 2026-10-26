@@ -8,7 +8,9 @@
 // commit) and `head` (default HEAD), plus every package that depends on one of
 // them. A change under packages/rust/<name>/ counts as a change to
 // packages/ts/<name>, since a TypeScript twin reads its crate's fixtures; a
-// `-wasm` crate counts for the package without the suffix. Every package is
+// `-wasm` crate counts for the package without the suffix, or for the package
+// of the same name, and the crates in FEEDS count for the package built from
+// them. Every package is
 // checked on any other event, when a shared input below changed, or when the
 // diff fails. affected-packages.test.ts tests the rules.
 //
@@ -37,6 +39,15 @@ const SHARED = [
   /^\.npmrc$/,
   /^\.changeset\/config\.json$/,
 ]
+
+/**
+ * Rust crates that feed a TypeScript package under a different name: the core
+ * that `@osdlc/tradecraft-wasm` is built from, and the generator of its types.
+ */
+const FEEDS: Record<string, string> = {
+  'tradecraft-core': 'tradecraft-wasm',
+  'tradecraft-typegen': 'tradecraft-wasm',
+}
 
 /** The parts of a package.json these rules read. */
 export interface Manifest {
@@ -96,8 +107,9 @@ export function pick({
   for (const file of files) {
     const m = /^packages\/(ts|rust)\/([^/]+)\//.exec(file)
     if (m === null) continue
-    const name = m[1] === 'rust' ? m[2]!.replace(/-wasm$/, '') : m[2]
-    if (manifests.has(`packages/ts/${name}`)) out.add(`packages/ts/${name}`)
+    const names =
+      m[1] === 'rust' ? [m[2]!, m[2]!.replace(/-wasm$/, ''), FEEDS[m[2]!] ?? m[2]!] : [m[2]!]
+    for (const name of names) if (manifests.has(`packages/ts/${name}`)) out.add(`packages/ts/${name}`)
   }
   // Add dependents until nothing changes.
   const deps = dependencies(manifests)
