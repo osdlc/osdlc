@@ -7,8 +7,9 @@
  *   properties for light and dark.
  * - Terminal: {@link detectColorLevel} decides whether a stream gets color,
  *   and {@link ansiColors} gives each token's escape sequences at that level.
- * - Untrusted text: {@link stripControls} removes terminal controls and
- *   {@link fitWidth} cuts a line to a number of columns.
+ * - Untrusted text: {@link stripControls} removes terminal controls,
+ *   {@link controlPattern} matches the same control characters one at a
+ *   time, and {@link fitWidth} cuts a line to a number of columns.
  *
  * Errors are `RangeError`s for an argument out of range, with messages that
  * start with `ux:`. A color string that `@osdlc/color` cannot parse throws
@@ -42,6 +43,7 @@ export {
   type AnsiCodes,
 } from './ansi.ts'
 export {
+  controlPattern,
   displayWidth,
   fitWidth,
   stripControls,

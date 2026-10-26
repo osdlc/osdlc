@@ -31,7 +31,10 @@ export interface Marker {
 }
 
 /** The names of the roles a tool can play. */
-export type RoleName = 'packageManager' | 'runner' | 'toolManager' | 'hookManager'
+export type RoleName = (typeof ALL_ROLE_NAMES)[number]
+
+/** The known {@link RoleName}s. */
+export const ALL_ROLE_NAMES = ['packageManager', 'runner', 'toolManager', 'hookManager'] as const
 
 /**
  * A tool that installs an ecosystem's dependencies.
@@ -79,7 +82,10 @@ export interface PackageManagerRole {
  * take much longer (a JVM start, a toolchain install). A hint shown before
  * anything is measured; the cache's measured `slow` replaces it.
  */
-export type ProbeCost = 'cheap' | 'slow'
+export type ProbeCost = (typeof ALL_PROBE_COSTS)[number]
+
+/** The known {@link ProbeCost}s. */
+export const ALL_PROBE_COSTS = ['cheap', 'slow'] as const
 
 /** How a runner's probe is run. */
 export interface RunnerProbe {

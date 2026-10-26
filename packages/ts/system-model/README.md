@@ -147,11 +147,11 @@ Evidence tiers run from the most direct to the least: `manifest` (1),
 | `@osdlc/system-model/dotnet` | the dotnet CLI and the dotnet ecosystem |
 | `@osdlc/system-model/runners` | moon, just, make, turbo, go-task, docker compose, GitHub Actions, Nx, VS Code tasks, Devbox, Procfile, CMake presets |
 | `@osdlc/system-model/tools` | mise, proto, direnv, lefthook, husky, pre-commit |
-| `@osdlc/system-model/match` | fuzzy and exact matching of a query against tasks |
+| `@osdlc/system-model/match` | fuzzy and exact matching of a query against tasks, and `ALL_MATCH_MODES` |
 | `@osdlc/system-model/params` | `paramShape`, a task's parameters as one string |
 | `@osdlc/system-model/duration` | `humanMs` and `humanAge` |
-| `@osdlc/system-model/schema` | JSON Schemas for `Catalog`, `RunnerReport`, `Task`, `Param` and `ToolInfo` |
-| `@osdlc/system-model/groups` | `GROUPS`, `groupOf`, `catalogGroups` and `SYNTHESIZED_RUNNERS`: which group a report falls in |
+| `@osdlc/system-model/schema` | JSON Schemas for `Catalog`, `RunnerReport`, `Task`, `Param` and `ToolInfo`, and the `ALL_*` value lists of their enum-shaped fields and of the cache verdict |
+| `@osdlc/system-model/groups` | `GROUPS`, `ALL_GROUP_IDS`, `groupOf`, `catalogGroups` and `SYNTHESIZED_RUNNERS`: which group a report falls in |
 
 The core knows no tool. A plugin imports only the core, never another plugin.
 The root entry, `./graph`, `./aspect`, `./client`, `./saved-view`, `./match`,
@@ -350,7 +350,11 @@ names, docs, argv and diagnostics. Escape it before it reaches a terminal
 
 A catalog carries `kind: 'catalog'` and `schemaVersion`
 (`CATALOG_SCHEMA_VERSION`). `@osdlc/system-model/schema` has JSON Schemas for
-`Catalog`, `RunnerReport`, `Task`, `Param` and `ToolInfo`.
+`Catalog`, `RunnerReport`, `Task`, `Param` and `ToolInfo`. It also exports the
+values of each enum-shaped field as a `readonly` tuple: `ALL_PARAMETERS_UNKNOWN_REASONS`,
+`ALL_ROLE_NAMES`, `ALL_PROVIDER_KINDS` and `ALL_PROBE_COSTS`, and the cache
+verdict's `ALL_CACHE_STATES` and `ALL_STALE_REASONS`. A host that builds its
+own document schema passes one to `z.enum` instead of copying the values.
 
 Three synthesized runners turn role actions into tasks:
 
@@ -514,7 +518,11 @@ The experimental exports of `@osdlc/system-model/detect`:
 
 The experimental exports of `@osdlc/system-model/groups`:
 
-`GROUPS`, `Group`, `GroupId`, `SYNTHESIZED_RUNNERS`, `catalogGroups`, `groupOf`
+`ALL_GROUP_IDS`, `GROUPS`, `Group`, `GroupId`, `SYNTHESIZED_RUNNERS`, `catalogGroups`, `groupOf`
+
+The experimental exports of `@osdlc/system-model/schema`:
+
+`ALL_CACHE_STATES`, `ALL_STALE_REASONS`
 
 The experimental exports of `@osdlc/system-model/runners`:
 

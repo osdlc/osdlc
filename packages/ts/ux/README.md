@@ -222,6 +222,11 @@ paint('failed', ansiColors('none', 'dark')['status-error']) // 'failed'
   override and isolate controls `U+202A`-`U+202E` and `U+2066`-`U+2069`). `StripControlsOptions` keeps line feeds
   (`newline: true`) or tabs (`tab: true`). A carriage return is always
   removed.
+- `controlPattern(options)` is a global `RegExp` matching, one character at
+  a time, the control characters `stripControls` removes with the same
+  options. It matches only the introducer of an escape sequence, not the
+  rest, so it suits a filter that must keep the text's length, such as one
+  that replaces each control with U+FFFD.
 - `displayWidth(text)` counts terminal columns per grapheme cluster: 2 for
   East Asian wide and fullwidth characters and emoji, 0 for combining marks
   and format characters such as a zero-width joiner, and 1 for the rest,
@@ -238,10 +243,11 @@ paint('failed', ansiColors('none', 'dark')['status-error']) // 'failed'
 Strip first, then fit: `fitWidth` expects one line with no controls or tabs.
 
 ```ts
-import { displayWidth, fitWidth, stripControls } from '@osdlc/ux'
+import { controlPattern, displayWidth, fitWidth, stripControls } from '@osdlc/ux'
 
 stripControls('a\x1b]52;c;cm0gLXJmIH4=\x07b') // 'ab': the clipboard write is gone
 stripControls('one\r\ntwo', { newline: true }) // 'one\ntwo'
+'a\x1bb'.replace(controlPattern(), '\ufffd') // 'a\ufffdb': same length
 displayWidth('日本é') // 5
 fitWidth('日本語テキスト', 6) // '日本…'
 fitWidth('ok', 4, { pad: true }) // 'ok  '

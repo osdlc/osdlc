@@ -92,8 +92,16 @@ export interface Invocation {
  *     (VS Code's `${file}` or `${input:name}`). `argv` keeps it as written,
  *     so the task does not run as is.
  */
-export type ParametersUnknownReason =
-  'exec-withheld' | 'tool-missing' | 'tool-failed' | 'not-read' | 'editor-variable'
+export type ParametersUnknownReason = (typeof ALL_PARAMETERS_UNKNOWN_REASONS)[number]
+
+/** The known {@link ParametersUnknownReason}s. */
+export const ALL_PARAMETERS_UNKNOWN_REASONS = [
+  'exec-withheld',
+  'tool-missing',
+  'tool-failed',
+  'not-read',
+  'editor-variable',
+] as const
 
 /**
  * Where a task came from: declared in a file, or synthesized from a
@@ -246,6 +254,30 @@ export type DiscoveryMode = 'git' | 'walk'
  * keeps it.
  */
 export const CATALOG_SCHEMA_VERSION = 1
+
+/**
+ * The cache verdicts a runner's `RunnerCacheState.state` takes. Here, not in
+ * the Node-only cache module, so the browser-safe `./schema` entry can export
+ * it.
+ *
+ * @experimental
+ */
+export const ALL_CACHE_STATES = ['fresh', 'stale', 'miss'] as const
+
+/**
+ * The known `StaleReason`s, why a cached entry was not usable as it is. Here
+ * for the same reason as {@link ALL_CACHE_STATES}.
+ *
+ * @experimental
+ */
+export const ALL_STALE_REASONS = [
+  'changed',
+  'max-age',
+  'excludes',
+  'exec',
+  'version',
+  'tool',
+] as const
 
 /**
  * Every runner report for one profile.

@@ -43,7 +43,13 @@ import {
   hashInputs,
   type FingerprintInputs,
 } from './fingerprint.ts'
-import { CATALOG_SCHEMA_VERSION, type Catalog, type RunnerReport } from './model.ts'
+import {
+  CATALOG_SCHEMA_VERSION,
+  type ALL_CACHE_STATES,
+  type ALL_STALE_REASONS,
+  type Catalog,
+  type RunnerReport,
+} from './model.ts'
 import type { Registry } from './registry.ts'
 import type { ProbeCost, ProjectProfile } from './tool.ts'
 import { defaultRunner, which as whichOnPath } from './which.ts'
@@ -65,7 +71,7 @@ import { defaultRunner, which as whichOnPath } from './which.ts'
  *
  * @experimental
  */
-export type StaleReason = 'changed' | 'max-age' | 'excludes' | 'exec' | 'version' | 'tool'
+export type StaleReason = (typeof ALL_STALE_REASONS)[number]
 
 /**
  * One runner's cache verdict.
@@ -74,7 +80,7 @@ export type StaleReason = 'changed' | 'max-age' | 'excludes' | 'exec' | 'version
  */
 export interface RunnerCacheState {
   runner: string
-  state: 'fresh' | 'stale' | 'miss'
+  state: (typeof ALL_CACHE_STATES)[number]
   /** Present only when `state` is `stale`. */
   reason?: StaleReason | undefined
   /** Age of the cached probe in ms. Absent on a miss. */
