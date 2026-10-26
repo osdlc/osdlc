@@ -61,34 +61,29 @@ describe('the schema', () => {
     ])
   })
 
-  test('schema/config.json is the schema this build derives', async () => {
-    const shipped = JSON.parse(
-      await readFile(new URL('../schema/config.json', import.meta.url), 'utf8'),
-    ) as unknown
-    expect(shipped).toEqual(configJsonSchema())
+  const STALE = 'stale: after a build, run `pnpm run write:config-schema` and commit the result'
+
+  test('schema/config.json is what write-config-schema writes', async () => {
+    const shipped = await readFile(new URL('../schema/config.json', import.meta.url), 'utf8')
+    expect(shipped, STALE).toBe(`${JSON.stringify(configJsonSchema(), null, 2)}\n`)
   })
 
-  test('the schema URL names this release line or the next one', async () => {
-    // Before a release the package still carries the last version; the
-    // release bump then catches up with the URL. A URL behind the package
-    // version is stale.
+  test("the schema URL names the package's release line", async () => {
     const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
       version: string
     }
-    const line = (v: string): number => {
-      const [major, minor] = v.split('.').map(Number)
-      return (major ?? 0) * 1000 + (minor ?? 0)
-    }
-    const url = /@osdlc\/wayfinder@(\d+\.\d+)\//.exec(CONFIG_SCHEMA_URL)?.[1]
-    expect(url).toBeDefined()
-    expect(line(url!)).toBeGreaterThanOrEqual(line(pkg.version))
-    expect(line(url!) - line(pkg.version)).toBeLessThanOrEqual(1)
+    const line = pkg.version.split('.').slice(0, 2).join('.')
+    expect(CONFIG_SCHEMA_URL).toBe(`https://unpkg.com/@osdlc/wayfinder@${line}/schema/config.json`)
     expect(configJsonSchema()['$id']).toBe(CONFIG_SCHEMA_URL)
   })
 
-  test('the configuration guide names the current schema URL', async () => {
+  test('the configuration guide has one $schema line, naming the schema URL', async () => {
     const guide = await readFile(new URL('../docs/guide/configuration.md', import.meta.url), 'utf8')
-    expect(guide).toContain(`"$schema": "${CONFIG_SCHEMA_URL}"`)
+    const lines = guide.split('\n').filter((l) => l.includes('"$schema":'))
+    expect(
+      lines.map((l) => l.trim()),
+      STALE,
+    ).toEqual([`"$schema": "${CONFIG_SCHEMA_URL}",`])
   })
 
   test('$schema is accepted and is not a setting', () => {

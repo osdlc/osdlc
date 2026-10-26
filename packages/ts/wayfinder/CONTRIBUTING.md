@@ -45,6 +45,10 @@ diff.
 test` includes it. After a deliberate change to the output, regenerate them
 with `pnpm run test:e2e -u` and review the diff.
 
+After a change to the config schema, run `pnpm run build`, then `pnpm run
+write:config-schema`, and commit `schema/config.json` and
+`docs/guide/configuration.md`.
+
 Other checks:
 
 ```sh

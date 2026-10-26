@@ -225,7 +225,9 @@ requests here.
    skips versions to catch up (see [Twin libraries](#twin-libraries)).
 2. When the pull request merges, `packages-publish.yml` opens or updates one
    "Version Packages" pull request. It bumps each library's version and
-   writes its CHANGELOG from the pending changesets.
+   writes its CHANGELOG from the pending changesets. The root
+   `version-packages` script does this, then rewrites the checked-in files
+   that name a version, such as wayfinder's `schema/config.json`.
 3. The osdlc-release GitHub App opens the Version Packages pull request, so
    its checks start on their own. Merge it when `test` and `verify` pass.
 4. On that merge, `packages-publish.yml` runs the full `verify` matrix and
