@@ -1,5 +1,24 @@
 # @osdlc/trust-repo
 
+## 0.5.0
+
+### Minor Changes
+
+- b835ae4: `list` and `listGrants` no longer report a whole-repository grant from a stray or renamed marker file (`old-repo`, an editor's `repo~`), which `isTrusted` never read and `untrustAll` never removed.
+  `homeDir` and `expandTilde` are now `@osdlc/tiered-dirs`'s (a new runtime dependency). Behaviour change: `homeDir` throws a `TieredDirsError` (code `MISSING_BASE_DIR`) instead of a plain `Error` when no absolute home can be found; the home it returns is unchanged.
+
+### Patch Changes
+
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [fdef74f]
+  - @osdlc/command-seam@0.13.0
+  - @osdlc/etag-write@0.3.0
+  - @osdlc/tiered-dirs@0.5.0
+  - @osdlc/typed-git@0.9.0
+
 ## 0.4.0
 
 ### Minor Changes

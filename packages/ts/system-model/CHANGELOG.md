@@ -1,5 +1,27 @@
 # @osdlc/system-model
 
+## 0.7.0
+
+### Minor Changes
+
+- b835ae4: The make runner reads one makefile per directory in GNU make's order (`GNUmakefile`, then `makefile`, then `Makefile`), so a directory holding several now reports a different file's targets. It also lists every target on a multi-target line (`build test:`). A go-task include outside the root is no longer attributed to the root `Taskfile.yml`. A just parameter whose default is an expression is optional and puts no literal in the argv. A crate a workspace excludes gets its own cargo aliases, including when an inner workspace excludes it but an outer one lists it. A workspace root whose TOML does not parse still covers its crates.
+  A Gemfile `platforms … do` or `if` block no longer closes the `group` around it. yaml-lite reads an escaped backslash before a closing quote correctly. deno and turbo configs accept a BOM and trailing commas, and an unparseable deno config is a warning diagnostic.
+  A cache entry with no usable report is a miss. `humanMs` and `humanAge` pick the unit from the rounded value (`1.0s`, not `1000ms`). The pinned install `command` is shell-quoted, and its default probe runs a bare name only from an absolute PATH entry. `validateToolDef` checks each `ecosystem.manifests`, `languages` and `tools` entry.
+  Repository reads check that a path's real location stays inside the repository with `@osdlc/path-guard`'s `realPathInside`, a new dependency, in place of a hand-written prefix check. On Windows the comparison now follows `node:path`'s rules, so a real path that differs from the root only in letter case counts as inside it.
+  New exports, each a `readonly` tuple usable with `z.enum`: `ALL_PARAMETERS_UNKNOWN_REASONS`, `ALL_ROLE_NAMES`, `ALL_PROVIDER_KINDS`, `ALL_PROBE_COSTS`, and the experimental `ALL_CACHE_STATES` and `ALL_STALE_REASONS` from `./schema`; `ALL_MATCH_MODES` from `./match`; the experimental `ALL_GROUP_IDS` from `./groups`. The matching types (`ParametersUnknownReason`, `RoleName`, `ProviderKind`, `ProbeCost`, `StaleReason`, `RunnerCacheState['state']`, `Mode`, `GroupId`) are derived from them and the JSON Schemas list their values, so the three cannot drift apart.
+- ebd5328: A runner's probe timeout now bounds the whole probe, not only each subprocess. A runner still running at its timeout is stopped: the processes it started are killed with their trees, and it reports `status: 'error'` with the diagnostic `timed out after 10 s`. The other runners go on, and a timed-out runner is not stored in the cache. A runner whose subprocesses run one after another may now be cut off sooner than before; raise its limit with `CollectOptions.timeouts`. The clock starts once the shared file listing is ready, so a slow listing does not count against a runner.
+  
+  New `CollectOptions.probeTimeoutMs` sets the probe timeout of every runner `timeouts` does not name. New `CollectOptions.maxProbeTimeoutMs` caps every runner's timeout after both; it only lowers a limit, for a value from a less trusted source such as a project file. `Infinity` in either option means no limit, and a finite value above 2^31-1 ms is treated as 2^31-1. A timeout that is not above 0 fails that runner with a diagnostic. A runner's context `signal` is now its own: it aborts when the caller's does, or at the timeout.
+  
+  New, experimental: `project.runners.collectAndStore(profile, dir)` returns `{ catalog, stored }` as soon as every runner has answered, then hashes the files and writes the store in the background. `stored` settles when the writes end; await it before the process exits. `collectAndCache` is `collectAndStore` with the writes awaited. Writes to one entry from two probes in a row land in order.
+
+### Patch Changes
+
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+  - @osdlc/command-seam@0.13.0
+  - @osdlc/etag-write@0.3.0
+
 ## 0.6.0
 
 ### Minor Changes
