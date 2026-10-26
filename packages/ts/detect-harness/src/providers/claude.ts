@@ -43,7 +43,13 @@ import type { HarnessProvider, ProviderContext, ProviderResult } from '../contra
 import { asObject, splitPluginId, str, strings } from '../json.ts'
 import { LOCATIONS, SCOPES, type Scope } from '../locations.ts'
 import type { Artifact, Hook, Marketplace, McpServer, PermissionRule, Plugin } from '../report.ts'
-import { scanInstructions, scanMarkdown, scanSkills, type Provenance } from '../read/artifacts.ts'
+import {
+  scanInstructions,
+  scanMarkdown,
+  scanPluginArtifacts,
+  scanSkills,
+  type Provenance,
+} from '../read/artifacts.ts'
 import { authEvidence } from '../read/auth.ts'
 import { eventsOf, parseNestedHooks } from '../read/hooks.ts'
 import { manifestObjects } from '../read/manifest.ts'
@@ -153,13 +159,7 @@ function readPluginFolder(
   )
 
   return {
-    skills: scanSkills(ctx, join(root, 'skills'), from),
-    commands: [
-      // A command is a flat `<name>.md`, or a `<name>/SKILL.md` folder; the folder wins.
-      ...scanSkills(ctx, join(root, 'commands'), from),
-      ...scanMarkdown(ctx, join(root, 'commands'), from, { useFrontmatterName: false }),
-    ].filter((c, i, all) => all.findIndex((o) => o.name === c.name) === i),
-    agents: scanMarkdown(ctx, join(root, 'agents'), from),
+    ...scanPluginArtifacts(ctx, root, from),
     hooks,
     mcpServers,
   }

@@ -3,7 +3,8 @@
  * entries. Names, frontmatter descriptions and argument hints only; a body only
  * when the caller set `readContents`.
  *
- * Runtime-agnostic: pure over the {@link ProviderContext}.
+ * Runtime-agnostic: pure over the {@link ProviderContext}, or any
+ * {@link ArtifactReader}.
  */
 
 import { join } from 'node:path'
@@ -14,6 +15,15 @@ import type { Scope } from '../locations.ts'
 import type { Artifact, Instruction } from '../report.ts'
 import type { Located } from './sources.ts'
 
+/**
+ * The reads the scanners make. A {@link ProviderContext} is one; `readPlugin`
+ * passes its own over the file system, so both read a plugin the same way.
+ */
+export type ArtifactReader = Pick<
+  ProviderContext,
+  'readText' | 'listDir' | 'realpath' | 'readContents'
+>
+
 /** Where an artifact came from. */
 export interface Provenance {
   scope: Scope
@@ -23,7 +33,7 @@ export interface Provenance {
 }
 
 function artifactOf(
-  ctx: ProviderContext,
+  ctx: ArtifactReader,
   path: string,
   fallbackName: string,
   from: Provenance,
@@ -47,7 +57,7 @@ function artifactOf(
 }
 
 /** Every `<dir>/<name>/SKILL.md`, named by its frontmatter `name`, else the folder name. */
-export function scanSkills(ctx: ProviderContext, dir: string, from: Provenance): Artifact[] {
+export function scanSkills(ctx: ArtifactReader, dir: string, from: Provenance): Artifact[] {
   return ctx.listDir(dir).flatMap((e) => {
     if (!e.isDirectory) return []
     const a = artifactOf(ctx, join(dir, e.name, 'SKILL.md'), e.name, from)
@@ -60,7 +70,7 @@ export function scanSkills(ctx: ProviderContext, dir: string, from: Provenance):
  * folder already walked (`self -> .`, or two links that lead to each other) would
  * otherwise repeat its files, or never end.
  */
-function firstVisit(ctx: ProviderContext, seen: Set<string>, dir: string): boolean {
+function firstVisit(ctx: ArtifactReader, seen: Set<string>, dir: string): boolean {
   const real = ctx.realpath(dir) ?? dir
   if (seen.has(real)) return false
   seen.add(real)
@@ -73,7 +83,7 @@ function firstVisit(ctx: ProviderContext, seen: Set<string>, dir: string): boole
  * namespaces commands by sub-folder but invokes them by file name).
  */
 export function scanMarkdown(
-  ctx: ProviderContext,
+  ctx: ArtifactReader,
   dir: string,
   from: Provenance,
   options: { recursive?: boolean; useFrontmatterName?: boolean } = {},
@@ -95,6 +105,38 @@ export function scanMarkdown(
   }
   walk(dir)
   return out
+}
+
+/** What one plugin folder holds. */
+export interface PluginArtifacts {
+  skills: Artifact[]
+  commands: Artifact[]
+  agents: Artifact[]
+}
+
+/**
+ * The skills, commands and agents of the plugin folder at `root`: every
+ * `skills/<name>/SKILL.md`; every `commands/<name>/SKILL.md` and flat
+ * `commands/<name>.md` (not recursive); every `agents/*.md`. Skills, folder
+ * commands and agents are named by their frontmatter `name`, else the folder or
+ * file name; a flat command by its file name. Of commands with one name the
+ * first is kept, so a folder wins over a flat file. Symbolic links are followed.
+ * `detect()` and `readPlugin` both read a plugin through here.
+ */
+export function scanPluginArtifacts(
+  ctx: ArtifactReader,
+  root: string,
+  from: Provenance,
+): PluginArtifacts {
+  const commands = [
+    ...scanSkills(ctx, join(root, 'commands'), from),
+    ...scanMarkdown(ctx, join(root, 'commands'), from, { useFrontmatterName: false }),
+  ].filter((c, i, all) => all.findIndex((o) => o.name === c.name) === i)
+  return {
+    skills: scanSkills(ctx, join(root, 'skills'), from),
+    commands,
+    agents: scanMarkdown(ctx, join(root, 'agents'), from),
+  }
 }
 
 /** Instruction files at `locs`: a file location when it exists, a folder's `.md`/`.mdc` files. */
