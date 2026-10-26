@@ -779,6 +779,26 @@
       },
       "setting": "repos:",
       "error": "unknown path name '{}' in repos: '{}/x'; define it under paths: (available: {dev}, {work})"
+    },
+    {
+      "name": "a brace with no closing brace is kept as written",
+      "value": "{dev}/{x",
+      "names": {
+        "dev": "/home/me/dev",
+        "work": "/work"
+      },
+      "setting": "repos:",
+      "expected": "/home/me/dev/{x"
+    },
+    {
+      "name": "a closing brace with no opening brace is kept as written",
+      "value": "a}/{dev}",
+      "names": {
+        "dev": "/home/me/dev",
+        "work": "/work"
+      },
+      "setting": "repos:",
+      "expected": "a}//home/me/dev"
     }
   ],
   "needs": [

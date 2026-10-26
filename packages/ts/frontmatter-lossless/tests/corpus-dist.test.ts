@@ -24,8 +24,12 @@ interface Fixture {
   edit?: { yaml: string; body: string; out: string }
 }
 
+// The corpus is the crate's; this suite reads it in place.
 const fixtures = JSON.parse(
-  readFileSync(new URL('./fixtures/conformance.json', import.meta.url), 'utf8'),
+  readFileSync(
+    new URL('../../../rust/frontmatter-lossless/tests/fixtures/conformance.json', import.meta.url),
+    'utf8',
+  ),
 ) as Fixture[]
 
 describe('the built package against the corpus', () => {

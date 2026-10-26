@@ -22,8 +22,8 @@ include = [
 name = "frontmatter_lossless"
 
 # tests/conformance.rs only: it reads tests/fixtures/conformance.json, the
-# corpus that the TypeScript package (packages/ts/frontmatter-lossless) tests a
-# copy of. The crate parses no JSON at runtime.
+# corpus the TypeScript package (packages/ts/frontmatter-lossless) also reads.
+# The crate parses no JSON at runtime.
 [dev-dependencies]
 serde_json = { workspace = true }
 
