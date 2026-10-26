@@ -541,13 +541,15 @@ describe('homeDir', () => {
   })
 
   test('a relative HOME in the process environment falls back to the account home', () => {
-    const saved = process.env['HOME']
-    process.env['HOME'] = 'relative-home'
+    // The host's own variable and platform: the account home is a host path.
+    const key = process.platform === 'win32' ? 'USERPROFILE' : 'HOME'
+    const saved = process.env[key]
+    process.env[key] = 'relative-home'
     try {
-      expect(homeDir({ platform: 'linux' })).toBe(userInfo().homedir)
+      expect(homeDir()).toBe(userInfo().homedir)
     } finally {
-      if (saved === undefined) delete process.env['HOME']
-      else process.env['HOME'] = saved
+      if (saved === undefined) delete process.env[key]
+      else process.env[key] = saved
     }
   })
 })

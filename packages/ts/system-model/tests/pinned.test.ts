@@ -308,7 +308,9 @@ describe('pinnedInstall — executable-selection order', () => {
   })
 
   test('only mise matches → mise-scoped command with the trust env inline', async () => {
-    const profile = await profileWith({ packageManager: 'bun@1.4.2' }, 'bun.lock', MANAGERS)
+    // A fixed root: a Windows temp path has backslashes, which the command quotes.
+    const detected = await profileWith({ packageManager: 'bun@1.4.2' }, 'bun.lock', MANAGERS)
+    const profile = { ...detected, root: '/tmp/app' }
     const runnerFor = fakeRunners({ env: '1.4.2' })
     const r = project.pinnedInstall(profile, BUN_INSTALL, { allowExec: true, runnerFor })
     expect(r?.source).toBe('mise')

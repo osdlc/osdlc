@@ -470,29 +470,34 @@ describe('runners.readCached', () => {
     }
   })
 
-  test('a truncated fingerprint is an info diagnostic on the runner', async () => {
-    const jobs: Record<string, string> = { 'alpha.txt': 'build' }
-    for (let i = 0; i <= MAX_FINGERPRINT_FILES; i++) jobs[`job-${i}.job`] = 'x'
-    const root = await fixtureRoot(jobs)
-    const cache = await fixtureRoot({})
-    try {
-      const s = setup([listingTool('jobs'), parseTool('alpha')])
-      const profile = await detect(s, root)
-      const live = await s.project.runners.collectAndCache(profile, cache, s.options)
-      const diagnosticsOf = (id: string) =>
-        live.reports.find((r) => r.runner === id)?.diagnostics ?? []
+  // 257 files to write and hash, which Windows runners take seconds over.
+  test(
+    'a truncated fingerprint is an info diagnostic on the runner',
+    { timeout: 30_000 },
+    async () => {
+      const jobs: Record<string, string> = { 'alpha.txt': 'build' }
+      for (let i = 0; i <= MAX_FINGERPRINT_FILES; i++) jobs[`job-${i}.job`] = 'x'
+      const root = await fixtureRoot(jobs)
+      const cache = await fixtureRoot({})
+      try {
+        const s = setup([listingTool('jobs'), parseTool('alpha')])
+        const profile = await detect(s, root)
+        const live = await s.project.runners.collectAndCache(profile, cache, s.options)
+        const diagnosticsOf = (id: string) =>
+          live.reports.find((r) => r.runner === id)?.diagnostics ?? []
 
-      expect(diagnosticsOf('jobs')).toEqual([
-        {
-          severity: 'info',
-          message: expect.stringContaining(`first ${MAX_FINGERPRINT_FILES} files`),
-        },
-      ])
-    } finally {
-      await removeRoot(root)
-      await removeRoot(cache)
-    }
-  })
+        expect(diagnosticsOf('jobs')).toEqual([
+          {
+            severity: 'info',
+            message: expect.stringContaining(`first ${MAX_FINGERPRINT_FILES} files`),
+          },
+        ])
+      } finally {
+        await removeRoot(root)
+        await removeRoot(cache)
+      }
+    },
+  )
 
   test('a queried pattern that matches nothing new leaves the entry fresh', async () => {
     // Re-expanding the query must not make every entry stale.
