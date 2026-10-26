@@ -1,12 +1,57 @@
 {
   "schema": 1,
   "pr": 510,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "c0531e5abd450b59e91e83ee461d012b40270b9b",
+  "base": "272da7ab0c435c6b7e0b736dbc44de04481ad23e",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-r7m2qx",
     "at": "2026-10-26T06:12:10.738Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/wayfinder/scripts/write-config-schema.mjs",
+      "line": 19,
+      "title": "guide check runs after schema/config.json is already written",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/wayfinder/scripts/write-config-schema.mjs",
+      "line": 4,
+      "title": "header names the workflow job as the caller; the root version-packages script runs it",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/wayfinder/tests/config-schema.test.ts",
+      "line": 64,
+      "title": "STALE message says npm run in a pnpm workspace",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "CONTRIBUTING.md does not list write:config-schema as a regeneration step",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
