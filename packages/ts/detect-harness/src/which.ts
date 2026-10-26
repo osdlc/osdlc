@@ -22,7 +22,9 @@ import { which as seamWhich } from '@osdlc/command-seam'
  * quotes, and `Path` is read in any case.
  *
  * A name with a path separator is checked as a path, and only when it is
- * absolute. `cwd` is kept for compatibility: no lookup reads it any more.
+ * absolute. On Windows such a path is tried with each `PATHEXT` suffix,
+ * unless it already ends in one. `cwd` is kept for compatibility: no lookup
+ * reads it any more.
  */
 export function which(
   binary: string,
@@ -30,13 +32,15 @@ export function which(
   platform: NodeJS.Platform = process.platform,
   cwd: string = process.cwd(),
 ): string | null {
-  if (binary.includes('/') || binary.includes('\\')) {
-    return isAbsolute(binary) ? (seamWhich(binary, { cwd, platform }) ?? null) : null
-  }
   const read = (name: string): string | undefined =>
     platform === 'win32'
       ? Object.entries(env).find(([k]) => k.toUpperCase() === name)?.[1]
       : env[name]
+  if (binary.includes('/') || binary.includes('\\')) {
+    // PATHEXT is passed even when unset, so the seam never falls back to `process.env`.
+    const opts = { cwd, platform, env: { PATHEXT: read('PATHEXT') } }
+    return isAbsolute(binary) ? (seamWhich(binary, opts) ?? null) : null
+  }
   const path = read('PATH')
   if (path === undefined) return null
   const found = seamWhich(binary, {

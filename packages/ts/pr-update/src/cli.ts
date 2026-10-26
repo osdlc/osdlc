@@ -98,7 +98,8 @@ function expandBranchFlag(argv: readonly string[], cwd: string): string[] | { er
     if (arg !== '--branch') continue
     const next = argv[i + 1]
     if (next !== undefined && !next.startsWith('-')) continue
-    const current = new Git(cwd, { runner: spawnRunner('git') }).soft.currentBranch()
+    const runner = spawnRunner('git', { absolutePathOnly: true })
+    const current = new Git(cwd, { runner }).soft.currentBranch()
     if (current === null || current === '') {
       return { error: '--branch needs a branch name: this directory is not on a branch' }
     }
@@ -307,8 +308,9 @@ function runEnv(
     command: null,
   },
 ): UpdateEnv {
-  const git = seams.git ?? spawnRunner('git')
-  const gh = seams.gh ?? spawnRunner('gh')
+  // Both run in the project, so a bare name runs only from an absolute PATH entry.
+  const git = seams.git ?? spawnRunner('git', { absolutePathOnly: true })
+  const gh = seams.gh ?? spawnRunner('gh', { absolutePathOnly: true })
   const projectRoot = ctx.cwd
   const loaded = layers.merged.pr_update
   const cfg =
@@ -340,7 +342,7 @@ function checkStart(
 ): Failure | null {
   return preflight({
     cwd: ctx.cwd,
-    git: seams.git ?? spawnRunner('git'),
+    git: seams.git ?? spawnRunner('git', { absolutePathOnly: true }),
     remote: scope.remote,
     repoGiven: scope.repo.length > 0,
     override: layers.merged.code_host.override,

@@ -45,10 +45,9 @@ const LIVE_PROBE: MachineProbe = {
     }
   },
   run(argv) {
-    const result = spawnRunner(argv[0] ?? '').run(argv.slice(1), {
-      cwd: process.cwd(),
-      timeoutMs: 5000,
-    })
+    // The cwd may be a repository, so a bare name runs only from an absolute PATH entry.
+    const runner = spawnRunner(argv[0] ?? '', { absolutePathOnly: true })
+    const result = runner.run(argv.slice(1), { cwd: process.cwd(), timeoutMs: 5000 })
     return result.exitCode === 0 ? result.stdout : null
   },
   hostname: () => hostname(),
@@ -215,7 +214,9 @@ export interface OriginatorProbe {
 const LIVE_ORIGINATOR_PROBE: OriginatorProbe = {
   gitUserName(cwd) {
     try {
-      const result = spawnRunner('git').run(['config', 'user.name'], { cwd, timeoutMs: 5000 })
+      // `cwd` is a repository, so git runs only from an absolute PATH entry.
+      const git = spawnRunner('git', { absolutePathOnly: true })
+      const result = git.run(['config', 'user.name'], { cwd, timeoutMs: 5000 })
       return result.exitCode === 0 ? result.stdout : null
     } catch {
       return null

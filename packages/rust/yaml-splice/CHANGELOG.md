@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- A signed `0x` / `0o` scalar (`-0x1F`, `+0o7`) now reads as a string, as
+  yaml@2's core schema reads it. Before, it read as an integer.
+- A `0x` / `0o` scalar too wide for `i64` (`0xFFFFFFFFFFFFFFFF`) now reads as
+  a number (`Value::Float`, the nearest `f64`), as yaml@2 reads it. Before, it
+  read as a string, so such a top-level key is no longer addressable as a
+  string key. The emitter already quoted such a string, and now decides what
+  to quote with the parser's own resolver, so what it leaves plain is exactly
+  what `parse` reads as a string.
+
+### Fixed
+
+- `splice_keys` with a key named more than once writes it once, at the key's
+  first position, with the last edit winning. Before, the output was corrupted.
+- A collection that `splice_keys` writes into a CRLF block is written with
+  CRLF line endings, instead of adding lone LF lines.
+
 ## [0.3.2](https://github.com/osdlc/osdlc/compare/yaml-splice/v0.3.1...yaml-splice/v0.3.2) - 2026-10-24
 
 ### Other

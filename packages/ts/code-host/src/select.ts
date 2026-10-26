@@ -135,8 +135,8 @@ export function badRemoteFailure(host: CodeHostName, remote: string, url: string
  * `spawnRunner('gh')`, ...), so there is one option per binary. `opts.git`
  * reads the `origin` remote. `opts.gh` becomes `GithubCodeHost`'s runner.
  * `opts.curl` becomes `ForgejoCodeHost`'s runner. It is optional, and a real
- * `curl` runner is used when it is omitted. A test passes a fake to run
- * without a subprocess.
+ * `curl` runner, found on an absolute `PATH` entry only, is used when it is
+ * omitted. A test passes a fake to run without a subprocess.
  */
 export function selectCodeHost(
   cwd: string,
@@ -173,7 +173,8 @@ export function selectCodeHost(
       host: 'forgejo',
     })
   }
-  const curlRunner = opts.curl ?? spawnRunner('curl')
+  // curl runs in `cwd` and reads the token on stdin, so only from an absolute PATH entry.
+  const curlRunner = opts.curl ?? spawnRunner('curl', { absolutePathOnly: true })
   return ok(
     new ForgejoCodeHost({
       tokenEnv,

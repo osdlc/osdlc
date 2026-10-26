@@ -177,6 +177,6 @@ export function scanTaggedProcesses(
 
 /** The default {@link LiveIds}: one {@link scanTaggedProcesses} with the system `ps`. `null` when the scan failed. */
 export const liveSessionIds: LiveIds = () => {
-  const found = scanTaggedProcesses(spawnRunner('ps'))
+  const found = scanTaggedProcesses(spawnRunner('ps', { absolutePathOnly: true }))
   return found === null ? null : new Set(found.map((p) => p.sessionId))
 }
