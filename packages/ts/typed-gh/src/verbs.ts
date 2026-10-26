@@ -14,7 +14,7 @@
  * verb declares `absent` or is a `probe`.
  */
 
-import { stderrOrError, type CommandResult } from '@osdlc/command-seam'
+import { notAnOption, stderrOrError, type CommandResult } from '@osdlc/command-seam'
 
 import { parseLabels, parsePrSearchHit, parsePullRequest, parseRepository } from './parse.ts'
 import { isAbsent, type Thing } from './failure.ts'
@@ -108,14 +108,28 @@ export function checkTarget(target: GhTarget | undefined): void {
   }
 }
 
+/**
+ * `[host/]owner/name` for `repo` (else the target's repo), the form `--repo`
+ * and `gh repo view` take, or `undefined` when neither names one. The host is
+ * the target's, through {@link hostOf}, so a hostname of `''` is "not set".
+ * Both are checked first.
+ */
+function qualifiedRepo(
+  target: GhTarget | undefined,
+  repo?: string | undefined,
+): string | undefined {
+  checkTarget(target)
+  if (repo !== undefined) checkTarget({ repo })
+  const slug = repo ?? target?.repo
+  if (slug === undefined) return undefined
+  const hostname = hostOf(target)
+  return hostname === undefined ? slug : `${hostname}/${slug}`
+}
+
 /** `--repo [host/]owner/name` for `pr`, `issue` and `label` verbs. `repo` overrides the target's. */
 function repoArgs(target: GhTarget | undefined, repo?: string | undefined): string[] {
-  checkTarget(target)
-  const slug = repo ?? target?.repo
-  if (slug === undefined) return []
-  if (repo !== undefined) checkTarget({ repo })
-  const hostname = hostOf(target)
-  return ['--repo', hostname === undefined ? slug : `${hostname}/${slug}`]
+  const qualified = qualifiedRepo(target, repo)
+  return qualified === undefined ? [] : ['--repo', qualified]
 }
 
 /** `--hostname <host>` for `api` and `auth` verbs. */
@@ -361,9 +375,8 @@ function withFields(fields: readonly string[], required: readonly string[]): str
  * argument would read as a flag.
  */
 function notAFlag(what: string, value: string): void {
-  if (value.startsWith('-')) {
-    throw new RangeError(`${what} must not start with "-", got ${JSON.stringify(value)}`)
-  }
+  const message = (v: string) => `${what} must not start with "-", got ${JSON.stringify(v)}`
+  notAnOption(value, (v) => new RangeError(message(v)))
 }
 
 /**
@@ -886,15 +899,10 @@ export function repoView(
   fields: readonly string[] = REPO_FIELDS,
   target?: GhTarget,
 ): GhVerb<Repository | null> {
-  checkTarget(target)
-  if (repo !== undefined) checkTarget({ repo })
-  const slug = repo ?? target?.repo
+  // The same `[host/]owner/name` rule as `--repo`.
+  const qualified = qualifiedRepo(target, repo)
   const argv = ['repo', 'view']
-  if (slug !== undefined) {
-    // Through hostOf, as repoArgs does: a hostname of '' is "not set".
-    const hostname = hostOf(target)
-    argv.push(hostname === undefined ? slug : `${hostname}/${slug}`)
-  }
+  if (qualified !== undefined) argv.push(qualified)
   argv.push('--json', withFields(fields, ['nameWithOwner']).join(','))
   return {
     argv,

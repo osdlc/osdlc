@@ -745,6 +745,21 @@ is what `remoteOwnerRepo` uses, and it stays on `@osdlc/typed-git/client`.
 Use it for a remote read from a checkout (any host); use `parseGitUrl` /
 `parseRepoRef` for a URL a person pasted.
 
+`parseRemoteRepo` reads a remote into `{ host, owner, repo }`, for a known
+host and any other alike. It tries `parseGitUrl` first, so shorthand reads as
+GitHub and a GitLab nested group stays whole in `owner`, then falls back to
+`parseRemoteUrl`, so a GitHub Enterprise or self-hosted Forgejo remote
+answers too. `host` is lower-cased and carries no port. Decide which forge a
+remote is on from `host`, not from the URL text.
+
+```ts
+parseRemoteRepo("git@github.com:acme/widgets.git");
+// { host: "github.com", owner: "acme", repo: "widgets" }
+parseRemoteRepo("https://forge.example.com:3000/team/app.git");
+// { host: "forge.example.com", owner: "team", repo: "app" }
+parseRemoteRepo("/srv/git/repo.git"); // null — a local path names no project
+```
+
 `parseRepoRef` answers the question a clone command asks. Given anything a
 person might paste (a clone URL, the page of a pull request or a file, a bare
 `owner/repo`), which repository is it, and what does `git clone` take? It returns
@@ -764,7 +779,7 @@ parseRepoRef("./a/local/path"); // null — the input names no repository
 ## Subpath exports
 
 `@osdlc/typed-git/client` is everything above except the URL parsers
-(`parseGitUrl`, `gitSshUrl`, `parseRepoRef` and their types) and the checkout
+(`parseGitUrl`, `gitSshUrl`, `parseRemoteRepo`, `parseRepoRef` and their types) and the checkout
 walks (`checkoutRoot`, `discoverCheckouts`, `scanForCheckouts`, their types,
 `DEFAULT_MAX_DEPTH` and `DEFAULT_WARN_AFTER`). It has no `hosted-git-info` on
 your module graph. That package stays in `dependencies` either way, so this

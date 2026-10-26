@@ -35,6 +35,13 @@ describe('codeHostNameForRemote', () => {
   test('any other host resolves to forgejo', () => {
     expect(codeHostNameForRemote('https://codeberg.org/o/r.git', null)).toBe('forgejo')
     expect(codeHostNameForRemote('git@git.example.com:o/r.git', null)).toBe('forgejo')
+    expect(codeHostNameForRemote('https://git.example.com:3000/o/r.git', null)).toBe('forgejo')
+  })
+
+  test('a GitHub Enterprise host is not github without the override', () => {
+    expect(codeHostNameForRemote('git@github.acme.com:o/r.git', null)).toBe('forgejo')
+    expect(codeHostNameForRemote('https://github.acme.com/o/r.git', null)).toBe('forgejo')
+    expect(codeHostNameForRemote('https://github.acme.com/o/r.git', 'github')).toBe('github')
   })
 
   test('github.com in the path or inside another host name is not github', () => {

@@ -13,7 +13,7 @@
  * `GitVerb` and `gate` are internal: the package entries do not export them.
  */
 
-import { CommandFailed, type CommandResult } from '@osdlc/command-seam'
+import { CommandFailed, notAnOption, runFailed, type CommandResult } from '@osdlc/command-seam'
 
 import { gitFailureError } from './failure.ts'
 
@@ -78,11 +78,7 @@ export interface GitVerb<T> {
  */
 export function gate<T>(verb: GitVerb<T>, result: CommandResult, argv?: string[]): T {
   try {
-    if (
-      result.neverExited ||
-      result.outputIncomplete ||
-      (result.exitCode !== 0 && !verb.absent.includes(result.exitCode))
-    ) {
+    if (runFailed(result, (r) => verb.absent.includes(r.exitCode))) {
       throw new CommandFailed(argv ?? verb.argv, result)
     }
     return verb.parse(result, argv ?? verb.argv)
@@ -270,12 +266,9 @@ const NONE: readonly number[] = []
  * `-`, and `@{-1}` for the previous branch.
  */
 function positional(verb: string, param: string, value: string): string {
-  if (value.startsWith('-')) {
-    throw new TypeError(
-      `typed-git: ${verb}: ${param} must not start with "-" (got ${JSON.stringify(value)})`,
-    )
-  }
-  return value
+  const message = (v: string) =>
+    `typed-git: ${verb}: ${param} must not start with "-" (got ${JSON.stringify(v)})`
+  return notAnOption(value, (v) => new TypeError(message(v)))
 }
 
 /**
