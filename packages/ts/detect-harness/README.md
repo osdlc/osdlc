@@ -60,7 +60,7 @@ harness, in a fixed order. Options:
 | Option          | Default            | Meaning                                                                   |
 | --------------- | ------------------ | ------------------------------------------------------------------------- |
 | `projectRoot`   | `process.cwd()`    | The project to read.                                                      |
-| `home`          | `os.homedir()`     | The home folder to read.                                                  |
+| `home`          | absolute `HOME`    | The home folder to read. A relative `HOME` counts as unset.               |
 | `env`           | `process.env`      | The environment: overrides such as `CLAUDE_CONFIG_DIR`, `PATH`, API keys. |
 | `mode`          | `full`             | `project` reads project files only; see below.                            |
 | `allowExec`     | `false`            | Run `<binary> --version` to fill `install.version`.                       |

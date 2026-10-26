@@ -110,7 +110,11 @@ export interface HarnessProvider {
 export interface DetectOptions {
   /** Default `process.cwd()`. */
   projectRoot?: string | undefined
-  /** Default `os.homedir()`. Ignored in `project` mode. */
+  /**
+   * Default `HOME` (`USERPROFILE` on Windows) when it is absolute, else the
+   * OS account's home; with neither, home-based paths do not resolve. Ignored
+   * in `project` mode.
+   */
   home?: string | undefined
   /** Default `process.env`. */
   env?: Readonly<Record<string, string | undefined>> | undefined

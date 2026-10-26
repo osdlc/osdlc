@@ -8,6 +8,8 @@ import {
   TieredDirs,
   TieredDirsError,
   envVars,
+  expandTilde,
+  homeDir,
   isOverridden,
   overrideVars,
   parseConvention,
@@ -515,5 +517,53 @@ describe('the README example with an injected HOME', () => {
     expect(normalize(cli.standalone('tool').config().path)).toBe(
       normalize('/Users/ada/.config/tool'),
     )
+  })
+})
+
+describe('homeDir', () => {
+  test('an absolute HOME, or USERPROFILE on Windows, is the home', () => {
+    expect(homeDir({ platform: 'linux', env: { HOME: '/home/ada' } })).toBe('/home/ada')
+    expect(
+      homeDir({ platform: 'win32', env: { HOME: '/c/x', USERPROFILE: 'C:\\Users\\ada' } }),
+    ).toBe('C:\\Users\\ada')
+  })
+
+  test('a relative or empty HOME in an injected environment throws MISSING_BASE_DIR', () => {
+    for (const env of [{}, { HOME: '' }, { HOME: 'rel' }, { HOME: '~' }]) {
+      let code: string | undefined
+      try {
+        homeDir({ platform: 'linux', env })
+      } catch (err) {
+        code = (err as TieredDirsError).code
+      }
+      expect(code).toBe('MISSING_BASE_DIR')
+    }
+  })
+
+  test('a relative HOME in the process environment falls back to the account home', () => {
+    const saved = process.env['HOME']
+    process.env['HOME'] = 'relative-home'
+    try {
+      expect(homeDir({ platform: 'linux' })).toBe(userInfo().homedir)
+    } finally {
+      if (saved === undefined) delete process.env['HOME']
+      else process.env['HOME'] = saved
+    }
+  })
+})
+
+describe('expandTilde', () => {
+  test('~ and ~/ expand everywhere; ~\\ only on Windows', () => {
+    expect(expandTilde('~', '/home/me', 'linux')).toBe('/home/me')
+    expect(expandTilde('~/w', '/home/me', 'linux')).toBe('/home/me/w')
+    expect(expandTilde('~\\w', '/home/me', 'linux')).toBe('~\\w')
+    expect(expandTilde('~\\w', 'C:\\Users\\me', 'win32')).toBe('C:\\Users\\me\\w')
+    expect(expandTilde('~/w', 'C:\\Users\\me', 'win32')).toBe('C:\\Users\\me\\w')
+  })
+
+  test('~user, a mid-path ~ and a relative path are returned unchanged', () => {
+    for (const path of ['~other/w', 'a/~/b', 'rel', '/abs']) {
+      expect(expandTilde(path, '/home/me', 'linux')).toBe(path)
+    }
   })
 })

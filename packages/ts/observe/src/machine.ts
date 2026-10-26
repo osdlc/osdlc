@@ -7,10 +7,11 @@
 
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { homedir, hostname, platform, userInfo } from 'node:os'
+import { hostname, platform, userInfo } from 'node:os'
 import { dirname, isAbsolute, join } from 'node:path'
 
 import { spawnRunner } from '@osdlc/command-seam'
+import { homeDir, xdgBaseDirs } from '@osdlc/tiered-dirs'
 
 import { readTag } from './envelope.ts'
 
@@ -98,16 +99,28 @@ export function deriveMachineId(probe: MachineProbe): string {
 const MACHINE_ID_RE = /^m-[0-9a-f]{16}$/
 
 /**
+ * Internal, not exported from the package entry. {@link machineId} uses it.
+ *
  * Where {@link resolveMachineId} keeps the derived id: `sdlc/machine-id` under
- * `$XDG_CACHE_HOME` or `~/.cache`. A relative `$XDG_CACHE_HOME` is ignored, as
- * the XDG spec says, and a home that is not absolute means no cache: either
+ * the XDG cache home, `$XDG_CACHE_HOME` or `~/.cache`, on every platform, as
+ * `@osdlc/tiered-dirs`'s `xdgBaseDirs` resolves it. A relative
+ * `$XDG_CACHE_HOME` is ignored, as the XDG spec says, and the home is
+ * tiered-dirs' `homeDir` (a relative `HOME` counts as unset). With no
+ * absolute home and no absolute `$XDG_CACHE_HOME` there is no cache: either
  * would put the file under whatever directory the process runs in.
  */
-function machineIdCachePath(): string | null {
-  const xdg = process.env['XDG_CACHE_HOME']?.trim()
-  if (xdg !== undefined && xdg !== '' && isAbsolute(xdg)) return join(xdg, 'sdlc', 'machine-id')
-  const home = homedir()
-  return isAbsolute(home) ? join(home, '.cache', 'sdlc', 'machine-id') : null
+export function machineIdCachePath(
+  env: Record<string, string | undefined> = process.env,
+  home: () => string = homeDir,
+): string | null {
+  let homePath = ''
+  try {
+    homePath = home()
+  } catch {
+    // No home: only an absolute XDG_CACHE_HOME places the cache.
+  }
+  const cache = xdgBaseDirs(homePath, env).cache
+  return isAbsolute(cache) ? join(cache, 'sdlc', 'machine-id') : null
 }
 
 /**

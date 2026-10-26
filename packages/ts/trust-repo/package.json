@@ -61,6 +61,7 @@
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
     "@osdlc/path-guard": "workspace:^",
+    "@osdlc/tiered-dirs": "workspace:^",
     "@osdlc/typed-git": "workspace:^"
   },
   "devDependencies": {

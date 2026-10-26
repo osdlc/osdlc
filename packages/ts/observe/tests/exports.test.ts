@@ -283,10 +283,11 @@ test('the README imports the published names', () => {
   expect(blocks).toContain(`from '${PACKAGE_NAME}/session'`)
 })
 
-test('zod is a peer dependency, and command-seam and etag-write the runtime dependencies', () => {
+test('zod is a peer dependency; command-seam, etag-write and tiered-dirs are runtime ones', () => {
   expect(Object.keys((MANIFEST['dependencies'] as object | undefined) ?? {})).toEqual([
     '@osdlc/command-seam',
     '@osdlc/etag-write',
+    '@osdlc/tiered-dirs',
   ])
   expect(MANIFEST['peerDependencies']).toEqual({ zod: '^4' })
   expect(MANIFEST['optionalDependencies']).toBeUndefined()
@@ -315,6 +316,7 @@ describe('what the package ships', () => {
           `${PACKAGE_NAME}/session`,
           '@osdlc/command-seam',
           '@osdlc/etag-write',
+          '@osdlc/tiered-dirs',
         ]).toContain(spec)
       }
     }

@@ -77,8 +77,9 @@ npm install @osdlc/observe zod
 ESM only. Node.js 22 or later. `zod` 4 is a peer dependency:
 the session model takes your own zod schemas, so both must come from one zod.
 The runtime dependencies are `@osdlc/command-seam`, which runs `ps`, `ioreg`,
-`reg` and `git` without a shell, and `@osdlc/etag-write`, which writes the
-session record atomically.
+`reg` and `git` without a shell, `@osdlc/etag-write`, which writes the
+session record atomically, and `@osdlc/tiered-dirs`, which resolves the home
+and cache directories the machine-id cache lives under.
 
 ## Entry points
 
@@ -197,7 +198,7 @@ const id = deriveMachineId(linux)
 
 `machineId()` has side effects. It reads `OBSERVE_MACHINE_ID` (or
 `SDLC_MACHINE_ID`) from `process.env`. When that is unset, it reads the cache
-file `~/.cache/sdlc/machine-id` (under `$XDG_CACHE_HOME` when set). When the
+file `~/.cache/sdlc/machine-id` (under `$XDG_CACHE_HOME` when it is absolute). When the
 cache holds no id written on this host (it keeps a hash of the hostname, so
 machines that share a home do not share an id), it probes the platform (it runs `ioreg` on macOS or `reg` on
 Windows, and reads `/etc/machine-id` on Linux) and writes the cache file. It

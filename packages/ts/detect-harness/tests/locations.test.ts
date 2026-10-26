@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, test } from 'vitest'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 
 import { current } from '../src/current.ts'
 import { BUILTIN_HARNESSES, HARNESS_ALIASES, harnessId } from '../src/harnesses.ts'
@@ -44,7 +44,6 @@ describe('resolvers', () => {
   test('config folders and their overrides', () => {
     expect(resolveConfigDir('claude', { home, env: {} })).toBe(join(home, '.claude'))
     expect(resolveConfigDir('claude', { home, env: { CLAUDE_CONFIG_DIR: '/c' } })).toBe('/c')
-    expect(resolveConfigDir('codex', { home, env: { CODEX_HOME: 'rel' } })).toBe(resolve('rel'))
     expect(resolveConfigDir('opencode', { home, env: { XDG_CONFIG_HOME: '/x' } })).toBe(
       join('/x', 'opencode'),
     )
@@ -53,6 +52,20 @@ describe('resolvers', () => {
       path: '/pi',
       envVar: 'PI_CODING_AGENT_DIR',
     })
+  })
+
+  test('a relative override counts as unset, so the cwd is never read as the folder', () => {
+    for (const value of ['rel', './x', '~/.codex']) {
+      expect(resolveConfigDir('codex', { home, env: { CODEX_HOME: value } })).toBe(
+        join(home, '.codex'),
+      )
+    }
+    expect(resolveConfigDir('opencode', { home, env: { XDG_CONFIG_HOME: '.config' } })).toBe(
+      resolveConfigDir('opencode', { home, env: {} }),
+    )
+    expect(
+      resolveConfigDir('codex', { home, env: { CODEX_HOME: 'C:\\codex' }, platform: 'win32' }),
+    ).toBe('C:\\codex')
   })
 
   test('an empty override counts as unset', () => {

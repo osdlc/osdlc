@@ -2,8 +2,9 @@ import { afterAll, describe, expect, test } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import { lstat, mkdir, readFile, symlink, writeFile } from 'node:fs/promises'
 import { userInfo } from 'node:os'
-import { join } from 'node:path'
+import { join, win32 } from 'node:path'
 
+import { expandTilde } from '@osdlc/tiered-dirs'
 import { expandTrustPath, resolveTrustRoot } from '@osdlc/trust-repo'
 
 import {
@@ -29,7 +30,6 @@ import {
   writeConfigFile,
   writeSetting,
 } from '../src/config.ts'
-import { expandTilde } from '../src/xdg.ts'
 import { CONFIG_HOME, USER_CONFIG, fixtureRoot, removeRoot } from './support.ts'
 
 const WINDOWS = process.platform === 'win32'
@@ -196,7 +196,7 @@ describe('expandTilde', () => {
   test('expands ~ and ~/, and ~\\ only on Windows', () => {
     expect(expandTilde('~', '/h')).toBe('/h')
     expect(expandTilde('~/x', '/h')).toBe(join('/h', 'x'))
-    expect(expandTilde('~\\x', '/h', 'win32')).toBe(join('/h', 'x'))
+    expect(expandTilde('~\\x', '/h', 'win32')).toBe(win32.join('/h', 'x'))
     expect(expandTilde('~\\x', '/h', 'linux')).toBe('~\\x')
   })
 })

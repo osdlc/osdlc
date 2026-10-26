@@ -10,10 +10,10 @@
  * with `allowExec` does it run `<binary> --version`, for at most 3 seconds.
  */
 
-import { homedir } from 'node:os'
 import { resolve } from 'node:path'
 
 import { ran, spawnRunnerAsync } from '@osdlc/command-seam'
+import { homeDir } from '@osdlc/tiered-dirs'
 
 import { createContext, forHarness } from './context.ts'
 import type { DetectOptions, HarnessProvider, ProviderContext } from './contract.ts'
@@ -167,6 +167,22 @@ async function runProvider(
 }
 
 /**
+ * `given`, made absolute, else the host's home folder: `@osdlc/tiered-dirs`'s
+ * `homeDir`, `HOME` (`USERPROFILE` on Windows) when it is absolute, else the
+ * OS account's home. A relative `HOME` counts as unset, so the project folder
+ * is never read as the home. `null` when there is none, which leaves
+ * home-based paths unresolved.
+ */
+function homeFolder(given: string | undefined): string | null {
+  if (given !== undefined) return resolve(given)
+  try {
+    return homeDir()
+  } catch {
+    return null
+  }
+}
+
+/**
  * Detect the harnesses on this machine and in this project.
  *
  * Read-only: nothing is written, and nothing is run unless `allowExec` is set.
@@ -178,7 +194,7 @@ export async function detect(options: DetectOptions = {}): Promise<HarnessCatalo
   const env = options.env ?? process.env
   const platform = options.platform ?? process.platform
   const projectRoot = resolve(options.projectRoot ?? process.cwd())
-  const home = mode === 'project' ? null : resolve(options.home ?? homedir())
+  const home = mode === 'project' ? null : homeFolder(options.home)
   const allowExec = options.allowExec ?? false
 
   const ctx = createContext({

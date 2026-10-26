@@ -16,6 +16,7 @@ import {
   deriveMachineId,
   isThisMachine,
   machineId,
+  machineIdCachePath,
   resolveMachineId,
   type MachineProbe,
 } from '../src/machine.ts'
@@ -153,6 +154,38 @@ describe('resolveMachineId', () => {
     expect(resolveMachineId(probe({ platform: 'linux', readFile: () => 'u' }), null)).toBe(
       derived('u'),
     )
+  })
+})
+
+describe('machineIdCachePath', () => {
+  const home = () => '/home/dev'
+  const noHome = () => {
+    throw new Error('no home')
+  }
+
+  test('is sdlc/machine-id under an absolute XDG_CACHE_HOME, else ~/.cache', () => {
+    expect(machineIdCachePath({ XDG_CACHE_HOME: '/xdg/cache' }, home)).toBe(
+      join('/xdg/cache', 'sdlc', 'machine-id'),
+    )
+    expect(machineIdCachePath({}, home)).toBe(join('/home/dev', '.cache', 'sdlc', 'machine-id'))
+  })
+
+  test('ignores a relative XDG_CACHE_HOME, so the cache never lands under the cwd', () => {
+    // Regression: the value was once used verbatim, so `.cache` wrote the id
+    // into whatever directory the process ran in, which can be a repository.
+    for (const value of ['.cache', 'cache/x', './c', '~/.cache']) {
+      expect(machineIdCachePath({ XDG_CACHE_HOME: value }, home)).toBe(
+        join('/home/dev', '.cache', 'sdlc', 'machine-id'),
+      )
+    }
+  })
+
+  test('with no home, only an absolute XDG_CACHE_HOME gives a cache', () => {
+    expect(machineIdCachePath({ XDG_CACHE_HOME: '/xdg/cache' }, noHome)).toBe(
+      join('/xdg/cache', 'sdlc', 'machine-id'),
+    )
+    expect(machineIdCachePath({}, noHome)).toBeNull()
+    expect(machineIdCachePath({ XDG_CACHE_HOME: '.cache' }, noHome)).toBeNull()
   })
 })
 

@@ -26,6 +26,8 @@ export {
   CONVENTIONS,
   HOMES,
   envVars,
+  expandTilde,
+  homeDir,
   isOverridden,
   overrideVars,
   parseConvention,

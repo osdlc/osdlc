@@ -71,9 +71,10 @@ or removing a grant widens nothing. `parseTrustScope(input)` applies the same
 rules to a `--scope` value before it reaches the store: it trims, checks and
 refuses `*`, and throws a `TypeError` a CLI can report as a usage error.
 
-`home` defaults to `homeDir()`: `os.homedir()` when it is absolute, else the
-OS account's home. A relative `HOME` is treated as unset, so the store never
-lands inside the folder the tool runs in.
+`home` defaults to `homeDir()`, `@osdlc/tiered-dirs`'s home: `HOME`
+(`USERPROFILE` on Windows) when it is absolute, else the OS account's home. A
+relative `HOME` is treated as unset, so the store never lands inside the
+folder the tool runs in.
 
 A test passes its own `env` and `home`, so it never reads or writes the
 developer's real trust store. `dir` sets the store's directory directly and
