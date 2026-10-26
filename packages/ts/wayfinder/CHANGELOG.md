@@ -1,5 +1,49 @@
 # @osdlc/wayfinder
 
+## 0.10.0
+
+### Minor Changes
+
+- b835ae4: `way clean` no longer removes a store that holds the home directory under a directory whose name starts with `..` (such as `..x`). `way --cached --no-exec` now re-probes a runner whose stored rows were taken with exec allowed, instead of reporting it as fresh with no tasks.
+  Through `@osdlc/cli-tool` and `@osdlc/command-seam`, a working directory that cannot be entered now exits with the `repository` code instead of `missingTool`.
+  Behaviour change (stricter): a task handed the terminal (`way run`, the terminal UI, the web view's Run) whose program is a bare name now runs it only from an absolute `PATH` entry; a relative entry, which would find a file the repository ships, is skipped and the run fails as a missing binary. A path such as `./gradlew` runs as given. The web view's "handed off" message quotes the command line as the copy text does.
+  `~` expansion of the user config path and of tool module paths now uses `@osdlc/tiered-dirs`'s `expandTilde`; the result on each platform is unchanged.
+  The JSON documents' schemas take every enum that names a `@osdlc/system-model` value (group ids, cache states and stale reasons, probe costs, parameters-unknown reasons, match modes, tool roles and runner kinds) from system-model's `ALL_*` lists instead of a copy, so a value system-model adds is accepted. The values are unchanged; in the `providers` document's schema the role enum now lists `packageManager` first, in system-model's order. The terminal filter's control-character set comes from `@osdlc/ux`'s `controlPattern`; the characters it replaces are unchanged.
+  `way config get` of a key under a listed setting returns the nested value instead of exiting 1.
+  Behaviour change (through `@osdlc/cli-tool`): `way config get` and `way config unset` of an unknown key exit 2 (a usage error, with a did-you-mean) instead of 1, as `set` and `explain` already did. `way config get` of a key under a listed setting reads it from that setting's value.
+- ebd5328: Loading finishes sooner and a hung tool no longer holds it up.
+  
+  - New setting `runners.timeout`: how many seconds one runner may take to list its tasks, its subprocesses included. Set it in your user config (`way config set --user runners.timeout 20`), from 1 to 3600. A project file, or the web view's settings page, can only lower the limit: each runner takes the smaller of the project value and its own limit (or your user value). A project value above your user value is ignored with a warning. A runner still running then is stopped, the processes it started are killed, and it shows `timed out after 20 s` in place, in the terminal UI, the web view and `list --json`, like any failed runner. Unset or `null`, each runner has its own limit (10 s for just, 120 s for moon, 60 s for most). That limit now bounds the whole probe, not only each subprocess.
+  - The agent skills and the Skills tab appear while the runners load, not at the end. `list --progress` sends them on a `catalog-progress` line of their own, with `skills`, filtered like the final document. The terminal UI shows them with the first task rows, below them.
+  - The final status shows as soon as the last runner answers. The store is written after that, in the background, and every normal exit waits for it. A kill during the write leaves the old entry in place.
+  - Library: `CatalogProgress.onSkills`, called once as soon as the skills are read.
+  - The config file's `$schema` URL moves to `@osdlc/wayfinder@0.10`.
+
+### Patch Changes
+
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [ebd5328]
+- Updated dependencies [fdef74f]
+  - @osdlc/cli-tool@0.10.0
+  - @osdlc/command-seam@0.13.0
+  - @osdlc/config-layers@0.8.0
+  - @osdlc/detect-harness@0.6.0
+  - @osdlc/etag-write@0.3.0
+  - @osdlc/system-model@0.7.0
+  - @osdlc/tiered-dirs@0.5.0
+  - @osdlc/trust-repo@0.5.0
+  - @osdlc/typed-git@0.9.0
+  - @osdlc/ux@0.1.1
+
 ## 0.9.0
 
 ### Minor Changes

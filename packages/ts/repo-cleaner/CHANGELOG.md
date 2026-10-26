@@ -1,5 +1,21 @@
 # @osdlc/repo-cleaner
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [fdef74f]
+  - @osdlc/cli-tool@0.10.0
+  - @osdlc/command-seam@0.13.0
+  - @osdlc/config-layers@0.8.0
+  - @osdlc/typed-gh@0.10.0
+  - @osdlc/typed-git@0.9.0
+
 ## 0.5.0
 
 ### Minor Changes
