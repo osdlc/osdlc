@@ -245,6 +245,71 @@ describe('config', () => {
     expect((await runApp(appWith(), ['config', 'path', 'extra'])).exit).toBe(2)
   })
 
+  test('config get reads a key below a listed setting out of its value', async () => {
+    const store = memoryStore()
+    const nested = {
+      ...store,
+      async list() {
+        return { settings: [{ key: 'runners', value: { order: ['moon'] }, source: 'user' }] }
+      },
+    }
+    const r = await runApp(appWith(nested), ['config', 'get', 'runners.order', '--json'])
+    expect(r.json()).toMatchObject({ key: 'runners.order', value: ['moon'], source: 'user' })
+    expect((await runApp(appWith(nested), ['config', 'get', 'runners.nope'])).exit).toBe(1)
+  })
+
+  test("a store's resolveKey names the key in every answer", async () => {
+    const store = memoryStore()
+    const app = appWith({
+      ...store,
+      resolveKey: (key) => (key === 'order' ? 'runners.order' : key),
+      async set(ctx, layer, key, value) {
+        return store.set(ctx, layer, key === 'order' ? 'runners.order' : key, value)
+      },
+      async unset(ctx, layer, key) {
+        return store.unset(ctx, layer, key === 'order' ? 'runners.order' : key)
+      },
+    })
+    expect((await runApp(app, ['config', 'get', 'order'])).out).toBe('[]\n')
+    expect((await runApp(app, ['config', 'set', 'order', '["just"]'])).out).toBe(
+      '/project.json: runners.order = ["just"]\n',
+    )
+    expect((await runApp(app, ['config', 'unset', 'order'])).out).toBe(
+      '/project.json: removed runners.order\n',
+    )
+  })
+
+  test('a store with dryRun gets --dry-run on set and unset, and is told', async () => {
+    const store = memoryStore()
+    const seen: unknown[] = []
+    const app = appWith({
+      ...store,
+      dryRun: true,
+      async set(ctx, layer, key, value, options) {
+        seen.push(options)
+        if (options?.dryRun === true) return { file: `/${layer}.json`, value }
+        return store.set(ctx, layer, key, value)
+      },
+      async unset(ctx, layer, key, options) {
+        seen.push(options)
+        if (options?.dryRun === true) return { file: `/${layer}.json`, removed: true }
+        return store.unset(ctx, layer, key)
+      },
+    })
+    const set = await runApp(app, ['config', 'set', 'discovery', 'walk', '--dry-run'])
+    expect(set).toMatchObject({ exit: 0, out: '/project.json: would set discovery = "walk"\n' })
+    expect(store.files['project']!['discovery']).toBe('git')
+    const json = await runApp(app, ['config', 'set', 'discovery', 'walk', '--dry-run', '--json'])
+    expect(json.json()).toMatchObject({ kind: 'config-set', dryRun: true })
+    const unset = await runApp(app, ['config', 'unset', 'discovery', '--dry-run'])
+    expect(unset.out).toBe('/project.json: would remove discovery\n')
+    expect(store.files['project']!['discovery']).toBe('git')
+    await runApp(app, ['config', 'set', 'discovery', 'walk'])
+    expect(seen).toEqual([{ dryRun: true }, { dryRun: true }, { dryRun: true }, {}])
+    // Without dryRun on the store, the flag is not there.
+    expect((await runApp(appWith(), ['config', 'set', 'discovery', 'x', '--dry-run'])).exit).toBe(2)
+  })
+
   test('a default layer outside the layers is refused', () => {
     expect(() => configCommands({ ...memoryStore(), defaultLayer: 'machine' })).toThrow(
       "defaultLayer 'machine'",

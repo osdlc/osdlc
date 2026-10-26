@@ -3,7 +3,7 @@
  * its homepage and its language, from `@osdlc/system-model`'s `ToolDef`.
  */
 
-import type { ToolDef } from '@osdlc/system-model/detect'
+import type { ProviderKind, ToolDef } from '@osdlc/system-model/detect'
 
 import { languageLabel } from './vocabulary.ts'
 
@@ -22,7 +22,7 @@ export interface ToolSummary {
   /** The language a person reads: `JavaScript`, or `any language` (see `languageLabel`). */
   language: string
   /** The runner role's kind: `exec` needs trust to be read. Null with no runner role. */
-  runnerKind: 'parse' | 'exec' | null
+  runnerKind: ProviderKind | null
 }
 
 /** The summary of `tool`. A custom tool's `homepage` and `description` are repository text. */

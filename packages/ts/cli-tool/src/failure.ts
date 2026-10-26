@@ -98,13 +98,24 @@ export function failureOf(thrown: unknown): Failure | null {
 }
 
 /**
+ * The line a CLI prints for an error: `<name>: <message>`, with a newline,
+ * and terminal controls removed (line feeds and tabs stay). The message may
+ * quote repository or service text, so printing it must not move the cursor,
+ * recolor the terminal or set its title. Every error line this package
+ * prints goes through here.
+ */
+export function renderError(message: string, name?: string): string {
+  return safe(`${name === undefined || name === '' ? message : `${name}: ${message}`}\n`)
+}
+
+/**
  * The one line a CLI prints for a failure: `<name>: <message> <hint>`, with a
- * newline. Only the message and hint show. The raw `detail` is left to a
- * caller that wants it, since this package has no verbose switch of its own.
+ * newline, made safe as {@link renderError} makes it. Only the message and
+ * hint show. The raw `detail` is left to a caller that wants it, since this
+ * package has no verbose switch of its own.
  */
 export function renderFailure(failure: Failure, name?: string): string {
-  const line = describe(failure)
-  return `${name === undefined || name === '' ? line : `${name}: ${line}`}\n`
+  return renderError(describe(failure), name)
 }
 
 /**
@@ -121,7 +132,6 @@ export function failWith(
   failure: Failure,
   options: { name?: string | undefined } = {},
 ): number {
-  // The message and hint may quote repository or service text, as in runMain.
-  ctx.io.stderr(safe(renderFailure(failure, options.name)))
+  ctx.io.stderr(renderFailure(failure, options.name))
   return exitCodeFor(failure)
 }

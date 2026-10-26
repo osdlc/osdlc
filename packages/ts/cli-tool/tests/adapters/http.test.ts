@@ -2,7 +2,15 @@ import { request as httpRequest } from 'node:http'
 
 import { afterEach, describe, expect, test } from 'vitest'
 
-import { createHttpApi, serveHttp, type HttpApi, type HttpServer } from '../../src/http/index.ts'
+import {
+  createHttpApi,
+  newToken,
+  readBody,
+  serveHttp,
+  tokenEquals,
+  type HttpApi,
+  type HttpServer,
+} from '../../src/http/index.ts'
 import { captureContext } from '../../src/io.ts'
 import { fixture, type Fixture } from './fixture.ts'
 
@@ -580,6 +588,60 @@ describe('mounting', () => {
     const ctx = captureContext({ cwd: '/repo', env: {} })
     expect(await app.run(['serve-api', '--port', 'x'], ctx)).toBe(2)
     expect(ctx.io.err).toContain('--port needs a number')
+  })
+})
+
+describe('helpers', () => {
+  test('newToken: 32 hex characters, new each call', () => {
+    const a = newToken()
+    expect(a).toMatch(/^[0-9a-f]{32}$/)
+    expect(newToken()).not.toBe(a)
+  })
+
+  test('tokenEquals: only the same string', () => {
+    expect(tokenEquals('abc', 'abc')).toBe(true)
+    expect(tokenEquals('abc', 'abd')).toBe(false)
+    expect(tokenEquals('abc', 'abcd')).toBe(false)
+    expect(tokenEquals('', '')).toBe(true)
+  })
+
+  const post = (body: RequestInit['body'], headers: Record<string, string> = {}): Request =>
+    new Request('http://127.0.0.1/', {
+      method: 'POST',
+      body,
+      headers,
+      ...(body instanceof ReadableStream ? { duplex: 'half' } : {}),
+    } as RequestInit)
+
+  test('readBody: the body up to the limit, null past it', async () => {
+    expect(await readBody(post('12345678'), 8)).toBe('12345678')
+    expect(await readBody(post('123456789'), 8)).toBeNull()
+    expect(await readBody(post(null), 8)).toBe('')
+  })
+
+  test('readBody: a declared length past the limit is refused unread', async () => {
+    expect(await readBody(post('x', { 'content-length': '9' }), 8)).toBeNull()
+  })
+
+  test('readBody: an endless chunked body is given up past the limit', async () => {
+    const endless = new ReadableStream<Uint8Array>({
+      pull(c) {
+        c.enqueue(new Uint8Array(4))
+      },
+    })
+    expect(await readBody(post(endless), 8)).toBeNull()
+  })
+
+  test('readBody: multi-byte characters split across chunks decode whole', async () => {
+    const bytes = new TextEncoder().encode('é')
+    const split = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(bytes.slice(0, 1))
+        c.enqueue(bytes.slice(1))
+        c.close()
+      },
+    })
+    expect(await readBody(post(split), 8)).toBe('é')
   })
 })
 

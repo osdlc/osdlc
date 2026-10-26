@@ -198,6 +198,12 @@ the message and the hint. The raw `detail` (a tool's stderr) is left to a
 caller that asks for it, since this package has no verbose switch. Any other
 thrown error prints its message and exits 1.
 
+Every error line is rendered by `renderError(message, name)`: `<name>:
+<message>` and a newline, with terminal controls removed (line feeds and tabs
+stay), since a message may quote repository or service text. `renderFailure`,
+`failWith`, `runMain` and an app's own error lines all go through it. A tool
+printing an error line of its own should too.
+
 ### Flags are declared, not parsed
 
 `defineCli` builds a [commander](https://github.com/tj/commander.js) command
@@ -473,7 +479,7 @@ a list, for a bundler that collects the modules itself.
 
 | Entry | Mount it as | The tool supplies |
 |---|---|---|
-| `config-command` | `config: configCommands(store)` | a `ConfigStore`: `layers`, `defaultLayer`, `keys`, `list`, `locations`, `set`, `unset`, and optionally `cliOnlyKeys`, `resolveKey` and `explain` |
+| `config-command` | `config: configCommands(store)` | a `ConfigStore`: `layers`, `defaultLayer`, `keys`, `list`, `locations`, `set`, `unset`, and optionally `cliOnlyKeys`, `resolveKey`, `dryRun` and `explain` |
 | `trust-command` | `trust: trustCommand(service)` | a `TrustService`: `trust`, `untrust`, `show`, `list`, and optionally `untrustAll` and `scopes` for `--scope` |
 | `guide` | `guide: guideCommand(topics, { title })` | `GuideTopic`s: `{ id, title, summary, body(ctx) }` |
 
@@ -498,7 +504,14 @@ Each store method receives the command context, so it can read `ctx.cwd`,
   (`--user`, `--project`). A value is read as JSON, else as the bare string; a number too large for JSON (`1e400`) is a usage error.
   An unknown key or a wrong value (`ConfigUsageError` from `set`) exits 2 with a
   did-you-mean. A `get` with no value or an `unset` of a key not set in that
-  layer exits 1.
+  layer exits 1. `get` of a key below a listed setting reads it out of that
+  setting's value. Every answer names the key as `resolveKey` gives it, so a
+  store with a shorthand (`strategy` for `pr_update.strategy`) shows the full
+  key.
+- `dryRun: true` on the store adds `--dry-run` to `set` and `unset`. The store
+  then gets `{ dryRun: true }` as their last argument, checks the change and
+  writes nothing. The answer has `dryRun: true`, and the text says `would set`
+  or `would remove`.
 - `trust` answers `{ action, changed, roots }` for every mode, so a script does
   not branch on the flag it passed. `action` names the mode: `trust`,
   `untrust`, `untrust-all`, `show` or `list`. Granting trust is `cli-only`; `--show`,
@@ -618,6 +631,11 @@ const server = await serveHttp(async (req) => {
   return page(req) // the app's own sign-in for its page, then api.token for its calls
 })
 ```
+
+The pieces the API is built from are exported for those routes: `newToken()`
+(128 random bits, hex), `tokenEquals(a, b)` (no early exit) and
+`readBody(request, max)` (the body as text, or null past `max` bytes, read as
+a stream so an oversized chunked body is never buffered).
 
 ### Exposure
 
@@ -742,7 +760,7 @@ The experimental exports of `@osdlc/cli-tool/mcp`:
 The experimental exports of `@osdlc/cli-tool/http`:
 
 `HttpApi`, `HttpApiOptions`, `HttpServer`, `ServeHttpOptions`, `createHttpApi`, `httpApiCommand`,
-`serveHttp`
+`newToken`, `readBody`, `serveHttp`, `tokenEquals`
 
 The experimental exports of `@osdlc/cli-tool/devlink`:
 

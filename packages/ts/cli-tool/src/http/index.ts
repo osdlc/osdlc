@@ -104,14 +104,21 @@ const DEFAULT_CONFIRM_TTL = 60_000
 const MAX_NONCES = 64
 const NDJSON = 'application/x-ndjson'
 
-/** 128 bits, hex, from a secure source. */
-function secret(): string {
+/**
+ * A new token: 128 bits, hex, from a secure source.
+ * @experimental
+ */
+export function newToken(): string {
   const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16))
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-/** Compared without an early exit, so a near miss takes as long as a far one. */
-function tokenEquals(a: string, b: string): boolean {
+/**
+ * Whether two tokens are equal, compared without an early exit, so a near
+ * miss takes as long as a far one.
+ * @experimental
+ */
+export function tokenEquals(a: string, b: string): boolean {
   if (a.length !== b.length) return false
   let diff = 0
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
@@ -135,8 +142,13 @@ function errorDoc(
   return { ...errorDocument(code, message, exit, hint), ...more }
 }
 
-/** Read at most `max` bytes of `request`'s body, or null when it is larger. */
-async function readBody(request: Request, max: number): Promise<string | null> {
+/**
+ * At most `max` bytes of `request`'s body, or null when it is larger. Read
+ * as a stream and given up past `max`, so a chunked body of any size is never
+ * buffered first: safe on a route that needs no token.
+ * @experimental
+ */
+export async function readBody(request: Request, max: number): Promise<string | null> {
   const length = Number(request.headers.get('content-length') ?? '0')
   if (length > max) return null
   if (request.body === null) return ''
@@ -200,7 +212,7 @@ function failureBody(result: Exclude<CallResult, { status: 'ok' }>): Record<stri
  * @experimental
  */
 export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
-  const token = options.token ?? secret()
+  const token = options.token ?? newToken()
   const prefix = (options.prefix ?? '').replace(/\/+$/, '')
   const maxBody = options.maxBodyBytes ?? DEFAULT_MAX_BODY
   const ttl = options.confirmTtlMs ?? DEFAULT_CONFIRM_TTL
@@ -249,7 +261,7 @@ export function createHttpApi(app: App, options: HttpApiOptions): HttpApi {
     const now = Date.now()
     for (const [n, v] of nonces) if (v.expires < now) nonces.delete(n)
     while (nonces.size >= MAX_NONCES) nonces.delete(nonces.keys().next().value!)
-    const nonce = secret()
+    const nonce = newToken()
     nonces.set(nonce, { request: key, expires: now + ttl })
     return nonce
   }

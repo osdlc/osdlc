@@ -57,7 +57,10 @@ export const WITHHELD = 'withheld'
  * runs has no trust grant while others in the repository have one, or
  * execution is off by a flag or a config file.
  */
-export type WithheldReason = 'untrusted' | 'tool-untrusted' | 'exec-off'
+export type WithheldReason = (typeof ALL_WITHHELD_REASONS)[number]
+
+/** Every {@link WithheldReason}, for the JSON documents' schema. */
+export const ALL_WITHHELD_REASONS = ['untrusted', 'tool-untrusted', 'exec-off'] as const
 
 const WITHHELD_REASONS: Record<WithheldReason, string> = {
   untrusted: 'this repository is not trusted',

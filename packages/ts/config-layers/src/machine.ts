@@ -32,16 +32,7 @@ import {
 } from './machine-migrate.ts'
 import { stripUnknownKeys } from './unknown-keys.ts'
 import { isPlainObject } from './value.ts'
-import { systemDirs, type TieredDirs, type VendorDirs } from './dirs.ts'
-
-/**
- * `tooly` → `TOOLY`; `pr-updater` → `PR_UPDATER`. The stem the tool's override variables are built from.
- *
- * @experimental
- */
-export function envStem(tool: string): string {
-  return tool.toUpperCase().replace(/[^A-Z0-9]+/g, '_')
-}
+import { envStem, systemDirs, type TieredDirs, type VendorDirs } from './dirs.ts'
 
 /**
  * Options for describing a tool's machine file: the tool name, its schema, and where it lives.

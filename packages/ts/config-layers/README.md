@@ -219,7 +219,7 @@ outermost one, since that is where `.describe()` sits. A key under a record reso
 itself, provided the rest of the key resolves in the record's value type.
 
 `systemDirs` and the `VendorDirs` type resolve a tool's machine-local directories over `TieredDirs`
-and `envVars`, which are re-exported from `@osdlc/tiered-dirs`. `closestMatches` and `didYouMean`
+and `envVars`, which are re-exported from `@osdlc/tiered-dirs`. `envStem` sits with them. `closestMatches` and `didYouMean`
 suggest close names for a mistyped noun, verb, key or repo. Both groups are also
 exported from the light subpaths `@osdlc/config-layers/dirs` and
 `@osdlc/config-layers/did-you-mean`, which load neither yaml nor zod.

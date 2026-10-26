@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { isatty } from 'node:tty'
@@ -143,8 +143,23 @@ describe('pr-update usage errors', () => {
     repo.commit('init', { 'a.txt': 'a' })
     const extra = await runIn(repo.dir, 'trust', 'x')
     expect(extra.code).toBe(EXIT.usage)
-    expect(extra.err).toContain('takes no arguments')
-    expect((await runIn(repo.dir, 'trust')).out).toMatch(/^trusted: /)
-    expect((await runIn(repo.dir, 'trust')).out).toMatch(/^already trusted: /)
+    expect((await runIn(repo.dir, 'trust')).out).toMatch(/^trusted \//)
+    expect((await runIn(repo.dir, 'trust')).out).toMatch(/^already trusted \//)
+  })
+
+  test('trust --show, --list and --untrust', async () => {
+    const repo = makeGitFixture({ dir: mkdtempSync(join(cwd, 'repo-')) })
+    repo.commit('init', { 'a.txt': 'a' })
+    expect((await runIn(repo.dir, 'trust', '--show')).out).toMatch(/^not trusted \//)
+    await runIn(repo.dir, 'trust')
+    const shown = await runIn(repo.dir, 'trust', '--show')
+    expect(shown.out).toMatch(/^trusted \/.* \(by marker\)\n$/)
+    expect((await runIn(repo.dir, 'trust', '--list')).out).toContain(realpathSync(repo.dir))
+    const untrust = await runIn(repo.dir, 'trust', '--untrust')
+    expect(untrust.code).toBe(EXIT.ok)
+    expect(untrust.out).toMatch(/^untrusted \//)
+    const again = await runIn(repo.dir, 'trust', '--untrust')
+    expect(again.code).toBe(EXIT.error)
+    expect(again.err).toContain('not trusted')
   })
 })

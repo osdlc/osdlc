@@ -282,19 +282,29 @@ config file at all.
 its overlay (`file.local.yaml`). A path that does not exist is an error. A key
 the blocks do not define, at any depth, and a malformed value both exit `14`.
 
-`pr-update config list|get|set|unset|explain|scaffold` reads and edits those
-files (`--layer project|local`, default `project`). `set` validates before it
-writes, and keeps comments and layout. A key without a section prefix means
-`pr_update.<key>`: `pr-update config set strategy merge` equals
-`pr-update config set pr_update.strategy merge`, and `list` and `explain`
-print the qualified key.
+`pr-update config list|get|set|unset|path|explain|scaffold` reads and edits
+those files. They are `@osdlc/cli-tool`'s shared `config` commands, so they
+behave as in every tool built on it, `--json` included. `--local` writes the
+overlay; the default is `pr-update.yaml` (`--project`). A value is read as
+JSON, else as the bare string (`config set strategy merge`,
+`config set max_failed_attempts 3`). `set` validates the merged result before
+it writes, and keeps comments and layout. A change that would leave the config
+invalid is a usage error (exit `2`) and writes nothing; a file that is already
+invalid exits `14`. `set` and `unset` take `--dry-run`. `unset` of a key the
+file does not set exits `1`. `config` alone lists. `explain` shows each layer
+(default, project, local), the value it sets and which won. A key without a
+section prefix means `pr_update.<key>`: `pr-update config set strategy merge`
+equals `pr-update config set pr_update.strategy merge`, and every answer
+prints the qualified key.
 
 Five values name a command, or an agent that can run tools, that the tool will
 start: `lockfile_install`, `resolvers[].run`, `repair.command`, `repair.agent`
 and `test_command`. When one is set in the project file (and not overridden in
 `pr-update.local.yaml`), `update` exits `21` until you consent. Pass `--trust`
 for one run, or run `pr-update trust` once to record the repository (kept under
-`$XDG_STATE_HOME/pr-update/trusted/`).
+`$XDG_STATE_HOME/pr-update/trusted/`). `trust` is cli-tool's shared command:
+`--show` reports the repository's trust, `--list` every trusted repository and
+`--untrust` removes the record.
 
 Only one of `repair.command` and `repair.agent` may be set, checked on the
 merged config. A `pr-update.local.yaml` that wants an agent where the project

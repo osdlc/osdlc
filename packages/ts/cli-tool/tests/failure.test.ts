@@ -17,6 +17,7 @@ import {
   failWith,
   FAILURE_EXIT,
   isDomainExit,
+  renderError,
   renderFailure,
   runMain,
 } from '../src/index.ts'
@@ -71,6 +72,20 @@ describe('renderFailure and failureOf', () => {
     const f = failure('network', { hint: 'Check your network.', detail: 'dial tcp: lookup x' })
     expect(renderFailure(f, 'tooly')).toBe('tooly: network happened. Check your network.\n')
     expect(renderFailure(failure('exit'))).toBe('exit happened.\n')
+  })
+
+  test('renderError: the name, the message, a newline; terminal controls removed', () => {
+    expect(renderError('bad thing', 'tooly')).toBe('tooly: bad thing\n')
+    expect(renderError('bad thing')).toBe('bad thing\n')
+    expect(renderError('a\u001b[2Jb\u009b31mc\td\ne', 'tooly')).toBe('tooly: abc\td\ne\n')
+  })
+
+  test('renderFailure strips terminal controls itself', () => {
+    const line = renderFailure(
+      { kind: 'not-found', message: 'no \u001b]0;pwned\u0007x.', hint: 'Check \u009b2Jit.' },
+      'tooly',
+    )
+    expect(line).toBe('tooly: no x. Check it.\n')
   })
 
   test('reads a FailureError, a CommandFailed and a bare Failure; nothing else', () => {

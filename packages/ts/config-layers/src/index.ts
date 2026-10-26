@@ -25,7 +25,7 @@
  */
 
 export { closestMatches, didYouMean } from './did-you-mean.ts'
-export { envVars, systemDirs, TieredDirs } from './dirs.ts'
+export { envStem, envVars, systemDirs, TieredDirs } from './dirs.ts'
 export type { EnvVars, ResolveOptions, VendorDirs } from './dirs.ts'
 
 export { getIn, valueAt, valueIsSet } from './value.ts'
@@ -154,7 +154,7 @@ export type {
   ValueLayer,
 } from './provenance.ts'
 
-export { MACHINE_CONFIG_ISSUE_CODES, envStem, machineConfigFile } from './machine.ts'
+export { MACHINE_CONFIG_ISSUE_CODES, machineConfigFile } from './machine.ts'
 export type {
   MachineConfigFile,
   MachineConfigFileOptions,

@@ -4,7 +4,8 @@ import { dirname, join } from 'node:path'
 
 import { z } from 'zod'
 
-import { envStem, machineConfigFile } from '../src/machine.ts'
+import { envStem } from '../src/dirs.ts'
+import { machineConfigFile } from '../src/machine.ts'
 import {
   currentMachineVersion,
   migrateMachineRaw,
