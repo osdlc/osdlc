@@ -538,8 +538,8 @@ in `report`, with its `cache` verdict and `unknowns`, and the runners still
 out in `pending`. A report too large for one line (about 1 MiB) is named in
 `omitted` instead and comes with the reports. The agent skills come on a line
 of their own, in `skills`, as soon as they are read, filtered like the
-document; with none, or too many
-for one line, they come only with the document. Over HTTP, `way serve` sends the
+document. With no skills, or too many for one line, they come only with the
+document. Over HTTP, `way serve` sends the
 same lines as NDJSON when the request asks for `application/x-ndjson`, with
 the catalog document last. `way schema` describes the line.
 

@@ -180,9 +180,8 @@ then the runner's tab shows `…` in place of its count, the list has a
 `… moon  loading` line for it, and the status line names what is still
 out: `loading 3 of 12: just, mise, moon`. Before the probe knows its runners
 it says `detecting the project…`. Once the last one answers, the status line
-shows the result; the store is written after that, and before `way` exits. A
-withheld runner shows `–` and its reason as
-soon as the probe reaches it. A failed one gets ` !` after its tab's count
+shows the result. The store is written after that, before `way` exits. A
+withheld runner shows `–` and its reason as soon as the probe reaches it. A failed one gets ` !` after its tab's count
 and its reason above the rows, in red: `boom: config is broken`. The status
 line names it too: `boom failed`. A runner that runs past its time limit
 fails the same way: `moon: timed out after 120 s` (see

@@ -263,8 +263,7 @@ describe('gradle provider — asking the build', () => {
     expect(probe[0]?.binary).toBe('gradle')
     expect(probe[0]?.argv).toEqual(PROBE_ARGV)
     expectProbeOptions(probe[0]!.opts, dir)
-    // The caller's signal cancels the probe: the signal handed to it follows
-    // the caller's, not some private controller the caller cannot reach.
+    // The probe's signal aborts when the caller's does.
     expect(probe[0]?.opts.signal?.aborted).toBe(false)
     cancel.abort()
     expect(probe[0]?.opts.signal?.aborted).toBe(true)
