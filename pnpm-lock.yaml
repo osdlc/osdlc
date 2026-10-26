@@ -79,6 +79,10 @@ importers:
         version: 6.0.3
 
   packages/ts/agent-call:
+    dependencies:
+      '@osdlc/command-seam':
+        specifier: workspace:^
+        version: link:../command-seam
     devDependencies:
       '@osdlc/prettier-config':
         specifier: workspace:^
@@ -321,6 +325,9 @@ importers:
       '@osdlc/frontmatter-lossless':
         specifier: workspace:^
         version: link:../frontmatter-lossless
+      '@osdlc/path-guard':
+        specifier: workspace:^
+        version: link:../path-guard
       '@osdlc/tiered-dirs':
         specifier: workspace:^
         version: link:../tiered-dirs
@@ -1031,6 +1038,9 @@ importers:
       '@osdlc/etag-write':
         specifier: workspace:^
         version: link:../etag-write
+      '@osdlc/path-guard':
+        specifier: workspace:^
+        version: link:../path-guard
       '@osdlc/system-model':
         specifier: workspace:^
         version: link:../system-model

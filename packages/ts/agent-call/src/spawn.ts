@@ -1,6 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { StringDecoder } from 'node:string_decoder'
 
+import { which } from '@osdlc/command-seam'
+
 import type { RawProcessOutput } from './adapters/types.js'
 
 /** Wait between SIGTERM and SIGKILL on timeout or abort. */
@@ -122,11 +124,26 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
       return
     }
 
-    // Raw `node:child_process`, not the command seam: the package stays
-    // dependency-free and this manages a long-lived process group (D-07).
+    // The agent runs in a folder the caller may not trust, such as a pull
+    // request's checkout. A bare name found through a relative or empty PATH
+    // entry would run a binary planted there, so only absolute entries count.
+    const target = resolveBinary(binary, options.env)
+    if (target === undefined) {
+      resolve({
+        stdout: '',
+        stderr: `spawn ${binary} ENOENT: not found on an absolute PATH entry (relative and empty PATH entries are skipped)`,
+        exitCode: null,
+        durationMs: 0,
+        timedOut: false,
+      })
+      return
+    }
+
+    // Raw `node:child_process`, not the command seam's runners: this manages
+    // a long-lived process group (D-07).
     let child: ChildProcessWithoutNullStreams
     try {
-      child = spawn(binary, args, {
+      child = spawn(target, args, {
         cwd: options.cwd,
         env: options.env,
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -277,6 +294,21 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
     }
     child.stdin.end()
   })
+}
+
+/**
+ * The file to spawn for `binary`. A path (it holds a separator) is run as
+ * given. A bare name is looked up on the absolute entries of the child's
+ * `PATH` only, with `PATHEXT` on Windows. `undefined` when it is not there.
+ */
+function resolveBinary(binary: string, env: NodeJS.ProcessEnv): string | undefined {
+  const windows = process.platform === 'win32'
+  if (binary.includes('/') || (windows && binary.includes('\\'))) return binary
+  // On POSIX, only the child's own PATH: unset there means the default
+  // search, as for the spawn, not the parent's PATH. Windows names match in
+  // any case (`Path`), which the lookup handles on the whole environment.
+  const lookupEnv = windows ? env : { PATH: env['PATH'] }
+  return which(binary, { env: lookupEnv, absolutePathOnly: true })
 }
 
 function isThenable(value: unknown): value is PromiseLike<unknown> {

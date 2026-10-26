@@ -67,6 +67,9 @@
     "lint": "oxlint .",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
   },
+  "dependencies": {
+    "@osdlc/command-seam": "workspace:^"
+  },
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
