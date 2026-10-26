@@ -675,7 +675,7 @@ describe('createSession', () => {
     const granted = await createSession({ dir, cwd: dir, env: {}, home: dir })
     await granted.grantTrust()
     await granted.catalog()
-    await flushViews()
+    await flushWrites()
 
     const off = await createSession({
       dir,
