@@ -279,6 +279,35 @@ describe('config', () => {
     )
   })
 
+  test('a key resolveKey cannot resolve is a usage error for get and unset', async () => {
+    const store = memoryStore()
+    const app = appWith({
+      ...store,
+      resolveKey: (key) => (KEYS.includes(key) ? key : undefined),
+    })
+    const get = await runApp(app, ['config', 'get', 'discovry'])
+    expect(get.exit).toBe(2)
+    expect(get.err).toContain('unknown setting: discovry; did you mean discovery?')
+    const unset = await runApp(app, ['config', 'unset', 'discovry'])
+    expect(unset.exit).toBe(2)
+    expect(unset.err).toContain('unknown setting: discovry')
+    // A known key with no value is still exit 1.
+    expect((await runApp(app, ['config', 'unset', 'runners.order'])).exit).toBe(1)
+  })
+
+  test("unset reports the store's ConfigUsageError as a usage error", async () => {
+    const store = memoryStore()
+    const app = appWith({
+      ...store,
+      async unset() {
+        throw new ConfigUsageError('unknown setting nosuch')
+      },
+    })
+    const r = await runApp(app, ['config', 'unset', 'nosuch'])
+    expect(r.exit).toBe(2)
+    expect(r.err).toContain('unknown setting nosuch')
+  })
+
   test('a store with dryRun gets --dry-run on set and unset, and is told', async () => {
     const store = memoryStore()
     const seen: unknown[] = []

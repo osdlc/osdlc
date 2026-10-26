@@ -15,10 +15,13 @@
  * `resolveConfigFile` names for it: the file and its overlay under the project
  * root, or the file its env variable names and that file's overlay. They go
  * through the library's `setPath`/`unsetPath`, which keep the rest of the file
- * as it was, and only after the merged result validates. A change that leaves
- * the config invalid is a usage error (exit 2), and the file is left
- * untouched. A file that is already invalid or unreadable exits 14
- * (`CONFIG_INVALID_EXIT`).
+ * as it was, and only after the merged result validates. Only the result is
+ * checked, so `set` and `unset` can repair a file that is invalid now. A change
+ * that leaves the config invalid is a usage error (exit 2), and the file is
+ * left untouched. A layer file that does not parse as YAML, or a config
+ * variable naming a missing file, exits 14 (`CONFIG_INVALID_EXIT`); so does
+ * reading (`list`, `get`, `explain`) an invalid config. `path` lists the files
+ * whatever their state.
  */
 
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
@@ -126,6 +129,15 @@ function readLayerFile(path: string): Record<string, unknown> | null {
   return layer.data
 }
 
+/** {@link resolveConfigFile} for `ctx`; a variable naming a missing file is exit 14. */
+function configFiles(ctx: CommandContext, spec: ConfigFileSpec): ResolvedConfigFile {
+  try {
+    return resolveConfigFile(ctx.cwd, { ...spec, env: ctx.env, cwd: ctx.cwd })
+  } catch (err) {
+    return invalidFile(err)
+  }
+}
+
 /** The schema issues of `merged`, or an empty list when it validates. */
 function issuesOf(ctx: CommandContext, file: ConfigFileSpec, merged: unknown) {
   const parsed = standaloneConfig(file, { env: ctx.env, cwd: ctx.cwd }).schema.safeParse(merged)
@@ -138,9 +150,10 @@ function issuesOf(ctx: CommandContext, file: ConfigFileSpec, merged: unknown) {
 }
 
 /**
- * Write a change into one layer file after validating the merged outcome. A
- * merged config that is already invalid is the file's fault (exit 14); one
- * the change makes invalid is the command's (a usage error).
+ * Write a change into one layer file after validating the merged outcome.
+ * Only the result is checked, so a change can repair a file that is invalid
+ * now. A result that is invalid is a usage error; a layer file that does not
+ * parse as YAML at all is exit 14.
  */
 function writeLayer(
   ctx: CommandContext,
@@ -150,9 +163,11 @@ function writeLayer(
   value: { set: unknown } | { unset: true },
   dryRun: boolean,
 ): { file: string; changed: boolean } {
-  const files = resolveConfigFile(ctx.cwd, { ...spec, env: ctx.env, cwd: ctx.cwd })
+  const files = configFiles(ctx, spec)
   const file = layerFile(files, layer)
   const created = !existsSync(file)
+  // A file that is not a YAML mapping cannot be edited in place.
+  if (!created) readLayerFile(file)
   const current = created ? null : readFileSync(file, 'utf8')
   if (created && 'unset' in value) return { file, changed: false }
   const source = current ?? (layer === 'project' ? PROJECT_HEADER : localHeader(spec))
@@ -163,11 +178,6 @@ function writeLayer(
   const other = readLayerFile(otherFile) ?? {}
   const merge = (data: Record<string, unknown>) =>
     layer === 'project' ? deepMergeConfig(data, other) : deepMergeConfig(other, data)
-  const before = current === null ? {} : (readLayerFile(file) ?? {})
-  const beforeIssues = issuesOf(ctx, spec, merge(before))
-  if (beforeIssues.length > 0) {
-    invalidFile(new ConfigInvalidError([file], beforeIssues, 'pr-update config'))
-  }
   const afterIssues = issuesOf(ctx, spec, merge((parseYaml(next) ?? {}) as Record<string, unknown>))
   if (afterIssues.length > 0) {
     throw new ConfigUsageError(
@@ -228,9 +238,17 @@ export function prUpdateConfigStore(file: ConfigFileSpec): ConfigStore {
       return { settings }
     },
 
-    // Existence only: `config path` is what you run when a file will not load.
+    // Existence only: `config path` is what you run when a file will not load,
+    // so a variable naming a missing file still lists that path, as missing.
     async locations(ctx) {
-      const files = resolveConfigFile(ctx.cwd, { ...file, env: ctx.env, cwd: ctx.cwd })
+      let files: ResolvedConfigFile
+      try {
+        files = resolveConfigFile(ctx.cwd, { ...file, env: ctx.env, cwd: ctx.cwd })
+      } catch (err) {
+        const named = err instanceof ConfigInvalidError ? err.files[0] : undefined
+        if (named === undefined) throw err
+        files = { project: named, local: overlayPath(named), source: 'env' }
+      }
       return [
         {
           layer: 'project',

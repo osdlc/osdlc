@@ -289,9 +289,12 @@ overlay; the default is `pr-update.yaml` (`--project`). A value is read as
 JSON, else as the bare string (`config set strategy merge`,
 `config set max_failed_attempts 3`). `set` validates the merged result before
 it writes, and keeps comments and layout. A change that would leave the config
-invalid is a usage error (exit `2`) and writes nothing; a file that is already
-invalid exits `14`. `set` and `unset` take `--dry-run`. `unset` of a key the
-file does not set exits `1`. `config` alone lists. `explain` shows each layer
+invalid is a usage error (exit `2`) and writes nothing. Only the result is
+checked, so `set` or `unset` can repair a file that is invalid now. A file
+that is not YAML at all, or a `PR_UPDATE_CONFIG` naming a missing file, exits
+`14`; `config path` still lists the files. `set` and `unset` take `--dry-run`.
+An unknown key exits `2`. `get` of a key with no value, and `unset` of a key
+the file does not set, exit `1`. `config` alone lists. `explain` shows each layer
 (default, project, local), the value it sets and which won. A key without a
 section prefix means `pr_update.<key>`: `pr-update config set strategy merge`
 equals `pr-update config set pr_update.strategy merge`, and every answer

@@ -69,8 +69,8 @@ export interface ConfigLayerValue {
 }
 
 /**
- * A setting name or value that is wrong as typed. `set` reports it as a
- * usage error (exit 2) rather than a failed run.
+ * A setting name or value that is wrong as typed. `set`, `unset` and
+ * `explain` report it as a usage error (exit 2) rather than a failed run.
  * @experimental
  */
 export class ConfigUsageError extends Error {
@@ -152,6 +152,7 @@ export interface ConfigStore {
   ): Promise<{ file: string; value: unknown; warnings?: string[] }>
   /**
    * Remove `key` from `layer`. `removed: false` means it was not set there.
+   * Throws {@link ConfigUsageError} for an unknown key.
    * `options.dryRun` is passed only to a store with {@link dryRun}.
    */
   unset(
@@ -270,7 +271,10 @@ function layerLines(locations: readonly ConfigLocation[]): string {
  * on `set` and `unset` when it has `dryRun` (the answer then has
  * `dryRun: true`). A key is shown as the store's `resolveKey` names it. `get`
  * of a key below a listed setting reads it out of that setting's value. An
- * unknown key or a value of the wrong type is a usage error (exit 2). Warnings go to
+ * unknown key (one the store's `resolveKey` cannot resolve, or a
+ * `ConfigUsageError` from the store) or a value of the wrong type is a usage
+ * error (exit 2) for `get`, `set`, `unset` and `explain`. A known key with no
+ * value is exit 1 for `get` and `unset`. Warnings go to
  * stderr. A write of one of the store's `cliOnlyKeys` is refused by the MCP
  * and HTTP adapters.
  * @experimental
@@ -316,6 +320,16 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
   const unknownKey = (key: string): string => {
     const close = closestMatches(key, store.keys ?? [])
     return close.length > 0 ? `; did you mean ${close.join(', ')}?` : ''
+  }
+  /**
+   * `key` as the store names it. A key the store's `resolveKey` cannot
+   * resolve is a usage error, as `set` and `explain` report one.
+   */
+  const known = (key: string): string => {
+    if (store.resolveKey === undefined) return key
+    const resolved = store.resolveKey(key)
+    if (resolved === undefined) throw new UsageError(`unknown setting: ${key}${unknownKey(key)}`)
+    return resolved
   }
   /** The exposure of a write of `key`: `cli-only` when it may reach one of `cliOnlyKeys`. */
   const cliOnly = (key: string | undefined): 'all' | 'cli-only' => {
@@ -365,7 +379,7 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
     readOnly: true,
     async run({ positionals }, ctx) {
       const typed = positionals[0]!
-      const key = canonical(typed)
+      const key = known(typed)
       const { settings, warnings } = await store.list(ctx)
       warnAll(ctx, warnings)
       const found = settings.find((s) => s.key === key)
@@ -447,12 +461,21 @@ export function configCommands<G extends FlagSpec = Record<never, never>>(
     exposureOf: ({ positionals }) => cliOnly(positionals[0]),
     async run({ flags, positionals }, ctx) {
       const layer = pickLayer(flags)
-      const key = canonical(positionals[0]!)
+      const typed = positionals[0]!
+      const key = known(typed)
       const dry = dryRunOf(flags)
-      const result =
-        store.dryRun === true
-          ? await store.unset(ctx, layer, positionals[0]!, dry)
-          : await store.unset(ctx, layer, positionals[0]!)
+      let result: { file: string; removed: boolean }
+      try {
+        result =
+          store.dryRun === true
+            ? await store.unset(ctx, layer, typed, dry)
+            : await store.unset(ctx, layer, typed)
+      } catch (err) {
+        if (err instanceof ConfigUsageError) {
+          throw new UsageError(`${err.message}${unknownKey(typed)}`)
+        }
+        throw err
+      }
       // An error, not a no-op: the key may still be set in another layer.
       if (!result.removed) throw new CommandError(`${key} is not set in ${result.file}`)
       return { key, layer, file: result.file, ...dry }

@@ -402,15 +402,15 @@ describe('config set/unset --dry-run, get on an unset key, unknown subcommands',
     expect(r.err).toContain('pr_update.strategy is not set in')
   })
 
-  test('get reads a key below a listed one; one with no value is an error', async () => {
+  test('get reads a key below a listed one; an unknown one is a usage error', async () => {
     const { dir, env } = project()
     // `repair.agent` defaults to null ("no agent"), a value like any other, as at the top level.
     const byDefault = await run(dir, env, 'config', 'get', 'repair.agent')
     expect(byDefault.code).toBe(EXIT.ok)
     expect(byDefault.out).toBe('null\n')
     const missing = await run(dir, env, 'config', 'get', 'repair.nope')
-    expect(missing.code).toBe(EXIT.error)
-    expect(missing.err).toContain('no value for repair.nope')
+    expect(missing.code).toBe(EXIT.usage)
+    expect(missing.err).toContain('unknown setting: repair.nope')
     expect((await run(dir, env, 'config', 'set', 'repair.agent', 'pi')).code).toBe(EXIT.ok)
     expect((await run(dir, env, 'config', 'get', 'repair.agent')).out).toBe('"pi"\n')
   })
@@ -422,14 +422,56 @@ describe('config set/unset --dry-run, get on an unset key, unknown subcommands',
     expect(r.err).toContain('strategee')
   })
 
-  test('a broken config file exits 14 for config get', async () => {
+  test('an unknown key is a usage error for get and unset too', async () => {
     const { dir, env } = project()
-    writeFileSync(join(dir, PR_UPDATE_CONFIG_FILE_NAME), 'pr_update:\n  strategy: sideways\n')
+    for (const verb of ['get', 'unset', 'explain']) {
+      const r = await run(dir, env, 'config', verb, 'nosuch')
+      expect(r.code).toBe(EXIT.usage)
+      expect(r.err).toContain('nosuch')
+    }
+  })
+
+  test('an invalid config exits 14 for get; set repairs it', async () => {
+    const { dir, env } = project()
+    const file = join(dir, PR_UPDATE_CONFIG_FILE_NAME)
+    writeFileSync(file, 'pr_update:\n  strategy: sideways\n')
     expect((await run(dir, env, 'config', 'get', 'strategy')).code).toBe(CONFIG_INVALID_EXIT)
-    // A set over an already-invalid file is the file's fault, not the command's.
-    expect((await run(dir, env, 'config', 'set', 'max_failed_attempts', '3')).code).toBe(
+    // A change that leaves it invalid is refused, and writes nothing.
+    expect((await run(dir, env, 'config', 'set', 'max_failed_attempts', '3')).code).toBe(EXIT.usage)
+    expect(readFileSync(file, 'utf8')).not.toContain('max_failed_attempts')
+    expect((await run(dir, env, 'config', 'set', 'strategy', 'merge')).code).toBe(EXIT.ok)
+    expect((await run(dir, env, 'config', 'get', 'strategy')).out).toBe('"merge"\n')
+  })
+
+  test('unset repairs a file holding both repair.agent and repair.command', async () => {
+    const { dir, env } = project()
+    const file = join(dir, PR_UPDATE_CONFIG_FILE_NAME)
+    writeFileSync(file, 'pr_update:\n  repair:\n    agent: claude\n    command: fix-it\n')
+    expect((await run(dir, env, 'config', 'unset', 'repair.command')).code).toBe(EXIT.ok)
+    expect(readFileSync(file, 'utf8')).not.toContain('fix-it')
+    expect((await run(dir, env, 'config', 'get', 'repair.agent')).out).toBe('"claude"\n')
+  })
+
+  test('a layer file that is not YAML exits 14 for set', async () => {
+    const { dir, env } = project()
+    writeFileSync(join(dir, PR_UPDATE_CONFIG_FILE_NAME), 'pr_update: [unclosed\n')
+    expect((await run(dir, env, 'config', 'set', 'strategy', 'merge')).code).toBe(
       CONFIG_INVALID_EXIT,
     )
+  })
+
+  test('PR_UPDATE_CONFIG naming a missing file: 14 for set, and path still lists it', async () => {
+    const { dir, env } = project()
+    const missing = join(scratch, `missing-${n++}.yaml`)
+    const pointed = { ...env, PR_UPDATE_CONFIG: missing }
+    expect((await run(dir, pointed, 'config', 'set', 'strategy', 'merge')).code).toBe(
+      CONFIG_INVALID_EXIT,
+    )
+    expect((await run(dir, pointed, 'config', 'unset', 'strategy')).code).toBe(CONFIG_INVALID_EXIT)
+    expect(existsSync(missing)).toBe(false)
+    const path = await run(dir, pointed, 'config', 'path')
+    expect(path.code).toBe(EXIT.ok)
+    expect(path.out).toContain(`${missing} (missing) (from PR_UPDATE_CONFIG)`)
   })
 
   test('an unknown config subcommand is a usage error', async () => {

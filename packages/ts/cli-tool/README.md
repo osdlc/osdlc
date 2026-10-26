@@ -502,9 +502,12 @@ Each store method receives the command context, so it can read `ctx.cwd`,
   key under none of them is refused too.
 - `config` with no subcommand lists. Each writable layer is a flag
   (`--user`, `--project`). A value is read as JSON, else as the bare string; a number too large for JSON (`1e400`) is a usage error.
-  An unknown key or a wrong value (`ConfigUsageError` from `set`) exits 2 with a
-  did-you-mean. A `get` with no value or an `unset` of a key not set in that
-  layer exits 1. `get` of a key below a listed setting reads it out of that
+  An unknown key or a wrong value exits 2 with a did-you-mean, from every
+  command: a key the store's `resolveKey` answers `undefined` for (`get`,
+  `unset`), or a `ConfigUsageError` from `set`, `unset` or `explain`. A known
+  `get` with no value or an `unset` of a key not set in that layer exits 1. A
+  store without `resolveKey` cannot tell an unknown key from an unset one, so
+  `get` then exits 1 for both. `get` of a key below a listed setting reads it out of that
   setting's value. Every answer names the key as `resolveKey` gives it, so a
   store with a shorthand (`strategy` for `pr_update.strategy`) shows the full
   key.
