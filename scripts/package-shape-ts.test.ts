@@ -117,6 +117,12 @@ test('parseJsonc leaves commas inside strings alone and throws on unterminated i
   assert.throws(() => parseJsonc('{"a": 1 /* never closed'), /unterminated block comment/)
 })
 
+test('parseJsonc strips a BOM and refuses a comma with no value before it', () => {
+  assert.deepEqual(parseJsonc('\uFEFF{"a": 1}'), { a: 1 })
+  assert.throws(() => parseJsonc('[,]'), SyntaxError)
+  assert.throws(() => parseJsonc('{"a": 1,,}'), SyntaxError)
+})
+
 // ---------------------------------------------------------------------------
 // Conventions
 

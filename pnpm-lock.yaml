@@ -747,6 +747,9 @@ importers:
       '@osdlc/etag-write':
         specifier: workspace:^
         version: link:../etag-write
+      '@osdlc/path-guard':
+        specifier: workspace:^
+        version: link:../path-guard
       smol-toml:
         specifier: 'catalog:'
         version: 1.9.1
