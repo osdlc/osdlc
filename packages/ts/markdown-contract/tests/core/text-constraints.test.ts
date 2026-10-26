@@ -238,6 +238,11 @@ describe('requires purity', () => {
   it('names a regex needle as /source/ in the absence-form error', () => {
     expect(() => requires([{ regex: 'foo|bar', max: 0 }])).toThrow(/\/foo\|bar\//)
   })
+
+  it('rejects a forbids entry with a negative max, in forbids and in textRule', () => {
+    expect(() => forbids([{ pattern: 'x', max: -1 }])).toThrow(ContractBuildError)
+    expect(() => textRule({ forbids: [{ pattern: 'x', max: -1 }] })).toThrow(ContractBuildError)
+  })
 })
 
 // ── scope text spans every block kind (code + table cells are searched too) ───────────────

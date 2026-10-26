@@ -12,8 +12,10 @@
  *     `ignoreCase` are rejected, because they would get the same finding id. Two `regex` entries
  *     with the same source are duplicates.
  *   - Contradictions: a `requires` and a `forbids` entry with the same literal `pattern` in one
- *     scope are rejected, and so is an entry whose `max` is below its minimum. Only literals are
- *     compared. Overlapping regexes are not detected.
+ *     scope are rejected. Only literals are compared. Overlapping regexes are not detected.
+ *   - Count bounds: the code builders' check (`countBoundProblem`) runs here too, so a
+ *     `requires` whose `max` means absence, or a `forbids` with a negative `max`, is rejected
+ *     the same way in YAML and in code.
  *
  * A section's keys compile to section `Rule`s (`requires(...)` then `forbids(...)`, the order
  * code would list them). The body's keys compile to one `textRule(...)` `DocRule`. The findings
@@ -22,12 +24,10 @@
 
 import type { TextMatchSpec } from '../core/text-constraints.js'
 import { forbids, requires, textRule } from '../core/text-constraints.js'
-import { patternKey } from '../core/text-match.js'
+import type { TextKind } from '../core/text-match.js'
+import { countBoundProblem, patternKey } from '../core/text-match.js'
 import type { DocRule, Rule } from '../core/types.js'
 import { DeclarativeError } from './errors.js'
-
-/** Which list an entry is in. It sets the default minimum count. */
-type TextKind = 'requires' | 'forbids'
 
 /** The allowed keys of an entry. Any other key is a `DeclarativeError`. */
 const SPEC_KEYS = new Set([
@@ -139,20 +139,13 @@ function assignLevel(raw: Record<string, unknown>, spec: TextMatchSpec, path: st
 }
 
 /**
- * Throws when `max` is below the minimum, since the check could never pass. An absence check
- * belongs in `forbids`, not in a `requires` with `max: 0`. Throwing a `DeclarativeError` here
- * means the builder's `ContractBuildError` (`assertRequiresPurity`) never fires for YAML.
+ * Throws the code builders' count-bound check (`countBoundProblem`) as a `DeclarativeError` that
+ * names the entry, so YAML and code refuse the same entries and the builder's
+ * `ContractBuildError` never fires for YAML.
  */
 function assertCountBound(spec: TextMatchSpec, kind: TextKind, path: string): void {
-  if (spec.max !== undefined) {
-    const floor = kind === 'requires' ? Math.max(spec.min ?? 1, 1) : (spec.min ?? 0)
-    if (spec.max < floor) {
-      throw new DeclarativeError(
-        `${path}: max (${spec.max}) is below the minimum (${floor}) — the count bound can never be satisfied` +
-          (kind === 'requires' ? '; use forbids for an absence check' : ''),
-      )
-    }
-  }
+  const problem = countBoundProblem(kind, spec)
+  if (problem) throw new DeclarativeError(`${path}: ${problem.message}`)
 }
 
 /** Compiles a `requires` or `forbids` list. Throws on a duplicate entry. */

@@ -146,6 +146,19 @@ body:
     ).toThrow(DeclarativeError)
   })
 
+  it('refuses the same count bounds as the code builders', () => {
+    // A forbids entry with a negative max can never pass, in YAML as in code.
+    expect(() =>
+      loadContract(sectionWith('forbids', '        - pattern: x\n          max: -1\n')),
+    ).toThrow(/forbids\("x"\): max \(-1\) is below 0/)
+    // A forbids entry's min is ignored when matching, so it does not make the bound unmeetable.
+    expect(() =>
+      loadContract(
+        sectionWith('forbids', '        - pattern: x\n          min: 3\n          max: 1\n'),
+      ),
+    ).not.toThrow()
+  })
+
   it('rejects a non-list requires value', () => {
     const yaml = `
 mcVersion: 2

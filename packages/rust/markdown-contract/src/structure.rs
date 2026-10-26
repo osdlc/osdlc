@@ -23,78 +23,10 @@ use crate::camel::to_camel_key;
 use crate::contract::{GapSpec, LeafSpec, Order, SectionContent, SectionOpts, SectionSeq, Spec};
 use crate::finding::Finding;
 use crate::registry::{Ctx, FindingSpec};
+use crate::slots::{Slot, SlotBinding, bind_slots, slot_for, slots_of};
 use crate::tree::SectionNode;
 
 // ── Spec inspection helpers ──────────────────────────────────────────────────────────
-
-/// A declared section/oneOf slot, after `optional(...)` is unwrapped.
-struct Slot<'a> {
-    /// index into the level's `specs` array (the gap-bearing one)
-    spec_idx: usize,
-    /// the admissible heading spellings (alias set for oneOf / alias sections)
-    names: &'a [String],
-    optional: bool,
-    repeatable: bool,
-    min: Option<usize>,
-    max: Option<usize>,
-    opts: Option<&'a SectionOpts>,
-}
-
-impl<'a> Slot<'a> {
-    fn admits(&self, name: &str) -> bool {
-        self.names.iter().any(|n| n == name)
-    }
-
-    fn label(&self) -> String {
-        self.names.join("’ / ‘")
-    }
-
-    /// The slot's effective hint: its node `description`, else the enclosing level's.
-    fn hint<'h>(&self, level: Option<&'h str>) -> Option<&'h str>
-    where
-        'a: 'h,
-    {
-        self.opts.and_then(|o| o.description.as_deref()).or(level)
-    }
-}
-
-fn make_slot<'a>(
-    spec_idx: usize,
-    names: &'a [String],
-    optional: bool,
-    opts: Option<&'a SectionOpts>,
-) -> Slot<'a> {
-    Slot {
-        spec_idx,
-        names,
-        optional: optional || opts.is_some_and(|o| o.optional),
-        repeatable: opts.is_some_and(|o| o.repeatable),
-        min: opts.and_then(|o| o.min),
-        max: opts.and_then(|o| o.max),
-        opts,
-    }
-}
-
-/// Project the declared `Spec[]` into the ordered list of section/oneOf slots (gaps excluded).
-fn slots_of(specs: &[Spec]) -> Vec<Slot<'_>> {
-    let mut slots = Vec::new();
-    for (spec_idx, spec) in specs.iter().enumerate() {
-        let (inner, optional) = spec.unwrap_optional();
-        match inner {
-            Spec::Section(s) => {
-                slots.push(make_slot(spec_idx, &s.names, optional, s.opts.as_ref()))
-            }
-            Spec::OneOf(o) => slots.push(make_slot(spec_idx, &o.names, optional, o.opts.as_ref())),
-            _ => {}
-        }
-    }
-    slots
-}
-
-/// The index of the first slot whose name set contains `name`, or `None` (unknown).
-fn slot_for(slots: &[Slot<'_>], name: &str) -> Option<usize> {
-    slots.iter().position(|s| s.admits(name))
-}
 
 /// Whether `name` matches a declared REPEATABLE slot — its peers are admitted, not errors.
 fn is_repeatable_name(slots: &[Slot<'_>], name: &str) -> bool {
@@ -103,11 +35,9 @@ fn is_repeatable_name(slots: &[Slot<'_>], name: &str) -> bool {
 
 // ── The per-level match ──────────────────────────────────────────────────────────────
 
-/// A doc section paired with the declared slot it matches (or `None` when unknown).
-struct Assigned<'a> {
-    node: &'a SectionNode,
-    slot_idx: Option<usize>,
-}
+/// A doc section paired with the declared slot it matches (or `None` when unknown), from
+/// the shared resolver ([`crate::slots`]).
+type Assigned<'a> = SlotBinding<'a>;
 
 /// Duplicate-heading and camelCase key-collision detection at one level. A
 /// heading matching a declared REPEATABLE slot is exempt from both.
@@ -235,14 +165,8 @@ fn match_level(
 
     check_duplicate_headings(nodes, &slots, level_hint, ctx, out);
 
-    // Assign each section to its declared slot (first occurrence binds the slot).
-    let assigned: Vec<Assigned<'_>> = nodes
-        .iter()
-        .map(|node| Assigned {
-            node,
-            slot_idx: slot_for(&slots, &node.name),
-        })
-        .collect();
+    // Assign each section to the first declared slot that names it.
+    let assigned: Vec<Assigned<'_>> = bind_slots(nodes, &slots);
 
     check_alias_ambiguity(&assigned, &slots, level_hint, ctx, out);
     check_missing_slots(&assigned, &slots, nodes, level_hint, ctx, out);
@@ -471,6 +395,34 @@ fn check_strict(
     while doc_idx < nodes.len() {
         let node = &nodes[doc_idx];
 
+        // A declared section whose slot is already behind the walk. It is out of order
+        // when its slot was an optional one skipped for a later section, or a filled
+        // repeatable slot that a later section closed. A required slot skipped that way
+        // was reported on the early section, and a second section for a filled
+        // non-repeatable slot is `structure/duplicate-section`. Either way it neither
+        // moves the walk nor counts toward a gap.
+        if let Some(passed) = slots
+            .iter()
+            .find(|s| s.spec_idx < spec_idx && s.admits(&node.name))
+        {
+            let fill = slot_fill.get(&passed.spec_idx).copied().unwrap_or(0);
+            if (passed.optional && fill == 0) || (passed.repeatable && fill > 0) {
+                out.push(ctx.finding(
+                    FindingSpec::new(
+                        "structure/section-order",
+                        format!(
+                            "‘{}’ appears after a later declared section; strict order is violated",
+                            node.name
+                        ),
+                    )
+                    .pos(node.pos)
+                    .hint_opt(level_hint),
+                ));
+            }
+            doc_idx += 1;
+            continue;
+        }
+
         if spec_idx >= specs.len() {
             // Past the declared sequence — a trailing gap absorbs extras, else an unknown
             // is out of place.
@@ -536,8 +488,11 @@ fn check_strict(
                     .hint_opt(level_hint),
                 ));
             }
-            // Advance the cursor to the later slot and consume the section there.
-            spec_idx = later + 1;
+            // This section fills the later slot. As for the cursor slot, a repeatable one
+            // stays on the cursor for the next matching section, and any other is done.
+            *slot_fill.entry(later).or_insert(0) += 1;
+            let later_repeatable = slots.iter().any(|s| s.spec_idx == later && s.repeatable);
+            spec_idx = if later_repeatable { later } else { later + 1 };
             doc_idx += 1;
             continue;
         }
@@ -567,7 +522,8 @@ fn check_strict(
             continue;
         }
 
-        // A recognized section whose slot is earlier (already consumed/skipped).
+        // Not reached: a declared section matches the cursor slot, a later one, or
+        // (handled at the top of the loop) an earlier one. Move on so the walk ends.
         spec_idx += 1;
     }
 
@@ -1380,6 +1336,87 @@ mod tests {
         assert_eq!(
             brief(&validate(fail, &c, "note.md")),
             vec![("structure/section-order", FindingLevel::Error, Some(5))]
+        );
+    }
+
+    // ── strict: a section whose slot the walk already passed (the TS strict-order fix) ──
+
+    fn strict(specs: Vec<Spec>) -> Contract {
+        body(
+            LevelOpts {
+                order: Order::Strict,
+                allow_unknown: false,
+            },
+            specs,
+        )
+    }
+
+    fn repeatable(name: &str) -> Spec {
+        section_with(
+            name,
+            SectionOpts {
+                repeatable: true,
+                ..Default::default()
+            },
+        )
+    }
+
+    fn ids(findings: &[Finding]) -> Vec<&str> {
+        findings.iter().map(|f| f.id.as_str()).collect()
+    }
+
+    #[test]
+    fn strict_an_optional_section_after_a_later_one_is_out_of_order() {
+        let c = strict(vec![optional(section("A")), section("B")]);
+        assert_eq!(
+            brief(&validate("## B\n\n## A\n", &c, "s.md")),
+            vec![("structure/section-order", FindingLevel::Error, Some(3))]
+        );
+    }
+
+    #[test]
+    fn strict_a_filled_repeatable_section_after_a_later_one_is_out_of_order() {
+        let c = strict(vec![repeatable("R"), section("B")]);
+        assert_eq!(
+            brief(&validate("## R\n\n## B\n\n## R\n", &c, "s.md")),
+            vec![("structure/section-order", FindingLevel::Error, Some(5))]
+        );
+    }
+
+    #[test]
+    fn strict_a_declared_section_after_a_gap_is_not_counted_toward_it() {
+        let c = strict(vec![
+            optional(section("A")),
+            gap_bounds(None, Some(1)),
+            section("B"),
+        ]);
+        assert_eq!(
+            ids(&validate("## X\n\n## A\n\n## B\n", &c, "s.md")),
+            vec!["structure/section-order"]
+        );
+    }
+
+    #[test]
+    fn strict_a_required_section_reported_early_is_not_reported_twice() {
+        let c = strict(vec![section("A"), section("B")]);
+        assert_eq!(
+            ids(&validate("## B\n\n## A\n", &c, "s.md")),
+            vec!["structure/section-order"]
+        );
+    }
+
+    #[test]
+    fn strict_a_repeatable_section_reached_past_a_skipped_optional_may_repeat() {
+        let c = strict(vec![optional(section("A")), optional(repeatable("R"))]);
+        assert!(validate("## R\n\n## R\n", &c, "s.md").is_empty());
+    }
+
+    #[test]
+    fn strict_a_non_repeatable_section_reached_past_a_skipped_optional_repeated_is_a_duplicate() {
+        let c = strict(vec![optional(section("A")), optional(section("B"))]);
+        assert_eq!(
+            ids(&validate("## B\n\n## B\n", &c, "s.md")),
+            vec!["structure/duplicate-section"]
         );
     }
 }

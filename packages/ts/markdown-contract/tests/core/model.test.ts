@@ -8,6 +8,7 @@
 import { describe, expect, expectTypeOf, test } from 'vitest'
 import { z } from 'zod'
 import type {
+  Doc,
   Infer,
   ListItem,
   ListView,
@@ -15,7 +16,17 @@ import type {
   SectionView,
   TableView,
 } from '../../src/index.js'
-import { contract, gap, list, optional, section, sections, table } from '../../src/index.js'
+import {
+  contract,
+  docRule,
+  gap,
+  list,
+  oneOf,
+  optional,
+  section,
+  sections,
+  table,
+} from '../../src/index.js'
 
 const PATH = { path: 'model.test.md' }
 
@@ -806,5 +817,63 @@ describe('repeatable slot with several spellings', () => {
     expect(body.entry.map((v: SectionView) => v.text())).toEqual(['a', 'b', 'c'])
     expect(body.item).toBe(body.entry)
     expect(body.Item).toBe(body.entry)
+  })
+})
+
+/**
+ * A doc rule that keeps the model it is given. `validate().doc` is unset when there is an error,
+ * but doc rules still get the model, so a test can read the model of a document with findings.
+ */
+function captureDoc(): { rule: ReturnType<typeof docRule>; doc: Doc | undefined } {
+  const seen: { rule: ReturnType<typeof docRule>; doc: Doc | undefined } = {
+    rule: docRule('test/capture-doc', (doc) => {
+      seen.doc = doc as Doc
+      return []
+    }),
+    doc: undefined,
+  }
+  return seen
+}
+
+describe('the model binds the section and block the planes check (the shared slot resolver)', () => {
+  test("a sole content:table() section promotes the first block's table, with more tables after", () => {
+    const c = contract({
+      body: sections({ order: 'none', allowUnknown: true }, [
+        section('Files', { content: table({ columns: ['File'] }) }),
+      ]),
+    })
+    const doc = c.read('## Files\n\n| File |\n| - |\n| a.ts |\n\n| Other |\n| - |\n| x |\n', PATH)
+    const files = (doc.body as any).files as TableView
+    expect(files.kind).toBe('table')
+    expect(files.rows[0]).toEqual({ File: 'a.ts' })
+  })
+
+  test('a sole content:table() section whose first block is not a table is not promoted', () => {
+    const seen = captureDoc()
+    const c = contract({
+      body: sections({ order: 'none', allowUnknown: true }, [
+        section('Files', { content: table({ columns: ['File'] }) }),
+      ]),
+      rules: [seen.rule],
+    })
+    const result = c.validate('## Files\n\nprose\n\n| File |\n| - |\n| a.ts |\n', PATH)
+    expect(result.findings.map((f) => f.id)).toEqual(['structure/block-kind'])
+    expect((seen.doc!.body as any).files.name).toBe('Files') // the SectionView
+  })
+
+  test('a second spelling of a filled alias set gets no key; .section() still finds it', () => {
+    const seen = captureDoc()
+    const c = contract({
+      body: sections({ order: 'none', allowUnknown: true }, [oneOf(['Goal', 'Objective'])]),
+      rules: [seen.rule],
+    })
+    const result = c.validate('## Goal\n\ng\n\n## Objective\n\no\n', PATH)
+    expect(result.findings.map((f) => f.id)).toEqual(['structure/duplicate-section'])
+    const body = seen.doc!.body as any
+    expect(body.goal.name).toBe('Goal')
+    expect(body.objective).toBeUndefined()
+    expect(body.Objective).toBeUndefined()
+    expect(body.section('Objective').name).toBe('Objective')
+    expect(body.unknown).toEqual([])
   })
 })

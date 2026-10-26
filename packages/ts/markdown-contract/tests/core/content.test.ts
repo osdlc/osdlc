@@ -7,7 +7,17 @@
 import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
 import type { DocTree, Finding } from '../../src/index.js'
-import { code, contract, list, maxWords, parse, section, sections, table } from '../../src/index.js'
+import {
+  code,
+  contract,
+  list,
+  maxWords,
+  optional,
+  parse,
+  section,
+  sections,
+  table,
+} from '../../src/index.js'
 
 const CTX = { path: 'fixture.md' }
 
@@ -608,5 +618,30 @@ describe('frontmatter plane', () => {
   test('an empty block passes a schema with no required keys', () => {
     const loose = contract({ frontmatter: z.object({ title: z.string().optional() }) })
     expect(find(loose, '---\n---\n# A\n')).toEqual([])
+  })
+})
+
+// ── Which section a slot's leaves check (the shared slot resolver) ───────────────────────
+
+describe('a section is checked against the slot the structure plane binds it to', () => {
+  test('a heading two slots name is checked against the first one only', () => {
+    const c = contract({
+      body: sections({ order: 'none', allowUnknown: true }, [
+        section('Notes', { content: maxWords(100) }),
+        optional(section('Notes', { content: maxWords(1) })),
+      ]),
+    })
+    expect(find(c, '## Notes\n\nthree words here\n')).toEqual([])
+  })
+
+  test('a duplicate of a filled slot is not content-checked again', () => {
+    const c = contract({
+      body: sections({ order: 'none', allowUnknown: true }, [
+        section('Notes', { content: maxWords(2) }),
+      ]),
+    })
+    expect(shape(find(c, '## Notes\n\nok\n\n## Notes\n\nfar too many words here\n'))).toEqual([
+      { id: 'structure/duplicate-section', line: 5 },
+    ])
   })
 })

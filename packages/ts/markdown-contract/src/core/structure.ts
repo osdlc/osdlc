@@ -24,88 +24,29 @@
  */
 import { toCamelKey } from './camel.js'
 import { withHint } from './registry.js'
+import {
+  bindSlots,
+  isLeafSpec,
+  pickBlock,
+  type Slot,
+  type SlotBinding,
+  slotIndexFor,
+  slotsOf,
+  unwrapSpec,
+} from './slots.js'
 import type {
   BlockKind,
-  BlockNode,
   Ctx,
   Finding,
   GapSpec,
   LeafSpec,
-  OneOfSpec,
-  OptionalSpec,
   SectionNode,
   SectionOpts,
   SectionSeq,
-  SectionSpec,
   Spec,
 } from './types.js'
 
 // ── Reading the specs ──────────────────────────────────────────────────────
-
-/** A declared `section` or `oneOf` slot, after `optional(...)` is unwrapped. */
-interface Slot {
-  /** The index into the level's `specs` array, which includes gaps. */
-  specIdx: number
-  /** The accepted heading spellings. */
-  names: string[]
-  optional: boolean
-  /** The heading may appear more than once. All occurrences fill this one slot. */
-  repeatable: boolean
-  /** The fewest occurrences of a repeatable slot, if declared. */
-  min?: number
-  /** The most occurrences of a repeatable slot, if declared. */
-  max?: number
-  /** The section options (content, children, rules, anchor), if any. */
-  opts?: SectionOpts | undefined
-}
-
-/** Unwraps `optional(spec)` to the spec inside it, and says whether it was optional. */
-function unwrap(spec: Spec): { inner: SectionSpec | OneOfSpec | GapSpec; optional: boolean } {
-  if (spec.kind === 'optional') {
-    const u = unwrap((spec as OptionalSpec).spec)
-    return { inner: u.inner, optional: true }
-  }
-  return { inner: spec, optional: false }
-}
-
-/** Builds a slot from a `section` or `oneOf`: names, whether optional, and repeat bounds. */
-function makeSlot(
-  specIdx: number,
-  names: string[],
-  optional: boolean,
-  opts: SectionOpts | undefined,
-): Slot {
-  return {
-    specIdx,
-    names,
-    optional: optional || opts?.optional === true,
-    repeatable: opts?.repeatable === true,
-    ...(opts?.min !== undefined ? { min: opts.min } : {}),
-    ...(opts?.max !== undefined ? { max: opts.max } : {}),
-    opts,
-  }
-}
-
-/** The `section` and `oneOf` slots of `specs`, in order. Gaps are left out. */
-function slotsOf(specs: readonly Spec[]): Slot[] {
-  const slots: Slot[] = []
-  specs.forEach((spec, specIdx) => {
-    const { inner, optional } = unwrap(spec)
-    if (inner.kind === 'section') {
-      const s = inner as SectionSpec
-      slots.push(makeSlot(specIdx, s.names, optional, s.opts))
-    } else if (inner.kind === 'oneOf') {
-      const o = inner as OneOfSpec
-      slots.push(makeSlot(specIdx, o.names, optional, o.opts))
-    }
-  })
-  return slots
-}
-
-/** The index of the first slot whose names include `name`, or -1 when none does. */
-function slotForName(slots: Slot[], name: string): number {
-  return slots.findIndex((s) => s.names.includes(name))
-}
 
 /** True when `name` matches a repeatable slot, so a repeat of it is allowed. */
 function isRepeatableName(slots: Slot[], name: string): boolean {
@@ -114,12 +55,8 @@ function isRepeatableName(slots: Slot[], name: string): boolean {
 
 // ── Matching one level ──────────────────────────────────────────────────────────
 
-/** A document section and the slot it matches. */
-interface Assigned {
-  node: SectionNode
-  /** The index into `slots`, or `null` when the section matches no declared slot. */
-  slotIdx: number | null
-}
+/** A document section and the slot it matches, from the shared resolver (`slots.ts`). */
+type Assigned = SlotBinding
 
 /**
  * Reports repeated headings and camelCase key collisions at one level. A heading that matches
@@ -234,10 +171,7 @@ function matchLevel(
   checkDuplicateHeadings(nodes, slots, lctx, out)
 
   // Match each section to the first slot that names it.
-  const assigned: Assigned[] = nodes.map((node) => ({
-    node,
-    slotIdx: slotForOrNull(slots, node.name),
-  }))
+  const assigned: Assigned[] = bindSlots(nodes, slots)
 
   checkAliasAmbiguity(assigned, slots, lctx, out)
   checkMissingSlots(assigned, slots, nodes, ctx, out, levelHint)
@@ -324,7 +258,7 @@ function checkOrderAndUnknowns(
   if (order === 'strict' || allowUnknown) return
 
   // Undeclared sections are allowed only at a gap. With no gap, each one is reported.
-  const hasGap = specs.some((s) => unwrap(s).inner.kind === 'gap')
+  const hasGap = specs.some((s) => unwrapSpec(s).inner.kind === 'gap')
   if (!hasGap) {
     emitStrayUnknowns(assigned, ctx, out)
   } else {
@@ -361,12 +295,6 @@ function runPresentSlotChecks(
     if (!slot.opts) continue
     runSectionChecks(a.node, slot.opts, ctx, out, levelHint)
   }
-}
-
-/** The first slot index for `name`, or `null` when none matches. */
-function slotForOrNull(slots: Slot[], name: string): number | null {
-  const i = slotForName(slots, name)
-  return i === -1 ? null : i
 }
 
 /**
@@ -416,7 +344,7 @@ function checkStrict(
   // The number of sections each gap has taken in: specIdx → count.
   const gapCount = new Map<number, number>()
   specs.forEach((s, i) => {
-    if (unwrap(s).inner.kind === 'gap') gapCount.set(i, 0)
+    if (unwrapSpec(s).inner.kind === 'gap') gapCount.set(i, 0)
   })
 
   // How many sections the slot at `specIdx` has taken so far. A repeatable slot stays current
@@ -471,7 +399,7 @@ function checkStrict(
     }
 
     const spec = specs[specIdx]!
-    const u = unwrap(spec)
+    const u = unwrapSpec(spec)
 
     if (u.inner.kind === 'gap') {
       // A section that matches a later slot ends the gap. Check it again against the next spec.
@@ -527,7 +455,7 @@ function checkStrict(
     }
 
     // An undeclared section where a required slot is expected, with no gap here.
-    if (slotForOrNull(slots, node.name) === null) {
+    if (slotIndexFor(slots, node.name) === null) {
       if (!allowUnknown) {
         out.push(
           ctx.finding({
@@ -563,8 +491,8 @@ function admitPastSequence(
   ctx: Ctx,
   out: Finding[],
 ): void {
-  const lastWasGap = specs.length > 0 && unwrap(specs[specs.length - 1]!).inner.kind === 'gap'
-  const slotIdx = slotForOrNull(slots, node.name)
+  const lastWasGap = specs.length > 0 && unwrapSpec(specs[specs.length - 1]!).inner.kind === 'gap'
+  const slotIdx = slotIndexFor(slots, node.name)
   if (slotIdx === null && !lastWasGap && !allowUnknown) {
     out.push(
       ctx.finding({
@@ -588,7 +516,7 @@ function emitGapCounts(
   out: Finding[],
 ): void {
   for (const [gapSpecIdx, count] of gapCount) {
-    const gap = unwrap(specs[gapSpecIdx]!).inner as GapSpec
+    const gap = unwrapSpec(specs[gapSpecIdx]!).inner as GapSpec
     const min = gap.min
     const max = gap.max
     if ((min !== undefined && count < min) || (max !== undefined && count > max)) {
@@ -616,9 +544,9 @@ function checkUnorderedGap(
   ctx: Ctx,
   out: Finding[],
 ): void {
-  const gapSpecIdx = specs.findIndex((s) => unwrap(s).inner.kind === 'gap')
+  const gapSpecIdx = specs.findIndex((s) => unwrapSpec(s).inner.kind === 'gap')
   if (gapSpecIdx === -1) return
-  const gap = unwrap(specs[gapSpecIdx]!).inner as GapSpec
+  const gap = unwrapSpec(specs[gapSpecIdx]!).inner as GapSpec
   const count = assigned.filter((a) => a.slotIdx === null).length
   if ((gap.min !== undefined && count < gap.min) || (gap.max !== undefined && count > gap.max)) {
     out.push(
@@ -714,11 +642,6 @@ function anchorResolves(node: SectionNode, id: string): boolean {
   return node.blocks.some((b) => b.anchor === id)
 }
 
-/** True for a single `LeafSpec`, false for a `Record<string, LeafSpec>`. */
-function isLeafSpec(c: LeafSpec | Record<string, LeafSpec>): c is LeafSpec {
-  return typeof (c as LeafSpec).kind === 'string'
-}
-
 /**
  * Checks that a leaf's block is present and of the right kind.
  *   - No block (or, for an anchored leaf, no block with that anchor): `structure/block-missing`.
@@ -756,17 +679,6 @@ function kindGate(
       }),
     )
   }
-}
-
-/**
- * The block a leaf checks: the block with `anchor` when it is set (or `null` if none), otherwise
- * the section's first block.
- */
-function pickBlock(node: SectionNode, anchor: string | undefined): BlockNode | null {
-  if (anchor !== undefined) {
-    return node.blocks.find((b) => b.anchor === anchor) ?? null
-  }
-  return node.blocks[0] ?? null
 }
 
 // ── Entry points ─────────────────────────────────────────────────────────────────

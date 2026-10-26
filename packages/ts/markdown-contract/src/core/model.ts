@@ -4,8 +4,10 @@
  * never read it. Their findings come from the parse tree, the Zod schemas and the grammar.
  *
  * At each level the model reads `def.body` to tell declared sections from undeclared ones (those
- * a `gap()` or `allowUnknown` allows). A declared section that is present gets two keys on the
- * `SectionGroup`: its exact heading text and its lowerCamelCase form. `.section(name)` also
+ * a `gap()` or `allowUnknown` allows), through the slot resolver the structure and content
+ * planes use (`slots.ts`), so all three bind the same section to the same slot. A declared
+ * section that fills its slot gets two keys on the `SectionGroup`: its exact heading text and its
+ * lowerCamelCase form. `.section(name)` also
  * finds it. Undeclared sections go in `unknown`, in document order (`[]` when none). A declared
  * section that is absent has no key, so it reads as `undefined`.
  *
@@ -23,6 +25,7 @@
  */
 import { toCamelKey } from './camel.js'
 import { createParsedValues, type ParsedValues } from './parsed-values.js'
+import { bindSlots, isLeafSpec, pickBlock, type Slot, slotsOf } from './slots.js'
 import type {
   BlockNode,
   BlockView,
@@ -30,21 +33,15 @@ import type {
   ContractDef,
   Doc,
   DocTree,
-  GapSpec,
   InlineSpan,
-  LeafSpec,
   ListItem,
   ListView,
-  OneOfSpec,
-  OptionalSpec,
   ParagraphView,
   SectionGroup,
   SectionNode,
   SectionOpts,
   SectionSeq,
-  SectionSpec,
   SectionView,
-  Spec,
   TableView,
   ValidateCtx,
 } from './types.js'
@@ -157,48 +154,6 @@ function blockView(node: BlockNode, values: ParsedValues): BlockView {
   }
 }
 
-// ── The declared names of a level ──────────────────────────
-
-/** Unwraps `optional(spec)` to the spec inside it. */
-function unwrapInner(spec: Spec): SectionSpec | OneOfSpec | GapSpec {
-  return spec.kind === 'optional' ? unwrapInner((spec as OptionalSpec).spec) : spec
-}
-
-/**
- * Every spelling of every `section` and `oneOf` slot in a level's grammar. Used to sort a
- * level's sections into declared ones (which get keys) and undeclared ones (in `unknown`).
- */
-function declaredNames(seq: SectionSeq | undefined): Set<string> {
-  const names = new Set<string>()
-  if (!seq) return names
-  for (const spec of seq.specs) {
-    const inner = unwrapInner(spec)
-    if (inner.kind === 'section') for (const n of (inner as SectionSpec).names) names.add(n)
-    else if (inner.kind === 'oneOf') for (const n of (inner as OneOfSpec).names) names.add(n)
-  }
-  return names
-}
-
-/** The declared `section` or `oneOf` slot for a heading at this level, or `undefined`. */
-function slotFor(seq: SectionSeq | undefined, name: string): SectionSpec | OneOfSpec | undefined {
-  if (!seq) return undefined
-  for (const spec of seq.specs) {
-    const inner = unwrapInner(spec)
-    if (inner.kind === 'section' && (inner as SectionSpec).names.includes(name)) {
-      return inner as SectionSpec
-    }
-    if (inner.kind === 'oneOf' && (inner as OneOfSpec).names.includes(name)) {
-      return inner as OneOfSpec
-    }
-  }
-  return undefined
-}
-
-/** True for a single `LeafSpec`, false for a `Record<string, LeafSpec>`. */
-function isLeafSpec(c: LeafSpec | Record<string, LeafSpec>): c is LeafSpec {
-  return typeof (c as LeafSpec).kind === 'string'
-}
-
 // ── SectionNode → SectionView ─────────────────────────────────────────────────────
 
 /** A section's own prose followed by the prose of every subsection below it. */
@@ -276,12 +231,12 @@ function sectionView(
 
   // Each table in a `content` record becomes a field on the view, such as
   // `doc.body.decision.components`. Its value is the `TableView` of the block whose anchor is the
-  // record key. The structure and content planes bind each named leaf by its key too, so the
-  // model exposes exactly the block they checked.
+  // record key. The structure and content planes pick each named leaf's block the same way
+  // (`pickBlock` in `slots.ts`), so the model exposes exactly the block they checked.
   if (opts?.content !== undefined && !isLeafSpec(opts.content)) {
     for (const [fieldName, leaf] of Object.entries(opts.content)) {
       if (leaf.kind !== 'table') continue
-      const block = node.blocks.find((b) => b.anchor === fieldName)
+      const block = pickBlock(node, fieldName)
       if (block && block.kind === 'table' && !Object.hasOwn(view, fieldName)) {
         ;(view as unknown as Record<string, TableView>)[fieldName] = tableView(block, values)
       }
@@ -294,8 +249,9 @@ function sectionView(
 
 /**
  * Builds the `SectionGroup` for a list of sibling sections, sorted by the level's grammar `seq`:
- *   - A section whose heading matches a declared slot gets two keys, its exact heading text and
- *     its lowerCamelCase form, both for the same value. These are the only enumerable keys.
+ *   - A section that fills a declared slot gets two keys, its exact heading text and its
+ *     lowerCamelCase form, both for the same value. These are the only enumerable keys. A
+ *     duplicate of a filled slot (`structure/duplicate-section`) gets none.
  *   - A section that matches no slot goes in `unknown`, in document order. `.section(name)` also
  *     finds it. It gets no key.
  *   - `unknown` and `section` are not enumerable, so a group with no declared sections present
@@ -308,33 +264,37 @@ function sectionGroup(
   seq: SectionSeq | undefined,
   values: ParsedValues,
 ): SectionGroup {
-  const declared = declaredNames(seq)
+  const slots = slotsOf(seq?.specs ?? [])
 
-  // Build each section's view and sort it into declared or unknown, in document order. A
-  // declared key's value is the `SectionView`, except when the section's `content` is one
-  // `table(...)` leaf. Then the value is that table's `TableView`. `.section(name)` always
-  // returns the `SectionView`.
+  // Build each section's view and sort it into declared or unknown, in document order, with
+  // the slot resolver the structure and content planes use (`bindSlots`). A declared key's
+  // value is the `SectionView`, except when the section's `content` is one `table(...)` leaf.
+  // Then the value is that table's `TableView`. `.section(name)` always returns the
+  // `SectionView`.
   //
-  // A repeatable slot's value is an array of every occurrence's value, in document order. The
-  // first occurrence sets the key's position. A slot that is not repeatable has a single value.
+  // Only a section that fills its slot gets a key: every occurrence of a repeatable slot, else
+  // the first section of the slot by any spelling. A repeatable slot's value is an array of
+  // every occurrence's value, in document order. The first occurrence sets the key's position.
   const declaredKeyed: DeclaredEntry[] = []
-  // A repeatable slot → index into declaredKeyed. Keyed by the slot, not the heading, so every
-  // spelling of the slot joins one array, as the structure plane counts them.
-  const repeatAt = new Map<object, number>()
+  // A repeatable slot's index → index into declaredKeyed, so every spelling of the slot joins
+  // one array, as the structure plane counts them.
+  const repeatAt = new Map<number, number>()
   const unknown: SectionView[] = []
   // Exact heading → SectionView, for every section (declared and unknown), for `.section(name)`.
   const byExact = new Map<string, SectionView>()
-  for (const node of nodes) {
-    const slot = slotFor(seq, node.name)
+  for (const { node, slotIdx, fills } of bindSlots(nodes, slots)) {
+    const slot = slotIdx === null ? undefined : slots[slotIdx]
     const opts = slot?.opts
     const view = sectionView(node, opts, values)
     if (!byExact.has(view.name)) byExact.set(view.name, view) // first occurrence wins
-    if (!declared.has(node.name) || !slot) {
+    if (slotIdx === null || !slot) {
       unknown.push(view)
       continue
     }
-    const element: SectionElement = promotedTable(view, opts) ?? view
-    bindDeclaredElement(declaredKeyed, repeatAt, slot, node.name, element)
+    // A duplicate of a filled slot (structure/duplicate-section) gets no key.
+    if (!fills) continue
+    const element: SectionElement = promotedTable(node, view, opts) ?? view
+    bindDeclaredElement(declaredKeyed, repeatAt, slotIdx, slot, node.name, element)
   }
 
   // A plain object, so its only enumerable keys are the section keys added below.
@@ -389,18 +349,19 @@ interface DeclaredEntry {
  */
 function bindDeclaredElement(
   declaredKeyed: DeclaredEntry[],
-  repeatAt: Map<object, number>,
-  slot: SectionSpec | OneOfSpec,
+  repeatAt: Map<number, number>,
+  slotIdx: number,
+  slot: Slot,
   name: string,
   element: SectionElement,
 ): void {
-  if (slot.opts?.repeatable !== true) {
+  if (!slot.repeatable) {
     declaredKeyed.push({ names: [name], value: element })
     return
   }
-  const at = repeatAt.get(slot)
+  const at = repeatAt.get(slotIdx)
   if (at === undefined) {
-    repeatAt.set(slot, declaredKeyed.length)
+    repeatAt.set(slotIdx, declaredKeyed.length)
     declaredKeyed.push({ names: [name], value: [element] })
   } else {
     const entry = declaredKeyed[at]!
@@ -411,13 +372,19 @@ function bindDeclaredElement(
 
 /**
  * The `TableView` a section's key returns instead of the `SectionView`, or `undefined`. This
- * applies when the section's `content` is one `table(...)` leaf and the section holds exactly
- * one table.
+ * applies when the section's `content` is one `table(...)` leaf and the block that leaf checks
+ * (`pickBlock`: the section's first block) is a table, so the key holds the table the content
+ * plane validated, whatever other tables follow it.
  */
-function promotedTable(view: SectionView, opts: SectionOpts | undefined): TableView | undefined {
+function promotedTable(
+  node: SectionNode,
+  view: SectionView,
+  opts: SectionOpts | undefined,
+): TableView | undefined {
   if (!opts || opts.content === undefined) return undefined
   if (!isLeafSpec(opts.content) || opts.content.kind !== 'table') return undefined
-  return view.table
+  // The first block is a table, so it is the first of `view.tables`.
+  return pickBlock(node, undefined)?.kind === 'table' ? view.tables[0] : undefined
 }
 
 // ── Entry point ─────────────────────────────────────────────────────────────────

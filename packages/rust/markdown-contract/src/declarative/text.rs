@@ -7,8 +7,9 @@
 //! `id` / `note` / `level` shapers — so an unknown key, a missing or doubled needle, or
 //! a wrong-typed value is a [`DeclarativeError`]. Two compile-time consistency checks
 //! mirror the TS engine: a DUPLICATE (same matcher identity within one list) and a
-//! CONTRADICTION (one literal both required and forbidden at a scope, or a single entry
-//! whose `max` falls below its effective minimum) are rejected.
+//! CONTRADICTION (one literal both required and forbidden at a scope) are rejected, and
+//! so is a count bound the code builders refuse (the shared
+//! [`crate::text_match::count_bound_problem`]).
 
 use serde_yaml::Value;
 
@@ -19,7 +20,7 @@ use crate::finding::FindingLevel;
 use crate::text_constraints::{
     CompiledSpec, forbids_compiled, requires_compiled, text_rule_compiled,
 };
-use crate::text_match::{NeedleError, TextMatchSpec, build_regex};
+use crate::text_match::{NeedleError, TextKind, TextMatchSpec, build_regex, count_bound_problem};
 
 /// The closed match-spec vocabulary.
 const SPEC_KEYS: &[&str] = &[
@@ -143,31 +144,23 @@ fn assign_level(
     Ok(())
 }
 
-/// A count bound below its effective floor can never be satisfied — caught here so the
-/// builder's construction-time purity panic never fires.
+/// The code builders' count-bound check ([`count_bound_problem`]) as a
+/// [`DeclarativeError`] that names the entry, so YAML and code refuse the same entries
+/// and the builder's construction-time panic never fires.
 fn assert_count_bound(
     spec: &TextMatchSpec,
     kind: &str,
     path: &str,
 ) -> Result<(), DeclarativeError> {
-    if let Some(max) = spec.max {
-        let floor = if kind == "requires" {
-            spec.min.unwrap_or(1.0).max(1.0)
-        } else {
-            spec.min.unwrap_or(0.0)
-        };
-        if max < floor {
-            return Err(err(format!(
-                "{path}: max ({max}) is below the minimum ({floor}) — the count bound can never be satisfied{}",
-                if kind == "requires" {
-                    "; use forbids for an absence check"
-                } else {
-                    ""
-                }
-            )));
-        }
+    let kind = if kind == "requires" {
+        TextKind::Requires
+    } else {
+        TextKind::Forbids
+    };
+    match count_bound_problem(kind, spec) {
+        Some(problem) => Err(err(format!("{path}: {}", problem.message))),
+        None => Ok(()),
     }
-    Ok(())
 }
 
 /// The canonical identity of a spec's MATCHER — mirrors `text_match::pattern_key`, so
@@ -311,6 +304,7 @@ mod tests {
             "requires:\n  - pattern: 3\n",                // wrong type
             "requires:\n  - pattern: a\n    level: report\n", // bad level
             "requires:\n  - pattern: a\n    max: 0\n",    // absence form
+            "forbids:\n  - pattern: a\n    max: -1\n",    // unmeetable bound
             "requires:\n  - pattern: a\n  - pattern: a\n", // duplicate
             "requires:\n  - regex: '('\n",                // invalid regex
             "requires:\n  - regex: '(?=x)'\n",            // lookaround
@@ -323,6 +317,14 @@ mod tests {
                 "expected rejection for: {yaml}"
             );
         }
+    }
+
+    // A `forbids` entry's `min` is ignored when matching, so it cannot make the bound
+    // unmeetable: the code builder accepts it, and so does the compiler.
+    #[test]
+    fn a_forbids_min_above_its_max_compiles() {
+        let node = map("forbids:\n  - pattern: a\n    min: 3\n    max: 1\n");
+        assert!(compile_section_text_rules(&node, "p", "S").is_ok());
     }
 
     // A needle that does not compile is named by its key: a `regex` by its syntax, a
