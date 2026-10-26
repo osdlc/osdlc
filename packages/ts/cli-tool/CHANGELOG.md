@@ -1,5 +1,13 @@
 # @osdlc/cli-tool
 
+## 0.9.1
+
+### Patch Changes
+
+- 7addea1: Doc comments only. `ToolSpec.vendorDirs` no longer says the bash launcher ignores the vendor's override variables: it reads `<P>_CONFIG_DIR`, then `<P>_ROOT`, then the `xdg` default, as `dev link` does. `StateOptions.dirs` says the launcher cannot see it, and points at those variables for moving the state.
+- Updated dependencies [f013f38]
+  - @osdlc/command-seam@0.12.1
+
 ## 0.9.0
 
 ### Minor Changes

@@ -67,6 +67,7 @@ const CASES: Array<[string, unknown[]]> = [
   ['deleteRef', ['refs/heads/a', { expected: '-x' }]],
   ['worktreeAdd', ['-x']],
   ['worktreeRemove', ['-x']],
+  ['worktreeUnlock', ['-x']],
   ['worktreeMove', ['/wt', '-x']],
   ['remoteAdd', ['origin', '--x']],
   ['merge', ['-x']],
@@ -132,7 +133,7 @@ describe('leading-dash positionals', () => {
   test('the cases cover every guarded verb in verbs.ts', () => {
     const cased = new Set(CASES.map(([name]) => name))
     expect([...cased].sort()).toEqual([...guardedVerbs()].sort())
-    expect(cased.size).toBe(43)
+    expect(cased.size).toBe(44)
   })
 
   test.each([...CASES, ...MORE_CASES])('Git.%s refuses before spawning', (name, args) => {

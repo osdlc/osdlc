@@ -86,6 +86,11 @@ describe('the schema', () => {
     expect(configJsonSchema()['$id']).toBe(CONFIG_SCHEMA_URL)
   })
 
+  test('the configuration guide names the current schema URL', async () => {
+    const guide = await readFile(new URL('../docs/guide/configuration.md', import.meta.url), 'utf8')
+    expect(guide).toContain(`"$schema": "${CONFIG_SCHEMA_URL}"`)
+  })
+
   test('$schema is accepted and is not a setting', () => {
     const { config, warnings } = validateConfig({ $schema: 'x', allowExec: false }, 'f.json')
     expect(warnings).toEqual([])

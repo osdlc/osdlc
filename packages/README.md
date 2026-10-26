@@ -188,6 +188,10 @@ Developed here, in this repository:
   and terminal UI: a CSS sheet for light and dark, ANSI codes at the
   detected color level, color detection, and helpers for printing untrusted
   text)
+- `packages/ts/repo-cleaner` (`@osdlc/repo-cleaner` on npm, a tool and library
+  that finds the branches, worktrees and remote branches that have been merged
+  and can go away, with the evidence and the command for each, and applies an
+  approved plan compare-and-swap)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
@@ -353,6 +357,9 @@ On a pull request it checks only the libraries the pull request changed and
 the ones that depend on them. `scripts/affected-packages.ts` picks them, and
 lists the shared files that make it check every library. path-guard also runs on
 Windows. The `verify` jobs always report, so they are the checks to require.
+The libraries that start programs or resolve paths also run on Windows as
+tier 2 (`.github/workflows/packages-windows-tier2.yml`). Tier 2 reports, but
+never fails a pull request or blocks a release.
 
 A library can have a smoke check: `tests/smoke.mjs`. It runs the built package
 under Node. It imports the package by name, so Node resolves it through

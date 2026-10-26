@@ -26,6 +26,8 @@ import { pathToFileURL } from 'node:url'
 /** Files every package reads, or that decide how they are checked. */
 const SHARED = [
   /^\.github\/workflows\/packages-ci\.yml$/,
+  /^\.github\/workflows\/packages-windows-tier2\.yml$/,
+  /^scripts\/bounded-run(\.test)?\.ts$/,
   /^scripts\/(affected-packages|check-packages)\.ts$/,
   /^scripts\/package-shape-ts(\.test)?\.ts$/,
   /^package\.json$/,

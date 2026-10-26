@@ -318,28 +318,35 @@ describe('an async timeout says so', () => {
 })
 
 describe('a timeout that fires after the child exited', () => {
-  test('reports the exit code, not a timeout, while a grandchild holds the pipes', async () => {
-    // The 240 ms deadline lands after the child exits and before EXIT_GRACE_MS
-    // (async.ts) ends, so the timer settles the run.
-    await withTempDirAsync(async (dir) => {
-      const pidFile = join(dir, 'pid')
-      let pid = 0
-      try {
-        const t0 = performance.now()
-        const r = await spawnRunnerAsync('sh').run(
-          ['-c', `sleep 5 & echo $! > "${pidFile}"; exit 0`],
-          { cwd: CWD, timeoutMs: 240 },
-        )
-        pid = Number(readFileSync(pidFile, 'utf8').trim())
-        expect(r.exitCode).toBe(0)
-        expect(r.neverExited).toBeUndefined()
-        expect(r.stderr).toBe('')
-        expect(performance.now() - t0).toBeLessThan(2000)
-      } finally {
-        reap(pid)
-      }
-    })
-  }, 15_000)
+  // POSIX only: on Windows, starting an MSYS `sh` and its `sleep` can take
+  // longer than the 240 ms deadline, so the timeout fires first (seen on the
+  // windows tier 2 job, https://github.com/osdlc/osdlc/pull/492).
+  test.skipIf(process.platform === 'win32')(
+    'reports the exit code, not a timeout, while a grandchild holds the pipes',
+    async () => {
+      // The 240 ms deadline lands after the child exits and before EXIT_GRACE_MS
+      // (async.ts) ends, so the timer settles the run.
+      await withTempDirAsync(async (dir) => {
+        const pidFile = join(dir, 'pid')
+        let pid = 0
+        try {
+          const t0 = performance.now()
+          const r = await spawnRunnerAsync('sh').run(
+            ['-c', `sleep 5 & echo $! > "${pidFile}"; exit 0`],
+            { cwd: CWD, timeoutMs: 240 },
+          )
+          pid = Number(readFileSync(pidFile, 'utf8').trim())
+          expect(r.exitCode).toBe(0)
+          expect(r.neverExited).toBeUndefined()
+          expect(r.stderr).toBe('')
+          expect(performance.now() - t0).toBeLessThan(2000)
+        } finally {
+          reap(pid)
+        }
+      })
+    },
+    15_000,
+  )
 })
 
 describe('the stream runner reports a failed spawn', () => {

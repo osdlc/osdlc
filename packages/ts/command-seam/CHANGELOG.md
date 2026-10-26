@@ -1,5 +1,11 @@
 # @osdlc/command-seam
 
+## 0.12.1
+
+### Patch Changes
+
+- f013f38: With `absolutePathOnly`, an unset `PATH` on POSIX now searches `/usr/bin:/bin`, as a spawn of a bare name does and as `which` without `absolutePathOnly` already did. Before, it found nothing, so a process started with an empty environment could not run `git` through an `absolutePathOnly` runner. Windows still searches nothing. `absolutePathCandidates` with `path: undefined` returns those two candidates on POSIX.
+
 ## 0.12.0
 
 ### Minor Changes

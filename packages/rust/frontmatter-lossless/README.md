@@ -18,7 +18,9 @@ text exactly as written, and rebuilds the note from the parts. Hand it back
 what it gave you and you get the original text.
 
 It is for programs that read or rewrite notes that people also edit: note
-apps, static site generators, linters and sync tools.
+apps like Obsidian, Logseq, Foam and Zettlr, static site generators like
+Jekyll, Hugo, Astro, Eleventy and Zola, and the linters and sync tools
+around them.
 
 When not to use it:
 
