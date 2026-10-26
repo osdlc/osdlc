@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.4](https://github.com/osdlc/osdlc/compare/etag-write/v0.2.3...etag-write/v0.2.4) - 2026-10-26
+
+### Other
+
+- Bughunt sweep: verified bug fixes, test gaps, doc accuracy, local de-duplication across the monorepo ([#485](https://github.com/osdlc/osdlc/pull/485))r
+
 ### Changed
 
 - On Unix, an overwrite creates the temp file with the target's kept mode

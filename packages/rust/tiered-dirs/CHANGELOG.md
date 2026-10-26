@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.6](https://github.com/osdlc/osdlc/compare/tiered-dirs/v0.3.5...tiered-dirs/v0.3.6) - 2026-10-26
+
+### Other
+
+- Bughunt sweep: verified bug fixes, test gaps, doc accuracy, local de-duplication across the monorepo ([#485](https://github.com/osdlc/osdlc/pull/485))r
+
 ## [0.3.5](https://github.com/osdlc/osdlc/compare/tiered-dirs/v0.3.4...tiered-dirs/v0.3.5) - 2026-10-25
 
 ### Other

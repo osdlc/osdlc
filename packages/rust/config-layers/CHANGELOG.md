@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.1](https://github.com/osdlc/osdlc/compare/config-layers/v0.7.0...config-layers/v0.7.1) - 2026-10-26
+
+### Other
+
+- Bughunt sweep: verified bug fixes, test gaps, doc accuracy, local de-duplication across the monorepo ([#485](https://github.com/osdlc/osdlc/pull/485))r
+
 ### Changed
 
 - `substitute_path_names` and `substitute_path_names_with_hint` keep a `{`
