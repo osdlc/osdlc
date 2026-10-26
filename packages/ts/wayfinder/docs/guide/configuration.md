@@ -80,12 +80,14 @@ Every key is optional:
 ```jsonc
 {
   // Added by "way config set". Editors use it to check the file.
-  "$schema": "https://unpkg.com/@osdlc/wayfinder@0.9/schema/config.json",
+  "$schema": "https://unpkg.com/@osdlc/wayfinder@0.10/schema/config.json",
   "runners": {
     // Runner ids to skip.
     "disabled": ["cargo"],
     // Preferred order. Runners not named here follow alphabetically.
     "order": ["moon", "just"],
+    // Seconds one runner may take. null: each runner's own limit.
+    "timeout": 20,
   },
   // The configured execution setting. --exec / --no-exec still win.
   "allowExec": false,
@@ -111,7 +113,7 @@ Every key is optional:
 }
 ```
 
-The settable keys are `runners.disabled`, `runners.order`, `allowExec`,
+The settable keys are `runners.disabled`, `runners.order`, `runners.timeout`, `allowExec`,
 `discovery`, `excludePaths`, `trust.paths`, `trust.owners`, `trust.tools`,
 `tools`, `open`, `theme` and `skills`.
 
@@ -130,6 +132,28 @@ in the browser takes precedence within its group. See
 The terminal UI's settings screen and the web view save a new order to the
 file that sets `runners.order` now, else to the user file, so the new order
 always takes effect.
+
+### `runners.timeout`
+
+`runners.timeout` is how many seconds one runner may take to list its tasks,
+its subprocesses included. A runner still running then is stopped: the
+processes it started are killed, and it shows `timed out after 20 s` in place
+of its rows, in the terminal UI, the web view and `list --json`. The other
+runners are not affected, and a runner that timed out is not stored.
+
+Unset or `null`, each runner has its own limit: 10 seconds for just and task,
+30 for mise and rake, 120 for moon, 300 for gradle and sbt, and 60 for the
+rest. Set it lower to stop a hung tool sooner, or higher for a slow build,
+such as a cold gradle start. It takes 1 to 3600 seconds.
+
+The user file sets the limit: `way config set --user runners.timeout 20`.
+A project file, which the web view's settings page also writes, can only
+lower it. Each runner takes the smaller of the project value and the limit
+it would have without it: its own, or the user value. With no user value, a
+project's `runners.timeout: 5` stops just at 5 seconds, and a project's
+`runners.timeout: 600` leaves just at 10. A project value above the user
+value, or a project `null` under a user value, is ignored with a warning, so
+a repository cannot make a hung tool hold up loading longer.
 
 ### `excludePaths`
 

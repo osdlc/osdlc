@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { captureIo } from '@osdlc/cli-tool'
+import { spawnRunner } from '@osdlc/command-seam'
 import type { Task, ToolDef } from '@osdlc/system-model/detect'
 
 import { runArgv } from '../src/args.ts'
@@ -290,4 +291,59 @@ describe('arguments go through the tool', () => {
       'staging',
     ])
   })
+})
+
+describe('runners.timeout', () => {
+  /** A tool detected by `hang.json` whose probe starts `sh` and never answers. */
+  async function hangModule(dir: string, tag: string): Promise<string> {
+    const file = join(dir, 'hang-tools.mjs')
+    await writeFile(
+      file,
+      `export const tools = [{
+  id: 'hang',
+  markers: [{ files: '/hang.json', tier: 'files' }],
+  roles: { runner: { kind: 'exec', async collect(ctx) {
+    await ctx.runner('sh').run(['-c', 'sleep ${tag} & sleep ${tag}1; wait'], { cwd: ctx.root, timeoutMs: 60000 })
+    return new Promise(() => {})
+  } } },
+}]
+`,
+    )
+    return file
+  }
+
+  // Uses sh, sleep and pgrep, so it runs on POSIX only.
+  test.skipIf(process.platform === 'win32')(
+    'a runner past it is cut off and reported, its processes are killed, and the rest load',
+    async () => {
+      const home = await temp()
+      const dir = await acmeRepo({ runners: { timeout: 1 } })
+      await writeFile(join(dir, 'hang.json'), '{}')
+      const tag = `${40 + Math.floor(Math.random() * 1000)}.${process.pid % 1000}9`
+      const hang = await hangModule(dir, tag)
+      expect((await run(['trust', '-C', dir], home)).code).toBe(0)
+      const started = Date.now()
+      const ran = await run(
+        ['list', '--json', '--config', EXAMPLE, '--config', hang, '-C', dir],
+        home,
+      )
+      expect(Date.now() - started).toBeLessThan(15_000)
+      expect(ran.code).toBe(0)
+      const doc = JSON.parse(ran.out) as {
+        reports: { runner: string; status: string; diagnostics: { message: string }[] }[]
+      }
+      const cut = doc.reports.find((r) => r.runner === 'hang')!
+      expect(cut.status).toBe('error')
+      expect(cut.diagnostics.map((d) => d.message)).toEqual(['timed out after 1 s'])
+      expect(doc.reports.find((r) => r.runner === 'acme')!.status).toBe('ok')
+      let left = 'running'
+      for (let i = 0; i < 20 && left !== ''; i++) {
+        await new Promise((r) => setTimeout(r, 100))
+        left = spawnRunner('pgrep')
+          .run(['-f', `sleep ${tag}`], { cwd: '.' })
+          .stdout.trim()
+      }
+      expect(left).toBe('')
+    },
+  )
 })

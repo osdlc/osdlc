@@ -47,6 +47,7 @@ describe('the schema', () => {
     expect(CONFIG_KEYS).toEqual([
       'runners.disabled',
       'runners.order',
+      'runners.timeout',
       'allowExec',
       'discovery',
       'excludePaths',

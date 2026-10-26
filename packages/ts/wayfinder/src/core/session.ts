@@ -28,7 +28,7 @@ import { BIN, PROJECT_CONFIG_FILENAME } from '../app.ts'
 import { cacheDir } from '../cache.ts'
 import { settingLayer } from '../config-keys.ts'
 import {
-  collectAndCache,
+  collectAndStore,
   fromStore,
   makeProject,
   orderedCatalog,
@@ -57,6 +57,7 @@ import { EDITOR_VARIABLE_LABEL, type WithheldReason } from '../vocabulary.ts'
 import { taskCopyText } from './copy-text.ts'
 import { filterTasks, type TaskFilter, type TaskHit } from './filter.ts'
 import { readView, viewKey, writeView } from './saved-view.ts'
+import { flushWrites } from './writes.ts'
 import { filterSkills, type SkillHit, type SkillRow } from './skills.ts'
 import { execOffSource, unknownsOf, type Unknown } from './unknowns.ts'
 
@@ -137,6 +138,11 @@ export interface CatalogProgress {
    * answer to show; it can add a diagnostic this report lacks.
    */
   onRunner?(report: RunnerReport, cache: CacheState): void
+  /**
+   * Once, as soon as the agent skills are read: before, between or after the
+   * runners. The snapshot holds the same rows.
+   */
+  onSkills?(skills: readonly SkillRow[]): void
 }
 
 /** A catalog and where each runner's rows came from. */
@@ -482,7 +488,10 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
   const projectToolsPending = !projectAllowed && (config.layers.project?.tools?.length ?? 0) > 0
 
   // The config's own allowExec was consumed by the gate.
-  const { allowExec: _consumed, ...configOptions } = collectOptionsFromConfig(config.effective)
+  const { allowExec: _consumed, ...configOptions } = collectOptionsFromConfig(
+    config.effective,
+    config.layers,
+  )
   // Config first, flags second. --exclude REPLACES runners.disabled.
   const options: WayOptions = {
     ...configOptions,
@@ -530,15 +539,30 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
   }
   const skills = (): Promise<SkillRow[]> =>
     readSkills(root, { setting: settings.skills.value, home, env, signal: opts.signal })
+  /** The skills, told to `progress` as soon as they are read. */
+  const toldSkills = async (progress?: CatalogProgress): Promise<SkillRow[]> => {
+    const rows = await skills()
+    progress?.onSkills?.(rows)
+    return rows
+  }
   const store = cacheDir(env, home)
   const runnerOrder = (): string[] | undefined => settings.loaded.effective.runners?.order
 
   /** Take `next` as the settings: the collect options follow, except where a flag decided. */
   const adopt = (next: Settings): void => {
     settings = next
-    const derived = collectOptionsFromConfig(next.loaded.effective) as Record<string, unknown>
+    const derived = collectOptionsFromConfig(next.loaded.effective, next.loaded.layers) as Record<
+      string,
+      unknown
+    >
     const target = options as unknown as Record<string, unknown>
-    for (const key of ['exclude', 'discovery', 'excludePaths'] as const) {
+    for (const key of [
+      'exclude',
+      'discovery',
+      'excludePaths',
+      'probeTimeoutMs',
+      'maxProbeTimeoutMs',
+    ] as const) {
       if (pinnedByFlag.includes(key)) continue
       if (derived[key] === undefined) delete target[key]
       else target[key] = derived[key]
@@ -566,7 +590,7 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
     progress?: CatalogProgress,
   ): Promise<{ catalog: Catalog; times: Map<string, number> }> => {
     const times = new Map<string, number>()
-    const catalog = await collectAndCache(
+    const catalog = await collectAndStore(
       project,
       root,
       {
@@ -645,7 +669,7 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
         // for both in turn. Both settle before a failure is thrown.
         const [{ catalog, times }, skillRows] = await settledBoth(
           probe(undefined, opts.signal, opts.progress),
-          skills(),
+          toldSkills(opts.progress),
         )
         return saved({
           catalog: orderedCatalog(catalog, runnerOrder()),
@@ -656,14 +680,19 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
       }
       const view = await session.savedCatalog()
       if (view !== null) return view
+      // A probe in this process writes the store after it answers.
+      await flushWrites()
       // The call's signal too: a closed tab stops hashing the store.
       const stored = await readCachedCatalog(project, root, withSignal(opts.signal), store)
       if (stored.catalog === null || !fromStore(stored)) {
-        const { catalog, times } = await probe(undefined, opts.signal, opts.progress)
+        const [{ catalog, times }, skillRows] = await settledBoth(
+          probe(undefined, opts.signal, opts.progress),
+          toldSkills(opts.progress),
+        )
         return saved({
           catalog: orderedCatalog(catalog, runnerOrder()),
           cache: probedStates(catalog, times),
-          skills: await skills(),
+          skills: skillRows,
           origin: 'empty-store',
         })
       }
@@ -692,6 +721,7 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
       })
     },
     async storedCatalog() {
+      await flushWrites()
       const stored = await readCachedCatalog(project, root, options, store)
       if (stored.catalog === null || !fromStore(stored)) return null
       return {

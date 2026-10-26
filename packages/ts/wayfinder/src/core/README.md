@@ -10,6 +10,7 @@ run a task with the same argument rules.
 |---|---|---|
 | `session.ts` | `createSession`, `Session`, `SessionError`, `resolveRun` | no |
 | `run.ts` | `handOff`: give the terminal to a task and wait for it | no |
+| `writes.ts` | `trackWrite`, `flushWrites`: the view and store writes made after an answer, awaited before exit | yes |
 | `filter.ts` | `filterTasks`, `keepsTask`, `sourceDepth`, `TaskFilter` | yes |
 | `skills.ts` | `SkillRow`, `filterSkills`, `skillLine`: the Skills group | yes |
 | `unknowns.ts` | `unknownsOf`, `unknownLine`, `Unknown` | yes |
@@ -30,7 +31,7 @@ decides execution against the trust store and loads tool modules. It throws
 | Call | Does |
 |---|---|
 | `session.catalog()` | probes every runner and stores the result. `cache[].probeMs` is each runner's measured time. `skills` holds the agent skills the `skills` setting chooses |
-| `session.catalog({ progress })` | the same, and as it probes: `progress.onRunners(ids)` once with every runner it probes, then `progress.onRunner(report, cache)` as each answers, withheld runners included. An answer from the saved view or the store calls neither |
+| `session.catalog({ progress })` | the same, and as it probes: `progress.onRunners(ids)` once with every runner it probes, then `progress.onRunner(report, cache)` as each answers, withheld runners included, and `progress.onSkills(skills)` once the skills are read. An answer from the saved view or the store calls none of them. The store is written after the answer; `flushWrites()` in `writes.ts` waits for it and the saved view |
 | `session.catalog({ cached: true })` | answers with `savedCatalog()` when there is one (`origin: 'saved'`, files unchecked); else reads the store and probes only the runners missing from it. `origin` says which happened |
 | `session.storedCatalog()` | the store alone, probing nothing, or null when it has no answer. It still detects the project and hashes each runner's files |
 | `session.savedCatalog()` | the catalog the last `catalog()` call showed, in any process, from one file (`saved-view.ts`), unchecked; null unless it was saved under the same `viewKey()`. The terminal UI and `serve` draw it first; without it they show each runner as the probe reports it |

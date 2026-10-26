@@ -447,8 +447,8 @@ runners to skip, what order to show them in, whether execution is allowed, and
 how files are discovered. The layers, lowest precedence first: built-in
 defaults, the user file (`~/.config/wayfinder/config.json` by default),
 `wayfinder.config.json` at the project root, then the flags on the command
-line. `trust`, `open`, `theme` and `skills` count only in the user file, and a
-project file can lower `allowExec` but never raise it.
+line. `trust`, `open`, `theme` and `skills` count only in the user file. A
+project file can lower `allowExec` and `runners.timeout` but never raise them.
 
 ```text
 way config list [--json]                          every setting, and the layer it came from
@@ -536,7 +536,10 @@ runner answers, then the reports. The first line names every runner in
 `pending`, in display order. Each later line carries the runner that answered
 in `report`, with its `cache` verdict and `unknowns`, and the runners still
 out in `pending`. A report too large for one line (about 1 MiB) is named in
-`omitted` instead and comes with the reports. Over HTTP, `way serve` sends the
+`omitted` instead and comes with the reports. The agent skills come on a line
+of their own, in `skills`, as soon as they are read, filtered like the
+document; with none, or too many
+for one line, they come only with the document. Over HTTP, `way serve` sends the
 same lines as NDJSON when the request asks for `application/x-ndjson`, with
 the catalog document last. `way schema` describes the line.
 
@@ -652,7 +655,9 @@ cannot be loaded. `onWarning` gets each warning the CLI prints on stderr,
 such as a project file key that is ignored. `progress` hears about each
 runner as it answers: `onRunners(ids)` once, then `onRunner(report, cache)`
 per runner, withheld ones included, so a caller can show the catalog before
-the slowest runner is done.
+the slowest runner is done. `onSkills(skills)` comes once, as soon as the
+agent skills are read. `buildCatalog` resolves once the store and the saved
+view are written.
 
 | Export | Is |
 |---|---|

@@ -139,13 +139,14 @@ export const CatalogOutput = z.object({
 
 /**
  * One line `list --progress` sends while it probes, before the catalog
- * document: which runners have not answered, and the one that just did.
+ * document: which runners have not answered, and the one that just did or
+ * the agent skills.
  */
 export const CatalogProgressOutput = z.object({
   pending: z.array(z.string()).describe('The runners that have not answered yet, in report order.'),
   total: z.number().int().describe('How many runners the probe reports.'),
   report: RunnerReportZ.optional().describe(
-    'The runner that answered. Absent on the first line, which only names the runners, and when omitted is set.',
+    'The runner that answered. Absent on the first line, which only names the runners, on the skills line, and when omitted is set.',
   ),
   omitted: z
     .string()
@@ -158,6 +159,12 @@ export const CatalogProgressOutput = z.object({
     .array(UnknownZ)
     .optional()
     .describe('What could not be read about the answered runner.'),
+  skills: z
+    .array(SkillZ)
+    .optional()
+    .describe(
+      'The agent skills, on a line of their own once they are read, filtered like the document. No line when there are none or they are too large for one; they come with the catalog document.',
+    ),
 })
 
 /** The catalog document's `schemaVersion`: the catalog's own. */

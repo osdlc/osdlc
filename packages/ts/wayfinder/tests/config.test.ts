@@ -338,6 +338,29 @@ describe('validateConfig', () => {
   test('rejects a discovery mode that is not one of the three', () => {
     expect(() => validateConfig({ discovery: 'sideways' }, '/cfg.json')).toThrow(/git, walk, auto/)
   })
+
+  test('runners.timeout takes 1 to 3600 seconds, or null', () => {
+    expect(validateConfig({ runners: { timeout: 2.5 } }, '/cfg.json').config.runners).toEqual({
+      timeout: 2.5,
+    })
+    expect(validateConfig({ runners: { timeout: null } }, '/cfg.json').config.runners).toEqual({
+      timeout: null,
+    })
+    expect(validateConfig({ runners: { timeout: 1 } }, '/cfg.json').config.runners).toEqual({
+      timeout: 1,
+    })
+    expect(() => validateConfig({ runners: { timeout: 0 } }, '/cfg.json')).toThrow(
+      /runners\.timeout must be a number from 1 to 3600, or null, got 0/,
+    )
+    // Under a second would round to a limit no tool can meet.
+    expect(() => validateConfig({ runners: { timeout: 0.0001 } }, '/cfg.json')).toThrow(
+      /runners\.timeout must be a number from 1 to 3600, or null, got 0\.0001/,
+    )
+    expect(() => validateConfig({ runners: { timeout: 7200 } }, '/cfg.json')).toThrow(/got 7200/)
+    expect(() => validateConfig({ runners: { timeout: '10' } }, '/cfg.json')).toThrow(
+      /runners\.timeout must be a number from 1 to 3600, or null, got a string/,
+    )
+  })
 })
 
 describe('readConfigFile', () => {
@@ -379,6 +402,35 @@ describe('readConfigFile', () => {
 })
 
 describe('loadConfig', () => {
+  test('a project runners.timeout above the user value, or null under it, is ignored', async () => {
+    for (const timeout of [60, null]) {
+      const home = await root({ [USER_CONFIG]: JSON.stringify({ runners: { timeout: 30 } }) })
+      const project = await root({
+        'wayfinder.config.json': JSON.stringify({ runners: { timeout, order: ['just'] } }),
+      })
+      const loaded = await loadConfig(project, env(), home)
+      expect(loaded.effective.runners).toEqual({ disabled: [], order: ['just'], timeout: 30 })
+      expect(loaded.sources.get('runners.timeout')).toBe('user')
+      expect(loaded.warnings.join('\n')).toContain(
+        `runners.timeout ${JSON.stringify(timeout)} is ignored — a project file can only lower the limit below your user value (30)`,
+      )
+    }
+  })
+
+  test('a project runners.timeout at or below the user value is kept', async () => {
+    const home = await root({ [USER_CONFIG]: JSON.stringify({ runners: { timeout: 30 } }) })
+    const project = await root({
+      'wayfinder.config.json': JSON.stringify({ runners: { timeout: 5 } }),
+    })
+    const loaded = await loadConfig(project, env(), home)
+    expect(loaded.effective.runners?.timeout).toBe(5)
+    expect(loaded.warnings).toEqual([])
+    expect(collectOptionsFromConfig(loaded.effective, loaded.layers)).toMatchObject({
+      probeTimeoutMs: 30_000,
+      maxProbeTimeoutMs: 5_000,
+    })
+  })
+
   test('merges defaults, user and project, and reports which layer won', async () => {
     const home = await root({
       [USER_CONFIG]: JSON.stringify({
@@ -393,7 +445,7 @@ describe('loadConfig', () => {
     const loaded = await loadConfig(project, env(), home)
 
     expect(loaded.effective).toEqual({
-      runners: { disabled: ['cargo'], order: ['just'] },
+      runners: { disabled: ['cargo'], order: ['just'], timeout: null },
       allowExec: true,
       discovery: 'auto',
       excludePaths: [],
@@ -786,6 +838,28 @@ describe('collectOptionsFromConfig', () => {
 
   test('omits what the config does not set, so spread flags win cleanly', () => {
     expect(collectOptionsFromConfig({})).toEqual({})
+    expect(collectOptionsFromConfig({ runners: { timeout: null } })).toEqual({})
+  })
+
+  test('maps runners.timeout, in seconds, onto probeTimeoutMs', () => {
+    expect(collectOptionsFromConfig({ runners: { timeout: 2.5 } })).toEqual({
+      probeTimeoutMs: 2500,
+    })
+  })
+
+  test("with layers, the user's runners.timeout replaces a limit and the project's caps it", () => {
+    const user = { runners: { timeout: 30 } }
+    const project = { runners: { timeout: 5 } }
+    expect(collectOptionsFromConfig(project, { user, project })).toEqual({
+      probeTimeoutMs: 30_000,
+      maxProbeTimeoutMs: 5_000,
+    })
+    expect(collectOptionsFromConfig(project, { user: null, project })).toEqual({
+      maxProbeTimeoutMs: 5_000,
+    })
+    expect(collectOptionsFromConfig(user, { user, project: null })).toEqual({
+      probeTimeoutMs: 30_000,
+    })
   })
 })
 

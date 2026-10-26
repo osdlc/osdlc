@@ -263,9 +263,11 @@ describe('gradle provider — asking the build', () => {
     expect(probe[0]?.binary).toBe('gradle')
     expect(probe[0]?.argv).toEqual(PROBE_ARGV)
     expectProbeOptions(probe[0]!.opts, dir)
-    // The signal handed to `collect` is the one the probe can be cancelled by,
-    // not some private controller the caller cannot reach.
-    expect(probe[0]?.opts.signal).toBe(cancel.signal)
+    // The caller's signal cancels the probe: the signal handed to it follows
+    // the caller's, not some private controller the caller cannot reach.
+    expect(probe[0]?.opts.signal?.aborted).toBe(false)
+    cancel.abort()
+    expect(probe[0]?.opts.signal?.aborted).toBe(true)
 
     const assemble = found.find((t) => t.path[1] === '.' && t.path[2] === 'assemble')
     expect(assemble?.origin).toBe('declared')

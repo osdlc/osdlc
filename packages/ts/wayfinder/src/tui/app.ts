@@ -1096,6 +1096,20 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     const waitTimer = setTimeout(() => {
       if (current() && state.loading) draw()
     }, WAITING_AFTER_MS)
+    // Skills read before any task row is on screen wait for one, so they
+    // never take the cursor a task is about to need: rows land above them,
+    // not in their place. The Skills tab has no task rows, so it shows them at once.
+    let held: SkillRow[] | null = null
+    const showSkills = (): boolean => {
+      if (held === null) return false
+      if (state.runner !== SKILLS_TAB) {
+        recompute()
+        if (state.rows.length === 0) return false
+      }
+      state.skills = held
+      held = null
+      return true
+    }
     const progress = {
       onRunners(runners: readonly string[]): void {
         if (!current()) return
@@ -1118,7 +1132,14 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
           state.runnerOrder,
         )
         state.cache = [...state.cache.filter((c) => c.runner !== report.runner), cache]
+        showSkills()
         draw()
+      },
+      onSkills(skills: readonly SkillRow[]): void {
+        // Over rows already on screen, the skills come with the whole answer.
+        if (!current() || state.partial === null) return
+        held = [...skills]
+        if (showSkills()) draw()
       },
     }
     draw()

@@ -9,6 +9,7 @@
 import type { RunnerCacheState, RunnerReport } from '@osdlc/system-model/detect'
 import { CATALOG_SCHEMA_VERSION } from '@osdlc/system-model/schema'
 
+import type { SkillRow } from '../core/skills.ts'
 import type { Unknown } from '../core/unknowns.ts'
 import type { CatalogProgressBody } from '../documents.ts'
 import { APP } from '../app.ts'
@@ -322,8 +323,8 @@ export async function load(opts: LoadOptions = {}): Promise<void> {
 
 /**
  * One progress line of a probe. While nothing else is on screen, the runner
- * that answered joins the catalog and the page draws it; otherwise only the
- * count of runners still loading moves.
+ * that answered, or the skills, join the catalog and the page draws them;
+ * otherwise only the count of runners still loading moves.
  */
 function onProgress(line: Record<string, unknown>): void {
   const event = line as unknown as CatalogProgressBody
@@ -354,7 +355,9 @@ function onProgress(line: Record<string, unknown>): void {
     unknowns: [],
     skills: [],
   }
-  if (report === undefined) {
+  if (event.skills !== undefined) {
+    state.catalog = { ...base, skills: event.skills as SkillRow[] }
+  } else if (report === undefined) {
     state.catalog = base
   } else {
     const others = <T extends { runner: string }>(list: readonly T[] | undefined): T[] =>

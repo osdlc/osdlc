@@ -189,11 +189,13 @@ With nothing saved, the page's first read is the server's probe itself, and
 each runner is drawn as it answers. A runner still out has a quiet tab and a
 row with a spinner, each in the place its tab and rows will take, so nothing
 moves when it answers. The status names them: `loading 3 of 12: just, mise,
-moon`. A withheld or failed runner shows its reason as soon as it answers. A
-screen reader hears when loading starts and when it ends, with the task count
+moon`. A withheld or failed runner shows its reason as soon as it answers,
+a runner past its [time limit](configuration.md#runnerstimeout) too:
+`moon: timed out after 120 s`. The **Skills** tab and the skills appear as
+soon as they are read, after the runner tabs. A screen reader hears when loading starts and when it ends, with the task count
 and how many runners failed.
 The lines come over the same API as every other call, as NDJSON (one JSON
-line per runner, then the catalog document), with the same token and checks. **Refresh** always starts a probe. **Run** probes the
+line per runner, one for the skills, then the catalog document), with the same token and checks. **Refresh** always starts a probe. **Run** probes the
 task's runner again first, and refuses a task that changed since the page
 drew it.
 

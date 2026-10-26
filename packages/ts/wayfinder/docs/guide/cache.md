@@ -21,6 +21,9 @@ interactive surfaces can show something at once.
   files, which takes as long as the probe's own detection.
 - **`way list` and `way query`** re-probe on every run, so a script
   gets what the repository has now. These runs also write the store.
+- **Every probe** answers first and writes the store after: the files each
+  runner read are hashed and each entry is written in one step, in the
+  background. `way` waits for those writes before it exits.
 - **`--cached`** makes `list`, `query` or `run` answer at once from the
   saved listing, without checking whether files changed since its
   `storedAt`, and says so on stderr:

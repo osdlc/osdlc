@@ -144,9 +144,32 @@ export interface CollectOptions {
   execWithheldHint?: string | undefined
   /**
    * Probe timeouts in ms, by runner id. Each replaces that runner's
-   * `RunnerRole.probe.timeoutMs`.
+   * `RunnerRole.probe.timeoutMs` and {@link probeTimeoutMs}.
+   *
+   * A probe timeout bounds each subprocess the runner starts and the whole
+   * probe. A runner still running at its timeout is stopped: the processes
+   * it started are killed with their trees, and it reports `status: 'error'`
+   * with the diagnostic `timed out after <n> s`. The other runners go on.
+   * The clock starts once the shared file listing is ready.
+   *
+   * `Infinity` means no limit. A finite value above 2^31-1 ms is treated as
+   * 2^31-1. A runner whose timeout is not above 0 reports an error and is
+   * not probed.
    */
   timeouts?: Readonly<Record<string, number>> | undefined
+  /**
+   * The probe timeout in ms of every runner {@link timeouts} does not name,
+   * replacing `RunnerRole.probe.timeoutMs`. Unset, each runner has its own,
+   * else `DEFAULT_PROBE_TIMEOUT_MS`.
+   */
+  probeTimeoutMs?: number | undefined
+  /**
+   * The longest probe timeout in ms of any runner, applied after
+   * {@link timeouts} and {@link probeTimeoutMs}. It only lowers a limit. A
+   * host gives it a value from a less trusted source, such as a project
+   * file, so that source cannot make a runner wait longer.
+   */
+  maxProbeTimeoutMs?: number | undefined
   /**
    * Build the runner for a binary. Defaults to `spawnRunnerAsync` from
    * `@osdlc/command-seam` with `absolutePathOnly`, so a bare name runs only
