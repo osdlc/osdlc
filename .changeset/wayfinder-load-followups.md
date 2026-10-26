@@ -8,3 +8,4 @@ Loading finishes sooner and a hung tool no longer holds it up.
 - The agent skills and the Skills tab appear while the runners load, not at the end. `list --progress` sends them on a `catalog-progress` line of their own, with `skills`, filtered like the final document. The terminal UI shows them with the first task rows, below them.
 - The final status shows as soon as the last runner answers. The store is written after that, in the background, and every normal exit waits for it. A kill during the write leaves the old entry in place.
 - Library: `CatalogProgress.onSkills`, called once as soon as the skills are read.
+- The config file's `$schema` URL moves to `@osdlc/wayfinder@0.10`.
