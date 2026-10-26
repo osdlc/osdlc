@@ -105,7 +105,13 @@ describe('public surface', () => {
 
   test('the client.ts entry leaves out the URL parsers and the checkout walks', async () => {
     const mod = (await import('../src/client.ts')) as Record<string, unknown>
-    for (const name of ['parseGitUrl', 'gitSshUrl', 'parseRepoRef', 'checkoutRoot']) {
+    for (const name of [
+      'parseGitUrl',
+      'gitSshUrl',
+      'parseRemoteRepo',
+      'parseRepoRef',
+      'checkoutRoot',
+    ]) {
       expect(name in mod).toBe(false)
     }
   })

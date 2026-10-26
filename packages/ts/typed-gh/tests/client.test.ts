@@ -507,6 +507,20 @@ describe('branch matching and owner/repo', () => {
       repo: 'widgets',
     })
   })
+
+  test('any other host reads as host/owner/repo, as typed-git parseRemoteRepo reads it', () => {
+    const app = { owner: 'team', repo: 'app' }
+    for (const url of [
+      'git@forge.example.com:team/app.git',
+      'https://forge.example.com:3000/team/app.git',
+      'ssh://git@forge.example.com:2222/team/app',
+      'https://ssh.github.com/team/app.git',
+      'https://notgithub.com/team/app.git',
+    ]) {
+      expect(parseOwnerRepo(url)).toEqual(app)
+    }
+    expect(parseOwnerRepo('/srv/git/app.git')).toBeNull()
+  })
 })
 
 describe('prMerge and prReviewThreads', () => {

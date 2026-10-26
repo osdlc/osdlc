@@ -3,15 +3,17 @@
  * entries. Names, frontmatter descriptions and argument hints only; a body only
  * when the caller set `readContents`.
  *
- * Runtime-agnostic: pure over the {@link ProviderContext}, or any
- * {@link ArtifactReader}.
+ * Runtime-agnostic: reads through the {@link ProviderContext}, or any
+ * {@link ArtifactReader}; the `within` check goes through
+ * `@osdlc/path-guard/node`.
  */
 
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
+
+import { nodeGuard } from '@osdlc/path-guard/node'
 
 import type { ProviderContext } from '../contract.ts'
 import { argumentHintOf, parseFrontmatter, splitFrontmatter } from '../frontmatter.ts'
-import { isInside } from '../inside.ts'
 import type { Scope } from '../locations.ts'
 import type { Artifact, Instruction } from '../report.ts'
 import type { Located } from './sources.ts'
@@ -51,7 +53,7 @@ function artifactOf(
 ): Artifact | null {
   if (options.within !== undefined) {
     const real = ctx.realpath(path)
-    if (real === null || !isInside(options.within, real)) return null
+    if (real === null || !nodeGuard.contains(resolve(options.within), resolve(real))) return null
   }
   const read = ctx.readText(path)
   if (read.status !== 'parsed') return null

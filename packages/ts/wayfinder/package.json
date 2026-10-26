@@ -72,6 +72,7 @@
     "@osdlc/config-layers": "workspace:^",
     "@osdlc/detect-harness": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
+    "@osdlc/path-guard": "workspace:^",
     "@osdlc/system-model": "workspace:^",
     "@osdlc/tiered-dirs": "workspace:^",
     "@osdlc/trust-repo": "workspace:^",

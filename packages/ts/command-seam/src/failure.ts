@@ -7,7 +7,7 @@
 import { type Failure } from '@osdlc/result'
 
 import { failureText, firstLine } from './result.ts'
-import type { NeverExitedReason } from './sync.ts'
+import type { CommandFailed, NeverExitedReason } from './sync.ts'
 
 /**
  * Why a command did not succeed:
@@ -89,6 +89,55 @@ export function classifyFailure(
   const ok = context.okExitCodes ?? [0]
   if (result.neverExited !== true && ok.includes(result.exitCode)) return null
   return buildFailure(result, context)
+}
+
+/** Options for {@link classifyFailed}. */
+export interface ClassifyFailedOptions {
+  /**
+   * The program a wrapper runs (`git`, `gh`). The messages name it when the
+   * runner did not say which binary it ran, as a fake runner may not.
+   */
+  binary: string
+  /** The `hint` for a `not-installed` failure: where to get the program. */
+  installHint?: string | undefined
+}
+
+/**
+ * The {@link CommandFailure} a thrown {@link CommandFailed} carries, read the
+ * way a wrapper around one program reads it, with the `CommandFailed` as its
+ * `cause`. It is the common start of a tool's own classifier: branch on
+ * `kind`, and read the tool's stderr only when it is `exit`.
+ *
+ * Two things differ from `failed.failure`. When the runner did not name its
+ * binary, the failure is classified again with `options.binary`, so the
+ * message says `` `git` is not installed `` rather than "The command". And a
+ * `not-installed` failure takes `options.installHint` as its `hint`.
+ *
+ * @example
+ * ```ts
+ * function classifyGit(failed: CommandFailed) {
+ *   const base = classifyFailed(failed, { binary: 'git', installHint: 'Install git.' })
+ *   if (base.kind !== 'exit') return base
+ *   return /not a git repository/.test(failed.result.stderr)
+ *     ? { ...base, kind: 'not-a-repo' as const, message: 'This is not a git repository.' }
+ *     : base
+ * }
+ * ```
+ */
+export function classifyFailed(
+  failed: CommandFailed,
+  options: ClassifyFailedOptions,
+): CommandFailure & { cause: CommandFailed } {
+  const context = { binary: options.binary, argv: failed.argv }
+  const failure =
+    failed.binary === undefined
+      ? (classifyFailure(failed.result, context) ?? failed.failure)
+      : failed.failure
+  const base = { ...failure, cause: failed }
+  if (failure.kind === 'not-installed' && options.installHint !== undefined) {
+    return { ...base, hint: options.installHint }
+  }
+  return base
 }
 
 /** The failure for a run known to have failed. */

@@ -16,7 +16,7 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, join, relative } from 'node:path'
 
 import { renderShim } from '@osdlc/cli-tool/devlink'
 
@@ -194,6 +194,32 @@ describe('way clean', () => {
       await put(sentinel, 'mine')
       // The cache now holds the other stores under the home too. --yes passes
       // that overlap check, so the home check is the one that refuses.
+      const ran = await clean(home, ['--cache', '--yes'], env)
+      expect(ran.exit).toBe(1)
+      expect(ran.err).toContain('not removing')
+      expect(ran.err).toContain('it is the home directory, a directory above it')
+      expect(await exists(sentinel)).toBe(true)
+    },
+  )
+
+  test.skipIf(process.platform === 'win32')(
+    'a store that holds the home through a symbolic link above it is not removed',
+    async () => {
+      // `alias` links to `real`, so the cache's real path holds the home while
+      // its text, under `alias`, does not.
+      const root = await fixtureRoot({})
+      roots.push(root)
+      const real = join(root, 'real')
+      await mkdir(real, { recursive: true })
+      await symlink(real, join(root, 'alias'))
+      const env = { WAYFINDER_CACHE_DIR: join(root, 'alias', 'base') }
+      const report = (await clean(root, ['--json'], env)).json() as {
+        stores: { key: string; path: string }[]
+      }
+      const cache = report.stores.find((s) => s.key === 'cache')!.path
+      const home = join(real, relative(join(root, 'alias'), cache), 'home')
+      const sentinel = join(home, 'keep.txt')
+      await put(sentinel, 'mine')
       const ran = await clean(home, ['--cache', '--yes'], env)
       expect(ran.exit).toBe(1)
       expect(ran.err).toContain('not removing')

@@ -623,6 +623,12 @@ such as an invalid `timeoutMs`, still throws or rejects):
 - `stderrOrError(result)`: trimmed stderr, else the trimmed `error`, else
   `''`. Use it where a message reads stderr, so a command that never ran
   still says why.
+- `runFailed(result, isAnswer?)`: the run must be read as a failure. It
+  never exited, its output was cut short (`outputIncomplete`, even at exit
+  0), or it exited non-zero and `isAnswer(result)` is not `true`. `isAnswer`
+  is asked only about a complete run that exited, so a missing binary's
+  stand-in exit 1 never reads as "not there". See "Building a client over
+  one program".
 - `runJson(runner, argv, opts)` and `runJsonAsync`: run, check the exit code
   (`0` unless `okExitCodes` says otherwise), then `JSON.parse` stdout.
   `parseJsonResult(result)` is the parse step alone.
@@ -775,6 +781,67 @@ const ahead = catchFailed(
   () => undefined,
 )
 console.log(diff.length, ahead)
+```
+
+## Building a client over one program
+
+A typed client over one program (`@osdlc/typed-git` over `git`,
+`@osdlc/typed-gh` over `gh`) needs the same few parts whatever the program.
+They are here, so each client keeps only what is its own: its failure
+kinds, its messages and its error classes.
+
+- `runFailed(result, isAnswer?)` is the gate between a result and a parse
+  (see "Reading results"). A verb that reads exit 1 as "not there" passes
+  `(r) => r.exitCode === 1`.
+- `classifyFailed(failed, { binary, installHint? })` is the start of the
+  client's own classifier. It returns the `CommandFailure` a `CommandFailed`
+  carries, with the `CommandFailed` as its `cause`. When the runner named no
+  binary (a fake), the failure is classified again with `binary`, so the
+  message names the program. A `not-installed` failure gets `installHint` as
+  its `hint`. Read the program's own stderr only when `kind` is `exit`.
+- `tryMethods(client, recognize)` and `tryMethodsAsync` wrap a client so
+  every method returns a `Result` (`TriedMethods`, `TriedMethodsAsync`) in
+  place of throwing. `recognize(error)` returns the failure a thrown value
+  carries, or `null`, and then the value is thrown again, so a `TypeError`
+  from a bug still throws.
+- `methodFacade(client, wrap)` is the proxy under them. Every function
+  property calls `wrap(call, name)`, which makes the call (or not) and
+  returns the result. Use it for a form `tryMethods` does not cover, such as
+  one that falls back to a default value. Methods run on the client itself,
+  so private fields still work.
+- `notAnOption(value, reject)` returns `value`, or throws `reject(value)`
+  when it starts with `-`, before anything runs. A program reads such a
+  positional as an option, and some options run code. `reject` builds the
+  client's own error.
+
+```ts
+import {
+  classifyFailed,
+  CommandFailed,
+  isCommandFailed,
+  notAnOption,
+  runFailed,
+  spawnRunner,
+  tryMethods,
+} from '@osdlc/command-seam'
+
+const git = spawnRunner('git')
+
+const client = {
+  /** A config value, or `null` when it is unset (`git config --get` exits 1). */
+  configGet(key: string): string | null {
+    const argv = ['config', '--get', notAnOption(key, (k) => new TypeError(`bad key ${k}`))]
+    const result = git.run(argv, { cwd: process.cwd() })
+    if (runFailed(result, (r) => r.exitCode === 1)) throw new CommandFailed(argv, result, git.binary)
+    return result.exitCode === 0 ? result.stdout.trim() : null
+  },
+}
+
+const tried = tryMethods(client, (e) =>
+  isCommandFailed(e) ? classifyFailed(e, { binary: 'git', installHint: 'Install git.' }) : null,
+)
+const name = tried.configGet('user.name')
+if (!name.ok) console.error(name.error.message, name.error.hint ?? '')
 ```
 
 ## Testing with fakes
@@ -1073,6 +1140,13 @@ are settled, and Windows support has landed, if that is feasible.
 | `isJsonParseFailure`                                            | function  | Whether a `runJson` failure is about the output, not the run   |
 | `JsonFailure`                                                   | type      | A `runJson` failure: a `CommandFailure`, `unparseable` or `invalid` |
 | `classifyFailure`                                               | function  | Classify a failed run (`not-installed`, `timeout`, `exit`, …)  |
+| `classifyFailed`                                                | function  | A `CommandFailed`'s failure, named for the program, with `cause` and an install hint |
+| `ClassifyFailedOptions`                                         | interface | `binary`, `installHint`                                        |
+| `runFailed`                                                     | function  | Whether a result is a failure: never exited, output cut short, or an exit that is not an answer |
+| `methodFacade`                                                  | function  | A proxy that wraps every method of a client                    |
+| `tryMethods`, `tryMethodsAsync`                                 | function  | Every method of a client returning a `Result` instead of throwing |
+| `TriedMethods`, `TriedMethodsAsync`                             | type      | The types `tryMethods` and `tryMethodsAsync` return            |
+| `notAnOption`                                                   | function  | Refuse a positional argument that starts with `-`              |
 | `CommandFailure`, `CommandFailureKind`                          | type      | A classified failure with `message` and `detail`; its kinds    |
 | `ClassifiableRun`, `ClassifyContext`                            | interface | What `classifyFailure` reads; `binary`, `argv`, `okExitCodes`  |
 | `runShell`, `runShellAsync`                                     | function  | Run a shell string with `sh -c --`                             |
