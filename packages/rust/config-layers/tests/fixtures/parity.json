@@ -799,6 +799,26 @@
       },
       "setting": "repos:",
       "expected": "a}//home/me/dev"
+    },
+    {
+      "name": "a brace before a name is kept as written",
+      "value": "{a{dev}",
+      "names": {
+        "dev": "/home/me/dev",
+        "work": "/work"
+      },
+      "setting": "repos:",
+      "expected": "{a/home/me/dev"
+    },
+    {
+      "name": "a doubled brace around a name is kept as written",
+      "value": "{{dev}}",
+      "names": {
+        "dev": "/home/me/dev",
+        "work": "/work"
+      },
+      "setting": "repos:",
+      "expected": "{/home/me/dev}"
     }
   ],
   "needs": [
