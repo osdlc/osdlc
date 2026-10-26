@@ -13,6 +13,8 @@ export default defineConfig({
     ],
   },
   test: {
+    // Real git and gh spawns on a loaded machine can pass the 5 s default.
+    testTimeout: 20000,
     // The fixtures make their own commits. A runner with no git identity
     // configured, such as a Linux CI image, would refuse them, so the tests
     // name one.

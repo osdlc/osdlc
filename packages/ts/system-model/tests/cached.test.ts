@@ -929,23 +929,32 @@ describe('runners.collectAndStore', () => {
     }
   })
 
-  test('a fingerprint over the cap is noted in the catalog at once', async () => {
-    const files: Record<string, string> = {}
-    for (let i = 0; i < 300; i++) files[`job-${String(i).padStart(3, '0')}.job`] = ''
-    const root = await fixtureRoot(files)
-    const cache = await fixtureRoot({})
-    try {
-      const s = setup([listingTool('jobs')])
-      const profile = await detect(s, root)
-      const { catalog, stored } = await s.project.runners.collectAndStore(profile, cache, s.options)
-      const messages = catalog.reports[0]!.diagnostics.map((d) => d.message)
-      expect(messages.some((m) => m.includes('fingerprint covers only the first'))).toBe(true)
-      await stored
-    } finally {
-      await removeRoot(root)
-      await removeRoot(cache)
-    }
-  })
+  // 300 fixture files; a loaded Windows runner can pass the 5 s default.
+  test(
+    'a fingerprint over the cap is noted in the catalog at once',
+    { timeout: 30_000 },
+    async () => {
+      const files: Record<string, string> = {}
+      for (let i = 0; i < 300; i++) files[`job-${String(i).padStart(3, '0')}.job`] = ''
+      const root = await fixtureRoot(files)
+      const cache = await fixtureRoot({})
+      try {
+        const s = setup([listingTool('jobs')])
+        const profile = await detect(s, root)
+        const { catalog, stored } = await s.project.runners.collectAndStore(
+          profile,
+          cache,
+          s.options,
+        )
+        const messages = catalog.reports[0]!.diagnostics.map((d) => d.message)
+        expect(messages.some((m) => m.includes('fingerprint covers only the first'))).toBe(true)
+        await stored
+      } finally {
+        await removeRoot(root)
+        await removeRoot(cache)
+      }
+    },
+  )
 
   test('two probes in a row store in order: the later one is what stays', async () => {
     const root = await fixtureRoot({ 'alpha.txt': 'build\n' })
