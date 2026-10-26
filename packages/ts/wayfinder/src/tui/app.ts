@@ -1096,9 +1096,8 @@ export function createTui({ session, host, styles: s }: CreateTuiOptions): Tui {
     const waitTimer = setTimeout(() => {
       if (current() && state.loading) draw()
     }, WAITING_AFTER_MS)
-    // Skills read before any task row is on screen wait for one, so they
-    // never take the cursor a task is about to need: rows land above them,
-    // not in their place. The Skills tab has no task rows, so it shows them at once.
+    // Skills wait for the first task row, so later rows go above them and the
+    // cursor stays put. The Skills tab has no task rows and shows them at once.
     let held: SkillRow[] | null = null
     const showSkills = (): boolean => {
       if (held === null) return false

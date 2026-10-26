@@ -232,6 +232,7 @@ function expectation(schema: z.ZodType): string {
   const s = unwrap(schema)
   if (s instanceof z.ZodBoolean) return 'true or false'
   if (s instanceof z.ZodNullable) return `${expectation(s.unwrap() as z.ZodType)}, or null`
+  // `runners.timeout` is the only number key.
   if (s instanceof z.ZodNumber)
     return `a number from ${MIN_RUNNER_TIMEOUT_S} to ${MAX_RUNNER_TIMEOUT_S}`
   if (s instanceof z.ZodEnum) return `one of ${s.options.join(', ')}`
