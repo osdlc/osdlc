@@ -61,7 +61,7 @@ describe('the schema', () => {
     ])
   })
 
-  const STALE = 'stale: after a build, run `npm run write:config-schema` and commit the result'
+  const STALE = 'stale: after a build, run `pnpm run write:config-schema` and commit the result'
 
   test('schema/config.json is what write-config-schema writes', async () => {
     const shipped = await readFile(new URL('../schema/config.json', import.meta.url), 'utf8')
