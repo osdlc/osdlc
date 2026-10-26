@@ -25,7 +25,7 @@ export interface CargoMetadata {
 }
 
 /** The sparse-index path of a crate name, per the cargo registry index format. */
-function indexPath(name: string): string {
+export function indexPath(name: string): string {
   const n = name.toLowerCase()
   if (n.length <= 2) return `${n.length}/${n}`
   if (n.length === 3) return `3/${n[0]}/${n}`

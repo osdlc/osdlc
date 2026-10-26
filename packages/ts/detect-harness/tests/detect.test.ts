@@ -29,8 +29,11 @@ afterEach(() => {
   f.cleanup()
 })
 
-/** A runner that records its calls and answers `--version`. */
-function fakeRunners(output: string): {
+/** A runner that records its calls and answers `--version`; `result` overrides the exit. */
+function fakeRunners(
+  output: string,
+  result: { exitCode?: number; stderr?: string; neverExited?: boolean } = {},
+): {
   calls: string[]
   makeRunner: (binary: string) => AsyncCommandRunner
 } {
@@ -40,7 +43,7 @@ function fakeRunners(output: string): {
     makeRunner: (binary) => ({
       run: async (argv) => {
         calls.push([binary, ...argv].join(' '))
-        return { exitCode: 0, stdout: output, stderr: '' }
+        return { exitCode: 0, stdout: output, stderr: '', ...result }
       },
     }),
   }
@@ -97,6 +100,23 @@ describe('detect', () => {
     const r = await f.report('claude', { allowExec: true, makeRunner })
     expect(r.install.version).toBe('2.1.283')
     expect(calls).toEqual([`${path} --version`])
+  })
+
+  test('a --version run that fails leaves the version null; the install is still found', async () => {
+    const path = f.binary('claude')
+    for (const result of [{ exitCode: 1 }, { neverExited: true }]) {
+      const { calls, makeRunner } = fakeRunners('2.1.283 (Claude Code)\n', result)
+      const r = await f.report('claude', { allowExec: true, makeRunner })
+      expect(r.install).toMatchObject({ found: true, path, version: null })
+      expect(calls).toEqual([`${path} --version`])
+    }
+  })
+
+  test('a version printed only on stderr is read from stderr', async () => {
+    f.binary('claude')
+    const { makeRunner } = fakeRunners('', { stderr: 'claude 3.4.5\n' })
+    const r = await f.report('claude', { allowExec: true, makeRunner })
+    expect(r.install.version).toBe('3.4.5')
   })
 
   test('binaries renames a harness binary', async () => {
@@ -336,16 +356,63 @@ describe('opencode, pi and antigravity', () => {
   })
 })
 
-describe('which', () => {
-  test('a relative PATH entry resolves against the given folder to an absolute path', () => {
-    const f = fixture()
-    try {
-      f.binary('tool')
-      const found = which('tool', { PATH: 'bin' }, 'linux', f.root)
-      expect(found).toBe(join(f.root, 'bin', 'tool'))
-      expect(which('tool', { PATH: 'bin' }, 'linux', f.project)).toBeNull()
-    } finally {
-      f.cleanup()
-    }
+// POSIX rules on a POSIX host: the stand-ins are found by their execute bit and `PATH` uses `:`.
+describe.skipIf(process.platform === 'win32')('which', () => {
+  test('a relative PATH entry is skipped, so a file the project ships is never found', () => {
+    f.binary('tool')
+    expect(which('tool', { PATH: 'bin' }, 'linux', f.root)).toBeNull()
+    expect(which('tool', { PATH: `bin:${f.bin}` }, 'linux', f.root)).toBe(join(f.bin, 'tool'))
+  })
+
+  test('a name is looked up as given', () => {
+    f.binary('tool.CMD')
+    expect(which('tool.CMD', { PATH: f.bin }, 'linux')).toBe(join(f.bin, 'tool.CMD'))
+  })
+
+  test('a name with a separator is checked as an absolute path only', () => {
+    const path = f.binary('tool')
+    expect(which(path, { PATH: '' }, 'linux')).toBe(path)
+    expect(which('bin/tool', { PATH: '' }, 'linux', f.root)).toBeNull()
+    expect(which(join(f.bin, 'absent'), { PATH: '' }, 'linux')).toBeNull()
+  })
+
+  test('a non-executable file, an empty PATH entry and a missing PATH find nothing', () => {
+    f.write(f.bin, { plain: 'not a program' })
+    expect(which('plain', { PATH: f.bin }, 'linux')).toBeNull()
+    f.binary('tool')
+    expect(which('tool', { PATH: '' }, 'linux', f.bin)).toBeNull()
+    expect(which('tool', {}, 'linux', f.bin)).toBeNull()
+    mkdirSync(join(f.bin, 'dir'))
+    expect(which('dir', { PATH: f.bin }, 'linux')).toBeNull()
+  })
+})
+
+// Windows rules count only a drive or UNC entry as absolute, so a match needs a
+// Windows host. command-seam's `absolutePathCandidates` tests cover the rules anywhere.
+describe.skipIf(process.platform !== 'win32')('which under Windows rules', () => {
+  test('tries each PATHEXT suffix, and the default list when PATHEXT is unset', () => {
+    f.binary('tool.CMD')
+    f.binary('other.EXE')
+    expect(which('tool', { PATH: f.bin, PATHEXT: '.EXE;.CMD' }, 'win32')).toBe(
+      join(f.bin, 'tool.CMD'),
+    )
+    expect(which('tool', { PATH: f.bin, PATHEXT: '.EXE' }, 'win32')).toBeNull()
+    expect(which('other', { PATH: f.bin }, 'win32')).toBe(join(f.bin, 'other.EXE'))
+  })
+
+  test('finds a name that already carries a PATHEXT extension', () => {
+    f.binary('cursor-agent.exe')
+    f.binary('notes.txt')
+    const env = { PATH: f.bin, PATHEXT: '.COM;.EXE' }
+    expect(which('cursor-agent.exe', env, 'win32')).toBe(join(f.bin, 'cursor-agent.exe'))
+    expect(which('notes.txt', env, 'win32')).toBeNull()
+  })
+
+  test('reads Path in any case, strips quotes, falls back on an empty PATHEXT', () => {
+    f.binary('tool.EXE')
+    expect(which('tool', { Path: `"${f.bin}"`, PATHEXT: '' }, 'win32')).toBe(
+      join(f.bin, 'tool.EXE'),
+    )
+    expect(which('tool', { Path: 'bin' }, 'win32', f.root)).toBeNull()
   })
 })

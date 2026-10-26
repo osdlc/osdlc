@@ -321,6 +321,9 @@ importers:
       '@osdlc/frontmatter-lossless':
         specifier: workspace:^
         version: link:../frontmatter-lossless
+      '@osdlc/tiered-dirs':
+        specifier: workspace:^
+        version: link:../tiered-dirs
       smol-toml:
         specifier: 'catalog:'
         version: 1.9.1
@@ -537,6 +540,12 @@ importers:
       '@osdlc/command-seam':
         specifier: workspace:^
         version: link:../command-seam
+      '@osdlc/etag-write':
+        specifier: workspace:^
+        version: link:../etag-write
+      '@osdlc/tiered-dirs':
+        specifier: workspace:^
+        version: link:../tiered-dirs
     devDependencies:
       '@osdlc/prettier-config':
         specifier: workspace:^
@@ -744,6 +753,9 @@ importers:
       '@osdlc/etag-write':
         specifier: workspace:^
         version: link:../etag-write
+      '@osdlc/path-guard':
+        specifier: workspace:^
+        version: link:../path-guard
       smol-toml:
         specifier: 'catalog:'
         version: 1.9.1
@@ -844,6 +856,9 @@ importers:
       '@osdlc/path-guard':
         specifier: workspace:^
         version: link:../path-guard
+      '@osdlc/tiered-dirs':
+        specifier: workspace:^
+        version: link:../tiered-dirs
       '@osdlc/typed-git':
         specifier: workspace:^
         version: link:../typed-git

@@ -1,8 +1,9 @@
 /**
  * Find a binary on PATH, without `Bun.which`.
  *
- * Node has no `Bun.which`, so this walks PATH with `node:fs`. Callers inject
- * their own through `DetectOptions.which` and `CollectOptions.which`.
+ * Node has no `Bun.which`, so a bare name goes through `@osdlc/command-seam`'s
+ * `which` (absolute paths only), and a name with a separator is checked with
+ * `node:fs`. Callers inject their own through `DetectOptions.which` and `CollectOptions.which`.
  */
 
 import { accessSync, constants, statSync } from 'node:fs'

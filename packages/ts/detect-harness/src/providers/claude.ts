@@ -27,7 +27,7 @@
  * Plugins come from the install registry (`plugins/installed_plugins.json`) and
  * the `enabledPlugins` of the settings; marketplaces from
  * `plugins/known_marketplaces.json` and `extraKnownMarketplaces`. A registry
- * record is reported when it applies here: user scope, or a project or local
+ * record is reported when it applies here: user or managed scope, or a project or local
  * install for this project root or for the main checkout of the linked worktree
  * at it. When several records of one plugin apply, the
  * one from the highest scope is kept. The skills, commands, agents, hooks and MCP
@@ -43,7 +43,13 @@ import type { HarnessProvider, ProviderContext, ProviderResult } from '../contra
 import { asObject, splitPluginId, str, strings } from '../json.ts'
 import { LOCATIONS, SCOPES, type Scope } from '../locations.ts'
 import type { Artifact, Hook, Marketplace, McpServer, PermissionRule, Plugin } from '../report.ts'
-import { scanInstructions, scanMarkdown, scanSkills, type Provenance } from '../read/artifacts.ts'
+import {
+  scanInstructions,
+  scanMarkdown,
+  scanPluginArtifacts,
+  scanSkills,
+  type Provenance,
+} from '../read/artifacts.ts'
 import { authEvidence } from '../read/auth.ts'
 import { eventsOf, parseNestedHooks } from '../read/hooks.ts'
 import { manifestObjects } from '../read/manifest.ts'
@@ -153,13 +159,7 @@ function readPluginFolder(
   )
 
   return {
-    skills: scanSkills(ctx, join(root, 'skills'), from),
-    commands: [
-      // A command is a flat `<name>.md`, or a `<name>/SKILL.md` folder; the folder wins.
-      ...scanSkills(ctx, join(root, 'commands'), from),
-      ...scanMarkdown(ctx, join(root, 'commands'), from, { useFrontmatterName: false }),
-    ].filter((c, i, all) => all.findIndex((o) => o.name === c.name) === i),
-    agents: scanMarkdown(ctx, join(root, 'agents'), from),
+    ...scanPluginArtifacts(ctx, root, from),
     hooks,
     mcpServers,
   }

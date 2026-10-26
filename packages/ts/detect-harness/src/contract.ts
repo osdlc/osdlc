@@ -110,7 +110,11 @@ export interface HarnessProvider {
 export interface DetectOptions {
   /** Default `process.cwd()`. */
   projectRoot?: string | undefined
-  /** Default `os.homedir()`. Ignored in `project` mode. */
+  /**
+   * Default `HOME` (`USERPROFILE` on Windows) when it is absolute, else the
+   * OS account's home; with neither, home-based paths do not resolve. Ignored
+   * in `project` mode.
+   */
   home?: string | undefined
   /** Default `process.env`. */
   env?: Readonly<Record<string, string | undefined>> | undefined
@@ -137,13 +141,13 @@ export interface DetectOptions {
   readContents?: boolean | undefined
   /** Keep MCP values as written: `env` and header values, URL credentials and secret-looking `args`. Default `false`; see README, Secrets. */
   includeValues?: boolean | undefined
-  /** `PATH` lookup. Default walks `env.PATH`. Tests inject this. */
+  /** `PATH` lookup. Default walks the absolute entries of `env.PATH`. Tests inject this. */
   which?: ((binary: string) => string | null) | undefined
   /** Build the runner for a binary path. Default `spawnRunnerAsync`. Tests inject this. */
   makeRunner?: ((binary: string) => AsyncCommandRunner) | undefined
   /** Default `process.platform`. Decides the managed-settings folder. */
   platform?: NodeJS.Platform | undefined
-  /** The root for system paths (`/Library/…`, `/etc/…`). Default `/`. Tests point it at a temp folder. */
+  /** The root for system paths (`/Library/…`, `/etc/…`). Default `/`, or `%SystemDrive%\` (default `C:\`) on win32. Tests point it at a temp folder. */
   systemRoot?: string | undefined
   /** Aborts the `--version` run; providers see it as `ctx.signal`. Default: never aborted. */
   signal?: AbortSignal | undefined

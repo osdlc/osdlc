@@ -151,6 +151,7 @@
   "dependencies": {
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
+    "@osdlc/path-guard": "workspace:^",
     "smol-toml": "catalog:",
     "yaml": "catalog:"
   },

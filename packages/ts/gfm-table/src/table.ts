@@ -30,6 +30,11 @@ function rowCells(line: string): TableCell[] {
   })
 }
 
+/** The source of each cell of one row line: trimmed, escapes as written (`\|` stays `\|`). */
+export function rowCellSources(line: string): string[] {
+  return rowCells(line).map((cell) => cell.raw)
+}
+
 /** The text of each cell of one row line: trimmed, pipe escapes read. */
 export function rowCellTexts(line: string): string[] {
   return rowCells(line).map((cell) => cell.text)

@@ -8,6 +8,12 @@ export const THEME_VALUES = ['system', 'light', 'dark'] as const
 /** The web view's theme. */
 export type Theme = (typeof THEME_VALUES)[number]
 
+/** The `discovery` values. */
+export const DISCOVERY_VALUES = ['git', 'walk', 'auto'] as const
+
+/** The `open` values: what the bare `way` command opens. */
+export const OPEN_VALUES = ['tui', 'web'] as const
+
 /**
  * The keys `config set` and `config unset` change from the command line only.
  * cli-tool's adapters, such as the HTTP one the web view's server runs,

@@ -88,7 +88,8 @@ export interface CheckoutScan {
  * an owner directory per GitHub org, or a folder per client, and the
  * checkouts sit a level or two inside. Stopping at a checkout keeps this
  * fast: a repository's own `node_modules`, `vendor` and nested worktrees are
- * below it, so they are never entered.
+ * below it, so they are never entered. A search root that is a checkout
+ * answers itself alone.
  *
  * Two limits keep a bad search root from turning into a walk of the whole
  * disk: children whose names start with a dot are skipped, and nothing
@@ -152,6 +153,11 @@ export function scanForCheckouts(dir: string, opts: DiscoverCheckoutsOptions = {
     }
   }
 
+  // A search root that is itself a checkout is the answer, and the same rule
+  // holds: nothing inside it is entered.
+  if (existsSync(resolve(root, '.git'))) {
+    return { checkouts: [root], directoriesScanned: 0, depthLimited: 0 }
+  }
   visit(root, 1)
   return { checkouts: checkouts.sort(), directoriesScanned, depthLimited }
 }

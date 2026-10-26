@@ -10,11 +10,12 @@
  * | `index.ts` at the top | the root's group declaration, or the root's default command |
  * | a name starting with `_` or `.`, a `.d.ts`, a `.test.` or `.spec.` file | ignored, for helpers and tests |
  * | a symbolic link | ignored, so the tree cannot reach outside the directory |
+ * | any other file (`.md`, `.json`, ...) | ignored |
  *
  * Only the directory passed in is read, and it must be a `file:` URL or an
  * absolute path, so the tree never depends on the process's working
  * directory. A command or group name is letters, digits, `-` and `_`, and does
- * not start with `-` or `_`; any other file or directory name is an error.
+ * not start with `-` or `_`; any other directory or module file name is an error.
  */
 
 import { readdir } from 'node:fs/promises'
@@ -108,7 +109,12 @@ export function treeFromFiles(files: readonly CommandFile[], root: { summary: st
     }
     const parent = dirOf(file.path.slice(0, -1))
     const word = file.path[file.path.length - 1]!
-    if (parent.commands.has(word)) {
+    const existing = parent.commands.get(word)
+    // A directory read first (it sorts before `<word>.ts`) has left a draft here.
+    if (existing !== undefined && 'commands' in existing && existing.commands instanceof Map) {
+      throw new Error(`command tree: '${word}' is both a command file and a directory`)
+    }
+    if (existing !== undefined) {
       throw new Error(`command tree: '${where(file.path)}' is declared twice`)
     }
     if (isGroup(file.node)) {

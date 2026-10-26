@@ -5,8 +5,8 @@ import type { Aspect } from './aspect.ts'
  *
  * Field names are snake_case because that is the wire format. ontogen passes
  * these read-model DTOs through unchanged from
- * `solutions/ontological/desktop/src-tauri/src/schema/system_graph.rs`, which
- * is the authority on the shape. This file states that shape once for
+ * `solutions/ontological/desktop/src-tauri/src/schema/system_graph.rs` in the
+ * development repository, which is the authority on the shape. This file states that shape once for
  * TypeScript, so a producer, a consumer and a host all use the same types.
  *
  * The whole payload is sent in one response. Containment is a tree the viewer

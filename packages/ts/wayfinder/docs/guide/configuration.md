@@ -38,13 +38,14 @@ file inside a repository.
 ## Paths
 
 wayfinder keeps three directories outside your repositories. XDG paths are
-used on every platform, macOS included.
+used on Linux and macOS (macOS included, not `~/Library`). On Windows, config
+goes under `%APPDATA%` and state and cache under `%LOCALAPPDATA%`.
 
-| Directory | Holds                    | Default                                              |
-| --------- | ------------------------ | ---------------------------------------------------- |
-| config    | the user config file     | `$XDG_CONFIG_HOME/wayfinder`, or `~/.config/wayfinder` |
-| state     | the trust store          | `$XDG_STATE_HOME/wayfinder`, or `~/.local/state/wayfinder` |
-| cache     | stored probe results     | `$XDG_CACHE_HOME/wayfinder`, or `~/.cache/wayfinder` |
+| Directory | Holds                    | Default (Linux and macOS)                            | Default (Windows)             |
+| --------- | ------------------------ | ---------------------------------------------------- | ----------------------------- |
+| config    | the user config file     | `$XDG_CONFIG_HOME/wayfinder`, or `~/.config/wayfinder` | `%APPDATA%\wayfinder`         |
+| state     | the trust store          | `$XDG_STATE_HOME/wayfinder`, or `~/.local/state/wayfinder` | `%LOCALAPPDATA%\state\wayfinder` |
+| cache     | stored probe results     | `$XDG_CACHE_HOME/wayfinder`, or `~/.cache/wayfinder` | `%LOCALAPPDATA%\wayfinder`    |
 
 `WAYFINDER_ROOT=/some/dir` moves all three under one directory:
 `/some/dir/config/wayfinder`, `/some/dir/state/wayfinder` and

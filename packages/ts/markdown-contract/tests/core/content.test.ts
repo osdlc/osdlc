@@ -7,7 +7,17 @@
 import { describe, expect, test } from 'vitest'
 import { z } from 'zod'
 import type { DocTree, Finding } from '../../src/index.js'
-import { code, contract, list, maxWords, parse, section, sections, table } from '../../src/index.js'
+import {
+  code,
+  contract,
+  list,
+  maxWords,
+  optional,
+  parse,
+  section,
+  sections,
+  table,
+} from '../../src/index.js'
 
 const CTX = { path: 'fixture.md' }
 
@@ -575,5 +585,63 @@ describe('frontmatter plane', () => {
   test('valid frontmatter — no findings', () => {
     const src = ['---', 'id: D-1', 'status: open', 'title: t', '---'].join('\n')
     expect(find(c, src)).toEqual([])
+  })
+
+  test('format, length-bound and null/array messages name the field', () => {
+    const c2 = contract({
+      frontmatter: z.strictObject({
+        email: z.email().optional(),
+        short: z.string().min(3).optional(),
+        long: z.string().max(2).optional(),
+        n: z.number().optional(),
+        s: z.string().optional(),
+      }),
+    })
+    const messages = (yaml: string) => find(c2, `---\n${yaml}\n---\n`).map((f) => f.message)
+    expect(messages('email: nope')).toEqual(['frontmatter field ‘email’ is not a valid email'])
+    expect(messages('short: ab')).toEqual(['frontmatter field ‘short’ is too small'])
+    expect(messages('long: abc')).toEqual(['frontmatter field ‘long’ is too large'])
+    expect(messages('n: null')).toEqual(['frontmatter field ‘n’ must be a number (got null)'])
+    expect(messages('s: [1]')).toEqual(['frontmatter field ‘s’ must be a string (got array)'])
+  })
+
+  test('an empty or comment-only block reports each missing key, as an absent block does', () => {
+    const absent = find(c, '# t\n').map((f) => f.id)
+    expect(absent).toContain('frontmatter/required')
+    for (const src of ['---\n---\n# t\n', '---\n# TODO\n---\n# t\n']) {
+      const ids = find(c, src).map((f) => f.id)
+      expect(ids).toEqual(absent)
+      expect(ids).not.toContain('frontmatter/type')
+    }
+  })
+
+  test('an empty block passes a schema with no required keys', () => {
+    const loose = contract({ frontmatter: z.object({ title: z.string().optional() }) })
+    expect(find(loose, '---\n---\n# A\n')).toEqual([])
+  })
+})
+
+// ── Which section a slot's leaves check (the shared slot resolver) ───────────────────────
+
+describe('a section is checked against the slot the structure plane binds it to', () => {
+  test('a heading two slots name is checked against the first one only', () => {
+    const c = contract({
+      body: sections({ order: 'none', allowUnknown: true }, [
+        section('Notes', { content: maxWords(100) }),
+        optional(section('Notes', { content: maxWords(1) })),
+      ]),
+    })
+    expect(find(c, '## Notes\n\nthree words here\n')).toEqual([])
+  })
+
+  test('a duplicate of a filled slot is not content-checked again', () => {
+    const c = contract({
+      body: sections({ order: 'none', allowUnknown: true }, [
+        section('Notes', { content: maxWords(2) }),
+      ]),
+    })
+    expect(shape(find(c, '## Notes\n\nok\n\n## Notes\n\nfar too many words here\n'))).toEqual([
+      { id: 'structure/duplicate-section', line: 5 },
+    ])
   })
 })

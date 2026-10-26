@@ -46,11 +46,19 @@ import type { GhVerb } from './verbs.ts'
  * thing", which `parse` turns into `null`. A read that exited 0 but parsed to `null`
  * could not be read completely, and throws.
  *
+ * A result flagged `outputIncomplete` throws for every verb but a probe, as
+ * typed-git's `gate` does: gh exited, but the runner stopped reading at the
+ * output cap or a timeout, so a parse would take cut-short output as whole.
+ *
  * @throws `FailureError` carrying the classified {@link GhFailure} for a failed run.
  * @throws `FailureError` carrying an `unreadable` {@link GhFailure}.
  */
 export function settle<T>(verb: GhVerb<T>, result: CommandResult, binary: string | undefined): T {
-  if (verb.checked || verb.probe === true) return verb.parse(result)
+  if (verb.probe === true) return verb.parse(result)
+  if (result.outputIncomplete === true) {
+    throw ghFailureError(new CommandFailed(verb.argv, result, binary))
+  }
+  if (verb.checked) return verb.parse(result)
   if (result.neverExited === true || result.exitCode !== 0) {
     if (result.neverExited !== true && verb.absent?.(result) === true) return verb.parse(result)
     throw ghFailureError(new CommandFailed(verb.argv, result, binary))
@@ -71,30 +79,40 @@ export function ghFailureError(error: unknown): unknown {
   return isCommandFailed(error) ? new FailureError(classifyGhFailure(error)) : error
 }
 
-/** {@link runChecked}, throwing {@link ghFailureError}'s classified failure. */
+/**
+ * {@link runChecked}, throwing {@link ghFailureError}'s classified failure.
+ * Output cut short (`outputIncomplete`) is a failure too: `runChecked` checks
+ * only the exit code.
+ */
 export function runCheckedGh(
   runner: CommandRunner,
   argv: string[],
   opts: CommandRunOptions,
 ): CommandResult {
   try {
-    return runChecked(runner, argv, opts)
+    return whole(runChecked(runner, argv, opts), argv, runner.binary)
   } catch (error) {
     throw ghFailureError(error)
   }
 }
 
-/** {@link runCheckedAsync}, rejecting with {@link ghFailureError}'s classified failure. */
+/** {@link runCheckedAsync}, rejecting with {@link ghFailureError}'s classified failure. See {@link runCheckedGh}. */
 export async function runCheckedGhAsync(
   runner: AsyncCommandRunner,
   argv: string[],
   opts: AsyncCommandRunOptions,
 ): Promise<CommandResult> {
   try {
-    return await runCheckedAsync(runner, argv, opts)
+    return whole(await runCheckedAsync(runner, argv, opts), argv, runner.binary)
   } catch (error) {
     throw ghFailureError(error)
   }
+}
+
+/** `result`, or a `CommandFailed` thrown when its output was cut short. */
+function whole(result: CommandResult, argv: string[], binary: string | undefined): CommandResult {
+  if (result.outputIncomplete === true) throw new CommandFailed(argv, result, binary)
+  return result
 }
 
 /** The members `try` and `soft` leave out: `raw`, `rawChecked`, helpers that run nothing, and properties. */

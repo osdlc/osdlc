@@ -277,9 +277,12 @@ export async function reconcileSessions<R extends ReconcilableRecord>(
       })
       continue
     }
+    // Never end before the start. A `startedAt` that does not parse is no
+    // bound: `Math.max` with NaN is NaN, and `iso(NaN)` throws mid-run.
+    const startedAt = Date.parse(fresh.startedAt)
     deps.end(
       fresh,
-      iso(Math.max(evidenceAt, Date.parse(fresh.startedAt))),
+      iso(Number.isNaN(startedAt) ? evidenceAt : Math.max(evidenceAt, startedAt)),
       reconcileCause(decision.reason),
     )
     const backfill = await backfillOf(deps, fresh)

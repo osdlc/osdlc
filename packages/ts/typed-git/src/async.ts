@@ -13,7 +13,7 @@
  * client takes `gitDir` on its own constructor.
  */
 
-import { dirname } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 
 import type { CommandResult } from '@osdlc/command-seam'
 
@@ -249,7 +249,13 @@ export class AsyncGit {
    */
   async mainCheckout(opts: GitCallOptions = {}): Promise<string | null> {
     const common = await this.gitCommonDir(opts)
-    return common === null ? null : dirname(common)
+    if (common === null) return null
+    if (basename(common) === '.git') return dirname(common)
+    const configured = await this.configGet('core.worktree', opts)
+    if (configured !== null) return resolve(common, configured)
+    if ((await this.gitDir(opts)) === common) return this.topLevel(opts)
+    const main = (await this.worktrees(opts))[0]
+    return main === undefined || main.bare ? null : main.path
   }
 
   /** Current branch shortname, or null when detached. Rejects outside a repo. */

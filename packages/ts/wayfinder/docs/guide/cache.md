@@ -64,6 +64,12 @@ A stale answer has a reason:
 - `changed`: a file the probe depended on changed.
 - `max-age`: an exec runner's entry is older than four hours.
 - `excludes`: `excludePaths` changed since the probe.
+- `exec`: the probe ran with execution allowed and this run does not allow
+  it, or the reverse. An entry probed with execution is not served to a run
+  without it.
+- `version`: another `@osdlc/system-model` version made the probe.
+- `tool`: the tool's binary moved, changed size or mtime (an upgrade, say),
+  or was installed or removed.
 
 ## Measured cost
 

@@ -96,9 +96,12 @@ the tool registry, and `session.store` the directory probes are stored in.
    through `ctx.note`; nothing writes stdout but `text`.
 3. Mount it in `createWayApp` in `commands/index.ts`. The complete help
    shows every command the tree mounts.
-4. For a new document, add its Zod output to `documents.ts` and its kind to
-   `DOCUMENT_SCHEMAS` in `schema.ts`. `tests/commands.test.ts` checks the
-   exported schema is the one `way schema` prints.
+4. For a new document wayfinder owns as Zod, add its output to
+   `documents.ts`, to `OUTPUTS` in `schema.ts` and its kind to `OWN` in
+   `scripts/write-document-schemas.ts`. Then run
+   `node scripts/write-document-schemas.ts`: `DOCUMENT_SCHEMAS` is derived
+   from the `src/document-schemas.generated.ts` it writes, and
+   `tests/commands.test.ts` fails when that file is stale.
 
 ## Shared commands
 

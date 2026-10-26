@@ -4,7 +4,7 @@
 //! A loaded config is a [`serde_json::Value`]: the generic tree of maps,
 //! lists, strings, numbers, booleans and null that a YAML file reads into.
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 /// The value at `key` (`lease_authority`, `paths.dev`) in `obj`, or `None`.
 ///
@@ -17,6 +17,21 @@ pub fn value_at<'a>(obj: &'a Value, key: &str) -> Option<&'a Value> {
     let mut cur = obj;
     for seg in key.split('.') {
         cur = cur.get(seg)?;
+    }
+    Some(cur)
+}
+
+/// [`value_at`] in a mapping held mutably, for an edit in place. The same
+/// walk: mappings only, so a list index or a `.` inside a key is never
+/// reached.
+pub(crate) fn value_at_mut<'a>(
+    map: &'a mut Map<String, Value>,
+    key: &str,
+) -> Option<&'a mut Value> {
+    let mut segments = key.split('.');
+    let mut cur = map.get_mut(segments.next()?)?;
+    for seg in segments {
+        cur = cur.get_mut(seg)?;
     }
     Some(cur)
 }
@@ -77,6 +92,27 @@ checkout:
                 Some(&Value::String("{dev}/{repo}".to_string()))
             );
             assert_eq!(value_at(&cfg, "nope.deeper"), None);
+        }
+
+        #[test]
+        fn the_mutable_walk_reaches_what_the_shared_one_does() {
+            let Value::Object(mut map) = config() else {
+                panic!("the config is a mapping")
+            };
+            for key in [
+                "authority",
+                "paths.dev",
+                "checkout.layout",
+                "nope.deeper",
+                "paths.dev.x",
+            ] {
+                let shared = value_at(&Value::Object(map.clone()), key).cloned();
+                assert_eq!(value_at_mut(&mut map, key).cloned(), shared, "{key}");
+            }
+            if let Some(v) = value_at_mut(&mut map, "paths.dev") {
+                *v = Value::String("/e".to_string());
+            }
+            assert_eq!(map["paths"]["dev"], Value::String("/e".to_string()));
         }
 
         #[test]

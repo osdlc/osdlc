@@ -37,7 +37,7 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { RunnerContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { parseJsonc } from '../support/jsonc.ts'
+import { readJsonc } from '../support/jsonc.ts'
 import {
   baseName,
   dependencies,
@@ -101,16 +101,14 @@ export const vscodeTasksRunner: RunnerRole = {
     const tasks: Task[] = []
     const diagnostics: Diagnostic[] = []
     for (const file of await tasksFiles(ctx)) {
-      const text = await ctx.readText(file)
-      if (text === null) continue
-      let doc: unknown
-      try {
-        doc = parseJsonc(text)
-      } catch (err) {
-        const message = `unparseable tasks.json: ${err instanceof Error ? err.message : String(err)}`
+      const read = await readJsonc(ctx, file)
+      if (read === null) continue
+      if ('error' in read) {
+        const message = `unparseable tasks.json: ${read.error}`
         diagnostics.push({ severity: 'warning', message, source: file })
         continue
       }
+      const doc = read.value
       if (isTable(doc) && doc['version'] === '0.1.0') {
         diagnostics.push({
           severity: 'warning',

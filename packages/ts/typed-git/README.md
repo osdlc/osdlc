@@ -510,7 +510,7 @@ trailing argument that is not a string.
 
 A ref, remote, URL, path, ref pattern or config key argument that starts with
 `-` could be read by git as an option, for example `--upload-pack=...` or
-`--output=<file>`. Forty-six verbs refuse it: they throw a `TypeError`
+`--output=<file>`. Every verb that takes such an argument refuses it: they throw a `TypeError`
 before git runs. In `log` this covers `rev`, `range` and each `notRefs` entry.
 In `diffNameOnly` and `diffStat` it covers each `rangeArgs` token. The message is
 `typed-git: <verb>: <param> must not start with "-" (got "...")`. `try` and
@@ -544,14 +544,14 @@ exit throws the classified failure.
 | `topLevel()` | `rev-parse --show-toplevel` | `128` → `null` (not a repository) |
 | `gitCommonDir()` | `rev-parse --path-format=absolute --git-common-dir` | `128` → `null` |
 | `gitDir()` | `rev-parse --absolute-git-dir` | `128` → `null` — this worktree's own dir, `<common>/worktrees/<name>` in a linked worktree |
-| `mainCheckout()` | the parent of `gitCommonDir()` | `null` outside a repository |
+| `mainCheckout()` | the parent of `gitCommonDir()` when that is `<checkout>/.git`, else `core.worktree` or the main worktree | `null` outside a repository, or for a bare store |
 | `symbolicRef(ref)` | `symbolic-ref <ref>` | `128` → `null` |
 | `currentBranch()` | `branch --show-current` | none — `null` when detached |
 | `statusPorcelain({ paths })` | `status --porcelain` | none |
 | `statusEntries()` | `status --porcelain -z --untracked-files=all` | none — `{ x, y, path }` rows; a rename is one row, with the source dropped |
 | `isDirty({ paths })` | `statusPorcelain().length > 0` | none |
 | `hasStagedChanges()` | `diff --cached --quiet` | `1` → `true`, `0` → `false` — on an unborn HEAD the index is compared against the empty tree; outside a repository (`129`) it throws |
-| `branches(pattern)` | `branch --list --format=%(refname:short)` | none |
+| `branches(pattern)` | `branch --list --format=%(refname:lstrip=2)` | none |
 | `branchExists(name)` | `branches(name).includes(name)` | none |
 | `worktrees()` | `worktree list --porcelain` | none — rows carry `locked` and `lockReason` |
 | `mergeBase(a, b)` | `merge-base <a> <b>` | `1` → `null` (unrelated histories) |
@@ -604,7 +604,7 @@ Integration, declares exit 1 absent and returns the rejected refs.
 | --- | --- |
 | `fetch(remote, refspec, { prune, quiet, noWriteFetchHead, depth, noTags })` | `fetch` |
 | `add(paths, { all, update, intentToAdd })` | `add` (paths go after `--`) |
-| `commit({ message, body } \| { messageFile } \| { messageStdin }, { allowEmpty, amend, noVerify, signoff, paths })` | `commit` — one message source, enforced by the types; `messageStdin` is `-F -` with the string on stdin, no temp file. `paths` appends `-- <paths…>`: only those paths are committed, from the working tree, and anything else staged stays staged. An empty `paths` throws a `TypeError`, because git would commit everything staged |
+| `commit({ message, body } \| { messageFile } \| { messageStdin }, plus { allowEmpty, amend, noVerify, signoff, paths } in the same object)` | `commit` — one argument, e.g. `commit({ message, allowEmpty: true })`; one message source, enforced by the types; `messageStdin` is `-F -` with the string on stdin, no temp file. `paths` appends `-- <paths…>`: only those paths are committed, from the working tree, and anything else staged stays staged. An empty `paths` throws a `TypeError`, because git would commit everything staged |
 | `push(remote, refspec, { forceWithLease, delete })` | `push` — `forceWithLease` takes `true` or a pinned `{ ref, expect }` (`expect: null` = ref must be absent); `forceWithLeaseArg(lease)` is the pure formatter. `true` is the bare form: it overwrites whatever is on the remote, so prefer the pinned form. `delete` is `--delete`, and a pinned lease deletes only while the remote ref holds `expect`. To learn why a push was rejected, use `pushPorcelain` |
 | `configSet(key, value, { scope })` | `config` |
 | `configRemoveSection(name)` | `config --remove-section` — `false` when there is no such section |
@@ -717,8 +717,11 @@ should do the same: `spawnRunner("git", { absolutePathOnly: true })`.
 runner passes it straight through, without a conditional spread. `cliBackend`
 accepts it too.
 
-command-seam's exports are re-exported here, so wiring a runner or catching a
-`CommandFailed` needs one import rather than two.
+The runner and result types, `CommandFailed`, `spawnRunner`, `spawnRunnerAsync`,
+`runChecked`, `runCheckedAsync` and `asAsync` are re-exported from command-seam,
+so wiring a runner or catching a `CommandFailed` needs one import rather than
+two. Import other runners, such as `spawnRunnerBytes` and `streamRunner`, from
+`@osdlc/command-seam`.
 
 ## Also: git references
 

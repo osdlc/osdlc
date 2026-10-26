@@ -1,5 +1,5 @@
 import { homedir, tmpdir, userInfo } from 'node:os'
-import { join, win32 } from 'node:path'
+import { join, posix, win32 } from 'node:path'
 
 import { TieredDirsError } from './errors.ts'
 
@@ -399,9 +399,13 @@ function guardedEnv(
     return { ...env, [vars.root]: root }
   }
   if (env[vars.requireOverride]) {
-    // Runtime follows a moved durable, so it needs no variable of its own.
-    const required = BASE_DIR_KEYS.filter((key) => key !== 'runtime' && !overrides[key])
-    const missing = required.find((key) => !env[vars.dirs[key]])
+    // Runtime follows a durable the environment moves, so then it needs no
+    // variable of its own. A durable moved only by `overrides` is not followed
+    // (`envOverrides` never sees it), so runtime is then required like the rest.
+    const required = BASE_DIR_KEYS.filter((key) => !overrides[key])
+    const missing = required.find(
+      (key) => !env[vars.dirs[key]] && !(key === 'runtime' && env[vars.dirs.durable]),
+    )
     if (missing !== undefined) {
       throw new TieredDirsError(
         'OVERRIDE_REQUIRED',
@@ -557,6 +561,51 @@ export function xdgBaseDirs(home: string, env: Record<string, string | undefined
     runtime: table.runtime(),
     scratch: table.scratch(),
   }
+}
+
+/**
+ * The user's home directory, always absolute. It is the one {@link systemBaseDirs}
+ * builds its per-OS table on: `HOME` (`USERPROFILE` on Windows) when it is
+ * absolute, else the OS account's home. A relative value counts as unset,
+ * because every path built on it would land in the current directory, which
+ * can be a repository.
+ *
+ * `opts.platform` defaults to `process.platform` and `opts.env` to
+ * `process.env`. An injected `env` is the only one read: the host's real home
+ * is then never used.
+ *
+ * Throws {@link TieredDirsError} with code `MISSING_BASE_DIR` when no absolute
+ * home can be found. Headless CI and sandboxes do not always have one.
+ *
+ * Stable in 0.x.
+ */
+export function homeDir(opts: Pick<ResolveOptions, 'platform' | 'env'> = {}): string {
+  return resolveHome(opts, opts.platform ?? process.platform, opts.env ?? process.env)
+}
+
+/**
+ * Expand a leading `~` in `path` against `home`: `~` alone is `home`, and
+ * `~/rest` is `rest` joined onto `home` by `platform`'s path rules. On Windows
+ * (`platform` `win32`) `~\rest` expands too. Any other path, `~user/rest`
+ * included, is returned unchanged. `platform` defaults to `process.platform`.
+ *
+ * A shell expands `~` before it runs a program, but direnv, `.env` loaders and
+ * CI YAML pass a literal `~` through, and `<cwd>/~/x` would be a silent wrong
+ * answer. The resolvers in this package do not call it: a relative `XDG_*`
+ * value, `~` included, is ignored there, as the XDG spec says.
+ *
+ * Stable in 0.x.
+ */
+export function expandTilde(
+  path: string,
+  home: string,
+  platform: string = process.platform,
+): string {
+  if (path === '~') return home
+  if (path.startsWith('~/') || (platform === 'win32' && path.startsWith('~\\'))) {
+    return (platform === 'win32' ? win32 : posix).join(home, path.slice(2))
+  }
+  return path
 }
 
 type Table = Record<keyof BaseDirs, () => string>

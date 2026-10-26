@@ -48,6 +48,7 @@ mod parse;
 mod registry;
 mod runner;
 mod schema;
+mod slots;
 mod structure;
 mod text_constraints;
 mod text_match;

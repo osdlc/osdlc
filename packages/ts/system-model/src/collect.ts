@@ -68,8 +68,8 @@ export interface ProbeRecord {
   queries: string[]
   /**
    * Every binary looked up through `ctx.which`, with what it found. A runner
-   * that picks a tool by what is installed (Procfile's manager, poe's `uv run`)
-   * gives another answer once that changes.
+   * that picks a tool by what is installed (Procfile's manager, gradle with no
+   * wrapper) gives another answer once that changes.
    */
   lookups: Record<string, string | null>
   watch: string[]

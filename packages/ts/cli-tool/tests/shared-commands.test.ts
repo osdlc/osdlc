@@ -14,7 +14,7 @@ import {
   type ConfigStore,
 } from '../src/config-command.ts'
 import { guideCommand, type GuideTopic } from '../src/guide.ts'
-import { checkGuide, runApp } from '../src/testing.ts'
+import { checkApp, checkGuide, runApp } from '../src/testing.ts'
 import { trustCommand, type TrustEntry, type TrustService } from '../src/trust-command.ts'
 
 const KEYS = ['discovery', 'runners.order', 'runners.disabled']
@@ -194,6 +194,16 @@ describe('config', () => {
     expect(store.files['user']!['discovery']).toBe('walk')
   })
 
+  test('a hyphenated layer flag writes that layer', async () => {
+    const store = memoryStore()
+    store.files['project-local'] = {}
+    const app = appWith({ ...store, layers: ['user', 'project', 'project-local'] })
+    const r = await runApp(app, ['config', 'set', 'discovery', 'walk', '--project-local'])
+    expect(r).toMatchObject({ exit: 0, out: '/project-local.json: discovery = "walk"\n' })
+    expect(store.files['project-local']!['discovery']).toBe('walk')
+    expect(store.files['project']!['discovery']).toBe('git')
+  })
+
   test('two layer flags, an unknown key or a bad value are usage errors', async () => {
     const app = appWith()
     const both = await runApp(app, ['config', 'set', 'discovery', 'x', '--user', '--project'])
@@ -233,6 +243,100 @@ describe('config', () => {
       'user:    /home/u/.config/t/config.json (exists) (from T_CONFIG)\nproject: /repo/t.json (missing)\n',
     )
     expect((await runApp(appWith(), ['config', 'path', 'extra'])).exit).toBe(2)
+  })
+
+  test('config get reads a key below a listed setting out of its value', async () => {
+    const store = memoryStore()
+    const nested = {
+      ...store,
+      async list() {
+        return { settings: [{ key: 'runners', value: { order: ['moon'] }, source: 'user' }] }
+      },
+    }
+    const r = await runApp(appWith(nested), ['config', 'get', 'runners.order', '--json'])
+    expect(r.json()).toMatchObject({ key: 'runners.order', value: ['moon'], source: 'user' })
+    expect((await runApp(appWith(nested), ['config', 'get', 'runners.nope'])).exit).toBe(1)
+  })
+
+  test("a store's resolveKey names the key in every answer", async () => {
+    const store = memoryStore()
+    const app = appWith({
+      ...store,
+      resolveKey: (key) => (key === 'order' ? 'runners.order' : key),
+      async set(ctx, layer, key, value) {
+        return store.set(ctx, layer, key === 'order' ? 'runners.order' : key, value)
+      },
+      async unset(ctx, layer, key) {
+        return store.unset(ctx, layer, key === 'order' ? 'runners.order' : key)
+      },
+    })
+    expect((await runApp(app, ['config', 'get', 'order'])).out).toBe('[]\n')
+    expect((await runApp(app, ['config', 'set', 'order', '["just"]'])).out).toBe(
+      '/project.json: runners.order = ["just"]\n',
+    )
+    expect((await runApp(app, ['config', 'unset', 'order'])).out).toBe(
+      '/project.json: removed runners.order\n',
+    )
+  })
+
+  test('a key resolveKey cannot resolve is a usage error for get and unset', async () => {
+    const store = memoryStore()
+    const app = appWith({
+      ...store,
+      resolveKey: (key) => (KEYS.includes(key) ? key : undefined),
+    })
+    const get = await runApp(app, ['config', 'get', 'discovry'])
+    expect(get.exit).toBe(2)
+    expect(get.err).toContain('unknown setting: discovry; did you mean discovery?')
+    const unset = await runApp(app, ['config', 'unset', 'discovry'])
+    expect(unset.exit).toBe(2)
+    expect(unset.err).toContain('unknown setting: discovry')
+    // A known key with no value is still exit 1.
+    expect((await runApp(app, ['config', 'unset', 'runners.order'])).exit).toBe(1)
+  })
+
+  test("unset reports the store's ConfigUsageError as a usage error", async () => {
+    const store = memoryStore()
+    const app = appWith({
+      ...store,
+      async unset() {
+        throw new ConfigUsageError('unknown setting nosuch')
+      },
+    })
+    const r = await runApp(app, ['config', 'unset', 'nosuch'])
+    expect(r.exit).toBe(2)
+    expect(r.err).toContain('unknown setting nosuch')
+  })
+
+  test('a store with dryRun gets --dry-run on set and unset, and is told', async () => {
+    const store = memoryStore()
+    const seen: unknown[] = []
+    const app = appWith({
+      ...store,
+      dryRun: true,
+      async set(ctx, layer, key, value, options) {
+        seen.push(options)
+        if (options?.dryRun === true) return { file: `/${layer}.json`, value }
+        return store.set(ctx, layer, key, value)
+      },
+      async unset(ctx, layer, key, options) {
+        seen.push(options)
+        if (options?.dryRun === true) return { file: `/${layer}.json`, removed: true }
+        return store.unset(ctx, layer, key)
+      },
+    })
+    const set = await runApp(app, ['config', 'set', 'discovery', 'walk', '--dry-run'])
+    expect(set).toMatchObject({ exit: 0, out: '/project.json: would set discovery = "walk"\n' })
+    expect(store.files['project']!['discovery']).toBe('git')
+    const json = await runApp(app, ['config', 'set', 'discovery', 'walk', '--dry-run', '--json'])
+    expect(json.json()).toMatchObject({ kind: 'config-set', dryRun: true })
+    const unset = await runApp(app, ['config', 'unset', 'discovery', '--dry-run'])
+    expect(unset.out).toBe('/project.json: would remove discovery\n')
+    expect(store.files['project']!['discovery']).toBe('git')
+    await runApp(app, ['config', 'set', 'discovery', 'walk'])
+    expect(seen).toEqual([{ dryRun: true }, { dryRun: true }, { dryRun: true }, {}])
+    // Without dryRun on the store, the flag is not there.
+    expect((await runApp(appWith(), ['config', 'set', 'discovery', 'x', '--dry-run'])).exit).toBe(2)
   })
 
   test('a default layer outside the layers is refused', () => {
@@ -449,6 +553,51 @@ describe('guide', () => {
         allow: ['--frobnicate', '-Z'],
       }),
     ).toEqual([])
+  })
+
+  test('checkGuide reports a topic that fails and a guide with no topics', async () => {
+    const topics: GuideTopic[] = [
+      ...TOPICS,
+      {
+        id: 'broken',
+        title: 'Broken',
+        summary: 'x',
+        body: () => {
+          throw new Error('no data')
+        },
+      },
+    ]
+    expect(await checkGuide(appWith(memoryStore(), trustService(), topics))).toEqual([
+      'guide broken exits 1 with 0 bytes',
+    ])
+    expect(await checkGuide(appWith(memoryStore(), trustService(), []))).toEqual([
+      'the guide has no topics',
+    ])
+  })
+
+  test('checkGuide stops at a guide path that does not list topics', async () => {
+    const problems = await checkGuide(appWith(), { path: ['nope'] })
+    expect(problems).toEqual([expect.stringMatching(/^nope topics exits 2: t: unknown command/)])
+  })
+
+  test('checkApp reports help and schema that do not render', () => {
+    const app = appWith()
+    expect(checkApp(app)).toEqual([])
+    const broken = {
+      ...app,
+      paths: () => [[], ['config']],
+      helpText: (path: readonly string[] = []) => {
+        if (path[0] === 'config') throw new Error('bad help')
+        return ''
+      },
+      schema: () => {
+        throw new Error('bad schema')
+      },
+    } as typeof app
+    expect(checkApp(broken)).toEqual([
+      't config: help does not render: bad help',
+      't schema does not render: bad schema',
+    ])
   })
 })
 

@@ -285,6 +285,48 @@ describe('App.call', () => {
     })
   })
 
+  test('a thrown Failure keeps its kind and takes its category exit code', async () => {
+    const { defineApp, defineCommand } = await import('../../src/command/index.ts')
+    const { FailureError } = await import('@osdlc/result')
+    const { z } = await import('zod')
+    const failure = {
+      kind: 'not-authenticated',
+      message: 'gh is not signed in\u001b[31m.',
+      hint: 'Run gh auth login\u001b]0;x\u0007.',
+    }
+    const app = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      commands: {
+        bare: defineCommand({
+          summary: 'bare',
+          output: z.object({}),
+          run() {
+            throw failure
+          },
+        }),
+        wrapped: defineCommand({
+          summary: 'wrapped',
+          output: z.object({}),
+          run() {
+            throw new FailureError(failure)
+          },
+        }),
+      },
+    })
+    const expected = {
+      status: 'error',
+      exit: 23,
+      code: 'not-authenticated',
+      message: 'gh is not signed in.',
+      hint: 'Run gh auth login.',
+      stderr: '',
+    }
+    expect(await app.call(['bare'], {}, CTX, { surface: 'mcp' })).toEqual(expected)
+    expect(await app.call(['wrapped'], {}, CTX, { surface: 'http' })).toEqual(expected)
+  })
+
   test('an error, its hint and the notes have terminal controls removed', async () => {
     const { defineApp, defineCommand, CommandError } = await import('../../src/command/index.ts')
     const { z } = await import('zod')

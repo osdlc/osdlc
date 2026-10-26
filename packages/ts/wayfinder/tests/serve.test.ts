@@ -671,6 +671,56 @@ describe('POST /run', () => {
       await s.web.stop()
     }
   })
+
+  /** The routes alone, with a resolveRun that throws on its first call. */
+  function routesThatThrowOnce() {
+    let calls = 0
+    const handed: string[][] = []
+    const routes = createRoutes({
+      api: {
+        handles: () => false,
+        checkOrigin: () => null,
+        hasToken: () => true,
+        token: 't',
+      } as unknown as HttpApi,
+      signIn: createSignIn(),
+      page: async () => '',
+      resolveRun: async () => {
+        calls++
+        if (calls === 1) throw new Error('the probe failed')
+        return { ok: true, display: 'x', argv: ['x'], env: {}, cwd: '/' }
+      },
+      handOff: (plan) => handed.push(plan.argv),
+    })
+    const post = (init: RequestInit = {}): Promise<Response> =>
+      routes(
+        new Request('http://127.0.0.1/run', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ id: 'x' }),
+          ...init,
+        }),
+      )
+    return { post, handed }
+  }
+
+  test('a run whose resolution throws frees the terminal for the next one', async () => {
+    const { post } = routesThatThrowOnce()
+    await expect(post()).rejects.toThrow('the probe failed')
+    expect((await post()).status).toBe(200)
+    expect((await post()).status).toBe(409)
+  })
+
+  test('/run answers 405 to GET, 415 to a body that is not JSON and 413 to one too large, and stays free', async () => {
+    const { post } = routesThatThrowOnce()
+    expect((await post({ method: 'GET', body: null })).status).toBe(405)
+    expect((await post({ headers: { 'content-type': 'text/plain' } })).status).toBe(415)
+    const large = JSON.stringify({ id: 'x'.repeat(65 * 1024) })
+    expect((await post({ body: large })).status).toBe(413)
+    // None of them took the terminal: the throwing call, then a run that succeeds.
+    await expect(post()).rejects.toThrow('the probe failed')
+    expect((await post()).status).toBe(200)
+  })
 })
 
 describe('the browser opener', () => {
@@ -1117,6 +1167,44 @@ describe('the held catalog', () => {
     older.resolve(body('before the edit'))
     await expect(poll).resolves.toEqual(body('before the edit'))
     expect(share.cached('k')).toMatchObject({ generatedAt: 'after the edit' })
+  })
+
+  test('a request under another key never joins the running probe, and its late answer is not newest', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const forA = held()
+    const a = share.fresh('a', () => forA.promise, { join: true })
+    expect(share.waiting('a')).toBe(1)
+    let probes = 0
+    const b = share.fresh(
+      'b',
+      () => {
+        probes++
+        return Promise.resolve(body('b'))
+      },
+      { join: true },
+    )
+    await expect(b).resolves.toEqual(body('b'))
+    expect(probes).toBe(1)
+    expect(share.waiting('b')).toBe(0)
+    expect(share.cached('b')).toMatchObject({ generatedAt: 'b' })
+    // The probe for a began first, so its answer does not replace b's.
+    forA.resolve(body('a'))
+    await expect(a).resolves.toEqual(body('a'))
+    expect(share.cached('b')).toMatchObject({ generatedAt: 'b' })
+    expect(share.cached('a')).toBeNull()
+  })
+
+  test('remember during a running probe is replaced by that probe once it answers', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const gate = held()
+    const run = share.fresh('k', () => gate.promise, { join: true })
+    share.remember('k', body('stored'))
+    expect(share.cached('k')).toMatchObject({ generatedAt: 'stored' })
+    gate.resolve(body('probed'))
+    await expect(run).resolves.toEqual(body('probed'))
+    expect(share.cached('k')).toMatchObject({ generatedAt: 'probed' })
   })
 
   test('stop aborts a running shared probe', async () => {

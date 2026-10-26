@@ -117,7 +117,8 @@ pub fn slugify_with(input: &str, opts: &SlugOptions) -> String {
     let sep = opts.separator;
     let mut decomposed = String::with_capacity(input.len());
     for c in input.nfkd() {
-        // Unicode combining marks (Mn) are the accents NFKD just split off.
+        // Drop the combining-diacritic blocks NFKD splits off Latin, Greek and
+        // Cyrillic letters. Other scripts' marks are not stripped here.
         if is_combining_mark(c) {
             continue;
         }

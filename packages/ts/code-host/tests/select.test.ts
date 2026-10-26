@@ -37,6 +37,16 @@ describe('codeHostNameForRemote', () => {
     expect(codeHostNameForRemote('git@git.example.com:o/r.git', null)).toBe('forgejo')
   })
 
+  test('github.com in the path or inside another host name is not github', () => {
+    expect(codeHostNameForRemote('https://git.example.com/github.com-mirror/r.git', null)).toBe(
+      'forgejo',
+    )
+    expect(codeHostNameForRemote('https://notgithub.com/o/r.git', null)).toBe('forgejo')
+    expect(codeHostNameForRemote('https://github.com.example.org/o/r.git', null)).toBe('forgejo')
+    expect(codeHostNameForRemote('ssh://git@ssh.github.com:443/o/r.git', null)).toBe('github')
+    expect(codeHostNameForRemote('https://GitHub.com/o/r.git', null)).toBe('github')
+  })
+
   test('no remote at all falls back to github, preserving pre-forgejo behavior', () => {
     expect(codeHostNameForRemote(null, null)).toBe('github')
   })
@@ -131,7 +141,9 @@ describe('selectCodeHost', () => {
       codeHost.listPrs({})
       const url = calls[0]?.[calls[0].length - 1]
       // Without the port, requests would go to the default port 443.
-      expect(url).toBe('https://git.example.com:3000/api/v1/repos/o/r/pulls?state=open')
+      expect(url).toBe(
+        'https://git.example.com:3000/api/v1/repos/o/r/pulls?state=open&page=1&limit=50',
+      )
     } finally {
       if (prevToken === undefined) delete process.env[DEFAULT_FORGEJO_TOKEN_ENV]
       else process.env[DEFAULT_FORGEJO_TOKEN_ENV] = prevToken

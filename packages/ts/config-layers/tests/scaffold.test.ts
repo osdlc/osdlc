@@ -5,6 +5,7 @@
 
 import { describe, expect, test } from 'vitest'
 
+import { parse as parseYaml } from 'yaml'
 import { z } from 'zod'
 
 import type { ConfigKeyMeta } from '../src/meta.ts'
@@ -158,6 +159,39 @@ describe('quote and wrap the pieces a scaffold is built from', () => {
     expect(y).toContain("b: ''\n")
     expect(y).toContain("c: 'a: b'\n")
     expect(y).toContain("d: 'it''s 5'\n")
+  })
+
+  test('a string YAML reads as a number is quoted', () => {
+    const schema = z.object({ a: z.string().default('.5'), b: z.string().default('+1') })
+    const y = scaffoldYaml(schema, [])
+    expect(y).toContain("a: '.5'\n")
+    expect(y).toContain("b: '+1'\n")
+    expect(parseYaml(y)).toEqual(schema.parse({}))
+  })
+
+  test('list elements keep their type', () => {
+    const schema = z.object({
+      ports: z.array(z.number()).default([80, 443]),
+      flags: z.array(z.boolean()).default([true]),
+      rules: z.array(z.object({ name: z.string() })).default([{ name: 'r' }]),
+    })
+    const y = scaffoldYaml(schema, [])
+    expect(y).toContain('ports: [80, 443]\n')
+    expect(y).toContain('flags: [true]\n')
+    expect(parseYaml(y)).toEqual(schema.parse({}))
+  })
+
+  test("an object's own default wins over its children's", () => {
+    const schema = z.object({
+      server: z
+        .object({ port: z.number().default(1), host: z.string().default('h') })
+        .default({ port: 8080, host: 'x' }),
+      bare: z.object({ port: z.number().default(1) }).default({} as { port: number }),
+    })
+    const y = scaffoldYaml(schema, [])
+    expect(y).toMatch(/^ {2}port: 8080$/m)
+    expect(y).not.toMatch(/^ {2}port: 1$/m)
+    expect(parseYaml(y)).toEqual(schema.parse({}))
   })
 
   test('a long description wraps into comment lines', () => {

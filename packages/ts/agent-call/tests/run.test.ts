@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { antigravityAdapter } from '../src/adapters/antigravity.js'
 import { customAdapter } from '../src/adapters/custom.js'
 import { claudeAdapter } from '../src/adapters/claude.js'
+import { TMP_TOKEN } from '../src/plan.js'
 import { callAgent, planCall } from '../src/run.js'
 
 // Runner tests on real processes, using harmless system binaries. No agents
@@ -78,6 +79,33 @@ describe('callAgent', () => {
     expect(result.ok).toBe(false)
     expect(result.exitCode).toBeNull()
     expect(result.error?.reason).toBe('spawn-failed')
+  })
+
+  test('an argument Node refuses before spawning resolves spawn-failed, not a rejection', async () => {
+    // Node throws synchronously for a NUL byte in argv, before any process starts.
+    const result = await callAgent(echoAdapter, { prompt: 'a\u0000b' })
+    expect(result.ok).toBe(false)
+    expect(result.exitCode).toBeNull()
+    expect(result.error?.reason).toBe('spawn-failed')
+    expect(result.error?.detail).not.toBe('')
+  })
+
+  test('spec cwd is the working directory of the child', async () => {
+    const pwd = customAdapter({
+      name: 'pwd',
+      binary: '/bin/sh',
+      args: () => ['-c', 'pwd -P'],
+    })
+    const dir = realpathSync(tmpdir())
+    const result = await callAgent(pwd, { prompt: 'unused', cwd: dir })
+    expect(result.ok).toBe(true)
+    expect(result.text).toBe(dir)
+  })
+
+  test.each([Infinity, 2 ** 31])('a timeoutMs of %d does not kill the run at once', async (ms) => {
+    const result = await callAgent(echoAdapter, { prompt: 'still here', timeoutMs: ms })
+    expect(result.ok).toBe(true)
+    expect(result.text).toBe('still here')
   })
 
   test('timeout kills the process', async () => {
@@ -336,6 +364,24 @@ describe('child stdin', () => {
       await expect(callAgent(adapter, { prompt: 'x' })).rejects.toThrow(/EISDIR/)
       expect(leftovers(marker)).toEqual([])
     })
+
+    test.each([0, 1])(
+      'a read-back file the CLI removed leaves raw.files unset (exit %i)',
+      async (code) => {
+        const remover = {
+          ...echoAdapter,
+          plan: (spec: Parameters<typeof echoAdapter.plan>[0]) => ({
+            ...echoAdapter.plan(spec),
+            argv: ['/bin/sh', '-c', `rm "$1"; exit ${code}`, 'sh', `${TMP_TOKEN}/out.json`],
+            tempFiles: [{ name: 'out.json', content: '', readBack: true }],
+          }),
+        }
+        const result = await callAgent(remover, { prompt: 'x' })
+        expect(result.ok).toBe(code === 0)
+        if (code !== 0) expect(result.error?.reason).toBe('nonzero-exit')
+        expect(result.raw.files).toBeUndefined()
+      },
+    )
 
     test.each(['', '..', 'a/b', 'a\\b', '../x'])('refuses the name %j', async (name) => {
       const marker = `leak-check-${process.pid}.txt`

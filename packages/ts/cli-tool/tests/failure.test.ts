@@ -17,6 +17,7 @@ import {
   failWith,
   FAILURE_EXIT,
   isDomainExit,
+  renderError,
   renderFailure,
   runMain,
 } from '../src/index.ts'
@@ -73,6 +74,20 @@ describe('renderFailure and failureOf', () => {
     expect(renderFailure(failure('exit'))).toBe('exit happened.\n')
   })
 
+  test('renderError: the name, the message, a newline; terminal controls removed', () => {
+    expect(renderError('bad thing', 'tooly')).toBe('tooly: bad thing\n')
+    expect(renderError('bad thing')).toBe('bad thing\n')
+    expect(renderError('a\u001b[2Jb\u009b31mc\td\ne', 'tooly')).toBe('tooly: abc\td\ne\n')
+  })
+
+  test('renderFailure strips terminal controls itself', () => {
+    const line = renderFailure(
+      { kind: 'not-found', message: 'no \u001b]0;pwned\u0007x.', hint: 'Check \u009b2Jit.' },
+      'tooly',
+    )
+    expect(line).toBe('tooly: no x. Check it.\n')
+  })
+
   test('reads a FailureError, a CommandFailed and a bare Failure; nothing else', () => {
     const f = failure('not-found')
     expect(failureOf(new FailureError(f))).toBe(f)
@@ -92,6 +107,21 @@ describe('failWith', () => {
     expect(code).toBe(22)
     expect(ctx.io.err).toBe('tooly: not-installed happened. Install it.\n')
     expect(ctx.io.out).toBe('')
+  })
+
+  test('strips terminal controls from the message and hint', () => {
+    const ctx = captureContext()
+    const code = failWith(
+      ctx,
+      { kind: 'not-found', message: 'no branch \u001b]0;pwned\u0007x.', hint: 'Check \u009b2Jit.' },
+      { name: 'tooly' },
+    )
+    expect(code).toBe(23)
+    expect(ctx.io.err).not.toContain('\u001b')
+    expect(ctx.io.err).not.toContain('\u009b')
+    expect(ctx.io.err).not.toContain('\u0007')
+    expect(ctx.io.err.startsWith('tooly: no branch ')).toBe(true)
+    expect(ctx.io.err.endsWith('\n')).toBe(true)
   })
 })
 

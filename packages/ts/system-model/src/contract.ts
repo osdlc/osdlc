@@ -28,7 +28,10 @@ import type { ProjectProfile, ToolDef } from './tool.ts'
  * allowed and the binary is present (just, rake, go-task and gradle do). The
  * `parse` kind promises a correct answer without running anything.
  */
-export type ProviderKind = 'parse' | 'exec'
+export type ProviderKind = (typeof ALL_PROVIDER_KINDS)[number]
+
+/** The known {@link ProviderKind}s. */
+export const ALL_PROVIDER_KINDS = ['parse', 'exec'] as const
 
 /** The read-only view of one repository that runners and `detect` functions use. */
 export interface ProviderContext {

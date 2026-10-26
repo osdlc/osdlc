@@ -198,6 +198,12 @@ the message and the hint. The raw `detail` (a tool's stderr) is left to a
 caller that asks for it, since this package has no verbose switch. Any other
 thrown error prints its message and exits 1.
 
+Every error line is rendered by `renderError(message, name)`: `<name>:
+<message>` and a newline, with terminal controls removed (line feeds and tabs
+stay), since a message may quote repository or service text. `renderFailure`,
+`failWith`, `runMain` and an app's own error lines all go through it. A tool
+printing an error line of its own should too.
+
 ### Flags are declared, not parsed
 
 `defineCli` builds a [commander](https://github.com/tj/commander.js) command
@@ -381,7 +387,7 @@ What a command declares:
 | `kind`, `schemaVersion` | the document's `kind` (default: the path joined with `-`) and version (default 1) |
 | `run(input, ctx)` | returns the output, or `outcome(output, exit)` to print it and exit non-zero |
 | `text(output, ctx)` | the text form. Default: the output as indented JSON |
-| `exits` | the command's own exit codes (1 or 10-63) and their meanings |
+| `exits` | the command's own exit codes (1, or 10-63 except 22-25) and their meanings |
 | `examples`, `hidden`, `readOnly` | shown under `help --full`; left out of lists; changes nothing |
 | `destructive` | deletes or overwrites something that cannot be got back. MCP's `destructiveHint` |
 | `items: { field, kind }` | the array field `--output jsonl` prints one line per element of, and each line's `kind` |
@@ -455,6 +461,7 @@ directory tree is the command tree.
 | `commands/config/index.ts` | the `config` group's `defineGroup` (summary, order, no commands), or a command that runs as `config` |
 | `commands/index.ts` | the root's group declaration, or the root's default command |
 | `_helpers.ts`, `.d.ts`, `*.test.ts` | ignored |
+| other files (`.md`, `.json`, ...) | ignored |
 
 ```ts
 const tree = await loadCommandTree(new URL('./commands/', import.meta.url), { summary: 'sweep' })
@@ -463,7 +470,8 @@ const app = defineApp({ name: 'sweep', version, summary: 'sweep', commands: tree
 
 It imports the files under `dir` only, and `dir` must be a `file:` URL or an
 absolute path, so the tree never depends on the working directory. Symbolic
-links are skipped, and a file or directory name that is not a command word
+links are skipped, a file without a `.ts`, `.mts`, `.js` or `.mjs` extension
+is ignored, and a directory or module file name that is not a command word
 (letters, digits, `-` and `_`) is an error. `treeFromFiles` takes the same files as
 a list, for a bundler that collects the modules itself.
 
@@ -471,7 +479,7 @@ a list, for a bundler that collects the modules itself.
 
 | Entry | Mount it as | The tool supplies |
 |---|---|---|
-| `config-command` | `config: configCommands(store)` | a `ConfigStore`: `layers`, `defaultLayer`, `keys`, `list`, `locations`, `set`, `unset`, and optionally `cliOnlyKeys`, `resolveKey` and `explain` |
+| `config-command` | `config: configCommands(store)` | a `ConfigStore`: `layers`, `defaultLayer`, `keys`, `list`, `locations`, `set`, `unset`, and optionally `cliOnlyKeys`, `resolveKey`, `dryRun` and `explain` |
 | `trust-command` | `trust: trustCommand(service)` | a `TrustService`: `trust`, `untrust`, `show`, `list`, and optionally `untrustAll` and `scopes` for `--scope` |
 | `guide` | `guide: guideCommand(topics, { title })` | `GuideTopic`s: `{ id, title, summary, body(ctx) }` |
 
@@ -494,9 +502,19 @@ Each store method receives the command context, so it can read `ctx.cwd`,
   key under none of them is refused too.
 - `config` with no subcommand lists. Each writable layer is a flag
   (`--user`, `--project`). A value is read as JSON, else as the bare string; a number too large for JSON (`1e400`) is a usage error.
-  An unknown key or a wrong value (`ConfigUsageError` from `set`) exits 2 with a
-  did-you-mean. A `get` with no value or an `unset` of a key not set in that
-  layer exits 1.
+  An unknown key or a wrong value exits 2 with a did-you-mean, from every
+  command: a key the store's `resolveKey` answers `undefined` for (`get`,
+  `unset`), or a `ConfigUsageError` from `set`, `unset` or `explain`. A known
+  `get` with no value or an `unset` of a key not set in that layer exits 1. A
+  store without `resolveKey` cannot tell an unknown key from an unset one, so
+  `get` then exits 1 for both. `get` of a key below a listed setting reads it out of that
+  setting's value. Every answer names the key as `resolveKey` gives it, so a
+  store with a shorthand (`strategy` for `pr_update.strategy`) shows the full
+  key.
+- `dryRun: true` on the store adds `--dry-run` to `set` and `unset`. The store
+  then gets `{ dryRun: true }` as their last argument, checks the change and
+  writes nothing. The answer has `dryRun: true`, and the text says `would set`
+  or `would remove`.
 - `trust` answers `{ action, changed, roots }` for every mode, so a script does
   not branch on the flag it passed. `action` names the mode: `trust`,
   `untrust`, `untrust-all`, `show` or `list`. Granting trust is `cli-only`; `--show`,
@@ -617,6 +635,11 @@ const server = await serveHttp(async (req) => {
 })
 ```
 
+The pieces the API is built from are exported for those routes: `newToken()`
+(128 random bits, hex), `tokenEquals(a, b)` (no early exit) and
+`readBody(request, max)` (the body as text, or null past `max` bytes, read as
+a stream so an oversized chunked body is never buffered).
+
 ### Exposure
 
 A command declares who may call it. `exposure: 'all'` (the default) is the
@@ -644,7 +667,8 @@ commands never confirm.
 
 `runApp(app, argv, { cwd, env, terminal })` runs in process and returns
 `{ exit, out, err, json() }`. `checkApp(app)` reports a node whose help does
-not render or a data command with no output schema. `checkGuide(app)` runs the
+not render or a `schema` document that does not render (a missing output
+schema already fails when the app is declared). `checkGuide(app)` runs the
 checks every guide shares: each topic prints, an unknown topic exits 2,
 `guide --help` works, and the prose names no flag that no command takes.
 
@@ -739,11 +763,11 @@ The experimental exports of `@osdlc/cli-tool/mcp`:
 The experimental exports of `@osdlc/cli-tool/http`:
 
 `HttpApi`, `HttpApiOptions`, `HttpServer`, `ServeHttpOptions`, `createHttpApi`, `httpApiCommand`,
-`serveHttp`
+`newToken`, `readBody`, `serveHttp`, `tokenEquals`
 
 The experimental exports of `@osdlc/cli-tool/devlink`:
 
-`CliIo`, `DevlinkError`, `ExecOptions`, `GitHead`, `HISTORY_FILE`, `HOME_FILE`, `HistoryEntry`,
+`DevlinkError`, `ExecOptions`, `GitHead`, `HISTORY_FILE`, `HOME_FILE`, `HistoryEntry`,
 `HistoryEvent`, `HistoryKind`, `InstallInput`, `InstallResult`, `InstalledLink`, `LauncherOptions`,
 `LinkInput`, `LinkResult`, `LinkStatus`, `Local`, `OffResult`, `OpOptions`, `ResolveOptions`,
 `RunOptions`, `Selected`, `Selection`, `ShimStatus`, `Source`, `StateOptions`, `StatusResult`,

@@ -82,7 +82,7 @@ const HTTP_INPUT = /^https?:\/\//i
 export function parseRepoRef(input: string, protocol: CloneProtocol = 'https'): RepoRef | null {
   const text = input.trim()
   if (text === '') return null
-  const info = parseGitUrl(text) ?? parseGitUrl(trimWebPath(text))
+  const info = parseGitUrl(text) ?? parseWebPage(text)
   if (info === null || !info.user || !info.project) return null
   const { domain: host, user: owner, project: repo } = info
   const kind: CloneProtocol = SSH_INPUT.test(text)
@@ -93,6 +93,21 @@ export function parseRepoRef(input: string, protocol: CloneProtocol = 'https'): 
   const cloneUrl =
     kind === 'ssh' ? `git@${host}:${owner}/${repo}.git` : `https://${host}/${owner}/${repo}.git`
   return { host, owner, repo, cloneUrl, committish: info.committish }
+}
+
+/**
+ * A web page under a project, read as the project. A GitLab page
+ * (`https://host/group/sub/repo/-/…`) is first cut at its `/-/`, which keeps a
+ * nested group whole. When that names no project (a GitHub path can hold a `-`
+ * segment too), the page is cut to its first two path segments instead.
+ */
+function parseWebPage(text: string): GitHostInfo | null {
+  const gitlab = /^(https?:\/\/[^/?#]+(?:\/[^/?#]+){2,}?)\/-(?:[/?#].*)?$/i.exec(text)
+  if (gitlab !== null) {
+    const info = parseGitUrl(gitlab[1]!)
+    if (info !== null && info.user && info.project) return info
+  }
+  return parseGitUrl(trimWebPath(text))
 }
 
 /** `https://host/a/b/anything…` → `https://host/a/b`; other inputs unchanged. */

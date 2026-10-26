@@ -88,6 +88,33 @@ describe('parseRepoRef', () => {
     expect(parseRepoRef(HTTPS)?.committish).toBeNull()
   })
 
+  test('a GitLab page in a nested group names the whole project path', () => {
+    for (const page of [
+      'https://gitlab.com/acme/platform/api/-/merge_requests/12',
+      'https://gitlab.com/acme/platform/api/-/tree/main',
+    ]) {
+      expect(parseRepoRef(page)).toMatchObject({
+        host: 'gitlab.com',
+        owner: 'acme/platform',
+        repo: 'api',
+        cloneUrl: 'https://gitlab.com/acme/platform/api.git',
+      })
+    }
+    expect(parseRepoRef('https://gitlab.com/group/proj/-/issues/3')).toMatchObject({
+      owner: 'group',
+      repo: 'proj',
+    })
+  })
+
+  test('a GitHub page with a `-` path segment still names its repo', () => {
+    expect(parseRepoRef('https://github.com/acme/widgets/blob/main/-/notes.md')).toMatchObject({
+      host: 'github.com',
+      owner: 'acme',
+      repo: 'widgets',
+      cloneUrl: 'https://github.com/acme/widgets.git',
+    })
+  })
+
   test('other hosts parse; a local path, an unknown host and empty input do not', () => {
     expect(parseRepoRef('https://gitlab.com/group/proj')).toMatchObject({
       host: 'gitlab.com',
@@ -96,6 +123,7 @@ describe('parseRepoRef', () => {
       cloneUrl: 'https://gitlab.com/group/proj.git',
     })
     expect(parseRepoRef('/Users/x/repo')).toBeNull()
+    expect(parseRepoRef('https://ghe.example.com/o/r/-/x')).toBeNull()
     expect(parseRepoRef('https://ghe.example.com/o/r')).toBeNull()
     expect(parseRepoRef('  ')).toBeNull()
   })
@@ -135,8 +163,18 @@ describe('parseRemoteUrl', () => {
     })
   })
 
-  test('local paths and single-segment URLs are null', () => {
+  test('a trailing slash after .git still drops the suffix', () => {
+    expect(parseRemoteUrl('https://github.com/acme/widgets.git/')).toMatchObject({
+      owner: 'acme',
+      repo: 'widgets',
+    })
+    expect(parseRemoteUrl('git@github.com:acme/widgets.git/')?.repo).toBe('widgets')
+  })
+
+  test('local paths, file:// URLs and single-segment URLs are null', () => {
     expect(parseRemoteUrl('/srv/git/repo.git')).toBeNull()
+    expect(parseRemoteUrl('file://localhost/srv/git/a/b.git')).toBeNull()
+    expect(parseRemoteUrl('file:///srv/git/a/b.git')).toBeNull()
     expect(parseRemoteUrl('https://host/only')).toBeNull()
     expect(parseRemoteUrl('')).toBeNull()
   })

@@ -229,7 +229,9 @@ fn clear_readonly(path: &Path) {
 /// the read-only flag on Windows. The setuid, setgid and sticky bits are
 /// dropped. Owner and group are not copied: the new file belongs to the
 /// writing process. A new file gets the platform default, which on Unix is
-/// `0o666` less the process umask.
+/// `0o666` less the process umask. On Unix an overwrite creates the temp file
+/// with the kept mode, so the new content is never more widely readable than
+/// the old file while it is written.
 ///
 /// A symlink at `path` is replaced by a regular file, not written through.
 /// The new file takes the mode of the file the link pointed to.
@@ -292,11 +294,17 @@ fn write_atomic_with(
             attempt
         );
         let candidate = dir.join(name);
-        match fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&candidate)
-        {
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        // Created with the kept mode (less the umask), so the content of an
+        // owner-only file is never readable by others while it is written.
+        // `set_permissions` below then makes the mode exact.
+        #[cfg(unix)]
+        if let Some(perms) = &keep {
+            use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+            options.mode(perms.mode());
+        }
+        match options.open(&candidate) {
             Ok(mut f) => {
                 // Armed before the first call that can fail, so a failed
                 // write, set-permissions or fsync removes the file.
@@ -906,6 +914,31 @@ mod tests {
             "got {msg}"
         );
         assert!(std::error::Error::source(&err).is_some());
+    }
+
+    #[test]
+    fn write_error_messages_match_the_typescript_twin() {
+        // packages/ts/etag-write pins the same wording; keep the two in step.
+        let conflict = WriteError::Conflict {
+            path: "x.md".into(),
+        };
+        assert_eq!(
+            conflict.to_string(),
+            "x.md changed on disk since it was read"
+        );
+        let exists = WriteError::ExistsWithoutEtag {
+            path: "x.md".into(),
+        };
+        assert_eq!(
+            exists.to_string(),
+            "x.md exists — send its etag to overwrite"
+        );
+        let io_err = WriteError::Io {
+            path: "x.md".into(),
+            source: io::Error::other("boom"),
+        };
+        assert_eq!(io_err.to_string(), "io error writing x.md: boom");
+        assert!(std::error::Error::source(&io_err).is_some());
     }
 
     #[cfg(unix)]

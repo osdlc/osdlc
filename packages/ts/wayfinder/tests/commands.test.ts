@@ -414,6 +414,56 @@ describe('run', () => {
     expect(ran.err).toContain('parameters unknown')
   })
 
+  /** A tool module whose one task runs `binary` and whose invoke refuses arguments. */
+  function pickyTool(binary: string): string {
+    return `export const tools = [{
+  id: 'picky',
+  markers: [{ files: '/picky.txt', tier: 'files' }],
+  roles: { runner: { kind: 'parse', chain: [], async collect() {
+    return { status: 'ok', diagnostics: [], tasks: [{
+      id: 'picky:picky.txt:web', runner: 'picky', path: ['picky', 'web'],
+      argv: [${JSON.stringify(binary)}, 'web'], cwd: '.', display: 'picky web', parameters: [],
+      source: 'picky.txt', origin: 'declared', tags: [],
+      persistent: { value: false, declared: false }, executes: 'local',
+    }] }
+  }, invoke() { throw new Error('picky: a process takes no arguments') } } },
+}]
+`
+  }
+
+  test('arguments a task cannot take exit 2 with code bad-arguments', async () => {
+    const dir = await root({ 'picky.txt': '', 'picky-tools.mjs': pickyTool('sh') })
+    const config = join(dir, 'picky-tools.mjs')
+    const ran = await way(
+      ['--config', config, 'run', 'picky:picky.txt:web', '--dry-run', '--json', '--', 'x'],
+      dir,
+    )
+    expect(ran.code).toBe(2)
+    expect(ran.json()).toMatchObject({
+      kind: 'error',
+      code: 'bad-arguments',
+      message: 'picky: a process takes no arguments',
+      exit: 2,
+    })
+  })
+
+  test('a binary that cannot start is a spawn error; from --cached it says to probe again', async () => {
+    const dir = await root({
+      'picky.txt': '',
+      'picky-tools.mjs': pickyTool('way-no-such-binary'),
+    })
+    const config = join(dir, 'picky-tools.mjs')
+    const hint = 'the task came from a stored probe and may no longer exist; run without --cached'
+    const fresh = await way(['--config', config, 'run', 'picky:picky.txt:web'], dir)
+    expect(fresh.code).toBe(1)
+    expect(fresh.err).toContain('way-no-such-binary: ')
+    expect(fresh.err).not.toContain(hint)
+    const cached = await way(['--config', config, 'run', '--cached', 'picky:picky.txt:web'], dir)
+    expect(cached.code).toBe(1)
+    expect(cached.err).toContain('way-no-such-binary: ')
+    expect(cached.err).toContain(hint)
+  })
+
   test('a real run is refused to the adapters; a dry run is not', async () => {
     const { app } = createWayApp({ home: '/' })
     const refused = await app.call(['run'], { id: 'x' }, { cwd: '/', env: {} }, { surface: 'mcp' })
@@ -480,6 +530,15 @@ describe('the command line', () => {
       exit: 2,
       hint: '"way --help" lists the commands',
     })
+  })
+
+  test('serve --port takes decimal digits from 1 to 65535 only', async () => {
+    const dir = await root({})
+    for (const bad of ['0x10', '1e3', '0', '65536', '8080abc', ' ']) {
+      const ran = await way(['serve', '--no-open', '--port', bad], dir)
+      expect(ran.code, bad).toBe(2)
+      expect(ran.err, bad).toContain('--port needs a port number from 1 to 65535')
+    }
   })
 
   test('the help lists the commands but not the contributor ones', async () => {

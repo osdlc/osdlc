@@ -243,6 +243,17 @@ describe('list', () => {
     await writeFile(join(store.dir(), 'repo-0123456789abcdef.4242.tmp'), '/half/written\n', 'utf-8')
     expect(await store.list()).toEqual([])
   })
+
+  test('ignores a marker not under the marker name of its root, as isTrusted does', async () => {
+    const { env, home: h } = await home()
+    const store = trustStore({ tool: 'tooly', env, home: h })
+    const repo = await root()
+    await mkdir(store.dir(), { recursive: true })
+    await writeFile(join(store.dir(), 'stray'), `${await store.resolveRoot(repo)}\n`, 'utf-8')
+    expect(await store.isTrusted(repo)).toBe(false)
+    expect(await store.list()).toEqual([])
+    expect(await store.untrustAll(repo)).toEqual([])
+  })
 })
 
 describe('resolveRoot', () => {

@@ -11,6 +11,7 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
 import { EXEC_MAX_AGE_MS, MODEL_VERSION, entryPath, type CacheEntry } from '../src/cache.ts'
+import { MAX_FINGERPRINT_FILES } from '../src/fingerprint.ts'
 import type { CollectOptions, DetectOptions } from '../src/contract.ts'
 import type { ProviderResult, Task } from '../src/model.ts'
 import { nodeScripts, pnpm } from '../src/plugins/node/index.ts'
@@ -468,6 +469,35 @@ describe('runners.readCached', () => {
       await removeRoot(cache)
     }
   })
+
+  // 257 files to write and hash, which Windows runners take seconds over.
+  test(
+    'a truncated fingerprint is an info diagnostic on the runner',
+    { timeout: 30_000 },
+    async () => {
+      const jobs: Record<string, string> = { 'alpha.txt': 'build' }
+      for (let i = 0; i <= MAX_FINGERPRINT_FILES; i++) jobs[`job-${i}.job`] = 'x'
+      const root = await fixtureRoot(jobs)
+      const cache = await fixtureRoot({})
+      try {
+        const s = setup([listingTool('jobs'), parseTool('alpha')])
+        const profile = await detect(s, root)
+        const live = await s.project.runners.collectAndCache(profile, cache, s.options)
+        const diagnosticsOf = (id: string) =>
+          live.reports.find((r) => r.runner === id)?.diagnostics ?? []
+
+        expect(diagnosticsOf('jobs')).toEqual([
+          {
+            severity: 'info',
+            message: expect.stringContaining(`first ${MAX_FINGERPRINT_FILES} files`),
+          },
+        ])
+      } finally {
+        await removeRoot(root)
+        await removeRoot(cache)
+      }
+    },
+  )
 
   test('a queried pattern that matches nothing new leaves the entry fresh', async () => {
     // Re-expanding the query must not make every entry stale.

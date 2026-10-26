@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { StringDecoder } from 'node:string_decoder'
 
 import type { RawProcessOutput } from './adapters/types.js'
@@ -124,16 +124,31 @@ export function spawnCollect(argv: string[], options: SpawnOptions): Promise<Raw
 
     // Raw `node:child_process`, not the command seam: the package stays
     // dependency-free and this manages a long-lived process group (D-07).
-    const child = spawn(binary, args, {
-      cwd: options.cwd,
-      env: options.env,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      // Own process group, so a timeout or abort can kill the whole tree.
-      // Without it, a shell child (such as `sh -c "sleep 30"`) leaves its
-      // grandchild running with the stdio pipe open, and `close` never fires.
-      // The call then waits until the real command ends, past timeoutMs.
-      detached: true,
-    })
+    let child: ChildProcessWithoutNullStreams
+    try {
+      child = spawn(binary, args, {
+        cwd: options.cwd,
+        env: options.env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        // Own process group, so a timeout or abort can kill the whole tree.
+        // Without it, a shell child (such as `sh -c "sleep 30"`) leaves its
+        // grandchild running with the stdio pipe open, and `close` never fires.
+        // The call then waits until the real command ends, past timeoutMs.
+        detached: true,
+      })
+    } catch (e) {
+      // Node rejects some arguments before it starts anything, by throwing
+      // (a NUL byte in argv or env, say). The process never started, the same
+      // as a missing binary, so it resolves the same way.
+      resolve({
+        stdout: '',
+        stderr: e instanceof Error ? e.message : String(e),
+        exitCode: null,
+        durationMs: 0,
+        timedOut: false,
+      })
+      return
+    }
 
     // A caller's callback must not end the run. The first throw, or the first
     // rejection of a promise it returns, is swallowed and stops later calls.

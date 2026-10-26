@@ -667,6 +667,35 @@ describe('createSession', () => {
     expect(await (await open()).savedCatalog()).toBeNull()
   })
 
+  test('--cached under --no-exec probes a runner whose stored rows were taken with exec allowed', async () => {
+    const dir = await root({
+      'package.json': '{"name":"p","scripts":{"b":"x"}}',
+      'mise.toml': '[tasks.hello]\nrun = "echo hi"\n',
+    })
+    const granted = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    await granted.grantTrust()
+    await granted.catalog()
+    await flushWrites()
+
+    const off = await createSession({
+      dir,
+      cwd: dir,
+      env: {},
+      home: dir,
+      flags: { allowExec: false },
+    })
+    // The store drops the node-scripts report taken with exec allowed.
+    const stored = await off.storedCatalog()
+    expect(stored?.catalog.reports.map((r) => r.runner)).not.toContain('node-scripts')
+    expect(stored?.cache.find((c) => c.runner === 'node-scripts')?.state).toBe('miss')
+
+    const cached = await off.catalog({ cached: true })
+    expect(cached.origin).toBe('store')
+    const npm = cached.catalog.reports.find((r) => r.runner === 'node-scripts')
+    expect(npm?.tasks.map((t) => t.id)).toContain('node-scripts:package.json:b')
+    expect(cached.cache.find((c) => c.runner === 'node-scripts')?.state).toBe('fresh')
+  })
+
   test('a malformed or oversized view file is deleted and the store answers', async () => {
     const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
     const session = await createSession({ dir, cwd: dir, env: {}, home: dir })

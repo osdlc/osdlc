@@ -42,9 +42,10 @@ not intend are in scope.
   value into a REST path. Pass endpoints you built, not text from a user.
   `issueCommentEdit(commentId)` accepts only digits and throws `RangeError`
   for anything else, so its id cannot change the path.
-- **`gh` chooses the repository.** It reads the working directory's git
-  remotes, or `GH_REPO`. A checkout whose `.git/config` points `origin` at
-  another repository sends mutations there. `ownerRepo` only parses a URL you
+- **Without a `repo` option, `gh` chooses the repository.** It reads the
+  working directory's git remotes, or `GH_REPO`. A checkout whose
+  `.git/config` points `origin` at another repository sends mutations there.
+  Pass `repo` (and `hostname`) to name the target in argv. `ownerRepo` only parses a URL you
   give it. It does not check where `gh` will act.
 - **`raw` and `rawChecked` run any `gh` command.** They have no allow list.
 - **`CommandFailed` carries the full argv.** Its message quotes the arguments,

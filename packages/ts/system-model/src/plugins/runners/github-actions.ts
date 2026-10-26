@@ -108,7 +108,7 @@
 import type { ProviderContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { taskId } from '../support/shared.ts'
+import { baseName, taskId } from '../support/shared.ts'
 import {
   BLOCK_SCALAR_VALUE,
   leadingSpaces,
@@ -150,11 +150,6 @@ function isWorkflowPath(rel: string): boolean {
   if (rest.length === 0 || rest.includes('/')) return false
   // A non-empty stem is required; the extension itself is not a name.
   return /\.(?:yml|yaml)$/.test(rest) && !/^\.(?:yml|yaml)$/.test(rest)
-}
-
-function basenameOf(rel: string): string {
-  const at = rel.lastIndexOf('/')
-  return at === -1 ? rel : rel.slice(at + 1)
 }
 
 /** How the `on:` declaration was read. */
@@ -366,7 +361,7 @@ export function readWorkflow(text: string): WorkflowRead {
 }
 
 function makeTask(file: string, doc: string): Task {
-  const workflow = basenameOf(file)
+  const workflow = baseName(file)
   // `gh workflow run [<workflow-id> | <workflow-name>]`, checked against
   // `gh workflow run --help` on gh 2.97.0, whose example is
   // `gh workflow run triage.yml`. gh identifies a workflow by its file name,
@@ -445,7 +440,7 @@ export const githubActionsRunner: RunnerRole = {
         continue
       }
       if (read.trigger.kind === 'read' && !read.trigger.dispatchable) {
-        skipped.push(basenameOf(file))
+        skipped.push(baseName(file))
         continue
       }
       if (read.trigger.kind === 'unreadable') {
@@ -456,7 +451,7 @@ export const githubActionsRunner: RunnerRole = {
           diagnostics.push({ severity: 'warning', message: UNREADABLE_ON, source: file })
         }
       }
-      tasks.push(makeTask(file, read.name ?? basenameOf(file)))
+      tasks.push(makeTask(file, read.name ?? baseName(file)))
     }
 
     if (skipped.length > 0) {

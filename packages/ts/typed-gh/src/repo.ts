@@ -2,23 +2,30 @@
  * Reading the GitHub owner and repository from a git remote, and a pull
  * request from a URL or what a person typed.
  *
- * `parseOwnerRepo` uses `@osdlc/typed-git`'s `parseGitUrl`. It lives here so
+ * `parseOwnerRepo` uses `@osdlc/typed-git`'s `parseGitUrl`, falling back to
+ * its host-agnostic `parseRemoteUrl` for an Enterprise host. It lives here so
  * callers do not each write a regex over `remote.origin.url`. Such a regex
  * usually misses a URL form: scp-style, a trailing `.git`, an `ssh://` port,
  * or a bare `owner/repo`.
  */
 
-import { parseGitUrl } from '@osdlc/typed-git'
+import { parseGitUrl, parseRemoteUrl } from '@osdlc/typed-git'
 
 import type { OwnerRepo } from './types.ts'
 
 /**
  * `{owner, repo}` from any git remote reference, or null when it names no
  * project. Handles https, ssh, scp-style, and bare `owner/repo`.
+ *
+ * A clone URL on a host `parseGitUrl` does not know, such as a GitHub
+ * Enterprise host, is read host-agnostically by `parseRemoteUrl`.
  */
 export function parseOwnerRepo(remoteUrl: string): OwnerRepo | null {
   const info = parseGitUrl(remoteUrl)
-  if (info === null) return null
+  if (info === null) {
+    const remote = parseRemoteUrl(remoteUrl)
+    return remote === null ? null : { owner: remote.owner, repo: remote.repo }
+  }
   const { user, project } = info
   if (!user || !project) return null
   return { owner: user, repo: project }

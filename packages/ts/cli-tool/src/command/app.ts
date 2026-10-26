@@ -11,7 +11,7 @@ import { closestMatches } from '@osdlc/config-layers/did-you-mean'
 
 import { defineCli, type FlagSpec, type FlagValues } from '../define-cli.ts'
 import { EXIT, type ExitCode } from '../exit.ts'
-import { exitCodeFor, failureOf, renderFailure } from '../failure.ts'
+import { exitCodeFor, failureOf, renderError, renderFailure } from '../failure.ts'
 import { colorEnabled, type CliContext } from '../io.ts'
 import { safe } from '../safe.ts'
 import { helpWidth } from '../wrap.ts'
@@ -439,7 +439,8 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
     }
   }
 
-  const globalValueFlags = valueTaking(globals)
+  // The builtins count too: `--output json config get` routes like `--json`.
+  const globalValueFlags = valueTaking({ ...globals, ...BUILTIN_FLAGS })
 
   /** Find the node the command line selects, and the words left for its parser. */
   const route = (argv: readonly string[]): { node: Placed; words: string[]; rest: string[] } => {
@@ -490,7 +491,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
      * error document on stdout too, since that is where a caller reads data.
      */
     const fail = (code: string, message: string, exit: ExitCode, hint?: string): number => {
-      base.io.stderr(`${spec.name}: ${safe(message)}\n${safe(hint ?? '')}`)
+      base.io.stderr(`${renderError(message, spec.name)}${safe(hint ?? '')}`)
       if (errorMode !== 'text') {
         const doc = errorDocument(code, message, exit, hint)
         base.io.stdout(`${JSON.stringify(doc, null, errorMode === 'json' ? 2 : undefined)}\n`)
@@ -635,7 +636,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       }
       const failure = failureOf(err)
       if (failure !== null) {
-        base.io.stderr(safe(renderFailure(failure, spec.name)))
+        base.io.stderr(renderFailure(failure, spec.name))
         if (errorMode !== 'text') {
           const doc = errorDocument(
             failure.kind,

@@ -120,8 +120,11 @@ function transformSchemaNode(cx: Cx, node: unknown, path: string): void {
   }
 
   // After the base type is final (`int` may have turned `number` into `integer`),
-  // `nullable: true` becomes `type: [T, "null"]`.
-  if (has(node, 'nullable')) {
+  // `nullable: true` becomes `type: [T, "null"]`. Any other value (`nullable: false`) is the v2
+  // default, so the key is just dropped.
+  if (has(node, 'nullable') && scalarOf(node, 'nullable') !== true) {
+    deleteKey(node, 'nullable')
+  } else if (has(node, 'nullable')) {
     const base = scalarOf(node, 'type')
     if (typeof base === 'string') {
       deleteKey(node, 'nullable')

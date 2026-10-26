@@ -31,6 +31,7 @@ import {
   prUpdateBranch,
   prView,
   repoList,
+  repoView,
   setIssueLabel,
   type AsyncCommandRunner,
   type CommandRunner,
@@ -147,11 +148,25 @@ describe("an empty hostname ''", () => {
     )
     expect(wire(authStatus(empty))).toEqual(wire(authStatus(none)))
     expect(wire(repoList('acme', {}, empty))).toEqual(wire(repoList('acme', {}, none)))
+    expect(wire(repoView(undefined, ['name'], empty))).toEqual(
+      wire(repoView(undefined, ['name'], none)),
+    )
+    expect(repoView('acme/other', ['name'], { hostname: '' }).argv[2]).toBe('acme/other')
   })
 
   test('clients accept it', () => {
     expect(() => new Gh('/repo', empty)).not.toThrow()
     expect(() => new AsyncGh('/repo', empty)).not.toThrow()
+  })
+})
+
+describe('a label name that reads as a flag', () => {
+  test('throws RangeError instead of reaching gh as an option', () => {
+    expect(() => createLabel({ name: '--repo=o/x', color: 'fff', description: '' })).toThrow(
+      RangeError,
+    )
+    expect(() => editLabel('-x', {})).toThrow(RangeError)
+    expect(() => editLabel('needs-review', {})).not.toThrow()
   })
 })
 

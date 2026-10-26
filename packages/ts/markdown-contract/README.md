@@ -265,7 +265,7 @@ The experimental exports:
 `InferredFile`, `TextEdit`, `runCli` and `CliResult`.
 
 Config inference and the in-process command work and are tested, but their
-shape is not settled. `TextEdit` is the type of `Finding.fix`, and no check
+shape is not settled. `TextEdit` is the type of `Finding.fix.edit`, and no check
 fills it yet. The `markdown-contract` command, its flags and its output
 formats are experimental in the same way.
 

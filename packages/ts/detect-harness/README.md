@@ -60,7 +60,7 @@ harness, in a fixed order. Options:
 | Option          | Default            | Meaning                                                                   |
 | --------------- | ------------------ | ------------------------------------------------------------------------- |
 | `projectRoot`   | `process.cwd()`    | The project to read.                                                      |
-| `home`          | `os.homedir()`     | The home folder to read.                                                  |
+| `home`          | absolute `HOME`    | The home folder to read. A relative `HOME` counts as unset.               |
 | `env`           | `process.env`      | The environment: overrides such as `CLAUDE_CONFIG_DIR`, `PATH`, API keys. |
 | `mode`          | `full`             | `project` reads project files only; see below.                            |
 | `allowExec`     | `false`            | Run `<binary> --version` to fill `install.version`.                       |
@@ -70,11 +70,11 @@ harness, in a fixed order. Options:
 | `exclude`       | none               | Harness ids to skip.                                                      |
 | `providers`     | built-ins          | Replace or add providers.                                                 |
 | `binaries`      | the table's        | Binary name per harness id, for a setup that renames one.                 |
-| `which`         | walks `env.PATH`   | `PATH` lookup. Tests inject this.                                         |
+| `which`         | walks `env.PATH`   | `PATH` lookup, absolute entries only. Tests inject this.                  |
 | `makeRunner`    | command seam       | Builds the runner for `--version`. Tests inject this.                     |
 | `platform`      | `process.platform` | Chooses the managed-settings folder.                                      |
 | `signal`        | none               | An `AbortSignal` that stops the `--version` run; providers see it too.    |
-| `systemRoot`    | `/`                | Root for system paths (`/etc/claude-code`, `/Applications`).              |
+| `systemRoot`    | `/` (win32: drive) | Root for system paths (`/etc/claude-code`, `/Applications`).              |
 
 ### Project mode
 
@@ -142,7 +142,8 @@ one per shape).
 ## What each harness reads
 
 - **claude**: settings at four scopes (user, project, local, managed);
-  `~/.claude.json` for user and local MCP servers only; `.mcp.json`;
+  `~/.claude.json` for user and local MCP servers and the project's MCP
+  approval lists only; `.mcp.json`;
   `managed-mcp.json`; the plugin and marketplace registries; each enabled
   plugin's skills, commands, agents, hooks and MCP servers; user and project
   skills, commands and agents; `CLAUDE.md` files and rules folders.
@@ -156,8 +157,8 @@ one per shape).
 Claude Code precedence: managed beats local, local beats project, project beats
 user. A single value (`defaultMode`, one `enabledPlugins` entry) takes the
 highest scope's; permission rules and hooks from every scope add up. A plugin
-registry record is reported when it applies to this project: a user install,
-or a project or local install for this project root. In a linked git worktree
+registry record is reported when it applies to this project: a user or managed
+install, or a project or local install for this project root. In a linked git worktree
 the main checkout counts too: the `.git` file and its `commondir` name it, and
 no git command runs. When several apply, the highest scope's is kept.
 
@@ -198,8 +199,9 @@ makes a server inactive.
   Other args are returned as written.
 - Pass `includeValues: true` to keep every value above as written.
 - Credential files are tested for existence, never read for values.
-- From `~/.claude.json`, only the `mcpServers` maps are read, plus whether an
-  `oauthAccount` key exists.
+- From `~/.claude.json`, only the `mcpServers` maps and this project's
+  `enabledMcpjsonServers` and `disabledMcpjsonServers` are read, plus whether
+  an `oauthAccount` key exists.
 - pi's auth file is read for its top-level key names, which are its provider
   names.
 - Hook commands, and MCP args that match none of the rules above, are
@@ -340,6 +342,8 @@ The author's own related libraries:
 ## Platforms
 
 - Linux and macOS are supported. CI tests them on Node 22 and 24.
+- `PATH` lookup searches absolute entries only. A relative or empty entry is
+  skipped, so a binary the project ships is never reported or run.
 - Windows is handled in the code but is not tested. `PATH` lookup tries the
   `PATHEXT` suffixes, and the system root is the system drive. On Windows the
   execute bit does not exist, so an install is found by the file's name and

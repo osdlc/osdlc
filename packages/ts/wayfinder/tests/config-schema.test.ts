@@ -306,4 +306,13 @@ describe('paths', () => {
       'WAYFINDER_ROOT',
     )
   })
+
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)('a relative WAYFINDER_<HOME>_DIR is an error too', () => {
+    for (const name of ['WAYFINDER_CACHE_DIR', 'WAYFINDER_STATE_DIR', 'WAYFINDER_CONFIG_DIR']) {
+      expect(() => appDirs({ env: { [name]: 'rel' }, home: '/home/ada' })).toThrow(
+        `${name} must be an absolute path`,
+      )
+    }
+  })
 })

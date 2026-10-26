@@ -461,6 +461,27 @@ mod tests {
     }
 
     #[test]
+    fn a_fence_followed_by_other_text_does_not_close_the_block() {
+        let src = "---\na: 1\n---x\nb: 2\n---\nbody\n";
+        let s = split(src);
+        assert_eq!(s.yaml, Some("a: 1\n---x\nb: 2"));
+        assert_eq!(s.body, "body\n");
+        assert!(!s.unterminated);
+        assert_eq!(compose(s.yaml, s.body, s.shape), src);
+
+        // With no real closing fence after it, the block is unterminated.
+        let s = split("---\na: 1\n---x\n");
+        assert_eq!(s.yaml, None);
+        assert_eq!(s.body, "---\na: 1\n---x\n");
+        assert!(s.unterminated);
+
+        // A lone `\r` after the dashes is not a CRLF line end.
+        let s = split("---\na\n---\rb\n");
+        assert_eq!(s.yaml, None);
+        assert!(s.unterminated);
+    }
+
+    #[test]
     fn crlf_keeps_the_carriage_return_on_the_yaml_side() {
         let s = split("---\r\ntitle: hi\r\n---\r\nbody\r\n");
         assert_eq!(s.yaml, Some("title: hi\r"));

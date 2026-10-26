@@ -541,17 +541,24 @@ export function statusEntries(): GitVerb<StatusEntry[]> {
         const f = fields[i]!
         if (f.length < 4) continue
         const x = f[0]!
-        out.push({ x, y: f[1]!, path: f.slice(3) })
-        if (x === 'R' || x === 'C') i++
+        const y = f[1]!
+        out.push({ x, y, path: f.slice(3) })
+        // A rename or copy in either column (a worktree rename of an
+        // intent-to-add file sets Y) is followed by its source field.
+        if (x === 'R' || x === 'C' || y === 'R' || y === 'C') i++
       }
       return out
     },
   }
 }
 
-/** Local branch shortnames matching `pattern` (all when omitted). */
+/**
+ * Local branch names matching `pattern` (all when omitted). The name is
+ * `refs/heads/` stripped, never `%(refname:short)`, which answers
+ * `heads/<name>` when a tag shares the name.
+ */
 export function branches(pattern?: string | undefined): GitVerb<string[]> {
-  const argv = ['branch', '--list', '--format=%(refname:short)']
+  const argv = ['branch', '--list', '--format=%(refname:lstrip=2)']
   if (pattern !== undefined) argv.push(positional('branches', 'pattern', pattern))
   return { argv, absent: NONE, parse: trimmedLines }
 }

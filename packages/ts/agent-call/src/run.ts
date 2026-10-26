@@ -204,6 +204,20 @@ function outputCap(value: number | undefined): number | undefined {
   return Math.ceil(value)
 }
 
+/** The longest delay `setTimeout` honours. A longer one fires after 1 ms. */
+const MAX_TIMER_MS = 2 ** 31 - 1
+
+/**
+ * `timeoutMs` as the runner applies it: `undefined` for no timeout (not given,
+ * `Infinity`, or not above 0, as before), else whole milliseconds, capped at
+ * the longest delay a timer can hold. Without the cap, `Infinity` or a value
+ * past 2^31-1 ms would kill the agent at once.
+ */
+function timeoutCap(value: number | undefined): number | undefined {
+  if (value === undefined || value === Infinity || !(value > 0)) return undefined
+  return Math.min(Math.ceil(value), MAX_TIMER_MS)
+}
+
 function isPlainFileName(name: string): boolean {
   return name !== '' && !name.includes('/') && !name.includes('\\') && !name.includes('..')
 }
@@ -247,7 +261,7 @@ async function execute(
       stdin: planned.stdin,
       cwd: planned.cwd,
       env,
-      timeoutMs: spec.timeoutMs,
+      timeoutMs: timeoutCap(spec.timeoutMs),
       signal: options.signal,
       maxOutputBytes,
       onOutput: options.onOutput,

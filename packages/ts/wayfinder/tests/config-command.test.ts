@@ -111,11 +111,14 @@ describe('config get', () => {
     expect((await s.run(['config', 'get', 'runners.order'])).out).toBe('["just"]\n')
   })
 
-  test('a key with no value exits 1', async () => {
+  test('an unknown key is a usage error', async () => {
     const s = await scenario()
     const ran = await s.run(['config', 'get', 'nope'])
-    expect(ran.exit).toBe(1)
-    expect(ran.err).toContain('no value for nope')
+    expect(ran.exit).toBe(2)
+    expect(ran.err).toContain('unknown setting: nope')
+    const unset = await s.run(['config', 'unset', 'nope'])
+    expect(unset.exit).toBe(2)
+    expect(unset.err).toContain('unknown setting: nope')
   })
 })
 

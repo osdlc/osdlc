@@ -20,7 +20,9 @@
 import { parse as parseToml } from 'smol-toml'
 
 import type { ProviderContext, RunnerContext } from '../../contract.ts'
+import type { CargoFact } from '../../manifests.ts'
 import type { Diagnostic, ProviderResult, Task } from '../../model.ts'
+import { globMatches } from '../../roles.ts'
 import type { RunnerRole } from '../../tool.ts'
 import { dirOf, isTable, joinRel, looksPersistent, taskId } from '../support/shared.ts'
 
@@ -195,19 +197,36 @@ async function readAliases(
 
 /** Directories of crates that are not workspace members, sorted. */
 function crateDirs(ctx: RunnerContext): string[] {
-  const crates = ctx.profile.packages.filter((p) => p.manifests.cargo !== undefined)
-  const roots = new Set(
-    crates.filter((p) => p.manifests.cargo?.workspace === true).map((p) => p.dir),
-  )
-  return crates
-    .map((p) => p.dir)
-    .filter(
-      (dir) =>
-        !ancestors(dir)
-          .slice(1)
-          .some((at) => roots.has(at)),
-    )
-    .sort()
+  const facts = new Map<string, CargoFact>()
+  for (const p of ctx.profile.packages) {
+    if (p.manifests.cargo !== undefined) facts.set(p.dir, p.manifests.cargo)
+  }
+  return [...facts.keys()].filter((dir) => !isMember(dir, facts)).sort()
+}
+
+/**
+ * Whether cargo treats the crate at `dir` as a member of a workspace above
+ * it. A crate that declares `[workspace]` is its own root. Otherwise cargo
+ * takes the nearest `[workspace]` root above that does not exclude it. A
+ * root excludes it when its `exclude` holds a prefix of its path and
+ * `members` does not list it.
+ */
+function isMember(dir: string, facts: ReadonlyMap<string, CargoFact>): boolean {
+  if (facts.get(dir)?.workspace === true) return false
+  for (const at of ancestors(dir).slice(1)) {
+    const root = facts.get(at)
+    if (root?.workspace !== true) continue
+    const rel = at === '.' ? dir : dir.slice(at.length + 1)
+    const excluded = (root.workspaceExclude ?? []).some((entry) => {
+      const prefix = entry.replace(/^\.\//, '').replace(/\/+$/, '')
+      return rel === prefix || rel.startsWith(`${prefix}/`)
+    })
+    if (!excluded || (root.workspaceMembers ?? []).some((glob) => globMatches(glob, rel))) {
+      return true
+    }
+    // Excluded here: cargo goes on to the next `[workspace]` root above.
+  }
+  return false
 }
 
 /** `dir` and each directory above it, up to the root. */
