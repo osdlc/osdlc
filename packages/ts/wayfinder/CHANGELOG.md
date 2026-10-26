@@ -1,5 +1,11 @@
 # @osdlc/wayfinder
 
+## 0.10.1
+
+### Patch Changes
+
+- e5265bc: Clearer wording in the README and the terminal UI and web view guides about the skills progress line and the runner time limit.
+
 ## 0.10.0
 
 ### Minor Changes
