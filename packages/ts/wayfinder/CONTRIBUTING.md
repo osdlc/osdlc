@@ -23,7 +23,8 @@ work in the package directory. The tests run on [Vitest](https://vitest.dev)
 under Node 22.22.2 or later. They build throwaway repositories in a temp
 directory, need `git` on the PATH, and need no network. The package imports its
 sibling libraries through their built `dist/`, so run `pnpm run build` at the
-repository root first.
+repository root first, and again after a pull. The suite stops before any test
+runs when a sibling's `dist/` is missing or older than its `src/`, and names it.
 
 ```sh
 pnpm install
