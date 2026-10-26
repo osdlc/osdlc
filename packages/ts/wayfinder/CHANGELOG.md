@@ -1,5 +1,23 @@
 # @osdlc/wayfinder
 
+## 0.11.0
+
+### Minor Changes
+
+- da5e6a3: `way clean` now compares real paths, through `@osdlc/path-guard` (a new runtime dependency), when it checks a store against the home directory, against another store, and when it prunes empty directories above a removed store. A store that holds the home directory only through a symbolic link above it (a store under `~/alias/...` where `alias` links to a directory that holds the home) is no longer removed. Two stores that overlap only through a symbolic link now need `--yes`, and an old pre-release path that reaches a current store through a link is no longer listed as old.
+
+### Patch Changes
+
+- Updated dependencies [da5e6a3]
+- Updated dependencies [da5e6a3]
+- Updated dependencies [da5e6a3]
+  - @osdlc/command-seam@0.14.0
+  - @osdlc/typed-git@0.10.0
+  - @osdlc/detect-harness@0.7.0
+  - @osdlc/cli-tool@0.10.1
+  - @osdlc/system-model@0.7.1
+  - @osdlc/trust-repo@0.5.1
+
 ## 0.10.1
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @osdlc/cli-tool
 
+## 0.10.1
+
+### Patch Changes
+
+- Updated dependencies [da5e6a3]
+  - @osdlc/command-seam@0.14.0
+
 ## 0.10.0
 
 ### Minor Changes
