@@ -13,8 +13,15 @@ import { shellJoin } from '@osdlc/command-seam'
 import { nodeGuard } from '@osdlc/path-guard/node'
 import type { Git } from '@osdlc/typed-git'
 
-import { gapSentence, judgeLanding, recordPr } from './branches.ts'
-import { recordLanding, unmatchedSentence, type Landing } from './landing.ts'
+import { gapSentence, recordPr } from './branches.ts'
+import {
+  confirmationNote,
+  judgeLanding,
+  landingConfirmed,
+  recordLanding,
+  unmatchedSentence,
+  type Landing,
+} from './landing.ts'
 import { busyHolders, isIdleHolder, parseLockOwner, type ProcessProbe } from './processes.ts'
 import {
   authorizationsFor,
@@ -319,7 +326,7 @@ export function classifyWorktree(opts: {
     landed || !onDisk || head === null ? null : judgeLanding(repo, head, pr, gap, git)
   if (patch !== null) recordLanding(facts, patch)
   const patchLanded = patch !== null && patch.check !== null
-  const unlanded = unpushed.length > 0 && !landed && !patchLanded
+  const unlanded = unpushed.length > 0 && !landed && !landingConfirmed(patch)
   const requires = authorizationsFor({
     'abandon-unmerged': unlanded,
     'discard-changes': dirtyFiles.length > 0,
@@ -376,6 +383,11 @@ export function classifyWorktree(opts: {
       investigationParts: [
         `Worktree ${path} has uncommitted work or unpushed commits.`,
         `Branch: ${branch || '(detached)'}.`,
+        ...(patchLanded && unlanded
+          ? [
+              `Its commits are patch-equivalent to commits on ${landedRef(repo)} (${patch.check}), but ${confirmationNote(patch)}.`,
+            ]
+          : []),
         'Decide whether to preserve, push, or discard.',
       ],
     })
@@ -400,7 +412,7 @@ export function classifyWorktree(opts: {
       id: path,
       classification: 'safe-to-delete',
       action: 'remove',
-      reason: `clean; patch-equivalent to commits on ${landedRef(repo)} (${patch.check})`,
+      reason: `clean; patch-equivalent to commits on ${landedRef(repo)} (${patch.check}); ${confirmationNote(patch)}`,
       facts,
       commands: safeRemove,
       requires,

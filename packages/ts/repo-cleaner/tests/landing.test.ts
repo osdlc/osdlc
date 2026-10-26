@@ -207,6 +207,23 @@ describe('what stays unlanded', () => {
     expect(item.investigationParts.join(' ')).toContain('feat: c.txt')
   })
 
+  test('an unmatched commit with an empty subject is named without a trailing space', () => {
+    const dir = fresh('landing-empty-subject')
+    const [a] = branchOff(dir, 'feat', [['a.txt', 'a\n']])
+    sh(dir, ['checkout', '-q', 'feat'])
+    writeFileSync(join(dir, 'b.txt'), 'b\n')
+    sh(dir, ['add', '-A'])
+    sh(dir, ['commit', '-q', '--allow-empty-message', '-m', ''])
+    const short = sh(dir, ['rev-parse', '--short', 'HEAD'])
+    sh(dir, ['checkout', '-q', 'main'])
+    commitFile(dir, 'main.txt', 'main moved on\n', 'main: moves on')
+    sh(dir, ['cherry-pick', a!])
+    const unmatched = branchRow(dir, 'feat').facts['unmatched_commits'] as string[]
+    expect(unmatched).toHaveLength(1)
+    expect(unmatched[0]).toBe(unmatched[0]!.trim())
+    expect(short.startsWith(unmatched[0]!.slice(0, 7))).toBe(true)
+  })
+
   test('a plain diverged branch lists no unmatched commits', () => {
     const dir = fresh('landing-diverged')
     branchOff(dir, 'feat', [['a.txt', 'a\n']])
@@ -294,6 +311,206 @@ describe('what stays unlanded', () => {
     commitFile(dir, 'stray2.txt', 'stray2\n', 'stray: two')
     sh(dir, ['checkout', '-q', 'main'])
     expect(branchRow(dir, 'stray').classification).toBe('needs-investigation')
+  })
+})
+
+/** True when deleting the row needs the `abandon-unmerged` grant. */
+const needsGrant = (item: SweepItem): boolean => item.requires.includes('abandon-unmerged')
+
+describe('a patch match alone needs the grant', () => {
+  /**
+   * Eight identical lines. `git cherry` hashes the changed lines with their
+   * context and ignores line numbers, so inserting a line anywhere in the
+   * middle of this file gives one patch id; the merge of two such inserts
+   * keeps both lines.
+   */
+  const BASE = 'z\n'.repeat(8)
+
+  /** BASE with `NEW` inserted after `at` lines. */
+  const inserted = (at: number): string =>
+    `${'z\n'.repeat(at)}NEW\n${'z\n'.repeat(BASE.split('\n').length - 1 - at)}`
+
+  /** A repository whose base commit has `main.py`. */
+  function withMainPy(prefix: string): string {
+    const dir = fresh(prefix)
+    commitFile(dir, 'main.py', BASE, 'base: main.py')
+    return dir
+  }
+
+  /** Main inserts a line after 4 lines; the branch inserts the same line after 3. */
+  function independentEdit(prefix: string, junkCommits: boolean): string {
+    const dir = withMainPy(prefix)
+    sh(dir, ['checkout', '-q', '-b', 'feat', 'main'])
+    commitFile(dir, 'main.py', inserted(3), 'feat: insert NEW')
+    if (junkCommits) {
+      commitFile(dir, 'junk.txt', 'throwaway\n', 'feat: junk')
+      sh(dir, ['rm', '-q', 'junk.txt'])
+      sh(dir, ['commit', '-q', '-m', 'feat: drop junk'])
+    }
+    sh(dir, ['checkout', '-q', 'main'])
+    commitFile(dir, 'main.py', inserted(4), 'main: insert NEW')
+    return dir
+  }
+
+  test('a whitespace-only difference matches by patch id but conflicts on merge', () => {
+    const dir = fresh('landing-fp-indent')
+    commitFile(dir, 'cfg.yaml', 'a:\n  x: 1\n', 'base: cfg')
+    sh(dir, ['checkout', '-q', '-b', 'feat', 'main'])
+    commitFile(dir, 'cfg.yaml', 'a:\n  x: 2\n', 'feat: x is 2')
+    sh(dir, ['checkout', '-q', 'main'])
+    commitFile(dir, 'cfg.yaml', 'a:\n      x: 2\n', 'main: x is 2, indented differently')
+    const item = branchRow(dir, 'feat')
+    expect(item.facts['landing_check']).toBe('per-commit')
+    expect(item.facts['landing_content_confirmed']).toBe(false)
+    expect(item.reason).toContain('not confirmed')
+    expect(needsGrant(item)).toBe(true)
+  })
+
+  test('a small edit made independently on main matches a one-commit branch but needs the grant', () => {
+    const dir = independentEdit('landing-fp-generic', false)
+    const item = branchRow(dir, 'feat')
+    expect(item.facts['landing_check']).toBe('per-commit')
+    expect(item.facts['landing_content_confirmed']).toBe(false)
+    expect(needsGrant(item)).toBe(true)
+  })
+
+  test('a multi-commit branch whose net change equals that edit needs the grant', () => {
+    const dir = independentEdit('landing-fp-multi', true)
+    const item = branchRow(dir, 'feat')
+    expect(item.facts['landing_check']).toBe('squashed')
+    expect(item.facts['landing_content_confirmed']).toBe(false)
+    expect(needsGrant(item)).toBe(true)
+  })
+
+  test('work that landed and was then reverted on main needs the grant', () => {
+    const dir = fresh('landing-fp-reverted')
+    const [a] = branchOff(dir, 'feat', [['a.txt', 'a\n']])
+    commitFile(dir, 'main.txt', 'main moved on\n', 'main: moves on')
+    sh(dir, ['cherry-pick', a!])
+    sh(dir, ['revert', '--no-edit', 'HEAD'])
+    const item = branchRow(dir, 'feat')
+    expect(item.facts['landing_check']).toBe('per-commit')
+    expect(item.facts['landing_content_confirmed']).toBe(false)
+    expect(needsGrant(item)).toBe(true)
+  })
+
+  test('the same false positives on a worktree and a remote branch need the grant', () => {
+    const dir = independentEdit('landing-fp-wt', false)
+    const wt = join(dir, 'wt', 'feat')
+    sh(dir, ['worktree', 'add', '-q', wt, 'feat'])
+    const wtItem = row(sweep(dir).items, 'worktree', wt)
+    expect(wtItem.facts['landing_content_confirmed']).toBe(false)
+    expect(wtItem.classification).toBe('needs-investigation')
+    expect(needsGrant(wtItem)).toBe(true)
+    expect(wtItem.investigationParts.join(' ')).toContain('not confirmed')
+  })
+
+  test('a remote branch with a patch match but different content needs the grant', () => {
+    const parent = realpathSync(mkdtempSync(join(tmpdir(), 'landing-fp-remote-')))
+    roots.push(parent)
+    const { origin, checkout } = makeOriginAndCheckout({ parent })
+    git(['checkout', '-q', '--detach'], origin.dir)
+    const dir = checkout.dir
+    commitFile(dir, 'main.py', BASE, 'base: main.py')
+    sh(dir, ['push', '-q', 'origin', 'main'])
+    sh(dir, ['checkout', '-q', '-b', 'feat', 'main'])
+    commitFile(dir, 'main.py', inserted(3), 'feat: insert NEW')
+    sh(dir, ['push', '-q', 'origin', 'feat'])
+    sh(dir, ['checkout', '-q', 'main'])
+    commitFile(dir, 'main.py', inserted(4), 'main: insert NEW')
+    sh(dir, ['push', '-q', 'origin', 'main'])
+    const remote = row(sweep(dir).items, 'remote_branch', 'origin/feat')
+    expect(remote.facts['landing_check']).toBe('per-commit')
+    expect(remote.facts['landing_content_confirmed']).toBe(false)
+    expect(needsGrant(remote)).toBe(true)
+  })
+
+  test('the same edit made on both sides is confirmed and needs no grant', () => {
+    const dir = withMainPy('landing-confirmed-same')
+    sh(dir, ['checkout', '-q', '-b', 'feat', 'main'])
+    commitFile(dir, 'main.py', inserted(3), 'feat: insert NEW')
+    sh(dir, ['checkout', '-q', 'main'])
+    commitFile(dir, 'main.py', inserted(3), 'main: insert NEW')
+    const item = branchRow(dir, 'feat')
+    expect(item.facts['landing_content_confirmed']).toBe(true)
+    expect(item.reason).toContain('content confirmed')
+    expect(needsGrant(item)).toBe(false)
+  })
+
+  test('rebase, cherry-pick and squash merges are confirmed on every kind of row', () => {
+    const dir = fresh('landing-confirmed-merges')
+    branchOff(dir, 'rebased', [['r.txt', 'r\n']])
+    commitFile(dir, 'main.txt', 'main moved on\n', 'main: moves on')
+    rebaseMerge(dir, 'rebased')
+    for (const name of ['squashed', 'wt-branch']) {
+      branchOff(dir, name, [
+        [`${name}-1.txt`, '1\n'],
+        [`${name}-2.txt`, '2\n'],
+      ])
+      squashMerge(dir, name)
+    }
+    const wt = join(dir, 'wt', 'wt-branch')
+    sh(dir, ['worktree', 'add', '-q', wt, 'wt-branch'])
+    const items = sweep(dir).items
+    for (const item of [
+      row(items, 'local_branch', 'rebased'),
+      row(items, 'local_branch', 'squashed'),
+      row(items, 'worktree', wt),
+    ]) {
+      expect(item.facts['landing_content_confirmed'], item.id).toBe(true)
+      expect(item.classification, item.id).toBe('safe-to-delete')
+      expect(needsGrant(item), item.id).toBe(false)
+    }
+  })
+
+  test('a merge-tree that fails, conflicts, or prints a wrong tree leaves the verdict unconfirmed', () => {
+    const dir = fresh('landing-merge-tree-closed')
+    branchOff(dir, 'feat', [
+      ['a.txt', 'a\n'],
+      ['b.txt', 'b\n'],
+    ])
+    squashMerge(dir, 'feat')
+    const repo = repoInfo(dir)
+    const real = new Git(dir, { env: { ...IDENTITY } })
+    expect(assessLanding(repo, 'feat', real)).toEqual({ check: 'squashed', confirmed: true })
+    const answers: Array<[string, CommandResult]> = [
+      ['git older than 2.38', { exitCode: 129, stdout: '', stderr: 'usage: git merge-tree' }],
+      ['a failure', failure()],
+      ['a conflict', { exitCode: 1, stdout: `${'a'.repeat(40)}\0a.txt\0`, stderr: '' }],
+      ['a different tree', printed(`${'a'.repeat(40)}\0`)],
+      ['a tree that is not a sha', printed('oops\0')],
+      ['no output', printed('')],
+    ]
+    for (const [name, result] of answers) {
+      const git = interposed(dir, (argv) => (is(argv, 'merge-tree') ? result : undefined))
+      expect(assessLanding(repo, 'feat', git), name).toEqual({
+        check: 'squashed',
+        confirmed: false,
+      })
+    }
+  })
+
+  test('a plain merge of main into the branch blocks per-commit, and squashed decides', () => {
+    const dir = fresh('landing-merge-of-main')
+    const [a] = branchOff(dir, 'feat', [['a.txt', 'a\n']])
+    commitFile(dir, 'main.txt', 'main moved on\n', 'main: moves on')
+    sh(dir, ['checkout', '-q', 'feat'])
+    sh(dir, ['merge', '-q', '--no-ff', '-m', 'merge main into feat', 'main'])
+    sh(dir, ['checkout', '-q', 'main'])
+    sh(dir, ['cherry-pick', a!])
+    const item = branchRow(dir, 'feat')
+    expect(item.facts['landing_check']).toBe('squashed')
+  })
+
+  test('squashed accepts any one landed commit with the same net patch', () => {
+    // A branch of two commits whose net change was landed as a different single commit.
+    const dir = fresh('landing-any-commit')
+    sh(dir, ['checkout', '-q', '-b', 'feat', 'main'])
+    commitFile(dir, 'a.txt', 'one\n', 'feat: one')
+    commitFile(dir, 'a.txt', 'one\ntwo\n', 'feat: two')
+    sh(dir, ['checkout', '-q', 'main'])
+    commitFile(dir, 'a.txt', 'one\ntwo\n', 'main: written by someone else')
+    expect(branchRow(dir, 'feat').facts['landing_check']).toBe('squashed')
   })
 })
 
@@ -523,6 +740,46 @@ describe('the check changes nothing', () => {
     })
     expect(() => noIdentity.commitTree('HEAD^{tree}', { message: 'needs an identity' })).toThrow()
     expect(patchEquivalent(repoInfo(dir), 'feat', noIdentity)).toBe('squashed')
+  })
+})
+
+describe('the probe is isolated from local git configuration', () => {
+  test('replace refs are ignored, so a replaced commit cannot fake a landing', () => {
+    const dir = fresh('landing-replace')
+    branchOff(dir, 'feat', [['a.txt', 'a\n']])
+    commitFile(dir, 'main.txt', 'main moved on\n', 'main: moves on')
+    const repo = repoInfo(dir)
+    const git = new Git(dir, { env: { ...IDENTITY } })
+    expect(assessLanding(repo, 'feat', git)).toEqual({ check: null, unmatched: [] })
+    // Make `feat`'s commit read as main's tip: with replacements honoured, its
+    // tree and parents would be main's and it would look merged.
+    sh(dir, ['replace', '--force', sh(dir, ['rev-parse', 'feat']), sh(dir, ['rev-parse', 'main'])])
+    expect(assessLanding(repo, 'feat', git)).toEqual({ check: null, unmatched: [] })
+  })
+
+  test('commit signing set in the configuration is not run and no ref appears', () => {
+    const dir = fresh('landing-gpgsign')
+    branchOff(dir, 'feat', [
+      ['a.txt', 'a\n'],
+      ['b.txt', 'b\n'],
+    ])
+    squashMerge(dir, 'feat')
+    const refs = sh(dir, ['for-each-ref'])
+    const signing = new Git(dir, {
+      env: {
+        ...IDENTITY,
+        GIT_CONFIG_COUNT: '2',
+        GIT_CONFIG_KEY_0: 'commit.gpgsign',
+        GIT_CONFIG_VALUE_0: 'true',
+        GIT_CONFIG_KEY_1: 'gpg.program',
+        GIT_CONFIG_VALUE_1: '/nonexistent/gpg',
+      },
+    })
+    expect(assessLanding(repoInfo(dir), 'feat', signing)).toEqual({
+      check: 'squashed',
+      confirmed: true,
+    })
+    expect(sh(dir, ['for-each-ref'])).toBe(refs)
   })
 })
 

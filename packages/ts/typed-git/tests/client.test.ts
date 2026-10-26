@@ -487,6 +487,10 @@ describe('Git — argv construction (fake runner)', () => {
     const root = recorder(OK(`${sha}\n`))
     new Git('/repo', { runner: root.runner }).commitTree('tree1', { message: 'm' })
     expect(root.calls[0]!.argv).toEqual(['commit-tree', 'tree1', '-m', 'm'])
+    // A message that starts with a dash is its own argv element after `-m`, so git reads it as the value.
+    const dash = recorder(OK(`${sha}\n`))
+    new Git('/repo', { runner: dash.runner }).commitTree('tree1', { message: '--amend -x' })
+    expect(dash.calls[0]!.argv).toEqual(['commit-tree', 'tree1', '-m', '--amend -x'])
     for (const out of ['', 'not a sha\n']) {
       expect(() =>
         new Git('/repo', { runner: recorder(OK(out)).runner }).commitTree('t', { message: 'm' }),
@@ -508,6 +512,9 @@ describe('Git — argv construction (fake runner)', () => {
       expect(git.isDirty()).toBe(false)
       // A commit with an empty patch has no patch id, so it is never equivalent to anything.
       expect(git.cherry('HEAD', sha)).toEqual([{ sha, equivalent: false }])
+      // The message may start with a dash: git takes it as the value of `-m`.
+      const dashed = git.commitTree('HEAD^{tree}', { message: '--not-an-option' })
+      expect(git.log({ rev: dashed, format: '%s', maxCount: 1 }).trim()).toBe('--not-an-option')
       expect(git.cherry('HEAD', 'HEAD')).toEqual([])
       expect(git.cherry('HEAD~1', 'HEAD')).toEqual([{ sha: head, equivalent: false }])
       expect(() => git.cherry('HEAD', 'no-such-rev')).toThrow(FailureError)

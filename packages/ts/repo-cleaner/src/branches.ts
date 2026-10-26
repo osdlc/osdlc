@@ -13,13 +13,21 @@
 import { shellJoin } from '@osdlc/command-seam'
 import { forceWithLeaseArg, type Git } from '@osdlc/typed-git'
 
-import { assessLanding, recordLanding, unmatchedSentence, type Landing } from './landing.ts'
+import {
+  confirmationNote,
+  judgeLanding,
+  landingConfirmed,
+  recordLanding,
+  unmatchedSentence,
+  type Landing,
+} from './landing.ts'
 import {
   authorizationsFor,
   landedRef,
   makeItem,
   type Authorization,
   type PRInfo,
+  type PrEvidenceGap,
   type RepoInfo,
   type SweepItem,
 } from './types.ts'
@@ -30,9 +38,6 @@ import {
  */
 const LOCAL_FORMAT =
   '%(refname:short)%09%(upstream:short)%09%(upstream:track)%09%(committerdate:iso8601-strict)%09%(objectname)'
-
-/** Why a merged PR does not prove that `tip` landed. */
-export type PrEvidenceGap = 'other-base' | 'head-moved'
 
 /**
  * True when merged `pr` proves `tip` landed: it targeted the default branch
@@ -77,22 +82,6 @@ export function gapSentence(pr: PRInfo, gap: PrEvidenceGap, repo: RepoInfo): str
   return gap === 'other-base'
     ? `PR #${pr.number} merged into \`${pr.baseRef}\`, not \`${repo.mainBranch}\`, so it is not landing proof (other-base).`
     : `PR #${pr.number} merged at head ${pr.headOid ?? '(unknown)'}, which is not this tip, so it is not landing proof (head-moved).`
-}
-
-/**
- * The patch-equivalence verdict for a branch the first two signals did not
- * settle. A merged PR at an earlier head lets the check trust that head's
- * squash merge and look at the commits after it.
- */
-export function judgeLanding(
-  repo: RepoInfo,
-  tip: string,
-  pr: PRInfo | undefined,
-  gap: PrEvidenceGap | null,
-  git: Git,
-): Landing {
-  const prHead = pr !== undefined && gap === 'head-moved' ? pr.headOid : null
-  return assessLanding(repo, tip, git, prHead)
 }
 
 /** What deleting a branch needs: its unlanded commits, and its open PR. */
@@ -223,7 +212,7 @@ export function classifyLocalBranch(opts: {
   const patch: Landing | null = landed || isAncestor ? null : judgeLanding(repo, sha, pr, gap, git)
   if (patch !== null) recordLanding(facts, patch)
   const patchLanded = patch !== null && patch.check !== null
-  const unmerged = !landed && !isAncestor && !patchLanded
+  const unmerged = !landed && !isAncestor && !landingConfirmed(patch)
   if (!landed && !isAncestor) {
     facts['unique_commits'] = git.at(repo.root).aheadBehind(repo.mainBranch, sha).ahead
   }
@@ -261,7 +250,7 @@ export function classifyLocalBranch(opts: {
       id: name,
       classification: 'safe-to-delete',
       action: 'delete',
-      reason: `patch-equivalent to commits on ${compareRef} (${patch.check})`,
+      reason: `patch-equivalent to commits on ${compareRef} (${patch.check}); ${confirmationNote(patch)}`,
       facts,
       commands: deleteCmd,
       requires,
@@ -363,7 +352,7 @@ export function classifyRemoteBranch(opts: {
   const patch: Landing | null = landed || isAncestor ? null : judgeLanding(repo, sha, pr, gap, git)
   if (patch !== null) recordLanding(facts, patch)
   const patchLanded = patch !== null && patch.check !== null
-  const unmerged = !landed && !isAncestor && !patchLanded
+  const unmerged = !landed && !isAncestor && !landingConfirmed(patch)
   if (!landed && !isAncestor) {
     // Unknown (null) when the clone lacks `sha` or `remoteMain`, as above.
     const counted = git.at(repo.root).try.aheadBehind(remoteMain, sha)
@@ -403,7 +392,7 @@ export function classifyRemoteBranch(opts: {
       id,
       classification: 'safe-to-delete',
       action: 'delete',
-      reason: `patch-equivalent to commits on ${remoteMain} (${patch.check})`,
+      reason: `patch-equivalent to commits on ${remoteMain} (${patch.check}); ${confirmationNote(patch)}`,
       facts,
       commands: deleteCmd,
       requires,
