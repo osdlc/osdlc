@@ -70,4 +70,12 @@ describe('which adapter', () => {
     expect(which('bin/tool', { PATH: '/bin' }, 'win32')).toBeNull()
     expect(calls).toHaveLength(1)
   })
+
+  test('an absolute path with PATHEXT unset passes it as unset', () => {
+    const abs = process.platform === 'win32' ? 'C:\\bin\\tool' : '/bin/tool'
+    which(abs, {}, 'win32', '/project')
+    const env = calls[0]?.opts?.env
+    expect(env?.['PATHEXT']).toBeUndefined()
+    expect(Object.keys(env ?? {})).toContain('PATHEXT')
+  })
 })

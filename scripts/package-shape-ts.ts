@@ -78,9 +78,10 @@ export interface Tsconfig {
  * `text` as JSON: strips line and block comments and one trailing comma before
  * `}` or `]`, outside strings. Throws a `SyntaxError` when the rest is not
  * JSON, for an unterminated string or block comment, and for a comma with no
- * value before it. A copy of system-model's `support/jsonc.ts`, kept in step
- * with it: that file reaches `@osdlc/command-seam` through its imports, which
- * this directory, depending on no workspace package, cannot resolve.
+ * value before it. A copy of system-model's `src/plugins/support/jsonc.ts`,
+ * kept in step with it: that file's type-only imports reach
+ * `@osdlc/command-seam`, which this directory, depending on no workspace
+ * package, cannot resolve when type-checking.
  */
 export function parseJsonc(text: string): unknown {
   return JSON.parse(stripJsonc(text.replace(/^\uFEFF/, '')))
