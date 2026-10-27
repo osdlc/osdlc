@@ -15,7 +15,7 @@
       "path": "docs/planning/standards/S-0003-document-features-as-added.md",
       "line": 23,
       "title": "docs/reference/ is rejected by S-0001's check:packages for TS libraries and not published by the site",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/514#discussion_r4385707772",
       "status": "fixed",
       "reason": null,
       "fixedIn": "2e94dd66f792e24bd9968f1549293fb152d54176"
@@ -26,7 +26,7 @@
       "path": "CLAUDE.md",
       "line": 1,
       "title": "Root CLAUDE.md as the agent file contradicts doc-locations.md, which makes AGENTS.md the file and CLAUDE.md a pointer",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/514#discussion_r4385707784",
       "status": "fixed",
       "reason": null,
       "fixedIn": "2e94dd66f792e24bd9968f1549293fb152d54176"
@@ -37,7 +37,7 @@
       "path": "docs/planning/standards/S-0003-document-features-as-added.md",
       "line": 13,
       "title": "Same-change and update rules restate doc-locations Rule 2 instead of linking it",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/514#discussion_r4385707788",
       "status": "fixed",
       "reason": null,
       "fixedIn": "2e94dd66f792e24bd9968f1549293fb152d54176"
@@ -48,7 +48,7 @@
       "path": "docs/planning/standards/S-0003-document-features-as-added.md",
       "line": 22,
       "title": "Site claim is wrong for apps: wayfinder's guide is published in its own section",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/514#discussion_r4385707796",
       "status": "fixed",
       "reason": null,
       "fixedIn": "2e94dd66f792e24bd9968f1549293fb152d54176"
@@ -59,7 +59,7 @@
       "path": "docs/planning/standards/S-0003-document-features-as-added.md",
       "line": 38,
       "title": "Enforcement and update rules omit docs/reference/, which the Rule section requires",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/514#discussion_r4385707801",
       "status": "fixed",
       "reason": null,
       "fixedIn": "2e94dd66f792e24bd9968f1549293fb152d54176"
