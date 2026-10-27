@@ -293,6 +293,10 @@ for (const pkgDir of dirs) {
         { shape: true },
       )
     }
+    // A CLI's committed version.generated.ts must match package.json.
+    if (pkg.scripts?.['stamp-version'] !== undefined) {
+      run('pnpm', ['run', '--silent', 'stamp-version', '--check'], pkgDir)
+    }
     process.stdout.write(run(bin('publint'), ['run', tarball, '--strict'], root))
     if (shipsTypes(pkg)) {
       // An ESM-only package is not judged on CommonJS resolution.

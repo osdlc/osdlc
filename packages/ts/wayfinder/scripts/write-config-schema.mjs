@@ -1,8 +1,8 @@
 // Writes schema/config.json from the built config schema, and its URL into the
-// configuration guide's `$schema` line. Needs `dist/`. The URL follows
-// package.json's version, which dist/ reads at run time, so a version bump
-// needs no rebuild before this runs. The root `version-packages` script runs
-// it after `changeset version`; the version job in
+// configuration guide's `$schema` line. Needs `dist/`. The URL follows the
+// version stamped into src/version.generated.ts, so after a version bump run
+// `pnpm run build` first. The root `version-packages` script does both after
+// `changeset version`; the version job in
 // .github/workflows/packages-publish.yml runs that script.
 // tests/config-schema.test.ts fails when either file is stale.
 import { readFileSync, writeFileSync } from 'node:fs'

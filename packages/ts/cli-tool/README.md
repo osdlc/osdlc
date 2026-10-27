@@ -305,6 +305,38 @@ becomes its line and its category's exit code (see Failures). It prints no
 stack trace, because a trace says where the code was, not what the person who
 typed the command should do.
 
+Pass `version` and a first argument of `--version` prints it and exits 0
+without calling `main`.
+
+### The version
+
+`cli-tool-stamp-version`, run in a package's directory, writes
+`src/version.generated.ts` with `export const VERSION` from that package's
+`package.json` (`--out <path>` writes elsewhere). Run it first in `build`, so
+`prepublishOnly` stamps the version that is being published, and commit the
+file so a fresh checkout typechecks. `--check` exits 1 when the file does not
+match `package.json`. The version is compiled in, so it is right in a bundled
+or single-file build too, where reading `package.json` at run time is not.
+
+```jsonc
+// package.json
+"scripts": {
+  "build": "cli-tool-stamp-version && tsc -p tsconfig.build.json",
+  "stamp-version": "cli-tool-stamp-version"
+}
+```
+
+```js
+// bin/tool.js
+import { runMain } from '@osdlc/cli-tool'
+import { main } from '../dist/cli.js'
+import { VERSION } from '../dist/version.generated.js'
+
+await runMain(main, { name: 'tool', version: VERSION })
+```
+
+An app from `defineApp` takes the same `VERSION` as its `version`.
+
 ### Asking yes or no
 
 `askYesNo(question, { defaultYes })` writes the question to stderr with a
