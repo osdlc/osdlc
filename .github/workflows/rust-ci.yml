@@ -364,9 +364,16 @@ jobs:
 
   # Runs release-plz as the release workflow does, but without publishing,
   # tagging or pushing, so a bad release-plz.toml fails here and not after
-  # the merge. `release --dry-run` checks the config against each manifest.
+  # the merge. `release --dry-run` checks the config against each manifest
+  # and packages each crate whose version is not on crates.io yet.
   # `update` runs in the throwaway checkout and its edits are discarded with
   # it. The release-plz version is the one in release-plz.yml.
+  #
+  # The dry run publishes nothing, so a crate that needs the new version of
+  # another crate in the same run would not find it on crates.io. The real
+  # release publishes that crate first. So the dry run gets a cargo
+  # `[patch.crates-io]` that points each unpublished crate at its local
+  # directory; see scripts/crates-io-unpublished-patch.ts.
   release-plz:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
@@ -398,8 +405,22 @@ jobs:
           fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      # Into the user cargo config, so no file in the repository changes.
+      # The original, if any, is kept and restored after the dry run.
+      - name: Point unpublished crates at their local directories
+        run: |
+          set -euo pipefail
+          cfg="${CARGO_HOME:-$HOME/.cargo}/config.toml"
+          if [ -e "$cfg" ]; then cp "$cfg" "$RUNNER_TEMP/cargo-config.toml"; fi
+          node scripts/crates-io-unpublished-patch.ts packages/rust/Cargo.toml >> "$cfg"
+          cat "$cfg"
+
       # Same action pin and version as release-plz.yml. It installs the
-      # release-plz binary, which the next step reuses.
+      # release-plz binary, which the `release-plz update` step reuses.
       - uses: release-plz/action@8921286633dfa0c4020f7f30bd1c14fe19cbb10e # v0.5.142
         with:
           command: release
@@ -409,6 +430,16 @@ jobs:
           dry_run: 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Remove the patch
+        run: |
+          set -euo pipefail
+          cfg="${CARGO_HOME:-$HOME/.cargo}/config.toml"
+          if [ -e "$RUNNER_TEMP/cargo-config.toml" ]; then
+            mv "$RUNNER_TEMP/cargo-config.toml" "$cfg"
+          else
+            rm -f "$cfg"
+          fi
 
       - name: release-plz update
         run: release-plz update --config packages/rust/release-plz.toml --manifest-path packages/rust/Cargo.toml
