@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/cli-tool",
-  "version": "0.10.1",
+  "version": "0.11.0",
   "description": "What a standalone CLI needs before it does anything of its own: an injectable stdout/stderr seam, one exit-code rule, flags declared once so the parser and the help text cannot disagree, and running an installed tool from a development checkout.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
