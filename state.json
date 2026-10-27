@@ -1,12 +1,68 @@
 {
   "schema": 1,
   "pr": 513,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "4ecbb1366dc55f14d860392a98da95de61a9d40a",
+  "base": "4832ccd8135dc58d7de16767ab468599e11482fa",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-q7m2xk",
     "at": "2026-10-27T00:59:25.362Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "scripts/check-packages.ts",
+      "line": 298,
+      "title": "stamp-version --check never fails in CI: the Build step re-stamps the file first",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/cli-tool/src/run-main.ts",
+      "line": 55,
+      "title": "runMain --version prints the bare version; defineApp prints '<name> <version>'",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/cli-tool/bin/cli-tool-stamp-version.js",
+      "line": 6,
+      "title": "A bad or missing package.json ends the bin with an uncaught stack trace",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/cli-tool/src/stamp-version.ts",
+      "line": 74,
+      "title": "--out with no value is reported as an unknown argument",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/ts/markdown-contract/src/cli/run.ts",
+      "line": 173,
+      "title": "No test covers markdown-contract --version",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
