@@ -16,7 +16,10 @@ crate-type = ["cdylib"]
 
 [dependencies]
 js-sys = { workspace = true }
-serde_json = { workspace = true }
+# `preserve_order`: a JavaScript object passed as a `Set` value keeps its key
+# order. Without it, serde_json sorts the keys, and the mapping is written in
+# alphabetical order.
+serde_json = { workspace = true, features = ["preserve_order"] }
 # Must equal the wasm-bindgen CLI version build.sh runs; the workspace pins it
 # exactly.
 wasm-bindgen = { workspace = true }

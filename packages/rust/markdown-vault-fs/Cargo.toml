@@ -1,13 +1,6 @@
 [package]
 name = "markdown-vault-fs"
 version = "0.3.1"
-# Held back from crates.io: first-release step 1 of 3. A first release needs
-# CARGO_REGISTRY_TOKEN, a new version of a published crate needs trusted
-# publishing, and one release-plz run uses one credential. Remove this line
-# and the entry in packages/rust/release-plz.toml in a pull request of their
-# own, after the trusted-publishing run that publishes agent-adapt 0.19.1 and
-# yaml-splice 0.3.2.
-publish = false
 edition.workspace = true
 rust-version.workspace = true
 description = "Vault filesystem primitives: the visibility-policy walk, the excluded-files rules, the `_system/` rules, statSync-shaped timestamps, and a re-export of the path-guard containment guard"

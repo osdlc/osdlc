@@ -3,7 +3,7 @@
  * wayfinder checkout, run it, and put `way` on PATH.
  *
  * A checkout has the source entry and a `package.json` named
- * `@osdlc/wayfinder`. The installed package ships `dist/` alone, so it never
+ * `@osdlc/wayfinder`. The installed package ships no `src/`, so it never
  * counts. A selected checkout runs its source under Bun.
  *
  * The cwd layer stays off. Only `WAY_HOME` or `way dev link` hand off to a

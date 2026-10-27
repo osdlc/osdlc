@@ -31,6 +31,7 @@ import {
 import { err, FailureError, mapErr, ok, type Result } from '@osdlc/result'
 import { rollupChecks } from './checks.ts'
 import { fromGhFailure, type CodeHostFailure } from './failure.ts'
+import { prHost } from './pr-ref.ts'
 import { CommentNotFoundError } from './types.ts'
 import type {
   Actor,
@@ -497,7 +498,13 @@ export class GithubCodeHost implements CodeHost {
     const ref = ghParsePrUrl(url)
     return ref === null
       ? null
-      : { codeHost: 'github', owner: ref.owner, repo: ref.repo, number: ref.number }
+      : {
+          codeHost: 'github',
+          host: prHost(ref.hostname),
+          owner: ref.owner,
+          repo: ref.repo,
+          number: ref.number,
+        }
   }
 
   prForBranch(branch: string): Result<number | null, CodeHostFailure> {

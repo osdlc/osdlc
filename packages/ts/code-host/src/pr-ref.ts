@@ -20,6 +20,14 @@ import { parsePrRef } from '@osdlc/typed-gh'
 
 import type { PrInput } from './types.ts'
 
+/**
+ * The host of a URL authority for {@link PrRef.host}: lower-cased, without a
+ * port, as typed-git's `RemoteRepo.host` is, so the two compare equal.
+ */
+export function prHost(authority: string): string {
+  return authority.replace(/:\d+$/, '').toLowerCase()
+}
+
 /** Parse the positional/flag value; null when it is none of the four shapes. */
 export function parsePrInput(raw: string | null | undefined): PrInput | null {
   const text = (raw ?? '').trim()
@@ -31,7 +39,13 @@ export function parsePrInput(raw: string | null | undefined): PrInput | null {
   if (ref.kind === 'url') {
     return {
       kind: 'url',
-      ref: { codeHost: 'github', owner: ref.owner, repo: ref.repo, number: ref.number },
+      ref: {
+        codeHost: 'github',
+        host: prHost(ref.hostname),
+        owner: ref.owner,
+        repo: ref.repo,
+        number: ref.number,
+      },
     }
   }
   if (ref.repo === null) return { kind: 'number', number: ref.number }

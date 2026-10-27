@@ -6,13 +6,14 @@
  *
  * It handles two payload differences:
  *
- *  1. Author logins differ between GraphQL and REST. GraphQL
- *     (`gh pr view --json`) returns a login without a suffix
- *     (`github-actions`). REST (`gh api`) returns the suffixed one
- *     (`github-actions[bot]`). Comparing one with the other never matches,
- *     and no error shows it. Then a bot's comments are treated as human
- *     review feedback. Logins are normalized here, once, to the form without
- *     the suffix.
+ *  1. A bot's login is spelled three ways. GraphQL (`gh api graphql`, and a
+ *     comment's author in `gh pr view --json`) gives the bare login
+ *     (`github-actions`). gh's own `--json` export of a pull request's
+ *     author prefixes it (`app/github-actions`, with `is_bot: true`). REST
+ *     (`gh api`) suffixes it (`github-actions[bot]`). Comparing one with
+ *     another never matches, and no error shows it. Then a bot's comments
+ *     are treated as human review feedback. Logins are normalized here, once,
+ *     to the bare form.
  *  2. `statusCheckRollup` holds two node types. A modern `CheckRun` carries
  *     `name`/`status`/`conclusion`. A legacy `StatusContext` carries
  *     `context`/`state`. Both map to one verdict, so a caller never has to
@@ -69,16 +70,20 @@ function list(x: unknown): unknown[] {
 // ── actors ──────────────────────────────────────────────────────────────────
 
 /**
- * Strip a single trailing `[bot]` suffix, so a REST login matches the
- * GraphQL one.
+ * The bare login: a single trailing `[bot]` (REST) or a leading `app/` (gh's
+ * `--json` export of a bot author) is stripped, so every spelling of one bot
+ * compares equal. A user login cannot hold `/` or `[`, so neither strip can
+ * change one.
  */
 export function normalizeAuthorLogin(login: string): string {
-  return login.endsWith('[bot]') ? login.slice(0, -'[bot]'.length) : login
+  if (login.endsWith('[bot]')) return login.slice(0, -'[bot]'.length)
+  if (login.startsWith('app/')) return login.slice('app/'.length)
+  return login
 }
 
 /**
  * Parse an author node from GraphQL (`author`) or REST (`user`).
- * Null when there is no login, or the login is empty once `[bot]` is removed.
+ * Null when there is no login, or the login is empty once `[bot]` or `app/` is removed.
  */
 export function parseActor(x: unknown): Actor | null {
   if (!isRecord(x)) return null
@@ -87,8 +92,8 @@ export function parseActor(x: unknown): Actor | null {
   if (login === '') return null
   return {
     login,
-    // Only some payloads carry `is_bot`. The suffix works for both.
-    isBot: bool(x['is_bot']) || raw.endsWith('[bot]'),
+    // Only some payloads carry `is_bot`. The suffix and prefix mark a bot too.
+    isBot: bool(x['is_bot']) || login !== raw,
   }
 }
 
@@ -295,6 +300,15 @@ export function parsePrSearchHit(raw: unknown): PrSearchHit | null {
     labels: parseLabels(raw['labels']),
     createdAt: strOrNull(raw['createdAt']),
     updatedAt: strOrNull(raw['updatedAt']),
-    closedAt: strOrNull(raw['closedAt']),
+    closedAt: searchTime(raw['closedAt']),
   }
+}
+
+/**
+ * gh search prints Go's zero time (`0001-01-01T00:00:00Z`) for a time that is
+ * not set, such as `closedAt` on an open pull request. That is no time.
+ */
+function searchTime(x: unknown): string | null {
+  const s = strOrNull(x)
+  return s === null || s.startsWith('0001-01-01') ? null : s
 }

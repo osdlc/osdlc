@@ -25,17 +25,12 @@ import type { CommandRunner } from '@osdlc/command-seam'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture, makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 
-import { git } from './helpers.ts'
+import { cannedGh, commit, git } from './helpers.ts'
 import { localDeleteCommand, remoteDeleteCommand } from '../src/branches.ts'
 import { renderJson, renderRepo, renderScan, renderText } from '../src/render.ts'
 import { resolveEntries } from '../src/resolve.ts'
 import { sweepRepo, sweepRepos } from '../src/sweep.ts'
 import type { RepoSweep, SweepItem } from '../src/types.ts'
-
-function commit(cwd: string, message: string): void {
-  git(['add', '-A'], cwd)
-  git(['commit', '--allow-empty', '-m', message], cwd)
-}
 
 /**
  * A repository with one of each interesting condition:
@@ -103,35 +98,6 @@ afterAll(() => {
 
 function itemsOf(items: SweepItem[], category: string): Map<string, SweepItem> {
   return new Map(items.filter((item) => item.category === category).map((item) => [item.id, item]))
-}
-
-interface CannedPr {
-  number: number
-  state: 'OPEN' | 'MERGED' | 'CLOSED'
-  headRefName: string
-  headRefOid: string
-  baseRefName?: string
-  isCrossRepository?: boolean
-}
-
-/** A `gh` that answers `pr list` with `prs` and fails everything else. */
-function cannedGh(prs: CannedPr[]): CommandRunner {
-  const rows = prs.map((pr) => ({
-    baseRefName: 'main',
-    isCrossRepository: false,
-    mergedAt: pr.state === 'MERGED' ? '2020-01-02T00:00:00Z' : null,
-    title: `PR ${pr.number}`,
-    url: `https://example.invalid/pull/${pr.number}`,
-    ...pr,
-  }))
-  return {
-    run(argv) {
-      const ok = (stdout = '') => ({ exitCode: 0, stdout, stderr: '' })
-      if (argv[0] === '--version' || argv[0] === 'auth') return ok()
-      if (argv[0] === 'pr' && argv[1] === 'list') return ok(JSON.stringify(rows))
-      return { exitCode: 1, stdout: '', stderr: 'not canned' }
-    },
-  }
 }
 
 describe('sweepRepo', () => {
@@ -527,6 +493,18 @@ describe('duplicate checkouts', () => {
     const result = sweepRepos([dir, join(dir, 'wt')], { noGh: true, cwd: root, baseDir: root })
     expect(result.duplicates).toEqual([])
     expect(renderText(result)).not.toContain('Duplicate checkouts')
+  })
+
+  test('one owner/name on two hosts is not a duplicate', () => {
+    const github = clone('host-github')
+    const forge = clone('host-forge')
+    git(['remote', 'set-url', 'origin', 'git@forge.example:acme/dup.git'], forge)
+    const result = sweepRepos([github, forge], { noGh: true, cwd: root, baseDir: root })
+    expect(result.duplicates).toEqual([])
+    expect(result.repos.map((r) => r.repo?.slug).sort()).toEqual([
+      'acme/dup',
+      'forge.example/acme/dup',
+    ])
   })
 })
 

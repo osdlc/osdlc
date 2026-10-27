@@ -480,6 +480,9 @@ importers:
 
   packages/ts/markdown-contract:
     dependencies:
+      '@osdlc/cli-tool':
+        specifier: workspace:^
+        version: link:../cli-tool
       '@osdlc/gfm-table':
         specifier: workspace:^
         version: link:../gfm-table
@@ -508,9 +511,6 @@ importers:
         specifier: 'catalog:'
         version: 2.9.1
     devDependencies:
-      '@osdlc/cli-tool':
-        specifier: workspace:^
-        version: link:../cli-tool
       '@osdlc/prettier-config':
         specifier: workspace:^
         version: link:../prettier-config

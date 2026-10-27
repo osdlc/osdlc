@@ -50,6 +50,7 @@ export const SOFT_TABLE = {
   diffTreeNumstat: 'empty',
   grep: 'empty',
   isAncestor: 'false',
+  cherry: 'empty',
   remotes: 'empty',
   remote: 'empty',
   remoteGetUrl: 'null',

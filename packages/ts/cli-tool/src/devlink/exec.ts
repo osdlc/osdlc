@@ -16,7 +16,7 @@ import { devNull, constants as osConstants } from 'node:os'
 import { which } from '@osdlc/command-seam'
 
 import type { Selection } from './resolve.ts'
-import { quietVar, type ToolSpec } from './spec.ts'
+import { launchLayerVar, quietVar, type ToolSpec } from './spec.ts'
 
 /**
  * Bun's flags for running a checkout's entry from any cwd. Bun reads `.env*`
@@ -77,9 +77,12 @@ export function execSelection(
     )
     return 1
   }
+  // The layer that chose it, as the bash launcher exports it, so the started
+  // process knows it was handed off and runs its own code.
+  const childEnv = { ...env, [launchLayerVar(spec)]: selection.source }
   const result = spawnSync(bun, [...bunRunArgs(selection.entry), ...argv], {
     stdio: 'inherit',
-    env: env as NodeJS.ProcessEnv,
+    env: childEnv as NodeJS.ProcessEnv,
   })
   if (result.error !== undefined) {
     announce(

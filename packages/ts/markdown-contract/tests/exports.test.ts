@@ -222,7 +222,7 @@ describe('the manifest', () => {
       expect(conditions.types).toMatch(/^\.\/dist\/.*\.d\.ts$/)
       expect(conditions.default).toMatch(/^\.\/dist\/.*\.js$/)
     }
-    expect(MANIFEST.bin).toEqual({ 'markdown-contract': './dist/cli/bin.js' })
+    expect(MANIFEST.bin).toEqual({ 'markdown-contract': './bin/markdown-contract.js' })
   })
 
   test('zod is a peer, not a dependency', () => {
@@ -230,9 +230,10 @@ describe('the manifest', () => {
     expect(MANIFEST.dependencies).not.toHaveProperty('zod')
   })
 
-  test('the published files are dist/ and the docs, with no source', () => {
+  test('the published files are dist/, the bin and the docs, with no source', () => {
     expect(MANIFEST.files).toEqual([
       'dist/',
+      'bin/',
       'README.md',
       'CHANGELOG.md',
       'LICENSE-MIT',
@@ -265,6 +266,7 @@ describe('independence from any host project', () => {
 
   const shipped = [
     ...sourceFiles(join(PACKAGE_DIR, 'src')).filter((f) => !f.endsWith('.test.ts')),
+    join(PACKAGE_DIR, 'bin', 'markdown-contract.js'),
     join(PACKAGE_DIR, 'README.md'),
     join(PACKAGE_DIR, 'CHANGELOG.md'),
   ]
@@ -290,8 +292,13 @@ describe('independence from any host project', () => {
     for (const file of unshipped) {
       const text = readFileSync(file, 'utf-8')
       const others = [...text.matchAll(/@osdlc\/[\w-]+(\/[\w-]+)?/g)].map((m) => m[0])
-      for (const spec of others)
-        expect([...Object.keys(ENTRIES), ...OWN_DEPENDENCIES]).toContain(spec)
+      for (const spec of others) {
+        // A dependency's subpath, such as `@osdlc/cli-tool/devlink`, counts as the dependency.
+        const base = spec.split('/').slice(0, 2).join('/')
+        expect([...Object.keys(ENTRIES), ...OWN_DEPENDENCIES]).toContain(
+          OWN_DEPENDENCIES.includes(base) ? base : spec,
+        )
+      }
     }
   })
 
