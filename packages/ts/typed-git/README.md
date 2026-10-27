@@ -749,7 +749,9 @@ Use it for a remote read from a checkout (any host); use `parseGitUrl` /
 host and any other alike. It tries `parseGitUrl` first, so shorthand reads as
 GitHub and a GitLab nested group stays whole in `owner`, then falls back to
 `parseRemoteUrl`, so a GitHub Enterprise or self-hosted Forgejo remote
-answers too. `host` is lower-cased and carries no port. Decide which forge a
+answers too. `host` is lower-cased and carries no port, and GitHub's other
+names for itself (`ssh.github.com`, its SSH over port 443, and
+`www.github.com`) read as `github.com`. Decide which forge a
 remote is on from `host`, not from the URL text.
 
 ```ts
@@ -757,6 +759,8 @@ parseRemoteRepo("git@github.com:acme/widgets.git");
 // { host: "github.com", owner: "acme", repo: "widgets" }
 parseRemoteRepo("https://forge.example.com:3000/team/app.git");
 // { host: "forge.example.com", owner: "team", repo: "app" }
+parseRemoteRepo("ssh://git@ssh.github.com:443/acme/widgets.git");
+// { host: "github.com", owner: "acme", repo: "widgets" }
 parseRemoteRepo("/srv/git/repo.git"); // null — a local path names no project
 ```
 
