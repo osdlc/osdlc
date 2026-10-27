@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'vitest'
 
-import { gitSshUrl, parseGitUrl, parseRemoteUrl, parseRepoRef } from '../src/index.ts'
+import {
+  gitSshUrl,
+  parseGitUrl,
+  parseRemoteRepo,
+  parseRemoteUrl,
+  parseRepoRef,
+} from '../src/index.ts'
 
 describe('parseGitUrl', () => {
   test('https URL', () => {
@@ -177,5 +183,63 @@ describe('parseRemoteUrl', () => {
     expect(parseRemoteUrl('file:///srv/git/a/b.git')).toBeNull()
     expect(parseRemoteUrl('https://host/only')).toBeNull()
     expect(parseRemoteUrl('')).toBeNull()
+  })
+})
+
+describe('parseRemoteRepo', () => {
+  test('a GitHub remote, https, scp-style, ssh:// or shorthand', () => {
+    const widgets = { host: 'github.com', owner: 'acme', repo: 'widgets' }
+    for (const url of [
+      'https://github.com/acme/widgets',
+      'https://github.com/acme/widgets.git',
+      'git@github.com:acme/widgets.git',
+      'ssh://git@github.com/acme/widgets.git',
+      'acme/widgets',
+    ]) {
+      expect(parseRemoteRepo(url)).toEqual(widgets)
+    }
+  })
+
+  test('a GitHub Enterprise remote falls back to the host-agnostic reading', () => {
+    const ghe = { host: 'github.acme.com', owner: 'acme', repo: 'widgets' }
+    expect(parseRemoteRepo('git@github.acme.com:acme/widgets.git')).toEqual(ghe)
+    expect(parseRemoteRepo('https://github.acme.com/acme/widgets.git')).toEqual(ghe)
+    expect(parseRemoteRepo('https://GitHub.Acme.com/acme/widgets')).toEqual(ghe)
+  })
+
+  test('a self-hosted Forgejo remote, scp-style, https with a port, or ssh://', () => {
+    const app = { host: 'forge.example.com', owner: 'team', repo: 'app' }
+    expect(parseRemoteRepo('git@forge.example.com:team/app.git')).toEqual(app)
+    expect(parseRemoteRepo('https://forge.example.com:3000/team/app.git')).toEqual(app)
+    expect(parseRemoteRepo('ssh://git@forge.example.com:2222/team/app')).toEqual(app)
+  })
+
+  test('a lookalike host is read as itself, not as GitHub', () => {
+    expect(parseRemoteRepo('https://notgithub.com/acme/widgets.git')).toEqual({
+      host: 'notgithub.com',
+      owner: 'acme',
+      repo: 'widgets',
+    })
+    expect(parseRemoteRepo('git@notgithub.com:acme/widgets.git')?.host).toBe('notgithub.com')
+  })
+
+  test('a GitLab nested group stays whole in owner; an unknown host gives the last two', () => {
+    expect(parseRemoteRepo('https://gitlab.com/acme/platform/api')).toEqual({
+      host: 'gitlab.com',
+      owner: 'acme/platform',
+      repo: 'api',
+    })
+    expect(parseRemoteRepo('https://git.example.com/acme/platform/api.git')).toEqual({
+      host: 'git.example.com',
+      owner: 'platform',
+      repo: 'api',
+    })
+  })
+
+  test('a local path, a file:// URL and text that names no project are null', () => {
+    expect(parseRemoteRepo('/srv/git/repo.git')).toBeNull()
+    expect(parseRemoteRepo('file:///srv/git/a/b.git')).toBeNull()
+    expect(parseRemoteRepo('https://host/only')).toBeNull()
+    expect(parseRemoteRepo('not a url')).toBeNull()
   })
 })

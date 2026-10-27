@@ -1,5 +1,12 @@
 # @osdlc/system-model
 
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies [da5e6a3]
+  - @osdlc/command-seam@0.14.0
+
 ## 0.7.0
 
 ### Minor Changes

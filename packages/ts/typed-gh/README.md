@@ -170,6 +170,13 @@ if (page.truncated) console.warn('more than 50 open PRs; raise the limit')
 `prList`, `issueList`, `labelList`, `repoList` and `searchPrs` all work this
 way. A `limit` that is not a positive integer throws `RangeError`.
 
+GitHub search returns at most 1000 results, whatever the `limit`. gh uses
+search for `searchPrs`, for `prList` with a non-empty `search` or an `author`,
+and for `issueList` with a `label`. Those report `truncated: true` when 1000
+rows come back: there may be more that search would not return. Narrow the
+query to see them. `searchPrs` asks gh for at most 1000 rows, since gh refuses
+a larger search limit.
+
 ## A repository without a clone
 
 By default a client talks to the repository of the clone at its directory.
@@ -549,7 +556,9 @@ Each verb takes an optional `GhTarget` last. Each client method has a verb of th
 - `parsePullRequest`: reads a `gh --json` payload into a `PullRequest`, or `null`.
 - `anyCheckFailed`: true if any check in a list failed.
 - `normalizeAuthorLogin`: drops a `[bot]` suffix from a login.
-- `parseOwnerRepo`: reads a remote URL into `{ owner, repo }`, or `null`.
+- `parseOwnerRepo`: reads a remote URL into `{ owner, repo }`, or `null`. It is
+  `@osdlc/typed-git`'s `parseRemoteRepo` without the host, so any host's remote reads, not only
+  GitHub's. Use `parseRemoteRepo` when you need the host too.
 - `ownerRepoSlug`: writes `{ owner, repo }` as `owner/repo`.
 - `parsePrUrl`: reads a pull request URL on any GitHub host into its host, owner, repository and
   number, or `null`.

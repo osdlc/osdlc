@@ -10,7 +10,7 @@
  */
 
 import {
-  classifyFailure,
+  classifyFailed,
   isCommandFailed,
   type CommandFailed,
   type CommandFailureKind,
@@ -67,13 +67,8 @@ const INSTALL_HINT = 'Install git from https://git-scm.com.'
 export function classifyGitFailure(failed: CommandFailed): GitFailure {
   // The client's runner may not name its binary; this is git either way, so
   // the messages say `git` rather than "The command".
-  const f =
-    failed.binary === undefined
-      ? (classifyFailure(failed.result, { binary: 'git', argv: failed.argv }) ?? failed.failure)
-      : failed.failure
-  const base = { ...f, cause: failed }
-  if (f.kind === 'not-installed') return { ...base, hint: INSTALL_HINT }
-  if (f.kind !== 'exit') return base
+  const base = classifyFailed(failed, { binary: 'git', installHint: INSTALL_HINT })
+  if (base.kind !== 'exit') return base
 
   // git's own words: stderr, then the stdout some commands explain with.
   const text = `${failed.result.stderr}\n${failed.result.stdout}`

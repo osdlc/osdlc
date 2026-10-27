@@ -1,5 +1,28 @@
 # @osdlc/repo-cleaner
 
+## 0.6.0
+
+### Minor Changes
+
+- bb61f10: `--version` prints the package version and exits 0.
+
+### Patch Changes
+
+- Updated dependencies [bb61f10]
+  - @osdlc/cli-tool@0.11.0
+
+## 0.5.2
+
+### Patch Changes
+
+- Updated dependencies [da5e6a3]
+- Updated dependencies [da5e6a3]
+- Updated dependencies [da5e6a3]
+  - @osdlc/command-seam@0.14.0
+  - @osdlc/typed-gh@0.11.0
+  - @osdlc/typed-git@0.10.0
+  - @osdlc/cli-tool@0.10.1
+
 ## 0.5.1
 
 ### Patch Changes

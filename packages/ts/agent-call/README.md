@@ -9,7 +9,8 @@ output shape and the session. Each adapter turns that into a command line for
 approximation. The result comes back normalized (final text, structured
 output, session id, token usage, cost) with the raw output kept. On request,
 the whole transcript is also converted into one conversation model for
-analysis afterwards. No dependencies.
+analysis afterwards. One dependency, `@osdlc/command-seam`, for its `PATH`
+lookup.
 
 ## Why
 
@@ -41,8 +42,8 @@ When not to use it:
 - **acpx** is a session client. It drives agents through Agent Client Protocol
   adapters such as `@agentclientprotocol/claude-agent-acp`, not through the
   CLIs, keeps its sessions under `~/.acpx`, and has runtime dependencies.
-  agent-call is a one-shot call over the CLIs themselves, with no
-  dependencies and no state on disk. Pick acpx for multi-turn sessions,
+  agent-call is a one-shot call over the CLIs themselves, with one small
+  dependency and no state on disk. Pick acpx for multi-turn sessions,
   queues, flows, or an agent that speaks only ACP.
 - **The Agent Client Protocol** (ACP) is a protocol between a client, such as
   an editor, and an agent. `@agentclientprotocol/sdk` is its library.
@@ -396,6 +397,12 @@ format (a JSON envelope or an event stream), so metadata is captured.
 
 ## Security
 
+- A bare binary name (`claude`, `codex`, ...) is looked up on the absolute
+  entries of the child's `PATH` only, and the absolute path found is spawned.
+  A relative or empty entry (`.`, `bin`, `a::b`) is skipped, so an agent
+  binary planted in the working directory, such as a pull request's
+  checkout, is never the one run. Not found is `spawn-failed`. A binary given
+  as a path (`/opt/claude/bin/claude`, `./claude`) is run as given.
 - The child process inherits the parent's whole environment, plus the spec's
   `env`. Credentials in your environment reach the agent CLI. Pass a trimmed
   environment to the parent if that matters.

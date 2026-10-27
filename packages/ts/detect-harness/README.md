@@ -80,9 +80,10 @@ harness, in a fixed order. Options:
 
 `detect({ mode: 'project' })` is for project introspection. It reads files
 inside the project root only: no home folder, no system folder, no install
-probe and no sign-in evidence. A read outside the root, including through a
-symbolic link, answers "absent" without reading it. Only the `project`
-and `local` scopes are reported, and `install.probed` is `false`.
+probe and no sign-in evidence. Inside is judged by real path: a read whose
+real path is outside the root, through a symbolic link at the path or above
+it, answers "absent" without reading it. Only the `project` and `local`
+scopes are reported, and `install.probed` is `false`.
 
 Project mode lists the skills a repository ships: `.claude/skills`,
 `.agents/skills` and `.cursor/skills` in the project. Each entry has `name`,

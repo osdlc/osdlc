@@ -38,8 +38,10 @@ export * from './client.ts'
 export {
   parseGitUrl,
   gitSshUrl,
+  parseRemoteRepo,
   parseRepoRef,
   type GitHostInfo,
+  type RemoteRepo,
   type RepoRef,
   type CloneProtocol,
 } from './git-url.ts'

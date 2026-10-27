@@ -314,6 +314,33 @@ describe('project mode', () => {
     expect(r.commands).toEqual([])
     expect(r.permissions.rules).toEqual([])
   })
+
+  test('a path outside the project that links into it is read by its real path', () => {
+    f.write(f.project, { 'AGENTS.md': 'Project.\n' })
+    f.write(f.home, { 'AGENTS.md': 'Home.\n' })
+    const alias = join(f.root, 'alias')
+    symlinkSync(f.project, alias)
+
+    const ctx = createContext({
+      projectRoot: f.project,
+      home: null,
+      env: {},
+      platform: 'linux',
+      systemRoot: f.system,
+      mode: 'project',
+      allowExec: false,
+      readContents: false,
+      includeValues: false,
+      which: () => null,
+      makeRunner: () => {
+        throw new Error('no runner in project mode')
+      },
+      signal: new AbortController().signal,
+    })
+    // The text is outside the root; the file it names is inside.
+    expect(ctx.readText(join(alias, 'AGENTS.md'))).toEqual({ status: 'parsed', text: 'Project.\n' })
+    expect(ctx.readText(join(f.home, 'AGENTS.md')).status).toBe('absent')
+  })
 })
 
 describe('opencode, pi and antigravity', () => {

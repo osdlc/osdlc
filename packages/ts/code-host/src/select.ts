@@ -18,6 +18,7 @@ import { Git, parseRemoteUrl, type RemoteCoordinate } from '@osdlc/typed-git'
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { err, ok, type Result } from '@osdlc/result'
 import type { CodeHostFailure } from './failure.ts'
+import { isGithubHost } from './github-host.ts'
 import { DEFAULT_FORGEJO_TOKEN_ENV, ForgejoCodeHost } from './forgejo.ts'
 import { forgejoAuthChecks } from './forgejo-auth.ts'
 import { GithubCodeHost } from './github.ts'
@@ -39,8 +40,7 @@ export function codeHostNameForRemote(
   // `parseRemoteUrl` cannot read falls back to the substring test.
   const ref = parseRemoteUrl(url)
   if (ref === null) return url.includes('github.com') ? 'github' : 'forgejo'
-  const host = ref.host.toLowerCase()
-  return host === 'github.com' || host.endsWith('.github.com') ? 'github' : 'forgejo'
+  return isGithubHost(ref.host) ? 'github' : 'forgejo'
 }
 
 /**

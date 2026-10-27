@@ -1,5 +1,29 @@
 # @osdlc/pr-update
 
+## 0.8.2
+
+### Patch Changes
+
+- bb61f10: The version `--version` prints is now stamped from package.json at build time by `cli-tool-stamp-version` instead of read from package.json at run time.
+- Updated dependencies [bb61f10]
+  - @osdlc/cli-tool@0.11.0
+
+## 0.8.1
+
+### Patch Changes
+
+- da5e6a3: `remoteSlug` now reads a remote through `@osdlc/typed-git`'s `parseRemoteRepo`, the one remote parser typed-gh and code-host share, instead of its own composition of `parseGitUrl` and `parseRemoteUrl`. It answers the same for every remote.
+- Updated dependencies [da5e6a3]
+- Updated dependencies [da5e6a3]
+- Updated dependencies [da5e6a3]
+- Updated dependencies [da5e6a3]
+  - @osdlc/agent-call@0.9.0
+  - @osdlc/code-host@0.6.0
+  - @osdlc/command-seam@0.14.0
+  - @osdlc/typed-git@0.10.0
+  - @osdlc/cli-tool@0.10.1
+  - @osdlc/trust-repo@0.5.1
+
 ## 0.8.0
 
 ### Minor Changes

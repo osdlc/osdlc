@@ -22,6 +22,7 @@ import {
 import { assertLoads, isVersion2, migrateV1ToV2 } from '../declarative/migrate.js'
 import { type CorpusConfig, runCorpus } from '../runner/index.js'
 import { formatHuman, formatJson, formatRunSummary, formatSarif } from './format.js'
+import { VERSION } from './version.generated.js'
 
 const USAGE = [
   'usage: markdown-contract validate <path> [--format human|json|sarif]',
@@ -34,6 +35,8 @@ const USAGE = [
   '       [--glob <glob> ...] [--include <glob> ...] [--exclude <glob> ...]',
   '',
   '       markdown-contract migrate <file> ... [--write]',
+  '',
+  '       markdown-contract --version',
 ].join('\n')
 
 /** One rule of a `CorpusConfig`: `include` and `exclude` globs and a contract. */
@@ -79,6 +82,7 @@ function parseCliArgs(argv: string[]) {
       include: { type: 'string', multiple: true }, // include globs, relative to the run folder
       exclude: { type: 'string', multiple: true }, // exclude globs, relative to the run folder
       help: { type: 'boolean', short: 'h' },
+      version: { type: 'boolean' },
       // `init` flags.
       meta: { type: 'boolean' }, // one contract per folder, plus a config (default: one contract)
       depth: { type: 'string' }, // folder depth for --meta (default 1; 0 means one contract)
@@ -164,8 +168,9 @@ export async function runCli(argv: string[], opts?: { cwd?: string }): Promise<C
 
   const { values, positionals } = parsed
 
-  // `--help` → usage on stdout, exit 0. No args at all → usage on stderr, exit 2.
+  // `--help` → usage on stdout, exit 0. `--version` → `markdown-contract <version>` on stdout, exit 0. No args at all → usage on stderr, exit 2.
   if (values.help) return { code: 0, stdout: USAGE, stderr: '' }
+  if (values.version) return { code: 0, stdout: `markdown-contract ${VERSION}`, stderr: '' }
   if (positionals.length === 0) return { code: 2, stdout: '', stderr: USAGE }
 
   const [command = '', ...rest] = positionals

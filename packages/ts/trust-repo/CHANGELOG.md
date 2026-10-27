@@ -1,5 +1,14 @@
 # @osdlc/trust-repo
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [da5e6a3]
+- Updated dependencies [da5e6a3]
+  - @osdlc/command-seam@0.14.0
+  - @osdlc/typed-git@0.10.0
+
 ## 0.5.0
 
 ### Minor Changes

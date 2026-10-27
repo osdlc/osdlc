@@ -35,6 +35,11 @@ export interface RunMainOptions {
   context?: CliContext
   /** Defaults to `process.argv.slice(2)`. */
   argv?: readonly string[]
+  /**
+   * When set, a first argument of `--version` prints `<name> <version>`, as
+   * `defineApp` does, and exits 0 without calling `main`. Pass the `VERSION` that `cli-tool-stamp-version` writes.
+   */
+  version?: string
 }
 
 /**
@@ -47,6 +52,11 @@ export type MainFn = (argv: readonly string[], ctx: CliContext) => number | Prom
 export async function runMain(main: MainFn, options: RunMainOptions): Promise<void> {
   const ctx = options.context ?? processContext()
   const argv = options.argv ?? process.argv.slice(2)
+  if (options.version !== undefined && argv[0] === '--version') {
+    ctx.io.stdout(`${options.name} ${options.version}\n`)
+    process.exitCode = EXIT.ok
+    return
+  }
   try {
     process.exitCode = await main(argv, ctx)
   } catch (err) {

@@ -52,7 +52,7 @@ import { documentSchema, documentZod, inputSchema, kebab, type JsonSchema } from
 export interface AppSpec<G extends FlagSpec> {
   /** The binary's name, as typed and as the prefix of every stderr line. */
   name: string
-  /** The version `--version` prints. Usually read from package.json. */
+  /** The version `--version` prints: the `VERSION` that `cli-tool-stamp-version` writes. */
   version: string
   summary: string
   description?: string

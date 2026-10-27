@@ -5,7 +5,7 @@
 import { defineApp, type App, type CommandContext, type Node } from '@osdlc/cli-tool/command'
 
 import { BIN, PROJECT_CONFIG_FILENAME } from '../app.ts'
-import { VERSION } from '../version.ts'
+import { VERSION } from '../version.generated.ts'
 import { TUI_KEYS_HELP, browseCommand, serveCommand } from './browse.ts'
 import { listCommand } from './list.ts'
 import { queryCommand } from './query.ts'

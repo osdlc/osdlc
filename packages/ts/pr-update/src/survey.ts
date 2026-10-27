@@ -45,7 +45,7 @@
 
 import { z } from 'zod'
 
-import { Git, parseGitUrl, parseRemoteUrl, type Worktree } from '@osdlc/typed-git'
+import { Git, parseRemoteRepo, type Worktree } from '@osdlc/typed-git'
 
 import type { CodeHost, CodeHostPrDetail } from '@osdlc/code-host'
 import type { CommandRunner } from '@osdlc/command-seam'
@@ -606,13 +606,12 @@ function scopedRefspecs(prs: readonly CodeHostPrDetail[], remote: string): strin
 
 /**
  * `owner/name` from a git remote reference, or null when it names no project.
- * It tries `parseGitUrl`, for the hosts it knows (GitHub, GitLab, ...), first, then
- * any other `host/owner/repo` remote, which is the form of a self-hosted Forgejo.
+ * It is typed-git's `parseRemoteRepo` without the host: the hosts `parseGitUrl`
+ * knows (GitHub, GitLab, ...) first, then any other `host/owner/repo` remote,
+ * which is the form of a GitHub Enterprise host or a self-hosted Forgejo.
  */
 export function remoteSlug(url: string): string | null {
-  const info = parseGitUrl(url)
-  if (info !== null && info.user && info.project) return `${info.user}/${info.project}`
-  const ref = parseRemoteUrl(url)
+  const ref = parseRemoteRepo(url)
   return ref === null ? null : `${ref.owner}/${ref.repo}`
 }
 

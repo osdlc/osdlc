@@ -81,18 +81,23 @@ import {
   USER_ONLY_KEYS,
   type Theme,
 } from './config-keys.ts'
+import { VERSION } from './version.generated.ts'
 import { appDirs, pre08Bases, USER_CONFIG_FILENAME } from './xdg.ts'
 import type { WayOptions } from './catalog.ts'
 import { SKILLS_SETTING_VALUES, type SkillsSetting } from './core/skills.ts'
 
 export { CONFIG_ENV_VAR, PROJECT_CONFIG_FILENAME, USER_CONFIG_FILENAME }
 
+/** The release line, `major.minor` of package.json's version. */
+const RELEASE_LINE = VERSION.split('.').slice(0, 2).join('.')
+
 /**
  * The URL a written file's `$schema` names: the schema this release line ships
- * in `schema/config.json`. Raise it with each minor release, here, in
- * `schema/config.json` and in the configuration guide; tests check all three.
+ * in `schema/config.json`. It follows package.json's version, and
+ * `scripts/write-config-schema.mjs` writes it into `schema/config.json` and
+ * the configuration guide.
  */
-export const CONFIG_SCHEMA_URL = 'https://unpkg.com/@osdlc/wayfinder@0.10/schema/config.json'
+export const CONFIG_SCHEMA_URL = `https://unpkg.com/@osdlc/wayfinder@${RELEASE_LINE}/schema/config.json`
 
 const strings = (description: string) => z.array(z.string()).describe(description)
 

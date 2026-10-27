@@ -14,7 +14,7 @@
  * verb declares `absent` or is a `probe`.
  */
 
-import { stderrOrError, type CommandResult } from '@osdlc/command-seam'
+import { notAnOption, stderrOrError, type CommandResult } from '@osdlc/command-seam'
 
 import { parseLabels, parsePrSearchHit, parsePullRequest, parseRepository } from './parse.ts'
 import { isAbsent, type Thing } from './failure.ts'
@@ -108,14 +108,28 @@ export function checkTarget(target: GhTarget | undefined): void {
   }
 }
 
+/**
+ * `[host/]owner/name` for `repo` (else the target's repo), the form `--repo`
+ * and `gh repo view` take, or `undefined` when neither names one. The host is
+ * the target's, through {@link hostOf}, so a hostname of `''` is "not set".
+ * Both are checked first.
+ */
+function qualifiedRepo(
+  target: GhTarget | undefined,
+  repo?: string | undefined,
+): string | undefined {
+  checkTarget(target)
+  if (repo !== undefined) checkTarget({ repo })
+  const slug = repo ?? target?.repo
+  if (slug === undefined) return undefined
+  const hostname = hostOf(target)
+  return hostname === undefined ? slug : `${hostname}/${slug}`
+}
+
 /** `--repo [host/]owner/name` for `pr`, `issue` and `label` verbs. `repo` overrides the target's. */
 function repoArgs(target: GhTarget | undefined, repo?: string | undefined): string[] {
-  checkTarget(target)
-  const slug = repo ?? target?.repo
-  if (slug === undefined) return []
-  if (repo !== undefined) checkTarget({ repo })
-  const hostname = hostOf(target)
-  return ['--repo', hostname === undefined ? slug : `${hostname}/${slug}`]
+  const qualified = qualifiedRepo(target, repo)
+  return qualified === undefined ? [] : ['--repo', qualified]
 }
 
 /** `--hostname <host>` for `api` and `auth` verbs. */
@@ -213,7 +227,10 @@ function manyOrNull(r: CommandResult): PullRequest[] | null {
 /**
  * A list query's answer: the rows, and whether `limit` cut the list short.
  * The verb asks gh for one row more than `limit`. `truncated` is true when
- * that row came back, and `rows` holds at most `limit`.
+ * that row came back, and `rows` holds at most `limit`. A query that goes
+ * through GitHub search, which returns at most 1000 results, is also
+ * `truncated` when 1000 rows came back: `prList` with a non-empty `search` or
+ * an `author`, `issueList` with a `label`, and `searchPrs`.
  */
 export interface ListResult<T> {
   rows: T[]
@@ -227,10 +244,23 @@ function checkLimit(limit: number): void {
   }
 }
 
-/** `rows` cut to `limit`, with whether there were more. Null stays null. */
-function limited<T>(rows: T[] | null, limit: number): ListResult<T> | null {
+/**
+ * The most results GitHub search returns for one query. A call that goes
+ * through search and gets this many rows may have been cut off by search,
+ * whatever the `limit`. gh uses search for `pr list` with a non-empty
+ * `--search` or with `--author`, for `issue list` with `--label`, and for
+ * `search prs`.
+ */
+const SEARCH_RESULT_CAP = 1000
+
+/**
+ * `rows` cut to `limit`, with whether there were more. With `cap`, reaching
+ * it counts as more too, since the source stops there. Null stays null.
+ */
+function limited<T>(rows: T[] | null, limit: number, cap?: number): ListResult<T> | null {
   if (rows === null) return null
-  return { rows: rows.slice(0, limit), truncated: rows.length > limit }
+  const truncated = rows.length > limit || (cap !== undefined && rows.length >= cap)
+  return { rows: rows.slice(0, limit), truncated }
 }
 
 /** A mutation's result carries no value. */
@@ -344,7 +374,12 @@ export function prList(
     checked: false,
     readOnly: true,
     parse(r) {
-      const result = limited(manyOrNull(r), limit)
+      // A search stops at 1000 results, so 1000 rows may be a cut, not the end.
+      const result = limited(
+        manyOrNull(r),
+        limit,
+        (opts.search ?? '') !== '' || opts.author !== undefined ? SEARCH_RESULT_CAP : undefined,
+      )
       if (result === null || head === undefined) return result
       return { ...result, rows: result.rows.filter((pr) => pr.headRefName === head) }
     },
@@ -361,9 +396,8 @@ function withFields(fields: readonly string[], required: readonly string[]): str
  * argument would read as a flag.
  */
 function notAFlag(what: string, value: string): void {
-  if (value.startsWith('-')) {
-    throw new RangeError(`${what} must not start with "-", got ${JSON.stringify(value)}`)
-  }
+  const message = (v: string) => `${what} must not start with "-", got ${JSON.stringify(v)}`
+  notAnOption(value, (v) => new RangeError(message(v)))
 }
 
 /**
@@ -784,7 +818,14 @@ export function issueList(
   const argv = ['issue', 'list', ...repoArgs(target)]
   if (opts.label !== undefined) argv.push('--label', opts.label)
   argv.push('--json', ISSUE_FIELDS, '--limit', String(limit + 1))
-  return { argv, checked: false, readOnly: true, parse: (r) => limited(manyIssuesOrNull(r), limit) }
+  // gh lists issues by label through search, which stops at 1000 results.
+  const cap = opts.label === undefined ? undefined : SEARCH_RESULT_CAP
+  return {
+    argv,
+    checked: false,
+    readOnly: true,
+    parse: (r) => limited(manyIssuesOrNull(r), limit, cap),
+  }
 }
 
 /** `gh issue view <n> --json …`: one issue, same field set as {@link issueList}. */
@@ -886,15 +927,10 @@ export function repoView(
   fields: readonly string[] = REPO_FIELDS,
   target?: GhTarget,
 ): GhVerb<Repository | null> {
-  checkTarget(target)
-  if (repo !== undefined) checkTarget({ repo })
-  const slug = repo ?? target?.repo
+  // The same `[host/]owner/name` rule as `--repo`.
+  const qualified = qualifiedRepo(target, repo)
   const argv = ['repo', 'view']
-  if (slug !== undefined) {
-    // Through hostOf, as repoArgs does: a hostname of '' is "not set".
-    const hostname = hostOf(target)
-    argv.push(hostname === undefined ? slug : `${hostname}/${slug}`)
-  }
+  if (qualified !== undefined) argv.push(qualified)
   argv.push('--json', withFields(fields, ['nameWithOwner']).join(','))
   return {
     argv,
@@ -951,14 +987,16 @@ export function searchPrs(
   if (opts.state === 'merged') argv.push('--merged')
   else if (opts.state !== undefined) argv.push('--state', opts.state)
   argv.push('--json', withFields(opts.fields ?? SEARCH_PR_FIELDS, ['number']).join(','))
-  argv.push('--limit', String(limit + 1))
+  // gh refuses a search limit over 1000, so ask for at most that. 1000 rows
+  // then read as truncated: search may hold more.
+  argv.push('--limit', String(Math.min(limit + 1, SEARCH_RESULT_CAP)))
   if (query !== '') argv.push('--', query)
   return {
     argv,
     checked: false,
     readOnly: true,
     env: hostEnv(target),
-    parse: (r) => limited(rowsOrNull(r, parsePrSearchHit), limit),
+    parse: (r) => limited(rowsOrNull(r, parsePrSearchHit), limit, SEARCH_RESULT_CAP),
   }
 }
 
