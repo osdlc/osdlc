@@ -68,9 +68,9 @@
       "line": 173,
       "title": "markdown-contract --version still prints the bare version; the other three CLIs now print <name> <version>",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "66e1e2714611a3c47d08a4d9b855402fa8edc3ed"
     }
   ]
 }
