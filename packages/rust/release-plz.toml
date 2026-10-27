@@ -51,3 +51,10 @@ release = false
 name = "markdown-contract"
 publish = false
 release = false
+
+# Held until its first release can have a release-plz run of its own; see
+# its Cargo.toml.
+[[package]]
+name = "glob-intersect"
+publish = false
+release = false

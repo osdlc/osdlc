@@ -329,6 +329,8 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    Held now (each crate's `Cargo.toml` names what it waits for):
    - `markdown-contract`, until the parity fixes from the review of
      [#460](https://github.com/osdlc/osdlc/pull/460) land.
+   - `glob-intersect`, until a release-plz run of its own can make its first
+     release with the token.
 
 #### Versions and breaking changes
 
