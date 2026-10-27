@@ -266,6 +266,7 @@ describe('independence from any host project', () => {
 
   const shipped = [
     ...sourceFiles(join(PACKAGE_DIR, 'src')).filter((f) => !f.endsWith('.test.ts')),
+    join(PACKAGE_DIR, 'bin', 'markdown-contract.js'),
     join(PACKAGE_DIR, 'README.md'),
     join(PACKAGE_DIR, 'CHANGELOG.md'),
   ]
@@ -291,10 +292,13 @@ describe('independence from any host project', () => {
     for (const file of unshipped) {
       const text = readFileSync(file, 'utf-8')
       const others = [...text.matchAll(/@osdlc\/[\w-]+(\/[\w-]+)?/g)].map((m) => m[0])
-      for (const spec of others)
+      for (const spec of others) {
+        // A dependency's subpath, such as `@osdlc/cli-tool/devlink`, counts as the dependency.
+        const base = spec.split('/').slice(0, 2).join('/')
         expect([...Object.keys(ENTRIES), ...OWN_DEPENDENCIES]).toContain(
-          ENTRIES[spec] === undefined ? spec.split('/').slice(0, 2).join('/') : spec,
+          OWN_DEPENDENCIES.includes(base) ? base : spec,
         )
+      }
     }
   })
 
