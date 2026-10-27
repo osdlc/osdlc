@@ -24,9 +24,9 @@
       "line": 1,
       "title": "Root CLAUDE.md as the agent file contradicts doc-locations.md, which makes AGENTS.md the file and CLAUDE.md a pointer",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "2e94dd66f792e24bd9968f1549293fb152d54176"
     },
     {
       "id": "r1-3",
