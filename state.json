@@ -70,7 +70,7 @@
       "path": "packages/ts/markdown-contract/src/cli/run.ts",
       "line": 173,
       "title": "markdown-contract --version still prints the bare version; the other three CLIs now print <name> <version>",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/513#discussion_r4384141708",
       "status": "fixed",
       "reason": null,
       "fixedIn": "66e1e2714611a3c47d08a4d9b855402fa8edc3ed"
