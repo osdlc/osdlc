@@ -1,5 +1,11 @@
 # @osdlc/typed-git
 
+## 0.11.1
+
+### Patch Changes
+
+- 7fe7f51: `parseRemoteRepo` reads `ssh.github.com` (GitHub's SSH over port 443) and `www.github.com` as `github.com`, so a remote on either names the same repository as one on `github.com`.
+
 ## 0.11.0
 
 ### Minor Changes

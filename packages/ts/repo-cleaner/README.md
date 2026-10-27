@@ -249,7 +249,8 @@ one that says which it could not find.
 | `--plan-out <path>` | Write the plan here; implies `--write-plan` |
 | `--version` | Print `repo-cleaner <version>` and exit; it must be the first argument |
 
-A checkout directory named `apply` is swept as `./apply`.
+A checkout directory named `apply` is swept as `./apply`, and one named `dev` as
+`./dev`: `dev` runs the tool from a checkout (see Running from a checkout).
 
 ## Plan and apply
 
@@ -357,6 +358,22 @@ sweep and `applyPlan`.
 
 `git` on `PATH`, and `gh` when PR state should count. Authentication is `gh`'s
 own — this package reads no token.
+
+## Running from a checkout
+
+To try a change to repo-cleaner with the `repo-cleaner` already on your PATH, link a
+checkout of this package:
+
+```sh
+repo-cleaner dev link ~/src/osdlc/packages/ts/repo-cleaner   # every `repo-cleaner` now runs that checkout
+repo-cleaner dev status                             # which code runs, and why
+repo-cleaner dev off                                # back to the installed copy
+```
+
+`REPO_CLEANER_HOME=<checkout> repo-cleaner …` does the same for one run. The checkout runs
+from source under Bun, so it needs `bun` on PATH and the checkout's
+dependencies installed and built. The installed copy says which checkout it
+hands off to on stderr; `REPO_CLEANER_QUIET=1` silences that line.
 
 ## Licence
 

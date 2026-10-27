@@ -1,5 +1,14 @@
 # @osdlc/pr-update
 
+## 0.8.4
+
+### Patch Changes
+
+- Updated dependencies [7fe7f51]
+- Updated dependencies [7fe7f51]
+  - @osdlc/code-host@0.7.0
+  - @osdlc/typed-git@0.11.1
+
 ## 0.8.3
 
 ### Patch Changes
