@@ -24,9 +24,9 @@
       "line": 38,
       "title": "<NAME>_LAUNCH_LAYER is inherited by every descendant, so nested runs silently skip the link and <NAME>_HOME",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "3ea30472b15f7a4260809e6a38d9cb965bc66053"
     }
   ]
 }
