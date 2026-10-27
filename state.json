@@ -15,7 +15,7 @@
       "path": "scripts/check-packages.ts",
       "line": 298,
       "title": "stamp-version --check never fails in CI: the Build step re-stamps the file first",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/513#discussion_r4384113445",
       "status": "fixed",
       "reason": null,
       "fixedIn": "9da3a4a12a59a2c4be6a6f6a8d9fa538317aad35"
@@ -26,7 +26,7 @@
       "path": "packages/ts/cli-tool/src/run-main.ts",
       "line": 55,
       "title": "runMain --version prints the bare version; defineApp prints '<name> <version>'",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/513#discussion_r4384113458",
       "status": "fixed",
       "reason": null,
       "fixedIn": "9da3a4a12a59a2c4be6a6f6a8d9fa538317aad35"
@@ -37,7 +37,7 @@
       "path": "packages/ts/cli-tool/bin/cli-tool-stamp-version.js",
       "line": 6,
       "title": "A bad or missing package.json ends the bin with an uncaught stack trace",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/513#discussion_r4384113464",
       "status": "fixed",
       "reason": null,
       "fixedIn": "9da3a4a12a59a2c4be6a6f6a8d9fa538317aad35"
@@ -48,7 +48,7 @@
       "path": "packages/ts/cli-tool/src/stamp-version.ts",
       "line": 74,
       "title": "--out with no value is reported as an unknown argument",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/513#discussion_r4384113469",
       "status": "fixed",
       "reason": null,
       "fixedIn": "9da3a4a12a59a2c4be6a6f6a8d9fa538317aad35"
@@ -59,7 +59,7 @@
       "path": "packages/ts/markdown-contract/src/cli/run.ts",
       "line": 173,
       "title": "No test covers markdown-contract --version",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/513#discussion_r4384113474",
       "status": "fixed",
       "reason": null,
       "fixedIn": "9da3a4a12a59a2c4be6a6f6a8d9fa538317aad35"
