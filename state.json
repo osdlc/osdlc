@@ -27,9 +27,9 @@
       "line": 190,
       "title": "No test runs the published launcher bin/markdown-contract.js; bin tests still spawn dist/cli/bin.js",
       "comment": "https://github.com/osdlc/osdlc/pull/525#pullrequestreview-5663070433",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "04a37a05cb1fa2dd453b21f6252ce2ce90a2e89b"
     },
     {
       "id": "r1-3",
