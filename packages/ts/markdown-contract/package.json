@@ -56,10 +56,11 @@
     }
   },
   "bin": {
-    "markdown-contract": "./dist/cli/bin.js"
+    "markdown-contract": "./bin/markdown-contract.js"
   },
   "files": [
     "dist/",
+    "bin/",
     "README.md",
     "CHANGELOG.md",
     "LICENSE-MIT",
@@ -81,6 +82,7 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
   },
   "dependencies": {
+    "@osdlc/cli-tool": "workspace:^",
     "@osdlc/gfm-table": "workspace:^",
     "@types/mdast": "^4.0.4",
     "micromark-util-types": "^2.0.2",
@@ -92,7 +94,6 @@
     "yaml": "catalog:"
   },
   "devDependencies": {
-    "@osdlc/cli-tool": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",

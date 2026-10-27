@@ -315,6 +315,25 @@ contracts, documents and expected findings that any engine for these
 contracts can run. See [corpus/README.md](./corpus/README.md) and
 [CONTRIBUTING.md](./CONTRIBUTING.md).
 
+## Running from a checkout
+
+To try a change to markdown-contract with the `markdown-contract` already on
+your PATH, link a checkout of this package:
+
+```sh
+markdown-contract dev link ~/src/osdlc/packages/ts/markdown-contract   # every run now uses that checkout
+markdown-contract dev status                                          # which code runs, and why
+markdown-contract dev off                                             # back to the installed copy
+```
+
+`MARKDOWN_CONTRACT_HOME=<checkout> markdown-contract …` does the same for one
+run. The checkout runs from source, so it needs the runtime and the installed
+dependencies that
+[`@osdlc/cli-tool`'s devlink](https://github.com/osdlc/osdlc/tree/main/packages/ts/cli-tool/devlink#readme)
+names. The installed copy says which checkout it hands off to on stderr;
+`MARKDOWN_CONTRACT_QUIET=1` silences that line. `dev` is a command word, so
+`markdown-contract dev …` never reaches `validate`, `init` or `migrate`.
+
 ## Licence
 
 `MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).
