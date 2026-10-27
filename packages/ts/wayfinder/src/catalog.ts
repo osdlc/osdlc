@@ -11,13 +11,16 @@ import {
   createProject,
   type CachedCatalog,
   type Catalog,
+  type CollectOptions,
   type DiscoveryMode,
   type Project,
   type ProjectProfile,
+  type RunnerReport,
   type ToolDef,
 } from '@osdlc/system-model/detect'
 
 import { orderRunners } from './config.ts'
+import { trackWrite } from './core/writes.ts'
 import { groupRank } from './groups.ts'
 
 /**
@@ -35,9 +38,21 @@ export interface WayOptions {
   execWithheldHint?: string | undefined
   discovery?: DiscoveryMode | 'auto' | undefined
   excludePaths?: string[] | undefined
+  /**
+   * How long one runner may take to answer, its subprocesses included, in
+   * ms. Unset, each runner has its own limit. A runner past it is stopped
+   * and reports `timed out after <n> s`.
+   */
+  probeTimeoutMs?: number | undefined
+  /** The longest any runner may take, in ms: it only lowers a limit. For a project file's value. */
+  maxProbeTimeoutMs?: number | undefined
   signal?: AbortSignal | undefined
   /** Called with each probed runner's measured time. */
   onProbe?: ((probe: { runner: string; durationMs: number }) => void) | undefined
+  /** Called once, before any runner answers, with every runner the collection reports. */
+  onRunners?: ((runners: readonly string[]) => void) | undefined
+  /** Called with each runner's report as it answers, withheld runners included. */
+  onReport?: ((report: RunnerReport) => void) | undefined
   /**
    * Per-tool trust, for a repository that is not trusted as a whole. Used
    * only while `allowExec` is false. See {@link ToolTrust}.
@@ -82,14 +97,18 @@ function detect(project: Project, root: string, o: WayOptions): Promise<ProjectP
   })
 }
 
-function collectOptions(o: WayOptions) {
+function collectOptions(o: WayOptions): CollectOptions {
   return {
     only: o.only,
     exclude: o.exclude,
     allowExec: o.allowExec ?? false,
     execWithheldHint: o.execWithheldHint,
+    probeTimeoutMs: o.probeTimeoutMs,
+    maxProbeTimeoutMs: o.maxProbeTimeoutMs,
     signal: o.signal,
     onProbe: o.onProbe,
+    onRunners: o.onRunners,
+    onReport: o.onReport,
   }
 }
 
@@ -138,13 +157,38 @@ function grantedRunners(project: Project, profile: ProjectProfile, o: WayOptions
   return granted.length > 0 ? granted : null
 }
 
-/** The collect options for the runners a tool grant covers, and for the rest. */
+/**
+ * The collect options for the runners a tool grant covers, and for the rest.
+ * The two collections report as one: `onRunners` once, with both lists, and
+ * no report before it.
+ */
 function splitOptions(o: WayOptions, granted: string[]) {
+  // Granted first, then the others, whichever answers first.
+  const lists: [(readonly string[])?, (readonly string[])?] = []
+  const early: RunnerReport[] = []
+  const ready = (): boolean => lists[0] !== undefined && lists[1] !== undefined
+  const onReport = (report: RunnerReport): void => {
+    if (ready()) o.onReport?.(report)
+    else early.push(report)
+  }
+  const onRunners =
+    (slot: 0 | 1) =>
+    (ids: readonly string[]): void => {
+      lists[slot] = ids
+      if (!ready()) return
+      o.onRunners?.([...(lists[0] ?? []), ...(lists[1] ?? [])])
+      for (const report of early.splice(0)) o.onReport?.(report)
+    }
   const base = collectOptions(o)
   const { execWithheldHint: _hint, exclude: _exclude, ...rest } = base
   return {
-    granted: { ...rest, allowExec: true, only: granted },
-    others: { ...base, exclude: [...(o.exclude ?? []), ...granted] },
+    granted: { ...rest, onReport, onRunners: onRunners(0), allowExec: true, only: granted },
+    others: {
+      ...base,
+      onReport,
+      onRunners: onRunners(1),
+      exclude: [...(o.exclude ?? []), ...granted],
+    },
   }
 }
 
@@ -152,8 +196,13 @@ function mergeCatalogs(granted: Catalog, others: Catalog): Catalog {
   return { ...others, reports: [...granted.reports, ...others.reports] }
 }
 
-/** Detect, collect, and store each runner's result under `store`. */
-export async function collectAndCache(
+/**
+ * Detect, collect, and store each runner's result under `store`. The catalog
+ * comes once every runner has answered; the store is written after, in the
+ * background, and `flushWrites` waits for it. When a tool grant splits the
+ * runners in two, both collections settle before a failure is thrown.
+ */
+export async function collectAndStore(
   project: Project,
   root: string,
   options: WayOptions,
@@ -161,12 +210,15 @@ export async function collectAndCache(
 ): Promise<Catalog> {
   const profile = await detect(project, root, options)
   const granted = grantedRunners(project, profile, options)
-  if (granted === null) {
-    return project.runners.collectAndCache(profile, store, collectOptions(options))
+  const collect = async (opts: CollectOptions): Promise<Catalog> => {
+    const { catalog, stored } = await project.runners.collectAndStore(profile, store, opts)
+    void trackWrite(stored)
+    return catalog
   }
+  if (granted === null) return collect(collectOptions(options))
   const split = splitOptions(options, granted)
-  const a = await project.runners.collectAndCache(profile, store, split.granted)
-  const b = await project.runners.collectAndCache(profile, store, split.others)
+  // At the same time, so a progress count covers both from the start.
+  const [a, b] = await settledBoth(collect(split.granted), collect(split.others))
   return mergeCatalogs(a, b)
 }
 
@@ -194,6 +246,14 @@ export async function readCachedCatalog(
   return { catalog, runners: [...a.runners, ...b.runners], allFresh: a.allFresh && b.allFresh }
 }
 
+/** Both results once both have settled; the first failure, if any, after both. */
+export async function settledBoth<A, B>(a: Promise<A>, b: Promise<B>): Promise<[A, B]> {
+  const [ra, rb] = await Promise.allSettled([a, b])
+  if (ra.status === 'rejected') throw ra.reason
+  if (rb.status === 'rejected') throw rb.reason
+  return [ra.value, rb.value]
+}
+
 /** True when something came out of the store, not only withheld reports. */
 export function fromStore(cached: CachedCatalog): boolean {
   return cached.catalog !== null && cached.runners.some((r) => r.ageMs !== undefined)
@@ -204,8 +264,13 @@ export function fromStore(cached: CachedCatalog): boolean {
  * git hooks) and, within a group, in the configured order.
  */
 export function orderedCatalog(catalog: Catalog, order: string[] | undefined): Catalog {
-  const reports = orderRunners(catalog.reports, order).sort(
-    (a, b) => groupRank(a.runner) - groupRank(b.runner),
-  )
-  return { ...catalog, reports }
+  return { ...catalog, reports: inDisplayOrder(catalog.reports, order) }
+}
+
+/** `items` by group, and within a group in the configured order. */
+export function inDisplayOrder<T extends { runner: string }>(
+  items: readonly T[],
+  order: string[] | undefined,
+): T[] {
+  return orderRunners([...items], order).sort((a, b) => groupRank(a.runner) - groupRank(b.runner))
 }

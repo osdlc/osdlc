@@ -107,4 +107,43 @@ describe('the clients go through it', () => {
       expect(calls[0]!.opts).toMatchObject({ timeoutMs: 9, env: { GH_HOST: 'ghe.example.com' } })
     }
   })
+
+  test('openPrFor passes its timeout through on both clients', async () => {
+    const a = spy(ok('[]'))
+    new Gh('/repo', { runner: a.runner }).openPrFor('feature/x', { timeoutMs: 7 })
+    const b = spy(ok('[]'))
+    await new AsyncGh('/repo', { runner: b.runner }).openPrFor('feature/x', { timeoutMs: 7 })
+    for (const { calls } of [a, b]) expect(calls[0]!.opts?.timeoutMs).toBe(7)
+  })
+})
+
+describe('output cut short (outputIncomplete) is a failure', () => {
+  const PARTIAL: CommandResult = {
+    exitCode: 0,
+    stdout: 'diff --git a/x b/x\n',
+    stderr: '',
+    outputIncomplete: true,
+  }
+
+  test('a checked verb, an unchecked read and rawChecked throw; try and soft report it', () => {
+    const gh = new Gh('/repo', { runner: spy(PARTIAL).runner })
+    expect(() => gh.prDiff(7)).toThrow(FailureError)
+    expect(() => gh.prList()).toThrow(FailureError)
+    expect(() => gh.rawChecked(['pr', 'diff', '7'])).toThrow(FailureError)
+    expect(gh.try.prList().ok).toBe(false)
+    expect(gh.soft.prView(7)).toBeNull()
+  })
+
+  test('AsyncGh rejects the same way', async () => {
+    const gh = new AsyncGh('/repo', { runner: spy(PARTIAL).runner })
+    await expect(gh.prDiff(7)).rejects.toBeInstanceOf(FailureError)
+    await expect(gh.prList()).rejects.toBeInstanceOf(FailureError)
+    await expect(gh.rawChecked(['pr', 'diff', '7'])).rejects.toBeInstanceOf(FailureError)
+    expect((await gh.try.prList()).ok).toBe(false)
+    expect(await gh.soft.prView(7)).toBeNull()
+  })
+
+  test('runVerb throws for it', () => {
+    expect(() => runVerb(prView(7), spy(PARTIAL).runner, { cwd: '/repo' })).toThrow(FailureError)
+  })
 })

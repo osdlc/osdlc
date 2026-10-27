@@ -10,6 +10,7 @@ run a task with the same argument rules.
 |---|---|---|
 | `session.ts` | `createSession`, `Session`, `SessionError`, `resolveRun` | no |
 | `run.ts` | `handOff`: give the terminal to a task and wait for it | no |
+| `writes.ts` | `trackWrite`, `flushWrites`: the view and store writes made after an answer, awaited before exit | yes |
 | `filter.ts` | `filterTasks`, `keepsTask`, `sourceDepth`, `TaskFilter` | yes |
 | `skills.ts` | `SkillRow`, `filterSkills`, `skillLine`: the Skills group | yes |
 | `unknowns.ts` | `unknownsOf`, `unknownLine`, `Unknown` | yes |
@@ -30,9 +31,10 @@ decides execution against the trust store and loads tool modules. It throws
 | Call | Does |
 |---|---|
 | `session.catalog()` | probes every runner and stores the result. `cache[].probeMs` is each runner's measured time. `skills` holds the agent skills the `skills` setting chooses |
+| `session.catalog({ progress })` | the same, and as it probes: `progress.onRunners(ids)` once with every runner it probes, then `progress.onRunner(report, cache)` as each answers, withheld runners included, and `progress.onSkills(skills)` once the skills are read. An answer from the saved view or the store calls none of them. The store is written after the answer; `flushWrites()` in `writes.ts` waits for it and the saved view |
 | `session.catalog({ cached: true })` | answers with `savedCatalog()` when there is one (`origin: 'saved'`, files unchecked); else reads the store and probes only the runners missing from it. `origin` says which happened |
 | `session.storedCatalog()` | the store alone, probing nothing, or null when it has no answer. It still detects the project and hashes each runner's files |
-| `session.savedCatalog()` | the catalog the last `catalog()` call showed, in any process, from one file (`saved-view.ts`), unchecked; null unless it was saved under the same `viewKey()`. The terminal UI and `serve` draw it first, and fall back to the store |
+| `session.savedCatalog()` | the catalog the last `catalog()` call showed, in any process, from one file (`saved-view.ts`), unchecked; null unless it was saved under the same `viewKey()`. The terminal UI and `serve` draw it first; without it they show each runner as the probe reports it |
 | `session.confirmRun(plan, args)` | before a task from a saved or stored listing runs: probes its runner alone and returns the plan as that probe sees it. Throws `task-changed` when the task is gone or its argv or cwd changed |
 | `session.viewKey()` | what decides which rows a probe returns: trust, the collect options, the `skills` setting and the tools |
 | `session.search(catalog, filter)` | `filterTasks` over the catalog, best first with a query |
@@ -62,16 +64,20 @@ the tool registry, and `session.store` the directory probes are stored in.
   `commands/shared.ts`), which maps the global flags onto `createSession` and
   turns a `SessionError` into a `CommandError`.
 - The terminal UI: `runTui(session)` in `src/tui/` takes the `Session` and
-  calls `savedCatalog`, `storedCatalog`, `catalog`, `search`, `grantTrust`, `revokeTrust`,
-  `settings`, `reloadSettings`, `saveSetting` and `resolveRun`. A run hands
+  calls `savedCatalog`, `catalog`, `search`, `grantTrust`, `revokeTrust`,
+  `settings`, `reloadSettings`, `saveSetting` and `resolveRun`. With no saved
+  view it draws each runner as `catalog`'s `progress` reports it. A run hands
   off with `handOff(plan)` after the terminal is released.
 - The web view's server (`src/serve/`) takes the `Session` and the command
   tree. The page calls commands over HTTP, so each request opens its own
   session, as a CLI run does. `list` shares one catalog between those
   requests (`serve/catalog-share.ts`): `--cached` gets the newest one the
   server holds, and `list --join` joins a probe already running, both only
-  under the same `viewKey()`. A shared probe runs on the share's signal and
-  stops when no request waits for it or the server stops. Its settings screen saves with `config set`,
+  under the same `viewKey()`. With nothing held, `--cached` joins the probe
+  `serve` started. A shared probe runs on the share's signal and
+  stops when no request waits for it or the server stops. Its progress lines
+  (`list --progress`) go to every request that asked for them, the ones sent
+  before a request joined first. Its settings screen saves with `config set`,
   to the file `settingLayer` picks, the rule `saveSetting` uses. A run resolves with `run --dry-run --cached --check`,
   which probes the task's runner again, and hands off with `handOff(plan)`
   after the server has stopped.
@@ -90,9 +96,12 @@ the tool registry, and `session.store` the directory probes are stored in.
    through `ctx.note`; nothing writes stdout but `text`.
 3. Mount it in `createWayApp` in `commands/index.ts`. The complete help
    shows every command the tree mounts.
-4. For a new document, add its Zod output to `documents.ts` and its kind to
-   `DOCUMENT_SCHEMAS` in `schema.ts`. `tests/commands.test.ts` checks the
-   exported schema is the one `way schema` prints.
+4. For a new document wayfinder owns as Zod, add its output to
+   `documents.ts`, to `OUTPUTS` in `schema.ts` and its kind to `OWN` in
+   `scripts/write-document-schemas.ts`. Then run
+   `node scripts/write-document-schemas.ts`: `DOCUMENT_SCHEMAS` is derived
+   from the `src/document-schemas.generated.ts` it writes, and
+   `tests/commands.test.ts` fails when that file is stale.
 
 ## Shared commands
 

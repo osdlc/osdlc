@@ -10,7 +10,7 @@
  */
 
 import { afterAll, describe, expect, test } from 'vitest'
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { CommandFailed, runChecked, spawnRunner, spawnRunnerAsync } from '@osdlc/command-seam'
@@ -241,6 +241,17 @@ describe('createLister patterns', () => {
     'pkg/mise-tasks/deploy': '',
     'mise-tasks/lint': '',
   }
+
+  test.skipIf(process.platform === 'win32')(
+    'the walk follows no directory symlink, into a loop or out of the tree',
+    async () => {
+      const dir = await root({ 'pkg/package.json': '{}' })
+      const outside = await root({ 'package.json': '{}' })
+      symlinkSync('..', join(dir, 'pkg', 'loop'))
+      symlinkSync(outside, join(dir, 'ext'))
+      expect(await lister(dir)('package.json')).toEqual(['pkg/package.json'])
+    },
+  )
 
   test('a pattern with no slash matches a basename at any depth', async () => {
     const dir = await root(TREE)

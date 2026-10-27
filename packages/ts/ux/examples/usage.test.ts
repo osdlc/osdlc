@@ -18,6 +18,7 @@ import {
   ansiCodes,
   ansiColors,
   colors,
+  controlPattern,
   cssSheet,
   detectColorLevel,
   displayWidth,
@@ -100,6 +101,14 @@ describe('print untrusted text', () => {
     expect(displayWidth(safe)).toBe(17)
     const fit: FitWidthOptions = { pad: true }
     expect(fitWidth(safe, 10, fit)).toBe('build 日… ')
+  })
+
+  test('replace each control character, keeping the length', () => {
+    const name = 'build\x1b]0;x\x07\u202e'
+    const marked = name.replace(controlPattern(), '\ufffd')
+    expect(marked).toBe('build\ufffd]0;x\ufffd\ufffd')
+    expect(marked.length).toBe(name.length)
+    expect('a\tb\r\n'.replace(controlPattern({ newline: true, tab: true }), '')).toBe('a\tb\n')
   })
 
   test('errors', () => {

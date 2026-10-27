@@ -147,11 +147,11 @@ Evidence tiers run from the most direct to the least: `manifest` (1),
 | `@osdlc/system-model/dotnet` | the dotnet CLI and the dotnet ecosystem |
 | `@osdlc/system-model/runners` | moon, just, make, turbo, go-task, docker compose, GitHub Actions, Nx, VS Code tasks, Devbox, Procfile, CMake presets |
 | `@osdlc/system-model/tools` | mise, proto, direnv, lefthook, husky, pre-commit |
-| `@osdlc/system-model/match` | fuzzy and exact matching of a query against tasks |
+| `@osdlc/system-model/match` | fuzzy and exact matching of a query against tasks, and `ALL_MATCH_MODES` |
 | `@osdlc/system-model/params` | `paramShape`, a task's parameters as one string |
 | `@osdlc/system-model/duration` | `humanMs` and `humanAge` |
-| `@osdlc/system-model/schema` | JSON Schemas for `Catalog`, `RunnerReport`, `Task`, `Param` and `ToolInfo` |
-| `@osdlc/system-model/groups` | `GROUPS`, `groupOf`, `catalogGroups` and `SYNTHESIZED_RUNNERS`: which group a report falls in |
+| `@osdlc/system-model/schema` | JSON Schemas for `Catalog`, `RunnerReport`, `Task`, `Param` and `ToolInfo`, and the `ALL_*` value lists of their enum-shaped fields and of the cache verdict |
+| `@osdlc/system-model/groups` | `GROUPS`, `ALL_GROUP_IDS`, `groupOf`, `catalogGroups` and `SYNTHESIZED_RUNNERS`: which group a report falls in |
 
 The core knows no tool. A plugin imports only the core, never another plugin.
 The root entry, `./graph`, `./aspect`, `./client`, `./saved-view`, `./match`,
@@ -320,8 +320,22 @@ Each subprocess a runner starts gets the caller's `signal` and a timeout. A
 runner declares its timeout and a cost hint (`cheap` or `slow`) in
 `RunnerRole.probe`. A runner that declares none gets `DEFAULT_PROBE_TIMEOUT_MS`.
 `CollectOptions.timeouts` replaces a runner's timeout by id, such as
-`{ moon: 300_000 }`. `CollectOptions.onProbe` is called once for each runner
-probed, with how long the probe took, so a host can report it.
+`{ moon: 300_000 }`, and `CollectOptions.probeTimeoutMs` replaces it for every
+runner `timeouts` does not name. `CollectOptions.maxProbeTimeoutMs` caps
+every runner's timeout after both, so a host can take a value from a less
+trusted source, such as a project file, that only lowers the limit.
+`Infinity` means no limit, and a finite timeout is at most 2^31-1 ms.
+
+The timeout bounds the whole probe too. Its clock starts once the shared file
+listing is ready. A runner still running at its timeout is stopped: the
+processes it started are killed, and it reports `status: 'error'` with the
+diagnostic `timed out after 10 s`. The other runners go on.
+`CollectOptions.onProbe` is called once for each runner probed, with how long
+the probe took, so a host can report it.
+`CollectOptions.onRunners` is called once, before any probe, with the runners
+the collect reports, and `CollectOptions.onReport` once per runner as its
+report is ready, withheld runners included, so a host can show each runner
+as it answers.
 
 Each subprocess also runs with command-seam's `killTree: true`, so a timeout
 or an abort kills the processes it started as well (moon, gradle and sbt
@@ -336,7 +350,11 @@ names, docs, argv and diagnostics. Escape it before it reaches a terminal
 
 A catalog carries `kind: 'catalog'` and `schemaVersion`
 (`CATALOG_SCHEMA_VERSION`). `@osdlc/system-model/schema` has JSON Schemas for
-`Catalog`, `RunnerReport`, `Task`, `Param` and `ToolInfo`.
+`Catalog`, `RunnerReport`, `Task`, `Param` and `ToolInfo`. It also exports the
+values of each enum-shaped field as a `readonly` tuple: `ALL_PARAMETERS_UNKNOWN_REASONS`,
+`ALL_ROLE_NAMES`, `ALL_PROVIDER_KINDS` and `ALL_PROBE_COSTS`, and the cache
+verdict's `ALL_CACHE_STATES` and `ALL_STALE_REASONS`. A host that builds its
+own document schema passes one to `z.enum` instead of copying the values.
 
 Three synthesized runners turn role actions into tasks:
 
@@ -388,6 +406,10 @@ then `dependencies`, `tools` and `hooks`, one per synthesized runner.
 
 `project.runners.collectAndCache(profile, dir)` collects and stores each
 runner's result under a directory you choose.
+`project.runners.collectAndStore(profile, dir)` returns `{ catalog, stored }`
+as soon as every runner has answered, then hashes the files and writes the
+store in the background. `stored` settles when the writes end; await it
+before the process exits.
 `project.runners.readCached(profile, dir)` reads it back without running
 anything, and says per runner whether the entry is `fresh`, `stale` or a
 `miss`. An entry goes stale when a file it read or matched changes, when its
@@ -460,8 +482,9 @@ Registering two tools with one id throws. A runner never spawns a process or
 reads the filesystem itself. It goes through `ctx`, so a test can give it
 canned output.
 
-Give a tool a `homepage`, a one-sentence `description` and a `brand` (an icon
-and a colour); every built-in has them. `RunnerRole.brand` still works, and is
+Give a tool a `homepage` and a one-sentence `description`; every built-in has
+them. A `brand` (an icon and a colour) is optional, and some built-ins, such as
+`deno-tasks`, `docker-compose` and `github-actions`, have none. `RunnerRole.brand` still works, and is
 deprecated in favour of `ToolDef.brand`. A runner's `invoke` must keep
 `task.argv[0]`.
 
@@ -490,11 +513,16 @@ The experimental exports of `@osdlc/system-model/detect`:
 `GemfileFact`, `GoModFact`, `HookDef`, `HookManagerRole`, `ManifestFacts`,
 `PackageJsonFact`, `PackageManagerChoice`, `PackageManagerRole`, `ParamBinding`,
 `PinnedInstall`, `PinnedInstallOptions`, `PinnedSource`, `PyprojectFact`, `RunnerCacheState`,
-`SYNTHESIZED_RUNNERS`, `StaleReason`, `ToolAction`, `ToolFact`, `ToolManagerRole`
+`SYNTHESIZED_RUNNERS`, `StaleReason`, `StoringCatalog`, `ToolAction`, `ToolFact`,
+`ToolManagerRole`
 
 The experimental exports of `@osdlc/system-model/groups`:
 
-`GROUPS`, `Group`, `GroupId`, `SYNTHESIZED_RUNNERS`, `catalogGroups`, `groupOf`
+`ALL_GROUP_IDS`, `GROUPS`, `Group`, `GroupId`, `SYNTHESIZED_RUNNERS`, `catalogGroups`, `groupOf`
+
+The experimental exports of `@osdlc/system-model/schema`:
+
+`ALL_CACHE_STATES`, `ALL_STALE_REASONS`
 
 The experimental exports of `@osdlc/system-model/runners`:
 
@@ -502,8 +530,8 @@ The experimental exports of `@osdlc/system-model/runners`:
 
 The `Project` members `packageManagers`, `install`, `frozenInstall`,
 `missingDeps`, `pinnedInstall`, `toolManagers`, `execPrefix`, `trust`,
-`hookManagers` and `armHooks`, the `Runners` members `readCached` and
-`collectAndCache`, `RunnerContext.packageManagers`, `ToolDef.describe` and the `Param` fields
+`hookManagers` and `armHooks`, the `Runners` members `readCached`,
+`collectAndCache` and `collectAndStore`, `RunnerContext.packageManagers`, `ToolDef.describe` and the `Param` fields
 `binding`, `doc` and `choices` are experimental too. A test compares the lists above with the `@experimental`
 tags in the source.
 

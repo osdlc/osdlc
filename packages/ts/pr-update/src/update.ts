@@ -48,6 +48,7 @@ import {
   SurveyUsageError,
   repoFailure,
   runSurvey,
+  surveyTargets,
   type SurveyEnv,
   type SurveyReport,
 } from './survey.ts'
@@ -134,6 +135,17 @@ export function selectTargets(
       } else targets.push(target)
     }
   }
+  // A PR in a base/head cycle has no row, because it has no place in the
+  // stack order. It is still a PR the survey listed, so it is reported here.
+  for (const number of report.cycles) {
+    if (seen.has(number)) continue
+    seen.add(number)
+    const reason =
+      wanted.size > 0 && !wanted.has(number)
+        ? 'not selected by --pr/--branch'
+        : 'in a base/head cycle; no stack order to update it in'
+    skipped.push({ number, head: '', reason })
+  }
   // A `--pr` number the survey never reported (a typo, or a PR that closed
   // between the survey and this run) never reaches `note()` in the loop above,
   // which sees only `report.prs`. Add it here, so every number this run was
@@ -146,6 +158,7 @@ export function selectTargets(
 
 export const input = z.object({
   ...SCOPE_SHAPE,
+  remote: SCOPE_SHAPE.remote.describe('Remote to fetch from, measure against and push to.'),
   apply: z
     .boolean()
     .default(false)
@@ -377,8 +390,16 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
 
   const writes = wantsWrite(args, env.dryRun)
 
-  const git = new Git(env.projectRoot, { runner: env.git })
-  const worktreeRoot = join(env.projectRoot, '.pr-update', `${process.pid}.${Date.now()}`)
+  // Each repository's PRs are updated in that repository's own checkout, the
+  // one the survey measured them in.
+  const located = targets.length === 0 ? [] : surveyTargets(args, env).targets
+  const pathOf = new Map(located.map((t) => [t.slug, t.path ?? env.projectRoot]))
+  const groups = new Map<string, UpdateTarget[]>()
+  for (const t of targets) {
+    const path = pathOf.get(t.repo) ?? env.projectRoot
+    groups.set(path, [...(groups.get(path) ?? []), t])
+  }
+  const runId = `${process.pid}.${Date.now()}`
   // Resolve once here, not inside `updateAll`'s per-PR loop.
   const verify = effectiveCfg.verify
   const verifyVerbs =
@@ -396,16 +417,28 @@ export async function runUpdate(args: UpdateArgs, env: UpdateEnv): Promise<Updat
     onRebaseConflict: effectiveCfg.on_rebase_conflict,
     confirmPush,
   }
-  const results = await updateAll(git, targets, settings, env.ports.runVerb, {
-    apply: writes,
-    worktreeRoot,
-  })
+  const results: UpdateResult[] = []
+  for (const [path, group] of groups) {
+    const git = new Git(path, { runner: env.git })
+    const worktreeRoot = join(path, '.pr-update', runId)
+    results.push(
+      ...(await updateAll(git, group, settings, env.ports.runVerb, {
+        apply: writes,
+        worktreeRoot,
+      })),
+    )
+  }
   // A rehearsal cannot repair, so its failures say nothing about a real run.
   if (writes && attempts !== undefined) recordAttempts(attempts, results)
 
   const local = new Map<number, LocalCheckout>()
   if (writes && args.branch !== undefined) {
+    // Branch mode names a branch of the checkout at the project root.
+    const git = new Git(env.projectRoot, { runner: env.git })
+    const key = (t: UpdateTarget): string => `${t.repo}#${t.number}`
+    const atRoot = new Set((groups.get(env.projectRoot) ?? []).map(key))
     for (const r of results) {
+      if (!atRoot.has(key(r))) continue
       const synced = syncLocalCheckout(git, r)
       if (synced !== undefined) local.set(r.number, synced)
     }

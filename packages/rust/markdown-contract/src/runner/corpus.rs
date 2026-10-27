@@ -338,4 +338,49 @@ mod tests {
     fn an_invalid_glob_is_a_config_error() {
         assert!(compile_matcher(&["a[".into()]).is_err());
     }
+
+    // The global exclude drops a file before routing: a broken draft is never read.
+    #[test]
+    fn the_global_exclude_pre_filters_before_rules() {
+        let config = CorpusConfig {
+            rules: vec![rule(&["**/*.md"], &[])],
+        };
+        let out = run_corpus(
+            &config,
+            [
+                ("drafts/broken.md", "## Wrong\n\nx\n"),
+                ("keep.md", "## Overview\n\nok\n"),
+            ],
+            &RunOptions {
+                exclude: vec!["drafts/**".into()],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(out.stats.files_matched, 1);
+        assert_eq!(out.stats.files_unmatched, 1);
+        assert_eq!(out.exit_code, 0);
+    }
+
+    #[test]
+    fn an_invalid_run_option_glob_is_a_glob_error() {
+        let config = CorpusConfig {
+            rules: vec![rule(&["**/*.md"], &[])],
+        };
+        for opts in [
+            RunOptions {
+                include: vec!["a[".into()],
+                ..Default::default()
+            },
+            RunOptions {
+                exclude: vec!["a[".into()],
+                ..Default::default()
+            },
+        ] {
+            let Err(e) = run_corpus(&config, [("a.md", "x")], &opts) else {
+                panic!("expected a GlobError")
+            };
+            assert_eq!(e.glob, "a[");
+        }
+    }
 }

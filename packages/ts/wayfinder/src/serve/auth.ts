@@ -22,22 +22,10 @@
  * never answers, so a website cannot redeem the boot token either.
  */
 
+import { newToken, tokenEquals } from '@osdlc/cli-tool/http'
+
 /** How long the boot token stays usable once the URL is shown. */
 const BOOT_TTL_MS = 60_000
-
-/** 128 bits, hex, from a secure source. */
-function secret(): string {
-  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16))
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-/** Compared without an early exit, so a near miss takes as long as a far one. */
-function tokenEquals(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let diff = 0
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  return diff === 0
-}
 
 /** The one-shot boot token. */
 export interface SignIn {
@@ -63,7 +51,7 @@ export interface SignIn {
  * another program that read the link.
  */
 export function createSignIn(now: () => number = Date.now, onReplay?: () => void): SignIn {
-  let bootToken = secret()
+  let bootToken = newToken()
   let live = true
   let redeemed = false
   let expiresAt = Number.POSITIVE_INFINITY
@@ -88,7 +76,7 @@ export function createSignIn(now: () => number = Date.now, onReplay?: () => void
       return true
     },
     renew() {
-      bootToken = secret()
+      bootToken = newToken()
       live = true
       redeemed = false
       expiresAt = now() + BOOT_TTL_MS

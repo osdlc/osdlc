@@ -12,6 +12,7 @@
 import type { ProviderContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
+import { parseJsonc } from '../support/jsonc.ts'
 import { afterSeparator, dependencies, dirOf, looksPersistent, taskId } from '../support/shared.ts'
 
 const CHAIN = [
@@ -54,10 +55,9 @@ export const turboRunner: RunnerRole = {
 
   async collect(ctx: ProviderContext): Promise<ProviderResult> {
     const jsonFiles = await ctx.files(TURBO_JSON)
-    // turbo.jsonc is best-effort. It needs its comments stripped to parse as
-    // JSON, and `ctx.readJson` does not accept comments. Plugins stay
-    // independent, so the stripper below is local, not shared with deno's. A
-    // file that still fails to parse becomes a diagnostic.
+    // turbo.jsonc may hold comments and trailing commas, which `ctx.readJson`
+    // does not accept, so it is parsed as JSONC. A file that still fails to
+    // parse becomes a diagnostic.
     const jsoncFiles = await ctx.files(TURBO_JSONC)
     const files = [...jsonFiles, ...jsoncFiles].sort()
     if (files.length === 0) return { status: 'absent', tasks: [], diagnostics: [] }
@@ -194,9 +194,8 @@ export const turboRunner: RunnerRole = {
 
 /**
  * Reads a turbo config file. `.json` files go straight through
- * `ctx.readJson`. `.jsonc` files may hold `//` and `/* *\/` comments, and
- * `ctx.readJson` parses strict JSON, so their comments are stripped first.
- * Best-effort: enough for real turbo.jsonc files, not a full JSONC parser.
+ * `ctx.readJson`. `.jsonc` files may hold comments and trailing commas, and
+ * `ctx.readJson` parses strict JSON, so they are parsed as JSONC.
  */
 async function readTurboConfig(ctx: ProviderContext, file: string): Promise<unknown> {
   if (!file.endsWith('.jsonc')) return ctx.readJson(file)
@@ -204,48 +203,8 @@ async function readTurboConfig(ctx: ProviderContext, file: string): Promise<unkn
   const text = await ctx.readText(file)
   if (text === null) return null
   try {
-    return JSON.parse(stripJsonComments(text))
+    return parseJsonc(text)
   } catch {
     return null
   }
-}
-
-/** Strips `//` line comments and `/* *\/` block comments outside of strings. */
-function stripJsonComments(text: string): string {
-  let out = ''
-  let inString = false
-  let escaped = false
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]
-    const next = text[i + 1]
-    if (inString) {
-      out += ch
-      if (escaped) {
-        escaped = false
-      } else if (ch === '\\') {
-        escaped = true
-      } else if (ch === '"') {
-        inString = false
-      }
-      continue
-    }
-    if (ch === '"') {
-      inString = true
-      out += ch
-      continue
-    }
-    if (ch === '/' && next === '/') {
-      while (i < text.length && text[i] !== '\n') i++
-      out += '\n'
-      continue
-    }
-    if (ch === '/' && next === '*') {
-      i += 2
-      while (i < text.length && !(text[i] === '*' && text[i + 1] === '/')) i++
-      i++ // consumes the trailing '/'
-      continue
-    }
-    out += ch
-  }
-  return out
 }

@@ -15,7 +15,7 @@
 
 import type { AsyncCommandRunner } from '@osdlc/command-seam'
 
-import type { DiscoveryMode } from './model.ts'
+import type { DiscoveryMode, RunnerReport } from './model.ts'
 import type { PackageManagerChoice } from './roles.ts'
 import type { ProjectProfile, ToolDef } from './tool.ts'
 
@@ -28,7 +28,10 @@ import type { ProjectProfile, ToolDef } from './tool.ts'
  * allowed and the binary is present (just, rake, go-task and gradle do). The
  * `parse` kind promises a correct answer without running anything.
  */
-export type ProviderKind = 'parse' | 'exec'
+export type ProviderKind = (typeof ALL_PROVIDER_KINDS)[number]
+
+/** The known {@link ProviderKind}s. */
+export const ALL_PROVIDER_KINDS = ['parse', 'exec'] as const
 
 /** The read-only view of one repository that runners and `detect` functions use. */
 export interface ProviderContext {
@@ -144,9 +147,32 @@ export interface CollectOptions {
   execWithheldHint?: string | undefined
   /**
    * Probe timeouts in ms, by runner id. Each replaces that runner's
-   * `RunnerRole.probe.timeoutMs`.
+   * `RunnerRole.probe.timeoutMs` and {@link probeTimeoutMs}.
+   *
+   * A probe timeout bounds each subprocess the runner starts and the whole
+   * probe. A runner still running at its timeout is stopped: the processes
+   * it started are killed with their trees, and it reports `status: 'error'`
+   * with the diagnostic `timed out after <n> s`. The other runners go on.
+   * The clock starts once the shared file listing is ready.
+   *
+   * `Infinity` means no limit. A finite value above 2^31-1 ms is treated as
+   * 2^31-1. A runner whose timeout is not above 0 reports an error and is
+   * not probed.
    */
   timeouts?: Readonly<Record<string, number>> | undefined
+  /**
+   * The probe timeout in ms of every runner {@link timeouts} does not name,
+   * replacing `RunnerRole.probe.timeoutMs`. Unset, each runner has its own,
+   * else `DEFAULT_PROBE_TIMEOUT_MS`.
+   */
+  probeTimeoutMs?: number | undefined
+  /**
+   * The longest probe timeout in ms of any runner, applied after
+   * {@link timeouts} and {@link probeTimeoutMs}. It only lowers a limit. A
+   * host gives it a value from a less trusted source, such as a project
+   * file, so that source cannot make a runner wait longer.
+   */
+  maxProbeTimeoutMs?: number | undefined
   /**
    * Build the runner for a binary. Defaults to `spawnRunnerAsync` from
    * `@osdlc/command-seam` with `absolutePathOnly`, so a bare name runs only
@@ -163,4 +189,18 @@ export interface CollectOptions {
    * A callback that throws rejects the whole collect.
    */
   onProbe?: ((probe: { runner: string; durationMs: number }) => void) | undefined
+  /**
+   * Called once, before any runner is probed, with the id of each runner
+   * this collect reports, in report order. A callback that throws rejects
+   * the whole collect.
+   */
+  onRunners?: ((runners: readonly string[]) => void) | undefined
+  /**
+   * Called once for each runner as its report is ready, a withheld runner
+   * included, so a host can show each runner as it answers. The catalog
+   * still holds every report. `collectAndCache` may add a diagnostic to the
+   * catalog's copy that this one lacks. A callback that throws rejects the
+   * whole collect.
+   */
+  onReport?: ((report: RunnerReport) => void) | undefined
 }

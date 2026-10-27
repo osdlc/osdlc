@@ -53,7 +53,8 @@ export function browseCommand(
   return kit.command({
     summary: 'the terminal UI; Enter runs the selected task',
     description:
-      'Type to filter. It starts from the stored probe, then refreshes. Needs a terminal; ' +
+      'Type to filter. It starts from the last saved listing, then refreshes; with none, each ' +
+      'runner shows as it answers. Needs a terminal; ' +
       '"list" and "query" answer a script.' +
       (opts.followOpen === true
         ? ' The bare command opens the web view instead when the user config sets open to "web".'
@@ -123,7 +124,8 @@ export function serveCommand(home: string, share?: CatalogShare) {
       'browser signed in to it. --no-open prints the URL instead. A reload stays signed in; for a ' +
       'new tab or another browser, press Enter in the terminal for a new sign-in link. Every action on the page is ' +
       'a command of this tool, called over HTTP with a token made for this run. It starts from ' +
-      'the stored probe, then refreshes. Ctrl-C stops it, and any probe it is running.',
+      'the last saved listing, then refreshes; with none, the page shows each runner as it ' +
+      'answers. Ctrl-C stops it, and any probe it is running.',
     positionals: [{ name: 'dir', help: 'the directory to inspect (beats -C)' }],
     flags: {
       port: { kind: 'string', valueName: 'N', help: 'a fixed port (default: an OS-assigned one)' },

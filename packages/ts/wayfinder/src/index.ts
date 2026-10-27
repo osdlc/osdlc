@@ -16,14 +16,24 @@ import type { DiscoveryMode, RunnerReport } from '@osdlc/system-model/detect'
 
 import { catalogDocument } from './commands/list.ts'
 import type { TaskFilter } from './core/filter.ts'
-import { flushViews } from './core/saved-view.ts'
-import { createSession, type CacheState, type SessionFlags } from './core/session.ts'
+import { flushWrites } from './core/writes.ts'
+import {
+  createSession,
+  type CacheState,
+  type CatalogProgress,
+  type SessionFlags,
+} from './core/session.ts'
 import type { SkillRow } from './core/skills.ts'
 import type { Unknown } from './core/unknowns.ts'
 import { CATALOG_DOCUMENT_VERSION, type CatalogDocumentBody } from './documents.ts'
 import type { DocumentGroup } from './groups.ts'
 
-export { SessionError, type CacheState, type SessionFlags } from './core/session.ts'
+export {
+  SessionError,
+  type CacheState,
+  type CatalogProgress,
+  type SessionFlags,
+} from './core/session.ts'
 export { filterTasks, hasQuery, keepsTask, sourceDepth } from './core/filter.ts'
 export type { TaskFilter, TaskHit } from './core/filter.ts'
 export { filterSkills, skillLine, SKILLS_SETTING_VALUES } from './core/skills.ts'
@@ -80,6 +90,12 @@ export interface BuildCatalogOptions {
   filter?: TaskFilter | undefined
   /** Stops every probe. */
   signal?: AbortSignal | undefined
+  /**
+   * Hears about each runner the call probes as it answers: `onRunners`
+   * once, then `onRunner` per runner. An answer from the saved listing or
+   * the store probes none. The document is still the answer to use.
+   */
+  progress?: CatalogProgress | undefined
   /**
    * Called with each warning from the config files and tool modules, such
    * as a project file key that is ignored. The CLI prints these on stderr.
@@ -158,9 +174,12 @@ export async function buildCatalog(options: BuildCatalogOptions): Promise<Catalo
     signal: options.signal,
   })
   for (const warning of session.warnings) options.onWarning?.(warning)
-  const snapshot = await session.catalog({ cached: options.cached === true })
+  const snapshot = await session.catalog({
+    cached: options.cached === true,
+    progress: options.progress,
+  })
   // A library caller gets a call whose writes are done.
-  await flushViews()
+  await flushWrites()
   const body = catalogDocument(
     snapshot,
     session.unknowns(snapshot),

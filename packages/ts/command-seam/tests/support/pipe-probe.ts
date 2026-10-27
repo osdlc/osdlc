@@ -106,6 +106,12 @@ try {
       { cwd: CWD, maxOutputBytes: 100 },
     ),
   )
+  // The same 100-byte cap, on stderr this time.
+  const euroToStderr = `i=0; while [ $i -lt 2000 ]; do printf '€' >&2; i=$((i+1)); done; exec sleep 10`
+  results['stderrCap'] = sh.run(['-c', euroToStderr], { cwd: CWD, maxOutputBytes: 100 })
+  results['bytesStderrCap'] = base64(
+    shBytes.run(['-c', euroToStderr], { cwd: CWD, maxOutputBytes: 100 }),
+  )
   results['signalDeath'] = sh.run(['-c', 'kill -9 $$'], { cwd: CWD })
   results['genuineExit1'] = sh.run(['-c', 'exit 1'], { cwd: CWD })
   results['badCwd'] = sh.run(['-c', 'true'], { cwd: join(dir, 'no-such-dir') })

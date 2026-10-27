@@ -24,6 +24,26 @@ describe('parsePrInput', () => {
     })
   })
 
+  test('owner/repo#N is held to typed-gh parsePrRef slug rule', () => {
+    expect(parsePrInput('acme/widgets.js#7')).toEqual({
+      kind: 'slug',
+      owner: 'acme',
+      repo: 'widgets.js',
+      number: 7,
+    })
+    expect(parsePrInput('acme/_private#7')).toMatchObject({ kind: 'slug', repo: '_private' })
+    for (const raw of ['-acme/widgets#7', '_acme/widgets#7', '.acme/widgets#7', 'acme/wid get#7']) {
+      expect(parsePrInput(raw)).toBeNull()
+    }
+  })
+
+  test('a GitHub Enterprise PR URL names its repository', () => {
+    expect(parsePrInput('https://github.acme.com/acme/widgets/pull/9')).toEqual({
+      kind: 'url',
+      ref: { codeHost: 'github', owner: 'acme', repo: 'widgets', number: 9 },
+    })
+  })
+
   test('a GitHub URL names the repository too', () => {
     expect(parsePrInput('https://github.com/acme/widgets/pull/42/files')).toEqual({
       kind: 'url',
@@ -38,6 +58,7 @@ describe('parsePrInput', () => {
       'abc',
       'owner/repo',
       'owner/repo#0',
+      'feature/branch',
       'https://github.com/acme/widgets/issues/3',
     ]) {
       expect(parsePrInput(raw)).toBeNull()

@@ -18,8 +18,9 @@
  *     own parse of `undefined`, so `.default()`, `.prefault()` and
  *     `.optional()` all answer the same way the loader would.
  *   - {@link nestedFields} lists an object field's children.
- *   - {@link getIn} and {@link omitPath} read and remove a value in a plain
- *     object by path. A lookup of where a value came from is built from them.
+ *   - {@link omitPath} removes a value from a plain object by path; `getIn`
+ *     (`./value.ts`) reads one. A lookup of where a value came from is built
+ *     from them.
  */
 
 import { z } from 'zod'
@@ -31,7 +32,7 @@ import {
   type MetaValidator,
   type RegisteredKeyMeta,
 } from './meta.ts'
-import { kindOf, recordValueType, shapeOf, unwrapSchema } from './schema.ts'
+import { kindOf, shapeOf, unwrapSchema, walkKeyPath } from './schema.ts'
 
 /**
  * The parsed meta of every top-level key of `shape`, in declaration order,
@@ -109,37 +110,29 @@ export function resolveKeyPath<T extends MetaTerms = MetaTerms>(
         (hint !== null ? `; ${hint}` : ` (known: ${Object.keys(metas).join(', ')})`),
     )
   }
-  let schema: z.ZodType = top
-  const walked = [section]
-  for (const seg of rest) {
-    const kind = kindOf(schema as z.ZodTypeAny)
-    if (kind === 'object') {
-      const fields = shapeOf(unwrapSchema(schema as z.ZodTypeAny))
-      const child = fields[seg]
-      if (child === undefined) {
-        const known = Object.keys(fields)
-        const bad = [...walked, seg].join('.')
-        const prefix = `${walked.join('.')}.`
-        const close = closestMatches(seg, known)
-        const hint =
-          close.length > 0 ? `did you mean: ${close.map((k) => prefix + k).join(', ')}?` : null
-        throw new Error(
-          `unknown key '${bad}'` +
-            (hint !== null
-              ? `; ${hint}`
-              : known.length > 0
-                ? ` (known under ${walked.join('.')}: ${known.join(', ')})`
-                : ` (${walked.join('.')} defines no fields)`),
-        )
-      }
-      schema = child
-    } else if (kind === 'record') {
-      schema = recordValueType(schema as z.ZodTypeAny) as z.ZodType
-    } else {
+  const walk = walkKeyPath(top as z.ZodTypeAny, rest)
+  if (!walk.ok) {
+    const walked = [section, ...rest.slice(0, walk.at)]
+    const seg = rest[walk.at]!
+    if (walk.reason === 'not_mapping') {
       throw new Error(`'${walked.join('.')}' is not a mapping, so '${seg}' cannot be under it`)
     }
-    walked.push(seg)
+    const known = Object.keys(shapeOf(unwrapSchema(walk.parent)))
+    const bad = [...walked, seg].join('.')
+    const prefix = `${walked.join('.')}.`
+    const close = closestMatches(seg, known)
+    const hint =
+      close.length > 0 ? `did you mean: ${close.map((k) => prefix + k).join(', ')}?` : null
+    throw new Error(
+      `unknown key '${bad}'` +
+        (hint !== null
+          ? `; ${hint}`
+          : known.length > 0
+            ? ` (known under ${walked.join('.')}: ${known.join(', ')})`
+            : ` (${walked.join('.')} defines no fields)`),
+    )
   }
+  const schema = walk.schema as z.ZodType
   return {
     path: [...path],
     section,
@@ -314,22 +307,6 @@ function literal(v: unknown): string {
 }
 
 /**
- * Read a dotted path out of a plain value.
- *
- * @experimental
- */
-export function getIn(value: unknown, path: readonly string[]): { found: boolean; value: unknown } {
-  let cur: unknown = value
-  for (const seg of path) {
-    if (cur === null || typeof cur !== 'object' || Array.isArray(cur) || !(seg in cur)) {
-      return { found: false, value: undefined }
-    }
-    cur = (cur as Record<string, unknown>)[seg]
-  }
-  return { found: true, value: cur }
-}
-
-/**
  * A copy of `obj` with `path` removed. Sibling keys are not touched. Only the
  * objects on the path down to the removed key are shallow-copied. Use it to
  * leave one key's value out of a layer's raw data before computing the
@@ -342,7 +319,7 @@ export function omitPath(
   path: readonly string[],
 ): Record<string, unknown> {
   const [head, ...rest] = path
-  if (head === undefined || !(head in obj)) return obj
+  if (head === undefined || !Object.hasOwn(obj, head)) return obj
   if (rest.length === 0) {
     const next = { ...obj }
     delete next[head]

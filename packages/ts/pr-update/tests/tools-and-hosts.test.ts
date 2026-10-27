@@ -428,6 +428,22 @@ describe('the engine', () => {
     expect(remoteSlug('not a url')).toBeNull()
   })
 
+  test('remoteSlug reads every remote form on every kind of host', () => {
+    for (const url of [
+      'git@github.com:o/r.git',
+      'ssh://git@ssh.github.com:443/o/r.git',
+      'git@github.acme.com:o/r.git',
+      'https://github.acme.com/o/r',
+      'https://forge.example.com:3000/o/r.git',
+      'ssh://git@forge.example.com:2222/o/r.git',
+      'https://notgithub.com/o/r.git',
+    ]) {
+      expect(remoteSlug(url)).toBe('o/r')
+    }
+    expect(remoteSlug('https://gitlab.com/g/sub/r.git')).toBe('g/sub/r')
+    expect(remoteSlug('/srv/git/r.git')).toBeNull()
+  })
+
   test('runSurvey throws the code host failure when it cannot list, never an empty report', () => {
     const { dir } = repoWith(GITHUB)
     const codeHost = {

@@ -19,8 +19,14 @@
  * dialog and mean nothing once it closes.
  */
 
-import { CLI_ONLY_KEYS, THEME_VALUES, settingLayer, type Theme } from '../config-keys.ts'
-import { APP, BIN, WITHHELD, runnerLabel } from '../vocabulary.ts'
+import {
+  CLI_ONLY_KEYS,
+  OPEN_VALUES,
+  THEME_VALUES,
+  settingLayer,
+  type Theme,
+} from '../config-keys.ts'
+import { APP, BIN, WITHHELD, listWords, runnerLabel } from '../vocabulary.ts'
 import {
   failureText,
   load,
@@ -406,7 +412,7 @@ function personalSection(): string {
       '</code> opens ' +
       layerNote('open') +
       '</h4>' +
-      radios('open', ['tui', 'web']),
+      radios('open', OPEN_VALUES),
   )
 }
 
@@ -647,13 +653,6 @@ async function reload(): Promise<void> {
   repaint()
 }
 
-/** "a", "a and b", "a, b and c". */
-function listed(items: readonly string[]): string {
-  return items.length <= 1
-    ? (items[0] ?? '')
-    : items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1]
-}
-
 /**
  * Write the staged edits, one `config set` each, and say what was written
  * where. A refused write stops there and keeps it and the edits after it
@@ -672,7 +671,7 @@ export async function commit(): Promise<void> {
     delete staged[key]
     if (key === 'theme') applyTheme(value as Theme)
   }
-  const saved = [...written].map(([file, keys]) => 'Saved ' + listed(keys) + ' to ' + file + '.')
+  const saved = [...written].map(([file, keys]) => 'Saved ' + listWords(keys) + ' to ' + file + '.')
   notice =
     failure === null
       ? { kind: 'ok', text: saved.join(' ') || 'Nothing to save.' }

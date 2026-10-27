@@ -3,8 +3,12 @@ import { join } from 'node:path'
 
 import { afterAll, describe, expect, test } from 'vitest'
 
+import { spawnRunner, type AsyncCommandRunner } from '@osdlc/command-seam'
+
+import { MAX_TIMER_MS, probeTimeout, timedOutMessage, type RunnerSpec } from '../src/collect.ts'
+
 import type { RunnerContext } from '../src/contract.ts'
-import { diagnostics, tasks, type ProviderResult } from '../src/model.ts'
+import { diagnostics, tasks, type ProviderResult, type RunnerReport } from '../src/model.ts'
 import { just, make, moon } from '../src/plugins/runners/index.ts'
 import { nodeScripts } from '../src/plugins/node/index.ts'
 import { createProject } from '../src/project.ts'
@@ -124,6 +128,68 @@ describe('collect', () => {
     expect(probes[0]!.durationMs).toBeGreaterThanOrEqual(0)
   })
 
+  test('onRunners names every reported runner before onReport gets the first report', async () => {
+    const dir = await root({ 'quick.txt': '', 'held.txt': '' })
+    const seen: string[] = []
+    const catalog = await collect(
+      dir,
+      walkOpts({
+        tools: [toolOf('quick'), toolOf('held', { kind: 'exec' })],
+        allowExec: false,
+        onRunners: (runners: readonly string[]) => seen.push(`runners ${runners.join(',')}`),
+        onReport: (report: RunnerReport) => seen.push(`report ${report.runner}`),
+      }),
+    )
+    const ids = catalog.reports.map((r) => r.runner)
+    expect(seen[0]).toBe(`runners ${ids.join(',')}`)
+    // The withheld runner is reported too, and each runner exactly once.
+    expect(seen.slice(1).sort()).toEqual(ids.map((id) => `report ${id}`).sort())
+    const held = catalog.reports.find((r) => r.runner === 'held')!
+    expect(held.skippedForExec).toBe(true)
+  })
+
+  test('onReport gets each report as it is ready, before slower runners finish', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const slow = toolOf('slow', {
+      collect: async () => {
+        await gate
+        return absent
+      },
+    })
+    const dir = await root({ 'quick.txt': '', 'slow.txt': '' })
+    const order: string[] = []
+    const done = collect(
+      dir,
+      walkOpts({
+        tools: [toolOf('quick'), slow],
+        onReport: (report: RunnerReport) => {
+          order.push(report.runner)
+          if (report.runner === 'quick') release()
+        },
+      }),
+    )
+    await done
+    expect(order).toEqual(['quick', 'slow'])
+  })
+
+  test('a throwing onReport rejects the collect', async () => {
+    const dir = await root({ 'quick.txt': '' })
+    await expect(
+      collect(
+        dir,
+        walkOpts({
+          tools: [toolOf('quick')],
+          onReport: () => {
+            throw new Error('listener failed')
+          },
+        }),
+      ),
+    ).rejects.toThrow('listener failed')
+  })
+
   test('`only` can name a tool that was not detected, and gets nothing for it', async () => {
     const dir = await root({ justfile: 'build:\n    echo\n' })
     expect((await collect(dir, walkOpts({ only: ['make'] }))).reports).toEqual([])
@@ -159,6 +225,23 @@ describe('collect', () => {
     expect(boom.diagnostics[0]?.message).toBe('runner blew up')
     expect(boom.skippedForExec).toBe(false)
     expect(tasks(catalog).length).toBeGreaterThan(0)
+  })
+
+  test('a runner that throws is reported to onReport as an error', async () => {
+    const exploding = toolOf('boom', {
+      collect: () => {
+        throw new Error('runner blew up')
+      },
+    })
+    const dir = await root({ 'boom.txt': '' })
+    const heard: RunnerReport[] = []
+    await collect(
+      dir,
+      walkOpts({ tools: [exploding], onReport: (r: RunnerReport) => heard.push(r) }),
+    )
+    expect(heard.map((r) => [r.runner, r.status, r.diagnostics[0]?.message])).toEqual([
+      ['boom', 'error', 'runner blew up'],
+    ])
   })
 
   test("a caller's own tool is a first-class citizen", async () => {
@@ -448,5 +531,214 @@ describe('each collect reads afresh', () => {
     }
     const catalog = await project.runners.collect(profile, walkOpts())
     expect(tasks(catalog).map((t) => t.display)).toEqual(['just build'])
+  })
+})
+
+describe('a probe past its timeout', () => {
+  test('is cut off and reported, and the other runners are unaffected', async () => {
+    const dir = await root({ 'hang.txt': '', 'quick.txt': '' })
+    const hang = toolOf('hang', { collect: () => new Promise<ProviderResult>(() => {}) })
+    const reports: RunnerReport[] = []
+    const probed: string[] = []
+    const started = Date.now()
+    const catalog = await collect(
+      dir,
+      walkOpts({
+        tools: [hang, toolOf('quick')],
+        timeouts: { hang: 200 },
+        onReport: (report: RunnerReport) => reports.push(report),
+        onProbe: ({ runner }: { runner: string }) => probed.push(runner),
+      }),
+    )
+    expect(Date.now() - started).toBeLessThan(5_000)
+    const cut = catalog.reports.find((r) => r.runner === 'hang')!
+    expect(cut.status).toBe('error')
+    expect(cut.tasks).toEqual([])
+    expect(cut.diagnostics).toEqual([{ severity: 'error', message: 'timed out after 200 ms' }])
+    expect(catalog.reports.find((r) => r.runner === 'quick')!.status).toBe('absent')
+    // Each runner is reported once, the cut one included.
+    expect(reports.map((r) => r.runner).sort()).toEqual(['hang', 'quick'])
+    expect(probed.sort()).toEqual(['hang', 'quick'])
+  })
+
+  test('a probe that answers after its timeout is not reported again', async () => {
+    const dir = await root({ 'late.txt': '' })
+    let finish: () => void = () => {}
+    const late = toolOf('late', {
+      collect: () =>
+        new Promise<ProviderResult>((resolve) => {
+          finish = () => resolve({ status: 'ok', tasks: [], diagnostics: [] })
+        }),
+    })
+    const reports: RunnerReport[] = []
+    const catalog = await collect(
+      dir,
+      walkOpts({
+        tools: [late],
+        probeTimeoutMs: 100,
+        onReport: (report: RunnerReport) => reports.push(report),
+      }),
+    )
+    finish()
+    await new Promise((r) => setTimeout(r, 20))
+    expect(catalog.reports[0]!.diagnostics[0]!.message).toBe('timed out after 100 ms')
+    expect(reports).toHaveLength(1)
+  })
+
+  test('the timeout aborts the signal the runner was given', async () => {
+    const dir = await root({ 'watch.txt': '' })
+    let seen: AbortSignal | undefined
+    const watch = toolOf('watch', {
+      collect: (ctx: RunnerContext) => {
+        seen = ctx.signal
+        return new Promise<ProviderResult>(() => {})
+      },
+    })
+    await collect(dir, walkOpts({ tools: [watch], probeTimeoutMs: 100 }))
+    expect(seen?.aborted).toBe(true)
+  })
+
+  test('probeTimeoutMs sets every subprocess timeout; timeouts still wins by id', async () => {
+    const dir = await root({ justfile: 'build:\n    true\n', 'mise-tasks/lint': '#!/bin/sh\n' })
+    const fake = fakeRunners([])
+    await collect(dir, {
+      discovery: 'walk',
+      allowExec: true,
+      makeRunner: fake.make,
+      which: fakeWhich({ just: '/bin/just', mise: '/bin/mise' }),
+      probeTimeoutMs: 4_000,
+      timeouts: { just: 1_234 },
+    })
+    const byBinary = Object.fromEntries(fake.calls.map((c) => [c.binary, c.opts.timeoutMs]))
+    expect(byBinary).toEqual({ just: 1_234, mise: 4_000 })
+  })
+
+  test('a timed-out runner is not stored', async () => {
+    const dir = await root({ 'hang.txt': '' })
+    const cacheDir = await root({})
+    const hang = toolOf('hang', { collect: () => new Promise<ProviderResult>(() => {}) })
+    const project = createProject({ tools: [hang] })
+    const profile = await project.detect(dir, { discovery: 'walk' })
+    await project.runners.collectAndCache(profile, cacheDir, { probeTimeoutMs: 100 })
+    const cached = await project.runners.readCached(profile, cacheDir)
+    expect(cached.runners.map((r) => r.state)).toEqual(['miss'])
+  })
+
+  // Uses sh, sleep and pgrep, so it runs on POSIX only. command-seam's own
+  // tests cover the Windows tree kill.
+  test.skipIf(process.platform === 'win32')(
+    'kills the processes the runner started, with their children',
+    async () => {
+      const dir = await root({ 'spawner.txt': '' })
+      const tag = `${40 + Math.floor(Math.random() * 1000)}.${process.pid % 1000}3`
+      const spawner = toolOf('spawner', {
+        kind: 'exec',
+        collect: async (ctx: RunnerContext) => {
+          // Its own subprocess timeout is long: only the probe timeout stops it.
+          await ctx
+            .runner('sh')
+            .run(['-c', `sleep ${tag} & sleep ${tag}1; wait`], { cwd: ctx.root, timeoutMs: 60_000 })
+          return new Promise<ProviderResult>(() => {})
+        },
+      })
+      const project = createProject({ tools: [spawner, toolOf('quick')] })
+      const profile = await project.detect(dir, { discovery: 'walk' })
+      const catalog = await project.runners.collect(profile, {
+        allowExec: true,
+        probeTimeoutMs: 300,
+      })
+      expect(catalog.reports[0]!.diagnostics[0]!.message).toBe('timed out after 300 ms')
+      // Give the kill a moment to land.
+      let left = 'running'
+      for (let i = 0; i < 20 && left !== ''; i++) {
+        await new Promise((r) => setTimeout(r, 100))
+        left = spawnRunner('pgrep')
+          .run(['-f', `sleep ${tag}`], { cwd: '.' })
+          .stdout.trim()
+      }
+      expect(left).toBe('')
+    },
+  )
+})
+
+describe('probe timeout values', () => {
+  const slow = (ms: number) =>
+    toolOf('slow', {
+      collect: () => new Promise<ProviderResult>((r) => setTimeout(() => r(absent), ms)),
+    })
+
+  test.each([
+    ['Infinity', Infinity],
+    ['above the timer limit', 3_000_000_000],
+  ])('%s does not cut a probe off at once', async (_name, value) => {
+    const dir = await root({ 'slow.txt': '' })
+    for (const opts of [{ probeTimeoutMs: value }, { timeouts: { slow: value } }]) {
+      const catalog = await collect(dir, walkOpts({ tools: [slow(50)], ...opts }))
+      expect(catalog.reports[0]!.status).toBe('absent')
+    }
+  })
+
+  test('probeTimeout keeps Infinity and clamps a finite value to the timer limit', () => {
+    const spec = { id: 'x', role: { probe: { timeoutMs: 10_000 } } } as unknown as RunnerSpec
+    expect(probeTimeout(spec, { probeTimeoutMs: Infinity })).toBe(Infinity)
+    expect(probeTimeout(spec, { probeTimeoutMs: 3_000_000_000 })).toBe(MAX_TIMER_MS)
+    expect(probeTimeout(spec, {})).toBe(10_000)
+  })
+
+  test('maxProbeTimeoutMs only lowers a limit', () => {
+    const spec = { id: 'x', role: { probe: { timeoutMs: 10_000 } } } as unknown as RunnerSpec
+    expect(probeTimeout(spec, { maxProbeTimeoutMs: 5_000 })).toBe(5_000)
+    expect(probeTimeout(spec, { maxProbeTimeoutMs: 60_000 })).toBe(10_000)
+    expect(probeTimeout(spec, { probeTimeoutMs: 30_000, maxProbeTimeoutMs: 20_000 })).toBe(20_000)
+    expect(probeTimeout(spec, { timeouts: { x: Infinity }, maxProbeTimeoutMs: 1_000 })).toBe(1_000)
+  })
+
+  test.each([0, -1, Number.NaN])('%s fails the runner without probing it', async (value) => {
+    const dir = await root({ 'slow.txt': '' })
+    let probed = false
+    const tool = toolOf('slow', {
+      collect: async () => {
+        probed = true
+        return absent
+      },
+    })
+    const catalog = await collect(dir, walkOpts({ tools: [tool], probeTimeoutMs: value }))
+    expect(probed).toBe(false)
+    expect(catalog.reports[0]!.status).toBe('error')
+    expect(catalog.reports[0]!.diagnostics[0]!.message).toBe(
+      `probe timeout must be a positive number or Infinity, got ${value}`,
+    )
+  })
+
+  test("a slow file listing does not count against a runner's timeout", async () => {
+    const dir = await root({ 'lister.txt': '' })
+    const lister = toolOf('lister', {
+      collect: async (ctx: RunnerContext) => {
+        const files = await ctx.files('*.txt')
+        return { status: files.length > 0 ? 'ok' : 'absent', tasks: [], diagnostics: [] }
+      },
+    })
+    const project = createProject({ tools: [lister] })
+    const profile = await project.detect(dir, { discovery: 'walk' })
+    // A git listing that takes longer than the runner's own limit.
+    const slowGit = (): AsyncCommandRunner => ({
+      run: () =>
+        new Promise((r) =>
+          setTimeout(() => r({ exitCode: 0, stdout: 'lister.txt\0', stderr: '' }), 400),
+        ),
+    })
+    const catalog = await project.runners.collect(
+      { ...profile, discovery: 'git' },
+      { makeRunner: slowGit, timeouts: { lister: 150 } },
+    )
+    expect(catalog.reports[0]!.status).toBe('ok')
+  })
+})
+
+describe('timedOutMessage', () => {
+  test('says the limit in ms under a second, else in seconds', () => {
+    expect(timedOutMessage(250)).toBe('timed out after 250 ms')
+    expect(timedOutMessage(10_000)).toBe('timed out after 10 s')
+    expect(timedOutMessage(1_500)).toBe('timed out after 1.5 s')
   })
 })

@@ -1,5 +1,23 @@
 # @osdlc/agent-call
 
+## 0.9.0
+
+### Minor Changes
+
+- da5e6a3: Behaviour change (stricter): a bare agent binary name (`claude`, `codex`, ...) is now looked up on the absolute entries of the child's `PATH` only, and the absolute path found is spawned. A relative or empty `PATH` entry (`.`, `bin`, `a::b`) is skipped, so an agent binary planted in the call's `cwd`, such as a pull request's checkout, is no longer run in place of the installed one. A name found only that way, or not at all, resolves `ok: false` with reason `spawn-failed` and a detail saying relative and empty `PATH` entries are skipped. A binary given as a path is still run as given. `detectAgents` probes through the same lookup.
+  New runtime dependency: `@osdlc/command-seam`, whose `which` does the lookup (with `PATHEXT` on Windows).
+
+### Patch Changes
+
+- Updated dependencies [da5e6a3]
+  - @osdlc/command-seam@0.14.0
+
+## 0.8.0
+
+### Minor Changes
+
+- b835ae4: An argument list Node rejects before it starts anything (a NUL byte in argv or env, say) now resolves the call as a spawn failure, the same as a missing binary, instead of throwing. A `timeoutMs` of `Infinity` now means no timeout, and a value above 2^31-1 ms is capped at that; before, either killed the agent at once.
+
 ## 0.7.1
 
 ### Patch Changes

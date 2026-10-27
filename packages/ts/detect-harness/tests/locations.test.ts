@@ -3,11 +3,12 @@
  */
 
 import { describe, expect, test } from 'vitest'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 
 import { current } from '../src/current.ts'
 import { BUILTIN_HARNESSES, HARNESS_ALIASES, harnessId } from '../src/harnesses.ts'
 import {
+  defaultSystemRoot,
   LOCATIONS,
   resolveBase,
   resolveConfigDir,
@@ -43,7 +44,6 @@ describe('resolvers', () => {
   test('config folders and their overrides', () => {
     expect(resolveConfigDir('claude', { home, env: {} })).toBe(join(home, '.claude'))
     expect(resolveConfigDir('claude', { home, env: { CLAUDE_CONFIG_DIR: '/c' } })).toBe('/c')
-    expect(resolveConfigDir('codex', { home, env: { CODEX_HOME: 'rel' } })).toBe(resolve('rel'))
     expect(resolveConfigDir('opencode', { home, env: { XDG_CONFIG_HOME: '/x' } })).toBe(
       join('/x', 'opencode'),
     )
@@ -52,6 +52,20 @@ describe('resolvers', () => {
       path: '/pi',
       envVar: 'PI_CODING_AGENT_DIR',
     })
+  })
+
+  test('a relative override counts as unset, so the cwd is never read as the folder', () => {
+    for (const value of ['rel', './x', '~/.codex']) {
+      expect(resolveConfigDir('codex', { home, env: { CODEX_HOME: value } })).toBe(
+        join(home, '.codex'),
+      )
+    }
+    expect(resolveConfigDir('opencode', { home, env: { XDG_CONFIG_HOME: '.config' } })).toBe(
+      resolveConfigDir('opencode', { home, env: {} }),
+    )
+    expect(
+      resolveConfigDir('codex', { home, env: { CODEX_HOME: 'C:\\codex' }, platform: 'win32' }),
+    ).toBe('C:\\codex')
   })
 
   test('an empty override counts as unset', () => {
@@ -64,6 +78,14 @@ describe('resolvers', () => {
     expect(at('darwin')).toBe(join('/s', 'Library', 'Application Support', 'ClaudeCode'))
     expect(at('linux')).toBe(join('/s', 'etc', 'claude-code'))
     expect(at('freebsd')).toBe(join('/s', 'etc', 'claude-code'))
+    expect(at('win32')).toBe(join('/s', 'Program Files', 'ClaudeCode'))
+  })
+
+  test('the default system root: the Windows system drive, else /', () => {
+    expect(defaultSystemRoot('win32', { SystemDrive: 'D:' })).toBe('D:\\')
+    expect(defaultSystemRoot('win32', {})).toBe('C:\\')
+    expect(defaultSystemRoot('linux', { SystemDrive: 'D:' })).toBe('/')
+    expect(defaultSystemRoot('darwin', {})).toBe('/')
   })
 
   test('a null home or project leaves those paths unresolved', () => {

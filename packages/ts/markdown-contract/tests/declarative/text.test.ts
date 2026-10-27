@@ -100,6 +100,15 @@ describe('declarative requires / forbids — rejected at compile time', () => {
     ).toThrow(DeclarativeError)
   })
 
+  it('rejects a regex that does not compile, naming the key', () => {
+    expect(() => loadContract(sectionWith('requires', "        - regex: '('\n"))).toThrow(
+      /regex is not a valid regular expression/,
+    )
+    expect(() => loadContract(sectionWith('forbids', "        - regex: '['\n"))).toThrow(
+      DeclarativeError,
+    )
+  })
+
   it('rejects two identical specs in one list (duplicate)', () => {
     expect(() =>
       loadContract(sectionWith('requires', '        - pattern: x\n        - pattern: x\n')),
@@ -135,6 +144,19 @@ body:
     expect(() =>
       loadContract(sectionWith('requires', '        - pattern: x\n          max: 0\n')),
     ).toThrow(DeclarativeError)
+  })
+
+  it('refuses the same count bounds as the code builders', () => {
+    // A forbids entry with a negative max can never pass, in YAML as in code.
+    expect(() =>
+      loadContract(sectionWith('forbids', '        - pattern: x\n          max: -1\n')),
+    ).toThrow(/forbids\("x"\): max \(-1\) is below 0/)
+    // A forbids entry's min is ignored when matching, so it does not make the bound unmeetable.
+    expect(() =>
+      loadContract(
+        sectionWith('forbids', '        - pattern: x\n          min: 3\n          max: 1\n'),
+      ),
+    ).not.toThrow()
   })
 
   it('rejects a non-list requires value', () => {

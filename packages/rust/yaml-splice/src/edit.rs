@@ -25,7 +25,7 @@ use saphyr_parser::{Event, Parser};
 
 use crate::parse::{self, KeySpan, ParseError, Parsed};
 use crate::render;
-use crate::splice::{apply_eol, fit_assignment, line_indent, line_start};
+use crate::splice::{line_indent, value_assignment, value_edit, without_entry};
 use crate::value::{Mapping, Value};
 
 /// The UTF-8 byte-order mark, `EF BB BF`.
@@ -201,12 +201,14 @@ pub enum EditError {
         message: String,
     },
 
-    /// The edited document no longer parses, or an edit would change a key it
-    /// does not address. The batch is discarded rather than returning damaged
-    /// bytes.
+    /// The edited document no longer parses, an edit would change a key it
+    /// does not address, or the edited key would not read back as asked. The
+    /// batch is discarded rather than returning damaged bytes. The Display
+    /// text says "no longer parses" in every case.
     #[error("the edited document no longer parses: {message}")]
     InvalidResult {
-        /// The parser's message on the edited bytes.
+        /// Why the result was refused: the parser's message, or the check
+        /// that failed.
         message: String,
     },
 }
@@ -611,22 +613,7 @@ fn remove(
     let hits = find_keys(current, &parsed.top_level, key, opts);
     match hits.len() {
         0 => Ok((current.to_string(), false)),
-        1 => {
-            let span = hits[0];
-            let start = line_start(current, span.key_range.start);
-            // From the value's last byte to the end of its line takes the
-            // trailing inline comment with it; preceding standalone comments
-            // sit above `start` and are preserved.
-            let after = span.value_range.end.max(span.key_range.end);
-            let end = match current[after..].find('\n') {
-                Some(i) => after + i + 1,
-                None => current.len(),
-            };
-            let mut out = String::with_capacity(current.len());
-            out.push_str(&current[..start]);
-            out.push_str(&current[end..]);
-            Ok((out, true))
-        }
+        1 => Ok((without_entry(current, hits[0]), true)),
         _ => Err(EditError::AmbiguousKey {
             key: key.to_string(),
             at: offset(hits[0].key_range.clone(), bom_len),
@@ -696,18 +683,11 @@ fn replace_value(
 ) -> Result<String, EditError> {
     let key_indent = line_indent(current, span.key_range.start);
     let text =
-        render::assignment(value, &key_indent).map_err(|e| EditError::UnrenderableValue {
+        value_assignment(value, &key_indent, eol).map_err(|e| EditError::UnrenderableValue {
             key: key.to_string(),
             message: e.to_string(),
         })?;
-    let text = apply_eol(&text, eol);
-    // From just past the `:` — the separator is part of the replaced range so
-    // a scalar/collection layout switch is a single edit.
-    let (range, text) = fit_assignment(
-        current,
-        span.assign_end..span.value_range.end.max(span.assign_end),
-        text,
-    );
+    let (range, text) = value_edit(current, span, text);
     let mut out = String::with_capacity(current.len());
     out.push_str(&current[..range.start]);
     out.push_str(&text);
@@ -726,11 +706,11 @@ fn append_entry(
         key: key.to_string(),
         message: e.to_string(),
     })?;
-    let assign = render::assignment(value, "").map_err(|e| EditError::UnrenderableValue {
+    let assign = value_assignment(value, "", eol).map_err(|e| EditError::UnrenderableValue {
         key: key.to_string(),
         message: e.to_string(),
     })?;
-    let entry = format!("{key_text}:{}", apply_eol(&assign, eol));
+    let entry = format!("{key_text}:{assign}");
 
     // Appended after the existing top-level entries, before any explicit
     // document-end marker.
@@ -879,6 +859,69 @@ mod frontmatter_tests {
         let result = edit_frontmatter("", &[]).unwrap();
         assert!(!result.changed);
         assert_eq!(result.bytes, Vec::<u8>::new());
+    }
+
+    #[test]
+    fn a_set_on_an_empty_block_returns_just_the_entry() {
+        let edits = [FieldEdit::Set {
+            key: "kind".to_string(),
+            value: Value::from("note"),
+        }];
+        assert_eq!(out(edit_frontmatter("", &edits)), "kind: note");
+    }
+
+    #[test]
+    fn appending_to_a_crlf_block_in_split_form_keeps_crlf() {
+        let edits = [FieldEdit::Set {
+            key: "b".to_string(),
+            value: Value::Int(2),
+        }];
+        assert_eq!(out(edit_frontmatter("a: 1\r", &edits)), "a: 1\r\nb: 2\r");
+    }
+
+    #[test]
+    fn an_already_terminated_block_keeps_its_terminator() {
+        let set = |v: i64| {
+            [FieldEdit::Set {
+                key: "a".to_string(),
+                value: Value::Int(v),
+            }]
+        };
+        assert_eq!(out(edit_frontmatter("a: 1\n", &set(2))), "a: 2\n");
+        let same = edit_frontmatter("a: 1\n", &set(1)).unwrap();
+        assert!(!same.changed);
+        assert_eq!(same.bytes, b"a: 1\n");
+        let remove = [FieldEdit::Remove {
+            key: "b".to_string(),
+        }];
+        assert_eq!(out(edit_frontmatter("a: 1\nb: 2\n", &remove)), "a: 1\n");
+    }
+
+    #[test]
+    fn a_rename_that_only_changes_case_is_a_re_spelling() {
+        let rename = |from: &str, to: &str| {
+            [FieldEdit::Rename {
+                from: from.to_string(),
+                to: to.to_string(),
+            }]
+        };
+        let r = edit_yaml(b"title: x\n", &rename("title", "Title")).unwrap();
+        assert!(r.changed);
+        assert_eq!(r.bytes, b"Title: x\n");
+
+        let same = edit_yaml(b"a: 1\n", &rename("a", "a")).unwrap();
+        assert!(!same.changed);
+        assert_eq!(same.bytes, b"a: 1\n");
+
+        // A destination that folds to a different key conflicts by default ...
+        assert!(matches!(
+            edit_yaml(b"a: 1\nB: 2\n", &rename("a", "b")),
+            Err(EditError::KeyConflict { ref key, .. }) if key == "b"
+        ));
+        // ... and not when keys match exactly.
+        let exact = EditOptions::default().case_sensitive(true);
+        let r = edit_yaml_with(b"a: 1\nB: 2\n", &rename("a", "b"), &exact).unwrap();
+        assert_eq!(r.bytes, b"b: 1\nB: 2\n");
     }
 
     #[test]

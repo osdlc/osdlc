@@ -193,9 +193,14 @@ export type RepositoryVisibility = 'PUBLIC' | 'PRIVATE' | 'INTERNAL' | (string &
  * without one: a row without it is dropped.
  */
 export interface Repository {
-  /** `owner/name`. */
+  /** `owner/name`, in GitHub's casing. */
   nameWithOwner: string
+  /**
+   * Cut from `nameWithOwner`, so in GitHub's casing, not as the caller wrote
+   * it: `repoList('ACME')` gives `owner: 'acme'` when the account is `acme`.
+   */
   owner: string
+  /** Cut from `nameWithOwner`, so in GitHub's casing. */
   name: string
   description: string
   /** The default branch. Null when not asked for, or when the repository is empty. */
@@ -216,6 +221,7 @@ export interface PrSearchHit {
   state: PullRequestState
   url: string
   isDraft: boolean
+  /** Cut from the hit's `nameWithOwner`, so in GitHub's casing. */
   repository: OwnerRepo | null
   author: Actor | null
   labels: Label[]

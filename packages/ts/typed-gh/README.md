@@ -116,8 +116,9 @@ stderr and stdout, as the classifier does.
 
 Setup checks return their failure as a value. `installed()`, `authenticated()`,
 `authStatus()`, `ready()` and `api()` return their failure as part of their
-value, in all three call styles. For them, "gh is not installed" is the answer
-to the question they ask.
+value, from the plain method and from `try`. They have no soft form:
+`gh.soft.api(...)` throws a `TypeError`. For them, "gh is not installed" is the
+answer to the question they ask.
 
 ```ts
 import { describe } from '@osdlc/result'
@@ -168,6 +169,13 @@ if (page.truncated) console.warn('more than 50 open PRs; raise the limit')
 
 `prList`, `issueList`, `labelList`, `repoList` and `searchPrs` all work this
 way. A `limit` that is not a positive integer throws `RangeError`.
+
+GitHub search returns at most 1000 results, whatever the `limit`. gh uses
+search for `searchPrs`, for `prList` with a non-empty `search` or an `author`,
+and for `issueList` with a `label`. Those report `truncated: true` when 1000
+rows come back: there may be more that search would not return. Narrow the
+query to see them. `searchPrs` asks gh for at most 1000 rows, since gh refuses
+a larger search limit.
 
 ## A repository without a clone
 
@@ -375,7 +383,8 @@ const repos = await runVerbAsync(repoList('acme', {}, { hostname: 'ghe.example.c
 })
 ```
 
-They take a `CommandRunner`. A plain `(binary, argv, opts) => result` function is wrapped as
+`runVerb` takes a `CommandRunner` and `runVerbAsync` an `AsyncCommandRunner`. A plain
+`(binary, argv, opts) => result` function is not a runner; wrap it yourself as
 `{ run: (argv, opts) => fn('gh', argv, opts) }`.
 
 ## `AsyncGh`
@@ -384,7 +393,8 @@ The awaitable form of `Gh`, with the same methods, for code that runs many calls
 not block the event loop. It has the same three call styles, as Promises. The plain method rejects
 with the classified failure. `try` resolves to a `Result<T, GhFailure>`. `soft` resolves `null` for
 a failed query. `raw` and `rawChecked` run any `gh` call. Both clients use the same verb table, so
-they cannot drift apart. It takes an `AsyncCommandRunner` and defaults to `spawnRunnerAsync("gh")`.
+they cannot drift apart. It takes an `AsyncCommandRunner` and defaults to
+`spawnRunnerAsync("gh", { absolutePathOnly: true })`.
 
 ```ts
 import { AsyncGh } from '@osdlc/typed-gh'
@@ -439,7 +449,7 @@ const prs = nodesAt(pages, ['repository', 'pullRequests'])
 ```
 
 With `paginate`, the query must take `$endCursor` and page one connection. gh follows only that
-one. `graphql` refuses a mutation with `RangeError`. Send one through `raw`.
+one. `graphql` refuses a document holding a mutation or subscription with `RangeError`. Send one through `raw`.
 
 ## Repositories and search
 
@@ -450,9 +460,14 @@ const hits: ListResult<PrSearchHit> = gh.searchPrs('TICKET-123', { owner: 'acme'
 ```
 
 A `Repository` carries `nameWithOwner`, `owner`, `name`, `description`, `defaultBranch`,
-`visibility`, `isArchived` and `url`. `gh search prs` has its own field set. A `PrSearchHit` names
-its `repository` but has no head or base branch, so it is not a `PullRequest`. Its `state` is
-upper-cased to match. The query takes GitHub's search syntax and may start with `-`.
+`visibility`, `isArchived` and `url`. `owner` and `name` are cut from `nameWithOwner`, so they
+come back in GitHub's casing, not as you wrote them: `repoList('ACME')` gives `owner: 'acme'` when
+the account is `acme`, and `repoView` works the same way. To build paths that match your own
+config, use your own value.
+
+`gh search prs` has its own field set. A `PrSearchHit` names its `repository`, also in GitHub's
+casing, but has no head or base branch, so it is not a `PullRequest`. Its `state` is upper-cased to
+match. The query takes GitHub's search syntax and may start with `-`.
 
 ## Passing your own runner
 
@@ -469,7 +484,9 @@ new Gh('/repo', { runner: empty }).prList() // { rows: [], truncated: false }
 This package re-exports `CommandFailed` and the runner and result types (`CommandRunner`,
 `AsyncCommandRunner`, `CommandResult`, `CommandRunOptions`), since they appear in its signatures.
 Import the runners themselves, such as `spawnRunner` and `spawnRunnerAsync`, from
-`@osdlc/command-seam`.
+`@osdlc/command-seam`. The default runners find `gh` on absolute `PATH` entries only, so a file
+named `gh` in the working directory cannot run in its place. Pass `{ absolutePathOnly: true }` when
+you build a real runner yourself.
 
 ## API
 
@@ -540,7 +557,9 @@ Each verb takes an optional `GhTarget` last. Each client method has a verb of th
 - `parsePullRequest`: reads a `gh --json` payload into a `PullRequest`, or `null`.
 - `anyCheckFailed`: true if any check in a list failed.
 - `normalizeAuthorLogin`: drops a `[bot]` suffix from a login.
-- `parseOwnerRepo`: reads a remote URL into `{ owner, repo }`, or `null`.
+- `parseOwnerRepo`: reads a remote URL into `{ owner, repo }`, or `null`. It is
+  `@osdlc/typed-git`'s `parseRemoteRepo` without the host, so any host's remote reads, not only
+  GitHub's. Use `parseRemoteRepo` when you need the host too.
 - `ownerRepoSlug`: writes `{ owner, repo }` as `owner/repo`.
 - `parsePrUrl`: reads a pull request URL on any GitHub host into its host, owner, repository and
   number, or `null`.

@@ -18,17 +18,15 @@ import {
   settleGroup,
   spawnTrackedGroup,
 } from './groups.ts'
-import { planOptions, spawnPlan } from './spawn-plan.ts'
+import { planOptions } from './spawn-plan.ts'
 import {
   CommandFailed,
-  cwdError,
   emptyStdout,
   isCommandFailed,
-  lookupBinary,
   mergedEnv,
   normalizeOutputCap,
   normalizeTimeout,
-  notOnAbsolutePath,
+  prepareSpawn,
   spawnFailure,
   type BytesCommandRunner,
   type CommandResult,
@@ -187,11 +185,7 @@ export function spawnRunnerAsync(
 ): AsyncCommandRunner {
   return {
     binary,
-    run: async (argv, opts) => {
-      const target = lookupBinary(binary, options, opts)
-      if (target === undefined) return spawnFailure(notOnAbsolutePath('spawn', binary))
-      return (await runAsync(target, argv, opts, false)) as CommandResult
-    },
+    run: (argv, opts) => runAsync(binary, argv, opts, false, options) as Promise<CommandResult>,
   }
 }
 
@@ -200,10 +194,12 @@ export function spawnRunnerAsync(
  * returned as the bytes the child wrote, never decoded. Stderr is decoded as
  * UTF-8, so `failureText` and `CommandFailed` read as they do for text.
  * `maxOutputBytes` cuts stdout at exactly the cap. Everything else is as for
- * `spawnRunnerAsync`. The sync form is `spawnRunnerBytes`.
+ * `spawnRunnerAsync`, including `SpawnRunnerOptions`. The sync form is
+ * `spawnRunnerBytes`.
  *
  * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
  *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
+ * @param options - See `SpawnRunnerOptions`.
  * @returns A runner for that binary.
  *
  * @example
@@ -215,10 +211,14 @@ export function spawnRunnerAsync(
  *
  * @experimental
  */
-export function spawnRunnerBytesAsync(binary: string): AsyncBytesCommandRunner {
+export function spawnRunnerBytesAsync(
+  binary: string,
+  options: SpawnRunnerOptions = {},
+): AsyncBytesCommandRunner {
   return {
     binary,
-    run: (argv, opts) => runAsync(binary, argv, opts, true) as Promise<CommandResult<Buffer>>,
+    run: (argv, opts) =>
+      runAsync(binary, argv, opts, true, options) as Promise<CommandResult<Buffer>>,
   }
 }
 
@@ -259,22 +259,19 @@ function runAsync(
   argv: string[],
   opts: AsyncCommandRunOptions,
   bytes: boolean,
+  options: SpawnRunnerOptions,
 ): Promise<CommandResult<string | Buffer>> {
   return new Promise((resolve) => {
-    // Inside the executor, so an invalid timeoutMs (or a throw from spawn)
-    // rejects and nothing is spawned.
+    // Inside the executor, so an invalid timeoutMs (or a programmer error
+    // that spawn throws, such as a NUL byte) rejects and nothing is spawned.
     const timeoutMs = normalizeTimeout(opts.timeoutMs)
     const cap = normalizeOutputCap(opts.maxOutputBytes) ?? Infinity
-    const cwdMessage = cwdError(`spawn ${binary}`, binary, argv, opts)
-    if (cwdMessage !== undefined) {
-      resolve(emptyStdout(spawnFailure(cwdMessage), bytes))
+    const prepared = prepareSpawn('spawn', binary, argv, opts, options)
+    if ('refusal' in prepared) {
+      resolve(emptyStdout(spawnFailure(prepared.refusal), bytes))
       return
     }
-    const plan = spawnPlan(binary, argv, opts)
-    if ('refusal' in plan) {
-      resolve(emptyStdout(spawnFailure(plan.refusal), bytes))
-      return
-    }
+    const { plan } = prepared
     const windowsTree = opts.killTree === true && process.platform === 'win32'
     const group =
       opts.processGroup === true || (opts.killTree === true && process.platform !== 'win32')
@@ -301,9 +298,18 @@ function runAsync(
         detached: group,
         ...mergedEnv(opts),
       })
-    const { child, untrack: untrackGroup } = group
-      ? spawnTrackedGroup(start)
-      : { child: start(), untrack: undefined }
+    let spawned: { child: ReturnType<typeof start>; untrack: (() => void) | undefined }
+    try {
+      spawned = group ? spawnTrackedGroup(start) : { child: start(), untrack: undefined }
+    } catch (e) {
+      // `spawn` throws, rather than emitting `error`, for some failures, such
+      // as an argument list over the OS limit (E2BIG). A system error has an
+      // `errno`. A programmer error, such as a NUL byte, does not.
+      if (typeof (e as NodeJS.ErrnoException).errno !== 'number') throw e
+      resolve(emptyStdout(spawnFailure((e as Error).message), bytes))
+      return
+    }
+    const { child, untrack: untrackGroup } = spawned
     // Set once this runner signals the child. A group it is stopping stays
     // in flight for the host's exit handler.
     let stopping = false
@@ -424,6 +430,14 @@ function runAsync(
       err.write(d)
     })
     child.on('error', (err) => {
+      // A failed `kill()` (such as EPERM) also emits `error`. The child is
+      // still running. A timeout, abort or exit that sent the signal settles
+      // the run itself. The output cap waits for the child to die, so a
+      // failed kill there settles now with the cap result.
+      if ((err as NodeJS.ErrnoException).syscall === 'kill') {
+        if (capOutcome !== undefined) finish(capOutcome.result, capOutcome.message)
+        return
+      }
       // A spawn failure. No exit code was reported, so the 1 is a stand-in.
       finish({ exitCode: 1, neverExited: true, reason: 'spawn' }, err.message)
     })

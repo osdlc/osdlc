@@ -21,6 +21,7 @@
 
 import { classifyFailure, type CommandFailure, type CommandRunner } from '@osdlc/command-seam'
 import { err, FailureError, ok, unwrap, type Result } from '@osdlc/result'
+import { rollupChecks, type CheckEntry } from './checks.ts'
 import type { CodeHostFailure } from './failure.ts'
 import { CodeHostUnsupported, CommentNotFoundError } from './types.ts'
 import type {
@@ -57,6 +58,9 @@ const CURL_TIMEOUT_EXIT = 28
  * receive errors, 60 certificate not trusted.
  */
 const CURL_NETWORK_EXITS: ReadonlySet<number> = new Set([6, 7, 35, 52, 55, 56, 60])
+
+/** Rows asked for per page of a paginated listing: Forgejo's default `MAX_RESPONSE_ITEMS`. */
+const PAGE_SIZE = 50
 
 /** One `curl -w` response, split back into its body and status code. Exported for its own unit test. */
 export function parseCurlResponse(stdout: string): { status: number; body: string } | null {
@@ -133,6 +137,15 @@ function str(v: unknown): string | null {
   return typeof v === 'string' ? v : null
 }
 
+/**
+ * Whether a PR's head lives in another repository than its base, compared
+ * without case. An unknown head or base repo reads as a fork: fail closed, so
+ * a caller never takes a fork's branch name for a branch on origin.
+ */
+function isForkHead(headRepo: string | null, baseRepo: string | null): boolean {
+  return headRepo === null || baseRepo === null || headRepo.toLowerCase() !== baseRepo.toLowerCase()
+}
+
 /** Forgejo documents no way to mark a bot login, so the login is used as is. */
 function toActor(login: string | null): Actor | null {
   return login === null || login === '' ? null : { login, isBot: false }
@@ -140,29 +153,30 @@ function toActor(login: string | null): Actor | null {
 
 /**
  * Maps the combined-status `state` values (`pending|success|error|failure|
- * warning|skipped`, per the Forgejo API docs) to a rollup, in the same order
- * as `github.ts`'s `checksSummaryFrom`: any failure wins, then any pending
- * state, else success.
+ * warning|skipped`, per the Forgejo API docs) to verdicts for the shared
+ * `rollupChecks`. A missing state reads as pending; `warning`, `skipped` and
+ * any unknown state count as a pass.
  */
 function checksSummaryFrom(statuses: readonly RawStatus[]): CheckSummary {
-  const states = statuses.map((s) => str(s.state) ?? 'pending')
-  const rollup: CheckSummary['rollup'] = states.some((s) => s === 'failure' || s === 'error')
-    ? 'failure'
-    : states.some((s) => s === 'pending')
-      ? 'pending'
-      : statuses.length === 0
-        ? 'none'
-        : 'success'
-  const failed = statuses.filter((s) => s.state === 'failure' || s.state === 'error')
-  const failing = failed.map((s) => str(s.context) ?? 'unknown')
-  const failingUrls = failed
-    .filter((s): s is RawStatus & { context: string; target_url: string } => {
-      return str(s.context) !== null && str(s.target_url) !== null
-    })
-    .map((s) => ({ name: s.context, url: s.target_url }))
   // Forgejo documents no billing block like GitHub Actions' "job was not
   // started", so `blocked` is always empty.
-  return { rollup, failing, failingUrls, blocked: [] }
+  return rollupChecks(
+    statuses.map((s): CheckEntry => {
+      const state = str(s.state) ?? 'pending'
+      const name = str(s.context)
+      return {
+        name: name ?? 'unknown',
+        verdict:
+          state === 'failure' || state === 'error'
+            ? 'failure'
+            : state === 'pending'
+              ? 'pending'
+              : 'success',
+        // A failing status with no context is listed by name only, never with a URL.
+        url: name === null ? null : str(s.target_url),
+      }
+    }),
+  )
 }
 
 /**
@@ -298,8 +312,7 @@ export function forgejoPrFrom(
     baseRef: str(pr.base?.ref) ?? '',
     headRef: str(pr.head?.ref) ?? '',
     headSha: str(pr.head?.sha),
-    // Unknown head repo reads as a fork: fail closed.
-    headIsFork: headRepoName === null || headRepoName.toLowerCase() !== baseRepoName?.toLowerCase(),
+    headIsFork: isForkHead(headRepoName, baseRepoName),
     mergedAt: str(pr.merged_at),
     mergeable,
     checks: checksSummaryFrom(statuses),
@@ -346,10 +359,15 @@ export class ForgejoCodeHost implements CodeHost {
    *
    * Quoting follows `curl(1)`'s config-file syntax: a value with a space needs
    * double quotes, and `\` and `"` inside it must be escaped, or they would end
-   * the quoted value early.
+   * the quoted value early. CR and LF are dropped: the config is read line by
+   * line, so a newline in the token (a CRLF `.env`, say) would start another
+   * curl option, such as `url =` or `output =`.
    */
   private authConfig(): string {
-    const escaped = this.token.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+    const escaped = this.token
+      .replace(/[\r\n]/g, '')
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
     return `header = "Authorization: token ${escaped}"\n`
   }
 
@@ -509,7 +527,16 @@ export class ForgejoCodeHost implements CodeHost {
     return Array.isArray(res.value) ? ok(res.value) : err(this.unreadable())
   }
 
-  /** Raw PR listing for `owner/repo`, filtered and capped. */
+  /**
+   * Raw PR listing for `owner/repo`, filtered and capped. Forgejo's `pulls`
+   * listing is paginated, so this reads page after page until `limit` matching
+   * rows are in or a page brings no PR it has not seen. A short page does not
+   * end the listing: a server whose `MAX_RESPONSE_ITEMS` is below the page size
+   * asked for answers every page short. An empty page ends it, and so does a
+   * page of repeats, as from a server that ignores `page`. The author filter
+   * runs on each page before the cap, as `gh pr list --author --limit` does, so
+   * `limit` counts the author's PRs, not the newest PRs of anyone.
+   */
   private listRawPrs(q: {
     state?: 'open' | 'closed' | 'all'
     author?: string
@@ -518,14 +545,32 @@ export class ForgejoCodeHost implements CodeHost {
   }): Result<RawPr[], CodeHostFailure> {
     const state = q.state ?? 'open'
     const target = q.repo ?? `${this.owner}/${this.repo}`
-    const paging = q.limit === undefined ? '' : `&limit=${q.limit}`
-    const rows = this.getArrayResult(`repos/${target}/pulls?state=${state}${paging}`)
-    if (!rows.ok) return rows
-    return ok(
-      (rows.value as RawPr[])
-        .filter((pr) => q.author === undefined || str(pr.user?.login) === q.author)
-        .slice(0, q.limit ?? undefined),
-    )
+    // With no author filter every row counts, so a small limit needs only a small page.
+    const pageSize =
+      q.author === undefined && q.limit !== undefined
+        ? Math.max(1, Math.min(q.limit, PAGE_SIZE))
+        : PAGE_SIZE
+    const out: RawPr[] = []
+    // PR numbers already read, so a page that repeats an earlier one (pages
+    // shifting under a new PR, or `page` ignored) neither duplicates rows nor
+    // pages forever. A row with no number is keyed by its whole body.
+    const seen = new Set<unknown>()
+    for (let page = 1; q.limit === undefined || out.length < q.limit; page++) {
+      const rows = this.getArrayResult(
+        `repos/${target}/pulls?state=${state}&page=${page}&limit=${pageSize}`,
+      )
+      if (!rows.ok) return rows
+      let fresh = 0
+      for (const pr of rows.value as RawPr[]) {
+        const key = typeof pr.number === 'number' ? pr.number : JSON.stringify(pr)
+        if (seen.has(key)) continue
+        seen.add(key)
+        fresh++
+        if (q.author === undefined || str(pr.user?.login) === q.author) out.push(pr)
+      }
+      if (fresh === 0) break
+    }
+    return ok(out.slice(0, q.limit ?? undefined))
   }
 
   listPrs(q: {
@@ -565,6 +610,7 @@ export class ForgejoCodeHost implements CodeHost {
       const reviews = this.getArrayResult(`repos/${target}/pulls/${number}/reviews`)
       if (!reviews.ok) return reviews
       const headRepo = str(pr.head?.repo?.full_name)
+      const baseRepo = str(pr.base?.repo?.full_name) ?? target
       details.push({
         number,
         title: str(pr.title) ?? '',
@@ -575,7 +621,7 @@ export class ForgejoCodeHost implements CodeHost {
         isDraft: pr.draft === true,
         labels: (pr.labels ?? []).map((l) => str(l.name) ?? '').filter((n) => n !== ''),
         reviewCount: reviews.value.length,
-        isCrossRepository: headRepo !== null && headRepo.toLowerCase() !== target.toLowerCase(),
+        isCrossRepository: isForkHead(headRepo, baseRepo),
       })
     }
     return ok(details)

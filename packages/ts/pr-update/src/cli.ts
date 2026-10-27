@@ -1,9 +1,11 @@
 /**
  * `pr-update`: the standalone CLI.
  *
- * The subcommands `survey`, `update`, `config` and `trust` are each declared to
- * `defineCli` separately. `defineCli` has no subcommands, so the dispatch on
- * `argv[0]` below does that job.
+ * The subcommands `survey` and `update` are each declared to `defineCli`
+ * separately. `defineCli` has no subcommands, so the dispatch on `argv[0]`
+ * below does that job. `config` and `trust` are `@osdlc/cli-tool`'s shared
+ * commands, the same as every tool built on it has, run as a command tree of
+ * their own (see `config-cli.ts`).
  *
  * Config layers, highest first: a flag, `pr-update.local.yaml`,
  * `pr-update.yaml` (the `pr_update:` and `code_host:` blocks), the built-in
@@ -31,22 +33,25 @@
  *   reached or rate-limited the caller.
  *
  * `selectCodeHost` chooses the code host from the `origin` remote, or from
- * `code_host.override`. A failed PR listing is an error, never "no open PRs".
- * `@osdlc/cli-tool` prints every classified failure and picks its exit code.
+ * `code_host.override`, whatever `--remote` names. `--remote` is the remote
+ * fetched, measured against (`<remote>/<branch>`) and, for `update`, pushed to.
+ * A failed PR listing is an error, never "no open PRs". `@osdlc/cli-tool` prints every classified failure and picks its exit code.
  */
 
 import { mkdirSync, rmSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
-import { EXIT, defineCli, failWith, failureOf, type CliContext } from '@osdlc/cli-tool'
+import { EXIT, defineCli, failWith, failureOf, renderError, type CliContext } from '@osdlc/cli-tool'
+import { defineApp, type App } from '@osdlc/cli-tool/command'
+import { trustCommand, type TrustService } from '@osdlc/cli-tool/trust-command'
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { describe, type Failure } from '@osdlc/result'
 import { Git } from '@osdlc/typed-git'
 import { CONFIG_INVALID_EXIT, ConfigInvalidError, type ConfigFileSpec } from '@osdlc/config-layers'
 
 import { selectedCodeHostFor } from './code-host.ts'
-import { runConfigCommand } from './config-cli.ts'
+import { configCommand } from './config-cli.ts'
 import { loadConfigLayers } from './config-file.ts'
 import { standalonePorts } from './defaults.ts'
 import { gitMissingFailure, preflight, type WhichSeam } from './preflight.ts'
@@ -65,6 +70,7 @@ import {
   type UpdateEnv,
   type UpdateOutput,
 } from './update.ts'
+import { VERSION } from './version.generated.ts'
 
 /** The config file the binary reads, and the variable that relocates it. */
 export const PR_UPDATE_CONFIG_FILE: ConfigFileSpec = {
@@ -97,7 +103,8 @@ function expandBranchFlag(argv: readonly string[], cwd: string): string[] | { er
     if (arg !== '--branch') continue
     const next = argv[i + 1]
     if (next !== undefined && !next.startsWith('-')) continue
-    const current = new Git(cwd, { runner: spawnRunner('git') }).soft.currentBranch()
+    const runner = spawnRunner('git', { absolutePathOnly: true })
+    const current = new Git(cwd, { runner }).soft.currentBranch()
     if (current === null || current === '') {
       return { error: '--branch needs a branch name: this directory is not on a branch' }
     }
@@ -154,7 +161,7 @@ const surveyCli = defineCli({
       kind: 'string',
       valueName: 'name',
       default: 'origin',
-      help: 'Remote to measure against.',
+      help: 'Remote to fetch from and measure against.',
     },
     pr: {
       kind: 'list',
@@ -215,7 +222,7 @@ const updateCli = defineCli({
       kind: 'string',
       valueName: 'name',
       default: 'origin',
-      help: 'Remote to measure against and push to.',
+      help: 'Remote to fetch from, measure against and push to.',
     },
     apply: { kind: 'boolean', help: 'Push the updates. Without it, nothing is written.' },
     confirmPush: {
@@ -306,8 +313,9 @@ function runEnv(
     command: null,
   },
 ): UpdateEnv {
-  const git = seams.git ?? spawnRunner('git')
-  const gh = seams.gh ?? spawnRunner('gh')
+  // Both run in the project, so a bare name runs only from an absolute PATH entry.
+  const git = seams.git ?? spawnRunner('git', { absolutePathOnly: true })
+  const gh = seams.gh ?? spawnRunner('gh', { absolutePathOnly: true })
   const projectRoot = ctx.cwd
   const loaded = layers.merged.pr_update
   const cfg =
@@ -339,7 +347,7 @@ function checkStart(
 ): Failure | null {
   return preflight({
     cwd: ctx.cwd,
-    git: seams.git ?? spawnRunner('git'),
+    git: seams.git ?? spawnRunner('git', { absolutePathOnly: true }),
     remote: scope.remote,
     repoGiven: scope.repo.length > 0,
     override: layers.merged.code_host.override,
@@ -354,24 +362,24 @@ function runSurveyCommand(argv: readonly string[], ctx: CliContext, seams: CliSe
     // A bare `--branch` asks git for the current branch, so report a missing git first.
     const noGit = gitMissingFailure(ctx.cwd, seams.which)
     if (noGit !== null) return failWith(ctx, noGit, { name: 'pr-update' })
-    io.stderr(`pr-update survey: ${expanded.error}\n`)
+    io.stderr(renderError(expanded.error, 'pr-update survey'))
     return EXIT.usage
   }
   const parsed = surveyCli.parse(expanded, io)
   if (parsed.status === 'help') return EXIT.ok
   if (parsed.status === 'error') {
-    io.stderr(`pr-update survey: ${parsed.message}\n`)
+    io.stderr(renderError(parsed.message, 'pr-update survey'))
     return EXIT.usage
   }
   const v = parsed.values
   const limit = parseIntFlag('limit', v.limit)
   if (typeof limit !== 'number') {
-    io.stderr(`pr-update survey: ${limit.error}\n`)
+    io.stderr(renderError(limit.error, 'pr-update survey'))
     return EXIT.usage
   }
   const prNumbers = parsePrFlags(v.pr)
   if ('error' in prNumbers) {
-    io.stderr(`pr-update survey: ${prNumbers.error}\n`)
+    io.stderr(renderError(prNumbers.error, 'pr-update survey'))
     return EXIT.usage
   }
   const layers = loadConfigLayers(seams.configFile ?? PR_UPDATE_CONFIG_FILE, ctx.cwd, {
@@ -399,7 +407,7 @@ function runSurveyCommand(argv: readonly string[], ctx: CliContext, seams: CliSe
   } catch (e) {
     // `main` prints a classified failure (a failed listing) and picks its exit code.
     if (!(e instanceof SurveyUsageError)) throw e
-    io.stderr(`pr-update survey: ${e.message}\n`)
+    io.stderr(renderError(e.message, 'pr-update survey'))
     return EXIT.usage
   }
   io.stdout(
@@ -468,13 +476,13 @@ async function runUpdateCommand(
     // A bare `--branch` asks git for the current branch, so report a missing git first.
     const noGit = gitMissingFailure(ctx.cwd, seams.which)
     if (noGit !== null) return failWith(ctx, noGit, { name: 'pr-update' })
-    io.stderr(`pr-update update: ${expanded.error}\n`)
+    io.stderr(renderError(expanded.error, 'pr-update update'))
     return EXIT.usage
   }
   const parsed = updateCli.parse(expanded, io)
   if (parsed.status === 'help') return EXIT.ok
   if (parsed.status === 'error') {
-    io.stderr(`pr-update update: ${parsed.message}\n`)
+    io.stderr(renderError(parsed.message, 'pr-update update'))
     return EXIT.usage
   }
   const v = parsed.values
@@ -484,18 +492,23 @@ async function runUpdateCommand(
     try {
       rmSync(reportFile, { force: true })
     } catch (e) {
-      io.stderr(`pr-update update: cannot clear the report ${v.report}: ${(e as Error).message}\n`)
+      io.stderr(
+        renderError(
+          `cannot clear the report ${v.report}: ${(e as Error).message}`,
+          'pr-update update',
+        ),
+      )
       return EXIT.error
     }
   }
   const limit = parseIntFlag('limit', v.limit)
   if (typeof limit !== 'number') {
-    io.stderr(`pr-update update: ${limit.error}\n`)
+    io.stderr(renderError(limit.error, 'pr-update update'))
     return EXIT.usage
   }
   const prNumbers = parsePrFlags(v.pr)
   if ('error' in prNumbers) {
-    io.stderr(`pr-update update: ${prNumbers.error}\n`)
+    io.stderr(renderError(prNumbers.error, 'pr-update update'))
     return EXIT.usage
   }
   const layers = loadConfigLayers(seams.configFile ?? PR_UPDATE_CONFIG_FILE, ctx.cwd, {
@@ -503,7 +516,9 @@ async function runUpdateCommand(
     cwd: ctx.cwd,
   })
   if (v.repairAgent !== undefined && v.repairCommand !== undefined) {
-    io.stderr('pr-update update: --repair-agent and --repair-command are mutually exclusive\n')
+    io.stderr(
+      renderError('--repair-agent and --repair-command are mutually exclusive', 'pr-update update'),
+    )
     return EXIT.usage
   }
   // A repair chosen on the command line is the person's own consent. It
@@ -517,7 +532,7 @@ async function runUpdateCommand(
     env: ctx.env,
   })
   if (refusal !== null) {
-    io.stderr(`pr-update update: ${refusal}\n`)
+    io.stderr(renderError(refusal, 'pr-update update'))
     return EXIT_UNTRUSTED
   }
   const unready = checkStart(ctx, layers, seams, v)
@@ -556,14 +571,19 @@ async function runUpdateCommand(
     }
     // `main` prints a classified failure (a failed listing) and picks its exit code.
     if (!(e instanceof SurveyUsageError)) throw e
-    io.stderr(`pr-update update: ${e.message}\n`)
+    io.stderr(renderError(e.message, 'pr-update update'))
     return EXIT.usage
   }
   if (reportFile !== undefined) {
     try {
       writeReport(reportFile, out)
     } catch (e) {
-      io.stderr(`pr-update update: cannot write the report ${v.report}: ${(e as Error).message}\n`)
+      io.stderr(
+        renderError(
+          `cannot write the report ${v.report}: ${(e as Error).message}`,
+          'pr-update update',
+        ),
+      )
       return EXIT.error
     }
   }
@@ -586,15 +606,49 @@ async function runUpdateCommand(
   return out.counts.conflict > 0 || out.counts.failed > 0 ? EXIT.error : EXIT.ok
 }
 
-async function runTrustCommand(argv: readonly string[], ctx: CliContext): Promise<number> {
-  const { io } = ctx
-  if (argv.length > 0) {
-    io.stderr(`pr-update trust: takes no arguments\n`)
-    return EXIT.usage
-  }
-  const r = await prUpdateTrustStore(ctx.env).trust(ctx.cwd)
-  io.stdout(`${r.alreadyTrusted ? 'already trusted' : 'trusted'}: ${r.root}\n`)
-  return EXIT.ok
+/** The whole-repository marker `pr-update trust` records, keyed on the working directory. */
+const trustService: TrustService = {
+  async trust(ctx) {
+    const r = await prUpdateTrustStore(ctx.env).trust(ctx.cwd)
+    return { root: r.root, trusted: true, by: 'marker', changed: !r.alreadyTrusted }
+  },
+  async untrust(ctx) {
+    const store = prUpdateTrustStore(ctx.env)
+    const root = await store.resolveRoot(ctx.cwd)
+    const removed = await store.untrust(root)
+    return { root, trusted: false, by: null, changed: removed }
+  },
+  async show(ctx) {
+    const store = prUpdateTrustStore(ctx.env)
+    const root = await store.resolveRoot(ctx.cwd)
+    const trusted = await store.isTrusted(root)
+    return { root, trusted, by: trusted ? 'marker' : null }
+  },
+  async list(ctx) {
+    const roots = await prUpdateTrustStore(ctx.env).list()
+    return roots.map((root) => ({ root, trusted: true, by: 'marker' }))
+  },
+}
+
+/** The tree `config` and `trust` run in: cli-tool's shared commands over pr-update's files. */
+function sharedCommands(file: ConfigFileSpec): App {
+  return defineApp({
+    name: 'pr-update',
+    version: VERSION,
+    summary: 'Survey and update out-of-date, stacked pull requests.',
+    commands: {
+      config: configCommand(file),
+      trust: trustCommand(trustService, {
+        summary: "record consent to run the commands this repository's config names",
+        description:
+          'The project file can name commands pr-update runs (lockfile_install, resolvers, ' +
+          'repair.command, repair.agent, test_command). A setting the repository writes cannot ' +
+          'authorize running it, so update refuses them (exit 21) until the repository is ' +
+          'trusted. Trust is kept outside the repository, keyed on its resolved path. ' +
+          '--trust on update allows one run without recording anything.',
+      }),
+    },
+  })
 }
 
 /** `main(argv, ctx)`: returns an exit code and never exits. It reads nothing outside `ctx` and `seams`. */
@@ -607,7 +661,7 @@ export async function main(
     return await dispatch(argv, ctx, seams)
   } catch (e) {
     if (e instanceof ConfigInvalidError) {
-      ctx.io.stderr(`pr-update: ${e.message}\n`)
+      ctx.io.stderr(renderError(e.message, 'pr-update'))
       return CONFIG_INVALID_EXIT
     }
     // A classified failure (a missing tool, a failed listing) gets the shared
@@ -630,9 +684,9 @@ async function dispatch(
   }
   if (sub === 'survey') return runSurveyCommand(rest, ctx, seams)
   if (sub === 'update') return runUpdateCommand(rest, ctx, seams)
-  if (sub === 'config')
-    return runConfigCommand(rest, ctx, seams.configFile ?? PR_UPDATE_CONFIG_FILE)
-  if (sub === 'trust') return runTrustCommand(rest, ctx)
-  ctx.io.stderr(`pr-update: unknown command '${sub}'\n\n${TOP_HELP}\n`)
+  if (sub === 'config' || sub === 'trust') {
+    return sharedCommands(seams.configFile ?? PR_UPDATE_CONFIG_FILE).run(argv, ctx)
+  }
+  ctx.io.stderr(`${renderError(`unknown command '${sub}'`, 'pr-update')}\n${TOP_HELP}\n`)
   return EXIT.usage
 }

@@ -69,6 +69,22 @@ describe('per-tool trust', () => {
     expect(session.unknowns(snap).filter((u) => u.kind === 'withheld')).toEqual([])
   })
 
+  test('with a tool grant, progress names every runner once, before the first report', async () => {
+    const dir = await root(MISE_AND_MOON)
+    const session = await open(dir)
+    await session.grantTrust('mise')
+    const events: string[] = []
+    const snap = await session.catalog({
+      progress: {
+        onRunners: (runners) => events.push(`runners ${[...runners].sort().join(',')}`),
+        onRunner: (report) => events.push(`report ${report.runner}`),
+      },
+    })
+    const ids = snap.catalog.reports.map((r) => r.runner).sort()
+    expect(events[0]).toBe(`runners ${ids.join(',')}`)
+    expect(events.slice(1).sort()).toEqual(ids.map((id) => `report ${id}`))
+  })
+
   test('a tool-only grant lets that runner run and keeps the others withheld', async () => {
     const dir = await root(MISE_AND_MOON)
     const session = await open(dir)
@@ -141,6 +157,22 @@ describe('per-tool trust', () => {
     await session.catalog()
     const stored = await session.catalog({ cached: true })
     expect(withheld(stored.catalog)).toEqual(['moon'])
+  })
+
+  test('a granted runner that --exclude or --only leaves out is not collected, fresh or cached', async () => {
+    const dir = await root(MISE_AND_MOON)
+    await (await open(dir)).grantTrust('mise')
+    // The grant probes and stores mise, so the cached reads below have an entry to find.
+    await (await open(dir)).catalog()
+    for (const flags of [{ exclude: ['mise'] }, { only: ['moon'] }]) {
+      const session = await createSession({ dir, cwd: dir, env: {}, home: dir, flags })
+      const fresh = await session.catalog()
+      expect(fresh.catalog.reports.map((r) => r.runner)).not.toContain('mise')
+      expect(withheld(fresh.catalog)).toEqual(['moon'])
+      const cached = await session.catalog({ cached: true })
+      expect(cached.catalog.reports.map((r) => r.runner)).not.toContain('mise')
+      expect(withheld(cached.catalog)).toEqual(['moon'])
+    }
   })
 
   test('a tool grant is refused when trust does not decide execution', async () => {

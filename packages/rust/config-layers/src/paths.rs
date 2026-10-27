@@ -157,7 +157,13 @@ pub fn substitute_path_names(
 /// setting that silently expands to `/repo` instead of `/Users/me/dev/repo`
 /// fails somewhere far from the typo. The message says where the name was
 /// found (`setting`, e.g. `repos:`), how to define it (`define_hint`), and
-/// what is available. A `{` with no closing `}` is kept as written.
+/// what is available.
+///
+/// A name never contains `{`. A `{` with no closing `}`, or one followed by
+/// another `{` before any `}`, is kept as written, so `{a{dev}` gives `{a`
+/// then the `dev` directory, and `{{dev}}` gives the directory in braces. A
+/// `}` with no `{` is kept as written. An empty `{}` is the name `""`, which is
+/// unknown unless `names` defines it.
 ///
 /// # Errors
 ///
@@ -179,11 +185,18 @@ pub fn substitute_path_names_with_hint(
         };
         out.push_str(&rest[..start]);
         let after_open = &rest[start + 1..];
-        let Some(end) = after_open.find('}') else {
+        let Some(end) = after_open.find(['{', '}']) else {
             // No closing brace, so the rest has no further name. Emit it as is.
             out.push_str(&rest[start..]);
             break;
         };
+        if after_open.as_bytes()[end] == b'{' {
+            // A name never contains `{`: keep this `{` and the text after it
+            // as written, and look for a name from the next `{`.
+            out.push_str(&rest[start..=start + end]);
+            rest = &after_open[end..];
+            continue;
+        }
         let name = &after_open[..end];
         match names.get(name) {
             Some(path) => out.push_str(&path.to_string_lossy()),
@@ -269,6 +282,23 @@ mod tests {
             assert_eq!(
                 substitute_path_names("{dev}/{oops", &names, "repos:").unwrap(),
                 "/d/{oops"
+            );
+        }
+
+        #[test]
+        fn a_brace_before_another_brace_is_kept_as_written() {
+            let names = PathNames::from([("dev".to_string(), PathBuf::from("/d"))]);
+            assert_eq!(
+                substitute_path_names("{a{dev}", &names, "repos:").unwrap(),
+                "{a/d"
+            );
+            assert_eq!(
+                substitute_path_names("{{dev}}", &names, "repos:").unwrap(),
+                "{/d}"
+            );
+            assert_eq!(
+                substitute_path_names("{{{x", &names, "repos:").unwrap(),
+                "{{{x"
             );
         }
 

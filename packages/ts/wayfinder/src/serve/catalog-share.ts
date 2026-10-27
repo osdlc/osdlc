@@ -20,9 +20,17 @@
  * An entry is used only by a request whose session has the same view key
  * (trust and settings), so a trust grant or a saved setting is never answered
  * with rows from before it. Only unfiltered listings are shared.
+ *
+ * A shared probe's progress lines (one per runner as it answers) go to every
+ * waiter that asks for them. One that joins late gets the lines sent so far
+ * first, so each waiter sees every runner.
  */
 
 import type { CatalogBody } from '../commands/list.ts'
+import type { CatalogProgressBody } from '../documents.ts'
+
+/** Sends one progress line of a shared probe. */
+export type ProgressSink = (line: CatalogProgressBody) => void
 
 /** See the module comment. One per command tree; `serve` turns it on. */
 export interface CatalogShare {
@@ -37,16 +45,24 @@ export interface CatalogShare {
   remember(key: string, body: CatalogBody): void
   /** The newest catalog for `key`, marked as cached, or null. */
   cached(key: string): CatalogBody | null
+  /** True while a probe for `key` runs. */
+  probing(key: string): boolean
   /**
    * A fresh catalog for `key`. With `join`, the probe already running for it
    * when there is one; otherwise `probe` starts now. `probe` gets the
    * share's signal, not the caller's. `signal` is the caller's own: when it
    * aborts, this call rejects and the probe goes on for the other waiters.
+   * `probe` sends its progress lines through its second argument; `onEvent`
+   * gets them, the ones sent before this call first.
    */
   fresh(
     key: string,
-    probe: (signal: AbortSignal) => Promise<CatalogBody>,
-    opts: { join: boolean; signal?: AbortSignal | undefined },
+    probe: (signal: AbortSignal, emit: ProgressSink) => Promise<CatalogBody>,
+    opts: {
+      join: boolean
+      signal?: AbortSignal | undefined
+      onEvent?: ProgressSink | undefined
+    },
   ): Promise<CatalogBody>
   /** How many callers wait on the running probe for `key`. For tests. */
   waiting(key: string): number
@@ -60,6 +76,22 @@ interface Running {
   promise: Promise<CatalogBody>
   waiters: number
   settled: boolean
+  /** Every progress line sent so far, for a waiter that joins late. */
+  events: CatalogProgressBody[]
+  listeners: Set<ProgressSink>
+}
+
+/**
+ * Give `line` to one waiter's listener. False when it throws: that waiter
+ * gets no more lines, and the probe and the other waiters go on.
+ */
+function tell(listener: ProgressSink, line: CatalogProgressBody): boolean {
+  try {
+    listener(line)
+    return true
+  } catch {
+    return false
+  }
 }
 
 export function createCatalogShare(): CatalogShare {
@@ -69,17 +101,31 @@ export function createCatalogShare(): CatalogShare {
   let running: Running | null = null
   let seq = 0
 
-  const start = (key: string, probe: (signal: AbortSignal) => Promise<CatalogBody>): Running => {
+  const start = (
+    key: string,
+    probe: (signal: AbortSignal, emit: ProgressSink) => Promise<CatalogBody>,
+  ): Running => {
     const controller = new AbortController()
     const onStop = (): void => controller.abort(stopper.signal.reason)
     stopper.signal.addEventListener('abort', onStop, { once: true })
+    const events: CatalogProgressBody[] = []
+    const listeners = new Set<ProgressSink>()
+    const emit: ProgressSink = (line) => {
+      if (run.settled) return
+      events.push(line)
+      for (const listener of listeners) {
+        if (!tell(listener, line)) listeners.delete(listener)
+      }
+    }
     const run: Running = {
       key,
       seq: ++seq,
       controller,
-      promise: Promise.resolve().then(() => probe(controller.signal)),
+      promise: Promise.resolve().then(() => probe(controller.signal, emit)),
       waiters: 0,
       settled: false,
+      events,
+      listeners,
     }
     running = run
     const done = (): void => {
@@ -96,7 +142,11 @@ export function createCatalogShare(): CatalogShare {
     return run
   }
 
-  const wait = (run: Running, signal: AbortSignal | undefined): Promise<CatalogBody> =>
+  const wait = (
+    run: Running,
+    signal: AbortSignal | undefined,
+    onEvent: ProgressSink | undefined,
+  ): Promise<CatalogBody> =>
     new Promise<CatalogBody>((resolve, reject) => {
       let left = false
       run.waiters++
@@ -104,6 +154,7 @@ export function createCatalogShare(): CatalogShare {
         if (left) return
         left = true
         run.waiters--
+        if (onEvent !== undefined) run.listeners.delete(onEvent)
         signal?.removeEventListener('abort', onAbort)
         if (run.waiters === 0 && !run.settled) run.controller.abort(new Error('nobody is waiting'))
       }
@@ -113,6 +164,10 @@ export function createCatalogShare(): CatalogShare {
       }
       if (signal?.aborted === true) return onAbort()
       signal?.addEventListener('abort', onAbort, { once: true })
+      // After `leave` is set up, so a listener that throws cannot leak this waiter.
+      if (onEvent !== undefined && run.events.every((line) => tell(onEvent, line))) {
+        run.listeners.add(onEvent)
+      }
       run.promise.then(
         (body) => {
           leave()
@@ -147,10 +202,13 @@ export function createCatalogShare(): CatalogShare {
         ? body
         : { ...body, source: 'cached', storedAt: body.generatedAt }
     },
+    probing(key) {
+      return running !== null && running.key === key && !running.settled
+    },
     fresh(key, probe, opts) {
       const joinable = running !== null && running.key === key && !running.settled
       const run = opts.join && joinable ? running! : start(key, probe)
-      return wait(run, opts.signal)
+      return wait(run, opts.signal, opts.onEvent)
     },
     waiting(key) {
       return running !== null && running.key === key ? running.waiters : 0

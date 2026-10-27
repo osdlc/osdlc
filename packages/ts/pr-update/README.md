@@ -9,7 +9,7 @@ import { prUpdateConfigSchema, runSurvey, standalonePorts } from "@osdlc/pr-upda
 import { spawnRunner } from "@osdlc/command-seam";
 
 const report = runSurvey(
-  { repo: [], noFetch: false, noDrafts: false, limit: 100, remote: "origin" },
+  { repo: [], pr: [], noFetch: false, noDrafts: false, limit: 100, remote: "origin" },
   {
     projectRoot: process.cwd(),
     dryRun: false,
@@ -186,8 +186,9 @@ refused with exit `14`.
 | `pi` | the pi coding agent (`pi`) |
 
 Each preset is one [`@osdlc/agent-call`](https://www.npmjs.com/package/@osdlc/agent-call)
-call, run in the update worktree with file edits allowed, no shell and no
-permission prompts, and the repair timeout. agent-call builds every CLI's
+call, run in the update worktree with file edits allowed, no permission
+prompts, and the repair timeout. Shell is off for claude, cursor and pi; codex's
+`--sandbox workspace-write` also allows workspace commands. agent-call builds every CLI's
 argument list, so this package writes no per-agent flags. The agent CLI must be
 installed and signed in. `repair.model` passes a model name to it. The exit
 status gives `ok`, and the agent's final line gives the note. All presets share
@@ -281,19 +282,32 @@ config file at all.
 its overlay (`file.local.yaml`). A path that does not exist is an error. A key
 the blocks do not define, at any depth, and a malformed value both exit `14`.
 
-`pr-update config list|get|set|unset|explain|scaffold` reads and edits those
-files (`--layer project|local`, default `project`). `set` validates before it
-writes, and keeps comments and layout. A key without a section prefix means
-`pr_update.<key>`: `pr-update config set strategy merge` equals
-`pr-update config set pr_update.strategy merge`, and `list` and `explain`
-print the qualified key.
+`pr-update config list|get|set|unset|path|explain|scaffold` reads and edits
+those files. They are `@osdlc/cli-tool`'s shared `config` commands, so they
+behave as in every tool built on it, `--json` included. `--local` writes the
+overlay; the default is `pr-update.yaml` (`--project`). A value is read as
+JSON, else as the bare string (`config set strategy merge`,
+`config set max_failed_attempts 3`). `set` validates the merged result before
+it writes, and keeps comments and layout. A change that would leave the config
+invalid is a usage error (exit `2`) and writes nothing. Only the result is
+checked, so `set` or `unset` can repair a file that is invalid now. A file
+that is not YAML at all, or a `PR_UPDATE_CONFIG` naming a missing file, exits
+`14`; `config path` still lists the files. `set` and `unset` take `--dry-run`.
+An unknown key exits `2`. `get` of a key with no value, and `unset` of a key
+the file does not set, exit `1`. `config` alone lists. `explain` shows each layer
+(default, project, local), the value it sets and which won. A key without a
+section prefix means `pr_update.<key>`: `pr-update config set strategy merge`
+equals `pr-update config set pr_update.strategy merge`, and every answer
+prints the qualified key.
 
 Five values name a command, or an agent that can run tools, that the tool will
 start: `lockfile_install`, `resolvers[].run`, `repair.command`, `repair.agent`
 and `test_command`. When one is set in the project file (and not overridden in
 `pr-update.local.yaml`), `update` exits `21` until you consent. Pass `--trust`
 for one run, or run `pr-update trust` once to record the repository (kept under
-`$XDG_STATE_HOME/pr-update/trusted/`).
+`$XDG_STATE_HOME/pr-update/trusted/`). `trust` is cli-tool's shared command:
+`--show` reports the repository's trust, `--list` every trusted repository and
+`--untrust` removes the record.
 
 Only one of `repair.command` and `repair.agent` may be set, checked on the
 merged config. A `pr-update.local.yaml` that wants an agent where the project
@@ -327,7 +341,8 @@ confirmation:
 | `attempts` (optional) | The failed-update record: `get(key)`, `recordFailure(key, reason)`, `clear(repo, head, base)` |
 | `confirmPush(preview)` (optional) | Under `confirmPush: true`, whether to make one rebase force-push; the terminal prompt when absent |
 
-`standalonePorts(cfg, projectRoot)` gives a `pr-update` CLI run defaults for the first two ports.
+`standalonePorts(cfg, projectRoot)` gives a `pr-update` CLI run defaults for the three required ports
+(locate, runVerb, resolveVerifyVerbs) and for repair and attempts.
 It builds `repair` from `repair.agent` or `repair.command`, stores attempts in
 `<projectRoot>/.pr-update/attempts/` (`fileAttemptStore`), answers `verify: test` with
 `test_command`, and refuses `verify: check`. A standalone run has no host registry to look up
@@ -346,6 +361,11 @@ Any other remote is taken as a self-hosted Forgejo, over `curl`, with the token
 in `FORGEJO_TOKEN`. `code_host.override: github` or `forgejo` in the config
 forces the choice, for example for a GitHub Enterprise host. The token's
 variable name is not configurable here. It is always `FORGEJO_TOKEN`.
+
+`--remote` (default `origin`) names the remote whose URL gives the repository,
+the one fetched, the one whose remote-tracking refs (`<remote>/<branch>`) drift
+and conflicts are measured against, and, for `update`, the one pushed to. It
+does not change which code host is chosen: that always reads `origin`.
 
 A host that embeds the engine as a library supplies `SurveyEnv.codeHost`, and
 none of this applies to it. When `SurveyEnv.codeHost` is absent, the library

@@ -361,6 +361,46 @@
       },
       "key": "",
       "found": false
+    },
+    {
+      "name": "a list is not walked into",
+      "obj": {
+        "a": {
+          "b": "",
+          "c": 0,
+          "d": null,
+          "e": [
+            1
+          ],
+          "f": {
+            "g": "deep"
+          }
+        },
+        "top": "t",
+        "dotted.key": "x"
+      },
+      "key": "a.e.0",
+      "found": false
+    },
+    {
+      "name": "an inherited name is not a key",
+      "obj": {
+        "a": {
+          "b": "",
+          "c": 0,
+          "d": null,
+          "e": [
+            1
+          ],
+          "f": {
+            "g": "deep"
+          }
+        },
+        "top": "t",
+        "dotted.key": "x"
+      },
+      "key": "a.constructor",
+      "found": false
     }
   ],
   "yaml": [
@@ -739,6 +779,46 @@
       },
       "setting": "repos:",
       "error": "unknown path name '{}' in repos: '{}/x'; define it under paths: (available: {dev}, {work})"
+    },
+    {
+      "name": "a brace with no closing brace is kept as written",
+      "value": "{dev}/{x",
+      "names": {
+        "dev": "/home/me/dev",
+        "work": "/work"
+      },
+      "setting": "repos:",
+      "expected": "/home/me/dev/{x"
+    },
+    {
+      "name": "a closing brace with no opening brace is kept as written",
+      "value": "a}/{dev}",
+      "names": {
+        "dev": "/home/me/dev",
+        "work": "/work"
+      },
+      "setting": "repos:",
+      "expected": "a}//home/me/dev"
+    },
+    {
+      "name": "a brace before a name is kept as written",
+      "value": "{a{dev}",
+      "names": {
+        "dev": "/home/me/dev",
+        "work": "/work"
+      },
+      "setting": "repos:",
+      "expected": "{a/home/me/dev"
+    },
+    {
+      "name": "a doubled brace around a name is kept as written",
+      "value": "{{dev}}",
+      "names": {
+        "dev": "/home/me/dev",
+        "work": "/work"
+      },
+      "setting": "repos:",
+      "expected": "{/home/me/dev}"
     }
   ],
   "needs": [

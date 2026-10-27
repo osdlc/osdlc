@@ -1,6 +1,6 @@
-import { rm } from 'node:fs/promises'
+import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 
 import type { CommandRunner } from '@osdlc/command-seam'
 import { afterAll, describe, expect, test } from 'vitest'
@@ -308,7 +308,9 @@ describe('pinnedInstall — executable-selection order', () => {
   })
 
   test('only mise matches → mise-scoped command with the trust env inline', async () => {
-    const profile = await profileWith({ packageManager: 'bun@1.4.2' }, 'bun.lock', MANAGERS)
+    // A fixed root: a Windows temp path has backslashes, which the command quotes.
+    const detected = await profileWith({ packageManager: 'bun@1.4.2' }, 'bun.lock', MANAGERS)
+    const profile = { ...detected, root: '/tmp/app' }
     const runnerFor = fakeRunners({ env: '1.4.2' })
     const r = project.pinnedInstall(profile, BUN_INSTALL, { allowExec: true, runnerFor })
     expect(r?.source).toBe('mise')
@@ -325,6 +327,17 @@ describe('pinnedInstall — executable-selection order', () => {
     ])
     expect(r?.command).toBe(
       `env MISE_TRUSTED_CONFIG_PATHS=${profile.root} mise exec -- bun install --frozen-lockfile`,
+    )
+  })
+
+  test('a root with a space stays one word in the shell command', async () => {
+    const detected = await profileWith({ packageManager: 'bun@1.4.2' }, 'bun.lock', MANAGERS)
+    const profile = { ...detected, root: '/tmp/My Projects/app' }
+    const runnerFor = fakeRunners({ env: '1.4.2' })
+    const r = project.pinnedInstall(profile, BUN_INSTALL, { allowExec: true, runnerFor })
+    expect(r?.argv[1]).toBe('MISE_TRUSTED_CONFIG_PATHS=/tmp/My Projects/app')
+    expect(r?.command).toBe(
+      "env 'MISE_TRUSTED_CONFIG_PATHS=/tmp/My Projects/app' mise exec -- bun install --frozen-lockfile",
     )
   })
 
@@ -409,5 +422,49 @@ describe('pinnedInstall — reads the profile', () => {
       'install',
       '--frozen-lockfile',
     ])
+  })
+})
+
+describe.skipIf(process.platform === 'win32')('pinnedInstall — the default runner', () => {
+  /**
+   * A `bun` that prints the pinned version, in a fresh folder under the PATH
+   * probe's cwd (`tmpdir()`), so a relative PATH entry naming it resolves there.
+   */
+  async function fakeBunDir(): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), 'pinned-path-'))
+    roots.push(dir)
+    const bun = join(dir, 'bun')
+    await writeFile(bun, '#!/bin/sh\necho 1.4.2\n', 'utf-8')
+    await chmod(bun, 0o755)
+    return dir
+  }
+
+  async function withPath<T>(path: string, body: () => T): Promise<T> {
+    const saved = process.env.PATH
+    process.env.PATH = path
+    try {
+      return body()
+    } finally {
+      process.env.PATH = saved
+    }
+  }
+
+  test('a bare name is found on an absolute PATH entry', async () => {
+    const profile = await profileWith({ packageManager: 'bun@1.4.2' })
+    const dir = await fakeBunDir()
+    const r = await withPath(dir, () =>
+      project.pinnedInstall(profile, BUN_INSTALL, { allowExec: false }),
+    )
+    expect(r?.source).toBe('path')
+    expect(r?.resolvedVersion).toBe('1.4.2')
+  })
+
+  test('a relative PATH entry is never searched', async () => {
+    const profile = await profileWith({ packageManager: 'bun@1.4.2' })
+    const dir = await fakeBunDir()
+    const r = await withPath(basename(dir), () =>
+      project.pinnedInstall(profile, BUN_INSTALL, { allowExec: false }),
+    )
+    expect(r).toBeNull()
   })
 })

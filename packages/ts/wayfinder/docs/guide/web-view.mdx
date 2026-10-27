@@ -175,12 +175,28 @@ copy button is also reachable with `Tab`.
 
 ## Startup and the cache
 
-The server reads the catalog once as it starts, from the view the last run
-saved or else the [stored probe](cache.md), and starts a probe at once. The
-page first asks for `way list --cached`, which the server answers with the
-newest catalog it holds, then for `way list --join`, which joins the probe already
-running or starts one; the polls do the same. The rows update in place when
-the probe finishes. **Refresh** always starts a probe. **Run** probes the
+The server reads the view the last run saved (see [the cache](cache.md)) as
+it starts, and starts a probe at once. It prints its address without waiting
+for that probe. The page first asks for `way list --cached`, which the server
+answers with the newest catalog it holds, then for `way list --join`, which
+joins the probe already running or starts one; the polls do the same. The
+rows update in place when the probe finishes, and until then the status says
+`refreshing…`. On that first read and on **Refresh**, after 3 seconds it
+names the runners still out: `refreshing… waiting on moon`. The polls do not,
+since they would stream every runner's report again.
+
+With nothing saved, the page's first read is the server's probe itself, and
+each runner is drawn as it answers. A runner still out has a quiet tab and a
+row with a spinner, each in the place its tab and rows will take, so nothing
+moves when it answers. The status names them: `loading 3 of 12: just, mise,
+moon`. A withheld or failed runner shows its reason as soon as it answers.
+So does a runner past its [time limit](configuration.md#runnerstimeout):
+`moon: timed out after 120 s`. The **Skills** tab and the skills appear as
+soon as they are read, after the runner tabs. A screen reader hears when
+loading starts and when it ends, with the task count and how many runners
+failed.
+The lines come over the same API as every other call, as NDJSON (one JSON
+line per runner, one for the skills, then the catalog document), with the same token and checks. **Refresh** always starts a probe. **Run** probes the
 task's runner again first, and refuses a task that changed since the page
 drew it.
 

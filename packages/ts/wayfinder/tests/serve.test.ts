@@ -21,7 +21,7 @@ import type { CatalogBody } from '../src/commands/list.ts'
 import { createWayApp } from '../src/commands/index.ts'
 import { createSession } from '../src/core/session.ts'
 import { createSignIn } from '../src/serve/auth.ts'
-import { createCatalogShare } from '../src/serve/catalog-share.ts'
+import { createCatalogShare, type ProgressSink } from '../src/serve/catalog-share.ts'
 import { viewPath } from '../src/core/saved-view.ts'
 import { createRoutes } from '../src/serve/routes.ts'
 import { browserOpener, serve, startServer, type WebServer } from '../src/serve/index.ts'
@@ -671,6 +671,56 @@ describe('POST /run', () => {
       await s.web.stop()
     }
   })
+
+  /** The routes alone, with a resolveRun that throws on its first call. */
+  function routesThatThrowOnce() {
+    let calls = 0
+    const handed: string[][] = []
+    const routes = createRoutes({
+      api: {
+        handles: () => false,
+        checkOrigin: () => null,
+        hasToken: () => true,
+        token: 't',
+      } as unknown as HttpApi,
+      signIn: createSignIn(),
+      page: async () => '',
+      resolveRun: async () => {
+        calls++
+        if (calls === 1) throw new Error('the probe failed')
+        return { ok: true, display: 'x', argv: ['x'], env: {}, cwd: '/' }
+      },
+      handOff: (plan) => handed.push(plan.argv),
+    })
+    const post = (init: RequestInit = {}): Promise<Response> =>
+      routes(
+        new Request('http://127.0.0.1/run', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ id: 'x' }),
+          ...init,
+        }),
+      )
+    return { post, handed }
+  }
+
+  test('a run whose resolution throws frees the terminal for the next one', async () => {
+    const { post } = routesThatThrowOnce()
+    await expect(post()).rejects.toThrow('the probe failed')
+    expect((await post()).status).toBe(200)
+    expect((await post()).status).toBe(409)
+  })
+
+  test('/run answers 405 to GET, 415 to a body that is not JSON and 413 to one too large, and stays free', async () => {
+    const { post } = routesThatThrowOnce()
+    expect((await post({ method: 'GET', body: null })).status).toBe(405)
+    expect((await post({ headers: { 'content-type': 'text/plain' } })).status).toBe(415)
+    const large = JSON.stringify({ id: 'x'.repeat(65 * 1024) })
+    expect((await post({ body: large })).status).toBe(413)
+    // None of them took the terminal: the throwing call, then a run that succeeds.
+    await expect(post()).rejects.toThrow('the probe failed')
+    expect((await post()).status).toBe(200)
+  })
 })
 
 describe('the browser opener', () => {
@@ -737,9 +787,9 @@ describe('the held catalog', () => {
     share.fresh = (key, run, opts) =>
       fresh(
         key,
-        (signal) => {
+        (signal, emit) => {
           probes.push(key)
-          return run(signal)
+          return run(signal, emit)
         },
         opts,
       )
@@ -795,6 +845,90 @@ describe('the held catalog', () => {
     expect(await finished).toBeNull()
   })
 
+  test('with no saved view, the page streams each runner from the probe serve started', async () => {
+    const dir = await root({
+      'package.json': JSON.stringify({ name: 'p', scripts: { build: 'echo b' } }),
+      Makefile: 'all:\n\techo all\n',
+    })
+    const home = await root()
+    const env = { HOME: home, PATH: process.env['PATH'] }
+    const { app, share } = createWayApp({ home })
+    const session = await createSession({ dir, cwd: dir, env, home })
+    // serve's probe waits until the test lets it go.
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const probe = session.catalog.bind(session)
+    let probes = 0
+    Object.assign(session, {
+      catalog: async (opts?: Parameters<typeof probe>[0]) => {
+        if (opts?.cached !== true) {
+          probes++
+          await gate
+        }
+        return probe(opts)
+      },
+    })
+    const aborter = new AbortController()
+    let out = ''
+    const finished = serve({
+      session,
+      app,
+      share,
+      globals: {},
+      cwd: dir,
+      open: false,
+      signal: aborter.signal,
+      stdout: (text) => {
+        out += text
+      },
+      stderr: () => {},
+    })
+    await vi.waitFor(() => expect(out).toMatch(/\?boot=[0-9a-f]+/))
+    expect(out).toContain('nothing yet')
+    const address = out.match(/(http:\/\/127\.0\.0\.1:\d+)/)![1]!
+    const boot = out.match(/\?boot=([0-9a-f]+)/)![1]!
+    const signed = await fetch(`${address}/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ boot }),
+    })
+    const { token } = (await signed.json()) as { token: string }
+    const streamed = fetch(`${address}/api/commands/list`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/x-ndjson',
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ cached: true, progress: true }),
+    })
+    await vi.waitFor(() => expect(share.waiting(session.viewKey())).toBe(2))
+    release()
+    const res = await streamed
+    expect(res.headers.get('content-type')).toContain('application/x-ndjson')
+    const lines = (await res.text())
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+    const events = lines.slice(0, -1)
+    const doc = lines.at(-1)!
+    expect(events.every((e) => e['kind'] === 'catalog-progress')).toBe(true)
+    expect(events[0]!['report']).toBeUndefined()
+    const answered = events.slice(1).map((e) => (e['report'] as { runner: string }).runner)
+    expect(answered.sort()).toEqual(
+      (doc['reports'] as { runner: string }[]).map((r) => r.runner).sort(),
+    )
+    expect(events.at(-1)!['pending']).toEqual([])
+    expect(doc['kind']).toBe('catalog')
+    expect(doc['source']).toBe('fresh')
+    // One probe: the page joined serve's.
+    expect(probes).toBe(1)
+    aborter.abort(130)
+    expect(await finished).toBeNull()
+  })
+
   const body = (generatedAt: string): CatalogBody => ({ generatedAt }) as never
   const held = (): {
     promise: Promise<CatalogBody>
@@ -809,6 +943,152 @@ describe('the held catalog', () => {
     })
     return { promise, resolve, reject }
   }
+
+  test("a waiter that joins late gets the probe's progress lines sent before it joined", async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const done = held()
+    let emit: ProgressSink = () => {}
+    const probe = (_signal: AbortSignal, sink: ProgressSink): Promise<CatalogBody> => {
+      emit = sink
+      return done.promise
+    }
+    const early: number[] = []
+    const late: number[] = []
+    const a = share.fresh('k', probe, { join: true, onEvent: (l) => early.push(l.pending.length) })
+    await vi.waitFor(() => expect(share.probing('k')).toBe(true))
+    await Promise.resolve()
+    emit({ pending: ['a', 'b'], total: 2 })
+    emit({ pending: ['b'], total: 2 })
+    const b = share.fresh('k', probe, { join: true, onEvent: (l) => late.push(l.pending.length) })
+    emit({ pending: [], total: 2 })
+    done.resolve(body('done'))
+    await Promise.all([a, b])
+    expect(early).toEqual([2, 1, 0])
+    expect(late).toEqual([2, 1, 0])
+    expect(share.probing('k')).toBe(false)
+    // A line after the end goes nowhere.
+    emit({ pending: [], total: 2 })
+    expect(early).toHaveLength(3)
+  })
+
+  test('a listener that throws gets no more lines; the probe and the other waiters go on', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const done = held()
+    let emit: ProgressSink = () => {}
+    const probe = (_signal: AbortSignal, sink: ProgressSink): Promise<CatalogBody> => {
+      emit = sink
+      return done.promise
+    }
+    let thrown = 0
+    const good: number[] = []
+    const bad = share.fresh('k', probe, {
+      join: true,
+      onEvent: () => {
+        thrown++
+        throw new Error('the tab went away')
+      },
+    })
+    const fine = share.fresh('k', probe, { join: true, onEvent: (l) => good.push(l.total) })
+    await vi.waitFor(() => expect(share.probing('k')).toBe(true))
+    await Promise.resolve()
+    emit({ pending: ['a'], total: 1 })
+    emit({ pending: [], total: 1 })
+    expect(thrown).toBe(1)
+    expect(good).toEqual([1, 1])
+    expect(share.waiting('k')).toBe(2)
+    done.resolve(body('done'))
+    await expect(bad).resolves.toEqual(body('done'))
+    await expect(fine).resolves.toEqual(body('done'))
+    expect(share.waiting('k')).toBe(0)
+  })
+
+  test('a late joiner whose listener throws on the replay is not left counted', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const done = held()
+    let emit: ProgressSink = () => {}
+    const probe = (_signal: AbortSignal, sink: ProgressSink): Promise<CatalogBody> => {
+      emit = sink
+      return done.promise
+    }
+    const first = share.fresh('k', probe, { join: true })
+    await vi.waitFor(() => expect(share.probing('k')).toBe(true))
+    await Promise.resolve()
+    emit({ pending: ['a'], total: 1 })
+    const late = share.fresh('k', probe, {
+      join: true,
+      onEvent: () => {
+        throw new Error('broken')
+      },
+    })
+    expect(share.waiting('k')).toBe(2)
+    done.resolve(body('done'))
+    await Promise.all([first, late])
+    expect(share.waiting('k')).toBe(0)
+  })
+
+  test('a tab that leaves mid-stream stops the probe it started', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    let emit: ProgressSink = () => {}
+    let seen: AbortSignal | undefined
+    const probe = (signal: AbortSignal, sink: ProgressSink): Promise<CatalogBody> => {
+      seen = signal
+      emit = sink
+      return new Promise<CatalogBody>((_, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason))
+      })
+    }
+    const tab = new AbortController()
+    const lines: number[] = []
+    const page = share.fresh('k', probe, {
+      join: false,
+      signal: tab.signal,
+      onEvent: (l) => lines.push(l.pending.length),
+    })
+    await vi.waitFor(() => expect(seen).toBeDefined())
+    emit({ pending: ['a'], total: 1 })
+    tab.abort(new Error('tab closed'))
+    await expect(page).rejects.toThrow('tab closed')
+    expect(seen!.aborted).toBe(true)
+    expect(share.waiting('k')).toBe(0)
+    emit({ pending: [], total: 1 })
+    expect(lines).toEqual([1])
+  })
+
+  test('a tab that leaves mid-stream stops getting lines; the boot probe goes on', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const done = held()
+    let emit: ProgressSink = () => {}
+    let seen: AbortSignal | undefined
+    const probe = (signal: AbortSignal, sink: ProgressSink): Promise<CatalogBody> => {
+      seen = signal
+      emit = sink
+      return done.promise
+    }
+    // serve starts the first probe under its own signal.
+    const boot = share.fresh('k', probe, { join: true, signal: share.signal })
+    const tab = new AbortController()
+    const lines: number[] = []
+    const page = share.fresh('k', probe, {
+      join: true,
+      signal: tab.signal,
+      onEvent: (l) => lines.push(l.pending.length),
+    })
+    await vi.waitFor(() => expect(seen).toBeDefined())
+    emit({ pending: ['a', 'b'], total: 2 })
+    tab.abort(new Error('tab closed'))
+    await expect(page).rejects.toThrow('tab closed')
+    emit({ pending: ['b'], total: 2 })
+    expect(lines).toEqual([2])
+    expect(share.waiting('k')).toBe(1)
+    expect(seen!.aborted).toBe(false)
+    done.resolve(body('done'))
+    await expect(boot).resolves.toEqual(body('done'))
+  })
 
   test('a failed shared probe fails every waiter, and the next request probes again', async () => {
     const share = createCatalogShare()
@@ -889,6 +1169,44 @@ describe('the held catalog', () => {
     expect(share.cached('k')).toMatchObject({ generatedAt: 'after the edit' })
   })
 
+  test('a request under another key never joins the running probe, and its late answer is not newest', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const forA = held()
+    const a = share.fresh('a', () => forA.promise, { join: true })
+    expect(share.waiting('a')).toBe(1)
+    let probes = 0
+    const b = share.fresh(
+      'b',
+      () => {
+        probes++
+        return Promise.resolve(body('b'))
+      },
+      { join: true },
+    )
+    await expect(b).resolves.toEqual(body('b'))
+    expect(probes).toBe(1)
+    expect(share.waiting('b')).toBe(0)
+    expect(share.cached('b')).toMatchObject({ generatedAt: 'b' })
+    // The probe for a began first, so its answer does not replace b's.
+    forA.resolve(body('a'))
+    await expect(a).resolves.toEqual(body('a'))
+    expect(share.cached('b')).toMatchObject({ generatedAt: 'b' })
+    expect(share.cached('a')).toBeNull()
+  })
+
+  test('remember during a running probe is replaced by that probe once it answers', async () => {
+    const share = createCatalogShare()
+    share.activate()
+    const gate = held()
+    const run = share.fresh('k', () => gate.promise, { join: true })
+    share.remember('k', body('stored'))
+    expect(share.cached('k')).toMatchObject({ generatedAt: 'stored' })
+    gate.resolve(body('probed'))
+    await expect(run).resolves.toEqual(body('probed'))
+    expect(share.cached('k')).toMatchObject({ generatedAt: 'probed' })
+  })
+
   test('stop aborts a running shared probe', async () => {
     const share = createCatalogShare()
     share.activate()
@@ -910,7 +1228,7 @@ describe('the held catalog', () => {
     expect(share.active).toBe(false)
   })
 
-  test('a malformed saved view does not stop serve from starting; the store answers', async () => {
+  test('a malformed saved view does not stop serve from starting; its probe answers', async () => {
     const dir = await root({
       'package.json': JSON.stringify({ name: 'p', scripts: { build: 'echo b' } }),
     })
@@ -940,7 +1258,8 @@ describe('the held catalog', () => {
     })
     await vi.waitFor(() => expect(out).toMatch(/\?boot=[0-9a-f]+/))
     expect(out).not.toContain('the last listing')
-    expect(share.cached(session.viewKey())).not.toBeNull()
+    expect(out).toContain('nothing yet; the page shows each runner as it answers')
+    await vi.waitFor(() => expect(share.cached(session.viewKey())).not.toBeNull())
     aborter.abort(130)
     expect(await finished).toBeNull()
   })

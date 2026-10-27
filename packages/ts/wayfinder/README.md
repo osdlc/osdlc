@@ -182,10 +182,11 @@ gets focus and on a slow poll, so it shows what the repository has now.
 
 Every action on the page is a command of `way` called over HTTP: the list
 is `way list`, a trust grant is `way trust`, a saved setting is `way config
-set`. The page first asks for the [stored probe](#the-cache), then for a
-real one. So the page appears at once, even when the slowest runner takes
-seconds. The rows update in place when the probe finishes. Refresh always
-runs a real probe.
+set`. The page first asks for the [last saved listing](#the-cache), then for
+a real probe. So the page appears at once, even when the slowest runner takes
+seconds. The rows update in place when the probe finishes. With nothing
+saved, each runner's rows appear as that runner answers. Refresh always runs
+a real probe.
 
 ## Execution, and trust
 
@@ -366,9 +367,9 @@ The terminal UI and `serve` always start from what was last shown. Every
 `list`, `query` and refresh saves the catalog it showed in one file, and a
 start draws that file before it reads anything else, so the rows appear in
 well under a second even on a large repository. The file is used only under
-the same trust and settings that produced it. Without it they read the store,
-which needs no probe but detects the project and hashes each runner's files.
-Then they probe in the background and update in place. `list` and `query`
+the same trust and settings that produced it. Then they probe in the
+background and update in place. Without it they probe and show each runner
+as it answers, with the runners still loading named. `list` and `query`
 re-probe on every run, because a script or an agent reading them needs what
 the repository has right now. `--cached` makes `list`, `query` and `run`
 answer at once from the same saved listing the UIs draw. It does not check
@@ -446,8 +447,8 @@ runners to skip, what order to show them in, whether execution is allowed, and
 how files are discovered. The layers, lowest precedence first: built-in
 defaults, the user file (`~/.config/wayfinder/config.json` by default),
 `wayfinder.config.json` at the project root, then the flags on the command
-line. `trust`, `open`, `theme` and `skills` count only in the user file, and a
-project file can lower `allowExec` but never raise it.
+line. `trust`, `open`, `theme` and `skills` count only in the user file. A
+project file can lower `allowExec` and `runners.timeout` but never raise them.
 
 ```text
 way config list [--json]                          every setting, and the layer it came from
@@ -527,6 +528,20 @@ The `catalog` and `query` documents carry `cache`, `filter` and `unknowns`.
 `unknowns` lists what could not be read, each with the `label` the stderr note
 prints: a runner withheld for trust, tasks whose parameters are unknown and
 why, a stale stored answer, a tool missing from `PATH`.
+
+### Progress lines
+
+`way list --progress --output jsonl` prints a `catalog-progress` line as each
+runner answers, then the reports. The first line names every runner in
+`pending`, in display order. Each later line carries the runner that answered
+in `report`, with its `cache` verdict and `unknowns`, and the runners still
+out in `pending`. A report too large for one line (about 1 MiB) is named in
+`omitted` instead and comes with the reports. The agent skills come on a line
+of their own, in `skills`, as soon as they are read, filtered like the
+document. With no skills, or too many for one line, they come only with the
+document. Over HTTP, `way serve` sends the
+same lines as NDJSON when the request asks for `application/x-ndjson`, with
+the catalog document last. `way schema` describes the line.
 
 ### Old flags
 
@@ -637,11 +652,16 @@ probe store. Nothing in the repository runs unless it is trusted and
 execution is allowed. It throws `SessionError` with a `code` for a directory
 that does not exist, a config file that cannot be used, or a tool module that
 cannot be loaded. `onWarning` gets each warning the CLI prints on stderr,
-such as a project file key that is ignored.
+such as a project file key that is ignored. `progress` hears about each
+runner as it answers: `onRunners(ids)` once, then `onRunner(report, cache)`
+per runner, withheld ones included, so a caller can show the catalog before
+the slowest runner is done. `onSkills(skills)` comes once, as soon as the
+agent skills are read. `buildCatalog` resolves once the store and the saved
+view are written.
 
 | Export | Is |
 |---|---|
-| `buildCatalog`, `BuildCatalogOptions`, `CatalogDocument`, `SessionFlags`, `CacheState` | the catalog for a directory, the flags it takes and each runner's cache verdict |
+| `buildCatalog`, `BuildCatalogOptions`, `CatalogDocument`, `SessionFlags`, `CacheState`, `CatalogProgress` | the catalog for a directory, the flags it takes, each runner's cache verdict and each runner as it answers |
 | `filterTasks`, `keepsTask`, `sourceDepth`, `hasQuery`, `TaskFilter`, `TaskHit`, `Mode` | the search and filters every surface uses |
 | `filterSkills`, `skillLine`, `SkillRow`, `SkillHit`, `SkillsSetting`, `SKILLS_SETTING_VALUES` | the Skills group |
 | `GROUPS`, `SKILLS_GROUP`, `groupOf`, `catalogGroups`, `documentGroups`, `Group`, `GroupId`, `DocumentGroup` | the groups and their order |

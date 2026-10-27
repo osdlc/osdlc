@@ -201,9 +201,18 @@ export interface Cli<F extends FlagSpec> {
   help(options?: { all?: boolean }): string
 }
 
-/** `httpPort` → `http-port`. */
-function kebab(name: string): string {
+/**
+ * `httpPort` → `http-port`: how a flag key is spelled on the command line.
+ * The help, schema and router take it from here.
+ * @internal
+ */
+export function kebab(name: string): string {
   return name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
+}
+
+/** `project-local` → `projectLocal`: the key commander files a long option's value under. */
+function camelcase(long: string): string {
+  return long.split('-').reduce((out, word) => out + word.charAt(0).toUpperCase() + word.slice(1))
 }
 
 /**
@@ -342,6 +351,13 @@ export function defineCli<F extends FlagSpec>(decl: CliDecl<F>): Cli<F> {
       // boolean is not among them: commander starts a lone `--no-x` at true.
       const values = command.opts() as Record<string, unknown>
       for (const [name, flag] of Object.entries(decl.flags)) {
+        // Commander files a value under the camelCased long name, so a key
+        // such as 'project-local' lands under 'projectLocal'. Move it back.
+        const attribute = camelcase(kebab(name))
+        if (attribute !== name && Object.hasOwn(values, attribute)) {
+          if (values[name] === undefined) values[name] = values[attribute]
+          delete values[attribute]
+        }
         if (values[name] !== undefined) continue
         if (flag.kind === 'boolean') values[name] = false
         else if (flag.kind === 'count') values[name] = 0

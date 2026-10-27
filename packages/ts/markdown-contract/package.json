@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/markdown-contract",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "description": "Contracts for markdown documents: state what a document type must hold (frontmatter checked by a Zod schema, a grammar over its heading sections, typed tables, lists and code blocks), check it with one parse, and read a passing document back as a typed model. Contracts in TypeScript or YAML, a folder runner and a CLI.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
@@ -68,7 +68,8 @@
     "CONTRIBUTING.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "cli-tool-stamp-version --out src/cli/version.generated.ts && tsc -p tsconfig.build.json",
+    "stamp-version": "cli-tool-stamp-version --out src/cli/version.generated.ts",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
     "coverage": "vitest run --coverage",
@@ -91,6 +92,7 @@
     "yaml": "catalog:"
   },
   "devDependencies": {
+    "@osdlc/cli-tool": "workspace:^",
     "@osdlc/prettier-config": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",

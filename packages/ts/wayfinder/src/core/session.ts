@@ -8,7 +8,13 @@ import { isAbsolute, relative, resolve, sep } from 'node:path'
 
 import { commandString } from '@osdlc/command-seam/quote'
 import { closestMatches } from '@osdlc/config-layers/did-you-mean'
-import type { Catalog, Project, RunnerCacheState, Task } from '@osdlc/system-model/detect'
+import type {
+  Catalog,
+  Project,
+  RunnerCacheState,
+  RunnerReport,
+  Task,
+} from '@osdlc/system-model/detect'
 import {
   homeDir,
   parseTrustScope,
@@ -20,15 +26,16 @@ import {
 
 import { BIN, PROJECT_CONFIG_FILENAME } from '../app.ts'
 import { cacheDir } from '../cache.ts'
-import { settingLayer } from '../config-keys.ts'
+import { DISCOVERY_VALUES, settingLayer } from '../config-keys.ts'
 import {
-  collectAndCache,
+  collectAndStore,
   fromStore,
   makeProject,
   orderedCatalog,
   projectRootFor,
   readCachedCatalog,
   runnerIds,
+  settledBoth,
   type WayOptions,
 } from '../catalog.ts'
 import {
@@ -43,13 +50,14 @@ import {
 } from '../config.ts'
 import { readSkills } from '../skills.ts'
 import { toolSummary, type ToolSummary } from '../tool-info.ts'
-import { VERSION } from '../version.ts'
+import { VERSION } from '../version.generated.ts'
 import { loadTools, ToolModuleError, type LoadedTool } from '../tools.ts'
 import { appTrustStore } from '../trust-store.ts'
 import { EDITOR_VARIABLE_LABEL, type WithheldReason } from '../vocabulary.ts'
 import { taskCopyText } from './copy-text.ts'
 import { filterTasks, type TaskFilter, type TaskHit } from './filter.ts'
 import { readView, viewKey, writeView } from './saved-view.ts'
+import { flushWrites } from './writes.ts'
 import { filterSkills, type SkillHit, type SkillRow } from './skills.ts'
 import { execOffSource, unknownsOf, type Unknown } from './unknowns.ts'
 
@@ -91,7 +99,7 @@ export interface SessionFlags {
   exclude?: string[] | undefined
   /** `--exclude-path`, replacing the configured list. */
   excludePaths?: string[] | undefined
-  discovery?: 'git' | 'walk' | 'auto' | undefined
+  discovery?: (typeof DISCOVERY_VALUES)[number] | undefined
   /** `--config` modules of extra tools, as typed. */
   toolModules?: readonly string[] | undefined
 }
@@ -115,6 +123,26 @@ export interface SessionOptions {
 export type CacheState = RunnerCacheState & {
   /** How long this runner's probe took, when it was probed in this call. */
   probeMs?: number | undefined
+}
+
+/**
+ * What a probe reports while it runs, so a surface can draw each runner as
+ * it answers. See {@link Session.catalog}.
+ */
+export interface CatalogProgress {
+  /** Once, before any runner answers: every runner this call probes. */
+  onRunners?(runners: readonly string[]): void
+  /**
+   * Once per runner, as it answers, a withheld runner included: its report
+   * and its cache state. The snapshot `catalog` resolves with is still the
+   * answer to show; it can add a diagnostic this report lacks.
+   */
+  onRunner?(report: RunnerReport, cache: CacheState): void
+  /**
+   * Once, as soon as the agent skills are read: before, between or after the
+   * runners. The snapshot holds the same rows.
+   */
+  onSkills?(skills: readonly SkillRow[]): void
 }
 
 /** A catalog and where each runner's rows came from. */
@@ -225,8 +253,14 @@ export interface Session {
    * checks each runner's files, and probes only the runners missing from it.
    * A probe always writes the store. `signal`
    * stops this call's probes as well as the session's own signal.
+   * `progress` hears about each runner this call probes as it answers; an
+   * answer from the saved view or the store probes none.
    */
-  catalog(opts?: { cached?: boolean; signal?: AbortSignal | undefined }): Promise<CatalogSnapshot>
+  catalog(opts?: {
+    cached?: boolean
+    signal?: AbortSignal | undefined
+    progress?: CatalogProgress | undefined
+  }): Promise<CatalogSnapshot>
   /**
    * The catalog from the store alone, probing nothing: for a first paint
    * before a probe. Null when the store has no answer for this project. A
@@ -256,11 +290,11 @@ export interface Session {
    */
   viewKey(): string
   /** The tasks of `catalog` that pass `filter`, best first when there is a query. */
-  search(catalog: Catalog, filter: TaskFilter): TaskHit[]
+  search(catalog: Pick<Catalog, 'reports'>, filter: TaskFilter): TaskHit[]
   /** The skills that pass `filter`, matched as {@link search} matches tasks. */
   searchSkills(skills: readonly SkillRow[], filter: TaskFilter): SkillHit[]
   /** Everything this session could not know about `snapshot`. */
-  unknowns(snapshot: Pick<CatalogSnapshot, 'catalog' | 'cache'>): Unknown[]
+  unknowns(snapshot: { catalog: Pick<Catalog, 'reports'>; cache: readonly CacheState[] }): Unknown[]
   /** Whether a trust grant would change this session's execution. */
   trustable(): boolean
   /**
@@ -309,7 +343,7 @@ export interface Session {
    * {@link SessionError}: `task-not-found`, `ambiguous-task`, `not-runnable` or
    * `bad-arguments`.
    */
-  resolveRun(catalog: Catalog, id: string, args?: readonly string[]): RunPlan
+  resolveRun(catalog: Pick<Catalog, 'reports'>, id: string, args?: readonly string[]): RunPlan
 }
 
 /**
@@ -378,12 +412,20 @@ function parseScope(scope: string): string {
   }
 }
 
+/**
+ * Each setting a settings screen saves that is also a collect option a flag
+ * sets. A flag pins its option: the setting no longer moves it.
+ */
+const COLLECT_SETTINGS = [
+  { setting: 'runners.disabled', option: 'exclude' },
+  { setting: 'excludePaths', option: 'excludePaths' },
+  { setting: 'discovery', option: 'discovery' },
+] as const
+
 /** The collect option a flag sets, for each setting a settings screen saves. */
-const FLAG_OF_SETTING: Readonly<Record<string, string>> = {
-  'runners.disabled': 'exclude',
-  discovery: 'discovery',
-  excludePaths: 'excludePaths',
-}
+const FLAG_OF_SETTING: Readonly<Record<string, string>> = Object.fromEntries(
+  COLLECT_SETTINGS.map((c) => [c.setting, c.option]),
+)
 
 /** A config error as a session error; anything else unchanged. */
 function asSessionError(err: unknown, prefix = ''): unknown {
@@ -391,19 +433,32 @@ function asSessionError(err: unknown, prefix = ''): unknown {
   return err
 }
 
+/** The fresh state of a runner probed just now, with its measured time when it ran. */
+function probedState(runner: string, probeMs: number | undefined): CacheState {
+  return {
+    runner,
+    state: 'fresh',
+    ageMs: 0,
+    estimateMs: probeMs ?? null,
+    slow: false,
+    ...(probeMs !== undefined ? { probeMs } : {}),
+  }
+}
+
 /** Fresh states for a catalog probed just now, with each runner's measured time. */
 function probedStates(catalog: Catalog, times: ReadonlyMap<string, number>): CacheState[] {
-  return catalog.reports.map((r) => {
-    const probeMs = times.get(r.runner)
-    return {
-      runner: r.runner,
-      state: 'fresh' as const,
-      ageMs: 0,
-      estimateMs: probeMs ?? null,
-      slow: false,
-      ...(probeMs !== undefined ? { probeMs } : {}),
-    }
-  })
+  return catalog.reports.map((r) => probedState(r.runner, times.get(r.runner)))
+}
+
+/**
+ * The selected runners the store has no rows for. That is a miss, and also a
+ * runner whose stored rows were dropped: a probe that ran the repository's
+ * tools does not answer a run that may not run them, so that entry is stale
+ * with no report.
+ */
+function unanswered(catalog: Catalog, runners: readonly RunnerCacheState[]): string[] {
+  const answered = new Set(catalog.reports.map((r) => r.runner))
+  return runners.filter((r) => !answered.has(r.runner)).map((r) => r.runner)
 }
 
 /**
@@ -452,7 +507,10 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
   const projectToolsPending = !projectAllowed && (config.layers.project?.tools?.length ?? 0) > 0
 
   // The config's own allowExec was consumed by the gate.
-  const { allowExec: _consumed, ...configOptions } = collectOptionsFromConfig(config.effective)
+  const { allowExec: _consumed, ...configOptions } = collectOptionsFromConfig(
+    config.effective,
+    config.layers,
+  )
   // Config first, flags second. --exclude REPLACES runners.disabled.
   const options: WayOptions = {
     ...configOptions,
@@ -466,11 +524,9 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
     ...(flags.discovery !== undefined ? { discovery: flags.discovery } : {}),
     ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
   }
-  const pinnedByFlag = [
-    ...(flags.exclude ? ['exclude'] : []),
-    ...(flags.excludePaths ? ['excludePaths'] : []),
-    ...(flags.discovery !== undefined ? ['discovery'] : []),
-  ]
+  const pinnedByFlag: string[] = COLLECT_SETTINGS.filter((c) => flags[c.option] !== undefined).map(
+    (c) => c.option,
+  )
   // Per-tool trust applies only when the repository's own trust is what
   // withholds execution. The set is read on every probe, so a tool grant in
   // this session applies to the next one.
@@ -500,15 +556,29 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
   }
   const skills = (): Promise<SkillRow[]> =>
     readSkills(root, { setting: settings.skills.value, home, env, signal: opts.signal })
+  /** The skills, told to `progress` as soon as they are read. */
+  const toldSkills = async (progress?: CatalogProgress): Promise<SkillRow[]> => {
+    const rows = await skills()
+    progress?.onSkills?.(rows)
+    return rows
+  }
   const store = cacheDir(env, home)
   const runnerOrder = (): string[] | undefined => settings.loaded.effective.runners?.order
 
   /** Take `next` as the settings: the collect options follow, except where a flag decided. */
   const adopt = (next: Settings): void => {
     settings = next
-    const derived = collectOptionsFromConfig(next.loaded.effective) as Record<string, unknown>
+    const derived = collectOptionsFromConfig(next.loaded.effective, next.loaded.layers) as Record<
+      string,
+      unknown
+    >
     const target = options as unknown as Record<string, unknown>
-    for (const key of ['exclude', 'discovery', 'excludePaths'] as const) {
+    // The probe time limits have no flag, so a setting always moves them.
+    for (const key of [
+      ...COLLECT_SETTINGS.map((c) => c.option),
+      'probeTimeoutMs',
+      'maxProbeTimeoutMs',
+    ] as const) {
       if (pinnedByFlag.includes(key)) continue
       if (derived[key] === undefined) delete target[key]
       else target[key] = derived[key]
@@ -529,19 +599,29 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
     return signals.length > 0 ? { ...options, signal: AbortSignal.any(signals) } : options
   }
 
-  /** Probe the runners `only` names (all when absent), timing each. */
+  /** Probe the runners `only` names (all when absent), timing each and telling `progress`. */
   const probe = async (
     only?: string[],
     signal?: AbortSignal,
+    progress?: CatalogProgress,
   ): Promise<{ catalog: Catalog; times: Map<string, number> }> => {
     const times = new Map<string, number>()
-    const catalog = await collectAndCache(
+    const catalog = await collectAndStore(
       project,
       root,
       {
         ...withSignal(signal),
         ...(only !== undefined ? { only } : {}),
         onProbe: ({ runner, durationMs }) => times.set(runner, durationMs),
+        ...(progress?.onRunners !== undefined
+          ? { onRunners: (runners) => progress.onRunners?.(runners) }
+          : {}),
+        ...(progress?.onRunner !== undefined
+          ? {
+              onReport: (report) =>
+                progress.onRunner?.(report, probedState(report.runner, times.get(report.runner))),
+            }
+          : {}),
       },
       store,
     )
@@ -601,29 +681,40 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
     },
     async catalog(opts = {}) {
       if (opts.cached !== true) {
-        const { catalog, times } = await probe(undefined, opts.signal)
+        // The skills are read beside the probe, so the answer does not wait
+        // for both in turn. Both settle before a failure is thrown.
+        const [{ catalog, times }, skillRows] = await settledBoth(
+          probe(undefined, opts.signal, opts.progress),
+          toldSkills(opts.progress),
+        )
         return saved({
           catalog: orderedCatalog(catalog, runnerOrder()),
           cache: probedStates(catalog, times),
-          skills: await skills(),
+          skills: skillRows,
           origin: 'probe',
         })
       }
       const view = await session.savedCatalog()
       if (view !== null) return view
+      // A probe in this process writes the store after it answers.
+      await flushWrites()
       // The call's signal too: a closed tab stops hashing the store.
       const stored = await readCachedCatalog(project, root, withSignal(opts.signal), store)
       if (stored.catalog === null || !fromStore(stored)) {
-        const { catalog, times } = await probe(undefined, opts.signal)
+        const [{ catalog, times }, skillRows] = await settledBoth(
+          probe(undefined, opts.signal, opts.progress),
+          toldSkills(opts.progress),
+        )
         return saved({
           catalog: orderedCatalog(catalog, runnerOrder()),
           cache: probedStates(catalog, times),
-          skills: await skills(),
+          skills: skillRows,
           origin: 'empty-store',
         })
       }
-      // A miss is a runner with nothing stored. Only the missing runners are probed.
-      const missing = stored.runners.filter((r) => r.state === 'miss').map((r) => r.runner)
+      // Only the runners with no stored rows are probed: a miss, or a stale
+      // entry whose report the store dropped.
+      const missing = unanswered(stored.catalog, stored.runners)
       if (missing.length === 0) {
         return saved({
           catalog: orderedCatalog(stored.catalog, runnerOrder()),
@@ -632,6 +723,8 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
           origin: 'store',
         })
       }
+      // No progress here: it would name only the missing runners, while the
+      // stored ones wait for the document.
       const { catalog: probed, times } = await probe(missing, opts.signal)
       const fresh = new Map(probedStates(probed, times).map((s) => [s.runner, s]))
       return saved({
@@ -645,11 +738,24 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
       })
     },
     async storedCatalog() {
+      await flushWrites()
       const stored = await readCachedCatalog(project, root, options, store)
       if (stored.catalog === null || !fromStore(stored)) return null
+      // A runner with no stored rows is missing from the catalog, so it is a miss.
+      const missing = new Set(unanswered(stored.catalog, stored.runners))
       return {
         catalog: orderedCatalog(stored.catalog, runnerOrder()),
-        cache: stored.runners,
+        cache: stored.runners.map((r) =>
+          missing.has(r.runner)
+            ? {
+                runner: r.runner,
+                state: 'miss' as const,
+                estimateMs: r.estimateMs,
+                slow: r.slow,
+                cost: r.cost,
+              }
+            : r,
+        ),
         skills: await skills(),
         origin: 'store',
       }
@@ -833,7 +939,7 @@ export async function createSession(opts: SessionOptions): Promise<Session> {
  * copied form, with its `cd` and quoting), else by its `display`. A line or
  * a display names a task only when no other task has it.
  */
-function findTask(catalog: Catalog, id: string): Task | undefined {
+function findTask(catalog: Pick<Catalog, 'reports'>, id: string): Task | undefined {
   const all = catalog.reports.flatMap((r) => r.tasks)
   const only = (tasks: Task[]): Task | undefined => (tasks.length === 1 ? tasks[0] : undefined)
   const lineOf = (t: Task): string | null => taskCopyText(t, process.platform)
@@ -865,7 +971,7 @@ function findTask(catalog: Catalog, id: string): Task | undefined {
 export function resolveRun(
   project: Project,
   root: string,
-  catalog: Catalog,
+  catalog: Pick<Catalog, 'reports'>,
   id: string,
   args: readonly string[] = [],
 ): RunPlan {

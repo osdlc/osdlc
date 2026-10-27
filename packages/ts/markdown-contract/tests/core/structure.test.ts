@@ -9,7 +9,17 @@
  */
 import { describe, expect, test } from 'vitest'
 import type { Finding } from '../../src/index.js'
-import { code, contract, gap, list, maxWords, section, sections, table } from '../../src/index.js'
+import {
+  code,
+  contract,
+  gap,
+  list,
+  maxWords,
+  optional,
+  section,
+  sections,
+  table,
+} from '../../src/index.js'
 import { ContractBuildError } from '../../src/core/grammar.js'
 
 const ctx = { path: 'fixture.md' }
@@ -203,6 +213,34 @@ describe('gap({min,max}) bounds', () => {
   })
 })
 
+describe('gap({min,max}) bounds on a level that is not strict', () => {
+  for (const order of ['none', 'recognized-relative'] as const) {
+    const c = contract({
+      body: sections({ order, allowUnknown: false }, [
+        section('A'),
+        gap({ min: 1, max: 1 }),
+        section('B'),
+      ]),
+    })
+
+    test(`${order}: one undeclared section anywhere is within bounds`, () => {
+      expect(c.validate('## X\n\n## A\n\n## B\n', ctx).findings).toEqual([])
+    })
+
+    test(`${order}: every undeclared section counts, wherever it sits → gap-count`, () => {
+      const { findings } = c.validate('## X\n\n## A\n\n## B\n\n## Y\n', ctx)
+      expect(ids(findings)).toEqual(['structure/gap-count'])
+      expect(findings[0]?.message).toBe('gap admitted 2 unknown sections; expected at most 1')
+    })
+
+    test(`${order}: no undeclared section is below min → gap-count`, () => {
+      const { findings } = c.validate('## A\n\n## B\n', ctx)
+      expect(ids(findings)).toEqual(['structure/gap-count'])
+      expect(findings[0]?.message).toBe('gap admitted 0 unknown sections; expected at least 1')
+    })
+  }
+})
+
 describe('repeatable sections', () => {
   test('a declared-repeatable heading repeated as peers validates cleanly', () => {
     const c = contract({
@@ -313,5 +351,70 @@ describe('duplicate-section pins the later occurrence', () => {
     const { findings } = c.validate(source, ctx)
     expect(ids(findings)).toEqual(['structure/duplicate-section'])
     expect(findings[0]?.pos?.line).toBe(5) // the second ## Overview
+  })
+})
+
+describe('order: strict — a section whose slot the walk already passed', () => {
+  test('an optional section after a later one → structure/section-order', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: false }, [
+        optional(section('A')),
+        section('B'),
+      ]),
+    })
+    const { findings } = c.validate('## B\n\n## A\n', ctx)
+    expect(ids(findings)).toEqual(['structure/section-order'])
+    expect(findings[0]?.pos?.line).toBe(3)
+  })
+
+  test('a filled repeatable section repeated after a later one → structure/section-order', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: false }, [
+        section('R', { repeatable: true }),
+        section('B'),
+      ]),
+    })
+    const { findings } = c.validate('## R\n\n## B\n\n## R\n', ctx)
+    expect(ids(findings)).toEqual(['structure/section-order'])
+    expect(findings[0]?.pos?.line).toBe(5)
+  })
+
+  test('a declared section after a gap is not counted toward the gap', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: false }, [
+        optional(section('A')),
+        gap({ max: 1 }),
+        section('B'),
+      ]),
+    })
+    const { findings } = c.validate('## X\n\n## A\n\n## B\n', ctx)
+    expect(ids(findings)).toEqual(['structure/section-order'])
+  })
+
+  test('a required section reported on the early section is not reported twice', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: false }, [section('A'), section('B')]),
+    })
+    expect(ids(c.validate('## B\n\n## A\n', ctx).findings)).toEqual(['structure/section-order'])
+  })
+
+  test('a repeatable section reached past a skipped optional one may repeat', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: false }, [
+        optional(section('A')),
+        optional(section('R', { repeatable: true })),
+      ]),
+    })
+    expect(c.validate('## R\n\n## R\n', ctx).findings).toEqual([])
+  })
+
+  test('a non-repeatable section reached past a skipped optional one, repeated → duplicate only', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: false }, [
+        optional(section('A')),
+        optional(section('B')),
+      ]),
+    })
+    expect(ids(c.validate('## B\n\n## B\n', ctx).findings)).toEqual(['structure/duplicate-section'])
   })
 })

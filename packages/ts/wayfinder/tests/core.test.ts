@@ -20,8 +20,10 @@ import { settingLayer } from '../src/config-keys.ts'
 import { taskCopyText } from '../src/core/copy-text.ts'
 import { filterTasks, sourceDepth } from '../src/core/filter.ts'
 import { handOff } from '../src/core/run.ts'
-import { MAX_VIEW_BYTES, flushViews, viewPath } from '../src/core/saved-view.ts'
+import { MAX_VIEW_BYTES, viewPath } from '../src/core/saved-view.ts'
+import { flushWrites } from '../src/core/writes.ts'
 import { SessionError, createSession, resolveRun } from '../src/core/session.ts'
+import type { SkillRow } from '../src/core/skills.ts'
 import { execOffSource, unknownLine, unknownsOf } from '../src/core/unknowns.ts'
 import { withheldTrustHint } from '../src/commands/shared.ts'
 import {
@@ -519,6 +521,99 @@ describe('createSession', () => {
     await expect(session.grantTrust()).rejects.toMatchObject({ code: 'not-trustable' })
   })
 
+  test('catalog tells progress about every runner it probes, withheld ones included', async () => {
+    const dir = await root({
+      'package.json': '{"name":"p","scripts":{"b":"x"}}',
+      'mise.toml': '[tasks.hello]\nrun = "echo hi"\n',
+    })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    const heard: string[] = []
+    let listed: readonly string[] = []
+    const snapshot = await session.catalog({
+      progress: {
+        onRunners: (runners) => {
+          listed = runners
+        },
+        onRunner: (report, cache) => {
+          expect(listed).toContain(report.runner)
+          expect(cache).toMatchObject({ runner: report.runner, state: 'fresh' })
+          heard.push(report.runner)
+        },
+      },
+    })
+    const ids = snapshot.catalog.reports.map((r) => r.runner)
+    expect([...listed].sort()).toEqual([...ids].sort())
+    expect(heard.sort()).toEqual([...ids].sort())
+    expect(ids).toContain('mise')
+    expect(snapshot.catalog.reports.find((r) => r.runner === 'mise')?.skippedForExec).toBe(true)
+  })
+
+  test('catalog tells progress the skills as soon as they are read', async () => {
+    const dir = await root({
+      'package.json': '{"name":"p","scripts":{"b":"x"}}',
+      '.claude/skills/review/SKILL.md': '---\nname: review\ndescription: Review a PR\n---\n',
+    })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    let told: readonly SkillRow[] | null = null
+    let resolved = false
+    const pending = session
+      .catalog({
+        progress: {
+          onSkills: (skills) => {
+            expect(resolved).toBe(false)
+            told = skills
+          },
+        },
+      })
+      .then((snapshot) => {
+        resolved = true
+        return snapshot
+      })
+    const snapshot = await pending
+    expect(told).toEqual(snapshot.skills)
+    expect(snapshot.skills.map((s) => s.name)).toEqual(['review'])
+  })
+
+  test('catalog answers before the store is written; flushWrites waits for it', async () => {
+    const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    await session.catalog()
+    // The store's hashing and writes need file I/O, so they are still out.
+    const first = await Promise.race([flushWrites().then(() => 'written'), 'answered'])
+    expect(first).toBe('answered')
+    await flushWrites()
+    const cached = await session.project.runners.readCached(
+      await session.project.detect(session.root, { discovery: 'auto' }),
+      session.store,
+      { allowExec: session.options.allowExec },
+    )
+    expect(cached.runners.find((r) => r.runner === 'node-scripts')?.state).toBe('fresh')
+  })
+
+  test('a store read right after a probe in the same process sees that probe', async () => {
+    const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    await session.catalog()
+    await writeFile(join(dir, 'package.json'), '{"name":"p","scripts":{"c":"y"}}', 'utf-8')
+    await session.catalog()
+    const stored = await session.storedCatalog()
+    const tasks = stored?.catalog.reports.flatMap((r) => r.tasks).map((t) => t.path.at(-1))
+    expect(tasks).toContain('c')
+  })
+
+  test('an answer from the saved view probes nothing, so progress hears nothing', async () => {
+    const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
+    const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    await session.catalog()
+    let calls = 0
+    const snapshot = await session.catalog({
+      cached: true,
+      progress: { onRunners: () => calls++, onRunner: () => calls++ },
+    })
+    expect(snapshot.origin).toBe('saved')
+    expect(calls).toBe(0)
+  })
+
   test('storedCatalog answers from the store alone, and is null before a probe', async () => {
     const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
     const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
@@ -570,6 +665,35 @@ describe('createSession', () => {
     expect((await (await open()).savedCatalog())?.origin).toBe('saved')
     await (await open()).revokeTrust('mise')
     expect(await (await open()).savedCatalog()).toBeNull()
+  })
+
+  test('--cached under --no-exec probes a runner whose stored rows were taken with exec allowed', async () => {
+    const dir = await root({
+      'package.json': '{"name":"p","scripts":{"b":"x"}}',
+      'mise.toml': '[tasks.hello]\nrun = "echo hi"\n',
+    })
+    const granted = await createSession({ dir, cwd: dir, env: {}, home: dir })
+    await granted.grantTrust()
+    await granted.catalog()
+    await flushWrites()
+
+    const off = await createSession({
+      dir,
+      cwd: dir,
+      env: {},
+      home: dir,
+      flags: { allowExec: false },
+    })
+    // The store drops the node-scripts report taken with exec allowed.
+    const stored = await off.storedCatalog()
+    expect(stored?.catalog.reports.map((r) => r.runner)).not.toContain('node-scripts')
+    expect(stored?.cache.find((c) => c.runner === 'node-scripts')?.state).toBe('miss')
+
+    const cached = await off.catalog({ cached: true })
+    expect(cached.origin).toBe('store')
+    const npm = cached.catalog.reports.find((r) => r.runner === 'node-scripts')
+    expect(npm?.tasks.map((t) => t.id)).toContain('node-scripts:package.json:b')
+    expect(cached.cache.find((c) => c.runner === 'node-scripts')?.state).toBe('fresh')
   })
 
   test('a malformed or oversized view file is deleted and the store answers', async () => {
@@ -630,7 +754,7 @@ describe('createSession', () => {
     const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
     const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
     await session.catalog()
-    await flushViews()
+    await flushWrites()
     const file = viewPath(session.store, session.root, session.viewKey())
     const elsewhere = join(dir, 'elsewhere.json')
     await writeFile(elsewhere, await readFile(file, 'utf-8'), 'utf-8')
@@ -641,11 +765,11 @@ describe('createSession', () => {
     expect((await stat(elsewhere)).isFile()).toBe(true)
   })
 
-  test('flushViews settles once every view write has ended', async () => {
+  test('flushWrites settles once every view and store write has ended', async () => {
     const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
     const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
     await session.catalog()
-    await flushViews()
+    await flushWrites()
     const file = viewPath(session.store, session.root, session.viewKey())
     expect((await stat(file)).isFile()).toBe(true)
   })
@@ -667,7 +791,7 @@ describe('createSession', () => {
     const dir = await root({ 'package.json': '{"name":"p","scripts":{"b":"x"}}' })
     const session = await createSession({ dir, cwd: dir, env: {}, home: dir })
     await session.catalog()
-    await flushViews()
+    await flushWrites()
     await rm(viewPath(session.store, session.root, session.viewKey()))
     const closed = new AbortController()
     closed.abort(new Error('tab closed'))

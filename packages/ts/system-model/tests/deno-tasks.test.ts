@@ -2,7 +2,6 @@ import { afterAll, describe, expect, test } from 'vitest'
 
 import { tasks, type Task } from '../src/model.ts'
 import { denoTasks } from '../src/plugins/deno/index.ts'
-import { stripJsonComments } from '../src/plugins/deno/deno-tasks.ts'
 import { collect, fixtureRoot, removeRoot } from './support.ts'
 
 const roots: string[] = []
@@ -85,6 +84,25 @@ describe('deno-tasks runner', () => {
     expect(start?.detail).toBe('deno run --allow-net main.ts')
   })
 
+  test('trailing commas and a BOM parse, as Deno accepts them', async () => {
+    const jsonc = '\uFEFF{ "tasks": { "dev": "deno run main.ts", }, }'
+    const dir = await root({ 'deno.jsonc': jsonc })
+    const catalog = await collect(dir, opts())
+
+    expect(catalog.reports[0]?.status).toBe('ok')
+    expect(byName(tasks(catalog), 'dev')?.detail).toBe('deno run main.ts')
+    expect(catalog.reports[0]?.diagnostics).toEqual([])
+  })
+
+  test('a config that does not parse is reported, not dropped silently', async () => {
+    const dir = await root({ 'deno.json': '{ "tasks": { "dev": ' })
+    const report = (await collect(dir, opts())).reports[0]
+
+    expect(report?.tasks).toEqual([])
+    expect(report?.diagnostics[0]?.severity).toBe('warning')
+    expect(report?.diagnostics[0]?.source).toBe('deno.json')
+  })
+
   test('object-form task sets doc from description', async () => {
     const dir = await root({
       'deno.json': JSON.stringify({
@@ -130,27 +148,5 @@ describe('deno-tasks runner', () => {
         expect(arg).not.toMatch(/[;|&`]|\$\(/)
       }
     }
-  })
-})
-
-describe('stripJsonComments', () => {
-  test('removes a line comment that follows a string containing //', () => {
-    const input = '{"url": "http://example.com"} // trailing comment'
-    expect(stripJsonComments(input)).toBe('{"url": "http://example.com"} ')
-  })
-
-  test('removes a block comment spanning multiple lines', () => {
-    const input = '{\n/* line one\n   line two */\n"a": 1\n}'
-    expect(stripJsonComments(input)).toBe('{\n\n"a": 1\n}')
-  })
-
-  test('leaves a URL inside a string untouched', () => {
-    const input = '{"cmd": "echo http://example.com/*not-a-comment*/"}'
-    expect(stripJsonComments(input)).toBe(input)
-  })
-
-  test('does not treat // inside a string as the start of a comment', () => {
-    const input = '{"a": "//not a comment", "b": 2} // real comment'
-    expect(stripJsonComments(input)).toBe('{"a": "//not a comment", "b": 2} ')
   })
 })

@@ -1,5 +1,34 @@
 # @osdlc/markdown-contract
 
+## 0.6.0
+
+### Minor Changes
+
+- bb61f10: `--version` prints the package version and exits 0.
+
+## 0.5.0
+
+### Minor Changes
+
+- b835ae4: Empty or comment-only frontmatter now reports the missing required keys. A `^word` at the end of inline code is no longer read as an anchor, and a standalone anchor after a blockquote binds to its section. The typed model binds a `oneOf` or repeatable slot under each heading it matched, and finds a content-record table by its record key rather than by the leaf's `anchor` option, as the structure and content checks already did. Under strict order, a section whose slot the walk already passed (an optional slot skipped for a later section, or a repeatable slot a later section closed) is now `structure/section-order`; before, it passed silently.
+  **Breaking:** `forbids` and text-rule findings now carry a line but no `column`, since the column they carried was wrong.
+  An invalid regex in a declarative contract is a `DeclarativeError`, and `nullable: false` migrates.
+  `init` output changes: object-valued frontmatter fields get nested object schemas (a mixed-type field is left out, and its parent no longer sets `additionalProperties: false`), contract names stay unique across folders (`-2`, `-3`), and several roots get include globs routed to each root.
+  `validate` exits 2 for a path that is a file, and for a `--path` that is missing, not a folder, or outside the current folder; before, these passed with nothing checked. Integer flags accept only plain integers (`' 3 '` and `1e1` are refused).
+  The structure check, the content check and the typed model now share one slot resolver, so they bind the same section to the same slot and the same block to each leaf. A heading that two slots name is content-checked against the first slot only, as the structure check binds it. In the typed model, a second spelling of a filled `oneOf` or alias set no longer gets a key of its own (it is a `structure/duplicate-section`; `.section(name)` still finds it), and a section whose `content` is one `table(...)` leaf promotes to the table the content check validated, its first block: it promotes when other tables follow, and no longer promotes to a later table when the first block is not one.
+  `requires`, `forbids` and `textRule` in code and the YAML `requires:` and `forbids:` keys now apply one count-bound check. A `forbids` entry with a negative `max` throws `ContractBuildError` (`contract/text-count-bound`) in code, as it is refused in YAML. A YAML `forbids` entry is no longer refused for a `min` above its `max`, since `min` is ignored on a `forbids` entry, and a YAML `requires` entry whose bound means absence is refused with the code builder's message. A NaN `max` (YAML `.nan`) is still accepted in TS and Rust alike, and when the build-time bound check meets a NaN `min` on a `requires` entry it now uses the default minimum 1 in TS, as it already did in Rust (so `min: .nan, max: 0` is refused on both sides). Validation still compares counts against the NaN, so such an entry never reports a miss.
+
+### Patch Changes
+
+- Updated dependencies [b835ae4]
+  - @osdlc/gfm-table@0.4.0
+
+## 0.4.1
+
+### Patch Changes
+
+- 255e2a4: A `forbids` hit (from `forbids` or `textRule`) inside a fenced code block is now reported on its own line. Before, the text of a fenced block was placed from the fence line, so each hit was reported one line too high. Indented code blocks were already right.
+
 ## 0.4.0
 
 ### Minor Changes

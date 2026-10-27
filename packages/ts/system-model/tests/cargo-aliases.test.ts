@@ -96,6 +96,32 @@ describe('cargo-aliases runner', () => {
     expect(found.map((t) => [t.cwd, t.path[2]])).toEqual([['.', 'old']])
   })
 
+  test('a crate the workspace excludes is its own project and gets the aliases above it', async () => {
+    const { catalog } = await run({
+      'Cargo.toml': '[workspace]\nmembers = ["crates/*"]\nexclude = ["tools"]\n',
+      'crates/a/Cargo.toml': '[package]\nname = "a"\n',
+      'tools/gen/Cargo.toml': '[package]\nname = "gen"\n',
+      '.cargo/config.toml': '[alias]\nxtask = "run -p xtask"\n',
+    })
+    const found = tasks(catalog).filter((t) => t.runner === 'cargo-aliases')
+    expect(found.map((t) => [t.cwd, t.path[2]])).toEqual([
+      ['.', 'xtask'],
+      ['tools/gen', 'xtask'],
+    ])
+  })
+
+  test('a crate an inner workspace excludes but an outer one lists is a member of the outer', async () => {
+    const { catalog } = await run({
+      'Cargo.toml': '[workspace]\nmembers = ["inner/tools/gen"]\n',
+      'inner/Cargo.toml': '[workspace]\nexclude = ["tools"]\n',
+      'inner/tools/gen/Cargo.toml': '[package]\nname = "gen"\n',
+      '.cargo/config.toml': '[alias]\nxtask = "run -p xtask"\n',
+    })
+    const found = tasks(catalog).filter((t) => t.runner === 'cargo-aliases')
+    expect(found.map((t) => t.cwd)).not.toContain('inner/tools/gen')
+    expect(found.map((t) => t.cwd)).toContain('.')
+  })
+
   test('an alias over a built-in command, a bad alias and bad TOML are diagnostics', async () => {
     const { catalog } = await run({
       'Cargo.toml': '[package]\nname = "app"\n',

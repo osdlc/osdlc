@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Map, Value};
 
 use crate::paths::resolve_config_path;
-use crate::value::value_is_set;
+use crate::value::{value_at_mut, value_is_set};
 
 /// What can go wrong loading a config file.
 ///
@@ -197,20 +197,10 @@ pub fn resolve_paths_at(
     home: &Path,
 ) {
     for dotted in dotted_keys {
-        let segments: Vec<&str> = dotted.split('.').collect();
-        if let Some(Value::String(s)) = value_at_mut(map, &segments) {
+        if let Some(Value::String(s)) = value_at_mut(map, dotted) {
             *s = resolve_config_path(s, base, home);
         }
     }
-}
-
-fn value_at_mut<'a>(map: &'a mut Map<String, Value>, segments: &[&str]) -> Option<&'a mut Value> {
-    let (first, rest) = segments.split_first()?;
-    let mut cur = map.get_mut(*first)?;
-    for seg in rest {
-        cur = cur.get_mut(*seg)?;
-    }
-    Some(cur)
 }
 
 #[cfg(test)]
@@ -401,6 +391,25 @@ mod tests {
             fs::create_dir_all(&nested).unwrap();
             assert_eq!(find_up(&nested, "does-not-exist.yaml"), None);
         }
+
+        #[test]
+        fn a_match_in_cwd_itself_is_found() {
+            let dir = tempfile::tempdir().unwrap();
+            let marker = dir.path().join("marker.yaml");
+            fs::write(&marker, "x: 1\n").unwrap();
+            assert_eq!(find_up(dir.path(), "marker.yaml"), Some(marker));
+        }
+
+        #[test]
+        fn a_directory_of_that_name_stops_the_walk() {
+            let dir = tempfile::tempdir().unwrap();
+            fs::write(dir.path().join("marker.yaml"), "x: 1\n").unwrap();
+            let shadow = dir.path().join("a").join("marker.yaml");
+            fs::create_dir_all(&shadow).unwrap();
+            let nested = dir.path().join("a").join("b");
+            fs::create_dir_all(&nested).unwrap();
+            assert_eq!(find_up(&nested, "marker.yaml"), Some(shadow));
+        }
     }
 
     mod overlay_top_level_tests {
@@ -512,6 +521,42 @@ mod tests {
             assert_eq!(path_at("checkout"), base.join("repos"));
             assert_eq!(path_at("home_dir"), home.join("x"));
             assert_eq!(map.get("port"), Some(&Value::from(8080)));
+        }
+
+        #[test]
+        fn a_dotted_key_resolves_a_nested_value_and_skips_non_mappings() {
+            let mut map = match serde_json::json!({
+                "checkout": { "root": "./repos" },
+                "list": ["./a"],
+                "s": "./scalar",
+                "paths": { "n": 3 },
+            }) {
+                Value::Object(map) => map,
+                _ => unreachable!(),
+            };
+
+            let base = Path::new("/work/app");
+            let home = Path::new("/home/me");
+            resolve_paths_at(
+                &mut map,
+                &[
+                    "checkout.root",
+                    "list.0",
+                    "s.x",
+                    "paths.n",
+                    "checkout.nope.deeper",
+                ],
+                base,
+                home,
+            );
+
+            let root = PathBuf::from(map["checkout"]["root"].as_str().unwrap());
+            assert_eq!(root, base.join("repos"));
+            assert_eq!(map["list"], serde_json::json!(["./a"]));
+            assert_eq!(map["s"], serde_json::json!("./scalar"));
+            assert_eq!(map["paths"], serde_json::json!({ "n": 3 }));
+            // The path through a missing key added nothing.
+            assert_eq!(map["checkout"].as_object().unwrap().len(), 1);
         }
 
         #[test]

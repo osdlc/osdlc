@@ -1,8 +1,9 @@
 //! The projected document substrate — `DocTree` / `SectionNode` / `BlockNode`.
 //!
 //! The tree every plane reads: flat headings become a nested section tree (the first
-//! H1 is the document title; H2s and any later H1 are top-level sections; deeper
-//! headings nest by depth),
+//! H1 is the document title; each later H1, and every H2 before the first later H1,
+//! is a top-level section; other headings nest by depth under the nearest shallower
+//! heading),
 //! blocks are flattened (table cells → strings, list items → text, code verbatim,
 //! paragraph text flattened), each carrying a 1-based source position. `^block-id`
 //! anchors bind to blocks (`BlockNode` anchor) or sections (`SectionNode::anchors`).
@@ -194,7 +195,7 @@ pub struct Frontmatter {
 }
 
 /// The projected document: the frontmatter block (when present), the verbatim body
-/// after it, and the synthetic root whose `sections` are the top-level H2s and whose
+/// after it, and the synthetic root whose `sections` are the top-level body sections and whose
 /// `name` is the leading-H1 title.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DocTree {

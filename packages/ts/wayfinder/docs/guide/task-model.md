@@ -137,6 +137,8 @@ interface RunnerReport {
   - `dependencies`: Dependencies (runner `package-manager`)
   - `tools`: Tools (runner `tool-manager`)
   - `hooks`: Git hooks (runner `hook-manager`)
+  - `skills`: Skills (no runner; the rows are in `skills`), present when the
+    repository has agent skills
 
 In a `RunnerReport`:
 
@@ -153,8 +155,9 @@ In a `RunnerReport`:
 - **`skippedForExec`**: true when the runner was withheld because it needed
   to run its tool.
 
-Over HTTP, `way serve` also adds `trustable`: whether a trust grant would
-change this run's gate.
+A trust grant would change this run's gate when `unknowns` holds a
+`withheld` entry with reason `untrusted` or `tool-untrusted`. No server adds
+a field for it; the web page works it out from `unknowns` itself.
 
 ### The `cache` array
 
@@ -191,11 +194,21 @@ What could not be read, each with the `label` the stderr note prints:
 
 ```ts
 type Unknown =
-  | { kind: 'withheld'; runner: string; reason: 'untrusted' | 'exec-off'; label: string }
+  | {
+      kind: 'withheld'
+      runner: string
+      reason: 'untrusted' | 'tool-untrusted' | 'exec-off'
+      missing?: string[]
+      label: string
+    }
   | { kind: 'parameters'; runner: string; reason: string; tasks: string[]; label: string }
   | { kind: 'stale'; runner: string; reason?: string; ageMs?: number; label: string }
   | { kind: 'binary'; runner: string; binary: string; label: string }
 ```
+
+`withheld` carries `missing`, the trust scopes the runner still needs: its own
+id and each tool manager that wraps it. A `way trust --scope <id>` grant for
+each lets it run. Absent when trust is not what withholds it.
 
 `parameters` lists the ids of tasks whose parameters were not read, and why:
 `exec-withheld`, `tool-missing`, `tool-failed`, `not-read` or
