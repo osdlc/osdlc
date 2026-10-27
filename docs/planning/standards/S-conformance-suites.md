@@ -1,4 +1,4 @@
-# S-0004: Conformance suites for library families
+# S-conformance-suites: Conformance suites for library families
 
 **Status: proposed.** The rule below is a proposal. `scripts/conformance.ts`
 is not written yet, and no suite has moved to `packages/conformance/`.
