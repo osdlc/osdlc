@@ -398,6 +398,9 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Test the patch script
+        run: node --test scripts/crates-io-unpublished-patch.test.ts
+
       # Into the user cargo config, so no file in the repository changes.
       # The original, if any, is kept and restored after the dry run.
       - name: Point unpublished crates at their local directories
@@ -405,7 +408,7 @@ jobs:
           set -euo pipefail
           cfg="${CARGO_HOME:-$HOME/.cargo}/config.toml"
           if [ -e "$cfg" ]; then cp "$cfg" "$RUNNER_TEMP/cargo-config.toml"; fi
-          node scripts/crates-io-unpublished-patch.ts packages/rust/Cargo.toml >> "$cfg"
+          node scripts/crates-io-unpublished-patch.ts packages/rust/Cargo.toml packages/rust/release-plz.toml >> "$cfg"
           cat "$cfg"
 
       # Same action pin and version as release-plz.yml. It installs the

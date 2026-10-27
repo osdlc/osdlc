@@ -124,6 +124,13 @@ jobs:
           fi
           git fetch --no-tags origin "refs/heads/$branch"
           git checkout --detach FETCH_HEAD
+          # release-plz pushes one commit on top of the main commit it ran
+          # on. Build only that, so the App token never builds or commits on
+          # top of anything else pushed to the branch.
+          if [ "$(git rev-parse HEAD^)" != "$GITHUB_SHA" ]; then
+            echo "::error::$branch is not release-plz's commit on $GITHUB_SHA; not rebuilding"
+            exit 1
+          fi
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
           echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -157,13 +164,16 @@ jobs:
           repo="repos/$GITHUB_REPOSITORY"
           entries='[]'
           while IFS=$'\t' read -r status path; do
+            # The mode from the index, so the commit keeps it. Unused for a
+            # deletion.
+            mode="$(git ls-files -s -- "$path" | cut -d' ' -f1)"
             if [ "$status" = D ]; then
               sha=null
             else
               base64 -w0 "$path" > "$RUNNER_TEMP/blob.b64"
               sha="\"$(gh api "$repo/git/blobs" -f encoding=base64 -F "content=@$RUNNER_TEMP/blob.b64" --jq .sha)\""
             fi
-            entries="$(jq -c --arg p "$path" --argjson s "$sha" '. + [{path: $p, mode: "100644", type: "blob", sha: $s}]' <<<"$entries")"
+            entries="$(jq -c --arg p "$path" --arg m "${mode:-100644}" --argjson s "$sha" '. + [{path: $p, mode: $m, type: "blob", sha: $s}]' <<<"$entries")"
           done < <(git diff --cached --name-status --no-renames)
           tree="$(jq -n --arg b "$(git rev-parse "$HEAD_SHA^{tree}")" --argjson t "$entries" '{base_tree: $b, tree: $t}' \
             | gh api "$repo/git/trees" --input - --jq .sha)"
