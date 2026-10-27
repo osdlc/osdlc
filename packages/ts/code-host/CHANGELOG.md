@@ -1,5 +1,15 @@
 # @osdlc/code-host
 
+## 0.7.1
+
+### Patch Changes
+
+- 5598ee8: A bot pull request's `author.login` from the GitHub host (`listPrs`, `listPrDetails`, `getPr`) is now the bare login (`osdlc-release`), not gh's `app/osdlc-release`. It now matches the REST activity authors and the Forgejo host. This comes from `@osdlc/typed-gh`'s login normalization.
+- Updated dependencies [5598ee8]
+- Updated dependencies [50a340a]
+- Updated dependencies [65740a9]
+  - @osdlc/typed-gh@0.13.0
+
 ## 0.7.0
 
 ### Minor Changes
