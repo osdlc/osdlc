@@ -343,7 +343,10 @@ fn forces_double_quote(s: &str) -> bool {
 }
 
 fn stringify_string(value: &str, ctx: &Ctx) -> Result<String, RenderError> {
-    if forces_double_quote(value) {
+    // A departure from `yaml@2`, which writes such a string plain. Written at
+    // the start of a document, a leading U+FEFF is read back as a byte-order
+    // mark and dropped, so `"\u{feff}#c"` would read as a comment.
+    if forces_double_quote(value) || value.starts_with('\u{feff}') {
         return Ok(double_quoted_string(value, ctx));
     }
     plain_string(value, ctx)
@@ -602,6 +605,9 @@ fn json_stringify_str(value: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
+            // Not `JSON.stringify`: YAML allows no byte-order mark inside a
+            // scalar, so it is escaped.
+            '\u{feff}' => out.push_str("\\ufeff"),
             c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
             c => out.push(c),
         }

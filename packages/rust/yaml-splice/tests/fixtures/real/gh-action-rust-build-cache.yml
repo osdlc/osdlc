@@ -1,0 +1,24 @@
+# Caches ~/.cargo and packages/rust/target between runs of the same job.
+# Pass a `key` when two jobs on one runner OS build different things (for
+# example the MSRV job), so they do not share one cache entry.
+#
+# Every action is pinned to a commit SHA; the comment names its release.
+name: rust-build-cache
+description: Cache cargo downloads and the packages/rust build directory.
+
+inputs:
+  key:
+    description: Extra cache key, added to the job id and runner OS.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        workspaces: packages/rust -> target
+        key: ${{ inputs.key }}
+        # Save only on main, so pull requests read the cache but do not fill
+        # it with one-off entries.
+        save-if: ${{ github.ref == 'refs/heads/main' }}

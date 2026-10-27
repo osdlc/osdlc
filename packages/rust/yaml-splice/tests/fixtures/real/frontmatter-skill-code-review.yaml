@@ -1,0 +1,5 @@
+name: code-review
+description: "Review a change for correctness bugs and report concrete findings with a fix for each. The rubric other reviewing skills embed: what to read, what to look for, what to skip, and how to write a finding."
+allowed-tools: shell read_file
+metadata:
+  trigger: /code-review

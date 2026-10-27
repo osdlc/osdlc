@@ -1,0 +1,15 @@
+filters:
+  and:
+    - file.inFolder("planning/roadmaps")
+    - file.ext != "base"
+views:
+  - type: table
+    name: All roadmaps
+    order:
+      - status
+      - plan_doc
+      - last_reviewed
+      - file.name
+    sort:
+      - property: status
+        direction: ASC
