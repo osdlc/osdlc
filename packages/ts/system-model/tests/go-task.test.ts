@@ -591,6 +591,47 @@ describe('go-task listing path', () => {
     expect(list.find((t) => t.source === 'docs/Taskfile.yml')?.doc).toBe('Build the docs')
   })
 
+  test('an undiscovered include of a nested Taskfile is credited to that file, not the root', async () => {
+    // vendor/ is excluded from discovery, so only docs' listing names this task.
+    // The root's Taskfile.yml is a path suffix of it, but does not own it.
+    const dir = await root({
+      'Taskfile.yml': ['tasks:', '  build:', '    desc: Build', ''].join('\n'),
+      'docs/Taskfile.yml': [
+        'includes:',
+        '  shared: ../vendor/shared/Taskfile.yml',
+        'tasks:',
+        '  build:',
+        '    desc: Build the docs',
+        '',
+      ].join('\n'),
+    })
+    const { options } = execOpts([
+      {
+        binary: 'task',
+        argv: ['--list-all', '--json', '--taskfile', 'Taskfile.yml'],
+        stdout: listing(
+          [{ name: 'build', desc: 'Build', taskfile: `${dir}/Taskfile.yml` }],
+          `${dir}/Taskfile.yml`,
+        ),
+      },
+      {
+        binary: 'task',
+        argv: ['--list-all', '--json', '--taskfile', 'docs/Taskfile.yml'],
+        stdout: listing([
+          { name: 'build', desc: 'Build the docs', taskfile: `${dir}/docs/Taskfile.yml` },
+          { name: 'shared:lint', desc: 'Lint', taskfile: `${dir}/vendor/shared/Taskfile.yml` },
+        ]),
+      },
+    ])
+    const list = tasks(await collect(dir, options))
+
+    expect(list.map((t) => t.display).sort()).toEqual([
+      'task --dir docs build',
+      'task --dir docs shared:lint',
+      'task build',
+    ])
+  })
+
   test('an aggregator root that owns no tasks of its own is a success, not a fallback', async () => {
     // A common shape: a root Taskfile with only `version:` and `includes:`.
     // Its listing answers correctly and every task belongs to the included

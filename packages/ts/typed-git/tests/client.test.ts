@@ -180,6 +180,21 @@ describe('Git — argv construction (fake runner)', () => {
     expect(calls[0]!.argv).toEqual(['status', '--porcelain', '-z', '--untracked-files=all'])
   })
 
+  test('statusEntries drops the source of a worktree rename (Y is R), not only an index one', () => {
+    // `mv a b && git add -N b` reports ` R b\0a\0`.
+    const { runner } = recorder(OK(' R newname.txt\0oldname.txt\0 M a.ts\0'))
+    expect(new Git('/repo', { runner }).statusEntries()).toEqual([
+      { x: ' ', y: 'R', path: 'newname.txt' },
+      { x: ' ', y: 'M', path: 'a.ts' },
+    ])
+  })
+
+  test('branches lists refs/heads/ names with lstrip=2, never the ambiguous :short form', () => {
+    const { runner, calls } = recorder(OK('main\nfeat/x\n'))
+    expect(new Git('/repo', { runner }).branches('feat/*')).toEqual(['main', 'feat/x'])
+    expect(calls[0]!.argv).toEqual(['branch', '--list', '--format=%(refname:lstrip=2)', 'feat/*'])
+  })
+
   test('statusEntries is empty on a clean tree and throws outside a repository', () => {
     expect(new Git('/repo', { runner: recorder(OK('')).runner }).statusEntries()).toEqual([])
     expect(() => new Git('/repo', { runner: recorder(EXIT(128)).runner }).statusEntries()).toThrow(
@@ -1328,6 +1343,20 @@ describe('Git — real repo round trips', () => {
     expect(git.branchExists('task/x')).toBe(false)
   })
 
+  test('branchExists finds a branch that shares its name with a tag', () => {
+    const git = new Git(repo)
+    git.rawChecked(['branch', 'release'])
+    git.rawChecked(['tag', 'release'])
+    try {
+      // `%(refname:short)` would answer `heads/release` here.
+      expect(git.branches('release')).toEqual(['release'])
+      expect(git.branchExists('release')).toBe(true)
+    } finally {
+      git.rawChecked(['tag', '-d', 'release'])
+      git.deleteBranch('release', { force: true })
+    }
+  })
+
   test('worktreeUnlock clears a lock so the worktree can be removed', () => {
     const git = new Git(repo)
     const wt = join(repo, 'wt-locked')
@@ -1610,6 +1639,23 @@ describe('Git — mainCheckout and symbolicRef against real git', () => {
     } finally {
       git.worktreeRemove(wt, { force: true })
       git.worktreePrune()
+    }
+  })
+
+  test('mainCheckout names the checkout, not the store, when the store is not <checkout>/.git', () => {
+    const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'typedgit-sepdir-')))
+    try {
+      const checkout = join(scratch, 'checkout')
+      const store = join(scratch, 'store.git')
+      new Git(scratch).rawChecked(['init', '--separate-git-dir', store, checkout])
+      // dirname(gitCommonDir) would answer `scratch` here.
+      expect(new Git(checkout).mainCheckout()).toBe(checkout)
+      // A bare store has no main checkout.
+      const bare = join(scratch, 'bare.git')
+      new Git(scratch).rawChecked(['init', '--bare', bare])
+      expect(new Git(bare).mainCheckout()).toBeNull()
+    } finally {
+      rmSync(scratch, { recursive: true, force: true })
     }
   })
 

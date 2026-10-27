@@ -17,7 +17,7 @@ import { main } from '../src/cli.ts'
 import { createWayApp } from '../src/commands/index.ts'
 import { progressLines } from '../src/commands/list.ts'
 import type { Session } from '../src/core/session.ts'
-import type { CatalogProgressBody } from '../src/documents.ts'
+import { CatalogProgressOutput, type CatalogProgressBody } from '../src/documents.ts'
 import {
   DOCUMENT_KINDS,
   DOCUMENT_SCHEMAS,
@@ -112,6 +112,79 @@ describe('list progress lines', () => {
       report: { runner: 'boom', status: 'error' },
     })
     expect(lines[2]).toEqual({ pending: [], total: 2, omitted: 'make' })
+  })
+
+  test('the skills get a line of their own, after the line that names the runners', () => {
+    const session = { runnerOrder: () => [], unknowns: () => [] } as unknown as Session
+    const lines: CatalogProgressBody[] = []
+    const progress = progressLines(session, (l) => lines.push(l), 600)
+    const review = {
+      id: 'skill:.claude/skills/review/SKILL.md',
+      name: 'review',
+      description: null,
+      argumentHint: null,
+      path: '.claude/skills/review/SKILL.md',
+      scope: 'project',
+      origin: 'project',
+      harnesses: ['claude'],
+      invoke: '/review',
+    }
+    // Read before the runners are known: held for the first line.
+    progress.onSkills!([review])
+    expect(lines).toEqual([])
+    progress.onRunners!(['make'])
+    expect(lines).toEqual([
+      { pending: ['make'], total: 1 },
+      { pending: ['make'], total: 1, skills: [review] },
+    ])
+
+    // After the first line: sent at once. None, or too many for a line: no line.
+    const later = progressLines(session, (l) => lines.push(l), 600)
+    lines.length = 0
+    later.onRunners!(['make'])
+    later.onSkills!([review])
+    later.onSkills!([])
+    later.onSkills!(Array.from({ length: 10 }, () => review))
+    expect(lines).toEqual([
+      { pending: ['make'], total: 1 },
+      { pending: ['make'], total: 1, skills: [review] },
+    ])
+  })
+
+  test('--progress filters the skills line like the document', async () => {
+    const dir = await root({
+      ...SCRIPTS,
+      '.claude/skills/review/SKILL.md': '---\nname: review\ndescription: Review a PR\n---\n',
+    })
+    // --services keeps no skills, so the progress must not send one either.
+    const lines = (await way(['list', '--progress', '--output', 'jsonl', '--services'], dir)).out
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+    expect(lines.filter((l) => l['kind'] === 'catalog-progress').length).toBeGreaterThan(0)
+    expect(
+      lines.filter((l) => l['skills'] !== undefined && l['kind'] === 'catalog-progress'),
+    ).toEqual([])
+  })
+
+  test('--progress sends the skills line with the runner lines, and it validates', async () => {
+    const dir = await root({
+      ...SCRIPTS,
+      '.claude/skills/review/SKILL.md': '---\nname: review\ndescription: Review a PR\n---\n',
+    })
+    const lines = (await way(['list', '--progress', '--output', 'jsonl'], dir)).out
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+    const progress = lines.filter((l) => l['kind'] === 'catalog-progress')
+    const skills = progress.filter((l) => l['skills'] !== undefined)
+    expect(skills).toHaveLength(1)
+    expect((skills[0]!['skills'] as { name: string }[]).map((s) => s.name)).toEqual(['review'])
+    for (const line of progress) {
+      const { schemaVersion: _v, kind: _k, ...body } = line
+      const checked = CatalogProgressOutput.safeParse(body)
+      expect(checked.success, checked.success ? '' : checked.error.message).toBe(true)
+    }
   })
 
   test('--progress sends a line per runner before the reports', async () => {
@@ -341,6 +414,56 @@ describe('run', () => {
     expect(ran.err).toContain('parameters unknown')
   })
 
+  /** A tool module whose one task runs `binary` and whose invoke refuses arguments. */
+  function pickyTool(binary: string): string {
+    return `export const tools = [{
+  id: 'picky',
+  markers: [{ files: '/picky.txt', tier: 'files' }],
+  roles: { runner: { kind: 'parse', chain: [], async collect() {
+    return { status: 'ok', diagnostics: [], tasks: [{
+      id: 'picky:picky.txt:web', runner: 'picky', path: ['picky', 'web'],
+      argv: [${JSON.stringify(binary)}, 'web'], cwd: '.', display: 'picky web', parameters: [],
+      source: 'picky.txt', origin: 'declared', tags: [],
+      persistent: { value: false, declared: false }, executes: 'local',
+    }] }
+  }, invoke() { throw new Error('picky: a process takes no arguments') } } },
+}]
+`
+  }
+
+  test('arguments a task cannot take exit 2 with code bad-arguments', async () => {
+    const dir = await root({ 'picky.txt': '', 'picky-tools.mjs': pickyTool('sh') })
+    const config = join(dir, 'picky-tools.mjs')
+    const ran = await way(
+      ['--config', config, 'run', 'picky:picky.txt:web', '--dry-run', '--json', '--', 'x'],
+      dir,
+    )
+    expect(ran.code).toBe(2)
+    expect(ran.json()).toMatchObject({
+      kind: 'error',
+      code: 'bad-arguments',
+      message: 'picky: a process takes no arguments',
+      exit: 2,
+    })
+  })
+
+  test('a binary that cannot start is a spawn error; from --cached it says to probe again', async () => {
+    const dir = await root({
+      'picky.txt': '',
+      'picky-tools.mjs': pickyTool('way-no-such-binary'),
+    })
+    const config = join(dir, 'picky-tools.mjs')
+    const hint = 'the task came from a stored probe and may no longer exist; run without --cached'
+    const fresh = await way(['--config', config, 'run', 'picky:picky.txt:web'], dir)
+    expect(fresh.code).toBe(1)
+    expect(fresh.err).toContain('way-no-such-binary: ')
+    expect(fresh.err).not.toContain(hint)
+    const cached = await way(['--config', config, 'run', '--cached', 'picky:picky.txt:web'], dir)
+    expect(cached.code).toBe(1)
+    expect(cached.err).toContain('way-no-such-binary: ')
+    expect(cached.err).toContain(hint)
+  })
+
   test('a real run is refused to the adapters; a dry run is not', async () => {
     const { app } = createWayApp({ home: '/' })
     const refused = await app.call(['run'], { id: 'x' }, { cwd: '/', env: {} }, { surface: 'mcp' })
@@ -407,6 +530,15 @@ describe('the command line', () => {
       exit: 2,
       hint: '"way --help" lists the commands',
     })
+  })
+
+  test('serve --port takes decimal digits from 1 to 65535 only', async () => {
+    const dir = await root({})
+    for (const bad of ['0x10', '1e3', '0', '65536', '8080abc', ' ']) {
+      const ran = await way(['serve', '--no-open', '--port', bad], dir)
+      expect(ran.code, bad).toBe(2)
+      expect(ran.err, bad).toContain('--port needs a port number from 1 to 65535')
+    }
   })
 
   test('the help lists the commands but not the contributor ones', async () => {

@@ -171,6 +171,26 @@ function flattenListItem(item: MdListItem): string {
   return parts.join(' ').trim()
 }
 
+/**
+ * The paragraph blocks and list items whose inline content ends in a plain `text` node. Only
+ * these can carry a `^block-id`: flattening drops the backticks and link brackets, so a `^id` at
+ * the end of inline code (`` `git log ^main` ``) or link text would otherwise read as an anchor
+ * and be cut from the text.
+ */
+const anchorable = new WeakSet<object>()
+
+/** True when the last node of the inline content is plain text. */
+function endsInText(nodes: readonly PhrasingContent[]): boolean {
+  return nodes[nodes.length - 1]?.type === 'text'
+}
+
+/** True when the list item's last paragraph ends in plain text (see `anchorable`). */
+function listItemEndsInText(item: MdListItem): boolean {
+  const paragraphs = item.children.filter((c): c is Paragraph => c.type === 'paragraph')
+  const last = paragraphs[paragraphs.length - 1]
+  return last !== undefined && endsInText(last.children)
+}
+
 // ── Blocks (a top-level mdast node to a BlockNode or null) ───────────────
 
 /** A `paragraph` BlockNode for a `paragraph` node. The caller strips any anchor. */
@@ -181,12 +201,14 @@ function projectParagraph(
   // The spans are computed once and returned by a function, so they are not serialized with
   // the block.
   const spans = inlineSpansOf(node.children, source)
-  return {
+  const block: Extract<BlockNode, { kind: 'paragraph' }> = {
     kind: 'paragraph',
     text: flattenInline(node.children).trim(),
     pos: posOf(node),
     inlineSpans: () => spans,
   }
+  if (endsInText(node.children)) anchorable.add(block)
+  return block
 }
 
 /** The code blocks `parse()` built from indented code, which has no fence line. */
@@ -220,6 +242,7 @@ function projectList(node: MdList): Extract<BlockNode, { kind: 'list' }> {
   const items: ListItem[] = node.children.map((li) => {
     const item: ListItem = { text: flattenListItem(li), pos: posOf(li) }
     if (li.checked === true || li.checked === false) item.checked = li.checked
+    if (listItemEndsInText(li)) anchorable.add(item)
     return item
   })
 
@@ -327,8 +350,8 @@ function newSection(name: string, depth: number, pos: SourcePos): SectionNode {
  *   true `depth`. Nothing is inserted.
  * - Other top-level nodes go into the current section's `blocks`.
  * - A `^block-id` binds to the block it ends (`BlockNode.anchor`). A standalone one binds to
- *   the block before it, or to the section (`SectionNode.anchors`) when there is no such block
- *   or that block already has an anchor.
+ *   the block before it, or to the section (`SectionNode.anchors`) when there is no such block,
+ *   that block already has an anchor, or the node before it is not a block kind.
  */
 function buildTree(
   root: Root,
@@ -373,6 +396,12 @@ function attachSection(stack: SectionNode[], child: SectionNode): void {
 }
 
 /**
+ * The sections whose last top-level node was not projected to a block (a blockquote, HTML, a
+ * thematic break). A standalone `^id` that follows such a node binds to the section.
+ */
+const afterUnprojected = new WeakSet<SectionNode>()
+
+/**
  * Turns one top-level node into a block of `sec`. A table's last `^id` row becomes the table's
  * anchor. A paragraph that is only a `^block-id` binds an anchor and adds no block. A trailing
  * `^id` on a paragraph or list item is removed from the text and set as the block's anchor.
@@ -384,13 +413,14 @@ function attachContentNode(sec: SectionNode, node: RootContent, source: string):
       projected.block.anchor = projected.absorbedAnchor
     }
     sec.blocks.push(projected.block)
+    afterUnprojected.delete(sec)
     return
   }
 
   const block = projectBlock(node, source)
 
   // Standalone `^block-id` paragraph: bind to the preceding block, else to the section.
-  if (block && block.kind === 'paragraph') {
+  if (block && block.kind === 'paragraph' && anchorable.has(block)) {
     const standalone = isStandaloneAnchor(block.text)
     if (standalone !== null) {
       bindAnchor(sec, standalone)
@@ -398,10 +428,16 @@ function attachContentNode(sec: SectionNode, node: RootContent, source: string):
     }
   }
 
-  if (!block) return // not a block kind, such as a blockquote
+  if (!block) {
+    // Not a block kind, such as a blockquote. A standalone `^id` after it must not reach back
+    // to the block before it.
+    afterUnprojected.add(sec)
+    return
+  }
 
   bindTrailingAnchor(block)
   sec.blocks.push(block)
+  afterUnprojected.delete(sec)
 }
 
 /**
@@ -411,6 +447,7 @@ function attachContentNode(sec: SectionNode, node: RootContent, source: string):
  */
 function bindTrailingAnchor(block: BlockNode): void {
   if (block.kind === 'paragraph') {
+    if (!anchorable.has(block)) return
     const trailing = extractTrailingAnchor(block.text)
     if (trailing) {
       block.text = trailing.rest
@@ -421,6 +458,7 @@ function bindTrailingAnchor(block: BlockNode): void {
 
   if (block.kind === 'list') {
     for (const item of block.items) {
+      if (!anchorable.has(item)) continue
       const trailing = extractTrailingAnchor(item.text)
       if (trailing) {
         item.text = trailing.rest
@@ -432,11 +470,12 @@ function bindTrailingAnchor(block: BlockNode): void {
 }
 
 /**
- * Binds a standalone `^id`. When the section's last block has no anchor, the id goes to that
- * block (`BlockNode.anchor`). Otherwise it goes to the section (`SectionNode.anchors`).
+ * Binds a standalone `^id`. When the node right before it is the section's last block and that
+ * block has no anchor, the id goes to that block (`BlockNode.anchor`). Otherwise it goes to the
+ * section (`SectionNode.anchors`).
  */
 function bindAnchor(sec: SectionNode, id: string): void {
-  const lastBlock = sec.blocks[sec.blocks.length - 1]
+  const lastBlock = afterUnprojected.has(sec) ? undefined : sec.blocks[sec.blocks.length - 1]
   if (lastBlock && lastBlock.anchor === undefined) {
     lastBlock.anchor = id
   } else {

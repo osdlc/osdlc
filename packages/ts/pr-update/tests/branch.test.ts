@@ -156,6 +156,27 @@ describe('update --branch', () => {
     }
   })
 
+  test('a checkout holding a commit the remote lacks is left alone, not reset over', async () => {
+    const { fx, worker, go } = repo()
+    try {
+      // The local-only commit is the config that lets the guard merge rather
+      // than skip, so the tree stays clean and only the HEAD check can stop the reset.
+      worker.commit('local only', {
+        'pr-update.yaml': 'pr_update:\n  guards:\n    unpushed_local: merge\n',
+      })
+      const local = worker.git.resolveRef('HEAD')
+      const r = await go('update', '--branch', '--apply', '--no-fetch', '--json')
+      expect(r.code).toBe(EXIT.ok)
+      const [res] = JSON.parse(r.out).results
+      expect(res).toMatchObject({ status: 'updated', pushed: true, strategy: 'merge' })
+      expect(res.localCheckout.updated).toBe(false)
+      expect(res.localCheckout.detail).toMatch(/not at the old remote head/)
+      expect(worker.git.resolveRef('HEAD')).toBe(local)
+    } finally {
+      fx.cleanup()
+    }
+  })
+
   test('a rehearsal moves nothing and reports no checkout', async () => {
     const { fx, worker, go } = repo()
     try {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { readTable, renderTable, rowCellTexts, tableGrid } from '../src/index.ts'
+import { readTable, renderTable, rowCellSources, rowCellTexts, tableGrid } from '../src/index.ts'
 
 describe('readTable', () => {
   test('header, alignment and body cells, raw and as text', () => {
@@ -59,6 +59,17 @@ describe('renderTable', () => {
     expect(table?.header.map((cell) => cell.text)).toEqual(input.header)
     expect(table?.align).toEqual([...input.align])
     expect(table?.rows.map((row) => row.map((cell) => cell.text))).toEqual(input.rows)
+  })
+})
+
+describe('rowCellSources', () => {
+  test('cell sources are trimmed, with escapes and inline markup as written', () => {
+    expect(rowCellSources('| `a` \t| \tb \\| c |')).toEqual(['`a`', 'b \\| c'])
+  })
+
+  test('drops the outer pipes; empty cells stay', () => {
+    expect(rowCellSources('| a | | c |')).toEqual(['a', '', 'c'])
+    expect(rowCellSources('a | b')).toEqual(['a', 'b'])
   })
 })
 

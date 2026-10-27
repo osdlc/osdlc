@@ -235,7 +235,7 @@ The Name and API gates are hard to undo after release, so each needs the owner's
 - Does: runs `/craft:lib-publish-ready <package dir>`.
 - Produces: the readiness report with its API inventory, owner questions, a tagged fix list
   ([Fix-list tags](#fix-list-tags)) and the [CHANGELOG draft](changelog.md). Where the report
-  lives is in [After the audit](../lib-publish-ready.md#after-the-audit).
+  lives is in [After the audit](../SKILL.md#after-the-audit).
 - Gate: none.
 
 ## `api-review`: public API review `[owner]`

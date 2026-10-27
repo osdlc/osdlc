@@ -113,20 +113,38 @@ Developed here, in this repository:
 - `packages/ts/prettier-config` (`@osdlc/prettier-config`)
 - `packages/ts/command-seam` (`@osdlc/command-seam`)
 - `packages/ts/gfm-table` (`@osdlc/gfm-table`)
+- `packages/rust/agent-adapt` (`agent-adapt` on crates.io)
 - `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/frontmatter-lossless` (`frontmatter-lossless` on crates.io)
 - `packages/rust/markdown-contract` (`markdown-contract` on crates.io, the Rust twin
   of `@osdlc/markdown-contract`: contracts for markdown documents, checked
   against the package's corpus)
+- `packages/rust/markdown-link` (`markdown-link` on crates.io)
+- `packages/rust/markdown-relink` (`markdown-relink` on crates.io)
+- `packages/rust/markdown-vault-fs` (`markdown-vault-fs` on crates.io)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
+- `packages/rust/tradecraft` (`tradecraft` on crates.io, a command-line tool
+  that publishes a vault of markdown skill notes into the formats of
+  coding-agent tools; `cargo install tradecraft`)
+- `packages/rust/tradecraft-core` (`tradecraft-core` on crates.io, the library
+  behind `tradecraft`)
+- `packages/rust/tradecraft-typegen`, the generator of the TypeScript
+  declarations for `tradecraft-wasm` (not published to crates.io)
+- `packages/rust/tradecraft-wasm`, the WebAssembly build of `tradecraft-core`
+  for its npm package (not published to crates.io)
+- `packages/rust/typed-git` (`typed-git` on crates.io, the Rust twin of
+  `@osdlc/typed-git`: a typed git client)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
   for its npm package (not published to crates.io)
 - `packages/ts/yaml-splice` (`@osdlc/yaml-splice` on npm, the crate built to
   WebAssembly, with the built `wasm/` committed)
+- `packages/ts/tradecraft-wasm` (`@osdlc/tradecraft-wasm` on npm, `tradecraft-core`
+  built to WebAssembly, with the built `wasm/` committed and a copy of the
+  generated `core.generated.ts`)
 - `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript twin)
 - `packages/ts/frontmatter-lossless` (`@osdlc/frontmatter-lossless` on npm,
   the TypeScript twin of the `frontmatter-lossless` crate)
@@ -207,7 +225,9 @@ requests here.
    skips versions to catch up (see [Twin libraries](#twin-libraries)).
 2. When the pull request merges, `packages-publish.yml` opens or updates one
    "Version Packages" pull request. It bumps each library's version and
-   writes its CHANGELOG from the pending changesets.
+   writes its CHANGELOG from the pending changesets. The root
+   `version-packages` script does this, then rewrites the checked-in files
+   that name a version, such as wayfinder's `schema/config.json`.
 3. The osdlc-release GitHub App opens the Version Packages pull request, so
    its checks start on their own. Merge it when `test` and `verify` pass.
 4. On that merge, `packages-publish.yml` runs the full `verify` matrix and
@@ -289,10 +309,28 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    `git push origin etag-write/v0.1.0`, then
    `gh release create etag-write/v0.1.0 --title "etag-write v0.1.0"` with
    the CHANGELOG section as the notes.
-6. A crate that is never released, such as `yaml-splice-wasm`, has
+6. A crate that is never released, such as `yaml-splice-wasm`,
+   `tradecraft-wasm` or `tradecraft-typegen`, has
    `publish = false` in its `Cargo.toml` and `release = false` for it in
    `packages/rust/release-plz.toml`. The workflow and release-plz then skip
    it.
+7. A crate's first release is held back in two cases. If it needs another
+   new crate, it waits until that crate is on crates.io: `cargo publish`
+   cannot verify it before then, so the `release-plz` dry run in
+   `rust-ci.yml` fails. If other crates are waiting for trusted publishing,
+   it waits for that run, because one run uses one credential (rule 4).
+   Hold it with `publish = false` in its `Cargo.toml` and a `[[package]]`
+   entry with `publish = false` and `release = false` in
+   `packages/rust/release-plz.toml`.
+   Once what it waits for is out, remove both in a pull request of its own.
+   Held now, in three steps (each crate's `Cargo.toml` names its step):
+   - Step 1, after the trusted-publishing run that publishes agent-adapt
+     0.19.1 and yaml-splice 0.3.2: `typed-git`, `markdown-link`,
+     `markdown-vault-fs`.
+   - Step 2, after step 1: `markdown-relink`, `tradecraft-core`.
+   - Step 3, after step 2: `tradecraft`.
+   - `markdown-contract`, until the parity fixes from the review of
+     [#460](https://github.com/osdlc/osdlc/pull/460) land.
 
 #### Versions and breaking changes
 
@@ -357,6 +395,9 @@ On a pull request it checks only the libraries the pull request changed and
 the ones that depend on them. `scripts/affected-packages.ts` picks them, and
 lists the shared files that make it check every library. path-guard also runs on
 Windows. The `verify` jobs always report, so they are the checks to require.
+The libraries that start programs or resolve paths also run on Windows as
+tier 2 (`.github/workflows/packages-windows-tier2.yml`). Tier 2 reports, but
+never fails a pull request or blocks a release.
 
 A library can have a smoke check: `tests/smoke.mjs`. It runs the built package
 under Node. It imports the package by name, so Node resolves it through
@@ -390,8 +431,11 @@ pins the compiler, and rustup installs it on first use.
 `.github/workflows/rust-ci.yml` runs clippy and the tests on Linux, macOS
 and Windows, and the format check, docs and `cargo package` on Linux. It
 also tests on the MSRV and with minimal dependency versions, and rebuilds
-the `yaml-splice` wasm with `build.sh` and checks that it equals the one
-committed in `packages/ts/yaml-splice/wasm/`. On a pull request it checks
+the `yaml-splice` and `tradecraft-wasm` wasm with their `build.sh` and checks
+that each equals the one committed in `packages/ts/yaml-splice/wasm/` and
+`packages/ts/tradecraft-wasm/wasm/`. It also checks that
+`packages/ts/tradecraft-wasm/src/core.generated.ts` is the file
+`tradecraft-typegen` writes. On a pull request it checks
 that a breaking change bumps the version. Its `rust` job is the one check to
 require.
 

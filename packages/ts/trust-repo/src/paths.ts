@@ -15,6 +15,7 @@
 import { posix, win32 } from 'node:path'
 
 import { nodeGuard } from '@osdlc/path-guard/node'
+import { expandTilde as tieredExpandTilde } from '@osdlc/tiered-dirs'
 
 /**
  * The platform whose path rules a function applies. Only `win32` differs.
@@ -30,7 +31,7 @@ function pathFor(platform: TrustPlatform): typeof posix {
 
 /**
  * Expand a leading `~` against `home`. On Windows `~\` expands too. Any other
- * path is returned unchanged.
+ * path is returned unchanged. This is `@osdlc/tiered-dirs`'s `expandTilde`.
  * @experimental
  */
 export function expandTilde(
@@ -38,11 +39,7 @@ export function expandTilde(
   home: string,
   platform: TrustPlatform = process.platform,
 ): string {
-  if (path === '~') return home
-  if (path.startsWith('~/') || (platform === 'win32' && path.startsWith('~\\'))) {
-    return pathFor(platform).join(home, path.slice(2))
-  }
-  return path
+  return tieredExpandTilde(path, home, platform)
 }
 
 /**

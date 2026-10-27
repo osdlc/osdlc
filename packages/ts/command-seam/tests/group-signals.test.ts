@@ -5,7 +5,7 @@
 
 import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { constants, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { expect, test } from 'vitest'
@@ -17,6 +17,7 @@ import {
   liveProcessGroups,
   managedProcessRunner,
   spawnRunnerAsync,
+  spawnRunnerBytesAsync,
 } from '../src/index.ts'
 import { alive, gone, reap } from './support/procs.ts'
 
@@ -433,6 +434,19 @@ test.skipIf(!posix)(
       })
       expect(managed.pid).toBe(-1)
       expect(await managed.exited).toMatchObject({ reason: 'abort', neverExited: true })
+      // `killTree` runs in a group on POSIX, so it is refused too.
+      const tree = await spawnRunnerAsync('sh').run(['-c', 'echo ran'], {
+        cwd: CWD,
+        killTree: true,
+      })
+      expect(tree).toMatchObject({ neverExited: true, reason: 'abort', stdout: '' })
+      // A bytes runner's refused run still has a Buffer for stdout.
+      const raw = await spawnRunnerBytesAsync('sh').run(['-c', 'echo ran'], {
+        cwd: CWD,
+        processGroup: true,
+      })
+      expect(raw).toMatchObject({ neverExited: true, reason: 'abort' })
+      expect(raw.stdout).toEqual(Buffer.alloc(0))
       // A run without a group is not the forwarding's to refuse.
       expect((await spawnRunnerAsync('sh').run(['-c', 'echo ran'], { cwd: CWD })).stdout).toBe(
         'ran\n',
@@ -501,4 +515,51 @@ test.skipIf(!posix)(
     }
   },
   10_000,
+)
+
+test.skipIf(!posix)(
+  'signals limits forwarding to the signals named, and leaves the others alone',
+  async () => {
+    const term = process.listenerCount('SIGTERM')
+    const usr2 = process.listenerCount('SIGUSR2')
+    const uninstall = installGroupSignalForwarding({
+      signals: ['SIGUSR2'],
+      graceMs: 300,
+      exit: () => {},
+    })
+    try {
+      const first = spawnRunnerAsync('sh').run(['-c', 'sleep 30'], { cwd: CWD, processGroup: true })
+      expect(process.listenerCount('SIGTERM')).toBe(term)
+      expect(process.listenerCount('SIGUSR2')).toBe(usr2 + 1)
+      process.emit('SIGUSR2')
+      expect(forwardedSignal()).toBe('SIGUSR2')
+      expect(forwardedExitCode()).toBe(128 + constants.signals.SIGUSR2)
+      expect((await first).reason).toBe('signal')
+    } finally {
+      uninstall()
+    }
+    expect(forwardedSignal()).toBeUndefined()
+  },
+  10_000,
+)
+
+test.skipIf(!posix)(
+  'a second install returns the same uninstall and keeps the first options',
+  async () => {
+    let exits = 0
+    const before = process.listenerCount('SIGTERM')
+    const first = installGroupSignalForwarding({ signals: ['SIGUSR2'], exit: () => {} })
+    try {
+      const second = installGroupSignalForwarding({ signals: ['SIGTERM'], exit: () => exits++ })
+      expect(second).toBe(first)
+      // The first install's signal list still applies while a group is live.
+      const run = spawnRunnerAsync('sh').run(['-c', 'true'], { cwd: CWD, processGroup: true })
+      expect(process.listenerCount('SIGTERM')).toBe(before)
+      await run
+    } finally {
+      first()
+    }
+    expect(forwardedSignal()).toBeUndefined()
+    expect(exits).toBe(0)
+  },
 )

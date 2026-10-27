@@ -1,0 +1,68 @@
+[package]
+name = "tradecraft"
+version = "0.3.5"
+# Held back from crates.io: first-release step 3 of 3. `cargo publish` needs
+# tradecraft-core and markdown-relink on crates.io first. Remove this line and
+# the entry in packages/rust/release-plz.toml in a pull request of their own,
+# once step 2 is out.
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+description = "A command-line tool that publishes a vault of markdown skill notes into the formats of coding-agent tools (Claude Code, Codex, Cursor and Pi), checks them for drift, and authors and reorganises the vault."
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/tradecraft"
+readme = "README.md"
+keywords = ["agent", "skills", "markdown", "cli", "claude"]
+categories = ["command-line-utilities", "development-tools"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+  "!tests/fixtures/**",
+]
+
+[[bin]]
+name = "tradecraft"
+path = "src/main.rs"
+
+[dependencies]
+clap = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tradecraft-core = { workspace = true }
+config-layers = { workspace = true }
+typed-git = { workspace = true }
+# The cache and config directories.
+tiered-dirs = { workspace = true }
+# `bump` sets `tc-version` with `FieldEdit::set`, whose value is a
+# `yaml_splice::Value`.
+yaml-splice = { workspace = true }
+# The authoring executor: `apply` turns a core `AuthoringOp` into writes, with
+# the link-rewriting rename, the vault-relative path guards and the durable
+# note write.
+markdown-relink = { workspace = true }
+# Also guards the untrusted subpath of a --from-git clone.
+path-guard = { workspace = true }
+etag-write = { workspace = true }
+# `build --watch`'s vault watcher.
+notify = { workspace = true }
+
+[features]
+# Turns on `config::replace_machine_config_override` for this crate's own
+# integration tests. Not part of the API.
+test-support = []
+
+[dev-dependencies]
+tempfile = { workspace = true }
+# The crate itself with `test-support`, for the integration tests.
+tradecraft = { path = ".", features = ["test-support"] }
+
+[lints]
+workspace = true

@@ -344,7 +344,15 @@ function stringSchema(n: Record<string, unknown>, path: string): z.ZodType {
   if ('pattern' in n) {
     if (typeof n.pattern !== 'string')
       throw new DeclarativeError(`${path}.pattern must be a string`)
-    s = s.regex(new RegExp(n.pattern))
+    let re: RegExp
+    try {
+      re = new RegExp(n.pattern)
+    } catch (err) {
+      throw new DeclarativeError(
+        `${path}.pattern is not a valid regular expression: ${(err as Error).message}`,
+      )
+    }
+    s = s.regex(re)
   }
   return s
 }

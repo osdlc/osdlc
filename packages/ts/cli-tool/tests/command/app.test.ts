@@ -138,6 +138,14 @@ describe('routing and output', () => {
     expect(seen.dir).toBe('/y')
   })
 
+  test('--output json before the command word routes like --json there', async () => {
+    const json = await runApp(app, ['--json', 'config', 'get', 'size'])
+    const output = await runApp(app, ['--output', 'json', 'config', 'get', 'size'])
+    expect(output.exit).toBe(0)
+    expect(output.json()).toEqual({ schemaVersion: 1, kind: 'config-get', key: 'size', value: 42 })
+    expect(output.out).toBe(json.out)
+  })
+
   test('words after -- are passed through', async () => {
     await runApp(app, ['config', 'get', 'k', '--', '--not-a-flag', 'x'])
     expect(seen.rest).toEqual(['--not-a-flag', 'x'])
@@ -628,6 +636,31 @@ describe('context', () => {
         expect(colorEnabled(ctx, { override: true, json: true })).toBe(false)
       }
     }
+  })
+
+  test('captureContext and runApp pass a signal through to the command', async () => {
+    const aborter = new AbortController()
+    expect(captureContext({ signal: aborter.signal }).signal).toBe(aborter.signal)
+    const seenAborted: boolean[] = []
+    const probe = defineApp({
+      name: 't',
+      version: '0',
+      summary: 's',
+      commands: {
+        x: defineCommand({
+          summary: 'x',
+          output: z.object({}),
+          run(_i, ctx) {
+            seenAborted.push(ctx.signal.aborted)
+            return {}
+          },
+        }),
+      },
+    })
+    aborter.abort()
+    await runApp(probe, ['x'], { signal: aborter.signal })
+    await runApp(probe, ['x'])
+    expect(seenAborted).toEqual([true, false])
   })
 
   test('warn and note write prefixed lines to stderr', async () => {

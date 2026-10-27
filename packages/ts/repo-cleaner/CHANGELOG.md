@@ -1,5 +1,72 @@
 # @osdlc/repo-cleaner
 
+## 0.6.0
+
+### Minor Changes
+
+- bb61f10: `--version` prints the package version and exits 0.
+
+### Patch Changes
+
+- Updated dependencies [bb61f10]
+  - @osdlc/cli-tool@0.11.0
+
+## 0.5.2
+
+### Patch Changes
+
+- Updated dependencies [da5e6a3]
+- Updated dependencies [da5e6a3]
+- Updated dependencies [da5e6a3]
+  - @osdlc/command-seam@0.14.0
+  - @osdlc/typed-gh@0.11.0
+  - @osdlc/typed-git@0.10.0
+  - @osdlc/cli-tool@0.10.1
+
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [fdef74f]
+  - @osdlc/cli-tool@0.10.0
+  - @osdlc/command-seam@0.13.0
+  - @osdlc/config-layers@0.8.0
+  - @osdlc/typed-gh@0.10.0
+  - @osdlc/typed-git@0.9.0
+
+## 0.5.0
+
+### Minor Changes
+
+- c3f0d1d: The first release of `@osdlc/repo-cleaner` on npm. It finds what has been merged into the default branch and can go away: local branches, worktrees and remote branches, across one repository or many.
+  
+  - `sweepRepo` and `sweepRepos` classify each item `safe-to-delete`, `safe-to-keep` or `needs-investigation`, with the evidence behind the verdict and the command that would act on it. A merged pull request whose head is the branch tip, or a tip reachable from `<remote>/<default>`, settles most items. A sweep deletes nothing.
+  - `planRepo`, `writePlan`, `readPlan` and `applyPlan` write the deletable rows as a plan and apply the ones a person approves. Each delete is compare-and-swap on the judged sha, each step is verified, the first failure stops the run and a receipt records every step. Rows that need `abandon-unmerged`, `discard-changes` or `confirm-open-pr` are dropped without that grant.
+  - The `repo-cleaner` command sweeps the repository you are in, or a path, or the repositories in `<config-home>/repo-cleaner/config.yaml` with `--all`. `repo-cleaner apply` applies a plan. The directories are named `repo-cleaner`, moved by the `REPO_CLEANER_*` environment variables.
+  - ESM only, compiled JavaScript with `.d.ts`, Node 22 or newer. `git` is required; `gh` is optional and `--no-gh` skips it. Licence `MIT OR Apache-2.0`.
+- b3b7ecc: A worktree lock held by a dead process no longer blocks removal, and a live process inside a worktree now does.
+  
+  - A lock reason with a `pid <N>` token (optionally `start <time>`) is read as an owner claim. When that process is dead, or its start time (a timestamp precise to the second) differs from the lock's, the lock is stale: the worktree gets `facts.stale_lock`, no `locked-worktree` blocker, and `apply` runs a new `unlock-worktree` step before the remove. It checks the owner and the directory again just before the unlock and the remove, and `stale_lock` is part of the worktree fingerprint. A lock with no `pid` token, or a live owner, still blocks.
+  - A new `live-process` blocker covers any process other than an idle shell (`sh`, `bash`, `zsh`, `fish` with no child processes) whose working directory is inside the worktree. Idle shells are listed in `facts.idle_shells`. When the process table cannot be read, the worktree gets a `process-probe-failed` blocker instead.
+  - New `ProcessProbe` port (`alive`, `holders`; `probe` is required on `gatherWorktrees` and `classifyWorktree`) with a default over `ps` and `lsof` run through `@osdlc/command-seam`. Pass `probe` to `sweepRepo`, `sweepRepos`, `applyPlan`, `gatherWorktrees` or `classifyWorktree` to replace it. Exports: `defaultProcessProbe`, `parseLockOwner`, `parseLsofCwd`, `isIdleShell`, `worktreeUnlockCommand` and the types.
+  - The receipt's step `action` gains `unlock-worktree`. Uses `worktreeUnlock` from `@osdlc/typed-git`.
+
+### Patch Changes
+
+- Updated dependencies [7addea1]
+- Updated dependencies [f013f38]
+- Updated dependencies [3d6d087]
+- Updated dependencies [f013f38]
+  - @osdlc/cli-tool@0.9.1
+  - @osdlc/command-seam@0.12.1
+  - @osdlc/typed-gh@0.9.6
+  - @osdlc/typed-git@0.8.2
+
 ## History before the first public release
 
 These versions were never published. The first release of `@osdlc/repo-cleaner` on

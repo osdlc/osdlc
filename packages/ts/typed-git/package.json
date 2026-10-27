@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/typed-git",
-  "version": "0.8.1",
+  "version": "0.10.0",
   "description": "A typed git client for TypeScript, sync and awaitable. Each verb declares what absence means for it; every other failure throws. git.try.* inspects, raw() bypasses \u2014 over an injectable backend that drives the git CLI or any other implementation.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

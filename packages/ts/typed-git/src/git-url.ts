@@ -13,6 +13,8 @@
 
 import hostedGitInfo from 'hosted-git-info'
 
+import { parseRemoteUrl } from './remote-url.ts'
+
 /** A parsed reference to a repo on a known git host. */
 export interface GitHostInfo {
   /** Short host name, e.g. `"github"`. */
@@ -40,6 +42,40 @@ export function parseGitUrl(ref: string): GitHostInfo | null {
 /** `ref` as a scp-style SSH clone URL (`git@github.com:owner/repo.git`), or null. */
 export function gitSshUrl(ref: string): string | null {
   return hostedGitInfo.fromUrl(ref)?.ssh() ?? null
+}
+
+/** The repository a git remote names, and the host it is on. */
+export interface RemoteRepo {
+  /** The host, lower-cased and without a port: `github.com`, `git.example.com`. */
+  host: string
+  owner: string
+  repo: string
+}
+
+/**
+ * `{host, owner, repo}` from a git remote reference, or null when it names no
+ * project (a local path, a single path segment).
+ *
+ * It reads a known host (GitHub, GitLab, Bitbucket, Sourcehut) with
+ * {@link parseGitUrl} first, so `owner/repo` and `github:owner/repo`
+ * shorthand read as GitHub and a GitLab nested group stays whole in `owner`
+ * (`group/sub`). Any other clone URL, such as a GitHub Enterprise or a
+ * self-hosted Forgejo remote, is read host-agnostically by `parseRemoteUrl`:
+ * `host/owner/repo`, scp-style or `scheme://`, where `owner` is the second to
+ * last path segment.
+ *
+ * Use it to read a remote into the repository it names. To decide which forge
+ * a host is, compare `host`, never the URL text: `notgithub.com` is not
+ * GitHub, and neither is a path that mentions `github.com`.
+ */
+export function parseRemoteRepo(url: string): RemoteRepo | null {
+  const info = parseGitUrl(url)
+  if (info !== null && info.user && info.project) {
+    return { host: info.domain, owner: info.user, repo: info.project }
+  }
+  const remote = parseRemoteUrl(url)
+  if (remote === null) return null
+  return { host: remote.host.toLowerCase(), owner: remote.owner, repo: remote.repo }
 }
 
 export type CloneProtocol = 'https' | 'ssh'
@@ -82,7 +118,7 @@ const HTTP_INPUT = /^https?:\/\//i
 export function parseRepoRef(input: string, protocol: CloneProtocol = 'https'): RepoRef | null {
   const text = input.trim()
   if (text === '') return null
-  const info = parseGitUrl(text) ?? parseGitUrl(trimWebPath(text))
+  const info = parseGitUrl(text) ?? parseWebPage(text)
   if (info === null || !info.user || !info.project) return null
   const { domain: host, user: owner, project: repo } = info
   const kind: CloneProtocol = SSH_INPUT.test(text)
@@ -93,6 +129,21 @@ export function parseRepoRef(input: string, protocol: CloneProtocol = 'https'): 
   const cloneUrl =
     kind === 'ssh' ? `git@${host}:${owner}/${repo}.git` : `https://${host}/${owner}/${repo}.git`
   return { host, owner, repo, cloneUrl, committish: info.committish }
+}
+
+/**
+ * A web page under a project, read as the project. A GitLab page
+ * (`https://host/group/sub/repo/-/…`) is first cut at its `/-/`, which keeps a
+ * nested group whole. When that names no project (a GitHub path can hold a `-`
+ * segment too), the page is cut to its first two path segments instead.
+ */
+function parseWebPage(text: string): GitHostInfo | null {
+  const gitlab = /^(https?:\/\/[^/?#]+(?:\/[^/?#]+){2,}?)\/-(?:[/?#].*)?$/i.exec(text)
+  if (gitlab !== null) {
+    const info = parseGitUrl(gitlab[1]!)
+    if (info !== null && info.user && info.project) return info
+  }
+  return parseGitUrl(trimWebPath(text))
 }
 
 /** `https://host/a/b/anything…` → `https://host/a/b`; other inputs unchanged. */

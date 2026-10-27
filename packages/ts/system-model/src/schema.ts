@@ -7,12 +7,31 @@
  * schema. Objects allow properties a schema does not list, so a reader built
  * on this version still accepts a later one that adds an optional field.
  *
+ * The value lists of the enum-shaped fields (`ALL_ROLE_NAMES` and the rest)
+ * are exported too, so a host that builds its own schema, such as with
+ * `z.enum`, takes the values from here.
+ *
  * Browser-safe: no Node built-in and no dependency.
  */
 
-import { CATALOG_SCHEMA_VERSION } from './model.ts'
+import { ALL_PROVIDER_KINDS } from './contract.ts'
+import {
+  ALL_CACHE_STATES,
+  ALL_PARAMETERS_UNKNOWN_REASONS,
+  ALL_STALE_REASONS,
+  CATALOG_SCHEMA_VERSION,
+} from './model.ts'
+import { ALL_PROBE_COSTS, ALL_ROLE_NAMES } from './tool.ts'
 
-export { CATALOG_SCHEMA_VERSION }
+export {
+  ALL_CACHE_STATES,
+  ALL_PARAMETERS_UNKNOWN_REASONS,
+  ALL_PROBE_COSTS,
+  ALL_PROVIDER_KINDS,
+  ALL_ROLE_NAMES,
+  ALL_STALE_REASONS,
+  CATALOG_SCHEMA_VERSION,
+}
 
 /** A JSON Schema document, as a plain object. */
 export type JsonSchema = Readonly<Record<string, unknown>>
@@ -82,13 +101,7 @@ export const taskSchema: JsonSchema = {
       cwd: str,
       display: str,
       parameters: { type: 'array', items: withoutDraft(paramSchema) },
-      parametersUnknown: oneOf(
-        'exec-withheld',
-        'tool-missing',
-        'tool-failed',
-        'not-read',
-        'editor-variable',
-      ),
+      parametersUnknown: oneOf(...ALL_PARAMETERS_UNKNOWN_REASONS),
       source: str,
       origin: oneOf('declared', 'synthesized'),
       doc: str,
@@ -191,14 +204,14 @@ export const toolInfoSchema: JsonSchema = {
       },
       roles: {
         type: 'array',
-        items: oneOf('packageManager', 'runner', 'toolManager', 'hookManager'),
+        items: oneOf(...ALL_ROLE_NAMES),
       },
       runner: object(
         {
-          kind: oneOf('parse', 'exec'),
+          kind: oneOf(...ALL_PROVIDER_KINDS),
           chain: { type: 'array', items: chainSegment },
           probe: object(
-            { timeoutMs: { type: 'number', exclusiveMinimum: 0 }, cost: oneOf('cheap', 'slow') },
+            { timeoutMs: { type: 'number', exclusiveMinimum: 0 }, cost: oneOf(...ALL_PROBE_COSTS) },
             [],
           ),
           watch: strings,

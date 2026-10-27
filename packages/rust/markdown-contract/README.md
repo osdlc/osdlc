@@ -30,8 +30,11 @@ for exactly what it checks.
 
 ## Install
 
-```sh
-cargo add markdown-contract
+The crate is not yet on crates.io. Until its first release, depend on it
+from git:
+
+```toml
+markdown-contract = { git = "https://github.com/osdlc/osdlc" }
 ```
 
 ### Cargo features
@@ -42,7 +45,7 @@ cargo add markdown-contract
   `default-features = false` for `wasm32-unknown-unknown`:
 
   ```toml
-  markdown-contract = { version = "0.3", default-features = false }
+  markdown-contract = { git = "https://github.com/osdlc/osdlc", default-features = false }
   ```
 
 ## Quick start
@@ -98,7 +101,8 @@ documents outside the corpus are not checked. Fixtures that need custom `rule`
 or `docRule` functions cannot be written in YAML, so the corpus marks them
 TypeScript-only and the crate skips them.
 
-The crate and the package share the major and minor version. `comrak` is
+The crate and the package are versioned separately: crate 0.3.2 was checked
+against the corpus of `@osdlc/markdown-contract` 0.3.2. `comrak` is
 pinned to an exact version: the line numbers come from its parser, and a
 release of `comrak` can move them.
 

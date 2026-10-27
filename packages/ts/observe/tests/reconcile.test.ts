@@ -173,6 +173,38 @@ describe('reconcileSessions', () => {
     ])
   })
 
+  test('a record gone by the reread is left alone, as ended by someone else', async () => {
+    const { deps, calls } = harness({ reread: () => null })
+    const report = await reconcileSessions(deps)
+    expect(calls.ended).toEqual([])
+    expect(report.rows[0]).toMatchObject({
+      verdict: 'ended',
+      action: 'none',
+      reason: 'ended by someone else first',
+    })
+  })
+
+  test('evidence older than the start (clock skew) ends the record at its start', async () => {
+    const { deps, calls } = harness({ lastEvidence: () => Date.parse('2026-10-09T08:00:00Z') })
+    await reconcileSessions(deps)
+    expect(calls.ended[0]!.ts).toBe('2026-10-09T09:00:00.000Z')
+  })
+
+  test('an unparseable startedAt ends at the last evidence instead of throwing', async () => {
+    const { deps, calls } = harness({
+      records: [
+        record({ startedAt: 'garbage' }),
+        record({ id: '22222222-2222-4222-8222-222222222222' }),
+      ],
+    })
+    const report = await reconcileSessions(deps)
+    expect(report.lost).toBe(2)
+    expect(calls.ended.map((e) => e.ts)).toEqual([
+      '2026-10-09T10:00:00.000Z',
+      '2026-10-09T10:00:00.000Z',
+    ])
+  })
+
   test('leaves a live, quiet-but-recent or unknown record alone', async () => {
     for (const over of [
       { liveIds: () => new Set(['11111111-1111-4111-8111-111111111111']) },

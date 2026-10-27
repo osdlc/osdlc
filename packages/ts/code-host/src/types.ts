@@ -242,10 +242,14 @@ export interface CodeHost {
   /**
    * Merges the PR. `opts.headSha` is the head the caller checked. The code host
    * refuses, and this throws, when the head has moved since, so a push nobody
-   * reviewed is not merged. The head branch is left in place.
+   * reviewed is not merged. The head branch is left in place. Throws
+   * `CodeHostUnsupported` when the code host cannot merge (Forgejo today).
    */
   mergePr(number: number, opts: { headSha: string; method: MergeMethod }): void
-  /** Opens a PR. Throws on failure, like `postComment`. */
+  /**
+   * Opens a PR. Throws on failure, like `postComment`, or `CodeHostUnsupported`
+   * when the code host cannot open one (Forgejo today).
+   */
   createPr(input: CreatePrInput): { number: number; url: string }
   /** `null` when `url` names no PR this code host recognizes. */
   parsePrUrl(url: string): PrRef | null

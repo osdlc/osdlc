@@ -38,6 +38,7 @@ import {
   processContext,
   processIo,
   readLine,
+  renderError,
   renderFailure,
   runMain,
   systemDirs,
@@ -196,6 +197,11 @@ test('a main holding a Result failure reports it and returns its exit code with 
   expect(exitCodeFor({ kind: 'exit', message: 'it failed' })).toBe(EXIT.error)
   expect(failureOf(thrownFailure())).toBe(SIGNED_OUT)
   expect(failureOf(new Error('plain'))).toBeNull()
+})
+
+test('every error line goes through renderError, which strips terminal controls', () => {
+  expect(renderError('no branch x', 'tooly')).toBe('tooly: no branch x\n')
+  expect(renderError('title \u001b]0;pwned\u0007set', 'tooly')).toBe('tooly: title set\n')
 })
 
 test('processIo is the real streams; captureIo is the test double', () => {

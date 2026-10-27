@@ -53,6 +53,11 @@ CI runs the tests and the check in the `lint` job of
 
 ## Exemptions
 
-`yaml-splice-wasm` has `publish = false`: it is the build input for the
-`yaml-splice` npm package, not a crate on crates.io. It keeps the code-health
-subset above. No other crate is exempt.
+Three crates have `publish = false` and keep only the code-health subset
+above:
+
+- `yaml-splice-wasm`, the build input for the `yaml-splice` npm package;
+- `tradecraft-wasm`, the WebAssembly build of `tradecraft-core`;
+- `tradecraft-typegen`, a build tool that writes TypeScript declarations.
+
+No other crate is exempt.

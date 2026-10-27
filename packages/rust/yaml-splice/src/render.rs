@@ -393,84 +393,11 @@ fn plain_is_disallowed(v: &str) -> bool {
     matches!(b.last(), Some('\n') | Some('\t') | Some(' ') | Some(':'))
 }
 
-/// The core-schema tags with a `test`, from `yaml@2`'s `schema/core/*.js` and
-/// `schema/common/null.js`. A plain rendering matching any of these would
-/// read back as a non-string, so it gets quoted instead.
+/// Whether a plain rendering would read back as a non-string, so it has to
+/// be quoted. The parser's core-schema resolver answers it, so what the
+/// emitter leaves plain is exactly what [`crate::parse`] reads as a string.
 fn would_reparse_as_non_string(s: &str) -> bool {
-    // null: /^(?:~|[Nn]ull|NULL)?$/  (it matches the empty string too).
-    if s.is_empty() || s == "~" || s == "null" || s == "Null" || s == "NULL" {
-        return true;
-    }
-    // bool: /^(?:[Tt]rue|TRUE|[Ff]alse|FALSE)$/
-    if matches!(s, "true" | "True" | "TRUE" | "false" | "False" | "FALSE") {
-        return true;
-    }
-    // float special: /^(?:[-+]?\.(?:inf|Inf|INF)|\.nan|\.NaN|\.NAN)$/
-    let inf_body = s.strip_prefix(['-', '+']).unwrap_or(s);
-    if matches!(inf_body, ".inf" | ".Inf" | ".INF") || matches!(s, ".nan" | ".NaN" | ".NAN") {
-        return true;
-    }
-    let body = s.strip_prefix(['-', '+']).unwrap_or(s);
-    // int: /^[-+]?[0-9]+$/
-    if !body.is_empty() && body.bytes().all(|c| c.is_ascii_digit()) {
-        return true;
-    }
-    // int oct/hex: /^0o[0-7]+$/ and /^0x[0-9a-fA-F]+$/ (no sign in yaml@2)
-    if s.strip_prefix("0o")
-        .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|c| (b'0'..=b'7').contains(&c)))
-    {
-        return true;
-    }
-    if s.strip_prefix("0x")
-        .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|c| c.is_ascii_hexdigit()))
-    {
-        return true;
-    }
-    // float exp: /^[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)[eE][-+]?[0-9]+$/
-    if is_float_exp(body) {
-        return true;
-    }
-    // float: /^[-+]?(?:\.[0-9]+|[0-9]+\.[0-9]*)$/
-    if is_float_plain(body) {
-        return true;
-    }
-    false
-}
-
-fn is_float_plain(body: &str) -> bool {
-    if let Some(frac) = body.strip_prefix('.') {
-        return !frac.is_empty() && frac.bytes().all(|c| c.is_ascii_digit());
-    }
-    match body.split_once('.') {
-        Some((int, frac)) => {
-            !int.is_empty()
-                && int.bytes().all(|c| c.is_ascii_digit())
-                && frac.bytes().all(|c| c.is_ascii_digit())
-        }
-        None => false,
-    }
-}
-
-fn is_float_exp(body: &str) -> bool {
-    let idx = body.find(['e', 'E']);
-    let Some(idx) = idx else { return false };
-    let (mant, exp) = body.split_at(idx);
-    let exp = &exp[1..];
-    let exp_digits = exp.strip_prefix(['-', '+']).unwrap_or(exp);
-    if exp_digits.is_empty() || !exp_digits.bytes().all(|c| c.is_ascii_digit()) {
-        return false;
-    }
-    if let Some(frac) = mant.strip_prefix('.') {
-        return !frac.is_empty() && frac.bytes().all(|c| c.is_ascii_digit());
-    }
-    match mant.split_once('.') {
-        Some((int, frac)) => {
-            !int.is_empty()
-                && int.bytes().all(|c| c.is_ascii_digit())
-                && frac.bytes().all(|c| c.is_ascii_digit())
-        }
-        None => !mant.is_empty() && mant.bytes().all(|c| c.is_ascii_digit()),
-    }
+    crate::parse::plain_is_non_string(s)
 }
 
 fn plain_string(value: &str, ctx: &Ctx) -> Result<String, RenderError> {
@@ -1509,6 +1436,40 @@ mod tests {
             render_value(&v, EmitOptions::line_width_0()).unwrap(),
             "a: \"0x1f\"\nb: \"0o17\"\nc: \"1e5\"\nd: \".5\"\ne: \"5.\"\nf: \"+3\"\ng: \"-0\"\n"
         );
+    }
+
+    #[test]
+    fn every_string_the_emitter_writes_reads_back_as_that_string() {
+        // The quoting rule and the parser are one resolver: a signed hex is a
+        // plain string both ways, a hex too wide for i64 is a number both ways.
+        let wide = format!("0x{}", "f".repeat(40));
+        for text in [
+            "-0x1F",
+            "+0o7",
+            "0x-1",
+            "0xFFFFFFFFFFFFFFFF",
+            wide.as_str(),
+            "1.e5",
+            "-.nan",
+            ".NaN",
+            "+.inf",
+            "1_000",
+            "0b101",
+            "12:30",
+            "yes",
+            "~",
+            "",
+        ] {
+            let out = render_value(&m(vec![("k", s(text))]), EmitOptions::line_width_0()).unwrap();
+            let back = crate::parse::parse(&out).unwrap();
+            assert_eq!(
+                back.as_mapping().unwrap().get("k"),
+                Some(&s(text)),
+                "{out:?}"
+            );
+        }
+        let out = render_value(&m(vec![("k", s("-0x1F"))]), EmitOptions::line_width_0()).unwrap();
+        assert_eq!(out, "k: -0x1F\n");
     }
 
     #[test]

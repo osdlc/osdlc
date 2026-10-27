@@ -9,6 +9,7 @@ import { resolve } from 'node:path'
 import picomatch from 'picomatch'
 
 import type { Contract, Finding } from '../core/index.js'
+import { hasErrors } from '../core/finding-view.js'
 
 /**
  * The config `runCorpus()` takes: an ordered list of rules. Each rule sends the files its
@@ -177,6 +178,6 @@ export function runCorpus(
     matchedByRule,
   }
 
-  const hasError = findings.some((f) => f.level === 'error')
+  const hasError = hasErrors(findings)
   return { findings, exitCode: hasError ? 1 : 0, stats }
 }

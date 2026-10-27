@@ -25,13 +25,15 @@
  * link is removed, not its target), a directory store a directory, and no
  * store may be the home directory, a directory above it or a filesystem root.
  * A store whose path is, holds or sits in another flag's store is removed
- * only with `--yes`.
+ * only with `--yes`. Both checks compare real paths, so a symbolic link above
+ * a store cannot make it hold the home or another store unseen; the home check
+ * also refuses when the text alone says the store holds the home.
  * A file `WAYFINDER_CONFIG` names is removed only when its `$schema` names
  * wayfinder's config schema, which every file wayfinder writes has.
  */
 
 import { lstat, readFile, readdir, rm, rmdir, stat } from 'node:fs/promises'
-import { dirname, join, relative, isAbsolute, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 import { z } from 'zod'
 
@@ -45,6 +47,8 @@ import {
 import type { FlagSpec } from '@osdlc/cli-tool/define-cli'
 import { defaultBinDir, readShimTarget, stateDir } from '@osdlc/cli-tool/devlink'
 import { EXIT } from '@osdlc/cli-tool/exit'
+import { isUnder } from '@osdlc/path-guard/lexical'
+import { nodeGuard } from '@osdlc/path-guard/node'
 
 import { APP, BIN, CONFIG_ENV_VAR } from './app.ts'
 import { commandEnv, type CommandEnvOptions } from './config-command.ts'
@@ -144,11 +148,26 @@ async function writtenByWayfinder(path: string): Promise<boolean> {
 /** A `$schema` URL for any release of wayfinder's config schema. */
 const SCHEMA_MARKER = /\/@osdlc\/wayfinder@[^/]+\/schema\/config\.json$/
 
+/**
+ * True when `inner` is `outer` or inside it, once both are resolved against
+ * the working directory and reduced to the real path of what exists, so a
+ * symbolic link that leads into or out of `outer` counts where it points. A
+ * child named `..x` is inside: only `..` itself leaves `outer`.
+ */
+function contains(outer: string, inner: string): boolean {
+  return nodeGuard.contains(resolve(outer), resolve(inner))
+}
+
 /** Why clean will not remove `store`, which exists, or null when it may. */
 async function refusal(store: Store, home: string): Promise<string | null> {
   const path = resolve(store.path)
-  const up = relative(path, resolve(home))
-  if (dirname(path) === path || up === '' || (!up.startsWith('..') && !isAbsolute(up))) {
+  // A recursive delete fails closed: refuse when either the real paths or the
+  // text say the store holds the home. `contains` answers false when it cannot
+  // prove containment (a long link chain, say), and the text check catches
+  // what it then misses. `isUnder` reads POSIX paths only.
+  const holdsHome =
+    contains(path, home) || (process.platform !== 'win32' && isUnder(path, resolve(home)))
+  if (dirname(path) === path || holdsHome) {
     return 'it is the home directory, a directory above it or a filesystem root'
   }
   const info = await lstat(path)
@@ -173,8 +192,7 @@ function humanBytes(bytes: number): string {
 async function pruneEmptyParents(path: string, base: string): Promise<void> {
   let dir = dirname(path)
   for (;;) {
-    const rel = relative(base, dir)
-    if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) return
+    if (resolve(dir) === resolve(base) || !contains(base, dir)) return
     const entries = await readdir(dir).catch(() => null)
     if (entries === null || entries.length > 0) return
     await rmdir(dir).catch(() => undefined)
@@ -184,11 +202,7 @@ async function pruneEmptyParents(path: string, base: string): Promise<void> {
 
 /** True when `a` and `b` are the same path or one is inside the other. */
 function overlaps(a: string, b: string): boolean {
-  const inside = (outer: string, inner: string): boolean => {
-    const rel = relative(resolve(outer), resolve(inner))
-    return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
-  }
-  return inside(a, b) || inside(b, a)
+  return contains(a, b) || contains(b, a)
 }
 
 /**

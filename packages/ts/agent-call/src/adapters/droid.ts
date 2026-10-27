@@ -16,9 +16,9 @@ import {
   get,
   modelFlag,
   parseJsonLines,
-  tryParseJson,
   commandPrefix,
   type CommandOptions,
+  withStructured,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
@@ -260,8 +260,7 @@ function parseDroidStream(planned: PlannedCall, raw: RawProcessOutput): ParsedOu
     events,
     isError: false,
   }
-  if (planned.spec.output?.schema !== undefined) parsed.structured = tryParseJson(text)
-  return parsed
+  return withStructured(planned, parsed)
 }
 
 function droidConversation(planned: PlannedCall, raw: RawProcessOutput): Conversation | undefined {

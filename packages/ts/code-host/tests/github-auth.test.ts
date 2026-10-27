@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import type { CommandResult, CommandRunner } from '@osdlc/command-seam'
 import { githubAuthChecks } from '../src/github-auth.ts'
+import { codeHostNameForRemote } from '../src/select.ts'
 
 function fakeGh(results: Record<string, CommandResult>): {
   runner: CommandRunner
@@ -64,10 +65,16 @@ describe('githubAuthChecks', () => {
 
   test.each([
     ['a github.com origin', 'https://github.com/acme/widget.git', true],
+    ['an scp-style github.com origin', 'git@github.com:acme/widget.git', true],
+    ['a github.com subdomain origin', 'ssh://git@ssh.github.com:443/acme/widget.git', true],
+    ['a github.com origin in another case', 'https://GitHub.com/acme/widget.git', true],
     ['a non-GitHub origin', 'https://code.example/acme/widget.git', false],
+    ['a Forgejo origin', 'git@forge.example.com:acme/widget.git', false],
+    ['a lookalike host', 'https://notgithub.com/acme/widget.git', false],
+    ['github.com in the path only', 'https://git.example.com/github.com/widget.git', false],
     [
-      'a GitHub Enterprise origin (only github.com counts)',
-      'https://ghe.example/acme/widget.git',
+      'a GitHub Enterprise origin (github.com and its subdomains only)',
+      'https://github.acme.com/acme/widget.git',
       false,
     ],
     ['no origin', null, false],
@@ -79,5 +86,22 @@ describe('githubAuthChecks', () => {
     expect(remote.fix).toBe(
       url === null ? 'git remote add origin <url>' : 'git remote set-url origin <url>',
     )
+  })
+})
+
+describe('the remote check and host selection agree', () => {
+  test.each([
+    'https://github.com/acme/widget.git',
+    'git@github.com:acme/widget.git',
+    'ssh://git@ssh.github.com:443/acme/widget.git',
+    'https://GitHub.com/acme/widget.git',
+    'git@github.acme.com:acme/widget.git',
+    'https://forge.example.com:3000/acme/widget.git',
+    'https://notgithub.com/acme/widget.git',
+    'https://github.com.example.org/acme/widget.git',
+  ])('for %s', (url) => {
+    const { runner } = fakeGh({ '--version': OK, 'auth status': OK })
+    const remote = githubAuthChecks({ gh: runner, env: {} }, url).find((c) => c.name === 'remote')!
+    expect(remote.ok).toBe(codeHostNameForRemote(url, null) === 'github')
   })
 })

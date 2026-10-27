@@ -32,6 +32,7 @@ export {
   exitCodeFor,
   failWith,
   failureOf,
+  renderError,
   renderFailure,
 } from './failure.ts'
 

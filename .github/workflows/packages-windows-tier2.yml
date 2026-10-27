@@ -1,0 +1,150 @@
+# Runs the libraries that start programs or resolve paths (command-seam,
+# trust-repo, tiered-dirs, cli-tool, system-model, wayfinder) on Windows.
+# Windows is tier 2 for them (S-0021): this workflow reports, but never blocks
+# a pull request or a release.
+#
+# packages-ci.yml calls it on a pull request with the packages it picked. A
+# push to main runs it on its own, with all six, in a run apart from
+# packages-publish.yml: the release neither waits for it nor queues behind it.
+#
+# `continue-on-error: true` keeps a failed test from failing the run. Each
+# package tests in its own step under scripts/bounded-run.ts, which kills the
+# test's process tree at its limit. GitHub's step `timeout-minutes` alone has
+# not ended a hung step on Windows: the runner waits for the step's output
+# pipe, and a process a test left behind holds it.
+#
+# Every action is pinned to a commit SHA; the comment names its release.
+name: packages-windows-tier2
+
+on:
+  push:
+    branches: [main]
+  workflow_call:
+    inputs:
+      packages:
+        description: The picked packages as a JSON list; empty runs all six.
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+# On main a newer push replaces a tier-2 run still in progress. A pull
+# request's call gets a group of its own run, so it is never cancelled.
+concurrency:
+  group: ${{ github.event_name == 'push' && format('packages-windows-tier2-{0}', github.ref) || format('packages-windows-tier2-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+jobs:
+  windows-tier2:
+    name: windows tier 2 (windows-latest, node ${{ matrix.node }})
+    # A full run takes about 2.5 minutes. The limit is the sum of the step
+    # limits below (bounded-run test 2, install 5, build 5, six tests at 4,
+    # smoke 3) plus 3 for setup, so a hung step never cancels the steps after
+    # it.
+    timeout-minutes: 42
+    runs-on: windows-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    defaults:
+      run:
+        shell: bash
+    env:
+      PACKAGES: ${{ inputs.packages || '["packages/ts/command-seam","packages/ts/trust-repo","packages/ts/tiered-dirs","packages/ts/cli-tool","packages/ts/system-model","packages/ts/wayfinder"]' }}
+    steps:
+      # Git for Windows checks text out with CRLF by default. The tests read
+      # their own sources and docs, written with LF.
+      - name: Keep LF line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      # The picked packages among the six. `build` adds their workspace
+      # dependencies, which pnpm's `...` suffix selects. A path selector needs
+      # braces for the suffix: `{./path}...`.
+      - name: Pick the tier-2 packages
+        id: pick
+        run: |
+          filter=''
+          build=''
+          for p in command-seam trust-repo tiered-dirs cli-tool system-model wayfinder; do
+            if grep -q "\"packages/ts/$p\"" <<< "$PACKAGES"; then
+              filter="$filter --filter ./packages/ts/$p"
+              build="$build --filter {./packages/ts/$p}..."
+            fi
+          done
+          echo "filter=$filter" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
+      # Not under bounded-run on purpose: it is the canary. Its tests start
+      # bounded-run from bash with a leftover holding the pipes, so if that
+      # leaked to this step, the step would hang here and show it.
+      - name: Test the bounded runner
+        timeout-minutes: 2
+        run: node --test scripts/bounded-run.test.ts
+
+      # $FILTER and $BUILD are several flags, so they are left unquoted.
+      - name: Install
+        timeout-minutes: 5
+        env:
+          BUILD: ${{ steps.pick.outputs.build }}
+        run: pnpm install --frozen-lockfile $BUILD
+
+      - name: Build
+        id: build
+        timeout-minutes: 5
+        env:
+          BUILD: ${{ steps.pick.outputs.build }}
+        run: pnpm $BUILD --if-present run build
+
+      # One step per package, each under bounded-run.ts with 30 s less than
+      # its step limit. `!cancelled()` runs each one after an earlier one
+      # failed or timed out, as long as the build passed.
+      - name: Test command-seam
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/command-seam"') }}
+        timeout-minutes: 4
+        run: node scripts/bounded-run.ts 210 "pnpm --filter ./packages/ts/command-seam run test"
+
+      - name: Test trust-repo
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/trust-repo"') }}
+        timeout-minutes: 4
+        run: node scripts/bounded-run.ts 210 "pnpm --filter ./packages/ts/trust-repo run test"
+
+      - name: Test tiered-dirs
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/tiered-dirs"') }}
+        timeout-minutes: 4
+        run: node scripts/bounded-run.ts 210 "pnpm --filter ./packages/ts/tiered-dirs run test"
+
+      - name: Test cli-tool
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/cli-tool"') }}
+        timeout-minutes: 4
+        run: node scripts/bounded-run.ts 210 "pnpm --filter ./packages/ts/cli-tool run test"
+
+      - name: Test system-model
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/system-model"') }}
+        timeout-minutes: 4
+        run: node scripts/bounded-run.ts 210 "pnpm --filter ./packages/ts/system-model run test"
+
+      - name: Test wayfinder
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && contains(env.PACKAGES, '"packages/ts/wayfinder"') }}
+        timeout-minutes: 4
+        run: node scripts/bounded-run.ts 210 "pnpm --filter ./packages/ts/wayfinder run test"
+
+      - name: Smoke the built packages under Node
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 3
+        env:
+          FILTER: ${{ steps.pick.outputs.filter }}
+        run: node scripts/bounded-run.ts 150 "pnpm $FILTER --no-bail --if-present run smoke"

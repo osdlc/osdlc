@@ -27,6 +27,7 @@ export const SOFT_TABLE = {
   statusPorcelain: 'empty',
   statusEntries: 'empty',
   isDirty: 'false',
+  hasStagedChanges: 'false',
   branches: 'empty',
   branchExists: 'false',
   worktrees: 'empty',
