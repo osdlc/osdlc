@@ -24,9 +24,9 @@
       "line": 104,
       "title": "ssh.github.com:443 remote now slugs as ssh.github.com/owner/name and misses duplicates",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "48047d905e1d77be0e1f30442de67102e8a02ca8"
     },
     {
       "id": "r1-3",
