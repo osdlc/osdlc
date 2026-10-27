@@ -34,6 +34,7 @@ export {
   type WorktreeBlocker,
 } from './worktrees.ts'
 export { DiscoveryFailed, discoverRepo } from './discover.ts'
+export { assessLanding, patchEquivalent, type Landing, type LandingCheck } from './landing.ts'
 export {
   ApplyArgumentError,
   applyPlan,

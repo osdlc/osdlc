@@ -25,6 +25,8 @@ import {
   type CommandRunOptions,
 } from '@osdlc/command-seam'
 
+import { versionedVerb } from './features.ts'
+import { pinnedGitVersion, probeGitVersion, type GitVersion } from './git-version.ts'
 import { softSync, triedSync, type Soft, type TriedSync } from './outcome.ts'
 import { parseRemoteUrl, type RemoteCoordinate } from './remote-url.ts'
 import { SOFT_TABLE } from './soft.ts'
@@ -38,6 +40,8 @@ import {
   splitTrailingOptions,
   type AddOptions,
   type AheadBehind,
+  type CherryEntry,
+  type CommitTreeOptions,
   type CommitOptions,
   type CheckoutOptions,
   type ConfigGetOptions,
@@ -120,6 +124,8 @@ export class Git {
   private readonly boundGitDir: string | undefined
   private readonly workTree: string | undefined
   private readonly env: Record<string, string> | undefined
+  private readonly gitVersionOption: string | undefined
+  private readonly pinnedVersion: GitVersion | undefined
   private tried: TriedSync<Git> | undefined
   private softened: Soft<Git> | undefined
 
@@ -146,6 +152,12 @@ export class Git {
    * Neither client has a default timeout. This client kills a child whose
    * output on one stream passes 256 MB; `AsyncGit` has no output cap. The
    * `maxOutputBytes` call option sets the cap per call on both.
+   *
+   * `gitVersion` pins the git version: `'2.55.0'`, or a whole
+   * `git version …` line. Version-gated verbs then use it and never run
+   * `git --version`, and {@link Git.version} returns it. Set it with a fake
+   * runner, so the fake answers only the verbs under test. An unparsable
+   * value throws a `RangeError` here.
    */
   constructor(
     cwd: string,
@@ -154,9 +166,12 @@ export class Git {
       gitDir?: string | undefined
       workTree?: string | undefined
       env?: Record<string, string> | undefined
+      gitVersion?: string | undefined
     } = {},
   ) {
     this.cwd = cwd
+    this.gitVersionOption = opts.gitVersion
+    this.pinnedVersion = pinnedGitVersion(opts.gitVersion)
     this.runner = opts.runner ?? spawnRunner('git', { absolutePathOnly: true })
     this.boundGitDir = opts.gitDir
     this.workTree = opts.workTree
@@ -165,7 +180,7 @@ export class Git {
 
   /**
    * The same client in a different directory, with the same runner,
-   * repository options and client-level `env`.
+   * repository options, client-level `env` and `gitVersion`.
    */
   at(cwd: string): Git {
     return new Git(cwd, {
@@ -173,6 +188,7 @@ export class Git {
       gitDir: this.boundGitDir,
       workTree: this.workTree,
       env: this.env,
+      gitVersion: this.gitVersionOption,
     })
   }
 
@@ -251,9 +267,26 @@ export class Git {
     return run
   }
 
-  /** Run one verb from the table and check its result with `gate`. */
-  private exec<T>(verb: GitVerb<T>, opts: GitSyncCallOptions = {}): T {
+  /**
+   * Run one verb from the table and check its result with `gate`. A verb that
+   * `needs` a git feature first gets the form this runner's git can run (see
+   * `versionedVerb` in `features.ts`), which probes the version once.
+   */
+  private exec<T>(gated: GitVerb<T>, opts: GitSyncCallOptions = {}): T {
     const run = this.runOpts(opts)
+    let verb = gated
+    if (gated.needs !== undefined) {
+      const prefix = repoPrefix(this.boundGitDir, this.workTree)
+      // A failed probe names this verb's argv, not `--version`.
+      const have =
+        this.pinnedVersion ??
+        probeGitVersion(this.runner, {
+          env: run.env,
+          timeoutMs: run.timeoutMs,
+          report: [...prefix, ...gated.argv],
+        })
+      verb = versionedVerb(gated, have, prefix)
+    }
     if (verb.input !== undefined) run.input = verb.input
     // The verb's own entries (the C locale) win over the client's and the call's.
     if (verb.env !== undefined) run.env = { ...run.env, ...verb.env }
@@ -263,6 +296,24 @@ export class Git {
   }
 
   // ── queries ───────────────────────────────────────────────────────────────
+
+  /**
+   * The git this client's runner runs, from `git --version`. Probed on the
+   * first call (or the first version-gated verb) and cached for the runner,
+   * so a client that never asks never spawns it. Throws the classified
+   * failure when git cannot run (`not-installed`), and an `exit` failure when
+   * the output is not a version line. With the `gitVersion` option it is that
+   * version, and nothing runs.
+   */
+  version(opts: GitSyncCallOptions = {}): GitVersion {
+    if (this.pinnedVersion !== undefined) return this.pinnedVersion
+    const run = this.runOpts(opts)
+    return probeGitVersion(this.runner, {
+      env: run.env,
+      timeoutMs: run.timeoutMs,
+      report: ['--version'],
+    })
+  }
 
   /** A file's content at a rev (`git show <rev>:<relPath>`), null if absent. */
   showAtRev(rev: string, relPath: string, opts: GitSyncCallOptions = {}): string | null {
@@ -606,6 +657,19 @@ export class Git {
   /** How far `tip` has diverged from `base`. See {@link AheadBehind}. */
   aheadBehind(base: string, tip: string, opts: GitSyncCallOptions = {}): AheadBehind {
     return this.exec(v.aheadBehind(base, tip), opts)
+  }
+
+  /**
+   * Commits on `head` (default `HEAD`) that `upstream` lacks, each marked by
+   * whether `upstream` has the same patch. See {@link CherryEntry}.
+   */
+  cherry(upstream: string, head?: string, opts: GitSyncCallOptions = {}): CherryEntry[] {
+    return this.exec(v.cherry(upstream, head), opts)
+  }
+
+  /** Write a commit for `tree` and return its sha; no ref moves. Needs a git identity. */
+  commitTree(tree: string, commitOpts: CommitTreeOptions, opts: GitSyncCallOptions = {}): string {
+    return this.exec(v.commitTree(tree, commitOpts), opts)
   }
 
   /** Configured remote names (`git remote`); `[]` when there are none. */

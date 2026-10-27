@@ -35,12 +35,13 @@ ESM only. Compiled JavaScript with type declarations, for Node 22 or newer.
 
 ## How it decides
 
-Two signals settle most items, and either alone is enough:
+Three signals settle most items. The first two are enough alone; the third needs a content check too (see [Patch equivalence](#patch-equivalence)):
 
 | Signal | Source |
 | --- | --- |
 | A `MERGED` pull request from this repository, into the default branch, whose head commit is the branch tip | `gh pr list`, one listing per repository |
 | The branch tip is reachable from the default branch | `git merge-base --is-ancestor` |
+| The branch's changes are on the default branch under other commit ids (rebase merge, cherry-pick, squash merge) | `git cherry` plus `git merge-tree`, see [Patch equivalence](#patch-equivalence) |
 
 Ancestry is measured against `<remote>/<default>`, so work merged only into an
 unpushed local default branch does not count. Without a remote, the local
@@ -66,6 +67,65 @@ Some worktrees are held back whatever their branch says. Each lands in
 | `hidden-index-flags` | Files marked skip-worktree or assume-unchanged hide edits from `status`. |
 | `nested-repository` | An untracked or ignored directory holds a repository with its own history. |
 | `branch-in-other-worktree` | Another worktree has the same branch checked out (`facts.other_worktrees`). |
+
+### Patch equivalence
+
+A rebase merge, a cherry-pick and a squash merge put the work on the default
+branch under new commit ids, so the tip is not reachable from it and no PR
+head matches. The sweep then compares by patch id (`git cherry`), which ignores
+ids, messages and dates. It runs only when the first two signals do not
+settle the item, for local branches, remote branches and worktrees alike.
+
+A patch id is a heuristic, not proof, so a patch match alone does not make a
+branch as safe as an ancestor. A second, independent check must agree:
+`git merge-tree --write-tree <default> <tip>` must come out clean with exactly
+the default branch's tree, which shows the branch's content is already there. It
+needs git 2.38 or later; an older git, a conflict or any failure counts as not
+agreed. The row is `safe-to-delete` either way, but only an agreed check drops
+the `abandon-unmerged` authorization. Without it the row keeps requiring that
+grant, and a worktree with unpushed commits stays `needs-investigation`. The row
+carries three facts, and its reason says which case applied:
+
+| Fact | Value |
+| --- | --- |
+| `facts.landing` | `patch-equivalent` |
+| `facts.landing_check` | which check passed, below |
+| `facts.landing_content_confirmed` | `true` when the merge-tree check agreed, `false` otherwise |
+
+| `landing_check` | Meaning |
+| --- | --- |
+| `per-commit` | Every commit on the branch has a commit with the same patch id on the default branch. Covers rebase merges and cherry-picks. |
+| `squashed` | A commit holding the branch's combined change (its tree on the merge base) has a commit with the same patch id on the default branch. Covers squash merges. |
+| `head-moved` | A merged PR's head passes `squashed`, and every commit after that head passes `per-commit`. Covers a branch that moved on after its squash merge. |
+
+`squashed` accepts any one commit on the default branch with the same net
+patch, not necessarily one that came from this branch. That is acceptable only
+because the content check, or the grant, stands behind it.
+
+The squashed check builds one commit object with `git commit-tree` and no ref.
+It leaves the index, the working tree and every ref alone, and needs no git
+identity configured. Every git call of the check ignores `git replace` refs
+(`GIT_NO_REPLACE_OBJECTS=1`).
+
+The check decides what gets deleted, so a doubt is never evidence. None of
+these count as landed:
+
+- a commit that is not on the default branch, however many others are (the
+  commits that are missing are listed in `facts.unmatched_commits` and in the
+  investigation text when part of the work did land);
+- a git call that fails, or output that cannot be read;
+- a shallow clone, a missing merge base, a ref that does not resolve;
+- an empty change: an empty commit, or a branch whose commits cancel out;
+- any merge commit in the range, a plain merge of the default branch included,
+  for `per-commit` (neither `git cherry` nor `git log` shows its change); the
+  `squashed` check, which reads the combined change, can still pass;
+- a squash merge that was edited by hand, because the patch ids differ.
+
+A patch id says two changes are the same, not that they come from the same
+branch, and it ignores whitespace. A one-line change that the default branch
+also made independently, an indentation-only difference, or work that landed
+and was then reverted all match by patch id; the content check does not agree
+with them, so they keep needing the grant.
 
 ### Locks and running processes
 

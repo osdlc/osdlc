@@ -36,6 +36,8 @@ const ACCOUNTED: Record<AnyKind, 'table' | 'exit1'> = {
   'not-authenticated': 'table',
   'not-found': 'table',
   tls: 'table',
+  // An old git exits 1 for now: there is no "upgrade the tool" category.
+  'unsupported-git': 'exit1',
   // code-host (and typed-gh, which it maps one to one)
   network: 'table',
   'rate-limited': 'table',

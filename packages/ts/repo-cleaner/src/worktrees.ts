@@ -14,6 +14,14 @@ import { nodeGuard } from '@osdlc/path-guard/node'
 import type { Git } from '@osdlc/typed-git'
 
 import { gapSentence, recordPr } from './branches.ts'
+import {
+  confirmationNote,
+  judgeLanding,
+  landingConfirmed,
+  recordLanding,
+  unmatchedSentence,
+  type Landing,
+} from './landing.ts'
 import { busyHolders, isIdleHolder, parseLockOwner, type ProcessProbe } from './processes.ts'
 import {
   authorizationsFor,
@@ -311,7 +319,14 @@ export function classifyWorktree(opts: {
   if (unpushed.length > 0) facts['unique_commits'] = unpushed.length
   // A merged PR at HEAD lands every commit, even ones the fallback
   // `compare_against` (a squash merge, a deleted upstream) counts as ahead.
-  const unlanded = unpushed.length > 0 && !landed
+  // A rebase merge, cherry-pick or squash merge leaves HEAD off the default
+  // branch; the patches say whether the work is there anyway. Judged from HEAD,
+  // so a dirty tree is still caught by the dirty-file check below.
+  const patch: Landing | null =
+    landed || !onDisk || head === null ? null : judgeLanding(repo, head, pr, gap, git)
+  if (patch !== null) recordLanding(facts, patch)
+  const patchLanded = patch !== null && patch.check !== null
+  const unlanded = unpushed.length > 0 && !landed && !landingConfirmed(patch)
   const requires = authorizationsFor({
     'abandon-unmerged': unlanded,
     'discard-changes': dirtyFiles.length > 0,
@@ -368,6 +383,11 @@ export function classifyWorktree(opts: {
       investigationParts: [
         `Worktree ${path} has uncommitted work or unpushed commits.`,
         `Branch: ${branch || '(detached)'}.`,
+        ...(patchLanded && unlanded
+          ? [
+              `Its commits are patch-equivalent to commits on ${landedRef(repo)} (${patch.check}), but ${confirmationNote(patch)}.`,
+            ]
+          : []),
         'Decide whether to preserve, push, or discard.',
       ],
     })
@@ -380,6 +400,19 @@ export function classifyWorktree(opts: {
       classification: 'safe-to-delete',
       action: 'remove',
       reason: `clean; PR #${pr.number} merged`,
+      facts,
+      commands: safeRemove,
+      requires,
+    })
+  }
+
+  if (patchLanded) {
+    return makeItem({
+      category: 'worktree',
+      id: path,
+      classification: 'safe-to-delete',
+      action: 'remove',
+      reason: `clean; patch-equivalent to commits on ${landedRef(repo)} (${patch.check}); ${confirmationNote(patch)}`,
       facts,
       commands: safeRemove,
       requires,
@@ -405,6 +438,8 @@ export function classifyWorktree(opts: {
   if (branch) parts.push(`Branch: \`${branch}\`.`)
   parts.push(pr ? `PR #${pr.number} is ${pr.state}.` : 'No associated PR.')
   if (pr && gap) parts.push(gapSentence(pr, gap, repo))
+  const unmatched = patch === null ? null : unmatchedSentence(patch, repo)
+  if (unmatched !== null) parts.push(unmatched)
   return makeItem({
     category: 'worktree',
     id: path,

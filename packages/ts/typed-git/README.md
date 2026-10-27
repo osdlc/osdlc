@@ -29,15 +29,71 @@ Node.js, on macOS, Linux and Windows. CI runs the tests and the built package
 on Linux and macOS, on Node 22 and 24. Windows is supported but not tested in
 CI yet.
 
-The minimum git version is the oldest one CI tests. CI uses the git that the
-GitHub-hosted runners ship. On 2026-10-20 that was git 2.55.0 on
-`ubuntu-latest` (Ubuntu 24.04) and git 2.56.0 on `macos-latest` (macOS 26), as
-the checkout step logs it. So the tested minimum is git 2.55.0. Older git may
-work, but no test shows it. The behaviour tables below were measured against
-git 2.50.1. A verb that needs a newer git than you have fails with git's own
-error and throws the classified failure. `mergeTree` needs git 2.38 or later.
+It needs git 2.34 or later, the git of Ubuntu 22.04 LTS. See [Git versions](#git-versions).
 
 The tests run on Vitest under Node. Bun is not a tested runtime for consumers.
+
+## Git versions
+
+The supported floor is git 2.34, the git of Ubuntu 22.04 LTS. CI tests the
+git that the GitHub-hosted runners ship. On 2026-10-20 that was git 2.55.0 on
+`ubuntu-latest` (Ubuntu 24.04) and git 2.56.0 on `macos-latest` (macOS 26), as
+the checkout step logs it. The behaviour tables below were measured against
+git 2.50.1.
+
+Every flag typed-git passes unconditionally is in git 2.34. A few features are
+newer, and one table (`GIT_FEATURES`, in `src/features.ts`) lists them:
+
+| Feature | Needs git | Used by | On an older git |
+| --- | --- | --- | --- |
+| `merge-tree --write-tree` | 2.38 | `mergeTree` | throws `unsupported-git` |
+| `merge-tree --merge-base` | 2.40 | `mergeTree({ mergeBase })` | throws `unsupported-git` |
+| `worktree list -z` | 2.36 | `worktrees` | newline-split `worktree list --porcelain`: a path with a newline breaks it, and a lock reason comes back C-quoted |
+
+A verb that uses one of these runs `git --version` first, once per runner,
+and caches the answer. A client that never calls such a verb never runs it.
+`git.version()` (and `await asyncGit.version()`) returns the same parsed
+version: `{ major, minor, patch, text }`, where `text` keeps a vendor suffix
+such as `2.39.3 (Apple Git-146)` or `2.45.1.windows.1`.
+
+The answer is cached per runner and per effective `PATH` (the call's `env`
+over the client's over the process's; `PATHEXT` too on Windows), because the
+default runner runs whichever `git` that `PATH` finds. The probe runs in the
+OS temp directory, so a missing cwd cannot fail it; the verb itself still
+runs in its own cwd. A failed probe is not cached, and its failure names the
+verb that asked (`git worktree: …`), not `--version`.
+
+`AsyncGit` callers that probe at the same time share one probe. It runs with
+no caller's `signal` and a fixed 15 s limit. Each caller waits under its own
+`timeoutMs` and `signal`, so one that gives up rejects alone. The sync client
+probes under the call's `timeoutMs` (15 s at most). Either way the first gated
+call can take up to the probe's time plus its own `timeoutMs`.
+
+The `gitVersion` option pins the version instead: `new Git(cwd, { runner,
+gitVersion: "2.55.0" })`, or `cliBackend({ runner, gitVersion: "2.55.0" })`.
+It takes a version string, either `"2.55.0"` or a whole
+`"git version 2.39.3 (Apple Git-146)"` line. Gated verbs then use it and
+never run `git --version`, `version()` returns it, and `at()` keeps it. An
+unparsable value throws a `RangeError` when the client or backend is built.
+It is the way to put a fake runner behind a gated verb, and to test either
+side of a feature.
+
+On a git older than a feature, a verb with a fallback runs it, and one
+without fails as `unsupported-git` before git runs:
+
+```ts
+const r = git.try.mergeTree("main", "topic");
+if (!r.ok && r.error.kind === "unsupported-git") {
+  // r.error.message: "merge-tree --write-tree needs git 2.38 or later; found 2.34.1."
+  // r.error.unsupported: { feature, needs, have }
+}
+```
+
+Below 2.34 every one of these verbs fails that way, with the feature
+`typed-git`, and no fallback is tried. Verbs that need no newer feature run
+on any git without a version check. A backend other than `cliBackend` has no
+git version, so `AsyncGit` checks nothing for it; it answers or rejects each
+request itself.
 
 ## Stability
 
@@ -141,7 +197,8 @@ use(r.value);
 The error is a `GitFailure`: a `Failure` from `@osdlc/result` with a `kind` to
 branch on, a one-line `message` and a `hint` for a person (`describe(error)`
 joins them), git's own output in `detail`, the `argv` and `exitCode`, and the
-`CommandFailed` it was read from in `cause`.
+`CommandFailed` it was read from in `cause`. An `unsupported-git` failure has
+no `cause`, because git did not run; it carries `unsupported` instead.
 
 The methods that throw (`git.push()` and the rest) throw the same failure,
 wrapped in a `FailureError` (`error.failure`). So a CLI that reports a thrown
@@ -161,6 +218,7 @@ line for a failure from `git.try.*`.
 | `not-authenticated` | `Authentication failed`, `Permission denied (publickey)`, `could not read Username`, `unable to access` with HTTP 401 or 403 | `The remote refused the credentials.` / `Check that you are signed in to the host, or that your SSH key is added.` |
 | `not-found` | `unable to access` with HTTP 404 | `The remote repository was not found, or you cannot see it.` / `Check the remote URL, and that your account can see the repository.` |
 | `tls` | `unable to access` with `SSL certificate problem` | `The remote's TLS certificate could not be verified.` / `Check the system clock and CA certificates, or the remote's certificate.` |
+| `unsupported-git` | the local git is older than the verb needs (see [Git versions](#git-versions)); git did not run, so there is no `cause` | `merge-tree --write-tree needs git 2.38 or later; found 2.34.1.` / `Upgrade git to 2.38 or later from https://git-scm.com.` |
 | `not-executable`, `bad-cwd`, `timeout`, `output-cap`, `signal`, `aborted`, `spawn` | as in `@osdlc/command-seam` | command-seam's message, no hint |
 | `exit` | any other non-zero exit | git's first stderr line |
 
@@ -541,6 +599,7 @@ exit throws the classified failure.
 | `resolveRef(ref)` | `rev-parse --verify --quiet <ref>` | `1` → `null` |
 | `hasHistory()` | `resolveRef("HEAD") !== null` | — |
 | `headRef()` | `rev-parse --abbrev-ref HEAD` | none — literal `"HEAD"` when detached |
+| `version()` | `--version`, once per runner | none — `{ major, minor, patch, text }`; see [Git versions](#git-versions) |
 | `topLevel()` | `rev-parse --show-toplevel` | `128` → `null` (not a repository) |
 | `gitCommonDir()` | `rev-parse --path-format=absolute --git-common-dir` | `128` → `null` |
 | `gitDir()` | `rev-parse --absolute-git-dir` | `128` → `null` — this worktree's own dir, `<common>/worktrees/<name>` in a linked worktree |
@@ -553,7 +612,7 @@ exit throws the classified failure.
 | `hasStagedChanges()` | `diff --cached --quiet` | `1` → `true`, `0` → `false` — on an unborn HEAD the index is compared against the empty tree; outside a repository (`129`) it throws |
 | `branches(pattern)` | `branch --list --format=%(refname:lstrip=2)` | none |
 | `branchExists(name)` | `branches(name).includes(name)` | none |
-| `worktrees()` | `worktree list --porcelain` | none — rows carry `locked` and `lockReason` |
+| `worktrees()` | `worktree list --porcelain -z` (git 2.36; the newline form before) | none — rows carry `locked` and `lockReason` |
 | `mergeBase(a, b)` | `merge-base <a> <b>` | `1` → `null` (unrelated histories) |
 | `logSubject(ref)` | `log -1 --format=%s <ref>` | `128` → `null` |
 | `configGet(key, { scope })` | `config [--local\|--global\|--system] --get <key>` | `1` → `null` (unset) |
@@ -581,6 +640,8 @@ exit throws the classified failure.
 | `grep(pattern, { extendedRegexp, lineNumber, noColor, paths })` | `grep` | `1` → `[]` (no match) |
 | `isAncestor(a, b)` | `merge-base --is-ancestor` | `1` → `false` |
 | `aheadBehind(base, tip)` | `rev-list --left-right --count <base>...<tip>` | none |
+| `cherry(upstream, head)` | `cherry <upstream> [<head>]` | none — `{ sha, equivalent }` per commit; empty output is `[]`, an unreadable line throws |
+| `commitTree(tree, { parents, message })` | `commit-tree <tree> [-p <parent>]... -m <message>` | none — writes an object and no ref; needs a git identity |
 | `remotes()` | `remote` | none — names, not remotes |
 | `remote()` | `remote` | none — deprecated alias of `remotes()` |
 | `remoteGetUrl(name, { push })` | `remote get-url [--push] <name>` | `2` → `null` (unknown remote) — the first URL |
@@ -712,6 +773,18 @@ new Git("/nowhere", { runner: failing }).currentBranch(); // throws FailureError
 The default runner finds `git` on absolute `PATH` entries only, so a file named
 `git` in the checkout cannot run in its place. A real runner you build yourself
 should do the same: `spawnRunner("git", { absolutePathOnly: true })`.
+
+A fake runner behind a version-gated verb (`worktrees`, `mergeTree`; see
+[Git versions](#git-versions)) would also be asked for `git --version`. Pin
+the version so it is not:
+
+```ts
+const git = new Git("/nowhere", { runner: recording, gitVersion: "2.55.0" });
+git.worktrees(); // runs `worktree list --porcelain -z`, and no `--version`
+```
+
+A fake without the pin must answer `["--version"]` (once per runner) with
+`git version <x.y.z>`, or the gated verb fails as `exit`.
 
 `runner: undefined` is the same as omitting it, so a caller holding an optional
 runner passes it straight through, without a conditional spread. `cliBackend`

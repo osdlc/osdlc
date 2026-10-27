@@ -7,8 +7,11 @@ const src = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 export default defineConfig({
   resolve: {
     // The examples import the package by name. Run them on the source, so they
-    // need no build.
-    alias: [{ find: /^@osdlc\/typed-gh$/, replacement: src('./src/index.ts') }],
+    // need no build. The subpath first, then the bare name.
+    alias: [
+      { find: /^@osdlc\/typed-gh\/testing$/, replacement: src('./src/testing.ts') },
+      { find: /^@osdlc\/typed-gh$/, replacement: src('./src/index.ts') },
+    ],
   },
   test: {
     // Real git, sh and gh spawns on a loaded machine can pass the 5 s default.

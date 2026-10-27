@@ -488,6 +488,36 @@ Import the runners themselves, such as `spawnRunner` and `spawnRunnerAsync`, fro
 named `gh` in the working directory cannot run in its place. Pass `{ absolutePathOnly: true }` when
 you build a real runner yourself.
 
+## Testing
+
+`@osdlc/typed-gh/testing` builds the rows a fake runner answers with. Each builder returns gh's raw
+`--json` shape, so the real parsers read it. Its defaults fill every field a parser requires, such
+as a pull request's `number`, a repository's `nameWithOwner` and the `headRefName` that
+`prList({ head })` filters on. Without them a row is dropped with no error.
+
+- `prRow`, `issueRow`, `repoRow`, `searchPrRow` and `labelRow`: one row of `gh pr`, `gh issue`,
+  `gh repo`, `gh search prs` and `gh label` output.
+- `checkRunRow`, `statusContextRow`, `commentRow` and `reviewRow`: entries of a pull request's
+  `statusCheckRollup`, `comments` and `reviews`.
+- `ghResult(payload)`: a `CommandResult` with exit code 0 and the payload as JSON on stdout.
+- Row types: `GhPrJson`, `GhIssueJson`, `GhRepoJson`, `GhSearchPrJson`, `GhLabelJson`,
+  `GhCheckRunJson`, `GhStatusContextJson`, `GhCommentJson`, `GhReviewJson` and `GhActorJson`, and
+  `RowOverrides<T>`, what a builder takes.
+
+Each builder takes typed overrides, merged shallowly. Pass a field as `undefined` to leave it out.
+A pull request's `url` follows its `number`, and a repository's its `nameWithOwner`. Assert on what
+you set: a default value may change in a minor release.
+
+```ts
+import { ghResult, prRow } from '@osdlc/typed-gh/testing'
+
+const runner: CommandRunner = {
+  run: () => ghResult([prRow({ number: 7, headRefName: 'task/foo' }), prRow({ number: 8 })]),
+}
+
+new Gh('/repo', { runner }).openPrFor('task/foo')?.number // 7
+```
+
 ## API
 
 Everything below is exported from `@osdlc/typed-gh`. The Stability section says which items are
@@ -599,7 +629,8 @@ The experimental items:
 - `GraphqlOptions`
 - `GraphqlVariable`
 
-Every other export and method is stable, `prDiff` included.
+Every other export and method is stable, `prDiff` included. So is `@osdlc/typed-gh/testing`: its
+builders and their row types. Their default values may change in any minor release.
 
 ## Platforms
 
