@@ -69,6 +69,10 @@ The `wasm` job in `.github/workflows/rust-ci.yml` rebuilds `wasm/` on every
 pull request that touches the crates or `wasm/`, and fails when the result
 differs from what is committed. When it fails, it uploads the rebuilt files
 as the `yaml-splice-wasm` artifact.
+A version bump alone changes the bytes, so the release pull request for the
+Rust crates would fail this check. The `release-pr` job in
+`.github/workflows/release-plz.yml` rebuilds `wasm/` on the release branch
+and commits it. That commit changes no behaviour, so it needs no changeset.
 
 A change that changes the WebAssembly changes what this package does, so it
 needs a changeset for `@osdlc/yaml-splice` (see below), even when no file in
