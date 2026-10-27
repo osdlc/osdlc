@@ -558,6 +558,18 @@ describe('ForgejoCodeHost.parsePrUrl', () => {
       number: 9,
     })
     expect(f.parsePrUrl('https://github.com/o/r/pull/9')).toBeNull()
+    const ported = new ForgejoCodeHost({
+      runner: { run: () => curlOk(200, {}) },
+      cwd: '/repo',
+      host: 'git.example.com:3000',
+      owner: 'o',
+      repo: 'r',
+      token: 'tok',
+    })
+    // The port is dropped, so the host compares with typed-git's RemoteRepo.host.
+    expect(ported.parsePrUrl('https://git.example.com:3000/o/r/pulls/9')?.host).toBe(
+      'git.example.com',
+    )
     expect(f.parsePrUrl('https://other.example.com/o/r/pulls/9')).toBeNull()
   })
 })
