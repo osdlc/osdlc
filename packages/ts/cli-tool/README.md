@@ -305,7 +305,8 @@ becomes its line and its category's exit code (see Failures). It prints no
 stack trace, because a trace says where the code was, not what the person who
 typed the command should do.
 
-Pass `version` and a first argument of `--version` prints it and exits 0
+Pass `version` and a first argument of `--version` prints `<name> <version>`,
+as `defineApp` does, and exits 0
 without calling `main`.
 
 ### The version

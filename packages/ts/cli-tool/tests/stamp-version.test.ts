@@ -44,8 +44,20 @@ describe('stampVersion', () => {
     expect(readFileSync(join(dir, 'src/v.ts'), 'utf8')).toBe(versionSource('1.2.3'))
   })
 
-  test('an unknown argument is a usage error', () => {
+  test('an unknown argument, or --out with no path, is a usage error', () => {
     expect(stampVersionMain(['--nope'], dir, () => {})).toBe(2)
+    const lines: string[] = []
+    expect(stampVersionMain(['--out'], dir, (l) => lines.push(l))).toBe(2)
+    expect(lines).toEqual(['cli-tool-stamp-version: --out needs a path'])
+  })
+
+  test('a missing package.json or output folder is one line and exit 1', () => {
+    const lines: string[] = []
+    expect(stampVersionMain(['--out', 'nope/v.ts'], dir, (l) => lines.push(l))).toBe(1)
+    rmSync(join(dir, 'package.json'))
+    expect(stampVersionMain([], dir, (l) => lines.push(l))).toBe(1)
+    expect(lines).toHaveLength(2)
+    expect(lines.every((l) => l.startsWith('cli-tool-stamp-version: '))).toBe(true)
   })
 
   test('a package.json with no version throws', () => {
@@ -73,7 +85,7 @@ describe('runMain --version', () => {
       },
       { name: 'tooly', context, argv: ['--version'], version: '4.5.6' },
     )
-    expect(context.io.out).toBe('4.5.6\n')
+    expect(context.io.out).toBe('tooly 4.5.6\n')
     expect(process.exitCode).toBe(0)
     expect(called).toBe(false)
   })

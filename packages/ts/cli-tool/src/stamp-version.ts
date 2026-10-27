@@ -60,7 +60,11 @@ export function stampVersion(
   return 'written'
 }
 
-/** The bin's main: `cli-tool-stamp-version [--check] [--out <path>]`. Returns the exit code. */
+/**
+ * The bin's main: `cli-tool-stamp-version [--check] [--out <path>]`. Returns
+ * the exit code: 2 for a bad argument, 1 for a stale file under `--check` or a
+ * package.json or output path that cannot be read or written.
+ */
 export function stampVersionMain(
   argv: readonly string[],
   cwd: string,
@@ -71,14 +75,25 @@ export function stampVersionMain(
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
     if (arg === '--check') check = true
-    else if (arg === '--out' && argv[i + 1] !== undefined) out = argv[++i]
-    else {
+    else if (arg === '--out') {
+      out = argv[++i]
+      if (out === undefined) {
+        write('cli-tool-stamp-version: --out needs a path')
+        return 2
+      }
+    } else {
       write(`cli-tool-stamp-version: unknown argument '${arg}'`)
       write('usage: cli-tool-stamp-version [--check] [--out <path>]')
       return 2
     }
   }
-  const result = stampVersion(cwd, out === undefined ? { check } : { out, check })
+  let result: StampResult
+  try {
+    result = stampVersion(cwd, out === undefined ? { check } : { out, check })
+  } catch (err) {
+    write(`cli-tool-stamp-version: ${err instanceof Error ? err.message : String(err)}`)
+    return 1
+  }
   if (result === 'stale') {
     write(
       `cli-tool-stamp-version: ${out ?? DEFAULT_OUT} does not match package.json; ` +

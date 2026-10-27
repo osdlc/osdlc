@@ -9,10 +9,11 @@
 // that installed the tarball, so it must not import other repo files. It is
 // not a test-runner suite and is not in `files`.
 //
-// Also runs the installed binary: `pr-update --help` must exit 0.
+// Also runs the installed binary: `pr-update --help` and `--version` must exit 0.
 
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -88,5 +89,11 @@ const bin = join(dist, '..', 'bin', 'pr-update.js')
 const help = spawnSync(process.execPath, [bin, '--help'], { encoding: 'utf8' })
 assert.equal(help.status, 0, `pr-update --help exited ${help.status}: ${help.stderr}`)
 assert.match(help.stdout, /pr-update/)
+
+// `--version` prints the version stamped from package.json.
+const pkg = JSON.parse(readFileSync(join(dist, '..', 'package.json'), 'utf8'))
+const version = spawnSync(process.execPath, [bin, '--version'], { encoding: 'utf8' })
+assert.equal(version.status, 0, `pr-update --version exited ${version.status}: ${version.stderr}`)
+assert.equal(version.stdout, `pr-update ${pkg.version}\n`)
 
 console.log('pr-update smoke: OK')

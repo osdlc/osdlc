@@ -10,7 +10,7 @@
  * status is outside the enum and which misses a required section: two error-level findings.
  */
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -139,6 +139,15 @@ describe('runCli — in-process over the fixture corpus', () => {
     const r = await runCli(['frobnicate'], { cwd: CORPUS })
     expect(r.code).toBe(2)
     expect(r.stderr).toContain('unknown command')
+  })
+
+  test('--version → the package version on stdout, exit 0', async () => {
+    const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
+    expect(await runCli(['--version'], { cwd: CORPUS })).toEqual({
+      code: 0,
+      stdout: pkg.version,
+      stderr: '',
+    })
   })
 
   test('--help → usage on stdout, exit 0', async () => {
