@@ -319,6 +319,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gfm-pipe-table"
+version = "0.4.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "glob-intersect"
 version = "0.3.0"
 dependencies = [
