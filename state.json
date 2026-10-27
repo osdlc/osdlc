@@ -57,9 +57,9 @@
       "line": 173,
       "title": "No test covers markdown-contract --version",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "9da3a4a12a59a2c4be6a6f6a8d9fa538317aad35"
     }
   ]
 }
