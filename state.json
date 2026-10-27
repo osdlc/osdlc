@@ -35,9 +35,9 @@
       "line": 42,
       "title": "Patch ignores release = false in release-plz.toml, so it can mask a crate the release never publishes",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "b2d7f6054166be566357bf140c0545244dc32a9e"
     }
   ]
 }
