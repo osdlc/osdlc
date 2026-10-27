@@ -46,9 +46,9 @@
       "line": null,
       "title": "RepoInfo.slug doc in repo-cleaner types.ts:39 still says owner/name",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "48047d905e1d77be0e1f30442de67102e8a02ca8"
     }
   ]
 }
