@@ -13,9 +13,9 @@
       "line": 296,
       "title": "Relaxed import rule also accepts unexported subpaths of this package",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "04a37a05cb1fa2dd453b21f6252ce2ce90a2e89b"
     },
     {
       "id": "r1-2",
