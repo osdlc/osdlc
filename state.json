@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 531,
-  "head": "a73da35ab5c017447b85cb2c2b6a7156114af5fe",
+  "head": "b2d7f6054166be566357bf140c0545244dc32a9e",
   "base": "00fb4b3196ef587127602d33308f1546be7687b0",
-  "round": 1,
+  "round": 2,
   "claim": {
     "owner": "KellyMBP.local:claude-kxd3i7",
     "at": "2026-10-27T08:55:21.476Z"
@@ -41,6 +41,28 @@
       "status": "fixed",
       "reason": null,
       "fixedIn": "b2d7f6054166be566357bf140c0545244dc32a9e"
+    },
+    {
+      "id": "r2-1",
+      "round": 2,
+      "path": "scripts/crates-io-unpublished-patch.ts",
+      "line": 45,
+      "title": "heldBackPackages ignores release/publish = false under [workspace], which release-plz applies to every package",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r2-2",
+      "round": 2,
+      "path": "scripts/crates-io-unpublished-patch.ts",
+      "line": 80,
+      "title": "import.meta.main needs Node 24.2+; engines allows 24.0, where the script prints no patch and exits 0; other scripts use the pathToFileURL check",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
     }
   ]
 }
