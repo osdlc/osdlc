@@ -2,10 +2,10 @@
  * Chooses a `CodeHost` for the repository at `cwd`, from its `origin` remote.
  *
  * GitHub is the only host this package can recognize by its domain. A
- * self-hosted Forgejo instance can live at any domain, so any remote that does
- * not contain `github.com` is taken as Forgejo. With no `origin` remote the
- * answer is GitHub. The `code_host.override` config key covers the cases this
- * rule gets wrong, such as a GitHub Enterprise host.
+ * self-hosted Forgejo instance can live at any domain, so any remote whose host
+ * is not `github.com` or a subdomain of it is taken as Forgejo. With no
+ * `origin` remote the answer is GitHub. The `code_host.override` config key
+ * covers the cases this rule gets wrong, such as a GitHub Enterprise host.
  *
  * Callers use `selectCodeHost` instead of constructing an adapter directly.
  * This is the one place the choice is made, so no caller branches on a
@@ -18,6 +18,7 @@ import { Git, parseRemoteUrl, type RemoteCoordinate } from '@osdlc/typed-git'
 import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { err, ok, type Result } from '@osdlc/result'
 import type { CodeHostFailure } from './failure.ts'
+import { isGithubHost } from './github-host.ts'
 import { DEFAULT_FORGEJO_TOKEN_ENV, ForgejoCodeHost } from './forgejo.ts'
 import { forgejoAuthChecks } from './forgejo-auth.ts'
 import { GithubCodeHost } from './github.ts'
@@ -34,7 +35,12 @@ export function codeHostNameForRemote(
 ): CodeHostName {
   if (override !== null) return override
   if (url === null) return 'github'
-  return url.includes('github.com') ? 'github' : 'forgejo'
+  // Match the host, not the whole URL: a path such as `/github.com-mirror/r`
+  // or a host such as `notgithub.com` names no GitHub repository. A remote
+  // `parseRemoteUrl` cannot read falls back to the substring test.
+  const ref = parseRemoteUrl(url)
+  if (ref === null) return url.includes('github.com') ? 'github' : 'forgejo'
+  return isGithubHost(ref.host) ? 'github' : 'forgejo'
 }
 
 /**
@@ -129,8 +135,8 @@ export function badRemoteFailure(host: CodeHostName, remote: string, url: string
  * `spawnRunner('gh')`, ...), so there is one option per binary. `opts.git`
  * reads the `origin` remote. `opts.gh` becomes `GithubCodeHost`'s runner.
  * `opts.curl` becomes `ForgejoCodeHost`'s runner. It is optional, and a real
- * `curl` runner is used when it is omitted. A test passes a fake to run
- * without a subprocess.
+ * `curl` runner, found on an absolute `PATH` entry only, is used when it is
+ * omitted. A test passes a fake to run without a subprocess.
  */
 export function selectCodeHost(
   cwd: string,
@@ -167,7 +173,8 @@ export function selectCodeHost(
       host: 'forgejo',
     })
   }
-  const curlRunner = opts.curl ?? spawnRunner('curl')
+  // curl runs in `cwd` and reads the token on stdin, so only from an absolute PATH entry.
+  const curlRunner = opts.curl ?? spawnRunner('curl', { absolutePathOnly: true })
   return ok(
     new ForgejoCodeHost({
       tokenEnv,

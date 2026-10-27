@@ -19,7 +19,7 @@
 
 import { randomBytes } from 'node:crypto'
 
-import type { HttpApi } from '@osdlc/cli-tool/http'
+import { readBody, type HttpApi } from '@osdlc/cli-tool/http'
 
 import type { SignIn } from './auth.ts'
 
@@ -58,30 +58,6 @@ function text(body: string, status: number, extra: Record<string, string> = {}):
     status,
     headers: { ...HEADERS, 'content-type': 'text/plain; charset=utf-8', ...extra },
   })
-}
-
-/**
- * At most `max` bytes of `request`'s body, or null when it is larger. Read as
- * a stream and given up past `max`: `/session` needs no token, so a chunked
- * body of any size must not be buffered first.
- */
-async function readBody(request: Request, max: number): Promise<string | null> {
-  if (Number(request.headers.get('content-length') ?? '0') > max) return null
-  if (request.body === null) return ''
-  const reader = request.body.getReader()
-  const chunks: Uint8Array[] = []
-  let size = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    size += value.byteLength
-    if (size > max) {
-      void reader.cancel().catch(() => {})
-      return null
-    }
-    chunks.push(value)
-  }
-  return new TextDecoder().decode(Buffer.concat(chunks))
 }
 
 /** The JSON body of `request`, or a Response refusing it. */

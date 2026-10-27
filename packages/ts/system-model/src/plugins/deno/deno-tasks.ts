@@ -5,16 +5,17 @@
  * directly instead of running `deno task`.
  *
  * A file named `deno.json` can still hold JSONC comments (`//` and
- * `/* … *\/`). This is common, and Deno's own parser accepts them whatever the
- * extension. `ctx.readJson` (`context.ts`'s `safeParse`) runs a strict
- * `JSON.parse` and returns `null` on failure, so it would silently drop every
- * config with comments. This runner reads the raw text with `ctx.readText`
- * and strips the comments itself before parsing.
+ * `/* … *\/`) and trailing commas. This is common, and Deno's own parser
+ * accepts them whatever the extension. `ctx.readJson` (`context.ts`'s
+ * `safeParse`) runs a strict `JSON.parse` and returns `null` on failure, so it
+ * would silently drop every such config. This runner parses the raw text as
+ * JSONC instead, and reports a file that still does not parse.
  */
 
 import type { ProviderContext } from '../../contract.ts'
-import type { ProviderResult, Task } from '../../model.ts'
+import type { Diagnostic, ProviderResult, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
+import { readJsonc } from '../support/jsonc.ts'
 import { dirOf, looksPersistent, taskId } from '../support/shared.ts'
 import { DENO_JSON, DENO_JSONC } from './ecosystem.ts'
 
@@ -37,74 +38,6 @@ interface DenoTaskObject {
 /** A `tasks` entry: either the raw command string, or `{ command, description? }`. */
 type DenoTaskValue = string | DenoTaskObject
 
-/**
- * Strip `//` line comments and `/* … *\/` block comments from JSONC text.
- * Either sequence inside a `"..."` string is left alone. The scan goes char by
- * char and tracks string state (including `\"` escapes), so
- * `"echo http://example.com"` stays intact.
- *
- * Minimal on purpose: no dependency, and only comments are handled. JSON5
- * extras (trailing commas, single quotes) are not supported. Deno's config
- * format needs only comments.
- */
-export function stripJsonComments(text: string): string {
-  let out = ''
-  let inString = false
-  let escaped = false
-
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]
-    const next = text[i + 1]
-
-    if (inString) {
-      out += ch
-      if (escaped) {
-        escaped = false
-      } else if (ch === '\\') {
-        escaped = true
-      } else if (ch === '"') {
-        inString = false
-      }
-      continue
-    }
-
-    if (ch === '"') {
-      inString = true
-      out += ch
-      continue
-    }
-
-    if (ch === '/' && next === '/') {
-      // Line comment: skip to (but not past) the newline.
-      i++
-      while (i + 1 < text.length && text[i + 1] !== '\n') i++
-      continue
-    }
-
-    if (ch === '/' && next === '*') {
-      // Block comment: skip past the closing `*/`, or to EOF if unterminated.
-      i += 2
-      while (i + 1 < text.length && !(text[i] === '*' && text[i + 1] === '/')) i++
-      i++
-      continue
-    }
-
-    out += ch
-  }
-
-  return out
-}
-
-async function readDenoConfig(ctx: ProviderContext, file: string): Promise<unknown> {
-  const text = await ctx.readText(file)
-  if (text === null) return null
-  try {
-    return JSON.parse(stripJsonComments(text))
-  } catch {
-    return null
-  }
-}
-
 export const denoTasksRunner: RunnerRole = {
   kind: 'parse',
   chain: CHAIN,
@@ -117,9 +50,20 @@ export const denoTasksRunner: RunnerRole = {
     if (configs.length === 0) return { status: 'absent', tasks: [], diagnostics: [] }
 
     const tasks: Task[] = []
+    const diagnostics: Diagnostic[] = []
 
     for (const file of configs) {
-      const parsed = await readDenoConfig(ctx, file)
+      const read = await readJsonc(ctx, file)
+      if (read === null) continue
+      if ('error' in read) {
+        diagnostics.push({
+          severity: 'warning',
+          message: `unparseable ${file}: ${read.error}`,
+          source: file,
+        })
+        continue
+      }
+      const parsed = read.value
       if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) continue
 
       const config = parsed as { tasks?: unknown }
@@ -172,7 +116,7 @@ export const denoTasksRunner: RunnerRole = {
     return {
       status: tasks.length > 0 ? 'ok' : 'absent',
       tasks,
-      diagnostics: [],
+      diagnostics,
     }
   },
 }

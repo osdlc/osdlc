@@ -89,6 +89,26 @@ describe('repeatable bounds', () => {
       expect((e as ContractBuildError).id).toBe('contract/repeat-bounds')
     }
   })
+
+  test.each([
+    [{ min: 1.5 }, /non-integer or negative min 1.5/],
+    [{ min: -1 }, /non-integer or negative min -1/],
+    [{ max: 1.5 }, /non-integer or negative max 1.5/],
+    [{ max: -1 }, /non-integer or negative max -1/],
+  ])('a repeatable slot with bounds %j throws contract/repeat-bounds', (bounds, message) => {
+    expect(() => section('Entry', { repeatable: true, ...bounds })).toThrow(message)
+  })
+
+  test('oneOf checks its bounds the same way', () => {
+    expect(() => oneOf(['A', 'B'], { min: 1 })).toThrow(/without ‘repeatable: true’/)
+    expect(() => oneOf(['A', 'B'], { repeatable: true, max: -1 })).toThrow(
+      /non-integer or negative max -1/,
+    )
+    expect(() => oneOf(['A', 'B'], { repeatable: true, min: 2, max: 1 })).toThrow(
+      /min 2 greater than max 1/,
+    )
+    expect(() => oneOf(['A', 'B'], { repeatable: true, min: 1, max: 2 })).not.toThrow()
+  })
 })
 
 describe('build-time key-collision guard', () => {

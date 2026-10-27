@@ -7,22 +7,23 @@
 
 import { dirname } from 'node:path'
 
+import { shellQuote } from '@osdlc/command-seam/quote'
+
 import { EXIT } from '../exit.ts'
+import type { CliIo } from '../io.ts'
 import { DevlinkError, history, install, link, off, status, use, type OpOptions } from './ops.ts'
-import type { ToolSpec } from './spec.ts'
+import { cwdDevVar, homeVar, type ToolSpec } from './spec.ts'
 
 /**
- * The output interface the dev command writes through: one function for stdout
- * and one for stderr.
- * @experimental
+ * The output interface the dev command writes through: the package's one
+ * {@link CliIo}, re-exported here for the devlink entry. It is the stable
+ * root interface, so it is not experimental here either.
  */
-export interface CliIo {
-  stdout(text: string): void
-  stderr(text: string): void
-}
+export type { CliIo }
 
 /**
- * The output interface backed by the real process streams.
+ * The output interface backed by the real process streams. Kept here rather
+ * than taken from `../io.ts`, whose runtime imports the devlink entry avoids.
  * @experimental
  */
 export const processIo: CliIo = {
@@ -40,10 +41,11 @@ export function usage(spec: ToolSpec): string {
 
 usage: ${n} dev <verb> [options]
 
-  install [--bin-dir DIR]   put a shim for this checkout's launcher onto PATH
+  install [PATH] [--bin-dir DIR]
+                            put a shim for this checkout's launcher onto PATH
                             (default DIR: \${XDG_BIN_HOME:-$HOME/.local/bin})
   link [PATH] [--label L]   make a checkout the one every '${n}' runs
-                            (default: the checkout above the cwd)
+                            (default: the checkout above the cwd, else this one)
   use <#N|PATH|canonical>   switch to history entry N, a path, or back to
                             the canonical install
   off                       back to the canonical install
@@ -57,17 +59,12 @@ ${order(spec)}
 }
 
 function order(spec: ToolSpec): string {
-  const stem = envStemOf(spec.name)
   return spec.cwdLayer === true
-    ? `Resolution order, first hit wins: \$${stem}_HOME, a checkout above the
-cwd (\$${stem}_CWD_DEV=0 turns that off), the linked checkout, the local
+    ? `Resolution order, first hit wins: \$${homeVar(spec)}, a checkout above the
+cwd (\$${cwdDevVar(spec)}=0 turns that off), the linked checkout, the local
 install.`
-    : `Resolution order, first hit wins: \$${stem}_HOME, the linked checkout, the
+    : `Resolution order, first hit wins: \$${homeVar(spec)}, the linked checkout, the
 local install.`
-}
-
-function envStemOf(name: string): string {
-  return name.toUpperCase().replace(/[^A-Z0-9]+/g, '_')
 }
 
 /**
@@ -262,14 +259,9 @@ function renderStatus(spec: ToolSpec, s: ReturnType<typeof status>): string {
     `  PATH:     ${names}\n` +
     (s.link.legacy !== null
       ? `note: an old link file is at ${s.link.legacy}; this release reads ${s.link.path}.\n` +
-        `  move it: mkdir -p ${sq(dirname(s.link.path))} && mv ${sq(s.link.legacy)} ${sq(s.link.path)}\n`
+        `  move it: mkdir -p ${shellQuote(dirname(s.link.path))} && mv ${shellQuote(s.link.legacy)} ${shellQuote(s.link.path)}\n`
       : '')
   )
-}
-
-/** `text` as one single-quoted POSIX shell word. */
-function sq(text: string): string {
-  return `'${text.replaceAll("'", "'\\''")}'`
 }
 
 function renderHistory(rows: ReturnType<typeof history>): string {

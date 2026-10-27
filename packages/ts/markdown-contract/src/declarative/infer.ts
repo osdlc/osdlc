@@ -29,11 +29,12 @@
  *    in `inferFieldSchema`.
  *  - Field types, tried in order: `const` (one value everywhere), number, boolean, array,
  *    `format` (date, datetime, email, url, uuid, …), `enum` (at most 12 values and fewer than
- *    half the files), then string. Each step accepts every value seen.
+ *    half the files), string, then a nested object. Each step accepts every value seen. A field
+ *    with mixed types (a number in one file, a string in another) is left unconstrained.
  *  - `--relax`: `order: none`, `additionalSections: true`, an open frontmatter object, and no
  *    enums.
  *  - Names: a contract is named after its folder's path from the root as a slug (`api`,
- *    `api-v1`, `web-v1`). Paths are unique, so names are too.
+ *    `api-v1`, `web-v1`). When two paths slug to one name, the later gets `-2`, `-3`, ….
  *
  * The output is ordinary `mcVersion: 2` YAML. Inference adds no format of its own.
  */
@@ -62,7 +63,10 @@ export interface InferOptions {
   depth?: number
   /** Loosen the result: no section order, extra sections and keys allowed, no enums. */
   relax?: boolean
-  /** Put the contracts inline in one config file, instead of one file per contract. */
+  /**
+   * `meta` mode only (ignored otherwise, and with `depth: 0`): put the contracts inline in one
+   * config file, instead of one file per contract.
+   */
   inline?: boolean
   /** Strings longer than this never become a `const` or an `enum` value. Default `64`. */
   maxConstStringLength?: number
@@ -106,7 +110,8 @@ interface InferSink {
  *   { frontmatter?: { type: "object"; required?: string[]; additionalProperties?: boolean;
  *                     properties?: Record<string, unknown> },
  *     body?: { order?: "none"|"recognized-relative"|"strict"; additionalSections?: boolean;
- *              sections?: Array<{ section: string; minContains?: number; maxContains?: number }> } }
+ *              sections?: Array<{ section: string; aliases?: string[]; minContains?: number;
+ *                                maxContains?: number }> } }
  *
  * @experimental
  */
@@ -411,7 +416,9 @@ function isScalar(v: unknown): v is string | number | boolean {
  *     `{ type: string, format: <name> }`.
  *  6. A small set of strings: at most 12 distinct values, fewer than half the files, and none
  *     over the length limit: `{ enum: [<values, in first-appearance order>] }`.
- *  7. Otherwise `{ type: string }`.
+ *  7. All plain objects: `{ type: object, ... }`, inferred key by key as the frontmatter is.
+ *  8. Otherwise (mixed types, such as a number in one doc and a string in another) `null`: no
+ *     schema in the subset accepts every value, so the caller leaves the field unconstrained.
  *
  * `fileCount` is the number of files in the group, used in step 6. `opts.relax` skips step 6.
  * `maxConstStringLength` keeps long text out of steps 1 and 6. `minConstExamples` keeps a value
@@ -422,7 +429,7 @@ function inferFieldSchema(
   values: unknown[],
   fileCount: number,
   opts: FieldInferOptions,
-): Record<string, unknown> {
+): Record<string, unknown> | null {
   if (values.length === 0) return { type: 'string' }
 
   // Null is handled first. No step accepts `null`, so a field with a `null` value would get a
@@ -439,6 +446,7 @@ function inferFieldSchema(
     }
     const baseSchema =
       nonNull.length > 0 ? inferFieldSchema(nonNull, fileCount, typedOpts) : { type: 'string' }
+    if (baseSchema === null) return null
     const { type, ...rest } = baseSchema as { type: string } & Record<string, unknown>
     return { type: [type, 'null'], ...rest }
   }
@@ -463,10 +471,9 @@ function inferFieldSchema(
   // with no enum (as with `relax`), so it accepts each item in the files.
   if (values.every((v) => Array.isArray(v))) {
     const items = (values as unknown[][]).flat()
-    return {
-      type: 'array',
-      items: inferFieldSchema(items, items.length, { ...opts, relax: true }),
-    }
+    // An array schema needs an item schema, so mixed items leave the whole field unconstrained.
+    const itemSchema = inferFieldSchema(items, items.length, { ...opts, relax: true })
+    return itemSchema === null ? null : { type: 'array', items: itemSchema }
   }
 
   // Steps 5 (format) and 6 (enum): all strings.
@@ -474,8 +481,19 @@ function inferFieldSchema(
     return stringRung(values as string[], fileCount, opts)
   }
 
-  // Step 7: a plain string accepts every value.
-  return { type: 'string' }
+  // Step 7: all plain objects → a nested object schema.
+  if (values.every(isPlainObject)) {
+    return inferObjectSchema(values as Record<string, unknown>[], values.length, opts)
+  }
+
+  // Step 8: mixed types. A `{ type: string }` would reject the non-strings, and the subset has no
+  // union of base types, so no schema is emitted.
+  return null
+}
+
+/** True for a mapping (not null, not an array). */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v)
 }
 
 /**
@@ -532,20 +550,41 @@ function enumRung(
 }
 
 /**
- * Infers the frontmatter as an object schema. Keys are in first-appearance order. `required`
- * lists the keys present in every doc. The others are left off, which makes them optional.
- * Field types come from `inferFieldSchema`. `additionalProperties: false` is always safe, since
- * every key seen is listed. `--relax` leaves it out and also turns off enums.
+ * Infers the frontmatter as an object schema, or `undefined` when no doc has a key. See
+ * `inferObjectSchema`. Step 6 compares against the group's file count, not the number of files
+ * with the field, so a field present in only some files does not become an enum by chance.
  */
 function inferFrontmatter(
   docs: ParsedDoc[],
   opts: FieldInferOptions,
 ): Record<string, unknown> | undefined {
+  if (docs.every((d) => Object.keys(d.frontmatter).length === 0)) return undefined
+  return inferObjectSchema(
+    docs.map((d) => d.frontmatter),
+    docs.length,
+    opts,
+  )
+}
+
+/**
+ * Infers an object schema from a list of mappings (the frontmatter, or a nested object field).
+ * Keys are in first-appearance order. `required` lists the keys present in every mapping. The
+ * others are left off, which makes them optional. Field types come from `inferFieldSchema`.
+ * `additionalProperties: false` is safe when every key seen is listed. `--relax` leaves it out
+ * and also turns off enums. A key whose values no schema accepts (mixed types) is left out of
+ * `properties` and `required`, and `additionalProperties: false` is then left out too, so the
+ * key stays allowed.
+ */
+function inferObjectSchema(
+  records: Record<string, unknown>[],
+  fileCount: number,
+  opts: FieldInferOptions,
+): Record<string, unknown> {
   const keys: string[] = []
   const seen = new Set<string>()
   const values = new Map<string, unknown[]>()
-  for (const doc of docs) {
-    for (const [key, value] of Object.entries(doc.frontmatter)) {
+  for (const record of records) {
+    for (const [key, value] of Object.entries(record)) {
       if (!seen.has(key)) {
         seen.add(key)
         keys.push(key)
@@ -554,23 +593,25 @@ function inferFrontmatter(
       values.get(key)!.push(value)
     }
   }
-  if (keys.length === 0) return undefined
 
-  // Step 6 compares against the group's file count, not the number of files with the field,
-  // so a field present in only some files does not become an enum by chance.
-  const fileCount = docs.length
   const properties: Record<string, unknown> = {}
   const required: string[] = []
+  let unconstrained = false
   for (const key of keys) {
-    const present = docs.filter((d) => key in d.frontmatter).length
-    if (present === docs.length) required.push(key)
-    properties[key] = inferFieldSchema(values.get(key)!, fileCount, opts)
+    const schema = inferFieldSchema(values.get(key)!, fileCount, opts)
+    if (schema === null) {
+      unconstrained = true
+      continue
+    }
+    const present = records.filter((r) => Object.hasOwn(r, key)).length
+    if (present === records.length) required.push(key)
+    properties[key] = schema
   }
 
   // Key order, as `migrate` writes it: type, required, additionalProperties, properties.
   const node: Record<string, unknown> = { type: 'object' }
   if (required.length > 0) node.required = required
-  if (!opts.relax) node.additionalProperties = false
+  if (!opts.relax && !unconstrained) node.additionalProperties = false
   node.properties = properties
   return node
 }
@@ -775,9 +816,10 @@ function slugify(name: string): string {
 
 /**
  * The name of a folder group from its path relative to the run folder: each segment slugged and
- * joined with `-` (`api/v1` → `api-v1`, `web/v1` → `web-v1`, `api` → `api`). Paths are unique,
- * so names are too. An empty path is the run folder, named after its basename (or `root` when
- * that slug is empty). The author can rename it.
+ * joined with `-` (`api/v1` → `api-v1`, `web/v1` → `web-v1`, `api` → `api`). Slugging can map
+ * two paths to one name (`my_docs` and `my-docs`), so `inferMeta` makes the names unique with
+ * `uniqueName`. An empty path is the run folder, named after its basename (or `root` when that
+ * slug is empty). The author can rename it.
  */
 function nameForDir(relDir: string, absRoot: string): string {
   if (relDir === '') {
@@ -785,6 +827,18 @@ function nameForDir(relDir: string, absRoot: string): string {
     return base === 'contract' ? 'root' : base
   }
   return relDir.split('/').map(slugify).join('-')
+}
+
+/**
+ * Returns `name`, or `name-2`, `name-3`, … when an earlier group already took it, and records the
+ * result in `taken`. Two groups with one name would share one registry entry and one contract
+ * file, so the later group's contract would silently replace the earlier one.
+ */
+function uniqueName(name: string, taken: Set<string>): string {
+  let candidate = name
+  for (let n = 2; taken.has(candidate); n++) candidate = `${name}-${n}`
+  taken.add(candidate)
+  return candidate
 }
 
 /**
@@ -879,11 +933,22 @@ function inferMeta(
   // The root group first, then the subfolder groups in walk order.
   const orderedKeys = [...(hasRoot ? [''] : []), ...groupOrder.filter((k) => k !== '')]
 
-  const contracts: InferredContract[] = orderedKeys.map((key) => ({
-    name: nameForDir(key, absRoot),
-    include: [key === '' ? '*.md' : `${key}/**/*.md`],
-    def: generalize(groups.get(key)!, opts, sink),
-  }))
+  const taken = new Set<string>()
+  const contracts: InferredContract[] = orderedKeys.map((key) => {
+    const slug = nameForDir(key, absRoot)
+    const name = uniqueName(slug, taken)
+    if (name !== slug) {
+      sink.warnings.push(
+        `renamed: the contract for ${key === '' ? 'the root folder' : `${key}/`} is named ` +
+          `'${name}', since another folder's name also slugs to '${slug}'`,
+      )
+    }
+    return {
+      name,
+      include: [key === '' ? '*.md' : `${key}/**/*.md`],
+      def: generalize(groups.get(key)!, opts, sink),
+    }
+  })
 
   for (const rel of stranded) {
     sink.warnings.push(

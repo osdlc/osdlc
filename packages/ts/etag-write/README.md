@@ -67,9 +67,12 @@ try {
 `data` to a uniquely named temp file beside `path`, fsyncs it, renames it over
 `path`, then fsyncs the directory where the platform allows it. The temp file
 sits in the same directory because a rename across file systems is not atomic.
-Its name is unique per write, so concurrent writers never share one. Any
-failure before the rename removes the temp file, leaves `path` as it was, and
-rethrows the error. Parent directories the write created stay.
+Its name is unique per write, so concurrent writers never share one, and it is
+created with the final mode, so its content is never more widely readable than
+`path`'s. Any failure before the rename removes the temp file, leaves `path` as
+it was, and rethrows the error. A temp name that is already taken fails the
+write and is left alone, since it is another writer's. Parent directories the
+write created stay.
 
 `atomicWriteAsync` is the same write over `fs/promises`.
 

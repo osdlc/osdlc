@@ -11,9 +11,7 @@
 
 import type { z } from 'zod'
 
-function isMapping(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
+import { isPlainObject } from './value.ts'
 
 interface Unrecognized {
   path: PropertyKey[]
@@ -101,7 +99,7 @@ export function stripUnknownKeys(
             : undefined,
         draft,
       )
-      if (!isMapping(parent)) continue
+      if (!isPlainObject(parent)) continue
       for (const key of issue.keys) {
         if (!(key in parent)) continue
         delete parent[key]

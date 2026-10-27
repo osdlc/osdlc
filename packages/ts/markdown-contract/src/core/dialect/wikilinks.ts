@@ -28,7 +28,7 @@ const VAULT_REF_RE = /(!?)\\?\[\\?\[([^\][]+)\]\]/g
  * the first `|`, and the fragment is everything after the first `#` in what is left. So
  * `[[Note#Part|alias]]` has a fragment, and `[[Note|alias#Part]]` has the alias `alias#Part` and
  * no fragment. A `^` after `#` stays in the fragment, so `[[Note#^block-id]]` gives the fragment
- * `^block-id`. The text between the brackets cannot contain `[`. One backslash before either
+ * `^block-id`. The text between the brackets cannot contain `[` or `]`. One backslash before either
  * bracket, as `remark-stringify` writes, is recognized and kept in `raw`.
  *
  * @param text The flattened text to search, for example `SectionView.text('all')`.

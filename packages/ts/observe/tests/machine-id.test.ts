@@ -16,6 +16,7 @@ import {
   deriveMachineId,
   isThisMachine,
   machineId,
+  machineIdCachePath,
   resolveMachineId,
   type MachineProbe,
 } from '../src/machine.ts'
@@ -100,7 +101,7 @@ describe('resolveMachineId', () => {
       })
       const first = resolveMachineId(counting, path)
       expect(first).toBe(derived('uuid-y'))
-      expect(readFileSync(path, 'utf8').trim()).toBe(first)
+      expect(readFileSync(path, 'utf8').trim().split(' ')[0]).toBe(first)
       expect(resolveMachineId(counting, path)).toBe(first)
       expect(probes).toBe(1)
     } finally {
@@ -120,10 +121,71 @@ describe('resolveMachineId', () => {
     }
   })
 
+  test("a cache written on another host is not this host's id: it derives again", () => {
+    // Two machines sharing one home directory, so one cache file.
+    const dir = mkdtempSync(join(tmpdir(), 'machine-id-'))
+    try {
+      const path = join(dir, 'machine-id')
+      const hostA = probe({ platform: 'linux', readFile: () => 'uuid-a', hostname: () => 'a' })
+      const hostB = probe({ platform: 'linux', readFile: () => 'uuid-b', hostname: () => 'b' })
+      expect(resolveMachineId(hostA, path)).toBe(derived('uuid-a'))
+      expect(resolveMachineId(hostB, path)).toBe(derived('uuid-b'))
+      expect(resolveMachineId(hostA, path)).toBe(derived('uuid-a'))
+      // The file names neither host.
+      expect(readFileSync(path, 'utf8')).not.toMatch(/\b[ab]\b/)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test('an id-only cache from before the host key is derived again', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'machine-id-'))
+    try {
+      const path = join(dir, 'machine-id')
+      writeFileSync(path, `${derived('someone-else')}\n`)
+      const id = resolveMachineId(probe({ platform: 'linux', readFile: () => 'uuid-w' }), path)
+      expect(id).toBe(derived('uuid-w'))
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
   test('works with no cache path', () => {
     expect(resolveMachineId(probe({ platform: 'linux', readFile: () => 'u' }), null)).toBe(
       derived('u'),
     )
+  })
+})
+
+describe('machineIdCachePath', () => {
+  const home = () => '/home/dev'
+  const noHome = () => {
+    throw new Error('no home')
+  }
+
+  test('is sdlc/machine-id under an absolute XDG_CACHE_HOME, else ~/.cache', () => {
+    expect(machineIdCachePath({ XDG_CACHE_HOME: '/xdg/cache' }, home)).toBe(
+      join('/xdg/cache', 'sdlc', 'machine-id'),
+    )
+    expect(machineIdCachePath({}, home)).toBe(join('/home/dev', '.cache', 'sdlc', 'machine-id'))
+  })
+
+  test('ignores a relative XDG_CACHE_HOME, so the cache never lands under the cwd', () => {
+    // Regression: the value was once used verbatim, so `.cache` wrote the id
+    // into whatever directory the process ran in, which can be a repository.
+    for (const value of ['.cache', 'cache/x', './c', '~/.cache']) {
+      expect(machineIdCachePath({ XDG_CACHE_HOME: value }, home)).toBe(
+        join('/home/dev', '.cache', 'sdlc', 'machine-id'),
+      )
+    }
+  })
+
+  test('with no home, only an absolute XDG_CACHE_HOME gives a cache', () => {
+    expect(machineIdCachePath({ XDG_CACHE_HOME: '/xdg/cache' }, noHome)).toBe(
+      join('/xdg/cache', 'sdlc', 'machine-id'),
+    )
+    expect(machineIdCachePath({}, noHome)).toBeNull()
+    expect(machineIdCachePath({ XDG_CACHE_HOME: '.cache' }, noHome)).toBeNull()
   })
 })
 

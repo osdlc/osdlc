@@ -18,6 +18,7 @@ import {
   tryParseJson,
   commandPrefix,
   type CommandOptions,
+  withStructured,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
@@ -181,11 +182,7 @@ function planAntigravity(command: readonly string[], spec: AgentCallSpec): Plann
 
 function parseAntigravity(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput {
   if (planned.outputFormat === 'text') {
-    const parsed: ParsedOutput = { text: raw.stdout.trim() }
-    if (planned.spec.output?.schema !== undefined) {
-      parsed.structured = tryParseJson(parsed.text)
-    }
-    return parsed
+    return withStructured(planned, { text: raw.stdout.trim() })
   }
 
   if (planned.outputFormat === 'stream-json') {

@@ -18,6 +18,8 @@ export default defineConfig({
   },
   test: {
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
+    // Fails fast when a workspace library's dist/ is missing or older than its src/.
+    globalSetup: ['tests/global-setup.ts'],
     setupFiles: ['tests/setup.ts'],
     // Some tests build throwaway git repositories and commit in them.
     env: {

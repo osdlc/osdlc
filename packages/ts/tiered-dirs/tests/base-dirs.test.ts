@@ -8,6 +8,8 @@ import {
   TieredDirs,
   TieredDirsError,
   envVars,
+  expandTilde,
+  homeDir,
   isOverridden,
   overrideVars,
   parseConvention,
@@ -155,6 +157,33 @@ describe('Windows', () => {
     expect(win({ ...base, TMP: 'C:\\Other' }).scratch).toBe('C:\\Other')
     // `join` uses the HOST separator, so assert the tail rather than the spelling.
     expect(win(base).scratch.endsWith('Temp')).toBe(true)
+  })
+
+  test('an override must be absolute by Windows rules: drive-relative and rooted-only throw', () => {
+    const win = (env: Record<string, string>) =>
+      systemBaseDirs(ENV, { platform: 'win32', env: { USERPROFILE: 'C:\\Users\\x', ...env } })
+    const code = (env: Record<string, string>): string | undefined => {
+      try {
+        win(env)
+        return undefined
+      } catch (error) {
+        return (error as TieredDirsError).code
+      }
+    }
+    for (const root of ['C:scratch', '/r', 'scratch']) {
+      expect([root, code({ EXAMPLE_ROOT: root })]).toEqual([root, 'RELATIVE_OVERRIDE'])
+    }
+    for (const root of ['C:\\r', 'C:/r', '\\\\srv\\share', '//srv/share']) {
+      expect(win({ EXAMPLE_ROOT: root }).durable).toBe(rootedBaseDirs(root).durable)
+    }
+  })
+
+  test('a relative APPDATA is ignored for the AppData default under the home', () => {
+    const bases = systemBaseDirs(ENV, {
+      platform: 'win32',
+      env: { USERPROFILE: 'C:\\Users\\x', APPDATA: 'rel' },
+    })
+    expect(bases.durable).toBe(join('C:\\Users\\x', 'AppData', 'Roaming'))
   })
 
   test('with no OS home for either, logs and runtime derive from durable', () => {
@@ -488,5 +517,55 @@ describe('the README example with an injected HOME', () => {
     expect(normalize(cli.standalone('tool').config().path)).toBe(
       normalize('/Users/ada/.config/tool'),
     )
+  })
+})
+
+describe('homeDir', () => {
+  test('an absolute HOME, or USERPROFILE on Windows, is the home', () => {
+    expect(homeDir({ platform: 'linux', env: { HOME: '/home/ada' } })).toBe('/home/ada')
+    expect(
+      homeDir({ platform: 'win32', env: { HOME: '/c/x', USERPROFILE: 'C:\\Users\\ada' } }),
+    ).toBe('C:\\Users\\ada')
+  })
+
+  test('a relative or empty HOME in an injected environment throws MISSING_BASE_DIR', () => {
+    for (const env of [{}, { HOME: '' }, { HOME: 'rel' }, { HOME: '~' }]) {
+      let code: string | undefined
+      try {
+        homeDir({ platform: 'linux', env })
+      } catch (err) {
+        code = (err as TieredDirsError).code
+      }
+      expect(code).toBe('MISSING_BASE_DIR')
+    }
+  })
+
+  test('a relative HOME in the process environment falls back to the account home', () => {
+    // The host's own variable and platform: the account home is a host path.
+    const key = process.platform === 'win32' ? 'USERPROFILE' : 'HOME'
+    const saved = process.env[key]
+    process.env[key] = 'relative-home'
+    try {
+      expect(homeDir()).toBe(userInfo().homedir)
+    } finally {
+      if (saved === undefined) delete process.env[key]
+      else process.env[key] = saved
+    }
+  })
+})
+
+describe('expandTilde', () => {
+  test('~ and ~/ expand everywhere; ~\\ only on Windows', () => {
+    expect(expandTilde('~', '/home/me', 'linux')).toBe('/home/me')
+    expect(expandTilde('~/w', '/home/me', 'linux')).toBe('/home/me/w')
+    expect(expandTilde('~\\w', '/home/me', 'linux')).toBe('~\\w')
+    expect(expandTilde('~\\w', 'C:\\Users\\me', 'win32')).toBe('C:\\Users\\me\\w')
+    expect(expandTilde('~/w', 'C:\\Users\\me', 'win32')).toBe('C:\\Users\\me\\w')
+  })
+
+  test('~user, a mid-path ~ and a relative path are returned unchanged', () => {
+    for (const path of ['~other/w', 'a/~/b', 'rel', '/abs']) {
+      expect(expandTilde(path, '/home/me', 'linux')).toBe(path)
+    }
   })
 })

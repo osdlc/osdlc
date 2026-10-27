@@ -1,0 +1,5 @@
+# Привет
+
+Six Cyrillic characters, two bytes each, and no extension. Byte 9 of the
+basename lands inside the fifth character, so any code that slices the last
+three bytes off this path to test for `.md` panics instead of mismatching.

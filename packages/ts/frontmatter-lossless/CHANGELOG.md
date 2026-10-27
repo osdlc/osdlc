@@ -1,5 +1,11 @@
 # @osdlc/frontmatter-lossless
 
+## 1.1.2
+
+### Patch Changes
+
+- b835ae4: The tests read the `frontmatter-lossless` Rust crate's conformance corpus in place instead of a pinned copy; CONTRIBUTING.md says so. No change to the published code.
+
 ## 1.1.1
 
 ### Patch Changes

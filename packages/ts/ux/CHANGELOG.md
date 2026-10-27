@@ -1,5 +1,11 @@
 # @osdlc/ux
 
+## 0.1.1
+
+### Patch Changes
+
+- b835ae4: New `controlPattern(options)`: a global `RegExp` that matches, one character at a time, the control characters `stripControls` removes with the same options, for a filter that must keep the text's length. `stripControls` checks each character against the same set.
+
 ## 0.1.0
 
 ### Minor Changes

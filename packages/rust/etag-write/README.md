@@ -101,7 +101,8 @@ for `etag_of_file`, `WriteError` for the write functions.
   mode bits, or the read-only flag on Windows. The setuid, setgid and sticky
   bits are dropped, because the new file has a new owner. Owner and group are
   not copied. A new file gets the same mode `fs::write` would give it: `0o666`
-  less the umask on Unix.
+  less the umask on Unix. On Unix the temp file is created with the kept mode,
+  so an owner-only file's new content is never readable by others mid-write.
 - **Temp files** are named `.<name>.etag-write-<pid>-<n>.tmp` in the target's
   directory. If a name is taken, the next `<n>` is tried, up to 65 names in all.
 - **Parent directories** are created as needed.

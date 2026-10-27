@@ -5,7 +5,15 @@
  * to one log.
  */
 
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
+import {
+  appendFileSync,
+  chmodSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -102,6 +110,34 @@ describe('the state machine', () => {
     const r = model.reduceSessionEvents(stamp(launched, to('running'), to('starting')))
     expect(r.state).toBe('running')
     expect(r.ignored.map((i) => [i.index, i.reason])).toEqual([[2, 'illegal_transition']])
+  })
+
+  test('a second launched is ignored and the first launch stands', () => {
+    const r = model.reduceSessionEvents(
+      stamp(launched, to('running'), { ...launched, id: 's2', cwd: '/other' }),
+    )
+    expect(r.ignored.map((i) => [i.index, i.reason])).toEqual([[2, 'repeated_launched']])
+    expect(r.record).toMatchObject({ id: 's1', cwd: '/work', state: 'running' })
+  })
+
+  test('a second outcome is ignored: the first outcome and exit code stand', () => {
+    const r = model.reduceSessionEvents(
+      stamp(
+        launched,
+        to('running'),
+        { kind: 'outcome', outcome: 'ok', exitCode: 0 },
+        { kind: 'outcome', outcome: 'failed', exitCode: 1 },
+      ),
+    )
+    expect(r.outcome).toBe('ok')
+    expect(r.record?.exitCode).toBe(0)
+    expect(r.ignored.map((i) => [i.index, i.reason])).toEqual([[3, 'repeated_outcome']])
+  })
+
+  test('a state_changed to ended with no ended event still stamps endedAt', () => {
+    const r = model.reduceSessionEvents(stamp(launched, to('running'), to('ended')))
+    expect(r.state).toBe('ended')
+    expect(r.record?.endedAt).toBe('2026-10-09T10:00:02.000Z')
   })
 
   test('the outcomes and states are the closed lists', () => {
@@ -300,6 +336,16 @@ describe('reading a session directory', () => {
       model.recordSessionEventAppliedIn(dir, { kind: 'ended' }, '2026-10-09T10:00:02.000Z')
         ?.applied,
     ).toBe(false)
+  })
+
+  test('record.json is written owner-only and leaves no temp file behind', () => {
+    model.recordSessionEventIn(dir, launched, '2026-10-09T10:00:00.000Z')
+    chmodSync(join(dir, RECORD_FILE), 0o644)
+    model.recordSessionEventIn(dir, to('running'), '2026-10-09T10:00:01.000Z')
+    expect(readdirSync(dir).sort()).toEqual([EVENTS_FILE, RECORD_FILE])
+    if (process.platform !== 'win32') {
+      expect(statSync(join(dir, RECORD_FILE)).mode & 0o777).toBe(0o600)
+    }
   })
 
   test('a log with no launched event has no record', () => {

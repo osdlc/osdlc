@@ -23,7 +23,10 @@ import {
 import {
   createHttpApi,
   httpApiCommand,
+  newToken,
+  readBody,
   serveHttp,
+  tokenEquals,
   type HttpApi,
   type HttpApiOptions,
   type HttpServer,
@@ -191,4 +194,15 @@ test('HTTP: a token, loopback only, and the same documents as --json', async () 
   } finally {
     await server.stop()
   }
+})
+
+test("HTTP: the pieces an app's own routes share with the API", async () => {
+  const token = newToken()
+  expect(token).toMatch(/^[0-9a-f]{32}$/)
+  expect(tokenEquals(token, token)).toBe(true)
+  expect(tokenEquals(token, newToken())).toBe(false)
+  const small = new Request('http://127.0.0.1/session', { method: 'POST', body: '{"a":1}' })
+  expect(await readBody(small, 64)).toBe('{"a":1}')
+  const large = new Request('http://127.0.0.1/session', { method: 'POST', body: 'x'.repeat(65) })
+  expect(await readBody(large, 64)).toBeNull()
 })

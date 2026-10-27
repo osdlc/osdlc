@@ -13,7 +13,7 @@ import {
   type CommandOptions,
   get,
   parseJsonLines,
-  tryParseJson,
+  withStructured,
 } from './shared.js'
 import type { AgentAdapter, ParsedOutput, RawProcessOutput } from './types.js'
 
@@ -182,11 +182,7 @@ function planOpencode(command: readonly string[], spec: AgentCallSpec): PlannedC
 
 function parseOpencode(planned: PlannedCall, raw: RawProcessOutput): ParsedOutput {
   if (planned.outputFormat === 'text') {
-    const parsed: ParsedOutput = { text: raw.stdout.trim() }
-    if (planned.spec.output?.schema !== undefined) {
-      parsed.structured = tryParseJson(parsed.text)
-    }
-    return parsed
+    return withStructured(planned, { text: raw.stdout.trim() })
   }
 
   const events = parseJsonLines(raw.stdout)
@@ -221,10 +217,7 @@ function parseOpencode(planned: PlannedCall, raw: RawProcessOutput): ParsedOutpu
     isError: errorDetail !== undefined,
     errorDetail,
   }
-  if (planned.spec.output?.schema !== undefined && text !== '') {
-    parsed.structured = tryParseJson(text)
-  }
-  return parsed
+  return withStructured(planned, parsed)
 }
 
 function opencodeConversation(

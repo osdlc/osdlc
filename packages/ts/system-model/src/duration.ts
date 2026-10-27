@@ -23,9 +23,10 @@
  * probe cost is a rough estimate, and `1.4s` is easier to read than `1423ms`.
  */
 export function humanMs(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`
-  if (ms < 60_000) return `${Math.round(ms / 1000)}s`
+  // Each unit is picked by the rounded value, so 999.6 is `1.0s`, not `1000ms`.
+  if (Math.round(ms) < 1000) return `${Math.round(ms)}ms`
+  if (ms < 9_950) return `${(ms / 1000).toFixed(1)}s`
+  if (Math.round(ms / 1000) < 60) return `${Math.round(ms / 1000)}s`
   return `${Math.round(ms / 60_000)}m`
 }
 
@@ -40,8 +41,12 @@ export function humanMs(ms: number): string {
  */
 export function humanAge(ms: number | undefined): string {
   if (ms === undefined) return 'of unknown age'
-  if (ms < 60_000) return `${Math.max(1, Math.round(ms / 1000))}s old`
-  if (ms < 3_600_000) return `${Math.round(ms / 60_000)}m old`
-  if (ms < 86_400_000) return `${Math.round(ms / 3_600_000)}h old`
+  // As in humanMs, a value that rounds up to the next unit is written in it.
+  const seconds = Math.max(1, Math.round(ms / 1000))
+  if (seconds < 60) return `${seconds}s old`
+  const minutes = Math.round(ms / 60_000)
+  if (minutes < 60) return `${minutes}m old`
+  const hours = Math.round(ms / 3_600_000)
+  if (hours < 24) return `${hours}h old`
   return `${Math.round(ms / 86_400_000)}d old`
 }

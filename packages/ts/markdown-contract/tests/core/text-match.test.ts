@@ -4,6 +4,7 @@ import { contract, docRule, section, sections } from '../../src/index.js'
 import { defaultRegistry, makeCtx } from '../../src/core/registry.js'
 import {
   buildTextFindings,
+  countBoundProblem,
   matchText,
   synthesizeTextId,
   type TextMatchSpec,
@@ -327,5 +328,44 @@ describe('the text plane is registered', () => {
     expect(tied[0]?.id).toBe('content/probe')
     expect(tied[1]?.id).toMatch(/^text\/forbids\/doc\//)
     expect(tied[2]?.id).toBe('rule/probe')
+  })
+})
+
+describe('countBoundProblem — the one count-bound check for code and YAML', () => {
+  test('a requires bound that leaves room for a hit is fine', () => {
+    expect(countBoundProblem('requires', { pattern: 'x' })).toBeUndefined()
+    expect(countBoundProblem('requires', { pattern: 'x', min: 2, max: 2 })).toBeUndefined()
+    expect(countBoundProblem('requires', { pattern: 'x', min: 0, max: 1 })).toBeUndefined()
+  })
+
+  test('a requires max below its minimum (default and at least 1) means absence', () => {
+    expect(countBoundProblem('requires', { pattern: 'x', max: 0 })?.id).toBe(
+      'contract/text-requires-purity',
+    )
+    expect(countBoundProblem('requires', { pattern: 'x', min: 0, max: 0 })?.id).toBe(
+      'contract/text-requires-purity',
+    )
+    expect(countBoundProblem('requires', { regex: 'a|b', min: 3, max: 1 })?.message).toBe(
+      'requires(/a|b/): a requires entry may not express absence (max 1 < 3); use forbids(...) for an absence check',
+    )
+  })
+
+  test('a forbids entry is checked on max alone, as the matcher reads it', () => {
+    expect(countBoundProblem('forbids', { pattern: 'x' })).toBeUndefined()
+    expect(countBoundProblem('forbids', { pattern: 'x', max: 0 })).toBeUndefined()
+    // `min` is ignored on a forbids entry, so it cannot make the bound unmeetable.
+    expect(countBoundProblem('forbids', { pattern: 'x', min: 3, max: 1 })).toBeUndefined()
+    expect(countBoundProblem('forbids', { pattern: 'x', max: -1 })).toEqual({
+      id: 'contract/text-count-bound',
+      message: 'forbids("x"): max (-1) is below 0, so the count bound can never be met',
+    })
+  })
+
+  test('NaN is decided as in the Rust twin: a NaN max is accepted, a NaN min floors at 1', () => {
+    expect(countBoundProblem('requires', { pattern: 'x', max: Number.NaN })).toBeUndefined()
+    expect(countBoundProblem('forbids', { pattern: 'x', max: Number.NaN })).toBeUndefined()
+    expect(countBoundProblem('requires', { pattern: 'x', min: Number.NaN, max: 0 })?.message).toBe(
+      'requires("x"): a requires entry may not express absence (max 0 < 1); use forbids(...) for an absence check',
+    )
   })
 })

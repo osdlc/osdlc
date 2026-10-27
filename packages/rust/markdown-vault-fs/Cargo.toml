@@ -1,0 +1,40 @@
+[package]
+name = "markdown-vault-fs"
+version = "0.3.1"
+# Held back from crates.io: first-release step 1 of 3. A first release needs
+# CARGO_REGISTRY_TOKEN, a new version of a published crate needs trusted
+# publishing, and one release-plz run uses one credential. Remove this line
+# and the entry in packages/rust/release-plz.toml in a pull request of their
+# own, after the trusted-publishing run that publishes agent-adapt 0.19.1 and
+# yaml-splice 0.3.2.
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+description = "Vault filesystem primitives: the visibility-policy walk, the excluded-files rules, the `_system/` rules, statSync-shaped timestamps, and a re-export of the path-guard containment guard"
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/markdown-vault-fs"
+readme = "README.md"
+keywords = ["markdown", "vault", "obsidian", "walk", "filesystem"]
+categories = ["filesystem"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+# Deliberately YAML-free: nothing here parses vault content, so the crate stays
+# small and pulls in no markdown or YAML stack.
+[dependencies]
+path-guard = { workspace = true }
+regex = { workspace = true }
+walkdir = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

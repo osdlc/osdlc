@@ -5,7 +5,9 @@
  */
 
 import { describe, expect, test } from 'vitest'
-import { dirname, resolve } from 'node:path'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { z } from 'zod'
@@ -208,6 +210,19 @@ describe('meta completeness test kit', () => {
     expect(
       consumerProblems(keyed({ ...VALID, consumers: ['meta.ts#zzNotThere'] }), SOURCE_ROOT),
     ).toEqual(['k: meta.ts#zzNotThere (symbol not in file)'])
+  })
+
+  test('consumerProblems matches a $-edged symbol as a whole identifier', () => {
+    const root = mkdtempSync(join(tmpdir(), 'meta-kit-'))
+    try {
+      writeFileSync(join(root, 'store.ts'), 'export const $config = 1\nexport const foo$bar = 2\n')
+      const refs = (consumers: string[]) => consumerProblems(keyed({ ...VALID, consumers }), root)
+      expect(refs(['store.ts#$config'])).toEqual([])
+      expect(refs(['store.ts#foo'])).toEqual(['k: store.ts#foo (symbol not in file)'])
+      expect(refs(['store.ts#config'])).toEqual(['k: store.ts#config (symbol not in file)'])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   test("enforcementProblems ties the vocabulary's reserved and applied levels to the facts", () => {

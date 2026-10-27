@@ -5,6 +5,8 @@
  * the tool was found. An `exec` runner is withheld unless execution is
  * allowed, and its withheld report appears only when its tool was detected.
  * Runners run concurrently. One that throws does not lose the others' work.
+ * One that runs past its probe timeout is stopped: its processes are killed
+ * and it reports an error, while the others go on.
  *
  * Each call lists and reads the repository again, with the discovery
  * settings recorded on the profile. Runners re-read the files they report on.
@@ -66,8 +68,8 @@ export interface ProbeRecord {
   queries: string[]
   /**
    * Every binary looked up through `ctx.which`, with what it found. A runner
-   * that picks a tool by what is installed (Procfile's manager, poe's `uv run`)
-   * gives another answer once that changes.
+   * that picks a tool by what is installed (Procfile's manager, gradle with no
+   * wrapper) gives another answer once that changes.
    */
   lookups: Record<string, string | null>
   watch: string[]
@@ -136,9 +138,30 @@ export function stateFor(
   )
 }
 
-/** The timeout each subprocess of `spec` gets: the caller's, the runner's, else the default. */
+/** The longest delay `setTimeout` honours, in ms. A longer one fires at once. */
+export const MAX_TIMER_MS = 2 ** 31 - 1
+
+/**
+ * The probe timeout of `spec`: the caller's for this runner, the caller's for
+ * every runner, the runner's own, else the default, then at most
+ * `maxProbeTimeoutMs`. It bounds each subprocess the runner starts and the
+ * whole probe. `Infinity` means no limit. A finite value is at most
+ * {@link MAX_TIMER_MS}.
+ */
 export function probeTimeout(spec: RunnerSpec, options: CollectOptions): number {
-  return options.timeouts?.[spec.id] ?? spec.role.probe?.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS
+  const own =
+    options.timeouts?.[spec.id] ??
+    options.probeTimeoutMs ??
+    spec.role.probe?.timeoutMs ??
+    DEFAULT_PROBE_TIMEOUT_MS
+  const limit = Math.min(own, options.maxProbeTimeoutMs ?? Infinity)
+  return limit === Infinity ? limit : Math.min(limit, MAX_TIMER_MS)
+}
+
+/** The diagnostic of a probe stopped at its timeout: `timed out after 10 s`. */
+export function timedOutMessage(ms: number): string {
+  const text = ms < 1000 ? `${Math.round(ms)} ms` : `${Number((ms / 1000).toFixed(1))} s`
+  return `timed out after ${text}`
 }
 
 export async function collectRunners(
@@ -167,6 +190,15 @@ export async function collectRunners(
     packageManagers: (dir) => choosePackageManagers(registry, profile, dir),
   }
   const observer = options.probeObserver
+  // The shared file listing, awaited before any runner's clock starts, so a
+  // slow listing does not count against a runner's own limit. A failed
+  // listing is the runners' to report when they ask for files.
+  let listed: Promise<void> | undefined
+  const listing = (): Promise<void> =>
+    (listed ??= state.lister.index().then(
+      () => undefined,
+      () => undefined,
+    ))
 
   const selected = selectRunners(registry, profile, options)
   options.onRunners?.(selected.map((s) => s.id))
@@ -178,43 +210,72 @@ export async function collectRunners(
         return withheld
       }
       const head = reportHead(spec, which)
+      const failed = (message: string): RunnerReport => ({
+        ...head,
+        status: 'error',
+        tasks: [],
+        skippedForExec: false,
+        diagnostics: [{ severity: 'error', message }],
+      })
       const reads = new Set<string>()
       const queries = new Set<string>()
       const lookups = new Map<string, string | null>()
+      const limit = probeTimeout(spec, options)
+      if (!(limit > 0)) {
+        const invalid = failed(`probe timeout must be a positive number or Infinity, got ${limit}`)
+        options.onReport?.(invalid)
+        return invalid
+      }
+      await listing()
+      // Aborted at the timeout, which kills every process tree this runner started.
+      const stop = new AbortController()
+      const ownSignal = AbortSignal.any([signal, stop.signal])
       const own: RunnerContext = {
         ...ctx,
-        runner: boundRunners(makeRunner, signal, probeTimeout(spec, options)),
+        signal: ownSignal,
+        runner: boundRunners(makeRunner, ownSignal, limit),
       }
       const recording = observer === undefined ? own : recordReads(own, reads, queries, lookups)
 
       const startedAt = performance.now()
-      let report: RunnerReport
-      try {
-        const result = await spec.role.collect(recording, spec.packages)
-        report = { ...head, ...result, skippedForExec: false }
-      } catch (err) {
-        report = {
-          ...head,
-          status: 'error',
-          tasks: [],
-          skippedForExec: false,
-          diagnostics: [{ severity: 'error', message: describe(err) }],
+      const work = (async (): Promise<RunnerReport> => {
+        try {
+          const result = await spec.role.collect(recording, spec.packages)
+          return { ...head, ...result, skippedForExec: false }
+        } catch (err) {
+          return failed(describe(err))
         }
-      }
+      })()
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const timedOut =
+        limit === Infinity
+          ? null
+          : new Promise<null>((resolve) => {
+              timer = setTimeout(() => resolve(null), limit)
+            })
+      const answer = await (timedOut === null ? work : Promise.race([work, timedOut]))
+      clearTimeout(timer)
+      const report = answer ?? failed(timedOutMessage(limit))
+      // `work` is not cancelled, only its subprocesses are killed. A runner
+      // that hangs on something else stays pending until the process exits.
+      if (answer === null) stop.abort(new Error(timedOutMessage(limit)))
 
       const durationMs = performance.now() - startedAt
       options.onProbe?.({ runner: spec.id, durationMs })
-      observer?.({
-        runner: spec.id,
-        kind: spec.role.kind,
-        durationMs,
-        reads: [...reads, ...evidencePaths(spec.packages)],
-        queries: [...queries, ...spec.patterns],
-        lookups: Object.fromEntries([...lookups].sort(([a], [b]) => (a < b ? -1 : 1))),
-        watch: spec.role.watch ?? [],
-        report,
-        files: ctx.files,
-      })
+      // A probe cut off at its timeout read only part of what it needs, so it is not stored.
+      if (answer !== null) {
+        observer?.({
+          runner: spec.id,
+          kind: spec.role.kind,
+          durationMs,
+          reads: [...reads, ...evidencePaths(spec.packages)],
+          queries: [...queries, ...spec.patterns],
+          lookups: Object.fromEntries([...lookups].sort(([a], [b]) => (a < b ? -1 : 1))),
+          watch: spec.role.watch ?? [],
+          report,
+          files: ctx.files,
+        })
+      }
       options.onReport?.(report)
       return report
     }),

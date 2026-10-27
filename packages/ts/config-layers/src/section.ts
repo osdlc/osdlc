@@ -116,7 +116,7 @@ function secretIssues(
   project: unknown,
   paths: readonly (readonly string[])[],
 ): ConfigIssue[] {
-  if (typeof project !== 'object' || project === null) return []
+  if (project === undefined || project === null) return []
   return secretKeysSet({ [key]: project }, paths).map((path) => ({
     path,
     message: `a secret value cannot be set in the project file; set it in ${SECRET_ALLOWED_LAYERS}`,

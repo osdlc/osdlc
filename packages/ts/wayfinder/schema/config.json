@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://unpkg.com/@osdlc/wayfinder@0.8/schema/config.json",
+  "$id": "https://unpkg.com/@osdlc/wayfinder@0.11/schema/config.json",
   "title": "wayfinder configuration",
   "type": "object",
   "properties": {
@@ -24,6 +24,19 @@
             "type": "string"
           },
           "description": "Preferred display order. Runners not named follow alphabetically."
+        },
+        "timeout": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 3600
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Seconds one runner may take to list its tasks, its subprocesses included. A runner still running then is stopped and shows \"timed out\". null (the default): each runner has its own limit, 10 for just and task, 30 for mise and rake, 120 for moon, 300 for gradle and sbt, 60 for the rest. A project file can only lower a limit: each runner takes the smaller of its value and the limit it would have."
         }
       },
       "description": "Which runners are read, and in what order they are shown."

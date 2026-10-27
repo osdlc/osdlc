@@ -62,6 +62,20 @@ function doc(reports: RunnerReport[]) {
   }
 }
 
+function skill(name: string) {
+  return {
+    id: `skill:.claude/skills/${name}/SKILL.md`,
+    name,
+    description: `the ${name} skill`,
+    argumentHint: null,
+    path: `.claude/skills/${name}/SKILL.md`,
+    scope: 'project',
+    origin: 'project',
+    harnesses: ['claude'],
+    invoke: `/${name}`,
+  }
+}
+
 const fresh = (runner: string) => ({
   runner,
   state: 'fresh',
@@ -247,6 +261,74 @@ describe('step-by-step loading in the page', () => {
     await loaded
     expect($('out').textContent).toContain('Nothing collected.')
     expect($('announce').textContent).toBe('0 tasks loaded')
+  })
+
+  test('the skills are drawn when their line arrives, after the runner tabs', async () => {
+    const server = streaming()
+    const loaded = load({ cached: true })
+    await vi.waitFor(() => expect(server.bodies).toHaveLength(1))
+    server.line({ pending: ['make', 'just'], total: 2 })
+    server.line({ pending: ['make', 'just'], total: 2, skills: [skill('review')] })
+    await drawn()
+    expect(tabNames()).toEqual(['all', 'make', 'just', 'Skills'])
+    expect($('tabs').textContent).toMatch(/Skills\s*1/)
+    expect($('out').textContent).toContain('/review')
+    expect($('status').textContent).toContain('loading 2 of 2')
+
+    server.line({
+      pending: ['just'],
+      total: 2,
+      report: report('make', ['build']),
+      cache: fresh('make'),
+      unknowns: [],
+    })
+    await drawn()
+    // A runner's rows do not drop the skills, and the tabs keep their places.
+    expect(tabNames()).toEqual(['all', 'make', 'just', 'Skills'])
+    expect($('out').textContent).toContain('/review')
+    server.finish({
+      ...doc([report('make', ['build']), report('just', [])]),
+      skills: [skill('review')],
+    })
+    await loaded
+    expect(tabNames()).toEqual(['all', 'make', 'Skills'])
+  })
+
+  test('skill text from the line is escaped', async () => {
+    const server = streaming()
+    const loaded = load({ cached: true })
+    await vi.waitFor(() => expect(server.bodies).toHaveLength(1))
+    server.line({ pending: ['make'], total: 1 })
+    server.line({
+      pending: ['make'],
+      total: 1,
+      skills: [{ ...skill('x'), description: '<img src=x onerror=alert(1)>' }],
+    })
+    await drawn()
+    expect($('out').querySelector('img')).toBeNull()
+    expect($('out').textContent).toContain('<img src=x onerror=alert(1)>')
+    server.finish(doc([]))
+    await loaded
+  })
+
+  test('a runner cut off at its timeout shows the reason in place', async () => {
+    const server = streaming()
+    const loaded = load({ cached: true })
+    await vi.waitFor(() => expect(server.bodies).toHaveLength(1))
+    const hang: RunnerReport = {
+      ...report('hang', []),
+      status: 'error',
+      diagnostics: [{ severity: 'error', message: 'timed out after 10 s' }],
+    }
+    server.line({ pending: ['hang', 'make'], total: 2 })
+    server.line({ pending: ['make'], total: 2, report: hang, cache: fresh('hang'), unknowns: [] })
+    await drawn()
+    expect($('out').textContent).toContain('hang: timed out after 10 s')
+    expect($('status').textContent).toContain('loading 1 of 2: make')
+    server.finish(doc([hang, report('make', ['build'])]))
+    await loaded
+    expect($('out').textContent).toContain('hang: timed out after 10 s')
+    expect($('announce').textContent).toBe('1 task loaded, 1 runner failed')
   })
 
   test('a failed runner is counted when the load ends', async () => {

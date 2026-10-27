@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { valueAt, valueIsSet } from '../src/value.ts'
+import { getIn, valueAt, valueIsSet } from '../src/value.ts'
 
 describe('valueAt', () => {
   test('walks a dotted key', () => {
@@ -11,6 +11,16 @@ describe('valueAt', () => {
     expect(valueAt(cfg, 'nope.deeper')).toBeUndefined()
     expect(valueAt(null, 'a')).toBeUndefined()
     expect(valueAt('str', 'length')).toBeUndefined()
+  })
+
+  test('walks own keys of mappings only, as getIn does', () => {
+    const cfg = { list: ['a'], m: {} }
+    expect(valueAt(cfg, 'list.0')).toBeUndefined()
+    expect(valueAt(cfg, 'list.length')).toBeUndefined()
+    expect(valueAt(cfg, 'm.constructor')).toBeUndefined()
+    expect(valueAt(cfg, 'toString')).toBeUndefined()
+    expect(getIn(cfg, ['m', 'constructor'])).toEqual({ found: false, value: undefined })
+    expect(getIn(cfg, ['m'])).toEqual({ found: true, value: {} })
   })
 })
 

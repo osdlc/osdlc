@@ -18,7 +18,8 @@
  *     failure.
  */
 
-import { err, ok, type Result } from '@osdlc/result'
+import { methodFacade, tryMethods, tryMethodsAsync } from '@osdlc/command-seam'
+import type { Result } from '@osdlc/result'
 
 import { thrownGitFailure, type GitFailure } from './failure.ts'
 
@@ -45,56 +46,19 @@ export type TriedAsync<C> = {
     : never
 }
 
-/** A thrown git failure becomes an `err`; anything else is thrown again. */
-function asFailure(error: unknown): Result<never, GitFailure> {
-  const failure = thrownGitFailure(error)
-  if (failure !== null) return err(failure)
-  throw error
-}
-
 /**
- * A `Proxy` rather than a generated object: it mirrors whatever the client
- * has, including methods like `isDirty` that call other verbs, with no
- * per-verb entry to keep in step. Methods are invoked on the
- * client itself, not on the proxy, so private state stays reachable.
+ * Wrap a synchronous client so every method returns a `Result<T, GitFailure>`.
+ * The proxy is command-seam's `tryMethods`: it mirrors whatever the client
+ * has, with no per-verb entry to keep in step, and runs each method on the
+ * client itself, so private state stays reachable.
  */
-function facade<C extends object, F>(
-  client: C,
-  wrap: (call: () => unknown, name: string) => F,
-): unknown {
-  return new Proxy(client, {
-    get(target, prop) {
-      // Read from the target, not the proxy: a getter (`try` itself) must run
-      // against the real client rather than recursing through the proxy.
-      const value: unknown = Reflect.get(target, prop)
-      if (typeof value !== 'function') return value
-      const method = value as (...a: unknown[]) => unknown
-      const name = String(prop)
-      return (...args: unknown[]) => wrap(() => method.apply(target, args), name)
-    },
-  })
-}
-
-/** Wrap a synchronous client so every method returns a `Result<T, GitFailure>`. */
 export function triedSync<C extends object>(client: C): TriedSync<C> {
-  return facade(client, (call): Result<unknown, GitFailure> => {
-    try {
-      return ok(call())
-    } catch (error) {
-      return asFailure(error)
-    }
-  }) as TriedSync<C>
+  return tryMethods(client, thrownGitFailure) as unknown as TriedSync<C>
 }
 
 /** Wrap an awaitable client so every method promises a `Result<T, GitFailure>`. */
 export function triedAsync<C extends object>(client: C): TriedAsync<C> {
-  return facade(client, async (call): Promise<Result<unknown, GitFailure>> => {
-    try {
-      return ok(await call())
-    } catch (error) {
-      return asFailure(error)
-    }
-  }) as TriedAsync<C>
+  return tryMethodsAsync(client, thrownGitFailure) as unknown as TriedAsync<C>
 }
 
 // ── git.soft ────────────────────────────────────────────────────────────────
@@ -173,7 +137,7 @@ function fallbackFor(table: SoftTable, name: string): unknown {
 
 /** Wrap a synchronous client so a failed call returns the verb's absence value. */
 export function softSync<C extends object>(client: C, table: SoftTable): Soft<C> {
-  return facade(client, (call, name) => {
+  return methodFacade(client, (call, name) => {
     try {
       return call()
     } catch (error) {
@@ -185,7 +149,7 @@ export function softSync<C extends object>(client: C, table: SoftTable): Soft<C>
 
 /** Wrap an awaitable client so a failed call resolves to the verb's absence value. */
 export function softAsync<C extends object>(client: C, table: SoftTable): Soft<C> {
-  return facade(client, async (call, name) => {
+  return methodFacade(client, async (call, name) => {
     try {
       return await call()
     } catch (error) {

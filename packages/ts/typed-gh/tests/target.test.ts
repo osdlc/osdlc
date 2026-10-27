@@ -31,6 +31,7 @@ import {
   prUpdateBranch,
   prView,
   repoList,
+  repoView,
   setIssueLabel,
   type AsyncCommandRunner,
   type CommandRunner,
@@ -147,11 +148,44 @@ describe("an empty hostname ''", () => {
     )
     expect(wire(authStatus(empty))).toEqual(wire(authStatus(none)))
     expect(wire(repoList('acme', {}, empty))).toEqual(wire(repoList('acme', {}, none)))
+    expect(wire(repoView(undefined, ['name'], empty))).toEqual(
+      wire(repoView(undefined, ['name'], none)),
+    )
+    expect(repoView('acme/other', ['name'], { hostname: '' }).argv[2]).toBe('acme/other')
   })
 
   test('clients accept it', () => {
     expect(() => new Gh('/repo', empty)).not.toThrow()
     expect(() => new AsyncGh('/repo', empty)).not.toThrow()
+  })
+})
+
+describe('repoView names the repository as --repo does', () => {
+  const target = { repo: 'acme/widgets', hostname: 'ghe.acme.com' }
+  const repoFlag = (argv: string[]) => argv[argv.indexOf('--repo') + 1]
+
+  test('host/owner/name, from the target or the repo argument', () => {
+    expect(repoView(undefined, ['name'], target).argv[2]).toBe(repoFlag(prBody(7, target).argv))
+    expect(repoView('acme/other', ['name'], target).argv[2]).toBe(
+      repoFlag(prList({ repo: 'acme/other' }, target).argv),
+    )
+    expect(repoView('acme/other', ['name'], target).argv[2]).toBe('ghe.acme.com/acme/other')
+  })
+
+  test('no repository names none, and a bad one throws for both', () => {
+    expect(repoView(undefined, ['name']).argv[2]).toBe('--json')
+    expect(() => repoView('--x/y', ['name'], target)).toThrow(RangeError)
+    expect(() => prList({ repo: '--x/y' }, target)).toThrow(RangeError)
+  })
+})
+
+describe('a label name that reads as a flag', () => {
+  test('throws RangeError instead of reaching gh as an option', () => {
+    expect(() => createLabel({ name: '--repo=o/x', color: 'fff', description: '' })).toThrow(
+      RangeError,
+    )
+    expect(() => editLabel('-x', {})).toThrow(RangeError)
+    expect(() => editLabel('needs-review', {})).not.toThrow()
   })
 })
 

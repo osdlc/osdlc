@@ -8,40 +8,32 @@
  * - a PR URL names the repository too;
  * - no target means the PR for the branch checked out here.
  *
- * `parsePrInput` works for any code host except for URLs. Only GitHub URLs are
- * parsed, through `@osdlc/typed-gh`'s `parsePrUrl`. Another host's URL form would
- * be one more branch here.
+ * `parsePrInput` works for any code host except for URLs. It reads the text
+ * with `@osdlc/typed-gh`'s `parsePrRef`, so `owner/repo#N` is held to the same
+ * slug rule as typed-gh's (an owner starts with a letter or digit, neither
+ * part holds anything but letters, digits, `_`, `.` and `-`). Only GitHub
+ * URLs are parsed, through typed-gh's `parsePrUrl`. Another host's URL form
+ * would be one more branch here.
  */
 
-import { parsePrUrl } from '@osdlc/typed-gh'
+import { parsePrRef } from '@osdlc/typed-gh'
 
 import type { PrInput } from './types.ts'
-
-// Matches an `owner/repo#N` PR reference.
-const OWNER_REPO_PR_RE = /^([\w.-]+)\/([\w.-]+)#(\d+)$/
 
 /** Parse the positional/flag value; null when it is none of the four shapes. */
 export function parsePrInput(raw: string | null | undefined): PrInput | null {
   const text = (raw ?? '').trim()
   if (text === '') return { kind: 'current' }
 
-  const asNumber = /^#?(\d+)$/.exec(text)
-  if (asNumber !== null) {
-    const number = Number(asNumber[1])
-    return number > 0 && Number.isSafeInteger(number) ? { kind: 'number', number } : null
+  const ref = parsePrRef(text)
+  // A branch name is not one of the four shapes: the current branch is the empty target.
+  if (ref === null || ref.kind === 'branch') return null
+  if (ref.kind === 'url') {
+    return {
+      kind: 'url',
+      ref: { codeHost: 'github', owner: ref.owner, repo: ref.repo, number: ref.number },
+    }
   }
-
-  const slug = OWNER_REPO_PR_RE.exec(text)
-  if (slug !== null) {
-    const number = Number(slug[3])
-    if (!(number > 0 && Number.isSafeInteger(number))) return null
-    return { kind: 'slug', owner: slug[1]!, repo: slug[2]!, number }
-  }
-
-  const ref = parsePrUrl(text)
-  if (ref === null) return null
-  return {
-    kind: 'url',
-    ref: { codeHost: 'github', owner: ref.owner, repo: ref.repo, number: ref.number },
-  }
+  if (ref.repo === null) return { kind: 'number', number: ref.number }
+  return { kind: 'slug', owner: ref.repo.owner, repo: ref.repo.repo, number: ref.number }
 }

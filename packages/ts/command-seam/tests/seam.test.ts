@@ -386,38 +386,46 @@ describe('spawnRunnerAsync — capture contract', () => {
     expect(r.stderr).toBe('b�')
   })
 
-  test('the timeout path detaches from the pipes a surviving grandchild holds', async () => {
-    // The SIGKILL ends only the direct child. The grandchild keeps the write
-    // ends and keeps writing. With the handlers left attached, the parent
-    // keeps appending that output to a string no one reads. In a long-lived
-    // host that memory grows without limit (about 26MB over the two seconds
-    // this test watches). The writer shows whether the read end was closed.
-    // The grandchild's loop stops on the first failed write, so it exits once
-    // the parent closes the pipe, and runs forever while the parent reads.
-    const dir = mkdtempSync(join(tmpdir(), 'seam-pipe-detach-'))
-    let pid = 0
-    try {
-      const pidFile = join(dir, 'pid')
-      const sh = spawnRunnerAsync('sh')
-      const r = await sh.run(
-        [
-          '-c',
-          'while :; do echo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx || break; done' +
-            ' & echo $! > "$1"; wait',
-          'sh',
-          pidFile,
-        ],
-        { cwd: CWD, timeoutMs: 250 },
-      )
-      expect(r.exitCode).not.toBe(0)
-      pid = Number(readFileSync(pidFile, 'utf-8').trim())
-      expect(pid).toBeGreaterThan(0)
-      expect(await gone(pid)).toBe(true)
-    } finally {
-      reap(pid)
-      rmSync(dir, { recursive: true, force: true })
-    }
-  }, 10_000)
+  // POSIX only (https://github.com/osdlc/osdlc/issues/491): on Windows the
+  // grandchild is an MSYS subshell. Its `$!` may not be a Windows pid, and its
+  // writes do not reliably fail once the pipe closes. The test failed and is
+  // the likely cause of the hung windows tier 2 jobs.
+  test.skipIf(process.platform === 'win32')(
+    'the timeout path detaches from the pipes a surviving grandchild holds',
+    async () => {
+      // The SIGKILL ends only the direct child. The grandchild keeps the write
+      // ends and keeps writing. With the handlers left attached, the parent
+      // keeps appending that output to a string no one reads. In a long-lived
+      // host that memory grows without limit (about 26MB over the two seconds
+      // this test watches). The writer shows whether the read end was closed.
+      // The grandchild's loop stops on the first failed write, so it exits once
+      // the parent closes the pipe, and runs forever while the parent reads.
+      const dir = mkdtempSync(join(tmpdir(), 'seam-pipe-detach-'))
+      let pid = 0
+      try {
+        const pidFile = join(dir, 'pid')
+        const sh = spawnRunnerAsync('sh')
+        const r = await sh.run(
+          [
+            '-c',
+            'while :; do echo xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx || break; done' +
+              ' & echo $! > "$1"; wait',
+            'sh',
+            pidFile,
+          ],
+          { cwd: CWD, timeoutMs: 250 },
+        )
+        expect(r.exitCode).not.toBe(0)
+        pid = Number(readFileSync(pidFile, 'utf-8').trim())
+        expect(pid).toBeGreaterThan(0)
+        expect(await gone(pid)).toBe(true)
+      } finally {
+        reap(pid)
+        rmSync(dir, { recursive: true, force: true })
+      }
+    },
+    10_000,
+  )
 })
 
 describe('spawnRunnerAsync — processGroup', () => {

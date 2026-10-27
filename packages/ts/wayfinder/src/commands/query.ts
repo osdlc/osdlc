@@ -35,7 +35,7 @@ export function queryCommand(home: string) {
     items: { field: 'tasks', kind: 'task' },
     exits: { 1: 'the terms matched nothing' },
     readOnly: true,
-    examples: ['query build', "query 'dev web --json", 'query test --services'],
+    examples: ['query build', 'query "\'dev" web --json', 'query test --services'],
     async run({ flags, globals, positionals }, ctx) {
       const filter = {
         ...filterFrom(flags),

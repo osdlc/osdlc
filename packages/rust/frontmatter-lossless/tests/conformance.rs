@@ -6,9 +6,9 @@
 //! regression in one code path fails every fixture it affects.
 //!
 //! The corpus is plain JSON at `tests/fixtures/conformance.json`, and this
-//! file loads it. The TypeScript version, `@osdlc/frontmatter-lossless`, tests
-//! a copy of the same corpus, so the two implementations agree on every case. Each fixture is
-//! `{ name, source, split, lenient }` where `split` is the strict
+//! file loads it. The TypeScript version, `@osdlc/frontmatter-lossless`, reads
+//! the same file, so the two implementations agree on every case. Each fixture
+//! is `{ name, source, split, lenient }` where `split` is the strict
 //! [`split`] outcome (`yaml` null when there is no block, plus the
 //! `bom`/`openEol`/`closeEol` shape) and `lenient` is the [`split_lenient`]
 //! outcome (`null` when it finds no block). The round trip,

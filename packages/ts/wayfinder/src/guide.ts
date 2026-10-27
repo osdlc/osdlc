@@ -309,8 +309,8 @@ stored answers and a \`binary\` not on the PATH.
 
 A cached \`generatedAt\` is the OLDEST contributing probe time.
 
-Over HTTP, \`${BIN} serve\` adds \`trustable\`, the server's own reading of
-the gate it resolved.
+A trust grant would help when \`unknowns\` holds a \`withheld\` entry with
+reason \`untrusted\` or \`tool-untrusted\` (the web page works this out itself).
 
 Trimmed example:
 

@@ -23,6 +23,8 @@ import { compileBodyTextRule } from './text.js'
  * @param yamlText The contract's YAML text.
  * @returns The compiled contract.
  * @throws {DeclarativeError} When the YAML is not a valid contract, including an `mcVersion: 1` file.
+ * @throws {ContractBuildError} When the compiled grammar is malformed, such as two sections with
+ *   the same camelCase key (`contract/key-collision`).
  * @example
  * ```ts
  * const c = loadContract(`
@@ -51,6 +53,8 @@ export function loadContract(yamlText: string): Contract {
  * @param path The contract file's path.
  * @returns The compiled contract.
  * @throws {DeclarativeError} When the YAML is not a valid contract.
+ * @throws {ContractBuildError} When the compiled grammar is malformed, such as two sections with
+ *   the same camelCase key (`contract/key-collision`).
  * @throws {Error} When the file cannot be read.
  */
 export function loadContractFile(path: string): Contract {
@@ -66,6 +70,8 @@ export function loadContractFile(path: string): Contract {
  * @returns The compiled contract.
  * @throws {DeclarativeError} When the object is not a valid contract, including one whose
  *   `mcVersion` is not 2.
+ * @throws {ContractBuildError} When the compiled grammar is malformed, such as two sections with
+ *   the same camelCase key (`contract/key-collision`).
  */
 export function compileContractObject(raw: Record<string, unknown>): Contract {
   if ('mcVersion' in raw && raw.mcVersion !== 2) {
