@@ -47,6 +47,7 @@ describe('the schema', () => {
     expect(CONFIG_KEYS).toEqual([
       'runners.disabled',
       'runners.order',
+      'runners.timeout',
       'allowExec',
       'discovery',
       'excludePaths',
@@ -60,29 +61,29 @@ describe('the schema', () => {
     ])
   })
 
-  test('schema/config.json is the schema this build derives', async () => {
-    const shipped = JSON.parse(
-      await readFile(new URL('../schema/config.json', import.meta.url), 'utf8'),
-    ) as unknown
-    expect(shipped).toEqual(configJsonSchema())
+  const STALE = 'stale: after a build, run `pnpm run write:config-schema` and commit the result'
+
+  test('schema/config.json is what write-config-schema writes', async () => {
+    const shipped = await readFile(new URL('../schema/config.json', import.meta.url), 'utf8')
+    expect(shipped, STALE).toBe(`${JSON.stringify(configJsonSchema(), null, 2)}\n`)
   })
 
-  test('the schema URL names this release line or the next one', async () => {
-    // Before a release the package still carries the last version; the
-    // release bump then catches up with the URL. A URL behind the package
-    // version is stale.
+  test("the schema URL names the package's release line", async () => {
     const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
       version: string
     }
-    const line = (v: string): number => {
-      const [major, minor] = v.split('.').map(Number)
-      return (major ?? 0) * 1000 + (minor ?? 0)
-    }
-    const url = /@osdlc\/wayfinder@(\d+\.\d+)\//.exec(CONFIG_SCHEMA_URL)?.[1]
-    expect(url).toBeDefined()
-    expect(line(url!)).toBeGreaterThanOrEqual(line(pkg.version))
-    expect(line(url!) - line(pkg.version)).toBeLessThanOrEqual(1)
+    const line = pkg.version.split('.').slice(0, 2).join('.')
+    expect(CONFIG_SCHEMA_URL).toBe(`https://unpkg.com/@osdlc/wayfinder@${line}/schema/config.json`)
     expect(configJsonSchema()['$id']).toBe(CONFIG_SCHEMA_URL)
+  })
+
+  test('the configuration guide has one $schema line, naming the schema URL', async () => {
+    const guide = await readFile(new URL('../docs/guide/configuration.md', import.meta.url), 'utf8')
+    const lines = guide.split('\n').filter((l) => l.includes('"$schema":'))
+    expect(
+      lines.map((l) => l.trim()),
+      STALE,
+    ).toEqual([`"$schema": "${CONFIG_SCHEMA_URL}",`])
   })
 
   test('$schema is accepted and is not a setting', () => {
@@ -299,5 +300,14 @@ describe('paths', () => {
     expect(() => appDirs({ env: { WAYFINDER_ROOT: 'rel' }, home: '/home/ada' })).toThrow(
       'WAYFINDER_ROOT',
     )
+  })
+
+  // POSIX only: the expected paths are POSIX paths, which Node's path module on Windows does not produce.
+  test.skipIf(WINDOWS)('a relative WAYFINDER_<HOME>_DIR is an error too', () => {
+    for (const name of ['WAYFINDER_CACHE_DIR', 'WAYFINDER_STATE_DIR', 'WAYFINDER_CONFIG_DIR']) {
+      expect(() => appDirs({ env: { [name]: 'rel' }, home: '/home/ada' })).toThrow(
+        `${name} must be an absolute path`,
+      )
+    }
   })
 })

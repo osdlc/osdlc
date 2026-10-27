@@ -24,6 +24,7 @@ import {
   statusFor,
   resolveTargets,
   runSurvey,
+  SurveyUsageError,
   input as surveyInput,
   surveyRows,
   topoOrder,
@@ -138,6 +139,12 @@ describe('topoOrder', () => {
     const prs = [pr(1, 'a', 'a')]
     expect(topoOrder(prs).order.map((p) => p.number)).toEqual([1])
     expect(topoOrder(prs).cycles).toEqual([])
+  })
+
+  test("a fork PR is never a parent: its head is another repository's branch", () => {
+    // #11 targets this repository's `develop`, not the contributor's.
+    const prs = [pr(10, 'develop', 'main', { isCrossRepository: true }), pr(11, 'feat', 'develop')]
+    expect(parentEdges(prs).get(11)).toBeNull()
   })
 })
 
@@ -260,6 +267,20 @@ describe('measure', () => {
     })
   })
 
+  test('reads the tracking refs of the remote it is given', () => {
+    const { git } = fakeGit({
+      'rev-list --left-right --count upstream/main...upstream/topic': counts(3, 1),
+      'merge-tree --write-tree --name-only -z upstream/topic upstream/main': cleanTree,
+      'rev-parse --verify --quiet upstream/main': resolved('cafe'),
+    })
+    expect(measure(git, pr(1, 'topic', 'main'), 'upstream')).toMatchObject({
+      baseOid: 'cafe',
+      ahead: 1,
+      behind: 3,
+      merge: 'clean',
+    })
+  })
+
   test('drift still reports when only the prediction fails', () => {
     const { git } = fakeGit({
       'rev-list --left-right --count origin/main...origin/topic': counts(9, 2),
@@ -298,6 +319,36 @@ describe('surveyRows', () => {
     // Every child names the root, including the one two levels down.
     expect(rows.map((r) => r.blockedBy)).toEqual([null, 1437, 1437, 1437])
     expect(rows[0]!.behind).toBe(171)
+  })
+
+  test('a fork PR is not measured, so it cannot block a same-repo PR on its base name', () => {
+    // This repository's `develop` is behind `main`. Read as the fork's head,
+    // it would mark #10 behind and #11 blocked on a PR that is never updated.
+    const { git, calls } = fakeGit({
+      'rev-list --left-right --count origin/main...origin/develop': counts(5, 0),
+      'merge-tree --write-tree --name-only -z origin/develop origin/main': cleanTree,
+      'rev-list --left-right --count origin/develop...origin/feat': counts(0, 1),
+    })
+    const prs = [pr(10, 'develop', 'main', { isCrossRepository: true }), pr(11, 'feat', 'develop')]
+    const { rows } = surveyRows(git, prs, opts())
+    const fork = rows.find((r) => r.number === 10)!
+    const child = rows.find((r) => r.number === 11)!
+    expect(fork.behind).toBeNull()
+    expect(fork.strategy).toBe('skip')
+    expect(child.parent).toBeNull()
+    expect(child.blockedBy).toBeNull()
+    expect(child.status).toBe('up-to-date')
+    expect(calls.flat().join(' ')).not.toContain('origin/main...origin/develop')
+  })
+
+  test('measures against the remote in opts, not origin', () => {
+    const { git } = fakeGit({
+      'rev-list --left-right --count upstream/main...upstream/topic': counts(4, 1),
+      'merge-tree --write-tree --name-only -z upstream/topic upstream/main': cleanTree,
+    })
+    const { rows } = surveyRows(git, [pr(7, 'topic', 'main')], opts({ remote: 'upstream' }))
+    expect(rows[0]!.behind).toBe(4)
+    expect(rows[0]!.status).toBe('behind')
   })
 
   test('a lone up-to-date PR is neither behind nor blocked', () => {
@@ -395,6 +446,14 @@ describe('unpushedLocalWork — the force-push interlock', () => {
       'rev-list --left-right --count origin/topic...abc': counts(0, 3),
     })
     expect(unpushedLocalWork(git, [wt('topic', 'abc')], 'topic')).toBe(true)
+  })
+
+  test('compares against the remote it is given', () => {
+    const { git } = fakeGit({
+      'rev-list --left-right --count origin/topic...abc': counts(0, 0),
+      'rev-list --left-right --count upstream/topic...abc': counts(0, 2),
+    })
+    expect(unpushedLocalWork(git, [wt('topic', 'abc')], 'topic', 'upstream')).toBe(true)
   })
 
   test('unreadable refs count as unsafe, not safe', () => {
@@ -528,6 +587,35 @@ describe('runSurvey through the CodeHost port', () => {
     ])
     expect(cwds).toEqual(['/repo', '/repo'])
     expect(report.prs.map((p) => p.repo)).toEqual(['o/r', 'x/y'])
+  })
+
+  test('--remote is the remote measured against, not only the one fetched', () => {
+    const git: CommandRunner = {
+      run(argv) {
+        const key = argv.join(' ')
+        if (key === 'remote get-url upstream') {
+          return { exitCode: 0, stdout: 'git@github.com:o/r.git\n', stderr: '' }
+        }
+        if (key === 'rev-list --left-right --count upstream/main...upstream/topic') {
+          return counts(2, 1)
+        }
+        if (argv[0] === 'merge-tree') return cleanTree
+        return { exitCode: 128, stdout: '', stderr: 'no reply' }
+      },
+    }
+    const report = runSurvey(surveyInput.parse({ remote: 'upstream', noFetch: true }), {
+      projectRoot: '/repo',
+      dryRun: false,
+      git,
+      gh: git,
+      codeHost: () =>
+        ({
+          listPrDetails: () => ({ ok: true, value: [pr(1, 'topic', 'main')] }),
+        }) as unknown as CodeHost,
+      cfg: prUpdateConfigSchema.parse({}),
+      ports: { locate: () => null },
+    })
+    expect(report.prs.map((p) => [p.number, p.status, p.behind])).toEqual([[1, 'behind', 2]])
   })
 })
 
@@ -694,5 +782,128 @@ describe('runSurvey scoped by --pr', () => {
     expect(report.prs).toHaveLength(4)
     expect(calls.filter((c) => c[0] === 'merge-tree')).toHaveLength(4)
     expect(calls.find((c) => c[0] === 'fetch')).toContain('--prune')
+  })
+})
+
+describe('runSurvey listing filters', () => {
+  const git: CommandRunner = {
+    run(argv) {
+      if (argv.join(' ') === 'remote get-url origin') {
+        return { exitCode: 0, stdout: 'git@github.com:o/r.git\n', stderr: '' }
+      }
+      if (argv[0] === 'rev-list') return counts(0, 1)
+      return { exitCode: 128, stdout: '', stderr: 'no reply' }
+    },
+  }
+  function surveyWith(
+    args: Record<string, unknown>,
+    listing: CodeHostPrDetail[],
+    cfgPatch: Record<string, unknown> = {},
+  ) {
+    const queries: Record<string, unknown>[] = []
+    const report = runSurvey(surveyInput.parse({ noFetch: true, ...args }), {
+      projectRoot: '/repo',
+      dryRun: false,
+      git,
+      gh: git,
+      codeHost: () =>
+        ({
+          listPrDetails: (q: Record<string, unknown>) => {
+            queries.push(q)
+            return { ok: true, value: listing }
+          },
+        }) as unknown as CodeHost,
+      cfg: prUpdateConfigSchema.parse(cfgPatch),
+      ports: { locate: () => null },
+    })
+    return { numbers: report.prs.map((p) => p.number), queries }
+  }
+  const withDraft = [pr(1, 'a', 'main'), pr(2, 'b', 'main', { isDraft: true })]
+
+  test('drafts are included by default, and excluded by --no-drafts or include_drafts: false', () => {
+    expect(surveyWith({}, withDraft).numbers).toEqual([1, 2])
+    expect(surveyWith({ noDrafts: true }, withDraft).numbers).toEqual([1])
+    expect(surveyWith({}, withDraft, { include_drafts: false }).numbers).toEqual([1])
+  })
+
+  test('the author comes from config when no flag names one, and the flag wins', () => {
+    const cfgAuthor = { author: 'cfg-user' }
+    expect(surveyWith({}, withDraft, cfgAuthor).queries[0]).toMatchObject({ author: 'cfg-user' })
+    expect(surveyWith({ author: 'me' }, withDraft, cfgAuthor).queries[0]).toMatchObject({
+      author: 'me',
+    })
+  })
+
+  test("--branch skips a fork PR whose head has the branch's name", () => {
+    const fork = pr(2, 'topic', 'main', { isCrossRepository: true })
+    expect(surveyWith({ branch: 'topic' }, [pr(1, 'topic', 'main'), fork]).numbers).toEqual([1])
+    expect(() => surveyWith({ branch: 'topic' }, [fork])).toThrow(SurveyUsageError)
+  })
+})
+
+describe('renderSurveyText', () => {
+  const base = {
+    repo: 'o/r',
+    title: 't',
+    url: 'u',
+    base: 'main',
+    isDraft: false,
+    crossRepo: false,
+    headOid: null,
+    baseOid: null,
+    ahead: 1,
+    behind: 2,
+    parent: null,
+    blockedBy: null,
+    status: 'behind' as const,
+    merge: 'clean' as const,
+    conflicts: [],
+    conflictBaseSha: null,
+    reviews: 0,
+    unpushedLocal: false,
+    strategy: 'rebase',
+    strategyRule: 'default',
+    strategyReason: 'project default (rebase)',
+  }
+
+  test('prints the notes, the cycle line and the counts line', () => {
+    const text = renderSurveyText({
+      repos: [{ slug: 'o/r', measurable: true, fetched: true }],
+      prs: [
+        { ...base, number: 1, head: 'root' },
+        {
+          ...base,
+          number: 2,
+          head: 'child',
+          base: 'root',
+          parent: 1,
+          blockedBy: 1,
+          status: 'blocked',
+          merge: 'conflict',
+          conflicts: ['a', 'b', 'c', 'd', 'e'],
+          strategy: 'merge',
+          strategyRule: 'guard:reviewed',
+          strategyReason: 'reviewed',
+        },
+      ],
+      cycles: [7, 8],
+      counts: {
+        total: 2,
+        upToDate: 0,
+        behind: 1,
+        blocked: 1,
+        conflicted: 1,
+        unknown: 0,
+        rebase: 1,
+        merge: 1,
+        skip: 0,
+      },
+    })
+    expect(text).toContain('← blocked on #1; conflicts: a, b, c (+2); reviewed')
+    expect(text).toContain('unordered (base/head cycle): #7, #8')
+    expect(text).toContain(
+      'PR-SURVEY: total=2 up-to-date=0 behind=1 blocked=1 conflicted=1 unknown=0 | plan rebase=1 merge=1 skip=0',
+    )
+    expect(text).not.toContain('REPO')
   })
 })

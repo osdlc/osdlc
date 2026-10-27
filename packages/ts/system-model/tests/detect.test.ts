@@ -1,5 +1,5 @@
 import { mkdir } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 
 import { afterAll, describe, expect, test } from 'vitest'
 
@@ -527,6 +527,40 @@ describe('detect', () => {
       expect(profile.languages).toEqual(expect.arrayContaining(['go', 'ruby', 'python']))
     })
 
+    test('go.mod: a require block, comments, and replace and exclude blocks', async () => {
+      const dir = await root({
+        'go.mod': [
+          '// The module.',
+          'module example.com/x',
+          '',
+          'go 1.22',
+          '',
+          'require (',
+          '\tgithub.com/a/b v1.0.0',
+          '\tgithub.com/c/d v2.1.0 // indirect',
+          ')',
+          '',
+          'replace (',
+          '\tgithub.com/a/b => ../b',
+          ')',
+          '',
+          'exclude (',
+          '\tgithub.com/e/f v0.1.0',
+          ')',
+          '',
+        ].join('\n'),
+      })
+      expect(pkg(await detect(dir), '.').manifests.goMod).toEqual({
+        manifestPath: 'go.mod',
+        module: 'example.com/x',
+        go: '1.22',
+        deps: [
+          { name: 'github.com/a/b', kind: 'prod', specifier: 'v1.0.0', specifierKind: 'registry' },
+          { name: 'github.com/c/d', kind: 'prod', specifier: 'v2.1.0', specifierKind: 'registry' },
+        ],
+      })
+    })
+
     test('a polyglot package carries every ecosystem in registry order', async () => {
       const dir = await root({ 'package.json': '{}', 'Cargo.toml': '[package]\nname = "x"\n' })
       const profile = await detect(dir)
@@ -547,6 +581,13 @@ describe('findRoot', () => {
   test('the nearest repository marker wins, so a nested checkout resolves to itself', async () => {
     const dir = await root({ '.git/HEAD': '', 'vendor/inner/.git/HEAD': '' })
     expect(await project.findRoot(join(dir, 'vendor/inner'))).toBe(join(dir, 'vendor/inner'))
+  })
+
+  test('a relative `from` resolves against the working directory', async () => {
+    const dir = await root({ '.git/HEAD': '', 'packages/a/package.json': '{}' })
+    await mkdir(join(dir, 'packages/a/src'), { recursive: true })
+    const from = relative(process.cwd(), join(dir, 'packages/a/src'))
+    expect(await project.findRoot(from)).toBe(dir)
   })
 
   test('moon’s workspace file marks a repository root', async () => {

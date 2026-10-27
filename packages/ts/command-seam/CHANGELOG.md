@@ -1,5 +1,26 @@
 # @osdlc/command-seam
 
+## 0.14.0
+
+### Minor Changes
+
+- da5e6a3: New: the parts of a typed client over one program that do not depend on the program, moved down from `@osdlc/typed-git` and `@osdlc/typed-gh`. `runFailed(result, isAnswer?)` says whether a result must be read as a failure: it never exited, its output was cut short (`outputIncomplete`, even at exit 0), or it exited non-zero with a code `isAnswer` does not accept. `classifyFailed(failed, { binary, installHint? })` returns a `CommandFailed`'s failure with the `CommandFailed` as its `cause`, named for `binary` when the runner named none, with `installHint` as a `not-installed` failure's hint. `tryMethods` and `tryMethodsAsync` (types `TriedMethods`, `TriedMethodsAsync`) wrap a client so every method returns a `Result`, catching only what `recognize` turns into a failure. `methodFacade` is the proxy under them. `notAnOption(value, reject)` throws `reject(value)` for a positional argument that starts with `-`.
+
+## 0.13.0
+
+### Minor Changes
+
+- b835ae4: A working directory that cannot be entered (no search permission) is now classified `bad-cwd`, with a "cannot be entered" message, instead of `not-executable`. An argument list over the OS limit (E2BIG) is now a `spawn` failure instead of a throw.
+  A `kill()` that fails (such as EPERM) is no longer reported as a spawn failure: a timeout, abort or `maxOutputBytes` stop keeps its own result, and a managed process stays running until it exits.
+  `commandString` writes `cd ./-` for a folder named `-`. On Windows, `which()` handles quoted PATH entries and an `env` override replaces the parent's variable whatever its case.
+  `spawnRunnerBytes`, `spawnRunnerBytesAsync`, `streamRunner` and `managedProcessRunner` now take `SpawnRunnerOptions`, so `absolutePathOnly` works with every runner factory. All runners share one pre-spawn check (the `absolutePathOnly` lookup, then the `cwd` check, then the spawn plan).
+
+## 0.12.1
+
+### Patch Changes
+
+- f013f38: With `absolutePathOnly`, an unset `PATH` on POSIX now searches `/usr/bin:/bin`, as a spawn of a bare name does and as `which` without `absolutePathOnly` already did. Before, it found nothing, so a process started with an empty environment could not run `git` through an `absolutePathOnly` runner. Windows still searches nothing. `absolutePathCandidates` with `path: undefined` returns those two candidates on POSIX.
+
 ## 0.12.0
 
 ### Minor Changes

@@ -116,8 +116,9 @@ stderr and stdout, as the classifier does.
 
 Setup checks return their failure as a value. `installed()`, `authenticated()`,
 `authStatus()`, `ready()` and `api()` return their failure as part of their
-value, in all three call styles. For them, "gh is not installed" is the answer
-to the question they ask.
+value, from the plain method and from `try`. They have no soft form:
+`gh.soft.api(...)` throws a `TypeError`. For them, "gh is not installed" is the
+answer to the question they ask.
 
 ```ts
 import { describe } from '@osdlc/result'
@@ -168,6 +169,13 @@ if (page.truncated) console.warn('more than 50 open PRs; raise the limit')
 
 `prList`, `issueList`, `labelList`, `repoList` and `searchPrs` all work this
 way. A `limit` that is not a positive integer throws `RangeError`.
+
+GitHub search returns at most 1000 results, whatever the `limit`. gh uses
+search for `searchPrs`, for `prList` with a non-empty `search` or an `author`,
+and for `issueList` with a `label`. Those report `truncated: true` when 1000
+rows come back: there may be more that search would not return. Narrow the
+query to see them. `searchPrs` asks gh for at most 1000 rows, since gh refuses
+a larger search limit.
 
 ## A repository without a clone
 
@@ -375,7 +383,8 @@ const repos = await runVerbAsync(repoList('acme', {}, { hostname: 'ghe.example.c
 })
 ```
 
-They take a `CommandRunner`. A plain `(binary, argv, opts) => result` function is wrapped as
+`runVerb` takes a `CommandRunner` and `runVerbAsync` an `AsyncCommandRunner`. A plain
+`(binary, argv, opts) => result` function is not a runner; wrap it yourself as
 `{ run: (argv, opts) => fn('gh', argv, opts) }`.
 
 ## `AsyncGh`
@@ -440,7 +449,7 @@ const prs = nodesAt(pages, ['repository', 'pullRequests'])
 ```
 
 With `paginate`, the query must take `$endCursor` and page one connection. gh follows only that
-one. `graphql` refuses a mutation with `RangeError`. Send one through `raw`.
+one. `graphql` refuses a document holding a mutation or subscription with `RangeError`. Send one through `raw`.
 
 ## Repositories and search
 
@@ -547,7 +556,9 @@ Each verb takes an optional `GhTarget` last. Each client method has a verb of th
 - `parsePullRequest`: reads a `gh --json` payload into a `PullRequest`, or `null`.
 - `anyCheckFailed`: true if any check in a list failed.
 - `normalizeAuthorLogin`: drops a `[bot]` suffix from a login.
-- `parseOwnerRepo`: reads a remote URL into `{ owner, repo }`, or `null`.
+- `parseOwnerRepo`: reads a remote URL into `{ owner, repo }`, or `null`. It is
+  `@osdlc/typed-git`'s `parseRemoteRepo` without the host, so any host's remote reads, not only
+  GitHub's. Use `parseRemoteRepo` when you need the host too.
 - `ownerRepoSlug`: writes `{ owner, repo }` as `owner/repo`.
 - `parsePrUrl`: reads a pull request URL on any GitHub host into its host, owner, repository and
   number, or `null`.

@@ -16,7 +16,7 @@ import { constants } from 'node:os'
 
 import { BIN } from '../app.ts'
 import { handOff } from '../core/run.ts'
-import { flushViews } from '../core/saved-view.ts'
+import { flushWrites } from '../core/writes.ts'
 import type { Session } from '../core/session.ts'
 import { createTui, type Tui, type TuiHost } from './app.ts'
 import { writeClipboard } from './copy.ts'
@@ -88,8 +88,8 @@ export async function runTui(session: Session): Promise<number> {
       process.stdout.write(SHOW + ALT_OFF)
     },
     handOff,
-    // A view write still in flight would be dropped by process.exit.
-    exit: (code) => void flushViews().finally(() => process.exit(code)),
+    // A view or store write still in flight would be dropped by process.exit.
+    exit: (code) => void flushWrites().finally(() => process.exit(code)),
   }
 
   const tui: Tui = createTui({

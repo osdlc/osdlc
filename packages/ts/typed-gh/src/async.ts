@@ -126,14 +126,17 @@ export class AsyncGh {
   }
 
   // ── queries ───────────────────────────────────────────────────────────────
+  //
+  // Every method that builds a verb is `async`, so a bad argument (a verb's
+  // RangeError) rejects the Promise instead of throwing at the call site.
 
   /** Pull requests matching `opts`. Rejects when gh fails. `soft.prList` resolves null instead. */
-  prList(opts: PrListOptions & AsyncCallOptions = {}): Promise<ListResult<PullRequest>> {
+  async prList(opts: PrListOptions & AsyncCallOptions = {}): Promise<ListResult<PullRequest>> {
     return this.read(v.prList(opts, this.target), opts)
   }
 
   /** One PR by number, branch or URL, with the heavy fields, or null. See `Gh.prView`. */
-  prView(
+  async prView(
     ref: number | string,
     opts: { fields?: readonly string[] | undefined } & AsyncCallOptions = {},
   ): Promise<PullRequest | null> {
@@ -194,12 +197,12 @@ export class AsyncGh {
   }
 
   /** A PR's body text. Rejects when gh fails. */
-  prBody(number: number, opts: AsyncCallOptions = {}): Promise<string> {
+  async prBody(number: number, opts: AsyncCallOptions = {}): Promise<string> {
     return this.read(v.prBody(number, this.target), opts)
   }
 
   /** A REST GET through `gh api`. Failure is `ok: false`, never a rejection. */
-  api(endpoint: string, opts: ApiOptions & AsyncCallOptions = {}): Promise<ApiResponse> {
+  async api(endpoint: string, opts: ApiOptions & AsyncCallOptions = {}): Promise<ApiResponse> {
     return this.exec(v.api(endpoint, opts, this.target), opts)
   }
 
@@ -208,7 +211,7 @@ export class AsyncGh {
    *
    * @experimental
    */
-  graphql(
+  async graphql(
     query: string,
     variables: Record<string, v.GraphqlVariable> = {},
     opts: v.GraphqlOptions & AsyncCallOptions = {},
@@ -217,19 +220,19 @@ export class AsyncGh {
   }
 
   /** Every label on the repository (up to `opts.limit`, default 1000). Rejects when gh fails. */
-  labelList(
+  async labelList(
     opts: { limit?: number | undefined } & AsyncCallOptions = {},
   ): Promise<ListResult<Label>> {
     return this.read(v.labelList(opts, this.target), opts)
   }
 
   /** Issues matching `opts`. Rejects when gh fails. */
-  issueList(opts: IssueListOptions & AsyncCallOptions = {}): Promise<ListResult<IssueRow>> {
+  async issueList(opts: IssueListOptions & AsyncCallOptions = {}): Promise<ListResult<IssueRow>> {
     return this.read(v.issueList(opts, this.target), opts)
   }
 
   /** One issue with its labels, or null when there is no such issue. */
-  issueView(number: number, opts: AsyncCallOptions = {}): Promise<IssueRow | null> {
+  async issueView(number: number, opts: AsyncCallOptions = {}): Promise<IssueRow | null> {
     return this.exec(v.issueView(number, this.target), opts)
   }
 
@@ -237,7 +240,7 @@ export class AsyncGh {
    * An owner's repositories. Rejects when gh fails. Each row's `owner` is in
    * GitHub's casing, not as passed. See `Gh.repoList`.
    */
-  repoList(
+  async repoList(
     owner: string,
     opts: v.RepoListOptions & AsyncCallOptions = {},
   ): Promise<ListResult<Repository>> {
@@ -248,7 +251,7 @@ export class AsyncGh {
    * One repository, or null when there is no such repository. `owner` and
    * `name` are in GitHub's casing, not as passed. See `Gh.repoView`.
    */
-  repoView(
+  async repoView(
     repo?: string | undefined,
     opts: { fields?: readonly string[] | undefined } & AsyncCallOptions = {},
   ): Promise<Repository | null> {
@@ -256,7 +259,7 @@ export class AsyncGh {
   }
 
   /** Pull requests across repositories matching a search query. Rejects when gh fails. See `Gh.searchPrs`. */
-  searchPrs(
+  async searchPrs(
     query: string,
     opts: v.SearchPrsOptions & AsyncCallOptions = {},
   ): Promise<ListResult<PrSearchHit>> {
@@ -264,7 +267,7 @@ export class AsyncGh {
   }
 
   /** True iff the `gh` binary is on PATH and runs. */
-  installed(): Promise<boolean> {
+  async installed(): Promise<boolean> {
     return this.exec(v.installed())
   }
 
@@ -274,7 +277,7 @@ export class AsyncGh {
   }
 
   /** Login state and what `gh auth status` printed. */
-  authStatus(): Promise<AuthStatus> {
+  async authStatus(): Promise<AuthStatus> {
     return this.exec(v.authStatus(this.target))
   }
 
@@ -294,12 +297,12 @@ export class AsyncGh {
   // ── mutations (checked) ───────────────────────────────────────────────────
 
   /** Open a PR and resolve to its URL ('' if gh printed none). */
-  createPr(opts: v.CreatePrOptions): Promise<string> {
+  async createPr(opts: v.CreatePrOptions): Promise<string> {
     return this.exec(v.createPr(opts, this.target))
   }
 
   /** Retitle or rewrite a PR body. */
-  editPr(
+  async editPr(
     number: number,
     opts: { title?: string | undefined; body?: string | undefined },
   ): Promise<void> {
@@ -307,17 +310,17 @@ export class AsyncGh {
   }
 
   /** Rewrite just a PR's body. */
-  editPrBody(number: number, body: string): Promise<void> {
+  async editPrBody(number: number, body: string): Promise<void> {
     return this.exec(v.editPrBody(number, body, this.target))
   }
 
   /** The PR's unified diff. Rejects with the classified failure when gh cannot produce it. */
-  prDiff(number: number): Promise<string> {
+  async prDiff(number: number): Promise<string> {
     return this.exec(v.prDiff(number, this.target))
   }
 
   /** Post one conversation comment on a PR. Resolves to its URL ('' if gh printed none). */
-  prComment(number: number, body: string): Promise<string> {
+  async prComment(number: number, body: string): Promise<string> {
     return this.exec(v.prComment(number, body, this.target))
   }
 
@@ -326,17 +329,17 @@ export class AsyncGh {
    *
    * @experimental
    */
-  createReview(number: number, opts: v.CreateReviewOptions): Promise<string> {
+  async createReview(number: number, opts: v.CreateReviewOptions): Promise<string> {
     return this.exec(v.createReview(number, opts, this.target))
   }
 
   /** Bring a PR's head branch up to date with its base. */
-  prUpdateBranch(number: number, style: 'merge' | 'rebase' = 'merge'): Promise<void> {
+  async prUpdateBranch(number: number, style: 'merge' | 'rebase' = 'merge'): Promise<void> {
     return this.exec(v.prUpdateBranch(number, style, this.target))
   }
 
   /** Mark a PR ready for review (`draft: false`) or convert it to a draft (`draft: true`). */
-  prSetDraft(number: number, draft: boolean): Promise<void> {
+  async prSetDraft(number: number, draft: boolean): Promise<void> {
     return this.exec(v.prSetDraft(number, draft, this.target))
   }
 
@@ -346,27 +349,26 @@ export class AsyncGh {
    * @experimental
    */
   async issueCommentEdit(commentId: string, body: string): Promise<void> {
-    // async, so a bad id rejects the Promise instead of throwing at the call site.
     return this.exec(v.issueCommentEdit(commentId, body, this.target))
   }
 
   /** Merge a PR. GitHub refuses when its head is no longer `opts.headSha`. */
-  prMerge(number: number, opts: { method: v.PrMergeMethod; headSha: string }): Promise<void> {
+  async prMerge(number: number, opts: { method: v.PrMergeMethod; headSha: string }): Promise<void> {
     return this.exec(v.prMerge(number, opts, this.target))
   }
 
   /** A PR's review threads. Rejects when they could not be read completely. `soft.prReviewThreads` resolves null instead. */
-  prReviewThreads(number: number): Promise<v.ReviewThread[]> {
+  async prReviewThreads(number: number): Promise<v.ReviewThread[]> {
     return this.read(v.prReviewThreads(number, this.target))
   }
 
   /** Create a label (or force it to `opts`'s color/description if it exists). */
-  createLabel(opts: v.CreateLabelOptions): Promise<void> {
+  async createLabel(opts: v.CreateLabelOptions): Promise<void> {
     return this.exec(v.createLabel(opts, this.target))
   }
 
   /** Recolor and/or redescribe an existing label. */
-  editLabel(
+  async editLabel(
     name: string,
     opts: { color?: string | undefined; description?: string | undefined },
   ): Promise<void> {
@@ -374,7 +376,11 @@ export class AsyncGh {
   }
 
   /** Swap an issue's label in a single `gh issue edit` call. */
-  setIssueLabel(number: number, currentLabel: string | null, newLabel: string): Promise<void> {
+  async setIssueLabel(
+    number: number,
+    currentLabel: string | null,
+    newLabel: string,
+  ): Promise<void> {
     return this.exec(v.setIssueLabel(number, currentLabel, newLabel, this.target))
   }
 }

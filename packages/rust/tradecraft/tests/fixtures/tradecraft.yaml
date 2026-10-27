@@ -1,0 +1,7 @@
+# A project file naming the fixture vault, the shape `tradecraft build`
+# reads at a repo root. Paths are relative to this file. The conformance test
+# `the_fixture_project_file_loads_cleanly` loads it.
+vault: vault
+marketplace:
+  default_plugin: dev-agent
+  out: published/marketplaces/studio

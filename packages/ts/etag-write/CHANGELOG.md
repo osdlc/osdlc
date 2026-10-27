@@ -1,5 +1,11 @@
 # @osdlc/etag-write
 
+## 0.3.0
+
+### Minor Changes
+
+- b835ae4: Behaviour change: when `atomicWrite` or `atomicWriteAsync` cannot create its temp file because the name is already taken, the write still fails but no longer deletes that file, which belongs to another writer.
+
 ## 0.2.1
 
 ### Patch Changes

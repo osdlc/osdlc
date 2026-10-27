@@ -425,7 +425,12 @@ export function trustStore(opts: TrustStoreOptions): TrustStore {
         continue
       }
       const grant = await readGrant(path)
-      if (grant !== null) grants.push({ root: grant.root, scope: WHOLE_REPO_SCOPE, marker: path })
+      // Likewise a whole-repository marker must sit under its root's marker
+      // name. A stray or renamed file (`old-repo`, an editor's `repo~`) is
+      // never what `isTrusted` reads, nor what `untrustAll` removes.
+      if (grant !== null && name === markerName(grant.root)) {
+        grants.push({ root: grant.root, scope: WHOLE_REPO_SCOPE, marker: path })
+      }
     }
     // Code-unit order, as `Array.prototype.sort` uses, with `*` first within a root.
     const key = (g: TrustGrant): string =>

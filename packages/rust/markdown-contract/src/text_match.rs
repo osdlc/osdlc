@@ -314,6 +314,49 @@ fn bounds_for(kind: TextKind, spec: &TextMatchSpec) -> (f64, Option<f64>) {
     }
 }
 
+/// Why an entry's count bound is refused when the contract is built: an id and a
+/// message.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CountBoundProblem {
+    pub(crate) id: &'static str,
+    pub(crate) message: String,
+}
+
+/// The one count-bound check, shared by the code builders ([`crate::text_constraints`])
+/// and the declarative compiler, so both refuse the same entries; mirrors the TS
+/// `countBoundProblem`. `None` when the bound is fine.
+///
+///   - `requires`: a `max` below the entry's minimum (`min`, default and at least 1)
+///     means absence, which is a `forbids` check (`contract/text-requires-purity`).
+///   - `forbids`: only `max` is checked when matching, so only a negative `max`, which
+///     no count can meet, is refused (`contract/text-count-bound`). A `min` on a
+///     `forbids` entry is ignored.
+pub(crate) fn count_bound_problem(
+    kind: TextKind,
+    spec: &TextMatchSpec,
+) -> Option<CountBoundProblem> {
+    let max = spec.max?;
+    match kind {
+        TextKind::Requires => {
+            let floor = spec.min.unwrap_or(1.0).max(1.0);
+            (max < floor).then(|| CountBoundProblem {
+                id: "contract/text-requires-purity",
+                message: format!(
+                    "requires({}): a requires entry may not express absence (max {max} < {floor}); use forbids(...) for an absence check",
+                    spec.repr()
+                ),
+            })
+        }
+        TextKind::Forbids => (max < 0.0).then(|| CountBoundProblem {
+            id: "contract/text-count-bound",
+            message: format!(
+                "forbids({}): max ({max}) is below 0, so the count bound can never be met",
+                spec.repr()
+            ),
+        }),
+    }
+}
+
 /// The inputs to [`build_text_findings`]: one entry's match result plus its scope.
 pub(crate) struct TextFindingInput<'a> {
     pub(crate) kind: TextKind,
@@ -627,6 +670,36 @@ mod tests {
         assert_eq!(
             out[0].message,
             "\"DONE\" found 1 times, expected at least 2"
+        );
+    }
+
+    // NaN is decided as in the TS twin: a NaN `max` is accepted, a NaN `min` floors at 1.
+    #[test]
+    fn count_bound_problem_decides_nan_as_the_ts_twin() {
+        let with = |min: Option<f64>, max: Option<f64>| TextMatchSpec {
+            min,
+            max,
+            ..pattern("x")
+        };
+        assert_eq!(
+            count_bound_problem(TextKind::Requires, &with(None, Some(f64::NAN))),
+            None
+        );
+        assert_eq!(
+            count_bound_problem(TextKind::Forbids, &with(None, Some(f64::NAN))),
+            None
+        );
+        assert_eq!(
+            count_bound_problem(TextKind::Requires, &with(Some(f64::NAN), Some(0.0)))
+                .map(|p| p.message),
+            Some(
+                "requires(\"x\"): a requires entry may not express absence (max 0 < 1); use forbids(...) for an absence check"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            count_bound_problem(TextKind::Forbids, &with(None, Some(-1.0))).map(|p| p.id),
+            Some("contract/text-count-bound")
         );
     }
 }

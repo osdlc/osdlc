@@ -33,9 +33,10 @@ const TRUECOLOR_PROGRAMS = new Set(['iTerm.app', 'WezTerm', 'ghostty'])
 
 /**
  * The most colors the terminal described by `env` supports, assuming it is a
- * terminal: truecolor from `COLORTERM`, a `-direct` `TERM`, Windows Terminal
- * or a known `TERM_PROGRAM`; 256 from a `TERM` that names `256color`; 16
- * otherwise.
+ * terminal: truecolor from `COLORTERM`, a `TERM` that ends in `-direct` or
+ * contains `truecolor`, Windows Terminal or a known `TERM_PROGRAM`; 256 from
+ * a `TERM` that names `256color`; 16 otherwise. `COLORTERM` and `TERM` are
+ * compared case-insensitively.
  */
 function terminalLevel(env: ColorDetectInput['env']): ColorLevel {
   const colorterm = (env['COLORTERM'] ?? '').toLowerCase()
@@ -82,9 +83,10 @@ function forcedLevel(value: string, env: ColorDetectInput['env']): ColorLevel {
  * 4. `TERM=dumb` gives `none`.
  * 5. A stream that is not a terminal gives `none`.
  * 6. Otherwise the terminal's level: `truecolor` when `COLORTERM` is
- *    `truecolor` or `24bit`, `TERM` ends in `-direct`, `WT_SESSION` is set
- *    or `TERM_PROGRAM` is iTerm.app, WezTerm or ghostty; `ansi256` when
- *    `TERM` contains `256color`; `ansi16` otherwise.
+ *    `truecolor` or `24bit`, `TERM` ends in `-direct` or contains
+ *    `truecolor`, `WT_SESSION` is set or `TERM_PROGRAM` is iTerm.app,
+ *    WezTerm or ghostty; `ansi256` when `TERM` contains `256color`; `ansi16`
+ *    otherwise. `COLORTERM` and `TERM` are compared case-insensitively.
  *
  * @throws RangeError when `override` is a string that is not a
  * {@link ColorLevel}.

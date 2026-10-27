@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import { describe, expect, test } from 'vitest'
 
 import { spawnRunner, spawnRunnerAsync } from '../src/index.ts'
+import { utf8Prefix } from '../src/sync.ts'
 import { gone, reap } from './support/procs.ts'
 
 const CWD = process.cwd()
@@ -150,5 +151,31 @@ describe('spawnRunner maxOutputBytes', () => {
     expect(() => spawnRunner('sh').run(['-c', 'true'], { cwd: CWD, maxOutputBytes: 0 })).toThrow(
       RangeError,
     )
+  })
+})
+
+describe('utf8Prefix', () => {
+  const cut = (buf: Buffer, max: number) => utf8Prefix(buf, max)
+
+  test('a buffer within the cap is returned whole', () => {
+    expect(cut(Buffer.from('abc'), 3).toString()).toBe('abc')
+    expect(cut(Buffer.from('abc'), 5).toString()).toBe('abc')
+  })
+
+  test('a cut on a character boundary is kept', () => {
+    expect(cut(Buffer.from('a€b'), 4).toString()).toBe('a€')
+    expect(cut(Buffer.from('é€'), 2).toString()).toBe('é')
+  })
+
+  test('a cut inside a 2-, 3- or 4-byte character drops that character', () => {
+    expect(cut(Buffer.from('é'), 1)).toHaveLength(0)
+    expect(cut(Buffer.from('a€'), 2).toString()).toBe('a')
+    expect(cut(Buffer.from('a€'), 3).toString()).toBe('a')
+    expect(cut(Buffer.from('😀'), 3)).toHaveLength(0)
+    expect(cut(Buffer.from('x😀'), 4).toString()).toBe('x')
+  })
+
+  test('a run of stray continuation bytes is cut at the cap, not trimmed', () => {
+    expect(cut(Buffer.alloc(6, 0x80), 5)).toHaveLength(5)
   })
 })

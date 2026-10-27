@@ -8,7 +8,7 @@
  * with `gh`'s first stderr line, never a wrong kind.
  */
 
-import { classifyFailure, type CommandFailed, type CommandFailureKind } from '@osdlc/command-seam'
+import { classifyFailed, type CommandFailed, type CommandFailureKind } from '@osdlc/command-seam'
 import { type Failure } from '@osdlc/result'
 
 /**
@@ -82,13 +82,8 @@ export function isAbsent(thing: Thing, text: string): boolean {
 export function classifyGhFailure(failed: CommandFailed): GhFailure {
   // The client's runner may not name its binary. It is gh either way, so the
   // messages say `gh` rather than "The command".
-  const f =
-    failed.binary === undefined
-      ? (classifyFailure(failed.result, { binary: 'gh', argv: failed.argv }) ?? failed.failure)
-      : failed.failure
-  const base = { ...f, cause: failed }
-  if (f.kind === 'not-installed') return { ...base, hint: INSTALL_HINT }
-  if (f.kind !== 'exit') return base
+  const base = classifyFailed(failed, { binary: 'gh', installHint: INSTALL_HINT })
+  if (base.kind !== 'exit') return base
 
   const text = `${failed.result.stderr}\n${failed.result.stdout}`
   if (RATE_LIMITED.test(text)) {

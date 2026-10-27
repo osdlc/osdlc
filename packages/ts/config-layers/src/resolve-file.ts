@@ -18,10 +18,10 @@
  *     purpose, so a missing file is a mistake. An absent default file is not
  *     an error and means all defaults.
  *
- * A repository-trust check treats a file named by the variable as
- * project-sourced, exactly like the default file. Pointing the variable outside
- * the repository does not get around the check. The variable does not affect
- * the machine file or the trust store.
+ * This package has no repository-trust check. A tool that has one should treat
+ * a file named by the variable as project-sourced, exactly like the default
+ * file, so pointing the variable outside the repository does not get around
+ * it. The variable does not affect the machine file.
  */
 
 import { existsSync, statSync } from 'node:fs'

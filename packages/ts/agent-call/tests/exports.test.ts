@@ -199,8 +199,9 @@ test('the README imports the package by its published name', () => {
   expect(blocks).toContain("from '@osdlc/agent-call'")
 })
 
-test('the package has no dependencies', () => {
-  for (const field of ['dependencies', 'peerDependencies', 'optionalDependencies']) {
+test('the only dependency is the command seam, for its PATH lookup', () => {
+  expect(MANIFEST['dependencies']).toEqual({ '@osdlc/command-seam': 'workspace:^' })
+  for (const field of ['peerDependencies', 'optionalDependencies']) {
     expect(MANIFEST[field]).toBeUndefined()
   }
 })

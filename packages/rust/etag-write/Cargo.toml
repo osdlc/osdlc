@@ -1,6 +1,6 @@
 [package]
 name = "etag-write"
-version = "0.2.3"
+version = "0.2.4"
 edition.workspace = true
 rust-version.workspace = true
 description = "Atomic file writes with sha256 etags and compare-and-swap, so a reader never sees a torn file and a stale write never overwrites newer changes."

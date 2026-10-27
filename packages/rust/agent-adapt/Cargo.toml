@@ -1,0 +1,45 @@
+[package]
+name = "agent-adapt"
+version = "0.19.1"
+edition.workspace = true
+rust-version.workspace = true
+description = "Data model and runtime adapters for authoring coding-agent assets (skills, agents, hooks, scripts, plugins, MCP servers) once and exporting to Claude Code, Codex CLI, Antigravity, and other runtimes."
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/agent-adapt"
+readme = "README.md"
+keywords = ["mcp", "ai", "agent", "claude", "codex"]
+categories = ["config", "development-tools"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+toml = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+# The crate's own `serde_json` leaves `preserve_order` off, so a lone
+# `cargo test -p agent-adapt` would build `Map` as a sorted `BTreeMap` and the
+# render order tests would pass without exercising anything.
+#
+# Testing only the feature-on configuration covers both. With it off `Map` is a
+# sorted `BTreeMap`, so every explicit key sort in this crate is a no-op and the
+# output is sorted whether or not the sort is there. A sort can only be wrong
+# when the feature is on.
+#
+# A dev-dependency is in no non-test build graph, so no build a consumer makes
+# turns `preserve_order` on through this crate.
+serde_json = { workspace = true, features = ["preserve_order"] }
+
+[lints]
+workspace = true

@@ -117,6 +117,29 @@ describe('ForgejoCodeHost request transport', () => {
     }
   })
 
+  test('the token is quoted for the curl config, and a newline in it cannot add an option', () => {
+    const inputs: (string | undefined)[] = []
+    const runner: CommandRunner = {
+      run(_argv, opts) {
+        inputs.push(opts.input)
+        return curlOk(200, [])
+      },
+    }
+    const withToken = (token: string): ForgejoCodeHost =>
+      new ForgejoCodeHost({
+        runner,
+        cwd: '/repo',
+        host: 'git.example.com',
+        owner: 'o',
+        repo: 'r',
+        token,
+      })
+    unwrap(withToken('a"b\\c').listComments(1))
+    expect(inputs[0]).toBe('header = "Authorization: token a\\"b\\\\c"\n')
+    unwrap(withToken('tok\r\nurl = http://x').listComments(1))
+    expect(inputs[1]).toBe('header = "Authorization: token tokurl = http://x"\n')
+  })
+
   test('-q is the first argument, so a local ~/.curlrc cannot inject headers or a proxy', () => {
     const runner = fakeGh({ pr: BASE_PR }).runner
     let firstArgv: string[] | undefined
@@ -360,7 +383,94 @@ describe('ForgejoCodeHost.listPrs / prForBranch', () => {
     })
     expect(unwrap(codeHost(runner).prForBranch('task/x'))).toBe(7)
   })
+
+  test('prForBranch reads past the first page of open PRs', () => {
+    const { runner, calls } = pagedPulls(
+      Array.from({ length: 60 }, (_, i) => ({ number: i + 1, head: { ref: `b${i + 1}` } })),
+    )
+    expect(unwrap(codeHost(runner).prForBranch('b55'))).toBe(55)
+    // The short second page does not end the listing; the empty third one does.
+    expect(calls.map((u) => new URL(u).searchParams.get('page'))).toEqual(['1', '2', '3'])
+  })
+
+  test('author filters before the limit, so older PRs by the author still count', () => {
+    const rows = [
+      ...Array.from({ length: 50 }, (_, i) => ({ number: i + 1, user: { login: 'other' } })),
+      { number: 51, user: { login: 'bot' } },
+      { number: 52, user: { login: 'other' } },
+      { number: 53, user: { login: 'bot' } },
+    ]
+    const { runner } = pagedPulls(rows)
+    const host = codeHost(runner)
+    expect(unwrap(host.listPrs({ author: 'bot' })).map((p) => p.number)).toEqual([51, 53])
+    expect(unwrap(host.listPrs({ author: 'bot', limit: 1 })).map((p) => p.number)).toEqual([51])
+    expect(unwrap(host.listPrDetails({ author: 'bot', limit: 10 })).map((p) => p.number)).toEqual([
+      51, 53,
+    ])
+  })
+
+  test('without an author, a limit stops paging once enough rows are in', () => {
+    const { runner, calls } = pagedPulls(Array.from({ length: 120 }, (_, i) => ({ number: i + 1 })))
+    expect(unwrap(codeHost(runner).listPrs({ limit: 70 }))).toHaveLength(70)
+    expect(calls.map((u) => new URL(u).searchParams.get('page'))).toEqual(['1', '2'])
+  })
+
+  test('a server whose MAX_RESPONSE_ITEMS is below the page size still lists every PR', () => {
+    const rows = Array.from({ length: 25 }, (_, i) => ({
+      number: i + 1,
+      head: { ref: `b${i + 1}` },
+      user: { login: i % 2 === 0 ? 'bot' : 'other' },
+    }))
+    const { runner, calls } = pagedPulls(rows, { maxItems: 10 })
+    const host = codeHost(runner)
+    expect(unwrap(host.listPrs({})).map((p) => p.number)).toEqual(rows.map((r) => r.number))
+    expect(calls.map((u) => new URL(u).searchParams.get('page'))).toEqual(['1', '2', '3', '4'])
+    expect(unwrap(host.prForBranch('b25'))).toBe(25)
+    // The author filter still runs before the cap, across the short pages.
+    expect(unwrap(host.listPrs({ author: 'bot', limit: 8 })).map((p) => p.number)).toEqual([
+      1, 3, 5, 7, 9, 11, 13, 15,
+    ])
+    expect(unwrap(host.listPrs({ limit: 15 }))).toHaveLength(15)
+  })
+
+  test('a server that ignores page stops after one repeated page, with no duplicates', () => {
+    const { runner, calls } = fakeGh({
+      list: [
+        { number: 1, head: { ref: 'a' } },
+        { number: 2, head: { ref: 'b' } },
+      ],
+    })
+    expect(unwrap(codeHost(runner).listPrs({})).map((p) => p.number)).toEqual([1, 2])
+    expect(calls).toHaveLength(2)
+  })
 })
+
+/**
+ * A `pulls` listing that honours `page` and `limit` the way Forgejo does, over
+ * `rows`. `maxItems` stands for the server's `MAX_RESPONSE_ITEMS`: a larger
+ * `limit` is cut down to it. Any other GET (a PR's reviews) answers `[]`.
+ * `calls` holds each listing URL.
+ */
+function pagedPulls(
+  rows: Record<string, unknown>[],
+  opts: { maxItems?: number } = {},
+): { runner: CommandRunner; calls: string[] } {
+  const calls: string[] = []
+  return {
+    calls,
+    runner: {
+      run(argv) {
+        const url = argv[argv.length - 1]!
+        if (!/\/pulls\?/.test(url)) return curlOk(200, [])
+        calls.push(url)
+        const params = new URL(url).searchParams
+        const page = Number(params.get('page') ?? '1')
+        const limit = Math.min(Number(params.get('limit') ?? '30'), opts.maxItems ?? Infinity)
+        return curlOk(200, rows.slice((page - 1) * limit, page * limit))
+      },
+    },
+  }
+}
 
 describe('ForgejoCodeHost.listPrDetails', () => {
   test('maps the survey fields, counts reviews and flags a fork head', () => {
@@ -406,13 +516,23 @@ describe('ForgejoCodeHost.listPrDetails', () => {
     expect(codeHost(runner).listPrDetails({}).ok).toBe(false)
   })
 
-  test('limit is sent to the server and the fork check ignores case', () => {
+  test('limit is sent to the server, capped at a page, and the fork check ignores case', () => {
     const { runner, calls } = fakeGh({
       list: [{ number: 1, head: { ref: 'f', repo: { full_name: 'O/R' } }, base: { ref: 'm' } }],
     })
     const rows = codeHost(runner).listPrDetails({ limit: 100 })
     expect(unwrap(rows)[0]!.isCrossRepository).toBe(false)
-    expect(calls[0]![calls[0]!.length - 1]).toContain('limit=100')
+    expect(calls[0]![calls[0]!.length - 1]).toContain('page=1&limit=50')
+    const before = calls.length
+    codeHost(runner).listPrDetails({ limit: 5 })
+    expect(calls[before]![calls[before]!.length - 1]).toContain('page=1&limit=5')
+  })
+
+  test('an unknown head repo reads as cross-repository, as getPr reads it as a fork', () => {
+    const { runner } = fakeGh({
+      list: [{ number: 1, head: { ref: 'f', repo: null }, base: { ref: 'm' } }],
+    })
+    expect(unwrap(codeHost(runner).listPrDetails({}))[0]!.isCrossRepository).toBe(true)
   })
 
   test('repo scopes the listing to another repository', () => {
@@ -499,6 +619,59 @@ describe('ForgejoCodeHost.createPr / mergePr / reviewThreads', () => {
     }
     expect(err).toBeInstanceOf(Error)
     expect(err).not.toBeInstanceOf(CommentNotFoundError)
+  })
+
+  test('updateBranch POSTs the style to the update endpoint and throws on a failed request', () => {
+    const seen: string[][] = []
+    const runner: CommandRunner = {
+      run: (argv) => {
+        seen.push([...argv])
+        return curlOk(200, {})
+      },
+    }
+    codeHost(runner).updateBranch(7, 'rebase')
+    expect(seen[0]).toContain('POST')
+    expect(seen[0]!.at(-1)).toBe(
+      'https://git.example.com/api/v1/repos/o/r/pulls/7/update?style=rebase',
+    )
+    expect(() => codeHost({ run: () => curlOk(409, {}) }).updateBranch(7, 'merge')).toThrow(
+      /answered HTTP 409/,
+    )
+  })
+
+  test('postComment takes id and created_at from the response, and the body is JSON', () => {
+    const seen: string[][] = []
+    const runner: CommandRunner = {
+      run: (argv) => {
+        seen.push([...argv])
+        return curlOk(201, { id: 77, created_at: '2026-10-09T10:00:00Z' })
+      },
+    }
+    expect(codeHost(runner).postComment(42, 'hi')).toEqual({
+      id: '77',
+      createdAt: '2026-10-09T10:00:00Z',
+    })
+    expect(seen[0]).toContain(JSON.stringify({ body: 'hi' }))
+    expect(seen[0]!.at(-1)).toBe('https://git.example.com/api/v1/repos/o/r/issues/42/comments')
+  })
+
+  test('postComment on a 2xx body that is not JSON keeps no id and stamps now', () => {
+    const raw: CommandRunner = {
+      run: () => ({ exitCode: 0, stdout: 'not json\nHTTPSTATUS:201', stderr: '' }),
+    }
+    const posted = codeHost(raw).postComment(42, 'hi')
+    expect(posted.id).toBe('')
+    expect(Number.isNaN(Date.parse(posted.createdAt))).toBe(false)
+  })
+
+  test('listComments maps ids to strings and drops rows with no id', () => {
+    const { runner } = fakeGh({
+      comments: [{ id: 1, body: 'a', created_at: 't1' }, { id: 'x2' }, { body: 'no id' }],
+    })
+    expect(unwrap(codeHost(runner).listComments(42))).toEqual([
+      { id: '1', createdAt: 't1', body: 'a' },
+      { id: 'x2', createdAt: '', body: '' },
+    ])
   })
 
   test('reviewThreads is unknown (an unsupported failure): no thread model is read', () => {

@@ -1,0 +1,82 @@
+{
+  "name": "@osdlc/repo-cleaner",
+  "version": "0.6.0",
+  "description": "What has been merged into the default branch, and what can go away. Inventories local branches, worktrees and remote branches across one repository or many, classifying each with the evidence behind the verdict and the command that would act on it. Plans and applies approved deletes, compare-and-swap.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/repo-cleaner"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/repo-cleaner#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "git",
+    "branch",
+    "worktree",
+    "merged",
+    "cleanup",
+    "cli",
+    "monorepo"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "repo-cleaner": "./bin/repo-cleaner.js"
+  },
+  "files": [
+    "dist/",
+    "bin/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
+  "scripts": {
+    "build": "cli-tool-stamp-version && tsc -p tsconfig.build.json",
+    "stamp-version": "cli-tool-stamp-version",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "smoke": "node tests/smoke.mjs",
+    "coverage": "vitest run --coverage",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "dependencies": {
+    "@osdlc/cli-tool": "workspace:^",
+    "@osdlc/command-seam": "workspace:^",
+    "@osdlc/config-layers": "workspace:^",
+    "@osdlc/path-guard": "workspace:^",
+    "@osdlc/typed-gh": "workspace:^",
+    "@osdlc/typed-git": "workspace:^",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

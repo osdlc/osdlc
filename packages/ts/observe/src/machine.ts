@@ -7,10 +7,11 @@
 
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { homedir, hostname, platform, userInfo } from 'node:os'
-import { dirname, join } from 'node:path'
+import { hostname, platform, userInfo } from 'node:os'
+import { dirname, isAbsolute, join } from 'node:path'
 
 import { spawnRunner } from '@osdlc/command-seam'
+import { homeDir, xdgBaseDirs } from '@osdlc/tiered-dirs'
 
 import { readTag } from './envelope.ts'
 
@@ -45,10 +46,9 @@ const LIVE_PROBE: MachineProbe = {
     }
   },
   run(argv) {
-    const result = spawnRunner(argv[0] ?? '').run(argv.slice(1), {
-      cwd: process.cwd(),
-      timeoutMs: 5000,
-    })
+    // The cwd may be a repository, so a bare name runs only from an absolute PATH entry.
+    const runner = spawnRunner(argv[0] ?? '', { absolutePathOnly: true })
+    const result = runner.run(argv.slice(1), { cwd: process.cwd(), timeoutMs: 5000 })
     return result.exitCode === 0 ? result.stdout : null
   },
   hostname: () => hostname(),
@@ -98,26 +98,62 @@ export function deriveMachineId(probe: MachineProbe): string {
 
 const MACHINE_ID_RE = /^m-[0-9a-f]{16}$/
 
-/** Where {@link resolveMachineId} keeps the derived id: `sdlc/machine-id` under `$XDG_CACHE_HOME` or `~/.cache`. */
-function machineIdCachePath(): string {
-  const base = process.env['XDG_CACHE_HOME']?.trim() || join(homedir(), '.cache')
-  return join(base, 'sdlc', 'machine-id')
+/**
+ * Internal, not exported from the package entry. {@link machineId} uses it.
+ *
+ * Where {@link resolveMachineId} keeps the derived id: `sdlc/machine-id` under
+ * the XDG cache home, `$XDG_CACHE_HOME` or `~/.cache`, on every platform, as
+ * `@osdlc/tiered-dirs`'s `xdgBaseDirs` resolves it. A relative
+ * `$XDG_CACHE_HOME` is ignored, as the XDG spec says, and the home is
+ * tiered-dirs' `homeDir` (a relative `HOME` counts as unset). With no
+ * absolute home and no absolute `$XDG_CACHE_HOME` there is no cache: either
+ * would put the file under whatever directory the process runs in.
+ */
+export function machineIdCachePath(
+  env: Record<string, string | undefined> = process.env,
+  home: () => string = homeDir,
+): string | null {
+  let homePath = ''
+  try {
+    homePath = home()
+  } catch {
+    // No home: only an absolute XDG_CACHE_HOME places the cache.
+  }
+  const cache = xdgBaseDirs(homePath, env).cache
+  return isAbsolute(cache) ? join(cache, 'sdlc', 'machine-id') : null
+}
+
+/**
+ * A digest of the hostname, written next to the cached id. A home directory
+ * can be shared between machines (NFS, a home baked into an image), and so can
+ * the cache in it. Without this key a second machine would read the first
+ * one's id and take that machine's live sessions for its own. Hashed, like the
+ * id, so the file never names the host.
+ */
+function cacheHostKey(probe: MachineProbe): string {
+  return createHash('sha256')
+    .update(`machine-cache-host:${probe.hostname()}`)
+    .digest('hex')
+    .slice(0, 16)
 }
 
 /**
  * Internal, not exported from the package entry. {@link machineId} uses it.
  *
- * The machine's id: the id in the file at `cachePath` when it holds one, else
- * {@link deriveMachineId}, which is then written there (mode 0600). This way
- * only the first command probes the platform (which spawns a process on macOS
- * and Windows). The file holds only the derived id, never the hardware UUID. A
- * failed write is ignored.
+ * The machine's id: the id in the file at `cachePath` when it holds one written
+ * on this host, else {@link deriveMachineId}, which is then written there (mode
+ * 0600) with this host's key. This way only the first command probes the
+ * platform (which spawns a process on macOS and Windows). The file holds only
+ * the derived id and a hash of the hostname, never the hardware UUID. A cache
+ * written by another host, or in the older id-only form, is derived again and
+ * rewritten. A failed write is ignored.
  */
 export function resolveMachineId(probe: MachineProbe, cachePath: string | null): string {
+  const hostKey = cachePath === null ? '' : cacheHostKey(probe)
   if (cachePath !== null) {
     try {
-      const cached = readFileSync(cachePath, 'utf8').trim()
-      if (MACHINE_ID_RE.test(cached)) return cached
+      const [cached, key] = readFileSync(cachePath, 'utf8').trim().split(/\s+/)
+      if (cached !== undefined && MACHINE_ID_RE.test(cached) && key === hostKey) return cached
     } catch {
       // not cached yet
     }
@@ -126,7 +162,7 @@ export function resolveMachineId(probe: MachineProbe, cachePath: string | null):
   if (cachePath !== null) {
     try {
       mkdirSync(dirname(cachePath), { recursive: true })
-      writeFileSync(cachePath, `${id}\n`, { mode: 0o600 })
+      writeFileSync(cachePath, `${id} ${hostKey}\n`, { mode: 0o600 })
     } catch {
       // an unwritable cache only costs the next probe
     }
@@ -144,7 +180,7 @@ let cachedMachineId: string | undefined
  * per process. The first call reads {@link MACHINE_ENV_VAR} (or its legacy
  * `SDLC_MACHINE_ID`) from `process.env`. When that is unset, it reads the cache
  * file `$XDG_CACHE_HOME/sdlc/machine-id` (default `~/.cache/sdlc/machine-id`).
- * When the cache holds no id, it probes the platform (it runs `ioreg` on macOS
+ * When the cache holds no id written on this host, it probes the platform (it runs `ioreg` on macOS
  * or `reg` on Windows, and reads `/etc/machine-id` on Linux) and writes the
  * cache file. Later calls return the same value. Functions that would call it
  * take an optional machine id, so a caller can avoid the call.
@@ -191,7 +227,9 @@ export interface OriginatorProbe {
 const LIVE_ORIGINATOR_PROBE: OriginatorProbe = {
   gitUserName(cwd) {
     try {
-      const result = spawnRunner('git').run(['config', 'user.name'], { cwd, timeoutMs: 5000 })
+      // `cwd` is a repository, so git runs only from an absolute PATH entry.
+      const git = spawnRunner('git', { absolutePathOnly: true })
+      const result = git.run(['config', 'user.name'], { cwd, timeoutMs: 5000 })
       return result.exitCode === 0 ? result.stdout : null
     } catch {
       return null

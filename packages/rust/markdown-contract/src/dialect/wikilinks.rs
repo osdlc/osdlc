@@ -9,7 +9,7 @@ use regex::Regex;
 
 use crate::js;
 
-/// One optional `\` before each bracket, as remark-stringify writes them. The inner
+/// One optional `\` before each opening bracket, as remark-stringify writes them. The inner
 /// text excludes `[` and `]`, so the pass is linear in the input.
 fn vault_ref_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();

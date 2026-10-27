@@ -559,3 +559,22 @@ describe('stripUnknownKeys — unions', () => {
     expect(out.value).toEqual({ entry: { b: 'x' } })
   })
 })
+
+describe('stripUnknownKeys — array elements', () => {
+  const rule = z.object({ name: z.string() }).strict()
+  const schema = z.object({ rules: z.array(rule) }).strict()
+  const raw = { rules: [{ name: 'a' }, { name: 'b', extra: 1 }] }
+
+  test('an unknown key in a list element is removed, its path carrying the index', () => {
+    const out = stripUnknownKeys(schema, raw)
+    expect(out.unknown).toEqual([['rules', '1', 'extra']])
+    expect(out.value).toEqual({ rules: [{ name: 'a' }, { name: 'b' }] })
+    expect(raw.rules[1]).toEqual({ name: 'b', extra: 1 })
+  })
+
+  test("keepStrict sees the index as a string, so 'rules.*' keeps the key", () => {
+    const out = stripUnknownKeys(schema, raw, pathMatcher(['rules.*']))
+    expect(out.unknown).toEqual([])
+    expect(out.value).toBe(raw)
+  })
+})

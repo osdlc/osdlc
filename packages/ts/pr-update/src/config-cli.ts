@@ -1,7 +1,9 @@
 /**
- * `pr-update config list|get|set|unset|explain|scaffold`: the config
- * subcommands, built from the mounted sections (`STANDALONE_SECTIONS`) with
- * the functions `@osdlc/config-layers` exports.
+ * `pr-update config`: cli-tool's shared `config` group (`list`, `get`, `set`,
+ * `unset`, `path`, `explain`) over the mounted sections
+ * (`STANDALONE_SECTIONS`), plus `scaffold`, which prints a starter file from
+ * the schema. {@link prUpdateConfigStore} is the `ConfigStore` the group runs
+ * on.
  *
  * pr-update mounts one section of its own, so `pr_update` is the default
  * namespace. A key whose first segment is not a mounted section name gets a
@@ -13,19 +15,23 @@
  * `resolveConfigFile` names for it: the file and its overlay under the project
  * root, or the file its env variable names and that file's overlay. They go
  * through the library's `setPath`/`unsetPath`, which keep the rest of the file
- * as it was, and only after the merged result validates. An invalid result is
- * a `ConfigInvalidError` (exit 14), and the file is left untouched.
+ * as it was, and only after the merged result validates. Only the result is
+ * checked, so `set` and `unset` can repair a file that is invalid now. A change
+ * that leaves the config invalid is a usage error (exit 2), and the file is
+ * left untouched. A layer file that does not parse as YAML, or a config
+ * variable naming a missing file, exits 14 (`CONFIG_INVALID_EXIT`); so does
+ * reading (`list`, `get`, `explain`) an invalid config. `path` lists the files
+ * whatever their state.
  */
 
 import { existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 import {
+  CONFIG_INVALID_EXIT,
   ConfigInvalidError,
   deepMergeConfig,
   defaultOf,
-  describeShape,
-  descriptionOf,
   getIn,
   nestedFields,
   overlayPath,
@@ -41,9 +47,15 @@ import {
   type ResolvedConfigFile,
 } from '@osdlc/config-layers'
 
-import { EXIT, defineCli, type CliContext } from '@osdlc/cli-tool'
+import { CommandError, commandKit, type CommandContext, type Group } from '@osdlc/cli-tool/command'
+import {
+  ConfigUsageError,
+  configCommands,
+  type ConfigLayerValue,
+  type ConfigStore,
+} from '@osdlc/cli-tool/config-command'
 import { atomicWrite } from '@osdlc/etag-write'
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
+import { parse as parseYaml } from 'yaml'
 import type { z } from 'zod'
 
 import {
@@ -53,6 +65,7 @@ import {
   type ConfigFileSpec,
   type StandaloneConfig,
 } from './config-file.ts'
+import { COMMAND_KEY_NAMES } from './trust.ts'
 
 /** The namespace an unqualified key belongs to. */
 const DEFAULT_SECTION = 'pr_update'
@@ -64,89 +77,15 @@ const SHAPE: Record<string, z.ZodType> = Object.fromEntries(
 const LAYERS = ['project', 'local'] as const
 type Layer = (typeof LAYERS)[number]
 
-/** The per-checkout overlay's file name, derived from the project file's. */
-function localName(file: ConfigFileSpec): string {
-  return overlayPath(file.name)
-}
+/** Every top-level field of every mounted section, as a dotted key. */
+const KEYS: readonly string[] = STANDALONE_SECTIONS.flatMap((section) =>
+  nestedFields(section.schema).map((field) => `${section.key}.${field.name}`),
+)
 
 function localHeader(file: ConfigFileSpec): string {
   return `# Per-checkout override for ${file.name} (gitignored). Keys here deep-merge over\n# the committed file.\n`
 }
 const PROJECT_HEADER = '# Project configuration.\n'
-
-/** The subcommand definitions and help text, which name the caller's file. */
-function configUi(file: ConfigFileSpec) {
-  const LOCAL_FILE_NAME = localName(file)
-  const keyFlags = {
-    layer: {
-      kind: 'enum',
-      choices: LAYERS,
-      valueName: 'project|local',
-      help: `File to read or write: project (${file.name}) or local (${LOCAL_FILE_NAME}).`,
-    },
-  } as const
-
-  const LIST_CLI = defineCli({
-    name: 'pr-update config list',
-    summary: 'List every key of the pr_update and code_host blocks with its effective value.',
-    flags: {},
-  })
-  const GET_CLI = defineCli({
-    name: 'pr-update config get',
-    summary: 'Print the effective value of one key (or one layer with --layer).',
-    flags: keyFlags,
-    positionals: [{ name: 'key', required: true }],
-  })
-  const SET_CLI = defineCli({
-    name: 'pr-update config set',
-    summary: 'Set one key, validated before it is written; comments and layout are preserved.',
-    flags: {
-      ...keyFlags,
-      dryRun: { kind: 'boolean', help: 'Validate and report; write nothing.' },
-    },
-    positionals: [
-      { name: 'key', required: true },
-      { name: 'value', required: true, help: 'YAML: a scalar or a flow list/map.' },
-    ],
-  })
-  const UNSET_CLI = defineCli({
-    name: 'pr-update config unset',
-    summary: 'Remove one key from a layer file.',
-    flags: {
-      ...keyFlags,
-      dryRun: { kind: 'boolean', help: 'Validate and report; write nothing.' },
-    },
-    positionals: [{ name: 'key', required: true }],
-  })
-  const EXPLAIN_CLI = defineCli({
-    name: 'pr-update config explain',
-    summary:
-      'Explain one key: description, shape, default, effective value and the file it came from.',
-    flags: {},
-    positionals: [{ name: 'key', required: true }],
-  })
-  const SCAFFOLD_CLI = defineCli({
-    name: 'pr-update config scaffold',
-    summary: `Print a schema-driven starter file (--local: a commented ${LOCAL_FILE_NAME} template).`,
-    flags: {
-      local: { kind: 'boolean', help: `Render the commented ${LOCAL_FILE_NAME} template.` },
-    },
-  })
-
-  const CONFIG_HELP = `pr-update config <command>
-
-  Commands:
-    list      List every key with its effective value.
-    get       Print the effective value of one key.
-    set       Set one key (validated, then written).
-    unset     Remove one key from a layer file.
-    explain   Explain one key.
-    scaffold  Print a starter ${file.name} block (--local for ${LOCAL_FILE_NAME}).
-
-  A key without a section prefix means pr_update.<key>.`
-
-  return { LIST_CLI, GET_CLI, SET_CLI, UNSET_CLI, EXPLAIN_CLI, SCAFFOLD_CLI, CONFIG_HELP }
-}
 
 /** Prefix the default namespace onto a key whose first segment is not a mounted section. */
 export function qualifyKey(key: string): string[] {
@@ -154,90 +93,103 @@ export function qualifyKey(key: string): string[] {
   return path[0] !== undefined && path[0] in SHAPE ? path : [DEFAULT_SECTION, ...path]
 }
 
-/** One-line rendering of a value for a table cell. */
-function summarize(value: unknown): string {
-  if (value === undefined) return '-'
-  if (Array.isArray(value)) return `[${value.length} item${value.length === 1 ? '' : 's'}]`
-  const s = JSON.stringify(value)
-  return s.length > 48 ? `${s.slice(0, 47)}…` : s
+/** The key's path and schema, or a {@link ConfigUsageError} naming what does not resolve. */
+function resolveKey(key: string, file: ConfigFileSpec) {
+  try {
+    return resolveKeyPath(SHAPE, qualifyKey(key), { file: file.name })
+  } catch (err) {
+    throw new ConfigUsageError(err instanceof Error ? err.message : String(err))
+  }
 }
 
-function render(value: unknown): string {
-  return typeof value === 'string' ? value : stringifyYaml(value).trimEnd()
-}
-
-function parseCliValue(raw: string): unknown {
-  const v = parseYaml(raw) as unknown
-  return v === undefined ? null : v
+/** An invalid or unreadable file, as the command's failure: exit 14, as every other command. */
+function invalidFile(err: unknown): never {
+  if (err instanceof ConfigInvalidError) {
+    throw new CommandError(err.message, { exit: CONFIG_INVALID_EXIT, code: 'config-invalid' })
+  }
+  throw err
 }
 
 function layerFile(files: ResolvedConfigFile, layer: Layer): string {
   return layer === 'project' ? files.project : files.local
 }
 
-/** `--help` and usage errors for a config subcommand. */
-function usageError(io: CliContext['io'], name: string, message: string): number {
-  io.stderr(`${name}: ${message}\n`)
-  return EXIT.usage
-}
-
-function resolveKey(key: string, file: ConfigFileSpec) {
-  const path = qualifyKey(key)
-  return resolveKeyPath(SHAPE, path, { file: file.name })
-}
-
 /** Read one layer file as a mapping; a broken file is exit 14. */
 function readLayerFile(path: string): Record<string, unknown> | null {
   const layer = readMappingFile(path)
   if (layer.problem !== null) {
-    throw new ConfigInvalidError(
-      [path],
-      [{ path: '(root)', message: layer.problem }],
-      'pr-update config',
+    invalidFile(
+      new ConfigInvalidError(
+        [path],
+        [{ path: '(root)', message: layer.problem }],
+        'pr-update config',
+      ),
     )
   }
   return layer.data
 }
 
-/** Write `mutate`'s result into one layer file after validating the merged outcome. */
+/** {@link resolveConfigFile} for `ctx`; a variable naming a missing file is exit 14. */
+function configFiles(ctx: CommandContext, spec: ConfigFileSpec): ResolvedConfigFile {
+  try {
+    return resolveConfigFile(ctx.cwd, { ...spec, env: ctx.env, cwd: ctx.cwd })
+  } catch (err) {
+    return invalidFile(err)
+  }
+}
+
+/** The schema issues of `merged`, or an empty list when it validates. */
+function issuesOf(ctx: CommandContext, file: ConfigFileSpec, merged: unknown) {
+  const parsed = standaloneConfig(file, { env: ctx.env, cwd: ctx.cwd }).schema.safeParse(merged)
+  return parsed.success
+    ? []
+    : parsed.error.issues.map((i) => ({
+        path: i.path.length > 0 ? i.path.join('.') : '(root)',
+        message: i.message,
+      }))
+}
+
+/**
+ * Write a change into one layer file after validating the merged outcome.
+ * Only the result is checked, so a change can repair a file that is invalid
+ * now. A result that is invalid is a usage error; a layer file that does not
+ * parse as YAML at all is exit 14.
+ */
 function writeLayer(
-  ctx: CliContext,
-  file_: ConfigFileSpec,
+  ctx: CommandContext,
+  spec: ConfigFileSpec,
   layer: Layer,
   path: readonly string[],
   value: { set: unknown } | { unset: true },
   dryRun: boolean,
-): { file: string; changed: boolean; created: boolean } {
-  const files = resolveConfigFile(ctx.cwd, { ...file_, env: ctx.env, cwd: ctx.cwd })
+): { file: string; changed: boolean } {
+  const files = configFiles(ctx, spec)
   const file = layerFile(files, layer)
   const created = !existsSync(file)
+  // A file that is not a YAML mapping cannot be edited in place.
+  if (!created) readLayerFile(file)
   const current = created ? null : readFileSync(file, 'utf8')
-  if (created && 'unset' in value) return { file, changed: false, created: false }
-  const source = current ?? (layer === 'project' ? PROJECT_HEADER : localHeader(file_))
+  if (created && 'unset' in value) return { file, changed: false }
+  const source = current ?? (layer === 'project' ? PROJECT_HEADER : localHeader(spec))
   const next = 'unset' in value ? unsetPath(source, path) : setPath(source, path, value.set)
+  if (!created && next === current) return { file, changed: false }
 
-  const nextData = (parseYaml(next) ?? {}) as Record<string, unknown>
   const otherFile = layerFile(files, layer === 'project' ? 'local' : 'project')
   const other = readLayerFile(otherFile) ?? {}
-  const merged =
-    layer === 'project' ? deepMergeConfig(nextData, other) : deepMergeConfig(other, nextData)
-  const parsed = standaloneConfig(file_, { env: ctx.env, cwd: ctx.cwd }).schema.safeParse(merged)
-  if (!parsed.success) {
-    throw new ConfigInvalidError(
-      [file],
-      parsed.error.issues.map((i) => ({
-        path: i.path.length > 0 ? i.path.join('.') : '(root)',
-        message: i.message,
-      })),
-      'pr-update config',
+  const merge = (data: Record<string, unknown>) =>
+    layer === 'project' ? deepMergeConfig(data, other) : deepMergeConfig(other, data)
+  const afterIssues = issuesOf(ctx, spec, merge((parseYaml(next) ?? {}) as Record<string, unknown>))
+  if (afterIssues.length > 0) {
+    throw new ConfigUsageError(
+      `the change would leave ${file} invalid:\n` +
+        afterIssues.map((i) => `  ${i.path}: ${i.message}`).join('\n'),
     )
   }
-  const changed = created || next !== current
-  if (changed && !dryRun) {
+  if (!dryRun) {
     mkdirSync(dirname(file), { recursive: true })
     atomicWrite(file, next)
   }
-  return { file, changed, created }
+  return { file, changed: true }
 }
 
 /** Where a key's effective value comes from: the overlay, the project file or the default. */
@@ -246,185 +198,152 @@ function sourceOf(layers: ConfigLayers<StandaloneConfig>, path: readonly string[
   return getIn(layers.project, path).found ? 'project' : 'default'
 }
 
-function runList(rest: readonly string[], ctx: CliContext, file: ConfigFileSpec): number {
-  const { io } = ctx
-  const ui = configUi(file)
-  const p = ui.LIST_CLI.parse(rest, io)
-  if (p.status === 'help') return EXIT.ok
-  if (p.status === 'error') return usageError(io, 'pr-update config list', p.message)
-  const layers = loadConfigLayers(file, ctx.cwd, { env: ctx.env, cwd: ctx.cwd })
-  const rows: { key: string; source: string; summary: string }[] = []
-  for (const section of STANDALONE_SECTIONS) {
-    for (const field of nestedFields(section.schema)) {
-      const path = [section.key, field.name]
-      rows.push({
-        key: path.join('.'),
-        source: sourceOf(layers, path),
-        summary: summarize(getIn(layers.merged, path).value),
+function asLayer(layer: string): Layer {
+  return layer === 'local' ? 'local' : 'project'
+}
+
+/**
+ * pr-update's `ConfigStore`: the project file (the default for `set` and
+ * `unset`) and its `.local` overlay. The keys that name a command to run are
+ * written from the command line only.
+ */
+export function prUpdateConfigStore(file: ConfigFileSpec): ConfigStore {
+  const load = (ctx: CommandContext): ConfigLayers<StandaloneConfig> => {
+    try {
+      return loadConfigLayers(file, ctx.cwd, { env: ctx.env, cwd: ctx.cwd })
+    } catch (err) {
+      return invalidFile(err)
+    }
+  }
+  return {
+    layers: LAYERS,
+    defaultLayer: 'project',
+    keys: KEYS,
+    cliOnlyKeys: COMMAND_KEY_NAMES,
+    dryRun: true,
+    resolveKey(key) {
+      try {
+        return resolveKey(key, file).path.join('.')
+      } catch {
+        return undefined
+      }
+    },
+
+    async list(ctx) {
+      const layers = load(ctx)
+      const settings = KEYS.map((key) => {
+        const path = key.split('.')
+        return { key, value: getIn(layers.merged, path).value, source: sourceOf(layers, path) }
       })
-    }
+      return { settings }
+    },
+
+    // Existence only: `config path` is what you run when a file will not load,
+    // so a variable naming a missing file still lists that path, as missing.
+    async locations(ctx) {
+      let files: ResolvedConfigFile
+      try {
+        files = resolveConfigFile(ctx.cwd, { ...file, env: ctx.env, cwd: ctx.cwd })
+      } catch (err) {
+        const named = err instanceof ConfigInvalidError ? err.files[0] : undefined
+        if (named === undefined) throw err
+        files = { project: named, local: overlayPath(named), source: 'env' }
+      }
+      return [
+        {
+          layer: 'project',
+          path: files.project,
+          exists: existsSync(files.project),
+          envVar: files.source === 'env' ? file.envVar : null,
+        },
+        { layer: 'local', path: files.local, exists: existsSync(files.local) },
+      ]
+    },
+
+    async set(ctx, layer, key, value, options = {}) {
+      const { path } = resolveKey(key, file)
+      const written = writeLayer(
+        ctx,
+        file,
+        asLayer(layer),
+        path,
+        { set: value },
+        options.dryRun === true,
+      )
+      return { file: written.file, value }
+    },
+
+    async unset(ctx, layer, key, options = {}) {
+      const { path } = resolveKey(key, file)
+      const written = writeLayer(
+        ctx,
+        file,
+        asLayer(layer),
+        path,
+        { unset: true },
+        options.dryRun === true,
+      )
+      return { file: written.file, removed: written.changed }
+    },
+
+    async explain(ctx, key) {
+      const resolved = resolveKey(key, file)
+      const layers = load(ctx)
+      const fallback = defaultOf(resolved.schema)
+      const project = getIn(layers.project, resolved.path)
+      const local = getIn(layers.local, resolved.path)
+      const layerValues: ConfigLayerValue[] = [
+        { layer: 'default', set: fallback !== undefined, value: fallback },
+        {
+          layer: 'project',
+          set: project.found,
+          value: project.value,
+          file: layers.files.project,
+          ...(layers.files.source === 'env' ? { envVar: file.envVar } : {}),
+        },
+        { layer: 'local', set: local.found, value: local.value, file: layers.files.local },
+      ]
+      return { layers: layerValues }
+    },
   }
-  const w = Math.max(...rows.map((r) => r.key.length))
-  for (const r of rows) io.stdout(`${r.key.padEnd(w)}  ${r.source.padEnd(7)}  ${r.summary}\n`)
-  return EXIT.ok
 }
 
-function runGet(rest: readonly string[], ctx: CliContext, file: ConfigFileSpec): number {
-  const { io } = ctx
-  const ui = configUi(file)
-  const p = ui.GET_CLI.parse(rest, io)
-  if (p.status === 'help') return EXIT.ok
-  if (p.status === 'error') return usageError(io, 'pr-update config get', p.message)
-  const resolved = resolveKey(p.positionals[0] ?? '', file)
-  const layers = loadConfigLayers(file, ctx.cwd, { env: ctx.env, cwd: ctx.cwd })
-  const hit = getIn(
-    p.values.layer === undefined ? layers.merged : layers[p.values.layer],
-    resolved.path,
-  )
-  if (!hit.found || hit.value === undefined) {
-    io.stderr(`pr-update config get: ${resolved.path.join('.')} is not set in that layer\n`)
-    return EXIT.error
-  }
-  io.stdout(`${render(hit.value)}\n`)
-  return EXIT.ok
+/** `config scaffold`: pr-update's own, since cli-tool's store has no schema to render. */
+function scaffoldCommand(file: ConfigFileSpec) {
+  const LOCAL_FILE_NAME = overlayPath(file.name)
+  return commandKit({ globals: {} }).command({
+    summary: `print a schema-driven starter ${file.name} (--local: a commented ${LOCAL_FILE_NAME} template)`,
+    interactive: true,
+    flags: {
+      local: { kind: 'boolean', help: `render the commented ${LOCAL_FILE_NAME} template` },
+    },
+    run({ flags }, ctx) {
+      const schema = standaloneConfig(file, { env: ctx.env, cwd: ctx.cwd }).schema
+      ctx.io.stdout(
+        flags.local
+          ? scaffoldLocalYaml(schema, [
+              `# Per-checkout override for ${file.name} (gitignored). Every key is commented out at`,
+              '# its default; uncomment only what THIS checkout should override.',
+            ])
+          : scaffoldYaml(schema, [
+              `# pr-update configuration: the pr_update and code_host blocks of ${file.name}.`,
+              '# Every key is shown at its default with its description as a comment.',
+            ]),
+      )
+    },
+  })
 }
 
-/** Report what a `set`/`unset` did (or, with `--dry-run`, would do). */
-function reportWrite(
-  ctx: CliContext,
-  key: string,
-  r: { file: string; changed: boolean; created: boolean },
-  dryRun: boolean,
-): void {
-  const verb = dryRun ? 'would update' : 'updated'
-  ctx.io.stdout(
-    r.changed
-      ? `${key}: ${r.created ? verb.replace('update', 'create') : verb} ${r.file}\n`
-      : `${key}: unchanged (${r.file})\n`,
-  )
-}
-
-function runSet(rest: readonly string[], ctx: CliContext, file: ConfigFileSpec): number {
-  const { io } = ctx
-  const ui = configUi(file)
-  const p = ui.SET_CLI.parse(rest, io)
-  if (p.status === 'help') return EXIT.ok
-  if (p.status === 'error') return usageError(io, 'pr-update config set', p.message)
-  const resolved = resolveKey(p.positionals[0] ?? '', file)
-  const change = { set: parseCliValue(p.positionals[1] ?? '') }
-  const r = writeLayer(
-    ctx,
-    file,
-    p.values.layer ?? 'project',
-    resolved.path,
-    change,
-    p.values.dryRun,
-  )
-  reportWrite(ctx, resolved.path.join('.'), r, p.values.dryRun)
-  return EXIT.ok
-}
-
-function runUnset(rest: readonly string[], ctx: CliContext, file: ConfigFileSpec): number {
-  const { io } = ctx
-  const ui = configUi(file)
-  const p = ui.UNSET_CLI.parse(rest, io)
-  if (p.status === 'help') return EXIT.ok
-  if (p.status === 'error') return usageError(io, 'pr-update config unset', p.message)
-  const resolved = resolveKey(p.positionals[0] ?? '', file)
-  const change = { unset: true as const }
-  const r = writeLayer(
-    ctx,
-    file,
-    p.values.layer ?? 'project',
-    resolved.path,
-    change,
-    p.values.dryRun,
-  )
-  reportWrite(ctx, resolved.path.join('.'), r, p.values.dryRun)
-  return EXIT.ok
-}
-
-function runExplain(rest: readonly string[], ctx: CliContext, file: ConfigFileSpec): number {
-  const { io } = ctx
-  const ui = configUi(file)
-  const p = ui.EXPLAIN_CLI.parse(rest, io)
-  if (p.status === 'help') return EXIT.ok
-  if (p.status === 'error') return usageError(io, 'pr-update config explain', p.message)
-  const resolved = resolveKey(p.positionals[0] ?? '', file)
-  const layers = loadConfigLayers(file, ctx.cwd, { env: ctx.env, cwd: ctx.cwd })
-  const key = resolved.path.join('.')
-  const viaEnv = layers.files.source === 'env' ? ` (from ${file.envVar})` : ''
-  io.stdout(`${key}\n\n`)
-  const description = descriptionOf(resolved.schema)
-  if (description !== '') io.stdout(`${description}\n\n`)
-  io.stdout(`file:         ${layers.files.project}${viaEnv}\n`)
-  io.stdout(`overlay:      ${layers.files.local}\n`)
-  io.stdout(`category:     ${resolved.meta.category}\n`)
-  io.stdout(`layers:       ${resolved.meta.layers.join(', ')}\n`)
-  io.stdout(`shape:        ${describeShape(resolved.schema)}\n`)
-  io.stdout(`default:      ${JSON.stringify(defaultOf(resolved.schema)) ?? '(none)'}\n`)
-  io.stdout(
-    `effective:    ${JSON.stringify(getIn(layers.merged, resolved.path).value) ?? '(none)'} (from ${sourceOf(layers, resolved.path)})\n`,
-  )
-  const fields = nestedFields(resolved.schema)
-  if (fields.length > 0) {
-    io.stdout('fields:\n')
-    for (const f of fields) {
-      io.stdout(`  ${f.name}: ${f.shape}  (default ${JSON.stringify(f.default) ?? '(none)'})\n`)
-    }
-  }
-  return EXIT.ok
-}
-
-function runScaffold(rest: readonly string[], ctx: CliContext, file: ConfigFileSpec): number {
-  const { io } = ctx
-  const ui = configUi(file)
-  const p = ui.SCAFFOLD_CLI.parse(rest, io)
-  if (p.status === 'help') return EXIT.ok
-  if (p.status === 'error') return usageError(io, 'pr-update config scaffold', p.message)
-  const schema = standaloneConfig(file, { env: ctx.env, cwd: ctx.cwd }).schema
-  io.stdout(
-    p.values.local
-      ? scaffoldLocalYaml(schema, [
-          `# Per-checkout override for ${file.name} (gitignored). Every key is commented out at`,
-          '# its default; uncomment only what THIS checkout should override.',
-        ])
-      : scaffoldYaml(schema, [
-          `# pr-update configuration: the pr_update and code_host blocks of ${file.name}.`,
-          '# Every key is shown at its default with its description as a comment.',
-        ]),
-  )
-  return EXIT.ok
-}
-
-/** `pr-update config <sub> …`, reading and writing the config file `file` names. */
-export function runConfigCommand(
-  argv: readonly string[],
-  ctx: CliContext,
-  file: ConfigFileSpec,
-): number {
-  const { io } = ctx
-  const ui = configUi(file)
-  const [sub, ...rest] = argv
-  if (sub === undefined || sub === '--help' || sub === '-h') {
-    io.stdout(`${ui.CONFIG_HELP}\n`)
-    return EXIT.ok
-  }
-  switch (sub) {
-    case 'list':
-      return runList(rest, ctx, file)
-    case 'get':
-      return runGet(rest, ctx, file)
-    case 'set':
-      return runSet(rest, ctx, file)
-    case 'unset':
-      return runUnset(rest, ctx, file)
-    case 'explain':
-      return runExplain(rest, ctx, file)
-    case 'scaffold':
-      return runScaffold(rest, ctx, file)
-    default:
-      io.stderr(`pr-update config: unknown command '${sub}'\n\n${ui.CONFIG_HELP}\n`)
-      return EXIT.usage
-  }
+/** The `config` group, reading and writing the config file `file` names. */
+export function configCommand(file: ConfigFileSpec): Group {
+  const shared = configCommands(prUpdateConfigStore(file))
+  return commandKit({ globals: {} }).group({
+    summary: 'list, read, edit and explain the pr_update and code_host config',
+    description:
+      `${shared.description ?? ''} The project layer is ${file.name} and the local one ` +
+      `${overlayPath(file.name)} (gitignored). ${file.envVar} names another file, whose overlay ` +
+      'sits beside it. A key without a section prefix means pr_update.<key>.',
+    ...(shared.default !== undefined ? { default: shared.default } : {}),
+    commands: { ...shared.commands, scaffold: scaffoldCommand(file) },
+  })
 }

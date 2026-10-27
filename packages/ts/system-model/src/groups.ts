@@ -24,7 +24,14 @@ export const SYNTHESIZED_RUNNERS = {
  *
  * @experimental
  */
-export type GroupId = 'tasks' | 'dependencies' | 'tools' | 'hooks'
+export type GroupId = (typeof ALL_GROUP_IDS)[number]
+
+/**
+ * The known {@link GroupId}s, in display order.
+ *
+ * @experimental
+ */
+export const ALL_GROUP_IDS = ['tasks', 'dependencies', 'tools', 'hooks'] as const
 
 /**
  * One group of reports.

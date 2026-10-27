@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from 'vitest'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { isatty } from 'node:tty'
@@ -107,5 +107,59 @@ describe('pr-update update --report', () => {
     const argv = ['update', '--repair-agent', 'claude', '--repair-command', 'x', '--report', file]
     expect(await main(argv, ctx)).toBe(EXIT.usage)
     expect(existsSync(file)).toBe(false)
+  })
+})
+
+describe('pr-update usage errors', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'pr-update-cli-usage-'))
+  afterAll(() => rmSync(cwd, { recursive: true, force: true }))
+
+  async function run(...argv: string[]) {
+    return runIn(cwd, ...argv)
+  }
+  async function runIn(dir: string, ...argv: string[]) {
+    const ctx = captureContext({ cwd: dir, env: isolatedEnv(cwd) })
+    const code = await main(argv, ctx, fakeTools)
+    return { code, out: ctx.io.out, err: ctx.io.err }
+  }
+
+  test('a non-integer --limit or --pr is refused', async () => {
+    const limit = await run('survey', '--limit', 'abc')
+    expect(limit.code).toBe(EXIT.usage)
+    expect(limit.err).toContain("--limit must be an integer, got 'abc'")
+    const pr = await run('update', '--pr', '1.5')
+    expect(pr.code).toBe(EXIT.usage)
+    expect(pr.err).toContain("--pr must be an integer, got '1.5'")
+  })
+
+  test('an unknown command is a usage error', async () => {
+    const r = await run('frobnicate')
+    expect(r.code).toBe(EXIT.usage)
+    expect(r.err).toContain("unknown command 'frobnicate'")
+  })
+
+  test('trust takes no arguments, and says so the second time it is run', async () => {
+    const repo = makeGitFixture({ dir: mkdtempSync(join(cwd, 'repo-')) })
+    repo.commit('init', { 'a.txt': 'a' })
+    const extra = await runIn(repo.dir, 'trust', 'x')
+    expect(extra.code).toBe(EXIT.usage)
+    expect((await runIn(repo.dir, 'trust')).out).toMatch(/^trusted \//)
+    expect((await runIn(repo.dir, 'trust')).out).toMatch(/^already trusted \//)
+  })
+
+  test('trust --show, --list and --untrust', async () => {
+    const repo = makeGitFixture({ dir: mkdtempSync(join(cwd, 'repo-')) })
+    repo.commit('init', { 'a.txt': 'a' })
+    expect((await runIn(repo.dir, 'trust', '--show')).out).toMatch(/^not trusted \//)
+    await runIn(repo.dir, 'trust')
+    const shown = await runIn(repo.dir, 'trust', '--show')
+    expect(shown.out).toMatch(/^trusted \/.* \(by marker\)\n$/)
+    expect((await runIn(repo.dir, 'trust', '--list')).out).toContain(realpathSync(repo.dir))
+    const untrust = await runIn(repo.dir, 'trust', '--untrust')
+    expect(untrust.code).toBe(EXIT.ok)
+    expect(untrust.out).toMatch(/^untrusted \//)
+    const again = await runIn(repo.dir, 'trust', '--untrust')
+    expect(again.code).toBe(EXIT.error)
+    expect(again.err).toContain('not trusted')
   })
 })

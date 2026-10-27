@@ -29,6 +29,15 @@ export interface VendorDirs {
 }
 
 /**
+ * `tooly` → `TOOLY`; `pr-updater` → `PR_UPDATER`. The stem the tool's override variables are built from.
+ *
+ * @experimental
+ */
+export function envStem(tool: string): string {
+  return tool.toUpperCase().replace(/[^A-Z0-9]+/g, '_')
+}
+
+/**
  * The vendor's directories, resolved from the environment.
  *
  * @experimental

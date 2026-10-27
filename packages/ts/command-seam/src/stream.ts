@@ -17,15 +17,16 @@
 
 import { spawnSync } from 'node:child_process'
 
-import { planOptions, spawnPlan } from './spawn-plan.ts'
+import { planOptions } from './spawn-plan.ts'
 import {
   childStdio,
-  cwdError,
   mergedEnv,
   normalizeTimeout,
+  prepareSpawn,
   syncStop,
   type CommandRunOptions,
   type NeverExitedReason,
+  type SpawnRunnerOptions,
   type StdioOption,
 } from './sync.ts'
 
@@ -117,6 +118,8 @@ export interface StreamRunner {
  *
  * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
  *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
+ * @param options - See `SpawnRunnerOptions`; `absolutePathOnly` searches
+ *   absolute `PATH` entries only.
  * @returns A runner for that binary.
  *
  * @example
@@ -131,7 +134,7 @@ export interface StreamRunner {
  * closeSync(log)
  * ```
  */
-export function streamRunner(binary: string): StreamRunner {
+export function streamRunner(binary: string, options: SpawnRunnerOptions = {}): StreamRunner {
   return {
     run(argv: string[], opts: StreamRunOptions): StreamResult {
       const timeout = normalizeTimeout(opts.timeoutMs)
@@ -139,16 +142,12 @@ export function streamRunner(binary: string): StreamRunner {
       const say = (line: string) => {
         if (opts.quiet !== true) process.stderr.write(`${line}\n`)
       }
-      const cwdMessage = cwdError(`spawnSync ${binary}`, binary, argv, opts)
-      if (cwdMessage !== undefined) {
-        say(cwdMessage)
-        return { exitCode: 1, neverExited: true, reason: 'spawn', error: cwdMessage }
+      const prepared = prepareSpawn('spawnSync', binary, argv, opts, options)
+      if ('refusal' in prepared) {
+        say(prepared.refusal)
+        return { exitCode: 1, neverExited: true, reason: 'spawn', error: prepared.refusal }
       }
-      const plan = spawnPlan(binary, argv, opts)
-      if ('refusal' in plan) {
-        say(plan.refusal)
-        return { exitCode: 1, neverExited: true, reason: 'spawn', error: plan.refusal }
-      }
+      const { plan } = prepared
       const proc = spawnSync(plan.file, plan.args, {
         ...planOptions(plan),
         cwd: opts.cwd,

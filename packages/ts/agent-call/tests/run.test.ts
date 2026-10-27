@@ -1,5 +1,14 @@
-import { describe, expect, test, vi } from 'vitest'
-import { existsSync, readdirSync } from 'node:fs'
+import { afterAll, describe, expect, test, vi } from 'vitest'
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,6 +16,7 @@ import { join } from 'node:path'
 import { antigravityAdapter } from '../src/adapters/antigravity.js'
 import { customAdapter } from '../src/adapters/custom.js'
 import { claudeAdapter } from '../src/adapters/claude.js'
+import { TMP_TOKEN } from '../src/plan.js'
 import { callAgent, planCall } from '../src/run.js'
 
 // Runner tests on real processes, using harmless system binaries. No agents
@@ -78,6 +88,33 @@ describe('callAgent', () => {
     expect(result.ok).toBe(false)
     expect(result.exitCode).toBeNull()
     expect(result.error?.reason).toBe('spawn-failed')
+  })
+
+  test('an argument Node refuses before spawning resolves spawn-failed, not a rejection', async () => {
+    // Node throws synchronously for a NUL byte in argv, before any process starts.
+    const result = await callAgent(echoAdapter, { prompt: 'a\u0000b' })
+    expect(result.ok).toBe(false)
+    expect(result.exitCode).toBeNull()
+    expect(result.error?.reason).toBe('spawn-failed')
+    expect(result.error?.detail).not.toBe('')
+  })
+
+  test('spec cwd is the working directory of the child', async () => {
+    const pwd = customAdapter({
+      name: 'pwd',
+      binary: '/bin/sh',
+      args: () => ['-c', 'pwd -P'],
+    })
+    const dir = realpathSync(tmpdir())
+    const result = await callAgent(pwd, { prompt: 'unused', cwd: dir })
+    expect(result.ok).toBe(true)
+    expect(result.text).toBe(dir)
+  })
+
+  test.each([Infinity, 2 ** 31])('a timeoutMs of %d does not kill the run at once', async (ms) => {
+    const result = await callAgent(echoAdapter, { prompt: 'still here', timeoutMs: ms })
+    expect(result.ok).toBe(true)
+    expect(result.text).toBe('still here')
   })
 
   test('timeout kills the process', async () => {
@@ -161,6 +198,59 @@ describe('callAgent', () => {
     const result = await callAgent(echoAdapter, { prompt: 'hi' }, { captureConversation: true })
     // The custom adapter has no toConversation, so the result has none.
     expect(result.conversation).toBeUndefined()
+  })
+})
+
+describe('binary lookup', () => {
+  // A bare binary name runs only from an absolute PATH entry, so an agent
+  // planted in the working directory is never the one run.
+  const dir = mkdtempSync(join(tmpdir(), 'agent-call-path-'))
+  afterAll(() => rmSync(dir, { recursive: true, force: true }))
+
+  /** A fake agent in `folder` that prints `says`. */
+  function fakeAgent(folder: string, says: string): string {
+    mkdirSync(folder, { recursive: true })
+    const path = join(folder, 'fake-agent')
+    writeFileSync(path, `#!/bin/sh\nprintf '%s' '${says}'\n`)
+    chmodSync(path, 0o755)
+    return path
+  }
+
+  const bare = customAdapter({ name: 'fake', binary: 'fake-agent', args: () => [] })
+
+  test('an agent on a relative or empty PATH entry is not run', async () => {
+    const work = join(dir, 'checkout')
+    fakeAgent(work, 'planted')
+    fakeAgent(join(work, 'bin'), 'planted')
+    for (const PATH of ['.', '', 'bin', 'bin:/usr/bin:/bin', `/usr/bin::/bin`]) {
+      const result = await callAgent(bare, { prompt: 'x', cwd: work, env: { PATH } })
+      expect([PATH, result.ok, result.text]).toEqual([PATH, false, ''])
+      expect(result.error?.reason).toBe('spawn-failed')
+      expect(result.error?.detail).toContain('relative and empty PATH entries are skipped')
+    }
+  })
+
+  test('an agent on an absolute PATH entry runs', async () => {
+    const work = join(dir, 'trusted-cwd')
+    mkdirSync(work, { recursive: true })
+    fakeAgent(join(work, 'bin'), 'planted')
+    const installed = join(dir, 'installed')
+    fakeAgent(installed, 'installed')
+    const result = await callAgent(bare, {
+      prompt: 'x',
+      cwd: work,
+      env: { PATH: `bin:${installed}` },
+    })
+    expect(result.ok).toBe(true)
+    expect(result.text).toBe('installed')
+  })
+
+  test('an absolute binary path runs as given, whatever PATH holds', async () => {
+    const binary = fakeAgent(join(dir, 'absolute'), 'absolute')
+    const adapter = customAdapter({ name: 'fake', binary, args: () => [] })
+    const result = await callAgent(adapter, { prompt: 'x', env: { PATH: '' } })
+    expect(result.ok).toBe(true)
+    expect(result.text).toBe('absolute')
   })
 })
 
@@ -336,6 +426,24 @@ describe('child stdin', () => {
       await expect(callAgent(adapter, { prompt: 'x' })).rejects.toThrow(/EISDIR/)
       expect(leftovers(marker)).toEqual([])
     })
+
+    test.each([0, 1])(
+      'a read-back file the CLI removed leaves raw.files unset (exit %i)',
+      async (code) => {
+        const remover = {
+          ...echoAdapter,
+          plan: (spec: Parameters<typeof echoAdapter.plan>[0]) => ({
+            ...echoAdapter.plan(spec),
+            argv: ['/bin/sh', '-c', `rm "$1"; exit ${code}`, 'sh', `${TMP_TOKEN}/out.json`],
+            tempFiles: [{ name: 'out.json', content: '', readBack: true }],
+          }),
+        }
+        const result = await callAgent(remover, { prompt: 'x' })
+        expect(result.ok).toBe(code === 0)
+        if (code !== 0) expect(result.error?.reason).toBe('nonzero-exit')
+        expect(result.raw.files).toBeUndefined()
+      },
+    )
 
     test.each(['', '..', 'a/b', 'a\\b', '../x'])('refuses the name %j', async (name) => {
       const marker = `leak-check-${process.pid}.txt`

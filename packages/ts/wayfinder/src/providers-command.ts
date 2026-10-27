@@ -5,7 +5,7 @@
  */
 
 import { which } from '@osdlc/command-seam'
-import type { RoleName, ToolDef } from '@osdlc/system-model/detect'
+import type { ProviderKind, RoleName, ToolDef } from '@osdlc/system-model/detect'
 
 import { kit, openSession } from './commands/shared.ts'
 import { ProvidersOutput } from './documents.ts'
@@ -18,7 +18,7 @@ export interface ProviderRow {
   id: string
   roles: RoleName[]
   /** The runner role's kind; null for a tool with no runner. */
-  kind: 'parse' | 'exec' | null
+  kind: ProviderKind | null
   binary: string | null
   /** Whether `binary` is on the PATH; null when the tool names none. */
   onPath: boolean | null

@@ -89,15 +89,25 @@ export const MAX_PROGRESS_LINE = 1024 * 1024
 /**
  * A {@link CatalogProgress} that sends `session`'s probe as progress lines:
  * the runners first, in the order the catalog will list them, then each
- * runner as it answers, with its unknowns.
+ * runner as it answers, with its unknowns, and the agent skills on a line of
+ * their own once they are read. Skills read before the runners are known
+ * wait for the first line. They pass `filter`, as in the document. No skills,
+ * or skills too large for a line, come only with the document.
  */
 export function progressLines(
   session: Session,
   emit: ProgressSink,
   maxLine = MAX_PROGRESS_LINE,
+  filter: TaskFilter = {},
 ): CatalogProgress {
   let pending: string[] = []
   let total = 0
+  let named = false
+  let early: SkillRow[] | null = null
+  const sendSkills = (skills: SkillRow[]): void => {
+    const line = { pending: [...pending], total, skills }
+    if (JSON.stringify(line).length <= maxLine) emit(line)
+  }
   return {
     onRunners(runners) {
       pending = inDisplayOrder(
@@ -105,7 +115,16 @@ export function progressLines(
         session.runnerOrder(),
       ).map((r) => r.runner)
       total = runners.length
+      named = true
       emit({ pending: [...pending], total })
+      if (early !== null) sendSkills(early)
+      early = null
+    },
+    onSkills(all) {
+      const skills = filterSkills(all, filter).map((h) => h.skill)
+      if (skills.length === 0) return
+      if (named) sendSkills(skills)
+      else early = skills
     },
     onRunner(report, cache) {
       pending = pending.filter((r) => r !== report.runner)
@@ -194,7 +213,9 @@ export function listCommand(home: string, share?: CatalogShare) {
         const snapshot = await session.catalog({
           cached,
           signal,
-          ...(emit !== undefined ? { progress: progressLines(session, emit) } : {}),
+          ...(emit !== undefined
+            ? { progress: progressLines(session, emit, MAX_PROGRESS_LINE, filter) }
+            : {}),
         })
         const unknowns = session.unknowns(snapshot)
         noteUnknowns(ctx, session, snapshot, unknowns)

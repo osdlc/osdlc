@@ -1,5 +1,113 @@
 # @osdlc/wayfinder
 
+## 0.11.2
+
+### Patch Changes
+
+- bb61f10: The version `--version` prints is now stamped from package.json at build time by `cli-tool-stamp-version` instead of read from package.json at run time.
+- Updated dependencies [bb61f10]
+  - @osdlc/cli-tool@0.11.0
+
+## 0.11.1
+
+### Patch Changes
+
+- a4a2021: The `$schema` URL that `way config set` writes, and the `$id` of the shipped `schema/config.json`, now follow the package version's `major.minor`, so they name `@osdlc/wayfinder@0.11` in this release line. They had stayed at `0.10`. `CONFIG_SCHEMA_URL` is now typed `string` instead of a string literal.
+
+## 0.11.0
+
+### Minor Changes
+
+- da5e6a3: `way clean` now compares real paths, through `@osdlc/path-guard` (a new runtime dependency), when it checks a store against the home directory, against another store, and when it prunes empty directories above a removed store. A store that holds the home directory only through a symbolic link above it (a store under `~/alias/...` where `alias` links to a directory that holds the home) is no longer removed. Two stores that overlap only through a symbolic link now need `--yes`, and an old pre-release path that reaches a current store through a link is no longer listed as old.
+
+### Patch Changes
+
+- Updated dependencies [da5e6a3]
+- Updated dependencies [da5e6a3]
+- Updated dependencies [da5e6a3]
+  - @osdlc/command-seam@0.14.0
+  - @osdlc/typed-git@0.10.0
+  - @osdlc/detect-harness@0.7.0
+  - @osdlc/cli-tool@0.10.1
+  - @osdlc/system-model@0.7.1
+  - @osdlc/trust-repo@0.5.1
+
+## 0.10.1
+
+### Patch Changes
+
+- e5265bc: Clearer wording in the README and the terminal UI and web view guides about the skills progress line and the runner time limit.
+
+## 0.10.0
+
+### Minor Changes
+
+- b835ae4: `way clean` no longer removes a store that holds the home directory under a directory whose name starts with `..` (such as `..x`). `way --cached --no-exec` now re-probes a runner whose stored rows were taken with exec allowed, instead of reporting it as fresh with no tasks.
+  Through `@osdlc/cli-tool` and `@osdlc/command-seam`, a working directory that cannot be entered now exits with the `repository` code instead of `missingTool`.
+  Behaviour change (stricter): a task handed the terminal (`way run`, the terminal UI, the web view's Run) whose program is a bare name now runs it only from an absolute `PATH` entry; a relative entry, which would find a file the repository ships, is skipped and the run fails as a missing binary. A path such as `./gradlew` runs as given. The web view's "handed off" message quotes the command line as the copy text does.
+  `~` expansion of the user config path and of tool module paths now uses `@osdlc/tiered-dirs`'s `expandTilde`; the result on each platform is unchanged.
+  The JSON documents' schemas take every enum that names a `@osdlc/system-model` value (group ids, cache states and stale reasons, probe costs, parameters-unknown reasons, match modes, tool roles and runner kinds) from system-model's `ALL_*` lists instead of a copy, so a value system-model adds is accepted. The values are unchanged; in the `providers` document's schema the role enum now lists `packageManager` first, in system-model's order. The terminal filter's control-character set comes from `@osdlc/ux`'s `controlPattern`; the characters it replaces are unchanged.
+  `way config get` of a key under a listed setting returns the nested value instead of exiting 1.
+  Behaviour change (through `@osdlc/cli-tool`): `way config get` and `way config unset` of an unknown key exit 2 (a usage error, with a did-you-mean) instead of 1, as `set` and `explain` already did. `way config get` of a key under a listed setting reads it from that setting's value.
+- ebd5328: Loading finishes sooner and a hung tool no longer holds it up.
+  
+  - New setting `runners.timeout`: how many seconds one runner may take to list its tasks, its subprocesses included. Set it in your user config (`way config set --user runners.timeout 20`), from 1 to 3600. A project file, or the web view's settings page, can only lower the limit: each runner takes the smaller of the project value and its own limit (or your user value). A project value above your user value is ignored with a warning. A runner still running then is stopped, the processes it started are killed, and it shows `timed out after 20 s` in place, in the terminal UI, the web view and `list --json`, like any failed runner. Unset or `null`, each runner has its own limit (10 s for just, 120 s for moon, 60 s for most). That limit now bounds the whole probe, not only each subprocess.
+  - The agent skills and the Skills tab appear while the runners load, not at the end. `list --progress` sends them on a `catalog-progress` line of their own, with `skills`, filtered like the final document. The terminal UI shows them with the first task rows, below them.
+  - The final status shows as soon as the last runner answers. The store is written after that, in the background, and every normal exit waits for it. A kill during the write leaves the old entry in place.
+  - Library: `CatalogProgress.onSkills`, called once as soon as the skills are read.
+  - The config file's `$schema` URL moves to `@osdlc/wayfinder@0.10`.
+
+### Patch Changes
+
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [ebd5328]
+- Updated dependencies [fdef74f]
+  - @osdlc/cli-tool@0.10.0
+  - @osdlc/command-seam@0.13.0
+  - @osdlc/config-layers@0.8.0
+  - @osdlc/detect-harness@0.6.0
+  - @osdlc/etag-write@0.3.0
+  - @osdlc/system-model@0.7.0
+  - @osdlc/tiered-dirs@0.5.0
+  - @osdlc/trust-repo@0.5.0
+  - @osdlc/typed-git@0.9.0
+  - @osdlc/ux@0.1.1
+
+## 0.9.0
+
+### Minor Changes
+
+- f6993bf: The terminal UI and the web view draw at once, and with no saved listing they show each runner's tasks as that runner answers.
+  
+  - **Terminal UI:** the frame appears before anything is read. With no saved listing, each runner's rows arrive as it answers. A runner still loading has `…` in place of its tab's count and a `… moon  loading` line in the list, and the status line names them: `loading 3 of 12: just, mise, moon`. A withheld runner shows its reason as soon as it answers. A failed one gets ` !` on its tab and its reason above the rows. While rows arrive, the cursor stays on its task, so Enter runs the row on screen. Over a saved listing the status line says `refreshing…` until every runner has answered, then the rows update in place; after 3 seconds it names the runners still out. The store is no longer read before the first probe, since that costs as long as the probe's own detection.
+  - **Web view:** `way serve` prints its address without waiting for a probe. With no saved listing, the page's first read joins the server's probe and draws each runner as it arrives, with a loading tab and row for each runner still out, each in its final place, and the same `loading N of M` count in the status. A live region tells a screen reader when loading starts and ends. The lines stream as NDJSON over the same API, token and Host and Origin checks as every other call. Over rows already shown it says `refreshing…`.
+  - **Library:** `buildCatalog` takes `progress: { onRunners, onRunner }`, which hears about each runner as it answers. The `CatalogProgress` type is exported. The document it returns is unchanged.
+  - **CLI:** `list --progress --output jsonl` prints a `catalog-progress` line as each runner answers, before the reports. `way schema` describes it. Over HTTP the same lines stream as NDJSON. A report over about 1 MiB is named in `omitted` instead of sent.
+  - `list --json` and `list --output jsonl` print what they printed before.
+  - With a grant for one tool, the trusted and the withheld runners are now collected at the same time.
+
+### Patch Changes
+
+- df47065: The config file's `$schema` URL now names the 0.9 release line. Point an existing `$schema` at
+  `https://unpkg.com/@osdlc/wayfinder@0.9/schema/config.json`; the 0.8 URL keeps working.
+- Updated dependencies [7addea1]
+- Updated dependencies [f013f38]
+- Updated dependencies [f6993bf]
+- Updated dependencies [f013f38]
+  - @osdlc/cli-tool@0.9.1
+  - @osdlc/command-seam@0.12.1
+  - @osdlc/system-model@0.6.0
+  - @osdlc/typed-git@0.8.2
+
 ## 0.8.0
 
 ### Minor Changes

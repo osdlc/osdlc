@@ -30,7 +30,8 @@ pnpm run build
 pnpm test
 ```
 
-Vitest runs the examples on the source (see `vitest.config.ts`). The
+Vitest runs the examples on the source (see `vitest.config.ts`), except
+imports of `@osdlc/command-seam/quote`, which resolve to `dist/`. The
 typecheck resolves the package's own name through `dist/`, so it needs a
 build. After a build, `pnpm run smoke` runs `tests/smoke.mjs`, a short check
 of the built package under Node. It is not published.

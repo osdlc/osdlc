@@ -118,7 +118,25 @@ describe('GithubCodeHost.getPr', () => {
       editedAt: '2026-01-01T00:05:00Z',
     })
     expect(calls[0]).toEqual(['pr', 'view', '42', '--json', expect.anything()])
-    expect(calls[1]).toEqual(['api', 'repos/{owner}/{repo}/pulls/42/comments'])
+    expect(calls[1]).toEqual([
+      'api',
+      '--paginate',
+      '--slurp',
+      'repos/{owner}/{repo}/pulls/42/comments?per_page=100',
+    ])
+  })
+
+  test('review comments past the first page are all read: every slurped page is folded in', () => {
+    // GitHub's default page is 30; the 31st comment sits on the second page.
+    const first = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, body: 'c' }))
+    const second = [{ id: 31, body: 'late' }]
+    const { runner } = fakeGh({
+      view: BASE_PR,
+      restResponses: [ok(JSON.stringify([first, second]))],
+    })
+    const pr = unwrap(new GithubCodeHost('/repo', { runner }).getPr(42, { since: null }))!
+    expect(pr.activity).toHaveLength(31)
+    expect(pr.activity.at(-1)).toMatchObject({ id: '31', kind: 'review-comment' })
   })
 
   test('mergeStateStatus DIRTY maps to conflicting even when mergeable alone would not', () => {
@@ -561,9 +579,52 @@ describe('GithubCodeHost.mergePr / reviewThreads', () => {
     }
   })
 
+  test('updateBranch passes the style through: rebase adds --rebase, merge does not', () => {
+    const { runner, calls } = fakeGh({})
+    const host = new GithubCodeHost('/repo', { runner })
+    host.updateBranch(7, 'rebase')
+    host.updateBranch(7, 'merge')
+    expect(calls[0]).toEqual(['pr', 'update-branch', '7', '--rebase'])
+    expect(calls[1]).toEqual(['pr', 'update-branch', '7'])
+  })
+
   test('reviewThreads goes through the graphql client and is a failure when it fails', () => {
     const { runner } = fakeGh({ restResponses: [fail()] })
     expect(new GithubCodeHost('/repo', { runner }).reviewThreads(42).ok).toBe(false)
+  })
+})
+
+describe('GithubCodeHost.listComments', () => {
+  test('maps every page, coercing ids to strings and dropping rows with no id', () => {
+    const { runner, calls } = fakeGh({
+      restResponses: [
+        ok(
+          JSON.stringify([
+            [{ id: 1, body: 'a', created_at: 't1' }, { id: 'x2' }, { body: 'no id' }],
+            [{ id: 3, body: 'past the first page', created_at: 't3' }],
+          ]),
+        ),
+      ],
+    })
+    expect(unwrap(new GithubCodeHost('/repo', { runner }).listComments(42))).toEqual([
+      { id: '1', createdAt: 't1', body: 'a' },
+      { id: 'x2', createdAt: '', body: '' },
+      { id: '3', createdAt: 't3', body: 'past the first page' },
+    ])
+    expect(calls[0]).toEqual([
+      'api',
+      '--paginate',
+      '--slurp',
+      'repos/{owner}/{repo}/issues/42/comments?per_page=100',
+    ])
+  })
+
+  test('an answer that is not a list of pages is unreadable', () => {
+    const { runner } = fakeGh({ restResponses: [ok(JSON.stringify([{ id: 1 }]))] })
+    expect(new GithubCodeHost('/repo', { runner }).listComments(42)).toMatchObject({
+      ok: false,
+      error: { kind: 'unreadable', host: 'github' },
+    })
   })
 })
 

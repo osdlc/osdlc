@@ -13,14 +13,15 @@ import { spawn } from 'node:child_process'
 import { constants } from 'node:os'
 
 import { groupStartRefusal, releaseWhenEmpty, settleGroup, spawnTrackedGroup } from './groups.ts'
-import { planOptions, spawnPlan } from './spawn-plan.ts'
+import { planOptions } from './spawn-plan.ts'
 import {
   childStdio,
-  cwdError,
   mergedEnv,
+  prepareSpawn,
   timerMs,
   type EnvOverrides,
   type NeverExitedReason,
+  type SpawnRunnerOptions,
   type StdioOption,
 } from './sync.ts'
 
@@ -140,6 +141,8 @@ export interface ManagedProcessRunner {
  *
  * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
  *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
+ * @param options - See `SpawnRunnerOptions`; `absolutePathOnly` searches
+ *   absolute `PATH` entries only.
  * @returns A runner for that binary.
  *
  * @example
@@ -160,18 +163,18 @@ export interface ManagedProcessRunner {
  * })
  * ```
  */
-export function managedProcessRunner(binary: string): ManagedProcessRunner {
+export function managedProcessRunner(
+  binary: string,
+  options: SpawnRunnerOptions = {},
+): ManagedProcessRunner {
   return {
     run(argv: string[], opts: ManagedProcessRunOptions): ManagedProcessHandle {
       const stdio = childStdio(opts.stdio)
-      const cwdMessage = cwdError(`spawn ${binary}`, binary, argv, opts)
-      if (cwdMessage !== undefined) {
-        return { pid: -1, kill: () => {}, exited: Promise.resolve(spawnExit(cwdMessage)) }
+      const prepared = prepareSpawn('spawn', binary, argv, opts, options)
+      if ('refusal' in prepared) {
+        return { pid: -1, kill: () => {}, exited: Promise.resolve(spawnExit(prepared.refusal)) }
       }
-      const plan = spawnPlan(binary, argv, opts)
-      if ('refusal' in plan) {
-        return { pid: -1, kill: () => {}, exited: Promise.resolve(spawnExit(plan.refusal)) }
-      }
+      const { plan } = prepared
       const group = opts.processGroup === true
       const refusal = group ? groupStartRefusal() : undefined
       if (refusal !== undefined) {
@@ -214,8 +217,11 @@ export function managedProcessRunner(binary: string): ManagedProcessRunner {
           settled = true
           resolve(result)
         }
-        // A spawn failure (such as ENOENT). No exit was reported.
+        // A spawn failure (such as ENOENT). No exit was reported. A failed
+        // `kill()` (such as EPERM) also emits `error`, but the process is
+        // still running, so its exit settles this.
         child.on('error', (err) => {
+          if ((err as NodeJS.ErrnoException).syscall === 'kill') return
           untrackGroup?.()
           finish(spawnExit(err.message))
         })

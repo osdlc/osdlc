@@ -356,6 +356,9 @@ describe('a bad cwd', () => {
     expect(() => spawnRunner('sh').run([], { cwd, env: { A: 'x\0y' } })).toThrow(
       expect.objectContaining(nul),
     )
+    expect(() => spawnRunner('sh').run([], { cwd, env: { 'A\0B': 'x' } })).toThrow(
+      expect.objectContaining(nul),
+    )
     expect(() => spawnRunner('s\0h').run([], { cwd })).toThrow(expect.objectContaining(nul))
     expect(() => runShell('true', { cwd, args: ['a\0b'] })).toThrow(expect.objectContaining(nul))
     await expect(spawnRunnerAsync('sh').run(['a\0b'], { cwd })).rejects.toMatchObject(nul)

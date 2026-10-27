@@ -10,7 +10,15 @@ import { z } from 'zod'
 import { builtins } from '../src/builtins.ts'
 import { CATALOG_SCHEMA_VERSION } from '../src/model.ts'
 import { toolInfo } from '../src/registry.ts'
+import { ALL_GROUP_IDS, GROUPS } from '../src/groups.ts'
+import { ALL_MATCH_MODES } from '../src/match.ts'
 import {
+  ALL_CACHE_STATES,
+  ALL_PARAMETERS_UNKNOWN_REASONS,
+  ALL_PROBE_COSTS,
+  ALL_PROVIDER_KINDS,
+  ALL_ROLE_NAMES,
+  ALL_STALE_REASONS,
   catalogSchema,
   paramSchema,
   runnerReportSchema,
@@ -144,5 +152,49 @@ describe('the tool schema', () => {
     })
     expect(info.markers.map((m) => m.files)).toContain('justfile')
     expect(JSON.parse(JSON.stringify(info))).toEqual(info)
+  })
+})
+
+describe('the enum value lists', () => {
+  const props = (schema: JsonSchema): Record<string, JsonSchema> =>
+    schema['properties'] as Record<string, JsonSchema>
+
+  test('are the values the JSON Schemas list', () => {
+    expect(props(taskSchema)['parametersUnknown']!['enum']).toEqual([
+      ...ALL_PARAMETERS_UNKNOWN_REASONS,
+    ])
+    const info = props(toolInfoSchema)
+    expect((info['roles']!['items'] as JsonSchema)['enum']).toEqual([...ALL_ROLE_NAMES])
+    const runner = props(info['runner']!)
+    expect(runner['kind']!['enum']).toEqual([...ALL_PROVIDER_KINDS])
+    expect(props(runner['probe']!)['cost']!['enum']).toEqual([...ALL_PROBE_COSTS])
+  })
+
+  test('hold what the package itself produces', () => {
+    expect(GROUPS.map((g) => g.id)).toEqual([...ALL_GROUP_IDS])
+    for (const tool of builtins) {
+      for (const role of Object.keys(tool.roles)) expect(ALL_ROLE_NAMES).toContain(role)
+      if (tool.roles.runner) expect(ALL_PROVIDER_KINDS).toContain(tool.roles.runner.kind)
+    }
+  })
+
+  test('each is a z.enum of distinct strings', () => {
+    for (const values of [
+      ALL_CACHE_STATES,
+      ALL_GROUP_IDS,
+      ALL_MATCH_MODES,
+      ALL_PARAMETERS_UNKNOWN_REASONS,
+      ALL_PROBE_COSTS,
+      ALL_PROVIDER_KINDS,
+      ALL_ROLE_NAMES,
+      ALL_STALE_REASONS,
+    ]) {
+      expect(new Set(values).size).toBe(values.length)
+      const schema = z.enum(values)
+      for (const v of values) expect(schema.parse(v)).toBe(v)
+      expect(schema.safeParse('not-a-value').success).toBe(false)
+    }
+    expect(ALL_CACHE_STATES).toEqual(['fresh', 'stale', 'miss'])
+    expect(ALL_STALE_REASONS).toEqual(['changed', 'max-age', 'excludes', 'exec', 'version', 'tool'])
   })
 })
