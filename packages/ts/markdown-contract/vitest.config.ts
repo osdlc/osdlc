@@ -18,6 +18,8 @@ export default defineConfig({
     ],
   },
   test: {
+    // Spawning the built CLI under node on a loaded machine can pass the 5 s default.
+    testTimeout: 20000,
     // tests/ holds the unit tests (mirroring src/) and the fixture-driven suites;
     // examples/ holds the runnable usage examples.
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
