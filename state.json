@@ -49,20 +49,20 @@
       "line": 39,
       "title": "RepoInfo.slug doc in repo-cleaner types.ts:39 still says owner/name",
       "comment": "https://github.com/osdlc/osdlc/pull/518#pullrequestreview-5662478032",
-      "status": "fixed",
+      "status": "open",
       "reason": null,
-      "fixedIn": "48047d905e1d77be0e1f30442de67102e8a02ca8"
+      "fixedIn": null
     },
     {
       "id": "r2-1",
       "round": 2,
       "path": "packages/ts/typed-git/README.md",
-      "line": null,
+      "line": 754,
       "title": "typed-git README parseRemoteRepo section omits the github.com alias mapping",
-      "comment": null,
-      "status": "fixed",
+      "comment": "https://github.com/osdlc/osdlc/pull/518#pullrequestreview-5662631217",
+      "status": "open",
       "reason": null,
-      "fixedIn": "c5640be2b98cb12369f8b25977622772fc3675aa"
+      "fixedIn": null
     }
   ]
 }
