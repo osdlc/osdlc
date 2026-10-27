@@ -57,9 +57,9 @@
       "line": 38,
       "title": "Enforcement and update rules omit docs/reference/, which the Rule section requires",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "2e94dd66f792e24bd9968f1549293fb152d54176"
     }
   ]
 }
