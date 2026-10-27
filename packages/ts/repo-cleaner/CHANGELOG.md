@@ -1,5 +1,16 @@
 # @osdlc/repo-cleaner
 
+## 0.8.0
+
+### Minor Changes
+
+- 7fe7f51: Output change: a remote on a host other than github.com is now named `host/owner/name` in the report, read with typed-git's `parseRemoteRepo`. Before, typed-gh read `owner/name` from any host, so one `owner/name` on two hosts was reported as a duplicate checkout. The `slug` field of `--output json` changes with it.
+
+### Patch Changes
+
+- Updated dependencies [7fe7f51]
+  - @osdlc/typed-git@0.11.1
+
 ## 0.7.0
 
 ### Minor Changes
