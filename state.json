@@ -15,7 +15,7 @@
       "path": ".github/workflows/release-plz.yml",
       "line": 128,
       "title": "Build and commit only release-plz's own commit: check HEAD^ is GITHUB_SHA",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/531#discussion_r4386656351",
       "status": "fixed",
       "reason": null,
       "fixedIn": "b2d7f6054166be566357bf140c0545244dc32a9e"
@@ -26,7 +26,7 @@
       "path": ".github/workflows/release-plz.yml",
       "line": 166,
       "title": "Tree entries hardcode mode 100644 instead of the file's mode",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/531#discussion_r4386656378",
       "status": "fixed",
       "reason": null,
       "fixedIn": "b2d7f6054166be566357bf140c0545244dc32a9e"
@@ -37,7 +37,7 @@
       "path": "scripts/crates-io-unpublished-patch.ts",
       "line": 42,
       "title": "Patch ignores release = false in release-plz.toml, so it can mask a crate the release never publishes",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/531#discussion_r4386656391",
       "status": "fixed",
       "reason": null,
       "fixedIn": "b2d7f6054166be566357bf140c0545244dc32a9e"
