@@ -22,6 +22,7 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { indexEntries, publishesToCratesIo } from './crates-io-index.ts'
 import type { CargoMetadata, IndexEntry } from './crates-io-index.ts'
 
@@ -29,28 +30,35 @@ import type { CargoMetadata, IndexEntry } from './crates-io-index.ts'
  * The names of the `[[package]]` entries in a release-plz.toml that set
  * `release = false` or `publish = false`. Reads only those two keys and
  * `name`, each on a line of its own, as release-plz.toml writes them.
+ * Throws when `[workspace]` sets either key: that would be the default for
+ * every package, and this reader does not handle a package that overrides it.
  */
 export function heldBackPackages(releasePlzToml: string): Set<string> {
   const held = new Set<string>()
-  let inPackage = false
+  let section = ''
   let name: string | null = null
   let off = false
   const flush = () => {
-    if (inPackage && name !== null && off) held.add(name)
+    if (section === '[[package]]' && name !== null && off) held.add(name)
   }
   for (const raw of releasePlzToml.split('\n')) {
     const line = raw.replace(/#.*$/, '').trim()
     if (line.startsWith('[')) {
       flush()
-      inPackage = line === '[[package]]'
+      section = line
       name = null
       off = false
       continue
     }
-    if (!inPackage) continue
     const m = /^([A-Za-z_-]+)\s*=\s*(.+)$/.exec(line)
     if (!m) continue
     const [, key, value] = m
+    if (section === '[workspace]' && (key === 'release' || key === 'publish')) {
+      throw new Error(
+        `release-plz.toml sets \`${key}\` under [workspace]; crates-io-unpublished-patch.ts reads it only per [[package]]`,
+      )
+    }
+    if (section !== '[[package]]') continue
     if (key === 'name') name = JSON.parse(value!) as string
     if ((key === 'release' || key === 'publish') && value === 'false') off = true
   }
@@ -77,7 +85,7 @@ export async function unpublishedPatch(
   return [header, ...(lines.length > 0 ? ['[patch.crates-io]', ...lines] : [])].join('\n') + '\n'
 }
 
-if (import.meta.main) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [manifest, releasePlz] = process.argv.slice(2)
   if (!manifest || !releasePlz) {
     console.error('usage: crates-io-unpublished-patch.ts <path/to/Cargo.toml> <path/to/release-plz.toml>')

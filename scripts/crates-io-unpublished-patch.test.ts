@@ -61,7 +61,7 @@ test('heldBackPackages reads release = false and publish = false from [[package]
   const toml = [
     '[workspace]',
     'release_always = true',
-    'publish = false # a workspace key, not a package',
+    'semver_check = true # a workspace key, not a package one',
     '',
     '# held',
     '[[package]]',
@@ -81,4 +81,9 @@ test('heldBackPackages reads release = false and publish = false from [[package]
     'name = "d"',
   ].join('\n')
   assert.deepEqual([...heldBackPackages(toml)].sort(), ['a', 'b', 'd'])
+})
+
+test('heldBackPackages throws when [workspace] sets release or publish', () => {
+  assert.throws(() => heldBackPackages('[workspace]\nrelease = false\n'), /sets `release` under \[workspace\]/)
+  assert.throws(() => heldBackPackages('[workspace]\npublish = true\n'), /sets `publish` under \[workspace\]/)
 })
