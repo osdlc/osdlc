@@ -3,7 +3,7 @@
   "title": "yaml-splice: open questions for nested edits",
   "summary": "Decisions the nested-edit test corpus encodes, two bugs the character fuzzing found in today's top-level edits, and scope and tooling choices.",
   "created": "2026-10-26",
-  "revision": 3,
+  "revision": 4,
   "repo": {
     "remote": "https://github.com/osdlc/osdlc",
     "commit": "bad2664bbf55598fa3bcf3d196411334661ce421",
@@ -552,7 +552,7 @@
         }
       ],
       "status": "closed",
-      "resolution": "One PR now with the corpus and fuzz tests."
+      "resolution": "One PR now with the corpus and fuzz tests. After review the maintainer asked for the q-bom and q-key-order fixes in the same PR; Tier 1 stays separate."
     }
   ]
 }
