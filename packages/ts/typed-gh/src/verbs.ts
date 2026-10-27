@@ -109,6 +109,18 @@ export function checkTarget(target: GhTarget | undefined): void {
 }
 
 /**
+ * Throws `TypeError` unless `opts.repo` is set: the options-only form names
+ * a repository, so a missing one would silently read the process's own clone.
+ */
+export function requireRepo(client: string, opts: GhTarget | undefined): void {
+  if (typeof opts !== 'object' || opts === null || opts.repo === undefined) {
+    throw new TypeError(
+      `new ${client}(options) needs options.repo; pass a directory, as new ${client}(cwd, options), for a clone`,
+    )
+  }
+}
+
+/**
  * `[host/]owner/name` for `repo` (else the target's repo), the form `--repo`
  * and `gh repo view` take, or `undefined` when neither names one. The host is
  * the target's, through {@link hostOf}, so a hostname of `''` is "not set".
@@ -506,7 +518,8 @@ export interface ApiOptions {
 /**
  * `gh api [-i] [-H If-None-Match: …] <endpoint>`: a GET against the REST API. `{owner}` and
  * `{repo}` placeholders in the endpoint are filled from the target's repo, or by gh from the
- * cwd's repo when the target names none.
+ * cwd's repo when the target names none. gh fills `{branch}` from the cwd's checked-out branch
+ * whatever the target, so it reads the working directory even on a client built from `repo`.
  * Unchecked. Failure is a value (`ok: false`), so a caller can tell a 304
  * from an outage.
  */
