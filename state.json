@@ -35,9 +35,9 @@
       "line": 6,
       "title": "A bad or missing package.json ends the bin with an uncaught stack trace",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "9da3a4a12a59a2c4be6a6f6a8d9fa538317aad35"
     },
     {
       "id": "r1-4",
