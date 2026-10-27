@@ -74,6 +74,8 @@ describe('runMain with devlink', () => {
     await r.done
     expect(r.context.io.out).toBe('tooly 1.2.3\n')
     expect(process.exitCode).toBe(0)
+    // Removed once read, so a process this run starts resolves for itself.
+    expect(r.context.env['TOOLY_LAUNCH_LAYER']).toBeUndefined()
   })
 
   test('nothing selected runs main', async () => {

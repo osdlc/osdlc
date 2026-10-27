@@ -25,7 +25,9 @@ export interface DevlinkHookOptions {
  * The hook `runMain` runs first. `<name> dev …` is answered by
  * {@link runDevCli}. Otherwise the selected checkout runs through
  * {@link execSelection}, unless this process was itself started that way
- * (`<NAME>_LAUNCH_LAYER` is set), so a hand-off never hands off again.
+ * (`<NAME>_LAUNCH_LAYER` is set), so a hand-off never hands off again. The
+ * variable is then removed from the environment, so a process this run starts
+ * resolves for itself.
  * @experimental
  */
 export function devlinkHook(spec: ToolSpec, opts: DevlinkHookOptions = {}): DevlinkHook {
@@ -35,7 +37,13 @@ export function devlinkHook(spec: ToolSpec, opts: DevlinkHookOptions = {}): Devl
     if (argv[0] === 'dev') {
       return runDevCli(spec, argv.slice(1), { io: ctx.io, env: ctx.env, self })
     }
-    if (ctx.env[launchLayerVar(spec)] !== undefined) return null
+    // Read once and removed, so the processes this run starts (git hooks, a
+    // shell, a nested run of the tool) resolve for themselves.
+    const layer = launchLayerVar(spec)
+    const handedOff = ctx.env[layer] !== undefined
+    delete ctx.env[layer]
+    if (ctx.env !== process.env) delete process.env[layer]
+    if (handedOff) return null
     return execSelection(spec, resolve(spec, { env: ctx.env, cwd: ctx.cwd, self }), argv, {
       env: ctx.env,
       announce: (line) => ctx.io.stderr(`${line}\n`),

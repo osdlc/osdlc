@@ -249,7 +249,8 @@ one that says which it could not find.
 | `--plan-out <path>` | Write the plan here; implies `--write-plan` |
 | `--version` | Print `repo-cleaner <version>` and exit; it must be the first argument |
 
-A checkout directory named `apply` is swept as `./apply`.
+A checkout directory named `apply` is swept as `./apply`, and one named `dev` as
+`./dev`: `dev` runs the tool from a checkout (see Running from a checkout).
 
 ## Plan and apply
 
