@@ -60,9 +60,9 @@
       "line": 754,
       "title": "typed-git README parseRemoteRepo section omits the github.com alias mapping",
       "comment": "https://github.com/osdlc/osdlc/pull/518#pullrequestreview-5662631217",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "c5640be2b98cb12369f8b25977622772fc3675aa"
     }
   ]
 }
