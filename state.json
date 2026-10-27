@@ -13,9 +13,9 @@
       "line": 13,
       "title": "devlink hook takes over `repo-cleaner dev`, where `dev` is a path positional",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "3ea30472b15f7a4260809e6a38d9cb965bc66053"
     },
     {
       "id": "r1-2",
