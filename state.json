@@ -15,7 +15,7 @@
       "path": "packages/ts/markdown-contract/tests/exports.test.ts",
       "line": 296,
       "title": "Relaxed import rule also accepts unexported subpaths of this package",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/525#discussion_r4385731511",
       "status": "fixed",
       "reason": null,
       "fixedIn": "04a37a05cb1fa2dd453b21f6252ce2ce90a2e89b"
@@ -23,24 +23,24 @@
     {
       "id": "r1-2",
       "round": 1,
-      "path": null,
-      "line": null,
+      "path": "tests/cli/run.test.ts",
+      "line": 190,
       "title": "No test runs the published launcher bin/markdown-contract.js; bin tests still spawn dist/cli/bin.js",
-      "comment": null,
-      "status": "fixed",
+      "comment": "https://github.com/osdlc/osdlc/pull/525#pullrequestreview-5663070433",
+      "status": "open",
       "reason": null,
-      "fixedIn": "04a37a05cb1fa2dd453b21f6252ce2ce90a2e89b"
+      "fixedIn": null
     },
     {
       "id": "r1-3",
       "round": 1,
-      "path": null,
-      "line": null,
+      "path": "tests/exports.test.ts",
+      "line": 267,
       "title": "Host-terms guard does not scan the newly shipped bin/ directory",
-      "comment": null,
-      "status": "fixed",
+      "comment": "https://github.com/osdlc/osdlc/pull/525#pullrequestreview-5663070433",
+      "status": "open",
       "reason": null,
-      "fixedIn": "04a37a05cb1fa2dd453b21f6252ce2ce90a2e89b"
+      "fixedIn": null
     }
   ]
 }
