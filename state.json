@@ -46,9 +46,9 @@
       "line": 22,
       "title": "Site claim is wrong for apps: wayfinder's guide is published in its own section",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "2e94dd66f792e24bd9968f1549293fb152d54176"
     },
     {
       "id": "r1-5",
