@@ -106,7 +106,7 @@ platforms.
 | `selectCodeHost`, `resolveCodeHost`, `codeHostNameForRemote` | Pick the adapter from the git remote. `selectCodeHost` returns a `Result` |
 | `githubAuthChecks`, `forgejoAuthChecks`, `authChecksFor` | The auth checks a doctor command runs |
 | `assemblePrFacts` | Adds local-git drift (`behind`/`ahead`) to a `CodeHostPr` |
-| `parsePrInput` | Parse a PR argument: a number, `#n`, `owner/repo#n`, or a URL |
+| `parsePrInput` | Parse a PR argument: a number, `#n`, `owner/repo#n`, or a URL (its `PrRef` keeps the URL's host) |
 
 ## Boundaries
 

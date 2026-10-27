@@ -36,7 +36,10 @@ export function authorizationsFor(flags: Partial<Record<Authorization, boolean>>
 export interface RepoInfo {
   /** The main checkout's root, even when the sweep was pointed at a worktree. */
   root: string
-  /** `owner/name` when the remote is a recognisable host coordinate. */
+  /**
+   * `owner/name` for a github.com remote, `host/owner/name` for one on another
+   * host, or null when the remote names no repository.
+   */
   slug: string | null
   mainBranch: string
   remote: string | null

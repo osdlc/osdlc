@@ -187,6 +187,15 @@ describe('parseRemoteUrl', () => {
 })
 
 describe('parseRemoteRepo', () => {
+  test("GitHub's SSH-over-443 and www hosts read as github.com", () => {
+    const widgets = { host: 'github.com', owner: 'acme', repo: 'widgets' }
+    expect(parseRemoteRepo('ssh://git@ssh.github.com:443/acme/widgets.git')).toEqual(widgets)
+    expect(parseRemoteRepo('https://www.github.com/acme/widgets')).toEqual(widgets)
+    expect(parseRemoteRepo('https://notssh.github.com.example/acme/widgets')?.host).toBe(
+      'notssh.github.com.example',
+    )
+  })
+
   test('a GitHub remote, https, scp-style, ssh:// or shorthand', () => {
     const widgets = { host: 'github.com', owner: 'acme', repo: 'widgets' }
     for (const url of [

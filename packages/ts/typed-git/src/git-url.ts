@@ -64,6 +64,9 @@ export interface RemoteRepo {
  * `host/owner/repo`, scp-style or `scheme://`, where `owner` is the second to
  * last path segment.
  *
+ * `ssh.github.com` (GitHub's SSH over port 443) and `www.github.com` read as
+ * `github.com`.
+ *
  * Use it to read a remote into the repository it names. To decide which forge
  * a host is, compare `host`, never the URL text: `notgithub.com` is not
  * GitHub, and neither is a path that mentions `github.com`.
@@ -71,11 +74,22 @@ export interface RemoteRepo {
 export function parseRemoteRepo(url: string): RemoteRepo | null {
   const info = parseGitUrl(url)
   if (info !== null && info.user && info.project) {
-    return { host: info.domain, owner: info.user, repo: info.project }
+    return { host: canonicalHost(info.domain), owner: info.user, repo: info.project }
   }
   const remote = parseRemoteUrl(url)
   if (remote === null) return null
-  return { host: remote.host.toLowerCase(), owner: remote.owner, repo: remote.repo }
+  return { host: canonicalHost(remote.host), owner: remote.owner, repo: remote.repo }
+}
+
+/**
+ * GitHub's other names for itself, read as `github.com`: `ssh.github.com` is
+ * its SSH-over-443 endpoint, and `www.github.com` redirects.
+ */
+const GITHUB_ALIASES = new Set(['ssh.github.com', 'www.github.com'])
+
+function canonicalHost(host: string): string {
+  const lower = host.toLowerCase()
+  return GITHUB_ALIASES.has(lower) ? 'github.com' : lower
 }
 
 export type CloneProtocol = 'https' | 'ssh'

@@ -35,7 +35,7 @@ assert.deepEqual(parsePrInput('acme/widgets#9'), {
 })
 assert.deepEqual(parsePrInput('https://github.com/acme/widgets/pull/3'), {
   kind: 'url',
-  ref: { codeHost: 'github', owner: 'acme', repo: 'widgets', number: 3 },
+  ref: { codeHost: 'github', host: 'github.com', owner: 'acme', repo: 'widgets', number: 3 },
 })
 assert.equal(parsePrInput('not a pr'), null)
 
