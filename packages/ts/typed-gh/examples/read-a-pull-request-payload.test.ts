@@ -26,7 +26,8 @@ const payload = {
   number: 42,
   state: 'OPEN',
   title: 'Add retries',
-  author: { login: 'dependabot[bot]' },
+  // gh's --json export of a bot author.
+  author: { is_bot: true, login: 'app/dependabot' },
   labels: [{ name: 'bug', color: 'd73a4a', description: 'Something is broken' }],
   statusCheckRollup: [
     { name: 'build', status: 'COMPLETED', conclusion: 'SUCCESS', detailsUrl: 'https://ci.test/1' },

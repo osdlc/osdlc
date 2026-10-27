@@ -57,10 +57,10 @@ export type ReviewDecision = 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED
 export type ReviewState =
   'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING' | (string & {})
 
-/** Who wrote something. `login` is normalized: a `[bot]` suffix is stripped. */
+/** Who wrote something. `login` is normalized: a `[bot]` suffix or `app/` prefix is stripped. */
 export interface Actor {
   login: string
-  /** True when GitHub marks the account as a bot, or the login carried `[bot]`. */
+  /** True when GitHub marks the account as a bot, or the login carried `[bot]` or `app/`. */
   isBot: boolean
 }
 
