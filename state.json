@@ -46,9 +46,9 @@
       "line": 45,
       "title": "heldBackPackages ignores release/publish = false under [workspace], which release-plz applies to every package",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "d50f512efc19a63837d63861cb2caabfa089b48d"
     },
     {
       "id": "r2-2",
