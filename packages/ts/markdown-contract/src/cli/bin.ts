@@ -1,14 +1,21 @@
-#!/usr/bin/env node
 /**
- * The `markdown-contract` program. It runs `runCli` on the process arguments, writes its output
- * and sets the exit code. It does not call `process.exit`: a write to a pipe can be asynchronous,
- * and exiting would cut off what is still buffered. It runs whenever it is loaded, so it does
- * not depend on how it was started: directly, through a `node_modules/.bin` link, or through
- * `npx`.
+ * The `markdown-contract` program: `bin/markdown-contract.js` loads the built copy, and a
+ * development checkout that devlink selects runs this file from source. It runs `runCli` on the
+ * process arguments and writes its output; `runMain` sets the exit code without calling
+ * `process.exit`, so output still buffered for a pipe is not cut off.
  */
+import { runMain } from '@osdlc/cli-tool'
+import { devlinkHook } from '@osdlc/cli-tool/devlink'
+
+import { DEVLINK_SPEC } from './devlink.js'
 import { runCli } from './run.js'
 
-const { code, stdout, stderr } = await runCli(process.argv.slice(2))
-if (stdout) process.stdout.write(`${stdout}\n`)
-if (stderr) process.stderr.write(`${stderr}\n`)
-process.exitCode = code
+await runMain(
+  async (argv, ctx) => {
+    const { code, stdout, stderr } = await runCli([...argv], { cwd: ctx.cwd })
+    if (stdout) ctx.io.stdout(`${stdout}\n`)
+    if (stderr) ctx.io.stderr(`${stderr}\n`)
+    return code
+  },
+  { name: 'markdown-contract', devlink: devlinkHook(DEVLINK_SPEC) },
+)
