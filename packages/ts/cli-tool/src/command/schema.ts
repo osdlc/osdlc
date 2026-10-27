@@ -6,7 +6,7 @@
 
 import { z } from 'zod'
 
-import type { FlagDecl, FlagSpec, PositionalDecl } from '../define-cli.ts'
+import { kebab, type FlagDecl, type FlagSpec, type PositionalDecl } from '../define-cli.ts'
 import { type DataCommand, type OutputSchema } from './define.ts'
 
 /**
@@ -19,9 +19,7 @@ export type JsonSchema = Record<string, unknown>
  * `httpPort` → `http-port`, as `defineCli` spells the flag.
  * @experimental
  */
-export function kebab(name: string): string {
-  return name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
-}
+export { kebab }
 
 function flagSchema(name: string, decl: FlagDecl): JsonSchema {
   const cli: Record<string, unknown> = {

@@ -33,7 +33,8 @@ const TERMINAL_SIGNALS: readonly NodeJS.Signals[] =
 
 /**
  * Run `plan` with this process's terminal and wait for it. `argv` is spawned
- * without a shell, with `plan.env` added to the environment.
+ * without a shell, with `plan.env` added to the environment. A bare program
+ * name runs only from an absolute `PATH` entry.
  *
  * Ctrl-C reaches the task and this process alike, since both are in the
  * terminal's foreground group. This process ignores it while the task runs,
@@ -48,7 +49,14 @@ export function handOff(plan: Pick<RunPlan, 'argv' | 'env' | 'cwd'>): HandOffRes
     if (binary === undefined) return { exit: 1, error: 'the task has no command' }
     let res: ReturnType<ReturnType<typeof streamRunner>['run']>
     try {
-      res = streamRunner(binary).run(rest, { cwd: plan.cwd, env: plan.env, quiet: true })
+      // The task runs inside the repository, so a bare name such as `npm` is
+      // looked up on absolute PATH entries only: a relative entry would find a
+      // file the repository ships. A path (`./gradlew`) runs as given.
+      res = streamRunner(binary, { absolutePathOnly: true }).run(rest, {
+        cwd: plan.cwd,
+        env: plan.env,
+        quiet: true,
+      })
     } catch (err) {
       return { exit: 1, error: err instanceof Error ? err.message : String(err) }
     }

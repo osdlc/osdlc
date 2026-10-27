@@ -113,6 +113,19 @@ describe('discoverCheckouts', () => {
     }
   })
 
+  test('a search root that is itself a checkout answers itself, and is not entered', () => {
+    const scratch = mkdtempSync(join(tmpdir(), 'typedgit-discover-root-'))
+    try {
+      mkdirSync(join(scratch, '.git'), { recursive: true })
+      mkdirSync(join(scratch, 'node_modules', 'dep', '.git'), { recursive: true })
+
+      expect(discoverCheckouts(scratch)).toEqual([scratch])
+      expect(scanForCheckouts(scratch).directoriesScanned).toBe(0)
+    } finally {
+      rmSync(scratch, { recursive: true, force: true })
+    }
+  })
+
   test('stops at a checkout — nothing inside one is entered', () => {
     const scratch = mkdtempSync(join(tmpdir(), 'typedgit-discover-prune-'))
     try {

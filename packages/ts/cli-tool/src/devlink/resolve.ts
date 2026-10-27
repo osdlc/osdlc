@@ -29,7 +29,7 @@ import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { isAbsolute, join, resolve as resolvePath } from 'node:path'
 
 import { readActive, type StateOptions } from './state.ts'
-import { cwdDevVar, entryOf, homeVar, type ToolSpec } from './spec.ts'
+import { cwdLayerActive, entryOf, homeVar, type ToolSpec } from './spec.ts'
 
 /**
  * Which layer picked the checkout: `env`, `cwd`, `link`, or `local` when none
@@ -181,7 +181,7 @@ export function resolve(spec: ToolSpec, opts: ResolveOptions = {}): Selection {
     if (hit !== null) return hit
   }
 
-  if (spec.cwdLayer === true && !isSuppressed && env[cwdDevVar(spec)] !== '0') {
+  if (cwdLayerActive(spec, env, isSuppressed)) {
     const above = cwdCheckout(spec, cwd)
     if (above !== null) {
       const hit = pick('cwd', above, 'dev checkout above cwd')

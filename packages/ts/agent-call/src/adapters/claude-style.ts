@@ -15,7 +15,7 @@ import {
   type Usage,
 } from '../conversation.js'
 import type { PlannedCall } from '../plan.js'
-import { asNumber, asString, get, parseJsonLines, tryParseJson } from './shared.js'
+import { asNumber, asString, get, parseJsonLines, tryParseJson, withStructured } from './shared.js'
 import type { ParsedOutput, RawProcessOutput } from './types.js'
 
 /** How one CLI's output differs from claude's. */
@@ -35,9 +35,7 @@ export function parseClaudeStyle(
   options: ClaudeStyleOptions,
 ): ParsedOutput {
   if (planned.outputFormat === 'text') {
-    const parsed: ParsedOutput = { text: raw.stdout.trim() }
-    if (planned.spec.output?.schema !== undefined) parsed.structured = tryParseJson(parsed.text)
-    return parsed
+    return withStructured(planned, { text: raw.stdout.trim() })
   }
 
   if (planned.outputFormat === 'stream-json') {

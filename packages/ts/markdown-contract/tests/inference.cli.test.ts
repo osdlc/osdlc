@@ -10,6 +10,7 @@
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -191,6 +192,39 @@ describe('markdown-contract init (CLI)', () => {
     expect(r.code).toBe(0)
   })
 
+  test('multi-root single mode: the written config routes each root to its own contract', async () => {
+    const parent = tmp('mc-multi-')
+    mkdirSync(join(parent, 'api'))
+    mkdirSync(join(parent, 'web'))
+    writeFileSync(join(parent, 'api', 'x.md'), '## Endpoints\n\nx\n')
+    writeFileSync(join(parent, 'web', 'y.md'), '## Pages\n\nx\n')
+
+    const init = await runCli(['init', 'api', 'web'], { cwd: parent })
+    expect(init.code).toBe(0)
+    const cfg = readFileSync(join(parent, 'markdown-contract.yaml'), 'utf8')
+    expect(cfg).toContain('api/**/*.md')
+    expect(cfg).toContain('web/**/*.md')
+
+    const validate = await runCli(['validate'], { cwd: parent })
+    expect(validate.code).toBe(0)
+  })
+
+  test('multi-root single mode: roots with one basename get distinct contract files', async () => {
+    const parent = tmp('mc-multi-')
+    mkdirSync(join(parent, 'a', 'docs'), { recursive: true })
+    mkdirSync(join(parent, 'b', 'docs'), { recursive: true })
+    writeFileSync(join(parent, 'a', 'docs', 'x.md'), '## Alpha\n\nx\n')
+    writeFileSync(join(parent, 'b', 'docs', 'y.md'), '## Beta\n\nx\n')
+
+    const init = await runCli(['init', 'a/docs', 'b/docs'], { cwd: parent })
+    expect(init.code).toBe(0)
+    expect(existsSync(join(parent, 'docs.contract.yaml'))).toBe(true)
+    expect(existsSync(join(parent, 'docs-2.contract.yaml'))).toBe(true)
+
+    const validate = await runCli(['validate'], { cwd: parent })
+    expect(validate.code).toBe(0)
+  })
+
   test('--include / --exclude scope which files feed inference', async () => {
     const dir = stageVault('09-root-and-subdirs')
 
@@ -225,6 +259,31 @@ describe('markdown-contract init (CLI)', () => {
     expect(bad.stderr).toContain('--min-const-examples')
     const ok = await runCli(['init', dir, '--min-const-examples', '1', '--dry-run'], { cwd: dir })
     expect(ok.code).toBe(0)
+  })
+
+  test.each(['-1', '1.5', 'abc', '', '1e1', '0x2', ' 3 '])(
+    '--depth %j is a usage error (exit 2)',
+    async (raw) => {
+      const dir = stageVault('07-tree-depth1')
+      const bad = await runCli(['init', dir, '--meta', `--depth=${raw}`, '--dry-run'], { cwd: dir })
+      expect(bad.code).toBe(2)
+      expect(bad.stderr).toContain('--depth')
+    },
+  )
+
+  test('--check with no config at the root is a usage error (exit 2)', async () => {
+    const dir = stageVault('01-flat-uniform')
+    const r = await runCli(['init', dir, '--check'], { cwd: dir })
+    expect(r.code).toBe(2)
+    expect(r.stderr).toContain('no config to --check')
+  })
+
+  test('--check with a config that fails to load is a usage error (exit 2)', async () => {
+    const dir = stageVault('01-flat-uniform')
+    writeFileSync(join(dir, 'markdown-contract.yaml'), 'mcVersion: 2\nkind: config\nrules: x\n')
+    const r = await runCli(['init', dir, '--check'], { cwd: dir })
+    expect(r.code).toBe(2)
+    expect(r.stderr).toMatch(/config\.rules must be a list/)
   })
 
   test('reads at least one fixture so the temp-stage helper type-checks', () => {

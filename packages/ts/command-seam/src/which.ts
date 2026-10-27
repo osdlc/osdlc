@@ -59,7 +59,8 @@ const DEFAULT_PATHEXT = '.COM;.EXE;.BAT;.CMD'
  * match may not start.
  *
  * Windows (`platform: 'win32'`): `\` and `/` both mark a path. `PATH` is
- * split on `;` and empty entries are skipped. `cwd` is not searched unless
+ * split on `;`, an entry in double quotes counts without them, and empty
+ * entries are skipped. `cwd` is not searched unless
  * `PATH` names it. A name whose extension is in `PATHEXT` (default
  * `.COM;.EXE;.BAT;.CMD`) is tried as given; any other name is tried with
  * each `PATHEXT` extension appended, in order. Extensions compare in any
@@ -84,15 +85,9 @@ export function which(binary: string, opts: WhichOptions = {}): string | undefin
   const platform = opts.platform ?? process.platform
   if (opts.absolutePathOnly === true && !hasSeparator(binary, platform)) {
     const windows = platform === 'win32'
-    const read = (name: string): string | undefined =>
-      windows
-        ? envValue(opts.env, name)
-        : opts.env !== undefined && name in opts.env
-          ? opts.env[name]
-          : process.env[name]
     const candidates = absolutePathCandidates(binary, {
-      path: read('PATH'),
-      pathext: read('PATHEXT'),
+      path: envOverride(opts.env, 'PATH', platform),
+      pathext: envOverride(opts.env, 'PATHEXT', platform),
       platform,
     })
     for (const candidate of candidates) {
@@ -103,7 +98,7 @@ export function which(binary: string, opts: WhichOptions = {}): string | undefin
   }
   if (platform === 'win32') return whichWindows(binary, cwd, opts.env)
   if (binary.includes('/')) return executable(resolve(cwd, binary))
-  const path = opts.env !== undefined && 'PATH' in opts.env ? opts.env['PATH'] : process.env['PATH']
+  const path = envOverride(opts.env, 'PATH', platform)
   for (const dir of (path ?? '/usr/bin:/bin').split(':')) {
     const found = executable(resolve(cwd, dir, binary))
     if (found !== undefined) return found
@@ -116,13 +111,12 @@ function whichWindows(
   cwd: string,
   env: EnvOverrides | undefined,
 ): string | undefined {
-  const exts = (envValue(env, 'PATHEXT') || DEFAULT_PATHEXT).split(';').filter((e) => e !== '')
-  const lower = binary.toLowerCase()
-  const listed = exts.some((e) => lower.endsWith(e.toLowerCase()))
-  const names = listed ? [binary] : exts.map((e) => binary + e)
+  const names = pathextSuffixes(binary, envOverride(env, 'PATHEXT', 'win32')).map(
+    (suffix) => binary + suffix,
+  )
   const dirs = /[\\/]/.test(binary)
     ? ['']
-    : (envValue(env, 'PATH') ?? '').split(';').filter((d) => d !== '')
+    : windowsPathDirs(envOverride(env, 'PATH', 'win32') ?? '').filter((d) => d !== '')
   for (const dir of dirs) {
     for (const name of names) {
       const found = file(resolve(cwd, dir, name))
@@ -132,8 +126,16 @@ function whichWindows(
   return undefined
 }
 
-/** `name` from `env` over `process.env`, matched in any case as Windows does. */
-function envValue(env: EnvOverrides | undefined, name: string): string | undefined {
+/**
+ * `name` from `env` over `process.env`. An override set to `undefined`
+ * unsets it. Under Windows rules the name matches in any case.
+ */
+function envOverride(
+  env: EnvOverrides | undefined,
+  name: string,
+  platform: NodeJS.Platform,
+): string | undefined {
+  if (platform !== 'win32') return env !== undefined && name in env ? env[name] : process.env[name]
   if (env !== undefined) {
     const key = Object.keys(env).find((k) => k.toUpperCase() === name)
     if (key !== undefined) return env[key]
@@ -197,21 +199,36 @@ export function absolutePathCandidates(binary: string, opts: PathCandidateOption
   if (binary === '' || hasSeparator(binary, platform)) return []
   const path = opts.path ?? (windows ? undefined : '/usr/bin:/bin')
   if (path === undefined) return []
-  const exts = windows ? (opts.pathext || DEFAULT_PATHEXT).split(';').filter((e) => e !== '') : []
-  const suffixes =
-    !windows || exts.some((e) => binary.toLowerCase().endsWith(e.toLowerCase())) ? [''] : exts
+  const suffixes = windows ? pathextSuffixes(binary, opts.pathext) : ['']
   const join = windows ? win32.join : posix.join
   const out: string[] = []
-  for (const entry of path.split(windows ? ';' : ':')) {
-    // Windows strips the double quotes around an entry such as "C:\Program Files\x".
-    const dir = windows && /^".*"$/.test(entry) ? entry.slice(1, -1) : entry
+  for (const dir of windows ? windowsPathDirs(path) : path.split(':')) {
     if (!isAbsoluteEntry(dir, windows)) continue
     for (const suffix of suffixes) out.push(join(dir, binary + suffix))
   }
   return out
 }
 
-function hasSeparator(binary: string, platform: NodeJS.Platform): boolean {
+/**
+ * The suffixes a Windows lookup tries on `binary`: `''` alone when it already
+ * ends in a `PATHEXT` extension (compared in any case), else each extension.
+ */
+function pathextSuffixes(binary: string, pathext: string | undefined): string[] {
+  const exts = (pathext || DEFAULT_PATHEXT).split(';').filter((e) => e !== '')
+  const lower = binary.toLowerCase()
+  return exts.some((e) => lower.endsWith(e.toLowerCase())) ? [''] : exts
+}
+
+/**
+ * A Windows `PATH` split on `;`. Windows strips the double quotes around an
+ * entry such as `"C:\Program Files\x"`, so they are stripped here too.
+ */
+function windowsPathDirs(path: string): string[] {
+  return path.split(';').map((entry) => (/^".*"$/.test(entry) ? entry.slice(1, -1) : entry))
+}
+
+/** Whether `binary` holds a path separator, so it is a path, not a name looked up on `PATH`. */
+export function hasSeparator(binary: string, platform: NodeJS.Platform): boolean {
   return binary.includes('/') || (platform === 'win32' && binary.includes('\\'))
 }
 

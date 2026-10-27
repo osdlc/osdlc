@@ -10,7 +10,7 @@
 import type { ProviderContext } from '../../contract.ts'
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { parseJsonc } from '../support/jsonc.ts'
+import { readJsonc } from '../support/jsonc.ts'
 import { commandList, dirOf, isTable, looksPersistent, taskId } from '../support/shared.ts'
 
 export const DEVBOX_JSON = 'devbox.json'
@@ -35,16 +35,14 @@ export const devboxRunner: RunnerRole = {
     const tasks: Task[] = []
     const diagnostics: Diagnostic[] = []
     for (const file of (await ctx.files(DEVBOX_JSON)).sort()) {
-      const text = await ctx.readText(file)
-      if (text === null) continue
-      let doc: unknown
-      try {
-        doc = parseJsonc(text)
-      } catch (err) {
-        const message = `unparseable devbox.json: ${err instanceof Error ? err.message : String(err)}`
+      const read = await readJsonc(ctx, file)
+      if (read === null) continue
+      if ('error' in read) {
+        const message = `unparseable devbox.json: ${read.error}`
         diagnostics.push({ severity: 'warning', message, source: file })
         continue
       }
+      const doc = read.value
       const shell = isTable(doc) ? doc['shell'] : undefined
       const scripts = isTable(shell) && isTable(shell['scripts']) ? shell['scripts'] : {}
       const dir = dirOf(file)

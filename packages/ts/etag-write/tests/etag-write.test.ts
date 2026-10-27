@@ -48,6 +48,11 @@ describe('etag', () => {
     expect(etag(new TextEncoder().encode('abc'))).toBe(abc)
   })
 
+  test('a Uint8Array view hashes only its own bytes', () => {
+    const view = new TextEncoder().encode('xxabcxx').subarray(2, 5)
+    expect(etag(view)).toBe(etag('abc'))
+  })
+
   test('etagOfFile reads the file, and is null when it is absent', () => {
     const p = join(root, 'x.md')
     expect(etagOfFile(p)).toBeNull()
@@ -72,6 +77,12 @@ describe.each([
     await write(p, new TextEncoder().encode('two'))
     expect(readFileSync(p, 'utf8')).toBe('two')
     expect(readdirSync(join(root, 'a', 'b'))).toEqual(['f.json'])
+  })
+
+  test('a Uint8Array view writes only its own bytes', async () => {
+    const p = join(root, 'view.txt')
+    await write(p, new TextEncoder().encode('xxabcxx').subarray(2, 5))
+    expect(readFileSync(p, 'utf8')).toBe('abc')
   })
 
   test('a failed rename removes the temp file and keeps the target', async () => {
@@ -283,4 +294,46 @@ test('writeIfChanged skips identical content and leaves mtime alone', () => {
   expect(statSync(p).mtimeMs).toBe(past.getTime())
   expect(writeIfChanged(p, 'different')).toBe(true)
   expect(readFileSync(p, 'utf8')).toBe('different')
+})
+
+test('writeIfChanged compares only the bytes of a Uint8Array view', () => {
+  const p = join(root, 'x.md')
+  writeIfChanged(p, 'abc')
+  expect(writeIfChanged(p, new TextEncoder().encode('xxabcxx').subarray(2, 5))).toBe(false)
+})
+
+test.skipIf(process.getuid?.() === 0)(
+  'writeIfChanged refuses to overwrite a file it cannot read',
+  () => {
+    const p = join(root, 'unreadable.md')
+    writeFileSync(p, 'original')
+    chmodSync(p, 0o000)
+    try {
+      expect(() => writeIfChanged(p, 'clobber')).toThrow(
+        expect.objectContaining({ code: 'EACCES' }),
+      )
+    } finally {
+      chmodSync(p, 0o644)
+    }
+    expect(readFileSync(p, 'utf8')).toBe('original')
+  },
+)
+
+test.skipIf(process.platform === 'win32')(
+  'writeIfChanged leaves an unchanged file its permissions, even given a mode',
+  () => {
+    const p = join(root, 'x.md')
+    writeFileSync(p, 'same', { mode: 0o644 })
+    chmodSync(p, 0o644)
+    expect(writeIfChanged(p, 'same', { mode: 0o600 })).toBe(false)
+    expect(statSync(p).mode & 0o777).toBe(0o644)
+  },
+)
+
+test.skipIf(process.platform === 'win32')('writeCas passes its mode to the write', () => {
+  const p = join(root, 'x.md')
+  writeFileSync(p, 'v1')
+  chmodSync(p, 0o644)
+  writeCas(p, 'v2', etag('v1'), { mode: 0o600 })
+  expect(statSync(p).mode & 0o777).toBe(0o600)
 })

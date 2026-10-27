@@ -22,8 +22,8 @@ import type { ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
 import { dirOf, onePerDir, sourcesOf, taskId } from '../support/shared.ts'
 
-/** The names make looks for. */
-export const MAKEFILE_NAMES = ['Makefile', 'makefile', 'GNUmakefile']
+/** The names make looks for, in the order GNU make tries them. */
+export const MAKEFILE_NAMES = ['GNUmakefile', 'makefile', 'Makefile']
 
 const CHAIN = [
   { label: 'runner', hint: 'make builds targets declared in a Makefile.' },
@@ -31,8 +31,14 @@ const CHAIN = [
   { label: 'target', hint: 'The target name, as written at column 0 before the colon.' },
 ]
 
-/** `name:` at column 0, but not `name :=` — that is a variable assignment. */
-const TARGET = /^([A-Za-z0-9_][A-Za-z0-9_./-]*)\s*:(?!=)/
+/**
+ * `names:` at column 0, one or more names before the colon. Not `name :=`,
+ * `name ::=` or `name :::=`: those are variable assignments.
+ */
+const TARGET = /^([^:#=\s][^:#=]*):(?!:*=)/
+
+/** One target name. A line with any other word before the colon is skipped. */
+const NAME = /^[A-Za-z0-9_][A-Za-z0-9_./-]*$/
 
 /**
  * A plain gear glyph. simple-icons has no icon for make (`make` is Make.com,
@@ -51,7 +57,8 @@ export const makeRunner: RunnerRole = {
   chain: CHAIN,
 
   async collect(ctx, packages): Promise<ProviderResult> {
-    const makefiles = onePerDir(sourcesOf(packages, 'make', MAKEFILE_NAMES))
+    // make reads one makefile per directory, the first of MAKEFILE_NAMES it finds.
+    const makefiles = onePerDir(sourcesOf(packages, 'make', MAKEFILE_NAMES), MAKEFILE_NAMES)
     if (makefiles.length === 0) return { status: 'absent', tasks: [], diagnostics: [] }
 
     const tasks: Task[] = []
@@ -92,14 +99,18 @@ export function scanTargets(text: string): string[] {
   for (const raw of text.split(/\r?\n/)) {
     if (!raw || raw[0] === ' ' || raw[0] === '\t' || raw[0] === '#') continue
     const m = TARGET.exec(raw)
-    const name = m?.[1]
-    if (name === undefined) continue
-    // `.PHONY` and similar names are directives, not things to run. `%` marks
-    // a pattern rule, which is not a single target.
-    if (name.startsWith('.') || name.includes('%')) continue
-    if (seen.has(name)) continue
-    seen.add(name)
-    out.push(name)
+    if (m === null) continue
+    const names = m[1]!.trim().split(/\s+/)
+    // `$(eval …)`, `$(info a: b)` and the like are not target lists.
+    if (!names.every((name) => NAME.test(name))) continue
+    for (const name of names) {
+      // `.PHONY` and similar names are directives, not things to run. `%` marks
+      // a pattern rule, which is not a single target.
+      if (name.startsWith('.') || name.includes('%')) continue
+      if (seen.has(name)) continue
+      seen.add(name)
+      out.push(name)
+    }
   }
   return out.sort()
 }

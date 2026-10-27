@@ -9,7 +9,7 @@
 [workspace]
 # resolver 3 picks dependency versions that support `rust-version` (the MSRV).
 resolver = "3"
-members = ["config-layers", "etag-write", "frontmatter-lossless", "markdown-contract", "path-guard", "slug-collate", "tiered-dirs", "yaml-splice", "yaml-splice-wasm"]
+members = ["agent-adapt", "config-layers", "etag-write", "frontmatter-lossless", "markdown-contract", "markdown-link", "markdown-relink", "markdown-vault-fs", "path-guard", "slug-collate", "tiered-dirs", "tradecraft", "tradecraft-core", "tradecraft-typegen", "tradecraft-wasm", "typed-git", "yaml-splice", "yaml-splice-wasm"]
 
 [workspace.package]
 edition = "2024"
@@ -25,12 +25,20 @@ unsafe_code = "forbid"
 missing_docs = "warn"
 
 [workspace.dependencies]
+# `derive` for the tradecraft CLI's argument structs.
+clap = { version = "4.5.40", features = ["derive"] }
+# The RFC 3339 timestamps tradecraft writes.
+chrono = { version = "0.4.41", default-features = false, features = ["clock", "std"] }
 # Pinned exactly: the line numbers markdown-contract reports are part of its
 # contract with @osdlc/markdown-contract, and a comrak release can move them.
 comrak = { version = "=0.53.0", default-features = false }
 globset = { version = "0.4", default-features = false }
 # js-sys 0.3.103 is the release that pairs with wasm-bindgen 0.2.126.
 js-sys = "0.3.103"
+# The file watcher behind `tradecraft build --watch`.
+notify = "8.2"
+# tradecraft-typegen reads Rust source with these.
+quote = "1.0.40"
 # 1.8 is the first regex that reads the `\/` escape in a contract pattern.
 regex = "1.8"
 saphyr-parser = "0.0.11"
@@ -40,17 +48,50 @@ serde_json = "1.0.40"
 # 0.9.4 is the first serde_yaml that rejects a duplicate mapping key.
 serde_yaml = "0.9.4"
 sha2 = "0.10"
+# `full` for function bodies, `extra-traits` for `Debug` on `syn::Type`.
+syn = { version = "2.0.100", features = ["full", "extra-traits"] }
 tempfile = "3"
 # 2.0.17 is what saphyr-parser 0.0.11 needs. The workspace resolves one
 # thiserror 2.x, so the minimal-versions job needs every member to agree.
 thiserror = "2.0.17"
+toml = "0.8"
+tracing = "0.1"
 # Pinned to the version slug-collate's NFKD code is built and tested against,
 # so the minimal-versions job does not resolve an older 0.1.x that predates it.
 unicode-normalization = "0.1.26"
-# A member crate, also named by version so the published manifest points at
-# crates.io. release-plz publishes it before the crates that depend on it.
-tiered-dirs = { path = "tiered-dirs", version = "0.3" }
+walkdir = "2.5"
 # Must equal the version of the wasm-bindgen CLI that
 # yaml-splice-wasm/build.sh runs, so it is pinned exactly.
 wasm-bindgen = "=0.2.126"
+
+# Member crates, also named by version so a published manifest points at
+# crates.io. release-plz publishes a crate before the crates that depend on it.
+agent-adapt = { path = "agent-adapt", version = "0.19.1" }
+config-layers = { path = "config-layers", version = "0.7.1" }
+etag-write = { path = "etag-write", version = "0.2.4" }
+frontmatter-lossless = { path = "frontmatter-lossless", version = "1.1.1" }
+markdown-link = { path = "markdown-link", version = "0.5.0" }
+markdown-relink = { path = "markdown-relink", version = "0.1.5" }
+markdown-vault-fs = { path = "markdown-vault-fs", version = "0.3.1" }
+path-guard = { path = "path-guard", version = "0.3.2" }
+slug-collate = { path = "slug-collate", version = "0.1.2" }
+tiered-dirs = { path = "tiered-dirs", version = "0.3" }
+tradecraft-core = { path = "tradecraft-core", version = "0.39.1" }
+typed-git = { path = "typed-git", version = "0.4" }
 yaml-splice = { path = "yaml-splice", version = "0.3.2" }
+
+# The size profile tradecraft-wasm/build.sh builds with. A named profile
+# applies only to a build that asks for it, so no other crate, test run or
+# yaml-splice-wasm (which builds with `release`) is affected. A wasm file is
+# downloaded before it runs, so size matters more than speed. On
+# tradecraft-wasm it cuts the built file from 1.8 MB to 1.1 MB.
+[profile.wasm-release]
+inherits = "release"
+opt-level = "z"
+# Whole-program LTO, with one codegen unit so it sees the whole program. This
+# removes the code of dependencies the wasm never calls.
+lto = "fat"
+codegen-units = 1
+# wasm32-unknown-unknown has no unwinder, so unwind tables are dead weight.
+panic = "abort"
+strip = "symbols"

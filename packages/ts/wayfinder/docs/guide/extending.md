@@ -5,7 +5,8 @@ sidebar:
 description: Add your own tool with a ToolDef module.
 ---
 
-wayfinder has no library API. You extend it with a module that exports tools.
+wayfinder's library entry (`buildCatalog`, see the README) reads a catalog; it
+is not how you add tools. You extend it with a module that exports tools.
 A tool is a `ToolDef` from `@osdlc/system-model/detect`, the same shape the
 built-ins use. Built-in tools have no privileges your own tool lacks.
 

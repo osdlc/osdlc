@@ -30,6 +30,7 @@ import {
   type Runners,
   type Severity,
   type StaleReason,
+  type StoringCatalog,
   type Task,
   type TaskExecutionTarget,
   type TaskOrigin,
@@ -37,6 +38,12 @@ import {
   toolInfo,
 } from '@osdlc/system-model/detect'
 import {
+  ALL_CACHE_STATES,
+  ALL_PARAMETERS_UNKNOWN_REASONS,
+  ALL_PROBE_COSTS,
+  ALL_PROVIDER_KINDS,
+  ALL_ROLE_NAMES,
+  ALL_STALE_REASONS,
   CATALOG_SCHEMA_VERSION as SCHEMA_CATALOG_VERSION,
   catalogSchema,
   paramSchema,
@@ -48,6 +55,7 @@ import {
 import { builtins } from '@osdlc/system-model/builtins'
 import { humanAge, humanMs } from '@osdlc/system-model/duration'
 import {
+  ALL_MATCH_MODES,
   exact,
   fuzzy,
   matchEntry,
@@ -59,6 +67,7 @@ import {
 } from '@osdlc/system-model/match'
 import { bindParams, paramShape, type BoundParams } from '@osdlc/system-model/params'
 import {
+  ALL_GROUP_IDS,
   catalogGroups,
   GROUPS,
   groupOf,
@@ -119,6 +128,7 @@ test('collect lists every runner that was found, then the synthesized groups', a
   expect(ids).toEqual(['tasks', 'dependencies'])
   const deps: Group = groupOf(GROUP_RUNNERS.packageManager)
   expect(deps).toBe(GROUPS[1])
+  expect(GROUPS.map((g) => g.id)).toEqual([...ALL_GROUP_IDS])
 
   const chain: ChainSegment[] = reports[0]!.chain
   const brand: RunnerBrand | undefined = reports[0]!.brand
@@ -214,6 +224,15 @@ test('the JSON a catalog and a tool print has a published schema', async () => {
     'ToolInfo',
   ])
 
+  // The values of each enum-shaped field, for a host's own schema (`z.enum(ALL_ROLE_NAMES)`).
+  expect(ALL_PARAMETERS_UNKNOWN_REASONS).toContain('exec-withheld')
+  expect(ALL_ROLE_NAMES).toContain('runner')
+  expect(ALL_PROVIDER_KINDS).toEqual(['parse', 'exec'])
+  expect(ALL_PROBE_COSTS).toEqual(['cheap', 'slow'])
+  // And the cache verdict's, which `runners.readCached` reports per runner.
+  expect(ALL_CACHE_STATES).toEqual(['fresh', 'stale', 'miss'])
+  expect(ALL_STALE_REASONS).toContain('changed')
+
   // A ToolDef holds functions; toolInfo is its JSON-safe part.
   const info: ToolInfo = toolInfo(builtins.find((t) => t.id === 'just')!)
   expect([info.homepage, info.description]).toEqual([
@@ -226,6 +245,7 @@ test('search ranks tasks against a query', async () => {
   const profile = await project.detect(repo(FILES), { discovery: 'walk' })
   const catalog = await runners.collect(profile)
   const mode: Mode = 'fuzzy'
+  expect(ALL_MATCH_MODES).toContain(mode)
   expect(runners.search(catalog, 'dev', mode)[0]?.argv).toEqual(['npm', 'run', 'dev'])
 
   const words = terms('Build')
@@ -258,4 +278,17 @@ test('a cache directory you choose keeps results between runs', async () => {
   expect(reason).toBe('changed')
   expect(humanMs(stale.runners[0]!.estimateMs ?? 0)).toMatch(/ms|s/)
   expect(humanAge(stale.runners[0]!.ageMs)).toMatch(/old$/)
+})
+
+test('collectAndStore answers first and stores in the background', async () => {
+  const root = repo(FILES)
+  const cacheDir = realpathSync(mkdtempSync(join(tmpdir(), 'project-cache-')))
+  roots.push(cacheDir)
+  const profile = await project.detect(root, { discovery: 'walk' })
+
+  const { catalog, stored }: StoringCatalog = await runners.collectAndStore(profile, cacheDir)
+  expect(catalog.reports.length).toBeGreaterThan(0)
+  // Await it before the process exits, or the store keeps the last probe.
+  await stored
+  expect((await runners.readCached(profile, cacheDir)).allFresh).toBe(true)
 })

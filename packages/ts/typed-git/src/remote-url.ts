@@ -22,14 +22,16 @@ export interface RemoteCoordinate {
  * Parses `git@host:owner/repo.git` (scp-style) and
  * `scheme://[user@]host[:port]/owner/repo[.git]`. The last two path segments
  * are the owner and repo, so a nested group (`group/sub/repo`) answers
- * `owner: "sub"`. Returns null for anything else (a local path, a single
- * path segment).
+ * `owner: "sub"`. Returns null for anything else (a local path or a
+ * `file://` URL, a single path segment).
  *
  * Only an `http(s)://` port is read. An `ssh://` port is dropped, so `port` is
  * null for `ssh://git@host:2222/owner/repo.git`.
  */
 export function parseRemoteUrl(url: string): RemoteCoordinate | null {
   const trimmed = url.trim()
+  // `file://localhost/srv/git/a/b.git` is a local path, not a forge coordinate.
+  if (/^file:/i.test(trimmed)) return null
   const scp = /^[\w.-]+@([^:/]+):(.+)$/.exec(trimmed)
   const uri = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::(\d+))?\/(.+)$/i.exec(trimmed)
   const match = scp ?? uri
@@ -39,7 +41,8 @@ export function parseRemoteUrl(url: string): RemoteCoordinate | null {
   const isHttp = match === uri && /^https?:/i.test(trimmed)
   const port = isHttp && match[2] !== undefined ? Number(match[2]) : null
   const rest = match === uri ? match[3]! : match[2]!
-  const path = rest.replace(/\.git$/, '').replace(/^\/+|\/+$/g, '')
+  // Trim the slashes first, so `repo.git/` loses its `.git` too.
+  const path = rest.replace(/^\/+|\/+$/g, '').replace(/\.git$/, '')
   const parts = path.split('/').filter((p) => p !== '')
   if (parts.length < 2) return null
   return { host, port, owner: parts[parts.length - 2]!, repo: parts[parts.length - 1]! }

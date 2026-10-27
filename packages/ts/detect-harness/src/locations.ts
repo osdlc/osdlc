@@ -13,8 +13,10 @@
  *   - `{system}` is the file-system root (`/`, or the system drive on Windows);
  *   - `{<base>}` is another base of the same harness.
  *
- * An override names an environment variable; the first one that is set and not
- * empty wins, made absolute, with its `suffix` joined on.
+ * An override names an environment variable; the first one that holds an
+ * absolute path wins, with its `suffix` joined on. An empty or relative value
+ * counts as unset: resolved against the current folder, which can be the
+ * project, it would read the project's files as the harness's own.
  *
  * Vendor facts here come from each harness's public documentation (see the
  * README). They change; a wrong entry is a bug in this table, not in a provider.
@@ -22,7 +24,7 @@
  * Runtime-agnostic: `node:path` only.
  */
 
-import { join, resolve } from 'node:path'
+import { join, posix, win32 } from 'node:path'
 
 import type { BuiltinHarnessId } from './harnesses.ts'
 
@@ -370,13 +372,14 @@ export function defaultSystemRoot(
 
 function fromEnv(
   overrides: readonly EnvOverride[],
-  env: Readonly<Record<string, string | undefined>>,
+  ctx: LocationContext,
 ): { path: string; envVar: string } | null {
+  const platform = ctx.platform ?? process.platform
+  const isAbsolute = platform === 'win32' ? win32.isAbsolute : posix.isAbsolute
   for (const o of overrides) {
-    const value = env[o.name]
-    if (value === undefined || value === '') continue
-    const base = resolve(value)
-    return { path: o.suffix ? join(base, o.suffix) : base, envVar: o.name }
+    const value = ctx.env[o.name]
+    if (value === undefined || !isAbsolute(value)) continue
+    return { path: o.suffix ? join(value, o.suffix) : value, envVar: o.name }
   }
   return null
 }
@@ -414,7 +417,7 @@ function baseOf(
 ): ResolvedDir {
   const base = LOCATIONS[harness].bases[name]
   if (base === undefined) throw new Error(`unknown location base: ${harness}.${name}`)
-  const over = fromEnv(base.env, ctx.env)
+  const over = fromEnv(base.env, ctx)
   if (over) return { name, path: over.path, envVar: over.envVar }
   const platform = ctx.platform ?? process.platform
   const template =
@@ -485,7 +488,7 @@ export function resolveLocations(
   ctx: LocationContext,
 ): ResolvedLocation[] {
   return LOCATIONS[harness].paths.map((loc) => {
-    const over = loc.env ? fromEnv(loc.env, ctx.env) : null
+    const over = loc.env ? fromEnv(loc.env, ctx) : null
     if (over) return { ...loc, resolved: over.path, envVar: over.envVar }
     return { ...loc, resolved: expand(harness, loc.path, ctx, new Set()), envVar: null }
   })

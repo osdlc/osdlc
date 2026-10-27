@@ -1,0 +1,8 @@
+# Dependencies installed for the extracted package.
+node_modules/
+
+# Build output (`npm run build`).
+dist/
+
+# Test coverage (`npm run coverage`).
+coverage/

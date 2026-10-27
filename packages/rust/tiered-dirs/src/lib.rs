@@ -1462,6 +1462,26 @@ mod tests {
     }
 
     #[test]
+    fn is_overridden_matches_the_ts_twin() {
+        assert!(!ENV.is_overridden(|_| None));
+        // An empty value counts as unset.
+        assert!(!ENV.is_overridden(|_| Some(OsString::new())));
+        assert!(ENV.is_overridden(|name| (name == ENV.root).then(|| OsString::from("/r"))));
+        assert!(ENV.is_overridden(|name| (name == ENV.runtime).then(|| OsString::from("/run"))));
+        // Neither moves a base directory.
+        assert!(!ENV.is_overridden(|name| {
+            (name == ENV.require_override || name == ENV.convention).then(|| OsString::from("1"))
+        }));
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "does not start with")]
+    fn a_non_conforming_bundle_id_panics_in_debug() {
+        assert_vendor_bundle_id("com.example", "org.other");
+    }
+
+    #[test]
     fn the_vendor_is_validated() {
         let base = BaseDirs::rooted("/stub");
         assert_eq!(

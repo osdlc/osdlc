@@ -178,6 +178,23 @@ such as a flag: exactly `native` or `xdg`, untrimmed, like the Rust crate's
 `FromStr`. `xdgBaseDirs(home, env)` builds the XDG table under any home, on
 any host.
 
+`homeDir()` is the home directory the per-OS table is built on: `HOME`
+(`USERPROFILE` on Windows) when it is absolute, else the OS account's home.
+`homeDir({ env })` reads only the injected environment and throws
+`MISSING_BASE_DIR` when it names no absolute home. `expandTilde(path, home)`
+expands a leading `~` (and `~\` on Windows) for a path a caller reads from a
+`.env` file or CI YAML, where no shell expanded it. The resolvers never call
+it: a relative `XDG_*` value, `~` included, is ignored.
+
+```ts
+import { expandTilde, homeDir } from '@osdlc/tiered-dirs'
+
+homeDir({ platform: 'linux', env: { HOME: '/home/ada' } })
+// /home/ada
+expandTilde('~/notes', '/home/ada', 'linux')
+// /home/ada/notes
+```
+
 ## Overrides and scratch roots
 
 Every base directory can be moved by environment variable, so a test or harness
@@ -334,6 +351,8 @@ function systemBaseDirs(vars: EnvVars, opts?: ResolveOptions): BaseDirs
 function testRoot(): string | undefined
 function rootedBaseDirs(root: string): BaseDirs
 function xdgBaseDirs(home: string, env: Record<string, string | undefined>): BaseDirs
+function homeDir(opts?: Pick<ResolveOptions, 'platform' | 'env'>): string
+function expandTilde(path: string, home: string, platform?: string): string
 
 class TieredDirs {
   constructor(vendor: string, bases: BaseDirs)
@@ -396,7 +415,7 @@ Neither package may add a path shape the other lacks.
 
 Every export is stable in 0.x, and its TSDoc says so: `TieredDirs`,
 `TieredDirsError`, `envVars`, `overrideVars`, `isOverridden`,
-`systemBaseDirs`, `testRoot`, `rootedBaseDirs`, `xdgBaseDirs`,
+`systemBaseDirs`, `testRoot`, `rootedBaseDirs`, `xdgBaseDirs`, `homeDir`, `expandTilde`,
 `parseConvention`, `isValidSegment`, `isVendorBundleId`, `HOMES`,
 `CONVENTIONS`, `TIER_KINDS` and the types `Tier`, `Dir`, `BaseDirs`, `EnvVars`, `Home`,
 `Convention`, `TierKind`, `ResolveOptions` and `TieredDirsErrorCode`. A

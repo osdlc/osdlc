@@ -18,8 +18,6 @@
  * told.
  */
 
-import { dirname } from 'node:path'
-
 import { firstLine, stderrOrError } from '@osdlc/command-seam'
 
 import type { ProviderContext } from '../../contract.ts'
@@ -33,7 +31,14 @@ import type {
 } from '../../model.ts'
 import { paramShape } from '../../params.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { dependenciesIn, looksPersistent, onePerDir, sourcesOf, taskId } from '../support/shared.ts'
+import {
+  dependenciesIn,
+  dirOf,
+  looksPersistent,
+  onePerDir,
+  sourcesOf,
+  taskId,
+} from '../support/shared.ts'
 
 /** The names just looks for. */
 export const JUSTFILE_NAMES = ['justfile', 'Justfile', '.justfile']
@@ -58,7 +63,8 @@ interface JustRecipe {
   namepath?: string
   doc?: string | null
   private?: boolean
-  parameters?: { name: string; kind?: string; default?: string | null }[]
+  /** A string-literal default dumps as a string; any other expression dumps as a tagged array. */
+  parameters?: { name: string; kind?: string; default?: unknown }[]
   dependencies?: { recipe?: string }[]
   /** How many of `dependencies` run before the recipe. The rest follow `&&` and run after. */
   priors?: number
@@ -107,7 +113,7 @@ export const justRunner: RunnerRole = {
     }
 
     for (const file of justfiles) {
-      const dir = dirname(file) === '.' ? '.' : dirname(file)
+      const dir = dirOf(file)
       let unknown: ParametersUnknownReason = ctx.allowExec ? 'tool-missing' : 'exec-withheld'
       if (usable) {
         const parsed = await dumpRecipes(ctx, file)
@@ -238,14 +244,16 @@ function fromScan(name: string, file: string, dir: string, unknown: ParametersUn
   }
 }
 
-function toParam(p: { name: string; kind?: string; default?: string | null }): Param {
+function toParam(p: { name: string; kind?: string; default?: unknown }): Param {
   const variadic = p.kind === 'star' || p.kind === 'plus'
   return {
     name: p.name,
     // A `+variadic` needs at least one argument; a `*variadic` accepts none.
     required: p.kind === 'plus' || (!variadic && p.default == null),
     variadic,
-    ...(p.default != null ? { default: p.default } : {}),
+    // An expression default (`env=VERSION`) is still optional, but only just can
+    // evaluate it, so it carries no literal and binding leaves the argument out.
+    ...(typeof p.default === 'string' ? { default: p.default } : {}),
   }
 }
 

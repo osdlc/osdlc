@@ -97,7 +97,11 @@ export interface Fingerprint {
 /** A missing path hashes to this, so a deletion changes the digest. */
 const MISSING = 'missing'
 
-export async function fingerprint(args: {
+/** What a fingerprint covers, before any file is hashed. See {@link fingerprintInputs}. */
+export type FingerprintInputs = Omit<Fingerprint, 'digest'>
+
+/** The arguments of {@link fingerprint}. */
+export interface FingerprintArgs {
   root: string
   /** Paths the runner actually read, root-relative. */
   paths: readonly string[]
@@ -115,8 +119,20 @@ export async function fingerprint(args: {
    */
   excludes?: readonly string[]
   files: (pattern: string) => Promise<string[]>
-}): Promise<Fingerprint> {
-  const { root, paths, patterns, files } = args
+}
+
+export async function fingerprint(args: FingerprintArgs): Promise<Fingerprint> {
+  return hashInputs(args.root, await fingerprintInputs(args))
+}
+
+/**
+ * The paths a fingerprint hashes and whether the cap cut them, from the
+ * listing alone. Hashing comes after, in {@link hashInputs}.
+ */
+export async function fingerprintInputs(
+  args: Omit<FingerprintArgs, 'root'>,
+): Promise<FingerprintInputs> {
+  const { paths, patterns, files } = args
   const excludes = [...(args.excludes ?? [])].sort()
 
   const candidates = new Set<string>(paths)
@@ -134,19 +150,16 @@ export async function fingerprint(args: {
   const sorted = [...candidates].sort()
   const truncated = sorted.length > MAX_FINGERPRINT_FILES
   const kept = truncated ? sorted.slice(0, MAX_FINGERPRINT_FILES) : sorted
+  return { paths: kept, patterns: [...expanded].sort(), truncated, excludes }
+}
 
+/** The fingerprint of `inputs`: each path's bytes, or entry names for a directory, hashed. */
+export async function hashInputs(root: string, inputs: FingerprintInputs): Promise<Fingerprint> {
   const digest = createHash('sha256')
-  for (const rel of kept) {
+  for (const rel of inputs.paths) {
     digest.update(`${rel}\n${await hashPath(root, rel)}\n`)
   }
-
-  return {
-    digest: digest.digest('hex'),
-    paths: kept,
-    patterns: [...expanded].sort(),
-    truncated,
-    excludes,
-  }
+  return { digest: digest.digest('hex'), ...inputs }
 }
 
 /**

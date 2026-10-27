@@ -99,6 +99,16 @@ describe('the layer check', () => {
     const issues = projectLayerIssues(arr, '/p', { s: { list: ['a', 'b'] } })
     expect(issues.map((i) => i.path)).toEqual(['s.list.0', 's.list.1'])
   })
+  test('refuses a scalar section flagged secret', () => {
+    const scalar = [section(z.string().optional(), { ...META, secret: true })]
+    const issues = projectLayerIssues(scalar, '/p', { s: 'https://hooks.example/T0/x' })
+    expect(issues.map((i) => i.path)).toEqual(['s'])
+  })
+  test('refuses a scalar section whose schema is flagged secret', () => {
+    const scalar = [section(secret().optional())]
+    const issues = projectLayerIssues(scalar, '/p', { s: 'https://hooks.example/T0/x' })
+    expect(issues.map((i) => i.path)).toEqual(['s'])
+  })
   test('hands a layerCheck value: undefined on a raw file, without throwing', () => {
     let seen: unknown = 'unset'
     const probe = defineConfigSection({
