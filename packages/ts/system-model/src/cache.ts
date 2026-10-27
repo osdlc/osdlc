@@ -13,6 +13,7 @@
  */
 
 import { createHash } from 'node:crypto'
+import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 
@@ -23,7 +24,7 @@ import type { Fingerprint } from './fingerprint.ts'
 import type { RunnerReport } from './model.ts'
 
 /** Bumped whenever a stored entry's shape changes, including `Task`'s shape. */
-export const CACHE_FORMAT_VERSION = 4
+export const CACHE_FORMAT_VERSION = 5
 
 /** How many probe durations are kept per entry. */
 export const DURATION_WINDOW = 5
@@ -61,6 +62,62 @@ export interface CacheEntry {
   durations: number[]
   fingerprint: Fingerprint
   report: RunnerReport
+  /** Whether the probe ran with execution allowed. A parse runner's answer can depend on it. */
+  allowExec: boolean
+  /** The `@osdlc/system-model` version that probed, since a runner's output changes between versions. */
+  modelVersion: string
+  /**
+   * The tool's binary with symlinks resolved. Some installers put the version
+   * in it (`.../just/1.40.0/bin/just`). `null` when it was not on the PATH.
+   * Absent when the runner has no binary.
+   */
+  toolPath?: string | null | undefined
+  /**
+   * The resolved binary's size and mtime, so a binary replaced in place
+   * (`~/.cargo/bin/just`) also reads as another tool. A version manager's
+   * shim (proto, asdf, mise) does not change when the version it selects
+   * does, so that upgrade is not seen. `null` when it cannot be read. Absent
+   * when the runner has no binary.
+   */
+  toolStamp?: string | null | undefined
+  /** Each binary the runner looked up through `ctx.which`, and what it found. */
+  lookups?: Record<string, string | null> | undefined
+}
+
+/** This package's version, or `unknown` when its package.json cannot be read. */
+export const MODEL_VERSION: string = readModelVersion()
+
+function readModelVersion(): string {
+  try {
+    // `src/` and `dist/` are both one level below the package root.
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8')) as {
+      version?: unknown
+    }
+    return typeof pkg.version === 'string' ? pkg.version : 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
+/** A PATH lookup's result with symlinks resolved, or as given when it cannot be resolved. */
+export function resolveToolPath(path: string | null): string | null {
+  if (path === null) return null
+  try {
+    return realpathSync(path)
+  } catch {
+    return path
+  }
+}
+
+/** A resolved binary's `size:mtimeMs`, or `null` when it cannot be read. */
+export function toolStampOf(path: string | null): string | null {
+  if (path === null) return null
+  try {
+    const info = statSync(path)
+    return `${info.size}:${info.mtimeMs}`
+  } catch {
+    return null
+  }
 }
 
 /** Where one (root, runner) entry lives under `dir`. */
@@ -98,6 +155,18 @@ export async function readEntry(
   if (typeof parsed !== 'object' || parsed === null) return null
   const entry = parsed as CacheEntry
   if (entry.version !== CACHE_FORMAT_VERSION) return null
+  // A foreign or hand-edited file with the right version but no usable report
+  // is a miss too, so `undefined` never reaches a catalog's reports.
+  const report = entry.report as Partial<CacheEntry['report']> | null | undefined
+  if (
+    typeof report !== 'object' ||
+    report === null ||
+    typeof report.runner !== 'string' ||
+    !Array.isArray(report.tasks) ||
+    !Array.isArray(report.diagnostics)
+  ) {
+    return null
+  }
   return entry
 }
 

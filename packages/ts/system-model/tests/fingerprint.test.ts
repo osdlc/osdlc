@@ -10,11 +10,12 @@ import { describe, expect, test } from 'vitest'
 import { mkdir, utimes, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import type { AsyncCommandRunner } from '@osdlc/command-seam'
+import { runChecked, spawnRunner, type AsyncCommandRunner } from '@osdlc/command-seam'
 
 import { builtins } from '../src/builtins.ts'
 import { createLister } from '../src/discovery.ts'
 import { fingerprint, MAX_FINGERPRINT_FILES } from '../src/fingerprint.ts'
+import { MAX_READ_BYTES } from '../src/read.ts'
 import { fixtureRoot, removeRoot } from './support.ts'
 
 /** A lister over a fixture root. `walk` so no git repository is needed. */
@@ -247,4 +248,36 @@ describe('declared watch patterns', () => {
       await removeRoot(root)
     }
   })
+})
+
+describe('large and special files', () => {
+  test('rewriting a file over the read cap changes the digest', async () => {
+    const root = await fixtureRoot({})
+    try {
+      const path = join(root, 'pnpm-lock.yaml')
+      await writeFile(path, 'a'.repeat(MAX_READ_BYTES + 10))
+      await utimes(path, 1000, 1000)
+      const before = await digestOf(root, ['pnpm-lock.yaml'])
+      await writeFile(path, 'b'.repeat(MAX_READ_BYTES + 20))
+      await utimes(path, 2000, 2000)
+      expect(await digestOf(root, ['pnpm-lock.yaml'])).not.toBe(before)
+    } finally {
+      await removeRoot(root)
+    }
+  })
+
+  // POSIX only: named pipes (`mkfifo`) are POSIX.
+  test.skipIf(process.platform === 'win32')(
+    'a pipe hashes to a fixed label, not to missing',
+    async () => {
+      const root = await fixtureRoot({})
+      try {
+        const withPipe = await digestOf(root, ['pipe'])
+        runChecked(spawnRunner('mkfifo'), [join(root, 'pipe')], { cwd: root })
+        expect(await digestOf(root, ['pipe'])).not.toBe(withPipe)
+      } finally {
+        await removeRoot(root)
+      }
+    },
+  )
 })

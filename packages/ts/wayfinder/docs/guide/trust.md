@@ -44,23 +44,36 @@ trust alone is enough unless a config file sets `allowExec: false`.
 ## Trusting a repository
 
 ```text
-way trust             trust the repository at the resolved root
-way trust --untrust   remove this repository's trust
-way trust --show      report this root's trust status
-way trust --list      every trusted path, one per line
-way trust --json      the same answer as one JSON object
-way trust -C PATH     the directory to inspect (default: cwd)
+way trust                 trust the repository at the resolved root
+way trust --untrust       remove this repository's whole-repository grant
+way trust --untrust-all   remove every grant of this repository
+way trust --show          report this root's trust and what decided it
+way trust --list          every grant, one per line
+way trust --scope <tool>  with a mode above: one tool's grant, such as mise
+way trust --json          the same answer as one JSON object
+way trust -C PATH         the directory to inspect (default: cwd)
 ```
 
-`--json` combines with each mode. The three root modes print
-`{"root": …, "trusted": …, "changed": …, "by": …, "rule": …}`. `--list`
-prints `{"trusted": [paths]}`. `by` is `"marker"`, `"path"`, `"owner"` or
-`null`: the layer that decided. `rule` is the matching `trust.paths` or
-`trust.owners` entry, present only when `by` is `"path"` or `"owner"`.
+`--json` combines with each mode and prints
+`{"action": …, "changed": …, "roots": [{"root": …, "trusted": …, "by": …, "rule": …, "scope": …}]}`.
+`--list` gives one entry per grant. `by` is `"marker"`, `"path"`, `"owner"`
+or `null`: the layer that decided. `rule` is the matching policy entry,
+present only when `by` is `"path"` or `"owner"`. `scope` is present for a
+one-tool grant.
 
 Giving two mode flags is a usage error. Trusting an already-trusted
 repository says so and changes nothing. `--untrust` on a root that was not
 trusted exits 1. `--show` exits 0 either way.
+
+A grant is made from the command line only. The web view can show and list
+trust, and its server refuses a grant.
+
+### One tool's trust
+
+A run needs every tool it runs trusted. A mise task needs mise trusted, for
+example. `way trust --scope mise` trusts mise alone in this repository and
+leaves the rest untrusted. `--untrust --scope mise` removes that grant only.
+`*` is the whole-repository scope and cannot be named with `--scope`.
 
 Trust, with execution allowed, also lets the `tools` named in the project
 file load. See
@@ -70,9 +83,9 @@ The terminal UI grants trust with `Ctrl+S`, after a `y`/`n` question. The
 web view offers a **Trust this repository** button. Both are offered only
 when trust is what is missing.
 
-When runners are withheld for lack of trust, `--list` and `--json` print a
-line on stderr, the terminal UI shows `N hidden — repo not trusted (^s to
-trust)`, and the web view shows the button in a bar above the list, in each
+When runners are withheld for lack of trust, `list` and `list --json` print a
+line on stderr, the terminal UI shows `2 runners withheld: this repository is
+not trusted (^s to trust)`, and the web view shows the button in a bar above the list, in each
 withheld runner's info panel and in the runner picker.
 
 ## The policy
@@ -85,10 +98,16 @@ user config file:
 {
   "trust": {
     "paths": ["/home/me/work/**"], // a glob over the resolved root
-    "owners": ["my-org"], // origin remote owners, case-insensitive
+    "owners": ["my-org", "gitlab.com/other-org"], // origin remote owners; bare means github.com
+    "tools": {
+      "mise": { "paths": ["/home/me/scratch/**"] }, // mise only, under this path
+    },
   },
 }
 ```
+
+`trust.tools.<tool>` takes the same `paths` and `owners`. It trusts that one
+tool, as `way trust --scope <tool>` does, and nothing else.
 
 The project file cannot do this. A project file's `trust` block is dropped
 with a warning, for the same reason a project file cannot raise `allowExec`.
@@ -99,10 +118,18 @@ documents the glob dialect: `*`, `?`, `**`, and a trailing `/**` that does not
 match the directory itself. wayfinder expands a leading `~` in a `trust.paths`
 entry against `$HOME`.
 
-`trust.owners` reads the owner from the `origin` remote URL in the local
-`.git/config`. Nothing verifies that file, so this trusts whoever a
-repository was cloned from, not who wrote it. Prefer `trust.paths` for
-repositories you keep under one directory. The lookup ignores `GIT_DIR`,
+`trust.owners` reads the host and owner from the `origin` remote URL in the
+local `.git/config`. An entry is `host/owner` (`gitlab.com/my-org`) or a bare
+`owner`, which means `github.com/owner`. Both the host and the owner must
+match, ignoring case, so `my-org` does not trust a clone from
+`gitlab.com/my-org`. Nothing verifies that file. It comes with the
+directory, so a folder unpacked from an archive, copied from a shared drive or
+cloned by someone else can name any owner, directly or through an
+`insteadOf` rewrite in the same file. Owner trust fits clones you made
+yourself, and even then it trusts whoever a repository was cloned from, not
+who wrote it. `trust.paths` is the stronger form: a repository cannot choose
+where it sits on your disk. Prefer it for repositories you keep under one
+directory. The lookup ignores `GIT_DIR`,
 `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_COMMON_DIR` and the `GIT_CONFIG_*`
 variables that rewrite config for one command.
 
@@ -124,13 +151,11 @@ trains people to approve without reading.
 ## Where the store lives
 
 `$XDG_STATE_HOME/wayfinder/trusted/`, or `~/.local/state/wayfinder/trusted/`
-when that variable is unset. It is XDG state, not config, so consent does
-not travel with a dotfiles repository to a new machine. XDG paths are used on
-every platform, macOS included.
-
-Grants made under the old name, in `$XDG_STATE_HOME/waypost/trusted/`, still
-count. `way trust` writes new grants to the wayfinder store. `way trust
---untrust` and `way clean --trust` remove a grant from both stores.
+when that variable is unset. `WAYFINDER_ROOT` moves it, with the other
+directories. See [Paths](configuration.md#paths). It is state, not config,
+so consent does not travel with a dotfiles repository to a new machine. XDG
+paths are used on Linux and macOS, macOS included; Windows uses
+`%LOCALAPPDATA%`.
 
 The store is a directory of marker files, one per trusted root. A marker is
 named `<basename>-<first 16 hex digits of sha256(root)>` and holds the
@@ -149,29 +174,45 @@ trust store. See [The cache](cache.md).
 
 ## Removing what is stored
 
-Three things live outside your repositories: the cache, the trust store and
-your user config file. `way clean` removes them.
+`way clean` reports and removes what wayfinder stores outside your
+repositories.
 
 ```text
-way clean                  show each store, where it is, and what it holds
-way clean --cache          remove stored probe results
-way clean --trust          forget which repositories you have trusted
-way clean --config --yes   remove your user configuration file
-way clean --all --yes      all three
-way clean --json           the same answer as one JSON object
+way clean                      show each store, where it is, and what it holds
+way clean --cache              remove stored probe results
+way clean --trust              forget which repositories you have trusted
+way clean --user-config --yes  remove your user configuration file
+way clean --dev                remove way dev link state and the shims way dev install wrote
+way clean --legacy             remove files left under the tool's name before its first release
+way clean --everything --yes   every store above
+way clean --json               the same answer as one JSON object
 ```
 
-Bare `way clean` reports and removes nothing. `--config` and `--all` need
-`--yes`, because the config file is the only one you wrote by hand.
+Bare `way clean` reports and removes nothing. `--user-config` and `--everything`
+need `--yes`, because the config file is the only one you wrote by hand. A
+config file that `WAYFINDER_CONFIG` names is labelled with the variable in the
+report, in the `--yes` refusal and again before it is removed. `--dev` removes
+only shims that carry devlink's marker line, so a file of your own with the
+same name is kept. `--dev` and `--legacy` stores appear in the report only
+when something is there.
+
+Once a store is removed, the empty directories above it are removed too, up
+to the base directory such as `~/.config`.
 
 | Store  | What losing it costs                                |
 | ------ | --------------------------------------------------- |
 | cache  | one slow probe                                      |
 | trust  | answering the trust question again, per repository  |
 | config | everything in it                                    |
+| dev    | running `way dev install` again                     |
+| legacy | nothing: wayfinder does not read these files        |
 
-`--json` prints a `stores` array of `{key, flag, what, path, bytes, removed}`.
-`bytes` is `null` when nothing was stored.
+`--json` prints `{mode, stores}`. `mode` is `report` or `remove`. Each store is
+`{key, flag, what, path, bytes, removed, envVar}`. `bytes` is `null` when
+nothing was stored. `envVar` is present when a variable named the path.
+
+Removing is a command-line action: the web view's server gets the report
+only. A store that cannot be removed stops the run with exit 1.
 
 Nothing inside a repository is touched. A project's `wayfinder.config.json`
 belongs to that project.

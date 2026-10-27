@@ -6,41 +6,54 @@
 
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 
 import { afterEach, beforeEach, expect, test } from 'vitest'
 
 import {
+  expandTilde,
+  expandTrustPath,
+  normalizeTrustPath,
   pathGlobToRegExp,
   policyDecision,
   policyExecGate,
+  parseTrustScope,
   resolveExecGate,
   resolveTrustRoot,
   trustDecision,
   trustStore,
   trustStoreDir,
   TRUST_MARKER_DIR,
+  WHOLE_REPO_SCOPE,
   withheldHint,
   xdgHome,
+  homeDir,
   type ExecGate,
+  type ExpandTrustPathOptions,
   type PolicyBy,
   type PolicyDecision,
   type PolicyDecisionOptions,
+  type PolicyExecGate,
   type ResolveExecGateArgs,
   type TrustBy,
   type TrustDecision,
+  type TrustGrant,
+  type TrustPlatform,
   type TrustPolicy,
   type TrustResult,
+  type TrustRules,
   type TrustStore,
   type TrustStoreOptions,
 } from '@osdlc/trust-repo'
+import { originOwner } from '@osdlc/trust-repo/git'
 
 let home: string
 let repo: string
 let options: TrustStoreOptions
 let store: TrustStore
 beforeEach(() => {
-  home = realpathSync(mkdtempSync(join(tmpdir(), 'trust-example-')))
+  // `.native` gives the long form of a Windows 8.3 name, as the store's resolve does.
+  home = realpathSync.native(mkdtempSync(join(tmpdir(), 'trust-example-')))
   repo = join(home, 'work', 'app')
   mkdirSync(repo, { recursive: true })
   // Inject env and home so the example never touches the real trust store.
@@ -55,6 +68,8 @@ test('where the store lives: XDG state, one directory per tool', () => {
   )
   expect(trustStoreDir('tooly', {}, home)).toBe(join(home, '.local', 'state', 'tooly', 'trusted'))
   expect(store.dir().endsWith(join('tooly', TRUST_MARKER_DIR))).toBe(true)
+  // The default home is always absolute, even when HOME is relative.
+  expect(isAbsolute(homeDir())).toBe(true)
 })
 
 test('trust a repository once, and the answer is remembered', async () => {
@@ -112,4 +127,59 @@ test('a standing policy trusts by path glob or by owner', async () => {
     { root: elsewhere, configured: true },
   )
   expect(gate).toMatchObject({ allowExec: false, by: null })
+})
+
+test('grant one tool, and gate on every tool a command runs', async () => {
+  // A mise task runs mise as well as the task, so both scopes are asked for.
+  await store.trust(repo, 'just')
+  const gate: PolicyExecGate = await policyExecGate(
+    store,
+    { paths: [], owners: [] },
+    { root: repo, configured: true, scopes: ['just', 'mise'] },
+  )
+  expect(gate).toMatchObject({ allowExec: false, missing: ['mise'] })
+
+  await store.trust(repo, 'mise')
+  const grants: TrustGrant[] = await store.listGrants()
+  expect(grants.map((g) => g.scope)).toEqual(['just', 'mise'])
+  expect(await store.list()).toEqual([])
+
+  // A whole-repository grant covers every tool. It takes no scope: `'*'` as a
+  // typed scope is refused, so a `--scope` value cannot widen into one.
+  await store.untrustAll(repo)
+  expect((await store.trust(repo)).scope).toBe(WHOLE_REPO_SCOPE)
+  expect(() => parseTrustScope('*')).toThrow(TypeError)
+  expect(parseTrustScope(' just ')).toBe('just')
+  expect(await store.isTrusted(repo, 'cargo')).toBe(true)
+  expect(await store.tighten()).toEqual([])
+})
+
+test('per-tool rules in the policy', async () => {
+  const rules: TrustRules = { paths: [`${home}/work/**`], owners: [] }
+  const policy: TrustPolicy = { paths: [], owners: [], scopes: { just: rules } }
+  expect(await policyDecision(repo, policy, { scope: 'just' })).toMatchObject({
+    trusted: true,
+    scope: 'just',
+  })
+  expect((await policyDecision(repo, policy, { scope: 'mise' })).trusted).toBe(false)
+})
+
+test('expand a paths glob, and match on Windows', async () => {
+  expect(expandTilde('~/work', home)).toBe(join(home, 'work'))
+  expect(await expandTrustPath('~/work/**', home)).toBe(
+    `${await resolveTrustRoot(join(home, 'work'))}/**`,
+  )
+
+  const platform: TrustPlatform = 'win32'
+  const opts: ExpandTrustPathOptions = { platform, resolveRoot: (p) => p }
+  expect(await expandTrustPath('~\\src\\**', 'C:\\Users\\me', opts)).toBe('c:/Users/me/src/**')
+  expect(normalizeTrustPath('C:\\Users\\me\\src\\app', platform)).toBe('c:/Users/me/src/app')
+})
+
+test('the git-backed owner lookup for the owners rule', async () => {
+  // Not a git repository, so there is no origin to read.
+  expect(originOwner(repo)).toBeNull()
+  expect(
+    await policyDecision(repo, { paths: [], owners: ['example-org'] }, { ownerOf: originOwner }),
+  ).toEqual({ trusted: false, by: null })
 })

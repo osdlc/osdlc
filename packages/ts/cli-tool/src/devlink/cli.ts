@@ -5,22 +5,25 @@
  * directly and never reaches this.
  */
 
+import { dirname } from 'node:path'
+
+import { shellQuote } from '@osdlc/command-seam/quote'
+
 import { EXIT } from '../exit.ts'
+import type { CliIo } from '../io.ts'
 import { DevlinkError, history, install, link, off, status, use, type OpOptions } from './ops.ts'
-import type { ToolSpec } from './spec.ts'
+import { cwdDevVar, homeVar, type ToolSpec } from './spec.ts'
 
 /**
- * The output interface the dev command writes through: one function for stdout
- * and one for stderr.
- * @experimental
+ * The output interface the dev command writes through: the package's one
+ * {@link CliIo}, re-exported here for the devlink entry. It is the stable
+ * root interface, so it is not experimental here either.
  */
-export interface CliIo {
-  stdout(text: string): void
-  stderr(text: string): void
-}
+export type { CliIo }
 
 /**
- * The output interface backed by the real process streams.
+ * The output interface backed by the real process streams. Kept here rather
+ * than taken from `../io.ts`, whose runtime imports the devlink entry avoids.
  * @experimental
  */
 export const processIo: CliIo = {
@@ -38,10 +41,11 @@ export function usage(spec: ToolSpec): string {
 
 usage: ${n} dev <verb> [options]
 
-  install [--bin-dir DIR]   put a shim for this checkout's launcher onto PATH
+  install [PATH] [--bin-dir DIR]
+                            put a shim for this checkout's launcher onto PATH
                             (default DIR: \${XDG_BIN_HOME:-$HOME/.local/bin})
   link [PATH] [--label L]   make a checkout the one every '${n}' runs
-                            (default: the checkout above the cwd)
+                            (default: the checkout above the cwd, else this one)
   use <#N|PATH|canonical>   switch to history entry N, a path, or back to
                             the canonical install
   off                       back to the canonical install
@@ -50,14 +54,17 @@ usage: ${n} dev <verb> [options]
 
   --json      machine output      --dry-run   report, write nothing
 
-Resolution order, first hit wins: \$${envStemOf(n)}_HOME, a checkout above the
-cwd (\$${envStemOf(n)}_CWD_DEV=0 turns that off), the linked checkout, the local
-install.
+${order(spec)}
 `
 }
 
-function envStemOf(name: string): string {
-  return name.toUpperCase().replace(/[^A-Z0-9]+/g, '_')
+function order(spec: ToolSpec): string {
+  return spec.cwdLayer === true
+    ? `Resolution order, first hit wins: \$${homeVar(spec)}, a checkout above the
+cwd (\$${cwdDevVar(spec)}=0 turns that off), the linked checkout, the local
+install.`
+    : `Resolution order, first hit wins: \$${homeVar(spec)}, the linked checkout, the
+local install.`
 }
 
 /**
@@ -66,6 +73,8 @@ function envStemOf(name: string): string {
  */
 export interface RunOptions extends OpOptions {
   io?: CliIo
+  /** Defaults to `process.platform`. On `win32` the command reports itself unavailable. */
+  platform?: NodeJS.Platform
 }
 
 /**
@@ -77,6 +86,11 @@ export interface RunOptions extends OpOptions {
  */
 export function runDevCli(spec: ToolSpec, argv: readonly string[], opts: RunOptions = {}): number {
   const io = opts.io ?? processIo
+  // The launcher and the shims are POSIX shell scripts.
+  if ((opts.platform ?? process.platform) === 'win32') {
+    io.stderr(`${spec.name} dev: not available on Windows; the launcher is a POSIX shell script\n`)
+    return EXIT.error
+  }
   const args = [...argv]
   let json = false
   let dryRun = opts.dryRun ?? false
@@ -174,7 +188,7 @@ export function runDevCli(spec: ToolSpec, argv: readonly string[], opts: RunOpti
       }
       case 'status': {
         const out = status(spec, o)
-        emit(out, () => renderStatus(out))
+        emit(out, () => renderStatus(spec, out))
         return EXIT.ok
       }
       case 'history': {
@@ -219,7 +233,7 @@ function renderOff(spec: ToolSpec, previous: string | null, suffix: string): str
     : `unlinked ${previous}${suffix}\n${spec.name} runs the local install.\n`
 }
 
-function renderStatus(s: ReturnType<typeof status>): string {
+function renderStatus(spec: ToolSpec, s: ReturnType<typeof status>): string {
   const sel = s.selection
   const active =
     sel.source === 'local'
@@ -237,11 +251,16 @@ function renderStatus(s: ReturnType<typeof status>): string {
   return (
     `active: ${active}\n` +
     `  ${s.env.var}: ${s.env.value ?? '(unset)'}\n` +
-    `  cwd:      ${cwdLine}\n` +
+    // A spec without the cwd layer never looks there, so the line is left out.
+    (spec.cwdLayer === true ? `  cwd:      ${cwdLine}\n` : '') +
     `  link:     ${s.link.path} = ${linkLine}\n` +
     `  self:     ${s.self ?? '(not inside a checkout)'}\n` +
     `  history:  ${s.history.entries} checkout(s) in ${s.history.path}\n` +
-    `  PATH:     ${names}\n`
+    `  PATH:     ${names}\n` +
+    (s.link.legacy !== null
+      ? `note: an old link file is at ${s.link.legacy}; this release reads ${s.link.path}.\n` +
+        `  move it: mkdir -p ${shellQuote(dirname(s.link.path))} && mv ${shellQuote(s.link.legacy)} ${shellQuote(s.link.path)}\n`
+      : '')
   )
 }
 

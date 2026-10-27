@@ -203,7 +203,8 @@ enter `.git` or `node_modules` folders.
 Without `--config <file>` or `--contract <file>`, `validate` looks in the
 current folder for `markdown-contract.config.js`, `.mjs`, `.yaml` or `.yml`,
 then `markdown-contract.yaml` or `.yml`. `--glob`, `--include` and `--exclude`
-narrow the files. `markdown-contract --help` prints the full usage.
+narrow the files. `markdown-contract --help` prints the full usage, and
+`markdown-contract --version` prints `markdown-contract <version>`.
 
 `runCli(argv, { cwd })` from `@osdlc/markdown-contract/cli` runs the same
 command in process and returns `{ code, stdout, stderr }` as a `CliResult`.
@@ -238,6 +239,10 @@ Node.
 - Read the parse tree: `findSection`, `sectionsAt`, `sectionForLine`,
   `sectionSpans` with `SectionSpan`, `blocksOfKind`, `codeBlockLines`,
   `tableRowLines`, `rawTableRow` and `rawTableRows`.
+- Wikilinks: `extractVaultRefs(text)` finds the `[[wikilink]]` and
+  `![[transclusion]]` references in flattened text and returns a `VaultRef`
+  for each, with its `target`, `alias` and `fragment`. `parse()` leaves them
+  as text in the tree.
 - Folders, from the root entry: `runCorpus`, `defineConfig`, `CorpusConfig`
   and `RunStats`.
 - YAML, from `./declarative`: `loadContract`, `loadContractFile`,
@@ -261,7 +266,7 @@ The experimental exports:
 `InferredFile`, `TextEdit`, `runCli` and `CliResult`.
 
 Config inference and the in-process command work and are tested, but their
-shape is not settled. `TextEdit` is the type of `Finding.fix`, and no check
+shape is not settled. `TextEdit` is the type of `Finding.fix.edit`, and no check
 fills it yet. The `markdown-contract` command, its flags and its output
 formats are experimental in the same way.
 

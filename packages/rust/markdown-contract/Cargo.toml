@@ -1,0 +1,43 @@
+[package]
+name = "markdown-contract"
+version = "0.3.2"
+# Held back from crates.io for now. The parity fixes from the review of
+# https://github.com/osdlc/osdlc/pull/460 landed in #464; to publish, remove
+# this line in a pull request of its own: a first release needs its own release-plz run
+# (see scripts/crates-io-auth-plan.ts).
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+description = "Contracts for markdown documents: declare the frontmatter, headings, tables and lists a document must have, and get findings with line numbers. The Rust twin of @osdlc/markdown-contract."
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["markdown", "validation", "contract", "frontmatter", "lint"]
+categories = ["parser-implementations", "text-processing", "development-tools"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[features]
+default = ["native"]
+# The std::fs layer: walking a directory, and loading a config or contract
+# file. Leave it off for wasm32-unknown-unknown; the rest of the crate takes
+# strings and does no I/O.
+native = []
+
+[dependencies]
+comrak = { workspace = true }
+globset = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

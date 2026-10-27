@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url'
+
 import { afterAll, describe, expect, test } from 'vitest'
 
 import { builtins } from '../src/builtins.ts'
@@ -175,11 +177,11 @@ describe('browser-safe entries', () => {
         else outside.add(spec)
       }
     }
-    walk(new URL(`../src/${entry}.ts`, import.meta.url).pathname)
+    walk(fileURLToPath(new URL(`../src/${entry}.ts`, import.meta.url)))
     return [...outside]
   }
 
-  test('the root, the wire-contract entries, ./match, ./params and ./duration reach no Node built-in or dependency', async () => {
+  test('the root, the wire-contract entries, ./match, ./params, ./duration, ./groups and ./schema reach no Node built-in or dependency', async () => {
     for (const entry of [
       'index',
       'graph',
@@ -189,6 +191,8 @@ describe('browser-safe entries', () => {
       'match',
       'params',
       'duration',
+      'groups',
+      'schema',
     ]) {
       expect(await reached(entry), entry).toEqual([])
     }

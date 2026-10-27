@@ -74,19 +74,23 @@ function entryFor(
       excludes: [],
     },
     report,
+    allowExec: false,
+    modelVersion: '0.0.0',
     ...overrides,
   }
 }
 
 describe('entryPath', () => {
   test('is versioned and one file per runner', () => {
-    const path = entryPath('/c/dir', '/repos/dev', 'moon')
+    // With `/`, so the checks read the same on Windows.
+    const slashed = (p: string) => p.replaceAll('\\', '/')
+    const path = slashed(entryPath('/c/dir', '/repos/dev', 'moon'))
     expect(path).toContain(`/reports/v${CACHE_FORMAT_VERSION}/`)
     expect(path.startsWith('/c/dir/')).toBe(true)
     expect(path.endsWith('/moon.json')).toBe(true)
     expect(dirname(path).split('/').pop()).toMatch(/^dev-[0-9a-f]{16}$/)
     // Two runners under one root share a directory but never a file.
-    expect(dirname(entryPath('/c/dir', '/repos/dev', 'just'))).toBe(dirname(path))
+    expect(dirname(slashed(entryPath('/c/dir', '/repos/dev', 'just')))).toBe(dirname(path))
   })
 
   test('same-named roots in different places get different directories', () => {
@@ -95,8 +99,8 @@ describe('entryPath', () => {
     )
   })
 
-  test('the format version is 4', () => {
-    expect(CACHE_FORMAT_VERSION).toBe(4)
+  test('the format version is 5', () => {
+    expect(CACHE_FORMAT_VERSION).toBe(5)
   })
 })
 
@@ -155,6 +159,22 @@ describe('readEntry / writeEntry', () => {
     try {
       await writeEntry(dir, entryFor('/repos/dev', okReport('just')))
       await writeFile(entryPath(dir, '/repos/dev', 'just'), 'null')
+      expect(await readEntry(dir, '/repos/dev', 'just')).toBeNull()
+    } finally {
+      await removeRoot(dir)
+    }
+  })
+
+  test('an entry with the right version but no usable report is a miss', async () => {
+    const dir = await fixtureRoot({})
+    try {
+      await writeEntry(dir, entryFor('/repos/dev', okReport('just')))
+      const path = entryPath(dir, '/repos/dev', 'just')
+      await writeFile(path, JSON.stringify({ version: CACHE_FORMAT_VERSION }))
+      expect(await readEntry(dir, '/repos/dev', 'just')).toBeNull()
+      const report = { ...okReport('just'), tasks: undefined }
+      const entry = { ...entryFor('/repos/dev', okReport('just')), report }
+      await writeFile(path, JSON.stringify(entry))
       expect(await readEntry(dir, '/repos/dev', 'just')).toBeNull()
     } finally {
       await removeRoot(dir)

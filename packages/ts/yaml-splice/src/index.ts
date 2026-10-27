@@ -78,8 +78,12 @@ export interface EditSpan {
 export class EditError extends Error {
   /** The refusal variant, mirrored onto `name` so `err.name` is the code. */
   readonly code: EditErrorCode
-  /** Where the refusal happened, when the variant carries a location. */
-  readonly span?: EditSpan
+  /**
+   * Where the refusal happened, when the variant carries a location.
+   * `declare` emits no field: under ES2022 class fields a plain declaration
+   * would define `span` as `undefined` on every error, present but empty.
+   */
+  declare readonly span?: EditSpan
 
   constructor(code: EditErrorCode, message: string, span?: EditSpan) {
     super(message)

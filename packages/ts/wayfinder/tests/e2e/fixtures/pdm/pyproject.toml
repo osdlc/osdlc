@@ -1,0 +1,7 @@
+[project]
+name = "pdm-app"
+version = "0.1.0"
+
+[tool.pdm.scripts]
+start = "flask run"
+test = { cmd = "pytest", help = "Run the tests" }

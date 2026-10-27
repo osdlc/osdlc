@@ -11,9 +11,9 @@
  * from the package, so a schema can use it without an import cycle.
  */
 
-import { homedir } from 'node:os'
 import { isAbsolute, resolve } from 'node:path'
 
+import { homeDir } from '@osdlc/tiered-dirs'
 import { z } from 'zod'
 
 /**
@@ -28,7 +28,7 @@ export const PATH_NAME = /^[A-Za-z][A-Za-z0-9_]*$/
  * @experimental
  */
 export interface ResolveConfigPathOptions {
-  /** What a leading `~` expands to. Defaults to `$HOME`, or `os.homedir()` when `HOME` is unset or empty. An empty home leaves `~` unexpanded. */
+  /** What a leading `~` expands to. Defaults to `$HOME` (`%USERPROFILE%` on Windows), or the OS account's home when that is unset, empty or relative. An empty home leaves `~` unexpanded. */
   home?: string | undefined
 }
 
@@ -37,8 +37,8 @@ export interface ResolveConfigPathOptions {
  *
  * URLs (`scheme://…`) and bare words that do not look like paths are
  * returned unchanged, because a value may be a name rather than a place. A
- * leading `~` expands to `opts.home` (default `$HOME`, else `os.homedir()`).
- * If that is empty, `~` is left as written. Only `~` and `~/…` expand. A
+ * leading `~` expands to `opts.home` (default `$HOME`, `%USERPROFILE%` on Windows,
+ * else the OS account's home; a relative value counts as unset). If that is empty, `~` is left as written. Only `~` and `~/…` expand. A
  * `~user/…` form is not expanded and resolves as a relative path. A relative
  * path resolves against `baseDir`. For a project file that is the project
  * root. For a machine file it is whatever directory the reading tool uses as
@@ -56,11 +56,25 @@ export function resolveConfigPath(
   let p = value
   if (p === '~' || p.startsWith('~/')) {
     // An empty home leaves `~` as it is: expanding it would give the filesystem root.
-    const home = opts.home ?? (process.env['HOME'] || homedir())
+    const home = opts.home ?? defaultHome()
     if (home !== '') p = `${home}${p.slice(1)}`
   }
   if (!isAbsolute(p)) p = resolve(baseDir, p)
   return p
+}
+
+/**
+ * `@osdlc/tiered-dirs`'s `homeDir`: `$HOME` (`%USERPROFILE%` on Windows) when
+ * it is absolute, else the OS account's home. A relative `HOME` counts as
+ * unset, because `~` would then resolve against the working directory, which
+ * can be the repository being read. '' when no absolute home can be found.
+ */
+function defaultHome(): string {
+  try {
+    return homeDir()
+  } catch {
+    return ''
+  }
 }
 
 /**
@@ -125,7 +139,8 @@ export function substitutePathNames(
 ): string {
   const defineHint = opts.defineHint ?? 'define it under paths:'
   return value.replace(/\{([^{}]*)\}/g, (_, name: string) => {
-    const hit = names[name]
+    // Own keys only: `{constructor}` must not resolve to Object.prototype's.
+    const hit = Object.hasOwn(names, name) ? names[name] : undefined
     if (hit === undefined) {
       const known = Object.keys(names).map((n) => `{${n}}`)
       throw new PathNameError(

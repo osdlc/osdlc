@@ -32,6 +32,10 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { section } from './markdown-section.ts'
+
+export { section }
+
 /** A parsed TOML value. */
 export type Toml = string | number | boolean | Toml[] | Table
 
@@ -298,23 +302,6 @@ export function readmeProblems(name: string, readme: string): string[] {
 export function changelogProblems(changelog: string): string[] {
   const first = changelog.split('\n')[0]
   return first === '# Changelog' ? [] : [`CHANGELOG.md starts ${JSON.stringify(first)}; start it "# Changelog"`]
-}
-
-/** The body of the `## <heading>` section of a markdown file, or null. */
-export function section(markdown: string, heading: string): string | null {
-  const lines = markdown.split('\n')
-  let inFence = false
-  let start = -1
-  for (let i = 0; i < lines.length; i++) {
-    if (/^(```|~~~)/.test(lines[i]!)) inFence = !inFence
-    if (inFence) continue
-    if (start === -1) {
-      if (lines[i] === `## ${heading}`) start = i + 1
-    } else if (/^## /.test(lines[i]!)) {
-      return lines.slice(start, i).join('\n')
-    }
-  }
-  return start === -1 ? null : lines.slice(start).join('\n')
 }
 
 /**

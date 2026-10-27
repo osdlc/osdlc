@@ -69,7 +69,7 @@ describe('node-scripts runner', () => {
     const cases: Array<[string, string, string[]]> = [
       ['package-lock.json', 'npm', ['npm', 'run', '--prefix', 'packages/leaf', 'build']],
       ['pnpm-lock.yaml', 'pnpm', ['pnpm', 'run', '--dir', 'packages/leaf', 'build']],
-      ['yarn.lock', 'yarn', ['yarn', '--cwd', 'packages/leaf', 'build']],
+      ['yarn.lock', 'yarn', ['yarn', '--cwd', 'packages/leaf', 'run', 'build']],
       ['bun.lock', 'bun', ['bun', 'run', '--cwd', 'packages/leaf', 'build']],
     ]
 
@@ -121,7 +121,23 @@ describe('node-scripts runner', () => {
     const { options } = opts()
     const found = tasks(await collect(dir, { ...options, only: ['node-scripts'] }))
 
-    expect(found[0]?.argv).toEqual(['yarn', 'build'])
+    expect(found[0]?.argv).toEqual(['yarn', 'run', 'build'])
+  })
+
+  test("runs a yarn script through `run`, so a yarn builtin's name runs the script", async () => {
+    // `yarn version` and `yarn pack` are yarn's own commands. Without `run`
+    // the catalog would offer yarn's command under the script's name.
+    const dir = await root({
+      'yarn.lock': '',
+      'package.json': JSON.stringify({ scripts: { version: 'echo v', pack: 'echo p' } }),
+    })
+    const { options } = opts()
+    const found = tasks(await collect(dir, { ...options, only: ['node-scripts'] }))
+
+    expect(found.map((t) => t.argv)).toEqual([
+      ['yarn', 'run', 'version'],
+      ['yarn', 'run', 'pack'],
+    ])
   })
 
   test('defaults to npm when nothing declares a manager', async () => {
@@ -169,7 +185,7 @@ describe('node-scripts runner', () => {
     const cases: Array<[string, string[]]> = [
       ['package-lock.json', ['npm', 'run', 'build', '--', '--watch']],
       ['pnpm-lock.yaml', ['pnpm', 'run', 'build', '--watch']],
-      ['yarn.lock', ['yarn', 'build', '--watch']],
+      ['yarn.lock', ['yarn', 'run', 'build', '--watch']],
       ['bun.lock', ['bun', 'run', 'build', '--watch']],
     ]
 

@@ -1,0 +1,2 @@
+way: warning: moon: withheld: this repository is not trusted
+  run "way trust" to trust this repository, or pass --exec for this run only

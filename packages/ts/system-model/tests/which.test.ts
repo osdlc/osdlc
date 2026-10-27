@@ -17,7 +17,9 @@ afterAll(() => {
   rmSync(other, { recursive: true, force: true })
 })
 
-const tool = join(dir, 'faketool')
+// Windows finds a program by its PATHEXT suffix.
+const EXT = process.platform === 'win32' ? '.EXE' : ''
+const tool = join(dir, `faketool${EXT}`)
 writeFileSync(tool, '#!/bin/sh\nexit 0\n')
 chmodSync(tool, 0o755)
 
@@ -25,7 +27,7 @@ const notExecutable = join(dir, 'readme')
 writeFileSync(notExecutable, 'not a program\n')
 chmodSync(notExecutable, 0o644)
 
-const shadowed = join(other, 'faketool')
+const shadowed = join(other, `faketool${EXT}`)
 writeFileSync(shadowed, '#!/bin/sh\nexit 1\n')
 chmodSync(shadowed, 0o755)
 
@@ -52,6 +54,18 @@ describe('which', () => {
   test('an empty or missing PATH finds nothing rather than throwing', () => {
     expect(which('faketool', env(''))).toBeNull()
     expect(which('faketool', {})).toBeNull()
+  })
+
+  test('a relative or empty PATH entry is never searched', () => {
+    const saved = process.cwd()
+    process.chdir(dir)
+    try {
+      expect(which('faketool', env('.'))).toBeNull()
+      expect(which('faketool', env(['', '.'].join(delimiter)))).toBeNull()
+      expect(which('faketool', env(['.', other].join(delimiter)))).toBe(shadowed)
+    } finally {
+      process.chdir(saved)
+    }
   })
 
   test('a name with a separator is a path, not a PATH search', () => {

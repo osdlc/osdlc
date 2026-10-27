@@ -37,6 +37,8 @@ type Probe = {
   /** `spawnRunnerBytes` results, stdout as base64. */
   bytes: CommandResult
   bytesCap: CommandResult
+  stderrCap: CommandResult
+  bytesStderrCap: CommandResult
   signalDeath: CommandResult
   genuineExit1: CommandResult
   badCwd: CommandResult
@@ -97,30 +99,38 @@ describe('spawnRunner — production pipe path (NODE_ENV unset)', () => {
     expect(probe.timeoutIgnoresTerm.value.signal).toBe('SIGKILL')
   })
 
-  test('a timeout kills the direct child only; a grandchild survives', () => {
-    const { neverExited, pid } = probe.timeoutDirectChild
-    try {
-      expect(neverExited).toBe(true)
-      expect(pid).toBeGreaterThan(0)
-      expect(alive(pid)).toBe(true)
-    } finally {
-      reap(pid)
-    }
-  })
+  // POSIX only: the grandchild pid comes from `sh`, which Windows cannot signal.
+  test.skipIf(process.platform === 'win32')(
+    'a timeout kills the direct child only; a grandchild survives',
+    () => {
+      const { neverExited, pid } = probe.timeoutDirectChild
+      try {
+        expect(neverExited).toBe(true)
+        expect(pid).toBeGreaterThan(0)
+        expect(alive(pid)).toBe(true)
+      } finally {
+        reap(pid)
+      }
+    },
+  )
 
-  test('a grandchild holding the pipes past the timeout is outputIncomplete', () => {
-    const { value, ms, pid } = probe.grandchildHoldsPipes
-    try {
-      expect(ms).toBeLessThan(5000)
-      expect(value).toMatchObject({ exitCode: 0, outputIncomplete: true, stdout: 'hi\n' })
-      expect(value.neverExited).toBeUndefined()
-      expect(value.reason).toBeUndefined()
-      expect(value.error).toContain('ETIMEDOUT')
-      expect(alive(pid)).toBe(true)
-    } finally {
-      reap(pid)
-    }
-  })
+  // POSIX only: the grandchild pid comes from `sh`, which Windows cannot signal.
+  test.skipIf(process.platform === 'win32')(
+    'a grandchild holding the pipes past the timeout is outputIncomplete',
+    () => {
+      const { value, ms, pid } = probe.grandchildHoldsPipes
+      try {
+        expect(ms).toBeLessThan(5000)
+        expect(value).toMatchObject({ exitCode: 0, outputIncomplete: true, stdout: 'hi\n' })
+        expect(value.neverExited).toBeUndefined()
+        expect(value.reason).toBeUndefined()
+        expect(value.error).toContain('ETIMEDOUT')
+        expect(alive(pid)).toBe(true)
+      } finally {
+        reap(pid)
+      }
+    },
+  )
 
   test('output captured before a timeout is returned', () => {
     expect(probe.timeoutPartialOutput.value.stdout).toBe('before\n')
@@ -167,14 +177,28 @@ describe('spawnRunner — production pipe path (NODE_ENV unset)', () => {
     expect(r.error).toContain('ENOBUFS')
   })
 
-  test('a signal-killed child is neverExited; a genuine exit 1 is not', () => {
-    expect(probe.signalDeath.neverExited).toBe(true)
-    expect(probe.signalDeath.reason).toBe('signal')
-    expect(probe.signalDeath.signal).toBe('SIGKILL')
-    expect(probe.genuineExit1.exitCode).toBe(1)
-    expect(probe.genuineExit1.neverExited).toBeUndefined()
-    expect(probe.genuineExit1.reason).toBeUndefined()
+  test('maxOutputBytes cuts stderr on a character boundary too, on both sync runners', () => {
+    for (const r of [probe.stderrCap, probe.bytesStderrCap]) {
+      expect(r.stderr).toBe('€'.repeat(33))
+      expect(r.reason === 'output' || r.outputIncomplete === true).toBe(true)
+      expect(r.error).toContain('ENOBUFS')
+    }
+    expect(probe.stderrCap.stdout).toBe('')
+    expect(probe.bytesStderrCap.stdout).toBe('')
   })
+
+  // POSIX only: Windows has no signals; `sh` reports `kill -TERM $$` as an exit code.
+  test.skipIf(process.platform === 'win32')(
+    'a signal-killed child is neverExited; a genuine exit 1 is not',
+    () => {
+      expect(probe.signalDeath.neverExited).toBe(true)
+      expect(probe.signalDeath.reason).toBe('signal')
+      expect(probe.signalDeath.signal).toBe('SIGKILL')
+      expect(probe.genuineExit1.exitCode).toBe(1)
+      expect(probe.genuineExit1.neverExited).toBeUndefined()
+      expect(probe.genuineExit1.reason).toBeUndefined()
+    },
+  )
 
   test('a bad cwd is flattened into a neverExited result with a message', () => {
     expect(probe.badCwd.neverExited).toBe(true)
@@ -193,7 +217,8 @@ describe('spawnRunner — production pipe path (NODE_ENV unset)', () => {
     expect(probe.envUnset.stdout).toBe('absent\n')
   })
 
-  test('argv is never re-parsed as shell', () => {
+  // POSIX only: Git for Windows `sh` re-parses its command line with its own quote rules.
+  test.skipIf(process.platform === 'win32')('argv is never re-parsed as shell', () => {
     expect(probe.argvInert.stdout).toBe("[a b][$(echo hacked)][;touch pwned][it's]")
     expect(probe.argvInertFiles.stdout).toBe('')
   })

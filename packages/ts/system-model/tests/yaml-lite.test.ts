@@ -56,6 +56,14 @@ describe('comments', () => {
     expect(scanLine("command: 'echo #1'").cleaned).toBe("command: 'echo #1'")
   })
 
+  test('an escaped backslash before the closing quote still closes the string', () => {
+    // The YAML text is `desc: "C:\\" # windows only`.
+    expect(scanLine('desc: "C:\\\\" # windows only').cleaned.trimEnd()).toBe('desc: "C:\\\\"')
+    expect(scanLine('desc: "say \\"hi\\" # not a comment"').cleaned).toBe(
+      'desc: "say \\"hi\\" # not a comment"',
+    )
+  })
+
   test('a `#` with no preceding space is part of the scalar', () => {
     expect(scanLine('tag: v1#2').cleaned).toBe('tag: v1#2')
   })

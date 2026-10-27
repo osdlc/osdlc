@@ -28,6 +28,37 @@ export function ran(result: { exitCode: number; neverExited?: boolean | undefine
 }
 
 /**
+ * Whether a run must be read as a failure before its output is parsed: it
+ * never exited, its output was cut short (`outputIncomplete`), or it exited
+ * non-zero with a code `isAnswer` does not accept.
+ *
+ * Stricter than `!ran(result)` in two ways. A run whose output is incomplete
+ * fails even at exit 0, because a parse would take cut-short output as the
+ * whole answer. And a run that never exited fails whatever `isAnswer` says,
+ * since its `exitCode` is the stand-in `1` that many commands use for "no
+ * such thing" (`git config --get`, `grep`).
+ *
+ * @param result - A capture runner's result.
+ * @param isAnswer - Called only for a complete run that exited non-zero:
+ * `true` when that exit is an answer ("not there") rather than a failure.
+ * Default: no non-zero exit is an answer.
+ * @returns `true` when the run failed.
+ *
+ * @example
+ * ```ts
+ * const r = spawnRunner('git').run(['config', '--get', 'user.name'], { cwd: '.' })
+ * if (runFailed(r, (run) => run.exitCode === 1)) throw new CommandFailed(['config'], r, 'git')
+ * const name = r.exitCode === 0 ? r.stdout.trim() : null
+ * ```
+ */
+export function runFailed<
+  R extends Pick<CommandResult, 'exitCode' | 'neverExited' | 'outputIncomplete'>,
+>(result: R, isAnswer: (result: R) => boolean = () => false): boolean {
+  if (result.neverExited === true || result.outputIncomplete === true) return true
+  return result.exitCode !== 0 && !isAnswer(result)
+}
+
+/**
  * The child's trimmed stderr, else the runner's trimmed `error` (a failed
  * spawn, a timeout, an abort), else `''`. Use it where a failure message reads
  * stderr. The runner's message is only in `error`, so reading `stderr` alone
@@ -114,6 +145,34 @@ export function firstLine(text: string, fallback = ''): string {
  * @experimental
  */
 export type JsonFailure = CommandFailure | Failure<'unparseable' | 'invalid'>
+
+/**
+ * Whether a {@link JsonFailure} is "the command ran, but its stdout was no
+ * use" (`unparseable` or `invalid`) rather than a failed run. A failed run
+ * usually wants the command's stderr shown, and unusable output a "could not
+ * read the output" message. Checking for the two parse kinds here, instead of
+ * listing every {@link CommandFailureKind}, keeps the branch right when a new
+ * run-failure kind is added.
+ *
+ * Narrows both ways: `true` gives the `unparseable` / `invalid` failure, and
+ * `false` gives the {@link CommandFailure}.
+ *
+ * @param error - The `error` of a failed {@link JsonRun}.
+ * @experimental
+ *
+ * @example
+ * ```ts
+ * const r = runJson<Release>(gh, ['release', 'view', '--json', 'tagName'], { cwd: '.' })
+ * if (!r.ok) {
+ *   console.error(isJsonParseFailure(r.error) ? 'could not read output' : failureText(r.result))
+ * }
+ * ```
+ */
+export function isJsonParseFailure(
+  error: JsonFailure,
+): error is Failure<'unparseable' | 'invalid'> {
+  return error.kind === 'unparseable' || error.kind === 'invalid'
+}
 
 /**
  * Outcome of {@link runJson}: a `Result` with the finished run alongside it.

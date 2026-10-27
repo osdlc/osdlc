@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.4](https://github.com/osdlc/osdlc/compare/etag-write/v0.2.3...etag-write/v0.2.4) - 2026-10-26
+
+### Other
+
+- Bughunt sweep: verified bug fixes, test gaps, doc accuracy, local de-duplication across the monorepo ([#485](https://github.com/osdlc/osdlc/pull/485))r
+
+### Changed
+
+- On Unix, an overwrite creates the temp file with the target's kept mode
+  (less the umask), then sets that mode exactly. Before, the temp file was
+  created with `0o666` less the umask and given the kept mode only after the
+  content was written, so the content of an owner-only file could be readable
+  by others while it was written.
+
 ## [0.2.3](https://github.com/osdlc/osdlc/compare/etag-write/v0.2.2...etag-write/v0.2.3) - 2026-10-24
 
 ### Other

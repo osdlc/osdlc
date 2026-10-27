@@ -1,5 +1,68 @@
 # @osdlc/command-seam
 
+## 0.14.0
+
+### Minor Changes
+
+- da5e6a3: New: the parts of a typed client over one program that do not depend on the program, moved down from `@osdlc/typed-git` and `@osdlc/typed-gh`. `runFailed(result, isAnswer?)` says whether a result must be read as a failure: it never exited, its output was cut short (`outputIncomplete`, even at exit 0), or it exited non-zero with a code `isAnswer` does not accept. `classifyFailed(failed, { binary, installHint? })` returns a `CommandFailed`'s failure with the `CommandFailed` as its `cause`, named for `binary` when the runner named none, with `installHint` as a `not-installed` failure's hint. `tryMethods` and `tryMethodsAsync` (types `TriedMethods`, `TriedMethodsAsync`) wrap a client so every method returns a `Result`, catching only what `recognize` turns into a failure. `methodFacade` is the proxy under them. `notAnOption(value, reject)` throws `reject(value)` for a positional argument that starts with `-`.
+
+## 0.13.0
+
+### Minor Changes
+
+- b835ae4: A working directory that cannot be entered (no search permission) is now classified `bad-cwd`, with a "cannot be entered" message, instead of `not-executable`. An argument list over the OS limit (E2BIG) is now a `spawn` failure instead of a throw.
+  A `kill()` that fails (such as EPERM) is no longer reported as a spawn failure: a timeout, abort or `maxOutputBytes` stop keeps its own result, and a managed process stays running until it exits.
+  `commandString` writes `cd ./-` for a folder named `-`. On Windows, `which()` handles quoted PATH entries and an `env` override replaces the parent's variable whatever its case.
+  `spawnRunnerBytes`, `spawnRunnerBytesAsync`, `streamRunner` and `managedProcessRunner` now take `SpawnRunnerOptions`, so `absolutePathOnly` works with every runner factory. All runners share one pre-spawn check (the `absolutePathOnly` lookup, then the `cwd` check, then the spawn plan).
+
+## 0.12.1
+
+### Patch Changes
+
+- f013f38: With `absolutePathOnly`, an unset `PATH` on POSIX now searches `/usr/bin:/bin`, as a spawn of a bare name does and as `which` without `absolutePathOnly` already did. Before, it found nothing, so a process started with an empty environment could not run `git` through an `absolutePathOnly` runner. Windows still searches nothing. `absolutePathCandidates` with `path: undefined` returns those two candidates on POSIX.
+
+## 0.12.0
+
+### Minor Changes
+
+- 9616994: Windows hardening, a process-tree kill, and a safer PowerShell line.
+  
+  - New `killTree` option on the async runners (`spawnRunnerAsync`, `spawnRunnerBytesAsync`, and the shell runners built on them). With `killTree: true`, a timeout, an abort or the output cap kills the child's whole process tree, not only the child. On POSIX it is `processGroup: true`. On Windows the runner runs `taskkill /pid <pid> /t /f` from `%SystemRoot%\System32`, by absolute path, then kills the child.
+  - `commandString` with `shell: 'powershell'` and `cwd` writes `if (Set-Location -LiteralPath <dir> -PassThru) { <line> }`, so the command does not run in the wrong folder when the change of folder fails.
+  
+  **Breaking changes**
+  
+  - On Windows, a binary `which` cannot find is no longer spawned by its bare name, which made Windows search the current folder first. The run fails at once with `spawn <binary> ENOENT`, which `classifyFailure` still reads as `not-installed`. What to do: nothing, unless you relied on a program in the current folder being found without a path; pass its path instead.
+- d243a32: Quoting that holds in fish, and an entry point a browser can load.
+  
+  - `shellQuote`, `shellJoin` and `commandString` (POSIX) write each `\` outside the single quotes, as `'\\'`. fish reads `\'` and `\\` inside single quotes as escapes, so a word ending in `\` used to leave the quotes open, and a pasted line could run the next word as a command. The line means the same in sh, bash and zsh.
+  - New entry point `@osdlc/command-seam/quote` with `commandString`, `shellJoin`, `shellQuote` and `CommandStringOptions`. It imports nothing from Node.
+- 9616994: The runners now start programs on Windows, `.cmd` and `.bat` files included. Node will not spawn a batch file without a shell, so on Windows a runner looks the binary up and, for a `.cmd` or `.bat` file, runs `cmd.exe /d /s /c` with each argument quoted by the C runtime rules and every `cmd.exe` special character escaped with `^`, so `%VAR%` does not expand. Every batch file is escaped twice, since most pass their arguments on with `%*` (npm, pnpm and yarn shims, global ones included, and `gradlew.bat`), and `cmd.exe` starts with `/v:off`, so `!VAR!` never expands, even when the registry turns delayed expansion on. An argument with a line break or a `%` cannot reach a batch file safely (`cmd.exe` expands `%NAME%`, `%NAME:a=b%` and `%NAME:~n,m%` before it reads any `^`), so that run is refused as a failed spawn with an `EINVAL` message. So is a batch file whose path holds a `%`. On POSIX nothing changes.
+  
+  `which` takes a `platform` option. With the Windows rules it splits `PATH` on `;`, applies `PATHEXT` (default `.COM;.EXE;.BAT;.CMD`) in any case, and treats `\` and `/` as path separators. `absolutePathOnly` follows the same option. Tests can run these rules on any OS.
+  
+  New: `commandString(argv, { platform, shell, cwd })` (experimental) quotes a command line for a person to paste: POSIX shells, PowerShell by default on Windows, or `cmd.exe` with `shell: 'cmd'`. `cwd` adds the change of folder each shell needs. With `shell: 'cmd'` it throws `RangeError` for a word or `cwd` holding a line break or a `%`, since `cmd.exe` expands `%NAME%` before it reads any `^`.
+  
+  On Windows, `killTree` runs `taskkill.exe` from `%SystemRoot%\System32` by absolute path, not from the run's `PATH`.
+
+### Patch Changes
+
+- d243a32: On Windows, `kill()` on a `managedProcessRunner` handle started with `processGroup: true` now stops the child. Windows has no process groups, so the group signal failed and nothing was stopped: the child kept running and `exited` never settled. It now signals the direct child, as the async runner already did. On POSIX nothing changes.
+
+## 0.11.0
+
+### Minor Changes
+
+- 0cf31de: New `isJsonParseFailure(error)` tells a failed run from output that could not be used. Given the `error` of a failed `runJson`, `runJsonAsync` or `parseJsonResult`, it returns `true` for `unparseable` and `invalid` (the command ran, but its stdout was no use) and `false` for any command failure. TypeScript narrows `error` to match in both branches. Before, you had to list the two parse kinds by hand, or list every command-failure kind and miss one added later. The error values themselves are unchanged. The function is experimental, like `runJson`.
+
+## 0.10.0
+
+### Minor Changes
+
+- 910deca: New `absolutePathOnly` option, for a command run inside a folder you do not trust. `spawnRunner(binary, { absolutePathOnly: true })` and `spawnRunnerAsync(binary, { absolutePathOnly: true })` look a bare name up on absolute `PATH` entries only and spawn the absolute path found. A relative or empty `PATH` entry is looked up from the child's `cwd`, and a Windows spawn of a bare name searches `cwd` first, so without the option a file named `git` in a cloned repository can run in place of git. When nothing is found the run fails as a missing binary does (`ENOENT`, kind `not-installed`). A name with a separator, such as `./gradlew`, still runs as given.
+  
+  `which(binary, { absolutePathOnly: true })` does the same lookup without running anything, reading `PATHEXT` on Windows. On Windows a `PATH` entry in double quotes counts without its quotes, as Windows reads it. `absolutePathCandidates(binary, { path, pathext, platform })` returns the paths that lookup checks, in order, without reading the disk. New types: `SpawnRunnerOptions`, `PathCandidateOptions`. Existing calls are unchanged.
+
 ## 0.9.1
 
 ### Patch Changes

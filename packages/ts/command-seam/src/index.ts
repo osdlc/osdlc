@@ -16,6 +16,12 @@
  *   period.
  * - `withDefaults` binds default options to any of them.
  * - `which` finds a binary on `PATH` without running it.
+ * - `commandString` quotes a command line for POSIX shells, PowerShell or
+ *   `cmd.exe`, for a person to paste.
+ * - `runFailed`, `classifyFailed`, `tryMethods` and `notAnOption` are the
+ *   parts of a typed client over one program that do not depend on the
+ *   program: the result gate, the classifier's start, the `try` proxy and
+ *   the leading-dash guard.
  *
  * The capture runners share {@link CommandResult}, {@link CommandRunOptions}
  * and {@link CommandFailed}, so one {@link isCommandFailed} check covers
@@ -37,6 +43,7 @@ export {
   type CommandRunOptions,
   type EnvOverrides,
   type NeverExitedReason,
+  type SpawnRunnerOptions,
   type StdioOption,
 } from './sync.ts'
 
@@ -56,8 +63,10 @@ export {
 export {
   failureText,
   firstLine,
+  isJsonParseFailure,
   parseJsonResult,
   ran,
+  runFailed,
   runJson,
   runJsonAsync,
   stderrOrError,
@@ -68,14 +77,25 @@ export {
 } from './result.ts'
 
 export {
+  classifyFailed,
   classifyFailure,
   type ClassifiableRun,
   type ClassifyContext,
+  type ClassifyFailedOptions,
   type CommandFailure,
   type CommandFailureKind,
 } from './failure.ts'
 
-export { shellJoin, shellQuote } from './quote.ts'
+export {
+  methodFacade,
+  notAnOption,
+  tryMethods,
+  tryMethodsAsync,
+  type TriedMethods,
+  type TriedMethodsAsync,
+} from './facade.ts'
+
+export { commandString, shellJoin, shellQuote, type CommandStringOptions } from './quote.ts'
 
 export {
   runShell,
@@ -115,4 +135,9 @@ export {
 
 export { withDefaults, type DefaultedRunner } from './defaults.ts'
 
-export { which, type WhichOptions } from './which.ts'
+export {
+  absolutePathCandidates,
+  which,
+  type PathCandidateOptions,
+  type WhichOptions,
+} from './which.ts'

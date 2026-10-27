@@ -21,9 +21,15 @@
  * person when they ran the command. The result's `trusted` field still
  * reports whether the root is trusted, but the flag is never saved. Saving it
  * would turn one run into a lasting grant that nobody remembers giving.
+ *
+ * `scopes` names what the run needs trusted, `['*']` (the whole repository)
+ * by default. A command can run more than one tool: a mise task runs mise,
+ * which can run mise's hooks. Pass every tool the command will run. The root
+ * is trusted only when each scope is, and `missing` lists the ones that are
+ * not.
  */
 
-import type { TrustStore } from './store.ts'
+import { WHOLE_REPO_SCOPE, type TrustStore } from './store.ts'
 
 /**
  * The outcome of the trust check: whether to run, the configured value, whether the root is trusted and the reason.
@@ -34,11 +40,24 @@ export interface ExecGate {
   allowExec: boolean
   /** The layered/flagged configured value, before trust. */
   configured: boolean
+  /**
+   * Whether every scope in {@link scopes} is trusted. Always `false` when an
+   * explicit `flag: false` meant the store was not read ({@link missing} is
+   * empty then).
+   */
   trusted: boolean
   /** Why {@link allowExec} came out the way it did. */
   reason: 'allowed' | 'allowed-by-flag' | 'untrusted' | 'configured-off'
   /** The resolved root the trust decision was keyed on. */
   root: string
+  /** The scopes the gate was asked about, `['*']` by default. */
+  scopes: string[]
+  /**
+   * The scopes in {@link scopes} that are not trusted, in the order given.
+   * Empty when all are trusted, and when an explicit `flag: false` meant the
+   * store was not read.
+   */
+  missing: string[]
 }
 
 /**
@@ -52,14 +71,20 @@ export interface ResolveExecGateArgs {
   /** An explicit per-run override, if one was given on the command line. */
   flag?: boolean | undefined
   /**
-   * A trust decision the caller already made. When set, it is used instead
-   * of `store.isTrusted(root)`. This lets a tool add a policy on top of the
-   * marker store: `trustDecision` checks the store and a path/owner policy,
-   * and its result is passed in here. A second, marker-only lookup could
-   * disagree with it. `root` is still resolved through `store.resolveRoot`,
-   * so both use the same resolved path.
+   * Every scope the run needs trusted: `*` for the whole repository, or the
+   * id of each tool the command will run. Defaults to `['*']`. An empty list
+   * throws a `TypeError`.
    */
-  trusted?: boolean
+  scopes?: readonly string[] | undefined
+  /**
+   * A trust decision the caller already made, for every scope or per scope.
+   * When set, it is used instead of `store.isTrusted(root, scope)`. This lets
+   * a tool add a policy on top of the marker store: `trustDecision` checks
+   * the store and a path/owner policy, and its result is passed in here. A
+   * second, marker-only lookup could disagree with it. `root` is still
+   * resolved through `store.resolveRoot`, so both use the same resolved path.
+   */
+  trusted?: boolean | ((scope: string) => boolean | Promise<boolean>)
 }
 
 /**
@@ -71,31 +96,31 @@ export async function resolveExecGate(
   args: ResolveExecGateArgs,
 ): Promise<ExecGate> {
   const { root, configured, flag } = args
+  const scopes = [...(args.scopes ?? [WHOLE_REPO_SCOPE])]
+  if (scopes.length === 0) throw new TypeError('resolveExecGate: scopes must not be empty')
   const resolved = await store.resolveRoot(root)
+  const base = { configured, root: resolved, scopes }
 
   if (flag === false) {
-    return {
-      allowExec: false,
-      configured,
-      trusted: false,
-      reason: 'configured-off',
-      root: resolved,
-    }
+    return { ...base, allowExec: false, trusted: false, reason: 'configured-off', missing: [] }
   }
 
-  const trusted = args.trusted ?? (await store.isTrusted(resolved))
+  const given = args.trusted
+  const isTrusted = (scope: string): boolean | Promise<boolean> =>
+    given === undefined
+      ? store.isTrusted(resolved, scope)
+      : typeof given === 'function'
+        ? given(scope)
+        : given
+  const missing: string[] = []
+  for (const scope of scopes) if (!(await isTrusted(scope))) missing.push(scope)
+  const trusted = missing.length === 0
+  const gate = { ...base, trusted, missing }
 
-  if (flag === true) {
-    return { allowExec: true, configured, trusted, reason: 'allowed-by-flag', root: resolved }
-  }
-
-  if (!configured) {
-    return { allowExec: false, configured, trusted, reason: 'configured-off', root: resolved }
-  }
-  if (!trusted) {
-    return { allowExec: false, configured, trusted, reason: 'untrusted', root: resolved }
-  }
-  return { allowExec: true, configured, trusted, reason: 'allowed', root: resolved }
+  if (flag === true) return { ...gate, allowExec: true, reason: 'allowed-by-flag' }
+  if (!configured) return { ...gate, allowExec: false, reason: 'configured-off' }
+  if (!trusted) return { ...gate, allowExec: false, reason: 'untrusted' }
+  return { ...gate, allowExec: true, reason: 'allowed' }
 }
 
 /**

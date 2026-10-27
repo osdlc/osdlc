@@ -1,26 +1,82 @@
+import type { Task } from '@osdlc/system-model/detect'
 import type { Mode } from '@osdlc/system-model/match'
 
-import { $, ALL, OPEN, persistTheme, SHUT, state } from './state.ts'
+import { $, ALL, allTasks, OPEN, SHUT, SKILLS, state } from './state.ts'
 import { splitArgs } from '../args.ts'
+import { settingLayer, type Theme } from '../config-keys.ts'
+import { parametersUnknownLabel } from '../vocabulary.ts'
 import {
   escapeHtml,
-  HELP,
+  helpHtml,
   hideRunBar,
   listRows,
   measureChrome,
+  openDialogAtTop,
   render,
-  saveRunnerOrder,
   setFocusedRow,
   showHandoff,
   showRunBar,
   showRunnerInfo,
   showRunTaken,
   runnerOrder,
+  setThemeButton,
   sortRunners,
+  THEME_CYCLE,
 } from './view.ts'
 import type { SortKey } from './view.ts'
-import { getConfig, load, requestRun, trustRepo } from './api.ts'
+import {
+  failureText,
+  load,
+  loadTools,
+  readConfig,
+  requestRun,
+  setSetting,
+  trustRepo,
+  unsetSetting,
+} from './api.ts'
 import { handleSettingsClick, openSettings } from './settings.ts'
+
+// ------------------------------------------------------------ preferences
+
+function statusLine(html: string): void {
+  $('status').innerHTML = html
+}
+
+/**
+ * Use `order` as the runner order and save it as `runners.order`, to the
+ * file `settingLayer` picks: the project file when it sets the order, else
+ * the user file. The terminal UI saves it the same way.
+ */
+export async function saveRunnerOrder(order: string[]): Promise<void> {
+  state.runnerOrder = order
+  render()
+  const layer = settingLayer('runners.order', state.runnerOrderSource)
+  const result = await setSetting('runners.order', order, layer)
+  if (!result.ok) {
+    statusLine(
+      '<span class="err">' + escapeHtml('order not saved: ' + failureText(result)) + '</span>',
+    )
+    return
+  }
+  state.runnerOrderSource = layer
+}
+
+/**
+ * Save the theme as `theme` in the user config. `system` removes the
+ * setting, so the browser decides again.
+ */
+async function saveTheme(choice: Theme): Promise<void> {
+  const result =
+    choice === 'system'
+      ? await unsetSetting('theme', 'user')
+      : await setSetting('theme', choice, 'user')
+  // Unsetting a theme that was never set is not a failure worth showing.
+  if (!result.ok && choice !== 'system') {
+    statusLine(
+      '<span class="err">' + escapeHtml('theme not saved: ' + failureText(result)) + '</span>',
+    )
+  }
+}
 
 // ------------------------------------------------------------------- run
 
@@ -60,6 +116,33 @@ async function handOff(
   } else if (result.outcome === 'failed') {
     $('status').innerHTML = '<span class="err">run failed: ' + escapeHtml(result.detail) + '</span>'
   }
+}
+
+/**
+ * Run a task the way the row's Run button does. A task that declares
+ * parameters, or whose parameters could not be read, asks for its arguments
+ * first: running it bare would hand over the terminal before anything could
+ * say it needed some. A task that uses an editor variable is not run.
+ */
+function runTask(task: Task, button?: HTMLButtonElement): void {
+  if (task.parametersUnknown === 'editor-variable') {
+    statusLine(
+      '<span class="err">' +
+        escapeHtml(task.display + ': ' + parametersUnknownLabel('editor-variable')) +
+        '</span>',
+    )
+    return
+  }
+  if (task.parameters.length > 0 || task.parametersUnknown !== undefined) {
+    armRunBar(task.id, showRunBar(task))
+    return
+  }
+  void handOff(task.id, [], button)
+}
+
+/** The task a row stands for. */
+function taskOfRow(row: HTMLElement): Task | undefined {
+  return allTasks().find((t) => t.id === row.dataset.id)
 }
 
 /**
@@ -123,6 +206,15 @@ export function wireInput(): void {
       const row =
         document.querySelector('tbody tr.enter-target') ?? document.querySelector('tbody tr')
       if (!row) return
+      // Shift+Enter runs the top hit through the same steps as its Run button.
+      if (ev.shiftKey) {
+        ev.preventDefault()
+        const task = taskOfRow(row as HTMLElement)
+        if (task) runTask(task, row.querySelector<HTMLButtonElement>('.runbtn') ?? undefined)
+        // A skill row has no task: Run on it copies `/<name>`.
+        else copyRow(row as HTMLElement)
+        return
+      }
       copyRow(row as HTMLElement)
       // Enter copies the top hit and moves focus to the list. From there the
       // arrows move through the results, which helps when the top hit was not
@@ -166,22 +258,20 @@ export function wireInput(): void {
     }
 
     // Trusting a repository lets its code run, so the confirm, not the click,
-    // is the decision. It uses the native blocking confirm on purpose. A custom
-    // dialog would be one more thing to dismiss without reading.
+    // is the decision. The server answers the first request with a nonce and
+    // runs the grant only when the person has said yes (see `trustRepo`).
     if (target.closest('[data-trust-repo]')) {
-      if (
-        confirm(
-          'Trust this repository? Its runners will be read by running them, now and on every later visit, until you untrust it.',
-        )
-      ) {
-        void trustRepo()
-      }
+      void trustRepo()
       return
     }
 
     if (target.closest('#helpbtn')) {
-      $('help-body').innerHTML = HELP
-      ;($('help') as HTMLDialogElement).showModal()
+      openHelp()
+      return
+    }
+
+    if (target.closest('#filtersbtn')) {
+      setFiltersOpen($('filtersbtn').getAttribute('aria-expanded') !== 'true')
       return
     }
 
@@ -192,10 +282,14 @@ export function wireInput(): void {
       // appears only once the server answers looks like a click that did
       // nothing.
       $('settings-body').innerHTML = '<p class="set-empty">Reading configuration…</p>'
-      ;($('settings') as HTMLDialogElement).showModal()
-      void getConfig().then((config) => {
-        $('settings-body').innerHTML = openSettings(config, [...state.knownRunners])
-      })
+      openDialogAtTop('settings')
+      // The tool info is read at startup; read again if that failed.
+      void Promise.all([readConfig(), state.tools.length === 0 ? loadTools() : null]).then(
+        ([config]) => {
+          $('settings-body').innerHTML = openSettings(config, [...state.knownRunners])
+          openDialogAtTop('settings')
+        },
+      )
       return
     }
 
@@ -223,7 +317,8 @@ export function wireInput(): void {
     // saved order a drag writes, so the tab bar updates at once.
     const sort = target.closest('[data-sort-runners]') as HTMLElement | null
     if (sort) {
-      sortRunners(sort.dataset.sortRunners as SortKey, Number(sort.dataset.sortDir) === -1 ? -1 : 1)
+      const dir = Number(sort.dataset.sortDir) === -1 ? -1 : 1
+      void saveRunnerOrder(sortRunners(sort.dataset.sortRunners as SortKey, dir))
       return
     }
 
@@ -252,8 +347,9 @@ export function wireInput(): void {
       return
     }
 
-    // A click anywhere else closes it.
+    // A click anywhere else closes it, and the Filters menu too.
     if (menu && !target.closest('.picker')) menu.hidden = true
+    if (!target.closest('#filters')) setFiltersOpen(false)
   })
 
   /**
@@ -287,7 +383,7 @@ export function wireInput(): void {
   const shownOrder = (surface: HTMLElement): string[] =>
     [...surface.children]
       .map((c) => runnerOf(c as HTMLElement))
-      .filter((r): r is string => r !== null && r !== ALL)
+      .filter((r): r is string => r !== null && r !== ALL && r !== SKILLS)
 
   /** Record the arrangement the frame about to be drawn will show. */
   function snapshotPainted(surface: HTMLElement): void {
@@ -361,7 +457,7 @@ export function wireInput(): void {
       '.tabs .tab, [data-drag-runner]',
     ) as HTMLElement | null
     if (!over || over === dragEl || over.parentElement !== surface) return
-    if (runnerOf(over) === null || runnerOf(over) === ALL) return
+    if (runnerOf(over) === null || runnerOf(over) === ALL || runnerOf(over) === SKILLS) return
     slideInto(surface, dragEl, isAfter(ev, over) ? over.nextSibling : over)
     snapshotPainted(surface)
   })
@@ -386,13 +482,13 @@ export function wireInput(): void {
   // One button that cycles System, Light, Dark, rather than three buttons. It
   // shows the scheme in use and its title names the next one.
   $('theme').addEventListener('click', () => {
-    const choice = THEME_CYCLE[$('theme').dataset.themeChoice ?? 'system'] ?? 'light'
+    const choice = (THEME_CYCLE[$('theme').dataset.themeChoice ?? 'system'] ?? 'light') as Theme
     // Absent means "follow the system", which is what the media query already
     // does; an explicit value overrides it in either direction.
     if (choice === 'system') document.documentElement.removeAttribute('data-theme')
     else document.documentElement.setAttribute('data-theme', choice)
     setThemeButton(choice)
-    persistTheme(choice)
+    void saveTheme(choice)
   })
 
   $('depth').addEventListener('click', (e) => {
@@ -421,7 +517,7 @@ export function wireInput(): void {
     render()
   })
 
-  $('refresh').addEventListener('click', () => load(true))
+  $('refresh').addEventListener('click', () => void load())
 
   $('tabs').addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest('button[data-runner]') as HTMLButtonElement | null
@@ -439,18 +535,8 @@ export function wireInput(): void {
     }
     const run = target.closest('.runbtn') as HTMLButtonElement | null
     if (run) {
-      const id = run.dataset.runId ?? ''
-      // A recipe that declares parameters cannot run from the row. `argv`
-      // leaves them out, so the click would spawn `just deploy` with no
-      // environment, and the terminal would be handed over before anything
-      // could say so. The run bar asks for the arguments first and runs from
-      // there.
-      const task = (state.catalog?.reports ?? []).flatMap((r) => r.tasks).find((t) => t.id === id)
-      if (task && task.parameters.length > 0) {
-        armRunBar(task.id, showRunBar(task))
-        return
-      }
-      await handOff(id, [], run)
+      const task = allTasks().find((t) => t.id === run.dataset.runId)
+      if (task) runTask(task, run)
       return
     }
     const head = target.closest('.head') as HTMLElement | null
@@ -489,7 +575,9 @@ export function wireInput(): void {
 
     if (ev.key === 'Enter') {
       ev.preventDefault()
-      copyRow(row)
+      const task = ev.shiftKey ? taskOfRow(row) : undefined
+      if (task) runTask(task, row.querySelector<HTMLButtonElement>('.runbtn') ?? undefined)
+      else copyRow(row)
       return
     }
 
@@ -508,10 +596,23 @@ export function wireInput(): void {
   })
 
   document.addEventListener('keydown', (e) => {
+    const typing = (e.target as HTMLElement | null)?.closest?.('input, textarea') != null
     if (e.key === '/' && document.activeElement !== $('q')) {
       e.preventDefault()
       ;($('q') as HTMLInputElement).focus()
       ;($('q') as HTMLInputElement).select()
+      return
+    }
+    if (e.key === '?' && !typing && !($('help') as HTMLDialogElement).open) {
+      e.preventDefault()
+      openHelp()
+      return
+    }
+    // Escape closes the Filters menu and returns focus to its button.
+    if (e.key === 'Escape' && $('filtersbtn').getAttribute('aria-expanded') === 'true') {
+      e.preventDefault()
+      setFiltersOpen(false)
+      $('filtersbtn').focus()
       return
     }
     // Escape closes the picker and returns focus to the button that opened it,
@@ -541,10 +642,10 @@ export function wireInput(): void {
   // Stay current on window focus and on a slow poll. Both stop for good once
   // the terminal has been handed off (see stopPolling).
   window.addEventListener('focus', () => {
-    if (polling) load(false)
+    if (polling) void load({ join: true })
   })
   pollTimer = setInterval(() => {
-    if (polling && !document.hidden) load(false)
+    if (polling && !document.hidden) void load({ join: true })
   }, 15000)
 
   // The placeholder in the markup is a sentence, which is cut off mid-word at
@@ -556,7 +657,7 @@ export function wireInput(): void {
   // becomes the field's accessible name, so the input keeps a name while the
   // user types.
   q.setAttribute('aria-label', q.placeholder)
-  q.placeholder = 'Search commands'
+  // `render` sets the short form for the tab in view.
 
   for (const id of ['mode', 'depth']) rovingGroup($(id))
   rovingGroup($('tabs'), 'button[data-runner]')
@@ -570,13 +671,15 @@ export function wireInput(): void {
  * be reported as a copy. Returns whether the write succeeded.
  */
 async function copyCommand(copy: HTMLElement): Promise<boolean> {
-  let ok = true
+  // A button with no text to copy refused it: the text held a control character.
+  const text = copy.dataset.run
+  let ok = text !== undefined
   try {
-    await navigator.clipboard.writeText(copy.dataset.run ?? '')
+    if (text !== undefined) await navigator.clipboard.writeText(text)
   } catch {
     ok = false
   }
-  copy.textContent = ok ? 'copied' : 'blocked'
+  copy.textContent = ok ? 'copied' : text === undefined ? 'refused' : 'blocked'
   if (ok) copy.classList.add('done')
   setTimeout(() => {
     copy.textContent = 'copy'
@@ -729,7 +832,7 @@ function commitDragOrder(shown: string[], moved: string): void {
         ? order.indexOf(before) + 1
         : 0
   order.splice(to, 0, moved)
-  saveRunnerOrder(order)
+  void saveRunnerOrder(order)
 }
 
 /**
@@ -779,31 +882,15 @@ function rovingGroup(container: HTMLElement | null, selector = 'button'): void {
   })
 }
 
-/** The colour-scheme cycle: what a click on the theme button moves to. */
-const THEME_CYCLE: Record<string, string> = { system: 'light', light: 'dark', dark: 'system' }
-
-/** How the button shows each scheme when it is the one in use. */
-const THEME_FACE: Record<string, { glyph: string; name: string; note: string }> = {
-  system: { glyph: '◐', name: 'System', note: ' (follows your OS)' },
-  light: { glyph: '☀', name: 'Light', note: '' },
-  dark: { glyph: '☾', name: 'Dark', note: '' },
+/** Open the help at its top, with the page's own text. */
+function openHelp(): void {
+  $('help-body').innerHTML = helpHtml()
+  openDialogAtTop('help')
 }
 
-/**
- * Update the theme button for the choice now in use.
- *
- * The button shows the current scheme, so both the title and the accessible
- * name must say two things: what is on, and what a click does next. A single
- * cycling button has nowhere else to say the second, and a screen-reader user
- * would otherwise not know what the press does. Startup calls this too, so
- * the button matches the restored preference from the first frame.
- */
-export function setThemeButton(choice: string): void {
-  const btn = $('theme')
-  const face = THEME_FACE[choice] ?? THEME_FACE['system']!
-  const next = THEME_FACE[THEME_CYCLE[choice] ?? 'light']!
-  btn.dataset.themeChoice = choice
-  btn.textContent = face.glyph
-  btn.title = 'Colour scheme: ' + face.name + face.note + '. Click for ' + next.name + '.'
-  btn.setAttribute('aria-label', 'Colour scheme: ' + face.name + '. Click for ' + next.name + '.')
+/** Open or close the Filters menu, which holds the filters at phone width. */
+function setFiltersOpen(open: boolean): void {
+  $('filtersbtn').setAttribute('aria-expanded', String(open))
+  $('filters').classList.toggle('open', open)
+  measureChrome()
 }

@@ -1,5 +1,75 @@
 # @osdlc/detect-harness
 
+## 0.7.0
+
+### Minor Changes
+
+- da5e6a3: Behaviour change: `detect({ mode: 'project' })` now decides whether a path is inside the project with `@osdlc/path-guard`'s `nodeGuard.contains` (a new runtime dependency), which compares real paths. A path whose text is outside the project but whose real path is inside it (a symbolic link into the project) is now read; before, it answered "absent". A path that does not exist yet under a symbolic link out of the project still answers "absent". The plugin manifest and skill, command and agent readers use the same check for "inside the plugin folder".
+
+### Patch Changes
+
+- Updated dependencies [da5e6a3]
+  - @osdlc/command-seam@0.14.0
+
+## 0.6.0
+
+### Minor Changes
+
+- b835ae4: On Windows, `which('tool.exe')` now finds `tool.exe` on PATH. A name that already ends in a `PATHEXT` suffix is tried as given only; before, only `tool.exe.EXE` and the like were tried.
+  Behaviour change (stricter): `which` and the default install probe search only absolute `PATH` entries. A relative entry is skipped instead of being resolved against the project root, so a binary the project ships is never reported as the install or run for `--version`; `which`'s `cwd` argument no longer affects a lookup. The default `makeRunner` now runs a bare name only from an absolute `PATH` entry. `which` now uses `@osdlc/command-seam`'s lookup, so on Windows a quoted `PATH` entry counts without its quotes, `Path` is read in any case, an empty `PATHEXT` means the default list, a drive-relative entry (`\bin`) is skipped, and a match needs only to be a file.
+  Behaviour change (Windows only): `which` given an absolute path without a `PATHEXT` extension (`C:\tools\claude`) now tries that path with each `PATHEXT` suffix (`claude.COM`, `claude.EXE`, ...) and no longer tries the exact name; a path that already ends in a `PATHEXT` extension is tried as given. `PATHEXT` is read from the passed `env` (in any case), never from `process.env`.
+  Behaviour change: an environment override (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `PI_CODING_AGENT_DIR` and the rest) that holds a relative path is now ignored and the default folder is used; before, it was resolved against the current directory, which can be the project. An absolute override is used as given, no longer normalized. Behaviour change: `detect()`'s default `home` is now `@osdlc/tiered-dirs`'s `homeDir` (a new runtime dependency): a relative `HOME` counts as unset and the OS account's home is used, and with no home at all home-based paths do not resolve; before, a relative `HOME` was resolved against the current directory.
+  Behaviour change: `readPlugin` now finds and names a plugin's skills and commands with the same reader `detect()` uses for an installed plugin, so the two list the same ones. A `skills/<name>/SKILL.md` or `commands/<name>/SKILL.md` folder is now named by its frontmatter `name` when it sets one; before, always by the folder name. A flat `commands/<name>.md` is now dropped when a folder command already has that name (frontmatter name included); before, only a folder of the same folder name hid it. Folders of one command name are now one capability, the first by folder name.
+  Behaviour change: `readPlugin` now follows a symbolic link to a skill or command folder, or to a flat command file, when its real path stays inside the plugin folder; before, a linked entry was skipped.
+  Behaviour change: `readPlugin` no longer throws when `skills` or `commands` is a file rather than a folder, or when a `SKILL.md` is a folder; that entry is skipped, as `detect()` skips it. A file or folder that exists but cannot be read still throws.
+  Behaviour change: of a plugin's skill folders that share a name (frontmatter `name`, else folder name), `detect()` and `readPlugin` now keep only the first by folder name; before, `detect()` listed each one and `readPlugin` could return two capabilities of one name.
+  Behaviour change (stricter): a plugin's skill, command or agent entry whose real path leads out of the plugin folder's real path (a symbolic link to `~/.aws/credentials`, say) is no longer read or listed by `detect()` or `readPlugin`; before, `detect()` followed it in `full` mode and reported its name, description and, with `readContents`, its body. A link that stays inside the plugin folder is still followed.
+
+### Patch Changes
+
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+  - @osdlc/command-seam@0.13.0
+  - @osdlc/frontmatter-lossless@1.1.2
+  - @osdlc/tiered-dirs@0.5.0
+
+## 0.5.0
+
+### Minor Changes
+
+- 9616994: Each skill, command and agent in the report now has `argumentHint`: the `argument-hint` front matter field, such as `[pr-number]`, or `null` when the file sets none. With `mode: 'project'` this lists the skills a repository ships, ready to show as tasks.
+  
+  An unquoted `argument-hint` is now read as the text the author typed, as Claude Code reads it, in the report and in the `./model` entry point's `argumentHint`. `[message]` used to lose its brackets, and a form that is not valid YAML, such as `[pr-number] [priority]` or `[--fix] <path>`, used to make the whole front matter unreadable, so the skill lost its name and description too. A hint that is not text, such as a block list, is now `null`.
+  
+  Front matter that is still not valid YAML no longer reads as empty: `name`, `description` and `argument-hint` are taken from their raw lines, and the other keys are dropped.
+  
+  **Breaking changes**
+  
+  - `Artifact` has a new required field, `argumentHint`. What to do: a custom provider that builds `Artifact` objects sets `argumentHint` to the hint text, or `null` when there is none.
+
+### Patch Changes
+
+- Updated dependencies [9616994]
+- Updated dependencies [d243a32]
+- Updated dependencies [d243a32]
+- Updated dependencies [9616994]
+  - @osdlc/command-seam@0.12.0
+
+## 0.4.5
+
+### Patch Changes
+
+- Updated dependencies [0cf31de]
+  - @osdlc/command-seam@0.11.0
+
+## 0.4.4
+
+### Patch Changes
+
+- Updated dependencies [910deca]
+  - @osdlc/command-seam@0.10.0
+
 ## 0.4.3
 
 ### Patch Changes

@@ -1,0 +1,8 @@
+{
+  // A comment, as VS Code allows.
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "build", "type": "shell", "command": "make build" },
+    { "label": "open file", "type": "shell", "command": "cat ${file}" },
+  ],
+}

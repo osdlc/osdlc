@@ -496,6 +496,31 @@ describe('branch matching and owner/repo', () => {
     expect(ownerRepoSlug(expected)).toBe('acme/widgets')
     expect(parseOwnerRepo('not a url')).toBeNull()
   })
+
+  test('an Enterprise remote resolves', () => {
+    expect(parseOwnerRepo('git@github.acme.com:acme/widgets.git')).toEqual({
+      owner: 'acme',
+      repo: 'widgets',
+    })
+    expect(parseOwnerRepo('https://github.acme.com/acme/widgets.git')).toEqual({
+      owner: 'acme',
+      repo: 'widgets',
+    })
+  })
+
+  test('any other host reads as host/owner/repo, as typed-git parseRemoteRepo reads it', () => {
+    const app = { owner: 'team', repo: 'app' }
+    for (const url of [
+      'git@forge.example.com:team/app.git',
+      'https://forge.example.com:3000/team/app.git',
+      'ssh://git@forge.example.com:2222/team/app',
+      'https://ssh.github.com/team/app.git',
+      'https://notgithub.com/team/app.git',
+    ]) {
+      expect(parseOwnerRepo(url)).toEqual(app)
+    }
+    expect(parseOwnerRepo('/srv/git/app.git')).toBeNull()
+  })
 })
 
 describe('prMerge and prReviewThreads', () => {

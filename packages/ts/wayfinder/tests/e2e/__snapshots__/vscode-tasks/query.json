@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "build",
+    "mode": "fuzzy"
+  },
+  "source": "fresh",
+  "storedAt": null,
+  "tasks": [
+    {
+      "id": "vscode-tasks:.vscode/tasks.json:build",
+      "runner": "vscode-tasks",
+      "path": [
+        "vscode-tasks",
+        ".",
+        "build"
+      ],
+      "argv": [
+        "make",
+        "build"
+      ],
+      "cwd": ".",
+      "display": "make build",
+      "parameters": [],
+      "source": ".vscode/tasks.json",
+      "origin": "declared",
+      "tags": [
+        "vscode-tasks",
+        ".",
+        "shell"
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "vscode-tasks",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [
+    {
+      "kind": "parameters",
+      "runner": "vscode-tasks",
+      "reason": "editor-variable",
+      "tasks": [
+        "vscode-tasks:.vscode/tasks.json:open file"
+      ],
+      "label": "cannot run here: the task uses an editor variable"
+    }
+  ]
+}

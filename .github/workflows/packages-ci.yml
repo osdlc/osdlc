@@ -17,10 +17,16 @@
 # packages the picked ones depend on. Every package tests with Vitest on Node,
 # so the Node matrix is what a consumer sees.
 #
-# `windows` runs path-guard on Windows, when path-guard is picked. It is the
-# only library tested there. A run that is not a pull request picks every
-# package, so packages-publish.yml waits for the Windows jobs too, and a
-# Windows failure blocks a release.
+# `windows` runs path-guard on Windows, when path-guard is picked. A run that
+# is not a pull request picks every package, so packages-publish.yml waits
+# for the Windows jobs too, and a path-guard failure on Windows blocks a
+# release.
+#
+# `windows-tier2` calls packages-windows-tier2.yml, which runs the libraries
+# that start programs or resolve paths on Windows, when any of them is picked.
+# Windows is tier 2 for them (S-0021): it reports, but never fails a pull
+# request. packages-publish.yml sets `skip-windows-tier2`; on main, tier 2
+# runs from its own push trigger.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
 name: packages
@@ -28,6 +34,11 @@ name: packages
 on:
   pull_request:
   workflow_call:
+    inputs:
+      skip-windows-tier2:
+        description: Leave out the Windows tier-2 job; the caller runs it.
+        type: boolean
+        default: false
   workflow_dispatch:
 
 permissions:
@@ -57,6 +68,9 @@ jobs:
 
       - name: Test the package pick
         run: node --test scripts/affected-packages.test.ts
+
+      - name: Test the bounded runner
+        run: node --test scripts/bounded-run.test.ts
 
       # package-shape-ts.ts reads semver ranges with the root's `semver`, so
       # install the root project only (not the packages).
@@ -138,7 +152,7 @@ jobs:
 
       - name: Test
         if: env.PICKED == 'true'
-        run: pnpm $FILTER --if-present run test
+        run: pnpm $FILTER --no-bail --if-present run test
 
       - name: Smoke the built packages under Node
         if: env.PICKED == 'true'
@@ -200,3 +214,17 @@ jobs:
 
       - name: Smoke the built package under Node
         run: pnpm --filter ./packages/ts/path-guard run smoke
+
+  windows-tier2:
+    needs: changes
+    if: >-
+      !inputs.skip-windows-tier2 && (
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/command-seam') ||
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/trust-repo') ||
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/tiered-dirs') ||
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/cli-tool') ||
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/system-model') ||
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/wayfinder'))
+    uses: ./.github/workflows/packages-windows-tier2.yml
+    with:
+      packages: ${{ needs.changes.outputs.packages }}

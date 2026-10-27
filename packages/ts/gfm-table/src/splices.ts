@@ -91,7 +91,9 @@ export function insertCellSplice(
   const cell = cells[at]
   if (cell) {
     const text = newCellText(line, span, cell, filler)
-    if (at > 0 || span.pipes[0] === span.from) {
+    // A pipe before the first cell opened the row, indented 0-3 spaces or not.
+    const opened = span.pipes[0] !== undefined && span.pipes[0] < (cells[0]?.from ?? 0)
+    if (at > 0 || opened) {
       // The new cell goes right after the pipe that opened `cell`.
       return {
         change: { from: cell.from, insert: `${text}|` },

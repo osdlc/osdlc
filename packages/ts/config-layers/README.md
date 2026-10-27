@@ -124,7 +124,8 @@ which the loader returns for a missing, unreadable or non-mapping file. When a f
 schema, the loader keeps what it can. It drops each unknown key, then gives each section that is
 still invalid its default, and keeps the rest. Every drop is a `MachineConfigIssue` with a `path`,
 a `code` and a `message`. The code is `unknown_key`, `invalid`, `unreadable`, `yaml`,
-`not_mapping` or `newer_version`. The loader never prints issues. The tool decides how to show
+`not_mapping` or `newer_version`. An unknown key is found only when every object in the schema is
+`.strict()`; a plain `z.object` drops it silently, with no issue. The loader never prints issues. The tool decides how to show
 them. Options `env`, `fileName` and `dirs` change the variable, the file name and how the
 directories are resolved (a test passes a rooted one).
 
@@ -200,7 +201,7 @@ const repo = substitutePathNames('{dev}/work', names, 'repos:')
 | `pathsSchema({ reserved })` | the map as a schema: a name (letters, digits, `_`, starting with a letter) → a directory. Refuses any `reserved` name, which a consuming setting defines itself |
 | `pathNames(baseDir, machine, project, opts?)` | the effective map: machine entries over project ones, each `~`-expanded and absolute. `opts.home` is what `~` expands to |
 | `substitutePathNames(value, names, where, opts?)` | `value` with every `{name}` replaced. Throws `PathNameError` for a name nothing defines. The message names `where` it appeared, what is available, and `opts.defineHint` |
-| `resolveConfigPath(value, baseDir, opts?)` | the `~` and relative-path expansion every config path value goes through. `opts.home` defaults to `$HOME`, or `os.homedir()` when `HOME` is unset or empty. An empty home leaves `~` unexpanded. Only `~` and `~/…` expand |
+| `resolveConfigPath(value, baseDir, opts?)` | the `~` and relative-path expansion every config path value goes through. `opts.home` defaults to `$HOME` (`%USERPROFILE%` on Windows), or the OS account's home when that is unset, empty or relative. An empty home leaves `~` unexpanded. Only `~` and `~/…` expand |
 
 An unknown path name is an error, not an empty string. A setting that quietly
 becomes `/repo` instead of `/Users/me/dev/repo` fails somewhere far from the
@@ -208,14 +209,17 @@ typo.
 
 ## Pieces
 
-`valueAt(obj, key)`, `valueIsSet(value)`, `leafSchema(schema, key)`,
+`valueAt(obj, key)`, `getIn(value, path)`, `valueIsSet(value)`, `leafSchema(schema, key)`,
 `keyExists(schema, key)`, `keyDescription(schema, key)` and `envStem(tool)` are exported for a
-tool that needs one of them without the rest. `leafSchema` walks a Zod object by dotted key. It
-keeps the outermost wrapper, since that is where `.describe()` sits. A key under a record
-resolves to the record itself.
+tool that needs one of them without the rest. `valueAt` and `getIn` walk own keys of plain
+mappings only: a list index or an inherited name such as `constructor` is not found. `leafSchema`
+walks a Zod object by dotted key, the same walk `resolveKeyPath` makes. It peels every wrapper
+(`optional`, `default`, `catch`, `readonly`, a pipe's input side and the rest) but returns the
+outermost one, since that is where `.describe()` sits. A key under a record resolves to the record
+itself, provided the rest of the key resolves in the record's value type.
 
 `systemDirs` and the `VendorDirs` type resolve a tool's machine-local directories over `TieredDirs`
-and `envVars`, which are re-exported from `@osdlc/tiered-dirs`. `closestMatches` and `didYouMean`
+and `envVars`, which are re-exported from `@osdlc/tiered-dirs`. `envStem` sits with them. `closestMatches` and `didYouMean`
 suggest close names for a mistyped noun, verb, key or repo. Both groups are also
 exported from the light subpaths `@osdlc/config-layers/dirs` and
 `@osdlc/config-layers/did-you-mean`, which load neither yaml nor zod.
@@ -277,8 +281,8 @@ the machine config's salvage uses it as well. A file that does not exist is not 
 neither file present, the result is the all-defaults object.
 
 `readParsedFile(path, 'yaml' | 'json')` reads one config file and returns absent, unreadable,
-unparsable or the parsed value. Every config file read goes through it. `readMappingFile` is its
-mapping-only layer.
+unparsable or the parsed value. Every project file read goes through it, and the machine file is
+parsed by the same rules. `readMappingFile` is its mapping-only layer.
 
 ## Where the file is
 
@@ -295,13 +299,14 @@ replaces that pair with the file it names and that file's overlay. Neither root 
 - A set variable that names a missing file is a `ConfigInvalidError`. An absent default file is not.
 - `scope: 'subtree'` resolves a directory beneath the root (a per-directory overlay file) to its own
   default pair, since the variable names the root file only.
-- The variable does not affect the machine file (`<STEM>_MACHINE_CONFIG`) or the trust store.
+- The variable does not affect the machine file (`<STEM>_MACHINE_CONFIG`).
 
 The package does not search upward for the project root. The caller passes it. The Rust crate has
 `find_up` for that. See the table in "The Rust crate".
 
-A repository-trust check treats a file named by the variable as project-sourced, exactly like
-the default file. Pointing the variable outside the repository does not get around the check.
+This package has no repository-trust check. A tool that has one should treat a file named by the
+variable as project-sourced, exactly like the default file, so pointing the variable outside the
+repository does not get around it.
 
 ## Meta, provenance, explain, edit, scaffold, reference
 
@@ -310,8 +315,8 @@ The functions a `config` command is built from. None of them names a tool.
 | Module | Exports |
 |---|---|
 | `meta.ts`, `vocabulary.ts`, `meta-kit.ts` | the meta structure, `defineConfigVocabulary`, and `checkConfigMeta`/`readConfigMeta`. Also the test helpers a tool's meta test calls (`consumerProblems`, `enforcementProblems`, `machineLayerKeys`, `applierAndReservedProblems`), each returning its problems |
-| `provenance.ts` | `resolveLayeredSteps`/`resolveLayeredValue`: resolve a setting through the env, local, project and default layers, and record which layer each part came from as `{layer, mode}` (`ValueLayer`, `StepProvenance`) |
-| `explain.ts` | `resolveKeyPath`, `splitKeyPath`, `describeShape`, `defaultOf`, `nestedFields`, `jsonSchemaOf`, `getIn`, `omitPath` over a schema shape |
+| `provenance.ts` | `resolveLayeredSteps`/`resolveLayeredValue`: resolve a setting through the env (steps only), local, project and default layers, and record which layer each part came from as `{layer, mode}` (`ValueLayer`, `StepProvenance`) |
+| `explain.ts` | `resolveKeyPath`, `splitKeyPath`, `describeShape`, `defaultOf`, `nestedFields`, `jsonSchemaOf`, `omitPath` over a schema shape |
 | `edit.ts` | `setPath`/`unsetPath`: dotted-path edits that keep every byte outside the edited value, built on `@osdlc/yaml-splice` |
 | `scaffold.ts` | `scaffoldYaml`, `scaffoldLocalYaml`, `starterYaml`: an annotated file derived from the schema (the starter groups keys in the caller's category order) |
 | `reference.ts` | `renderReference`: a markdown reference page from the schema and its meta, grouped in the caller's category order |
@@ -346,9 +351,10 @@ The crate has no zod to read, so a Rust tool lists its keys in a static `KeySpec
 The two share one test fixture,
 [`packages/rust/config-layers/tests/fixtures/parity.json`](https://github.com/osdlc/osdlc/blob/main/packages/rust/config-layers/tests/fixtures/parity.json).
 This package's `tests/parity.test.ts` and the crate's `tests/parity.rs` read it. It covers
-`valueIsSet`, `valueAt`, the YAML reading rules above, `resolveConfigPath` with a `home`,
-`substitutePathNames` and its error text, and the unmet-need message. Behaviour the two do not
-share is left out of the fixture and listed in this table.
+`valueIsSet`, `valueAt`, the YAML reading rules above, `resolveConfigPath` with a `home`
+(including `~user/x`, an empty home and a relative one), `substitutePathNames` and its error text,
+and the unmet-need message. Behaviour the two do not share is left out of the fixture and listed in
+this table.
 
 | | TypeScript | Rust |
 |---|---|---|
@@ -357,16 +363,13 @@ share is left out of the fixture and listed in this table.
 | Project file | `assembleConfig` loads, validates and memoizes it, with a `.local` overlay deep-merged first | `read_mapping` reads it; `overlay_top_level` fills a missing or unset top-level key from the machine file, one level deep |
 | Finding the project file | the caller passes the project root (`resolveConfigFile(projectRoot, ...)`); there is no `findUp` | `find_up(cwd, file_name)` |
 | `substitutePathNames` | `substitutePathNames(value, names, where, { defineHint })`: one function, with the hint in an options object | `substitute_path_names(value, names, setting)` and `substitute_path_names_with_hint(value, names, setting, define_hint)` |
-| Home for `~` | `home` option, default `$HOME`, else `os.homedir()` (unset or empty) | `home` argument, required |
-| An empty home | `~/x` is left unexpanded and resolves as a relative path | `~/x` becomes `/x` |
+| Home for `~` | `home` option, default `$HOME` (`%USERPROFILE%` on Windows), else the OS account's home (unset, empty or relative) | `home` argument, required; the crate never reads `$HOME` |
 | `1_000` and `0b11` | read as the strings `1_000` and `0b11` | read as the numbers 1000 and 3 |
 | Integers beyond 2^53 | read as a number and lose precision | read as `u64`, then as a lossy float |
 | Empty file | `readParsedFile` gives `null`; `readMappingFile` gives `{}` | `read_mapping` is an error ("found an empty document"); `load` treats it as an empty mapping |
-| Looking up a list index (`list.0`) | `valueAt` finds the item | `value_at` gives `None` |
 | `1e999` | read as the string `1e999` | read as the string `.inf` |
 | `!!float 1` and an unknown tag such as `!custom 6` | the value reads as its text, a string | the value reads as a number |
 | A `{` inside a name, as in `{a{dev}` | replaces `{dev}` and keeps the `{a` before it | an unknown path name `{a{dev}` |
-| `~user/x` | not expanded; resolves as a relative path | rewritten to `<home>user/x`, which is wrong without a trailing slash on `home`; the crate should change |
 | Dotted `paths:` resolution in a map | not provided | `resolve_paths_at` |
 | Invalid config | `ConfigInvalidError`, exit code 14 | `FileProblem` |
 | Platforms | Linux and macOS | Linux, macOS and Windows |

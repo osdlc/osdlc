@@ -17,9 +17,7 @@
  * one schema `safeParse` afterwards covers both files.
  */
 
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return v !== null && typeof v === 'object' && !Array.isArray(v)
-}
+import { isPlainObject } from './value.ts'
 
 /**
  * Deep-merge `overlay` over `base`. Neither argument is mutated. When a key's
@@ -49,7 +47,7 @@ export function deepMergeConfig(
  * written, so validation can still refuse them.
  */
 function mergeByName(base: unknown[], overlay: unknown[]): unknown[] {
-  const nameOf = (entry: unknown): unknown => (isRecord(entry) ? entry['name'] : undefined)
+  const nameOf = (entry: unknown): unknown => (isPlainObject(entry) ? entry['name'] : undefined)
   const overlaid = new Set(
     overlay.flatMap((e) => {
       const n = nameOf(e)
@@ -73,7 +71,7 @@ function mergeMappings(
   for (const [key, overlayValue] of Object.entries(overlay)) {
     const baseValue = out[key]
     out[key] =
-      isRecord(baseValue) && isRecord(overlayValue)
+      isPlainObject(baseValue) && isPlainObject(overlayValue)
         ? mergeMappings(baseValue, overlayValue)
         : overlayValue
   }

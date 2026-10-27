@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "build",
+    "mode": "fuzzy"
+  },
+  "source": "fresh",
+  "storedAt": null,
+  "tasks": [
+    {
+      "id": "gradle:build.gradle.kts:build",
+      "runner": "gradle",
+      "path": [
+        "gradle",
+        ".",
+        "build"
+      ],
+      "argv": [
+        "gradle",
+        "build"
+      ],
+      "cwd": ".",
+      "display": "gradle build",
+      "parameters": [],
+      "source": "build.gradle.kts",
+      "origin": "synthesized",
+      "tags": [
+        "gradle",
+        "jvm",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "gradle",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

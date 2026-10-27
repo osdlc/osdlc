@@ -7,6 +7,8 @@ import { pythonEcosystem } from './ecosystem.ts'
 /** uv. */
 export const uv: ToolDef = {
   id: 'uv',
+  homepage: 'https://docs.astral.sh/uv/',
+  description: 'A Python package and project manager.',
   binary: 'uv',
   commandWords: ['uvx'],
   ecosystem: pythonEcosystem,
@@ -24,6 +26,8 @@ export const uv: ToolDef = {
 /** poetry. */
 export const poetry: ToolDef = {
   id: 'poetry',
+  homepage: 'https://python-poetry.org',
+  description: 'A Python packaging and dependency manager.',
   binary: 'poetry',
   ecosystem: pythonEcosystem,
   roles: {
@@ -38,6 +42,8 @@ export const poetry: ToolDef = {
 /** pip, selected by a `requirements.txt`. */
 export const pip: ToolDef = {
   id: 'pip',
+  homepage: 'https://pip.pypa.io',
+  description: 'The package installer for Python.',
   binary: 'pip',
   commandWords: ['pip3'],
   ecosystem: pythonEcosystem,

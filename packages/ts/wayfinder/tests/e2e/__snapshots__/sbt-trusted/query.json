@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "compile",
+    "mode": "fuzzy"
+  },
+  "source": "fresh",
+  "storedAt": null,
+  "tasks": [
+    {
+      "id": "sbt:build.sbt:app/compile",
+      "runner": "sbt",
+      "path": [
+        "sbt",
+        "app",
+        "compile"
+      ],
+      "argv": [
+        "sbt",
+        "compile"
+      ],
+      "cwd": ".",
+      "display": "sbt compile",
+      "parameters": [],
+      "source": "build.sbt",
+      "origin": "declared",
+      "doc": "Compiles sources.",
+      "tags": [
+        "sbt",
+        "app"
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "sbt",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

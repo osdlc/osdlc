@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/tiered-dirs",
-  "version": "0.3.1",
+  "version": "0.5.0",
   "description": "Machine-local directories for a vendor's products, on two axes: tier (vendor, suite, standalone tool) and home (durable, config, cache, state, logs, runtime), resolved over the per-OS directory table with native or XDG paths, plus an untiered scratch root. Override variables under a caller-chosen prefix, injectable roots, and tests kept off the real home. Twin of the Rust `tiered-dirs` crate.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

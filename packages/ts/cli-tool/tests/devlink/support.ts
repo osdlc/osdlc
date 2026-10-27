@@ -16,6 +16,7 @@ export const SPEC: ToolSpec = {
   launcher: 'bin/tooly',
   aliases: ['tooly-long'],
   suppressors: ['TOOLY_HARNESS'],
+  cwdLayer: true,
   vendorDirs: { vendor: 'com.example', envVars: envVars('TOOLY') },
 }
 
@@ -34,7 +35,7 @@ export function sandbox(): Sandbox {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'devlink-')))
   const home = join(root, 'home')
   mkdirSync(home, { recursive: true })
-  const dirs = systemDirs(SPEC.vendorDirs, { home, env: {} })
+  const dirs = systemDirs(SPEC.vendorDirs, { home, env: {}, convention: 'xdg' })
   return {
     root,
     home,

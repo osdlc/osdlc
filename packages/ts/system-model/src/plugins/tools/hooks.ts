@@ -4,7 +4,7 @@ import { parse as parseToml } from 'smol-toml'
 
 import type { ProviderContext } from '../../contract.ts'
 import type { HookDef, Package } from '../../tool.ts'
-import { isTable } from '../support/shared.ts'
+import { isTable, unique } from '../support/shared.ts'
 
 /** The client-side hooks `git help hooks` lists. */
 export const GIT_HOOKS: readonly string[] = [
@@ -79,7 +79,7 @@ export async function huskyHooks(ctx: ProviderContext): Promise<HookDef[]> {
 export async function preCommitHooks(ctx: ProviderContext, config: string): Promise<HookDef[]> {
   const text = await ctx.readText(config)
   if (text === null) return []
-  const ids = [...text.matchAll(/^\s*-\s*id:\s*['"]?([^'"\s#]+)/gm)].map((m) => m[1]!)
+  const ids = [...text.matchAll(/^[ \t]*-\s*id:\s*['"]?([^'"\s#]+)/gm)].map((m) => m[1]!)
   return unique(ids).map((id) => ({
     name: id,
     argv: ['pre-commit', 'run', id, '--all-files'],
@@ -97,8 +97,4 @@ export function huskyArm(pkg: Package): string[] {
   return major !== undefined && Number.isFinite(major) && major < 9
     ? ['npx', 'husky', 'install']
     : ['npx', 'husky']
-}
-
-function unique(values: string[]): string[] {
-  return [...new Set(values)]
 }

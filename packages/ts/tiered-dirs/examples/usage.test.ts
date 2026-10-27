@@ -15,6 +15,8 @@ import {
   TieredDirs,
   TieredDirsError,
   envVars,
+  expandTilde,
+  homeDir,
   isOverridden,
   isValidSegment,
   isVendorBundleId,
@@ -113,6 +115,13 @@ describe('choose the per-OS table', () => {
     expect(normalize(bases.cache)).toBe(normalize('/srv/ada/.cache'))
   })
 
+  test('homeDir is the home the table is built on; expandTilde expands a literal ~', () => {
+    const home = homeDir({ platform: 'linux', env: { HOME: '/srv/ada' } })
+    expect(home).toBe('/srv/ada')
+    expect(expandTilde('~/notes', home, 'linux')).toBe('/srv/ada/notes')
+    expect(expandTilde('~\\notes', 'C:\\Users\\ada', 'win32')).toBe('C:\\Users\\ada\\notes')
+  })
+
   test('the environment can pick the convention', () => {
     const bases = systemBaseDirs(VARS, {
       platform: 'darwin',
@@ -123,7 +132,9 @@ describe('choose the per-OS table', () => {
 
   test('a convention from a flag or a config file is parsed exactly', () => {
     const convention: Convention = parseConvention('xdg')
-    expect(systemBaseDirs(VARS, { ...LINUX, convention }).config).toBe('/home/ada/.config')
+    expect(normalize(systemBaseDirs(VARS, { ...LINUX, convention }).config)).toBe(
+      normalize('/home/ada/.config'),
+    )
     expect(() => parseConvention(' xdg')).toThrow(TieredDirsError)
   })
 })

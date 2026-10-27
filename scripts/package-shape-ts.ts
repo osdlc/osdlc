@@ -2,7 +2,7 @@
 // check-packages.ts reads from disk and from the packed tarball:
 //
 //   - `exports` has no `bun` condition. Every entry is `types` and `default`,
-//     both under dist/.
+//     both under dist/, except a stylesheet (`./X.css`), which is a plain path.
 //   - The tarball ships no TypeScript source. A hand-written `.d.ts` is fine.
 //   - The tarball ships no source maps: they would point at the unshipped source.
 //   - No script invokes bun, and `@types/bun` is not a dependency.
@@ -41,6 +41,10 @@ import { posix } from 'node:path'
 
 import semver from 'semver'
 
+import { section } from './markdown-section.ts'
+
+export { section }
+
 /** A parsed package.json: only the fields the checks read. */
 export interface PackageJson {
   name?: string
@@ -70,27 +74,76 @@ export interface Tsconfig {
   include?: string[]
 }
 
-/** `text` as JSON: strips line and block comments (not inside strings) and trailing commas. */
+/**
+ * `text` as JSON: strips line and block comments and one trailing comma before
+ * `}` or `]`, outside strings. Throws a `SyntaxError` when the rest is not
+ * JSON, for an unterminated string or block comment, and for a comma with no
+ * value before it. A copy of system-model's `src/plugins/support/jsonc.ts`,
+ * kept in step with it: that file's type-only imports reach
+ * `@osdlc/command-seam`, which this directory, depending on no workspace
+ * package, cannot resolve when type-checking.
+ */
 export function parseJsonc(text: string): unknown {
+  return JSON.parse(stripJsonc(text.replace(/^\uFEFF/, '')))
+}
+
+/** `text` with comments and trailing commas removed, strings left alone. */
+function stripJsonc(text: string): string {
   let out = ''
-  let i = 0
-  while (i < text.length) {
-    const c = text[i]
-    if (c === '"') {
-      let j = i + 1
-      while (text[j] !== '"') j += text[j] === '\\' ? 2 : 1
-      out += text.slice(i, j + 1)
-      i = j + 1
-    } else if (c === '/' && text[i + 1] === '/') {
-      while (i < text.length && text[i] !== '\n') i++
-    } else if (c === '/' && text[i + 1] === '*') {
-      i = text.indexOf('*/', i + 2) + 2
-    } else {
-      out += c
-      i++
+  // Where a comma waits to be written: dropped if the next token closes.
+  let pendingComma = ''
+  // The last character written that is not whitespace or a comment.
+  let last = ''
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]!
+    const next = text[i + 1]
+    if (ch === '"') {
+      let end = i + 1
+      while (end < text.length && text[end] !== '"') end += text[end] === '\\' ? 2 : 1
+      out += pendingComma + text.slice(i, end + 1)
+      pendingComma = ''
+      last = '"'
+      i = end
+      continue
     }
+    if (ch === '/' && next === '/') {
+      while (i < text.length && text[i] !== '\n') i++
+      out += '\n'
+      continue
+    }
+    if (ch === '/' && next === '*') {
+      const end = text.indexOf('*/', i + 2)
+      if (end === -1) throw new SyntaxError('unterminated block comment')
+      i = end + 1
+      out += ' '
+      continue
+    }
+    if (ch === ',') {
+      if (last === '' || last === '[' || last === '{' || pendingComma !== '') {
+        // No value before it: write it as is, so JSON.parse refuses it.
+        out += pendingComma + ch
+        pendingComma = ''
+        last = ch
+        continue
+      }
+      pendingComma = ','
+      continue
+    }
+    if (/\s/.test(ch)) {
+      if (pendingComma === '') out += ch
+      else pendingComma += ch
+      continue
+    }
+    if ((ch === '}' || ch === ']') && pendingComma !== '') {
+      out += pendingComma.slice(1)
+    } else {
+      out += pendingComma
+    }
+    pendingComma = ''
+    out += ch
+    last = ch
   }
-  return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'))
+  return out + pendingComma
 }
 
 /** The `exports` paths at which a `bun` condition appears. */
@@ -204,23 +257,6 @@ export function parseCatalog(text: string): Record<string, string> {
     if (m) catalog[(m[1] ?? m[2] ?? m[3])!] = (m[4] ?? m[5] ?? m[6])!
   }
   return catalog
-}
-
-/** The body of the `## <heading>` section of a markdown file, or null. */
-export function section(markdown: string, heading: string): string | null {
-  const lines = markdown.split('\n')
-  let inFence = false
-  let start = -1
-  for (let i = 0; i < lines.length; i++) {
-    if (/^(```|~~~)/.test(lines[i]!)) inFence = !inFence
-    if (inFence) continue
-    if (start === -1) {
-      if (lines[i] === `## ${heading}`) start = i + 1
-    } else if (/^## /.test(lines[i]!)) {
-      return lines.slice(start, i).join('\n')
-    }
-  }
-  return start === -1 ? null : lines.slice(start).join('\n')
 }
 
 /** What is wrong with `author`. */
@@ -463,3 +499,60 @@ export function conventionProblems({
  * with no exports, so that line alone does not count.
  */
 export const DECLARES_EXPORT = /^export (?!\{\s*\};?\s*$)/m
+
+/** The package.json fields the clean-consumer probe reads. */
+export type ProbedPackage = PackageJson & {
+  name: string
+  main?: string
+  peerDependenciesMeta?: Record<string, { optional?: boolean }>
+}
+
+/** The specifiers a consumer can load: `name` plus each `exports` subpath
+ * (pattern subpaths skipped), or `name` alone for a `main`-only package. */
+export function entryPoints(pkg: ProbedPackage): string[] {
+  if (pkg.exports === undefined) return pkg.main ? [pkg.name] : []
+  if (typeof pkg.exports === 'string') return [pkg.name]
+  const keys = Object.keys(pkg.exports as object)
+  if (!keys.some((k) => k.startsWith('.'))) return [pkg.name] // conditions only
+  return keys
+    .filter((k) => !k.includes('*') && k !== './package.json')
+    .map((k) => (k === '.' ? pkg.name : `${pkg.name}/${k.slice(2)}`))
+}
+
+/** The peers `peerDependenciesMeta` marks optional, as `name@range`. npm
+ * installs the other peers but not these. */
+export function optionalPeers(pkg: ProbedPackage): string[] {
+  return Object.entries(pkg.peerDependenciesMeta ?? {})
+    .filter(([, m]) => m.optional === true)
+    .map(([name]) => `${name}@${pkg.peerDependencies?.[name] ?? '*'}`)
+}
+
+/** The bare package name of `name@range`. */
+export const peerName = (spec: string): string => spec.slice(0, spec.lastIndexOf('@'))
+
+const STYLESHEET_TARGET = /^\.\/dist\/[^*]+\.css$/
+
+/** The `exports` keys that name a stylesheet: every `./*.css` key. */
+function stylesheetKeys(exportsField: unknown): string[] {
+  if (exportsField === null || typeof exportsField !== 'object') return []
+  return Object.keys(exportsField).filter((k) => k.startsWith('./') && k.endsWith('.css'))
+}
+
+/** The stylesheet exports whose target is one `./dist/*.css` file. attw skips
+ * them: a stylesheet is a file a tool reads, not a module, so it has no types. */
+export function stylesheetEntries(exportsField: unknown): string[] {
+  const exports = exportsField as Record<string, unknown>
+  return stylesheetKeys(exportsField).filter((k) => {
+    const target = exports[k]
+    return typeof target === 'string' && STYLESHEET_TARGET.test(target)
+  })
+}
+
+/** A `./*.css` export whose target is not one `./dist/<name>.css` file, such
+ * as a conditions object, a pattern or a path outside `dist`. */
+export function stylesheetProblems(exportsField: unknown): string[] {
+  const good = new Set(stylesheetEntries(exportsField))
+  return stylesheetKeys(exportsField)
+    .filter((k) => !good.has(k))
+    .map((k) => `exports["${k}"] must be a "./dist/<name>.css" path`)
+}

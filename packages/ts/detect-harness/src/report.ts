@@ -109,6 +109,11 @@ export type Marketplace = z.infer<typeof MarketplaceSchema>
 export const ArtifactSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
+  /**
+   * The `argument-hint` front matter field, such as `[pr-number]`: what to
+   * type after `/<name>`. `null` when the file sets none.
+   */
+  argumentHint: z.string().nullable(),
   /** The defining file (`SKILL.md`, `<name>.md`). */
   path: z.string(),
   scope: ScopeSchema,
@@ -119,7 +124,7 @@ export const ArtifactSchema = z.object({
   /** The markdown body; only with `readContents`. */
   body: z.string().nullable(),
 })
-/** A skill, command or agent: its name, description, path and origin. */
+/** A skill, command or agent: its name, description, argument hint, path and origin. */
 export type Artifact = z.infer<typeof ArtifactSchema>
 
 /** Whether the harness will run a hook. Only Codex records approval. */

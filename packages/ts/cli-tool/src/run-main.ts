@@ -7,7 +7,8 @@
  * once truncates buffered stdout. A piped run can lose its last lines, and the
  * bug only shows up under a pipe.
  *
- * A thrown error becomes one line on stderr and {@link EXIT.error}. A thrown
+ * A thrown error becomes one line on stderr, from {@link renderError} (so
+ * with terminal controls removed), and {@link EXIT.error}. A thrown
  * failure (a `FailureError`, which includes `CommandFailed`) is rendered by
  * {@link renderFailure} and exits with the code {@link exitCodeFor} gives its
  * kind. So a missing tool, a signed-out `gh` and a network failure read the
@@ -20,7 +21,7 @@
  */
 
 import { EXIT } from './exit.ts'
-import { exitCodeFor, failureOf, renderFailure } from './failure.ts'
+import { exitCodeFor, failureOf, renderError, renderFailure } from './failure.ts'
 import { processContext, type CliContext } from './io.ts'
 
 /**
@@ -34,6 +35,11 @@ export interface RunMainOptions {
   context?: CliContext
   /** Defaults to `process.argv.slice(2)`. */
   argv?: readonly string[]
+  /**
+   * When set, a first argument of `--version` prints `<name> <version>`, as
+   * `defineApp` does, and exits 0 without calling `main`. Pass the `VERSION` that `cli-tool-stamp-version` writes.
+   */
+  version?: string
 }
 
 /**
@@ -46,6 +52,11 @@ export type MainFn = (argv: readonly string[], ctx: CliContext) => number | Prom
 export async function runMain(main: MainFn, options: RunMainOptions): Promise<void> {
   const ctx = options.context ?? processContext()
   const argv = options.argv ?? process.argv.slice(2)
+  if (options.version !== undefined && argv[0] === '--version') {
+    ctx.io.stdout(`${options.name} ${options.version}\n`)
+    process.exitCode = EXIT.ok
+    return
+  }
   try {
     process.exitCode = await main(argv, ctx)
   } catch (err) {
@@ -56,7 +67,7 @@ export async function runMain(main: MainFn, options: RunMainOptions): Promise<vo
       return
     }
     const message = err instanceof Error ? err.message : String(err)
-    ctx.io.stderr(`${options.name}: ${message}\n`)
+    ctx.io.stderr(renderError(message, options.name))
     process.exitCode = EXIT.error
   }
 }

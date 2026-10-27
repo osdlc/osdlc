@@ -1,0 +1,1 @@
+way: warning: vscode-tasks: cannot run here: the task uses an editor variable (1 task)

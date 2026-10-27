@@ -1,5 +1,5 @@
 import { homedir, tmpdir, userInfo } from 'node:os'
-import { join } from 'node:path'
+import { join, posix, win32 } from 'node:path'
 
 import { TieredDirsError } from './errors.ts'
 
@@ -216,8 +216,8 @@ export function rootedBaseDirs(root: string): BaseDirs {
 /**
  * How {@link systemBaseDirs} and `TieredDirs.fromEnv` resolve. Every input is
  * optional and injectable. The Rust crate's `ResolveOptions` has `convention`
- * and `testRoot`. `platform`, `env`, `home` and `overrides` exist only in this
- * package.
+ * and `testRoot`. `platform`, `env`, `home`, `overrides` and
+ * `conventionFromEnv` exist only in this package.
  *
  * Stable in 0.x.
  */
@@ -226,9 +226,16 @@ export interface ResolveOptions {
   platform?: string
   /**
    * The per-OS table to use. Defaults to `native`. {@link EnvVars.convention}
-   * overrides it when set.
+   * overrides it when set, unless `conventionFromEnv` is `false`.
    */
   convention?: Convention
+  /**
+   * Whether {@link EnvVars.convention} may override `convention`. Defaults to
+   * `true`. Pass `false` for a file another program also reads at a fixed
+   * path, such as a shell launcher that reads `~/.config/<tool>`: the
+   * variable would move the file away from where that program looks.
+   */
+  conventionFromEnv?: boolean
   /**
    * Defaults to `process.env`. When given, it is the only environment read.
    * The host's real home directory is not used. The override variables are
@@ -262,8 +269,9 @@ export interface ResolveOptions {
  * 2. The root's own variable, `vars.dirs[key]` ({@link EnvVars.dirs}).
  * 3. `vars.root` ({@link EnvVars.root}), with the {@link rootedBaseDirs} layout.
  * 4. The per-OS table below, for the convention: {@link EnvVars.convention}
- *    when set, else `opts.convention`, else `native`. The variable is
- *    trimmed, then must be exactly `native` or `xdg`; anything else throws.
+ *    when set (and `opts.conventionFromEnv` is not `false`), else
+ *    `opts.convention`, else `native`. The variable is trimmed, then must be
+ *    exactly `native` or `xdg`; anything else throws.
  *
  * Runtime follows durable: when the runtime variable is unset but durable is
  * moved by step 2 or 3, runtime is `<durable>/run`, never the OS runtime
@@ -355,7 +363,8 @@ export function systemBaseDirs(vars: EnvVars, opts: ResolveOptions = {}): BaseDi
   let cachedHome: string | undefined
   const home = (): string => (cachedHome ??= resolveHome(opts, platform, env))
 
-  const convention = envConvention(vars, env) ?? opts.convention ?? 'native'
+  const fromVar = opts.conventionFromEnv === false ? undefined : envConvention(vars, env)
+  const convention = fromVar ?? opts.convention ?? 'native'
   const fromEnv = envOverrides(vars, env, platform)
   const table = platformTable(platform, convention, env, home)
   const roots: Mutable<BaseDirs> = {
@@ -390,9 +399,13 @@ function guardedEnv(
     return { ...env, [vars.root]: root }
   }
   if (env[vars.requireOverride]) {
-    // Runtime follows a moved durable, so it needs no variable of its own.
-    const required = BASE_DIR_KEYS.filter((key) => key !== 'runtime' && !overrides[key])
-    const missing = required.find((key) => !env[vars.dirs[key]])
+    // Runtime follows a durable the environment moves, so then it needs no
+    // variable of its own. A durable moved only by `overrides` is not followed
+    // (`envOverrides` never sees it), so runtime is then required like the rest.
+    const required = BASE_DIR_KEYS.filter((key) => !overrides[key])
+    const missing = required.find(
+      (key) => !env[vars.dirs[key]] && !(key === 'runtime' && env[vars.dirs.durable]),
+    )
     if (missing !== undefined) {
       throw new TieredDirsError(
         'OVERRIDE_REQUIRED',
@@ -550,6 +563,51 @@ export function xdgBaseDirs(home: string, env: Record<string, string | undefined
   }
 }
 
+/**
+ * The user's home directory, always absolute. It is the one {@link systemBaseDirs}
+ * builds its per-OS table on: `HOME` (`USERPROFILE` on Windows) when it is
+ * absolute, else the OS account's home. A relative value counts as unset,
+ * because every path built on it would land in the current directory, which
+ * can be a repository.
+ *
+ * `opts.platform` defaults to `process.platform` and `opts.env` to
+ * `process.env`. An injected `env` is the only one read: the host's real home
+ * is then never used.
+ *
+ * Throws {@link TieredDirsError} with code `MISSING_BASE_DIR` when no absolute
+ * home can be found. Headless CI and sandboxes do not always have one.
+ *
+ * Stable in 0.x.
+ */
+export function homeDir(opts: Pick<ResolveOptions, 'platform' | 'env'> = {}): string {
+  return resolveHome(opts, opts.platform ?? process.platform, opts.env ?? process.env)
+}
+
+/**
+ * Expand a leading `~` in `path` against `home`: `~` alone is `home`, and
+ * `~/rest` is `rest` joined onto `home` by `platform`'s path rules. On Windows
+ * (`platform` `win32`) `~\rest` expands too. Any other path, `~user/rest`
+ * included, is returned unchanged. `platform` defaults to `process.platform`.
+ *
+ * A shell expands `~` before it runs a program, but direnv, `.env` loaders and
+ * CI YAML pass a literal `~` through, and `<cwd>/~/x` would be a silent wrong
+ * answer. The resolvers in this package do not call it: a relative `XDG_*`
+ * value, `~` included, is ignored there, as the XDG spec says.
+ *
+ * Stable in 0.x.
+ */
+export function expandTilde(
+  path: string,
+  home: string,
+  platform: string = process.platform,
+): string {
+  if (path === '~') return home
+  if (path.startsWith('~/') || (platform === 'win32' && path.startsWith('~\\'))) {
+    return (platform === 'win32' ? win32 : posix).join(home, path.slice(2))
+  }
+  return path
+}
+
 type Table = Record<keyof BaseDirs, () => string>
 
 /**
@@ -637,30 +695,34 @@ function resolveHome(
   }
 
   // Rust's `dirs` ignores HOME on Windows, and under Cygwin or MSYS it can be
-  // a POSIX-style path, so Windows reads USERPROFILE only.
+  // a POSIX-style path, so Windows reads USERPROFILE only. A relative value
+  // counts as unset: every path built on it would land in the cwd.
   const fromEnv = platform === 'win32' ? env['USERPROFILE'] : env['HOME']
-  if (fromEnv) return fromEnv
+  if (fromEnv && isRootedHome(fromEnv, platform)) return fromEnv
 
   // With an injected environment, do not fall back to the host's real home.
   // That would make a test's paths depend on the machine running it.
   if (opts.env !== undefined) {
     throw new TieredDirsError(
       'MISSING_BASE_DIR',
-      'no home directory: the supplied environment sets neither HOME nor USERPROFILE',
+      'no home directory: the supplied environment sets neither HOME nor USERPROFILE to an absolute path',
     )
   }
 
-  let host = ''
-  try {
-    host = homedir()
-  } catch {
-    host = ''
+  // `os.homedir()` returns HOME as given, so the account's home comes first.
+  for (const read of [() => userInfo().homedir, homedir]) {
+    let host = ''
+    try {
+      host = read()
+    } catch {
+      host = ''
+    }
+    if (host && isRootedHome(host, platform)) return host
   }
-  if (host) return host
 
   throw new TieredDirsError(
     'MISSING_BASE_DIR',
-    'no home directory: HOME is unset and the OS reports none — pass `home` or `overrides`',
+    'no home directory: HOME is unset or relative and the OS reports none — pass `home` or `overrides`',
   )
 }
 
@@ -676,6 +738,14 @@ function absoluteEnv(
   const value = env[key]
   if (!value) return undefined
   return isAbsolutePath(value, platform) ? value : undefined
+}
+
+/**
+ * A home that does not depend on the cwd. Looser than {@link isAbsolutePath}
+ * on Windows, where a home such as `/h` or `\h` is on the current drive.
+ */
+function isRootedHome(value: string, platform: string): boolean {
+  return platform === 'win32' ? win32.isAbsolute(value) : value.startsWith('/')
 }
 
 /** `path.isAbsolute` for a named platform rather than the host's. */

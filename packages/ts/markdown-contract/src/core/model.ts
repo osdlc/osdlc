@@ -4,8 +4,10 @@
  * never read it. Their findings come from the parse tree, the Zod schemas and the grammar.
  *
  * At each level the model reads `def.body` to tell declared sections from undeclared ones (those
- * a `gap()` or `allowUnknown` allows). A declared section that is present gets two keys on the
- * `SectionGroup`: its exact heading text and its lowerCamelCase form. `.section(name)` also
+ * a `gap()` or `allowUnknown` allows), through the slot resolver the structure and content
+ * planes use (`slots.ts`), so all three bind the same section to the same slot. A declared
+ * section that fills its slot gets two keys on the `SectionGroup`: its exact heading text and its
+ * lowerCamelCase form. `.section(name)` also
  * finds it. Undeclared sections go in `unknown`, in document order (`[]` when none). A declared
  * section that is absent has no key, so it reads as `undefined`.
  *
@@ -23,6 +25,7 @@
  */
 import { toCamelKey } from './camel.js'
 import { createParsedValues, type ParsedValues } from './parsed-values.js'
+import { bindSlots, isLeafSpec, pickBlock, type Slot, slotsOf } from './slots.js'
 import type {
   BlockNode,
   BlockView,
@@ -30,21 +33,15 @@ import type {
   ContractDef,
   Doc,
   DocTree,
-  GapSpec,
   InlineSpan,
-  LeafSpec,
   ListItem,
   ListView,
-  OneOfSpec,
-  OptionalSpec,
   ParagraphView,
   SectionGroup,
   SectionNode,
   SectionOpts,
   SectionSeq,
-  SectionSpec,
   SectionView,
-  Spec,
   TableView,
   ValidateCtx,
 } from './types.js'
@@ -53,6 +50,13 @@ import type {
 type TableBlock = Extract<BlockNode, { kind: 'table' }>
 
 // ── BlockNode to BlockView ──────────
+
+/**
+ * The table block and body row index of each row object a `TableView` hands out, so
+ * `Doc.inlineSpans` finds a row by identity. Matching by content would send a row whose cells a
+ * schema transformed nowhere, and a repeated row to the first equal one.
+ */
+const rowOrigin = new WeakMap<object, { node: TableBlock; ri: number }>()
 
 /**
  * A `TableView` for a table block. Each row is keyed by column name. A cell reads back as the
@@ -68,6 +72,7 @@ function tableView(node: Extract<BlockNode, { kind: 'table' }>, values: ParsedVa
       const typed = values.cell(node, r, col)
       row[col] = typed !== undefined ? typed : (cells[i] ?? '')
     })
+    rowOrigin.set(row, { node, ri: r })
     return row
   })
   const view: TableView = {
@@ -149,48 +154,6 @@ function blockView(node: BlockNode, values: ParsedValues): BlockView {
   }
 }
 
-// ── The declared names of a level ──────────────────────────
-
-/** Unwraps `optional(spec)` to the spec inside it. */
-function unwrapInner(spec: Spec): SectionSpec | OneOfSpec | GapSpec {
-  return spec.kind === 'optional' ? unwrapInner((spec as OptionalSpec).spec) : spec
-}
-
-/**
- * Every spelling of every `section` and `oneOf` slot in a level's grammar. Used to sort a
- * level's sections into declared ones (which get keys) and undeclared ones (in `unknown`).
- */
-function declaredNames(seq: SectionSeq | undefined): Set<string> {
-  const names = new Set<string>()
-  if (!seq) return names
-  for (const spec of seq.specs) {
-    const inner = unwrapInner(spec)
-    if (inner.kind === 'section') for (const n of (inner as SectionSpec).names) names.add(n)
-    else if (inner.kind === 'oneOf') for (const n of (inner as OneOfSpec).names) names.add(n)
-  }
-  return names
-}
-
-/** The declared `SectionOpts` for a heading at this level. */
-function optsFor(seq: SectionSeq | undefined, name: string): SectionOpts | undefined {
-  if (!seq) return undefined
-  for (const spec of seq.specs) {
-    const inner = unwrapInner(spec)
-    if (inner.kind === 'section' && (inner as SectionSpec).names.includes(name)) {
-      return (inner as SectionSpec).opts
-    }
-    if (inner.kind === 'oneOf' && (inner as OneOfSpec).names.includes(name)) {
-      return (inner as OneOfSpec).opts
-    }
-  }
-  return undefined
-}
-
-/** True for a single `LeafSpec`, false for a `Record<string, LeafSpec>`. */
-function isLeafSpec(c: LeafSpec | Record<string, LeafSpec>): c is LeafSpec {
-  return typeof (c as LeafSpec).kind === 'string'
-}
-
 // ── SectionNode → SectionView ─────────────────────────────────────────────────────
 
 /** A section's own prose followed by the prose of every subsection below it. */
@@ -267,13 +230,14 @@ function sectionView(
   if (tables.length === 1 && tables[0] !== undefined) view.table = tables[0]
 
   // Each table in a `content` record becomes a field on the view, such as
-  // `doc.body.decision.components`. Its value is the `TableView` of the block with that anchor.
+  // `doc.body.decision.components`. Its value is the `TableView` of the block whose anchor is the
+  // record key. The structure and content planes pick each named leaf's block the same way
+  // (`pickBlock` in `slots.ts`), so the model exposes exactly the block they checked.
   if (opts?.content !== undefined && !isLeafSpec(opts.content)) {
     for (const [fieldName, leaf] of Object.entries(opts.content)) {
       if (leaf.kind !== 'table') continue
-      const anchor = (leaf.config as { anchor?: string } | undefined)?.anchor
-      const block = anchor ? node.blocks.find((b) => b.anchor === anchor) : undefined
-      if (block && block.kind === 'table' && !(fieldName in view)) {
+      const block = pickBlock(node, fieldName)
+      if (block && block.kind === 'table' && !Object.hasOwn(view, fieldName)) {
         ;(view as unknown as Record<string, TableView>)[fieldName] = tableView(block, values)
       }
     }
@@ -285,8 +249,9 @@ function sectionView(
 
 /**
  * Builds the `SectionGroup` for a list of sibling sections, sorted by the level's grammar `seq`:
- *   - A section whose heading matches a declared slot gets two keys, its exact heading text and
- *     its lowerCamelCase form, both for the same value. These are the only enumerable keys.
+ *   - A section that fills a declared slot gets two keys, its exact heading text and its
+ *     lowerCamelCase form, both for the same value. These are the only enumerable keys. A
+ *     duplicate of a filled slot (`structure/duplicate-section`) gets none.
  *   - A section that matches no slot goes in `unknown`, in document order. `.section(name)` also
  *     finds it. It gets no key.
  *   - `unknown` and `section` are not enumerable, so a group with no declared sections present
@@ -299,30 +264,37 @@ function sectionGroup(
   seq: SectionSeq | undefined,
   values: ParsedValues,
 ): SectionGroup {
-  const declared = declaredNames(seq)
+  const slots = slotsOf(seq?.specs ?? [])
 
-  // Build each section's view and sort it into declared or unknown, in document order. A
-  // declared key's value is the `SectionView`, except when the section's `content` is one
-  // `table(...)` leaf. Then the value is that table's `TableView`. `.section(name)` always
-  // returns the `SectionView`.
+  // Build each section's view and sort it into declared or unknown, in document order, with
+  // the slot resolver the structure and content planes use (`bindSlots`). A declared key's
+  // value is the `SectionView`, except when the section's `content` is one `table(...)` leaf.
+  // Then the value is that table's `TableView`. `.section(name)` always returns the
+  // `SectionView`.
   //
-  // A repeatable slot's value is an array of every occurrence's value, in document order. The
-  // first occurrence sets the key's position. A slot that is not repeatable has a single value.
-  const declaredKeyed: { name: string; value: SectionElement | SectionElement[] }[] = []
-  const repeatAt = new Map<string, number>() // exact heading name → index into declaredKeyed
+  // Only a section that fills its slot gets a key: every occurrence of a repeatable slot, else
+  // the first section of the slot by any spelling. A repeatable slot's value is an array of
+  // every occurrence's value, in document order. The first occurrence sets the key's position.
+  const declaredKeyed: DeclaredEntry[] = []
+  // A repeatable slot's index → index into declaredKeyed, so every spelling of the slot joins
+  // one array, as the structure plane counts them.
+  const repeatAt = new Map<number, number>()
   const unknown: SectionView[] = []
   // Exact heading → SectionView, for every section (declared and unknown), for `.section(name)`.
   const byExact = new Map<string, SectionView>()
-  for (const node of nodes) {
-    const opts = optsFor(seq, node.name)
+  for (const { node, slotIdx, fills } of bindSlots(nodes, slots)) {
+    const slot = slotIdx === null ? undefined : slots[slotIdx]
+    const opts = slot?.opts
     const view = sectionView(node, opts, values)
     if (!byExact.has(view.name)) byExact.set(view.name, view) // first occurrence wins
-    if (!declared.has(node.name)) {
+    if (slotIdx === null || !slot) {
       unknown.push(view)
       continue
     }
-    const element: SectionElement = promotedTable(view, opts) ?? view
-    bindDeclaredElement(declaredKeyed, repeatAt, node.name, element, opts?.repeatable === true)
+    // A duplicate of a filled slot (structure/duplicate-section) gets no key.
+    if (!fills) continue
+    const element: SectionElement = promotedTable(node, view, opts) ?? view
+    bindDeclaredElement(declaredKeyed, repeatAt, slotIdx, slot, node.name, element)
   }
 
   // A plain object, so its only enumerable keys are the section keys added below.
@@ -345,13 +317,17 @@ function sectionGroup(
   // The enumerable keys: exact heading text and lowerCamelCase form, for declared sections that
   // are present. The first one wins. A camelCase key never replaces `unknown`, `section`, an
   // exact-heading key or an earlier camelCase key. The structure plane reports collisions.
-  for (const { name, value } of declaredKeyed) {
+  for (const { names, value } of declaredKeyed) {
     // A repeatable slot's value is `(SectionView | TableView)[]`, which the index signature does
     // not list, so cast to the signature's value type.
     const bound = value as SectionGroup[string]
-    if (!(name in group)) group[name] = bound
-    const key = toCamelKey(name)
-    if (key !== '' && key !== name && !(key in group)) group[key] = bound
+    for (const name of names) {
+      // `Object.hasOwn`, not `in`: `in` sees `Object.prototype`, so a heading such as
+      // `Constructor` (key `constructor`) or `To String` would never be bound.
+      if (!Object.hasOwn(group, name)) group[name] = bound
+      const key = toCamelKey(name)
+      if (key !== '' && key !== name && !Object.hasOwn(group, key)) group[key] = bound
+    }
   }
 
   return group
@@ -360,39 +336,55 @@ function sectionGroup(
 /** The value of a declared section's key: its `SectionView`, or its table's `TableView`. */
 type SectionElement = SectionView | TableView
 
+/** A declared slot's value, and the headings (in first-seen order) it is bound under. */
+interface DeclaredEntry {
+  names: string[]
+  value: SectionElement | SectionElement[]
+}
+
 /**
- * Adds `element` under `name`. A repeatable slot collects its occurrences in one array, placed
- * where the first occurrence is. Any other slot gets the single value.
+ * Adds `element`, seen under heading `name`. A repeatable slot collects its occurrences in one
+ * array, placed where the first occurrence is, and bound under each spelling seen. Any other slot
+ * gets the single value.
  */
 function bindDeclaredElement(
-  declaredKeyed: { name: string; value: SectionElement | SectionElement[] }[],
-  repeatAt: Map<string, number>,
+  declaredKeyed: DeclaredEntry[],
+  repeatAt: Map<number, number>,
+  slotIdx: number,
+  slot: Slot,
   name: string,
   element: SectionElement,
-  repeatable: boolean,
 ): void {
-  if (!repeatable) {
-    declaredKeyed.push({ name, value: element })
+  if (!slot.repeatable) {
+    declaredKeyed.push({ names: [name], value: element })
     return
   }
-  const at = repeatAt.get(name)
+  const at = repeatAt.get(slotIdx)
   if (at === undefined) {
-    repeatAt.set(name, declaredKeyed.length)
-    declaredKeyed.push({ name, value: [element] })
+    repeatAt.set(slotIdx, declaredKeyed.length)
+    declaredKeyed.push({ names: [name], value: [element] })
   } else {
-    ;(declaredKeyed[at]!.value as SectionElement[]).push(element)
+    const entry = declaredKeyed[at]!
+    ;(entry.value as SectionElement[]).push(element)
+    if (!entry.names.includes(name)) entry.names.push(name)
   }
 }
 
 /**
  * The `TableView` a section's key returns instead of the `SectionView`, or `undefined`. This
- * applies when the section's `content` is one `table(...)` leaf and the section holds exactly
- * one table.
+ * applies when the section's `content` is one `table(...)` leaf and the block that leaf checks
+ * (`pickBlock`: the section's first block) is a table, so the key holds the table the content
+ * plane validated, whatever other tables follow it.
  */
-function promotedTable(view: SectionView, opts: SectionOpts | undefined): TableView | undefined {
+function promotedTable(
+  node: SectionNode,
+  view: SectionView,
+  opts: SectionOpts | undefined,
+): TableView | undefined {
   if (!opts || opts.content === undefined) return undefined
   if (!isLeafSpec(opts.content) || opts.content.kind !== 'table') return undefined
-  return view.table
+  // The first block is a table, so it is the first of `view.tables`.
+  return pickBlock(node, undefined)?.kind === 'table' ? view.tables[0] : undefined
 }
 
 // ── Entry point ─────────────────────────────────────────────────────────────────
@@ -425,9 +417,9 @@ export function buildModel<F, B>(
       return findAnchor([tree.root], id, values)
     },
     inlineSpans(row: Record<string, string>, col: string): InlineSpan[] {
-      // Find the table that holds `row`, by comparing content, since the doc has no table view
-      // to search with `indexOf`. Then return that cell's inline code spans.
-      const hit = tableForRow([tree.root], row)
+      // Find the table that holds `row`: by identity for a row a `TableView` handed out, else
+      // by comparing content. Then return that cell's inline code spans.
+      const hit = rowOrigin.get(row) ?? tableForRow([tree.root], row)
       if (!hit) return []
       const ci = hit.node.columns.indexOf(col)
       if (ci < 0) return []
@@ -449,9 +441,9 @@ function findAnchor(nodes: SectionNode[], id: string, values: ParsedValues): Blo
 
 /**
  * Finds the table block, and the body row index, that hold a row record. Searches depth first.
- * `Doc.inlineSpans` gets a plain `Record<string, string>` (such as `files.rows[0]`) with no link
- * to its table, so this builds each row from the raw cell strings and compares. The first match
- * wins. A row whose cells a schema transformed does not match.
+ * `Doc.inlineSpans` uses it for a record no `TableView` handed out (such as a copy of a row), so
+ * this builds each row from the raw cell strings and compares. The first match wins. A row whose
+ * cells a schema transformed does not match.
  */
 function tableForRow(
   nodes: SectionNode[],

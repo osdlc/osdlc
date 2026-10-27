@@ -13,18 +13,22 @@
  * No step runs a repository's own tools unless `allowExec` is set.
  */
 
-import { readFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
+import { resolve } from 'node:path'
 
-import { spawnRunnerAsync } from '@osdlc/command-seam'
-
-import { createContext, createContextState } from './context.ts'
+import {
+  boundRunners,
+  createContext,
+  createContextState,
+  DEFAULT_PROBE_TIMEOUT_MS,
+  GIT_TIMEOUT_MS,
+} from './context.ts'
 import type { DetectOptions, ProviderContext } from './contract.ts'
-import { createLister, resolveDiscovery } from './discovery.ts'
+import { createLister, resolveDiscovery, type WalkLimit } from './discovery.ts'
 import type { ManifestFacts } from './manifests.ts'
 import type { Evidence } from './aspect.ts'
-import { evidence } from './model.ts'
+import { evidence, type Diagnostic } from './model.ts'
 import { compilePattern, dirOf, joinRel } from './pattern.ts'
+import { readBounded } from './read.ts'
 import { markersOf, rolesOf, type Registry } from './registry.ts'
 import type {
   Detected,
@@ -32,9 +36,10 @@ import type {
   MalformedManifest,
   Package,
   ProjectProfile,
+  ToolDef,
   ToolFact,
 } from './tool.ts'
-import { which as whichOnPath } from './which.ts'
+import { defaultRunner, which as whichOnPath } from './which.ts'
 
 interface Hit {
   path: string
@@ -57,30 +62,37 @@ export async function detectProject(
 ): Promise<ProjectProfile> {
   const absRoot = resolve(root)
   const allowExec = opts.allowExec ?? false
-  const makeRunner = opts.makeRunner ?? ((binary: string) => spawnRunnerAsync(binary))
+  const makeRunner = opts.makeRunner ?? defaultRunner
   const which = opts.which ?? whichOnPath
   const signal = opts.signal ?? new AbortController().signal
   const excludePaths = opts.excludePaths ?? []
   const useBuiltinExcludes = opts.useBuiltinExcludes ?? true
 
-  const discovery = await resolveDiscovery(absRoot, opts.discovery ?? 'auto', makeRunner('git'))
-  const lister = createLister(
-    absRoot,
-    discovery,
-    makeRunner('git'),
-    excludePaths,
-    useBuiltinExcludes,
-  )
+  const git = boundRunners(makeRunner, signal, GIT_TIMEOUT_MS)
+  const discovery = await resolveDiscovery(absRoot, opts.discovery ?? 'auto', git('git'))
+  const lister = createLister(absRoot, discovery, git('git'), excludePaths, useBuiltinExcludes)
   const state = createContextState(lister)
-  const ctx = createContext({ absRoot, allowExec, makeRunner, which, signal, discovery, state })
-  const all = await lister.all()
+  const ctx = createContext({
+    absRoot,
+    allowExec,
+    makeRunner: boundRunners(makeRunner, signal, DEFAULT_PROBE_TIMEOUT_MS),
+    which,
+    signal,
+    discovery,
+    state,
+  })
+  const { files: all, index } = await lister.index()
   const listed = new Set(all)
+  const diagnostics: Diagnostic[] = []
+  const limit = lister.limit()
+  if (limit !== undefined) diagnostics.push(walkLimitDiagnostic(limit))
 
   const hits = async (pattern: string): Promise<Hit[]> => {
     const compiled = compilePattern(pattern)
     const out: Hit[] = []
     const seen = new Set<string>()
-    for (const path of all) {
+    for (const i of index.candidates(compiled)) {
+      const path = all[i]!
       const base = compiled.base(path)
       if (base === null) continue
       // A directory pattern is one piece of evidence, not one per file under it.
@@ -159,9 +171,9 @@ export async function detectProject(
     b.ecosystems.add(hit.eco.id)
     if (def.tool !== undefined) addEvidence(b, def.tool, evidence('manifest', hit.path, def.files))
     if (def.parse === undefined || def.slot === undefined) continue
-    const read = await readManifestText(absRoot, hit.path)
-    if ('error' in read) {
-      malformed.push({ path: hit.path, error: `unreadable: ${read.error}` })
+    const read = await readBounded(absRoot, hit.path)
+    if ('skipped' in read) {
+      malformed.push({ path: hit.path, error: `unreadable: ${read.skipped}` })
       continue
     }
     try {
@@ -183,7 +195,13 @@ export async function detectProject(
     }
   }
 
-  await describeTools(registry, ctx, builders, all, nearest, addEvidence)
+  // A describe function gets its runner's probe timeout, the same one collect
+  // uses (moon's `query projects` can be slow on a large workspace).
+  const describeCtx = (tool: ToolDef): ProviderContext => {
+    const ms = tool.roles.runner?.probe?.timeoutMs
+    return ms === undefined ? ctx : { ...ctx, runner: boundRunners(makeRunner, signal, ms) }
+  }
+  await describeTools(registry, describeCtx, builders, all, nearest, addEvidence)
 
   const packages = snapshot(registry, builders, all)
   const union = (pick: (p: Package) => string[], order: readonly string[]): string[] => {
@@ -211,13 +229,14 @@ export async function detectProject(
       registry.tools.map((t) => t.id),
     ),
     malformed,
+    diagnostics,
   }
   return profile
 }
 
 async function describeTools(
   registry: Registry,
-  ctx: ProviderContext,
+  ctxFor: (tool: ToolDef) => ProviderContext,
   builders: Map<string, Builder>,
   all: readonly string[],
   nearest: (dir: string) => Builder,
@@ -228,7 +247,7 @@ async function describeTools(
     if (tool.describe === undefined) continue
     const packages = afterDetect.filter((p) => p.tools.some((t) => t.tool === tool.id))
     if (packages.length === 0) continue
-    for (const fact of await tool.describe(ctx, packages)) {
+    for (const fact of await tool.describe(ctxFor(tool), packages)) {
       const b = nearest(fact.dir)
       addEvidence(b, tool.id, fact.evidence)
       b.tools.get(tool.id)?.facts.push(fact)
@@ -303,15 +322,14 @@ function dirName(compiled: { path: string; anchored: boolean }): string {
   return compiled.anchored ? compiled.path : compiled.path.split('/').pop()!
 }
 
-/** The manifest's text, keeping the OS error's own message on failure. */
-async function readManifestText(
-  root: string,
-  relPath: string,
-): Promise<{ text: string } | { error: string }> {
-  try {
-    return { text: await readFile(join(root, relPath), 'utf-8') }
-  } catch (err) {
-    return { error: message(err) }
+function walkLimitDiagnostic(limit: WalkLimit): Diagnostic {
+  return {
+    severity: 'warning',
+    message:
+      limit.cap === 'files'
+        ? `the directory walk stopped after ${limit.value} files, so files past that were not seen; ` +
+          'use git discovery or exclude large trees'
+        : `the directory walk did not enter directories deeper than ${limit.value} levels`,
   }
 }
 

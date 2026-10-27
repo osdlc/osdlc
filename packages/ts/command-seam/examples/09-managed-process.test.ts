@@ -202,27 +202,32 @@ test('a real server: ready, stopped, missing, crashed', async () => {
   await expect(startDevServer(scratch, isReady, { pollMs: 20 })).rejects.toThrow('exit 7')
 }, 15_000)
 
-test('a host installs signal forwarding once; its live groups are listed until they stop', async () => {
-  const opts: GroupSignalForwardingOptions = { graceMs: 200 }
-  const uninstall = installGroupSignalForwarding(opts)
-  try {
-    const server = managedProcessRunner('node').run(['-e', 'setInterval(() => {}, 1000)'], {
-      cwd: scratch,
-      processGroup: true,
-    })
-    expect(liveProcessGroups()).toContain(server.pid)
-    // No signal yet, so a loop over commands would carry on, and the host
-    // exits with its own code (`process.exitCode = forwardedExitCode() ?? code`).
-    expect(forwardedSignal()).toBeUndefined()
-    expect(forwardedExitCode()).toBeUndefined()
-    await stopProcess(server, { graceMs: 2_000 })
-    // A group is listed until it is empty, which may take a later poll.
-    const end = performance.now() + 3_000
-    while (liveProcessGroups().includes(server.pid) && performance.now() < end) {
-      await new Promise((r) => setTimeout(r, 25))
+// POSIX only: signal forwarding and process groups are POSIX only.
+test.skipIf(process.platform === 'win32')(
+  'a host installs signal forwarding once; its live groups are listed until they stop',
+  async () => {
+    const opts: GroupSignalForwardingOptions = { graceMs: 200 }
+    const uninstall = installGroupSignalForwarding(opts)
+    try {
+      const server = managedProcessRunner('node').run(['-e', 'setInterval(() => {}, 1000)'], {
+        cwd: scratch,
+        processGroup: true,
+      })
+      expect(liveProcessGroups()).toContain(server.pid)
+      // No signal yet, so a loop over commands would carry on, and the host
+      // exits with its own code (`process.exitCode = forwardedExitCode() ?? code`).
+      expect(forwardedSignal()).toBeUndefined()
+      expect(forwardedExitCode()).toBeUndefined()
+      await stopProcess(server, { graceMs: 2_000 })
+      // A group is listed until it is empty, which may take a later poll.
+      const end = performance.now() + 3_000
+      while (liveProcessGroups().includes(server.pid) && performance.now() < end) {
+        await new Promise((r) => setTimeout(r, 25))
+      }
+      expect(liveProcessGroups()).not.toContain(server.pid)
+    } finally {
+      uninstall()
     }
-    expect(liveProcessGroups()).not.toContain(server.pid)
-  } finally {
-    uninstall()
-  }
-}, 15_000)
+  },
+  15_000,
+)

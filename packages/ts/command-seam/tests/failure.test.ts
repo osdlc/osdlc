@@ -3,7 +3,7 @@
  * on the sync, async, stream and managed runners, and from fake results.
  */
 
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -76,6 +76,50 @@ describe('classifyFailure on real runs', () => {
     }
   })
 
+  // POSIX only: a `"` is not allowed in a Windows path.
+  test.skipIf(process.platform === 'win32')(
+    'a bad-cwd message keeps a quote or backslash in the path whole',
+    () => {
+      const cwd = join(dir, 'missing', 'a "quoted" \\ dir')
+      const f = classifyFailure(spawnRunner('sh').run(sh('true'), { cwd }), { binary: 'sh' })
+      expect(f?.kind).toBe('bad-cwd')
+      expect(f?.message).toBe(
+        `The working directory ${JSON.stringify(cwd)} is missing or is not a directory.`,
+      )
+    },
+  )
+
+  // POSIX only, and not as root, which may enter any folder.
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'a cwd without search permission is bad-cwd, not not-executable, on every runner',
+    async () => {
+      const cwd = join(dir, 'no-search')
+      mkdirSync(cwd)
+      chmodSync(cwd, 0o600)
+      try {
+        const ctx = { binary: 'sh' }
+        const sync = classifyFailure(spawnRunner('sh').run(sh('true'), { cwd }), ctx)
+        const asyn = classifyFailure(await spawnRunnerAsync('sh').run(sh('true'), { cwd }), ctx)
+        const stream = classifyFailure(
+          streamRunner('sh').run(sh('true'), { cwd, quiet: true }),
+          ctx,
+        )
+        const managed = classifyFailure(
+          await managedProcessRunner('sh').run(sh('true'), { cwd }).exited,
+          ctx,
+        )
+        for (const f of [sync, asyn, stream, managed]) {
+          expect(f?.kind).toBe('bad-cwd')
+          expect(f?.message).toBe(
+            `The working directory ${JSON.stringify(cwd)} cannot be entered: permission denied.`,
+          )
+        }
+      } finally {
+        chmodSync(cwd, 0o700)
+      }
+    },
+  )
+
   test('a cwd that is a file is bad-cwd too', () => {
     const file = join(dir, 'file.txt')
     writeFileSync(file, 'x')
@@ -125,16 +169,20 @@ describe('classifyFailure on real runs', () => {
     }
   })
 
-  test('a signal from elsewhere is signal, and names it', () => {
-    const r = spawnRunner('sh').run(sh('kill -TERM $$'), { cwd: CWD })
-    const f = classifyFailure(r, { binary: 'sh' })
-    expect(f).toMatchObject({
-      kind: 'signal',
-      message: '`sh` was ended by SIGTERM.',
-      exitCode: null,
-    })
-    expect(f?.signal).toBe('SIGTERM')
-  })
+  // POSIX only: Windows has no signals; `sh` reports `kill -TERM $$` as an exit code.
+  test.skipIf(process.platform === 'win32')(
+    'a signal from elsewhere is signal, and names it',
+    () => {
+      const r = spawnRunner('sh').run(sh('kill -TERM $$'), { cwd: CWD })
+      const f = classifyFailure(r, { binary: 'sh' })
+      expect(f).toMatchObject({
+        kind: 'signal',
+        message: '`sh` was ended by SIGTERM.',
+        exitCode: null,
+      })
+      expect(f?.signal).toBe('SIGTERM')
+    },
+  )
 
   test('kill() on a managed process is aborted', async () => {
     const handle = managedProcessRunner('sh').run(sh('sleep 5'), { cwd: CWD })

@@ -155,7 +155,10 @@ is under `durable`, not `cache`, for the same reason: the OS may purge cache
 while the process a pidfile describes is still alive. Under XDG, logs and
 state share one directory, so keep their file names apart. A relative `XDG_*` value is
 ignored, as the XDG spec says, and `~` is not expanded. On Windows, `xdg`
-means `native`.
+means `native`. `~` is `HOME` (`USERPROFILE` on Windows). A relative value
+counts as unset, so a path built on it never lands in the working directory:
+the OS account's home is used, or, with an injected `env`,
+`MISSING_BASE_DIR` is thrown.
 
 ## Choosing a convention
 
@@ -167,12 +170,30 @@ means `native`.
   owns it, under that program's convention.
 
 Pass `{ convention: 'xdg' }` to `systemBaseDirs` or `TieredDirs.fromEnv`.
-`<P>_CONVENTION=native` or `xdg` overrides the caller's choice. Any other value
-throws `TieredDirsError`. The value is trimmed, then must match exactly, in
+`<P>_CONVENTION=native` or `xdg` overrides the caller's choice, unless the
+caller also passes `conventionFromEnv: false`. Do that for a file another
+program reads at a fixed path. Any other value throws `TieredDirsError`. The value is trimmed, then must match exactly, in
 lower case. `parseConvention(value)` parses a convention from anywhere else,
 such as a flag: exactly `native` or `xdg`, untrimmed, like the Rust crate's
 `FromStr`. `xdgBaseDirs(home, env)` builds the XDG table under any home, on
 any host.
+
+`homeDir()` is the home directory the per-OS table is built on: `HOME`
+(`USERPROFILE` on Windows) when it is absolute, else the OS account's home.
+`homeDir({ env })` reads only the injected environment and throws
+`MISSING_BASE_DIR` when it names no absolute home. `expandTilde(path, home)`
+expands a leading `~` (and `~\` on Windows) for a path a caller reads from a
+`.env` file or CI YAML, where no shell expanded it. The resolvers never call
+it: a relative `XDG_*` value, `~` included, is ignored.
+
+```ts
+import { expandTilde, homeDir } from '@osdlc/tiered-dirs'
+
+homeDir({ platform: 'linux', env: { HOME: '/home/ada' } })
+// /home/ada
+expandTilde('~/notes', '/home/ada', 'linux')
+// /home/ada/notes
+```
 
 ## Overrides and scratch roots
 
@@ -320,6 +341,7 @@ interface BaseDirs {
 interface ResolveOptions {
   platform?: string
   convention?: Convention
+  conventionFromEnv?: boolean // default true
   env?: Record<string, string | undefined>
   home?: string
   overrides?: Partial<BaseDirs>
@@ -329,6 +351,8 @@ function systemBaseDirs(vars: EnvVars, opts?: ResolveOptions): BaseDirs
 function testRoot(): string | undefined
 function rootedBaseDirs(root: string): BaseDirs
 function xdgBaseDirs(home: string, env: Record<string, string | undefined>): BaseDirs
+function homeDir(opts?: Pick<ResolveOptions, 'platform' | 'env'>): string
+function expandTilde(path: string, home: string, platform?: string): string
 
 class TieredDirs {
   constructor(vendor: string, bases: BaseDirs)
@@ -391,7 +415,7 @@ Neither package may add a path shape the other lacks.
 
 Every export is stable in 0.x, and its TSDoc says so: `TieredDirs`,
 `TieredDirsError`, `envVars`, `overrideVars`, `isOverridden`,
-`systemBaseDirs`, `testRoot`, `rootedBaseDirs`, `xdgBaseDirs`,
+`systemBaseDirs`, `testRoot`, `rootedBaseDirs`, `xdgBaseDirs`, `homeDir`, `expandTilde`,
 `parseConvention`, `isValidSegment`, `isVendorBundleId`, `HOMES`,
 `CONVENTIONS`, `TIER_KINDS` and the types `Tier`, `Dir`, `BaseDirs`, `EnvVars`, `Home`,
 `Convention`, `TierKind`, `ResolveOptions` and `TieredDirsErrorCode`. A

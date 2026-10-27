@@ -3,7 +3,7 @@
     "The shared parity fixture: the contract between the Rust crate config-layers and its TypeScript twin @osdlc/config-layers.",
     "Both suites read this file (Rust: tests/parity.rs; TypeScript: packages/ts/config-layers/tests/parity.test.ts) and assert the same results.",
     "A case added on either side goes here, never in one twin's own suite.",
-    "Only behaviour both twins share is listed. The README's differences table lists what is left out, for example `~user/x`, empty YAML documents and integers beyond 2^53.",
+    "Only behaviour both twins share is listed. The README's differences table lists what is left out, for example empty YAML documents and integers beyond 2^53.",
     "A case with `missing: true` passes no value at all (Rust None, TypeScript undefined). An `error: true` case checks that the read fails, not the message text.",
     "The path cases use POSIX paths. The Rust suite runs them on Unix only."
   ],
@@ -361,6 +361,46 @@
       },
       "key": "",
       "found": false
+    },
+    {
+      "name": "a list is not walked into",
+      "obj": {
+        "a": {
+          "b": "",
+          "c": 0,
+          "d": null,
+          "e": [
+            1
+          ],
+          "f": {
+            "g": "deep"
+          }
+        },
+        "top": "t",
+        "dotted.key": "x"
+      },
+      "key": "a.e.0",
+      "found": false
+    },
+    {
+      "name": "an inherited name is not a key",
+      "obj": {
+        "a": {
+          "b": "",
+          "c": 0,
+          "d": null,
+          "e": [
+            1
+          ],
+          "f": {
+            "g": "deep"
+          }
+        },
+        "top": "t",
+        "dotted.key": "x"
+      },
+      "key": "a.constructor",
+      "found": false
     }
   ],
   "yaml": [
@@ -593,6 +633,41 @@
       "base_dir": "/base",
       "home": "/home/me",
       "expected": "/home/me/a/b"
+    },
+    {
+      "name": "tilde user slash is not expanded",
+      "value": "~user/x",
+      "base_dir": "/base",
+      "home": "/home/me",
+      "expected": "/base/~user/x"
+    },
+    {
+      "name": "tilde user alone is not expanded",
+      "value": "~user",
+      "base_dir": "/base",
+      "home": "/home/me",
+      "expected": "/base/~user"
+    },
+    {
+      "name": "an empty home leaves tilde slash unexpanded",
+      "value": "~/x",
+      "base_dir": "/base",
+      "home": "",
+      "expected": "/base/~/x"
+    },
+    {
+      "name": "an empty home leaves tilde alone unexpanded",
+      "value": "~",
+      "base_dir": "/base",
+      "home": "",
+      "expected": "/base/~"
+    },
+    {
+      "name": "a relative home is used as given",
+      "value": "~/x",
+      "base_dir": "/base",
+      "home": "rel",
+      "expected": "/base/rel/x"
     }
   ],
   "substitute_path_names": [
@@ -704,6 +779,46 @@
       },
       "setting": "repos:",
       "error": "unknown path name '{}' in repos: '{}/x'; define it under paths: (available: {dev}, {work})"
+    },
+    {
+      "name": "a brace with no closing brace is kept as written",
+      "value": "{dev}/{x",
+      "names": {
+        "dev": "/home/me/dev",
+        "work": "/work"
+      },
+      "setting": "repos:",
+      "expected": "/home/me/dev/{x"
+    },
+    {
+      "name": "a closing brace with no opening brace is kept as written",
+      "value": "a}/{dev}",
+      "names": {
+        "dev": "/home/me/dev",
+        "work": "/work"
+      },
+      "setting": "repos:",
+      "expected": "a}//home/me/dev"
+    },
+    {
+      "name": "a brace before a name is kept as written",
+      "value": "{a{dev}",
+      "names": {
+        "dev": "/home/me/dev",
+        "work": "/work"
+      },
+      "setting": "repos:",
+      "expected": "{a/home/me/dev"
+    },
+    {
+      "name": "a doubled brace around a name is kept as written",
+      "value": "{{dev}}",
+      "names": {
+        "dev": "/home/me/dev",
+        "work": "/work"
+      },
+      "setting": "repos:",
+      "expected": "{/home/me/dev}"
     }
   ],
   "needs": [

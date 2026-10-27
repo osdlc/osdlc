@@ -6,23 +6,23 @@
  * the root. The test uses the runner's own matcher, so it fails if `**\/` stops matching the
  * root (after an options change or a picomatch upgrade).
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { afterAll, describe, expect, it } from 'vitest'
-import { extractVaultRefs } from '../support/wikilinks.js'
 import {
   type Contract,
   contract,
   type DocTree,
   docRule,
   type Finding,
+  extractVaultRefs,
   optional,
   section,
   sections,
 } from '../../src/core/index.js'
-import { type CorpusConfig, compileMatcher, runCorpus } from '../../src/runner/corpus.js'
+import { type CorpusConfig, compileMatcher, runCorpus, walkSync } from '../../src/runner/corpus.js'
 
 const made: string[] = []
 
@@ -265,7 +265,7 @@ describe('runCorpus — docRule findings aggregate across documents into finding
 })
 
 /**
- * Links between documents: a `docRule` uses `extractVaultRefs` (the test's wikilink helper) and
+ * Links between documents: a `docRule` uses `extractVaultRefs` and
  * a set of known pages to emit a `warn` finding for a wikilink whose target page does not exist.
  *
  * `runCorpus` validates each document on its own, so it has no view of the whole folder. The
@@ -496,5 +496,24 @@ describe('runCorpus — a per-rule `exclude` drops a file from that rule', () =>
     expect(stats.filesMatched).toBe(1) // only `keep.md` matched
     expect(stats.filesUnmatched).toBe(1) // `skip-me.md` excluded, and no later rule
     expect(stats.matchedByRule).toEqual([1])
+  })
+})
+
+describe('walkSync — symbolic links, .git and node_modules are skipped', () => {
+  it('lists only real files, without following a file link or a looping folder link', () => {
+    const root = vault({
+      'a.md': '## A\n',
+      '.git/HEAD.md': 'x\n',
+      'node_modules/pkg/readme.md': 'x\n',
+    })
+    try {
+      symlinkSync(join(root, 'a.md'), join(root, 'link.md'))
+      symlinkSync(root, join(root, 'loop'), 'dir')
+    } catch {
+      return // symbolic links need extra rights on some Windows setups
+    }
+    expect(walkSync(root)).toEqual(['a.md'])
+    const r = runCorpus({ rules: [] }, { cwd: root })
+    expect(r.stats.filesScanned).toBe(1)
   })
 })

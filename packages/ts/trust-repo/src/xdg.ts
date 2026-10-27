@@ -17,22 +17,18 @@
  * handled.
  */
 
-import { join, resolve } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 
-/** Expand a leading `~` against `home`; anything else is returned unchanged. */
-export function expandTilde(path: string, home: string): string {
-  if (path === '~') return home
-  if (path.startsWith('~/')) return join(home, path.slice(2))
-  return path
-}
+import { expandTilde } from './paths.ts'
 
 /**
  * An XDG base directory from the environment, with a fallback under `home`.
  *
- * `env[varName]` is used when it is set and not blank. It is tilde-expanded
- * and passed through `resolve()`, so a relative value becomes absolute and
- * does not end up joined to some other path later. Otherwise the fallback
- * segments are joined to `home`:
+ * `env[varName]` is used when it is set, not blank, and absolute after `~`
+ * is expanded. A relative value is ignored, as the XDG spec says. Resolving
+ * it would put the store under whatever directory the tool runs in, which can
+ * be the repository being judged. Otherwise the fallback segments are joined
+ * to `home`:
  * `xdgHome(env, home, "XDG_STATE_HOME", ".local", "state")` is
  * `~/.local/state`.
  *
@@ -48,6 +44,9 @@ export function xdgHome(
   ...fallbackSegments: string[]
 ): string {
   const raw = env[varName]?.trim()
-  if (raw !== undefined && raw !== '') return resolve(expandTilde(raw, home))
+  if (raw !== undefined && raw !== '') {
+    const expanded = expandTilde(raw, home)
+    if (isAbsolute(expanded)) return expanded
+  }
   return join(home, ...fallbackSegments)
 }

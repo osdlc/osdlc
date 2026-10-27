@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/cli-tool",
-  "version": "0.7.0",
+  "version": "0.11.0",
   "description": "What a standalone CLI needs before it does anything of its own: an injectable stdout/stderr seam, one exit-code rule, flags declared once so the parser and the help text cannot disagree, and running an installed tool from a development checkout.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
@@ -47,10 +47,46 @@
     "./exit": {
       "types": "./dist/exit.d.ts",
       "default": "./dist/exit.js"
+    },
+    "./wrap": {
+      "types": "./dist/wrap.d.ts",
+      "default": "./dist/wrap.js"
+    },
+    "./command": {
+      "types": "./dist/command/index.d.ts",
+      "default": "./dist/command/index.js"
+    },
+    "./config-command": {
+      "types": "./dist/config-command.d.ts",
+      "default": "./dist/config-command.js"
+    },
+    "./trust-command": {
+      "types": "./dist/trust-command.d.ts",
+      "default": "./dist/trust-command.js"
+    },
+    "./guide": {
+      "types": "./dist/guide.d.ts",
+      "default": "./dist/guide.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    },
+    "./mcp": {
+      "types": "./dist/mcp/index.d.ts",
+      "default": "./dist/mcp/index.js"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "default": "./dist/http/index.js"
     }
+  },
+  "bin": {
+    "cli-tool-stamp-version": "./bin/cli-tool-stamp-version.js"
   },
   "files": [
     "dist/",
+    "bin/",
     "devlink/README.md",
     "README.md",
     "CHANGELOG.md",
@@ -75,14 +111,17 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
   },
   "dependencies": {
+    "@osdlc/command-seam": "workspace:^",
     "@osdlc/config-layers": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
     "@osdlc/result": "workspace:^",
+    "@osdlc/ux": "workspace:^",
     "commander": "^12.1.0"
   },
   "devDependencies": {
-    "@osdlc/command-seam": "workspace:^",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/trust-repo": "workspace:^",
     "@osdlc/tsconfig": "workspace:^",
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
@@ -93,6 +132,12 @@
     "zod": "catalog:"
   },
   "peerDependencies": {
-    "zod": "^4"
+    "zod": "^4",
+    "@modelcontextprotocol/sdk": "^1.32.0"
+  },
+  "peerDependenciesMeta": {
+    "@modelcontextprotocol/sdk": {
+      "optional": true
+    }
   }
 }

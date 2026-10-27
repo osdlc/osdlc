@@ -1,0 +1,251 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "python",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "Python tooling configured in a pyproject.toml."
+        },
+        {
+          "label": "project",
+          "hint": "The directory holding the pyproject.toml."
+        },
+        {
+          "label": "tool",
+          "hint": "A tool the project configures (synthesized from its `[tool.*]` section), or a script it declares in `[project.scripts]` / `[tool.poetry.scripts]`."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#3776ab"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "python:pyproject.toml:pytest",
+          "runner": "python",
+          "path": [
+            "python",
+            ".",
+            "pytest"
+          ],
+          "argv": [
+            "pytest",
+            "."
+          ],
+          "cwd": ".",
+          "display": "pytest .",
+          "parameters": [],
+          "source": "pyproject.toml",
+          "origin": "synthesized",
+          "tags": [
+            "python",
+            "pytest",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "python:pyproject.toml:ruff",
+          "runner": "python",
+          "path": [
+            "python",
+            ".",
+            "ruff"
+          ],
+          "argv": [
+            "ruff",
+            "check",
+            "."
+          ],
+          "cwd": ".",
+          "display": "ruff check .",
+          "parameters": [],
+          "source": "pyproject.toml",
+          "origin": "synthesized",
+          "tags": [
+            "python",
+            "ruff",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "python:pyproject.toml:app",
+          "runner": "python",
+          "path": [
+            "python",
+            ".",
+            "app"
+          ],
+          "argv": [
+            "uv",
+            "run",
+            "app"
+          ],
+          "cwd": ".",
+          "display": "uv run app",
+          "detail": "app.cli:main",
+          "parameters": [],
+          "source": "pyproject.toml",
+          "origin": "declared",
+          "tags": [
+            "python",
+            "app",
+            ".",
+            "uv"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    },
+    {
+      "runner": "package-manager",
+      "chain": [
+        {
+          "label": "role",
+          "hint": "Commands the detected package managers offer, synthesized from the files that show them."
+        },
+        {
+          "label": "directory",
+          "hint": "The package the command is for. `.` is the root."
+        },
+        {
+          "label": "tool",
+          "hint": "The tool that runs the command."
+        },
+        {
+          "label": "action",
+          "hint": "What the command does."
+        }
+      ],
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "package-manager:uv.lock:uv:install",
+          "runner": "package-manager",
+          "path": [
+            "package-manager",
+            ".",
+            "uv",
+            "install"
+          ],
+          "argv": [
+            "uv",
+            "sync"
+          ],
+          "cwd": ".",
+          "display": "uv sync",
+          "parameters": [],
+          "source": "uv.lock",
+          "origin": "synthesized",
+          "tags": [
+            "package-manager",
+            "uv",
+            "python",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "package-manager:uv.lock:uv:install-frozen",
+          "runner": "package-manager",
+          "path": [
+            "package-manager",
+            ".",
+            "uv",
+            "install-frozen"
+          ],
+          "argv": [
+            "uv",
+            "sync",
+            "--locked"
+          ],
+          "cwd": ".",
+          "display": "uv sync --locked",
+          "parameters": [],
+          "source": "uv.lock",
+          "origin": "synthesized",
+          "tags": [
+            "package-manager",
+            "uv",
+            "python",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "source": "fresh",
+  "storedAt": null,
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "python"
+      ]
+    },
+    {
+      "id": "dependencies",
+      "title": "Dependencies",
+      "runners": [
+        "package-manager"
+      ]
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "python",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "trustedTools": [],
+  "filter": {}
+}

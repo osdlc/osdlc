@@ -27,7 +27,14 @@ import {
   type Task,
 } from '../../model.ts'
 import type { RunnerRole, ToolFact } from '../../tool.ts'
-import { afterSeparator, looksPersistent, taskId, tierOf } from '../support/shared.ts'
+import {
+  afterSeparator,
+  dependencies,
+  looksPersistent,
+  taskId,
+  tierOf,
+  unique,
+} from '../support/shared.ts'
 
 const CHAIN = [
   { label: 'runner', hint: 'moon owns the build graph, its cache and task inheritance.' },
@@ -53,6 +60,8 @@ interface MoonTask {
   script?: string
   type?: string
   preset?: string
+  /** Targets this task runs first: strings, or `{ target }` objects in moon 1.x and later. */
+  deps?: Array<string | { target?: string }>
   options?: { internal?: boolean; persistent?: boolean }
 }
 
@@ -70,15 +79,16 @@ interface MoonProject {
  * the tool. Icon path and color: simple-icons
  * v16 (CC0), slug `moonrepo`.
  */
-const BRAND: RunnerBrand = {
+export const MOON_BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M 19.514 7.342 C 19.711 7.862 19.814 8.413 19.816 8.969 C 19.816 12.494 15.998 14.697 12.946 12.934 C 11.529 12.116 10.657 10.605 10.657 8.969 C 10.657 5.646 14.085 3.431 17.115 4.793 C 15.26 3.373 12.99 2.607 10.655 2.612 C 4.772 2.614 0.005 7.381 0 13.265 C 0.002 19.148 4.772 23.918 10.655 23.92 C 16.538 23.916 21.306 19.147 21.31 13.265 C 21.312 11.155 20.687 9.095 19.514 7.342 Z M 14.841 4.666 C 14.841 8.191 18.657 10.395 21.709 8.632 C 23.127 7.814 24 6.302 24 4.666 C 24 1.14 20.184 -1.061 17.13 0.699 C 15.714 1.519 14.841 3.03 14.841 4.666"/></svg>',
   color: '#6f53f3',
 }
 
 export const moonRunner: RunnerRole = {
   kind: 'exec',
+  // A first `moon query` can install a toolchain.
+  probe: { timeoutMs: 120_000, cost: 'slow' },
   chain: CHAIN,
-  brand: BRAND,
   // moon merges every project's `moon.yml` and the `.moon/tasks/` layer into
   // the task list; none of them are read here.
   watch: ['moon.yml', '/.moon/tasks/'],
@@ -88,7 +98,11 @@ export const moonRunner: RunnerRole = {
     // MOON_JSON, not `--json`: moon 2.x moved the JSON switch to the environment.
     const env = { MOON_JSON: 'true' }
 
-    const tasksRes = await runner.run(['query', 'tasks'], { cwd: ctx.root, env })
+    const tasksRes = await runner.run(['query', 'tasks'], {
+      cwd: ctx.root,
+      env,
+      signal: ctx.signal,
+    })
     if (tasksRes.exitCode !== 0) {
       return {
         status: 'error',
@@ -114,6 +128,8 @@ export const moonRunner: RunnerRole = {
     const meta = await projectMeta(ctx, env, diagnostics)
 
     const tasks: Task[] = []
+    // Each task's dependency targets, resolved once every task's id is known.
+    const depsOf = new Map<Task, { projectId: string; deps: string[] }>()
     for (const [projectId, projectTasks] of Object.entries(parsed.tasks ?? {})) {
       const m = meta.get(projectId)
       const tier = tierOf(m?.source ?? '.')
@@ -122,7 +138,7 @@ export const moonRunner: RunnerRole = {
         if (task.options?.internal) continue
         const target = task.target ?? `${projectId}:${task.id}`
         const argv = ['moon', 'run', target]
-        tasks.push({
+        const item: Task = {
           id: taskId('moon', m?.source ?? '.', target),
           runner: 'moon',
           path: ['moon', tier, projectId, task.id],
@@ -148,8 +164,27 @@ export const moonRunner: RunnerRole = {
             ? { value: true, declared: true }
             : { value: looksPersistent(task.id), declared: false },
           executes: 'local',
-        })
+        }
+        tasks.push(item)
+        const deps = (task.deps ?? [])
+          .map((d) => (typeof d === 'string' ? d : d.target))
+          .filter((d): d is string => typeof d === 'string' && d !== '')
+        if (deps.length > 0) depsOf.set(item, { projectId, deps })
       }
+    }
+
+    // A target names a task by `project:task`. moon 2's `query tasks` already
+    // expands `~:` and `^:` into concrete targets. The `~:` and `^:` cases
+    // below are a fallback for output that does not: `~:task` is the same
+    // project, and `^:task` names no single task.
+    const byTarget = new Map(tasks.map((t) => [t.argv[2]!, t.id]))
+    for (const [item, { projectId, deps }] of depsOf) {
+      Object.assign(
+        item,
+        dependencies(deps, (dep) =>
+          byTarget.get(dep.startsWith('~:') ? `${projectId}${dep.slice(1)}` : dep),
+        ),
+      )
     }
 
     return {
@@ -175,7 +210,9 @@ async function projectMeta(
     string,
     { source: string; layer?: string; stack?: string; language?: string; tags: string[] }
   >()
-  const res = await ctx.runner('moon').run(['query', 'projects'], { cwd: ctx.root, env })
+  const res = await ctx
+    .runner('moon')
+    .run(['query', 'projects'], { cwd: ctx.root, env, signal: ctx.signal })
   if (res.exitCode !== 0) {
     diagnostics.push({
       severity: 'warning',
@@ -220,21 +257,17 @@ function describeTask(task: MoonTask, root: string): string {
  * the error class, and the details needed to act on it are in the lines
  * below.
  */
-function probeError(stderr: string): string {
+export function probeError(stderr: string): string {
   const lines = stderr
     .split('\n')
     .filter((l) => !/^\s*\[\s*(WARN|INFO|DEBUG|TRACE)\b/.test(l))
-    .map((l) => l.replace(/\s+$/, ''))
+    .map((l) => l.trimEnd())
   const text = lines
     .map((l) => l.replace(/^\s*[|│╭╰─>×]+\s?/, '  '))
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
   return (text || 'unknown failure').slice(0, 2000)
-}
-
-function unique(values: string[]): string[] {
-  return [...new Set(values)]
 }
 
 /**
@@ -257,9 +290,11 @@ export interface MoonProjectFact {
  */
 export async function moonDescribe(ctx: ProviderContext): Promise<ToolFact[]> {
   if (!ctx.allowExec) return []
-  const res = await ctx
-    .runner('moon')
-    .run(['query', 'projects'], { cwd: ctx.root, env: { MOON_JSON: 'true' } })
+  const res = await ctx.runner('moon').run(['query', 'projects'], {
+    cwd: ctx.root,
+    env: { MOON_JSON: 'true' },
+    signal: ctx.signal,
+  })
   if (res.exitCode !== 0) return []
   let parsed: { projects?: MoonProject[] }
   try {

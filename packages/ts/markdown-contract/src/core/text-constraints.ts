@@ -8,7 +8,8 @@
  *
  *   - `requires(specs)` and `forbids(specs)` return a section `Rule`. The text is every block
  *     (prose, list items, table cells, code) of the section and its subsections, placed on its
- *     source line, so a `forbids` hit reports the real line. The `scopeKey` is the section's
+ *     source line, so a `forbids` hit reports the real line (and no column, since the rebuilt
+ *     line's columns are not source columns). The `scopeKey` is the section's
  *     lowerCamelCase key. A `requires` miss or a count problem is placed on the section heading.
  *   - `textRule({ requires?, forbids? })` returns a `DocRule` over the whole document. Its text
  *     is built the same way from `tree.root`, so a `forbids` hit reports the real line. The
@@ -21,13 +22,16 @@
  * the H1.
  *
  * A `requires` entry whose bounds mean absence (`max: 0`, or `max < min`) is an error when the
- * contract is built. Use `forbids` for that. The check runs when `requires(...)` or
- * `textRule(...)` is called, not when a document is validated.
+ * contract is built. Use `forbids` for that. A `forbids` entry with a negative `max` is an error
+ * too. The check (`countBoundProblem` in `text-match.ts`, which the YAML compiler also uses) runs
+ * when `requires(...)`, `forbids(...)` or `textRule(...)` is called, not when a document is
+ * validated.
  */
 import { toCamelKey } from './camel.js'
 import { ContractBuildError } from './grammar.js'
-import type { TextMatchSpec } from './text-match.js'
-import { buildTextFindings, matchText } from './text-match.js'
+import { codeTextLine } from './projection.js'
+import type { TextKind, TextMatchResult, TextMatchSpec } from './text-match.js'
+import { buildTextFindings, countBoundProblem, matchText } from './text-match.js'
 import type { BlockNode, Ctx, Doc, DocRule, DocTree, Finding, Rule, SectionNode } from './types.js'
 
 /**
@@ -47,29 +51,17 @@ export interface TextRuleSpec {
   forbids?: TextMatchSpec[]
 }
 
-// ── A `requires` entry may not mean absence ────────────────────────
-
-/** The search text for an error message: `"literal"` for a pattern, `/source/` for a regex. */
-function specRepr(spec: TextMatchSpec): string {
-  if (spec.regex !== undefined) return `/${spec.regex}/`
-  return `"${spec.pattern ?? ''}"`
-}
+// ── Count bounds that can never be met ─────────────────────────────
 
 /**
- * Throws for a `requires` entry whose bounds mean absence: `max: 0`, or a `max` below the
- * entry's minimum (`min`, default and at least 1). "This scope must not contain X" is a
- * `forbids` check. It throws when the contract is built, like the other `ContractBuildError`s.
+ * Throws a `ContractBuildError` for the first entry whose count bound `countBoundProblem`
+ * refuses: a `requires` whose bound means absence (`max: 0`, or a `max` below the entry's
+ * minimum), or a `forbids` with a negative `max`. It throws when the contract is built.
  */
-function assertRequiresPurity(specs: TextMatchSpec[]): void {
+function assertCountBounds(kind: TextKind, specs: TextMatchSpec[]): void {
   for (const spec of specs) {
-    const floor = Math.max(spec.min ?? 1, 1)
-    if (spec.max !== undefined && spec.max < floor) {
-      throw new ContractBuildError(
-        'contract/text-requires-purity',
-        `requires(${specRepr(spec)}): a requires entry may not express absence ` +
-          `(max ${spec.max} < ${floor}); use forbids(...) for an absence check`,
-      )
-    }
+    const problem = countBoundProblem(kind, spec)
+    if (problem) throw new ContractBuildError(problem.id, problem.message)
   }
 }
 
@@ -111,7 +103,7 @@ function placeBlock(buf: LineBuffer, block: BlockNode): void {
       for (const item of block.items) buf.place(item.pos.line, item.text)
       break
     case 'code':
-      buf.place(block.pos.line, block.value)
+      buf.place(codeTextLine(block), block.value)
       break
     case 'table':
       buf.place(block.pos.line, block.columns.join(' '))
@@ -137,6 +129,16 @@ function sectionScopeText(node: SectionNode): string {
   return buf.render()
 }
 
+/**
+ * Matches `spec` against scope text built by `LineBuffer` and keeps only each hit's line. The
+ * buffer places each block's flattened text from column 1, without list markers, table pipes,
+ * indentation or inline markup, so a column in it is not a source column.
+ */
+function matchScopeText(text: string, spec: TextMatchSpec): TextMatchResult {
+  const match = matchText(text, spec)
+  return { ...match, positions: match.positions.map((p) => ({ line: p.line })) }
+}
+
 /** The text of the whole document, each block on its source line. */
 function docScopeText(tree: DocTree): string {
   return sectionScopeText(tree.root)
@@ -155,7 +157,7 @@ function docScopeText(tree: DocTree): string {
  * @throws {ContractBuildError} When an entry's bound expresses absence (`max: 0`, or `max` below `min`).
  */
 export function requires(specs: TextMatchSpec[]): Rule {
-  assertRequiresPurity(specs)
+  assertCountBounds('requires', specs)
   return {
     __brand: 'Rule',
     id: 'text/requires',
@@ -185,9 +187,12 @@ export function requires(specs: TextMatchSpec[]): Rule {
  * A section rule that forbids each listed phrase in the section and its subsections. Put it in a
  * section's `rules: [...]`. It is the code form of a section's YAML `forbids:`. Each entry gives
  * a `text/forbids` finding on the line of every hit, or `text/count` on the heading when there
- * are more than a positive `max`.
+ * are more than a positive `max`. An entry with a negative `max` throws when built.
+ *
+ * @throws {ContractBuildError} When an entry's `max` is negative.
  */
 export function forbids(specs: TextMatchSpec[]): Rule {
+  assertCountBounds('forbids', specs)
   return {
     __brand: 'Rule',
     id: 'text/forbids',
@@ -200,7 +205,7 @@ export function forbids(specs: TextMatchSpec[]): Rule {
           ...buildTextFindings({
             kind: 'forbids',
             spec,
-            match: matchText(text, spec),
+            match: matchScopeText(text, spec),
             scopeKey,
             scope: node.name,
             scopePos: node.pos,
@@ -217,16 +222,17 @@ export function forbids(specs: TextMatchSpec[]): Rule {
  * A document rule with required and forbidden phrase checks over the whole document. Put it in a
  * contract's `rules: [...]`. It is the code form of the YAML `requires:` and `forbids:` on the
  * body. Each `requires` entry gives a `text/requires` with no position when its phrase is
- * missing. Each `forbids` entry gives a `text/forbids` on the line of every hit. The `requires`
- * entries have the same limit as in {@link requires}.
+ * missing. Each `forbids` entry gives a `text/forbids` on the line of every hit. The entries
+ * have the same limits as in {@link requires} and {@link forbids}.
  *
  * @param spec The `requires` and `forbids` lists.
- * @throws {ContractBuildError} When a `requires` entry's bound expresses absence (`max: 0`, or `max` below `min`).
+ * @throws {ContractBuildError} When a `requires` entry's bound expresses absence (`max: 0`, or `max` below `min`), or a `forbids` entry's `max` is negative.
  */
 export function textRule(spec: TextRuleSpec): DocRule {
   const requiresSpecs = spec.requires ?? []
   const forbidsSpecs = spec.forbids ?? []
-  assertRequiresPurity(requiresSpecs)
+  assertCountBounds('requires', requiresSpecs)
+  assertCountBounds('forbids', forbidsSpecs)
   return {
     __brand: 'DocRule',
     id: 'text/doc',
@@ -249,7 +255,7 @@ export function textRule(spec: TextRuleSpec): DocRule {
           ...buildTextFindings({
             kind: 'forbids',
             spec: s,
-            match: matchText(text, s),
+            match: matchScopeText(text, s),
             scopeKey: 'doc',
             ctx,
           }),

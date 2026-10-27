@@ -4,20 +4,65 @@
  * is listed and read once per call. `exists()` is not memoized.
  */
 
-import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
-
-import type { AsyncCommandRunner } from '@osdlc/command-seam'
+import { withDefaults, type AsyncCommandRunner } from '@osdlc/command-seam'
 
 import type { ProviderContext } from './contract.ts'
-import { pathExists, type Lister } from './discovery.ts'
+import type { Lister } from './discovery.ts'
 import type { DiscoveryMode } from './model.ts'
+import { readBounded, resolveInside } from './read.ts'
 
 /** The listing and file caches behind one context, for one detect or one collect. */
 export interface ContextState {
   lister: Lister
   textCache: Map<string, Promise<string | null>>
   jsonCache: Map<string, Promise<unknown>>
+}
+
+/**
+ * The timeout of a probe whose runner declares none, and of every subprocess
+ * detection starts: 60 s.
+ */
+export const DEFAULT_PROBE_TIMEOUT_MS = 60_000
+
+/** The timeout of each discovery git call: 30 s. */
+export const GIT_TIMEOUT_MS = 30_000
+
+/**
+ * `makeRunner` with `signal`, `timeoutMs` and `killTree: true` bound to every
+ * call. A call's own option replaces the bound one.
+ *
+ * `killTree` makes a timeout or an abort kill the processes the child started
+ * too (moon, gradle and sbt fork): the process group on POSIX, `taskkill /t`
+ * on Windows. On POSIX the child leads its own group, so it no longer gets the
+ * terminal's Ctrl-C. A host stops it by aborting `signal` on `SIGINT`, or by
+ * calling command-seam's `installGroupSignalForwarding` once.
+ */
+export function boundRunners(
+  makeRunner: (binary: string) => AsyncCommandRunner,
+  signal: AbortSignal,
+  timeoutMs: number,
+): (binary: string) => AsyncCommandRunner {
+  return (binary) => withDefaults(makeRunner(binary), { signal, timeoutMs, killTree: true })
+}
+
+/**
+ * The runner a context hands out when execution is not allowed. Every call
+ * fails the way a missing binary does, so a parse runner that asks its tool
+ * anyway runs nothing.
+ */
+function refusedRunner(binary: string): AsyncCommandRunner {
+  return {
+    binary,
+    run: () =>
+      Promise.resolve({
+        exitCode: 1,
+        stdout: '',
+        stderr: '',
+        neverExited: true,
+        reason: 'spawn',
+        error: `${binary} was not run: execution is not allowed for this repository`,
+      }),
+  }
 }
 
 export function createContextState(lister: Lister): ContextState {
@@ -38,7 +83,7 @@ export function createContext(args: {
   const readText = (relPath: string): Promise<string | null> => {
     let hit = state.textCache.get(relPath)
     if (hit === undefined) {
-      hit = readFile(join(absRoot, relPath), 'utf-8').catch(() => null)
+      hit = readBounded(absRoot, relPath).then((read) => ('text' in read ? read.text : null))
       state.textCache.set(relPath, hit)
     }
     return hit
@@ -55,11 +100,11 @@ export function createContext(args: {
 
   return {
     root: absRoot,
-    runner: makeRunner,
+    runner: allowExec ? makeRunner : refusedRunner,
     files: state.lister,
     readJson,
     readText,
-    exists: (relPath) => pathExists(absRoot, relPath),
+    exists: async (relPath) => 'real' in (await resolveInside(absRoot, relPath)),
     which,
     allowExec,
     discovery,

@@ -21,10 +21,12 @@ const DEFAULT_DEFINE_HINT: &str = "define it under paths:";
 ///
 /// URLs (`scheme://…`) and bare words that do not look like paths are
 /// returned unchanged, because a value may be a name rather than a place. A
-/// leading `~` is replaced by `home`. That includes `~user/x`, which becomes
-/// `<home>user/x`. A relative path resolves against `base_dir`. For a project
-/// file that is the project root. For a machine file it is whatever directory
-/// the reading tool uses as its base.
+/// leading `~` or `~/…` is replaced by `home`. A `~user/…` form is not
+/// expanded and resolves as a relative path. If `home` is empty, `~` is left
+/// as written, because expanding it would give the file system root. `home`
+/// is used as given; this crate never reads `$HOME`. A relative path resolves
+/// against `base_dir`. For a project file that is the project root. For a
+/// machine file it is whatever directory the reading tool uses as its base.
 ///
 /// This never touches the file system. A relative path is joined and its `.`
 /// and `..` parts removed as text, not canonicalized, so the result is the
@@ -40,8 +42,8 @@ pub fn resolve_config_path(value: &str, base_dir: &Path, home: &Path) -> String 
         return value.to_string();
     }
     let mut p = value.to_string();
-    if let Some(rest) = p.strip_prefix('~') {
-        p = format!("{}{}", home.to_string_lossy(), rest);
+    if !home.as_os_str().is_empty() && (p == "~" || p.starts_with("~/")) {
+        p = format!("{}{}", home.to_string_lossy(), &p[1..]);
     }
     if Path::new(&p).is_absolute() {
         p
@@ -155,7 +157,13 @@ pub fn substitute_path_names(
 /// setting that silently expands to `/repo` instead of `/Users/me/dev/repo`
 /// fails somewhere far from the typo. The message says where the name was
 /// found (`setting`, e.g. `repos:`), how to define it (`define_hint`), and
-/// what is available. A `{` with no closing `}` is kept as written.
+/// what is available.
+///
+/// A name never contains `{`. A `{` with no closing `}`, or one followed by
+/// another `{` before any `}`, is kept as written, so `{a{dev}` gives `{a`
+/// then the `dev` directory, and `{{dev}}` gives the directory in braces. A
+/// `}` with no `{` is kept as written. An empty `{}` is the name `""`, which is
+/// unknown unless `names` defines it.
 ///
 /// # Errors
 ///
@@ -177,11 +185,18 @@ pub fn substitute_path_names_with_hint(
         };
         out.push_str(&rest[..start]);
         let after_open = &rest[start + 1..];
-        let Some(end) = after_open.find('}') else {
+        let Some(end) = after_open.find(['{', '}']) else {
             // No closing brace, so the rest has no further name. Emit it as is.
             out.push_str(&rest[start..]);
             break;
         };
+        if after_open.as_bytes()[end] == b'{' {
+            // A name never contains `{`: keep this `{` and the text after it
+            // as written, and look for a name from the next `{`.
+            out.push_str(&rest[start..=start + end]);
+            rest = &after_open[end..];
+            continue;
+        }
         let name = &after_open[..end];
         match names.get(name) {
             Some(path) => out.push_str(&path.to_string_lossy()),
@@ -267,6 +282,23 @@ mod tests {
             assert_eq!(
                 substitute_path_names("{dev}/{oops", &names, "repos:").unwrap(),
                 "/d/{oops"
+            );
+        }
+
+        #[test]
+        fn a_brace_before_another_brace_is_kept_as_written() {
+            let names = PathNames::from([("dev".to_string(), PathBuf::from("/d"))]);
+            assert_eq!(
+                substitute_path_names("{a{dev}", &names, "repos:").unwrap(),
+                "{a/d"
+            );
+            assert_eq!(
+                substitute_path_names("{{dev}}", &names, "repos:").unwrap(),
+                "{/d}"
+            );
+            assert_eq!(
+                substitute_path_names("{{{x", &names, "repos:").unwrap(),
+                "{{{x"
             );
         }
 

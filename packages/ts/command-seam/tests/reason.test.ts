@@ -60,11 +60,15 @@ describe('spawnRunner', () => {
     expect(r.error).toContain('ETIMEDOUT')
   }, 10_000)
 
-  test('a death by signal is signal, with the signal and no runner message', () => {
-    const r = sh.run(['-c', 'kill -TERM $$'], { cwd: CWD })
-    expect(r).toMatchObject({ neverExited: true, reason: 'signal', signal: 'SIGTERM' })
-    expect(r.error).toBeUndefined()
-  })
+  // POSIX only: Windows has no signals; `sh` reports `kill -TERM $$` as an exit code.
+  test.skipIf(process.platform === 'win32')(
+    'a death by signal is signal, with the signal and no runner message',
+    () => {
+      const r = sh.run(['-c', 'kill -TERM $$'], { cwd: CWD })
+      expect(r).toMatchObject({ neverExited: true, reason: 'signal', signal: 'SIGTERM' })
+      expect(r.error).toBeUndefined()
+    },
+  )
 
   test('a genuine exit carries no reason or signal', () => {
     const r = sh.run(['-c', 'exit 1'], { cwd: CWD })
@@ -180,10 +184,14 @@ describe('spawnRunnerAsync', () => {
     expect(r).toMatchObject({ neverExited: true, reason: 'abort', error: 'onSpawn threw: boom' })
   }, 10_000)
 
-  test('a death by signal is signal, with the signal', async () => {
-    const r = await sh.run(['-c', 'kill -TERM $$'], { cwd: CWD })
-    expect(r).toMatchObject({ neverExited: true, reason: 'signal', signal: 'SIGTERM' })
-  })
+  // POSIX only: Windows has no signals; `sh` reports `kill -TERM $$` as an exit code.
+  test.skipIf(process.platform === 'win32')(
+    'a death by signal is signal, with the signal',
+    async () => {
+      const r = await sh.run(['-c', 'kill -TERM $$'], { cwd: CWD })
+      expect(r).toMatchObject({ neverExited: true, reason: 'signal', signal: 'SIGTERM' })
+    },
+  )
 
   test('a failed stdin write keeps the exit code, with the error and no reason', async () => {
     const r = await sh.run(['-c', 'exec 0<&-; sleep 0.3'], {
@@ -192,7 +200,8 @@ describe('spawnRunnerAsync', () => {
     })
     expect(r.exitCode).toBe(0)
     expect(r.reason).toBeUndefined()
-    expect(r.error).toContain('EPIPE')
+    // macOS reports ENOTCONN instead of EPIPE with some timings. Windows reports EOF.
+    expect(r.error).toMatch(/\b(EPIPE|ENOTCONN|EOF)\b/)
     expect(r.stderr).toBe('')
   }, 10_000)
 
@@ -237,7 +246,8 @@ describe('streamRunner', () => {
     expect(r.error).toContain('ETIMEDOUT')
   }, 10_000)
 
-  test('a death by signal is signal, with no error', () => {
+  // POSIX only: Windows has no signals; `sh` reports `kill -TERM $$` as an exit code.
+  test.skipIf(process.platform === 'win32')('a death by signal is signal, with no error', () => {
     const { value: r } = quietly(() =>
       streamRunner('sh').run(['-c', 'kill -TERM $$'], { cwd: CWD }),
     )
@@ -283,34 +293,49 @@ describe('managedProcessRunner', () => {
     expect(await h.exited).toMatchObject({ signal: 'SIGTERM', reason: 'abort' })
   }, 10_000)
 
-  test('a signal the child handles, then a death from elsewhere, is signal', async () => {
-    const h = managedProcessRunner('sh').run(
-      ['-c', "trap ':' USR1; while :; do sleep 0.05; done"],
-      { cwd: CWD },
-    )
-    await new Promise((r) => setTimeout(r, 200))
-    h.kill('SIGUSR1')
-    await new Promise((r) => setTimeout(r, 200))
-    process.kill(h.pid, 'SIGTERM')
-    expect(await h.exited).toMatchObject({ signal: 'SIGTERM', reason: 'signal' })
-  }, 10_000)
+  // POSIX only: Windows has no signals: a kill from elsewhere is an exit code, and a child cannot trap one.
+  test.skipIf(process.platform === 'win32')(
+    'a signal the child handles, then a death from elsewhere, is signal',
+    async () => {
+      const h = managedProcessRunner('sh').run(
+        ['-c', "trap ':' USR1; while :; do sleep 0.05; done"],
+        { cwd: CWD },
+      )
+      await new Promise((r) => setTimeout(r, 200))
+      h.kill('SIGUSR1')
+      await new Promise((r) => setTimeout(r, 200))
+      process.kill(h.pid, 'SIGTERM')
+      expect(await h.exited).toMatchObject({ signal: 'SIGTERM', reason: 'signal' })
+    },
+    10_000,
+  )
 
-  test('a signal from elsewhere is signal, even after a kill(0) probe', async () => {
-    const h = managedProcessRunner('sh').run(['-c', 'exec sleep 10'], { cwd: CWD })
-    h.kill(0)
-    process.kill(h.pid, 'SIGTERM')
-    expect(await h.exited).toMatchObject({ signal: 'SIGTERM', reason: 'signal' })
-  }, 10_000)
+  // POSIX only: Windows has no signals: a kill from elsewhere is an exit code, and a child cannot trap one.
+  test.skipIf(process.platform === 'win32')(
+    'a signal from elsewhere is signal, even after a kill(0) probe',
+    async () => {
+      const h = managedProcessRunner('sh').run(['-c', 'exec sleep 10'], { cwd: CWD })
+      h.kill(0)
+      process.kill(h.pid, 'SIGTERM')
+      expect(await h.exited).toMatchObject({ signal: 'SIGTERM', reason: 'signal' })
+    },
+    10_000,
+  )
 
-  test('a kill() the child survives leaves its own exit code and no reason', async () => {
-    const h = managedProcessRunner('sh').run(
-      ['-c', "trap 'exit 3' TERM; while :; do sleep 0.05; done"],
-      { cwd: CWD },
-    )
-    await new Promise((r) => setTimeout(r, 200))
-    h.kill()
-    expect(await h.exited).toEqual({ exitCode: 3, signal: null })
-  }, 10_000)
+  // POSIX only: Windows has no signals: a kill from elsewhere is an exit code, and a child cannot trap one.
+  test.skipIf(process.platform === 'win32')(
+    'a kill() the child survives leaves its own exit code and no reason',
+    async () => {
+      const h = managedProcessRunner('sh').run(
+        ['-c', "trap 'exit 3' TERM; while :; do sleep 0.05; done"],
+        { cwd: CWD },
+      )
+      await new Promise((r) => setTimeout(r, 200))
+      h.kill()
+      expect(await h.exited).toEqual({ exitCode: 3, signal: null })
+    },
+    10_000,
+  )
 })
 
 describe('a bad cwd', () => {
@@ -329,6 +354,9 @@ describe('a bad cwd', () => {
     const nul = { code: 'ERR_INVALID_ARG_VALUE' }
     expect(() => spawnRunner('sh').run(['a\0b'], { cwd })).toThrow(TypeError)
     expect(() => spawnRunner('sh').run([], { cwd, env: { A: 'x\0y' } })).toThrow(
+      expect.objectContaining(nul),
+    )
+    expect(() => spawnRunner('sh').run([], { cwd, env: { 'A\0B': 'x' } })).toThrow(
       expect.objectContaining(nul),
     )
     expect(() => spawnRunner('s\0h').run([], { cwd })).toThrow(expect.objectContaining(nul))

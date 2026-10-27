@@ -5,6 +5,7 @@
  */
 
 import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
 
 import { captureIo } from '@osdlc/cli-tool'
 import { describe, expect, test } from 'vitest'
@@ -35,7 +36,9 @@ describe('the extend example', () => {
   })
 
   test('loads as a tool module', async () => {
-    const tools = await loadToolModule(new URL('./guide-example.ts', import.meta.url).pathname)
+    const tools = await loadToolModule(
+      fileURLToPath(new URL('./guide-example.ts', import.meta.url)),
+    )
     expect(tools.map((t) => t.id)).toEqual(['acme'])
   })
 })

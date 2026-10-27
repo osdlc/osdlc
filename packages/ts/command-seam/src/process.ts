@@ -13,13 +13,15 @@ import { spawn } from 'node:child_process'
 import { constants } from 'node:os'
 
 import { groupStartRefusal, releaseWhenEmpty, settleGroup, spawnTrackedGroup } from './groups.ts'
+import { planOptions } from './spawn-plan.ts'
 import {
   childStdio,
-  cwdError,
   mergedEnv,
+  prepareSpawn,
   timerMs,
   type EnvOverrides,
   type NeverExitedReason,
+  type SpawnRunnerOptions,
   type StdioOption,
 } from './sync.ts'
 
@@ -36,7 +38,8 @@ export interface ManagedProcessRunOptions {
    * Run the child as its own process-group leader. {@link
    * ManagedProcessHandle.kill} then signals the whole group instead of just
    * the direct child, so processes the child started die with it. The group
-   * no longer gets the terminal's Ctrl-C. POSIX only.
+   * no longer gets the terminal's Ctrl-C. POSIX only: on Windows `kill()`
+   * stops the direct child alone.
    *
    * `installGroupSignalForwarding` kills live groups when the host is
    * signalled. Once forwarding is stopping the host, a new group run is
@@ -136,7 +139,10 @@ export interface ManagedProcessRunner {
  * child's output reaches the terminal. It does not capture output and has
  * no timeout of its own.
  *
- * @param binary - A name looked up on `PATH`, or a path.
+ * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
+ *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
+ * @param options - See `SpawnRunnerOptions`; `absolutePathOnly` searches
+ *   absolute `PATH` entries only.
  * @returns A runner for that binary.
  *
  * @example
@@ -157,21 +163,26 @@ export interface ManagedProcessRunner {
  * })
  * ```
  */
-export function managedProcessRunner(binary: string): ManagedProcessRunner {
+export function managedProcessRunner(
+  binary: string,
+  options: SpawnRunnerOptions = {},
+): ManagedProcessRunner {
   return {
     run(argv: string[], opts: ManagedProcessRunOptions): ManagedProcessHandle {
       const stdio = childStdio(opts.stdio)
-      const cwdMessage = cwdError(`spawn ${binary}`, binary, argv, opts)
-      if (cwdMessage !== undefined) {
-        return { pid: -1, kill: () => {}, exited: Promise.resolve(spawnExit(cwdMessage)) }
+      const prepared = prepareSpawn('spawn', binary, argv, opts, options)
+      if ('refusal' in prepared) {
+        return { pid: -1, kill: () => {}, exited: Promise.resolve(spawnExit(prepared.refusal)) }
       }
+      const { plan } = prepared
       const group = opts.processGroup === true
       const refusal = group ? groupStartRefusal() : undefined
       if (refusal !== undefined) {
         return { pid: -1, kill: () => {}, exited: Promise.resolve(refusedExit(refusal)) }
       }
       const start = () =>
-        spawn(binary, argv, {
+        spawn(plan.file, plan.args, {
+          ...planOptions(plan),
           cwd: opts.cwd,
           detached: group,
           stdio,
@@ -206,8 +217,11 @@ export function managedProcessRunner(binary: string): ManagedProcessRunner {
           settled = true
           resolve(result)
         }
-        // A spawn failure (such as ENOENT). No exit was reported.
+        // A spawn failure (such as ENOENT). No exit was reported. A failed
+        // `kill()` (such as EPERM) also emits `error`, but the process is
+        // still running, so its exit settles this.
         child.on('error', (err) => {
+          if ((err as NodeJS.ErrnoException).syscall === 'kill') return
           untrackGroup?.()
           finish(spawnExit(err.message))
         })
@@ -237,17 +251,26 @@ export function managedProcessRunner(binary: string): ManagedProcessRunner {
         pid,
         kill(signal: NodeJS.Signals | number = 'SIGTERM'): void {
           if (pid === -1) return
-          try {
-            // A negative pid signals the whole process group (see
-            // `processGroup`). The direct child goes through `child.kill`,
-            // which does nothing once the child has been reaped, so a reused
-            // pid is never signalled.
-            const delivered = group ? process.kill(-pid, signal) : child.kill(signal)
-            const name = typeof signal === 'number' ? signalName(signal) : signal
-            if (delivered && name !== undefined) sent.add(name)
-          } catch {
-            // Already gone.
+          // A negative pid signals the whole process group (see
+          // `processGroup`). The direct child goes through `child.kill`,
+          // which does nothing once the child has been reaped, so a reused
+          // pid is never signalled.
+          let delivered = false
+          if (group) {
+            try {
+              delivered = process.kill(-pid, signal)
+            } catch {
+              // The group is gone, or the OS has no groups (Windows). Signal
+              // the direct child instead.
+            }
           }
+          try {
+            if (!delivered) delivered = child.kill(signal)
+          } catch {
+            // A signal this OS cannot send.
+          }
+          const name = typeof signal === 'number' ? signalName(signal) : signal
+          if (delivered && name !== undefined) sent.add(name)
         },
         exited,
       }

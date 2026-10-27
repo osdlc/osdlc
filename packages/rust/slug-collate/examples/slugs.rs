@@ -9,8 +9,9 @@ use std::cmp::Ordering;
 use slug_collate::{SlugOptions, compare, compare_paths, slugify, slugify_with};
 
 fn main() {
-    // Default rules: lowercase, fold accents through NFKD, drop apostrophes.
-    for title in ["Café au Lait", "Sam's Note", "Привет мир"] {
+    // Default rules: lowercase, fold accents, keep the marks that tell words
+    // apart (the kana voicing mark), drop apostrophes.
+    for title in ["Café au Lait", "Sam's Note", "Привет мир", "ガイド"] {
         println!("{title:>14} -> {}", slugify(title));
     }
 

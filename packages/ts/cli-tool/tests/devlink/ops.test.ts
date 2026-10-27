@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { spawnSync } from 'node:child_process'
 import {
   chmodSync,
@@ -11,12 +11,17 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { join } from 'node:path'
+import { userInfo } from 'node:os'
+import { dirname, join, relative } from 'node:path'
+
+import { shellQuote } from '@osdlc/command-seam/quote'
+import { systemDirs } from '@osdlc/config-layers/dirs'
 
 import { gitHead } from '../../src/devlink/git-head.ts'
 import {
   DevlinkError,
   defaultBinDir,
+  findOnPath,
   history,
   install,
   link,
@@ -26,7 +31,9 @@ import {
   status,
   use,
 } from '../../src/devlink/ops.ts'
-import { readActive, readHistory } from '../../src/devlink/state.ts'
+import { readActive, readHistory, stateDir } from '../../src/devlink/state.ts'
+import { runDevCli } from '../../src/devlink/cli.ts'
+import { captureIo } from '../../src/io.ts'
 import { SHA_A, SHA_B, SPEC, sandbox, seedCheckout, seedGit, type Sandbox } from './support.ts'
 
 let sb: Sandbox
@@ -65,6 +72,51 @@ describe('gitHead', () => {
   test('no .git → nulls', () => {
     expect(gitHead(sb.root)).toEqual({ branch: null, head: null })
   })
+  test('finds a ref in packed-refs, skipping comments and peeled lines', () => {
+    const a = seedCheckout(join(sb.root, 'a'))
+    mkdirSync(join(a, '.git'), { recursive: true })
+    writeFileSync(join(a, '.git', 'HEAD'), 'ref: refs/heads/main\n')
+    writeFileSync(
+      join(a, '.git', 'packed-refs'),
+      `# pack-refs with: peeled fully-peeled sorted\n${SHA_A} refs/heads/other\n${SHA_B} refs/heads/main\n^${SHA_A}\n`,
+    )
+    expect(gitHead(a)).toEqual({ branch: 'main', head: SHA_B.slice(0, 12) })
+  })
+  test('a ref in neither place gives a null head, keeping the branch', () => {
+    const a = seedCheckout(join(sb.root, 'a'))
+    mkdirSync(join(a, '.git'), { recursive: true })
+    writeFileSync(join(a, '.git', 'HEAD'), 'ref: refs/heads/gone\n')
+    expect(gitHead(a)).toEqual({ branch: 'gone', head: null })
+    writeFileSync(join(a, '.git', 'packed-refs'), `${SHA_A} refs/heads/main\n`)
+    expect(gitHead(a)).toEqual({ branch: 'gone', head: null })
+  })
+  test('a detached HEAD gives no branch and its short sha', () => {
+    const a = seedCheckout(join(sb.root, 'a'))
+    mkdirSync(join(a, '.git'), { recursive: true })
+    writeFileSync(join(a, '.git', 'HEAD'), `${SHA_A}\n`)
+    expect(gitHead(a)).toEqual({ branch: null, head: SHA_A.slice(0, 12) })
+  })
+  test('a ref that is not a 40-hex sha gives a null head', () => {
+    const a = seedCheckout(join(sb.root, 'a'))
+    seedGit(a, 'main', 'not-a-sha')
+    expect(gitHead(a)).toEqual({ branch: 'main', head: null })
+  })
+  test('follows a relative gitdir file', () => {
+    const main = seedCheckout(join(sb.root, 'main'))
+    seedGit(main, 'main', SHA_B)
+    const wt = seedCheckout(join(sb.root, 'wt'))
+    const wtGit = join(main, '.git', 'worktrees', 'wt')
+    mkdirSync(wtGit, { recursive: true })
+    writeFileSync(join(wt, '.git'), 'gitdir: ../main/.git/worktrees/wt\n')
+    writeFileSync(join(wtGit, 'commondir'), '../..\n')
+    writeFileSync(join(wtGit, 'HEAD'), 'ref: refs/heads/main\n')
+    expect(gitHead(wt)).toEqual({ branch: 'main', head: SHA_B.slice(0, 12) })
+  })
+  test('a .git file that is not a gitdir line gives nulls', () => {
+    const a = seedCheckout(join(sb.root, 'a'))
+    writeFileSync(join(a, '.git'), 'garbage\n')
+    expect(gitHead(a)).toEqual({ branch: null, head: null })
+  })
 })
 
 describe('defaultBinDir', () => {
@@ -73,6 +125,8 @@ describe('defaultBinDir', () => {
   })
   test('a relative XDG_BIN_HOME is ignored; an absolute one wins', () => {
     expect(defaultBinDir({ HOME: '/h', XDG_BIN_HOME: 'bin' })).toBe('/h/.local/bin')
+    // A relative HOME is unset, not a folder under the cwd.
+    expect(defaultBinDir({ HOME: '.' })).toBe(join(userInfo().homedir, '.local', 'bin'))
     expect(defaultBinDir({ HOME: '/h', XDG_BIN_HOME: '/x/bin' })).toBe('/x/bin')
   })
 })
@@ -262,6 +316,13 @@ describe('install', () => {
     expect(readFileSync(join(bin, 'tooly'), 'utf-8')).toBe('real file')
   })
 
+  test('a relative bin dir is relative to opts.cwd, like the checkout', () => {
+    seedCheckout(join(sb.root, 'a'))
+    const out = install(SPEC, { checkout: 'a', binDir: 'bin' }, opts({ dryRun: true }))
+    expect(out.binDir).toBe(join(sb.root, 'bin'))
+    expect(out.links[0]?.linkPath).toBe(join(sb.root, 'bin', 'tooly'))
+  })
+
   test('dry-run creates nothing', () => {
     const a = seedCheckout(join(sb.root, 'a'))
     const bin = join(sb.root, 'bin')
@@ -303,7 +364,74 @@ describe('shim', () => {
   })
 })
 
+describe.skipIf(process.platform === 'win32')('findOnPath', () => {
+  test('finds an executable on an absolute entry, and skips a relative one or a plain file', () => {
+    const bin = join(sb.root, 'bin')
+    mkdirSync(bin)
+    writeFileSync(join(bin, 'tooly'), '#!/bin/sh\n')
+    chmodSync(join(bin, 'tooly'), 0o755)
+    writeFileSync(join(bin, 'plain'), '')
+    expect(findOnPath('tooly', { PATH: bin })).toBe(join(bin, 'tooly'))
+    expect(findOnPath('plain', { PATH: bin })).toBeNull()
+    // The same folder named relative to the cwd is not searched.
+    expect(findOnPath('tooly', { PATH: relative(process.cwd(), bin) })).toBeNull()
+    expect(findOnPath('tooly', {})).toBeNull()
+  })
+})
+
 describe('status', () => {
+  test('points at a pre-0.8 macOS link file when the current one is missing', () => {
+    const legacyDirs = systemDirs(SPEC.vendorDirs, {
+      home: sb.home,
+      env: {},
+      platform: 'darwin',
+      convention: 'native',
+    })
+    const old = join(legacyDirs.standalone(SPEC.name).config().path, 'home')
+    mkdirSync(dirname(old), { recursive: true })
+    writeFileSync(old, `${sb.root}\n`)
+    const s = status(SPEC, opts({ legacyDirs }))
+    expect(s.link.legacy).toBe(old)
+    const io = captureIo()
+    runDevCli(SPEC, ['status'], { ...opts({ legacyDirs }), io, platform: 'darwin' })
+    expect(io.out).toContain(`note: an old link file is at ${old}`)
+    expect(io.out).toContain(`mv ${shellQuote(old)} ${shellQuote(s.link.path)}`)
+    link(SPEC, { checkout: seedCheckout(join(sb.root, 'c')) }, opts())
+    expect(status(SPEC, opts({ legacyDirs })).link.legacy).toBeNull()
+  })
+
+  test("the printed mv quotes a path that holds a '", () => {
+    const home = join(sb.root, "it's home")
+    const legacyDirs = systemDirs(SPEC.vendorDirs, {
+      home,
+      env: {},
+      platform: 'darwin',
+      convention: 'native',
+    })
+    const old = join(legacyDirs.standalone(SPEC.name).config().path, 'home')
+    mkdirSync(dirname(old), { recursive: true })
+    writeFileSync(old, `${sb.root}\n`)
+    const io = captureIo()
+    runDevCli(SPEC, ['status'], { ...opts({ legacyDirs }), io, platform: 'darwin' })
+    const line = io.out.split('\n').find((l) => l.includes('move it:'))!
+    const quoted = `'${old.replaceAll("'", "'\\''")}'`
+    expect(line).toContain(`mv ${quoted} `)
+    // The shell reads the quoted word back as the path.
+    const echoed = spawnSync('sh', ['-c', `printf %s ${quoted}`], { encoding: 'utf-8' })
+    expect(echoed.stdout).toBe(old)
+  })
+
+  test('the state path ignores <PREFIX>_CONVENTION', () => {
+    vi.stubEnv('HOME', sb.home)
+    vi.stubEnv('XDG_CONFIG_HOME', '')
+    vi.stubEnv('TOOLY_CONVENTION', 'native')
+    try {
+      expect(stateDir(SPEC)).toBe(join(sb.home, '.config', 'tooly'))
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   test('reports every layer', () => {
     const a = seedCheckout(join(sb.root, 'a'))
     const b = seedCheckout(join(sb.root, 'b'))

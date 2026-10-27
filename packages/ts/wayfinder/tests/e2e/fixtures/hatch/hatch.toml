@@ -1,0 +1,6 @@
+[envs.default.scripts]
+test = "pytest {args}"
+cov = "pytest --cov"
+
+[envs.lint.scripts]
+check = "ruff check ."

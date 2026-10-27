@@ -8,12 +8,23 @@
  * package depends on none of them.
  */
 
-import { runShell, runShellAsync, stderrOrError } from '@osdlc/command-seam'
+import {
+  shellRunner,
+  shellRunnerAsync,
+  spawnRunner,
+  spawnRunnerAsync,
+  stderrOrError,
+} from '@osdlc/command-seam'
 
 import type { PrUpdateStandaloneConfig } from './config.ts'
 import type { Ports, Repair } from './ports.ts'
 import { agentRepair } from './repair/agents.ts'
 import { attemptsDir, fileAttemptStore } from './update/attempts.ts'
+
+// Both run in a PR worktree, so `sh` comes only from an absolute PATH entry:
+// a relative entry would resolve inside the PR's own files.
+const sh = shellRunner(spawnRunner('sh', { absolutePathOnly: true }))
+const shAsync = shellRunnerAsync(spawnRunnerAsync('sh', { absolutePathOnly: true }))
 
 /**
  * A `Repair` that runs `command` with `sh -c` in the update worktree. With
@@ -24,7 +35,7 @@ import { attemptsDir, fileAttemptStore } from './update/attempts.ts'
  */
 export function commandRepair(command: string, timeoutSeconds: number | null = null): Repair {
   return async (req) => {
-    const res = await runShellAsync(command, {
+    const res = await shAsync.run(command, {
       ...(timeoutSeconds === null ? {} : { timeoutMs: timeoutSeconds * 1000 }),
       cwd: req.worktree,
       input: JSON.stringify(req),
@@ -58,7 +69,7 @@ export function standalonePorts(cfg?: PrUpdateStandaloneConfig, projectRoot?: st
   const testCommand = cfg?.test_command ?? null
   return {
     locate: () => null,
-    runVerb: (verb, cwd) => runShell(verb, { cwd }),
+    runVerb: (verb, cwd) => sh.run(verb, { cwd }),
     // A standalone run has no host registry to look up `check` in, and runs
     // `test` only from `test_command`. Failing is better than running no verbs
     // and reporting a push as verified when nothing was checked.

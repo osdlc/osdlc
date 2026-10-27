@@ -5,6 +5,8 @@
  * the tool was found. An `exec` runner is withheld unless execution is
  * allowed, and its withheld report appears only when its tool was detected.
  * Runners run concurrently. One that throws does not lose the others' work.
+ * One that runs past its probe timeout is stopped: its processes are killed
+ * and it reports an error, while the others go on.
  *
  * Each call lists and reads the repository again, with the discovery
  * settings recorded on the profile. Runners re-read the files they report on.
@@ -15,23 +17,41 @@
  * The cache (`cached.ts`) sits above this and uses `probeObserver`.
  */
 
-import { spawnRunnerAsync } from '@osdlc/command-seam'
+import type { AsyncCommandRunner } from '@osdlc/command-seam'
 
-import { createContext, createContextState, type ContextState } from './context.ts'
+import {
+  boundRunners,
+  createContext,
+  createContextState,
+  DEFAULT_PROBE_TIMEOUT_MS,
+  GIT_TIMEOUT_MS,
+  type ContextState,
+} from './context.ts'
 import type { CollectOptions, ProviderContext, ProviderKind, RunnerContext } from './contract.ts'
 import { createLister } from './discovery.ts'
-import type { Catalog, ChainSegment, RunnerBrand, RunnerReport, Task } from './model.ts'
+import {
+  CATALOG_SCHEMA_VERSION,
+  type Catalog,
+  type ChainSegment,
+  type Invocation,
+  type ParamValues,
+  type RunnerBrand,
+  type RunnerReport,
+  type Task,
+} from './model.ts'
+import { bindParams } from './params.ts'
 import { manifestsOf, markersOf, type Registry } from './registry.ts'
 import { choosePackageManagers } from './roles.ts'
 import { synthesizedRunners } from './synthesized.ts'
 import type { Package, ProjectProfile, RunnerRole } from './tool.ts'
-import { which as whichOnPath } from './which.ts'
+import { defaultRunner, which as whichOnPath } from './which.ts'
 
 /** One runner to run: a tool's runner role, or a synthesized role group. */
 export interface RunnerSpec {
   id: string
   role: RunnerRole
   binary?: string | undefined
+  brand?: RunnerBrand | undefined
   packages: readonly Package[]
   /** Patterns that detected the tool, re-checked by the cache fingerprint. */
   patterns: string[]
@@ -46,6 +66,12 @@ export interface ProbeRecord {
   reads: string[]
   /** Every pattern passed to `ctx.files()`, plus the tool's own markers. */
   queries: string[]
+  /**
+   * Every binary looked up through `ctx.which`, with what it found. A runner
+   * that picks a tool by what is installed (Procfile's manager, gradle with no
+   * wrapper) gives another answer once that changes.
+   */
+  lookups: Record<string, string | null>
   watch: string[]
   report: RunnerReport
   files: (pattern: string) => Promise<string[]>
@@ -76,6 +102,7 @@ export function selectRunners(
       id: tool.id,
       role,
       binary: tool.binary,
+      brand: tool.brand ?? role.brand,
       packages,
       patterns: [...markersOf(tool).map((m) => m.files), ...manifestsOf(tool)],
     })
@@ -97,17 +124,44 @@ export function selectRunners(
 /** New read state for one call, listing files the same way the profile was detected. */
 export function stateFor(
   profile: ProjectProfile,
-  makeGit: () => ReturnType<typeof spawnRunnerAsync>,
+  makeRunner: (binary: string) => AsyncCommandRunner,
+  signal: AbortSignal,
 ): ContextState {
   return createContextState(
     createLister(
       profile.root,
       profile.discovery,
-      makeGit(),
+      boundRunners(makeRunner, signal, GIT_TIMEOUT_MS)('git'),
       profile.excludePaths,
       profile.useBuiltinExcludes,
     ),
   )
+}
+
+/** The longest delay `setTimeout` honours, in ms. A longer one fires at once. */
+export const MAX_TIMER_MS = 2 ** 31 - 1
+
+/**
+ * The probe timeout of `spec`: the caller's for this runner, the caller's for
+ * every runner, the runner's own, else the default, then at most
+ * `maxProbeTimeoutMs`. It bounds each subprocess the runner starts and the
+ * whole probe. `Infinity` means no limit. A finite value is at most
+ * {@link MAX_TIMER_MS}.
+ */
+export function probeTimeout(spec: RunnerSpec, options: CollectOptions): number {
+  const own =
+    options.timeouts?.[spec.id] ??
+    options.probeTimeoutMs ??
+    spec.role.probe?.timeoutMs ??
+    DEFAULT_PROBE_TIMEOUT_MS
+  const limit = Math.min(own, options.maxProbeTimeoutMs ?? Infinity)
+  return limit === Infinity ? limit : Math.min(limit, MAX_TIMER_MS)
+}
+
+/** The diagnostic of a probe stopped at its timeout: `timed out after 10 s`. */
+export function timedOutMessage(ms: number): string {
+  const text = ms < 1000 ? `${Math.round(ms)} ms` : `${Number((ms / 1000).toFixed(1))} s`
+  return `timed out after ${text}`
 }
 
 export async function collectRunners(
@@ -116,10 +170,10 @@ export async function collectRunners(
   options: InternalCollectOptions = {},
 ): Promise<Catalog> {
   const allowExec = options.allowExec ?? false
-  const makeRunner = options.makeRunner ?? ((binary: string) => spawnRunnerAsync(binary))
+  const makeRunner = options.makeRunner ?? defaultRunner
   const which = options.which ?? whichOnPath
   const signal = options.signal ?? new AbortController().signal
-  const state = stateFor(profile, () => makeRunner('git'))
+  const state = stateFor(profile, makeRunner, signal)
   const base = createContext({
     absRoot: profile.root,
     allowExec,
@@ -136,47 +190,100 @@ export async function collectRunners(
     packageManagers: (dir) => choosePackageManagers(registry, profile, dir),
   }
   const observer = options.probeObserver
+  // The shared file listing, awaited before any runner's clock starts, so a
+  // slow listing does not count against a runner's own limit. A failed
+  // listing is the runners' to report when they ask for files.
+  let listed: Promise<void> | undefined
+  const listing = (): Promise<void> =>
+    (listed ??= state.lister.index().then(
+      () => undefined,
+      () => undefined,
+    ))
 
+  const selected = selectRunners(registry, profile, options)
+  options.onRunners?.(selected.map((s) => s.id))
   const reports = await Promise.all(
-    selectRunners(registry, profile, options).map(async (spec): Promise<RunnerReport> => {
+    selected.map(async (spec): Promise<RunnerReport> => {
       if (spec.role.kind === 'exec' && !allowExec) {
-        return execWithheldReport(spec, options.execWithheldHint, which)
+        const withheld = execWithheldReport(spec, options.execWithheldHint, which)
+        options.onReport?.(withheld)
+        return withheld
       }
       const head = reportHead(spec, which)
+      const failed = (message: string): RunnerReport => ({
+        ...head,
+        status: 'error',
+        tasks: [],
+        skippedForExec: false,
+        diagnostics: [{ severity: 'error', message }],
+      })
       const reads = new Set<string>()
       const queries = new Set<string>()
-      const recording = observer === undefined ? ctx : recordReads(ctx, reads, queries)
+      const lookups = new Map<string, string | null>()
+      const limit = probeTimeout(spec, options)
+      if (!(limit > 0)) {
+        const invalid = failed(`probe timeout must be a positive number or Infinity, got ${limit}`)
+        options.onReport?.(invalid)
+        return invalid
+      }
+      await listing()
+      // Aborted at the timeout, which kills every process tree this runner started.
+      const stop = new AbortController()
+      const ownSignal = AbortSignal.any([signal, stop.signal])
+      const own: RunnerContext = {
+        ...ctx,
+        signal: ownSignal,
+        runner: boundRunners(makeRunner, ownSignal, limit),
+      }
+      const recording = observer === undefined ? own : recordReads(own, reads, queries, lookups)
 
       const startedAt = performance.now()
-      let report: RunnerReport
-      try {
-        const result = await spec.role.collect(recording, spec.packages)
-        report = { ...head, ...result, skippedForExec: false }
-      } catch (err) {
-        report = {
-          ...head,
-          status: 'error',
-          tasks: [],
-          skippedForExec: false,
-          diagnostics: [{ severity: 'error', message: describe(err) }],
+      const work = (async (): Promise<RunnerReport> => {
+        try {
+          const result = await spec.role.collect(recording, spec.packages)
+          return { ...head, ...result, skippedForExec: false }
+        } catch (err) {
+          return failed(describe(err))
         }
-      }
+      })()
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const timedOut =
+        limit === Infinity
+          ? null
+          : new Promise<null>((resolve) => {
+              timer = setTimeout(() => resolve(null), limit)
+            })
+      const answer = await (timedOut === null ? work : Promise.race([work, timedOut]))
+      clearTimeout(timer)
+      const report = answer ?? failed(timedOutMessage(limit))
+      // `work` is not cancelled, only its subprocesses are killed. A runner
+      // that hangs on something else stays pending until the process exits.
+      if (answer === null) stop.abort(new Error(timedOutMessage(limit)))
 
-      observer?.({
-        runner: spec.id,
-        kind: spec.role.kind,
-        durationMs: performance.now() - startedAt,
-        reads: [...reads, ...evidencePaths(spec.packages)],
-        queries: [...queries, ...spec.patterns],
-        watch: spec.role.watch ?? [],
-        report,
-        files: ctx.files,
-      })
+      const durationMs = performance.now() - startedAt
+      options.onProbe?.({ runner: spec.id, durationMs })
+      // A probe cut off at its timeout read only part of what it needs, so it is not stored.
+      if (answer !== null) {
+        observer?.({
+          runner: spec.id,
+          kind: spec.role.kind,
+          durationMs,
+          reads: [...reads, ...evidencePaths(spec.packages)],
+          queries: [...queries, ...spec.patterns],
+          lookups: Object.fromEntries([...lookups].sort(([a], [b]) => (a < b ? -1 : 1))),
+          watch: spec.role.watch ?? [],
+          report,
+          files: ctx.files,
+        })
+      }
+      options.onReport?.(report)
       return report
     }),
   )
 
   return {
+    kind: 'catalog',
+    schemaVersion: CATALOG_SCHEMA_VERSION,
     root: profile.root,
     generatedAt: new Date().toISOString(),
     discovery: profile.discovery,
@@ -206,7 +313,7 @@ function reportHead(
     // A copy of every chain, so a caller editing one report's chain changes
     // no other report and no later collect.
     chain: (spec.role.chain ?? DEFAULT_CHAIN).map((segment) => ({ ...segment })),
-    ...(spec.role.brand ? { brand: spec.role.brand as RunnerBrand } : {}),
+    ...(spec.brand ? { brand: spec.brand } : {}),
     ...(spec.binary ? { tool: toolStatus(spec.binary, which) } : {}),
   }
 }
@@ -237,14 +344,20 @@ export function execWithheldReport(
   }
 }
 
-/** A copy of a context that records every path read and pattern listed through it. */
+/** A copy of a context that records every path read, pattern listed and binary looked up through it. */
 function recordReads<C extends ProviderContext>(
   ctx: C,
   reads: Set<string>,
   queries: Set<string>,
+  lookups: Map<string, string | null>,
 ): C {
   return {
     ...ctx,
+    which: (binary: string) => {
+      const found = ctx.which(binary)
+      lookups.set(binary, found)
+      return found
+    },
     files: async (pattern: string) => {
       const found = await ctx.files(pattern)
       queries.add(pattern)
@@ -274,11 +387,80 @@ function toolStatus(
   return path === null ? { binary, found: false } : { binary, found: true, path }
 }
 
-/** The argv that runs `task` with `args`, by the owning runner's rule. By default `args` are appended. */
-export function invokeTask(registry: Registry, task: Task, args: readonly string[]): string[] {
-  const invoke = registry.byId.get(task.runner)?.roles.runner?.invoke
-  if (invoke !== undefined) return invoke(task, args)
-  return [...task.argv, ...args]
+/**
+ * What runs `task` with `args`, by the owning runner's rule. A list of
+ * strings is positional arguments, passed as given. Values by name are bound
+ * by each parameter's `binding` (see `bindParams`): `positional`, `flag` and
+ * `switch` words go through the runner's rule, so they land after any `--` it
+ * adds. `assign` arguments go straight after the task's own argv, before any
+ * `--`, because the runner reads them.
+ *
+ * Throws when the runner's rule changes `argv[0]`, the binary. The binary
+ * always comes from a catalog built by reading the repository, never from
+ * the caller. Also throws when a positional value bound by name starts with
+ * `-` and would reach the runner as one of its own options: no `--` comes
+ * before it, and the runner does not set `optionsEndAtTask`.
+ */
+export function invocationOf(
+  registry: Registry,
+  task: Task,
+  args: readonly string[] | ParamValues,
+): Invocation {
+  const bound = isList(args)
+    ? { args: [...args], positional: [], assign: [], env: {} }
+    : bindParams(task.parameters, args)
+  const runner = registry.byId.get(task.runner)?.roles.runner
+  const rule = runner?.invoke
+  const base =
+    bound.args.length === 0
+      ? [...task.argv]
+      : rule === undefined
+        ? [...task.argv, ...bound.args]
+        : rule(task, bound.args)
+  if (base[0] !== task.argv[0]) {
+    throw new Error(`${task.runner}: invoke changed the binary from ${task.argv[0]} to ${base[0]}`)
+  }
+  if (runner?.optionsEndAtTask !== true) {
+    const end = base.indexOf('--', task.argv.length)
+    for (const value of bound.positional) {
+      if (!value.startsWith('-')) continue
+      const at = base.indexOf(value, task.argv.length)
+      if (at !== -1 && (end === -1 || at < end)) {
+        throw new Error(
+          `${task.runner}: the value ${value} starts with "-", and the runner would read it as an option`,
+        )
+      }
+    }
+  }
+  const argv =
+    bound.assign.length === 0
+      ? base
+      : startsWith(base, task.argv)
+        ? [...task.argv, ...bound.assign, ...base.slice(task.argv.length)]
+        : [...base, ...bound.assign]
+  return { argv, env: bound.env }
+}
+
+/** {@link invocationOf}'s argv. Throws when a parameter is bound to the environment. */
+export function invokeTask(
+  registry: Registry,
+  task: Task,
+  args: readonly string[] | ParamValues,
+): string[] {
+  const { argv, env } = invocationOf(registry, task, args)
+  const names = Object.keys(env)
+  if (names.length > 0) {
+    throw new Error(`${names.join(', ')} must be set in the environment; use runners.invocation`)
+  }
+  return argv
+}
+
+function isList(args: readonly string[] | ParamValues): args is readonly string[] {
+  return Array.isArray(args)
+}
+
+function startsWith(argv: readonly string[], prefix: readonly string[]): boolean {
+  return prefix.every((word, i) => argv[i] === word)
 }
 
 function describe(err: unknown): string {

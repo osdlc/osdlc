@@ -1,7 +1,10 @@
+import { posix, win32 } from 'node:path'
+
 import { afterAll, describe, expect, test } from 'vitest'
 
 import { tasks, type Task } from '../src/model.ts'
 import { mise } from '../src/plugins/tools/index.ts'
+import { rootRelative } from '../src/plugins/tools/mise.ts'
 import {
   type Canned,
   collect,
@@ -35,6 +38,9 @@ function opts(canned: Canned[] = [], extra: Record<string, unknown> = {}) {
     calls,
   }
 }
+
+/** `path` as it sits inside a JSON string: a Windows `\` is escaped. */
+const inJson = (path: string): string => JSON.stringify(path).slice(1, -1)
 
 function byName(list: Task[], name: string): Task | undefined {
   return list.find((t) => t.path[t.path.length - 1] === name)
@@ -77,7 +83,11 @@ describe('mise runner', () => {
   test('reads config tasks and file tasks, dropping hidden ones', async () => {
     const dir = await root({ 'mise.toml': CONFIG })
     const { options } = opts([
-      { binary: 'mise', argv: ['tasks', '--json'], stdout: TASKS.replaceAll('%ROOT%', dir) },
+      {
+        binary: 'mise',
+        argv: ['tasks', '--json'],
+        stdout: TASKS.replaceAll('%ROOT%', inJson(dir)),
+      },
     ])
     const found = tasks(await collect(dir, { ...options, only: ['mise'], allowExec: true }))
 
@@ -115,7 +125,11 @@ describe('mise runner', () => {
   test('omits global tasks: they belong to the machine, not the project', async () => {
     const dir = await root({ 'mise.toml': CONFIG })
     const { options } = opts([
-      { binary: 'mise', argv: ['tasks', '--json'], stdout: TASKS.replaceAll('%ROOT%', dir) },
+      {
+        binary: 'mise',
+        argv: ['tasks', '--json'],
+        stdout: TASKS.replaceAll('%ROOT%', inJson(dir)),
+      },
     ])
     const report = (await collect(dir, { ...options, only: ['mise'], allowExec: true })).reports[0]!
 
@@ -213,7 +227,11 @@ describe('mise runner', () => {
   test('invoke appends arguments to the task', async () => {
     const dir = await root({ 'mise.toml': CONFIG })
     const { options } = opts([
-      { binary: 'mise', argv: ['tasks', '--json'], stdout: TASKS.replaceAll('%ROOT%', dir) },
+      {
+        binary: 'mise',
+        argv: ['tasks', '--json'],
+        stdout: TASKS.replaceAll('%ROOT%', inJson(dir)),
+      },
     ])
     const { project, catalog } = await detectAndCollect(dir, {
       ...options,
@@ -223,5 +241,26 @@ describe('mise runner', () => {
     const build = byName(tasks(catalog), 'build')!
 
     expect(project.runners.invoke(build, ['a', 'b'])).toEqual(['mise', 'run', 'build', 'a', 'b'])
+  })
+})
+
+describe('rootRelative', () => {
+  test('a path inside the root is relative, with / separators', () => {
+    expect(rootRelative('/repo', '/repo/sub/mise.toml', posix)).toBe('sub/mise.toml')
+    expect(rootRelative('C:\\repo', 'C:\\repo\\sub\\mise.toml', win32)).toBe('sub/mise.toml')
+  })
+
+  test('a path above the root is kept absolute', () => {
+    expect(rootRelative('/repo', '/home/me/.config/mise/config.toml', posix)).toBe(
+      '/home/me/.config/mise/config.toml',
+    )
+  })
+
+  test('a path on another drive is kept absolute', () => {
+    expect(rootRelative('C:\\repo', 'D:\\tasks\\mise.toml', win32)).toBe('D:\\tasks\\mise.toml')
+  })
+
+  test('a name that starts with two dots is inside the root', () => {
+    expect(rootRelative('/repo', '/repo/..tasks/build', posix)).toBe('..tasks/build')
   })
 })

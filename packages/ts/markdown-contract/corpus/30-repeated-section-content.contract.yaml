@@ -1,0 +1,11 @@
+mcVersion: 2
+kind: contract
+body:
+  sections:
+    - section: Entry
+      minContains: 1
+      content:
+        list:
+          minItems: 2
+      requires:
+        - pattern: shipped

@@ -152,8 +152,10 @@ async function syncDirAsync(dir: string): Promise<void> {
 /**
  * Replace `path` with `data` so a reader or a crash sees the old file or the
  * new one, never part of either. Creates parent directories. The temp file is
- * fsynced before the rename and removed on any failure. An overwrite keeps the
- * old file's permission bits unless `opts.mode` is set.
+ * created with the final mode (less the umask), so its content is never more
+ * widely readable than the target's; it is fsynced before the rename and
+ * removed on any failure after it was created. An overwrite keeps the old
+ * file's permission bits unless `opts.mode` is set.
  */
 export function atomicWrite(path: string, data: WriteData, opts: AtomicWriteOptions = {}): void {
   const dir = dirname(path)
@@ -161,8 +163,9 @@ export function atomicWrite(path: string, data: WriteData, opts: AtomicWriteOpti
   const bytes = toBytes(data)
   const mode = keptMode(path, opts.mode)
   const tmp = tempPath(path)
+  // Outside the cleanup: if the open fails, the name is not ours to remove.
+  const fd = openSync(tmp, 'wx', mode ?? 0o666)
   try {
-    const fd = openSync(tmp, 'wx', mode ?? 0o666)
     try {
       if (mode !== undefined) fchmodSync(fd, mode)
       for (let off = 0; off < bytes.length;) off += writeSync(fd, bytes, off)
@@ -188,8 +191,9 @@ export async function atomicWriteAsync(
   await mkdir(dir, { recursive: true })
   const mode = await keptModeAsync(path, opts.mode)
   const tmp = tempPath(path)
+  // Outside the cleanup: if the open fails, the name is not ours to remove.
+  const fh = await open(tmp, 'wx', mode ?? 0o666)
   try {
-    const fh = await open(tmp, 'wx', mode ?? 0o666)
     try {
       if (mode !== undefined) await fh.chmod(mode)
       await fh.writeFile(toBytes(data))

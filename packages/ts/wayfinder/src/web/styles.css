@@ -1,86 +1,16 @@
-/* The page's colour tokens, under the --d-* names. It is a standalone page
-     with no shell, so the values are inlined here. */
+/* The colour, radius and font tokens come from @osdlc/ux: page.ts puts
+     `cssSheet({ prefix: 'wf' })` before this sheet, which declares every
+     --wf-* token for light and dark, and follows `data-theme`. Only what the
+     page derives from them is declared here. */
 :root {
-  color-scheme: light dark;
-  --d-bg-base: #f8f8fa;
-  --d-bg-surface: #ffffff;
-  --d-bg-hover: #ededf1;
-  --d-text-primary: #1a1a1c;
-  --d-text-secondary: #45454b;
-  --d-text-muted: #585860;
-  --d-border: #e0e0e6;
-  --d-border-subtle: #ebebf0;
-  --d-accent: #1d59d8;
-  --d-accent-hover: #1a4fbe;
-  /* The label drawn on an accent fill. It follows the ground scale rather
-       than being a fixed white, so a pressed control is dark-on-hue in dark
-       mode. White on the dark accent is 2.56:1 and fails AA. */
-  --d-accent-fg: #ffffff;
-  --d-status-success: #188a46;
-  --d-status-error: #d70015;
-  --d-status-warning: #b06a00;
-  --d-font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
-  --d-radius-xs: 4px;
-  --d-radius-sm: 6px;
-  --d-radius-md: 10px;
-  --d-radius-lg: 14px;
-  /* Theme-independent: a pill is a shape, not a colour, so it is declared once. */
-  --d-radius-pill: 999px;
-  /* The match highlight is the accent at low strength, not a fifth hue. One
-       declaration serves both themes because it mixes from --d-accent. */
-  --d-accent-wash: color-mix(in srgb, var(--d-accent) 18%, transparent);
+  /* The match highlight is the accent at low strength, not another hue. */
+  --wf-accent-wash: color-mix(in srgb, var(--wf-accent) 18%, transparent);
+  /* The outline of a control. --wf-border is for separators and is too faint
+       for a button's edge (about 1.3:1); this mix reaches 3:1 on both grounds
+       in both themes, the WCAG target for a control's boundary. */
+  --wf-control-border: color-mix(in srgb, var(--wf-text-muted) 75%, var(--wf-bg-surface));
   --head-h: 28px; /* group-header height; the sticky stack counts in these */
   --chrome-h: 0px; /* measured at runtime — see measureChrome() */
-}
-/* Dark is declared twice, on purpose. The media query is the system default,
-     which applies while `data-theme` is absent. The attribute selector is the
-     explicit choice, which must win in both directions, so light must also be
-     reachable on a machine set to dark. With the dark palette only inside the
-     media query, "Light" would do nothing there. The two blocks must keep
-     identical values. */
-:root[data-theme='dark'],
-:root:not([data-theme='light']) {
-  color-scheme: light dark;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --d-bg-base: #1a1b20;
-    --d-bg-surface: #1d1e25;
-    --d-bg-hover: #31323c;
-    --d-text-primary: #eaeaee;
-    --d-text-secondary: #bcbcc4;
-    --d-text-muted: #a4a5ae;
-    --d-border: #31323c;
-    --d-border-subtle: #272831;
-    --d-accent: #6a9bff;
-    --d-accent-hover: #85adff;
-    --d-accent-fg: #24252d;
-    --d-status-success: #3fb27f;
-    --d-status-error: #f7768e;
-    --d-status-warning: #e0af68;
-  }
-}
-:root[data-theme='dark'] {
-  --d-bg-base: #1a1b20;
-  --d-bg-surface: #1d1e25;
-  --d-bg-hover: #31323c;
-  --d-text-primary: #eaeaee;
-  --d-text-secondary: #bcbcc4;
-  --d-text-muted: #a4a5ae;
-  --d-border: #31323c;
-  --d-border-subtle: #272831;
-  --d-accent: #6a9bff;
-  --d-accent-hover: #85adff;
-  --d-accent-fg: #24252d;
-  --d-status-success: #3fb27f;
-  --d-status-error: #f7768e;
-  --d-status-warning: #e0af68;
-}
-:root[data-theme='light'] {
-  color-scheme: light;
-}
-:root[data-theme='dark'] {
-  color-scheme: dark;
 }
 * {
   box-sizing: border-box;
@@ -98,8 +28,8 @@
 }
 body {
   margin: 0;
-  background: var(--d-bg-surface);
-  color: var(--d-text-primary);
+  background: var(--wf-bg-surface);
+  color: var(--wf-text-primary);
   font:
     13px/1.5 system-ui,
     -apple-system,
@@ -112,8 +42,8 @@ body {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: var(--d-bg-base);
-  border-bottom: 1px solid var(--d-border);
+  background: var(--wf-bg-base);
+  border-bottom: 1px solid var(--wf-border);
 }
 header {
   padding: 12px 16px 0;
@@ -140,7 +70,7 @@ header {
 }
 #q {
   flex: 1;
-  font: 13px/1.4 var(--d-font-mono);
+  font: 13px/1.4 var(--wf-font-mono);
   padding: 9px 12px;
   /* An input's default intrinsic width plus the 112px reserve below gives a
        min-content width of about 290px, more than the box above will ever be,
@@ -154,13 +84,13 @@ header {
        never slides under it. Measured: if the toggle's font or padding
        changes, measure this again. */
   padding-right: 112px;
-  background: var(--d-bg-surface);
-  color: var(--d-text-primary);
-  border: 1px solid var(--d-border);
-  border-radius: var(--d-radius-sm);
+  background: var(--wf-bg-surface);
+  color: var(--wf-text-primary);
+  border: 1px solid var(--wf-control-border);
+  border-radius: var(--wf-radius-sm);
 }
 #q:focus {
-  outline: 2px solid var(--d-accent);
+  outline: 2px solid var(--wf-accent);
   outline-offset: -1px;
 }
 
@@ -171,13 +101,13 @@ header {
   gap: 6px;
   align-items: center;
   padding-left: 10px;
-  border-left: 1px solid var(--d-border-subtle);
+  border-left: 1px solid var(--wf-border-subtle);
 }
 .cluster-label {
-  font: 600 10px/1 system-ui;
+  font: 600 11px/1 system-ui;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
   user-select: none;
 }
 
@@ -186,9 +116,9 @@ header {
      border does not hide it. `:focus-visible` rather than `:focus` keeps it
      off a mouse click. */
 :where(button, input, [tabindex]):focus-visible {
-  outline: 2px solid var(--d-accent);
+  outline: 2px solid var(--wf-accent);
   outline-offset: 2px;
-  border-radius: var(--d-radius-sm);
+  border-radius: var(--wf-radius-sm);
 }
 /* A tab is flush against its neighbours, so its ring sits inside instead. */
 .tabs button[data-runner]:focus-visible {
@@ -200,8 +130,8 @@ header {
      Otherwise a square button corner would sit in a rounded group. */
 .seg {
   display: flex;
-  border: 1px solid var(--d-border);
-  border-radius: var(--d-radius-sm);
+  border: 1px solid var(--wf-control-border);
+  border-radius: var(--wf-radius-sm);
   overflow: visible;
 }
 .seg button {
@@ -209,18 +139,18 @@ header {
   padding: 9px 11px;
   border: 0;
   cursor: pointer;
-  background: var(--d-bg-surface);
-  color: var(--d-text-secondary);
+  background: var(--wf-bg-surface);
+  color: var(--wf-text-secondary);
 }
 .seg button:first-child {
-  border-radius: var(--d-radius-sm) 0 0 var(--d-radius-sm);
+  border-radius: var(--wf-radius-sm) 0 0 var(--wf-radius-sm);
 }
 .seg button:last-child {
-  border-radius: 0 var(--d-radius-sm) var(--d-radius-sm) 0;
+  border-radius: 0 var(--wf-radius-sm) var(--wf-radius-sm) 0;
 }
 .seg button[aria-pressed='true'] {
-  background: var(--d-accent);
-  color: var(--d-accent-fg);
+  background: var(--wf-accent);
+  color: var(--wf-accent-fg);
 }
 /* How a query matches belongs to the query, so the toggle sits in the field
      it controls. It is smaller than a toolbar segment and has a ring, so it
@@ -232,7 +162,7 @@ header {
   right: 6px;
   top: 50%;
   transform: translateY(-50%);
-  border-color: var(--d-border);
+  border-color: var(--wf-control-border);
 }
 .seg.inline button {
   font: 11px/1 system-ui;
@@ -251,15 +181,15 @@ header {
   font: 12px/1 system-ui;
   padding: 9px 11px;
   cursor: pointer;
-  background: var(--d-bg-surface);
-  color: var(--d-text-secondary);
-  border: 1px solid var(--d-border);
-  border-radius: var(--d-radius-sm);
+  background: var(--wf-bg-surface);
+  color: var(--wf-text-secondary);
+  border: 1px solid var(--wf-control-border);
+  border-radius: var(--wf-radius-sm);
 }
 .toolbtn[aria-pressed='true'] {
-  background: var(--d-accent);
-  color: var(--d-accent-fg);
-  border-color: var(--d-accent);
+  background: var(--wf-accent);
+  color: var(--wf-accent-fg);
+  border-color: var(--wf-accent);
 }
 /* 10px, which each tab's `i` button needs to its right for a 24px hit target
      that stops 2px short of the next tab. At 8px the overlay's right edge
@@ -268,10 +198,9 @@ header {
      boundary. A click just inside a tab would then open the previous runner's
      modal.
 
-     It wraps rather than overflowing, so below about 926px the page does not
-     scroll sideways. A second line costs nothing (the sticky header's height
-     is measured, not assumed) and keeps every tab visible, which a scroller
-     inside the strip would not. */
+     It wraps rather than overflowing on a wide window, which keeps every tab
+     visible. At phone width it is one scrolling row instead (see the end of
+     this sheet), so it does not fill the screen. */
 .tabs {
   display: flex;
   flex-wrap: wrap;
@@ -303,10 +232,10 @@ header {
   z-index: 200;
   min-width: 220px;
   padding: 6px;
-  border-radius: var(--d-radius-md);
-  background: var(--d-bg-base);
-  border: 1px solid var(--d-border);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  border-radius: var(--wf-radius-md);
+  background: var(--wf-bg-base);
+  border: 1px solid var(--wf-border);
+  box-shadow: 0 8px 24px color-mix(in srgb, black 18%, transparent);
   max-height: calc(100vh - var(--chrome-h) - 16px);
   overflow-y: auto;
 }
@@ -318,12 +247,12 @@ header {
   align-items: center;
   gap: 8px;
   padding: 5px 8px;
-  border-radius: var(--d-radius-xs);
-  font: 12px/1.3 var(--d-font-mono);
-  color: var(--d-text-primary);
+  border-radius: var(--wf-radius-xs);
+  font: 12px/1.3 var(--wf-font-mono);
+  color: var(--wf-text-primary);
 }
 .pick:hover {
-  background: var(--d-bg-hover);
+  background: var(--wf-bg-hover);
 }
 /* The row is a plain div, not a <label>. The info button sits beside the
      label (see view.ts), and a label around the whole row would also pass that
@@ -338,7 +267,7 @@ header {
   cursor: pointer;
 }
 .pick .grip {
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
   font-size: 11px;
   cursor: grab;
   user-select: none;
@@ -372,21 +301,21 @@ header {
   pointer-events: none;
   font: 13px/1 system-ui;
   /* An accent tint over the surface colour, not the page background.
-       --d-bg-base is the background in both themes, so a card in that colour
+       --wf-bg-base is the background in both themes, so a card in that colour
        would look like an outlined rectangle rather than something picked up.
        Mixing toward the accent raises it off either background.
 
        Two shadows, because one cannot serve both themes. Black shows the lift
-       on white and is invisible on #14161a, so an accent halo shows it there.
-       Each is harmless where the other does the work. */
-  background: color-mix(in srgb, var(--d-accent) 14%, var(--d-bg-surface));
-  color: var(--d-text-primary);
-  border: 1px solid var(--d-accent);
-  border-radius: var(--d-radius-sm);
+       on the light ground and is invisible on the dark one, so an accent halo
+       shows it there. Each is harmless where the other does the work. */
+  background: color-mix(in srgb, var(--wf-accent) 14%, var(--wf-bg-surface));
+  color: var(--wf-text-primary);
+  border: 1px solid var(--wf-accent);
+  border-radius: var(--wf-radius-sm);
   box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.45),
-    0 6px 18px color-mix(in srgb, var(--d-accent) 40%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--d-accent) 45%, transparent);
+    0 12px 28px color-mix(in srgb, black 45%, transparent),
+    0 6px 18px color-mix(in srgb, var(--wf-accent) 40%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--wf-accent) 45%, transparent);
 }
 [data-drag-ghost] button,
 [data-drag-ghost] label {
@@ -404,7 +333,7 @@ header {
   display: none;
 }
 [data-drag-ghost] .count {
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
   font-size: 11px;
 }
 /* The dragged element itself, faded because the drag image is the copy the
@@ -428,7 +357,7 @@ header {
 }
 .pick .count {
   margin-left: auto;
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
   font-size: 11px;
 }
 /* The picker's sort header. It reorders the one saved order, so it looks like
@@ -446,13 +375,13 @@ header {
   gap: 8px;
   align-items: center;
   padding: 2px 8px 6px;
-  border-bottom: 1px solid var(--d-border);
+  border-bottom: 1px solid var(--wf-border);
   margin-bottom: 4px;
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--d-bg-base);
-  box-shadow: 0 -6px 0 var(--d-bg-base);
+  background: var(--wf-bg-base);
+  box-shadow: 0 -6px 0 var(--wf-bg-base);
 }
 /* Takes the width of the row's drag handle, and is invisible because there
      is nothing to drag in a header. */
@@ -475,14 +404,14 @@ header {
   align-items: center;
   gap: 3px;
   flex: 1;
-  font: 600 10px/1 system-ui;
+  font: 600 11px/1 system-ui;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   padding: 4px 6px;
   cursor: pointer;
-  border-radius: var(--d-radius-xs);
+  border-radius: var(--wf-radius-xs);
   background: transparent;
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
   border: 1px solid transparent;
 }
 .picksort:last-child {
@@ -490,23 +419,23 @@ header {
   margin-left: auto;
 }
 .picksort:hover {
-  color: var(--d-accent-hover);
-  border-color: var(--d-border);
+  color: var(--wf-accent-hover);
+  border-color: var(--wf-border);
 }
 /* Pressed means "the order on screen matches this sort". It is computed on
      every render, so it clears as soon as a drag breaks the sort. */
 .picksort[aria-pressed='true'] {
-  color: var(--d-text-primary);
+  color: var(--wf-text-primary);
 }
 .sortdir {
-  font-size: 9px;
+  font-size: 11px;
 }
 
 .pickactions {
   display: flex;
   gap: 4px;
   padding: 6px 8px 2px;
-  border-top: 1px solid var(--d-border);
+  border-top: 1px solid var(--wf-border);
   margin-top: 4px;
 }
 .pickactions button {
@@ -514,14 +443,14 @@ header {
   padding: 5px 9px;
   cursor: pointer;
   flex: 1;
-  background: var(--d-bg-surface);
-  color: var(--d-text-secondary);
-  border: 1px solid var(--d-border);
-  border-radius: var(--d-radius-sm);
+  background: var(--wf-bg-surface);
+  color: var(--wf-text-secondary);
+  border: 1px solid var(--wf-control-border);
+  border-radius: var(--wf-radius-sm);
 }
 .pickactions button:hover {
-  color: var(--d-accent-hover);
-  border-color: var(--d-accent);
+  color: var(--wf-accent-hover);
+  border-color: var(--wf-accent);
 }
 /* Limited to [data-runner]: the tab row also holds .tabinfo, and a bare
      `.tabs button` selector is more specific than .tabinfo's single-class rule
@@ -534,7 +463,7 @@ header {
   padding: 9px 14px;
   cursor: pointer;
   background: transparent;
-  color: var(--d-text-secondary);
+  color: var(--wf-text-secondary);
   border: 0;
   border-bottom: 2px solid transparent;
   display: inline-flex;
@@ -542,14 +471,14 @@ header {
   white-space: nowrap;
 }
 .tabs button[data-runner][aria-pressed='true'] {
-  color: var(--d-text-primary);
-  border-bottom-color: var(--d-accent);
+  color: var(--wf-text-primary);
+  border-bottom-color: var(--wf-accent);
 }
 .tabs button[data-runner] .ricon {
   margin-right: 6px;
 }
 .tabs .count {
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
   font-size: 11px;
   margin-left: 5px;
 }
@@ -558,9 +487,9 @@ header {
 .tabs .count.exec {
   margin-left: 4px;
   padding: 1px 5px;
-  border-radius: var(--d-radius-pill);
-  border: 1px solid var(--d-border);
-  font-size: 10px;
+  border-radius: var(--wf-radius-pill);
+  border: 1px solid var(--wf-control-border);
+  font-size: 11px;
 }
 /* `flex: none`, so a full strip wraps rather than squeezing its tabs. A
      shrunken tab moves its label away from its click area. */
@@ -576,8 +505,8 @@ header {
   align-self: center;
   margin-left: 10px;
   padding-left: 10px;
-  border-left: 1px solid var(--d-border);
-  color: var(--d-text-muted);
+  border-left: 1px solid var(--wf-border);
+  color: var(--wf-text-muted);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -611,7 +540,7 @@ header {
      edge and take its clicks. The strip wraps instead of crowding, and this
      keeps the ring from shrinking either way. */
 .tabinfo {
-  font: 600 11px/1 var(--d-font-mono);
+  font: 600 11px/1 var(--wf-font-mono);
   width: 16px;
   height: 16px;
   padding: 0;
@@ -620,8 +549,8 @@ header {
   position: relative;
   flex: none;
   background: transparent;
-  color: var(--d-text-muted);
-  border: 1px solid var(--d-border-subtle);
+  color: var(--wf-text-muted);
+  border: 1px solid var(--wf-border-subtle);
   border-radius: 50%;
 }
 /* The visible ring is 16px, under the 24px minimum target size. A
@@ -645,8 +574,8 @@ header {
   transform: translateY(-50%);
 }
 .tabinfo:hover {
-  color: var(--d-accent-hover);
-  border-color: var(--d-accent);
+  color: var(--wf-accent-hover);
+  border-color: var(--wf-accent);
 }
 /* In the picker the count runs to the row's right edge, so the button needs
      its own spacing. Its hit overlay reaches into the row's padding, where
@@ -674,14 +603,14 @@ header {
   margin-left: 8px;
   cursor: pointer;
   background: transparent;
-  color: var(--d-text-muted);
-  border: 1px solid var(--d-border-subtle);
-  border-radius: var(--d-radius-pill);
+  color: var(--wf-text-muted);
+  border: 1px solid var(--wf-border-subtle);
+  border-radius: var(--wf-radius-pill);
 }
 .tab-folded:hover,
 .tab-folded:focus-visible {
-  color: var(--d-accent-hover);
-  border-color: var(--d-accent);
+  color: var(--wf-accent-hover);
+  border-color: var(--wf-accent);
 }
 /* The first strip in the sticky header. Above everything, it reads as a
      caption for the whole view. Between the column headers and the rows, a
@@ -694,12 +623,12 @@ header {
   flex-wrap: wrap;
   padding: 7px 16px;
   font-size: 11px;
-  color: var(--d-text-muted);
-  background: var(--d-bg-surface);
-  border-bottom: 1px solid var(--d-border);
+  color: var(--wf-text-muted);
+  background: var(--wf-bg-surface);
+  border-bottom: 1px solid var(--wf-border);
 }
 .status .err {
-  color: var(--d-status-error);
+  color: var(--wf-status-error);
 }
 /* The trust bar. Its own row above everything, because it asks for a
      decision rather than reporting a number. In the status strip, between
@@ -714,9 +643,9 @@ header {
   flex-wrap: wrap;
   padding: 8px 16px;
   font-size: 12px;
-  color: var(--d-status-warning);
-  background: color-mix(in srgb, var(--d-status-warning) 10%, var(--d-bg-surface));
-  border-bottom: 1px solid color-mix(in srgb, var(--d-status-warning) 35%, transparent);
+  color: var(--wf-status-warning);
+  background: color-mix(in srgb, var(--wf-status-warning) 10%, var(--wf-bg-surface));
+  border-bottom: 1px solid color-mix(in srgb, var(--wf-status-warning) 35%, transparent);
 }
 .trustbar[hidden] {
   display: none;
@@ -729,7 +658,7 @@ header {
 /* Withheld runners are not an error (nothing failed, something was
      declined), so they use the warning colour, not the error one. */
 .status .warn {
-  color: var(--d-status-warning);
+  color: var(--wf-status-warning);
 }
 main {
   padding: 0 16px 40vh;
@@ -737,20 +666,66 @@ main {
 .banner {
   margin: 12px 0;
   padding: 10px 12px;
-  border-radius: var(--d-radius-sm);
-  border: 1px solid var(--d-status-error);
-  color: var(--d-status-error);
-  font: 12px/1.5 var(--d-font-mono);
+  border-radius: var(--wf-radius-sm);
+  border: 1px solid var(--wf-status-error);
+  color: var(--wf-status-error);
+  font: 12px/1.5 var(--wf-font-mono);
   white-space: pre-wrap;
 }
 .banner.warn {
-  border-color: var(--d-status-warning);
-  color: var(--d-status-warning);
+  border-color: var(--wf-status-warning);
+  color: var(--wf-status-warning);
 }
 .empty {
   padding: 48px 0;
   text-align: center;
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
+}
+
+/* A runner the first probe has not heard from yet: a quiet tab and a row,
+     each with a spinner, until its rows arrive. */
+.tab-loading {
+  font: 13px/1 system-ui;
+  padding: 9px 14px;
+  color: var(--wf-text-muted);
+  white-space: nowrap;
+  gap: 6px;
+}
+.loading-rows {
+  padding: 8px 0;
+}
+.loading-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  color: var(--wf-text-secondary);
+}
+.loading-row .muted {
+  color: var(--wf-text-muted);
+}
+.loading-note {
+  color: var(--wf-text-secondary);
+}
+.spinner {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--wf-control-border);
+  border-top-color: var(--wf-accent);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+    border-top-color: var(--wf-control-border);
+  }
 }
 
 /* The call-chain tree: each level indents one step, and leaves are table
@@ -766,7 +741,7 @@ main {
      would win on DOM order and scroll over its own parent. */
 .node > .head {
   position: sticky;
-  background: var(--d-bg-base);
+  background: var(--wf-bg-base);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -775,30 +750,30 @@ main {
   padding: 0 0 1px;
   cursor: pointer;
   user-select: none;
-  border-bottom: 1px solid var(--d-border);
+  border-bottom: 1px solid var(--wf-border);
 }
 .node > .head:hover .seg-name {
-  color: var(--d-accent-hover);
+  color: var(--wf-accent-hover);
 }
 .twisty {
-  color: var(--d-text-muted);
-  font: 11px/1 var(--d-font-mono);
+  color: var(--wf-text-muted);
+  font: 11px/1 var(--wf-font-mono);
   width: 10px;
   flex: none;
 }
 .chain {
-  color: var(--d-text-muted);
-  font: 12px/1 var(--d-font-mono);
+  color: var(--wf-text-muted);
+  font: 12px/1 var(--wf-font-mono);
 }
 .seg-name {
-  font: 600 13px/1.3 var(--d-font-mono);
+  font: 600 13px/1.3 var(--wf-font-mono);
 }
 .node-count {
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
   font-size: 11px;
 }
 .seg-kind {
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -824,9 +799,9 @@ main {
 
      The trunk sits at -11px, inside the `.kids` indentation.
 
-     `--d-border` rather than `--d-border-subtle`: subtle is #eceff3 on white,
-     which at 1px looks like a smudge, and these lines show structure.
-     --d-border stays quiet in both themes.
+     `--wf-border` rather than `--wf-border-subtle`: subtle is nearly the
+     ground colour, which at 1px looks like a smudge, and these lines show
+     structure. --wf-border stays quiet in both themes.
 
      `.node` is only `position: relative`, with no z-index, so it creates no
      stacking context and the pseudo-elements stay at layer 0. The sticky
@@ -847,7 +822,7 @@ main {
   top: 0;
   bottom: 0;
   width: 1px;
-  background: var(--d-border);
+  background: var(--wf-border);
 }
 /* The last group ends the trunk at its own header, which turns the tee
      into an elbow. `:last-of-type` and not `:last-child`, because the leaf
@@ -863,7 +838,7 @@ main {
   top: calc(var(--head-h) / 2);
   width: 8px;
   height: 1px;
-  background: var(--d-border);
+  background: var(--wf-border);
 }
 
 /* `fixed` makes the columns line up. With `auto`, every group is its own
@@ -875,10 +850,10 @@ table {
   table-layout: fixed;
 }
 tbody tr {
-  border-bottom: 1px solid var(--d-border-subtle);
+  border-bottom: 1px solid var(--wf-border-subtle);
 }
 tbody tr:hover {
-  background: var(--d-bg-hover);
+  background: var(--wf-bg-hover);
 }
 /* A faint line of the runner's brand colour down the row's left edge, enough
      to tell moon rows from cargo rows at a glance, not enough to look like
@@ -895,8 +870,8 @@ tbody tr.branded {
      in the list this follows the focused row; otherwise it is the top hit. See
      markEnterTarget(). */
 tbody tr.enter-target {
-  background: var(--d-bg-hover);
-  box-shadow: inset 2px 0 0 var(--d-accent);
+  background: var(--wf-bg-hover);
+  box-shadow: inset 2px 0 0 var(--wf-accent);
 }
 /* The darker accent, not the base one: the base accent on this row's raised
      background is 4.26:1 and misses AA. As a result this one Copy button does
@@ -905,9 +880,9 @@ tbody tr.enter-target {
      a heavier weight make it the row's primary action rather than one more
      quiet button. */
 tbody tr.enter-target .copy {
-  color: var(--d-accent-hover);
-  border-color: var(--d-accent);
-  background: var(--d-bg-base);
+  color: var(--wf-accent-hover);
+  border-color: var(--wf-accent);
+  background: var(--wf-bg-base);
   font-weight: 600;
 }
 /* The Enter marker is part of this button, not a separate chip on the left
@@ -931,10 +906,10 @@ tbody tr:focus-visible {
      is the one it would take". */
 @keyframes copied-glow {
   0% {
-    background: var(--d-status-success);
+    background: var(--wf-status-success);
     box-shadow:
-      inset 3px 0 0 var(--d-status-success),
-      0 0 0 1px var(--d-status-success);
+      inset 3px 0 0 var(--wf-status-success),
+      0 0 0 1px var(--wf-status-success);
   }
   100% {
     background: transparent;
@@ -947,12 +922,12 @@ tbody tr.copied {
   animation: copied-glow 0.7s ease-out;
 }
 tbody tr.copied td {
-  color: var(--d-text-primary);
+  color: var(--wf-text-primary);
 }
 @media (prefers-reduced-motion: reduce) {
   tbody tr.copied {
     animation: none;
-    background: var(--d-bg-hover);
+    background: var(--wf-bg-hover);
   }
 }
 /* One line-height for every cell, so no cell's own metrics decide the row
@@ -993,7 +968,7 @@ td.ind {
   width: 13px;
   height: 13px;
   cursor: help;
-  color: var(--d-status-success);
+  color: var(--wf-status-success);
 }
 .ind-svc svg {
   width: 100%;
@@ -1001,7 +976,7 @@ td.ind {
   display: block;
 }
 .ind-svc.inferred {
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
 }
 td.name,
 td.run {
@@ -1010,20 +985,20 @@ td.run {
   white-space: nowrap;
 }
 td.name {
-  font: 600 13px/1.5 var(--d-font-mono);
+  font: 600 13px/1.5 var(--wf-font-mono);
 }
 td.run {
-  font: 12px/1.5 var(--d-font-mono);
-  color: var(--d-text-secondary);
+  font: 12px/1.5 var(--wf-font-mono);
+  color: var(--wf-text-secondary);
 }
 td.doc {
   font-size: 12px;
-  color: var(--d-text-secondary);
+  color: var(--wf-text-secondary);
   overflow: hidden;
 }
 td.doc .detail {
-  font: 11px/1.4 var(--d-font-mono);
-  color: var(--d-text-muted);
+  font: 11px/1.4 var(--wf-font-mono);
+  color: var(--wf-text-muted);
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1046,21 +1021,21 @@ td.act {
   padding: 4px 8px;
   cursor: pointer;
   background: transparent;
-  color: var(--d-text-muted);
-  border: 1px solid var(--d-border);
-  border-radius: var(--d-radius-sm);
+  color: var(--wf-text-muted);
+  border: 1px solid var(--wf-control-border);
+  border-radius: var(--wf-radius-sm);
 }
 .runbtn {
   margin-right: 4px;
 }
 .copy:hover,
 .runbtn:hover {
-  color: var(--d-accent-hover);
-  border-color: var(--d-accent);
+  color: var(--wf-accent-hover);
+  border-color: var(--wf-accent);
 }
 .copy.done {
-  color: var(--d-status-success);
-  border-color: var(--d-status-success);
+  color: var(--wf-status-success);
+  border-color: var(--wf-status-success);
 }
 .runbtn:disabled {
   cursor: default;
@@ -1074,10 +1049,10 @@ td.act {
   top: 100%;
   z-index: 2;
   font: 11px/1.4 system-ui;
-  color: var(--d-status-warning);
-  background: var(--d-bg-base);
-  border: 1px solid var(--d-border);
-  border-radius: var(--d-radius-sm);
+  color: var(--wf-status-warning);
+  background: var(--wf-bg-base);
+  border: 1px solid var(--wf-border);
+  border-radius: var(--wf-radius-sm);
   padding: 3px 6px;
 }
 
@@ -1095,8 +1070,8 @@ td.act {
   flex-direction: column;
   gap: 4px;
   padding: 10px 14px;
-  background: var(--d-bg-base);
-  border-top: 1px solid var(--d-border);
+  background: var(--wf-bg-base);
+  border-top: 1px solid var(--wf-border);
 }
 .runbar-line {
   display: flex;
@@ -1104,37 +1079,37 @@ td.act {
   gap: 6px;
 }
 .runbar-sigil {
-  color: var(--d-text-secondary);
-  font: 13px/1.5 var(--d-font-mono);
+  color: var(--wf-text-secondary);
+  font: 13px/1.5 var(--wf-font-mono);
 }
 .runbar-cmd {
-  font: 13px/1.5 var(--d-font-mono);
-  color: var(--d-text-primary);
+  font: 13px/1.5 var(--wf-font-mono);
+  color: var(--wf-text-primary);
   white-space: pre;
 }
 .runbar-args {
   flex: 1;
   min-width: 0;
   padding: 2px 4px;
-  font: 13px/1.5 var(--d-font-mono);
-  color: var(--d-text-primary);
-  background: var(--d-bg-base);
-  border: 1px solid var(--d-border);
-  border-radius: var(--d-radius-sm);
+  font: 13px/1.5 var(--wf-font-mono);
+  color: var(--wf-text-primary);
+  background: var(--wf-bg-base);
+  border: 1px solid var(--wf-control-border);
+  border-radius: var(--wf-radius-sm);
 }
 .runbar-args:focus {
   outline: none;
-  border-color: var(--d-accent);
+  border-color: var(--wf-accent);
 }
 .runbar-foot {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   font: 11px/1.4 system-ui;
-  color: var(--d-text-secondary);
+  color: var(--wf-text-secondary);
 }
 .runbar-shape {
-  font-family: var(--d-font-mono);
+  font-family: var(--wf-font-mono);
 }
 
 /* The end state: the task has the terminal and this page has nothing left
@@ -1150,8 +1125,8 @@ td.act {
   gap: 12px;
   padding: 24px;
   text-align: center;
-  background: var(--d-bg-base);
-  color: var(--d-text-primary);
+  background: var(--wf-bg-base);
+  color: var(--wf-text-primary);
 }
 #handoff h2 {
   margin: 0;
@@ -1160,17 +1135,17 @@ td.act {
 #handoff p {
   margin: 0;
   max-width: 44ch;
-  color: var(--d-text-secondary);
+  color: var(--wf-text-secondary);
 }
 #handoff .handoff-cmd {
   margin: 0;
   max-width: 100%;
   overflow-x: auto;
-  font: 13px/1.5 var(--d-font-mono);
-  color: var(--d-text-primary);
-  background: var(--d-bg-surface);
-  border: 1px solid var(--d-border);
-  border-radius: var(--d-radius-md);
+  font: 13px/1.5 var(--wf-font-mono);
+  color: var(--wf-text-primary);
+  background: var(--wf-bg-surface);
+  border: 1px solid var(--wf-border);
+  border-radius: var(--wf-radius-md);
   padding: 10px 14px;
 }
 .helpbtn {
@@ -1179,14 +1154,14 @@ td.act {
   height: 30px;
   padding: 0;
   cursor: pointer;
-  background: var(--d-bg-surface);
-  color: var(--d-text-secondary);
-  border: 1px solid var(--d-border);
+  background: var(--wf-bg-surface);
+  color: var(--wf-text-secondary);
+  border: 1px solid var(--wf-control-border);
   border-radius: 50%;
 }
 .helpbtn:hover {
-  color: var(--d-accent-hover);
-  border-color: var(--d-accent);
+  color: var(--wf-accent-hover);
+  border-color: var(--wf-accent);
 }
 
 /* The column headers are in the sticky header, not in each group's table,
@@ -1195,8 +1170,8 @@ td.act {
      column starts at the same x. */
 .colheads {
   padding: 0 16px;
-  background: var(--d-bg-base);
-  border-top: 1px solid var(--d-border);
+  background: var(--wf-bg-base);
+  border-top: 1px solid var(--wf-border);
 }
 .colheads table {
   border-collapse: collapse;
@@ -1205,7 +1180,7 @@ td.act {
   font: 600 11px/1 system-ui;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
   text-align: left;
   padding: 5px 8px 5px 0;
   cursor: help;
@@ -1215,15 +1190,15 @@ td.act {
 dialog#help,
 dialog#settings {
   max-width: 640px;
-  border: 1px solid var(--d-border);
-  border-radius: var(--d-radius-lg);
+  border: 1px solid var(--wf-border);
+  border-radius: var(--wf-radius-lg);
   padding: 20px 24px;
-  background: var(--d-bg-base);
-  color: var(--d-text-primary);
+  background: var(--wf-bg-base);
+  color: var(--wf-text-primary);
 }
 dialog#help::backdrop,
 dialog#settings::backdrop {
-  background: rgba(0, 0, 0, 0.45);
+  background: color-mix(in srgb, black 45%, transparent);
 }
 
 /* The settings screen. Values are shown with the layer they came from, and
@@ -1234,8 +1209,8 @@ dialog#settings::backdrop {
 }
 .set-file {
   margin: 2px 0 16px;
-  font: 11px var(--d-font-mono);
-  color: var(--d-text-muted);
+  font: 11px var(--wf-font-mono);
+  color: var(--wf-text-muted);
   overflow-wrap: anywhere;
 }
 .set-section {
@@ -1245,7 +1220,7 @@ dialog#settings::backdrop {
   font: 600 12px/1.3 system-ui;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
   margin: 0 0 6px;
   display: flex;
   justify-content: space-between;
@@ -1255,18 +1230,18 @@ dialog#settings::backdrop {
 /* Which layer supplied the value. This screen exists to answer that, so it is
      on every section, not only the surprising ones. */
 .set-layer {
-  font: 400 10px/1 system-ui;
+  font: 400 11px/1 system-ui;
   text-transform: none;
   letter-spacing: 0;
-  color: var(--d-text-muted);
-  border: 1px solid var(--d-border);
-  border-radius: var(--d-radius-xs);
+  color: var(--wf-text-muted);
+  border: 1px solid var(--wf-border);
+  border-radius: var(--wf-radius-xs);
   padding: 2px 5px;
   white-space: nowrap;
 }
 .set-layer[data-layer='project'] {
-  color: var(--d-text-secondary);
-  border-color: var(--d-accent);
+  color: var(--wf-text-secondary);
+  border-color: var(--wf-accent);
 }
 .set-table {
   width: 100%;
@@ -1278,10 +1253,10 @@ dialog#settings::backdrop {
 }
 .set-table td:first-child {
   width: 1.4em;
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
 }
 .set-state {
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
   font-size: 12px;
   text-align: right;
 }
@@ -1293,25 +1268,25 @@ dialog#settings::backdrop {
 .set-sub {
   margin: 6px 0 0;
   font-size: 12px;
-  color: var(--d-text-secondary);
+  color: var(--wf-text-secondary);
 }
 .set-empty {
   margin: 0;
   font-size: 13px;
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
 }
 .set-foot {
   margin-top: 18px;
   padding-top: 12px;
-  border-top: 1px solid var(--d-border);
+  border-top: 1px solid var(--wf-border);
 }
 .set-warnings {
   margin: 0 0 16px;
   padding: 8px 10px;
   font-size: 12px;
-  color: var(--d-status-warning);
-  border: 1px solid var(--d-status-warning);
-  border-radius: var(--d-radius-sm);
+  color: var(--wf-status-warning);
+  border: 1px solid var(--wf-status-warning);
+  border-radius: var(--wf-radius-sm);
 }
 .set-warnings p {
   margin: 0;
@@ -1319,14 +1294,14 @@ dialog#settings::backdrop {
 /* An edit that has not been written. Shown on its section as well as in the
      title, so a scrolled screen still says which key is unsaved. */
 .set-layer[data-layer='staged'] {
-  color: var(--d-accent);
-  border-color: var(--d-accent);
+  color: var(--wf-accent);
+  border-color: var(--wf-accent);
 }
 .set-dirty {
   font: 400 11px/1 system-ui;
-  color: var(--d-accent);
-  border: 1px solid var(--d-accent);
-  border-radius: var(--d-radius-xs);
+  color: var(--wf-accent);
+  border: 1px solid var(--wf-accent);
+  border-radius: var(--wf-radius-xs);
   padding: 2px 6px;
   margin-left: 6px;
   vertical-align: middle;
@@ -1339,8 +1314,8 @@ dialog#settings::backdrop {
   padding: 8px 10px;
   font-size: 11px;
   line-height: 1.5;
-  color: var(--d-text-secondary);
-  border-top: 1px solid var(--d-border-subtle);
+  color: var(--wf-text-secondary);
+  border-top: 1px solid var(--wf-border-subtle);
 }
 .linkish {
   font: inherit;
@@ -1348,7 +1323,7 @@ dialog#settings::backdrop {
   border: 0;
   background: none;
   cursor: pointer;
-  color: var(--d-accent);
+  color: var(--wf-accent);
   text-decoration: underline;
 }
 /* An action that belongs to the paragraph explaining it, rather than to the
@@ -1369,20 +1344,20 @@ dialog#settings::backdrop {
   font: 11px/1 system-ui;
   padding: 4px 8px;
   cursor: pointer;
-  background: var(--d-bg-surface);
-  color: var(--d-text-primary);
-  border: 1px solid var(--d-border);
-  border-radius: var(--d-radius-sm);
+  background: var(--wf-bg-surface);
+  color: var(--wf-text-primary);
+  border: 1px solid var(--wf-border);
+  border-radius: var(--wf-radius-sm);
 }
 .set-notice {
   margin: 0 0 12px;
   font-size: 12px;
 }
 .set-notice[data-kind='ok'] {
-  color: var(--d-text-secondary);
+  color: var(--wf-text-secondary);
 }
 .set-notice[data-kind='err'] {
-  color: var(--d-status-warning);
+  color: var(--wf-status-warning);
 }
 .set-radios {
   display: flex;
@@ -1406,10 +1381,10 @@ dialog#settings::backdrop {
   cursor: pointer;
   background: none;
   border: none;
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
 }
 .set-x:hover {
-  color: var(--d-status-warning);
+  color: var(--wf-status-warning);
 }
 .set-add {
   display: flex;
@@ -1420,11 +1395,11 @@ dialog#settings::backdrop {
   flex: 1;
   min-width: 0;
   padding: 3px 6px;
-  font: 12px var(--d-font-mono);
-  background: var(--d-bg-surface);
-  color: var(--d-text-primary);
-  border: 1px solid var(--d-border);
-  border-radius: var(--d-radius-sm);
+  font: 12px var(--wf-font-mono);
+  background: var(--wf-bg-surface);
+  color: var(--wf-text-primary);
+  border: 1px solid var(--wf-border);
+  border-radius: var(--wf-radius-sm);
 }
 .set-actions {
   display: flex;
@@ -1432,32 +1407,33 @@ dialog#settings::backdrop {
   gap: 8px;
   margin-top: 18px;
   padding-top: 12px;
-  border-top: 1px solid var(--d-border);
+  border-top: 1px solid var(--wf-border);
 }
 .set-actions button,
-.set-add button {
+.set-add button,
+.set-tools button {
   font: 12px/1 system-ui;
   padding: 6px 10px;
   cursor: pointer;
-  background: var(--d-bg-surface);
-  color: var(--d-text-primary);
-  border: 1px solid var(--d-border);
-  border-radius: var(--d-radius-sm);
+  background: var(--wf-bg-surface);
+  color: var(--wf-text-primary);
+  border: 1px solid var(--wf-border);
+  border-radius: var(--wf-radius-sm);
 }
 .set-actions button:disabled {
   opacity: 0.5;
   cursor: default;
-  color: var(--d-text-muted);
+  color: var(--wf-text-muted);
 }
 .set-actions button[data-settings-save]:not(:disabled) {
-  border-color: var(--d-accent);
-  color: var(--d-accent);
+  border-color: var(--wf-accent);
+  color: var(--wf-accent);
 }
 .settings-body code {
-  font: 12px var(--d-font-mono);
-  background: var(--d-bg-surface);
+  font: 12px var(--wf-font-mono);
+  background: var(--wf-bg-surface);
   padding: 1px 4px;
-  border-radius: var(--d-radius-xs);
+  border-radius: var(--wf-radius-xs);
 }
 .help-body h3 {
   font: 600 13px/1.3 system-ui;
@@ -1469,33 +1445,241 @@ dialog#settings::backdrop {
 .help-body p {
   margin: 0 0 8px;
   font-size: 13px;
-  color: var(--d-text-secondary);
+  color: var(--wf-text-secondary);
 }
 .help-body dt {
-  font: 600 12px var(--d-font-mono);
+  font: 600 12px var(--wf-font-mono);
   margin-top: 8px;
 }
 .help-body dd {
   margin: 2px 0 0;
   font-size: 13px;
-  color: var(--d-text-secondary);
+  color: var(--wf-text-secondary);
 }
 .help-body code {
-  font: 12px var(--d-font-mono);
-  background: var(--d-bg-surface);
+  font: 12px var(--wf-font-mono);
+  background: var(--wf-bg-surface);
   padding: 1px 4px;
-  border-radius: var(--d-radius-xs);
+  border-radius: var(--wf-radius-xs);
 }
 mark {
-  background: var(--d-accent-wash);
+  background: var(--wf-accent-wash);
   color: inherit;
   border-radius: 2px;
 }
 kbd {
-  font: 11px/1 var(--d-font-mono);
+  font: 11px/1 var(--wf-font-mono);
   padding: 2px 5px;
-  border: 1px solid var(--d-border);
+  border: 1px solid var(--wf-border);
   border-bottom-width: 2px;
-  border-radius: var(--d-radius-xs);
-  color: var(--d-text-muted);
+  border-radius: var(--wf-radius-xs);
+  color: var(--wf-text-muted);
+}
+
+/* The theme, settings and help buttons: a cluster without a label or rule. */
+.cluster.tools {
+  border-left: 0;
+  padding-left: 0;
+}
+/* Clusters wrap inside themselves too, so a narrow window never scrolls
+     sideways. */
+.cluster {
+  flex-wrap: wrap;
+}
+/* Shown only at phone width, where it holds the filters. */
+#filtersbtn {
+  display: none;
+}
+
+/* A task whose parameters could not be read. A quiet mark in the indicator
+     column; the label is in its title and in the hidden text. */
+.ind-params {
+  position: relative;
+  font: 600 11px/1 var(--wf-font-mono);
+  color: var(--wf-status-warning);
+  cursor: help;
+}
+
+/* The help's key table: each key, then what it does. */
+dl.keys {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+}
+dl.keys dt {
+  margin: 0;
+}
+dl.keys dd {
+  margin: 0;
+}
+kbd {
+  font: 11px/1 var(--wf-font-mono);
+  padding: 2px 5px;
+  border: 1px solid var(--wf-control-border);
+  border-radius: var(--wf-radius-xs);
+  background: var(--wf-bg-surface);
+  color: var(--wf-text-primary);
+}
+/* A dialog's body takes focus when it opens, so it starts at its top. The
+     focus is for the keyboard, not a control, so it shows no ring. */
+.help-body:focus,
+.settings-body:focus {
+  outline: none;
+}
+
+/* A command to paste, in the settings screen. */
+.set-cmd {
+  font: 11px/1.4 var(--wf-font-mono);
+  overflow-wrap: anywhere;
+}
+.set-section h4 {
+  font: 600 12px/1.3 system-ui;
+  margin: 10px 0 4px;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.set-ro td:first-child {
+  width: auto;
+}
+
+/* The page when the browser is not signed in. */
+.signedout {
+  max-width: 30rem;
+  margin: 15vh auto 0;
+  padding: 0 16px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+.signedout h1 {
+  font: 600 18px/1.3 system-ui;
+  margin: 0 0 12px;
+}
+.signedout code {
+  font-family: var(--wf-font-mono);
+  /* Text meant to be retyped: no ligature turns `--` into a dash. */
+  font-variant-ligatures: none;
+}
+
+/* Phone width. The filters fold behind one button, the tab strip is one
+     scrolling row, the key hints go (the help lists them), and the header
+     scrolls away with the page instead of covering half of it. */
+@media (max-width: 640px) {
+  #chrome {
+    position: static;
+  }
+  header {
+    padding: 10px 16px 0;
+  }
+  .searchbox {
+    flex-basis: 100%;
+    min-width: 0;
+  }
+  #filtersbtn {
+    display: inline-block;
+  }
+  #filtersbtn[aria-expanded='true'] {
+    background: var(--wf-accent);
+    color: var(--wf-accent-fg);
+    border-color: var(--wf-accent);
+  }
+  .cluster {
+    border-left: 0;
+    padding-left: 0;
+  }
+  #view-label {
+    display: none;
+  }
+  .cluster.filters {
+    display: none;
+  }
+  .cluster.filters.open {
+    display: flex;
+    order: 10;
+    flex-basis: 100%;
+    padding: 10px;
+    border: 1px solid var(--wf-control-border);
+    border-radius: var(--wf-radius-md);
+    background: var(--wf-bg-surface);
+  }
+  .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    padding-bottom: 2px;
+  }
+  .tabgroup {
+    display: none;
+  }
+  .status .keyhint {
+    display: none;
+  }
+  .copy,
+  .runbtn {
+    padding: 4px 6px;
+  }
+  dialog#help,
+  dialog#settings {
+    padding: 16px;
+    max-width: calc(100vw - 16px);
+  }
+}
+
+/* A skill row: the harnesses as small tags before the description. */
+.skill-for {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--wf-border);
+  border-radius: 3px;
+  font: 11px/1.5 system-ui;
+  color: var(--wf-text-muted);
+}
+
+/* What a tool is, in the runner info and the settings' runner rows. */
+.tool-desc {
+  color: var(--wf-text-secondary);
+}
+.tool-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+}
+.tool-facts dd {
+  margin: 0;
+}
+.set-desc,
+.set-tool {
+  display: block;
+  font-size: 12px;
+  color: var(--wf-text-secondary);
+}
+.set-tool {
+  color: var(--wf-text-muted);
+}
+.help-body a,
+.settings-body a {
+  color: var(--wf-accent);
+}
+.set-tools li {
+  flex-wrap: wrap;
+}
+.set-tools li + li {
+  margin-top: 4px;
+}
+.set-tools button {
+  padding: 3px 8px;
+}
+.tool-facts dt {
+  margin: 0;
+}
+
+/* Read by screen readers, not drawn. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

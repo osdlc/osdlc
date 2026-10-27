@@ -12,7 +12,15 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import {
+  accessSync,
+  constants,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -21,7 +29,8 @@ import { FailureError, isFailure } from '@osdlc/result'
 import { buildFailure, type CommandFailure } from './failure.ts'
 import { shellJoin } from './quote.ts'
 import { failureText, stderrOrError } from './result.ts'
-import { which } from './which.ts'
+import { planOptions, spawnPlan, type SpawnPlan } from './spawn-plan.ts'
+import { hasSeparator, which } from './which.ts'
 
 /**
  * Result of running an external command through a `CommandRunner`.
@@ -289,9 +298,18 @@ export interface BytesCommandRunner {
  * that points a variable at a new temp dir just before spawning would then
  * see the old value. Copying `process.env` into a new plain object at the
  * call avoids the snapshot.
+ *
+ * On Windows, where names match in any case, an override replaces the
+ * parent's variable whatever its case: `{ PATH: undefined }` unsets the
+ * parent's `Path`, and `{ path: 'x' }` replaces it.
  */
 export function mergedEnv(opts: Pick<CommandRunOptions, 'env'>): { env: NodeJS.ProcessEnv } {
-  const env: NodeJS.ProcessEnv = { ...process.env, ...opts.env }
+  const env: NodeJS.ProcessEnv = { ...process.env }
+  if (process.platform === 'win32' && opts.env !== undefined) {
+    const names = new Set(Object.keys(opts.env).map((k) => k.toUpperCase()))
+    for (const key of Object.keys(env)) if (names.has(key.toUpperCase())) delete env[key]
+  }
+  Object.assign(env, opts.env)
   for (const [key, value] of Object.entries(env)) if (value === undefined) delete env[key]
   return { env }
 }
@@ -374,10 +392,12 @@ export function timerMs(name: string, ms: number, min: 'positive' | 'zero'): num
 }
 
 /**
- * A spawn error message when `cwd` is missing or not a directory, else
- * `undefined`. It is checked before spawning for two reasons. A spawn
- * reports a missing `cwd` as `spawn <binary> ENOENT`, which reads as a
- * missing binary. And Node's async `spawn` throws for a `cwd` that is a file.
+ * A spawn error message when `cwd` is missing, not a directory or cannot be
+ * entered, else `undefined`. It is checked before spawning for three
+ * reasons. A spawn reports a missing `cwd` as `spawn <binary> ENOENT`, which
+ * reads as a missing binary. Node's async `spawn` throws for a `cwd` that is
+ * a file. And a `cwd` without search permission fails the spawn with
+ * `EACCES`, which reads as a binary that cannot be run.
  *
  * @param spawnName - The message prefix: `spawn` or `spawnSync`, then the binary.
  * @throws `TypeError` for a NUL byte in `binary`, `argv` or `opts.env`, as the
@@ -390,16 +410,30 @@ export function cwdError(
   opts: { cwd: string; env?: EnvOverrides | undefined },
 ): string | undefined {
   let problem: string
+  const denied = 'EACCES: cwd %s cannot be entered'
   try {
-    if (statSync(opts.cwd).isDirectory()) return undefined
-    problem = 'ENOTDIR: cwd %s is not a directory'
+    if (!statSync(opts.cwd).isDirectory()) problem = 'ENOTDIR: cwd %s is not a directory'
+    else if (canEnter(opts.cwd)) return undefined
+    else problem = denied
   } catch (e) {
     const code = (e as NodeJS.ErrnoException).code
-    if (code !== 'ENOENT' && code !== 'ENOTDIR') return undefined // the spawn reports it
-    problem = 'ENOENT: cwd %s does not exist'
+    if (code === 'EACCES') problem = denied
+    else if (code !== 'ENOENT' && code !== 'ENOTDIR')
+      return undefined // the spawn reports it
+    else problem = 'ENOENT: cwd %s does not exist'
   }
   assertNoNulByte(binary, argv, opts.env)
   return `${spawnName} ${problem.replace('%s', JSON.stringify(opts.cwd))}`
+}
+
+/** Whether `dir` has search permission, so a child can start in it. */
+function canEnter(dir: string): boolean {
+  try {
+    accessSync(dir, constants.X_OK)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /** Throw the `TypeError` a spawn throws for a NUL byte in its arguments. */
@@ -486,7 +520,8 @@ export class CommandFailed extends FailureError<CommandFailure> {
    * stderr. Empty when there is no text at all. The same as
    * `failureText(e.result, { both: true })`.
    *
-   * `message` holds stderr only. Several commands explain the failure on
+   * `message` holds the command line and stderr (or the runner's `error`),
+   * never stdout. Several commands explain the failure on
    * stdout instead, such as a rejecting git hook, `git commit` on a clean
    * tree, or `git apply --check`. Read this rather than picking a stream at
    * the call site.
@@ -765,7 +800,9 @@ export function resolveRunner(binary: string, injected?: CommandRunner | undefin
  * runtime with `NODE_ENV=test`) it captures through `/bin/sh` and temp files
  * instead of pipes (see `runViaChildRedirect`).
  *
- * @param binary - A name looked up on `PATH`, or a path.
+ * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
+ *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
+ * @param options - See {@link SpawnRunnerOptions}.
  * @returns A runner for that binary.
  *
  * @example
@@ -775,11 +812,73 @@ export function resolveRunner(binary: string, injected?: CommandRunner | undefin
  * if (r.exitCode === 0) console.log(r.stdout)
  * ```
  */
-export function spawnRunner(binary: string): CommandRunner {
+export function spawnRunner(binary: string, options: SpawnRunnerOptions = {}): CommandRunner {
   return {
     binary,
-    run: (argv, opts) => runSync(binary, argv, opts, false) as CommandResult,
+    run: (argv, opts) => runSync(binary, argv, opts, false, options) as CommandResult,
   }
+}
+
+/**
+ * Options for {@link spawnRunner}, {@link spawnRunnerBytes}, their async
+ * forms, `streamRunner` and `managedProcessRunner`.
+ *
+ * @experimental
+ */
+export interface SpawnRunnerOptions {
+  /**
+   * Find a bare `binary` on absolute `PATH` entries only, and spawn the
+   * absolute path found. A relative or empty entry is looked up from the
+   * child's `cwd`, and a Windows spawn of a bare name searches `cwd` first,
+   * so without this a file planted in that folder can run in its place. Use
+   * it for a command run inside a folder you do not trust. Not found reads as
+   * a missing binary (`ENOENT`). A `binary` with a separator is a path and is
+   * run as given. See `which` with `absolutePathOnly`. Default `false`.
+   */
+  absolutePathOnly?: boolean | undefined
+}
+
+/**
+ * The file to spawn for `binary`: itself, or with `absolutePathOnly` the
+ * absolute match on `PATH` (from `opts.env` over the parent's), or
+ * `undefined` when there is none.
+ */
+export function lookupBinary(
+  binary: string,
+  options: SpawnRunnerOptions,
+  opts: Pick<CommandRunOptions, 'env'>,
+): string | undefined {
+  if (options.absolutePathOnly !== true || hasSeparator(binary, process.platform)) return binary
+  return which(binary, { env: opts.env, absolutePathOnly: true })
+}
+
+/** The spawn error text for a binary {@link lookupBinary} did not find. */
+export function notOnAbsolutePath(spawnName: string, binary: string): string {
+  return `${spawnName} ${binary} ENOENT: not found on an absolute PATH entry`
+}
+
+/**
+ * The checks every runner makes before it spawns, in order: the
+ * `absolutePathOnly` lookup ({@link lookupBinary}), the `cwd` check
+ * ({@link cwdError}) and the {@link spawnPlan}. Returns the file found and
+ * the plan, or the spawn error message of the first check that fails.
+ *
+ * @param spawnName - The message prefix: `spawn` or `spawnSync`.
+ * @throws `TypeError` for a NUL byte, as {@link cwdError} does.
+ */
+export function prepareSpawn(
+  spawnName: 'spawn' | 'spawnSync',
+  binary: string,
+  argv: readonly string[],
+  opts: { cwd: string; env?: EnvOverrides | undefined },
+  options: SpawnRunnerOptions,
+): { target: string; plan: SpawnPlan } | { refusal: string } {
+  const target = lookupBinary(binary, options, opts)
+  if (target === undefined) return { refusal: notOnAbsolutePath(spawnName, binary) }
+  const cwdMessage = cwdError(`${spawnName} ${target}`, target, argv, opts)
+  if (cwdMessage !== undefined) return { refusal: cwdMessage }
+  const plan = spawnPlan(target, argv, opts)
+  return 'refusal' in plan ? plan : { target, plan }
 }
 
 /**
@@ -789,9 +888,11 @@ export function spawnRunner(binary: string): CommandRunner {
  * output is not the hash of the bytes. Stderr is decoded as UTF-8, so
  * `failureText` and `CommandFailed` read as they do for text. `maxOutputBytes`
  * cuts stdout at exactly the cap. Everything else is as for `spawnRunner`,
- * including the `bun test` capture path.
+ * including {@link SpawnRunnerOptions} and the `bun test` capture path.
  *
- * @param binary - A name looked up on `PATH`, or a path.
+ * @param binary - A name looked up on `PATH`, or a path. On Windows a `.cmd`
+ *   or `.bat` file runs through `cmd.exe` (see the README's Platforms section).
+ * @param options - See {@link SpawnRunnerOptions}.
  * @returns A runner for that binary.
  *
  * @example
@@ -803,10 +904,13 @@ export function spawnRunner(binary: string): CommandRunner {
  *
  * @experimental
  */
-export function spawnRunnerBytes(binary: string): BytesCommandRunner {
+export function spawnRunnerBytes(
+  binary: string,
+  options: SpawnRunnerOptions = {},
+): BytesCommandRunner {
   return {
     binary,
-    run: (argv, opts) => runSync(binary, argv, opts, true) as CommandResult<Buffer>,
+    run: (argv, opts) => runSync(binary, argv, opts, true, options) as CommandResult<Buffer>,
   }
 }
 
@@ -816,13 +920,17 @@ function runSync(
   argv: string[],
   opts: CommandRunOptions,
   bytes: boolean,
+  options: SpawnRunnerOptions,
 ): CommandResult<string | Buffer> {
   const timeoutMs = normalizeTimeout(opts.timeoutMs)
   const cap = normalizeOutputCap(opts.maxOutputBytes) ?? DEFAULT_SYNC_OUTPUT_CAP
-  const cwdMessage = cwdError(`spawnSync ${binary}`, binary, argv, opts)
-  if (cwdMessage !== undefined) return emptyStdout(spawnFailure(cwdMessage), bytes)
-  if (CHILD_STDIO_CORRUPTED) return runViaChildRedirect(binary, argv, opts, timeoutMs, bytes)
-  const proc = spawnSync(binary, argv, {
+  const prepared = prepareSpawn('spawnSync', binary, argv, opts, options)
+  if ('refusal' in prepared) return emptyStdout(spawnFailure(prepared.refusal), bytes)
+  const { target, plan } = prepared
+  // Off Windows the plan is the target and argv unchanged.
+  if (CHILD_STDIO_CORRUPTED) return runViaChildRedirect(target, argv, opts, timeoutMs, bytes)
+  const proc = spawnSync(plan.file, plan.args, {
+    ...planOptions(plan),
     cwd: opts.cwd,
     maxBuffer: cap,
     timeout: timeoutMs,

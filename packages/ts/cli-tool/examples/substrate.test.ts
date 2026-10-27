@@ -16,6 +16,12 @@ import {
   captureContext,
   captureIo,
   closestMatches,
+  colorEnabled,
+  columns,
+  DEFAULT_WIDTH,
+  helpWidth,
+  MAX_WIDTH,
+  wrapText,
   defineCli,
   DOMAIN_EXIT_MAX,
   DOMAIN_EXIT_MIN,
@@ -32,6 +38,7 @@ import {
   processContext,
   processIo,
   readLine,
+  renderError,
   renderFailure,
   runMain,
   systemDirs,
@@ -55,6 +62,7 @@ import {
   type PositionalDecl,
   type RunMainOptions,
   type StringFlag,
+  type Terminal,
   type ResolveOptions,
   type TristateFlag,
   type VendorDirs,
@@ -191,6 +199,11 @@ test('a main holding a Result failure reports it and returns its exit code with 
   expect(failureOf(new Error('plain'))).toBeNull()
 })
 
+test('every error line goes through renderError, which strips terminal controls', () => {
+  expect(renderError('no branch x', 'tooly')).toBe('tooly: no branch x\n')
+  expect(renderError('title \u001b]0;pwned\u0007set', 'tooly')).toBe('tooly: title set\n')
+})
+
 test('processIo is the real streams; captureIo is the test double', () => {
   const real: CliIo = processIo
   expect(typeof real.stdout).toBe('function')
@@ -232,4 +245,19 @@ test('re-exported helpers: close matches and per-OS directories', () => {
   const options: ResolveOptions = { home: dir, env: {} }
   const dirs: TieredDirs = systemDirs(vendorDirs, options)
   expect(dirs.standalone('tooly').config().path).toContain('tooly')
+})
+
+test('help text is wrapped when it is rendered', () => {
+  const ctx: CliContext = { ...captureContext(), env: { NO_COLOR: '1' } }
+  const terminal: Terminal = { stdin: true, stdout: true, stderr: true, columns: 60 }
+  expect(colorEnabled({ ...ctx, terminal })).toBe(false)
+  expect(helpWidth(terminal.columns)).toBe(60)
+  expect(helpWidth(500)).toBe(MAX_WIDTH)
+  expect(helpWidth()).toBe(DEFAULT_WIDTH)
+  expect(wrapText('a long line of prose that goes past the width', 20)).toBe(
+    'a long line of prose\nthat goes past the\nwidth',
+  )
+  expect(columns([{ term: '--json', text: 'one JSON document' }])).toBe(
+    '  --json  one JSON document',
+  )
 })

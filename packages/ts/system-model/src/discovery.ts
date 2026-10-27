@@ -16,7 +16,7 @@ import { join, relative, sep } from 'node:path'
 import { runCheckedAsync, type AsyncCommandRunner } from '@osdlc/command-seam'
 
 import type { DiscoveryMode } from './model.ts'
-import { compilePattern } from './pattern.ts'
+import { compilePattern, pathIndex, type PathIndex } from './pattern.ts'
 
 /**
  * Paths to skip: build output, dependency trees and tool caches. All of them
@@ -54,12 +54,28 @@ export const DEFAULT_EXCLUDES: readonly string[] = [
   'vendor',
 ]
 
+/**
+ * Config set on every discovery git call. Discovery runs before the
+ * repository is trusted, and `.git/config` belongs to whoever made the
+ * directory. `core.fsmonitor` names a command that `ls-files --others` runs,
+ * so it is turned off. The other config keys that run commands (hooks,
+ * `diff.external`, `filter.*`, `core.sshCommand`, `core.pager`) do not apply
+ * to `rev-parse` or `ls-files` without a TTY.
+ *
+ * Which `git` binary runs is a separate exposure. The default runner finds it
+ * on absolute PATH entries only (see `defaultRunner` in `which.ts`), so a
+ * `git` the repository ships is never run.
+ */
+const SAFE_GIT_CONFIG: readonly string[] = ['-c', 'core.fsmonitor=false']
+
 /** Whether `root` is inside a git working tree and git can be run. */
 export async function gitAvailable(root: string, git: AsyncCommandRunner): Promise<boolean> {
   // A failure is the answer here. Outside a repository git exits 128, and a
   // missing binary also comes back from `@osdlc/command-seam` as a non-zero
   // exit. Both mean "not usable", so the exit code is read, not thrown.
-  const res = await git.run(['rev-parse', '--is-inside-work-tree'], { cwd: root })
+  const res = await git.run([...SAFE_GIT_CONFIG, 'rev-parse', '--is-inside-work-tree'], {
+    cwd: root,
+  })
   return res.exitCode === 0 && res.stdout.trim() === 'true'
 }
 
@@ -87,7 +103,7 @@ async function gitFiles(root: string, git: AsyncCommandRunner): Promise<string[]
   // because without it git quotes any path with a space or a non-ASCII byte.
   const res = await runCheckedAsync(
     git,
-    ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+    [...SAFE_GIT_CONFIG, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'],
     { cwd: root },
   )
   return res.stdout.split('\0').filter((f) => f !== '')
@@ -152,22 +168,56 @@ export function matchesExclude(path: string, excludes: ExcludeSet): boolean {
   )
 }
 
+/** The most files a directory walk lists. The rest of the tree is not listed. */
+export const MAX_WALK_FILES = 50_000
+
+/** The deepest directory a walk enters, counted from the root at depth 0. */
+export const MAX_WALK_DEPTH = 32
+
+/** A walk cap that was reached: which one, and its value. */
+export interface WalkLimit {
+  cap: 'files' | 'depth'
+  value: number
+}
+
+/** The walk's caps. Tests lower them; callers use the defaults. */
+export interface WalkCaps {
+  files: number
+  depth: number
+}
+
 /**
  * The walk skips both kinds of exclude as it goes, rather than listing
  * everything and filtering after. An excluded directory is the expensive case,
  * since `node_modules` often holds most of the files. Entering one only to
  * discard its contents is the cost this walk avoids.
+ *
+ * The walk stops at {@link MAX_WALK_FILES} files and does not enter a
+ * directory deeper than {@link MAX_WALK_DEPTH}. `limit` records the first cap
+ * reached. Entries are visited in name order, so a capped walk keeps the same
+ * files on every machine. git mode has no cap: it lists what git lists.
  */
-async function walkFiles(root: string, excludes: ExcludeSet): Promise<string[]> {
+async function walkFiles(
+  root: string,
+  excludes: ExcludeSet,
+  limit: { hit?: WalkLimit },
+  caps: WalkCaps,
+): Promise<string[]> {
   const out: string[] = []
-  async function walk(dir: string): Promise<void> {
+  async function walk(dir: string, depth: number): Promise<void> {
     let entries
     try {
-      entries = await readdir(dir, { withFileTypes: true })
+      entries = (await readdir(dir, { withFileTypes: true })).sort((a, b) =>
+        a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
+      )
     } catch {
       return
     }
     for (const entry of entries) {
+      if (out.length >= caps.files) {
+        limit.hit ??= { cap: 'files', value: caps.files }
+        return
+      }
       const full = join(dir, entry.name)
       const rel = relative(root, full).split(sep).join('/')
       if (matchesExclude(rel, excludes)) continue
@@ -175,11 +225,13 @@ async function walkFiles(root: string, excludes: ExcludeSet): Promise<string[]> 
       // walk loop forever, and a link out of the tree would report files that
       // are not this project's.
       if (entry.isSymbolicLink()) continue
-      if (entry.isDirectory()) await walk(full)
-      else if (entry.isFile()) out.push(rel)
+      if (entry.isDirectory()) {
+        if (depth >= caps.depth) limit.hit ??= { cap: 'depth', value: caps.depth }
+        else await walk(full, depth + 1)
+      } else if (entry.isFile()) out.push(rel)
     }
   }
-  await walk(root)
+  await walk(root, 0)
   return out
 }
 
@@ -188,6 +240,10 @@ export interface Lister {
   (pattern: string): Promise<string[]>
   /** Every file discovery found, root-relative. */
   all(): Promise<string[]>
+  /** {@link all}, indexed for pattern matching. Built once. */
+  index(): Promise<{ files: string[]; index: PathIndex }>
+  /** The walk cap the listing reached, once `all` has resolved. Never set in git mode. */
+  limit(): WalkLimit | undefined
 }
 
 /** The exclude list discovery applies: `DEFAULT_EXCLUDES` first when `useBuiltinExcludes`, then `extra`. */
@@ -205,21 +261,31 @@ export function createLister(
   git: AsyncCommandRunner,
   extraExcludes: readonly string[] = [],
   useBuiltinExcludes = true,
+  caps: WalkCaps = { files: MAX_WALK_FILES, depth: MAX_WALK_DEPTH },
 ): Lister {
   const excludes = normalizeExcludes(excludeList(extraExcludes, useBuiltinExcludes))
   let all: Promise<string[]> | null = null
+  const limit: { hit?: WalkLimit } = {}
   // The exclusions apply to both strategies, so the two modes agree about a
   // `fixtures/` tree whether or not the root is a repository.
   const list = (): Promise<string[]> =>
-    (all ??= (mode === 'git' ? gitFiles(root, git) : walkFiles(root, excludes)).then((files) =>
-      files.filter((f) => !matchesExclude(f, excludes)),
+    (all ??= (mode === 'git' ? gitFiles(root, git) : walkFiles(root, excludes, limit, caps)).then(
+      (files) => files.filter((f) => !matchesExclude(f, excludes)),
     ))
 
+  let indexed: Promise<{ files: string[]; index: PathIndex }> | null = null
+  const index = (): Promise<{ files: string[]; index: PathIndex }> =>
+    (indexed ??= list().then((files) => ({ files, index: pathIndex(files) })))
   const lister = async (pattern: string): Promise<string[]> => {
     const compiled = compilePattern(pattern)
-    return (await list()).filter((f) => compiled.base(f) !== null)
+    const { files, index: byPattern } = await index()
+    const out: string[] = []
+    for (const i of byPattern.candidates(compiled)) {
+      if (compiled.base(files[i]!) !== null) out.push(files[i]!)
+    }
+    return out
   }
-  return Object.assign(lister, { all: list })
+  return Object.assign(lister, { all: list, index, limit: () => limit.hit })
 }
 
 /** True when a root-relative path exists on disk. */

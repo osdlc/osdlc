@@ -8,6 +8,7 @@
  */
 
 import type { RunnerSpec } from './collect.ts'
+import { SYNTHESIZED_RUNNERS } from './groups.ts'
 import type { ChainSegment, Task } from './model.ts'
 import { markersOf, type Registry } from './registry.ts'
 import {
@@ -18,17 +19,6 @@ import {
   type ToolAction,
 } from './roles.ts'
 import type { ProjectProfile, RoleName } from './tool.ts'
-
-/**
- * The runner ids of the three synthesized groups.
- *
- * @experimental
- */
-export const SYNTHESIZED_RUNNERS = {
-  packageManager: 'package-manager',
-  toolManager: 'tool-manager',
-  hookManager: 'hook-manager',
-} as const
 
 const chain = (what: string): ChainSegment[] => [
   {

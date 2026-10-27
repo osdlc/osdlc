@@ -2,10 +2,10 @@
  * Turns typed trailing arguments into argv entries. The terminal's entry line
  * and the page's run bar share it, so the two always split quotes the same way.
  *
- * {@link runArgv} and {@link acceptArgs} decide what a caller may add to a
- * spawn and what it may not. As pure functions they can be tested. The route
- * they protect cannot, because a successful call hands over the terminal and
- * exits the process.
+ * {@link runArgv} and {@link acceptArgs} are pure helpers only the tests call.
+ * The web view's `/run` does not go through them: serve/routes.ts validates
+ * its body (a non-string argument is a 400), and session.resolveRun pins the
+ * binary with its own check over `runners.invocation`.
  */
 
 import type { Project, Task } from '@osdlc/system-model/detect'
@@ -16,10 +16,9 @@ import type { Project, Task } from '@osdlc/system-model/detect'
  * `--`.
  *
  * The binary is always `task.argv[0]`, from a catalog this process built by
- * reading the repository, never from a request. `/api/run` is reachable by any
- * process on the machine and any site the browser visits, so a caller that
- * could set element 0 could run anything. A tool whose `invoke` changes the
- * binary is refused.
+ * reading the repository, never from a request. A tool whose `invoke` changes
+ * the binary is refused. The live `/run` path makes the same check in
+ * session.resolveRun, not here.
  */
 export function runArgv(project: Project, task: Task, args: readonly string[] = []): string[] {
   if (args.length === 0) return [...task.argv]
@@ -46,11 +45,16 @@ export function acceptArgs(value: unknown): string[] {
  * Split typed arguments into words the way a shell does, and do nothing else
  * a shell does.
  *
- * Quotes group and a backslash escapes the next character. There is no
- * globbing, no variable expansion, no operators and no substitution. The
- * result goes to an `execvp`-style spawn as separate argv entries, never to a
- * shell, so `*.log` is passed through as the five characters typed. This is
- * the same rule that keeps `argv` separate from `display`.
+ * Quotes group words as in sh. Outside quotes a backslash escapes the next
+ * character. Inside single quotes every character is literal, a backslash
+ * too, so `'C:\tmp'` stays as typed. Inside double quotes a backslash escapes
+ * only `"`, `\`, `$` and a backtick, and is kept before anything else.
+ *
+ * There is no globbing, no variable expansion, no operators and no
+ * substitution. The result goes to an `execvp`-style spawn as separate argv
+ * entries, never to a shell, so `*.log` is passed through as the five
+ * characters typed. This is the same rule that keeps `argv` separate from
+ * `display`.
  *
  * This is not `.split(/\s+/)` for one reason: a quoted `"two words"` must stay
  * one argument.
@@ -62,8 +66,19 @@ export function splitArgs(input: string): string[] {
   let quote: '"' | "'" | null = null
   for (let i = 0; i < input.length; i++) {
     const ch = input[i]!
+    if (quote === "'") {
+      if (ch === "'") quote = null
+      else current += ch
+      continue
+    }
     if (ch === '\\' && i + 1 < input.length) {
-      current += input[++i]!
+      const next = input[i + 1]!
+      if (quote === '"' && !'"\\$`'.includes(next)) {
+        current += ch
+        continue
+      }
+      current += next
+      i++
       started = true
       continue
     }

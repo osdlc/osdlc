@@ -1,5 +1,80 @@
 # @osdlc/typed-git
 
+## 0.10.0
+
+### Minor Changes
+
+- da5e6a3: New: `parseRemoteRepo(url)` reads a git remote into `{ host, owner, repo }` (type `RemoteRepo`), or null when it names no project. It reads a known host through `parseGitUrl` first (so shorthand reads as GitHub and a GitLab nested group stays whole in `owner`), then any other host through `parseRemoteUrl`, so a GitHub Enterprise or self-hosted Forgejo remote answers too. `host` is lower-cased and has no port. It is on the root entry, not `./client`.
+  The result gate, the `try` proxy, the start of `classifyGitFailure` and the leading-dash guard now use `@osdlc/command-seam`'s `runFailed`, `tryMethods`, `methodFacade`, `classifyFailed` and `notAnOption`. Nothing a caller sees changes: the same failures, the same `TypeError` and message for a positional that starts with `-`.
+
+### Patch Changes
+
+- Updated dependencies [da5e6a3]
+  - @osdlc/command-seam@0.14.0
+
+## 0.9.0
+
+### Minor Changes
+
+- b835ae4: Behaviour change: `mainCheckout()` now answers null for a bare store with no main checkout, instead of the store's parent folder. When the common dir is not `<checkout>/.git` (a submodule, a `--separate-git-dir` clone), it reads `core.worktree`, this checkout when the cwd is the main worktree, or the first non-bare `worktree list` entry.
+  `branches()` lists `refs/heads/` names, so a branch that shares its name with a tag is no longer reported as `heads/<name>`. `statusEntries()` skips the source field of a rename or copy in the worktree column too, so the entry after it is no longer misread. `parseRepoRef` reads a GitLab page in a nested group (`…/group/sub/repo/-/…`) as the whole project path, and still reads a GitHub page whose path holds a `-` segment. `parseRemoteUrl` answers null for a `file://` URL and strips `.git` from `repo.git/`. `scanForCheckouts` on a folder that is itself a checkout answers that folder alone.
+- fdef74f: New verbs and verb options, on both `Git` and `AsyncGit`, for operations that needed `raw` before:
+  
+  - `worktreeAdd(path, { branch, resetBranch: true })` is `worktree add -B`: create the branch, or reset an existing one. This is the same shape as `checkout`'s `resetBranch`. `resetBranch` without `branch` throws a `TypeError`.
+  - `commit({ ..., paths })` appends `-- <paths…>`, with every message source, so only those paths are committed. An empty `paths` throws a `TypeError`, because git would commit everything staged.
+  - `push(remote, refspec, { delete: true })` is `push --delete`, and combines with `forceWithLease`.
+  - `hasStagedChanges()` is `diff --cached --quiet`: `true` for exit 1, `false` for exit 0, and a throw for anything else. On an unborn HEAD the index is compared against the empty tree. `git.soft.hasStagedChanges()` falls back to `false`.
+  - `showAtRevChecked(rev, path)` runs the same `show` as `showAtRev`, but a missing path throws the classified failure instead of returning `null`.
+  - `remoteSetHead(remote, { branch } | { auto: true } | { delete: true })` and `remoteSetBranches(remote, branches, { add })`. An empty `branches` throws a `TypeError`.
+  - `gc({ auto, aggressive, prune, quiet })`, where `prune` is a date string or `false` for `--no-prune`.
+  
+  The new option types `WorktreeAddOptions`, `PushOptions`, `RemoteSetHeadOptions`, `RemoteSetBranchesOptions` and `GcOptions` are exported. `GitRequest` and `GitResults` gain the `hasStagedChanges`, `showAtRevChecked`, `remoteSetHead`, `remoteSetBranches` and `gc` kinds.
+  
+  Fixed: `worktreeAdd` and `checkout` now refuse a `branch` that starts with `-`, as every other positional value already was. `worktree add` passes the name to a child `git branch`, so `worktreeAdd(path, { branch: '-M', resetBranch: true, startPoint: 'x' })` used to rename the current branch to `x` before failing.
+
+### Patch Changes
+
+- Updated dependencies [b835ae4]
+  - @osdlc/command-seam@0.13.0
+
+## 0.8.2
+
+### Patch Changes
+
+- f013f38: The default runners now find `git` and `gh` on absolute `PATH` entries only, and spawn the absolute path found. Before, a bare `git` or `gh` was spawned by name with the child's `cwd` set to the checkout, so a file of that name in the checkout could run in place of the real binary: on Windows, where a bare name is searched in `cwd` first, and on every platform through a relative or empty `PATH` entry. A binary that is not found on an absolute entry fails as a missing binary (`not-installed`). typed-gh's `defaultRunnerFactory` does the same lookup. An injected runner is unchanged.
+- Updated dependencies [f013f38]
+  - @osdlc/command-seam@0.12.1
+
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [9616994]
+- Updated dependencies [d243a32]
+- Updated dependencies [d243a32]
+- Updated dependencies [9616994]
+  - @osdlc/command-seam@0.12.0
+
+## 0.8.0
+
+### Minor Changes
+
+- 1a44195: New `pushPorcelain(remote, refspec, { atomic, forceWithLease })` on `Git` and `AsyncGit`. It runs `git push --porcelain` and returns one result per ref: `{ src, dst, flag, summary, rawReason }`. A rejected ref (`flag: '!'`) also has a typed `rejection` and the remote's `detail` line, and checking `flag` narrows the type. `rejection` is one of `stale`, `non-fast-forward`, `tag-exists`, `already-exists`, `ref-conflict`, `lock-failed`, `hook-declined` or `other`, so you no longer read git's stderr to learn why a push failed. The reason is read from git's text, including the remote's `cannot lock ref` line, not from the local git version. So the old and new wordings, such as `(failed to update ref)` from older git and `(refname conflict)` from git 2.53 and 2.54, map to the same value. A failure that reaches no ref, such as an unknown remote, a network or auth problem, or a local pre-push hook, still throws the classified failure. `forceWithLease` also takes one lease per ref. `refspec` takes a list. An empty lease list throws a `TypeError` rather than pushing with no lease.
+
+## 0.7.2
+
+### Patch Changes
+
+- Updated dependencies [0cf31de]
+  - @osdlc/command-seam@0.11.0
+
+## 0.7.1
+
+### Patch Changes
+
+- Updated dependencies [910deca]
+  - @osdlc/command-seam@0.10.0
+
 ## 0.7.0
 
 ### Minor Changes

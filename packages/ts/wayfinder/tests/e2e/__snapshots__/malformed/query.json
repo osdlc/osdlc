@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "ok",
+    "mode": "fuzzy"
+  },
+  "source": "fresh",
+  "storedAt": null,
+  "tasks": [
+    {
+      "id": "make:Makefile:ok",
+      "runner": "make",
+      "path": [
+        "make",
+        ".",
+        "ok"
+      ],
+      "argv": [
+        "make",
+        "ok"
+      ],
+      "cwd": ".",
+      "display": "make ok",
+      "parameters": [],
+      "source": "Makefile",
+      "origin": "declared",
+      "tags": [
+        "make",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "node-scripts",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "make",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "composer",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

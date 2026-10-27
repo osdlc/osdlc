@@ -1,5 +1,5 @@
-import { afterAll, describe, expect, test } from 'vitest'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { afterAll, describe, expect, test, vi } from 'vitest'
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -9,127 +9,91 @@ import { cacheDir } from '../src/cache.ts'
 import { makeProject, readCachedCatalog } from '../src/catalog.ts'
 
 const findRoot = (dir: string): Promise<string> => makeProject().findRoot(dir)
-import { resolveTrustRoot, trustStore } from '@osdlc/trust-repo'
+import { resolveTrustRoot } from '@osdlc/trust-repo'
 
 import { acceptedFlags } from './guide-support.ts'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
-import { main, parseArgs } from '../src/cli.ts'
+import { main, quietOnBrokenPipe, rewriteAliases } from '../src/cli.ts'
+import { EventEmitter } from 'node:events'
+import { appTrustStore } from '../src/trust-store.ts'
+import { CONFIG_HOME, shown } from './support.ts'
 
-// The io sink is where commander's messages would land; these cases assert on
-// the returned value, not on what was printed.
-const parse = (argv: string[]) => parseArgs(argv, captureIo(), '/fixture-cwd')
+const WORDS = ['list', 'query', 'run', 'serve', 'providers', 'config', 'trust', 'help']
 
-describe('parseArgs', () => {
-  test('defaults to the terminal UI', () => {
-    expect(parse([])).toMatchObject({ mode: 'tui', open: true })
+describe('quietOnBrokenPipe', () => {
+  test('EPIPE on stdout exits 0 with nothing printed; another error is thrown', () => {
+    const stream = new EventEmitter()
+    const exits: number[] = []
+    quietOnBrokenPipe(stream as never, (code) => exits.push(code))
+    stream.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }))
+    expect(exits).toEqual([0])
+    expect(() =>
+      stream.emit('error', Object.assign(new Error('write EIO'), { code: 'EIO' })),
+    ).toThrow('EIO')
+    expect(exits).toEqual([0])
   })
+})
 
-  test('allowExec is absent unless a flag said so, so the config file can answer', () => {
-    // An `allowExec: true` here would make every run look like the flag was
-    // given and would overwrite a configured `allowExec: false`. wayfinder's own
-    // `true` default lives in main(), applied only when no config layer
-    // supplied a value.
-    expect((parse([]) as Record<string, unknown>)['allowExec']).toBeUndefined()
-  })
-
-  test('--no-exec and --exec are both present when given, and beat the config', () => {
-    expect(parse(['--no-exec'])).toMatchObject({ allowExec: false })
-    expect(parse(['--exec'])).toMatchObject({ allowExec: true })
-  })
-
-  test('selects a surface', () => {
-    expect(parse(['--serve'])).toMatchObject({ mode: 'serve' })
-    expect(parse(['--json'])).toMatchObject({ mode: 'json' })
-    expect(parse(['--list'])).toMatchObject({ mode: 'list' })
-  })
-
-  test('--cached is off unless given, because the data surfaces are fresh by default', () => {
-    // The posture in one line: --json and --list are read by scripts and
-    // agents, so they re-probe unless somebody opts out.
-    expect(parse([])).toMatchObject({ cached: false })
-    expect(parse(['--json', '--cached'])).toMatchObject({ mode: 'json', cached: true })
-  })
-
-  test('--discovery overrides the configured discovery', () => {
-    expect(parse(['--discovery', 'walk'])).toMatchObject({ discovery: 'walk' })
-    expect((parse([]) as Record<string, unknown>)['discovery']).toBeUndefined()
-    const bad = parse(['--discovery', 'sideways']) as { error?: string }
-    expect(bad.error).toContain('sideways')
-  })
-
-  test('reads the runner filters and the directory in either form', () => {
-    expect(parse(['--only', 'moon,just'])).toMatchObject({ only: ['moon', 'just'] })
-    expect(parse(['--exclude', 'cargo'])).toMatchObject({ exclude: ['cargo'] })
-    expect(parse(['-C', '/tmp/x'])).toMatchObject({ dir: '/tmp/x' })
-    expect(parse(['/tmp/y'])).toMatchObject({ dir: '/tmp/y' })
-  })
-
-  test('--port takes a port, and rejects anything that is not one', () => {
-    expect(parse(['--port', '8080'])).toMatchObject({ port: 8080 })
-    expect(parse(['--port', '0'])).toMatchObject({ port: 0 })
-    expect(parse(['--port', 'notaport'])).toEqual({ error: '--port needs a port number' })
-    expect(parse(['--port', '70000'])).toEqual({ error: '--port needs a port number' })
-    // A missing value gets commander's message, but it is still refused and
-    // still names the flag.
-    expect((parse(['--port']) as { error?: string }).error).toContain('--port')
-  })
-
-  test('query takes its positionals as terms, and -C still names the directory', () => {
-    // The one thing the subcommand changes about the parse: everywhere else a
-    // positional is a directory, and here it is a search term.
-    expect(parse(['query', 'dep', 'env'])).toMatchObject({
-      mode: 'query',
-      terms: ['dep', 'env'],
+describe('rewriteAliases', () => {
+  test('maps each old surface flag onto its command', () => {
+    expect(rewriteAliases(['--serve', '--port', '8080'], WORDS)).toEqual({
+      argv: ['serve', '--port', '8080'],
+      alias: '--serve',
     })
-    expect(parse(['query', 'dep', '-C', '/tmp/x'])).toMatchObject({
-      terms: ['dep'],
-      dir: '/tmp/x',
+    expect(rewriteAliases(['--list', '-C', 'x'], WORDS)).toEqual({
+      argv: ['list', '-C', 'x'],
+      alias: '--list',
     })
-    expect((parse(['--list']) as Record<string, unknown>)['terms']).toBeUndefined()
-  })
-
-  test('under query, --json chooses the output form rather than the surface', () => {
-    // Letting it set the mode would silently drop the terms.
-    expect(parse(['query', 'dep', '--json'])).toMatchObject({
-      mode: 'query',
-      json: true,
-      terms: ['dep'],
-    })
-    expect(parse(['--json'])).toMatchObject({ mode: 'json', json: false })
-  })
-
-  test('the query-only flags are rejected where they would do nothing', () => {
-    expect(parse(['query', '--exact', '--services'])).toMatchObject({
-      matchMode: 'exact',
-      servicesOnly: true,
-    })
-    expect(parse([])).toMatchObject({ matchMode: 'fuzzy', servicesOnly: false })
-    expect(parse(['--exact'])).toEqual({ error: '--exact only applies to query' })
-    expect(parse(['--list', '--services'])).toEqual({
-      error: '--services only applies to query',
+    expect(rewriteAliases(['--json'], WORDS)).toEqual({ argv: ['list', '--json'], alias: '--json' })
+    // A directory positional is not a command word, so the flag still applies.
+    expect(rewriteAliases(['--json', 'some/dir'], WORDS)).toEqual({
+      argv: ['list', '--json', 'some/dir'],
+      alias: '--json',
     })
   })
 
-  test('--all says which help to print, and means nothing on its own', () => {
-    expect(parse(['--help', '--all'])).toMatchObject({ help: true, all: true })
-    expect(parse([])).toMatchObject({ all: false })
-    expect(parse(['--all'])).toEqual({
-      error: `--all says which help to print; pass it as "--help --all"`,
-    })
-  })
-
-  test('rejects bad input rather than guessing', () => {
-    // The wording of the first two is commander's. What matters is that each
-    // is refused and names what was wrong.
-    for (const [argv, mentions] of [
-      [['--only'], '--only'],
-      [['--nope'], '--nope'],
-    ] as const) {
-      const result = parse([...argv]) as { error?: string }
-      expect(result.error).toContain(mentions)
+  test('an old surface flag still works, with a deprecation warning on stderr', async () => {
+    const io = captureIo()
+    const dir = await mkdtemp(join(tmpdir(), 'wayfinder-alias-'))
+    await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'p', scripts: { b: 'x' } }))
+    try {
+      expect(await main(['--list', '-C', dir, '--no-exec'], {}, dir, io)).toBe(0)
+      expect(io.out).toContain('npm run b')
+      expect(io.err).toContain('way: warning: --list is deprecated')
+      expect(io.err).toContain('use "way list"')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
     }
-    // This one is wayfinder's own: a second positional is a directory too many.
-    expect(parse(['a', 'b'])).toEqual({ error: 'expected at most one directory' })
+  })
+
+  test('two surface flags are refused, since each chooses a surface', () => {
+    expect(rewriteAliases(['--serve', '--json'], WORDS)).toEqual({
+      error: '--serve and --json each choose a surface; give one',
+    })
+    expect('error' in rewriteAliases(['--list', '--json'], WORDS)).toBe(true)
+  })
+
+  test('a command word after global flags is left alone', () => {
+    expect(rewriteAliases(['-C', 'x', 'list', '--json'], WORDS)).toEqual({
+      argv: ['-C', 'x', 'list', '--json'],
+    })
+    // -C takes the next word, so `list` here is a value, not a command.
+    expect(rewriteAliases(['-C', 'list', '--json'], WORDS)).toEqual({
+      argv: ['list', '--json', '-C', 'list'],
+      alias: '--json',
+    })
+  })
+
+  test('query --list is plain query, its default form', () => {
+    expect(rewriteAliases(['query', 'build', '--list'], WORDS)).toEqual({
+      argv: ['query', 'build'],
+    })
+  })
+
+  test('words after -- are not read as flags', () => {
+    expect(rewriteAliases(['run', 'x', '--', '--json'], WORDS)).toEqual({
+      argv: ['run', 'x', '--', '--json'],
+    })
   })
 })
 
@@ -157,7 +121,7 @@ async function temp(): Promise<string> {
  * on an injected `home` so a test can never read or write the real one.
  */
 function trustStoreFor(home: string) {
-  return trustStore({ tool: 'wayfinder', env: {}, home })
+  return appTrustStore({ env: {}, home })
 }
 
 /** A project with three parse-only runners: cargo, make, node scripts. */
@@ -214,9 +178,8 @@ async function allowExecOf(argv: string[], dir: string): Promise<boolean> {
 
 describe('main allowExec precedence', () => {
   test("wayfinder's own default applies when no file answered, once the repo is trusted", async () => {
-    // Step 3 of the chain. DEFAULT_CONFIG.allowExec is false and wayfinder's is
-    // true, and wayfinder's must win over the library's. The default alone does
-    // not allow execution, so the repository has to be trusted too.
+    // Step 3 of the chain: the default is true. It does not allow execution on
+    // its own, so the repository has to be trusted too.
     const home = await temp()
     const dir = await project()
     await trustStoreFor(home).trust(await findRoot(dir))
@@ -270,9 +233,9 @@ describe('main trust gate', () => {
     // A user-layer true, which is allowed to raise the configured value. Trust
     // is a second check on top of it, so the answer is still no.
     const home = await temp()
-    await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
+    await mkdir(join(home, CONFIG_HOME, 'wayfinder'), { recursive: true })
     await writeFile(
-      join(home, '.config', 'wayfinder', 'config.json'),
+      join(home, CONFIG_HOME, 'wayfinder', 'config.json'),
       JSON.stringify({ allowExec: true }),
       'utf-8',
     )
@@ -291,9 +254,9 @@ describe('main trust gate', () => {
     repo.git.remoteAdd('origin', 'https://github.com/AcmeOwner/dev.git')
     await writeFile(join(repo.dir, 'Makefile'), 'lint:\n\techo l\n', 'utf-8')
     const home = await temp()
-    await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
+    await mkdir(join(home, CONFIG_HOME, 'wayfinder'), { recursive: true })
     await writeFile(
-      join(home, '.config', 'wayfinder', 'config.json'),
+      join(home, CONFIG_HOME, 'wayfinder', 'config.json'),
       JSON.stringify({ allowExec: true, trust: { owners: ['acmeowner'] } }),
       'utf-8',
     )
@@ -304,14 +267,22 @@ describe('main trust gate', () => {
     expect(await trustStoreFor(home).list()).toEqual([])
   })
 
-  test('--list says once, on stderr, how many runners trust would collect', async () => {
+  test('--list warns on stderr for each withheld runner, then says once how to trust', async () => {
     const ran = await run(['--list'], await project())
 
     expect(ran.code).toBe(0)
-    expect(ran.err).toContain('not collected')
-    expect(ran.err).toContain('run "way trust" to trust it')
-    // Once, not once per runner: three exec providers, one sentence.
-    expect(ran.err.split('not collected').length - 1).toBe(1)
+    expect(ran.err).toContain('way: warning: mise: withheld: this repository is not trusted')
+    expect(ran.err).toContain('run "way trust" to trust this repository')
+    // The hint once, not once per runner.
+    expect(ran.err.split('run "way trust"').length - 1).toBe(1)
+  })
+
+  test('a runner withheld by --no-exec is named on stderr too, with the cause', async () => {
+    const ran = await run(['list', '--no-exec'], await project())
+
+    expect(ran.code).toBe(0)
+    expect(ran.err).toContain('way: warning: mise: withheld: --no-exec was given')
+    expect(ran.err).not.toContain('way trust')
   })
 
   test('--exec collects them for this run only, recording nothing', async () => {
@@ -355,7 +326,7 @@ describe('main trust gate', () => {
 
     expect(await run(['trust', '-C', dir], undefined, home)).toMatchObject({ code: 0 })
     expect(await run(['trust', '--show', '-C', dir], undefined, home)).toMatchObject({
-      out: `trusted ${root}\n`,
+      out: `trusted ${root} (by marker)\n`,
     })
     expect(await run(['trust', '--list'], undefined, home)).toMatchObject({
       code: 0,
@@ -447,14 +418,14 @@ describe('main config wiring', () => {
   test('config -C with no path is an error rather than a silent drop', async () => {
     const ran = await run(['config', 'path', '-C'])
     expect(ran.code).toBe(2)
-    expect(ran.err).toContain('-C needs a path')
+    expect(ran.err).toContain("'-C, --dir <PATH>' argument missing")
   })
 })
 
 describe('guide', () => {
   // CLI wiring only. What the guide SAYS is checked in tests/guide.test.ts,
   // against the source each claim describes.
-  test('is claimed before the flag parse, so a topic is not read as a flag', async () => {
+  test('a topic is read as the topic, not as a flag', async () => {
     const ran = await run(['guide', 'extend'])
     expect(ran.code).toBe(0)
     expect(ran.out).toContain('## extend')
@@ -478,6 +449,16 @@ function cacheLines(err: string): string[] {
  * Every case injects `env: {}` and a temp `home`, so the store is
  * `<temp home>/.cache/wayfinder` and the real `~/.cache/wayfinder` is never touched.
  */
+/** The saved view files, once written: main() answers before the write ends. */
+async function savedViews(home: string): Promise<string[]> {
+  const views = join(cacheDir({}, home), 'views', 'v1')
+  return vi.waitFor(async () => {
+    const found = await readdir(views)
+    expect(found).toHaveLength(1)
+    return found
+  })
+}
+
 describe('--cached', () => {
   test('is off by default, and a default run WARMS the store', async () => {
     const home = await temp()
@@ -512,8 +493,21 @@ describe('--cached', () => {
 
     expect(cached.out).toBe(warm.out)
     expect(cached.code).toBe(0)
-    // Nothing moved between the runs, so nothing is stale and nothing is said.
-    expect(cacheLines(cached.err)).toEqual([])
+    // The saved listing answers, and stderr says its files were not checked.
+    expect(cacheLines(cached.err)).toEqual([
+      expect.stringMatching(/^way: --cached: the last listing, .*not checked$/),
+    ])
+  })
+
+  test('with a saved listing, a changed file is not checked', async () => {
+    const home = await temp()
+    const dir = await project()
+    await run(['--list'], dir, home)
+    await writeFile(join(dir, 'Makefile'), 'lint:\n\techo l\nship:\n\techo s\n', 'utf-8')
+    const cached = await run(['--list', '--cached'], dir, home)
+    expect(cached.out).toContain('make lint')
+    expect(cached.out).not.toContain('make ship')
+    expect(cacheLines(cached.err)[0]).toContain('files changed since storedAt are not checked')
   })
 
   test('a changed file makes a runner stale, named on stderr and nowhere else', async () => {
@@ -521,6 +515,8 @@ describe('--cached', () => {
     const dir = await project()
     await run(['--list'], dir, home)
     await writeFile(join(dir, 'Makefile'), 'lint:\n\techo l\nship:\n\techo s\n', 'utf-8')
+    // Without the saved listing, --cached reads the stored probes and checks them.
+    await rm(join(cacheDir({}, home), 'views'), { recursive: true, force: true })
 
     const cached = await run(['--list', '--cached'], dir, home)
     expect(cached.code).toBe(0)
@@ -528,7 +524,9 @@ describe('--cached', () => {
     // pipeable because the note goes to stderr.
     expect(cached.out).not.toContain('make ship')
     expect(cacheLines(cached.err)).toHaveLength(1)
-    expect(cacheLines(cached.err)[0]).toMatch(/^wayfinder: --cached: stale: .*\bmake \(/)
+    expect(cacheLines(cached.err)[0]).toMatch(
+      /^way: --cached: .*\bmake \(stale: its files changed, /,
+    )
   })
 
   test('a runner missing from the store is probed, not dropped', async () => {
@@ -542,11 +540,17 @@ describe('--cached', () => {
     expect(cacheLines(cached.err)[0]).toContain('not cached, probed now:')
   })
 
-  test('--json --cached carries the cache array; --json alone does not', async () => {
+  test('--json always carries the cache array, with the probe time after a fresh probe', async () => {
     const home = await temp()
     const dir = await project()
-    const fresh = JSON.parse((await run(['--json'], dir, home)).out) as Record<string, unknown>
-    expect(fresh['cache']).toBeUndefined()
+    const fresh = JSON.parse((await run(['--json'], dir, home)).out) as {
+      cache: Array<{ runner: string; state: string; ageMs: number; probeMs?: number }>
+    }
+    const make = fresh.cache.find((r) => r.runner === 'make')
+    expect(make).toMatchObject({ state: 'fresh', ageMs: 0 })
+    expect(typeof make?.probeMs).toBe('number')
+    // mise is withheld, so it was not probed and has no time.
+    expect(fresh.cache.find((r) => r.runner === 'mise')?.probeMs).toBeUndefined()
 
     const cached = JSON.parse((await run(['--json', '--cached'], dir, home)).out) as {
       cache: Array<{ runner: string; state: string; estimateMs: number | null; slow: boolean }>
@@ -558,6 +562,65 @@ describe('--cached', () => {
       // Never invented: an unmeasured cost is null, not a plausible number.
       expect(row.estimateMs === null || typeof row.estimateMs === 'number').toBe(true)
     }
+  })
+
+  test('--json says source fresh by default, and cached with storedAt under --cached', async () => {
+    const home = await temp()
+    const dir = await project()
+    type Source = { source: string; storedAt: string | null; generatedAt: string }
+    const fresh = JSON.parse((await run(['list', '--json'], dir, home)).out) as Source
+    expect(fresh).toMatchObject({ source: 'fresh', storedAt: null })
+
+    const cached = JSON.parse((await run(['list', '--json', '--cached'], dir, home)).out) as Source
+    // The time the first run stored its probes.
+    const near = (at: string | null): boolean =>
+      at !== null && Math.abs(Date.parse(at) - Date.parse(fresh.generatedAt)) < 5_000
+    expect(cached.source).toBe('cached')
+    expect(near(cached.storedAt)).toBe(true)
+    const query = JSON.parse((await run(['query', '--json', '--cached'], dir, home)).out) as Source
+    expect(query.source).toBe('cached')
+    expect(near(query.storedAt)).toBe(true)
+  })
+
+  test('a saved listing that is not a view is deleted, and the stored probes answer', async () => {
+    const home = await temp()
+    const dir = await project()
+    await run(['--list'], dir, home)
+    const views = join(cacheDir({}, home), 'views', 'v1')
+    const files = await savedViews(home)
+    await writeFile(join(views, files[0]!), '{"version":1,"catalog":[]}', 'utf-8')
+    const cached = await run(['--list', '--cached'], dir, home)
+    expect(cached.code).toBe(0)
+    expect(cached.out).toContain('make lint')
+    expect(cacheLines(cached.err).join('\n')).not.toContain('the last listing')
+  })
+
+  test('run --cached probes the task runner again and refuses a task that changed', async () => {
+    const home = await temp()
+    const dir = await temp()
+    await writeFile(join(dir, 'Procfile'), 'web: echo one\n', 'utf-8')
+    const listed = JSON.parse((await run(['list', '--json'], dir, home)).out) as {
+      reports: { tasks: { id: string }[] }[]
+    }
+    const id = listed.reports.flatMap((r) => r.tasks)[0]!.id
+    await savedViews(home)
+    await writeFile(join(dir, 'Procfile'), 'web: echo two\n', 'utf-8')
+    // A dry run is a preview from the saved listing, and is not checked.
+    const preview = await run(['run', id, '--cached', '--dry-run'], dir, home)
+    expect(preview.code).toBe(0)
+    expect(preview.out).toContain('echo one')
+    const refused = await run(['run', id, '--cached'], dir, home)
+    expect(refused.code).not.toBe(0)
+    expect(refused.err).toMatch(/changed since .*echo two/)
+    expect(refused.err).toContain('nothing ran')
+  })
+
+  test('--cached with nothing stored probes and says source fresh, not cached', async () => {
+    const dir = await project()
+    const ran = await run(['list', '--json', '--cached'], dir, await temp())
+    expect(ran.code).toBe(0)
+    expect(JSON.parse(ran.out)).toMatchObject({ source: 'fresh', storedAt: null })
+    expect(ran.err).toContain('nothing cached for this repository yet')
   })
 })
 
@@ -583,7 +646,7 @@ describe('query', () => {
   test('prints one command line per match, best first', async () => {
     const ran = await run(['query', 'ploy'], await scripts())
     expect(ran.code).toBe(0)
-    expect(ran.out).toBe('npm run deploy\n')
+    expect(ran.out).toBe(`${shown('npm run deploy')}\n`)
   })
 
   test('ranks a leaf hit above one buried in the chain', async () => {
@@ -591,18 +654,18 @@ describe('query', () => {
     // is asserted is the ORDER, which is the whole reason to rank rather than
     // filter.
     const ran = await run(['query', 'de'], await scripts())
-    expect(ran.out.split('\n').slice(0, 2)).toEqual(['npm run dev', 'npm run deploy'])
+    expect(ran.out.split('\n').slice(0, 2)).toEqual([shown('npm run dev'), shown('npm run deploy')])
   })
 
   test('--exact drops the subsequence hits a fuzzy search keeps', async () => {
     const dir = await scripts()
-    expect((await run(['query', 'dploy'], dir)).out).toBe('npm run deploy\n')
+    expect((await run(['query', 'dploy'], dir)).out).toBe(`${shown('npm run deploy')}\n`)
     expect((await run(['query', 'dploy', '--exact'], dir)).code).toBe(1)
   })
 
   test('--services keeps only what runs until you stop it', async () => {
     const ran = await run(['query', '--services'], await scripts())
-    expect(ran.out).toBe('npm run dev\n')
+    expect(ran.out).toBe(`${shown('npm run dev')}\n`)
   })
 
   test('a search that matched nothing is exit 1 with an empty stdout', async () => {
@@ -623,7 +686,13 @@ describe('query', () => {
   test('--json prints the matching tasks rather than their command lines', async () => {
     const ran = await run(['query', 'ploy', '--json'], await scripts())
     expect(ran.code).toBe(0)
-    const tasks = JSON.parse(ran.out) as Array<{ display: string; argv: string[] }>
+    const doc = JSON.parse(ran.out) as {
+      kind: string
+      schemaVersion: number
+      tasks: Array<{ display: string; argv: string[] }>
+    }
+    expect(doc).toMatchObject({ kind: 'query', schemaVersion: 1 })
+    const tasks = doc.tasks
     expect(tasks.map((t) => t.display)).toEqual(['npm run deploy'])
     // The whole task, not a summary: argv is what a caller would spawn.
     expect(tasks[0]?.argv).toEqual(['npm', 'run', 'deploy'])
@@ -632,9 +701,9 @@ describe('query', () => {
   test('says on stderr what trust would add, leaving stdout pipeable', async () => {
     const ran = await run(['query', 'lint'], await project())
     // The mise.toml fixture also brings a synthesized `mise install` row.
-    expect(ran.out.split('\n')[0]).toBe('make lint')
+    expect(ran.out.split('\n')[0]).toBe(shown('make lint'))
     expect(ran.out).not.toContain('mise hello')
-    expect(ran.err).toContain('not collected')
+    expect(ran.err).toContain('withheld')
   })
 })
 
@@ -650,7 +719,7 @@ describe('help tiers', () => {
 
     expect(short.split('\n').length).toBeLessThan(45)
     // The short help says where the rest is.
-    expect(short).toContain('--help --all')
+    expect(short).toContain('help --all')
     expect(short).toContain('guide')
     // Trust hides runners by default. Without this line a reader sees a
     // shorter catalog and no reason why.
@@ -660,7 +729,7 @@ describe('help tiers', () => {
   })
 
   test('--help --all is the complete tier: every flag the parser accepts is in it', async () => {
-    // Derived from the complete help, which `defineCli` renders from the flag
+    // Derived from the complete help, which the command tree renders from the flag
     // declaration, so a flag added to the parser is always in tier 2. What
     // this still checks is that tier 2 contains tier 1 and is longer.
     const all = (await run(['--help', '--all'])).out
@@ -679,7 +748,7 @@ describe('help tiers', () => {
     expect(ran.code).toBe(2)
     expect(ran.out).toBe('')
     expect(ran.err).toContain("unknown option '--nope'")
-    expect(ran.err).toContain('--help --all')
+    expect(ran.err).toContain('way help')
     expect(ran.err).not.toContain('--exclude-path')
   })
 

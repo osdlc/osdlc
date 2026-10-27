@@ -10,11 +10,13 @@ import { describe, expect, test } from 'vitest'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 
-import { EXEC_MAX_AGE_MS, entryPath, type CacheEntry } from '../src/cache.ts'
+import { EXEC_MAX_AGE_MS, MODEL_VERSION, entryPath, type CacheEntry } from '../src/cache.ts'
+import { MAX_FINGERPRINT_FILES } from '../src/fingerprint.ts'
 import type { CollectOptions, DetectOptions } from '../src/contract.ts'
 import type { ProviderResult, Task } from '../src/model.ts'
 import { nodeScripts, pnpm } from '../src/plugins/node/index.ts'
 import { pythonTools } from '../src/plugins/python/index.ts'
+import { procfile } from '../src/plugins/runners/index.ts'
 import { createProject } from '../src/project.ts'
 import type { ProjectProfile, ToolDef } from '../src/tool.ts'
 import { fakeRunners, fixtureRoot, removeRoot } from './support.ts'
@@ -176,8 +178,8 @@ describe('runners.readCached', () => {
       expect(cached.catalog).toBeNull()
       expect(cached.allFresh).toBe(false)
       expect(cached.runners).toEqual([
-        { runner: 'alpha', state: 'miss', estimateMs: null, slow: false },
-        { runner: 'beta', state: 'miss', estimateMs: null, slow: false },
+        { runner: 'alpha', state: 'miss', estimateMs: null, slow: false, cost: 'cheap' },
+        { runner: 'beta', state: 'miss', estimateMs: null, slow: false, cost: 'cheap' },
       ])
     } finally {
       await removeRoot(root)
@@ -202,6 +204,24 @@ describe('runners.readCached', () => {
       expect(cached.catalog?.allowExec).toBe(false)
       // An age is reported for anything that came out of the store.
       expect(cached.runners.every((r) => typeof r.ageMs === 'number')).toBe(true)
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+    }
+  })
+
+  test('an aborted signal stops the read with its reason, rather than reading all misses', async () => {
+    const root = await fixtureRoot({ 'alpha.txt': 'build\n' })
+    const cache = await fixtureRoot({})
+    try {
+      const s = setup([parseTool('alpha')])
+      const profile = await detect(s, root)
+      await s.project.runners.collectAndCache(profile, cache, s.options)
+      const closed = new AbortController()
+      closed.abort(new Error('the caller left'))
+      await expect(
+        s.project.runners.readCached(profile, cache, { ...s.options, signal: closed.signal }),
+      ).rejects.toThrow('the caller left')
     } finally {
       await removeRoot(root)
       await removeRoot(cache)
@@ -357,7 +377,7 @@ describe('runners.readCached', () => {
       const live = await s.project.runners.collect(profile, s.options)
 
       expect(cached.runners).toEqual([
-        { runner: 'gamma', state: 'fresh', estimateMs: null, slow: false },
+        { runner: 'gamma', state: 'fresh', estimateMs: null, slow: false, cost: 'slow' },
       ])
       expect(cached.allFresh).toBe(true)
       expect(cached.catalog?.reports).toEqual(live.reports)
@@ -449,6 +469,35 @@ describe('runners.readCached', () => {
       await removeRoot(cache)
     }
   })
+
+  // 257 files to write and hash, which Windows runners take seconds over.
+  test(
+    'a truncated fingerprint is an info diagnostic on the runner',
+    { timeout: 30_000 },
+    async () => {
+      const jobs: Record<string, string> = { 'alpha.txt': 'build' }
+      for (let i = 0; i <= MAX_FINGERPRINT_FILES; i++) jobs[`job-${i}.job`] = 'x'
+      const root = await fixtureRoot(jobs)
+      const cache = await fixtureRoot({})
+      try {
+        const s = setup([listingTool('jobs'), parseTool('alpha')])
+        const profile = await detect(s, root)
+        const live = await s.project.runners.collectAndCache(profile, cache, s.options)
+        const diagnosticsOf = (id: string) =>
+          live.reports.find((r) => r.runner === id)?.diagnostics ?? []
+
+        expect(diagnosticsOf('jobs')).toEqual([
+          {
+            severity: 'info',
+            message: expect.stringContaining(`first ${MAX_FINGERPRINT_FILES} files`),
+          },
+        ])
+      } finally {
+        await removeRoot(root)
+        await removeRoot(cache)
+      }
+    },
+  )
 
   test('a queried pattern that matches nothing new leaves the entry fresh', async () => {
     // Re-expanding the query must not make every entry stale.
@@ -729,6 +778,216 @@ describe('a changed exclusion set', () => {
       expect(
         stateOf((await s.project.runners.readCached(read, cache, s.options)).runners, 'alpha'),
       ).toBe('fresh')
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+    }
+  })
+})
+
+describe('how an entry was probed', () => {
+  test('an entry probed without exec is stale once exec is allowed, and the reverse', async () => {
+    // A parse runner such as just reads more when it may run its tool, so a
+    // scan stored by an untrusted run must not answer a trusted one.
+    const root = await fixtureRoot({ 'alpha.txt': 'build\n' })
+    const cache = await fixtureRoot({})
+    try {
+      const s = setup([parseTool('alpha')])
+      const profile = await detect(s, root)
+      await s.project.runners.collectAndCache(profile, cache, s.options)
+
+      const trusted = await s.project.runners.readCached(profile, cache, {
+        ...s.options,
+        allowExec: true,
+      })
+      expect(trusted.runners[0]).toMatchObject({ state: 'stale', reason: 'exec' })
+      // A scan without exec is still a fair answer, marked stale.
+      expect(trusted.catalog?.reports).toHaveLength(1)
+
+      await s.project.runners.collectAndCache(profile, cache, { ...s.options, allowExec: true })
+      const untrusted = await s.project.runners.readCached(profile, cache, s.options)
+      expect(untrusted.runners[0]).toMatchObject({ state: 'stale', reason: 'exec' })
+      // A report probed with exec does not answer a run without it.
+      expect(untrusted.catalog).toBeNull()
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+    }
+  })
+
+  test('an entry another package version probed is stale', async () => {
+    const root = await fixtureRoot({ 'alpha.txt': 'build\n' })
+    const cache = await fixtureRoot({})
+    try {
+      const s = setup([parseTool('alpha')])
+      const profile = await detect(s, root)
+      await s.project.runners.collectAndCache(profile, cache, s.options)
+      const stored = JSON.parse(
+        await readFile(entryPath(cache, profile.root, 'alpha'), 'utf-8'),
+      ) as CacheEntry
+      expect(stored.modelVersion).toBe(MODEL_VERSION)
+      expect(MODEL_VERSION).toMatch(/^\d+\.\d+\.\d+/)
+
+      await patchEntry(cache, profile.root, 'alpha', { modelVersion: '0.0.1' })
+      const cached = await s.project.runners.readCached(profile, cache, s.options)
+      expect(cached.runners[0]).toMatchObject({ state: 'stale', reason: 'version' })
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+    }
+  })
+
+  test('an entry is stale when the tool binary resolves elsewhere, or appears', async () => {
+    const root = await fixtureRoot({ 'alpha.txt': 'build\n' })
+    const cache = await fixtureRoot({})
+    try {
+      const tool = { ...parseTool('alpha'), binary: 'alpha' }
+      const s = setup([tool], { which: () => '/opt/alpha/1.0/bin/alpha' })
+      const profile = await detect(s, root)
+      await s.project.runners.collectAndCache(profile, cache, s.options)
+      expect((await s.project.runners.readCached(profile, cache, s.options)).allFresh).toBe(true)
+
+      const upgraded = { ...s.options, which: () => '/opt/alpha/2.0/bin/alpha' }
+      const after = await s.project.runners.readCached(profile, cache, upgraded)
+      expect(after.runners[0]).toMatchObject({ state: 'stale', reason: 'tool' })
+
+      const removed = { ...s.options, which: () => null }
+      const gone = await s.project.runners.readCached(profile, cache, removed)
+      expect(gone.runners[0]).toMatchObject({ state: 'stale', reason: 'tool' })
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+    }
+  })
+
+  test('an entry is stale when a binary the runner looked up appears', async () => {
+    // A Procfile picks its manager by what is on the PATH.
+    const root = await fixtureRoot({ Procfile: 'web: node server.js\n' })
+    const cache = await fixtureRoot({})
+    try {
+      const s = setup([procfile])
+      const profile = await detect(s, root)
+      const first = await s.project.runners.collectAndCache(profile, cache, s.options)
+      expect(first.reports[0]?.tasks[0]?.argv).toEqual(['sh', '-c', 'node server.js'])
+      expect((await s.project.runners.readCached(profile, cache, s.options)).allFresh).toBe(true)
+
+      const installed = {
+        ...s.options,
+        which: (b: string) => (b === 'overmind' ? '/bin/overmind' : null),
+      }
+      const after = await s.project.runners.readCached(profile, cache, installed)
+      expect(after.runners[0]).toMatchObject({ state: 'stale', reason: 'tool' })
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+    }
+  })
+
+  test('an entry is stale when the tool binary is replaced in place', async () => {
+    const root = await fixtureRoot({ 'alpha.txt': 'build\n' })
+    const cache = await fixtureRoot({})
+    const bin = await fixtureRoot({ alpha: '#!/bin/sh\necho 1\n' })
+    try {
+      const path = join(bin, 'alpha')
+      const tool = { ...parseTool('alpha'), binary: 'alpha' }
+      const s = setup([tool], { which: () => path })
+      const profile = await detect(s, root)
+      await s.project.runners.collectAndCache(profile, cache, s.options)
+      expect((await s.project.runners.readCached(profile, cache, s.options)).allFresh).toBe(true)
+
+      await writeFile(path, '#!/bin/sh\necho 2.0\n')
+      const after = await s.project.runners.readCached(profile, cache, s.options)
+      expect(after.runners[0]).toMatchObject({ state: 'stale', reason: 'tool' })
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+      await removeRoot(bin)
+    }
+  })
+})
+
+describe('runners.collectAndStore', () => {
+  test('the catalog comes before the store is written, and stored settles once it is', async () => {
+    const root = await fixtureRoot({ 'alpha.txt': 'build\n', 'beta.txt': 'test\n' })
+    const cache = await fixtureRoot({})
+    try {
+      const s = setup([parseTool('alpha'), parseTool('beta')])
+      const profile = await detect(s, root)
+      const { catalog, stored } = await s.project.runners.collectAndStore(profile, cache, s.options)
+      expect(catalog.reports.map((r) => r.runner)).toEqual(['alpha', 'beta'])
+      // The writes need file I/O, so they cannot have ended yet.
+      const first = await Promise.race([stored.then(() => 'stored'), Promise.resolve('catalog')])
+      expect(first).toBe('catalog')
+
+      await stored
+      const cached = await s.project.runners.readCached(profile, cache, s.options)
+      expect(cached.allFresh).toBe(true)
+      expect(cached.catalog?.reports).toEqual(catalog.reports)
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+    }
+  })
+
+  // 300 fixture files; a loaded Windows runner can pass the 5 s default.
+  test(
+    'a fingerprint over the cap is noted in the catalog at once',
+    { timeout: 30_000 },
+    async () => {
+      const files: Record<string, string> = {}
+      for (let i = 0; i < 300; i++) files[`job-${String(i).padStart(3, '0')}.job`] = ''
+      const root = await fixtureRoot(files)
+      const cache = await fixtureRoot({})
+      try {
+        const s = setup([listingTool('jobs')])
+        const profile = await detect(s, root)
+        const { catalog, stored } = await s.project.runners.collectAndStore(
+          profile,
+          cache,
+          s.options,
+        )
+        const messages = catalog.reports[0]!.diagnostics.map((d) => d.message)
+        expect(messages.some((m) => m.includes('fingerprint covers only the first'))).toBe(true)
+        await stored
+      } finally {
+        await removeRoot(root)
+        await removeRoot(cache)
+      }
+    },
+  )
+
+  test('two probes in a row store in order: the later one is what stays', async () => {
+    const root = await fixtureRoot({ 'alpha.txt': 'build\n' })
+    const cache = await fixtureRoot({})
+    try {
+      const s = setup([parseTool('alpha')])
+      const profile = await detect(s, root)
+      const a = await s.project.runners.collectAndStore(profile, cache, s.options)
+      await writeFile(join(root, 'alpha.txt'), 'release\n')
+      const b = await s.project.runners.collectAndStore(profile, cache, s.options)
+      await Promise.all([a.stored, b.stored])
+      const entry = JSON.parse(
+        await readFile(entryPath(cache, profile.root, 'alpha'), 'utf-8'),
+      ) as CacheEntry
+      expect(entry.report.tasks.map((t) => t.path.at(-1))).toEqual(['release'])
+      expect(entry.durations).toHaveLength(2)
+    } finally {
+      await removeRoot(root)
+      await removeRoot(cache)
+    }
+  })
+
+  test('a failed write never rejects stored', async () => {
+    const root = await fixtureRoot({ 'alpha.txt': 'build\n' })
+    const cache = await fixtureRoot({})
+    try {
+      const s = setup([parseTool('alpha')])
+      const profile = await detect(s, root)
+      // A file where the cache directory should be: every write fails.
+      const blocked = join(cache, 'file')
+      await writeFile(blocked, '')
+      const { stored } = await s.project.runners.collectAndStore(profile, blocked, s.options)
+      await expect(stored).resolves.toBeUndefined()
     } finally {
       await removeRoot(root)
       await removeRoot(cache)

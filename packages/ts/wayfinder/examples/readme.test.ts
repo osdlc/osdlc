@@ -1,6 +1,6 @@
 /**
- * The README's `way query dev` example. The package ships only the `way`
- * binary, so this calls the CLI's `main` the binary runs.
+ * The README's `way query dev` example. It calls the CLI's `main`, the
+ * function the `way` binary runs.
  */
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -29,5 +29,6 @@ test('query dev prints the matching command line and exits 0', async () => {
   const code = await main(['query', 'dev', '-C', dir], {}, home, io)
 
   expect(code).toBe(0)
-  expect(io.out).toBe('npm run dev\n')
+  // On Windows the line is PowerShell's, with its call operator.
+  expect(io.out).toBe(process.platform === 'win32' ? '& npm run dev\n' : 'npm run dev\n')
 })

@@ -1,5 +1,24 @@
 # @osdlc/tiered-dirs
 
+## 0.5.0
+
+### Minor Changes
+
+- b835ae4: Behaviour change: with the require-override variable set, a runtime directory that would fall back to the OS default now throws `OVERRIDE_REQUIRED`. Before, runtime was never required: when the durable directory was moved only by `overrides` (not the environment), runtime silently used the OS directory. Runtime still needs no variable of its own when the environment moves the durable directory.
+  New exports: `homeDir(opts?)`, the absolute home directory the per-OS table is built on (`HOME`, `USERPROFILE` on Windows, when absolute, else the OS account's home; throws `MISSING_BASE_DIR` when there is none), and `expandTilde(path, home, platform?)`, which expands a leading `~` (and `~\` on Windows) by the named platform's path rules. The resolvers' behaviour is unchanged: a relative `XDG_*` value, `~` included, is still ignored.
+
+## 0.4.0
+
+### Minor Changes
+
+- 9616994: New `ResolveOptions.conventionFromEnv`. Pass `false` to pin `convention`, so `<P>_CONVENTION` cannot override it. Use it for a file another program reads at a fixed path, such as a shell launcher that reads `~/.config/<tool>`. The default, `true`, keeps today's behaviour.
+
+## 0.3.2
+
+### Patch Changes
+
+- 910deca: A relative `HOME` (`USERPROFILE` on Windows) now counts as unset. Every home built on it used to land under the working directory, so a `.env` loader that set `HOME=.` put config, state and cache inside whatever directory the tool ran in. The OS account's home (`os.userInfo().homedir`) is used instead, or, with an injected `env`, `MISSING_BASE_DIR` is thrown. The Rust crate treats a relative `HOME` as unset too, but has no account-home fallback.
+
 ## 0.3.1
 
 ### Patch Changes

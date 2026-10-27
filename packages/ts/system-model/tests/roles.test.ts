@@ -722,6 +722,19 @@ describe('workspaces, unlocked installs and install directories', () => {
     ])
   })
 
+  test('a cargo workspace root that does not parse still covers its crates', async () => {
+    // Members unknown, not none: the locked root is still the place to install.
+    const dir = await root({
+      'Cargo.toml': '[workspace]\nmembers = ["crates/*"\n',
+      'Cargo.lock': '',
+      'crates/a/Cargo.toml': '[package]\nname = "a"\n',
+    })
+    const profile = await detect(dir)
+    const rootPkg = profile.packages.find((p) => p.dir === '.')
+    expect(rootPkg?.manifests.cargo?.error).toMatch(/^parse failed/)
+    expect(project.install(profile, 'crates/a')).toMatchObject([{ tool: 'cargo', dir: '.' }])
+  })
+
   test('a node workspace with no lockfile installs once, at its root', async () => {
     const dir = await root({
       'package.json': JSON.stringify({ workspaces: ['packages/*'] }),

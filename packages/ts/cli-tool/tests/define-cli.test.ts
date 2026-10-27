@@ -88,6 +88,24 @@ describe('defineCli', () => {
     expect(result.status === 'ok' && result.values.verbose).toBe(3)
   })
 
+  test('a key with a hyphen comes back under that key, not commander camelCase', () => {
+    const layered = defineCli({
+      name: 'layered',
+      summary: 'x',
+      flags: {
+        'project-local': { kind: 'boolean', help: 'the local layer' },
+        'out-dir': { kind: 'string', help: 'where' },
+      },
+    })
+    const given = layered.parse(['--project-local', '--out-dir', '/o'], captureIo())
+    expect(given.status === 'ok' && given.values).toEqual({
+      'project-local': true,
+      'out-dir': '/o',
+    })
+    const none = layered.parse([], captureIo())
+    expect(none.status === 'ok' && none.values).toEqual({ 'project-local': false })
+  })
+
   test('positionals come back separately from flags', () => {
     const result = parse('--all', '/one', '/two')
     expect(result.status).toBe('ok')

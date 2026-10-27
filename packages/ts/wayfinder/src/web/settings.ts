@@ -1,26 +1,58 @@
 /**
  * The settings screen: this project's configuration, and edits to it.
  *
- * Edits are staged. Nothing is written until Save. The project config is a
- * committed file, so a click must not silently change someone's working tree.
+ * It reads `way config list` and `way trust --show`, and Save writes each
+ * edit with `way config set`, so the screen and the command line read and
+ * write the same files with the same rules. Edits are staged; nothing is
+ * written until Save. The project config is a committed file, so a click
+ * must not silently change someone's working tree.
  *
- * It is not the runner picker. The picker in the header filters this session
+ * Trust of the repository, or of one tool, is granted here only after the
+ * person confirms (see `trustRepo`, `trustTool`). Settings the page may not
+ * write (`allowExec`, the trust policy, `tools`) are shown read-only, each
+ * with the command that changes it.
+ *
+ * It is not the runner picker. The picker in the header filters this visit
  * and is then forgotten. This screen sets which runners the project uses.
  *
- * Sections follow the config schema's key order (runners, execution,
- * discovery, excluded paths), so the screen reads like the file it describes.
- *
  * Its state lives here, not in `state.ts`. The staged edits belong to the
- * dialog and mean nothing once it closes. In the page-wide `AppState`, every
- * user of that state would carry a field about a screen it never opens.
+ * dialog and mean nothing once it closes.
  */
 
-import { getConfig, saveConfig, trustRepo, untrustRepo, type ConfigResponse } from './api.ts'
-import { clearRunnerOrder, restoreRunnerOrder, state } from './state.ts'
-import { escapeHtml, render } from './view.ts'
+import {
+  CLI_ONLY_KEYS,
+  OPEN_VALUES,
+  THEME_VALUES,
+  settingLayer,
+  type Theme,
+} from '../config-keys.ts'
+import { APP, BIN, WITHHELD, listWords, runnerLabel } from '../vocabulary.ts'
+import {
+  failureText,
+  load,
+  readConfig,
+  setSetting,
+  settingSource,
+  settingValue,
+  trustRepo,
+  trustTool,
+  unsetSetting,
+  untrustRepo,
+  untrustTool,
+  type ConfigView,
+} from './api.ts'
+import { $, state, toolInfo } from './state.ts'
+import {
+  escapeHtml,
+  homepageLink,
+  openDialogAtTop,
+  render,
+  setThemeButton,
+  withheldNote,
+} from './view.ts'
 
-/** What the server last told us the configuration is. */
-let loaded: ConfigResponse | null = null
+/** What the server last said the configuration is. */
+let loaded: ConfigView | null = null
 
 /** Runner ids the catalog reported. The config alone cannot supply them. */
 let knownRunners: readonly string[] = []
@@ -34,20 +66,17 @@ let staged: Record<string, unknown> = {}
 /** A message from the last Save, shown until the next render clears it. */
 let notice: { kind: 'err' | 'ok'; text: string } | null = null
 
+/** The file `key` is written to: the rule the terminal UI's session uses. */
+function layerOf(key: string): 'user' | 'project' {
+  return settingLayer(key, settingSource(loaded, key))
+}
+
 // ------------------------------------------------------------------ values
 
 /** The value a key would have if Save were pressed now. */
 function valueOf(key: string): unknown {
   if (key in staged) return staged[key]
-  const effective = loaded?.effective ?? {}
-  // Dotted, because that is how the config names its keys and how the patch
-  // will be sent.
-  let cursor: unknown = effective
-  for (const segment of key.split('.')) {
-    if (typeof cursor !== 'object' || cursor === null) return undefined
-    cursor = (cursor as Record<string, unknown>)[segment]
-  }
-  return cursor
+  return settingValue(loaded, key)
 }
 
 function stringsAt(key: string): string[] {
@@ -57,24 +86,20 @@ function stringsAt(key: string): string[] {
 
 /**
  * Stage a value, or drop the edit when it matches what the file already says.
- *
- * Dropping matters: toggling a checkbox and toggling it back should leave the
- * screen clean, not offer to save a no-op.
+ * Toggling a checkbox and toggling it back leaves the screen clean.
  */
 function stage(key: string, value: unknown): void {
-  const original = (() => {
-    const before = staged
-    staged = {}
-    const v = valueOf(key)
-    staged = before
-    return v
-  })()
-  if (JSON.stringify(original) === JSON.stringify(value)) delete staged[key]
+  if (JSON.stringify(settingValue(loaded, key)) === JSON.stringify(value)) delete staged[key]
   else staged[key] = value
 }
 
 function isDirty(): boolean {
   return Object.keys(staged).length > 0
+}
+
+/** The path of a layer's file. */
+function fileOf(layer: string): string {
+  return loaded?.locations.find((l) => l.layer === layer)?.path ?? layer
 }
 
 // ------------------------------------------------------------------ render
@@ -84,54 +109,91 @@ function layerNote(key: string): string {
   if (key in staged) {
     return '<span class="set-layer" data-layer="staged">unsaved</span>'
   }
-  const layer = loaded?.sources[key] ?? 'default'
+  const layer = settingSource(loaded, key)
   const where =
     layer === 'project' ? 'this project' : layer === 'user' ? 'your user config' : 'the default'
-  return '<span class="set-layer" data-layer="' + layer + '">' + escapeHtml(where) + '</span>'
+  return (
+    '<span class="set-layer" data-layer="' +
+    escapeHtml(layer) +
+    '">' +
+    escapeHtml(where) +
+    '</span>'
+  )
 }
 
-function section(title: string, key: string, body: string): string {
+function section(title: string, key: string | null, body: string): string {
   return (
     '<section class="set-section">' +
     '<h3>' +
     escapeHtml(title) +
-    layerNote(key) +
+    (key === null ? '' : layerNote(key)) +
     '</h3>' +
     body +
     '</section>'
   )
 }
 
+/** A command a person can paste, as one line. */
+function command(text: string): string {
+  return '<code class="set-cmd">' + escapeHtml(text) + '</code>'
+}
+
+/** The runners withheld in the current catalog, by id. */
+function withheldRunners(): Set<string> {
+  return new Set(state.unknowns.filter((u) => u.kind === 'withheld').map((u) => u.runner))
+}
+
 function runnersSection(): string {
-  // The order saved in this browser, which is separate from `runners.order`
-  // and overrides it. Read here so the section can say whether one is set.
-  const localOrder = restoreRunnerOrder()
   const disabled = new Set(stringsAt('runners.disabled'))
+  const withheld = withheldRunners()
   // Every runner the catalog knows, plus any named in `disabled`. A disabled
   // runner is not collected, so listing only collected runners would hide
   // the rows this section exists to show.
-  const names = [...new Set([...knownRunners, ...disabled])].sort()
+  const names = [...new Set([...knownRunners, ...disabled])].sort((a, b) =>
+    runnerLabel(a).localeCompare(runnerLabel(b)),
+  )
   const rows = names
     .map((name) => {
       const on = !disabled.has(name)
+      // On or off is the setting. Withheld is a separate fact: an enabled
+      // runner that was not read this time.
+      const note = on && withheld.has(name) ? ', ' + withheldNote(name) : ''
+      // What the tool is, from `way providers`. Text, so it is escaped, as
+      // all text is.
+      const tool = toolInfo(name)
+      const about =
+        tool === undefined
+          ? ''
+          : (tool.description !== null
+              ? '<span class="set-desc">' + escapeHtml(tool.description) + '</span>'
+              : '') +
+            '<span class="set-tool">' +
+            escapeHtml(tool.language) +
+            (homepageLink(tool.homepage) !== ''
+              ? ' · ' + homepageLink(tool.homepage, 'homepage')
+              : '') +
+            '</span>'
       return (
         '<tr><td><input type="checkbox" data-set-runner="' +
         escapeHtml(name) +
         '"' +
         (on ? ' checked' : '') +
         ' aria-label="Collect ' +
-        escapeHtml(name) +
+        escapeHtml(runnerLabel(name)) +
         '" /></td>' +
         '<td><code>' +
-        escapeHtml(name) +
-        '</code></td>' +
+        escapeHtml(runnerLabel(name)) +
+        '</code>' +
+        about +
+        '</td>' +
         '<td class="set-state">' +
-        (on ? 'collected' : 'not collected') +
+        escapeHtml((on ? 'on' : 'off') + note) +
         '</td></tr>'
       )
     })
     .join('')
   const order = stringsAt('runners.order')
+  const orderSource = settingSource(loaded, 'runners.order')
   return section(
     'Runners',
     'runners.disabled',
@@ -141,53 +203,49 @@ function runnersSection(): string {
       '<p class="set-sub">Order: ' +
       (order.length === 0
         ? 'alphabetical'
-        : order.map((r) => '<code>' + escapeHtml(r) + '</code>').join(' ')) +
+        : order.map((r) => '<code>' + escapeHtml(runnerLabel(r)) + '</code>').join(' ')) +
+      ' ' +
+      layerNote('runners.order') +
+      // A drag in the tab row writes the user's order. A project's order wins
+      // over it, so the way back is offered only for the user's own.
+      (orderSource === 'user'
+        ? '<button data-reset-order="1">Reset to the default order</button>'
+        : '') +
       '</p>' +
-      // An order dragged in the tab bar overrides `runners.order` until it is
-      // cleared. This is shown here, where both orders are visible.
-      (localOrder.length === 0
-        ? ''
-        : '<p class="set-sub set-override">A dragged order is in force in this browser and ' +
-          'wins over the setting above.' +
-          '<button data-reset-order="1">Reset to configured order</button></p>'),
+      '<p class="set-sub">Drag a tab or a Runners row to reorder; the order is saved in your user config.</p>',
   )
 }
 
 function executionSection(): string {
-  // Trust and `allowExec` are not the same switch, and the screen says so,
-  // because confusing them is the security risk: a project file may only
-  // turn execution off. Turning it on is the trust grant, which a person
-  // decides once per repository on each machine.
   const config = loaded!
-  // What this process decided is a third fact, not derived from the other
-  // two. Untrusting during a session makes the store say no, but this run
-  // keeps the execution it started with, and `trustable` became false at the
-  // grant. Without this the screen would say execution is off while probes
-  // are still being spawned.
-  //
-  // The sentence states the situation and gives no advice. Two kinds of
-  // session reach here: untrusted during the run, and `--exec` on a
-  // repository never trusted. A restart turns execution off in the first and
-  // keeps it in the second, so advice for one would be wrong for the other.
+  // What this page's reads do is decided per call, from the trust store and
+  // the flags `serve` started with. The catalog says whether it ran with
+  // execution.
   const running = state.catalog?.allowExec === true
   const trust = config.trusted
-    ? 'This repository is trusted, so runners may spawn probes.'
+    ? 'This repository is trusted' +
+      (config.trustedBy !== null && config.trustedBy !== 'marker'
+        ? ' by your trust policy (' + config.trustedBy + ')'
+        : '') +
+      ', so runners may run to be read.'
     : running
-      ? 'This repository is not trusted, but execution is on for this session — the gate was ' +
-        'resolved when wayfinder started and does not change while it runs.'
-      : config.trustable
-        ? 'This repository is not trusted, so runners that must be run to be read were skipped.'
-        : 'Execution is off for this project, and trusting the repository would not change that.'
+      ? 'This repository is not trusted, but execution is on: ' +
+        BIN +
+        ' serve was started with --exec.'
+      : state.trustable
+        ? 'This repository is not trusted, so runners that must run to be read are ' +
+          WITHHELD +
+          '.'
+        : 'Execution is off for this session, and trusting the repository would not change that.'
 
-  // Offered only where it would do something. `trustable` comes from the
-  // server's own decision. Under `--no-exec` or `--exec` a grant changes
-  // nothing and the endpoint refuses it, so a button would mislead.
-  const action = config.trusted
-    ? '<button data-untrust-repo="1">Untrust</button>'
-    : config.trustable
-      ? '<button data-trust-repo-settings="1">Trust this repository</button>'
-      : ''
-
+  // Untrust removes a marker; a policy-trusted root has none to remove.
+  const action =
+    config.trusted && config.trustedBy === 'marker'
+      ? '<button data-untrust-repo="1">Untrust</button>'
+      : !config.trusted && state.trustable
+        ? '<button data-trust-repo-settings="1">Trust this repository</button>'
+        : ''
+  const allowExec = settingValue(loaded, 'allowExec') === true
   return section(
     'Execution',
     'allowExec',
@@ -195,34 +253,117 @@ function executionSection(): string {
       escapeHtml(trust) +
       '</p>' +
       (action === '' ? '' : '<div class="set-actions set-inline">' + action + '</div>') +
+      toolTrust() +
       '<p class="set-sub"><code>allowExec</code>: <code>' +
-      String(valueOf('allowExec') === true) +
-      '</code></p>' +
+      String(allowExec) +
+      '</code>. It is changed from the command line only: ' +
+      command(`${BIN} config set allowExec ${String(!allowExec)} --user`) +
+      '</p>' +
       '<p class="set-sub">A project file can only turn execution <em>off</em>. ' +
       'Turning it on is the trust grant — a repository cannot grant itself ' +
       'permission to run its own code.</p>',
   )
 }
 
+/**
+ * Trust one tool at a time: the tools trusted on their own, each with
+ * Untrust, and the withheld runners with the tools they still need, each
+ * with a grant. Empty when neither applies.
+ */
+function toolTrust(): string {
+  const trusted = state.catalog?.trustedTools ?? []
+  const waiting = state.unknowns.flatMap((u) =>
+    u.kind === 'withheld' && u.missing !== undefined && u.missing.length > 0 ? [u] : [],
+  )
+  if (trusted.length === 0 && waiting.length === 0) return ''
+  const trustedRows = trusted
+    .map(
+      (tool) =>
+        '<li><code>' +
+        escapeHtml(tool) +
+        '</code> trusted on its own ' +
+        '<button data-untrust-tool="' +
+        escapeHtml(tool) +
+        '" aria-label="' +
+        escapeHtml('Untrust ' + tool) +
+        '">Untrust</button></li>',
+    )
+    .join('')
+  // One button per tool, however many runners need it.
+  const offered = new Set<string>()
+  const waitingRows = waiting
+    .map((u) => {
+      const grants = (u.missing ?? [])
+        .filter((tool) => {
+          if (!state.trustable || offered.has(tool)) return false
+          offered.add(tool)
+          return true
+        })
+        .map(
+          (tool) =>
+            '<button data-trust-tool="' +
+            escapeHtml(tool) +
+            '">' +
+            escapeHtml('Trust ' + tool) +
+            '</button>',
+        )
+        .join('')
+      return (
+        '<li><code>' +
+        escapeHtml(runnerLabel(u.runner)) +
+        '</code> ' +
+        escapeHtml(u.label) +
+        ' ' +
+        grants +
+        '</li>'
+      )
+    })
+    .join('')
+  return (
+    '<h4>Tools</h4>' +
+    '<ul class="set-list set-tools">' +
+    trustedRows +
+    waitingRows +
+    '</ul>' +
+    '<p class="set-sub">Trusting one tool lets the runners that run it be read, and nothing else. ' +
+    command(`${BIN} trust --scope <tool>`) +
+    ' does the same; ' +
+    command(`${BIN} trust --untrust --scope <tool>`) +
+    ' removes it.</p>'
+  )
+}
+
 const DISCOVERY_MODES = ['auto', 'git', 'walk'] as const
 
+function radios(key: string, values: readonly string[]): string {
+  const current = valueOf(key)
+  return (
+    '<div class="set-radios">' +
+    values
+      .map(
+        (v) =>
+          '<label><input type="radio" name="set-' +
+          escapeHtml(key) +
+          '" data-set-key="' +
+          escapeHtml(key) +
+          '" data-set-value="' +
+          escapeHtml(v) +
+          '"' +
+          (current === v ? ' checked' : '') +
+          ' /> <code>' +
+          escapeHtml(v) +
+          '</code></label>',
+      )
+      .join('') +
+    '</div>'
+  )
+}
+
 function discoverySection(): string {
-  const current = valueOf('discovery')
   return section(
     'Discovery',
     'discovery',
-    '<div class="set-radios">' +
-      DISCOVERY_MODES.map(
-        (mode) =>
-          '<label><input type="radio" name="set-discovery" data-set-discovery="' +
-          mode +
-          '"' +
-          (current === mode ? ' checked' : '') +
-          ' /> <code>' +
-          mode +
-          '</code></label>',
-      ).join('') +
-      '</div>' +
+    radios('discovery', DISCOVERY_MODES) +
       '<p class="set-sub"><code>auto</code> uses git when the root is a repository and walks it ' +
       'otherwise.</p>',
   )
@@ -257,46 +398,106 @@ function excludedSection(): string {
   )
 }
 
+function personalSection(): string {
+  return section(
+    'Personal',
+    null,
+    '<p class="set-sub">Saved in your user config, not the project.</p>' +
+      '<h4>Theme ' +
+      layerNote('theme') +
+      '</h4>' +
+      radios('theme', THEME_VALUES) +
+      '<h4>What <code>' +
+      escapeHtml(BIN) +
+      '</code> opens ' +
+      layerNote('open') +
+      '</h4>' +
+      radios('open', OPEN_VALUES),
+  )
+}
+
+/** The settings the page may not write, each with the command that does. */
+function cliOnlySection(): string {
+  const shown = (loaded?.settings ?? []).filter(
+    (s) =>
+      s.key !== 'allowExec' && CLI_ONLY_KEYS.some((k) => s.key === k || s.key.startsWith(k + '.')),
+  )
+  const rows = shown
+    .map(
+      (s) =>
+        '<tr><td><code>' +
+        escapeHtml(s.key) +
+        '</code></td><td><code>' +
+        escapeHtml(JSON.stringify(s.value) ?? 'unset') +
+        '</code> ' +
+        layerNote(s.key) +
+        '</td></tr>',
+    )
+    .join('')
+  return section(
+    'Command line only',
+    null,
+    '<p class="set-sub">A page must not change the trust policy or name code to load, so these ' +
+      'are changed from the command line, for example ' +
+      command(`${BIN} config set trust.paths '["~/work"]' --user`) +
+      ' or ' +
+      command(`${BIN} trust`) +
+      '.</p>' +
+      (rows === '' ? '' : '<table class="set-table set-ro"><tbody>' + rows + '</tbody></table>'),
+  )
+}
+
 /** The whole screen, from whatever the module currently holds. */
 function screen(): string {
   const config = loaded
   if (config === null) {
     return (
-      '<p class="set-empty">Could not read the configuration — the server may have handed ' +
-      'over the terminal. Start wayfinder again.</p>'
+      '<p class="set-empty">Could not read the configuration. The server may have handed ' +
+      'over the terminal; start ' +
+      escapeHtml(APP) +
+      ' again.</p>'
     )
   }
-  const warnings =
-    config.warnings.length === 0
-      ? ''
-      : '<div class="set-warnings">' +
-        config.warnings.map((w) => '<p>' + escapeHtml(w) + '</p>').join('') +
-        '</div>'
   const dirty = isDirty()
   const message =
     notice === null
       ? ''
-      : '<p class="set-notice" data-kind="' + notice.kind + '">' + escapeHtml(notice.text) + '</p>'
+      : '<p class="set-notice" role="status" data-kind="' +
+        escapeHtml(notice.kind) +
+        '">' +
+        escapeHtml(notice.text) +
+        '</p>'
+  const files = [...new Set(Object.keys(staged).map((k) => layerOf(k)))]
   return (
-    '<div class="set-head"><h2>Settings' +
+    '<div class="set-head"><h2 id="settings-title">Settings' +
     (dirty ? ' <span class="set-dirty">' + Object.keys(staged).length + ' unsaved</span>' : '') +
     '</h2>' +
-    '<p class="set-file">' +
-    escapeHtml(config.locations.project) +
+    '<p class="set-file">Project: ' +
+    escapeHtml(fileOf('project')) +
+    '</p><p class="set-file">User: ' +
+    escapeHtml(fileOf('user')) +
     '</p></div>' +
-    warnings +
     message +
     runnersSection() +
     executionSection() +
     discoverySection() +
     excludedSection() +
+    personalSection() +
+    cliOnlySection() +
     '<div class="set-actions">' +
     '<button data-settings-revert="1"' +
     (dirty ? '' : ' disabled') +
     '>Revert</button>' +
     '<button data-settings-save="1"' +
     (dirty ? '' : ' disabled') +
-    '>Save to wayfinder.config.json</button>' +
+    '>' +
+    escapeHtml(
+      dirty
+        ? 'Save to ' +
+            files.map((l) => (l === 'user' ? 'your user config' : 'the project file')).join(' and ')
+        : 'Save',
+    ) +
+    '</button>' +
     '</div>'
   )
 }
@@ -310,12 +511,12 @@ function repaint(): void {
 }
 
 /**
- * Seed the screen from a fresh read and paint it.
+ * Seed the screen from a fresh read and return its markup.
  *
  * Staged edits are dropped: keeping them across a close would let a later Save
  * write something the person had walked away from.
  */
-export function openSettings(config: ConfigResponse | null, known: readonly string[]): string {
+export function openSettings(config: ConfigView | null, known: readonly string[]): string {
   loaded = config
   knownRunners = known
   staged = {}
@@ -333,8 +534,7 @@ export function handleSettingsClick(target: HTMLElement): boolean {
     const name = runner.dataset['setRunner']!
     const disabled = new Set(stringsAt('runners.disabled'))
     // The checkbox means "collect this", so checking it removes the name from
-    // the disabled list. The file stores the disabled list; the screen shows
-    // what is collected.
+    // the disabled list.
     if (runner.checked) disabled.delete(name)
     else disabled.add(name)
     stage('runners.disabled', [...disabled].sort())
@@ -342,9 +542,9 @@ export function handleSettingsClick(target: HTMLElement): boolean {
     return true
   }
 
-  const mode = target.closest('[data-set-discovery]') as HTMLElement | null
-  if (mode !== null) {
-    stage('discovery', mode.dataset['setDiscovery']!)
+  const radio = target.closest('[data-set-key]') as HTMLElement | null
+  if (radio !== null) {
+    stage(radio.dataset['setKey']!, radio.dataset['setValue']!)
     repaint()
     return true
   }
@@ -369,28 +569,45 @@ export function handleSettingsClick(target: HTMLElement): boolean {
   }
 
   if (target.closest('[data-trust-repo-settings]') !== null) {
-    // Asks for confirmation, like the picker's button. Trusting lets this
-    // repository's code run, which one click should not decide.
-    if (
-      confirm(
-        'Trust this repository? Its runners will be read by running them, now and on every later visit, until you untrust it.',
-      )
-    ) {
-      void trustRepo().then(reload)
-    }
+    // `trustRepo` asks the person before the grant is sent.
+    void trustRepo().then(reload)
+    return true
+  }
+
+  const grant = target.closest('[data-trust-tool]') as HTMLElement | null
+  if (grant !== null) {
+    const tool = grant.dataset['trustTool']!
+    // `trustTool` asks the person before the grant is sent.
+    void trustTool(tool).then((result) => {
+      notice = result.ok
+        ? { kind: 'ok', text: 'Trusted ' + tool + '. The runners that run it are read now.' }
+        : result.declined
+          ? null
+          : { kind: 'err', text: 'trust ' + tool + ' failed: ' + result.detail }
+      void reload()
+    })
+    return true
+  }
+
+  const revoke = target.closest('[data-untrust-tool]') as HTMLElement | null
+  if (revoke !== null) {
+    const tool = revoke.dataset['untrustTool']!
+    void untrustTool(tool).then((result) => {
+      notice = result.ok
+        ? {
+            kind: 'ok',
+            text: 'Untrusted ' + tool + '. The runners that run it are withheld again.',
+          }
+        : { kind: 'err', text: 'untrust ' + tool + ' failed: ' + (result.detail ?? '') }
+      void reload()
+    })
     return true
   }
 
   if (target.closest('[data-untrust-repo]') !== null) {
     void untrustRepo().then((result) => {
       notice = result.ok
-        ? {
-            kind: 'ok',
-            // Stated plainly, because it is surprising: the store now says
-            // not trusted, but this process keeps the execution it started
-            // with.
-            text: 'Untrusted. This session keeps the execution it started with — start wayfinder again to re-probe without it.',
-          }
+        ? { kind: 'ok', text: 'Untrusted. Runners that must run to be read are withheld again.' }
         : { kind: 'err', text: result.detail ?? 'untrust failed' }
       void reload()
     })
@@ -398,11 +615,16 @@ export function handleSettingsClick(target: HTMLElement): boolean {
   }
 
   if (target.closest('[data-reset-order]') !== null) {
-    clearRunnerOrder()
-    // The tab bar behind the dialog uses the same order, so it is
-    // re-rendered too.
-    render()
-    repaint()
+    void unsetSetting('runners.order', 'user').then(async (result) => {
+      notice = result.ok
+        ? { kind: 'ok', text: 'Removed runners.order from ' + result.doc.file + '.' }
+        : { kind: 'err', text: failureText(result) }
+      state.runnerOrder = []
+      state.runnerOrderSource = 'default'
+      await load()
+      render()
+      await reload()
+    })
     return true
   }
 
@@ -423,26 +645,51 @@ export function handleSettingsClick(target: HTMLElement): boolean {
 
 /**
  * Re-read the configuration and repaint, keeping any staged edits and the
- * current notice. Used after trust changes, which alter what the server
- * reports without touching what the person has typed.
+ * current notice.
  */
 async function reload(): Promise<void> {
-  const fresh = await getConfig()
+  const fresh = await readConfig()
   if (fresh !== null) loaded = fresh
   repaint()
 }
 
-/** Write the staged edits, then re-seed from what the server produced. */
-async function commit(): Promise<void> {
-  const result = await saveConfig(staged)
-  if (result.ok) {
-    loaded = result.config
-    staged = {}
-    notice = { kind: 'ok', text: 'Saved.' }
-  } else {
-    // Nothing is cleared on failure, so a refused write does not lose the
-    // person's edits.
-    notice = { kind: 'err', text: result.detail }
+/**
+ * Write the staged edits, one `config set` each, and say what was written
+ * where. A refused write stops there and keeps it and the edits after it
+ * staged, so nothing the person typed is lost.
+ */
+export async function commit(): Promise<void> {
+  const written = new Map<string, string[]>()
+  let failure: string | null = null
+  for (const [key, value] of Object.entries(staged)) {
+    const result = await setSetting(key, value, layerOf(key))
+    if (!result.ok) {
+      failure = key + ': ' + failureText(result)
+      break
+    }
+    written.set(result.doc.file, [...(written.get(result.doc.file) ?? []), key])
+    delete staged[key]
+    if (key === 'theme') applyTheme(value as Theme)
   }
+  const saved = [...written].map(([file, keys]) => 'Saved ' + listWords(keys) + ' to ' + file + '.')
+  notice =
+    failure === null
+      ? { kind: 'ok', text: saved.join(' ') || 'Nothing to save.' }
+      : { kind: 'err', text: [...saved, 'Not saved: ' + failure].join(' ') }
+  const fresh = await readConfig()
+  if (fresh !== null) loaded = fresh
   repaint()
+  // A saved runner, discovery or path setting changes what the next read collects.
+  if (written.size > 0) {
+    state.fingerprint = ''
+    await load()
+  }
+  if ($('settings').hasAttribute('open')) openDialogAtTop('settings')
+}
+
+/** Show `theme` now, as the server will on the next load. */
+function applyTheme(theme: Theme): void {
+  if (theme === 'system') document.documentElement.removeAttribute('data-theme')
+  else document.documentElement.setAttribute('data-theme', theme)
+  setThemeButton(theme)
 }

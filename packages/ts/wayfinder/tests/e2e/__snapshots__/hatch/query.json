@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "check",
+    "mode": "fuzzy"
+  },
+  "source": "fresh",
+  "storedAt": null,
+  "tasks": [
+    {
+      "id": "hatch:hatch.toml:lint:check",
+      "runner": "hatch",
+      "path": [
+        "hatch",
+        ".",
+        "lint:check"
+      ],
+      "argv": [
+        "hatch",
+        "run",
+        "lint:check"
+      ],
+      "cwd": ".",
+      "display": "hatch run lint:check",
+      "parameters": [],
+      "source": "hatch.toml",
+      "origin": "declared",
+      "detail": "ruff check .",
+      "tags": [
+        "hatch",
+        ".",
+        "lint"
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "hatch",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "docker-compose",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "Docker Compose runs the services declared in a Compose file's `services:` map."
+        },
+        {
+          "label": "directory",
+          "hint": "The directory holding the Compose file. Each one is an independent Compose project; `.` is the root."
+        },
+        {
+          "label": "service",
+          "hint": "The key under `services:` in that Compose file."
+        }
+      ],
+      "tool": {
+        "binary": "docker",
+        "found": true,
+        "path": "<bin>/docker"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "docker-compose:compose.yaml:web",
+          "runner": "docker-compose",
+          "path": [
+            "docker-compose",
+            ".",
+            "web"
+          ],
+          "argv": [
+            "docker",
+            "compose",
+            "-f",
+            "compose.yaml",
+            "up",
+            "web"
+          ],
+          "cwd": ".",
+          "display": "docker compose -f compose.yaml up web",
+          "parameters": [],
+          "source": "compose.yaml",
+          "origin": "declared",
+          "detail": "build: .",
+          "tags": [
+            "docker-compose",
+            "."
+          ],
+          "persistent": {
+            "value": true,
+            "declared": false
+          },
+          "executes": "container"
+        },
+        {
+          "id": "docker-compose:compose.yaml:db",
+          "runner": "docker-compose",
+          "path": [
+            "docker-compose",
+            ".",
+            "db"
+          ],
+          "argv": [
+            "docker",
+            "compose",
+            "-f",
+            "compose.yaml",
+            "up",
+            "db"
+          ],
+          "cwd": ".",
+          "display": "docker compose -f compose.yaml up db",
+          "parameters": [],
+          "source": "compose.yaml",
+          "origin": "declared",
+          "detail": "image: postgres:16",
+          "tags": [
+            "docker-compose",
+            "."
+          ],
+          "persistent": {
+            "value": true,
+            "declared": false
+          },
+          "executes": "container"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "source": "fresh",
+  "storedAt": null,
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "docker-compose"
+      ]
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "docker-compose",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "trustedTools": [],
+  "filter": {}
+}

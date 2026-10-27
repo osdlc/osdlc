@@ -4,6 +4,7 @@
  * `contract()` wires `validate()` and `read()` to the engine.
  */
 import { toCamelKey } from './camel.js'
+import { unwrapSpec } from './slots.js'
 import type {
   BodyOf,
   Contract,
@@ -91,7 +92,7 @@ export function sections<const S extends readonly Spec[]>(
 function assertNoKeyCollision(specs: readonly Spec[]): void {
   const keyToName = new Map<string, string>()
   for (const spec of specs) {
-    const inner = unwrapInner(spec)
+    const { inner } = unwrapSpec(spec)
     let primaryName: string | undefined
     if (inner.kind === 'section') primaryName = (inner as SectionSpec).names[0]
     else if (inner.kind === 'oneOf') primaryName = (inner as OneOfSpec).names[0]
@@ -107,11 +108,6 @@ function assertNoKeyCollision(specs: readonly Spec[]): void {
     }
     keyToName.set(key, primaryName)
   }
-}
-
-/** Unwraps `optional(spec)` to the spec inside it. */
-function unwrapInner(spec: Spec): SectionSpec | OneOfSpec | GapSpec {
-  return spec.kind === 'optional' ? unwrapInner((spec as OptionalSpec).spec) : spec
 }
 
 /**

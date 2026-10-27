@@ -5,19 +5,23 @@
  */
 
 import { afterAll, describe, expect, test } from 'vitest'
-import { existsSync } from 'node:fs'
+import { chmodSync, existsSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { captureIo } from '@osdlc/cli-tool'
+import { spawnRunner } from '@osdlc/command-seam'
 import type { Task, ToolDef } from '@osdlc/system-model/detect'
 
 import { runArgv } from '../src/args.ts'
 import { makeProject } from '../src/catalog.ts'
 import { main } from '../src/cli.ts'
-import type { ProviderRow } from '../src/providers-command.ts'
+import { createSession } from '../src/core/session.ts'
+import { providerRows, type ProviderRow } from '../src/providers-command.ts'
+import { loadToolModule } from '../src/tools.ts'
+import { CONFIG_HOME, shown } from './support.ts'
 
 const EXAMPLE = fileURLToPath(new URL('./guide-example.ts', import.meta.url))
 
@@ -72,9 +76,11 @@ async function run(argv: string[], home?: string) {
 describe('--config', () => {
   test('a module of ToolDefs adds its tasks to the catalog', async () => {
     const dir = await acmeRepo()
-    const ran = await run(['--list', '--config', EXAMPLE, '-C', dir])
+    const ran = await run(['list', '--config', EXAMPLE, '-C', dir])
     expect(ran.code).toBe(0)
-    expect(ran.out.split('\n')).toEqual(expect.arrayContaining(['acme run build', 'acme run ship']))
+    expect(ran.out.split('\n')).toEqual(
+      expect.arrayContaining([shown('acme run build'), shown('acme run ship')]),
+    )
   })
 
   test('without it the same repository has no acme tasks', async () => {
@@ -86,9 +92,38 @@ describe('--config', () => {
     const dir = await acmeRepo()
     const bad = join(dir, 'bad.mjs')
     await writeFile(bad, 'export const nothing = 1\n')
-    const ran = await run(['--list', '--config', bad, '-C', dir])
+    const ran = await run(['list', '--config', bad, '-C', dir])
     expect(ran.code).toBe(1)
     expect(ran.err).toContain('export `tools`')
+  })
+
+  test('a module that cannot be imported is an error naming it, not a stack trace', async () => {
+    const dir = await acmeRepo()
+    const bad = join(dir, 'broken.mjs')
+    await writeFile(bad, 'export const tools = [\n')
+    const ran = await run(['list', '--config', bad, '-C', dir])
+    expect(ran.code).toBe(1)
+    expect(ran.err).toContain(`${bad}: cannot be loaded:`)
+    expect(ran.err).not.toMatch(/\n\s+at /)
+  })
+
+  test('an entry that is not a ToolDef is an error naming its index', async () => {
+    const dir = await acmeRepo()
+    const bad = join(dir, 'malformed.mjs')
+    await writeFile(bad, "export const tools = [{ id: 'ok', roles: {} }, { id: 'no-roles' }]\n")
+    await expect(loadToolModule(bad)).rejects.toThrow(
+      `${bad}: tools[1] is not a ToolDef (needs an id and roles)`,
+    )
+  })
+
+  test('a default export that is an array, or has tools, is read too', async () => {
+    const dir = await temp()
+    const list = join(dir, 'default-list.mjs')
+    await writeFile(list, "export default [{ id: 'acme', roles: {} }]\n")
+    expect((await loadToolModule(list)).map((t) => t.id)).toEqual(['acme'])
+    const object = join(dir, 'default-object.mjs')
+    await writeFile(object, "export default { tools: [{ id: 'acme', roles: {} }] }\n")
+    expect((await loadToolModule(object)).map((t) => t.id)).toEqual(['acme'])
   })
 })
 
@@ -96,12 +131,23 @@ describe('tools in a config file', () => {
   test('the user file loads its modules', async () => {
     const home = await temp()
     const module = await acmeModule(home)
-    await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
+    await mkdir(join(home, CONFIG_HOME, 'wayfinder'), { recursive: true })
     await writeFile(
-      join(home, '.config', 'wayfinder', 'config.json'),
+      join(home, CONFIG_HOME, 'wayfinder', 'config.json'),
       JSON.stringify({ tools: [module] }),
     )
     const ran = await run(['--list', '-C', await acmeRepo()], home)
+    expect(ran.out).toContain('acme run build')
+  })
+
+  test("a relative path in the user file is resolved against the file's directory", async () => {
+    const home = await temp()
+    const configDir = join(home, CONFIG_HOME, 'wayfinder')
+    await mkdir(configDir, { recursive: true })
+    await acmeModule(configDir)
+    await writeFile(join(configDir, 'config.json'), JSON.stringify({ tools: ['./acme-tools.mjs'] }))
+    const ran = await run(['--list', '-C', await acmeRepo()], home)
+    expect(ran.code).toBe(0)
     expect(ran.out).toContain('acme run build')
   })
 
@@ -136,9 +182,9 @@ describe('tools that must not load', () => {
     const home = await temp()
     const marker = join(home, 'imported')
     await sideEffectModule(dir, marker)
-    await mkdir(join(home, '.config', 'wayfinder'), { recursive: true })
+    await mkdir(join(home, CONFIG_HOME, 'wayfinder'), { recursive: true })
     await writeFile(
-      join(home, '.config', 'wayfinder', 'config.json'),
+      join(home, CONFIG_HOME, 'wayfinder', 'config.json'),
       JSON.stringify({ allowExec: false }),
     )
     expect((await run(['trust', '-C', dir], home)).code).toBe(0)
@@ -162,6 +208,21 @@ describe('tools that must not load', () => {
     await run(['--list', '-C', dir], home)
     expect(existsSync(marker)).toBe(true)
   })
+
+  test('a trust grant does not import the project file tools; it says when they load', async () => {
+    const dir = await acmeRepo({ tools: ['./side.mjs'] })
+    const home = await temp()
+    const marker = join(home, 'imported')
+    await sideEffectModule(dir, marker)
+    const session = await createSession({ dir, cwd: dir, env: {}, home })
+    expect(session.projectToolsPending).toBe(true)
+    expect(await session.grantTrust()).toEqual({
+      changed: true,
+      note: 'the tools wayfinder.config.json names load the next time way starts with execution allowed',
+    })
+    await session.catalog()
+    expect(existsSync(marker)).toBe(false)
+  })
 })
 
 describe('duplicate tool ids', () => {
@@ -169,9 +230,9 @@ describe('duplicate tool ids', () => {
     const dir = await temp()
     const file = join(dir, 'npm.mjs')
     await writeFile(file, "export const tools = [{ id: 'npm', roles: {} }]\n")
-    const ran = await run(['--list', '--config', file, '-C', dir])
+    const ran = await run(['list', '--config', file, '-C', dir])
     expect(ran.code).toBe(1)
-    expect(ran.err).toBe(`wayfinder: ${file}: tool "npm" is already a built-in tool\n`)
+    expect(ran.err).toBe(`way: ${file}: tool "npm" is already a built-in tool\n`)
   })
 
   test('a module whose ecosystem id a built-in uses is an error naming the module', async () => {
@@ -181,20 +242,18 @@ describe('duplicate tool ids', () => {
       file,
       "export const tools = [{ id: 'acme', roles: {}, ecosystem: { id: 'node', name: 'Node' } }]\n",
     )
-    const ran = await run(['--list', '--config', file, '-C', dir])
+    const ran = await run(['list', '--config', file, '-C', dir])
     expect(ran.code).toBe(1)
-    expect(ran.err).toMatch(/^wayfinder: .*"node".*\(from a tool module: .*eco\.mjs\)\n$/)
+    expect(ran.err).toMatch(/^way: .*"node".*\(from a tool module: .*eco\.mjs\)\n$/)
     expect(ran.err).not.toContain('    at ')
   })
 
   test('two modules that define one id are an error naming both', async () => {
     const dir = await acmeRepo()
     const second = await acmeModule(dir)
-    const ran = await run(['--list', '--config', EXAMPLE, '--config', second, '-C', dir])
+    const ran = await run(['list', '--config', EXAMPLE, '--config', second, '-C', dir])
     expect(ran.code).toBe(1)
-    expect(ran.err).toBe(
-      `wayfinder: tool "acme" is defined twice: in ${EXAMPLE} and in ${second}\n`,
-    )
+    expect(ran.err).toBe(`way: tool "acme" is defined twice: in ${EXAMPLE} and in ${second}\n`)
   })
 })
 
@@ -203,16 +262,17 @@ describe('way providers', () => {
     const ran = await run(['providers', '-C', await temp()])
     expect(ran.code).toBe(0)
     const [head, ...rows] = ran.out.trimEnd().split('\n')
-    expect(head).toMatch(/^tool\s+roles\s+kind\s+binary\s+on PATH\s+source$/)
+    expect(head).toMatch(/^tool\s+roles\s+kind\s+binary\s+on PATH\s+language\s+source\s+homepage$/)
     expect(rows.find((r) => r.startsWith('just '))).toMatch(
-      /runner\s+parse\s+just\s+no\s+built-in$/,
+      /runner\s+parse\s+just\s+no\s+any language\s+built-in\s+https:\/\/just\.systems/,
     )
+    expect(rows.find((r) => r.startsWith('npm '))).toMatch(/\sJavaScript\s/)
   })
 
   test('--json marks a tool from --config as custom, with its module', async () => {
     const ran = await run(['providers', '--json', '--config', EXAMPLE, '-C', await temp()])
     expect(ran.code).toBe(0)
-    const rows = JSON.parse(ran.out) as ProviderRow[]
+    const rows = (JSON.parse(ran.out) as { providers: ProviderRow[] }).providers
     expect(rows.find((r) => r.id === 'acme')).toEqual({
       id: 'acme',
       roles: ['runner'],
@@ -221,8 +281,42 @@ describe('way providers', () => {
       onPath: false,
       source: 'custom',
       module: EXAMPLE,
+      homepage: null,
+      description: null,
+      ecosystem: null,
+      language: 'any language',
     })
     expect(rows.find((r) => r.id === 'npm')?.source).toBe('built-in')
+  })
+
+  test('on PATH counts absolute PATH entries only, as detection does', async () => {
+    const dir = await temp()
+    await mkdir(join(dir, 'bin'))
+    // Windows finds a program by its PATHEXT extension.
+    const file = join(dir, 'bin', process.platform === 'win32' ? 'acme.cmd' : 'acme')
+    await writeFile(file, '#!/bin/sh\n')
+    chmodSync(file, 0o755)
+    const tool = { id: 'acme', binary: 'acme', roles: {} } as unknown as ToolDef
+    const saved = process.cwd()
+    process.chdir(dir)
+    try {
+      expect(providerRows([tool], [], { PATH: 'bin' })[0]?.onPath).toBe(false)
+      expect(providerRows([tool], [], { PATH: join(dir, 'bin') })[0]?.onPath).toBe(true)
+    } finally {
+      process.chdir(saved)
+    }
+  })
+
+  test('a homepage that is not http or https is null, so no page links it', () => {
+    const homepage = (url: string) =>
+      providerRows([{ id: 'acme', homepage: url, roles: {} } as unknown as ToolDef], [], {})[0]
+        ?.homepage
+    expect(homepage('javascript:alert(1)')).toBeNull()
+    expect(homepage('ftp://x')).toBeNull()
+    expect(homepage('//x')).toBeNull()
+    expect(homepage('data:text/html,hi')).toBeNull()
+    expect(homepage('HTTPS://ok.dev')).toBe('HTTPS://ok.dev')
+    expect(homepage('http://ok.dev')).toBe('http://ok.dev')
   })
 
   test('an unknown option is a usage error', async () => {
@@ -266,4 +360,59 @@ describe('arguments go through the tool', () => {
       'staging',
     ])
   })
+})
+
+describe('runners.timeout', () => {
+  /** A tool detected by `hang.json` whose probe starts `sh` and never answers. */
+  async function hangModule(dir: string, tag: string): Promise<string> {
+    const file = join(dir, 'hang-tools.mjs')
+    await writeFile(
+      file,
+      `export const tools = [{
+  id: 'hang',
+  markers: [{ files: '/hang.json', tier: 'files' }],
+  roles: { runner: { kind: 'exec', async collect(ctx) {
+    await ctx.runner('sh').run(['-c', 'sleep ${tag} & sleep ${tag}1; wait'], { cwd: ctx.root, timeoutMs: 60000 })
+    return new Promise(() => {})
+  } } },
+}]
+`,
+    )
+    return file
+  }
+
+  // Uses sh, sleep and pgrep, so it runs on POSIX only.
+  test.skipIf(process.platform === 'win32')(
+    'a runner past it is cut off and reported, its processes are killed, and the rest load',
+    async () => {
+      const home = await temp()
+      const dir = await acmeRepo({ runners: { timeout: 1 } })
+      await writeFile(join(dir, 'hang.json'), '{}')
+      const tag = `${40 + Math.floor(Math.random() * 1000)}.${process.pid % 1000}9`
+      const hang = await hangModule(dir, tag)
+      expect((await run(['trust', '-C', dir], home)).code).toBe(0)
+      const started = Date.now()
+      const ran = await run(
+        ['list', '--json', '--config', EXAMPLE, '--config', hang, '-C', dir],
+        home,
+      )
+      expect(Date.now() - started).toBeLessThan(15_000)
+      expect(ran.code).toBe(0)
+      const doc = JSON.parse(ran.out) as {
+        reports: { runner: string; status: string; diagnostics: { message: string }[] }[]
+      }
+      const cut = doc.reports.find((r) => r.runner === 'hang')!
+      expect(cut.status).toBe('error')
+      expect(cut.diagnostics.map((d) => d.message)).toEqual(['timed out after 1 s'])
+      expect(doc.reports.find((r) => r.runner === 'acme')!.status).toBe('ok')
+      let left = 'running'
+      for (let i = 0; i < 20 && left !== ''; i++) {
+        await new Promise((r) => setTimeout(r, 100))
+        left = spawnRunner('pgrep')
+          .run(['-f', `sleep ${tag}`], { cwd: '.' })
+          .stdout.trim()
+      }
+      expect(left).toBe('')
+    },
+  )
 })

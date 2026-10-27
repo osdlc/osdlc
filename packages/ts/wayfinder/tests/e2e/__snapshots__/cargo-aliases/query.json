@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "kind": "query",
+  "root": "<root>",
+  "filter": {
+    "query": "xtask",
+    "mode": "fuzzy"
+  },
+  "source": "fresh",
+  "storedAt": null,
+  "tasks": [
+    {
+      "id": "cargo-aliases:Cargo.toml:xtask",
+      "runner": "cargo-aliases",
+      "path": [
+        "cargo-aliases",
+        ".",
+        "xtask"
+      ],
+      "argv": [
+        "cargo",
+        "xtask"
+      ],
+      "cwd": ".",
+      "display": "cargo xtask",
+      "parameters": [],
+      "source": ".cargo/config.toml",
+      "origin": "declared",
+      "detail": "cargo run --package xtask --",
+      "tags": [
+        "cargo-aliases",
+        "rust",
+        "."
+      ],
+      "persistent": {
+        "value": false,
+        "declared": false
+      },
+      "executes": "local"
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "cargo",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "cargo-aliases",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    },
+    {
+      "runner": "package-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": []
+}

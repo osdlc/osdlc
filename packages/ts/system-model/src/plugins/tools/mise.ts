@@ -17,13 +17,13 @@
  * be worse than reporting nothing.
  */
 
-import { relative } from 'node:path'
+import path from 'node:path'
 
 import { firstLine, stderrOrError } from '@osdlc/command-seam'
 
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { dirOf, looksPersistent, taskId } from '../support/shared.ts'
+import { dirOf, looksPersistent, taskId, unique } from '../support/shared.ts'
 
 const CHAIN = [
   { label: 'runner', hint: 'mise runs tasks declared in its config, plus executable file tasks.' },
@@ -70,19 +70,21 @@ interface MiseTask {
  * one task set. A glyph drawn here, because simple-icons has no `mise` icon.
  * Color is `--vp-c-brand-1` from mise.jdx.dev's stylesheet.
  */
-const BRAND: RunnerBrand = {
+export const MISE_BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="3.5" y="4.2" width="17" height="4" rx="1.6"/><rect x="5.5" y="10" width="13" height="4" rx="1.6"/><rect x="7.5" y="15.8" width="9" height="4" rx="1.6"/></svg>',
   color: '#8b2252',
 }
 
 export const miseRunner: RunnerRole = {
   kind: 'exec',
+  probe: { timeoutMs: 30_000, cost: 'cheap' },
   chain: CHAIN,
-  brand: BRAND,
   watch: [...MISE_CONFIGS, ...MISE_TASK_DIRS],
 
   async collect(ctx): Promise<ProviderResult> {
-    const res = await ctx.runner('mise').run(['tasks', '--json'], { cwd: ctx.root })
+    const res = await ctx
+      .runner('mise')
+      .run(['tasks', '--json'], { cwd: ctx.root, signal: ctx.signal })
     if (res.exitCode !== 0) {
       // An untrusted config is the common cause. mise refuses to read a config
       // it has not been told to trust, which is correct behavior, so the
@@ -181,10 +183,22 @@ export const miseRunner: RunnerRole = {
 function sourceOf(task: MiseTask, root: string): string {
   const absolute = task.file ?? task.source
   if (absolute === undefined || absolute === null) return 'mise.toml'
-  const rel = relative(root, absolute)
-  return rel.startsWith('..') ? absolute : rel.split('\\').join('/')
+  return rootRelative(root, absolute)
 }
 
-function unique(values: string[]): string[] {
-  return [...new Set(values)]
+/**
+ * `absolute` relative to `root`, with `/` separators. A path outside `root`
+ * is returned as given: one above it, or one on another drive, for which
+ * `relative` returns an absolute path. `paths` is for tests.
+ *
+ * Internal: exported for its tests, and not in the package index.
+ */
+export function rootRelative(
+  root: string,
+  absolute: string,
+  paths: Pick<typeof path.posix, 'relative' | 'isAbsolute'> = path,
+): string {
+  const rel = paths.relative(root, absolute)
+  const outside = rel === '..' || /^\.\.[\\/]/.test(rel) || paths.isAbsolute(rel)
+  return outside ? absolute : rel.split('\\').join('/')
 }

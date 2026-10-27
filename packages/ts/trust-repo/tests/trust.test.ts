@@ -9,10 +9,12 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { basename, join } from 'node:path'
+import { tmpdir, userInfo } from 'node:os'
+import { basename, isAbsolute, join, sep } from 'node:path'
 
 import {
+  homeDir,
+  normalizeTrustPath,
   resolveExecGate,
   resolveTrustRoot,
   trustStore,
@@ -42,28 +44,49 @@ async function home(): Promise<{ env: Record<string, string | undefined>; home: 
   return { env: { XDG_STATE_HOME: join(dir, '.local', 'state') }, home: dir }
 }
 
+// The platform's separators, so the expectations hold on Windows too.
+const DEV_STORE = join('/home/dev', '.local', 'state', 'tooly', 'trusted')
+
 describe('trustStoreDir', () => {
   test('puts the store under XDG_STATE_HOME when it is set', () => {
     expect(trustStoreDir('tooly', { XDG_STATE_HOME: '/state' }, '/home/dev')).toBe(
-      `/state/tooly/${TRUST_MARKER_DIR}`,
+      join('/state', 'tooly', TRUST_MARKER_DIR),
     )
   })
 
   test('falls back to ~/.local/state on every platform, macOS included', () => {
-    expect(trustStoreDir('tooly', {}, '/home/dev')).toBe('/home/dev/.local/state/tooly/trusted')
+    expect(trustStoreDir('tooly', {}, '/home/dev')).toBe(DEV_STORE)
   })
 
   test('treats an empty XDG_STATE_HOME as unset', () => {
     // An exported but empty variable is a common shell mistake. Joining onto
     // "" would put the store at /tooly/trusted.
-    expect(trustStoreDir('tooly', { XDG_STATE_HOME: '' }, '/home/dev')).toBe(
-      '/home/dev/.local/state/tooly/trusted',
-    )
+    expect(trustStoreDir('tooly', { XDG_STATE_HOME: '' }, '/home/dev')).toBe(DEV_STORE)
+  })
+
+  test('a relative HOME is treated as unset, and the account home is used', () => {
+    const saved = process.env['HOME']
+    process.env['HOME'] = '.'
+    try {
+      expect(homeDir()).toBe(userInfo().homedir)
+      expect(isAbsolute(trustStoreDir('tooly', {}))).toBe(true)
+      expect(isAbsolute(trustStore({ tool: 'tooly', env: {} }).dir())).toBe(true)
+    } finally {
+      process.env['HOME'] = saved
+    }
+  })
+
+  test('ignores a relative XDG_STATE_HOME, as the XDG spec says', () => {
+    // Resolved against the cwd, `.state` would put the store inside the
+    // repository being judged, where it could ship its own marker.
+    for (const value of ['.state', 'state/x', './s']) {
+      expect(trustStoreDir('tooly', { XDG_STATE_HOME: value }, '/home/dev')).toBe(DEV_STORE)
+    }
   })
 
   test('expands a leading ~ rather than making a literal directory', () => {
     expect(trustStoreDir('tooly', { XDG_STATE_HOME: '~/state' }, '/home/dev')).toBe(
-      '/home/dev/state/tooly/trusted',
+      join('/home/dev', 'state', 'tooly', 'trusted'),
     )
   })
 
@@ -71,7 +94,7 @@ describe('trustStoreDir', () => {
     // Every test in this file depends on this: once a home is supplied, no
     // code path falls back to os.homedir().
     const dir = trustStoreDir('tooly', {}, '/injected/home')
-    expect(dir.startsWith('/injected/home/')).toBe(true)
+    expect(dir.startsWith(join('/injected/home', sep))).toBe(true)
   })
 
   test('scopes the directory by tool name', () => {
@@ -220,6 +243,17 @@ describe('list', () => {
     await writeFile(join(store.dir(), 'repo-0123456789abcdef.4242.tmp'), '/half/written\n', 'utf-8')
     expect(await store.list()).toEqual([])
   })
+
+  test('ignores a marker not under the marker name of its root, as isTrusted does', async () => {
+    const { env, home: h } = await home()
+    const store = trustStore({ tool: 'tooly', env, home: h })
+    const repo = await root()
+    await mkdir(store.dir(), { recursive: true })
+    await writeFile(join(store.dir(), 'stray'), `${await store.resolveRoot(repo)}\n`, 'utf-8')
+    expect(await store.isTrusted(repo)).toBe(false)
+    expect(await store.list()).toEqual([])
+    expect(await store.untrustAll(repo)).toEqual([])
+  })
 })
 
 describe('resolveRoot', () => {
@@ -240,7 +274,9 @@ describe('resolveRoot', () => {
   test('resolves symlinked ancestors when the root itself does not exist', async () => {
     const parent = await root()
     const gone = join(parent, 'never-existed')
-    expect(await resolveTrustRoot(gone)).toBe(join(await realpath(parent), 'never-existed'))
+    expect(await resolveTrustRoot(gone)).toBe(
+      normalizeTrustPath(join(await realpath(parent), 'never-existed')),
+    )
   })
 
   test("a deleted repository's marker stays reachable", async () => {
@@ -259,7 +295,7 @@ describe('resolveRoot', () => {
     await rm(repo, { recursive: true, force: true })
 
     expect(await store.isTrusted(viaLink)).toBe(true)
-    expect(await store.list()).toEqual([join(await realpath(parent), 'repo')])
+    expect(await store.list()).toEqual([normalizeTrustPath(join(await realpath(parent), 'repo'))])
     expect(await store.untrust(viaLink)).toBe(true)
     expect(await store.list()).toEqual([])
   })

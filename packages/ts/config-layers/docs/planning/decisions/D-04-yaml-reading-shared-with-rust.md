@@ -37,5 +37,5 @@ rules. Both test suites read it.
 - Some behaviour is not shared and stays out of the fixture. The README's
   "Rust twin" table lists it: integers beyond 2^53, `1e999`, `1_000`, `0b11`,
   empty documents, `!!float` and unknown tags (text in TypeScript, numbers in
-  Rust), an empty home and `~user/x`.
+  Rust).
 - A rule added to one side goes into the fixture first.

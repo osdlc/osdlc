@@ -47,7 +47,7 @@ export function leadingSpaces(line: string): number {
  * of the line is still scanned.
  */
 export function plainScalarStart(line: string): number {
-  const m = /^(?:\s*(?:-\s+)?(?:'[^']*'|"[^"]*"|[^-'"#:\s][^:]*?)\s*:(?:\s+|$)|\s*-\s+)/.exec(line)
+  const m = /^(?:\s*(?:-\s+)?(?:'[^']*'|"[^"]*"|[^-'"#:\s][^:]*):(?:\s+|$)|\s*-\s+)/.exec(line)
   if (m === null) return Infinity
   const head = m[0].length
   const first = line[head]
@@ -71,6 +71,8 @@ export function scanLine(line: string): { cleaned: string; anchor: boolean; merg
   let out = ''
   let inSingle = false
   let inDouble = false
+  // The previous character was an unescaped `\` inside a double-quoted string.
+  let escaped = false
   let anchor = false
 
   for (let i = 0; i < line.length; i++) {
@@ -84,7 +86,9 @@ export function scanLine(line: string): { cleaned: string; anchor: boolean; merg
     }
     if (inDouble) {
       out += ch
-      if (ch === '"' && prev !== '\\') inDouble = false
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
+      else if (ch === '"') inDouble = false
       continue
     }
     if (ch === "'") {
@@ -187,7 +191,7 @@ export function matchKey(line: string, indent: number): { key: string; value: st
   if (m) return { key: m[1] ?? '', value: m[2] ?? '' }
   m = /^"([^"]*)"\s*:\s*(.*)$/.exec(content)
   if (m) return { key: m[1] ?? '', value: m[2] ?? '' }
-  m = /^([^:\s][^:]*?)\s*:\s*(.*)$/.exec(content)
+  m = /^([^:\s][^:]*):\s*(.*)$/.exec(content)
   if (m) return { key: (m[1] ?? '').trim(), value: m[2] ?? '' }
   return null
 }

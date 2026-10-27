@@ -8,6 +8,7 @@
 import { Command, CommanderError, Option } from 'commander'
 
 import type { CliIo } from './io.ts'
+import { wrapText } from './wrap.ts'
 
 /** What every flag declares. */
 export interface FlagCommon {
@@ -158,6 +159,14 @@ export interface CliDecl<F extends FlagSpec> {
    * tool then declares `help` in `flags` and renders the tier itself.
    */
   autoHelp?: boolean
+  /**
+   * The width help is wrapped to. When it is given, the epilogues are also
+   * reflowed to it when the help is rendered: prose lines are filled again,
+   * and lists, examples, tables, indented lines and fenced blocks are kept as
+   * written (see `wrapText`). Leave it out and commander picks the width
+   * (the terminal's, or 80), and the epilogues print as written.
+   */
+  width?: number
 }
 
 /**
@@ -192,9 +201,18 @@ export interface Cli<F extends FlagSpec> {
   help(options?: { all?: boolean }): string
 }
 
-/** `httpPort` → `http-port`. */
-function kebab(name: string): string {
+/**
+ * `httpPort` → `http-port`: how a flag key is spelled on the command line.
+ * The help, schema and router take it from here.
+ * @internal
+ */
+export function kebab(name: string): string {
   return name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)
+}
+
+/** `project-local` → `projectLocal`: the key commander files a long option's value under. */
+function camelcase(long: string): string {
+  return long.split('-').reduce((out, word) => out + word.charAt(0).toUpperCase() + word.slice(1))
 }
 
 /**
@@ -296,8 +314,13 @@ export function defineCli<F extends FlagSpec>(decl: CliDecl<F>): Cli<F> {
         // Left on, commander prints the message as well as throwing it.
         outputError: () => {},
       })
+    const width = decl.width
+    if (width !== undefined) command.configureHelp({ helpWidth: width })
     const epilogue = all ? decl.epilogue : decl.shortEpilogue
-    if (epilogue !== undefined) command.addHelpText('after', `\n${epilogue}`)
+    if (epilogue !== undefined) {
+      const text = width === undefined ? epilogue : wrapText(epilogue, width)
+      command.addHelpText('after', `\n${text}`)
+    }
     for (const [name, flag] of Object.entries(decl.flags)) {
       for (const option of buildOptions(name, flag)) {
         command.addOption(flag.hidden === true && !all ? option.hideHelp() : option)
@@ -328,6 +351,13 @@ export function defineCli<F extends FlagSpec>(decl: CliDecl<F>): Cli<F> {
       // boolean is not among them: commander starts a lone `--no-x` at true.
       const values = command.opts() as Record<string, unknown>
       for (const [name, flag] of Object.entries(decl.flags)) {
+        // Commander files a value under the camelCased long name, so a key
+        // such as 'project-local' lands under 'projectLocal'. Move it back.
+        const attribute = camelcase(kebab(name))
+        if (attribute !== name && Object.hasOwn(values, attribute)) {
+          if (values[name] === undefined) values[name] = values[attribute]
+          delete values[attribute]
+        }
         if (values[name] !== undefined) continue
         if (flag.kind === 'boolean') values[name] = false
         else if (flag.kind === 'count') values[name] = 0

@@ -11,24 +11,45 @@ interactive surfaces can show something at once.
 
 ## Who reads the store
 
-- **The terminal UI and `--serve`** always start from the store, then probe
-  in the background and update in place.
-- **`--json`, `--list` and `way query`** re-probe on every run, so a script
+- **The terminal UI and `way serve`** always start from what was last shown,
+  then probe in the background and update in place. Each `list`, `query` and
+  refresh saves the catalog it showed in one file
+  (`<cache>/views/v1/`), and a start draws it before reading anything else.
+  It is drawn only under the same trust and settings that produced it.
+  Without it, a start probes and shows each runner as it answers. The store
+  is not read first: that detects the project and hashes each runner's
+  files, which takes as long as the probe's own detection.
+- **`way list` and `way query`** re-probe on every run, so a script
   gets what the repository has now. These runs also write the store.
-- **`--cached`** makes `--json`, `--list` or `query` answer from the store.
-  It names the stale runners on stderr:
+- **Every probe** answers first and writes the store after: the files each
+  runner read are hashed and each entry is written in one step, in the
+  background. `way` waits for those writes before it exits.
+- **`--cached`** makes `list`, `query` or `run` answer at once from the
+  saved listing, without checking whether files changed since its
+  `storedAt`, and says so on stderr:
 
 ```text
-wayfinder: --cached: stale: just (35s old, refresh usually about 149ms)
-wayfinder: --cached: not cached, probed now: github-actions
+way: --cached: the last listing, 35s old; files changed since storedAt are not checked
+```
+
+  With no saved listing it reads the store, checks each runner's files, and
+  names the stale runners:
+
+```text
+way: --cached: just (stale: its files changed, 35s old; refresh usually about 149ms); not cached, probed now: github-actions
 ```
 
 `--cached` against an empty store probes, stores the result, and says so.
-With `--json`, it adds a `cache` array beside the catalog. See
+The `list` and `query` documents say which happened: `source` is `fresh` or
+`cached`, and `storedAt` is when the oldest stored rows were probed (null when
+fresh). Every `--json` document carries a `cache` array beside the catalog. See
 [The task model and JSON](task-model.md#the-cache-array).
 
 `Ctrl+R` in the terminal UI and **Refresh** in the web view always run a
-real probe.
+real probe. In the web view the polls join a probe that is already running;
+a Refresh starts its own. A task from a saved or stored listing is probed
+again before it runs (`run --cached`, Enter before the first probe ends, Run
+in the web view), and a task that changed is refused.
 
 ## States
 
@@ -43,6 +64,12 @@ A stale answer has a reason:
 - `changed`: a file the probe depended on changed.
 - `max-age`: an exec runner's entry is older than four hours.
 - `excludes`: `excludePaths` changed since the probe.
+- `exec`: the probe ran with execution allowed and this run does not allow
+  it, or the reverse. An entry probed with execution is not served to a run
+  without it.
+- `version`: another `@osdlc/system-model` version made the probe.
+- `tool`: the tool's binary moved, changed size or mtime (an upgrade, say),
+  or was installed or removed.
 
 ## Measured cost
 
@@ -76,8 +103,9 @@ A fingerprint covers at most 256 paths. A run that hits the cap adds an
 ## Where it lives
 
 `$XDG_CACHE_HOME/wayfinder/`, or `~/.cache/wayfinder/` when that variable is
-unset. Losing it costs one slow probe. `way clean --cache` removes it, and also
-the old `waypost` cache directory when one is left over.
+unset, or `$WAYFINDER_ROOT/cache/wayfinder/` when `WAYFINDER_ROOT` is set. See
+[Paths](configuration.md#paths). Losing it costs one slow probe. `way clean
+--cache` removes it.
 
 The cache is separate from the trust store and plays no part in deciding
 execution. A cached answer is never a trust grant, and clearing the cache does

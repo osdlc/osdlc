@@ -27,8 +27,10 @@ parameter.
 
 ## When not to use it
 
-- **You need Windows.** This package is tested only on Linux and macOS. See
-  Requirements below.
+- **You need the shell or process-group runners on Windows.** `runShell`,
+  `shellRunner` and the `processGroup` options are POSIX only. The argv
+  runners start programs on Windows, but CI runs the Windows tests in a job
+  that does not block a release. See [Platforms](#platforms).
 - **You want shell-script ergonomics** (template strings, piping, globbing).
   Use [`zx`](https://www.npmjs.com/package/zx) or
   [`execa`](https://www.npmjs.com/package/execa).
@@ -58,9 +60,7 @@ These are the facts today, not a support promise.
   runtime.
 - **Bun** also works, through the compiled `dist/`.
 - **ESM only.** There is no CommonJS build.
-- **POSIX only (Linux, macOS).** `runShell` needs `sh` on `PATH`. The
-  `processGroup` options use POSIX process groups. Signals
-  follow POSIX rules. Windows is untested and not supported for now.
+- **Linux and macOS, and spawning on Windows.** See [Platforms](#platforms).
 - **TypeScript 5.4 or later.** The types use the `NodeJS` namespace, so
   install `@types/node` (an optional peer dependency).
 
@@ -151,9 +151,10 @@ if (r.exitCode === 0) console.log(r.stdout.trim())
 
 ### Capture, async
 
-The async runner adds three options: `signal` (an `AbortSignal`), `onSpawn`
-(called with the child's pid once it starts) and `processGroup` (see
-Timeouts and cancellation below).
+The async runner adds four options: `signal` (an `AbortSignal`), `onSpawn`
+(called with the child's pid once it starts), `processGroup` and `killTree`
+(stop the whole process tree when the run is stopped; see Timeouts and
+cancellation below).
 
 ```ts
 import { spawnRunnerAsync } from '@osdlc/command-seam'
@@ -175,8 +176,9 @@ change before you hash it, `spawnRunnerBytes` and `spawnRunnerBytesAsync`
 return stdout as the `Buffer` the child wrote. Their result type is
 `CommandResult<Buffer>`, so the compiler knows `stdout` is a `Buffer`. Stderr
 is still decoded as UTF-8: it is diagnostics, and `failureText`,
-`runChecked` and `CommandFailed` read it as they do for text. They take the
-same options as their text forms. `maxOutputBytes` cuts stdout at exactly the
+`runChecked` and `CommandFailed` read it as they do for text. Each run takes
+the same options as its text form, and the factories take the same
+`SpawnRunnerOptions`. `maxOutputBytes` cuts stdout at exactly the
 cap, since there is no character to keep whole.
 
 ```ts
@@ -225,8 +227,10 @@ console.log(lines.stdout, same.stdout, later.stdout, sh.run('echo hi', { cwd }).
 `runShell` takes the capture options (`timeoutMs`, `env`, `input`,
 `maxOutputBytes`) and returns a `CommandResult`. A fake passed to `shellRunner`
 receives `['-c', '--', verb]`, then `scriptName` and `args` when given.
-`shellJoin(argv)` quotes a whole command line, for printing one a person can
-paste.
+`shellJoin(argv)` quotes a whole command line for a POSIX shell. For a line
+a person pastes, use `commandString` (see
+[Command lines to paste](#command-lines-to-paste)), which also handles
+Windows.
 
 ### Streaming
 
@@ -458,14 +462,151 @@ import { which } from '@osdlc/command-seam'
 const harnesses = ['codex', 'claude', 'cursor-agent'].filter((b) => which(b) !== undefined)
 ```
 
-It looks a binary up the way the runners' spawn does: a name with a `/` is
-resolved against `cwd`, a bare name is searched on `PATH`, and a match must
-be an executable file. `opts` takes `cwd` (default `process.cwd()`) and
-`env`, merged over the parent's as the runners take it, so
-`which('tool', { env: { PATH: binDir } })` checks a test's own `PATH`.
-An empty `PATH` entry means `cwd`, as it does for Node's spawn. Bun's spawn
-skips empty entries, so under Bun `which` can find a binary there that a
-spawn would not.
+It looks a binary up the way the runners' spawn does. `opts` takes `cwd`
+(default `process.cwd()`), `env`, merged over the parent's as the runners
+take it, so `which('tool', { env: { PATH: binDir } })` checks a test's own
+`PATH`, and `platform` (default `process.platform`), so a test can run the
+Windows rules on any OS. `absolutePathOnly` limits the search to absolute
+`PATH` entries (see Running a command inside an untrusted folder).
+
+| Rule              | POSIX                                     | Windows (`platform: 'win32'`)                                   |
+| ----------------- | ----------------------------------------- | --------------------------------------------------------------- |
+| A path            | a name with `/`, resolved against `cwd`   | a name with `\` or `/`, resolved against `cwd`                  |
+| `PATH` separator  | `:`                                       | `;`                                                             |
+| Empty entry       | means `cwd`, as for Node's spawn          | skipped; `cwd` is searched only when `PATH` names it            |
+| `PATH` unset      | `/usr/bin:/bin`                           | nothing is searched                                             |
+| Extensions        | none                                      | a name ending in a `PATHEXT` extension is tried as given; any other name with each one appended, in order. Default `.COM;.EXE;.BAT;.CMD`. Any case. |
+| A match           | an executable file                        | a file                                                          |
+
+Bun's spawn skips empty `PATH` entries, so under Bun `which` can find a
+binary there that a spawn would not.
+
+## Command lines to paste
+
+`commandString(argv, opts?)` returns `argv` as one line a person can paste
+into a terminal, quoted for the shell that will read it. `opts.platform`
+(default `process.platform`) picks the shell: PowerShell on `win32`, a POSIX
+shell elsewhere. `opts.shell` (`'posix'`, `'powershell'` or `'cmd'`) names
+it directly. `opts.cwd` adds a change of folder first.
+
+```ts
+import { commandString } from '@osdlc/command-seam'
+
+const argv = ['git', 'commit', '-m', "it's done"]
+commandString(argv, { platform: 'linux', cwd: '/my repo' })
+// cd '/my repo' && git commit -m 'it'\''s done'
+commandString(argv, { platform: 'win32', cwd: 'C:\\my repo' })
+// if (Set-Location -LiteralPath 'C:\my repo' -PassThru) { & git commit -m 'it''s done' }
+commandString(argv, { platform: 'win32', shell: 'cmd' })
+// git commit -m ^"it's^ done^"
+```
+
+| Shell        | Words                                                                                                                                                | With `cwd`                            |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `posix`      | `shellJoin`: bare when only `A-Za-z0-9_@%+=:,./-`, else single-quoted with `'` written `'\''` and `\` written `'\\'`                                                          | `cd <dir> && <line>` (`cd --` for a folder starting with `-`, `cd ./-` for `-`) |
+| `powershell` | `&` first, always. Bare when it starts with a letter or `_-./\` and holds only letters, digits and `_-./\:=`; else single-quoted, each `'` (and `‘ ’ ‚ ‛`) doubled | `if (Set-Location -LiteralPath <dir> -PassThru) { <line> }` |
+| `cmd`        | Bare when only `A-Za-z0-9_@+:./\-`; else quoted and `^`-escaped as in [Starting a program on Windows](#starting-a-program-on-windows). The program gets `^` escapes without quotes | `cd /d <dir> && <line>`               |
+
+In every shell the command runs only when the change of folder works.
+PowerShell's `;` does not stop on an error, so its form tests the result of
+`Set-Location -PassThru` instead. Windows PowerShell 5.1, and PowerShell before
+7.3, drop an empty argument and mangle one holding `"` when they call a
+program. `commandString` throws `RangeError` for an empty `argv`, and for
+`cmd` when a word or `cwd` holds a line break or a `%`, which `cmd.exe` cannot
+quote. `cmd.exe` expands `%NAME%` in a pasted line before it reads any `^`.
+
+A POSIX line reads the same in fish, which treats `\'` and `\\` inside single
+quotes as escapes, so a backslash is always written outside the quotes.
+
+`@osdlc/command-seam/quote` exports `commandString`, `shellJoin` and
+`shellQuote` alone. It imports nothing from Node, so a browser bundle can use
+it.
+
+## Platforms
+
+Linux and macOS are supported in full. On Windows the argv runners
+(`spawnRunner`, `spawnRunnerAsync`, the bytes runners, `streamRunner` and
+`managedProcessRunner`) start programs, `.cmd` and `.bat` files included.
+These parts stay POSIX only:
+
+- `runShell` and `shellRunner` need `sh` on `PATH`.
+- The `processGroup` options and `installGroupSignalForwarding` use POSIX
+  process groups. Signals follow POSIX rules. On Windows a `processGroup`
+  run's stop reaches the direct child only. To kill a process tree on
+  Windows too, use `killTree`.
+- The `bun test` capture path runs through `/bin/sh`.
+
+### Starting a program on Windows
+
+On Windows each runner looks the binary up with `which` and its Windows
+rules. An `.exe` or `.com` it finds is spawned by that path, with argv
+passed directly. A binary it cannot find is not spawned at all: a Windows
+spawn of a bare name searches the current folder first, which is often the
+repository being worked on. The run fails as a missing binary does
+(`spawn <binary> ENOENT`), and `classifyFailure` reports `not-installed`, as
+on POSIX.
+
+Node will not spawn a `.cmd` or `.bat` file directly. The runner starts
+`cmd.exe /d /v:off /s /c "<line>"` instead (`ComSpec` when set), with
+`windowsVerbatimArguments`. `/v:off` keeps delayed expansion (`!VAR!`) off
+even when the registry turns it on. Each argument is quoted in two steps:
+
+1. Microsoft C runtime quoting: backslashes before a `"` are doubled and the
+   `"` becomes `\"`, trailing backslashes are doubled, and the argument is
+   wrapped in `"`.
+2. `cmd.exe` escaping: each of ``( ) [ ] % ! ^ " ` < > & | ; , * ?`` and
+   space gets a `^`. The quotes are escaped too, so `cmd.exe` never enters a
+   quoted section and every `^` applies.
+
+Step 2 is applied twice for every batch file. A batch file passes its
+arguments on with `%*` or `%1`, and `cmd.exe` parses that line a second
+time. The npm, pnpm and yarn shims do this, in `node_modules/.bin` and in the
+global `%APPDATA%\npm`, and so do `gradlew.bat` and `mvnw.cmd`. With one
+escape, a `"` in an argument would end the quoted text on the second parse,
+and a `&` or `|` after it would run as a command.
+
+A `%` in an argument to a batch file, or in the batch file's path, is
+refused, as a failed spawn with an `EINVAL` message. `cmd.exe` expands
+`%NAME%`, `%NAME:a=b%` and `%NAME:~n,m%` before it reads any `^`, even inside
+quotes, so the escaping above cannot protect a `%`. Pass the value through an
+environment variable or a file. A `.exe` gets its argv directly and takes any
+`%`.
+
+Two limits remain. A batch file that parses its arguments a third time (it
+stores `%*` in a variable and expands that later, or passes it through
+`call`) can still be broken by an argument holding `"`. A batch file that
+uses an argument without parsing it again gets the extra carets in its
+value.
+
+An argument with a line break cannot be passed to a batch file: `cmd.exe`
+ends the command there. The run is refused before anything starts, as a
+failed spawn (`reason: 'spawn'`, `classifyFailure` kind `spawn`). A NUL
+byte throws, as on every platform.
+
+### Running a command inside an untrusted folder
+
+A relative or empty `PATH` entry is looked up from the child's `cwd`. On
+Windows, a spawn of a bare name searches `cwd` before `PATH`. So when `cwd`
+is a folder someone else wrote, such as a cloned repository, a file there
+named `git` can run in place of git. Pass `absolutePathOnly: true` to
+any runner factory: `spawnRunner`, `spawnRunnerBytes`, their async forms,
+`streamRunner` or `managedProcessRunner`. The runner then looks the bare name up
+on absolute `PATH` entries only, using `PATHEXT` on Windows, and spawns the
+absolute path it finds. When there is none, the run fails as a missing
+binary does (`ENOENT`, kind `not-installed`). With `PATH` unset, POSIX
+searches `/usr/bin:/bin`, as a spawn does, and Windows searches nothing. A
+name with a separator, such as `./gradlew`, is a path and runs as given.
+
+```ts
+import { spawnRunnerAsync } from '@osdlc/command-seam'
+
+const git = spawnRunnerAsync('git', { absolutePathOnly: true })
+const r = await git.run(['rev-parse', '--is-inside-work-tree'], { cwd: '/tmp/clone' })
+```
+
+`which(binary, { absolutePathOnly: true })` does the same lookup without
+running anything. `absolutePathCandidates(binary, { path, pathext, platform })`
+returns the paths that lookup checks, in order, without reading the disk.
 
 ## Reading results
 
@@ -482,6 +623,12 @@ such as an invalid `timeoutMs`, still throws or rejects):
 - `stderrOrError(result)`: trimmed stderr, else the trimmed `error`, else
   `''`. Use it where a message reads stderr, so a command that never ran
   still says why.
+- `runFailed(result, isAnswer?)`: the run must be read as a failure. It
+  never exited, its output was cut short (`outputIncomplete`, even at exit
+  0), or it exited non-zero and `isAnswer(result)` is not `true`. `isAnswer`
+  is asked only about a complete run that exited, so a missing binary's
+  stand-in exit 1 never reads as "not there". See "Building a client over
+  one program".
 - `runJson(runner, argv, opts)` and `runJsonAsync`: run, check the exit code
   (`0` unless `okExitCodes` says otherwise), then `JSON.parse` stdout.
   `parseJsonResult(result)` is the parse step alone.
@@ -499,6 +646,10 @@ not in `okExitCodes`, it is the `CommandFailure` for that run (`kind`
 `'not-installed'`, `'exit'`, `'timeout'` and so on, see "Classifying a
 failure"). Otherwise its `kind` is `'unparseable'` (stdout is not JSON) or
 `'invalid'` (the `parse` option threw, and `error.cause` holds what it threw).
+To tell the two apart, call `isJsonParseFailure(error)`: `true` means the
+command ran but its output was no use, `false` means the run itself failed
+(and `error` narrows to `CommandFailure`). It stays right if a new run-failure
+kind is added, which a hand-written list of kinds would not.
 `tolerateLeadingLog: true` skips log lines printed before the JSON.
 
 Some tools print JSON and exit non-zero on purpose: `npm outdated --json`
@@ -547,13 +698,17 @@ runner's `CommandResult`, a `StreamResult` or a `ManagedProcessExit`. A
 | ---------------- | -------------------------------------------------------------------- | -------------------------------------------------------------- |
 | `not-installed`  | spawn `ENOENT` on the binary                                         | `` `gh` is not installed or not on PATH. ``                    |
 | `not-executable` | spawn `EACCES`, `EPERM` or `ENOEXEC`                                 | `` `gh` cannot be run: permission denied or not an executable. `` |
-| `bad-cwd`        | the working directory is missing or is not a directory               | `The working directory "/x" is missing or is not a directory.` |
+| `bad-cwd`        | the working directory is missing, is not a directory, or cannot be entered | `The working directory "/x" is missing or is not a directory.`, or `The working directory "/x" cannot be entered: permission denied.` |
 | `timeout`        | `timeoutMs` ran out                                                  | `` `gh` timed out and was stopped. ``                          |
 | `output-cap`     | the child passed `maxOutputBytes`                                    | `` `gh` wrote more output than allowed and was stopped. ``     |
 | `signal`         | a signal from elsewhere ended the child                              | `` `gh` was ended by SIGTERM. ``                               |
 | `aborted`        | an `AbortSignal` or `kill()` stopped it                              | `` `gh` was stopped before it finished. ``                     |
 | `spawn`          | any other failure to start (`EBADF`, `E2BIG`, a fake with no answer) | `` `gh` could not be started. ``                               |
 | `exit`           | it ran and exited with a code that is not accepted                   | the first line of the failure text (`failureText`)             |
+
+A working directory without search (execute) permission is `bad-cwd`, with
+the `cannot be entered` message. Earlier releases reported it as
+`not-executable`, which read as a binary that cannot be run.
 
 The messages say `The command` when the binary is not known. There is no
 `hint` at this layer. The layer that knows the tool knows how to install it.
@@ -628,6 +783,67 @@ const ahead = catchFailed(
 console.log(diff.length, ahead)
 ```
 
+## Building a client over one program
+
+A typed client over one program (`@osdlc/typed-git` over `git`,
+`@osdlc/typed-gh` over `gh`) needs the same few parts whatever the program.
+They are here, so each client keeps only what is its own: its failure
+kinds, its messages and its error classes.
+
+- `runFailed(result, isAnswer?)` is the gate between a result and a parse
+  (see "Reading results"). A verb that reads exit 1 as "not there" passes
+  `(r) => r.exitCode === 1`.
+- `classifyFailed(failed, { binary, installHint? })` is the start of the
+  client's own classifier. It returns the `CommandFailure` a `CommandFailed`
+  carries, with the `CommandFailed` as its `cause`. When the runner named no
+  binary (a fake), the failure is classified again with `binary`, so the
+  message names the program. A `not-installed` failure gets `installHint` as
+  its `hint`. Read the program's own stderr only when `kind` is `exit`.
+- `tryMethods(client, recognize)` and `tryMethodsAsync` wrap a client so
+  every method returns a `Result` (`TriedMethods`, `TriedMethodsAsync`) in
+  place of throwing. `recognize(error)` returns the failure a thrown value
+  carries, or `null`, and then the value is thrown again, so a `TypeError`
+  from a bug still throws.
+- `methodFacade(client, wrap)` is the proxy under them. Every function
+  property calls `wrap(call, name)`, which makes the call (or not) and
+  returns the result. Use it for a form `tryMethods` does not cover, such as
+  one that falls back to a default value. Methods run on the client itself,
+  so private fields still work.
+- `notAnOption(value, reject)` returns `value`, or throws `reject(value)`
+  when it starts with `-`, before anything runs. A program reads such a
+  positional as an option, and some options run code. `reject` builds the
+  client's own error.
+
+```ts
+import {
+  classifyFailed,
+  CommandFailed,
+  isCommandFailed,
+  notAnOption,
+  runFailed,
+  spawnRunner,
+  tryMethods,
+} from '@osdlc/command-seam'
+
+const git = spawnRunner('git')
+
+const client = {
+  /** A config value, or `null` when it is unset (`git config --get` exits 1). */
+  configGet(key: string): string | null {
+    const argv = ['config', '--get', notAnOption(key, (k) => new TypeError(`bad key ${k}`))]
+    const result = git.run(argv, { cwd: process.cwd() })
+    if (runFailed(result, (r) => r.exitCode === 1)) throw new CommandFailed(argv, result, git.binary)
+    return result.exitCode === 0 ? result.stdout.trim() : null
+  },
+}
+
+const tried = tryMethods(client, (e) =>
+  isCommandFailed(e) ? classifyFailed(e, { binary: 'git', installHint: 'Install git.' }) : null,
+)
+const name = tried.configGet('user.name')
+if (!name.ok) console.error(name.error.message, name.error.hint ?? '')
+```
+
 ## Testing with fakes
 
 Write code against the runner interface, and pass a fake in tests. A fake is
@@ -672,7 +888,8 @@ production code does not import them. It also exports their types:
 `FakeRunner` (what `fakeRunner` returns), `FakeCall` (one recorded call),
 `FakeProcess` and `FakeProcessOptions`.
 
-- `fakeRunner(answers)` returns `{ runner, asyncRunner, calls }`. `runner`
+- `fakeRunner(answers)` returns `{ runner, asyncRunner, bytesRunner,
+  asyncBytesRunner, calls }`. `runner`
   is a `CommandRunner` that answers from a table keyed by the argv, each
   argument quoted with `shellQuote` and joined with spaces: a plain argument
   stays as it is, and one with a space or a shell character is single-quoted,
@@ -768,6 +985,11 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
   `runShellAsync`, `shellRunnerAsync`) take `processGroup: true` to kill the
   child's whole process group on timeout or abort. `managedProcessRunner`
   takes it too, so `kill()` signals the group.
+- `killTree: true` on the async runners kills the child's process tree when
+  the run is stopped, on every platform. On POSIX it is `processGroup: true`.
+  On Windows the runner runs `taskkill /pid <pid> /t /f` from
+  `%SystemRoot%\System32`, by absolute path, while the child is still running,
+  then kills the child. Pass it for a command that forks, such as a build tool.
 - A `streamRunner` timeout prints its line to the parent's stderr, as a failed
   spawn or a signal does, unless `quiet` is set. With `stdio` set to an fd, the
   line still goes to the parent's stderr, not to the fd.
@@ -804,6 +1026,8 @@ console.log(await server.exited) // { exitCode: 0, signal: null }
   `cwd`.
 - **`argv` is never parsed by a shell.** Spaces, quotes and `$()` in an
   argument reach the binary unchanged. Only `runShell` runs a shell string.
+  On Windows a `.cmd` or `.bat` file runs through `cmd.exe`, with each
+  argument quoted for it (see [Platforms](#platforms)).
 - **`env` merges over `process.env`**, read at call time. A value of
   `undefined` removes that variable from the child's environment.
 - **Early stdin close.** If the child closes stdin before `input` is fully
@@ -873,9 +1097,11 @@ The experimental exports:
 - `spawnRunnerBytes`, `spawnRunnerBytesAsync`, `BytesCommandRunner`, `AsyncBytesCommandRunner`
 - `catchFailedAsync`, `mapFailedAsync`
 - `firstLine`, `stderrOrError`
-- `runJson`, `runJsonAsync`, `parseJsonResult`, `JsonRun`, `JsonFailure`, `RunJsonOptions`
+- `runJson`, `runJsonAsync`, `parseJsonResult`, `isJsonParseFailure`, `JsonRun`, `JsonFailure`, `RunJsonOptions`
 - `withDefaults`, `DefaultedRunner`
-- `which`, `WhichOptions`
+- `which`, `WhichOptions`, `absolutePathCandidates`, `PathCandidateOptions`
+- `commandString`, `CommandStringOptions`
+- `SpawnRunnerOptions`
 - `stopProcess`
 - `installGroupSignalForwarding`, `GroupSignalForwardingOptions`
 - `liveProcessGroups`, `forwardedSignal`, `forwardedExitCode`
@@ -899,21 +1125,37 @@ are settled, and Windows support has landed, if that is feasible.
 | `catchFailed`, `catchFailedAsync`                               | function  | Turn a `CommandFailed` into a value                            |
 | `asAsync`                                                       | function  | Wrap a sync runner (text or bytes) as an async one             |
 | `CommandFailed`                                                 | class     | Error with `binary`, `argv`, `result` and `detail`; `message` shows the command |
+| `isCommandFailed`                                               | function  | Recognise a `CommandFailed`, across copies of the package      |
+| `SpawnRunnerOptions`                                            | interface | `absolutePathOnly`: look a bare name up on absolute `PATH` entries only |
 | `CommandRunner`, `AsyncCommandRunner`                           | interface | Capture runner contracts; `binary` names the program          |
 | `BytesCommandRunner`, `AsyncBytesCommandRunner`                 | interface | The same, with stdout as a `Buffer`                            |
 | `CommandResult`                                                 | interface | `exitCode`, `stdout`, `stderr`, `neverExited`, `reason`, `signal`, `outputIncomplete`, `error`; `CommandResult<Buffer>` for bytes |
 | `NeverExitedReason`                                             | type      | `'spawn' \| 'timeout' \| 'abort' \| 'signal' \| 'output'`       |
-| `CommandRunOptions`, `AsyncCommandRunOptions`                   | interface | `cwd`, `timeoutMs`, `input`, `env`, `maxOutputBytes`; async adds `signal`, `onSpawn`, `processGroup` |
+| `CommandRunOptions`, `AsyncCommandRunOptions`                   | interface | `cwd`, `timeoutMs`, `input`, `env`, `maxOutputBytes`; async adds `signal`, `onSpawn`, `processGroup`, `killTree` |
 | `EnvOverrides`                                                  | type      | `Record<string, string \| undefined>`                          |
 | `ran`, `failureText`, `firstLine`, `stderrOrError`              | function  | Read a result                                                  |
 | `FailureTextOptions`                                            | interface | `both`: join both streams in `failureText`                     |
 | `runJson`, `runJsonAsync`, `parseJsonResult`                    | function  | Run and parse stdout as JSON                                   |
 | `JsonRun`, `RunJsonOptions`                                     | type      | `runJson` result and options                                   |
+| `isJsonParseFailure`                                            | function  | Whether a `runJson` failure is about the output, not the run   |
+| `JsonFailure`                                                   | type      | A `runJson` failure: a `CommandFailure`, `unparseable` or `invalid` |
+| `classifyFailure`                                               | function  | Classify a failed run (`not-installed`, `timeout`, `exit`, …)  |
+| `classifyFailed`                                                | function  | A `CommandFailed`'s failure, named for the program, with `cause` and an install hint |
+| `ClassifyFailedOptions`                                         | interface | `binary`, `installHint`                                        |
+| `runFailed`                                                     | function  | Whether a result is a failure: never exited, output cut short, or an exit that is not an answer |
+| `methodFacade`                                                  | function  | A proxy that wraps every method of a client                    |
+| `tryMethods`, `tryMethodsAsync`                                 | function  | Every method of a client returning a `Result` instead of throwing |
+| `TriedMethods`, `TriedMethodsAsync`                             | type      | The types `tryMethods` and `tryMethodsAsync` return            |
+| `notAnOption`                                                   | function  | Refuse a positional argument that starts with `-`              |
+| `CommandFailure`, `CommandFailureKind`                          | type      | A classified failure with `message` and `detail`; its kinds    |
+| `ClassifiableRun`, `ClassifyContext`                            | interface | What `classifyFailure` reads; `binary`, `argv`, `okExitCodes`  |
 | `runShell`, `runShellAsync`                                     | function  | Run a shell string with `sh -c --`                             |
 | `shellRunner`, `shellRunnerAsync`                               | function  | Shell runner over a given `CommandRunner`                      |
 | `ShellRunner`, `AsyncShellRunner`                               | interface | Shell runner contracts                                         |
 | `ShellRunOptions`, `AsyncShellRunOptions`, `ShellPositionals`   | interface | Capture options plus `scriptName` (`$0`) and `args` (`$1`…)    |
 | `shellQuote`, `shellJoin`                                       | function  | POSIX quoting for one word or a command line                   |
+| `commandString`                                                 | function  | A command line to paste, quoted for POSIX, PowerShell or `cmd.exe` |
+| `CommandStringOptions`                                          | interface | `platform`, `shell`, `cwd`                                     |
 | `streamRunner`                                                  | function  | Default streaming runner (inherited stdio)                     |
 | `StreamRunner`, `StreamRunOptions`, `StreamResult`              | type      | Streaming runner contract; options add `stdio` and `quiet`; the result adds `reason`, `signal`, `error` |
 | `StdioOption`                                                   | type      | `'inherit' \| 'ignore' \| { stdout, stderr }` file descriptors   |
@@ -926,14 +1168,17 @@ are settled, and Windows support has landed, if that is feasible.
 | `withDefaults`                                                  | function  | Bind default options to any runner                             |
 | `DefaultedRunner`                                               | interface | The runner `withDefaults` returns                              |
 | `which`                                                         | function  | The path a spawn of a binary would run, without running it     |
-| `WhichOptions`                                                  | interface | `cwd`, `env`                                                   |
+| `WhichOptions`                                                  | interface | `cwd`, `env`, `platform`, `absolutePathOnly`                   |
+| `absolutePathCandidates`                                        | function  | The absolute paths a safe lookup tries for a bare name, in order |
+| `PathCandidateOptions`                                          | interface | `absolutePathCandidates` inputs: `PATH`, `PATHEXT`, platform   |
 | `fakeRunner`                                                    | function  | `/testing`: a `CommandRunner` that answers from a table, with async and bytes forms |
 | `fakeNeverExited`                                               | function  | `/testing`: a fake answer for a run that never exited          |
 | `fakeProcess`                                                   | function  | `/testing`: a `ManagedProcessHandle` the test ends by hand     |
 | `FakeRunner`, `FakeCall`, `FakeProcess`, `FakeProcessOptions`  | interface | `/testing`: the fakes' return, call and option types           |
 
 `/testing` marks an export of `@osdlc/command-seam/testing`; every other
-export is from `@osdlc/command-seam`. Every export has TSDoc in the source.
+export is from `@osdlc/command-seam`. The quoting functions are also exported
+from `@osdlc/command-seam/quote`. Every export has TSDoc in the source.
 Runnable examples for each export are in the
 [`examples` directory](https://github.com/osdlc/osdlc/tree/main/packages/ts/command-seam/examples).
 

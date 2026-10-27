@@ -95,8 +95,8 @@ const EXAMPLE_FILES = readdirSync(join(PACKAGE_DIR, 'examples'))
 test('the entries export the names this test lists', () => {
   const sizes = Object.fromEntries([...BY_ENTRY].map(([spec, m]) => [spec, m.size]))
   expect(sizes).toEqual({
-    [PACKAGE_NAME]: 87,
-    [`${PACKAGE_NAME}/core`]: 83,
+    [PACKAGE_NAME]: 89,
+    [`${PACKAGE_NAME}/core`]: 85,
     [`${PACKAGE_NAME}/declarative`]: 11,
     [`${PACKAGE_NAME}/cli`]: 2,
   })
@@ -169,6 +169,7 @@ test('the functions that can throw say so with @throws, and no others do', () =>
   expect(throwing.sort()).toEqual(
     [
       'compileContractObject',
+      'forbids',
       'inferConfig',
       'loadConfig',
       'loadConfigFile',

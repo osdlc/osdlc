@@ -68,10 +68,10 @@ const RULE_LEVELS: Record<string, FindingLevel> = {
 }
 
 /**
- * Default levels for text checks (`text/*`). Every text check reports one of three ids:
- * `text/requires` (a required phrase is missing), `text/forbids` (a forbidden phrase is
- * present) and `text/count` (a `min` or `max` count is not met). All default to `error`. A
- * check's `level` overrides that.
+ * Default levels for text checks (`text/*`). Text checks report `text/<kind>/<scopeKey>/<hash>`
+ * ids (or the entry's own `id`), so these bare keys never match a finding; they document that
+ * text findings default to `error` through the `makeCtx` fallback. A check's `level` overrides
+ * that.
  */
 const TEXT_LEVELS: Record<string, FindingLevel> = {
   'text/requires': 'error',

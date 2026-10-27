@@ -28,12 +28,50 @@ function opts(canned: Canned[] = [], extra: Record<string, unknown> = {}) {
   }
 }
 
+describe('every built-in tool', () => {
+  test('has an https homepage and a one-sentence description', () => {
+    for (const tool of builtins) {
+      expect(tool.homepage, tool.id).toMatch(/^https:\/\/[^\s]+$/)
+      expect(tool.description, tool.id).toMatch(/^[A-Z].*\.$/)
+    }
+  })
+
+  test('carries its brand on the tool, not on the runner role', () => {
+    for (const tool of builtins) expect(tool.roles.runner?.brand, tool.id).toBeUndefined()
+    const branded = builtins.filter((t) => t.brand !== undefined).map((t) => t.id)
+    expect(branded).toContain('just')
+    expect(branded).toContain('cargo')
+  })
+
+  test('a language-agnostic tool names no ecosystem', () => {
+    const agnostic = [
+      'moon',
+      'just',
+      'make',
+      'turbo',
+      'go-task',
+      'docker-compose',
+      'mise',
+      'nx',
+      'vscode-tasks',
+      'devbox',
+      'procfile',
+      'cmake-presets',
+    ]
+    for (const id of agnostic) {
+      expect(builtins.find((t) => t.id === id)?.ecosystem, id).toBeUndefined()
+    }
+  })
+})
+
 describe('every built-in runner', () => {
   const runnerTools = builtins.filter((t) => t.roles.runner !== undefined)
 
   // node-scripts and python resolve their binary per directory (npm vs pnpm,
-  // uv vs poetry), so a single static name would misrepresent them.
-  const ABSTAINERS = new Set(['node-scripts', 'python'])
+  // uv vs poetry), vscode-tasks runs each task's own command, and procfile
+  // uses whichever process manager is on the PATH, so a single static name
+  // would misrepresent them.
+  const ABSTAINERS = new Set(['node-scripts', 'python', 'vscode-tasks', 'procfile'])
 
   test('built-in ids line up with the roster', () => {
     expect(builtins.map((t) => t.id)).toEqual([...BUILTIN_TOOL_IDS])
@@ -75,6 +113,16 @@ describe('every built-in runner', () => {
     rake: 'local',
     'docker-compose': 'container',
     'github-actions': 'remote',
+    poe: 'local',
+    pdm: 'local',
+    hatch: 'local',
+    'cargo-aliases': 'local',
+    nx: 'local',
+    'vscode-tasks': 'local',
+    devbox: 'local',
+    procfile: 'local',
+    'cmake-presets': 'local',
+    dotnet: 'local',
   }
 
   test('has a declared `executes` intent', () => {

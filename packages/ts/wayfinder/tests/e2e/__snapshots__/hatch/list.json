@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "hatch",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "Hatch runs the scripts each environment declares."
+        },
+        {
+          "label": "project",
+          "hint": "The directory holding the config. `.` is the root."
+        },
+        {
+          "label": "script",
+          "hint": "The script name, `env:script` outside the default environment."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#4051b5"
+      },
+      "tool": {
+        "binary": "hatch",
+        "found": true,
+        "path": "<bin>/hatch"
+      },
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "hatch:hatch.toml:test",
+          "runner": "hatch",
+          "path": [
+            "hatch",
+            ".",
+            "test"
+          ],
+          "argv": [
+            "hatch",
+            "run",
+            "test"
+          ],
+          "cwd": ".",
+          "display": "hatch run test",
+          "parameters": [],
+          "source": "hatch.toml",
+          "origin": "declared",
+          "detail": "pytest {args}",
+          "tags": [
+            "hatch",
+            ".",
+            "default"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "hatch:hatch.toml:cov",
+          "runner": "hatch",
+          "path": [
+            "hatch",
+            ".",
+            "cov"
+          ],
+          "argv": [
+            "hatch",
+            "run",
+            "cov"
+          ],
+          "cwd": ".",
+          "display": "hatch run cov",
+          "parameters": [],
+          "source": "hatch.toml",
+          "origin": "declared",
+          "detail": "pytest --cov",
+          "tags": [
+            "hatch",
+            ".",
+            "default"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "hatch:hatch.toml:lint:check",
+          "runner": "hatch",
+          "path": [
+            "hatch",
+            ".",
+            "lint:check"
+          ],
+          "argv": [
+            "hatch",
+            "run",
+            "lint:check"
+          ],
+          "cwd": ".",
+          "display": "hatch run lint:check",
+          "parameters": [],
+          "source": "hatch.toml",
+          "origin": "declared",
+          "detail": "ruff check .",
+          "tags": [
+            "hatch",
+            ".",
+            "lint"
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "source": "fresh",
+  "storedAt": null,
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "hatch"
+      ]
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "hatch",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [],
+  "trustedTools": [],
+  "filter": {}
+}

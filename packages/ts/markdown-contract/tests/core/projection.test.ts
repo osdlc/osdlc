@@ -23,8 +23,7 @@ import remarkStringify from 'remark-stringify'
 import { unified } from 'unified'
 import { describe, expect, test } from 'vitest'
 import type { BlockNode } from '../../src/index.js'
-import { parse } from '../../src/index.js'
-import { extractVaultRefs } from '../support/wikilinks.js'
+import { extractVaultRefs, parse } from '../../src/index.js'
 
 /** Narrow a BlockNode to a specific kind for typed assertions. */
 function blockOf<K extends BlockNode['kind']>(
@@ -276,6 +275,48 @@ describe('^block-id anchors', () => {
     const t = parse(['## Notes', '', '^section-id'].join('\n'))
     expect(t.root.sections[0]!.anchors).toEqual(['section-id'])
     expect(t.root.sections[0]!.blocks).toHaveLength(0)
+  })
+
+  test('a trailing anchor on a list item binds to the list and is cut from the item text', () => {
+    const t = parse(['## L', '', '- one', '- two ^items'].join('\n'))
+    const lst = blockOf(t.root.sections[0]!.blocks[0], 'list')
+    expect(lst.anchor).toBe('items')
+    expect(lst.items.map((i) => i.text)).toEqual(['one', 'two'])
+  })
+
+  test('a standalone anchor after a block that already has one lands on the section', () => {
+    const t = parse(['## S', '', 'Prose.', '^first', '', '^second'].join('\n'))
+    const sec = t.root.sections[0]!
+    expect(blockOf(sec.blocks[0], 'paragraph').anchor).toBe('first')
+    expect(sec.anchors).toEqual(['second'])
+  })
+
+  test('a `^word` at the end of inline code is text, not an anchor', () => {
+    const t = parse(['## S', '', 'Exclude merged work with `git log ^main`'].join('\n'))
+    const para = blockOf(t.root.sections[0]!.blocks[0], 'paragraph')
+    expect(para.text).toBe('Exclude merged work with git log ^main')
+    expect(para.anchor).toBeUndefined()
+  })
+
+  test('a `^word` at the end of inline code in a list item is text, not an anchor', () => {
+    const t = parse(['## S', '', '- AC-1: run `git rev-list ^HEAD`'].join('\n'))
+    const lst = blockOf(t.root.sections[0]!.blocks[0], 'list')
+    expect(lst.anchor).toBeUndefined()
+    expect(lst.items[0]!.text).toBe('AC-1: run git rev-list ^HEAD')
+  })
+
+  test('a paragraph that is only inline code `^id` is a block, not a standalone anchor', () => {
+    const t = parse(['## S', '', 'Intro.', '', '`^main`'].join('\n'))
+    const sec = t.root.sections[0]!
+    expect(sec.blocks).toHaveLength(2)
+    expect(blockOf(sec.blocks[0], 'paragraph').anchor).toBeUndefined()
+  })
+
+  test('a standalone anchor after a blockquote binds to the section, not an earlier block', () => {
+    const t = parse(['## S', '', 'Intro.', '', '> Quoted rationale', '', '^why'].join('\n'))
+    const sec = t.root.sections[0]!
+    expect(blockOf(sec.blocks[0], 'paragraph').anchor).toBeUndefined()
+    expect(sec.anchors).toEqual(['why'])
   })
 })
 

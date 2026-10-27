@@ -1,0 +1,9 @@
+desc "Run the tests"
+task :test do
+  ruby "test/all.rb"
+end
+
+desc "Build the gem"
+task build: :test do
+  sh "gem build app.gemspec"
+end

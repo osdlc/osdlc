@@ -1,3 +1,4 @@
+import { userInfo } from 'node:os'
 import { join, normalize } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
@@ -7,6 +8,8 @@ import {
   TieredDirs,
   TieredDirsError,
   envVars,
+  expandTilde,
+  homeDir,
   isOverridden,
   overrideVars,
   parseConvention,
@@ -105,6 +108,21 @@ describe('Linux', () => {
     )
   })
 
+  // The darwin table reads a POSIX-rooted account home; a Windows host's is `C:\...`.
+  test.skipIf(process.platform === 'win32')(
+    'a relative HOME counts as unset, so the account home is used [skipped on win32: account home is not POSIX-rooted]',
+    () => {
+      const saved = process.env['HOME']
+      process.env['HOME'] = '.'
+      try {
+        const bases = systemBaseDirs(ENV, { platform: 'darwin', testRoot: false })
+        expect(bases.durable).toBe(join(userInfo().homedir, 'Library', 'Application Support'))
+      } finally {
+        process.env['HOME'] = saved
+      }
+    },
+  )
+
   test('a relative XDG value is invalid and ignored', () => {
     const bases = systemBaseDirs(ENV, {
       platform: 'linux',
@@ -141,6 +159,33 @@ describe('Windows', () => {
     expect(win(base).scratch.endsWith('Temp')).toBe(true)
   })
 
+  test('an override must be absolute by Windows rules: drive-relative and rooted-only throw', () => {
+    const win = (env: Record<string, string>) =>
+      systemBaseDirs(ENV, { platform: 'win32', env: { USERPROFILE: 'C:\\Users\\x', ...env } })
+    const code = (env: Record<string, string>): string | undefined => {
+      try {
+        win(env)
+        return undefined
+      } catch (error) {
+        return (error as TieredDirsError).code
+      }
+    }
+    for (const root of ['C:scratch', '/r', 'scratch']) {
+      expect([root, code({ EXAMPLE_ROOT: root })]).toEqual([root, 'RELATIVE_OVERRIDE'])
+    }
+    for (const root of ['C:\\r', 'C:/r', '\\\\srv\\share', '//srv/share']) {
+      expect(win({ EXAMPLE_ROOT: root }).durable).toBe(rootedBaseDirs(root).durable)
+    }
+  })
+
+  test('a relative APPDATA is ignored for the AppData default under the home', () => {
+    const bases = systemBaseDirs(ENV, {
+      platform: 'win32',
+      env: { USERPROFILE: 'C:\\Users\\x', APPDATA: 'rel' },
+    })
+    expect(bases.durable).toBe(join('C:\\Users\\x', 'AppData', 'Roaming'))
+  })
+
   test('with no OS home for either, logs and runtime derive from durable', () => {
     const bases = systemBaseDirs(ENV, { platform: 'win32', env: { USERPROFILE: 'C:/Users/x' } })
     expect(bases.logs.endsWith('logs')).toBe(true)
@@ -151,8 +196,11 @@ describe('Windows', () => {
 
 describe('conventions', () => {
   const env = { HOME: '/Users/x', XDG_CONFIG_HOME: '/xc' }
-  const on = (platform: string, opts: { convention?: 'native' | 'xdg' }, extra = {}) =>
-    systemBaseDirs(ENV, { platform, env: { ...env, ...extra }, ...opts })
+  const on = (
+    platform: string,
+    opts: { convention?: 'native' | 'xdg'; conventionFromEnv?: boolean },
+    extra = {},
+  ) => systemBaseDirs(ENV, { platform, env: { ...env, ...extra }, ...opts })
 
   test('xdg on macOS is the XDG table', () => {
     const bases = on('darwin', { convention: 'xdg' })
@@ -188,6 +236,17 @@ describe('conventions', () => {
       on('darwin', {}),
     )
     expect(on('darwin', { convention: 'xdg' }, { EXAMPLE_CONVENTION: '' })).toEqual(
+      on('darwin', { convention: 'xdg' }),
+    )
+  })
+
+  test("conventionFromEnv: false pins the caller's convention and ignores the variable", () => {
+    const pinned = { convention: 'xdg' as const, conventionFromEnv: false }
+    expect(on('darwin', pinned, { EXAMPLE_CONVENTION: 'native' })).toEqual(
+      on('darwin', { convention: 'xdg' }),
+    )
+    // Not read at all, so a bad value does not throw either.
+    expect(on('darwin', pinned, { EXAMPLE_CONVENTION: 'apple' })).toEqual(
       on('darwin', { convention: 'xdg' }),
     )
   })
@@ -455,6 +514,58 @@ describe('the README example with an injected HOME', () => {
       platform: 'darwin',
       env: { HOME: '/Users/ada' },
     })
-    expect(cli.standalone('tool').config().path).toBe('/Users/ada/.config/tool')
+    expect(normalize(cli.standalone('tool').config().path)).toBe(
+      normalize('/Users/ada/.config/tool'),
+    )
+  })
+})
+
+describe('homeDir', () => {
+  test('an absolute HOME, or USERPROFILE on Windows, is the home', () => {
+    expect(homeDir({ platform: 'linux', env: { HOME: '/home/ada' } })).toBe('/home/ada')
+    expect(
+      homeDir({ platform: 'win32', env: { HOME: '/c/x', USERPROFILE: 'C:\\Users\\ada' } }),
+    ).toBe('C:\\Users\\ada')
+  })
+
+  test('a relative or empty HOME in an injected environment throws MISSING_BASE_DIR', () => {
+    for (const env of [{}, { HOME: '' }, { HOME: 'rel' }, { HOME: '~' }]) {
+      let code: string | undefined
+      try {
+        homeDir({ platform: 'linux', env })
+      } catch (err) {
+        code = (err as TieredDirsError).code
+      }
+      expect(code).toBe('MISSING_BASE_DIR')
+    }
+  })
+
+  test('a relative HOME in the process environment falls back to the account home', () => {
+    // The host's own variable and platform: the account home is a host path.
+    const key = process.platform === 'win32' ? 'USERPROFILE' : 'HOME'
+    const saved = process.env[key]
+    process.env[key] = 'relative-home'
+    try {
+      expect(homeDir()).toBe(userInfo().homedir)
+    } finally {
+      if (saved === undefined) delete process.env[key]
+      else process.env[key] = saved
+    }
+  })
+})
+
+describe('expandTilde', () => {
+  test('~ and ~/ expand everywhere; ~\\ only on Windows', () => {
+    expect(expandTilde('~', '/home/me', 'linux')).toBe('/home/me')
+    expect(expandTilde('~/w', '/home/me', 'linux')).toBe('/home/me/w')
+    expect(expandTilde('~\\w', '/home/me', 'linux')).toBe('~\\w')
+    expect(expandTilde('~\\w', 'C:\\Users\\me', 'win32')).toBe('C:\\Users\\me\\w')
+    expect(expandTilde('~/w', 'C:\\Users\\me', 'win32')).toBe('C:\\Users\\me\\w')
+  })
+
+  test('~user, a mid-path ~ and a relative path are returned unchanged', () => {
+    for (const path of ['~other/w', 'a/~/b', 'rel', '/abs']) {
+      expect(expandTilde(path, '/home/me', 'linux')).toBe(path)
+    }
   })
 })

@@ -1,5 +1,47 @@
 # @osdlc/config-layers
 
+## 0.8.0
+
+### Minor Changes
+
+- b835ae4: Behaviour change: a secret key set to a scalar in the project file is now refused, as an object value already was; before, only an object value was checked. Behaviour change: scaffold output changed. Array defaults render each element as its own value (a number or boolean is no longer quoted), a string starting with `+` or `.` is quoted, and a nested object under a `.default({...})` renders the values in that default, with keys it lacks commented out, instead of the children's own schema defaults.
+  A load that salvages a partly invalid machine config file no longer deletes keys from the caller's object. `substitutePathNames` resolves only own names, so `{constructor}` no longer picks up `Object.prototype`'s. `consumerProblems` finds a symbol whose name holds a `$`.
+  Behaviour change: the machine file is parsed by the same YAML rules as the project file (as the Rust crate does), not plain `yaml.parse`: `.inf`, `.nan` and `1e999` read as their text, and a null or collection key is a `yaml` issue. Behaviour change: `valueAt` and `getIn` share one walk over own keys of plain mappings: `valueAt` no longer finds a list index (`list.0`), matching the crate's `value_at`, and neither finds an inherited name such as `constructor`; `omitPath` likewise ignores inherited names. Behaviour change: the schema walk (`leafSchema`, `keyExists`, `keyDescription`, `configNeeds` key scopes, `resolveKeyPath`, `explain`, `scaffold`) peels the same wrappers the secret walk does (`catch`, `readonly`, `nonoptional`, `promise`, `success`, and a pipe or `.transform()` down to its input side), so a key behind one resolves. `leafSchema` and `resolveKeyPath` share one walker: a key past a record's value type (`paths.dev.deeper` on a record of strings) no longer resolves to the record. The scaffold's `fieldInfo` treats a field under an outer `.nonoptional()` as required.
+  Behaviour change: `resolveConfigPath`'s default home is now `@osdlc/tiered-dirs`'s `homeDir`, so on Windows `~` expands to `%USERPROFILE%` rather than `$HOME`. Elsewhere the home is unchanged.
+  `envStem` is also exported from the light `@osdlc/config-layers/dirs` subpath (it moved there from the machine-file module; the root export is unchanged).
+
+### Patch Changes
+
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+- Updated dependencies [b835ae4]
+  - @osdlc/etag-write@0.3.0
+  - @osdlc/gfm-table@0.4.0
+  - @osdlc/tiered-dirs@0.5.0
+  - @osdlc/yaml-splice@0.3.0
+
+## 0.7.3
+
+### Patch Changes
+
+- Updated dependencies [9616994]
+  - @osdlc/tiered-dirs@0.4.0
+
+## 0.7.2
+
+### Patch Changes
+
+- 3ac5757: The README's differences table with the Rust crate drops the rows for `~user/x` and an empty home. The crate `config-layers` 0.7.0 now matches this package on both. The shared parity fixture covers them, and a relative `home`. No runtime change.
+
+## 0.7.1
+
+### Patch Changes
+
+- 910deca: `resolveConfigPath` no longer expands `~` from a relative `HOME`. A value such as `HOME=.` used to resolve `~/x` against the working directory, which can be the repository being read. A relative `HOME` now counts as unset, and the OS account's home is used. An explicit `home` option is used as given.
+- Updated dependencies [910deca]
+  - @osdlc/tiered-dirs@0.3.2
+
 ## 0.7.0
 
 ### Minor Changes

@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "kind": "catalog",
+  "root": "<root>",
+  "generatedAt": "<time>",
+  "discovery": "walk",
+  "allowExec": false,
+  "reports": [
+    {
+      "runner": "mise",
+      "chain": [
+        {
+          "label": "runner",
+          "hint": "mise runs tasks declared in its config, plus executable file tasks."
+        },
+        {
+          "label": "source",
+          "hint": "The config file or task directory that declares it. `.` is the project root."
+        },
+        {
+          "label": "task",
+          "hint": "The task name — the argument to `mise run`."
+        }
+      ],
+      "brand": {
+        "icon": "<svg>",
+        "color": "#8b2252"
+      },
+      "tool": {
+        "binary": "mise",
+        "found": true,
+        "path": "<bin>/mise"
+      },
+      "status": "absent",
+      "tasks": [],
+      "skippedForExec": true,
+      "diagnostics": [
+        {
+          "severity": "info",
+          "message": "mise needs to run a subprocess; re-run with execution allowed to include it"
+        }
+      ]
+    },
+    {
+      "runner": "tool-manager",
+      "chain": [
+        {
+          "label": "role",
+          "hint": "Commands the detected tool managers offer, synthesized from the files that show them."
+        },
+        {
+          "label": "directory",
+          "hint": "The package the command is for. `.` is the root."
+        },
+        {
+          "label": "tool",
+          "hint": "The tool that runs the command."
+        },
+        {
+          "label": "action",
+          "hint": "What the command does."
+        }
+      ],
+      "status": "ok",
+      "tasks": [
+        {
+          "id": "tool-manager:mise.toml:mise:install",
+          "runner": "tool-manager",
+          "path": [
+            "tool-manager",
+            ".",
+            "mise",
+            "install"
+          ],
+          "argv": [
+            "mise",
+            "install"
+          ],
+          "cwd": ".",
+          "display": "mise install",
+          "parameters": [],
+          "source": "mise.toml",
+          "origin": "synthesized",
+          "tags": [
+            "tool-manager",
+            "mise",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        },
+        {
+          "id": "tool-manager:mise.toml:mise:trust",
+          "runner": "tool-manager",
+          "path": [
+            "tool-manager",
+            ".",
+            "mise",
+            "trust"
+          ],
+          "argv": [
+            "mise",
+            "trust"
+          ],
+          "cwd": ".",
+          "display": "mise trust",
+          "parameters": [],
+          "source": "mise.toml",
+          "origin": "synthesized",
+          "tags": [
+            "tool-manager",
+            "mise",
+            "."
+          ],
+          "persistent": {
+            "value": false,
+            "declared": false
+          },
+          "executes": "local"
+        }
+      ],
+      "diagnostics": [],
+      "skippedForExec": false
+    }
+  ],
+  "source": "fresh",
+  "storedAt": null,
+  "groups": [
+    {
+      "id": "tasks",
+      "title": "Tasks",
+      "runners": [
+        "mise"
+      ]
+    },
+    {
+      "id": "tools",
+      "title": "Tools",
+      "runners": [
+        "tool-manager"
+      ]
+    }
+  ],
+  "skills": [],
+  "cache": [
+    {
+      "runner": "mise",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": null,
+      "slow": false
+    },
+    {
+      "runner": "tool-manager",
+      "state": "fresh",
+      "ageMs": 0,
+      "estimateMs": 0,
+      "slow": false,
+      "probeMs": 0
+    }
+  ],
+  "unknowns": [
+    {
+      "kind": "withheld",
+      "runner": "mise",
+      "reason": "exec-off",
+      "label": "withheld: --no-exec was given"
+    }
+  ],
+  "trustedTools": [],
+  "filter": {}
+}

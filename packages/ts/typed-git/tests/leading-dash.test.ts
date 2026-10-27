@@ -49,6 +49,7 @@ function call(client: Git | AsyncGit, name: string, args: unknown[]): unknown {
 /** One case per verb on the list: the verb and arguments with one `-` value. */
 const CASES: Array<[string, unknown[]]> = [
   ['showAtRev', ['-x', 'a.md']],
+  ['showAtRevChecked', ['-x', 'a.md']],
   ['resolveRef', ['-x']],
   ['symbolicRef', ['-x']],
   ['mergeBase', ['main', '-x']],
@@ -61,13 +62,17 @@ const CASES: Array<[string, unknown[]]> = [
   ['fetch', ['--upload-pack=touch FILE', 'HEAD']],
   ['clone', ['--upload-pack=touch FILE', 'dest']],
   ['push', ['--receive-pack=touch FILE', 'HEAD']],
+  ['pushPorcelain', ['--receive-pack=touch FILE', 'HEAD']],
   ['resetHard', ['-x']],
   ['deleteBranch', ['-x']],
   ['deleteRef', ['refs/heads/a', { expected: '-x' }]],
   ['worktreeAdd', ['-x']],
   ['worktreeRemove', ['-x']],
+  ['worktreeUnlock', ['-x']],
   ['worktreeMove', ['/wt', '-x']],
   ['remoteAdd', ['origin', '--x']],
+  ['remoteSetHead', ['--x', { auto: true }]],
+  ['remoteSetBranches', ['--x', ['main']]],
   ['merge', ['-x']],
   ['rebase', ['-x']],
   ['mergeTree', ['main', '-x']],
@@ -102,10 +107,19 @@ const MORE_CASES: Array<[string, unknown[]]> = [
   ['fetch', ['origin', ['main', '-x']]],
   ['clone', ['/store.git', '-x']],
   ['push', ['origin', '-x']],
+  ['pushPorcelain', ['origin', ['HEAD', '-x']]],
   ['deleteRef', ['-x', { expected: 'abc' }]],
   ['worktreeAdd', ['/wt', { startPoint: '-x' }]],
   ['worktreeMove', ['-x', '/wt']],
   ['remoteAdd', ['-x', '/store.git']],
+  ['remoteSetHead', ['origin', { branch: '-x' }]],
+  ['remoteSetBranches', ['origin', ['main', '-x']]],
+  ['push', ['origin', '-x', { delete: true }]],
+  ['worktreeAdd', ['/wt', { branch: 'b', resetBranch: true, startPoint: '-x' }]],
+  // worktree add hands the name to a child `git branch`: `-B -M` renames HEAD's branch.
+  ['worktreeAdd', ['/wt', { branch: '-M' }]],
+  ['worktreeAdd', ['/wt', { branch: '-M', resetBranch: true }]],
+  ['checkout', ['main', { branch: '-x' }]],
   ['mergeTree', ['-x', 'main']],
   ['log', [{ range: '-x' }]],
   ['log', [{ rev: 'main', notRefs: ['origin/main', '-x'] }]],
@@ -130,7 +144,7 @@ describe('leading-dash positionals', () => {
   test('the cases cover every guarded verb in verbs.ts', () => {
     const cased = new Set(CASES.map(([name]) => name))
     expect([...cased].sort()).toEqual([...guardedVerbs()].sort())
-    expect(cased.size).toBe(42)
+    expect(cased.size).toBe(47)
   })
 
   test.each([...CASES, ...MORE_CASES])('Git.%s refuses before spawning', (name, args) => {

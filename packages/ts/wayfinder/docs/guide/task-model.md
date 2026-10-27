@@ -2,7 +2,7 @@
 title: The task model and JSON
 sidebar:
   order: 7
-description: The Task and Catalog shapes that --json prints.
+description: The Task and Catalog shapes that way list --json prints.
 ---
 
 Every runner produces the same shape. A consumer that understands `Task` and
@@ -88,7 +88,12 @@ are independent. A GitHub Actions workflow is read by parsing YAML, but runs
 
 ## The catalog
 
-`--json` prints a `Catalog`:
+`way list --json` prints a `Catalog` as a document: the catalog's fields plus
+`schemaVersion`, `kind: "catalog"`, `cache`, `unknowns` and `filter`.
+`way schema list` prints its JSON Schema, and `@osdlc/wayfinder/schema`
+exports it as `catalogDocumentSchema`, with `documentZod('catalog')` to parse
+one. `way query --json` is the `query` document: `root`, `filter`, `source`,
+`storedAt`, `tasks`, `skills`, `cache` and `unknowns`.
 
 ```ts
 interface Catalog {
@@ -96,6 +101,8 @@ interface Catalog {
   generatedAt: string
   discovery: 'git' | 'walk'
   allowExec: boolean
+  source: 'fresh' | 'cached'
+  storedAt: string | null
   reports: RunnerReport[]
   groups: { id: string; title: string; runners: string[] }[]
 }
@@ -116,6 +123,11 @@ interface RunnerReport {
   `source` is relative to it.
 - **`generatedAt`**: when this collection ran. Under `--cached` it is the
   oldest contributing probe time.
+- **`source`**: `fresh` when every runner was probed in this call, `cached`
+  when the rows came from the store under `--cached`. With nothing stored,
+  `--cached` probes and says `fresh`.
+- **`storedAt`**: with `source: "cached"`, when the oldest stored rows were
+  probed. Null when fresh.
 - **`discovery`**: how files were found. `git` lists tracked and untracked,
   not ignored files. `walk` walks the tree.
 - **`allowExec`**: whether runners were allowed to run subprocesses.
@@ -125,6 +137,8 @@ interface RunnerReport {
   - `dependencies`: Dependencies (runner `package-manager`)
   - `tools`: Tools (runner `tool-manager`)
   - `hooks`: Git hooks (runner `hook-manager`)
+  - `skills`: Skills (no runner; the rows are in `skills`), present when the
+    repository has agent skills
 
 In a `RunnerReport`:
 
@@ -141,34 +155,69 @@ In a `RunnerReport`:
 - **`skippedForExec`**: true when the runner was withheld because it needed
   to run its tool.
 
-Over HTTP, `way --serve` also adds `trustable`: whether a trust grant would
-change this run's gate.
+A trust grant would change this run's gate when `unknowns` holds a
+`withheld` entry with reason `untrusted` or `tool-untrusted`. No server adds
+a field for it; the web page works it out from `unknowns` itself.
 
 ### The `cache` array
 
-`--json --cached` adds a `cache` array, one entry per selected runner. The
-web view's catalog always carries it.
+Every document carries a `cache` array, one entry per selected runner. The
+web view's catalog carries it too.
 
 ```ts
 interface RunnerCacheState {
   runner: string
   state: 'fresh' | 'stale' | 'miss'
-  reason?: 'changed' | 'max-age' | 'excludes'
+  reason?: 'changed' | 'max-age' | 'excludes' | 'exec' | 'version' | 'tool'
   ageMs?: number
   estimateMs: number | null
   slow: boolean
+  probeMs?: number
 }
 ```
 
 - **`state`**: `fresh`, `stale` (used, and out of date), or `miss` (nothing
   was stored, so it was probed now).
 - **`reason`**: on a stale entry only.
-- **`ageMs`**: how old the stored answer is. Absent on a miss.
+- **`ageMs`**: how old the stored answer is. 0 after a fresh probe.
 - **`estimateMs`**: the median re-probe cost measured in this repository, or
   `null` when never measured.
 - **`slow`**: true when those measurements say the runner is slow here.
 
-Plain `--json` has no `cache` key. See [The cache](cache.md).
+- **`probeMs`**: how long the probe took, when it ran in this call.
+
+See [The cache](cache.md).
+
+### The `unknowns` array
+
+What could not be read, each with the `label` the stderr note prints:
+
+```ts
+type Unknown =
+  | {
+      kind: 'withheld'
+      runner: string
+      reason: 'untrusted' | 'tool-untrusted' | 'exec-off'
+      missing?: string[]
+      label: string
+    }
+  | { kind: 'parameters'; runner: string; reason: string; tasks: string[]; label: string }
+  | { kind: 'stale'; runner: string; reason?: string; ageMs?: number; label: string }
+  | { kind: 'binary'; runner: string; binary: string; label: string }
+```
+
+`withheld` carries `missing`, the trust scopes the runner still needs: its own
+id and each tool manager that wraps it. A `way trust --scope <id>` grant for
+each lets it run. Absent when trust is not what withholds it.
+
+`parameters` lists the ids of tasks whose parameters were not read, and why:
+`exec-withheld`, `tool-missing`, `tool-failed`, `not-read` or
+`editor-variable`.
+
+### The `filter` object
+
+The filters the command applied: `query`, `mode`, `servicesOnly`,
+`declaredOnly` and `maxDepth`. Each is present only when set.
 
 ## Example
 

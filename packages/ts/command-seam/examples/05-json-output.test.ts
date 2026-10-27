@@ -14,6 +14,8 @@
 import { expect, test } from 'vitest'
 
 import {
+  failureText,
+  isJsonParseFailure,
   parseJsonResult,
   runJson,
   runJsonAsync,
@@ -216,4 +218,17 @@ test('a result from another helper is parsed in hand', () => {
   expect(latestVersion('left-pad', runner)).toBe('1.3.0')
   expect(calls).toHaveLength(2)
   expect(latestVersion('gone', gone.runner)).toBeNull()
+})
+
+test('a failed run and unusable output are told apart without listing kinds', () => {
+  const broken = fakeRunner({ 'view x --json': { stdout: 'not json' } })
+  const failed = fakeRunner({ 'view x --json': { exitCode: 1, stderr: 'E404\n' } })
+  const describe = (runner: typeof broken.runner): string => {
+    const r = runJson(runner, ['view', 'x', '--json'], { cwd: '.' })
+    if (r.ok) return 'ok'
+    return isJsonParseFailure(r.error) ? 'could not read output' : failureText(r.result)
+  }
+
+  expect(describe(broken.runner)).toBe('could not read output')
+  expect(describe(failed.runner)).toBe('E404')
 })

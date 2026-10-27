@@ -33,12 +33,64 @@ making `way` run code the user did not choose to run are in scope.
 - **Tool modules are code.** A module named by `--config` or the user file is
   the user's own choice. One named by the project file loads only when the
   repository is trusted and execution is allowed.
+- **Detection turns off the git config keys that run commands.** Discovery and
+  the owner lookup run git with `core.fsmonitor` off. The other keys that run
+  commands (hooks, `diff.external`, `filter.*`, `core.sshCommand`,
+  `core.pager`) do not apply to the git commands detection runs. git still
+  reads the rest of `.git/config`, such as the `origin` URL and `insteadOf`
+  rewrites.
+- **Detection runs the git on your PATH, not one in the repository.** Every
+  command detection and the owner lookup start is looked up on the absolute
+  `PATH` entries only. A relative or empty entry (`bin`, `.`,
+  `node_modules/.bin`) is skipped, and on Windows the current folder is not
+  searched. An absolute entry is still searched, even one inside the
+  repository: direnv's `PATH_add`, mise's `_.path` and `npx` add such
+  entries, and each is a choice you made. `way providers` uses the same
+  lookup, and a tool found only through a relative entry reads as not
+  installed.
+- **Owner trust believes the repository's own git config.** `trust.owners`
+  matches the remote URL the repository's `.git/config` reports. That file
+  comes with the directory: a folder from an archive or a shared drive can
+  name any owner. Owner trust fits clones you made yourself. `trust.paths` is
+  the stronger form, since a repository cannot choose where it is on your disk.
+- **Repository text cannot drive the terminal.** Task names, docs, paths and
+  config values have their control characters (C0, DEL, C1) and bidi controls
+  (U+202A-202E, U+2066-2069) replaced with U+FFFD before the terminal UI,
+  `list`, `query`, `trust`, `config`, `providers`, `dev`, the `serve`
+  summary or stderr prints them. Copied commands get the same text. `--json`,
+  `way dev … --json` included, keeps every value exact: C0 is escaped by JSON
+  itself, and DEL, C1 and the bidi controls are written as `\u` escapes, so
+  the output is safe to print. An error no command catches is printed the
+  same way, on one line.
+- **The installed `way` runs its own code.** It hands off to a checkout only
+  when `WAY_HOME` (an absolute path) or `way dev link` names one, and only when
+  that checkout's `package.json` is named `@osdlc/wayfinder`. `bun` is looked
+  up on the absolute `PATH` entries only, like git. The checkout runs
+  under Bun with `--no-env-file` and an empty config, so the `.env` and
+  `bunfig.toml` of the directory you stand in are not read. A relative `HOME`,
+  `XDG_*` or `WAYFINDER_CONFIG` is ignored, so no config, trust store or link
+  file is looked up under that directory. The directory you run it in does not
+  choose the code that runs.
 - **Tasks run without a shell.** A task is spawned from an argument vector.
   Typed arguments are bound by the task's tool and never replace its binary.
 - **The web view listens on 127.0.0.1.** Any local process and any page the
-  browser visits can reach the port. A one-shot boot token and a session token
-  protect every route. `/api/run` takes a task id from the server's own catalog,
-  never a command. `/api/trust` refuses when a grant would not apply, so
-  `--no-exec` cannot be lifted from the page.
+  browser visits can reach the port. Requests must name a loopback `Host` and
+  carry no foreign `Origin`. A one-shot boot token signs the page in, and a
+  bearer token protects every command and `/run`. The boot token is in the
+  URL the server opens or prints; it works once and expires a minute after
+  it is shown. Sent again, it is refused and the server warns in its
+  terminal; sessions already signed in keep working. There is one bearer
+  token per server, so a program that redeemed the link first keeps its
+  session until the server stops, and a new link does not sign it out. If
+  you did not open the link twice, stop the server and start it again. The
+  bearer token is never in a URL or a cookie: the page keeps it in
+  `sessionStorage`, which belongs to one tab, survives a reload and is never
+  sent with a request. A script running in the page could read it, so the
+  page loads no third-party code. A new tab needs a new boot token: Enter in
+  the `way serve` terminal makes one and retires the previous one. `/run`
+  takes a task id from the server's own catalog, never a command. Commands
+  keep the flags `way serve` started with, so `--no-exec` cannot be lifted
+  from the page, and a write of `allowExec`, a trust setting or `tools` is
+  refused.
 - **Trust is keyed on the resolved path.** A trusted repository that later
   pulls hostile changes stays trusted until `way trust --untrust`.

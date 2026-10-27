@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { cwdCheckout, isCheckout, resolve } from '../../src/devlink/resolve.ts'
 import { writeActive } from '../../src/devlink/state.ts'
+import type { ToolSpec } from '../../src/devlink/spec.ts'
 import { SPEC, sandbox, seedCheckout, type Sandbox } from './support.ts'
 
 let sb: Sandbox
@@ -93,5 +94,52 @@ describe('resolve', () => {
     const sel = resolve(SPEC, opts({ self: a }))
     expect(sel.source).toBe('local')
     expect(sel.reason).toContain('this checkout')
+  })
+})
+
+describe('cwdLayer', () => {
+  // SPEC with `cwdLayer` left unset, the default.
+  const { cwdLayer: _on, ...OFF } = SPEC
+
+  test('the cwd layer is off unless the spec turns it on', () => {
+    const a = seedCheckout(join(sb.root, 'a'))
+    const deep = join(a, 'src')
+    expect(resolve(OFF, opts({ cwd: deep })).source).toBe('local')
+    expect(resolve(SPEC, opts({ cwd: deep })).source).toBe('cwd')
+  })
+
+  test('with the cwd layer off, a link still applies from inside another checkout', () => {
+    const a = seedCheckout(join(sb.root, 'a'))
+    const b = seedCheckout(join(sb.root, 'b'))
+    writeActive(OFF, b, { dirs: sb.dirs })
+    const sel = resolve(OFF, opts({ cwd: a }))
+    expect(sel.source).toBe('link')
+    expect(sel.checkout).toBe(b)
+  })
+})
+
+describe('packageName', () => {
+  const NAMED: ToolSpec = { ...SPEC, packageName: '@example/tooly' }
+  const withName = (dir: string, name: string | null): string => {
+    seedCheckout(dir)
+    if (name !== null) writeFileSync(join(dir, 'package.json'), JSON.stringify({ name }))
+    return dir
+  }
+
+  test('a checkout needs the marker and the package name', () => {
+    expect(isCheckout(NAMED, withName(join(sb.root, 'right'), '@example/tooly'))).toBe(true)
+    expect(isCheckout(NAMED, withName(join(sb.root, 'wrong'), 'other'))).toBe(false)
+    expect(isCheckout(NAMED, withName(join(sb.root, 'none'), null))).toBe(false)
+    const bad = withName(join(sb.root, 'bad'), null)
+    writeFileSync(join(bad, 'package.json'), '{ not json')
+    expect(isCheckout(NAMED, bad)).toBe(false)
+  })
+
+  test('env and link naming a checkout with another package name are skipped', () => {
+    const other = withName(join(sb.root, 'other'), 'other')
+    writeActive(NAMED, other, { dirs: sb.dirs })
+    expect(resolve(NAMED, opts({ env: { TOOLY_HOME: other } })).source).toBe('local')
+    const right = withName(join(sb.root, 'right'), '@example/tooly')
+    expect(resolve(NAMED, opts({ env: { TOOLY_HOME: right } })).source).toBe('env')
   })
 })

@@ -38,7 +38,7 @@ const VERBS: ReadonlyArray<{ name: string }> = [
  * references (such as Wikipedia's Maven logo file), not from the licensed
  * icon entry.
  */
-const BRAND: RunnerBrand = {
+export const MAVEN_BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 21 8l-9 5-9-5Z"/><path d="M3 12l9 5 9-5M3 16l9 5 9-5"/></svg>',
   color: '#C71A36',
 }
@@ -46,7 +46,6 @@ const BRAND: RunnerBrand = {
 export const mavenRunner: RunnerRole = {
   kind: 'parse',
   chain: CHAIN,
-  brand: BRAND,
 
   async collect(ctx: ProviderContext): Promise<ProviderResult> {
     const manifests = (await ctx.files(POM_XML)).sort()

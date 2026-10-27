@@ -15,9 +15,10 @@
  */
 
 import { existsSync, lstatSync, readFileSync, realpathSync, type Stats } from 'node:fs'
-import { homedir } from 'node:os'
+import { homedir, userInfo } from 'node:os'
 import { isAbsolute, join, resolve as resolvePath } from 'node:path'
 
+import { which } from '@osdlc/command-seam'
 import { atomicWrite } from '@osdlc/etag-write'
 
 import { gitHead } from './git-head.ts'
@@ -35,12 +36,13 @@ import {
   clearActive,
   historyPath,
   homePath,
+  legacyHomePath,
   readActive,
   readHistory,
   writeActive,
   type HistoryEvent,
 } from './state.ts'
-import { cwdDevVar, entryOf, homeVar, pathNames, type ToolSpec } from './spec.ts'
+import { cwdDevVar, cwdLayerActive, entryOf, homeVar, pathNames, type ToolSpec } from './spec.ts'
 
 /**
  * Options shared by the link operations, including a dry-run flag and a clock
@@ -66,7 +68,11 @@ function checkoutOrThrow(spec: ToolSpec, path: string, cwd: string | undefined):
   // A relative path is relative to the caller's cwd, which `opts.cwd` may override.
   const abs = resolvePath(cwd ?? process.cwd(), path)
   if (!isCheckout(spec, abs)) {
-    throw new DevlinkError(`not a ${spec.name} checkout (missing ${spec.marker}): ${abs}`)
+    const want =
+      spec.packageName === undefined
+        ? spec.marker
+        : `${spec.marker}, or package.json name ${spec.packageName}`
+    throw new DevlinkError(`not a ${spec.name} checkout (missing ${want}): ${abs}`)
   }
   return abs
 }
@@ -88,9 +94,21 @@ function stamp(opts: OpOptions): string {
  */
 export function defaultBinDir(env: Record<string, string | undefined> = process.env): string {
   const xdg = env['XDG_BIN_HOME']
-  // A relative XDG_BIN_HOME is ignored, as the XDG spec says. An empty HOME
-  // falls back to the account's home.
-  return xdg && isAbsolute(xdg) ? xdg : join(env['HOME'] || homedir(), '.local', 'bin')
+  // A relative XDG_BIN_HOME is ignored, as the XDG spec says. An empty or
+  // relative HOME falls back to the account's home.
+  const home = env['HOME']
+  return xdg && isAbsolute(xdg)
+    ? xdg
+    : join(home && isAbsolute(home) ? home : accountHome(), '.local', 'bin')
+}
+
+/** The OS account's home, which no environment variable changes. */
+function accountHome(): string {
+  try {
+    return userInfo().homedir
+  } catch {
+    return homedir()
+  }
 }
 
 /**
@@ -108,7 +126,10 @@ export function isOnPath(
 }
 
 /**
- * The first `name` found on PATH, or null.
+ * The first executable `name` on an absolute entry of `env`'s PATH, or null.
+ * A relative or empty entry is skipped, so a file in the repository the user
+ * stands in is never reported as what runs. Null when PATH is unset or empty.
+ * The lookup is `@osdlc/command-seam`'s `which` with `absolutePathOnly`.
  *
  * @experimental
  */
@@ -118,17 +139,8 @@ export function findOnPath(
 ): string | null {
   const raw = env['PATH']
   if (!raw) return null
-  for (const dir of raw.split(':')) {
-    if (dir.length === 0) continue
-    const candidate = join(dir, name)
-    try {
-      lstatSync(candidate)
-      return candidate
-    } catch {
-      // keep looking
-    }
-  }
-  return null
+  const lookup = { absolutePathOnly: true, env: { PATH: raw, PATHEXT: env['PATHEXT'] } }
+  return which(name, lookup) ?? null
 }
 
 /**
@@ -188,7 +200,9 @@ export function install(spec: ToolSpec, input: InstallInput, opts: OpOptions = {
   } catch {
     throw new DevlinkError(`launcher not found: ${launcher}`)
   }
-  const binDir = input.binDir ? resolvePath(input.binDir) : defaultBinDir(env)
+  const binDir = input.binDir
+    ? resolvePath(opts.cwd ?? process.cwd(), input.binDir)
+    : defaultBinDir(env)
   const dryRun = opts.dryRun ?? false
 
   const shim = renderShim(spec, target)
@@ -500,8 +514,22 @@ export function history(spec: ToolSpec, opts: OpOptions = {}): HistoryEntry[] {
 export interface StatusResult {
   selection: Selection
   env: { var: string; value: string | null }
+  /**
+   * `suppressed` is true when the cwd layer is off: the spec does not set
+   * `cwdLayer`, a suppressor is set, or `<NAME>_CWD_DEV=0`.
+   */
   cwd: { var: string; checkout: string | null; suppressed: boolean }
-  link: { path: string; value: string | null; valid: boolean; suppressed: boolean }
+  /**
+   * `legacy` is the link file a release before 0.8 wrote on macOS, when it is
+   * there and the current one is not; null otherwise.
+   */
+  link: {
+    path: string
+    value: string | null
+    valid: boolean
+    suppressed: boolean
+    legacy: string | null
+  }
   /** The launcher's own checkout, when it has one. */
   self: string | null
   history: { path: string; entries: number }
@@ -557,13 +585,14 @@ export function status(spec: ToolSpec, opts: OpOptions = {}): StatusResult {
     cwd: {
       var: cwdDevVar(spec),
       checkout: cwdCheckout(spec, cwd),
-      suppressed: isSuppressed || env[cwdDevVar(spec)] === '0',
+      suppressed: !cwdLayerActive(spec, env, isSuppressed),
     },
     link: {
       path: homePath(spec, opts),
       value: linked,
       valid: linked !== null && isCheckout(spec, linked),
       suppressed: isSuppressed,
+      legacy: legacyHomePath(spec, opts),
     },
     self: opts.self ?? null,
     history: { path: historyPath(spec, opts), entries: history(spec, opts).length },

@@ -2,8 +2,11 @@
 // tarball. For each package it runs `pnpm pack` (which rewrites `workspace:`
 // ranges), checks the shared shape, runs publint, runs Are The Types Wrong if
 // the package ships types, and then tries a clean consumer. The consumer step
-// runs `npm install <tarball>` in an empty project, loads every entry point
-// under Node, and runs the package's smoke check if it has one. The smoke
+// runs `npm install <tarball>` in an empty project and loads every entry point
+// under Node. A package with optional peers is loaded twice: once without
+// them, where only an entry that needs a missing optional peer may fail, and
+// once with them installed. Then the package's smoke check runs, if it has
+// one. A stylesheet export must point at one `./dist/<name>.css` file. The smoke
 // check is `tests/smoke.mjs` in the package directory. It is not shipped. It
 // is copied into the consumer project and imports the package by name, so it
 // runs against the installed tarball.
@@ -43,10 +46,15 @@ import { basename, join, relative, resolve } from 'node:path'
 import {
   DECLARES_EXPORT,
   conventionProblems,
+  entryPoints,
+  optionalPeers,
   packedManifestProblems,
   parseCatalog,
   parseJsonc,
+  peerName,
   shapeProblems,
+  stylesheetEntries,
+  stylesheetProblems,
 } from './package-shape-ts.ts'
 import type { PackageJson, Tsconfig } from './package-shape-ts.ts'
 
@@ -88,24 +96,17 @@ function smokeFile(pkgDir: string): string | undefined {
   return existsSync(file) ? file : undefined
 }
 
-/** The specifiers a consumer can load: `name` plus each `exports` subpath
- * (pattern subpaths skipped), or `name` alone for a `main`-only package. */
-function entryPoints(pkg: Pkg): string[] {
-  if (pkg.exports === undefined) return pkg.main ? [pkg.name] : []
-  if (typeof pkg.exports === 'string') return [pkg.name]
-  const keys = Object.keys(pkg.exports as object)
-  if (!keys.some((k) => k.startsWith('.'))) return [pkg.name] // conditions only
-  return keys
-    .filter((k) => !k.includes('*') && k !== './package.json')
-    .map((k) => (k === '.' ? pkg.name : `${pkg.name}/${k.slice(2)}`))
-}
-
 /** Installs `tarball` into an empty project and loads each entry point the
  * way a Node consumer would. Code loads through `import()`. An entry with no
  * values passes if its `.d.ts` exports something. A JSON entry (a config
- * preset, possibly with comments) is only resolved and read, because its
- * consumer is a tool, not Node. Then copies in the package's smoke check, if
- * it has one, and runs it there. */
+ * preset, possibly with comments) or a stylesheet is only resolved and read,
+ * because its consumer is a tool, not Node.
+ *
+ * A package with optional peers is probed twice. First without them: an
+ * entry may then fail only with ERR_MODULE_NOT_FOUND naming one of them, and
+ * every other entry must load. Then with each optional peer installed at its
+ * declared range: every entry must load. The package's smoke check, if it
+ * has one, is copied in and run last, with the optional peers installed. */
 function cleanConsumer(
   pkg: Pkg,
   pkgDir: string,
@@ -124,10 +125,22 @@ function cleanConsumer(
     )
     run('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts', tarball], consumer)
     const specs = entryPoints(pkg)
+    const peers = optionalPeers(pkg)
     // import.meta.resolve uses the `import` conditions, as import() does.
-    const probe = `
+    const probe = (missing: string[]): string => `
       import { readFileSync } from 'node:fs'
       import { fileURLToPath } from 'node:url'
+      const missing = ${JSON.stringify(missing)}
+      const load = async (spec) => {
+        try {
+          return await import(spec)
+        } catch (err) {
+          const peer = missing.find((m) => String(err?.message).includes("'" + m + "'"))
+          if (err?.code !== 'ERR_MODULE_NOT_FOUND' || peer === undefined) throw err
+          console.log('consumer: ' + spec + ' needs the optional peer ' + peer)
+          return null
+        }
+      }
       for (const spec of ${JSON.stringify(specs)}) {
         const resolved = fileURLToPath(import.meta.resolve(spec))
         // A types-only entry (interfaces, no values) loads empty; its
@@ -141,14 +154,24 @@ function cleanConsumer(
             return false
           }
         }
-        const ok = resolved.endsWith('.json')
-          ? readFileSync(resolved, 'utf8').trim().length > 0
-          : Object.keys(await import(spec)).length > 0 || typesOnly()
-        if (!ok) throw new Error(spec + ' loaded empty')
+        if (resolved.endsWith('.json') || resolved.endsWith('.css')) {
+          if (readFileSync(resolved, 'utf8').trim().length === 0) throw new Error(spec + ' is empty')
+        } else {
+          const mod = await load(spec)
+          if (mod === null) continue
+          if (Object.keys(mod).length === 0 && !typesOnly()) throw new Error(spec + ' loaded empty')
+        }
         console.log('consumer: loaded ' + spec)
       }
     `
-    process.stdout.write(run('node', ['--input-type=module', '-e', probe], consumer))
+    process.stdout.write(
+      run('node', ['--input-type=module', '-e', probe(peers.map(peerName))], consumer),
+    )
+    if (peers.length > 0) {
+      run('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts', ...peers], consumer)
+      console.log(`consumer: installed the optional peers ${peers.join(', ')}`)
+      process.stdout.write(run('node', ['--input-type=module', '-e', probe([])], consumer))
+    }
     const smoke = smokeFile(pkgDir)
     if (smoke) {
       copyFileSync(smoke, join(consumer, 'smoke.mjs'))
@@ -262,6 +285,7 @@ for (const pkgDir of dirs) {
         engines,
       }),
       ...packedManifestProblems(packedManifest(tarball)),
+      ...stylesheetProblems(pkg.exports),
     ]
     if (shape.length > 0) {
       throw Object.assign(
@@ -269,11 +293,25 @@ for (const pkgDir of dirs) {
         { shape: true },
       )
     }
+    // `build` re-stamps version.generated.ts, so a stale committed copy shows
+    // as a working-tree change by now, where `stamp-version --check` would pass.
+    if (pkg.scripts?.['stamp-version'] !== undefined) {
+      run('pnpm', ['run', '--silent', 'stamp-version', '--check'], pkgDir)
+      const changed = run('git', ['status', '--porcelain', '--', ':(glob)**/version.generated.ts'], pkgDir)
+      if (changed.trim() !== '') {
+        throw new Error(
+          `version.generated.ts differs from the commit; run \`pnpm run stamp-version\` and commit it:\n${changed}`,
+        )
+      }
+    }
     process.stdout.write(run(bin('publint'), ['run', tarball, '--strict'], root))
     if (shipsTypes(pkg)) {
       // An ESM-only package is not judged on CommonJS resolution.
       const profile = pkg.type === 'module' ? 'esm-only' : 'node16'
-      process.stdout.write(run(bin('attw'), [tarball, '--profile', profile], root))
+      // A stylesheet is a file a tool reads, not a module: it has no types.
+      const sheets = stylesheetEntries(pkg.exports)
+      const exclude = sheets.length > 0 ? ['--exclude-entrypoints', ...sheets] : []
+      process.stdout.write(run(bin('attw'), [tarball, '--profile', profile, ...exclude], root))
     } else {
       console.log('attw: skipped, the package ships no types')
     }

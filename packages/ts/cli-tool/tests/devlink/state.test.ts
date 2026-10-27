@@ -1,9 +1,10 @@
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import * as dirsModule from '@osdlc/config-layers/dirs'
 import { mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 import { resolve } from '../../src/devlink/resolve.ts'
-import { homePath, readActive, writeActive } from '../../src/devlink/state.ts'
+import { homePath, readActive, stateDir, writeActive } from '../../src/devlink/state.ts'
 import { SPEC, sandbox, type Sandbox } from './support.ts'
 
 let sb: Sandbox
@@ -37,4 +38,18 @@ describe('writeActive', () => {
     expect(readdirSync(sb.stateDir)).toEqual(['home'])
     rmSync(sb.stateDir, { recursive: true })
   })
+})
+
+test('state is resolved under the xdg convention', () => {
+  const seen: unknown[] = []
+  const spy = vi.spyOn(dirsModule, 'systemDirs').mockImplementation((vendor, opts) => {
+    seen.push(opts)
+    return sb.dirs
+  })
+  try {
+    expect(stateDir(SPEC)).toBe(sb.stateDir)
+    expect(seen).toEqual([{ convention: 'xdg', conventionFromEnv: false }])
+  } finally {
+    spy.mockRestore()
+  }
 })

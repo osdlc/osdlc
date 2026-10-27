@@ -1,0 +1,6 @@
+just safe
+npm run 'build�[2J'
+npm run 'rev�esrever'
+npm run 'bell�'
+npm run 'c1�control'
+npm install

@@ -9,9 +9,12 @@
 // that installed the tarball, so it must not import other repo files. It is
 // not a test-runner suite and is not in `files`.
 //
-// Tests both entry points, because each is a separate file that can break
-// on its own: the root (flag parsing, exit codes, a captured context) and
-// ./devlink (the tool spec and the PATH shim).
+// Tests each entry point, because each is a separate file that can break on
+// its own: the root (flag parsing, exit codes, a captured context), ./devlink
+// (the tool spec and the PATH shim), and the command tree with its shared
+// commands, which load zod. The http entry answers a call, and the mcp entry
+// lists the tools. check:packages runs this with the optional MCP SDK
+// installed.
 
 import { strict as assert } from 'node:assert'
 
@@ -21,6 +24,13 @@ import * as defineCliEntry from '@osdlc/cli-tool/define-cli'
 import * as exitEntry from '@osdlc/cli-tool/exit'
 import * as ioEntry from '@osdlc/cli-tool/io'
 import * as promptEntry from '@osdlc/cli-tool/prompt'
+import * as wrapEntry from '@osdlc/cli-tool/wrap'
+import { defineApp } from '@osdlc/cli-tool/command'
+import { configCommands } from '@osdlc/cli-tool/config-command'
+import { guideCommand } from '@osdlc/cli-tool/guide'
+import { runApp } from '@osdlc/cli-tool/testing'
+import { trustCommand } from '@osdlc/cli-tool/trust-command'
+import { createHttpApi } from '@osdlc/cli-tool/http'
 
 const { captureContext, captureIo, defineCli, EXIT, isDomainExit } = root
 
@@ -31,6 +41,60 @@ assert.equal(defineCliEntry.defineCli, root.defineCli)
 assert.equal(exitEntry.EXIT, root.EXIT)
 assert.equal(ioEntry.captureIo, root.captureIo)
 assert.equal(promptEntry.askYesNo, root.askYesNo)
+assert.equal(wrapEntry.wrapText, root.wrapText)
+
+// A command tree answers help, --json and --version from the built files.
+{
+  const none = async () => ({ root: '/r', trusted: false, by: null, changed: false })
+  const app = defineApp({
+    name: 'tooly',
+    version: '1.0.0',
+    summary: 'a smoke test',
+    commands: {
+      config: configCommands({
+        layers: ['project'],
+        defaultLayer: 'project',
+        list: async () => ({ settings: [{ key: 'a', value: 1, source: 'project' }] }),
+        locations: async () => [],
+        set: async () => ({ file: 'f', value: 1 }),
+        unset: async () => ({ file: 'f', removed: false }),
+      }),
+      trust: trustCommand({ trust: none, untrust: none, show: none, list: async () => [] }),
+      guide: guideCommand([{ id: 'start', title: 'Start', summary: 's', body: () => 'Hi.' }], {
+        title: 'tooly guide',
+      }),
+    },
+  })
+  assert.equal((await runApp(app, ['--version'])).out, 'tooly 1.0.0\n')
+  const got = await runApp(app, ['config', 'get', 'a', '--json'])
+  assert.deepEqual(got.json(), {
+    schemaVersion: 1,
+    kind: 'config-get',
+    key: 'a',
+    value: 1,
+    source: 'project',
+  })
+  assert.match((await runApp(app, ['help'])).out, /commands:\n {2}config/)
+  assert.equal((await runApp(app, ['schema', '--json'])).exit, 0)
+
+  const api = createHttpApi(app, { context: { cwd: '/r', env: {} } })
+  const res = await api.fetch(
+    new Request('http://127.0.0.1/commands/config/get', {
+      method: 'POST',
+      headers: {
+        host: '127.0.0.1',
+        authorization: `Bearer ${api.token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ key: 'a' }),
+    }),
+  )
+  assert.equal(res.status, 200)
+  assert.deepEqual(await res.json(), got.json())
+
+  const mcp = await import('@osdlc/cli-tool/mcp')
+  assert.ok(mcp.mcpTools(app).some((t) => t.name === 'config_get'))
+}
 
 // Flags are declared once and parsed to typed values.
 const cli = defineCli({

@@ -16,10 +16,10 @@
  * service's compare-and-swap ref operations. That is not general git.
  */
 
-import { dirname } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 
 import {
-  resolveRunner,
+  spawnRunner,
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
@@ -61,7 +61,6 @@ import {
   type DiffTreeOptions,
   type FetchOptions,
   type ForEachRefOptions,
-  type ForceLease,
   type GitVerb,
   type GrepOptions,
   type InitOptions,
@@ -71,6 +70,8 @@ import {
   type LsRemoteOptions,
   type LsTreeOptions,
   type NumstatEntry,
+  type PushPorcelainOptions,
+  type PushReport,
   type RemoteRef,
   type CleanOptions,
   type DiffCheckOptions,
@@ -79,7 +80,12 @@ import {
   type StatusPorcelainOptions,
   type TreeEntry,
   type Worktree,
+  type WorktreeAddOptions,
   type WorktreeMoveOptions,
+  type GcOptions,
+  type PushOptions,
+  type RemoteSetBranchesOptions,
+  type RemoteSetHeadOptions,
 } from './verbs.ts'
 
 /**
@@ -133,7 +139,9 @@ export class Git {
    * `backend.ts`.
    *
    * This client takes a `runner`, where `AsyncGit` takes a `backend`. The
-   * default runner spawns `git`; tests pass a fake `CommandRunner`.
+   * default runner spawns the `git` found on an absolute `PATH` entry, so a
+   * `git` file in the checkout cannot run in its place. Tests pass a fake
+   * `CommandRunner`.
    *
    * Neither client has a default timeout. This client kills a child whose
    * output on one stream passes 256 MB; `AsyncGit` has no output cap. The
@@ -149,7 +157,7 @@ export class Git {
     } = {},
   ) {
     this.cwd = cwd
-    this.runner = resolveRunner('git', opts.runner)
+    this.runner = opts.runner ?? spawnRunner('git', { absolutePathOnly: true })
     this.boundGitDir = opts.gitDir
     this.workTree = opts.workTree
     this.env = opts.env
@@ -262,6 +270,14 @@ export class Git {
   }
 
   /**
+   * A file's content at a rev, throwing when the path is missing. Use it when
+   * a missing file is an error. See `showAtRevChecked` in `verbs.ts`.
+   */
+  showAtRevChecked(rev: string, relPath: string, opts: GitSyncCallOptions = {}): string {
+    return this.exec(v.showAtRevChecked(rev, relPath), opts)
+  }
+
+  /**
    * Trimmed `git rev-parse <args>` output, for a query no other verb covers. See `revParse` in `verbs.ts`; for a ref, prefer
    * {@link Git.resolveRef}.
    *
@@ -336,13 +352,22 @@ export class Git {
    * The primary checkout that owns this working directory, or null when it is
    * not inside a repository at all.
    *
-   * It is correct when the cwd is a linked worktree too. `gitCommonDir()` is
-   * worktree-aware and absolute, so its parent is the primary checkout in
-   * both cases.
+   * It is correct when the cwd is a linked worktree too: `gitCommonDir()` is
+   * worktree-aware and absolute. When that store is `<checkout>/.git`, its
+   * parent is the answer. Otherwise (a submodule's `.git/modules/<name>`, a
+   * `--separate-git-dir` clone, a bare store) it is `core.worktree`, this
+   * checkout when the cwd is the main worktree, or the first non-bare
+   * `worktree list` entry. A bare store with no main checkout answers null.
    */
   mainCheckout(opts: GitSyncCallOptions = {}): string | null {
     const common = this.gitCommonDir(opts)
-    return common === null ? null : dirname(common)
+    if (common === null) return null
+    if (basename(common) === '.git') return dirname(common)
+    const configured = this.configGet('core.worktree', opts)
+    if (configured !== null) return resolve(common, configured)
+    if (this.gitDir(opts) === common) return this.topLevel(opts)
+    const main = this.worktrees(opts)[0]
+    return main === undefined || main.bare ? null : main.path
   }
 
   /** Current branch shortname, or null when detached. Throws outside a repo. */
@@ -361,6 +386,15 @@ export class Git {
   /** Every changed or untracked file, from `status --porcelain -z`. */
   statusEntries(opts: GitSyncCallOptions = {}): StatusEntry[] {
     return this.exec(v.statusEntries(), opts)
+  }
+
+  /**
+   * True iff anything is staged (`diff --cached --quiet` exits 1). On an
+   * unborn HEAD the index is compared against the empty tree. See
+   * `hasStagedChanges` in `verbs.ts`.
+   */
+  hasStagedChanges(opts: GitSyncCallOptions = {}): boolean {
+    return this.exec(v.hasStagedChanges(), opts)
   }
 
   /** True iff the working tree has any staged/unstaged/untracked change. */
@@ -677,14 +711,25 @@ export class Git {
    * "push only if the remote ref is still where I saw it". `{forceWithLease: true}` adds the
    * bare flag, which is the unsafe form: it compares against the
    * remote-tracking ref, which a fetch in this same process may have just
-   * updated. See `push` in `verbs.ts`.
+   * updated. `{delete: true}` deletes `refspec` on the remote. See `push` in
+   * `verbs.ts`.
    */
-  push(
-    remote: string,
-    refspec: string,
-    opts: GitSyncCallOptions & { forceWithLease?: boolean | ForceLease | undefined } = {},
-  ): void {
+  push(remote: string, refspec: string, opts: GitSyncCallOptions & PushOptions = {}): void {
     this.exec(v.push(remote, refspec, opts), opts)
+  }
+
+  /**
+   * `git push --porcelain`, read into one result per ref. A rejected ref comes
+   * back with a typed `rejection` rather than a throw; a failure that reaches
+   * no ref (an unknown remote, auth, network) still throws. See
+   * `pushPorcelain` in `verbs.ts`.
+   */
+  pushPorcelain(
+    remote: string,
+    refspec: string | string[],
+    opts: GitSyncCallOptions & PushPorcelainOptions = {},
+  ): PushReport {
+    return this.exec(v.pushPorcelain(remote, refspec, opts), opts)
   }
 
   /** `git clean -f`, plus `-d` with `directories`. Ignored files are kept. */
@@ -718,15 +763,11 @@ export class Git {
     this.exec(v.deleteRef(ref, opts), opts)
   }
 
-  /** `git worktree add [--detach] [-b branch] <path> [startPoint]`. */
-  worktreeAdd(
-    path: string,
-    opts: GitSyncCallOptions & {
-      branch?: string | undefined
-      startPoint?: string | undefined
-      detach?: boolean | undefined
-    } = {},
-  ): void {
+  /**
+   * `git worktree add [--detach] [-b|-B branch] <path> [startPoint]`.
+   * `resetBranch` picks `-B`: create `branch`, or reset it if it exists.
+   */
+  worktreeAdd(path: string, opts: GitSyncCallOptions & WorktreeAddOptions = {}): void {
     this.exec(v.worktreeAdd(path, opts), opts)
   }
 
@@ -747,6 +788,11 @@ export class Git {
     this.exec(v.worktreeMove(from, to, opts), opts)
   }
 
+  /** `git worktree unlock <path>`. */
+  worktreeUnlock(path: string, opts: GitSyncCallOptions = {}): void {
+    this.exec(v.worktreeUnlock(path), opts)
+  }
+
   /** `git worktree prune`. */
   worktreePrune(opts: GitSyncCallOptions = {}): void {
     this.exec(v.worktreePrune(), opts)
@@ -755,6 +801,28 @@ export class Git {
   /** `git remote add <name> <url>`. */
   remoteAdd(name: string, url: string, opts: GitSyncCallOptions = {}): void {
     this.exec(v.remoteAdd(name, url), opts)
+  }
+
+  /**
+   * `git remote set-head <remote> <branch> | --auto | --delete` — exactly one
+   * of `branch`, `auto` or `delete`. See `remoteSetHead` in `verbs.ts`.
+   */
+  remoteSetHead(remote: string, opts: GitSyncCallOptions & RemoteSetHeadOptions): void {
+    this.exec(v.remoteSetHead(remote, opts), opts)
+  }
+
+  /** `git remote set-branches [--add] <remote> <branch…>`; an empty list throws. */
+  remoteSetBranches(
+    remote: string,
+    branches: string[],
+    opts: GitSyncCallOptions & RemoteSetBranchesOptions = {},
+  ): void {
+    this.exec(v.remoteSetBranches(remote, branches, opts), opts)
+  }
+
+  /** `git gc [--auto] [--aggressive] [--prune=<date> | --no-prune] [--quiet]`. */
+  gc(opts: GitSyncCallOptions & GcOptions = {}): void {
+    this.exec(v.gc(opts), opts)
   }
 
   // ── integration ───────────────────────────────────────────────────────────

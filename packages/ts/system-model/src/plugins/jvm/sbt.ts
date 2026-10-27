@@ -14,8 +14,9 @@
  * while leaving out `test`. Reporting nothing is better. `mise` makes the same
  * choice.
  *
- * The cost is high. Every other exec runner here answers in milliseconds. sbt
- * starts a JVM, resolves the build's own dependencies and compiles the build
+ * The cost is high. sbt is the slowest exec runner here: mise answers in
+ * milliseconds, and moon is slow only when a first query installs a toolchain.
+ * sbt starts a JVM, resolves the build's own dependencies and compiles the build
  * definition. That takes 10-30s cold, and can take minutes on a first run with
  * an empty ivy/coursier cache. So this asks sbt once, with both commands in a
  * single JVM, and accepts a coarser answer instead of asking per project (see
@@ -66,15 +67,16 @@ export const VERSION_MARKER = 'project/build.properties'
  * identify the ecosystem. Icon path: simple-icons v16 (CC0), slug `scala`. Color is
  * the same Scala brand red simple-icons lists for it.
  */
-const BRAND: RunnerBrand = {
+export const SBT_BRAND: RunnerBrand = {
   icon: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M4.589 24c4.537 0 13.81-1.516 14.821-3v-5.729c-.957 1.408-10.284 2.912-14.821 2.912V24zM4.589 16.365c4.537 0 13.81-1.516 14.821-3V7.636c-.957 1.408-10.284 2.912-14.821 2.912v5.817zM4.589 8.729c4.537 0 13.81-1.516 14.821-3V0C18.453 1.408 9.126 2.912 4.589 2.912v5.817z"/></svg>',
   color: '#dc322f',
 }
 
 export const sbtRunner: RunnerRole = {
   kind: 'exec',
+  // A cold sbt start compiles the build definition and can take minutes.
+  probe: { timeoutMs: 300_000, cost: 'slow' },
   chain: CHAIN,
-  brand: BRAND,
   // Watch every `*.sbt`, not only the root ones this runner reads. sbt also
   // loads nested ones, so a new subproject `.sbt` changes the task set.
   // `project/**` (plugins and build definitions) has no basename to watch, so
@@ -106,7 +108,10 @@ export const sbtRunner: RunnerRole = {
     // cold start, which is the usual case. So this parses the console listing.
     const res = await ctx
       .runner('sbt')
-      .run(['-batch', '-Dsbt.log.noformat=true', 'projects', 'tasks'], { cwd: ctx.root })
+      .run(['-batch', '-Dsbt.log.noformat=true', 'projects', 'tasks'], {
+        cwd: ctx.root,
+        signal: ctx.signal,
+      })
 
     if (res.exitCode !== 0) {
       return {
@@ -267,18 +272,18 @@ function parseProjects(output: string): SbtProject[] {
  * required description keeps project ids out, since they have none. This is
  * scraped text, and a looser pattern would turn sentences into tasks.
  */
-function parseTaskRows(output: string): TaskRow[] {
+export function parseTaskRows(output: string): TaskRow[] {
   const out: TaskRow[] = []
   const seen = new Set<string>()
   for (const raw of output.split(/\r?\n/)) {
     const line = strip(raw)
     if (line === null) continue
-    const m = /^\s+([A-Za-z][A-Za-z0-9_-]*)\s{2,}(\S.*?)\s*$/.exec(line)
+    const m = /^\s+([A-Za-z][A-Za-z0-9_-]*)\s{2,}(\S.*)$/.exec(line)
     if (m === null) continue
     const name = m[1]!
     if (seen.has(name)) continue
     seen.add(name)
-    out.push({ name, description: m[2]! })
+    out.push({ name, description: m[2]!.trimEnd() })
   }
   return out
 }

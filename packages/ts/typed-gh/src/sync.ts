@@ -16,12 +16,7 @@
  * `raw` and `rawChecked` run any `gh` call.
  */
 
-import {
-  resolveRunner,
-  spawnRunner,
-  type CommandResult,
-  type CommandRunner,
-} from '@osdlc/command-seam'
+import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
 
 import { runCheckedGh, softSync, triedSync, type Soft, type TriedSync } from './doors.ts'
 import { runVerb } from './run.ts'
@@ -41,13 +36,18 @@ import type { IssueRow, Label, OwnerRepo, PrSearchHit, PullRequest, Repository }
 
 /**
  * Makes a runner for a binary. A CLI passes one factory to every place that
- * runs a command. Real code uses `spawnRunner`. Tests pass a factory that
- * records calls, so the CLI runs offline.
+ * runs a command. Real code uses {@link defaultRunnerFactory}. Tests pass a
+ * factory that records calls, so the CLI runs offline.
  */
 export type RunnerFactory = (binary: string) => CommandRunner
 
-/** The default factory: real runners that use `spawnSync`. */
-export const defaultRunnerFactory: RunnerFactory = spawnRunner
+/**
+ * The default factory: real runners that use `spawnSync`. A bare name is
+ * found on absolute `PATH` entries only, so a file of that name in the
+ * working directory cannot run in its place.
+ */
+export const defaultRunnerFactory: RunnerFactory = (binary) =>
+  spawnRunner(binary, { absolutePathOnly: true })
 
 /** How long to wait between merge-state retries, in milliseconds. */
 const MERGE_STATE_RETRY_DELAY_MS = 1_500
@@ -86,7 +86,7 @@ export class Gh {
     this.repo = opts.repo
     this.hostname = opts.hostname
     this.target = { repo: opts.repo, hostname: opts.hostname }
-    this.runner = resolveRunner('gh', opts.runner)
+    this.runner = opts.runner ?? defaultRunnerFactory('gh')
   }
 
   /** The same client rooted at a different directory (same runner, repo and host). */
@@ -198,12 +198,17 @@ export class Gh {
    */
   openPrFor(
     branch: string,
-    opts: { limit?: number | undefined; fields?: readonly string[] | undefined } = {},
+    opts: {
+      limit?: number | undefined
+      fields?: readonly string[] | undefined
+      timeoutMs?: number | undefined
+    } = {},
   ): PullRequest | null {
     const rows = this.prList({
       head: branch,
       limit: opts.limit ?? 5,
       fields: opts.fields ?? v.PR_REF_FIELDS,
+      timeoutMs: opts.timeoutMs,
     })
     return v.pickPrForBranch(rows.rows, branch)
   }
@@ -286,7 +291,10 @@ export class Gh {
     return this.exec(v.issueView(number, this.target), opts.timeoutMs)
   }
 
-  /** An owner's repositories (up to `opts.limit`, default 100). Throws when gh fails. */
+  /**
+   * An owner's repositories (up to `opts.limit`, default 100). Throws when gh
+   * fails. Each row's `owner` is in GitHub's casing, not as passed.
+   */
   repoList(
     owner: string,
     opts: v.RepoListOptions & { timeoutMs?: number | undefined } = {},
@@ -294,7 +302,11 @@ export class Gh {
     return this.read(v.repoList(owner, opts, this.target), opts.timeoutMs)
   }
 
-  /** One repository: `repo`, else the client's repo, else the clone at `cwd`. Null when there is no such repository. */
+  /**
+   * One repository: `repo`, else the client's repo, else the clone at `cwd`.
+   * Null when there is no such repository. `owner` and `name` are in
+   * GitHub's casing, not as passed.
+   */
   repoView(
     repo?: string | undefined,
     opts: { fields?: readonly string[] | undefined; timeoutMs?: number | undefined } = {},

@@ -11,6 +11,7 @@
 import { strict as assert } from 'node:assert'
 
 import {
+  colorDistance,
   compositeOver,
   contrastRatio,
   formatHex,
@@ -42,5 +43,6 @@ assert.throws(() => compositeOver(white, withAlpha(white, 0.5)), RangeError)
 
 assert.equal(relativeLuminance(white), 1)
 assert.equal(contrastRatio('#000000', '#ffffff'), 21)
+assert.equal(colorDistance('#000000', 'rgb(3 4 0)'), 5)
 
 console.log('color smoke: OK')

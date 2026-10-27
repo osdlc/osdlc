@@ -7,7 +7,8 @@ const src = (path: string) => fileURLToPath(new URL(path, import.meta.url))
 export default defineConfig({
   resolve: {
     // The examples import the package by name; run them on the source, so they
-    // need no build. The subpaths first, then the bare name.
+    // need no build. The subpaths first, then the bare name. `./quote` has no
+    // alias: it resolves through the package exports to `dist/`.
     alias: [
       { find: /^@osdlc\/command-seam\/testing$/, replacement: src('./src/testing.ts') },
       { find: /^@osdlc\/command-seam$/, replacement: src('./src/index.ts') },
@@ -16,6 +17,9 @@ export default defineConfig({
   test: {
     // Real git, sh and gh spawns on a loaded machine can pass the 5 s default.
     testTimeout: 20000,
+    // Half the 10 s default: a worker a leftover process keeps alive is given
+    // up on sooner, so the run ends inside the Windows tier-2 step limit.
+    teardownTimeout: 5000,
     include: ['tests/**/*.test.ts', 'examples/**/*.test.ts'],
     coverage: {
       provider: 'v8',

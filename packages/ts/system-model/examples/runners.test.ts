@@ -9,6 +9,7 @@ import { dirname, join } from 'node:path'
 import { afterEach, expect, test } from 'vitest'
 
 import {
+  CATALOG_SCHEMA_VERSION,
   createProject,
   diagnostics,
   SYNTHESIZED_RUNNERS,
@@ -18,20 +19,43 @@ import {
   type ChainSegment,
   type CollectOptions,
   type Diagnostic,
+  type Invocation,
   type Param,
+  type ParamBinding,
+  type ParamValues,
+  type ParametersUnknownReason,
   type RunnerBrand,
   type RunnerCacheState,
   type RunnerReport,
   type Runners,
   type Severity,
   type StaleReason,
+  type StoringCatalog,
   type Task,
   type TaskExecutionTarget,
   type TaskOrigin,
+  type ToolInfo,
+  toolInfo,
 } from '@osdlc/system-model/detect'
+import {
+  ALL_CACHE_STATES,
+  ALL_PARAMETERS_UNKNOWN_REASONS,
+  ALL_PROBE_COSTS,
+  ALL_PROVIDER_KINDS,
+  ALL_ROLE_NAMES,
+  ALL_STALE_REASONS,
+  CATALOG_SCHEMA_VERSION as SCHEMA_CATALOG_VERSION,
+  catalogSchema,
+  paramSchema,
+  runnerReportSchema,
+  taskSchema,
+  toolInfoSchema,
+  type JsonSchema,
+} from '@osdlc/system-model/schema'
 import { builtins } from '@osdlc/system-model/builtins'
 import { humanAge, humanMs } from '@osdlc/system-model/duration'
 import {
+  ALL_MATCH_MODES,
   exact,
   fuzzy,
   matchEntry,
@@ -41,7 +65,16 @@ import {
   type Matchable,
   type Mode,
 } from '@osdlc/system-model/match'
-import { paramShape } from '@osdlc/system-model/params'
+import { bindParams, paramShape, type BoundParams } from '@osdlc/system-model/params'
+import {
+  ALL_GROUP_IDS,
+  catalogGroups,
+  GROUPS,
+  groupOf,
+  SYNTHESIZED_RUNNERS as GROUP_RUNNERS,
+  type Group,
+  type GroupId,
+} from '@osdlc/system-model/groups'
 
 const roots: string[] = []
 afterEach(() => {
@@ -89,6 +122,14 @@ test('collect lists every runner that was found, then the synthesized groups', a
   expect(install.argv).toEqual(['npm', 'ci'])
   expect(install.origin).toBe('synthesized')
 
+  // Browser-safe grouping: tasks first, then each synthesized group.
+  const groups = catalogGroups(reports)
+  const ids: GroupId[] = groups.map((g) => g.id)
+  expect(ids).toEqual(['tasks', 'dependencies'])
+  const deps: Group = groupOf(GROUP_RUNNERS.packageManager)
+  expect(deps).toBe(GROUPS[1])
+  expect(GROUPS.map((g) => g.id)).toEqual([...ALL_GROUP_IDS])
+
   const chain: ChainSegment[] = reports[0]!.chain
   const brand: RunnerBrand | undefined = reports[0]!.brand
   expect(chain[0]!.label).toBe('runner')
@@ -119,16 +160,92 @@ test('invoke binds arguments the way each tool expects', async () => {
   // npm run reads its own flags up to `--`.
   expect(runners.invoke(test, ['--watch'])).toEqual(['npm', 'run', 'test', '--', '--watch'])
 
-  // Without running just, recipes are scanned from source and carry no
-  // parameters; `paramShape` renders them when they are known.
+  // Without running just, recipes are scanned from source. Their parameters
+  // are unknown, which is not the same as having none.
+  const why: ParametersUnknownReason | undefined = deploy.parametersUnknown
+  expect([deploy.parameters, why]).toEqual([[], 'exec-withheld'])
+  // `paramShape` renders parameters when they are known.
   const params: Param[] = [{ name: 'env', required: true, variadic: false }]
   expect(paramShape(params)).toBe('<env>')
+})
+
+test('values by name are bound by each parameter binding', () => {
+  // A make target reads `NAME=value` arguments and the environment.
+  const assign: ParamBinding = { kind: 'assign' }
+  const env: ParamBinding = { kind: 'env', name: 'TOKEN' }
+  const deploy: Task = {
+    id: 'make:Makefile:deploy',
+    runner: 'make',
+    path: ['make', '.', 'deploy'],
+    argv: ['make', 'deploy'],
+    cwd: '.',
+    display: 'make deploy',
+    parameters: [
+      { name: 'ENV', required: true, variadic: false, binding: assign, choices: ['dev', 'prod'] },
+      { name: 'token', required: false, variadic: false, binding: env, doc: 'API token' },
+    ],
+    source: 'Makefile',
+    origin: 'declared',
+    tags: [],
+    persistent: { value: false, declared: false },
+    executes: 'local',
+  }
+  const values: ParamValues = { ENV: 'prod', token: 'abc' }
+
+  const bound: BoundParams = bindParams(deploy.parameters, values)
+  expect(bound).toEqual({ args: [], positional: [], assign: ['ENV=prod'], env: { TOKEN: 'abc' } })
+
+  const run: Invocation = runners.invocation(deploy, values)
+  expect(run).toEqual({ argv: ['make', 'deploy', 'ENV=prod'], env: { TOKEN: 'abc' } })
+  expect(runners.invoke(deploy, { ENV: 'dev' })).toEqual(['make', 'deploy', 'ENV=dev'])
+  expect(() => runners.invoke(deploy, { ENV: 'qa' })).toThrow(/one of dev, prod/)
+})
+
+test('the JSON a catalog and a tool print has a published schema', async () => {
+  const profile = await project.detect(repo(FILES), { discovery: 'walk' })
+  const catalog = await runners.collect(profile)
+  // A catalog says what it is, so a JSON reader can check before it reads.
+  expect([catalog.kind, catalog.schemaVersion]).toEqual(['catalog', CATALOG_SCHEMA_VERSION])
+  expect(SCHEMA_CATALOG_VERSION).toBe(CATALOG_SCHEMA_VERSION)
+
+  // Plain JSON Schema objects, to embed in a host's own document schema.
+  const schemas: JsonSchema[] = [
+    catalogSchema,
+    runnerReportSchema,
+    taskSchema,
+    paramSchema,
+    toolInfoSchema,
+  ]
+  expect(schemas.map((s) => s['title'])).toEqual([
+    'Catalog',
+    'RunnerReport',
+    'Task',
+    'Param',
+    'ToolInfo',
+  ])
+
+  // The values of each enum-shaped field, for a host's own schema (`z.enum(ALL_ROLE_NAMES)`).
+  expect(ALL_PARAMETERS_UNKNOWN_REASONS).toContain('exec-withheld')
+  expect(ALL_ROLE_NAMES).toContain('runner')
+  expect(ALL_PROVIDER_KINDS).toEqual(['parse', 'exec'])
+  expect(ALL_PROBE_COSTS).toEqual(['cheap', 'slow'])
+  // And the cache verdict's, which `runners.readCached` reports per runner.
+  expect(ALL_CACHE_STATES).toEqual(['fresh', 'stale', 'miss'])
+  expect(ALL_STALE_REASONS).toContain('changed')
+
+  // A ToolDef holds functions; toolInfo is its JSON-safe part.
+  const info: ToolInfo = toolInfo(builtins.find((t) => t.id === 'just')!)
+  expect([info.homepage, info.description]).toEqual([
+    'https://just.systems',
+    'A command runner for the recipes a justfile declares.',
+  ])
 })
 
 test('search ranks tasks against a query', async () => {
   const profile = await project.detect(repo(FILES), { discovery: 'walk' })
   const catalog = await runners.collect(profile)
   const mode: Mode = 'fuzzy'
+  expect(ALL_MATCH_MODES).toContain(mode)
   expect(runners.search(catalog, 'dev', mode)[0]?.argv).toEqual(['npm', 'run', 'dev'])
 
   const words = terms('Build')
@@ -161,4 +278,17 @@ test('a cache directory you choose keeps results between runs', async () => {
   expect(reason).toBe('changed')
   expect(humanMs(stale.runners[0]!.estimateMs ?? 0)).toMatch(/ms|s/)
   expect(humanAge(stale.runners[0]!.ageMs)).toMatch(/old$/)
+})
+
+test('collectAndStore answers first and stores in the background', async () => {
+  const root = repo(FILES)
+  const cacheDir = realpathSync(mkdtempSync(join(tmpdir(), 'project-cache-')))
+  roots.push(cacheDir)
+  const profile = await project.detect(root, { discovery: 'walk' })
+
+  const { catalog, stored }: StoringCatalog = await runners.collectAndStore(profile, cacheDir)
+  expect(catalog.reports.length).toBeGreaterThan(0)
+  // Await it before the process exits, or the store keeps the last probe.
+  await stored
+  expect((await runners.readCached(profile, cacheDir)).allFresh).toBe(true)
 })

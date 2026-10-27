@@ -1,33 +1,41 @@
 /**
- * The terminal UI's two cache-facing rules, tested without a terminal.
- *
- * `runTui` owns raw mode and never returns, so nothing here calls it. What it
- * exercises is the pair of decisions a stale-then-refresh boot makes:
- *
- *   1. A refresh reorders rows and drops some of them. The selection is held by
- *      task id precisely so it survives that — an index would quietly point at
- *      a different task, and the next Enter would run the wrong command.
- *   2. The status line distinguishes fresh, stale-and-refreshing, and
- *      stale-and-measured-slow. The third is the case the whole cache exists
- *      for, so it must not read like the second.
- *
- * `state` and `recompute` are exported from the module for this: they are the
- * live singleton the running UI uses, not a copy built for the test.
+ * The terminal UI, driven through `createTui` with a fake host: every key,
+ * every frame and every write to disk, without a terminal. Each test gets its
+ * own instance over a session in a throwaway repository and HOME.
  */
 
-import { afterAll, beforeEach, describe, expect, test } from 'vitest'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { EventEmitter } from 'node:events'
+import { chmod, mkdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { setTimeout as sleep } from 'node:timers/promises'
 import { join } from 'node:path'
 
-import type { Catalog, RunnerCacheState, Task } from '@osdlc/system-model/detect'
-import { cacheDir } from '../src/cache.ts'
-import { trustStore } from '@osdlc/trust-repo'
+import { afterAll, describe, expect, test, vi } from 'vitest'
 
-import { cursor, frame, handle, recompute, refreshNote, state } from '../src/tui.ts'
+import {
+  CATALOG_SCHEMA_VERSION,
+  type Catalog,
+  type RunnerCacheState,
+  type RunnerReport,
+  type Task,
+} from '@osdlc/system-model/detect'
+import { appTrustStore } from '../src/trust-store.ts'
 
-function task(runner: string, name: string): Task {
+import { openSurface } from '../src/commands/browse.ts'
+import { configLocations } from '../src/config.ts'
+import { KEY_TABLE, keysFor } from '../src/keys.ts'
+import { refreshNote, wrapHanging } from '../src/tui/app.ts'
+import type { CacheState, CatalogProgress, CatalogSnapshot } from '../src/core/session.ts'
+import type { SkillRow } from '../src/core/skills.ts'
+import { taskCopyText } from '../src/core/copy-text.ts'
+import { viewPath } from '../src/core/saved-view.ts'
+import { clipboardCommands, writeClipboard } from '../src/tui/copy.ts'
+import { installQuitHandlers, runTui } from '../src/tui/index.ts'
+import { makeStyles, stylesFor, terminalTheme } from '../src/tui/style.ts'
+import { cleanupAll, lineOf, screen, temp, testTui } from './tui-support.ts'
+
+afterAll(cleanupAll)
+
+function task(runner: string, name: string, over: Partial<Task> = {}): Task {
   return {
     id: `${runner}:${name}`,
     runner,
@@ -41,76 +49,91 @@ function task(runner: string, name: string): Task {
     tags: [],
     persistent: { value: false, declared: false },
     executes: 'local',
+    ...over,
   }
 }
 
-function catalog(names: string[]): Catalog {
+function report(runner: string, tasks: Task[], over: Partial<RunnerReport> = {}): RunnerReport {
   return {
+    runner,
+    status: 'ok',
+    chain: [{ label: 'target', hint: 'The target name.' }],
+    tasks,
+    skippedForExec: false,
+    diagnostics: [],
+    ...over,
+  }
+}
+
+function catalog(names: string[], extra: RunnerReport[] = []): Catalog {
+  return {
+    kind: 'catalog',
+    schemaVersion: CATALOG_SCHEMA_VERSION,
     root: '/tmp/repo',
     generatedAt: new Date(0).toISOString(),
     discovery: 'walk',
     allowExec: false,
     reports: [
-      {
-        runner: 'make',
-        status: 'ok',
-        // `hint` is required, not decoration: the TUI's footer reads it to say
-        // what each chain position selects, so a fixture without one would not
-        // be a report this UI could actually render.
-        chain: [
-          { label: 'target', hint: 'The target name, as written at column 0 before the colon.' },
-        ],
-        tasks: names.map((n) => task('make', n)),
-        // Required, and false is the correct value: make is a parse provider,
-        // so it is never withheld because execution is off.
-        skippedForExec: false,
-        diagnostics: [],
-      },
+      report(
+        'make',
+        names.map((n) => task('make', n)),
+      ),
+      ...extra,
     ],
   }
 }
 
-beforeEach(() => {
-  state.catalog = null
-  state.cache = []
-  state.query = ''
-  state.runner = 'all'
-  state.servicesOnly = false
-  state.selectedId = null
-  state.rows = []
-  state.scroll = 0
-})
+/** A UI showing `cat`, as if a probe had answered. */
+async function showing(cat: Catalog, opts: Parameters<typeof testTui>[0] = {}) {
+  const made = await testTui(opts)
+  made.tui.state.catalog = cat
+  made.tui.state.probed = true
+  made.tui.state.fromProbe = true
+  made.tui.state.cache = cat.reports.map((r) => ({
+    runner: r.runner,
+    state: 'fresh' as const,
+    estimateMs: null,
+    slow: false,
+  }))
+  made.tui.recompute()
+  return made
+}
+
+const clock = new Date(new Date(0).toISOString()).toLocaleTimeString()
+
+function skillRow(name: string): SkillRow {
+  return {
+    id: `skill:.claude/skills/${name}/SKILL.md`,
+    name,
+    description: null,
+    argumentHint: null,
+    path: `.claude/skills/${name}/SKILL.md`,
+    scope: 'project',
+    origin: 'project',
+    harnesses: ['claude'],
+    invoke: `/${name}`,
+  }
+}
 
 describe('selection across a refresh', () => {
   test('survives rows being reordered and dropped underneath it', async () => {
-    state.catalog = catalog(['build', 'lint', 'test'])
-    recompute()
-    state.selectedId = state.rows[2]!.task.id // "test"
-    expect(cursor()).toBe(2)
-
-    // The refresh lands: "build" is gone, and the survivors come back in a
-    // different order. Nothing about the selected task changed, so the cursor
-    // must still be on it — at a different index.
-    state.catalog = catalog(['test', 'lint', 'ship'])
-    recompute()
-
-    expect(state.selectedId).toBe('make:test')
-    expect(state.rows[cursor()]!.task.id).toBe('make:test')
-    expect(cursor()).toBe(0)
+    const { tui } = await showing(catalog(['build', 'lint', 'test']))
+    tui.state.selectedId = tui.state.rows[2]!.task.id
+    expect(tui.cursor()).toBe(2)
+    // A refresh drops "build" and reorders the rest. The cursor stays on
+    // "test", at a different index.
+    tui.state.catalog = catalog(['test', 'lint', 'ship'])
+    tui.recompute()
+    expect(tui.state.selectedId).toBe('make:test')
+    expect(tui.cursor()).toBe(0)
   })
 
   test('re-anchors onto a real row when the selected task disappears', async () => {
-    // The failure this prevents: a selection pointing past the end of the list,
-    // where Enter runs nothing and the arrows appear stuck.
-    state.catalog = catalog(['build', 'lint'])
-    recompute()
-    state.selectedId = 'make:build'
-
-    state.catalog = catalog(['lint'])
-    recompute()
-
-    expect(state.selectedId).toBe('make:lint')
-    expect(state.rows[cursor()]!.task.id).toBe('make:lint')
+    const { tui } = await showing(catalog(['build', 'lint']))
+    tui.state.selectedId = 'make:build'
+    tui.state.catalog = catalog(['lint'])
+    tui.recompute()
+    expect(tui.state.selectedId).toBe('make:lint')
   })
 })
 
@@ -124,8 +147,6 @@ describe('refreshNote — the three states', () => {
   })
 
   test('fresh says nothing at all', () => {
-    // Nothing to report is not worth a line. A status that is always occupied
-    // is a status nobody reads.
     expect(refreshNote([row({}), row({ runner: 'cargo' })], true)).toBeNull()
     expect(refreshNote([], true)).toBeNull()
   })
@@ -144,9 +165,7 @@ describe('refreshNote — the three states', () => {
     })
   })
 
-  test('stale and MEASURED slow reads differently, and louder', () => {
-    // The case the cache exists for. It must not arrive in the same voice as a
-    // 180ms refresh, or the one warning that matters is lost in the noise.
+  test('stale and measured slow reads differently', () => {
     const note = refreshNote(
       [
         row({ runner: 'moon', state: 'stale', ageMs: 7_200_000, estimateMs: 6200, slow: true }),
@@ -161,48 +180,32 @@ describe('refreshNote — the three states', () => {
     )
   })
 
-  test('with no refresh running it reports ages, not work nobody is doing', () => {
+  test('with no refresh running it reports ages', () => {
     const note = refreshNote([row({ state: 'stale', ageMs: 7_200_000, estimateMs: 100 })], false)
     expect(note).toEqual({ slow: false, text: 'cached rows: make 2h old — ^r to re-probe' })
   })
+
+  test('a group runner is named by its group', () => {
+    const note = refreshNote(
+      [row({ runner: 'package-manager', state: 'stale', ageMs: 1000 })],
+      false,
+    )
+    expect(note!.text).toContain('dependencies')
+  })
 })
 
-/**
- * The three states as the user actually reads them: line 3 of the frame, and
- * the runner tabs on line 1. A note that is correct but composed into the wrong
- * line, or a staleness mark that never reaches the tabs, would pass every
- * assertion above and still ship a screen that says nothing.
- */
-describe('the rendered frame', () => {
-  /** One line of the frame with the trailing clear-to-end-of-line stripped. */
-  function lineOf(n: number): string {
-    return frame(100, 24)
-      .split('\r\n')
-      [n]!.replace(/\x1b\[K$/, '')
-  }
-
-  // Derived, not written down: the clock is rendered in the runner's own locale
-  // and time zone, so a literal here would pass on one machine and fail on the
-  // next. What is under test is the line's composition, not the formatter.
-  const clock = new Date(new Date(0).toISOString()).toLocaleTimeString()
-
-  beforeEach(() => {
-    state.catalog = catalog(['build', 'lint'])
-    state.loading = false
-    recompute()
+describe('the status line and tabs', () => {
+  test('fresh: counts and a clock, and nothing else', async () => {
+    const { tui } = await showing(catalog(['build', 'lint']))
+    expect(lineOf(tui, 2)).toBe(`2/2  checked ${clock}`)
+    expect(lineOf(tui, 0)).toContain(' make 2 ')
+    expect(lineOf(tui, 0)).not.toContain('~make')
   })
 
-  test('fresh: the status line carries counts and a clock, and nothing else', () => {
-    state.cache = [{ runner: 'make', state: 'fresh', estimateMs: null, slow: false }]
-    expect(lineOf(2)).toBe(`2/2  checked ${clock}`)
-    // No mark on the tab either: there is nothing about this runner to flag.
-    expect(lineOf(0)).toContain(' make 2 ')
-    expect(lineOf(0)).not.toContain('~make')
-  })
-
-  test('stale and refreshing: the rows are marked, and the note names the cost', () => {
-    state.loading = true
-    state.cache = [
+  test('stale and refreshing: the tab is marked and the note names the cost', async () => {
+    const { tui } = await showing(catalog(['build', 'lint']))
+    tui.state.loading = true
+    tui.state.cache = [
       {
         runner: 'make',
         state: 'stale',
@@ -212,246 +215,1130 @@ describe('the rendered frame', () => {
         slow: false,
       },
     ]
-    expect(lineOf(2)).toBe(`2/2  checked ${clock}  cached rows — re-probing make (~180ms)`)
-    // Marked at the tab, not per row: one fact, said once, legible at a glance.
-    expect(lineOf(0)).toContain(' ~make 2 ')
+    expect(lineOf(tui, 2)).toBe(`2/2  checked ${clock}  cached rows — re-probing make (~180ms)`)
+    expect(lineOf(tui, 0)).toContain(' ~make 2 ')
   })
 
-  test('stale and MEASURED slow: an earlier, clearer warning than the ordinary one', () => {
-    state.loading = true
-    state.cache = [
-      {
-        runner: 'make',
-        state: 'stale',
-        reason: 'max-age',
-        ageMs: 7_200_000,
-        estimateMs: 6200,
-        slow: true,
-      },
+  test('after a fresh probe the measured time is shown', async () => {
+    const { tui } = await showing(catalog(['build']))
+    tui.state.cache = [
+      { runner: 'make', state: 'fresh', estimateMs: 1200, slow: false, probeMs: 1200 },
     ]
-    expect(lineOf(2)).toBe(
-      `2/2  checked ${clock}  cached rows — make (~6.2s) is slow to probe here, so this takes a moment`,
+    expect(lineOf(tui, 2)).toBe(`1/1  checked ${clock}, probed in 1.2s`)
+  })
+
+  test('"loading…" while the first probe runs, then "nothing collected"', async () => {
+    const { tui } = await testTui()
+    tui.state.loading = true
+    tui.state.expected = -1
+    tui.recompute()
+    expect(lineOf(tui, 2)).toBe('0/0  detecting the project…')
+    tui.state.expected = 0
+    expect(lineOf(tui, 2)).toBe('0/0  loading…')
+    expect(lineOf(tui, 3)).toBe('    loading…')
+    tui.state.loading = false
+    tui.state.probed = true
+    expect(lineOf(tui, 3)).toBe('    nothing collected')
+  })
+
+  test('a bar separates the task runners from each group, named by the group', async () => {
+    const { tui } = await showing(
+      catalog(
+        ['lint'],
+        [
+          report('package-manager', [task('package-manager', 'ci')]),
+          report('hook-manager', [task('hook-manager', 'install')]),
+        ],
+      ),
     )
-    expect(lineOf(0)).toContain(' ~make 2 ')
+    expect(lineOf(tui, 0)).toContain(' make 1 │ dependencies 1 │ git hooks 1 ')
+  })
+
+  test("a row's chain names a group runner by its label, not its id", async () => {
+    const { tui } = await showing(
+      catalog(
+        [],
+        [
+          report('package-manager', [
+            task('package-manager', 'install', {
+              path: ['package-manager', '.', 'npm', 'install'],
+            }),
+          ]),
+        ],
+      ),
+    )
+    const text = screen(tui).join('\n')
+    expect(text).toContain('dependencies > . > npm > install')
+    expect(text).not.toContain('package-manager >')
+  })
+
+  test('the selected tab is marked with brackets, which show without color', async () => {
+    const { tui } = await showing(catalog(['build']))
+    expect(lineOf(tui, 0)).toMatch(/^\[all 1\] make 1 /)
+    tui.handle('\t')
+    expect(lineOf(tui, 0)).toMatch(/^ all 1 \[make 1\]/)
+  })
+
+  test('the tab row scrolls to keep the selected tab in view', async () => {
+    const many = Array.from({ length: 12 }, (_, i) => {
+      const id = `runner${String(i).padStart(2, '0')}`
+      return report(id, [task(id, 'x')])
+    })
+    const { tui } = await showing({ ...catalog([]), reports: many })
+    tui.handle('\x1b[Z') // shift-tab from `all`: the last tab
+    const row = lineOf(tui, 0, 60)
+    expect(row).toContain('[runner11 1]')
+    expect(row.startsWith('‹')).toBe(true)
+    // The mode flags keep their room at the right.
+    expect(row.trimEnd().endsWith('fuzzy')).toBe(true)
+    tui.handle('\t') // wraps to `all`
+    expect(lineOf(tui, 0, 60)).toMatch(/^\[all 12\].*›/)
+  })
+
+  test('a withheld runner is marked on its tab, and its empty list says why', async () => {
+    const { tui } = await showing(
+      catalog(['build'], [report('moon', [], { skippedForExec: true })]),
+    )
+    expect(lineOf(tui, 0)).toContain(' moon – ')
+    expect(lineOf(tui, 2)).toContain(
+      '1 runner withheld: this repository is not trusted (^s to trust)',
+    )
+    tui.handle('\t')
+    tui.handle('\t')
+    tui.recompute()
+    expect(tui.state.runner).toBe('moon')
+    expect(lineOf(tui, 3)).toContain('withheld: this repository is not trusted — ^s to trust')
+  })
+
+  test('under --no-exec the withheld note names the flag and offers no trust key', async () => {
+    const { tui } = await showing(
+      catalog(['build'], [report('moon', [], { skippedForExec: true })]),
+      { flags: { allowExec: false } },
+    )
+    const status = lineOf(tui, 2)
+    expect(status).toContain('1 runner withheld: --no-exec was given')
+    expect(status).not.toContain('^s')
+  })
+
+  test('a narrow status line drops the clock before it cuts the withheld cause', async () => {
+    const { tui } = await showing(
+      catalog(['build'], [report('moon', [], { skippedForExec: true })]),
+      { flags: { allowExec: false } },
+    )
+    const status = screen(tui, 50)[2]!
+    expect(status).toContain('1 runner withheld: --no-exec was given')
+    expect(status).not.toContain('checked')
+    expect(screen(tui, 120)[2]).toContain('checked')
   })
 })
 
-/**
- * The entry line for a parameterised task.
- *
- * `state.entering` is the whole mechanism: while it is set, the frame trades
- * its key hints for a command line, and the key handler routes every keystroke
- * into it. What is asserted here is the half a user reads — that the line shows
- * the command that will run and the parameters it still wants.
- */
-describe('the argument entry line', () => {
-  function lineOf(n: number): string {
-    return frame(100, 24)
-      .split('\r\n')
-      [n]!.replace(/\x1b\[K$/, '')
-  }
+describe('marks and the line under the selection', () => {
+  test('a service is marked, and the mark is spelled out for the selected row', async () => {
+    const { tui } = await showing({
+      ...catalog([]),
+      reports: [
+        report('just', [task('just', 'dev', { persistent: { value: true, declared: true } })]),
+      ],
+    })
+    expect(lineOf(tui, 3)).toBe('>*  just > dev')
+    expect(lineOf(tui, 22)).toBe('* service  ')
+  })
 
-  /** A recipe that declares parameters, which the shared fixture's tasks do not. */
-  function parameterised(): Task {
-    return {
-      ...task('just', 'deploy'),
-      argv: ['just', 'deploy'],
+  test('a task with unknown parameters is marked with the shared label', async () => {
+    const { tui } = await showing({
+      ...catalog([]),
+      reports: [report('just', [task('just', 'deploy', { parametersUnknown: 'exec-withheld' })])],
+    })
+    expect(lineOf(tui, 3)).toBe('> ? just > deploy')
+    expect(lineOf(tui, 22)).toContain(
+      '? parameters unknown: reading them needs execution, which is withheld',
+    )
+  })
+
+  test('matches are bold and underlined, so they show without color', () => {
+    const s = makeStyles({ level: 'none', theme: 'light', attributes: true })
+    expect(s.match('x')).toContain('\x1b[4m')
+    expect(s.match('x')).toContain('\x1b[1m')
+    expect(s.match('x')).not.toContain('\x1b[3')
+  })
+
+  test('NO_COLOR keeps attributes on a terminal; a pipe gets none', () => {
+    const tty = stylesFor({ NO_COLOR: '1', TERM: 'xterm-256color' }, true)
+    expect(tty.selected('x')).toBe('\x1b[7mx\x1b[27m')
+    expect(tty.warning('x')).toBe('x')
+    const pipe = stylesFor({ TERM: 'xterm-256color' }, false)
+    expect(pipe.selected('x')).toBe('x')
+  })
+
+  test('yellow is kept for warnings: notes and the accent use other tokens', () => {
+    const s = makeStyles({ level: 'ansi16', theme: 'light', attributes: true })
+    expect(s.warning('x')).toContain('\x1b[33m')
+    expect(s.note('x')).not.toContain('\x1b[33m')
+    expect(s.accent('x')).not.toContain('\x1b[33m')
+    expect(s.match('x')).not.toContain('\x1b[33m')
+  })
+
+  test('the terminal theme comes from COLORFGBG', () => {
+    expect(terminalTheme({ COLORFGBG: '0;15' })).toBe('light')
+    expect(terminalTheme({ COLORFGBG: '15;0' })).toBe('dark')
+    expect(terminalTheme({})).toBe('dark')
+  })
+})
+
+describe('the footer and the help screen', () => {
+  test('the footer fits the width and keeps ? help and esc quit', async () => {
+    const { tui } = await showing(catalog(['build']))
+    for (const width of [100, 78, 40, 24]) {
+      const foot = lineOf(tui, 23, width)
+      expect(foot.length).toBeLessThanOrEqual(width)
+      expect(foot).toContain('? help')
+      expect(foot).toContain('esc quit')
+      expect(foot).not.toContain('…')
+    }
+    expect(lineOf(tui, 23, 100)).toContain('enter run')
+  })
+
+  test('? opens a screen with every list key from the shared table; esc closes it', async () => {
+    const { tui } = await showing(catalog(['build']))
+    tui.handle('?')
+    expect(tui.state.view).toBe('help')
+    expect(tui.state.query).toBe('')
+    const text = screen(tui, 120, 80).join('\n')
+    for (const binding of keysFor('tui', 'list')) {
+      expect(text).toContain(binding.keys.join(', '))
+      expect(text).toContain(binding.action)
+    }
+    expect(text).toContain('a service: it runs until you stop it')
+    tui.handle('\x1b')
+    expect(tui.state.view).toBe('list')
+  })
+
+  test('the help screen scrolls', async () => {
+    const { tui } = await showing(catalog(['build']))
+    tui.handle('?')
+    const top = lineOf(tui, 3, 100, 12)
+    tui.handle('\x1b[6~')
+    expect(lineOf(tui, 3, 100, 12)).not.toBe(top)
+    tui.handle('\x1b[5~')
+    expect(lineOf(tui, 3, 100, 12)).toBe(top)
+  })
+
+  test('every binding has keys and an action', () => {
+    for (const k of KEY_TABLE) {
+      expect(k.action.length).toBeGreaterThan(0)
+      expect(k.keys.length).toBeGreaterThan(0)
+    }
+  })
+})
+
+describe('the key reader', () => {
+  test('text typed after an escape sequence is kept, and rows follow each key', async () => {
+    const { tui } = await showing(catalog(['build', 'lint', 'check']))
+    tui.feed('\x1b[Zcheck')
+    expect(tui.state.query).toBe('check')
+    expect(tui.state.runner).toBe('make')
+    // ^u then End in one read: End acts on the whole list, not the filtered one.
+    tui.feed('\x15\x1b[F')
+    expect(tui.state.query).toBe('')
+    expect(tui.state.selectedId).toBe('make:check')
+    expect(tui.cursor()).toBe(2)
+  })
+
+  test.each([
+    ['\x1b[1~', '\x1b[4~'],
+    ['\x1b[7~', '\x1b[8~'],
+    ['\x1bOH', '\x1bOF'],
+    ['\x1b[H', '\x1b[F'],
+  ])('Home %j and End %j', async (home, end) => {
+    const { tui } = await showing(catalog(['a', 'b', 'c']))
+    tui.feed(end)
+    expect(tui.cursor()).toBe(2)
+    tui.feed(home)
+    expect(tui.cursor()).toBe(0)
+  })
+
+  test('a lone escape at the end of a read is Esc', async () => {
+    const { tui, host } = await showing(catalog(['a']))
+    tui.feed('\x1b')
+    expect(host.exits).toEqual([0])
+  })
+})
+
+describe('arguments', () => {
+  const parameterised = (): Task =>
+    task('just', 'deploy', {
       display: 'just deploy <env> [tag]',
       parameters: [
         { name: 'env', required: true, variadic: false },
         { name: 'tag', required: false, variadic: false },
       ],
-    }
-  }
+    })
 
-  beforeEach(() => {
-    state.catalog = catalog(['build', 'lint'])
-    state.loading = false
-    state.cache = [{ runner: 'make', state: 'fresh', estimateMs: null, slow: false }]
-    recompute()
+  test('Enter asks for them; the line shows what will run, with one cursor', async () => {
+    const { tui } = await showing({ ...catalog([]), reports: [report('just', [parameterised()])] })
+    tui.handle('\r')
+    for (const ch of 'staging') tui.handle(ch)
+    expect(lineOf(tui, 22)).toBe('$ just deploy staging█')
+    expect(lineOf(tui, 23)).toContain('takes <env> [tag]')
+    expect(lineOf(tui, 23)).toContain('enter run')
+    expect(lineOf(tui, 23)).toContain('esc back')
+    expect(lineOf(tui, 1)).toBe('> ')
   })
 
-  test('without it, the last line is the key hints', () => {
-    state.entering = null
-    expect(lineOf(23)).toContain('enter run')
-    expect(lineOf(23)).toContain('^y copy')
+  test('the entry line costs the list a row, not the bottom line', async () => {
+    const { tui } = await showing({ ...catalog([]), reports: [report('just', [parameterised()])] })
+    const lines = tui.frame(100, 24).split('\r\n').length
+    tui.handle('\r')
+    expect(tui.frame(100, 24).split('\r\n').length).toBe(lines)
   })
 
-  test('with it, the command and what has been typed are on one line', () => {
-    state.entering = { task: parameterised(), text: 'staging' }
-    // The prefix is the argv that will actually be spawned, never `display` —
-    // display carries <placeholders>, which are not a command.
-    expect(lineOf(22)).toContain('just deploy staging')
-    expect(lineOf(22)).not.toContain('<env>')
+  test('Enter runs with the arguments split as in sh', async () => {
+    const { tui, host } = await showing({
+      ...catalog([]),
+      reports: [report('just', [parameterised()])],
+    })
+    tui.handle('\r')
+    for (const ch of "prod 'v 1'") tui.handle(ch)
+    tui.handle('\r')
+    expect(host.released).toBe(1)
+    expect(host.handedOff[0]!.argv).toEqual(['just', 'deploy', 'prod', 'v 1'])
+    expect(host.exits).toEqual([0])
   })
 
-  test('the parameters it still wants are named under the line', () => {
-    state.entering = { task: parameterised(), text: '' }
-    const foot = lineOf(23)
-    expect(foot).toContain('takes <env> [tag]')
-    expect(foot).toContain('enter run')
-    expect(foot).toContain('esc back')
-  })
-
-  test('the list gives up one row rather than the bottom line falling off', () => {
-    // The entry costs two lines where the hints cost one. Without the matching
-    // reserve the last line would render past the bottom of the terminal.
-    state.entering = null
-    const withHints = frame(100, 24).split('\r\n').length
-    state.entering = { task: parameterised(), text: '' }
-    expect(frame(100, 24).split('\r\n').length).toBe(withHints)
-  })
-})
-
-/**
- * The two keys that reach disk.
- *
- * Both are fired through `handle`, the real key dispatcher, because both
- * defects they pin live at the call site rather than in the work it starts:
- * a promise chain with no rejection handler, and a re-probe handed to a
- * `refresh()` that drops it.
- */
-describe('keys that reach disk', () => {
-  const dirs: string[] = []
-  afterAll(async () => {
-    await Promise.all(dirs.map((d) => rm(d, { recursive: true, force: true })))
-  })
-
-  async function temp(prefix: string): Promise<string> {
-    const dir = await mkdtemp(join(tmpdir(), prefix))
-    dirs.push(dir)
-    return dir
-  }
-
-  /** A repository with one parse-only runner, plus an isolated trust store. */
-  async function project(): Promise<{ root: string; home: string }> {
-    const root = await temp('wayfinder-tui-')
-    const home = await temp('wayfinder-tui-home-')
-    await writeFile(
-      join(root, 'package.json'),
-      JSON.stringify({ name: 'p', scripts: { build: 'echo b' } }),
-      'utf-8',
+  test('unknown parameters: Enter asks, and an empty line runs the task as it is', async () => {
+    const { tui, host } = await showing({
+      ...catalog([]),
+      reports: [report('just', [task('just', 'build', { parametersUnknown: 'tool-missing' })])],
+    })
+    tui.handle('\r')
+    expect(tui.state.entering).not.toBeNull()
+    expect(lineOf(tui, 23)).toContain(
+      'parameters unknown: the tool is not installed; type any, or none',
     )
-    return { root, home }
-  }
-
-  /** Poll until `done`, or give up — `handle` starts work it does not return. */
-  async function settle(done: () => boolean): Promise<void> {
-    for (let i = 0; i < 200 && !done(); i++) await sleep(10)
-  }
-
-  beforeEach(() => {
-    state.message = ''
-    state.settings = null
-    state.entering = null
-    state.confirmingTrust = false
-    state.loading = false
-    state.inFlight = null
-    state.gate = null
-    state.options = {}
-    state.env = {}
-    state.home = undefined
-    state.store = ''
+    tui.handle('\r')
+    expect(host.handedOff[0]!.argv).toEqual(['just', 'build'])
   })
 
-  test('a broken config is reported on the status line, not thrown at nobody', async () => {
-    // Without a rejection handler this is an unhandled rejection: the settings
-    // screen never opens and the failure has nowhere to appear.
-    const { root, home } = await project()
-    await writeFile(join(root, 'wayfinder.config.json'), '{ not json', 'utf-8')
-    state.root = root
-    state.home = home
-
-    handle(',')
-    await settle(() => state.message !== '')
-
-    expect(state.message).toContain('settings unavailable')
-    expect(state.settings).toBeNull()
+  test('an editor-variable task is not run, and says why', async () => {
+    const { tui, host } = await showing({
+      ...catalog([]),
+      reports: [report('vscode', [task('vscode', 'x', { parametersUnknown: 'editor-variable' })])],
+    })
+    tui.handle('\r')
+    expect(tui.state.entering).toBeNull()
+    expect(host.handedOff).toEqual([])
+    expect(host.released).toBe(0)
+    expect(tui.state.message?.text).toContain('editor variable')
   })
 
-  test('granting trust re-probes even with a probe already in flight', async () => {
-    // The boot probe is still running when ^s y lands. The grant is worthless
-    // unless the catalog is collected again with execution on.
-    const { root, home } = await project()
-    state.root = root
-    state.home = home
-    state.store = cacheDir({}, home)
-    state.gate = { allowExec: false, trusted: false, reason: 'untrusted', configured: true, root }
-    state.loading = true
-    state.inFlight = new AbortController()
-    state.confirmingTrust = true
-
-    handle('y')
-    await settle(() => state.catalog !== null)
-
-    expect(state.catalog).not.toBeNull()
-    expect(state.catalog?.allowExec).toBe(true)
+  test('the run line quotes the argv as the command line prints it', async () => {
+    const { tui, host } = await showing({
+      ...catalog([]),
+      reports: [report('npm', [task('npm', 'x', { argv: ['npm', 'run', 'a b'] })])],
+    })
+    tui.handle('\r')
+    expect(host.written.join('')).toContain("$ npm run 'a b'\n")
   })
 
-  test("the status line does not stick on 'trusted — re-probing'", async () => {
-    // The other half of the same drop: the note that says work is happening
-    // is cleared by the refresh, so a refresh that never ran leaves it up.
-    const { root, home } = await project()
-    state.root = root
-    state.home = home
-    state.store = cacheDir({}, home)
-    state.gate = { allowExec: false, trusted: false, reason: 'untrusted', configured: true, root }
-    state.loading = true
-    state.inFlight = new AbortController()
-    state.confirmingTrust = true
-
-    handle('y')
-    await settle(() => state.catalog !== null)
-
-    expect(state.message).toBe('')
-    expect(state.loading).toBe(false)
-  })
-
-  test('a policy-trusted root (no marker) reads as trusted in the settings screen', async () => {
-    // `state.gate` is the CLI's already-resolved decision — cli.ts's own
-    // `policyExecGate` call, which checks the marker store AND the user
-    // file's trust.paths/trust.owners policy. The TUI must read `gate.trusted`
-    // as-is and never re-derive it from the marker store alone, or a
-    // policy-only grant (no marker ever written) would render as untrusted.
-    const { root, home } = await project()
-    state.root = root
-    state.home = home
-    state.store = cacheDir({}, home)
-    state.gate = { allowExec: true, trusted: true, reason: 'allowed', configured: true, root }
-    state.catalog = catalog(['build'])
-    recompute()
-
-    handle(',')
-    await settle(() => state.settings !== null)
-
-    expect(state.settings).not.toBeNull()
-    expect(state.settings!.join('\n')).toContain('trusted — runners may spawn probes')
-    // Confirms the scenario is genuinely policy-only: nothing here ever wrote
-    // a marker for this root.
-    expect(await trustStore({ tool: 'wayfinder', env: {}, home }).isTrusted(root)).toBe(false)
-
-    // `state` is a module singleton. Vitest gives each file its own module
-    // graph, but the tests in THIS file share it — leaving the settings screen
-    // open would make every later test's frame render the read-only settings
-    // view instead of the task list.
-    state.settings = null
+  test('a task that will not start is reported after the terminal is given back', async () => {
+    const { tui, host } = await showing(catalog(['build']))
+    host.handOffResult = { exit: 1, error: 'not found' }
+    tui.handle('\r')
+    expect(host.written.join('')).toContain('make: not found')
+    expect(host.exits).toEqual([1])
   })
 })
 
-describe('tabs by group', () => {
-  test('a bar separates the task runners from each synthesized group, named by the group', () => {
-    const base = catalog(['lint'])
-    const make = base.reports[0]!
-    state.catalog = {
-      ...base,
+describe('copy', () => {
+  test('^y copies the command line built from argv, with the directory change', async () => {
+    const { tui, host } = await showing({
+      ...catalog([]),
+      reports: [report('npm', [task('npm', 'x', { argv: ['npm', 'run', 'a b'], cwd: 'my pkg' })])],
+    })
+    tui.handle('\x19')
+    await tui.idle()
+    expect(host.copied).toEqual(["cd 'my pkg' && npm run 'a b'"])
+    expect(tui.state.message).toEqual({ text: 'copied', tone: 'note' })
+  })
+
+  test('no clipboard is a warning on the status line', async () => {
+    const { tui, host } = await showing(catalog(['build']))
+    host.clipboardOk = false
+    tui.handle('\x19')
+    await tui.idle()
+    expect(tui.state.message).toEqual({ text: 'clipboard unavailable', tone: 'warning' })
+  })
+
+  test('copy text quotes for PowerShell on Windows', () => {
+    expect(taskCopyText(task('npm', 'x', { argv: ['npm', 'run', 'x'] }), 'win32')).toBe(
+      '& npm run x',
+    )
+  })
+
+  test('the clipboard programs per platform', () => {
+    const names = (platform: NodeJS.Platform, env: Record<string, string> = {}) =>
+      clipboardCommands(platform, env).map((c) => c.binary)
+    expect(names('darwin')).toEqual(['pbcopy'])
+    expect(names('linux')).toEqual(['xclip', 'xsel'])
+    expect(names('linux', { WAYLAND_DISPLAY: 'wayland-0' })).toEqual(['wl-copy', 'xclip', 'xsel'])
+    expect(names('win32')).toEqual([])
+  })
+
+  test.skipIf(process.platform === 'win32')(
+    'a clipboard program that leaves a child holding its output does not hold up the copy',
+    async () => {
+      const bin = await temp('wayfinder-clip-')
+      const pidFile = join(bin, 'child.pid')
+      // As xclip does: fork a child that keeps the selection, and the pipes, then exit.
+      await writeFile(
+        join(bin, 'xclip'),
+        `#!/bin/sh\ncat > /dev/null\nsleep 30 &\necho $! > '${pidFile}'\nexit 0\n`,
+      )
+      await chmod(join(bin, 'xclip'), 0o755)
+      // The clipboard program is looked up on the process PATH.
+      vi.stubEnv('PATH', `${bin}:/usr/bin:/bin`)
+      let child = 0
+      try {
+        const ok = await writeClipboard('hello', { cwd: bin, platform: 'linux', env: {} })
+        expect(ok).toBe(true)
+        child = Number((await readFile(pidFile, 'utf-8')).trim())
+        // The copy returned while the child still holds the pipes.
+        expect(() => process.kill(child, 0)).not.toThrow()
+      } finally {
+        vi.unstubAllEnvs()
+        if (child > 0) {
+          try {
+            process.kill(child, 'SIGKILL')
+          } catch {
+            // Already gone.
+          }
+        }
+      }
+    },
+  )
+})
+
+describe('filters', () => {
+  test('^d keeps declared tasks, ^o cycles the scope, and both show as flags', async () => {
+    const { tui } = await showing({
+      ...catalog([]),
       reports: [
-        make,
-        { ...make, runner: 'package-manager', tasks: [task('package-manager', 'ci')] },
-        { ...make, runner: 'hook-manager', tasks: [task('hook-manager', 'install')] },
+        report('make', [
+          task('make', 'top', { source: 'Makefile' }),
+          task('make', 'deep', { source: 'a/b/c/Makefile' }),
+          task('make', 'guess', { origin: 'synthesized' }),
+        ]),
       ],
+    })
+    tui.handle('\x04')
+    tui.recompute()
+    expect(tui.state.rows.map((r) => r.task.id)).toEqual(['make:top', 'make:deep'])
+    expect(lineOf(tui, 0)).toContain('fuzzy declared')
+    tui.handle('\x0f') // the root only
+    tui.recompute()
+    expect(tui.state.rows.map((r) => r.task.id)).toEqual(['make:top'])
+    expect(lineOf(tui, 0)).toContain('scope root')
+  })
+})
+
+describe('trust', () => {
+  const withheldCatalog = () => catalog(['build'], [report('moon', [], { skippedForExec: true })])
+
+  test('^s asks, and y grants, re-probes and clears the note', async () => {
+    const { tui, home, root } = await showing(withheldCatalog())
+    tui.handle('\x13')
+    expect(lineOf(tui, 2)).toContain('trust this repository? y/n')
+    tui.handle('y')
+    await tui.idle()
+    expect(tui.session.gate.trusted).toBe(true)
+    expect(tui.state.catalog?.allowExec).toBe(true)
+    expect(tui.state.message).toBeNull()
+    expect(tui.state.loading).toBe(false)
+    expect(await appTrustStore({ env: {}, home }).isTrusted(root)).toBe(true)
+  })
+
+  test('any other key cancels the question and does nothing else', async () => {
+    const { tui } = await showing(withheldCatalog())
+    tui.handle('\x13')
+    tui.handle('x')
+    expect(tui.state.confirmingTrust).toBe(false)
+    expect(tui.state.query).toBe('')
+    expect(tui.session.gate.trusted).toBe(false)
+  })
+
+  test('a grant with a probe in flight abandons that probe and probes again', async () => {
+    const { tui } = await showing(withheldCatalog())
+    const stale = new AbortController()
+    tui.state.loading = true
+    tui.state.inFlight = stale
+    tui.state.confirmingTrust = true
+    tui.handle('y')
+    await tui.idle()
+    expect(stale.signal.aborted).toBe(true)
+    expect(tui.state.catalog?.allowExec).toBe(true)
+  })
+
+  test('settings: t grants after y, and u removes the grant', async () => {
+    const { tui, home, root } = await showing(withheldCatalog())
+    tui.handle(',')
+    await tui.idle()
+    expect(screen(tui, 100, 40).join('\n')).toContain('trust: not trusted (t to trust)')
+    tui.handle('t')
+    tui.handle('y')
+    await tui.idle()
+    expect(screen(tui, 100, 40).join('\n')).toContain('trust: trusted (u removes the grant)')
+    tui.handle('u')
+    await tui.idle()
+    expect(await appTrustStore({ env: {}, home }).isTrusted(root)).toBe(false)
+    expect(screen(tui, 100, 40).join('\n')).toContain('trust: removed')
+    expect(tui.state.message?.text).toContain('trust removed')
+  })
+
+  test('a root trusted by a user-config rule reads as trusted, with no marker', async () => {
+    const { tui, home, root } = await showing(catalog(['build']), {
+      userConfig: { trust: { paths: [`${await realpath(tmpdir())}/**`] } },
+    })
+    tui.handle(',')
+    await tui.idle()
+    expect(screen(tui, 100, 40).join('\n')).toContain('trust: trusted')
+    expect(await appTrustStore({ env: {}, home }).isTrusted(root)).toBe(false)
+  })
+})
+
+describe('the settings screen', () => {
+  async function open(opts: Parameters<typeof testTui>[0] = {}) {
+    const made = await showing(catalog(['build'], [report('just', [task('just', 'x')])]), opts)
+    made.tui.handle(',')
+    await made.tui.idle()
+    return made
+  }
+
+  const projectFile = async (root: string): Promise<Record<string, unknown>> =>
+    JSON.parse(await readFile(join(root, 'wayfinder.config.json'), 'utf-8')) as Record<
+      string,
+      unknown
+    >
+
+  test('a broken config is reported on the status line', async () => {
+    const { tui, root } = await showing(catalog(['build']))
+    await writeFile(join(root, 'wayfinder.config.json'), '{ not json', 'utf-8')
+    tui.handle(',')
+    await tui.idle()
+    expect(tui.state.message?.text).toContain('settings unavailable')
+    expect(tui.state.view).toBe('list')
+  })
+
+  test('space turns a runner off in the project file, and the session stops collecting it', async () => {
+    const { tui, root } = await open()
+    expect(screen(tui)[4]).toMatch(
+      /^> on {3}make {2}https:\/\/www\.gnu\.org\/software\/make\/ {2}A build/,
+    )
+    tui.handle(' ')
+    await tui.idle()
+    expect(await projectFile(root)).toMatchObject({ runners: { disabled: ['make'] } })
+    expect(tui.session.options.exclude).toEqual(['make'])
+    // The probe that follows replaced the rows; the cursor is still on make.
+    expect(screen(tui)).toContainEqual(expect.stringMatching(/^> off {2}make\s+not collected/))
+    expect(tui.state.message?.text).toContain('saved runners.disabled')
+  })
+
+  test('a flag that decides the setting is named, and the session keeps the flag', async () => {
+    const { tui } = await open({ flags: { exclude: ['nothing'] } })
+    tui.handle(' ')
+    await tui.idle()
+    expect(tui.session.options.exclude).toEqual(['nothing'])
+    expect(tui.state.message).toMatchObject({ tone: 'warning' })
+    expect(tui.state.message?.text).toContain('a command-line flag decides it')
+  })
+
+  test('discovery cycles through its values', async () => {
+    const { tui, root } = await open()
+    const lines = () => screen(tui, 100, 60)
+    const at = lines().findIndex((l) => l.startsWith('DISCOVERY'))
+    while (!lines()[at + 1]!.startsWith('>')) tui.handle('\x1b[B')
+    tui.handle('\r')
+    await tui.idle()
+    expect(await projectFile(root)).toMatchObject({ discovery: 'git' })
+    expect(tui.session.options.discovery).toBe('git')
+  })
+
+  test('a adds an excluded path and x removes it', async () => {
+    const { tui, root } = await open()
+    tui.handle('a')
+    for (const ch of 'vendor') tui.handle(ch)
+    expect(screen(tui).at(-1)).toContain('add path: vendor█')
+    tui.handle('\r')
+    await tui.idle()
+    expect(await projectFile(root)).toMatchObject({ excludePaths: ['vendor'] })
+    expect(tui.session.options.excludePaths).toEqual(['vendor'])
+    while (!screen(tui, 100, 60).includes('> vendor')) tui.handle('\x1b[B')
+    tui.handle('x')
+    await tui.idle()
+    expect(await projectFile(root)).toMatchObject({ excludePaths: [] })
+  })
+
+  test('] moves a runner later in the order, written to the user file', async () => {
+    const { tui, root, home } = await open()
+    tui.handle(']')
+    await tui.idle()
+    const user = configLocations(root, { PATH: process.env['PATH'] }, home).user
+    expect(JSON.parse(await readFile(user, 'utf-8'))).toMatchObject({
+      runners: { order: ['just', 'make'] },
+    })
+    expect(tui.state.catalog?.reports.map((r) => r.runner)).toEqual(['just', 'make'])
+    // The cursor stays on the runner it moved.
+    expect(screen(tui)[5]).toMatch(/^> on {3}make/)
+  })
+
+  test('] writes the order to the project file when that file sets it', async () => {
+    const { tui, root } = await showing(catalog(['build'], [report('just', [task('just', 'x')])]))
+    await writeFile(join(root, 'wayfinder.config.json'), '{"runners":{"order":["make","just"]}}')
+    tui.handle(',')
+    await tui.idle()
+    tui.handle(']')
+    await tui.idle()
+    expect(await projectFile(root)).toMatchObject({ runners: { order: ['just', 'make'] } })
+    expect(tui.state.message?.text).toContain('saved runners.order to')
+  })
+
+  test('a write that fails is reported, and nothing else changes', async () => {
+    const { tui, root } = await open()
+    await mkdir(join(root, 'wayfinder.config.json'))
+    tui.handle(' ')
+    await tui.idle()
+    expect(tui.state.message).toMatchObject({ tone: 'error' })
+    expect(tui.state.message?.text).toContain('not saved')
+    expect(tui.session.options.exclude).toEqual([])
+  })
+
+  test('the screen scrolls to keep the cursor in view', async () => {
+    const { tui } = await open({ size: { columns: 100, rows: 10 } })
+    for (let i = 0; i < 10; i++) tui.handle('\x1b[B')
+    const shown = screen(tui, 100, 10)
+    expect(shown.some((l) => l.startsWith('> + add a path'))).toBe(true)
+    expect(shown.some((l) => l.startsWith('RUNNERS'))).toBe(false)
+  })
+
+  test('esc goes back to the list; ? opens help and returns to settings', async () => {
+    const { tui } = await open()
+    tui.handle('?')
+    expect(tui.state.view).toBe('help')
+    tui.handle('\x1b')
+    expect(tui.state.view).toBe('settings')
+    tui.handle('\x1b')
+    expect(tui.state.view).toBe('list')
+  })
+})
+
+describe('boot', () => {
+  test('probes and shows the rows with the measured time', async () => {
+    const { tui } = await testTui()
+    await tui.boot()
+    expect(tui.state.probed).toBe(true)
+    expect(tui.state.rows.map((r) => r.task.id)).toContain('node-scripts:package.json:build')
+    expect(lineOf(tui, 2)).toMatch(/probed in/)
+  })
+
+  test('the first frame shows the saved view before the probe answers', async () => {
+    const { tui, host } = await testTui()
+    const session = tui.session
+    // An earlier run probed and saved what it showed.
+    await session.catalog()
+    // This run's probe never answers, and the store is not read.
+    const probe = vi.fn(() => new Promise<never>(() => {}))
+    const stored = vi.fn(() => session.storedCatalog())
+    Object.assign(session, { catalog: probe, storedCatalog: stored })
+    void tui.boot()
+    await vi.waitFor(() => expect(probe).toHaveBeenCalled())
+    expect(stored).not.toHaveBeenCalled()
+    expect(tui.state.loading).toBe(true)
+    expect(tui.state.rows.map((r) => r.task.id)).toContain('node-scripts:package.json:build')
+    expect(host.written.join('')).toContain('build')
+  })
+
+  test('a malformed saved view is skipped and deleted, and the probe draws the rows', async () => {
+    const { tui } = await testTui()
+    const session = tui.session
+    await session.catalog()
+    expect(await session.savedCatalog()).not.toBeNull()
+    const file = viewPath(session.store, session.root, session.viewKey())
+    await writeFile(file, JSON.stringify({ version: 1, key: session.viewKey() }), 'utf-8')
+    const stored = vi.fn(() => session.storedCatalog())
+    Object.assign(session, { storedCatalog: stored })
+    await tui.boot()
+    expect(tui.state.rows.map((r) => r.task.id)).toContain('node-scripts:package.json:build')
+    expect(stored).not.toHaveBeenCalled()
+    await expect(stat(file)).rejects.toThrow()
+  })
+
+  test('Enter on a saved row reads its runner again, and refuses a task that changed', async () => {
+    const { tui, host, root } = await testTui({ files: { Procfile: 'web: echo one\n' } })
+    const session = tui.session
+    await session.catalog()
+    expect(await session.savedCatalog()).not.toBeNull()
+    await writeFile(join(root, 'Procfile'), 'web: echo two\n', 'utf-8')
+    const probe = vi.fn(() => new Promise<never>(() => {}))
+    Object.assign(session, { catalog: probe })
+    void tui.boot()
+    await vi.waitFor(() => expect(tui.state.rows.length).toBeGreaterThan(0))
+    expect(tui.state.fromProbe).toBe(false)
+    tui.handle('\r')
+    // The "checking" note shows until the runner is read again, which can take
+    // seconds on a loaded runner: wait for the answer, then check it.
+    await vi.waitFor(() => expect(tui.state.message?.tone).toBe('error'), { timeout: 20_000 })
+    expect(tui.state.message?.text).toMatch(/changed since .*echo two/)
+    expect(host.handedOff).toEqual([])
+    expect(host.released).toBe(0)
+    // The probe boot started is still running; its rows replace these.
+    expect(tui.state.loading).toBe(true)
+  }, 30_000)
+
+  test('Enter on a saved row that has not changed runs it once its runner agrees', async () => {
+    const { tui, host } = await testTui({ files: { Procfile: 'web: echo one\n' } })
+    const session = tui.session
+    await session.catalog()
+    expect(await session.savedCatalog()).not.toBeNull()
+    Object.assign(session, { catalog: vi.fn(() => new Promise<never>(() => {})) })
+    void tui.boot()
+    await vi.waitFor(() => expect(tui.state.rows.length).toBeGreaterThan(0))
+    tui.handle('\r')
+    await vi.waitFor(() => expect(host.handedOff).toHaveLength(1))
+    expect(host.handedOff[0]!.argv.join(' ')).toContain('echo one')
+  })
+
+  test('the first frame is drawn before anything is read', async () => {
+    const { tui, host } = await testTui()
+    const session = tui.session
+    let frames = -1
+    Object.assign(session, {
+      savedCatalog: () => {
+        frames = host.written.length
+        return new Promise<never>(() => {})
+      },
+    })
+    void tui.boot()
+    await vi.waitFor(() => expect(frames).toBeGreaterThanOrEqual(0))
+    expect(frames).toBe(1)
+    expect(host.written[0]).toContain('loading…')
+  })
+})
+
+describe('step-by-step loading', () => {
+  /** A probe that reports only when told to, and the controls to tell it. */
+  function stepped(tui: Awaited<ReturnType<typeof testTui>>['tui']) {
+    let progress: CatalogProgress | undefined
+    let finish: (snapshot: CatalogSnapshot) => void = () => {}
+    const probe = vi.fn(
+      (opts: { progress?: CatalogProgress }) =>
+        new Promise<CatalogSnapshot>((resolve) => {
+          progress = opts.progress
+          finish = resolve
+        }),
+    )
+    Object.assign(tui.session, { catalog: probe })
+    const fresh = (runner: string): CacheState => ({
+      runner,
+      state: 'fresh',
+      ageMs: 0,
+      estimateMs: 5,
+      slow: false,
+      probeMs: 5,
+    })
+    return {
+      probe,
+      runners: (ids: string[]) => progress!.onRunners!(ids),
+      answer: (r: RunnerReport) => progress!.onRunner!(r, fresh(r.runner)),
+      skills: (rows: SkillRow[]) => progress!.onSkills!(rows),
+      finish: (reports: RunnerReport[], skills: SkillRow[] = []) =>
+        finish({
+          catalog: { ...catalog([]), reports },
+          cache: reports.map((r) => fresh(r.runner)),
+          skills,
+          origin: 'probe',
+        }),
     }
-    recompute()
-    const tabs = frame(100, 10).split('\n')[0]!
-    expect(tabs).toContain(' make 1 │ dependencies 1 │ git hooks 1 ')
+  }
+
+  test('each runner is drawn as it answers; the rest are named as loading', async () => {
+    const { tui } = await testTui()
+    Object.assign(tui.session, { savedCatalog: async () => null })
+    const probe = stepped(tui)
+    const booted = tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.runners(['make', 'just', 'moon'])
+    expect(lineOf(tui, 2)).toBe('0/0  loading 3 of 3: just, make, moon')
+    expect(lineOf(tui, 0)).toContain(' just … ')
+
+    const make = report('make', [task('make', 'build')])
+    probe.answer(make)
+    expect(lineOf(tui, 2)).toBe('1/1  loading 2 of 3: just, moon')
+    expect(lineOf(tui, 0)).toContain(' make 1 ')
+    expect(lineOf(tui, 3)).toBe('>   make > build')
+    expect(lineOf(tui, 4)).toBe('    … just  loading')
+    expect(lineOf(tui, 5)).toBe('    … moon  loading')
+
+    // A withheld runner shows its reason in place, as soon as it answers.
+    const moon = report('moon', [], { status: 'absent', skippedForExec: true })
+    probe.answer(moon)
+    expect(lineOf(tui, 0)).toContain(' moon – ')
+    expect(lineOf(tui, 2)).toContain('loading 1 of 3: just')
+    expect(lineOf(tui, 2)).toContain('1 runner withheld')
+
+    // A runner's own tab says it is loading.
+    tui.state.runner = 'just'
+    tui.recompute()
+    expect(lineOf(tui, 3)).toBe('    … loading just')
+    tui.state.runner = 'all'
+
+    const just = report('just', [task('just', 'test')])
+    probe.answer(just)
+    probe.finish([make, just, moon])
+    await booted
+    expect(tui.state.partial).toBeNull()
+    expect(lineOf(tui, 2)).not.toContain('loading')
+    expect(tui.state.rows.map((r) => r.task.id)).toEqual(['just:test', 'make:build'])
+  })
+
+  test('Enter on a row the first probe sent runs it without reading its runner again', async () => {
+    const { tui, host } = await testTui()
+    Object.assign(tui.session, { savedCatalog: async () => null })
+    const confirm = vi.fn()
+    Object.assign(tui.session, { confirmRun: confirm })
+    const probe = stepped(tui)
+    void tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.runners(['make', 'just'])
+    probe.answer(report('make', [task('make', 'build', { argv: ['echo', 'build'] })]))
+    tui.handle('\r')
+    expect(host.handedOff).toHaveLength(1)
+    expect(confirm).not.toHaveBeenCalled()
+  })
+
+  test('over a saved view, the rows stay until every runner has answered', async () => {
+    const { tui } = await testTui()
+    const saved = catalog(['old'])
+    Object.assign(tui.session, {
+      savedCatalog: async () => ({
+        catalog: saved,
+        cache: [{ runner: 'make', state: 'fresh', ageMs: 1000, estimateMs: null, slow: false }],
+        skills: [],
+        origin: 'saved',
+      }),
+    })
+    const probe = stepped(tui)
+    const booted = tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    expect(tui.state.rows.map((r) => r.task.id)).toEqual(['make:old'])
+    expect(lineOf(tui, 2)).toContain('refreshing…')
+    // The progress only names, after a while, the runners still out.
+    probe.runners(['make', 'hang'])
+    probe.answer(report('make', [task('make', 'new')]))
+    expect(tui.state.rows.map((r) => r.task.id)).toEqual(['make:old'])
+    expect(lineOf(tui, 2)).not.toContain('waiting on')
+    tui.state.loadStarted = Date.now() - 5000
+    expect(lineOf(tui, 2)).toContain('refreshing… waiting on hang')
+    // Too narrow for the names: the short form, so the rest of the line stays.
+    expect(lineOf(tui, 2, 30)).toContain('refreshing…')
+    expect(lineOf(tui, 2, 30)).not.toContain('waiting on')
+    const make = report('make', [task('make', 'new')])
+    probe.finish([make])
+    await booted
+    expect(tui.state.rows.map((r) => r.task.id)).toEqual(['make:new'])
+    expect(lineOf(tui, 2)).not.toContain('refreshing')
+  })
+
+  test('a failed runner shows its reason in place, and its tab is marked', async () => {
+    const { tui } = await testTui()
+    Object.assign(tui.session, { savedCatalog: async () => null })
+    const probe = stepped(tui)
+    void tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.runners(['boom', 'make'])
+    probe.answer(
+      report('boom', [], {
+        status: 'error',
+        diagnostics: [{ severity: 'error', message: 'boom exploded' }],
+      }),
+    )
+    tui.recompute()
+    expect(lineOf(tui, 0)).toContain(' boom 0 ! ')
+    expect(lineOf(tui, 3)).toBe('  boom: boom exploded')
+    expect(lineOf(tui, 2)).toContain('boom failed')
+    tui.state.runner = 'boom'
+    tui.recompute()
+    expect(lineOf(tui, 3)).toBe('  boom: boom exploded')
+    expect(lineOf(tui, 4)).toBe('    probe failed')
+  })
+
+  test('skills read before any task show with the first task, below it, with their tab', async () => {
+    const { tui } = await testTui()
+    Object.assign(tui.session, { savedCatalog: async () => null })
+    const probe = stepped(tui)
+    const booted = tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.skills([skillRow('review')])
+    // Held: a task landing in its place would change what Enter does.
+    expect(tui.state.skills).toEqual([])
+    probe.runners(['make', 'just'])
+    probe.answer(report('just', [], { status: 'absent' }))
+    expect(tui.state.skills).toEqual([])
+    const make = report('make', [task('make', 'build')])
+    probe.answer(make)
+    expect(lineOf(tui, 0)).toMatch(/ make 1 .* skills 1 /)
+    expect(lineOf(tui, 2)).toContain('loading')
+    expect(lineOf(tui, 3)).toBe('>   make > build')
+    expect(screen(tui)).toContainEqual(expect.stringMatching(/^ {4}\/review {2}project$/))
+    expect(tui.state.selectedId).toBe('make:build')
+    probe.finish([make], [skillRow('review')])
+    await booted
+    expect(tui.state.selectedId).toBe('make:build')
+    expect(tui.state.skills.map((r) => r.name)).toEqual(['review'])
+  })
+
+  test('under a filter that hides every task so far, the skills wait for a shown row', async () => {
+    const { tui } = await testTui()
+    Object.assign(tui.session, { savedCatalog: async () => null })
+    tui.state.query = 'deploy'
+    const probe = stepped(tui)
+    void tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.runners(['make', 'just'])
+    probe.skills([skillRow('deploy-review')])
+    probe.answer(report('make', [task('make', 'build')]))
+    // make has a task, but the query hides it: no row for the skill to sit below.
+    expect(tui.state.skills).toEqual([])
+    probe.answer(report('just', [task('just', 'deploy')]))
+    expect(tui.state.skills.map((r) => r.name)).toEqual(['deploy-review'])
+    expect(tui.state.selectedId).toBe('just:deploy')
+  })
+
+  test('skills read after a task show at once', async () => {
+    const { tui } = await testTui()
+    Object.assign(tui.session, { savedCatalog: async () => null })
+    const probe = stepped(tui)
+    void tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.runners(['make', 'just'])
+    probe.answer(report('make', [task('make', 'build')]))
+    probe.skills([skillRow('review')])
+    expect(lineOf(tui, 2)).toContain('loading 1 of 2: just')
+    expect(lineOf(tui, 0)).toContain(' skills 1 ')
+  })
+
+  test('over a saved view, the skills come with the whole answer', async () => {
+    const { tui } = await testTui()
+    Object.assign(tui.session, {
+      savedCatalog: async () => ({
+        catalog: catalog(['old']),
+        cache: [{ runner: 'make', state: 'fresh', ageMs: 1000, estimateMs: null, slow: false }],
+        skills: [],
+        origin: 'saved',
+      }),
+    })
+    const probe = stepped(tui)
+    const booted = tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.runners(['make'])
+    probe.skills([skillRow('review')])
+    expect(tui.state.skills).toEqual([])
+    const make = report('make', [task('make', 'new')])
+    probe.answer(make)
+    expect(tui.state.skills).toEqual([])
+    probe.finish([make], [skillRow('review')])
+    await booted
+    expect(tui.state.skills.map((r) => r.name)).toEqual(['review'])
+  })
+
+  test('a runner cut off at its timeout shows the reason in place', async () => {
+    const { tui } = await testTui()
+    Object.assign(tui.session, { savedCatalog: async () => null })
+    const probe = stepped(tui)
+    void tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.runners(['hang', 'make'])
+    probe.answer(
+      report('hang', [], {
+        status: 'error',
+        diagnostics: [{ severity: 'error', message: 'timed out after 10 s' }],
+      }),
+    )
+    tui.recompute()
+    expect(lineOf(tui, 0)).toContain(' hang 0 ! ')
+    expect(lineOf(tui, 3)).toBe('  hang: timed out after 10 s')
+    expect(lineOf(tui, 2)).toContain('loading 1 of 2: make')
+  })
+
+  test('a repository with no runners loads to an empty list', async () => {
+    const { tui } = await testTui()
+    Object.assign(tui.session, { savedCatalog: async () => null })
+    const probe = stepped(tui)
+    const booted = tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    expect(lineOf(tui, 2)).toBe('0/0  detecting the project…')
+    probe.runners([])
+    expect(lineOf(tui, 2)).toBe('0/0  loading…')
+    probe.finish([])
+    await booted
+    expect(lineOf(tui, 3)).toBe('    nothing collected')
+  })
+
+  test('Enter during loading runs the row on screen, not one that landed above it', async () => {
+    const { tui, host } = await testTui()
+    Object.assign(tui.session, { savedCatalog: async () => null })
+    const probe = stepped(tui)
+    void tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.runners(['make', 'just'])
+    probe.answer(report('make', [task('make', 'build', { argv: ['echo', 'build'] })]))
+    expect(lineOf(tui, 3)).toBe('>   make > build')
+    // just sorts first, so its row lands above the one on screen.
+    probe.answer(report('just', [task('just', 'test', { argv: ['echo', 'test'] })]))
+    expect(tui.state.rows.map((r) => r.task.id)).toEqual(['just:test', 'make:build'])
+    expect(lineOf(tui, 4)).toBe('>   make > build')
+    tui.handle('\r')
+    expect(host.handedOff[0]!.argv).toEqual(['echo', 'build'])
+  })
+
+  test('typing during loading selects the new top hit, which then holds', async () => {
+    const { tui, host } = await testTui()
+    Object.assign(tui.session, { savedCatalog: async () => null })
+    const probe = stepped(tui)
+    void tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.runners(['make', 'just'])
+    probe.answer(
+      report('make', [
+        task('make', 'build', { argv: ['echo', 'build'] }),
+        task('make', 'test', { argv: ['echo', 'make-test'] }),
+      ]),
+    )
+    tui.feed('te')
+    expect(tui.state.selectedId).toBe('make:test')
+    probe.answer(report('just', [task('just', 'test', { argv: ['echo', 'just-test'] })]))
+    expect(tui.state.selectedId).toBe('make:test')
+    tui.feed('\r')
+    expect(host.handedOff[0]!.argv).toEqual(['echo', 'make-test'])
+  })
+
+  test('nothing is drawn after quitting during a load', async () => {
+    const { tui, host } = await testTui()
+    Object.assign(tui.session, { savedCatalog: async () => null })
+    const probe = stepped(tui)
+    const booted = tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.runners(['make'])
+    tui.handle('\x1b')
+    await vi.waitFor(() => expect(host.released).toBe(1))
+    const written = host.written.length
+    probe.answer(report('make', [task('make', 'build')]))
+    probe.finish([report('make', [task('make', 'build')])])
+    await booted
+    expect(host.written.length).toBe(written)
+  })
+
+  test('a report from a probe that was replaced is ignored', async () => {
+    const { tui } = await testTui()
+    Object.assign(tui.session, { savedCatalog: async () => null })
+    const probe = stepped(tui)
+    void tui.boot()
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    probe.runners(['make'])
+    const stale = probe.answer
+    // A grant abandons the probe and starts another.
+    tui.state.generation++
+    stale(report('make', [task('make', 'build')]))
+    expect(tui.state.partial).toEqual([])
+    expect(tui.state.pending).toEqual(['make'])
+  })
+})
+
+describe('the help screen', () => {
+  test('wraps a long action under its own column instead of cutting it', () => {
+    const lines = wrapHanging('  ^y      copy the selected task command line, or a skill name', 40)
+    expect(lines).toEqual([
+      '  ^y      copy the selected task command',
+      '          line, or a skill name',
+    ])
+    expect(lines.every((l) => l.length <= 40)).toBe(true)
+    expect(wrapHanging('short', 40)).toEqual(['short'])
+  })
+
+  test('at 60 columns every key line is whole', async () => {
+    const { tui } = await testTui({ size: { columns: 60, rows: 200 } })
+    tui.handle('?')
+    const text = screen(tui, 60, 200).join('\n')
+    expect(text).not.toContain('…')
+    expect(text).toContain("skill's /name")
+  })
+})
+
+describe('without a terminal', () => {
+  test('refuses with exit 2 and a way: line naming the commands to use', async () => {
+    const original = process.stdin.isTTY
+    const writes: string[] = []
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => {
+      writes.push(String(chunk))
+      return true
+    })
+    Object.defineProperty(process.stdin, 'isTTY', { configurable: true, value: false })
+    try {
+      expect(await runTui({} as never)).toBe(2)
+    } finally {
+      spy.mockRestore()
+      Object.defineProperty(process.stdin, 'isTTY', { configurable: true, value: original })
+    }
+    expect(writes.join('')).toMatch(/^way: the terminal UI needs a TTY; use "way serve"/)
+  })
+})
+
+describe('quitting', () => {
+  test.each([
+    ['^C', '\x03'],
+    ['Esc', '\x1b'],
+  ])('%s stops the probe in flight, gives the terminal back and exits 0', async (_, key) => {
+    const { tui, host } = await showing(catalog(['a']))
+    const probe = new AbortController()
+    tui.state.inFlight = probe
+    tui.handle(key)
+    expect(probe.signal.aborted).toBe(true)
+    expect(host.released).toBe(1)
+    expect(host.exits).toEqual([0])
+  })
+
+  test.each([
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+    ['SIGHUP', 129],
+    ['SIGQUIT', 131],
+  ] as const)('%s quits with %i, and the listeners can be removed', (signal, code) => {
+    const target = new EventEmitter()
+    const codes: number[] = []
+    const uninstall = installQuitHandlers((c) => codes.push(c), target)
+    target.emit(signal)
+    expect(codes).toEqual([code])
+    uninstall()
+    expect(target.listenerCount(signal)).toBe(0)
+  })
+
+  test('without a TTY it refuses on stderr, with the way: prefix', async () => {
+    const { tui } = await testTui()
+    const was = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY')
+    Object.defineProperty(process.stdin, 'isTTY', { value: false, configurable: true })
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      expect(await runTui(tui.session)).toBe(2)
+      expect(String(write.mock.calls[0]?.[0])).toMatch(/^way: the terminal UI needs a TTY/)
+    } finally {
+      write.mockRestore()
+      if (was === undefined) delete (process.stdin as { isTTY?: boolean }).isTTY
+      else Object.defineProperty(process.stdin, 'isTTY', was)
+    }
+  })
+})
+
+describe('the open setting', () => {
+  test('the bare command opens what the user config says', async () => {
+    expect(openSurface((await testTui()).tui.session)).toBe('tui')
+    expect(openSurface((await testTui({ userConfig: { open: 'web' } })).tui.session)).toBe('web')
   })
 })
