@@ -16,6 +16,7 @@
 import { CommandFailed, notAnOption, runFailed, type CommandResult } from '@osdlc/command-seam'
 
 import { gitFailureError } from './failure.ts'
+import type { GitFeature } from './features.ts'
 
 /**
  * One git invocation: what to run, which exits are answers, and how to read
@@ -50,6 +51,20 @@ export interface GitVerb<T> {
    * so every failure names the command that ran.
    */
   parse(result: CommandResult, argv: string[]): T
+  /**
+   * The git feature this argv needs, from the table in `./features.ts`. The
+   * client probes the git version (once per runner) before it runs a verb
+   * that sets this, and runs {@link GitVerb.fallback} or throws the
+   * `unsupported-git` failure when the git is too old. A verb without it
+   * never probes.
+   */
+  needs?: GitFeature | undefined
+  /**
+   * The verb to run instead on a git older than `needs` requires. It is used
+   * only when the feature's table entry has a `fallback`, so a verb cannot
+   * fall back where the table says no fallback exists.
+   */
+  fallback?: GitVerb<T> | undefined
 }
 
 /**
@@ -151,7 +166,9 @@ export interface Worktree {
   locked: boolean
   /**
    * The reason given to `git worktree lock --reason`, or null when none was.
-   * Verbatim porcelain: git C-quotes a reason holding a newline or other
+   * On git 2.36 or later it is the reason as written, newlines and all (read
+   * from `worktree list --porcelain -z`). On older git it is the newline
+   * porcelain's text: git C-quotes a reason holding a newline or other
    * special characters, and the quotes stay.
    */
   lockReason: string | null
@@ -556,48 +573,64 @@ export function branches(pattern?: string | undefined): GitVerb<string[]> {
   return { argv, absent: NONE, parse: trimmedLines }
 }
 
-/** `git worktree list --porcelain`, parsed. Throws outside a repository. */
+/**
+ * `git worktree list --porcelain -z`, parsed. Throws outside a repository.
+ *
+ * `-z` (git 2.36) ends each line with NUL, so a path or lock reason holding
+ * a newline reads as written. On an older git the client runs the
+ * newline-split form instead (the `worktree list -z` row in `./features.ts`),
+ * which breaks on such a path and C-quotes such a reason.
+ */
 export function worktrees(): GitVerb<Worktree[]> {
   return {
-    argv: ['worktree', 'list', '--porcelain'],
+    argv: ['worktree', 'list', '--porcelain', '-z'],
     absent: NONE,
-    parse(r) {
-      const out: Worktree[] = []
-      let cur: Partial<Worktree> | null = null
-      const flush = () => {
-        if (cur?.path !== undefined) {
-          out.push({
-            path: cur.path,
-            head: cur.head ?? null,
-            branch: cur.branch ?? null,
-            detached: cur.detached ?? false,
-            bare: cur.bare ?? false,
-            locked: cur.locked ?? false,
-            lockReason: cur.lockReason ?? null,
-          })
-        }
-      }
-      for (const line of r.stdout.split('\n')) {
-        if (line.startsWith('worktree ')) {
-          flush()
-          cur = { path: line.slice('worktree '.length) }
-        } else if (cur !== null && line.startsWith('HEAD ')) {
-          cur.head = line.slice('HEAD '.length)
-        } else if (cur !== null && line.startsWith('branch ')) {
-          cur.branch = line.slice('branch '.length).replace(/^refs\/heads\//, '')
-        } else if (cur !== null && line === 'detached') {
-          cur.detached = true
-        } else if (cur !== null && line === 'bare') {
-          cur.bare = true
-        } else if (cur !== null && (line === 'locked' || line.startsWith('locked '))) {
-          cur.locked = true
-          cur.lockReason = line.slice('locked '.length) || null
-        }
-      }
-      flush()
-      return out
+    parse: (r) => worktreeRecords(r.stdout.split('\x00')),
+    needs: 'worktree list -z',
+    fallback: {
+      argv: ['worktree', 'list', '--porcelain'],
+      absent: NONE,
+      parse: (r) => worktreeRecords(r.stdout.split('\n')),
     },
   }
+}
+
+/** `worktree list --porcelain` lines, however they were split, into rows. */
+function worktreeRecords(lines: readonly string[]): Worktree[] {
+  const out: Worktree[] = []
+  let cur: Partial<Worktree> | null = null
+  const flush = () => {
+    if (cur?.path !== undefined) {
+      out.push({
+        path: cur.path,
+        head: cur.head ?? null,
+        branch: cur.branch ?? null,
+        detached: cur.detached ?? false,
+        bare: cur.bare ?? false,
+        locked: cur.locked ?? false,
+        lockReason: cur.lockReason ?? null,
+      })
+    }
+  }
+  for (const line of lines) {
+    if (line.startsWith('worktree ')) {
+      flush()
+      cur = { path: line.slice('worktree '.length) }
+    } else if (cur !== null && line.startsWith('HEAD ')) {
+      cur.head = line.slice('HEAD '.length)
+    } else if (cur !== null && line.startsWith('branch ')) {
+      cur.branch = line.slice('branch '.length).replace(/^refs\/heads\//, '')
+    } else if (cur !== null && line === 'detached') {
+      cur.detached = true
+    } else if (cur !== null && line === 'bare') {
+      cur.bare = true
+    } else if (cur !== null && (line === 'locked' || line.startsWith('locked '))) {
+      cur.locked = true
+      cur.lockReason = line.slice('locked '.length) || null
+    }
+  }
+  flush()
+  return out
 }
 
 /**
@@ -2656,6 +2689,10 @@ export interface MergeTreeOptions {
  *
  * A name git cannot merge exits 1 exactly like a conflict, so again only
  * stdout separates an answer from a refusal.
+ *
+ * Needs git 2.38, or 2.40 with `mergeBase` (the `merge-tree` rows in
+ * `./features.ts`). There is no fallback: on an older git it throws the
+ * `unsupported-git` failure without running git.
  */
 export function mergeTree(
   ours: string,
@@ -2667,6 +2704,7 @@ export function mergeTree(
   argv.push(positional('mergeTree', 'ours', ours), positional('mergeTree', 'theirs', theirs))
   return {
     argv,
+    needs: opts.mergeBase === undefined ? 'merge-tree --write-tree' : 'merge-tree --merge-base',
     absent: [1],
     parse(r, ranArgv) {
       const fields = r.stdout.split('\x00')

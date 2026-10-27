@@ -33,11 +33,16 @@ import { makeGitFixture } from '../src/testing.ts'
 
 const CWD = '/tmp/repo'
 
-/** A runner that records argv and replays canned results. */
+/**
+ * A runner that records argv and replays canned results. `git --version`
+ * answers 2.50.1 unless a reply overrides it.
+ */
 function recorder(replies: Record<string, Partial<CommandResult>> = {}) {
   const calls: string[][] = []
   const reply = (argv: string[]): CommandResult => {
-    const canned = replies[argv.join(' ')]
+    const canned =
+      replies[argv.join(' ')] ??
+      (argv.join(' ') === '--version' ? { stdout: 'git version 2.50.1\n' } : undefined)
     return { exitCode: 0, stdout: '', stderr: '', ...canned }
   }
   const sync: CommandRunner = {
@@ -307,7 +312,7 @@ describe('AsyncGit — parity with Git', () => {
     const porcelain =
       'worktree /repo\nHEAD abc\nbranch refs/heads/main\n\nworktree /wt\nHEAD def\ndetached\n'
     const replies = {
-      'worktree list --porcelain': { stdout: porcelain },
+      'worktree list --porcelain -z': { stdout: porcelain.replaceAll('\n', '\x00') },
       'branch --show-current': { stdout: 'main\n' },
     }
     const sync = new Git(CWD, { runner: recorder(replies).sync })

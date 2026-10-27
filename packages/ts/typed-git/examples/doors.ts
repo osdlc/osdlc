@@ -28,7 +28,7 @@ export function run(): void {
     assert.ok(!failed.ok)
     assert.equal(failed.error.kind, 'not-a-repo')
     assert.equal(failed.error.exitCode, 128)
-    assert.equal(failed.error.cause.result.exitCode, 128)
+    assert.equal(failed.error.cause?.result.exitCode, 128)
 
     // `soft` turns any failure into the verb's absence value.
     assert.deepEqual(outside.soft.lsFilesUnmerged(), [])

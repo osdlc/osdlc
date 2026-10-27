@@ -18,6 +18,7 @@ import { basename, dirname, resolve } from 'node:path'
 import type { CommandResult } from '@osdlc/command-seam'
 
 import { cliBackend, type GitBackend, type GitCallOptions } from './backend.ts'
+import type { GitVersion } from './git-version.ts'
 import { softAsync, triedAsync, type Soft, type TriedAsync } from './outcome.ts'
 import { parseRemoteUrl, type RemoteCoordinate } from './remote-url.ts'
 import { SOFT_TABLE } from './soft.ts'
@@ -181,6 +182,17 @@ export class AsyncGit {
   }
 
   // ── queries ───────────────────────────────────────────────────────────────
+
+  /**
+   * The git the backend runs, from `git --version`; see {@link Git.version}.
+   * `cliBackend` probes once per runner and caches it, or returns its
+   * `gitVersion` option without running anything. A non-CLI backend has
+   * no git version unless it answers the `version` request itself;
+   * `partialBackend` rejects it with `UnsupportedRequest` otherwise.
+   */
+  version(opts: GitCallOptions = {}): Promise<GitVersion> {
+    return this.backend.execute(this.cwd, { kind: 'version' }, opts)
+  }
 
   /** A file's content at a rev, null if absent. */
   showAtRev(rev: string, relPath: string, opts: GitCallOptions = {}): Promise<string | null> {

@@ -28,7 +28,12 @@ import { makeGitFixture } from '../src/testing.ts'
 
 // ── fake-runner layer ───────────────────────────────────────────────────────
 
-/** Records every run() call and replays a canned result. */
+/**
+ * Records every run() call and replays a canned result. `git --version`, the
+ * probe a version-gated verb makes, answers 2.50.1 and is not recorded; a
+ * test that needs another version pins it with the `gitVersion` option, and
+ * `features.test.ts` counts the probes.
+ */
 function recorder(result: CommandResult): {
   runner: CommandRunner
   calls: Array<{ argv: string[]; cwd: string; input?: string }>
@@ -38,6 +43,7 @@ function recorder(result: CommandResult): {
     calls,
     runner: {
       run: (argv, opts) => {
+        if (argv.length === 1 && argv[0] === '--version') return OK('git version 2.50.1\n')
         const call: { argv: string[]; cwd: string; input?: string } = {
           argv: [...argv],
           cwd: opts.cwd,
@@ -850,94 +856,141 @@ describe('Git — argv construction (fake runner)', () => {
     expect(() => git.rawChecked(['status'])).toThrow(FailureError)
   })
 
-  test('worktrees() parses porcelain incl. detached and branch rows', () => {
-    const porcelain = [
-      'worktree /repo',
-      'HEAD aaaa',
-      'branch refs/heads/main',
-      '',
-      'worktree /repo-wt/x',
-      'HEAD bbbb',
-      'detached',
-      '',
-      // A bare entry: git prints a literal `bare` line and NO `HEAD` line.
-      'worktree /store.git',
-      'bare',
-      '',
-    ].join('\n')
-    const { runner } = recorder(OK(porcelain))
-    const rows = new Git('/repo', { runner }).worktrees()
-    expect(rows).toEqual([
-      {
-        path: '/repo',
-        head: 'aaaa',
-        branch: 'main',
-        detached: false,
-        bare: false,
-        locked: false,
-        lockReason: null,
-      },
-      {
-        path: '/repo-wt/x',
-        head: 'bbbb',
-        branch: null,
-        detached: true,
-        bare: false,
-        locked: false,
-        lockReason: null,
-      },
-      {
-        path: '/store.git',
-        head: null,
-        branch: null,
-        detached: false,
-        bare: true,
-        locked: false,
-        lockReason: null,
-      },
+  // git 2.36 and later run `-z` and split on NUL; older git runs the
+  // newline form. Every porcelain case below runs through both.
+  const WORKTREE_FORMS = [
+    { name: '-z (git 2.50.1)', version: '2.50.1', sep: '\x00', z: true },
+    { name: 'newline fallback (git 2.35.0)', version: '2.35.0', sep: '\n', z: false },
+  ]
+
+  test.each(WORKTREE_FORMS)('worktrees() runs the $name form', ({ version, z }) => {
+    const { runner, calls } = recorder(OK(''))
+    new Git('/repo', { runner, gitVersion: version }).worktrees()
+    expect(calls.map((c) => c.argv)).toEqual([
+      z ? ['worktree', 'list', '--porcelain', '-z'] : ['worktree', 'list', '--porcelain'],
     ])
   })
 
-  test('worktrees() reads `locked` and its optional reason', () => {
-    const porcelain = [
-      'worktree /a',
-      'HEAD aaaa',
-      'branch refs/heads/a',
-      'locked',
-      '',
-      'worktree /b',
-      'HEAD bbbb',
-      'branch refs/heads/b',
-      'locked on a usb drive',
-      '',
-    ].join('\n')
+  test.each(WORKTREE_FORMS)(
+    'worktrees() parses porcelain incl. detached and branch rows: $name',
+    ({ version, sep }) => {
+      const porcelain = [
+        'worktree /repo',
+        'HEAD aaaa',
+        'branch refs/heads/main',
+        '',
+        'worktree /repo-wt/x',
+        'HEAD bbbb',
+        'detached',
+        '',
+        // A bare entry: git prints a literal `bare` line and NO `HEAD` line.
+        'worktree /store.git',
+        'bare',
+        '',
+      ].join(sep)
+      const { runner } = recorder(OK(porcelain))
+      const rows = new Git('/repo', { runner, gitVersion: version }).worktrees()
+      expect(rows).toEqual([
+        {
+          path: '/repo',
+          head: 'aaaa',
+          branch: 'main',
+          detached: false,
+          bare: false,
+          locked: false,
+          lockReason: null,
+        },
+        {
+          path: '/repo-wt/x',
+          head: 'bbbb',
+          branch: null,
+          detached: true,
+          bare: false,
+          locked: false,
+          lockReason: null,
+        },
+        {
+          path: '/store.git',
+          head: null,
+          branch: null,
+          detached: false,
+          bare: true,
+          locked: false,
+          lockReason: null,
+        },
+      ])
+    },
+  )
+
+  test.each(WORKTREE_FORMS)(
+    'worktrees() reads `locked` and its optional reason: $name',
+    ({ version, sep }) => {
+      const porcelain = [
+        'worktree /a',
+        'HEAD aaaa',
+        'branch refs/heads/a',
+        'locked',
+        '',
+        'worktree /b',
+        'HEAD bbbb',
+        'branch refs/heads/b',
+        'locked on a usb drive',
+        '',
+      ].join(sep)
+      const rows = new Git('/repo', {
+        runner: recorder(OK(porcelain)).runner,
+        gitVersion: version,
+      }).worktrees()
+      expect(rows.map((r) => [r.locked, r.lockReason])).toEqual([
+        [true, null],
+        [true, 'on a usb drive'],
+      ])
+    },
+  )
+
+  // #381: with `-z` a reason holding a newline comes back as written. The
+  // newline form C-quotes it, and the quotes stay.
+  test('worktrees() reads a lock reason with a newline verbatim under -z', () => {
+    const porcelain = ['worktree /a', 'HEAD aaaa', 'locked line one\nline two', ''].join('\x00')
     const rows = new Git('/repo', { runner: recorder(OK(porcelain)).runner }).worktrees()
-    expect(rows.map((r) => [r.locked, r.lockReason])).toEqual([
-      [true, null],
-      [true, 'on a usb drive'],
-    ])
+    expect(rows[0]!.lockReason).toBe('line one\nline two')
+    const quoted = ['worktree /a', 'HEAD aaaa', 'locked "line one\\nline two"', ''].join('\n')
+    const old = new Git('/repo', {
+      runner: recorder(OK(quoted)).runner,
+      gitVersion: '2.35.0',
+    }).worktrees()
+    expect(old[0]!.lockReason).toBe('"line one\\nline two"')
+  })
+
+  test('worktrees() reads a path with a newline under -z', () => {
+    const porcelain = ['worktree /a\nb', 'HEAD aaaa', 'detached', ''].join('\x00')
+    const rows = new Git('/repo', { runner: recorder(OK(porcelain)).runner }).worktrees()
+    expect(rows.map((r) => r.path)).toEqual(['/a\nb'])
   })
 
   // `bare` is read from the porcelain, not inferred from a missing HEAD: an
   // unborn-HEAD checkout reports an all-zero HEAD, and a prunable entry keeps
   // the HEAD it had, so neither is bare despite looking unusual.
-  test('worktrees() reads `bare` from the line, not from a missing HEAD', () => {
-    const porcelain = [
-      'worktree /unborn',
-      'HEAD 0000000000000000000000000000000000000000',
-      'branch refs/heads/main',
-      '',
-      'worktree /gone',
-      'HEAD cccc',
-      'detached',
-      'prunable gitdir file points to non-existent location',
-      '',
-    ].join('\n')
-    const { runner } = recorder(OK(porcelain))
-    const rows = new Git('/repo', { runner }).worktrees()
-    expect(rows.map((r) => r.bare)).toEqual([false, false])
-    expect(rows[0]!.head).toBe('0000000000000000000000000000000000000000')
-  })
+  test.each(WORKTREE_FORMS)(
+    'worktrees() reads `bare` from the line, not from a missing HEAD: $name',
+    ({ version, sep }) => {
+      const porcelain = [
+        'worktree /unborn',
+        'HEAD 0000000000000000000000000000000000000000',
+        'branch refs/heads/main',
+        '',
+        'worktree /gone',
+        'HEAD cccc',
+        'detached',
+        'prunable gitdir file points to non-existent location',
+        '',
+      ].join(sep)
+      const { runner } = recorder(OK(porcelain))
+      const rows = new Git('/repo', { runner, gitVersion: version }).worktrees()
+      expect(rows.map((r) => r.bare)).toEqual([false, false])
+      expect(rows[0]!.head).toBe('0000000000000000000000000000000000000000')
+    },
+  )
 
   test('checkIgnore sends NUL-delimited stdin and parses NUL output', () => {
     const { runner, calls } = recorder(OK('a/b.md\x00c d.md\x00'))
@@ -1119,7 +1172,8 @@ describe('Git — argv construction (fake runner)', () => {
   test('env and timeoutMs reach the runner from any method', () => {
     const opts: Array<Record<string, unknown>> = []
     const runner: CommandRunner = {
-      run: (_argv, o) => {
+      run: (argv, o) => {
+        if (argv[0] === '--version') return OK('git version 2.50.1\n')
         opts.push(o as unknown as Record<string, unknown>)
         return OK('')
       },
@@ -1222,7 +1276,7 @@ describe('Git — git.try.*', () => {
     expect(r.ok).toBe(false)
     if (r.ok) throw new Error('unreachable')
     expect(r.error.cause).toBeInstanceOf(FailureError)
-    expect(r.error.cause.result.stderr).toBe('fatal: nope')
+    expect(r.error.cause?.result.stderr).toBe('fatal: nope')
   })
 
   test('a declared absence is ok:true — absence is an answer, not a failure', () => {

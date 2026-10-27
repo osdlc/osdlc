@@ -37,6 +37,16 @@ export {
   type GitFailureKind,
 } from './failure.ts'
 export { type Soft, type TriedAsync, type TriedSync } from './outcome.ts'
+export {
+  GIT_FEATURES,
+  GIT_FLOOR,
+  gitSupports,
+  type GitFeature,
+  type GitFeatureSpec,
+  type GitRelease,
+  type UnsupportedGit,
+} from './features.ts'
+export { compareGitVersions, parseGitVersion, type GitVersion } from './git-version.ts'
 
 export {
   forceWithLeaseArg,

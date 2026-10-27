@@ -159,7 +159,7 @@ suite('stderr patterns', () => {
     expect(f.argv).toEqual(['status', '--porcelain', '-z'].slice(0, f.argv.length))
     expect(f.detail).toBe([result.stderr, result.stdout].filter(Boolean).join('\n'))
     expect(f.cause).toBeInstanceOf(FailureError)
-    expect(f.cause.failure.kind).toBe('exit')
+    expect(f.cause?.failure.kind).toBe('exit')
   })
 
   test('an unrecognised failure stays an exit, with the first stderr line as its message', () => {
@@ -251,7 +251,7 @@ suite('the three doors agree', () => {
     const r = git.try.statusPorcelain()
     if (!r.ok) expectTypeOf(r.error).toEqualTypeOf<GitFailure>()
     expectTypeOf<GitFailure['kind']>().toEqualTypeOf<GitFailureKind>()
-    expectTypeOf<GitFailure['cause']>().toEqualTypeOf<CommandFailed>()
+    expectTypeOf<GitFailure['cause']>().toEqualTypeOf<CommandFailed | undefined>()
   })
 })
 

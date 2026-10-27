@@ -53,6 +53,13 @@ function pr(
   }
 }
 
+/**
+ * `git --version`, which typed-git runs before a version-gated verb such as
+ * `mergeTree`. `runSurvey` builds its own clients from the runner, so the
+ * runner there answers it; `fakeGit` pins the version instead.
+ */
+const GIT_VERSION: CommandResult = { exitCode: 0, stdout: 'git version 2.50.1\n', stderr: '' }
+
 /** Answers `rev-list`, `merge-tree` and `rev-parse` from a table keyed by joined argv. */
 function fakeGit(replies: Record<string, CommandResult>): { git: Git; calls: string[][] } {
   const calls: string[][] = []
@@ -62,7 +69,7 @@ function fakeGit(replies: Record<string, CommandResult>): { git: Git; calls: str
       return replies[argv.join(' ')] ?? { exitCode: 128, stdout: '', stderr: 'no reply' }
     },
   }
-  return { git: new Git('/repo', { runner }), calls }
+  return { git: new Git('/repo', { runner, gitVersion: '2.50.1' }), calls }
 }
 
 const counts = (behind: number, ahead: number): CommandResult => ({
@@ -416,6 +423,11 @@ describe('unpushedLocalWork — the force-push interlock', () => {
     lockReason: null,
   })
 
+  test('worktrees that could not be listed count as unsafe, not as none', () => {
+    const { git } = fakeGit({})
+    expect(unpushedLocalWork(git, null, 'topic')).toBe(true)
+  })
+
   test('a branch nobody has checked out is safe', () => {
     const { git } = fakeGit({})
     expect(unpushedLocalWork(git, [], 'topic')).toBe(false)
@@ -478,6 +490,16 @@ describe('surveyRows carries the plan', () => {
     expect(rows[0]!.reviews).toBe(1)
     expect(rows[0]!.strategy).toBe('merge')
     expect(rows[0]!.strategyRule).toBe('guard:reviewed')
+  })
+
+  test('worktrees that could not be listed plan no rebase', () => {
+    const { git } = fakeGit({
+      'rev-list --left-right --count origin/main...origin/topic': counts(12, 2),
+      'merge-tree --write-tree --name-only -z origin/topic origin/main': cleanTree,
+    })
+    const { rows } = surveyRows(git, [pr(7, 'topic', 'main')], opts({ worktrees: null }))
+    expect(rows[0]!.unpushedLocal).toBe(true)
+    expect(rows[0]!.strategyRule).toBe('guard:unpushed-local')
   })
 
   test('an unmeasurable repository still lists its PRs', () => {
@@ -666,6 +688,7 @@ describe('runSurvey scoped by --pr', () => {
       pr(3, 'other-a', 'main'),
       pr(4, 'other-b', 'main'),
     ],
+    version: CommandResult = GIT_VERSION,
   ) {
     const calls: string[][] = []
     let listings = 0
@@ -677,6 +700,7 @@ describe('runSurvey scoped by --pr', () => {
         }
         if (argv[0] === 'rev-list') return counts(2, 1)
         if (argv[0] === 'merge-tree') return cleanTree
+        if (argv[0] === '--version') return version
         if (argv[0] === 'rev-parse') return resolved('b'.repeat(40))
         return { exitCode: 0, stdout: '', stderr: '' }
       },
@@ -698,6 +722,17 @@ describe('runSurvey scoped by --pr', () => {
     })
     return { report, calls, listings: () => listings }
   }
+
+  test('a git too old to list worktrees does not clear a force-push', () => {
+    // Below typed-git's 2.34 floor `worktrees()` fails as `unsupported-git`.
+    // Read as "no checkout holds the branch", that would plan a rebase.
+    const old: CommandResult = { exitCode: 0, stdout: 'git version 2.30.2\n', stderr: '' }
+    const { report, calls } = scopedRun([1], undefined, old)
+    expect(calls.some((c) => c[0] === 'worktree')).toBe(false)
+    expect(report.prs[0]!.unpushedLocal).toBe(true)
+    expect(report.prs[0]!.strategy).not.toBe('rebase')
+    expect(report.prs[0]!.strategyRule).toBe('guard:unpushed-local')
+  })
 
   test('AC-2: fetches and merge-trees only the PR and its stack parents, listing once', () => {
     const { report, calls, listings } = scopedRun([2])
