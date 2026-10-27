@@ -48,7 +48,7 @@
       "path": "scripts/crates-io-unpublished-patch.ts",
       "line": 45,
       "title": "heldBackPackages ignores release/publish = false under [workspace], which release-plz applies to every package",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/531#discussion_r4386749680",
       "status": "fixed",
       "reason": null,
       "fixedIn": "d50f512efc19a63837d63861cb2caabfa089b48d"
@@ -59,7 +59,7 @@
       "path": "scripts/crates-io-unpublished-patch.ts",
       "line": 80,
       "title": "import.meta.main needs Node 24.2+; engines allows 24.0, where the script prints no patch and exits 0; other scripts use the pathToFileURL check",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/531#discussion_r4386749694",
       "status": "fixed",
       "reason": null,
       "fixedIn": "d50f512efc19a63837d63861cb2caabfa089b48d"
