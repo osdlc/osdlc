@@ -46,9 +46,9 @@
       "line": 6,
       "title": "Spec comment says the installed package ships dist/ alone; it now also ships bin/",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "0dffb9c99e9fe6eaf27af8b1bcb50b0bc73c6d16"
     }
   ]
 }
