@@ -35,9 +35,9 @@
       "line": 13,
       "title": "Same-change and update rules restate doc-locations Rule 2 instead of linking it",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "2e94dd66f792e24bd9968f1549293fb152d54176"
     },
     {
       "id": "r1-4",
