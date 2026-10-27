@@ -81,8 +81,12 @@
       "default": "./dist/http/index.js"
     }
   },
+  "bin": {
+    "cli-tool-stamp-version": "./bin/cli-tool-stamp-version.js"
+  },
   "files": [
     "dist/",
+    "bin/",
     "devlink/README.md",
     "README.md",
     "CHANGELOG.md",

@@ -38,7 +38,7 @@
  * A failed PR listing is an error, never "no open PRs". `@osdlc/cli-tool` prints every classified failure and picks its exit code.
  */
 
-import { mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, rmSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
@@ -70,6 +70,7 @@ import {
   type UpdateEnv,
   type UpdateOutput,
 } from './update.ts'
+import { VERSION } from './version.generated.ts'
 
 /** The config file the binary reads, and the variable that relocates it. */
 export const PR_UPDATE_CONFIG_FILE: ConfigFileSpec = {
@@ -629,19 +630,11 @@ const trustService: TrustService = {
   },
 }
 
-/** pr-update's version, from its package.json: `src/` and `dist/` both sit one level below it. */
-function packageVersion(): string {
-  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
-    version?: string
-  }
-  return pkg.version ?? '0.0.0'
-}
-
 /** The tree `config` and `trust` run in: cli-tool's shared commands over pr-update's files. */
 function sharedCommands(file: ConfigFileSpec): App {
   return defineApp({
     name: 'pr-update',
-    version: packageVersion(),
+    version: VERSION,
     summary: 'Survey and update out-of-date, stacked pull requests.',
     commands: {
       config: configCommand(file),

@@ -203,7 +203,8 @@ enter `.git` or `node_modules` folders.
 Without `--config <file>` or `--contract <file>`, `validate` looks in the
 current folder for `markdown-contract.config.js`, `.mjs`, `.yaml` or `.yml`,
 then `markdown-contract.yaml` or `.yml`. `--glob`, `--include` and `--exclude`
-narrow the files. `markdown-contract --help` prints the full usage.
+narrow the files. `markdown-contract --help` prints the full usage, and
+`markdown-contract --version` prints `markdown-contract <version>`.
 
 `runCli(argv, { cwd })` from `@osdlc/markdown-contract/cli` runs the same
 command in process and returns `{ code, stdout, stderr }` as a `CliResult`.

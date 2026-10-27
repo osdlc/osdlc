@@ -187,6 +187,7 @@ one that says which it could not find.
 | `--branch <name\|HEAD>` | Sweep one branch of this repository: its worktree, local and remote branch. Refuses the default branch |
 | `--write-plan` | Write the deletable rows as a plan for `apply` |
 | `--plan-out <path>` | Write the plan here; implies `--write-plan` |
+| `--version` | Print `repo-cleaner <version>` and exit; it must be the first argument |
 
 A checkout directory named `apply` is swept as `./apply`.
 
