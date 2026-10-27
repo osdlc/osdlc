@@ -13,9 +13,9 @@
       "line": 178,
       "title": "PrRef.host keeps :port, unlike typed-git RemoteRepo.host; contract undocumented",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "48047d905e1d77be0e1f30442de67102e8a02ca8"
     },
     {
       "id": "r1-2",
