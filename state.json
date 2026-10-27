@@ -15,7 +15,7 @@
       "path": "packages/ts/code-host/src/types.ts",
       "line": 178,
       "title": "PrRef.host keeps :port, unlike typed-git RemoteRepo.host; contract undocumented",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/518#discussion_r4385283489",
       "status": "fixed",
       "reason": null,
       "fixedIn": "48047d905e1d77be0e1f30442de67102e8a02ca8"
@@ -26,7 +26,7 @@
       "path": "packages/ts/repo-cleaner/src/discover.ts",
       "line": 104,
       "title": "ssh.github.com:443 remote now slugs as ssh.github.com/owner/name and misses duplicates",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/518#discussion_r4385283498",
       "status": "fixed",
       "reason": null,
       "fixedIn": "48047d905e1d77be0e1f30442de67102e8a02ca8"
@@ -37,7 +37,7 @@
       "path": ".changeset/repo-cleaner-host-slug.md",
       "line": 2,
       "title": "slug value in --output json changes for every non-github.com remote; minor not patch",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/518#discussion_r4385283503",
       "status": "fixed",
       "reason": null,
       "fixedIn": "48047d905e1d77be0e1f30442de67102e8a02ca8"
@@ -45,13 +45,13 @@
     {
       "id": "r1-4",
       "round": 1,
-      "path": null,
-      "line": null,
+      "path": "packages/ts/repo-cleaner/src/types.ts",
+      "line": 39,
       "title": "RepoInfo.slug doc in repo-cleaner types.ts:39 still says owner/name",
-      "comment": null,
-      "status": "fixed",
+      "comment": "https://github.com/osdlc/osdlc/pull/518#pullrequestreview-5662478032",
+      "status": "open",
       "reason": null,
-      "fixedIn": "48047d905e1d77be0e1f30442de67102e8a02ca8"
+      "fixedIn": null
     }
   ]
 }
