@@ -46,9 +46,9 @@
       "line": 74,
       "title": "--out with no value is reported as an unknown argument",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "9da3a4a12a59a2c4be6a6f6a8d9fa538317aad35"
     },
     {
       "id": "r1-5",
