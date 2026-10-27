@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 513,
-  "head": "4ecbb1366dc55f14d860392a98da95de61a9d40a",
-  "base": "4832ccd8135dc58d7de16767ab468599e11482fa",
-  "round": 1,
+  "head": "9da3a4a12a59a2c4be6a6f6a8d9fa538317aad35",
+  "base": "bad2664bbf55598fa3bcf3d196411334661ce421",
+  "round": 2,
   "claim": {
     "owner": "Mac.local:claude-h4p8vd",
     "at": "2026-10-27T01:06:15.260Z"
@@ -63,6 +63,17 @@
       "status": "fixed",
       "reason": null,
       "fixedIn": "9da3a4a12a59a2c4be6a6f6a8d9fa538317aad35"
+    },
+    {
+      "id": "r2-1",
+      "round": 2,
+      "path": "packages/ts/markdown-contract/src/cli/run.ts",
+      "line": 173,
+      "title": "markdown-contract --version still prints the bare version; the other three CLIs now print <name> <version>",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
     }
   ]
 }
