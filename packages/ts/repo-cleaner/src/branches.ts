@@ -1,22 +1,33 @@
 /**
  * Local and remote branches: gather them, then decide what each one is.
  *
- * Two signals settle most branches. A merged pull request whose head commit is
+ * Three signals settle most branches. A merged pull request whose head commit is
  * the branch tip says the work landed. Ancestry says the same thing without
  * GitHub's help — if the branch tip is reachable from the default branch,
- * every commit on it is already there. Either one is enough to call a branch
- * spent; neither leaves the branch for a person to look at.
+ * every commit on it is already there. Patch equivalence covers rebase merges,
+ * cherry-picks and squash merges, where the work is on the default branch
+ * under other commit ids. Any one is enough to call a branch spent; none
+ * leaves the branch for a person to look at.
  */
 
 import { shellJoin } from '@osdlc/command-seam'
 import { forceWithLeaseArg, type Git } from '@osdlc/typed-git'
 
 import {
+  confirmationNote,
+  judgeLanding,
+  landingConfirmed,
+  recordLanding,
+  unmatchedSentence,
+  type Landing,
+} from './landing.ts'
+import {
   authorizationsFor,
   landedRef,
   makeItem,
   type Authorization,
   type PRInfo,
+  type PrEvidenceGap,
   type RepoInfo,
   type SweepItem,
 } from './types.ts'
@@ -27,9 +38,6 @@ import {
  */
 const LOCAL_FORMAT =
   '%(refname:short)%09%(upstream:short)%09%(upstream:track)%09%(committerdate:iso8601-strict)%09%(objectname)'
-
-/** Why a merged PR does not prove that `tip` landed. */
-export type PrEvidenceGap = 'other-base' | 'head-moved'
 
 /**
  * True when merged `pr` proves `tip` landed: it targeted the default branch
@@ -199,8 +207,15 @@ export function classifyLocalBranch(opts: {
 
   const pr = prs.get(name)
   const { landed, gap } = recordPr(facts, pr, sha, repo)
-  const unmerged = !landed && !isAncestor
-  if (unmerged) facts['unique_commits'] = git.at(repo.root).aheadBehind(repo.mainBranch, sha).ahead
+  // Rebase merges, cherry-picks and squash merges leave the tip off the default
+  // branch; the patches say whether the work is there anyway.
+  const patch: Landing | null = landed || isAncestor ? null : judgeLanding(repo, sha, pr, gap, git)
+  if (patch !== null) recordLanding(facts, patch)
+  const patchLanded = patch !== null && patch.check !== null
+  const unmerged = !landed && !isAncestor && !landingConfirmed(patch)
+  if (!landed && !isAncestor) {
+    facts['unique_commits'] = git.at(repo.root).aheadBehind(repo.mainBranch, sha).ahead
+  }
   const requires = branchRequires(unmerged, pr)
 
   const deleteCmd = [localDeleteCommand(name, sha)]
@@ -229,6 +244,18 @@ export function classifyLocalBranch(opts: {
       requires,
     })
   }
+  if (patchLanded) {
+    return makeItem({
+      category: 'local_branch',
+      id: name,
+      classification: 'safe-to-delete',
+      action: 'delete',
+      reason: `patch-equivalent to commits on ${compareRef} (${patch.check}); ${confirmationNote(patch)}`,
+      facts,
+      commands: deleteCmd,
+      requires,
+    })
+  }
   if (pr && pr.state === 'OPEN') return keep(`open PR #${pr.number}`, { requires })
 
   const lead =
@@ -243,6 +270,8 @@ export function classifyLocalBranch(opts: {
       : 'No PR found via `gh pr list`.',
   )
   if (pr && gap) parts.push(gapSentence(pr, gap, repo))
+  const unmatched = patch === null ? null : unmatchedSentence(patch, repo)
+  if (unmatched !== null) parts.push(unmatched)
   parts.push(`Last commit: ${lastCommit} (${sha}).`)
   return makeItem({
     category: 'local_branch',
@@ -318,8 +347,13 @@ export function classifyRemoteBranch(opts: {
 
   const pr = prs.get(name)
   const { landed, gap } = recordPr(facts, pr, sha, repo)
-  const unmerged = !landed && !isAncestor
-  if (unmerged) {
+  // `sha` came from `ls-remote` and may not be in this clone; the check then
+  // finds nothing and the branch stays unlanded.
+  const patch: Landing | null = landed || isAncestor ? null : judgeLanding(repo, sha, pr, gap, git)
+  if (patch !== null) recordLanding(facts, patch)
+  const patchLanded = patch !== null && patch.check !== null
+  const unmerged = !landed && !isAncestor && !landingConfirmed(patch)
+  if (!landed && !isAncestor) {
     // Unknown (null) when the clone lacks `sha` or `remoteMain`, as above.
     const counted = git.at(repo.root).try.aheadBehind(remoteMain, sha)
     facts['unique_commits'] = counted.ok ? counted.value.ahead : null
@@ -352,11 +386,25 @@ export function classifyRemoteBranch(opts: {
       requires,
     })
   }
+  if (patchLanded) {
+    return makeItem({
+      category: 'remote_branch',
+      id,
+      classification: 'safe-to-delete',
+      action: 'delete',
+      reason: `patch-equivalent to commits on ${remoteMain} (${patch.check}); ${confirmationNote(patch)}`,
+      facts,
+      commands: deleteCmd,
+      requires,
+    })
+  }
   if (pr && pr.state === 'OPEN') return keep(`open PR #${pr.number}`, { requires })
 
   const parts = [`Remote branch \`${id}\` is not an ancestor of \`${remoteMain}\`.`]
   parts.push(pr ? `Associated PR #${pr.number} is ${pr.state}.` : 'No PR found.')
   if (pr && gap) parts.push(gapSentence(pr, gap, repo))
+  const unmatched = patch === null ? null : unmatchedSentence(patch, repo)
+  if (unmatched !== null) parts.push(unmatched)
   parts.push('Decide whether to push more work, delete, or leave it as long-lived.')
   return makeItem({
     category: 'remote_branch',

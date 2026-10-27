@@ -62,6 +62,7 @@ describe('AsyncGit — parity with Git', () => {
     // readable rather than "".
     const counts = {
       'rev-list --left-right --count main...task/x': { stdout: '1\t2\n' },
+      'commit-tree abc -p def -m msg': { stdout: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n' },
       'merge-tree --write-tree --name-only -z --merge-base=abc x main': {
         stdout: 'deadbeef\x00',
       },
@@ -131,6 +132,9 @@ describe('AsyncGit — parity with Git', () => {
     })
     sync.isAncestor('main', 'task/x')
     sync.aheadBehind('main', 'task/x')
+    sync.cherry('main', 'task/x')
+    sync.cherry('main')
+    sync.commitTree('abc', { parents: ['def'], message: 'msg' })
     sync.statusPorcelain({ paths: ['docs'] })
     sync.statusEntries()
     sync.diffCheck({ paths: ['docs'] })
@@ -237,6 +241,9 @@ describe('AsyncGit — parity with Git', () => {
     })
     await asyncGit.isAncestor('main', 'task/x')
     await asyncGit.aheadBehind('main', 'task/x')
+    await asyncGit.cherry('main', 'task/x')
+    await asyncGit.cherry('main')
+    await asyncGit.commitTree('abc', { parents: ['def'], message: 'msg' })
     await asyncGit.statusPorcelain({ paths: ['docs'] })
     await asyncGit.statusEntries()
     await asyncGit.diffCheck({ paths: ['docs'] })

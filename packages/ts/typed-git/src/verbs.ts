@@ -1427,6 +1427,75 @@ export interface AheadBehind {
   behind: number
 }
 
+/** One line of `git cherry`: a commit on the head side and whether the upstream has its patch. */
+export interface CherryEntry {
+  /** The full sha of the commit that is on the head side only. */
+  sha: string
+  /** True for `-`: a commit on the upstream side has the same patch id. False for `+`. */
+  equivalent: boolean
+}
+
+/**
+ * Which commits `head` has that `upstream` lacks, and for each one whether
+ * `upstream` carries a commit with the same patch id (`git cherry`). Oldest
+ * first. Merge commits are not listed.
+ *
+ * `absent: []`: an unresolvable rev exits 128 and throws. Empty output is a
+ * real answer (`head` has nothing `upstream` lacks), so a caller that needs at
+ * least one commit checks the length. A line that is not `+ <sha>` or
+ * `- <sha>` throws rather than reading as an entry or being skipped.
+ */
+export function cherry(upstream: string, head?: string): GitVerb<CherryEntry[]> {
+  const argv = ['cherry', positional('cherry', 'upstream', upstream)]
+  if (head !== undefined) argv.push(positional('cherry', 'head', head))
+  return {
+    argv,
+    absent: NONE,
+    parse(r, ranArgv) {
+      const out: CherryEntry[] = []
+      for (const line of r.stdout.split('\n')) {
+        if (line === '') continue
+        const m = /^([+-]) ([0-9a-f]{40}|[0-9a-f]{64})$/.exec(line)
+        if (m === null) throw new CommandFailed(ranArgv, r)
+        out.push({ sha: m[2]!, equivalent: m[1] === '-' })
+      }
+      return out
+    },
+  }
+}
+
+/** Options for {@link commitTree}. */
+export interface CommitTreeOptions {
+  /** Parent commits, in order (`-p`). None makes a root commit. */
+  parents?: string[] | undefined
+  /** The commit message (`-m`). */
+  message: string
+}
+
+/**
+ * Write a commit object for `tree` and print its sha (`git commit-tree`).
+ *
+ * It writes an object and no ref, and leaves the index and working tree alone.
+ * git needs an author and committer identity; without one it exits 128 and
+ * this throws. `absent: []`, and a reply that is not a sha throws.
+ */
+export function commitTree(tree: string, opts: CommitTreeOptions): GitVerb<string> {
+  const argv = ['commit-tree', positional('commitTree', 'tree', tree)]
+  for (const parent of opts.parents ?? []) {
+    argv.push('-p', positional('commitTree', 'parent', parent))
+  }
+  argv.push('-m', opts.message)
+  return {
+    argv,
+    absent: NONE,
+    parse(r, ranArgv) {
+      const sha = r.stdout.trim()
+      if (!/^([0-9a-f]{40}|[0-9a-f]{64})$/.test(sha)) throw new CommandFailed(ranArgv, r)
+      return sha
+    },
+  }
+}
+
 /**
  * How far `tip` has diverged from `base`
  * (`git rev-list --left-right --count base...tip`).

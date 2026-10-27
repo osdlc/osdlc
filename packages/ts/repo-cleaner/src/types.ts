@@ -57,6 +57,9 @@ export function isUnfetched(repo: RepoInfo): boolean {
   return repo.remote !== null && !repo.fetched
 }
 
+/** Why a merged PR does not prove that a tip landed. */
+export type PrEvidenceGap = 'other-base' | 'head-moved'
+
 /** A pull request, reduced to what classification consults. */
 export interface PRInfo {
   number: number

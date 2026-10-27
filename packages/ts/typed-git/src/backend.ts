@@ -32,6 +32,8 @@ import {
   repoPrefix,
   type AddOptions,
   type AheadBehind,
+  type CherryEntry,
+  type CommitTreeOptions,
   type CheckoutOptions,
   type CloneOptions,
   type CommitOptions,
@@ -149,6 +151,8 @@ export type GitRequest =
   | { kind: 'checkIgnoreVerbose'; relPaths: string[] }
   | { kind: 'isAncestor'; a: string; b: string }
   | { kind: 'aheadBehind'; base: string; tip: string }
+  | { kind: 'cherry'; upstream: string; head?: string | undefined }
+  | ({ kind: 'commitTree'; tree: string } & CommitTreeOptions)
   // These requests reuse their verb's options type rather than restating its
   // fields. The option types live in `verbs.ts` beside the argv they build,
   // and a copy written out by hand would drift from it.
@@ -239,6 +243,8 @@ export interface GitResults {
   checkIgnoreVerbose: IgnoreMatch[]
   isAncestor: boolean
   aheadBehind: AheadBehind
+  cherry: CherryEntry[]
+  commitTree: string
   lsFiles: string[]
   lsFilesTagged: TaggedFile[]
   forEachRef: string[]
@@ -374,6 +380,10 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
       return v.isAncestor(request.a, request.b)
     case 'aheadBehind':
       return v.aheadBehind(request.base, request.tip)
+    case 'cherry':
+      return v.cherry(request.upstream, request.head)
+    case 'commitTree':
+      return v.commitTree(request.tree, request)
     case 'checkIgnore':
       return v.checkIgnore(request.relPaths)
     case 'checkIgnoreVerbose':

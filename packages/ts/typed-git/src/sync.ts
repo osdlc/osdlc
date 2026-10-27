@@ -38,6 +38,8 @@ import {
   splitTrailingOptions,
   type AddOptions,
   type AheadBehind,
+  type CherryEntry,
+  type CommitTreeOptions,
   type CommitOptions,
   type CheckoutOptions,
   type ConfigGetOptions,
@@ -606,6 +608,19 @@ export class Git {
   /** How far `tip` has diverged from `base`. See {@link AheadBehind}. */
   aheadBehind(base: string, tip: string, opts: GitSyncCallOptions = {}): AheadBehind {
     return this.exec(v.aheadBehind(base, tip), opts)
+  }
+
+  /**
+   * Commits on `head` (default `HEAD`) that `upstream` lacks, each marked by
+   * whether `upstream` has the same patch. See {@link CherryEntry}.
+   */
+  cherry(upstream: string, head?: string, opts: GitSyncCallOptions = {}): CherryEntry[] {
+    return this.exec(v.cherry(upstream, head), opts)
+  }
+
+  /** Write a commit for `tree` and return its sha; no ref moves. Needs a git identity. */
+  commitTree(tree: string, commitOpts: CommitTreeOptions, opts: GitSyncCallOptions = {}): string {
+    return this.exec(v.commitTree(tree, commitOpts), opts)
   }
 
   /** Configured remote names (`git remote`); `[]` when there are none. */
