@@ -35,9 +35,9 @@
       "line": 40,
       "title": "Inline comment restates the TSDoc; the TSDoc should state the mutation of ctx.env and process.env as the caller contract",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "6d98ba7509ac06561616af6f5df5802f05449615"
     }
   ]
 }
