@@ -24,9 +24,9 @@
       "line": 55,
       "title": "runMain --version prints the bare version; defineApp prints '<name> <version>'",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "9da3a4a12a59a2c4be6a6f6a8d9fa538317aad35"
     },
     {
       "id": "r1-3",
