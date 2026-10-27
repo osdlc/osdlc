@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/wayfinder",
-  "version": "0.11.2",
+  "version": "0.11.3",
   "description": "Browse and run every task in a repository from one list: a terminal UI where Enter runs the selected task, a live web view, and JSON for scripts. Tasks, installs, tool trust and git hooks come from @osdlc/system-model.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
