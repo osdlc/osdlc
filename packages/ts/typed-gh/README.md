@@ -254,6 +254,13 @@ after the merge still finds it.
 `task/foo-2`. Two forks can share a branch name. Ask for
 `headRepositoryOwner` to tell them apart.
 
+`prList({ headPrefix: 'task/' })` lists every PR whose head branch starts
+with `task/`. It sends a `head:task/` search term, with your own `search`
+grouped after it in parentheses, and filters the rows on `headRefName`. It
+cannot be combined with `head`. Because it goes through GitHub search, a
+just-pushed branch can take a moment to show up, and `limit` is at most 999,
+as search returns no more than 1000 results.
+
 ## Two payload differences it handles
 
 A bot's login is spelled three ways. GraphQL, and comment and review authors

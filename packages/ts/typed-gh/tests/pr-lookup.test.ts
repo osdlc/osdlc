@@ -104,6 +104,66 @@ describe('prList with head', () => {
     expect(verb.parse(FAIL)).toBeNull()
   })
 
+  test('headPrefix searches head:, asks for headRefName and keeps only the prefix', () => {
+    const verb = prList({ headPrefix: 'task/', fields: ['number'] })
+    expect(verb.argv[verb.argv.indexOf('--search') + 1]).toBe('head:task/')
+    expect(verb.argv).not.toContain('--head')
+    expect(verb.argv[verb.argv.indexOf('--json') + 1]).toBe('headRefName,number')
+    const rows = verb.parse(
+      ok([
+        { number: 1, headRefName: 'task/foo' },
+        // GitHub's head: match ignores case; git branch names do not.
+        { number: 2, headRefName: 'Task/foo' },
+        { number: 3, headRefName: 'task/bar' },
+      ]),
+    )
+    expect(rows?.rows.map((r) => r.number)).toEqual([1, 3])
+    expect(verb.parse(FAIL)).toBeNull()
+  })
+
+  test("headPrefix composes with the caller's own search", () => {
+    const argv = prList({ headPrefix: 'task/', search: 'label:bug is:draft' }).argv
+    expect(argv.filter((a) => a === '--search')).toHaveLength(1)
+    expect(argv[argv.indexOf('--search') + 1]).toBe('head:task/ (label:bug is:draft)')
+    // Grouped, so an OR cannot escape the prefix.
+    const or = prList({ headPrefix: 'task/', search: 'label:a OR label:b' }).argv
+    expect(or[or.indexOf('--search') + 1]).toBe('head:task/ (label:a OR label:b)')
+    const empty = prList({ headPrefix: 'task/', search: ' ' }).argv
+    expect(empty[empty.indexOf('--search') + 1]).toBe('head:task/')
+  })
+
+  test('headPrefix refuses head, an empty prefix and whitespace', () => {
+    expect(() => prList({ head: 'task/foo', headPrefix: 'task/' })).toThrow(RangeError)
+    expect(() => prList({ headPrefix: '' })).toThrow(RangeError)
+    expect(() => prList({ headPrefix: 'task/ is:open' })).toThrow(RangeError)
+    for (const bad of ['fix(ui)/', 'a"b', 'x)']) {
+      expect(() => prList({ headPrefix: bad })).toThrow(RangeError)
+    }
+  })
+
+  test('headPrefix goes through search, so 1000 rows read as truncated', () => {
+    const many = ok(
+      Array.from({ length: 1000 }, (_, i) => ({ number: i + 1, headRefName: 'task/x' })),
+    )
+    expect(prList({ headPrefix: 'task/', limit: 999 }).parse(many)?.truncated).toBe(true)
+  })
+
+  test('headPrefix refuses a limit search cannot honour', () => {
+    expect(() => prList({ headPrefix: 'task/', limit: 1000 })).toThrow(RangeError)
+    expect(prList({ headPrefix: 'task/', limit: 999 }).argv).toContain('1000')
+  })
+
+  test('headPrefix works through the clients', async () => {
+    const answer = ok([
+      { number: 1, headRefName: 'task/a' },
+      { number: 2, headRefName: 'main' },
+    ])
+    const gh = new Gh('/repo', { runner: { run: () => answer } })
+    expect(gh.prList({ headPrefix: 'task/' }).rows.map((r) => r.number)).toEqual([1])
+    const agh = new AsyncGh('/repo', { runner: { run: async () => answer } })
+    expect((await agh.prList({ headPrefix: 'task/' })).rows.map((r) => r.number)).toEqual([1])
+  })
+
   test('without head, the rows are untouched', () => {
     const rows = prList().parse(ok([{ number: 1, headRefName: 'a' }]))
     expect(rows?.rows.length).toBe(1)
