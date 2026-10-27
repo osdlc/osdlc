@@ -15,7 +15,7 @@
       "path": "packages/ts/repo-cleaner/src/bin.ts",
       "line": 13,
       "title": "devlink hook takes over `repo-cleaner dev`, where `dev` is a path positional",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/521#discussion_r4385519671",
       "status": "fixed",
       "reason": null,
       "fixedIn": "3ea30472b15f7a4260809e6a38d9cb965bc66053"
@@ -26,7 +26,7 @@
       "path": "packages/ts/cli-tool/src/devlink/hook.ts",
       "line": 38,
       "title": "<NAME>_LAUNCH_LAYER is inherited by every descendant, so nested runs silently skip the link and <NAME>_HOME",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/521#discussion_r4385519676",
       "status": "fixed",
       "reason": null,
       "fixedIn": "3ea30472b15f7a4260809e6a38d9cb965bc66053"
