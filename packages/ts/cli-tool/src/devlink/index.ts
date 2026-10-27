@@ -80,5 +80,8 @@ export type { LauncherOptions } from './launcher.ts'
 export { execSelection } from './exec.ts'
 export type { ExecOptions } from './exec.ts'
 
+export { devlinkHook } from './hook.ts'
+export type { DevlinkHookOptions } from './hook.ts'
+
 export { processIo, runDevCli, usage } from './cli.ts'
 export type { CliIo, RunOptions } from './cli.ts'
