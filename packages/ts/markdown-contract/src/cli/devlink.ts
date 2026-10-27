@@ -3,7 +3,7 @@
  * it.
  *
  * A checkout has `src/cli/run.ts` and a `package.json` named `@osdlc/markdown-contract`; the
- * installed package ships `dist/` alone, so it never counts. A selected checkout runs
+ * installed package ships no `src/`, so it never counts. A selected checkout runs
  * `src/cli/bin.ts` from source. The cwd layer stays off: only `MARKDOWN_CONTRACT_HOME` or
  * `markdown-contract dev link` hand off to a checkout.
  */
