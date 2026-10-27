@@ -24,6 +24,14 @@ include = [
 name = "tradecraft"
 path = "src/main.rs"
 
+# `cargo binstall tradecraft` downloads the bare binary that
+# .github/workflows/tradecraft-release.yml attaches to the GitHub Release.
+# The asset name is release/product.ts releaseAssetName. On Linux, binstall falls
+# back from the gnu target to the musl one, which is what ships.
+[package.metadata.binstall]
+pkg-url = "https://github.com/osdlc/osdlc/releases/download/tradecraft/v{ version }/{ name }-{ version }-{ target }"
+pkg-fmt = "bin"
+
 [dependencies]
 clap = { workspace = true }
 chrono = { workspace = true }

@@ -128,7 +128,11 @@ Developed here, in this repository:
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
 - `packages/rust/tradecraft` (`tradecraft` on crates.io, a command-line tool
   that publishes a vault of markdown skill notes into the formats of
-  coding-agent tools; `cargo install tradecraft`)
+  coding-agent tools; `cargo install tradecraft`). Each `tradecraft/vX.Y.Z`
+  tag also ships prebuilt binaries to the GitHub Release, npm
+  (`@osdlc/tradecraft`) and Homebrew (`osdlc/tap`), through
+  `.github/workflows/tradecraft-release.yml`; see
+  [`tradecraft/release/`](rust/tradecraft/release/README.md)
 - `packages/rust/tradecraft-core` (`tradecraft-core` on crates.io, the library
   behind `tradecraft`)
 - `packages/rust/tradecraft-typegen`, the generator of the TypeScript

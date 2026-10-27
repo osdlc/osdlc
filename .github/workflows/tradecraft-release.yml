@@ -1,0 +1,439 @@
+# Builds the tradecraft binary for each platform when release-plz tags a
+# tradecraft release (`tradecraft/vX.Y.Z`), and ships it four ways:
+#
+# - GitHub Release: the binaries, SHA256SUMS, THIRD_PARTY_NOTICES.md, the
+#   license files and install.sh go on the release of the tag. release-plz
+#   usually created it already; if not, this workflow creates it.
+#   `cargo binstall tradecraft` and install.sh download from it.
+# - npm: `@osdlc/tradecraft` (a launcher with a `tradecraft` bin) and one
+#   `@osdlc/tradecraft-<os>-<cpu>` package per platform, all at the crate
+#   version. npm auth is trusted publishing (OIDC) with provenance; no npm
+#   token is stored. Each package's trusted publisher on npmjs.com names this
+#   file, tradecraft-release.yml, so the file keeps its name.
+# - Homebrew: Formula/tradecraft.rb in osdlc/homebrew-tap, pushed as the
+#   osdlc-release GitHub App (`brew install osdlc/tap/tradecraft`).
+#
+# Every step that knows a name, a target or a path goes through
+# packages/rust/tradecraft/release/dist.ts, which reads them from product.ts.
+#
+# A manual run (workflow_dispatch) takes an existing tag and is a dry run
+# unless `dry_run` is unchecked. A dry run builds, packs, runs `npm publish
+# --dry-run` and renders the formula, but uploads, publishes and pushes
+# nothing. A manual run checks out the tag for the Rust source and this run's
+# commit for the release tooling, so it also works for a tag cut before this
+# workflow existed.
+#
+# release-plz tags with the osdlc-release GitHub App, so its tag push starts
+# this workflow (a GITHUB_TOKEN push would not). This workflow does not touch
+# how release-plz publishes crates.
+#
+# macOS binaries are not signed or notarized yet.
+#
+# Every action is pinned to a commit SHA; the comment names its release.
+name: tradecraft-release
+
+on:
+  push:
+    tags: ['tradecraft/v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag, for example tradecraft/v0.3.5
+        required: true
+        type: string
+      dry_run:
+        description: Dry run (upload, publish and push nothing)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tradecraft-release-${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+  DIST: packages/rust/tradecraft/release/dist.ts
+  # The release tooling. A manual run takes it from this run's commit.
+  TOOLING: packages/rust/tradecraft/release scripts/homebrew-formula.ts .github/actions
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Take the release tooling from this run's commit
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+            # shellcheck disable=SC2086
+            git checkout "$GITHUB_SHA" -- $TOOLING
+          fi
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Check the tag against the crate version; emit the build matrix
+        id: plan
+        run: |
+          set -euo pipefail
+          echo "version=$(node "$DIST" version --tag "$TAG")" >> "$GITHUB_OUTPUT"
+          echo "matrix=$(node "$DIST" matrix)" >> "$GITHUB_OUTPUT"
+
+  # cargo-about reads the dependency graph and the license texts; it compiles nothing.
+  notices:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Take the release tooling from this run's commit
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+            # shellcheck disable=SC2086
+            git checkout "$GITHUB_SHA" -- $TOOLING
+          fi
+
+      - uses: ./.github/actions/rust-toolchain
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-about@0.9.2
+
+      - name: Third-party notices
+        run: node "$DIST" notices
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: notices
+          path: packages/rust/target/tradecraft-dist/THIRD_PARTY_NOTICES.md
+          if-no-files-found: error
+
+  build:
+    needs: plan
+    strategy:
+      fail-fast: true
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    name: build ${{ matrix.key }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Take the release tooling from this run's commit
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+            # shellcheck disable=SC2086
+            git checkout "$GITHUB_SHA" -- $TOOLING
+          fi
+
+      - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: ${{ matrix.rustTarget }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      # The Linux builds are static musl binaries; zig is the cross linker.
+      - name: Install zig
+        if: matrix.builder == 'zigbuild'
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.14.1
+
+      - name: Install cargo-zigbuild
+        if: matrix.builder == 'zigbuild'
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-zigbuild@0.23.4
+
+      - name: Build
+        env:
+          PLATFORM: ${{ matrix.key }}
+        run: node "$DIST" build --platform "$PLATFORM"
+
+      # Artifacts drop the executable bit; dist.ts sets it again.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: binary-${{ matrix.key }}
+          path: packages/rust/target/tradecraft-dist/binaries/
+          if-no-files-found: error
+
+  release:
+    needs: [plan, build, notices]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Uploads to the GitHub Release. A dry run writes nothing.
+      contents: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      OUT: packages/rust/target/tradecraft-dist
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Take the release tooling from this run's commit
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+            # shellcheck disable=SC2086
+            git checkout "$GITHUB_SHA" -- $TOOLING
+          fi
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: binary-*
+          path: ${{ env.OUT }}/binaries
+          merge-multiple: true
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: notices
+          path: ${{ env.OUT }}
+
+      - name: Release assets and the Homebrew formula
+        run: |
+          set -euo pipefail
+          node "$DIST" release-assets --version "$VERSION"
+          node "$DIST" formula --version "$VERSION"
+          {
+            echo '### Formula/tradecraft.rb'
+            echo '```ruby'
+            cat "$OUT/tradecraft.rb"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # This runner is linux-x64, so it installs that package and runs it through npx.
+      - name: Assemble, pack, install and run the npm packages
+        run: |
+          set -euo pipefail
+          node "$DIST" assemble --version "$VERSION"
+          node "$DIST" pack
+          node "$DIST" install-check
+
+      - name: Check install.sh against the release assets
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/site/$TAG"
+          cp "$OUT"/release/* "$RUNNER_TEMP/site/$TAG/"
+          TRADECRAFT_DOWNLOAD_BASE="file://$RUNNER_TEMP/site" \
+            sh "$OUT/release/install.sh" --to "$RUNNER_TEMP/bin"
+          "$RUNNER_TEMP/bin/tradecraft" --version | grep -qx "tradecraft $VERSION"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tradecraft-${{ needs.plan.outputs.version }}
+          path: |
+            ${{ env.OUT }}/release/
+            ${{ env.OUT }}/tarballs/
+            ${{ env.OUT }}/tradecraft.rb
+            ${{ env.OUT }}/release-notes.md
+          if-no-files-found: error
+
+      - name: Upload to the GitHub Release
+        if: env.DRY_RUN != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # --clobber replaces assets of an earlier, partly failed run.
+            gh release upload "$TAG" "$OUT"/release/* --clobber
+          else
+            gh release create "$TAG" "$OUT"/release/* --verify-tag \
+              --title "tradecraft v$VERSION" --notes-file "$OUT/release-notes.md"
+          fi
+
+  npm:
+    needs: [plan, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      # OIDC token for npm trusted publishing; provenance is attested with it.
+      id-token: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      OUT: packages/rust/target/tradecraft-dist
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Take the release tooling from this run's commit
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+            # shellcheck disable=SC2086
+            git checkout "$GITHUB_SHA" -- $TOOLING
+          fi
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted publishing needs npm 11.5.1 or later. Same pin as packages-publish.yml.
+      - name: Install npm 11.19.1
+        run: |
+          set -euo pipefail
+          npm install -g npm@11.19.1
+          echo "npm $(npm --version)"
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: binary-*
+          path: ${{ env.OUT }}/binaries
+          merge-multiple: true
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: notices
+          path: ${{ env.OUT }}
+
+      # Assembled again here rather than downloaded: artifacts drop the
+      # binaries' executable bit.
+      - name: Assemble the npm packages
+        run: node "$DIST" assemble --version "$VERSION"
+
+      - name: npm publish --dry-run
+        if: env.DRY_RUN == 'true'
+        run: node "$DIST" publish --dry-run
+
+      # Platform packages first, the launcher last. A version already on npm
+      # is skipped, so re-running a failed job is safe.
+      - name: npm publish
+        if: env.DRY_RUN != 'true'
+        env:
+          NPM_CONFIG_PROVENANCE: 'true'
+        run: node "$DIST" publish
+
+  homebrew:
+    needs: [plan, release]
+    if: github.event_name == 'push' || !inputs.dry_run
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Holds the osdlc-release App's private key, for tags `tradecraft/v*` and main.
+    environment: homebrew-tap
+    permissions:
+      contents: read
+    steps:
+      - name: Get a GitHub App token for osdlc/homebrew-tap
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: Iv23liYTGAl78fzN8YWm
+          private-key: ${{ secrets.RELEASE_PLZ_APP_PRIVATE_KEY }}
+          owner: osdlc
+          repositories: homebrew-tap
+          permission-contents: write
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: osdlc/homebrew-tap
+          token: ${{ steps.app-token.outputs.token }}
+          path: tap
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tradecraft-${{ needs.plan.outputs.version }}
+          path: dist
+
+      - name: Commit Formula/tradecraft.rb
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        working-directory: tap
+        run: |
+          set -euo pipefail
+          mkdir -p Formula
+          cp ../dist/tradecraft.rb Formula/tradecraft.rb
+          git add Formula/tradecraft.rb
+          if git diff --cached --quiet; then
+            echo "Formula/tradecraft.rb is already at $VERSION"
+            exit 0
+          fi
+          user_id="$(gh api "/users/${APP_SLUG}%5Bbot%5D" --jq .id)"
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${user_id}+${APP_SLUG}[bot]@users.noreply.github.com"
+          git commit -m "tradecraft $VERSION"
+          git push origin HEAD
+
+  # cargo binstall reads the [package.metadata.binstall] of the tag's
+  # Cargo.toml. A tag cut before that section existed (tradecraft/v0.3.5) is
+  # skipped. Reports only: a failure here does not undo a release.
+  binstall:
+    needs: [plan, release]
+    if: github.event_name == 'push' || !inputs.dry_run
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    name: binstall (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-binstall@1.25.2
+
+      - name: cargo binstall tradecraft
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          manifest=packages/rust/tradecraft/Cargo.toml
+          if ! grep -q '^\[package.metadata.binstall\]' "$manifest"; then
+            echo "::notice::$TAG has no binstall metadata; skipped."
+            exit 0
+          fi
+          cargo binstall --no-confirm --strategies crate-meta-data \
+            --manifest-path "$manifest" --install-path "$RUNNER_TEMP/bin" "tradecraft@$VERSION"
+          "$RUNNER_TEMP/bin/tradecraft" --version | grep -qx "tradecraft $VERSION"
