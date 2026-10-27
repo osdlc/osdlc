@@ -4,7 +4,9 @@
 # On every push to main:
 #
 # - `release-pr` opens or updates the release pull request, which bumps the
-#   version and changelog of each crate with unreleased changes.
+#   version and changelog of each crate with unreleased changes. It then
+#   rebuilds the committed wasm on the release branch, since the new
+#   versions change it.
 # - `plan` checks the crates.io index. When every crate's version is already
 #   published it stops there, so most pushes ask for no approval.
 # - `release` runs only when `plan` found something to publish. It waits for
@@ -63,6 +65,8 @@ jobs:
     runs-on: ubuntu-latest
     # Main only, no reviewer. Holds the App secrets.
     environment: release-plz
+    # The wasm rebuild compiles tradecraft-core with fat LTO.
+    timeout-minutes: 30
     # One release pull request update at a time. A newer push waits.
     concurrency:
       group: release-plz-pr-${{ github.ref }}
@@ -73,7 +77,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # The wasm32 target is for the wasm rebuild below.
       - uses: ./.github/actions/rust-toolchain
+        with:
+          targets: wasm32-unknown-unknown
 
       - name: Get a GitHub App token
         id: app-token
@@ -85,6 +92,7 @@ jobs:
           permission-pull-requests: write
 
       - uses: release-plz/action@8921286633dfa0c4020f7f30bd1c14fe19cbb10e # v0.5.142
+        id: release-plz
         with:
           command: release-pr
           manifest_path: packages/rust/Cargo.toml
@@ -92,6 +100,90 @@ jobs:
           version: ${{ env.RELEASE_PLZ_VERSION }}
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      # The rest of this job rebuilds the wasm that packages/ts/yaml-splice/wasm/
+      # and packages/ts/tradecraft-wasm/wasm/ commit, on the release branch. A
+      # version bump alone changes those bytes (see the `wasm` job in
+      # rust-ci.yml), and release-plz cannot run build.sh. Without this the
+      # `wasm` check fails on the release pull request. The commit is made
+      # through the GitHub API, so its author is the App's bot account.
+      # release-plz does not count a bot as a contributor, so the next push to
+      # main still updates the pull request in place, and this job rebuilds
+      # again.
+      - name: Check out the release branch
+        id: branch
+        if: steps.release-plz.outputs.prs_created == 'true'
+        env:
+          PR: ${{ steps.release-plz.outputs.pr }}
+        run: |
+          set -euo pipefail
+          branch="$(jq -r .head_branch <<<"$PR")"
+          if [[ "$branch" != release-plz-* ]]; then
+            echo "::error::release-plz reported the branch '$branch', which is not a release-plz branch"
+            exit 1
+          fi
+          git fetch --no-tags origin "refs/heads/$branch"
+          git checkout --detach FETCH_HEAD
+          # release-plz pushes one commit on top of the main commit it ran
+          # on. Build only that, so the App token never builds or commits on
+          # top of anything else pushed to the branch.
+          if [ "$(git rev-parse HEAD^)" != "$GITHUB_SHA" ]; then
+            echo "::error::$branch is not release-plz's commit on $GITHUB_SHA; not rebuilding"
+            exit 1
+          fi
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "head=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - if: steps.branch.outcome == 'success'
+        uses: ./.github/actions/rust-build-cache
+
+      - if: steps.branch.outcome == 'success'
+        uses: ./.github/actions/rust-wasm-tools
+
+      - name: Rebuild the wasm
+        if: steps.branch.outcome == 'success'
+        run: |
+          set -euo pipefail
+          bash packages/rust/yaml-splice-wasm/build.sh
+          bash packages/rust/tradecraft-wasm/build.sh
+
+      - name: Commit the rebuilt wasm to the release branch
+        if: steps.branch.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BRANCH: ${{ steps.branch.outputs.branch }}
+          HEAD_SHA: ${{ steps.branch.outputs.head }}
+        run: |
+          set -euo pipefail
+          git add -A -- packages/ts/yaml-splice/wasm packages/ts/tradecraft-wasm/wasm
+          if git diff --cached --quiet; then
+            echo "The committed wasm matches the rebuild."
+            exit 0
+          fi
+          git diff --cached --stat
+          repo="repos/$GITHUB_REPOSITORY"
+          entries='[]'
+          while IFS=$'\t' read -r status path; do
+            # The mode from the index, so the commit keeps it. Unused for a
+            # deletion.
+            mode="$(git ls-files -s -- "$path" | cut -d' ' -f1)"
+            if [ "$status" = D ]; then
+              sha=null
+            else
+              base64 -w0 "$path" > "$RUNNER_TEMP/blob.b64"
+              sha="\"$(gh api "$repo/git/blobs" -f encoding=base64 -F "content=@$RUNNER_TEMP/blob.b64" --jq .sha)\""
+            fi
+            entries="$(jq -c --arg p "$path" --arg m "${mode:-100644}" --argjson s "$sha" '. + [{path: $p, mode: $m, type: "blob", sha: $s}]' <<<"$entries")"
+          done < <(git diff --cached --name-status --no-renames)
+          tree="$(jq -n --arg b "$(git rev-parse "$HEAD_SHA^{tree}")" --argjson t "$entries" '{base_tree: $b, tree: $t}' \
+            | gh api "$repo/git/trees" --input - --jq .sha)"
+          commit="$(gh api "$repo/git/commits" \
+            -f "message=chore: rebuild the committed wasm for the new crate versions" \
+            -f "tree=$tree" -f "parents[]=$HEAD_SHA" --jq .sha)"
+          # Not forced: if the branch moved since the checkout, this fails
+          # rather than drop the newer commit.
+          gh api -X PATCH "$repo/git/refs/heads/$BRANCH" -f "sha=$commit" -F force=false
+          echo "Committed $commit to $BRANCH."
 
   plan:
     runs-on: ubuntu-latest

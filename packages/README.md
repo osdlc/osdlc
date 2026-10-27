@@ -318,11 +318,13 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    `publish = false` in its `Cargo.toml` and `release = false` for it in
    `packages/rust/release-plz.toml`. The workflow and release-plz then skip
    it.
-7. A crate's first release is held back in two cases. If it needs another
-   new crate, it waits until that crate is on crates.io: `cargo publish`
-   cannot verify it before then, so the `release-plz` dry run in
-   `rust-ci.yml` fails. If other crates are waiting for trusted publishing,
-   it waits for that run, because one run uses one credential (rule 4).
+7. A crate's first release is held back when other crates are waiting for
+   trusted publishing: it waits for that run, because one run uses one
+   credential (rule 4). A crate that needs another crate's new version in
+   the same run does not wait: release-plz publishes the dependency first,
+   and the `release-plz` dry run in `rust-ci.yml` points every unpublished
+   crate at its local directory, so it can verify the dependent before
+   either is on crates.io.
    Hold it with `publish = false` in its `Cargo.toml` and a `[[package]]`
    entry with `publish = false` and `release = false` in
    `packages/rust/release-plz.toml`.
