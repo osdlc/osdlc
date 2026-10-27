@@ -445,10 +445,12 @@ describe('GithubCodeHost.parsePrUrl / prForBranch', () => {
     const codeHost = new GithubCodeHost('/repo', { runner })
     expect(codeHost.parsePrUrl('https://github.com/o/r/pull/9')).toEqual({
       codeHost: 'github',
+      host: 'github.com',
       owner: 'o',
       repo: 'r',
       number: 9,
     })
+    expect(codeHost.parsePrUrl('https://GitHub.Acme.com/o/r/pull/9')?.host).toBe('github.acme.com')
     expect(codeHost.parsePrUrl('not a url')).toBeNull()
   })
 

@@ -172,7 +172,14 @@ export class CodeHostUnsupported extends Error {
 
 export type MergeMethod = 'squash' | 'merge' | 'rebase'
 
-export type PrRef = { codeHost: CodeHostName; owner: string; repo: string; number: number }
+/** A pull request: the code host kind, the host it lives on (lower-cased), its repository and number. */
+export type PrRef = {
+  codeHost: CodeHostName
+  host: string
+  owner: string
+  repo: string
+  number: number
+}
 
 export type PrInput =
   | { kind: 'current' }

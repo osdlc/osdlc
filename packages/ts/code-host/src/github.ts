@@ -497,7 +497,13 @@ export class GithubCodeHost implements CodeHost {
     const ref = ghParsePrUrl(url)
     return ref === null
       ? null
-      : { codeHost: 'github', owner: ref.owner, repo: ref.repo, number: ref.number }
+      : {
+          codeHost: 'github',
+          host: ref.hostname,
+          owner: ref.owner,
+          repo: ref.repo,
+          number: ref.number,
+        }
   }
 
   prForBranch(branch: string): Result<number | null, CodeHostFailure> {

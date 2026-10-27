@@ -777,7 +777,7 @@ export class ForgejoCodeHost implements CodeHost {
     if (m === null || m[1]!.toLowerCase() !== this.host.toLowerCase()) return null
     const number = Number(m[4])
     if (!Number.isSafeInteger(number) || number <= 0) return null
-    return { codeHost: 'forgejo', owner: m[2]!, repo: m[3]!, number }
+    return { codeHost: 'forgejo', host: m[1]!.toLowerCase(), owner: m[2]!, repo: m[3]!, number }
   }
 
   prForBranch(branch: string): Result<number | null, CodeHostFailure> {

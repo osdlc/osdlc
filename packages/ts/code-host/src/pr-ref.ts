@@ -31,7 +31,13 @@ export function parsePrInput(raw: string | null | undefined): PrInput | null {
   if (ref.kind === 'url') {
     return {
       kind: 'url',
-      ref: { codeHost: 'github', owner: ref.owner, repo: ref.repo, number: ref.number },
+      ref: {
+        codeHost: 'github',
+        host: ref.hostname,
+        owner: ref.owner,
+        repo: ref.repo,
+        number: ref.number,
+      },
     }
   }
   if (ref.repo === null) return { kind: 'number', number: ref.number }

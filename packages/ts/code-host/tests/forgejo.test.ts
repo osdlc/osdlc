@@ -552,6 +552,7 @@ describe('ForgejoCodeHost.parsePrUrl', () => {
     const f = codeHost({ run: () => curlOk(200, {}) })
     expect(f.parsePrUrl('https://git.example.com/o/r/pulls/9')).toEqual({
       codeHost: 'forgejo',
+      host: 'git.example.com',
       owner: 'o',
       repo: 'r',
       number: 9,

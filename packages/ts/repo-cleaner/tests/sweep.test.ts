@@ -528,6 +528,18 @@ describe('duplicate checkouts', () => {
     expect(result.duplicates).toEqual([])
     expect(renderText(result)).not.toContain('Duplicate checkouts')
   })
+
+  test('one owner/name on two hosts is not a duplicate', () => {
+    const github = clone('host-github')
+    const forge = clone('host-forge')
+    git(['remote', 'set-url', 'origin', 'git@forge.example:acme/dup.git'], forge)
+    const result = sweepRepos([github, forge], { noGh: true, cwd: root, baseDir: root })
+    expect(result.duplicates).toEqual([])
+    expect(result.repos.map((r) => r.repo?.slug).sort()).toEqual([
+      'acme/dup',
+      'forge.example/acme/dup',
+    ])
+  })
 })
 
 describe('rendering', () => {
