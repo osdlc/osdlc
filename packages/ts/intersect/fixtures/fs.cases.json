@@ -183,6 +183,32 @@
         "ignore": ["**", "!src/a.ts"]
       },
       "expect": []
+    },
+    {
+      "name": "filesInScope: dotfiles are listed but ** skips them by default",
+      "tree": [".env", "src/.hidden.ts", "src/a.ts", ".github/workflows/ci.yml"],
+      "patterns": ["**"],
+      "expect": ["src/a.ts"]
+    },
+    {
+      "name": "filesInScope: dot:true lets ** reach dotfiles and dot directories",
+      "tree": [".env", "src/.hidden.ts", "src/a.ts", ".github/workflows/ci.yml"],
+      "patterns": ["**"],
+      "opts": {
+        "dot": true
+      },
+      "expect": [".env", ".github/workflows/ci.yml", "src/.hidden.ts", "src/a.ts"]
+    },
+    {
+      "name": "resolveIntersection: dot:true intersects a dot directory",
+      "op": "fs.resolveIntersection",
+      "tree": [".env", "src/a.ts", ".github/workflows/ci.yml"],
+      "a": ["**"],
+      "b": [".github/**"],
+      "opts": {
+        "dot": true
+      },
+      "expect": [".github/workflows/ci.yml"]
     }
   ]
 }

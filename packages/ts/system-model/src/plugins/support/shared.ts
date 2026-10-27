@@ -177,6 +177,11 @@ export function stripBom(text: string): string {
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text
 }
 
+/** `values` without repeats, in first-seen order. */
+export function unique(values: string[]): string[] {
+  return [...new Set(values)]
+}
+
 /** A key/value table, not an array or null. */
 export function isTable(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -210,10 +215,22 @@ export function sourcesOf(
   return [...out].sort()
 }
 
-/** One file per directory: the last of `files` in sorted order. */
-export function onePerDir(files: readonly string[]): string[] {
+/**
+ * One file per directory: the last of `files` in sorted order. With
+ * `precedence`, the one whose basename comes first in it instead.
+ */
+export function onePerDir(files: readonly string[], precedence?: readonly string[]): string[] {
+  const rank = (file: string): number => {
+    const at = precedence?.indexOf(baseName(file)) ?? -1
+    return at === -1 ? Infinity : at
+  }
   const byDir = new Map<string, string>()
-  for (const file of [...files].sort()) byDir.set(dirOf(file), file)
+  for (const file of [...files].sort()) {
+    const held = byDir.get(dirOf(file))
+    if (precedence === undefined || held === undefined || rank(file) <= rank(held)) {
+      byDir.set(dirOf(file), file)
+    }
+  }
   return [...byDir.values()].sort()
 }
 

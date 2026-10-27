@@ -11,14 +11,18 @@
  *   - `hooks/hooks.json`, `.claude/settings{,.local}.json`, `.mcp.json` → hooks,
  *     MCP servers and permissions (see `./control-plane.ts`)
  *
+ * Skills and commands are found and named by `scanPluginArtifacts`, the reader
+ * `detect()` uses for an installed plugin, so both list the same ones.
+ *
  * MCP secrets are redacted unless `includeValues` is set.
  *
  * Runtime-agnostic: `node:` APIs only.
  */
 
-import { existsSync, readFileSync, readdirSync, statSync, type Dirent } from 'node:fs'
-import { join, relative } from 'node:path'
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync, type Dirent } from 'node:fs'
+import { dirname, join, relative } from 'node:path'
 
+import type { DirEntry, TextRead } from '../contract.ts'
 import {
   argumentHintOf,
   frontmatterString,
@@ -26,6 +30,7 @@ import {
   splitFrontmatter,
 } from '../frontmatter.ts'
 import { loadJson } from '../json.ts'
+import { scanPluginArtifacts, type ArtifactReader } from '../read/artifacts.ts'
 
 import {
   HARNESS_MODEL_VERSION,
@@ -111,28 +116,80 @@ function capabilityFromText(
   }
 }
 
-/** Read one `<kindDir>/<name>/` directory into a {@link HarnessCapability}. */
-function deriveCapability(
-  kindDir: string,
-  name: string,
-  kind: HarnessCapability['kind'],
-): HarnessCapability | null {
-  const skillDir = join(kindDir, name)
-  const skillMd = join(skillDir, 'SKILL.md')
-  if (!existsSync(skillMd)) return null
-
+/** The resource files of the skill or command folder `dir`. */
+function resourcesOf(dir: string): HarnessResource[] {
   const resources: HarnessResource[] = []
-  for (const rel of walkFiles(skillDir)) {
+  for (const rel of walkFiles(dir)) {
     if (!isResourcePath(rel)) continue
-    const abs = join(skillDir, rel)
+    const abs = join(dir, rel)
     resources.push({
       path: rel,
       contents: readFileSync(abs, 'utf-8'),
       executable: (statSync(abs).mode & 0o100) !== 0,
     })
   }
+  return resources
+}
 
-  return capabilityFromText(readFileSync(skillMd, 'utf-8'), name, kind, resources)
+/** An error code that means the path is not there to read. */
+function isAbsent(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException).code
+  return code === 'ENOENT' || code === 'ENOTDIR' || code === 'EISDIR'
+}
+
+/**
+ * An {@link ArtifactReader} over the file system. Unlike `detect()`'s context it
+ * throws on a file or folder that exists but cannot be read, so a plugin is
+ * never read with a capability silently missing. Reads are memoized.
+ */
+function fsReader(): ArtifactReader {
+  const texts = new Map<string, TextRead>()
+  return {
+    readContents: false,
+    readText: (path) => {
+      const hit = texts.get(path)
+      if (hit) return hit
+      let read: TextRead
+      try {
+        read = { status: 'parsed', text: readFileSync(path, 'utf-8') }
+      } catch (err) {
+        if (!isAbsent(err)) throw err
+        read = { status: 'absent' }
+      }
+      texts.set(path, read)
+      return read
+    },
+    listDir: (path) => {
+      let entries: Dirent[]
+      try {
+        entries = readdirSync(path, { withFileTypes: true })
+      } catch (err) {
+        if (isAbsent(err)) return []
+        throw err
+      }
+      return entries
+        .map((e): DirEntry => {
+          // Follow a symbolic link to learn what it points at; a dangling one is neither.
+          if (!e.isSymbolicLink()) {
+            return { name: e.name, isFile: e.isFile(), isDirectory: e.isDirectory() }
+          }
+          try {
+            const st = statSync(join(path, e.name))
+            return { name: e.name, isFile: st.isFile(), isDirectory: st.isDirectory() }
+          } catch {
+            return { name: e.name, isFile: false, isDirectory: false }
+          }
+        })
+        .sort((a, b) => a.name.localeCompare(b.name))
+    },
+    realpath: (path) => {
+      try {
+        return realpathSync(path)
+      } catch {
+        return null
+      }
+    },
+  }
 }
 
 /** Read a documents folder into {@link HarnessDocument}s named by their path under it. */
@@ -199,32 +256,25 @@ export function readPlugin(pluginRoot: string, options: ReadPluginOptions = {}):
 
   // Skills (model-invoked) live under `skills/`, commands (user-invoked) under
   // `commands/`. A skill is a folder holding SKILL.md. A command is either such
-  // a folder or a flat `<name>.md`; the folder wins when both exist.
+  // a folder or a flat `<name>.md`; the folder wins when both have one name.
+  const reader = fsReader()
+  const found = scanPluginArtifacts(reader, pluginRoot, {
+    scope: 'user',
+    origin: 'plugin',
+    managerOwned: true,
+  })
   const capabilities: HarnessCapability[] = []
-  for (const [dir, kind] of [
-    ['skills', 'skill'],
-    ['commands', 'command'],
+  for (const [dir, kind, artifacts] of [
+    ['skills', 'skill', found.skills],
+    ['commands', 'command', found.commands],
   ] as const) {
-    const kindDir = join(pluginRoot, dir)
-    if (!existsSync(kindDir)) continue
-    const entries = readdirSync(kindDir, { withFileTypes: true }).sort((a, b) =>
-      a.name.localeCompare(b.name),
-    )
-    const seen = new Set<string>()
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue
-      const capability = deriveCapability(kindDir, entry.name, kind)
-      if (!capability) continue
-      capabilities.push(capability)
-      seen.add(capability.name)
-    }
-    if (kind !== 'command') continue
-    for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.endsWith('.md')) continue
-      const name = entry.name.replace(/\.md$/, '')
-      if (seen.has(name)) continue
-      const text = readFileSync(join(kindDir, entry.name), 'utf-8')
-      capabilities.push(capabilityFromText(text, name, kind, []))
+    for (const a of artifacts) {
+      const read = reader.readText(a.path)
+      if (read.status !== 'parsed') continue
+      // A flat command sits in the kind folder itself and has no resources.
+      const folder = dirname(a.path)
+      const resources = folder === join(pluginRoot, dir) ? [] : resourcesOf(folder)
+      capabilities.push(capabilityFromText(read.text, a.name, kind, resources))
     }
   }
   capabilities.sort((a, b) => a.name.localeCompare(b.name))

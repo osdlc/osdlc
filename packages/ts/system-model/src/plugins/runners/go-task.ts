@@ -71,6 +71,8 @@
  * literal `|`. The form is recognized but not decoded.
  */
 
+import { realpath } from 'node:fs/promises'
+
 import { firstLine, stderrOrError } from '@osdlc/command-seam'
 
 import type { ProviderContext } from '../../contract.ts'
@@ -391,22 +393,31 @@ async function listTasks(
  * every task appears once, with the same name, id, source and argv the
  * reader path would give it.
  *
- * The match is by longest path suffix, not by string equality with
- * `resolve(root, f)`. go-task reports a real path, and a root reached through
- * a symlink (macOS's `/var` -> `/private/var`, a worktree behind a symlinked
- * checkout) would fail equality for every entry. The longest match wins, so
- * `/abs/root/docs/Taskfile.yml` goes to `docs/Taskfile.yml`, not to the
- * root's `Taskfile.yml`.
+ * The match is `location` equal to `f` under one of `roots`: the catalog root
+ * as given and its real path. go-task reports a real path, and a root reached
+ * through a symlink (macOS's `/var` -> `/private/var`, a worktree behind a
+ * symlinked checkout) would fail against the given root alone. A bare suffix
+ * match is not enough: the root's `Taskfile.yml` is a suffix of every
+ * `…/Taskfile.yml`, including an include outside the root or in an excluded
+ * tree, which must stay unowned.
  */
-function ownerOf(location: string, files: string[]): string | undefined {
+function ownerOf(location: string, files: string[], roots: string[]): string | undefined {
   const norm = location.replace(/\\/g, '/')
-  let best: string | undefined
   for (const f of files) {
-    if (norm === f || norm.endsWith(`/${f}`)) {
-      if (best === undefined || f.length > best.length) best = f
-    }
+    if (norm === f || roots.some((root) => norm === `${root}/${f}`)) return f
   }
-  return best
+  return undefined
+}
+
+/** The catalog root as given and as its real path, with `/` separators and no trailing slash. */
+async function rootForms(root: string): Promise<string[]> {
+  const forms = [root]
+  try {
+    forms.push(await realpath(root))
+  } catch {
+    // An unresolvable root keeps the given form only.
+  }
+  return [...new Set(forms.map((r) => r.replace(/\\/g, '/').replace(/\/+$/, '')))]
 }
 
 /** Entries of `file`'s own listing that `file` — not another discovered Taskfile — owns. */
@@ -414,6 +425,7 @@ function ownEntries(
   entries: ListedTask[],
   file: string,
   files: string[],
+  roots: string[],
 ): { name: string; doc?: string }[] {
   const out: { name: string; doc?: string }[] = []
   const seen = new Set<string>()
@@ -428,7 +440,7 @@ function ownEntries(
 
     const location = entry.location?.taskfile
     if (typeof location === 'string' && location !== '') {
-      const owner = ownerOf(location, files)
+      const owner = ownerOf(location, files, roots)
       // Owned by another discovered Taskfile: that file's own invocation
       // emits it, under its plain name. Owned by no discovered file: an
       // include discovery never saw. This listing is the only place it
@@ -544,6 +556,8 @@ export const goTaskRunner: RunnerRole = {
     // per file (a file the listing failed for) is still reported per file,
     // with its source.
     let listingRan = false
+    // Resolved on the first listing, since only the listing path needs it.
+    let roots: string[] | undefined
 
     if (!usable && ctx.allowExec) {
       diagnostics.push({
@@ -577,7 +591,8 @@ export const goTaskRunner: RunnerRole = {
           // It guards against a version that stops filtering. `internal` is
           // the one field the reader sees that the listing does not report, so
           // without this the two paths could disagree about which tasks exist.
-          const own = ownEntries(listed.entries, file, files).filter(
+          roots ??= await rootForms(ctx.root)
+          const own = ownEntries(listed.entries, file, files, roots).filter(
             ({ name }) => parsed.get(name)?.internal !== true,
           )
           const names = new Set(own.map((e) => e.name))

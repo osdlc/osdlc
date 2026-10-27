@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- On a target with neither Unix nor Windows paths, such as `wasm32-unknown-unknown`, a rooted path
+  counts as absolute. `Path::is_absolute` is always false there, so the guard refused every root.
+  Unix, Windows and WASI targets are unchanged.
+
 ## [0.3.2](https://github.com/osdlc/osdlc/compare/path-guard/v0.3.1...path-guard/v0.3.2) - 2026-10-24
 
 ### Other

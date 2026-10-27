@@ -23,8 +23,9 @@ export type RowOf<Cols extends string, C> = {
  * transformed value. Without `cells`, rows read back as `Record<string, string>`.
  *
  * @param s.columns The columns the table must have.
- * @param s.anchor The table's `^anchor` id. In a `content` record, the typed model finds the
- *   table by this id and exposes it on the section under the record key.
+ * @param s.anchor The table's `^anchor` id. In a `content` record the record key is the anchor:
+ *   validation checks the block with that `^key`, and the typed model exposes it on the section
+ *   under the key. Set `anchor` to the key, or leave it out.
  * @param s.minRows The fewest body rows.
  * @param s.extraColumns `"error"` reports columns not in `columns`; `"ignore"` (the default) allows them.
  * @param s.cells A Zod schema per column, for the cell text.

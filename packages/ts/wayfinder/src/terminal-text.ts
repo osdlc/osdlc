@@ -15,13 +15,14 @@
  * a match offset into it still points at the same character.
  *
  * This is wayfinder's one filter for repository text. `stripControls` from
- * `@osdlc/ux` covers the same characters but removes them, and whole escape
- * sequences with them. That changes the length, so the terminal UI's match
- * highlights would point at the wrong characters, and a person would not see
- * that the name held anything. Both filters remove the same set of controls.
+ * `@osdlc/ux` removes the controls, and whole escape sequences with them.
+ * That changes the length, so the terminal UI's match highlights would point
+ * at the wrong characters, and a person would not see that the name held
+ * anything. The set of control characters is ux's own, from `controlPattern`.
  */
 
 import { EXIT, type CliIo } from '@osdlc/cli-tool'
+import { controlPattern } from '@osdlc/ux'
 
 import { BIN } from './app.ts'
 
@@ -29,14 +30,9 @@ import { BIN } from './app.ts'
  * C0 (tab and newline included), DEL, C1, and the bidi controls: the marks
  * U+061C, U+200E and U+200F, and U+202A-202E and U+2066-2069.
  */
-const CONTROL = /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g
+const CONTROL = controlPattern()
 /** The same, but tab and newline are kept. */
-const CONTROL_KEEP_LINES =
-  /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g
-/** C0 without tab and newline. */
-const C0_KEEP_LINES = /[\u0000-\u0008\u000b-\u001f]/g
-/** What `JSON.stringify` leaves raw of the above: it escapes C0 itself. */
-const JSON_RAW = /[\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g
+const CONTROL_KEEP_LINES = controlPattern({ newline: true, tab: true })
 
 const REPLACEMENT = '�'
 
@@ -64,8 +60,16 @@ export function jsonText(value: unknown, indent?: number): string {
   return escapeJsonRaw(json ?? '')
 }
 
+/**
+ * `json` with DEL, C1 and the bidi controls written as `\u` escapes, and any
+ * other C0 than tab and newline replaced by U+FFFD. `JSON.stringify` escapes
+ * C0 itself, so on its output only the escapes apply.
+ */
 function escapeJsonRaw(json: string): string {
-  return json.replace(JSON_RAW, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`)
+  return json.replace(CONTROL_KEEP_LINES, (c) => {
+    const code = c.charCodeAt(0)
+    return code < 0x20 ? REPLACEMENT : `\\u${code.toString(16).padStart(4, '0')}`
+  })
 }
 
 /**
@@ -87,7 +91,7 @@ export function safeStdout(io: CliIo): CliIo {
 export function safeJsonStdout(io: CliIo): CliIo {
   return {
     ...io,
-    stdout: (text) => io.stdout(escapeJsonRaw(text.replace(C0_KEEP_LINES, REPLACEMENT))),
+    stdout: (text) => io.stdout(escapeJsonRaw(text)),
   }
 }
 

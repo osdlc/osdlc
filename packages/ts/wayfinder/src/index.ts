@@ -16,7 +16,7 @@ import type { DiscoveryMode, RunnerReport } from '@osdlc/system-model/detect'
 
 import { catalogDocument } from './commands/list.ts'
 import type { TaskFilter } from './core/filter.ts'
-import { flushViews } from './core/saved-view.ts'
+import { flushWrites } from './core/writes.ts'
 import {
   createSession,
   type CacheState,
@@ -179,7 +179,7 @@ export async function buildCatalog(options: BuildCatalogOptions): Promise<Catalo
     progress: options.progress,
   })
   // A library caller gets a call whose writes are done.
-  await flushViews()
+  await flushWrites()
   const body = catalogDocument(
     snapshot,
     session.unknowns(snapshot),

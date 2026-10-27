@@ -144,5 +144,6 @@ export function captureContext(
     cwd: overrides.cwd ?? process.cwd(),
     env: overrides.env ?? process.env,
     ...(overrides.terminal !== undefined ? { terminal: overrides.terminal } : {}),
+    ...(overrides.signal !== undefined ? { signal: overrides.signal } : {}),
   }
 }

@@ -108,6 +108,17 @@ describe('turbo runner', () => {
     expect(task.cwd).toBe('.')
   })
 
+  test('turbo.jsonc with comments, trailing commas and a BOM still parses', async () => {
+    const dir = await root({
+      'turbo.jsonc':
+        '\uFEFF{\n  // tasks\n  "tasks": { "build": { "outputs": ["dist/**",], }, },\n}',
+    })
+    const catalog = await collect(dir, opts())
+
+    expect(byName(tasks(catalog), 'build')?.argv).toEqual(['turbo', 'run', 'build'])
+    expect(catalog.reports[0]?.diagnostics).toEqual([])
+  })
+
   test('explicit persistent: true is trusted and marked declared', async () => {
     const dir = await root({
       'turbo.json': JSON.stringify({

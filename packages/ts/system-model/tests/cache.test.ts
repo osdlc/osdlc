@@ -165,6 +165,22 @@ describe('readEntry / writeEntry', () => {
     }
   })
 
+  test('an entry with the right version but no usable report is a miss', async () => {
+    const dir = await fixtureRoot({})
+    try {
+      await writeEntry(dir, entryFor('/repos/dev', okReport('just')))
+      const path = entryPath(dir, '/repos/dev', 'just')
+      await writeFile(path, JSON.stringify({ version: CACHE_FORMAT_VERSION }))
+      expect(await readEntry(dir, '/repos/dev', 'just')).toBeNull()
+      const report = { ...okReport('just'), tasks: undefined }
+      const entry = { ...entryFor('/repos/dev', okReport('just')), report }
+      await writeFile(path, JSON.stringify(entry))
+      expect(await readEntry(dir, '/repos/dev', 'just')).toBeNull()
+    } finally {
+      await removeRoot(dir)
+    }
+  })
+
   test('an error report is never written', async () => {
     const dir = await fixtureRoot({})
     try {

@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, test } from 'vitest'
 
 import { which } from '../src/index.ts'
+import { lookupBinary } from '../src/sync.ts'
 
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'seam-which-win-')))
 afterAll(() => rmSync(root, { recursive: true, force: true }))
@@ -73,6 +74,11 @@ describe('which on win32', () => {
     expect(which('local', win({ PATH: '' }, join(root, 'cwd')))).toBeUndefined()
   })
 
+  test('a PATH entry in double quotes counts without them', () => {
+    expect(which('git', win({ PATH: `"${join(root, 'b')}"` }))).toBe(gitExe)
+    expect(which('npm', win({ PATH: `"${join(root, 'a')}";"${join(root, 'b')}"` }))).toBe(npmCmd)
+  })
+
   test('cwd is searched only when PATH names it', () => {
     expect(which('local', win({ PATH: '.' }, join(root, 'cwd')))).toBe(local)
   })
@@ -90,5 +96,26 @@ describe('which on win32', () => {
   test('an empty name or a missing binary is undefined', () => {
     expect(which('', win({ PATH }))).toBeUndefined()
     expect(which('nope', win({ PATH }))).toBeUndefined()
+  })
+})
+
+// The absolute-entry rules need a drive or UNC prefix, so a positive match
+// with absolutePathOnly can only be found on a Windows host.
+describe.skipIf(process.platform !== 'win32')('absolutePathOnly on a Windows host', () => {
+  test('finds a match on an absolute Path entry, in any case, and skips a relative one', () => {
+    const opts = { platform: 'win32', absolutePathOnly: true } as const
+    expect(which('git', { ...opts, env: { Path: join(root, 'b'), PATHEXT: '.EXE' } })).toBe(gitExe)
+    expect(which('git', { ...opts, env: { path: join(root, 'b') } })).toBe(gitExe)
+    expect(which('git', { ...opts, env: { Path: 'b' }, cwd: root })).toBeUndefined()
+  })
+
+  test("the runners' lookup reads a PATH override over the parent's Path", () => {
+    // The parent's key is usually `Path`. An override spelled `PATH` is a
+    // different key in a plain object, and must still win.
+    const env = { PATH: join(root, 'b'), PATHEXT: '.EXE' }
+    expect(lookupBinary('git', { absolutePathOnly: true }, { env })).toBe(gitExe)
+    expect(lookupBinary('git', { absolutePathOnly: true }, { env: { PATH: undefined } })).toBe(
+      undefined,
+    )
   })
 })

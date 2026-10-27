@@ -23,15 +23,17 @@
 import {
   CommandFailed,
   isCommandFailed,
-  runChecked,
-  runCheckedAsync,
+  methodFacade,
+  runFailed,
+  tryMethods,
+  tryMethodsAsync,
   type AsyncCommandRunner,
   type AsyncCommandRunOptions,
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
 } from '@osdlc/command-seam'
-import { err, FailureError, isFailure, ok, type Failure, type Result } from '@osdlc/result'
+import { FailureError, isFailure, type Failure, type Result } from '@osdlc/result'
 
 import { classifyGhFailure, type GhFailure, unreadableFailure } from './failure.ts'
 import type { GhVerb } from './verbs.ts'
@@ -40,21 +42,29 @@ import type { GhVerb } from './verbs.ts'
  * Read the result of running `verb` as the methods that throw do.
  *
  * A checked verb has already thrown on a non-zero exit (the runner is
- * `runChecked`). A probe (`installed`, `authStatus`, `api`) carries its
+ * {@link runCheckedGh}). A probe (`installed`, `authStatus`, `api`) carries its
  * failure in its value. A read that exited non-zero throws the classified
  * failure, unless the verb's `absent` says gh's answer was "there is no such
  * thing", which `parse` turns into `null`. A read that exited 0 but parsed to `null`
  * could not be read completely, and throws.
  *
+ * A result flagged `outputIncomplete` throws for every verb but a probe, as
+ * typed-git's `gate` does: gh exited, but the runner stopped reading at the
+ * output cap or a timeout, so a parse would take cut-short output as whole.
+ * Both read a result through command-seam's `runFailed`.
+ *
  * @throws `FailureError` carrying the classified {@link GhFailure} for a failed run.
  * @throws `FailureError` carrying an `unreadable` {@link GhFailure}.
  */
 export function settle<T>(verb: GhVerb<T>, result: CommandResult, binary: string | undefined): T {
-  if (verb.checked || verb.probe === true) return verb.parse(result)
-  if (result.neverExited === true || result.exitCode !== 0) {
-    if (result.neverExited !== true && verb.absent?.(result) === true) return verb.parse(result)
-    throw ghFailureError(new CommandFailed(verb.argv, result, binary))
-  }
+  if (verb.probe === true) return verb.parse(result)
+  // A checked verb's runner has already thrown on a non-zero exit.
+  const failed = verb.checked
+    ? result.outputIncomplete === true
+    : runFailed(result, (r) => verb.absent?.(r) === true)
+  if (failed) throw ghFailureError(new CommandFailed(verb.argv, result, binary))
+  // A non-zero exit that got this far is gh's "there is no such thing".
+  if (verb.checked || result.exitCode !== 0) return verb.parse(result)
   const value = verb.parse(result)
   if (value === null) {
     throw new FailureError(unreadableFailure(verb.argv, result.stdout, binary))
@@ -71,30 +81,41 @@ export function ghFailureError(error: unknown): unknown {
   return isCommandFailed(error) ? new FailureError(classifyGhFailure(error)) : error
 }
 
-/** {@link runChecked}, throwing {@link ghFailureError}'s classified failure. */
+/**
+ * Run `argv` and throw {@link ghFailureError}'s classified failure unless gh
+ * exited 0 with its whole output. Output cut short (`outputIncomplete`) is a
+ * failure too, which `runChecked` alone would not catch: it checks only the
+ * exit code.
+ */
 export function runCheckedGh(
   runner: CommandRunner,
   argv: string[],
   opts: CommandRunOptions,
 ): CommandResult {
   try {
-    return runChecked(runner, argv, opts)
+    return whole(runner.run(argv, opts), argv, runner.binary)
   } catch (error) {
     throw ghFailureError(error)
   }
 }
 
-/** {@link runCheckedAsync}, rejecting with {@link ghFailureError}'s classified failure. */
+/** {@link runCheckedGh} for an awaitable runner, rejecting with the classified failure. */
 export async function runCheckedGhAsync(
   runner: AsyncCommandRunner,
   argv: string[],
   opts: AsyncCommandRunOptions,
 ): Promise<CommandResult> {
   try {
-    return await runCheckedAsync(runner, argv, opts)
+    return whole(await runner.run(argv, opts), argv, runner.binary)
   } catch (error) {
     throw ghFailureError(error)
   }
+}
+
+/** `result`, or a `CommandFailed` thrown when it is a failure (command-seam's `runFailed`). */
+function whole(result: CommandResult, argv: string[], binary: string | undefined): CommandResult {
+  if (runFailed(result)) throw new CommandFailed(argv, result, binary)
+  return result
 }
 
 /** The members `try` and `soft` leave out: `raw`, `rawChecked`, helpers that run nothing, and properties. */
@@ -178,45 +199,22 @@ export function failureOf(error: { failure: Failure }): GhFailure {
   return isCommandFailed(thrown) ? classifyGhFailure(thrown) : (error.failure as GhFailure)
 }
 
-function facade<C extends object>(
-  client: C,
-  wrap: (call: () => unknown, name: string) => unknown,
-): unknown {
-  return new Proxy(client, {
-    get(target, prop) {
-      // Read from the target, not the proxy. A getter (`try` itself) must run
-      // against the real client, not recurse through the proxy.
-      const value: unknown = Reflect.get(target, prop)
-      if (typeof value !== 'function') return value
-      const method = value as (...a: unknown[]) => unknown
-      const name = String(prop)
-      return (...args: unknown[]) => wrap(() => method.apply(target, args), name)
-    },
-  })
+/** The failure a thrown value carries, or `null` for a bug to rethrow. */
+function recognize(error: unknown): GhFailure | null {
+  return isGhFailure(error) ? failureOf(error) : null
 }
 
-/** Wrap a synchronous client so every method returns a `Result<T, GhFailure>`. */
+/**
+ * Wrap a synchronous client so every method returns a `Result<T, GhFailure>`.
+ * The proxy is command-seam's `tryMethods`, so a new method needs no entry.
+ */
 export function triedSync<C extends object>(client: C): TriedSync<C> {
-  return facade(client, (call): Result<unknown, GhFailure> => {
-    try {
-      return ok(call())
-    } catch (error) {
-      if (isGhFailure(error)) return err(failureOf(error))
-      throw error
-    }
-  }) as TriedSync<C>
+  return tryMethods(client, recognize) as unknown as TriedSync<C>
 }
 
 /** Wrap an awaitable client so every method promises a `Result<T, GhFailure>`. */
 export function triedAsync<C extends object>(client: C): TriedAsync<C> {
-  return facade(client, async (call): Promise<Result<unknown, GhFailure>> => {
-    try {
-      return ok(await call())
-    } catch (error) {
-      if (isGhFailure(error)) return err(failureOf(error))
-      throw error
-    }
-  }) as TriedAsync<C>
+  return tryMethodsAsync(client, recognize) as unknown as TriedAsync<C>
 }
 
 function checkSoft(name: string): void {
@@ -229,7 +227,7 @@ function checkSoft(name: string): void {
 
 /** Wrap a synchronous client so a failed query returns `null`. */
 export function softSync<C extends object>(client: C): Soft<C> {
-  return facade(client, (call, name) => {
+  return methodFacade(client, (call, name) => {
     checkSoft(name)
     try {
       return call()
@@ -242,7 +240,7 @@ export function softSync<C extends object>(client: C): Soft<C> {
 
 /** Wrap an awaitable client so a failed query resolves to `null`. */
 export function softAsync<C extends object>(client: C): Soft<C> {
-  return facade(client, async (call, name) => {
+  return methodFacade(client, async (call, name) => {
     checkSoft(name)
     try {
       return await call()

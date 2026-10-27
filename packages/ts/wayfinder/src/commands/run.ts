@@ -68,7 +68,7 @@ export function runCommand(home: string) {
     kind: 'run',
     examples: [
       'run just:justfile:build',
-      'run npm:package.json:test -- --watch',
+      'run node-scripts:package.json:test -- --watch',
       'run x --dry-run --json',
     ],
     // Running a task is the command line's; an adapter may only ask what would run.

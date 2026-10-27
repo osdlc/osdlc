@@ -17,6 +17,7 @@
  */
 import { matchContent } from './content.js'
 import { ContractError } from './finding.js'
+import { hasErrors } from './finding-view.js'
 import { buildModel } from './model.js'
 import { createParsedValues, type ParsedValues } from './parsed-values.js'
 import { parse } from './projection.js'
@@ -139,7 +140,7 @@ export function validate<F, B>(
   runDocRules(def, tree, fctx, values, findings)
 
   const sorted = sortFindings(findings)
-  const hasError = sorted.some((f) => f.level === 'error')
+  const hasError = hasErrors(sorted)
 
   const result: ValidationResult<F, B> = { findings: sorted, tree }
   if (!hasError) {

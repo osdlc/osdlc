@@ -144,6 +144,9 @@ export const GENERATED_SCHEMAS: Readonly<Record<string, Readonly<Record<string, 
       },
       "file": {
         "type": "string"
+      },
+      "dryRun": {
+        "type": "boolean"
       }
     },
     "required": [
@@ -175,6 +178,9 @@ export const GENERATED_SCHEMAS: Readonly<Record<string, Readonly<Record<string, 
       },
       "file": {
         "type": "string"
+      },
+      "dryRun": {
+        "type": "boolean"
       }
     },
     "required": [

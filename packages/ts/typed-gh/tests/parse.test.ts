@@ -214,6 +214,27 @@ describe('statusCheckRollup — two node types, one verdict axis', () => {
     expect(parseCheckRun({ context: 'ci/legacy', state: 'ERROR' })?.verdict).toBe('failure')
   })
 
+  test('the url is detailsUrl, else targetUrl, on either node type', () => {
+    const run = { name: 'c', status: 'COMPLETED', conclusion: 'SUCCESS' }
+    expect(parseCheckRun({ ...run, targetUrl: 'https://ci/1' })?.url).toBe('https://ci/1')
+    expect(
+      parseCheckRun({ ...run, detailsUrl: 'https://ci/d', targetUrl: 'https://ci/1' })?.url,
+    ).toBe('https://ci/d')
+    expect(parseCheckRun({ context: 'ci', state: 'SUCCESS', targetUrl: 'https://ci/2' })?.url).toBe(
+      'https://ci/2',
+    )
+  })
+
+  test('a check run with no status is read by its conclusion', () => {
+    expect(parseCheckRun({ name: 'c', conclusion: 'SUCCESS' })).toEqual({
+      name: 'c',
+      status: null,
+      conclusion: 'SUCCESS',
+      verdict: 'success',
+      url: null,
+    })
+  })
+
   test('anyCheckFailed ignores pending and neutral', () => {
     const pr = parsePullRequest({
       number: 1,

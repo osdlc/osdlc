@@ -106,6 +106,17 @@ describe('forbids — a section must NOT contain a phrase, reported at the sourc
     expect(out[0]!.message).toBe('forbidden phrase "TODO" present')
   })
 
+  it('reports the line only, not a column of the rebuilt scope text', () => {
+    // The scope text holds the item text without its `- ` marker, so a column in it would be 2
+    // short of the source column.
+    const c = contract({
+      body: sections({}, [section('S', { rules: [forbids([{ pattern: 'TODO' }])] })]),
+    })
+    const { findings } = c.validate('## S\n\n- has TODO here\n', { path: 'd.md' })
+    expect(findings).toHaveLength(1)
+    expect(findings[0]!.pos).toEqual({ line: 3 })
+  })
+
   it('emits nothing when the phrase is absent', () => {
     const node = sectionNode('Notes', 1, [para(3, 'all clear')])
     expect(forbids([{ pattern: 'TODO' }]).run(node, ctx)).toEqual([])
@@ -226,6 +237,11 @@ describe('requires purity', () => {
 
   it('names a regex needle as /source/ in the absence-form error', () => {
     expect(() => requires([{ regex: 'foo|bar', max: 0 }])).toThrow(/\/foo\|bar\//)
+  })
+
+  it('rejects a forbids entry with a negative max, in forbids and in textRule', () => {
+    expect(() => forbids([{ pattern: 'x', max: -1 }])).toThrow(ContractBuildError)
+    expect(() => textRule({ forbids: [{ pattern: 'x', max: -1 }] })).toThrow(ContractBuildError)
   })
 })
 

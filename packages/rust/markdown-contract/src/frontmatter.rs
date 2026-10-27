@@ -58,7 +58,17 @@ pub(crate) fn yaml_to_json(v: serde_yaml::Value) -> serde_json::Value {
             }
             serde_json::Value::Object(out)
         }
-        serde_yaml::Value::Tagged(t) => yaml_to_json(t.value),
+        // serde_yaml only keeps a local (`!`-prefixed) tag; the core `!!` tags resolve
+        // as usual. The TS `yaml` package cannot resolve a local tag on a scalar and
+        // falls back to the string tag, so the scalar is its text. serde_yaml has
+        // already resolved that text, so a re-spelled scalar (`0x10`) is approximate.
+        serde_yaml::Value::Tagged(t) => match t.value {
+            serde_yaml::Value::String(s) => serde_json::Value::String(s),
+            serde_yaml::Value::Bool(b) => serde_json::Value::String(b.to_string()),
+            serde_yaml::Value::Number(n) => serde_json::Value::String(n.to_string()),
+            serde_yaml::Value::Null => serde_json::Value::String(String::new()),
+            other => yaml_to_json(other),
+        },
     }
 }
 
@@ -67,7 +77,8 @@ fn yaml_key_to_string(k: &serde_yaml::Value) -> String {
     match k {
         serde_yaml::Value::String(s) => s.clone(),
         serde_yaml::Value::Bool(b) => b.to_string(),
-        serde_yaml::Value::Number(n) => n.to_string(),
+        // JS `String(n)`: `1.0` and `1e3` keys are `1` and `1000`, not serde's `1.0`.
+        serde_yaml::Value::Number(n) => n.as_f64().map_or_else(|| n.to_string(), crate::js::num),
         serde_yaml::Value::Null => "null".into(),
         other => serde_yaml::to_string(other)
             .map(|s| s.trim_end().to_string())
@@ -120,7 +131,12 @@ fn split_key(content: &str) -> Option<(String, &str)> {
             stripped[end + 1..].trim_start(),
         )
     } else {
-        let colon = content.find(':')?;
+        // The first `:` followed by a space, a tab or the line end: a `:` inside a
+        // plain key (`url:x: 1`) is part of the key.
+        let colon = content
+            .match_indices(':')
+            .map(|(i, _)| i)
+            .find(|&i| matches!(content.as_bytes().get(i + 1), None | Some(b' ' | b'\t')))?;
         (content[..colon].trim_end().to_string(), &content[colon..])
     };
     let rest = rest.strip_prefix(':')?;
@@ -507,6 +523,40 @@ mod tests {
                 "related": ["a", "b"],
             })
         );
+    }
+
+    // An unresolvable local tag reads as the scalar's text in yaml@2, and number keys
+    // stringify as JS `String(n)` does.
+    #[test]
+    fn tagged_scalars_and_number_keys_project_as_tojs_does() {
+        let v: serde_yaml::Value = serde_yaml::from_str(
+            "code: !local 42\nflag: !local true\nname: !local x\nlist: !local [1]\n1.0: a\n2.5: b\n7: c\ntrue: d\n~: e",
+        )
+        .unwrap();
+        assert_eq!(
+            yaml_to_json(v),
+            json!({
+                "code": "42",
+                "flag": "true",
+                "name": "x",
+                "list": [1],
+                "1": "a",
+                "2.5": "b",
+                "7": "c",
+                "true": "d",
+                "null": "e",
+            })
+        );
+    }
+
+    #[test]
+    fn a_plain_key_containing_a_colon_does_not_hide_later_keys() {
+        let key = |k: &str| PathSeg::Key(k.into());
+        let raw = "url:x: 1\nstatus: bogus\n";
+        assert_eq!(line_for_path(raw, &[key("url:x")]), Some(1));
+        assert_eq!(line_for_path(raw, &[key("status")]), Some(2));
+        let later = "id: D-0001\nurl:x: 1\nstatus: bogus\n";
+        assert_eq!(line_for_path(later, &[key("status")]), Some(3));
     }
 
     #[test]

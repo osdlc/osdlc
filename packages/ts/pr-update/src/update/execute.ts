@@ -38,7 +38,13 @@ import { existsSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 
 import { firstLine, isCommandFailed, stderrOrError } from '@osdlc/command-seam'
-import { CommandFailed, Git } from '@osdlc/typed-git'
+import {
+  CommandFailed,
+  Git,
+  type PushRefResult,
+  type PushRejection,
+  type PushReport,
+} from '@osdlc/typed-git'
 
 import type {
   ConfirmPush,
@@ -159,12 +165,26 @@ export interface UpdateResult extends UpdateTarget {
  * A push rejected because the remote moved, not because the built update was
  * wrong. It is reported apart from other failures, because the fix is to run
  * again, not to inspect the branch.
+ *
+ * Reads typed-git's per-ref `rejection`, not stderr. A failed lease (`stale`),
+ * a merge push the remote got ahead of (`non-fast-forward`), and a writer that
+ * moved, deleted or created the ref first (`lock-failed`, `already-exists`)
+ * are races. A ref clash, a lock file in the way, a hook and a tag fail the
+ * same way on every run, so they are not.
  */
-export function isStalePush(stderr: string): boolean {
-  return (
-    /\brejected\b/i.test(stderr) &&
-    /(non-fast-forward|fetch first|stale info|cannot lock ref)/i.test(stderr)
-  )
+export function isStalePush(rejection: PushRejection): boolean {
+  switch (rejection) {
+    case 'stale':
+    case 'non-fast-forward':
+    case 'lock-failed':
+    case 'already-exists':
+      return true
+    case 'tag-exists':
+    case 'ref-conflict':
+    case 'hook-declined':
+    case 'other':
+      return false
+  }
 }
 
 /**
@@ -180,6 +200,12 @@ function commandFailedOf(e: unknown): CommandFailed | null {
       ? (e as { failure?: { cause?: unknown } }).failure?.cause
       : null
   return isCommandFailed(cause) ? cause : null
+}
+
+/** The first `remote:` line of a push's stderr, without the prefix, or null. */
+function remoteLine(stderr: string): string | null {
+  const m = /^remote: (?:error: )?(.*?)\s*$/m.exec(stderr)
+  return m === null || m[1] === '' ? null : m[1]!
 }
 
 /** One line naming why `e` failed: stderr (or the runner's `error`), else stdout. */
@@ -231,6 +257,9 @@ export async function updateOne(
   } catch (e) {
     return { status: 'failed', reason: `checkout ${head}: ${errorLine(e)}` }
   }
+  // A forced checkout keeps untracked files. Whatever the previous PR left (a
+  // verify verb's report, say) would otherwise be committed by this PR's `add .`.
+  git.try.clean({ directories: true })
 
   // The push lease pins `target.headOid`, the code host's view of the head. A
   // tracking ref behind it (after a skipped or failed fetch) would build on an
@@ -498,15 +527,25 @@ async function integrateAndPush(
   }
 
   let pushedOid: string | null = null
+  let report: PushReport
   try {
     pushedOid = git.resolveRef('HEAD')
-    pushUpdate(git, target, settings)
+    report = pushUpdate(git, target, settings)
   } catch (e) {
-    const failed = commandFailedOf(e)
-    const reason =
-      failed !== null && isStalePush(failed.result.stderr)
-        ? `push rejected — ${target.head} moved since the run started; re-run`
-        : `push ${target.head}: ${errorLine(e)}`
+    return { status: 'failed', reason: `push ${target.head}: ${errorLine(e)}` }
+  }
+  const rejected = report.refs.find(
+    (r): r is Extract<PushRefResult, { flag: '!' }> => r.flag === '!',
+  )
+  if (rejected !== undefined) {
+    // The ref's own lock line, else the remote's first message (a hook's reason).
+    const said = rejected.detail ?? remoteLine(report.stderr)
+    const why = [rejected.rawReason ?? rejected.summary, said]
+      .filter((part) => part !== null && part !== '')
+      .join(': ')
+    const reason = isStalePush(rejected.rejection)
+      ? `push rejected — ${target.head} moved since the run started; re-run`
+      : `push ${target.head}: rejected (${why})`
     return { status: 'failed', reason }
   }
   return {
@@ -541,17 +580,17 @@ function pushPreview(git: Git, target: UpdateTarget, remoteHead: string): PushPr
  *
  * Without a known sha there is nothing to pin to. A force-push with no lease
  * should not be done on someone's behalf, so it is refused.
+ *
+ * A rejected ref comes back in the report, typed, rather than as a throw. A
+ * failure that reaches no ref (auth, network, a local hook) still throws.
  */
-function pushUpdate(git: Git, target: UpdateTarget, settings: UpdateSettings): void {
+function pushUpdate(git: Git, target: UpdateTarget, settings: UpdateSettings): PushReport {
   const refspec = `HEAD:refs/heads/${target.head}`
-  if (target.strategy !== 'rebase') {
-    git.push(settings.remote, refspec)
-    return
-  }
+  if (target.strategy !== 'rebase') return git.pushPorcelain(settings.remote, refspec)
   if (target.headOid === null) {
     throw new Error(`refusing to force-push ${target.head} without a known head sha to pin to`)
   }
-  git.push(settings.remote, refspec, {
+  return git.pushPorcelain(settings.remote, refspec, {
     forceWithLease: { ref: `refs/heads/${target.head}`, expect: target.headOid },
   })
 }

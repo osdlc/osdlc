@@ -53,8 +53,8 @@ describe('loader', () => {
     )
     const strategy = await run(dir, env, 'config', 'get', 'strategy')
     expect(strategy.code).toBe(EXIT.ok)
-    expect(strategy.out).toBe('merge\n')
-    expect((await run(dir, env, 'config', 'get', 'code_host.override')).out).toBe('forgejo\n')
+    expect(strategy.out).toBe('"merge"\n')
+    expect((await run(dir, env, 'config', 'get', 'code_host.override')).out).toBe('"forgejo"\n')
   })
 
   test('AC-2: a nested unknown key under pr_update fails with exit 14', async () => {
@@ -74,11 +74,11 @@ describe('the config file the binary reads', () => {
     const { dir, env } = project()
     // A file some other tool owns is not this binary's business, whatever it holds.
     writeFileSync(join(dir, 'other-tool.yaml'), 'pr_update:\n  strategy: merge\n')
-    expect((await run(dir, env, 'config', 'get', 'strategy')).out).toBe('rebase\n')
+    expect((await run(dir, env, 'config', 'get', 'strategy')).out).toBe('"rebase"\n')
     expect((await run(dir, env, 'survey')).code).toBe(EXIT.ok)
 
     writeFileSync(join(dir, 'pr-update.yaml'), 'pr_update:\n  strategy: merge\n')
-    expect((await run(dir, env, 'config', 'get', 'strategy')).out).toBe('merge\n')
+    expect((await run(dir, env, 'config', 'get', 'strategy')).out).toBe('"merge"\n')
     writeFileSync(join(dir, 'pr-update.local.yaml'), 'pr_update:\n  max_failed_attempts: 4\n')
     expect((await run(dir, env, 'config', 'get', 'max_failed_attempts')).out).toBe('4\n')
   })
@@ -87,7 +87,7 @@ describe('the config file the binary reads', () => {
     const { dir, env } = project()
     writeFileSync(join(dir, '.pr-update.yaml'), 'strategy: merge\n')
     expect((await run(dir, env, 'survey')).code).toBe(EXIT.ok)
-    expect((await run(dir, env, 'config', 'get', 'strategy')).out).toBe('rebase\n')
+    expect((await run(dir, env, 'config', 'get', 'strategy')).out).toBe('"rebase"\n')
   })
 
   test('a config write lands in pr-update.yaml and nowhere else', async () => {
@@ -110,7 +110,7 @@ describe('the config file the binary reads', () => {
       configFile: { name: 'tool.yaml', envVar: 'TOOL_CONFIG' },
     })
     expect(code).toBe(EXIT.ok)
-    expect(ctx.io.out).toBe('merge\n')
+    expect(ctx.io.out).toBe('"merge"\n')
   })
 })
 
@@ -118,26 +118,24 @@ describe('config subcommands', () => {
   test('AC-4: shorthand and qualified keys write byte-identical files; explain qualifies', async () => {
     const a = project()
     const b = project()
+    expect((await run(a.dir, a.env, 'config', 'set', 'strategy', 'merge', '--local')).code).toBe(0)
     expect(
-      (await run(a.dir, a.env, 'config', 'set', 'strategy', 'merge', '--layer', 'local')).code,
-    ).toBe(0)
-    expect(
-      (await run(b.dir, b.env, 'config', 'set', 'pr_update.strategy', 'merge', '--layer', 'local'))
-        .code,
+      (await run(b.dir, b.env, 'config', 'set', 'pr_update.strategy', 'merge', '--local')).code,
     ).toBe(0)
     const local = (dir: string) => readFileSync(join(dir, LOCAL_FILE_NAME), 'utf8')
     expect(local(a.dir)).toBe(local(b.dir))
     expect(local(a.dir)).toContain('strategy: merge')
     const explain = await run(a.dir, a.env, 'config', 'explain', 'strategy')
     expect(explain.code).toBe(0)
-    expect(explain.out.startsWith('pr_update.strategy\n')).toBe(true)
-    expect(explain.out).toContain('(from local)')
+    expect(explain.out.startsWith('pr_update.strategy = "merge"')).toBe(true)
+    expect(explain.out).toContain('local is the highest layer that sets it')
   })
 
-  test('set refuses an invalid value with exit 14 and leaves the file alone', async () => {
+  test('set refuses an invalid value as a usage error and leaves the file alone', async () => {
     const { dir, env } = project()
     const r = await run(dir, env, 'config', 'set', 'strategy', 'sideways')
-    expect(r.code).toBe(CONFIG_INVALID_EXIT)
+    expect(r.code).toBe(EXIT.usage)
+    expect(r.err).toContain('would leave')
     expect(() => readFileSync(join(dir, PR_UPDATE_CONFIG_FILE_NAME), 'utf8')).toThrow()
   })
 
@@ -146,7 +144,7 @@ describe('config subcommands', () => {
     await run(dir, env, 'config', 'set', 'max_failed_attempts', '3')
     expect((await run(dir, env, 'config', 'get', 'max_failed_attempts')).out).toBe('3\n')
     expect((await run(dir, env, 'config', 'list')).out).toMatch(
-      /pr_update\.max_failed_attempts\s+project\s+3/,
+      /pr_update\.max_failed_attempts\s+3\s+\(project\)/,
     )
     await run(dir, env, 'config', 'unset', 'max_failed_attempts')
     expect((await run(dir, env, 'config', 'get', 'max_failed_attempts')).out).toBe('1\n')
@@ -173,10 +171,17 @@ describe('config subcommands', () => {
       'config',
       'explain',
       'pr_update.strategy',
+      '--json',
     )
     expect(r.code).toBe(0)
-    expect(r.out).toContain(file)
-    expect(r.out).toContain('(from project)')
+    const doc = JSON.parse(r.out) as { source: string; layers: { layer: string; file?: string }[] }
+    expect(doc.source).toBe('project')
+    expect(doc.layers.find((l) => l.layer === 'project')).toMatchObject({
+      file,
+      envVar: 'PR_UPDATE_CONFIG',
+    })
+    const path = await run(dir, { ...env, PR_UPDATE_CONFIG: file }, 'config', 'path')
+    expect(path.out).toContain(`${file} (exists) (from PR_UPDATE_CONFIG)`)
   })
 })
 
@@ -306,7 +311,7 @@ describe('repair agent presets in config', () => {
     const { dir, env } = project()
     expect((await run(dir, env, 'config', 'set', 'repair.agent', 'pi')).code).toBe(EXIT.ok)
     const r = await run(dir, env, 'config', 'set', 'repair.command', 'fix-it')
-    expect(r.code).toBe(CONFIG_INVALID_EXIT)
+    expect(r.code).toBe(EXIT.usage)
     expect(readFileSync(join(dir, PR_UPDATE_CONFIG_FILE_NAME), 'utf8')).not.toContain('fix-it')
   })
 
@@ -358,5 +363,121 @@ describe('repair agent presets in config', () => {
     ]) {
       expect(r.out).toMatch(new RegExp(`^\\s+${name}\\s+.*${line}`, 'm'))
     }
+  })
+})
+
+describe('config set/unset --dry-run, get on an unset key, unknown subcommands', () => {
+  test('set --dry-run reports what it would write and writes nothing', async () => {
+    const { dir, env } = project()
+    const r = await run(dir, env, 'config', 'set', 'strategy', 'merge', '--dry-run')
+    expect(r.code).toBe(EXIT.ok)
+    expect(r.out).toMatch(/pr-update\.yaml: would set pr_update\.strategy = "merge"\n$/)
+    expect(existsSync(join(dir, PR_UPDATE_CONFIG_FILE_NAME))).toBe(false)
+  })
+
+  test('setting the value a key already has succeeds and writes the same file', async () => {
+    const { dir, env } = project()
+    expect((await run(dir, env, 'config', 'set', 'strategy', 'merge')).code).toBe(EXIT.ok)
+    const before = readFileSync(join(dir, PR_UPDATE_CONFIG_FILE_NAME), 'utf8')
+    const again = await run(dir, env, 'config', 'set', 'strategy', 'merge')
+    expect(again.code).toBe(EXIT.ok)
+    expect(again.out).toMatch(/pr-update\.yaml: pr_update\.strategy = "merge"\n$/)
+    expect(readFileSync(join(dir, PR_UPDATE_CONFIG_FILE_NAME), 'utf8')).toBe(before)
+  })
+
+  test('unset --dry-run leaves the file as it was', async () => {
+    const { dir, env } = project()
+    await run(dir, env, 'config', 'set', 'strategy', 'merge')
+    const before = readFileSync(join(dir, PR_UPDATE_CONFIG_FILE_NAME), 'utf8')
+    const r = await run(dir, env, 'config', 'unset', 'strategy', '--dry-run')
+    expect(r.code).toBe(EXIT.ok)
+    expect(r.out).toContain('would remove pr_update.strategy')
+    expect(readFileSync(join(dir, PR_UPDATE_CONFIG_FILE_NAME), 'utf8')).toBe(before)
+  })
+
+  test('unset of a key the file does not set exits 1', async () => {
+    const { dir, env } = project()
+    const r = await run(dir, env, 'config', 'unset', 'strategy')
+    expect(r.code).toBe(EXIT.error)
+    expect(r.err).toContain('pr_update.strategy is not set in')
+  })
+
+  test('get reads a key below a listed one; an unknown one is a usage error', async () => {
+    const { dir, env } = project()
+    // `repair.agent` defaults to null ("no agent"), a value like any other, as at the top level.
+    const byDefault = await run(dir, env, 'config', 'get', 'repair.agent')
+    expect(byDefault.code).toBe(EXIT.ok)
+    expect(byDefault.out).toBe('null\n')
+    const missing = await run(dir, env, 'config', 'get', 'repair.nope')
+    expect(missing.code).toBe(EXIT.usage)
+    expect(missing.err).toContain('unknown setting: repair.nope')
+    expect((await run(dir, env, 'config', 'set', 'repair.agent', 'pi')).code).toBe(EXIT.ok)
+    expect((await run(dir, env, 'config', 'get', 'repair.agent')).out).toBe('"pi"\n')
+  })
+
+  test('an unknown key is a usage error naming the keys that would resolve', async () => {
+    const { dir, env } = project()
+    const r = await run(dir, env, 'config', 'set', 'strategee', 'merge')
+    expect(r.code).toBe(EXIT.usage)
+    expect(r.err).toContain('strategee')
+  })
+
+  test('an unknown key is a usage error for get and unset too', async () => {
+    const { dir, env } = project()
+    for (const verb of ['get', 'unset', 'explain']) {
+      const r = await run(dir, env, 'config', verb, 'nosuch')
+      expect(r.code).toBe(EXIT.usage)
+      expect(r.err).toContain('nosuch')
+    }
+  })
+
+  test('an invalid config exits 14 for get; set repairs it', async () => {
+    const { dir, env } = project()
+    const file = join(dir, PR_UPDATE_CONFIG_FILE_NAME)
+    writeFileSync(file, 'pr_update:\n  strategy: sideways\n')
+    expect((await run(dir, env, 'config', 'get', 'strategy')).code).toBe(CONFIG_INVALID_EXIT)
+    // A change that leaves it invalid is refused, and writes nothing.
+    expect((await run(dir, env, 'config', 'set', 'max_failed_attempts', '3')).code).toBe(EXIT.usage)
+    expect(readFileSync(file, 'utf8')).not.toContain('max_failed_attempts')
+    expect((await run(dir, env, 'config', 'set', 'strategy', 'merge')).code).toBe(EXIT.ok)
+    expect((await run(dir, env, 'config', 'get', 'strategy')).out).toBe('"merge"\n')
+  })
+
+  test('unset repairs a file holding both repair.agent and repair.command', async () => {
+    const { dir, env } = project()
+    const file = join(dir, PR_UPDATE_CONFIG_FILE_NAME)
+    writeFileSync(file, 'pr_update:\n  repair:\n    agent: claude\n    command: fix-it\n')
+    expect((await run(dir, env, 'config', 'unset', 'repair.command')).code).toBe(EXIT.ok)
+    expect(readFileSync(file, 'utf8')).not.toContain('fix-it')
+    expect((await run(dir, env, 'config', 'get', 'repair.agent')).out).toBe('"claude"\n')
+  })
+
+  test('a layer file that is not YAML exits 14 for set', async () => {
+    const { dir, env } = project()
+    writeFileSync(join(dir, PR_UPDATE_CONFIG_FILE_NAME), 'pr_update: [unclosed\n')
+    expect((await run(dir, env, 'config', 'set', 'strategy', 'merge')).code).toBe(
+      CONFIG_INVALID_EXIT,
+    )
+  })
+
+  test('PR_UPDATE_CONFIG naming a missing file: 14 for set, and path still lists it', async () => {
+    const { dir, env } = project()
+    const missing = join(scratch, `missing-${n++}.yaml`)
+    const pointed = { ...env, PR_UPDATE_CONFIG: missing }
+    expect((await run(dir, pointed, 'config', 'set', 'strategy', 'merge')).code).toBe(
+      CONFIG_INVALID_EXIT,
+    )
+    expect((await run(dir, pointed, 'config', 'unset', 'strategy')).code).toBe(CONFIG_INVALID_EXIT)
+    expect(existsSync(missing)).toBe(false)
+    const path = await run(dir, pointed, 'config', 'path')
+    expect(path.code).toBe(EXIT.ok)
+    expect(path.out).toContain(`${missing} (missing) (from PR_UPDATE_CONFIG)`)
+  })
+
+  test('an unknown config subcommand is a usage error', async () => {
+    const { dir, env } = project()
+    const r = await run(dir, env, 'config', 'bogus')
+    expect(r.code).toBe(EXIT.usage)
+    expect(r.err).toContain("unknown command 'config bogus'")
   })
 })

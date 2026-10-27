@@ -29,6 +29,8 @@
 import { editYaml, type EditValue, type FieldEdit } from '@osdlc/yaml-splice'
 import { isAlias, isMap, isScalar, parseDocument, visit, type Pair, type YAMLMap } from 'yaml'
 
+import { isPlainObject } from './value.ts'
+
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
@@ -121,7 +123,7 @@ function edit(text: string, path: readonly string[], op: Op): string {
 
   // Fallback: re-render the whole top-level section from its merged value.
   const current: unknown = node === null || node === undefined ? undefined : doc.toJS()[head]
-  if (op.kind === 'unset' && !isPlainRecord(current)) {
+  if (op.kind === 'unset' && !isPlainObject(current)) {
     // Nothing to descend into (a scalar, sequence, or absent value), so the
     // nested path was never set. Recursing through `applyPlain` here would
     // build a new `{}`, find no keys left, and delete `head` itself: a plain
@@ -131,11 +133,6 @@ function edit(text: string, path: readonly string[], op: Op): string {
   const next = applyPlain(current, rest, op)
   if (next === undefined) return splice(text, [{ Remove: { key: head } }])
   return splice(text, [{ Set: { key: head, value: next as EditValue } }])
-}
-
-/** `current` is something a nested path can actually be set/unset inside: a plain mapping. */
-function isPlainRecord(current: unknown): current is Record<string, unknown> {
-  return current !== null && typeof current === 'object' && !Array.isArray(current)
 }
 
 /**

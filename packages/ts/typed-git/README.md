@@ -205,6 +205,11 @@ there: `git.try.logSubject("HEAD")` outside a repository is `{ ok: true,
 value: null }`, not a failure. The contract reduces these cases. It does not
 remove them.
 
+When a missing file is an error rather than an answer, use
+`showAtRevChecked(rev, path)`. It runs the same `show` and declares no
+absence, so a missing path throws the classified failure instead of reading as
+`null`.
+
 Where the difference matters, probe with `hasHistory()` first:
 
 ```ts
@@ -505,7 +510,7 @@ trailing argument that is not a string.
 
 A ref, remote, URL, path, ref pattern or config key argument that starts with
 `-` could be read by git as an option, for example `--upload-pack=...` or
-`--output=<file>`. Forty-two verbs refuse it: they throw a `TypeError`
+`--output=<file>`. Every verb that takes such an argument refuses it: they throw a `TypeError`
 before git runs. In `log` this covers `rev`, `range` and each `notRefs` entry.
 In `diffNameOnly` and `diffStat` it covers each `rangeArgs` token. The message is
 `typed-git: <verb>: <param> must not start with "-" (got "...")`. `try` and
@@ -531,6 +536,7 @@ exit throws the classified failure.
 | Method | git | Absence → value |
 | --- | --- | --- |
 | `showAtRev(rev, path)` | `show <rev>:<path>` | `128` → `null` |
+| `showAtRevChecked(rev, path)` | `show <rev>:<path>` | none — a missing path throws; no `soft` form |
 | `revParse(...args)` | `rev-parse <args>` | `1` → `null` — needs `--verify --quiet` |
 | `resolveRef(ref)` | `rev-parse --verify --quiet <ref>` | `1` → `null` |
 | `hasHistory()` | `resolveRef("HEAD") !== null` | — |
@@ -538,13 +544,14 @@ exit throws the classified failure.
 | `topLevel()` | `rev-parse --show-toplevel` | `128` → `null` (not a repository) |
 | `gitCommonDir()` | `rev-parse --path-format=absolute --git-common-dir` | `128` → `null` |
 | `gitDir()` | `rev-parse --absolute-git-dir` | `128` → `null` — this worktree's own dir, `<common>/worktrees/<name>` in a linked worktree |
-| `mainCheckout()` | the parent of `gitCommonDir()` | `null` outside a repository |
+| `mainCheckout()` | the parent of `gitCommonDir()` when that is `<checkout>/.git`, else `core.worktree` or the main worktree | `null` outside a repository, or for a bare store |
 | `symbolicRef(ref)` | `symbolic-ref <ref>` | `128` → `null` |
 | `currentBranch()` | `branch --show-current` | none — `null` when detached |
 | `statusPorcelain({ paths })` | `status --porcelain` | none |
 | `statusEntries()` | `status --porcelain -z --untracked-files=all` | none — `{ x, y, path }` rows; a rename is one row, with the source dropped |
 | `isDirty({ paths })` | `statusPorcelain().length > 0` | none |
-| `branches(pattern)` | `branch --list --format=%(refname:short)` | none |
+| `hasStagedChanges()` | `diff --cached --quiet` | `1` → `true`, `0` → `false` — on an unborn HEAD the index is compared against the empty tree; outside a repository (`129`) it throws |
+| `branches(pattern)` | `branch --list --format=%(refname:lstrip=2)` | none |
 | `branchExists(name)` | `branches(name).includes(name)` | none |
 | `worktrees()` | `worktree list --porcelain` | none — rows carry `locked` and `lockReason` |
 | `mergeBase(a, b)` | `merge-base <a> <b>` | `1` → `null` (unrelated histories) |
@@ -597,8 +604,8 @@ Integration, declares exit 1 absent and returns the rejected refs.
 | --- | --- |
 | `fetch(remote, refspec, { prune, quiet, noWriteFetchHead, depth, noTags })` | `fetch` |
 | `add(paths, { all, update, intentToAdd })` | `add` (paths go after `--`) |
-| `commit({ message, body } \| { messageFile } \| { messageStdin }, { allowEmpty, amend, noVerify, signoff })` | `commit` — one message source, enforced by the types; `messageStdin` is `-F -` with the string on stdin, no temp file |
-| `push(remote, refspec, { forceWithLease })` | `push` — `forceWithLease` takes `true` or a pinned `{ ref, expect }` (`expect: null` = ref must be absent); `forceWithLeaseArg(lease)` is the pure formatter. `true` is the bare form: it overwrites whatever is on the remote, so prefer the pinned form. To learn why a push was rejected, use `pushPorcelain` |
+| `commit({ message, body } \| { messageFile } \| { messageStdin }, plus { allowEmpty, amend, noVerify, signoff, paths } in the same object)` | `commit` — one argument, e.g. `commit({ message, allowEmpty: true })`; one message source, enforced by the types; `messageStdin` is `-F -` with the string on stdin, no temp file. `paths` appends `-- <paths…>`: only those paths are committed, from the working tree, and anything else staged stays staged. An empty `paths` throws a `TypeError`, because git would commit everything staged |
+| `push(remote, refspec, { forceWithLease, delete })` | `push` — `forceWithLease` takes `true` or a pinned `{ ref, expect }` (`expect: null` = ref must be absent); `forceWithLeaseArg(lease)` is the pure formatter. `true` is the bare form: it overwrites whatever is on the remote, so prefer the pinned form. `delete` is `--delete`, and a pinned lease deletes only while the remote ref holds `expect`. To learn why a push was rejected, use `pushPorcelain` |
 | `configSet(key, value, { scope })` | `config` |
 | `configRemoveSection(name)` | `config --remove-section` — `false` when there is no such section |
 | `init(path, { bare, initialBranch, quiet })` | `init` |
@@ -607,11 +614,15 @@ Integration, declares exit 1 absent and returns the rejected refs.
 | `clean({ directories })` | `clean -f`, or `-fd` — ignored files are kept |
 | `deleteBranch(name, { force })` | `branch -d` / `-D` |
 | `deleteRef(ref, { expected })` | `update-ref -d <ref> <expected>` — refuses when `ref` has moved |
-| `worktreeAdd(path, { branch, startPoint, detach })` | `worktree add` |
+| `worktreeAdd(path, { branch, resetBranch, startPoint, detach })` | `worktree add` — `branch` is `-b`; `resetBranch` picks `-B` (create, or reset an existing branch), as for `checkout` |
 | `worktreeRemove(path, { force })` | `worktree remove` |
 | `worktreeMove(from, to, { force })` | `worktree move` |
+| `worktreeUnlock(path)` | `worktree unlock` |
 | `worktreePrune()` | `worktree prune` |
 | `remoteAdd(name, url)` | `remote add` |
+| `remoteSetHead(remote, { branch } \| { auto: true } \| { delete: true })` | `remote set-head <remote> <branch>\|--auto\|--delete` — exactly one, enforced by the types and at run time |
+| `remoteSetBranches(remote, branches, { add })` | `remote set-branches [--add]` — an empty `branches` throws a `TypeError`, because git would clear every fetch refspec |
+| `gc({ auto, aggressive, prune, quiet })` | `gc` — `prune` is a date such as `'now'` for `--prune=<date>`, or `false` for `--no-prune` |
 | `checkout(ref, { branch, resetBranch, force })` | `checkout` — `resetBranch` picks `-B` |
 | `checkoutSide(side, paths)` | `checkout --ours\|--theirs --` |
 | `mergeAbort()` / `rebaseAbort()` | `merge --abort` / `rebase --abort` |
@@ -706,8 +717,11 @@ should do the same: `spawnRunner("git", { absolutePathOnly: true })`.
 runner passes it straight through, without a conditional spread. `cliBackend`
 accepts it too.
 
-command-seam's exports are re-exported here, so wiring a runner or catching a
-`CommandFailed` needs one import rather than two.
+The runner and result types, `CommandFailed`, `spawnRunner`, `spawnRunnerAsync`,
+`runChecked`, `runCheckedAsync` and `asAsync` are re-exported from command-seam,
+so wiring a runner or catching a `CommandFailed` needs one import rather than
+two. Import other runners, such as `spawnRunnerBytes` and `streamRunner`, from
+`@osdlc/command-seam`.
 
 ## Also: git references
 
@@ -731,6 +745,21 @@ is what `remoteOwnerRepo` uses, and it stays on `@osdlc/typed-git/client`.
 Use it for a remote read from a checkout (any host); use `parseGitUrl` /
 `parseRepoRef` for a URL a person pasted.
 
+`parseRemoteRepo` reads a remote into `{ host, owner, repo }`, for a known
+host and any other alike. It tries `parseGitUrl` first, so shorthand reads as
+GitHub and a GitLab nested group stays whole in `owner`, then falls back to
+`parseRemoteUrl`, so a GitHub Enterprise or self-hosted Forgejo remote
+answers too. `host` is lower-cased and carries no port. Decide which forge a
+remote is on from `host`, not from the URL text.
+
+```ts
+parseRemoteRepo("git@github.com:acme/widgets.git");
+// { host: "github.com", owner: "acme", repo: "widgets" }
+parseRemoteRepo("https://forge.example.com:3000/team/app.git");
+// { host: "forge.example.com", owner: "team", repo: "app" }
+parseRemoteRepo("/srv/git/repo.git"); // null — a local path names no project
+```
+
 `parseRepoRef` answers the question a clone command asks. Given anything a
 person might paste (a clone URL, the page of a pull request or a file, a bare
 `owner/repo`), which repository is it, and what does `git clone` take? It returns
@@ -750,7 +779,7 @@ parseRepoRef("./a/local/path"); // null — the input names no repository
 ## Subpath exports
 
 `@osdlc/typed-git/client` is everything above except the URL parsers
-(`parseGitUrl`, `gitSshUrl`, `parseRepoRef` and their types) and the checkout
+(`parseGitUrl`, `gitSshUrl`, `parseRemoteRepo`, `parseRepoRef` and their types) and the checkout
 walks (`checkoutRoot`, `discoverCheckouts`, `scanForCheckouts`, their types,
 `DEFAULT_MAX_DEPTH` and `DEFAULT_WARN_AFTER`). It has no `hosted-git-info` on
 your module graph. That package stays in `dependencies` either way, so this

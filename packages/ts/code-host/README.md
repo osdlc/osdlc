@@ -73,7 +73,11 @@ it is `@osdlc/command-seam`'s `CommandFailure` for a curl that failed.
 A mutation (`postComment`, `updateBranch`, ...) throws on failure instead. It
 throws a `FailureError` carrying the same `CodeHostFailure`, or a
 `CommandFailed`. Both are `FailureError`s, so `@osdlc/cli-tool`'s `runMain`
-prints them the same way.
+prints them the same way. Three throws are plain `Error`s instead:
+`setDraft`, `mergePr` and `createPr` throw `CodeHostUnsupported` on Forgejo,
+`updateComment` throws `CommentNotFoundError` when the comment is gone (HTTP
+404), and GitHub's `createPr` throws an `Error` when `gh` prints a URL naming
+no PR.
 
 `selectCodeHost` returns a `Result<CodeHost, CodeHostFailure>` too (see
 [D-01](docs/planning/decisions/D-01-port-queries-return-a-result.md)).
@@ -81,7 +85,10 @@ prints them the same way.
 ## Runtime and platform
 
 Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, ESM only. Bun also runs it, through the compiled
-`dist/`. No `Bun.*` API is used. The GitHub adapter needs the `gh` CLI on `PATH`, signed in. The
+`dist/`. No `Bun.*` API is used. The GitHub adapter needs the `gh` CLI on `PATH`, signed in,
+at version 2.48 or later: `listComments` and the review comments `getPr` folds into activity read
+every page with `gh api --paginate --slurp`, and `--slurp` is new in 2.48. On an older `gh`,
+`listComments` fails and `getPr` reports no review comments. The
 Forgejo adapter needs `curl` and a personal access token in `FORGEJO_TOKEN` (or the variable named
 by the `forgejoTokenEnv` option). Both need `git` for drift counts. Linux and macOS are the tested
 platforms.
@@ -92,6 +99,7 @@ platforms.
 | --- | --- |
 | `CodeHost` | The port: `listPrs`, `listPrDetails`, `getPr`, `postComment`, `updateComment`, `listComments` (optional), `setDraft`, `updateBranch`, `reviewThreads`, `mergePr`, `createPr`, `parsePrUrl`, `prForBranch`. Every method is synchronous. Queries return a `Result` |
 | `CodeHostFailure`, `CodeHostFailureKind` | The classified failure the queries report (see Failures) |
+| `CodeHostUnsupported`, `CommentNotFoundError` | The `Error`s a mutation throws for a verb the code host lacks, and for a deleted comment |
 | `CodeHostPr`, `PrFacts`, `Activity`, `PrInput`, ... | The normalized shapes the port speaks (`types.ts`) |
 | `GithubCodeHost`, `codeHostPrFrom` | GitHub adapter over `@osdlc/typed-gh` |
 | `ForgejoCodeHost`, `forgejoPrFrom` | Forgejo adapter over `curl` and the Forgejo REST API. Reads its token from `FORGEJO_TOKEN` by default. `forgejoTokenEnv` names another variable |
@@ -112,8 +120,9 @@ platforms.
 ## Not here yet
 
 The port has no write verbs beyond `postComment`, `updateBranch`, `createPr`,
-`setDraft`, `updateComment` and `mergePr`. `editPrBody`, `postReview` and
-`replyToThread` are the next additions.
+`setDraft`, `updateComment` and `mergePr`. The Forgejo adapter does not
+implement `createPr`, `setDraft` or `mergePr` yet. `editPrBody`, `postReview`
+and `replyToThread` are the next additions.
 
 ## When not to use
 

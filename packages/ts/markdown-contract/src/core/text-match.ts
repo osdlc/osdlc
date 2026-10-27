@@ -24,9 +24,9 @@ import type { Ctx, Finding, FindingLevel, SourcePos } from './types.js'
 
 /**
  * One text check. Exactly one of `pattern` (a literal substring) or `regex` (a regular expression
- * source) gives the text to find. `min` and `max` bound the count. `requires` defaults to
- * `min: 1` with no `max`. `forbids` defaults to `max: 0`. `id` keeps the finding id fixed when
- * the pattern changes. `note` is added to the message. `level` overrides the default level.
+ * source) gives the text to find. `min` and `max` bound the count (`forbids` checks only `max`).
+ * `requires` defaults to `min: 1` with no `max`. `forbids` defaults to `max: 0`. `id` keeps the
+ * finding id fixed when the pattern changes. `note` is added to the message. `level` overrides the default level.
  */
 export interface TextMatchSpec {
   /** The literal substring to find. One of `pattern` or `regex` is required. */
@@ -151,9 +151,9 @@ function shortHash(s: string): string {
  * regex source) and the flags that change what matches (`normalize`, `ignoreCase`). So two
  * different checks get different ids, and one check keeps its id when entries are reordered.
  * `min` and `max` are left out on purpose. They change the message, not which text the check is
- * about.
+ * about. The YAML compiler (`declarative/text.ts`) also uses it to find duplicate entries.
  */
-function patternKey(spec: TextMatchSpec): string {
+export function patternKey(spec: TextMatchSpec): string {
   const fold = spec.ignoreCase ? 'i' : ''
   if (spec.regex !== undefined) return `regex|${spec.regex}|${fold}`
   const normalize = spec.normalize ?? true
@@ -178,7 +178,7 @@ export function synthesizeTextId(
 
 // ── Building findings ──────────────────────────────────────────────────────────────
 
-/** The search text for a finding message: `"literal"` for a pattern, `/source/` for a regex. */
+/** The search text for a message: `"literal"` for a pattern, `/source/` for a regex. */
 function specRepr(spec: TextMatchSpec): string {
   if (spec.regex !== undefined) return `/${spec.regex}/`
   return `"${spec.pattern ?? ''}"`
@@ -194,6 +194,47 @@ function scopeLabel(scopeKey: string, scope: string | undefined): string {
 function boundsFor(kind: TextKind, spec: TextMatchSpec): { min: number; max: number | undefined } {
   if (kind === 'requires') return { min: spec.min ?? 1, max: spec.max }
   return { min: spec.min ?? 0, max: spec.max ?? 0 }
+}
+
+/** Why an entry's count bound is refused when the contract is built: an id and a message. */
+export interface CountBoundProblem {
+  id: 'contract/text-requires-purity' | 'contract/text-count-bound'
+  message: string
+}
+
+/**
+ * The one count-bound check, shared by the code builders (`text-constraints.ts`) and the YAML
+ * compiler (`declarative/text.ts`), so both refuse the same entries. `undefined` when the bound
+ * is fine.
+ *
+ *   - `requires`: a `max` below the entry's minimum (`min`, default and at least 1) means
+ *     absence, which is a `forbids` check (`contract/text-requires-purity`).
+ *   - `forbids`: only `max` is checked when matching, so only a negative `max`, which no count
+ *     can meet, is refused (`contract/text-count-bound`). A `min` on a `forbids` entry is ignored.
+ */
+export function countBoundProblem(
+  kind: TextKind,
+  spec: TextMatchSpec,
+): CountBoundProblem | undefined {
+  // Each guard is `max < floor`, so a NaN `max` (YAML `.nan`) is accepted, and a NaN `min` gives
+  // the floor 1, as `f64::max` does in the Rust twin. Both sides decide NaN the same way.
+  if (spec.max === undefined) return undefined
+  if (kind === 'requires') {
+    const min = spec.min ?? 1
+    const floor = Number.isNaN(min) ? 1 : Math.max(min, 1)
+    if (!(spec.max < floor)) return undefined
+    return {
+      id: 'contract/text-requires-purity',
+      message:
+        `requires(${specRepr(spec)}): a requires entry may not express absence ` +
+        `(max ${spec.max} < ${floor}); use forbids(...) for an absence check`,
+    }
+  }
+  if (!(spec.max < 0)) return undefined
+  return {
+    id: 'contract/text-count-bound',
+    message: `forbids(${specRepr(spec)}): max (${spec.max}) is below 0, so the count bound can never be met`,
+  }
 }
 
 /** The input to {@link buildTextFindings}: one entry's match result and its scope. */
@@ -221,7 +262,7 @@ export interface TextFindingInput {
  *     at `scopePos` (the section heading), or with no position when `scopePos` is omitted.
  *   - `forbids` with hits (`max: 0`): one `text/forbids`, "forbidden phrase … present", for each
  *     hit, on that hit's line.
- *   - Any other `min` or `max` not met: one `text/count`, "… found N times, expected …", at
+ *   - Any other `min` or `max` not met (`forbids` ignores `min`): one `text/count`, "… found N times, expected …", at
  *     `scopePos`.
  *
  * Each message ends with the spec's `note`. The level is the spec's `level` when set, else the

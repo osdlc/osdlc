@@ -154,7 +154,8 @@ trains people to approve without reading.
 when that variable is unset. `WAYFINDER_ROOT` moves it, with the other
 directories. See [Paths](configuration.md#paths). It is state, not config,
 so consent does not travel with a dotfiles repository to a new machine. XDG
-paths are used on every platform, macOS included.
+paths are used on Linux and macOS, macOS included; Windows uses
+`%LOCALAPPDATA%`.
 
 The store is a directory of marker files, one per trusted root. A marker is
 named `<basename>-<first 16 hex digits of sha256(root)>` and holds the

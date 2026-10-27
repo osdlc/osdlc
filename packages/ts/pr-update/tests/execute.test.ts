@@ -372,6 +372,58 @@ describe('the executor against real git', () => {
     expect(git.resolveRef('origin/raced')).toBe(theirs)
   })
 
+  test('a push the lease refuses is reported as a race to re-run', async () => {
+    const oid = makeBehindPr('leased', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
+    const { git } = fx.worker
+
+    // Somebody pushes after the run observed `oid`, and this checkout's
+    // tracking ref still says `oid`, so only the lease can catch it.
+    git.checkout('leased')
+    fx.worker.commit('their work', { 'theirs.txt': 'theirs\n' })
+    git.push('origin', 'leased')
+    const theirs = git.resolveRef('HEAD')!
+    git.checkout('main')
+    git.rawChecked(['update-ref', 'refs/remotes/origin/leased', oid])
+
+    const out = await inWorktree((wt) =>
+      updateOne(
+        wt,
+        target({ head: 'leased', headOid: oid, strategy: 'rebase' }),
+        SETTINGS,
+        recorder(),
+        { apply: true, worktree: wtRoot },
+      ),
+    )
+    expect(out.status === 'failed' ? out.reason : out.status).toMatch(
+      /^push rejected — leased moved since the run started; re-run$/,
+    )
+    git.fetch('origin')
+    expect(git.resolveRef('origin/leased')).toBe(theirs)
+  })
+
+  test('a push a remote hook declines is a failure to inspect, not a race', async () => {
+    const oid = makeBehindPr('guarded', { 'a.txt': 'a\n' }, { 'b.txt': 'b\n' })
+    const hook = join(fx.bare.dir, 'hooks', 'pre-receive')
+    writeFileSync(hook, '#!/bin/sh\necho "no pushes today" >&2\nexit 1\n')
+    chmodSync(hook, 0o755)
+
+    const out = await inWorktree((wt) =>
+      updateOne(
+        wt,
+        target({ head: 'guarded', headOid: oid, strategy: 'rebase' }),
+        SETTINGS,
+        recorder(),
+        { apply: true, worktree: wtRoot },
+      ),
+    )
+    expect(out.status).toBe('failed')
+    if (out.status !== 'failed') throw new Error('unreachable')
+    expect(out.reason).toMatch(/^push guarded: rejected \(.*hook declined: no pushes today\)$/)
+    expect(out.reason).not.toContain('re-run')
+    fx.worker.git.fetch('origin')
+    expect(fx.worker.git.resolveRef('origin/guarded')).toBe(oid)
+  })
+
   describe('the fallback chain', () => {
     /** Two commits that both touch `build/out.txt`; `main` moves it too. Returns the pushed head. */
     function makeTwoStopPr(branch: string, secondFile: string): string {
@@ -1091,6 +1143,42 @@ describe('updateAll', () => {
     expect(tally(results)).toEqual({ updated: 1, 'up-to-date': 0, conflict: 1, failed: 0 })
   })
 
+  test("untracked output one PR's verify left is not committed into the next PR", async () => {
+    const { git } = fx.worker
+    for (const [branch, file] of [
+      ['first', 'a.txt'],
+      ['second', 'build/out.txt'],
+    ] as const) {
+      git.checkout('main', { branch })
+      fx.worker.commit(`${branch} work`, { [file]: `${branch}\n` })
+      git.push('origin', branch)
+    }
+    git.checkout('main')
+    fx.worker.commit('main moves', { 'build/out.txt': 'main\n' })
+    git.push('origin', 'main')
+    git.fetch('origin')
+
+    // `check` writes a report that is not ignored, as a test runner's junit file is.
+    const runVerb: RunVerb = (verb, cwd) => {
+      if (verb === 'check') writeFileSync(join(cwd, 'report.xml'), '<ok/>\n')
+      if (verb === 'regen') writeFileSync(join(cwd, 'build', 'out.txt'), 'regenerated\n')
+      return ok
+    }
+    const results = await updateAll(
+      git,
+      [target({ number: 1, head: 'first' }), target({ number: 2, head: 'second' })],
+      settings({ verifyVerbs: ['check'], resolvers: [{ paths: ['build/**'], run: 'regen' }] }),
+      runVerb,
+      { apply: true, worktreeRoot: join(fx.worker.dir, '.pr-update', 'leftovers') },
+    )
+    expect(results.map((r) => r.outcome.status)).toEqual(['updated', 'updated'])
+
+    git.fetch('origin')
+    // The second PR's merge resolution stages `.`, which would have swept it in.
+    expect(git.showAtRev('origin/second', 'build/out.txt')).toBe('regenerated\n')
+    expect(git.showAtRev('origin/second', 'report.xml')).toBeNull()
+  })
+
   test('the ephemeral worktree and its scratch branch are gone afterwards', async () => {
     const { git } = fx.worker
     git.checkout('main', { branch: 'solo' })
@@ -1169,14 +1257,18 @@ describe('updateAll', () => {
 
 describe('isStalePush', () => {
   test('recognizes the rejections that mean "re-run", not "go look"', async () => {
-    expect(isStalePush('! [rejected] main -> main (non-fast-forward)')).toBe(true)
-    expect(isStalePush('! [rejected] topic -> topic (stale info)')).toBe(true)
-    expect(isStalePush('! [rejected] x -> x (fetch first)')).toBe(true)
+    expect(isStalePush('stale')).toBe(true)
+    expect(isStalePush('non-fast-forward')).toBe(true)
+    expect(isStalePush('lock-failed')).toBe(true)
+    expect(isStalePush('already-exists')).toBe(true)
   })
 
-  test('a permission failure is not stale', async () => {
+  test('a rejection that fails the same way on every run is not stale', async () => {
     // Running again would not help, and saying it would mislead the user.
-    expect(isStalePush('remote: Permission to o/r.git denied')).toBe(false)
+    expect(isStalePush('ref-conflict')).toBe(false)
+    expect(isStalePush('hook-declined')).toBe(false)
+    expect(isStalePush('tag-exists')).toBe(false)
+    expect(isStalePush('other')).toBe(false)
   })
 })
 

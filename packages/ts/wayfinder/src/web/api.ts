@@ -6,14 +6,16 @@
  * command each action is lives in `../actions.ts`, where a test checks it.
  */
 
+import { commandString } from '@osdlc/command-seam/quote'
 import type { RunnerCacheState, RunnerReport } from '@osdlc/system-model/detect'
 import { CATALOG_SCHEMA_VERSION } from '@osdlc/system-model/schema'
 
+import type { SkillRow } from '../core/skills.ts'
 import type { Unknown } from '../core/unknowns.ts'
 import type { CatalogProgressBody } from '../documents.ts'
 import { APP } from '../app.ts'
 import { countRunners, countTasks, WAITING_AFTER_MS } from '../vocabulary.ts'
-import { $, state, type CatalogDocument, type ToolInfo } from './state.ts'
+import { $, serverPlatform, state, type CatalogDocument, type ToolInfo } from './state.ts'
 import {
   announce,
   escapeHtml,
@@ -322,8 +324,8 @@ export async function load(opts: LoadOptions = {}): Promise<void> {
 
 /**
  * One progress line of a probe. While nothing else is on screen, the runner
- * that answered joins the catalog and the page draws it; otherwise only the
- * count of runners still loading moves.
+ * that answered, or the skills, join the catalog and the page draws them;
+ * otherwise only the count of runners still loading moves.
  */
 function onProgress(line: Record<string, unknown>): void {
   const event = line as unknown as CatalogProgressBody
@@ -354,7 +356,9 @@ function onProgress(line: Record<string, unknown>): void {
     unknowns: [],
     skills: [],
   }
-  if (report === undefined) {
+  if (event.skills !== undefined) {
+    state.catalog = { ...base, skills: event.skills as SkillRow[] }
+  } else if (report === undefined) {
     state.catalog = base
   } else {
     const others = <T extends { runner: string }>(list: readonly T[] | undefined): T[] =>
@@ -701,5 +705,11 @@ export async function requestRun(id: string, args: readonly string[] = []): Prom
       detail: failureText({ message, ...(body?.hint !== undefined ? { hint: body.hint } : {}) }),
     }
   }
-  return { outcome: 'handed-off', command: body?.argv?.join(' ') || body?.display || 'the task' }
+  // Quoted as the copy text is, so a word with a space reads as one word.
+  const argv = body?.argv
+  const command =
+    argv !== undefined && argv.length > 0
+      ? commandString(argv, { platform: serverPlatform() })
+      : body?.display || 'the task'
+  return { outcome: 'handed-off', command }
 }

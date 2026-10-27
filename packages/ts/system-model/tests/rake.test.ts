@@ -370,7 +370,9 @@ describe('rake provider — the exec upgrade', () => {
     // must stop the subprocess. Without these assertions, either could be
     // removed from the provider and no test would fail.
     expect(run.opts.timeoutMs).toBeGreaterThan(0)
-    expect(run.opts.signal).toBe(controller.signal)
+    expect(run.opts.signal?.aborted).toBe(false)
+    controller.abort()
+    expect(run.opts.signal?.aborted).toBe(true)
     // rake is pointed at the catalog root, which is why the invocation needs
     // no -C and why `-N` is enough to keep it inside the scanned tree.
     expect(run.opts.cwd).toBe(dir)
