@@ -51,3 +51,9 @@ release = false
 name = "markdown-contract"
 publish = false
 release = false
+
+# Held back until its first release can have a release-plz run of its own; see its Cargo.toml.
+[[package]]
+name = "gfm-pipe-table"
+publish = false
+release = false

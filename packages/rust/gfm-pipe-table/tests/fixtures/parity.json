@@ -1,0 +1,5474 @@
+{
+  "_note": [
+    "The shared fixture of the gfm-pipe-table crate and its TypeScript twin @osdlc/gfm-table.",
+    "Both run every case: packages/rust/gfm-pipe-table/tests/parity.rs and",
+    "packages/ts/gfm-table/tests/parity.test.ts (its runners are in tests/parity-run.ts).",
+    "Offsets are UTF-8 byte offsets; the TypeScript runners convert from UTF-16 indices.",
+    "A refusal is {\"error\": kind}. Add a case here, never in one package alone."
+  ],
+  "split_row": [
+    {
+      "name": "a padded row",
+      "line": "| a | b |",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 9,
+        "pipes": [
+          0,
+          4,
+          8
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 4,
+            "content": [
+              2,
+              3
+            ]
+          },
+          {
+            "from": 5,
+            "to": 8,
+            "content": [
+              6,
+              7
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a compact row at a base",
+      "line": "|x|",
+      "base": 10,
+      "expected": {
+        "from": 10,
+        "to": 13,
+        "pipes": [
+          10,
+          12
+        ],
+        "cells": [
+          {
+            "from": 11,
+            "to": 12,
+            "content": [
+              11,
+              12
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "no leading or trailing pipe",
+      "line": "a | b",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 5,
+        "pipes": [
+          2
+        ],
+        "cells": [
+          {
+            "from": 0,
+            "to": 2,
+            "content": [
+              0,
+              1
+            ]
+          },
+          {
+            "from": 3,
+            "to": 5,
+            "content": [
+              4,
+              5
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "an escaped pipe does not split",
+      "line": "| a \\| b | c |",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 14,
+        "pipes": [
+          0,
+          9,
+          13
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 9,
+            "content": [
+              2,
+              8
+            ]
+          },
+          {
+            "from": 10,
+            "to": 13,
+            "content": [
+              11,
+              12
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "an escaped backslash leaves the pipe a delimiter",
+      "line": "| x\\\\| y | z |",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 14,
+        "pipes": [
+          0,
+          5,
+          9,
+          13
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 5,
+            "content": [
+              2,
+              5
+            ]
+          },
+          {
+            "from": 6,
+            "to": 9,
+            "content": [
+              7,
+              8
+            ]
+          },
+          {
+            "from": 10,
+            "to": 13,
+            "content": [
+              11,
+              12
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "three backslashes escape the pipe",
+      "line": "| x\\\\\\| y |",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 11,
+        "pipes": [
+          0,
+          10
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 10,
+            "content": [
+              2,
+              9
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a backslash escapes any character",
+      "line": "| \\a| b |",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 9,
+        "pipes": [
+          0,
+          4,
+          8
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 4,
+            "content": [
+              2,
+              4
+            ]
+          },
+          {
+            "from": 5,
+            "to": 8,
+            "content": [
+              6,
+              7
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a pipe in a code span still splits, as in GFM",
+      "line": "| `a|b` |",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 9,
+        "pipes": [
+          0,
+          4,
+          8
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 4,
+            "content": [
+              2,
+              4
+            ]
+          },
+          {
+            "from": 5,
+            "to": 8,
+            "content": [
+              5,
+              7
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "an empty padded cell",
+      "line": "|  | x |",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 8,
+        "pipes": [
+          0,
+          3,
+          7
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 3,
+            "content": [
+              2,
+              2
+            ]
+          },
+          {
+            "from": 4,
+            "to": 7,
+            "content": [
+              5,
+              6
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "an empty compact cell",
+      "line": "||x|",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 4,
+        "pipes": [
+          0,
+          1,
+          3
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 1,
+            "content": [
+              1,
+              1
+            ]
+          },
+          {
+            "from": 2,
+            "to": 3,
+            "content": [
+              2,
+              3
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "whitespace after the closing pipe is no cell",
+      "line": "| a |  ",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 7,
+        "pipes": [
+          0,
+          4
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 4,
+            "content": [
+              2,
+              3
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "text after the last pipe is a cell",
+      "line": "| a | b",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 7,
+        "pipes": [
+          0,
+          4
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 4,
+            "content": [
+              2,
+              3
+            ]
+          },
+          {
+            "from": 5,
+            "to": 7,
+            "content": [
+              6,
+              7
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a lone pipe",
+      "line": "|",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 1,
+        "pipes": [
+          0
+        ],
+        "cells": []
+      }
+    },
+    {
+      "name": "an empty line",
+      "line": "",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 0,
+        "pipes": [],
+        "cells": []
+      }
+    },
+    {
+      "name": "an indented row",
+      "line": "  | a | b |",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 11,
+        "pipes": [
+          2,
+          6,
+          10
+        ],
+        "cells": [
+          {
+            "from": 3,
+            "to": 6,
+            "content": [
+              4,
+              5
+            ]
+          },
+          {
+            "from": 7,
+            "to": 10,
+            "content": [
+              8,
+              9
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "an indented row at a base",
+      "line": "  |x|",
+      "base": 10,
+      "expected": {
+        "from": 10,
+        "to": 15,
+        "pipes": [
+          12,
+          14
+        ],
+        "cells": [
+          {
+            "from": 13,
+            "to": 14,
+            "content": [
+              13,
+              14
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "three spaces of indent",
+      "line": "   | a |",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 8,
+        "pipes": [
+          3,
+          7
+        ],
+        "cells": [
+          {
+            "from": 4,
+            "to": 7,
+            "content": [
+              5,
+              6
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "four spaces are not indent",
+      "line": "    | a |",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 9,
+        "pipes": [
+          4,
+          8
+        ],
+        "cells": [
+          {
+            "from": 0,
+            "to": 4,
+            "content": [
+              1,
+              1
+            ]
+          },
+          {
+            "from": 5,
+            "to": 8,
+            "content": [
+              6,
+              7
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a tab is not indent",
+      "line": "\t| a |",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 6,
+        "pipes": [
+          1,
+          5
+        ],
+        "cells": [
+          {
+            "from": 0,
+            "to": 1,
+            "content": [
+              0,
+              1
+            ]
+          },
+          {
+            "from": 2,
+            "to": 5,
+            "content": [
+              3,
+              4
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "wide characters",
+      "line": "| 中文 | é |",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 15,
+        "pipes": [
+          0,
+          9,
+          14
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 9,
+            "content": [
+              2,
+              8
+            ]
+          },
+          {
+            "from": 10,
+            "to": 14,
+            "content": [
+              11,
+              13
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "wide characters at a base",
+      "line": "|日本|x|",
+      "base": 7,
+      "expected": {
+        "from": 7,
+        "to": 17,
+        "pipes": [
+          7,
+          14,
+          16
+        ],
+        "cells": [
+          {
+            "from": 8,
+            "to": 14,
+            "content": [
+              8,
+              14
+            ]
+          },
+          {
+            "from": 15,
+            "to": 16,
+            "content": [
+              15,
+              16
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "an emoji and an escape",
+      "line": "| 👍\\| | ✅ |",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 16,
+        "pipes": [
+          0,
+          9,
+          15
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 9,
+            "content": [
+              2,
+              8
+            ]
+          },
+          {
+            "from": 10,
+            "to": 15,
+            "content": [
+              11,
+              14
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a backslash before a multibyte character",
+      "line": "| \\é| b |",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 10,
+        "pipes": [
+          0,
+          5,
+          9
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 5,
+            "content": [
+              2,
+              5
+            ]
+          },
+          {
+            "from": 6,
+            "to": 9,
+            "content": [
+              7,
+              8
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a trailing backslash escapes the closing pipe",
+      "line": "| a \\|",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 6,
+        "pipes": [
+          0
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 6,
+            "content": [
+              2,
+              6
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "tabs around a cell",
+      "line": "|\ta\t|",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 5,
+        "pipes": [
+          0,
+          4
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 4,
+            "content": [
+              1,
+              4
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a no-break space is cell content",
+      "line": "| a |",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 7,
+        "pipes": [
+          0,
+          6
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 6,
+            "content": [
+              1,
+              6
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a delimiter row",
+      "line": "| --- | :-: |",
+      "base": 0,
+      "expected": {
+        "from": 0,
+        "to": 13,
+        "pipes": [
+          0,
+          6,
+          12
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 6,
+            "content": [
+              2,
+              5
+            ]
+          },
+          {
+            "from": 7,
+            "to": 12,
+            "content": [
+              8,
+              11
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "row_from_pipes": [
+    {
+      "name": "uses the pipes it is given",
+      "line": "| a | b |",
+      "base": 3,
+      "pipes": [
+        3,
+        11
+      ],
+      "expected": {
+        "from": 3,
+        "to": 12,
+        "pipes": [
+          3,
+          11
+        ],
+        "cells": [
+          {
+            "from": 4,
+            "to": 11,
+            "content": [
+              5,
+              10
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "no pipes",
+      "line": "a b",
+      "base": 0,
+      "pipes": [],
+      "expected": {
+        "from": 0,
+        "to": 3,
+        "pipes": [],
+        "cells": [
+          {
+            "from": 0,
+            "to": 3,
+            "content": [
+              0,
+              3
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a pipe given twice",
+      "line": "|a|",
+      "base": 0,
+      "pipes": [
+        0,
+        0,
+        2
+      ],
+      "expected": {
+        "from": 0,
+        "to": 3,
+        "pipes": [
+          0,
+          0,
+          2
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 2,
+            "content": [
+              1,
+              2
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "wide characters",
+      "line": "| 中 | b |",
+      "base": 0,
+      "pipes": [
+        0,
+        6,
+        10
+      ],
+      "expected": {
+        "from": 0,
+        "to": 11,
+        "pipes": [
+          0,
+          6,
+          10
+        ],
+        "cells": [
+          {
+            "from": 1,
+            "to": 6,
+            "content": [
+              2,
+              5
+            ]
+          },
+          {
+            "from": 7,
+            "to": 10,
+            "content": [
+              8,
+              9
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "row_pipes": [
+    {
+      "name": "unescaped pipes at a base",
+      "line": "a\\|b|c",
+      "base": 5,
+      "expected": [
+        9
+      ]
+    },
+    {
+      "name": "every pipe",
+      "line": "|||",
+      "base": 0,
+      "expected": [
+        0,
+        1,
+        2
+      ]
+    },
+    {
+      "name": "after wide text",
+      "line": "中|文\\||x",
+      "base": 0,
+      "expected": [
+        3,
+        9
+      ]
+    },
+    {
+      "name": "none",
+      "line": "abc",
+      "base": 0,
+      "expected": []
+    }
+  ],
+  "is_delimiter_row": [
+    {
+      "name": "\"| --- | :-: |\"",
+      "line": "| --- | :-: |",
+      "expected": true
+    },
+    {
+      "name": "\"---|---:\"",
+      "line": "---|---:",
+      "expected": true
+    },
+    {
+      "name": "\"|-|\"",
+      "line": "|-|",
+      "expected": true
+    },
+    {
+      "name": "\"  | - | - |\"",
+      "line": "  | - | - |",
+      "expected": true
+    },
+    {
+      "name": "\"   |:---|---:|\"",
+      "line": "   |:---|---:|",
+      "expected": true
+    },
+    {
+      "name": "\"---\"",
+      "line": "---",
+      "expected": false
+    },
+    {
+      "name": "\"| a | --- |\"",
+      "line": "| a | --- |",
+      "expected": false
+    },
+    {
+      "name": "\"| - - |\"",
+      "line": "| - - |",
+      "expected": false
+    },
+    {
+      "name": "\"|\"",
+      "line": "|",
+      "expected": false
+    },
+    {
+      "name": "\"    |---|\"",
+      "line": "    |---|",
+      "expected": false
+    },
+    {
+      "name": "\"\\t|---|\"",
+      "line": "\t|---|",
+      "expected": false
+    },
+    {
+      "name": "\"| : |\"",
+      "line": "| : |",
+      "expected": false
+    },
+    {
+      "name": "\"| :: |\"",
+      "line": "| :: |",
+      "expected": false
+    },
+    {
+      "name": "\"|:-:|-|\"",
+      "line": "|:-:|-|",
+      "expected": true
+    },
+    {
+      "name": "\"| --- |  \"",
+      "line": "| --- |  ",
+      "expected": true
+    },
+    {
+      "name": "\"| ---\\t|\"",
+      "line": "| ---\t|",
+      "expected": true
+    },
+    {
+      "name": "\"|---|---|---\"",
+      "line": "|---|---|---",
+      "expected": true
+    },
+    {
+      "name": "\"\"",
+      "line": "",
+      "expected": false
+    }
+  ],
+  "parse_align": [
+    {
+      "name": "\"---\"",
+      "spec": "---",
+      "expected": "none"
+    },
+    {
+      "name": "\":--\"",
+      "spec": ":--",
+      "expected": "left"
+    },
+    {
+      "name": "\"--:\"",
+      "spec": "--:",
+      "expected": "right"
+    },
+    {
+      "name": "\":-:\"",
+      "spec": ":-:",
+      "expected": "center"
+    },
+    {
+      "name": "\":\"",
+      "spec": ":",
+      "expected": "left"
+    },
+    {
+      "name": "\"\"",
+      "spec": "",
+      "expected": "none"
+    },
+    {
+      "name": "\"::\"",
+      "spec": "::",
+      "expected": "center"
+    },
+    {
+      "name": "\"-\"",
+      "spec": "-",
+      "expected": "none"
+    }
+  ],
+  "cell_text": [
+    {
+      "name": "\"a\"",
+      "source": "a",
+      "expected": {
+        "text": "a",
+        "offsets": [
+          0,
+          1
+        ]
+      }
+    },
+    {
+      "name": "\"a\\\\|b\"",
+      "source": "a\\|b",
+      "expected": {
+        "text": "a|b",
+        "offsets": [
+          0,
+          1,
+          3,
+          4
+        ]
+      }
+    },
+    {
+      "name": "\"\\\\\\\\|\"",
+      "source": "\\\\|",
+      "expected": {
+        "text": "\\\\|",
+        "offsets": [
+          0,
+          1,
+          2,
+          3
+        ]
+      }
+    },
+    {
+      "name": "\"\\\\\\\\\\\\|\"",
+      "source": "\\\\\\|",
+      "expected": {
+        "text": "\\\\|",
+        "offsets": [
+          0,
+          1,
+          2,
+          4
+        ]
+      }
+    },
+    {
+      "name": "\"\\\\a\\\\|\"",
+      "source": "\\a\\|",
+      "expected": {
+        "text": "\\a|",
+        "offsets": [
+          0,
+          1,
+          2,
+          4
+        ]
+      }
+    },
+    {
+      "name": "\"\"",
+      "source": "",
+      "expected": {
+        "text": "",
+        "offsets": [
+          0
+        ]
+      }
+    },
+    {
+      "name": "\"\\\\\"",
+      "source": "\\",
+      "expected": {
+        "text": "\\",
+        "offsets": [
+          0,
+          1
+        ]
+      }
+    },
+    {
+      "name": "\"x\\\\|y\\\\|z\"",
+      "source": "x\\|y\\|z",
+      "expected": {
+        "text": "x|y|z",
+        "offsets": [
+          0,
+          1,
+          3,
+          4,
+          6,
+          7
+        ]
+      }
+    },
+    {
+      "name": "\"é\\\\|中\"",
+      "source": "é\\|中",
+      "expected": {
+        "text": "é|中"
+      }
+    }
+  ],
+  "source_offset": [
+    {
+      "name": "\"a\\\\|b\" at 0",
+      "source": "a\\|b",
+      "pos": 0,
+      "expected": 0
+    },
+    {
+      "name": "\"a\\\\|b\" at 1",
+      "source": "a\\|b",
+      "pos": 1,
+      "expected": 1
+    },
+    {
+      "name": "\"a\\\\|b\" at 2",
+      "source": "a\\|b",
+      "pos": 2,
+      "expected": 3
+    },
+    {
+      "name": "\"a\\\\|b\" at 3",
+      "source": "a\\|b",
+      "pos": 3,
+      "expected": 4
+    },
+    {
+      "name": "\"a\\\\|b\" at 99",
+      "source": "a\\|b",
+      "pos": 99,
+      "expected": 4
+    },
+    {
+      "name": "\"\" at 0",
+      "source": "",
+      "pos": 0,
+      "expected": 0
+    }
+  ],
+  "text_offset": [
+    {
+      "name": "\"a\\\\|b\" at 0",
+      "source": "a\\|b",
+      "offset": 0,
+      "expected": 0
+    },
+    {
+      "name": "\"a\\\\|b\" at 1",
+      "source": "a\\|b",
+      "offset": 1,
+      "expected": 1
+    },
+    {
+      "name": "\"a\\\\|b\" at 2",
+      "source": "a\\|b",
+      "offset": 2,
+      "expected": 1
+    },
+    {
+      "name": "\"a\\\\|b\" at 3",
+      "source": "a\\|b",
+      "offset": 3,
+      "expected": 2
+    },
+    {
+      "name": "\"a\\\\|b\" at 4",
+      "source": "a\\|b",
+      "offset": 4,
+      "expected": 3
+    },
+    {
+      "name": "\"a\\\\|b\" at 99",
+      "source": "a\\|b",
+      "offset": 99,
+      "expected": 3
+    }
+  ],
+  "escape_cell": [
+    {
+      "name": "\"plain\"",
+      "text": "plain",
+      "expected": "plain"
+    },
+    {
+      "name": "\"a|b\"",
+      "text": "a|b",
+      "expected": "a\\|b"
+    },
+    {
+      "name": "\"  padded  \"",
+      "text": "  padded  ",
+      "expected": "padded"
+    },
+    {
+      "name": "\"line\\r\\nbreak\"",
+      "text": "line\r\nbreak",
+      "expected": "line break"
+    },
+    {
+      "name": "\"cr\\ronly\"",
+      "text": "cr\ronly",
+      "expected": "cr only"
+    },
+    {
+      "name": "\"lf\\nonly\"",
+      "text": "lf\nonly",
+      "expected": "lf only"
+    },
+    {
+      "name": "\"tab\\there\"",
+      "text": "tab\there",
+      "expected": "tab here"
+    },
+    {
+      "name": "\"\\\\|\"",
+      "text": "\\|",
+      "expected": "\\\\\\|"
+    },
+    {
+      "name": "\"\\\\\\\\|\"",
+      "text": "\\\\|",
+      "expected": "\\\\\\|"
+    },
+    {
+      "name": "\"a\\\\\"",
+      "text": "a\\",
+      "expected": "a\\"
+    },
+    {
+      "name": "\"`code|span`\"",
+      "text": "`code|span`",
+      "expected": "`code\\|span`"
+    },
+    {
+      "name": "\"中|文\"",
+      "text": "中|文",
+      "expected": "中\\|文"
+    },
+    {
+      "name": "\" nbsp \"",
+      "text": " nbsp ",
+      "expected": "nbsp"
+    },
+    {
+      "name": "\"﻿bom\"",
+      "text": "﻿bom",
+      "expected": "bom"
+    },
+    {
+      "name": "\"nel\"",
+      "text": "nel",
+      "expected": "nel"
+    },
+    {
+      "name": "\"\"",
+      "text": "",
+      "expected": ""
+    }
+  ],
+  "escape_cell_insert": [
+    {
+      "name": "\"plain\"",
+      "text": "plain",
+      "expected": "plain"
+    },
+    {
+      "name": "\"a|b\"",
+      "text": "a|b",
+      "expected": "a\\|b"
+    },
+    {
+      "name": "\"  padded  \"",
+      "text": "  padded  ",
+      "expected": "  padded  "
+    },
+    {
+      "name": "\"line\\r\\nbreak\"",
+      "text": "line\r\nbreak",
+      "expected": "line break"
+    },
+    {
+      "name": "\"cr\\ronly\"",
+      "text": "cr\ronly",
+      "expected": "cr only"
+    },
+    {
+      "name": "\"lf\\nonly\"",
+      "text": "lf\nonly",
+      "expected": "lf only"
+    },
+    {
+      "name": "\"tab\\there\"",
+      "text": "tab\there",
+      "expected": "tab\there"
+    },
+    {
+      "name": "\"\\\\|\"",
+      "text": "\\|",
+      "expected": "\\\\|"
+    },
+    {
+      "name": "\"\\\\\\\\|\"",
+      "text": "\\\\|",
+      "expected": "\\\\\\|"
+    },
+    {
+      "name": "\"a\\\\\"",
+      "text": "a\\",
+      "expected": "a\\"
+    },
+    {
+      "name": "\"`code|span`\"",
+      "text": "`code|span`",
+      "expected": "`code\\|span`"
+    },
+    {
+      "name": "\"中|文\"",
+      "text": "中|文",
+      "expected": "中\\|文"
+    },
+    {
+      "name": "\" nbsp \"",
+      "text": " nbsp ",
+      "expected": " nbsp "
+    },
+    {
+      "name": "\"﻿bom\"",
+      "text": "﻿bom",
+      "expected": "﻿bom"
+    },
+    {
+      "name": "\"nel\"",
+      "text": "nel",
+      "expected": "nel"
+    },
+    {
+      "name": "\"\"",
+      "text": "",
+      "expected": ""
+    }
+  ],
+  "escape_code_cell": [
+    {
+      "name": "\"plain\"",
+      "text": "plain",
+      "expected": "plain"
+    },
+    {
+      "name": "\"a|b\"",
+      "text": "a|b",
+      "expected": "a\\|b"
+    },
+    {
+      "name": "\"  padded  \"",
+      "text": "  padded  ",
+      "expected": "padded"
+    },
+    {
+      "name": "\"line\\r\\nbreak\"",
+      "text": "line\r\nbreak",
+      "expected": "line break"
+    },
+    {
+      "name": "\"cr\\ronly\"",
+      "text": "cr\ronly",
+      "expected": "cr only"
+    },
+    {
+      "name": "\"lf\\nonly\"",
+      "text": "lf\nonly",
+      "expected": "lf only"
+    },
+    {
+      "name": "\"tab\\there\"",
+      "text": "tab\there",
+      "expected": "tab here"
+    },
+    {
+      "name": "\"\\\\|\"",
+      "text": "\\|",
+      "expected": "\\|"
+    },
+    {
+      "name": "\"\\\\\\\\|\"",
+      "text": "\\\\|",
+      "expected": "\\\\\\|"
+    },
+    {
+      "name": "\"a\\\\\"",
+      "text": "a\\",
+      "expected": "a\\"
+    },
+    {
+      "name": "\"`code|span`\"",
+      "text": "`code|span`",
+      "expected": "`code\\|span`"
+    },
+    {
+      "name": "\"中|文\"",
+      "text": "中|文",
+      "expected": "中\\|文"
+    },
+    {
+      "name": "\" nbsp \"",
+      "text": " nbsp ",
+      "expected": "nbsp"
+    },
+    {
+      "name": "\"﻿bom\"",
+      "text": "﻿bom",
+      "expected": "bom"
+    },
+    {
+      "name": "\"nel\"",
+      "text": "nel",
+      "expected": "nel"
+    },
+    {
+      "name": "\"\"",
+      "text": "",
+      "expected": ""
+    }
+  ],
+  "ends_with_escape": [
+    {
+      "name": "\"\"",
+      "source": "",
+      "expected": false
+    },
+    {
+      "name": "\"a\"",
+      "source": "a",
+      "expected": false
+    },
+    {
+      "name": "\"a\\\\\"",
+      "source": "a\\",
+      "expected": true
+    },
+    {
+      "name": "\"a\\\\\\\\\"",
+      "source": "a\\\\",
+      "expected": false
+    },
+    {
+      "name": "\"a\\\\\\\\\\\\\"",
+      "source": "a\\\\\\",
+      "expected": true
+    },
+    {
+      "name": "\"\\\\\"",
+      "source": "\\",
+      "expected": true
+    },
+    {
+      "name": "\"é\\\\\"",
+      "source": "é\\",
+      "expected": true
+    }
+  ],
+  "literal_pipe_fixes": [
+    {
+      "name": "a typed backslash before a pipe gets its pair",
+      "text": "a\\|b",
+      "inserted": [
+        [
+          1,
+          2
+        ]
+      ],
+      "expected": [
+        {
+          "from": 2,
+          "to": 2,
+          "insert": "\\"
+        }
+      ]
+    },
+    {
+      "name": "a deleted backslash takes its pair",
+      "text": "a\\|b",
+      "inserted": [],
+      "expected": [
+        {
+          "from": 1,
+          "to": 2,
+          "insert": ""
+        }
+      ]
+    },
+    {
+      "name": "an even run is fine",
+      "text": "a\\\\|b",
+      "inserted": [
+        [
+          0,
+          5
+        ]
+      ],
+      "expected": []
+    },
+    {
+      "name": "a typed pipe after an odd run",
+      "text": "\\\\\\|",
+      "inserted": [
+        [
+          3,
+          4
+        ]
+      ],
+      "expected": [
+        {
+          "from": 3,
+          "to": 3,
+          "insert": "\\"
+        }
+      ]
+    },
+    {
+      "name": "two pipes",
+      "text": "\\|x\\|",
+      "inserted": [
+        [
+          0,
+          1
+        ]
+      ],
+      "expected": [
+        {
+          "from": 1,
+          "to": 1,
+          "insert": "\\"
+        },
+        {
+          "from": 3,
+          "to": 4,
+          "insert": ""
+        }
+      ]
+    },
+    {
+      "name": "after wide text",
+      "text": "中\\|文\\|",
+      "inserted": [
+        [
+          3,
+          4
+        ]
+      ],
+      "expected": [
+        {
+          "from": 4,
+          "to": 4,
+          "insert": "\\"
+        },
+        {
+          "from": 8,
+          "to": 9,
+          "insert": ""
+        }
+      ]
+    },
+    {
+      "name": "no pipes",
+      "text": "abc",
+      "inserted": [],
+      "expected": []
+    }
+  ],
+  "row_cell_texts": [
+    {
+      "name": "\"| a \\\\| b | c |\"",
+      "line": "| a \\| b | c |",
+      "expected": [
+        "a | b",
+        "c"
+      ]
+    },
+    {
+      "name": "\"| `a|b` |\"",
+      "line": "| `a|b` |",
+      "expected": [
+        "`a",
+        "b`"
+      ]
+    },
+    {
+      "name": "\"|  | x |\"",
+      "line": "|  | x |",
+      "expected": [
+        "",
+        "x"
+      ]
+    },
+    {
+      "name": "\"    | a |\"",
+      "line": "    | a |",
+      "expected": [
+        "",
+        "a"
+      ]
+    },
+    {
+      "name": "\"| x\\\\\\\\| y |\"",
+      "line": "| x\\\\| y |",
+      "expected": [
+        "x\\\\",
+        "y"
+      ]
+    },
+    {
+      "name": "\"| 中文 |  é  |\"",
+      "line": "| 中文 |  é  |",
+      "expected": [
+        "中文",
+        "é"
+      ]
+    },
+    {
+      "name": "\"| **bold** \\\\* |\"",
+      "line": "| **bold** \\* |",
+      "expected": [
+        "**bold** \\*"
+      ]
+    },
+    {
+      "name": "\"|﻿a﻿|\"",
+      "line": "|﻿a﻿|",
+      "expected": [
+        "a"
+      ]
+    },
+    {
+      "name": "\"|a|\"",
+      "line": "|a|",
+      "expected": [
+        "a"
+      ]
+    },
+    {
+      "name": "\"no pipes here\"",
+      "line": "no pipes here",
+      "expected": [
+        "no pipes here"
+      ]
+    },
+    {
+      "name": "\"\"",
+      "line": "",
+      "expected": []
+    }
+  ],
+  "row_cell_sources": [
+    {
+      "name": "\"| a \\\\| b | c |\"",
+      "line": "| a \\| b | c |",
+      "expected": [
+        "a \\| b",
+        "c"
+      ]
+    },
+    {
+      "name": "\"| `a|b` |\"",
+      "line": "| `a|b` |",
+      "expected": [
+        "`a",
+        "b`"
+      ]
+    },
+    {
+      "name": "\"|  | x |\"",
+      "line": "|  | x |",
+      "expected": [
+        "",
+        "x"
+      ]
+    },
+    {
+      "name": "\"    | a |\"",
+      "line": "    | a |",
+      "expected": [
+        "",
+        "a"
+      ]
+    },
+    {
+      "name": "\"| x\\\\\\\\| y |\"",
+      "line": "| x\\\\| y |",
+      "expected": [
+        "x\\\\",
+        "y"
+      ]
+    },
+    {
+      "name": "\"| 中文 |  é  |\"",
+      "line": "| 中文 |  é  |",
+      "expected": [
+        "中文",
+        "é"
+      ]
+    },
+    {
+      "name": "\"| **bold** \\\\* |\"",
+      "line": "| **bold** \\* |",
+      "expected": [
+        "**bold** \\*"
+      ]
+    },
+    {
+      "name": "\"|﻿a﻿|\"",
+      "line": "|﻿a﻿|",
+      "expected": [
+        "a"
+      ]
+    },
+    {
+      "name": "\"|a|\"",
+      "line": "|a|",
+      "expected": [
+        "a"
+      ]
+    },
+    {
+      "name": "\"no pipes here\"",
+      "line": "no pipes here",
+      "expected": [
+        "no pipes here"
+      ]
+    },
+    {
+      "name": "\"\"",
+      "line": "",
+      "expected": []
+    }
+  ],
+  "read_table": [
+    {
+      "name": "a simple table",
+      "lines": [
+        "| a | b |",
+        "| --- | :-: |",
+        "| 1 | 2 |"
+      ],
+      "expected": {
+        "header": [
+          {
+            "raw": "a",
+            "text": "a"
+          },
+          {
+            "raw": "b",
+            "text": "b"
+          }
+        ],
+        "align": [
+          "none",
+          "center"
+        ],
+        "rows": [
+          [
+            {
+              "raw": "1",
+              "text": "1"
+            },
+            {
+              "raw": "2",
+              "text": "2"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "name": "alignments",
+      "lines": [
+        "|l|c|r|n|",
+        "|:--|:-:|--:|---|"
+      ],
+      "expected": {
+        "header": [
+          {
+            "raw": "l",
+            "text": "l"
+          },
+          {
+            "raw": "c",
+            "text": "c"
+          },
+          {
+            "raw": "r",
+            "text": "r"
+          },
+          {
+            "raw": "n",
+            "text": "n"
+          }
+        ],
+        "align": [
+          "left",
+          "center",
+          "right",
+          "none"
+        ],
+        "rows": []
+      }
+    },
+    {
+      "name": "an escaped pipe in a cell",
+      "lines": [
+        "| a |",
+        "|---|",
+        "| x \\| y |"
+      ],
+      "expected": {
+        "header": [
+          {
+            "raw": "a",
+            "text": "a"
+          }
+        ],
+        "align": [
+          "none"
+        ],
+        "rows": [
+          [
+            {
+              "raw": "x \\| y",
+              "text": "x | y"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "name": "ragged rows are kept as written",
+      "lines": [
+        "| a | b |",
+        "|---|---|",
+        "| 1 |",
+        "| 1 | 2 | 3 |"
+      ],
+      "expected": {
+        "header": [
+          {
+            "raw": "a",
+            "text": "a"
+          },
+          {
+            "raw": "b",
+            "text": "b"
+          }
+        ],
+        "align": [
+          "none",
+          "none"
+        ],
+        "rows": [
+          [
+            {
+              "raw": "1",
+              "text": "1"
+            }
+          ],
+          [
+            {
+              "raw": "1",
+              "text": "1"
+            },
+            {
+              "raw": "2",
+              "text": "2"
+            },
+            {
+              "raw": "3",
+              "text": "3"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "name": "no leading pipes",
+      "lines": [
+        "a | b",
+        "--|--",
+        "1 | 2"
+      ],
+      "expected": {
+        "header": [
+          {
+            "raw": "a",
+            "text": "a"
+          },
+          {
+            "raw": "b",
+            "text": "b"
+          }
+        ],
+        "align": [
+          "none",
+          "none"
+        ],
+        "rows": [
+          [
+            {
+              "raw": "1",
+              "text": "1"
+            },
+            {
+              "raw": "2",
+              "text": "2"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "name": "indented lines",
+      "lines": [
+        "  | a |",
+        "  |---|",
+        "  | 1 |"
+      ],
+      "expected": {
+        "header": [
+          {
+            "raw": "a",
+            "text": "a"
+          }
+        ],
+        "align": [
+          "none"
+        ],
+        "rows": [
+          [
+            {
+              "raw": "1",
+              "text": "1"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "name": "lines indented 4 spaces are no table",
+      "lines": [
+        "    | a |",
+        "    |---|"
+      ],
+      "expected": null
+    },
+    {
+      "name": "a delimiter narrower than the header",
+      "lines": [
+        "| a | b |",
+        "|---|"
+      ],
+      "expected": null
+    },
+    {
+      "name": "a second line that is no delimiter",
+      "lines": [
+        "| a |",
+        "| b |"
+      ],
+      "expected": null
+    },
+    {
+      "name": "one line",
+      "lines": [
+        "| a |"
+      ],
+      "expected": null
+    },
+    {
+      "name": "no lines",
+      "lines": [],
+      "expected": null
+    },
+    {
+      "name": "a header with a CR left on it",
+      "lines": [
+        "| a |\r",
+        "|---|"
+      ],
+      "expected": {
+        "header": [
+          {
+            "raw": "a",
+            "text": "a"
+          }
+        ],
+        "align": [
+          "none"
+        ],
+        "rows": []
+      }
+    },
+    {
+      "name": "wide cells",
+      "lines": [
+        "| 名前 | 値 |",
+        "|---|---|",
+        "| 👍 | é |"
+      ],
+      "expected": {
+        "header": [
+          {
+            "raw": "名前",
+            "text": "名前"
+          },
+          {
+            "raw": "値",
+            "text": "値"
+          }
+        ],
+        "align": [
+          "none",
+          "none"
+        ],
+        "rows": [
+          [
+            {
+              "raw": "👍",
+              "text": "👍"
+            },
+            {
+              "raw": "é",
+              "text": "é"
+            }
+          ]
+        ]
+      }
+    },
+    {
+      "name": "empty body cells",
+      "lines": [
+        "| a | b |",
+        "|---|---|",
+        "|  |  |",
+        "||"
+      ],
+      "expected": {
+        "header": [
+          {
+            "raw": "a",
+            "text": "a"
+          },
+          {
+            "raw": "b",
+            "text": "b"
+          }
+        ],
+        "align": [
+          "none",
+          "none"
+        ],
+        "rows": [
+          [
+            {
+              "raw": "",
+              "text": ""
+            },
+            {
+              "raw": "",
+              "text": ""
+            }
+          ],
+          [
+            {
+              "raw": "",
+              "text": ""
+            }
+          ]
+        ]
+      }
+    }
+  ],
+  "table_grid": [
+    {
+      "name": "a simple table",
+      "lines": [
+        "| a | b |",
+        "| --- | :-: |",
+        "| 1 | 2 |"
+      ],
+      "expected": {
+        "header": [
+          "a",
+          "b"
+        ],
+        "align": [
+          "none",
+          "center"
+        ],
+        "rows": [
+          [
+            "1",
+            "2"
+          ]
+        ],
+        "issues": []
+      }
+    },
+    {
+      "name": "alignments",
+      "lines": [
+        "|l|c|r|n|",
+        "|:--|:-:|--:|---|"
+      ],
+      "expected": {
+        "header": [
+          "l",
+          "c",
+          "r",
+          "n"
+        ],
+        "align": [
+          "left",
+          "center",
+          "right",
+          "none"
+        ],
+        "rows": [],
+        "issues": []
+      }
+    },
+    {
+      "name": "an escaped pipe in a cell",
+      "lines": [
+        "| a |",
+        "|---|",
+        "| x \\| y |"
+      ],
+      "expected": {
+        "header": [
+          "a"
+        ],
+        "align": [
+          "none"
+        ],
+        "rows": [
+          [
+            "x | y"
+          ]
+        ],
+        "issues": []
+      }
+    },
+    {
+      "name": "ragged rows are kept as written",
+      "lines": [
+        "| a | b |",
+        "|---|---|",
+        "| 1 |",
+        "| 1 | 2 | 3 |"
+      ],
+      "expected": {
+        "header": [
+          "a",
+          "b"
+        ],
+        "align": [
+          "none",
+          "none"
+        ],
+        "rows": [
+          [
+            "1",
+            ""
+          ],
+          [
+            "1",
+            "2"
+          ]
+        ],
+        "issues": [
+          {
+            "line": 3,
+            "row": 0,
+            "message": "1 cells, header has 2; padded"
+          },
+          {
+            "line": 4,
+            "row": 1,
+            "message": "3 cells, header has 2; extra cells dropped"
+          }
+        ]
+      }
+    },
+    {
+      "name": "no leading pipes",
+      "lines": [
+        "a | b",
+        "--|--",
+        "1 | 2"
+      ],
+      "expected": {
+        "header": [
+          "a",
+          "b"
+        ],
+        "align": [
+          "none",
+          "none"
+        ],
+        "rows": [
+          [
+            "1",
+            "2"
+          ]
+        ],
+        "issues": []
+      }
+    },
+    {
+      "name": "indented lines",
+      "lines": [
+        "  | a |",
+        "  |---|",
+        "  | 1 |"
+      ],
+      "expected": {
+        "header": [
+          "a"
+        ],
+        "align": [
+          "none"
+        ],
+        "rows": [
+          [
+            "1"
+          ]
+        ],
+        "issues": []
+      }
+    },
+    {
+      "name": "lines indented 4 spaces are no table",
+      "lines": [
+        "    | a |",
+        "    |---|"
+      ],
+      "expected": null
+    },
+    {
+      "name": "a delimiter narrower than the header",
+      "lines": [
+        "| a | b |",
+        "|---|"
+      ],
+      "expected": null
+    },
+    {
+      "name": "a second line that is no delimiter",
+      "lines": [
+        "| a |",
+        "| b |"
+      ],
+      "expected": null
+    },
+    {
+      "name": "one line",
+      "lines": [
+        "| a |"
+      ],
+      "expected": null
+    },
+    {
+      "name": "no lines",
+      "lines": [],
+      "expected": null
+    },
+    {
+      "name": "a header with a CR left on it",
+      "lines": [
+        "| a |\r",
+        "|---|"
+      ],
+      "expected": {
+        "header": [
+          "a"
+        ],
+        "align": [
+          "none"
+        ],
+        "rows": [],
+        "issues": []
+      }
+    },
+    {
+      "name": "wide cells",
+      "lines": [
+        "| 名前 | 値 |",
+        "|---|---|",
+        "| 👍 | é |"
+      ],
+      "expected": {
+        "header": [
+          "名前",
+          "値"
+        ],
+        "align": [
+          "none",
+          "none"
+        ],
+        "rows": [
+          [
+            "👍",
+            "é"
+          ]
+        ],
+        "issues": []
+      }
+    },
+    {
+      "name": "empty body cells",
+      "lines": [
+        "| a | b |",
+        "|---|---|",
+        "|  |  |",
+        "||"
+      ],
+      "expected": {
+        "header": [
+          "a",
+          "b"
+        ],
+        "align": [
+          "none",
+          "none"
+        ],
+        "rows": [
+          [
+            "",
+            ""
+          ],
+          [
+            "",
+            ""
+          ]
+        ],
+        "issues": [
+          {
+            "line": 4,
+            "row": 1,
+            "message": "1 cells, header has 2; padded"
+          }
+        ]
+      }
+    }
+  ],
+  "render_table": [
+    {
+      "name": "escapes every cell",
+      "header": [
+        "Name",
+        "Value"
+      ],
+      "rows": [
+        [
+          "a|b",
+          "1"
+        ]
+      ],
+      "expected": "| Name | Value |\n| --- | --- |\n| a\\|b | 1 |"
+    },
+    {
+      "name": "alignments",
+      "header": [
+        "l",
+        "c",
+        "r",
+        "n"
+      ],
+      "align": [
+        "left",
+        "center",
+        "right",
+        "none"
+      ],
+      "rows": [],
+      "expected": "| l | c | r | n |\n| :--- | :---: | ---: | --- |"
+    },
+    {
+      "name": "fewer alignments than columns",
+      "header": [
+        "a",
+        "b"
+      ],
+      "align": [
+        "right"
+      ],
+      "rows": [],
+      "expected": "| a | b |\n| ---: | --- |"
+    },
+    {
+      "name": "short rows padded, long rows kept",
+      "header": [
+        "a",
+        "b"
+      ],
+      "rows": [
+        [
+          "1"
+        ],
+        [
+          "1",
+          "2",
+          "3"
+        ]
+      ],
+      "expected": "| a | b |\n| --- | --- |\n| 1 |  |\n| 1 | 2 | 3 |"
+    },
+    {
+      "name": "an empty header gives nothing",
+      "header": [],
+      "rows": [
+        [
+          "x"
+        ]
+      ],
+      "expected": ""
+    },
+    {
+      "name": "CRLF line breaks",
+      "header": [
+        "a"
+      ],
+      "rows": [
+        [
+          "1"
+        ]
+      ],
+      "line_break": "\r\n",
+      "expected": "| a |\r\n| --- |\r\n| 1 |"
+    },
+    {
+      "name": "breaks and tabs in cells",
+      "header": [
+        "a\nb"
+      ],
+      "rows": [
+        [
+          "c\td"
+        ],
+        [
+          "\\|"
+        ]
+      ],
+      "expected": "| a b |\n| --- |\n| c d |\n| \\\\\\| |"
+    },
+    {
+      "name": "wide cells",
+      "header": [
+        "名前"
+      ],
+      "rows": [
+        [
+          "👍"
+        ]
+      ],
+      "expected": "| 名前 |\n| --- |\n| 👍 |"
+    }
+  ],
+  "pad_table": [
+    {
+      "name": "the README table",
+      "table": "| a | b |\n|:-|--:|\n| long cell | 1 |",
+      "expected": "| a         |    b |\n| :-------- | ---: |\n| long cell |    1 |"
+    },
+    {
+      "name": "a centered column, the odd space right",
+      "table": "| a |\n|:-:|\n| abcdef |",
+      "expected": "|   a    |\n| :----: |\n| abcdef |"
+    },
+    {
+      "name": "wide characters take 2 columns",
+      "table": "| 名前 | b |\n|-|-|\n| x | 値 |",
+      "expected": "| 名前 | b   |\n| ---- | --- |\n| x    | 値  |"
+    },
+    {
+      "name": "an emoji takes 2 columns",
+      "table": "| ✅ |\n|-|\n| ok |",
+      "expected": "| ✅  |\n| --- |\n| ok  |"
+    },
+    {
+      "name": "a combining mark takes none",
+      "table": "| é |\n|-|\n| abcd |",
+      "expected": "| é    |\n| ---- |\n| abcd |"
+    },
+    {
+      "name": "a skin-tone modifier joins its emoji",
+      "table": "| ☝🏻 |\n|-|\n| x |",
+      "expected": "| ☝🏻  |\n| --- |\n| x   |"
+    },
+    {
+      "name": "a zero-width joiner leaves the table as is",
+      "table": "| a‍b |\n|-|",
+      "expected": "| a‍b |\n|-|"
+    },
+    {
+      "name": "a pipe after two backslashes leaves the table as is",
+      "table": "| a | b |\n| - | - |\n| x\\\\|y |",
+      "expected": "| a | b |\n| - | - |\n| x\\\\|y |"
+    },
+    {
+      "name": "an escaped pipe is kept as written",
+      "table": "| a \\| b |\n|-|\n| c |",
+      "expected": "| a \\| b |\n| ------ |\n| c      |"
+    },
+    {
+      "name": "not a table",
+      "table": "just text\nmore",
+      "expected": "just text\nmore"
+    },
+    {
+      "name": "extra padding is narrowed",
+      "table": "| a     |\n| ----- |\n| b     |",
+      "expected": "| a   |\n| --- |\n| b   |"
+    },
+    {
+      "name": "the header indent is kept",
+      "table": "  | a |\n  |-|",
+      "expected": "  | a   |\n  | --- |"
+    },
+    {
+      "name": "short and long rows keep their cells",
+      "table": "| a | b |\n|-|-|\n| 1 |\n| 1 | 2 | 3 |",
+      "expected": "| a   | b   |\n| --- | --- |\n| 1   |\n| 1   | 2   | 3   |"
+    },
+    {
+      "name": "a trailing line break is kept",
+      "table": "| a |\n|-|\n",
+      "expected": "| a   |\n| --- |\n"
+    },
+    {
+      "name": "CRLF line breaks are kept",
+      "table": "| a |\r\n|-|\r\n| bb |",
+      "expected": "| a   |\r\n| --- |\r\n| bb  |"
+    },
+    {
+      "name": "a CR line break",
+      "table": "| a |\r|-|\r| bb |",
+      "expected": "| a   |\r| --- |\r| bb  |"
+    },
+    {
+      "name": "stops at a blank line",
+      "table": "| a |\n|-|\n\n| not | table |",
+      "expected": "| a   |\n| --- |\n\n| not | table |"
+    },
+    {
+      "name": "stops at a code block",
+      "table": "| a |\n|-|\n    | code |",
+      "expected": "| a   |\n| --- |\n    | code |"
+    },
+    {
+      "name": "a lone pipe stays",
+      "table": "| a |\n|-|\n|",
+      "expected": "| a   |\n| --- |\n|"
+    },
+    {
+      "name": "a pipe in a code span ends the cell",
+      "table": "| `a|b` |\n| - | - |",
+      "expected": "| `a  | b`  |\n| --- | --- |"
+    },
+    {
+      "name": "a capped column",
+      "table": "| a |\n|-|\n| long cell |",
+      "max_column_width": 4,
+      "expected": "| a   |\n| --- |\n| long cell |"
+    },
+    {
+      "name": "a cap wider than every cell",
+      "table": "| a |\n|-|\n| long |",
+      "max_column_width": 50,
+      "expected": "| a    |\n| ---- |\n| long |"
+    },
+    {
+      "name": "a cap of one",
+      "table": "| abc |\n|-|",
+      "max_column_width": 1,
+      "expected": "| abc |\n| --- |"
+    },
+    {
+      "name": "a padded table changes nothing",
+      "table": "| a   | b   |\n| --- | --- |\n| 1   | 2   |",
+      "expected": "| a   | b   |\n| --- | --- |\n| 1   | 2   |"
+    },
+    {
+      "name": "a zero cap is refused",
+      "table": "| a |\n|-|",
+      "max_column_width": 0,
+      "expected": {
+        "error": "invalid_max_column_width"
+      }
+    },
+    {
+      "name": "a negative cap is refused",
+      "table": "| a |\n|-|",
+      "max_column_width": -1,
+      "expected": {
+        "error": "invalid_max_column_width"
+      }
+    },
+    {
+      "name": "a fractional cap is refused",
+      "table": "| a |\n|-|",
+      "max_column_width": 1.5,
+      "expected": {
+        "error": "invalid_max_column_width"
+      }
+    }
+  ],
+  "display_width": [
+    {
+      "name": "ASCII",
+      "text": "abc",
+      "expected": 3
+    },
+    {
+      "name": "CJK ideographs",
+      "text": "中文",
+      "expected": 4
+    },
+    {
+      "name": "fullwidth Latin",
+      "text": "ｈｅｌｌｏ",
+      "expected": 10
+    },
+    {
+      "name": "Hangul jamo",
+      "text": "한",
+      "expected": 2
+    },
+    {
+      "name": "a combining mark",
+      "text": "é",
+      "expected": 1
+    },
+    {
+      "name": "an emoji",
+      "text": "✅",
+      "expected": 2
+    },
+    {
+      "name": "an emoji shown as text",
+      "text": "☝",
+      "expected": 1
+    },
+    {
+      "name": "... with U+FE0F",
+      "text": "☝️",
+      "expected": 2
+    },
+    {
+      "name": "... with a skin-tone modifier",
+      "text": "☝🏻",
+      "expected": 2
+    },
+    {
+      "name": "a keycap",
+      "text": "1️⃣",
+      "expected": 2
+    },
+    {
+      "name": "a flag",
+      "text": "🇯🇵",
+      "expected": 2
+    },
+    {
+      "name": "a soft hyphen",
+      "text": "­",
+      "expected": 0
+    },
+    {
+      "name": "KHMER SIGN BEYYAL",
+      "text": "៘",
+      "expected": 3
+    },
+    {
+      "name": "empty",
+      "text": "",
+      "expected": 0
+    }
+  ],
+  "row_line_text": [
+    {
+      "name": "[\"a\",\"bc\"]",
+      "cells": [
+        "a",
+        "bc"
+      ],
+      "expected": {
+        "text": "| a | bc |",
+        "offsets": [
+          2,
+          6
+        ]
+      }
+    },
+    {
+      "name": "[\"\"]",
+      "cells": [
+        ""
+      ],
+      "expected": {
+        "text": "|  |",
+        "offsets": [
+          2
+        ]
+      }
+    },
+    {
+      "name": "[]",
+      "cells": [],
+      "expected": {
+        "text": "|",
+        "offsets": []
+      }
+    },
+    {
+      "name": "[\"中\",\"é\"]",
+      "cells": [
+        "中",
+        "é"
+      ],
+      "expected": {
+        "text": "| 中 | é |",
+        "offsets": [
+          2,
+          8
+        ]
+      }
+    }
+  ],
+  "insert_cell_splice": [
+    {
+      "name": "before a cell, after its opening pipe",
+      "line": "| a | b |",
+      "base": 0,
+      "at": 1,
+      "filler": "",
+      "expected": {
+        "change": {
+          "from": 5,
+          "to": 5,
+          "insert": "  |"
+        },
+        "anchor": 5,
+        "offset": 1
+      }
+    },
+    {
+      "name": "at column 0",
+      "line": "| a | b |",
+      "base": 0,
+      "at": 0,
+      "filler": "",
+      "expected": {
+        "change": {
+          "from": 1,
+          "to": 1,
+          "insert": "  |"
+        },
+        "anchor": 1,
+        "offset": 1
+      }
+    },
+    {
+      "name": "a row without an opening pipe gets one",
+      "line": "a | b",
+      "base": 0,
+      "at": 0,
+      "filler": "",
+      "expected": {
+        "change": {
+          "from": 0,
+          "to": 0,
+          "insert": "|  |"
+        },
+        "anchor": 0,
+        "offset": 2
+      }
+    },
+    {
+      "name": "an indented opening pipe still opens the row",
+      "line": "  | a |",
+      "base": 0,
+      "at": 0,
+      "filler": "",
+      "expected": {
+        "change": {
+          "from": 3,
+          "to": 3,
+          "insert": "  |"
+        },
+        "anchor": 3,
+        "offset": 1
+      }
+    },
+    {
+      "name": "past the last cell",
+      "line": "|a|b|",
+      "base": 0,
+      "at": 2,
+      "filler": "",
+      "expected": {
+        "change": {
+          "from": 5,
+          "to": 5,
+          "insert": "|"
+        },
+        "anchor": 5,
+        "offset": 0
+      }
+    },
+    {
+      "name": "an unclosed row takes no trailing cell",
+      "line": "| a | b",
+      "base": 0,
+      "at": 2,
+      "filler": "",
+      "expected": {
+        "change": null,
+        "anchor": 7,
+        "offset": 0
+      }
+    },
+    {
+      "name": "offsets are absolute",
+      "line": "| a |",
+      "base": 10,
+      "at": 0,
+      "filler": "",
+      "expected": {
+        "change": {
+          "from": 11,
+          "to": 11,
+          "insert": "  |"
+        },
+        "anchor": 11,
+        "offset": 1
+      }
+    },
+    {
+      "name": "padded filler",
+      "line": "| a |",
+      "base": 0,
+      "at": 1,
+      "filler": "x",
+      "expected": {
+        "change": {
+          "from": 5,
+          "to": 5,
+          "insert": " x |"
+        },
+        "anchor": 5,
+        "offset": 1
+      }
+    },
+    {
+      "name": "compact filler",
+      "line": "|a|",
+      "base": 0,
+      "at": 1,
+      "filler": "x",
+      "expected": {
+        "change": {
+          "from": 3,
+          "to": 3,
+          "insert": "x|"
+        },
+        "anchor": 3,
+        "offset": 1
+      }
+    },
+    {
+      "name": "a lone pipe",
+      "line": "|",
+      "base": 0,
+      "at": 0,
+      "filler": "x",
+      "expected": {
+        "change": {
+          "from": 1,
+          "to": 1,
+          "insert": " x |"
+        },
+        "anchor": 1,
+        "offset": 1
+      }
+    },
+    {
+      "name": "a delimiter filler",
+      "line": "| --- |",
+      "base": 0,
+      "at": 0,
+      "filler": "---",
+      "expected": {
+        "change": {
+          "from": 1,
+          "to": 1,
+          "insert": " --- |"
+        },
+        "anchor": 1,
+        "offset": 1
+      }
+    },
+    {
+      "name": "after wide cells",
+      "line": "| 中 | 文 |",
+      "base": 0,
+      "at": 1,
+      "filler": "",
+      "expected": {
+        "change": {
+          "from": 7,
+          "to": 7,
+          "insert": "  |"
+        },
+        "anchor": 7,
+        "offset": 1
+      }
+    },
+    {
+      "name": "past wide cells at a base",
+      "line": "| 中 | 文 |",
+      "base": 4,
+      "at": 2,
+      "filler": "",
+      "expected": {
+        "change": {
+          "from": 17,
+          "to": 17,
+          "insert": "  |"
+        },
+        "anchor": 17,
+        "offset": 1
+      }
+    },
+    {
+      "name": "far past the end",
+      "line": "| a |",
+      "base": 0,
+      "at": 5,
+      "filler": "",
+      "expected": {
+        "change": {
+          "from": 5,
+          "to": 5,
+          "insert": "  |"
+        },
+        "anchor": 5,
+        "offset": 1
+      }
+    }
+  ],
+  "delete_cell_splice": [
+    {
+      "name": "the cell and the pipe after it",
+      "line": "| a | b | c |",
+      "base": 0,
+      "col": 1,
+      "expected": {
+        "change": {
+          "from": 5,
+          "to": 9,
+          "insert": ""
+        },
+        "anchor": 10,
+        "offset": 0
+      }
+    },
+    {
+      "name": "the first cell",
+      "line": "| a | b |",
+      "base": 0,
+      "col": 0,
+      "expected": {
+        "change": {
+          "from": 1,
+          "to": 5,
+          "insert": ""
+        },
+        "anchor": 6,
+        "offset": 0
+      }
+    },
+    {
+      "name": "an unclosed last cell takes the pipe before it",
+      "line": "| a | b",
+      "base": 0,
+      "col": 1,
+      "expected": {
+        "change": {
+          "from": 4,
+          "to": 7,
+          "insert": ""
+        },
+        "anchor": 2,
+        "offset": 0
+      }
+    },
+    {
+      "name": "an unclosed only cell keeps the opening pipe",
+      "line": "| a",
+      "base": 0,
+      "col": 0,
+      "expected": {
+        "change": {
+          "from": 1,
+          "to": 3,
+          "insert": ""
+        },
+        "anchor": 0,
+        "offset": 0
+      }
+    },
+    {
+      "name": "a missing cell leaves the row alone",
+      "line": "| a |",
+      "base": 0,
+      "col": 3,
+      "expected": {
+        "change": null,
+        "anchor": 2,
+        "offset": 0
+      }
+    },
+    {
+      "name": "a row with no cells",
+      "line": "|",
+      "base": 0,
+      "col": 0,
+      "expected": {
+        "change": null,
+        "anchor": 0,
+        "offset": 0
+      }
+    },
+    {
+      "name": "wide cells at a base",
+      "line": "| 中 | 文 |",
+      "base": 20,
+      "col": 0,
+      "expected": {
+        "change": {
+          "from": 21,
+          "to": 27,
+          "insert": ""
+        },
+        "anchor": 28,
+        "offset": 0
+      }
+    }
+  ],
+  "pad_row_splice": [
+    {
+      "name": "a padded row",
+      "line": "| a |",
+      "base": 0,
+      "width": 3,
+      "filler": "",
+      "expected": {
+        "from": 5,
+        "insert": "  |  |",
+        "contents": [
+          1,
+          4
+        ]
+      }
+    },
+    {
+      "name": "a compact row",
+      "line": "|a|",
+      "base": 0,
+      "width": 2,
+      "filler": "",
+      "expected": {
+        "from": 3,
+        "insert": "|",
+        "contents": [
+          0
+        ]
+      }
+    },
+    {
+      "name": "an unclosed row gets a closing pipe",
+      "line": "| a",
+      "base": 0,
+      "width": 2,
+      "filler": "",
+      "expected": {
+        "from": 3,
+        "insert": " |  |",
+        "contents": [
+          3
+        ]
+      }
+    },
+    {
+      "name": "an unclosed compact row",
+      "line": "|a",
+      "base": 0,
+      "width": 2,
+      "filler": "",
+      "expected": {
+        "from": 2,
+        "insert": "||",
+        "contents": [
+          1
+        ]
+      }
+    },
+    {
+      "name": "an unclosed row ending in a space",
+      "line": "| a ",
+      "base": 0,
+      "width": 2,
+      "filler": "",
+      "expected": {
+        "from": 4,
+        "insert": "|  |",
+        "contents": [
+          2
+        ]
+      }
+    },
+    {
+      "name": "a wide enough row",
+      "line": "| a | b |",
+      "base": 0,
+      "width": 2,
+      "filler": "",
+      "expected": null
+    },
+    {
+      "name": "a filler",
+      "line": "| a |",
+      "base": 0,
+      "width": 2,
+      "filler": "---",
+      "expected": {
+        "from": 5,
+        "insert": " --- |",
+        "contents": [
+          1
+        ]
+      }
+    },
+    {
+      "name": "wide cells at a base",
+      "line": "| 中 |",
+      "base": 5,
+      "width": 3,
+      "filler": "",
+      "expected": {
+        "from": 12,
+        "insert": "  |  |",
+        "contents": [
+          1,
+          4
+        ]
+      }
+    },
+    {
+      "name": "a lone pipe",
+      "line": "|",
+      "base": 0,
+      "width": 2,
+      "filler": "",
+      "expected": {
+        "from": 1,
+        "insert": "  |  |",
+        "contents": [
+          1,
+          4
+        ]
+      }
+    }
+  ],
+  "has_trailing_pipe": [
+    {
+      "name": "\"| a |\"",
+      "line": "| a |",
+      "expected": true
+    },
+    {
+      "name": "\"| a\"",
+      "line": "| a",
+      "expected": false
+    },
+    {
+      "name": "\"|\"",
+      "line": "|",
+      "expected": true
+    },
+    {
+      "name": "\"a | b |\"",
+      "line": "a | b |",
+      "expected": true
+    },
+    {
+      "name": "\"\"",
+      "line": "",
+      "expected": false
+    },
+    {
+      "name": "\"| a |  \"",
+      "line": "| a |  ",
+      "expected": true
+    }
+  ],
+  "table_lines": [
+    {
+      "name": "header, delimiter, body",
+      "lines": [
+        "| a |",
+        "| --- |",
+        "| b |",
+        "| c |"
+      ],
+      "delimiter": true,
+      "expected": [
+        {
+          "line": 0,
+          "filler": ""
+        },
+        {
+          "line": 1,
+          "filler": "---"
+        },
+        {
+          "line": 2,
+          "filler": ""
+        },
+        {
+          "line": 3,
+          "filler": ""
+        }
+      ]
+    },
+    {
+      "name": "no delimiter",
+      "lines": [
+        "| a |",
+        "| --- |",
+        "| b |"
+      ],
+      "delimiter": false,
+      "expected": [
+        {
+          "line": 0,
+          "filler": ""
+        },
+        {
+          "line": 2,
+          "filler": ""
+        }
+      ]
+    },
+    {
+      "name": "a header only",
+      "lines": [
+        "| a |",
+        "|---|"
+      ],
+      "delimiter": true,
+      "expected": [
+        {
+          "line": 0,
+          "filler": ""
+        },
+        {
+          "line": 1,
+          "filler": "---"
+        }
+      ]
+    }
+  ],
+  "rectangular": [
+    {
+      "name": "ragged rows padded",
+      "rows": [
+        [
+          "a"
+        ],
+        [
+          "b",
+          "c"
+        ]
+      ],
+      "expected": [
+        [
+          "a",
+          ""
+        ],
+        [
+          "b",
+          "c"
+        ]
+      ]
+    },
+    {
+      "name": "no rows",
+      "rows": [],
+      "expected": null
+    },
+    {
+      "name": "only empty rows",
+      "rows": [
+        [],
+        []
+      ],
+      "expected": null
+    }
+  ],
+  "pad_row": [
+    {
+      "name": "pads",
+      "cells": [
+        "a"
+      ],
+      "width": 3,
+      "expected": [
+        "a",
+        "",
+        ""
+      ]
+    },
+    {
+      "name": "keeps a longer row",
+      "cells": [
+        "a",
+        "b"
+      ],
+      "width": 1,
+      "expected": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "name": "zero width",
+      "cells": [],
+      "width": 0,
+      "expected": []
+    }
+  ],
+  "clipboard_lines": [
+    {
+      "name": "\"a\\nb\"",
+      "text": "a\nb",
+      "expected": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "name": "\"a\\r\\nb\\r\\n\"",
+      "text": "a\r\nb\r\n",
+      "expected": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "name": "\"a\\rb\"",
+      "text": "a\rb",
+      "expected": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "name": "\"\"",
+      "text": "",
+      "expected": [
+        ""
+      ]
+    },
+    {
+      "name": "\"\\n\"",
+      "text": "\n",
+      "expected": [
+        ""
+      ]
+    },
+    {
+      "name": "\"a\\n\\n\"",
+      "text": "a\n\n",
+      "expected": [
+        "a",
+        ""
+      ]
+    },
+    {
+      "name": "\"a\\r\\n\\r\\nb\"",
+      "text": "a\r\n\r\nb",
+      "expected": [
+        "a",
+        "",
+        "b"
+      ]
+    }
+  ],
+  "grid_from_tsv": [
+    {
+      "name": "\"a\\tb\\nc\\td\"",
+      "text": "a\tb\nc\td",
+      "expected": [
+        [
+          "a",
+          "b"
+        ],
+        [
+          "c",
+          "d"
+        ]
+      ]
+    },
+    {
+      "name": "\"a\\tb\\r\\nc\\td\\r\\n\"",
+      "text": "a\tb\r\nc\td\r\n",
+      "expected": [
+        [
+          "a",
+          "b"
+        ],
+        [
+          "c",
+          "d"
+        ]
+      ]
+    },
+    {
+      "name": "\" a \\t b \"",
+      "text": " a \t b ",
+      "expected": [
+        [
+          "a",
+          "b"
+        ]
+      ]
+    },
+    {
+      "name": "\"\\tfoo()\\n\\tbar()\"",
+      "text": "\tfoo()\n\tbar()",
+      "expected": null
+    },
+    {
+      "name": "\"a\\tb\\nc\"",
+      "text": "a\tb\nc",
+      "expected": null
+    },
+    {
+      "name": "\"no tabs\"",
+      "text": "no tabs",
+      "expected": null
+    },
+    {
+      "name": "\"a\\t\\n\\tb\"",
+      "text": "a\t\n\tb",
+      "expected": null
+    },
+    {
+      "name": "\"a\\tb\\tc\"",
+      "text": "a\tb\tc",
+      "expected": [
+        [
+          "a",
+          "b",
+          "c"
+        ]
+      ]
+    },
+    {
+      "name": "\"中\\t文\"",
+      "text": "中\t文",
+      "expected": [
+        [
+          "中",
+          "文"
+        ]
+      ]
+    },
+    {
+      "name": "\"\"",
+      "text": "",
+      "expected": null
+    }
+  ],
+  "tsv_from_grid": [
+    {
+      "name": "tabs and breaks become spaces",
+      "grid": [
+        [
+          "a\tb",
+          "c\r\nd"
+        ],
+        [
+          "e",
+          ""
+        ]
+      ],
+      "expected": "a b\tc  d\ne\t"
+    },
+    {
+      "name": "empty grid",
+      "grid": [],
+      "expected": ""
+    }
+  ],
+  "to_csv": [
+    {
+      "name": "quotes what needs it",
+      "rows": [
+        [
+          "a,b",
+          "c\"d",
+          "e\nf",
+          "plain",
+          ""
+        ],
+        [
+          "g\r",
+          " h "
+        ]
+      ],
+      "expected": "\"a,b\",\"c\"\"d\",\"e\nf\",plain,\r\n\"g\r\", h "
+    },
+    {
+      "name": "no rows",
+      "rows": [],
+      "expected": ""
+    },
+    {
+      "name": "an empty row",
+      "rows": [
+        []
+      ],
+      "expected": ""
+    }
+  ],
+  "grid_from_csv": [
+    {
+      "name": "\"a,b\\r\\nc,d\"",
+      "text": "a,b\r\nc,d",
+      "expected": [
+        [
+          "a",
+          "b"
+        ],
+        [
+          "c",
+          "d"
+        ]
+      ]
+    },
+    {
+      "name": "\"a,b\\nc,d\\n\"",
+      "text": "a,b\nc,d\n",
+      "expected": [
+        [
+          "a",
+          "b"
+        ],
+        [
+          "c",
+          "d"
+        ]
+      ]
+    },
+    {
+      "name": "\"a,b\\rc,d\"",
+      "text": "a,b\rc,d",
+      "expected": [
+        [
+          "a",
+          "b"
+        ],
+        [
+          "c",
+          "d"
+        ]
+      ]
+    },
+    {
+      "name": "\"\\\"a,b\\\",\\\"c\\\"\\\"d\\\"\"",
+      "text": "\"a,b\",\"c\"\"d\"",
+      "expected": [
+        [
+          "a,b",
+          "c\"d"
+        ]
+      ]
+    },
+    {
+      "name": "\"\\\"multi\\nline\\\",x\"",
+      "text": "\"multi\nline\",x",
+      "expected": [
+        [
+          "multi\nline",
+          "x"
+        ]
+      ]
+    },
+    {
+      "name": "\"a,\\\"b\"",
+      "text": "a,\"b",
+      "expected": null
+    },
+    {
+      "name": "\"\\\"a\\\"x,b\"",
+      "text": "\"a\"x,b",
+      "expected": null
+    },
+    {
+      "name": "\"a\\\"b,c\"",
+      "text": "a\"b,c",
+      "expected": [
+        [
+          "a\"b",
+          "c"
+        ]
+      ]
+    },
+    {
+      "name": "\"a,\"",
+      "text": "a,",
+      "expected": [
+        [
+          "a",
+          ""
+        ]
+      ]
+    },
+    {
+      "name": "\",\"",
+      "text": ",",
+      "expected": [
+        [
+          "",
+          ""
+        ]
+      ]
+    },
+    {
+      "name": "\"\"",
+      "text": "",
+      "expected": null
+    },
+    {
+      "name": "\"\\n\"",
+      "text": "\n",
+      "expected": [
+        [
+          ""
+        ]
+      ]
+    },
+    {
+      "name": "\"a\\r\\n\\r\\nb\"",
+      "text": "a\r\n\r\nb",
+      "expected": [
+        [
+          "a"
+        ],
+        [
+          ""
+        ],
+        [
+          "b"
+        ]
+      ]
+    },
+    {
+      "name": "\"\\\"\\\",\\\"\\\"\"",
+      "text": "\"\",\"\"",
+      "expected": [
+        [
+          "",
+          ""
+        ]
+      ]
+    },
+    {
+      "name": "\"\\\"中\\\",文\"",
+      "text": "\"中\",文",
+      "expected": [
+        [
+          "中",
+          "文"
+        ]
+      ]
+    }
+  ],
+  "grid_from_csv_paste": [
+    {
+      "name": "\"a,b\\r\\nc,d\"",
+      "text": "a,b\r\nc,d",
+      "expected": [
+        [
+          "a",
+          "b"
+        ],
+        [
+          "c",
+          "d"
+        ]
+      ]
+    },
+    {
+      "name": "\"a,b\\r\\nc,d\\r\\n\"",
+      "text": "a,b\r\nc,d\r\n",
+      "expected": [
+        [
+          "a",
+          "b"
+        ],
+        [
+          "c",
+          "d"
+        ]
+      ]
+    },
+    {
+      "name": "\"a,b\\nc,d\"",
+      "text": "a,b\nc,d",
+      "expected": null
+    },
+    {
+      "name": "\"a,b\\r\\nc,d\\ne,f\"",
+      "text": "a,b\r\nc,d\ne,f",
+      "expected": null
+    },
+    {
+      "name": "\"a,b\"",
+      "text": "a,b",
+      "expected": null
+    },
+    {
+      "name": "\"a\\r\\nb\"",
+      "text": "a\r\nb",
+      "expected": null
+    },
+    {
+      "name": "\"a, b\\r\\nc, d\"",
+      "text": "a, b\r\nc, d",
+      "expected": null
+    },
+    {
+      "name": "\"a,b\\r\\nc\"",
+      "text": "a,b\r\nc",
+      "expected": null
+    },
+    {
+      "name": "\"\\\"x\\ny\\\",b\\r\\nc,d\"",
+      "text": "\"x\ny\",b\r\nc,d",
+      "expected": null
+    },
+    {
+      "name": "\"\\\"x\\r\\ny\\\",b\\r\\nc,d\"",
+      "text": "\"x\r\ny\",b\r\nc,d",
+      "expected": [
+        [
+          "x\r\ny",
+          "b"
+        ],
+        [
+          "c",
+          "d"
+        ]
+      ]
+    }
+  ],
+  "html_from_grid": [
+    {
+      "name": "a header row and escaped text",
+      "shown": [
+        [
+          "a&b",
+          "<c>"
+        ],
+        [
+          "\"d\"",
+          "e"
+        ]
+      ],
+      "source": [
+        [
+          "**a**&b",
+          "<c>"
+        ],
+        [
+          "\"d\"",
+          "e"
+        ]
+      ],
+      "header": true,
+      "expected": "<table><tr><th data-markdown-cell=\"**a**&amp;b\">a&amp;b</th><th data-markdown-cell=\"&lt;c&gt;\">&lt;c&gt;</th></tr><tr><td data-markdown-cell=\"&quot;d&quot;\">&quot;d&quot;</td><td data-markdown-cell=\"e\">e</td></tr></table>"
+    },
+    {
+      "name": "source missing cells",
+      "shown": [
+        [
+          "a",
+          "b"
+        ]
+      ],
+      "source": [
+        [
+          "x"
+        ]
+      ],
+      "header": false,
+      "expected": "<table><tr><td data-markdown-cell=\"x\">a</td><td data-markdown-cell=\"b\">b</td></tr></table>"
+    },
+    {
+      "name": "empty",
+      "shown": [],
+      "source": [],
+      "header": true,
+      "expected": "<table></table>"
+    }
+  ],
+  "paste_rect": [
+    {
+      "name": "a grid at a start",
+      "grid": [
+        [
+          "a",
+          "b"
+        ],
+        [
+          "c",
+          "d"
+        ]
+      ],
+      "start": [
+        2,
+        3
+      ],
+      "probes": [
+        [
+          2,
+          3
+        ],
+        [
+          3,
+          4
+        ],
+        [
+          2,
+          4
+        ],
+        [
+          4,
+          3
+        ],
+        [
+          1,
+          3
+        ]
+      ],
+      "expected": {
+        "rect": {
+          "top": 2,
+          "left": 3,
+          "bottom": 3,
+          "right": 4
+        },
+        "values": [
+          "a",
+          "d",
+          "b",
+          "",
+          ""
+        ]
+      }
+    },
+    {
+      "name": "one cell fills a range",
+      "grid": [
+        [
+          "x"
+        ]
+      ],
+      "start": [
+        0,
+        0
+      ],
+      "range": {
+        "top": 1,
+        "left": 1,
+        "bottom": 3,
+        "right": 2
+      },
+      "probes": [
+        [
+          1,
+          1
+        ],
+        [
+          3,
+          2
+        ],
+        [
+          9,
+          9
+        ]
+      ],
+      "expected": {
+        "rect": {
+          "top": 1,
+          "left": 1,
+          "bottom": 3,
+          "right": 2
+        },
+        "values": [
+          "x",
+          "x",
+          "x"
+        ]
+      }
+    },
+    {
+      "name": "a range is ignored for a larger grid",
+      "grid": [
+        [
+          "a",
+          "b"
+        ]
+      ],
+      "start": [
+        0,
+        0
+      ],
+      "range": {
+        "top": 1,
+        "left": 1,
+        "bottom": 3,
+        "right": 2
+      },
+      "probes": [
+        [
+          0,
+          1
+        ]
+      ],
+      "expected": {
+        "rect": {
+          "top": 0,
+          "left": 0,
+          "bottom": 0,
+          "right": 1
+        },
+        "values": [
+          "b"
+        ]
+      }
+    },
+    {
+      "name": "a ragged grid",
+      "grid": [
+        [
+          "a",
+          "b"
+        ],
+        [
+          "c"
+        ]
+      ],
+      "start": [
+        0,
+        0
+      ],
+      "probes": [
+        [
+          1,
+          1
+        ],
+        [
+          1,
+          0
+        ]
+      ],
+      "expected": {
+        "rect": {
+          "top": 0,
+          "left": 0,
+          "bottom": 1,
+          "right": 1
+        },
+        "values": [
+          "",
+          "c"
+        ]
+      }
+    },
+    {
+      "name": "an empty grid covers nothing",
+      "grid": [],
+      "start": [
+        0,
+        0
+      ],
+      "probes": [],
+      "expected": null
+    },
+    {
+      "name": "an empty first row covers nothing",
+      "grid": [
+        []
+      ],
+      "start": [
+        1,
+        1
+      ],
+      "probes": [],
+      "expected": null
+    }
+  ],
+  "round_trip": [
+    {
+      "name": "plain cells, TSV",
+      "grid": [
+        [
+          "a",
+          "b"
+        ],
+        [
+          "c",
+          "d"
+        ]
+      ],
+      "format": "tsv",
+      "expected": [
+        [
+          "a",
+          "b"
+        ],
+        [
+          "c",
+          "d"
+        ]
+      ]
+    },
+    {
+      "name": "plain cells, CSV",
+      "grid": [
+        [
+          "a",
+          "b"
+        ],
+        [
+          "c",
+          "d"
+        ]
+      ],
+      "format": "csv",
+      "expected": [
+        [
+          "a",
+          "b"
+        ],
+        [
+          "c",
+          "d"
+        ]
+      ]
+    },
+    {
+      "name": "quotes, commas and breaks, TSV",
+      "grid": [
+        [
+          "a,b",
+          "c\"d"
+        ],
+        [
+          "e\r\nf",
+          "g"
+        ]
+      ],
+      "format": "tsv",
+      "expected": [
+        [
+          "a,b",
+          "c\"d"
+        ],
+        [
+          "e  f",
+          "g"
+        ]
+      ]
+    },
+    {
+      "name": "quotes, commas and breaks, CSV",
+      "grid": [
+        [
+          "a,b",
+          "c\"d"
+        ],
+        [
+          "e\r\nf",
+          "g"
+        ]
+      ],
+      "format": "csv",
+      "expected": [
+        [
+          "a,b",
+          "c\"d"
+        ],
+        [
+          "e\r\nf",
+          "g"
+        ]
+      ]
+    },
+    {
+      "name": "tabs and breaks, TSV",
+      "grid": [
+        [
+          "a\tb",
+          "c\nd"
+        ],
+        [
+          "e",
+          "f"
+        ]
+      ],
+      "format": "tsv",
+      "expected": [
+        [
+          "a b",
+          "c d"
+        ],
+        [
+          "e",
+          "f"
+        ]
+      ]
+    },
+    {
+      "name": "tabs and breaks, CSV",
+      "grid": [
+        [
+          "a\tb",
+          "c\nd"
+        ],
+        [
+          "e",
+          "f"
+        ]
+      ],
+      "format": "csv",
+      "expected": [
+        [
+          "a\tb",
+          "c\nd"
+        ],
+        [
+          "e",
+          "f"
+        ]
+      ]
+    },
+    {
+      "name": "wide cells, TSV",
+      "grid": [
+        [
+          "中",
+          "文"
+        ],
+        [
+          "👍",
+          "é"
+        ]
+      ],
+      "format": "tsv",
+      "expected": [
+        [
+          "中",
+          "文"
+        ],
+        [
+          "👍",
+          "é"
+        ]
+      ]
+    },
+    {
+      "name": "wide cells, CSV",
+      "grid": [
+        [
+          "中",
+          "文"
+        ],
+        [
+          "👍",
+          "é"
+        ]
+      ],
+      "format": "csv",
+      "expected": [
+        [
+          "中",
+          "文"
+        ],
+        [
+          "👍",
+          "é"
+        ]
+      ]
+    },
+    {
+      "name": "an empty cell, TSV",
+      "grid": [
+        [
+          "",
+          "x"
+        ],
+        [
+          "y",
+          "z"
+        ]
+      ],
+      "format": "tsv",
+      "expected": [
+        [
+          "",
+          "x"
+        ],
+        [
+          "y",
+          "z"
+        ]
+      ]
+    },
+    {
+      "name": "an empty cell, CSV",
+      "grid": [
+        [
+          "",
+          "x"
+        ],
+        [
+          "y",
+          "z"
+        ]
+      ],
+      "format": "csv",
+      "expected": [
+        [
+          "",
+          "x"
+        ],
+        [
+          "y",
+          "z"
+        ]
+      ]
+    }
+  ],
+  "sniff_delimiter": [
+    {
+      "name": "\"a,b,c\\n1,2,3\"",
+      "text": "a,b,c\n1,2,3",
+      "expected": ","
+    },
+    {
+      "name": "\"a\\tb\\n1\\t2\"",
+      "text": "a\tb\n1\t2",
+      "expected": "\t"
+    },
+    {
+      "name": "\"a;b\\n1;2\\n3;4\"",
+      "text": "a;b\n1;2\n3;4",
+      "expected": ";"
+    },
+    {
+      "name": "\"a|b\\n1|2\"",
+      "text": "a|b\n1|2",
+      "expected": "|"
+    },
+    {
+      "name": "\"no delimiters\"",
+      "text": "no delimiters",
+      "expected": ","
+    },
+    {
+      "name": "\"\"",
+      "text": "",
+      "expected": ","
+    },
+    {
+      "name": "\"\\\"a,b\\\";c\\n\\\"d,e\\\";f\"",
+      "text": "\"a,b\";c\n\"d,e\";f",
+      "expected": ";"
+    },
+    {
+      "name": "\"a,b;c\\nd,e;f\\ng;h\"",
+      "text": "a,b;c\nd,e;f\ng;h",
+      "expected": ";"
+    },
+    {
+      "name": "\"a;b,c,d\\ne;f\"",
+      "text": "a;b,c,d\ne;f",
+      "expected": ";"
+    }
+  ],
+  "delimiter_name": [
+    {
+      "name": "\",\"",
+      "delimiter": ",",
+      "expected": "comma"
+    },
+    {
+      "name": "\"\\t\"",
+      "delimiter": "\t",
+      "expected": "tab"
+    },
+    {
+      "name": "\";\"",
+      "delimiter": ";",
+      "expected": "semicolon"
+    },
+    {
+      "name": "\"|\"",
+      "delimiter": "|",
+      "expected": "pipe"
+    }
+  ],
+  "parse_delimited": [
+    {
+      "name": "simple records",
+      "text": "a,b\n1,2\n",
+      "delimiter": ",",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "a",
+              "b"
+            ],
+            "line": 1,
+            "issue": null
+          },
+          {
+            "fields": [
+              "1",
+              "2"
+            ],
+            "line": 2,
+            "issue": null
+          }
+        ],
+        "issues": []
+      }
+    },
+    {
+      "name": "a BOM is dropped",
+      "text": "﻿a,b\n1,2",
+      "delimiter": ",",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "a",
+              "b"
+            ],
+            "line": 1,
+            "issue": null
+          },
+          {
+            "fields": [
+              "1",
+              "2"
+            ],
+            "line": 2,
+            "issue": null
+          }
+        ],
+        "issues": []
+      }
+    },
+    {
+      "name": "quoted fields with delimiters, quotes and breaks",
+      "text": "\"a,b\",\"c\"\"d\",\"e\nf\"\nx,y",
+      "delimiter": ",",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "a,b",
+              "c\"d",
+              "e\nf"
+            ],
+            "line": 1,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x",
+              "y"
+            ],
+            "line": 3,
+            "issue": null
+          }
+        ],
+        "issues": []
+      }
+    },
+    {
+      "name": "blank lines add no record",
+      "text": "a\n\n\nb",
+      "delimiter": ",",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "a"
+            ],
+            "line": 1,
+            "issue": null
+          },
+          {
+            "fields": [
+              "b"
+            ],
+            "line": 4,
+            "issue": null
+          }
+        ],
+        "issues": []
+      }
+    },
+    {
+      "name": "CRLF and CR",
+      "text": "a\r\nb\rc",
+      "delimiter": ",",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "a"
+            ],
+            "line": 1,
+            "issue": null
+          },
+          {
+            "fields": [
+              "b"
+            ],
+            "line": 2,
+            "issue": null
+          },
+          {
+            "fields": [
+              "c"
+            ],
+            "line": 3,
+            "issue": null
+          }
+        ],
+        "issues": []
+      }
+    },
+    {
+      "name": "an unclosed quote",
+      "text": "\"abc,def\nx,y",
+      "delimiter": ",",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "\"abc",
+              "def"
+            ],
+            "line": 1,
+            "issue": "Unclosed quote; read as text"
+          },
+          {
+            "fields": [
+              "x",
+              "y"
+            ],
+            "line": 2,
+            "issue": null
+          }
+        ],
+        "issues": [
+          {
+            "line": 1,
+            "message": "Unclosed quote; read as text"
+          }
+        ]
+      }
+    },
+    {
+      "name": "text after a closing quote",
+      "text": "\"ab\"cd,e",
+      "delimiter": ",",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "abcd",
+              "e"
+            ],
+            "line": 1,
+            "issue": "Text after a closing quote; kept as written"
+          }
+        ],
+        "issues": [
+          {
+            "line": 1,
+            "message": "Text after a closing quote; kept as written"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a quote closing on a later line, not at a field end",
+      "text": "\"a\nb\"c,d\ne",
+      "delimiter": ",",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "\"a"
+            ],
+            "line": 1,
+            "issue": "Unclosed quote; read as text"
+          },
+          {
+            "fields": [
+              "b\"c",
+              "d"
+            ],
+            "line": 2,
+            "issue": null
+          },
+          {
+            "fields": [
+              "e"
+            ],
+            "line": 3,
+            "issue": null
+          }
+        ],
+        "issues": [
+          {
+            "line": 1,
+            "message": "Unclosed quote; read as text"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a semicolon delimiter",
+      "text": "a;\"b;c\"\n1;2",
+      "delimiter": ";",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "a",
+              "b;c"
+            ],
+            "line": 1,
+            "issue": null
+          },
+          {
+            "fields": [
+              "1",
+              "2"
+            ],
+            "line": 2,
+            "issue": null
+          }
+        ],
+        "issues": []
+      }
+    },
+    {
+      "name": "a tab delimiter",
+      "text": "a\tb",
+      "delimiter": "\t",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "a",
+              "b"
+            ],
+            "line": 1,
+            "issue": null
+          }
+        ],
+        "issues": []
+      }
+    },
+    {
+      "name": "wide text",
+      "text": "中,文\n\"é,👍\",x",
+      "delimiter": ",",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "中",
+              "文"
+            ],
+            "line": 1,
+            "issue": null
+          },
+          {
+            "fields": [
+              "é,👍",
+              "x"
+            ],
+            "line": 2,
+            "issue": null
+          }
+        ],
+        "issues": []
+      }
+    },
+    {
+      "name": "a quoted field over 50 lines",
+      "text": "\"x\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\nx\n\",b",
+      "delimiter": ",",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "\"x"
+            ],
+            "line": 1,
+            "issue": "Unclosed quote; read as text"
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 2,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 3,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 4,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 5,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 6,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 7,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 8,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 9,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 10,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 11,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 12,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 13,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 14,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 15,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 16,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 17,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 18,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 19,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 20,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 21,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 22,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 23,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 24,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 25,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 26,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 27,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 28,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 29,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 30,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 31,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 32,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 33,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 34,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 35,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 36,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 37,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 38,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 39,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 40,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 41,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 42,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 43,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 44,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 45,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 46,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 47,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 48,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 49,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 50,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x"
+            ],
+            "line": 51,
+            "issue": null
+          },
+          {
+            "fields": [
+              "\"",
+              "b"
+            ],
+            "line": 52,
+            "issue": "Unclosed quote; read as text"
+          }
+        ],
+        "issues": [
+          {
+            "line": 1,
+            "message": "Unclosed quote; read as text"
+          },
+          {
+            "line": 52,
+            "message": "Unclosed quote; read as text"
+          }
+        ]
+      }
+    },
+    {
+      "name": "an empty file",
+      "text": "",
+      "delimiter": ",",
+      "expected": {
+        "records": [],
+        "issues": []
+      }
+    },
+    {
+      "name": "only a BOM",
+      "text": "﻿",
+      "delimiter": ",",
+      "expected": {
+        "records": [],
+        "issues": []
+      }
+    },
+    {
+      "name": "an empty quoted field",
+      "text": "\"\",a",
+      "delimiter": ",",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "",
+              "a"
+            ],
+            "line": 1,
+            "issue": null
+          }
+        ],
+        "issues": []
+      }
+    }
+  ],
+  "looks_like_header": [
+    {
+      "name": "null",
+      "first": null,
+      "expected": false
+    },
+    {
+      "name": "[]",
+      "first": [],
+      "expected": false
+    },
+    {
+      "name": "[\"name\",\"qty\"]",
+      "first": [
+        "name",
+        "qty"
+      ],
+      "expected": true
+    },
+    {
+      "name": "[\"a\",\"a\"]",
+      "first": [
+        "a",
+        "a"
+      ],
+      "expected": false
+    },
+    {
+      "name": "[\"a\",\"\"]",
+      "first": [
+        "a",
+        ""
+      ],
+      "expected": false
+    },
+    {
+      "name": "[\"a\",\" \"]",
+      "first": [
+        "a",
+        " "
+      ],
+      "expected": false
+    },
+    {
+      "name": "[\"a\",\"1\"]",
+      "first": [
+        "a",
+        "1"
+      ],
+      "expected": false
+    },
+    {
+      "name": "[\"a\",\"-1.5e3\"]",
+      "first": [
+        "a",
+        "-1.5e3"
+      ],
+      "expected": false
+    },
+    {
+      "name": "[\"a\",\"1,234\"]",
+      "first": [
+        "a",
+        "1,234"
+      ],
+      "expected": false
+    },
+    {
+      "name": "[\"a\",\"1,23\"]",
+      "first": [
+        "a",
+        "1,23"
+      ],
+      "expected": true
+    },
+    {
+      "name": "[\"a\",\".5\"]",
+      "first": [
+        "a",
+        ".5"
+      ],
+      "expected": false
+    },
+    {
+      "name": "[\"a\",\"1.\"]",
+      "first": [
+        "a",
+        "1."
+      ],
+      "expected": true
+    },
+    {
+      "name": "[\"a\",\"+12,345.6\"]",
+      "first": [
+        "a",
+        "+12,345.6"
+      ],
+      "expected": false
+    },
+    {
+      "name": "[\"a\",\"x1\"]",
+      "first": [
+        "a",
+        "x1"
+      ],
+      "expected": true
+    },
+    {
+      "name": "[\" a \",\"a\"]",
+      "first": [
+        " a ",
+        "a"
+      ],
+      "expected": false
+    }
+  ],
+  "read_delimited": [
+    {
+      "name": "the README file",
+      "text": "name;qty\napple;3\npear\n",
+      "expected": {
+        "delimiter": ";",
+        "header": [
+          "name",
+          "qty"
+        ],
+        "rows": [
+          {
+            "fields": [
+              "apple",
+              "3"
+            ],
+            "line": 2,
+            "issue": null
+          },
+          {
+            "fields": [
+              "pear"
+            ],
+            "line": 3,
+            "issue": "1 fields, header has 2"
+          }
+        ],
+        "width": 2,
+        "issues": [
+          {
+            "line": 3,
+            "message": "1 fields, header has 2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "numbers make no header",
+      "text": "1,2\n3,4,5",
+      "expected": {
+        "delimiter": ",",
+        "header": null,
+        "rows": [
+          {
+            "fields": [
+              "1",
+              "2"
+            ],
+            "line": 1,
+            "issue": "2 fields, widest row has 3"
+          },
+          {
+            "fields": [
+              "3",
+              "4",
+              "5"
+            ],
+            "line": 2,
+            "issue": null
+          }
+        ],
+        "width": 3,
+        "issues": [
+          {
+            "line": 1,
+            "message": "2 fields, widest row has 3"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a given delimiter",
+      "text": "a;b\n1;2",
+      "delimiter": ",",
+      "expected": {
+        "delimiter": ",",
+        "header": [
+          "a;b"
+        ],
+        "rows": [
+          {
+            "fields": [
+              "1;2"
+            ],
+            "line": 2,
+            "issue": null
+          }
+        ],
+        "width": 1,
+        "issues": []
+      }
+    },
+    {
+      "name": "a given header",
+      "text": "1,2\n3,4",
+      "header": true,
+      "expected": {
+        "delimiter": ",",
+        "header": [
+          "1",
+          "2"
+        ],
+        "rows": [
+          {
+            "fields": [
+              "3",
+              "4"
+            ],
+            "line": 2,
+            "issue": null
+          }
+        ],
+        "width": 2,
+        "issues": []
+      }
+    },
+    {
+      "name": "no header asked for",
+      "text": "a,b\n1,2",
+      "header": false,
+      "expected": {
+        "delimiter": ",",
+        "header": null,
+        "rows": [
+          {
+            "fields": [
+              "a",
+              "b"
+            ],
+            "line": 1,
+            "issue": null
+          },
+          {
+            "fields": [
+              "1",
+              "2"
+            ],
+            "line": 2,
+            "issue": null
+          }
+        ],
+        "width": 2,
+        "issues": []
+      }
+    },
+    {
+      "name": "an empty file",
+      "text": "",
+      "expected": {
+        "delimiter": ",",
+        "header": null,
+        "rows": [],
+        "width": 0,
+        "issues": []
+      }
+    },
+    {
+      "name": "a header with no rows",
+      "text": "a,b",
+      "expected": {
+        "delimiter": ",",
+        "header": [
+          "a",
+          "b"
+        ],
+        "rows": [],
+        "width": 2,
+        "issues": []
+      }
+    },
+    {
+      "name": "issues sorted by line",
+      "text": "a,b\n\"x\n1,2,3",
+      "expected": {
+        "delimiter": ",",
+        "header": [
+          "a",
+          "b"
+        ],
+        "rows": [
+          {
+            "fields": [
+              "\"x"
+            ],
+            "line": 2,
+            "issue": "Unclosed quote; read as text"
+          },
+          {
+            "fields": [
+              "1",
+              "2",
+              "3"
+            ],
+            "line": 3,
+            "issue": "3 fields, header has 2"
+          }
+        ],
+        "width": 3,
+        "issues": [
+          {
+            "line": 2,
+            "message": "Unclosed quote; read as text"
+          },
+          {
+            "line": 3,
+            "message": "3 fields, header has 2"
+          }
+        ]
+      }
+    },
+    {
+      "name": "a long row",
+      "text": "a,b\n1,2,3\n4,5",
+      "expected": {
+        "delimiter": ",",
+        "header": [
+          "a",
+          "b"
+        ],
+        "rows": [
+          {
+            "fields": [
+              "1",
+              "2",
+              "3"
+            ],
+            "line": 2,
+            "issue": "3 fields, header has 2"
+          },
+          {
+            "fields": [
+              "4",
+              "5"
+            ],
+            "line": 3,
+            "issue": null
+          }
+        ],
+        "width": 3,
+        "issues": [
+          {
+            "line": 2,
+            "message": "3 fields, header has 2"
+          }
+        ]
+      }
+    }
+  ]
+}

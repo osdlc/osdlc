@@ -451,6 +451,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "gfm-pipe-table"
+version = "0.4.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "globset"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"

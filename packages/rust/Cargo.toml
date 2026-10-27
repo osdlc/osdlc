@@ -9,7 +9,7 @@
 [workspace]
 # resolver 3 picks dependency versions that support `rust-version` (the MSRV).
 resolver = "3"
-members = ["agent-adapt", "config-layers", "etag-write", "frontmatter-lossless", "markdown-contract", "markdown-link", "markdown-relink", "markdown-vault-fs", "path-guard", "slug-collate", "tiered-dirs", "tradecraft", "tradecraft-core", "tradecraft-typegen", "tradecraft-wasm", "typed-git", "yaml-splice", "yaml-splice-wasm"]
+members = ["agent-adapt", "config-layers", "etag-write", "frontmatter-lossless", "gfm-pipe-table", "markdown-contract", "markdown-link", "markdown-relink", "markdown-vault-fs", "path-guard", "slug-collate", "tiered-dirs", "tradecraft", "tradecraft-core", "tradecraft-typegen", "tradecraft-wasm", "typed-git", "yaml-splice", "yaml-splice-wasm"]
 
 [workspace.package]
 edition = "2024"
@@ -70,6 +70,7 @@ agent-adapt = { path = "agent-adapt", version = "0.19.1" }
 config-layers = { path = "config-layers", version = "0.7.1" }
 etag-write = { path = "etag-write", version = "0.2.4" }
 frontmatter-lossless = { path = "frontmatter-lossless", version = "1.1.1" }
+gfm-pipe-table = { path = "gfm-pipe-table", version = "0.4.0" }
 markdown-link = { path = "markdown-link", version = "0.5.0" }
 markdown-relink = { path = "markdown-relink", version = "0.1.5" }
 markdown-vault-fs = { path = "markdown-vault-fs", version = "0.3.1" }

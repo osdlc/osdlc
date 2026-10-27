@@ -66,7 +66,8 @@ behaviour, not the same code.
 - **Same behaviour.** For the same input, both twins return the same result
   or refuse it with the same error kind. A shared fixture of cases checks
   it: `packages/rust/<name>/tests/fixtures/parity.json`, run by both twins'
-  tests. `tiered-dirs`, `path-guard` and `config-layers` have one.
+  tests. `tiered-dirs`, `path-guard`, `config-layers` and `gfm-pipe-table`
+  (the twin of `@osdlc/gfm-table`) have one.
   `frontmatter-lossless` uses its crate's `tests/fixtures/conformance.json`,
   with a copy in the TypeScript package. `markdown-contract` runs the
   TypeScript package's `corpus/` directly, with no copy. `etag-write` has no
@@ -117,6 +118,8 @@ Developed here, in this repository:
 - `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/frontmatter-lossless` (`frontmatter-lossless` on crates.io)
+- `packages/rust/gfm-pipe-table` (`gfm-pipe-table` on crates.io, the Rust twin
+  of `@osdlc/gfm-table`: GFM pipe tables as strings and byte offsets)
 - `packages/rust/markdown-contract` (`markdown-contract` on crates.io, the Rust twin
   of `@osdlc/markdown-contract`: contracts for markdown documents, checked
   against the package's corpus)
@@ -326,6 +329,8 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    Held now (each crate's `Cargo.toml` names what it waits for):
    - `markdown-contract`, until the parity fixes from the review of
      [#460](https://github.com/osdlc/osdlc/pull/460) land.
+   - `gfm-pipe-table`, until its first release can have a release-plz run of
+     its own: it needs `CARGO_REGISTRY_TOKEN` (rules 3 and 4).
 
 #### Versions and breaking changes
 

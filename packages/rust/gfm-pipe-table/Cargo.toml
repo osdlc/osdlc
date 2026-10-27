@@ -1,0 +1,39 @@
+[package]
+name = "gfm-pipe-table"
+version = "0.4.0"
+# Held back from crates.io for now: a first release needs CARGO_REGISTRY_TOKEN,
+# so it cannot share a release-plz run with crates that publish through
+# trusted publishing (packages/README.md, crates.io rules 4 and 7). Remove
+# this line, and its entry in release-plz.toml, in a pull request of its own.
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+description = "GFM pipe tables as strings and byte offsets: row splitting with the backslash-escape rule, cell text and escaping, row splices, reading and rendering whole tables, column padding that lines up the pipes, and grid clipboard formats (TSV, CSV, HTML). No dependencies. The Rust twin of @osdlc/gfm-table."
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["markdown", "gfm", "table", "csv", "clipboard"]
+categories = ["parser-implementations", "text-processing"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[lib]
+name = "gfm_pipe_table"
+
+[dependencies]
+
+# tests/parity.rs only: it reads tests/fixtures/parity.json, the fixture the
+# TypeScript package (packages/ts/gfm-table) reads in place. The crate parses
+# no JSON at runtime.
+[dev-dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true
