@@ -52,6 +52,28 @@ describe('validateToolDef', () => {
     ])
   })
 
+  test('checks each ecosystem manifest, language and tool entry', () => {
+    expect(
+      validateToolDef({
+        id: 'x',
+        roles: {},
+        ecosystem: {
+          id: 'e',
+          manifests: [{ file: 'x.toml' }, { files: 'y.toml', slot: 3, parse: 'no' }],
+          languages: ['ts', { id: 'go', files: [1] }],
+          tools: ['a', 2],
+        },
+      }),
+    ).toEqual([
+      'ecosystem.manifests[0].files is not a string',
+      'ecosystem.manifests[1].slot is not a string',
+      'ecosystem.manifests[1].parse is not a function',
+      'ecosystem.languages[0].id is not a string',
+      'ecosystem.languages[1].files is not a list of strings',
+      'ecosystem.tools[1] is not a string',
+    ])
+  })
+
   test('a value that is not an object, or has no roles', () => {
     expect(validateToolDef(null)).toEqual(['the tool is not an object'])
     expect(validateToolDef([])).toEqual(['the tool is not an object'])

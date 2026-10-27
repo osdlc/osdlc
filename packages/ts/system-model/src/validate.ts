@@ -49,6 +49,37 @@ export function validateToolDef(value: unknown): string[] {
       for (const key of ['manifests', 'languages', 'tools']) {
         if (!Array.isArray(eco[key])) out.push(`ecosystem.${key} is not an array`)
       }
+      // Detection compiles each `files` pattern, so a bad entry would throw there.
+      const manifests = eco['manifests']
+      if (Array.isArray(manifests)) {
+        manifests.forEach((m: unknown, i) => {
+          const at = `ecosystem.manifests[${i}].`
+          if (!isObject(m) || typeof m['files'] !== 'string') {
+            out.push(`${at}files is not a string`)
+            return
+          }
+          optionalString(m, 'tool', at, out)
+          optionalString(m, 'slot', at, out)
+          optionalFunction(m, 'parse', at, out)
+        })
+      }
+      const languages = eco['languages']
+      if (Array.isArray(languages)) {
+        languages.forEach((l: unknown, i) => {
+          const at = `ecosystem.languages[${i}].`
+          if (!isObject(l) || typeof l['id'] !== 'string') {
+            out.push(`${at}id is not a string`)
+            return
+          }
+          for (const key of ['files', 'dependencies', 'tools']) optionalStrings(l, key, at, out)
+        })
+      }
+      const tools = eco['tools']
+      if (Array.isArray(tools)) {
+        tools.forEach((t: unknown, i) => {
+          if (typeof t !== 'string') out.push(`ecosystem.tools[${i}] is not a string`)
+        })
+      }
     }
   }
 

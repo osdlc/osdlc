@@ -43,7 +43,10 @@ export interface EntryMatch {
 }
 
 /** `fuzzy` matches letters in order; `exact` matches substrings. */
-export type Mode = 'fuzzy' | 'exact'
+export type Mode = (typeof ALL_MATCH_MODES)[number]
+
+/** The known {@link Mode}s. */
+export const ALL_MATCH_MODES = ['fuzzy', 'exact'] as const
 
 /**
  * Case-insensitive subsequence match. Consecutive characters and matches at a

@@ -49,6 +49,12 @@ describe('commandString', () => {
     expect(commandString(['ls'], { platform: 'linux', cwd: '-x' })).toBe('cd -- -x && ls')
   })
 
+  test('POSIX cwd `-` is ./-, since cd reads `-` as $OLDPWD even after --', () => {
+    expect(commandString(['rm', '-rf', 'build'], { platform: 'linux', cwd: '-' })).toBe(
+      'cd ./- && rm -rf build',
+    )
+  })
+
   test('PowerShell single-quotes anything not inert and doubles single quotes', () => {
     const ps = (w: string) =>
       commandString(['tool', w], { shell: 'powershell' }).slice('& tool '.length)

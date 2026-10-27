@@ -15,9 +15,11 @@ export const rustEcosystem: EcosystemDef = {
   languages: [{ id: 'rust' }],
   tools: ['cargo'],
   // `exclude` entries become `!` negations, as in a node workspace glob list.
+  // A root whose TOML did not parse has unknown members, not none.
   workspace: (pkg) => {
     const cargo = pkg.manifests.cargo
     if (!cargo?.workspace) return undefined
+    if (cargo.error !== undefined) return null
     return [
       ...(cargo.workspaceMembers ?? []),
       ...(cargo.workspaceExclude ?? []).map((e) => `!${e}`),

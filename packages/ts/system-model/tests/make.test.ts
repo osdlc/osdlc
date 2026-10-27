@@ -75,15 +75,50 @@ describe('make runner', () => {
     expect(found.map((t) => t.source).sort()).toEqual(['a/makefile', 'b/GNUmakefile'])
   })
 
-  test('reads one makefile per directory, the last in sorted order', async () => {
+  test('reads the makefile GNU make would read: GNUmakefile, then makefile, then Makefile', async () => {
     const dir = await root({
       GNUmakefile: 'from-gnu:\n\techo\n',
       makefile: 'from-lower:\n\techo\n',
+      'b/GNUmakefile': 'from-gnu:\n\techo\n',
+      'b/Makefile': 'from-upper:\n\techo\n',
     })
     const { options } = opts()
     const found = tasks(await collect(dir, { ...options, only: ['make'] }))
 
-    expect(found.map((t) => t.path[2])).toEqual(['from-lower'])
+    expect(found.map((t) => t.source).sort()).toEqual(['GNUmakefile', 'b/GNUmakefile'])
+  })
+
+  // A case-insensitive filesystem cannot hold both names in one directory.
+  test.skipIf(process.platform === 'darwin' || process.platform === 'win32')(
+    'makefile wins over Makefile',
+    async () => {
+      const dir = await root({ makefile: 'a:\n\techo\n', Makefile: 'b:\n\techo\n' })
+      const { options } = opts()
+      const found = tasks(await collect(dir, { ...options, only: ['make'] }))
+
+      expect(found.map((t) => t.path[2])).toEqual(['a'])
+    },
+  )
+
+  test('reads every target of a multi-target line, and skips `::=` and `:::=` assignments', async () => {
+    const dir = await root({
+      Makefile: [
+        'clean distclean:',
+        '\trm -rf out',
+        'all::',
+        '\techo',
+        'fmt: ; gofmt',
+        'CFLAGS ::= -O2',
+        'LDFLAGS :::= -s',
+        'export X := 1',
+        'Y ?= 2',
+        '$(info a: b)',
+      ].join('\n'),
+    })
+    const { options } = opts()
+    const found = tasks(await collect(dir, { ...options, only: ['make'] }))
+
+    expect(found.map((t) => t.path[2])).toEqual(['all', 'clean', 'distclean', 'fmt'])
   })
 
   test('no makefile means no report', async () => {

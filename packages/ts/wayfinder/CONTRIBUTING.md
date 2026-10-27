@@ -23,7 +23,8 @@ work in the package directory. The tests run on [Vitest](https://vitest.dev)
 under Node 22.22.2 or later. They build throwaway repositories in a temp
 directory, need `git` on the PATH, and need no network. The package imports its
 sibling libraries through their built `dist/`, so run `pnpm run build` at the
-repository root first.
+repository root first, and again after a pull. The suite stops before any test
+runs when a sibling's `dist/` is missing or older than its `src/`, and names it.
 
 ```sh
 pnpm install
@@ -43,6 +44,10 @@ diff.
 `--json` output with the golden files in `tests/e2e/__snapshots__/`. `pnpm
 test` includes it. After a deliberate change to the output, regenerate them
 with `pnpm run test:e2e -u` and review the diff.
+
+After a change to the config schema, run `pnpm run build`, then `pnpm run
+write:config-schema`, and commit `schema/config.json` and
+`docs/guide/configuration.md`.
 
 Other checks:
 

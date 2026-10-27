@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { existsSync } from 'node:fs'
 import { isatty } from 'node:tty'
 
+import type { CodeHost, CodeHostPrDetail } from '@osdlc/code-host'
 import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
 import { IDENTITY, makeBareAndWorker } from '@osdlc/typed-git/testing'
 
@@ -23,11 +24,13 @@ import { attemptsDir, fileAttemptStore, listAttempts } from '../src/update/attem
 import type { UpdateResult } from '../src/update/execute.ts'
 import {
   applyStrategyOverride,
+  renderUpdateText,
   runUpdate,
   selectTargets,
   toResult,
   UpdateUsageError,
   type UpdateArgs,
+  type UpdateOutput,
 } from '../src/update.ts'
 
 function cfg(patch: Record<string, unknown> = {}): PrUpdateConfig {
@@ -158,6 +161,18 @@ describe('selectTargets', () => {
     expect(skipped).toEqual([{ number: 999, head: '', reason: 'not found in survey' }])
   })
 
+  test('a PR in a base/head cycle is reported in skipped, not lost or "not found"', () => {
+    const cyclic = { ...report([row({ number: 1 })]), cycles: [3, 4] }
+    expect(selectTargets(cyclic, []).skipped).toEqual([
+      { number: 3, head: '', reason: 'in a base/head cycle; no stack order to update it in' },
+      { number: 4, head: '', reason: 'in a base/head cycle; no stack order to update it in' },
+    ])
+    const scoped = selectTargets(cyclic, [3]).skipped
+    expect(scoped.find((s) => s.number === 3)!.reason).toContain('base/head cycle')
+    expect(scoped.find((s) => s.number === 4)!.reason).toBe('not selected by --pr/--branch')
+    expect(scoped.some((s) => s.reason === 'not found in survey')).toBe(false)
+  })
+
   test('every surveyed row lands in exactly one list, with or without --pr', () => {
     const rows = [row({ number: 1 }), row({ number: 2, status: 'up-to-date', behind: 0 })]
     const unfiltered = selectTargets(report(rows), [])
@@ -206,6 +221,51 @@ describe('toResult', () => {
       false,
     )
     expect(toResult(updateResult({ status: 'failed', reason: 'boom' })).pushed).toBe(false)
+  })
+})
+
+describe('renderUpdateText', () => {
+  type Result = UpdateOutput['results'][number]
+  const res = (patch: Partial<Result>): Result => ({
+    number: 1,
+    head: 'topic',
+    base: 'main',
+    strategy: 'rebase',
+    status: 'updated',
+    pushed: true,
+    detail: 'updated',
+    ...patch,
+  })
+  const counts = { updated: 1, upToDate: 0, conflict: 1, failed: 1, skipped: 1 }
+
+  test('marks each status, prints checkout and skipped lines, and the counts', () => {
+    const text = renderUpdateText({
+      applied: true,
+      results: [
+        res({ localCheckout: { updated: true, detail: 'moved to abc' } }),
+        res({ number: 2, status: 'updated', pushed: false, detail: 'would update' }),
+        res({ number: 3, status: 'failed', pushed: false, detail: 'boom' }),
+        res({ number: 4, status: 'conflict', pushed: false, detail: 'needs a human' }),
+      ],
+      skipped: [{ number: 5, head: 'other', reason: 'already up to date' }],
+      counts,
+    })
+    expect(text.split('\n')).toEqual([
+      '✓ #1  rebase  topic  updated',
+      '    checkout: moved — moved to abc',
+      '· #2  rebase  topic  would update',
+      '✗ #3  rebase  topic  boom',
+      '! #4  rebase  topic  needs a human',
+      '- #5  other  already up to date',
+      '',
+      'PR-UPDATE: updated=1 up-to-date=0 conflict=1 failed=1 skipped=1',
+      '',
+    ])
+  })
+
+  test('a rehearsal says nothing was pushed', () => {
+    const text = renderUpdateText({ applied: false, results: [], skipped: [], counts })
+    expect(text).toContain('PR-UPDATE (rehearsal — nothing pushed): updated=1')
   })
 })
 
@@ -558,5 +618,76 @@ describe('selectTargets — failed attempts', () => {
   test('a row with an unknown sha is never skipped', () => {
     const policy = { maxFailedAttempts: 1, retryFailed: false, attempts: store(5) }
     expect(selectTargets(report([row({ baseOid: null })]), [], policy).targets).toHaveLength(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// runUpdate — several repositories, against real git
+// ---------------------------------------------------------------------------
+
+describe('runUpdate — a located repository', () => {
+  let local: ReturnType<typeof makeBareAndWorker>
+  let other: ReturnType<typeof makeBareAndWorker>
+
+  beforeEach(() => {
+    local = makeBareAndWorker({ initialBranch: 'main' })
+    other = makeBareAndWorker({ initialBranch: 'main' })
+    for (const fx of [local, other]) {
+      fx.worker.commit('initial', { 'README.md': 'fixture\n' })
+      fx.worker.git.push('origin', 'main')
+    }
+    // Only the other repository has the PR branch.
+    const { git } = other.worker
+    git.checkout('main', { branch: 'topic' })
+    other.worker.commit('topic work', { 'a.txt': 'a\n' })
+    git.push('origin', 'topic')
+    git.checkout('main')
+    other.worker.commit('main moves', { 'b.txt': 'b\n' })
+    git.push('origin', 'main')
+    git.fetch('origin')
+  })
+  afterEach(() => {
+    local.cleanup()
+    other.cleanup()
+  })
+
+  test("its PRs are updated in its own checkout, not the project root's", async () => {
+    const headSha = other.worker.git.resolveRef('origin/topic')
+    const detail: CodeHostPrDetail = {
+      number: 5,
+      title: 'topic',
+      url: 'https://github.com/x/y/pull/5',
+      baseRef: 'main',
+      headRef: 'topic',
+      headSha,
+      isDraft: false,
+      labels: [],
+      reviewCount: 0,
+      isCrossRepository: false,
+    }
+    const real = spawnRunner('git')
+    const git: CommandRunner = {
+      run: (argv, opts) => real.run(argv, { ...opts, env: { ...IDENTITY, ...opts.env } }),
+    }
+    const out = await runUpdate(
+      { ...ARGS, repo: ['x/y'], apply: true, strategy: 'merge' },
+      {
+        projectRoot: local.worker.dir,
+        dryRun: false,
+        git,
+        gh: UNREACHABLE_GH,
+        codeHost: () =>
+          ({ listPrDetails: () => ({ ok: true, value: [detail] }) }) as unknown as CodeHost,
+        cfg: cfg(),
+        ports: fakePorts({ locate: (slug) => (slug === 'x/y' ? other.worker.dir : null) }),
+      },
+    )
+    expect(out.results.map((r) => [r.number, r.status, r.pushed])).toEqual([[5, 'updated', true]])
+    other.worker.git.fetch('origin')
+    const after = other.worker.git.resolveRef('origin/topic')!
+    expect(after).not.toBe(headSha)
+    expect(other.worker.git.isAncestor(other.worker.git.resolveRef('origin/main')!, after)).toBe(
+      true,
+    )
   })
 })

@@ -320,6 +320,59 @@ describe('inferConfig — nullable fields (accept-by-construction)', () => {
   })
 })
 
+describe('inferConfig — object and mixed-type fields (accept-by-construction)', () => {
+  it('an object-valued field infers a nested object schema that accepts its own files', () => {
+    file('a.md', '---\nauthor: { name: Ann }\n---\n\n## S\n\nx\n')
+    file('b.md', '---\nauthor: { name: Bob, email: bob@example.com }\n---\n\n## S\n\nx\n')
+    const c = inferConfig(root).contracts[0]!
+    expect(def(c).frontmatter!.properties!.author).toMatchObject({
+      type: 'object',
+      required: ['name'],
+      additionalProperties: false,
+    })
+    const contract = compileContractObject(c.def)
+    const ok = (src: string) =>
+      contract.validate(src, { path: 'x.md' }).findings.filter((f) => f.level === 'error')
+    expect(ok('---\nauthor: { name: Ann }\n---\n\n## S\n\nx\n')).toEqual([])
+    expect(ok('---\nauthor: { name: Bob, email: bob@example.com }\n---\n\n## S\n\nx\n')).toEqual([])
+  })
+
+  it('a field mixing a number and a string is left unconstrained, not typed `string`', () => {
+    file('a.md', '---\nversion: 1\ntitle: A\n---\n\n## S\n\nx\n')
+    file('b.md', '---\nversion: beta\ntitle: B\n---\n\n## S\n\nx\n')
+    const c = inferConfig(root).contracts[0]!
+    const fm = def(c).frontmatter!
+    expect(fm.properties!.version).toBeUndefined()
+    expect(fm.required).toEqual(['title'])
+    // The key must stay allowed, so the object is not closed.
+    expect(fm.additionalProperties).toBeUndefined()
+    const contract = compileContractObject(c.def)
+    for (const v of ['1', 'beta']) {
+      const res = contract.validate(`---\nversion: ${v}\ntitle: A\n---\n\n## S\n\nx\n`, {
+        path: 'x.md',
+      })
+      expect(res.findings.filter((f) => f.level === 'error')).toEqual([])
+    }
+  })
+
+  it('an array of objects infers object items', () => {
+    file('a.md', '---\ntags: [{ id: 1 }]\n---\n\n## S\n\nx\n')
+    file('b.md', '---\ntags: [{ id: 2 }]\n---\n\n## S\n\nx\n')
+    const c = inferConfig(root).contracts[0]!
+    expect(def(c).frontmatter!.properties!.tags).toMatchObject({
+      type: 'array',
+      items: { type: 'object' },
+    })
+    const res = compileContractObject(c.def).validate(
+      '---\ntags: [{ id: 1 }]\n---\n\n## S\n\nx\n',
+      {
+        path: 'a.md',
+      },
+    )
+    expect(res.findings.filter((f) => f.level === 'error')).toEqual([])
+  })
+})
+
 describe('inferConfig — meta mode', () => {
   /** A name→include map over a meta result's contracts, for order-independent assertions. */
   function includes(cs: InferredContract[]): Record<string, string[]> {
@@ -387,6 +440,22 @@ describe('inferConfig — meta mode', () => {
     expect(cfg.kind).toBe('config')
     expect(cfg.contracts.api).toBe('./contracts/api.contract.yaml')
     expect(cfg.rules.map((rule) => rule.contract).sort()).toEqual(['api', 'guides'])
+  })
+
+  it('folders whose paths slug to one name get distinct contract names and files', () => {
+    file('my_docs/x.md', '## Alpha\n\nx\n')
+    file('my-docs/y.md', '## Beta\n\nx\n')
+    const r = inferConfig(root, { meta: true })
+    const names = r.contracts.map((c) => c.name)
+    expect(new Set(names).size).toBe(2)
+    expect(names.sort()).toEqual(['my-docs', 'my-docs-2'])
+    const paths = r.files.map((f) => f.path)
+    expect(new Set(paths).size).toBe(paths.length)
+    const cfg = parse(r.files.find((f) => f.path === 'markdown-contract.yaml')!.content) as {
+      contracts: Record<string, string>
+    }
+    expect(Object.keys(cfg.contracts).sort()).toEqual(['my-docs', 'my-docs-2'])
+    expect(r.warnings.join('\n')).toMatch(/renamed/)
   })
 
   it('--inline emits one self-contained config with inline contract defs', () => {

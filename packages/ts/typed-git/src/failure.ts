@@ -10,7 +10,7 @@
  */
 
 import {
-  classifyFailure,
+  classifyFailed,
   isCommandFailed,
   type CommandFailed,
   type CommandFailureKind,
@@ -67,13 +67,8 @@ const INSTALL_HINT = 'Install git from https://git-scm.com.'
 export function classifyGitFailure(failed: CommandFailed): GitFailure {
   // The client's runner may not name its binary; this is git either way, so
   // the messages say `git` rather than "The command".
-  const f =
-    failed.binary === undefined
-      ? (classifyFailure(failed.result, { binary: 'git', argv: failed.argv }) ?? failed.failure)
-      : failed.failure
-  const base = { ...f, cause: failed }
-  if (f.kind === 'not-installed') return { ...base, hint: INSTALL_HINT }
-  if (f.kind !== 'exit') return base
+  const base = classifyFailed(failed, { binary: 'git', installHint: INSTALL_HINT })
+  if (base.kind !== 'exit') return base
 
   // git's own words: stderr, then the stdout some commands explain with.
   const text = `${failed.result.stderr}\n${failed.result.stdout}`
@@ -99,22 +94,16 @@ export function classifyGitFailure(failed: CommandFailed): GitFailure {
       hint: 'List the remotes with `git remote -v`.',
     }
   }
-  if (
-    /Authentication failed|Permission denied \(publickey\)|could not read (Username|Password)/i.test(
-      text,
-    )
-  ) {
-    return {
-      ...base,
-      kind: 'not-authenticated',
-      message: 'The remote refused the credentials.',
-      hint: 'Check that you are signed in to the host, or that your SSH key is added.',
-    }
-  }
   // "unable to access" with a status means the host answered. A refusal or a
   // wrong URL will not clear up by retrying, so it must not read as unreachable.
   const status = /unable to access[^\n]*returned error: (\d{3})/.exec(text)?.[1]
-  if (status === '401' || status === '403') {
+  if (
+    /Authentication failed|Permission denied \(publickey\)|could not read (Username|Password)/i.test(
+      text,
+    ) ||
+    status === '401' ||
+    status === '403'
+  ) {
     return {
       ...base,
       kind: 'not-authenticated',

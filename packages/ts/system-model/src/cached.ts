@@ -5,7 +5,8 @@
  *   - {@link readCachedCatalog} probes nothing. It returns what was last
  *     measured, marked fresh, stale or miss per runner, so a caller can show
  *     it at once.
- *   - {@link collectAndCache} probes and stores the results.
+ *   - {@link collectAndStore} probes, returns the catalog, then stores the
+ *     results in the background. {@link collectAndCache} waits for the store.
  *
  * Only runners whose tool was detected are read or stored. The selection is
  * the same one `collect` makes from the profile.
@@ -13,6 +14,7 @@
 
 import {
   CACHE_FORMAT_VERSION,
+  entryPath,
   EXEC_MAX_AGE_MS,
   estimateMs,
   isSlow,
@@ -34,8 +36,20 @@ import {
 } from './collect.ts'
 import type { CollectOptions } from './contract.ts'
 import { excludeList } from './discovery.ts'
-import { MAX_FINGERPRINT_FILES, fingerprint } from './fingerprint.ts'
-import { CATALOG_SCHEMA_VERSION, type Catalog, type RunnerReport } from './model.ts'
+import {
+  MAX_FINGERPRINT_FILES,
+  fingerprint,
+  fingerprintInputs,
+  hashInputs,
+  type FingerprintInputs,
+} from './fingerprint.ts'
+import {
+  CATALOG_SCHEMA_VERSION,
+  type ALL_CACHE_STATES,
+  type ALL_STALE_REASONS,
+  type Catalog,
+  type RunnerReport,
+} from './model.ts'
 import type { Registry } from './registry.ts'
 import type { ProbeCost, ProjectProfile } from './tool.ts'
 import { defaultRunner, which as whichOnPath } from './which.ts'
@@ -57,7 +71,7 @@ import { defaultRunner, which as whichOnPath } from './which.ts'
  *
  * @experimental
  */
-export type StaleReason = 'changed' | 'max-age' | 'excludes' | 'exec' | 'version' | 'tool'
+export type StaleReason = (typeof ALL_STALE_REASONS)[number]
 
 /**
  * One runner's cache verdict.
@@ -66,7 +80,7 @@ export type StaleReason = 'changed' | 'max-age' | 'excludes' | 'exec' | 'version
  */
 export interface RunnerCacheState {
   runner: string
-  state: 'fresh' | 'stale' | 'miss'
+  state: (typeof ALL_CACHE_STATES)[number]
   /** Present only when `state` is `stale`. */
   reason?: StaleReason | undefined
   /** Age of the cached probe in ms. Absent on a miss. */
@@ -262,9 +276,80 @@ export async function readCachedCatalog(
 }
 
 /**
- * Probe and store the results. Returns the catalog `collect` returns, plus a
- * diagnostic for each runner whose fingerprint was truncated. A failed cache
- * write never fails the collection.
+ * What {@link collectAndStore} returns.
+ *
+ * @experimental
+ */
+export interface StoringCatalog {
+  /** The catalog {@link collectAndCache} returns, ready to show. */
+  catalog: Catalog
+  /**
+   * Settles when every runner's entry is written, or has failed to be. Never
+   * rejects. Await it before the process exits, or the store keeps the last
+   * probe's entries.
+   */
+  stored: Promise<void>
+}
+
+/**
+ * The entry writes in flight in this process, by cache file. A write waits
+ * for the one before it to the same file, so an older probe never lands
+ * after a newer one.
+ */
+const writing = new Map<string, Promise<void>>()
+
+/**
+ * Probe, then store the results in the background. `catalog` is ready once
+ * every runner has answered, with a diagnostic for each runner whose
+ * fingerprint was truncated. The files are hashed and written after that,
+ * and `stored` settles when they are. A failed write never fails the
+ * collection.
+ */
+export async function collectAndStore(
+  registry: Registry,
+  profile: ProjectProfile,
+  cacheDir: string,
+  options: CollectOptions = {},
+): Promise<StoringCatalog> {
+  const probes: ProbeRecord[] = []
+  const catalog = await collectRunners(registry, profile, {
+    ...options,
+    probeObserver: (probe) => probes.push(probe),
+  })
+  const excludes = excludeList(profile.excludePaths, profile.useBuiltinExcludes)
+
+  // Listing only: whether a fingerprint reaches the cap is known before any
+  // file is hashed, so the catalog can say so at once.
+  const inputs = await Promise.all(
+    probes.map((probe) =>
+      fingerprintInputs({
+        paths: probe.reads,
+        patterns: [...probe.watch, ...probe.queries],
+        excludes,
+        files: probe.files,
+      }).catch(() => null),
+    ),
+  )
+  const truncated = new Set(
+    probes.filter((_, i) => inputs[i]?.truncated === true).map((p) => p.runner),
+  )
+
+  const takenAt = new Date().toISOString()
+  const stored = Promise.all(
+    probes.map((probe, i) => {
+      const input = inputs[i]
+      return input === null || input === undefined
+        ? Promise.resolve()
+        : storeProbe(cacheDir, catalog, probe, input, takenAt)
+    }),
+  ).then(() => undefined)
+
+  return { catalog: withTruncationNotes(catalog, truncated), stored }
+}
+
+/**
+ * Probe and store the results: {@link collectAndStore}, settled once every
+ * entry is written. A failed write never fails the collection.
  */
 export async function collectAndCache(
   registry: Registry,
@@ -272,33 +357,33 @@ export async function collectAndCache(
   cacheDir: string,
   options: CollectOptions = {},
 ): Promise<Catalog> {
-  const probes: ProbeRecord[] = []
-  const catalog = await collectRunners(registry, profile, {
-    ...options,
-    probeObserver: (probe) => probes.push(probe),
-  })
+  const { catalog, stored } = await collectAndStore(registry, profile, cacheDir, options)
+  await stored
+  return catalog
+}
 
-  const truncated = new Set<string>()
-  for (const probe of probes) {
-    try {
-      const print = await fingerprint({
-        root: catalog.root,
-        paths: probe.reads,
-        patterns: [...probe.watch, ...probe.queries],
-        excludes: excludeList(profile.excludePaths, profile.useBuiltinExcludes),
-        files: probe.files,
-      })
-      if (print.truncated) truncated.add(probe.runner)
-
-      const previous = await readEntry(cacheDir, catalog.root, probe.runner)
+/** Hash one probe's files and write its entry, after any earlier write to the same file. */
+function storeProbe(
+  cacheDir: string,
+  catalog: Catalog,
+  probe: ProbeRecord,
+  input: FingerprintInputs,
+  takenAt: string,
+): Promise<void> {
+  const key = entryPath(cacheDir, catalog.root, probe.runner)
+  const previous = writing.get(key) ?? Promise.resolve()
+  const done = previous
+    .then(async () => {
+      const print = await hashInputs(catalog.root, input)
+      const before = await readEntry(cacheDir, catalog.root, probe.runner)
       const entry: CacheEntry = {
         version: CACHE_FORMAT_VERSION,
         root: catalog.root,
         runner: probe.runner,
         kind: probe.kind,
-        takenAt: new Date().toISOString(),
+        takenAt,
         probeMs: probe.durationMs,
-        durations: pushDuration(previous, probe.durationMs),
+        durations: pushDuration(before, probe.durationMs),
         fingerprint: print,
         report: probe.report,
         allowExec: catalog.allowExec,
@@ -310,11 +395,19 @@ export async function collectAndCache(
       }
       // `writeEntry` refuses errored and withheld reports.
       await writeEntry(cacheDir, entry)
-    } catch {
+    })
+    .catch(() => {
       // A failed write only makes the next run slower.
-    }
-  }
+    })
+    .finally(() => {
+      if (writing.get(key) === done) writing.delete(key)
+    })
+  writing.set(key, done)
+  return done
+}
 
+/** `catalog` with a note on each report in `truncated` that its fingerprint was cut at the cap. */
+function withTruncationNotes(catalog: Catalog, truncated: ReadonlySet<string>): Catalog {
   if (truncated.size === 0) return catalog
   return {
     ...catalog,

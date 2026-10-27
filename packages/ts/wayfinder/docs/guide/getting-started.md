@@ -19,9 +19,12 @@ npm i -g @osdlc/wayfinder
 ```
 
 pnpm and bun work too (`pnpm add -g @osdlc/wayfinder`, `bun add -g @osdlc/wayfinder`).
-The package installs one command, `way`. It has no library API.
+The package installs one command, `way`. It also exports a small library:
+`buildCatalog` and friends from the root entry, and the document schemas from
+`@osdlc/wayfinder/schema` (see the README's Library section).
 
-wayfinder runs on Node 22.22 or later on the 22 line, or Node 24.15 or later.
+wayfinder runs on Node 22.22.2 or later on the 22 line, 24.15.0 or later on
+the 24 line, or Node 26 and later (Node 25 is not supported).
 Bun can also run it.
 
 ## Run it
@@ -74,7 +77,8 @@ aliases for `way serve`, `way list` and `way list --json`.
 
 ## Rows come in groups
 
-Every surface shows four groups of rows:
+Every surface shows four groups of task rows, plus a fifth when the
+repository has agent skills:
 
 - **Tasks**, from runners such as moon, just and make.
 - **Dependencies**: installs and frozen installs, from the package managers
@@ -83,9 +87,12 @@ Every surface shows four groups of rows:
   the tool managers found.
 - **Git hooks**: arming the hooks, and each hook as a task you can run by
   hand, from lefthook, husky or pre-commit.
+- **Skills**: the repository's agent skills. These rows are not tasks: they
+  sit in a separate `skills` array, and Run copies `/<name>` instead of
+  spawning anything.
 
-Every row is a task, so search, run and arguments work the same for all of
-them. The tab bars in the terminal UI and the web view show where one group
+Every row in the first four groups is a task, so search, run and arguments
+work the same for all of them. The tab bars in the terminal UI and the web view show where one group
 ends and the next begins. `--json` carries a `groups` array.
 
 ## Options

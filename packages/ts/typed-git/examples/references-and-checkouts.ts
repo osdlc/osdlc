@@ -9,6 +9,7 @@ import {
   discoverCheckouts,
   gitSshUrl,
   parseGitUrl,
+  parseRemoteRepo,
   parseRepoRef,
 } from '@osdlc/typed-git'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
@@ -35,6 +36,13 @@ export function run(): void {
   // Shorthand takes the protocol argument. A null result means the input names no repository.
   assert.equal(parseRepoRef('acme/widgets', 'ssh')?.cloneUrl, 'git@github.com:acme/widgets.git')
   assert.equal(parseRepoRef('./a/local/path'), null)
+
+  // A remote on any host, known or not, reads into host, owner and repo.
+  assert.deepEqual(parseRemoteRepo('git@forge.example.com:team/app.git'), {
+    host: 'forge.example.com',
+    owner: 'team',
+    repo: 'app',
+  })
 
   const root = mkdtempSync(join(tmpdir(), 'typed-git-refs-'))
   const fx = makeGitFixture({ dir: join(root, 'acme', 'widgets') })

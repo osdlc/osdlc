@@ -6,7 +6,7 @@
  * call. Nothing here touches the filesystem.
  */
 
-import type { VendorDirs } from '@osdlc/config-layers/dirs'
+import { envStem as stemOf, type VendorDirs } from '@osdlc/config-layers/dirs'
 
 /**
  * What describes a tool that is run from a development checkout: its name,
@@ -69,9 +69,10 @@ export interface ToolSpec {
   /**
    * Whose config home the state lives in: the vendor and its override
    * variables. The bash launcher reads the same path: the vendor's
-   * `<P>_CONFIG_DIR`, then `<P>_ROOT`, then the `xdg` default. A relative
-   * value of the one in use reads no link. The launcher reads only those two:
-   * a relative override of another kind (such as `<P>_CACHE_DIR`), or
+   * `<P>_CONFIG_DIR`, then `<P>_ROOT`, then the `xdg` default (it always uses
+   * the `xdg` convention and ignores `<P>_CONVENTION`). A relative value of
+   * the one in use reads no link. The launcher reads only those two: a
+   * relative override of another kind (such as `<P>_CACHE_DIR`), or
    * `<P>_REQUIRE_OVERRIDE`, makes `dev link` throw but does not stop the
    * launcher following a link written before.
    */
@@ -79,12 +80,13 @@ export interface ToolSpec {
 }
 
 /**
- * `tooly` → `TOOLY`; `pr-updater` → `PR_UPDATER`.
+ * `tooly` → `TOOLY`; `pr-updater` → `PR_UPDATER`. config-layers' `envStem` of
+ * the name, so the machine file's variable and devlink's never disagree.
  *
  * @experimental
  */
 export function envStem(spec: ToolSpec): string {
-  return spec.name.toUpperCase().replace(/[^A-Z0-9]+/g, '_')
+  return stemOf(spec.name)
 }
 
 /**
@@ -105,6 +107,20 @@ export function homeVar(spec: ToolSpec): string {
  */
 export function cwdDevVar(spec: ToolSpec): string {
   return `${envStem(spec)}_CWD_DEV`
+}
+
+/**
+ * Whether the cwd layer is on: the spec sets `cwdLayer`, no suppressor is set
+ * (`isSuppressed`), and `<NAME>_CWD_DEV` is not `0`. `resolve` and `status`
+ * both ask this.
+ * @internal
+ */
+export function cwdLayerActive(
+  spec: ToolSpec,
+  env: Record<string, string | undefined>,
+  isSuppressed: boolean,
+): boolean {
+  return spec.cwdLayer === true && !isSuppressed && env[cwdDevVar(spec)] !== '0'
 }
 
 /**
@@ -156,12 +172,25 @@ export function validateSpec(spec: ToolSpec): ToolSpec {
       `devlink: tool name must be a single path segment, got ${JSON.stringify(spec.name)}`,
     )
   }
+  // `install` writes each alias as join(binDir, alias), so it is held to the same rule.
+  for (const alias of spec.aliases ?? []) {
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(alias)) {
+      throw new Error(`devlink: alias must be a single path segment, got ${JSON.stringify(alias)}`)
+    }
+  }
   for (const [field, value] of [
     ['marker', spec.marker],
     ['entry', spec.entry ?? spec.marker],
     ['launcher', spec.launcher],
   ] as const) {
-    if (value.length === 0 || value.startsWith('/') || value.split('/').includes('..')) {
+    // A `.` or empty segment would throw off the launcher's `..` count back to
+    // the checkout root, which is taken from the path as written.
+    const segments = value.split('/')
+    if (
+      value.length === 0 ||
+      value.startsWith('/') ||
+      segments.some((s) => s === '..' || s === '.' || s === '')
+    ) {
       throw new Error(
         `devlink: ${field} must be a relative path inside the checkout, got ${JSON.stringify(value)}`,
       )

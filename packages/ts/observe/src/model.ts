@@ -41,9 +41,10 @@
  * replaces a name a person or the launcher chose.
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, readFileSync, statSync } from 'node:fs'
+import { join } from 'node:path'
 
+import { atomicWrite } from '@osdlc/etag-write'
 import { z } from 'zod'
 
 import { LogSourceSchema } from './envelope.ts'
@@ -330,13 +331,13 @@ export function sessionEventsPath(sessionDirectory: string): string {
   return join(sessionDirectory, EVENTS_FILE)
 }
 
-/** Write `value` as JSON through a temp file and a rename, so a reader never sees half a file. */
+/**
+ * Write `value` as JSON through a fsynced temp file and a rename, so a reader
+ * never sees half a file and a crash never leaves one.
+ */
 function writeJsonAtomic(path: string, value: unknown): void {
-  mkdirSync(dirname(path), { recursive: true })
-  const tmp = `${path}.${process.pid}.tmp`
   // 0o600 like `events.jsonl`, which the record projects.
-  writeFileSync(tmp, JSON.stringify(value, null, 2), { mode: 0o600 })
-  renameSync(tmp, path)
+  atomicWrite(path, JSON.stringify(value, null, 2), { mode: 0o600 })
 }
 
 /** The parsed JSON at `path`, or `null` when it is absent or not JSON. */
@@ -802,7 +803,9 @@ export function defineSessionModel<H extends string, Ho extends string, F>(
    * covers (`logBytes`). The log can grow while this process reduces it (a hook
    * process appending). So the length is checked again after the write and the
    * reduction is repeated. If the log never stops growing, the call throws
-   * {@link SessionLogError} and does not leave a projection it cannot trust.
+   * {@link SessionLogError}. The `record.json` it last wrote may not cover the
+   * whole log; its `logBytes` marks it stale, so {@link readSessionRecordIn}
+   * reduces the log instead.
    * Returns `null` when the log has no usable `launched` event yet.
    *
    * @throws {@link SessionLogError} when the log keeps growing, or a `ZodError`

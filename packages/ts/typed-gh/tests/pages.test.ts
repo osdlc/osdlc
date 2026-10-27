@@ -106,6 +106,23 @@ describe('graphql', () => {
     expect(() => graphql('query mutationCount { x }')).not.toThrow()
   })
 
+  test('refuses a mutation hidden after a query, a fragment or a leading comma', () => {
+    expect(() => graphql('query A { a } mutation B { addStar(input: {}) { id } }')).toThrow(
+      RangeError,
+    )
+    expect(() => graphql('fragment F on User { login } mutation { x }')).toThrow(RangeError)
+    expect(() => graphql(', mutation { x }')).toThrow(RangeError)
+    // A keyword inside a string, a comment or a selection is not an operation.
+    expect(() =>
+      graphql('query { search(query: "mutation") { mutation } } # mutation'),
+    ).not.toThrow()
+  })
+
+  test('refuses the variable names gh lifts into the request', () => {
+    expect(() => graphql('query A { a }', { operationName: 'B' })).toThrow(RangeError)
+    expect(() => graphql('query { a }', { query: 'mutation { x }' })).toThrow(RangeError)
+  })
+
   test('refuses a variable name that is not a GraphQL name', () => {
     expect(() => graphql('query { a }', { 'a=b': 'x' })).toThrow(RangeError)
   })

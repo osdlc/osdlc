@@ -81,7 +81,7 @@ export const providersDocumentSchema: JsonSchema = jsonSchema('providers')
 export const runDocumentSchema: JsonSchema = jsonSchema('run')
 /** `way trust --json`: what a grant, a removal, `--show` or `--list` found. */
 export const trustDocumentSchema: JsonSchema = jsonSchema('trust')
-/** `way clean --json`: what was removed, or with `--dry-run` what would be. */
+/** `way clean --json`: with a store flag what was removed (`mode: "remove"`), with none a report of every store (`mode: "report"`). */
 export const cleanDocumentSchema: JsonSchema = jsonSchema('clean')
 
 /** Every document schema, by `kind`. */

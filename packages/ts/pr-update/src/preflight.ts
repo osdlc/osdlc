@@ -46,7 +46,7 @@ function gitMissing(): Failure {
 
 /** The failure for a run whose `git` is not installed, or null when it is. */
 export function gitMissingFailure(cwd: string, which?: WhichSeam | undefined): Failure | null {
-  const find = which ?? ((b: string) => whichOnPath(b, { cwd }))
+  const find = which ?? ((b: string) => whichOnPath(b, { cwd, absolutePathOnly: true }))
   return find('git') === undefined ? gitMissing() : null
 }
 
@@ -65,7 +65,9 @@ export function preflight(opts: {
   override: CodeHostName | null
   which?: WhichSeam | undefined
 }): Failure | null {
-  const find = opts.which ?? ((b: string) => whichOnPath(b, { cwd: opts.cwd }))
+  // Found as the default runners spawn them: from an absolute PATH entry only.
+  const find =
+    opts.which ?? ((b: string) => whichOnPath(b, { cwd: opts.cwd, absolutePathOnly: true }))
   if (find('git') === undefined) return gitMissing()
   const { name } = resolveCodeHost(opts.cwd, opts.git, opts.override)
   if (find(name === 'github' ? 'gh' : 'curl') === undefined) return missingToolFailure(name)

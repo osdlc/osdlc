@@ -105,7 +105,7 @@ export const prUpdateConfigSchema = z
       .nullable()
       .default(null)
       .describe(
-        'Shell verb that rebuilds lockfiles from their manifests (`bun install`, `cargo generate-lockfile`, …), run in the update worktree. A lockfile conflict is resolved by taking the base side and re-running this, because a lockfile is derived and the merged manifest is what it must be derived from. Null (the default) means lockfile conflicts are left for a human: taking a side without re-deriving would push a lockfile that disagrees with its own manifest, which is worse than not updating.',
+        'Shell verb that rebuilds lockfiles from their manifests (`bun install`, `cargo generate-lockfile`, …), run in the update worktree. A lockfile conflict is resolved by taking one side (`--ours`) and re-running this, because a lockfile is derived and the merged manifest is what it must be derived from. Null (the default) means lockfile conflicts are left for a human: taking a side without re-deriving would push a lockfile that disagrees with its own manifest, which is worse than not updating.',
       ),
     resolvers: z
       .array(
@@ -122,7 +122,7 @@ export const prUpdateConfigSchema = z
               .trim()
               .min(1)
               .describe(
-                'Shell command that rebuilds the artifact, run in the update worktree. Same shape as a `workflows:` entry.',
+                'Shell command that rebuilds the artifact, run in the update worktree through the `runVerb` port.',
               ),
           })
           .strict(),
@@ -186,7 +186,7 @@ export const prUpdateConfigSchema = z
       })
       .prefault({})
       .describe(
-        'The last rung of the conflict ladder, called once per kind only when nothing deterministic resolved the problem, and only on a merge: a rebase that needs it is retried as a merge first. Never called in a rehearsal (no `--apply`).',
+        'The last rung of the ladder, called once per kind only when nothing deterministic resolved the problem. A conflict repair is offered only on a merge (a rebase that needs one is retried as a merge first); a verify-failed repair runs for either strategy. Never called in a rehearsal (no `--apply`).',
       ),
     max_failed_attempts: z
       .number()
@@ -194,7 +194,7 @@ export const prUpdateConfigSchema = z
       .min(0)
       .default(1)
       .describe(
-        "Skip a PR once its update has failed this many times at the same head and base sha, until either moves. Failures from `--apply` runs are recorded in `.pr-update/attempts/` (one file per branch); a successful update clears the PR's entries. 0 disables the check. The retry-failed flag of `update` ignores it for one run.",
+        "Skip a PR once its update has failed this many times at the same head and base sha, until either moves. Failures from `--apply` runs are recorded in `.pr-update/attempts/` (one file per repo, head and base branch); a successful update clears the PR's entries. 0 disables the check. The retry-failed flag of `update` ignores it for one run.",
       ),
   })
   .strict()

@@ -8,10 +8,18 @@ accents and replaces the rest with a separator. Second, those files and titles
 get sorted, and the sort has to be the same on every machine. `compare` gives a
 fixed order that does not depend on the host locale.
 
-`slugify` folds accents. It normalises with NFKD and drops the combining
-marks, so `café` becomes `cafe`, not `caf`. A naive
-`[^a-z0-9]` filter would drop the whole accented letter and collapse `Ärzte`
-and `Rzte` to one slug, a filename collision in a folder a person reads.
+`slugify` folds accents. It normalises with NFKC, splits the combining marks
+off their letters and drops only the ones that are optional decoration, so
+`café` becomes `cafe`, not `caf`. A naive `[^a-z0-9]` filter would drop the
+whole accented letter and collapse `Ärzte` and `Rzte` to one slug, a filename
+collision in a folder a person reads. The dropped marks are the Latin, Greek
+and Cyrillic diacritics, Hebrew niqqud and cantillation, and Arabic harakat.
+Every other mark stays in the word with its letter, because it tells words
+apart: kana voicing marks (`ガイド` is not `カイト`), Indic viramas and vowel
+signs (`नमस्ते` stays one word), Thai tone and vowel marks. A mark never
+splits a word or becomes a separator, a length cap never cuts a letter off its
+marks, and each word comes out in NFC, so Hangul stays in precomposed
+syllables.
 
 `compare` is a substitute for JavaScript's `localeCompare`.
 `localeCompare` depends on ICU data and the host locale, so two machines can
@@ -35,8 +43,10 @@ cargo add slug-collate
 use slug_collate::{compare, compare_paths, slugify, slugify_with, SlugOptions};
 use std::cmp::Ordering;
 
-// Slugify a title. Accents fold through NFKD, not by dropping the letter.
+// Slugify a title. Accents fold off the letter rather than dropping it, and
+// marks that tell words apart stay.
 assert_eq!(slugify("Café au Lait"), "cafe-au-lait");
+assert_eq!(slugify("ガイド"), "ガイド");
 assert_eq!(slugify("Sam's Note"), "sams-note");
 
 // Configure the options with a constructor, then set fields. SlugOptions is
@@ -95,6 +105,23 @@ on `unicode-normalization`.
 
 Any target the Rust standard library supports. The crate has no
 platform-specific code.
+
+## Migrating from 0.1
+
+0.2 changes the slug of most titles that carry combining marks outside Latin,
+Greek and Cyrillic. In 0.1 a mark such as the kana voicing mark, the
+Devanagari virama, a Thai tone mark or Hebrew cantillation became a separator,
+so `ガイド` slugged to `カ-イト` and `नमस्ते` to `नमस-ते`; Hangul came out as
+decomposed jamo; and Hebrew niqqud and Arabic harakat were kept, where 0.2
+drops them. Latin and ASCII titles slug as
+before, and `compare`, `compare_paths` and `path_sort_key` order exactly as
+before.
+
+If you store slugs (as filenames, ids or URLs), keep the stored ones as they
+are rather than regenerating them from titles, or a non-Latin title's file,
+link or URL moves. Use the new rules only for slugs you create from now on.
+If you look a stored entry up by slugging its title, match on the stored slug
+instead, or fall back to it when the new slug finds nothing.
 
 ## Stability
 

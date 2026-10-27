@@ -32,7 +32,8 @@ We will credit you in the release notes if you want that.
   contracts you did not write before you run them on large or untrusted
   documents.
 - **Files the command writes.** `markdown-contract init` writes a config and
-  contract files under the folder it reads, or under `--out`. It refuses to
+  contract files under the folder it reads, under `--out`, or, with several
+  folders and no `--out`, under the current directory. It refuses to
   overwrite an existing file unless you pass `--force`. `migrate --write`
   rewrites the contract files you name, in place.
 - **Symbolic links.** The folder walk in `runCorpus`, `validate` and

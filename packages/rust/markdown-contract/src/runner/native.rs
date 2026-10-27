@@ -144,6 +144,30 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
+    // U+1F600 is the surrogate pair D83D DE00 in UTF-16, which sorts below U+FF5E;
+    // UTF-8 and `char` order put U+FF5E first.
+    #[test]
+    fn walk_sorts_names_in_utf16_order() {
+        let dir = scratch("utf16");
+        for f in ["\u{FF5E}.md", "\u{1F600}.md"] {
+            std::fs::write(dir.join(f), "x").unwrap();
+        }
+        assert_eq!(walk_dir(&dir).unwrap(), vec!["\u{1F600}.md", "\u{FF5E}.md"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // A symlink is neither followed nor listed, so a link back to the root cannot loop.
+    #[cfg(unix)]
+    #[test]
+    fn walk_skips_symlinks() {
+        let dir = scratch("symlinks");
+        std::fs::write(dir.join("real.md"), "x").unwrap();
+        std::os::unix::fs::symlink(dir.join("real.md"), dir.join("link.md")).unwrap();
+        std::os::unix::fs::symlink(&dir, dir.join("loop")).unwrap();
+        assert_eq!(walk_dir(&dir).unwrap(), vec!["real.md"]);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
     #[test]
     fn run_corpus_dir_reads_routes_and_reports() {
         let dir = scratch("run");

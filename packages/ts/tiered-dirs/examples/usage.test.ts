@@ -15,6 +15,8 @@ import {
   TieredDirs,
   TieredDirsError,
   envVars,
+  expandTilde,
+  homeDir,
   isOverridden,
   isValidSegment,
   isVendorBundleId,
@@ -111,6 +113,13 @@ describe('choose the per-OS table', () => {
     const bases: BaseDirs = xdgBaseDirs('/srv/ada', { XDG_CONFIG_HOME: '/etc/xdg' })
     expect(normalize(bases.config)).toBe(normalize('/etc/xdg'))
     expect(normalize(bases.cache)).toBe(normalize('/srv/ada/.cache'))
+  })
+
+  test('homeDir is the home the table is built on; expandTilde expands a literal ~', () => {
+    const home = homeDir({ platform: 'linux', env: { HOME: '/srv/ada' } })
+    expect(home).toBe('/srv/ada')
+    expect(expandTilde('~/notes', home, 'linux')).toBe('/srv/ada/notes')
+    expect(expandTilde('~\\notes', 'C:\\Users\\ada', 'win32')).toBe('C:\\Users\\ada\\notes')
   })
 
   test('the environment can pick the convention', () => {

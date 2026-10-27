@@ -188,9 +188,9 @@ export interface CheckGuideOptions {
 }
 
 /**
- * The checks every `guide` command should pass: each topic prints, the topic
- * list names every topic, an unknown topic exits 2, `--help` works, and the
- * prose names no flag that no command of the app takes.
+ * The checks every `guide` command should pass: each topic prints, an unknown
+ * topic exits 2, `--help` works, and the prose names no flag that no command
+ * of the app takes.
  * @experimental
  */
 export async function checkGuide(app: App, opts: CheckGuideOptions = {}): Promise<string[]> {

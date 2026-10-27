@@ -28,6 +28,9 @@ const COMMAND_KEYS: readonly (readonly string[])[] = [
   ['pr_update', 'test_command'],
 ]
 
+/** {@link COMMAND_KEYS} as dotted keys: the keys `config set` writes from the command line only. */
+export const COMMAND_KEY_NAMES: readonly string[] = COMMAND_KEYS.map((path) => path.join('.'))
+
 function isSet(value: unknown): boolean {
   if (value === undefined || value === null) return false
   return !(Array.isArray(value) && value.length === 0)

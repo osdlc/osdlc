@@ -153,6 +153,27 @@ describe('under a test runner', () => {
     expect(() => systemBaseDirs(ENV)).not.toThrow()
   })
 
+  test('EXAMPLE_REQUIRE_OVERRIDE: overrides that move every home but runtime do not pass', () => {
+    process.env[ENV.requireOverride] = '1'
+    const six = { durable: '/d', config: '/c', cache: '/k', state: '/s', logs: '/l', scratch: '/t' }
+    // Runtime follows only a durable the environment moves, so here it would
+    // fall back to the real OS runtime directory.
+    const run = (): unknown =>
+      systemBaseDirs(ENV, { platform: 'linux', testRoot: false, overrides: six })
+    expect(run).toThrow(/EXAMPLE_RUNTIME_DIR/)
+    expect(
+      systemBaseDirs(ENV, {
+        platform: 'linux',
+        testRoot: false,
+        overrides: { ...six, runtime: '/r' },
+      }).runtime,
+    ).toBe('/r')
+    // An override of durable alone still leaves config to fall back.
+    expect(() =>
+      systemBaseDirs(ENV, { platform: 'linux', testRoot: false, overrides: { durable: '/d' } }),
+    ).toThrow(/EXAMPLE_CONFIG_DIR/)
+  })
+
   test('an injected environment is the whole story', () => {
     const bases = systemBaseDirs(ENV, { platform: 'linux', env: { HOME: '/h', NODE_ENV: 'test' } })
     expect(normalize(bases.durable)).toBe(normalize('/h/.local/share'))

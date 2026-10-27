@@ -13,7 +13,7 @@
  * `GitVerb` and `gate` are internal: the package entries do not export them.
  */
 
-import { CommandFailed, type CommandResult } from '@osdlc/command-seam'
+import { CommandFailed, notAnOption, runFailed, type CommandResult } from '@osdlc/command-seam'
 
 import { gitFailureError } from './failure.ts'
 
@@ -78,11 +78,7 @@ export interface GitVerb<T> {
  */
 export function gate<T>(verb: GitVerb<T>, result: CommandResult, argv?: string[]): T {
   try {
-    if (
-      result.neverExited ||
-      result.outputIncomplete ||
-      (result.exitCode !== 0 && !verb.absent.includes(result.exitCode))
-    ) {
+    if (runFailed(result, (r) => verb.absent.includes(r.exitCode))) {
       throw new CommandFailed(argv ?? verb.argv, result)
     }
     return verb.parse(result, argv ?? verb.argv)
@@ -270,12 +266,9 @@ const NONE: readonly number[] = []
  * `-`, and `@{-1}` for the previous branch.
  */
 function positional(verb: string, param: string, value: string): string {
-  if (value.startsWith('-')) {
-    throw new TypeError(
-      `typed-git: ${verb}: ${param} must not start with "-" (got ${JSON.stringify(value)})`,
-    )
-  }
-  return value
+  const message = (v: string) =>
+    `typed-git: ${verb}: ${param} must not start with "-" (got ${JSON.stringify(v)})`
+  return notAnOption(value, (v) => new TypeError(message(v)))
 }
 
 /**
@@ -337,6 +330,25 @@ export function showAtRev(rev: string, relPath: string): GitVerb<string | null> 
     // NOT trimmedOrNull: file content is returned verbatim, trailing newline
     // included, because a caller round-tripping a blob must get its bytes.
     parse: (r) => (r.exitCode === 0 ? r.stdout : null),
+  }
+}
+
+/**
+ * A file's content at a rev (`git show <rev>:<relPath>`), and a throw when it
+ * is not there.
+ *
+ * The same argv as {@link showAtRev}, with `absent: []`. Use it when a missing
+ * file is an error: a path that is not in that tree throws the classified
+ * failure, as does a rev that does not resolve or a broken repository, rather
+ * than all three reading as `null`. It has no `soft` form, because it has no
+ * absence value.
+ */
+export function showAtRevChecked(rev: string, relPath: string): GitVerb<string> {
+  return {
+    argv: ['show', `${positional('showAtRevChecked', 'rev', rev)}:${relPath}`],
+    absent: NONE,
+    // Verbatim, as for showAtRev.
+    parse: (r) => r.stdout,
   }
 }
 
@@ -522,17 +534,24 @@ export function statusEntries(): GitVerb<StatusEntry[]> {
         const f = fields[i]!
         if (f.length < 4) continue
         const x = f[0]!
-        out.push({ x, y: f[1]!, path: f.slice(3) })
-        if (x === 'R' || x === 'C') i++
+        const y = f[1]!
+        out.push({ x, y, path: f.slice(3) })
+        // A rename or copy in either column (a worktree rename of an
+        // intent-to-add file sets Y) is followed by its source field.
+        if (x === 'R' || x === 'C' || y === 'R' || y === 'C') i++
       }
       return out
     },
   }
 }
 
-/** Local branch shortnames matching `pattern` (all when omitted). */
+/**
+ * Local branch names matching `pattern` (all when omitted). The name is
+ * `refs/heads/` stripped, never `%(refname:short)`, which answers
+ * `heads/<name>` when a tag shares the name.
+ */
 export function branches(pattern?: string | undefined): GitVerb<string[]> {
-  const argv = ['branch', '--list', '--format=%(refname:short)']
+  const argv = ['branch', '--list', '--format=%(refname:lstrip=2)']
   if (pattern !== undefined) argv.push(positional('branches', 'pattern', pattern))
   return { argv, absent: NONE, parse: trimmedLines }
 }
@@ -1001,6 +1020,27 @@ export function diffCheck(opts: DiffCheckOptions = {}): GitVerb<DiffCheckResult>
     argv,
     absent: [1, 2],
     parse: (r) => ({ ok: r.exitCode === 0, output: r.stdout }),
+  }
+}
+
+/**
+ * True iff the index differs from HEAD (`git diff --cached --quiet`): is there
+ * anything staged to commit?
+ *
+ * A boolean carried by the exit code. `absent: [1]` — measured: nothing staged
+ * → 0 (`false`); something staged → 1 (`true`). Anything else throws. Outside
+ * a repository `git diff` exits 129, so a non-repository is a failure, not
+ * "nothing staged".
+ *
+ * On an unborn HEAD (no commits yet) git compares the index against the empty
+ * tree: an empty index is `false`, and any staged file is `true`. It does not
+ * throw.
+ */
+export function hasStagedChanges(): GitVerb<boolean> {
+  return {
+    argv: ['diff', '--cached', '--quiet'],
+    absent: [1],
+    parse: (r) => r.exitCode === 1,
   }
 }
 
@@ -1581,6 +1621,16 @@ export interface CommitFlags {
   noVerify?: boolean | undefined
   /** `--signoff` — append a `Signed-off-by` trailer. */
   signoff?: boolean | undefined
+  /**
+   * `-- <paths…>` — commit only these paths, as `git commit <paths>` does:
+   * their current working-tree content is committed, and anything else
+   * staged stays staged and out of the commit. Each path must be known to
+   * git (tracked, or staged), or git refuses.
+   *
+   * An empty array throws a `TypeError`: git would read `commit --` as no
+   * paths and commit everything staged.
+   */
+  paths?: string[] | undefined
 }
 
 /**
@@ -1628,13 +1678,17 @@ export type CommitOptions = CommitFlags &
  * which holds both streams, not stderr alone.
  */
 export function commit(opts: CommitOptions): GitVerb<void> {
+  if (opts.paths !== undefined && opts.paths.length === 0) {
+    throw new TypeError('typed-git: commit: paths is empty; omit it to commit everything staged')
+  }
+  const pathArgs = opts.paths === undefined ? [] : ['--', ...opts.paths]
   const argv = ['commit']
   if (opts.allowEmpty) argv.push('--allow-empty')
   if (opts.amend) argv.push('--amend')
   if (opts.noVerify) argv.push('--no-verify')
   if (opts.signoff) argv.push('--signoff')
   if (opts.messageStdin !== undefined) {
-    argv.push('-F', '-')
+    argv.push('-F', '-', ...pathArgs)
     return { argv, input: opts.messageStdin, absent: NONE, parse: nothing }
   }
   if (opts.messageFile !== undefined) argv.push('-F', opts.messageFile)
@@ -1642,6 +1696,7 @@ export function commit(opts: CommitOptions): GitVerb<void> {
     argv.push('-m', opts.message ?? '')
     if (opts.body !== undefined) argv.push('-m', opts.body)
   }
+  argv.push(...pathArgs)
   return { argv, absent: NONE, parse: nothing }
 }
 
@@ -1790,8 +1845,20 @@ export function forceWithLeaseArg(lease: ForceLease): string {
   return `--force-with-lease=${lease.ref}:${lease.expect ?? ''}`
 }
 
+/** Options for {@link push}. */
+export interface PushOptions {
+  /** `--force-with-lease`: `true` for the bare flag, a {@link ForceLease} to pin it. */
+  forceWithLease?: boolean | ForceLease | undefined
+  /**
+   * `--delete` — delete `refspec` on the remote rather than pushing to it.
+   * Combines with `forceWithLease`, so a pinned lease deletes the remote ref
+   * only while it still holds the expected sha.
+   */
+  delete?: boolean | undefined
+}
+
 /**
- * Push a refspec.
+ * Push a refspec, or delete it on the remote with `{ delete: true }`.
  *
  * `forceWithLease` takes a {@link ForceLease} for the pinned form, or `true`
  * for the bare `--force-with-lease`. `true` is the unsafe form. It trusts
@@ -1799,12 +1866,10 @@ export function forceWithLeaseArg(lease: ForceLease): string {
  * bring that up to date. The lease then blocks nothing, and a concurrent push
  * is overwritten. Pin the lease whenever the expected remote sha is known.
  */
-export function push(
-  remote: string,
-  refspec: string,
-  opts: { forceWithLease?: boolean | ForceLease | undefined } = {},
-): GitVerb<void> {
-  const argv = ['push', ...forceWithLeaseArgs('push', opts.forceWithLease)]
+export function push(remote: string, refspec: string, opts: PushOptions = {}): GitVerb<void> {
+  const argv = ['push']
+  if (opts.delete) argv.push('--delete')
+  argv.push(...forceWithLeaseArgs('push', opts.forceWithLease))
   argv.push(positional('push', 'remote', remote), positional('push', 'refspec', refspec))
   return { argv, absent: NONE, parse: nothing }
 }
@@ -2096,18 +2161,35 @@ export function deleteRef(ref: string, opts: { expected: string }): GitVerb<void
   }
 }
 
-/** `git worktree add [--detach] [-b branch] <path> [startPoint]`. */
-export function worktreeAdd(
-  path: string,
-  opts: {
-    branch?: string | undefined
-    startPoint?: string | undefined
-    detach?: boolean | undefined
-  } = {},
-): GitVerb<void> {
+/** Options for {@link worktreeAdd}. */
+export interface WorktreeAddOptions {
+  /** `-b <branch>` — create this branch at `startPoint`; git refuses if it exists. */
+  branch?: string | undefined
+  /**
+   * `-B` rather than `-b`: create `branch`, or reset an existing one, at
+   * `startPoint`. git still refuses a branch checked out in another
+   * worktree. Without `branch` it throws a `TypeError`. The same shape as
+   * {@link CheckoutOptions.resetBranch}.
+   */
+  resetBranch?: boolean | undefined
+  /** The commit the new worktree (and branch) starts at; HEAD when omitted. */
+  startPoint?: string | undefined
+  /** `--detach` — check out `startPoint` with no branch. */
+  detach?: boolean | undefined
+}
+
+/** `git worktree add [--detach] [-b|-B branch] <path> [startPoint]`. */
+export function worktreeAdd(path: string, opts: WorktreeAddOptions = {}): GitVerb<void> {
+  if (opts.resetBranch && opts.branch === undefined) {
+    throw new TypeError('typed-git: worktreeAdd: resetBranch needs a branch')
+  }
   const argv = ['worktree', 'add']
   if (opts.detach) argv.push('--detach')
-  if (opts.branch !== undefined) argv.push('-b', opts.branch)
+  // Guarded: worktree add hands the name to a child `git branch`, which would
+  // read a leading-dash value such as `-M` as an option.
+  if (opts.branch !== undefined) {
+    argv.push(opts.resetBranch ? '-B' : '-b', positional('worktreeAdd', 'branch', opts.branch))
+  }
   argv.push(positional('worktreeAdd', 'path', path))
   const start = optionalPositional('worktreeAdd', 'startPoint', opts.startPoint)
   if (start !== undefined) argv.push(start)
@@ -2143,6 +2225,15 @@ export function worktreeMove(
   return { argv, absent: NONE, parse: nothing }
 }
 
+/** `git worktree unlock <path>`. */
+export function worktreeUnlock(path: string): GitVerb<void> {
+  return {
+    argv: ['worktree', 'unlock', positional('worktreeUnlock', 'path', path)],
+    absent: NONE,
+    parse: nothing,
+  }
+}
+
 /** `git worktree prune`. */
 export function worktreePrune(): GitVerb<void> {
   return { argv: ['worktree', 'prune'], absent: NONE, parse: nothing }
@@ -2160,6 +2251,103 @@ export function remoteAdd(name: string, url: string): GitVerb<void> {
     absent: NONE,
     parse: nothing,
   }
+}
+
+/**
+ * What {@link remoteSetHead} does to `refs/remotes/<remote>/HEAD`: point it
+ * at `branch`, ask the remote which branch its HEAD names (`auto`), or delete
+ * it. Exactly one; the types refuse a mix, and so does the verb at run time.
+ */
+export type RemoteSetHeadOptions =
+  | { branch: string; auto?: undefined; delete?: undefined }
+  | { auto: true; branch?: undefined; delete?: undefined }
+  | { delete: true; branch?: undefined; auto?: undefined }
+
+/**
+ * `git remote set-head <remote> <branch> | --auto | --delete`: set or remove
+ * the local `refs/remotes/<remote>/HEAD`, which {@link symbolicRef} reads.
+ *
+ * `absent: []`. A `branch` with no remote-tracking ref `<remote>/<branch>`
+ * exits 1 and throws, and so does an unknown remote with `branch`. `auto` asks
+ * the remote, so an unknown or unreachable one exits 128, and a remote whose
+ * HEAD cannot be determined exits 1; both throw. `delete`
+ * when the ref is not set exits 0 (measured on git 2.34).
+ */
+export function remoteSetHead(remote: string, opts: RemoteSetHeadOptions): GitVerb<void> {
+  const given = [opts.branch !== undefined, opts.auto === true, opts.delete === true]
+  if (given.filter(Boolean).length !== 1) {
+    throw new TypeError('typed-git: remoteSetHead: pass exactly one of branch, auto, delete')
+  }
+  const argv = ['remote', 'set-head', positional('remoteSetHead', 'remote', remote)]
+  if (opts.branch !== undefined) argv.push(positional('remoteSetHead', 'branch', opts.branch))
+  else if (opts.auto) argv.push('--auto')
+  else argv.push('--delete')
+  return { argv, absent: NONE, parse: nothing }
+}
+
+/** Options for {@link remoteSetBranches}. */
+export interface RemoteSetBranchesOptions {
+  /** `--add` — add to the tracked branches rather than replacing them. */
+  add?: boolean | undefined
+}
+
+/**
+ * `git remote set-branches [--add] <remote> <branch…>`: the branches a fetch
+ * of `remote` tracks, written as its `remote.<remote>.fetch` refspecs. A
+ * branch may be a glob.
+ *
+ * An empty `branches` throws a `TypeError`: git would exit 0 and clear every
+ * fetch refspec of the remote. `absent: []` — an unknown remote exits 2 and throws.
+ */
+export function remoteSetBranches(
+  remote: string,
+  branches: string[],
+  opts: RemoteSetBranchesOptions = {},
+): GitVerb<void> {
+  if (branches.length === 0) {
+    throw new TypeError('typed-git: remoteSetBranches: branches is empty')
+  }
+  const argv = ['remote', 'set-branches']
+  if (opts.add) argv.push('--add')
+  argv.push(positional('remoteSetBranches', 'remote', remote))
+  for (const b of branches) argv.push(positional('remoteSetBranches', 'branch', b))
+  return { argv, absent: NONE, parse: nothing }
+}
+
+/** Options for {@link gc}. */
+export interface GcOptions {
+  /**
+   * `--auto` — do nothing unless git's thresholds say housekeeping is due.
+   * With git's default `gc.autoDetach=true`, the work then runs in the
+   * background after this call returns. A caller about to delete or reuse the
+   * repository sets `env: { GIT_CONFIG_PARAMETERS: "'gc.autoDetach=false'" }`
+   * or omits `auto`.
+   */
+  auto?: boolean | undefined
+  /** `--aggressive` — optimize harder, at much more time. */
+  aggressive?: boolean | undefined
+  /**
+   * `--prune=<date>` for a date string such as `'now'` or `'2.weeks.ago'`,
+   * or `--no-prune` for `false`. Omitted means git's `gc.pruneExpire`. An
+   * empty string throws a `TypeError`.
+   */
+  prune?: string | false | undefined
+  /** `--quiet` — suppress the progress report. */
+  quiet?: boolean | undefined
+}
+
+/** `git gc [--auto] [--aggressive] [--prune=<date> | --no-prune] [--quiet]`. */
+export function gc(opts: GcOptions = {}): GitVerb<void> {
+  const argv = ['gc']
+  if (opts.auto) argv.push('--auto')
+  if (opts.aggressive) argv.push('--aggressive')
+  if (opts.prune === false) argv.push('--no-prune')
+  else if (opts.prune !== undefined) {
+    if (opts.prune === '') throw new TypeError('typed-git: gc: prune is empty')
+    argv.push(`--prune=${opts.prune}`)
+  }
+  if (opts.quiet) argv.push('--quiet')
+  return { argv, absent: NONE, parse: nothing }
 }
 
 // ── integration ─────────────────────────────────────────────────────────────
@@ -2525,7 +2713,9 @@ export interface CheckoutOptions {
 export function checkout(ref: string, opts: CheckoutOptions = {}): GitVerb<void> {
   const argv = ['checkout']
   if (opts.force) argv.push('--force')
-  if (opts.branch !== undefined) argv.push(opts.resetBranch ? '-B' : '-b', opts.branch)
+  if (opts.branch !== undefined) {
+    argv.push(opts.resetBranch ? '-B' : '-b', positional('checkout', 'branch', opts.branch))
+  }
   argv.push(positional('checkout', 'ref', ref))
   return { argv, absent: NONE, parse: nothing }
 }

@@ -23,7 +23,7 @@ import { firstLine, stderrOrError } from '@osdlc/command-seam'
 
 import type { Diagnostic, ProviderResult, RunnerBrand, Task } from '../../model.ts'
 import type { RunnerRole } from '../../tool.ts'
-import { dirOf, looksPersistent, taskId } from '../support/shared.ts'
+import { dirOf, looksPersistent, taskId, unique } from '../support/shared.ts'
 
 const CHAIN = [
   { label: 'runner', hint: 'mise runs tasks declared in its config, plus executable file tasks.' },
@@ -201,8 +201,4 @@ export function rootRelative(
   const rel = paths.relative(root, absolute)
   const outside = rel === '..' || /^\.\.[\\/]/.test(rel) || paths.isAbsolute(rel)
   return outside ? absolute : rel.split('\\').join('/')
-}
-
-function unique(values: string[]): string[] {
-  return [...new Set(values)]
 }

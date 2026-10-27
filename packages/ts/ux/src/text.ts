@@ -20,9 +20,37 @@ const STRING_7BIT = new Set([0x5d, 0x50, 0x58, 0x5e, 0x5f]) // ] P X ^ _
 const STRING_8BIT = new Set([0x9d, 0x90, 0x98, 0x9e, 0x9f]) // OSC DCS SOS PM APC
 /**
  * Bidirectional controls, which reorder the text around them: the marks ALM,
- * LRM and RLM, and the embeddings, overrides and isolates.
+ * LRM and RLM, and the embeddings, overrides and isolates. A character-class
+ * body.
  */
-const BIDI = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/
+const BIDI = '\\u061c\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069'
+/** C0, DEL, C1 and the bidi controls: every single character {@link stripControls} removes. */
+const CONTROL = new RegExp(`[\\u0000-\\u001f\\u007f-\\u009f${BIDI}]`)
+
+/** The C0 class body for each choice of kept tab and line feed. */
+function c0Class(options: StripControlsOptions): string {
+  const tab = options.tab === true
+  const newline = options.newline === true
+  if (tab && newline) return '\\u0000-\\u0008\\u000b-\\u001f'
+  if (tab) return '\\u0000-\\u0008\\u000a-\\u001f'
+  if (newline) return '\\u0000-\\u0009\\u000b-\\u001f'
+  return '\\u0000-\\u001f'
+}
+
+/**
+ * A global `RegExp` that matches, one character at a time, every control
+ * character {@link stripControls} removes with the same `options`: C0 (a tab
+ * or line feed kept by `options` excepted; a carriage return always
+ * matches), DEL, C1 and the bidirectional controls.
+ *
+ * It does not know escape sequences, so it matches only the ESC or C1
+ * introducer of one, not the rest. For a filter that must keep the text's
+ * length, such as one that replaces each control with U+FFFD so offsets into
+ * the text stay valid.
+ */
+export function controlPattern(options: StripControlsOptions = {}): RegExp {
+  return new RegExp(`[${c0Class(options)}\\u007f-\\u009f${BIDI}]`, 'g')
+}
 
 /**
  * `text` with every terminal control removed, so printing it cannot move the
@@ -32,8 +60,9 @@ const BIDI = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/
  * Removed:
  *
  * - Escape sequences, whole: CSI (`ESC [` … final byte), the strings opened
- *   by OSC, DCS, SOS, PM and APC up to BEL or ST (or the end of the text when
- *   there is no terminator), and two-character escapes such as `ESC c`.
+ *   by OSC, DCS, SOS, PM and APC up to BEL or ST, or up to the next ESC,
+ *   which ends the string and starts a new sequence (or the end of the text
+ *   when there is no terminator), and two-character escapes such as `ESC c`.
  * - The same sequences in their 8-bit C1 form (`U+009B` CSI, `U+009D` OSC
  *   and the rest), and every other C1 control, `U+0080`-`U+009F`.
  * - C0 controls, `U+0000`-`U+001F`, except a tab or line feed you keep with
@@ -99,7 +128,7 @@ export function stripControls(text: string, options: StripControlsOptions = {}):
     const keep =
       (c === 0x0a && options.newline === true) ||
       (c === 0x09 && options.tab === true) ||
-      (c >= 0x20 && c !== 0x7f && !(c >= 0x80 && c <= 0x9f) && !BIDI.test(text[i]!))
+      !CONTROL.test(text[i]!)
     if (keep) out += text[i]
     i++
   }

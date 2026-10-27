@@ -15,6 +15,7 @@
 
 import { z } from 'zod'
 
+import { WRAPPER_TYPES } from './schema.ts'
 import type { ConfigSection } from './section.ts'
 
 /** A path into a config document; `*` stands for any record key or array index. */
@@ -62,19 +63,6 @@ const LEAF_TYPES = new Set([
   'file',
   'custom',
   'transform',
-])
-
-/** Wrapper kinds that hold their schema in `innerType`. */
-const WRAPPER_TYPES = new Set([
-  'optional',
-  'nullable',
-  'default',
-  'prefault',
-  'nonoptional',
-  'readonly',
-  'catch',
-  'promise',
-  'success',
 ])
 
 function isSecret(schema: z.core.$ZodType): boolean {

@@ -113,6 +113,14 @@ describe('substitutePathNames', () => {
     expect(message).toContain('{dev}')
   })
 
+  test('a name inherited from Object.prototype is unknown too', () => {
+    for (const name of ['constructor', 'toString', 'hasOwnProperty', '__proto__']) {
+      expect(() => substitutePathNames(`{${name}}/x`, { dev: '/d' }, 'repos:')).toThrow(
+        PathNameError,
+      )
+    }
+  })
+
   test('the tool names its own files in the hint', () => {
     expect(() =>
       substitutePathNames('{nope}', {}, 'repos:', { defineHint: 'define it in tooly.yaml' }),

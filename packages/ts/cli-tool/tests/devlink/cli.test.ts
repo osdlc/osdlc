@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { runDevCli, type CliIo } from '../../src/devlink/cli.ts'
 import { readActive } from '../../src/devlink/state.ts'
-import { SPEC, sandbox, seedCheckout, type Sandbox } from './support.ts'
+import { SHA_A, SPEC, sandbox, seedCheckout, seedGit, type Sandbox } from './support.ts'
 
 let sb: Sandbox
 beforeEach(() => {
@@ -100,6 +101,54 @@ describe('runDevCli', () => {
     expect(runDevCli(SPEC, ['off'], { ...base(), io })).toBe(0)
     expect(io.out).toContain(`unlinked ${a}`)
     expect(readActive(SPEC, { dirs: sb.dirs })).toBeNull()
+  })
+
+  test('history text: the active mark, branch and head, and missing and label flags', () => {
+    // A temp path may hold regex metacharacters.
+    const re = (path: string) => path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    let io = capture()
+    expect(runDevCli(SPEC, ['history'], { ...base(), io })).toBe(0)
+    expect(io.out).toBe('no checkouts have been linked yet.\n')
+
+    const a = seedCheckout(join(sb.root, 'a'))
+    seedGit(a, 'main', SHA_A)
+    const b = seedCheckout(join(sb.root, 'b'))
+    const c = seedCheckout(join(sb.root, 'c'))
+    expect(runDevCli(SPEC, ['link', a], { ...base(), io: capture() })).toBe(0)
+    expect(runDevCli(SPEC, ['link', c], { ...base(), io: capture() })).toBe(0)
+    expect(runDevCli(SPEC, ['link', b, '--label', 'second'], { ...base(), io: capture() })).toBe(0)
+    rmSync(c, { recursive: true, force: true })
+
+    io = capture()
+    expect(runDevCli(SPEC, ['history'], { ...base(), io })).toBe(0)
+    const lines = io.out.split('\n')
+    expect(lines[0]).toMatch(new RegExp(`^\\* #1  ${re(b)}  link \\S+  \\(second\\)$`))
+    expect(lines[1]).toMatch(new RegExp(`^  #2  ${re(c)}  link \\S+  \\(missing\\)$`))
+    expect(lines[2]).toMatch(
+      new RegExp(`^  #3  ${re(a)}  \\[main @ ${SHA_A.slice(0, 12)}\\]  link \\S+$`),
+    )
+    expect(io.out).toContain("\n\n* = active. 'dev use #N' switches;")
+  })
+
+  test('use with no target is a usage error; off with nothing linked says so', () => {
+    let io = capture()
+    expect(runDevCli(SPEC, ['use'], { ...base(), io })).toBe(2)
+    expect(io.err).toBe("tooly dev use: expected #N, a path, or 'canonical'\n")
+    expect(io.out).toBe('')
+    io = capture()
+    expect(runDevCli(SPEC, ['off'], { ...base(), io })).toBe(0)
+    expect(io.out).toBe('no checkout was linked; tooly already runs the local install.\n')
+  })
+
+  test('the help names the resolution variables', () => {
+    const io = capture()
+    expect(runDevCli(SPEC, ['--help'], { ...base(), io })).toBe(0)
+    expect(io.out).toContain(
+      '$TOOLY_HOME, a checkout above the\ncwd ($TOOLY_CWD_DEV=0 turns that off)',
+    )
+    const plain = capture()
+    runDevCli({ ...SPEC, cwdLayer: false }, ['--help'], { ...base(), io: plain })
+    expect(plain.out).toContain('$TOOLY_HOME, the linked checkout, the\nlocal install.')
   })
 
   test('a DevlinkError is exit 1 with the message on stderr', () => {

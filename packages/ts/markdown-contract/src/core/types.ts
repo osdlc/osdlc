@@ -83,7 +83,10 @@ export interface SectionNode {
   depth: number
   /** The position of the heading. */
   pos: SourcePos
-  /** The child sections, one heading level down. */
+  /**
+   * The child sections: the deeper headings up to the next heading of the same or lesser depth.
+   * A child keeps its true depth, so a skipped level gives a depth above `depth + 1`.
+   */
   sections: SectionNode[]
   /** The blocks directly under this heading, before its first child heading. */
   blocks: BlockNode[]
@@ -206,8 +209,9 @@ export interface LeafSpec<Row = unknown, Item = unknown> {
 /** Options for one level of the body grammar: the order of sections and whether others may appear. */
 export interface LevelOpts {
   /**
-   * `strict`: the sections follow the grammar's order, and an undeclared section may sit only
-   * where a `gap()` is. `recognized-relative`: the declared sections keep their relative order.
+   * `strict`: the declared sections follow the grammar's order. With `allowUnknown: false`, an
+   * undeclared section may sit only where a `gap()` is; with the default `true` it may appear
+   * anywhere. `recognized-relative`: the declared sections keep their relative order.
    * `none` (the default): any order.
    */
   order?: 'none' | 'recognized-relative' | 'strict'

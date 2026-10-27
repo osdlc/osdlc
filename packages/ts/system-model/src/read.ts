@@ -6,7 +6,9 @@
 
 import { constants } from 'node:fs'
 import { open, realpath, stat, type FileHandle } from 'node:fs/promises'
-import { isAbsolute, join, sep } from 'node:path'
+import { isAbsolute, join } from 'node:path'
+
+import { realPathInside } from '@osdlc/path-guard/node'
 
 /** The largest file a runner or detection reads: 4 MiB. A larger file is skipped. */
 export const MAX_READ_BYTES = 4 * 1024 * 1024
@@ -29,17 +31,13 @@ export async function resolveInside(root: string, relPath: string): Promise<Reso
   if (isAbsolute(relPath) || relPath.split(/[\\/]/).includes('..')) {
     return { skipped: 'a path outside the repository', outside: true }
   }
-  let real: string
-  let realRoot: string
+  let real: string | null
   try {
-    realRoot = await realpath(root)
-    real = await realpath(join(root, relPath))
+    real = await realPathInside(await realpath(root), join(root, relPath))
   } catch (err) {
     return { skipped: message(err), missing: true }
   }
-  if (real !== realRoot && !real.startsWith(realRoot.endsWith(sep) ? realRoot : realRoot + sep)) {
-    return { skipped: 'a symlink that leaves the repository', outside: true }
-  }
+  if (real === null) return { skipped: 'a symlink that leaves the repository', outside: true }
   return { real }
 }
 

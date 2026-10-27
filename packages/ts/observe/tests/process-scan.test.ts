@@ -109,6 +109,46 @@ describe('scanTaggedProcesses', () => {
     ])
     rmSync(proc, { recursive: true, force: true })
   })
+
+  test('on linux, a tag inside the value of another variable is not a tag', () => {
+    const proc = mkdtempSync(join(tmpdir(), 'observe-proc-'))
+    mkdirSync(join(proc, '97'))
+    writeFileSync(join(proc, '97', 'environ'), 'CMD=run OBSERVE_SESSION=fake\0HOME=/h\0')
+    mkdirSync(join(proc, '96'))
+    // A spoofed legacy name earlier in environ does not override the real tag either.
+    writeFileSync(
+      join(proc, '96', 'environ'),
+      'LOG=x SDLC_SESSION=spoof\0OBSERVE_SESSION=real\0OBSERVE_TASK=t\0',
+    )
+    const found = scanTaggedProcesses(ps(1, '', ''), { platform: 'linux', procDir: proc })
+    expect(found).toEqual([{ pid: 96, sessionId: 'real', task: 't' }])
+    rmSync(proc, { recursive: true, force: true })
+  })
+
+  test('macOS: ps -p exiting 1 with no output means every tagged process exited', () => {
+    const calls: string[][] = []
+    const runner: CommandRunner = {
+      run: (argv) => {
+        calls.push([...argv])
+        return argv.includes('-E')
+          ? { exitCode: 0, stdout: WITH_ENV, stderr: '' }
+          : { exitCode: 1, stdout: '', stderr: '' }
+      },
+    }
+    expect(scanTaggedProcesses(runner, { platform: 'darwin' })).toEqual([])
+    expect(calls[1]).toEqual(['-ww', '-p', '4242', '-o', 'pid=,command='])
+  })
+
+  test('macOS: any other ps -p failure is "could not tell"', () => {
+    const second = (exitCode: number, stdout: string): CommandRunner => ({
+      run: (argv) =>
+        argv.includes('-E')
+          ? { exitCode: 0, stdout: WITH_ENV, stderr: '' }
+          : { exitCode, stdout, stderr: '' },
+    })
+    expect(scanTaggedProcesses(second(2, ''), { platform: 'darwin' })).toBeNull()
+    expect(scanTaggedProcesses(second(1, 'junk'), { platform: 'darwin' })).toBeNull()
+  })
 })
 
 test('only linux and darwin can be scanned', () => {

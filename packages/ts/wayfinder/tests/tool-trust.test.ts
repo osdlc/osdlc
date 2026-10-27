@@ -159,6 +159,22 @@ describe('per-tool trust', () => {
     expect(withheld(stored.catalog)).toEqual(['moon'])
   })
 
+  test('a granted runner that --exclude or --only leaves out is not collected, fresh or cached', async () => {
+    const dir = await root(MISE_AND_MOON)
+    await (await open(dir)).grantTrust('mise')
+    // The grant probes and stores mise, so the cached reads below have an entry to find.
+    await (await open(dir)).catalog()
+    for (const flags of [{ exclude: ['mise'] }, { only: ['moon'] }]) {
+      const session = await createSession({ dir, cwd: dir, env: {}, home: dir, flags })
+      const fresh = await session.catalog()
+      expect(fresh.catalog.reports.map((r) => r.runner)).not.toContain('mise')
+      expect(withheld(fresh.catalog)).toEqual(['moon'])
+      const cached = await session.catalog({ cached: true })
+      expect(cached.catalog.reports.map((r) => r.runner)).not.toContain('mise')
+      expect(withheld(cached.catalog)).toEqual(['moon'])
+    }
+  })
+
   test('a tool grant is refused when trust does not decide execution', async () => {
     const dir = await root(MISE_AND_MOON)
     const session = await createSession({

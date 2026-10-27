@@ -47,11 +47,10 @@ pnpm run format:check
 
 ## The conformance corpus
 
-`tests/fixtures/conformance.json` is a copy of the `frontmatter-lossless`
-Rust crate's corpus, at
-`packages/rust/frontmatter-lossless/tests/fixtures/conformance.json`. A
-change to how notes are split changes both implementations and the corpus
-together, and the copy here stays byte-identical to the crate's. See
+The tests read the `frontmatter-lossless` Rust crate's corpus in place, at
+`packages/rust/frontmatter-lossless/tests/fixtures/conformance.json`; the
+package keeps no copy. A change to how notes are split changes both
+implementations and the corpus together. See
 [D-07](https://github.com/osdlc/osdlc/blob/main/packages/ts/frontmatter-lossless/docs/planning/decisions/D-07-conformance-corpus.md).
 
 ## Code style
