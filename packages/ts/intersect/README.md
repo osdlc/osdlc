@@ -196,6 +196,11 @@ The package throws `IntersectError` for failures it understands. Branch on its
 | `INVALID_ARGUMENT` | An argument has the wrong type, for example a number where a pattern is expected. |
 | `IO_ERROR` | `./fs` could not read `cwd` or a directory under it. |
 
+## Rust twin
+
+The Rust crate [`glob-intersect`](https://crates.io/crates/glob-intersect)
+gives the same answers. Both run this package's `fixtures/` as their tests.
+
 ## Status
 
 Version 0.x. The API may change in a minor release. Read the
