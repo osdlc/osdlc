@@ -70,12 +70,14 @@ describe('runMain with devlink', () => {
 
   test('a handed-off process runs its own main and answers --version', async () => {
     const other = seedCheckout(join(sb.root, 'other'))
+    process.env['TOOLY_LAUNCH_LAYER'] = 'env'
     const r = run({ TOOLY_HOME: other, TOOLY_LAUNCH_LAYER: 'env' }, ['--version'])
     await r.done
     expect(r.context.io.out).toBe('tooly 1.2.3\n')
     expect(process.exitCode).toBe(0)
     // Removed once read, so a process this run starts resolves for itself.
     expect(r.context.env['TOOLY_LAUNCH_LAYER']).toBeUndefined()
+    expect(process.env['TOOLY_LAUNCH_LAYER']).toBeUndefined()
   })
 
   test('nothing selected runs main', async () => {
