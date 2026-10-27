@@ -38,9 +38,9 @@
       "line": 267,
       "title": "Host-terms guard does not scan the newly shipped bin/ directory",
       "comment": "https://github.com/osdlc/osdlc/pull/525#pullrequestreview-5663070433",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "0dffb9c99e9fe6eaf27af8b1bcb50b0bc73c6d16"
     },
     {
       "id": "r2-1",
