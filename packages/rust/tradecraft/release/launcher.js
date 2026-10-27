@@ -61,11 +61,14 @@ if (DEBUG_ENV && process.env[DEBUG_ENV]) {
 }
 
 // Inherited stdio, so the binary owns the terminal; exit code and signal pass through.
-// A terminal's Ctrl-C reaches the child directly (same process group). A signal
-// sent to this pid alone is forwarded, and the launcher waits for the child.
+// A terminal's Ctrl-C reaches the child directly (same process group), so the
+// launcher ignores SIGINT and waits for the child to exit; forwarding it would
+// deliver it twice. SIGTERM and SIGHUP, usually sent to this pid alone, are
+// forwarded.
 const child = spawn(bin, process.argv.slice(2), { stdio: 'inherit', windowsHide: false })
-const signals = ['SIGINT', 'SIGTERM', ...(process.platform === 'win32' ? [] : ['SIGHUP'])]
-for (const signal of signals) {
+process.on('SIGINT', () => {})
+const forwarded = ['SIGTERM', ...(process.platform === 'win32' ? [] : ['SIGHUP'])]
+for (const signal of forwarded) {
   process.on(signal, () => {
     try {
       child.kill(signal)

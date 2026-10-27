@@ -7,7 +7,7 @@ runs it when release-plz pushes a `tradecraft/vX.Y.Z` tag.
 | File | Is |
 |---|---|
 | `product.ts` | Every name and platform: package names, binary, targets, runners, tag prefix |
-| `dist.ts` | The verbs the workflow and the smoke test run: build, notices, release-assets, assemble, pack, publish, formula, stage |
+| `dist.ts` | The verbs the workflow and the smoke test run: build, notices, release-assets, from-release, assemble, pack, publish, formula, stage |
 | `install.sh` | The curl installer attached to each release |
 | `launcher.js` | The npm launcher template: finds the platform package and runs its binary |
 | `templates/` | The launcher and platform `package.json` bases and READMEs |
@@ -39,16 +39,19 @@ node packages/rust/tradecraft/release/dist.ts smoke       # build, pack, install
 node --test packages/rust/tradecraft/release/dist.test.ts # unit tests
 ```
 
-## Releasing a tag by hand
+## Re-running a release
 
-For a tag that exists already, run the workflow from the Actions tab or:
+Run the workflow from main, from the Actions tab or:
 
 ```sh
-gh workflow run tradecraft-release.yml --repo osdlc/osdlc -f tag=tradecraft/v0.3.5 -f dry_run=true
+gh workflow run tradecraft-release.yml --repo osdlc/osdlc --ref main -f tag=tradecraft/v0.3.6 -f dry_run=true
 ```
 
-Check the run, then run it again with `dry_run=false`. A manual run builds the
-Rust source of the tag with the tooling of the branch it runs on.
+A manual run refuses any ref but main, and builds the tag's own source and
+tooling. Published assets are never replaced: once a release has its
+`SHA256SUMS`, a run reuses its binaries instead of building, so npm and
+Homebrew get the same bytes. An older version never moves npm `latest` or
+the tap backwards, and a pre-release goes to npm `next` only.
 
 ## First release on npm
 
@@ -60,7 +63,7 @@ node packages/rust/tradecraft/release/dist.ts stage --dry-run
 node packages/rust/tradecraft/release/dist.ts stage
 ```
 
-For each of the five packages it publishes a `0.0.1-stage` placeholder under
-the `stage` tag, then adds a trusted publisher: repository `osdlc/osdlc`,
-workflow `tradecraft-release.yml`, no environment. A step already done is
-skipped.
+It hands placeholder packages to `scripts/stage-npm-package.ts`. For each of
+the five packages that script publishes a `0.0.1-stage` placeholder under the
+`stage` tag, then adds a trusted publisher: repository `osdlc/osdlc`, workflow
+`tradecraft-release.yml`, environment `npm`. A step already done is skipped.

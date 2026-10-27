@@ -4,6 +4,10 @@ import { test } from 'node:test'
 
 import {
   className,
+  compareVersions,
+  formulaVersion,
+  replaceDecision,
+  urlCarriesVersion,
   licenseLine,
   parseAssetFlag,
   parseSums,
@@ -48,6 +52,67 @@ test('the formula has a block per os and cpu, a license and a version test', () 
   assert.ok(rb.includes('bin.install File.basename(stable.url) => "tradecraft"'))
   assert.ok(rb.includes('assert_match version.to_s, shell_output("#{bin}/tradecraft --version")'))
   assert.ok(rb.endsWith('end\n'))
+})
+
+test('no version line when every URL carries the version', () => {
+  assert.doesNotMatch(renderFormula(input), /^\s*version /m)
+  const plain = input.assets.map((a) => ({ ...a, file: a.file.replace('0.3.5-', '') }))
+  const rb = renderFormula({ ...input, urlBase: 'https://example.com/dl', assets: plain })
+  assert.match(rb, /^ {2}version "0.3.5"$/m)
+})
+
+test('the livecheck block reads the GitHub releases with the tag prefix', () => {
+  const rb = renderFormula({
+    ...input,
+    livecheckTagPrefix: 'tradecraft/v',
+  })
+  assert.ok(
+    rb.includes(
+      '  livecheck do\n    url :stable\n    regex(%r{^tradecraft/v(\\d+(?:\\.\\d+)+)$}i)\n    strategy :github_releases\n  end',
+    ),
+  )
+  assert.ok(!renderFormula(input).includes('livecheck'))
+})
+
+test('URLs that carry a version', () => {
+  const base = 'https://github.com/osdlc/osdlc/releases/download/tradecraft/v0.3.5'
+  assert.ok(urlCarriesVersion(`${base}/tradecraft-0.3.5-aarch64-apple-darwin`, '0.3.5'))
+  assert.ok(urlCarriesVersion('https://x/archive/refs/tags/tradecraft/v0.3.5.tar.gz', '0.3.5'))
+  assert.ok(!urlCarriesVersion('https://x/dl/tool-aarch64', '0.3.5'))
+  assert.ok(!urlCarriesVersion('https://x/dl/v10.3.55/tool', '0.3.5'))
+})
+
+test('a formula version comes from its version line or its first url', () => {
+  const source = `class Tradecraft < Formula
+  url "https://github.com/osdlc/osdlc/archive/refs/tags/tradecraft/v0.3.5.tar.gz"
+end
+`
+  assert.equal(formulaVersion(source), '0.3.5')
+  assert.equal(
+    formulaVersion(renderFormula({ ...input, version: '0.3.6' }).replaceAll('0.3.5', '0.3.6')),
+    '0.3.6',
+  )
+  assert.equal(
+    formulaVersion('class X < Formula\n  version "1.2.3"\n  url "https://x/tool"\nend\n'),
+    '1.2.3',
+  )
+  assert.equal(formulaVersion('class X < Formula\nend\n'), null)
+})
+
+test('versions compare numerically, a pre-release below its release', () => {
+  assert.equal(compareVersions('0.3.10', '0.3.9'), 1)
+  assert.equal(compareVersions('0.3.6', '0.3.6'), 0)
+  assert.equal(compareVersions('0.4.0-rc.1', '0.4.0'), -1)
+  assert.equal(compareVersions('0.4.0-rc.1', '0.3.9'), 1)
+})
+
+test('the tap never moves backwards and never takes a pre-release', () => {
+  const at = (v: string) => renderFormula({ ...input, version: v }).replaceAll('0.3.5', v)
+  assert.equal(replaceDecision(null, '0.3.6').replace, true)
+  assert.equal(replaceDecision(at('0.3.5'), '0.3.6').replace, true)
+  assert.equal(replaceDecision(at('0.3.6'), '0.3.6').replace, true)
+  assert.equal(replaceDecision(at('0.4.0'), '0.3.6').replace, false)
+  assert.equal(replaceDecision(at('0.3.5'), '0.4.0-rc.1').replace, false)
 })
 
 test('a platform with no asset gets no block', () => {

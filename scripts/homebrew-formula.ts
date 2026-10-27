@@ -6,13 +6,19 @@
 //   node scripts/homebrew-formula.ts --name <tool> --version <v> --desc <text>
 //     --homepage <url> --license <spdx> --url-base <release download url>
 //     --sums <SHA256SUMS> --asset darwin-arm64=<file> [--asset <os>-<cpu>=<file> ...]
-//     [--out <Formula/tool.rb>]
+//     [--tag-prefix <prefix>] [--out <Formula/tool.rb>]
 //
 // Each --asset maps a platform (darwin or linux, arm64 or x64) to the asset's
 // file name on the release; its hash is read from the sums file. The formula
 // installs the downloaded file as `bin/<name>` and its test runs
-// `<name> --version`. Without --out it prints the formula.
-import { readFileSync, writeFileSync } from 'node:fs'
+// `<name> --version`. With --tag-prefix, `brew livecheck` reads the GitHub
+// releases whose tag starts with the prefix, so a repository that releases
+// several products finds this one's. Without --out it prints the formula.
+//
+// With --out, a pre-release, or a version older than the one the file at --out
+// already has, is skipped with a notice and the file is left as it is. So a
+// late re-run of an old release cannot move the tap backwards.
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 
@@ -37,6 +43,64 @@ export interface FormulaInput {
   /** The release's download URL, without a trailing slash. */
   urlBase: string
   assets: readonly BrewAsset[]
+  /** `brew livecheck` reads the GitHub releases whose tag starts with this prefix. */
+  livecheckTagPrefix?: string
+}
+
+/** Compares two semver-like versions: release `X.Y.Z`, with an optional `-pre` part. */
+export function compareVersions(a: string, b: string): number {
+  const parse = (v: string) => {
+    const [main = '', pre] = v.replace(/^v/, '').split(/-(.*)/s)
+    return { nums: main.split('.').map((n) => Number.parseInt(n, 10) || 0), pre }
+  }
+  const x = parse(a)
+  const y = parse(b)
+  for (let i = 0; i < Math.max(x.nums.length, y.nums.length); i++) {
+    const d = (x.nums[i] ?? 0) - (y.nums[i] ?? 0)
+    if (d !== 0) return Math.sign(d)
+  }
+  if (x.pre === y.pre) return 0
+  if (x.pre === undefined) return 1
+  if (y.pre === undefined) return -1
+  return x.pre < y.pre ? -1 : 1
+}
+
+/**
+ * The version a formula installs: its `version` line, or else the version in
+ * its first `url`, the way Homebrew reads one from a URL. Null when neither
+ * gives one.
+ */
+export function formulaVersion(text: string): string | null {
+  const explicit = /^\s*version\s+"([^"]+)"/m.exec(text)
+  if (explicit) return explicit[1]!
+  const url = /^\s*url\s+"([^"]+)"/m.exec(text)
+  if (!url) return null
+  const m = /v?(\d+(?:\.\d+)+(?:-[0-9A-Za-z.]+?)?)(?=\.tar|\.tgz|\.zip|-|\/|$)/.exec(url[1]!)
+  return m ? m[1]! : null
+}
+
+/** True when Homebrew can read `version` from `url`, so a `version` line would be redundant. */
+export function urlCarriesVersion(url: string, version: string): boolean {
+  const escaped = version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(^|[/_-]v?)${escaped}($|[/_-]|\\.(tar|tgz|zip))`).test(url)
+}
+
+/**
+ * Whether to write `version` over the formula `current`. A pre-release, or a
+ * version older than the one `current` installs, is skipped.
+ */
+export function replaceDecision(
+  current: string | null,
+  version: string,
+): { replace: boolean; reason: string } {
+  if (version.includes('-')) {
+    return { replace: false, reason: `${version} is a pre-release; the tap carries releases only` }
+  }
+  const installed = current === null ? null : formulaVersion(current)
+  if (installed !== null && compareVersions(installed, version) > 0) {
+    return { replace: false, reason: `the tap has ${installed}, newer than ${version}` }
+  }
+  return { replace: true, reason: installed === null ? 'no formula yet' : `replaces ${installed}` }
 }
 
 /** `tradecraft` to `Tradecraft`, `repo-cleaner` to `RepoCleaner`: Homebrew's class name. */
@@ -81,7 +145,7 @@ const OS_BLOCK: Record<BrewOs, string> = { darwin: 'on_macos', linux: 'on_linux'
 const CPU_BLOCK: Record<BrewCpu, string> = { arm64: 'on_arm', x64: 'on_intel' }
 
 export function renderFormula(input: FormulaInput): string {
-  const { name, version, desc, homepage, license, urlBase, assets } = input
+  const { name, version, desc, homepage, license, urlBase, assets, livecheckTagPrefix } = input
   // `brew audit` rules for desc.
   if (desc.length > 80) throw new Error(`desc is ${desc.length} characters; Homebrew allows 80`)
   if (/\.$/.test(desc) || /^(a|an|the)\s/i.test(desc)) {
@@ -102,9 +166,23 @@ export function renderFormula(input: FormulaInput): string {
     `class ${className(name)} < Formula`,
     `  desc ${rubyString(desc)}`,
     `  homepage ${rubyString(homepage)}`,
-    `  version ${rubyString(version)}`,
-    `  ${licenseLine(license)}`,
   ]
+  // `brew audit` calls a `version` line redundant when every URL carries it.
+  if (!assets.every((a) => urlCarriesVersion(`${urlBase}/${a.file}`, version))) {
+    lines.push(`  version ${rubyString(version)}`)
+  }
+  lines.push(`  ${licenseLine(license)}`)
+  if (livecheckTagPrefix !== undefined) {
+    const prefix = livecheckTagPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    lines.push(
+      '',
+      '  livecheck do',
+      '    url :stable',
+      `    regex(%r{^${prefix}(\\d+(?:\\.\\d+)+)$}i)`,
+      '    strategy :github_releases',
+      '  end',
+    )
+  }
   for (const os of ['darwin', 'linux'] as const) {
     const forOs = assets.filter((a) => a.os === os)
     if (forOs.length === 0) continue
@@ -138,6 +216,22 @@ export function renderFormula(input: FormulaInput): string {
   return lines.join('\n')
 }
 
+/**
+ * Writes `formula` to `path` unless replaceDecision says to keep the file
+ * there. Returns whether it wrote, and prints the reason either way.
+ */
+export function writeFormula(path: string, version: string, formula: string): boolean {
+  const current = existsSync(path) ? readFileSync(path, 'utf8') : null
+  const { replace, reason } = replaceDecision(current, version)
+  if (!replace) {
+    console.log(`::notice::Homebrew formula left as it is: ${reason}`)
+    return false
+  }
+  writeFileSync(path, formula)
+  console.log(`${path}: ${version} (${reason})`)
+  return true
+}
+
 /** `darwin-arm64=tool-1.0.0-aarch64-apple-darwin` to its platform and file. */
 export function parseAssetFlag(flag: string): { os: BrewOs; cpu: BrewCpu; file: string } {
   const m = /^(darwin|linux)-(arm64|x64)=(.+)$/.exec(flag)
@@ -156,6 +250,7 @@ function main(): void {
       'url-base': { type: 'string' },
       sums: { type: 'string' },
       asset: { type: 'string', multiple: true },
+      'tag-prefix': { type: 'string' },
       out: { type: 'string' },
     },
   })
@@ -171,6 +266,7 @@ function main(): void {
     if (!sha256) throw new Error(`${a.file} is not in ${values.sums}`)
     return { ...a, sha256 }
   })
+  const tagPrefix = values['tag-prefix']
   const formula = renderFormula({
     name: need('name'),
     version: need('version'),
@@ -179,8 +275,9 @@ function main(): void {
     license: need('license'),
     urlBase: need('url-base').replace(/\/+$/, ''),
     assets,
+    ...(tagPrefix ? { livecheckTagPrefix: tagPrefix } : {}),
   })
-  if (values.out) writeFileSync(values.out, formula)
+  if (values.out) writeFormula(values.out, need('version'), formula)
   else process.stdout.write(formula)
 }
 

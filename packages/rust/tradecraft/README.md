@@ -205,9 +205,11 @@ of them fail, most through the `tradecraft-core` path guard. `adopt --from-git` 
 `harness` verbs run `git` and each harness's own command, so those must be on
 `PATH`. The minimum supported Rust version is 1.89.
 
-The prebuilt macOS binaries are not signed or notarized yet, so Gatekeeper may
-block them on first run. Allow the binary in System Settings, Privacy &
-Security, or build it with `cargo install tradecraft`.
+The prebuilt macOS binaries are not signed or notarized yet. Installs through
+`brew`, `npm`, `cargo binstall` or `install.sh` are not blocked by Gatekeeper,
+because those tools do not mark the download as quarantined. A binary
+downloaded from the release page with a web browser is quarantined, and macOS
+refuses to run it until you allow it in System Settings, Privacy & Security.
 
 ## Changes
 

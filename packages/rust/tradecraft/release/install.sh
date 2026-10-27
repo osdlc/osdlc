@@ -8,7 +8,7 @@
 # checks it against the release's SHA256SUMS and installs it as
 # <dir>/tradecraft. The default dir is ~/.local/bin. The copy attached to a
 # release installs that release; the copy in the repository installs the
-# newest tradecraft release unless --version is given.
+# newest tradecraft release that has binaries, unless --version is given.
 #
 # TRADECRAFT_DOWNLOAD_BASE overrides the download URL up to the tag, for tests.
 set -eu
@@ -24,11 +24,24 @@ to="${HOME}/.local/bin"
 say() { printf '%s\n' "install.sh: $*" >&2; }
 die() { say "$*"; exit 1; }
 
+usage() {
+  cat <<'USAGE'
+Installs the tradecraft binary from a GitHub Release of osdlc/osdlc.
+
+  sh install.sh [--version <X.Y.Z>] [--to <dir>]
+
+Picks the build for this OS and CPU (macOS or Linux, arm64 or x86_64), checks
+it against the release's SHA256SUMS and installs it as <dir>/tradecraft.
+--to defaults to ~/.local/bin. Without --version it installs the newest
+tradecraft release that has binaries.
+USAGE
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --version) [ $# -ge 2 ] || die '--version needs a value'; version="${2#v}"; shift 2 ;;
     --to) [ $# -ge 2 ] || die '--to needs a value'; to="$2"; shift 2 ;;
-    -h|--help) sed -n '2,13p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) usage; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -67,15 +80,24 @@ esac
 tmp="$(mktemp -d 2>/dev/null || mktemp -d -t tradecraft)"
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
+download_base="${TRADECRAFT_DOWNLOAD_BASE:-https://github.com/${REPO}/releases/download}"
+
 if [ -z "$version" ]; then
-  # The newest tradecraft release; other crates' releases share the repository.
+  # Other crates' releases share the repository, and a release can exist
+  # before its binaries are uploaded. Take the newest tradecraft release, not
+  # a pre-release, whose SHA256SUMS downloads.
   fetch "https://api.github.com/repos/${REPO}/releases?per_page=100" "$tmp/releases.json"
-  version="$(grep -o "\"tag_name\": *\"${TAG_PREFIX}[^\"]*\"" "$tmp/releases.json" \
-    | head -n 1 | sed "s#.*\"${TAG_PREFIX}\\([^\"]*\\)\"#\\1#")"
-  [ -n "$version" ] || die "found no ${TAG_PREFIX}* release; pass --version"
+  for candidate in $(grep -o "\"tag_name\": *\"${TAG_PREFIX}[0-9][0-9.]*\"" "$tmp/releases.json" \
+    | sed "s#.*\"${TAG_PREFIX}\\([^\"]*\\)\"#\\1#" | head -n 5); do
+    if fetch "${download_base}/${TAG_PREFIX}${candidate}/SHA256SUMS" "$tmp/SHA256SUMS" 2>/dev/null; then
+      version="$candidate"
+      break
+    fi
+  done
+  [ -n "$version" ] || die "found no ${TAG_PREFIX}* release with binaries; pass --version"
 fi
 
-base="${TRADECRAFT_DOWNLOAD_BASE:-https://github.com/${REPO}/releases/download}/${TAG_PREFIX}${version}"
+base="${download_base}/${TAG_PREFIX}${version}"
 asset="${BINARY}-${version}-${cpu}-${os}"
 
 say "downloading ${asset}"
@@ -96,6 +118,3 @@ case ":${PATH}:" in
   *":${to}:"*) ;;
   *) say "${to} is not on PATH; add it to run ${BINARY}" ;;
 esac
-if [ "$os" = 'apple-darwin' ]; then
-  say 'the macOS binary is not signed or notarized yet; if macOS blocks it, allow it in System Settings, Privacy & Security'
-fi

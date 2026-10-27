@@ -60,7 +60,7 @@ describe('package manifests', () => {
     assert.equal(names.length, PLATFORMS.length + 1)
     assert.equal(names.at(-1), PRODUCT.launcher)
     const placeholder = placeholderManifest(names[0]!)
-    assert.equal(placeholder['version'], '0.0.1-stage')
+    assert.equal(placeholder['license'], 'MIT OR Apache-2.0')
     assert.equal(placeholder['name'], names[0])
   })
 })
@@ -70,6 +70,9 @@ test('the launcher script has no placeholder left and names every platform packa
   assert.doesNotMatch(script, /\{\{\w+\}\}/)
   for (const p of PLATFORMS) assert.ok(script.includes(platformPackageName(p)))
   assert.ok(script.includes("const BINARY = 'tradecraft'"))
+  // A terminal Ctrl-C reaches the child already; the launcher must not send a second one.
+  assert.ok(script.includes("process.on('SIGINT', () => {})"))
+  assert.ok(!/forwarded = \[[^\]]*SIGINT/.test(script))
 })
 
 test('the matrix carries one entry per platform, with no Windows', () => {
@@ -104,9 +107,12 @@ describe('versions', () => {
     assert.throws(() => tagVersion('v0.3.5'))
   })
 
-  test('a pre-release publishes under next', () => {
-    assert.equal(distTag('0.3.5'), 'latest')
-    assert.equal(distTag('0.4.0-rc.1'), 'next')
+  test('a pre-release publishes under next, an older version under backport', () => {
+    assert.equal(distTag('0.3.6', null), 'latest')
+    assert.equal(distTag('0.3.6', '0.0.1-stage'), 'latest')
+    assert.equal(distTag('0.3.6', '0.3.6'), 'latest')
+    assert.equal(distTag('0.4.0-rc.1', '0.3.6'), 'next')
+    assert.equal(distTag('0.3.6', '0.4.0'), 'backport')
   })
 })
 
@@ -181,6 +187,10 @@ describe('homebrew', () => {
       )
     }
     assert.ok(rb.includes('license any_of: ["MIT", "Apache-2.0"]'))
+    // Every URL carries the version, so brew audit would call a version line redundant.
+    assert.doesNotMatch(rb, /^\s*version /m)
+    assert.ok(rb.includes('    strategy :github_releases'))
+    assert.ok(rb.includes('    regex(%r{^tradecraft/v(\\d+(?:\\.\\d+)+)$}i)'))
   })
 
   test('a platform missing from SHA256SUMS fails the render', () => {
@@ -195,6 +205,15 @@ describe('install.sh', () => {
 
   test('is valid sh', () => {
     assert.equal(spawnSync('sh', ['-n', script]).status, 0)
+  })
+
+  test('--help prints usage when piped through sh', () => {
+    const r = spawnSync('sh', ['-s', '--', '--help'], {
+      input: readFileSync(script, 'utf8'),
+      encoding: 'utf8',
+    })
+    assert.equal(r.status, 0)
+    assert.match(r.stdout, /--to defaults to ~\/\.local\/bin/)
   })
 
   test('the attached copy defaults to its release', () => {

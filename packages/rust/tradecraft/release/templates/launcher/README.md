@@ -14,8 +14,8 @@ the launcher runs it. Supported platforms: {{platforms}}. Windows is not support
 If the command reports that the platform package is missing, reinstall without
 `--omit=optional` or `--no-optional`.
 
-The macOS binaries are not signed or notarized yet. If Gatekeeper blocks the binary, allow it
-in System Settings, Privacy & Security, or install with `cargo install tradecraft`.
+The macOS binaries are not signed or notarized yet. npm does not quarantine what it installs,
+so Gatekeeper does not block them.
 
 The same binaries are on the GitHub Release `tradecraft/v<version>` of
 [osdlc/osdlc](https://github.com/osdlc/osdlc/releases), and `cargo binstall tradecraft`

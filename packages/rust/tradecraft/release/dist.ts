@@ -18,8 +18,13 @@
 //   release-assets [--version <v>] renamed binaries, SHA256SUMS, notices and install.sh into <out>/release/
 //   install-check                  install the packed launcher + this machine's package, run it
 //   smoke                          build, assemble, pack, install and run, for this machine
-//   formula  [--version <v>]       Homebrew formula from <out>/release/SHA256SUMS into <out>/tradecraft.rb
-//   stage    [--dry-run]           owner only: placeholder publish + trusted publisher per package
+//   from-release [--version <v>]  binaries and notices from a published release in <out>/release/,
+//                                  checked against its SHA256SUMS
+//   formula  [--version <v>] [--tap <file>]
+//                                  Homebrew formula from <out>/release/SHA256SUMS into <out>/tradecraft.rb,
+//                                  or into --tap unless that formula is newer
+//   stage    [--dry-run]           owner only: placeholder publish + trusted publisher per package,
+//                                  through scripts/stage-npm-package.ts
 //
 // Every verb takes `--out <dir>` (default packages/rust/target/tradecraft-dist).
 
@@ -41,7 +46,12 @@ import { homedir, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 
-import { parseSums, renderFormula } from '../../../../scripts/homebrew-formula.ts'
+import {
+  compareVersions,
+  parseSums,
+  renderFormula,
+  writeFormula,
+} from '../../../../scripts/homebrew-formula.ts'
 import {
   binaryPathInPackage,
   findPlatform,
@@ -61,9 +71,8 @@ const CRATE_MANIFEST = join(CRATE_DIR, 'Cargo.toml')
 const TEMPLATES = join(HERE, 'templates')
 const NOTICES = 'THIRD_PARTY_NOTICES.md'
 const LICENSES = ['LICENSE-MIT', 'LICENSE-APACHE']
-/** The npm that `stage` runs: `npm trust` needs 11.15 or later. Matches packages-publish.yml. */
-const STAGE_NPM = 'npm@11.19.1'
-const PLACEHOLDER = '0.0.1-stage'
+/** The GitHub environment the npm job runs in; each trusted publisher names it. */
+const NPM_ENVIRONMENT = 'npm'
 
 interface Layout {
   binaries: string
@@ -458,14 +467,31 @@ export function npmTarballName(name: string, version: string): string {
   return `${name.replace(/^@/, '').replace('/', '-')}-${version}.tgz`
 }
 
-/** The dist-tag a version publishes under: a pre-release goes to `next`, not `latest`. */
-export function distTag(version: string): string {
-  return version.includes('-') ? 'next' : 'latest'
+/**
+ * The dist-tag a version publishes under. A pre-release goes to `next`. A
+ * version older than the launcher's current `latest` goes to `backport`, so a
+ * late re-run of an old release cannot move `latest` backwards.
+ */
+export function distTag(version: string, currentLatest: string | null): string {
+  if (version.includes('-')) return 'next'
+  if (currentLatest !== null && compareVersions(currentLatest, version) > 0) return 'backport'
+  return 'latest'
 }
 
-function isPublished(name: string, version: string): boolean {
-  const r = run('npm', ['view', `${name}@${version}`, 'version'])
-  return r.status === 0 && r.stdout.trim() === version
+/**
+ * Reads the public registry with no auth. setup-node writes an .npmrc whose
+ * token is a placeholder when none is set; an empty userconfig keeps that
+ * token off these reads. Null for a package or version that is not there.
+ */
+function npmView(spec: string, field: string): string | null {
+  const empty = join(mkdtempSync(join(tmpdir(), 'tradecraft-npmrc-')), 'npmrc')
+  writeFileSync(empty, '')
+  const r = run('npm', ['view', spec, field, '--userconfig', empty])
+  rmSync(dirname(empty), { recursive: true, force: true })
+  const out = r.stdout.trim()
+  if (r.status === 0) return out === '' ? null : out
+  if (`${r.stderr}${r.stdout}`.includes('E404')) return null
+  throw new Error(`npm view ${spec} ${field} failed:\n${r.stderr.trim()}`)
 }
 
 /**
@@ -475,20 +501,18 @@ function isPublished(name: string, version: string): boolean {
  * provenance come from the environment (trusted publishing in CI).
  */
 function publish(l: Layout, dryRun: boolean): void {
+  const latest = npmView(PRODUCT.launcher, 'dist-tags.latest')
   for (const dir of packageDirs(l)) {
     const { name, version } = readJson<{ name: string; version: string }>(join(dir, 'package.json'))
-    if (isPublished(name, version)) {
+    if (npmView(`${name}@${version}`, 'version') === version) {
       console.log(`${name}@${version} is already published; skipping`)
       continue
     }
-    const argv = [
-      'publish',
-      '--access',
-      'public',
-      '--tag',
-      distTag(version),
-      ...(dryRun ? ['--dry-run'] : []),
-    ]
+    const tag = distTag(version, latest)
+    if (tag === 'backport') {
+      console.log(`::notice::${name}@${version} goes to the backport tag: latest is ${latest}`)
+    }
+    const argv = ['publish', '--access', 'public', '--tag', tag, ...(dryRun ? ['--dry-run'] : [])]
     console.log(`${name}@${version}: npm ${argv.join(' ')}`)
     if (run('npm', argv, { cwd: dir, stream: true }).status !== 0) {
       throw new Error(`npm ${argv.join(' ')} failed in ${dir}`)
@@ -530,8 +554,10 @@ function releaseAssets(l: Layout, version: string): string[] {
     `Install with \`brew install osdlc/tap/${PRODUCT.binary}\`, \`cargo binstall ${PRODUCT.crate}@${version}\`, ` +
       `\`npm install --global ${PRODUCT.launcher}@${version}\` or ` +
       `\`curl -fsSL https://github.com/${PRODUCT.repository}/releases/download/${PRODUCT.tagPrefix}${version}/install.sh | sh\`.\n\n` +
-      'The binaries below are the ones the npm packages carry. Checksums are in `SHA256SUMS`. ' +
-      'The macOS binaries are not signed or notarized.\n',
+      'The binaries below are the ones the npm packages and the Homebrew formula carry. ' +
+      'Checksums are in `SHA256SUMS`. The macOS binaries are not signed or notarized: ' +
+      'brew, npm, cargo binstall and install.sh are not blocked by Gatekeeper, but a binary ' +
+      'downloaded with a browser is.\n',
   )
   return [
     ...files,
@@ -547,6 +573,27 @@ export function renderInstallScript(version: string): string {
   return script.replace(line, `DEFAULT_VERSION='${version}'`)
 }
 
+/**
+ * The reverse of releaseAssets, for a re-run of a release that already has its
+ * assets: copies each binary in <out>/release/ back to <out>/binaries/ after
+ * checking it against SHA256SUMS, and the notices to <out>/. A re-run then
+ * repacks the published bytes instead of building new ones.
+ */
+function fromRelease(l: Layout, version: string): void {
+  const sums = parseSums(readFileSync(join(l.release, 'SHA256SUMS'), 'utf8'))
+  for (const platform of PLATFORMS) {
+    const name = releaseAssetName(platform, version)
+    const bytes = readFileSync(join(l.release, name))
+    if (sumsLine(bytes, name) !== `${sums.get(name)}  ${name}`) {
+      throw new Error(`${name} does not match the release's SHA256SUMS`)
+    }
+    const dest = binaryPath(l, platform)
+    mkdirSync(dirname(dest), { recursive: true })
+    writeFileSync(dest, bytes, { mode: 0o755 })
+  }
+  copyFileSync(join(l.release, NOTICES), l.notices)
+}
+
 // ---------------------------------------------------------------- homebrew
 
 /** The Homebrew formula for a release, from the hashes in its SHA256SUMS. */
@@ -559,6 +606,7 @@ export function formula(version: string, sumsText: string): string {
     homepage: PRODUCT.homepage,
     license: PRODUCT.license,
     urlBase: `https://github.com/${PRODUCT.repository}/releases/download/${PRODUCT.tagPrefix}${version}`,
+    livecheckTagPrefix: PRODUCT.tagPrefix,
     assets: PLATFORMS.map((p) => {
       const file = releaseAssetName(p, version)
       const sha256 = sums.get(file)
@@ -625,12 +673,12 @@ export function packageNames(): string[] {
   return [...PLATFORMS.map(platformPackageName), PRODUCT.launcher]
 }
 
-/** The placeholder package.json `stage` publishes for a name. */
+/** The placeholder package.json `stage` publishes for a name. stage-npm-package.ts sets its version. */
 export function placeholderManifest(name: string): Manifest {
   const { license, author, repository } = readTemplate('launcher')
   return {
     name,
-    version: PLACEHOLDER,
+    version: '0.0.0',
     description: `Placeholder for ${name}, so its trusted publisher can be set up. Install ${PRODUCT.launcher}.`,
     license,
     author,
@@ -640,74 +688,39 @@ export function placeholderManifest(name: string): Manifest {
 
 /**
  * Owner only, once: npm can add a trusted publisher only to a package that
- * exists, so each new name gets a placeholder version under the `stage` tag
- * and then a trusted publisher naming the release workflow. Skips a step that
- * is already done, so a re-run is safe. Needs an npm login as an owner of the
- * @osdlc scope and two-factor authentication. Same steps as
- * scripts/stage-npm-package.ts, which handles packages/ts/* libraries.
+ * exists. Writes a placeholder package for each name to a scratch directory
+ * and hands them to scripts/stage-npm-package.ts, which publishes each
+ * missing one under the `stage` tag and adds a trusted publisher naming this
+ * workflow and the `npm` environment.
  */
 function stage(dryRun: boolean): void {
-  const npm = (args: string[], stream = false): RunResult =>
-    run('npx', ['-y', STAGE_NPM, ...args], { stream })
-  const dry = dryRun ? ['--dry-run'] : []
-  const who = npm(['whoami'])
-  if (who.status !== 0 && !dryRun)
-    throw new Error(`npm whoami failed; run \`npm login\` first.\n${who.stderr}`)
-  console.log(`npm user: ${who.status === 0 ? who.stdout.trim() : '(not logged in)'}`)
-
-  const [owner, repo] = PRODUCT.repository.split('/') as [string, string]
-  const trust = [
-    'trust',
-    'github',
-    '--file',
-    PRODUCT.workflow,
-    '--repository',
-    `${owner}/${repo}`,
-    '--allow-publish',
-  ]
-  let failed = false
-  for (const name of packageNames()) {
-    console.log(`\n${name}`)
-    const view = npm(['view', name, 'name'])
-    const existed = view.status === 0
-    if (!existed && !view.stderr.includes('E404'))
-      throw new Error(`npm view ${name} failed:\n${view.stderr}`)
-    if (existed) {
-      console.log('  already on npm; no placeholder needed.')
-      const list = npm(['trust', 'list', name, '--json'])
-      if (list.status === 0 && (JSON.parse(list.stdout || '[]') as unknown[]).length > 0) {
-        console.log('  already has a trusted publisher; leaving it.')
-        continue
-      }
-    } else {
-      const dir = mkdtempSync(join(tmpdir(), 'tradecraft-stage-'))
+  const root = mkdtempSync(join(tmpdir(), 'tradecraft-stage-'))
+  try {
+    const dirs = packageNames().map((name, i) => {
+      const dir = join(root, String(i))
+      mkdirSync(dir)
       writeJson(join(dir, 'package.json'), placeholderManifest(name))
       writeFileSync(
         join(dir, 'README.md'),
         `# ${name}\n\nPlaceholder. Install \`${PRODUCT.launcher}\`.\n`,
       )
-      const publishArgs = ['publish', dir, '--access', 'public', '--tag', 'stage', ...dry]
-      console.log(`  npm ${publishArgs.join(' ')}`)
-      const ok = npm(publishArgs, true).status === 0
-      rmSync(dir, { recursive: true, force: true })
-      if (!ok) {
-        console.error('  the placeholder publish failed; skipping its trusted publisher.')
-        failed = true
-        continue
-      }
+      return dir
+    })
+    const args = [
+      join(REPO, 'scripts/stage-npm-package.ts'),
+      '--workflow',
+      PRODUCT.workflow,
+      '--environment',
+      NPM_ENVIRONMENT,
+      ...(dryRun ? ['--dry-run'] : []),
+      ...dirs,
+    ]
+    if (run(process.execPath, args, { stream: true }).status !== 0) {
+      throw new Error('stage-npm-package.ts failed; see above')
     }
-    console.log(`  npm ${[...trust, name].join(' ')}`)
-    // npm cannot set a trusted publisher on a package that is not on npm yet.
-    if (dryRun) continue
-    if (npm([...trust, name, '--yes'], true).status !== 0) {
-      console.error(
-        `  npm trust failed. Add it by hand at https://www.npmjs.com/package/${name}/access: ` +
-          `GitHub Actions, organization ${owner}, repository ${repo}, workflow ${PRODUCT.workflow}, no environment.`,
-      )
-      failed = true
-    }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
   }
-  if (failed) throw new Error('stage: some packages failed; see above')
 }
 
 // ---------------------------------------------------------------- main
@@ -721,6 +734,7 @@ function main(argv: string[]): void {
       platform: { type: 'string' },
       version: { type: 'string' },
       tag: { type: 'string' },
+      tap: { type: 'string' },
       'allow-missing': { type: 'boolean', default: false },
       'dry-run': { type: 'boolean', default: false },
     },
@@ -764,13 +778,18 @@ function main(argv: string[]): void {
     case 'smoke':
       smoke(l)
       return
+    case 'from-release':
+      fromRelease(l, checkVersion(values.version))
+      return
     case 'formula': {
       const version = checkVersion(values.version)
-      writeFileSync(
-        l.formula,
-        formula(version, readFileSync(join(l.release, 'SHA256SUMS'), 'utf8')),
-      )
-      console.log(l.formula)
+      const rb = formula(version, readFileSync(join(l.release, 'SHA256SUMS'), 'utf8'))
+      if (values.tap !== undefined) {
+        writeFormula(values.tap, version, rb)
+      } else {
+        writeFileSync(l.formula, rb)
+        console.log(l.formula)
+      }
       return
     }
     case 'stage':
@@ -778,7 +797,7 @@ function main(argv: string[]): void {
       return
     default:
       console.error(
-        'usage: dist.ts <version|matrix|build|notices|assemble|pack|publish|release-assets|install-check|smoke|formula|stage> [--out <dir>]',
+        'usage: dist.ts <version|matrix|build|notices|assemble|pack|publish|release-assets|from-release|install-check|smoke|formula|stage> [--out <dir>]',
       )
       process.exit(2)
   }

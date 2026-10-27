@@ -9,23 +9,30 @@
 #   `@osdlc/tradecraft-<os>-<cpu>` package per platform, all at the crate
 #   version. npm auth is trusted publishing (OIDC) with provenance; no npm
 #   token is stored. Each package's trusted publisher on npmjs.com names this
-#   file, tradecraft-release.yml, so the file keeps its name.
+#   file, tradecraft-release.yml, and the `npm` environment, so the file keeps
+#   its name.
 # - Homebrew: Formula/tradecraft.rb in osdlc/homebrew-tap, pushed as the
 #   osdlc-release GitHub App (`brew install osdlc/tap/tradecraft`).
 #
 # Every step that knows a name, a target or a path goes through
 # packages/rust/tradecraft/release/dist.ts, which reads them from product.ts.
 #
+# Published assets are never replaced. When the release already has its
+# SHA256SUMS, a run skips the build and repacks the published binaries, so a
+# re-run after a late failure (npm, Homebrew) ships the same bytes. A release
+# with some assets but no SHA256SUMS is a partial upload: the run stops and
+# says which assets to delete. An older version never moves npm `latest` or
+# the tap formula backwards, and a pre-release goes to npm `next` only.
+#
 # A manual run (workflow_dispatch) takes an existing tag and is a dry run
-# unless `dry_run` is unchecked. A dry run builds, packs, runs `npm publish
+# unless `dry_run` is unchecked. It must start from main. It builds the tag's
+# own source and tooling, so the tag must hold this workflow's tooling
+# (tradecraft 0.3.6 or later). A dry run builds, packs, runs `npm publish
 # --dry-run` and renders the formula, but uploads, publishes and pushes
-# nothing. A manual run checks out the tag for the Rust source and this run's
-# commit for the release tooling, so it also works for a tag cut before this
-# workflow existed.
+# nothing.
 #
 # release-plz tags with the osdlc-release GitHub App, so its tag push starts
-# this workflow (a GITHUB_TOKEN push would not). This workflow does not touch
-# how release-plz publishes crates.
+# this workflow (a GITHUB_TOKEN push would not).
 #
 # macOS binaries are not signed or notarized yet.
 #
@@ -38,7 +45,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag, for example tradecraft/v0.3.5
+        description: Existing release tag, for example tradecraft/v0.3.6
         required: true
         type: string
       dry_run:
@@ -57,8 +64,7 @@ env:
   TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
   DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
   DIST: packages/rust/tradecraft/release/dist.ts
-  # The release tooling. A manual run takes it from this run's commit.
-  TOOLING: packages/rust/tradecraft/release scripts/homebrew-formula.ts .github/actions
+  OUT: packages/rust/target/tradecraft-dist
 
 jobs:
   plan:
@@ -67,20 +73,18 @@ jobs:
     outputs:
       version: ${{ steps.plan.outputs.version }}
       matrix: ${{ steps.plan.outputs.matrix }}
+      published: ${{ steps.state.outputs.published }}
     steps:
+      - name: Refuse a manual run from a ref other than main
+        if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run tradecraft-release from main, not $GITHUB_REF."
+          exit 1
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
-
-      - name: Take the release tooling from this run's commit
-        run: |
-          set -euo pipefail
-          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
-            git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
-            # shellcheck disable=SC2086
-            git checkout "$GITHUB_SHA" -- $TOOLING
-          fi
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -90,12 +94,37 @@ jobs:
         id: plan
         run: |
           set -euo pipefail
+          if [ ! -f "$DIST" ]; then
+            echo "::error::$TAG has no $DIST; it predates this workflow."
+            exit 1
+          fi
           echo "version=$(node "$DIST" version --tag "$TAG")" >> "$GITHUB_OUTPUT"
           echo "matrix=$(node "$DIST" matrix)" >> "$GITHUB_OUTPUT"
+
+      # published=true: the release has its SHA256SUMS, so its assets are
+      # final. Any other asset without SHA256SUMS is a partial upload.
+      - name: Read the release's assets
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          assets="$(gh release view "$TAG" --json assets --jq '.assets[].name' 2>/dev/null || true)"
+          if grep -qx SHA256SUMS <<<"$assets"; then
+            echo "::notice::$TAG already has its assets; the run reuses them and builds nothing."
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          elif [ -n "$assets" ]; then
+            echo "::error::$TAG has assets but no SHA256SUMS, so an earlier upload stopped part way. Delete these assets from the release, then re-run: $(tr '\n' ' ' <<<"$assets")"
+            exit 1
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
 
   # cargo-about reads the dependency graph and the license texts; it compiles nothing.
   notices:
     needs: plan
+    if: needs.plan.outputs.published != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -103,15 +132,6 @@ jobs:
         with:
           ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
-
-      - name: Take the release tooling from this run's commit
-        run: |
-          set -euo pipefail
-          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
-            git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
-            # shellcheck disable=SC2086
-            git checkout "$GITHUB_SHA" -- $TOOLING
-          fi
 
       - uses: ./.github/actions/rust-toolchain
 
@@ -129,11 +149,12 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: notices
-          path: packages/rust/target/tradecraft-dist/THIRD_PARTY_NOTICES.md
+          path: ${{ env.OUT }}/THIRD_PARTY_NOTICES.md
           if-no-files-found: error
 
   build:
     needs: plan
+    if: needs.plan.outputs.published != 'true'
     strategy:
       fail-fast: true
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -145,15 +166,6 @@ jobs:
         with:
           ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
-
-      - name: Take the release tooling from this run's commit
-        run: |
-          set -euo pipefail
-          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
-            git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
-            # shellcheck disable=SC2086
-            git checkout "$GITHUB_SHA" -- $TOOLING
-          fi
 
       - uses: ./.github/actions/rust-toolchain
         with:
@@ -185,11 +197,16 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: binary-${{ matrix.key }}
-          path: packages/rust/target/tradecraft-dist/binaries/
+          path: ${{ env.OUT }}/binaries/
           if-no-files-found: error
 
   release:
     needs: [plan, build, notices]
+    # Runs after the build, or alone when the release already has its assets.
+    if: >-
+      !cancelled() && needs.plan.result == 'success' &&
+      (needs.plan.outputs.published == 'true' ||
+       (needs.build.result == 'success' && needs.notices.result == 'success'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -197,41 +214,48 @@ jobs:
       contents: write
     env:
       VERSION: ${{ needs.plan.outputs.version }}
-      OUT: packages/rust/target/tradecraft-dist
+      PUBLISHED: ${{ needs.plan.outputs.published }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
 
-      - name: Take the release tooling from this run's commit
-        run: |
-          set -euo pipefail
-          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
-            git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
-            # shellcheck disable=SC2086
-            git checkout "$GITHUB_SHA" -- $TOOLING
-          fi
-
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: env.PUBLISHED != 'true'
         with:
           pattern: binary-*
           path: ${{ env.OUT }}/binaries
           merge-multiple: true
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: env.PUBLISHED != 'true'
         with:
           name: notices
           path: ${{ env.OUT }}
 
-      - name: Release assets and the Homebrew formula
+      - name: Release assets
+        if: env.PUBLISHED != 'true'
+        run: node "$DIST" release-assets --version "$VERSION"
+
+      # The published bytes, checked against the release's SHA256SUMS.
+      - name: Take the binaries from the published release
+        if: env.PUBLISHED == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          node "$DIST" release-assets --version "$VERSION"
+          gh release download "$TAG" --dir "$OUT/release"
+          node "$DIST" from-release --version "$VERSION"
+
+      - name: Render the Homebrew formula
+        run: |
+          set -euo pipefail
           node "$DIST" formula --version "$VERSION"
           {
             echo '### Formula/tradecraft.rb'
@@ -254,59 +278,58 @@ jobs:
           mkdir -p "$RUNNER_TEMP/site/$TAG"
           cp "$OUT"/release/* "$RUNNER_TEMP/site/$TAG/"
           TRADECRAFT_DOWNLOAD_BASE="file://$RUNNER_TEMP/site" \
-            sh "$OUT/release/install.sh" --to "$RUNNER_TEMP/bin"
+            sh "$OUT/release/install.sh" --version "$VERSION" --to "$RUNNER_TEMP/bin"
           "$RUNNER_TEMP/bin/tradecraft" --version | grep -qx "tradecraft $VERSION"
 
+      # The npm and homebrew jobs read this artifact, so they ship these bytes.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tradecraft-${{ needs.plan.outputs.version }}
           path: |
+            ${{ env.OUT }}/binaries/
             ${{ env.OUT }}/release/
             ${{ env.OUT }}/tarballs/
+            ${{ env.OUT }}/THIRD_PARTY_NOTICES.md
             ${{ env.OUT }}/tradecraft.rb
             ${{ env.OUT }}/release-notes.md
           if-no-files-found: error
 
+      # No --clobber: a published asset is never replaced. SHA256SUMS goes
+      # last, so its presence marks a complete upload.
       - name: Upload to the GitHub Release
-        if: env.DRY_RUN != 'true'
+        if: env.DRY_RUN != 'true' && env.PUBLISHED != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            # --clobber replaces assets of an earlier, partly failed run.
-            gh release upload "$TAG" "$OUT"/release/* --clobber
-          else
-            gh release create "$TAG" "$OUT"/release/* --verify-tag \
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --verify-tag \
               --title "tradecraft v$VERSION" --notes-file "$OUT/release-notes.md"
           fi
+          find "$OUT/release" -type f ! -name SHA256SUMS -print0 \
+            | xargs -0 gh release upload "$TAG"
+          gh release upload "$TAG" "$OUT/release/SHA256SUMS"
 
   npm:
     needs: [plan, release]
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # Limited to main and tradecraft/v* tags. Each package's trusted publisher
+    # names this environment.
+    environment: npm
     permissions:
       contents: read
       # OIDC token for npm trusted publishing; provenance is attested with it.
       id-token: write
     env:
       VERSION: ${{ needs.plan.outputs.version }}
-      OUT: packages/rust/target/tradecraft-dist
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/tags/${{ env.TAG }}
           persist-credentials: false
-
-      - name: Take the release tooling from this run's commit
-        run: |
-          set -euo pipefail
-          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
-            git fetch --no-tags --depth=1 origin "$GITHUB_SHA"
-            # shellcheck disable=SC2086
-            git checkout "$GITHUB_SHA" -- $TOOLING
-          fi
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -322,17 +345,11 @@ jobs:
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: binary-*
-          path: ${{ env.OUT }}/binaries
-          merge-multiple: true
-
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: notices
+          name: tradecraft-${{ needs.plan.outputs.version }}
           path: ${{ env.OUT }}
 
-      # Assembled again here rather than downloaded: artifacts drop the
-      # binaries' executable bit.
+      # Assembled again here rather than taken from the artifact: artifacts
+      # drop the binaries' executable bit.
       - name: Assemble the npm packages
         run: node "$DIST" assemble --version "$VERSION"
 
@@ -350,14 +367,30 @@ jobs:
 
   homebrew:
     needs: [plan, release]
-    if: github.event_name == 'push' || !inputs.dry_run
+    if: ${{ !cancelled() && needs.release.result == 'success' && (github.event_name == 'push' || !inputs.dry_run) }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Holds the osdlc-release App's private key, for tags `tradecraft/v*` and main.
     environment: homebrew-tap
     permissions:
       contents: read
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tradecraft-${{ needs.plan.outputs.version }}
+          path: ${{ env.OUT }}
+
       - name: Get a GitHub App token for osdlc/homebrew-tap
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -374,24 +407,24 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           path: tap
 
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: tradecraft-${{ needs.plan.outputs.version }}
-          path: dist
+      # Leaves the formula alone for a pre-release or when the tap already
+      # has a newer version.
+      - name: Write Formula/tradecraft.rb
+        run: |
+          set -euo pipefail
+          mkdir -p tap/Formula
+          node "$DIST" formula --version "$VERSION" --tap tap/Formula/tradecraft.rb
 
-      - name: Commit Formula/tradecraft.rb
+      - name: Commit and push
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-          VERSION: ${{ needs.plan.outputs.version }}
         working-directory: tap
         run: |
           set -euo pipefail
-          mkdir -p Formula
-          cp ../dist/tradecraft.rb Formula/tradecraft.rb
           git add Formula/tradecraft.rb
           if git diff --cached --quiet; then
-            echo "Formula/tradecraft.rb is already at $VERSION"
+            echo "Formula/tradecraft.rb is unchanged"
             exit 0
           fi
           user_id="$(gh api "/users/${APP_SLUG}%5Bbot%5D" --jq .id)"
@@ -400,12 +433,11 @@ jobs:
           git commit -m "tradecraft $VERSION"
           git push origin HEAD
 
-  # cargo binstall reads the [package.metadata.binstall] of the tag's
-  # Cargo.toml. A tag cut before that section existed (tradecraft/v0.3.5) is
-  # skipped. Reports only: a failure here does not undo a release.
+  # cargo binstall reads [package.metadata.binstall] from the crate on
+  # crates.io. Reports only: a failure here does not undo a release.
   binstall:
     needs: [plan, release]
-    if: github.event_name == 'push' || !inputs.dry_run
+    if: ${{ !cancelled() && needs.release.result == 'success' && (github.event_name == 'push' || !inputs.dry_run) }}
     continue-on-error: true
     strategy:
       fail-fast: false
@@ -415,11 +447,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: refs/tags/${{ env.TAG }}
-          persist-credentials: false
-
       - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         with:
           tool: cargo-binstall@1.25.2
@@ -429,11 +456,6 @@ jobs:
           VERSION: ${{ needs.plan.outputs.version }}
         run: |
           set -euo pipefail
-          manifest=packages/rust/tradecraft/Cargo.toml
-          if ! grep -q '^\[package.metadata.binstall\]' "$manifest"; then
-            echo "::notice::$TAG has no binstall metadata; skipped."
-            exit 0
-          fi
           cargo binstall --no-confirm --strategies crate-meta-data \
-            --manifest-path "$manifest" --install-path "$RUNNER_TEMP/bin" "tradecraft@$VERSION"
+            --install-path "$RUNNER_TEMP/bin" "tradecraft@$VERSION"
           "$RUNNER_TEMP/bin/tradecraft" --version | grep -qx "tradecraft $VERSION"
