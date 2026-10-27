@@ -145,7 +145,7 @@ describe('runCli — in-process over the fixture corpus', () => {
     const pkg = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
     expect(await runCli(['--version'], { cwd: CORPUS })).toEqual({
       code: 0,
-      stdout: pkg.version,
+      stdout: `markdown-contract ${pkg.version}`,
       stderr: '',
     })
   })

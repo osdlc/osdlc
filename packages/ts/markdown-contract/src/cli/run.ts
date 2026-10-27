@@ -168,9 +168,9 @@ export async function runCli(argv: string[], opts?: { cwd?: string }): Promise<C
 
   const { values, positionals } = parsed
 
-  // `--help` → usage on stdout, exit 0. `--version` → the version on stdout, exit 0. No args at all → usage on stderr, exit 2.
+  // `--help` → usage on stdout, exit 0. `--version` → `markdown-contract <version>` on stdout, exit 0. No args at all → usage on stderr, exit 2.
   if (values.help) return { code: 0, stdout: USAGE, stderr: '' }
-  if (values.version) return { code: 0, stdout: VERSION, stderr: '' }
+  if (values.version) return { code: 0, stdout: `markdown-contract ${VERSION}`, stderr: '' }
   if (positionals.length === 0) return { code: 2, stdout: '', stderr: USAGE }
 
   const [command = '', ...rest] = positionals
