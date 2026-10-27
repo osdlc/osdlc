@@ -13,9 +13,9 @@
       "line": 23,
       "title": "docs/reference/ is rejected by S-0001's check:packages for TS libraries and not published by the site",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "2e94dd66f792e24bd9968f1549293fb152d54176"
     },
     {
       "id": "r1-2",
