@@ -4,5 +4,6 @@
 // (`pnpm run build`).
 import { runMain } from '@osdlc/cli-tool'
 import { main } from '../dist/cli.js'
+import { VERSION } from '../dist/version.generated.js'
 
-await runMain(main, { name: 'repo-cleaner' })
+await runMain(main, { name: 'repo-cleaner', version: VERSION })

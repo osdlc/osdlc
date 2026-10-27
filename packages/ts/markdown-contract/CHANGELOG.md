@@ -1,5 +1,11 @@
 # @osdlc/markdown-contract
 
+## 0.6.0
+
+### Minor Changes
+
+- bb61f10: `--version` prints the package version and exits 0.
+
 ## 0.5.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/wayfinder",
-  "version": "0.11.0",
+  "version": "0.11.2",
   "description": "Browse and run every task in a repository from one list: a terminal UI where Enter runs the selected task, a live web view, and JSON for scripts. Tasks, installs, tool trust and git hooks come from @osdlc/system-model.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
@@ -54,7 +54,9 @@
     "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
-    "build": "node scripts/write-document-schemas.ts && tsc -p tsconfig.build.json && node scripts/build-web.mjs && node scripts/write-config-schema.mjs",
+    "build": "cli-tool-stamp-version && node scripts/write-document-schemas.ts && tsc -p tsconfig.build.json && node scripts/build-web.mjs",
+    "stamp-version": "cli-tool-stamp-version",
+    "write:config-schema": "node scripts/write-config-schema.mjs",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
     "test:e2e": "vitest run tests/e2e",

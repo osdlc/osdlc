@@ -92,9 +92,19 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      # The version script below reads wayfinder's dist/.
+      - name: Build wayfinder
+        run: pnpm --filter '@osdlc/wayfinder...' run build
+
+      # `version-packages` runs `changeset version`, stamps each CLI's
+      # src/version.generated.ts, rebuilds wayfinder, then rewrites its
+      # schema/config.json and its guide's `$schema` line for the new version,
+      # so the Version Packages pull request carries them. The action runs
+      # `script` without a shell, so it is a single command.
       - uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
           github-token: ${{ steps.app-token.outputs.token }}
+          script: pnpm run version-packages
 
   pack:
     needs: select-mode

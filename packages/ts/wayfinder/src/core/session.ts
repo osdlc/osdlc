@@ -50,7 +50,7 @@ import {
 } from '../config.ts'
 import { readSkills } from '../skills.ts'
 import { toolSummary, type ToolSummary } from '../tool-info.ts'
-import { VERSION } from '../version.ts'
+import { VERSION } from '../version.generated.ts'
 import { loadTools, ToolModuleError, type LoadedTool } from '../tools.ts'
 import { appTrustStore } from '../trust-store.ts'
 import { EDITOR_VARIABLE_LABEL, type WithheldReason } from '../vocabulary.ts'

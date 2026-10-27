@@ -81,7 +81,7 @@ Every key is optional:
 ```jsonc
 {
   // Added by "way config set". Editors use it to check the file.
-  "$schema": "https://unpkg.com/@osdlc/wayfinder@0.10/schema/config.json",
+  "$schema": "https://unpkg.com/@osdlc/wayfinder@0.11/schema/config.json",
   "runners": {
     // Runner ids to skip.
     "disabled": ["cargo"],
