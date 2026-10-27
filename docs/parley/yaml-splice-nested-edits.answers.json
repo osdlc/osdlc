@@ -1,0 +1,165 @@
+{
+  "doc": "yaml-splice-nested-edits",
+  "updated": "2026-10-27T04:51:37.240Z",
+  "status": "approved",
+  "comments": [],
+  "choices": {
+    "q-empty-parent": {
+      "selected": [
+        "braces"
+      ],
+      "at": "2026-10-27T04:47:18.275Z",
+      "hash": "81e1d2c01d06",
+      "revision": 1
+    },
+    "q-orphan-comment": {
+      "selected": [
+        "keep"
+      ],
+      "at": "2026-10-27T04:47:54.641Z",
+      "hash": "e11f5b5bac8b",
+      "revision": 1
+    },
+    "q-vivify": {
+      "selected": [
+        "create"
+      ],
+      "at": "2026-10-27T04:48:09.991Z",
+      "hash": "c7a1b367508c",
+      "revision": 1
+    },
+    "q-missing": {
+      "selected": [
+        "split"
+      ],
+      "at": "2026-10-27T04:48:39.219Z",
+      "hash": "861b66287c98",
+      "revision": 1
+    },
+    "q-append-pos": {
+      "selected": [
+        "after"
+      ],
+      "at": "2026-10-27T04:48:51.840Z",
+      "hash": "71b285f1d1b9",
+      "revision": 1
+    },
+    "q-final-newline": {
+      "selected": [
+        "nested-none"
+      ],
+      "at": "2026-10-27T04:49:02.059Z",
+      "hash": "0e44e91b22ab",
+      "revision": 1
+    },
+    "q-bom": {
+      "selected": [
+        "both"
+      ],
+      "at": "2026-10-27T04:49:19.045Z",
+      "hash": "c56982831768",
+      "revision": 1
+    },
+    "q-blank": {
+      "selected": [
+        "refuse"
+      ],
+      "at": "2026-10-27T04:49:22.267Z",
+      "hash": "8ae36794f8c3",
+      "revision": 1
+    },
+    "q-upstream": {
+      "selected": [
+        "report"
+      ],
+      "at": "2026-10-27T04:49:23.611Z",
+      "hash": "384b5376eb48",
+      "revision": 1
+    },
+    "q-key-order": {
+      "selected": [
+        "verify-enable"
+      ],
+      "at": "2026-10-27T04:49:25.392Z",
+      "hash": "f4c5badea2ff",
+      "revision": 1
+    },
+    "q-api": {
+      "selected": [
+        "variants"
+      ],
+      "at": "2026-10-27T04:49:27.864Z",
+      "hash": "13a1b5ee358f",
+      "revision": 1
+    },
+    "q-errors": {
+      "selected": [
+        "three"
+      ],
+      "at": "2026-10-27T04:49:45.267Z",
+      "hash": "0de21fc64c28",
+      "revision": 1
+    },
+    "q-flow": {
+      "selected": [
+        "full"
+      ],
+      "at": "2026-10-27T04:50:12.593Z",
+      "hash": "77beded3cc08",
+      "revision": 1
+    },
+    "q-release": {
+      "selected": [
+        "t1-seq-flow"
+      ],
+      "at": "2026-10-27T04:50:22.711Z",
+      "hash": "b06cc8308fe1",
+      "revision": 1
+    },
+    "q-commit": {
+      "selected": [
+        "pr-now"
+      ],
+      "at": "2026-10-27T04:50:34.168Z",
+      "hash": "d3687aa118c7",
+      "revision": 1
+    },
+    "q-fuzz-tooling": {
+      "selected": [
+        "inhouse"
+      ],
+      "at": "2026-10-27T04:51:28.517Z",
+      "hash": "f7b915f3e776",
+      "revision": 1
+    },
+    "q-fuzz-budget": {
+      "selected": [
+        "default"
+      ],
+      "at": "2026-10-27T04:51:33.333Z",
+      "hash": "f2e5bb7ea677",
+      "revision": 1
+    }
+  },
+  "seen": {
+    "q-empty-parent": "81e1d2c01d06",
+    "q-orphan-comment": "e11f5b5bac8b",
+    "q-vivify": "c7a1b367508c",
+    "q-missing": "861b66287c98",
+    "q-append-pos": "71b285f1d1b9",
+    "q-final-newline": "0e44e91b22ab",
+    "q-bom": "c56982831768",
+    "q-blank": "8ae36794f8c3",
+    "q-upstream": "384b5376eb48",
+    "q-key-order": "f4c5badea2ff",
+    "q-api": "13a1b5ee358f",
+    "q-errors": "0de21fc64c28",
+    "q-flow": "77beded3cc08",
+    "q-release": "b06cc8308fe1",
+    "q-commit": "d3687aa118c7",
+    "q-fuzz-tooling": "f7b915f3e776",
+    "q-fuzz-budget": "f2e5bb7ea677"
+  },
+  "finished": "2026-10-27T04:51:37.238Z",
+  "agentReadAt": "2026-10-27T04:51:47.674Z"
+}

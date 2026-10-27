@@ -1,0 +1,558 @@
+{
+  "id": "yaml-splice-nested-edits",
+  "title": "yaml-splice: open questions for nested edits",
+  "summary": "Decisions the nested-edit test corpus encodes, two bugs the character fuzzing found in today's top-level edits, and scope and tooling choices.",
+  "created": "2026-10-26",
+  "revision": 2,
+  "repo": {
+    "remote": "https://github.com/osdlc/osdlc",
+    "commit": "bad2664bbf55598fa3bcf3d196411334661ce421",
+    "root": "/Users/sksizer2/orca/workspaces/osdlc/osdlc-yaml-splic-nested-edits"
+  },
+  "blocks": [
+    {
+      "id": "problem",
+      "type": "prose",
+      "title": "The problem",
+      "text": "yaml-splice edits only top-level keys. To change `build.target`, a caller has to rewrite the whole `build` value, which loses the comments and quoting inside it. The plan is to add nested edits by path.\n\nThe constraint: every guarantee the crate makes at the top level must hold at depth. Bytes outside the edit stay the same, an equal Set is a byte-identical no-op, every result is parsed and checked, and new values are written the way npm `yaml` writes them.\n\nThe test corpus came first and now defines the behaviour. Writing it meant making decisions, and running the new character fuzzing against today's code found two bugs. This page asks you to settle both.\n\nNote: `/craft:discuss` has no domain note for code or YAML changes, so this page uses `prose` and `annotated-text`. A `code` domain note naming before/after YAML pairs as the solution block would fit pages like this one better."
+    },
+    {
+      "id": "done",
+      "type": "prose",
+      "title": "What exists now (uncommitted)",
+      "text": "In `packages/rust/yaml-splice/tests/`:\n\n- `fixtures/nested.json`: 143 cases across 14 categories and three tiers, plus 41 one-segment equivalence cases built from `conformance.json`. A self-check proves every expected output against an in-memory model of the edit.\n- `neighbours_nested.rs`: 7,500 documents and 180,000 planned edits, placing the existing value shapes one level down.\n- `real_files.rs`: 20 copied YAML files from this repo, with 1,870 planned edits.\n- `fuzz_chars.rs`: keys and values from 11 character groups, three tests, seeded and replayable. It runs against today's top-level edits.\n\nEverything passes. The nested tests report as pending until the code exists. The two fuzz findings are pinned as known counts. These files are not in the linked commit yet."
+    },
+    {
+      "id": "cases",
+      "type": "annotated-text",
+      "title": "The decisions and findings, by example",
+      "text": "1. Remove a.b, the only key under a\n\na:\n  b: 1\nz: 2\n\nbecomes\n\na: {}\nz: 2\n\n2. Remove a.b when a comment line sits above it\n\na:\n  # about b\n  b: 1\nz: 2\n\nbecomes\n\na: {}\n  # about b\nz: 2\n\n3. Set a.b = 1 where a is empty, ~ or {}\n\na: ~ # c\nz: 2\n\nbecomes\n\na: # c\n  b: 1\nz: 2\n\n4. Remove a path that is not there\n\na:\n  b: 1\n\nRemove a.x    -> no change\nRemove a.x.y  -> PathNotFound\n\n5. Append a.n when comment lines end the block\n\na:\n  b: 1\n  # more to come\n# section z\nz: 2\n\nbecomes\n\na:\n  b: 1\n  # more to come\n  n: 1\n# section z\nz: 2\n\n6. Append in a file with no final line break\n\nnested, as the corpus says:    \"build:\\n  target: x\" -> \"build:\\n  target: x\\n  out: dist\"\ntop level, as the crate does: \"a: 1\"                  -> \"a: 1\\nb: 2\\n\"\n\n7. Fuzz finding: a key that starts with U+FEFF\n\nRename title -> \"\\u{feff}#c\" on \"title: Draft\\nn: 1\\n\"\nwrites  \"\\u{feff}#c: Draft\\nn: 1\\n\"\nreads back as {n: 1}: the next reader drops the BOM and sees a comment\n\n8. Fuzz finding: a value whose first non-empty line is only spaces\n\nSet k = \" \\n\"\nthe emitter writes  \"k: |+\\n   \\n\"\nwhich reads back as \"\\n\", so the crate refuses the edit\nnpm yaml 2.9.0 writes the same bytes and loses the space\n\n9. Self-check finding: JSON objects arrive with sorted keys\n\nSet b = {\"k\": 1, \"j\": 2}   (JSON in)\nwrites  b:\\n  j: 2\\n  k: 1    (keys sorted)",
+      "steps": [
+        {
+          "id": "s-empty-parent",
+          "title": "1. Remove a.b, the only key under a",
+          "anchor": {
+            "type": "TextQuoteSelector",
+            "exact": "1. Remove a.b, the only key under a"
+          },
+          "summary": "The parent keeps its type.",
+          "detail": "`a:` alone reads as null, so removing the last key would turn a mapping into null. Writing `{}` (or `[]` for a sequence) keeps it a mapping. Cases: `remove_the_only_child_leaves_an_empty_mapping`, `remove_the_only_item_leaves_an_empty_sequence`."
+        },
+        {
+          "id": "s-orphan",
+          "title": "2. Remove a.b when a comment line sits above it",
+          "anchor": {
+            "type": "TextQuoteSelector",
+            "exact": "2. Remove a.b when a comment line sits above it"
+          },
+          "summary": "Comment lines above a removed key stay, as they do at the top level.",
+          "detail": "At the top level, `Remove` keeps the standalone comment lines above the key. Applied at depth, the comment is left under `a: {}`. That is valid YAML but reads oddly. Case: `remove_the_only_child_keeps_the_comment_above_it`."
+        },
+        {
+          "id": "s-vivify",
+          "title": "3. Set a.b = 1 where a is empty, ~ or {}",
+          "anchor": {
+            "type": "TextQuoteSelector",
+            "exact": "3. Set a.b = 1 where a is empty, ~ or {}"
+          },
+          "summary": "An empty parent becomes the collection the path steps into.",
+          "detail": "Null, `~`, `{}` and `[]` hold nothing, so replacing them loses nothing. A trailing comment moves to the header, as a top-level block `Set` already does. A scalar with content (`a: 1`) is refused as `PathTypeMismatch`."
+        },
+        {
+          "id": "s-missing",
+          "title": "4. Remove a path that is not there",
+          "anchor": {
+            "type": "TextQuoteSelector",
+            "exact": "4. Remove a path that is not there"
+          },
+          "summary": "An absent leaf is a no-op; an absent parent is an error.",
+          "detail": "A top-level `Remove` of an absent key is a no-op today. At depth, the corpus keeps that for the last segment, but refuses when a parent along the path is missing: the caller likely has the path wrong. Out-of-range `Remove` on a sequence is also a no-op."
+        },
+        {
+          "id": "s-append",
+          "title": "5. Append a.n when comment lines end the block",
+          "anchor": {
+            "type": "TextQuoteSelector",
+            "exact": "5. Append a.n when comment lines end the block"
+          },
+          "summary": "A new key goes after comments indented as children, before anything less indented.",
+          "detail": "The corpus treats a comment at the children's indent as part of the block, and a comment at the parent's column or less as the next section's. Blank lines after the block stay after the new key."
+        },
+        {
+          "id": "s-newline",
+          "title": "6. Append in a file with no final line break",
+          "anchor": {
+            "type": "TextQuoteSelector",
+            "exact": "6. Append in a file with no final line break"
+          },
+          "summary": "A nested append adds no final line break; a top-level append does.",
+          "detail": "The corpus inserts the new line before the last line's ending, so a file with no final break still has none. Today's top-level append (`edit_yaml` on `a: 1`) adds one. The two disagree; the corpus case is `append_in_an_unterminated_document`."
+        },
+        {
+          "id": "s-bom",
+          "title": "7. Fuzz finding: a key that starts with U+FEFF",
+          "anchor": {
+            "type": "TextQuoteSelector",
+            "exact": "7. Fuzz finding: a key that starts with U+FEFF"
+          },
+          "summary": "A real bug in today's top-level edits, pinned as known.",
+          "detail": "Any edit that leaves U+FEFF at byte zero (a renamed or new first key that starts with it, or a `Remove` that moves such a line up) makes the next reader drop it as a BOM. With `#` after it, the key and value are lost. The crate's result check misses it because it strips a BOM only from the input. npm `yaml` 2.9.0 writes the same unquoted key. Pinned in `tests/fuzz_chars.rs` as `BOM_AT_BYTE_ZERO`."
+        },
+        {
+          "id": "s-blank",
+          "title": "8. Fuzz finding: a value whose first non-empty line is only spaces",
+          "anchor": {
+            "type": "TextQuoteSelector",
+            "exact": "8. Fuzz finding: a value whose first non-empty line is only spaces"
+          },
+          "summary": "A value the crate cannot write; it refuses, it does not corrupt.",
+          "detail": "The emitter writes a `|+` block with no indentation indicator, so a first line of only spaces reads as empty. The result check catches it and refuses. An indentation indicator (`|2+`) would write it correctly, but npm `yaml` does not do that, so output would stop matching it. Pinned as `BLANK_FIRST_LINE_REFUSED`."
+        },
+        {
+          "id": "s-key-order",
+          "title": "9. Self-check finding: JSON objects arrive with sorted keys",
+          "anchor": {
+            "type": "TextQuoteSelector",
+            "exact": "9. Self-check finding: JSON objects arrive with sorted keys"
+          },
+          "summary": "Found by the corpus self-check; probably affects TypeScript callers. Not yet verified there.",
+          "detail": "`serde_json` without `preserve_order` stores objects in a BTreeMap. `Value::from(&serde_json::Value)` then yields keys in sorted order. `yaml-splice-wasm` turns on no serde_json features and builds alone for wasm, so a JavaScript object passed to `Set` is probably written with its keys sorted. Two other crates in this workspace (`agent-adapt`, `tradecraft-core`) already turn `preserve_order` on for this reason."
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "prose",
+      "title": "Proposed API",
+      "text": "Three new `FieldEdit` variants: `SetPath { path, value }`, `RemovePath { path }` and `RenamePath { path, to }`. A path is a list of `PathSegment::Key(String)` or `PathSegment::Index(usize)`. A one-segment path behaves exactly like today's `Set`, `Remove` and `Rename`.\n\nThree new `EditError` variants: `PathNotFound`, `PathTypeMismatch` and `UnsupportedPath`. Both enums are `#[non_exhaustive]`, so adding variants is not a breaking change."
+    },
+    {
+      "id": "scope",
+      "type": "prose",
+      "title": "Scope by tier",
+      "text": "Tier 1 is block mappings. Tier 2 is block sequences, including compact `- key:` items, where a key's column differs from its line's indent. Tier 3 is flow collections.\n\nIn the real-file corpus, 642 planned edits need only tier 1 and 1,228 need tier 2. GitHub workflow `steps` are sequences."
+    },
+    {
+      "id": "fuzz",
+      "type": "prose",
+      "title": "Fuzzing setup",
+      "text": "`tests/fuzz_chars.rs` uses a SplitMix64 generator with a fixed seed and no new dependency. It covers indicators, odd whitespace, line breaks (including NEL, LS and PS), control characters, multi-byte and combining text, bidi controls, case-folding traps (ß, İ, ı, ς, Kelvin sign), noncharacters, scalars that read as another type, and blank lines.\n\nIt checks three things: each sample alone, random mixes, and corpus documents with characters spliced in. Four extra seeds at 50,000 iterations each found nothing beyond the two pinned classes. `YAML_SPLICE_FUZZ_SEED` and `YAML_SPLICE_FUZZ_ITERS` change a run."
+    }
+  ],
+  "questions": [
+    {
+      "id": "q-empty-parent",
+      "group": "Nested edit behaviour",
+      "about": "s-empty-parent",
+      "kind": "single",
+      "prompt": "What should removing the last key or item of a nested collection leave?",
+      "recommended": "braces",
+      "options": [
+        {
+          "id": "braces",
+          "label": "`a: {}` or `items: []`",
+          "detail": "Keeps the type. Readers that expect a mapping keep working."
+        },
+        {
+          "id": "null",
+          "label": "`a:` (reads as null)",
+          "detail": "Fewest bytes, but changes the value's type."
+        },
+        {
+          "id": "refuse",
+          "label": "Refuse the edit",
+          "detail": "Safe, but callers then have to remove the parent themselves."
+        }
+      ],
+      "status": "closed",
+      "resolution": "Write `{}` or `[]`; the parent keeps its type."
+    },
+    {
+      "id": "q-orphan-comment",
+      "group": "Nested edit behaviour",
+      "about": "s-orphan",
+      "kind": "single",
+      "prompt": "When the only key is removed, what happens to a comment line above it?",
+      "recommended": "keep",
+      "options": [
+        {
+          "id": "keep",
+          "label": "Keep it under `a: {}`",
+          "detail": "Same rule as the top level: comment lines above a removed key stay. Looks odd in this one case."
+        },
+        {
+          "id": "remove",
+          "label": "Remove it with the key",
+          "detail": "Tidier here, but a different rule from the top level, and it deletes text the user wrote."
+        },
+        {
+          "id": "refuse",
+          "label": "Refuse this one shape",
+          "detail": "Nothing surprising is written; the caller decides."
+        }
+      ],
+      "status": "closed",
+      "resolution": "Keep the comment under `a: {}`, as at the top level."
+    },
+    {
+      "id": "q-vivify",
+      "group": "Nested edit behaviour",
+      "about": "s-vivify",
+      "kind": "single",
+      "prompt": "Should a Set below an empty parent (null, ~, {}, []) create the collection?",
+      "recommended": "create",
+      "options": [
+        {
+          "id": "create",
+          "label": "Yes, create it",
+          "detail": "Matches yaml-edit's try_set_path and the common config use. Nothing is lost."
+        },
+        {
+          "id": "refuse",
+          "label": "No, refuse as PathTypeMismatch",
+          "detail": "Stricter; callers must Set the parent first."
+        }
+      ],
+      "status": "closed",
+      "resolution": "Create the collection below null, ~, {} and []."
+    },
+    {
+      "id": "q-missing",
+      "group": "Nested edit behaviour",
+      "about": "s-missing",
+      "kind": "single",
+      "prompt": "How should Remove treat a path that is not there?",
+      "recommended": "split",
+      "options": [
+        {
+          "id": "split",
+          "label": "Absent leaf: no-op. Missing parent: PathNotFound",
+          "detail": "What the corpus encodes. Keeps today's no-op and flags a likely wrong path."
+        },
+        {
+          "id": "noop",
+          "label": "Always a no-op",
+          "detail": "Simplest; hides a mistyped path."
+        },
+        {
+          "id": "error",
+          "label": "Always an error",
+          "detail": "Breaks the one-segment equivalence with today's Remove, which is a no-op."
+        }
+      ],
+      "status": "closed",
+      "resolution": "Absent leaf is a no-op; a missing parent is PathNotFound."
+    },
+    {
+      "id": "q-append-pos",
+      "group": "Nested edit behaviour",
+      "about": "s-append",
+      "kind": "single",
+      "prompt": "Where does a new nested key go when comment lines end the block?",
+      "recommended": "after",
+      "options": [
+        {
+          "id": "after",
+          "label": "After comments at the children's indent",
+          "detail": "Indentation says those comments belong to the block."
+        },
+        {
+          "id": "before",
+          "label": "Right after the last key",
+          "detail": "Keeps a closing comment last, but may split it from what it describes."
+        }
+      ],
+      "status": "closed",
+      "resolution": "After comments at the children's indent."
+    },
+    {
+      "id": "q-final-newline",
+      "group": "Nested edit behaviour",
+      "about": "s-newline",
+      "kind": "single",
+      "prompt": "In a file with no final line break, should an append add one?",
+      "recommended": "nested-none",
+      "options": [
+        {
+          "id": "nested-none",
+          "label": "Nested: no. Leave top level as it is",
+          "detail": "Fewest bytes changed at depth; the two levels differ, and the README says so."
+        },
+        {
+          "id": "match-top",
+          "label": "Nested: yes, like the top level",
+          "detail": "One rule everywhere; adds a byte the user did not ask for."
+        },
+        {
+          "id": "change-top",
+          "label": "Neither level adds one",
+          "detail": "One rule and fewest bytes, but changes today's top-level output in a minor release."
+        }
+      ],
+      "status": "closed",
+      "resolution": "Nested appends add no final line break; the top level stays as it is."
+    },
+    {
+      "id": "q-api",
+      "group": "API",
+      "about": "api",
+      "kind": "single",
+      "prompt": "How should callers ask for a nested edit?",
+      "recommended": "variants",
+      "options": [
+        {
+          "id": "variants",
+          "label": "New SetPath, RemovePath, RenamePath variants",
+          "detail": "Additive: FieldEdit is #[non_exhaustive]. Old variants stay and mean a one-segment path."
+        },
+        {
+          "id": "replace",
+          "label": "Change Set, Remove, Rename to take a path",
+          "detail": "One way to do it, but a breaking change to the stable API."
+        }
+      ],
+      "status": "closed",
+      "resolution": "New SetPath, RemovePath and RenamePath variants."
+    },
+    {
+      "id": "q-errors",
+      "group": "API",
+      "about": "api",
+      "kind": "single",
+      "prompt": "Which new error variants?",
+      "recommended": "three",
+      "options": [
+        {
+          "id": "three",
+          "label": "PathNotFound, PathTypeMismatch, UnsupportedPath",
+          "detail": "One per cause; callers can match on what went wrong. The corpus uses these names."
+        },
+        {
+          "id": "one",
+          "label": "One InvalidPath with a reason",
+          "detail": "Fewer variants; callers must parse a message to tell causes apart."
+        }
+      ],
+      "status": "closed",
+      "resolution": "PathNotFound, PathTypeMismatch and UnsupportedPath."
+    },
+    {
+      "id": "q-flow",
+      "group": "Scope",
+      "about": "scope",
+      "kind": "single",
+      "prompt": "Inside flow collections ({a: 1}, [x, y]), what is supported at first?",
+      "recommended": "scalars",
+      "options": [
+        {
+          "id": "scalars",
+          "label": "Replace scalars only; refuse the rest",
+          "detail": "Where yamlpatch also stops (no flow-sequence append). Small and safe."
+        },
+        {
+          "id": "full",
+          "label": "Full flow support, including appends and collections",
+          "detail": "Needs the emitter's flow mode and separator handling: a larger project."
+        }
+      ],
+      "status": "closed",
+      "resolution": "Full flow support, in the first release (settled after review). New flow content copies the collection's own spacing. The corpus's flow-refuse cases became flow-edit cases with real outputs."
+    },
+    {
+      "id": "q-release",
+      "group": "Scope",
+      "about": "scope",
+      "kind": "single",
+      "prompt": "What goes into the first release with nested edits?",
+      "recommended": "t1-seq-flow",
+      "options": [
+        {
+          "id": "t1-seq-flow",
+          "label": "Tier 1, sequences, and flow scalar replace",
+          "detail": "Covers the common config edits, including GitHub workflow steps."
+        },
+        {
+          "id": "t1",
+          "label": "Tier 1 (block mappings) only",
+          "detail": "Smallest, but most real files reach keys through a sequence: 1,228 of 1,870 planned real-file edits are tier 2."
+        },
+        {
+          "id": "all",
+          "label": "Wait until all tiers are done",
+          "detail": "One release, later."
+        }
+      ],
+      "status": "closed",
+      "resolution": "Tier 1, sequences and all of flow (widened by the q-flow follow-up)."
+    },
+    {
+      "id": "q-bom",
+      "group": "Fuzz findings",
+      "about": "s-bom",
+      "kind": "single",
+      "prompt": "How should the U+FEFF-at-byte-zero bug be fixed?",
+      "recommended": "both",
+      "options": [
+        {
+          "id": "both",
+          "label": "Quote such strings, and check results the way a fresh reader reads them",
+          "detail": "Fixes the cause and closes the gap in the check. Quoting departs from npm yaml for strings that start with U+FEFF."
+        },
+        {
+          "id": "check",
+          "label": "Only make the check BOM-aware, so these edits are refused",
+          "detail": "Keeps npm yaml parity; these values can then not be written as first key."
+        },
+        {
+          "id": "leave",
+          "label": "Leave it pinned as known",
+          "detail": "Data loss stays possible."
+        }
+      ],
+      "status": "closed",
+      "resolution": "Quote strings that start with U+FEFF, and check results the way a fresh reader reads them."
+    },
+    {
+      "id": "q-blank",
+      "group": "Fuzz findings",
+      "about": "s-blank",
+      "kind": "single",
+      "prompt": "Should values whose first non-empty line is only spaces become writable?",
+      "recommended": "refuse",
+      "options": [
+        {
+          "id": "refuse",
+          "label": "Keep refusing",
+          "detail": "Safe and keeps byte parity with npm yaml."
+        },
+        {
+          "id": "indicator",
+          "label": "Write them with an indentation indicator (|2+)",
+          "detail": "Correct YAML, but no longer matches npm yaml for these values."
+        }
+      ],
+      "status": "closed",
+      "resolution": "Keep refusing, for npm yaml parity."
+    },
+    {
+      "id": "q-upstream",
+      "group": "Fuzz findings",
+      "about": "s-blank",
+      "kind": "single",
+      "prompt": "Report both findings to the npm yaml project (eemeli/yaml)?",
+      "recommended": "report",
+      "options": [
+        {
+          "id": "report",
+          "label": "Yes, file issues with the repro inputs",
+          "detail": "Both lose data there today; a fix upstream lets this crate fix them and keep parity."
+        },
+        {
+          "id": "no",
+          "label": "No",
+          "detail": ""
+        }
+      ],
+      "status": "closed",
+      "resolution": "File issues with eemeli/yaml with the repro inputs."
+    },
+    {
+      "id": "q-key-order",
+      "group": "Fuzz findings",
+      "about": "s-key-order",
+      "kind": "single",
+      "prompt": "What should happen about JSON key order in the bridge?",
+      "recommended": "verify-enable",
+      "options": [
+        {
+          "id": "verify-enable",
+          "label": "Confirm in the WASM build, then turn on preserve_order",
+          "detail": "Keeps the caller's key order. Changes output for TS callers who relied on sorting (unlikely)."
+        },
+        {
+          "id": "document",
+          "label": "Document that keys are sorted",
+          "detail": "No code change; surprising to callers."
+        },
+        {
+          "id": "leave",
+          "label": "Leave it",
+          "detail": ""
+        }
+      ],
+      "status": "closed",
+      "resolution": "Confirm in the WASM build, then turn on preserve_order."
+    },
+    {
+      "id": "q-fuzz-tooling",
+      "group": "Fuzzing",
+      "about": "fuzz",
+      "kind": "single",
+      "prompt": "Which fuzzing tools should the crate use?",
+      "recommended": "inhouse",
+      "options": [
+        {
+          "id": "inhouse",
+          "label": "The in-house seeded generator only",
+          "detail": "No new dependency; runs in every CI job; replays from a printed seed."
+        },
+        {
+          "id": "proptest",
+          "label": "Add proptest as a dev-dependency",
+          "detail": "Shrinks failures to a minimal input; a new dependency."
+        },
+        {
+          "id": "cargo-fuzz",
+          "label": "Also add a cargo-fuzz target",
+          "detail": "Coverage-guided and finds deeper bugs; needs nightly and a separate job."
+        }
+      ],
+      "status": "closed",
+      "resolution": "The in-house seeded generator only."
+    },
+    {
+      "id": "q-fuzz-budget",
+      "group": "Fuzzing",
+      "about": "fuzz",
+      "kind": "single",
+      "prompt": "How long should the fuzz tests run in CI?",
+      "recommended": "default",
+      "options": [
+        {
+          "id": "default",
+          "label": "3,000 iterations per test (about 1.5 s)",
+          "detail": "Fast and pinned. Longer runs by hand with YAML_SPLICE_FUZZ_ITERS."
+        },
+        {
+          "id": "scheduled",
+          "label": "Also a scheduled job with 50,000+ iterations and a fresh seed",
+          "detail": "Finds rarer shapes; needs a way to report a new seed's failures."
+        }
+      ],
+      "status": "closed",
+      "resolution": "3,000 iterations per test in CI."
+    },
+    {
+      "id": "q-commit",
+      "group": "Next step",
+      "about": "scope",
+      "kind": "single",
+      "prompt": "Ship the test corpus and fuzz tests as their own PR before Tier 1?",
+      "recommended": "pr-now",
+      "options": [
+        {
+          "id": "pr-now",
+          "label": "Yes, one PR now",
+          "detail": "Reviewable alone; pins the two bugs where everyone can see them."
+        },
+        {
+          "id": "with-tier1",
+          "label": "No, together with Tier 1",
+          "detail": "One PR, but a large one."
+        }
+      ],
+      "status": "closed",
+      "resolution": "One PR now with the corpus and fuzz tests."
+    }
+  ]
+}

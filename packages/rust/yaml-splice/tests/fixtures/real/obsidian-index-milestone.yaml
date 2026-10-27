@@ -1,0 +1,18 @@
+filters:
+  and:
+    - file.inFolder("planning/milestones")
+    - file.ext != "base"
+views:
+  - type: table
+    name: All milestones
+    order:
+      - status
+      - version
+      - target_date
+      - last_reviewed
+      - file.name
+    sort:
+      - property: version
+        direction: DESC
+      - property: status
+        direction: ASC
