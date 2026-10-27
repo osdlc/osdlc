@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/pr-update",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Survey and update out-of-date, stacked pull requests against their base: drift measured locally, conflicts predicted with merge-tree, PRs read through the @osdlc/code-host port.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
@@ -47,7 +47,8 @@
     "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "cli-tool-stamp-version && tsc -p tsconfig.build.json",
+    "stamp-version": "cli-tool-stamp-version",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "test": "vitest run",
     "smoke": "node tests/smoke.mjs",

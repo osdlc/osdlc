@@ -9,11 +9,11 @@
 // that installed the tarball, so it must not import other repo files. It is
 // not a test-runner suite and is not in `files`.
 //
-// Also runs the installed binary: `repo-cleaner --help` must exit 0.
+// Also runs the installed binary: `repo-cleaner --help` and `--version` must exit 0.
 
 import { strict as assert } from 'node:assert'
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -52,5 +52,15 @@ const bin = join(dist, '..', 'bin', 'repo-cleaner.js')
 const help = spawnSync(process.execPath, [bin, '--help'], { encoding: 'utf8' })
 assert.equal(help.status, 0, `repo-cleaner --help exited ${help.status}: ${help.stderr}`)
 assert.match(help.stdout, /repo-cleaner/)
+
+// `--version` prints the version stamped from package.json.
+const pkg = JSON.parse(readFileSync(join(dist, '..', 'package.json'), 'utf8'))
+const version = spawnSync(process.execPath, [bin, '--version'], { encoding: 'utf8' })
+assert.equal(
+  version.status,
+  0,
+  `repo-cleaner --version exited ${version.status}: ${version.stderr}`,
+)
+assert.equal(version.stdout, `repo-cleaner ${pkg.version}\n`)
 
 console.log('repo-cleaner smoke: OK')

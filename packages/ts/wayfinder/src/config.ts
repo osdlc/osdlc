@@ -81,7 +81,7 @@ import {
   USER_ONLY_KEYS,
   type Theme,
 } from './config-keys.ts'
-import { VERSION } from './version.ts'
+import { VERSION } from './version.generated.ts'
 import { appDirs, pre08Bases, USER_CONFIG_FILENAME } from './xdg.ts'
 import type { WayOptions } from './catalog.ts'
 import { SKILLS_SETTING_VALUES, type SkillsSetting } from './core/skills.ts'

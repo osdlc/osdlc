@@ -1,5 +1,13 @@
 # @osdlc/wayfinder
 
+## 0.11.2
+
+### Patch Changes
+
+- bb61f10: The version `--version` prints is now stamped from package.json at build time by `cli-tool-stamp-version` instead of read from package.json at run time.
+- Updated dependencies [bb61f10]
+  - @osdlc/cli-tool@0.11.0
+
 ## 0.11.1
 
 ### Patch Changes

@@ -293,6 +293,17 @@ for (const pkgDir of dirs) {
         { shape: true },
       )
     }
+    // `build` re-stamps version.generated.ts, so a stale committed copy shows
+    // as a working-tree change by now, where `stamp-version --check` would pass.
+    if (pkg.scripts?.['stamp-version'] !== undefined) {
+      run('pnpm', ['run', '--silent', 'stamp-version', '--check'], pkgDir)
+      const changed = run('git', ['status', '--porcelain', '--', ':(glob)**/version.generated.ts'], pkgDir)
+      if (changed.trim() !== '') {
+        throw new Error(
+          `version.generated.ts differs from the commit; run \`pnpm run stamp-version\` and commit it:\n${changed}`,
+        )
+      }
+    }
     process.stdout.write(run(bin('publint'), ['run', tarball, '--strict'], root))
     if (shipsTypes(pkg)) {
       // An ESM-only package is not judged on CommonJS resolution.
