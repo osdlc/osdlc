@@ -12,23 +12,16 @@
 //!   change the run.
 //! - [`mutated_documents_never_panic`]: corpus documents with category
 //!   characters spliced in at random places. Any result is fine except a
-//!   panic, or output that does not parse.
+//!   panic, output that does not parse, or output that gained a U+FEFF at byte
+//!   zero, which the next reader would drop as a byte-order mark.
 //!
-//! # Known failures
+//! # Known refusal
 //!
-//! One failure is known and pinned, not fixed: a U+FEFF (byte-order mark)
-//! that an edit puts at byte zero (a key or value that starts with it, written
-//! first, or a line that starts with it moved up by a `Remove`). The next
-//! reader takes it for a BOM and drops it, so `"\u{feff}#c": x` reads back as
-//! a comment. The crate's own result check misses it because it strips a BOM
-//! only from the original input. [`BOM_AT_BYTE_ZERO`] counts these; the fix is
-//! an open decision.
-//!
-//! One refusal is known: a string whose first non-empty line holds only
-//! spaces, such as `" \n"` or `"\n \n"`. The emitter writes it as a `|+` block whose first line is blank to
-//! a reader, so the spaces would be lost, and the result check refuses the
-//! edit. npm `yaml` 2.9.0 writes the same text and loses the spaces.
-//! [`BLANK_FIRST_LINE_REFUSED`] counts these.
+//! A string whose first non-empty line holds only spaces, such as `" \n"` or
+//! `"\n \n"`, is refused. The emitter writes it as a `|+` block whose first
+//! line is blank to a reader, so the spaces would be lost, and the result
+//! check refuses the edit. npm `yaml` 2.9.1 writes the same text and loses the
+//! spaces. [`BLANK_FIRST_LINE_REFUSED`] counts these.
 //!
 //! The oracle for the first two is the in-memory model in `tests/model`: an
 //! edit on a document whose keys are plain must succeed and read back as the
@@ -134,13 +127,9 @@ const CATEGORIES: &[(&str, &[&str])] = &[
     ),
 ];
 
-/// How many edits of the default runs put a U+FEFF at byte zero: every
-/// sample, random mixes, mutated documents. Only checked when the seed and the
-/// iteration count are the defaults.
-const BOM_AT_BYTE_ZERO: [usize; 3] = [3, 6, 1];
-
 /// How many edits of the default runs are refused for a first non-empty
-/// line of only spaces: every sample, random mixes.
+/// line of only spaces: every sample, random mixes. Only checked when the seed
+/// and the iteration count are the defaults.
 const BLANK_FIRST_LINE_REFUSED: [usize; 2] = [16, 34];
 
 /// A string the emitter cannot write: its first line that is not empty
@@ -184,10 +173,7 @@ fn every_sample_is_written_and_read_back() {
             }
         }
     }
-    report.finish(
-        "every sample",
-        Some((BOM_AT_BYTE_ZERO[0], BLANK_FIRST_LINE_REFUSED[0])),
-    );
+    report.finish("every sample", Some(BLANK_FIRST_LINE_REFUSED[0]));
 }
 
 #[test]
@@ -208,7 +194,7 @@ fn random_mixes_are_written_and_read_back() {
         && std::env::var_os("YAML_SPLICE_FUZZ_ITERS").is_none();
     report.finish(
         &format!("random mixes (seed {seed:#x}, {iters} iterations)"),
-        defaults.then_some((BOM_AT_BYTE_ZERO[1], BLANK_FIRST_LINE_REFUSED[1])),
+        defaults.then_some(BLANK_FIRST_LINE_REFUSED[1]),
     );
 }
 
@@ -219,7 +205,6 @@ fn mutated_documents_never_panic() {
     let mut rng = Rng(seed);
     let sources: Vec<String> = corpus_sources();
     let mut failures = Vec::new();
-    let mut known = 0;
     for i in 0..iters {
         let mut src = sources[rng.below(sources.len())].clone();
         for _ in 0..=rng.below(3) {
@@ -246,7 +231,9 @@ fn mutated_documents_never_panic() {
                 Ok(Ok(out)) if out.changed => {
                     let text = String::from_utf8(out.bytes).expect("UTF-8 output");
                     if bom_moved_to_byte_zero(&src, &text) {
-                        known += 1;
+                        failures.push(format!(
+                            "  #{i} U+FEFF at byte zero for {edit:?} on {src:?}"
+                        ));
                     } else if read(&text).is_err() {
                         failures.push(format!("  #{i} unparseable output for {edit:?} on {src:?}"));
                     }
@@ -266,14 +253,6 @@ fn mutated_documents_never_panic() {
             .collect::<Vec<_>>()
             .join("\n")
     );
-    let defaults = std::env::var_os("YAML_SPLICE_FUZZ_SEED").is_none()
-        && std::env::var_os("YAML_SPLICE_FUZZ_ITERS").is_none();
-    if defaults {
-        assert_eq!(
-            known, BOM_AT_BYTE_ZERO[2],
-            "edits that put a U+FEFF at byte zero"
-        );
-    }
 }
 
 // --- edits and oracle ------------------------------------------------------
@@ -329,7 +308,6 @@ fn refusal_expected(host: &str, edit: &FieldEdit, err: &EditError) -> bool {
 #[derive(Default)]
 struct Report {
     checked: usize,
-    bom_at_byte_zero: usize,
     blank_first_line: usize,
     by_category: BTreeMap<String, usize>,
     examples: Vec<String>,
@@ -339,9 +317,7 @@ impl Report {
     fn check(&mut self, category: &str, host: &str, edit: &FieldEdit) {
         self.checked += 1;
         let result = outcome(host, edit);
-        if let Err(Failure::BomAtByteZero) = result {
-            self.bom_at_byte_zero += 1;
-        } else if let Err(Failure::BlankFirstLine) = result {
+        if let Err(Failure::BlankFirstLine) = result {
             self.blank_first_line += 1;
         } else if let Err(Failure::Other(msg)) = result {
             *self.by_category.entry(category.to_string()).or_insert(0) += 1;
@@ -352,7 +328,7 @@ impl Report {
         }
     }
 
-    fn finish(self, what: &str, pinned: Option<(usize, usize)>) {
+    fn finish(self, what: &str, pinned_blank: Option<usize>) {
         let failed: usize = self.by_category.values().sum();
         assert!(
             failed == 0,
@@ -361,11 +337,7 @@ impl Report {
             self.by_category,
             self.examples.join("\n")
         );
-        if let Some((bom, blank)) = pinned {
-            assert_eq!(
-                self.bom_at_byte_zero, bom,
-                "{what}: edits that put a U+FEFF at byte zero"
-            );
+        if let Some(blank) = pinned_blank {
             assert_eq!(
                 self.blank_first_line, blank,
                 "{what}: edits refused for a first non-empty line of only spaces"
@@ -375,8 +347,6 @@ impl Report {
 }
 
 enum Failure {
-    /// The known failure: see the module docs.
-    BomAtByteZero,
     /// The known refusal: see the module docs.
     BlankFirstLine,
     Other(String),
@@ -409,7 +379,7 @@ fn outcome(host: &str, edit: &FieldEdit) -> Result<(), Failure> {
     };
     let text = String::from_utf8(out.bytes).map_err(|_| "output is not UTF-8")?;
     if bom_moved_to_byte_zero(host, &text) {
-        return Err(Failure::BomAtByteZero);
+        return Err(format!("U+FEFF at byte zero: {text:?}").into());
     }
     let mut want = read(host).map_err(|e| format!("host does not parse: {e}"))?;
     apply(&mut want, &as_path_edit(edit), false)?;

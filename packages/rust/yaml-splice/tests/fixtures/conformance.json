@@ -269,5 +269,23 @@
     "source": "%YAML 1.2\n---\na: 1\n",
     "edits": [{ "Set": { "key": "a", "value": "x" } }],
     "expect": { "error": "UnsupportedDocument" }
+  },
+  {
+    "name": "a_key_starting_with_u_feff_is_quoted_so_it_is_not_read_as_a_bom",
+    "source": "title: Draft\nn: 1\n",
+    "edits": [{ "Rename": { "from": "title", "to": "\ufeff#c" } }],
+    "expect": { "changed": true, "bytes": "\"\\ufeff#c\": Draft\nn: 1\n" }
+  },
+  {
+    "name": "a_value_starting_with_u_feff_is_quoted",
+    "source": "",
+    "edits": [{ "Set": { "key": "k", "value": "\ufeffv" } }],
+    "expect": { "changed": true, "bytes": "k: \"\\ufeffv\"\n" }
+  },
+  {
+    "name": "a_remove_that_would_leave_u_feff_at_byte_zero_is_refused",
+    "source": "a: 1\n\ufeffb: 2\n",
+    "edits": [{ "Remove": { "key": "a" } }],
+    "expect": { "error": "InvalidResult" }
   }
 ]
