@@ -37,7 +37,7 @@
       "path": "packages/ts/cli-tool/src/devlink/hook.ts",
       "line": 40,
       "title": "Inline comment restates the TSDoc; the TSDoc should state the mutation of ctx.env and process.env as the caller contract",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/521#discussion_r4385566956",
       "status": "fixed",
       "reason": null,
       "fixedIn": "6d98ba7509ac06561616af6f5df5802f05449615"
