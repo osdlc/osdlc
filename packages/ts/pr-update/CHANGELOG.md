@@ -1,5 +1,16 @@
 # @osdlc/pr-update
 
+## 0.8.3
+
+### Patch Changes
+
+- ebe0e0d: A survey that cannot list the worktrees no longer reads that as "no checkout holds the branch". It used `git.soft.worktrees()`, whose `[]` on a failure cleared the unpushed-local guard and could plan a force-push over local commits. It now uses `git.try.worktrees()`, and a failed listing counts as unsafe, like refs that cannot be read: the PR gets the `guard:unpushed-local` strategy. This matters on a git older than 2.34, where typed-git's `worktrees()` now fails as `unsupported-git`. `unpushedLocalWork` and `surveyRows` take `null` for worktrees that could not be listed.
+- Updated dependencies [82d9841]
+- Updated dependencies [ebe0e0d]
+  - @osdlc/typed-git@0.11.0
+  - @osdlc/code-host@0.6.2
+  - @osdlc/trust-repo@0.5.2
+
 ## 0.8.2
 
 ### Patch Changes
