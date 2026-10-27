@@ -40,7 +40,13 @@ describe('parsePrInput', () => {
   test('a GitHub Enterprise PR URL names its repository and keeps its host', () => {
     expect(parsePrInput('https://github.acme.com/acme/widgets/pull/9')).toEqual({
       kind: 'url',
-      ref: { codeHost: 'github', host: 'github.acme.com', owner: 'acme', repo: 'widgets', number: 9 },
+      ref: {
+        codeHost: 'github',
+        host: 'github.acme.com',
+        owner: 'acme',
+        repo: 'widgets',
+        number: 9,
+      },
     })
   })
 
