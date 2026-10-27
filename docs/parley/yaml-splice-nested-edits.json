@@ -3,7 +3,7 @@
   "title": "yaml-splice: open questions for nested edits",
   "summary": "Decisions the nested-edit test corpus encodes, two bugs the character fuzzing found in today's top-level edits, and scope and tooling choices.",
   "created": "2026-10-26",
-  "revision": 2,
+  "revision": 3,
   "repo": {
     "remote": "https://github.com/osdlc/osdlc",
     "commit": "bad2664bbf55598fa3bcf3d196411334661ce421",
@@ -454,7 +454,7 @@
         }
       ],
       "status": "closed",
-      "resolution": "File issues with eemeli/yaml with the repro inputs."
+      "resolution": "Report both to eemeli/yaml. Its CONTRIBUTING.md requires issue text to be the reporter's own writing, not an LLM's, so the maintainer files them by hand. Both reproduce on 2.9.1; the blank-line case is close to the open eemeli/yaml#692."
     },
     {
       "id": "q-key-order",
