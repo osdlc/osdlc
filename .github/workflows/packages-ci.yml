@@ -266,6 +266,8 @@ jobs:
           pnpm --filter '@osdlc/typed-git...' --filter '@osdlc/pr-update...' --filter '@osdlc/trust-repo...'
           --if-present run build
 
+      # No `...` here: install and build need the workspace dependencies, but
+      # only these three packages run real git.
       - name: Test
         run: >-
           pnpm --filter @osdlc/typed-git --filter @osdlc/pr-update --filter @osdlc/trust-repo

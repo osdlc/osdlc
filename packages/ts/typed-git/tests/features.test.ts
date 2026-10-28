@@ -703,15 +703,18 @@ describe(`real git (${LOCAL_GIT.text})`, () => {
 
         const rows = fx.git.worktrees()
         expect(rows).toHaveLength(4)
-        expect(rows.find((w) => w.branch === 'odd')).toMatchObject({ path: odd, head })
-        expect(rows.find((w) => w.path === detached)).toMatchObject({
-          head,
-          branch: null,
-          detached: true,
-          bare: false,
-        })
+        expect(rows).toContainEqual(expect.objectContaining({ path: odd, branch: 'odd', head }))
+        expect(rows).toContainEqual(
+          expect.objectContaining({
+            path: detached,
+            head,
+            branch: null,
+            detached: true,
+            bare: false,
+          }),
+        )
         // A prunable entry keeps its branch and the HEAD it had.
-        expect(rows.find((w) => w.branch === 'gone')).toMatchObject({ path: gone, head })
+        expect(rows).toContainEqual(expect.objectContaining({ path: gone, branch: 'gone', head }))
       } finally {
         fx.cleanup()
         rmSync(scratch, { recursive: true, force: true })
