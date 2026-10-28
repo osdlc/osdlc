@@ -357,8 +357,8 @@ fn run_scratch(case: &Case) {
     assert_eq!(got, expected_path(base, &want.relative), "{}", case.name);
 }
 
-/// `bases` lists what moved from a bare system's: the native convention with
-/// no override variable, no convention variable and no `XDG_*` set. Windows
+/// `bases` lists what moved from a bare system's: the same convention with no
+/// override variable and no `XDG_*` set. Windows
 /// ignores the convention and `XDG_*`, so there a `windows_native` case
 /// resolves as a bare system does.
 fn run_env(case: &Case) {
@@ -373,16 +373,16 @@ fn run_env(case: &Case) {
         .env
         .iter()
         .filter(|(name, _)| !ENV.overrides().any(|var| var == name.as_str()))
-        .filter(|(name, _)| name.as_str() != ENV.convention && !name.starts_with("XDG_"))
+        .filter(|(name, _)| !name.starts_with("XDG_"))
         .map(|(name, value)| (name.clone(), value.clone()))
         .collect();
-    let os = from_vars(ResolveOptions::new(), &bare);
     let convention = match input.convention.as_deref() {
         None => Convention::default(),
         Some(name) => name
             .parse()
             .unwrap_or_else(|err| panic!("{}: {err}", case.name)),
     };
+    let os = from_vars(ResolveOptions::new().with_convention(convention), &bare);
     let base = from_vars(
         ResolveOptions::new().with_convention(convention),
         &input.env,

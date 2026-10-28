@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { join, normalize } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
 
@@ -53,6 +53,18 @@ describe('conformance suite', () => {
             return
           }
           const got = run(name, c.input)
+          if (name === 'convention') {
+            // POSIX paths: on Windows the package joins them with `\\`.
+            const homes = (o: object) =>
+              Object.fromEntries(
+                Object.entries((o as { bases: Record<string, string> }).bases).map(([k, v]) => [
+                  k,
+                  normalize(v),
+                ]),
+              )
+            expect(homes((got as { expect: object }).expect)).toEqual(homes(c.expect!))
+            return
+          }
           expect(got).toEqual(
             c.error === undefined ? { expect: c.expect } : { error: { kind: c.error.kind } },
           )

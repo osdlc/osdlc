@@ -512,7 +512,7 @@
       ]
     },
     "env": {
-      "description": "Resolve the base directories from the variables in `env`, with home /h. `bases` lists every base directory that differs from a bare system's, as an absolute path. A bare system is the native convention with no override variable, no convention variable and no XDG_* variable set; a base directory `bases` omits resolves as it does there. A case with `windows_native` proves that Windows ignores the convention and the XDG_* variables: there every base directory resolves as on a bare system. The other cases hold POSIX paths and run on unix only.",
+      "description": "Resolve the base directories from the variables in `env`, with home /h. `bases` lists every base directory that differs from a bare system's, as an absolute path. A bare system is the same convention, from the constructor and the convention variable, with no override variable and no XDG_* variable set; a base directory `bases` omits resolves as it does there. A case with `windows_native` proves that Windows ignores the convention and the XDG_* variables: there every base directory resolves as on a bare system. The other cases hold POSIX paths and run on unix only.",
       "cases": [
         {
           "name": "EXAMPLE_ROOT alone moves all seven",

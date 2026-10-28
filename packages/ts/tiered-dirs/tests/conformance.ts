@@ -114,27 +114,25 @@ export function only(
 }
 
 /**
- * Whether `key` leaves the base directories where a bare system puts them: it
- * is not an override variable, the convention variable, or an `XDG_*` one.
+ * Whether `key` leaves the base directories where a bare system of the same
+ * convention puts them: it is not an override variable or an `XDG_*` one. The
+ * convention stays, so a bare system's table does not depend on the host's
+ * native one under `xdg`.
  */
 export function bare(vars: EnvVars): (key: string) => boolean {
-  return (key) =>
-    !overrideVars(vars).includes(key) && key !== vars.convention && !key.startsWith('XDG_')
+  return (key) => !overrideVars(vars).includes(key) && !key.startsWith('XDG_')
 }
 
 /**
  * The base directories an `env` case resolves to, and a bare system's: the
- * native convention with none of the variables {@link bare} drops.
+ * same convention with none of the variables {@link bare} drops.
  */
 export function envResolve(input: EnvInput): { bases: BaseDirs; bare: BaseDirs } {
   const vars = envVars(input.env_prefix)
+  const convention = input.convention === undefined ? {} : { convention: input.convention }
   return {
-    bases: systemBaseDirs(vars, {
-      env: input.env,
-      home: ENV_HOME,
-      ...(input.convention === undefined ? {} : { convention: input.convention }),
-    }),
-    bare: systemBaseDirs(vars, { env: only(input.env, bare(vars)), home: ENV_HOME }),
+    bases: systemBaseDirs(vars, { env: input.env, home: ENV_HOME, ...convention }),
+    bare: systemBaseDirs(vars, { env: only(input.env, bare(vars)), home: ENV_HOME, ...convention }),
   }
 }
 
