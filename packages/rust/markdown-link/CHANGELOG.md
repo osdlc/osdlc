@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `prefer_in_folder` (and so `LinkIndex::resolve_from`) matches whole folder names. A note in
+  `notes/` no longer prefers a candidate in `notes2/`.
+
 ## [0.5.1](https://github.com/osdlc/osdlc/compare/markdown-link/v0.5.0...markdown-link/v0.5.1) - 2026-10-28
 
 ### Other
@@ -14,8 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - updated the following local packages: yaml-splice
 
 ## [0.5.0] - Unreleased
-
-Aligned with the TypeScript peer package 0.4.0. The release commit sets this entry's date.
 
 First public release. `markdown-link` parses wiki-style and Markdown links — every `[[wikilink]]`,
 `![[embed]]`, relative markdown link and frontmatter link in a note, with code spans excluded — and
@@ -41,11 +44,6 @@ resolves a target against a set of file paths by path suffix.
 - `code` module: `strip_code`/`strip_code_with` blank fenced and inline code to spaces (character
   count preserved) under `CodeRules::CommonMark` or `CodeRules::SkillExport`, with `Fences`, `Spans`
   and `FenceLine` for a streaming scan.
-
-### Fixed
-
-- `prefer_in_folder` (and so `LinkIndex::resolve_from`) matches whole folder names. A note in
-  `notes/` no longer prefers a candidate in `notes2/`.
 
 ### Changed
 
