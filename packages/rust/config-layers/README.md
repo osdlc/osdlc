@@ -137,11 +137,13 @@ need. Run it with `cargo run --example layered_files`.
   mapping as a key is an error. YAML tags are dropped and the value kept.
 - **Errors carry their cause.** `FileProblem` has a `source`. For
   `Unreadable` it is an `std::io::Error`. For `Malformed` it is the YAML
-  error, or a plain message for a top level that is not a mapping. The
-  `Display` text names the file only, so a reporter that walks
-  the chain prints the cause once. No file contents are quoted in an error.
-  Downcast the source to `std::io::Error` or `serde_saphyr::Error` to look
-  closer. The latter makes your crate depend on `serde-saphyr`. The
+  error, a plain message for a top level that is not a mapping, or a
+  `serde_json::Error` when `read_strict` reads an empty file into a `T` with
+  a field that has no default. The `Display` text names the file only, so a
+  reporter that walks the chain prints the cause once. No file contents are
+  quoted in an error. Downcast the source to `std::io::Error`,
+  `serde_saphyr::Error` or `serde_json::Error` to look closer. The
+  `serde-saphyr` one makes your crate depend on `serde-saphyr`. The
   not-a-mapping case carries only a message.
 - **Numbers and keys.** An integer beyond `u64` reads as a lossy float, with
   no error. A null key (`~: x`) is an error.

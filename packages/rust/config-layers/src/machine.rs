@@ -418,9 +418,9 @@ mod tests {
             );
             let err = read_strict_at::<Strict>(&p).unwrap_err();
             assert!(matches!(err, FileProblem::Malformed { .. }));
-            let cause = std::error::Error::source(&err)
-                .expect("a cause")
-                .to_string();
+            let cause = std::error::Error::source(&err).expect("a cause");
+            assert!(cause.downcast_ref::<serde_json::Error>().is_some());
+            let cause = cause.to_string();
             assert!(cause.contains("missing field `name`"), "{cause}");
         }
 

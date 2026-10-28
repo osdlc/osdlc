@@ -42,8 +42,10 @@ pub enum FileProblem {
         /// The path that was read.
         path: PathBuf,
         /// What is wrong with it: the YAML crate's error for a syntax or
-        /// type error, or a plain message for a top level that is not a
-        /// mapping.
+        /// type error, a plain message for a top level that is not a
+        /// mapping, or a `serde_json::Error` when
+        /// `MachineConfigFile::read_strict` reads an empty file into a type
+        /// with a field that has no default.
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
