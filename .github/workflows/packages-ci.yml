@@ -28,6 +28,12 @@
 # request. packages-publish.yml sets `skip-windows-tier2`; on main, tier 2
 # runs from its own push trigger.
 #
+# `old-git` runs typed-git and the packages that run real git (pr-update,
+# trust-repo) on git 2.34, typed-git's supported floor, when any of them is
+# picked. `verify` runs a current git, so without it the fallbacks for older
+# git never run against a real one. A run that is not a pull request picks
+# every package, so a failure here also blocks a release.
+#
 # Every action is pinned to a commit SHA; the comment names its release.
 name: packages
 
@@ -232,6 +238,58 @@ jobs:
 
       - name: Smoke the built package under Node
         run: pnpm --filter ./packages/ts/path-guard run smoke
+
+  # Not required by the ruleset. Ubuntu 22.04 ships git 2.34.1, but the
+  # runner image installs a newer git from the git-core PPA, so the job
+  # downgrades to the Ubuntu package and checks the version before testing.
+  old-git:
+    name: old git (ubuntu-22.04, git 2.34, node 24)
+    needs: changes
+    if: >-
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/typed-git') ||
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/pr-update') ||
+      contains(fromJSON(needs.changes.outputs.packages), 'packages/ts/trust-repo')
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Install git 2.34
+        run: |
+          sudo apt-get update
+          version=$(apt-cache madison git | awk '$3 ~ /^1:2\.34\./ { print $3; exit }')
+          if [ -z "$version" ]; then
+            echo "::error::no git 2.34 package in the Ubuntu 22.04 archive"
+            exit 1
+          fi
+          sudo apt-get install -y --allow-downgrades "git=$version" "git-man=$version"
+          git --version
+          git --version | grep -q '^git version 2\.34\.'
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install
+        run: >-
+          pnpm install --frozen-lockfile
+          --filter '@osdlc/typed-git...' --filter '@osdlc/pr-update...' --filter '@osdlc/trust-repo...'
+
+      - name: Build
+        run: >-
+          pnpm --filter '@osdlc/typed-git...' --filter '@osdlc/pr-update...' --filter '@osdlc/trust-repo...'
+          --if-present run build
+
+      # No `...` here: install and build need the workspace dependencies, but
+      # only these three packages run real git.
+      - name: Test
+        run: >-
+          pnpm --filter @osdlc/typed-git --filter @osdlc/pr-update --filter @osdlc/trust-repo
+          --no-bail run test
 
   windows-tier2:
     needs: changes
