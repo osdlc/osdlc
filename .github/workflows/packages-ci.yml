@@ -85,6 +85,13 @@ jobs:
       - name: Test the package shape rules
         run: node --test scripts/package-shape-ts.test.ts
 
+      # docs/planning/standards/S-conformance-suites.md is the standard.
+      - name: Test the conformance checks
+        run: node --test scripts/conformance.test.ts
+
+      - name: Check the conformance suites
+        run: pnpm run check:conformance
+
       - name: Pick the packages to check
         id: pick
         env:
@@ -138,6 +145,13 @@ jobs:
       - name: Build
         if: env.PICKED == 'true'
         run: pnpm $BUILD --if-present run build
+
+      # Every suite whose reference is TypeScript, picked or not: a generator
+      # that writes different bytes means expected values went stale. The
+      # generators run the packages' sources, so one leg is enough.
+      - name: Regenerate the conformance suites
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
+        run: node scripts/conformance.ts --regenerate --reference ts
 
       - name: Typecheck
         if: env.PICKED == 'true'

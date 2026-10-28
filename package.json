@@ -16,6 +16,7 @@
     "format:check": "pnpm -r --if-present run format:check",
     "check:packages": "node scripts/check-packages.ts",
     "check:crates": "node scripts/package-shape-rs.ts",
+    "check:conformance": "node scripts/conformance.ts",
     "typecheck:scripts": "tsc -p scripts/tsconfig.json",
     "version-packages": "changeset version && pnpm -r --if-present run stamp-version && pnpm --filter @osdlc/wayfinder run build && pnpm --filter @osdlc/wayfinder run write:config-schema"
   },

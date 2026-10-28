@@ -79,3 +79,13 @@ test('a build also takes the workspace dependencies', () => {
     'packages/ts/tsconfig',
   ])
 })
+
+test('a family links its implementations and its suite', () => {
+  const families = new Map([['dirs', ['packages/ts/twin', 'packages/rust/rusty-dirs']]])
+  const fam = (files: string[]) => pick({ event: 'pull_request', files, manifests, families })
+  assert.deepEqual(fam(['packages/conformance/dirs/suite.json']), ['packages/ts/twin'])
+  assert.deepEqual(fam(['packages/conformance/dirs/README.md']), ['packages/ts/twin'])
+  assert.deepEqual(fam(['packages/rust/rusty-dirs/src/lib.rs']), ['packages/ts/twin'])
+  assert.deepEqual(fam(['packages/conformance/other/suite.json']), [])
+  assert.deepEqual(fam(['packages/conformance/families.json']), ALL)
+})

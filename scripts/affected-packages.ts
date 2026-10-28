@@ -10,7 +10,9 @@
 // packages/ts/<name>, since a TypeScript twin reads its crate's fixtures; a
 // `-wasm` crate counts for the package without the suffix, or for the package
 // of the same name, and the crates in FEEDS count for the package built from
-// them. Every package is
+// them. A change under packages/conformance/<family>/, or under any
+// implementation of a family that packages/conformance/families.json lists,
+// counts for each TypeScript implementation of that family. Every package is
 // checked on any other event, when a shared input below changed, or when the
 // diff fails. affected-packages.test.ts tests the rules.
 //
@@ -38,6 +40,7 @@ const SHARED = [
   /^pnpm-workspace\.yaml$/,
   /^\.npmrc$/,
   /^\.changeset\/config\.json$/,
+  /^packages\/conformance\/families\.json$/,
 ]
 
 /**
@@ -47,6 +50,17 @@ const SHARED = [
 const FEEDS: Record<string, string> = {
   'tradecraft-core': 'tradecraft-wasm',
   'tradecraft-typegen': 'tradecraft-wasm',
+}
+
+/** Each family's implementation directories, by family, from families.json. */
+export type Families = Map<string, string[]>
+
+/** The families in packages/conformance/families.json, or none when it is absent. */
+export function families(): Families {
+  const file = 'packages/conformance/families.json'
+  if (!existsSync(file)) return new Map()
+  const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, { implementations: { dir: string }[] }>
+  return new Map(Object.entries(raw).map(([name, f]) => [name, f.implementations.map((i) => i.dir)]))
 }
 
 /** The parts of a package.json these rules read. */
@@ -95,16 +109,23 @@ export function pick({
   event,
   files,
   manifests,
+  families = new Map(),
 }: {
   event: string | undefined
   files: string[] | null
   manifests: Manifests
+  families?: Families
 }): string[] {
   if (event !== 'pull_request' || files === null || files.some((f) => SHARED.some((re) => re.test(f)))) {
     return [...manifests.keys()].sort()
   }
   const out = new Set<string>()
   for (const file of files) {
+    for (const [family, dirs] of families) {
+      if (file.startsWith(`packages/conformance/${family}/`) || dirs.some((d) => file.startsWith(`${d}/`))) {
+        for (const d of dirs) if (manifests.has(d)) out.add(d)
+      }
+    }
     const m = /^packages\/(ts|rust)\/([^/]+)\//.exec(file)
     if (m === null) continue
     const names =
@@ -150,7 +171,7 @@ function main() {
   const event = process.env.EVENT
   const manifests = workspace()
   const files = event === 'pull_request' ? changedFiles(base, head) : null
-  const packages = pick({ event, files, manifests })
+  const packages = pick({ event, files, manifests, families: families() })
   const filter = (dirs: string[]) => dirs.map((d) => `--filter ./${d}`).join(' ')
   const outputs = {
     packages: JSON.stringify(packages),
