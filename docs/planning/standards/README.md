@@ -12,6 +12,6 @@ order they were written in, and that order says nothing about how they relate.
 | --- | --- | --- |
 | [S-package-shape-ts](./S-package-shape-ts.md) | The shape of a TypeScript library in `packages/ts/` | `pnpm run check:packages` |
 | [S-package-shape-rs](./S-package-shape-rs.md) | The shape of a Rust crate in `packages/rust/` | `pnpm run check:crates` |
-| [S-conformance-suites](./S-conformance-suites.md) (proposed) | A library family's implementations share one conformance suite | `pnpm run check:conformance` (to be written) |
+| [S-conformance-suites](./S-conformance-suites.md) | A library family's implementations share one conformance suite | `pnpm run check:conformance` |
 
 The enforcing scripts live in [`scripts/`](../../../scripts/).

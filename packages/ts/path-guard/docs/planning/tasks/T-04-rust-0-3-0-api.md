@@ -76,4 +76,4 @@ budget, an empty root and a `to_relative` miss. The crate has no `is_under`.
 - [x] The README and CHANGELOG describe the new shape, each moved item and
       its replacement, and name the TS twin version.
 - [ ] The PR links the TS PR ([T-05](T-05-ts-0-3-0-api.md)), as the
-      [twin rule](../../../../../README.md#twin-libraries) asks.
+      [twin rule](../../../../../README.md#library-families) asks.
