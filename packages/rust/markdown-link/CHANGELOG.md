@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `prefer_in_folder` (and so `LinkIndex::resolve_from`) matches whole folder names. A note in
+  `notes/` no longer prefers a candidate in `notes2/`.
+
 ## [0.5.1](https://github.com/osdlc/osdlc/compare/markdown-link/v0.5.0...markdown-link/v0.5.1) - 2026-10-28
 
 ### Other

@@ -699,6 +699,9 @@ pub struct LinkIndex {
 /// // Written at the root: the shortest path wins.
 /// assert_eq!(prefer_in_folder(&field, "x.md"), Some("b/a.md"));
 /// assert_eq!(prefer_in_folder(&[], "x.md"), None);
+/// // `notes/` does not match the sibling folder `notes2/`.
+/// let field = vec!["notes2/a.md".to_string(), "z/notes/a.md".to_string()];
+/// assert_eq!(prefer_in_folder(&field, "notes/x.md"), Some("notes2/a.md"));
 /// ```
 pub fn prefer_in_folder<'a>(field: &'a [String], from: &str) -> Option<&'a str> {
     let first = field.first()?;
@@ -706,8 +709,10 @@ pub fn prefer_in_folder<'a>(field: &'a [String], from: &str) -> Option<&'a str> 
         return Some(first);
     }
     let folder = source_folder(from);
+    // Match whole folder names: `notes/` must not match `notes2/`.
+    let prefix = format!("{folder}/");
     if !folder.is_empty()
-        && let Some(hit) = field.iter().find(|p| p.to_lowercase().starts_with(&folder))
+        && let Some(hit) = field.iter().find(|p| p.to_lowercase().starts_with(&prefix))
     {
         return Some(hit);
     }
@@ -1004,6 +1009,18 @@ struct ReadmeDoctests;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prefer_in_folder_matches_whole_folder_names() {
+        let field = vec!["notes2/a.md".to_string(), "notes/a.md".to_string()];
+        assert_eq!(prefer_in_folder(&field, "notes/x.md"), Some("notes/a.md"));
+        assert_eq!(prefer_in_folder(&field, "Notes/x.md"), Some("notes/a.md"));
+        let only_sibling = vec!["z/a.md".to_string(), "notes2/a.md".to_string()];
+        assert_eq!(
+            prefer_in_folder(&only_sibling, "notes/x.md"),
+            Some("z/a.md")
+        );
+    }
 
     #[test]
     fn parses_wikilinks_embeds_headings_and_aliases() {
