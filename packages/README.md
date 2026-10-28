@@ -54,36 +54,42 @@ The libraries change together: the shared TypeScript and Prettier configs set
 the rules for the others. `command-seam` links both through this workspace,
 so a config change here runs against its build in CI.
 
-## Twin libraries
+## Library families
 
-A twin is two separate implementations of one library, one in Rust and one
-in TypeScript, such as the `tiered-dirs` crate and `@osdlc/tiered-dirs`. A
-build of one implementation for another runtime, such as `@osdlc/yaml-splice`
-(the crate built to WebAssembly), is not a twin and keeps its own version.
-The rules below apply when both halves are hosted here. Twins keep the same
-behaviour, not the same code.
+A family is a set of libraries, one per language, that do the same job, such
+as the `tiered-dirs` crate and `@osdlc/tiered-dirs`. Each library in it is an
+implementation. A build of one implementation for another runtime, such as
+`@osdlc/yaml-splice` (the crate built to WebAssembly), is a binding, not an
+implementation, and keeps its own version. The rules below apply when the
+implementations are hosted here. They keep the same behaviour, not the same
+code.
+[S-conformance-suites](../docs/planning/standards/S-conformance-suites.md) is
+the standard.
 
-- **Same behaviour.** For the same input, both twins return the same result
-  or refuse it with the same error kind. A shared fixture of cases checks
-  it: `packages/rust/<name>/tests/fixtures/parity.json`, run by both twins'
-  tests. `tiered-dirs`, `path-guard` and `config-layers` have one.
-  `frontmatter-lossless` uses its crate's `tests/fixtures/conformance.json`,
-  with a copy in the TypeScript package. `markdown-contract` runs the
-  TypeScript package's `corpus/` directly, with no copy. `etag-write` has no
-  shared fixture yet.
-- **Each language's idiom.** A twin does not copy the other's names or
+- **Same behaviour.** For the same input, every implementation returns the
+  same result or refuses it with the same error kind. The family's
+  conformance suite checks it: `packages/conformance/<family>/`, listed in
+  `packages/conformance/families.json`, run by every implementation's tests,
+  with expected values written by the reference implementation's generator.
+  `pnpm run check:conformance` checks the suites. `tiered-dirs` has moved
+  there. Until they move, `path-guard` and `config-layers` keep
+  `packages/rust/<name>/tests/fixtures/parity.json`, `frontmatter-lossless`
+  its crate's `tests/fixtures/conformance.json`, and `markdown-contract` runs
+  the TypeScript package's `corpus/` directly. `etag-write` has no shared
+  cases yet.
+- **Each language's idiom.** An implementation does not copy the other's names or
   signatures when that breaks its own language's habits. Rust uses
   snake_case, `Result`, traits and the standard library's words. TypeScript
   uses camelCase, thrown errors, classes and subpath exports. Values the
-  fixture compares, such as error kind strings, keep one spelling.
-- **One-sided features are allowed.** A twin may have an export the other
+  suite compares, such as error kind strings, keep one spelling.
+- **One-sided features are allowed.** An implementation may have an export the other
   language has no use for. Its README lists such exports.
-- **Versions.** Twins share the major and minor version. Patch releases are
+- **Versions.** Implementations share the major and minor version. Patch releases are
   independent. `tiered-dirs`'
   [D-02](ts/tiered-dirs/docs/planning/decisions/D-02-version-line-and-stability.md)
-  applies this rule to one twin.
-- **Skipping versions to catch up.** One twin may release a breaking change
-  before the other is ready. The other then skips one or more versions to
+  applies this rule to one family.
+- **Skipping versions to catch up.** One implementation may release a breaking
+  change before another is ready. That one then skips one or more versions to
   return to the shared major and minor. For example, if the crate is at 0.3
   while the TypeScript package is at 0.1, the package's next release is
   0.3.0, with no 0.2. A changeset cannot jump versions, so the pull request
@@ -117,7 +123,7 @@ Developed here, in this repository:
 - `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/frontmatter-lossless` (`frontmatter-lossless` on crates.io)
-- `packages/rust/markdown-contract` (`markdown-contract` on crates.io, the Rust twin
+- `packages/rust/markdown-contract` (`markdown-contract` on crates.io, the Rust implementation
   of `@osdlc/markdown-contract`: contracts for markdown documents, checked
   against the package's corpus)
 - `packages/rust/markdown-link` (`markdown-link` on crates.io)
@@ -139,7 +145,7 @@ Developed here, in this repository:
   declarations for `tradecraft-wasm` (not published to crates.io)
 - `packages/rust/tradecraft-wasm`, the WebAssembly build of `tradecraft-core`
   for its npm package (not published to crates.io)
-- `packages/rust/typed-git` (`typed-git` on crates.io, the Rust twin of
+- `packages/rust/typed-git` (`typed-git` on crates.io, the Rust implementation of
   `@osdlc/typed-git`: a typed git client)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
@@ -149,9 +155,9 @@ Developed here, in this repository:
 - `packages/ts/tradecraft-wasm` (`@osdlc/tradecraft-wasm` on npm, `tradecraft-core`
   built to WebAssembly, with the built `wasm/` committed and a copy of the
   generated `core.generated.ts`)
-- `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript twin)
+- `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript implementation)
 - `packages/ts/frontmatter-lossless` (`@osdlc/frontmatter-lossless` on npm,
-  the TypeScript twin of the `frontmatter-lossless` crate)
+  the TypeScript implementation of the `frontmatter-lossless` crate)
 - `packages/ts/color` (`@osdlc/color` on npm, sRGB colour arithmetic for
   contrast checks)
 - `packages/ts/agent-call` (`@osdlc/agent-call` on npm, one call spec for
@@ -159,13 +165,13 @@ Developed here, in this repository:
 - `packages/ts/observe` (`@osdlc/observe` on npm, a JSONL log envelope with
   correlation ids, agent session records, a process scan and reconcile)
 - `packages/ts/tiered-dirs` (`@osdlc/tiered-dirs` on npm, machine-local
-  directories by tier and home, the TypeScript twin of the `tiered-dirs` crate)
+  directories by tier and home, the TypeScript implementation of the `tiered-dirs` crate)
 - `packages/ts/markdown-contract` (`@osdlc/markdown-contract` on npm,
   contracts for markdown documents: one parse gives findings with lines and a
   typed model; contracts in TypeScript or YAML, a folder runner and a CLI)
 - `packages/ts/path-guard` (`@osdlc/path-guard` on npm, a path containment
   guard: lexical validation, then a symlink-aware proof that a path stays
-  inside its root; the TypeScript twin of the `path-guard` crate)
+  inside its root; the TypeScript implementation of the `path-guard` crate)
 - `packages/ts/typed-git` (`@osdlc/typed-git` on npm, a typed git client for
   TypeScript, in a synchronous and an awaitable form; each verb declares what
   absence means for it, every other failure throws, and `try` returns a
@@ -185,7 +191,7 @@ Developed here, in this repository:
   configured; read-only, with secrets redacted)
 - `packages/ts/config-layers` (`@osdlc/config-layers` on npm, a CLI tool's
   project and machine config files and the check a command runs before it
-  starts; the TypeScript twin of the `config-layers` crate)
+  starts; the TypeScript implementation of the `config-layers` crate)
 - `packages/ts/cli-tool` (`@osdlc/cli-tool` on npm, what a standalone CLI
   needs first: an output seam, exit codes, flags declared once, running an
   installed tool from a development checkout)
@@ -225,8 +231,8 @@ requests here.
    run `pnpm changeset` at the repository root, pick the libraries and the
    bump, and write the summary. It lands in `.changeset/` and becomes the
    CHANGELOG entry. Start a breaking change's summary with `**Breaking:**`.
-   Do not edit `version` or `CHANGELOG.md` by hand, except when a twin
-   skips versions to catch up (see [Twin libraries](#twin-libraries)).
+   Do not edit `version` or `CHANGELOG.md` by hand, except when an implementation
+   skips versions to catch up (see [Library families](#library-families)).
 2. When the pull request merges, `packages-publish.yml` opens or updates one
    "Version Packages" pull request. It bumps each library's version and
    writes its CHANGELOG from the pending changesets. The root

@@ -1,7 +1,8 @@
 # Checks the Cargo workspace under packages/rust/, and the wasm built from it
 # that packages/ts/yaml-splice/ and packages/ts/tradecraft-wasm/ commit, on
 # every pull request and push to main. It also runs when the markdown-contract corpus changes, because the
-# markdown-contract crate's tests read that corpus.
+# markdown-contract crate's tests read that corpus, and when a conformance suite under packages/conformance/
+# changes, because the crates' tests read those.
 #
 # The workflow always runs, so its final `rust` job always reports. That job
 # is the one to require in the "Protect main" ruleset. A workflow-level
@@ -87,7 +88,7 @@ jobs:
               files='*'
               ;;
           esac
-          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/ts/(yaml-splice|tradecraft-wasm)/wasm/|packages/ts/tradecraft-wasm/src/core\.generated\.ts|packages/ts/markdown-contract/corpus/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
+          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/conformance/|scripts/conformance|packages/ts/(yaml-splice|tradecraft-wasm)/wasm/|packages/ts/tradecraft-wasm/src/core\.generated\.ts|packages/ts/markdown-contract/corpus/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
@@ -125,6 +126,13 @@ jobs:
 
       - name: Format check
         run: cargo fmt --all --check
+
+      # Every suite whose reference is a Rust crate: a generator that writes
+      # different bytes means expected values went stale.
+      # docs/planning/standards/S-conformance-suites.md is the standard.
+      - name: Regenerate the conformance suites
+        working-directory: .
+        run: node scripts/conformance.ts --regenerate --reference rust
 
       - name: Docs
         env:

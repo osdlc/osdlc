@@ -23,8 +23,8 @@ include = [
 dirs = ">=6, <8"
 thiserror = { workspace = true }
 
-# tests/parity.rs only: it reads tests/fixtures/parity.json, the fixture the
-# TypeScript package reads too. This crate parses nothing at runtime.
+# tests/conformance.rs only: it reads packages/conformance/tiered-dirs/suite.json,
+# the suite the TypeScript package runs too. This crate parses nothing at runtime.
 [dev-dependencies]
 # 1.0.220 is the first serde that pins its own serde_derive. With an older
 # serde, the lowest versions resolve a newer serde_derive that does not build.

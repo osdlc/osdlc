@@ -73,7 +73,7 @@ export class Dir {
   /**
    * The segments below the base, always `/`-separated.
    *
-   * The parity fixture checks this value. The Rust crate and this package must
+   * The conformance suite checks this value. The Rust crate and this package must
    * produce the same string here for the same input.
    */
   get relative(): string {

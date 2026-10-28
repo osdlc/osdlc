@@ -1,7 +1,9 @@
 # S-conformance-suites: Conformance suites for library families
 
-**Status: proposed.** The rule below is a proposal. `scripts/conformance.ts`
-is not written yet, and no suite has moved to `packages/conformance/`.
+**Status: in force, migration in progress.** `pnpm run check:conformance`
+checks every family listed in `packages/conformance/families.json`. The
+families in the migration table below that have not moved keep their current
+fixtures until they do.
 
 ## Purpose
 
@@ -106,8 +108,9 @@ A suite file is JSON:
 
 - A case has `name`, `input`, and either `expect` or `error`.
 - `error.kind` is a string that every implementation reports with the same
-  spelling. A case compares the message only if it sets `error.message`.
-- A case may set `platforms` (for example `["unix"]`) or
+  spelling, in snake_case. A case compares the message only if it sets
+  `error.message`. `error` holds nothing else.
+- A case may set `platforms`, a list of `unix` and `windows`, or
   `skip: { "<language>": "<reason>" }`. A skip without a reason is an error.
 - A value that JSON cannot hold exactly is written as a tagged string:
   `"NaN"`, `"Infinity"`, `"-0"`, or `{ "hex": "..." }` for bytes that are
@@ -130,29 +133,44 @@ A suite file is JSON:
 ### Versions
 
 Implementations share the major and minor version. One may skip versions to
-catch up, as `packages/README.md` describes for twins today. A suite records
+catch up, as `packages/README.md` describes. A suite records
 `referenceVersion`, and an implementation that passes it conforms to that
 version.
 
 ## Enforcement
 
-`scripts/conformance.ts`, run by `pnpm run check:conformance`, will check:
+`scripts/conformance.ts`, run by `pnpm run check:conformance`, checks:
 
-- every family in `families.json` has its directory, README and suite files,
-  and every implementation directory exists;
+- every family in `families.json` names its reference among its
+  implementations, the generator command above, and at least two
+  implementations, each under `packages/ts/` or `packages/rust/` as its
+  language says;
+- every family has its directory, README and suite files, and every
+  implementation directory exists;
 - every suite file has the shape above;
-- each implementation's tests name the family's suite path;
+- each implementation's `tests/` names the family's suite path;
 - the implementations share major.minor;
-- every `packages/ts/*` and `packages/rust/*` library that shares a suite
-  appears in `families.json`.
+- every `packages/ts/*` and `packages/rust/*` library whose tests read a suite
+  is listed for that family, and no library's tests read the other
+  language's fixtures directly.
 
-CI will also run each family's generator and fail if the suite changes. That
-catches a change to the reference whose expectations were not regenerated.
+`node scripts/conformance.ts --regenerate` also runs each family's generator
+and fails if a suite changes, which catches a change to the reference whose
+expected values were not regenerated. CI runs it for the TypeScript
+references in `packages-ci.yml` and for the Rust references in `rust-ci.yml`.
 
 ## Exemptions
 
-None once migration is done. Until then, the families below keep their
-current fixtures.
+Two lists in `scripts/conformance.ts`, which shrink to nothing as migration
+finishes:
+
+- `CATCHING_UP` names a family whose implementations do not share
+  major.minor yet, with the work that brings them level.
+- `UNMIGRATED` names a library whose tests still read the other language's
+  fixtures, until its family moves here. A binding that reads the crate it
+  is built from (`@osdlc/yaml-splice`) stays on it, since it is not a family.
+
+The check fails when an entry in either list is no longer needed.
 
 ## Migration
 
@@ -184,7 +202,7 @@ and points here.
 | pr-update | TS, Rust | `rust/pr-update/tests/fixtures/parity.json` | TS |
 | repo-cleaner | TS, Rust | `rust/repo-cleaner/tests/fixtures/parity.json` | TS |
 | system-model | TS, Rust | `rust/system-model/tests/fixtures/parity.json` | TS |
-| tiered-dirs | TS, Rust | `rust/tiered-dirs/tests/fixtures/parity.json` | TS |
+| tiered-dirs | TS, Rust | moved: `conformance/tiered-dirs/suite.json` | TS |
 | tool-router | TS, Rust | `rust/tool-router/tests/fixtures/parity.json` | TS |
 | trust-repo | TS, Rust | `rust/trust-repo/tests/fixtures/parity.json` | TS |
 | typed-gh | TS, Rust | `rust/typed-gh/tests/fixtures/parity.json` | TS |
