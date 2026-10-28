@@ -87,8 +87,8 @@ export type ParsedFileRead =
  * Where TypeScript differs from the crate: an integer beyond 2^53 reads as a
  * lossy number, `1e999` reads as `1e999` (the crate reads `.inf`), `!!float 1`
  * and an unknown tag read as text (the crate reads a number), and an empty
- * document is `null` here (the crate calls it malformed; {@link readMappingFile}
- * turns it into `{}`).
+ * document is `null` here ({@link readMappingFile} turns it into `{}`, which is
+ * what the crate's `read_mapping` gives).
  *
  * The one YAML reader: the machine file (`./machine.ts`) reads through it too.
  * Internal, not in the package index.

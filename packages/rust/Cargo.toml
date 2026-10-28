@@ -67,7 +67,7 @@ wasm-bindgen = "=0.2.126"
 # Member crates, also named by version so a published manifest points at
 # crates.io. release-plz publishes a crate before the crates that depend on it.
 agent-adapt = { path = "agent-adapt", version = "0.19.1" }
-config-layers = { path = "config-layers", version = "0.7.1" }
+config-layers = { path = "config-layers", version = "0.8.0" }
 etag-write = { path = "etag-write", version = "0.2.4" }
 frontmatter-lossless = { path = "frontmatter-lossless", version = "1.1.1" }
 markdown-link = { path = "markdown-link", version = "0.5.0" }
