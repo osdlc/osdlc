@@ -42,8 +42,10 @@ pub enum FileProblem {
         /// The path that was read.
         path: PathBuf,
         /// What is wrong with it: the YAML crate's error for a syntax or
-        /// type error, or a plain message for an empty document or a
-        /// top level that is not a mapping.
+        /// type error, a plain message for a top level that is not a
+        /// mapping, or a `serde_json::Error` when
+        /// `MachineConfigFile::read_strict` reads an empty file into a type
+        /// with a field that has no default.
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
@@ -101,7 +103,11 @@ pub(crate) fn yaml_options() -> serde_saphyr::Options {
 /// Any I/O failure (missing file, permission denied) is
 /// [`FileProblem::Unreadable`]. A file that reads but does not parse as YAML,
 /// or that parses to something other than a mapping at the top level (a
-/// list, a scalar, `null`, an empty document), is [`FileProblem::Malformed`].
+/// list or a scalar), is [`FileProblem::Malformed`].
+///
+/// An empty file is an empty mapping: no settings. That covers a file with
+/// nothing in it, only whitespace and comments, or a bare `null` (`~`), as
+/// the TypeScript twin's `readMappingFile` does.
 ///
 /// Only `true` and `false` are booleans. Keys are strings: a scalar key such
 /// as `1` reads as `"1"`, and a list, a mapping or a null key (`~: x`) is an
@@ -119,25 +125,28 @@ pub fn read_mapping(path: &Path) -> Result<Map<String, Value>, FileProblem> {
     let value: Option<Value> = serde_saphyr::from_str_with_options(&contents, yaml_options())
         .map_err(|err| FileProblem::malformed(path, err))?;
     match value {
+        None | Some(Value::Null) => Ok(Map::new()),
         Some(Value::Object(map)) => Ok(map),
-        other => Err(FileProblem::malformed(
+        Some(other) => Err(FileProblem::malformed(
             path,
             NotAMapping(format!(
                 "expected a mapping at the top level, found {}",
-                kind_of(other.as_ref())
+                kind_of(&other)
             )),
         )),
     }
 }
 
-fn kind_of(value: Option<&Value>) -> &'static str {
+/// What a top-level value is, for the error message. `read_mapping` only
+/// asks about a boolean, number, string or sequence.
+fn kind_of(value: &Value) -> &'static str {
     match value {
-        None | Some(Value::Null) => "an empty document",
-        Some(Value::Bool(_)) => "a boolean",
-        Some(Value::Number(_)) => "a number",
-        Some(Value::String(_)) => "a string",
-        Some(Value::Array(_)) => "a sequence",
-        Some(Value::Object(_)) => "a mapping",
+        Value::Null => "null",
+        Value::Bool(_) => "a boolean",
+        Value::Number(_) => "a number",
+        Value::String(_) => "a string",
+        Value::Array(_) => "a sequence",
+        Value::Object(_) => "a mapping",
     }
 }
 
@@ -238,13 +247,14 @@ mod tests {
         }
 
         #[test]
-        fn an_empty_file_is_malformed_and_says_so() {
+        fn an_empty_file_is_an_empty_mapping() {
             let dir = tempfile::tempdir().unwrap();
             let path = dir.path().join("empty.yaml");
-            fs::write(&path, "").unwrap();
-            let err = read_mapping(&path).unwrap_err();
-            let source = std::error::Error::source(&err).unwrap().to_string();
-            assert!(source.contains("found an empty document"), "{source}");
+            for text in ["", "  \n", "# nothing yet\n", "~\n", "null\n"] {
+                fs::write(&path, text).unwrap();
+                let map = read_mapping(&path).unwrap_or_else(|err| panic!("{text:?}: {err:?}"));
+                assert!(map.is_empty(), "text: {text:?}");
+            }
         }
 
         #[test]
