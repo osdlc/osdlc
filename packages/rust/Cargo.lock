@@ -1191,7 +1191,7 @@ dependencies = [
 
 [[package]]
 name = "tiered-dirs"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "dirs",
  "serde",
@@ -1279,7 +1279,7 @@ dependencies = [
 
 [[package]]
 name = "tradecraft"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "chrono",
  "clap",
