@@ -7,7 +7,7 @@
  * gated verbs against the real git on this machine.
  */
 
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -681,6 +681,43 @@ describe(`real git (${LOCAL_GIT.text})`, () => {
       rmSync(scratch, { recursive: true, force: true })
     }
   })
+
+  // `-z` is the only form that can carry a newline in a path. A newline is not
+  // a legal path character on Windows.
+  test.skipIf(missingGitFeature('worktree list -z') !== null || process.platform === 'win32')(
+    'worktrees() reads -z records: a newline in a path, detached and prunable',
+    () => {
+      const fx = makeGitFixture()
+      const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'typedgit-wt-')))
+      try {
+        fx.commit('base', { 'a.txt': 'a\n' })
+        const head = fx.git.revParse('HEAD')
+        const odd = join(scratch, 'line one\nline two')
+        const detached = join(scratch, 'detached')
+        const gone = join(scratch, 'gone')
+        fx.git.worktreeAdd(odd, { branch: 'odd' })
+        fx.git.rawChecked(['worktree', 'add', '--detach', detached])
+        fx.git.worktreeAdd(gone, { branch: 'gone' })
+        // Deleting the directory leaves the entry prunable.
+        rmSync(gone, { recursive: true, force: true })
+
+        const rows = fx.git.worktrees()
+        expect(rows).toHaveLength(4)
+        expect(rows.find((w) => w.branch === 'odd')).toMatchObject({ path: odd, head })
+        expect(rows.find((w) => w.path === detached)).toMatchObject({
+          head,
+          branch: null,
+          detached: true,
+          bare: false,
+        })
+        // A prunable entry keeps its branch and the HEAD it had.
+        expect(rows.find((w) => w.branch === 'gone')).toMatchObject({ path: gone, head })
+      } finally {
+        fx.cleanup()
+        rmSync(scratch, { recursive: true, force: true })
+      }
+    },
+  )
 
   test('version() is the git on PATH', () => {
     expect(LOCAL_GIT.major).toBeGreaterThanOrEqual(2)
