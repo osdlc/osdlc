@@ -1,4 +1,4 @@
-# S-0001: Package shape, TypeScript
+# S-package-shape-ts: Package shape, TypeScript
 
 ## Purpose
 

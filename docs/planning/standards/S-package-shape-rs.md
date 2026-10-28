@@ -1,4 +1,4 @@
-# S-0002: Package shape, Rust
+# S-package-shape-rs: Package shape, Rust
 
 ## Purpose
 
