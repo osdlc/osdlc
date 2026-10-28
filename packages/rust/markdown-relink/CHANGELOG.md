@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.6](https://github.com/osdlc/osdlc/compare/markdown-relink/v0.1.5...markdown-relink/v0.1.6) - 2026-10-28
+
+### Other
+
+- updated the following local packages: yaml-splice, markdown-link
+
 ## [0.1.5] - Unreleased
 
 First public release. A library that renames or moves a note in a Markdown
