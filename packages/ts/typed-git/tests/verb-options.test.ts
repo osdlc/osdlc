@@ -136,9 +136,9 @@ describe('argv, the same on both clients', () => {
     })
     await asyncGit.push('origin', 'gone', { delete: true, forceWithLease: true })
     expect(s.calls).toEqual([
-      ['push', '--delete', 'origin', 'refs/heads/gone'],
-      ['push', '--delete', '--force-with-lease=refs/heads/gone:abc', 'origin', 'gone'],
-      ['push', '--delete', '--force-with-lease', 'origin', 'gone'],
+      ['push', '--porcelain', '--delete', 'origin', 'refs/heads/gone'],
+      ['push', '--porcelain', '--delete', '--force-with-lease=refs/heads/gone:abc', 'origin', 'gone'],
+      ['push', '--porcelain', '--delete', '--force-with-lease', 'origin', 'gone'],
     ])
     expect(a.calls).toEqual(s.calls)
   })
@@ -360,15 +360,15 @@ describe('against real git', () => {
 
       // A lease pinned to the wrong sha refuses the delete.
       const wrong = { ref: 'refs/heads/gone', expect: '0'.repeat(40) }
-      expect(() =>
-        worker.git.push(remoteName, 'gone', { delete: true, forceWithLease: wrong }),
-      ).toThrow(FailureError)
+      const refused = worker.git.push(remoteName, 'gone', { delete: true, forceWithLease: wrong })
+      expect(refused.refs).toMatchObject([{ flag: '!', rejection: 'stale' }])
       expect(pair.bare.git.resolveRef('refs/heads/gone')).toBe(head)
 
-      worker.git.push(remoteName, 'gone', {
+      const deleted = worker.git.push(remoteName, 'gone', {
         delete: true,
         forceWithLease: { ref: 'refs/heads/gone', expect: head },
       })
+      expect(deleted.refs).toMatchObject([{ flag: '-', dst: 'refs/heads/gone' }])
       expect(pair.bare.git.resolveRef('refs/heads/gone')).toBeNull()
       expect(pair.bare.git.resolveRef('refs/heads/main')).toBe(head)
     } finally {

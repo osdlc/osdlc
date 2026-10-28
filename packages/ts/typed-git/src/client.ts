@@ -51,6 +51,7 @@ export { compareGitVersions, parseGitVersion, type GitVersion } from './git-vers
 export {
   forceWithLeaseArg,
   parseRefRows,
+  PUSH_REJECTIONS,
   REF_FORMAT,
   type AddOptions,
   type AheadBehind,
@@ -92,9 +93,9 @@ export {
   type NumstatEntry,
   type PushFlag,
   type PushOptions,
-  type PushPorcelainOptions,
   type PushRefResult,
   type PushRejection,
+  type PushRejectionInfo,
   type PushReport,
   type RebaseOptions,
   type RebaseOutcome,

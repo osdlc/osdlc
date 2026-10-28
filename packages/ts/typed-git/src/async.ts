@@ -61,7 +61,6 @@ import {
   type LsRemoteOptions,
   type LsTreeOptions,
   type NumstatEntry,
-  type PushPorcelainOptions,
   type PushReport,
   type RemoteRef,
   type CleanOptions,
@@ -639,30 +638,17 @@ export class AsyncGit {
   }
 
   /**
-   * Push a refspec. A {@link ForceLease} pins `--force-with-lease`.
-   * `{forceWithLease: true}` adds the bare flag, which is the unsafe form.
-   * `{delete: true}` deletes `refspec` on the remote. See {@link Git.push}.
+   * Push one refspec or several, read into one result per ref. A rejected
+   * ref comes back with a typed `rejection` rather than a rejection of the
+   * promise. See {@link Git.push}.
    */
-  push(remote: string, refspec: string, opts: GitCallOptions & PushOptions = {}): Promise<void> {
-    return this.backend.execute(
-      this.cwd,
-      { kind: 'push', remote, refspec, forceWithLease: opts.forceWithLease, delete: opts.delete },
-      opts,
-    )
-  }
-
-  /**
-   * `git push --porcelain`, read into one result per ref. A rejected ref comes
-   * back with a typed `rejection` rather than a rejection of the promise. See
-   * {@link Git.pushPorcelain}.
-   */
-  pushPorcelain(
+  push(
     remote: string,
-    refspec: string | string[],
-    opts: GitCallOptions & PushPorcelainOptions = {},
+    refspec: string | readonly string[],
+    opts: GitCallOptions & PushOptions = {},
   ): Promise<PushReport> {
     const [call, req] = splitCallOptions(opts)
-    return this.backend.execute(this.cwd, { kind: 'pushPorcelain', remote, refspec, ...req }, call)
+    return this.backend.execute(this.cwd, { kind: 'push', remote, refspec, ...req }, call)
   }
 
   /** `git clean -f`, plus `-d` with `directories`. Ignored files are kept. */

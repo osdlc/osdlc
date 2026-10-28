@@ -74,7 +74,6 @@ import {
   type LsRemoteOptions,
   type LsTreeOptions,
   type NumstatEntry,
-  type PushPorcelainOptions,
   type PushReport,
   type RemoteRef,
   type CleanOptions,
@@ -771,29 +770,20 @@ export class Git {
   }
 
   /**
-   * Push a refspec. A {@link ForceLease} pins `--force-with-lease`, which means
-   * "push only if the remote ref is still where I saw it". `{forceWithLease: true}` adds the
-   * bare flag, which is the unsafe form: it compares against the
-   * remote-tracking ref, which a fetch in this same process may have just
-   * updated. `{delete: true}` deletes `refspec` on the remote. See `push` in
-   * `verbs.ts`.
+   * Push one refspec or several, read into one result per ref. A rejected
+   * ref comes back with a typed `rejection` rather than a throw, so check
+   * `flag`; a failure that reaches no ref (an unknown remote, auth, network)
+   * still throws. A {@link ForceLease} pins `--force-with-lease`, which means
+   * "push only if the remote ref is still where I saw it";
+   * `{forceWithLease: true}` is the unsafe bare flag. `{delete: true}`
+   * deletes each refspec on the remote. See `push` in `verbs.ts`.
    */
-  push(remote: string, refspec: string, opts: GitSyncCallOptions & PushOptions = {}): void {
-    this.exec(v.push(remote, refspec, opts), opts)
-  }
-
-  /**
-   * `git push --porcelain`, read into one result per ref. A rejected ref comes
-   * back with a typed `rejection` rather than a throw; a failure that reaches
-   * no ref (an unknown remote, auth, network) still throws. See
-   * `pushPorcelain` in `verbs.ts`.
-   */
-  pushPorcelain(
+  push(
     remote: string,
-    refspec: string | string[],
-    opts: GitSyncCallOptions & PushPorcelainOptions = {},
+    refspec: string | readonly string[],
+    opts: GitSyncCallOptions & PushOptions = {},
   ): PushReport {
-    return this.exec(v.pushPorcelain(remote, refspec, opts), opts)
+    return this.exec(v.push(remote, refspec, opts), opts)
   }
 
   /** `git clean -f`, plus `-d` with `directories`. Ignored files are kept. */

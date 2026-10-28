@@ -74,7 +74,13 @@ describe('Git — argv construction (fake runner)', () => {
     new Git('/repo', { runner }).push('origin', 'HEAD:refs/heads/x', {
       forceWithLease: true,
     })
-    expect(calls[0]!.argv).toEqual(['push', '--force-with-lease', 'origin', 'HEAD:refs/heads/x'])
+    expect(calls[0]!.argv).toEqual([
+      'push',
+      '--porcelain',
+      '--force-with-lease',
+      'origin',
+      'HEAD:refs/heads/x',
+    ])
   })
 
   test('push with a structured lease pins ref:oid; null expects absent', () => {
@@ -88,11 +94,12 @@ describe('Git — argv construction (fake runner)', () => {
     })
     expect(calls[0]!.argv).toEqual([
       'push',
+      '--porcelain',
       '--force-with-lease=refs/heads/x:abc123',
       'origin',
       'HEAD:refs/heads/x',
     ])
-    expect(calls[1]!.argv[1]).toBe('--force-with-lease=refs/heads/y:')
+    expect(calls[1]!.argv[2]).toBe('--force-with-lease=refs/heads/y:')
   })
 
   test('push refuses a legacy string lease instead of weakening it', () => {
