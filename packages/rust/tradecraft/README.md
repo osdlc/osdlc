@@ -14,7 +14,20 @@ the configuration, calls the core and prints the result.
 cargo install tradecraft
 ```
 
-This installs the `tradecraft` binary. The crate also has a library half, which
+This installs the `tradecraft` binary. Prebuilt binaries for macOS and Linux
+(arm64 and x86_64) are on each `tradecraft/vX.Y.Z` release of
+[osdlc/osdlc](https://github.com/osdlc/osdlc/releases), and these install
+them:
+
+```sh
+cargo binstall tradecraft
+brew install osdlc/tap/tradecraft
+npm install --global @osdlc/tradecraft   # or: npx @osdlc/tradecraft --help
+curl -fsSL https://github.com/osdlc/osdlc/releases/download/tradecraft/v<version>/install.sh | sh
+```
+
+`install.sh` checks the binary against the release's `SHA256SUMS` and installs
+it to `~/.local/bin`, or to the directory given with `--to`. The crate also has a library half, which
 the binary and its tests use:
 
 ```sh
@@ -191,6 +204,12 @@ tool builds there, but CI does not run its tests on Windows, because about 35
 of them fail, most through the `tradecraft-core` path guard. `adopt --from-git` and the
 `harness` verbs run `git` and each harness's own command, so those must be on
 `PATH`. The minimum supported Rust version is 1.89.
+
+The prebuilt macOS binaries are not signed or notarized yet. Installs through
+`brew`, `npm`, `cargo binstall` or `install.sh` are not blocked by Gatekeeper,
+because those tools do not mark the download as quarantined. A binary
+downloaded from the release page with a web browser is quarantined, and macOS
+refuses to run it until you allow it in System Settings, Privacy & Security.
 
 ## Changes
 

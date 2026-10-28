@@ -257,7 +257,7 @@ export class Gh {
       fields: opts.fields ?? v.PR_REF_FIELDS,
       timeoutMs: opts.timeoutMs,
     })
-    return v.pickPrForBranch(rows.rows, branch)
+    return v.pickPrForBranch(rows, branch)
   }
 
   /**

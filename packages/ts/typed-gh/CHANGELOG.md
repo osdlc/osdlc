@@ -1,5 +1,11 @@
 # @osdlc/typed-gh
 
+## 0.14.0
+
+### Minor Changes
+
+- c58f58b: `pickPrForBranch` takes the `ListResult` that `openPrsForBranch` and `prList` return, as well as plain rows, so `pickPrForBranch(verb.parse(result), branch)` works without a `.rows` unwrap. It also accepts a readonly array.
+
 ## 0.13.0
 
 ### Minor Changes

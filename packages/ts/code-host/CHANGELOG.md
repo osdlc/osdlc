@@ -1,5 +1,12 @@
 # @osdlc/code-host
 
+## 0.7.2
+
+### Patch Changes
+
+- Updated dependencies [c58f58b]
+  - @osdlc/typed-gh@0.14.0
+
 ## 0.7.1
 
 ### Patch Changes

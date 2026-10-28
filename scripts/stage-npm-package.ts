@@ -5,9 +5,12 @@
 // npm can only add a trusted publisher to a package that already exists (see
 // packages/README.md, "Publishing a new library for the first time").
 //
-//   node scripts/stage-npm-package.ts [--dry-run] <package> ...
+//   node scripts/stage-npm-package.ts [--dry-run] [--workflow <file>] [--environment <name>] <package> ...
 //
-// Each <package> is a package directory (packages/ts/<name>). A package already
+// Each <package> is a package directory (packages/ts/<name>). The trusted
+// publisher names --workflow (default packages-publish.yml) and, when given,
+// --environment. packages/rust/tradecraft/release/dist.ts `stage` uses both
+// for the tradecraft npm packages. A package already
 // on npm is not published again, and one that already has a trusted publisher
 // is left as it is, so a re-run is safe. Run it logged in to npm as an owner of
 // the @osdlc scope. `npm trust` needs two-factor authentication on the account.
@@ -25,22 +28,33 @@ const PLACEHOLDER = '0.0.1-stage'
 const NPM = 'npm@11.19.1'
 const OWNER = 'osdlc'
 const REPO = 'osdlc'
-const WORKFLOW = 'packages-publish.yml'
 
 function usage(problem: string): never {
   console.error(
-    `${problem}\nusage: node scripts/stage-npm-package.ts [--dry-run] <package> ...`,
+    `${problem}\nusage: node scripts/stage-npm-package.ts [--dry-run] [--workflow <file>] [--environment <name>] <package> ...`,
   )
   process.exit(2)
 }
 
-let parsed: { values: { 'dry-run'?: boolean }; positionals: string[] }
+let parsed: {
+  values: { 'dry-run'?: boolean; workflow?: string; environment?: string }
+  positionals: string[]
+}
 try {
-  parsed = parseArgs({ options: { 'dry-run': { type: 'boolean' } }, allowPositionals: true })
+  parsed = parseArgs({
+    options: {
+      'dry-run': { type: 'boolean' },
+      workflow: { type: 'string' },
+      environment: { type: 'string' },
+    },
+    allowPositionals: true,
+  })
 } catch (e) {
   usage((e as Error).message)
 }
 const dryRun = parsed.values['dry-run'] ?? false
+const WORKFLOW = parsed.values.workflow ?? 'packages-publish.yml'
+const ENVIRONMENT = parsed.values.environment
 const dry = dryRun ? ['--dry-run'] : []
 if (parsed.positionals.length === 0) usage('no package given')
 
@@ -139,6 +153,7 @@ const trust = [
   WORKFLOW,
   '--repository',
   `${OWNER}/${REPO}`,
+  ...(ENVIRONMENT ? ['--environment', ENVIRONMENT] : []),
   '--allow-publish',
 ]
 let failed = false
@@ -166,7 +181,7 @@ for (const { dir, name } of targets) {
   if (dryRun && !(existed && loggedIn)) continue
   if (npm([...trust, name, '--yes', ...dry], { stdio: 'inherit' }).status !== 0) {
     console.error(`  npm trust failed. Add it by hand at https://www.npmjs.com/package/${name}/access:
-    GitHub Actions, organization ${OWNER}, repository ${REPO}, workflow ${WORKFLOW}, no environment.`)
+    GitHub Actions, organization ${OWNER}, repository ${REPO}, workflow ${WORKFLOW}, environment ${ENVIRONMENT ?? '(none)'}.`)
     failed = true
   }
 }
