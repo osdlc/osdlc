@@ -237,7 +237,7 @@ dependencies = [
 
 [[package]]
 name = "config-layers"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "serde",
  "serde-saphyr",
@@ -638,7 +638,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-link"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "frontmatter-lossless",
  "serde_json",
@@ -648,7 +648,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-relink"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "etag-write",
  "frontmatter-lossless",
@@ -1191,7 +1191,7 @@ dependencies = [
 
 [[package]]
 name = "tiered-dirs"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "dirs",
  "serde",
@@ -1279,7 +1279,7 @@ dependencies = [
 
 [[package]]
 name = "tradecraft"
-version = "0.3.5"
+version = "0.3.7"
 dependencies = [
  "chrono",
  "clap",
@@ -1302,7 +1302,7 @@ dependencies = [
 
 [[package]]
 name = "tradecraft-core"
-version = "0.39.1"
+version = "0.39.2"
 dependencies = [
  "agent-adapt",
  "frontmatter-lossless",
@@ -1556,7 +1556,7 @@ dependencies = [
 
 [[package]]
 name = "yaml-splice"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "saphyr-parser",
  "serde_json",

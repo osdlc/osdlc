@@ -256,9 +256,10 @@ follow the `XDG_*` variables.
 
 A TypeScript version is published as
 [`@osdlc/tiered-dirs`](https://www.npmjs.com/package/@osdlc/tiered-dirs). Both
-are checked against `tests/fixtures/parity.json`. The two must give the same
+are checked against one conformance suite, `packages/conformance/tiered-dirs/suite.json`
+in the repository. The two must give the same
 path for the same tier, home, scope and app, so a Rust program and a
-TypeScript program can share state. The fixture holds the cases: tier, home,
+TypeScript program can share state. The suite holds the cases: tier, home,
 scope and app with the expected path, scratch cases, override cases, the XDG
 layout under a stub home, and refused convention values. Both packages run
 every case with stubbed base directories (`BaseDirs::rooted("/stub")` here).

@@ -249,7 +249,7 @@ review.
 ## Consequences
 
 - Both twins move to 0.3.0 together, as the
-  [twin rule](../../../../../README.md#twin-libraries) and
+  [twin rule](../../../../../README.md#library-families) and
   [D-02](D-02-version-line-and-stability.md) require.
 - The parity fixture changes. 14 cases change their result:
 

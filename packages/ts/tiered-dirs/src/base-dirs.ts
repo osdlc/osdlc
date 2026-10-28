@@ -194,7 +194,7 @@ export function isOverridden(
  * `<root>/cache`, `<root>/state`, `<root>/logs`, `<root>/scratch`, and runtime
  * at `<root>/durable/run`.
  *
- * Tests and the parity fixture use this layout, and {@link EnvVars.root}
+ * Tests and the conformance suite use this layout, and {@link EnvVars.root}
  * selects it. The Rust crate's `BaseDirs::rooted` has the same layout, so a
  * fixture row checks identical absolute paths in both languages.
  *
@@ -276,8 +276,8 @@ export interface ResolveOptions {
  * Runtime follows durable: when the runtime variable is unset but durable is
  * moved by step 2 or 3, runtime is `<durable>/run`, never the OS runtime
  * directory. An empty variable counts as unset. A relative one throws. The
- * Rust crate's `BaseDirs::from_env` resolves steps 2–4 the same way. The parity
- * fixture's `env_cases` check that.
+ * Rust crate's `BaseDirs::from_env` resolves steps 2–4 the same way. The conformance
+ * suite's `env` cases check that.
  *
  * The per-OS table follows. Linux, and macOS under `xdg`, use the XDG column.
  * Windows uses its column under both conventions.
@@ -310,8 +310,8 @@ export interface ResolveOptions {
  * `scratch` is read from the injected environment, not from `os.tmpdir()`.
  * `os.tmpdir()` reads the real `process.env`, so an injected environment
  * would no longer be the only one read. The Rust crate asks its own platform.
- * The two roots need not match, because parity checks only the paths below a
- * root.
+ * The two roots need not match, because the conformance suite checks only the
+ * paths below a root.
  *
  * Throws {@link TieredDirsError}. Its `code` is `MISSING_BASE_DIR` when a
  * root falls back to the home directory and none can be found,
@@ -545,8 +545,8 @@ function envOverrides(
  * an absolute path, else its default under `home`. Logs share the state home.
  * Scratch is `$TMPDIR`, else `/tmp`.
  *
- * The Rust crate's `BaseDirs::xdg` builds the same layout. The parity
- * fixture's `convention_cases` check that.
+ * The Rust crate's `BaseDirs::xdg` builds the same layout. The conformance
+ * suite's `convention` cases check that.
  *
  * Stable in 0.x.
  */

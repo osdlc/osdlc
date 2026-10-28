@@ -323,25 +323,6 @@ pub fn relative_path(from: &Path, to: &Path) -> PathBuf {
     out
 }
 
-/// `config_layers::file::read_mapping`, plus the one case it does not carry: an
-/// empty or comment-only document parses to YAML `null`, which this module
-/// treats as an empty mapping, not a malformed file.
-fn read_config_mapping(
-    path: &Path,
-) -> Result<serde_json::Map<String, serde_json::Value>, FileProblem> {
-    match file::read_mapping(path) {
-        Ok(m) => Ok(m),
-        // Depends on config-layers' "empty document" error text; the empty and
-        // comment-only file tests in tests/config.rs fail if it changes.
-        Err(FileProblem::Malformed { source, .. })
-            if source.to_string().contains("empty document") =>
-        {
-            Ok(serde_json::Map::new())
-        }
-        Err(other) => Err(other),
-    }
-}
-
 /// The [`ConfigLoad`] for a file that could not be read. `FileProblem` is
 /// `#[non_exhaustive]`; a variant added later reports as malformed at `path`.
 fn problem_load(problem: FileProblem, path: &Path) -> ConfigLoad {
@@ -592,7 +573,7 @@ fn load_config_at(
     // reaches the unreadable branch below rather than reading as absent.
     let machine_exists = machine_path.exists();
     let machine_mapping = if machine_exists {
-        match read_config_mapping(&machine_path) {
+        match file::read_mapping(&machine_path) {
             Ok(m) => m,
             Err(problem) => return problem_load(problem, &machine_path),
         }
@@ -643,7 +624,7 @@ fn load_config_at(
         return ConfigLoad::MissingExplicit { path: project_path };
     }
 
-    let project_mapping = match read_config_mapping(&project_path) {
+    let project_mapping = match file::read_mapping(&project_path) {
         Ok(m) => m,
         Err(problem) => return problem_load(problem, &project_path),
     };

@@ -38,8 +38,10 @@ The tests run on Vitest under Node. Bun is not a tested runtime for consumers.
 The supported floor is git 2.34, the git of Ubuntu 22.04 LTS. CI tests the
 git that the GitHub-hosted runners ship. On 2026-10-20 that was git 2.55.0 on
 `ubuntu-latest` (Ubuntu 24.04) and git 2.56.0 on `macos-latest` (macOS 26), as
-the checkout step logs it. The behaviour tables below were measured against
-git 2.50.1.
+the checkout step logs it. An `old git` job also runs this package's tests,
+and pr-update's and trust-repo's, on git 2.34 on Ubuntu 22.04, so the floor
+and the fallbacks below run against a real git. The behaviour tables below
+were measured against git 2.50.1.
 
 Every flag typed-git passes unconditionally is in git 2.34. A few features are
 newer, and one table (`GIT_FEATURES`, in `src/features.ts`) lists them:

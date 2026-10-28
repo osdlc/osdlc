@@ -1442,13 +1442,21 @@ export function createReview(
 /**
  * The first row whose `headRefName` exactly equals `branch`, or null.
  *
- * `prList({ head })` already filters exactly. This is for rows from anywhere
- * else, such as a `search` query with gh's `head:` qualifier, which matches
- * `task/foo-2` for `task/foo`.
+ * Takes the rows, or the `ListResult` that {@link openPrsForBranch} and
+ * `prList` return, so their parsed answer passes straight in. Null (a failed
+ * call) stays null.
+ *
+ * `prList({ head })` already filters exactly. The filter here is for rows
+ * from anywhere else, such as a `search` query with gh's `head:` qualifier,
+ * which matches `task/foo-2` for `task/foo`.
  */
-export function pickPrForBranch(rows: PullRequest[] | null, branch: string): PullRequest | null {
+export function pickPrForBranch(
+  rows: readonly PullRequest[] | ListResult<PullRequest> | null,
+  branch: string,
+): PullRequest | null {
   if (rows === null) return null
-  return rows.find((r) => r.headRefName === branch) ?? null
+  const list = 'rows' in rows ? rows.rows : rows
+  return list.find((r) => r.headRefName === branch) ?? null
 }
 
 /**

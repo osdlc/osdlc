@@ -366,7 +366,7 @@ this table.
 | Home for `~` | `home` option, default `$HOME` (`%USERPROFILE%` on Windows), else the OS account's home (unset, empty or relative) | `home` argument, required; the crate never reads `$HOME` |
 | `1_000` and `0b11` | read as the strings `1_000` and `0b11` | read as the numbers 1000 and 3 |
 | Integers beyond 2^53 | read as a number and lose precision | read as `u64`, then as a lossy float |
-| Empty file | `readParsedFile` gives `null`; `readMappingFile` gives `{}` | `read_mapping` is an error ("found an empty document"); `load` treats it as an empty mapping |
+| Empty file | `readParsedFile` gives `null`; `readMappingFile` gives `{}` | `read_mapping` gives an empty map; there is no `readParsedFile` counterpart |
 | `1e999` | read as the string `1e999` | read as the string `.inf` |
 | `!!float 1` and an unknown tag such as `!custom 6` | the value reads as its text, a string | the value reads as a number |
 | A `{` inside a name, as in `{a{dev}` | replaces `{dev}` and keeps the `{a` before it | an unknown path name `{a{dev}` |

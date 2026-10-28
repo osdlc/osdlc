@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - Unreleased
+
+Aligned with `@osdlc/config-layers` 0.8.0. The twins share the major and minor
+version.
+
+### Changed
+
+- **Breaking:** an empty config file is an empty mapping, not an error. A
+  file with nothing in it, only whitespace and comments, or a bare `null`
+  holds no settings. `file::read_mapping` gives an empty map, as the
+  TypeScript twin's `readMappingFile` gives `{}`. Before, it was
+  `FileProblem::Malformed` with "found an empty document" in its source.
+  `MachineConfigFile::read_strict` now gives `T` with each field's serde
+  default, as `load` already did. It reports an empty file only when `T` has
+  a field with no default, and then names that field. A caller that matched
+  "empty document" to read an empty file as no settings can drop that
+  ([#458](https://github.com/osdlc/osdlc/issues/458)).
+
 ## [0.7.1](https://github.com/osdlc/osdlc/compare/config-layers/v0.7.0...config-layers/v0.7.1) - 2026-10-26
 
 ### Other

@@ -1,0 +1,10 @@
+{
+  "tiered-dirs": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/tiered-dirs conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/tiered-dirs", "name": "@osdlc/tiered-dirs" },
+      { "language": "rust", "dir": "packages/rust/tiered-dirs", "name": "tiered-dirs" }
+    ]
+  }
+}

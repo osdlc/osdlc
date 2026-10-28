@@ -36,6 +36,7 @@ rules. Both test suites read it.
 
 - Some behaviour is not shared and stays out of the fixture. The README's
   "Rust twin" table lists it: integers beyond 2^53, `1e999`, `1_000`, `0b11`,
-  empty documents, `!!float` and unknown tags (text in TypeScript, numbers in
-  Rust).
+  `!!float` and unknown tags (text in TypeScript, numbers in Rust). An empty
+  document is shared: `readMappingFile` and `read_mapping` both give an empty
+  mapping.
 - A rule added to one side goes into the fixture first.

@@ -7,6 +7,19 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.7](https://github.com/osdlc/osdlc/compare/tradecraft/v0.3.6...tradecraft/v0.3.7) - 2026-10-28
+
+### Other
+
+- read an empty config file as an empty mapping ([#478](https://github.com/osdlc/osdlc/pull/478))
+- Release tradecraft binaries to GitHub, npm and Homebrew ([#532](https://github.com/osdlc/osdlc/pull/532))
+
+## [0.3.6](https://github.com/osdlc/osdlc/compare/tradecraft/v0.3.5...tradecraft/v0.3.6) - 2026-10-28
+
+### Other
+
+- updated the following local packages: yaml-splice, markdown-relink, tradecraft-core
+
 ## [0.3.5] - Unreleased
 
 First public release. A command-line tool that reads a vault of markdown skill notes and publishes

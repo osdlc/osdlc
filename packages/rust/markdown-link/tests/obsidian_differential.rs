@@ -1,4 +1,4 @@
-//! Differential tests: `markdown_link::LinkIndex` versus Obsidian 1.13.4.
+//! Differential tests: `markdown_link::LinkIndex` versus a behaviour table observed in Obsidian.
 //!
 //! The oracle is a **behaviour table** observed in Obsidian: a set of
 //! input → output cases — given this vault and this reference, that file
