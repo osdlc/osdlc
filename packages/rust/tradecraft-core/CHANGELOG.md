@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.39.2](https://github.com/osdlc/osdlc/compare/tradecraft-core/v0.39.1...tradecraft-core/v0.39.2) - 2026-10-28
+
+### Other
+
+- updated the following local packages: yaml-splice, markdown-link
+
 ## [0.39.1] - Unreleased
 
 First public release. A file-canonical model of a vault of markdown skill notes: scan it, validate

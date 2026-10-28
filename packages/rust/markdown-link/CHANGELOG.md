@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.1](https://github.com/osdlc/osdlc/compare/markdown-link/v0.5.0...markdown-link/v0.5.1) - 2026-10-28
+
+### Other
+
+- updated the following local packages: yaml-splice
+
 ## [0.5.0] - Unreleased
 
 First public release. `markdown-link` parses wiki-style and Markdown links — every `[[wikilink]]`,
