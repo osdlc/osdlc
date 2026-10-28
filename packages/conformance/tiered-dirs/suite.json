@@ -1,0 +1,1231 @@
+{
+  "family": "tiered-dirs",
+  "reference": "ts",
+  "referenceVersion": "0.5.0",
+  "sections": {
+    "resolve": {
+      "description": "Resolve a directory: a tier (with its key), a home, then the optional scope and app narrowing, under base directories stubbed with the rooted layout at /stub. `relative` is the path below the home's base directory, /-separated.",
+      "cases": [
+        {
+          "name": "vendor durable",
+          "input": {
+            "vendor": "com.example",
+            "tier": "vendor",
+            "key": null,
+            "home": "durable",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": "com.example"
+          }
+        },
+        {
+          "name": "vendor config",
+          "input": {
+            "vendor": "com.example",
+            "tier": "vendor",
+            "key": null,
+            "home": "config",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": "com.example"
+          }
+        },
+        {
+          "name": "vendor cache",
+          "input": {
+            "vendor": "com.example",
+            "tier": "vendor",
+            "key": null,
+            "home": "cache",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": "com.example"
+          }
+        },
+        {
+          "name": "vendor state",
+          "input": {
+            "vendor": "com.example",
+            "tier": "vendor",
+            "key": null,
+            "home": "state",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": "com.example"
+          }
+        },
+        {
+          "name": "vendor logs",
+          "input": {
+            "vendor": "com.example",
+            "tier": "vendor",
+            "key": null,
+            "home": "logs",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": "com.example"
+          }
+        },
+        {
+          "name": "vendor runtime",
+          "input": {
+            "vendor": "com.example",
+            "tier": "vendor",
+            "key": null,
+            "home": "runtime",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": "com.example"
+          }
+        },
+        {
+          "name": "vendor durable, one app — the account/licence home",
+          "input": {
+            "vendor": "com.example",
+            "tier": "vendor",
+            "key": null,
+            "home": "durable",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": "licence"
+          },
+          "expect": {
+            "relative": "com.example/licence"
+          }
+        },
+        {
+          "name": "vendor config, scoped — the vendor tier scopes like any other",
+          "input": {
+            "vendor": "com.example",
+            "tier": "vendor",
+            "key": null,
+            "home": "config",
+            "scope_kind": "accounts",
+            "scope_key": "acct-3",
+            "app": null
+          },
+          "expect": {
+            "relative": "com.example/accounts/acct-3"
+          }
+        },
+        {
+          "name": "vendor cache, scoped then app",
+          "input": {
+            "vendor": "com.example",
+            "tier": "vendor",
+            "key": null,
+            "home": "cache",
+            "scope_kind": "accounts",
+            "scope_key": "acct-3",
+            "app": "update-channel"
+          },
+          "expect": {
+            "relative": "com.example/accounts/acct-3/update-channel"
+          }
+        },
+        {
+          "name": "suite durable",
+          "input": {
+            "vendor": "com.example",
+            "tier": "suite",
+            "key": "notes",
+            "home": "durable",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": "com.example.notes"
+          }
+        },
+        {
+          "name": "suite config — the content-root registry lives here",
+          "input": {
+            "vendor": "com.example",
+            "tier": "suite",
+            "key": "notes",
+            "home": "config",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": "com.example.notes"
+          }
+        },
+        {
+          "name": "suite cache",
+          "input": {
+            "vendor": "com.example",
+            "tier": "suite",
+            "key": "notes",
+            "home": "cache",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": "com.example.notes"
+          }
+        },
+        {
+          "name": "suite state",
+          "input": {
+            "vendor": "com.example",
+            "tier": "suite",
+            "key": "notes",
+            "home": "state",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": "com.example.notes"
+          }
+        },
+        {
+          "name": "suite logs",
+          "input": {
+            "vendor": "com.example",
+            "tier": "suite",
+            "key": "notes",
+            "home": "logs",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": "com.example.notes"
+          }
+        },
+        {
+          "name": "suite runtime",
+          "input": {
+            "vendor": "com.example",
+            "tier": "suite",
+            "key": "notes",
+            "home": "runtime",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": "com.example.notes"
+          }
+        },
+        {
+          "name": "a second suite composes the same way",
+          "input": {
+            "vendor": "com.example",
+            "tier": "suite",
+            "key": "tasks",
+            "home": "durable",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": "com.example.tasks"
+          }
+        },
+        {
+          "name": "suite app, no scope",
+          "input": {
+            "vendor": "com.example",
+            "tier": "suite",
+            "key": "notes",
+            "home": "logs",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": "server"
+          },
+          "expect": {
+            "relative": "com.example.notes/server"
+          }
+        },
+        {
+          "name": "suite scope, no app",
+          "input": {
+            "vendor": "com.example",
+            "tier": "suite",
+            "key": "notes",
+            "home": "durable",
+            "scope_kind": "vaults",
+            "scope_key": "vault-7kq2p",
+            "app": null
+          },
+          "expect": {
+            "relative": "com.example.notes/vaults/vault-7kq2p"
+          }
+        },
+        {
+          "name": "the worked example",
+          "input": {
+            "vendor": "com.example",
+            "tier": "suite",
+            "key": "notes",
+            "home": "cache",
+            "scope_kind": "vaults",
+            "scope_key": "vault-7kq2p",
+            "app": "vault-search"
+          },
+          "expect": {
+            "relative": "com.example.notes/vaults/vault-7kq2p/vault-search"
+          }
+        },
+        {
+          "name": "runtime is scoped like any other home",
+          "input": {
+            "vendor": "com.example",
+            "tier": "suite",
+            "key": "notes",
+            "home": "runtime",
+            "scope_kind": "vaults",
+            "scope_key": "vault-7kq2p",
+            "app": "server"
+          },
+          "expect": {
+            "relative": "com.example.notes/vaults/vault-7kq2p/server"
+          }
+        },
+        {
+          "name": "dots and underscores survive a scope key",
+          "input": {
+            "vendor": "com.example",
+            "tier": "suite",
+            "key": "notes",
+            "home": "cache",
+            "scope_kind": "repos",
+            "scope_key": "repo_2.1-beta",
+            "app": "vault-graph"
+          },
+          "expect": {
+            "relative": "com.example.notes/repos/repo_2.1-beta/vault-graph"
+          }
+        },
+        {
+          "name": "case is preserved, never folded",
+          "input": {
+            "vendor": "com.example",
+            "tier": "suite",
+            "key": "notes",
+            "home": "cache",
+            "scope_kind": "vaults",
+            "scope_key": "Vault-7KQ2P",
+            "app": "Vault-Search"
+          },
+          "expect": {
+            "relative": "com.example.notes/vaults/Vault-7KQ2P/Vault-Search"
+          }
+        },
+        {
+          "name": "standalone durable — a general tool owns its own root",
+          "input": {
+            "vendor": "com.example",
+            "tier": "standalone",
+            "key": "devtool",
+            "home": "durable",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": "devtool"
+          }
+        },
+        {
+          "name": "standalone config — a general tool's own config root, no vendor prefix",
+          "input": {
+            "vendor": "com.example",
+            "tier": "standalone",
+            "key": "devtool",
+            "home": "config",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": "devtool"
+          }
+        },
+        {
+          "name": "a second standalone tool composes the same way — which is to say, not at all",
+          "input": {
+            "vendor": "com.example",
+            "tier": "standalone",
+            "key": "linter",
+            "home": "durable",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": "linter"
+          }
+        },
+        {
+          "name": "standalone cache, one app",
+          "input": {
+            "vendor": "com.example",
+            "tier": "standalone",
+            "key": "devtool",
+            "home": "cache",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": "orchestrator"
+          },
+          "expect": {
+            "relative": "devtool/orchestrator"
+          }
+        },
+        {
+          "name": "standalone state, scoped — trust markers per project",
+          "input": {
+            "vendor": "com.example",
+            "tier": "standalone",
+            "key": "devtool",
+            "home": "state",
+            "scope_kind": "projects",
+            "scope_key": "proj-9",
+            "app": null
+          },
+          "expect": {
+            "relative": "devtool/projects/proj-9"
+          }
+        },
+        {
+          "name": "standalone state, scoped then app",
+          "input": {
+            "vendor": "com.example",
+            "tier": "standalone",
+            "key": "devtool",
+            "home": "state",
+            "scope_kind": "projects",
+            "scope_key": "proj-9",
+            "app": "history"
+          },
+          "expect": {
+            "relative": "devtool/projects/proj-9/history"
+          }
+        },
+        {
+          "name": "standalone logs, scoped by project",
+          "input": {
+            "vendor": "com.example",
+            "tier": "standalone",
+            "key": "devtool",
+            "home": "logs",
+            "scope_kind": "projects",
+            "scope_key": "proj-9",
+            "app": null
+          },
+          "expect": {
+            "relative": "devtool/projects/proj-9"
+          }
+        },
+        {
+          "name": "standalone runtime, scoped then app — the pidfile shape",
+          "input": {
+            "vendor": "com.example",
+            "tier": "standalone",
+            "key": "devtool",
+            "home": "runtime",
+            "scope_kind": "projects",
+            "scope_key": "proj-9",
+            "app": "dashboard"
+          },
+          "expect": {
+            "relative": "devtool/projects/proj-9/dashboard"
+          }
+        }
+      ]
+    },
+    "scratch": {
+      "description": "Narrow the untiered scratch directory by the optional scope and app. `relative` is the path below the scratch base directory, /-separated; empty is the base itself.",
+      "cases": [
+        {
+          "name": "scratch is the bare platform temp directory",
+          "input": {
+            "vendor": "com.example",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": null
+          },
+          "expect": {
+            "relative": ""
+          }
+        },
+        {
+          "name": "scratch takes an app segment",
+          "input": {
+            "vendor": "com.example",
+            "scope_kind": null,
+            "scope_key": null,
+            "app": "sandbox"
+          },
+          "expect": {
+            "relative": "sandbox"
+          }
+        },
+        {
+          "name": "scratch scopes like any other directory",
+          "input": {
+            "vendor": "com.example",
+            "scope_kind": "vaults",
+            "scope_key": "vault-7kq2p",
+            "app": null
+          },
+          "expect": {
+            "relative": "vaults/vault-7kq2p"
+          }
+        },
+        {
+          "name": "scratch scoped then app",
+          "input": {
+            "vendor": "com.example",
+            "scope_kind": "vaults",
+            "scope_key": "vault-7kq2p",
+            "app": "sandbox"
+          },
+          "expect": {
+            "relative": "vaults/vault-7kq2p/sandbox"
+          }
+        }
+      ]
+    },
+    "env": {
+      "description": "Resolve the base directories from the variables in `env`, with home /h. `bases` lists every base directory that differs from a bare system's, as an absolute path. A bare system is the native convention with no override variable, no convention variable and no XDG_* variable set; a base directory `bases` omits resolves as it does there. A case with `windows_native` proves that Windows ignores the convention and the XDG_* variables: there every base directory resolves as on a bare system. The other cases hold POSIX paths and run on unix only.",
+      "cases": [
+        {
+          "name": "EXAMPLE_ROOT alone moves all seven",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "env": {
+              "EXAMPLE_ROOT": "/fr"
+            }
+          },
+          "expect": {
+            "bases": {
+              "durable": "/fr/durable",
+              "config": "/fr/config",
+              "cache": "/fr/cache",
+              "state": "/fr/state",
+              "logs": "/fr/logs",
+              "runtime": "/fr/durable/run",
+              "scratch": "/fr/scratch"
+            }
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a tier var beats EXAMPLE_ROOT for its own home",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "env": {
+              "EXAMPLE_ROOT": "/fr",
+              "EXAMPLE_CACHE_DIR": "/warm"
+            }
+          },
+          "expect": {
+            "bases": {
+              "durable": "/fr/durable",
+              "config": "/fr/config",
+              "cache": "/warm",
+              "state": "/fr/state",
+              "logs": "/fr/logs",
+              "runtime": "/fr/durable/run",
+              "scratch": "/fr/scratch"
+            }
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a tier var alone moves only its home",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "env": {
+              "EXAMPLE_SCRATCH_DIR": "/s"
+            }
+          },
+          "expect": {
+            "bases": {
+              "scratch": "/s"
+            }
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "durable alone carries runtime to <durable>/run",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "env": {
+              "EXAMPLE_DURABLE_DIR": "/d"
+            }
+          },
+          "expect": {
+            "bases": {
+              "durable": "/d",
+              "runtime": "/d/run"
+            }
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "an overridden durable carries runtime out of EXAMPLE_ROOT",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "env": {
+              "EXAMPLE_ROOT": "/fr",
+              "EXAMPLE_DURABLE_DIR": "/d"
+            }
+          },
+          "expect": {
+            "bases": {
+              "durable": "/d",
+              "config": "/fr/config",
+              "cache": "/fr/cache",
+              "state": "/fr/state",
+              "logs": "/fr/logs",
+              "runtime": "/d/run",
+              "scratch": "/fr/scratch"
+            }
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "every tier var set",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "env": {
+              "EXAMPLE_DURABLE_DIR": "/t/d",
+              "EXAMPLE_CONFIG_DIR": "/t/c",
+              "EXAMPLE_CACHE_DIR": "/t/k",
+              "EXAMPLE_STATE_DIR": "/t/st",
+              "EXAMPLE_LOGS_DIR": "/t/l",
+              "EXAMPLE_RUNTIME_DIR": "/t/r",
+              "EXAMPLE_SCRATCH_DIR": "/t/s"
+            }
+          },
+          "expect": {
+            "bases": {
+              "durable": "/t/d",
+              "config": "/t/c",
+              "cache": "/t/k",
+              "state": "/t/st",
+              "logs": "/t/l",
+              "runtime": "/t/r",
+              "scratch": "/t/s"
+            }
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "EXAMPLE_STATE_DIR moves only state",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "env": {
+              "EXAMPLE_STATE_DIR": "/st"
+            }
+          },
+          "expect": {
+            "bases": {
+              "state": "/st"
+            }
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "EXAMPLE_CONVENTION=xdg selects the XDG table",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "env": {
+              "EXAMPLE_CONVENTION": "xdg",
+              "XDG_DATA_HOME": "/x/d",
+              "XDG_CONFIG_HOME": "/x/c",
+              "XDG_CACHE_HOME": "/x/k",
+              "XDG_STATE_HOME": "/x/s",
+              "XDG_RUNTIME_DIR": "/run/u/1"
+            },
+            "windows_native": true
+          },
+          "expect": {
+            "bases": {
+              "durable": "/x/d",
+              "config": "/x/c",
+              "cache": "/x/k",
+              "state": "/x/s",
+              "logs": "/x/s",
+              "runtime": "/run/u/1"
+            }
+          }
+        },
+        {
+          "name": "EXAMPLE_CONVENTION is trimmed",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "env": {
+              "EXAMPLE_CONVENTION": " xdg ",
+              "XDG_DATA_HOME": "/x/d",
+              "XDG_CONFIG_HOME": "/x/c",
+              "XDG_CACHE_HOME": "/x/k",
+              "XDG_STATE_HOME": "/x/s",
+              "XDG_RUNTIME_DIR": "/run/u/1"
+            },
+            "windows_native": true
+          },
+          "expect": {
+            "bases": {
+              "durable": "/x/d",
+              "config": "/x/c",
+              "cache": "/x/k",
+              "state": "/x/s",
+              "logs": "/x/s",
+              "runtime": "/run/u/1"
+            }
+          }
+        },
+        {
+          "name": "the constructor's xdg selects the XDG table",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "convention": "xdg",
+            "env": {
+              "XDG_DATA_HOME": "/x/d",
+              "XDG_CONFIG_HOME": "/x/c",
+              "XDG_CACHE_HOME": "/x/k",
+              "XDG_STATE_HOME": "/x/s",
+              "XDG_RUNTIME_DIR": "/run/u/1"
+            },
+            "windows_native": true
+          },
+          "expect": {
+            "bases": {
+              "durable": "/x/d",
+              "config": "/x/c",
+              "cache": "/x/k",
+              "state": "/x/s",
+              "logs": "/x/s",
+              "runtime": "/run/u/1"
+            }
+          }
+        },
+        {
+          "name": "EXAMPLE_CONVENTION=native beats the constructor's xdg",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "convention": "xdg",
+            "env": {
+              "EXAMPLE_CONVENTION": "native"
+            }
+          },
+          "expect": {
+            "bases": {}
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "EXAMPLE_ROOT beats xdg",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "env": {
+              "EXAMPLE_CONVENTION": "xdg",
+              "EXAMPLE_ROOT": "/fr",
+              "XDG_DATA_HOME": "/x/d",
+              "XDG_CONFIG_HOME": "/x/c",
+              "XDG_CACHE_HOME": "/x/k",
+              "XDG_STATE_HOME": "/x/s",
+              "XDG_RUNTIME_DIR": "/run/u/1"
+            }
+          },
+          "expect": {
+            "bases": {
+              "durable": "/fr/durable",
+              "config": "/fr/config",
+              "cache": "/fr/cache",
+              "state": "/fr/state",
+              "logs": "/fr/logs",
+              "runtime": "/fr/durable/run",
+              "scratch": "/fr/scratch"
+            }
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "EXAMPLE_CONFIG_DIR beats XDG_CONFIG_HOME",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "env": {
+              "EXAMPLE_CONVENTION": "xdg",
+              "XDG_CONFIG_HOME": "/x/c",
+              "EXAMPLE_CONFIG_DIR": "/ec"
+            }
+          },
+          "expect": {
+            "bases": {
+              "config": "/ec"
+            }
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "under xdg EXAMPLE_STATE_DIR moves state and leaves logs",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "env": {
+              "EXAMPLE_CONVENTION": "xdg",
+              "XDG_STATE_HOME": "/x/s",
+              "EXAMPLE_STATE_DIR": "/st"
+            }
+          },
+          "expect": {
+            "bases": {
+              "state": "/st",
+              "logs": "/x/s"
+            }
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "nothing set is the OS default",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "env": {}
+          },
+          "expect": {
+            "bases": {}
+          },
+          "platforms": [
+            "unix"
+          ]
+        }
+      ]
+    },
+    "convention": {
+      "description": "The XDG layout under `home`, from the XDG_* variables in `env` only.",
+      "cases": [
+        {
+          "name": "nothing set is the XDG defaults under home",
+          "input": {
+            "home": "/h",
+            "env": {}
+          },
+          "expect": {
+            "bases": {
+              "durable": "/h/.local/share",
+              "config": "/h/.config",
+              "cache": "/h/.cache",
+              "state": "/h/.local/state",
+              "logs": "/h/.local/state",
+              "runtime": "/h/.local/share/run"
+            }
+          }
+        },
+        {
+          "name": "XDG_CONFIG_HOME moves config",
+          "input": {
+            "home": "/h",
+            "env": {
+              "XDG_CONFIG_HOME": "/x/c"
+            }
+          },
+          "expect": {
+            "bases": {
+              "durable": "/h/.local/share",
+              "config": "/x/c",
+              "cache": "/h/.cache",
+              "state": "/h/.local/state",
+              "logs": "/h/.local/state",
+              "runtime": "/h/.local/share/run"
+            }
+          }
+        },
+        {
+          "name": "XDG_STATE_HOME moves state and logs together",
+          "input": {
+            "home": "/h",
+            "env": {
+              "XDG_STATE_HOME": "/x/s"
+            }
+          },
+          "expect": {
+            "bases": {
+              "durable": "/h/.local/share",
+              "config": "/h/.config",
+              "cache": "/h/.cache",
+              "state": "/x/s",
+              "logs": "/x/s",
+              "runtime": "/h/.local/share/run"
+            }
+          }
+        },
+        {
+          "name": "XDG_RUNTIME_DIR moves runtime",
+          "input": {
+            "home": "/h",
+            "env": {
+              "XDG_RUNTIME_DIR": "/run/u/1"
+            }
+          },
+          "expect": {
+            "bases": {
+              "durable": "/h/.local/share",
+              "config": "/h/.config",
+              "cache": "/h/.cache",
+              "state": "/h/.local/state",
+              "logs": "/h/.local/state",
+              "runtime": "/run/u/1"
+            }
+          }
+        },
+        {
+          "name": "XDG_DATA_HOME moves durable and carries runtime",
+          "input": {
+            "home": "/h",
+            "env": {
+              "XDG_DATA_HOME": "/x/d"
+            }
+          },
+          "expect": {
+            "bases": {
+              "durable": "/x/d",
+              "config": "/h/.config",
+              "cache": "/h/.cache",
+              "state": "/h/.local/state",
+              "logs": "/h/.local/state",
+              "runtime": "/x/d/run"
+            }
+          }
+        },
+        {
+          "name": "XDG_CACHE_HOME moves cache",
+          "input": {
+            "home": "/h",
+            "env": {
+              "XDG_CACHE_HOME": "/x/k"
+            }
+          },
+          "expect": {
+            "bases": {
+              "durable": "/h/.local/share",
+              "config": "/h/.config",
+              "cache": "/x/k",
+              "state": "/h/.local/state",
+              "logs": "/h/.local/state",
+              "runtime": "/h/.local/share/run"
+            }
+          }
+        },
+        {
+          "name": "a relative XDG_CACHE_HOME is ignored",
+          "input": {
+            "home": "/h",
+            "env": {
+              "XDG_CACHE_HOME": "rel"
+            }
+          },
+          "expect": {
+            "bases": {
+              "durable": "/h/.local/share",
+              "config": "/h/.config",
+              "cache": "/h/.cache",
+              "state": "/h/.local/state",
+              "logs": "/h/.local/state",
+              "runtime": "/h/.local/share/run"
+            }
+          }
+        },
+        {
+          "name": "a ~ value is relative, so it is ignored",
+          "input": {
+            "home": "/h",
+            "env": {
+              "XDG_CONFIG_HOME": "~/c"
+            }
+          },
+          "expect": {
+            "bases": {
+              "durable": "/h/.local/share",
+              "config": "/h/.config",
+              "cache": "/h/.cache",
+              "state": "/h/.local/state",
+              "logs": "/h/.local/state",
+              "runtime": "/h/.local/share/run"
+            }
+          }
+        },
+        {
+          "name": "an empty XDG_STATE_HOME is unset",
+          "input": {
+            "home": "/h",
+            "env": {
+              "XDG_STATE_HOME": ""
+            }
+          },
+          "expect": {
+            "bases": {
+              "durable": "/h/.local/share",
+              "config": "/h/.config",
+              "cache": "/h/.cache",
+              "state": "/h/.local/state",
+              "logs": "/h/.local/state",
+              "runtime": "/h/.local/share/run"
+            }
+          }
+        }
+      ]
+    },
+    "rejected_segment": {
+      "description": "A segment refused in every position that takes one: the vendor, a suite or standalone key, an app, a scope kind and a scope key.",
+      "cases": [
+        {
+          "name": "empty",
+          "input": {
+            "value": ""
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        },
+        {
+          "name": "posix separator",
+          "input": {
+            "value": "a/b"
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        },
+        {
+          "name": "windows separator",
+          "input": {
+            "value": "a\\b"
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        },
+        {
+          "name": "parent traversal",
+          "input": {
+            "value": ".."
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        },
+        {
+          "name": "embedded traversal",
+          "input": {
+            "value": "a..b"
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        },
+        {
+          "name": "leading dot",
+          "input": {
+            "value": ".hidden"
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        },
+        {
+          "name": "leading hyphen",
+          "input": {
+            "value": "-lead"
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        },
+        {
+          "name": "leading underscore",
+          "input": {
+            "value": "_lead"
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        },
+        {
+          "name": "space",
+          "input": {
+            "value": "two words"
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        },
+        {
+          "name": "colon",
+          "input": {
+            "value": "a:b"
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        },
+        {
+          "name": "tilde",
+          "input": {
+            "value": "~root"
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        },
+        {
+          "name": "reserved state",
+          "input": {
+            "value": "state"
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        },
+        {
+          "name": "reserved logs",
+          "input": {
+            "value": "logs"
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        },
+        {
+          "name": "reserved run",
+          "input": {
+            "value": "run"
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        },
+        {
+          "name": "reserved state in another case",
+          "input": {
+            "value": "State"
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        },
+        {
+          "name": "reserved logs in another case",
+          "input": {
+            "value": "LOGS"
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        },
+        {
+          "name": "reserved run in another case",
+          "input": {
+            "value": "Run"
+          },
+          "error": {
+            "kind": "invalid_key"
+          }
+        }
+      ]
+    },
+    "rejected_convention": {
+      "description": "A value of the convention variable that is refused.",
+      "cases": [
+        {
+          "name": "another convention",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "value": "apple"
+          },
+          "error": {
+            "kind": "invalid_convention"
+          }
+        },
+        {
+          "name": "upper case",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "value": "XDG"
+          },
+          "error": {
+            "kind": "invalid_convention"
+          }
+        },
+        {
+          "name": "title case",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "value": "Native"
+          },
+          "error": {
+            "kind": "invalid_convention"
+          }
+        },
+        {
+          "name": "a unix single folder",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "value": "unix"
+          },
+          "error": {
+            "kind": "invalid_convention"
+          }
+        },
+        {
+          "name": "spaces only",
+          "input": {
+            "env_prefix": "EXAMPLE",
+            "value": " "
+          },
+          "error": {
+            "kind": "invalid_convention"
+          }
+        }
+      ]
+    }
+  }
+}
