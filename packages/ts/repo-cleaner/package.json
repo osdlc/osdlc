@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/repo-cleaner",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "What has been merged into the default branch, and what can go away. Inventories local branches, worktrees and remote branches across one repository or many, classifying each with the evidence behind the verdict and the command that would act on it. Plans and applies approved deletes, compare-and-swap.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
