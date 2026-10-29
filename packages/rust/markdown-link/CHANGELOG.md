@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.2](https://github.com/osdlc/osdlc/compare/markdown-link/v0.5.1...markdown-link/v0.5.2) - 2026-10-29
+
+### Fixed
+
+- *(markdown-link)* match whole folder names when preferring a folder ([#543](https://github.com/osdlc/osdlc/pull/543))
+
 ### Fixed
 
 - `prefer_in_folder` (and so `LinkIndex::resolve_from`) matches whole folder names. A note in

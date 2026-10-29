@@ -1,6 +1,6 @@
 [package]
 name = "agent-adapt"
-version = "0.19.1"
+version = "0.19.2"
 edition.workspace = true
 rust-version.workspace = true
 description = "Data model and runtime adapters for authoring coding-agent assets (skills, agents, hooks, scripts, plugins, MCP servers) once and exporting to Claude Code, Codex CLI, Antigravity, and other runtimes."
