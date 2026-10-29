@@ -2,5 +2,8 @@
 //! the `tradecraft` binary prints.
 
 /// The message the `tradecraft` binary prints before it exits with status 1.
-pub const NOTICE: &str = "tradecraft is now skillwright. Install it with `cargo install skillwright` \
-and run `skillwright` instead: https://crates.io/crates/skillwright";
+pub const NOTICE: &str = "tradecraft is now skillwright. Install it with one of:\n\
+  cargo install skillwright\n\
+  brew install osdlc/tap/skillwright\n\
+  npm i -g @osdlc/skillwright\n\
+Then run `skillwright` instead: https://crates.io/crates/skillwright";

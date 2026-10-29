@@ -11,5 +11,11 @@ fn binary_prints_the_notice_to_stderr_and_exits_1() {
     assert!(out.stdout.is_empty());
     let stderr = String::from_utf8(out.stderr).expect("stderr is UTF-8");
     assert_eq!(stderr.trim(), tradecraft::NOTICE);
-    assert!(stderr.contains("cargo install skillwright"));
+    for cmd in [
+        "cargo install skillwright",
+        "brew install osdlc/tap/skillwright",
+        "npm i -g @osdlc/skillwright",
+    ] {
+        assert!(stderr.contains(cmd), "missing {cmd}");
+    }
 }

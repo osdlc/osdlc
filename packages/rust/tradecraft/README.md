@@ -8,6 +8,8 @@ Install skillwright instead:
 
 ```sh
 cargo install skillwright
+brew install osdlc/tap/skillwright
+npm i -g @osdlc/skillwright
 ```
 
 `cargo install tradecraft` installs a binary that prints this pointer and
