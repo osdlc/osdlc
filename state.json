@@ -38,9 +38,9 @@
       "line": 4,
       "title": "Example duplicates the message with different text and is not published",
       "comment": "https://github.com/osdlc/osdlc/pull/551#discussion_r4415651553",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "51db2bdc4a55ebf8b2cd9351891ac239bdfcdf83"
     },
     {
       "id": "r1-4",
