@@ -1,3 +1,5 @@
+//! The binary points to skillwright and exits with status 1.
+
 use std::process::Command;
 
 #[test]
