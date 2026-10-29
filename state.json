@@ -1,12 +1,46 @@
 {
   "schema": 1,
   "pr": 554,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "e441d50f170579b65fcdbb14722f33a94341c600",
+  "base": "f0a36c76a467fec9b09caa0bdab8fc779865bce4",
+  "round": 1,
   "claim": {
     "owner": "KellyMBP.local:unknown-r5q8vd",
     "at": "2026-10-29T21:59:06.432Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "scripts/crates-io-unpublished-patch.ts",
+      "line": 92,
+      "title": "A held-back crate reached by path is patched without checking its version is on crates.io",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "scripts/crates-io-unpublished-patch.ts",
+      "line": 19,
+      "title": "Reached published crates are assumed identical to their published version",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "scripts/crates-io-unpublished-patch.test.ts",
+      "line": 70,
+      "title": "Test comment says markdown-link depends on slug-collate by path; the fixture reaches it through yaml-splice",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
