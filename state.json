@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 551,
-  "head": "8c29048d7b6b24f065fadccbd2b6823711c37b2e",
-  "base": "b7fdc01cd5701239b25405c25ef3bfd451cfc7e2",
-  "round": 1,
+  "head": "51db2bdc4a55ebf8b2cd9351891ac239bdfcdf83",
+  "base": "f0a36c76a467fec9b09caa0bdab8fc779865bce4",
+  "round": 2,
   "claim": {
     "owner": "KellyMBP.local:claude-w4k8ze",
     "at": "2026-10-29T21:37:05.596Z"
@@ -71,6 +71,17 @@
       "line": 3,
       "title": "Publish-on-merge hold rests on a PR-body sentence, not on the repo's hold mechanism",
       "comment": "https://github.com/osdlc/osdlc/pull/551#pullrequestreview-5702093248",
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r2-1",
+      "round": 2,
+      "path": "packages/README.md",
+      "line": 143,
+      "title": "List entry says the next release only points to skillwright, which is wrong after the release",
+      "comment": null,
       "status": "open",
       "reason": null,
       "fixedIn": null
