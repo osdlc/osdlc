@@ -612,7 +612,7 @@ fn refuse_old_keys(
             "old-key",
             path,
             format!(
-                "`{key}` is the old spelling: rename it to `{}{rest}`",
+                "`{key}` is the old spelling: rename it to `{}{rest}`, or set `namespace: {OLD_STEM}`",
                 ns.stem()
             ),
         )),
@@ -1116,7 +1116,7 @@ mod tests {
         assert!(message.contains("old-key"), "{message}");
         assert!(
             message.contains(&format!(
-                "`{old}` is the old spelling: rename it to `sw-kind`"
+                "`{old}` is the old spelling: rename it to `sw-kind`, or set `namespace: {OLD_STEM}`"
             )),
             "{message}"
         );
@@ -1125,7 +1125,7 @@ mod tests {
         let err = read(json!({ OLD_STEM: {"kind": "plugin"} })).unwrap_err();
         assert!(
             err.to_string().contains(&format!(
-                "`{OLD_STEM}` is the old spelling: rename it to `sw`"
+                "`{OLD_STEM}` is the old spelling: rename it to `sw`, or set `namespace: {OLD_STEM}`"
             )),
             "{err}"
         );

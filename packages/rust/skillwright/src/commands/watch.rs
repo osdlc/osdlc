@@ -315,7 +315,7 @@ mod tests {
 
     #[test]
     fn asset_sources_are_watched_beside_the_vault() {
-        use crate::config::{AssetEntry, TradecraftConfig};
+        use crate::config::{AssetEntry, SkillwrightConfig};
         use crate::resolve::ResolvedRun;
 
         let root = tempfile::tempdir().unwrap();
@@ -330,9 +330,9 @@ mod tests {
             plugin: None,
         };
         let run = ResolvedRun {
-            config: Some(TradecraftConfig {
+            config: Some(SkillwrightConfig {
                 assets: vec![asset("conventions"), asset("cli/sdlc")],
-                ..TradecraftConfig::default()
+                ..SkillwrightConfig::default()
             }),
             config_dir: root.path().to_path_buf(),
             config_path: None,

@@ -216,7 +216,8 @@ refuses to run it until you allow it in System Settings, Privacy & Security.
 Each release is listed in the [changelog](CHANGELOG.md).
 
 This crate was published as `tradecraft` up to 0.3.7. It does not read the old
-names; each one stops the run with a one-line error that says what to rename:
+names. An old project file, manifest folder or frontmatter key stops the run
+with a one-line error that says what to rename.
 
 | Old | New |
 |---|---|
@@ -225,10 +226,12 @@ names; each one stops the run with a one-line error that says what to rename:
 | `tc-*` frontmatter keys, `tc:` block | `sw-*`, `sw:` |
 | `TRADECRAFT_*` environment variables | `SKILLWRIGHT_*` |
 | `<config-home>/tradecraft/config.yaml` | `<config-home>/skillwright/config.yaml` |
+| `.tradecraft-stage/` (build staging folder) | `.skillwright-stage/` |
 
 A marketplace tree built by `tradecraft` is still recognised as this tool's
 own, and the next build rewrites it. The environment variables and the
-machine file are not checked: move them by hand.
+machine file are not checked: move them by hand. A `.tradecraft-stage/` folder
+left by an interrupted `tradecraft build` is not used and is safe to delete.
 
 ## License
 

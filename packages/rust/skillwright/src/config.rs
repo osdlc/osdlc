@@ -39,7 +39,7 @@ pub const TOOL: &str = "skillwright";
 const COMMAND: &str = "skillwright";
 /// The committed project file, looked for from the working directory upward.
 pub const PROJECT_FILE: &str = tradecraft_core::PROJECT_FILE;
-/// The project file's earlier names. Only their presence is checked, by
+/// The project file's earlier names, newest first. Only their presence is checked, by
 /// [`old_project_file`], to say how to rename one.
 const OLD_PROJECT_FILES: [&str; 2] = ["tradecraft.yaml", "agent-pants.yaml"];
 /// Env var that relocates the machine file, for tests and one-off runs.
@@ -82,7 +82,7 @@ pub use tradecraft_core::MarketplaceSettings;
 /// machine file.
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize, Default)]
 #[serde(deny_unknown_fields)]
-pub struct TradecraftConfig {
+pub struct SkillwrightConfig {
     /// Named directories; any other path setting refers to one as `{name}`.
     #[serde(default)]
     pub paths: BTreeMap<String, String>,
@@ -146,7 +146,7 @@ pub struct AssetEntry {
     pub plugin: Option<String>,
 }
 
-fn is_blank(config: &TradecraftConfig) -> bool {
+fn is_blank(config: &SkillwrightConfig) -> bool {
     config.vault.is_none()
         && config.namespace.is_none()
         && config.declared_folders.is_none()
@@ -162,7 +162,7 @@ pub enum ConfigLoad {
     /// A configuration was read.
     Loaded {
         /// The parsed configuration.
-        config: Box<TradecraftConfig>,
+        config: Box<SkillwrightConfig>,
         /// The configuration file.
         path: PathBuf,
         /// The directory relative paths in it resolve against.
@@ -200,7 +200,7 @@ pub enum ConfigLoad {
 ///
 /// When the base directories cannot be resolved (no home directory and no
 /// override), or `TOOL` is not a valid path segment.
-fn machine_file() -> MachineConfigFile<TradecraftConfig> {
+fn machine_file() -> MachineConfigFile<SkillwrightConfig> {
     let dirs = crate::dirs::system()
         .unwrap_or_else(|err| panic!("skillwright: cannot resolve the machine directories: {err}"));
     MachineConfigFile::new(TOOL, &dirs)
@@ -401,8 +401,9 @@ fn non_mapping_struct_key(
 /// [`annotate_detail`] builds.
 fn config_from_mapping(
     map: &serde_json::Map<String, serde_json::Value>,
-) -> Result<TradecraftConfig, String> {
-    let parsed = serde_json::from_value::<TradecraftConfig>(serde_json::Value::Object(map.clone()));
+) -> Result<SkillwrightConfig, String> {
+    let parsed =
+        serde_json::from_value::<SkillwrightConfig>(serde_json::Value::Object(map.clone()));
     match parsed {
         Ok(_) if non_mapping_struct_key(map).is_some() => Err(annotate_detail(map, String::new())),
         Ok(c) => Ok(c),
@@ -459,7 +460,7 @@ fn annotate_detail(
 /// after this point sees plain paths. A token nothing defines is reported
 /// as `Malformed`, naming the setting.
 fn finish(
-    mut config: TradecraftConfig,
+    mut config: SkillwrightConfig,
     dir: &Path,
     path: &Path,
     machine_paths: &BTreeMap<String, String>,
@@ -535,10 +536,13 @@ pub fn old_project_file(cwd: &Path) -> Option<PathBuf> {
     if file::find_up(cwd, PROJECT_FILE).is_some() {
         return None;
     }
+    // The deepest wins; in one directory, the newer name.
     OLD_PROJECT_FILES
         .into_iter()
-        .filter_map(|name| file::find_up(cwd, name))
-        .max_by_key(|path| path.components().count())
+        .enumerate()
+        .filter_map(|(age, name)| file::find_up(cwd, name).map(|path| (age, path)))
+        .max_by_key(|(age, path)| (path.components().count(), std::cmp::Reverse(*age)))
+        .map(|(_, path)| path)
 }
 
 /// What to do about an old project file, for the error line.
@@ -611,11 +615,11 @@ fn load_config_at(
     };
 
     let Some(project_path) = found else {
-        let machine_config: TradecraftConfig = if machine_exists {
+        let machine_config: SkillwrightConfig = if machine_exists {
             serde_json::from_value(serde_json::Value::Object(machine_mapping.clone()))
                 .unwrap_or_default()
         } else {
-            TradecraftConfig::default()
+            SkillwrightConfig::default()
         };
         if !machine_exists || is_blank(&machine_config) {
             return ConfigLoad::Absent { path: machine_path };
@@ -672,7 +676,7 @@ fn load_config_at(
     let machine_paths = typed_paths(&machine_mapping);
 
     let merged = file::overlay_top_level(project_mapping, &machine_mapping);
-    let mut config: TradecraftConfig = match config_from_mapping(&merged) {
+    let mut config: SkillwrightConfig = match config_from_mapping(&merged) {
         Ok(c) => c,
         Err(detail) => {
             return ConfigLoad::Malformed {

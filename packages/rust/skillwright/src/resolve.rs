@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use tradecraft_core::Namespace;
 
 use crate::config::{
-    ConfigLoad, NEEDS, PROJECT_FILE, TradecraftConfig, load_config, machine_config_path,
+    ConfigLoad, NEEDS, PROJECT_FILE, SkillwrightConfig, load_config, machine_config_path,
     old_project_file, old_project_file_hint, resolve_against_cwd, resolve_configured_path,
 };
 use crate::exit::{blocked, no_config};
@@ -35,7 +35,7 @@ pub struct CommonFlags {
 #[derive(Debug)]
 pub struct ResolvedRun {
     /// `None` in mode 1 (flag-only): no file was there, and none had to be.
-    pub config: Option<TradecraftConfig>,
+    pub config: Option<SkillwrightConfig>,
     /// The directory relative paths inside the config file resolve against.
     pub config_dir: PathBuf,
     /// The file that was read, or `None` when none was.
@@ -84,7 +84,7 @@ pub fn resolve_run(
         ));
     }
     let loaded = load_config(flags.config.as_deref(), cwd);
-    let mut config: Option<TradecraftConfig> = None;
+    let mut config: Option<SkillwrightConfig> = None;
     let mut config_dir = cwd.to_path_buf();
     let mut config_path: Option<PathBuf> = None;
     match loaded {
@@ -312,7 +312,7 @@ mod tests {
         );
         assert_eq!(resolve_skills_root(None, &run, dir.path()), None);
 
-        let mut config = TradecraftConfig::default();
+        let mut config = SkillwrightConfig::default();
         config.marketplace.skills_root = Some("./from-marketplace".to_string());
         run.config = Some(config);
         assert_eq!(
@@ -320,7 +320,7 @@ mod tests {
             Some(dir.path().join("from-marketplace"))
         );
 
-        let mut config = TradecraftConfig::default();
+        let mut config = SkillwrightConfig::default();
         config.declared_folders = Some(crate::config::DeclaredFolders {
             skills: Some("./from-vault".to_string()),
             references: None,

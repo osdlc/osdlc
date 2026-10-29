@@ -483,6 +483,68 @@ fn an_old_tradecraft_yaml_without_a_skillwright_yaml_says_to_rename_it() {
 }
 
 #[test]
+fn both_old_project_files_in_one_folder_name_the_newer_one() {
+    let (dir, _vault) = fixture();
+    fs::write(dir.path().join("agent-pants.yaml"), "vault: ./vault\n").unwrap();
+    fs::write(dir.path().join("tradecraft.yaml"), "vault: ./vault\n").unwrap();
+    let run = run(&["list"], dir.path());
+    assert_eq!(run.code, 2, "{}", run.stderr);
+    let named = dir.path().join("tradecraft.yaml").display().to_string();
+    assert!(
+        run.stderr
+            .starts_with(&format!("old project file: {named} (")),
+        "{}",
+        run.stderr
+    );
+}
+
+#[test]
+fn the_nearer_old_project_file_wins_over_a_newer_name_further_up() {
+    let (dir, _vault) = fixture();
+    fs::write(dir.path().join("tradecraft.yaml"), "vault: ./vault\n").unwrap();
+    let nested = dir.path().join("a");
+    fs::create_dir_all(&nested).unwrap();
+    fs::write(nested.join("agent-pants.yaml"), "vault: ./vault\n").unwrap();
+    let run = run(&["list"], &nested);
+    assert_eq!(run.code, 2, "{}", run.stderr);
+    let named = nested.join("agent-pants.yaml").display().to_string();
+    assert!(
+        run.stderr
+            .starts_with(&format!("old project file: {named} (")),
+        "{}",
+        run.stderr
+    );
+}
+
+#[test]
+fn a_note_with_an_old_tc_key_is_reported_on_one_line_with_its_new_spelling() {
+    let (dir, vault) = fixture();
+    let note = vault.join("skills").join("old.md");
+    fs::write(
+        &note,
+        "---\nname: old\ndescription: d\ntc-kind: skill\n---\nBody.\n",
+    )
+    .unwrap();
+    let run = run(&["list", "--vault", &vault_str(&vault)], dir.path());
+    // Skipped notes go to stderr.
+    let line = run
+        .stderr
+        .lines()
+        .find(|line| line.contains("old-key"))
+        .unwrap_or_else(|| panic!("no old-key line: {}{}", run.stdout, run.stderr));
+    assert!(line.starts_with("skills/old.md"), "{line}");
+    assert!(
+        line.ends_with(&format!(
+            "{}: `tc-kind` is the old spelling: rename it to `sw-kind`, or set `namespace: tc`",
+            note.display()
+        )),
+        "{line}"
+    );
+    // The other note still lists.
+    assert!(run.stdout.contains("code-review"), "{}", run.stdout);
+}
+
+#[test]
 fn an_old_project_file_in_a_parent_folder_is_found_by_the_same_search() {
     let (dir, _vault) = fixture();
     fs::write(dir.path().join("agent-pants.yaml"), "vault: ./vault\n").unwrap();
