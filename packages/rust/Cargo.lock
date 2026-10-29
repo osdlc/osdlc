@@ -451,6 +451,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "glob-intersect"
+version = "0.3.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "walkdir",
+]
+
+[[package]]
 name = "globset"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
