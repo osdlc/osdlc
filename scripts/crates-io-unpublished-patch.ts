@@ -20,14 +20,18 @@
 // Otherwise the graph holds that crate twice, once local and once from
 // crates.io, and types from the two copies do not match: markdown-link
 // patched to its directory brings the local yaml-splice, while the packaged
-// markdown-relink takes yaml-splice from crates.io.
+// markdown-relink takes yaml-splice from crates.io. This assumes the local
+// source of each such published crate matches its published version, which
+// holds while release-plz bumps every crate whose source has changed.
 //
 // Left out unless a patched crate reaches them, so a dependency on them
 // still resolves against crates.io: crates whose version is already
 // published, and crates release-plz holds back (`release = false` or
 // `publish = false` for the package in release-plz.toml). Crates with
-// `publish = false` in Cargo.toml are always left out. Prints a comment and
-// no table when nothing is left.
+// `publish = false` in Cargo.toml are always left out. A held-back crate
+// that a patched crate reaches, and whose version is not on crates.io, is an
+// error: the real release would not find it. Prints a comment and no table
+// when nothing is left.
 import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
@@ -88,20 +92,27 @@ export async function unpublishedPatch(
   const members = metadata.workspace_members.map((id) => metadata.packages.find((p) => p.id === id)!)
   const byDir = new Map(members.map((p) => [dirname(p.manifest_path), p]))
   const patched = new Set<CargoPackage>()
-  const add = (pkg: CargoPackage) => {
+  const published = async (pkg: CargoPackage) =>
+    (await lookup(pkg.name))?.some((e) => e.vers === pkg.version) ?? false
+  const add = async (pkg: CargoPackage, from: CargoPackage | null) => {
     if (patched.has(pkg) || !publishesToCratesIo(pkg)) return
+    // The real release does not publish a held-back crate, so its dependents
+    // need its version on crates.io already.
+    if (from && held.has(pkg.name) && !(await published(pkg))) {
+      throw new Error(
+        `${from.name} depends on ${pkg.name} ${pkg.version}, which is not on crates.io and is held back in release-plz.toml, so the release would fail`,
+      )
+    }
     patched.add(pkg)
     for (const dep of pkg.dependencies ?? []) {
       if (dep.kind === 'dev' || dep.path === undefined) continue
       const local = byDir.get(dep.path)
-      if (local) add(local)
+      if (local) await add(local, pkg)
     }
   }
   for (const pkg of members) {
-    if (!publishesToCratesIo(pkg) || held.has(pkg.name)) continue
-    const entries = await lookup(pkg.name)
-    if (entries?.some((e) => e.vers === pkg.version)) continue
-    add(pkg)
+    if (!publishesToCratesIo(pkg) || held.has(pkg.name) || (await published(pkg))) continue
+    await add(pkg, null)
   }
   // In workspace order. A JSON string is a valid TOML basic string.
   const lines = members

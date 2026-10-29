@@ -67,10 +67,11 @@ test('skips crates that are not published: Cargo.toml publish = false, or held b
 })
 
 test('patches the published crates a patched crate reaches through normal or build path dependencies', async () => {
-  // markdown-link is new and depends on the published yaml-splice and
-  // slug-collate by path. Patching markdown-link alone would leave yaml-splice
-  // twice in the graph: local through markdown-link, and from crates.io for
-  // markdown-relink. Dev and registry dependencies do not pull a crate in.
+  // markdown-link is new and depends on the published yaml-splice by path,
+  // and yaml-splice has a build path dependency on slug-collate. Patching
+  // markdown-link alone would leave yaml-splice twice in the graph: local
+  // through markdown-link, and from crates.io for markdown-relink. Dev and
+  // registry dependencies do not pull a crate in.
   const out = await unpublishedPatch(
     metadata(
       pkg('slug-collate', '0.1.2'),
@@ -115,6 +116,17 @@ test('a held-back crate is still patched when a patched crate reaches it, but a 
     index({ held: ['0.2.0'] }),
   )
   assert.equal(out, [HEADER, '[patch.crates-io]', 'held = { path = "/ws/held" }', 'new = { path = "/ws/new" }', ''].join('\n'))
+})
+
+test('throws when a patched crate reaches a held-back crate whose version is not on crates.io', async () => {
+  await assert.rejects(
+    unpublishedPatch(
+      metadata(pkg('held', '0.3.0'), pkg('new', '0.1.0', null, [local('held')])),
+      new Set(['held']),
+      index({ held: ['0.2.0'] }),
+    ),
+    /new depends on held 0\.3\.0, which is not on crates\.io and is held back/,
+  )
 })
 
 test('heldBackPackages reads release = false and publish = false from [[package]] entries only', () => {
