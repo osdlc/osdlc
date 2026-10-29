@@ -5,9 +5,10 @@ repository: TypeScript libraries to npm, Rust crates to crates.io. Each
 library's own README says how to use it. This file covers what holds for all
 of them.
 
-> `skillwright` and `tradecraft-core` are no longer released from this
-> repository. Their releases moved to <https://github.com/osdlc/skillwright>;
-> the code here is held with `publish = false`. `tradecraft` still releases
+> `skillwright`, `tradecraft-core` and `@osdlc/tradecraft-wasm` are no longer
+> released from this repository. Their releases moved to
+> <https://github.com/osdlc/skillwright>; the code here is held with
+> `publish = false` (the npm package with `"private": true`). `tradecraft` still releases
 > from here.
 
 ## Home and publishing
