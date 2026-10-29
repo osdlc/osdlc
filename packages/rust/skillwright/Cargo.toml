@@ -1,6 +1,8 @@
 [package]
 name = "skillwright"
 version = "0.3.8"
+# Held: releases now come from https://github.com/osdlc/skillwright.
+publish = false
 edition.workspace = true
 rust-version.workspace = true
 description = "A command-line tool that publishes a vault of markdown skill notes into the formats of coding-agent tools (Claude Code, Codex, Cursor and Pi), checks them for drift, and authors and reorganises the vault."
