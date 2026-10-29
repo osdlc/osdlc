@@ -15,7 +15,7 @@
       "path": "packages/rust/tradecraft/Cargo.toml",
       "line": 3,
       "title": "0.3.8 removes the public library API in a semver-compatible patch",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/551#discussion_r4415651529",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -26,7 +26,7 @@
       "path": "packages/rust/tradecraft/README.md",
       "line": 13,
       "title": "README claim about cargo add does not match what cargo does",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/551#discussion_r4415651545",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -37,7 +37,7 @@
       "path": "packages/rust/tradecraft/examples/moved.rs",
       "line": 4,
       "title": "Example duplicates the message with different text and is not published",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/551#discussion_r4415651553",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -48,7 +48,7 @@
       "path": "packages/rust/tradecraft/src/main.rs",
       "line": 8,
       "title": "Exit status and message have no test",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/551#discussion_r4415651558",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -59,7 +59,7 @@
       "path": "packages/rust/tradecraft/CHANGELOG.md",
       "line": 8,
       "title": "CHANGELOG lacks the Unreleased heading the other crates keep",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/551#discussion_r4415651568",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -67,10 +67,10 @@
     {
       "id": "r1-6",
       "round": 1,
-      "path": null,
-      "line": null,
+      "path": "packages/rust/tradecraft/Cargo.toml",
+      "line": 3,
       "title": "Publish-on-merge hold rests on a PR-body sentence, not on the repo's hold mechanism",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/551#pullrequestreview-5702093248",
       "status": "open",
       "reason": null,
       "fixedIn": null
