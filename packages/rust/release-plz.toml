@@ -45,14 +45,6 @@ name = "tradecraft-typegen"
 publish = false
 release = false
 
-# The skillwright CLI's first release is held back; see the note in its
-# Cargo.toml. `release = false` also stops a tag being cut for a version that
-# was not published.
-[[package]]
-name = "skillwright"
-publish = false
-release = false
-
 # Held back until the parity fixes from the review of
 # https://github.com/osdlc/osdlc/pull/460 land; see its Cargo.toml.
 [[package]]

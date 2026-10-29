@@ -1,12 +1,6 @@
 [package]
 name = "skillwright"
 version = "0.3.7"
-# Held back from crates.io: a new crate's first publish needs the crates.io
-# token, and one release-plz run cannot mix the token with trusted
-# publishing. Waits for the run that publishes tradecraft-core by trusted
-# publishing. Then remove this line and the entry in
-# packages/rust/release-plz.toml in a pull request of their own.
-publish = false
 edition.workspace = true
 rust-version.workspace = true
 description = "A command-line tool that publishes a vault of markdown skill notes into the formats of coding-agent tools (Claude Code, Codex, Cursor and Pi), checks them for drift, and authors and reorganises the vault."
