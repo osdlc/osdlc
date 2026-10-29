@@ -5,16 +5,25 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
-import type { CargoMetadata, CargoPackage, IndexEntry } from './crates-io-index.ts'
+import type { CargoDependency, CargoMetadata, CargoPackage, IndexEntry } from './crates-io-index.ts'
 import { heldBackPackages, unpublishedPatch } from './crates-io-unpublished-patch.ts'
 
-const pkg = (name: string, version: string, publish: string[] | null = null): CargoPackage => ({
+const pkg = (
+  name: string,
+  version: string,
+  publish: string[] | null = null,
+  dependencies: CargoDependency[] = [],
+): CargoPackage => ({
   id: name,
   name,
   version,
   manifest_path: `/ws/${name}/Cargo.toml`,
   publish,
+  dependencies,
 })
+
+/** A path dependency on the workspace crate `name`. */
+const local = (name: string, kind: string | null = null): CargoDependency => ({ name, kind, path: `/ws/${name}` })
 
 const metadata = (...packages: CargoPackage[]): CargoMetadata => ({
   workspace_root: '/ws',
@@ -28,7 +37,7 @@ const index =
   async (name: string): Promise<IndexEntry[] | null> =>
     published[name]?.map((vers) => ({ vers, yanked: false })) ?? null
 
-const HEADER = '# Crates whose version is not on crates.io yet. See scripts/crates-io-unpublished-patch.ts.'
+const HEADER = '# Crates whose version is not on crates.io yet, and the local crates they depend on. See scripts/crates-io-unpublished-patch.ts.'
 
 test('patches a new version and a crate not on crates.io; skips a published version', async () => {
   const out = await unpublishedPatch(
@@ -55,6 +64,57 @@ test('skips crates that are not published: Cargo.toml publish = false, or held b
     index({}),
   )
   assert.equal(out, `${HEADER}\n`)
+})
+
+test('patches the published crates a patched crate reaches through normal or build path dependencies', async () => {
+  // markdown-link is new and depends on the published yaml-splice and
+  // slug-collate by path. Patching markdown-link alone would leave yaml-splice
+  // twice in the graph: local through markdown-link, and from crates.io for
+  // markdown-relink. Dev and registry dependencies do not pull a crate in.
+  const out = await unpublishedPatch(
+    metadata(
+      pkg('slug-collate', '0.1.2'),
+      pkg('yaml-splice', '0.3.3', null, [local('slug-collate', 'build')]),
+      pkg('frontmatter-lossless', '1.1.1'),
+      pkg('serde-ish', '1.0.0'),
+      pkg('markdown-link', '0.5.2', null, [
+        local('yaml-splice'),
+        local('frontmatter-lossless', 'dev'),
+        { name: 'serde-ish', kind: null },
+      ]),
+      pkg('markdown-relink', '0.1.6', null, [local('markdown-link'), local('yaml-splice')]),
+      pkg('yaml-splice-wasm', '0.1.0', [], [local('yaml-splice')]),
+    ),
+    new Set(),
+    index({
+      'slug-collate': ['0.1.2'],
+      'yaml-splice': ['0.3.3'],
+      'frontmatter-lossless': ['1.1.1'],
+      'serde-ish': ['1.0.0'],
+      'markdown-link': ['0.5.1'],
+      'markdown-relink': ['0.1.6'],
+    }),
+  )
+  assert.equal(
+    out,
+    [
+      HEADER,
+      '[patch.crates-io]',
+      'slug-collate = { path = "/ws/slug-collate" }',
+      'yaml-splice = { path = "/ws/yaml-splice" }',
+      'markdown-link = { path = "/ws/markdown-link" }',
+      '',
+    ].join('\n'),
+  )
+})
+
+test('a held-back crate is still patched when a patched crate reaches it, but a publish = false one is not', async () => {
+  const out = await unpublishedPatch(
+    metadata(pkg('held', '0.2.0'), pkg('private', '0.1.0', []), pkg('new', '0.1.0', null, [local('held'), local('private')])),
+    new Set(['held']),
+    index({ held: ['0.2.0'] }),
+  )
+  assert.equal(out, [HEADER, '[patch.crates-io]', 'held = { path = "/ws/held" }', 'new = { path = "/ws/new" }', ''].join('\n'))
 })
 
 test('heldBackPackages reads release = false and publish = false from [[package]] entries only', () => {
