@@ -28,17 +28,18 @@ flowchart TD
     F --> H["Tag skillwright/vX.Y.Z + GitHub Release"]
     H --> I[skillwright-release.yml]
     I --> J[plan]
-    J --> K[build: 4 targets]
+    J --> K[build: each target]
     J --> L[notices]
     K & L --> M[release: upload assets, SHA256SUMS last]
-    M --> N[npm: 5 packages, provenance]
+    M --> N[npm: all packages, provenance]
     M --> O[homebrew: Formula/skillwright.rb in osdlc/homebrew-tap]
-    M --> P[binstall: install check on macOS and Linux]
+    M --> P[binstall: report-only install check]
 ```
 
 1. **Release PR.** On every push to main, `release-pr` opens or updates a
-   pull request that bumps each changed crate's version and changelog. The
-   `osdlc-release` GitHub App opens it, so its checks run.
+   pull request that bumps each changed crate's version and changelog. It
+   also rebuilds the wasm and commits it to the PR. The `osdlc-release`
+   GitHub App opens it, so its checks run.
 2. **Merge.** The owner merges the release PR once its checks pass.
 3. **Plan.** `plan` compares each crate's version with crates.io. If nothing
    is new it stops. Otherwise it picks one credential for the run:
@@ -50,11 +51,14 @@ flowchart TD
 5. **Publish and tag.** `release` publishes each new crate version, then the
    App pushes the tag `skillwright/vX.Y.Z` and creates the GitHub Release.
 6. **Binary release.** The tag starts `skillwright-release.yml`:
-   - `build` makes the four binaries (macOS arm64 and x64, Linux musl arm64
-     and x64), and `notices` writes `THIRD_PARTY_NOTICES.md`.
+   - `build` makes one binary per target, and `notices` writes
+     `THIRD_PARTY_NOTICES.md`. The targets and packages are listed in
+     [`release/product.ts`](release/product.ts).
    - `release` uploads the assets. It never replaces a published asset, and
      uploads `SHA256SUMS` last.
    - `npm`, `homebrew` and `binstall` run from those uploaded bytes.
+     `binstall` is report-only (`continue-on-error`): a failure there does
+     not undo the release.
 
 ## Who does what
 
@@ -78,7 +82,7 @@ sequenceDiagram
     RP->>GH: tag skillwright/vX.Y.Z, GitHub Release
     GH->>SR: tag push
     SR->>GH: upload binaries, SHA256SUMS last
-    SR->>NPM: publish 5 packages (OIDC, environment npm)
+    SR->>NPM: publish all packages (OIDC, environment npm)
     SR->>TAP: commit Formula/skillwright.rb (App token, environment homebrew-tap)
     SR->>SR: cargo binstall check
 ```
@@ -86,9 +90,10 @@ sequenceDiagram
 Owner-only actions: merging the release PR, approving the `crates-io`
 environment, and the one-time setup below. Everything else is automatic.
 
-## Environments and secrets
+## Required environments and secrets
 
-All in osdlc/osdlc. Values live only in GitHub settings.
+The owner sets these up once, before the first release. They are in
+osdlc/osdlc. Values live only in GitHub settings.
 
 | Environment | Used by | Holds | Limited to |
 |---|---|---|---|
@@ -97,8 +102,15 @@ All in osdlc/osdlc. Values live only in GitHub settings.
 | `npm` | `skillwright-release.yml` `npm` | nothing; the job's OIDC token is the credential | main and `skillwright/v*` |
 | `homebrew-tap` | `skillwright-release.yml` `homebrew` | `RELEASE_PLZ_APP_PRIVATE_KEY` | main and `skillwright/v*` |
 
-The `osdlc-release` App must be installed on osdlc/osdlc and
-osdlc/homebrew-tap with contents write. A tag ruleset on `*/v*` lets only the
+`homebrew-tap` and `npm` should be limited to main and `skillwright/v*`.
+
+The `osdlc-release` App needs these permissions:
+
+- osdlc/osdlc: contents write and pull-requests write (see the
+  `permission-` inputs in `release-plz.yml`);
+- osdlc/homebrew-tap: contents write.
+
+A tag ruleset on `*/v*` lets only the
 App and admins create release tags.
 
 ## First release of a crate
@@ -127,35 +139,29 @@ flowchart LR
 4. The owner adds a trusted publisher on crates.io: repository `osdlc/osdlc`,
    workflow `release-plz.yml`, environment `crates-io`.
 
-**npm**, before the first tag:
+**npm**, before the first tag: an npm owner of `@osdlc` stages a
+placeholder for each package and adds its trusted publisher. See
+[First release on npm](release/README.md#first-release-on-npm).
 
-```sh
-node packages/rust/skillwright/release/dist.ts stage --dry-run
-node packages/rust/skillwright/release/dist.ts stage
-```
-
-Run by an npm owner of `@osdlc`. For each of the five packages it publishes a
-`0.0.1-stage` placeholder under the `stage` tag and adds the trusted
-publisher: repository `osdlc/osdlc`, workflow `skillwright-release.yml`,
-environment `npm`.
-
-**Homebrew**: no per-package step. The `homebrew-tap` environment secret and
-the App on osdlc/homebrew-tap are enough.
+**Homebrew**: the `homebrew-tap` environment needs
+`RELEASE_PLZ_APP_PRIVATE_KEY`, and the App must be installed on
+osdlc/homebrew-tap.
 
 ## Checking a release
 
 After the binary release finishes:
 
 ```sh
-brew update && brew install osdlc/tap/skillwright && skillwright --version
+brew update && brew tap osdlc/tap && brew trust osdlc/tap
+brew install osdlc/tap/skillwright && skillwright --version
 npm i -g @osdlc/skillwright && skillwright --version
 cargo binstall -y skillwright && skillwright --version
 cargo install skillwright && skillwright --version
 curl -fsSL https://github.com/osdlc/osdlc/releases/download/skillwright/vX.Y.Z/install.sh | sh
 ```
 
-Each prints `skillwright X.Y.Z`. Homebrew 7 asks to trust a third-party tap
-once: `brew tap osdlc/tap && brew trust osdlc/tap`.
+Each prints `skillwright X.Y.Z`. Homebrew 7 needs a third-party tap to be
+trusted once, so the tap and trust commands come before `brew install`.
 
 ## When something fails
 
@@ -163,10 +169,10 @@ once: `brew tap osdlc/tap && brew trust osdlc/tap`.
 |---|---|---|
 | `plan` refuses the run | A first release and a trusted release are both pending | Release one first; hold the other |
 | `release` waits forever | The `crates-io` approval was not given | Approve it in the Actions tab |
-| `npm` fails with `404 Not Found - PUT` | The package or its trusted publisher does not exist | Run `dist.ts stage`, then re-run failed jobs |
+| `npm` fails with `404 Not Found - PUT` | The package or its trusted publisher does not exist | Stage the package (see [First release on npm](release/README.md#first-release-on-npm)), then re-run failed jobs |
 | `homebrew` fails: `private-key` input must be set | `RELEASE_PLZ_APP_PRIVATE_KEY` missing from `homebrew-tap` | Add it, then re-run failed jobs |
-| release-plz waits on the index, then times out | crates.io's sparse index lags the API | Wait for the index; re-run |
-| `wasm` check fails on a PR | The committed wasm differs from CI's build | Take the files from that run's `tradecraft-wasm` artifact |
+| release-plz waits on the index, then times out | crates.io's sparse index lags the API (seen for agent-adapt 0.19.1: the API listed the version for hours before the index did) | Wait for the index, then re-run |
+| `wasm` check fails on a PR | The committed wasm differs from CI's build | `release-pr` rebuilds and commits the wasm on the release PR. On other PRs, take the files from that run's `tradecraft-wasm` artifact |
 
 Re-run only the failed jobs:
 
@@ -174,4 +180,6 @@ Re-run only the failed jobs:
 gh run rerun <run-id> --repo osdlc/osdlc --failed
 ```
 
-Published assets are never replaced, so a re-run ships the same bytes.
+Published assets are never replaced, so a re-run ships the same bytes. A
+re-run after a release reuses the uploaded binaries and skips `build` and
+`notices`. See [Re-running a release](release/README.md#re-running-a-release).
