@@ -60,9 +60,9 @@
       "line": 8,
       "title": "CHANGELOG lacks the Unreleased heading the other crates keep",
       "comment": "https://github.com/osdlc/osdlc/pull/551#discussion_r4415651568",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "51db2bdc4a55ebf8b2cd9351891ac239bdfcdf83"
     },
     {
       "id": "r1-6",
