@@ -1,12 +1,101 @@
 {
   "schema": 1,
   "pr": 552,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "de7dd8c39d7d54909c01a8d2f08ef310ee1a7605",
+  "base": "b7fdc01cd5701239b25405c25ef3bfd451cfc7e2",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-p7m2xd",
     "at": "2026-10-29T18:40:44.734Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/rust/skillwright/RELEASING.md",
+      "line": 98,
+      "title": "homebrew-tap and npm environments are not configured as the table says",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/rust/skillwright/RELEASING.md",
+      "line": 158,
+      "title": "brew trust comes after the command that needs it",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/rust/skillwright/RELEASING.md",
+      "line": 100,
+      "title": "App permissions listed are incomplete",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/rust/skillwright/RELEASING.md",
+      "line": 31,
+      "title": "Counts of targets and packages are volatile",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/rust/skillwright/RELEASING.md",
+      "line": 57,
+      "title": "binstall is report-only and a re-run skips build and notices; the text omits both",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/rust/skillwright/RELEASING.md",
+      "line": 41,
+      "title": "release-pr also rebuilds and commits the wasm; the wasm failure row contradicts it",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-7",
+      "round": 1,
+      "path": "packages/rust/skillwright/RELEASING.md",
+      "line": 137,
+      "title": "npm first-release steps duplicate release/README.md",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-8",
+      "round": 1,
+      "path": "packages/rust/skillwright/RELEASING.md",
+      "line": 1,
+      "title": "Repo-wide release-plz process documented under the skillwright package",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
