@@ -136,7 +136,8 @@ Developed here, in this repository:
   tool that publishes a vault of markdown skill notes into the formats of
   coding-agent tools; `cargo install skillwright`). Each `skillwright/vX.Y.Z`
   tag also ships prebuilt binaries to the GitHub Release, npm
-  (`@osdlc/skillwright`) and Homebrew (`osdlc/tap`), through `.github/workflows/skillwright-release.yml`; see
+  (`@osdlc/skillwright`) and Homebrew (`osdlc/tap`), through
+  `.github/workflows/skillwright-release.yml`; see
   [`skillwright/release/`](rust/skillwright/release/README.md)
 - `packages/rust/tradecraft-core` (`tradecraft-core` on crates.io, the library
   behind `skillwright`)
