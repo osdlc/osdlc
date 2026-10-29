@@ -1,12 +1,24 @@
 {
   "schema": 1,
   "pr": 553,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "cf083b034e89d308ebbf296d976762cc46a5c9ec",
+  "base": "b7fdc01cd5701239b25405c25ef3bfd451cfc7e2",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-r7m2pw",
     "at": "2026-10-29T20:41:57.358Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/rust/skillwright/release/dist.ts",
+      "line": 121,
+      "title": "RunOptions.stream doc still says only stdout and stderr are inherited",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
