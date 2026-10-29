@@ -3,6 +3,8 @@
 The tooling that turns the `skillwright` crate into prebuilt binaries and ships
 them. [`.github/workflows/skillwright-release.yml`](../../../../.github/workflows/skillwright-release.yml)
 runs it when release-plz pushes a `skillwright/vX.Y.Z` tag.
+The whole release process, from release PR to install checks, is in
+[`RELEASING.md`](../RELEASING.md).
 
 | File | Is |
 |---|---|
