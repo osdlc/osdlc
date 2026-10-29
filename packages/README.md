@@ -140,7 +140,7 @@ Developed here, in this repository:
   `.github/workflows/skillwright-release.yml`; see
   [`skillwright/release/`](rust/skillwright/release/README.md)
 - `packages/rust/tradecraft` (`tradecraft` on crates.io, the CLI's old
-  name. Its next release only points to `skillwright`.)
+  name. It only points to `skillwright`.)
 - `packages/rust/tradecraft-core` (`tradecraft-core` on crates.io, the library
   behind `skillwright`)
 - `packages/rust/tradecraft-typegen`, the generator of the TypeScript
