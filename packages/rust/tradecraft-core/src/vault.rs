@@ -12,11 +12,11 @@
 //!
 //! # What is modeled, and what is merely carried
 //!
-//! Three classes of key, not two. **Ours** — anything in the `tc-` namespace —
+//! Three classes of key, not two. **Ours** — anything in the `sw-` namespace —
 //! is lifted into [`VaultNote::frontmatter`] by [`crate::frontmatter`] and
 //! never reaches [`SkillContent`] *through this function* — it is
 //! configuration about *this vault* and a destination has no business reading
-//! it. `tc-arguments` is the one exception, and it is not this function's:
+//! it. `sw-arguments` is the one exception, and it is not this function's:
 //! `SkillContent::arguments` stays empty here, and `publish` and `export` are
 //! the ones that carry it over, once, after this read — see
 //! [`SkillContent::apply_arguments`].
@@ -45,7 +45,7 @@
 //! `arguments`, `disable-model-invocation`, `license`, `compatibility`,
 //! `metadata`. A snake_case spelling is simply an unknown key and is
 //! carried — normalising it would rewrite bytes the author wrote. The
-//! standard's `license:` is not our `tc-license:`: the first is what a
+//! standard's `license:` is not our `sw-license:`: the first is what a
 //! skill publishes under, the second a container note's package identity,
 //! and they are read by different halves of this function.
 //!
@@ -76,16 +76,16 @@ use crate::vfs::Vfs;
 ///
 /// The two halves are separate types rather than one flat struct because the
 /// separation is the strip. [`SkillProjection`] is everything that may reach a
-/// destination, and it has nowhere to put an `tc-` key —
+/// destination, and it has nowhere to put an `sw-` key —
 /// [`crate::projection::project_skill`] takes only that half, so our fields
 /// cannot travel by accident. [`VaultNote::frontmatter`] is everything that
 /// must not travel.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VaultNote {
-    /// The content and peers, ready to project. Carries no `tc-` data by
+    /// The content and peers, ready to project. Carries no `sw-` data by
     /// construction.
     pub projection: SkillProjection,
-    /// What the `tc-` namespace declared: the kind, the targets, provenance,
+    /// What the `sw-` namespace declared: the kind, the targets, provenance,
     /// and any key inside the prefix this build does not model.
     pub frontmatter: VaultFrontmatter,
 }
@@ -93,7 +93,7 @@ pub struct VaultNote {
 /// Reads the note at `skill_path` and its peer resources.
 ///
 /// `ns` is the vault's frontmatter namespace — [`Namespace::default`] is the
-/// documented `tc`. Whatever is passed here must also be passed to the emit
+/// documented `sw`. Whatever is passed here must also be passed to the emit
 /// side ([`crate::projection::project_skill`]), because these two are the
 /// halves of one strip: a key this read did not claim is a key that publishes.
 /// [`crate::publish::publish_skill`] takes one namespace and hands the same
@@ -113,7 +113,7 @@ pub struct VaultNote {
 ///
 /// # The kind is read, not enforced
 ///
-/// `tc-kind` is parsed and reported through
+/// `sw-kind` is parsed and reported through
 /// [`crate::frontmatter::VaultFrontmatter::declared_kind`]; nothing here
 /// refuses a note whose kind this reader cannot publish. A caller wanting the
 /// kind resolved against a flag or a configured directory mapping passes that
@@ -154,19 +154,19 @@ pub fn read_vault_skill(
         argument_hint: take_string(&mut fields, "argument-hint"),
         // Claude Code's own key, hand-written. Empty and absent both read as
         // `None` — see `SkillContent::argument_names`'s own doc for why that
-        // simplification is fine here where it is not for `tc-targets`: an
+        // simplification is fine here where it is not for `sw-targets`: an
         // author has no reason to write `arguments: []` on purpose the way
-        // they would `tc-targets: []`, so there is no second outcome worth
+        // they would `sw-targets: []`, so there is no second outcome worth
         // keeping distinct from "derive it".
         argument_names: {
             let names = take_string_list(&mut fields, "arguments");
             (!names.is_empty()).then_some(names)
         },
-        // Never `tc-arguments` here — see the module doc's three classes.
+        // Never `sw-arguments` here — see the module doc's three classes.
         // `publish` and `export` call `SkillContent::apply_arguments` after
         // this read, with `ours.arguments`, once the kind is resolved.
         arguments: Vec::new(),
-        // Nor `tc-overrides`, and for the same reason twice over: the block's
+        // Nor `sw-overrides`, and for the same reason twice over: the block's
         // target names have not been folded yet and its keys have not been
         // put to the capability matrix. `SkillContent::apply_overrides` is
         // called after both, by the same two callers.
@@ -174,7 +174,7 @@ pub fn read_vault_skill(
         body: body.to_owned(),
         allowed_tools: take_string_list(&mut fields, "allowed-tools"),
         // The Agent Skills spec's three optional keys. `license` here is the standard's
-        // own, never `tc-license` — that one is a container's package
+        // own, never `sw-license` — that one is a container's package
         // identity and was lifted out with the rest of our namespace above.
         license: take_string(&mut fields, "license"),
         compatibility: take_string(&mut fields, "compatibility"),
@@ -225,7 +225,7 @@ pub fn bundle_root(skill_path: &Path) -> Option<&Path> {
 ///
 /// The note is excluded because it is *inside* what it owns: the renderer
 /// writes it as `SKILL.md`, and carrying it a second time under its vault name
-/// would publish the same content twice, once with the `tc-` frontmatter this
+/// would publish the same content twice, once with the `sw-` frontmatter this
 /// crate exists to strip.
 ///
 /// Unlike [`crate::skill`]'s supporting-file listing — an aid to a view, which
@@ -393,7 +393,7 @@ mod tests {
 
     /// The default namespace — every test but the configured one reads a vault
     /// that declared no stem, exactly as this reader did before it took one.
-    fn tc() -> Namespace {
+    fn sw() -> Namespace {
         Namespace::default()
     }
 
@@ -412,7 +412,7 @@ mod tests {
             "code-review",
             "---\ndescription: reviews code\nallowed-tools:\n  - Read\n  - Grep\n---\nBody prose.\n",
         );
-        let note = read_vault_skill(&vfs, &path, &tc()).unwrap();
+        let note = read_vault_skill(&vfs, &path, &sw()).unwrap();
         let content = &note.projection.content;
 
         // The stem names the skill; the note carries no `name`.
@@ -438,7 +438,7 @@ mod tests {
             "---\nname: reviewer\ndescription: d\n---\nb\n",
         );
         assert_eq!(
-            read_vault_skill(&vfs, &path, &tc())
+            read_vault_skill(&vfs, &path, &sw())
                 .unwrap()
                 .projection
                 .content
@@ -450,7 +450,7 @@ mod tests {
     #[test]
     fn a_name_alone_reads_with_the_filler() {
         let (vfs, path) = vault("nameless", "---\nname: nameless\n---\nBody.\n");
-        let note = read_vault_skill(&vfs, &path, &tc()).unwrap();
+        let note = read_vault_skill(&vfs, &path, &sw()).unwrap();
         assert_eq!(
             note.projection.content.description,
             crate::discover::MISSING_DESCRIPTION
@@ -460,7 +460,7 @@ mod tests {
     #[test]
     fn a_missing_description_names_the_path() {
         let (vfs, path) = vault("nameless", "---\ntags:\n  - x\n---\nBody.\n");
-        let err = read_vault_skill(&vfs, &path, &tc()).unwrap_err();
+        let err = read_vault_skill(&vfs, &path, &sw()).unwrap_err();
         let message = err.to_string();
         assert!(message.contains("/vault/skills/nameless.md"), "{message}");
         assert!(message.contains("description"), "{message}");
@@ -468,7 +468,7 @@ mod tests {
         // A note with no frontmatter at all fails the same way.
         let (vfs, path) = vault("bare", "Just prose.\n");
         assert!(
-            read_vault_skill(&vfs, &path, &tc())
+            read_vault_skill(&vfs, &path, &sw())
                 .unwrap_err()
                 .to_string()
                 .contains("/vault/skills/bare.md")
@@ -481,7 +481,7 @@ mod tests {
             "carrier",
             "---\ndescription: d\nowner: kelly\ntags:\n  - review\n---\nb\n",
         );
-        let annotations = read_vault_skill(&vfs, &path, &tc())
+        let annotations = read_vault_skill(&vfs, &path, &sw())
             .unwrap()
             .projection
             .content
@@ -502,7 +502,7 @@ mod tests {
             "---\ndescription: d\nlicense: MIT\ncompatibility: Requires bash\n\
              metadata:\n  author: kelly\n---\nb\n",
         );
-        let content = read_vault_skill(&vfs, &path, &tc())
+        let content = read_vault_skill(&vfs, &path, &sw())
             .unwrap()
             .projection
             .content;
@@ -524,11 +524,11 @@ mod tests {
             "---\ndescription: d\nlicense: MIT\ncompatibility: Requires bash\n\
              metadata:\n  author: kelly\nowner: kelly\n---\nb\n",
         );
-        let note = read_vault_skill(&vfs, &path, &tc()).unwrap();
+        let note = read_vault_skill(&vfs, &path, &sw()).unwrap();
         // A dialect that omits every Claude Code extension key, so what is
         // left is the Agent Skills spec's six and nothing else.
         let files =
-            crate::projection::project_skill(&note.projection, &["antigravity".to_owned()], &tc())
+            crate::projection::project_skill(&note.projection, &["antigravity".to_owned()], &sw())
                 .unwrap();
         let text = String::from_utf8(files[0].content.clone()).unwrap();
 
@@ -550,7 +550,7 @@ mod tests {
             "nested",
             "---\ndescription: d\nmetadata:\n  outer:\n    inner: v\n---\nb\n",
         );
-        let content = read_vault_skill(&vfs, &path, &tc())
+        let content = read_vault_skill(&vfs, &path, &sw())
             .unwrap()
             .projection
             .content;
@@ -565,26 +565,26 @@ mod tests {
     #[test]
     fn our_namespace_is_typed_and_never_lands_in_annotations() {
         // A bare `targets:` used to ride here as an unknown key. Under the
-        // contract it is `tc-targets`, it is ours, and it is typed —
+        // contract it is `sw-targets`, it is ours, and it is typed —
         // annotations holds genuinely foreign keys only.
         let (vfs, path) = vault(
             "adopted",
             "---\n\
              description: d\n\
              owner: kelly\n\
-             tc-kind: skill\n\
-             tc-targets:\n  - claude-code\n\
-             tc-plugin: tools\n\
-             tc-source: /src/review\n\
-             tc-format: claude\n\
-             tc-source-hash: \"3f9a\"\n\
-             tc-adopted-hash: \"b17c\"\n\
-             tc-adopted-at: 2026-08-11\n\
-             tc-also-at:\n  - /elsewhere/review\n\
-             tc-not-modeled-yet: keep me\n\
+             sw-kind: skill\n\
+             sw-targets:\n  - claude-code\n\
+             sw-plugin: tools\n\
+             sw-source: /src/review\n\
+             sw-format: claude\n\
+             sw-source-hash: \"3f9a\"\n\
+             sw-adopted-hash: \"b17c\"\n\
+             sw-adopted-at: 2026-08-11\n\
+             sw-also-at:\n  - /elsewhere/review\n\
+             sw-not-modeled-yet: keep me\n\
              ---\nb\n",
         );
-        let note = read_vault_skill(&vfs, &path, &tc()).unwrap();
+        let note = read_vault_skill(&vfs, &path, &sw()).unwrap();
 
         assert_eq!(note.frontmatter.kind(), EntityKind::Skill);
         assert_eq!(
@@ -602,7 +602,7 @@ mod tests {
             "an unquoted date stays a string through the YAML/JSON hop"
         );
         assert_eq!(
-            note.frontmatter.unknown_ours["tc-not-modeled-yet"],
+            note.frontmatter.unknown_ours["sw-not-modeled-yet"],
             serde_json::json!("keep me")
         );
 
@@ -610,7 +610,7 @@ mod tests {
         let annotations = note.projection.content.annotations;
         assert_eq!(annotations["owner"], serde_json::json!("kelly"));
         assert!(
-            annotations.keys().all(|k| !k.starts_with("tc")),
+            annotations.keys().all(|k| !k.starts_with("sw")),
             "our namespace leaked into annotations: {annotations:?}"
         );
         assert_eq!(annotations.len(), 1);
@@ -619,7 +619,7 @@ mod tests {
     #[test]
     fn a_configured_vault_types_its_own_prefix_and_carries_the_default_one() {
         // The structural strip under a configured stem: `x-` is lifted off the
-        // note before a `SkillContent` exists, and `tc-kind` — which this
+        // note before a `SkillContent` exists, and `sw-kind` — which this
         // vault never claimed — lands in `annotations` with every other key
         // that is the author's own.
         let (vfs, path) = vault(
@@ -629,7 +629,7 @@ mod tests {
              x-kind: skill\n\
              x-source: /src/review\n\
              x-not-modeled-yet: keep me\n\
-             tc-kind: somebody-elses-key\n\
+             sw-kind: somebody-elses-key\n\
              ---\nb\n",
         );
         let note = read_vault_skill(&vfs, &path, &Namespace::new("x").unwrap()).unwrap();
@@ -646,7 +646,7 @@ mod tests {
 
         let annotations = note.projection.content.annotations;
         assert_eq!(
-            annotations["tc-kind"],
+            annotations["sw-kind"],
             serde_json::json!("somebody-elses-key")
         );
         assert_eq!(annotations.len(), 1, "{annotations:?}");
@@ -658,9 +658,9 @@ mod tests {
         // one, because both surfaces edit one vault.
         let (vfs, path) = vault(
             "nested",
-            "---\ndescription: d\ntc:\n  kind: plugin\n  targets:\n    - claude-code\n  source: /src\n---\nb\n",
+            "---\ndescription: d\nsw:\n  kind: plugin\n  targets:\n    - claude-code\n  source: /src\n---\nb\n",
         );
-        let note = read_vault_skill(&vfs, &path, &tc()).unwrap();
+        let note = read_vault_skill(&vfs, &path, &sw()).unwrap();
 
         assert_eq!(note.frontmatter.declared_kind, Some(EntityKind::Plugin));
         assert_eq!(
@@ -675,23 +675,23 @@ mod tests {
     fn a_note_carrying_both_shapes_is_refused() {
         let (vfs, path) = vault(
             "mixed",
-            "---\ndescription: d\ntc:\n  kind: skill\ntc-targets:\n  - claude-code\n---\nb\n",
+            "---\ndescription: d\nsw:\n  kind: skill\nsw-targets:\n  - claude-code\n---\nb\n",
         );
-        let message = read_vault_skill(&vfs, &path, &tc())
+        let message = read_vault_skill(&vfs, &path, &sw())
             .unwrap_err()
             .to_string();
 
         assert!(message.contains("mixed-frontmatter-shape"), "{message}");
         assert!(message.contains("/vault/skills/mixed.md"), "{message}");
-        assert!(message.contains("`tc-targets`"), "{message}");
+        assert!(message.contains("`sw-targets`"), "{message}");
     }
 
     #[test]
     fn an_unknown_kind_is_refused_before_the_description_check() {
         // Two diagnoses compete on this note, and the right one has to win:
         // "your kind is a typo" rather than "this is not a skill".
-        let (vfs, path) = vault("typo", "---\ntc-kind: skil\n---\nb\n");
-        let message = read_vault_skill(&vfs, &path, &tc())
+        let (vfs, path) = vault("typo", "---\nsw-kind: skil\n---\nb\n");
+        let message = read_vault_skill(&vfs, &path, &sw())
             .unwrap_err()
             .to_string();
 
@@ -709,7 +709,7 @@ mod tests {
             "odd",
             "---\ndescription: d\nallowed-tools: Read\nuser-invocable: yes-please\n---\nb\n",
         );
-        let content = read_vault_skill(&vfs, &path, &tc())
+        let content = read_vault_skill(&vfs, &path, &sw())
             .unwrap()
             .projection
             .content;
@@ -744,7 +744,7 @@ mod tests {
         vfs.write_file(&bundle.join("references/style.md"), b"# Style\n")
             .unwrap();
 
-        let resources = read_vault_skill(&vfs, &path, &tc())
+        let resources = read_vault_skill(&vfs, &path, &sw())
             .unwrap()
             .projection
             .resources;
@@ -766,7 +766,7 @@ mod tests {
     fn a_note_that_owns_no_folder_has_no_resources_rather_than_an_error() {
         let (vfs, path) = vault("lonely", "---\ndescription: d\n---\nb\n");
         assert!(
-            read_vault_skill(&vfs, &path, &tc())
+            read_vault_skill(&vfs, &path, &sw())
                 .unwrap()
                 .projection
                 .resources
@@ -786,7 +786,7 @@ mod tests {
             .unwrap();
 
         assert!(
-            read_vault_skill(&vfs, &path, &tc())
+            read_vault_skill(&vfs, &path, &sw())
                 .unwrap()
                 .projection
                 .resources
@@ -797,7 +797,7 @@ mod tests {
     #[test]
     fn malformed_frontmatter_names_the_path() {
         let (vfs, path) = vault("broken", "---\ndescription: [unclosed\n---\nb\n");
-        let message = read_vault_skill(&vfs, &path, &tc())
+        let message = read_vault_skill(&vfs, &path, &sw())
             .unwrap_err()
             .to_string();
         assert!(message.contains("/vault/skills/broken.md"), "{message}");
@@ -813,7 +813,7 @@ mod tests {
             "---\ndescription: d\n---\nSee ![[house-style]] and [[glossary]].\n",
         );
         assert_eq!(
-            read_vault_skill(&vfs, &path, &tc())
+            read_vault_skill(&vfs, &path, &sw())
                 .unwrap()
                 .projection
                 .content

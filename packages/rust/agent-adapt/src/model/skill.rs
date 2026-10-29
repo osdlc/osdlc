@@ -133,7 +133,7 @@ pub struct Skill {
     #[serde(default)]
     pub resources: Vec<SkillResource>,
     /// What this render's own target overrides, in that harness's own key
-    /// names — `tc-overrides.<target>`, already narrowed to one target by
+    /// names — `sw-overrides.<target>`, already narrowed to one target by
     /// the caller.
     ///
     /// Deliberately **not** keyed by target: which destination this is

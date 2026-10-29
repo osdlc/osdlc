@@ -132,15 +132,15 @@ Developed here, in this repository:
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
-- `packages/rust/tradecraft` (`tradecraft` on crates.io, a command-line tool
-  that publishes a vault of markdown skill notes into the formats of
-  coding-agent tools; `cargo install tradecraft`). Each `tradecraft/vX.Y.Z`
-  tag also ships prebuilt binaries to the GitHub Release, npm
-  (`@osdlc/tradecraft`) and Homebrew (`osdlc/tap`), through
-  `.github/workflows/tradecraft-release.yml`; see
-  [`tradecraft/release/`](rust/tradecraft/release/README.md)
+- `packages/rust/skillwright` (`skillwright`, a command-line tool that
+  publishes a vault of markdown skill notes into the formats of coding-agent
+  tools; `cargo install skillwright`). Its first crates.io release is held
+  back (rule 7). Each `skillwright/vX.Y.Z` tag also ships prebuilt binaries
+  to the GitHub Release, npm (`@osdlc/skillwright`) and Homebrew
+  (`osdlc/tap`), through `.github/workflows/skillwright-release.yml`; see
+  [`skillwright/release/`](rust/skillwright/release/README.md)
 - `packages/rust/tradecraft-core` (`tradecraft-core` on crates.io, the library
-  behind `tradecraft`)
+  behind `skillwright`)
 - `packages/rust/tradecraft-typegen`, the generator of the TypeScript
   declarations for `tradecraft-wasm` (not published to crates.io)
 - `packages/rust/tradecraft-wasm`, the WebAssembly build of `tradecraft-core`
@@ -336,6 +336,8 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    `packages/rust/release-plz.toml`.
    Once what it waits for is out, remove both in a pull request of its own.
    Held now (each crate's `Cargo.toml` names what it waits for):
+   - `skillwright`, until the release run that publishes `tradecraft-core`
+     by trusted publishing is out. Its first publish then uses the token.
    - `markdown-contract`, until the parity fixes from the review of
      [#460](https://github.com/osdlc/osdlc/pull/460) land.
 

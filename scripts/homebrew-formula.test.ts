@@ -22,35 +22,35 @@ const C = 'c'.repeat(64)
 const D = 'd'.repeat(64)
 
 const input: FormulaInput = {
-  name: 'tradecraft',
+  name: 'skillwright',
   version: '0.3.5',
   desc: 'Publish markdown skill notes to coding-agent tools',
-  homepage: 'https://github.com/osdlc/osdlc/tree/main/packages/rust/tradecraft',
+  homepage: 'https://github.com/osdlc/osdlc/tree/main/packages/rust/skillwright',
   license: 'MIT OR Apache-2.0',
-  urlBase: 'https://github.com/osdlc/osdlc/releases/download/tradecraft/v0.3.5',
+  urlBase: 'https://github.com/osdlc/osdlc/releases/download/skillwright/v0.3.5',
   assets: [
-    { os: 'darwin', cpu: 'arm64', file: 'tradecraft-0.3.5-aarch64-apple-darwin', sha256: A },
-    { os: 'darwin', cpu: 'x64', file: 'tradecraft-0.3.5-x86_64-apple-darwin', sha256: B },
-    { os: 'linux', cpu: 'arm64', file: 'tradecraft-0.3.5-aarch64-unknown-linux-musl', sha256: C },
-    { os: 'linux', cpu: 'x64', file: 'tradecraft-0.3.5-x86_64-unknown-linux-musl', sha256: D },
+    { os: 'darwin', cpu: 'arm64', file: 'skillwright-0.3.5-aarch64-apple-darwin', sha256: A },
+    { os: 'darwin', cpu: 'x64', file: 'skillwright-0.3.5-x86_64-apple-darwin', sha256: B },
+    { os: 'linux', cpu: 'arm64', file: 'skillwright-0.3.5-aarch64-unknown-linux-musl', sha256: C },
+    { os: 'linux', cpu: 'x64', file: 'skillwright-0.3.5-x86_64-unknown-linux-musl', sha256: D },
   ],
 }
 
 test('the formula has a block per os and cpu, a license and a version test', () => {
   const rb = renderFormula(input)
-  assert.match(rb, /^class Tradecraft < Formula$/m)
+  assert.match(rb, /^class Skillwright < Formula$/m)
   assert.match(rb, /^ {2}license any_of: \["MIT", "Apache-2.0"\]$/m)
   assert.match(
     rb,
-    / {2}on_macos do\n {4}on_arm do\n {6}url "https:\/\/github.com\/osdlc\/osdlc\/releases\/download\/tradecraft\/v0.3.5\/tradecraft-0.3.5-aarch64-apple-darwin"\n {6}sha256 "a{64}"\n {4}end\n\n {4}on_intel do/,
+    / {2}on_macos do\n {4}on_arm do\n {6}url "https:\/\/github.com\/osdlc\/osdlc\/releases\/download\/skillwright\/v0.3.5\/skillwright-0.3.5-aarch64-apple-darwin"\n {6}sha256 "a{64}"\n {4}end\n\n {4}on_intel do/,
   )
   assert.match(
     rb,
     / {2}on_linux do\n {4}on_arm do\n.*aarch64-unknown-linux-musl"\n {6}sha256 "c{64}"/,
   )
   assert.match(rb, /x86_64-unknown-linux-musl"\n {6}sha256 "d{64}"/)
-  assert.ok(rb.includes('bin.install File.basename(stable.url) => "tradecraft"'))
-  assert.ok(rb.includes('assert_match version.to_s, shell_output("#{bin}/tradecraft --version")'))
+  assert.ok(rb.includes('bin.install File.basename(stable.url) => "skillwright"'))
+  assert.ok(rb.includes('assert_match version.to_s, shell_output("#{bin}/skillwright --version")'))
   assert.ok(rb.endsWith('end\n'))
 })
 
@@ -64,27 +64,27 @@ test('no version line when every URL carries the version', () => {
 test('the livecheck block reads the GitHub releases with the tag prefix', () => {
   const rb = renderFormula({
     ...input,
-    livecheckTagPrefix: 'tradecraft/v',
+    livecheckTagPrefix: 'skillwright/v',
   })
   assert.ok(
     rb.includes(
-      '  livecheck do\n    url :stable\n    regex(%r{^tradecraft/v(\\d+(?:\\.\\d+)+)$}i)\n    strategy :github_releases\n  end',
+      '  livecheck do\n    url :stable\n    regex(%r{^skillwright/v(\\d+(?:\\.\\d+)+)$}i)\n    strategy :github_releases\n  end',
     ),
   )
   assert.ok(!renderFormula(input).includes('livecheck'))
 })
 
 test('URLs that carry a version', () => {
-  const base = 'https://github.com/osdlc/osdlc/releases/download/tradecraft/v0.3.5'
-  assert.ok(urlCarriesVersion(`${base}/tradecraft-0.3.5-aarch64-apple-darwin`, '0.3.5'))
-  assert.ok(urlCarriesVersion('https://x/archive/refs/tags/tradecraft/v0.3.5.tar.gz', '0.3.5'))
+  const base = 'https://github.com/osdlc/osdlc/releases/download/skillwright/v0.3.5'
+  assert.ok(urlCarriesVersion(`${base}/skillwright-0.3.5-aarch64-apple-darwin`, '0.3.5'))
+  assert.ok(urlCarriesVersion('https://x/archive/refs/tags/skillwright/v0.3.5.tar.gz', '0.3.5'))
   assert.ok(!urlCarriesVersion('https://x/dl/tool-aarch64', '0.3.5'))
   assert.ok(!urlCarriesVersion('https://x/dl/v10.3.55/tool', '0.3.5'))
 })
 
 test('a formula version comes from its version line or its first url', () => {
-  const source = `class Tradecraft < Formula
-  url "https://github.com/osdlc/osdlc/archive/refs/tags/tradecraft/v0.3.5.tar.gz"
+  const source = `class Skillwright < Formula
+  url "https://github.com/osdlc/osdlc/archive/refs/tags/skillwright/v0.3.5.tar.gz"
 end
 `
   assert.equal(formulaVersion(source), '0.3.5')

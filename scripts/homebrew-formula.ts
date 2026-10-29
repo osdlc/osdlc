@@ -103,7 +103,7 @@ export function replaceDecision(
   return { replace: true, reason: installed === null ? 'no formula yet' : `replaces ${installed}` }
 }
 
-/** `tradecraft` to `Tradecraft`, `repo-cleaner` to `RepoCleaner`: Homebrew's class name. */
+/** `skillwright` to `Skillwright`, `repo-cleaner` to `RepoCleaner`: Homebrew's class name. */
 export function className(name: string): string {
   if (!/^[a-z0-9][a-z0-9-]*$/.test(name))
     throw new Error(`formula name "${name}" must be lowercase letters, digits and dashes`)

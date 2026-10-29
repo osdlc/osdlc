@@ -194,7 +194,7 @@ jobs:
       - name: Test
         env:
           WINDOWS_UNTESTED: >-
-            --exclude=tradecraft-core --exclude=tradecraft
+            --exclude=tradecraft-core --exclude=skillwright
         run: |
           set -euo pipefail
           if [ "$RUNNER_OS" = Windows ]; then

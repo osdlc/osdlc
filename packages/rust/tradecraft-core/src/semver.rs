@@ -1,6 +1,6 @@
 //! Pure semver-bump logic.
 //!
-//! `tc-version` is a free string — nothing the core reads enforces semver on
+//! `sw-version` is a free string — nothing the core reads enforces semver on
 //! it — so a bump is offered only for a version this parses as plain
 //! `MAJOR.MINOR.PATCH`. A version that does not parse bumps to nothing:
 //! guessing at a shape it does not recognise would write a value the author

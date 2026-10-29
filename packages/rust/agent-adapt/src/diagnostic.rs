@@ -4,7 +4,7 @@
 //! A [`Diagnostic`] is one shape with a [`DiagnosticScope`] saying which part
 //! of the pipeline it is about: a source note, one runtime's mapping of one
 //! canonical concept, or one file at a destination. Read-time problems
-//! (skipped notes, unknown `tc-` keys, dangling wikilinks, a non-semver
+//! (skipped notes, unknown `sw-` keys, dangling wikilinks, a non-semver
 //! version), render-time problems (a tool with no counterpart on a runtime,
 //! a redundant override) and publish-time problems all report through this
 //! one type rather than three separate ones.
@@ -57,7 +57,7 @@ impl std::fmt::Display for Severity {
 pub enum DiagnosticCode {
     /// A canonical tool name has no counterpart on this runtime.
     ToolUnmapped,
-    /// An `tc-overrides` key repeats what the projection already writes.
+    /// An `sw-overrides` key repeats what the projection already writes.
     RedundantOverride,
 }
 
