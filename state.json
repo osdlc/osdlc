@@ -71,9 +71,9 @@
       "line": 3,
       "title": "Publish-on-merge hold rests on a PR-body sentence, not on the repo's hold mechanism",
       "comment": "https://github.com/osdlc/osdlc/pull/551#pullrequestreview-5702093248",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "51db2bdc4a55ebf8b2cd9351891ac239bdfcdf83"
     },
     {
       "id": "r2-1",
