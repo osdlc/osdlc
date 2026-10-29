@@ -1,12 +1,24 @@
 {
   "schema": 1,
   "pr": 555,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "ffe5c6d7c35e16642c858f7cf8d6eedaf653e737",
+  "base": "b582e6ad7a9fa38bf0876cfb165e13dc9b0db5c5",
+  "round": 1,
   "claim": {
     "owner": "KellyMBP.local:unknown-r5q8tw",
     "at": "2026-10-29T23:48:14.449Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "@osdlc/tradecraft-wasm is not held",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
