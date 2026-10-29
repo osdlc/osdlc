@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.40.1](https://github.com/osdlc/osdlc/compare/tradecraft-core/v0.40.0...tradecraft-core/v0.40.1) - 2026-10-29
+
+### Other
+
+- updated the following local packages: agent-adapt, markdown-link
+
 ## [0.40.0] - 2026-10-28
 
 ### Changed

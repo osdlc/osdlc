@@ -1,6 +1,6 @@
 [package]
 name = "tradecraft-core"
-version = "0.40.0"
+version = "0.40.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "The Tradecraft core: model a vault of markdown skill notes, scan it, and publish or build each note into the on-disk formats of coding-agent tools, through a filesystem seam that also runs under WebAssembly."
