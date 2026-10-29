@@ -1,12 +1,79 @@
 {
   "schema": 1,
   "pr": 551,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "8c29048d7b6b24f065fadccbd2b6823711c37b2e",
+  "base": "b7fdc01cd5701239b25405c25ef3bfd451cfc7e2",
+  "round": 1,
   "claim": {
     "owner": "KellyMBP.local:claude-q7m2xd",
     "at": "2026-10-29T17:23:19.826Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/rust/tradecraft/Cargo.toml",
+      "line": 3,
+      "title": "0.3.8 removes the public library API in a semver-compatible patch",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/rust/tradecraft/README.md",
+      "line": 13,
+      "title": "README claim about cargo add does not match what cargo does",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/rust/tradecraft/examples/moved.rs",
+      "line": 4,
+      "title": "Example duplicates the message with different text and is not published",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/rust/tradecraft/src/main.rs",
+      "line": 8,
+      "title": "Exit status and message have no test",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/rust/tradecraft/CHANGELOG.md",
+      "line": 8,
+      "title": "CHANGELOG lacks the Unreleased heading the other crates keep",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "Publish-on-merge hold rests on a PR-body sentence, not on the repo's hold mechanism",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
