@@ -36,7 +36,7 @@ fn vault(hooks: &str) -> MemVfs {
     write(
         &vfs,
         "/vault/plugins/core/skills/review.md",
-        "---\nname: review\ndescription: Use review.\ntc-plugin: core\n---\n\n# review\n",
+        "---\nname: review\ndescription: Use review.\nsw-plugin: core\n---\n\n# review\n",
     );
     write(&vfs, "/project/plugin/hooks.json", hooks);
     vfs

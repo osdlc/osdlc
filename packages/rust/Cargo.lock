@@ -1110,6 +1110,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
+name = "skillwright"
+version = "0.3.7"
+dependencies = [
+ "chrono",
+ "clap",
+ "config-layers",
+ "etag-write",
+ "markdown-relink",
+ "notify",
+ "path-guard",
+ "serde",
+ "serde_json",
+ "sha2",
+ "skillwright",
+ "tempfile",
+ "thiserror",
+ "tiered-dirs",
+ "tradecraft-core",
+ "typed-git",
+ "yaml-splice",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1278,31 +1301,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "tradecraft"
-version = "0.3.7"
-dependencies = [
- "chrono",
- "clap",
- "config-layers",
- "etag-write",
- "markdown-relink",
- "notify",
- "path-guard",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror",
- "tiered-dirs",
- "tradecraft",
- "tradecraft-core",
- "typed-git",
- "yaml-splice",
-]
-
-[[package]]
 name = "tradecraft-core"
-version = "0.39.2"
+version = "0.40.0"
 dependencies = [
  "agent-adapt",
  "frontmatter-lossless",
