@@ -51,3 +51,10 @@ release = false
 name = "markdown-contract"
 publish = false
 release = false
+
+# Held back until skillwright is on crates.io, because the README and the
+# notice link there; see the note in its Cargo.toml.
+[[package]]
+name = "tradecraft"
+publish = false
+release = false

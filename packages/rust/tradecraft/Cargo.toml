@@ -1,6 +1,10 @@
 [package]
 name = "tradecraft"
-version = "0.3.8"
+version = "0.4.0"
+# Held back from crates.io until skillwright is on crates.io, because the
+# README and the notice link there. Then remove this line and the entry in
+# packages/rust/release-plz.toml in a pull request of their own.
+publish = false
 edition.workspace = true
 rust-version.workspace = true
 description = "Renamed to skillwright. This release only points there: install `skillwright` instead."
@@ -9,7 +13,7 @@ repository.workspace = true
 readme = "README.md"
 keywords = ["skillwright"]
 categories = ["command-line-utilities"]
-include = ["src/**/*.rs", "README.md", "CHANGELOG.md", "LICENSE-MIT", "LICENSE-APACHE"]
+include = ["src/**/*.rs", "examples/**/*.rs", "README.md", "CHANGELOG.md", "LICENSE-MIT", "LICENSE-APACHE"]
 
 [lints]
 workspace = true

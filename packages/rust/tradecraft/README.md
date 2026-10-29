@@ -10,14 +10,16 @@ Install skillwright instead:
 cargo install skillwright
 ```
 
-`cargo install tradecraft` or `cargo add tradecraft` now gets only this
-pointer.
+`cargo install tradecraft` installs a binary that prints this pointer and
+exits with status 1. `cargo add tradecraft` adds a library with only
+`tradecraft::NOTICE`, the text of the pointer. `cargo binstall tradecraft` now
+builds from source, because there is no prebuilt binary.
 
 skillwright 0.3.7 is the same tool under a new name. Its README lists every
 renamed file, key and variable, and the errors that point you to each one.
 
-This crate's 0.3.8 release only prints that message. Versions up to 0.3.7 are
-the CLI under its old name. The name may be reused for something else later.
+Versions up to 0.3.7 are the CLI and its library under the old name. Version
+0.4.0 keeps only the notice. The name may be reused for something else later.
 
 ## License
 
