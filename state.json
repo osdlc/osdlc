@@ -1,12 +1,112 @@
 {
   "schema": 1,
   "pr": 546,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "60bbbf33b4fcc391556f790aa3e9e438368a0b21",
+  "base": "7f3a3e0f89b4d8d88293d6bdd66ee339af9ca294",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-r7m2qx",
     "at": "2026-10-29T02:59:10.320Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/rust/tradecraft-core/src/export.rs",
+      "line": 5648,
+      "title": "Vacuous assertion: age_markers(&vfs, \"skillwright\") always returns 0",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/rust/skillwright/src/config.rs",
+      "line": 541,
+      "title": "max_by_key tie picks agent-pants.yaml over tradecraft.yaml in one directory",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/rust/skillwright/CHANGELOG.md",
+      "line": 12,
+      "title": "Rename written into the already-released 0.3.7 section; skillwright 0.3.7 is not tradecraft 0.3.7's code",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/rust/tradecraft-core/CHANGELOG.md",
+      "line": 14,
+      "title": "No migration note for hosts on Namespace::default(); downstream consumer not listed",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/rust/tradecraft-core/src/frontmatter.rs",
+      "line": 614,
+      "title": "old-key message omits the namespace: tc alternative",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/rust/tradecraft-core/src/export.rs",
+      "line": 737,
+      "title": "A leftover .tradecraft-stage is no longer cleaned up",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-7",
+      "round": 1,
+      "path": "packages/rust/tradecraft-core/src/export.rs",
+      "line": 2488,
+      "title": "Byte-window marker search now written three times",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-8",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "Public TradecraftConfig type left in the renamed skillwright crate",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-9",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "Old crates.io/npm/Homebrew names get no deprecation pointer",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
