@@ -124,31 +124,32 @@ async function outcome(call: () => unknown): Promise<Outcome> {
 }
 
 function runPure(section: string, input: Record<string, unknown>): unknown {
-  const i = input as Record<string, never>
+  // Each input is cast to what the call takes; `checkInput` checked its keys.
+  const i = (key: string): never => input[key] as never
   const opts = input['opts'] as path.Options | undefined
   switch (section) {
     case 'parse':
-      return path.parse(i['path'], i['opts'])
+      return path.parse(i('path'), i('opts'))
     case 'segments_intersects':
-      return segments.intersects(i['a'], i['b'], opts)
+      return segments.intersects(i('a'), i('b'), opts)
     case 'segments_matches':
-      return segments.matches(i['path'], i['pattern'], opts)
+      return segments.matches(i('path'), i('pattern'), opts)
     case 'segments_witness':
-      return segments.witness(i['a'], i['b'], opts)
+      return segments.witness(i('a'), i('b'), opts)
     case 'intersects':
-      return path.intersects(i['a'], i['b'], opts)
+      return path.intersects(i('a'), i('b'), opts)
     case 'matches':
-      return path.matches(i['path'], i['patterns'], opts)
+      return path.matches(i('path'), i('patterns'), opts)
     case 'which_match':
-      return path.whichMatch(i['path'], i['patterns'], opts)
+      return path.whichMatch(i('path'), i('patterns'), opts)
     case 'overlapping':
-      return path.overlapping(i['query'], i['candidates'], opts)
+      return path.overlapping(i('query'), i('candidates'), opts)
     case 'witness':
-      return path.witness(i['a'], i['b'], opts)
+      return path.witness(i('a'), i('b'), opts)
     case 'registry_applicable_to':
-      return path.index(i['entries'], opts).applicableTo(i['scope'])
+      return path.index(i('entries'), opts).applicableTo(i('scope'))
     case 'registry_matching':
-      return path.index(i['entries'], opts).matching(i['path'])
+      return path.index(i('entries'), opts).matching(i('path'))
     default:
       throw new Error(`not a pure section: ${section}`)
   }
