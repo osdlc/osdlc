@@ -10,6 +10,7 @@ import {
   HOST,
   INPUT_KEYS,
   WINDOWS,
+  checkInput,
   inScratch,
   landsIn,
   readSuite,
@@ -23,11 +24,20 @@ import type { Case, Tree } from './conformance.ts'
  * runner, which also writes the suite's expected values. The tests here add
  * what the suite's values cannot say on their own: the Windows check of the
  * on-disk cases that pin the POSIX `..` rule, and the on-disk sections again
- * through an in-memory resolver.
+ * through an in-memory resolver. The suite's sections must be exactly the
+ * ones this package runs, and every case's shape and input are checked on
+ * every host, before `platforms` and `skip` filter the cases, as the Rust
+ * runner does.
  */
 
 const suite = readSuite()
 const sections = suite.sections
+
+/**
+ * A section's cases, or none: a missing section then fails the section-set
+ * test below, not the collection of this file.
+ */
+const casesOf = (name: string): Case[] => sections[name]?.cases ?? []
 
 /** Whether a case runs on this host. */
 function runsHere(c: Case): boolean {
@@ -40,17 +50,25 @@ describe('conformance suite', () => {
     expect([suite.family, suite.reference]).toEqual(['path-guard', 'ts'])
   })
 
-  test('names no section this implementation does not run', () => {
-    expect(Object.keys(sections).filter((s) => !(s in INPUT_KEYS))).toEqual([])
+  test('has exactly the sections this implementation runs', () => {
+    // Checked before any case runs: a section missing, or one whose cases all
+    // skip on this host, would otherwise pass.
+    expect(Object.keys(sections).sort()).toEqual(Object.keys(INPUT_KEYS).sort())
   })
 
-  test('sets no key on a case that this implementation does not read', () => {
-    for (const section of Object.values(sections)) {
+  // On every host, before `platforms` and `skip` filter the cases.
+  test('every case has a shape this implementation knows', () => {
+    for (const [name, section] of Object.entries(sections)) {
       for (const c of section.cases) {
         expect(
           Object.keys(c).filter((k) => !CASE_KEYS.includes(k)),
           c.name,
         ).toEqual([])
+        const outcomes = ['expect', 'error'].filter((k) => k in c)
+        expect(outcomes, `${c.name}: exactly one of expect and error`).toHaveLength(1)
+        // An error holds its kind only: the implementations' messages differ by design.
+        expect(Object.keys(c.error ?? { kind: '' }), c.name).toEqual(['kind'])
+        checkInput(name, c.input)
       }
     }
   })
@@ -81,7 +99,7 @@ describe('conformance suite', () => {
 // first, so there the guard must agree with where the filesystem puts the path.
 describe.runIf(WINDOWS)('on-disk cases for unix only, on Windows', () => {
   const unixOnly = (section: string) =>
-    sections[section]!.cases.filter((c) => c.platforms?.includes('windows') === false)
+    casesOf(section).filter((c) => c.platforms?.includes('windows') === false)
 
   describe('resolve_on_disk', () => {
     for (const c of unixOnly('resolve_on_disk')) {
@@ -192,7 +210,7 @@ describe.skipIf(WINDOWS)('the on-disk sections over an in-memory filesystem', ()
   const strip = (scratch: string, path: string) => path.slice(scratch.length + 1)
 
   describe('resolve_on_disk', () => {
-    for (const c of sections['resolve_on_disk']!.cases) {
+    for (const c of casesOf('resolve_on_disk')) {
       test(c.name, () => {
         const input = c.input as unknown as Tree & { root: string; path: string }
         const { resolver, scratch } = memory(input)
@@ -206,7 +224,7 @@ describe.skipIf(WINDOWS)('the on-disk sections over an in-memory filesystem', ()
   })
 
   describe('contains_on_disk', () => {
-    for (const c of sections['contains_on_disk']!.cases) {
+    for (const c of casesOf('contains_on_disk')) {
       test(c.name, () => {
         const input = c.input as unknown as Tree & { outer: string; inner: string }
         const { resolver, scratch } = memory(input)
@@ -221,7 +239,7 @@ describe.skipIf(WINDOWS)('the on-disk sections over an in-memory filesystem', ()
   })
 
   describe('real_path', () => {
-    for (const c of sections['real_path']!.cases) {
+    for (const c of casesOf('real_path')) {
       test(c.name, () => {
         const input = c.input as unknown as Tree & { path: string }
         const { resolver, scratch } = memory(input)

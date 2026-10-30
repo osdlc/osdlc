@@ -5,8 +5,10 @@
 //! the family's reference: its generator writes every `expect` and `error`. A
 //! case added on either side goes in the suite, never in one package's own
 //! tests. Every section and every case runs here, unless the case names
-//! another platform, and a section, case key or input key this test does not
-//! know fails it.
+//! another platform. The suite's sections must be exactly [`SECTIONS`], and a
+//! case key or input key this test does not know fails it, on every host,
+//! whether or not the case runs there. An `error` holds its kind only: the
+//! two implementations' messages differ by design.
 //!
 //! The `resolve`, `resolve_windows_names` and `contains` cases run under a
 //! resolver for which no path exists, so they pin the lexical fold and the
@@ -80,6 +82,7 @@ struct Case {
     skip: BTreeMap<String, String>,
 }
 
+/// Rejects a `message`: the suite compares error kinds only.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ErrorKind {
@@ -366,6 +369,50 @@ fn no_warnings(got: Outcome, warnings: &[Value]) -> Result<Outcome, String> {
     }
 }
 
+/// The sections this crate runs, each an arm of [`run`] and of [`check_input`].
+const SECTIONS: [&str; 11] = [
+    "validate_relative",
+    "windows_names",
+    "resolve",
+    "resolve_windows_names",
+    "contains",
+    "absolute",
+    "is_under",
+    "to_relative",
+    "resolve_on_disk",
+    "contains_on_disk",
+    "real_path",
+];
+
+/// Reads the case's `input` as `section` does, so an unknown input key fails
+/// on every host, not only where the case runs.
+fn check_input(section: &str, case: &Case) {
+    match section {
+        "validate_relative" | "windows_names" | "resolve_windows_names" => {
+            case.input::<PathInput>();
+        }
+        "resolve" | "is_under" | "to_relative" => {
+            case.input::<RootInput>();
+        }
+        "contains" => {
+            case.input::<ContainsInput>();
+        }
+        "absolute" => {
+            case.input::<AbsoluteInput>();
+        }
+        "resolve_on_disk" => {
+            case.input::<OnDiskInput>();
+        }
+        "contains_on_disk" => {
+            case.input::<ContainsOnDiskInput>();
+        }
+        "real_path" => {
+            case.input::<RealPathInput>();
+        }
+        other => panic!("the suite has a section this crate does not run: {other}"),
+    }
+}
+
 /// The outcome this crate gives for one case of a section, on this host. An
 /// `Err` is a failure the suite's values cannot express.
 fn run(section: &str, case: &Case) -> Result<Outcome, String> {
@@ -512,6 +559,7 @@ fn check_against_the_filesystem(section: &str, case: &Case) -> Result<(), String
             let (got, landed) = contains_and_create(&case.input());
             (got.map_err(|e| kind(&e))?, landed)
         }
+        // A `unix`-only case of any other section has nothing to check here.
         _ => return Ok(()),
     };
     if accepted == landed {
@@ -529,6 +577,23 @@ fn every_case_in_the_suite_conforms() {
         serde_json::from_str(SUITE_JSON).expect("the suite is valid JSON in the suite format");
     assert_eq!(suite.family, "path-guard");
     assert_eq!(suite.reference, "ts");
+    // Checked before any case runs: a section missing, or one whose cases all
+    // skip on this host, would otherwise pass.
+    let sections: Vec<&str> = suite.sections.keys().map(String::as_str).collect();
+    let mut known = SECTIONS.to_vec();
+    known.sort_unstable();
+    assert_eq!(
+        sections, known,
+        "the suite's sections are not the ones this crate runs"
+    );
+    // Every case's shape and input, on every host, before any is skipped.
+    for (section, body) in &suite.sections {
+        for case in &body.cases {
+            check_input(section, case);
+            // Panics unless the case sets exactly one of expect and error.
+            let _ = case.want();
+        }
+    }
     let mut failures = Vec::new();
     let mut ran = 0;
     for (section, body) in &suite.sections {

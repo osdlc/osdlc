@@ -31,7 +31,8 @@ export interface Case {
   name: string
   input: Record<string, unknown>
   expect?: Record<string, unknown>
-  error?: { kind: string; message?: string }
+  /** The kind only: the two implementations' messages differ by design, so a case sets none. */
+  error?: { kind: string }
   platforms?: string[]
   skip?: Record<string, string>
 }
@@ -68,6 +69,36 @@ export const INPUT_KEYS: Record<string, string[]> = {
   resolve_on_disk: [...TREE, 'root', 'path'],
   contains_on_disk: [...TREE, 'outer', 'inner'],
   real_path: [...TREE, 'path'],
+}
+
+/**
+ * The sections whose `windows`-only cases the generator can write: they are
+ * pure text or run under {@link nothing}, so a run loaded as on Windows answers
+ * them as Windows does. The on-disk sections touch this host's filesystem,
+ * which a simulated platform does not change.
+ */
+export const WRITABLE_AS_WINDOWS = [
+  'validate_relative',
+  'windows_names',
+  'resolve',
+  'resolve_windows_names',
+  'contains',
+  'absolute',
+  'is_under',
+  'to_relative',
+]
+
+/**
+ * Throws unless `section` is one this implementation runs and `raw` holds only
+ * the keys that section's `input` may hold.
+ */
+export function checkInput(section: string, raw: Record<string, unknown>): void {
+  const allowed = INPUT_KEYS[section]
+  if (allowed === undefined) {
+    throw new Error(`the suite has a section this implementation does not know: ${section}`)
+  }
+  const unknown = Object.keys(raw).filter((k) => !allowed.includes(k))
+  if (unknown.length > 0) throw new Error(`${section}: unknown input keys ${unknown.join(', ')}`)
 }
 
 export const WINDOWS = process.platform === 'win32'
@@ -161,12 +192,7 @@ interface Input extends Tree {
 
 /** The outcome this package gives for one case of a section, on this host. */
 export function run(section: string, raw: Record<string, unknown>): Outcome {
-  const allowed = INPUT_KEYS[section]
-  if (allowed === undefined) {
-    throw new Error(`the suite has a section this implementation does not know: ${section}`)
-  }
-  const unknown = Object.keys(raw).filter((k) => !allowed.includes(k))
-  if (unknown.length > 0) throw new Error(`${section}: unknown input keys ${unknown.join(', ')}`)
+  checkInput(section, raw)
   const input = raw as unknown as Input
   switch (section) {
     case 'validate_relative':

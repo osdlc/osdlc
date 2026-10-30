@@ -17,7 +17,7 @@ import { join } from 'node:path'
 const WINDOWS_RUN = process.argv.includes('--windows')
 if (WINDOWS_RUN) Object.defineProperty(process, 'platform', { value: 'win32' })
 
-const { HOST, SUITE_PATH, readSuite, run } = await import('./conformance.ts')
+const { HOST, SUITE_PATH, WRITABLE_AS_WINDOWS, readSuite, run } = await import('./conformance.ts')
 type Case = import('./conformance.ts').Case
 type Outcome = import('./conformance.ts').Outcome
 
@@ -25,6 +25,19 @@ type Outcome = import('./conformance.ts').Outcome
 const writtenOn = (c: Case) => (c.platforms?.includes('unix') === false ? 'windows' : 'unix')
 
 const suite = readSuite()
+
+for (const [name, section] of Object.entries(suite.sections)) {
+  for (const c of section.cases) {
+    // The suite compares error kinds only: the implementations' messages differ by design.
+    if (c.error !== undefined && 'message' in c.error) {
+      throw new Error(`${name}: ${c.name}: error.message is not compared; remove it`)
+    }
+    // A simulated win32 run cannot answer for an on-disk section: the disk is this host's.
+    if (writtenOn(c) === 'windows' && !WRITABLE_AS_WINDOWS.includes(name)) {
+      throw new Error(`${name}: ${c.name}: a case for windows only cannot be written here`)
+    }
+  }
+}
 
 if (WINDOWS_RUN) {
   // Answers each `windows`-only case, in suite order, as JSON on stdout.
