@@ -137,7 +137,14 @@ describe('argv, the same on both clients', () => {
     await asyncGit.push('origin', 'gone', { delete: true, forceWithLease: true })
     expect(s.calls).toEqual([
       ['push', '--porcelain', '--delete', 'origin', 'refs/heads/gone'],
-      ['push', '--porcelain', '--delete', '--force-with-lease=refs/heads/gone:abc', 'origin', 'gone'],
+      [
+        'push',
+        '--porcelain',
+        '--delete',
+        '--force-with-lease=refs/heads/gone:abc',
+        'origin',
+        'gone',
+      ],
       ['push', '--porcelain', '--delete', '--force-with-lease', 'origin', 'gone'],
     ])
     expect(a.calls).toEqual(s.calls)
