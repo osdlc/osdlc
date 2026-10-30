@@ -11,7 +11,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Depend on slug-collate 0.2. slug-collate 0.1.2 is to be yanked, and this
+- Depend on slug-collate 0.2. slug-collate 0.1.2 was yanked, and this
   crate's earlier releases require it. Only `compare_paths` is used, and its
   order is unchanged, so behaviour is the same.
 

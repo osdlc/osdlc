@@ -111,12 +111,11 @@ platform-specific code.
 0.2 changes the slug of most titles that carry combining marks outside Latin,
 Greek and Cyrillic. (0.1.2, now yanked, already had this change by mistake.
 Coming from 0.1.2, nothing changes.) In 0.1.1 a mark such as the kana voicing
-mark, the Devanagari virama, a Thai tone mark or Hebrew cantillation became a separator,
-so `ガイド` slugged to `カ-イト` and `नमस्ते` to `नमस-ते`; Hangul came out as
-decomposed jamo; and Hebrew niqqud and Arabic harakat were kept, where 0.2
-drops them. Latin and ASCII titles slug as
-before, and `compare`, `compare_paths` and `path_sort_key` order exactly as
-before.
+mark, the Devanagari virama, a Thai tone mark or Hebrew cantillation became a
+separator, so `ガイド` slugged to `カ-イト` and `नमस्ते` to `नमस-ते`. Hangul came
+out as decomposed jamo. Hebrew niqqud and Arabic harakat were kept, where 0.2
+drops them. Latin and ASCII titles slug as before, and `compare`,
+`compare_paths` and `path_sort_key` order exactly as before.
 
 If you store slugs (as filenames, ids or URLs), keep the stored ones as they
 are rather than regenerating them from titles, or a non-Latin title's file,

@@ -133,30 +133,34 @@ for (const id of metadata.workspace_members) {
     return result
   }
   let check = semverChecks(['--baseline-version', show(baseline)])
+  let source = 'crates.io'
   if (check.status !== 0 && check.status !== 100) {
     const tag = `refs/tags/${pkg.name}/v${show(baseline)}`
     const fetched = spawnSync('git', ['fetch', '--no-tags', '--depth=1', 'origin', `+${tag}:${tag}`], {
       stdio: 'inherit',
     })
-    if (fetched.status === 0) check = semverChecks(['--baseline-rev', tag])
+    if (fetched.status === 0) {
+      check = semverChecks(['--baseline-rev', tag])
+      source = `git tag ${pkg.name}/v${show(baseline)}`
+    }
   }
   if (check.status === 0) {
-    row({ baseline: show(baseline), result: 'pass: no breaking change found' })
+    row({ baseline: `${show(baseline)} (${source})`, result: 'pass: no breaking change found' })
   } else if (check.status === 100) {
     // 100 means a semver violation. Other codes mean the check could not run.
-    row({ baseline: show(baseline), result: `fail: breaking, set ${show(required)}` })
+    row({ baseline: `${show(baseline)} (${source})`, result: `fail: breaking, set ${show(required)}` })
     problems.push(
-      `${pkg.name} has a breaking change against ${show(baseline)} on crates.io. ` +
+      `${pkg.name} has a breaking change against ${show(baseline)} (${source}). ` +
         `Set \`version = "${show(required)}"\` in its Cargo.toml in this pull request.`,
     )
   } else {
-    row({ baseline: show(baseline), result: `error: cargo semver-checks exited ${check.status}` })
+    row({ baseline: `${show(baseline)} (${source})`, result: `error: cargo semver-checks exited ${check.status}` })
     problems.push(`cargo semver-checks could not check ${pkg.name} (exit ${check.status}).`)
   }
 }
 
 const table = [
-  '| crate | version | crates.io baseline | result |',
+  '| crate | version | baseline | result |',
   '|---|---|---|---|',
   ...rows.map((r) => `| ${r.name} | ${r.version} | ${r.baseline} | ${r.result} |`),
 ].join('\n')
