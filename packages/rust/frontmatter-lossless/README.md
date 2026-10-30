@@ -134,8 +134,12 @@ This crate is the layer under such an editor.
 ## Twin
 
 `@osdlc/frontmatter-lossless` is the TypeScript version, with the same
-algorithm and the same conformance corpus. Its offsets are UTF-16 code units; this crate's
-are UTF-8 bytes.
+algorithm. Both are checked against one conformance suite,
+`packages/conformance/frontmatter-lossless/suite.json` in the repository, and
+this crate is its reference: `cargo run -p frontmatter-lossless --example
+conformance-write` writes its expected values. The suite states offsets in
+UTF-8 bytes, as this crate gives them. The TypeScript package's offsets are
+UTF-16 code units, and its tests convert them before comparing.
 
 ## Stability
 

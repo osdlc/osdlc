@@ -7,6 +7,14 @@
       { "language": "rust", "dir": "packages/rust/config-layers", "name": "config-layers" }
     ]
   },
+  "frontmatter-lossless": {
+    "reference": "rust",
+    "generator": "cargo run -p frontmatter-lossless --example conformance-write",
+    "implementations": [
+      { "language": "rust", "dir": "packages/rust/frontmatter-lossless", "name": "frontmatter-lossless" },
+      { "language": "ts", "dir": "packages/ts/frontmatter-lossless", "name": "@osdlc/frontmatter-lossless" }
+    ]
+  },
   "tiered-dirs": {
     "reference": "ts",
     "generator": "pnpm --filter @osdlc/tiered-dirs conformance:write",
