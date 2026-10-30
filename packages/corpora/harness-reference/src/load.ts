@@ -53,7 +53,7 @@ interface Doc {
 
 /** Split a markdown file into its YAML frontmatter and body. Throws on a missing or bad block. */
 export function parseConcept(text: string): { frontmatter: unknown; body: string } {
-  const match = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(text)
+  const match = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/.exec(text)
   if (!match) throw new Error('no frontmatter block')
   return { frontmatter: parseYaml(match[1] ?? ''), body: match[2] ?? '' }
 }
@@ -61,7 +61,7 @@ export function parseConcept(text: string): { frontmatter: unknown; body: string
 /** Compare two semver strings by precedence (semver 2.0.0 §11): -1, 0 or 1. */
 export function semverOrder(a: string, b: string): number {
   const split = (v: string): [number[], string[]] => {
-    const [core = '', pre] = v.split('+', 1)[0]!.split(/-(.*)/s, 2)
+    const [core = '', pre] = v.split(/-(.*)/s, 2)
     return [core.split('.').map(Number), pre === undefined ? [] : pre.split('.')]
   }
   const [ca, pa] = split(a)

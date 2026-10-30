@@ -41,7 +41,8 @@ export function checkSchemas(schemaDir: string, write: boolean): string[] {
   return errors
 }
 
-if (import.meta.main) {
+// `import.meta.main` exists only from Node 24.2, so compare the entry path instead.
+if (import.meta.filename === process.argv[1]) {
   const { values } = parseArgs({ options: { 'write-schema': { type: 'boolean' } } })
   const errors = checkSchemas(join(ROOT, 'schema'), values['write-schema'] === true)
   const { dataset, errors: dataErrors } = load(BUNDLE)

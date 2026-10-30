@@ -113,8 +113,9 @@ MCP servers and hooks are all config rows, not CLI flags.
   3. `$DSH_HOME/cordis.patch.yml`;
   4. `--patch` files.
 
-  A later layer replaces a row's whole `config` rather than merging into it. There is no
-  per-project config file (`apps/cli/README.md`).
+  A later layer replaces a row's whole `config` rather than merging into it
+  (`apps/cli/reference/README.md`). The layer order is in `apps/cli/README.md`. Neither file states
+  whether a per-project config file exists; no such layer is listed.
 - **Verified.** The API key comes from `DEEPSEEK_API_KEY`, and `DEEPSEEK_BASE_URL` overrides the
   endpoint. The DeepSeek adapter speaks the Anthropic Messages wire format against
   `https://api.deepseek.com/anthropic` (`packages/llm/llm-deepseek/README.md`).

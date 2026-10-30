@@ -6,12 +6,12 @@ tags: [config]
 harness: dsh
 subject: config/main-file
 observations:
-  - value: { file: "cordis.patch.yml layers: bundle patches, $DSH_HOME/profiles/<name>/, $DSH_HOME/, then --patch files", format: YAML, per_project: false, merge: "a later layer replaces a row's whole config" }
+  - value: { file: "cordis.patch.yml layers: bundle patches, $DSH_HOME/profiles/<name>/, $DSH_HOME/, then --patch files", format: YAML, merge: "a later layer replaces a row's whole config" }
     since: null
     until: null
     observed: "2026-10-08"
     source: notes-dsh
-    locator: deepseek-ai/deepseek-harness apps/cli/README.md at 5badb150
+    locator: deepseek-ai/deepseek-harness apps/cli/README.md and apps/cli/reference/README.md at 5badb150
     checked_version: "0.2.1-alpha.1"
     evidence: source
 sources:
@@ -26,7 +26,7 @@ What the sources say about [Main config file](/subjects/config/main-file.md) in
 ## Observations
 
 - 2026-10-08: file: cordis.patch.yml layers: bundle patches, $DSH_HOME/profiles/<name>/, $DSH_HOME/,
-  then --patch files; format: YAML; per project: `false`; merge: a later layer replaces a row's
-  whole config.[^notes-dsh]
+  then --patch files; format: YAML; merge: a later layer replaces a row's whole
+  config.[^notes-dsh]
 
 [^notes-dsh]: DeepSeek Harness (dsh): harness notes for a dispatcher

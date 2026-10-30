@@ -97,9 +97,10 @@ pinned commit; no fixture plugin was installed and no live invocation was tried 
 - Pre-qualified names: changelog 2.1.246, "Fixed plugin skills whose frontmatter `name` already
   includes the `<plugin>:` prefix showing it doubled in the slash menu (e.g.
   `/plugin:plugin:skill`)". Earlier, 2.1.216 fixed such skills losing the prefix in autocomplete.
-- Bare alias: the docs say "You can also invoke it as `/review` (bare name) unless another
-  command already uses that name". The docs do not say whether the model's `Skill` tool resolves
-  a bare plugin name. The qualified name is the only safe form.
+- Bare alias: the skills page says, of a plugin skill whose frontmatter `name` is `fancy`, "The
+  bare `/fancy` also invokes the skill unless another command already uses that name". It does not
+  say whether the bare name works for a plugin skill named by its directory, nor whether the
+  model's `Skill` tool resolves a bare plugin name. The qualified name is the only safe form.
 - `disable-model-invocation: true`: the model cannot invoke the skill, the user still can with
   `/name`, and the description is not loaded into context.
 - Collisions: two plugins exporting `review` stay distinct as `a:review` and `b:review`. The
