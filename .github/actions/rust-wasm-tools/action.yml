@@ -1,10 +1,10 @@
-# Installs the tools the wasm build.sh scripts need besides the Rust
+# Installs the tools the wasm build.sh script needs besides the Rust
 # toolchain: the wasm-bindgen CLI, and binaryen's wasm-opt (its path in
 # WASM_OPT in GITHUB_ENV). The `wasm` job in rust-ci.yml and the
 # `release-pr` job in release-plz.yml both build the wasm with it, so both
 # get the same bytes.
 #
-# Keep the wasm-bindgen version in step with REQUIRED_WASM_BINDGEN in each
+# Keep the wasm-bindgen version in step with REQUIRED_WASM_BINDGEN in
 # build.sh and the wasm-bindgen pin in packages/rust/Cargo.toml, and the
 # binaryen version with REQUIRED_WASM_OPT.
 #

@@ -5,11 +5,13 @@ repository: TypeScript libraries to npm, Rust crates to crates.io. Each
 library's own README says how to use it. This file covers what holds for all
 of them.
 
-> `skillwright`, `tradecraft-core` and `@osdlc/tradecraft-wasm` are no longer
-> released from this repository. Their releases moved to
-> <https://github.com/osdlc/skillwright>; the code here is held with
-> `publish = false` (the npm package with `"private": true`). `tradecraft` still releases
-> from here.
+> `skillwright`, `tradecraft-core`, `tradecraft-wasm`, `tradecraft-typegen` and
+> `@osdlc/tradecraft-wasm` live in <https://github.com/osdlc/skillwright>.
+> `skillwright`, `tradecraft-core` and `@osdlc/tradecraft-wasm` are released
+> from there. `tradecraft-wasm` and `tradecraft-typegen` are never released.
+> Their folders here hold only a README that points
+> to the new location. `tradecraft` still releases from here: it is a crate
+> that points to `skillwright`.
 
 ## Home and publishing
 
@@ -141,21 +143,8 @@ Developed here, in this repository:
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
-- `packages/rust/skillwright` (`skillwright` on crates.io, a command-line
-  tool that publishes a vault of markdown skill notes into the formats of
-  coding-agent tools; `cargo install skillwright`). Each `skillwright/vX.Y.Z`
-  tag also ships prebuilt binaries to the GitHub Release, npm
-  (`@osdlc/skillwright`) and Homebrew (`osdlc/tap`), through
-  `.github/workflows/skillwright-release.yml`; see
-  [`skillwright/release/`](rust/skillwright/release/README.md)
 - `packages/rust/tradecraft` (`tradecraft` on crates.io, the CLI's old
   name. It only points to `skillwright`.)
-- `packages/rust/tradecraft-core` (`tradecraft-core` on crates.io, the library
-  behind `skillwright`)
-- `packages/rust/tradecraft-typegen`, the generator of the TypeScript
-  declarations for `tradecraft-wasm` (not published to crates.io)
-- `packages/rust/tradecraft-wasm`, the WebAssembly build of `tradecraft-core`
-  for its npm package (not published to crates.io)
 - `packages/rust/typed-git` (`typed-git` on crates.io, the Rust implementation of
   `@osdlc/typed-git`: a typed git client)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
@@ -163,9 +152,6 @@ Developed here, in this repository:
   for its npm package (not published to crates.io)
 - `packages/ts/yaml-splice` (`@osdlc/yaml-splice` on npm, the crate built to
   WebAssembly, with the built `wasm/` committed)
-- `packages/ts/tradecraft-wasm` (`@osdlc/tradecraft-wasm` on npm, `tradecraft-core`
-  built to WebAssembly, with the built `wasm/` committed and a copy of the
-  generated `core.generated.ts`)
 - `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript implementation)
 - `packages/ts/frontmatter-lossless` (`@osdlc/frontmatter-lossless` on npm,
   the TypeScript implementation of the `frontmatter-lossless` crate)
@@ -330,8 +316,7 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    `git push origin etag-write/v0.1.0`, then
    `gh release create etag-write/v0.1.0 --title "etag-write v0.1.0"` with
    the CHANGELOG section as the notes.
-6. A crate that is never released, such as `yaml-splice-wasm`,
-   `tradecraft-wasm` or `tradecraft-typegen`, has
+6. A crate that is never released, such as `yaml-splice-wasm`, has
    `publish = false` in its `Cargo.toml` and `release = false` for it in
    `packages/rust/release-plz.toml`. The workflow and release-plz then skip
    it.
@@ -449,11 +434,8 @@ pins the compiler, and rustup installs it on first use.
 `.github/workflows/rust-ci.yml` runs clippy and the tests on Linux, macOS
 and Windows, and the format check, docs and `cargo package` on Linux. It
 also tests on the MSRV and with minimal dependency versions, and rebuilds
-the `yaml-splice` and `tradecraft-wasm` wasm with their `build.sh` and checks
-that each equals the one committed in `packages/ts/yaml-splice/wasm/` and
-`packages/ts/tradecraft-wasm/wasm/`. It also checks that
-`packages/ts/tradecraft-wasm/src/core.generated.ts` is the file
-`tradecraft-typegen` writes. On a pull request it checks
+the `yaml-splice` wasm with its `build.sh` and checks that it equals the one
+committed in `packages/ts/yaml-splice/wasm/`. On a pull request it checks
 that a breaking change bumps the version. Its `rust` job is the one check to
 require.
 
