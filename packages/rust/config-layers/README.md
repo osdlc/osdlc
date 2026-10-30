@@ -182,6 +182,7 @@ need. Run it with `cargo run --example layered_files`.
 | An error quotes no file contents and does not repeat its source | `an_error_does_not_quote_the_files_lines`, `display_does_not_repeat_the_source` |
 | An empty file is an empty mapping, and the machine file gives the serde field defaults | `an_empty_file_is_an_empty_mapping`, `an_empty_or_comment_only_file_gives_the_field_defaults`, `an_empty_file_gives_defaults_for_a_type_with_required_fields` |
 | The need message names the command, key, purpose, flag and file | `names_the_command_the_key_its_purpose_the_stand_in_and_the_project_file`, `a_camel_case_stand_in_renders_as_a_kebab_case_flag_no_command_is_this_command`, `a_key_both_files_carry_the_file_you_stand_in_leads_the_other_follows` |
+| Every case of the shared conformance suite gives what the TypeScript package gives | `every_case_in_the_suite_matches` |
 
 Coverage is not measured.
 
@@ -219,6 +220,26 @@ the MSRV of the whole workspace.
 This comparison is from each crate's documentation. Pick `config` or `figment`
 for general layered configuration. Pick this crate when a command-line tool
 wants the project and machine split and the messages that go with it.
+
+## The TypeScript package
+
+[`@osdlc/config-layers`](https://www.npmjs.com/package/@osdlc/config-layers)
+is the TypeScript implementation, and the larger of the two. Both run one
+conformance suite, `packages/conformance/config-layers/suite.json` in the
+repository, whose expected values the TypeScript package writes: what counts
+as set, dotted-key lookup, how a YAML file reads, `resolve_config_path`,
+`{name}` substitution and its error text, and the unmet-need message. The
+package's README lists where the two differ.
+
+Only this crate has:
+
+- `file::find_up`, which walks up from a directory to find the project file.
+  The TypeScript package takes the project root from the caller.
+- `file::overlay_top_level`, which fills the project file's missing or unset
+  top-level keys from the machine file. The TypeScript package loads and
+  merges the project file in `assembleConfig` instead.
+- `file::resolve_paths_at`, which resolves the path values at dotted keys of a
+  mapping in place.
 
 ## Stability
 

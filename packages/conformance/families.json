@@ -1,10 +1,10 @@
 {
-  "tiered-dirs": {
+  "config-layers": {
     "reference": "ts",
-    "generator": "pnpm --filter @osdlc/tiered-dirs conformance:write",
+    "generator": "pnpm --filter @osdlc/config-layers conformance:write",
     "implementations": [
-      { "language": "ts", "dir": "packages/ts/tiered-dirs", "name": "@osdlc/tiered-dirs" },
-      { "language": "rust", "dir": "packages/rust/tiered-dirs", "name": "tiered-dirs" }
+      { "language": "ts", "dir": "packages/ts/config-layers", "name": "@osdlc/config-layers" },
+      { "language": "rust", "dir": "packages/rust/config-layers", "name": "config-layers" }
     ]
   },
   "intersect": {
@@ -13,6 +13,14 @@
     "implementations": [
       { "language": "ts", "dir": "packages/ts/intersect", "name": "@osdlc/intersect" },
       { "language": "rust", "dir": "packages/rust/glob-intersect", "name": "glob-intersect" }
+    ]
+  },
+  "tiered-dirs": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/tiered-dirs conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/tiered-dirs", "name": "@osdlc/tiered-dirs" },
+      { "language": "rust", "dir": "packages/rust/tiered-dirs", "name": "tiered-dirs" }
     ]
   }
 }

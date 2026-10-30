@@ -186,7 +186,7 @@ and points here.
 | code-host | TS, Rust | `rust/code-host/tests/fixtures/parity.json` | TS |
 | color | TS, Rust `srgb-color` | `rust/srgb-color/tests/fixtures/parity.json` | TS |
 | command-seam | TS, Rust | `rust/command-seam/tests/fixtures/parity.json` | TS |
-| config-layers | TS, Rust | `rust/config-layers/tests/fixtures/parity.json` | TS |
+| config-layers | TS, Rust | moved: `conformance/config-layers/suite.json` | TS |
 | detect-harness | TS, Rust | `rust/detect-harness/tests/fixtures/parity.json` | TS |
 | etag-write | TS, Rust | `rust/etag-write/tests/fixtures/parity.json` | TS |
 | fenced-lock | TS, Rust | `rust/fenced-lock/tests/fixtures/parity.json` | TS |
