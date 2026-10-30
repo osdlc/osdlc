@@ -24,9 +24,9 @@
       "line": 14,
       "title": "Changelog says 0.1.2 is to be yanked; it is already yanked",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "88f81902938a47f9e6d8d2ec8b8f11dbf03bd067"
     },
     {
       "id": "r1-3",
