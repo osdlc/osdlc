@@ -27,8 +27,8 @@ describe('conformance suite', () => {
     expect(suite.reference).toBe('ts')
   })
 
-  test('names no section this implementation does not run', () => {
-    expect(Object.keys(suite.sections).filter((s) => !(s in SECTIONS))).toEqual([])
+  test('has exactly the sections this implementation runs', () => {
+    expect(Object.keys(suite.sections).sort()).toEqual(Object.keys(SECTIONS).sort())
   })
 
   for (const [name, section] of Object.entries(suite.sections)) {

@@ -33,6 +33,23 @@ use serde_json::{Value as Json, json};
 const SUITE_JSON: &str = include_str!("../../../conformance/intersect/suite.json");
 
 const SUITE_KEYS: &[&str] = &["family", "reference", "referenceVersion", "sections"];
+/// The suite's sections, exactly: one missing from the suite fails as surely as
+/// one this crate does not know.
+const SECTIONS: &[&str] = &[
+    "fs_files_in_scope",
+    "fs_resolve_intersection",
+    "intersects",
+    "matches",
+    "overlapping",
+    "parse",
+    "registry_applicable_to",
+    "registry_matching",
+    "segments_intersects",
+    "segments_matches",
+    "segments_witness",
+    "which_match",
+    "witness",
+];
 const CASE_KEYS: &[&str] = &["name", "input", "expect", "error", "platforms", "skip"];
 const MATCH_OPTS: &[&str] = &["dot", "caseInsensitive", "globstarMatchesZero"];
 const FS_SETUP: &[&str] = &["tree", "symlinks", "unreadable", "cwd", "cwdRelative"];
@@ -469,6 +486,11 @@ fn conform(fs: bool) {
     let sections = suite["sections"]
         .as_object()
         .expect("sections is an object");
+    let mut names: Vec<&str> = sections.keys().map(String::as_str).collect();
+    names.sort_unstable();
+    let mut known = SECTIONS.to_vec();
+    known.sort_unstable();
+    assert_eq!(names, known, "the suite's sections are not the ones this crate runs");
 
     let mut failures: Vec<String> = Vec::new();
     let mut not_run: Vec<String> = Vec::new();
@@ -534,7 +556,7 @@ fn every_pure_case_conforms() {
 }
 
 /// Every case of the `fs_*` sections. Without the `fs` feature it is ignored,
-/// so the run reports the fs cases as not run rather than skipping them.
+/// so `cargo test` reports it as ignored rather than passing it.
 #[test]
 #[cfg_attr(not(feature = "fs"), ignore = "needs the fs feature")]
 fn every_fs_case_conforms() {
