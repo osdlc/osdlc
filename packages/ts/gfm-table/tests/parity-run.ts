@@ -73,11 +73,20 @@ export function byteOffset(text: string, index: number): number {
   return encoder.encode(text.slice(0, index)).length
 }
 
-/** The UTF-16 index of UTF-8 byte offset `bytes` in `text`. */
+/**
+ * The UTF-16 index of UTF-8 byte offset `bytes` in `text`. One pass, adding
+ * each code point's UTF-8 length; a lone surrogate counts 3, as TextEncoder
+ * writes U+FFFD for it.
+ */
 export function utf16Offset(text: string, bytes: number): number {
-  for (let i = 0; i <= text.length; i++) {
-    if (byteOffset(text, i) === bytes) return i
+  let i = 0
+  let at = 0
+  while (at < bytes && i < text.length) {
+    const cp = text.codePointAt(i)!
+    at += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4
+    i += cp > 0xffff ? 2 : 1
   }
+  if (at === bytes) return i
   throw new Error(`byte offset ${bytes} is not a character boundary of ${JSON.stringify(text)}`)
 }
 
