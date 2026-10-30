@@ -15,7 +15,7 @@
       "path": "packages/rust/glob-intersect/tests/conformance.rs",
       "line": 442,
       "title": "link_all: root unused on Windows breaks the Windows test build",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/550#discussion_r4420086689",
       "status": "fixed",
       "reason": null,
       "fixedIn": "8dfaa42945c0406a70cbbae5c9f6046d62d1e13a"
@@ -26,7 +26,7 @@
       "path": "packages/rust/glob-intersect/tests/conformance.rs",
       "line": 467,
       "title": "lock_all: root unused on Windows breaks the Windows test build",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/550#discussion_r4420086695",
       "status": "fixed",
       "reason": null,
       "fixedIn": "8dfaa42945c0406a70cbbae5c9f6046d62d1e13a"
@@ -37,7 +37,7 @@
       "path": "packages/rust/glob-intersect/tests/conformance.rs",
       "line": 39,
       "title": "CORPUS is a hand list; a new TS case file is silently not run",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/550#discussion_r4420086700",
       "status": "fixed",
       "reason": null,
       "fixedIn": "8dfaa42945c0406a70cbbae5c9f6046d62d1e13a"
@@ -48,7 +48,7 @@
       "path": "packages/rust/glob-intersect/src/fs.rs",
       "line": 219,
       "title": "Stale comment: corpus has 24 fs cases, not three",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/550#discussion_r4420086704",
       "status": "fixed",
       "reason": null,
       "fixedIn": "8dfaa42945c0406a70cbbae5c9f6046d62d1e13a"
