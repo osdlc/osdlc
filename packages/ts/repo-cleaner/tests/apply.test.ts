@@ -12,7 +12,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 import { chmodSync, existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { Git } from '@osdlc/typed-git'
+import { Git, PUSH_REJECTIONS } from '@osdlc/typed-git'
 import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { sh } from './helpers.ts'
@@ -162,7 +162,10 @@ describe('applyPlan', () => {
 
     expect(receipt.status).toBe('failed')
     expect(receipt.steps.map((s) => s.result)).toEqual(['failed', 'pending', 'pending'])
-    expect(receipt.steps[0]!.error).toContain('rejected')
+    // The summary, git's reason once in parentheses, then the reference text.
+    const error = receipt.steps[0]!.error!
+    expect(error).toMatch(/^\[remote rejected\] \([^()]+\): /)
+    expect(error.slice(error.indexOf('): ') + 3)).toBe(PUSH_REJECTIONS['hook-declined'].message)
     expect(remoteHeads(fx.bare)).toContain('refs/heads/merged-b')
     expect((JSON.parse(readFileSync(receiptPath, 'utf-8')) as Receipt).status).toBe('failed')
   })
