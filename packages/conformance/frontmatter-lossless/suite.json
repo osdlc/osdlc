@@ -709,16 +709,16 @@
         {
           "name": "multibyte_text_before_the_body",
           "input": {
-            "source": "---\ntitle: café ☕\n---\nbody 😀\n"
+            "source": "---\ntitle: café ☕ 😀\n---\nbody 😀\n"
           },
           "expect": {
-            "yaml": "title: café ☕",
+            "yaml": "title: café ☕ 😀",
             "yaml_range": {
               "start": 4,
-              "end": 20
+              "end": 25
             },
             "body": "body 😀\n",
-            "body_start": 25,
+            "body_start": 30,
             "bom": false,
             "open_eol": "\n",
             "close_eol": "\n",
@@ -1051,10 +1051,10 @@
         {
           "name": "multibyte_text_before_the_body",
           "input": {
-            "source": "---\ntitle: café ☕\n---\nbody 😀\n"
+            "source": "---\ntitle: café ☕ 😀\n---\nbody 😀\n"
           },
           "expect": {
-            "yaml": "title: café ☕",
+            "yaml": "title: café ☕ 😀",
             "body": "body 😀\n"
           }
         }

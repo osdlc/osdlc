@@ -13,7 +13,7 @@
  *
  * It is the TypeScript version of the `frontmatter-lossless` Rust crate. It
  * follows the crate's algorithm function for function (`split`, `compose`,
- * `split_lenient`), and both run one shared conformance corpus.
+ * `split_lenient`), and both run one shared conformance suite.
  *
  * It handles three cases that real notes contain:
  *
@@ -83,8 +83,8 @@ export interface SourceRange {
  * `src.slice(yamlRange.start, yamlRange.end) === yaml` and
  * `src.slice(bodyStart) === body` hold on the string you passed in. (The Rust
  * crate's offsets are UTF-8 byte offsets. Each side indexes its own string
- * type. The corpus expects the same content on both sides. Each side checks
- * its own offsets.)
+ * type. The family's conformance suite states offsets in UTF-8 bytes, and
+ * this package's tests convert its UTF-16 indices before they compare.)
  */
 export interface Split {
   /** The frontmatter YAML, verbatim and without the `---` fences. `null`

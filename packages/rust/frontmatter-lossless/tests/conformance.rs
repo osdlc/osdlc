@@ -7,8 +7,8 @@
 //! text into a shape. This crate is the family's reference: its generator,
 //! `tests/conformance/write.rs`, writes every `expect` from
 //! `tests/conformance/run.rs`, which this test shares. Every section and case
-//! runs here, and a section, case key or input key this test does not know
-//! fails it.
+//! runs here. A missing section, a case with no name, and a section, case
+//! key or input key this test does not know all fail it.
 //!
 //! On top of the stored values it checks the properties the values cannot say
 //! on their own: a strict split composes back to its source byte for byte,
@@ -37,17 +37,24 @@ fn conformance_suite() {
     let sections = suite["sections"]
         .as_object()
         .expect("sections is an object");
+    let mut found: Vec<&str> = sections.keys().map(String::as_str).collect();
+    found.sort_unstable();
+    let mut known = run::SECTIONS.to_vec();
+    known.sort_unstable();
+    assert_eq!(
+        found, known,
+        "the suite's sections are not the ones this crate runs"
+    );
     let mut failures = Vec::new();
     let (mut total, mut ran) = (0, 0);
     for (section, body) in sections {
-        if !run::SECTIONS.contains(&section.as_str()) {
-            failures.push(format!("  section {section}: this crate does not run it"));
-            continue;
-        }
         let cases = body["cases"].as_array().expect("cases is a list");
         for case in cases {
             total += 1;
-            let name = case["name"].as_str().unwrap_or("<unnamed>");
+            let Some(name) = case["name"].as_str() else {
+                failures.push(format!("  {section}: a case has no string name"));
+                continue;
+            };
             match run_case(section, case) {
                 Ok(()) => ran += 1,
                 Err(msg) => failures.push(format!("  {section} [{name}] {msg}")),
