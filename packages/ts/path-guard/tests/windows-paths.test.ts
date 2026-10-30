@@ -4,12 +4,8 @@
  * is loaded again here as on Windows.
  */
 
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-
 import { describe, expect, test, vi } from 'vitest'
 
-import type { PathWarning } from '../src/errors.ts'
 import type { Resolver } from '../src/resolve.ts'
 
 const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
@@ -17,6 +13,7 @@ Object.defineProperty(process, 'platform', { value: 'win32' })
 vi.resetModules()
 const { PathGuard } = await import('../src/guard.ts')
 const { PathError } = await import('../src/errors.ts')
+const { readSuite, run } = await import('./conformance.ts')
 Object.defineProperty(process, 'platform', platform)
 
 function enoent(): never {
@@ -187,31 +184,16 @@ describe('a link to a bare drive on Windows', () => {
   })
 })
 
-interface PerHostCase {
-  name: string
-  input: string
-  windows: { ok?: string; error?: string }
-}
-
-const FIXTURE = JSON.parse(
-  readFileSync(
-    join(import.meta.dirname, '../../../rust/path-guard/tests/fixtures/parity.json'),
-    'utf-8',
-  ),
-) as { resolve_windows_names: PerHostCase[] }
-
-// The fixture's `windows` column, on every host. tests/parity.test.ts runs the
-// column for the host it runs on.
+// The conformance suite's `resolve_windows_names` cases that run on Windows,
+// on every host, through the suite's runner loaded as on Windows. On Windows,
+// tests/conformance.test.ts runs them too.
 describe('Windows names', () => {
-  for (const c of FIXTURE.resolve_windows_names) {
+  for (const c of readSuite().sections['resolve_windows_names']!.cases) {
+    if (c.platforms?.includes('windows') === false) continue
     test(c.name, () => {
-      const warnings: PathWarning[] = []
-      const guard = new PathGuard(nothing, { onWarning: (w) => warnings.push(w) })
-      const kind = kindOf(() => guard.resolve('C:\\v', c.input))
-      if (c.windows.error !== undefined) expect(kind).toBe(c.windows.error)
-      else expect(guard.resolve('C:\\v', c.input)).toBe(`C:\\v\\${c.windows.ok}`)
-      // On Windows the guard refuses instead of warning.
-      expect(warnings).toEqual([])
+      expect(run('resolve_windows_names', c.input)).toEqual(
+        c.error === undefined ? { expect: c.expect } : { error: { kind: c.error.kind } },
+      )
     })
   }
 
