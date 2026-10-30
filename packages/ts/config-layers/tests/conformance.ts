@@ -88,9 +88,11 @@ function fields<T>(input: Record<string, unknown>, required: string[], optional:
   return input as T
 }
 
+const SCOPES = ['project', 'machine', 'both'] as const
+
 interface KeyRow {
   key: string
-  scope: 'project' | 'machine' | 'both'
+  scope: (typeof SCOPES)[number]
   description: string
 }
 
@@ -213,6 +215,11 @@ const SECTIONS: Record<string, (input: Record<string, unknown>) => Outcome> = {
       ['tool', 'project_file', 'machine_path', 'keys', 'config', 'command', 'project_file_exists'],
       ['scaffold_hint', 'unless_input'],
     )
+    input.keys.forEach((row, i) => {
+      fields<KeyRow>(row as unknown as Record<string, unknown>, ['key', 'scope', 'description'])
+      if (!SCOPES.includes(row.scope))
+        throw new Error(`input: keys[${i}]: unknown scope ${row.scope}`)
+    })
     return { expect: { message: needsMessage(input) } }
   },
 }

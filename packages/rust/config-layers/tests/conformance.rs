@@ -190,13 +190,23 @@ fn yaml(case: &Case, dir: &Path) -> Outcome {
     fs::write(&path, &input.yaml).unwrap();
     match file::read_mapping(&path) {
         Ok(map) => Outcome::Expect(json!({ "mapping": map })),
-        // The YAML crate's error is a parse failure, or a key that is not a
-        // scalar. A top level that is not a mapping carries a plain message.
+        // The YAML crate's error is a parse failure, a key that is not a
+        // scalar or a key that appears twice. A top level that is not a
+        // mapping carries a plain message; its type is private to the crate,
+        // so it is recognised by that message.
         Err(FileProblem::Malformed { source, .. }) => {
             if source.downcast_ref::<serde_saphyr::Error>().is_some() {
                 error("invalid_yaml", None)
-            } else {
+            } else if source
+                .to_string()
+                .starts_with("expected a mapping at the top level, found ")
+            {
                 error("not_a_mapping", None)
+            } else {
+                panic!(
+                    "{}: a malformed file the suite has no kind for: {source}",
+                    case.name
+                )
             }
         }
         Err(other) => panic!(
@@ -282,6 +292,16 @@ fn leak(s: &str) -> &'static str {
     Box::leak(s.to_string().into_boxed_str())
 }
 
+/// The sections this crate runs, each an arm of [`run`].
+const SECTIONS: [&str; 6] = [
+    "value_is_set",
+    "value_at",
+    "yaml",
+    "resolve_config_path",
+    "substitute_path_names",
+    "needs",
+];
+
 /// What `section`'s case gives here. Each case gets a fresh directory.
 fn run(section: &str, case: &Case) -> Outcome {
     let dir = tempfile::tempdir().unwrap();
@@ -316,6 +336,15 @@ fn every_case_in_the_suite_matches() {
     let suite: Suite =
         serde_json::from_str(SUITE_JSON).expect("the suite is valid JSON in the suite format");
     assert_eq!(suite.family, "config-layers");
+    // Checked before any case runs: a section whose cases all skip on this
+    // host never reaches `run`, so a misspelled name would otherwise pass.
+    let sections: Vec<&str> = suite.sections.keys().map(String::as_str).collect();
+    let mut known = SECTIONS.to_vec();
+    known.sort_unstable();
+    assert_eq!(
+        sections, known,
+        "the suite's sections are not the ones this crate runs"
+    );
     let mut failures = Vec::new();
     let mut ran = 0;
     for (section, body) in &suite.sections {

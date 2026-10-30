@@ -526,7 +526,7 @@
       ]
     },
     "yaml": {
-      "description": "Read `input.yaml`, written to a file, as a config mapping (TypeScript `readMappingFile`, Rust `file::read_mapping`). `expect.mapping` is the mapping read. An error is `invalid_yaml` when the text does not parse or has a key that is not a scalar, and `not_a_mapping` when it parses to something other than a mapping.",
+      "description": "Read `input.yaml`, written to a file, as a config mapping (TypeScript `readMappingFile`, Rust `file::read_mapping`). `expect.mapping` is the mapping read. An error is `invalid_yaml` when the text does not parse, has a key that is not a scalar or has a key that appears twice, and `not_a_mapping` when it parses to something other than a mapping.",
       "cases": [
         {
           "name": "an empty file is an empty mapping",

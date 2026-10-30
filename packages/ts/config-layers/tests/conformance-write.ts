@@ -14,6 +14,10 @@ import { join } from 'node:path'
 import { SUITE_PATH, readSuite, run } from './conformance.ts'
 import type { Case } from './conformance.ts'
 
+if (process.platform === 'win32') {
+  throw new Error('run this on Linux or macOS: the suite expects POSIX paths')
+}
+
 const suite = readSuite()
 const pkg = JSON.parse(readFileSync(join(import.meta.dirname, '../package.json'), 'utf8')) as {
   version: string

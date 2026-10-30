@@ -30,13 +30,14 @@ suite, holds cases for these rules. Both packages' tests run it.
   give a different config in each.
 - YAML 1.1 booleans (`yes`, `on`) change a value without a warning. The strict
   reading is safer for a config file.
-- One fixture read by both suites keeps the twins from drifting.
+- One suite, `packages/conformance/config-layers/suite.json`, run by both
+  packages' tests keeps the twins from drifting.
 
 ## Consequences
 
-- Some behaviour is not shared and stays out of the fixture. The README's
+- Some behaviour is not shared and stays out of the suite. The README's
   "Rust twin" table lists it: integers beyond 2^53, `1e999`, `1_000`, `0b11`,
   `!!float` and unknown tags (text in TypeScript, numbers in Rust). An empty
   document is shared: `readMappingFile` and `read_mapping` both give an empty
   mapping.
-- A rule added to one side goes into the fixture first.
+- A rule added to one side goes into the suite first.

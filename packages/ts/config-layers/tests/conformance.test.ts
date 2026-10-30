@@ -29,6 +29,9 @@ describe('conformance suite', () => {
     describe(name, () => {
       for (const c of section.cases) {
         test.skipIf(!runsHere(c))(c.name, () => {
+          if ((c.expect === undefined) === (c.error === undefined)) {
+            throw new Error('give exactly one of expect and error')
+          }
           const got = run(name, c.input)
           if (c.error === undefined) {
             expect(got).toEqual({ expect: c.expect })
