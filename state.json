@@ -1,12 +1,57 @@
 {
   "schema": 1,
   "pr": 550,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "4afbb56ac9aa5c1dc92b6d7555a64eb466fa40b7",
+  "base": "b7fdc01cd5701239b25405c25ef3bfd451cfc7e2",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-q7m2xd",
     "at": "2026-10-30T03:06:34.719Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/rust/glob-intersect/tests/conformance.rs",
+      "line": 442,
+      "title": "link_all: root unused on Windows breaks the Windows test build",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/rust/glob-intersect/tests/conformance.rs",
+      "line": 467,
+      "title": "lock_all: root unused on Windows breaks the Windows test build",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/rust/glob-intersect/tests/conformance.rs",
+      "line": 39,
+      "title": "CORPUS is a hand list; a new TS case file is silently not run",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/rust/glob-intersect/src/fs.rs",
+      "line": 219,
+      "title": "Stale comment: corpus has 24 fs cases, not three",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
