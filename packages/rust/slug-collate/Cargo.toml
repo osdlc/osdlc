@@ -1,6 +1,6 @@
 [package]
 name = "slug-collate"
-version = "0.1.2"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Slugify plus deterministic, portable, non-locale string and path collation: NFKC-normalise and drop only decorative accents for filename-safe slugs, and a total, case- and accent-insensitive order as a substitute for localeCompare."

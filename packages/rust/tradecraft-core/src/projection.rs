@@ -6,7 +6,7 @@
 //! emission are its contract as of 0.3. This module maps the store
 //! snapshot into `agent_adapt::Skill` and hashes what comes back.
 //!
-//! # The `tc-` strip, again
+//! # The `sw-` strip, again
 //!
 //! The namespace spec put the strip in two places, and
 //! this is the second. [`crate::vault::read_vault_skill`] lifts our namespace
@@ -24,9 +24,9 @@
 //! reference validator rejects it as an unknown top-level key.
 //!
 //! **The same predicate means the same [`crate::Namespace`]**, which is why
-//! [`project_skill`] takes one rather than assuming `tc-`. A vault configured
-//! to `x-` and emitted under `tc-` would publish every `x-` key its author
-//! wrote, and strip an `tc-` annotation that was never ours to touch — the
+//! [`project_skill`] takes one rather than assuming `sw-`. A vault configured
+//! to `x-` and emitted under `sw-` would publish every `x-` key its author
+//! wrote, and strip an `sw-` annotation that was never ours to touch — the
 //! strip failing in both directions at once.
 
 use agent_adapt::RuntimeId;
@@ -68,7 +68,7 @@ pub fn project_skill(
     project_skill_reporting(snapshot, targets, ns, None).map(|(files, _)| files)
 }
 
-/// One `tc-overrides` key that changed nothing at the destination it was
+/// One `sw-overrides` key that changed nothing at the destination it was
 /// written for.
 ///
 /// A diagnostic, never a refusal: the note publishes exactly as it would
@@ -98,7 +98,7 @@ impl std::fmt::Display for RedundantOverride {
 /// Two entry points rather than one because the diagnostic is not a file and
 /// most callers want files. Whichever is called, the render happens once.
 ///
-/// `overrides_target` is the canonical destination whose `tc-overrides` block
+/// `overrides_target` is the canonical destination whose `sw-overrides` block
 /// this render applies — the publish path's own destination, not the runtime
 /// target, which several destinations share. `None` renders no override block.
 ///
@@ -242,7 +242,7 @@ pub(crate) fn parse_runtime_target(target: &str) -> Result<RuntimeId, CoreError>
 /// The peer of [`project_skill`], and deliberately a separate entry point
 /// rather than a branch inside it: the two produce different files at
 /// different paths from different halves of the same note, and a caller
-/// holding an `tc-kind: agent` note has already decided which it wants.
+/// holding an `sw-kind: agent` note has already decided which it wants.
 ///
 /// A runtime with no agent layout is refused by name rather than skipped. The
 /// portable Agent Skills shape is the one built-in without one — it defines
@@ -292,7 +292,7 @@ pub fn project_agent(
 /// `Portable`) — so a command published to one of those refuses
 /// `no-renderer` instead of landing somewhere the harness never looks.
 ///
-/// `overrides_target` is the canonical destination whose `tc-overrides` block
+/// `overrides_target` is the canonical destination whose `sw-overrides` block
 /// this render applies, or `None` for a snapshot that carries none.
 pub fn project_command(
     snapshot: &SkillProjection,
@@ -385,7 +385,7 @@ pub fn project_plugin_hooks(
 /// rather than silently preferring one: both were typed on purpose, and
 /// picking a winner is how the other one disappears.
 ///
-/// `overrides_target` is the canonical destination whose `tc-overrides` block
+/// `overrides_target` is the canonical destination whose `sw-overrides` block
 /// this render applies, or `None` for a snapshot that carries none.
 ///
 /// # Errors
@@ -712,7 +712,7 @@ mod tests {
 
     /// The default namespace — the strip every test below emits under, except
     /// the one that configures a different one.
-    fn tc() -> Namespace {
+    fn sw() -> Namespace {
         Namespace::default()
     }
 
@@ -861,7 +861,7 @@ mod tests {
             ("amp", ".agents/skills/alpha/SKILL.md"),
         ];
         for (target, expected) in cases {
-            let files = project_skill(&snap, &[target.to_owned()], &tc()).unwrap();
+            let files = project_skill(&snap, &[target.to_owned()], &sw()).unwrap();
             assert_eq!(files.len(), 1, "{target}");
             assert_eq!(files[0].relative_path, expected, "{target}");
         }
@@ -876,7 +876,7 @@ mod tests {
                 ("helper.ts".to_owned(), b"export {}\n".to_vec(), false),
             ],
         );
-        let files = project_skill(&snap, &["claude-code".to_owned()], &tc()).unwrap();
+        let files = project_skill(&snap, &["claude-code".to_owned()], &sw()).unwrap();
         let paths: Vec<_> = files.iter().map(|f| f.relative_path.as_str()).collect();
         assert_eq!(
             paths,
@@ -904,7 +904,7 @@ mod tests {
             content: c,
             resources: vec![],
         };
-        let files = project_skill(&snap, &["claude-code".to_owned()], &tc()).unwrap();
+        let files = project_skill(&snap, &["claude-code".to_owned()], &sw()).unwrap();
         let text = String::from_utf8(files[0].content.clone()).unwrap();
 
         let close = text.find("\n---\n").expect("closing fence");
@@ -930,22 +930,22 @@ mod tests {
             "sorted key order"
         );
         // Rendering twice with the same input is byte-stable.
-        let again = project_skill(&snap, &["claude-code".to_owned()], &tc()).unwrap();
+        let again = project_skill(&snap, &["claude-code".to_owned()], &sw()).unwrap();
         assert_eq!(files[0].content, again[0].content);
     }
 
     #[test]
     fn our_namespace_is_stripped_at_emit_whatever_route_it_arrived_by() {
         // The second layer of the strip. `read_vault_skill` never puts an
-        // `tc-` key in `annotations`, but `SkillContent` is public and a
+        // `sw-` key in `annotations`, but `SkillContent` is public and a
         // caller can build one from anywhere — so the emit seam checks too.
         let mut c = content("alpha");
         for key in [
-            "tc-kind",
-            "tc-targets",
-            "tc-source-hash",
-            "tc-invented-last-week",
-            "tc",
+            "sw-kind",
+            "sw-targets",
+            "sw-source-hash",
+            "sw-invented-last-week",
+            "sw",
         ] {
             c.annotations
                 .insert(key.into(), serde_json::Value::from("ours"));
@@ -957,7 +957,7 @@ mod tests {
             resources: vec![],
         };
 
-        let files = project_skill(&snap, &["claude-code".to_owned()], &tc()).unwrap();
+        let files = project_skill(&snap, &["claude-code".to_owned()], &sw()).unwrap();
         let text = String::from_utf8(files[0].content.clone()).unwrap();
 
         assert!(!text.contains("ours"), "{text}");
@@ -967,9 +967,9 @@ mod tests {
 
     #[test]
     fn the_strip_follows_the_configured_namespace_in_both_directions() {
-        // A vault that configured `x`: its own keys go, and `tc-` is a key
+        // A vault that configured `x`: its own keys go, and `sw-` is a key
         // some other tool owns — carried, exactly like `apex` is under the
-        // default. Both halves matter. Stripping `tc-` here would delete a
+        // default. Both halves matter. Stripping `sw-` here would delete a
         // key this vault never claimed; keeping `x-` would publish the
         // author's configuration into somebody else's skill directory.
         let mut c = content("alpha");
@@ -978,7 +978,7 @@ mod tests {
                 .insert(key.into(), serde_json::Value::from("ours"));
         }
         c.annotations
-            .insert("tc-kind".into(), serde_json::Value::from("theirs"));
+            .insert("sw-kind".into(), serde_json::Value::from("theirs"));
         let snap = SkillProjection {
             content: c,
             resources: vec![],
@@ -993,7 +993,7 @@ mod tests {
         let text = String::from_utf8(files[0].content.clone()).unwrap();
 
         assert!(!text.contains("ours"), "{text}");
-        assert!(text.contains("tc-kind"), "{text}");
+        assert!(text.contains("sw-kind"), "{text}");
         assert!(text.contains("theirs"), "{text}");
     }
 
@@ -1011,7 +1011,7 @@ mod tests {
             "C:\\Windows\\evil.md",
         ] {
             let snap = snapshot("alpha", vec![(escape.to_owned(), b"x".to_vec(), true)]);
-            let err = project_skill(&snap, &["claude-code".to_owned()], &tc()).unwrap_err();
+            let err = project_skill(&snap, &["claude-code".to_owned()], &sw()).unwrap_err();
             let message = err.to_string();
 
             assert!(matches!(err, CoreError::Refused(_)), "{escape}: {message}");
@@ -1030,14 +1030,14 @@ mod tests {
         // A name with no legal slug is refused by the renderer too, and it is
         // not a path escape — so the new mapping must not swallow it.
         let snap = snapshot("!!!", vec![]);
-        let err = project_skill(&snap, &["claude-code".to_owned()], &tc()).unwrap_err();
+        let err = project_skill(&snap, &["claude-code".to_owned()], &sw()).unwrap_err();
         assert!(matches!(err, CoreError::Projection(_)), "{err}");
     }
 
     #[test]
     fn unknown_target_is_refused_not_skipped() {
         let snap = snapshot("alpha", vec![]);
-        let err = project_skill(&snap, &["windsurf".to_owned()], &tc()).unwrap_err();
+        let err = project_skill(&snap, &["windsurf".to_owned()], &sw()).unwrap_err();
         assert!(matches!(err, CoreError::Projection(_)));
     }
 
@@ -1072,7 +1072,7 @@ mod tests {
         let files = project_skill(
             &snap,
             &["claude-code".to_owned(), "antigravity".to_owned()],
-            &tc(),
+            &sw(),
         )
         .unwrap();
         assert_eq!(files.len(), 4);
@@ -1095,7 +1095,7 @@ mod tests {
             ("github-copilot", ".github/prompts/ship.prompt.md"),
         ];
         for (target, expected) in cases {
-            let files = project_command(&snap, &[target.to_owned()], &tc(), None).unwrap();
+            let files = project_command(&snap, &[target.to_owned()], &sw(), None).unwrap();
             assert_eq!(files.len(), 1, "{target}");
             assert_eq!(files[0].relative_path, expected, "{target}");
         }
@@ -1105,7 +1105,7 @@ mod tests {
     fn a_command_has_no_renderer_for_amp_or_antigravity() {
         let snap = snapshot("ship", vec![]);
         for target in ["amp", "antigravity"] {
-            let err = project_command(&snap, &[target.to_owned()], &tc(), None).unwrap_err();
+            let err = project_command(&snap, &[target.to_owned()], &sw(), None).unwrap_err();
             assert!(matches!(err, CoreError::Refused(_)), "{target}: {err}");
             assert!(err.to_string().contains("no-renderer"), "{target}: {err}");
         }
@@ -1114,9 +1114,9 @@ mod tests {
     #[test]
     fn github_copilot_renders_no_skills_or_agents_yet() {
         let snap = snapshot("ship", vec![]);
-        let skill_err = project_skill(&snap, &["github-copilot".to_owned()], &tc()).unwrap_err();
+        let skill_err = project_skill(&snap, &["github-copilot".to_owned()], &sw()).unwrap_err();
         assert!(matches!(skill_err, CoreError::Projection(_)), "{skill_err}");
-        let agent_err = project_agent(&snap, &["github-copilot".to_owned()], &tc()).unwrap_err();
+        let agent_err = project_agent(&snap, &["github-copilot".to_owned()], &sw()).unwrap_err();
         assert!(matches!(agent_err, CoreError::Refused(_)), "{agent_err}");
     }
 }

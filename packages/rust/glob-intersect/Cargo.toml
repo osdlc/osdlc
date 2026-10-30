@@ -1,0 +1,51 @@
+# The Rust peer of `@osdlc/intersect` (packages/ts/intersect): do two globs
+# share a common matching path? Pure pattern algebra, with no filesystem access
+# except through the opt-in `fs` feature.
+#
+# The tests read the TypeScript package's corpus
+# (packages/ts/intersect/fixtures/*.cases.json) in place, so both peers run the
+# same cases.
+[package]
+name = "glob-intersect"
+version = "0.3.0"
+# Not on crates.io yet. The name is reserved for the first release; to publish,
+# remove this line and the entry in release-plz.toml in a pull request of its
+# own (see scripts/crates-io-auth-plan.ts).
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+description = "Path-pattern overlap engine: do two globs share a common matching path? A pure, dependency-light core (segment automaton + synchronized product, with witnesses) and an optional filesystem layer."
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/glob-intersect"
+readme = "README.md"
+keywords = ["glob", "pattern", "intersection", "overlap", "path"]
+categories = ["filesystem", "text-processing"]
+include = [
+  "src/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[features]
+# `fs` mirrors the TypeScript package's `@osdlc/intersect/fs` entry point: the
+# only layer that reads disk and the only one carrying a dependency. Default-on
+# so `cargo test -p glob-intersect` covers it; `default-features = false` buys
+# the pure core with `thiserror` alone.
+default = ["fs"]
+fs = ["dep:walkdir"]
+
+[dependencies]
+thiserror = { workspace = true }
+walkdir = { workspace = true, optional = true }
+
+[dev-dependencies]
+# The conformance harness parses the shared JSON corpus; `tempfile` materializes
+# each fs case's `tree` the way the TypeScript `tests/fs.test.ts` harness does.
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

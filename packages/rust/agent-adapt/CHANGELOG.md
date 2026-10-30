@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.19.2](https://github.com/osdlc/osdlc/compare/agent-adapt/v0.19.1...agent-adapt/v0.19.2) - 2026-10-29
+
+### Other
+
+- Rename the Tradecraft CLI to skillwright ([#546](https://github.com/osdlc/osdlc/pull/546))
+
 ## [0.19.1] - Unreleased
 
 First release from this repository. `agent-adapt` is a Rust library for authoring coding-agent

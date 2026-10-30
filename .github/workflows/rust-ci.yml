@@ -1,8 +1,8 @@
 # Checks the Cargo workspace under packages/rust/, and the wasm built from it
 # that packages/ts/yaml-splice/ and packages/ts/tradecraft-wasm/ commit, on
-# every pull request and push to main. It also runs when the markdown-contract corpus changes, because the
-# markdown-contract crate's tests read that corpus, and when a conformance suite under packages/conformance/
-# changes, because the crates' tests read those.
+# every pull request and push to main. It also runs when the markdown-contract corpus or the intersect
+# fixtures change, because the markdown-contract and glob-intersect crates' tests read them, and when a
+# conformance suite under packages/conformance/ changes, because the crates' tests read those.
 #
 # The workflow always runs, so its final `rust` job always reports. That job
 # is the one to require in the "Protect main" ruleset. A workflow-level
@@ -88,7 +88,7 @@ jobs:
               files='*'
               ;;
           esac
-          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/conformance/|scripts/conformance|packages/ts/(yaml-splice|tradecraft-wasm)/wasm/|packages/ts/tradecraft-wasm/src/core\.generated\.ts|packages/ts/markdown-contract/corpus/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
+          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/conformance/|scripts/conformance|packages/ts/(yaml-splice|tradecraft-wasm)/wasm/|packages/ts/tradecraft-wasm/src/core\.generated\.ts|packages/ts/markdown-contract/corpus/|packages/ts/intersect/fixtures/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
@@ -194,7 +194,7 @@ jobs:
       - name: Test
         env:
           WINDOWS_UNTESTED: >-
-            --exclude=tradecraft-core --exclude=tradecraft
+            --exclude=tradecraft-core --exclude=skillwright
         run: |
           set -euo pipefail
           if [ "$RUNNER_OS" = Windows ]; then
@@ -369,8 +369,9 @@ jobs:
   # The dry run publishes nothing, so a crate that needs the new version of
   # another crate in the same run would not find it on crates.io. The real
   # release publishes that crate first. So the dry run gets a cargo
-  # `[patch.crates-io]` that points each unpublished crate at its local
-  # directory; see scripts/crates-io-unpublished-patch.ts.
+  # `[patch.crates-io]` that points each unpublished crate, and each
+  # workspace crate it reaches by path, at its local directory; see
+  # scripts/crates-io-unpublished-patch.ts.
   release-plz:
     needs: changes
     if: needs.changes.outputs.rust == 'true'

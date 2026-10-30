@@ -51,3 +51,23 @@ release = false
 name = "markdown-contract"
 publish = false
 release = false
+
+# Not on crates.io yet; see the note in its Cargo.toml. `release = false`
+# also stops a tag being cut for a version that was not published.
+[[package]]
+name = "glob-intersect"
+publish = false
+release = false
+
+# Releases moved to https://github.com/osdlc/skillwright. The code stays here
+# for now; see its Cargo.toml.
+[[package]]
+name = "skillwright"
+publish = false
+release = false
+
+# Moved with skillwright; see its Cargo.toml.
+[[package]]
+name = "tradecraft-core"
+publish = false
+release = false

@@ -1,6 +1,6 @@
 [package]
 name = "markdown-relink"
-version = "0.1.6"
+version = "0.1.8"
 edition.workspace = true
 rust-version.workspace = true
 description = "Rename and move a note without breaking the vault: the inbound-wikilink rewrite set, computed as a reviewable plan and applied under per-file compare-and-swap"

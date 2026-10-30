@@ -135,9 +135,9 @@ mod tests {
     #[test]
     fn malformed_reads_as_a_read_failure_against_the_path() {
         assert_eq!(
-            CoreError::malformed("/vault/a.md", "`tc-kind` must be a string, not a list")
+            CoreError::malformed("/vault/a.md", "`sw-kind` must be a string, not a list")
                 .to_string(),
-            "reading /vault/a.md: `tc-kind` must be a string, not a list"
+            "reading /vault/a.md: `sw-kind` must be a string, not a list"
         );
     }
 

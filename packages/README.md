@@ -5,6 +5,12 @@ repository: TypeScript libraries to npm, Rust crates to crates.io. Each
 library's own README says how to use it. This file covers what holds for all
 of them.
 
+> `skillwright`, `tradecraft-core` and `@osdlc/tradecraft-wasm` are no longer
+> released from this repository. Their releases moved to
+> <https://github.com/osdlc/skillwright>; the code here is held with
+> `publish = false` (the npm package with `"private": true`). `tradecraft` still releases
+> from here.
+
 ## Home and publishing
 
 - Each library lives in `packages/<language>/<name>/`, for example
@@ -74,8 +80,9 @@ the standard.
   `pnpm run check:conformance` checks the suites. `tiered-dirs` has moved
   there. Until they move, `path-guard` and `config-layers` keep
   `packages/rust/<name>/tests/fixtures/parity.json`, `frontmatter-lossless`
-  its crate's `tests/fixtures/conformance.json`, and `markdown-contract` runs
-  the TypeScript package's `corpus/` directly. `etag-write` has no shared
+  its crate's `tests/fixtures/conformance.json`, `markdown-contract` runs
+  the TypeScript package's `corpus/` directly, and `glob-intersect` runs
+  `@osdlc/intersect`'s `fixtures/` directly. `etag-write` has no shared
   cases yet.
 - **Each language's idiom.** An implementation does not copy the other's names or
   signatures when that breaks its own language's habits. Rust uses
@@ -123,6 +130,8 @@ Developed here, in this repository:
 - `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/frontmatter-lossless` (`frontmatter-lossless` on crates.io)
+- `packages/rust/glob-intersect` (`glob-intersect`, the Rust implementation of
+  `@osdlc/intersect`: do two globs share a path; not on crates.io yet)
 - `packages/rust/markdown-contract` (`markdown-contract` on crates.io, the Rust implementation
   of `@osdlc/markdown-contract`: contracts for markdown documents, checked
   against the package's corpus)
@@ -132,15 +141,17 @@ Developed here, in this repository:
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
-- `packages/rust/tradecraft` (`tradecraft` on crates.io, a command-line tool
-  that publishes a vault of markdown skill notes into the formats of
-  coding-agent tools; `cargo install tradecraft`). Each `tradecraft/vX.Y.Z`
+- `packages/rust/skillwright` (`skillwright` on crates.io, a command-line
+  tool that publishes a vault of markdown skill notes into the formats of
+  coding-agent tools; `cargo install skillwright`). Each `skillwright/vX.Y.Z`
   tag also ships prebuilt binaries to the GitHub Release, npm
-  (`@osdlc/tradecraft`) and Homebrew (`osdlc/tap`), through
-  `.github/workflows/tradecraft-release.yml`; see
-  [`tradecraft/release/`](rust/tradecraft/release/README.md)
+  (`@osdlc/skillwright`) and Homebrew (`osdlc/tap`), through
+  `.github/workflows/skillwright-release.yml`; see
+  [`skillwright/release/`](rust/skillwright/release/README.md)
+- `packages/rust/tradecraft` (`tradecraft` on crates.io, the CLI's old
+  name. It only points to `skillwright`.)
 - `packages/rust/tradecraft-core` (`tradecraft-core` on crates.io, the library
-  behind `tradecraft`)
+  behind `skillwright`)
 - `packages/rust/tradecraft-typegen`, the generator of the TypeScript
   declarations for `tradecraft-wasm` (not published to crates.io)
 - `packages/rust/tradecraft-wasm`, the WebAssembly build of `tradecraft-core`

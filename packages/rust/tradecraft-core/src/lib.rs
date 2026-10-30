@@ -11,7 +11,7 @@
 //! | [`scan`] | Walk a root and find the skills in it |
 //! | [`discover`] | Walk a vault's skills root and vet every publishable note |
 //! | [`skill`] | The on-disk skill: frontmatter framing, refs, detail reads |
-//! | [`namespace`] | Which prefix we claim — `tc-` by default, configurable |
+//! | [`namespace`] | Which prefix we claim — `sw-` by default, configurable |
 //! | [`frontmatter`] | That namespace read out of a note, typed |
 //! | [`vault`] | The *vault* skill: a note plus a sibling folder of peers |
 //! | [`content`] | The skill shape projection renders, and its peer resources |
@@ -19,7 +19,7 @@
 //! | [`projection`] | One skill to one target's files, via `agent-adapt` |
 //! | [`publish`] | A vault note written onto a destination, idempotently |
 //! | [`export`] | The vault built into one marketplace tree per harness, and checked |
-//! | [`settings`] | `tradecraft.yaml`'s `marketplace:` block, as a build config |
+//! | [`settings`] | `skillwright.yaml`'s `marketplace:` block, as a build config |
 //! | [`adopt`] | Published SKILL.md bundles imported as vault notes |
 //! | [`authoring`] | Where a note goes, what it collides with, what it says |
 //! | [`guard`] | The rails that keep a publish out of a source root |
@@ -32,14 +32,14 @@
 //!
 //! | Name | Rule set | Where |
 //! |---|---|---|
-//! | publish spec | What a publish may write: per-file statuses, the closed set of refusal tokens, `tc-targets` exclusion, destination overlap | [`publish`], [`export`], [`guard`], [`manifest`] |
+//! | publish spec | What a publish may write: per-file statuses, the closed set of refusal tokens, `sw-targets` exclusion, destination overlap | [`publish`], [`export`], [`guard`], [`manifest`] |
 //! | vault spec | A skill is a note plus a sibling folder of peers; publishing is five steps (embeds, links, references, peers, target dialect) | [`vault`], [`publish`] |
 //! | compile spec | Embeds are expanded and links rewritten; an unresolved link is not a blocker | [`compile`] |
 //! | marketplace layout spec | How one marketplace tree per harness is laid out and checked | [`export`] |
-//! | namespace spec | Frontmatter keys under the `tc-` prefix belong to this tool and are stripped on publish | [`namespace`], [`frontmatter`] |
+//! | namespace spec | Frontmatter keys under the `sw-` prefix belong to this tool and are stripped on publish | [`namespace`], [`frontmatter`] |
 //! | write-guard spec | A publish never writes into the source root or the vault | [`guard`] |
 //! | status spec | The per-file states a status report uses, including `unknown` | [`status`] |
-//! | CLI spec | Exit codes, stdout versus stderr, `--dry-run`, confirmation before writes | the `tradecraft` crate |
+//! | CLI spec | Exit codes, stdout versus stderr, `--dry-run`, confirmation before writes | the `skillwright` crate |
 //! | Agent Skills spec | The public Agent Skills standard: `SKILL.md` frontmatter fields, name rules, and length caps on `description` and `compatibility` | [`skill`], [`discover`], [`adopt`] |
 //!
 //! # Two skill layouts, deliberately
@@ -62,10 +62,10 @@
 //!
 //! Every function that consults the frontmatter prefix takes a
 //! [`Namespace`] alongside its `&dyn Vfs`. A vault may configure its own
-//! (the namespace spec claims `tc-` wholesale, and
-//! `tc-` is short enough to collide), so there is no one true prefix to read
-//! from a global — and a caller reading one note under `tc` and another under
-//! `x` must be able to, in one process. `Namespace::default()` is `tc`, so a
+//! (the namespace spec claims `sw-` wholesale, and
+//! `sw-` is short enough to collide), so there is no one true prefix to read
+//! from a global — and a caller reading one note under `sw` and another under
+//! `x` must be able to, in one process. `Namespace::default()` is `sw`, so a
 //! caller with no opinion writes one extra argument and nothing else.
 
 pub mod adopt;
