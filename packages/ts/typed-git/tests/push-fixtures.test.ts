@@ -140,4 +140,17 @@ describe('PUSH_REJECTIONS', () => {
   test('is frozen', () => {
     expect(Object.isFrozen(PUSH_REJECTIONS)).toBe(true)
   })
+
+  test("the README's rejection reference has one entry per rejection, with its docs link", () => {
+    const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8')
+    const from = readme.indexOf('### Rejection reference')
+    const section = readme.slice(from, readme.indexOf('\n## ', from))
+    const entries = section.split('\n\n').filter((b) => b.startsWith('**`'))
+    const links = Object.fromEntries(
+      entries.map((b) => [/^\*\*`([a-z-]+)`\*\*/.exec(b)![1], /\]\((\S+)\)\s*$/.exec(b)![1]]),
+    )
+    expect(links).toEqual(
+      Object.fromEntries(Object.entries(PUSH_REJECTIONS).map(([kind, info]) => [kind, info.docs])),
+    )
+  })
 })

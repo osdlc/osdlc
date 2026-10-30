@@ -516,8 +516,8 @@ maps it, and this table gains the row.
 ### Rejection reference
 
 `PUSH_REJECTIONS[rejection]` holds, for every value, a one-line `message`, an
-`explanation`, a `hint` and a `docs` link into git's own manual. The same
-text, for reading here:
+`explanation`, a `hint` and a `docs` link into git's own manual. Each one in
+brief, with the same link:
 
 **`stale`**: the remote ref is not where the lease expected it. With
 `--force-with-lease`, git compares the remote ref with the expected value
