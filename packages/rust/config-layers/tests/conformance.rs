@@ -29,9 +29,15 @@ const SUITE_JSON: &str = include_str!("../../../conformance/config-layers/suite.
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 struct Suite {
     family: String,
-    #[allow(dead_code, reason = "the suite format carries it; this test reads none")]
+    #[allow(
+        dead_code,
+        reason = "the suite format carries it; this test reads none"
+    )]
     reference: String,
-    #[allow(dead_code, reason = "the suite format carries it; this test reads none")]
+    #[allow(
+        dead_code,
+        reason = "the suite format carries it; this test reads none"
+    )]
     reference_version: String,
     sections: BTreeMap<String, Section>,
 }
@@ -162,7 +168,10 @@ fn value_is_set(case: &Case) -> Outcome {
     let got = match (input.get("value"), input.get("missing")) {
         (Some(v), None) => value::value_is_set(Some(v)),
         (None, Some(Value::Bool(true))) => value::value_is_set(None),
-        _ => panic!("{}: input: give exactly one of value and missing: true", case.name),
+        _ => panic!(
+            "{}: input: give exactly one of value and missing: true",
+            case.name
+        ),
     };
     Outcome::Expect(json!({ "set": got }))
 }
@@ -190,7 +199,10 @@ fn yaml(case: &Case, dir: &Path) -> Outcome {
                 error("not_a_mapping", None)
             }
         }
-        Err(other) => panic!("{}: a problem the suite has no kind for: {other}", case.name),
+        Err(other) => panic!(
+            "{}: a problem the suite has no kind for: {other}",
+            case.name
+        ),
     }
 }
 
