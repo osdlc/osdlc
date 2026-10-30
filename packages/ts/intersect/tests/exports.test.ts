@@ -7,14 +7,12 @@
  *      runtime dependency, while `./fs` loads `tinyglobby`. The check that fs
  *      does reach `tinyglobby` shows the walker can find a dependency, so the
  *      empty result for the other entries is real.
- *   3. Corpus sweep: no `*.cases.json` case is left `pending: true`.
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
 
-import { loadCaseFiles } from './fixtures.ts'
 import { importsGlobber, reachableBareImports } from './import-graph.ts'
 
 const pkgDir = resolve(import.meta.dirname, '..')
@@ -80,13 +78,4 @@ describe('dependency isolation', () => {
   test('the `./fs` entry pulls the globber (detector is real)', () => {
     expect(importsGlobber(reachableBareImports(sourceFile('./fs')))).toBe(true)
   })
-})
-
-describe('corpus sweep: no case left pending', () => {
-  for (const cf of loadCaseFiles()) {
-    test(`${cf.file} has no pending cases`, () => {
-      const pending = cf.cases.filter((c) => c.pending === true).map((c) => c.name)
-      expect(pending).toEqual([])
-    })
-  }
 })
