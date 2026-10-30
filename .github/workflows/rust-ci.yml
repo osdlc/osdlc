@@ -153,7 +153,8 @@ jobs:
           cargo test -p markdown-contract --no-default-features --locked
 
       # Without `fs`, the crate does no I/O; the pure sections of the
-      # conformance suite still run, and the `fs_*` sections report not run.
+      # conformance suite still run, and the `fs_*` sections' test is reported
+      # as ignored.
       - name: glob-intersect without default features
         run: |
           cargo clippy -p glob-intersect --no-default-features --all-targets --locked -- -D warnings

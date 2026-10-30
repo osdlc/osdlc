@@ -5,12 +5,23 @@
 //! its generator writes every `expect` and `error`. Every section and every
 //! case runs here. A section, a case key, an input key or an option this test
 //! does not know fails it, and so does a case it cannot run, unless the case's
-//! `platforms` or `skip` rule this host out.
+//! `platforms` or `skip` rule this host out, with two exceptions:
 //!
-//! - [`every_case_in_the_suite_conforms`] runs the pure sections (L0
-//!   segments, L1 path, L1 registry) and the `fs_*` sections, which build each
-//!   case's `tree`, `symlinks` and `unreadable` directories under a temp dir.
-//! - The tests after it add what a case cannot state: the compiled `Matcher`
+//! - Without the `fs` feature, [`every_fs_case_conforms`] is compiled but
+//!   ignored, so `cargo test` reports it as `ignored` rather than passing it.
+//! - A case with `unreadable` directories is not run where mode 000 does not
+//!   stop a read, which is when running as root. The test prints those cases
+//!   to stderr, which `cargo test` shows with `--nocapture`.
+//!
+//! The tests:
+//!
+//! - [`every_pure_case_conforms`] checks the shape of every case in every
+//!   section, and runs the pure sections (L0 segments, L1 path, L1 registry).
+//!   It runs with or without the `fs` feature.
+//! - [`every_fs_case_conforms`] checks the same shapes, and runs the `fs_*`
+//!   sections, which build each case's `tree`, `symlinks` and `unreadable`
+//!   directories under a temp dir.
+//! - The tests after them add what a case cannot state: the compiled `Matcher`
 //!   agrees with the free functions, and overlap is symmetric with a witness
 //!   both sides match.
 
@@ -282,32 +293,13 @@ fn wanted(name: &str, case: &Json) -> Json {
     }
 }
 
-/// Why a case that runs on this host was not run.
-enum NotRun {
-    /// It locks a directory, and mode 000 does not stop a read here, as when
-    /// running as root.
-    #[cfg_attr(not(feature = "fs"), expect(dead_code, reason = "only fs cases lock"))]
-    AsRoot,
-    /// It is in an `fs_*` section and the `fs` feature is off.
-    #[cfg_attr(feature = "fs", expect(dead_code, reason = "fs cases run"))]
-    NeedsFs,
-}
-
-/// The outcome of one case, or why it was not run.
-fn run(section: &str, input: &Json) -> Result<Json, NotRun> {
-    if section.starts_with("fs_") {
-        return run_fs(section, input);
-    }
-    Ok(outcome(run_pure(section, input)))
-}
-
 // --- The fs sections -------------------------------------------------------
 
-/// Without the `fs` feature an `fs_*` case is reported as not run, and the
-/// pure sections still run.
+/// Without the `fs` feature [`every_fs_case_conforms`], the only caller, is
+/// ignored, so this never runs.
 #[cfg(not(feature = "fs"))]
-fn run_fs(_section: &str, _input: &Json) -> Result<Json, NotRun> {
-    Err(NotRun::NeedsFs)
+fn run_fs(_section: &str, _input: &Json) -> Option<Json> {
+    unreachable!("the fs cases are ignored without the fs feature")
 }
 
 /// Where `to` is, written relative to `from`. Both must be absolute.
@@ -372,10 +364,10 @@ fn set_modes(root: &std::path::Path, dirs: &[String], mode: u32) {
 /// Run one case of an `fs_*` section: build its tree under a temp dir, run the
 /// op there, and give the paths as the suite states them, `/`-separated and
 /// relative to the temp dir. With `opts.absolute` each path must be absolute
-/// and under the temp dir. [`NotRun::AsRoot`] when the case locks a directory
-/// and mode 000 does not stop a read here, as when running as root.
+/// and under the temp dir. `None`, not run, when the case locks a directory and
+/// mode 000 does not stop a read here, as when running as root.
 #[cfg(feature = "fs")]
-fn run_fs(section: &str, input: &Json) -> Result<Json, NotRun> {
+fn run_fs(section: &str, input: &Json) -> Option<Json> {
     use glob_intersect::fs::{FsOptions, files_in_scope, resolve_intersection};
 
     let dir = tempfile::tempdir().expect("temp dir");
@@ -404,7 +396,7 @@ fn run_fs(section: &str, input: &Json) -> Result<Json, NotRun> {
         .any(|d| std::fs::read_dir(root.join(d)).is_ok())
     {
         set_modes(root, &locked, 0o755);
-        return Err(NotRun::AsRoot);
+        return None;
     }
 
     let mut cwd = match input.get("cwd") {
@@ -455,15 +447,17 @@ fn run_fs(section: &str, input: &Json) -> Result<Json, NotRun> {
                 .collect(),
         )
     });
-    Ok(outcome(result))
+    Some(outcome(result))
 }
 
 // --- The suite -------------------------------------------------------------
 
-/// Every case in the suite, one test. A failure lists every offending case by
-/// section and name rather than stopping at the first.
-#[test]
-fn every_case_in_the_suite_conforms() {
+/// Check every case in the suite, then run those of the `fs_*` sections when
+/// `fs`, else those of the pure sections. Both tests check every case, so a
+/// malformed `fs_*` case fails even where the fs test is ignored. A failure
+/// lists every offending case by section and name rather than stopping at the
+/// first.
+fn conform(fs: bool) {
     let suite: Json = serde_json::from_str(SUITE_JSON).expect("the suite is valid JSON");
     let mut top = keys(&suite);
     top.sort_unstable();
@@ -478,7 +472,6 @@ fn every_case_in_the_suite_conforms() {
 
     let mut failures: Vec<String> = Vec::new();
     let mut not_run: Vec<String> = Vec::new();
-    let mut needs_fs: Vec<String> = Vec::new();
     let mut ran = 0;
     for (section, body) in sections {
         assert!(
@@ -493,34 +486,38 @@ fn every_case_in_the_suite_conforms() {
             }
             let want = wanted(name, case);
             check_input(section, name, &case["input"]);
-            if !runs_here(case) {
+            if section.starts_with("fs_") != fs || !runs_here(case) {
                 continue;
             }
-            match run(section, &case["input"]) {
-                Err(NotRun::AsRoot) => not_run.push(format!("[{section}: {name}]")),
-                Err(NotRun::NeedsFs) => needs_fs.push(format!("[{section}: {name}]")),
-                Ok(got) if got == want => ran += 1,
-                Ok(got) => failures.push(format!("  [{section}: {name}] got {got}, want {want}")),
+            let got = if fs {
+                let Some(got) = run_fs(section, &case["input"]) else {
+                    not_run.push(format!("[{section}: {name}]"));
+                    continue;
+                };
+                got
+            } else {
+                outcome(run_pure(section, &case["input"]))
+            };
+            if got == want {
+                ran += 1;
+            } else {
+                failures.push(format!("  [{section}: {name}] got {got}, want {want}"));
             }
         }
     }
 
     // Mode 000 stops a read everywhere but as root. Anywhere else, a case that
     // could not run is a failure.
-    if !not_run.is_empty() && !running_as_root() {
-        failures.push(format!("  could not run: {}", not_run.join(" ")));
-    }
-    println!(
-        "conformance suite: {ran} passed, {} failed, {} not run as root {}",
-        failures.len(),
-        not_run.len(),
-        not_run.join(" ")
-    );
-    if !needs_fs.is_empty() {
-        println!(
-            "conformance suite: {} not run: needs the fs feature",
-            needs_fs.len()
-        );
+    if !not_run.is_empty() {
+        if running_as_root() {
+            eprintln!(
+                "conformance suite: {} not run as root: {}",
+                not_run.len(),
+                not_run.join(" ")
+            );
+        } else {
+            failures.push(format!("  could not run: {}", not_run.join(" ")));
+        }
     }
     assert!(ran > 0, "no case ran");
     assert!(
@@ -528,6 +525,20 @@ fn every_case_in_the_suite_conforms() {
         "conformance failures:\n{}",
         failures.join("\n")
     );
+}
+
+/// Every case of the pure sections, with or without the `fs` feature.
+#[test]
+fn every_pure_case_conforms() {
+    conform(false);
+}
+
+/// Every case of the `fs_*` sections. Without the `fs` feature it is ignored,
+/// so the run reports the fs cases as not run rather than skipping them.
+#[test]
+#[cfg_attr(not(feature = "fs"), ignore = "needs the fs feature")]
+fn every_fs_case_conforms() {
+    conform(true);
 }
 
 /// Is this process root? Detected by whether mode 000 stops a read of a probe
