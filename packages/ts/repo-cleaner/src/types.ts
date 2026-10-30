@@ -36,7 +36,10 @@ export function authorizationsFor(flags: Partial<Record<Authorization, boolean>>
 export interface RepoInfo {
   /** The main checkout's root, even when the sweep was pointed at a worktree. */
   root: string
-  /** `owner/name` when the remote is a recognisable host coordinate. */
+  /**
+   * `owner/name` for a github.com remote, `host/owner/name` for one on another
+   * host, or null when the remote names no repository.
+   */
   slug: string | null
   mainBranch: string
   remote: string | null
@@ -56,6 +59,9 @@ export function landedRef(repo: RepoInfo): string {
 export function isUnfetched(repo: RepoInfo): boolean {
   return repo.remote !== null && !repo.fetched
 }
+
+/** Why a merged PR does not prove that a tip landed. */
+export type PrEvidenceGap = 'other-base' | 'head-moved'
 
 /** A pull request, reduced to what classification consults. */
 export interface PRInfo {

@@ -15,8 +15,8 @@
  * for state that does not outlive a single call.
  *
  * This module matches the Rust `tiered-dirs` crate. The same input must give
- * the same relative path in both. `tests/parity.test.ts` checks that against a
- * fixture both packages read.
+ * the same relative path in both. `tests/conformance.test.ts` checks that
+ * against the conformance suite both packages run.
  */
 
 export { TieredDirsError } from './errors.ts'

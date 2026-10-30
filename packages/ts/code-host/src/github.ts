@@ -31,6 +31,7 @@ import {
 import { err, FailureError, mapErr, ok, type Result } from '@osdlc/result'
 import { rollupChecks } from './checks.ts'
 import { fromGhFailure, type CodeHostFailure } from './failure.ts'
+import { prHost } from './pr-ref.ts'
 import { CommentNotFoundError } from './types.ts'
 import type {
   Actor,
@@ -401,8 +402,8 @@ export class GithubCodeHost implements CodeHost {
   }
 
   updateComment(_number: number, commentId: string, body: string): void {
-    // Issue-comment ids are repo-wide, so the PR number is not part of the call. The failure is read
-    // off gh's stderr, never off the argv (which holds the body).
+    // Issue-comment ids are repo-wide, so the PR number is not part of the call. typed-gh classifies
+    // the failure from gh's output, never from the argv (which holds the body).
     const res = this.gh.raw([
       'api',
       '-X',
@@ -412,11 +413,9 @@ export class GithubCodeHost implements CodeHost {
       `body=${body}`,
     ])
     if (res.exitCode === 0) return
-    const stderr = res.stderr.trim()
-    if (/\(HTTP 404\)/.test(stderr)) throw new CommentNotFoundError(commentId, stderr)
-    throw new FailureError(
-      writeFailure(['api', '-X', 'PATCH', `issues/comments/${commentId}`], res),
-    )
+    const failure = writeFailure(['api', '-X', 'PATCH', `issues/comments/${commentId}`], res)
+    if (failure.kind === 'not-found') throw new CommentNotFoundError(commentId, res.stderr.trim())
+    throw new FailureError(failure)
   }
 
   listComments(
@@ -497,7 +496,13 @@ export class GithubCodeHost implements CodeHost {
     const ref = ghParsePrUrl(url)
     return ref === null
       ? null
-      : { codeHost: 'github', owner: ref.owner, repo: ref.repo, number: ref.number }
+      : {
+          codeHost: 'github',
+          host: prHost(ref.hostname),
+          owner: ref.owner,
+          repo: ref.repo,
+          number: ref.number,
+        }
   }
 
   prForBranch(branch: string): Result<number | null, CodeHostFailure> {

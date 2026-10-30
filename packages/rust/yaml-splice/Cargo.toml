@@ -1,6 +1,6 @@
 [package]
 name = "yaml-splice"
-version = "0.3.2"
+version = "0.3.3"
 edition.workspace = true
 rust-version.workspace = true
 description = "Edit top-level fields of a YAML mapping in place: set, remove and rename a key while every other byte, comments, key order and quoting included, stays as it was."
@@ -14,6 +14,7 @@ include = [
   "examples/**/*.rs",
   "tests/**/*.rs",
   "tests/fixtures/*.json",
+  "tests/fixtures/real/*",
   "README.md",
   "CHANGELOG.md",
   "LICENSE-MIT",
@@ -33,6 +34,14 @@ serde_json = ["dep:serde_json"]
 # Loads its JSON fixtures and builds `Set` values with the serde_json bridge.
 [[test]]
 name = "conformance"
+required-features = ["serde_json"]
+
+[[test]]
+name = "nested_corpus"
+required-features = ["serde_json"]
+
+[[test]]
+name = "fuzz_chars"
 required-features = ["serde_json"]
 
 [lints]

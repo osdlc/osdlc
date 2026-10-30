@@ -1,5 +1,39 @@
 # @osdlc/typed-gh
 
+## 0.14.0
+
+### Minor Changes
+
+- c58f58b: `pickPrForBranch` takes the `ListResult` that `openPrsForBranch` and `prList` return, as well as plain rows, so `pickPrForBranch(verb.parse(result), branch)` works without a `.rows` unwrap. It also accepts a readonly array.
+
+## 0.13.0
+
+### Minor Changes
+
+- 5598ee8: Author logins also drop the `app/` prefix that gh's `--json` export puts on a bot author (`{"is_bot":true,"login":"app/osdlc-release"}`). So `prList`/`prView`, REST (`osdlc-release[bot]`) and GraphQL (`osdlc-release`) all give the same `login`, and the prefix marks the author as a bot. `normalizeAuthorLogin` strips it too. **Breaking:** a caller that matched `app/<name>` on `author.login` now sees `<name>`. To filter by a bot with `prList({ author })`, pass `app/<login>` or `<login>[bot]`: gh's `--author` does not match the bare form.
+- 50a340a: `Gh` and `AsyncGh` take a second constructor form, `new Gh({ repo, hostname?, runner? })`, for a client that names a repository and needs no directory. `repo` is required in that form: `new Gh({})` does not typecheck and throws `TypeError`, so clone-relative use still names its directory. Each call runs in `process.cwd()`, read when the call is made. `cwd` is now a getter that returns that directory, still typed `readonly string`. `at(cwd)` on such a client gives one rooted at `cwd`, and `withRepo` keeps the form. `new Gh(cwd, options?)` is unchanged. New types `GhRepoOptions` and `AsyncGhRepoOptions` are `GhOptions` and `AsyncGhOptions` with `repo` required.
+  
+  `gh.cwd` is now a getter on the prototype rather than an own field. Reading it is unchanged. `{ ...gh }`, `Object.keys(gh)` and `JSON.stringify(gh)` no longer include it, and a subclass cannot redeclare it as a field. On a client built from `repo` alone, `raw`, `rawChecked` and an `api` endpoint's `{branch}` still read `process.cwd()`, as documented.
+  
+  Fixed: `repoView` treats `hostname: ''` as no host, as every other verb does. Before, it sent `/owner/name`.
+- 65740a9: `prList({ headPrefix })` lists every pull request whose head branch starts with a prefix such as `task/`. It sends a `head:<prefix>` search term, groups any `search` after it in parentheses so an `OR` there cannot escape the prefix, asks for `headRefName`, and filters the rows with `startsWith`. Callers no longer write that filter themselves. Because it goes through GitHub search, which returns at most 1000 results, a `limit` over 999 throws `RangeError`. It also throws when combined with `head`, and for an empty prefix or one holding whitespace, `"`, `(` or `)`.
+
+## 0.12.1
+
+### Patch Changes
+
+- Updated dependencies [82d9841]
+- Updated dependencies [ebe0e0d]
+  - @osdlc/typed-git@0.11.0
+
+## 0.12.0
+
+### Minor Changes
+
+- a4ca07d: New `@osdlc/typed-gh/testing` entry point with builders for faking `gh` in tests. `prRow`, `issueRow`, `repoRow`, `searchPrRow`, `labelRow`, `checkRunRow`, `statusContextRow`, `commentRow` and `reviewRow` return gh's raw `--json` rows, with defaults that fill every field the parsers require (a pull request's `number`, a repository's `nameWithOwner`, the `headRefName` that `prList({ head })` filters on), and take typed overrides merged shallowly. `ghResult(payload)` wraps rows in a successful `CommandResult` for a fake runner. The main entry point does not import it.
+  
+  Fixed: `searchPrs` reads gh's zero time (`0001-01-01T00:00:00Z`), which gh prints for a hit that isn't closed, as `closedAt: null`. Before, an open hit had a year-0001 close date.
+
 ## 0.11.1
 
 ### Patch Changes

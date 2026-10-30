@@ -12,7 +12,7 @@ created: 2026-10-19
 On Windows the Rust crate `path-guard` judges the path Windows opens, as the
 TypeScript package does ([D-03](../decisions/D-03-platforms.md)). The twins
 then give the same answer there, as the
-[twin rule](../../../../../README.md#twin-libraries) asks.
+[twin rule](../../../../../README.md#library-families) asks.
 
 ## Before
 

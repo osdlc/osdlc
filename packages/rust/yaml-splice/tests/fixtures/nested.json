@@ -1,0 +1,3265 @@
+[
+  {
+    "name": "set_nested_scalar",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "build:\n  target: es2020\n  out: dist\nname: x\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "build",
+            "target"
+          ],
+          "value": "es2022"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "build:\n  target: es2022\n  out: dist\nname: x\n"
+    }
+  },
+  {
+    "name": "set_nested_scalar_crlf",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "build:\r\n  target: es2020\r\n  out: dist\r\nname: x\r\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "build",
+            "target"
+          ],
+          "value": "es2022"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "build:\r\n  target: es2022\r\n  out: dist\r\nname: x\r\n"
+    }
+  },
+  {
+    "name": "set_nested_scalar_keeps_its_trailing_comment",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "build:\n  target: es2020  # why\n  out: dist\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "build",
+            "target"
+          ],
+          "value": "es2022"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "build:\n  target: es2022  # why\n  out: dist\n"
+    }
+  },
+  {
+    "name": "set_nested_scalar_keeps_sibling_quoting",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "a:\n  b: 'x'\n  c: \"y\"\n  d: z\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "d"
+          ],
+          "value": "w"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: 'x'\n  c: \"y\"\n  d: w\n"
+    }
+  },
+  {
+    "name": "set_nested_quoted_scalar_keeps_its_comment",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "a:\n  b: 'x' # c\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": "y"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: y # c\n"
+    }
+  },
+  {
+    "name": "set_nested_integer",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "server:\n  port: 8080\n  host: local\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "server",
+            "port"
+          ],
+          "value": 9090
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "server:\n  port: 9090\n  host: local\n"
+    }
+  },
+  {
+    "name": "set_nested_boolean",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "flags:\n  debug: false\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "flags",
+            "debug"
+          ],
+          "value": true
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "flags:\n  debug: true\n"
+    }
+  },
+  {
+    "name": "set_nested_string_that_needs_quotes",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "pkg:\n  version: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "pkg",
+            "version"
+          ],
+          "value": "1.0"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "pkg:\n  version: \"1.0\"\n"
+    }
+  },
+  {
+    "name": "set_at_depth_three",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "a:\n  b:\n    c: 1\n    d: 2\n  e: 3\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b",
+            "c"
+          ],
+          "value": 10
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b:\n    c: 10\n    d: 2\n  e: 3\n"
+    }
+  },
+  {
+    "name": "set_at_depth_three_crlf",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "a:\r\n  b:\r\n    c: 1\r\n    d: 2\r\n  e: 3\r\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b",
+            "c"
+          ],
+          "value": 10
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\r\n  b:\r\n    c: 10\r\n    d: 2\r\n  e: 3\r\n"
+    }
+  },
+  {
+    "name": "set_under_a_four_space_parent",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "a:\n    b: 1\n    c: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "c"
+          ],
+          "value": 3
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n    b: 1\n    c: 3\n"
+    }
+  },
+  {
+    "name": "set_keeps_comment_lines_between_children",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "a:\n  # about b\n  b: 1\n\n  # about c\n  c: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "c"
+          ],
+          "value": 3
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  # about b\n  b: 1\n\n  # about c\n  c: 3\n"
+    }
+  },
+  {
+    "name": "set_an_empty_nested_value",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "a:\n  b:\n  c: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": "x"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: x\n  c: 2\n"
+    }
+  },
+  {
+    "name": "set_only_the_key_at_the_addressed_depth",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "name: top\na:\n  name: inner\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "name"
+          ],
+          "value": "new"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "name: top\na:\n  name: new\n"
+    }
+  },
+  {
+    "name": "set_a_nested_key_that_shares_a_top_level_name",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "a:\n  x: 1\nx: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "x"
+          ],
+          "value": 5
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  x: 5\nx: 2\n"
+    }
+  },
+  {
+    "name": "set_in_an_unterminated_document",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "a:\n  b: 1",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": 2
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: 2"
+    }
+  },
+  {
+    "name": "set_with_unicode_keys",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "メタ:\n  名前: 値\n  他: x\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "メタ",
+            "名前"
+          ],
+          "value": "新"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "メタ:\n  名前: 新\n  他: x\n"
+    }
+  },
+  {
+    "name": "set_after_a_bom",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "﻿a:\n  b: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": 2
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "﻿a:\n  b: 2\n"
+    }
+  },
+  {
+    "name": "set_a_block_scalar_child_to_a_plain_scalar",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "a:\n  body: |\n    l1\n    l2\n  next: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "body"
+          ],
+          "value": "x"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  body: x\n  next: 1\n"
+    }
+  },
+  {
+    "name": "set_a_nested_map_child_to_a_scalar",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "a:\n  b:\n    c: 1\n  d: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": "x"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: x\n  d: 2\n"
+    }
+  },
+  {
+    "name": "set_a_nested_block_sequence_to_a_scalar",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "a:\n  b:\n    - 1\n    - 2\n  d: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": "x"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: x\n  d: 2\n"
+    }
+  },
+  {
+    "name": "set_a_nested_flow_sequence_to_a_scalar",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "a:\n  tags: [x, y] # c\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "tags"
+          ],
+          "value": "z"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  tags: z # c\n"
+    }
+  },
+  {
+    "name": "set_a_value_whose_parent_header_has_a_comment",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "a: # note\n  b: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": 2
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: # note\n  b: 2\n"
+    }
+  },
+  {
+    "name": "set_replaces_an_alias_leaf",
+    "tier": 1,
+    "category": "set-existing",
+    "source": "base: &b 1\na:\n  x: *b\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "x"
+          ],
+          "value": 2
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "base: &b 1\na:\n  x: 2\n"
+    }
+  },
+  {
+    "name": "set_a_nested_scalar_to_a_block_sequence",
+    "tier": 1,
+    "category": "set-to-block",
+    "source": "a:\n  tags: x\n  n: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "tags"
+          ],
+          "value": [
+            "p",
+            "q"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  tags:\n    - p\n    - q\n  n: 1\n"
+    }
+  },
+  {
+    "name": "set_a_nested_scalar_to_a_block_sequence_crlf",
+    "tier": 1,
+    "category": "set-to-block",
+    "source": "a:\r\n  tags: x\r\n  n: 1\r\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "tags"
+          ],
+          "value": [
+            "p",
+            "q"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\r\n  tags:\r\n    - p\r\n    - q\r\n  n: 1\r\n"
+    }
+  },
+  {
+    "name": "set_a_nested_scalar_to_a_block_mapping",
+    "tier": 1,
+    "category": "set-to-block",
+    "source": "a:\n  b: x\n  n: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": {
+            "c": 1,
+            "d": "x"
+          }
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b:\n    c: 1\n    d: x\n  n: 1\n"
+    }
+  },
+  {
+    "name": "set_a_nested_literal_block",
+    "tier": 1,
+    "category": "set-to-block",
+    "source": "a:\n  b: x\n  n: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": "l1\nl2\n"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: |\n    l1\n    l2\n  n: 1\n"
+    }
+  },
+  {
+    "name": "set_a_nested_literal_block_crlf",
+    "tier": 1,
+    "category": "set-to-block",
+    "source": "a:\r\n  b: x\r\n  n: 1\r\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": "l1\nl2\n"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\r\n  b: |\r\n    l1\r\n    l2\r\n  n: 1\r\n"
+    }
+  },
+  {
+    "name": "set_a_nested_strip_chomped_block",
+    "tier": 1,
+    "category": "set-to-block",
+    "source": "a:\n  b: x\n  n: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": "l1\nl2"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: |-\n    l1\n    l2\n  n: 1\n"
+    }
+  },
+  {
+    "name": "set_a_nested_keep_chomped_block",
+    "tier": 1,
+    "category": "set-to-block",
+    "source": "a:\n  b: x\n  n: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": "kept\n\n"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: |+\n    kept\n\n  n: 1\n"
+    }
+  },
+  {
+    "name": "set_a_nested_block_moves_the_trailing_comment_to_its_header",
+    "tier": 1,
+    "category": "set-to-block",
+    "source": "a:\n  b: x # why\n  n: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": "l1\nl2\n"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: | # why\n    l1\n    l2\n  n: 1\n"
+    }
+  },
+  {
+    "name": "set_a_block_sequence_at_depth_three",
+    "tier": 1,
+    "category": "set-to-block",
+    "source": "a:\n  b:\n    c: x\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b",
+            "c"
+          ],
+          "value": [
+            1,
+            2
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b:\n    c:\n      - 1\n      - 2\n"
+    }
+  },
+  {
+    "name": "set_a_block_value_under_a_four_space_parent",
+    "tier": 1,
+    "category": "set-to-block",
+    "source": "a:\n    b: x\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": [
+            "p"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n    b:\n      - p\n"
+    }
+  },
+  {
+    "name": "replace_a_nested_block_sequence",
+    "tier": 1,
+    "category": "set-to-block",
+    "source": "a:\n  b:\n    - old\n  n: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": [
+            "new1",
+            "new2"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b:\n    - new1\n    - new2\n  n: 1\n"
+    }
+  },
+  {
+    "name": "set_a_nested_mapping_holding_a_sequence",
+    "tier": 1,
+    "category": "set-to-block",
+    "source": "a:\n  b: x\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": {
+            "k": [
+              1
+            ]
+          }
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b:\n    k:\n      - 1\n"
+    }
+  },
+  {
+    "name": "set_a_nested_empty_sequence",
+    "tier": 1,
+    "category": "set-to-block",
+    "source": "a:\n  b: x\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": []
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: []\n"
+    }
+  },
+  {
+    "name": "set_a_nested_empty_mapping",
+    "tier": 1,
+    "category": "set-to-block",
+    "source": "a:\n  b:\n    c: 1\n  d: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": {}
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: {}\n  d: 2\n"
+    }
+  },
+  {
+    "name": "append_a_nested_key",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "build:\n  target: x\nname: y\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "build",
+            "out"
+          ],
+          "value": "dist"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "build:\n  target: x\n  out: dist\nname: y\n"
+    }
+  },
+  {
+    "name": "append_a_nested_key_crlf",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "build:\r\n  target: x\r\nname: y\r\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "build",
+            "out"
+          ],
+          "value": "dist"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "build:\r\n  target: x\r\n  out: dist\r\nname: y\r\n"
+    }
+  },
+  {
+    "name": "append_under_the_last_top_level_key",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "build:\n  target: x\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "build",
+            "out"
+          ],
+          "value": "dist"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "build:\n  target: x\n  out: dist\n"
+    }
+  },
+  {
+    "name": "append_under_the_last_top_level_key_crlf",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "build:\r\n  target: x\r\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "build",
+            "out"
+          ],
+          "value": "dist"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "build:\r\n  target: x\r\n  out: dist\r\n"
+    }
+  },
+  {
+    "name": "append_in_an_unterminated_document",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "build:\n  target: x",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "build",
+            "out"
+          ],
+          "value": "dist"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "build:\n  target: x\n  out: dist"
+    }
+  },
+  {
+    "name": "append_after_a_block_scalar_child",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "a:\n  body: |\n    l1\n    l2\nb: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "n"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  body: |\n    l1\n    l2\n  n: 1\nb: 1\n"
+    }
+  },
+  {
+    "name": "append_after_a_block_scalar_child_crlf",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "a:\r\n  body: |\r\n    l1\r\n    l2\r\nb: 1\r\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "n"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\r\n  body: |\r\n    l1\r\n    l2\r\n  n: 1\r\nb: 1\r\n"
+    }
+  },
+  {
+    "name": "append_after_a_clipped_block_scalar_leaves_the_blank_line",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "a:\n  body: |\n    l1\n\nb: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "n"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  body: |\n    l1\n  n: 1\n\nb: 1\n"
+    }
+  },
+  {
+    "name": "append_after_a_keep_chomped_block_scalar_keeps_its_blank_lines",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "a:\n  body: |+\n    l1\n\nb: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "n"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  body: |+\n    l1\n\n  n: 1\nb: 1\n"
+    }
+  },
+  {
+    "name": "append_after_a_nested_mapping_child",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "a:\n  b:\n    c: 1\nz: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "n"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b:\n    c: 1\n  n: 1\nz: 2\n"
+    }
+  },
+  {
+    "name": "append_after_a_child_with_a_trailing_comment",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "a:\n  b: 1 # c\nz: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "n"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: 1 # c\n  n: 1\nz: 2\n"
+    }
+  },
+  {
+    "name": "append_after_a_comment_line_inside_the_block",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "a:\n  b: 1\n  # more to come\nz: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "n"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: 1\n  # more to come\n  n: 1\nz: 2\n"
+    }
+  },
+  {
+    "name": "append_before_a_column_zero_comment",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "a:\n  b: 1\n# section z\nz: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "n"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: 1\n  n: 1\n# section z\nz: 2\n"
+    }
+  },
+  {
+    "name": "append_before_blank_lines",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "a:\n  b: 1\n\n\nz: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "n"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: 1\n  n: 1\n\n\nz: 2\n"
+    }
+  },
+  {
+    "name": "append_before_a_document_end_marker",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "a:\n  b: 1\n...\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "n"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: 1\n  n: 1\n...\n"
+    }
+  },
+  {
+    "name": "append_at_the_childrens_four_space_indent",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "a:\n    b: 1\nz: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "n"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n    b: 1\n    n: 1\nz: 2\n"
+    }
+  },
+  {
+    "name": "append_at_depth_three",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "a:\n  b:\n    c: 1\n  d: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b",
+            "e"
+          ],
+          "value": 3
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b:\n    c: 1\n    e: 3\n  d: 2\n"
+    }
+  },
+  {
+    "name": "append_a_collection_value",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "build:\n  target: x\nname: y\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "build",
+            "list"
+          ],
+          "value": [
+            1
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "build:\n  target: x\n  list:\n    - 1\nname: y\n"
+    }
+  },
+  {
+    "name": "append_a_key_that_needs_quotes",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "a:\n  b: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "x: y"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: 1\n  \"x: y\": 1\n"
+    }
+  },
+  {
+    "name": "append_after_a_compact_block_sequence_child",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "a:\n  b:\n  - x\n  - y\nz: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "n"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b:\n  - x\n  - y\n  n: 1\nz: 1\n"
+    }
+  },
+  {
+    "name": "append_under_a_parent_whose_header_has_a_comment",
+    "tier": 1,
+    "category": "append-leaf",
+    "source": "a: # note\n  b: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "n"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: # note\n  b: 1\n  n: 1\n"
+    }
+  },
+  {
+    "name": "create_a_missing_intermediate_under_an_existing_parent",
+    "tier": 1,
+    "category": "create-intermediates",
+    "source": "a:\n  x: 1\nz: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b",
+            "c"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  x: 1\n  b:\n    c: 1\nz: 2\n"
+    }
+  },
+  {
+    "name": "create_every_missing_level",
+    "tier": 1,
+    "category": "create-intermediates",
+    "source": "z: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b",
+            "c"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "z: 2\na:\n  b:\n    c: 1\n"
+    }
+  },
+  {
+    "name": "create_every_missing_level_crlf",
+    "tier": 1,
+    "category": "create-intermediates",
+    "source": "z: 2\r\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b",
+            "c"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "z: 2\r\na:\r\n  b:\r\n    c: 1\r\n"
+    }
+  },
+  {
+    "name": "create_in_an_empty_document",
+    "tier": 1,
+    "category": "create-intermediates",
+    "source": "",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: 1\n"
+    }
+  },
+  {
+    "name": "create_under_an_empty_parent",
+    "tier": 1,
+    "category": "create-intermediates",
+    "source": "a:\nz: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: 1\nz: 2\n"
+    }
+  },
+  {
+    "name": "create_under_a_null_parent_moves_its_comment_to_the_header",
+    "tier": 1,
+    "category": "create-intermediates",
+    "source": "a: ~ # c\nz: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: # c\n  b: 1\nz: 2\n"
+    }
+  },
+  {
+    "name": "create_under_an_empty_flow_mapping",
+    "tier": 1,
+    "category": "create-intermediates",
+    "source": "a: {}\nz: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: 1\nz: 2\n"
+    }
+  },
+  {
+    "name": "remove_a_middle_child",
+    "tier": 1,
+    "category": "remove",
+    "source": "a:\n  b: 1\n  c: 2\n  d: 3\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "c"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: 1\n  d: 3\n"
+    }
+  },
+  {
+    "name": "remove_a_middle_child_crlf",
+    "tier": 1,
+    "category": "remove",
+    "source": "a:\r\n  b: 1\r\n  c: 2\r\n  d: 3\r\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "c"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\r\n  b: 1\r\n  d: 3\r\n"
+    }
+  },
+  {
+    "name": "remove_the_first_child",
+    "tier": 1,
+    "category": "remove",
+    "source": "a:\n  b: 1\n  c: 2\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "b"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  c: 2\n"
+    }
+  },
+  {
+    "name": "remove_the_last_child",
+    "tier": 1,
+    "category": "remove",
+    "source": "a:\n  b: 1\n  c: 2\nz: 1\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "c"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: 1\nz: 1\n"
+    }
+  },
+  {
+    "name": "remove_the_only_child_leaves_an_empty_mapping",
+    "tier": 1,
+    "category": "remove",
+    "source": "a:\n  b: 1\nz: 2\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "b"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {}\nz: 2\n"
+    }
+  },
+  {
+    "name": "remove_the_only_child_leaves_an_empty_mapping_crlf",
+    "tier": 1,
+    "category": "remove",
+    "source": "a:\r\n  b: 1\r\nz: 2\r\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "b"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {}\r\nz: 2\r\n"
+    }
+  },
+  {
+    "name": "remove_the_only_child_keeps_the_comment_above_it",
+    "tier": 1,
+    "category": "remove",
+    "source": "a:\n  # about b\n  b: 1\nz: 2\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "b"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {}\n  # about b\nz: 2\n"
+    }
+  },
+  {
+    "name": "remove_the_only_child_keeps_the_header_comment",
+    "tier": 1,
+    "category": "remove",
+    "source": "a: # note\n  b: 1\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "b"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {} # note\n"
+    }
+  },
+  {
+    "name": "remove_the_only_child_in_an_unterminated_document",
+    "tier": 1,
+    "category": "remove",
+    "source": "a:\n  b: 1",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "b"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {}"
+    }
+  },
+  {
+    "name": "remove_takes_the_childs_trailing_comment",
+    "tier": 1,
+    "category": "remove",
+    "source": "a:\n  b: 1 # gone\n  c: 2\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "b"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  c: 2\n"
+    }
+  },
+  {
+    "name": "remove_a_block_scalar_child",
+    "tier": 1,
+    "category": "remove",
+    "source": "a:\n  body: |\n    l1\n    l2\n  c: 2\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "body"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  c: 2\n"
+    }
+  },
+  {
+    "name": "remove_a_nested_mapping_child",
+    "tier": 1,
+    "category": "remove",
+    "source": "a:\n  b:\n    x: 1\n  c: 2\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "b"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  c: 2\n"
+    }
+  },
+  {
+    "name": "remove_the_only_child_at_depth_three",
+    "tier": 1,
+    "category": "remove",
+    "source": "a:\n  b:\n    c: 1\n  d: 2\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "b",
+            "c"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: {}\n  d: 2\n"
+    }
+  },
+  {
+    "name": "remove_an_absent_leaf_is_a_no_op",
+    "tier": 1,
+    "category": "remove",
+    "source": "a:\n  b: 1\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "x"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": false,
+      "bytes": "a:\n  b: 1\n"
+    }
+  },
+  {
+    "name": "remove_under_a_missing_intermediate_is_refused",
+    "tier": 1,
+    "category": "remove",
+    "source": "a:\n  b: 1\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "x",
+            "y"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "error": "PathNotFound"
+    }
+  },
+  {
+    "name": "remove_that_would_change_a_keep_chomped_neighbour_is_refused",
+    "tier": 1,
+    "category": "remove",
+    "source": "a:\n  k: |+\n    kept\n\n  b: |\n    x\n\n  c: 1\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "b"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "error": "InvalidResult"
+    }
+  },
+  {
+    "name": "rename_a_nested_key_in_place",
+    "tier": 1,
+    "category": "rename",
+    "source": "a:\n  b: 1 # c\n  d: 2\n",
+    "edits": [
+      {
+        "RenamePath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "to": "e"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  e: 1 # c\n  d: 2\n"
+    }
+  },
+  {
+    "name": "rename_onto_a_sibling_is_a_key_conflict",
+    "tier": 1,
+    "category": "rename",
+    "source": "a:\n  b: 1\n  e: 2\n",
+    "edits": [
+      {
+        "RenamePath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "to": "e"
+        }
+      }
+    ],
+    "expect": {
+      "error": "KeyConflict"
+    }
+  },
+  {
+    "name": "rename_onto_a_name_used_at_another_depth_is_allowed",
+    "tier": 1,
+    "category": "rename",
+    "source": "e: 0\na:\n  b: 1\n",
+    "edits": [
+      {
+        "RenamePath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "to": "e"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "e: 0\na:\n  e: 1\n"
+    }
+  },
+  {
+    "name": "rename_that_changes_only_case_is_a_re_spelling",
+    "tier": 1,
+    "category": "rename",
+    "source": "a:\n  title: x\n",
+    "edits": [
+      {
+        "RenamePath": {
+          "path": [
+            "a",
+            "title"
+          ],
+          "to": "Title"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  Title: x\n"
+    }
+  },
+  {
+    "name": "rename_of_a_missing_nested_key_is_a_missing_key",
+    "tier": 1,
+    "category": "rename",
+    "source": "a:\n  b: 1\n",
+    "edits": [
+      {
+        "RenamePath": {
+          "path": [
+            "a",
+            "x"
+          ],
+          "to": "y"
+        }
+      }
+    ],
+    "expect": {
+      "error": "MissingKey"
+    }
+  },
+  {
+    "name": "rename_to_a_key_that_needs_quotes",
+    "tier": 1,
+    "category": "rename",
+    "source": "a:\n  b: 1\n",
+    "edits": [
+      {
+        "RenamePath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "to": "has: colon"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  \"has: colon\": 1\n"
+    }
+  },
+  {
+    "name": "rename_an_intermediate_key_keeps_its_children",
+    "tier": 1,
+    "category": "rename",
+    "source": "a:\n  b:\n    c: 1\n",
+    "edits": [
+      {
+        "RenamePath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "to": "q"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  q:\n    c: 1\n"
+    }
+  },
+  {
+    "name": "equal_nested_quoted_value_is_a_no_op",
+    "tier": 1,
+    "category": "no-op",
+    "source": "a:\n  b: 'x'\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": "x"
+        }
+      }
+    ],
+    "expect": {
+      "changed": false,
+      "bytes": "a:\n  b: 'x'\n"
+    }
+  },
+  {
+    "name": "equal_nested_block_scalar_is_a_no_op",
+    "tier": 1,
+    "category": "no-op",
+    "source": "a:\n  b: |\n    l1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": "l1\n"
+        }
+      }
+    ],
+    "expect": {
+      "changed": false,
+      "bytes": "a:\n  b: |\n    l1\n"
+    }
+  },
+  {
+    "name": "equal_nested_flow_sequence_is_a_no_op",
+    "tier": 1,
+    "category": "no-op",
+    "source": "a:\n  b: [1, 2]\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": [
+            1,
+            2
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": false,
+      "bytes": "a:\n  b: [1, 2]\n"
+    }
+  },
+  {
+    "name": "equal_nested_mapping_is_a_no_op",
+    "tier": 1,
+    "category": "no-op",
+    "source": "a:\n  b:\n    c: 1 # c\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": {
+            "c": 1
+          }
+        }
+      }
+    ],
+    "expect": {
+      "changed": false,
+      "bytes": "a:\n  b:\n    c: 1 # c\n"
+    }
+  },
+  {
+    "name": "rename_to_the_same_nested_name_is_a_no_op",
+    "tier": 1,
+    "category": "no-op",
+    "source": "a:\n  b: 1\n",
+    "edits": [
+      {
+        "RenamePath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "to": "b"
+        }
+      }
+    ],
+    "expect": {
+      "changed": false,
+      "bytes": "a:\n  b: 1\n"
+    }
+  },
+  {
+    "name": "every_segment_matches_case_insensitively",
+    "tier": 1,
+    "category": "case",
+    "source": "Build:\n  Target: x\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "build",
+            "target"
+          ],
+          "value": "y"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "Build:\n  Target: y\n"
+    }
+  },
+  {
+    "name": "case_sensitive_mode_treats_a_case_variant_as_absent",
+    "tier": 1,
+    "category": "case",
+    "source": "Build:\n  target: x\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "build",
+            "target"
+          ],
+          "value": "y"
+        }
+      }
+    ],
+    "case_sensitive": true,
+    "expect": {
+      "changed": true,
+      "bytes": "Build:\n  target: x\nbuild:\n  target: y\n"
+    }
+  },
+  {
+    "name": "a_nested_key_matching_two_children_is_ambiguous",
+    "tier": 1,
+    "category": "case",
+    "source": "a:\n  Name: 1\n  name: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "name"
+          ],
+          "value": 3
+        }
+      }
+    ],
+    "expect": {
+      "error": "AmbiguousKey"
+    }
+  },
+  {
+    "name": "an_intermediate_matching_two_keys_is_ambiguous",
+    "tier": 1,
+    "category": "case",
+    "source": "A:\n  x: 1\na:\n  x: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "x"
+          ],
+          "value": 3
+        }
+      }
+    ],
+    "expect": {
+      "error": "AmbiguousKey"
+    }
+  },
+  {
+    "name": "a_later_path_edit_sees_an_earlier_one",
+    "tier": 1,
+    "category": "batch",
+    "source": "z: 0\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": 1
+        }
+      },
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "c"
+          ],
+          "value": 2
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "z: 0\na:\n  b: 1\n  c: 2\n"
+    }
+  },
+  {
+    "name": "a_set_sees_an_earlier_rename",
+    "tier": 1,
+    "category": "batch",
+    "source": "a:\n  b: 1\n",
+    "edits": [
+      {
+        "RenamePath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "to": "c"
+        }
+      },
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "c"
+          ],
+          "value": 5
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  c: 5\n"
+    }
+  },
+  {
+    "name": "a_failing_path_edit_discards_the_batch",
+    "tier": 1,
+    "category": "batch",
+    "source": "a:\n  b: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": 2
+        }
+      },
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b",
+            "x"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "error": "PathTypeMismatch"
+    }
+  },
+  {
+    "name": "top_level_and_path_edits_mix_in_one_batch",
+    "tier": 1,
+    "category": "batch",
+    "source": "a:\n  b: 1\n",
+    "edits": [
+      {
+        "Set": {
+          "key": "z",
+          "value": 1
+        }
+      },
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": 2
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: 2\nz: 1\n"
+    }
+  },
+  {
+    "name": "a_path_through_an_alias_is_refused",
+    "tier": 1,
+    "category": "refusals",
+    "source": "base: &b\n  x: 1\nother: *b\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "other",
+            "x"
+          ],
+          "value": 2
+        }
+      }
+    ],
+    "expect": {
+      "error": "UnsupportedPath"
+    }
+  },
+  {
+    "name": "a_path_through_a_merge_key_is_refused",
+    "tier": 1,
+    "category": "refusals",
+    "source": "base: &b\n  x: 1\na:\n  <<: *b\n  y: 2\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "<<",
+            "x"
+          ],
+          "value": 2
+        }
+      }
+    ],
+    "expect": {
+      "error": "UnsupportedPath"
+    }
+  },
+  {
+    "name": "an_edit_inside_an_aliased_anchor_is_refused",
+    "tier": 1,
+    "category": "refusals",
+    "source": "base: &b\n  x: 1\nother: *b\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "base",
+            "x"
+          ],
+          "value": 2
+        }
+      }
+    ],
+    "expect": {
+      "error": "InvalidResult"
+    }
+  },
+  {
+    "name": "a_path_into_a_scalar_is_a_type_mismatch",
+    "tier": 1,
+    "category": "refusals",
+    "source": "a: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "error": "PathTypeMismatch"
+    }
+  },
+  {
+    "name": "a_path_into_a_string_is_a_type_mismatch",
+    "tier": 1,
+    "category": "refusals",
+    "source": "a: 'text'\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "error": "PathTypeMismatch"
+    }
+  },
+  {
+    "name": "an_index_on_a_mapping_is_a_type_mismatch",
+    "tier": 1,
+    "category": "refusals",
+    "source": "a:\n  b: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            0
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "error": "PathTypeMismatch"
+    }
+  },
+  {
+    "name": "a_key_on_a_sequence_is_a_type_mismatch",
+    "tier": 1,
+    "category": "refusals",
+    "source": "a:\n  - 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "error": "PathTypeMismatch"
+    }
+  },
+  {
+    "name": "a_remove_into_a_scalar_is_a_type_mismatch",
+    "tier": 1,
+    "category": "refusals",
+    "source": "a: 1\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "b"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "error": "PathTypeMismatch"
+    }
+  },
+  {
+    "name": "set_a_sequence_item",
+    "tier": 2,
+    "category": "seq-index",
+    "source": "items:\n  - a\n  - b\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "items",
+            1
+          ],
+          "value": "c"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "items:\n  - a\n  - c\n"
+    }
+  },
+  {
+    "name": "set_a_sequence_item_crlf",
+    "tier": 2,
+    "category": "seq-index",
+    "source": "items:\r\n  - a\r\n  - b\r\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "items",
+            1
+          ],
+          "value": "c"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "items:\r\n  - a\r\n  - c\r\n"
+    }
+  },
+  {
+    "name": "set_a_sequence_item_keeps_its_comment",
+    "tier": 2,
+    "category": "seq-index",
+    "source": "items:\n  - a # c\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "items",
+            0
+          ],
+          "value": "z"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "items:\n  - z # c\n"
+    }
+  },
+  {
+    "name": "set_an_item_of_an_unindented_sequence",
+    "tier": 2,
+    "category": "seq-index",
+    "source": "items:\n- a\n- b\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "items",
+            0
+          ],
+          "value": "z"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "items:\n- z\n- b\n"
+    }
+  },
+  {
+    "name": "set_a_key_of_a_compact_mapping_item",
+    "tier": 2,
+    "category": "seq-index",
+    "source": "steps:\n  - id: s1\n    title: One\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "steps",
+            0,
+            "title"
+          ],
+          "value": "Uno"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "steps:\n  - id: s1\n    title: Uno\n"
+    }
+  },
+  {
+    "name": "set_the_first_key_of_a_compact_item_to_a_mapping",
+    "tier": 2,
+    "category": "seq-index",
+    "source": "steps:\n  - id: s1\n    title: One\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "steps",
+            0,
+            "id"
+          ],
+          "value": {
+            "k": 1
+          }
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "steps:\n  - id:\n      k: 1\n    title: One\n"
+    }
+  },
+  {
+    "name": "set_the_first_key_of_a_compact_item_to_a_sequence",
+    "tier": 2,
+    "category": "seq-index",
+    "source": "steps:\n  - id: s1\n    title: One\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "steps",
+            0,
+            "id"
+          ],
+          "value": [
+            "x"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "steps:\n  - id:\n      - x\n    title: One\n"
+    }
+  },
+  {
+    "name": "set_an_item_of_a_nested_sequence",
+    "tier": 2,
+    "category": "seq-index",
+    "source": "m:\n  - - 1\n    - 2\n  - - 3\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "m",
+            0,
+            1
+          ],
+          "value": 9
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "m:\n  - - 1\n    - 9\n  - - 3\n"
+    }
+  },
+  {
+    "name": "append_a_key_to_a_compact_mapping_item",
+    "tier": 2,
+    "category": "seq-index",
+    "source": "steps:\n  - id: s1\n    title: One\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "steps",
+            0,
+            "run"
+          ],
+          "value": "x"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "steps:\n  - id: s1\n    title: One\n    run: x\n"
+    }
+  },
+  {
+    "name": "set_a_scalar_item_to_a_mapping",
+    "tier": 2,
+    "category": "seq-index",
+    "source": "items:\n  - a\n  - b\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "items",
+            0
+          ],
+          "value": {
+            "j": 1,
+            "k": 2
+          }
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "items:\n  - j: 1\n    k: 2\n  - b\n"
+    }
+  },
+  {
+    "name": "set_a_scalar_item_to_a_literal_block",
+    "tier": 2,
+    "category": "seq-index",
+    "source": "items:\n  - a\n  - b\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "items",
+            0
+          ],
+          "value": "l1\nl2\n"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "items:\n  - |\n    l1\n    l2\n  - b\n"
+    }
+  },
+  {
+    "name": "rename_with_an_index_last_is_a_type_mismatch",
+    "tier": 2,
+    "category": "seq-index",
+    "source": "items:\n  - a\n",
+    "edits": [
+      {
+        "RenamePath": {
+          "path": [
+            "items",
+            0
+          ],
+          "to": "x"
+        }
+      }
+    ],
+    "expect": {
+      "error": "PathTypeMismatch"
+    }
+  },
+  {
+    "name": "append_a_sequence_item",
+    "tier": 2,
+    "category": "seq-append-remove",
+    "source": "items:\n  - a\n  - b\nz: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "items",
+            2
+          ],
+          "value": "c"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "items:\n  - a\n  - b\n  - c\nz: 1\n"
+    }
+  },
+  {
+    "name": "append_a_sequence_item_crlf",
+    "tier": 2,
+    "category": "seq-append-remove",
+    "source": "items:\r\n  - a\r\n  - b\r\nz: 1\r\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "items",
+            2
+          ],
+          "value": "c"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "items:\r\n  - a\r\n  - b\r\n  - c\r\nz: 1\r\n"
+    }
+  },
+  {
+    "name": "append_to_an_unindented_sequence",
+    "tier": 2,
+    "category": "seq-append-remove",
+    "source": "items:\n- a\nz: 1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "items",
+            1
+          ],
+          "value": "c"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "items:\n- a\n- c\nz: 1\n"
+    }
+  },
+  {
+    "name": "append_a_mapping_item",
+    "tier": 2,
+    "category": "seq-append-remove",
+    "source": "steps:\n  - id: s1\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "steps",
+            1
+          ],
+          "value": {
+            "id": "s2"
+          }
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "steps:\n  - id: s1\n  - id: s2\n"
+    }
+  },
+  {
+    "name": "append_to_an_empty_flow_sequence",
+    "tier": 2,
+    "category": "seq-append-remove",
+    "source": "items: []\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "items",
+            0
+          ],
+          "value": "a"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "items:\n  - a\n"
+    }
+  },
+  {
+    "name": "remove_a_middle_item",
+    "tier": 2,
+    "category": "seq-append-remove",
+    "source": "items:\n  - a\n  - b # c\n  - d\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "items",
+            1
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "items:\n  - a\n  - d\n"
+    }
+  },
+  {
+    "name": "remove_the_only_item_leaves_an_empty_sequence",
+    "tier": 2,
+    "category": "seq-append-remove",
+    "source": "items:\n  - a\nz: 1\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "items",
+            0
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "items: []\nz: 1\n"
+    }
+  },
+  {
+    "name": "remove_a_compact_mapping_item",
+    "tier": 2,
+    "category": "seq-append-remove",
+    "source": "steps:\n  - id: s1\n    t: 1\n  - id: s2\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "steps",
+            0
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "steps:\n  - id: s2\n"
+    }
+  },
+  {
+    "name": "set_past_the_end_is_refused",
+    "tier": 2,
+    "category": "seq-append-remove",
+    "source": "items:\n  - a\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "items",
+            5
+          ],
+          "value": "x"
+        }
+      }
+    ],
+    "expect": {
+      "error": "PathNotFound"
+    }
+  },
+  {
+    "name": "remove_past_the_end_is_a_no_op",
+    "tier": 2,
+    "category": "seq-append-remove",
+    "source": "items:\n  - a\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "items",
+            5
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": false,
+      "bytes": "items:\n  - a\n"
+    }
+  },
+  {
+    "name": "set_a_scalar_in_a_flow_mapping",
+    "tier": 3,
+    "category": "flow-scalar",
+    "source": "a: {b: 1, c: 2} # x\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": 5
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {b: 5, c: 2} # x\n"
+    }
+  },
+  {
+    "name": "set_an_item_of_a_flow_sequence",
+    "tier": 3,
+    "category": "flow-scalar",
+    "source": "a: [x, y]\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            1
+          ],
+          "value": "z"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: [x, z]\n"
+    }
+  },
+  {
+    "name": "set_a_scalar_in_a_flow_mapping_nested_in_a_block",
+    "tier": 3,
+    "category": "flow-scalar",
+    "source": "a:\n  b: {c: 'q'}\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b",
+            "c"
+          ],
+          "value": "r"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a:\n  b: {c: r}\n"
+    }
+  },
+  {
+    "name": "a_flow_value_with_a_comma_is_quoted",
+    "tier": 3,
+    "category": "flow-scalar",
+    "source": "a: {b: 1}\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": "x, y"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {b: \"x, y\"}\n"
+    }
+  },
+  {
+    "name": "set_a_scalar_in_a_multi_line_flow_mapping",
+    "tier": 3,
+    "category": "flow-scalar",
+    "source": "a: {\n  b: 1,\n  c: 2\n}\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "c"
+          ],
+          "value": 3
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {\n  b: 1,\n  c: 3\n}\n"
+    }
+  },
+  {
+    "name": "equal_value_in_a_flow_mapping_is_a_no_op",
+    "tier": 3,
+    "category": "flow-scalar",
+    "source": "a: {b: 'x'}\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": "x"
+        }
+      }
+    ],
+    "expect": {
+      "changed": false,
+      "bytes": "a: {b: 'x'}\n"
+    }
+  },
+  {
+    "name": "set_a_sequence_into_a_flow_mapping",
+    "tier": 3,
+    "category": "flow-edit",
+    "source": "a: {b: 1}\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": [
+            1
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {b: [1]}\n"
+    }
+  },
+  {
+    "name": "set_a_mapping_into_a_flow_mapping",
+    "tier": 3,
+    "category": "flow-edit",
+    "source": "a: {b: 1}\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": {
+            "c": 1
+          }
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {b: {c: 1}}\n"
+    }
+  },
+  {
+    "name": "a_multi_line_string_in_flow_is_double_quoted",
+    "tier": 3,
+    "category": "flow-edit",
+    "source": "a: {b: 1}\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "b"
+          ],
+          "value": "l1\nl2\n"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {b: \"l1\\nl2\\n\"}\n"
+    }
+  },
+  {
+    "name": "append_a_key_to_a_flow_mapping",
+    "tier": 3,
+    "category": "flow-edit",
+    "source": "a: {b: 1} # c\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "d"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {b: 1, d: 1} # c\n"
+    }
+  },
+  {
+    "name": "append_a_key_to_a_spaced_flow_mapping",
+    "tier": 3,
+    "category": "flow-edit",
+    "source": "a: { b: 1 }\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "d"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: { b: 1, d: 1 }\n"
+    }
+  },
+  {
+    "name": "append_a_key_to_a_multi_line_flow_mapping",
+    "tier": 3,
+    "category": "flow-edit",
+    "source": "a: {\n  b: 1,\n  c: 2\n}\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "d"
+          ],
+          "value": 3
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {\n  b: 1,\n  c: 2,\n  d: 3\n}\n"
+    }
+  },
+  {
+    "name": "create_a_mapping_inside_a_flow_mapping",
+    "tier": 3,
+    "category": "flow-edit",
+    "source": "a: {b: 1}\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            "x",
+            "y"
+          ],
+          "value": 1
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {b: 1, x: {y: 1}}\n"
+    }
+  },
+  {
+    "name": "remove_the_first_key_of_a_flow_mapping",
+    "tier": 3,
+    "category": "flow-edit",
+    "source": "a: {b: 1, c: 2}\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "b"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {c: 2}\n"
+    }
+  },
+  {
+    "name": "remove_the_last_key_of_a_flow_mapping",
+    "tier": 3,
+    "category": "flow-edit",
+    "source": "a: {b: 1, c: 2}\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "c"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {b: 1}\n"
+    }
+  },
+  {
+    "name": "remove_the_only_key_of_a_flow_mapping",
+    "tier": 3,
+    "category": "flow-edit",
+    "source": "a: {b: 1}\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            "b"
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: {}\n"
+    }
+  },
+  {
+    "name": "append_to_a_flow_sequence",
+    "tier": 3,
+    "category": "flow-edit",
+    "source": "a: [x]\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            1
+          ],
+          "value": "y"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: [x, y]\n"
+    }
+  },
+  {
+    "name": "append_to_a_spaced_flow_sequence",
+    "tier": 3,
+    "category": "flow-edit",
+    "source": "a: [ x ]\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            1
+          ],
+          "value": "y"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: [ x, y ]\n"
+    }
+  },
+  {
+    "name": "remove_a_middle_item_of_a_flow_sequence",
+    "tier": 3,
+    "category": "flow-edit",
+    "source": "a: [x, y, z]\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            1
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: [x, z]\n"
+    }
+  },
+  {
+    "name": "remove_the_only_item_of_a_flow_sequence",
+    "tier": 3,
+    "category": "flow-edit",
+    "source": "a: [x]\n",
+    "edits": [
+      {
+        "RemovePath": {
+          "path": [
+            "a",
+            0
+          ]
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: []\n"
+    }
+  },
+  {
+    "name": "a_flow_item_with_a_comma_is_quoted",
+    "tier": 3,
+    "category": "flow-edit",
+    "source": "a: [x]\n",
+    "edits": [
+      {
+        "SetPath": {
+          "path": [
+            "a",
+            1
+          ],
+          "value": "y, z"
+        }
+      }
+    ],
+    "expect": {
+      "changed": true,
+      "bytes": "a: [x, \"y, z\"]\n"
+    }
+  }
+]

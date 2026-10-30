@@ -19,7 +19,7 @@ import { join } from 'node:path'
 
 import { afterEach, beforeEach, expect, test } from 'vitest'
 
-import { envVars, systemDirs } from '@osdlc/cli-tool'
+import { captureContext, envVars, runMain, systemDirs, type DevlinkHook } from '@osdlc/cli-tool'
 import {
   appendHistory,
   clearActive,
@@ -27,6 +27,7 @@ import {
   cwdDevVar,
   defaultBinDir,
   DevlinkError,
+  devlinkHook,
   entryOf,
   envStem,
   execSelection,
@@ -65,6 +66,7 @@ import {
   writeActive,
   processIo,
   type CliIo,
+  type DevlinkHookOptions,
   type ExecOptions,
   type GitHead,
   type HistoryEntry,
@@ -257,4 +259,29 @@ test('the dev verbs mounted for a tool with no CLI framework', () => {
   expect(runDevCli(SPEC, [], run)).toBe(2)
   expect(usage(SPEC)).toContain('usage: tooly dev')
   expect(typeof processIo.stdout).toBe('function')
+})
+
+test('runMain with devlinkHook: dev is answered, and with no link main runs', async () => {
+  const self = checkout('self')
+  const hookOptions: DevlinkHookOptions = { script: join(self, SPEC.launcher) }
+  const hook: DevlinkHook = devlinkHook(SPEC, hookOptions)
+  const env = { HOME: join(root, 'home') }
+  let ran = false
+  const main = () => {
+    ran = true
+    return 0
+  }
+  const before = process.exitCode
+  try {
+    const dev = captureContext({ cwd: root, env })
+    await runMain(main, { name: 'tooly', context: dev, argv: ['dev', 'nope'], devlink: hook })
+    expect(process.exitCode).toBe(2)
+    expect(ran).toBe(false)
+
+    const plain = captureContext({ cwd: root, env })
+    await runMain(main, { name: 'tooly', context: plain, argv: ['list'], devlink: hook })
+    expect(ran).toBe(true)
+  } finally {
+    process.exitCode = before ?? 0
+  }
 })

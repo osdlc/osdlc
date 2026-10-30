@@ -1,5 +1,36 @@
 # @osdlc/pr-update
 
+## 0.9.0
+
+### Minor Changes
+
+- 43a4097: `pr-update dev` and `repo-cleaner dev` run the tool from a development checkout: `dev link <checkout>` makes the installed command run that checkout's source under Bun, `dev status` says which code runs, and `dev off` goes back. `PR_UPDATE_HOME` and `REPO_CLEANER_HOME` do the same for one run. `dev` is now a word for both tools: sweep a directory named `dev` with `repo-cleaner ./dev`, as with `apply`. The bin now loads `dist/bin.js`, built from the new `src/bin.ts`.
+
+### Patch Changes
+
+- Updated dependencies [43a4097]
+  - @osdlc/cli-tool@0.12.0
+
+## 0.8.4
+
+### Patch Changes
+
+- Updated dependencies [7fe7f51]
+- Updated dependencies [7fe7f51]
+  - @osdlc/code-host@0.7.0
+  - @osdlc/typed-git@0.11.1
+
+## 0.8.3
+
+### Patch Changes
+
+- ebe0e0d: A survey that cannot list the worktrees no longer reads that as "no checkout holds the branch". It used `git.soft.worktrees()`, whose `[]` on a failure cleared the unpushed-local guard and could plan a force-push over local commits. It now uses `git.try.worktrees()`, and a failed listing counts as unsafe, like refs that cannot be read: the PR gets the `guard:unpushed-local` strategy. This matters on a git older than 2.34, where typed-git's `worktrees()` now fails as `unsupported-git`. `unpushedLocalWork` and `surveyRows` take `null` for worktrees that could not be listed.
+- Updated dependencies [82d9841]
+- Updated dependencies [ebe0e0d]
+  - @osdlc/typed-git@0.11.0
+  - @osdlc/code-host@0.6.2
+  - @osdlc/trust-repo@0.5.2
+
 ## 0.8.2
 
 ### Patch Changes

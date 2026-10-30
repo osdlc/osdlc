@@ -112,9 +112,11 @@ need. Run it with `cargo run --example layered_files`.
   `T::default()` for a missing file, an unreadable file, bad YAML, a document
   that is not a mapping, and a document that does not deserialize as `T`. Give
   every field of `T` a default. `read_strict` returns the specific problem.
-- **An empty machine file is empty.** `load` treats an empty document as an
-  empty mapping. `read_strict` and `file::read_mapping` report it as
-  malformed ("found an empty document"), so a tool can tell the two apart.
+- **An empty file is an empty mapping.** A file with nothing in it, only
+  whitespace and comments, or a bare `null` holds no settings.
+  `file::read_mapping` gives an empty map. `load` and `read_strict` give `T`
+  with each field's serde default, so `read_strict` reports an empty file
+  only when `T` has a field with no default, naming that field.
 - **`load` remembers the file's text** per resolved path, and parses it on
   every call. A changed env var gives a new path and a fresh read. A file
   rewritten in place is not re-read until `clear_cache`. The cache uses a
@@ -135,12 +137,14 @@ need. Run it with `cargo run --example layered_files`.
   mapping as a key is an error. YAML tags are dropped and the value kept.
 - **Errors carry their cause.** `FileProblem` has a `source`. For
   `Unreadable` it is an `std::io::Error`. For `Malformed` it is the YAML
-  error, or a plain message for an empty document or a top level that is not
-  a mapping. The `Display` text names the file only, so a reporter that walks
-  the chain prints the cause once. No file contents are quoted in an error.
-  Downcast the source to `std::io::Error` or `serde_saphyr::Error` to look
-  closer. The latter makes your crate depend on `serde-saphyr`. The empty and
-  not-a-mapping cases carry only a message.
+  error, a plain message for a top level that is not a mapping, or a
+  `serde_json::Error` when `read_strict` reads an empty file into a `T` with
+  a field that has no default. The `Display` text names the file only, so a
+  reporter that walks the chain prints the cause once. No file contents are
+  quoted in an error. Downcast the source to `std::io::Error`,
+  `serde_saphyr::Error` or `serde_json::Error` to look closer. The
+  `serde-saphyr` one makes your crate depend on `serde-saphyr`. The
+  not-a-mapping case carries only a message.
 - **Numbers and keys.** An integer beyond `u64` reads as a lossy float, with
   no error. A null key (`~: x`) is an error.
 - **Non-finite numbers and merge keys.** `.inf`, `-.inf`, `.nan` and numbers
@@ -174,9 +178,9 @@ need. Run it with `cargo run --example layered_files`.
 | Project over machine, one level deep. The machine fills only missing or unset keys | `project_wins_on_an_overlapping_key`, `a_set_project_value_is_kept_even_when_falsy`, `every_unset_project_value_falls_back_to_machine`, `a_project_null_falls_back_to_machine`, `nested_mappings_are_not_merged`, `a_machine_only_key_is_added` |
 | Only `true` and `false` are booleans, and tags are dropped | `only_true_and_false_are_booleans`, `a_tag_is_dropped_and_its_value_kept`, `scalar_keys_read_as_strings_and_a_collection_key_is_malformed` |
 | Non-finite numbers read as strings, and `<<` is an ordinary key | `a_non_finite_float_reads_as_a_string_and_the_file_loads`, `a_merge_key_stays_an_ordinary_key` |
-| A problem carries its source | `the_problem_carries_its_source_for_a_caller_to_downcast`, `read_strict_reports_an_empty_file_and_carries_its_source` |
+| A problem carries its source | `the_problem_carries_its_source_for_a_caller_to_downcast`, `read_strict_carries_its_source` |
 | An error quotes no file contents and does not repeat its source | `an_error_does_not_quote_the_files_lines`, `display_does_not_repeat_the_source` |
-| An empty machine file gives the serde field defaults | `an_empty_or_comment_only_file_gives_the_field_defaults` |
+| An empty file is an empty mapping, and the machine file gives the serde field defaults | `an_empty_file_is_an_empty_mapping`, `an_empty_or_comment_only_file_gives_the_field_defaults`, `an_empty_file_gives_defaults_for_a_type_with_required_fields` |
 | The need message names the command, key, purpose, flag and file | `names_the_command_the_key_its_purpose_the_stand_in_and_the_project_file`, `a_camel_case_stand_in_renders_as_a_kebab_case_flag_no_command_is_this_command`, `a_key_both_files_carry_the_file_you_stand_in_leads_the_other_follows` |
 
 Coverage is not measured.

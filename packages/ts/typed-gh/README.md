@@ -184,11 +184,30 @@ Name a repository, a host, or both, and every call targets them instead. No
 clone is needed:
 
 ```ts
-const acme = new Gh(process.cwd(), { repo: 'acme/widgets', hostname: 'github.acme.com' })
+const acme = new Gh({ repo: 'acme/widgets', hostname: 'github.acme.com' })
 
 acme.prView(42)
 acme.withRepo('acme/gadgets').prList()
 acme.api('repos/{owner}/{repo}/branches')
+```
+
+A client has two forms. `new Gh(cwd, options?)` runs every call in `cwd`, and
+without `repo` gh reads the repository from the clone there.
+`new Gh({ repo, hostname?, runner? })` names a repository and no directory.
+`repo` is required in that form: `new Gh({})` and `new Gh({ hostname })` do
+not typecheck and throw `TypeError`, so a client that reads a clone always
+says which one. Its calls run in `process.cwd()`, read when each call is made.
+No typed verb depends on that directory, but `raw` and `rawChecked` add no
+`--repo`, and gh fills an `api` endpoint's `{branch}` from that directory's
+checkout, so add `--repo` to a raw call or use `.at(dir)`. `gh.cwd` is that
+directory, a `string` in both forms. `AsyncGh` takes the same two forms.
+
+```ts
+const local = new Gh('/path/to/clone') // reads acme/widgets from the clone's remote
+const remote = new Gh({ repo: 'acme/widgets' }) // needs no clone
+
+remote.at('/path/to/clone') // a client rooted at the clone, still naming acme/widgets
+local.searchPrs('is:open author:@me') // a host-only call works on either form
 ```
 
 The target goes into the argv, so a failure's `argv` shows which repository a
@@ -196,7 +215,8 @@ call hit. `pr`, `issue` and `label` calls get `--repo github.acme.com/acme/widge
 `api` calls get `--hostname` and a filled `{owner}/{repo}`. `authStatus`
 asks about that host. `repoList` and `searchPrs` have no host flag in gh, so
 they get `GH_HOST` in the environment. `withRepo` and `at` keep the runner and
-the rest of the target.
+the rest of the target. `at` on a client with no directory gives one rooted
+at that directory. `withRepo` keeps the client's form.
 
 `hostname` is any GitHub host: `github.com`, a GitHub Enterprise Server host,
 or a `<tenant>.ghe.com` host. An empty string means no host, so a value read
@@ -234,14 +254,26 @@ after the merge still finds it.
 `task/foo-2`. Two forks can share a branch name. Ask for
 `headRepositoryOwner` to tell them apart.
 
+`prList({ headPrefix: 'task/' })` lists every PR whose head branch starts
+with `task/`. It sends a `head:task/` search term, with your own `search`
+grouped after it in parentheses, and filters the rows on `headRefName`. It
+cannot be combined with `head`. Because it goes through GitHub search, a
+just-pushed branch can take a moment to show up, and `limit` is at most 999,
+as search returns no more than 1000 results.
+
 ## Two payload differences it handles
 
-Author logins differ between GraphQL and REST. GraphQL (`gh pr view --json`)
-returns a login without a suffix (`github-actions`). REST (`gh api`) returns
-the suffixed one (`github-actions[bot]`). Comparing one with the other never
-matches, and no error shows it. Then a bot's comments are treated as human
-review feedback. Logins are cut to the form without the suffix once, when a
-payload is parsed.
+A bot's login is spelled three ways. GraphQL, and comment and review authors
+in `gh pr view --json`, give the bare login (`github-actions`). gh's `--json`
+export of a pull request's author prefixes it (`app/github-actions`). REST
+(`gh api`) and `gh search` suffix it (`github-actions[bot]`). Comparing one with another
+never matches, and no error shows it. Then a bot's comments are treated as
+human review feedback. Logins are cut to the bare form once, when a payload is
+parsed, and the prefix or suffix marks the author as a bot.
+
+gh's `--author` filter does not take the bare form of a bot's login: pass
+`app/<login>` or `<login>[bot]` to `prList({ author })` to list a bot's pull
+requests.
 
 `statusCheckRollup` holds two node types. A modern `CheckRun` carries
 `name`/`status`/`conclusion`. A legacy `StatusContext` carries
@@ -488,6 +520,36 @@ Import the runners themselves, such as `spawnRunner` and `spawnRunnerAsync`, fro
 named `gh` in the working directory cannot run in its place. Pass `{ absolutePathOnly: true }` when
 you build a real runner yourself.
 
+## Testing
+
+`@osdlc/typed-gh/testing` builds the rows a fake runner answers with. Each builder returns gh's raw
+`--json` shape, so the real parsers read it. Its defaults fill every field a parser requires, such
+as a pull request's `number`, a repository's `nameWithOwner` and the `headRefName` that
+`prList({ head })` filters on. Without them a row is dropped with no error.
+
+- `prRow`, `issueRow`, `repoRow`, `searchPrRow` and `labelRow`: one row of `gh pr`, `gh issue`,
+  `gh repo`, `gh search prs` and `gh label` output.
+- `checkRunRow`, `statusContextRow`, `commentRow` and `reviewRow`: entries of a pull request's
+  `statusCheckRollup`, `comments` and `reviews`.
+- `ghResult(payload)`: a `CommandResult` with exit code 0 and the payload as JSON on stdout.
+- Row types: `GhPrJson`, `GhIssueJson`, `GhRepoJson`, `GhSearchPrJson`, `GhLabelJson`,
+  `GhCheckRunJson`, `GhStatusContextJson`, `GhCommentJson`, `GhReviewJson` and `GhActorJson`, and
+  `RowOverrides<T>`, what a builder takes.
+
+Each builder takes typed overrides, merged shallowly. Pass a field as `undefined` to leave it out.
+A pull request's `url` follows its `number`, and a repository's its `nameWithOwner`. Assert on what
+you set: a default value may change in a minor release.
+
+```ts
+import { ghResult, prRow } from '@osdlc/typed-gh/testing'
+
+const runner: CommandRunner = {
+  run: () => ghResult([prRow({ number: 7, headRefName: 'task/foo' }), prRow({ number: 8 })]),
+}
+
+new Gh('/repo', { runner }).openPrFor('task/foo')?.number // 7
+```
+
 ## API
 
 Everything below is exported from `@osdlc/typed-gh`. The Stability section says which items are
@@ -495,10 +557,12 @@ experimental.
 
 ### Clients
 
-- `Gh`: the synchronous client, bound to one working directory, and optionally a repository and
-  host.
+- `Gh`: the synchronous client, bound to one working directory or one repository, and optionally a
+  host. `new Gh(cwd, options?)` or `new Gh({ repo, hostname?, runner? })`.
 - `AsyncGh`: the awaitable client, with the same methods.
 - `GhOptions` and `AsyncGhOptions`: the runner, `repo` and `hostname` a client is built with.
+- `GhRepoOptions` and `AsyncGhRepoOptions`: the same with `repo` required, for a client built
+  without a directory.
 - `AsyncCallOptions`: `timeoutMs` and `signal`, accepted by sixteen methods of `AsyncGh`.
 - `defaultRunnerFactory` and `RunnerFactory`: how a client makes its default runner for `gh`.
 - `runVerb` and `runVerbAsync`, with `RunVerbOptions` and `RunVerbAsyncOptions`: run one verb through
@@ -541,8 +605,9 @@ Each verb takes an optional `GhTarget` last. Each client method has a verb of th
   `createReview`, `issueList`, `issueView`, `labelList`, `setIssueLabel`, `createLabel`,
   `editLabel`, `issueCommentEdit`, `repoList`, `repoView`, `searchPrs`, `api`, `graphql`,
   `installed` and `authStatus`.
-- `pickPrForBranch`: the first row whose head branch is exactly the one you name, for rows that
-  came from somewhere other than `prList({ head })`, such as a `head:` search.
+- `pickPrForBranch`: the first row whose head branch is exactly the one you name. `prList({ head })`
+  already filters exactly. This is for rows from elsewhere, such as a `head:` search. It takes plain
+  rows or a `ListResult`, so `openPrsForBranch`'s or `prList`'s parsed answer passes straight in.
 - `nodesAt`: one connection's nodes, joined across `graphql` pages.
 - Field lists: `PR_REF_FIELDS` (enough to identify a PR), `PR_LIST_FIELDS` (for triage),
   `PR_VIEW_FIELDS` (the full set), `REPO_FIELDS` and `SEARCH_PR_FIELDS`.
@@ -555,7 +620,7 @@ Each verb takes an optional `GhTarget` last. Each client method has a verb of th
 
 - `parsePullRequest`: reads a `gh --json` payload into a `PullRequest`, or `null`.
 - `anyCheckFailed`: true if any check in a list failed.
-- `normalizeAuthorLogin`: drops a `[bot]` suffix from a login.
+- `normalizeAuthorLogin`: drops a `[bot]` suffix or an `app/` prefix from a login.
 - `parseOwnerRepo`: reads a remote URL into `{ owner, repo }`, or `null`. It is
   `@osdlc/typed-git`'s `parseRemoteRepo` without the host, so any host's remote reads, not only
   GitHub's. Use `parseRemoteRepo` when you need the host too.
@@ -599,7 +664,8 @@ The experimental items:
 - `GraphqlOptions`
 - `GraphqlVariable`
 
-Every other export and method is stable, `prDiff` included.
+Every other export and method is stable, `prDiff` included. So is `@osdlc/typed-gh/testing`: its
+builders and their row types. Their default values may change in any minor release.
 
 ## Platforms
 

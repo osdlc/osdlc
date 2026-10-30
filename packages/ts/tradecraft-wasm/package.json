@@ -1,6 +1,7 @@
 {
   "name": "@osdlc/tradecraft-wasm",
-  "version": "0.1.0",
+  "private": true,
+  "version": "0.2.0",
   "description": "Tradecraft's core, built to WebAssembly, for Node.js and Bun: publish, export, adopt and status calls over agent skills, with a Node filesystem adapter.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

@@ -1,0 +1,16 @@
+filters:
+  and:
+    - file.inFolder("planning/backlog")
+    - file.ext != "base"
+views:
+  - type: table
+    name: All backlog items
+    order:
+      - status
+      - tags
+      - last_reviewed
+      - result
+      - file.name
+    sort:
+      - property: status
+        direction: ASC

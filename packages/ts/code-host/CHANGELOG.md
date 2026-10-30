@@ -1,5 +1,49 @@
 # @osdlc/code-host
 
+## 0.7.2
+
+### Patch Changes
+
+- Updated dependencies [c58f58b]
+  - @osdlc/typed-gh@0.14.0
+
+## 0.7.1
+
+### Patch Changes
+
+- 5598ee8: A bot pull request's `author.login` from the GitHub host (`listPrs`, `listPrDetails`, `getPr`) is now the bare login (`osdlc-release`), not gh's `app/osdlc-release`. It now matches the REST activity authors and the Forgejo host. This comes from `@osdlc/typed-gh`'s login normalization.
+- Updated dependencies [5598ee8]
+- Updated dependencies [50a340a]
+- Updated dependencies [65740a9]
+  - @osdlc/typed-gh@0.13.0
+
+## 0.7.0
+
+### Minor Changes
+
+- 7fe7f51: Breaking: `PrRef` has a required `host`, the lower-cased host its URL names. `parsePrInput` and both adapters' `parsePrUrl` fill it, so a GitHub Enterprise PR URL keeps its host and a caller can refuse a PR on a host it did not expect. Code that builds a `PrRef` by hand must add `host`.
+
+### Patch Changes
+
+- Updated dependencies [7fe7f51]
+  - @osdlc/typed-git@0.11.1
+
+## 0.6.2
+
+### Patch Changes
+
+- Updated dependencies [82d9841]
+- Updated dependencies [ebe0e0d]
+  - @osdlc/typed-git@0.11.0
+  - @osdlc/typed-gh@0.12.1
+
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [a4ca07d]
+  - @osdlc/typed-gh@0.12.0
+
 ## 0.6.0
 
 ### Minor Changes

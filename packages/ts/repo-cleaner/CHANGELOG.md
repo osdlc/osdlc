@@ -1,5 +1,70 @@
 # @osdlc/repo-cleaner
 
+## 0.9.2
+
+### Patch Changes
+
+- Updated dependencies [c58f58b]
+  - @osdlc/typed-gh@0.14.0
+
+## 0.9.1
+
+### Patch Changes
+
+- Updated dependencies [5598ee8]
+- Updated dependencies [50a340a]
+- Updated dependencies [65740a9]
+  - @osdlc/typed-gh@0.13.0
+
+## 0.9.0
+
+### Minor Changes
+
+- 43a4097: `pr-update dev` and `repo-cleaner dev` run the tool from a development checkout: `dev link <checkout>` makes the installed command run that checkout's source under Bun, `dev status` says which code runs, and `dev off` goes back. `PR_UPDATE_HOME` and `REPO_CLEANER_HOME` do the same for one run. `dev` is now a word for both tools: sweep a directory named `dev` with `repo-cleaner ./dev`, as with `apply`. The bin now loads `dist/bin.js`, built from the new `src/bin.ts`.
+
+### Patch Changes
+
+- Updated dependencies [43a4097]
+  - @osdlc/cli-tool@0.12.0
+
+## 0.8.0
+
+### Minor Changes
+
+- 7fe7f51: Output change: a remote on a host other than github.com is now named `host/owner/name` in the report, read with typed-git's `parseRemoteRepo`. Before, typed-gh read `owner/name` from any host, so one `owner/name` on two hosts was reported as a duplicate checkout. The `slug` field of `--output json` changes with it.
+
+### Patch Changes
+
+- Updated dependencies [7fe7f51]
+  - @osdlc/typed-git@0.11.1
+
+## 0.7.0
+
+### Minor Changes
+
+- 82d9841: A branch landed by rebase merge, cherry-pick or squash merge is now recognised without pull request data, and needs no grant when the content check agrees.
+  
+  - A third landing signal, patch equivalence, runs when a PR at the exact tip and ancestry both fail. It compares by `git cherry` patch id: commit by commit (`per-commit`), the branch squashed into one change (`squashed`), and, for a branch that moved on after a merged PR's head, that head squashed plus each later commit (`head-moved`). It applies to local branches, remote branches and worktrees.
+  - A patch id is a heuristic, so a match alone still requires the `abandon-unmerged` authorization. A second check, `git merge-tree --write-tree` of the default branch and the tip (git 2.38 or later), must give the default branch's own tree to drop it; the outcome is in `facts.landing_content_confirmed` and the row's reason.
+  - The row records `facts.landing = 'patch-equivalent'` and `facts.landing_check`. A branch that is only partly on the default branch lists the commits that are not in `facts.unmatched_commits` and in the investigation text.
+  - It fails closed. A failing git call, unreadable output, a shallow clone, a missing merge base, an empty change, a merge commit in the range (for the commit-by-commit check), or any commit not on the default branch means the branch is not counted as landed.
+  - The squashed check writes one unreferenced commit object and no ref, needs no git identity, and ignores `git replace` refs.
+  - New exports: `assessLanding`, `patchEquivalent`, `Landing`, `LandingCheck`. Uses `cherry`, `commitTree` and `mergeTree` from `@osdlc/typed-git`.
+
+### Patch Changes
+
+- Updated dependencies [82d9841]
+- Updated dependencies [ebe0e0d]
+  - @osdlc/typed-git@0.11.0
+  - @osdlc/typed-gh@0.12.1
+
+## 0.6.1
+
+### Patch Changes
+
+- Updated dependencies [a4ca07d]
+  - @osdlc/typed-gh@0.12.0
+
 ## 0.6.0
 
 ### Minor Changes

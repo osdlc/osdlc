@@ -1,0 +1,49 @@
+# Tags a release when its pull request merges. Generated: this file is written
+# by sksizer/dev's scripts/sdlc-mirror/assemble.ts on each release, so edit
+# scripts/sdlc-mirror/templates/product/github/ there, not here.
+#
+# On every push to main it reads the sdlc version from the Claude marketplace
+# manifest. If CHANGELOG.md has a section for it and `v<version>` does not
+# exist yet, it creates an annotated tag on the pushed commit. Any other push
+# to main leaves the tags alone. Uses the built-in GITHUB_TOKEN: tags are not
+# covered by the "Protect main" ruleset. Its tags start no other workflow: a
+# GITHUB_TOKEN push triggers none. packages-publish.yml runs on pushes to main,
+# not on tags.
+name: tag
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag the release
+        run: |
+          version=$(node -e "
+            const m = JSON.parse(require('fs').readFileSync('.claude-plugin/marketplace.json', 'utf8'))
+            process.stdout.write(m.plugins.find((p) => p.name === 'sdlc').version)
+          ")
+          tag="v${version}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "${tag} already exists; nothing to tag"
+            exit 0
+          fi
+          if ! grep -q "^## \[${version}\]" CHANGELOG.md; then
+            echo "CHANGELOG.md has no section for ${version}; not tagging" >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${tag}" -m "sdlc ${tag}" "${GITHUB_SHA}"
+          git push origin "refs/tags/${tag}"
+          echo "tagged ${tag} at ${GITHUB_SHA}"

@@ -444,6 +444,22 @@ full table.
 - Graphite `gt restack` and git-town `sync` restack a branch stack parent
   first. The stack order and blocked children follow the same idea.
 
+## Running from a checkout
+
+To try a change to pr-update with the `pr-update` already on your PATH, link a
+checkout of this package:
+
+```sh
+pr-update dev link ~/src/osdlc/packages/ts/pr-update   # every `pr-update` now runs that checkout
+pr-update dev status                             # which code runs, and why
+pr-update dev off                                # back to the installed copy
+```
+
+`PR_UPDATE_HOME=<checkout> pr-update …` does the same for one run. The checkout runs
+from source under Bun, so it needs `bun` on PATH and the checkout's
+dependencies installed and built. The installed copy says which checkout it
+hands off to on stderr; `PR_UPDATE_QUIET=1` silences that line.
+
 ## Licence
 
 `MIT OR Apache-2.0`, at your option. See [LICENSE-MIT](./LICENSE-MIT) and [LICENSE-APACHE](./LICENSE-APACHE).

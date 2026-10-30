@@ -1,6 +1,6 @@
 //! `tradecraft_core::Vfs`, implemented over a JavaScript object.
 //!
-//! Tradecraft' core reads a vault and writes a destination, and on
+//! tradecraft-core reads a vault and writes a destination, and on
 //! `wasm32-unknown-unknown` there is no filesystem: every `std::fs` call
 //! compiles cleanly and then fails at runtime. The core's answer is to take
 //! its I/O as a `&dyn Vfs` parameter; this module is the host

@@ -112,12 +112,35 @@ describe('comments and reviews carry an id', () => {
   })
 })
 
-describe('author logins — the two transports', () => {
+describe('author logins — every spelling of a bot', () => {
   test('a REST [bot] suffix folds to the GraphQL shape, so the two compare', () => {
     expect(normalizeAuthorLogin('github-actions[bot]')).toBe('github-actions')
     expect(normalizeAuthorLogin('github-actions')).toBe('github-actions')
     // Only a trailing suffix, and only one.
     expect(normalizeAuthorLogin('a[bot]b')).toBe('a[bot]b')
+  })
+
+  test("gh --json's app/ prefix folds the same way, so all three spellings compare", () => {
+    expect(normalizeAuthorLogin('app/osdlc-release')).toBe('osdlc-release')
+    // Only a leading prefix.
+    expect(normalizeAuthorLogin('x/app/y')).toBe('x/app/y')
+    const json = parseActor({ is_bot: true, login: 'app/osdlc-release' })
+    const rest = parseActor({ login: 'osdlc-release[bot]' })
+    const graphql = parseActor({ login: 'osdlc-release' })
+    expect(json).toEqual({ login: 'osdlc-release', isBot: true })
+    expect(rest?.login).toBe(json?.login)
+    expect(graphql?.login).toBe(json?.login)
+    // The prefix marks a bot even without is_bot.
+    expect(parseActor({ login: 'app/renovate' })).toEqual({ login: 'renovate', isBot: true })
+    expect(parseActor({ login: 'app/' })).toBeNull()
+    // gh search's shape: the suffix, with is_bot false.
+    expect(parseActor({ is_bot: false, login: 'dependabot[bot]', type: 'Bot' })).toEqual({
+      login: 'dependabot',
+      isBot: true,
+    })
+    // Through a whole pull request payload.
+    const pr = parsePullRequest({ number: 1, author: { is_bot: true, login: 'app/dependabot' } })
+    expect(pr?.author).toEqual({ login: 'dependabot', isBot: true })
   })
 
   test('the suffix marks a bot even when is_bot is absent', () => {

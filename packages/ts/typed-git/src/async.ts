@@ -18,6 +18,7 @@ import { basename, dirname, resolve } from 'node:path'
 import type { CommandResult } from '@osdlc/command-seam'
 
 import { cliBackend, type GitBackend, type GitCallOptions } from './backend.ts'
+import type { GitVersion } from './git-version.ts'
 import { softAsync, triedAsync, type Soft, type TriedAsync } from './outcome.ts'
 import { parseRemoteUrl, type RemoteCoordinate } from './remote-url.ts'
 import { SOFT_TABLE } from './soft.ts'
@@ -27,6 +28,8 @@ import {
   splitTrailingOptions,
   type AddOptions,
   type AheadBehind,
+  type CherryEntry,
+  type CommitTreeOptions,
   type CommitOptions,
   type CheckoutOptions,
   type ConfigGetOptions,
@@ -179,6 +182,17 @@ export class AsyncGit {
   }
 
   // ── queries ───────────────────────────────────────────────────────────────
+
+  /**
+   * The git the backend runs, from `git --version`; see {@link Git.version}.
+   * `cliBackend` probes once per runner and caches it, or returns its
+   * `gitVersion` option without running anything. A non-CLI backend has
+   * no git version unless it answers the `version` request itself;
+   * `partialBackend` rejects it with `UnsupportedRequest` otherwise.
+   */
+  version(opts: GitCallOptions = {}): Promise<GitVersion> {
+    return this.backend.execute(this.cwd, { kind: 'version' }, opts)
+  }
 
   /** A file's content at a rev, null if absent. */
   showAtRev(rev: string, relPath: string, opts: GitCallOptions = {}): Promise<string | null> {
@@ -501,6 +515,23 @@ export class AsyncGit {
   /** How far `tip` has diverged from `base`. See {@link AheadBehind}. */
   aheadBehind(base: string, tip: string, opts: GitCallOptions = {}): Promise<AheadBehind> {
     return this.backend.execute(this.cwd, { kind: 'aheadBehind', base, tip }, opts)
+  }
+
+  /**
+   * Commits on `head` (default `HEAD`) that `upstream` lacks, each marked by
+   * whether `upstream` has the same patch. See {@link CherryEntry}.
+   */
+  cherry(upstream: string, head?: string, opts: GitCallOptions = {}): Promise<CherryEntry[]> {
+    return this.backend.execute(this.cwd, { kind: 'cherry', upstream, head }, opts)
+  }
+
+  /** Write a commit for `tree` and return its sha; no ref moves. Needs a git identity. */
+  commitTree(
+    tree: string,
+    commitOpts: CommitTreeOptions,
+    opts: GitCallOptions = {},
+  ): Promise<string> {
+    return this.backend.execute(this.cwd, { kind: 'commitTree', tree, ...commitOpts }, opts)
   }
 
   /** Configured remote names (`git remote`); `[]` when there are none. */

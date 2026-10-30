@@ -105,8 +105,9 @@ const sweepCli = () =>
     },
     epilogue: `commands:
   repo-cleaner apply --help   delete the approved rows of a plan
+  repo-cleaner dev            run repo-cleaner from a development checkout
 
-A checkout directory named "apply" is swept as ./apply.
+A checkout directory named "apply" or "dev" is swept as ./apply or ./dev.
 
 config: ${configPath()}
 plans:  <durable home>/repo-cleaner/plans/ unless --plan-out`,
