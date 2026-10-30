@@ -7,6 +7,14 @@
       { "language": "rust", "dir": "packages/rust/config-layers", "name": "config-layers" }
     ]
   },
+  "path-guard": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/path-guard conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/path-guard", "name": "@osdlc/path-guard" },
+      { "language": "rust", "dir": "packages/rust/path-guard", "name": "path-guard" }
+    ]
+  },
   "tiered-dirs": {
     "reference": "ts",
     "generator": "pnpm --filter @osdlc/tiered-dirs conformance:write",
