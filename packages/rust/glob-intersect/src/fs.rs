@@ -252,7 +252,9 @@ mod tests {
             },
         )
         .expect("walk");
-        assert_eq!(abs, [dir.path().join("src/api/user.ts").to_string_lossy()]);
+        // Absolute paths use the platform separator, as the peer's `path.resolve` does.
+        let want = dir.path().join("src").join("api").join("user.ts");
+        assert_eq!(abs, [want.to_string_lossy()]);
     }
 
     #[test]

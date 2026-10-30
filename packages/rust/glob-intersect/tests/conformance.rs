@@ -631,7 +631,8 @@ fn filesystem_corpus() {
             unlock_all(root, locked);
 
             // With `absolute`, the case states relative paths; they resolve
-            // against the temp dir.
+            // against the temp dir, joined by component so the separator is the
+            // platform's, as the peer's `path.resolve` gives.
             let mut normalized = case.clone();
             if let (Some(obj), Some(Json::Array(items))) =
                 (normalized.as_object_mut(), case.get("expect"))
@@ -641,7 +642,10 @@ fn filesystem_corpus() {
                     .map(|i| {
                         let rel = i.as_str().unwrap_or_default();
                         if absolute {
-                            root.join(rel).to_string_lossy().into_owned()
+                            rel.split('/')
+                                .fold(root.to_path_buf(), |path, part| path.join(part))
+                                .to_string_lossy()
+                                .into_owned()
                         } else {
                             rel.to_string()
                         }
