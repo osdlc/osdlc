@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.3](https://github.com/osdlc/osdlc/compare/markdown-link/v0.5.2...markdown-link/v0.5.3) - 2026-10-30
+
+### Changed
+
+- Depend on slug-collate 0.2. slug-collate 0.1.2 was yanked, and this
+  crate's earlier releases require it. Only `compare_paths` is used, and its
+  order is unchanged, so behaviour is the same.
+
+## [0.5.2](https://github.com/osdlc/osdlc/compare/markdown-link/v0.5.1...markdown-link/v0.5.2) - 2026-10-29
+
+### Fixed
+
+- *(markdown-link)* match whole folder names when preferring a folder ([#543](https://github.com/osdlc/osdlc/pull/543))
+
+### Fixed
+
+- `prefer_in_folder` (and so `LinkIndex::resolve_from`) matches whole folder names. A note in
+  `notes/` no longer prefers a candidate in `notes2/`.
+
+## [0.5.1](https://github.com/osdlc/osdlc/compare/markdown-link/v0.5.0...markdown-link/v0.5.1) - 2026-10-28
+
+### Other
+
+- updated the following local packages: yaml-splice
+
 ## [0.5.0] - Unreleased
 
 First public release. `markdown-link` parses wiki-style and Markdown links — every `[[wikilink]]`,

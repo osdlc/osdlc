@@ -112,7 +112,7 @@
 //!
 //! Base directories are resolved once, at construction, and can be injected.
 //! Nothing below [`BaseDirs`] reads the environment, so a test checks exact
-//! paths without touching a real home directory. The parity fixture uses
+//! paths without touching a real home directory. The conformance suite uses
 //! [`BaseDirs::rooted`]. [`BaseDirs::xdg`] builds the XDG layout under any
 //! home. [`BaseDirs::from_env_with`] takes the override variables from a
 //! test's own map.
@@ -129,8 +129,8 @@
 //! variable, then the root variable laid out as [`BaseDirs::rooted`], then the
 //! OS default for the convention. `<P>_CONVENTION` picks that convention over
 //! the caller's. See [`BaseDirs::from_env`]. The TypeScript package's
-//! `systemBaseDirs` resolves in the same order. The `env_cases` in the parity
-//! fixture check that.
+//! `systemBaseDirs` resolves in the same order. The `env` cases in the
+//! conformance suite check that.
 //!
 //! # Tests never resolve a real home
 //!
@@ -163,7 +163,8 @@
 //! # The TypeScript package
 //!
 //! A TypeScript version is published as `@osdlc/tiered-dirs` on npm.
-//! Both are checked against `tests/fixtures/parity.json`. The two must give
+//! Both are checked against one conformance suite,
+//! `packages/conformance/tiered-dirs/suite.json` in the repository. The two must give
 //! the same path for a given (tier, home, scope, app). Otherwise a Rust
 //! program and a TypeScript program would put the same state in different
 //! places. Neither package may add a path shape the other lacks.
@@ -502,7 +503,7 @@ pub enum Home {
 }
 
 impl Home {
-    /// Stable lowercase name, used in error messages and by the parity
+    /// Stable lowercase name, used in error messages and by the conformance
     /// fixture as the home column.
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -870,7 +871,7 @@ impl BaseDirs {
     /// `<root>/config`, `<root>/cache`, `<root>/state`, `<root>/logs`,
     /// `<root>/scratch`, and runtime at `<root>/durable/run`.
     ///
-    /// The layout [`EnvVars::root`] selects. Tests and the parity fixture use
+    /// The layout [`EnvVars::root`] selects. Tests and the conformance suite use
     /// it. The TypeScript package has the same helper with the same layout, so
     /// a fixture row checks identical absolute paths in both languages.
     pub fn rooted(root: impl AsRef<Path>) -> Self {
@@ -896,7 +897,7 @@ impl BaseDirs {
     /// else its default under `home`. A relative value is ignored, as the XDG
     /// spec says. Logs share the state home. Runtime is `$XDG_RUNTIME_DIR`,
     /// else `<durable>/run`. The TypeScript package's `xdgBaseDirs` builds the
-    /// same layout. The parity fixture's `convention_cases` check that.
+    /// same layout. The conformance suite's `convention` cases check that.
     pub fn xdg(home: impl AsRef<Path>, var: impl Fn(&str) -> Option<OsString>) -> Self {
         let home = home.as_ref();
         let under = |segments: &[&str]| segments.iter().fold(home.to_path_buf(), |p, s| p.join(s));
@@ -1287,7 +1288,7 @@ pub enum TierKind {
 }
 
 impl TierKind {
-    /// Stable lowercase name, used by the parity fixture as the tier column.
+    /// Stable lowercase name, used by the conformance suite as the tier column.
     pub const fn as_str(self) -> &'static str {
         match self {
             TierKind::Vendor => "vendor",

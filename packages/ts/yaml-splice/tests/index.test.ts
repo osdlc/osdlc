@@ -38,6 +38,15 @@ describe('round trips', () => {
     expect(out.changed).toBe(false)
     expect(equalBytes(out.bytes, source)).toBe(true)
   })
+
+  // Not in the shared corpus: the Rust crate's own tests read JSON objects
+  // with sorted keys, and only this wrapper keeps their order.
+  test('a mapping value keeps the key order of the object passed in', () => {
+    const out = editYaml(source, [{ Set: { key: 'meta', value: { zeta: 1, alpha: 2 } } }])
+    expect(bytesToString(out.bytes)).toBe(
+      "title: 'keep me'\nstatus: draft\nmeta:\n  zeta: 1\n  alpha: 2\n",
+    )
+  })
 })
 
 describe('a non-finite number in a Set value', () => {

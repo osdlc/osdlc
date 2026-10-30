@@ -1,0 +1,5 @@
+name: check-pr
+description: "Tend one or more pull requests in a single pass: report their state, rebase them onto their base branch when they are behind or conflicting, and assess and answer new review comments. Fixes worthwhile comments straight away with --fix auto, or proposes the fix and waits for a thumbs-up with --fix ask (the default). Keeps no files of its own and records its answers to review-pr findings on a state ref beside the PR, so it suits a loop such as /loop /check-pr."
+allowed-tools: shell read_file edit_file write_file spawn_agent
+metadata:
+  trigger: /check-pr

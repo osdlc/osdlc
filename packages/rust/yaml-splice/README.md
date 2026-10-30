@@ -98,7 +98,9 @@ the whole top-level value.
 New values are written the way the npm `yaml` package (version 2) writes them:
 the same quoting, the same block or flow layout, the same number formatting.
 So a file written from Rust and one written from JavaScript with `yaml` do not
-differ.
+differ. One exception: a string that starts with U+FEFF is written
+double-quoted, with U+FEFF escaped as `\ufeff`. `yaml` writes it plain, and
+at the start of a document a reader then drops it as a byte-order mark.
 
 The document's line ending (LF or CRLF) is used for new lines. A UTF-8 BOM
 stays at byte zero.
@@ -130,7 +132,12 @@ byte span.
   - a `Remove` keeps such a less-indented comment, and it would join the
     previous key's block scalar;
   - a `Remove` leaves an empty block scalar (`a: |`) as the document's last
-    line, which the parser then reads as a line break.
+    line, which the parser then reads as a line break;
+  - a `Remove` moves a line that starts with U+FEFF to byte zero of a
+    document without a BOM, where a reader drops it as a byte-order mark;
+  - a `Set` writes a string whose first non-empty line holds only spaces
+    (`" \n"`). It is written as a block scalar, and a reader takes that line
+    as empty and loses the spaces. `yaml` writes the same bytes.
 
   These refusals are a choice, not a limit of YAML. Another layout, such as
   an explicit indentation indicator (`|4`) or moving the comment, could make
@@ -186,7 +193,9 @@ fields and want the smallest possible diff, or output that matches JavaScript's
 | A change that would alter a neighbour is refused | `edit::frontmatter_tests::an_edit_that_would_change_a_neighbour_is_refused` |
 | A `.nan` elsewhere does not block an edit | `edit::frontmatter_tests::a_nan_neighbour_does_not_block_an_edit` |
 | A trailing comment moves to the header of a new block value | `splice::tests::a_trailing_comment_moves_to_the_header_of_a_new_block_value` |
-| Hostile input does not panic | `conformance::no_panic_on_hostile_input` |
+| Hostile input does not panic | `conformance::no_panic_on_hostile_input`, `fuzz_chars::mutated_documents_never_panic` |
+| Keys and values of hard characters are written and read back | `fuzz_chars::every_sample_is_written_and_read_back`, `random_mixes_are_written_and_read_back` |
+| A U+FEFF never ends up at byte zero | conformance `a_key_starting_with_u_feff_is_quoted_so_it_is_not_read_as_a_bom`, `a_remove_that_would_leave_u_feff_at_byte_zero_is_refused` |
 | `edit_frontmatter` returns split form | `edit::frontmatter_tests::appending_to_an_unterminated_block_returns_split_form`, `removing_the_last_key_leaves_no_trailing_newline` |
 | New values match the npm `yaml` package | `render::tests`, expected strings captured from `yaml` 2.9.0 |
 

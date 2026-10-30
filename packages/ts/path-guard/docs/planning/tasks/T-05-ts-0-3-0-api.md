@@ -93,4 +93,4 @@ relative argument.
 - [x] [D-05](../decisions/D-05-kept-names-for-0-2.md) is marked
       `superseded` by D-06.
 - [ ] The PR links the Rust PR ([T-04](T-04-rust-0-3-0-api.md)), as the
-      [twin rule](../../../../../README.md#twin-libraries) asks.
+      [twin rule](../../../../../README.md#library-families) asks.

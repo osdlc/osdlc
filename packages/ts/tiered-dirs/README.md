@@ -403,11 +403,11 @@ class TieredDirsError extends Error {
 ## Parity
 
 This package matches the Rust `tiered-dirs` crate.
-`packages/rust/tiered-dirs/tests/fixtures/parity.json` in the repository is
-the contract between them: a table of (tier, home, scope, app) to expected
-relative path, a `scratch_cases` list for the scratch root, `env_cases` for the
-override order, `convention_cases` for the XDG layout under a stub home and
-`rejected_conventions`. Both suites read that one file with base directories
+`packages/conformance/tiered-dirs/suite.json` in the repository is the
+contract between them, and this package is its reference: (tier, home, scope,
+app) to expected relative path, the scratch root, the override order, the XDG
+layout under a stub home, and the refused segments and convention values.
+Both packages run that one file with base directories
 stubbed: `rootedBaseDirs('/stub')` here, `BaseDirs::rooted("/stub")` there.
 Neither package may add a path shape the other lacks.
 

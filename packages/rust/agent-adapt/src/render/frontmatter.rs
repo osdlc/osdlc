@@ -161,7 +161,7 @@ impl<'a> FrontmatterBuilder<'a> {
         self
     }
 
-    /// Merge one target's `tc-overrides` block over what the modelled fields
+    /// Merge one target's `sw-overrides` block over what the modelled fields
     /// already wrote, and report the keys that changed nothing.
     ///
     /// Called **last**, after every modelled field, which is the whole

@@ -40,7 +40,19 @@ export interface RunMainOptions {
    * `defineApp` does, and exits 0 without calling `main`. Pass the `VERSION` that `cli-tool-stamp-version` writes.
    */
   version?: string
+  /**
+   * Runs before `--version` and `main`; a number is the exit code and ends the
+   * run, null goes on. Pass `devlinkHook(spec)` from `@osdlc/cli-tool/devlink`
+   * to run the tool from a development checkout, as `way` and `sdlc` do.
+   */
+  devlink?: DevlinkHook
 }
+
+/**
+ * What {@link RunMainOptions.devlink} takes: answer `dev`, or hand the run to
+ * another checkout, and return its exit code; null runs this process's `main`.
+ */
+export type DevlinkHook = (argv: readonly string[], ctx: CliContext) => number | null
 
 /**
  * A tool's main function. It takes the arguments and the context and returns
@@ -52,6 +64,13 @@ export type MainFn = (argv: readonly string[], ctx: CliContext) => number | Prom
 export async function runMain(main: MainFn, options: RunMainOptions): Promise<void> {
   const ctx = options.context ?? processContext()
   const argv = options.argv ?? process.argv.slice(2)
+  if (options.devlink !== undefined) {
+    const code = options.devlink(argv, ctx)
+    if (code !== null) {
+      process.exitCode = code
+      return
+    }
+  }
   if (options.version !== undefined && argv[0] === '--version') {
     ctx.io.stdout(`${options.name} ${options.version}\n`)
     process.exitCode = EXIT.ok

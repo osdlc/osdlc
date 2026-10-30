@@ -1,6 +1,7 @@
 /**
  * `Gh`: the synchronous GitHub client, the companion of `@osdlc/typed-git`'s
- * `Git`, bound to one working directory and one {@link CommandRunner}.
+ * `Git`, bound to one {@link CommandRunner} and either one working directory
+ * or one named repository.
  *
  * `gh` handles authentication. No token is read, stored, or passed. That is
  * why this runs the CLI instead of calling the REST API. The credential is
@@ -58,35 +59,72 @@ export interface GhOptions extends GhTarget {
 }
 
 /**
- * A typed gh client bound to one working directory, and optionally to one
- * repository and host.
+ * {@link GhOptions} with `repo` required: what `new Gh(options)` takes when
+ * no working directory is given. Requiring `repo` keeps clone-relative use
+ * explicit: a client that reads the repository from a clone must say which
+ * directory the clone is in.
+ */
+export interface GhRepoOptions extends GhOptions {
+  repo: string
+}
+
+/**
+ * A typed gh client bound to one working directory or one named repository,
+ * and optionally to one host.
  *
- * With `repo`, every call names that repository (`--repo`, or the
- * `{owner}/{repo}` of an `api` endpoint), so no clone is needed. Without it,
- * gh uses the repository of the clone at `cwd`. With `hostname`, every call
- * goes to that GitHub host. An invalid `repo` or `hostname` throws
- * `RangeError`.
+ * `new Gh(cwd, options?)` runs every call in `cwd`. With `repo`, every call
+ * names that repository (`--repo`, or the `{owner}/{repo}` of an `api`
+ * endpoint), so no clone is needed. Without it, gh uses the repository of
+ * the clone at `cwd`.
+ *
+ * `new Gh({ repo, hostname?, runner? })` names a repository and no
+ * directory. Each call runs in `process.cwd()`, read when the call is made,
+ * because a runner needs a directory. No typed verb depends on it: each one
+ * names `repo`, and the host-only verbs (`repoList`, `searchPrs`) read no
+ * clone. Two escape hatches do: `raw` and `rawChecked` add no `--repo`, and
+ * an `api` endpoint's `{branch}` is filled by gh from the directory's
+ * checkout. `repo` is required in this form, so `new Gh({})` does not
+ * typecheck and throws `TypeError`.
+ *
+ * With `hostname`, every call goes to that GitHub host. An invalid `repo` or
+ * `hostname` throws `RangeError`.
  *
  * Every `timeoutMs` option is a hard cap on the call. An invalid value
  * throws, as in command-seam: `RangeError` for 0, a negative value or `NaN`;
  * `TypeError` for a non-number.
  */
 export class Gh {
-  readonly cwd: string
   readonly repo: string | undefined
   readonly hostname: string | undefined
+  private readonly boundCwd: string | undefined
   private readonly target: GhTarget
   private readonly runner: CommandRunner
   private tried: TriedSync<Gh> | undefined
   private softened: Soft<Gh> | undefined
 
-  constructor(cwd: string, opts: GhOptions = {}) {
+  /** A client for the repository `options.repo`, with no working directory of its own. */
+  constructor(options: GhRepoOptions)
+  /** A client rooted at `cwd`: the clone gh reads, unless `options.repo` names another repository. */
+  constructor(cwd: string, options?: GhOptions)
+  /** Either form, for a value typed `string | GhRepoOptions`. */
+  constructor(cwdOrOptions: string | GhRepoOptions)
+  constructor(cwdOrOptions: string | GhRepoOptions, options: GhOptions = {}) {
+    const opts = typeof cwdOrOptions === 'string' ? options : cwdOrOptions
+    if (typeof cwdOrOptions !== 'string') v.requireRepo('Gh', opts)
     v.checkTarget(opts)
-    this.cwd = cwd
+    this.boundCwd = typeof cwdOrOptions === 'string' ? cwdOrOptions : undefined
     this.repo = opts.repo
     this.hostname = opts.hostname
     this.target = { repo: opts.repo, hostname: opts.hostname }
     this.runner = opts.runner ?? defaultRunnerFactory('gh')
+  }
+
+  /**
+   * The directory calls run in: the `cwd` the client was built with, or for
+   * a client built from options alone, `process.cwd()` at the time it is read.
+   */
+  get cwd(): string {
+    return this.boundCwd ?? process.cwd()
   }
 
   /** The same client rooted at a different directory (same runner, repo and host). */
@@ -94,9 +132,13 @@ export class Gh {
     return new Gh(cwd, { runner: this.runner, repo: this.repo, hostname: this.hostname })
   }
 
-  /** The same client aimed at another repository (same runner, directory and host). */
+  /**
+   * The same client aimed at another repository (same runner, directory and
+   * host). A client built from options alone stays without a directory.
+   */
   withRepo(repo: string): Gh {
-    return new Gh(this.cwd, { runner: this.runner, repo, hostname: this.hostname })
+    const opts = { runner: this.runner, repo, hostname: this.hostname }
+    return this.boundCwd === undefined ? new Gh(opts) : new Gh(this.boundCwd, opts)
   }
 
   /**
@@ -125,12 +167,17 @@ export class Gh {
 
   // ── raw calls ─────────────────────────────────────────────────────────────
 
-  /** Run any `gh` call and return the result, whatever the exit code. */
+  /**
+   * Run any `gh` call and return the result, whatever the exit code. It adds
+   * no `--repo`: on a client built without a directory it runs in
+   * `process.cwd()`, so gh reads that clone. Add `--repo` to `argv`, or call
+   * `.at(dir)` first.
+   */
   raw(argv: string[], opts: { timeoutMs?: number | undefined } = {}): CommandResult {
     return this.runner.run(argv, { cwd: this.cwd, ...opts })
   }
 
-  /** Run any `gh` call. Throws the classified failure on a non-zero exit. */
+  /** Run any `gh` call. Throws the classified failure on a non-zero exit. Adds no `--repo`, as {@link Gh.raw}. */
   rawChecked(argv: string[], opts: { timeoutMs?: number | undefined } = {}): CommandResult {
     return runCheckedGh(this.runner, argv, { cwd: this.cwd, ...opts })
   }
@@ -210,7 +257,7 @@ export class Gh {
       fields: opts.fields ?? v.PR_REF_FIELDS,
       timeoutMs: opts.timeoutMs,
     })
-    return v.pickPrForBranch(rows.rows, branch)
+    return v.pickPrForBranch(rows, branch)
   }
 
   /**

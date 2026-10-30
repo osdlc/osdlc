@@ -1,7 +1,8 @@
 # Checks the Cargo workspace under packages/rust/, and the wasm built from it
 # that packages/ts/yaml-splice/ and packages/ts/tradecraft-wasm/ commit, on
-# every pull request and push to main. It also runs when the markdown-contract corpus changes, because the
-# markdown-contract crate's tests read that corpus.
+# every pull request and push to main. It also runs when the markdown-contract corpus or the intersect
+# fixtures change, because the markdown-contract and glob-intersect crates' tests read them, and when a
+# conformance suite under packages/conformance/ changes, because the crates' tests read those.
 #
 # The workflow always runs, so its final `rust` job always reports. That job
 # is the one to require in the "Protect main" ruleset. A workflow-level
@@ -87,7 +88,7 @@ jobs:
               files='*'
               ;;
           esac
-          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/ts/(yaml-splice|tradecraft-wasm)/wasm/|packages/ts/tradecraft-wasm/src/core\.generated\.ts|packages/ts/markdown-contract/corpus/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
+          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/conformance/|scripts/conformance|packages/ts/(yaml-splice|tradecraft-wasm)/wasm/|packages/ts/tradecraft-wasm/src/core\.generated\.ts|packages/ts/markdown-contract/corpus/|packages/ts/intersect/fixtures/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
@@ -104,7 +105,7 @@ jobs:
 
       # Node 24 runs the crate shape check (TypeScript) by stripping the
       # types; it needs nothing installed.
-      # docs/planning/standards/S-0002-package-shape-rs.md is the standard.
+      # docs/planning/standards/S-package-shape-rs.md is the standard.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
@@ -125,6 +126,13 @@ jobs:
 
       - name: Format check
         run: cargo fmt --all --check
+
+      # Every suite whose reference is a Rust crate: a generator that writes
+      # different bytes means expected values went stale.
+      # docs/planning/standards/S-conformance-suites.md is the standard.
+      - name: Regenerate the conformance suites
+        working-directory: .
+        run: node scripts/conformance.ts --regenerate --reference rust
 
       - name: Docs
         env:
@@ -186,7 +194,7 @@ jobs:
       - name: Test
         env:
           WINDOWS_UNTESTED: >-
-            --exclude=tradecraft-core --exclude=tradecraft
+            --exclude=tradecraft-core --exclude=skillwright
         run: |
           set -euo pipefail
           if [ "$RUNNER_OS" = Windows ]; then
@@ -272,6 +280,12 @@ jobs:
   # the file tradecraft-typegen writes. On a difference it uploads the rebuilt
   # files.
   # It also builds markdown-contract for wasm32 without default features.
+  #
+  # A version bump alone changes the wasm bytes: cargo hashes each crate's
+  # version into the crate hash it gives rustc (`-C metadata`), and that hash
+  # reaches symbol hashes and code layout. The release pull request bumps
+  # versions, so the `release-pr` job in release-plz.yml rebuilds the wasm
+  # and commits it to the release branch, and this check passes there too.
   wasm:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
@@ -279,12 +293,6 @@ jobs:
     defaults:
       run:
         working-directory: .
-    env:
-      # Keep in step with REQUIRED_WASM_BINDGEN in build.sh and the
-      # wasm-bindgen pin in packages/rust/Cargo.toml.
-      WASM_BINDGEN_VERSION: 0.2.126
-      BINARYEN_VERSION: version_131
-      BINARYEN_SHA256: b5bf1f0eaf17c63ee588ff7a5954dc8f6ce2c26989051c66f24dfe9ece3e46db
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -296,19 +304,8 @@ jobs:
 
       - uses: ./.github/actions/rust-build-cache
 
-      - uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
-        with:
-          tool: wasm-bindgen@${{ env.WASM_BINDGEN_VERSION }}
-
-      - name: Install binaryen
-        run: |
-          set -euo pipefail
-          tarball="binaryen-${BINARYEN_VERSION}-x86_64-linux.tar.gz"
-          curl -fsSL -o "$RUNNER_TEMP/$tarball" \
-            "https://github.com/WebAssembly/binaryen/releases/download/${BINARYEN_VERSION}/${tarball}"
-          echo "${BINARYEN_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum -c -
-          tar -xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP"
-          echo "WASM_OPT=$RUNNER_TEMP/binaryen-${BINARYEN_VERSION}/bin/wasm-opt" >> "$GITHUB_ENV"
+      # wasm-bindgen and wasm-opt at the versions build.sh requires.
+      - uses: ./.github/actions/rust-wasm-tools
 
       - name: Build the wasm with build.sh
         run: bash packages/rust/yaml-splice-wasm/build.sh
@@ -364,9 +361,17 @@ jobs:
 
   # Runs release-plz as the release workflow does, but without publishing,
   # tagging or pushing, so a bad release-plz.toml fails here and not after
-  # the merge. `release --dry-run` checks the config against each manifest.
+  # the merge. `release --dry-run` checks the config against each manifest
+  # and packages each crate whose version is not on crates.io yet.
   # `update` runs in the throwaway checkout and its edits are discarded with
   # it. The release-plz version is the one in release-plz.yml.
+  #
+  # The dry run publishes nothing, so a crate that needs the new version of
+  # another crate in the same run would not find it on crates.io. The real
+  # release publishes that crate first. So the dry run gets a cargo
+  # `[patch.crates-io]` that points each unpublished crate, and each
+  # workspace crate it reaches by path, at its local directory; see
+  # scripts/crates-io-unpublished-patch.ts.
   release-plz:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
@@ -398,8 +403,25 @@ jobs:
           fi
           echo "version=$v" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - name: Test the patch script
+        run: node --test scripts/crates-io-unpublished-patch.test.ts
+
+      # Into the user cargo config, so no file in the repository changes.
+      # The original, if any, is kept and restored after the dry run.
+      - name: Point unpublished crates at their local directories
+        run: |
+          set -euo pipefail
+          cfg="${CARGO_HOME:-$HOME/.cargo}/config.toml"
+          if [ -e "$cfg" ]; then cp "$cfg" "$RUNNER_TEMP/cargo-config.toml"; fi
+          node scripts/crates-io-unpublished-patch.ts packages/rust/Cargo.toml packages/rust/release-plz.toml >> "$cfg"
+          cat "$cfg"
+
       # Same action pin and version as release-plz.yml. It installs the
-      # release-plz binary, which the next step reuses.
+      # release-plz binary, which the `release-plz update` step reuses.
       - uses: release-plz/action@8921286633dfa0c4020f7f30bd1c14fe19cbb10e # v0.5.142
         with:
           command: release
@@ -409,6 +431,16 @@ jobs:
           dry_run: 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Remove the patch
+        run: |
+          set -euo pipefail
+          cfg="${CARGO_HOME:-$HOME/.cargo}/config.toml"
+          if [ -e "$RUNNER_TEMP/cargo-config.toml" ]; then
+            mv "$RUNNER_TEMP/cargo-config.toml" "$cfg"
+          else
+            rm -f "$cfg"
+          fi
 
       - name: release-plz update
         run: release-plz update --config packages/rust/release-plz.toml --manifest-path packages/rust/Cargo.toml

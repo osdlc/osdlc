@@ -188,6 +188,8 @@ describe('runCorpus — pure library API', () => {
 })
 
 const BIN = resolve(REPO, 'dist/cli/bin.js')
+/** The published bin, which npm links into `node_modules/.bin`. */
+const LAUNCHER = resolve(REPO, 'bin/markdown-contract.js')
 
 describe('the built program', () => {
   test('spawn the real bin over the corpus → exit 1, parseable json stdout', () => {
@@ -209,26 +211,32 @@ describe('the built program', () => {
     expect(r.status).toBe(0)
   })
 
-  test('runs through a symbolic link, as node_modules/.bin installs it', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'markdown-contract-bin-'))
-    try {
-      const link = join(dir, 'markdown-contract')
-      symlinkSync(BIN, link)
-      const failing = spawnSync('node', [link, 'validate', CORPUS, '--config', CONFIG], {
-        cwd: CORPUS,
-        encoding: 'utf8',
-      })
-      expect(failing.status).toBe(1)
-      expect(failing.stdout).toContain('frontmatter/enum')
-      const clean = spawnSync('node', [link, 'validate', CLEAN_SUBTREE, '--config', CONFIG], {
-        cwd: CORPUS,
-        encoding: 'utf8',
-      })
-      expect(clean.status).toBe(0)
-    } finally {
-      rmSync(dir, { recursive: true, force: true })
-    }
-  })
+  // Two processes, each loading the package and its dependencies: more than the
+  // default 5 s on a loaded macOS runner.
+  test(
+    'runs the published bin through a symbolic link, as node_modules/.bin installs it',
+    { timeout: 20_000 },
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), 'markdown-contract-bin-'))
+      try {
+        const link = join(dir, 'markdown-contract')
+        symlinkSync(LAUNCHER, link)
+        const failing = spawnSync('node', [link, 'validate', CORPUS, '--config', CONFIG], {
+          cwd: CORPUS,
+          encoding: 'utf8',
+        })
+        expect(failing.status).toBe(1)
+        expect(failing.stdout).toContain('frontmatter/enum')
+        const clean = spawnSync('node', [link, 'validate', CLEAN_SUBTREE, '--config', CONFIG], {
+          cwd: CORPUS,
+          encoding: 'utf8',
+        })
+        expect(clean.status).toBe(0)
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    },
+  )
 
   test('importing ./cli runs nothing', async () => {
     const r = spawnSync(

@@ -10,12 +10,13 @@
 
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, test } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
 import { FailureError } from '@osdlc/result'
 
 import { Git, type CommandResult, type CommandRunner } from '../src/index.ts'
 import { makeGitFixture, type GitFixture } from '../src/testing.ts'
+import { missingGitFeature } from './local-git.ts'
 
 /** Records argv and replays one canned result. */
 function recorder(result: CommandResult): { runner: CommandRunner; calls: string[][] } {
@@ -283,6 +284,13 @@ describe('real git — the conflict shapes a resolver must tell apart', () => {
 })
 
 describe('real git — merge-tree predicts without touching the worktree', () => {
+  // On a git older than 2.38 these skip with the reason; the test after this
+  // block checks what such a git gets instead.
+  const tooOld = missingGitFeature('merge-tree --write-tree')
+  beforeEach((ctx) => {
+    if (tooOld !== null) ctx.skip(tooOld)
+  })
+
   test('a clean prediction names no conflicts and leaves the checkout alone', () => {
     fx.git.checkout('main')
     const before = fx.git.resolveRef('HEAD')
@@ -344,10 +352,29 @@ describe('real git — merge-tree predicts without touching the worktree', () =>
     // caller comparing it to a real path would match.
     if (out.status === 'conflict') expect(out.conflicts).toEqual([odd])
   })
+})
 
+describe('merge-tree — the version gate, and argv', () => {
+  // The real git on a machine older than 2.38 (Ubuntu 22.04 ships 2.34): a
+  // typed failure, not git's usage error read as a generic `exit`.
+  test.skipIf(missingGitFeature('merge-tree --write-tree') === null)(
+    'mergeTree throws unsupported-git without running merge-tree',
+    () => {
+      const r = fx.git.try.mergeTree('main', 'main')
+      expect(r.ok).toBe(false)
+      if (r.ok) return
+      expect(r.error.kind).toBe('unsupported-git')
+      expect(r.error.unsupported?.feature).toBe('merge-tree --write-tree')
+      expect(r.error.message).toMatch(/^merge-tree --write-tree needs git 2\.38 or later; found \d/)
+      expect(r.error.cause).toBeUndefined()
+    },
+  )
+
+  // A fake runner, so it runs on any git.
   test('mergeBase pins the base git would otherwise pick', () => {
     const { runner, calls } = recorder(res(0, 'deadbeef\x00'))
-    new Git('/repo', { runner }).mergeTree('x', 'main', { mergeBase: 'abc' })
+    // The pinned version stands in for `git --version`, so the fake answers only merge-tree.
+    new Git('/repo', { runner, gitVersion: '2.50.1' }).mergeTree('x', 'main', { mergeBase: 'abc' })
     expect(calls[0]).toEqual([
       'merge-tree',
       '--write-tree',

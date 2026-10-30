@@ -1,24 +1,24 @@
-//! The frontmatter namespace — which prefix Tradecraft claims in a note.
+//! The frontmatter namespace — which prefix skillwright claims in a note.
 //!
-//! The namespace spec claims `tc-` wholesale, and name
+//! The namespace spec claims `sw-` wholesale, and name
 //! the price: two letters will sit next to a key the user or another plugin
-//! already owns sooner than a longer prefix would. The default stays `tc`; a
-//! vault that already has an `tc-` key, or an author who wants a different one,
+//! already owns sooner than a longer prefix would. The default stays `sw`; a
+//! vault that already has an `sw-` key, or an author who wants a different one,
 //! configures a stem and the whole namespace moves with it.
 //!
 //! # One stem, two derived forms
 //!
-//! A namespace is configured as a **stem** — `tc` — and both spellings the
+//! A namespace is configured as a **stem** — `sw` — and both spellings the
 //! reader uses are derived from it at construction:
 //!
-//! | Form | From `tc` | Used by |
+//! | Form | From `sw` | Used by |
 //! |---|---|---|
-//! | flat prefix | `tc-` | every flat key: `tc-kind`, `tc-targets`, … |
-//! | nested block key | `tc` | the nested shape, `tc:` |
+//! | flat prefix | `sw-` | every flat key: `sw-kind`, `sw-targets`, … |
+//! | nested block key | `sw` | the nested shape, `sw:` |
 //!
 //! They are derived rather than configured separately on purpose. Two
 //! independently-set strings are two things that can disagree, and a build
-//! whose prefix was `tc-` while its block key was `other` would strip one
+//! whose prefix was `sw-` while its block key was `other` would strip one
 //! shape and publish the other — the exact failure the strip exists to prevent.
 //! There is no constructor that takes both.
 //!
@@ -70,11 +70,11 @@
 
 use std::fmt;
 
-/// The frontmatter namespace Tradecraft claims in a note: one validated stem,
+/// The frontmatter namespace skillwright claims in a note: one validated stem,
 /// and both spellings the reader derives from it.
 ///
 /// Construct with [`Namespace::new`], or take [`Namespace::default`] for the
-/// `tc` the rest of the system documents. This is a value, passed to the
+/// `sw` the rest of the system documents. This is a value, passed to the
 /// functions that need it — there is deliberately no global, no static, and no
 /// thread-local holding "the" namespace, for the same reason
 /// [`crate::vfs::Vfs`] is a parameter: a core that reads its configuration from
@@ -92,8 +92,8 @@ pub struct Namespace {
 
 impl Namespace {
     /// The stem every document, mockup, and adopted note uses:
-    /// The namespace spec's `tc`.
-    pub const DEFAULT_STEM: &'static str = "tc";
+    /// The namespace spec's `sw`.
+    pub const DEFAULT_STEM: &'static str = "sw";
 
     /// The Agent Skills spec's six allowed top-level keys, sorted.
     ///
@@ -172,12 +172,12 @@ impl Namespace {
         &self.stem
     }
 
-    /// The prefix on every flat key we own — `tc-` for the default stem.
+    /// The prefix on every flat key we own — `sw-` for the default stem.
     pub fn prefix(&self) -> &str {
         &self.prefix
     }
 
-    /// The key holding the nested form of the same fields — `tc` for the
+    /// The key holding the nested form of the same fields — `sw` for the
     /// default stem.
     ///
     /// The stem itself, which is why it never collides with the flat scan: no
@@ -187,10 +187,10 @@ impl Namespace {
         &self.stem
     }
 
-    /// The flat spelling of one of our fields: `key("kind")` is `tc-kind`.
+    /// The flat spelling of one of our fields: `key("kind")` is `sw-kind`.
     ///
     /// The only way anything in this crate names one of our keys. A literal
-    /// `"tc-kind"` written anywhere would be a key that stops being ours the
+    /// `"sw-kind"` written anywhere would be a key that stops being ours the
     /// moment a vault configures a stem, and [`Namespace::is_ours`] would
     /// disagree with the code that reads it — so every field name goes through
     /// here, and every key it returns satisfies `is_ours` by construction.
@@ -212,7 +212,7 @@ impl Namespace {
 }
 
 impl Default for Namespace {
-    /// The namespace spec's `tc`.
+    /// The namespace spec's `sw`.
     fn default() -> Self {
         Self::new(Self::DEFAULT_STEM).expect("the default stem is valid")
     }
@@ -317,17 +317,17 @@ mod tests {
     }
 
     #[test]
-    fn the_default_is_tc_and_behaves_as_the_constants_did() {
+    fn the_default_is_sw_and_behaves_as_the_constants_did() {
         let ns = Namespace::default();
-        assert_eq!(ns.stem(), "tc");
-        assert_eq!(ns.prefix(), "tc-");
-        assert_eq!(ns.block_key(), "tc");
-        assert_eq!(ns.key("kind"), "tc-kind");
-        assert_eq!(ns.to_string(), "tc-");
+        assert_eq!(ns.stem(), "sw");
+        assert_eq!(ns.prefix(), "sw-");
+        assert_eq!(ns.block_key(), "sw");
+        assert_eq!(ns.key("kind"), "sw-kind");
+        assert_eq!(ns.to_string(), "sw-");
 
-        assert!(ns.is_ours("tc-kind"));
-        assert!(ns.is_ours("tc-anything-at-all"));
-        assert!(ns.is_ours("tc"));
+        assert!(ns.is_ours("sw-kind"));
+        assert!(ns.is_ours("sw-anything-at-all"));
+        assert!(ns.is_ours("sw"));
         assert!(!ns.is_ours("tcx"));
         assert!(!ns.is_ours("tcs-kind"));
         assert!(!ns.is_ours("kind"));
@@ -345,8 +345,8 @@ mod tests {
         assert!(ns.is_ours("x-kind"));
         assert!(ns.is_ours("x"));
         // And the default is nobody's business in this vault.
-        assert!(!ns.is_ours("tc-kind"));
-        assert!(!ns.is_ours("tc"));
+        assert!(!ns.is_ours("sw-kind"));
+        assert!(!ns.is_ours("sw"));
     }
 
     #[test]
@@ -354,7 +354,7 @@ mod tests {
         // The property the single-stem constructor exists to guarantee: both
         // spellings are the stem, and every key we ever name is inside the
         // predicate.
-        for stem in ["tc", "x", "tradecraft", "tc2", "vault"] {
+        for stem in ["sw", "x", "skillwright", "sw2", "vault"] {
             let ns = Namespace::new(stem).unwrap();
             assert_eq!(ns.prefix(), format!("{stem}-"));
             assert_eq!(ns.block_key(), stem);
@@ -378,7 +378,7 @@ mod tests {
     #[test]
     fn a_hyphenated_stem_is_refused() {
         // Including the hyphen at either end, which is the same ambiguity.
-        for stem in ["my-vault", "-tc", "tc-", "a-b-c"] {
+        for stem in ["my-vault", "-sw", "sw-", "a-b-c"] {
             assert_eq!(rejected(stem).reason, StemProblem::Hyphenated, "{stem}");
         }
     }
@@ -386,7 +386,7 @@ mod tests {
     #[test]
     fn a_stem_outside_lowercase_alphanumerics_is_refused() {
         for stem in [
-            "TC", "Tc", "tC", "tc_kind", "tc kind", "tc.kind", "tc:", "æp", "tc/x",
+            "SW", "Sw", "sW", "sw_kind", "sw kind", "sw.kind", "sw:", "æp", "sw/x",
         ] {
             assert_eq!(
                 rejected(stem).reason,
@@ -408,7 +408,7 @@ mod tests {
                 "{stem}"
             );
         }
-        assert!(Namespace::new("tc2").is_ok(), "a digit inside is fine");
+        assert!(Namespace::new("sw2").is_ok(), "a digit inside is fine");
     }
 
     #[test]
@@ -467,7 +467,7 @@ mod tests {
     fn every_refusal_names_the_stem_and_says_why() {
         // The message is what a user configuring this actually sees, so it has
         // to carry both halves for every rule.
-        for stem in ["", "my-vault", "TC", "1", "no", "metadata"] {
+        for stem in ["", "my-vault", "SW", "1", "no", "metadata"] {
             let err = rejected(stem);
             let message = err.to_string();
             assert_eq!(err.stem, stem);

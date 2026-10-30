@@ -1,7 +1,7 @@
 /**
  * Barrel: re-exports only, no logic of its own. The programmatic surface of
  * `@osdlc/tradecraft-wasm` — the core plus the Node vfs adapter. No CLI entry
- * point; the CLI is the separate `tradecraft` Rust binary.
+ * point; the CLI is the separate `skillwright` Rust binary.
  */
 
 export {

@@ -24,7 +24,7 @@ import {
 } from '@osdlc/tradecraft-wasm'
 
 assert.ok(knownTargets().includes('claude'))
-validateNamespace('tc')
+validateNamespace('sw')
 assert.throws(() => validateNamespace(''), InvalidNamespaceError)
 
 const root = mkdtempSync(join(tmpdir(), 'tradecraft-smoke-'))
@@ -34,7 +34,7 @@ try {
   mkdirSync(folder, { recursive: true })
   writeFileSync(
     join(vault, 'marketplaces/house/house.md'),
-    '---\nname: house\ndescription: The house marketplace.\ntc-owner: acme\n---\n',
+    '---\nname: house\ndescription: The house marketplace.\nsw-owner: acme\n---\n',
   )
   const note = join(folder, 'review.md')
   writeFileSync(note, '---\nname: review\ndescription: Reviews a diff.\n---\n\n# Review\n')

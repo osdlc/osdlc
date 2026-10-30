@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "agent-adapt"
-version = "0.19.1"
+version = "0.19.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -237,7 +237,7 @@ dependencies = [
 
 [[package]]
 name = "config-layers"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "serde",
  "serde-saphyr",
@@ -451,6 +451,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "glob-intersect"
+version = "0.3.0"
+dependencies = [
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "walkdir",
+]
+
+[[package]]
 name = "globset"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -638,7 +648,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-link"
-version = "0.5.0"
+version = "0.5.3"
 dependencies = [
  "frontmatter-lossless",
  "serde_json",
@@ -648,7 +658,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-relink"
-version = "0.1.5"
+version = "0.1.8"
 dependencies = [
  "etag-write",
  "frontmatter-lossless",
@@ -1110,6 +1120,29 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33f4fe9184a62d842c9ef383018f3306d8ba224fd9d836f56d7288308847c256"
 
 [[package]]
+name = "skillwright"
+version = "0.3.8"
+dependencies = [
+ "chrono",
+ "clap",
+ "config-layers",
+ "etag-write",
+ "markdown-relink",
+ "notify",
+ "path-guard",
+ "serde",
+ "serde_json",
+ "sha2",
+ "skillwright",
+ "tempfile",
+ "thiserror",
+ "tiered-dirs",
+ "tradecraft-core",
+ "typed-git",
+ "yaml-splice",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1117,7 +1150,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "slug-collate"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "unicode-normalization",
 ]
@@ -1191,7 +1224,7 @@ dependencies = [
 
 [[package]]
 name = "tiered-dirs"
-version = "0.3.6"
+version = "0.3.7"
 dependencies = [
  "dirs",
  "serde",
@@ -1279,30 +1312,11 @@ dependencies = [
 
 [[package]]
 name = "tradecraft"
-version = "0.3.5"
-dependencies = [
- "chrono",
- "clap",
- "config-layers",
- "etag-write",
- "markdown-relink",
- "notify",
- "path-guard",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror",
- "tiered-dirs",
- "tradecraft",
- "tradecraft-core",
- "typed-git",
- "yaml-splice",
-]
+version = "0.4.0"
 
 [[package]]
 name = "tradecraft-core"
-version = "0.39.1"
+version = "0.40.1"
 dependencies = [
  "agent-adapt",
  "frontmatter-lossless",
@@ -1556,7 +1570,7 @@ dependencies = [
 
 [[package]]
 name = "yaml-splice"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "saphyr-parser",
  "serde_json",

@@ -288,7 +288,7 @@ pub fn edit_yaml_with(
     }
 
     // The complete output must parse before it is returned.
-    validate_output(&current)?;
+    validate_output(as_read(&current, bom_len))?;
 
     let mut bytes = Vec::with_capacity(bom_len + current.len());
     if bom_len > 0 {
@@ -459,7 +459,7 @@ fn apply_one(
         FieldEdit::Rename { from, to } => rename(current, &parsed, from, to, opts, bom_len)?,
     };
     if changed {
-        check_result(&parsed.root, &next, edit, opts)?;
+        check_result(&parsed.root, as_read(&next, bom_len), edit, opts)?;
     }
     Ok((next, changed))
 }
@@ -781,6 +781,17 @@ fn validate_output(current: &str) -> Result<(), EditError> {
 }
 
 // --- small helpers ---------------------------------------------------------
+
+/// The body as a reader of the output bytes sees it. Without a BOM of its
+/// own, a body that an edit leaves starting with U+FEFF is read with that
+/// character taken as a BOM and dropped, so the checks drop it too.
+fn as_read(body: &str, bom_len: usize) -> &str {
+    if bom_len == 0 {
+        body.strip_prefix(BOM).unwrap_or(body)
+    } else {
+        body
+    }
+}
 
 /// The document's own line ending, from the first line that has one.
 ///

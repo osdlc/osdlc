@@ -11,7 +11,7 @@ created: 2026-10-20
 
 Both twins fold a `..` in a `\\?\UNC\` path or a `\\.\` device path against
 the same root, the one Windows uses. The twins then give the same answer, as
-the [twin rule](../../../../../README.md#twin-libraries) asks.
+the [twin rule](../../../../../README.md#library-families) asks.
 
 ## Today
 

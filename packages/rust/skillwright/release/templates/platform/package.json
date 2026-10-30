@@ -1,0 +1,23 @@
+{
+  "//": "Template. dist.ts assemble sets name, version, description, os and cpu.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/rust/skillwright"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/rust/skillwright#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "preferUnplugged": true,
+  "files": [
+    "bin",
+    "README.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

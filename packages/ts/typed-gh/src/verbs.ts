@@ -109,6 +109,18 @@ export function checkTarget(target: GhTarget | undefined): void {
 }
 
 /**
+ * Throws `TypeError` unless `opts.repo` is set: the options-only form names
+ * a repository, so a missing one would silently read the process's own clone.
+ */
+export function requireRepo(client: string, opts: GhTarget | undefined): void {
+  if (typeof opts !== 'object' || opts === null || opts.repo === undefined) {
+    throw new TypeError(
+      `new ${client}(options) needs options.repo; pass a directory, as new ${client}(cwd, options), for a clone`,
+    )
+  }
+}
+
+/**
  * `[host/]owner/name` for `repo` (else the target's repo), the form `--repo`
  * and `gh repo view` take, or `undefined` when neither names one. The host is
  * the target's, through {@link hostOf}, so a hostname of `''` is "not set".
@@ -340,6 +352,24 @@ export interface PrListOptions {
    * apart.
    */
   head?: string | undefined
+  /**
+   * Every PR whose head branch starts with this prefix, such as `task/`.
+   *
+   * Sent as a `head:<prefix>` term of a GitHub search, with any `search`
+   * grouped after it in parentheses, so an `OR` there cannot escape the
+   * prefix. The rows are filtered again on `headRefName`, since GitHub's
+   * `head:` match ignores case and git branch names do not.
+   *
+   * Going through search brings search's limits: a short index lag after a
+   * push, the search rate limit, and at most 1000 results, so a `limit` over
+   * 999 throws `RangeError`. `truncated` counts the rows gh returned before
+   * the case filter, so it can be true with fewer than `limit` rows.
+   *
+   * Passing it with `head` throws `RangeError`, as does an empty prefix or
+   * one holding whitespace, `"`, `(` or `)`, which GitHub search would read
+   * as syntax.
+   */
+  headPrefix?: string | undefined
   /** Raw `--search` query, for anything the flags do not cover. */
   search?: string | undefined
   author?: string | undefined
@@ -355,33 +385,59 @@ export function prList(
 ): GhVerb<ListResult<PullRequest> | null> {
   const limit = opts.limit ?? 100
   checkLimit(limit)
+  const { head, headPrefix } = opts
+  if (headPrefix !== undefined) {
+    if (head !== undefined) throw new RangeError('prList: pass head or headPrefix, not both')
+    if (limit > 999) {
+      throw new RangeError(
+        `prList: headPrefix goes through GitHub search, which returns at most 1000 results; limit ${limit} is over 999`,
+      )
+    }
+    if (headPrefix === '' || /[\s"()]/.test(headPrefix)) {
+      throw new RangeError(
+        `prList: headPrefix must be a non-empty branch prefix, got ${JSON.stringify(headPrefix)}`,
+      )
+    }
+  }
   const argv = ['pr', 'list', '--state', opts.state ?? 'open', ...repoArgs(target, opts.repo)]
   if (opts.base !== undefined) argv.push('--base', opts.base)
-  if (opts.head !== undefined) argv.push('--head', opts.head)
-  if (opts.search !== undefined) argv.push('--search', opts.search)
+  if (head !== undefined) argv.push('--head', head)
+  // The caller's search is grouped so its `OR` cannot escape the prefix:
+  // GitHub search binds AND tighter than OR.
+  const own = opts.search?.trim()
+  const search =
+    headPrefix === undefined
+      ? opts.search
+      : own === undefined || own === ''
+        ? `head:${headPrefix}`
+        : `head:${headPrefix} (${own})`
+  if (search !== undefined) argv.push('--search', search)
   if (opts.author !== undefined) argv.push('--author', opts.author)
   // A row without `number` does not parse and is dropped, so always ask for it.
-  // The exact-head filter below also reads `headRefName`.
+  // The head filters below also read `headRefName`.
+  const filtered = head !== undefined || headPrefix !== undefined
   const asked = withFields(opts.fields ?? PR_LIST_FIELDS, [
     'number',
-    ...(opts.head === undefined ? [] : ['headRefName']),
+    ...(filtered ? ['headRefName'] : []),
   ])
   argv.push('--json', asked.join(','))
   argv.push('--limit', String(limit + 1))
-  const head = opts.head
+  const keep = (name: string): boolean =>
+    head !== undefined ? name === head : headPrefix === undefined || name.startsWith(headPrefix)
   return {
     argv,
     checked: false,
     readOnly: true,
     parse(r) {
       // A search stops at 1000 results, so 1000 rows may be a cut, not the end.
+      // `search` here is the one sent, `head:<prefix>` included.
       const result = limited(
         manyOrNull(r),
         limit,
-        (opts.search ?? '') !== '' || opts.author !== undefined ? SEARCH_RESULT_CAP : undefined,
+        (search ?? '') !== '' || opts.author !== undefined ? SEARCH_RESULT_CAP : undefined,
       )
-      if (result === null || head === undefined) return result
-      return { ...result, rows: result.rows.filter((pr) => pr.headRefName === head) }
+      if (result === null || !filtered) return result
+      return { ...result, rows: result.rows.filter((pr) => keep(pr.headRefName)) }
     },
   }
 }
@@ -506,7 +562,8 @@ export interface ApiOptions {
 /**
  * `gh api [-i] [-H If-None-Match: …] <endpoint>`: a GET against the REST API. `{owner}` and
  * `{repo}` placeholders in the endpoint are filled from the target's repo, or by gh from the
- * cwd's repo when the target names none.
+ * cwd's repo when the target names none. gh fills `{branch}` from the cwd's checked-out branch
+ * whatever the target, so it reads the working directory even on a client built from `repo`.
  * Unchecked. Failure is a value (`ok: false`), so a caller can tell a 304
  * from an outage.
  */
@@ -1385,13 +1442,21 @@ export function createReview(
 /**
  * The first row whose `headRefName` exactly equals `branch`, or null.
  *
- * `prList({ head })` already filters exactly. This is for rows from anywhere
- * else, such as a `search` query with gh's `head:` qualifier, which matches
- * `task/foo-2` for `task/foo`.
+ * Takes the rows, or the `ListResult` that {@link openPrsForBranch} and
+ * `prList` return, so their parsed answer passes straight in. Null (a failed
+ * call) stays null.
+ *
+ * `prList({ head })` already filters exactly. The filter here is for rows
+ * from anywhere else, such as a `search` query with gh's `head:` qualifier,
+ * which matches `task/foo-2` for `task/foo`.
  */
-export function pickPrForBranch(rows: PullRequest[] | null, branch: string): PullRequest | null {
+export function pickPrForBranch(
+  rows: readonly PullRequest[] | ListResult<PullRequest> | null,
+  branch: string,
+): PullRequest | null {
   if (rows === null) return null
-  return rows.find((r) => r.headRefName === branch) ?? null
+  const list = 'rows' in rows ? rows.rows : rows
+  return list.find((r) => r.headRefName === branch) ?? null
 }
 
 /**

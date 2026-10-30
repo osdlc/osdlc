@@ -1,0 +1,28 @@
+# Only the TypeScript packages, packages/ts/*, are a workspace. The plugin
+# packs under .claude-plugin/, .agents/, .cursor-plugin/ and .pi/ install on
+# their own.
+packages:
+  - 'packages/ts/*'
+
+# Third-party versions shared by more than one package, and the dev tooling
+# every package uses. A package or the root names one as `"catalog:"` so a bump
+# is one edit here. `pnpm pack` and `pnpm publish` rewrite `catalog:` and
+# `workspace:` to concrete ranges in the packed package.json. A peer range
+# (`zod: ^4`) is a compatibility statement, so it stays literal.
+# check:packages (package-shape-ts.ts) fails a package that lists one of these
+# with its own version.
+catalog:
+  '@types/node': ^26.1.0
+  '@types/semver': ^7.7.1
+  '@vitest/coverage-v8': ^5.0.5
+  oxlint: ^1.65.0
+  prettier: 3.9.6
+  typescript: ~6.0.3
+  vitest: ^5.0.5
+  yaml: ^2.9.0
+  zod: 4.4.3
+  semver: ^7.8.5
+  '@arethetypeswrong/cli': 0.18.5
+  '@changesets/cli': 3.0.3
+  publint: 0.3.24
+  smol-toml: ^1.7.0

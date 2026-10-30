@@ -445,10 +445,12 @@ describe('GithubCodeHost.parsePrUrl / prForBranch', () => {
     const codeHost = new GithubCodeHost('/repo', { runner })
     expect(codeHost.parsePrUrl('https://github.com/o/r/pull/9')).toEqual({
       codeHost: 'github',
+      host: 'github.com',
       owner: 'o',
       repo: 'r',
       number: 9,
     })
+    expect(codeHost.parsePrUrl('https://GitHub.Acme.com/o/r/pull/9')?.host).toBe('github.acme.com')
     expect(codeHost.parsePrUrl('not a url')).toBeNull()
   })
 
@@ -545,8 +547,22 @@ describe('GithubCodeHost.mergePr / reviewThreads', () => {
     } catch (e) {
       err = e
     }
-    expect(err).toBeInstanceOf(Error)
+    expect(err).toBeInstanceOf(FailureError)
     expect(err).not.toBeInstanceOf(CommentNotFoundError)
+  })
+
+  test("updateComment keeps typed-gh's kind for a failure that is not a 404", () => {
+    const limited = fakeGh({
+      restResponses: [fail('gh: API rate limit exceeded for user ID 1. (HTTP 403)')],
+    })
+    let err: unknown
+    try {
+      new GithubCodeHost('/repo', { runner: limited.runner }).updateComment(42, '777', 'x')
+    } catch (e) {
+      err = e
+    }
+    expect(err).toBeInstanceOf(FailureError)
+    expect((err as FailureError).failure.kind).toBe('rate-limited')
   })
 
   test('postComment takes id and created_at from the POST response, with no re-listing', () => {

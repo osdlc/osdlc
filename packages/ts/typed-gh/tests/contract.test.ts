@@ -263,7 +263,7 @@ describe('README: a total model', () => {
   })
 })
 
-describe('README: author logins are normalized to the suffix-less form, once, when a payload is parsed', () => {
+describe('README: author logins are normalized to the bare form, once, when a payload is parsed', () => {
   test('GraphQL and REST spellings of the same bot compare equal', () => {
     const graphql = parseActor({ login: 'github-actions' })
     const rest = parseActor({ login: 'github-actions[bot]' })

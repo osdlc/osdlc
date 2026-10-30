@@ -23,6 +23,7 @@ import { classifyFailure, type CommandFailure, type CommandRunner } from '@osdlc
 import { err, FailureError, ok, unwrap, type Result } from '@osdlc/result'
 import { rollupChecks, type CheckEntry } from './checks.ts'
 import type { CodeHostFailure } from './failure.ts'
+import { prHost } from './pr-ref.ts'
 import { CodeHostUnsupported, CommentNotFoundError } from './types.ts'
 import type {
   Actor,
@@ -777,7 +778,7 @@ export class ForgejoCodeHost implements CodeHost {
     if (m === null || m[1]!.toLowerCase() !== this.host.toLowerCase()) return null
     const number = Number(m[4])
     if (!Number.isSafeInteger(number) || number <= 0) return null
-    return { codeHost: 'forgejo', owner: m[2]!, repo: m[3]!, number }
+    return { codeHost: 'forgejo', host: prHost(m[1]!), owner: m[2]!, repo: m[3]!, number }
   }
 
   prForBranch(branch: string): Result<number | null, CodeHostFailure> {

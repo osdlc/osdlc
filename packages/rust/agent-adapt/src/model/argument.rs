@@ -8,7 +8,7 @@
 //! This struct carries no validation of its own — a caller assembling one
 //! by hand (a test, a future adopter) is not refused for an empty `name` or
 //! a `default` outside `values`. The authoring-time rules live where the
-//! note is read: `tradecraft-core`'s `frontmatter` module parses `tc-arguments`
+//! note is read: `tradecraft-core`'s `frontmatter` module parses `sw-arguments`
 //! into a `Vec<Argument>` and refuses a note that breaks one.
 
 use serde::{Deserialize, Serialize};

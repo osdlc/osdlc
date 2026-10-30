@@ -338,6 +338,38 @@ await runMain(main, { name: 'tool', version: VERSION })
 
 An app from `defineApp` takes the same `VERSION` as its `version`.
 
+### Running from a checkout
+
+Pass `devlinkHook(spec)` as `devlink` and the tool can run from a development
+checkout in place of its installed copy, as `way` and `sdlc` do:
+
+```ts
+// src/bin.ts: built to dist/bin.js; bin/tool.js is `import '../dist/bin.js'`
+import { envVars, runMain } from '@osdlc/cli-tool'
+import { devlinkHook, validateSpec } from '@osdlc/cli-tool/devlink'
+import { main } from './cli.ts'
+import { VERSION } from './version.generated.ts'
+
+const spec = validateSpec({
+  name: 'tool',
+  marker: 'src/cli.ts',
+  packageName: '@acme/tool',
+  entry: 'src/bin.ts',
+  launcher: 'bin/tool.js',
+  vendorDirs: { vendor: 'tool', envVars: envVars('TOOL') },
+})
+
+await runMain(main, { name: 'tool', version: VERSION, devlink: devlinkHook(spec) })
+```
+
+Then `tool dev link <checkout>` (or `TOOL_HOME=<checkout>`) makes every
+`tool` run that checkout's `src/bin.ts` under Bun, and `tool dev status` says
+which code runs and why. `tool dev off` goes back to the installed copy.
+The hook finds the checkout it runs from by walking up from the script, never
+through `node_modules`, so a link to itself is a no-op. The process it hands
+off to is told so through `TOOL_LAUNCH_LAYER` and runs its own `main`. See
+[devlink](./devlink/README.md) for the layers and the verbs.
+
 ### Asking yes or no
 
 `askYesNo(question, { defaultYes })` writes the question to stderr with a
@@ -800,12 +832,12 @@ The experimental exports of `@osdlc/cli-tool/http`:
 
 The experimental exports of `@osdlc/cli-tool/devlink`:
 
-`DevlinkError`, `ExecOptions`, `GitHead`, `HISTORY_FILE`, `HOME_FILE`, `HistoryEntry`,
+`DevlinkError`, `DevlinkHookOptions`, `ExecOptions`, `GitHead`, `HISTORY_FILE`, `HOME_FILE`, `HistoryEntry`,
 `HistoryEvent`, `HistoryKind`, `InstallInput`, `InstallResult`, `InstalledLink`, `LauncherOptions`,
 `LinkInput`, `LinkResult`, `LinkStatus`, `Local`, `OffResult`, `OpOptions`, `ResolveOptions`,
 `RunOptions`, `Selected`, `Selection`, `ShimStatus`, `Source`, `StateOptions`, `StatusResult`,
 `ToolSpec`, `UseInput`, `UseResult`, `appendHistory`, `clearActive`, `cwdCheckout`, `cwdDevVar`,
-`defaultBinDir`, `entryOf`, `envStem`, `execSelection`, `findOnPath`, `gitHead`, `history`,
+`defaultBinDir`, `devlinkHook`, `entryOf`, `envStem`, `execSelection`, `findOnPath`, `gitHead`, `history`,
 `historyPath`, `homePath`, `homeVar`, `install`, `isCheckout`, `isOnPath`, `launchLayerVar`,
 `launcherCheckout`, `launcherDrift`, `link`, `off`, `pathNames`, `processIo`, `quietVar`,
 `readActive`, `readHistory`, `readShimTarget`, `renderLauncher`, `renderShim`, `resolve`,

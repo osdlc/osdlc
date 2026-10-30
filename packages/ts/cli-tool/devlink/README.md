@@ -100,7 +100,10 @@ export const SPEC: ToolSpec = validateSpec({
 A launcher is the file on PATH. It decides which checkout runs. Where it can
 make that decision depends on what the canonical install is.
 
-A JavaScript shim (the tool's npm `bin`) calls `resolve` and hands off:
+A JavaScript shim (the tool's npm `bin`) hands off before running its own
+code. The short way is `runMain(main, { …, devlink: devlinkHook(spec) })`, which also answers
+`<tool> dev …` (see the cli-tool README, "Running from a checkout"). By hand,
+it calls `resolve` and `execSelection`:
 
 ```ts
 #!/usr/bin/env bun
@@ -114,7 +117,8 @@ process.exitCode = handedOff ?? (await main(argv))
 ```
 
 `execSelection` returns `null` for a `local` selection, meaning run your own
-code. Otherwise it spawns `bun --no-env-file --config=<null device> run
+code. Otherwise it sets `<NAME>_LAUNCH_LAYER` to the winning layer, as the bash
+launcher does, and spawns `bun --no-env-file --config=<null device> run
 <entry>` with inherited stdio and returns its exit code. This is the one place
 the package spawns. The child is the program the user invoked. The two flags
 keep Bun from reading `.env*` and `bunfig.toml` in the cwd, which is often a

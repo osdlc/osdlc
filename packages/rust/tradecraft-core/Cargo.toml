@@ -1,10 +1,7 @@
 [package]
 name = "tradecraft-core"
-version = "0.39.1"
-# Held back from crates.io: first-release step 2 of 3. `cargo publish` needs
-# agent-adapt 0.19.1 and markdown-link on crates.io first. Remove this line
-# and the entry in packages/rust/release-plz.toml in a pull request of their
-# own, once step 1 is out.
+version = "0.40.1"
+# Held: releases now come from https://github.com/osdlc/skillwright.
 publish = false
 edition.workspace = true
 rust-version.workspace = true

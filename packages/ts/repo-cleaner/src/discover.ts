@@ -4,8 +4,8 @@
  * to measure against, and whether `gh` can be asked about pull requests.
  */
 
-import type { Git } from '@osdlc/typed-git'
-import { ownerRepoSlug, type Gh } from '@osdlc/typed-gh'
+import { parseRemoteRepo, type Git } from '@osdlc/typed-git'
+import type { Gh } from '@osdlc/typed-gh'
 
 import type { RepoInfo } from './types.ts'
 
@@ -76,10 +76,9 @@ export function discoverRepo(
   }
   if (!mainBranch) throw new DiscoveryFailed(`could not determine the default branch of ${root}`)
 
-  // `owner/name` for the report's header, so a fan-out over long paths stays
-  // readable. A remote that is not a recognisable host coordinate answers null.
-  const slug =
-    remote === null ? null : ownerRepoSlugOf(git.at(root).try.remoteGetUrl(remote), gh, root)
+  // A short name for the report's header, so a fan-out over long paths stays
+  // readable. It also keys duplicate checkouts.
+  const slug = remote === null ? null : remoteSlugOf(git.at(root).try.remoteGetUrl(remote))
 
   const currentBranch = git.at(root).headRef() ?? ''
 
@@ -92,13 +91,15 @@ export function discoverRepo(
   return { root, slug, mainBranch, remote, currentBranch, hasGh, ghAuthenticated, fetched: false }
 }
 
-/** `owner/name` from a remote URL outcome, or null when it is not one. */
-function ownerRepoSlugOf(
-  url: { ok: boolean; value?: string | null },
-  gh: Gh,
-  root: string,
-): string | null {
+/**
+ * `owner/name` for a github.com remote, `host/owner/name` for any other, or
+ * null when the URL names no repository. The host keeps two hosts' `a/b`
+ * apart.
+ */
+function remoteSlugOf(url: { ok: boolean; value?: string | null }): string | null {
   if (!url.ok || url.value === undefined || url.value === null) return null
-  const coord = gh.at(root).ownerRepo(url.value)
-  return coord === null ? null : ownerRepoSlug(coord)
+  const remote = parseRemoteRepo(url.value)
+  if (remote === null) return null
+  const slug = `${remote.owner}/${remote.repo}`
+  return remote.host === 'github.com' ? slug : `${remote.host}/${slug}`
 }

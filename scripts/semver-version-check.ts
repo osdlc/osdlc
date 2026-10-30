@@ -17,6 +17,9 @@
 // - Otherwise `cargo semver-checks` compares the crate with the baseline, as
 //   a non-breaking release (`--release-type minor`). A breaking change fails
 //   the run, and the message names the version to set.
+// - When the registry baseline cannot be built, for example because a
+//   dependency it requires was yanked, the check runs again against the
+//   baseline's release tag, `<crate>/v<version>`, built from git.
 //
 // Crates not on crates.io yet, and crates with `publish = false`, are skipped.
 // cargo-semver-checks mostly cannot see a break that comes from a
@@ -109,41 +112,55 @@ for (const id of metadata.workspace_members) {
     continue
   }
 
-  console.log(`::group::cargo semver-checks ${pkg.name} against ${show(baseline)}`)
-  const check = spawnSync(
-    'cargo',
-    [
-      'semver-checks',
-      'check-release',
-      '--manifest-path',
-      manifest,
-      '--package',
-      pkg.name,
-      '--baseline-version',
-      show(baseline),
-      '--release-type',
-      'minor',
-    ],
-    { stdio: 'inherit' },
-  )
-  console.log('::endgroup::')
+  const semverChecks = (baselineArgs: string[]) => {
+    console.log(`::group::cargo semver-checks ${pkg.name} against ${baselineArgs.join(' ')}`)
+    const result = spawnSync(
+      'cargo',
+      [
+        'semver-checks',
+        'check-release',
+        '--manifest-path',
+        manifest,
+        '--package',
+        pkg.name,
+        ...baselineArgs,
+        '--release-type',
+        'minor',
+      ],
+      { stdio: 'inherit' },
+    )
+    console.log('::endgroup::')
+    return result
+  }
+  let check = semverChecks(['--baseline-version', show(baseline)])
+  let source = 'crates.io'
+  if (check.status !== 0 && check.status !== 100) {
+    const tag = `refs/tags/${pkg.name}/v${show(baseline)}`
+    const fetched = spawnSync('git', ['fetch', '--no-tags', '--depth=1', 'origin', `+${tag}:${tag}`], {
+      stdio: 'inherit',
+    })
+    if (fetched.status === 0) {
+      check = semverChecks(['--baseline-rev', tag])
+      source = `git tag ${pkg.name}/v${show(baseline)}`
+    }
+  }
   if (check.status === 0) {
-    row({ baseline: show(baseline), result: 'pass: no breaking change found' })
+    row({ baseline: `${show(baseline)} (${source})`, result: 'pass: no breaking change found' })
   } else if (check.status === 100) {
     // 100 means a semver violation. Other codes mean the check could not run.
-    row({ baseline: show(baseline), result: `fail: breaking, set ${show(required)}` })
+    row({ baseline: `${show(baseline)} (${source})`, result: `fail: breaking, set ${show(required)}` })
     problems.push(
-      `${pkg.name} has a breaking change against ${show(baseline)} on crates.io. ` +
+      `${pkg.name} has a breaking change against ${show(baseline)} (${source}). ` +
         `Set \`version = "${show(required)}"\` in its Cargo.toml in this pull request.`,
     )
   } else {
-    row({ baseline: show(baseline), result: `error: cargo semver-checks exited ${check.status}` })
+    row({ baseline: `${show(baseline)} (${source})`, result: `error: cargo semver-checks exited ${check.status}` })
     problems.push(`cargo semver-checks could not check ${pkg.name} (exit ${check.status}).`)
   }
 }
 
 const table = [
-  '| crate | version | crates.io baseline | result |',
+  '| crate | version | baseline | result |',
   '|---|---|---|---|',
   ...rows.map((r) => `| ${r.name} | ${r.version} | ${r.baseline} | ${r.result} |`),
 ].join('\n')

@@ -14,8 +14,10 @@ import {
   parsePullRequest,
   pickPrForBranch,
   type AsyncGhOptions,
+  type AsyncGhRepoOptions,
   type CommandRunner,
   type GhOptions,
+  type GhRepoOptions,
   type GhTarget,
   type OwnerRepo,
   type PullRequestRef,
@@ -53,6 +55,9 @@ test("pick the exact branch from gh's prefix search", () => {
   expect(pickPrForBranch(rows, 'feature/foo')?.number).toBe(2)
   expect(pickPrForBranch(rows, 'feature/missing')).toBeNull()
   expect(pickPrForBranch(null, 'feature/foo')).toBeNull()
+
+  // The ListResult from prList or openPrsForBranch passes straight in.
+  expect(pickPrForBranch({ rows, truncated: false }, 'feature/foo')?.number).toBe(2)
 })
 
 test('a client aimed at a repository, with no clone', () => {
@@ -77,6 +82,37 @@ test('a client aimed at a repository, with no clone', () => {
     ['api', '--hostname', 'github.acme.com', 'repos/acme/widgets/branches'],
   ])
   expect(() => new Gh('/repo', { repo: 'not a slug' })).toThrow(RangeError)
+})
+
+test('a repository and no directory', () => {
+  const calls: { argv: string[]; cwd: string }[] = []
+  const runner: CommandRunner = {
+    run(argv, opts) {
+      calls.push({ argv: [...argv], cwd: opts.cwd })
+      return { exitCode: 0, stdout: '[]', stderr: '' }
+    },
+  }
+  // `repo` is required in this form. `new Gh({})` does not typecheck.
+  const options: GhRepoOptions = { repo: 'acme/widgets', runner }
+  const gh = new Gh(options)
+
+  gh.prList({ limit: 5 })
+  gh.at('/repo').issueList({ limit: 5 })
+
+  expect(calls).toEqual([
+    {
+      argv: expect.arrayContaining(['pr', 'list', '--repo', 'acme/widgets']),
+      cwd: process.cwd(),
+    },
+    {
+      argv: expect.arrayContaining(['issue', 'list', '--repo', 'acme/widgets']),
+      cwd: '/repo',
+    },
+  ])
+  expect(gh.cwd).toBe(process.cwd())
+
+  const asyncOptions: AsyncGhRepoOptions = { repo: 'acme/widgets' }
+  expect(new AsyncGh(asyncOptions).repo).toBe('acme/widgets')
 })
 
 test('the async client takes the same target', () => {

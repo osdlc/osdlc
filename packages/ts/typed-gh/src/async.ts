@@ -53,26 +53,48 @@ export interface AsyncGhOptions extends GhTarget {
   runner?: AsyncCommandRunner | undefined
 }
 
+/** {@link AsyncGhOptions} with `repo` required: what `new AsyncGh(options)` takes. See `GhRepoOptions`. */
+export interface AsyncGhRepoOptions extends AsyncGhOptions {
+  repo: string
+}
+
 /**
- * A typed, awaitable gh client bound to one working directory, and optionally
- * to one repository and host. `repo` and `hostname` work as on `Gh`.
+ * A typed, awaitable gh client bound to one working directory or one named
+ * repository, and optionally to one host. The two constructor forms, `repo`
+ * and `hostname` work as on `Gh`: `new AsyncGh(cwd, options?)` runs in
+ * `cwd`, and `new AsyncGh({ repo, hostname?, runner? })` runs each call in
+ * `process.cwd()`, read when the call is made. As on `Gh`, `raw`,
+ * `rawChecked` and an `api` endpoint's `{branch}` still read that directory.
  */
 export class AsyncGh {
-  readonly cwd: string
   readonly repo: string | undefined
   readonly hostname: string | undefined
+  private readonly boundCwd: string | undefined
   private readonly target: GhTarget
   private readonly runner: AsyncCommandRunner
   private tried: TriedAsync<AsyncGh> | undefined
   private softened: Soft<AsyncGh> | undefined
 
-  constructor(cwd: string, opts: AsyncGhOptions = {}) {
+  /** A client for the repository `options.repo`, with no working directory of its own. */
+  constructor(options: AsyncGhRepoOptions)
+  /** A client rooted at `cwd`: the clone gh reads, unless `options.repo` names another repository. */
+  constructor(cwd: string, options?: AsyncGhOptions)
+  /** Either form, for a value typed `string | AsyncGhRepoOptions`. */
+  constructor(cwdOrOptions: string | AsyncGhRepoOptions)
+  constructor(cwdOrOptions: string | AsyncGhRepoOptions, options: AsyncGhOptions = {}) {
+    const opts = typeof cwdOrOptions === 'string' ? options : cwdOrOptions
+    if (typeof cwdOrOptions !== 'string') v.requireRepo('AsyncGh', opts)
     v.checkTarget(opts)
-    this.cwd = cwd
+    this.boundCwd = typeof cwdOrOptions === 'string' ? cwdOrOptions : undefined
     this.repo = opts.repo
     this.hostname = opts.hostname
     this.target = { repo: opts.repo, hostname: opts.hostname }
     this.runner = opts.runner ?? spawnRunnerAsync('gh', { absolutePathOnly: true })
+  }
+
+  /** The directory calls run in. See `Gh.cwd`. */
+  get cwd(): string {
+    return this.boundCwd ?? process.cwd()
   }
 
   /** The same client rooted at a different directory (same runner, repo and host). */
@@ -80,9 +102,13 @@ export class AsyncGh {
     return new AsyncGh(cwd, { runner: this.runner, repo: this.repo, hostname: this.hostname })
   }
 
-  /** The same client aimed at another repository (same runner, directory and host). */
+  /**
+   * The same client aimed at another repository (same runner, directory and
+   * host). A client built from options alone stays without a directory.
+   */
   withRepo(repo: string): AsyncGh {
-    return new AsyncGh(this.cwd, { runner: this.runner, repo, hostname: this.hostname })
+    const opts = { runner: this.runner, repo, hostname: this.hostname }
+    return this.boundCwd === undefined ? new AsyncGh(opts) : new AsyncGh(this.boundCwd, opts)
   }
 
   /**
@@ -101,12 +127,17 @@ export class AsyncGh {
 
   // ── raw calls ─────────────────────────────────────────────────────────────
 
-  /** Run any `gh` call and return the result, whatever the exit code. */
+  /**
+   * Run any `gh` call and return the result, whatever the exit code. It adds
+   * no `--repo`: on a client built without a directory it runs in
+   * `process.cwd()`, so gh reads that clone. Add `--repo` to `argv`, or call
+   * `.at(dir)` first.
+   */
   raw(argv: string[], opts: AsyncCallOptions = {}): Promise<CommandResult> {
     return this.runner.run(argv, { cwd: this.cwd, ...opts })
   }
 
-  /** Run any `gh` call. Rejects with the classified failure on a non-zero exit. */
+  /** Run any `gh` call. Rejects with the classified failure on a non-zero exit. Adds no `--repo`, as {@link AsyncGh.raw}. */
   rawChecked(argv: string[], opts: AsyncCallOptions = {}): Promise<CommandResult> {
     return runCheckedGhAsync(this.runner, argv, { cwd: this.cwd, ...opts })
   }
@@ -173,7 +204,7 @@ export class AsyncGh {
       timeoutMs: opts.timeoutMs,
       signal: opts.signal,
     })
-    return v.pickPrForBranch(rows.rows, branch)
+    return v.pickPrForBranch(rows, branch)
   }
 
   /** {@link prView}, asked again until GitHub has computed the merge state. See `Gh.prViewSettled`. */

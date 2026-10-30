@@ -15,6 +15,16 @@ export interface CargoPackage {
   manifest_path: string
   /** null when unset, [] for `publish = false`, or a registry list. */
   publish: string[] | null
+  dependencies?: CargoDependency[]
+}
+
+/** The fields of a `cargo metadata` dependency these scripts read. */
+export interface CargoDependency {
+  name: string
+  /** null for a normal dependency, else "dev" or "build". */
+  kind: string | null
+  /** The dependency's directory, set only for a path dependency. */
+  path?: string
 }
 
 /** The fields of `cargo metadata --no-deps` these scripts read. */

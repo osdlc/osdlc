@@ -37,17 +37,28 @@ describe('parsePrInput', () => {
     }
   })
 
-  test('a GitHub Enterprise PR URL names its repository', () => {
+  test('a GitHub Enterprise PR URL names its repository and keeps its host', () => {
     expect(parsePrInput('https://github.acme.com/acme/widgets/pull/9')).toEqual({
       kind: 'url',
-      ref: { codeHost: 'github', owner: 'acme', repo: 'widgets', number: 9 },
+      ref: {
+        codeHost: 'github',
+        host: 'github.acme.com',
+        owner: 'acme',
+        repo: 'widgets',
+        number: 9,
+      },
     })
+  })
+
+  test('a URL with a port keeps the host without it', () => {
+    const input = parsePrInput('https://GitHub.Acme.com:8443/acme/widgets/pull/9')
+    expect(input?.kind === 'url' ? input.ref.host : null).toBe('github.acme.com')
   })
 
   test('a GitHub URL names the repository too', () => {
     expect(parsePrInput('https://github.com/acme/widgets/pull/42/files')).toEqual({
       kind: 'url',
-      ref: { codeHost: 'github', owner: 'acme', repo: 'widgets', number: 42 },
+      ref: { codeHost: 'github', host: 'github.com', owner: 'acme', repo: 'widgets', number: 42 },
     })
   })
 
