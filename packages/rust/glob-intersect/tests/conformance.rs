@@ -96,12 +96,18 @@ fn check_input(section: &str, name: &str, input: &Json) {
         );
     }
     for key in shape.required {
-        assert!(input.get(key).is_some(), "{name}: missing input key {key:?}");
+        assert!(
+            input.get(key).is_some(),
+            "{name}: missing input key {key:?}"
+        );
     }
     if let Some(opts) = input.get("opts") {
         assert!(opts.is_object(), "{name}: opts is not an object");
         for key in keys(opts) {
-            assert!(shape.opts.contains(&key), "{name}: unknown opts key {key:?}");
+            assert!(
+                shape.opts.contains(&key),
+                "{name}: unknown opts key {key:?}"
+            );
         }
     }
 }
@@ -375,7 +381,10 @@ fn run_fs(section: &str, input: &Json) -> Option<Json> {
         .map(|_| patterns(input, "unreadable"))
         .unwrap_or_default();
     set_modes(root, &locked, 0o000);
-    if locked.iter().any(|d| std::fs::read_dir(root.join(d)).is_ok()) {
+    if locked
+        .iter()
+        .any(|d| std::fs::read_dir(root.join(d)).is_ok())
+    {
         set_modes(root, &locked, 0o755);
         return None;
     }
@@ -416,7 +425,10 @@ fn run_fs(section: &str, input: &Json) -> Option<Json> {
                     let rel = std::path::Path::new(&p)
                         .strip_prefix(root)
                         .unwrap_or_else(|_| panic!("{p} is not under {}", root.display()));
-                    assert!(std::path::Path::new(&p).is_absolute(), "{p} is not absolute");
+                    assert!(
+                        std::path::Path::new(&p).is_absolute(),
+                        "{p} is not absolute"
+                    );
                     rel.components()
                         .map(|c| c.as_os_str().to_string_lossy().into_owned())
                         .collect::<Vec<_>>()
@@ -442,7 +454,9 @@ fn every_case_in_the_suite_conforms() {
     assert_eq!(top, want, "the suite's top-level keys");
     assert_eq!(suite["family"], "intersect");
     assert_eq!(suite["reference"], "ts");
-    let sections = suite["sections"].as_object().expect("sections is an object");
+    let sections = suite["sections"]
+        .as_object()
+        .expect("sections is an object");
 
     let mut failures: Vec<String> = Vec::new();
     let mut not_run: Vec<String> = Vec::new();
