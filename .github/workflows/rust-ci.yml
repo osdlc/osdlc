@@ -191,11 +191,10 @@ jobs:
 
       # On Windows, the crates whose tests do not pass there yet are linted
       # above but not tested. Their READMEs say Windows is not supported yet.
-      # glob-intersect: fs paths join with a backslash on Windows, the tests expect `/`.
       - name: Test
         env:
           WINDOWS_UNTESTED: >-
-            --exclude=tradecraft-core --exclude=skillwright --exclude=glob-intersect
+            --exclude=tradecraft-core --exclude=skillwright
         run: |
           set -euo pipefail
           if [ "$RUNNER_OS" = Windows ]; then
