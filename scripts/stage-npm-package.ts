@@ -9,10 +9,8 @@
 //
 // Each <package> is a package directory (packages/ts/<name>). The trusted
 // publisher names --workflow (default packages-publish.yml) and, when given,
-// --environment. packages/rust/skillwright/release/dist.ts `stage` uses both
-// for the skillwright npm packages. A package already
-// on npm is not published again, and one that already has a trusted publisher
-// is left as it is, so a re-run is safe. Run it logged in to npm as an owner of
+// --environment. A package already on npm is not published again, and one that
+// already has a trusted publisher is left as it is, so a re-run is safe. Run it logged in to npm as an owner of
 // the @osdlc scope. `npm trust` needs two-factor authentication on the account.
 // npm asks for a one-time password or a browser login. npm runs through npx at
 // the version packages-publish.yml uses, because `npm trust` needs 11.15 or
