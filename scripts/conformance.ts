@@ -51,6 +51,7 @@ export const CATCHING_UP: Record<string, string> = {
  */
 export const UNMIGRATED = new Set([
   'packages/ts/frontmatter-lossless',
+  'packages/ts/gfm-table',
   'packages/ts/markdown-link',
   'packages/ts/path-guard',
   'packages/ts/yaml-splice',
