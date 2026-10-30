@@ -1,12 +1,57 @@
 {
   "schema": 1,
   "pr": 557,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "a9af3ed559a82e031ebd2e2387b183d2576d8dc4",
+  "base": "0869e88db36d3722ff4b46d6d497ad49e1383ca7",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-1xvtqf",
     "at": "2026-10-30T05:29:13.645Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/rust/markdown-link/CHANGELOG.md",
+      "line": 14,
+      "title": "Changelog says 0.1.2 is to be yanked; it is already yanked",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/rust/markdown-relink/CHANGELOG.md",
+      "line": 14,
+      "title": "Changelog says 0.1.2 is to be yanked; it is already yanked",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/rust/slug-collate/CHANGELOG.md",
+      "line": 10,
+      "title": "0.2.0 compare link starts at 0.1.2, so it shows no code change",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "scripts/semver-version-check.ts",
+      "line": 141,
+      "title": "Result table does not say when the baseline came from the git tag",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
