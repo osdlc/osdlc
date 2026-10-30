@@ -46,9 +46,9 @@
       "line": 219,
       "title": "Stale comment: corpus has 24 fs cases, not three",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "8dfaa42945c0406a70cbbae5c9f6046d62d1e13a"
     }
   ]
 }
