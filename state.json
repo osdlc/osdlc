@@ -35,9 +35,9 @@
       "line": 39,
       "title": "CORPUS is a hand list; a new TS case file is silently not run",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "8dfaa42945c0406a70cbbae5c9f6046d62d1e13a"
     },
     {
       "id": "r1-4",
