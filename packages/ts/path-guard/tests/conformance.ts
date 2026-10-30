@@ -259,7 +259,8 @@ export function run(section: string, raw: Record<string, unknown>): Outcome {
     case 'real_path':
       return inScratch(input, (scratch) => {
         const real = realpathSync.native(scratch)
-        const rooted = input.path.startsWith('/') ? join(real, input.path) : input.path
+        // Concatenated, not `join`ed, which would fold the `..` before the guard sees it.
+        const rooted = input.path.startsWith('/') ? `${real}${input.path}` : input.path
         return outcome(
           () => nodeGuard.realPath(rooted),
           (p) => path(p.startsWith(real + sep) ? slashed(p.slice(real.length)) : slashed(p)),

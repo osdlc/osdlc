@@ -188,7 +188,7 @@ describe('a link to a bare drive on Windows', () => {
 // on every host, through the suite's runner loaded as on Windows. On Windows,
 // tests/conformance.test.ts runs them too.
 describe('Windows names', () => {
-  for (const c of readSuite().sections['resolve_windows_names']!.cases) {
+  for (const c of readSuite().sections['resolve_windows_names']?.cases ?? []) {
     if (c.platforms?.includes('windows') === false) continue
     test(c.name, () => {
       expect(run('resolve_windows_names', c.input)).toEqual(
