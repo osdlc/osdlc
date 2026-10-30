@@ -24,9 +24,9 @@
       "line": 467,
       "title": "lock_all: root unused on Windows breaks the Windows test build",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "8dfaa42945c0406a70cbbae5c9f6046d62d1e13a"
     },
     {
       "id": "r1-3",
