@@ -18,7 +18,7 @@ created: 2026-10-19
   CHANGELOG marks it.
 - The twins share the major and minor version, and one may skip versions to
   catch up, by the
-  [twin rule](../../../../../README.md#twin-libraries).
+  [twin rule](../../../../../README.md#library-families).
 
 ## Why
 

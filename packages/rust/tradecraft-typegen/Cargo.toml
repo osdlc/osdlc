@@ -1,4 +1,4 @@
-# The generator behind the Tradecraft TypeScript CLI's `core.generated.ts`.
+# The generator behind @osdlc/tradecraft-wasm's `core.generated.ts`.
 #
 # The TypeScript CLI reaches the core over a JSON string in and a JSON string
 # out, so the TypeScript compiler checks nothing about the wire. This crate

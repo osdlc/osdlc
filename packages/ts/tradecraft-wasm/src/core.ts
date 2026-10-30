@@ -339,7 +339,7 @@ export interface StatusRequest {
   target: Target
   /** The content root the note lives under. Omitted means no structural layer. */
   skills_root?: string
-  /** This vault's frontmatter namespace stem. Omitted means `tc`. */
+  /** This vault's frontmatter namespace stem. Omitted means `sw`. */
   namespace?: string
 }
 

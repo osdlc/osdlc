@@ -71,7 +71,7 @@ impl RuntimeId {
     ];
 
     /// The destination spelling of this runtime — the name a publish
-    /// target, a `tc-targets` entry, or a matrix column is keyed by.
+    /// target, a `sw-targets` entry, or a matrix column is keyed by.
     ///
     /// Deliberately **not** the serde rename: `#[serde(rename_all =
     /// "kebab-case")]` spells [`RuntimeId::OpenCode`] `open-code`, while
@@ -314,7 +314,7 @@ pub struct FrontmatterDialect {
     ///
     /// **A per-target override outranks it.** See
     /// [`crate::render::FrontmatterBuilder::apply_overrides`] for why: an
-    /// `tc-overrides` key names one harness's own field, so a key this list
+    /// `sw-overrides` key names one harness's own field, so a key this list
     /// omits is refused before a render begins rather than merged past it.
     pub omit_fields: &'static [&'static str],
     /// If `true`, emit `user-invocable: true` explicitly rather than

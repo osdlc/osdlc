@@ -62,7 +62,10 @@ describe('@osdlc/typed-git/testing', () => {
       fx.commit('first', { 'a.md': 'x\n' })
       // A call the fixture never makes for you, run through the same client.
       expect(fx.git.log({ format: '%an', maxCount: 1 }).trim()).toBe(IDENTITY['GIT_AUTHOR_NAME']!)
-      expect(fx.git.log({ format: '%aI', maxCount: 1 }).trim()).toBe('2020-01-01T00:00:00Z')
+      // Compare instants: git 2.34 prints UTC as `+00:00`, newer git as `Z`.
+      expect(Date.parse(fx.git.log({ format: '%aI', maxCount: 1 }).trim())).toBe(
+        Date.parse('2020-01-01T00:00:00Z'),
+      )
     } finally {
       fx.cleanup()
     }
@@ -81,7 +84,9 @@ describe('@osdlc/typed-git/testing', () => {
     try {
       fx.commit('first', { 'a.md': 'x\n' })
       fx.commit('second', { 'b.md': 'y\n' }, { date: '2022-03-04T05:06:07+0000' })
-      expect(fx.git.log({ format: '%aI', maxCount: 1 }).trim()).toBe('2022-03-04T05:06:07Z')
+      expect(Date.parse(fx.git.log({ format: '%aI', maxCount: 1 }).trim())).toBe(
+        Date.parse('2022-03-04T05:06:07Z'),
+      )
       // The name still comes from the client-level identity.
       expect(fx.git.log({ format: '%an', maxCount: 1 }).trim()).toBe('Fixture')
     } finally {

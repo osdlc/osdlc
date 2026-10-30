@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.7](https://github.com/osdlc/osdlc/compare/tiered-dirs/v0.3.6...tiered-dirs/v0.3.7) - 2026-10-28
+
+### Other
+
+- check library families' suites, and move tiered-dirs to packages/conformance ([#537](https://github.com/osdlc/osdlc/pull/537))
+
 ## [0.3.6](https://github.com/osdlc/osdlc/compare/tiered-dirs/v0.3.5...tiered-dirs/v0.3.6) - 2026-10-26
 
 ### Other

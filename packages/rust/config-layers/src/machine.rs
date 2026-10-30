@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use serde::de::DeserializeOwned;
 use tiered_dirs::TieredDirs;
 
-use crate::file::{FileProblem, NotAMapping, yaml_options};
+use crate::file::{FileProblem, yaml_options};
 
 /// The name of the environment variable that moves a tool's machine file,
 /// built from the tool's name: `tool` upper-cased, with every run of
@@ -53,6 +53,12 @@ pub fn env_stem(tool: &str) -> String {
 /// content, only comments, or `null`).
 fn parse_typed<T: DeserializeOwned>(text: &str) -> Result<Option<T>, serde_saphyr::Error> {
     serde_saphyr::from_str_with_options(text, yaml_options())
+}
+
+/// `T` from an empty document, read as an empty mapping: each field takes its
+/// serde default. An error names the first required field that has none.
+fn from_empty<T: DeserializeOwned>() -> Result<T, serde_json::Error> {
+    serde_json::from_value(serde_json::Value::Object(serde_json::Map::new()))
 }
 
 /// A tool's machine file: `<config>/<tool>/config.yaml` in the standalone
@@ -214,15 +220,16 @@ impl<T: DeserializeOwned + Default> MachineConfigFile<T> {
     /// report what is wrong instead of falling back to the defaults. For a
     /// `doctor` or `config check` command. Always reads the file.
     ///
-    /// `Ok(None)` means there is no file. An empty file is a problem, not
-    /// `Ok(None)`: `load` reads it as an empty mapping, and this reports it
-    /// so a tool can tell the two apart.
+    /// `Ok(None)` means there is no file. An empty file (nothing, only
+    /// comments, or `null`) is an empty mapping, as in `load`: `Ok(Some(_))`
+    /// with each field's serde default.
     ///
     /// # Errors
     ///
     /// [`FileProblem::Unreadable`] when the file exists but cannot be read.
-    /// [`FileProblem::Malformed`] when it is empty, is not a YAML mapping, or
-    /// does not match `T`.
+    /// [`FileProblem::Malformed`] when it is not a YAML mapping or does not
+    /// match `T`, which includes an empty file when `T` has a field with no
+    /// default.
     pub fn read_strict(&self) -> Result<Option<T>, FileProblem> {
         read_strict_at(&self.path())
     }
@@ -243,8 +250,7 @@ fn materialize<T: DeserializeOwned + Default>(text: Option<&str>) -> T {
     match parse_typed::<T>(text) {
         Ok(Some(value)) => value,
         // An empty document is an empty mapping: field defaults apply.
-        Ok(None) => serde_json::from_value(serde_json::Value::Object(serde_json::Map::new()))
-            .unwrap_or_default(),
+        Ok(None) => from_empty().unwrap_or_default(),
         Err(_) => T::default(),
     }
 }
@@ -256,10 +262,9 @@ fn read_strict_at<T: DeserializeOwned>(path: &Path) -> Result<Option<T>, FilePro
     let text = std::fs::read_to_string(path).map_err(|err| FileProblem::unreadable(path, err))?;
     match parse_typed::<T>(&text) {
         Ok(Some(value)) => Ok(Some(value)),
-        Ok(None) => Err(FileProblem::malformed(
-            path,
-            NotAMapping("expected a mapping at the top level, found an empty document".to_string()),
-        )),
+        Ok(None) => from_empty()
+            .map(Some)
+            .map_err(|err| FileProblem::malformed(path, err)),
         Err(err) => Err(FileProblem::malformed(path, err)),
     }
 }
@@ -406,16 +411,17 @@ mod tests {
             let p = tmp.path().join("empty.yaml");
             fs::write(&p, "# nothing\n").unwrap();
             // `{}` cannot fill the required field, so `load` falls back to
-            // `Default`, and `read_strict` reports the empty file.
+            // `Default`, and `read_strict` names the missing field.
             assert_eq!(
                 materialize::<Strict>(Some("# nothing\n")),
                 Strict::default()
             );
             let err = read_strict_at::<Strict>(&p).unwrap_err();
-            let cause = std::error::Error::source(&err)
-                .expect("a cause")
-                .to_string();
-            assert!(cause.contains("empty document"), "{cause}");
+            assert!(matches!(err, FileProblem::Malformed { .. }));
+            let cause = std::error::Error::source(&err).expect("a cause");
+            assert!(cause.downcast_ref::<serde_json::Error>().is_some());
+            let cause = cause.to_string();
+            assert!(cause.contains("missing field `name`"), "{cause}");
         }
 
         #[test]
@@ -459,6 +465,11 @@ mod tests {
                 fs::write(&p, text).unwrap();
                 m.clear_cache();
                 assert_eq!(m.load_at(p.clone()), Custom { port: 8 }, "text: {text:?}");
+                assert_eq!(
+                    read_strict_at::<Custom>(&p).unwrap(),
+                    Some(Custom { port: 8 }),
+                    "text: {text:?}"
+                );
             }
         }
 
@@ -492,16 +503,9 @@ mod tests {
         }
 
         #[test]
-        fn read_strict_reports_an_empty_file_and_carries_its_source() {
+        fn read_strict_carries_its_source() {
             let tmp = tempfile::tempdir().unwrap();
-            let p = tmp.path().join("empty.yaml");
-            fs::write(&p, "").unwrap();
-            let err = read_strict_at::<TestMachineConfig>(&p).unwrap_err();
-            let source = std::error::Error::source(&err)
-                .expect("a source")
-                .to_string();
-            assert!(source.contains("found an empty document"), "{source}");
-
+            let p = tmp.path().join("bad.yaml");
             fs::write(&p, "nope: 1\n").unwrap();
             let err = read_strict_at::<TestMachineConfig>(&p).unwrap_err();
             let source = std::error::Error::source(&err).unwrap();

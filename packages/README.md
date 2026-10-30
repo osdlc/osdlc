@@ -5,6 +5,12 @@ repository: TypeScript libraries to npm, Rust crates to crates.io. Each
 library's own README says how to use it. This file covers what holds for all
 of them.
 
+> `skillwright`, `tradecraft-core` and `@osdlc/tradecraft-wasm` are no longer
+> released from this repository. Their releases moved to
+> <https://github.com/osdlc/skillwright>; the code here is held with
+> `publish = false` (the npm package with `"private": true`). `tradecraft` still releases
+> from here.
+
 ## Home and publishing
 
 - Each library lives in `packages/<language>/<name>/`, for example
@@ -36,8 +42,8 @@ check:packages` fails a library that declares any other license. The root
 ## Package shape
 
 Every TypeScript library and Rust crate has one shape, set out in
-[S-0001](../docs/planning/standards/S-0001-package-shape-ts.md) and
-[S-0002](../docs/planning/standards/S-0002-package-shape-rs.md). `pnpm run
+[S-package-shape-ts](../docs/planning/standards/S-package-shape-ts.md) and
+[S-package-shape-rs](../docs/planning/standards/S-package-shape-rs.md). `pnpm run
 check:packages` and `pnpm run check:crates` fail a package that drifts from it.
 
 The development loop is `pnpm -r build` (or `pnpm --filter <package>... build`
@@ -54,37 +60,44 @@ The libraries change together: the shared TypeScript and Prettier configs set
 the rules for the others. `command-seam` links both through this workspace,
 so a config change here runs against its build in CI.
 
-## Twin libraries
+## Library families
 
-A twin is two separate implementations of one library, one in Rust and one
-in TypeScript, such as the `tiered-dirs` crate and `@osdlc/tiered-dirs`. A
-build of one implementation for another runtime, such as `@osdlc/yaml-splice`
-(the crate built to WebAssembly), is not a twin and keeps its own version.
-The rules below apply when both halves are hosted here. Twins keep the same
-behaviour, not the same code.
+A family is a set of libraries, one per language, that do the same job, such
+as the `tiered-dirs` crate and `@osdlc/tiered-dirs`. Each library in it is an
+implementation. A build of one implementation for another runtime, such as
+`@osdlc/yaml-splice` (the crate built to WebAssembly), is a binding, not an
+implementation, and keeps its own version. The rules below apply when the
+implementations are hosted here. They keep the same behaviour, not the same
+code.
+[S-conformance-suites](../docs/planning/standards/S-conformance-suites.md) is
+the standard.
 
-- **Same behaviour.** For the same input, both twins return the same result
-  or refuse it with the same error kind. A shared fixture of cases checks
-  it: `packages/rust/<name>/tests/fixtures/parity.json`, run by both twins'
-  tests. `tiered-dirs`, `path-guard`, `config-layers` and `gfm-pipe-table`
-  (the twin of `@osdlc/gfm-table`) have one.
-  `frontmatter-lossless` uses its crate's `tests/fixtures/conformance.json`,
-  with a copy in the TypeScript package. `markdown-contract` runs the
-  TypeScript package's `corpus/` directly, with no copy. `etag-write` has no
-  shared fixture yet.
-- **Each language's idiom.** A twin does not copy the other's names or
+- **Same behaviour.** For the same input, every implementation returns the
+  same result or refuses it with the same error kind. The family's
+  conformance suite checks it: `packages/conformance/<family>/`, listed in
+  `packages/conformance/families.json`, run by every implementation's tests,
+  with expected values written by the reference implementation's generator.
+  `pnpm run check:conformance` checks the suites. `tiered-dirs` has moved
+  there. Until they move, `path-guard`, `config-layers` and `gfm-pipe-table`
+  (the Rust implementation of `@osdlc/gfm-table`) keep
+  `packages/rust/<name>/tests/fixtures/parity.json`, `frontmatter-lossless`
+  its crate's `tests/fixtures/conformance.json`, `markdown-contract` runs
+  the TypeScript package's `corpus/` directly, and `glob-intersect` runs
+  `@osdlc/intersect`'s `fixtures/` directly. `etag-write` has no shared
+  cases yet.
+- **Each language's idiom.** An implementation does not copy the other's names or
   signatures when that breaks its own language's habits. Rust uses
   snake_case, `Result`, traits and the standard library's words. TypeScript
   uses camelCase, thrown errors, classes and subpath exports. Values the
-  fixture compares, such as error kind strings, keep one spelling.
-- **One-sided features are allowed.** A twin may have an export the other
+  suite compares, such as error kind strings, keep one spelling.
+- **One-sided features are allowed.** An implementation may have an export the other
   language has no use for. Its README lists such exports.
-- **Versions.** Twins share the major and minor version. Patch releases are
+- **Versions.** Implementations share the major and minor version. Patch releases are
   independent. `tiered-dirs`'
   [D-02](ts/tiered-dirs/docs/planning/decisions/D-02-version-line-and-stability.md)
-  applies this rule to one twin.
-- **Skipping versions to catch up.** One twin may release a breaking change
-  before the other is ready. The other then skips one or more versions to
+  applies this rule to one family.
+- **Skipping versions to catch up.** One implementation may release a breaking
+  change before another is ready. That one then skips one or more versions to
   return to the shared major and minor. For example, if the crate is at 0.3
   while the TypeScript package is at 0.1, the package's next release is
   0.3.0, with no 0.2. A changeset cannot jump versions, so the pull request
@@ -118,9 +131,12 @@ Developed here, in this repository:
 - `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/frontmatter-lossless` (`frontmatter-lossless` on crates.io)
-- `packages/rust/gfm-pipe-table` (`gfm-pipe-table` on crates.io, the Rust twin
-  of `@osdlc/gfm-table`: GFM pipe tables as strings and byte offsets)
-- `packages/rust/markdown-contract` (`markdown-contract` on crates.io, the Rust twin
+- `packages/rust/gfm-pipe-table` (`gfm-pipe-table`, the Rust implementation of
+  `@osdlc/gfm-table`: GFM pipe tables as strings and byte offsets; not on
+  crates.io yet)
+- `packages/rust/glob-intersect` (`glob-intersect`, the Rust implementation of
+  `@osdlc/intersect`: do two globs share a path; not on crates.io yet)
+- `packages/rust/markdown-contract` (`markdown-contract` on crates.io, the Rust implementation
   of `@osdlc/markdown-contract`: contracts for markdown documents, checked
   against the package's corpus)
 - `packages/rust/markdown-link` (`markdown-link` on crates.io)
@@ -129,16 +145,22 @@ Developed here, in this repository:
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
-- `packages/rust/tradecraft` (`tradecraft` on crates.io, a command-line tool
-  that publishes a vault of markdown skill notes into the formats of
-  coding-agent tools; `cargo install tradecraft`)
+- `packages/rust/skillwright` (`skillwright` on crates.io, a command-line
+  tool that publishes a vault of markdown skill notes into the formats of
+  coding-agent tools; `cargo install skillwright`). Each `skillwright/vX.Y.Z`
+  tag also ships prebuilt binaries to the GitHub Release, npm
+  (`@osdlc/skillwright`) and Homebrew (`osdlc/tap`), through
+  `.github/workflows/skillwright-release.yml`; see
+  [`skillwright/release/`](rust/skillwright/release/README.md)
+- `packages/rust/tradecraft` (`tradecraft` on crates.io, the CLI's old
+  name. It only points to `skillwright`.)
 - `packages/rust/tradecraft-core` (`tradecraft-core` on crates.io, the library
-  behind `tradecraft`)
+  behind `skillwright`)
 - `packages/rust/tradecraft-typegen`, the generator of the TypeScript
   declarations for `tradecraft-wasm` (not published to crates.io)
 - `packages/rust/tradecraft-wasm`, the WebAssembly build of `tradecraft-core`
   for its npm package (not published to crates.io)
-- `packages/rust/typed-git` (`typed-git` on crates.io, the Rust twin of
+- `packages/rust/typed-git` (`typed-git` on crates.io, the Rust implementation of
   `@osdlc/typed-git`: a typed git client)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
@@ -148,9 +170,9 @@ Developed here, in this repository:
 - `packages/ts/tradecraft-wasm` (`@osdlc/tradecraft-wasm` on npm, `tradecraft-core`
   built to WebAssembly, with the built `wasm/` committed and a copy of the
   generated `core.generated.ts`)
-- `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript twin)
+- `packages/ts/etag-write` (`@osdlc/etag-write` on npm, the crate's TypeScript implementation)
 - `packages/ts/frontmatter-lossless` (`@osdlc/frontmatter-lossless` on npm,
-  the TypeScript twin of the `frontmatter-lossless` crate)
+  the TypeScript implementation of the `frontmatter-lossless` crate)
 - `packages/ts/color` (`@osdlc/color` on npm, sRGB colour arithmetic for
   contrast checks)
 - `packages/ts/agent-call` (`@osdlc/agent-call` on npm, one call spec for
@@ -158,13 +180,13 @@ Developed here, in this repository:
 - `packages/ts/observe` (`@osdlc/observe` on npm, a JSONL log envelope with
   correlation ids, agent session records, a process scan and reconcile)
 - `packages/ts/tiered-dirs` (`@osdlc/tiered-dirs` on npm, machine-local
-  directories by tier and home, the TypeScript twin of the `tiered-dirs` crate)
+  directories by tier and home, the TypeScript implementation of the `tiered-dirs` crate)
 - `packages/ts/markdown-contract` (`@osdlc/markdown-contract` on npm,
   contracts for markdown documents: one parse gives findings with lines and a
   typed model; contracts in TypeScript or YAML, a folder runner and a CLI)
 - `packages/ts/path-guard` (`@osdlc/path-guard` on npm, a path containment
   guard: lexical validation, then a symlink-aware proof that a path stays
-  inside its root; the TypeScript twin of the `path-guard` crate)
+  inside its root; the TypeScript implementation of the `path-guard` crate)
 - `packages/ts/typed-git` (`@osdlc/typed-git` on npm, a typed git client for
   TypeScript, in a synchronous and an awaitable form; each verb declares what
   absence means for it, every other failure throws, and `try` returns a
@@ -184,7 +206,7 @@ Developed here, in this repository:
   configured; read-only, with secrets redacted)
 - `packages/ts/config-layers` (`@osdlc/config-layers` on npm, a CLI tool's
   project and machine config files and the check a command runs before it
-  starts; the TypeScript twin of the `config-layers` crate)
+  starts; the TypeScript implementation of the `config-layers` crate)
 - `packages/ts/cli-tool` (`@osdlc/cli-tool` on npm, what a standalone CLI
   needs first: an output seam, exit codes, flags declared once, running an
   installed tool from a development checkout)
@@ -224,8 +246,8 @@ requests here.
    run `pnpm changeset` at the repository root, pick the libraries and the
    bump, and write the summary. It lands in `.changeset/` and becomes the
    CHANGELOG entry. Start a breaking change's summary with `**Breaking:**`.
-   Do not edit `version` or `CHANGELOG.md` by hand, except when a twin
-   skips versions to catch up (see [Twin libraries](#twin-libraries)).
+   Do not edit `version` or `CHANGELOG.md` by hand, except when an implementation
+   skips versions to catch up (see [Library families](#library-families)).
 2. When the pull request merges, `packages-publish.yml` opens or updates one
    "Version Packages" pull request. It bumps each library's version and
    writes its CHANGELOG from the pending changesets. The root
@@ -317,11 +339,13 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    `publish = false` in its `Cargo.toml` and `release = false` for it in
    `packages/rust/release-plz.toml`. The workflow and release-plz then skip
    it.
-7. A crate's first release is held back in two cases. If it needs another
-   new crate, it waits until that crate is on crates.io: `cargo publish`
-   cannot verify it before then, so the `release-plz` dry run in
-   `rust-ci.yml` fails. If other crates are waiting for trusted publishing,
-   it waits for that run, because one run uses one credential (rule 4).
+7. A crate's first release is held back when other crates are waiting for
+   trusted publishing: it waits for that run, because one run uses one
+   credential (rule 4). A crate that needs another crate's new version in
+   the same run does not wait: release-plz publishes the dependency first,
+   and the `release-plz` dry run in `rust-ci.yml` points every unpublished
+   crate at its local directory, so it can verify the dependent before
+   either is on crates.io.
    Hold it with `publish = false` in its `Cargo.toml` and a `[[package]]`
    entry with `publish = false` and `release = false` in
    `packages/rust/release-plz.toml`.

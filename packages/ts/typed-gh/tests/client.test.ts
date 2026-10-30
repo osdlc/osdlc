@@ -14,6 +14,7 @@ import {
   api,
   ownerRepoSlug,
   parseOwnerRepo,
+  openPrsForBranch,
   pickPrForBranch,
   parsePullRequest,
   PR_LIST_FIELDS,
@@ -481,6 +482,30 @@ describe('branch matching and owner/repo', () => {
     expect(pickPrForBranch(rows, 'feature/nope')).toBeNull()
     // A failed call (null) stays null.
     expect(pickPrForBranch(null, 'feature/foo')).toBeNull()
+  })
+
+  test("takes openPrsForBranch's ListResult without unwrapping it", () => {
+    const verb = openPrsForBranch('feature/foo')
+    const result = verb.parse({
+      exitCode: 0,
+      stdout: JSON.stringify([
+        { number: 1, headRefName: 'feature/foo-2' },
+        { number: 2, headRefName: 'feature/foo' },
+      ]),
+      stderr: '',
+    })
+    expect(pickPrForBranch(result, 'feature/foo')?.number).toBe(2)
+    expect(pickPrForBranch({ rows: [], truncated: false }, 'feature/foo')).toBeNull()
+  })
+
+  test('filters a ListResult exactly, as it does plain rows', () => {
+    // A `head:` search through prList keeps the prefix match, so the filter still matters.
+    const rows = [
+      parsePullRequest({ number: 1, headRefName: 'feature/foo-2' })!,
+      parsePullRequest({ number: 2, headRefName: 'feature/foo' })!,
+    ]
+    expect(pickPrForBranch({ rows, truncated: true }, 'feature/foo')?.number).toBe(2)
+    expect(pickPrForBranch({ rows, truncated: false }, 'feature/nope')).toBeNull()
   })
 
   test('every remote shape resolves to the same coordinate', () => {

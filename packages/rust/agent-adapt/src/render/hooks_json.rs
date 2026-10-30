@@ -70,7 +70,7 @@ use crate::{Error, Hook, HookType, Result, RuntimeId, ToolRegistry};
 ///
 /// `serde_json::Map` keeps insertion order when `serde_json` is built with
 /// `preserve_order`, so the sort has to be explicit for the output to be
-/// byte-identical run to run. Recursive because an `tc-overrides` value can
+/// byte-identical run to run. Recursive because an `sw-overrides` value can
 /// itself be an object.
 fn sorted(value: Value) -> Value {
     match value {

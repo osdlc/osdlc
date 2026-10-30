@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.3](https://github.com/osdlc/osdlc/compare/yaml-splice/v0.3.2...yaml-splice/v0.3.3) - 2026-10-28
+
+### Other
+
+- nested-edit tests, character fuzzing, and two fixes it found ([#517](https://github.com/osdlc/osdlc/pull/517))
+
 ### Changed
 
 - A signed `0x` / `0o` scalar (`-0x1F`, `+0o7`) now reads as a string, as

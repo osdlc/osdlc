@@ -1,18 +1,9 @@
-//! The Tradecraft CLI: exit codes, project/machine configuration, per-run
-//! vault/namespace resolution, report rendering, and the verbs themselves.
-//!
-//! [`cli::run`] is the seam the binary in `main.rs` and every test in this
-//! crate drive; [`cli::run_with`] is the same entry with the
-//! [`ctx::CommandContext`] supplied.
+//! `tradecraft` is now `skillwright`. This crate only holds the notice that
+//! the `tradecraft` binary prints.
 
-pub mod apply;
-pub mod cli;
-pub mod commands;
-pub mod config;
-pub mod ctx;
-pub mod dirs;
-pub mod exit;
-pub mod git_source;
-pub mod prompt;
-pub mod report;
-pub mod resolve;
+/// The message the `tradecraft` binary prints before it exits with status 1.
+pub const NOTICE: &str = "tradecraft is now skillwright. Install it with one of:\n\
+  cargo install skillwright\n\
+  brew install osdlc/tap/skillwright\n\
+  npm i -g @osdlc/skillwright\n\
+Then run `skillwright` instead: https://crates.io/crates/skillwright";

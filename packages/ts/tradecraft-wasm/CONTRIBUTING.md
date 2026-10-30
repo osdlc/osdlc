@@ -65,6 +65,10 @@ The `wasm` job in `.github/workflows/rust-ci.yml` rebuilds `wasm/` on every
 pull request that touches the Rust crates or `wasm/`, and fails when the
 result differs from what is committed. When it fails, it uploads the rebuilt
 files as the `tradecraft-wasm` artifact.
+A version bump alone changes the bytes, so the release pull request for the
+Rust crates would fail this check. The `release-pr` job in
+`.github/workflows/release-plz.yml` rebuilds `wasm/` on the release branch
+and commits it. That commit changes no behaviour, so it needs no changeset.
 The compiler can emit different bytes on macOS and on Linux, so commit the
 Linux build from that artifact when you build on another system.
 
