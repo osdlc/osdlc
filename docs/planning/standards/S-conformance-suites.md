@@ -198,7 +198,7 @@ and points here.
 | markdown-link | Rust, TS | `rust/markdown-link/tests/fixtures/conformance.json` | Rust |
 | markdown-tags | Rust, TS | `rust/markdown-tags/tests/fixtures/conformance.json` | Rust |
 | observe | TS, Rust `osdlc-observe` | `rust/osdlc-observe/tests/fixtures/parity.json` | TS |
-| path-guard | TS, Rust | `rust/path-guard/tests/fixtures/parity.json` | TS |
+| path-guard | TS, Rust | moved: `conformance/path-guard/suite.json` | TS |
 | pr-update | TS, Rust | `rust/pr-update/tests/fixtures/parity.json` | TS |
 | repo-cleaner | TS, Rust | `rust/repo-cleaner/tests/fixtures/parity.json` | TS |
 | system-model | TS, Rust | `rust/system-model/tests/fixtures/parity.json` | TS |

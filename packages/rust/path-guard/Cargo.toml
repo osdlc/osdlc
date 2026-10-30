@@ -21,9 +21,9 @@ include = [
 [dependencies]
 thiserror = { workspace = true }
 
-# tests/parity.rs only: it reads tests/fixtures/parity.json, the conformance
-# fixture the TypeScript package (packages/ts/path-guard) reads in place. The
-# crate parses no JSON at runtime.
+# tests/conformance.rs only: it reads packages/conformance/path-guard/suite.json,
+# the suite the TypeScript package (packages/ts/path-guard) runs too. The crate
+# parses no JSON at runtime.
 [dev-dependencies]
 # 1.0.220 is the first serde that pins its own serde_derive, so the
 # minimal-versions job does not resolve a newer serde_derive that fails to
