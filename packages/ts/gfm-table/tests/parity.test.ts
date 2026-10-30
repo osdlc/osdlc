@@ -37,6 +37,8 @@ test('the byte offset conversion', () => {
   expect(byteOffset('a中👍b', 4)).toBe(8)
   expect(utf16Offset('a中👍b', 8)).toBe(4)
   expect(() => utf16Offset('中', 1)).toThrow()
+  // Byte 2 of the emoji: inside its surrogate pair, so not a boundary.
+  expect(() => utf16Offset('|👍', 4)).toThrow()
 })
 
 for (const [section, cases] of sections) {
