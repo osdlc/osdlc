@@ -53,9 +53,14 @@ CI runs the tests and the check in the `lint` job of
 
 ## Exemptions
 
-One crate has `publish = false` and keeps only the code-health subset
-above:
+Three crates have `publish = false` and are checked against the code-health
+subset above only:
 
 - `yaml-splice-wasm`, the build input for the `yaml-splice` npm package.
+- `yaml-splice/compare`, a comparison tool that is never released.
+- `markdown-contract`, held back until its parity fixes land. It is not
+  exempt by design: it keeps its README, CHANGELOG and examples, so
+  releasing it only removes `publish = false`. The check does not require
+  them while it is held.
 
 No other crate is exempt.

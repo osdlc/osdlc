@@ -6,8 +6,10 @@ library's own README says how to use it. This file covers what holds for all
 of them.
 
 > `skillwright`, `tradecraft-core`, `tradecraft-wasm`, `tradecraft-typegen` and
-> `@osdlc/tradecraft-wasm` live in <https://github.com/osdlc/skillwright>, and
-> are released from there. Their folders here hold only a README that points
+> `@osdlc/tradecraft-wasm` live in <https://github.com/osdlc/skillwright>.
+> `skillwright`, `tradecraft-core` and `@osdlc/tradecraft-wasm` are released
+> from there. `tradecraft-wasm` and `tradecraft-typegen` are never released.
+> Their folders here hold only a README that points
 > to the new location. `tradecraft` still releases from here: it is a crate
 > that points to `skillwright`.
 

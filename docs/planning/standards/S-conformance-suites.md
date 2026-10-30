@@ -61,7 +61,7 @@ to the same behaviour by the same data.
 
   CI reads it to decide what a change affects. A change under any
   implementation's directory or the family's suite runs every implementation's
-  tests. It replaces the `FEEDS` map in `scripts/affected-packages.ts`.
+  tests.
 
 ### The reference and its generator
 

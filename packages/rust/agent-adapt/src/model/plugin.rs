@@ -75,7 +75,7 @@ impl PluginBundle {
 /// named collection of plugins under one identity.
 ///
 /// **Experimental.** This is additive scaffolding: the crate renders no
-/// marketplace manifest from it yet. `tradecraft-core` still shapes
+/// marketplace manifest from it yet. `tradecraft-core` (in osdlc/skillwright) still shapes
 /// marketplace manifests (Claude's `owner`, Codex's `displayName`,
 /// per-plugin overrides) from its own types. Moving that onto adapters, with
 /// this type as the input, may change it in a minor release.
