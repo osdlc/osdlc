@@ -348,13 +348,13 @@ package. It is developed in [osdlc/osdlc](https://github.com/osdlc/osdlc) under
 The crate has no zod to read, so a Rust tool lists its keys in a static `KeySpec` table and uses
 `serde` types.
 
-The two share one test fixture,
-[`packages/rust/config-layers/tests/fixtures/parity.json`](https://github.com/osdlc/osdlc/blob/main/packages/rust/config-layers/tests/fixtures/parity.json).
-This package's `tests/parity.test.ts` and the crate's `tests/parity.rs` read it. It covers
-`valueIsSet`, `valueAt`, the YAML reading rules above, `resolveConfigPath` with a `home`
-(including `~user/x`, an empty home and a relative one), `substitutePathNames` and its error text,
-and the unmet-need message. Behaviour the two do not share is left out of the fixture and listed in
-this table.
+The two run one conformance suite,
+[`packages/conformance/config-layers/suite.json`](https://github.com/osdlc/osdlc/blob/main/packages/conformance/config-layers/suite.json),
+and this package is its reference. This package's `tests/conformance.test.ts` and the crate's
+`tests/conformance.rs` run it. It covers `valueIsSet`, `valueAt`, the YAML reading rules above,
+`resolveConfigPath` with a `home` (including `~user/x`, an empty home and a relative one),
+`substitutePathNames` and its error text, and the unmet-need message. Behaviour the two do not share
+is left out of the suite and listed in this table.
 
 | | TypeScript | Rust |
 |---|---|---|
@@ -369,7 +369,6 @@ this table.
 | Empty file | `readParsedFile` gives `null`; `readMappingFile` gives `{}` | `read_mapping` gives an empty map; there is no `readParsedFile` counterpart |
 | `1e999` | read as the string `1e999` | read as the string `.inf` |
 | `!!float 1` and an unknown tag such as `!custom 6` | the value reads as its text, a string | the value reads as a number |
-| A `{` inside a name, as in `{a{dev}` | replaces `{dev}` and keeps the `{a` before it | an unknown path name `{a{dev}` |
 | Dotted `paths:` resolution in a map | not provided | `resolve_paths_at` |
 | Invalid config | `ConfigInvalidError`, exit code 14 | `FileProblem` |
 | Platforms | Linux and macOS | Linux, macOS and Windows |
