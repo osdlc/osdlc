@@ -57,9 +57,9 @@
       "line": 54,
       "title": "Separator contract for results is not in the public docs",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "7ad3c01e81281cbc6b5272ce7bd0e5b4d935d111"
     }
   ]
 }
