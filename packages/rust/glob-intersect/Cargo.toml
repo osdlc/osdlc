@@ -2,9 +2,9 @@
 # share a common matching path? Pure pattern algebra, with no filesystem access
 # except through the opt-in `fs` feature.
 #
-# The tests read the TypeScript package's corpus
-# (packages/ts/intersect/fixtures/*.cases.json) in place, so both peers run the
-# same cases.
+# tests/conformance.rs runs the family's conformance suite,
+# packages/conformance/intersect/suite.json, which the TypeScript package runs
+# too.
 [package]
 name = "glob-intersect"
 version = "0.3.0"
@@ -42,8 +42,8 @@ thiserror = { workspace = true }
 walkdir = { workspace = true, optional = true }
 
 [dev-dependencies]
-# The conformance harness parses the shared JSON corpus; `tempfile` materializes
-# each fs case's `tree` the way the TypeScript `tests/fs.test.ts` harness does.
+# The conformance test parses the shared JSON suite; `tempfile` materializes
+# each fs case's `tree` under a temp dir, as the TypeScript runner does.
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 

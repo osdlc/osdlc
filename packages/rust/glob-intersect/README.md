@@ -4,10 +4,11 @@ Path-pattern overlap engine: do two globs share a common matching path?
 A pure core (segment automaton + synchronized product) that produces a
 witness path for every overlap, plus an optional filesystem layer.
 
-This is the Rust peer of [`@osdlc/intersect`](../../ts/intersect). Both run
-the same conformance corpus, `packages/ts/intersect/fixtures/*.cases.json`,
-which this crate's tests read in place. A change to the corpus runs against
-both. `packages/ts/intersect/fixtures/README.md` describes its layout.
+This is the Rust peer of [`@osdlc/intersect`](../../ts/intersect). Both are
+checked against one conformance suite,
+`packages/conformance/intersect/suite.json` in the repository, whose expected
+values the TypeScript package writes. A change to the suite runs against both.
+`packages/conformance/intersect/README.md` describes it.
 
 Every function that reads a pattern returns `Result<_, Error>`. A pattern with
 unsupported syntax (number ranges, a `{...}` or `[...]` that holds a `/`,

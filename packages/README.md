@@ -79,13 +79,12 @@ the standard.
   conformance suite checks it: `packages/conformance/<family>/`, listed in
   `packages/conformance/families.json`, run by every implementation's tests,
   with expected values written by the reference implementation's generator.
-  `pnpm run check:conformance` checks the suites. `tiered-dirs` has moved
-  there. Until they move, `path-guard` and `config-layers` keep
-  `packages/rust/<name>/tests/fixtures/parity.json`, `frontmatter-lossless`
-  its crate's `tests/fixtures/conformance.json`, `markdown-contract` runs
-  the TypeScript package's `corpus/` directly, and `glob-intersect` runs
-  `@osdlc/intersect`'s `fixtures/` directly. `etag-write` has no shared
-  cases yet.
+  `pnpm run check:conformance` checks the suites. `tiered-dirs` and
+  `intersect` have moved there. Until they move, `path-guard` and
+  `config-layers` keep `packages/rust/<name>/tests/fixtures/parity.json`,
+  `frontmatter-lossless` its crate's `tests/fixtures/conformance.json`, and
+  `markdown-contract` runs the TypeScript package's `corpus/` directly.
+  `etag-write` has no shared cases yet.
 - **Each language's idiom.** An implementation does not copy the other's names or
   signatures when that breaks its own language's habits. Rust uses
   snake_case, `Result`, traits and the standard library's words. TypeScript
