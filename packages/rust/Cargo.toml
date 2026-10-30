@@ -56,7 +56,7 @@ tempfile = "3"
 thiserror = "2.0.17"
 toml = "0.8"
 tracing = "0.1"
-# Pinned to the version slug-collate's NFKD code is built and tested against,
+# Pinned to the version slug-collate's normalisation code is built and tested against,
 # so the minimal-versions job does not resolve an older 0.1.x that predates it.
 unicode-normalization = "0.1.26"
 walkdir = "2.5"
@@ -70,11 +70,11 @@ agent-adapt = { path = "agent-adapt", version = "0.19.2" }
 config-layers = { path = "config-layers", version = "0.8.0" }
 etag-write = { path = "etag-write", version = "0.2.4" }
 frontmatter-lossless = { path = "frontmatter-lossless", version = "1.1.1" }
-markdown-link = { path = "markdown-link", version = "0.5.2" }
-markdown-relink = { path = "markdown-relink", version = "0.1.7" }
+markdown-link = { path = "markdown-link", version = "0.5.3" }
+markdown-relink = { path = "markdown-relink", version = "0.1.8" }
 markdown-vault-fs = { path = "markdown-vault-fs", version = "0.3.1" }
 path-guard = { path = "path-guard", version = "0.3.2" }
-slug-collate = { path = "slug-collate", version = "0.1.2" }
+slug-collate = { path = "slug-collate", version = "0.2.0" }
 tiered-dirs = { path = "tiered-dirs", version = "0.3" }
 tradecraft-core = { path = "tradecraft-core", version = "0.40.1" }
 typed-git = { path = "typed-git", version = "0.4" }
