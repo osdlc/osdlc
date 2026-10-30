@@ -1,6 +1,5 @@
 {
-  // Typechecks the TypeScript repo tooling in this directory and the skillwright
-  // binary release tooling in packages/rust/skillwright/release/. Node runs these
+  // Typechecks the TypeScript repo tooling in this directory. Node runs these
   // files directly (type stripping), so this only checks; nothing is emitted.
   // Standalone rather than extending @osdlc/tsconfig: the root project does not
   // depend on the workspace packages, and Node's type stripping needs settings
@@ -19,5 +18,5 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true
   },
-  "include": ["*.ts", "../packages/rust/skillwright/release/*.ts"]
+  "include": ["*.ts"]
 }
