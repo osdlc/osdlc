@@ -21,8 +21,8 @@ same thing. These rules hold in both:
 - A tag on a string or an integer (`!!str 5`, `!!int "7"`) is dropped and its value kept.
 - A duplicate key is an error.
 
-`packages/rust/config-layers/tests/fixtures/parity.json` holds cases for these
-rules. Both test suites read it.
+`packages/conformance/config-layers/suite.json`, the family's conformance
+suite, holds cases for these rules. Both packages' tests run it.
 
 ## Why
 

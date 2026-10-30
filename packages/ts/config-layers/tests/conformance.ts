@@ -40,8 +40,7 @@ export interface Suite {
 
 /** What a case gives: its `expect`, or its `error`. */
 export type Outcome =
-  | { expect: Record<string, unknown> }
-  | { error: { kind: string; message?: string } }
+  { expect: Record<string, unknown> } | { error: { kind: string; message?: string } }
 
 const CASE_KEYS = ['name', 'input', 'expect', 'error', 'platforms', 'skip']
 
@@ -69,7 +68,8 @@ export function readSuite(): Suite {
       }
     }
   }
-  if (problems.length > 0) throw new Error(`the suite has what this runner does not know: ${problems.join(', ')}`)
+  if (problems.length > 0)
+    throw new Error(`the suite has what this runner does not know: ${problems.join(', ')}`)
   return suite
 }
 
@@ -81,7 +81,9 @@ function fields<T>(input: Record<string, unknown>, required: string[], optional:
   const unknown = unknownKeys(input, [...required, ...optional])
   const missing = required.filter((k) => !(k in input))
   if (unknown.length > 0 || missing.length > 0) {
-    throw new Error(`input: unknown ${unknown.join(', ') || '-'}; missing ${missing.join(', ') || '-'}`)
+    throw new Error(
+      `input: unknown ${unknown.join(', ') || '-'}; missing ${missing.join(', ') || '-'}`,
+    )
   }
   return input as T
 }
@@ -165,7 +167,7 @@ function readYaml(yaml: string): Outcome {
 const SECTIONS: Record<string, (input: Record<string, unknown>) => Outcome> = {
   value_is_set(raw) {
     const input = fields<{ value?: unknown; missing?: true }>(raw, [], ['value', 'missing'])
-    if (('value' in input) === (input.missing === true)) {
+    if ('value' in input === (input.missing === true)) {
       throw new Error('input: give exactly one of value and missing: true')
     }
     return { expect: { set: valueIsSet(input.missing === true ? undefined : input.value) } }
@@ -184,7 +186,9 @@ const SECTIONS: Record<string, (input: Record<string, unknown>) => Outcome> = {
       'base_dir',
       'home',
     ])
-    return { expect: { path: resolveConfigPath(input.value, input.base_dir, { home: input.home }) } }
+    return {
+      expect: { path: resolveConfigPath(input.value, input.base_dir, { home: input.home }) },
+    }
   },
   substitute_path_names(raw) {
     const input = fields<{
@@ -195,7 +199,9 @@ const SECTIONS: Record<string, (input: Record<string, unknown>) => Outcome> = {
     }>(raw, ['value', 'names', 'setting'], ['define_hint'])
     const opts = input.define_hint === undefined ? {} : { defineHint: input.define_hint }
     try {
-      return { expect: { text: substitutePathNames(input.value, input.names, input.setting, opts) } }
+      return {
+        expect: { text: substitutePathNames(input.value, input.names, input.setting, opts) },
+      }
     } catch (e) {
       if (!(e instanceof PathNameError)) throw e
       return { error: { kind: 'unknown_path_name', message: e.message } }
