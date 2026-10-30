@@ -354,7 +354,7 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    - `markdown-contract`, until the parity fixes from the review of
      [#460](https://github.com/osdlc/osdlc/pull/460) land.
    - `gfm-pipe-table`, until its first release can have a release-plz run of
-     its own: it needs `CARGO_REGISTRY_TOKEN` (rules 3 and 4).
+     its own: it needs `CARGO_REGISTRY_TOKEN` (rules 3, 4 and 7).
 
 #### Versions and breaking changes
 
