@@ -19,7 +19,13 @@ pnpm --filter @osdlc/path-guard conformance:write
 
 on Linux or macOS to write its `expect` or `error`. Never write those by hand.
 A case for `windows` only is written by the same command: it runs the
-package a second time, loaded as on Windows.
+package a second time, loaded as on Windows. That works for the sections
+that are pure text or run under a resolver for which nothing exists, so the
+command refuses a `windows`-only case in an on-disk section.
+
+This family compares error kinds only. An `error` is `{ "kind": ... }`: the
+two implementations' messages differ by design, so a case never sets
+`error.message`, and both runners and the command refuse one.
 
 ## Platforms
 
