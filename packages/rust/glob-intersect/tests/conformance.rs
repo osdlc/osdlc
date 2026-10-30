@@ -15,7 +15,7 @@
 //!   both sides match.
 
 use glob_intersect::{Error, Labeled, Matcher, Options, segments};
-use serde_json::{Map, Value as Json, json};
+use serde_json::{Value as Json, json};
 
 /// Compiled in rather than read at runtime: the test binary then carries the
 /// suite, and a moved or deleted suite is a build error, not a late panic.
@@ -282,19 +282,32 @@ fn wanted(name: &str, case: &Json) -> Json {
     }
 }
 
-/// The outcome of one case, or `None` when this host cannot run it.
-fn run(section: &str, input: &Json) -> Option<Json> {
+/// Why a case that runs on this host was not run.
+enum NotRun {
+    /// It locks a directory, and mode 000 does not stop a read here, as when
+    /// running as root.
+    #[cfg_attr(not(feature = "fs"), expect(dead_code, reason = "only fs cases lock"))]
+    AsRoot,
+    /// It is in an `fs_*` section and the `fs` feature is off.
+    #[cfg_attr(feature = "fs", expect(dead_code, reason = "fs cases run"))]
+    NeedsFs,
+}
+
+/// The outcome of one case, or why it was not run.
+fn run(section: &str, input: &Json) -> Result<Json, NotRun> {
     if section.starts_with("fs_") {
         return run_fs(section, input);
     }
-    Some(outcome(run_pure(section, input)))
+    Ok(outcome(run_pure(section, input)))
 }
 
 // --- The fs sections -------------------------------------------------------
 
+/// Without the `fs` feature an `fs_*` case is reported as not run, and the
+/// pure sections still run.
 #[cfg(not(feature = "fs"))]
-fn run_fs(section: &str, _input: &Json) -> Option<Json> {
-    panic!("the {section} section needs the fs feature, which is on by default")
+fn run_fs(_section: &str, _input: &Json) -> Result<Json, NotRun> {
+    Err(NotRun::NeedsFs)
 }
 
 /// Where `to` is, written relative to `from`. Both must be absolute.
@@ -316,7 +329,7 @@ fn relative_path(from: &std::path::Path, to: &std::path::Path) -> std::path::Pat
 /// Create the case's symbolic links, `{ link: target }`, the target written as
 /// given. The suite keeps a case with links to `unix`.
 #[cfg(feature = "fs")]
-fn link_all(root: &std::path::Path, links: &Map<String, Json>) {
+fn link_all(root: &std::path::Path, links: &serde_json::Map<String, Json>) {
     #[cfg(unix)]
     for (link, target) in links {
         let abs = root.join(link);
@@ -341,7 +354,12 @@ fn set_modes(root: &std::path::Path, dirs: &[String], mode: u32) {
     #[cfg(unix)]
     for dir in dirs {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(root.join(dir), std::fs::Permissions::from_mode(mode));
+        let set = std::fs::set_permissions(root.join(dir), std::fs::Permissions::from_mode(mode));
+        // Locking must succeed, or the case would run against a readable
+        // directory. Unlocking is best effort: the temp dir goes either way.
+        if mode == 0o000 {
+            set.unwrap_or_else(|e| panic!("lock {dir}: {e}"));
+        }
     }
     #[cfg(not(unix))]
     assert!(
@@ -354,10 +372,10 @@ fn set_modes(root: &std::path::Path, dirs: &[String], mode: u32) {
 /// Run one case of an `fs_*` section: build its tree under a temp dir, run the
 /// op there, and give the paths as the suite states them, `/`-separated and
 /// relative to the temp dir. With `opts.absolute` each path must be absolute
-/// and under the temp dir. `None` when the case locks a directory and mode 000
-/// does not stop a read here, as when running as root.
+/// and under the temp dir. [`NotRun::AsRoot`] when the case locks a directory
+/// and mode 000 does not stop a read here, as when running as root.
 #[cfg(feature = "fs")]
-fn run_fs(section: &str, input: &Json) -> Option<Json> {
+fn run_fs(section: &str, input: &Json) -> Result<Json, NotRun> {
     use glob_intersect::fs::{FsOptions, files_in_scope, resolve_intersection};
 
     let dir = tempfile::tempdir().expect("temp dir");
@@ -369,7 +387,7 @@ fn run_fs(section: &str, input: &Json) -> Option<Json> {
         }
         std::fs::write(&target, "").expect("create tree file");
     }
-    let no_links = Map::new();
+    let no_links = serde_json::Map::new();
     link_all(
         root,
         input
@@ -386,7 +404,7 @@ fn run_fs(section: &str, input: &Json) -> Option<Json> {
         .any(|d| std::fs::read_dir(root.join(d)).is_ok())
     {
         set_modes(root, &locked, 0o755);
-        return None;
+        return Err(NotRun::AsRoot);
     }
 
     let mut cwd = match input.get("cwd") {
@@ -437,7 +455,7 @@ fn run_fs(section: &str, input: &Json) -> Option<Json> {
                 .collect(),
         )
     });
-    Some(outcome(result))
+    Ok(outcome(result))
 }
 
 // --- The suite -------------------------------------------------------------
@@ -460,6 +478,7 @@ fn every_case_in_the_suite_conforms() {
 
     let mut failures: Vec<String> = Vec::new();
     let mut not_run: Vec<String> = Vec::new();
+    let mut needs_fs: Vec<String> = Vec::new();
     let mut ran = 0;
     for (section, body) in sections {
         assert!(
@@ -478,9 +497,10 @@ fn every_case_in_the_suite_conforms() {
                 continue;
             }
             match run(section, &case["input"]) {
-                None => not_run.push(format!("[{section}: {name}]")),
-                Some(got) if got == want => ran += 1,
-                Some(got) => failures.push(format!("  [{section}: {name}] got {got}, want {want}")),
+                Err(NotRun::AsRoot) => not_run.push(format!("[{section}: {name}]")),
+                Err(NotRun::NeedsFs) => needs_fs.push(format!("[{section}: {name}]")),
+                Ok(got) if got == want => ran += 1,
+                Ok(got) => failures.push(format!("  [{section}: {name}] got {got}, want {want}")),
             }
         }
     }
@@ -496,6 +516,12 @@ fn every_case_in_the_suite_conforms() {
         not_run.len(),
         not_run.join(" ")
     );
+    if !needs_fs.is_empty() {
+        println!(
+            "conformance suite: {} not run: needs the fs feature",
+            needs_fs.len()
+        );
+    }
     assert!(ran > 0, "no case ran");
     assert!(
         failures.is_empty(),
