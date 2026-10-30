@@ -1,0 +1,1677 @@
+{
+  "family": "config-layers",
+  "reference": "ts",
+  "referenceVersion": "0.8.0",
+  "sections": {
+    "value_is_set": {
+      "description": "Whether a value counts as set. `input.value` is the value; `input.missing: true` passes no value at all (Rust `None`, TypeScript `undefined`). `expect.set` is the answer.",
+      "cases": [
+        {
+          "name": "missing is not set",
+          "input": {
+            "missing": true
+          },
+          "expect": {
+            "set": false
+          }
+        },
+        {
+          "name": "null is not set",
+          "input": {
+            "value": null
+          },
+          "expect": {
+            "set": false
+          }
+        },
+        {
+          "name": "empty string is not set",
+          "input": {
+            "value": ""
+          },
+          "expect": {
+            "set": false
+          }
+        },
+        {
+          "name": "whitespace-only string is not set",
+          "input": {
+            "value": "  \t"
+          },
+          "expect": {
+            "set": false
+          }
+        },
+        {
+          "name": "text is set",
+          "input": {
+            "value": "x"
+          },
+          "expect": {
+            "set": true
+          }
+        },
+        {
+          "name": "text with spaces around it is set",
+          "input": {
+            "value": " x "
+          },
+          "expect": {
+            "set": true
+          }
+        },
+        {
+          "name": "the string 0 is set",
+          "input": {
+            "value": "0"
+          },
+          "expect": {
+            "set": true
+          }
+        },
+        {
+          "name": "empty list is not set",
+          "input": {
+            "value": []
+          },
+          "expect": {
+            "set": false
+          }
+        },
+        {
+          "name": "list with an item is set",
+          "input": {
+            "value": [
+              1
+            ]
+          },
+          "expect": {
+            "set": true
+          }
+        },
+        {
+          "name": "list holding an empty string is set",
+          "input": {
+            "value": [
+              ""
+            ]
+          },
+          "expect": {
+            "set": true
+          }
+        },
+        {
+          "name": "empty map is not set",
+          "input": {
+            "value": {}
+          },
+          "expect": {
+            "set": false
+          }
+        },
+        {
+          "name": "map with a key is set",
+          "input": {
+            "value": {
+              "a": null
+            }
+          },
+          "expect": {
+            "set": true
+          }
+        },
+        {
+          "name": "false is set",
+          "input": {
+            "value": false
+          },
+          "expect": {
+            "set": true
+          }
+        },
+        {
+          "name": "true is set",
+          "input": {
+            "value": true
+          },
+          "expect": {
+            "set": true
+          }
+        },
+        {
+          "name": "zero is set",
+          "input": {
+            "value": 0
+          },
+          "expect": {
+            "set": true
+          }
+        }
+      ]
+    },
+    "value_at": {
+      "description": "Look a dotted `key` up in `obj`. `expect.found` says whether the key is there, and `expect.value` is what it holds when it is.",
+      "cases": [
+        {
+          "name": "a top-level key",
+          "input": {
+            "obj": {
+              "a": {
+                "b": "",
+                "c": 0,
+                "d": null,
+                "e": [
+                  1
+                ],
+                "f": {
+                  "g": "deep"
+                }
+              },
+              "top": "t",
+              "dotted.key": "x"
+            },
+            "key": "top"
+          },
+          "expect": {
+            "found": true,
+            "value": "t"
+          }
+        },
+        {
+          "name": "a nested key",
+          "input": {
+            "obj": {
+              "a": {
+                "b": "",
+                "c": 0,
+                "d": null,
+                "e": [
+                  1
+                ],
+                "f": {
+                  "g": "deep"
+                }
+              },
+              "top": "t",
+              "dotted.key": "x"
+            },
+            "key": "a.f.g"
+          },
+          "expect": {
+            "found": true,
+            "value": "deep"
+          }
+        },
+        {
+          "name": "a nested mapping",
+          "input": {
+            "obj": {
+              "a": {
+                "b": "",
+                "c": 0,
+                "d": null,
+                "e": [
+                  1
+                ],
+                "f": {
+                  "g": "deep"
+                }
+              },
+              "top": "t",
+              "dotted.key": "x"
+            },
+            "key": "a.f"
+          },
+          "expect": {
+            "found": true,
+            "value": {
+              "g": "deep"
+            }
+          }
+        },
+        {
+          "name": "an empty string is found",
+          "input": {
+            "obj": {
+              "a": {
+                "b": "",
+                "c": 0,
+                "d": null,
+                "e": [
+                  1
+                ],
+                "f": {
+                  "g": "deep"
+                }
+              },
+              "top": "t",
+              "dotted.key": "x"
+            },
+            "key": "a.b"
+          },
+          "expect": {
+            "found": true,
+            "value": ""
+          }
+        },
+        {
+          "name": "zero is found",
+          "input": {
+            "obj": {
+              "a": {
+                "b": "",
+                "c": 0,
+                "d": null,
+                "e": [
+                  1
+                ],
+                "f": {
+                  "g": "deep"
+                }
+              },
+              "top": "t",
+              "dotted.key": "x"
+            },
+            "key": "a.c"
+          },
+          "expect": {
+            "found": true,
+            "value": 0
+          }
+        },
+        {
+          "name": "null is found",
+          "input": {
+            "obj": {
+              "a": {
+                "b": "",
+                "c": 0,
+                "d": null,
+                "e": [
+                  1
+                ],
+                "f": {
+                  "g": "deep"
+                }
+              },
+              "top": "t",
+              "dotted.key": "x"
+            },
+            "key": "a.d"
+          },
+          "expect": {
+            "found": true,
+            "value": null
+          }
+        },
+        {
+          "name": "a list is found",
+          "input": {
+            "obj": {
+              "a": {
+                "b": "",
+                "c": 0,
+                "d": null,
+                "e": [
+                  1
+                ],
+                "f": {
+                  "g": "deep"
+                }
+              },
+              "top": "t",
+              "dotted.key": "x"
+            },
+            "key": "a.e"
+          },
+          "expect": {
+            "found": true,
+            "value": [
+              1
+            ]
+          }
+        },
+        {
+          "name": "a missing top-level key",
+          "input": {
+            "obj": {
+              "a": {
+                "b": "",
+                "c": 0,
+                "d": null,
+                "e": [
+                  1
+                ],
+                "f": {
+                  "g": "deep"
+                }
+              },
+              "top": "t",
+              "dotted.key": "x"
+            },
+            "key": "nope"
+          },
+          "expect": {
+            "found": false
+          }
+        },
+        {
+          "name": "a missing nested key",
+          "input": {
+            "obj": {
+              "a": {
+                "b": "",
+                "c": 0,
+                "d": null,
+                "e": [
+                  1
+                ],
+                "f": {
+                  "g": "deep"
+                }
+              },
+              "top": "t",
+              "dotted.key": "x"
+            },
+            "key": "a.nope"
+          },
+          "expect": {
+            "found": false
+          }
+        },
+        {
+          "name": "walking through a string",
+          "input": {
+            "obj": {
+              "a": {
+                "b": "",
+                "c": 0,
+                "d": null,
+                "e": [
+                  1
+                ],
+                "f": {
+                  "g": "deep"
+                }
+              },
+              "top": "t",
+              "dotted.key": "x"
+            },
+            "key": "top.x"
+          },
+          "expect": {
+            "found": false
+          }
+        },
+        {
+          "name": "walking through null",
+          "input": {
+            "obj": {
+              "a": {
+                "b": "",
+                "c": 0,
+                "d": null,
+                "e": [
+                  1
+                ],
+                "f": {
+                  "g": "deep"
+                }
+              },
+              "top": "t",
+              "dotted.key": "x"
+            },
+            "key": "a.d.x"
+          },
+          "expect": {
+            "found": false
+          }
+        },
+        {
+          "name": "a key that contains a dot cannot be reached",
+          "input": {
+            "obj": {
+              "a": {
+                "b": "",
+                "c": 0,
+                "d": null,
+                "e": [
+                  1
+                ],
+                "f": {
+                  "g": "deep"
+                }
+              },
+              "top": "t",
+              "dotted.key": "x"
+            },
+            "key": "dotted.key"
+          },
+          "expect": {
+            "found": false
+          }
+        },
+        {
+          "name": "an empty key",
+          "input": {
+            "obj": {
+              "a": {
+                "b": "",
+                "c": 0,
+                "d": null,
+                "e": [
+                  1
+                ],
+                "f": {
+                  "g": "deep"
+                }
+              },
+              "top": "t",
+              "dotted.key": "x"
+            },
+            "key": ""
+          },
+          "expect": {
+            "found": false
+          }
+        },
+        {
+          "name": "a list is not walked into",
+          "input": {
+            "obj": {
+              "a": {
+                "b": "",
+                "c": 0,
+                "d": null,
+                "e": [
+                  1
+                ],
+                "f": {
+                  "g": "deep"
+                }
+              },
+              "top": "t",
+              "dotted.key": "x"
+            },
+            "key": "a.e.0"
+          },
+          "expect": {
+            "found": false
+          }
+        },
+        {
+          "name": "an inherited name is not a key",
+          "input": {
+            "obj": {
+              "a": {
+                "b": "",
+                "c": 0,
+                "d": null,
+                "e": [
+                  1
+                ],
+                "f": {
+                  "g": "deep"
+                }
+              },
+              "top": "t",
+              "dotted.key": "x"
+            },
+            "key": "a.constructor"
+          },
+          "expect": {
+            "found": false
+          }
+        }
+      ]
+    },
+    "yaml": {
+      "description": "Read `input.yaml`, written to a file, as a config mapping (TypeScript `readMappingFile`, Rust `file::read_mapping`). `expect.mapping` is the mapping read. An error is `invalid_yaml` when the text does not parse or has a key that is not a scalar, and `not_a_mapping` when it parses to something other than a mapping.",
+      "cases": [
+        {
+          "name": "an empty file is an empty mapping",
+          "input": {
+            "yaml": ""
+          },
+          "expect": {
+            "mapping": {}
+          }
+        },
+        {
+          "name": "whitespace and comments only is an empty mapping",
+          "input": {
+            "yaml": "  \n# nothing set yet\n"
+          },
+          "expect": {
+            "mapping": {}
+          }
+        },
+        {
+          "name": "a bare null is an empty mapping",
+          "input": {
+            "yaml": "~\n"
+          },
+          "expect": {
+            "mapping": {}
+          }
+        },
+        {
+          "name": "booleans, null, numbers and strings",
+          "input": {
+            "yaml": "a: true\nb: false\nc: null\nd: ~\ne: 1\nf: 1.5\ng: '1'\nh: text\ni: -3\n"
+          },
+          "expect": {
+            "mapping": {
+              "a": true,
+              "b": false,
+              "c": null,
+              "d": null,
+              "e": 1,
+              "f": 1.5,
+              "g": "1",
+              "h": "text",
+              "i": -3
+            }
+          }
+        },
+        {
+          "name": "yes, no, on and off are strings",
+          "input": {
+            "yaml": "a: yes\nb: no\nc: on\nd: off\ne: Yes\nf: NO\ng: On\nh: OFF\n"
+          },
+          "expect": {
+            "mapping": {
+              "a": "yes",
+              "b": "no",
+              "c": "on",
+              "d": "off",
+              "e": "Yes",
+              "f": "NO",
+              "g": "On",
+              "h": "OFF"
+            }
+          }
+        },
+        {
+          "name": "infinity and not-a-number read as their text",
+          "input": {
+            "yaml": "a: .inf\nb: -.inf\nc: .nan\n"
+          },
+          "expect": {
+            "mapping": {
+              "a": ".inf",
+              "b": "-.inf",
+              "c": ".nan"
+            }
+          }
+        },
+        {
+          "name": "a scalar key is a string",
+          "input": {
+            "yaml": "1: a\ntrue: b\n2.5: c\n"
+          },
+          "expect": {
+            "mapping": {
+              "1": "a",
+              "true": "b",
+              "2.5": "c"
+            }
+          }
+        },
+        {
+          "name": "<< is an ordinary key",
+          "input": {
+            "yaml": "base: &b\n  x: 1\nderived:\n  <<: *b\n  y: 2\n"
+          },
+          "expect": {
+            "mapping": {
+              "base": {
+                "x": 1
+              },
+              "derived": {
+                "<<": {
+                  "x": 1
+                },
+                "y": 2
+              }
+            }
+          }
+        },
+        {
+          "name": "an alias to a scalar is that scalar",
+          "input": {
+            "yaml": "a: &x hello\nb: *x\n"
+          },
+          "expect": {
+            "mapping": {
+              "a": "hello",
+              "b": "hello"
+            }
+          }
+        },
+        {
+          "name": "a tag is dropped and the value kept",
+          "input": {
+            "yaml": "a: !!str 5\nb: !!int \"7\"\n"
+          },
+          "expect": {
+            "mapping": {
+              "a": "5",
+              "b": 7
+            }
+          }
+        },
+        {
+          "name": "nested mappings and sequences",
+          "input": {
+            "yaml": "a:\n  b:\n    - 1\n    - two\n    - c: 3\n"
+          },
+          "expect": {
+            "mapping": {
+              "a": {
+                "b": [
+                  1,
+                  "two",
+                  {
+                    "c": 3
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "name": "a quoted number stays a string",
+          "input": {
+            "yaml": "a: '007'\nb: \"1e3\"\n"
+          },
+          "expect": {
+            "mapping": {
+              "a": "007",
+              "b": "1e3"
+            }
+          }
+        },
+        {
+          "name": "octal and hex integers",
+          "input": {
+            "yaml": "a: 0o17\nb: 0x1F\n"
+          },
+          "expect": {
+            "mapping": {
+              "a": 15,
+              "b": 31
+            }
+          }
+        },
+        {
+          "name": "a duplicate key is an error",
+          "input": {
+            "yaml": "a: 1\na: 2\n"
+          },
+          "error": {
+            "kind": "invalid_yaml"
+          }
+        },
+        {
+          "name": "a list key is an error",
+          "input": {
+            "yaml": "? [a]\n: x\n"
+          },
+          "error": {
+            "kind": "invalid_yaml"
+          }
+        },
+        {
+          "name": "a mapping key is an error",
+          "input": {
+            "yaml": "? {a: 1}\n: x\n"
+          },
+          "error": {
+            "kind": "invalid_yaml"
+          }
+        },
+        {
+          "name": "a null key is an error",
+          "input": {
+            "yaml": "~: x\n"
+          },
+          "error": {
+            "kind": "invalid_yaml"
+          }
+        },
+        {
+          "name": "a list at the top level is an error",
+          "input": {
+            "yaml": "- a\n- b\n"
+          },
+          "error": {
+            "kind": "not_a_mapping"
+          }
+        },
+        {
+          "name": "a scalar at the top level is an error",
+          "input": {
+            "yaml": "just text\n"
+          },
+          "error": {
+            "kind": "not_a_mapping"
+          }
+        },
+        {
+          "name": "an unclosed flow sequence is an error",
+          "input": {
+            "yaml": "a: [1, 2\n"
+          },
+          "error": {
+            "kind": "invalid_yaml"
+          }
+        }
+      ]
+    },
+    "resolve_config_path": {
+      "description": "Resolve a config value against `base_dir`, with `~` expanding to `home`. `expect.path` is the result. POSIX paths, so the cases run on Unix only.",
+      "cases": [
+        {
+          "name": "a bare word passes through",
+          "input": {
+            "value": "dev",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "dev"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a URL passes through",
+          "input": {
+            "value": "https://example.com/x",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "https://example.com/x"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a git URL passes through",
+          "input": {
+            "value": "ssh://git@host/x.git",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "ssh://git@host/x.git"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "an absolute path stays",
+          "input": {
+            "value": "/a/b",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/a/b"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a relative path joins the base",
+          "input": {
+            "value": "sub/x",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/base/sub/x"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a dot path joins the base",
+          "input": {
+            "value": "./x",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/base/x"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a dot-dot path walks up from the base",
+          "input": {
+            "value": "../x",
+            "base_dir": "/base/proj",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/base/x"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "dot-dot inside a path is resolved",
+          "input": {
+            "value": "a/../b",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/base/b"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a dot file counts as a path",
+          "input": {
+            "value": ".config/x",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/base/.config/x"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "tilde alone is the home",
+          "input": {
+            "value": "~",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/home/me"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "tilde slash is under the home",
+          "input": {
+            "value": "~/x",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/home/me/x"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "tilde slash with a nested path",
+          "input": {
+            "value": "~/a/b",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/home/me/a/b"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "tilde user slash is not expanded",
+          "input": {
+            "value": "~user/x",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/base/~user/x"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "tilde user alone is not expanded",
+          "input": {
+            "value": "~user",
+            "base_dir": "/base",
+            "home": "/home/me"
+          },
+          "expect": {
+            "path": "/base/~user"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "an empty home leaves tilde slash unexpanded",
+          "input": {
+            "value": "~/x",
+            "base_dir": "/base",
+            "home": ""
+          },
+          "expect": {
+            "path": "/base/~/x"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "an empty home leaves tilde alone unexpanded",
+          "input": {
+            "value": "~",
+            "base_dir": "/base",
+            "home": ""
+          },
+          "expect": {
+            "path": "/base/~"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a relative home is used as given",
+          "input": {
+            "value": "~/x",
+            "base_dir": "/base",
+            "home": "rel"
+          },
+          "expect": {
+            "path": "/base/rel/x"
+          },
+          "platforms": [
+            "unix"
+          ]
+        }
+      ]
+    },
+    "substitute_path_names": {
+      "description": "Replace each `{name}` in `value` with its directory from `names`. `setting` names the setting in the error text, and `define_hint`, when given, takes the place of \"define it under paths:\" there. `expect.text` is the result. An unknown name is the error `unknown_path_name`, whose message every implementation gives word for word. POSIX paths, so the cases run on Unix only.",
+      "cases": [
+        {
+          "name": "no names in the value",
+          "input": {
+            "value": "/plain/path",
+            "names": {
+              "dev": "/home/me/dev",
+              "work": "/work"
+            },
+            "setting": "repos:"
+          },
+          "expect": {
+            "text": "/plain/path"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "one name",
+          "input": {
+            "value": "{dev}/checkouts",
+            "names": {
+              "dev": "/home/me/dev",
+              "work": "/work"
+            },
+            "setting": "repos:"
+          },
+          "expect": {
+            "text": "/home/me/dev/checkouts"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "two names",
+          "input": {
+            "value": "{dev}:{work}/x",
+            "names": {
+              "dev": "/home/me/dev",
+              "work": "/work"
+            },
+            "setting": "repos:"
+          },
+          "expect": {
+            "text": "/home/me/dev:/work/x"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "the same name twice",
+          "input": {
+            "value": "{dev}/{dev}",
+            "names": {
+              "dev": "/home/me/dev",
+              "work": "/work"
+            },
+            "setting": "repos:"
+          },
+          "expect": {
+            "text": "/home/me/dev//home/me/dev"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a name in the middle",
+          "input": {
+            "value": "a/{work}/b",
+            "names": {
+              "dev": "/home/me/dev",
+              "work": "/work"
+            },
+            "setting": "repos:"
+          },
+          "expect": {
+            "text": "a//work/b"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "an unknown name lists the available ones",
+          "input": {
+            "value": "{nope}/x",
+            "names": {
+              "dev": "/home/me/dev",
+              "work": "/work"
+            },
+            "setting": "repos:"
+          },
+          "error": {
+            "kind": "unknown_path_name",
+            "message": "unknown path name '{nope}' in repos: '{nope}/x'; define it under paths: (available: {dev}, {work})"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "an unknown name after a known one",
+          "input": {
+            "value": "{dev}/{nope}",
+            "names": {
+              "dev": "/home/me/dev",
+              "work": "/work"
+            },
+            "setting": "checkout.layout"
+          },
+          "error": {
+            "kind": "unknown_path_name",
+            "message": "unknown path name '{nope}' in checkout.layout '{dev}/{nope}'; define it under paths: (available: {dev}, {work})"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "an unknown name with no names defined",
+          "input": {
+            "value": "{nope}",
+            "names": {},
+            "setting": "repos:"
+          },
+          "error": {
+            "kind": "unknown_path_name",
+            "message": "unknown path name '{nope}' in repos: '{nope}'; define it under paths:"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "an unknown name with a define hint",
+          "input": {
+            "value": "{nope}",
+            "names": {
+              "dev": "/home/me/dev",
+              "work": "/work"
+            },
+            "setting": "repos:",
+            "define_hint": "add it to mytool.yaml"
+          },
+          "error": {
+            "kind": "unknown_path_name",
+            "message": "unknown path name '{nope}' in repos: '{nope}'; add it to mytool.yaml (available: {dev}, {work})"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a known name with a define hint",
+          "input": {
+            "value": "{dev}",
+            "names": {
+              "dev": "/home/me/dev",
+              "work": "/work"
+            },
+            "setting": "repos:",
+            "define_hint": "add it to mytool.yaml"
+          },
+          "expect": {
+            "text": "/home/me/dev"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "an empty name is unknown",
+          "input": {
+            "value": "{}/x",
+            "names": {
+              "dev": "/home/me/dev",
+              "work": "/work"
+            },
+            "setting": "repos:"
+          },
+          "error": {
+            "kind": "unknown_path_name",
+            "message": "unknown path name '{}' in repos: '{}/x'; define it under paths: (available: {dev}, {work})"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a brace with no closing brace is kept as written",
+          "input": {
+            "value": "{dev}/{x",
+            "names": {
+              "dev": "/home/me/dev",
+              "work": "/work"
+            },
+            "setting": "repos:"
+          },
+          "expect": {
+            "text": "/home/me/dev/{x"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a closing brace with no opening brace is kept as written",
+          "input": {
+            "value": "a}/{dev}",
+            "names": {
+              "dev": "/home/me/dev",
+              "work": "/work"
+            },
+            "setting": "repos:"
+          },
+          "expect": {
+            "text": "a}//home/me/dev"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a brace before a name is kept as written",
+          "input": {
+            "value": "{a{dev}",
+            "names": {
+              "dev": "/home/me/dev",
+              "work": "/work"
+            },
+            "setting": "repos:"
+          },
+          "expect": {
+            "text": "{a/home/me/dev"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a doubled brace around a name is kept as written",
+          "input": {
+            "value": "{{dev}}",
+            "names": {
+              "dev": "/home/me/dev",
+              "work": "/work"
+            },
+            "setting": "repos:"
+          },
+          "expect": {
+            "text": "{/home/me/dev}"
+          },
+          "platforms": [
+            "unix"
+          ]
+        }
+      ]
+    },
+    "needs": {
+      "description": "The message for an unmet need. `tool`, `project_file`, `machine_path`, the optional `scaffold_hint` and `keys` (each a key, its scope, `project`, `machine` or `both`, and its description) describe the tool; `config` and the optional `unless_input` the need; `command` the words of the command that has it. The project root is a fresh directory, holding an empty project file when `project_file_exists` is true. `expect.message` is the message, with `{project_root}` standing for that directory. POSIX paths, so the cases run on Unix only.",
+      "cases": [
+        {
+          "name": "a project-only key, no project file, no command",
+          "input": {
+            "tool": "mytool",
+            "project_file": "mytool.yaml",
+            "machine_path": "/cfg/mytool/config.yaml",
+            "scaffold_hint": "`mytool config scaffold` shows the full shape",
+            "keys": [
+              {
+                "key": "authority",
+                "scope": "project",
+                "description": "The remote server the tool talks to."
+              },
+              {
+                "key": "repos",
+                "scope": "machine",
+                "description": "Directories that hold checkouts."
+              },
+              {
+                "key": "layout",
+                "scope": "both",
+                "description": "Where a checkout lands."
+              }
+            ],
+            "config": "authority",
+            "command": [],
+            "project_file_exists": false
+          },
+          "expect": {
+            "message": "this command needs `authority`, and it is not set. The remote server the tool talks to. Set it in an mytool.yaml at the project root (none above {project_root}); `mytool config scaffold` shows the full shape."
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a project-only key, project file present",
+          "input": {
+            "tool": "mytool",
+            "project_file": "mytool.yaml",
+            "machine_path": "/cfg/mytool/config.yaml",
+            "scaffold_hint": "`mytool config scaffold` shows the full shape",
+            "keys": [
+              {
+                "key": "authority",
+                "scope": "project",
+                "description": "The remote server the tool talks to."
+              },
+              {
+                "key": "repos",
+                "scope": "machine",
+                "description": "Directories that hold checkouts."
+              },
+              {
+                "key": "layout",
+                "scope": "both",
+                "description": "Where a checkout lands."
+              }
+            ],
+            "config": "authority",
+            "command": [],
+            "project_file_exists": true
+          },
+          "expect": {
+            "message": "this command needs `authority`, and it is not set. The remote server the tool talks to. Set it in {project_root}/mytool.yaml; `mytool config scaffold` shows the full shape."
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a machine-only key",
+          "input": {
+            "tool": "mytool",
+            "project_file": "mytool.yaml",
+            "machine_path": "/cfg/mytool/config.yaml",
+            "scaffold_hint": "`mytool config scaffold` shows the full shape",
+            "keys": [
+              {
+                "key": "authority",
+                "scope": "project",
+                "description": "The remote server the tool talks to."
+              },
+              {
+                "key": "repos",
+                "scope": "machine",
+                "description": "Directories that hold checkouts."
+              },
+              {
+                "key": "layout",
+                "scope": "both",
+                "description": "Where a checkout lands."
+              }
+            ],
+            "config": "repos",
+            "command": [],
+            "project_file_exists": false
+          },
+          "expect": {
+            "message": "this command needs `repos`, and it is not set. Directories that hold checkouts. Set it in the machine config (/cfg/mytool/config.yaml); `mytool config scaffold` shows the full shape."
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a key in both files, no project file: the machine file leads",
+          "input": {
+            "tool": "mytool",
+            "project_file": "mytool.yaml",
+            "machine_path": "/cfg/mytool/config.yaml",
+            "scaffold_hint": "`mytool config scaffold` shows the full shape",
+            "keys": [
+              {
+                "key": "authority",
+                "scope": "project",
+                "description": "The remote server the tool talks to."
+              },
+              {
+                "key": "repos",
+                "scope": "machine",
+                "description": "Directories that hold checkouts."
+              },
+              {
+                "key": "layout",
+                "scope": "both",
+                "description": "Where a checkout lands."
+              }
+            ],
+            "config": "layout",
+            "command": [],
+            "project_file_exists": false
+          },
+          "expect": {
+            "message": "this command needs `layout`, and it is not set. Where a checkout lands. Set it in the machine config (/cfg/mytool/config.yaml) or an mytool.yaml at the project root (none above {project_root}); `mytool config scaffold` shows the full shape."
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a key in both files, project file present: the project file leads",
+          "input": {
+            "tool": "mytool",
+            "project_file": "mytool.yaml",
+            "machine_path": "/cfg/mytool/config.yaml",
+            "scaffold_hint": "`mytool config scaffold` shows the full shape",
+            "keys": [
+              {
+                "key": "authority",
+                "scope": "project",
+                "description": "The remote server the tool talks to."
+              },
+              {
+                "key": "repos",
+                "scope": "machine",
+                "description": "Directories that hold checkouts."
+              },
+              {
+                "key": "layout",
+                "scope": "both",
+                "description": "Where a checkout lands."
+              }
+            ],
+            "config": "layout",
+            "command": [],
+            "project_file_exists": true
+          },
+          "expect": {
+            "message": "this command needs `layout`, and it is not set. Where a checkout lands. Set it in {project_root}/mytool.yaml or the machine config (/cfg/mytool/config.yaml); `mytool config scaffold` shows the full shape."
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a command is named",
+          "input": {
+            "tool": "mytool",
+            "project_file": "mytool.yaml",
+            "machine_path": "/cfg/mytool/config.yaml",
+            "scaffold_hint": "`mytool config scaffold` shows the full shape",
+            "keys": [
+              {
+                "key": "authority",
+                "scope": "project",
+                "description": "The remote server the tool talks to."
+              },
+              {
+                "key": "repos",
+                "scope": "machine",
+                "description": "Directories that hold checkouts."
+              },
+              {
+                "key": "layout",
+                "scope": "both",
+                "description": "Where a checkout lands."
+              }
+            ],
+            "config": "repos",
+            "command": [
+              "push"
+            ],
+            "project_file_exists": false
+          },
+          "expect": {
+            "message": "`mytool push` needs `repos`, and it is not set. Directories that hold checkouts. Set it in the machine config (/cfg/mytool/config.yaml); `mytool config scaffold` shows the full shape."
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "two command words",
+          "input": {
+            "tool": "mytool",
+            "project_file": "mytool.yaml",
+            "machine_path": "/cfg/mytool/config.yaml",
+            "scaffold_hint": "`mytool config scaffold` shows the full shape",
+            "keys": [
+              {
+                "key": "authority",
+                "scope": "project",
+                "description": "The remote server the tool talks to."
+              },
+              {
+                "key": "repos",
+                "scope": "machine",
+                "description": "Directories that hold checkouts."
+              },
+              {
+                "key": "layout",
+                "scope": "both",
+                "description": "Where a checkout lands."
+              }
+            ],
+            "config": "repos",
+            "command": [
+              "upload",
+              "run"
+            ],
+            "project_file_exists": false
+          },
+          "expect": {
+            "message": "`mytool upload run` needs `repos`, and it is not set. Directories that hold checkouts. Set it in the machine config (/cfg/mytool/config.yaml); `mytool config scaffold` shows the full shape."
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a stand-in input is named as a flag",
+          "input": {
+            "tool": "mytool",
+            "project_file": "mytool.yaml",
+            "machine_path": "/cfg/mytool/config.yaml",
+            "scaffold_hint": "`mytool config scaffold` shows the full shape",
+            "keys": [
+              {
+                "key": "authority",
+                "scope": "project",
+                "description": "The remote server the tool talks to."
+              },
+              {
+                "key": "repos",
+                "scope": "machine",
+                "description": "Directories that hold checkouts."
+              },
+              {
+                "key": "layout",
+                "scope": "both",
+                "description": "Where a checkout lands."
+              }
+            ],
+            "config": "authority",
+            "unless_input": "authority",
+            "command": [],
+            "project_file_exists": false
+          },
+          "expect": {
+            "message": "this command needs `authority`, and it is not set (or pass --authority). The remote server the tool talks to. Set it in an mytool.yaml at the project root (none above {project_root}); `mytool config scaffold` shows the full shape."
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a camelCase stand-in input becomes a kebab-case flag",
+          "input": {
+            "tool": "mytool",
+            "project_file": "mytool.yaml",
+            "machine_path": "/cfg/mytool/config.yaml",
+            "scaffold_hint": "`mytool config scaffold` shows the full shape",
+            "keys": [
+              {
+                "key": "authority",
+                "scope": "project",
+                "description": "The remote server the tool talks to."
+              },
+              {
+                "key": "repos",
+                "scope": "machine",
+                "description": "Directories that hold checkouts."
+              },
+              {
+                "key": "layout",
+                "scope": "both",
+                "description": "Where a checkout lands."
+              }
+            ],
+            "config": "repos",
+            "unless_input": "repoDir",
+            "command": [],
+            "project_file_exists": false
+          },
+          "expect": {
+            "message": "this command needs `repos`, and it is not set (or pass --repo-dir). Directories that hold checkouts. Set it in the machine config (/cfg/mytool/config.yaml); `mytool config scaffold` shows the full shape."
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "without a hint the message ends at the file",
+          "input": {
+            "tool": "mytool",
+            "project_file": "mytool.yaml",
+            "machine_path": "/cfg/mytool/config.yaml",
+            "keys": [
+              {
+                "key": "authority",
+                "scope": "project",
+                "description": "The remote server the tool talks to."
+              },
+              {
+                "key": "repos",
+                "scope": "machine",
+                "description": "Directories that hold checkouts."
+              },
+              {
+                "key": "layout",
+                "scope": "both",
+                "description": "Where a checkout lands."
+              }
+            ],
+            "config": "repos",
+            "command": [],
+            "project_file_exists": false
+          },
+          "expect": {
+            "message": "this command needs `repos`, and it is not set. Directories that hold checkouts. Set it in the machine config (/cfg/mytool/config.yaml)."
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a key the table does not know has no description",
+          "input": {
+            "tool": "mytool",
+            "project_file": "mytool.yaml",
+            "machine_path": "/cfg/mytool/config.yaml",
+            "keys": [
+              {
+                "key": "authority",
+                "scope": "project",
+                "description": "The remote server the tool talks to."
+              },
+              {
+                "key": "repos",
+                "scope": "machine",
+                "description": "Directories that hold checkouts."
+              },
+              {
+                "key": "layout",
+                "scope": "both",
+                "description": "Where a checkout lands."
+              }
+            ],
+            "config": "other",
+            "command": [
+              "push"
+            ],
+            "project_file_exists": false
+          },
+          "expect": {
+            "message": "`mytool push` needs `other`, and it is not set. Set it in an mytool.yaml at the project root (none above {project_root})."
+          },
+          "platforms": [
+            "unix"
+          ]
+        }
+      ]
+    }
+  }
+}
