@@ -7,6 +7,10 @@ case against the public API. Cases marked `"pending": true` register as
 `test.todo`; the rest run and assert. The `expect` values state the intended
 semantics.
 
+The Rust peer, `glob-intersect` (`packages/rust/glob-intersect`), reads these
+files in place from its `tests/conformance.rs`, so a change here must pass
+both test suites.
+
 ## File schema
 
 A case file is a single JSON object:
