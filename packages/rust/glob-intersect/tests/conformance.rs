@@ -490,7 +490,10 @@ fn conform(fs: bool) {
     names.sort_unstable();
     let mut known = SECTIONS.to_vec();
     known.sort_unstable();
-    assert_eq!(names, known, "the suite's sections are not the ones this crate runs");
+    assert_eq!(
+        names, known,
+        "the suite's sections are not the ones this crate runs"
+    );
 
     let mut failures: Vec<String> = Vec::new();
     let mut not_run: Vec<String> = Vec::new();
