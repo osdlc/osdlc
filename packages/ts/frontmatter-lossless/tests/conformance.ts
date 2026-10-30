@@ -11,8 +11,8 @@
  * The suite's offsets are UTF-8 bytes. This package's are UTF-16 string
  * indices, so the runner converts them before it compares.
  *
- * Every section and case runs. A section, case key or input key the runner
- * does not know fails it. On top of the stored values it checks what the
+ * Every section and case runs. A missing section, or a section, case key or
+ * input key the runner does not know, fails it. On top of the stored values it checks what the
  * values cannot say on their own: a strict split composes back to its source,
  * the offsets index the source, an unterminated note has no block, and
  * composed text splits back to what went in.
@@ -48,7 +48,7 @@ export function readSuite(): Suite {
   return JSON.parse(readFileSync(url, 'utf8')) as Suite
 }
 
-/** The sections this package runs. Any other fails the suite. */
+/** The sections this package runs. A missing or extra one fails the suite. */
 export const SECTIONS = ['split', 'split_lenient', 'compose_edit', 'new_shape']
 
 /** The keys a case may have. */
@@ -169,8 +169,8 @@ export function runSuite(lib: FrontmatterLossless): void {
       expect(all.length).toBeGreaterThan(0)
     })
 
-    test('names no section this package does not run', () => {
-      expect(Object.keys(suite.sections).filter((s) => !SECTIONS.includes(s))).toEqual([])
+    test('has exactly the sections this package runs', () => {
+      expect(Object.keys(suite.sections).sort()).toEqual([...SECTIONS].sort())
     })
 
     for (const [section, body] of Object.entries(suite.sections)) {
