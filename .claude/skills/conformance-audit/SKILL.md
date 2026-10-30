@@ -82,7 +82,7 @@ candidate family when:
   its counterpart.
 
 Leave out bindings: a `-wasm` crate, and a TypeScript package built from a
-crate (`@osdlc/yaml-splice`, `@osdlc/tradecraft-wasm`). Report each
+crate (`@osdlc/yaml-splice`). Report each
 candidate that `families.json` does not list, with the evidence.
 
 ## 6. Source that outran its suite

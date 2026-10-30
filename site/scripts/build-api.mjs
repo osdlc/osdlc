@@ -3,6 +3,7 @@
 // and TypeDoc for the TypeScript packages at api/ts/<name>/. Needs cargo on the
 // PATH. Slow, so it is its own step rather than part of every sync.
 import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { cp, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -44,6 +45,8 @@ async function typedoc() {
   const tsconfig = join(scratch, 'tsconfig.json')
   for (const dir of await readdir(join(packages, 'ts'))) {
     const root = join(packages, 'ts', dir)
+    // A folder with no package.json only points to where its package moved.
+    if (!existsSync(join(root, 'package.json'))) continue
     const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
     if (pkg.private) continue
     const entries = await entryPoints(root, pkg.exports ?? {})
