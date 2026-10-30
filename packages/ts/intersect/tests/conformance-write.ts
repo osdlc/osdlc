@@ -12,7 +12,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { SUITE_PATH, readSuite, run } from './conformance.ts'
+import { CASE_KEYS, SUITE_PATH, readSuite, run } from './conformance.ts'
 import type { Case } from './conformance.ts'
 
 const suite = readSuite()
@@ -24,6 +24,11 @@ suite.referenceVersion = pkg.version
 for (const [name, section] of Object.entries(suite.sections)) {
   const cases: Case[] = []
   for (const c of section.cases) {
+    // A key outside the known ones is a typo; rewriting would drop it unseen.
+    const unknown = Object.keys(c).filter((k) => !CASE_KEYS.includes(k))
+    if (unknown.length > 0) {
+      throw new Error(`${name}: ${c.name}: unknown case keys ${unknown.join(', ')}`)
+    }
     const { platforms, skip } = c
     cases.push({
       name: c.name,

@@ -77,7 +77,7 @@ export const SECTIONS: Record<string, Shape> = {
 }
 
 /** Throws unless `input` has exactly the shape its section takes. */
-function checkInput(section: string, input: Record<string, unknown>): void {
+export function checkInput(section: string, input: Record<string, unknown>): void {
   const shape = SECTIONS[section]
   if (shape === undefined) {
     throw new Error(`the suite has a section this implementation does not know: ${section}`)
