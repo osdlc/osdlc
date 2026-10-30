@@ -1,4 +1,12 @@
 {
+  "config-layers": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/config-layers conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/config-layers", "name": "@osdlc/config-layers" },
+      { "language": "rust", "dir": "packages/rust/config-layers", "name": "config-layers" }
+    ]
+  },
   "frontmatter-lossless": {
     "reference": "rust",
     "generator": "cargo run -p frontmatter-lossless --example conformance-write",
