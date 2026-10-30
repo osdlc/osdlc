@@ -36,6 +36,10 @@
 # macOS binaries are not signed or notarized yet.
 #
 # Every action is pinned to a commit SHA; the comment names its release.
+#
+# HELD: skillwright releases now come from https://github.com/osdlc/skillwright.
+# The first step of the `plan` job fails, so no other job runs and a stray
+# `skillwright/v*` tag here cannot publish to npm or Homebrew.
 name: skillwright-release
 
 on:
@@ -74,6 +78,11 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       published: ${{ steps.state.outputs.published }}
     steps:
+      - name: Refuse to release from this repository
+        run: |
+          echo "::error::skillwright releases moved to https://github.com/osdlc/skillwright. This workflow no longer publishes."
+          exit 1
+
       - name: Refuse a manual run from a ref other than main
         if: github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main'
         run: |

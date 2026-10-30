@@ -1,5 +1,9 @@
 # Releasing skillwright
 
+> Releases moved to <https://github.com/osdlc/skillwright>. The crate here is
+> held (`publish = false`) and `skillwright-release.yml` refuses to run. This
+> file describes the old flow.
+
 How a `skillwright` version gets from a merged change to every install
 channel. It names settings and secrets, never their values.
 
