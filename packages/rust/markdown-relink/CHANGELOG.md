@@ -7,6 +7,14 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.8](https://github.com/osdlc/osdlc/compare/markdown-relink/v0.1.7...markdown-relink/v0.1.8) - 2026-10-30
+
+### Changed
+
+- Depend on slug-collate 0.2. slug-collate 0.1.2 was yanked, and this
+  crate's earlier releases require it. Only `compare_paths` is used, and its
+  order is unchanged, so behaviour is the same.
+
 ## [0.1.7](https://github.com/osdlc/osdlc/compare/markdown-relink/v0.1.6...markdown-relink/v0.1.7) - 2026-10-29
 
 ### Other
