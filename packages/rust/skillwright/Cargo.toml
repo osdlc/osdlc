@@ -1,11 +1,7 @@
 [package]
 name = "skillwright"
-version = "0.3.7"
-# Held back from crates.io: a new crate's first publish needs the crates.io
-# token, and one release-plz run cannot mix the token with trusted
-# publishing. Waits for the run that publishes tradecraft-core by trusted
-# publishing. Then remove this line and the entry in
-# packages/rust/release-plz.toml in a pull request of their own.
+version = "0.3.8"
+# Held: releases now come from https://github.com/osdlc/skillwright.
 publish = false
 edition.workspace = true
 rust-version.workspace = true

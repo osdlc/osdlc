@@ -99,7 +99,10 @@ function layout(out: string): Layout {
 interface RunOptions {
   cwd?: string
   env?: Record<string, string>
-  /** Inherit stdout and stderr, for long builds. The result then has no stdout. */
+  /**
+   * Inherit stdin, stdout and stderr, for long builds and for npm's browser login
+   * for 2FA. The result then has no stdout.
+   */
   stream?: boolean
 }
 
@@ -118,7 +121,7 @@ function run(
     cwd,
     env: env ? { ...process.env, ...env } : process.env,
     encoding: 'utf8',
-    stdio: ['ignore', stream ? 'inherit' : 'pipe', stream ? 'inherit' : 'pipe'],
+    stdio: [stream ? 'inherit' : 'ignore', stream ? 'inherit' : 'pipe', stream ? 'inherit' : 'pipe'],
     maxBuffer: 64 * 1024 * 1024,
   })
   if (r.error) throw new Error(`${cmd}: ${r.error.message}`)

@@ -9,7 +9,7 @@
 [workspace]
 # resolver 3 picks dependency versions that support `rust-version` (the MSRV).
 resolver = "3"
-members = ["agent-adapt", "config-layers", "etag-write", "frontmatter-lossless", "glob-intersect", "markdown-contract", "markdown-link", "markdown-relink", "markdown-vault-fs", "path-guard", "skillwright", "slug-collate", "tiered-dirs", "tradecraft-core", "tradecraft-typegen", "tradecraft-wasm", "typed-git", "yaml-splice", "yaml-splice-wasm"]
+members = ["agent-adapt", "config-layers", "etag-write", "frontmatter-lossless", "glob-intersect", "markdown-contract", "markdown-link", "markdown-relink", "markdown-vault-fs", "path-guard", "skillwright", "slug-collate", "tiered-dirs", "tradecraft", "tradecraft-core", "tradecraft-typegen", "tradecraft-wasm", "typed-git", "yaml-splice", "yaml-splice-wasm"]
 
 [workspace.package]
 edition = "2024"
@@ -66,17 +66,17 @@ wasm-bindgen = "=0.2.126"
 
 # Member crates, also named by version so a published manifest points at
 # crates.io. release-plz publishes a crate before the crates that depend on it.
-agent-adapt = { path = "agent-adapt", version = "0.19.1" }
+agent-adapt = { path = "agent-adapt", version = "0.19.2" }
 config-layers = { path = "config-layers", version = "0.8.0" }
 etag-write = { path = "etag-write", version = "0.2.4" }
 frontmatter-lossless = { path = "frontmatter-lossless", version = "1.1.1" }
-markdown-link = { path = "markdown-link", version = "0.5.1" }
-markdown-relink = { path = "markdown-relink", version = "0.1.6" }
+markdown-link = { path = "markdown-link", version = "0.5.2" }
+markdown-relink = { path = "markdown-relink", version = "0.1.7" }
 markdown-vault-fs = { path = "markdown-vault-fs", version = "0.3.1" }
 path-guard = { path = "path-guard", version = "0.3.2" }
 slug-collate = { path = "slug-collate", version = "0.1.2" }
 tiered-dirs = { path = "tiered-dirs", version = "0.3" }
-tradecraft-core = { path = "tradecraft-core", version = "0.40.0" }
+tradecraft-core = { path = "tradecraft-core", version = "0.40.1" }
 typed-git = { path = "typed-git", version = "0.4" }
 yaml-splice = { path = "yaml-splice", version = "0.3.3" }
 

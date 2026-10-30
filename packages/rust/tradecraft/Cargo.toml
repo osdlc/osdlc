@@ -1,0 +1,15 @@
+[package]
+name = "tradecraft"
+version = "0.4.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Renamed to skillwright. This release only points there: install `skillwright` instead."
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["skillwright"]
+categories = ["command-line-utilities"]
+include = ["src/**/*.rs", "examples/**/*.rs", "README.md", "CHANGELOG.md", "LICENSE-MIT", "LICENSE-APACHE"]
+
+[lints]
+workspace = true

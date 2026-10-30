@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.8](https://github.com/osdlc/osdlc/compare/skillwright/v0.3.7...skillwright/v0.3.8) - 2026-10-29
+
+### Other
+
+- updated the following local packages: markdown-relink, tradecraft-core
+
 ## [0.3.7] - Unreleased
 
 The first release under the name `skillwright`. It is the `tradecraft` 0.3.7

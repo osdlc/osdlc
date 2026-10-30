@@ -370,8 +370,9 @@ jobs:
   # The dry run publishes nothing, so a crate that needs the new version of
   # another crate in the same run would not find it on crates.io. The real
   # release publishes that crate first. So the dry run gets a cargo
-  # `[patch.crates-io]` that points each unpublished crate at its local
-  # directory; see scripts/crates-io-unpublished-patch.ts.
+  # `[patch.crates-io]` that points each unpublished crate, and each
+  # workspace crate it reaches by path, at its local directory; see
+  # scripts/crates-io-unpublished-patch.ts.
   release-plz:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
