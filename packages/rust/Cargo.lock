@@ -440,7 +440,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-link"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "frontmatter-lossless",
  "serde_json",
@@ -450,7 +450,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-relink"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "etag-write",
  "frontmatter-lossless",
@@ -848,7 +848,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "slug-collate"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "unicode-normalization",
 ]

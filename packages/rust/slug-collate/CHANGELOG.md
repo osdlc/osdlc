@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/osdlc/osdlc/compare/slug-collate/v0.1.1...slug-collate/v0.2.0) - 2026-10-30
+
 ### Changed
 
 - **BREAKING:** `slugify` and `slugify_with` keep a combining mark in the word
@@ -30,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   README.
 
 ## [0.1.2](https://github.com/osdlc/osdlc/compare/slug-collate/v0.1.1...slug-collate/v0.1.2) - 2026-10-24
+
+Yanked. This release contained the breaking `slugify` change listed under
+0.2.0 by mistake. Use 0.2.0 instead.
 
 ### Other
 
