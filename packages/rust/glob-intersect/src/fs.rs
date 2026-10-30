@@ -27,7 +27,8 @@
 //!
 //! The walk always sees dotfiles, so they reach the post-filter; whether `*`/`**`
 //! actually match a dot segment is then [`Options::dot`]'s call, keeping the
-//! decision in one place (L1). Results are sorted by code point.
+//! decision in one place (L1). Results are sorted by code point. Relative results
+//! always use `/`, even on Windows; absolute ones use the platform separator.
 
 use std::path::{Component, Path, PathBuf};
 
@@ -50,7 +51,9 @@ pub struct FsOptions {
     /// Return files only (skip directories). Default `true`.
     pub only_files: bool,
     /// Return absolute paths — the `cwd` resolved against the process cwd when
-    /// it is relative, then joined with each path. Default `false`.
+    /// it is relative, then joined with each path. These use the platform
+    /// separator, as the peer's `path.resolve` does; relative results always
+    /// use `/`. Default `false`.
     pub absolute: bool,
 }
 
