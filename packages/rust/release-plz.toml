@@ -31,36 +31,9 @@ name = "yaml-splice-wasm"
 publish = false
 release = false
 
-# The wasm-bindgen wrapper over tradecraft-core, built for a future npm
-# package. Never released as a crate.
-[[package]]
-name = "tradecraft-wasm"
-publish = false
-release = false
-
-# A build tool that writes the TypeScript declarations for tradecraft-wasm.
-# Never released as a crate.
-[[package]]
-name = "tradecraft-typegen"
-publish = false
-release = false
-
 # Held back until the parity fixes from the review of
 # https://github.com/osdlc/osdlc/pull/460 land; see its Cargo.toml.
 [[package]]
 name = "markdown-contract"
-publish = false
-release = false
-
-# Releases moved to https://github.com/osdlc/skillwright. The code stays here
-# for now; see its Cargo.toml.
-[[package]]
-name = "skillwright"
-publish = false
-release = false
-
-# Moved with skillwright; see its Cargo.toml.
-[[package]]
-name = "tradecraft-core"
 publish = false
 release = false
