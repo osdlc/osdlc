@@ -46,6 +46,29 @@ const CORPUS: &[(&str, &str)] = &[
     corpus_file!("segments.cases.json"),
 ];
 
+/// A new `*.cases.json` in the shared fixtures must be added to `CORPUS`.
+#[test]
+fn corpus_lists_every_fixture_file() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ts/intersect/fixtures");
+    let mut on_disk: Vec<String> = std::fs::read_dir(&dir)
+        .expect("read fixtures dir")
+        .map(|e| {
+            e.expect("dir entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned()
+        })
+        .filter(|n| n.ends_with(".cases.json"))
+        .collect();
+    on_disk.sort();
+    let mut listed: Vec<String> = CORPUS.iter().map(|(n, _)| (*n).to_string()).collect();
+    listed.sort();
+    assert_eq!(
+        on_disk, listed,
+        "CORPUS is out of step with the fixtures directory"
+    );
+}
+
 /// Every operation a case may target, across all three layers plus the registry.
 const OP_NAMES: &[&str] = &[
     "parse",
@@ -457,6 +480,7 @@ fn link_all(root: &std::path::Path, links: &serde_json::Map<String, Json>) -> bo
     }
     #[cfg(not(unix))]
     {
+        let _ = (root, links);
         false
     }
 }
@@ -481,6 +505,7 @@ fn lock_all(root: &std::path::Path, dirs: &[Json]) -> bool {
     }
     #[cfg(not(unix))]
     {
+        let _ = (root, dirs);
         false
     }
 }
