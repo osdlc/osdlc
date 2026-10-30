@@ -155,7 +155,7 @@ pub fn declaration_for(id: RuntimeId) -> RuntimeCapabilities {
 /// legal slug.
 ///
 /// Hidden from the docs and outside the semver promise: an internal helper
-/// that `tradecraft-core` calls.
+/// that `tradecraft-core` (in osdlc/skillwright) calls.
 #[doc(hidden)]
 pub fn redundant_skill_overrides(
     id: RuntimeId,
