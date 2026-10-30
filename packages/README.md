@@ -82,8 +82,9 @@ the standard.
   `pnpm run check:conformance` checks the suites. `tiered-dirs` has moved
   there. Until they move, `path-guard` and `config-layers` keep
   `packages/rust/<name>/tests/fixtures/parity.json`, `frontmatter-lossless`
-  its crate's `tests/fixtures/conformance.json`, and `markdown-contract` runs
-  the TypeScript package's `corpus/` directly. `etag-write` has no shared
+  its crate's `tests/fixtures/conformance.json`, `markdown-contract` runs
+  the TypeScript package's `corpus/` directly, and `glob-intersect` runs
+  `@osdlc/intersect`'s `fixtures/` directly. `etag-write` has no shared
   cases yet.
 - **Each language's idiom.** An implementation does not copy the other's names or
   signatures when that breaks its own language's habits. Rust uses
@@ -131,6 +132,8 @@ Developed here, in this repository:
 - `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/frontmatter-lossless` (`frontmatter-lossless` on crates.io)
+- `packages/rust/glob-intersect` (`glob-intersect`, the Rust implementation of
+  `@osdlc/intersect`: do two globs share a path; not on crates.io yet)
 - `packages/rust/markdown-contract` (`markdown-contract` on crates.io, the Rust implementation
   of `@osdlc/markdown-contract`: contracts for markdown documents, checked
   against the package's corpus)
