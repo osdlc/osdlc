@@ -46,9 +46,9 @@
       "line": 141,
       "title": "Result table does not say when the baseline came from the git tag",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "88f81902938a47f9e6d8d2ec8b8f11dbf03bd067"
     }
   ]
 }
