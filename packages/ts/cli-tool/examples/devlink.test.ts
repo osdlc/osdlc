@@ -72,6 +72,7 @@ import {
   validateSpec,
   writeActive,
   processIo,
+  projectVar,
   type CliIo,
   type DevlinkHookOptions,
   type ExecOptions,
@@ -140,6 +141,7 @@ test('the spec names every variable and path the tool uses', () => {
   expect(envStem(SPEC)).toBe('TOOLY')
   expect(homeVar(SPEC)).toBe('TOOLY_HOME')
   expect(cwdDevVar(SPEC)).toBe('TOOLY_CWD_DEV')
+  expect(projectVar(SPEC)).toBe('TOOLY_PROJECT')
   expect(quietVar(SPEC)).toBe('TOOLY_QUIET')
   expect(launchLayerVar(SPEC)).toBe('TOOLY_LAUNCH_LAYER')
   expect(entryOf(SPEC)).toBe('src/cli.ts')

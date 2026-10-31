@@ -25,6 +25,7 @@ import { gitHead } from './git-head.ts'
 import {
   cwdCheckout,
   isCheckout,
+  projectInstall,
   resolve,
   samePath,
   suppressed,
@@ -42,7 +43,16 @@ import {
   writeActive,
   type HistoryEvent,
 } from './state.ts'
-import { cwdDevVar, cwdLayerActive, entryOf, homeVar, pathNames, type ToolSpec } from './spec.ts'
+import {
+  cwdDevVar,
+  cwdLayerActive,
+  entryOf,
+  homeVar,
+  pathNames,
+  projectLayerActive,
+  projectVar,
+  type ToolSpec,
+} from './spec.ts'
 
 /**
  * Options shared by the link operations, including a dry-run flag and a clock
@@ -530,6 +540,13 @@ export interface StatusResult {
     suppressed: boolean
     legacy: string | null
   }
+  /**
+   * `install` is the nearest project copy of the package above the cwd;
+   * `suppressed` is true when the project layer is off: the spec has no
+   * `packageName` or sets `projectLayer: false`, a suppressor is set, or
+   * `<NAME>_PROJECT=0`.
+   */
+  project: { var: string; install: string | null; suppressed: boolean }
   /** The launcher's own checkout, when it has one. */
   self: string | null
   history: { path: string; entries: number }
@@ -593,6 +610,11 @@ export function status(spec: ToolSpec, opts: OpOptions = {}): StatusResult {
       valid: linked !== null && isCheckout(spec, linked),
       suppressed: isSuppressed,
       legacy: legacyHomePath(spec, opts),
+    },
+    project: {
+      var: projectVar(spec),
+      install: projectInstall(spec, cwd),
+      suppressed: !projectLayerActive(spec, env, isSuppressed),
     },
     self: opts.self ?? null,
     history: { path: historyPath(spec, opts), entries: history(spec, opts).length },

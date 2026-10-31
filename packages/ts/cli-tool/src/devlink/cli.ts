@@ -254,6 +254,10 @@ function renderStatus(spec: ToolSpec, s: ReturnType<typeof status>): string {
     `  ${s.env.var}: ${s.env.value ?? '(unset)'}\n` +
     // A spec without the cwd layer never looks there, so the line is left out.
     (spec.cwdLayer === true ? `  cwd:      ${cwdLine}\n` : '') +
+    // A spec without `packageName` has no project layer, so the line is left out.
+    (spec.packageName !== undefined
+      ? `  project:  ${s.project.install ?? '(no copy in node_modules above cwd)'}${s.project.suppressed ? ' (suppressed)' : ''}\n`
+      : '') +
     `  link:     ${s.link.path} = ${linkLine}\n` +
     `  self:     ${s.self ?? '(not inside a checkout)'}\n` +
     `  history:  ${s.history.entries} checkout(s) in ${s.history.path}\n` +

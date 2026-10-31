@@ -1,7 +1,9 @@
 # `@osdlc/cli-tool/devlink`
 
 Run a system-installed CLI tool from a development checkout, and keep a
-history of which checkouts have been linked.
+history of which checkouts have been linked. A project that installs the tool
+in its own `node_modules` gets that copy instead, so a project can pin the
+version it uses.
 
 ```sh
 tooly dev install            # once: put a shim for this checkout's launcher onto PATH
@@ -29,7 +31,7 @@ order, a state directory, and a history.
 
 ## Resolution order
 
-Four layers. The first that matches wins. `<NAME>` is the tool name upper-cased
+Five layers. The first that matches wins. `<NAME>` is the tool name upper-cased
 (`tooly` → `TOOLY`, `pr-updater` → `PR_UPDATER`).
 
 | Layer | Wins when | Off when |
@@ -37,7 +39,32 @@ Four layers. The first that matches wins. `<NAME>` is the tool name upper-cased
 | env | `<NAME>_HOME` names a checkout by absolute path | never. An explicit value always applies; a relative one is ignored |
 | cwd | the spec sets `cwdLayer: true` and the cwd is inside a checkout of this tool | the spec leaves `cwdLayer` unset, a suppressor is set, or `<NAME>_CWD_DEV=0` |
 | link | `<config>/<name>/home` names a checkout | a suppressor is set |
+| project | the spec sets `packageName` and a project above the cwd has that package in its `node_modules` | the spec sets `projectLayer: false`, a suppressor is set, or `<NAME>_PROJECT=0` |
 | local | none of the above | never |
+
+So you can do both: `dev link` (or `<NAME>_HOME`) runs a development checkout
+everywhere, above any project's pin, and otherwise a project that installed
+the tool runs its own pinned copy.
+
+The project layer finds the package as Node's `require` would from the cwd:
+the nearest `node_modules`, following a pnpm symlink into its store. It runs
+the tool's entry from the package's `bin` with the runtime its `#!` line names
+(`node`, or `bun`), by the file's path, never through a `node_modules/.bin`
+shim, so Windows works the same. The copy that is already running is `local`,
+by real path, and the copy it starts is told so through `<NAME>_LAUNCH_LAYER`.
+The hand-off is silent when both copies have the same version; otherwise it
+prints one `running` line naming both versions. When the project's
+`package.json` lists the package but nothing is installed, the tool prints one
+line saying so and runs the global copy. `dev` subcommands never hand off:
+they manage your own link. The bash launcher has no project layer, because it
+cannot read `package.json`.
+
+The `running … (why)` line on stderr appears only on a hand-off to another
+copy, never for `local`. `<NAME>_QUIET=1` silences it.
+
+[Launch order](../docs/architecture/launch-order.md) walks through the
+decision with diagrams, the variables, and what `--where` prints for each
+layer.
 
 The cwd layer is off unless the spec turns it on. With it on, running the tool
 in any directory that passes the checkout test runs that directory's code. A
@@ -53,8 +80,8 @@ error. Deleting a linked checkout must not break the installed tool. A layer
 naming the launcher's own checkout resolves to `local`, so a link to the
 installed checkout never re-execs itself.
 
-A suppressor is an environment variable whose presence turns off the cwd and
-link layers. A tool that a host program runs names the host's root
+A suppressor is an environment variable whose presence turns off the cwd,
+link and project layers. A tool that a host program runs names the host's root
 variable, so a machine-wide link never silently changes which code the host
 runs.
 
@@ -170,6 +197,14 @@ Every verb takes `--dry-run` (compute, write nothing) and `--json`.
 
 Branch and HEAD are read from `.git` directly (a plain repo or a worktree's
 `gitdir:` file), never by spawning git. Anything unreadable is `null`.
+
+## Prior art
+
+import-local, webpack-cli, the Angular and ember CLIs, gulp-cli, turbo and nx
+also run a project's own copy; npm, pnpm and bun link and yalc are the
+symlink and copy versions of `dev link`. [Launch
+order](../docs/architecture/launch-order.md#how-other-tools-do-it) compares
+them with devlink, tool by tool.
 
 ## What is not here
 

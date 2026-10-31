@@ -43,6 +43,14 @@ export interface ToolSpec {
    */
   cwdLayer?: boolean
   /**
+   * The project layer: a copy of this package installed in a project's
+   * `node_modules` above the working directory runs instead of this one, so
+   * a project can pin the version it uses, as `npx` would run it. On by
+   * default when {@link packageName} is set, and only then: it names the
+   * package to look for. Set false to turn it off for this tool.
+   */
+  projectLayer?: boolean
+  /**
    * The source entry to run under Bun inside a selected checkout, relative to
    * the checkout root. Defaults to {@link marker}.
    */
@@ -60,8 +68,8 @@ export interface ToolSpec {
    */
   aliases?: readonly string[]
   /**
-   * Environment variables whose presence turns off the cwd layer and the link
-   * layer. The explicit `<NAME>_HOME` override still applies. A tool that is
+   * Environment variables whose presence turns off the cwd, link and project
+   * layers. The explicit `<NAME>_HOME` override still applies. A tool that is
    * run by a host program names that host's root variable here, so a
    * machine-wide link never changes which code the host runs.
    */
@@ -124,6 +132,34 @@ export function cwdLayerActive(
 }
 
 /**
+ * Set to `0` to turn the project layer off for a shell.
+ *
+ * @experimental
+ */
+export function projectVar(spec: ToolSpec): string {
+  return `${envStem(spec)}_PROJECT`
+}
+
+/**
+ * Whether the project layer is on: the spec sets `packageName` and does not
+ * set `projectLayer: false`, no suppressor is set (`isSuppressed`), and
+ * `<NAME>_PROJECT` is not `0`. `resolve` and `status` both ask this.
+ * @internal
+ */
+export function projectLayerActive(
+  spec: ToolSpec,
+  env: Record<string, string | undefined>,
+  isSuppressed: boolean,
+): boolean {
+  return (
+    spec.packageName !== undefined &&
+    spec.projectLayer !== false &&
+    !isSuppressed &&
+    env[projectVar(spec)] !== '0'
+  )
+}
+
+/**
  * Set to `1` to silence the launcher's "running X (why)" line on stderr.
  *
  * @experimental
@@ -134,8 +170,8 @@ export function quietVar(spec: ToolSpec): string {
 
 /**
  * Exported by the launcher into the process it execs: which resolution layer
- * chose the code (`env`, `cwd`, `link`, or `local` for the launcher's own
- * checkout). Unset when the process was not started through the launcher.
+ * chose the code (`env`, `cwd`, `link`, `project`, or `local` for the
+ * launcher's own checkout). Unset when the process was not started through the launcher.
  * @experimental
  */
 export function launchLayerVar(spec: ToolSpec): string {

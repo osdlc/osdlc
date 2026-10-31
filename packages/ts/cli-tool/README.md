@@ -366,10 +366,11 @@ await runMain(main, { name: 'tool', version: VERSION })
 
 An app from `defineApp` takes the same `VERSION` as its `version`.
 
-### Running from a checkout
+### Running from a checkout, or a project's pinned copy
 
 Pass `devlinkHook(spec)` as `devlink` and the tool can run from a development
-checkout in place of its installed copy, as `way` and `sdlc` do:
+checkout in place of its installed copy, as `way` and `sdlc` do, and a project
+that installs the tool runs its own copy:
 
 ```ts
 // src/bin.ts: built to dist/bin.js; bin/tool.js is `import '../dist/bin.js'`
@@ -395,12 +396,27 @@ Then `tool dev link <checkout>` (or `TOOL_HOME=<checkout>`) makes every
 which code runs and why. `tool dev off` goes back to the installed copy.
 The hook finds the checkout it runs from by walking up from the script, never
 through `node_modules`, so a link to itself is a no-op. The process it hands
-off to is told so through `TOOL_LAUNCH_LAYER` and runs its own `main`. See
-[devlink](./devlink/README.md) for the layers and the verbs.
+off to is told so through `TOOL_LAUNCH_LAYER` and runs its own `main`.
+
+Outside a link, a project with `@acme/tool` in its `node_modules` runs that
+copy's bin under node, as `npx tool` would, so the project's pinned version
+answers. `TOOL_PROJECT=0` or `projectLayer: false` in the spec turns this off.
+The order is:
+
+| Order | Layer | Runs |
+|---|---|---|
+| 1 | `TOOL_HOME` | that checkout |
+| 2 | cwd (only with `cwdLayer: true`) | the checkout you stand in |
+| 3 | `tool dev link` | the linked checkout |
+| 4 | project | the copy in the project's `node_modules` |
+| 5 | local | this copy |
+
+See [devlink](./devlink/README.md) for the details and the verbs, and
+[launch order](./docs/architecture/launch-order.md) for the decision drawn out.
 
 `tool --where` is handed on like any other argument, so the process that
 answers is the one that runs. Its `chosen by` line names the layer: `env
-($TOOL_HOME)`, `cwd`, `link (<link file>)`, `local` for a bash launcher's own
+($TOOL_HOME)`, `cwd`, `link (<link file>)`, `project install (<dir>)`, `local` for a bash launcher's own
 checkout, or `this install` / `this checkout` when nothing handed off. The
 hook reports this through its `describe()`, which `runMain` calls; a custom
 `DevlinkHook` without one gets no `chosen by` line.
@@ -874,7 +890,7 @@ The experimental exports of `@osdlc/cli-tool/devlink`:
 `ToolSpec`, `UseInput`, `UseResult`, `appendHistory`, `clearActive`, `cwdCheckout`, `cwdDevVar`,
 `defaultBinDir`, `devlinkHook`, `entryOf`, `envStem`, `execSelection`, `findOnPath`, `gitHead`, `history`,
 `historyPath`, `homePath`, `homeVar`, `install`, `isCheckout`, `isOnPath`, `launchLayerVar`,
-`launcherCheckout`, `launcherDrift`, `link`, `off`, `pathNames`, `processIo`, `quietVar`,
+`launcherCheckout`, `launcherDrift`, `link`, `off`, `pathNames`, `processIo`, `projectVar`, `quietVar`,
 `readActive`, `readHistory`, `readShimTarget`, `renderLauncher`, `renderShim`, `resolve`,
 `runDevCli`, `samePath`, `stateDir`, `status`, `suppressed`, `usage`, `use`, `validateSpec`,
 `writeActive`
