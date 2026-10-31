@@ -1,5 +1,14 @@
 # @osdlc/repo-cleaner
 
+## 0.9.3
+
+### Patch Changes
+
+- e0aaba5: A remote branch delete the remote refuses now fails its step with git's reason and what it means, such as `[remote rejected] (pre-receive hook declined): A hook on the remote refused the push.`, read from typed-git's per-ref push report instead of stderr.
+- Updated dependencies [e0aaba5]
+  - @osdlc/typed-git@0.12.0
+  - @osdlc/typed-gh@0.14.1
+
 ## 0.9.2
 
 ### Patch Changes

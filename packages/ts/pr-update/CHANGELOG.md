@@ -1,5 +1,15 @@
 # @osdlc/pr-update
 
+## 0.9.1
+
+### Patch Changes
+
+- e0aaba5: `isStalePush` accepts typed-git's new `atomic-failed` rejection, and returns `false` for it.
+- Updated dependencies [e0aaba5]
+  - @osdlc/typed-git@0.12.0
+  - @osdlc/code-host@0.7.4
+  - @osdlc/trust-repo@0.5.3
+
 ## 0.9.0
 
 ### Minor Changes
