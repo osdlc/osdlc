@@ -192,7 +192,7 @@ and points here.
 | fenced-lock | TS, Rust | `rust/fenced-lock/tests/fixtures/parity.json` | TS |
 | frontmatter-lossless | Rust, TS | `rust/frontmatter-lossless/tests/fixtures/conformance.json` | Rust |
 | gfm-table | TS, Rust `gfm-pipe-table` | `rust/gfm-pipe-table/tests/fixtures/parity.json` | TS |
-| intersect | TS, Rust `glob-intersect` | `ts/intersect/fixtures/*.cases.json` | TS |
+| intersect | TS, Rust `glob-intersect` | moved: `conformance/intersect/suite.json` | TS |
 | manifest-graph | TS, Rust | `rust/manifest-graph/tests/fixtures/parity.json` | TS |
 | markdown-contract | TS, Rust | `ts/markdown-contract/corpus/`, `rust/markdown-contract/tests/fixtures/parity.json` | TS |
 | markdown-link | Rust, TS | `rust/markdown-link/tests/fixtures/conformance.json` | Rust |

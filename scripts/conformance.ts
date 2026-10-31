@@ -52,7 +52,6 @@ export const UNMIGRATED = new Set([
   'packages/ts/path-guard',
   'packages/ts/yaml-splice',
   'packages/rust/markdown-contract',
-  'packages/rust/glob-intersect',
 ])
 
 export interface Implementation {

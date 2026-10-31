@@ -1,8 +1,8 @@
 # Checks the Cargo workspace under packages/rust/, and the wasm built from it
 # that packages/ts/yaml-splice/ commits, on
-# every pull request and push to main. It also runs when the markdown-contract corpus or the intersect
-# fixtures change, because the markdown-contract and glob-intersect crates' tests read them, and when a
-# conformance suite under packages/conformance/ changes, because the crates' tests read those.
+# every pull request and push to main. It also runs when the markdown-contract corpus changes,
+# because the markdown-contract crate's tests read it, and when a conformance suite under
+# packages/conformance/ changes, because the crates' tests read those.
 #
 # The workflow always runs, so its final `rust` job always reports. That job
 # is the one to require in the "Protect main" ruleset. A workflow-level
@@ -88,7 +88,7 @@ jobs:
               files='*'
               ;;
           esac
-          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/conformance/|scripts/conformance|packages/ts/yaml-splice/wasm/|packages/ts/markdown-contract/corpus/|packages/ts/intersect/fixtures/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
+          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/conformance/|scripts/conformance|packages/ts/yaml-splice/wasm/|packages/ts/markdown-contract/corpus/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
@@ -151,6 +151,14 @@ jobs:
         run: |
           cargo clippy -p markdown-contract --no-default-features --all-targets --locked -- -D warnings
           cargo test -p markdown-contract --no-default-features --locked
+
+      # Without `fs`, the crate does no I/O; the pure sections of the
+      # conformance suite still run, and the `fs_*` sections' test is reported
+      # as ignored.
+      - name: glob-intersect without default features
+        run: |
+          cargo clippy -p glob-intersect --no-default-features --all-targets --locked -- -D warnings
+          cargo test -p glob-intersect --no-default-features --locked
 
       # Builds each crate from its packaged files only, so a file missing from
       # a crate's `include` list fails here and not on crates.io. Crates with

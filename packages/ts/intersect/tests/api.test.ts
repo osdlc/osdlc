@@ -1,5 +1,5 @@
 /**
- * API behaviour the shared corpus cannot state: the `Matcher` surface, and
+ * API behaviour the conformance suite cannot state: the `Matcher` surface, and
  * errors for arguments the type system would block. (The Rust peer crate is
  * typed, so these cases are TypeScript-only.)
  */

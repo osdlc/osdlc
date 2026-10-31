@@ -7,6 +7,14 @@
       { "language": "rust", "dir": "packages/rust/config-layers", "name": "config-layers" }
     ]
   },
+  "intersect": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/intersect conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/intersect", "name": "@osdlc/intersect" },
+      { "language": "rust", "dir": "packages/rust/glob-intersect", "name": "glob-intersect" }
+    ]
+  },
   "tiered-dirs": {
     "reference": "ts",
     "generator": "pnpm --filter @osdlc/tiered-dirs conformance:write",

@@ -5,7 +5,7 @@
  * (`SegmentPattern`). It never parses strings and never touches the
  * filesystem. It compares two patterns at a time.
  *
- * The fixture corpus specifies these types and their behaviour. The engine
+ * The conformance suite specifies these types and their behaviour. The engine
  * builds an automaton for each pattern and searches the product of the two
  * (`./automaton.ts`, `./product.ts`). It has no runtime dependencies.
  *
