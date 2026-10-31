@@ -138,8 +138,10 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
     }
   }
   p('#')
-  p('# Says which entry runs, and why, on stderr before anything else, so with')
-  p(`# four layers a person can tell which code is answering. ${quietVar(spec)}=1 silences it.`)
+  p('# When a layer hands off to another checkout, says which entry runs, and why,')
+  p(
+    `# on stderr before anything else. The local copy runs silently. ${quietVar(spec)}=1 silences it.`,
+  )
   p('set -euo pipefail')
   p()
   p('# Resolve THIS file through any symlink chain:')
@@ -328,7 +330,6 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
     )
     p('    exit 1')
     p('  fi')
-    p(`  announce "$here/${builtRel}" "local, node"`)
     p(`  export ${layerVar}="$layer"`)
     p(`  exec "$node" "$here/${builtRel}" "$@"`)
     p('fi')
@@ -340,7 +341,6 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p('  exit 1')
   p('fi')
   p(`need_deps "$self" "$self/${entry}"`)
-  p(`announce "$self/${entry}" "local, bun"`)
   p(`export ${layerVar}="$layer"`)
   p(`exec "$bun" ${BUN_FLAGS} run "$self/${entry}" "$@"`)
   return lines.join('\n') + '\n'

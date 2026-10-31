@@ -3,14 +3,16 @@
  * gets `<name> dev …` and the hand-off to a linked checkout from one option.
  */
 
-import { dirname } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
+import { processIo } from '../io.ts'
 import type { DevlinkHook, DevlinkWhere } from '../run-main.ts'
 import { installDir, realPath } from '../where.ts'
 import { runDevCli } from './cli.ts'
-import { execSelection } from './exec.ts'
+import { execSelection, type ExecOptions } from './exec.ts'
 import { cwdCheckout, resolve, type Selection } from './resolve.ts'
-import { homeVar, launchLayerVar, type ToolSpec } from './spec.ts'
+import { homeVar, launchLayerVar, quietVar, type ToolSpec } from './spec.ts'
 import { homePath } from './state.ts'
 
 /**
@@ -20,6 +22,10 @@ import { homePath } from './state.ts'
 export interface DevlinkHookOptions {
   /** The script that is running, for finding its own checkout. Defaults to `process.argv[1]`. */
   script?: string
+  /** What replaces the process on a hand-off, as {@link ExecOptions.execve} takes it. */
+  execve?: ExecOptions['execve']
+  /** The runtime versions, for telling Deno apart. Defaults to `process.versions`. */
+  versions?: Record<string, string | undefined>
 }
 
 /**
@@ -39,24 +45,48 @@ export function devlinkHook(spec: ToolSpec, opts: DevlinkHookOptions = {}): Devl
     described = null
     const script = opts.script ?? process.argv[1]
     const self = script === undefined ? null : ownCheckout(spec, script)
+    const selfInstall = script === undefined ? null : ownInstall(script)
     if (argv[0] === 'dev') {
-      return runDevCli(spec, argv.slice(1), { io: ctx.io, env: ctx.env, self })
+      return runDevCli(spec, argv.slice(1), {
+        io: ctx.io,
+        env: ctx.env,
+        cwd: ctx.cwd,
+        self,
+        selfInstall,
+      })
     }
     const layerVar = launchLayerVar(spec)
     const layer = ctx.env[layerVar]
     delete ctx.env[layerVar]
     if (ctx.env !== process.env) delete process.env[layerVar]
     if (layer !== undefined) {
-      described = { ...handedOff(spec, self, layer), ...(script === undefined ? {} : { script }) }
+      described = {
+        ...handedOff(spec, self ?? selfInstall, layer),
+        ...(script === undefined ? {} : { script }),
+      }
       return null
     }
-    const selection = resolve(spec, { env: ctx.env, cwd: ctx.cwd, self })
+    // Deno runs npm bins in its own way, so a hand-off is not supported there.
+    if ((opts.versions ?? process.versions)['deno'] !== undefined) {
+      described = {
+        ...notHandedOff(self, { source: 'local', checkout: null, entry: null, reason: 'deno' }),
+        ...(script === undefined ? {} : { script }),
+      }
+      return null
+    }
+    const selection = resolve(spec, { env: ctx.env, cwd: ctx.cwd, self, selfInstall })
     if (selection.source === 'local') {
+      if (selection.hint !== undefined && ctx.env[quietVar(spec)] !== '1') {
+        ctx.io.stderr(`${spec.name}: ${selection.hint}\n`)
+      }
       described = { ...notHandedOff(self, selection), ...(script === undefined ? {} : { script }) }
     }
     return execSelection(spec, selection, argv, {
       env: ctx.env,
-      announce: (line) => ctx.io.stderr(`${line}\n`),
+      // The default writes to fd 2 synchronously, which a replaced process needs.
+      ...(ctx.io === processIo ? {} : { announce: (line: string) => ctx.io.stderr(`${line}\n`) }),
+      version: packageVersion(self ?? selfInstall),
+      ...('execve' in opts ? { execve: opts.execve } : {}),
     })
   }
   hook.describe = () => described
@@ -74,6 +104,12 @@ function handedOff(spec: ToolSpec, checkout: string | null, layer: string): Devl
       const linkFile = homePath(spec)
       return { checkout, layer, text: `link (${linkFile})`, linkFile }
     }
+    case 'project':
+      return {
+        checkout,
+        layer,
+        text: `project install (${checkout ?? "the project's node_modules"})`,
+      }
     case 'local':
       return {
         checkout,
@@ -93,8 +129,29 @@ function notHandedOff(checkout: string | null, selection: Selection): DevlinkWhe
   const why =
     selection.reason === 'local'
       ? 'no devlink layer selected another'
-      : `${selection.reason.replace(/: this checkout$/, '')}, which is this one`
+      : selection.reason === 'deno'
+        ? 'Deno: devlink does not hand off'
+        : `${selection.reason.replace(/: this checkout$/, '')}, which is this one`
   return { checkout, layer: 'self', text: `${what} (${why})` }
+}
+
+/** The installed package directory `script` runs from, or null outside `node_modules`. */
+function ownInstall(script: string): string | null {
+  const real = realPath(script)
+  return real === null ? null : installDir(real)
+}
+
+/** The `version` in `dir/package.json`, or null. */
+function packageVersion(dir: string | null): string | null {
+  if (dir === null) return null
+  try {
+    const v = (
+      JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8')) as { version?: unknown }
+    ).version
+    return typeof v === 'string' ? v : null
+  } catch {
+    return null
+  }
 }
 
 /**

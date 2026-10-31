@@ -19,6 +19,7 @@ export {
   homeVar,
   launchLayerVar,
   pathNames,
+  projectVar,
   quietVar,
   validateSpec,
 } from './spec.ts'

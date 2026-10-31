@@ -1,7 +1,7 @@
 /**
  * Which checkout a launcher should run, and why.
  *
- * Four layers. The first that matches wins:
+ * Five layers. The first that matches wins:
  *
  *   env    `<NAME>_HOME` names a checkout by absolute path. It is explicit,
  *          so it always applies, even when a suppressor is set. A relative
@@ -11,6 +11,13 @@
  *          Only when the spec sets `cwdLayer`. Off when a suppressor is set
  *          or `<NAME>_CWD_DEV=0`.
  *   link   the `home` file names a checkout. Off when a suppressor is set.
+ *   project
+ *          a project above the cwd has this package in its `node_modules`,
+ *          so run that copy's bin, as `npx` would: a project pins the
+ *          version it uses. Only when the spec sets `packageName` and not
+ *          `projectLayer: false`. Off when a suppressor is set or
+ *          `<NAME>_PROJECT=0`. The copy that is already running is `local`.
+ *          It is the nearest `node_modules` copy above the real cwd.
  *   local  none of the above. The launcher runs the code next to it, which
  *          is the canonical install.
  *
@@ -22,21 +29,22 @@
  *
  * `renderLauncher` writes the same checks in bash for a launcher that has to
  * decide before any JavaScript runtime exists. `tests/devlink/launcher.test.ts`
- * checks that the two give the same answer.
+ * checks that the two give the same answer. The bash launcher has no project
+ * layer: it cannot read JSON, so it cannot find the package or its bin.
  */
 
-import { readFileSync, realpathSync, statSync } from 'node:fs'
-import { isAbsolute, join, resolve as resolvePath } from 'node:path'
+import { closeSync, openSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs'
+import { dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path'
 
 import { readActive, type StateOptions } from './state.ts'
-import { cwdLayerActive, entryOf, homeVar, type ToolSpec } from './spec.ts'
+import { cwdLayerActive, entryOf, homeVar, projectLayerActive, type ToolSpec } from './spec.ts'
 
 /**
- * Which layer picked the checkout: `env`, `cwd`, `link`, or `local` when none
- * did.
+ * Which layer picked the checkout: `env`, `cwd`, `link`, `project`, or `local`
+ * when none did.
  * @experimental
  */
-export type Source = 'env' | 'cwd' | 'link' | 'local'
+export type Source = 'env' | 'cwd' | 'link' | 'project' | 'local'
 
 /**
  * A selection that picked a checkout, with the file to run and the reason it
@@ -44,13 +52,20 @@ export type Source = 'env' | 'cwd' | 'link' | 'local'
  * @experimental
  */
 export interface Selected {
-  source: 'env' | 'cwd' | 'link'
-  /** The checkout root that won. */
+  source: 'env' | 'cwd' | 'link' | 'project'
+  /** The checkout root that won; for `project`, the installed package's directory. */
   checkout: string
-  /** `<checkout>/<entry>`: what to run under Bun. */
+  /** `<checkout>/<entry>`: what to run under Bun; for `project`, the package's bin. */
   entry: string
   /** Why, for the launcher's stderr line. */
   reason: string
+  /**
+   * For `project`: what runs the bin, from its `#!` line (`bun` when it names
+   * bun, else `node`). Absent for a checkout, whose source runs under Bun.
+   */
+  runtime?: 'bun' | 'node'
+  /** For `project`: the installed package's version, or null when it has none. */
+  version?: string | null
 }
 
 /**
@@ -62,6 +77,11 @@ export interface Local {
   checkout: null
   entry: null
   reason: string
+  /**
+   * A line for stderr: the project declares this package but has no
+   * installed copy, so the global copy runs.
+   */
+  hint?: string
 }
 
 /**
@@ -87,6 +107,12 @@ export interface ResolveOptions extends StateOptions {
    * resolves to `local`.
    */
   self?: string | null
+  /**
+   * The installed package directory the running script belongs to, or null
+   * when it does not run from `node_modules`. A project layer naming this
+   * directory resolves to `local`.
+   */
+  selfInstall?: string | null
 }
 
 /**
@@ -132,6 +158,118 @@ export function cwdCheckout(spec: ToolSpec, start: string): string | null {
 }
 
 /**
+ * The real directory of `packageName` in the nearest `node_modules` at or
+ * above `start`, following a pnpm symlink into its store. Its `package.json` must have that `name`. Null
+ * when there is none.
+ *
+ * Only the folders above `start` are searched. `createRequire(...).resolve`
+ * would also search `NODE_PATH` and Node's global folders, where a global
+ * copy would pass for a project's pin; and it cannot read a `package.json`
+ * that the package's `exports` hides.
+ *
+ * @internal
+ */
+export function projectInstall(spec: ToolSpec, start: string): string | null {
+  const name = spec.packageName
+  if (name === undefined) return null
+  let dir: string
+  try {
+    dir = realpathSync(start)
+  } catch {
+    return null
+  }
+  for (;;) {
+    const candidate = join(dir, 'node_modules', ...name.split('/'))
+    if (readPackage(candidate)?.name === name) {
+      try {
+        return realpathSync(candidate)
+      } catch {
+        return null
+      }
+    }
+    const parent = dirname(dir)
+    if (parent === dir) return null
+    dir = parent
+  }
+}
+
+/**
+ * The project's own `package.json` above `start` declares `packageName` as a
+ * dependency or dev dependency. For the hint when the project layer finds no
+ * installed copy.
+ *
+ * @internal
+ */
+export function projectDeclares(spec: ToolSpec, start: string): boolean {
+  const name = spec.packageName
+  if (name === undefined) return false
+  let dir = resolvePath(start)
+  for (;;) {
+    const pkg = readPackage(dir)
+    if (pkg !== null) {
+      return [pkg.dependencies, pkg.devDependencies].some(
+        (deps) => typeof deps === 'object' && deps !== null && name in deps,
+      )
+    }
+    const parent = resolvePath(dir, '..')
+    if (parent === dir) return false
+    dir = parent
+  }
+}
+
+/**
+ * The absolute path of the tool's bin in the installed package at `dir`:
+ * `bin` when it is a string, else `bin[spec.name]`. Null when it is missing
+ * or points outside the package.
+ *
+ * @internal
+ */
+export function projectBin(spec: ToolSpec, dir: string): string | null {
+  const bin = readPackage(dir)?.bin
+  const rel = typeof bin === 'string' ? bin : bin?.[spec.name]
+  if (typeof rel !== 'string' || rel.length === 0) return null
+  const abs = resolvePath(dir, rel)
+  const inside = relative(dir, abs)
+  if (inside === '' || inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
+    return null
+  }
+  return abs
+}
+
+/** What runs `file`: `bun` when its `#!` line names bun, else `node`. */
+export function binRuntime(file: string): 'bun' | 'node' {
+  let fd: number | undefined
+  try {
+    fd = openSync(file, 'r')
+    const buf = Buffer.alloc(256)
+    const n = readSync(fd, buf, 0, buf.length, 0)
+    const first = buf.subarray(0, n).toString('utf-8').split('\n', 1)[0] ?? ''
+    return /^#!.*\bbun\b/.test(first) ? 'bun' : 'node'
+  } catch {
+    return 'node'
+  } finally {
+    if (fd !== undefined) closeSync(fd)
+  }
+}
+
+interface PackageFields {
+  name?: unknown
+  version?: unknown
+  bin?: string | Record<string, unknown>
+  dependencies?: unknown
+  devDependencies?: unknown
+}
+
+function readPackage(dir: string): PackageFields | null {
+  try {
+    const pkg: unknown = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf-8'))
+    return typeof pkg === 'object' && pkg !== null ? (pkg as PackageFields) : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * True when any of the spec's suppressor variables is present in `env`.
  *
  * @experimental
@@ -156,8 +294,8 @@ export function samePath(a: string, b: string): boolean {
 
 /**
  * Pick which checkout a launcher should run, and why. The environment
- * variable, the working directory, the saved link and the local install are
- * tried in that order.
+ * variable, the working directory, the saved link, the project's install and
+ * the local install are tried in that order.
  * @experimental
  */
 export function resolve(spec: ToolSpec, opts: ResolveOptions = {}): Selection {
@@ -197,5 +335,56 @@ export function resolve(spec: ToolSpec, opts: ResolveOptions = {}): Selection {
     }
   }
 
-  return { source: 'local', checkout: null, entry: null, reason: 'local' }
+  let hint: string | undefined
+  if (projectLayerActive(spec, env, isSuppressed)) {
+    const dir = projectInstall(spec, cwd)
+    const bin = dir === null ? null : projectBin(spec, dir)
+    if (dir !== null && bin !== null) {
+      // A workspace symlink can make the project's copy this very checkout.
+      const own = [opts.selfInstall ?? null, self].filter((d): d is string => d !== null)
+      if (own.some((d) => samePackage(dir, d))) {
+        return {
+          source: 'local',
+          checkout: null,
+          entry: null,
+          reason: 'project install: this install',
+        }
+      }
+      const version = readPackage(dir)?.version
+      return {
+        source: 'project',
+        checkout: dir,
+        entry: bin,
+        reason: `project install at ${dir}`,
+        runtime: binRuntime(bin),
+        version: typeof version === 'string' ? version : null,
+      }
+    }
+    if (dir === null && projectDeclares(spec, cwd)) {
+      hint =
+        `this project depends on ${spec.packageName} but it is not installed; running the global copy. ` +
+        "Run your package manager's install."
+    }
+  }
+
+  return {
+    source: 'local',
+    checkout: null,
+    entry: null,
+    reason: 'local',
+    ...(hint ? { hint } : {}),
+  }
+}
+
+/**
+ * Two package roots are the same copy when their real paths are equal. On
+ * Windows, `relative` across drives returns an absolute path, which is not
+ * `''`, so different drives are different copies.
+ */
+function samePackage(a: string, b: string): boolean {
+  try {
+    return relative(realpathSync(a), realpathSync(b)) === ''
+  } catch {
+    return false
+  }
 }

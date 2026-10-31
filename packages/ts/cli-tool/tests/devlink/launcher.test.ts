@@ -466,17 +466,21 @@ describe('bash launcher agrees with resolve()', () => {
         .replace(BUN_RUN, 'NODE')
         .replace('src/cli.ts', 'bin/tooly.js'),
     )
-    expect(r.err).toBe(`tooly: running ${a}/bin/tooly.js (local, node)`)
+    expect(r.err).toBe('')
   })
 
-  test('announces on stderr unless quiet', () => {
+  test('runs the local copy silently; announces a hand-off on stderr unless quiet', () => {
     const a = checkoutWithLauncher(join(sb.root, 'a'))
-    const r = spawnSync('bash', [join(a, SPEC.launcher)], {
-      cwd: sb.root,
-      encoding: 'utf-8',
-      env: { HOME: sb.home, PATH: `${fakeBin}:/usr/bin:/bin` },
-    })
-    expect(r.stderr.trim()).toBe(`tooly: running ${a}/src/cli.ts (local, bun)`)
+    const b = checkoutWithLauncher(join(sb.root, 'b'))
+    const go = (env: Record<string, string>) =>
+      spawnSync('bash', [join(a, SPEC.launcher)], {
+        cwd: sb.root,
+        encoding: 'utf-8',
+        env: { HOME: sb.home, PATH: `${fakeBin}:/usr/bin:/bin`, ...env },
+      }).stderr.trim()
+    expect(go({})).toBe('')
+    expect(go({ TOOLY_HOME: b })).toBe(`tooly: running ${b}/src/cli.ts (TOOLY_HOME)`)
+    expect(go({ TOOLY_HOME: b, TOOLY_QUIET: '1' })).toBe('')
   })
 })
 

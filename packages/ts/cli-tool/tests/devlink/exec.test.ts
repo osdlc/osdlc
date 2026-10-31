@@ -31,12 +31,16 @@ function fakeBun(body: string): string {
 describe('execSelection exit codes', () => {
   test('a signalled child returns 128 plus the signal number', () => {
     const bun = fakeBun('kill -TERM $$')
-    expect(execSelection(SPEC, selection, [], { env: { TOOLY_QUIET: '1' }, bun })).toBe(143)
+    expect(
+      execSelection(SPEC, selection, [], { env: { TOOLY_QUIET: '1' }, bun, execve: undefined }),
+    ).toBe(143)
   })
 
   test('a normal exit code passes through', () => {
     const bun = fakeBun('exit 7')
-    expect(execSelection(SPEC, selection, [], { env: { TOOLY_QUIET: '1' }, bun })).toBe(7)
+    expect(
+      execSelection(SPEC, selection, [], { env: { TOOLY_QUIET: '1' }, bun, execve: undefined }),
+    ).toBe(7)
   })
 
   test('a bun that cannot start returns 1 and says so after the running line', () => {
@@ -48,6 +52,7 @@ describe('execSelection exit codes', () => {
       const code = execSelection(SPEC, selection, [], {
         env: {},
         bun,
+        execve: undefined,
         announce: (line) => lines.push(line),
       })
       expect(code).toBe(1)
@@ -72,6 +77,7 @@ describe('execSelection finds bun on absolute PATH entries only', () => {
     try {
       const code = execSelection(SPEC, selection, [], {
         env: { PATH: 'bin:.', TOOLY_QUIET: '1' },
+        execve: undefined,
         announce: (line) => lines.push(line),
       })
       expect(code).toBe(1)
@@ -87,6 +93,7 @@ describe('execSelection finds bun on absolute PATH entries only', () => {
     fakeBun(`printf '%s' "$0" > "${report}"`)
     const code = execSelection(SPEC, selection, [], {
       env: { PATH: `bin:${sb.root}`, TOOLY_QUIET: '1' },
+      execve: undefined,
     })
     expect(code).toBe(0)
     expect(readFileSync(report, 'utf-8')).toBe(join(sb.root, 'bun'))
@@ -97,7 +104,9 @@ describe('execSelection keeps Bun off the cwd', () => {
   test('bun gets --no-env-file and an empty --config, before run', () => {
     const args = join(sb.root, 'args')
     const bun = fakeBun(`printf '%s\\n' "$@" > "${args}"`)
-    expect(execSelection(SPEC, selection, ['x'], { env: { TOOLY_QUIET: '1' }, bun })).toBe(0)
+    expect(
+      execSelection(SPEC, selection, ['x'], { env: { TOOLY_QUIET: '1' }, bun, execve: undefined }),
+    ).toBe(0)
     expect(readFileSync(args, 'utf-8').trim().split('\n')).toEqual([
       '--no-env-file',
       `--config=${devNull}`,
@@ -134,7 +143,7 @@ describe('execSelection keeps Bun off the cwd', () => {
         SPEC,
         { ...selection, checkout, entry: join(checkout, 'src', 'cli.ts') },
         [],
-        { env: { PATH: process.env['PATH'], TOOLY_QUIET: '1' } },
+        { env: { PATH: process.env['PATH'], TOOLY_QUIET: '1' }, execve: undefined },
       )
       expect(code).toBe(0)
     } finally {
