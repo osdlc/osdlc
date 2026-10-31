@@ -42,7 +42,9 @@ export function forgeTarget(url: string | null): ForgeTarget {
   if (url === null) return NO_TARGET
   const trimmed = url.trim()
   if (/^file:/i.test(trimmed)) return NO_TARGET
-  const scp = /^[\w.-]+@([^:/]+):(.+)$/.exec(trimmed)
+  // scp form, user optional (`host:path` is valid git). A one-letter host is a
+  // Windows drive (`C:/repo`), which git reads as a local path.
+  const scp = /^(?:[\w.-]+@)?([^:/\\]{2,}):(?!\/\/)(.+)$/.exec(trimmed)
   const uri = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/i.exec(trimmed)
   const match = uri ?? scp
   if (match === null) return NO_TARGET
