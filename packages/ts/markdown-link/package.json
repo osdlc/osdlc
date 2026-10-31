@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/markdown-link",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Wikilink parsing that follows documented link-resolution conventions: every [[link]], ![[embed]] and relative markdown link in a note body, with spans, and the code lexer that keeps links in code out. The TypeScript twin of the parsing half of the Rust markdown-link crate, held to it by a shared case file. No dependencies.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

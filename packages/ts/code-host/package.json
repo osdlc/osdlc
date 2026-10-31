@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/code-host",
-  "version": "0.7.4",
+  "version": "0.7.5",
   "description": "The CodeHost port: what a code host (GitHub, Forgejo) answers about pull requests, with GitHub and Forgejo adapters, a host selector keyed on the git remote, doctor auth probes, and PR-reference parsing. Every shell-out goes through an injected command runner.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

@@ -1,5 +1,14 @@
 # @osdlc/wayfinder
 
+## 0.12.1
+
+### Patch Changes
+
+- 9948d90: In a project that has this tool in its `node_modules`, the global command now runs the project's copy, unless a `dev link` or `<NAME>_HOME` checkout is set. Set `<NAME>_PROJECT=0` to keep the global copy.
+- 79407f5: Depend on `zod` `^4.6.6` instead of exactly `4.4.3`. 4.4.3 is covered by GHSA-mrhx-c7xc-m3w5 (memory exhaustion validating an oversized constrained collection; fixed in 4.6.6), and the exact pin made a consumer that already had a fixed `zod` install a second, vulnerable copy.
+- Updated dependencies [9948d90]
+  - @osdlc/cli-tool@0.14.0
+
 ## 0.12.0
 
 ### Minor Changes

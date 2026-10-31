@@ -1,5 +1,11 @@
 # @osdlc/markdown-link
 
+## 0.6.0
+
+### Minor Changes
+
+- 743c7bf: Export `percentDecode`, the decoding `mdLinkTarget` already uses, as the Rust crate exports `percent_decode`. Each valid `%XX` decodes on its own, a `%` that is not valid hex stays as written, and a result that is not UTF-8 leaves the whole string as written.
+
 ## 0.5.0
 
 ### Minor Changes
