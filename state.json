@@ -24,9 +24,9 @@
       "line": 41,
       "title": "checkoutRoot is now dead in production; only tests import it",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "03925512f715fc6e881d7fa250da2c25f4ec22c7"
     }
   ]
 }
