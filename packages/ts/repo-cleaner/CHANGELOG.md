@@ -1,5 +1,22 @@
 # @osdlc/repo-cleaner
 
+## 0.13.0
+
+### Minor Changes
+
+- 3005587: A clean worktree merged into the default branch by ancestry alone is now `safe-to-delete` when its branch shows it was worked on: its reflog records a commit, cherry-pick, `am`, or a merge or pull that made a merge commit, or it tracks a branch on a remote other than the default branch. The sign is in the new `facts.branch_used` (`commits`, `upstream` or `null`). A worktree that looks freshly made from the default branch stays `needs-investigation`, as before. (#582)
+  
+  A plan now records, per repository, whether its sweep fetched (`fetch`, default `false` for older plans), and `applyPlan` fetches before its re-check when it did, so the re-check judges against the same current default branch. `ApplyOptions.fetch` overrides it. A failed fetch fails the run before any step. (#584)
+  
+  New `ApplyOptions.keep` and `apply --keep remote_branch:<remote>/<branch>`: keep a remote branch while its other rows are applied, and refuse the run if its tip moved. The re-check throws the new `ApplyRefused` when a kept branch is gone or moved since the plan, and a `verify-remote` step, run before any delete, checks the tip again with `ls-remote`. Only the tip is compared, so PR facts that changed do not refuse it, and another clone of the same remote drops its row for the kept branch with the new reason `kept`. The receipt's step `action` gains `verify-remote`, and `dropped[].reason` gains `kept`. (#583)
+
+### Patch Changes
+
+- 9948d90: In a project that has this tool in its `node_modules`, the global command now runs the project's copy, unless a `dev link` or `<NAME>_HOME` checkout is set. Set `<NAME>_PROJECT=0` to keep the global copy.
+- 79407f5: Depend on `zod` `^4.6.6` instead of exactly `4.4.3`. 4.4.3 is covered by GHSA-mrhx-c7xc-m3w5 (memory exhaustion validating an oversized constrained collection; fixed in 4.6.6), and the exact pin made a consumer that already had a fixed `zod` install a second, vulnerable copy.
+- Updated dependencies [9948d90]
+  - @osdlc/cli-tool@0.14.0
+
 ## 0.12.0
 
 ### Minor Changes
