@@ -57,9 +57,9 @@
       "line": null,
       "title": "project bin under bun: failure text says checkout runs from source",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "020e96e367dccc00afffc2897fad34feb382589d"
     }
   ]
 }
