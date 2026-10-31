@@ -68,9 +68,9 @@
       "line": 162,
       "title": "projectInstall doc says it finds the copy as require does, then says it does not",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "3eb9a6fe620a98a99b3de15f4f3888b1fbeb4a84"
     }
   ]
 }
