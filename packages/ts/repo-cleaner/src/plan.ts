@@ -33,6 +33,12 @@ export const PlanRepoSchema = z.object({
   no_gh: z.boolean(),
   /** The `branch` the sweep was narrowed to; the re-sweep uses the same. */
   branch: z.string().nullable().default(null),
+  /**
+   * Whether the sweep fetched before classifying. The re-sweep fetches too, so
+   * it judges against the remote's current default branch, as the sweep did.
+   * A plan written before this field reads as not fetched.
+   */
+  fetch: z.boolean().default(false),
   rows: z.array(PlanRowSchema),
 })
 
@@ -91,7 +97,7 @@ export function sameFingerprint(a: Record<string, unknown>, b: Record<string, un
 /** One repository's plan entry: its deletable rows. */
 export function planRepo(
   root: string,
-  opts: { remote: string | null; noGh: boolean; branch?: string | null },
+  opts: { remote: string | null; noGh: boolean; branch?: string | null; fetch?: boolean },
   items: readonly PlannableRow[],
 ): PlanRepo {
   const rows: PlanRow[] = []
@@ -104,7 +110,14 @@ export function planRepo(
       fingerprint: fingerprint(item),
     })
   }
-  return { root, remote: opts.remote, no_gh: opts.noGh, branch: opts.branch ?? null, rows }
+  return {
+    root,
+    remote: opts.remote,
+    no_gh: opts.noGh,
+    branch: opts.branch ?? null,
+    fetch: opts.fetch ?? false,
+    rows,
+  }
 }
 
 /** A UTC timestamp safe in a file name, e.g. `2026-10-04T12-30-05-123Z`. */

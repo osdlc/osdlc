@@ -19,15 +19,22 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import { Git, PUSH_REJECTIONS } from '@osdlc/typed-git'
 import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { sh } from './helpers.ts'
-import { applyPlan, networkRemoteKey, type Grant, type RowSelection } from '../src/apply.ts'
+import {
+  ApplyRefused,
+  applyPlan,
+  networkRemoteKey,
+  type Grant,
+  type RowSelection,
+} from '../src/apply.ts'
 import { PLAN_VERSION, parsePlan, planRepo, readPlan, writePlan, type Plan } from '../src/plan.ts'
 import type { Receipt, RowRef } from '../src/receipt.ts'
+import { summarizeReceipt } from '../src/render.ts'
 import { sweepRepo } from '../src/sweep.ts'
 
 const cleanups: Array<() => void> = []
@@ -96,6 +103,168 @@ function apply(
 const refs = (root: string): string =>
   sh(root, ['for-each-ref', '--format=%(refname) %(objectname)'])
 const remoteHeads = (bare: string): string => sh(bare, ['for-each-ref', '--format=%(refname)'])
+
+describe('applyPlan fetches as the plan did', () => {
+  /** A plan of `merged-a`'s local row, and a push to `main` the worker has not fetched. */
+  function setup(fetch: boolean) {
+    const fx = buildFixture()
+    const { repo, items } = sweepRepo(fx.root, { noGh: true, cwd: fx.root, fetch })
+    const plan: Plan = {
+      version: PLAN_VERSION,
+      created_at: new Date().toISOString(),
+      repos: [planRepo(repo!.root, { remote: null, noGh: true, fetch }, items)],
+    }
+    const other = join(realpathSync(mkdtempSync(join(tmpdir(), 'rc-other-'))), 'c')
+    cleanups.push(() => rmSync(dirname(other), { recursive: true, force: true }))
+    sh(dirname(other), ['clone', '-q', fx.bare, other])
+    sh(other, ['commit', '-q', '--allow-empty', '-m', 'moved on'])
+    sh(other, ['push', '-q', 'origin', 'main'])
+    return { fx, plan, remoteMain: sh(fx.bare, ['rev-parse', 'main']) }
+  }
+  const run = (fx: Fixture, plan: Plan, fetch?: boolean) =>
+    applyPlan(plan, [{ category: 'local_branch', id: 'merged-a' }], [], {
+      callerCwd: fx.root,
+      dryRun: false,
+      receiptPath: null,
+      planPath: 'plan.json',
+      ...(fetch === undefined ? {} : { fetch }),
+    })
+
+  test('a plan swept after a fetch is re-checked after one', () => {
+    const { fx, plan, remoteMain } = setup(true)
+    expect(plan.repos[0]!.fetch).toBe(true)
+    expect(run(fx, plan).status).toBe('complete')
+    expect(sh(fx.root, ['rev-parse', 'origin/main'])).toBe(remoteMain)
+  })
+
+  test('a plan that did not fetch is not fetched', () => {
+    const { fx, plan, remoteMain } = setup(false)
+    expect(run(fx, plan).status).toBe('complete')
+    expect(sh(fx.root, ['rev-parse', 'origin/main'])).not.toBe(remoteMain)
+  })
+
+  test('the caller can ask for a fetch the plan did not record', () => {
+    const { fx, plan, remoteMain } = setup(false)
+    expect(run(fx, plan, true).status).toBe('complete')
+    expect(sh(fx.root, ['rev-parse', 'origin/main'])).toBe(remoteMain)
+  })
+
+  test('a failed fetch fails the run before any step', () => {
+    const { fx, plan } = setup(true)
+    sh(fx.root, ['remote', 'set-url', 'origin', join(tmpdir(), 'rc-missing.git')])
+    expect(() => run(fx, plan)).toThrow(/fetch failed/)
+    expect(refs(fx.root)).toContain('refs/heads/merged-a ')
+  })
+
+  test('a plan written before the field reads as not fetched', () => {
+    const plan = parsePlan(
+      JSON.stringify({
+        version: PLAN_VERSION,
+        created_at: 'x',
+        repos: [{ root: '/r', remote: null, no_gh: true, rows: [] }],
+      }),
+      'old.json',
+    )
+    expect(plan.repos[0]!.fetch).toBe(false)
+  })
+})
+
+describe('keeping a remote branch (#583)', () => {
+  const KEEP = { category: 'remote_branch', id: 'origin/merged-a' } as const
+  const LOCAL = { category: 'local_branch', id: 'merged-a' } as const
+
+  /** A push to `merged-a` on the remote from another clone. */
+  function moveRemote(fx: Fixture): string {
+    const other = join(realpathSync(mkdtempSync(join(tmpdir(), 'rc-keep-'))), 'c')
+    cleanups.push(() => rmSync(dirname(other), { recursive: true, force: true }))
+    sh(dirname(other), ['clone', '-q', '-b', 'merged-a', fx.bare, other])
+    sh(other, ['commit', '-q', '--allow-empty', '-m', 'more'])
+    sh(other, ['push', '-q', 'origin', 'merged-a'])
+    return sh(fx.bare, ['rev-parse', 'merged-a'])
+  }
+  const run = (fx: Fixture, plan: Plan, extra: Partial<Parameters<typeof applyPlan>[3]> = {}) =>
+    applyPlan(plan, [LOCAL], [], {
+      callerCwd: fx.root,
+      dryRun: false,
+      receiptPath: null,
+      planPath: 'plan.json',
+      keep: [KEEP],
+      ...extra,
+    })
+
+  test('the remote branch stays, its tip checked first; the local branch goes', () => {
+    const fx = buildFixture()
+    const receipt = run(fx, makePlan(fx.root))
+    expect(receipt.status).toBe('complete')
+    expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
+      ['verify-remote', 'ok'],
+      ['delete-local', 'ok'],
+      ['prune-worktrees', 'ok'],
+    ])
+    expect(receipt.steps[0]!.verification).toBe('tip unchanged; kept')
+    expect(remoteHeads(fx.bare)).toContain('refs/heads/merged-a')
+    expect(refs(fx.root)).not.toContain('refs/heads/merged-a ')
+    expect(summarizeReceipt(receipt).deleted).toEqual({
+      worktree: 0,
+      local_branch: 1,
+      remote_branch: 0,
+    })
+  })
+
+  test('a kept branch that moved since the plan refuses the run, touching nothing', () => {
+    const fx = buildFixture()
+    const plan = makePlan(fx.root)
+    moveRemote(fx)
+    expect(() => run(fx, plan)).toThrow(ApplyRefused)
+    expect(() => run(fx, plan)).toThrow(/kept remote_branch:origin\/merged-a moved since the plan/)
+    expect(refs(fx.root)).toContain('refs/heads/merged-a ')
+  })
+
+  test('one that moves after the re-check stops the run at its tip check', () => {
+    const fx = buildFixture()
+    let moved = ''
+    const receipt = run(fx, makePlan(fx.root), { onStart: () => (moved = moveRemote(fx)) })
+    expect(receipt.status).toBe('failed')
+    expect(receipt.steps[0]!.action).toBe('verify-remote')
+    expect(receipt.steps[0]!.error).toContain(`moved to ${moved}`)
+    expect(receipt.steps[1]!.result).toBe('pending')
+    expect(refs(fx.root)).toContain('refs/heads/merged-a ')
+    expect(summarizeReceipt(receipt).notRun).toBe(1)
+  })
+
+  test('only a remote branch row can be kept, and not one also selected', () => {
+    const fx = buildFixture()
+    const plan = makePlan(fx.root)
+    expect(() => run(fx, plan, { keep: [LOCAL] })).toThrow(/--keep takes a remote_branch row/)
+    expect(() =>
+      applyPlan(plan, [LOCAL, KEEP], [], {
+        callerCwd: fx.root,
+        dryRun: true,
+        receiptPath: null,
+        planPath: 'plan.json',
+        keep: [KEEP],
+      }),
+    ).toThrow(/both selected and kept/)
+  })
+
+  test('with no rows named, every other row applies and the kept one is checked', () => {
+    const fx = buildFixture()
+    const receipt = applyPlan(makePlan(fx.root), [], [], {
+      callerCwd: fx.root,
+      dryRun: true,
+      receiptPath: null,
+      planPath: 'plan.json',
+      keep: [KEEP],
+    })
+    expect(receipt.steps[0]!.action).toBe('verify-remote')
+    expect(receipt.steps.some((s) => s.action === 'delete-remote' && s.row?.id === KEEP.id)).toBe(
+      false,
+    )
+    expect(receipt.steps.some((s) => s.action === 'delete-local' && s.row?.id === 'merged-a')).toBe(
+      true,
+    )
+  })
+})
 
 describe('applyPlan', () => {
   test('onStepDone hears each finished step, even when the receipt then cannot be saved', () => {

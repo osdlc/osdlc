@@ -72,13 +72,22 @@ function buildFixture(): Fixture {
 
 const SWEEP = ['--no-gh', '--no-fetch']
 
-/** All three rows of the fixture's branch. Without gh the worktree is a review row, so it is named. */
+/** All three rows of the fixture's branch, named so a run does not depend on how each is judged. */
 function rowsOf(fx: Fixture): string[] {
   return [
     `worktree:${fx.worktree}`,
     `local_branch:${BRANCH}`,
     `remote_branch:origin/${BRANCH}`,
   ].flatMap((r) => ['--row', r])
+}
+
+/**
+ * Make the fixture's worktree look freshly made: no reflog and no upstream of
+ * its own, so with no PR evidence it is a review row, not a delete.
+ */
+function looksFresh(fx: Fixture): void {
+  rmSync(join(fx.root, '.git', 'logs', 'refs', 'heads', BRANCH), { force: true })
+  sh(fx.root, ['branch', '--unset-upstream', BRANCH])
 }
 
 describe('arguments', () => {
@@ -304,6 +313,9 @@ describe('local by default means offline', () => {
     expect(sh(fx.root, ['rev-parse', 'origin/main'])).toBe(before)
     const plan = JSON.parse(run(['plan'], fx.root).out) as Plan
     expect(plan.repos[0]!.no_gh).toBe(true)
+    expect(plan.repos[0]!.fetch).toBe(false)
+    const fetched = JSON.parse(run(['plan', '--remotes', '--no-gh'], fx.root).out) as Plan
+    expect(fetched.repos[0]!.fetch).toBe(true)
 
     const online = run(['status', '--remotes', '--no-gh'], fx.root)
     expect(online.code).toBe(0)
@@ -447,6 +459,7 @@ describe('color', () => {
 
   test('the preview before the question is colored and summarized', () => {
     const fx = buildFixture()
+    looksFresh(fx)
     const asked: string[] = []
     const res = colorRun(
       ['apply', '--branch', BRANCH, ...SWEEP, '--remotes'],
@@ -669,8 +682,44 @@ describe('apply', () => {
     expect(branchRefs(fx.bare)).not.toContain(BRANCH)
   })
 
+  test('--keep leaves a remote branch, checks its tip, and deletes the rest', () => {
+    const fx = buildFixture()
+    const keep = `remote_branch:origin/${BRANCH}`
+    const res = run(
+      [
+        'apply',
+        '--branch',
+        BRANCH,
+        ...SWEEP,
+        '--remotes',
+        '--yes',
+        '--keep',
+        keep,
+        '--row',
+        `worktree:${fx.worktree}`,
+        '--row',
+        `local_branch:${BRANCH}`,
+      ],
+      fx.root,
+    )
+    expect(res.code).toBe(0)
+    expect(res.out).toContain('deleted: 1 worktree, 1 local branch')
+    expect(res.out).toMatch(
+      /ok +remote_branch:origin\/feat\/s — git ls-remote origin refs\/heads\/feat\/s \(tip unchanged; kept\)/,
+    )
+    expect(branchRefs(fx.bare)).toContain(BRANCH)
+    expect(branchRefs(fx.root)).not.toContain(BRANCH)
+    const both = run(
+      ['apply', '--branch', BRANCH, ...SWEEP, '--remotes', '--yes', '--keep', keep, '--row', keep],
+      fx.root,
+    )
+    expect(both.code).toBe(2)
+    expect(both.err).toContain('both selected and kept')
+  })
+
   test('with no --row a review row is dropped, not applied', () => {
     const fx = buildFixture()
+    looksFresh(fx)
     const res = run(
       ['apply', '--branch', BRANCH, ...SWEEP, '--only', 'worktrees', '--yes'],
       fx.root,
@@ -693,6 +742,7 @@ describe('apply', () => {
 
   test('the receipt file records the rows the preview dropped', () => {
     const fx = buildFixture()
+    looksFresh(fx)
     const plan = join(fx.root, '.plans', 'p.json')
     run(['plan', '--branch', BRANCH, ...SWEEP, '--remotes', '-o', plan], fx.root)
     const res = run(['apply', '--plan', plan, '--yes', '--output', 'json'], fx.root)
@@ -774,6 +824,7 @@ describe('apply', () => {
 
   test('with no terminal and no --yes it refuses, after showing the steps', () => {
     const fx = buildFixture()
+    looksFresh(fx)
     const res = run(['apply', '--branch', BRANCH, ...SWEEP, '--remotes'], fx.root)
     expect(res.code).toBe(2)
     expect(res.out).toContain(`delete  remote_branch  origin/${BRANCH}`)

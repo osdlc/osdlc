@@ -224,6 +224,13 @@ const applyCli = () =>
         commaSeparated: false,
         help: 'apply only this row, e.g. local_branch:feat/x; repeatable (default: every row)',
       },
+      keep: {
+        kind: 'list',
+        valueName: 'remote_branch:id',
+        default: [],
+        commaSeparated: false,
+        help: 'keep this remote branch, but refuse the run if its tip moved since the plan, e.g. remote_branch:origin/feat/x; repeatable',
+      },
       allow: {
         kind: 'list',
         valueName: 'risk[=category:id]',
@@ -469,7 +476,7 @@ function planOf(swept: Extract<Swept, { kind: 'ok' }>, now: Date): Plan {
     version: PLAN_VERSION,
     created_at: now.toISOString(),
     repos: swept.result.repos.flatMap((s) =>
-      s.repo === null ? [] : [planRepo(s.repo.root, opts, s.items)],
+      s.repo === null ? [] : [planRepo(s.repo.root, { ...opts, fetch: s.repo.fetched }, s.items)],
     ),
   }
 }
@@ -653,9 +660,11 @@ function runApply(
   const paths = parsed.positionals
 
   let rows: RowRef[]
+  let keep: RowRef[]
   let grants: Grant[]
   try {
     rows = v.row.map(parseRowRef)
+    keep = v.keep.map(parseRowRef)
     grants = v.allow.map(parseGrant)
   } catch (err) {
     if (err instanceof ApplyArgumentError) return usageError(ctx, name, err.message)
@@ -708,6 +717,7 @@ function runApply(
     callerCwd: ctx.cwd,
     planPath: source,
     repoRoot,
+    keep,
     // An implicit selection runs only safe-to-delete rows, in the preview and
     // in the run it confirms, whose rows are passed explicitly.
     safeOnly: rows.length === 0,
@@ -730,6 +740,7 @@ function runApply(
       swept: loaded.swept,
     })
   } catch (err) {
+    if (err instanceof ApplyArgumentError) return usageError(ctx, name, err.message)
     return failure(ctx, err)
   }
 
@@ -749,8 +760,9 @@ function runApply(
 
   // Only what the preview showed: rows it dropped stay dropped.
   // Pinned to their repositories: a branch name two repositories share stays two rows.
+  // A kept row's tip check is not a selection; `keep` carries it again.
   const approved = preview.steps.flatMap((s) =>
-    s.row === null ? [] : [{ ...s.row, repo: s.repo }],
+    s.row === null || s.action === 'verify-remote' ? [] : [{ ...s.row, repo: s.repo }],
   )
   const approvedGrants = grants.filter(
     (g) =>
