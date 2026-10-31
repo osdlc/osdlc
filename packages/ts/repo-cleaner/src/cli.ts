@@ -28,6 +28,7 @@ import { isatty } from 'node:tty'
 
 import { EXIT, askYesNo, canPrompt, defineCli, systemDirs, type CliContext } from '@osdlc/cli-tool'
 import { Git } from '@osdlc/typed-git'
+import { detectColorLevel } from '@osdlc/ux'
 
 import { resolveBranch } from './branches.ts'
 import { VENDOR_DIRS } from './devlink.ts'
@@ -48,9 +49,13 @@ import {
   renderCountsJson,
   renderCountsText,
   renderJson,
+  PLAIN,
+  renderPreview,
   renderReceipt,
   renderSummary,
   renderText,
+  TERMINAL_STYLE,
+  type Style,
   rowsActedOn,
   summarizeReceipt,
 } from './render.ts'
@@ -81,12 +86,16 @@ const SWEEP_FLAGS = {
   only: {
     kind: 'list',
     valueName: 'list',
-    help: `comma-separated: ${Object.keys(ONLY).join(', ')} (default: all)`,
+    help: `comma-separated: ${Object.keys(ONLY).join(', ')} (default: worktrees, branches; remotes with --remotes)`,
+  },
+  remotes: {
+    kind: 'boolean',
+    help: 'also sweep remote branches, which is slower: each one is compared with the default branch',
   },
   branch: {
     kind: 'string',
     valueName: 'name|HEAD',
-    help: 'only this branch of this repository: its worktree, local and remote branch',
+    help: 'only this branch of this repository: its worktree and local branch, and its remote branch with --remotes',
   },
   remote: {
     kind: 'string',
@@ -133,8 +142,8 @@ const statusCli = () =>
   defineCli({
     name: NAME,
     summary:
-      'Inventory branches, worktrees and remote branches, and say which have been merged into ' +
-      'the default branch. Fetches each remote first; deletes nothing.',
+      'Inventory local branches and worktrees (remote branches too with --remotes), and say ' +
+      'which have been merged into the default branch. Fetches each remote first; deletes nothing.',
     positionals: PATHS,
     flags: {
       ...SWEEP_FLAGS,
@@ -157,7 +166,7 @@ const summaryCli = () =>
   defineCli({
     name: `${NAME} summary`,
     summary:
-      'Count local branches, worktrees and remote branches per repository: how many there are, ' +
+      'Count local branches and worktrees (and remote branches with --remotes) per repository: how many there are, ' +
       'how many are merged into the default branch, and how many would be deleted, pruned, reviewed or kept.',
     positionals: PATHS,
     flags: { ...SWEEP_FLAGS, output: OUTPUT },
@@ -287,20 +296,50 @@ interface SweepValues {
   branch?: string | undefined
   remote?: string | undefined
   remoteUrl: string[]
+  remotes: boolean
   gh: boolean
   fetch: boolean
   progress: boolean
 }
 
 type Swept =
-  | { kind: 'ok'; result: SweepResult; branch: string | undefined; values: SweepValues }
+  | {
+      kind: 'ok'
+      result: SweepResult
+      branch: string | undefined
+      values: SweepValues
+      /** What the sweep gathered. */
+      scope: readonly Scope[]
+    }
   /** No entry named a repository; the verb reports it and exits 10. */
   | { kind: 'nothing'; result: SweepResult }
   | { kind: 'exit'; code: number }
 
+/** Color for a report on `stream`, when it is a terminal that takes color. */
+function styleFor(ctx: CliContext, stream: 'stdout' | 'stderr'): Style {
+  const level = detectColorLevel({ env: ctx.env, isTTY: ctx.terminal?.[stream] === true })
+  return level === 'none' ? PLAIN : TERMINAL_STYLE
+}
+
+/** The note under a text report that left remote branches out, or '' when it did not. */
+function remotesNote(swept: Swept, style: Style): string {
+  if (swept.kind !== 'ok' || swept.scope.includes('remote-branches')) return ''
+  if (!swept.result.repos.some((r) => r.repo?.remote != null)) return ''
+  return style.muted('Remote branches not checked; add --remotes to include them.') + '\n'
+}
+
 /** Where `--remote-url` keeps its clones. */
 function mirrorCache(ctx: CliContext): string {
   return systemDirs(VENDOR_DIRS, { env: ctx.env }).standalone(NAME).cache().app('remotes').path
+}
+
+/** Local work by default: remote branches only when asked for, with `--remotes` or `--only remotes`. */
+const LOCAL_SCOPE: readonly Scope[] = ['worktrees', 'local-branches']
+
+function sweepScope(only: readonly string[] | undefined, remotes: boolean): Scope[] {
+  const scope = only === undefined ? [...LOCAL_SCOPE] : only.map((s) => ONLY[s]!)
+  if (remotes && !scope.includes('remote-branches')) scope.push('remote-branches')
+  return scope
 }
 
 /** Validate the sweep flags and run the sweep, or answer with the exit code. */
@@ -349,6 +388,7 @@ function sweep(
     return { kind: 'exit', code: failure(ctx, err) }
   }
 
+  const scope: Scope[] = urls.length > 0 ? ['remote-branches'] : sweepScope(only, v.remotes)
   const options: SweepReposOptions = {
     baseDir: ctx.cwd,
     cwd: ctx.cwd,
@@ -359,7 +399,7 @@ function sweep(
     // explain why the tool appeared to hang.
     onWarn: (message) => ctx.io.stderr(`${NAME}: ${message}\n`),
     ...(v.progress ? { onProgress: (p) => status.update(describeSweep(p)) } : {}),
-    ...(only === undefined ? {} : { scope: only.map((s) => ONLY[s]!) }),
+    scope,
     ...(v.remote === undefined ? {} : { remote: v.remote }),
   }
   let entries = paths.length > 0 ? [...paths] : [ctx.cwd]
@@ -374,7 +414,6 @@ function sweep(
       status.clear()
       return { kind: 'exit', code: failure(ctx, err) }
     }
-    options.scope = ['remote-branches']
   }
   if (v.progress) status.update(`${NAME}: finding repositories`)
   const result = sweepRepos(entries, options)
@@ -388,7 +427,7 @@ function sweep(
   const refused = branch === undefined ? null : (result.repos[0]?.error ?? null)
   if (refused !== null) return { kind: 'exit', code: failure(ctx, new Error(refused)) }
   if (result.repos.length === 0) return { kind: 'nothing', result }
-  return { kind: 'ok', result, branch, values: v }
+  return { kind: 'ok', result, branch, values: v, scope }
 }
 
 /**
@@ -422,8 +461,9 @@ function runStatus(argv: readonly string[], ctx: CliContext, status: StatusLine)
   if (parsed.status === 'help') return EXIT.ok
   if (parsed.status === 'error') return usageError(ctx, NAME, parsed.message)
   const v = parsed.values
+  const style = styleFor(ctx, 'stdout')
   const render = (r: SweepResult): string =>
-    v.output === 'json' ? renderJson(r) : renderText(r, { keep: v.keep })
+    v.output === 'json' ? renderJson(r) : renderText(r, { keep: v.keep, style })
   const swept = sweep(NAME, v, parsed.positionals, ctx, status)
   if (swept.kind === 'exit') return swept.code
   if (swept.kind === 'nothing') {
@@ -436,6 +476,7 @@ function runStatus(argv: readonly string[], ctx: CliContext, status: StatusLine)
     if (commands.length > 0) ctx.io.stdout(commands.join('\n') + '\n')
   } else {
     ctx.io.stdout(render(swept.result))
+    if (v.output === 'text') ctx.io.stdout(remotesNote(swept, style))
   }
   return EXIT.ok
 }
@@ -446,11 +487,13 @@ function runSummary(argv: readonly string[], ctx: CliContext, status: StatusLine
   if (parsed.status === 'help') return EXIT.ok
   if (parsed.status === 'error') return usageError(ctx, name, parsed.message)
   const v = parsed.values
+  const style = styleFor(ctx, 'stdout')
   const render = (r: SweepResult): string =>
-    v.output === 'json' ? renderCountsJson(r) : renderCountsText(r)
+    v.output === 'json' ? renderCountsJson(r) : renderCountsText(r, style)
   const swept = sweep(name, v, parsed.positionals, ctx, status)
   if (swept.kind === 'exit') return swept.code
   ctx.io.stdout(render(swept.result))
+  if (v.output === 'text') ctx.io.stdout(remotesNote(swept, style))
   return swept.kind === 'nothing' ? EXIT_NOTHING_TO_SWEEP : EXIT.ok
 }
 
@@ -470,7 +513,8 @@ function runPlan(argv: readonly string[], ctx: CliContext, status: StatusLine): 
 
   const plan = planOf(swept, new Date())
   const unreadable = reportUnreadable(ctx, name, swept.result)
-  ctx.io.stderr(renderSummary(swept.result) + '\n')
+  const style = styleFor(ctx, 'stderr')
+  ctx.io.stderr(renderSummary(swept.result, style) + '\n' + remotesNote(swept, style))
   if (v.out === '-') {
     ctx.io.stdout(`${JSON.stringify(plan, null, 2)}\n`)
   } else {
@@ -619,7 +663,7 @@ function runApply(
     ctx.io.stdout(
       v.output === 'json'
         ? `${JSON.stringify({ receiptPath: shownPath, summary: summarizeReceipt(receipt), receipt }, null, 2)}\n`
-        : renderReceipt(receipt, shownPath),
+        : renderReceipt(receipt, shownPath, styleFor(ctx, 'stdout')),
     )
   }
 
@@ -715,7 +759,7 @@ function confirm(
 ): number | null {
   // The preview is for the person answering, so it goes where the question does.
   const show = json ? ctx.io.stderr : ctx.io.stdout
-  show(renderReceipt(preview, null))
+  show(renderPreview(preview, styleFor(ctx, json ? 'stderr' : 'stdout')))
   const answer = (deps.confirm ?? terminalConfirm)(`Delete ${count} item${count === 1 ? '' : 's'}?`)
   if (answer === null) {
     return usageError(ctx, name, 'refusing to delete without a terminal to ask; pass --yes')

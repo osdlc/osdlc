@@ -23,6 +23,7 @@ import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { sh } from './helpers.ts'
 import { main, type MainDeps } from '../src/cli.ts'
+import type { Plan } from '../src/plan.ts'
 import type { Receipt } from '../src/receipt.ts'
 import { worktreeRemoveCommand } from '../src/worktrees.ts'
 
@@ -136,7 +137,7 @@ const branchRefs = (dir: string): string => sh(dir, ['for-each-ref', 'refs/heads
 describe('status line', () => {
   test('drawn on a terminal stderr, erased before the report, never on stdout', () => {
     const fx = buildFixture()
-    const res = run(['summary', ...SWEEP], fx.root, { stderrIsTerminal: true })
+    const res = run(['summary', ...SWEEP, '--remotes'], fx.root, { stderrIsTerminal: true })
     expect(res.code).toBe(0)
     expect(res.err).toContain('\r\x1b[2K')
     expect(res.err).toContain('checking remote branches')
@@ -146,17 +147,23 @@ describe('status line', () => {
 
   test('--no-progress, or a stderr that is not a terminal, draws none', () => {
     const fx = buildFixture()
-    const off = run(['summary', ...SWEEP, '--no-progress'], fx.root, { stderrIsTerminal: true })
+    const off = run(['summary', ...SWEEP, '--remotes', '--no-progress'], fx.root, {
+      stderrIsTerminal: true,
+    })
     expect(off.err).not.toContain('\x1b')
-    const piped = run(['summary', ...SWEEP], fx.root)
+    const piped = run(['summary', ...SWEEP, '--remotes'], fx.root)
     expect(piped.err).not.toContain('\x1b')
   })
 
   test('apply shows the re-check and each step', () => {
     const fx = buildFixture()
-    const res = run(['apply', '--branch', BRANCH, ...SWEEP, ...rowsOf(fx), '--yes'], fx.root, {
-      stderrIsTerminal: true,
-    })
+    const res = run(
+      ['apply', '--branch', BRANCH, ...SWEEP, '--remotes', ...rowsOf(fx), '--yes'],
+      fx.root,
+      {
+        stderrIsTerminal: true,
+      },
+    )
     expect(res.code).toBe(0)
     expect(res.err).toContain('re-checking')
     expect(res.err).toContain('deleting 1/')
@@ -166,7 +173,7 @@ describe('status line', () => {
 describe('plan', () => {
   test('writes the plan to stdout by default and the summary to stderr', () => {
     const fx = buildFixture()
-    const res = run(['plan', '--branch', BRANCH, ...SWEEP], fx.root)
+    const res = run(['plan', '--branch', BRANCH, ...SWEEP, '--remotes'], fx.root)
     expect(res.code).toBe(0)
     const plan = JSON.parse(res.out) as { repos: Array<{ rows: Array<{ category: string }> }> }
     expect(plan.repos[0]!.rows.map((r) => r.category).sort()).toEqual([
@@ -180,7 +187,7 @@ describe('plan', () => {
   test('-o writes a file and names it on stderr', () => {
     const fx = buildFixture()
     const out = join(fx.root, '.plans', 'p.json')
-    const res = run(['plan', '--branch', BRANCH, ...SWEEP, '-o', out], fx.root)
+    const res = run(['plan', '--branch', BRANCH, ...SWEEP, '--remotes', '-o', out], fx.root)
     expect(res.code).toBe(0)
     expect(res.out).toBe('')
     expect(res.err).toContain(`plan: ${out}`)
@@ -202,7 +209,7 @@ describe('summary', () => {
     sh(fx.root, ['checkout', '-q', 'stale-unmerged'])
     sh(fx.root, ['commit', '-q', '--allow-empty', '-m', 'not merged'])
     sh(fx.root, ['checkout', '-q', 'main'])
-    const res = run(['summary', ...SWEEP, '--output', 'json'], fx.root)
+    const res = run(['summary', ...SWEEP, '--remotes', '--output', 'json'], fx.root)
     expect(res.code).toBe(0)
     const out = JSON.parse(res.out) as {
       repos: Array<{ summary: Record<string, { total: number; merged: number }> }>
@@ -221,7 +228,7 @@ describe('summary', () => {
 
   test('text shows one table per repository and the closing summary line', () => {
     const fx = buildFixture()
-    const res = run(['summary', ...SWEEP], fx.root)
+    const res = run(['summary', ...SWEEP, '--remotes'], fx.root)
     expect(res.code).toBe(0)
     expect(res.out).toMatch(/total\s+merged\s+delete\s+prune\s+review\s+keep/)
     expect(res.out).toMatch(/local branches\s+2\s+1\s/)
@@ -229,20 +236,124 @@ describe('summary', () => {
   })
 })
 
+describe('remote branches are opt-in', () => {
+  test('by default only worktrees and local branches are swept, and the report says so', () => {
+    const fx = buildFixture()
+    const res = run(['status', ...SWEEP, '--keep'], fx.root)
+    expect(res.code).toBe(0)
+    expect(res.out).not.toContain('remote_branch')
+    expect(res.out).toContain('local_branch')
+    expect(res.out).toContain('Remote branches not checked; add --remotes to include them.')
+    const json = JSON.parse(run(['plan', '--branch', BRANCH, ...SWEEP], fx.root).out) as Plan
+    expect(json.repos[0]!.rows.map((r) => r.category).sort()).toEqual(['local_branch', 'worktree'])
+  })
+
+  test('--remotes and --only remotes include them; the note goes away', () => {
+    const fx = buildFixture()
+    for (const flags of [
+      ['--remotes'],
+      ['--only', 'remotes'],
+      ['--only', 'branches', '--remotes'],
+    ]) {
+      const res = run(['status', ...SWEEP, '--keep', ...flags], fx.root)
+      expect(res.code).toBe(0)
+      expect(res.out).toContain(`origin/${BRANCH}`)
+      expect(res.out).not.toContain('Remote branches not checked')
+    }
+  })
+
+  test('apply re-checks only the categories its rows are in', () => {
+    const fx = buildFixture()
+    const plan = join(tempDir(), 'p.json')
+    expect(run(['plan', '--branch', BRANCH, ...SWEEP, '--remotes', '-o', plan], fx.root).code).toBe(
+      0,
+    )
+    const res = run(
+      ['apply', '--plan', plan, '--yes', '--row', `worktree:${fx.worktree}`],
+      fx.root,
+      {
+        stderrIsTerminal: true,
+      },
+    )
+    expect(res.code).toBe(0)
+    expect(res.err).toContain('re-checking')
+    expect(res.err).not.toContain('checking local branches')
+    expect(res.err).not.toContain('checking remote branches')
+    expect(existsSync(fx.worktree)).toBe(false)
+    // The branches were in the plan but not selected: they are still there.
+    expect(branchRefs(fx.root)).toContain(BRANCH)
+    expect(branchRefs(fx.bare)).toContain(BRANCH)
+  })
+})
+
+describe('color', () => {
+  function colorRun(
+    argv: string[],
+    cwd: string,
+    env: Record<string, string | undefined>,
+    deps: MainDeps = {},
+  ) {
+    const base: Record<string, string | undefined> = { ...process.env, TERM: 'xterm-256color' }
+    delete base['NO_COLOR']
+    delete base['FORCE_COLOR']
+    const ctx = captureContext({
+      cwd,
+      env: { ...base, ...env },
+      terminal: { stdin: true, stdout: true, stderr: false },
+    })
+    const code = main(argv, ctx, { confirm: () => null, ...deps })
+    return { code, out: ctx.io.out, err: ctx.io.err }
+  }
+
+  test('a terminal gets colored action words; NO_COLOR and a pipe do not', () => {
+    const fx = buildFixture()
+    sh(fx.root, ['branch', 'gone-already'])
+    const colored = colorRun(['status', ...SWEEP], fx.root, {})
+    expect(colored.out).toContain('\x1b[31mdelete')
+    expect(colored.out).toContain('\x1b[1m')
+    expect(colorRun(['status', ...SWEEP], fx.root, { NO_COLOR: '1' }).out).not.toContain('\x1b[')
+    expect(run(['status', ...SWEEP], fx.root).out).not.toContain('\x1b[')
+  })
+
+  test('the preview before the question is colored and summarized', () => {
+    const fx = buildFixture()
+    const asked: string[] = []
+    const res = colorRun(
+      ['apply', '--branch', BRANCH, ...SWEEP, '--remotes'],
+      fx.root,
+      {},
+      {
+        confirm: (q) => {
+          asked.push(q)
+          return false
+        },
+      },
+    )
+    expect(res.code).toBe(0)
+    expect(asked).toEqual(['Delete 2 items?'])
+    expect(res.out).toContain('\x1b[31mdelete')
+    expect(res.out).toContain('\x1b[33mskip')
+    expect(res.out).toContain('\x1b[1mwould delete: 1 local branch, 1 remote branch')
+    expect(branchRefs(fx.bare)).toContain(BRANCH)
+  })
+})
+
 describe('prune rows', () => {
   test('a stale worktree link shows as prune in status and summary', () => {
     const fx = buildFixture()
     rmSync(fx.worktree, { recursive: true, force: true })
-    const status = run(['status', ...SWEEP], fx.root)
+    const status = run(['status', ...SWEEP, '--remotes'], fx.root)
     expect(status.code).toBe(0)
     const row = status.out.split('\n').find((l) => l.includes('wt s'))!
     expect(row).toMatch(/worktree\s+\S.*\s+prune\s+worktree directory no longer on disk/)
     expect(status.out).toMatch(/\d+ to delete, 1 to prune, \d+ to review/)
 
-    const text = run(['summary', ...SWEEP], fx.root)
+    const text = run(['summary', ...SWEEP, '--remotes'], fx.root)
     // worktrees: total 2 (primary + stale), 1 merged-or-not, delete 0, prune 1.
     expect(text.out).toMatch(/worktrees\s+2\s+\d+\s+0\s+1\s/)
-    const json = JSON.parse(run(['summary', ...SWEEP, '--output', 'json'], fx.root).out) as {
+    const json = JSON.parse(
+      run(['summary', ...SWEEP, '--remotes', '--output', 'json'], fx.root).out,
+    ) as {
       repos: Array<{ summary: Record<string, { prune: number; 'safe-to-delete': number }> }>
       summary: { prune: number }
     }
@@ -381,7 +492,9 @@ describe('apply', () => {
   test('from a plan file: deletes everywhere and writes the receipt beside the plan', () => {
     const fx = buildFixture()
     const plan = join(fx.root, '.plans', 'p.json')
-    expect(run(['plan', '--branch', 'HEAD', ...SWEEP, '-o', plan], fx.worktree).code).toBe(0)
+    expect(
+      run(['plan', '--branch', 'HEAD', ...SWEEP, '--remotes', '-o', plan], fx.worktree).code,
+    ).toBe(0)
 
     const applied = run(
       ['apply', '--plan', plan, ...rowsOf(fx), '--yes', '--output', 'json'],
@@ -410,7 +523,7 @@ describe('apply', () => {
   test('without a plan: sweeps, shows the steps, and deletes on yes', () => {
     const fx = buildFixture()
     const asked: string[] = []
-    const res = run(['apply', '--branch', BRANCH, ...SWEEP, ...rowsOf(fx)], fx.root, {
+    const res = run(['apply', '--branch', BRANCH, ...SWEEP, '--remotes', ...rowsOf(fx)], fx.root, {
       confirm: (q) => {
         asked.push(q)
         return true
@@ -420,7 +533,7 @@ describe('apply', () => {
     expect(asked).toEqual(['Delete 3 items?'])
     expect(res.out).toContain('would delete: 1 worktree, 1 local branch, 1 remote branch')
     expect(res.out).toContain('deleted: 1 worktree, 1 local branch, 1 remote branch')
-    expect(res.out).toContain('would-run')
+    expect(res.out).toMatch(/delete  local_branch +feat\/s\n +git /)
     expect(res.out).toContain('status: complete')
     expect(existsSync(fx.worktree)).toBe(false)
     expect(branchRefs(fx.bare)).not.toContain(BRANCH)
@@ -451,7 +564,7 @@ describe('apply', () => {
   test('the receipt file records the rows the preview dropped', () => {
     const fx = buildFixture()
     const plan = join(fx.root, '.plans', 'p.json')
-    run(['plan', '--branch', BRANCH, ...SWEEP, '-o', plan], fx.root)
+    run(['plan', '--branch', BRANCH, ...SWEEP, '--remotes', '-o', plan], fx.root)
     const res = run(['apply', '--plan', plan, '--yes', '--output', 'json'], fx.root)
     const out = JSON.parse(res.out) as { receiptPath: string; receipt: Receipt }
     const saved = JSON.parse(readFileSync(out.receiptPath, 'utf-8')) as Receipt
@@ -461,7 +574,10 @@ describe('apply', () => {
 
   test('a run with no receipt file says so on stderr', () => {
     const fx = buildFixture()
-    const res = run(['apply', '--branch', BRANCH, ...SWEEP, ...rowsOf(fx), '--yes'], fx.root)
+    const res = run(
+      ['apply', '--branch', BRANCH, ...SWEEP, '--remotes', ...rowsOf(fx), '--yes'],
+      fx.root,
+    )
     expect(res.code).toBe(0)
     expect(res.err).toContain('no receipt written')
   })
@@ -509,7 +625,7 @@ describe('apply', () => {
   test('--repo-root that names no plan repository exits 1', () => {
     const fx = buildFixture()
     const plan = join(fx.root, 'p.json')
-    run(['plan', '--branch', BRANCH, ...SWEEP, '-o', plan], fx.root)
+    run(['plan', '--branch', BRANCH, ...SWEEP, '--remotes', '-o', plan], fx.root)
     const res = run(['apply', '--plan', plan, '--repo-root', tempDir(), '--yes'], fx.root)
     expect(res.code).toBe(1)
     expect(res.err).toContain('no plan repository at')
@@ -517,7 +633,9 @@ describe('apply', () => {
 
   test('a no deletes nothing', () => {
     const fx = buildFixture()
-    const res = run(['apply', '--branch', BRANCH, ...SWEEP], fx.root, { confirm: () => false })
+    const res = run(['apply', '--branch', BRANCH, ...SWEEP, '--remotes'], fx.root, {
+      confirm: () => false,
+    })
     expect(res.code).toBe(0)
     expect(res.err).toContain('nothing deleted')
     expect(existsSync(fx.worktree)).toBe(true)
@@ -526,9 +644,10 @@ describe('apply', () => {
 
   test('with no terminal and no --yes it refuses, after showing the steps', () => {
     const fx = buildFixture()
-    const res = run(['apply', '--branch', BRANCH, ...SWEEP], fx.root)
+    const res = run(['apply', '--branch', BRANCH, ...SWEEP, '--remotes'], fx.root)
     expect(res.code).toBe(2)
-    expect(res.out).toContain('would-run')
+    expect(res.out).toContain(`delete  remote_branch  origin/${BRANCH}`)
+    expect(res.out).toContain('would delete: 1 local branch, 1 remote branch')
     expect(res.err).toContain('--yes')
     expect(existsSync(fx.worktree)).toBe(true)
   })
@@ -536,7 +655,7 @@ describe('apply', () => {
   test('--dry-run deletes nothing and writes no receipt', () => {
     const fx = buildFixture()
     const plan = join(fx.root, '.plans', 'p.json')
-    run(['plan', '--branch', BRANCH, ...SWEEP, '-o', plan], fx.root)
+    run(['plan', '--branch', BRANCH, ...SWEEP, '--remotes', '-o', plan], fx.root)
     const dry = run(['apply', '--plan', plan, '--dry-run', '--output', 'json'], fx.root)
     expect(dry.code).toBe(0)
     expect((JSON.parse(dry.out) as { receiptPath: string | null }).receiptPath).toBeNull()
@@ -546,7 +665,7 @@ describe('apply', () => {
 
   test('--plan - reads the plan from stdin', () => {
     const fx = buildFixture()
-    const plan = run(['plan', '--branch', BRANCH, ...SWEEP], fx.root).out
+    const plan = run(['plan', '--branch', BRANCH, ...SWEEP, '--remotes'], fx.root).out
     const res = run(
       ['apply', '--plan', '-', '--yes', '--row', `remote_branch:origin/${BRANCH}`],
       fx.root,
@@ -574,7 +693,9 @@ describe('apply', () => {
   test('a failed step exits 11 under text and json; --receipt names the file', () => {
     const fx = buildFixture()
     const plan = join(fx.root, '.plans', 'p.json')
-    expect(run(['plan', '--branch', BRANCH, ...SWEEP, '-o', plan], fx.root).code).toBe(0)
+    expect(run(['plan', '--branch', BRANCH, ...SWEEP, '--remotes', '-o', plan], fx.root).code).toBe(
+      0,
+    )
     const hook = join(fx.bare, 'hooks', 'pre-receive')
     writeFileSync(hook, '#!/bin/sh\nexit 1\n')
     chmodSync(hook, 0o755)

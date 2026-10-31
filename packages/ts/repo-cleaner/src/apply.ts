@@ -34,7 +34,13 @@ import {
 } from './plan.ts'
 import { RECEIPT_VERSION, type Dropped, type Receipt, type RowRef, type Step } from './receipt.ts'
 import { sweepRepo } from './sweep.ts'
-import { AUTHORIZATIONS, type Authorization, type SweepItem, type SweepProgress } from './types.ts'
+import {
+  AUTHORIZATIONS,
+  type Authorization,
+  type Scope,
+  type SweepItem,
+  type SweepProgress,
+} from './types.ts'
 import { worktreePruneCommand, worktreeRemoveCommand, worktreeUnlockCommand } from './worktrees.ts'
 import { writeJsonAtomic } from './write-json.ts'
 
@@ -174,8 +180,15 @@ interface Accepted {
   force: boolean
 }
 
+/** The sweep scope that gathers each row category. */
+const SCOPE_OF: Record<RowRef['category'], Scope> = {
+  worktree: 'worktrees',
+  local_branch: 'local-branches',
+  remote_branch: 'remote-branches',
+}
+
 /** The plan repository's rows as they stand now, with the host's overlay applied. */
-function resweep(repo: PlanRepo, opts: ApplyOptions): SweepItem[] {
+function resweep(repo: PlanRepo, scope: readonly Scope[], opts: ApplyOptions): SweepItem[] {
   const given = opts.swept?.get(repo.root)
   if (given !== undefined) {
     return [...given]
@@ -184,6 +197,7 @@ function resweep(repo: PlanRepo, opts: ApplyOptions): SweepItem[] {
     remote: repo.remote,
     noGh: repo.no_gh,
     branch: repo.branch ?? undefined,
+    scope,
     cwd: opts.callerCwd,
     git: opts.git,
     gh: opts.gh,
@@ -205,7 +219,13 @@ function recheck(
 ): { accepted: Accepted[]; dropped: Dropped[] } {
   const swept = new Map<PlanRepo, SweepItem[]>()
   for (const { repo } of selected) {
-    if (!swept.has(repo)) swept.set(repo, resweep(repo, opts))
+    if (swept.has(repo)) continue
+    // Only the categories the selection is in: a plan of local rows need not
+    // compare every remote branch again.
+    const scope = new Set(
+      selected.filter((s) => s.repo === repo).map((s) => SCOPE_OF[s.ref.category]),
+    )
+    swept.set(repo, resweep(repo, [...scope], opts))
   }
 
   const accepted: Accepted[] = []
