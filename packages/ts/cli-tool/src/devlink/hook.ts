@@ -47,11 +47,13 @@ export function devlinkHook(spec: ToolSpec, opts: DevlinkHookOptions = {}): Devl
     delete ctx.env[layerVar]
     if (ctx.env !== process.env) delete process.env[layerVar]
     if (layer !== undefined) {
-      described = handedOff(spec, self, layer)
+      described = { ...handedOff(spec, self, layer), ...(script === undefined ? {} : { script }) }
       return null
     }
     const selection = resolve(spec, { env: ctx.env, cwd: ctx.cwd, self })
-    if (selection.source === 'local') described = notHandedOff(self, selection)
+    if (selection.source === 'local') {
+      described = { ...notHandedOff(self, selection), ...(script === undefined ? {} : { script }) }
+    }
     return execSelection(spec, selection, argv, {
       env: ctx.env,
       announce: (line) => ctx.io.stderr(`${line}\n`),

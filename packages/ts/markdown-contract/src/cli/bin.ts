@@ -9,6 +9,7 @@ import { devlinkHook } from '@osdlc/cli-tool/devlink'
 
 import { DEVLINK_SPEC } from './devlink.js'
 import { runCli } from './run.js'
+import { VERSION } from './version.generated.js'
 
 await runMain(
   async (argv, ctx) => {
@@ -17,5 +18,5 @@ await runMain(
     if (stderr) ctx.io.stderr(`${stderr}\n`)
     return code
   },
-  { name: 'markdown-contract', devlink: devlinkHook(DEVLINK_SPEC) },
+  { name: 'markdown-contract', version: VERSION, devlink: devlinkHook(DEVLINK_SPEC) },
 )

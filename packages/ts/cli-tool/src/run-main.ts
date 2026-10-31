@@ -53,12 +53,16 @@ export interface RunMainOptions {
   devlink?: DevlinkHook
   /**
    * The script that is running, which `--where` reports. Defaults to
-   * `process.argv[1]`.
+   * `process.argv[1]`. A devlink hook that names its own script (its
+   * `describe` returns one) wins, so the file and the checkout come from one
+   * path.
+   * @experimental
    */
   script?: string
   /**
    * The binary that is running, which `--where` reports in place of a
    * bun-compiled binary's virtual script path. Defaults to `process.execPath`.
+   * @experimental
    */
   execPath?: string
 }
@@ -95,6 +99,11 @@ export interface DevlinkWhere {
   text: string
   /** For the `link` layer: the link file that named the checkout. */
   linkFile?: string
+  /**
+   * The script the hook found `checkout` from. `--where` reports it as the
+   * file in place of {@link RunMainOptions.script}; it is not printed itself.
+   */
+  script?: string
 }
 
 /**
@@ -120,12 +129,13 @@ export async function runMain(main: MainFn, options: RunMainOptions): Promise<vo
     return
   }
   if (argv[0] === '--where') {
+    const described = options.devlink?.describe?.() ?? null
     const w = where({
       name: options.name,
       version: options.version,
-      script: options.script ?? process.argv[1],
+      script: described?.script ?? options.script ?? process.argv[1],
       execPath: options.execPath ?? process.execPath,
-      devlink: options.devlink?.describe?.() ?? null,
+      devlink: described,
     })
     ctx.io.stdout(argv.includes('--json') ? `${JSON.stringify(w)}\n` : renderWhere(w))
     process.exitCode = EXIT.ok

@@ -71,7 +71,7 @@ export interface Where {
     path: string | null
   }
   /** Null without devlink. */
-  chosenBy: DevlinkWhere | null
+  chosenBy: Omit<DevlinkWhere, 'script'> | null
 }
 
 /** The inputs to {@link where}. */
@@ -102,8 +102,15 @@ export function where(input: WhereInput): Where {
     file,
     compiled,
     from,
-    chosenBy: input.devlink,
+    chosenBy: chosenBy(input.devlink),
   }
+}
+
+/** The hook's answer without the script it was judged from, which `file` already reports. */
+function chosenBy(devlink: DevlinkWhere | null): Where['chosenBy'] {
+  if (devlink === null) return null
+  const { script: _script, ...rest } = devlink
+  return rest
 }
 
 function packageFrom(file: string | null): Where['from'] {

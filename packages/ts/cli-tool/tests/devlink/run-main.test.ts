@@ -50,8 +50,8 @@ function run(env: Record<string, string>, argv: string[], script?: string) {
       context,
       argv,
       version: '1.2.3',
+      // The hook's script is the one --where reports; runMain is given none.
       devlink: devlinkHook(SPEC, script === undefined ? {} : { script }),
-      ...(script === undefined ? {} : { script }),
     }),
   }
 }
@@ -165,6 +165,37 @@ describe('runMain --where with devlink', () => {
     await r.done
     expect(r.context.io.out).toContain(`from      checkout ${self}\n`)
     expect(r.context.io.out).toContain('chosen by this checkout (TOOLY_HOME, which is this one)\n')
+  })
+
+  test.each([
+    ['cwd', 'cwd (a checkout above the working directory)'],
+    ['local', "local (the launcher's own checkout; no devlink layer selected another)"],
+    ['custom', 'custom (as $TOOLY_LAUNCH_LAYER says)'],
+  ])('a process handed off by the %s layer says so', async (layer, text) => {
+    const other = seedCheckout(join(sb.root, 'other'))
+    const r = run({ TOOLY_LAUNCH_LAYER: layer }, ['--where'], join(other, 'src', 'cli.ts'))
+    await r.done
+    expect(r.called()).toBe(false)
+    expect(r.context.io.out).toContain(`from      checkout ${other}\n`)
+    expect(r.context.io.out).toContain(`chosen by ${text}\n`)
+  })
+
+  test('a runMain script that disagrees with the hook does not split the answer', async () => {
+    const other = seedCheckout(join(sb.root, 'other'))
+    const script = join(other, 'src', 'cli.ts')
+    const context = captureContext({
+      cwd: sb.root,
+      env: { HOME: sb.home, TOOLY_LAUNCH_LAYER: 'env' },
+    })
+    await runMain(() => 0, {
+      name: 'tooly',
+      context,
+      argv: ['--where'],
+      script: join(sb.root, 'node_modules', 'tooly', 'bin', 'tooly'),
+      devlink: devlinkHook(SPEC, { script }),
+    })
+    expect(context.io.out).toContain(`file      ${script}\n`)
+    expect(context.io.out).toContain(`from      checkout ${other}\n`)
   })
 
   test('the process that hands off does not answer --where itself', async () => {
