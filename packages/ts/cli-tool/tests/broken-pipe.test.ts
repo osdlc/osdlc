@@ -18,6 +18,23 @@ describe('quietOnBrokenPipe', () => {
     expect(() => stream.emit('error', errno('EIO'))).toThrow('EIO')
     expect(exits).toEqual([0])
   })
+
+  test('the writes after the first broken one exit once, not again', () => {
+    const stream = new EventEmitter()
+    const exits: number[] = []
+    quietOnBrokenPipe(stream as never, (code) => exits.push(code))
+    stream.emit('error', errno('EPIPE'))
+    stream.emit('error', errno('ERR_STREAM_DESTROYED'))
+    expect(exits).toEqual([0])
+  })
+
+  test('with exit null a broken pipe is dropped and the run goes on', () => {
+    const stream = new EventEmitter()
+    quietOnBrokenPipe(stream as never, null)
+    expect(() => stream.emit('error', errno('EPIPE'))).not.toThrow()
+    expect(() => stream.emit('error', errno('ERR_STREAM_DESTROYED'))).not.toThrow()
+    expect(() => stream.emit('error', errno('EIO'))).toThrow('EIO')
+  })
 })
 
 describe('runMain', () => {

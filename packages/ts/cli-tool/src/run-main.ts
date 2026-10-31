@@ -114,31 +114,41 @@ export interface DevlinkWhere {
  */
 export type MainFn = (argv: readonly string[], ctx: CliContext) => number | Promise<number>
 
+/** The write errors of a stream whose reader went away: the first write, and every one after. */
+const BROKEN_PIPE = new Set(['EPIPE', 'ERR_STREAM_DESTROYED'])
+
 /**
- * Exit quietly when the reader of `stream` goes away, as `tool --json | head -1`
- * does: the rest of the output has nowhere to go, which is not an error. Any
- * other write error is thrown as before. {@link runMain} installs it on stdout
- * and stderr when it uses the process's own streams.
+ * Stay quiet when the reader of `stream` goes away, as `tool --json | head -1`
+ * does: the rest of the output has nowhere to go, which is not an error. With
+ * `exit`, the run ends there with exit 0, which suits stdout: the reader has
+ * what it wanted. With `exit` null the error is dropped and the run goes on,
+ * which suits stderr: a closed stderr must not turn a failing run into a
+ * passing one. Any other write error is thrown as before. {@link runMain}
+ * installs it on both streams when it uses the process's own.
  */
 export function quietOnBrokenPipe(
   stream: Pick<NodeJS.WriteStream, 'on'>,
-  exit: (code: number) => void = (code) => process.exit(code),
+  exit: ((code: number) => void) | null = (code) => process.exit(code),
 ): void {
+  let exited = false
   stream.on('error', (err: NodeJS.ErrnoException) => {
-    if (err.code !== 'EPIPE') throw err
+    if (err.code === undefined || !BROKEN_PIPE.has(err.code)) throw err
+    if (exit === null || exited) return
+    exited = true
     exit(0)
   })
 }
 
 /**
  * Run `main` and set the process's exit code from what it returns. Without
- * `options.context`, a closed stdout or stderr pipe ends the run quietly with
- * exit 0 ({@link quietOnBrokenPipe}) instead of an unhandled `EPIPE`.
+ * `options.context`, a closed pipe is not an unhandled `EPIPE`
+ * ({@link quietOnBrokenPipe}): a closed stdout ends the run with exit 0, and
+ * a closed stderr is ignored, so the exit code is still `main`'s.
  */
 export async function runMain(main: MainFn, options: RunMainOptions): Promise<void> {
   if (options.context === undefined) {
     quietOnBrokenPipe(process.stdout)
-    quietOnBrokenPipe(process.stderr)
+    quietOnBrokenPipe(process.stderr, null)
   }
   const ctx = options.context ?? processContext()
   const argv = options.argv ?? process.argv.slice(2)

@@ -314,6 +314,54 @@ describe('--remote-url', () => {
     expect(readdirSync(cache)).toEqual([])
   })
 
+  test('an empty URL is refused, not dropped in favour of the checkout you are in', () => {
+    const fx = buildFixture()
+    const res = remoteRun(['apply', '--remote-url', '', ...SWEEP, '--yes'], fx.root, tempDir())
+    expect(res.code).toBe(2)
+    expect(res.err).toContain('--remote-url needs a URL')
+    expect(branchRefs(fx.root)).toContain(BRANCH)
+  })
+
+  test('--plan fixes what is swept, so --remote-url is refused with it', () => {
+    const res = remoteRun(['apply', '--plan', 'p.json', '--remote-url', 'u'], tempDir(), tempDir())
+    expect(res.code).toBe(2)
+    expect(res.err).toContain('--remote-url')
+  })
+
+  test('a mirror that pushes elsewhere is refused, swept or from a plan', () => {
+    const fx = buildFixture()
+    const cache = tempDir()
+    const away = tempDir()
+    const plan = join(away, 'p.json')
+    expect(
+      remoteRun(['plan', '--remote-url', fx.bare, ...SWEEP, '-o', plan], away, cache).code,
+    ).toBe(0)
+    const mirror = (JSON.parse(readFileSync(plan, 'utf8')) as { repos: Array<{ root: string }> })
+      .repos[0]!.root
+    const elsewhere = makeBareAndWorker()
+    cleanups.push(elsewhere.cleanup)
+    sh(mirror, ['config', 'remote.origin.pushurl', elsewhere.bare.dir])
+
+    const swept = remoteRun(['--remote-url', fx.bare, ...SWEEP], away, cache)
+    expect(swept.code).toBe(1)
+    expect(swept.err).toContain('pushes somewhere other than')
+    const applied = remoteRun(['apply', '--plan', plan, '--yes'], away, cache)
+    expect(applied.code).toBe(1)
+    expect(applied.err).toContain('refusing to apply')
+    expect(branchRefs(fx.bare)).toContain(BRANCH)
+  })
+
+  test('a failed clone does not print the credentials in its URL', () => {
+    const res = remoteRun(
+      ['--remote-url', 'https://me:SECRET@127.0.0.1:9/acme/repo.git?t=SECRET', ...SWEEP],
+      tempDir(),
+      tempDir(),
+    )
+    expect(res.code).toBe(1)
+    expect(res.err).toContain('cannot clone https://127.0.0.1:9/acme/repo.git')
+    expect(res.err).not.toContain('SECRET')
+  })
+
   test('a URL that cannot be cloned exits 1 and leaves nothing in the cache', () => {
     const cache = tempDir()
     const res = remoteRun(

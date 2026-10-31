@@ -22,8 +22,8 @@
  *   11  apply stopped at a failed step; the receipt says which
  */
 
-import { readSync } from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
+import { existsSync, readSync, realpathSync } from 'node:fs'
+import { basename, dirname, join, resolve, sep } from 'node:path'
 import { isatty } from 'node:tty'
 
 import { EXIT, askYesNo, canPrompt, defineCli, systemDirs, type CliContext } from '@osdlc/cli-tool'
@@ -31,7 +31,7 @@ import { Git } from '@osdlc/typed-git'
 
 import { resolveBranch } from './branches.ts'
 import { VENDOR_DIRS } from './devlink.ts'
-import { ensureMirror } from './remote-mirror.ts'
+import { ensureMirror, mirrorProblem } from './remote-mirror.ts'
 import { ApplyArgumentError, applyPlan, parseGrant, parseRowRef, type Grant } from './apply.ts'
 import {
   PLAN_VERSION,
@@ -298,6 +298,11 @@ type Swept =
   | { kind: 'nothing'; result: SweepResult }
   | { kind: 'exit'; code: number }
 
+/** Where `--remote-url` keeps its clones. */
+function mirrorCache(ctx: CliContext): string {
+  return systemDirs(VENDOR_DIRS, { env: ctx.env }).standalone(NAME).cache().app('remotes').path
+}
+
 /** Validate the sweep flags and run the sweep, or answer with the exit code. */
 function sweep(
   name: string,
@@ -316,7 +321,15 @@ function sweep(
     const message = '--branch sweeps this repository only; drop the paths'
     return { kind: 'exit', code: usageError(ctx, name, message) }
   }
-  const urls = v.remoteUrl.filter((u) => u !== '')
+  // An empty URL is refused, not dropped: `--remote-url "$UNSET"` must not
+  // fall back to sweeping the checkout you are standing in.
+  if (v.remoteUrl.some((u) => u.trim() === '')) {
+    return {
+      kind: 'exit',
+      code: usageError(ctx, name, '--remote-url needs a URL; got an empty one'),
+    }
+  }
+  const urls = v.remoteUrl
   if (urls.length > 0) {
     const conflict =
       paths.length > 0
@@ -351,11 +364,11 @@ function sweep(
   }
   let entries = paths.length > 0 ? [...paths] : [ctx.cwd]
   if (urls.length > 0) {
-    const cache = systemDirs(VENDOR_DIRS, { env: ctx.env }).standalone(NAME).cache().app('remotes')
+    const cache = mirrorCache(ctx)
     try {
       entries = urls.map((url, i) => {
         if (v.progress) status.update(`${NAME}: cloning remote ${i + 1}/${urls.length}`)
-        return ensureMirror(url, cache.path)
+        return ensureMirror(url, cache)
       })
     } catch (err) {
       status.clear()
@@ -551,6 +564,7 @@ function applyConflict(v: ApplyValues, paths: readonly string[]): string | null 
       v.only !== undefined ? '--only' : null,
       v.branch !== undefined ? '--branch' : null,
       v.remote !== undefined ? '--remote' : null,
+      v.remoteUrl.length > 0 ? '--remote-url' : null,
     ].filter((f) => f !== null)
     if (sweepFlags.length > 0) return `--plan fixes what is swept; drop ${sweepFlags.join(', ')}`
   }
@@ -589,6 +603,15 @@ function runApply(
   const loaded = loadPlan(name, v, paths, ctx, deps, status, now)
   if (typeof loaded === 'number') return loaded
   const { plan, source, receiptPath } = loaded
+  // A plan from `--remote-url` names a clone in the cache. Its deletes are
+  // pushed from there, so the clone must still push only where it fetches from.
+  const cacheDir = mirrorCache(ctx)
+  const cache = (existsSync(cacheDir) ? realpathSync(cacheDir) : cacheDir) + sep
+  for (const repo of plan.repos) {
+    if (!repo.root.startsWith(cache)) continue
+    const problem = mirrorProblem(repo.root)
+    if (problem !== null) return failure(ctx, new Error(`${problem}; refusing to apply`))
+  }
   const ok = (): number => (loaded.unreadable ? EXIT.error : EXIT.ok)
 
   const repoRoot = v.repoRoot === undefined ? undefined : resolve(ctx.cwd, v.repoRoot)

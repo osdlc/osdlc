@@ -286,8 +286,12 @@ directory. Remove the directory to drop it. The clone is a full one, not
 `--filter=blob:none`: the patch check reads file contents, and a partial
 clone fetches them one branch at a time.
 
-The flag repeats for several remotes. It does not combine with paths or
-`--branch`, and `--only` may only name `remotes`.
+The flag repeats for several remotes. It does not combine with paths,
+`--branch` or `--plan`, `--only` may only name `remotes`, and an empty URL is
+refused. A clone is reused only while its `origin` fetches from that URL and
+pushes to it alone; `apply --plan` checks the same of a plan's clone before
+deleting. The clone's directory name and every message carry the URL with
+its credentials, query and fragment removed.
 
 ## Options
 

@@ -32,13 +32,25 @@ export class RemoteMirrorError extends Error {
 const UNSAFE = /[^A-Za-z0-9._-]+/g
 
 /**
+ * `text` with every URL's credentials removed: the user-info before `@` in a
+ * `scheme://` URL, and any query string or fragment. For a message or a name
+ * that must not carry a token.
+ */
+export function redactUrl(text: string): string {
+  return text
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^/@\s]*@/gi, '$1')
+    .replace(/([a-z][a-z0-9+.-]*:\/\/[^\s?#]*)[?#]\S*/gi, '$1')
+}
+
+/**
  * The directory name for `url`'s mirror: readable `host-owner-repo`, then a
- * hash of the whole URL so two URLs never share a mirror. The URL itself,
- * which can hold a token, never appears in the name.
+ * hash of the whole URL so two URLs never share a mirror. The readable part
+ * is read from the URL with its credentials, query and fragment removed, so a
+ * token never reaches the name.
  */
 export function mirrorName(url: string): string {
   const hash = createHash('sha256').update(url).digest('hex').slice(0, 12)
-  const parsed = parseRemoteRepo(url)
+  const parsed = parseRemoteRepo(redactUrl(url))
   const readable =
     parsed === null
       ? 'remote'
@@ -47,13 +59,40 @@ export function mirrorName(url: string): string {
 }
 
 /**
+ * Why `dir` is not a mirror of `url` — or of whatever it was cloned from, when
+ * `url` is omitted — or null when it is. A mirror's `origin` has one fetch URL
+ * and pushes to that URL alone, so a delete cannot be sent elsewhere.
+ */
+export function mirrorProblem(
+  dir: string,
+  url?: string,
+  opts: { git?: CommandRunner | undefined } = {},
+): string | null {
+  const git = new Git(dir, { runner: opts.git })
+  const fetch = git.try.remoteGetUrls('origin')
+  const push = git.try.remoteGetUrls('origin', { push: true })
+  if (!fetch.ok || !push.ok) return `${dir} has no readable origin remote`
+  const [from] = fetch.value
+  if (fetch.value.length !== 1 || from === undefined) {
+    return `${dir} has ${fetch.value.length} origin URLs`
+  }
+  if (url !== undefined && from !== url) return `${dir} is a mirror of another URL`
+  if (push.value.length !== 1 || push.value[0] !== from) {
+    return `${dir} pushes somewhere other than the URL it was cloned from`
+  }
+  return null
+}
+
+/**
  * The directory of `url`'s mirror under `cacheDir`, cloned on first use. An
- * existing mirror is reused as it is; the sweep's own fetch brings it up to
- * date. A first clone goes to a sibling directory and is renamed into place,
- * so a clone that fails leaves nothing behind.
+ * existing mirror is reused as it is, once {@link mirrorProblem} finds
+ * nothing wrong with it; the sweep's own fetch brings it up to date. A first
+ * clone goes to a sibling directory and is renamed into place, so a clone
+ * that fails leaves nothing behind. Messages carry the URL with its
+ * credentials removed.
  *
  * @throws RemoteMirrorError when `url` is empty or looks like an option, when
- *   the clone fails, or when the directory holds a mirror of another URL.
+ *   the clone fails, or when the directory is not a mirror of `url`.
  */
 export function ensureMirror(
   url: string,
@@ -61,14 +100,15 @@ export function ensureMirror(
   opts: { git?: CommandRunner | undefined } = {},
 ): string {
   if (url === '' || url.startsWith('-')) {
-    throw new RemoteMirrorError(`not a remote URL: ${JSON.stringify(url)}`)
+    throw new RemoteMirrorError(`not a remote URL: ${JSON.stringify(redactUrl(url))}`)
   }
+  const shown = redactUrl(url)
   const dir = join(cacheDir, mirrorName(url))
   if (existsSync(dir)) {
-    const origin = new Git(dir, { runner: opts.git }).try.remoteGetUrl('origin')
-    if (!origin.ok || origin.value !== url) {
+    const problem = mirrorProblem(dir, url, opts)
+    if (problem !== null) {
       throw new RemoteMirrorError(
-        `${dir} is not a mirror of ${url}; remove the directory and run again`,
+        `${problem}, not a mirror of ${shown}; remove the directory and run again`,
       )
     }
     return dir
@@ -91,7 +131,9 @@ export function ensureMirror(
     const detail =
       (err as { failure?: { detail?: string } }).failure?.detail ??
       (err instanceof Error ? err.message : String(err))
-    throw new RemoteMirrorError(`cannot clone ${url}: ${detail.trim()}`)
+    throw new RemoteMirrorError(
+      `cannot clone ${shown}: ${redactUrl(detail.split(url).join(shown)).trim()}`,
+    )
   }
   return dir
 }
