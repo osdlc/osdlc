@@ -1,7 +1,7 @@
 {
   // Emit config for the published dist/; the dev tsconfig.json stays noEmit.
   // The source only, and no Node types, so a runtime global in it fails the
-  // build. build-globals.d.ts declares the two the source uses, TextEncoder and
+  // build. src/build-globals.d.ts declares the two the source uses, TextEncoder and
   // TextDecoder, which the ES2022 lib lacks. Browsers, Bun and Deno have both.
   "extends": ["./tsconfig.json", "@osdlc/tsconfig/build"],
   "compilerOptions": {
@@ -10,5 +10,6 @@
     // src/ is not published, so a declaration map would point at nothing.
     "declarationMap": false
   },
-  "include": ["src", "build-globals.d.ts"]
+  "include": ["src"],
+  "exclude": []
 }

@@ -1,6 +1,6 @@
 // Build-only. The ES2022 lib lacks these two WHATWG Encoding globals, and the
-// build loads no Node types. Declares only what src/ uses; the dev tsconfig.json
-// does not include this file, so it does not clash with @types/node.
+// build loads no Node types. Declares only what src/ uses. The dev tsconfig.json
+// excludes this file, so it does not clash with @types/node.
 declare class TextEncoder {
   encode(input: string): Uint8Array
 }

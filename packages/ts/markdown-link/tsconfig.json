@@ -3,5 +3,7 @@
   // The package's own name resolves through `exports` to the built `dist/`, so
   // run the build before the typecheck.
   "extends": "@osdlc/tsconfig/node-lib",
-  "include": ["src", "tests", "examples", "vitest.config.ts"]
+  "include": ["src", "tests", "examples", "vitest.config.ts"],
+  // The build-only globals clash with @types/node.
+  "exclude": ["src/build-globals.d.ts"]
 }
