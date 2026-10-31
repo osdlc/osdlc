@@ -53,6 +53,7 @@ function repoWith(provider: ProviderStatus | null): RepoInfo {
 describe('forgeTarget', () => {
   test.each([
     ['git@gitlab.com:group/sub/proj.git', 'gitlab.com', 'group/sub/proj'],
+    ['gitlab.example.com:group/sub/proj.git', 'gitlab.example.com', 'group/sub/proj'],
     ['ssh://git@GitLab.Example.com:2222/a/b/c.git', 'gitlab.example.com', 'a/b/c'],
     ['https://gitlab.example.com/a/b.git/', 'gitlab.example.com', 'a/b'],
     ['https://user@github.com/o/r', 'github.com', 'o/r'],
@@ -64,6 +65,8 @@ describe('forgeTarget', () => {
     expect(forgeTarget('/srv/git/a/b.git')).toEqual({ host: null, project: null })
     expect(forgeTarget('file:///srv/git/a/b.git')).toEqual({ host: null, project: null })
     expect(forgeTarget(null)).toEqual({ host: null, project: null })
+    expect(forgeTarget('C:/work/a/b')).toEqual({ host: null, project: null })
+    expect(forgeTarget('./a/b:c')).toEqual({ host: null, project: null })
   })
 })
 
