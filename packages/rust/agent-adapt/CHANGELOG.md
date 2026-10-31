@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.19.3](https://github.com/osdlc/osdlc/compare/agent-adapt/v0.19.2...agent-adapt/v0.19.3) - 2026-10-31
+
+### Other
+
+- Remove the skillwright code that moved to osdlc/skillwright ([#556](https://github.com/osdlc/osdlc/pull/556))
+
 ## [0.19.2](https://github.com/osdlc/osdlc/compare/agent-adapt/v0.19.1...agent-adapt/v0.19.2) - 2026-10-29
 
 ### Other

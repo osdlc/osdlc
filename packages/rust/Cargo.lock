@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "agent-adapt"
-version = "0.19.2"
+version = "0.19.3"
 dependencies = [
  "serde",
  "serde_json",
@@ -117,7 +117,7 @@ dependencies = [
 
 [[package]]
 name = "config-layers"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "serde",
  "serde-saphyr",
@@ -1004,7 +1004,7 @@ dependencies = [
 
 [[package]]
 name = "tradecraft"
-version = "0.4.0"
+version = "0.4.1"
 
 [[package]]
 name = "typed-arena"
