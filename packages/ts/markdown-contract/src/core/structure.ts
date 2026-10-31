@@ -327,7 +327,8 @@ function checkRecognizedRelative(assigned: Assigned[], ctx: Ctx, out: Finding[])
  *   - A section that matches a later slot while a required slot is still unfilled is out of
  *     order. It gets `structure/section-order` and fills the later slot.
  *   - An undeclared section at a gap is counted toward that gap. An undeclared section with no
- *     gap here and `allowUnknown: false` gets `structure/section-order`.
+ *     gap ahead does not move the walk, and under `allowUnknown: false` it gets
+ *     `structure/section-order`.
  * Then each gap's count is checked against its bounds.
  *
  * `admitPastSequence` handles sections after the last spec. `emitGapCounts` checks the gap
@@ -363,6 +364,16 @@ function checkStrict(
   /** The slot before `beforeSpecIdx` that names `name`, or `undefined`. */
   function passedSlot(name: string, beforeSpecIdx: number): Slot | undefined {
     return slots.find((s) => s.specIdx < beforeSpecIdx && s.names.includes(name))
+  }
+
+  /** True when a gap follows `fromSpecIdx` with only optional or filled repeatable slots between. */
+  function gapAhead(fromSpecIdx: number): boolean {
+    for (let i = fromSpecIdx; i < specs.length; i++) {
+      if (unwrapSpec(specs[i]!).inner.kind === 'gap') return true
+      const s = slots.find((x) => x.specIdx === i)!
+      if (!s.optional && !(s.repeatable && (slotFill.get(i) ?? 0) > 0)) return false
+    }
+    return false
   }
 
   let specIdx = 0
@@ -448,14 +459,17 @@ function checkStrict(
       continue
     }
 
-    // The current slot is optional or already filled: skip it and check the section again.
-    if (slot.optional || repeatSatisfied) {
+    // The current slot is optional or already filled: skip it and check the section again. Only
+    // a declared section or one bound for a gap may skip it. An undeclared section with no gap
+    // ahead leaves the walk where it is, so a later declared section is not out of order.
+    const undeclared = slotIndexFor(slots, node.name) === null
+    if ((slot.optional || repeatSatisfied) && (!undeclared || gapAhead(specIdx))) {
       specIdx++
       continue
     }
 
-    // An undeclared section where a required slot is expected, with no gap here.
-    if (slotIndexFor(slots, node.name) === null) {
+    // An undeclared section where a slot is expected, with no gap ahead.
+    if (undeclared) {
       if (!allowUnknown) {
         out.push(
           ctx.finding({

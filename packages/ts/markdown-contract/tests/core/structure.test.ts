@@ -418,3 +418,92 @@ describe('order: strict — a section whose slot the walk already passed', () =>
     expect(ids(c.validate('## B\n\n## B\n', ctx).findings)).toEqual(['structure/duplicate-section'])
   })
 })
+
+describe('order: strict — an unknown section does not move the walk past declared slots', () => {
+  test('an optional section after an unknown one, allowUnknown: true → no findings', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: true }, [
+        section('A'),
+        section('B'),
+        optional(section('D')),
+      ]),
+    })
+    expect(c.validate('## A\n\n## B\n\n## X\n\n## D\n', ctx).findings).toEqual([])
+  })
+
+  test('several optional sections after unknown ones, allowUnknown: true → no findings', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: true }, [
+        section('A'),
+        optional(section('B')),
+        optional(section('C')),
+        optional(section('D')),
+      ]),
+    })
+    const source = '## A\n\n## X\n\n## B\n\n## Y\n\n## Z\n\n## D\n'
+    expect(c.validate(source, ctx).findings).toEqual([])
+  })
+
+  test('a filled repeatable section repeated after an unknown one → no findings', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: true }, [
+        section('A'),
+        section('R', { repeatable: true }),
+        optional(section('D')),
+      ]),
+    })
+    expect(c.validate('## A\n\n## R\n\n## X\n\n## R\n\n## D\n', ctx).findings).toEqual([])
+  })
+
+  test('a required section after an unknown one, allowUnknown: true → no findings', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: true }, [
+        section('A'),
+        optional(section('B')),
+        section('D'),
+      ]),
+    })
+    expect(c.validate('## A\n\n## X\n\n## D\n', ctx).findings).toEqual([])
+  })
+
+  test('a declared section really out of order with unknown ones between → structure/section-order', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: true }, [
+        section('A'),
+        optional(section('B')),
+        optional(section('D')),
+      ]),
+    })
+    const { findings } = c.validate('## A\n\n## X\n\n## D\n\n## Y\n\n## B\n', ctx)
+    expect(ids(findings)).toEqual(['structure/section-order'])
+    expect(findings[0]?.pos?.line).toBe(9) // ## B
+  })
+
+  test('allowUnknown: false reports the unknown section only, not the declared one after it', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: false }, [
+        section('A'),
+        section('B'),
+        optional(section('D')),
+      ]),
+    })
+    const { findings } = c.validate('## A\n\n## B\n\n## X\n\n## D\n', ctx)
+    expect(ids(findings)).toEqual(['structure/section-order'])
+    expect(findings[0]?.pos?.line).toBe(5) // ## X
+  })
+
+  test('an unknown section still moves the walk to a gap that takes it', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: true }, [
+        section('A'),
+        optional(section('B')),
+        gap({ max: 1 }),
+        section('D'),
+      ]),
+    })
+    expect(c.validate('## A\n\n## X\n\n## D\n', ctx).findings).toEqual([])
+    expect(ids(c.validate('## A\n\n## X\n\n## Y\n\n## D\n', ctx).findings)).toEqual([
+      'structure/gap-count',
+    ])
+  })
+})
