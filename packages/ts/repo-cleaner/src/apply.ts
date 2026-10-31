@@ -34,7 +34,7 @@ import {
 } from './plan.ts'
 import type { Dropped, Receipt, RowRef, Step } from './receipt.ts'
 import { sweepRepo } from './sweep.ts'
-import { AUTHORIZATIONS, type Authorization, type SweepItem } from './types.ts'
+import { AUTHORIZATIONS, type Authorization, type SweepItem, type SweepProgress } from './types.ts'
 import { worktreePruneCommand, worktreeRemoveCommand, worktreeUnlockCommand } from './worktrees.ts'
 import { writeJsonAtomic } from './write-json.ts'
 
@@ -57,13 +57,19 @@ export interface ApplyOptions extends HostHooks {
   /** The caller's directory; the sweep never offers the worktree holding it. */
   callerCwd: string
   dryRun: boolean
-  /** Where the receipt goes. Unused under `dryRun`. */
-  receiptPath: string
-  /** Shown in the receipt. */
+  /** Where the receipt is written after each step; null writes none. Unused under `dryRun`. */
+  receiptPath: string | null
+  /** Where the plan came from, shown in the receipt. */
   planPath: string
   /** Limit the run to the plan repository rooted here. */
   repoRoot?: string | undefined
   now?: () => Date
+  /** Rows dropped before this run, such as by a preview; recorded first in the receipt. */
+  dropped?: readonly Dropped[] | undefined
+  /** Passed to the re-sweep's `onProgress`, for a status line. */
+  onSweepProgress?: ((progress: SweepProgress) => void) | undefined
+  /** Told before each step runs: its 0-based index, the step count and the step. Not called under `dryRun`. */
+  onStep?: ((index: number, total: number, step: Step) => void) | undefined
 }
 
 /** A selection or grant the plan cannot satisfy. Nothing has been touched. */
@@ -107,15 +113,33 @@ interface Selected {
   ref: RowRef
 }
 
+/**
+ * A row to apply, optionally pinned to the plan repository rooted at `repo`.
+ * Without `repo`, a row id that two plan repositories share is ambiguous.
+ */
+export type RowSelection = RowRef & { repo?: string }
+
+const sameSelection = (a: RowSelection, b: RowSelection): boolean =>
+  sameRow(a, b) &&
+  (a.repo === undefined ? '' : resolve(a.repo)) === (b.repo === undefined ? '' : resolve(b.repo))
+
 /** Each selected row's plan repository. Unknown and ambiguous rows are errors. */
-function locate(plan: Plan, rows: readonly RowRef[], repoRoot: string | undefined): Selected[] {
+function locate(
+  plan: Plan,
+  rows: readonly RowSelection[],
+  repoRoot: string | undefined,
+): Selected[] {
   const repos =
     repoRoot === undefined
       ? plan.repos
       : plan.repos.filter((r) => resolve(r.root) === resolve(repoRoot))
   if (repos.length === 0) throw new ApplyArgumentError(`no plan repository at ${repoRoot}`)
-  return rows.map((ref) => {
-    const hits = repos.filter((r) => r.rows.some((row) => sameRow(row, ref)))
+  return rows.map(({ repo, ...ref }) => {
+    const hits = repos.filter(
+      (r) =>
+        (repo === undefined || resolve(r.root) === resolve(repo)) &&
+        r.rows.some((row) => sameRow(row, ref)),
+    )
     if (hits.length === 0) throw new ApplyArgumentError(`row ${label(ref)} is not in the plan`)
     if (hits.length > 1) {
       throw new ApplyArgumentError(
@@ -146,6 +170,7 @@ function resweep(repo: PlanRepo, opts: ApplyOptions): SweepItem[] {
     git: opts.git,
     gh: opts.gh,
     probe: opts.probe,
+    onProgress: opts.onSweepProgress,
   })
   if (sweep.repo === null || sweep.error !== null) {
     throw new Error(sweep.error ?? `could not read repository: ${repo.root}`)
@@ -157,6 +182,7 @@ function resweep(repo: PlanRepo, opts: ApplyOptions): SweepItem[] {
 function recheck(
   selected: readonly Selected[],
   grants: readonly Grant[],
+  implicit: boolean,
   opts: ApplyOptions,
 ): { accepted: Accepted[]; dropped: Dropped[] } {
   const swept = new Map<PlanRepo, SweepItem[]>()
@@ -178,6 +204,10 @@ function recheck(
     }
     if (!item.deletable) {
       drop('not-deletable', item.reason)
+      continue
+    }
+    if (implicit && item.classification !== 'safe-to-delete') {
+      drop('needs-review', `${item.reason}; name it with --row to apply it`)
       continue
     }
     const now = fingerprint(item)
@@ -339,26 +369,40 @@ function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe
 }
 
 /**
- * Apply the `requested` rows of `plan` under `grants`. A row named twice runs once.
+ * Apply the `requested` rows of `plan` under `grants`. An empty `requested`
+ * selects every row of the plan (of `repoRoot`'s repository, when given) and
+ * then drops each one the re-sweep does not judge `safe-to-delete`: a row to
+ * review runs only when it is named. A row named twice runs once. A row whose
+ * `requires` was not granted is dropped, never run.
  *
  * @throws ApplyArgumentError before touching anything, when a row or grant does
  *   not fit the plan.
  */
 export function applyPlan(
   plan: Plan,
-  requested: readonly RowRef[],
+  requested: readonly RowSelection[],
   grants: readonly Grant[],
   opts: ApplyOptions,
 ): Receipt {
   const now = opts.now ?? (() => new Date())
-  const rows = requested.filter(
-    (row, i) => requested.findIndex((other) => sameRow(other, row)) === i,
+  // Every row of the plan keeps its repository, so a branch name two
+  // repositories share is two rows, not an ambiguity.
+  const wanted: readonly RowSelection[] =
+    requested.length > 0
+      ? requested
+      : plan.repos
+          .filter((r) => opts.repoRoot === undefined || resolve(r.root) === resolve(opts.repoRoot))
+          .flatMap((r) =>
+            r.rows.map((row) => ({ category: row.category, id: row.id, repo: r.root })),
+          )
+  const rows = wanted.filter(
+    (row, i) => wanted.findIndex((other) => sameSelection(other, row)) === i,
   )
-  if (rows.length === 0) throw new ApplyArgumentError('no rows selected')
+  if (rows.length === 0) throw new ApplyArgumentError('the plan has no rows to apply')
   const selected = locate(plan, rows, opts.repoRoot)
   for (const grant of grants) {
     if (grant.row !== null && !rows.some((r) => sameRow(r, grant.row!))) {
-      throw new ApplyArgumentError(`--authorize names unselected row ${label(grant.row)}`)
+      throw new ApplyArgumentError(`--allow names unselected row ${label(grant.row)}`)
     }
   }
 
@@ -371,8 +415,8 @@ export function applyPlan(
     dropped: [],
     steps: [],
   }
-  const { accepted, dropped } = recheck(selected, grants, opts)
-  receipt.dropped = dropped
+  const { accepted, dropped } = recheck(selected, grants, requested.length === 0, opts)
+  receipt.dropped = [...(opts.dropped ?? []), ...dropped]
 
   const ordered = PLAN_CATEGORIES.flatMap((category) =>
     accepted.filter((row) => row.item.category === category),
@@ -391,14 +435,18 @@ export function applyPlan(
     return receipt
   }
 
-  const save = (): void => writeJsonAtomic(opts.receiptPath, receipt)
+  const receiptPath = opts.receiptPath
+  const save = (): void => {
+    if (receiptPath !== null) writeJsonAtomic(receiptPath, receipt)
+  }
   save()
   const git = new Git(opts.callerCwd, { runner: opts.git })
   const probe = opts.probe ?? defaultProcessProbe()
   // Worktrees whose lock this run cleared. typed-git has no `worktree lock`
   // verb, so a failed remove cannot put the lock back; the receipt says so.
   const unlocked = new Set<string>()
-  for (const [step, row] of plannedSteps) {
+  for (const [i, [step, row]] of plannedSteps.entries()) {
+    opts.onStep?.(i, plannedSteps.length, step)
     try {
       step.verification = execute(step, row, git, probe)
       step.result = 'ok'

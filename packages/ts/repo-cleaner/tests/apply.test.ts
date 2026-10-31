@@ -17,7 +17,7 @@ import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { sh } from './helpers.ts'
 import { applyPlan, type Grant } from '../src/apply.ts'
-import { PLAN_VERSION, planRepo, readPlan, writePlan, type Plan } from '../src/plan.ts'
+import { PLAN_VERSION, parsePlan, planRepo, readPlan, writePlan, type Plan } from '../src/plan.ts'
 import type { Receipt, RowRef } from '../src/receipt.ts'
 import { sweepRepo } from '../src/sweep.ts'
 
@@ -263,6 +263,87 @@ describe('applyPlan', () => {
     expect(receipt.steps[0]!.verification).toBe('unregistered')
   })
 
+  test('a worktree directory whose .git is gone is swept, then pruned and left in place', () => {
+    const fx = buildFixture()
+    rmSync(join(fx.worktree, '.git'))
+    writeFileSync(join(fx.worktree, 'left.txt'), 'kept\n')
+
+    const sweep = sweepRepo(fx.root, { noGh: true, cwd: fx.root })
+    expect(sweep.error).toBeNull()
+    const row = sweep.items.find((i) => i.id === fx.worktree)!
+    expect(row).toMatchObject({
+      classification: 'safe-to-delete',
+      commands: [expect.stringContaining('worktree prune')],
+    })
+    expect(row.facts).toMatchObject({ on_disk: false, directory_left: true })
+
+    const { receipt } = apply(fx, makePlan(fx.root), [{ category: 'worktree', id: fx.worktree }])
+    expect(receipt.status).toBe('complete')
+    expect(receipt.steps[0]!.action).toBe('prune-worktrees')
+    expect(sh(fx.root, ['worktree', 'list'])).not.toContain(fx.worktree)
+    expect(readFileSync(join(fx.worktree, 'left.txt'), 'utf-8')).toBe('kept\n')
+  })
+
+  test('a prune row whose .git came back is dropped, not turned into a remove', () => {
+    const fx = buildFixture()
+    const dotGit = readFileSync(join(fx.worktree, '.git'), 'utf-8')
+    rmSync(join(fx.worktree, '.git'))
+    const plan = makePlan(fx.root)
+    writeFileSync(join(fx.worktree, '.git'), dotGit)
+
+    const { receipt } = apply(fx, plan, [{ category: 'worktree', id: fx.worktree }])
+    expect(receipt.dropped.map((d) => d.reason)).toEqual(['facts-changed'])
+    expect(existsSync(fx.worktree)).toBe(true)
+  })
+
+  test('a branch name two repositories share applies in both', () => {
+    const a = buildFixture()
+    const b = buildFixture()
+    const plan: Plan = {
+      ...makePlan(a.root),
+      repos: [...makePlan(a.root).repos, ...makePlan(b.root).repos],
+    }
+    const receipt = applyPlan(plan, [], [], {
+      callerCwd: a.root,
+      dryRun: false,
+      receiptPath: null,
+      planPath: '(test)',
+    })
+    expect(receipt.status).toBe('complete')
+    expect(refs(a.root)).not.toContain('refs/heads/merged-a ')
+    expect(refs(b.root)).not.toContain('refs/heads/merged-a ')
+    // Named without a repository, the shared row is still ambiguous.
+    expect(() =>
+      applyPlan(plan, [{ category: 'local_branch', id: 'merged-b' }], [], {
+        callerCwd: a.root,
+        dryRun: true,
+        receiptPath: null,
+        planPath: '(test)',
+      }),
+    ).toThrow('pass --repo-root')
+  })
+
+  test('rows dropped before the run are recorded first in the receipt file', () => {
+    const fx = buildFixture()
+    const earlier = {
+      repo: fx.root,
+      category: 'local_branch' as const,
+      id: 'unmerged',
+      reason: 'needs-review' as const,
+      detail: 'from the preview',
+    }
+    const receiptPath = join(fx.root, 'r.json')
+    applyPlan(makePlan(fx.root), [{ category: 'local_branch', id: 'merged-a' }], [], {
+      callerCwd: fx.root,
+      dryRun: false,
+      receiptPath,
+      planPath: '(test)',
+      dropped: [earlier],
+    })
+    const saved = JSON.parse(readFileSync(receiptPath, 'utf-8')) as Receipt
+    expect(saved.dropped).toEqual([earlier])
+  })
+
   test('force-removes a dirty worktree only with discard-changes', () => {
     const fx = buildFixture()
     writeFileSync(join(fx.worktree, 'scratch.txt'), 'wip\n')
@@ -277,6 +358,46 @@ describe('applyPlan', () => {
     expect(existsSync(fx.worktree)).toBe(false)
   })
 
+  test('no rows selects every safe-to-delete row; review rows are dropped, not run', () => {
+    const fx = buildFixture()
+    const { receipt } = apply(fx, makePlan(fx.root), [])
+    expect(receipt.status).toBe('complete')
+    // Review rows run only when named: the worktree (no disposability signal
+    // without gh) and the unmerged branch.
+    expect(receipt.dropped.map((d) => [d.id, d.reason])).toEqual([
+      [fx.worktree, 'needs-review'],
+      ['unmerged', 'needs-review'],
+    ])
+    expect(refs(fx.root)).not.toContain('refs/heads/merged-a ')
+    expect(refs(fx.root)).not.toContain('refs/heads/merged-b ')
+    expect(refs(fx.root)).toContain('refs/heads/unmerged ')
+    expect(existsSync(fx.worktree)).toBe(true)
+  })
+
+  test('a null receiptPath applies without writing a receipt', () => {
+    const fx = buildFixture()
+    const receipt = applyPlan(
+      makePlan(fx.root),
+      [{ category: 'local_branch', id: 'merged-a' }],
+      [],
+      {
+        callerCwd: fx.root,
+        dryRun: false,
+        receiptPath: null,
+        planPath: '(swept)',
+      },
+    )
+    expect(receipt.status).toBe('complete')
+    expect(existsSync(join(fx.root, '.receipts'))).toBe(false)
+  })
+
+  test('a plan with no rows is an argument error', () => {
+    const fx = buildFixture()
+    const plan = makePlan(fx.root)
+    for (const repo of plan.repos) repo.rows = []
+    expect(() => apply(fx, plan, [])).toThrow('no rows')
+  })
+
   test('rejects a row that is not in the plan', () => {
     const fx = buildFixture()
     const plan = makePlan(fx.root)
@@ -287,6 +408,11 @@ describe('applyPlan', () => {
 })
 
 describe('plan files', () => {
+  test('parsePlan names its source in the error', () => {
+    expect(() => parsePlan('{', 'stdin')).toThrow('cannot read plan stdin')
+    expect(() => parsePlan('{}', 'stdin')).toThrow('bad plan stdin')
+  })
+
   test('a written plan reads back and applies', () => {
     const fx = buildFixture()
     const path = join(fx.root, '.plans', 'p.json')

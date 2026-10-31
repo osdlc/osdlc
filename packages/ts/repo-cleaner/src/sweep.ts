@@ -21,6 +21,7 @@ import {
   type RepoSweep,
   type Scope,
   type SweepItem,
+  type SweepProgress,
   type SweepResult,
 } from './types.ts'
 import { gatherWorktrees } from './worktrees.ts'
@@ -60,6 +61,10 @@ export interface SweepOptions {
    * repository, over `ps` and `lsof`.
    */
   probe?: ProcessProbe | undefined
+  /** Told before each step, and before each item of a step that walks many. For a status line. */
+  onProgress?: ((progress: SweepProgress) => void) | undefined
+  /** Where this repository sits in a run of several, for {@link onProgress}. Defaults to 1 of 1. */
+  position?: { index: number; of: number } | undefined
 }
 
 function scopeSet(scope: SweepOptions['scope']): Set<string> {
@@ -84,7 +89,20 @@ export function sweepRepo(path: string, opts: SweepOptions = {}): RepoSweep {
   const scope = scopeSet(opts.scope)
   const { git, gh } = clients(path, opts)
   const only = opts.branch
+  const at = opts.position ?? { index: 1, of: 1 }
+  const report = (step: SweepProgress['step'], done?: number, total?: number): void =>
+    opts.onProgress?.({
+      repo: path,
+      ...at,
+      step,
+      ...(done === undefined || total === undefined ? {} : { done, total }),
+    })
+  const ticker =
+    (step: SweepProgress['step']) =>
+    (done: number, total: number): void =>
+      report(step, done, total)
 
+  report('discover')
   let repo
   try {
     repo = discoverRepo(path, {
@@ -104,6 +122,7 @@ export function sweepRepo(path: string, opts: SweepOptions = {}): RepoSweep {
   const cwd = only === undefined ? (opts.cwd ?? process.cwd()) : repo.root
 
   if (opts.fetch === true && repo.remote !== null) {
+    report('fetch')
     const fetched = git
       .at(repo.root)
       .try.fetch(repo.remote, undefined, { prune: true, quiet: true, noWriteFetchHead: true })
@@ -119,6 +138,7 @@ export function sweepRepo(path: string, opts: SweepOptions = {}): RepoSweep {
   }
 
   try {
+    if (repo.hasGh && repo.ghAuthenticated) report('prs')
     const prs = fetchPrs(repo, gh, only)
     const items: SweepItem[] = []
 
@@ -134,6 +154,7 @@ export function sweepRepo(path: string, opts: SweepOptions = {}): RepoSweep {
         git,
         only,
         opts.probe ?? defaultProcessProbe(),
+        ticker('worktrees'),
       )
     }
     if (scope.has('worktrees')) items.push(...worktreeItems)
@@ -148,13 +169,15 @@ export function sweepRepo(path: string, opts: SweepOptions = {}): RepoSweep {
                 .filter((item) => !item.deletable)
                 .map((item) => String(item.facts['branch'])),
             )
-      const localItems = gatherLocalBranches(repo, prs, pinned, git, only)
+      const localItems = gatherLocalBranches(repo, prs, pinned, git, only, ticker('local-branches'))
       localBranchNames = new Set(localItems.map((item) => item.id))
       if (scope.has('local-branches')) items.push(...localItems)
     }
 
     if (scope.has('remote-branches')) {
-      items.push(...gatherRemoteBranches(repo, prs, localBranchNames, git, only))
+      items.push(
+        ...gatherRemoteBranches(repo, prs, localBranchNames, git, only, ticker('remote-branches')),
+      )
     }
 
     return { repo, path, items, error: null }
@@ -189,7 +212,10 @@ export function sweepRepos(entries: readonly string[], opts: SweepReposOptions =
     ...(opts.baseDir === undefined ? {} : { baseDir: opts.baseDir }),
     ...(opts.onWarn === undefined ? {} : { onWarn: opts.onWarn }),
   })
-  const repos = resolution.repos.map((root) => sweepRepo(root, opts))
+  const of = resolution.repos.length
+  const repos = resolution.repos.map((root, i) =>
+    sweepRepo(root, { ...opts, position: { index: i + 1, of } }),
+  )
   return {
     repos,
     unresolved: resolution.unresolved,

@@ -12,6 +12,20 @@ export type Classification = 'safe-to-delete' | 'safe-to-keep' | 'needs-investig
 /** The kinds of thing a sweep inventories. */
 export type Category = 'local_branch' | 'worktree' | 'remote_branch'
 
+/**
+ * What a sweep is doing, for a status line. `repo` is the path being swept;
+ * `index` and `of` place it among the run's repositories. `done` and `total`
+ * count items within a step that walks many.
+ */
+export interface SweepProgress {
+  repo: string
+  index: number
+  of: number
+  step: 'discover' | 'fetch' | 'prs' | 'worktrees' | 'local-branches' | 'remote-branches'
+  done?: number
+  total?: number
+}
+
 /** Which categories to gather. */
 export const ALL_SCOPES = ['local-branches', 'worktrees', 'remote-branches'] as const
 
@@ -179,13 +193,15 @@ export function emptyScan(): ScanStats {
 
 export interface SummaryBucket {
   total: number
+  /** Rows whose work is on the default branch (`facts.merged`). Rows kept for structure are not judged. */
+  merged: number
   'safe-to-delete': number
   'safe-to-keep': number
   'needs-investigation': number
 }
 
 export function emptyBucket(): SummaryBucket {
-  return { total: 0, 'safe-to-delete': 0, 'safe-to-keep': 0, 'needs-investigation': 0 }
+  return { total: 0, merged: 0, 'safe-to-delete': 0, 'safe-to-keep': 0, 'needs-investigation': 0 }
 }
 
 /** Per-category counts over `items`. */
@@ -194,6 +210,7 @@ export function summarize(items: readonly SweepItem[]): Record<string, SummaryBu
   for (const item of items) {
     const bucket = (out[item.category] ??= emptyBucket())
     bucket.total += 1
+    if (item.facts['merged'] === true) bucket.merged += 1
     bucket[item.classification] += 1
   }
   return out

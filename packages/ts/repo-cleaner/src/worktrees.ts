@@ -198,6 +198,7 @@ export function gatherWorktrees(
   git: Git,
   only: string | undefined,
   probe: ProcessProbe,
+  tick?: (done: number, total: number) => void,
 ): [SweepItem[], Set<string>] {
   const all = git.at(repo.root).worktrees()
   const pathsByBranch = new Map<string, string[]>()
@@ -209,7 +210,8 @@ export function gatherWorktrees(
   const entries = only === undefined ? all : all.filter((entry) => entry.branch === only)
 
   const items: SweepItem[] = []
-  for (const entry of entries) {
+  for (const [i, entry] of entries.entries()) {
+    tick?.(i, entries.length)
     const branch = entry.branch ?? ''
     items.push(
       classifyWorktree({
@@ -284,8 +286,13 @@ export function classifyWorktree(opts: {
     return pinned("current session's worktree")
   }
 
-  const onDisk = isDir(path)
+  // A directory whose `.git` is gone is no longer a checkout: git lists it as
+  // prunable and `git status` inside it fails. Treat it as gone; the prune
+  // that drops its registration leaves the directory alone.
+  const dirPresent = isDir(path)
+  const onDisk = dirPresent && existsSync(join(path, '.git'))
   facts['on_disk'] = onDisk
+  facts['directory_left'] = dirPresent && !onDisk
 
   let dirtyFiles: string[] = []
   let unpushed: string[] = []
@@ -327,6 +334,12 @@ export function classifyWorktree(opts: {
   if (patch !== null) recordLanding(facts, patch)
   const patchLanded = patch !== null && patch.check !== null
   const unlanded = unpushed.length > 0 && !landed && !landingConfirmed(patch)
+  if (onDisk && head !== null) {
+    // Merged: HEAD's work is on the default branch. `soft`: a missing default
+    // ref reads as not merged.
+    facts['merged'] =
+      landed || patchLanded || git.at(repo.root).soft.isAncestor(head, landedRef(repo))
+  }
   const requires = authorizationsFor({
     'abandon-unmerged': unlanded,
     'discard-changes': dirtyFiles.length > 0,
@@ -365,7 +378,9 @@ export function classifyWorktree(opts: {
       id: path,
       classification: 'safe-to-delete',
       action: 'remove',
-      reason: 'worktree directory no longer on disk; prune the stale link',
+      reason: dirPresent
+        ? 'directory is no longer a checkout (no .git); prune the stale link, the directory stays'
+        : 'worktree directory no longer on disk; prune the stale link',
       facts,
       commands: pruneOnly,
     })

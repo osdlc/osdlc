@@ -1,162 +1,265 @@
 /**
  * `repo-cleaner` — what has been merged, and what can go away.
  *
- * Two commands. A bare invocation sweeps: it inventories, fetching each
- * remote first unless `--no-fetch`, and writes nothing but an optional plan.
- * `repo-cleaner apply` deletes the rows of a plan that were selected and
- * authorized. Scope is opt-in: the sweep covers the repository you are
- * standing in unless `--all` or a path says otherwise.
+ * Four verbs over one set of sweep filters:
+ *
+ *   status  (the default) inventory and classify; read-only but for the fetch
+ *   summary the same sweep as counts: totals, merged, delete, review, keep
+ *   plan    write the deletable rows as a plan, to stdout or a file
+ *   apply   re-check, show the steps, ask, then delete
+ *
+ * `apply` works from a saved plan (`--plan`) or sweeps first. Either way it
+ * re-checks every row, prints the steps it would run and asks before deleting;
+ * `--yes` skips the question. Without a terminal and without `--yes` it
+ * refuses rather than deleting. Scope is opt-in: the sweep covers the
+ * repository you are standing in unless a path says otherwise.
  *
  * Exit codes:
- *   0   swept; or every selected row was applied or dropped with a reason
+ *   0   swept; or apply ran, was declined, or had nothing to run
  *   1   failed against the state it found
  *   2   cannot run as typed
  *   10  nothing to sweep: no entry named a repository
  *   11  apply stopped at a failed step; the receipt says which
  */
 
-import { resolve } from 'node:path'
+import { readSync } from 'node:fs'
+import { basename, dirname, join, resolve } from 'node:path'
+import { isatty } from 'node:tty'
 
-import { EXIT, TieredDirs, defineCli, type CliContext } from '@osdlc/cli-tool'
+import { EXIT, askYesNo, canPrompt, defineCli, type CliContext } from '@osdlc/cli-tool'
 import { Git } from '@osdlc/typed-git'
 
 import { resolveBranch } from './branches.ts'
 import { ApplyArgumentError, applyPlan, parseGrant, parseRowRef, type Grant } from './apply.ts'
 import {
-  CONFIG_ENV,
-  TOOL,
-  VENDOR_DIRS,
-  clearConfigCache,
-  configPath,
-  configuredRepos,
-} from './config.ts'
-import { PLAN_VERSION, planRepo, readPlan, stampedPath, writePlan } from './plan.ts'
-import type { RowRef } from './receipt.ts'
-import { proposedCommands, renderJson, renderReceipt, renderText } from './render.ts'
+  PLAN_VERSION,
+  fileStamp,
+  parsePlan,
+  planRepo,
+  readPlan,
+  writePlan,
+  type Plan,
+} from './plan.ts'
+import type { Receipt, RowRef, Step } from './receipt.ts'
+import {
+  proposedCommands,
+  renderCountsJson,
+  renderCountsText,
+  renderJson,
+  renderReceipt,
+  renderSummary,
+  renderText,
+} from './render.ts'
+import {
+  NO_STATUS_LINE,
+  describeStep,
+  describeSweep,
+  statusLine,
+  type StatusLine,
+} from './status-line.ts'
 import { sweepRepos, type SweepReposOptions } from './sweep.ts'
-import { ALL_SCOPES } from './types.ts'
+import type { Scope, SweepProgress, SweepResult } from './types.ts'
 
 const EXIT_NOTHING_TO_SWEEP = 10
 const EXIT_STEP_FAILED = 11
 
-/** `<durable-home>/repo-cleaner/<kind>`, where plans and receipts go by default. */
-function stateDir(ctx: CliContext, kind: 'plans' | 'receipts'): string {
-  return resolve(
-    TieredDirs.fromEnv(VENDOR_DIRS.vendor, VENDOR_DIRS.envVars, { env: ctx.env })
-      .standalone(TOOL)
-      .durable().path,
-    kind,
-  )
+const NAME = 'repo-cleaner'
+
+/** The `--only` names, and the sweep scope each selects. */
+const ONLY: Record<string, Scope> = {
+  worktrees: 'worktrees',
+  branches: 'local-branches',
+  remotes: 'remote-branches',
 }
 
-/** Built per run: the help names the config path as the environment has it then. */
-const sweepCli = () =>
+/** The flags every verb that sweeps takes. */
+const SWEEP_FLAGS = {
+  only: {
+    kind: 'list',
+    valueName: 'list',
+    help: `comma-separated: ${Object.keys(ONLY).join(', ')} (default: all)`,
+  },
+  branch: {
+    kind: 'string',
+    valueName: 'name|HEAD',
+    help: 'only this branch of this repository: its worktree, local and remote branch',
+  },
+  remote: {
+    kind: 'string',
+    valueName: 'name',
+    help: 'remote to measure against (default: origin)',
+  },
+  gh: { kind: 'boolean', negatable: true, help: 'classify on git evidence alone' },
+  fetch: {
+    kind: 'boolean',
+    negatable: true,
+    help: 'classify on the remote-tracking refs already on disk',
+  },
+  progress: {
+    kind: 'boolean',
+    negatable: true,
+    help: 'no status line on stderr (drawn only when stderr is a terminal)',
+  },
+} as const
+
+const PATHS = [
+  {
+    name: 'path',
+    variadic: true,
+    help: 'a checkout, or a directory containing checkouts (default: the one you are in)',
+  },
+] as const
+
+const OUTPUT = {
+  kind: 'enum',
+  choices: ['text', 'json'] as const,
+  valueName: 'form',
+  default: 'text',
+  help: 'report format',
+} as const
+
+const statusCli = () =>
   defineCli({
-    name: 'repo-cleaner',
+    name: NAME,
     summary:
       'Inventory branches, worktrees and remote branches, and say which have been merged into ' +
-      'the default branch. Fetches each remote first; writes nothing but an optional plan.',
-    positionals: [
-      {
-        name: 'path',
-        variadic: true,
-        help: 'a checkout, or a directory containing checkouts (default: the one you are in)',
-      },
-    ],
+      'the default branch. Fetches each remote first; deletes nothing.',
+    positionals: PATHS,
     flags: {
-      all: { kind: 'boolean', help: 'sweep the repositories in the config file' },
-      config: { kind: 'string', valueName: 'path', help: 'config file to read' },
-      scope: {
-        kind: 'list',
-        valueName: 'list',
-        help: `comma-separated: ${ALL_SCOPES.join(', ')}`,
-      },
-      remote: {
-        kind: 'string',
-        valueName: 'name',
-        help: 'remote to measure against (default: origin)',
-      },
-      gh: { kind: 'boolean', negatable: true, help: 'classify on git evidence alone' },
-      fetch: {
-        kind: 'boolean',
-        negatable: true,
-        help: 'classify on the remote-tracking refs already on disk',
-      },
+      ...SWEEP_FLAGS,
       keep: { kind: 'boolean', help: 'include safe-to-keep rows in the report' },
       commands: { kind: 'boolean', help: 'print the proposed commands only' },
-      branch: {
-        kind: 'string',
-        valueName: 'name|HEAD',
-        help: 'sweep only this branch of this repository: its worktree, local and remote branch',
-      },
-      writePlan: { kind: 'boolean', help: 'write the deletable rows as a plan for `apply`' },
-      planOut: {
-        kind: 'string',
-        valueName: 'path',
-        help: 'write the plan here; implies --write-plan',
-      },
-      output: {
-        kind: 'enum',
-        choices: ['text', 'json'] as const,
-        valueName: 'form',
-        default: 'text',
-        help: 'report format',
-      },
+      output: OUTPUT,
     },
     epilogue: `commands:
-  repo-cleaner apply --help   delete the approved rows of a plan
-  repo-cleaner dev            run repo-cleaner from a development checkout
+  ${NAME} [status]   this report (the default)
+  ${NAME} summary    counts per repository: total, merged, delete, review, keep
+  ${NAME} plan       write the deletable rows as a plan
+  ${NAME} apply      re-check, show the steps, ask, delete
+  ${NAME} dev        run ${NAME} from a development checkout
 
-A checkout directory named "apply" or "dev" is swept as ./apply or ./dev.
+Each command takes --help. A checkout directory named like a command is
+swept as ./<name>.`,
+  })
 
-config: ${configPath()}
-plans:  <durable home>/repo-cleaner/plans/ unless --plan-out`,
+const summaryCli = () =>
+  defineCli({
+    name: `${NAME} summary`,
+    summary:
+      'Count local branches, worktrees and remote branches per repository: how many there are, ' +
+      'how many are merged into the default branch, and how many would be deleted, reviewed or kept.',
+    positionals: PATHS,
+    flags: { ...SWEEP_FLAGS, output: OUTPUT },
+    epilogue:
+      'merged: the work is on the default branch. Rows kept for structure (the default ' +
+      'branch, the primary worktree) are counted in total but not judged merged.',
+  })
+
+const planCli = () =>
+  defineCli({
+    name: `${NAME} plan`,
+    summary:
+      'Sweep, and write the deletable rows as a plan for `apply`: each row with the facts its ' +
+      'verdict rests on, so `apply` can tell what moved since.',
+    positionals: PATHS,
+    flags: {
+      ...SWEEP_FLAGS,
+      out: {
+        kind: 'string',
+        short: 'o',
+        valueName: 'file',
+        default: '-',
+        help: 'write the plan here; - is stdout (the default)',
+      },
+    },
+    epilogue: 'The one-line summary goes to stderr, so stdout carries only the plan.',
   })
 
 const applyCli = () =>
   defineCli({
-    name: 'repo-cleaner apply',
+    name: `${NAME} apply`,
     summary:
-      'Apply approved rows of a plan: re-check them, delete compare-and-swap, verify each step, ' +
-      'and write a receipt.',
+      'Delete what a sweep or a saved plan found deletable: re-check each row, show the steps, ' +
+      'ask, then delete compare-and-swap, verifying each step.',
+    positionals: PATHS,
     flags: {
+      ...SWEEP_FLAGS,
       plan: {
         kind: 'string',
-        valueName: 'path',
-        required: true,
-        help: 'plan file from `repo-cleaner --write-plan`',
+        valueName: 'file',
+        help: 'apply this plan (- reads stdin) instead of sweeping',
       },
       row: {
         kind: 'list',
         valueName: 'category:id',
         default: [],
         commaSeparated: false,
-        help: 'row to apply, e.g. local_branch:feat/x; repeatable',
+        help: 'apply only this row, e.g. local_branch:feat/x; repeatable (default: every row)',
       },
-      authorize: {
+      allow: {
         kind: 'list',
-        valueName: 'name[=category:id]',
+        valueName: 'risk[=category:id]',
         default: [],
         commaSeparated: false,
-        help: 'authorization for every row, or for one row; repeatable',
+        help: 'accept a risk for every row, or for one row; repeatable',
       },
       repoRoot: {
         kind: 'string',
         valueName: 'path',
         help: 'apply only the plan repository rooted here',
       },
-      receiptDir: { kind: 'string', valueName: 'dir', help: 'write the receipt here' },
-      dryRun: { kind: 'boolean', help: 're-check and print the steps; delete nothing' },
-      output: {
-        kind: 'enum',
-        choices: ['text', 'json'] as const,
-        valueName: 'form',
-        default: 'text',
-        help: 'report format',
+      receipt: {
+        kind: 'string',
+        valueName: 'file',
+        help: 'write the receipt here (default: beside a --plan file; none otherwise)',
       },
+      yes: { kind: 'boolean', short: 'y', help: 'delete without asking' },
+      dryRun: { kind: 'boolean', help: 're-check and print the steps; delete nothing' },
+      output: OUTPUT,
     },
-    epilogue: 'receipts: <durable home>/repo-cleaner/receipts/ unless --receipt-dir',
+    epilogue: `risks: abandon-unmerged, discard-changes, confirm-open-pr
+A row that carries a risk you did not --allow is dropped, never deleted.`,
   })
+
+/**
+ * Asks a yes/no question, or returns null when there is no one to ask. `main`
+ * takes it as a parameter so a test can answer.
+ */
+export type Confirm = (question: string) => boolean | null
+
+const terminalConfirm: Confirm = (question) => (canPrompt() ? askYesNo(question) : null)
+
+export interface MainDeps {
+  confirm?: Confirm
+  /** Reads `--plan -`. Defaults to stdin. */
+  readStdin?: () => string
+  /** Whether stderr is a terminal, so a status line may be drawn. Defaults to `isatty(2)`. */
+  stderrIsTerminal?: boolean
+}
+
+const PAUSE = new Int32Array(new SharedArrayBuffer(4))
+
+/**
+ * All of stdin, synchronously. A pipe can be non-blocking and still empty
+ * when the writer upstream has not produced anything yet; `readFileSync(0)`
+ * fails with EAGAIN there, so this waits and retries until end of input.
+ */
+function readAllStdin(): string {
+  const chunks: Buffer[] = []
+  const buf = Buffer.alloc(65536)
+  for (;;) {
+    let n: number
+    try {
+      n = readSync(0, buf, 0, buf.length, null)
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EAGAIN') throw e
+      Atomics.wait(PAUSE, 0, 0, 50)
+      continue
+    }
+    if (n === 0) return Buffer.concat(chunks).toString('utf8')
+    chunks.push(Buffer.from(buf.subarray(0, n)))
+  }
+}
 
 function usageError(ctx: CliContext, name: string, message: string): number {
   ctx.io.stderr(`${name}: ${message}\n`)
@@ -164,65 +267,53 @@ function usageError(ctx: CliContext, name: string, message: string): number {
 }
 
 function failure(ctx: CliContext, err: unknown): number {
-  ctx.io.stderr(`repo-cleaner: ${err instanceof Error ? err.message : String(err)}\n`)
+  ctx.io.stderr(`${NAME}: ${err instanceof Error ? err.message : String(err)}\n`)
   return EXIT.error
 }
 
-/** Runs `fn` with the shared loader pointed at `path`, then restores it. */
-function withConfigFile<T>(path: string | undefined, fn: () => T): T {
-  if (path === undefined) return fn()
-  const prior = process.env[CONFIG_ENV]
-  process.env[CONFIG_ENV] = path
-  clearConfigCache()
-  try {
-    return fn()
-  } finally {
-    if (prior === undefined) delete process.env[CONFIG_ENV]
-    else process.env[CONFIG_ENV] = prior
-    clearConfigCache()
-  }
+interface SweepValues {
+  only?: string[] | undefined
+  branch?: string | undefined
+  remote?: string | undefined
+  gh: boolean
+  fetch: boolean
+  progress: boolean
 }
 
-function runSweep(argv: readonly string[], ctx: CliContext): number {
-  const parsed = sweepCli().parse(argv, ctx.io)
-  if (parsed.status === 'help') return EXIT.ok
-  if (parsed.status === 'error') return usageError(ctx, 'repo-cleaner', parsed.message)
-  const v = parsed.values
-  const paths = parsed.positionals
+type Swept =
+  | { ok: true; result: SweepResult; branch: string | undefined; values: SweepValues }
+  | { ok: false; code: number }
 
-  const scope = v.scope?.filter((s) => s !== '')
-  const unknown = (scope ?? []).filter((s) => !(ALL_SCOPES as readonly string[]).includes(s))
+/** Validate the sweep flags and run the sweep, or answer with the exit code. */
+function sweep(
+  name: string,
+  v: SweepValues,
+  paths: readonly string[],
+  ctx: CliContext,
+  render: (result: SweepResult) => string,
+  status: StatusLine,
+): Swept {
+  const only = v.only?.filter((s) => s !== '')
+  const unknown = (only ?? []).filter((s) => !(s in ONLY))
   if (unknown.length > 0) {
-    return usageError(ctx, 'repo-cleaner', `unknown scope(s): ${unknown.join(', ')}`)
+    return {
+      ok: false,
+      code: usageError(ctx, name, `unknown --only value(s): ${unknown.join(', ')}`),
+    }
   }
-  if (v.branch !== undefined && (v.all || paths.length > 0)) {
-    return usageError(
-      ctx,
-      'repo-cleaner',
-      '--branch sweeps this repository only; drop --all and paths',
-    )
-  }
-
-  if (v.config !== undefined && !v.all) {
-    return usageError(ctx, 'repo-cleaner', '--config is read only with --all')
+  if (v.branch !== undefined && paths.length > 0) {
+    return {
+      ok: false,
+      code: usageError(ctx, name, '--branch sweeps this repository only; drop the paths'),
+    }
   }
 
   let branch: string | undefined
   try {
     branch = v.branch === undefined ? undefined : resolveBranch(v.branch, new Git(ctx.cwd))
   } catch (err) {
-    return failure(ctx, err)
+    return { ok: false, code: failure(ctx, err) }
   }
-
-  const entries = [...paths]
-  if (v.all) {
-    try {
-      entries.push(...withConfigFile(v.config, () => configuredRepos(undefined, ctx.cwd)))
-    } catch (err) {
-      return failure(ctx, err)
-    }
-  }
-  if (entries.length === 0) entries.push(ctx.cwd)
 
   const options: SweepReposOptions = {
     baseDir: ctx.cwd,
@@ -232,99 +323,328 @@ function runSweep(argv: readonly string[], ctx: CliContext): number {
     branch,
     // Mid-walk, while the wait is happening — the summary comes too late to
     // explain why the tool appeared to hang.
-    onWarn: (message) => ctx.io.stderr(`repo-cleaner: ${message}\n`),
-    ...(scope === undefined ? {} : { scope }),
+    onWarn: (message) => ctx.io.stderr(`${NAME}: ${message}\n`),
+    ...(v.progress ? { onProgress: (p) => status.update(describeSweep(p)) } : {}),
+    ...(only === undefined ? {} : { scope: only.map((s) => ONLY[s]!) }),
     ...(v.remote === undefined ? {} : { remote: v.remote }),
   }
-  const result = sweepRepos(entries, options)
+  if (v.progress) status.update(`${NAME}: finding repositories`)
+  const result = sweepRepos(paths.length > 0 ? paths : [ctx.cwd], options)
+  status.clear()
   if (branch !== undefined && result.repos.length > 1) {
-    return failure(
-      ctx,
-      new Error(`--branch sweeps one repository; ${result.repos.length} found under ${ctx.cwd}`),
+    const err = new Error(
+      `--branch sweeps one repository; ${result.repos.length} found under ${ctx.cwd}`,
     )
+    return { ok: false, code: failure(ctx, err) }
   }
   const refused = branch === undefined ? null : (result.repos[0]?.error ?? null)
-  if (refused !== null) return failure(ctx, new Error(refused))
+  if (refused !== null) return { ok: false, code: failure(ctx, new Error(refused)) }
   if (result.repos.length === 0) {
-    ctx.io.stdout(v.output === 'json' ? renderJson(result) : renderText(result))
-    return EXIT_NOTHING_TO_SWEEP
+    ctx.io.stdout(render(result))
+    return { ok: false, code: EXIT_NOTHING_TO_SWEEP }
   }
+  return { ok: true, result, branch, values: v }
+}
 
-  let planPath: string | null = null
-  if (v.writePlan || v.planOut !== undefined) {
-    const now = new Date()
-    planPath =
-      v.planOut !== undefined
-        ? resolve(ctx.cwd, v.planOut)
-        : stampedPath(stateDir(ctx, 'plans'), now)
-    const planOpts = { remote: v.remote ?? null, noGh: !v.gh, branch: branch ?? null }
-    writePlan(planPath, {
-      version: PLAN_VERSION,
-      created_at: now.toISOString(),
-      repos: result.repos.flatMap((sweep) =>
-        sweep.repo === null ? [] : [planRepo(sweep.repo.root, planOpts, sweep.items)],
-      ),
-    })
+/**
+ * Name each repository the sweep could not read, on stderr. True when there
+ * was one: a verb that acts on the sweep must not pass an unread repository
+ * off as an empty one.
+ */
+function reportUnreadable(ctx: CliContext, name: string, result: SweepResult): boolean {
+  const failed = result.repos.filter((r) => r.error !== null)
+  for (const r of failed) ctx.io.stderr(`${name}: ${r.repo?.root ?? r.path}: ${r.error}\n`)
+  return failed.length > 0
+}
+
+function planOf(swept: Extract<Swept, { ok: true }>, now: Date): Plan {
+  const opts = {
+    remote: swept.values.remote ?? null,
+    noGh: !swept.values.gh,
+    branch: swept.branch ?? null,
   }
+  return {
+    version: PLAN_VERSION,
+    created_at: now.toISOString(),
+    repos: swept.result.repos.flatMap((s) =>
+      s.repo === null ? [] : [planRepo(s.repo.root, opts, s.items)],
+    ),
+  }
+}
+
+function runStatus(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
+  const parsed = statusCli().parse(argv, ctx.io)
+  if (parsed.status === 'help') return EXIT.ok
+  if (parsed.status === 'error') return usageError(ctx, NAME, parsed.message)
+  const v = parsed.values
+  const render = (r: SweepResult): string =>
+    v.output === 'json' ? renderJson(r) : renderText(r, { keep: v.keep })
+  const swept = sweep(NAME, v, parsed.positionals, ctx, render, status)
+  if (!swept.ok) return swept.code
 
   if (v.commands) {
-    const commands = proposedCommands(result)
+    const commands = proposedCommands(swept.result)
     if (commands.length > 0) ctx.io.stdout(commands.join('\n') + '\n')
-  } else if (v.output === 'json') {
-    ctx.io.stdout(renderJson(result, planPath === null ? {} : { plan_path: planPath }))
   } else {
-    ctx.io.stdout(renderText(result, { keep: v.keep }))
+    ctx.io.stdout(render(swept.result))
   }
-  if (planPath !== null && v.output !== 'json') ctx.io.stderr(`plan: ${planPath}\n`)
   return EXIT.ok
 }
 
-function runApply(argv: readonly string[], ctx: CliContext): number {
-  const name = 'repo-cleaner apply'
+function runSummary(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
+  const name = `${NAME} summary`
+  const parsed = summaryCli().parse(argv, ctx.io)
+  if (parsed.status === 'help') return EXIT.ok
+  if (parsed.status === 'error') return usageError(ctx, name, parsed.message)
+  const v = parsed.values
+  const render = (r: SweepResult): string =>
+    v.output === 'json' ? renderCountsJson(r) : renderCountsText(r)
+  const swept = sweep(name, v, parsed.positionals, ctx, render, status)
+  if (!swept.ok) return swept.code
+  ctx.io.stdout(render(swept.result))
+  return EXIT.ok
+}
+
+function runPlan(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
+  const name = `${NAME} plan`
+  const parsed = planCli().parse(argv, ctx.io)
+  if (parsed.status === 'help') return EXIT.ok
+  if (parsed.status === 'error') return usageError(ctx, name, parsed.message)
+  const v = parsed.values
+  const swept = sweep(
+    name,
+    v,
+    parsed.positionals,
+    ctx,
+    (r) => {
+      ctx.io.stderr(renderSummary(r) + '\n')
+      return ''
+    },
+    status,
+  )
+  if (!swept.ok) return swept.code
+
+  const plan = planOf(swept, new Date())
+  const unreadable = reportUnreadable(ctx, name, swept.result)
+  ctx.io.stderr(renderSummary(swept.result) + '\n')
+  if (v.out === '-') {
+    ctx.io.stdout(`${JSON.stringify(plan, null, 2)}\n`)
+  } else {
+    const path = resolve(ctx.cwd, v.out)
+    writePlan(path, plan)
+    ctx.io.stderr(`plan: ${path}\n`)
+  }
+  return unreadable ? EXIT.error : EXIT.ok
+}
+
+/** `<dir>/<name>.receipt-<stamp>.json` for plan `<dir>/<name>.json`. */
+function receiptBeside(planPath: string, now: Date): string {
+  const stem = basename(planPath).replace(/\.json$/i, '')
+  return join(dirname(planPath), `${stem}.receipt-${fileStamp(now)}.json`)
+}
+
+function wouldRun(receipt: Receipt): number {
+  return receipt.steps.filter((s) => s.row !== null).length
+}
+
+function runApply(
+  argv: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps,
+  status: StatusLine,
+): number {
+  const name = `${NAME} apply`
   const parsed = applyCli().parse(argv, ctx.io)
   if (parsed.status === 'help') return EXIT.ok
   if (parsed.status === 'error') return usageError(ctx, name, parsed.message)
   const v = parsed.values
+  const paths = parsed.positionals
 
   let rows: RowRef[]
   let grants: Grant[]
   try {
     rows = v.row.map(parseRowRef)
-    grants = v.authorize.map(parseGrant)
+    grants = v.allow.map(parseGrant)
   } catch (err) {
     if (err instanceof ApplyArgumentError) return usageError(ctx, name, err.message)
     throw err
   }
 
-  const planPath = resolve(ctx.cwd, v.plan)
+  const fromStdin = v.plan === '-'
+  if (v.plan !== undefined) {
+    const sweepFlags = [
+      paths.length > 0 ? 'paths' : null,
+      v.only !== undefined ? '--only' : null,
+      v.branch !== undefined ? '--branch' : null,
+      v.remote !== undefined ? '--remote' : null,
+    ].filter((f) => f !== null)
+    if (sweepFlags.length > 0) {
+      return usageError(ctx, name, `--plan fixes what is swept; drop ${sweepFlags.join(', ')}`)
+    }
+  }
+  if (fromStdin && !v.yes && !v.dryRun) {
+    return usageError(
+      ctx,
+      name,
+      '--plan - reads the plan from stdin, so it cannot ask; pass --yes or --dry-run',
+    )
+  }
+
+  const now = new Date()
+  let plan: Plan
+  let planSource: string
+  // A repository the sweep could not read contributes no rows; the run says so and exits 1.
+  let unreadable = false
+  const ok = (): number => (unreadable ? EXIT.error : EXIT.ok)
+  let receiptPath: string | null = v.receipt === undefined ? null : resolve(ctx.cwd, v.receipt)
+  if (v.plan === undefined) {
+    const swept = sweep(
+      name,
+      v,
+      paths,
+      ctx,
+      (r) => (v.output === 'json' ? renderJson(r) : renderText(r)),
+      status,
+    )
+    if (!swept.ok) return swept.code
+    unreadable = reportUnreadable(ctx, name, swept.result)
+    plan = planOf(swept, now)
+    planSource = '(swept)'
+  } else {
+    try {
+      if (fromStdin) {
+        plan = parsePlan((deps.readStdin ?? readAllStdin)(), 'stdin')
+        planSource = '(stdin)'
+      } else {
+        planSource = resolve(ctx.cwd, v.plan)
+        plan = readPlan(planSource)
+        receiptPath ??= receiptBeside(planSource, now)
+      }
+    } catch (err) {
+      return failure(ctx, err)
+    }
+  }
+
   const repoRoot = v.repoRoot === undefined ? undefined : resolve(ctx.cwd, v.repoRoot)
-  const receiptDir =
-    v.receiptDir === undefined ? stateDir(ctx, 'receipts') : resolve(ctx.cwd, v.receiptDir)
-  const receiptPath = stampedPath(receiptDir, new Date())
-  let receipt
+  const base = {
+    callerCwd: ctx.cwd,
+    planPath: planSource,
+    repoRoot,
+    ...(v.progress
+      ? {
+          onSweepProgress: (p: SweepProgress) => status.update(`re-checking ${describeSweep(p)}`),
+          onStep: (i: number, total: number, step: Step) =>
+            status.update(describeStep(i, total, step)),
+        }
+      : {}),
+  }
+  const print = (receipt: Receipt, shownPath: string | null): void => {
+    ctx.io.stdout(
+      v.output === 'json'
+        ? `${JSON.stringify({ receiptPath: shownPath, receipt }, null, 2)}\n`
+        : renderReceipt(receipt, shownPath),
+    )
+  }
+
+  let preview: Receipt
   try {
-    receipt = applyPlan(readPlan(planPath), rows, grants, {
-      callerCwd: ctx.cwd,
-      dryRun: v.dryRun,
+    preview = applyPlan(plan, rows, grants, { ...base, dryRun: true, receiptPath: null })
+  } catch (err) {
+    if (err instanceof ApplyArgumentError) {
+      if (rows.length === 0 && plan.repos.every((r) => r.rows.length === 0)) {
+        if (v.output === 'json') print(emptyReceipt(planSource, now), null)
+        else ctx.io.stdout('nothing to delete\n')
+        return ok()
+      }
+    }
+    return failure(ctx, err)
+  }
+
+  const count = wouldRun(preview)
+  if (v.dryRun || count === 0) {
+    print(preview, null)
+    return ok()
+  }
+
+  if (!v.yes) {
+    // The preview is for the person answering, so it goes where the question does.
+    const show = v.output === 'json' ? ctx.io.stderr : ctx.io.stdout
+    show(renderReceipt(preview, null))
+    const answer = (deps.confirm ?? terminalConfirm)(
+      `Delete ${count} item${count === 1 ? '' : 's'}?`,
+    )
+    if (answer === null) {
+      return usageError(ctx, name, 'refusing to delete without a terminal to ask; pass --yes')
+    }
+    if (!answer) {
+      ctx.io.stderr('nothing deleted\n')
+      return EXIT.ok
+    }
+  }
+
+  // Only what the preview showed: rows it dropped stay dropped.
+  // Pinned to their repositories: a branch name two repositories share stays two rows.
+  const approved = preview.steps.flatMap((s) =>
+    s.row === null ? [] : [{ ...s.row, repo: s.repo }],
+  )
+  const approvedGrants = grants.filter(
+    (g) =>
+      g.row === null || approved.some((r) => r.category === g.row!.category && r.id === g.row!.id),
+  )
+  let receipt: Receipt
+  try {
+    receipt = applyPlan(plan, approved, approvedGrants, {
+      ...base,
+      dryRun: false,
       receiptPath,
-      planPath,
-      repoRoot,
+      dropped: preview.dropped,
     })
   } catch (err) {
     return failure(ctx, err)
   }
+  print(receipt, receiptPath)
+  return receipt.status === 'failed' ? EXIT_STEP_FAILED : ok()
+}
 
-  const shownPath = v.dryRun ? null : receiptPath
-  ctx.io.stdout(
-    v.output === 'json'
-      ? `${JSON.stringify({ receiptPath: shownPath, receipt }, null, 2)}\n`
-      : renderReceipt(receipt, shownPath),
-  )
-  return receipt.status === 'failed' ? EXIT_STEP_FAILED : EXIT.ok
+function emptyReceipt(plan: string, now: Date): Receipt {
+  const at = now.toISOString()
+  return {
+    version: 1,
+    plan,
+    status: 'dry-run',
+    started_at: at,
+    finished_at: at,
+    dropped: [],
+    steps: [],
+  }
 }
 
 /** `main(argv, ctx)`: returns an exit code, never exits. */
-export function main(argv: readonly string[], ctx: CliContext): number {
+export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = {}): number {
+  const terminal = deps.stderrIsTerminal ?? isatty(2)
+  const status = terminal
+    ? statusLine(ctx.io.stderr, () => process.stderr.columns || 80)
+    : NO_STATUS_LINE
+  // Anything else written erases the status line first, so it never trails into output.
+  const io = {
+    stdout: (text: string) => {
+      status.clear()
+      ctx.io.stdout(text)
+    },
+    stderr: (text: string) => {
+      status.clear()
+      ctx.io.stderr(text)
+    },
+  }
+  const c: CliContext = { ...ctx, io }
   const [sub, ...rest] = argv
-  return sub === 'apply' ? runApply(rest, ctx) : runSweep(argv, ctx)
+  try {
+    if (sub === 'summary') return runSummary(rest, c, status)
+    if (sub === 'plan') return runPlan(rest, c, status)
+    if (sub === 'apply') return runApply(rest, c, deps, status)
+    if (sub === 'status') return runStatus(rest, c, status)
+    return runStatus(argv, c, status)
+  } finally {
+    status.clear()
+  }
 }
