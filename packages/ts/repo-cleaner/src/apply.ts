@@ -34,7 +34,13 @@ import {
 } from './plan.ts'
 import { RECEIPT_VERSION, type Dropped, type Receipt, type RowRef, type Step } from './receipt.ts'
 import { sweepRepo } from './sweep.ts'
-import { AUTHORIZATIONS, type Authorization, type SweepItem, type SweepProgress } from './types.ts'
+import {
+  AUTHORIZATIONS,
+  type Authorization,
+  type Scope,
+  type SweepItem,
+  type SweepProgress,
+} from './types.ts'
 import { worktreePruneCommand, worktreeRemoveCommand, worktreeUnlockCommand } from './worktrees.ts'
 import { writeJsonAtomic } from './write-json.ts'
 
@@ -82,8 +88,16 @@ export interface ApplyOptions extends HostHooks {
   dropped?: readonly Dropped[] | undefined
   /** Passed to the re-sweep's `onProgress`, for a status line. */
   onSweepProgress?: ((progress: SweepProgress) => void) | undefined
+  /**
+   * Told once the steps are planned, before the first runs, with the list
+   * itself: each step's `result` is updated in place as the run goes. Not
+   * called under `dryRun`.
+   */
+  onStart?: ((steps: readonly Step[]) => void) | undefined
   /** Told before each step runs: its 0-based index, the step count and the step. Not called under `dryRun`. */
   onStep?: ((index: number, total: number, step: Step) => void) | undefined
+  /** Told after each step, with its `result` set (`ok`, or `failed` and the run stops), before the receipt is saved. Not called under `dryRun`. */
+  onStepDone?: ((index: number, total: number, step: Step) => void) | undefined
 }
 
 /** A selection or grant the plan cannot satisfy. Nothing has been touched. */
@@ -174,8 +188,15 @@ interface Accepted {
   force: boolean
 }
 
+/** The sweep scope that gathers each row category. */
+const SCOPE_OF: Record<RowRef['category'], Scope> = {
+  worktree: 'worktrees',
+  local_branch: 'local-branches',
+  remote_branch: 'remote-branches',
+}
+
 /** The plan repository's rows as they stand now, with the host's overlay applied. */
-function resweep(repo: PlanRepo, opts: ApplyOptions): SweepItem[] {
+function resweep(repo: PlanRepo, scope: readonly Scope[], opts: ApplyOptions): SweepItem[] {
   const given = opts.swept?.get(repo.root)
   if (given !== undefined) {
     return [...given]
@@ -184,6 +205,7 @@ function resweep(repo: PlanRepo, opts: ApplyOptions): SweepItem[] {
     remote: repo.remote,
     noGh: repo.no_gh,
     branch: repo.branch ?? undefined,
+    scope,
     cwd: opts.callerCwd,
     git: opts.git,
     gh: opts.gh,
@@ -205,7 +227,13 @@ function recheck(
 ): { accepted: Accepted[]; dropped: Dropped[] } {
   const swept = new Map<PlanRepo, SweepItem[]>()
   for (const { repo } of selected) {
-    if (!swept.has(repo)) swept.set(repo, resweep(repo, opts))
+    if (swept.has(repo)) continue
+    // Only the categories the selection is in: a plan of local rows need not
+    // compare every remote branch again.
+    const scope = new Set(
+      selected.filter((s) => s.repo === repo).map((s) => SCOPE_OF[s.ref.category]),
+    )
+    swept.set(repo, resweep(repo, [...scope], opts))
   }
 
   const accepted: Accepted[] = []
@@ -534,6 +562,7 @@ export function applyPlan(
     if (receiptPath !== null) writeJsonAtomic(receiptPath, receipt)
   }
   save()
+  opts.onStart?.(receipt.steps)
   const git = new Git(opts.callerCwd, { runner: opts.git })
   const probe = opts.probe ?? defaultProcessProbe()
   // Worktrees whose lock this run cleared. typed-git has no `worktree lock`
@@ -553,9 +582,13 @@ export function applyPlan(
       }
       receipt.status = 'failed'
       receipt.finished_at = now().toISOString()
+      // Told before the save, so a receipt that cannot be written still
+      // leaves the step's outcome on screen.
+      opts.onStepDone?.(i, plannedSteps.length, step)
       save()
       return receipt
     }
+    opts.onStepDone?.(i, plannedSteps.length, step)
     save()
   }
   receipt.status = 'complete'

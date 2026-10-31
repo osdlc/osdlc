@@ -2,17 +2,51 @@
 
 What has been merged into the default branch, and what can go away.
 
-Point it at a repository and it inventories the local branches, worktrees and
-remote branches, classifying each as `safe-to-delete`, `safe-to-keep` or
-`needs-investigation` — with the evidence behind the verdict and the literal
-command that would act on it.
+Point it at a repository and it inventories the local branches and
+worktrees, and with `--remotes` the remote branches too, classifying each
+as `safe-to-delete`, `safe-to-keep` or `needs-investigation` — with the
+evidence behind the verdict and the literal command that would act on it.
 
 `repo-cleaner` (or `repo-cleaner status`) never deletes anything. It prints
 the commands that would. `repo-cleaner apply` deletes: it checks each row
-again, shows you the steps and asks before it runs them.
+again, shows you what it will delete and skip, and asks before it runs.
+
+By default it works on your own machine only: worktrees and local branches,
+nothing fetched and no `gh` call, compared with the `origin/<default>` you
+last fetched (the header says `not fetched`). `--remotes` (or `--only
+remotes`, or `--remote-url`) turns on all three things that need the
+network: it fetches each remote first, asks `gh` about pull requests, and
+sweeps remote branches. Remote branches are shared, often number in the
+hundreds, and each one is compared with the default branch, so they make a
+sweep much slower. A local report ends with a line saying what it left out.
+
+Without `gh`, a squash-merged branch is still found by comparing patches,
+but a clean worktree with no PR evidence reads `review` rather than
+`delete`.
+
+On a terminal, a long sweep step draws a progress bar on stderr, and
+`apply` draws its steps as a list that updates in place: each row has its
+own bar, empty while it waits, half full while it runs and full with a `✓`
+(or `✗`) when it is done, with a bar for the whole run underneath:
+
+```text
+  ██████████ ✓ delete  local_branch  feat/a
+  █████░░░░░ › delete  local_branch  feat/b
+  ░░░░░░░░░░   delete  remote_branch  origin/feat/b
+  ░░░░░░░░░░   prune
+  ████████░░░░░░░░░░░░░░░░░░░░░░ 1/4
+```
+
+A list taller than the terminal scrolls to keep the running step in view.
+A failed step's error is printed in full under the list.
+
+On a terminal, the report and the apply preview are colored: red for a
+delete, blue for a prune, yellow for a review or a skipped row, green for a
+keep. `NO_COLOR` turns this off. A pipe or a file gets no color unless
+`FORCE_COLOR` asks for it.
 
 ```console
-$ repo-cleaner
+$ repo-cleaner --remotes
 /Users/me/work/api  (acme/api, default main, origin)
   local_branch   fix/login-redirect   delete  PR #412 merged
                  git update-ref -d refs/heads/fix/login-redirect 3f9c2e1d8b7a6c5d4e3f2a1b0c9d8e7f6a5b4c3d
@@ -213,7 +247,7 @@ repo-cleaner apply      # re-check, show the steps, ask, delete
 All four take the same paths and sweep options.
 
 ```console
-$ repo-cleaner summary
+$ repo-cleaner summary --remotes
 /Users/me/work/api  (acme/api, default main, origin)
                    total  merged  delete  prune  review   keep
   local branches      12       8       6      0       1      5
@@ -299,12 +333,13 @@ Every command that sweeps takes these:
 
 | Flag | Effect |
 | --- | --- |
-| `--only <list>` | `worktrees`, `branches`, `remotes` (default: all three) |
-| `--branch <name\|HEAD>` | One branch of this repository: its worktree, local and remote branch. Refuses the default branch |
+| `--only <list>` | `worktrees`, `branches`, `remotes` (default: `worktrees,branches`) |
+| `--remotes` | Also sweep remote branches. Slower: each one is compared with the default branch |
+| `--branch <name\|HEAD>` | One branch of this repository: its worktree and local branch, and its remote branch with `--remotes`. Refuses the default branch |
 | `--remote <name>` | Remote to measure against (default `origin`) |
 | `--remote-url <url>` | Sweep this remote's branches with no checkout of your own (see [A remote with no checkout](#a-remote-with-no-checkout)); repeatable |
-| `--no-gh` | Classify on git evidence alone |
-| `--no-fetch` | Skip the fetch; the header then says `not fetched` |
+| `--no-gh` | With `--remotes`: classify on git evidence alone. Without `--remotes`, `gh` is never called |
+| `--no-fetch` | With `--remotes`: skip the fetch; the header then says `not fetched`. Without `--remotes`, nothing is fetched |
 
 `status` also takes:
 
@@ -338,7 +373,26 @@ with `--row <category>:<id>` to apply it, review rows included.
 Before it deletes anything, `apply` sweeps again and drops a row that is gone,
 no longer deletable, whose facts moved, or that carries a risk you did not
 accept with `--allow <risk>` (every row) or `--allow <risk>=<category>:<id>`
-(one row). It prints the steps it would run and asks `Delete N items? [y/N]`.
+(one row). It then shows, per repository, each row it will delete or prune
+with the command under it, each row it will skip and why, and the counts, and
+asks `Delete N items? [y/N]`:
+
+```text
+/Users/me/work/api
+  delete  local_branch   fix/login-redirect
+          git update-ref -d refs/heads/fix/login-redirect 3f9c2e1d…
+  prune
+          git -C /Users/me/work/api worktree prune
+  skip    worktree       /Users/me/work/api/wt/spike
+          needs-review: clean but no clear disposability signal; name it with --row to apply it
+
+would delete: 1 local branch
+dropped 1: 1 needs-review
+Delete 2 items? [y/N]
+```
+
+The re-check reads only the categories the selected rows are in, so applying
+a plan of local rows does not compare every remote branch again.
 `--yes` skips the question. With no terminal to ask on and no `--yes`, it
 refuses with exit 2 rather than deleting. `--plan -` needs `--yes` or
 `--dry-run`, because stdin carries the plan. `--dry-run` prints the steps and
@@ -398,7 +452,7 @@ back as `error`, because a fan-out must not end on its first bad entry.
 before classifying, so ancestry is read against fresh remote-tracking refs.
 That fetch is the only write. A repository whose fetch fails comes back with `error` starting
 `fetch failed:` and no items. `repo.fetched` says which case applied. The
-library default is off; the CLI fetches unless given `--no-fetch`.
+library default is off; the CLI fetches with `--remotes`, unless given `--no-fetch`.
 
 ### Adding knowledge the library does not have
 

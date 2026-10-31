@@ -7,7 +7,9 @@
  * behind every verdict.
  */
 
-import type { Receipt } from './receipt.ts'
+import { ansiColors, paint, stripControls } from '@osdlc/ux'
+
+import type { Receipt, Step } from './receipt.ts'
 import {
   emptyBucket,
   isPrune,
@@ -31,6 +33,51 @@ const ACTION_LABEL: Record<string, string> = {
   'safe-to-delete': 'delete',
   'needs-investigation': 'review',
   'safe-to-keep': 'keep',
+}
+
+/**
+ * How a report colors its words. {@link PLAIN} leaves them as they are; the
+ * CLI passes {@link TERMINAL_STYLE} when the stream is a terminal that takes
+ * color.
+ */
+export interface Style {
+  /** What a run deletes. */
+  delete(text: string): string
+  /** A stale link a run prunes. */
+  prune(text: string): string
+  /** What a person has to look at: a review row, a dropped row. */
+  review(text: string): string
+  /** What stays, or a step that succeeded. */
+  keep(text: string): string
+  /** Detail under a row: commands, the receipt path. */
+  muted(text: string): string
+  /** A heading or the line a person is asked to approve. */
+  strong(text: string): string
+}
+
+const same = (text: string): string => text
+
+/** No color. */
+export const PLAIN: Style = {
+  delete: same,
+  prune: same,
+  review: same,
+  keep: same,
+  muted: same,
+  strong: same,
+}
+
+// The 16 basic colors, so the terminal's own theme decides the shades.
+const ANSI = ansiColors('ansi16', 'dark')
+
+/** The basic terminal colors: red to delete, blue to prune, yellow to review, green to keep. */
+export const TERMINAL_STYLE: Style = {
+  delete: (t) => paint(t, ANSI['status-error']),
+  prune: (t) => paint(t, ANSI.accent),
+  review: (t) => paint(t, ANSI['status-warning']),
+  keep: (t) => paint(t, ANSI['status-success']),
+  muted: (t) => paint(t, ANSI['text-muted']),
+  strong: (t) => `\x1b[1m${t}\x1b[22m`,
 }
 
 function pad(s: string, width: number): string {
@@ -79,11 +126,20 @@ function repoHeader(sweep: RepoSweep): string {
   return `${name}  (${bits.filter((b) => b !== null).join(', ')})`
 }
 
+/** The color of a row's action word. */
+function actionStyle(style: Style, action: string): (text: string) => string {
+  if (action === 'delete') return style.delete
+  if (action === 'prune') return style.prune
+  if (action === 'review') return style.review
+  return style.keep
+}
+
 /** One repository's rows, indented under its header. */
-export function renderRepo(sweep: RepoSweep, opts: { keep?: boolean } = {}): string {
-  const lines = [repoHeader(sweep)]
+export function renderRepo(sweep: RepoSweep, opts: { keep?: boolean; style?: Style } = {}): string {
+  const style = opts.style ?? PLAIN
+  const lines = [style.strong(repoHeader(sweep))]
   if (sweep.error !== null) {
-    lines.push(`  error: ${sweep.error}`)
+    lines.push(`  ${style.delete('error')}: ${sweep.error}`)
     return lines.join('\n')
   }
 
@@ -103,11 +159,11 @@ export function renderRepo(sweep: RepoSweep, opts: { keep?: boolean } = {}): str
       : (ACTION_LABEL[item.classification] ?? item.classification)
     const note = requiresNote(item)
     lines.push(
-      `  ${pad(item.category, categoryWidth)}  ${pad(ellipsize(item.id, 38), idWidth)}  ${pad(action, 6)}  ${item.reason}${note ? `; ${note}` : ''}`,
+      `  ${pad(item.category, categoryWidth)}  ${pad(ellipsize(item.id, 38), idWidth)}  ${actionStyle(style, action)(pad(action, 6))}  ${item.reason}${note ? `; ${note}` : ''}`,
     )
     // A blocked row has no commands; what to do about each blocker goes there instead.
     const detail = hasBlockers(item) ? item.investigationParts : item.commands
-    for (const line of detail) lines.push(`  ${' '.repeat(categoryWidth)}  ${line}`)
+    for (const line of detail) lines.push(`  ${' '.repeat(categoryWidth)}  ${style.muted(line)}`)
   }
   return lines.join('\n')
 }
@@ -157,7 +213,7 @@ function deleteOnly(bucket: SummaryBucket): number {
 }
 
 /** The one-line verdict a person reads first, and often only. */
-export function renderSummary(result: SweepResult): string {
+export function renderSummary(result: SweepResult, style: Style = PLAIN): string {
   const counts = totals(result)
   const repos = `${result.repos.length} ${result.repos.length === 1 ? 'repository' : 'repositories'}`
   const errors = result.repos.filter((sweep) => sweep.error !== null).length
@@ -169,8 +225,10 @@ export function renderSummary(result: SweepResult): string {
     )
   }
   const suffix = tail.length > 0 ? ` (${tail.join(', ')})` : ''
-  const prune = counts.prune > 0 ? `${counts.prune} to prune, ` : ''
-  return `${deleteOnly(counts)} to delete, ${prune}${counts['needs-investigation']} to review, across ${repos}${suffix}.`
+  const prune = counts.prune > 0 ? `${style.prune(`${counts.prune} to prune`)}, ` : ''
+  const del = style.delete(`${deleteOnly(counts)} to delete`)
+  const review = style.review(`${counts['needs-investigation']} to review`)
+  return `${del}, ${prune}${review}, across ${repos}${suffix}.`
 }
 
 const COUNT_LABEL: Record<(typeof CATEGORY_ORDER)[number], string> = {
@@ -214,7 +272,7 @@ export function renderCounts(sweep: RepoSweep): string {
 }
 
 /** The whole run as counts: a table per repository, then the one-line summary. */
-export function renderCountsText(result: SweepResult): string {
+export function renderCountsText(result: SweepResult, style: Style = PLAIN): string {
   const blocks = result.repos.map(renderCounts)
   if (result.unresolved.length > 0) {
     const lines = ['unresolved']
@@ -223,7 +281,8 @@ export function renderCountsText(result: SweepResult): string {
     blocks.push(lines.join('\n'))
   }
   const scan = renderScan(result)
-  blocks.push(scan === null ? renderSummary(result) : `${scan}\n${renderSummary(result)}`)
+  const summary = renderSummary(result, style)
+  blocks.push(scan === null ? summary : `${scan}\n${summary}`)
   return blocks.join('\n\n') + '\n'
 }
 
@@ -260,7 +319,10 @@ function renderDuplicates(duplicates: readonly DuplicateCheckout[]): string | nu
 }
 
 /** The whole run as text: duplicate checkouts, a section per repository, then the summary. */
-export function renderText(result: SweepResult, opts: { keep?: boolean } = {}): string {
+export function renderText(
+  result: SweepResult,
+  opts: { keep?: boolean; style?: Style } = {},
+): string {
   const duplicates = renderDuplicates(result.duplicates)
   const blocks = [
     ...(duplicates === null ? [] : [duplicates]),
@@ -273,7 +335,8 @@ export function renderText(result: SweepResult, opts: { keep?: boolean } = {}): 
     blocks.push(lines.join('\n'))
   }
   const scan = renderScan(result)
-  blocks.push(scan === null ? renderSummary(result) : `${scan}\n${renderSummary(result)}`)
+  const summary = renderSummary(result, opts.style)
+  blocks.push(scan === null ? summary : `${scan}\n${summary}`)
   return blocks.join('\n\n') + '\n'
 }
 
@@ -404,23 +467,109 @@ export function renderApplySummary(receipt: Receipt): string[] {
   return lines
 }
 
-/** An apply run as text: dropped rows, each step, a summary, then where the receipt is. */
-export function renderReceipt(receipt: Receipt, receiptPath: string | null): string {
-  const lines: string[] = []
-  for (const d of receipt.dropped) {
-    lines.push(`dropped  ${d.category}:${d.id} — ${d.reason} (${d.detail})`)
+/** The word a preview shows for a step: what it does to the row. */
+export const STEP_VERB: Record<Step['action'], string> = {
+  'unlock-worktree': 'unlock',
+  'remove-worktree': 'delete',
+  'delete-local': 'delete',
+  'delete-remote': 'delete',
+  'prune-worktrees': 'prune',
+}
+
+/** A step's result word, colored by what it says about the run. */
+function resultWord(step: Step, style: Style): string {
+  const word = step.result.padEnd(8)
+  if (step.result === 'failed') return style.delete(word)
+  if (step.result === 'ok') return style.keep(word)
+  if (step.result === 'pending') return style.muted(word)
+  return step.action === 'prune-worktrees' ? style.prune(word) : style.delete(word)
+}
+
+/**
+ * What `apply` is about to do, for the person asked to approve it: per
+ * repository, each row and the command that deletes it, the rows it will
+ * skip and why, then the counts. Terminal controls are stripped from what it
+ * shows, so a path or name cannot hide part of what is approved.
+ */
+export function renderPreview(receipt: Receipt, style: Style = PLAIN): string {
+  const repos = [
+    ...new Set([...receipt.steps.map((s) => s.repo), ...receipt.dropped.map((d) => d.repo)]),
+  ]
+  const rows = [
+    ...receipt.steps.flatMap((s) => (s.row === null ? [] : [s.row])),
+    ...receipt.dropped,
+  ]
+  const categoryWidth = Math.max(0, ...rows.map((r) => r.category.length))
+  const row = (r: { category: string; id: string } | null): string =>
+    r === null ? '' : `${pad(r.category, categoryWidth)}  ${ellipsize(stripControls(r.id), 60)}`
+  const blocks: string[] = []
+  for (const repo of repos) {
+    const lines = [style.strong(stripControls(repo))]
+    for (const s of receipt.steps.filter((s) => s.repo === repo)) {
+      const verb = STEP_VERB[s.action]
+      const color = actionStyle(style, verb === 'unlock' ? 'review' : verb)
+      lines.push(s.row === null ? `  ${color(verb)}` : `  ${color(pad(verb, 6))}  ${row(s.row)}`)
+      lines.push(`          ${style.muted(stripControls(s.command))}`)
+    }
+    for (const d of receipt.dropped.filter((d) => d.repo === repo)) {
+      lines.push(`  ${style.review(pad('skip', 6))}  ${row(d)}`)
+      lines.push(`          ${d.reason}: ${stripControls(d.detail)}`)
+    }
+    blocks.push(lines.join('\n'))
   }
-  for (const s of receipt.steps) {
+  const [counts = '', ...rest] = renderApplySummary(receipt)
+  blocks.push([style.strong(counts), ...rest.map(style.review)].join('\n'))
+  return blocks.join('\n\n') + '\n'
+}
+
+/** Rows dropped by a live run's own re-check, after the preview: each with why. */
+export function renderPreviewDrops(dropped: Receipt['dropped'], style: Style = PLAIN): string {
+  return dropped
+    .map(
+      (d) =>
+        `  ${style.review('skip')}  ${stripControls(`${d.category}  ${ellipsize(d.id, 60)}`)}\n      ${style.review(stripControls(`${d.reason}: ${d.detail}`))}\n`,
+    )
+    .join('')
+}
+
+/**
+ * A failed step for a run shown live: `✗`, the row, and the error in full,
+ * which the step's row on the board is too narrow to hold.
+ */
+export function renderStepFailure(step: Step, style: Style = PLAIN): string {
+  const verb = STEP_VERB[step.action]
+  const row = step.row === null ? '' : `${step.row.category}  ${ellipsize(step.row.id, 60)}`
+  const line = stripControls(`${pad(verb, 6)}  ${row}`.trimEnd())
+  return `  ${style.delete('✗')} ${line}\n      ${style.delete(stripControls(step.error ?? 'failed'))}`
+}
+
+/** An apply run as text: dropped rows, each step, a summary, then where the receipt is. */
+export function renderReceipt(
+  receipt: Receipt,
+  receiptPath: string | null,
+  style: Style = PLAIN,
+  opts: { steps?: boolean } = {},
+): string {
+  const lines: string[] = []
+  // A run shown live has printed its dropped rows and steps already.
+  for (const d of opts.steps === false ? [] : receipt.dropped) {
+    const shown = stripControls(`${d.category}:${d.id} — ${d.reason} (${d.detail})`)
+    lines.push(`${style.review('dropped  ')}${shown}`)
+  }
+  for (const s of opts.steps === false ? [] : receipt.steps) {
     const what = s.row === null ? s.command : `${s.row.category}:${s.row.id} — ${s.command}`
     const tail = s.error ?? s.verification
-    lines.push(`${s.result.padEnd(8)} ${what}${tail ? ` (${tail})` : ''}`)
+    lines.push(`${resultWord(s, style)} ${stripControls(`${what}${tail ? ` (${tail})` : ''}`)}`)
   }
   if (lines.length > 0) lines.push('')
-  lines.push(...renderApplySummary(receipt))
+  const [counts = '', ...rest] = renderApplySummary(receipt)
+  lines.push(style.strong(counts), ...rest.map(style.review))
   lines.push(
-    receiptPath === null
-      ? `status: ${receipt.status}`
-      : `receipt: ${receiptPath} (${receipt.status})`,
+    style.muted(
+      receiptPath === null
+        ? `status: ${receipt.status}`
+        : `receipt: ${stripControls(receiptPath)} (${receipt.status})`,
+    ),
   )
   return lines.join('\n') + '\n'
 }

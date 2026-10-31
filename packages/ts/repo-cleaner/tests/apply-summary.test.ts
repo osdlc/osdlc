@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'vitest'
 
 import type { Receipt, Step } from '../src/receipt.ts'
-import { renderApplySummary, renderReceipt, summarizeReceipt } from '../src/render.ts'
+import {
+  renderApplySummary,
+  renderPreview,
+  renderReceipt,
+  summarizeReceipt,
+  TERMINAL_STYLE,
+} from '../src/render.ts'
 
 function step(action: Step['action'], result: Step['result'], id: string | null): Step {
   const category =
@@ -93,5 +99,45 @@ describe('apply summary', () => {
       'deleted: 1 local branch',
       'status: complete',
     ])
+  })
+})
+
+describe('renderPreview', () => {
+  test('per repository: each step with its command under it, each skipped row, then the counts', () => {
+    const r = receipt(
+      'dry-run',
+      [step('delete-local', 'would-run', 'feat/a'), step('prune-worktrees', 'would-run', null)],
+      [drop('feat/b', 'needs-review')],
+    )
+    expect(renderPreview(r)).toBe(
+      [
+        '/r',
+        '  delete  local_branch  feat/a',
+        '          git delete-local',
+        '  prune',
+        '          git prune-worktrees',
+        '  skip    local_branch  feat/b',
+        '          needs-review: ',
+        '',
+        'would delete: 1 local branch',
+        'dropped 1: 1 needs-review',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  test('terminal controls in a path, name or command are not shown', () => {
+    const s = step('remove-worktree', 'would-run', '/wt\rhidden')
+    const r = receipt(
+      'dry-run',
+      [{ ...s, repo: '/r\x1b[2J', command: 'git rm /wt\rhidden' }],
+      [{ ...drop('x\x1b]0;title\x07y', 'gone'), detail: 'a\rb' }],
+    )
+    for (const out of [renderPreview(r, TERMINAL_STYLE), renderReceipt(r, '/p\x1b[2J')]) {
+      expect(out).not.toContain('\r')
+      expect(out).not.toContain('\x1b[2J')
+      expect(out).not.toContain('\x1b]0;')
+    }
+    expect(renderPreview(r)).toContain('/wthidden')
   })
 })
