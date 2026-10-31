@@ -24,9 +24,9 @@
       "line": 192,
       "title": "no test for the exports-hidden package.json fallback",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "020e96e367dccc00afffc2897fad34feb382589d"
     },
     {
       "id": "r1-3",
