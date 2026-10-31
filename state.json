@@ -15,7 +15,7 @@
       "path": "packages/ts/cli-tool/src/devlink/resolve.ts",
       "line": 188,
       "title": "project lookup also searches NODE_PATH and Node's global folders",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/580#discussion_r4432625581",
       "status": "fixed",
       "reason": null,
       "fixedIn": "020e96e367dccc00afffc2897fad34feb382589d"
@@ -26,7 +26,7 @@
       "path": "packages/ts/cli-tool/src/devlink/resolve.ts",
       "line": 192,
       "title": "no test for the exports-hidden package.json fallback",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/580#discussion_r4432625589",
       "status": "fixed",
       "reason": null,
       "fixedIn": "020e96e367dccc00afffc2897fad34feb382589d"
@@ -37,7 +37,7 @@
       "path": "packages/ts/cli-tool/tests/devlink/project.test.ts",
       "line": 142,
       "title": "dir symlink fails on Windows without Developer Mode",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/580#discussion_r4432625593",
       "status": "fixed",
       "reason": null,
       "fixedIn": "020e96e367dccc00afffc2897fad34feb382589d"
@@ -48,10 +48,10 @@
       "path": null,
       "line": null,
       "title": "devlink README still says version pinning is not here",
-      "comment": null,
-      "status": "fixed",
+      "comment": "https://github.com/osdlc/osdlc/pull/580#pullrequestreview-5724073496",
+      "status": "open",
       "reason": null,
-      "fixedIn": "020e96e367dccc00afffc2897fad34feb382589d"
+      "fixedIn": null
     },
     {
       "id": "r1-5",
@@ -59,10 +59,10 @@
       "path": null,
       "line": null,
       "title": "project bin under bun: failure text says checkout runs from source",
-      "comment": null,
-      "status": "fixed",
+      "comment": "https://github.com/osdlc/osdlc/pull/580#pullrequestreview-5724073496",
+      "status": "open",
       "reason": null,
-      "fixedIn": "020e96e367dccc00afffc2897fad34feb382589d"
+      "fixedIn": null
     }
   ]
 }
