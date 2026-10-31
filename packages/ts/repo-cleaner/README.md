@@ -312,6 +312,20 @@ On yes it runs only the steps it showed: worktrees first, then local branches,
 remote branches and a prune, in that order. Branch deletes are
 compare-and-swap, every step is verified, and the first failure stops the run.
 
+Every run ends with what it did:
+
+```text
+deleted: 1 worktree, 3 local branches, 2 remote branches, 1 stale worktree pruned
+dropped 2: 1 needs-review, 1 duplicate
+status: complete
+```
+
+The preview says `would delete:`, and a run that stops at a failed step says
+how many rows it did not reach. `--output json` carries the same counts as
+`summary`. Two clones of one remote list the same remote branches; `apply`
+deletes each once and drops the other clone's row as `duplicate`. Remotes are
+compared by the push URL git uses, with `url.*.insteadOf` applied.
+
 A receipt records every step and is rewritten after each one. With
 `--plan plan.json` it goes beside the plan, as
 `plan.receipt-<timestamp>.json`. `--receipt <file>` puts it anywhere. A run

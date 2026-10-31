@@ -86,7 +86,10 @@ export { sweepRepo, sweepRepos, type SweepOptions, type SweepReposOptions } from
 export {
   proposedCommands,
   renderJson,
+  renderApplySummary,
   renderReceipt,
+  summarizeReceipt,
+  type ApplySummary,
   renderRepo,
   renderScan,
   renderSummary,

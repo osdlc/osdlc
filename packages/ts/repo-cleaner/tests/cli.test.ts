@@ -240,8 +240,15 @@ describe('apply', () => {
       fx.root,
     )
     expect(applied.code).toBe(0)
-    const out = JSON.parse(applied.out) as { receiptPath: string; receipt: Receipt }
+    const out = JSON.parse(applied.out) as {
+      receiptPath: string
+      receipt: Receipt
+      summary: unknown
+    }
     expect(out.receipt.status).toBe('complete')
+    expect(out.summary).toMatchObject({
+      deleted: { worktree: 1, local_branch: 1, remote_branch: 1 },
+    })
     // The worktree path holds a space; the receipt's command quotes it.
     expect(out.receipt.steps[0]!.command).toContain(`'${fx.worktree}'`)
     expect(dirname(out.receiptPath)).toBe(dirname(plan))
@@ -263,6 +270,8 @@ describe('apply', () => {
     })
     expect(res.code).toBe(0)
     expect(asked).toEqual(['Delete 3 items?'])
+    expect(res.out).toContain('would delete: 1 worktree, 1 local branch, 1 remote branch')
+    expect(res.out).toContain('deleted: 1 worktree, 1 local branch, 1 remote branch')
     expect(res.out).toContain('would-run')
     expect(res.out).toContain('status: complete')
     expect(existsSync(fx.worktree)).toBe(false)
@@ -330,6 +339,32 @@ describe('apply', () => {
     expect(res.out).toContain('duplicate')
     expect(res.out).toContain('status: complete')
     expect(branchRefs(fx.bare)).not.toContain(BRANCH)
+  })
+
+  test('a row that turns into a review row while the question waits is dropped, not run', () => {
+    const fx = buildFixture()
+    sh(fx.root, ['branch', 'extra', 'main'])
+    const res = run(['apply', ...SWEEP, '--only', 'branches'], fx.root, {
+      confirm: () => {
+        // Work lands on `extra` after the preview judged it merged.
+        sh(fx.root, ['checkout', '-q', 'extra'])
+        sh(fx.root, ['commit', '-q', '--allow-empty', '-m', 'late'])
+        sh(fx.root, ['checkout', '-q', 'main'])
+        return true
+      },
+    })
+    expect(res.code).toBe(0)
+    expect(res.out).toMatch(/dropped\s+local_branch:extra — needs-review/)
+    expect(branchRefs(fx.root)).toContain('refs/heads/extra')
+  })
+
+  test('--repo-root that names no plan repository exits 1', () => {
+    const fx = buildFixture()
+    const plan = join(fx.root, 'p.json')
+    run(['plan', '--branch', BRANCH, ...SWEEP, '-o', plan], fx.root)
+    const res = run(['apply', '--plan', plan, '--repo-root', tempDir(), '--yes'], fx.root)
+    expect(res.code).toBe(1)
+    expect(res.err).toContain('no plan repository at')
   })
 
   test('a no deletes nothing', () => {

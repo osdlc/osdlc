@@ -387,20 +387,39 @@ function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe
 }
 
 /**
- * The remote a repository's `remote` names, as one string per remote: its
- * URL without a trailing `/` or `.git`, a local path resolved against the
- * repository. Null when the remote has no URL.
+ * A network URL as `host[:port]/path`, the same for `git@host:o/r.git`,
+ * `ssh://git@host/o/r` and `https://host/o/r/`; the whole path is kept, so
+ * nested groups stay apart. Null for a path on this machine, including
+ * `file://` and a Windows drive path.
+ */
+export function networkRemoteKey(url: string): string | null {
+  const u = url.trim()
+  if (/^[a-z]:[\\/]/i.test(u) || /^file:/i.test(u)) return null
+  const uri = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::(\d+))?(\/.*)?$/i.exec(u)
+  const scp = uri === null ? /^(?:[^@/:]+@)?([^/:]+):(?!\/\/)(.+)$/.exec(u) : null
+  const host = uri?.[1] ?? scp?.[1]
+  if (host === undefined) return null
+  const port = uri?.[2] === undefined ? '' : `:${uri[2]}`
+  const path = (uri?.[3] ?? scp?.[2] ?? '').replace(/^\/+|\/+$/g, '').replace(/\.git$/, '')
+  return `${host.toLowerCase()}${port}/${path}`
+}
+
+/**
+ * One string per remote repository, so two clones that push to the same one
+ * agree. Built from the push URLs git would use (`remote get-url --push
+ * --all`, which applies `url.*.insteadOf` and `pushInsteadOf`): a network URL
+ * by {@link networkRemoteKey}, a local path resolved against the repository
+ * and kept as written, `.git` and all. Null when git reports no URL; such a
+ * row is never treated as a duplicate.
  */
 function remoteKey(git: Git, repo: string, remote: string): string | null {
-  const url = git.at(repo).try.configGet(`remote.${remote}.url`)
-  if (!url.ok || url.value === null) return null
-  const trimmed = url.value
-    .trim()
-    .replace(/\/+$/, '')
-    .replace(/\.git$/, '')
-  // `host:path` and `scheme://` are remote; anything else is a path on this machine.
-  const isRemote = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) || /^[^/]+:/.test(trimmed)
-  return isRemote ? trimmed : resolve(repo, trimmed)
+  const urls = git.at(repo).try.remoteGetUrls(remote, { push: true })
+  if (!urls.ok || urls.value === null || urls.value.length === 0) return null
+  const keys = urls.value.map(
+    (url) =>
+      networkRemoteKey(url) ?? resolve(repo, url.trim().replace(/^file:\/\/(localhost)?/i, '')),
+  )
+  return [...new Set(keys)].sort().join('\n')
 }
 
 /**

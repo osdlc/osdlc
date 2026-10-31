@@ -49,6 +49,8 @@ import {
   renderReceipt,
   renderSummary,
   renderText,
+  rowsActedOn,
+  summarizeReceipt,
 } from './render.ts'
 import {
   NO_STATUS_LINE,
@@ -436,8 +438,9 @@ function receiptBeside(planPath: string, now: Date): string {
   return join(dirname(planPath), `${stem}.receipt-${fileStamp(now)}.json`)
 }
 
+/** Rows the run would delete or prune: one each, however many steps (an unlock, a remove) it takes. */
 function wouldRun(receipt: Receipt): number {
-  return receipt.steps.filter((s) => s.row !== null).length
+  return rowsActedOn(summarizeReceipt(receipt))
 }
 
 type ApplyValues = Extract<
@@ -556,7 +559,7 @@ function runApply(
   const print = (receipt: Receipt, shownPath: string | null): void => {
     ctx.io.stdout(
       v.output === 'json'
-        ? `${JSON.stringify({ receiptPath: shownPath, receipt }, null, 2)}\n`
+        ? `${JSON.stringify({ receiptPath: shownPath, summary: summarizeReceipt(receipt), receipt }, null, 2)}\n`
         : renderReceipt(receipt, shownPath),
     )
   }
@@ -564,6 +567,9 @@ function runApply(
   const planned = plan.repos.filter(
     (r) => repoRoot === undefined || resolve(r.root) === resolve(repoRoot),
   )
+  if (repoRoot !== undefined && planned.length === 0) {
+    return failure(ctx, new Error(`no plan repository at ${repoRoot}`))
+  }
   if (rows.length === 0 && planned.every((r) => r.rows.length === 0)) {
     if (v.output === 'json') print(emptyReceipt(source, now, v.dryRun), null)
     else ctx.io.stdout('nothing to delete\n')
@@ -649,7 +655,8 @@ function confirm(
   deps: MainDeps,
 ): number | null {
   // The preview is for the person answering, so it goes where the question does.
-  ;(json ? ctx.io.stderr : ctx.io.stdout)(renderReceipt(preview, null))
+  const show = json ? ctx.io.stderr : ctx.io.stdout
+  show(renderReceipt(preview, null))
   const answer = (deps.confirm ?? terminalConfirm)(`Delete ${count} item${count === 1 ? '' : 's'}?`)
   if (answer === null) {
     return usageError(ctx, name, 'refusing to delete without a terminal to ask; pass --yes')

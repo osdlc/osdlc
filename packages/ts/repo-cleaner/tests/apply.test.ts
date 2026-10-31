@@ -25,7 +25,7 @@ import { Git, PUSH_REJECTIONS } from '@osdlc/typed-git'
 import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { sh } from './helpers.ts'
-import { applyPlan, type Grant, type RowSelection } from '../src/apply.ts'
+import { applyPlan, networkRemoteKey, type Grant, type RowSelection } from '../src/apply.ts'
 import { PLAN_VERSION, parsePlan, planRepo, readPlan, writePlan, type Plan } from '../src/plan.ts'
 import type { Receipt, RowRef } from '../src/receipt.ts'
 import { sweepRepo } from '../src/sweep.ts'
@@ -360,6 +360,62 @@ describe('applyPlan', () => {
     expect(remoteHeads(fx.bare)).not.toContain('refs/heads/merged-a')
   })
 
+  test('a clone whose URL reaches the remote through insteadOf counts as the same remote', () => {
+    const fx = buildFixture()
+    const other = realpathSync(mkdtempSync(join(tmpdir(), 'repo-cleaner-clone-')))
+    cleanups.push(() => rmSync(other, { recursive: true, force: true }))
+    sh(other, ['clone', '-q', fx.bare, 'b'])
+    const b = join(other, 'b')
+    sh(b, ['config', `url.${fx.bare}.insteadOf`, 'alias:project'])
+    sh(b, ['remote', 'set-url', 'origin', 'alias:project'])
+    const plan: Plan = {
+      ...makePlan(fx.root),
+      repos: [...makePlan(fx.root).repos, ...makePlan(b).repos],
+    }
+    const [rootA, rootB] = plan.repos.map((r) => r.root) as [string, string]
+    const receipt = applyPlan(
+      plan,
+      [
+        { category: 'remote_branch', id: 'origin/merged-a', repo: rootA },
+        { category: 'remote_branch', id: 'origin/merged-a', repo: rootB },
+      ],
+      [],
+      { callerCwd: fx.root, dryRun: true, receiptPath: null, planPath: '(test)' },
+    )
+    expect(receipt.dropped.map((d) => [d.repo, d.reason])).toEqual([[rootB, 'duplicate']])
+  })
+
+  test('local remotes `x` and `x.git` are different remotes', () => {
+    const parent = realpathSync(mkdtempSync(join(tmpdir(), 'repo-cleaner-remotes-')))
+    cleanups.push(() => rmSync(parent, { recursive: true, force: true }))
+    const roots: string[] = []
+    for (const bare of ['project', 'project.git']) {
+      sh(parent, ['init', '-q', '--bare', '-b', 'main', bare])
+      const work = join(parent, `work-${bare}`)
+      sh(parent, ['clone', '-q', join(parent, bare), work])
+      sh(work, ['commit', '-q', '--allow-empty', '-m', 'init'])
+      sh(work, ['push', '-q', '-u', 'origin', 'main'])
+      sh(work, ['push', '-q', 'origin', 'main:refs/heads/topic'])
+      roots.push(work)
+    }
+    const plan: Plan = {
+      version: PLAN_VERSION,
+      created_at: 'x',
+      repos: roots.map((root) => {
+        const { repo, items } = sweepRepo(root, { noGh: true, cwd: root })
+        return planRepo(repo!.root, { remote: null, noGh: true }, items)
+      }),
+    }
+    const receipt = applyPlan(plan, [], [], {
+      callerCwd: parent,
+      dryRun: true,
+      receiptPath: null,
+      planPath: '(test)',
+    })
+    expect(receipt.dropped.filter((d) => d.reason === 'duplicate')).toEqual([])
+    expect(receipt.steps.filter((s) => s.action === 'delete-remote')).toHaveLength(2)
+  })
+
   test('safeOnly keeps the review-row guard on rows that are named', () => {
     const fx = buildFixture()
     const receipt = applyPlan(makePlan(fx.root), [{ category: 'worktree', id: fx.worktree }], [], {
@@ -472,6 +528,35 @@ describe('applyPlan', () => {
     expect(() => apply(fx, plan, [{ category: 'local_branch', id: 'main' }])).toThrow(
       'not in the plan',
     )
+  })
+})
+
+describe('networkRemoteKey', () => {
+  test('one key for every form of a network URL, the whole path kept', () => {
+    const forms = [
+      'git@github.com:acme/api.git',
+      'ssh://git@github.com/acme/api',
+      'https://github.com/acme/api/',
+      'https://user@GitHub.com/acme/api.git',
+      'github.com:acme/api',
+    ]
+    expect(new Set(forms.map(networkRemoteKey))).toEqual(new Set(['github.com/acme/api']))
+    expect(networkRemoteKey('https://gitlab.com/a/b/c')).not.toBe(
+      networkRemoteKey('https://gitlab.com/z/b/c'),
+    )
+    expect(networkRemoteKey('https://host:8443/o/r')).toBe('host:8443/o/r')
+  })
+
+  test('a path on this machine is not a network URL', () => {
+    for (const path of [
+      '/srv/git/api.git',
+      '../api',
+      'C:\\repos\\api',
+      'C:/repos/api',
+      'file:///srv/api',
+    ]) {
+      expect(networkRemoteKey(path)).toBeNull()
+    }
   })
 })
 
