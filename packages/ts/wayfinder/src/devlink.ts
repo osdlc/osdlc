@@ -13,10 +13,6 @@
  * same `WAYFINDER_ROOT` and `WAYFINDER_CONFIG_DIR` as wayfinder's other files.
  */
 
-import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
 import { validateSpec, type ToolSpec } from '@osdlc/cli-tool/devlink'
 
 import { APP, BIN } from './app.ts'
@@ -33,12 +29,3 @@ export const WAYFINDER_SPEC: ToolSpec = validateSpec({
   aliases: [APP],
   vendorDirs: { vendor: APP, envVars: DIR_ENV_VARS },
 })
-
-/**
- * The checkout this module runs from, or null for an installed package.
- * `src/` and `dist/` are both one level below the package root.
- */
-export function checkoutRoot(): string | null {
-  const root = resolve(fileURLToPath(import.meta.url), '..', '..')
-  return existsSync(resolve(root, MARKER)) ? root : null
-}

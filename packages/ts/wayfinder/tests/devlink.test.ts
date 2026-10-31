@@ -13,12 +13,14 @@ import { captureIo } from '@osdlc/cli-tool'
 import { resolve } from '@osdlc/cli-tool/devlink'
 
 import { main, runWay, type RunWayOptions } from '../src/cli.ts'
-import { checkoutRoot, WAYFINDER_SPEC } from '../src/devlink.ts'
+import { WAYFINDER_SPEC } from '../src/devlink.ts'
 import { VERSION } from '../src/version.generated.ts'
 
 let tmp: string
 let home: string
 const WINDOWS = process.platform === 'win32'
+/** This package's root: the checkout the tests run from. */
+const ROOT = join(import.meta.dirname, '..')
 const MOVED = ['HOME', 'XDG_CONFIG_HOME'] as const
 let saved: Record<string, string | undefined> = {}
 
@@ -43,7 +45,7 @@ afterEach(() => {
 })
 
 /** The script a checkout runs: its `src/cli.ts`. */
-const ownScript = () => join(checkoutRoot()!, 'src', 'cli.ts')
+const ownScript = () => join(ROOT, 'src', 'cli.ts')
 
 /**
  * Run `way` with `argv` and `env` through `runWay`, as this checkout's
@@ -68,7 +70,7 @@ describe('way dev', () => {
   test('the spec names this package: the shim is the marker and the launcher', () => {
     expect(WAYFINDER_SPEC.name).toBe('way')
     expect(WAYFINDER_SPEC.aliases).toEqual(['wayfinder'])
-    expect(checkoutRoot()?.endsWith('wayfinder')).toBe(true)
+    expect(ROOT.endsWith('wayfinder')).toBe(true)
   })
 
   // POSIX only: `way dev` is not available on Windows; its launcher is a POSIX shell script.
@@ -111,7 +113,7 @@ describe('way dev', () => {
     expect(r.code).toBe(0)
     const s = JSON.parse(r.out) as { selection: { source: string }; self: string }
     expect(s.selection.source).toBe('local')
-    expect(s.self).toBe(checkoutRoot())
+    expect(s.self).toBe(ROOT)
   })
 
   // POSIX only: `way dev` is not available on Windows; its launcher is a POSIX shell script.
@@ -121,13 +123,13 @@ describe('way dev', () => {
       // The running script is in this checkout, so the bare link resolves to it.
       let r = await run(['dev', 'link'], { HOME: home })
       expect(r.code).toBe(0)
-      expect(r.out).toContain(`way now runs ${checkoutRoot()}/src/cli.ts`)
+      expect(r.out).toContain(`way now runs ${ROOT}/src/cli.ts`)
 
       r = await run(['dev', 'history', '--json'], { HOME: home })
       expect(r.code).toBe(0)
       const rows = JSON.parse(r.out) as Array<{ checkout: string; active: boolean }>
       expect(rows).toHaveLength(1)
-      expect(rows[0]).toMatchObject({ checkout: checkoutRoot(), active: true })
+      expect(rows[0]).toMatchObject({ checkout: ROOT, active: true })
 
       r = await run(['dev', 'off'], { HOME: home })
       expect(r.code).toBe(0)
@@ -157,7 +159,7 @@ function fakeCheckout(dir: string, name: string): string {
 
 describe('the launcher hands off only to a chosen wayfinder checkout', () => {
   const pick = (cwd: string, env: Record<string, string> = {}) =>
-    resolve(WAYFINDER_SPEC, { cwd, env: { HOME: home, ...env }, self: checkoutRoot() })
+    resolve(WAYFINDER_SPEC, { cwd, env: { HOME: home, ...env }, self: ROOT })
 
   test('standing in a repository with src/cli.ts runs the install, not that repository', () => {
     const repo = fakeCheckout(join(tmp, 'repo'), 'some-cli')
@@ -232,19 +234,19 @@ describe('runWay goes through runMain', () => {
   test('--where in a process handed off by WAY_HOME', async () => {
     const env: Record<string, string | undefined> = {
       HOME: home,
-      WAY_HOME: checkoutRoot()!,
+      WAY_HOME: ROOT,
       WAY_LAUNCH_LAYER: 'env',
     }
     const r = await run(['--where'], env, { script: ownScript() })
     expect(r.code).toBe(0)
-    expect(r.out).toContain(`from      checkout ${checkoutRoot()}\n`)
+    expect(r.out).toContain(`from      checkout ${ROOT}\n`)
     expect(r.out).toContain('chosen by env ($WAY_HOME)\n')
     // Read once, then gone, so a process this run starts resolves for itself.
     expect(env['WAY_LAUNCH_LAYER']).toBeUndefined()
   })
 
   test('--where --json prints the same facts as one object', async () => {
-    const env = { HOME: home, WAY_HOME: checkoutRoot()!, WAY_LAUNCH_LAYER: 'env' }
+    const env = { HOME: home, WAY_HOME: ROOT, WAY_LAUNCH_LAYER: 'env' }
     const r = await run(['--where', '--json'], env, { script: ownScript() })
     expect(r.code).toBe(0)
     expect(JSON.parse(r.out)).toEqual({
@@ -252,8 +254,8 @@ describe('runWay goes through runMain', () => {
       version: VERSION,
       file: realpathSync(ownScript()),
       compiled: false,
-      from: { kind: 'checkout', path: checkoutRoot() },
-      chosenBy: { checkout: checkoutRoot(), layer: 'env', text: 'env ($WAY_HOME)' },
+      from: { kind: 'checkout', path: ROOT },
+      chosenBy: { checkout: ROOT, layer: 'env', text: 'env ($WAY_HOME)' },
     })
   })
 
