@@ -9,43 +9,60 @@
 import { fitWidth, stripControls } from '@osdlc/ux'
 
 import type { Step } from './receipt.ts'
-import { PLAIN, type Style } from './render.ts'
+import { PLAIN, STEP_VERB, type Style } from './render.ts'
 import { progressBar } from './status-line.ts'
 
+/** A step bar's cells, and the run bar's at most. */
 const BAR = 10
-
-const VERB: Record<Step['action'], string> = {
-  'unlock-worktree': 'unlock',
-  'remove-worktree': 'delete',
-  'delete-local': 'delete',
-  'delete-remote': 'delete',
-  'prune-worktrees': 'prune',
-}
+const TOTAL_BAR = 30
 
 function label(step: Step): string {
-  const verb = VERB[step.action]
+  const verb = STEP_VERB[step.action]
   if (step.row === null) return verb
   return stripControls(`${verb.padEnd(6)}  ${step.row.category}  ${step.row.id}`)
 }
 
-/** One step's row: its bar, a mark, and what it does, cut to `width` columns. */
+/**
+ * One step's row, cut to `width` columns before it is colored, so the color
+ * codes never count against the width and the row never wraps.
+ */
 function stepRow(step: Step, running: boolean, width: number, style: Style): string {
-  const text = fitWidth(label(step), Math.max(1, width - BAR - 6))
-  if (step.result === 'ok') return `  ${style.keep('█'.repeat(BAR))} ${style.keep('✓')} ${text}`
-  if (step.result === 'failed') {
-    return `  ${style.delete('█'.repeat(BAR))} ${style.delete('✗')} ${text}`
-  }
-  if (running) {
-    const half = '█'.repeat(BAR / 2) + '░'.repeat(BAR / 2)
-    return `  ${style.review(half)} ${style.review('›')} ${style.strong(text)}`
-  }
-  return `  ${style.muted('░'.repeat(BAR))}   ${style.muted(text)}`
+  const [bar, mark, color, text]: [string, string, (t: string) => string, (t: string) => string] =
+    step.result === 'ok'
+      ? ['█'.repeat(BAR), '✓', style.keep, (t) => t]
+      : step.result === 'failed'
+        ? ['█'.repeat(BAR), '✗', style.delete, (t) => t]
+        : running
+          ? ['█'.repeat(BAR / 2) + '░'.repeat(BAR / 2), '›', style.review, style.strong]
+          : ['░'.repeat(BAR), ' ', style.muted, style.muted]
+  const head = `  ${bar} ${mark} `
+  if (width <= head.length) return color(fitWidth(head, width))
+  return `  ${color(bar)} ${color(mark)} ${text(fitWidth(label(step), width - head.length))}`
+}
+
+/** The run's bar and count, shrunk to fit `width` columns. */
+function totalRow(
+  done: number,
+  total: number,
+  failed: boolean,
+  width: number,
+  style: Style,
+): string {
+  const count = ` ${done}/${total}`
+  const cells = Math.min(TOTAL_BAR, width - 2 - count.length)
+  const line =
+    cells > 0
+      ? `  ${progressBar(done, total, cells)}${count}`
+      : fitWidth(`  ${count.trim()}`, width)
+  return failed ? style.delete(line) : style.strong(line)
 }
 
 /**
- * The board's lines: the rows that fit in `height - 1` lines, then the bar
- * for the whole run. A list longer than that shows a window that keeps the
- * running step in view, with a line for the rows above and below it.
+ * The board's lines, each at most `width` columns, and at most `height - 1`
+ * of them: the cursor sits on the row under the last line, which must stay
+ * on screen. That is the run's bar under the rows that fit; a list longer
+ * than that shows a window that keeps the running step in view, with a line
+ * for the rows above and below it when there is room for one.
  */
 export function boardLines(
   steps: readonly Step[],
@@ -53,27 +70,28 @@ export function boardLines(
   size: { width: number; height: number },
   style: Style = PLAIN,
 ): string[] {
-  const room = Math.max(3, size.height - 1)
+  const width = Math.max(1, size.width)
+  const room = Math.max(1, size.height - 2)
   let first = 0
   let last = steps.length
-  if (steps.length > room) {
+  const windowed = steps.length > room
+  // The above and below notes need a row each, and a row for a step besides.
+  const notes = windowed && room >= 3
+  if (windowed) {
     const at = running ?? steps.findIndex((s) => s.result === 'pending')
     const focus = at < 0 ? steps.length - 1 : at
-    // Two lines go to the "above" and "below" notes.
-    const shown = room - 2
+    const shown = notes ? room - 2 : room
     first = Math.min(Math.max(0, focus - Math.floor(shown / 3)), steps.length - shown)
     last = first + shown
   }
+  const note = (text: string): string => style.muted(fitWidth(text, width))
   const lines: string[] = []
-  if (steps.length > room) lines.push(style.muted(`  … ${first} above`))
-  for (let i = first; i < last; i++) {
-    lines.push(stepRow(steps[i]!, i === running, size.width, style))
-  }
-  if (steps.length > room) lines.push(style.muted(`  … ${steps.length - last} below`))
+  if (notes) lines.push(note(`  … ${first} above`))
+  for (let i = first; i < last; i++) lines.push(stepRow(steps[i]!, i === running, width, style))
+  if (notes) lines.push(note(`  … ${steps.length - last} below`))
   const done = steps.filter((s) => s.result === 'ok' || s.result === 'failed').length
   const failed = steps.some((s) => s.result === 'failed')
-  const total = `${progressBar(done, steps.length, 30)} ${done}/${steps.length}`
-  lines.push(`  ${failed ? style.delete(total) : style.strong(total)}`)
+  lines.push(totalRow(done, steps.length, failed, width, style))
   return lines
 }
 
@@ -84,8 +102,9 @@ export interface StepBoard {
 
 /**
  * A board on `write`. The first draw prints its lines; each later one moves
- * the cursor back to the board's first line and rewrites them. Lines are cut
- * to the width, so none wraps and the line count stays right.
+ * the cursor back to the board's first line and rewrites them, erasing any
+ * line an earlier, taller frame left below. Lines are cut to one column
+ * short of the width, so none wraps and the line count stays right.
  */
 export function stepBoard(
   write: (text: string) => void,
@@ -97,7 +116,9 @@ export function stepBoard(
   return {
     draw(running) {
       const { width, height } = size()
-      const lines = boardLines(steps, running, { width: Math.max(20, width - 1), height }, style)
+      const lines = boardLines(steps, running, { width: width - 1, height }, style)
+      // A frame shorter than the last one blanks the rows the last one used.
+      while (lines.length < drawn) lines.push('')
       const up = drawn > 0 ? `\x1b[${drawn}A` : ''
       write(up + lines.map((l) => `\r\x1b[2K${l}\n`).join(''))
       drawn = lines.length

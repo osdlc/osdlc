@@ -7,6 +7,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -388,6 +389,37 @@ describe('color', () => {
     expect(res.code).toBe(11)
     expect(res.out).toContain(`█ ✗ delete  remote_branch  origin/${BRANCH}`)
     // Under the board, the full error.
+    expect(res.out).toMatch(
+      /\n {2}✗ delete +remote_branch +origin\/feat\/s\n +.*pre-receive hook declined/,
+    )
+  })
+
+  test("a live run keeps a failed step's error when the receipt then cannot be saved", () => {
+    const fx = buildFixture()
+    const receiptDir = join(tempDir(), 'receipts')
+    mkdirSync(receiptDir)
+    cleanups.push(() => chmodSync(receiptDir, 0o700))
+    // The hook runs after the first save: it locks the receipt directory, then refuses the push.
+    const hook = join(fx.bare, 'hooks', 'pre-receive')
+    writeFileSync(hook, `#!/bin/sh\nchmod 500 '${receiptDir}'\nexit 1\n`)
+    chmodSync(hook, 0o755)
+    const res = colorRun(
+      [
+        'apply',
+        '--branch',
+        BRANCH,
+        ...SWEEP,
+        '--remotes',
+        '--yes',
+        '--row',
+        `remote_branch:origin/${BRANCH}`,
+        '--receipt',
+        join(receiptDir, 'r.json'),
+      ],
+      fx.root,
+      { NO_COLOR: '1' },
+    )
+    expect(res.code).toBe(1)
     expect(res.out).toMatch(
       /\n {2}✗ delete +remote_branch +origin\/feat\/s\n +.*pre-receive hook declined/,
     )

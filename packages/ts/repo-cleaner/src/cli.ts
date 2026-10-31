@@ -53,7 +53,7 @@ import {
   renderPreview,
   renderPreviewDrops,
   renderReceipt,
-  renderStepDone,
+  renderStepFailure,
   renderSummary,
   renderText,
   rowsActedOn,
@@ -778,7 +778,14 @@ function runApply(
               board.draw(null)
             },
             onStep: (i: number) => board?.draw(i),
-            onStepDone: () => board?.draw(null),
+            onStepDone: (_i: number, _total: number, step: Step) => {
+              board?.draw(null)
+              // Here rather than after the run: a receipt that then cannot be
+              // saved must not take the step's own error with it.
+              if (step.result === 'failed') {
+                ctx.io.stdout(`\n${renderStepFailure(step, style)}\n`)
+              }
+            },
           }
         : {}),
     })
@@ -792,9 +799,6 @@ function runApply(
     const seen = new Set(preview.dropped.map(dropKey))
     const late = receipt.dropped.filter((d) => !seen.has(dropKey(d)))
     if (late.length > 0) ctx.io.stdout(`\n${renderPreviewDrops(late, style)}`)
-    // A failed step's error, in full: its row on the board is cut to the width.
-    const failed = receipt.steps.find((s) => s.result === 'failed')
-    if (failed !== undefined) ctx.io.stdout(`\n${renderStepDone(failed, style)}\n`)
     ctx.io.stdout('\n')
   }
   print(receipt, receiptPath, !live)

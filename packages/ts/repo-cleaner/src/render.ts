@@ -468,7 +468,7 @@ export function renderApplySummary(receipt: Receipt): string[] {
 }
 
 /** The word a preview shows for a step: what it does to the row. */
-const STEP_VERB: Record<Step['action'], string> = {
+export const STEP_VERB: Record<Step['action'], string> = {
   'unlock-worktree': 'unlock',
   'remove-worktree': 'delete',
   'delete-local': 'delete',
@@ -533,17 +533,14 @@ export function renderPreviewDrops(dropped: Receipt['dropped'], style: Style = P
 }
 
 /**
- * One finished step, for a run shown live: `✓` and the row, or `✗`, the row
- * and the error. Printed as each step ends, under the preview's list.
+ * A failed step for a run shown live: `✗`, the row, and the error in full,
+ * which the step's row on the board is too narrow to hold.
  */
-export function renderStepDone(step: Step, style: Style = PLAIN): string {
+export function renderStepFailure(step: Step, style: Style = PLAIN): string {
   const verb = STEP_VERB[step.action]
   const row = step.row === null ? '' : `${step.row.category}  ${ellipsize(step.row.id, 60)}`
   const line = stripControls(`${pad(verb, 6)}  ${row}`.trimEnd())
-  if (step.result === 'failed') {
-    return `  ${style.delete('✗')} ${line}\n      ${style.delete(stripControls(step.error ?? 'failed'))}`
-  }
-  return `  ${style.keep('✓')} ${line}`
+  return `  ${style.delete('✗')} ${line}\n      ${style.delete(stripControls(step.error ?? 'failed'))}`
 }
 
 /** An apply run as text: dropped rows, each step, a summary, then where the receipt is. */

@@ -38,8 +38,8 @@ describe('boardLines', () => {
 
   test('a list taller than the terminal shows a window around the running step', () => {
     const steps = Array.from({ length: 30 }, (_, i) => step(`b${i}`, i < 20 ? 'ok' : 'pending'))
-    const lines = boardLines(steps, 20, { width: 80, height: 8 })
-    // Seven lines for the list (two of them notes) and one for the total.
+    const lines = boardLines(steps, 20, { width: 80, height: 9 })
+    // One row short of the height, for the cursor: two notes, five steps, the total.
     expect(lines).toHaveLength(8)
     expect(lines[0]).toBe('  … 19 above')
     expect(lines.slice(1, 6).map((l) => l.split('  ').pop())).toEqual([
@@ -55,9 +55,20 @@ describe('boardLines', () => {
     expect(lines[7]).toMatch(/ 20\/30$/)
   })
 
-  test('a long row is cut to the width, so it never wraps', () => {
-    const lines = boardLines([step('x'.repeat(200))], null, { width: 40, height: 24 })
-    expect(lines[0]!.length).toBeLessThanOrEqual(40)
+  test('a terminal too short for the notes shows only the running step and the total', () => {
+    const steps = Array.from({ length: 5 }, (_, i) => step(`b${i}`))
+    const lines = boardLines(steps, 2, { width: 80, height: 3 })
+    expect(lines).toHaveLength(2)
+    expect(lines[0]).toContain('› delete  local_branch  b2')
+  })
+
+  test('every line fits a narrow terminal, the total bar included', () => {
+    const steps = Array.from({ length: 30 }, (_, i) => step('x'.repeat(200 + i)))
+    for (const width of [1, 5, 12, 20, 30, 40]) {
+      for (const line of boardLines(steps, 3, { width, height: 24 })) {
+        expect(line.length).toBeLessThanOrEqual(width)
+      }
+    }
   })
 })
 
@@ -77,5 +88,24 @@ describe('stepBoard', () => {
     expect(out[1]!.startsWith('\x1b[3A')).toBe(true)
     expect(out[1]).toContain('✓ delete  local_branch  a')
     expect(out[1]).toContain('› delete  local_branch  b')
+  })
+
+  test('a frame shorter than the last one blanks the rows the last one drew', () => {
+    const out: string[] = []
+    const steps = Array.from({ length: 10 }, (_, i) => step(`b${i}`))
+    let height = 24
+    const board = stepBoard(
+      (t) => out.push(t),
+      steps,
+      () => ({ width: 80, height }),
+    )
+    board.draw(null)
+    height = 6
+    board.draw(0)
+    const second = out[1]!
+    expect(second.startsWith('\x1b[11A')).toBe(true)
+    // Eleven rows rewritten: the shorter frame, then blanks.
+    expect(second.split('\n')).toHaveLength(12)
+    expect(second.endsWith('\r\x1b[2K\n')).toBe(true)
   })
 })
