@@ -346,6 +346,17 @@ function sweep(
   return { ok: true, result, branch, values: v }
 }
 
+/**
+ * Name each repository the sweep could not read, on stderr. True when there
+ * was one: a verb that acts on the sweep must not pass an unread repository
+ * off as an empty one.
+ */
+function reportUnreadable(ctx: CliContext, name: string, result: SweepResult): boolean {
+  const failed = result.repos.filter((r) => r.error !== null)
+  for (const r of failed) ctx.io.stderr(`${name}: ${r.repo?.root ?? r.path}: ${r.error}\n`)
+  return failed.length > 0
+}
+
 function planOf(swept: Extract<Swept, { ok: true }>, now: Date): Plan {
   const opts = {
     remote: swept.values.remote ?? null,
@@ -414,6 +425,7 @@ function runPlan(argv: readonly string[], ctx: CliContext, status: StatusLine): 
   if (!swept.ok) return swept.code
 
   const plan = planOf(swept, new Date())
+  const unreadable = reportUnreadable(ctx, name, swept.result)
   ctx.io.stderr(renderSummary(swept.result) + '\n')
   if (v.out === '-') {
     ctx.io.stdout(`${JSON.stringify(plan, null, 2)}\n`)
@@ -422,7 +434,7 @@ function runPlan(argv: readonly string[], ctx: CliContext, status: StatusLine): 
     writePlan(path, plan)
     ctx.io.stderr(`plan: ${path}\n`)
   }
-  return EXIT.ok
+  return unreadable ? EXIT.error : EXIT.ok
 }
 
 /** `<dir>/<name>.receipt-<stamp>.json` for plan `<dir>/<name>.json`. */
@@ -481,6 +493,9 @@ function runApply(
   const now = new Date()
   let plan: Plan
   let planSource: string
+  // A repository the sweep could not read contributes no rows; the run says so and exits 1.
+  let unreadable = false
+  const ok = (): number => (unreadable ? EXIT.error : EXIT.ok)
   let receiptPath: string | null = v.receipt === undefined ? null : resolve(ctx.cwd, v.receipt)
   if (v.plan === undefined) {
     const swept = sweep(
@@ -492,6 +507,7 @@ function runApply(
       status,
     )
     if (!swept.ok) return swept.code
+    unreadable = reportUnreadable(ctx, name, swept.result)
     plan = planOf(swept, now)
     planSource = '(swept)'
   } else {
@@ -538,7 +554,7 @@ function runApply(
       if (rows.length === 0 && plan.repos.every((r) => r.rows.length === 0)) {
         if (v.output === 'json') print(emptyReceipt(planSource, now), null)
         else ctx.io.stdout('nothing to delete\n')
-        return EXIT.ok
+        return ok()
       }
     }
     return failure(ctx, err)
@@ -547,7 +563,7 @@ function runApply(
   const count = wouldRun(preview)
   if (v.dryRun || count === 0) {
     print(preview, null)
-    return EXIT.ok
+    return ok()
   }
 
   if (!v.yes) {
@@ -567,20 +583,27 @@ function runApply(
   }
 
   // Only what the preview showed: rows it dropped stay dropped.
-  const approved = preview.steps.flatMap((s) => (s.row === null ? [] : [s.row]))
+  // Pinned to their repositories: a branch name two repositories share stays two rows.
+  const approved = preview.steps.flatMap((s) =>
+    s.row === null ? [] : [{ ...s.row, repo: s.repo }],
+  )
   const approvedGrants = grants.filter(
     (g) =>
       g.row === null || approved.some((r) => r.category === g.row!.category && r.id === g.row!.id),
   )
   let receipt: Receipt
   try {
-    receipt = applyPlan(plan, approved, approvedGrants, { ...base, dryRun: false, receiptPath })
+    receipt = applyPlan(plan, approved, approvedGrants, {
+      ...base,
+      dryRun: false,
+      receiptPath,
+      dropped: preview.dropped,
+    })
   } catch (err) {
     return failure(ctx, err)
   }
-  receipt.dropped = [...preview.dropped, ...receipt.dropped]
   print(receipt, receiptPath)
-  return receipt.status === 'failed' ? EXIT_STEP_FAILED : EXIT.ok
+  return receipt.status === 'failed' ? EXIT_STEP_FAILED : ok()
 }
 
 function emptyReceipt(plan: string, now: Date): Receipt {

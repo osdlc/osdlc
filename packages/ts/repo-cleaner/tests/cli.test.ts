@@ -280,6 +280,28 @@ describe('apply', () => {
     expect(existsSync(fx.worktree)).toBe(true)
   })
 
+  test('a repository the sweep cannot read fails the run instead of reading as empty', () => {
+    const fx = buildFixture()
+    sh(fx.root, ['remote', 'set-url', 'origin', join(tempDir(), 'missing.git')])
+    const res = run(['apply', '--no-gh', '--yes'], fx.root)
+    expect(res.code).toBe(1)
+    expect(res.err).toContain('fetch failed')
+    const plan = run(['plan', '--no-gh'], fx.root)
+    expect(plan.code).toBe(1)
+    expect(plan.err).toContain('fetch failed')
+  })
+
+  test('the receipt file records the rows the preview dropped', () => {
+    const fx = buildFixture()
+    const plan = join(fx.root, '.plans', 'p.json')
+    run(['plan', '--branch', BRANCH, ...SWEEP, '-o', plan], fx.root)
+    const res = run(['apply', '--plan', plan, '--yes', '--output', 'json'], fx.root)
+    const out = JSON.parse(res.out) as { receiptPath: string; receipt: Receipt }
+    const saved = JSON.parse(readFileSync(out.receiptPath, 'utf-8')) as Receipt
+    expect(saved.dropped.map((d) => d.reason)).toContain('needs-review')
+    expect(saved.dropped).toEqual(out.receipt.dropped)
+  })
+
   test('a no deletes nothing', () => {
     const fx = buildFixture()
     const res = run(['apply', '--branch', BRANCH, ...SWEEP], fx.root, { confirm: () => false })

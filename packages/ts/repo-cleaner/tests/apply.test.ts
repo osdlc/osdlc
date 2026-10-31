@@ -284,6 +284,66 @@ describe('applyPlan', () => {
     expect(readFileSync(join(fx.worktree, 'left.txt'), 'utf-8')).toBe('kept\n')
   })
 
+  test('a prune row whose .git came back is dropped, not turned into a remove', () => {
+    const fx = buildFixture()
+    const dotGit = readFileSync(join(fx.worktree, '.git'), 'utf-8')
+    rmSync(join(fx.worktree, '.git'))
+    const plan = makePlan(fx.root)
+    writeFileSync(join(fx.worktree, '.git'), dotGit)
+
+    const { receipt } = apply(fx, plan, [{ category: 'worktree', id: fx.worktree }])
+    expect(receipt.dropped.map((d) => d.reason)).toEqual(['facts-changed'])
+    expect(existsSync(fx.worktree)).toBe(true)
+  })
+
+  test('a branch name two repositories share applies in both', () => {
+    const a = buildFixture()
+    const b = buildFixture()
+    const plan: Plan = {
+      ...makePlan(a.root),
+      repos: [...makePlan(a.root).repos, ...makePlan(b.root).repos],
+    }
+    const receipt = applyPlan(plan, [], [], {
+      callerCwd: a.root,
+      dryRun: false,
+      receiptPath: null,
+      planPath: '(test)',
+    })
+    expect(receipt.status).toBe('complete')
+    expect(refs(a.root)).not.toContain('refs/heads/merged-a ')
+    expect(refs(b.root)).not.toContain('refs/heads/merged-a ')
+    // Named without a repository, the shared row is still ambiguous.
+    expect(() =>
+      applyPlan(plan, [{ category: 'local_branch', id: 'merged-b' }], [], {
+        callerCwd: a.root,
+        dryRun: true,
+        receiptPath: null,
+        planPath: '(test)',
+      }),
+    ).toThrow('pass --repo-root')
+  })
+
+  test('rows dropped before the run are recorded first in the receipt file', () => {
+    const fx = buildFixture()
+    const earlier = {
+      repo: fx.root,
+      category: 'local_branch' as const,
+      id: 'unmerged',
+      reason: 'needs-review' as const,
+      detail: 'from the preview',
+    }
+    const receiptPath = join(fx.root, 'r.json')
+    applyPlan(makePlan(fx.root), [{ category: 'local_branch', id: 'merged-a' }], [], {
+      callerCwd: fx.root,
+      dryRun: false,
+      receiptPath,
+      planPath: '(test)',
+      dropped: [earlier],
+    })
+    const saved = JSON.parse(readFileSync(receiptPath, 'utf-8')) as Receipt
+    expect(saved.dropped).toEqual([earlier])
+  })
+
   test('force-removes a dirty worktree only with discard-changes', () => {
     const fx = buildFixture()
     writeFileSync(join(fx.worktree, 'scratch.txt'), 'wip\n')

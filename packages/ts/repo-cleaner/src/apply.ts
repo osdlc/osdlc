@@ -64,6 +64,8 @@ export interface ApplyOptions extends HostHooks {
   /** Limit the run to the plan repository rooted here. */
   repoRoot?: string | undefined
   now?: () => Date
+  /** Rows dropped before this run, such as by a preview; recorded first in the receipt. */
+  dropped?: readonly Dropped[] | undefined
   /** Passed to the re-sweep's `onProgress`, for a status line. */
   onSweepProgress?: ((progress: SweepProgress) => void) | undefined
   /** Told before each step runs: its 0-based index, the step count and the step. Not called under `dryRun`. */
@@ -111,15 +113,33 @@ interface Selected {
   ref: RowRef
 }
 
+/**
+ * A row to apply, optionally pinned to the plan repository rooted at `repo`.
+ * Without `repo`, a row id that two plan repositories share is ambiguous.
+ */
+export type RowSelection = RowRef & { repo?: string }
+
+const sameSelection = (a: RowSelection, b: RowSelection): boolean =>
+  sameRow(a, b) &&
+  (a.repo === undefined ? '' : resolve(a.repo)) === (b.repo === undefined ? '' : resolve(b.repo))
+
 /** Each selected row's plan repository. Unknown and ambiguous rows are errors. */
-function locate(plan: Plan, rows: readonly RowRef[], repoRoot: string | undefined): Selected[] {
+function locate(
+  plan: Plan,
+  rows: readonly RowSelection[],
+  repoRoot: string | undefined,
+): Selected[] {
   const repos =
     repoRoot === undefined
       ? plan.repos
       : plan.repos.filter((r) => resolve(r.root) === resolve(repoRoot))
   if (repos.length === 0) throw new ApplyArgumentError(`no plan repository at ${repoRoot}`)
-  return rows.map((ref) => {
-    const hits = repos.filter((r) => r.rows.some((row) => sameRow(row, ref)))
+  return rows.map(({ repo, ...ref }) => {
+    const hits = repos.filter(
+      (r) =>
+        (repo === undefined || resolve(r.root) === resolve(repo)) &&
+        r.rows.some((row) => sameRow(row, ref)),
+    )
     if (hits.length === 0) throw new ApplyArgumentError(`row ${label(ref)} is not in the plan`)
     if (hits.length > 1) {
       throw new ApplyArgumentError(
@@ -360,18 +380,24 @@ function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe
  */
 export function applyPlan(
   plan: Plan,
-  requested: readonly RowRef[],
+  requested: readonly RowSelection[],
   grants: readonly Grant[],
   opts: ApplyOptions,
 ): Receipt {
   const now = opts.now ?? (() => new Date())
-  const wanted: readonly RowRef[] =
+  // Every row of the plan keeps its repository, so a branch name two
+  // repositories share is two rows, not an ambiguity.
+  const wanted: readonly RowSelection[] =
     requested.length > 0
       ? requested
       : plan.repos
           .filter((r) => opts.repoRoot === undefined || resolve(r.root) === resolve(opts.repoRoot))
-          .flatMap((r) => r.rows.map((row) => ({ category: row.category, id: row.id })))
-  const rows = wanted.filter((row, i) => wanted.findIndex((other) => sameRow(other, row)) === i)
+          .flatMap((r) =>
+            r.rows.map((row) => ({ category: row.category, id: row.id, repo: r.root })),
+          )
+  const rows = wanted.filter(
+    (row, i) => wanted.findIndex((other) => sameSelection(other, row)) === i,
+  )
   if (rows.length === 0) throw new ApplyArgumentError('the plan has no rows to apply')
   const selected = locate(plan, rows, opts.repoRoot)
   for (const grant of grants) {
@@ -390,7 +416,7 @@ export function applyPlan(
     steps: [],
   }
   const { accepted, dropped } = recheck(selected, grants, requested.length === 0, opts)
-  receipt.dropped = dropped
+  receipt.dropped = [...(opts.dropped ?? []), ...dropped]
 
   const ordered = PLAN_CATEGORIES.flatMap((category) =>
     accepted.filter((row) => row.item.category === category),

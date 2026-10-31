@@ -62,4 +62,16 @@ describe('statusLine', () => {
     line.clear()
     expect(out).toEqual(['\r\x1b[2Kshort', '\r\x1b[2Ka much lon…', '\r\x1b[2K'])
   })
+
+  test('strips controls a path could carry, and counts wide characters by column', () => {
+    const out: string[] = []
+    const line = statusLine(
+      (t) => out.push(t),
+      () => 12,
+    )
+    line.update('a\x1b[2Jb\nc')
+    line.update('日本語のパス名です')
+    expect(out[0]).toBe('\r\x1b[2Kabc')
+    expect(out[1]).toBe('\r\x1b[2K日本語のパ…')
+  })
 })

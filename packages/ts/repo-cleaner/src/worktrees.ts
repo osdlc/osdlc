@@ -338,7 +338,7 @@ export function classifyWorktree(opts: {
     // Merged: HEAD's work is on the default branch. `soft`: a missing default
     // ref reads as not merged.
     facts['merged'] =
-      landed || landingConfirmed(patch) || git.at(repo.root).soft.isAncestor(head, landedRef(repo))
+      landed || patchLanded || git.at(repo.root).soft.isAncestor(head, landedRef(repo))
   }
   const requires = authorizationsFor({
     'abandon-unmerged': unlanded,

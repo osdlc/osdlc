@@ -38,6 +38,7 @@ export { assessLanding, patchEquivalent, type Landing, type LandingCheck } from 
 export {
   ApplyArgumentError,
   applyPlan,
+  type RowSelection,
   parseGrant,
   parseRowRef,
   type ApplyOptions,

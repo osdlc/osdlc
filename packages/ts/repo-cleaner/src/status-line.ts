@@ -6,6 +6,8 @@
 
 import { homedir } from 'node:os'
 
+import { fitWidth, stripControls } from '@osdlc/ux'
+
 import type { Step } from './receipt.ts'
 import type { SweepProgress } from './types.ts'
 
@@ -46,14 +48,15 @@ export interface StatusLine {
   clear(): void
 }
 
-/** A line drawn with `\r` and erase-line, cut to `columns() - 1` so it never wraps. */
+/** A line drawn with `\r` and erase-line, controls stripped, cut to `columns() - 1` display columns so it never wraps. */
 export function statusLine(write: (text: string) => void, columns: () => number): StatusLine {
   let shown = false
   return {
     update(text) {
+      // Paths come off the disk: a name holding an escape or a newline must not
+      // reach the terminal, and a wide character must not wrap the line.
       const width = Math.max(10, columns() - 1)
-      const cut = text.length > width ? `${text.slice(0, width - 1)}…` : text
-      write(`\r\x1b[2K${cut}`)
+      write(`\r\x1b[2K${fitWidth(stripControls(text), width)}`)
       shown = true
     },
     clear() {
