@@ -1,12 +1,101 @@
 {
   "schema": 1,
   "pr": 567,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "fe53187e05eba896265c288f33974b78ad49d47d",
+  "base": "34dee01ee706163d800d06fd4f68ef3ad5e4fab1",
+  "round": 1,
   "claim": {
     "owner": "KellyMBP.local:claude-q7m2xd",
     "at": "2026-10-31T05:58:00.645Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/markdown-link/package.json",
+      "line": 3,
+      "title": "First release 0.1.0 breaks the twin version rule; the crate is at 0.5",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/markdown-link/tests/attachment-extensions.test.ts",
+      "line": 13,
+      "title": "Test reads the crate's src/lib.rs, which the conformance check cannot see",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/markdown-link/tsconfig.build.json",
+      "line": 8,
+      "title": "Node types in the build let Node-only globals into src unnoticed",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/markdown-link/README.md",
+      "line": 107,
+      "title": "README says plain ES2022; the code needs TextEncoder and TextDecoder",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/ts/markdown-link/tests/stability.test.ts",
+      "line": 14,
+      "title": "Raw-text regex is a weaker copy of path-guard's stability test",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": "packages/ts/markdown-link/tests/attachment-extensions.test.ts",
+      "line": 17,
+      "title": "A missed regex fails with a bare toBeDefined",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-7",
+      "round": 1,
+      "path": "packages/README.md",
+      "line": 86,
+      "title": "Paragraph left with a short wrapped line",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-8",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "Crate comment at lib.rs:232 can name the test that now enforces it",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
