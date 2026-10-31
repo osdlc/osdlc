@@ -1,6 +1,6 @@
 [package]
 name = "config-layers"
-version = "0.8.0"
+version = "0.8.1"
 edition.workspace = true
 rust-version.workspace = true
 description = "Layered config files: a committed project file and a per-machine file read as YAML, merged by key, with named-directory substitution, dotted-key lookup and the check a program runs for the settings it needs."
