@@ -33,6 +33,13 @@ import { installQuitHandlers, runTui } from '../src/tui/index.ts'
 import { makeStyles, stylesFor, terminalTheme } from '../src/tui/style.ts'
 import { cleanupAll, lineOf, screen, temp, testTui } from './tui-support.ts'
 
+/**
+ * How long a `vi.waitFor` waits for the TUI to boot and draw. The default
+ * second is too short on a slow CI runner: Windows took 1.4s to read the saved
+ * view and draw the first frame. It stays under the 5s test timeout.
+ */
+const BOOT_WAIT = { timeout: 4_000 }
+
 afterAll(cleanupAll)
 
 function task(runner: string, name: string, over: Partial<Task> = {}): Task {
@@ -849,7 +856,7 @@ describe('boot', () => {
     const stored = vi.fn(() => session.storedCatalog())
     Object.assign(session, { catalog: probe, storedCatalog: stored })
     void tui.boot()
-    await vi.waitFor(() => expect(probe).toHaveBeenCalled())
+    await vi.waitFor(() => expect(probe).toHaveBeenCalled(), BOOT_WAIT)
     expect(stored).not.toHaveBeenCalled()
     expect(tui.state.loading).toBe(true)
     expect(tui.state.rows.map((r) => r.task.id)).toContain('node-scripts:package.json:build')
@@ -880,7 +887,7 @@ describe('boot', () => {
     const probe = vi.fn(() => new Promise<never>(() => {}))
     Object.assign(session, { catalog: probe })
     void tui.boot()
-    await vi.waitFor(() => expect(tui.state.rows.length).toBeGreaterThan(0))
+    await vi.waitFor(() => expect(tui.state.rows.length).toBeGreaterThan(0), BOOT_WAIT)
     expect(tui.state.fromProbe).toBe(false)
     tui.handle('\r')
     // The "checking" note shows until the runner is read again, which can take
@@ -900,9 +907,9 @@ describe('boot', () => {
     expect(await session.savedCatalog()).not.toBeNull()
     Object.assign(session, { catalog: vi.fn(() => new Promise<never>(() => {})) })
     void tui.boot()
-    await vi.waitFor(() => expect(tui.state.rows.length).toBeGreaterThan(0))
+    await vi.waitFor(() => expect(tui.state.rows.length).toBeGreaterThan(0), BOOT_WAIT)
     tui.handle('\r')
-    await vi.waitFor(() => expect(host.handedOff).toHaveLength(1))
+    await vi.waitFor(() => expect(host.handedOff).toHaveLength(1), BOOT_WAIT)
     expect(host.handedOff[0]!.argv.join(' ')).toContain('echo one')
   })
 
@@ -917,7 +924,7 @@ describe('boot', () => {
       },
     })
     void tui.boot()
-    await vi.waitFor(() => expect(frames).toBeGreaterThanOrEqual(0))
+    await vi.waitFor(() => expect(frames).toBeGreaterThanOrEqual(0), BOOT_WAIT)
     expect(frames).toBe(1)
     expect(host.written[0]).toContain('loading…')
   })
@@ -964,7 +971,7 @@ describe('step-by-step loading', () => {
     Object.assign(tui.session, { savedCatalog: async () => null })
     const probe = stepped(tui)
     const booted = tui.boot()
-    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled(), BOOT_WAIT)
     probe.runners(['make', 'just', 'moon'])
     expect(lineOf(tui, 2)).toBe('0/0  loading 3 of 3: just, make, moon')
     expect(lineOf(tui, 0)).toContain(' just … ')
@@ -1006,7 +1013,7 @@ describe('step-by-step loading', () => {
     Object.assign(tui.session, { confirmRun: confirm })
     const probe = stepped(tui)
     void tui.boot()
-    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled(), BOOT_WAIT)
     probe.runners(['make', 'just'])
     probe.answer(report('make', [task('make', 'build', { argv: ['echo', 'build'] })]))
     tui.handle('\r')
@@ -1027,7 +1034,7 @@ describe('step-by-step loading', () => {
     })
     const probe = stepped(tui)
     const booted = tui.boot()
-    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled(), BOOT_WAIT)
     expect(tui.state.rows.map((r) => r.task.id)).toEqual(['make:old'])
     expect(lineOf(tui, 2)).toContain('refreshing…')
     // The progress only names, after a while, the runners still out.
@@ -1052,7 +1059,7 @@ describe('step-by-step loading', () => {
     Object.assign(tui.session, { savedCatalog: async () => null })
     const probe = stepped(tui)
     void tui.boot()
-    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled(), BOOT_WAIT)
     probe.runners(['boom', 'make'])
     probe.answer(
       report('boom', [], {
@@ -1075,7 +1082,7 @@ describe('step-by-step loading', () => {
     Object.assign(tui.session, { savedCatalog: async () => null })
     const probe = stepped(tui)
     const booted = tui.boot()
-    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled(), BOOT_WAIT)
     probe.skills([skillRow('review')])
     // Held: a task landing in its place would change what Enter does.
     expect(tui.state.skills).toEqual([])
@@ -1101,7 +1108,7 @@ describe('step-by-step loading', () => {
     tui.state.query = 'deploy'
     const probe = stepped(tui)
     void tui.boot()
-    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled(), BOOT_WAIT)
     probe.runners(['make', 'just'])
     probe.skills([skillRow('deploy-review')])
     probe.answer(report('make', [task('make', 'build')]))
@@ -1117,7 +1124,7 @@ describe('step-by-step loading', () => {
     Object.assign(tui.session, { savedCatalog: async () => null })
     const probe = stepped(tui)
     void tui.boot()
-    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled(), BOOT_WAIT)
     probe.runners(['make', 'just'])
     probe.answer(report('make', [task('make', 'build')]))
     probe.skills([skillRow('review')])
@@ -1137,7 +1144,7 @@ describe('step-by-step loading', () => {
     })
     const probe = stepped(tui)
     const booted = tui.boot()
-    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled(), BOOT_WAIT)
     probe.runners(['make'])
     probe.skills([skillRow('review')])
     expect(tui.state.skills).toEqual([])
@@ -1154,7 +1161,7 @@ describe('step-by-step loading', () => {
     Object.assign(tui.session, { savedCatalog: async () => null })
     const probe = stepped(tui)
     void tui.boot()
-    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled(), BOOT_WAIT)
     probe.runners(['hang', 'make'])
     probe.answer(
       report('hang', [], {
@@ -1173,7 +1180,7 @@ describe('step-by-step loading', () => {
     Object.assign(tui.session, { savedCatalog: async () => null })
     const probe = stepped(tui)
     const booted = tui.boot()
-    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled(), BOOT_WAIT)
     expect(lineOf(tui, 2)).toBe('0/0  detecting the project…')
     probe.runners([])
     expect(lineOf(tui, 2)).toBe('0/0  loading…')
@@ -1187,7 +1194,7 @@ describe('step-by-step loading', () => {
     Object.assign(tui.session, { savedCatalog: async () => null })
     const probe = stepped(tui)
     void tui.boot()
-    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled(), BOOT_WAIT)
     probe.runners(['make', 'just'])
     probe.answer(report('make', [task('make', 'build', { argv: ['echo', 'build'] })]))
     expect(lineOf(tui, 3)).toBe('>   make > build')
@@ -1204,7 +1211,7 @@ describe('step-by-step loading', () => {
     Object.assign(tui.session, { savedCatalog: async () => null })
     const probe = stepped(tui)
     void tui.boot()
-    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled(), BOOT_WAIT)
     probe.runners(['make', 'just'])
     probe.answer(
       report('make', [
@@ -1225,10 +1232,10 @@ describe('step-by-step loading', () => {
     Object.assign(tui.session, { savedCatalog: async () => null })
     const probe = stepped(tui)
     const booted = tui.boot()
-    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled(), BOOT_WAIT)
     probe.runners(['make'])
     tui.handle('\x1b')
-    await vi.waitFor(() => expect(host.released).toBe(1))
+    await vi.waitFor(() => expect(host.released).toBe(1), BOOT_WAIT)
     const written = host.written.length
     probe.answer(report('make', [task('make', 'build')]))
     probe.finish([report('make', [task('make', 'build')])])
@@ -1241,7 +1248,7 @@ describe('step-by-step loading', () => {
     Object.assign(tui.session, { savedCatalog: async () => null })
     const probe = stepped(tui)
     void tui.boot()
-    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled())
+    await vi.waitFor(() => expect(probe.probe).toHaveBeenCalled(), BOOT_WAIT)
     probe.runners(['make'])
     const stale = probe.answer
     // A grant abandons the probe and starts another.
