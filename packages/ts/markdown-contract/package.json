@@ -1,6 +1,6 @@
 {
   "name": "@osdlc/markdown-contract",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Contracts for markdown documents: state what a document type must hold (frontmatter checked by a Zod schema, a grammar over its heading sections, typed tables, lists and code blocks), check it with one parse, and read a passing document back as a typed model. Contracts in TypeScript or YAML, a folder runner and a CLI.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",

@@ -1,5 +1,12 @@
 # @osdlc/cli-tool
 
+## 0.13.0
+
+### Minor Changes
+
+- 14d4351: `runMain` no longer crashes on an unhandled `EPIPE` when the reader of stdout or stderr goes away (`tool --json | head -1`): the rest of the output is dropped, `main` runs to its end, and the exit code is `main`'s, so a tool is never stopped between two steps. The guard is exported as `quietOnBrokenPipe(stream, exit)`, where an exit function ends a read-only run at once; wayfinder now uses it in place of its own copy.
+- dd2265e: `runMain` answers a first argument of `--where`: the running file, the checkout or install it belongs to, and, with devlink, which layer chose it. `--where --json` prints the same facts as one object. `devlinkHook` now keeps the `<NAME>_LAUNCH_LAYER` it reads and reports it through a new optional `DevlinkHook.describe()`; a plain-function hook still works and gets no `chosen by` line. New `script` and `execPath` options stand in for `process.argv[1]` and `process.execPath`.
+
 ## 0.12.0
 
 ### Minor Changes
