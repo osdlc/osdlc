@@ -229,7 +229,8 @@ pub fn body_links(body: &str) -> Vec<RawLink> {
 /// assert!(ATTACHMENT_EXTENSIONS.contains(&"pdf"));
 /// assert!(!ATTACHMENT_EXTENSIONS.contains(&"md"));
 /// ```
-// Must match the TypeScript list of attachment extensions. Update both together.
+// Must match the TypeScript list. packages/ts/markdown-link/tests/attachment-extensions.test.ts
+// fails if this differs from it. Update both together.
 pub const ATTACHMENT_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "gif", "svg", "webp", "avif", "bmp", "ico", "tiff", "heic", "mp4",
     "webm", "ogv", "mov", "mkv", "mp3", "wav", "m4a", "3gp", "flac", "ogg", "oga", "opus", "pdf",

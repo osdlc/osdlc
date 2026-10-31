@@ -83,10 +83,9 @@ the standard.
   `config-layers` have moved there. Until they move, `path-guard` keeps
   `packages/rust/path-guard/tests/fixtures/parity.json`, `frontmatter-lossless`
   and `markdown-link` their crates' `tests/fixtures/conformance.json`,
-  `markdown-contract` runs
-  the TypeScript package's `corpus/` directly, and `glob-intersect` runs
-  `@osdlc/intersect`'s `fixtures/` directly. `etag-write` has no shared
-  cases yet.
+  `markdown-contract` runs the TypeScript package's `corpus/` directly, and
+  `glob-intersect` runs `@osdlc/intersect`'s `fixtures/` directly. `etag-write`
+  has no shared cases yet.
 - **Each language's idiom.** An implementation does not copy the other's names or
   signatures when that breaks its own language's habits. Rust uses
   snake_case, `Result`, traits and the standard library's words. TypeScript

@@ -104,9 +104,10 @@ CHANGELOG marks it.
 ## Runtimes and platforms
 
 Node.js 22 or later, ESM only. The built package is tested on Node.js 22 and
-24. The code is plain ES2022 string handling with no imports and no DOM, but
-other runtimes, such as Bun, Deno or a browser, are not tested. It has no file
-system or platform code. Its tests run on Linux and macOS.
+24. The code is ES2022 string handling plus `TextEncoder` and `TextDecoder`,
+with no imports and no DOM, but other runtimes, such as Bun, Deno or a
+browser, are not tested. It has no file system or platform code. Its tests run on Linux
+and macOS.
 
 ## Licence
 

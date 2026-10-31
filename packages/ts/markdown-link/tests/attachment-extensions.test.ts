@@ -14,7 +14,10 @@ test('the list matches the Rust crate', () => {
     'utf8',
   )
   const body = /pub const ATTACHMENT_EXTENSIONS: &\[&str\] = &\[([^\]]*)\];/.exec(source)?.[1]
-  expect(body).toBeDefined()
+  expect(
+    body,
+    'pub const ATTACHMENT_EXTENSIONS not found in packages/rust/markdown-link/src/lib.rs; the declaration changed shape, so update this regex',
+  ).toBeDefined()
   const rust = [...body!.matchAll(/"([^"]+)"/g)].map((m) => m[1])
   expect(rust.length).toBeGreaterThan(0)
   expect([...ATTACHMENT_EXTENSIONS]).toEqual(rust)
