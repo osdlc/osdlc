@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { bodyLinksSpanned, parseInner, targetRange } from '../src/index.ts'
+import { bodyLinksSpanned, parseInner, percentDecode, targetRange } from '../src/index.ts'
 
 test('targetRange matches the parsed target', () => {
   for (const inner of [
@@ -34,4 +34,17 @@ test('spans are UTF-16 offsets into the body', () => {
   const [link] = bodyLinksSpanned(body)
   expect(link).toMatchObject({ start: 5, end: 10 })
   expect(body.slice(link!.start, link!.end)).toBe('[[x]]')
+})
+
+test('percentDecode decodes UTF-8 and keeps what does not decode', () => {
+  expect(percentDecode('My%20Note')).toBe('My Note')
+  expect(percentDecode('caf%C3%A9')).toBe('café')
+  expect(percentDecode('plain')).toBe('plain')
+  // Not hex, or a `%` too near the end: kept as written, the rest still decodes.
+  expect(percentDecode('%zz')).toBe('%zz')
+  expect(percentDecode('100%')).toBe('100%')
+  expect(percentDecode('100% of%20it')).toBe('100% of it')
+  // Not UTF-8: the whole string is kept as written.
+  expect(percentDecode('%FF')).toBe('%FF')
+  expect(percentDecode('a%20b%FF')).toBe('a%20b%FF')
 })

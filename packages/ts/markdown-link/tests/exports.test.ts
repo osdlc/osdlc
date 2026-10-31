@@ -31,6 +31,7 @@ const VALUES = [
   'mdLinkTarget',
   'parseInner',
   'parseTypedRef',
+  'percentDecode',
   'stripCode',
   'stripCodeWith',
   'targetRange',

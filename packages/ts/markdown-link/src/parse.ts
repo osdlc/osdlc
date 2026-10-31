@@ -185,10 +185,12 @@ function stripMdExt(s: string): string {
 const utf8Decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
 
 /**
- * Percent-decode a URL over its UTF-8 bytes. Bytes that do not decode to UTF-8
- * leave the URL as written, rather than becoming U+FFFD.
+ * Percent-decode a string over its UTF-8 bytes, as the Rust crate's
+ * `percent_decode` does. Each valid `%XX` decodes on its own, so a stray `%`
+ * (`100%`) stays as written. Bytes that do not decode to UTF-8 leave the whole
+ * string as written, rather than becoming U+FFFD.
  */
-function percentDecode(s: string): string {
+export function percentDecode(s: string): string {
   if (!s.includes('%')) return s
   const bytes = new TextEncoder().encode(s)
   const out: number[] = []

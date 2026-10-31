@@ -73,6 +73,8 @@ bodyLinksSpanned('See [[Note#h|alias]] and `[[not a link]]`')
   alias; `targetRange` is where the target sits in it.
 - Markdown link URLs: `isVaultLinkUrl` says whether a URL is a note or an
   attachment; `mdLinkTarget` percent-decodes it and drops `.md`.
+  `percentDecode` is that decoding alone: `percentDecode('My%20Note')` is
+  `'My Note'`, and a `%` that is not valid hex or UTF-8 stays as written.
 - A body: `bodyLinksSpanned` finds every wikilink, embed and relative markdown
   link, with its span; `bodyLinks` is the same scan without spans.
 - Display text: `displayText` replaces each wikilink and embed with what a
