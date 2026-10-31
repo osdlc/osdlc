@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 580,
-  "head": "6b11b4ba7e2cc23e96b84ab3b636a4a23c7d968f",
+  "head": "63a3fc9819b939ed49f4e1f961006bc5ccede36a",
   "base": "ba1801d91b90a69f2f796a7084c1ecb57a15033e",
-  "round": 5,
+  "round": 6,
   "claim": {
     "owner": "KellyMBP.local:claude-xxtaah",
     "at": "2026-10-31T18:40:59.679Z"
@@ -74,6 +74,39 @@
       "status": "fixed",
       "reason": null,
       "fixedIn": "3eb9a6fe620a98a99b3de15f4f3888b1fbeb4a84"
+    },
+    {
+      "id": "r6-1",
+      "round": 6,
+      "path": "packages/ts/cli-tool/src/devlink/exec.ts",
+      "line": 143,
+      "title": "writeSync on fd 2 can throw and abort the hand-off",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r6-2",
+      "round": 6,
+      "path": "packages/ts/cli-tool/src/devlink/exec.ts",
+      "line": 14,
+      "title": "execve exists from Node 22.15, not 23.11",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r6-3",
+      "round": 6,
+      "path": "packages/ts/cli-tool/tests/devlink/execve.test.ts",
+      "line": 154,
+      "title": "the SIGTERM test leaves processes running when it fails",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
     }
   ]
 }
