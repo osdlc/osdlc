@@ -4,10 +4,7 @@
   "head": "fe53187e05eba896265c288f33974b78ad49d47d",
   "base": "34dee01ee706163d800d06fd4f68ef3ad5e4fab1",
   "round": 1,
-  "claim": {
-    "owner": "KellyMBP.local:claude-q7m2xd",
-    "at": "2026-10-31T05:58:00.645Z"
-  },
+  "claim": null,
   "findings": [
     {
       "id": "r1-1",
