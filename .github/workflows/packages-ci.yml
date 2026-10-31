@@ -154,7 +154,9 @@ jobs:
 
       # Every suite whose reference is TypeScript, picked or not: a generator
       # that writes different bytes means expected values went stale. The
-      # generators run the packages' sources, so one leg is enough.
+      # generators run the packages' sources, so one leg is enough. The script
+      # builds what the generators import, since on a pull request the Build
+      # step above builds only the picked packages.
       - name: Regenerate the conformance suites
         if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
         run: node scripts/conformance.ts --regenerate --reference ts

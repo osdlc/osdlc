@@ -9,6 +9,7 @@ import { test } from 'node:test'
 
 import {
   checkRepo,
+  generatorBuildFilters,
   majorMinor,
   readsAcross,
   registryProblems,
@@ -65,6 +66,27 @@ test('the registry names its reference, its generator and two implementations', 
   const misplaced = { ...FAMILY, implementations: [FAMILY.implementations[0], { ...FAMILY.implementations[1], dir: 'packages/ts/dirs-rs' }] }
   assert.deepEqual(registryProblems({ dirs: misplaced }), ['dirs: packages/ts/dirs-rs is not under packages/rust/'])
   assert.deepEqual(registryProblems({ Dirs: FAMILY }).slice(0, 1), ['Dirs: a family name is lower-case and dash-separated'])
+})
+
+test('regenerating builds each TypeScript reference and what it depends on, not a Rust one', () => {
+  const rust = {
+    reference: 'rust',
+    generator: 'cargo run -p glob --example conformance-write',
+    implementations: [
+      { language: 'rust', dir: 'packages/rust/glob', name: 'glob' },
+      { language: 'ts', dir: 'packages/ts/glob', name: '@x/glob' },
+    ],
+  }
+  const lines = {
+    ...FAMILY,
+    generator: 'pnpm --filter @x/lines conformance:write',
+    implementations: [{ language: 'ts', dir: 'packages/ts/lines', name: '@x/lines' }],
+  }
+  const families = { dirs: FAMILY, glob: rust, lines }
+  const both = ['--filter', '@x/dirs...', '--filter', '@x/lines...']
+  assert.deepEqual(generatorBuildFilters(families, undefined), both)
+  assert.deepEqual(generatorBuildFilters(families, 'ts'), both)
+  assert.deepEqual(generatorBuildFilters(families, 'rust'), [])
 })
 
 test('a good suite has no problems', () => {

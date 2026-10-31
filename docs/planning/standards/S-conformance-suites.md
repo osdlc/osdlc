@@ -156,7 +156,9 @@ version.
 
 `node scripts/conformance.ts --regenerate` also runs each family's generator
 and fails if a suite changes, which catches a change to the reference whose
-expected values were not regenerated. CI runs it for the TypeScript
+expected values were not regenerated. It first builds each TypeScript
+reference and the workspace libraries it depends on, since a generator
+imports them through their `dist/`. CI runs it for the TypeScript
 references in `packages-ci.yml` and for the Rust references in `rust-ci.yml`.
 
 ## Exemptions
