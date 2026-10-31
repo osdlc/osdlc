@@ -440,7 +440,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-link"
-version = "0.5.3"
+version = "0.5.4"
 dependencies = [
  "frontmatter-lossless",
  "serde_json",
@@ -450,7 +450,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-relink"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "etag-write",
  "frontmatter-lossless",
