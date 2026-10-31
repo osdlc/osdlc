@@ -70,13 +70,9 @@ export const GENERATED_SCHEMAS: Readonly<Record<string, Readonly<Record<string, 
               "type": "boolean"
             },
             "envVar": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
+              "type": [
+                "string",
+                "null"
               ]
             }
           },
@@ -218,13 +214,9 @@ export const GENERATED_SCHEMAS: Readonly<Record<string, Readonly<Record<string, 
               "type": "boolean"
             },
             "envVar": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
+              "type": [
+                "string",
+                "null"
               ]
             }
           },
@@ -259,13 +251,9 @@ export const GENERATED_SCHEMAS: Readonly<Record<string, Readonly<Record<string, 
       },
       "value": {},
       "source": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
+        "type": [
+          "string",
+          "null"
         ]
       },
       "reason": {
@@ -354,13 +342,9 @@ export const GENERATED_SCHEMAS: Readonly<Record<string, Readonly<Record<string, 
               "type": "boolean"
             },
             "by": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
+              "type": [
+                "string",
+                "null"
               ]
             },
             "rule": {
@@ -399,13 +383,9 @@ export const GENERATED_SCHEMAS: Readonly<Record<string, Readonly<Record<string, 
         "const": "guide"
       },
       "topic": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "null"
-          }
+        "type": [
+          "string",
+          "null"
         ]
       },
       "topics": {
@@ -485,13 +465,9 @@ export const GENERATED_SCHEMAS: Readonly<Record<string, Readonly<Record<string, 
               "type": "string"
             },
             "bytes": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
+              "type": [
+                "number",
+                "null"
               ]
             },
             "removed": {
