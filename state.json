@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 580,
-  "head": "f8042fcc0e9ca9ec53da290bad4ed08634c1cfc6",
+  "head": "6cbf6bee94b8ffa9292a656e187527f3f40ec030",
   "base": "ba1801d91b90a69f2f796a7084c1ecb57a15033e",
-  "round": 7,
+  "round": 8,
   "claim": {
     "owner": "KellyMBP.local:claude-0fgl0q",
     "at": "2026-10-31T18:45:18.326Z"
