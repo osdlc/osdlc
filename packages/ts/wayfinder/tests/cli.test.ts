@@ -13,26 +13,11 @@ import { resolveTrustRoot } from '@osdlc/trust-repo'
 
 import { acceptedFlags } from './guide-support.ts'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
-import { main, quietOnBrokenPipe, rewriteAliases } from '../src/cli.ts'
-import { EventEmitter } from 'node:events'
+import { main, rewriteAliases } from '../src/cli.ts'
 import { appTrustStore } from '../src/trust-store.ts'
 import { CONFIG_HOME, shown } from './support.ts'
 
 const WORDS = ['list', 'query', 'run', 'serve', 'providers', 'config', 'trust', 'help']
-
-describe('quietOnBrokenPipe', () => {
-  test('EPIPE on stdout exits 0 with nothing printed; another error is thrown', () => {
-    const stream = new EventEmitter()
-    const exits: number[] = []
-    quietOnBrokenPipe(stream as never, (code) => exits.push(code))
-    stream.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }))
-    expect(exits).toEqual([0])
-    expect(() =>
-      stream.emit('error', Object.assign(new Error('write EIO'), { code: 'EIO' })),
-    ).toThrow('EIO')
-    expect(exits).toEqual([0])
-  })
-})
 
 describe('rewriteAliases', () => {
   test('maps each old surface flag onto its command', () => {

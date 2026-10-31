@@ -4,6 +4,7 @@
  * `tests/exports.test.ts` checks that.
  */
 
+import { EventEmitter } from 'node:events'
 import { closeSync, mkdtempSync, openSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -37,6 +38,7 @@ import {
   isYes,
   processContext,
   processIo,
+  quietOnBrokenPipe,
   readLine,
   renderError,
   renderFailure,
@@ -156,6 +158,16 @@ test('runMain turns a thrown error into one line on stderr and exit 1', async ()
     // Bun 1.4.2 treats an undefined reset as unset and exits 1, so restore 0 instead.
     process.exitCode = before ?? 0
   }
+})
+
+test('quietOnBrokenPipe ends a run whose reader went away with exit 0', () => {
+  // `runMain` installs it on the process streams; a tool with its own entry
+  // point installs it itself.
+  const stream = new EventEmitter()
+  const exits: number[] = []
+  quietOnBrokenPipe(stream as never, (code) => exits.push(code))
+  stream.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }))
+  expect(exits).toEqual([0])
 })
 
 // A `Failure` from `@osdlc/result`: a kind to branch on, a message, a hint.

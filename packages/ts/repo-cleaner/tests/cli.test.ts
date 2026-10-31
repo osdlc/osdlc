@@ -223,9 +223,157 @@ describe('summary', () => {
     const fx = buildFixture()
     const res = run(['summary', ...SWEEP], fx.root)
     expect(res.code).toBe(0)
-    expect(res.out).toMatch(/total\s+merged\s+delete\s+review\s+keep/)
+    expect(res.out).toMatch(/total\s+merged\s+delete\s+prune\s+review\s+keep/)
     expect(res.out).toMatch(/local branches\s+2\s+1\s/)
     expect(res.out).toContain('across 1 repository')
+  })
+})
+
+describe('prune rows', () => {
+  test('a stale worktree link shows as prune in status and summary', () => {
+    const fx = buildFixture()
+    rmSync(fx.worktree, { recursive: true, force: true })
+    const status = run(['status', ...SWEEP], fx.root)
+    expect(status.code).toBe(0)
+    const row = status.out.split('\n').find((l) => l.includes('wt s'))!
+    expect(row).toMatch(/worktree\s+\S.*\s+prune\s+worktree directory no longer on disk/)
+    expect(status.out).toMatch(/\d+ to delete, 1 to prune, \d+ to review/)
+
+    const text = run(['summary', ...SWEEP], fx.root)
+    // worktrees: total 2 (primary + stale), 1 merged-or-not, delete 0, prune 1.
+    expect(text.out).toMatch(/worktrees\s+2\s+\d+\s+0\s+1\s/)
+    const json = JSON.parse(run(['summary', ...SWEEP, '--output', 'json'], fx.root).out) as {
+      repos: Array<{ summary: Record<string, { prune: number; 'safe-to-delete': number }> }>
+      summary: { prune: number }
+    }
+    expect(json.repos[0]!.summary['worktree']).toMatchObject({ prune: 1, 'safe-to-delete': 1 })
+    expect(json.summary.prune).toBe(1)
+  })
+})
+
+describe('--remote-url', () => {
+  /** A run whose cache directory is a fresh temp dir, so the mirror is the test's own. */
+  function remoteRun(argv: string[], cwd: string, cache: string, deps: MainDeps = {}) {
+    const ctx = captureContext({ cwd, env: { ...process.env, REPO_CLEANER_CACHE_DIR: cache } })
+    const code = main(argv, ctx, { confirm: () => null, ...deps })
+    return { code, out: ctx.io.out, err: ctx.io.err }
+  }
+
+  test('status sweeps the remote branches of a URL with no checkout', () => {
+    const fx = buildFixture()
+    const cache = tempDir()
+    const away = tempDir()
+    const res = remoteRun(['--remote-url', fx.bare, ...SWEEP], away, cache)
+    expect(res.code).toBe(0)
+    expect(res.out).toMatch(/remote_branch\s+origin\/feat\/s\s+delete/)
+    expect(res.out).not.toContain('worktree')
+    expect(res.out).not.toContain('local_branch')
+    // One mirror, a clone with no files checked out.
+    const mirrors = readdirSync(cache, { recursive: true }).filter((p) =>
+      String(p).endsWith('.git'),
+    )
+    expect(mirrors).toHaveLength(1)
+  })
+
+  test('apply deletes the branch on the remote, and the mirror is reused', () => {
+    const fx = buildFixture()
+    const cache = tempDir()
+    const away = tempDir()
+    const res = remoteRun(['apply', '--remote-url', fx.bare, ...SWEEP, '--yes'], away, cache)
+    expect(res.code).toBe(0)
+    expect(branchRefs(fx.bare)).not.toContain(BRANCH)
+    expect(branchRefs(fx.bare)).toContain('main')
+
+    // A branch pushed since is found on the next run: the mirror is fetched, not re-cloned.
+    sh(fx.root, ['push', '-q', 'origin', `main:refs/heads/feat/later`])
+    const again = remoteRun(['--remote-url', fx.bare, '--no-gh'], away, cache)
+    expect(again.code).toBe(0)
+    expect(again.out).toMatch(/origin\/feat\/later\s+delete/)
+  })
+
+  test('a plan written from a URL applies later from anywhere', () => {
+    const fx = buildFixture()
+    const cache = tempDir()
+    const away = tempDir()
+    const plan = join(away, 'p.json')
+    expect(
+      remoteRun(['plan', '--remote-url', fx.bare, ...SWEEP, '-o', plan], away, cache).code,
+    ).toBe(0)
+    const applied = remoteRun(['apply', '--plan', plan, '--yes'], tempDir(), cache)
+    expect(applied.code).toBe(0)
+    expect(applied.out).toContain('deleted: 1 remote branch')
+    expect(branchRefs(fx.bare)).not.toContain(BRANCH)
+  })
+
+  test('refuses paths, --branch and other categories', () => {
+    const cache = tempDir()
+    const cwd = tempDir()
+    expect(remoteRun(['--remote-url', 'u', 'some/path'], cwd, cache).code).toBe(2)
+    expect(remoteRun(['--remote-url', 'u', '--branch', 'x'], cwd, cache).code).toBe(2)
+    expect(remoteRun(['--remote-url', 'u', '--only', 'worktrees'], cwd, cache).code).toBe(2)
+    expect(readdirSync(cache)).toEqual([])
+  })
+
+  test('an empty URL is refused, not dropped in favour of the checkout you are in', () => {
+    const fx = buildFixture()
+    const res = remoteRun(['apply', '--remote-url', '', ...SWEEP, '--yes'], fx.root, tempDir())
+    expect(res.code).toBe(2)
+    expect(res.err).toContain('--remote-url needs a URL')
+    expect(branchRefs(fx.root)).toContain(BRANCH)
+  })
+
+  test('--plan fixes what is swept, so --remote-url is refused with it', () => {
+    const res = remoteRun(['apply', '--plan', 'p.json', '--remote-url', 'u'], tempDir(), tempDir())
+    expect(res.code).toBe(2)
+    expect(res.err).toContain('--remote-url')
+  })
+
+  test('a mirror that pushes elsewhere is refused, swept or from a plan', () => {
+    const fx = buildFixture()
+    const cache = tempDir()
+    const away = tempDir()
+    const plan = join(away, 'p.json')
+    expect(
+      remoteRun(['plan', '--remote-url', fx.bare, ...SWEEP, '-o', plan], away, cache).code,
+    ).toBe(0)
+    const mirror = (JSON.parse(readFileSync(plan, 'utf8')) as { repos: Array<{ root: string }> })
+      .repos[0]!.root
+    const elsewhere = makeBareAndWorker()
+    cleanups.push(elsewhere.cleanup)
+    sh(mirror, ['config', 'remote.origin.pushurl', elsewhere.bare.dir])
+
+    const swept = remoteRun(['--remote-url', fx.bare, ...SWEEP], away, cache)
+    expect(swept.code).toBe(1)
+    expect(swept.err).toContain('pushes somewhere other than')
+    const applied = remoteRun(['apply', '--plan', plan, '--yes'], away, cache)
+    expect(applied.code).toBe(1)
+    expect(applied.err).toContain('refusing to apply')
+    expect(branchRefs(fx.bare)).toContain(BRANCH)
+  })
+
+  test('a failed clone does not print the credentials in its URL', () => {
+    const res = remoteRun(
+      ['--remote-url', 'https://me:SECRET@127.0.0.1:9/acme/repo.git?t=SECRET', ...SWEEP],
+      tempDir(),
+      tempDir(),
+    )
+    expect(res.code).toBe(1)
+    expect(res.err).toContain('cannot clone https://127.0.0.1:9/acme/repo.git')
+    expect(res.err).not.toContain('SECRET')
+  })
+
+  test('a URL that cannot be cloned exits 1 and leaves nothing in the cache', () => {
+    const cache = tempDir()
+    const res = remoteRun(
+      ['--remote-url', join(tempDir(), 'missing.git'), ...SWEEP],
+      tempDir(),
+      cache,
+    )
+    expect(res.code).toBe(1)
+    expect(res.err).toContain('cannot clone')
+    expect(
+      readdirSync(cache, { recursive: true }).filter((p) => String(p).includes('partial')),
+    ).toEqual([])
   })
 })
 

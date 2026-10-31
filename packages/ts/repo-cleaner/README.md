@@ -205,7 +205,7 @@ worktree, the primary or caller's worktree) has `deletable: false`.
 
 ```bash
 repo-cleaner [status]   # the report: what is merged, what can go (the default)
-repo-cleaner summary    # counts per repository: total, merged, delete, review, keep
+repo-cleaner summary    # counts per repository: total, merged, delete, prune, review, keep
 repo-cleaner plan       # the deletable rows as a plan, to stdout or -o <file>
 repo-cleaner apply      # re-check, show the steps, ask, delete
 ```
@@ -215,13 +215,20 @@ All four take the same paths and sweep options.
 ```console
 $ repo-cleaner summary
 /Users/me/work/api  (acme/api, default main, origin)
-                   total  merged  delete  review   keep
-  local branches      12       8       6       1      5
-  worktrees            4       3       2       1      1
-  remote branches     40      31      30       6      4
+                   total  merged  delete  prune  review   keep
+  local branches      12       8       6      0       1      5
+  worktrees            4       3       1      1       1      1
+  remote branches     40      31      30      0       6      4
 
-38 to delete, 8 to review, across 1 repository.
+37 to delete, 1 to prune, 8 to review, across 1 repository.
 ```
+
+`prune` counts worktree rows whose directory is gone, or is no longer a
+checkout: deleting one runs `git worktree prune` to drop the stale link, and
+a directory that is still there stays. The report labels those rows `prune`
+rather than `delete`. In `--output json` they are `safe-to-delete` with
+`action: "prune"`, and each summary bucket has a `prune` count, a part of its
+`safe-to-delete` count.
 
 `merged` counts rows whose work is on the default branch: by ancestry, by a
 merged PR at the branch's head, or by a patch match. A branch checked out in a
@@ -258,6 +265,34 @@ An entry that resolves to nothing is reported rather than dropped. A worklist
 that silently sweeps four of the five repositories it was given is worse than
 one that says which it could not find.
 
+### A remote with no checkout
+
+```bash
+repo-cleaner --remote-url git@github.com:acme/api.git
+repo-cleaner apply --remote-url git@github.com:acme/api.git
+```
+
+`--remote-url <url>` sweeps a remote's branches when you have no checkout of
+it. It clones the URL once, with `--no-checkout`, into
+`repo-cleaner/remotes/` under the cache directory (`~/Library/Caches` on
+macOS, `$XDG_CACHE_HOME` or `~/.cache` on Linux, `REPO_CLEANER_CACHE_DIR`
+to move it), and sweeps that clone. Later runs reuse the clone and fetch. Only remote branches
+are swept: the clone's own branches and worktree are not yours. Deletes are
+pushed to the URL from the clone, compare-and-swap as always.
+
+The clone is kept, not deleted after the run, so a plan written with
+`--remote-url` can be applied later from anywhere: the plan names the clone's
+directory. Remove the directory to drop it. The clone is a full one, not
+`--filter=blob:none`: the patch check reads file contents, and a partial
+clone fetches them one branch at a time.
+
+The flag repeats for several remotes. It does not combine with paths,
+`--branch` or `--plan`, `--only` may only name `remotes`, and an empty URL is
+refused. A clone is reused only while its `origin` fetches from that URL and
+pushes to it alone; `apply --plan` checks the same of a plan's clone before
+deleting. The clone's directory name and every message carry the URL with
+its credentials, query and fragment removed.
+
 ## Options
 
 Every command that sweeps takes these:
@@ -267,6 +302,7 @@ Every command that sweeps takes these:
 | `--only <list>` | `worktrees`, `branches`, `remotes` (default: all three) |
 | `--branch <name\|HEAD>` | One branch of this repository: its worktree, local and remote branch. Refuses the default branch |
 | `--remote <name>` | Remote to measure against (default `origin`) |
+| `--remote-url <url>` | Sweep this remote's branches with no checkout of your own (see [A remote with no checkout](#a-remote-with-no-checkout)); repeatable |
 | `--no-gh` | Classify on git evidence alone |
 | `--no-fetch` | Skip the fetch; the header then says `not fetched` |
 

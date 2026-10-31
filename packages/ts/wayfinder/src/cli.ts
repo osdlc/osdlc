@@ -17,6 +17,7 @@ import {
   EXIT,
   processContext,
   processIo,
+  quietOnBrokenPipe,
   runMain,
   type CliContext,
   type CliIo,
@@ -34,21 +35,6 @@ import type { GuideTool } from './guide.ts'
 import { flushWrites } from './core/writes.ts'
 import { safeIo, safeJsonStdout, safeStderr } from './terminal-text.ts'
 import { VERSION } from './version.generated.ts'
-
-/**
- * Exit quietly when the reader of `stream` goes away, as `way list --json |
- * head -1` does: the rest of the output has nowhere to go, which is not an
- * error. Any other write error is thrown as before.
- */
-export function quietOnBrokenPipe(
-  stream: Pick<NodeJS.WriteStream, 'on'>,
-  exit: (code: number) => void = (code) => process.exit(code),
-): void {
-  stream.on('error', (err: NodeJS.ErrnoException) => {
-    if (err.code !== 'EPIPE') throw err
-    exit(0)
-  })
-}
 
 /**
  * Refuse a command line before the tree runs: a line on stderr, and with
