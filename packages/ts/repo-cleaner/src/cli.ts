@@ -51,6 +51,7 @@ import {
   renderCountsText,
   renderJson,
   renderPreview,
+  renderPreviewDrops,
   renderReceipt,
   renderStepDone,
   renderSummary,
@@ -545,6 +546,9 @@ function receiptBeside(planPath: string, now: Date): string {
   return join(dirname(planPath), `${stem}.receipt-${fileStamp(now)}.json`)
 }
 
+const dropKey = (d: Receipt['dropped'][number]): string =>
+  JSON.stringify([d.repo, d.category, d.id])
+
 /** Rows the run would delete or prune: one each, however many steps (an unlock, a remove) it takes. */
 function wouldRun(receipt: Receipt): number {
   return rowsActedOn(summarizeReceipt(receipt))
@@ -769,7 +773,14 @@ function runApply(
     return failure(ctx, err)
   }
   status.clear()
-  if (live) ctx.io.stdout('\n')
+  if (live) {
+    // The run's own re-check can drop a row the preview showed, if it moved
+    // while the question was open: say which, since it gets no tick.
+    const seen = new Set(preview.dropped.map(dropKey))
+    const late = receipt.dropped.filter((d) => !seen.has(dropKey(d)))
+    if (late.length > 0) ctx.io.stdout(renderPreviewDrops(late, style))
+    ctx.io.stdout('\n')
+  }
   print(receipt, receiptPath, !live)
   if (receiptPath === null) {
     ctx.io.stderr(`${name}: no receipt written; pass --receipt <file> to keep one\n`)

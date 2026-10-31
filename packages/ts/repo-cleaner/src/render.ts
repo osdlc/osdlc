@@ -522,6 +522,16 @@ export function renderPreview(receipt: Receipt, style: Style = PLAIN): string {
   return blocks.join('\n\n') + '\n'
 }
 
+/** Rows dropped by a live run's own re-check, after the preview: each with why. */
+export function renderPreviewDrops(dropped: Receipt['dropped'], style: Style = PLAIN): string {
+  return dropped
+    .map(
+      (d) =>
+        `  ${style.review('skip')}  ${stripControls(`${d.category}  ${ellipsize(d.id, 60)}`)}\n      ${style.review(stripControls(`${d.reason}: ${d.detail}`))}\n`,
+    )
+    .join('')
+}
+
 /**
  * One finished step, for a run shown live: `✓` and the row, or `✗`, the row
  * and the error. Printed as each step ends, under the preview's list.

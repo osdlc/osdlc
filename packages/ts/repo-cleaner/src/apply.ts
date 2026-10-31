@@ -90,7 +90,7 @@ export interface ApplyOptions extends HostHooks {
   onSweepProgress?: ((progress: SweepProgress) => void) | undefined
   /** Told before each step runs: its 0-based index, the step count and the step. Not called under `dryRun`. */
   onStep?: ((index: number, total: number, step: Step) => void) | undefined
-  /** Told after each step, with its `result` set: `ok`, or `failed` and the run stops. Not called under `dryRun`. */
+  /** Told after each step, with its `result` set (`ok`, or `failed` and the run stops), before the receipt is saved. Not called under `dryRun`. */
   onStepDone?: ((index: number, total: number, step: Step) => void) | undefined
 }
 
@@ -575,12 +575,14 @@ export function applyPlan(
       }
       receipt.status = 'failed'
       receipt.finished_at = now().toISOString()
-      save()
+      // Told before the save, so a receipt that cannot be written still
+      // leaves the step's outcome on screen.
       opts.onStepDone?.(i, plannedSteps.length, step)
+      save()
       return receipt
     }
-    save()
     opts.onStepDone?.(i, plannedSteps.length, step)
+    save()
   }
   receipt.status = 'complete'
   receipt.finished_at = now().toISOString()

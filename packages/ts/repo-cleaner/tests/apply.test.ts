@@ -98,6 +98,27 @@ const refs = (root: string): string =>
 const remoteHeads = (bare: string): string => sh(bare, ['for-each-ref', '--format=%(refname)'])
 
 describe('applyPlan', () => {
+  test('onStepDone hears each finished step, even when the receipt then cannot be saved', () => {
+    const fx = buildFixture()
+    const plan = makePlan(fx.root)
+    const receiptDir = join(fx.root, '.receipts')
+    const done: string[] = []
+    const run = () =>
+      applyPlan(plan, [{ category: 'local_branch', id: 'merged-a' }], [], {
+        callerCwd: fx.root,
+        dryRun: false,
+        receiptPath: join(receiptDir, 'r.json'),
+        planPath: 'plan.json',
+        // The receipt is saved once before the first step; lock its directory
+        // once that has happened, so the save after the step fails.
+        onStep: () => chmodSync(receiptDir, 0o500),
+        onStepDone: (_i, _n, step) => done.push(`${step.action}:${step.result}`),
+      })
+    cleanups.push(() => chmodSync(receiptDir, 0o700))
+    expect(run).toThrow()
+    expect(done).toEqual(['delete-local:ok'])
+  })
+
   test('runs worktree, local, remote, prune in order and verifies each', () => {
     const fx = buildFixture()
     const plan = makePlan(fx.root)

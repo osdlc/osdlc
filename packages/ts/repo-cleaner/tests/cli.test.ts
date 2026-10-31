@@ -362,6 +362,26 @@ describe('color', () => {
     expect(branchRefs(fx.bare)).not.toContain(BRANCH)
   })
 
+  test('a live run names a row its own re-check dropped after the preview', () => {
+    const fx = buildFixture()
+    const res = colorRun(
+      ['apply', '--branch', BRANCH, ...SWEEP, '--remotes', ...rowsOf(fx)],
+      fx.root,
+      { NO_COLOR: '1' },
+      {
+        // The branch moves while the question is open.
+        confirm: () => {
+          sh(fx.worktree, ['commit', '-q', '--allow-empty', '-m', 'late'])
+          return true
+        },
+      },
+    )
+    // After the preview's counts: the run's own output.
+    const tail = res.out.slice(res.out.lastIndexOf('would delete:'))
+    expect(tail).toMatch(/skip {2}local_branch {2}feat\/s\n +facts-changed: /)
+    expect(branchRefs(fx.root)).toContain(BRANCH)
+  })
+
   test('the preview before the question is colored and summarized', () => {
     const fx = buildFixture()
     const asked: string[] = []
