@@ -20,6 +20,7 @@ export const DroppedSchema = RowRefSchema.extend({
     'facts-changed',
     'not-authorized',
     'duplicate',
+    'kept',
   ]),
   detail: z.string(),
 })

@@ -266,10 +266,11 @@ function recheck(
     if (item === undefined) {
       throw new ApplyRefused(`kept ${label(ref)} is no longer in the sweep; refusing to apply`)
     }
-    const now = fingerprint(item)
-    if (!sameFingerprint(planned.fingerprint, now)) {
+    // The tip alone: a PR that closed since the plan does not move the branch.
+    const plannedSha = planned.fingerprint['sha']
+    if (item.facts['sha'] !== plannedSha) {
       throw new ApplyRefused(
-        `kept ${label(ref)} moved since the plan (planned ${JSON.stringify(planned.fingerprint)}, now ${JSON.stringify(now)}); refusing to apply`,
+        `kept ${label(ref)} moved since the plan (planned ${String(plannedSha)}, now ${String(item.facts['sha'])}); refusing to apply`,
       )
     }
     verified.push({ repo: repo.root, item, force: false })
@@ -519,9 +520,23 @@ function remoteKey(git: Git, repo: string, remote: string): string | null {
  * run, so the later row is dropped as `duplicate`.
  */
 function onePerRemoteBranch(
-  { accepted, dropped }: { accepted: Accepted[]; dropped: Dropped[] },
+  {
+    accepted,
+    dropped,
+    verified,
+  }: { accepted: Accepted[]; dropped: Dropped[]; verified: Accepted[] },
   git: Git,
 ): { accepted: Accepted[]; dropped: Dropped[] } {
+  const keyOf = (row: Accepted): string | null => {
+    const remote = remoteKey(git, row.repo, String(row.item.facts['remote']))
+    return remote === null ? null : `${remote}\0${String(row.item.facts['branch'])}`
+  }
+  // A branch kept through one clone stays, whichever clone lists it.
+  const keptAt = new Map<string, string>()
+  for (const row of verified) {
+    const key = keyOf(row)
+    if (key !== null) keptAt.set(key, row.repo)
+  }
   const seen = new Map<string, string>()
   const kept: Accepted[] = []
   const extra: Dropped[] = []
@@ -530,8 +545,18 @@ function onePerRemoteBranch(
       kept.push(row)
       continue
     }
-    const remote = remoteKey(git, row.repo, String(row.item.facts['remote']))
-    const key = remote === null ? null : `${remote}\0${String(row.item.facts['branch'])}`
+    const key = keyOf(row)
+    const keeper = key === null ? undefined : keptAt.get(key)
+    if (keeper !== undefined) {
+      extra.push({
+        repo: row.repo,
+        category: row.item.category,
+        id: row.item.id,
+        reason: 'kept',
+        detail: `the same remote branch is kept through ${keeper}`,
+      })
+      continue
+    }
     const first = key === null ? undefined : seen.get(key)
     if (first !== undefined) {
       extra.push({

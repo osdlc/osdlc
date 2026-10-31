@@ -232,6 +232,46 @@ describe('keeping a remote branch (#583)', () => {
     expect(summarizeReceipt(receipt).notRun).toBe(1)
   })
 
+  test('kept through one clone, the branch is not deleted through another', () => {
+    const fx = buildFixture()
+    const second = realpathSync(mkdtempSync(join(tmpdir(), 'repo-cleaner-clone-')))
+    cleanups.push(() => rmSync(second, { recursive: true, force: true }))
+    sh(second, ['clone', '-q', fx.bare, 'b'])
+    const plan: Plan = {
+      ...makePlan(fx.root),
+      repos: [...makePlan(fx.root).repos, ...makePlan(join(second, 'b')).repos],
+    }
+    const [rootA, rootB] = plan.repos.map((r) => r.root) as [string, string]
+    const receipt = applyPlan(plan, [], [], {
+      callerCwd: fx.root,
+      dryRun: false,
+      receiptPath: null,
+      planPath: '(test)',
+      keep: [{ ...KEEP, repo: rootA }],
+    })
+    expect(receipt.status).toBe('complete')
+    expect(remoteHeads(fx.bare)).toContain('refs/heads/merged-a')
+    expect(receipt.dropped).toContainEqual({
+      repo: rootB,
+      ...KEEP,
+      reason: 'kept',
+      detail: `the same remote branch is kept through ${rootA}`,
+    })
+    expect(receipt.steps.some((s) => s.action === 'delete-remote' && s.row?.id === KEEP.id)).toBe(
+      false,
+    )
+  })
+
+  test('the keep check is the tip alone: PR facts that changed do not refuse it', () => {
+    const fx = buildFixture()
+    const plan = makePlan(fx.root)
+    const row = plan.repos[0]!.rows.find((r) => r.category === KEEP.category && r.id === KEEP.id)!
+    // As if the plan had seen an open PR that has since closed: same sha, other facts.
+    row.fingerprint = { ...row.fingerprint, pr_number: 7, pr_state: 'OPEN' }
+    expect(run(fx, plan).status).toBe('complete')
+    expect(remoteHeads(fx.bare)).toContain('refs/heads/merged-a')
+  })
+
   test('only a remote branch row can be kept, and not one also selected', () => {
     const fx = buildFixture()
     const plan = makePlan(fx.root)

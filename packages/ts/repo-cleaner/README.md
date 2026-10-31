@@ -97,7 +97,8 @@ add -b` just made from the default branch is merged that way too, and
 removing it would lose the ignored files of work about to start. The sign is
 in `facts.branch_used`: `commits` when the branch's reflog records a commit,
 merge, pull, rebase, cherry-pick or `am`, and `upstream` when the branch
-tracks an upstream other than the default branch. With either, the worktree
+tracks a branch on a remote, other than the default branch (a branch made
+with `--track` from `main` or `origin/main` does not count). With either, the worktree
 is `safe-to-delete`; with neither (`null`) it stays `needs-investigation`.
 
 Some worktrees are held back whatever their branch says. Each lands in
@@ -412,8 +413,11 @@ rest of its rows go: say, delete the worktree and local branch but leave
 the branch on the remote. A kept row is checked, not skipped. The re-check
 refuses the run if the branch is gone or its tip moved since the plan, and
 the run's first step checks the tip again with `git ls-remote`, so one that
-moves after the re-check stops the run before anything is deleted. The row
-id is the one the plan lists, `<remote>/<branch>`, e.g. `origin/feat/x`.
+moves after the re-check stops the run before anything is deleted. Only the
+tip counts: a PR that closed since the plan does not refuse it. Another
+clone of the same remote does not delete a kept branch either; its row is
+dropped as `kept`. The row id is the one the plan lists,
+`<remote>/<branch>`, e.g. `origin/feat/x`.
 `--yes` skips the question. With no terminal to ask on and no `--yes`, it
 refuses with exit 2 rather than deleting. `--plan -` needs `--yes` or
 `--dry-run`, because stdin carries the plan. `--dry-run` prints the steps and

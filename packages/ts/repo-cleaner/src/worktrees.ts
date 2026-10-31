@@ -454,7 +454,7 @@ export function classifyWorktree(opts: {
   // Merged by ancestry alone: a worktree just made from the default branch is
   // merged that way too, so ancestry needs a sign the branch was worked on.
   if (facts['merged'] === true && branch && head !== null) {
-    const used = branchUse(git.at(repo.root), branch, landedRef(repo))
+    const used = branchUse(git.at(repo.root), branch, repo.mainBranch)
     facts['branch_used'] = used
     if (used !== null) {
       return makeItem({
@@ -502,19 +502,24 @@ const WORK_ENTRY = /^(commit|merge|pull|rebase|cherry-pick|am)\b/
 /**
  * The sign that `branch` was worked on, or null for a branch that looks
  * freshly made. `commits`: its reflog records a commit, merge, pull, rebase,
- * cherry-pick or am. `upstream`: it tracks an upstream other than `landed`,
- * the default branch, so someone pushed it as its own branch. A branch with
- * neither, such as one `git worktree add -b` just made from the default
- * branch, reads as null: removing its worktree could lose ignored files from
- * work about to start.
+ * cherry-pick or am. `upstream`: it tracks a branch on a remote, and not
+ * the default branch (`mainBranch`) of any remote, so someone pushed it as
+ * its own branch. A branch with neither, such as one `git worktree add -b`
+ * just made from the default branch, with or without `--track`, reads as
+ * null: removing its worktree could lose ignored files from work about to
+ * start.
  */
-export function branchUse(git: Git, branch: string, landed: string): BranchUse | null {
+export function branchUse(git: Git, branch: string, mainBranch: string): BranchUse | null {
   // `raw`: a branch with no reflog (core.logAllRefUpdates off) exits non-zero.
   const reflog = git.raw(['reflog', 'show', '--format=%gs', `refs/heads/${branch}`, '--'])
   if (reflog.exitCode === 0 && reflog.stdout.split('\n').some((l) => WORK_ENTRY.test(l))) {
     return 'commits'
   }
-  const upstream = git.try.revParse('--abbrev-ref', `${branch}@{upstream}`)
-  if (upstream.ok && upstream.value && upstream.value !== landed) return 'upstream'
+  // From the branch's own config, not the resolved name: a branch tracking a
+  // local branch has remote `.`, and one tracking `upstream/main` merges the
+  // default branch however its remote is spelled.
+  const remote = git.configGet(`branch.${branch}.remote`)
+  const merge = git.configGet(`branch.${branch}.merge`)
+  if (remote && remote !== '.' && merge && merge !== `refs/heads/${mainBranch}`) return 'upstream'
   return null
 }

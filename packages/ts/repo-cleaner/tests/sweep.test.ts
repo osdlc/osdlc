@@ -967,6 +967,15 @@ describe('a clean worktree merged by ancestry alone (#582)', () => {
     expect(worktreeRow(root, wt)?.classification).toBe('needs-investigation')
   })
 
+  test('one tracking local main is not counted as pushed', () => {
+    const { root, wt } = setup('local-track')
+    git(['worktree', 'add', '-q', '--track', '-b', 'local-track', wt, 'main'], root)
+    expect(git(['config', 'branch.local-track.remote'], root)).toBe('.')
+    const row = worktreeRow(root, wt)
+    expect(row?.classification).toBe('needs-investigation')
+    expect(row?.facts['branch_used']).toBeNull()
+  })
+
   test('with no reflog, an upstream of its own is the sign', () => {
     const { root, wt } = setup('pushed')
     git(['worktree', 'add', '-q', '-b', 'pushed', wt], root)
