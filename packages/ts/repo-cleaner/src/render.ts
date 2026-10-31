@@ -151,6 +151,11 @@ export function renderScan(result: SweepResult): string | null {
   return `${line} ${count(scan.depthLimited)} left unopened at the depth limit.`
 }
 
+/** The `safe-to-delete` rows that delete something, not the ones that only prune a stale link. */
+function deleteOnly(bucket: SummaryBucket): number {
+  return bucket['safe-to-delete'] - bucket.prune
+}
+
 /** The one-line verdict a person reads first, and often only. */
 export function renderSummary(result: SweepResult): string {
   const counts = totals(result)
@@ -165,7 +170,7 @@ export function renderSummary(result: SweepResult): string {
   }
   const suffix = tail.length > 0 ? ` (${tail.join(', ')})` : ''
   const prune = counts.prune > 0 ? `${counts.prune} to prune, ` : ''
-  return `${counts['safe-to-delete'] - counts.prune} to delete, ${prune}${counts['needs-investigation']} to review, across ${repos}${suffix}.`
+  return `${deleteOnly(counts)} to delete, ${prune}${counts['needs-investigation']} to review, across ${repos}${suffix}.`
 }
 
 const COUNT_LABEL: Record<(typeof CATEGORY_ORDER)[number], string> = {
@@ -178,7 +183,7 @@ const COUNT_LABEL: Record<(typeof CATEGORY_ORDER)[number], string> = {
 const COUNT_COLUMNS: ReadonlyArray<{ heading: string; of: (b: SummaryBucket) => number }> = [
   { heading: 'total', of: (b) => b.total },
   { heading: 'merged', of: (b) => b.merged },
-  { heading: 'delete', of: (b) => b['safe-to-delete'] - b.prune },
+  { heading: 'delete', of: deleteOnly },
   { heading: 'prune', of: (b) => b.prune },
   { heading: 'review', of: (b) => b['needs-investigation'] },
   { heading: 'keep', of: (b) => b['safe-to-keep'] },

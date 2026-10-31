@@ -120,11 +120,13 @@ const BROKEN_PIPE = new Set(['EPIPE', 'ERR_STREAM_DESTROYED'])
 /**
  * Stay quiet when the reader of `stream` goes away, as `tool --json | head -1`
  * does: the rest of the output has nowhere to go, which is not an error. With
- * `exit`, the run ends there with exit 0, which suits stdout: the reader has
- * what it wanted. With `exit` null the error is dropped and the run goes on,
- * which suits stderr: a closed stderr must not turn a failing run into a
- * passing one. Any other write error is thrown as before. {@link runMain}
- * installs it on both streams when it uses the process's own.
+ * `exit`, the run ends there with exit 0, which suits a read-only tool: the
+ * reader has what it wanted. With `exit` null the error is dropped and the
+ * run goes on to its own end and exit code, which suits a tool that changes
+ * things: ending at a write could stop it between two steps, and a closed
+ * stream must not turn a failing run into a passing one. Any other write
+ * error is thrown as before. {@link runMain} installs it, with `exit` null,
+ * on both streams when it uses the process's own.
  */
 export function quietOnBrokenPipe(
   stream: Pick<NodeJS.WriteStream, 'on'>,
@@ -141,13 +143,14 @@ export function quietOnBrokenPipe(
 
 /**
  * Run `main` and set the process's exit code from what it returns. Without
- * `options.context`, a closed pipe is not an unhandled `EPIPE`
- * ({@link quietOnBrokenPipe}): a closed stdout ends the run with exit 0, and
- * a closed stderr is ignored, so the exit code is still `main`'s.
+ * `options.context`, a closed pipe on stdout or stderr is not an unhandled
+ * `EPIPE` ({@link quietOnBrokenPipe}): the output is dropped, `main` runs to
+ * its end, and the exit code is still `main`'s. A run is never cut off
+ * between two steps because its reader went away.
  */
 export async function runMain(main: MainFn, options: RunMainOptions): Promise<void> {
   if (options.context === undefined) {
-    quietOnBrokenPipe(process.stdout)
+    quietOnBrokenPipe(process.stdout, null)
     quietOnBrokenPipe(process.stderr, null)
   }
   const ctx = options.context ?? processContext()

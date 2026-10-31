@@ -88,7 +88,8 @@ export function mirrorProblem(
  * existing mirror is reused as it is, once {@link mirrorProblem} finds
  * nothing wrong with it; the sweep's own fetch brings it up to date. A first
  * clone goes to a sibling directory and is renamed into place, so a clone
- * that fails leaves nothing behind. Messages carry the URL with its
+ * that fails leaves nothing behind, and a run that loses a race to clone the
+ * same URL uses the winner's clone. Messages carry the URL with its
  * credentials removed.
  *
  * @throws RemoteMirrorError when `url` is empty or looks like an option, when
@@ -128,6 +129,8 @@ export function ensureMirror(
     renameSync(staging, dir)
   } catch (err) {
     rmSync(staging, { recursive: true, force: true })
+    // Another run cloned the same URL first and won the rename: use its clone.
+    if (existsSync(dir) && mirrorProblem(dir, url, opts) === null) return dir
     const detail =
       (err as { failure?: { detail?: string } }).failure?.detail ??
       (err instanceof Error ? err.message : String(err))

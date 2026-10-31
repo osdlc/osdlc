@@ -305,12 +305,13 @@ becomes its line and its category's exit code (see Failures). It prints no
 stack trace, because a trace says where the code was, not what the person who
 typed the command should do.
 
-When it uses the process's own streams (no `context`), a closed pipe is not
-an unhandled `EPIPE`. A closed stdout, as in `tool --json | head -1`, ends the
-run quietly with exit 0. A closed stderr is ignored, so a failing run still
-exits non-zero. `quietOnBrokenPipe(stream, exit)` is the same guard for a tool
-that does not use `runMain`; pass `null` for `exit` to ignore the broken pipe
-and carry on.
+When it uses the process's own streams (no `context`), a closed pipe on
+stdout or stderr, as in `tool --json | head -1`, is not an unhandled `EPIPE`:
+the rest of the output is dropped, `main` runs to its end, and the exit code
+is `main`'s. A tool that changes things is never stopped between two steps
+because its reader went away. `quietOnBrokenPipe(stream, exit)` is the guard
+on its own: pass `null` for `exit` to drop the error and carry on, as
+`runMain` does, or an exit function to end a read-only run at once.
 
 Pass `version` and a first argument of `--version` prints `<name> <version>`,
 as `defineApp` does, and exits 0
