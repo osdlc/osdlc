@@ -13,9 +13,9 @@
       "line": 265,
       "title": "way --version --json now prints plain text instead of the version document",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "6fa94aebbb81a620778b7c44e7227f5aff5e0433"
     }
   ]
 }
