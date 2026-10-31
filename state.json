@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 580,
-  "head": "64861102ced44bd5779a42d3c97f0d4d2f02a514",
+  "head": "020e96e367dccc00afffc2897fad34feb382589d",
   "base": "ba1801d91b90a69f2f796a7084c1ecb57a15033e",
-  "round": 1,
+  "round": 2,
   "claim": {
     "owner": "KellyMBP.local:claude-d2q7wn",
     "at": "2026-10-31T17:36:31.181Z"
@@ -60,6 +60,17 @@
       "line": null,
       "title": "project bin under bun: failure text says checkout runs from source",
       "comment": "https://github.com/osdlc/osdlc/pull/580#pullrequestreview-5724073496",
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r2-1",
+      "round": 2,
+      "path": "packages/ts/cli-tool/src/devlink/resolve.ts",
+      "line": 162,
+      "title": "projectInstall doc says it finds the copy as require does, then says it does not",
+      "comment": null,
       "status": "open",
       "reason": null,
       "fixedIn": null
