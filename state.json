@@ -1,12 +1,24 @@
 {
   "schema": 1,
   "pr": 569,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "85538633db8d9f953d90fe77fb79ef5d85f58381",
+  "base": "34dee01ee706163d800d06fd4f68ef3ad5e4fab1",
+  "round": 1,
   "claim": {
     "owner": "KellyMBP.local:claude-w7r2qd",
     "at": "2026-10-31T06:40:20.096Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/cli-tool/src/run-main.ts",
+      "line": 58,
+      "title": "RunMainOptions.script is independent of DevlinkHookOptions.script, so file/from and chosen-by can describe different scripts",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
