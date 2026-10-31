@@ -284,8 +284,13 @@ export function classifyWorktree(opts: {
     return pinned("current session's worktree")
   }
 
-  const onDisk = isDir(path)
+  // A directory whose `.git` is gone is no longer a checkout: git lists it as
+  // prunable and `git status` inside it fails. Treat it as gone; the prune
+  // that drops its registration leaves the directory alone.
+  const dirPresent = isDir(path)
+  const onDisk = dirPresent && existsSync(join(path, '.git'))
   facts['on_disk'] = onDisk
+  facts['directory_left'] = dirPresent && !onDisk
 
   let dirtyFiles: string[] = []
   let unpushed: string[] = []
@@ -371,7 +376,9 @@ export function classifyWorktree(opts: {
       id: path,
       classification: 'safe-to-delete',
       action: 'remove',
-      reason: 'worktree directory no longer on disk; prune the stale link',
+      reason: dirPresent
+        ? 'directory is no longer a checkout (no .git); prune the stale link, the directory stays'
+        : 'worktree directory no longer on disk; prune the stale link',
       facts,
       commands: pruneOnly,
     })

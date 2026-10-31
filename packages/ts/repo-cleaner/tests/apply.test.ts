@@ -263,6 +263,27 @@ describe('applyPlan', () => {
     expect(receipt.steps[0]!.verification).toBe('unregistered')
   })
 
+  test('a worktree directory whose .git is gone is swept, then pruned and left in place', () => {
+    const fx = buildFixture()
+    rmSync(join(fx.worktree, '.git'))
+    writeFileSync(join(fx.worktree, 'left.txt'), 'kept\n')
+
+    const sweep = sweepRepo(fx.root, { noGh: true, cwd: fx.root })
+    expect(sweep.error).toBeNull()
+    const row = sweep.items.find((i) => i.id === fx.worktree)!
+    expect(row).toMatchObject({
+      classification: 'safe-to-delete',
+      commands: [expect.stringContaining('worktree prune')],
+    })
+    expect(row.facts).toMatchObject({ on_disk: false, directory_left: true })
+
+    const { receipt } = apply(fx, makePlan(fx.root), [{ category: 'worktree', id: fx.worktree }])
+    expect(receipt.status).toBe('complete')
+    expect(receipt.steps[0]!.action).toBe('prune-worktrees')
+    expect(sh(fx.root, ['worktree', 'list'])).not.toContain(fx.worktree)
+    expect(readFileSync(join(fx.worktree, 'left.txt'), 'utf-8')).toBe('kept\n')
+  })
+
   test('force-removes a dirty worktree only with discard-changes', () => {
     const fx = buildFixture()
     writeFileSync(join(fx.worktree, 'scratch.txt'), 'wip\n')
