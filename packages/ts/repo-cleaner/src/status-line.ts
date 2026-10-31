@@ -41,7 +41,11 @@ export function describeSweep(p: SweepProgress, home: string = homedir()): strin
     p.done === undefined || p.total === undefined
       ? ''
       : ` ${progressBar(p.done, p.total)} ${p.done + 1}/${p.total}`
-  return `${where}${STEP_TEXT[p.step]}${count} · ${tilde(p.repo, home)}`
+  const text =
+    p.step === 'prs' && p.tool !== undefined
+      ? `listing pull requests (${p.tool})`
+      : STEP_TEXT[p.step]
+  return `${where}${text}${count} · ${tilde(p.repo, home)}`
 }
 
 /** An apply step as one line, e.g. `deleting ██████░░░░ 3/7: delete-remote origin/feat/x`. */

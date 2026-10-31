@@ -14,10 +14,12 @@ import { gatherLocalBranches, gatherRemoteBranches } from './branches.ts'
 import { DiscoveryFailed, discoverRepo } from './discover.ts'
 import { defaultProcessProbe, type ProcessProbe } from './processes.ts'
 import { fetchPrs } from './prs.ts'
+import { providers, type ProviderChoice } from './providers/index.ts'
 import { resolveEntries } from './resolve.ts'
 import {
   ALL_SCOPES,
   findDuplicateCheckouts,
+  type PRInfo,
   type RepoSweep,
   type Scope,
   type SweepItem,
@@ -31,8 +33,13 @@ export interface SweepOptions {
   scope?: Iterable<Scope | string>
   /** Remote to measure against. Defaults to `origin`, then the first one. */
   remote?: string | null
-  /** Skip `gh` entirely and classify on git evidence alone. */
+  /** Ask no provider and classify on git evidence alone. Same as `provider: 'none'`, and wins over it. */
   noGh?: boolean
+  /**
+   * Which provider to ask for pull requests: `github` (`gh`), `gitlab`
+   * (`glab`), `none`, or `auto`, which reads the remote's host. Defaults to `auto`.
+   */
+  provider?: ProviderChoice | undefined
   /**
    * Run `git fetch --prune <remote>` before classifying, so ancestry is read
    * against fresh remote-tracking refs. A failed fetch makes the repository
@@ -52,9 +59,10 @@ export interface SweepOptions {
    * when that worktree is blocked or cannot be removed.
    */
   branch?: string | undefined
-  /** Injected runners. Defaults spawn the real `git` and `gh`. */
+  /** Injected runners. Defaults spawn the real `git`, `gh` and `glab`. */
   git?: CommandRunner | undefined
   gh?: CommandRunner | undefined
+  glab?: CommandRunner | undefined
   /**
    * Answers whether a worktree lock's owner is alive and which processes work
    * inside a worktree. Defaults to {@link defaultProcessProbe}, one per
@@ -88,14 +96,21 @@ function clients(path: string, opts: SweepOptions): { git: Git; gh: Gh } {
 export function sweepRepo(path: string, opts: SweepOptions = {}): RepoSweep {
   const scope = scopeSet(opts.scope)
   const { git, gh } = clients(path, opts)
+  const known = providers({ gh, glab: opts.glab })
   const only = opts.branch
   const at = opts.position ?? { index: 1, of: 1 }
-  const report = (step: SweepProgress['step'], done?: number, total?: number): void =>
+  const report = (
+    step: SweepProgress['step'],
+    done?: number,
+    total?: number,
+    tool?: string,
+  ): void =>
     opts.onProgress?.({
       repo: path,
       ...at,
       step,
       ...(done === undefined || total === undefined ? {} : { done, total }),
+      ...(tool === undefined ? {} : { tool }),
     })
   const ticker =
     (step: SweepProgress['step']) =>
@@ -108,8 +123,10 @@ export function sweepRepo(path: string, opts: SweepOptions = {}): RepoSweep {
     repo = discoverRepo(path, {
       remote: opts.remote ?? null,
       allowGh: opts.noGh !== true,
+      provider: opts.provider,
       git,
       gh,
+      providers: known,
     })
   } catch (err) {
     if (err instanceof DiscoveryFailed) return { repo: null, path, items: [], error: err.message }
@@ -138,8 +155,10 @@ export function sweepRepo(path: string, opts: SweepOptions = {}): RepoSweep {
   }
 
   try {
-    if (repo.hasGh && repo.ghAuthenticated) report('prs')
-    const prs = fetchPrs(repo, gh, only)
+    const status = repo.provider ?? null
+    if (status?.authenticated === true) report('prs', undefined, undefined, status.tool)
+    const prs =
+      status === null ? new Map<string, PRInfo>() : fetchPrs(repo, known[status.name], only)
     const items: SweepItem[] = []
 
     // Worktrees are gathered whenever local branches are, even if they are not

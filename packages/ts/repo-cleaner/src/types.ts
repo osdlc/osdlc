@@ -6,6 +6,8 @@
  * own knowledge (an issue tracker's linkage, say) rewrites rows in place.
  */
 
+import type { ProviderStatus } from './providers/types.ts'
+
 /** What the sweep concluded about an item. */
 export type Classification = 'safe-to-delete' | 'safe-to-keep' | 'needs-investigation'
 
@@ -24,6 +26,8 @@ export interface SweepProgress {
   step: 'discover' | 'fetch' | 'prs' | 'worktrees' | 'local-branches' | 'remote-branches'
   done?: number
   total?: number
+  /** The CLI asked during the `prs` step: `gh`, `glab`. */
+  tool?: string
 }
 
 /** Which categories to gather. */
@@ -58,7 +62,15 @@ export interface RepoInfo {
   mainBranch: string
   remote: string | null
   currentBranch: string
+  /**
+   * The provider asked for pull requests and what its probe found; null when
+   * none was (`--provider none`, `--no-gh`). Absent on a RepoInfo built
+   * elsewhere, which {@link hasGh} and {@link ghAuthenticated} then describe.
+   */
+  provider?: ProviderStatus | null
+  /** The provider's CLI is installed, whichever provider it is. Kept for hosts that read it; prefer `provider`. */
   hasGh: boolean
+  /** The provider's CLI is signed in. Kept for hosts that read it; prefer `provider`. */
   ghAuthenticated: boolean
   /** True when the sweep fetched the remote before classifying. */
   fetched: boolean

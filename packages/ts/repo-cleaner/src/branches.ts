@@ -77,6 +77,14 @@ export function recordPr(
   return verdict === true ? { landed: true, gap: null } : { landed: false, gap: verdict }
 }
 
+/** Why a branch has no PR, naming where the sweep looked. */
+export function noPrSentence(repo: RepoInfo): string {
+  const provider = repo.provider
+  if (provider === null) return 'No PR lookup (no provider).'
+  if (provider === undefined || provider.name === 'github') return 'No PR found via `gh pr list`.'
+  return `No merge request found via \`${provider.tool}\`.`
+}
+
 /** One sentence on why a merged PR did not count, for `investigationParts`. */
 export function gapSentence(pr: PRInfo, gap: PrEvidenceGap, repo: RepoInfo): string {
   return gap === 'other-base'
@@ -296,11 +304,7 @@ export function classifyLocalBranch(opts: {
       : `Branch \`${name}\` is not an ancestor of \`${compareRef}\`.`
   const parts = [lead]
   parts.push(upstream ? `Tracks \`${upstream}\` (${track || 'in sync'}).` : 'Has no upstream.')
-  parts.push(
-    pr
-      ? `Associated PR #${pr.number} is ${pr.state} (${pr.url}).`
-      : 'No PR found via `gh pr list`.',
-  )
+  parts.push(pr ? `Associated PR #${pr.number} is ${pr.state} (${pr.url}).` : noPrSentence(repo))
   if (pr && gap) parts.push(gapSentence(pr, gap, repo))
   const unmatched = patch === null ? null : unmatchedSentence(patch, repo)
   if (unmatched !== null) parts.push(unmatched)

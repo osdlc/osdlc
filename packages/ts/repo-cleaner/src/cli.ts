@@ -43,6 +43,7 @@ import {
   writePlan,
   type Plan,
 } from './plan.ts'
+import { PROVIDER_CHOICES, type ProviderChoice } from './providers/index.ts'
 import { RECEIPT_VERSION, type Receipt, type RowRef, type Step } from './receipt.ts'
 import {
   PLAIN,
@@ -115,7 +116,13 @@ const SWEEP_FLAGS = {
   gh: {
     kind: 'boolean',
     negatable: true,
-    help: 'with --remotes: classify on git evidence alone (without --remotes gh is never called)',
+    help: 'with --remotes: classify on git evidence alone, the same as --provider none (without --remotes no provider is asked)',
+  },
+  provider: {
+    kind: 'enum',
+    choices: PROVIDER_CHOICES,
+    valueName: 'name',
+    help: 'with --remotes: where pull requests come from: auto (by remote host), github (gh), gitlab (glab), none',
   },
   fetch: {
     kind: 'boolean',
@@ -315,6 +322,7 @@ interface SweepValues {
   remoteUrl: string[]
   remotes: boolean
   gh: boolean
+  provider?: ProviderChoice | undefined
   fetch: boolean
   progress: boolean
 }
@@ -404,6 +412,11 @@ function sweep(
     if (conflict !== null) return { kind: 'exit', code: usageError(ctx, name, conflict) }
   }
 
+  if (!v.gh && v.provider !== undefined && v.provider !== 'none') {
+    const message = `--no-gh asks no provider; drop it or --provider ${v.provider}`
+    return { kind: 'exit', code: usageError(ctx, name, message) }
+  }
+
   let branch: string | undefined
   try {
     branch = v.branch === undefined ? undefined : resolveBranch(v.branch, new Git(ctx.cwd))
@@ -417,8 +430,9 @@ function sweep(
     baseDir: ctx.cwd,
     cwd: ctx.cwd,
     // Local by default means offline: the fetch and gh go with remote branches.
-    noGh: !(online && v.gh),
+    noGh: !(online && v.gh) || v.provider === 'none',
     fetch: online && v.fetch,
+    provider: v.provider,
     branch,
     // Mid-walk, while the wait is happening — the summary comes too late to
     // explain why the tool appeared to hang.
@@ -470,6 +484,7 @@ function planOf(swept: Extract<Swept, { kind: 'ok' }>, now: Date): Plan {
   const opts = {
     remote: swept.values.remote ?? null,
     noGh: swept.noGh,
+    provider: swept.values.provider,
     branch: swept.branch ?? null,
   }
   return {
