@@ -38,6 +38,7 @@ export { assessLanding, patchEquivalent, type Landing, type LandingCheck } from 
 export {
   ApplyArgumentError,
   applyPlan,
+  type RowSelection,
   parseGrant,
   parseRowRef,
   type ApplyOptions,
@@ -48,8 +49,8 @@ export {
   PLAN_VERSION,
   PlanReadError,
   planRepo,
+  parsePlan,
   readPlan,
-  stampedPath,
   writePlan,
   type Plan,
   type PlanRepo,
@@ -86,17 +87,6 @@ export {
   requiresNote,
 } from './render.ts'
 export {
-  CONFIG_ENV,
-  DEFAULT_CONFIG,
-  RepoCleanerConfigSchema,
-  TOOL,
-  clearConfigCache,
-  configPath,
-  configuredRepos,
-  loadConfig,
-  type RepoCleanerConfig,
-} from './config.ts'
-export {
   ALL_SCOPES,
   AUTHORIZATIONS,
   authorizationsFor,
@@ -117,6 +107,7 @@ export {
   type Scope,
   type SummaryBucket,
   type SweepItem,
+  type SweepProgress,
   type SweepResult,
   type UnresolvedEntry,
 } from './types.ts'

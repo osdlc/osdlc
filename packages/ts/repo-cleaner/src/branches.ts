@@ -129,10 +129,12 @@ export function gatherLocalBranches(
   worktreeBranches: ReadonlySet<string>,
   git: Git,
   only?: string,
+  tick?: (done: number, total: number) => void,
 ): SweepItem[] {
   const rows = git.at(repo.root).forEachRef('refs/heads/', { format: LOCAL_FORMAT })
   const items: SweepItem[] = []
-  for (const line of rows) {
+  for (const [i, line] of rows.entries()) {
+    tick?.(i, rows.length)
     const parts = line.split('\t')
     if (parts.length !== 5) continue
     const [name, upstream, track, lastCommit, sha] = parts as [
@@ -192,9 +194,21 @@ export function classifyLocalBranch(opts: {
   const pinned = (reason: string): SweepItem => keep(reason, { deletable: false })
 
   if (name === repo.mainBranch) return pinned('default branch')
-  if (name === repo.currentBranch) return pinned('current HEAD')
-  if (worktreeBranches.has(name))
-    return pinned('checked out in a worktree (handle via that worktree)')
+  const held =
+    name === repo.currentBranch
+      ? 'current HEAD'
+      : worktreeBranches.has(name)
+        ? 'checked out in a worktree (handle via that worktree)'
+        : null
+  if (held !== null) {
+    // Never deletable here, but still counted as merged or not: by ancestry or
+    // an exact-head merged PR, without the patch checks a deletable row gets.
+    // `soft`: a missing default ref reads as not merged.
+    const pr = prs.get(name)
+    const { landed } = recordPr(facts, pr, sha, repo)
+    facts['merged'] = landed || git.at(repo.root).soft.isAncestor(sha, landedRef(repo))
+    return pinned(held)
+  }
 
   // Work merged only into an unpushed local default has not landed. A missing
   // remote-tracking ref exits 128: ancestry unknown (null).
@@ -213,6 +227,8 @@ export function classifyLocalBranch(opts: {
   if (patch !== null) recordLanding(facts, patch)
   const patchLanded = patch !== null && patch.check !== null
   const unmerged = !landed && !isAncestor && !landingConfirmed(patch)
+  // Merged: the work is on the default branch, by ancestry, an exact-head merged PR or a patch match.
+  facts['merged'] = landed || isAncestor || patchLanded
   if (!landed && !isAncestor) {
     facts['unique_commits'] = git.at(repo.root).aheadBehind(repo.mainBranch, sha).ahead
   }
@@ -293,6 +309,7 @@ export function gatherRemoteBranches(
   localBranchNames: ReadonlySet<string>,
   git: Git,
   only?: string,
+  tick?: (done: number, total: number) => void,
 ): SweepItem[] {
   if (repo.remote === null) return []
   // Default door: an unreachable remote throws rather than rendering as "the
@@ -300,7 +317,8 @@ export function gatherRemoteBranches(
   const pattern = only === undefined ? undefined : `refs/heads/${only}`
   const rows = git.at(repo.root).lsRemote(repo.remote, pattern, { heads: true })
   const items: SweepItem[] = []
-  for (const { sha, ref } of rows) {
+  for (const [i, { sha, ref }] of rows.entries()) {
+    tick?.(i, rows.length)
     if (!ref.startsWith('refs/heads/')) continue
     const name = ref.slice('refs/heads/'.length)
     if (only !== undefined && name !== only) continue
@@ -353,6 +371,8 @@ export function classifyRemoteBranch(opts: {
   if (patch !== null) recordLanding(facts, patch)
   const patchLanded = patch !== null && patch.check !== null
   const unmerged = !landed && !isAncestor && !landingConfirmed(patch)
+  // Merged: the work is on the default branch, by ancestry, an exact-head merged PR or a patch match.
+  facts['merged'] = landed || isAncestor || patchLanded
   if (!landed && !isAncestor) {
     // Unknown (null) when the clone lacks `sha` or `remoteMain`, as above.
     const counted = git.at(repo.root).try.aheadBehind(remoteMain, sha)

@@ -7,9 +7,9 @@ remote branches, classifying each as `safe-to-delete`, `safe-to-keep` or
 `needs-investigation` — with the evidence behind the verdict and the literal
 command that would act on it.
 
-The sweep never deletes anything. It emits commands, and can write the
-deletable rows as a plan. `repo-cleaner apply` deletes the plan rows you
-select, after checking each one again.
+`repo-cleaner` (or `repo-cleaner status`) never deletes anything. It prints
+the commands that would. `repo-cleaner apply` deletes: it checks each row
+again, shows you the steps and asks before it runs them.
 
 ```console
 $ repo-cleaner
@@ -201,13 +201,40 @@ approves them by name:
 A row kept for structure (default branch, current HEAD, a branch held by a
 worktree, the primary or caller's worktree) has `deletable: false`.
 
+## Commands
+
+```bash
+repo-cleaner [status]   # the report: what is merged, what can go (the default)
+repo-cleaner summary    # counts per repository: total, merged, delete, review, keep
+repo-cleaner plan       # the deletable rows as a plan, to stdout or -o <file>
+repo-cleaner apply      # re-check, show the steps, ask, delete
+```
+
+All four take the same paths and sweep options.
+
+```console
+$ repo-cleaner summary
+/Users/me/work/api  (acme/api, default main, origin)
+                   total  merged  delete  review   keep
+  local branches      12       8       6       1      5
+  worktrees            4       3       2       1      1
+  remote branches     40      31      30       6      4
+
+38 to delete, 8 to review, across 1 repository.
+```
+
+`merged` counts rows whose work is on the default branch: by ancestry, by a
+merged PR at the branch's head, or by a patch match. A branch checked out in a
+worktree counts as merged by ancestry or PR alone. The default branch and the
+primary worktree are counted in `total` but not judged. Each row's verdict is
+in its `facts.merged`.
+
 ## Scope is opt-in
 
 ```bash
 repo-cleaner                        # the repository you are standing in
 repo-cleaner ~/work/api ~/work/web  # named repositories
 repo-cleaner ~/Developer            # every checkout under it
-repo-cleaner --all                  # every repository in the config file
 ```
 
 A bare invocation never fans out. What an argument names is read off the disk
@@ -233,87 +260,73 @@ one that says which it could not find.
 
 ## Options
 
+Every command that sweeps takes these:
+
 | Flag | Effect |
 | --- | --- |
-| `--all` | Sweep the repositories named in the config file |
-| `--config <path>` | Config file to read |
-| `--scope <list>` | `local-branches`, `worktrees`, `remote-branches` |
+| `--only <list>` | `worktrees`, `branches`, `remotes` (default: all three) |
+| `--branch <name\|HEAD>` | One branch of this repository: its worktree, local and remote branch. Refuses the default branch |
 | `--remote <name>` | Remote to measure against (default `origin`) |
 | `--no-gh` | Classify on git evidence alone |
 | `--no-fetch` | Skip the fetch; the header then says `not fetched` |
+
+`status` also takes:
+
+| Flag | Effect |
+| --- | --- |
 | `--keep` | Include `safe-to-keep` rows in the report |
 | `--commands` | Print the proposed commands of rows that need no authorization, and nothing else |
 | `--output json` | The full inventory, facts included |
-| `--branch <name\|HEAD>` | Sweep one branch of this repository: its worktree, local and remote branch. Refuses the default branch |
-| `--write-plan` | Write the deletable rows as a plan for `apply` |
-| `--plan-out <path>` | Write the plan here; implies `--write-plan` |
-| `--version` | Print `repo-cleaner <version>` and exit; it must be the first argument |
 
-A checkout directory named `apply` is swept as `./apply`, and one named `dev` as
-`./dev`: `dev` runs the tool from a checkout (see Running from a checkout).
+`--version` prints `repo-cleaner <version>` and exits; it must be the first
+argument. A checkout directory named like a command (`status`, `summary`,
+`plan`, `apply`, `dev`) is swept as `./status` and so on: `dev` runs the tool from a
+checkout (see Running from a checkout).
 
 ## Plan and apply
 
 ```bash
-repo-cleaner --branch HEAD --plan-out plan.json
-repo-cleaner apply --plan plan.json --row worktree:/path/to/wt --row local_branch:feat/x
+repo-cleaner apply                          # sweep, show the steps, ask, delete
+repo-cleaner apply --only worktrees --yes   # no question
+repo-cleaner plan -o plan.json              # save the plan to review or edit
+repo-cleaner apply --plan plan.json --row local_branch:feat/x
+repo-cleaner plan | repo-cleaner apply --plan - --yes
 ```
 
 A plan holds each deletable row with a fingerprint of the facts behind its
-verdict. `apply` sweeps again and drops a selected row that is gone, no longer
-deletable, whose facts moved, or whose `requires` was not granted with
-`--authorize <name>` (every row) or `--authorize <name>=<category>:<id>` (one
-row). It then removes worktrees, deletes local branches, deletes remote
-branches and prunes, in that order. Branch deletes are compare-and-swap, every
-step is verified, and the first failure stops the run.
+verdict. `apply` either sweeps and plans in memory, or reads a plan with
+`--plan <file>` (`-` reads stdin). With no `--row` it applies every row judged
+`safe-to-delete` and drops each row to review as `needs-review`. Name a row
+with `--row <category>:<id>` to apply it, review rows included.
 
-A receipt records every step and is rewritten after each one. Plans and receipts go under
-`repo-cleaner/plans/` and `repo-cleaner/receipts/` in
-[`@osdlc/tiered-dirs`](https://www.npmjs.com/package/@osdlc/tiered-dirs)' standalone durable home
-(`repo-cleaner` directory, `REPO_CLEANER_*` override variables), unless `--plan-out` or `--receipt-dir` says
-otherwise. `--dry-run` checks again and prints the steps without writing anything.
+Before it deletes anything, `apply` sweeps again and drops a row that is gone,
+no longer deletable, whose facts moved, or that carries a risk you did not
+accept with `--allow <risk>` (every row) or `--allow <risk>=<category>:<id>`
+(one row). It prints the steps it would run and asks `Delete N items? [y/N]`.
+`--yes` skips the question. With no terminal to ask on and no `--yes`, it
+refuses with exit 2 rather than deleting. `--plan -` needs `--yes` or
+`--dry-run`, because stdin carries the plan. `--dry-run` prints the steps and
+stops.
+
+On yes it runs only the steps it showed: worktrees first, then local branches,
+remote branches and a prune, in that order. Branch deletes are
+compare-and-swap, every step is verified, and the first failure stops the run.
+
+A receipt records every step and is rewritten after each one. With
+`--plan plan.json` it goes beside the plan, as
+`plan.receipt-<timestamp>.json`. `--receipt <file>` puts it anywhere. A run
+that swept, or read its plan from stdin, writes a receipt only when
+`--receipt` names one; the printed steps are its record.
 
 ## Exit codes
 
 | Code | Meaning |
 | --- | --- |
-| `0` | Swept; or every selected row was applied or dropped with a reason |
-| `1` | Failed against the state it found: a `{name}` token nothing defines, an unreadable plan, a row not in the plan |
-| `2` | Cannot run as typed: an unknown flag, a malformed `--row`, `--branch` with `--all` or a path |
+| `0` | Swept; or `apply` ran, was declined, or had nothing to run |
+| `1` | Failed against the state it found: an unreadable plan, a row not in the plan |
+| `2` | Cannot run as typed: an unknown flag, a malformed `--row`, `--branch` with a path, `apply` with nobody to ask and no `--yes` |
 | `10` | Nothing to sweep: no entry named a repository |
 | `11` | `apply` stopped at a failed step; the receipt says which |
-
-## Configuration
-
-Only the CLI reads a config file. The library takes repositories as an
-argument, so a host that already knows where its repositories are passes them
-in.
-
-```yaml
-paths:
-  dev: ~/Developer
-repos:
-  - '{dev}'
-  - ~/work/api
-```
-
-`paths:` names a directory once; any `repos:` entry then refers to it as
-`{name}`. A token nothing defines is an error, not an empty path.
-
-The file is [`@osdlc/config-layers`](https://www.npmjs.com/package/@osdlc/config-layers)'s machine config — `config.yaml` in the host
-OS's config home, resolved through
-[`@osdlc/tiered-dirs`](https://www.npmjs.com/package/@osdlc/tiered-dirs)' standalone tier (`repo-cleaner`
-directory, `REPO_CLEANER_*` override variables):
-
-| OS | Path |
-| --- | --- |
-| macOS | `~/Library/Application Support/repo-cleaner/config.yaml` |
-| Linux and other | `$XDG_CONFIG_HOME/repo-cleaner/config.yaml`, else `~/.config/repo-cleaner/config.yaml` |
-| Windows | `%APPDATA%\repo-cleaner\config.yaml` |
-
-`REPO_CLEANER_MACHINE_CONFIG`, or `--config <path>`, relocates it. A missing,
-unreadable or malformed file degrades to no repositories rather than failing
-the run.
 
 ## As a library
 

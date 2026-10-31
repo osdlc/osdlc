@@ -5,8 +5,6 @@
  */
 
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-
 import { z } from 'zod'
 
 import { AUTHORIZATIONS, type SweepItem } from './types.ts'
@@ -60,8 +58,8 @@ export function isPlanCategory(category: string): category is PlanCategory {
 /**
  * The facts a row's verdict rests on. A branch: its sha and its PR's number
  * and state. A worktree: HEAD, branch, how much unlanded work it holds and
- * whether its lock was stale, so a lock taken or revived after planning drops
- * the row.
+ * whether its lock was stale and whether it is on disk, so a lock taken or
+ * revived after planning, or a directory that came back, drops the row.
  */
 export function fingerprint(item: PlannableRow): Record<string, unknown> {
   const f = item.facts
@@ -72,6 +70,9 @@ export function fingerprint(item: PlannableRow): Record<string, unknown> {
       dirty_files: f['dirty_files'] ?? null,
       unpushed_commits: f['unpushed_commits'] ?? null,
       stale_lock: f['stale_lock'] ?? null,
+      // Prune or remove: a directory that came back between plan and apply
+      // must not turn a prune into a remove.
+      on_disk: f['on_disk'] ?? null,
     }
   }
   const pr = f['pr'] as { number?: unknown; state?: unknown } | undefined
@@ -111,10 +112,6 @@ export function fileStamp(d: Date): string {
   return d.toISOString().replace(/[:.]/g, '-')
 }
 
-export function stampedPath(dir: string, d: Date): string {
-  return join(dir, `${fileStamp(d)}.json`)
-}
-
 export function writePlan(path: string, plan: Plan): void {
   writeJsonAtomic(path, plan)
 }
@@ -122,17 +119,33 @@ export function writePlan(path: string, plan: Plan): void {
 /** A plan file that cannot be read or does not match {@link PlanSchema}. */
 export class PlanReadError extends Error {}
 
-/** @throws PlanReadError */
-export function readPlan(path: string): Plan {
+/**
+ * Parse a plan's JSON text. `source` names where it came from, for the error.
+ * @throws PlanReadError
+ */
+export function parsePlan(text: string, source: string): Plan {
   let raw: unknown
   try {
-    raw = JSON.parse(readFileSync(path, 'utf-8'))
+    raw = JSON.parse(text)
+  } catch (err) {
+    throw new PlanReadError(
+      `cannot read plan ${source}: ${err instanceof Error ? err.message : String(err)}`,
+    )
+  }
+  const parsed = PlanSchema.safeParse(raw)
+  if (!parsed.success) throw new PlanReadError(`bad plan ${source}: ${parsed.error.message}`)
+  return parsed.data
+}
+
+/** @throws PlanReadError */
+export function readPlan(path: string): Plan {
+  let text: string
+  try {
+    text = readFileSync(path, 'utf-8')
   } catch (err) {
     throw new PlanReadError(
       `cannot read plan ${path}: ${err instanceof Error ? err.message : String(err)}`,
     )
   }
-  const parsed = PlanSchema.safeParse(raw)
-  if (!parsed.success) throw new PlanReadError(`bad plan ${path}: ${parsed.error.message}`)
-  return parsed.data
+  return parsePlan(text, path)
 }
