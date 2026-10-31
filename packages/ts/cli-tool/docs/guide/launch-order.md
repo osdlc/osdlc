@@ -1,4 +1,7 @@
-# Launch order: which copy of a tool runs
+---
+title: Launch order
+description: Which copy of a tool runs when you type its name, how devlink decides, and how other tools do it.
+---
 
 A tool built on cli-tool can exist in several places at once: the copy you
 installed globally, a development checkout you are working on, and a copy a
