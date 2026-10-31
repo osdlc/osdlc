@@ -182,6 +182,7 @@ export function isStalePush(rejection: PushRejection): boolean {
     case 'tag-exists':
     case 'ref-conflict':
     case 'hook-declined':
+    case 'atomic-failed':
     case 'other':
       return false
   }
@@ -586,11 +587,11 @@ function pushPreview(git: Git, target: UpdateTarget, remoteHead: string): PushPr
  */
 function pushUpdate(git: Git, target: UpdateTarget, settings: UpdateSettings): PushReport {
   const refspec = `HEAD:refs/heads/${target.head}`
-  if (target.strategy !== 'rebase') return git.pushPorcelain(settings.remote, refspec)
+  if (target.strategy !== 'rebase') return git.push(settings.remote, refspec)
   if (target.headOid === null) {
     throw new Error(`refusing to force-push ${target.head} without a known head sha to pin to`)
   }
-  return git.pushPorcelain(settings.remote, refspec, {
+  return git.push(settings.remote, refspec, {
     forceWithLease: { ref: `refs/heads/${target.head}`, expect: target.headOid },
   })
 }

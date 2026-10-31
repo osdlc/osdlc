@@ -93,9 +93,15 @@ describe('integration verbs — argv', () => {
     })
     git.push('origin', 'HEAD:x', { forceWithLease: true })
     git.push('origin', 'HEAD:x')
-    expect(calls[0]).toEqual(['push', '--force-with-lease=refs/heads/x:abc123', 'origin', 'HEAD:x'])
-    expect(calls[1]).toEqual(['push', '--force-with-lease', 'origin', 'HEAD:x'])
-    expect(calls[2]).toEqual(['push', 'origin', 'HEAD:x'])
+    expect(calls[0]).toEqual([
+      'push',
+      '--porcelain',
+      '--force-with-lease=refs/heads/x:abc123',
+      'origin',
+      'HEAD:x',
+    ])
+    expect(calls[1]).toEqual(['push', '--porcelain', '--force-with-lease', 'origin', 'HEAD:x'])
+    expect(calls[2]).toEqual(['push', '--porcelain', 'origin', 'HEAD:x'])
   })
 })
 

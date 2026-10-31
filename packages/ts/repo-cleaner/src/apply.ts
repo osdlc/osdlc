@@ -19,7 +19,7 @@ import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 import type { CommandRunner } from '@osdlc/command-seam'
-import { CommandFailed, Git } from '@osdlc/typed-git'
+import { CommandFailed, Git, PUSH_REJECTIONS } from '@osdlc/typed-git'
 
 import { localDeleteCommand, remoteDeleteCommand } from './branches.ts'
 import type { HostHooks } from './hooks.ts'
@@ -322,7 +322,14 @@ function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe
     case 'delete-remote': {
       const remote = String(row!.item.facts['remote'])
       const ref = `refs/heads/${String(row!.item.facts['branch'])}`
-      at.push(remote, `:${ref}`, { forceWithLease: { ref, expect: step.expected_sha! } })
+      const report = at.push(remote, `:${ref}`, {
+        forceWithLease: { ref, expect: step.expected_sha! },
+      })
+      const refused = report.refs.find((r) => r.flag === '!')
+      if (refused?.flag === '!') {
+        const why = refused.rawReason === null ? '' : ` (${refused.rawReason})`
+        throw new Error(`${refused.summary}${why}: ${PUSH_REJECTIONS[refused.rejection].message}`)
+      }
       if (at.lsRemote(remote, ref).some((r) => r.ref === ref)) {
         throw new Error(`ls-remote still lists ${ref}`)
       }

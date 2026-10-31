@@ -1949,31 +1949,23 @@ export function forceWithLeaseArg(lease: ForceLease): string {
 
 /** Options for {@link push}. */
 export interface PushOptions {
-  /** `--force-with-lease`: `true` for the bare flag, a {@link ForceLease} to pin it. */
-  forceWithLease?: boolean | ForceLease | undefined
   /**
-   * `--delete` — delete `refspec` on the remote rather than pushing to it.
-   * Combines with `forceWithLease`, so a pinned lease deletes the remote ref
-   * only while it still holds the expected sha.
+   * `--force-with-lease`: a {@link ForceLease} to pin it, one lease per ref
+   * for a multi-ref push, or `true` for the bare flag. `true` is the unsafe
+   * form. It trusts whatever the local remote-tracking ref says, and a
+   * background fetch can bring that up to date. The lease then blocks
+   * nothing, and a concurrent push is overwritten. Pin the lease whenever the
+   * expected remote sha is known. An empty list throws a `TypeError`.
+   */
+  forceWithLease?: boolean | ForceLease | readonly ForceLease[] | undefined
+  /**
+   * `--delete` — delete each `refspec` on the remote rather than pushing to
+   * it. Combines with `forceWithLease`, so a pinned lease deletes the remote
+   * ref only while it still holds the expected sha.
    */
   delete?: boolean | undefined
-}
-
-/**
- * Push a refspec, or delete it on the remote with `{ delete: true }`.
- *
- * `forceWithLease` takes a {@link ForceLease} for the pinned form, or `true`
- * for the bare `--force-with-lease`. `true` is the unsafe form. It trusts
- * whatever the local remote-tracking ref says, and a background fetch can
- * bring that up to date. The lease then blocks nothing, and a concurrent push
- * is overwritten. Pin the lease whenever the expected remote sha is known.
- */
-export function push(remote: string, refspec: string, opts: PushOptions = {}): GitVerb<void> {
-  const argv = ['push']
-  if (opts.delete) argv.push('--delete')
-  argv.push(...forceWithLeaseArgs('push', opts.forceWithLease))
-  argv.push(positional('push', 'remote', remote), positional('push', 'refspec', refspec))
-  return { argv, absent: NONE, parse: nothing }
+  /** `--atomic` — the remote updates every ref or none. */
+  atomic?: boolean | undefined
 }
 
 /**
@@ -1993,18 +1985,6 @@ function forceWithLeaseArgs(
   }
   if (typeof lease === 'object' && lease !== null) return [forceWithLeaseArg(lease as ForceLease)]
   throw new Error(`force-with-lease: unsupported value ${JSON.stringify(lease)}`)
-}
-
-/** Options for {@link pushPorcelain}. */
-export interface PushPorcelainOptions {
-  /**
-   * `--force-with-lease`: `true` for the bare form, a {@link ForceLease}, or
-   * one lease per ref for a multi-ref push. See {@link push} for why `true` is
-   * the unsafe form. An empty list throws a `TypeError`.
-   */
-  forceWithLease?: boolean | ForceLease | ForceLease[] | undefined
-  /** `--atomic` — the remote updates every ref or none. */
-  atomic?: boolean | undefined
 }
 
 /**
@@ -2029,11 +2009,14 @@ export type PushFlag = ' ' | '+' | '-' | '*' | '!' | '='
  * - `lock-failed`: another writer moved or deleted the ref at the remote
  *   after the lease check passed.
  * - `hook-declined`: a remote hook refused the ref.
+ * - `atomic-failed`: another ref of an `--atomic` push failed, so this one
+ *   was not updated. The other ref carries the cause.
  * - `other`: anything else, kept in `rawReason` and `detail`. This includes
- *   a lock file in the way, an unwritable refs directory, the collateral refs
- *   of a failed `--atomic` push, and git's `new shallow roots not allowed`,
- *   `remote does not support deleting refs` and `remote failed to report
- *   status`.
+ *   a lock file in the way, an unwritable refs directory, and git's `new
+ *   shallow roots not allowed`, `remote does not support deleting refs` and
+ *   `remote failed to report status`.
+ *
+ * {@link PUSH_REJECTIONS} explains each one and links git's documentation.
  */
 export type PushRejection =
   | 'stale'
@@ -2043,7 +2026,97 @@ export type PushRejection =
   | 'ref-conflict'
   | 'lock-failed'
   | 'hook-declined'
+  | 'atomic-failed'
   | 'other'
+
+/** One entry of {@link PUSH_REJECTIONS}. */
+export interface PushRejectionInfo {
+  /** One line: what happened. */
+  readonly message: string
+  /** Why git refuses it, and how git words it by version. */
+  readonly explanation: string
+  /** What to do next. */
+  readonly hint: string
+  /** The section of git's documentation that covers it. */
+  readonly docs: string
+}
+
+const GIT_PUSH_DOCS = 'https://git-scm.com/docs/git-push'
+
+/**
+ * A reference entry for every {@link PushRejection}: a one-line `message`, a
+ * longer `explanation`, a `hint` and a link to git's documentation.
+ *
+ * ```ts
+ * const info = PUSH_REJECTIONS[ref.rejection]
+ * console.error(`${ref.dst}: ${info.message} ${info.hint} (${info.docs})`)
+ * ```
+ */
+export const PUSH_REJECTIONS: Readonly<Record<PushRejection, PushRejectionInfo>> = Object.freeze({
+  stale: {
+    message: 'The remote ref is not where the lease expected it.',
+    explanation:
+      'With `--force-with-lease`, git compares the remote ref with the expected value before it sends anything. They differed, so someone else pushed to the ref since you last looked, and git refused rather than overwrite their work. A create-only lease fails this way when the ref exists. `remote ref updated since checkout` is the same check under `--force-if-includes`.',
+    hint: 'Fetch, look at what changed, and push again with the new expected value.',
+    docs: `${GIT_PUSH_DOCS}#Documentation/git-push.txt---force-with-lease`,
+  },
+  'non-fast-forward': {
+    message: 'The push would discard commits on the remote.',
+    explanation:
+      'The remote ref has commits that the pushed commit does not contain, and the push was not forced. `fetch first` says the same when this git does not have the remote commits at all; `needs force` when the remote ref or the pushed object is not a commit.',
+    hint: 'Fetch and integrate the remote commits, or force the push with a pinned lease.',
+    docs: `${GIT_PUSH_DOCS}#_note_about_fast_forwards`,
+  },
+  'tag-exists': {
+    message: 'The tag already exists on the remote.',
+    explanation:
+      'git does not move an existing tag unless the push is forced, so a retry fails the same way.',
+    hint: 'Push a new tag name, or force the push if replacing the tag is intended.',
+    docs: `${GIT_PUSH_DOCS}#_push_rules`,
+  },
+  'already-exists': {
+    message: 'Another push created the ref first.',
+    explanation:
+      'The push would have created the ref, but when the remote locked it, it already existed: another writer won a race on the remote. git before 2.51 reports this as `failed to update ref`, with `reference already exists` in a `remote: error:` line.',
+    hint: 'Fetch, look at the ref the other push created, and decide whether to push again.',
+    docs: `${GIT_PUSH_DOCS}#Documentation/git-push.txt---force-with-lease`,
+  },
+  'ref-conflict': {
+    message: 'The ref name collides with another ref on the remote.',
+    explanation:
+      'Ref names are paths, so `refs/heads/x` and `refs/heads/x/child` cannot both exist: one would have to be a file and a directory at once. The remote already has one of them. git before 2.51 reports this as `failed to update ref`, with the cause in a `remote: error:` line.',
+    hint: 'Pick a name that is not a prefix or an extension of an existing ref, or delete the other ref first.',
+    docs: `${GIT_PUSH_DOCS}#_output`,
+  },
+  'lock-failed': {
+    message: 'The remote ref moved while the push was updating it.',
+    explanation:
+      'The lease check passed, but when the remote locked the ref to update it, the ref no longer held the expected value, or no longer existed. Another push won a race on the remote. git before 2.51 reports this as `failed to update ref`, with `is at … but expected …` in a `remote: error:` line.',
+    hint: 'Treat it like a stale lease: fetch, look at what changed, and push again.',
+    docs: `${GIT_PUSH_DOCS}#Documentation/git-push.txt---force-with-lease`,
+  },
+  'hook-declined': {
+    message: 'A hook on the remote refused the push.',
+    explanation:
+      "The remote's `pre-receive` hook refuses the whole push; its `update` hook refuses one ref. GitHub reports branch protection as `protected branch hook declined`. The hook's own message is in the `remote:` lines on stderr.",
+    hint: "Read the hook's message on stderr, which says what the remote requires.",
+    docs: 'https://git-scm.com/docs/githooks#pre-receive',
+  },
+  'atomic-failed': {
+    message: 'Another ref in this atomic push failed, so this one was not updated.',
+    explanation:
+      'With `--atomic` the remote updates every ref or none. This ref was fine on its own; another ref in the same push carries the real reason. The client says `atomic push failed` when it refused locally, the remote `atomic transaction failed`.',
+    hint: 'Look at the other refs in the report for the cause.',
+    docs: `${GIT_PUSH_DOCS}#Documentation/git-push.txt---atomic`,
+  },
+  other: {
+    message: 'git refused the ref for a reason this library does not classify.',
+    explanation:
+      "The reason text is kept verbatim. Common ones are a stale lock file or an unwritable refs directory on the remote, and the remote's safety settings, such as `receive.denyCurrentBranch` or `receive.denyDeletes`.",
+    hint: 'Read `rawReason` and `detail` on the ref, and the remote lines on stderr.',
+    docs: `${GIT_PUSH_DOCS}#_output`,
+  },
+})
 
 /** The fields every ref line of `git push --porcelain` has. */
 interface PushRefFields {
@@ -2077,7 +2150,7 @@ export type PushRefResult =
     })
   | (PushRefFields & { flag: Exclude<PushFlag, '!'>; rejection?: never; detail?: never })
 
-/** What {@link pushPorcelain} returns. */
+/** What {@link push} returns. */
 export interface PushReport {
   /** One entry per ref line. A remote with several push URLs repeats its refs. */
   refs: PushRefResult[]
@@ -2115,6 +2188,7 @@ function pushRejection(reason: string | null, detail: string | null): PushReject
   }
   if (r === 'already exists') return 'tag-exists'
   if (r.includes('hook declined')) return 'hook-declined'
+  if (r === 'atomic push failed' || r === 'atomic transaction failed') return 'atomic-failed'
   if (r === 'refname conflict') return 'ref-conflict'
   if (r === 'incorrect old value provided' || r === 'reference does not exist') {
     return 'lock-failed'
@@ -2168,32 +2242,34 @@ function parsePushReport(stdout: string, stderr: string): PushReport {
 }
 
 /**
- * `git push --porcelain [--atomic] [--force-with-lease…] <remote> <refspec…>`,
- * read into one result per ref.
+ * `git push --porcelain [--delete] [--atomic] [--force-with-lease…] <remote>
+ * <refspec…>`, read into one result per ref. `{ delete: true }` deletes each
+ * refspec on the remote instead.
  *
- * A rejected ref is a value, not a throw. git exits 1 when any ref is
- * rejected, so exit 1 is declared absent, and the parse throws unless a ref
- * line says `!`. A local pre-push hook decline and a refspec that matches
- * nothing exit 1 with no ref lines, so they throw. So does every transport
- * failure (exit 128: an unknown remote, auth, network, TLS), as the
- * classified failure.
+ * A rejected ref is a value, not a throw: check each ref's `flag`, or
+ * whether any is `'!'`. git exits 1 when any ref is rejected, so exit 1 is
+ * declared absent, and the parse throws unless a ref line says `!`. A local
+ * pre-push hook decline and a refspec that matches nothing exit 1 with no
+ * ref lines, so they throw. So does every transport failure (exit 128: an
+ * unknown remote, auth, network, TLS), as the classified failure.
  *
  * Runs with `LC_ALL=C`, so the caller's locale does not change the reason
  * text. An empty refspec list throws a `TypeError`: git would push its
  * default set.
  */
-export function pushPorcelain(
+export function push(
   remote: string,
-  refspec: string | string[],
-  opts: PushPorcelainOptions = {},
+  refspec: string | readonly string[],
+  opts: PushOptions = {},
 ): GitVerb<PushReport> {
   const specs = typeof refspec === 'string' ? [refspec] : refspec
-  if (specs.length === 0) throw new TypeError('typed-git: pushPorcelain: refspec list is empty')
+  if (specs.length === 0) throw new TypeError('typed-git: push: refspec list is empty')
   const argv = ['push', '--porcelain']
+  if (opts.delete) argv.push('--delete')
   if (opts.atomic) argv.push('--atomic')
-  argv.push(...forceWithLeaseArgs('pushPorcelain', opts.forceWithLease))
-  argv.push(positional('pushPorcelain', 'remote', remote))
-  for (const spec of specs) argv.push(positional('pushPorcelain', 'refspec', spec))
+  argv.push(...forceWithLeaseArgs('push', opts.forceWithLease))
+  argv.push(positional('push', 'remote', remote))
+  for (const spec of specs) argv.push(positional('push', 'refspec', spec))
   return {
     argv,
     env: C_LOCALE,
