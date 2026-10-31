@@ -39,7 +39,8 @@ An installed `way` can run the source of a checkout instead, through
 [`@osdlc/cli-tool/devlink`](https://www.npmjs.com/package/@osdlc/cli-tool).
 `way dev link` makes one checkout the one every `way` on the machine runs, and
 `WAY_HOME` names one for a shell. Every link is remembered. `way dev` is a
-contributor tool, so `way --help` does not list it.
+contributor tool, so `way --help` does not list it. `dev` must be the first
+word: put its flags after it, as in `way dev status --json`.
 
 ```sh
 way dev install          # once: put shims for this checkout on PATH as way and wayfinder
@@ -601,7 +602,7 @@ repository:
 | `providers` | yes | a trusted project file can add tools when execution is allowed |
 | `clean` | accepted, unused | resolves every path from the environment and the home directory |
 | `guide` | accepted, unused | its argument is a topic name |
-| `dev` | no | its state is devlink's, keyed on the tool name; not listed in the help |
+| `dev` | no | its state is devlink's, keyed on the tool name; it takes no global flags, and none before it |
 
 `way help` lists the commands and the global flags. `way help <command>` and
 `way <command> --help` show one command, and `--all` adds every note. `way

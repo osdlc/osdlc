@@ -1,7 +1,7 @@
 /**
- * `way dev …` is devlink run from wayfinder's own `main`. The verb is matched
- * before the flags are parsed, its state goes under the injected HOME, and
- * `self` is this checkout.
+ * `way dev …` is answered by cli-tool's devlink hook, which `runWay` passes to
+ * `runMain`. Its state goes under the injected HOME, and `self` is the
+ * checkout of the running script.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
@@ -42,6 +42,28 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true })
 })
 
+/** The script a checkout runs: its `src/cli.ts`. */
+const ownScript = () => join(checkoutRoot()!, 'src', 'cli.ts')
+
+/**
+ * Run `way` with `argv` and `env` through `runWay`, as this checkout's
+ * `src/cli.ts` unless `opts` names another script, and return its exit code
+ * and output.
+ */
+async function run(
+  argv: string[],
+  env: Record<string, string | undefined>,
+  opts: Omit<RunWayOptions, 'argv' | 'context'> = {},
+) {
+  const io = captureIo()
+  try {
+    await runWay({ argv, context: { io, cwd: tmp, env }, home, script: ownScript(), ...opts })
+    return { code: process.exitCode, out: io.out, err: io.err }
+  } finally {
+    process.exitCode = undefined
+  }
+}
+
 describe('way dev', () => {
   test('the spec names this package: the shim is the marker and the launcher', () => {
     expect(WAYFINDER_SPEC.name).toBe('way')
@@ -57,14 +79,14 @@ describe('way dev', () => {
       mkdirSync(join(checkout, 'src'), { recursive: true })
       writeFileSync(join(checkout, 'src', 'cli.ts'), '')
       writeFileSync(join(checkout, 'package.json'), JSON.stringify({ name: '@osdlc/wayfinder' }))
-      const link = captureIo()
-      expect(await main(['dev', 'link', checkout], { HOME: home }, home, link)).toBe(0)
-      const io = captureIo()
-      expect(await main(['dev', 'status'], { HOME: home }, home, io)).toBe(0)
+      const link = await run(['dev', 'link', checkout], { HOME: home })
+      expect(link.code).toBe(0)
+      const status = await run(['dev', 'status'], { HOME: home })
+      expect(status.code).toBe(0)
       const raw = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/
-      expect(io.out).toContain('co')
-      expect(io.out).not.toContain('cwd:')
-      expect(io.out).not.toMatch(raw)
+      expect(status.out).toContain('co')
+      expect(status.out).not.toContain('cwd:')
+      expect(status.out).not.toMatch(raw)
       expect(link.out).not.toMatch(raw)
     },
   )
@@ -75,20 +97,19 @@ describe('way dev', () => {
     mkdirSync(join(checkout, 'src'), { recursive: true })
     writeFileSync(join(checkout, 'src', 'cli.ts'), '')
     writeFileSync(join(checkout, 'package.json'), JSON.stringify({ name: '@osdlc/wayfinder' }))
-    expect(await main(['dev', 'link', checkout], { HOME: home }, home, captureIo())).toBe(0)
-    const io = captureIo()
-    expect(await main(['dev', 'status', '--json'], { HOME: home }, home, io)).toBe(0)
-    expect(io.out).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e]/)
-    const s = JSON.parse(io.out) as { selection: { checkout: string } }
+    expect((await run(['dev', 'link', checkout], { HOME: home })).code).toBe(0)
+    const r = await run(['dev', 'status', '--json'], { HOME: home })
+    expect(r.code).toBe(0)
+    expect(r.out).not.toMatch(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u202a-\u202e]/)
+    const s = JSON.parse(r.out) as { selection: { checkout: string } }
     expect(s.selection.checkout).toBe(checkout)
   })
 
   // POSIX only: `way dev` is not available on Windows; its launcher is a POSIX shell script.
   test.skipIf(WINDOWS)('status reports local when nothing is linked', async () => {
-    const io = captureIo()
-    const code = await main(['dev', 'status', '--json'], { HOME: home }, home, io)
-    expect(code).toBe(0)
-    const s = JSON.parse(io.out) as { selection: { source: string }; self: string }
+    const r = await run(['dev', 'status', '--json'], { HOME: home })
+    expect(r.code).toBe(0)
+    const s = JSON.parse(r.out) as { selection: { source: string }; self: string }
     expect(s.selection.source).toBe('local')
     expect(s.self).toBe(checkoutRoot())
   })
@@ -97,30 +118,32 @@ describe('way dev', () => {
   test.skipIf(WINDOWS)(
     'link with no path links this checkout; history lists it; off clears it',
     async () => {
-      let io = captureIo()
-      // cwd is inside this checkout, so the bare link resolves to it.
-      expect(await main(['dev', 'link'], { HOME: home }, home, io)).toBe(0)
-      expect(io.out).toContain(`way now runs ${checkoutRoot()}/src/cli.ts`)
+      // The running script is in this checkout, so the bare link resolves to it.
+      let r = await run(['dev', 'link'], { HOME: home })
+      expect(r.code).toBe(0)
+      expect(r.out).toContain(`way now runs ${checkoutRoot()}/src/cli.ts`)
 
-      io = captureIo()
-      expect(await main(['dev', 'history', '--json'], { HOME: home }, home, io)).toBe(0)
-      const rows = JSON.parse(io.out) as Array<{ checkout: string; active: boolean }>
+      r = await run(['dev', 'history', '--json'], { HOME: home })
+      expect(r.code).toBe(0)
+      const rows = JSON.parse(r.out) as Array<{ checkout: string; active: boolean }>
       expect(rows).toHaveLength(1)
       expect(rows[0]).toMatchObject({ checkout: checkoutRoot(), active: true })
 
-      io = captureIo()
-      expect(await main(['dev', 'off'], { HOME: home }, home, io)).toBe(0)
-      expect(io.out).toContain('way runs the local install')
+      r = await run(['dev', 'off'], { HOME: home })
+      expect(r.code).toBe(0)
+      expect(r.out).toContain('way runs the local install')
     },
   )
 
   // POSIX only: `way dev` is not available on Windows; its launcher is a POSIX shell script.
   test.skipIf(WINDOWS)('--help exits 0 with the verb table; a bad verb exits 2', async () => {
-    let io = captureIo()
-    expect(await main(['dev', '--help'], { HOME: home }, home, io)).toBe(0)
-    expect(io.out).toContain('usage: way dev <verb>')
-    io = captureIo()
-    expect(await main(['dev', 'bogus'], { HOME: home }, home, io)).toBe(2)
+    const help = await run(['dev', '--help'], { HOME: home })
+    expect(help.code).toBe(0)
+    expect(help.out).toContain('usage: way dev <verb>')
+    const bogus = await run(['dev', 'bogus'], { HOME: home })
+    expect(bogus.code).toBe(2)
+    // The usage after the error keeps its lines.
+    expect(bogus.err).toMatch(/unknown verb 'bogus'\n\n.*\n/)
   })
 })
 
@@ -162,35 +185,17 @@ describe('the launcher hands off only to a chosen wayfinder checkout', () => {
       expect(await main(args, { HOME: home }, home, io)).toBe(0)
       expect(io.out).not.toMatch(/^\s*dev\b/m)
     }
-    const io = captureIo()
-    expect(await main(['dev', '--help'], { HOME: home }, home, io)).toBe(WINDOWS ? 1 : 0)
+    expect((await run(['dev', '--help'], { HOME: home })).code).toBe(WINDOWS ? 1 : 0)
   })
 
   test.runIf(WINDOWS)('way dev says it is not available on Windows', async () => {
-    const io = captureIo()
-    expect(await main(['dev', 'status'], { HOME: home }, home, io)).toBe(1)
-    expect(io.err).toContain('not available on Windows')
+    const r = await run(['dev', 'status'], { HOME: home })
+    expect(r.code).toBe(1)
+    expect(r.err).toContain('not available on Windows')
   })
 })
 
 describe('runWay goes through runMain', () => {
-  /** Run `way` with `argv` and `env`, and return its exit code and output. */
-  async function run(
-    argv: string[],
-    env: Record<string, string | undefined>,
-    opts: Omit<RunWayOptions, 'argv' | 'context'> = {},
-  ) {
-    const io = captureIo()
-    try {
-      await runWay({ argv, context: { io, cwd: tmp, env }, home, ...opts })
-      return { code: process.exitCode, out: io.out, err: io.err }
-    } finally {
-      process.exitCode = undefined
-    }
-  }
-
-  const ownScript = () => join(checkoutRoot()!, 'src', 'cli.ts')
-
   test('--version prints the name and the stamped version', async () => {
     const r = await run(['--version'], { HOME: home })
     expect(r.code).toBe(0)
@@ -280,17 +285,15 @@ describe('runWay goes through runMain', () => {
   })
 
   // POSIX only: `way dev` is not available on Windows.
-  test.skipIf(WINDOWS)(
-    'dev is answered by main, terminal-safe, after a global flag too',
-    async () => {
-      const checkout = fakeCheckout(join(tmp, 'co\u001b]0;pwned\u0007'), '@osdlc/wayfinder')
-      expect((await run(['dev', 'link', checkout], { HOME: home })).code).toBe(0)
-      const text = await run(['dev', 'status'], { HOME: home })
-      expect(text.code).toBe(0)
-      expect(text.out).toContain('co\ufffd]0;pwned\ufffd')
-      const json = await run(['--json', 'dev', 'status'], { HOME: home })
-      expect(json.code).toBe(0)
-      expect(JSON.parse(json.out).link.value).toBe(checkout)
-    },
-  )
+  test.skipIf(WINDOWS)('dev is answered by the hook, terminal-safe', async () => {
+    const checkout = fakeCheckout(join(tmp, 'co\u001b]0;pwned\u0007\u009b'), '@osdlc/wayfinder')
+    expect((await run(['dev', 'link', checkout], { HOME: home })).code).toBe(0)
+    const text = await run(['dev', 'status'], { HOME: home })
+    expect(text.code).toBe(0)
+    expect(text.out).toContain('co\ufffd]0;pwned\ufffd\ufffd')
+    const json = await run(['dev', 'status', '--json'], { HOME: home })
+    expect(json.code).toBe(0)
+    expect(json.out).toContain('\\u009b')
+    expect(JSON.parse(json.out).link.value).toBe(checkout)
+  })
 })

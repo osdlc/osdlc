@@ -3,10 +3,9 @@
  *
  * The commands are a `@osdlc/cli-tool` command tree (`commands/index.ts`).
  * This module is the entry point. {@link runWay} runs {@link main} through
- * cli-tool's `runMain`, which hands off to a linked checkout and answers
- * `--version` and `--where`. `main` runs `dev`, which parses its own
- * arguments, maps the old surface flags onto commands, and hands the rest to
- * the tree.
+ * cli-tool's `runMain`, whose devlink hook answers `dev` and hands off to a
+ * linked checkout, and which answers `--version` and `--where`. `main` maps
+ * the old surface flags onto commands and hands the rest to the tree.
  *
  * wayfinder's `allowExec` default is `true`. You usually run it in your own
  * repository, and a task browser that cannot see the build graph is of little
@@ -21,20 +20,19 @@ import {
   runMain,
   type CliContext,
   type CliIo,
-  type DevlinkHook,
 } from '@osdlc/cli-tool'
 import { errorDocument } from '@osdlc/cli-tool/command'
-import { devlinkHook, runDevCli } from '@osdlc/cli-tool/devlink'
+import { devlinkHook } from '@osdlc/cli-tool/devlink'
 import { installGroupSignalForwarding } from '@osdlc/command-seam'
 import { homeDir } from '@osdlc/trust-repo'
 
 import { APP, BIN } from './app.ts'
 import { createWayApp } from './commands/index.ts'
 import { GLOBALS } from './commands/shared.ts'
-import { WAYFINDER_SPEC, checkoutRoot } from './devlink.ts'
+import { WAYFINDER_SPEC } from './devlink.ts'
 import type { GuideTool } from './guide.ts'
 import { flushWrites } from './core/writes.ts'
-import { safeJsonStdout, safeStderr, safeStdout, terminalSafe } from './terminal-text.ts'
+import { safeIo, safeJsonStdout, safeStderr } from './terminal-text.ts'
 import { VERSION } from './version.generated.ts'
 
 /**
@@ -179,19 +177,6 @@ export async function main(
   io = safeStderr(io)
   const cwd = process.cwd()
 
-  // `dev` is a contributor tool that parses its own arguments, so help does
-  // not list it. `self` is this checkout, so `dev install` and a bare
-  // `dev link` know what to point at. Global flags before the word move after it.
-  const at = commandWordIndex(argv)
-  if (at !== -1 && argv[at] === 'dev') {
-    const rest = [...argv.slice(at + 1), ...argv.slice(0, at)]
-    return runDevCli(WAYFINDER_SPEC, rest, {
-      io: rest.includes('--json') ? safeJsonStdout(io) : safeStdout(io),
-      env,
-      self: checkoutRoot(),
-    })
-  }
-
   const { app, words } = createWayApp({ home, guide: () => GUIDE_TOOL })
   const aliased = rewriteAliases(argv, words)
   if ('error' in aliased) return usageError(io, argv, aliased.error)
@@ -229,44 +214,26 @@ export interface RunWayOptions {
 
 /**
  * Run `way` as a process and set its exit code, through `runMain`. The devlink
- * hook hands off to the checkout `WAY_HOME` or `way dev link` names, and
- * `runMain` answers `--version` and `--where`, then runs {@link main}. `dev`
- * is left to `main`, which answers it after global flags too and keeps its
- * output terminal-safe. What `runMain` prints itself (the hand-off line,
- * `--where`, an error no command caught) is made terminal-safe here.
+ * hook answers `dev` and hands off to the checkout `WAY_HOME` or `way dev link`
+ * names, and `runMain` answers `--version` and `--where`, then runs
+ * {@link main}. What they print themselves is made terminal-safe here.
  */
 export async function runWay(options: RunWayOptions = {}): Promise<void> {
   const argv = options.argv ?? process.argv.slice(2)
-  const hook = devlinkHook(
-    WAYFINDER_SPEC,
-    options.script === undefined ? {} : { script: options.script },
-  )
-  const devlink: DevlinkHook = (words, ctx) => {
-    const at = commandWordIndex(words)
-    return at !== -1 && words[at] === 'dev' ? null : hook(words, ctx)
-  }
-  devlink.describe = () => hook.describe?.() ?? null
-  const given = options.context
-  const base = given ?? processContext()
+  const script = options.script === undefined ? {} : { script: options.script }
+  const base = options.context ?? processContext()
   const head = argv.includes('--') ? argv.slice(0, argv.indexOf('--')) : argv
-  const out = head.includes('--json') ? safeJsonStdout(base.io) : safeStdout(base.io)
-  // Each line `runMain` writes to stderr is one line, so a newline inside it goes too.
-  const io: CliIo = {
-    ...out,
-    stderr: (text) => out.stderr(`${terminalSafe(text.replace(/\n$/, ''))}\n`),
-  }
   await runMain(
     // `main` makes its own output safe. It takes the process's streams as they
     // are, since it installs signal and broken-pipe handling only for those.
-    (words, ctx) =>
-      main([...words], ctx.env, options.home, given === undefined ? processIo : given.io),
+    (words, ctx) => main([...words], ctx.env, options.home, options.context?.io ?? processIo),
     {
       name: BIN,
       version: VERSION,
-      context: { ...base, io },
+      context: { ...base, io: safeIo(base.io, { json: head.includes('--json') }) },
       argv,
-      devlink,
-      ...(options.script === undefined ? {} : { script: options.script }),
+      devlink: devlinkHook(WAYFINDER_SPEC, script),
+      ...script,
     },
   )
 }

@@ -18,6 +18,7 @@ import { main, runWay } from '../src/cli.ts'
 import { startupSummary } from '../src/serve/index.ts'
 import {
   jsonText,
+  safeIo,
   safeJsonStdout,
   safeStderr,
   safeStdout,
@@ -124,7 +125,7 @@ describe('terminalSafe', () => {
     expect(JSON.parse(io.out)).toEqual(value)
   })
 
-  test('runWay prints an error no command caught as one terminal-safe line and exits 1', async () => {
+  test('runWay prints an error no command caught terminal-safe and exits 1', async () => {
     const io = captureIo()
     const lines: string[] = []
     const context = {
@@ -146,12 +147,25 @@ describe('terminalSafe', () => {
       process.exitCode = undefined
     }
     expect(lines).toHaveLength(1)
-    expect(lines[0]).toMatch(/^way: bad /)
-    expect(lines[0]?.slice(0, -1)).not.toMatch(RAW_CONTROL)
+    expect(lines[0]).toMatch(/^way: bad .*\nnext\n$/)
+    expect(lines[0]).not.toMatch(RAW_CONTROL)
   })
 
   test('leaves printable text, including non-ASCII, alone', () => {
     expect(terminalSafe('déploy — 部署 ✓')).toBe('déploy — 部署 ✓')
+  })
+
+  test('safeIo cleans both streams, and stdout as JSON with json', () => {
+    for (const json of [false, true]) {
+      const io = captureIo()
+      const safe = safeIo(io, { json })
+      safe.stdout(`${JSON.stringify({ v: `a ${CLIPBOARD}${C1}` })}\n`)
+      safe.stderr(`warn ${CLIPBOARD}\nnext\n`)
+      expect(io.out).not.toMatch(RAW_CONTROL)
+      expect(io.err).not.toMatch(RAW_CONTROL)
+      expect(io.err).toMatch(/\nnext\n$/)
+      if (json) expect(JSON.parse(io.out)).toEqual({ v: `a ${CLIPBOARD}${C1}` })
+    }
   })
 
   test('safeStderr cleans stderr only', () => {

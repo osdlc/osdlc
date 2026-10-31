@@ -100,3 +100,13 @@ export function safeJsonStdout(io: CliIo): CliIo {
 export function safeStderr(io: CliIo): CliIo {
   return { ...io, stderr: (text) => io.stderr(terminalSafe(text, { multiline: true })) }
 }
+
+/**
+ * `io` with both streams made terminal-safe: stdout through
+ * {@link safeJsonStdout} with `json`, else {@link safeStdout}, and stderr
+ * through {@link safeStderr}. For output wayfinder does not write itself,
+ * such as `runMain`'s `--where` and `way dev`.
+ */
+export function safeIo(io: CliIo, opts: { json: boolean }): CliIo {
+  return safeStderr(opts.json ? safeJsonStdout(io) : safeStdout(io))
+}
