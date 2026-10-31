@@ -52,6 +52,7 @@ import {
   renderJson,
   renderPreview,
   renderReceipt,
+  renderStepDone,
   renderSummary,
   renderText,
   rowsActedOn,
@@ -109,11 +110,15 @@ const SWEEP_FLAGS = {
     commaSeparated: false,
     help: 'sweep the branches of this remote with no checkout of your own, through a clone kept in the cache directory; repeatable',
   },
-  gh: { kind: 'boolean', negatable: true, help: 'classify on git evidence alone' },
+  gh: {
+    kind: 'boolean',
+    negatable: true,
+    help: 'with --remotes: classify on git evidence alone (without --remotes gh is never called)',
+  },
   fetch: {
     kind: 'boolean',
     negatable: true,
-    help: 'classify on the remote-tracking refs already on disk',
+    help: 'with --remotes: classify on the remote-tracking refs already on disk (without --remotes nothing is fetched)',
   },
   progress: {
     kind: 'boolean',
@@ -143,7 +148,8 @@ const statusCli = () =>
     name: NAME,
     summary:
       'Inventory local branches and worktrees (remote branches too with --remotes), and say ' +
-      'which have been merged into the default branch. Fetches each remote first; deletes nothing.',
+      'which have been merged into the default branch. Offline unless --remotes, which fetches ' +
+      'each remote first and asks gh about pull requests; deletes nothing.',
     positionals: PATHS,
     flags: {
       ...SWEEP_FLAGS,
@@ -310,6 +316,8 @@ type Swept =
       values: SweepValues
       /** What the sweep gathered. */
       scope: readonly Scope[]
+      /** True when the sweep did not call gh, so the re-check must not either. */
+      noGh: boolean
     }
   /** No entry named a repository; the verb reports it and exits 10. */
   | { kind: 'nothing'; result: SweepResult }
@@ -325,7 +333,11 @@ function styleFor(ctx: CliContext, stream: 'stdout' | 'stderr'): Style {
 function remotesNote(swept: Swept, style: Style): string {
   if (swept.kind !== 'ok' || swept.scope.includes('remote-branches')) return ''
   if (!swept.result.repos.some((r) => r.repo?.remote != null)) return ''
-  return style.muted('Remote branches not checked; add --remotes to include them.') + '\n'
+  return (
+    style.muted(
+      'Local only: nothing fetched, no gh, remote branches not checked; add --remotes for all three.',
+    ) + '\n'
+  )
 }
 
 /** Where `--remote-url` keeps its clones. */
@@ -389,11 +401,13 @@ function sweep(
   }
 
   const scope: Scope[] = urls.length > 0 ? ['remote-branches'] : sweepScope(only, v.remotes)
+  const online = scope.includes('remote-branches')
   const options: SweepReposOptions = {
     baseDir: ctx.cwd,
     cwd: ctx.cwd,
-    noGh: !v.gh,
-    fetch: v.fetch,
+    // Local by default means offline: the fetch and gh go with remote branches.
+    noGh: !(online && v.gh),
+    fetch: online && v.fetch,
     branch,
     // Mid-walk, while the wait is happening — the summary comes too late to
     // explain why the tool appeared to hang.
@@ -427,7 +441,7 @@ function sweep(
   const refused = branch === undefined ? null : (result.repos[0]?.error ?? null)
   if (refused !== null) return { kind: 'exit', code: failure(ctx, new Error(refused)) }
   if (result.repos.length === 0) return { kind: 'nothing', result }
-  return { kind: 'ok', result, branch, values: v, scope }
+  return { kind: 'ok', result, branch, values: v, scope, noGh: options.noGh === true }
 }
 
 /**
@@ -444,7 +458,7 @@ function reportUnreadable(ctx: CliContext, name: string, result: SweepResult): b
 function planOf(swept: Extract<Swept, { kind: 'ok' }>, now: Date): Plan {
   const opts = {
     remote: swept.values.remote ?? null,
-    noGh: !swept.values.gh,
+    noGh: swept.noGh,
     branch: swept.branch ?? null,
   }
   return {
@@ -659,11 +673,15 @@ function runApply(
   const ok = (): number => (loaded.unreadable ? EXIT.error : EXIT.ok)
 
   const repoRoot = v.repoRoot === undefined ? undefined : resolve(ctx.cwd, v.repoRoot)
-  const print = (receipt: Receipt, shownPath: string | null): void => {
+  // On a terminal the run is shown live: every step first, then each one
+  // checked off as it finishes, with a bar on the status line.
+  const live = v.output === 'text' && ctx.terminal?.stdout === true
+  const style = styleFor(ctx, 'stdout')
+  const print = (receipt: Receipt, shownPath: string | null, steps = true): void => {
     ctx.io.stdout(
       v.output === 'json'
         ? `${JSON.stringify({ receiptPath: shownPath, summary: summarizeReceipt(receipt), receipt }, null, 2)}\n`
-        : renderReceipt(receipt, shownPath, styleFor(ctx, 'stdout')),
+        : renderReceipt(receipt, shownPath, style, { steps }),
     )
   }
 
@@ -710,13 +728,17 @@ function runApply(
 
   const count = wouldRun(preview)
   if (v.dryRun || count === 0) {
-    print(preview, null)
+    if (live) ctx.io.stdout(renderPreview(preview, style))
+    else print(preview, null)
     return ok()
   }
   if (!v.yes) {
     const declined = confirm(ctx, name, preview, count, v.output === 'json', deps)
     if (declined !== null) return declined
+  } else if (live) {
+    ctx.io.stdout(renderPreview(preview, style))
   }
+  if (live) ctx.io.stdout('\n')
 
   // Only what the preview showed: rows it dropped stay dropped.
   // Pinned to their repositories: a branch name two repositories share stays two rows.
@@ -734,11 +756,21 @@ function runApply(
       dryRun: false,
       receiptPath,
       dropped: preview.dropped,
+      ...(live
+        ? {
+            onStepDone: (_i: number, _total: number, step: Step) => {
+              status.clear()
+              ctx.io.stdout(renderStepDone(step, style) + '\n')
+            },
+          }
+        : {}),
     })
   } catch (err) {
     return failure(ctx, err)
   }
-  print(receipt, receiptPath)
+  status.clear()
+  if (live) ctx.io.stdout('\n')
+  print(receipt, receiptPath, !live)
   if (receiptPath === null) {
     ctx.io.stderr(`${name}: no receipt written; pass --receipt <file> to keep one\n`)
   }

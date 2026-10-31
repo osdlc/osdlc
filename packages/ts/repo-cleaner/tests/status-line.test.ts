@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 
 import type { Step } from '../src/receipt.ts'
-import { describeStep, describeSweep, statusLine } from '../src/status-line.ts'
+import { describeStep, describeSweep, progressBar, statusLine } from '../src/status-line.ts'
 
 describe('describeSweep', () => {
   test('names the step, the item count and the repository under ~', () => {
@@ -17,13 +17,23 @@ describe('describeSweep', () => {
         },
         '/home/me',
       ),
-    ).toBe('[2/5] checking remote branches 37/427 · ~/work/api')
+    ).toBe('[2/5] checking remote branches ██░░░░░░░░░░░░░░░░░░ 37/427 · ~/work/api')
   })
 
   test('a run of one repository has no position, and a step without items no count', () => {
     expect(describeSweep({ repo: '/srv/api', index: 1, of: 1, step: 'prs' }, '/home/me')).toBe(
       'listing pull requests (gh) · /srv/api',
     )
+  })
+})
+
+describe('progressBar', () => {
+  test('fills in proportion, and an empty total is full', () => {
+    expect(progressBar(0, 4, 8)).toBe('░░░░░░░░')
+    expect(progressBar(1, 4, 8)).toBe('██░░░░░░')
+    expect(progressBar(4, 4, 8)).toBe('████████')
+    expect(progressBar(9, 4, 8)).toBe('████████')
+    expect(progressBar(0, 0, 8)).toBe('████████')
   })
 })
 
@@ -41,9 +51,11 @@ describe('describeStep', () => {
 
   test('names the row, or the repository for the closing prune', () => {
     expect(describeStep(2, 7, step({ category: 'remote_branch', id: 'origin/x' }))).toBe(
-      'deleting 3/7: delete-remote origin/x',
+      'deleting ██████░░░░░░░░░░░░░░ 3/7: delete-remote origin/x',
     )
-    expect(describeStep(6, 7, step(null))).toBe('deleting 7/7: prune-worktrees /r')
+    expect(describeStep(6, 7, step(null))).toBe(
+      'deleting █████████████████░░░ 7/7: prune-worktrees /r',
+    )
   })
 })
 

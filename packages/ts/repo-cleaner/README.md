@@ -11,10 +11,22 @@ evidence behind the verdict and the literal command that would act on it.
 the commands that would. `repo-cleaner apply` deletes: it checks each row
 again, shows you what it will delete and skip, and asks before it runs.
 
-Remote branches are left out unless you pass `--remotes` (or `--only
-remotes`, or `--remote-url`). They are shared, often number in the hundreds,
-and each one is compared with the default branch, so they make a sweep much
-slower. When they are left out, the report ends with a line saying so.
+By default it works on your own machine only: worktrees and local branches,
+nothing fetched and no `gh` call, compared with the `origin/<default>` you
+last fetched (the header says `not fetched`). `--remotes` (or `--only
+remotes`, or `--remote-url`) turns on all three things that need the
+network: it fetches each remote first, asks `gh` about pull requests, and
+sweeps remote branches. Remote branches are shared, often number in the
+hundreds, and each one is compared with the default branch, so they make a
+sweep much slower. A local report ends with a line saying what it left out.
+
+Without `gh`, a squash-merged branch is still found by comparing patches,
+but a clean worktree with no PR evidence reads `review` rather than
+`delete`.
+
+On a terminal, a long step draws a progress bar on stderr. `apply` lists
+every step it will run, then ticks each one off (`✓`, or `✗` and the error)
+as it finishes, with a bar for the whole run.
 
 On a terminal, the report and the apply preview are colored: red for a
 delete, blue for a prune, yellow for a review or a skipped row, green for a
@@ -314,8 +326,8 @@ Every command that sweeps takes these:
 | `--branch <name\|HEAD>` | One branch of this repository: its worktree and local branch, and its remote branch with `--remotes`. Refuses the default branch |
 | `--remote <name>` | Remote to measure against (default `origin`) |
 | `--remote-url <url>` | Sweep this remote's branches with no checkout of your own (see [A remote with no checkout](#a-remote-with-no-checkout)); repeatable |
-| `--no-gh` | Classify on git evidence alone |
-| `--no-fetch` | Skip the fetch; the header then says `not fetched` |
+| `--no-gh` | With `--remotes`: classify on git evidence alone. Without `--remotes`, `gh` is never called |
+| `--no-fetch` | With `--remotes`: skip the fetch; the header then says `not fetched`. Without `--remotes`, nothing is fetched |
 
 `status` also takes:
 
@@ -428,7 +440,7 @@ back as `error`, because a fan-out must not end on its first bad entry.
 before classifying, so ancestry is read against fresh remote-tracking refs.
 That fetch is the only write. A repository whose fetch fails comes back with `error` starting
 `fetch failed:` and no items. `repo.fetched` says which case applied. The
-library default is off; the CLI fetches unless given `--no-fetch`.
+library default is off; the CLI fetches with `--remotes`, unless given `--no-fetch`.
 
 ### Adding knowledge the library does not have
 

@@ -166,7 +166,7 @@ describe('status line', () => {
     )
     expect(res.code).toBe(0)
     expect(res.err).toContain('re-checking')
-    expect(res.err).toContain('deleting 1/')
+    expect(res.err).toMatch(/deleting [░█]+ 1\//)
   })
 })
 
@@ -243,7 +243,7 @@ describe('remote branches are opt-in', () => {
     expect(res.code).toBe(0)
     expect(res.out).not.toContain('remote_branch')
     expect(res.out).toContain('local_branch')
-    expect(res.out).toContain('Remote branches not checked; add --remotes to include them.')
+    expect(res.out).toContain('remote branches not checked; add --remotes for all three.')
     const json = JSON.parse(run(['plan', '--branch', BRANCH, ...SWEEP], fx.root).out) as Plan
     expect(json.repos[0]!.rows.map((r) => r.category).sort()).toEqual(['local_branch', 'worktree'])
   })
@@ -258,7 +258,7 @@ describe('remote branches are opt-in', () => {
       const res = run(['status', ...SWEEP, '--keep', ...flags], fx.root)
       expect(res.code).toBe(0)
       expect(res.out).toContain(`origin/${BRANCH}`)
-      expect(res.out).not.toContain('Remote branches not checked')
+      expect(res.out).not.toContain('remote branches not checked')
     }
   })
 
@@ -283,6 +283,31 @@ describe('remote branches are opt-in', () => {
     // The branches were in the plan but not selected: they are still there.
     expect(branchRefs(fx.root)).toContain(BRANCH)
     expect(branchRefs(fx.bare)).toContain(BRANCH)
+  })
+})
+
+describe('local by default means offline', () => {
+  test('without --remotes nothing is fetched and the plan records no gh', () => {
+    const fx = buildFixture()
+    // A commit on the remote the worker has not fetched.
+    const other = join(tempDir(), 'other')
+    sh(tempDir(), ['clone', '-q', fx.bare, other])
+    sh(other, ['commit', '-q', '--allow-empty', '-m', 'elsewhere'])
+    sh(other, ['push', '-q', 'origin', 'main'])
+    const before = sh(fx.root, ['rev-parse', 'origin/main'])
+
+    const local = run(['status'], fx.root)
+    expect(local.code).toBe(0)
+    expect(local.out).toContain('not fetched')
+    expect(local.out).toContain('Local only: nothing fetched, no gh')
+    expect(sh(fx.root, ['rev-parse', 'origin/main'])).toBe(before)
+    const plan = JSON.parse(run(['plan'], fx.root).out) as Plan
+    expect(plan.repos[0]!.no_gh).toBe(true)
+
+    const online = run(['status', '--remotes', '--no-gh'], fx.root)
+    expect(online.code).toBe(0)
+    expect(online.out).not.toContain('not fetched')
+    expect(sh(fx.root, ['rev-parse', 'origin/main'])).not.toBe(before)
   })
 })
 
@@ -313,6 +338,28 @@ describe('color', () => {
     expect(colored.out).toContain('\x1b[1m')
     expect(colorRun(['status', ...SWEEP], fx.root, { NO_COLOR: '1' }).out).not.toContain('\x1b[')
     expect(run(['status', ...SWEEP], fx.root).out).not.toContain('\x1b[')
+  })
+
+  test('on a terminal apply lists every step, then checks each off as it runs', () => {
+    const fx = buildFixture()
+    const res = colorRun(
+      ['apply', '--branch', BRANCH, ...SWEEP, '--remotes', '--yes', ...rowsOf(fx)],
+      fx.root,
+      { NO_COLOR: '1' },
+    )
+    expect(res.code).toBe(0)
+    const out = res.out
+    const preview = out.indexOf(`delete  remote_branch  origin/${BRANCH}`)
+    const done = out.indexOf(`✓ delete  remote_branch  origin/${BRANCH}`)
+    expect(preview).toBeGreaterThanOrEqual(0)
+    expect(done).toBeGreaterThan(preview)
+    expect(out).toContain(`✓ delete  worktree`)
+    expect(out).toContain(`✓ delete  local_branch  ${BRANCH}`)
+    expect(out).toContain('✓ prune')
+    // The steps are not listed a second time under the counts.
+    expect(out).not.toMatch(/^ok {7}/m)
+    expect(out).toContain('deleted: 1 worktree, 1 local branch, 1 remote branch')
+    expect(branchRefs(fx.bare)).not.toContain(BRANCH)
   })
 
   test('the preview before the question is colored and summarized', () => {
@@ -553,10 +600,10 @@ describe('apply', () => {
   test('a repository the sweep cannot read fails the run instead of reading as empty', () => {
     const fx = buildFixture()
     sh(fx.root, ['remote', 'set-url', 'origin', join(tempDir(), 'missing.git')])
-    const res = run(['apply', '--no-gh', '--yes'], fx.root)
+    const res = run(['apply', '--remotes', '--no-gh', '--yes'], fx.root)
     expect(res.code).toBe(1)
     expect(res.err).toContain('fetch failed')
-    const plan = run(['plan', '--no-gh'], fx.root)
+    const plan = run(['plan', '--remotes', '--no-gh'], fx.root)
     expect(plan.code).toBe(1)
     expect(plan.err).toContain('fetch failed')
   })

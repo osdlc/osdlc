@@ -90,6 +90,8 @@ export interface ApplyOptions extends HostHooks {
   onSweepProgress?: ((progress: SweepProgress) => void) | undefined
   /** Told before each step runs: its 0-based index, the step count and the step. Not called under `dryRun`. */
   onStep?: ((index: number, total: number, step: Step) => void) | undefined
+  /** Told after each step, with its `result` set: `ok`, or `failed` and the run stops. Not called under `dryRun`. */
+  onStepDone?: ((index: number, total: number, step: Step) => void) | undefined
 }
 
 /** A selection or grant the plan cannot satisfy. Nothing has been touched. */
@@ -574,9 +576,11 @@ export function applyPlan(
       receipt.status = 'failed'
       receipt.finished_at = now().toISOString()
       save()
+      opts.onStepDone?.(i, plannedSteps.length, step)
       return receipt
     }
     save()
+    opts.onStepDone?.(i, plannedSteps.length, step)
   }
   receipt.status = 'complete'
   receipt.finished_at = now().toISOString()

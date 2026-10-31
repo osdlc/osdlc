@@ -508,7 +508,7 @@ export function renderPreview(receipt: Receipt, style: Style = PLAIN): string {
     for (const s of receipt.steps.filter((s) => s.repo === repo)) {
       const verb = STEP_VERB[s.action]
       const color = actionStyle(style, verb === 'unlock' ? 'review' : verb)
-      lines.push(`  ${color(pad(verb, 6))}  ${row(s.row)}`.trimEnd())
+      lines.push(s.row === null ? `  ${color(verb)}` : `  ${color(pad(verb, 6))}  ${row(s.row)}`)
       lines.push(`          ${style.muted(stripControls(s.command))}`)
     }
     for (const d of receipt.dropped.filter((d) => d.repo === repo)) {
@@ -522,18 +522,34 @@ export function renderPreview(receipt: Receipt, style: Style = PLAIN): string {
   return blocks.join('\n\n') + '\n'
 }
 
+/**
+ * One finished step, for a run shown live: `✓` and the row, or `✗`, the row
+ * and the error. Printed as each step ends, under the preview's list.
+ */
+export function renderStepDone(step: Step, style: Style = PLAIN): string {
+  const verb = STEP_VERB[step.action]
+  const row = step.row === null ? '' : `${step.row.category}  ${ellipsize(step.row.id, 60)}`
+  const line = stripControls(`${pad(verb, 6)}  ${row}`.trimEnd())
+  if (step.result === 'failed') {
+    return `  ${style.delete('✗')} ${line}\n      ${style.delete(stripControls(step.error ?? 'failed'))}`
+  }
+  return `  ${style.keep('✓')} ${line}`
+}
+
 /** An apply run as text: dropped rows, each step, a summary, then where the receipt is. */
 export function renderReceipt(
   receipt: Receipt,
   receiptPath: string | null,
   style: Style = PLAIN,
+  opts: { steps?: boolean } = {},
 ): string {
   const lines: string[] = []
-  for (const d of receipt.dropped) {
+  // A run shown live has printed its dropped rows and steps already.
+  for (const d of opts.steps === false ? [] : receipt.dropped) {
     const shown = stripControls(`${d.category}:${d.id} — ${d.reason} (${d.detail})`)
     lines.push(`${style.review('dropped  ')}${shown}`)
   }
-  for (const s of receipt.steps) {
+  for (const s of opts.steps === false ? [] : receipt.steps) {
     const what = s.row === null ? s.command : `${s.row.category}:${s.row.id} — ${s.command}`
     const tail = s.error ?? s.verification
     lines.push(`${resultWord(s, style)} ${stripControls(`${what}${tail ? ` (${tail})` : ''}`)}`)

@@ -25,20 +25,29 @@ function tilde(path: string, home: string): string {
   return path === home ? '~' : path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path
 }
 
+/** A bar `width` cells wide, filled for `done` of `total`, e.g. `█████░░░░░`. */
+export function progressBar(done: number, total: number, width = 20): string {
+  const filled = total <= 0 ? width : Math.min(width, Math.round((done / total) * width))
+  return '█'.repeat(filled) + '░'.repeat(width - filled)
+}
+
 /**
- * A sweep step as one line, e.g. `[2/5] checking remote branches 37/427 · ~/work/api`.
+ * A sweep step as one line, e.g. `[2/5] checking remote branches ████░░░░ 37/427 · ~/work/api`.
  * The path goes last, so a line cut to the terminal's width loses its tail first.
  */
 export function describeSweep(p: SweepProgress, home: string = homedir()): string {
   const where = p.of > 1 ? `[${p.index}/${p.of}] ` : ''
-  const count = p.done === undefined ? '' : ` ${p.done + 1}/${p.total}`
+  const count =
+    p.done === undefined || p.total === undefined
+      ? ''
+      : ` ${progressBar(p.done, p.total)} ${p.done + 1}/${p.total}`
   return `${where}${STEP_TEXT[p.step]}${count} · ${tilde(p.repo, home)}`
 }
 
-/** An apply step as one line, e.g. `deleting 3/7: delete-remote origin/feat/x`. */
+/** An apply step as one line, e.g. `deleting ██████░░░░ 3/7: delete-remote origin/feat/x`. */
 export function describeStep(index: number, total: number, step: Step): string {
   const what = step.row === null ? step.repo : step.row.id
-  return `deleting ${index + 1}/${total}: ${step.action} ${what}`
+  return `deleting ${progressBar(index, total)} ${index + 1}/${total}: ${step.action} ${what}`
 }
 
 export interface StatusLine {
