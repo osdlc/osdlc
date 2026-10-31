@@ -57,9 +57,9 @@ export interface ApplyOptions extends HostHooks {
   /** The caller's directory; the sweep never offers the worktree holding it. */
   callerCwd: string
   dryRun: boolean
-  /** Where the receipt goes. Unused under `dryRun`. */
-  receiptPath: string
-  /** Shown in the receipt. */
+  /** Where the receipt is written after each step; null writes none. Unused under `dryRun`. */
+  receiptPath: string | null
+  /** Where the plan came from, shown in the receipt. */
   planPath: string
   /** Limit the run to the plan repository rooted here. */
   repoRoot?: string | undefined
@@ -339,7 +339,10 @@ function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe
 }
 
 /**
- * Apply the `requested` rows of `plan` under `grants`. A row named twice runs once.
+ * Apply the `requested` rows of `plan` under `grants`; an empty `requested`
+ * selects every row of the plan (of `repoRoot`'s repository, when given). A
+ * row named twice runs once. A row whose `requires` was not granted is
+ * dropped, never run.
  *
  * @throws ApplyArgumentError before touching anything, when a row or grant does
  *   not fit the plan.
@@ -351,14 +354,18 @@ export function applyPlan(
   opts: ApplyOptions,
 ): Receipt {
   const now = opts.now ?? (() => new Date())
-  const rows = requested.filter(
-    (row, i) => requested.findIndex((other) => sameRow(other, row)) === i,
-  )
-  if (rows.length === 0) throw new ApplyArgumentError('no rows selected')
+  const wanted: readonly RowRef[] =
+    requested.length > 0
+      ? requested
+      : plan.repos
+          .filter((r) => opts.repoRoot === undefined || resolve(r.root) === resolve(opts.repoRoot))
+          .flatMap((r) => r.rows.map((row) => ({ category: row.category, id: row.id })))
+  const rows = wanted.filter((row, i) => wanted.findIndex((other) => sameRow(other, row)) === i)
+  if (rows.length === 0) throw new ApplyArgumentError('the plan has no rows to apply')
   const selected = locate(plan, rows, opts.repoRoot)
   for (const grant of grants) {
     if (grant.row !== null && !rows.some((r) => sameRow(r, grant.row!))) {
-      throw new ApplyArgumentError(`--authorize names unselected row ${label(grant.row)}`)
+      throw new ApplyArgumentError(`--allow names unselected row ${label(grant.row)}`)
     }
   }
 
@@ -391,7 +398,10 @@ export function applyPlan(
     return receipt
   }
 
-  const save = (): void => writeJsonAtomic(opts.receiptPath, receipt)
+  const receiptPath = opts.receiptPath
+  const save = (): void => {
+    if (receiptPath !== null) writeJsonAtomic(receiptPath, receipt)
+  }
   save()
   const git = new Git(opts.callerCwd, { runner: opts.git })
   const probe = opts.probe ?? defaultProcessProbe()

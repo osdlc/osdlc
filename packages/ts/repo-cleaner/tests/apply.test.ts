@@ -17,7 +17,7 @@ import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { sh } from './helpers.ts'
 import { applyPlan, type Grant } from '../src/apply.ts'
-import { PLAN_VERSION, planRepo, readPlan, writePlan, type Plan } from '../src/plan.ts'
+import { PLAN_VERSION, parsePlan, planRepo, readPlan, writePlan, type Plan } from '../src/plan.ts'
 import type { Receipt, RowRef } from '../src/receipt.ts'
 import { sweepRepo } from '../src/sweep.ts'
 
@@ -277,6 +277,41 @@ describe('applyPlan', () => {
     expect(existsSync(fx.worktree)).toBe(false)
   })
 
+  test('no rows selects every planned row; one needing a risk is dropped, not run', () => {
+    const fx = buildFixture()
+    const { receipt } = apply(fx, makePlan(fx.root), [])
+    expect(receipt.status).toBe('complete')
+    expect(receipt.dropped.map((d) => [d.id, d.reason])).toEqual([['unmerged', 'not-authorized']])
+    expect(refs(fx.root)).not.toContain('refs/heads/merged-a ')
+    expect(refs(fx.root)).not.toContain('refs/heads/merged-b ')
+    expect(refs(fx.root)).toContain('refs/heads/unmerged ')
+    expect(existsSync(fx.worktree)).toBe(false)
+  })
+
+  test('a null receiptPath applies without writing a receipt', () => {
+    const fx = buildFixture()
+    const receipt = applyPlan(
+      makePlan(fx.root),
+      [{ category: 'local_branch', id: 'merged-a' }],
+      [],
+      {
+        callerCwd: fx.root,
+        dryRun: false,
+        receiptPath: null,
+        planPath: '(swept)',
+      },
+    )
+    expect(receipt.status).toBe('complete')
+    expect(existsSync(join(fx.root, '.receipts'))).toBe(false)
+  })
+
+  test('a plan with no rows is an argument error', () => {
+    const fx = buildFixture()
+    const plan = makePlan(fx.root)
+    for (const repo of plan.repos) repo.rows = []
+    expect(() => apply(fx, plan, [])).toThrow('no rows')
+  })
+
   test('rejects a row that is not in the plan', () => {
     const fx = buildFixture()
     const plan = makePlan(fx.root)
@@ -287,6 +322,11 @@ describe('applyPlan', () => {
 })
 
 describe('plan files', () => {
+  test('parsePlan names its source in the error', () => {
+    expect(() => parsePlan('{', 'stdin')).toThrow('cannot read plan stdin')
+    expect(() => parsePlan('{}', 'stdin')).toThrow('bad plan stdin')
+  })
+
   test('a written plan reads back and applies', () => {
     const fx = buildFixture()
     const path = join(fx.root, '.plans', 'p.json')
