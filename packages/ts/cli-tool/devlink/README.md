@@ -46,8 +46,9 @@ So you can do both: `dev link` (or `<NAME>_HOME`) runs a development checkout
 everywhere, above any project's pin, and otherwise a project that installed
 the tool runs its own pinned copy.
 
-The project layer finds the package as Node's `require` would from the cwd:
-the nearest `node_modules`, following a pnpm symlink into its store. It runs
+The project layer finds the package in the nearest `node_modules` above the
+real cwd, following a pnpm symlink into its store; `NODE_PATH` and Node's
+global folders are not searched. It runs
 the tool's entry from the package's `bin` with the runtime its `#!` line names
 (`node`, or `bun`), by the file's path, never through a `node_modules/.bin`
 shim, so Windows works the same. The copy that is already running is `local`,
@@ -56,7 +57,9 @@ The hand-off is silent when both copies have the same version; otherwise it
 prints one `running` line naming both versions. When the project's
 `package.json` lists the package but nothing is installed, the tool prints one
 line saying so and runs the global copy. `dev` subcommands never hand off:
-they manage your own link. The bash launcher has no project layer, because it
+they manage your own link. In a cloned repository whose `node_modules` holds
+the package, the global command runs that repository's copy, the same trust
+turbo, nx and `ng` assume; `<NAME>_PROJECT=0` turns that off. The bash launcher has no project layer, because it
 cannot read `package.json`.
 
 The `running … (why)` line on stderr appears only on a hand-off to another
@@ -210,9 +213,9 @@ them with devlink, tool by tool.
 
 - A standalone `devlink` binary. The spec belongs to the tool, so a generic
   command would have nothing to act on.
-- Version pinning or installation. This links checkouts. It does not fetch
-  them. The canonical install is whatever `npm i -g` or a compiled binary put
-  on PATH.
+- Installation. Devlink never fetches a tool: it links checkouts and runs a
+  copy a project already installed. The canonical install is whatever
+  `npm i -g` or a compiled binary put on PATH.
 - Windows launchers. The bash template and the shims are Unix only, so
   `runDevCli` on Windows prints that `<tool> dev` is not available there and
   exits 1. The JavaScript shim works anywhere bun does.

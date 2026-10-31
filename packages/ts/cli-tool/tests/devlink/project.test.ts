@@ -71,6 +71,25 @@ describe('projectInstall / projectBin', () => {
     expect(projectInstall(SPEC, deep)).toBeNull() // no packageName, nothing to look for
   })
 
+  test('a package whose exports hide package.json is still found', () => {
+    const p = project('proj', { exports: { '.': './index.js' } })
+    expect(projectInstall(PSPEC, p.root)).toBe(p.install)
+  })
+
+  test('only node_modules folders above the cwd count, not NODE_PATH or a sibling', () => {
+    const elsewhere = project('elsewhere')
+    const here = join(sb.root, 'here')
+    mkdirSync(here, { recursive: true })
+    const saved = process.env['NODE_PATH']
+    process.env['NODE_PATH'] = join(elsewhere.root, 'node_modules')
+    try {
+      expect(projectInstall(PSPEC, here)).toBeNull()
+    } finally {
+      if (saved === undefined) delete process.env['NODE_PATH']
+      else process.env['NODE_PATH'] = saved
+    }
+  })
+
   test('a package.json with another name is not the package', () => {
     const p = project('proj', { name: '@other/tooly' })
     expect(projectInstall(PSPEC, p.root)).toBeNull()
@@ -139,7 +158,8 @@ describe('resolve: the project layer', () => {
     writeFileSync(join(ck, 'package.json'), JSON.stringify({ name: PKG, bin: 'src/cli.ts' }))
     const ws = join(sb.root, 'ws')
     mkdirSync(join(ws, 'node_modules', '@acme'), { recursive: true })
-    symlinkSync(ck, join(ws, 'node_modules', '@acme', 'tooly'), 'dir')
+    // A junction needs no Developer Mode on Windows; elsewhere the type is ignored.
+    symlinkSync(ck, join(ws, 'node_modules', '@acme', 'tooly'), 'junction')
     expect(resolve(PSPEC, opts({ cwd: ws, self: ck })).source).toBe('local')
     expect(resolve(PSPEC, opts({ cwd: ws })).source).toBe('project')
   })
@@ -184,6 +204,23 @@ describe('execSelection: a project copy', () => {
     ])
     expect(run(null).lines[0]).toContain('this install is unknown')
     expect(run('1.0.0', { TOOLY_QUIET: '1' }).lines).toEqual([])
+  })
+
+  test('a bun-run project copy that cannot start names the project and its off switch, not dev off', () => {
+    const p = project()
+    writeFileSync(p.bin, '#!/usr/bin/env bun\n')
+    const sel = resolve(PSPEC, opts({ cwd: p.root })) as Selected
+    expect(sel.runtime).toBe('bun')
+    const lines: string[] = []
+    const code = execSelection(PSPEC, sel, [], {
+      env: { TOOLY_QUIET: '1' },
+      bun: join(sb.root, 'no-such-bun'),
+      announce: (line) => lines.push(line),
+    })
+    expect(code).toBe(1)
+    expect(lines[0]).toContain(`the project's copy at ${p.install}`)
+    expect(lines[0]).toContain('TOOLY_PROJECT=0')
+    expect(lines[0]).not.toContain('dev off')
   })
 
   test('a node that cannot start returns 1 and names the off switch', () => {

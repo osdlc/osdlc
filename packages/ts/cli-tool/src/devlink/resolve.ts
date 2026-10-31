@@ -17,7 +17,7 @@
  *          version it uses. Only when the spec sets `packageName` and not
  *          `projectLayer: false`. Off when a suppressor is set or
  *          `<NAME>_PROJECT=0`. The copy that is already running is `local`.
- *          It is found as Node's `require` would find it, from the cwd.
+ *          It is the nearest `node_modules` copy above the real cwd.
  *   local  none of the above. The launcher runs the code next to it, which
  *          is the canonical install.
  *
@@ -34,7 +34,6 @@
  */
 
 import { closeSync, openSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs'
-import { createRequire } from 'node:module'
 import { dirname, isAbsolute, join, relative, resolve as resolvePath, sep } from 'node:path'
 
 import { readActive, type StateOptions } from './state.ts'
@@ -159,41 +158,39 @@ export function cwdCheckout(spec: ToolSpec, start: string): string | null {
 }
 
 /**
- * The real directory of `packageName` as Node would resolve it from `start`:
- * the nearest `node_modules` at or above it, following a pnpm symlink into
- * its store. Its `package.json` must have that `name`. Null when there is
- * none.
+ * The real directory of `packageName` in the nearest `node_modules` at or
+ * above `start`, as Node's `require` finds it from there, following a pnpm
+ * symlink into its store. Its `package.json` must have that `name`. Null
+ * when there is none.
+ *
+ * Only the folders above `start` are searched. `createRequire(...).resolve`
+ * would also search `NODE_PATH` and Node's global folders, where a global
+ * copy would pass for a project's pin; and it cannot read a `package.json`
+ * that the package's `exports` hides.
  *
  * @internal
  */
 export function projectInstall(spec: ToolSpec, start: string): string | null {
   const name = spec.packageName
   if (name === undefined) return null
-  let from: string
+  let dir: string
   try {
-    from = realpathSync(start)
+    dir = realpathSync(start)
   } catch {
     return null
   }
-  const req = createRequire(join(from, 'noop.js'))
-  const found = (dir: string): string | null => {
-    if (readPackage(dir)?.name !== name) return null
-    try {
-      return realpathSync(dir)
-    } catch {
-      return null
+  for (;;) {
+    const candidate = join(dir, 'node_modules', ...name.split('/'))
+    if (readPackage(candidate)?.name === name) {
+      try {
+        return realpathSync(candidate)
+      } catch {
+        return null
+      }
     }
-  }
-  try {
-    return found(dirname(req.resolve(`${name}/package.json`)))
-  } catch {
-    // A package whose `exports` hides `./package.json` cannot be resolved by
-    // that path; look in the same directories Node searches, in its order.
-    for (const dir of req.resolve.paths(name) ?? []) {
-      const hit = found(join(dir, ...name.split('/')))
-      if (hit !== null) return hit
-    }
-    return null
+    const parent = dirname(dir)
+    if (parent === dir) return null
+    dir = parent
   }
 }
 

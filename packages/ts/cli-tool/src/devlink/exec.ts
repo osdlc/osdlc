@@ -102,19 +102,22 @@ export function execSelection(
   const bun =
     opts.bun ??
     which('bun', { absolutePathOnly: true, env: { PATH: env['PATH'], PATHEXT: env['PATHEXT'] } })
+  // A project copy whose `#!` names bun is not a checkout, and `dev off` does not affect it.
+  const what =
+    selection.source === 'project'
+      ? `the project's copy at ${selection.checkout} runs under bun and`
+      : 'the selected checkout runs from source and'
+  const fix =
+    selection.source === 'project'
+      ? `Install Bun (https://bun.sh), or set ${projectVar(spec)}=0 to use this install.`
+      : `Install Bun (https://bun.sh), or run '${spec.name} dev off' to use the local install.`
   if (bun === undefined) {
-    announce(
-      `${spec.name}: the selected checkout runs from source and needs bun on an absolute PATH entry. ` +
-        `Install Bun (https://bun.sh), or run '${spec.name} dev off' to use the local install.`,
-    )
+    announce(`${spec.name}: ${what} needs bun on an absolute PATH entry. ${fix}`)
     return 1
   }
   const result = spawnSync(bun, [...bunRunArgs(selection.entry), ...argv], spawnOpts(childEnv))
   return finish(result, (why) =>
-    announce(
-      `${spec.name}: the selected checkout runs from source and could not start ${bun} (${why}). ` +
-        `Install Bun (https://bun.sh), or run '${spec.name} dev off' to use the local install.`,
-    ),
+    announce(`${spec.name}: ${what} could not start ${bun} (${why}). ${fix}`),
   )
 }
 

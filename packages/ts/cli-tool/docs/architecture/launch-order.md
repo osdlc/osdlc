@@ -96,9 +96,11 @@ project's `node_modules` copy, which is itself.
 | 4 | project | the spec sets `packageName` and a project above the cwd has it in `node_modules` | `TOOL_PROJECT=0`, `projectLayer: false` in the spec, or a suppressor | the package's `bin` file under node (or bun, when its `#!` line says bun), run by its path |
 | 5 | local | none of the above | never | this copy |
 
-The project copy is found the way Node's `require` finds a package from the
-cwd: the nearest `node_modules` above it, following a pnpm symlink into the
-store. Its `package.json` must have the spec's `packageName`. The bin is run by
+The project copy is the nearest `<dir>/node_modules/<packageName>` above the
+real cwd whose `package.json` has that name, followed through a pnpm symlink
+into the store. Only folders above the cwd count: unlike `require`, the
+lookup ignores `NODE_PATH` and Node's global folders, where a global copy
+would pass for a project's pin. The bin is run by
 its file path, never through `node_modules/.bin`, so Windows needs no `.cmd`
 shim.
 
@@ -194,8 +196,10 @@ anything not confirmed there is marked unverified.
   `createRequire(join(cwd, 'noop.js')).resolve('webpack-cli/bin/cli.js')`, the
   same two skip checks, and the `WEBPACK_CLI_SKIP_IMPORT_LOCAL` opt-out. Its
   comment notes that on Windows `path.relative` across drives returns the
-  second path, so a root comparison is added. We copied the real-path cwd, the
-  `createRequire` lookup and the "different drive is a different copy" rule.
+  second path, so a root comparison is added. We copied the real-path cwd and
+  the "different drive is a different copy" rule. We did not copy the
+  `createRequire` lookup: it also searches `NODE_PATH` and Node's global
+  folders, and fails on a package whose `exports` hides `package.json`.
   [Source](https://raw.githubusercontent.com/webpack/webpack-cli/main/packages/webpack-cli/bin/cli.js)
 - **Angular CLI** (`ng`) resolves `@angular/cli` with
   `createRequire(process.cwd() + '/')` and imports it in process. It warns only
