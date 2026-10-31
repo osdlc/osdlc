@@ -272,6 +272,15 @@ describe('keeping a remote branch (#583)', () => {
     expect(remoteHeads(fx.bare)).toContain('refs/heads/merged-a')
   })
 
+  test('a kept row with no planned tip is refused rather than checked against nothing', () => {
+    const fx = buildFixture()
+    const plan = makePlan(fx.root)
+    const row = plan.repos[0]!.rows.find((r) => r.category === KEEP.category && r.id === KEEP.id)!
+    const { sha: _sha, ...rest } = row.fingerprint
+    row.fingerprint = rest
+    expect(() => run(fx, plan)).toThrow(/kept remote_branch:origin\/merged-a has no tip to check/)
+  })
+
   test('only a remote branch row can be kept, and not one also selected', () => {
     const fx = buildFixture()
     const plan = makePlan(fx.root)

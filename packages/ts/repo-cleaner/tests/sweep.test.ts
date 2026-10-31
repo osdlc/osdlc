@@ -967,6 +967,20 @@ describe('a clean worktree merged by ancestry alone (#582)', () => {
     expect(worktreeRow(root, wt)?.classification).toBe('needs-investigation')
   })
 
+  test('a fresh branch that only fast-forwarded on a pull stays a review row', () => {
+    const { root, wt } = setup('pulled')
+    git(['worktree', 'add', '-q', '--track', '-b', 'pulled', wt, 'origin/main'], root)
+    commit(root, 'main moves on')
+    git(['push', '-q', 'origin', 'main'], root)
+    git(['pull', '-q', '--ff-only'], wt)
+    expect(git(['reflog', 'show', '--format=%gs', 'refs/heads/pulled'], root)).toMatch(
+      /^pull.*Fast-forward/m,
+    )
+    const row = worktreeRow(root, wt)
+    expect(row?.classification).toBe('needs-investigation')
+    expect(row?.facts['branch_used']).toBeNull()
+  })
+
   test('one tracking local main is not counted as pushed', () => {
     const { root, wt } = setup('local-track')
     git(['worktree', 'add', '-q', '--track', '-b', 'local-track', wt, 'main'], root)

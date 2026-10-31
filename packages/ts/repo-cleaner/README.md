@@ -96,7 +96,8 @@ or patch match, needs one more sign, because a worktree that `git worktree
 add -b` just made from the default branch is merged that way too, and
 removing it would lose the ignored files of work about to start. The sign is
 in `facts.branch_used`: `commits` when the branch's reflog records a commit,
-merge, pull, rebase, cherry-pick or `am`, and `upstream` when the branch
+cherry-pick, `am`, or a merge or pull that made a merge commit (a
+fast-forward only moves the branch), and `upstream` when the branch
 tracks a branch on a remote, other than the default branch (a branch made
 with `--track` from `main` or `origin/main` does not count). With either, the worktree
 is `safe-to-delete`; with neither (`null`) it stays `needs-investigation`.

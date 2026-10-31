@@ -496,13 +496,20 @@ const USE_REASON: Record<BranchUse, string> = {
   upstream: 'the branch was pushed to its own upstream',
 }
 
-/** Reflog entries that put work on a branch, as against creating or renaming it. */
-const WORK_ENTRY = /^(commit|merge|pull|rebase|cherry-pick|am)\b/
+/**
+ * Reflog entries that put work on a branch: a commit, a cherry-pick, an `am`,
+ * or a merge or pull that made a merge commit. A fast-forward merge or pull,
+ * a rebase, a reset or a rename only moves a branch, which a fresh branch
+ * tracking the default branch does on its first `git pull`.
+ */
+function isWorkEntry(entry: string): boolean {
+  if (/^(commit|cherry-pick|am)\b/.test(entry)) return true
+  return /^(merge|pull)\b/.test(entry) && !/Fast-forward/.test(entry)
+}
 
 /**
  * The sign that `branch` was worked on, or null for a branch that looks
- * freshly made. `commits`: its reflog records a commit, merge, pull, rebase,
- * cherry-pick or am. `upstream`: it tracks a branch on a remote, and not
+ * freshly made. `commits`: its reflog records work (see {@link isWorkEntry}). `upstream`: it tracks a branch on a remote, and not
  * the default branch (`mainBranch`) of any remote, so someone pushed it as
  * its own branch. A branch with neither, such as one `git worktree add -b`
  * just made from the default branch, with or without `--track`, reads as
@@ -512,7 +519,7 @@ const WORK_ENTRY = /^(commit|merge|pull|rebase|cherry-pick|am)\b/
 export function branchUse(git: Git, branch: string, mainBranch: string): BranchUse | null {
   // `raw`: a branch with no reflog (core.logAllRefUpdates off) exits non-zero.
   const reflog = git.raw(['reflog', 'show', '--format=%gs', `refs/heads/${branch}`, '--'])
-  if (reflog.exitCode === 0 && reflog.stdout.split('\n').some((l) => WORK_ENTRY.test(l))) {
+  if (reflog.exitCode === 0 && reflog.stdout.split('\n').some(isWorkEntry)) {
     return 'commits'
   }
   // From the branch's own config, not the resolved name: a branch tracking a

@@ -268,7 +268,10 @@ function recheck(
     }
     // The tip alone: a PR that closed since the plan does not move the branch.
     const plannedSha = planned.fingerprint['sha']
-    if (item.facts['sha'] !== plannedSha) {
+    if (typeof plannedSha !== 'string' || shaOf(item) === null) {
+      throw new ApplyRefused(`kept ${label(ref)} has no tip to check; refusing to apply`)
+    }
+    if (shaOf(item) !== plannedSha) {
       throw new ApplyRefused(
         `kept ${label(ref)} moved since the plan (planned ${String(plannedSha)}, now ${String(item.facts['sha'])}); refusing to apply`,
       )
@@ -336,11 +339,21 @@ function pending(
 const pruneStep = (repo: string, row: RowRef | null): Step =>
   pending(repo, row, 'prune-worktrees', worktreePruneCommand(repo))
 
+/** A row's sha fact, or null when it has none. */
+function shaOf(item: SweepItem): string | null {
+  return typeof item.facts['sha'] === 'string' ? item.facts['sha'] : null
+}
+
+/** A remote branch row's remote, its full ref on that remote, and its branch name. */
+function remoteRefOf(item: SweepItem): { remote: string; ref: string; branch: string } {
+  const branch = String(item.facts['branch'])
+  return { remote: String(item.facts['remote']), ref: `refs/heads/${branch}`, branch }
+}
+
 /** The step that checks a kept remote branch's tip, just before anything is deleted. */
 function verifyStep({ repo, item }: Accepted): Step {
-  const sha = typeof item.facts['sha'] === 'string' ? item.facts['sha'] : null
-  const remote = String(item.facts['remote'])
-  const ref = `refs/heads/${String(item.facts['branch'])}`
+  const sha = shaOf(item)
+  const { remote, ref } = remoteRefOf(item)
   return pending(
     repo,
     { category: item.category, id: item.id },
@@ -352,7 +365,7 @@ function verifyStep({ repo, item }: Accepted): Step {
 
 function stepsFor({ repo, item, force }: Accepted): Step[] {
   const ref: RowRef = { category: item.category, id: item.id }
-  const sha = typeof item.facts['sha'] === 'string' ? item.facts['sha'] : null
+  const sha = shaOf(item)
   switch (item.category) {
     case 'worktree': {
       // Remove and prune both skip a locked worktree, so a stale lock goes first.
@@ -374,11 +387,7 @@ function stepsFor({ repo, item, force }: Accepted): Step[] {
           repo,
           ref,
           'delete-remote',
-          remoteDeleteCommand(
-            String(item.facts['remote']),
-            String(item.facts['branch']),
-            sha ?? '',
-          ),
+          remoteDeleteCommand(remoteRefOf(item).remote, remoteRefOf(item).branch, sha ?? ''),
           sha,
         ),
       ]
@@ -450,8 +459,7 @@ function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe
       return 'ref does not resolve'
     }
     case 'verify-remote': {
-      const remote = String(row!.item.facts['remote'])
-      const ref = `refs/heads/${String(row!.item.facts['branch'])}`
+      const { remote, ref } = remoteRefOf(row!.item)
       const tip = at.lsRemote(remote, ref).find((r) => r.ref === ref)
       if (tip === undefined) throw new Error(`refused: kept ${ref} is gone from ${remote}`)
       if (tip.sha !== step.expected_sha) {
@@ -460,8 +468,7 @@ function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe
       return 'tip unchanged; kept'
     }
     case 'delete-remote': {
-      const remote = String(row!.item.facts['remote'])
-      const ref = `refs/heads/${String(row!.item.facts['branch'])}`
+      const { remote, ref } = remoteRefOf(row!.item)
       const report = at.push(remote, `:${ref}`, {
         forceWithLease: { ref, expect: step.expected_sha! },
       })
@@ -529,7 +536,7 @@ function onePerRemoteBranch(
 ): { accepted: Accepted[]; dropped: Dropped[] } {
   const keyOf = (row: Accepted): string | null => {
     const remote = remoteKey(git, row.repo, String(row.item.facts['remote']))
-    return remote === null ? null : `${remote}\0${String(row.item.facts['branch'])}`
+    return remote === null ? null : `${remote}\0${remoteRefOf(row.item).branch}`
   }
   // A branch kept through one clone stays, whichever clone lists it.
   const keptAt = new Map<string, string>()

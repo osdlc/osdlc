@@ -2,7 +2,7 @@
 "@osdlc/repo-cleaner": minor
 ---
 
-A clean worktree merged into the default branch by ancestry alone is now `safe-to-delete` when its branch shows it was worked on: its reflog records a commit, merge, pull, rebase, cherry-pick or `am`, or it tracks a branch on a remote other than the default branch. The sign is in the new `facts.branch_used` (`commits`, `upstream` or `null`). A worktree that looks freshly made from the default branch stays `needs-investigation`, as before. (#582)
+A clean worktree merged into the default branch by ancestry alone is now `safe-to-delete` when its branch shows it was worked on: its reflog records a commit, cherry-pick, `am`, or a merge or pull that made a merge commit, or it tracks a branch on a remote other than the default branch. The sign is in the new `facts.branch_used` (`commits`, `upstream` or `null`). A worktree that looks freshly made from the default branch stays `needs-investigation`, as before. (#582)
 
 A plan now records, per repository, whether its sweep fetched (`fetch`, default `false` for older plans), and `applyPlan` fetches before its re-check when it did, so the re-check judges against the same current default branch. `ApplyOptions.fetch` overrides it. A failed fetch fails the run before any step. (#584)
 
