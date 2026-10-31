@@ -410,7 +410,7 @@ For the paths alone, `diffNameOnly({ diffFilter: "U" })` is cheaper.
 
 `merge`, `rebase` and `rebaseContinue` run with `LC_ALL=C`, over the client,
 backend and call `env`, so `fastForward`, `alreadyUpToDate` and `conflicts` do
-not change with the caller's locale. `pushPorcelain` does the same for its
+not change with the caller's locale. `push` does the same for its
 reasons. Other verbs keep the caller's locale.
 
 One trap in `checkoutSide`: on a path that is not conflicted, git exits 0 and
@@ -445,12 +445,11 @@ nothing depends on where `HEAD` happens to be.
 
 ## Pushing: a rejected ref is a value
 
-`push` throws when git exits non-zero. `pushPorcelain` runs
-`git push --porcelain` and returns one result per ref, so a lease that lost a
-race is an answer you can branch on, not stderr you grep:
+`push` runs `git push --porcelain` and returns one result per ref, so a
+lease that lost a race is an answer you can branch on, not stderr you grep:
 
 ```ts
-const report = git.pushPorcelain("origin", `${next}:refs/heads/lease`, {
+const report = git.push("origin", `${next}:refs/heads/lease`, {
   forceWithLease: { ref: "refs/heads/lease", expect: seen },
 });
 const ref = report.refs[0];
@@ -461,14 +460,18 @@ if (ref.flag === "!") {
     case "lock-failed":     // another writer moved or deleted it at the remote
     case "already-exists":  // a create lost to another writer
       return retry();
-    default:                // tag-exists, ref-conflict, hook-declined, non-fast-forward, other
-      throw new Error(`${ref.dst}: ${ref.rawReason} ${ref.detail ?? ""}`);
+    default: {
+      const info = PUSH_REJECTIONS[ref.rejection];
+      throw new Error(`${ref.dst}: ${info.message} ${info.hint} See ${info.docs}`);
+    }
   }
 }
 ```
 
-It takes a refspec or a list, and `{ atomic, forceWithLease }`, where
-`forceWithLease` also takes one lease per ref. `flag` is git's status
+A rejected ref does not throw, so a caller that ignores the report misses it:
+check `flag`, or `report.refs.some((r) => r.flag === "!")`. It takes a refspec
+or a list, and `{ atomic, delete, forceWithLease }`, where `forceWithLease`
+also takes one lease per ref. `flag` is git's status
 character: `' '` fast-forward, `'+'` forced, `'-'` deleted, `'*'` new, `'!'`
 rejected, `'='` up to date. A failure that reaches no ref still throws the
 classified failure: an unknown remote, auth, network, TLS, a refspec that
@@ -489,7 +492,7 @@ wording has changed across versions:
 | `<ref>` beside an existing `<ref>/child` | `(refname conflict)` | `(failed to update ref)` + `'<ref>/child' exists; cannot create '<ref>'` | `ref-conflict` |
 | a remote hook refused it | `(pre-receive hook declined)`, `(hook declined)` | same | `hook-declined` |
 | a `.lock` file in the way, an unwritable refs directory | `(reference already exists)`, `(failed to update refs)` + `Unable to create '….lock'` | `(failed to update ref)` + the same | `other` |
-| the other refs of a failed `--atomic` push | `[rejected] (atomic push failed)`, `[remote rejected] (atomic transaction failed)` | same | `other` |
+| the other refs of a failed `--atomic` push | `[rejected] (atomic push failed)`, `[remote rejected] (atomic transaction failed)` | same | `atomic-failed` |
 
 The "+ …" text is the remote's `cannot lock ref '<ref>': …` line. git prints
 it on stderr, not on the ref line, and `detail` carries it for the ref it
@@ -502,6 +505,68 @@ remote prints the detail, and that reads as `other`.
 
 This table is the one list of wordings. `tests/push.test.ts` covers each
 row, against real git or as a canned row in `CANNED`.
+
+`tests/push-fixtures.test.ts` replays output recorded from real git, one file
+per version under `tests/fixtures/push/`: today git 2.47.3, from before the
+2.51 rewording, and git 2.56.0. Every file must read the same way. To add a
+version, run `node tests/fixtures/push/record-push.mjs` with that git on
+`PATH`; a new wording fails the test until `pushRejection` in `src/verbs.ts`
+maps it, and this table gains the row.
+
+### Rejection reference
+
+`PUSH_REJECTIONS[rejection]` holds, for every value, a one-line `message`, an
+`explanation`, a `hint` and a `docs` link into git's own manual. Each one in
+brief, with the same link:
+
+**`stale`**: the remote ref is not where the lease expected it. With
+`--force-with-lease`, git compares the remote ref with the expected value
+before sending anything; they differed, so someone pushed since you looked.
+A create-only lease (`expect: null`) fails this way when the ref exists.
+Fetch, look at what changed, and push again with the new expected value.
+[git-push: --force-with-lease](https://git-scm.com/docs/git-push#Documentation/git-push.txt---force-with-lease)
+
+**`non-fast-forward`**: the push would discard commits on the remote, and was
+not forced. `fetch first` means this git does not have the remote commits at
+all; `needs force` that one side is not a commit. Fetch and integrate, or
+force with a pinned lease.
+[git-push: note about fast-forwards](https://git-scm.com/docs/git-push#_note_about_fast_forwards)
+
+**`tag-exists`**: the tag is already on the remote, and git does not move a
+tag unless forced. A retry fails the same way. Push a new tag name, or force
+the push if replacing the tag is intended.
+[git-push: push rules](https://git-scm.com/docs/git-push#_push_rules)
+
+**`already-exists`**: another push created the ref first: the remote found it
+already there when it locked it. Fetch, look at what the other push created,
+and decide whether to push again.
+[git-push: --force-with-lease](https://git-scm.com/docs/git-push#Documentation/git-push.txt---force-with-lease)
+
+**`ref-conflict`**: ref names are paths, so `refs/heads/x` and
+`refs/heads/x/child` cannot both exist. Nothing raced. Pick a name that is
+not a prefix or an extension of an existing ref, or delete the other ref.
+git's manual has no page on this clash, so the link is to the output format.
+[git-push: output](https://git-scm.com/docs/git-push#_output)
+
+**`lock-failed`**: the lease check passed, but when the remote locked the ref
+it no longer held the expected value, or no longer existed: another push won
+a race at the remote. Treat it like a stale lease.
+[git-push: --force-with-lease](https://git-scm.com/docs/git-push#Documentation/git-push.txt---force-with-lease)
+
+**`hook-declined`**: a `pre-receive` hook refused the whole push, or an
+`update` hook this ref. GitHub reports branch protection as `protected branch
+hook declined`. The hook's own message is in the `remote:` lines on stderr.
+[githooks: pre-receive](https://git-scm.com/docs/githooks#pre-receive)
+
+**`atomic-failed`**: with `--atomic` the remote updates every ref or none.
+This ref was fine on its own; another ref in the report carries the cause.
+[git-push: --atomic](https://git-scm.com/docs/git-push#Documentation/git-push.txt---atomic)
+
+**`other`**: a reason this library does not classify, kept verbatim in
+`rawReason` and `detail`: a stale lock file or an unwritable refs directory
+on the remote, or settings such as `receive.denyCurrentBranch` and
+`receive.denyDeletes`.
+[git-push: output](https://git-scm.com/docs/git-push#_output)
 
 ## `log` hands back bytes
 
@@ -660,7 +725,7 @@ empty repository from a dangling HEAD or a missing object store. Use
 Every mutation except `configRemoveSection` declares no absence: a non-zero
 exit throws the classified failure, because the only sane handling of "the write did
 not happen" is to surface it. `configRemoveSection` declares 128 absent and
-returns `false` when there is no such section. `pushPorcelain`, listed under
+returns `false` when there is no such section. `push`, listed under
 Integration, declares exit 1 absent and returns the rejected refs.
 
 | Method | git |
@@ -668,7 +733,6 @@ Integration, declares exit 1 absent and returns the rejected refs.
 | `fetch(remote, refspec, { prune, quiet, noWriteFetchHead, depth, noTags })` | `fetch` |
 | `add(paths, { all, update, intentToAdd })` | `add` (paths go after `--`) |
 | `commit({ message, body } \| { messageFile } \| { messageStdin }, plus { allowEmpty, amend, noVerify, signoff, paths } in the same object)` | `commit` — one argument, e.g. `commit({ message, allowEmpty: true })`; one message source, enforced by the types; `messageStdin` is `-F -` with the string on stdin, no temp file. `paths` appends `-- <paths…>`: only those paths are committed, from the working tree, and anything else staged stays staged. An empty `paths` throws a `TypeError`, because git would commit everything staged |
-| `push(remote, refspec, { forceWithLease, delete })` | `push` — `forceWithLease` takes `true` or a pinned `{ ref, expect }` (`expect: null` = ref must be absent); `forceWithLeaseArg(lease)` is the pure formatter. `true` is the bare form: it overwrites whatever is on the remote, so prefer the pinned form. `delete` is `--delete`, and a pinned lease deletes only while the remote ref holds `expect`. To learn why a push was rejected, use `pushPorcelain` |
 | `configSet(key, value, { scope })` | `config` |
 | `configRemoveSection(name)` | `config --remove-section` — `false` when there is no such section |
 | `init(path, { bare, initialBranch, quiet })` | `init` |
@@ -702,7 +766,7 @@ other non-zero exit throws.
 | `rebaseContinue()` | `-c core.editor=true rebase --continue` | `RebaseOutcome` |
 | `mergeTree(ours, theirs, { mergeBase })` | `merge-tree --write-tree --name-only -z` | `MergeTreeOutcome` |
 | `lsFilesUnmerged()` | `ls-files -u -z` | `UnmergedEntry[]` — mode, sha, stage, path |
-| `pushPorcelain(remote, refspec \| refspecs, { atomic, forceWithLease })` | `push --porcelain` | `PushReport` — `{ refs, stderr }`, one `PushRefResult` per ref; a `'!'` ref also has `rejection` and `detail`; exit 1 without a rejected ref throws |
+| `push(remote, refspec \| refspecs, { atomic, delete, forceWithLease })` | `push --porcelain` | `PushReport` — `{ refs, stderr }`, one `PushRefResult` per ref; a `'!'` ref also has `rejection` and `detail`, explained in `PUSH_REJECTIONS`; exit 1 without a rejected ref throws. `forceWithLease` takes `true`, a pinned `{ ref, expect }` (`expect: null` = ref must be absent) or one per ref; `forceWithLeaseArg(lease)` is the pure formatter. `true` is the bare form: it overwrites whatever is on the remote, so prefer the pinned form. `delete` is `--delete`, and a pinned lease deletes only while the remote ref holds `expect` |
 
 ### Escape hatches and re-rooting
 
@@ -967,7 +1031,7 @@ de-duplicate.
   `CommandFailed`, with the raw `result`.
 - `UnsupportedRequest` is not a git failure, so `try` and `soft` let it
   through.
-- `merge`, `rebase`, `rebaseContinue` and `pushPorcelain` run with `LC_ALL=C`. Any other verb
+- `merge`, `rebase`, `rebaseContinue` and `push` run with `LC_ALL=C`. Any other verb
   that reads git's messages assumes English output, so a localized git can
   change what it returns.
 - Test fixtures need a manual `cleanup()`.

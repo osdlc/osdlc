@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.1](https://github.com/osdlc/osdlc/compare/config-layers/v0.8.0...config-layers/v0.8.1) - 2026-10-31
+
+### Other
+
+- move config-layers to packages/conformance ([#561](https://github.com/osdlc/osdlc/pull/561))
+
 ## [0.8.0] - Unreleased
 
 Aligned with `@osdlc/config-layers` 0.8.0. The twins share the major and minor

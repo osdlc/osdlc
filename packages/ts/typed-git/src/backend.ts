@@ -70,7 +70,6 @@ import {
   type MergeTreeOutcome,
   type NumstatEntry,
   type PushOptions,
-  type PushPorcelainOptions,
   type PushReport,
   type RemoteSetBranchesOptions,
   type RemoteSetHeadOptions,
@@ -192,8 +191,7 @@ export type GitRequest =
   | { kind: 'configRemoveSection'; name: string }
   | ({ kind: 'init'; path?: string | undefined } & InitOptions)
   | ({ kind: 'clone'; url: string; dest?: string | undefined } & CloneOptions)
-  | ({ kind: 'push'; remote: string; refspec: string } & PushOptions)
-  | ({ kind: 'pushPorcelain'; remote: string; refspec: string | string[] } & PushPorcelainOptions)
+  | ({ kind: 'push'; remote: string; refspec: string | readonly string[] } & PushOptions)
   | { kind: 'resetHard'; rev: string }
   | ({ kind: 'clean' } & CleanOptions)
   | { kind: 'deleteBranch'; name: string; force?: boolean | undefined }
@@ -278,8 +276,7 @@ export interface GitResults {
   configRemoveSection: boolean
   init: void
   clone: void
-  push: void
-  pushPorcelain: PushReport
+  push: PushReport
   resetHard: void
   clean: void
   deleteBranch: void
@@ -453,8 +450,6 @@ function toVerb(request: GitRequest): GitVerb<unknown> {
       return v.clone(request.url, request.dest, request)
     case 'push':
       return v.push(request.remote, request.refspec, request)
-    case 'pushPorcelain':
-      return v.pushPorcelain(request.remote, request.refspec, request)
     case 'resetHard':
       return v.resetHard(request.rev)
     case 'clean':

@@ -1268,6 +1268,7 @@ describe('isStalePush', () => {
     expect(isStalePush('ref-conflict')).toBe(false)
     expect(isStalePush('hook-declined')).toBe(false)
     expect(isStalePush('tag-exists')).toBe(false)
+    expect(isStalePush('atomic-failed')).toBe(false)
     expect(isStalePush('other')).toBe(false)
   })
 })

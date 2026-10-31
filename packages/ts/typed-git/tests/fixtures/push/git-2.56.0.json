@@ -1,0 +1,202 @@
+{
+  "git": "2.56.0",
+  "recorded": "2026-10-23",
+  "cases": [
+    {
+      "name": "up-to-date",
+      "argv": [
+        "push",
+        "--porcelain",
+        "origin",
+        "0306c4455266b7b540505041bf4640a25e70175e:refs/heads/main"
+      ],
+      "exitCode": 0,
+      "stdout": "To <root>/remote.git\n=\t0306c4455266b7b540505041bf4640a25e70175e:refs/heads/main\t[up to date]\nDone\n",
+      "stderr": ""
+    },
+    {
+      "name": "fast-forward",
+      "argv": [
+        "push",
+        "--porcelain",
+        "origin",
+        "7326f7e5f885d6424b32fbfa857e3150b26a8bfd:refs/heads/main"
+      ],
+      "exitCode": 0,
+      "stdout": "To <root>/remote.git\n \t7326f7e5f885d6424b32fbfa857e3150b26a8bfd:refs/heads/main\t0306c44..7326f7e\nDone\n",
+      "stderr": ""
+    },
+    {
+      "name": "non-fast-forward",
+      "argv": [
+        "push",
+        "--porcelain",
+        "origin",
+        "0306c4455266b7b540505041bf4640a25e70175e:refs/heads/main"
+      ],
+      "exitCode": 1,
+      "stdout": "To <root>/remote.git\n!\t0306c4455266b7b540505041bf4640a25e70175e:refs/heads/main\t[rejected] (non-fast-forward)\nDone\n",
+      "stderr": "error: failed to push some refs to '<root>/remote.git'\nhint: Updates were rejected because the tip of your current branch is behind\nhint: its remote counterpart. If you want to integrate the remote changes,\nhint: use 'git pull' before pushing again.\nhint: See the 'Note about fast-forwards' in 'git push --help' for details.\n"
+    },
+    {
+      "name": "stale-lease",
+      "argv": [
+        "push",
+        "--porcelain",
+        "--force-with-lease=refs/heads/main:0306c4455266b7b540505041bf4640a25e70175e",
+        "origin",
+        "c73054e94efc8c3303d34444129c04cbe3cec0a2:refs/heads/main"
+      ],
+      "exitCode": 1,
+      "stdout": "To <root>/remote.git\n!\tc73054e94efc8c3303d34444129c04cbe3cec0a2:refs/heads/main\t[rejected] (stale info)\nDone\n",
+      "stderr": "error: failed to push some refs to '<root>/remote.git'\n"
+    },
+    {
+      "name": "forced-with-lease",
+      "argv": [
+        "push",
+        "--porcelain",
+        "--force-with-lease=refs/heads/main:7326f7e5f885d6424b32fbfa857e3150b26a8bfd",
+        "origin",
+        "0306c4455266b7b540505041bf4640a25e70175e:refs/heads/main"
+      ],
+      "exitCode": 0,
+      "stdout": "To <root>/remote.git\n+\t0306c4455266b7b540505041bf4640a25e70175e:refs/heads/main\t7326f7e...0306c44 (forced update)\nDone\n",
+      "stderr": ""
+    },
+    {
+      "name": "new-branch",
+      "argv": [
+        "push",
+        "--porcelain",
+        "origin",
+        "0306c4455266b7b540505041bf4640a25e70175e:refs/heads/created"
+      ],
+      "exitCode": 0,
+      "stdout": "To <root>/remote.git\n*\t0306c4455266b7b540505041bf4640a25e70175e:refs/heads/created\t[new branch]\nDone\n",
+      "stderr": ""
+    },
+    {
+      "name": "deleted",
+      "argv": ["push", "--porcelain", "origin", ":refs/heads/created"],
+      "exitCode": 0,
+      "stdout": "To <root>/remote.git\n-\t:refs/heads/created\t[deleted]\nDone\n",
+      "stderr": ""
+    },
+    {
+      "name": "tag-already-exists",
+      "argv": [
+        "push",
+        "--porcelain",
+        "origin",
+        "7326f7e5f885d6424b32fbfa857e3150b26a8bfd:refs/tags/v1"
+      ],
+      "exitCode": 1,
+      "stdout": "To <root>/remote.git\n!\t7326f7e5f885d6424b32fbfa857e3150b26a8bfd:refs/tags/v1\t[rejected] (already exists)\nDone\n",
+      "stderr": "error: failed to push some refs to '<root>/remote.git'\nhint: Updates were rejected because the tag already exists in the remote.\n"
+    },
+    {
+      "name": "ref-conflict",
+      "argv": [
+        "push",
+        "--porcelain",
+        "origin",
+        "0306c4455266b7b540505041bf4640a25e70175e:refs/heads/x"
+      ],
+      "exitCode": 1,
+      "stdout": "To <root>/remote.git\n!\t0306c4455266b7b540505041bf4640a25e70175e:refs/heads/x\t[remote rejected] (refname conflict)\nDone\n",
+      "stderr": "remote: error: cannot lock ref 'refs/heads/x': 'refs/heads/x/child' exists; cannot create 'refs/heads/x'\nerror: failed to push some refs to '<root>/remote.git'\n"
+    },
+    {
+      "name": "lease-race-moved",
+      "argv": [
+        "push",
+        "--porcelain",
+        "--force-with-lease=refs/heads/race:0306c4455266b7b540505041bf4640a25e70175e",
+        "origin",
+        "7326f7e5f885d6424b32fbfa857e3150b26a8bfd:refs/heads/race"
+      ],
+      "exitCode": 1,
+      "stdout": "To <root>/remote.git\n!\t7326f7e5f885d6424b32fbfa857e3150b26a8bfd:refs/heads/race\t[remote rejected] (incorrect old value provided)\nDone\n",
+      "stderr": "remote: error: cannot lock ref 'refs/heads/race': is at c73054e94efc8c3303d34444129c04cbe3cec0a2 but expected 0306c4455266b7b540505041bf4640a25e70175e\nerror: failed to push some refs to '<root>/remote.git'\n"
+    },
+    {
+      "name": "lease-race-created",
+      "argv": [
+        "push",
+        "--porcelain",
+        "--force-with-lease=refs/heads/fresh:",
+        "origin",
+        "7326f7e5f885d6424b32fbfa857e3150b26a8bfd:refs/heads/fresh"
+      ],
+      "exitCode": 1,
+      "stdout": "To <root>/remote.git\n!\t7326f7e5f885d6424b32fbfa857e3150b26a8bfd:refs/heads/fresh\t[remote rejected] (reference already exists)\nDone\n",
+      "stderr": "remote: error: cannot lock ref 'refs/heads/fresh': reference already exists\nerror: failed to push some refs to '<root>/remote.git'\n"
+    },
+    {
+      "name": "pre-receive-declined",
+      "argv": [
+        "push",
+        "--porcelain",
+        "origin",
+        "0306c4455266b7b540505041bf4640a25e70175e:refs/heads/hooked"
+      ],
+      "exitCode": 1,
+      "stdout": "To <root>/remote.git\n!\t0306c4455266b7b540505041bf4640a25e70175e:refs/heads/hooked\t[remote rejected] (pre-receive hook declined)\nDone\n",
+      "stderr": "remote: declined by policy\nerror: failed to push some refs to '<root>/remote.git'\n"
+    },
+    {
+      "name": "update-hook-declined",
+      "argv": [
+        "push",
+        "--porcelain",
+        "origin",
+        "0306c4455266b7b540505041bf4640a25e70175e:refs/heads/hooked"
+      ],
+      "exitCode": 1,
+      "stdout": "To <root>/remote.git\n!\t0306c4455266b7b540505041bf4640a25e70175e:refs/heads/hooked\t[remote rejected] (hook declined)\nDone\n",
+      "stderr": "remote: error: hook declined to update refs/heads/hooked\nerror: failed to push some refs to '<root>/remote.git'\n"
+    },
+    {
+      "name": "mixed",
+      "argv": [
+        "push",
+        "--porcelain",
+        "origin",
+        "0306c4455266b7b540505041bf4640a25e70175e:refs/heads/mixed",
+        "7326f7e5f885d6424b32fbfa857e3150b26a8bfd:refs/heads/holder"
+      ],
+      "exitCode": 1,
+      "stdout": "To <root>/remote.git\n*\t0306c4455266b7b540505041bf4640a25e70175e:refs/heads/mixed\t[new branch]\n!\t7326f7e5f885d6424b32fbfa857e3150b26a8bfd:refs/heads/holder\t[rejected] (non-fast-forward)\nDone\n",
+      "stderr": "error: failed to push some refs to '<root>/remote.git'\nhint: Updates were rejected because a pushed branch tip is behind its remote\nhint: counterpart. If you want to integrate the remote changes, use 'git pull'\nhint: before pushing again.\nhint: See the 'Note about fast-forwards' in 'git push --help' for details.\n"
+    },
+    {
+      "name": "atomic",
+      "argv": [
+        "push",
+        "--porcelain",
+        "--atomic",
+        "origin",
+        "0306c4455266b7b540505041bf4640a25e70175e:refs/heads/atomic",
+        "0306c4455266b7b540505041bf4640a25e70175e:refs/heads/x"
+      ],
+      "exitCode": 1,
+      "stdout": "To <root>/remote.git\n!\t0306c4455266b7b540505041bf4640a25e70175e:refs/heads/atomic\t[remote rejected] (atomic transaction failed)\n!\t0306c4455266b7b540505041bf4640a25e70175e:refs/heads/x\t[remote rejected] (atomic transaction failed)\nDone\n",
+      "stderr": "remote: error: cannot lock ref 'refs/heads/x': 'refs/heads/x/child' exists; cannot create 'refs/heads/x'\nerror: failed to push some refs to '<root>/remote.git'\n"
+    },
+    {
+      "name": "src-refspec-matches-nothing",
+      "argv": ["push", "--porcelain", "origin", "refs/heads/no-such-branch"],
+      "exitCode": 1,
+      "stdout": "",
+      "stderr": "error: src refspec refs/heads/no-such-branch does not match any\nerror: failed to push some refs to '<root>/remote.git'\n"
+    },
+    {
+      "name": "no-such-remote",
+      "argv": ["push", "--porcelain", "no-such-remote", "HEAD:refs/heads/main"],
+      "exitCode": 128,
+      "stdout": "",
+      "stderr": "fatal: 'no-such-remote' does not appear to be a git repository\nfatal: Could not read from remote repository.\n\nPlease make sure you have the correct access rights\nand the repository exists.\n"
+    }
+  ]
+}
