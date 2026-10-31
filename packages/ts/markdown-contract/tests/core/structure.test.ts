@@ -419,7 +419,7 @@ describe('order: strict — a section whose slot the walk already passed', () =>
   })
 })
 
-describe('order: strict — an unknown section does not move the walk past declared slots', () => {
+describe('order: strict — unknown sections do not affect the order of declared sections', () => {
   test('an optional section after an unknown one, allowUnknown: true → no findings', () => {
     const c = contract({
       body: sections({ order: 'strict', allowUnknown: true }, [
@@ -490,6 +490,7 @@ describe('order: strict — an unknown section does not move the walk past decla
     const { findings } = c.validate('## A\n\n## B\n\n## X\n\n## D\n', ctx)
     expect(ids(findings)).toEqual(['structure/section-order'])
     expect(findings[0]?.pos?.line).toBe(5) // ## X
+    expect(findings[0]?.message).toBe('unexpected section ‘X’ after the declared sequence')
   })
 
   test('an unknown section still moves the walk to a gap that takes it', () => {
@@ -505,5 +506,97 @@ describe('order: strict — an unknown section does not move the walk past decla
     expect(ids(c.validate('## A\n\n## X\n\n## Y\n\n## D\n', ctx).findings)).toEqual([
       'structure/gap-count',
     ])
+  })
+
+  test('an optional section after an unknown one, with a gap ahead → no findings', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: true }, [
+        section('A'),
+        optional(section('B')),
+        gap(),
+        section('D'),
+      ]),
+    })
+    expect(c.validate('## A\n\n## X\n\n## B\n\n## D\n', ctx).findings).toEqual([])
+  })
+
+  test('an optional section after an unknown one, with a trailing gap → no findings', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: true }, [
+        section('A'),
+        optional(section('B')),
+        gap(),
+      ]),
+    })
+    expect(c.validate('## A\n\n## X\n\n## B\n', ctx).findings).toEqual([])
+  })
+
+  test('unknown sections before a skipped optional section do not count toward the gap', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: true }, [
+        section('A'),
+        optional(section('B')),
+        gap({ max: 1 }),
+        section('D'),
+      ]),
+    })
+    // X and Y come before B, so only Z is in the gap.
+    const source = '## A\n\n## X\n\n## Y\n\n## B\n\n## Z\n\n## D\n'
+    expect(c.validate(source, ctx).findings).toEqual([])
+  })
+
+  test('a declared section really out of order across a gap → structure/section-order', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: true }, [
+        section('A'),
+        optional(section('B')),
+        gap(),
+        section('D'),
+      ]),
+    })
+    const { findings } = c.validate('## A\n\n## X\n\n## D\n\n## B\n', ctx)
+    expect(ids(findings)).toEqual(['structure/section-order'])
+    expect(findings[0]?.pos?.line).toBe(7) // ## B
+  })
+
+  test('allowUnknown: false with a gap ahead: the unknown section is in the gap, so B is out of order', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: false }, [
+        section('A'),
+        optional(section('B')),
+        gap(),
+        section('D'),
+      ]),
+    })
+    const { findings } = c.validate('## A\n\n## X\n\n## B\n\n## D\n', ctx)
+    expect(ids(findings)).toEqual(['structure/section-order'])
+    expect(findings[0]?.pos?.line).toBe(5) // ## B
+  })
+
+  test('allowUnknown: false at a required slot reports the unknown section in the strict prefix', () => {
+    const c = contract({
+      body: sections({ order: 'strict', allowUnknown: false }, [
+        section('A'),
+        optional(section('B')),
+        section('C'),
+      ]),
+    })
+    const { findings } = c.validate('## A\n\n## X\n\n## B\n\n## C\n', ctx)
+    expect(ids(findings)).toEqual(['structure/section-order'])
+    expect(findings[0]?.pos?.line).toBe(3) // ## X
+    expect(findings[0]?.message).toBe(
+      'unexpected section ‘X’ in the strict prefix; extras are only permitted after a gap',
+    )
+  })
+
+  test('a required slot before a gap stops the unknown section, as on main', () => {
+    const specs = [section('A'), optional(section('B')), section('C'), gap(), section('D')]
+    const open = contract({ body: sections({ order: 'strict', allowUnknown: true }, specs) })
+    const closed = contract({ body: sections({ order: 'strict', allowUnknown: false }, specs) })
+    const source = '## A\n\n## X\n\n## C\n\n## D\n'
+    expect(open.validate(source, ctx).findings).toEqual([])
+    const { findings } = closed.validate(source, ctx)
+    expect(ids(findings)).toEqual(['structure/section-order'])
+    expect(findings[0]?.pos?.line).toBe(3) // ## X
   })
 })

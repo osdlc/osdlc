@@ -1110,5 +1110,20 @@
         "expected": "39-strict-order-unknown-sections.fail.expected.json"
       }
     ]
+  },
+  {
+    "id": "v39a",
+    "contract": "39a-strict-order-unknown-before-gap.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "39a-strict-order-unknown-before-gap.pass.md",
+        "expected": "39a-strict-order-unknown-before-gap.pass.expected.json"
+      },
+      {
+        "source": "39a-strict-order-unknown-before-gap.fail.md",
+        "expected": "39a-strict-order-unknown-before-gap.fail.expected.json"
+      }
+    ]
   }
 ]

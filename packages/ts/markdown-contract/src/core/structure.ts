@@ -321,14 +321,19 @@ function checkRecognizedRelative(assigned: Assigned[], ctx: Ctx, out: Finding[])
 }
 
 /**
- * `strict`: declared sections in declared order, with undeclared sections only at a `gap()`. It
- * walks the document sections and the specs together:
+ * `strict`: declared sections in declared order; undeclared sections go to a `gap()` when one is
+ * reachable, and are otherwise reported unless `allowUnknown`. It walks the document sections
+ * and the specs together:
  *   - A section that matches the current slot fills it.
  *   - A section that matches a later slot while a required slot is still unfilled is out of
  *     order. It gets `structure/section-order` and fills the later slot.
- *   - An undeclared section at a gap is counted toward that gap. An undeclared section with no
- *     gap ahead does not move the walk, and under `allowUnknown: false` it gets
- *     `structure/section-order`.
+ *   - An undeclared section skips optional and filled repeatable slots, and is counted toward a
+ *     gap it reaches. Where a required slot or the end stops it, it gets
+ *     `structure/section-order` under `allowUnknown: false`.
+ *   - A declared section for a slot that undeclared sections skipped, before any declared
+ *     section fills a slot, sends the walk back to where they started. Under
+ *     `allowUnknown: true` the gap count they added is taken back. Under `allowUnknown: false`
+ *     the walk goes back only when no gap took them, since there they had to be in the gap.
  * Then each gap's count is checked against its bounds.
  *
  * `admitPastSequence` handles sections after the last spec. `emitGapCounts` checks the gap
@@ -366,15 +371,19 @@ function checkStrict(
     return slots.find((s) => s.specIdx < beforeSpecIdx && s.names.includes(name))
   }
 
-  /** True when a gap follows `fromSpecIdx` with only optional or filled repeatable slots between. */
-  function gapAhead(fromSpecIdx: number): boolean {
-    for (let i = fromSpecIdx; i < specs.length; i++) {
-      if (unwrapSpec(specs[i]!).inner.kind === 'gap') return true
-      const s = slots.find((x) => x.specIdx === i)!
-      if (!s.optional && !(s.repeatable && (slotFill.get(i) ?? 0) > 0)) return false
-    }
-    return false
+  /**
+   * True when the walk may pass `slot` without a section for it: the slot is optional, or it is
+   * a repeatable slot that already has a section. A repeatable slot's bounds are checked
+   * separately (repeat-count).
+   */
+  function isSkippable(slot: Slot): boolean {
+    return slot.optional || (slot.repeatable && (slotFill.get(slot.specIdx) ?? 0) > 0)
   }
+
+  // Set while undeclared sections have moved the walk past declared slots: the specIdx they
+  // started from, the gap that took them (if any) and how many it took. The next declared
+  // section that fills a slot clears it.
+  let detour: { from: number; gap: number | null; taken: number } | null = null
 
   let specIdx = 0
   let docIdx = 0
@@ -387,6 +396,21 @@ function checkStrict(
     // second section for a filled non-repeatable slot is `structure/duplicate-section`. Either
     // way it neither moves the walk nor counts toward a gap.
     const passed = passedSlot(node.name, specIdx)
+    if (
+      passed !== undefined &&
+      detour !== null &&
+      passed.specIdx >= detour.from &&
+      (allowUnknown || detour.gap === null)
+    ) {
+      // Undeclared sections skipped this slot. They came before it, so go back to where they
+      // started and check the section again.
+      if (detour.gap !== null) {
+        gapCount.set(detour.gap, (gapCount.get(detour.gap) ?? 0) - detour.taken)
+      }
+      specIdx = detour.from
+      detour = null
+      continue
+    }
     if (passed !== undefined) {
       const fill = slotFill.get(passed.specIdx) ?? 0
       if ((passed.optional && fill === 0) || (passed.repeatable && fill > 0)) {
@@ -420,6 +444,10 @@ function checkStrict(
       }
       // Otherwise the gap takes the section.
       gapCount.set(specIdx, (gapCount.get(specIdx) ?? 0) + 1)
+      if (detour !== null) {
+        detour.gap = specIdx
+        detour.taken++
+      }
       docIdx++
       continue
     }
@@ -428,20 +456,17 @@ function checkStrict(
     const slot = slots.find((s) => s.specIdx === specIdx)!
     if (slot.names.includes(node.name)) {
       slotFill.set(specIdx, (slotFill.get(specIdx) ?? 0) + 1)
+      detour = null
       // A repeatable slot stays current for the next matching section. Any other slot is done.
       if (!slot.repeatable) specIdx++
       docIdx++
       continue
     }
 
-    // A repeatable slot with at least one section is filled. Treat it as optional from here.
-    // Its bounds are checked separately (repeat-count).
-    const repeatSatisfied = slot.repeatable && (slotFill.get(specIdx) ?? 0) > 0
-
     // The section does not match the current slot. If it matches a later one, it came early.
     const later = matchesSlotFrom(node.name, specIdx + 1)
     if (later !== null) {
-      if (!slot.optional && !repeatSatisfied) {
+      if (!isSkippable(slot)) {
         out.push(
           ctx.finding({
             id: 'structure/section-order',
@@ -453,6 +478,7 @@ function checkStrict(
       // This section fills the later slot. As for the current slot, a repeatable one stays
       // current for the next matching section, and any other is done.
       slotFill.set(later, (slotFill.get(later) ?? 0) + 1)
+      detour = null
       const laterSlot = slots.find((s) => s.specIdx === later)!
       specIdx = laterSlot.repeatable ? later : later + 1
       docIdx++
@@ -460,16 +486,15 @@ function checkStrict(
     }
 
     // The current slot is optional or already filled: skip it and check the section again. Only
-    // a declared section or one bound for a gap may skip it. An undeclared section with no gap
-    // ahead leaves the walk where it is, so a later declared section is not out of order.
-    const undeclared = slotIndexFor(slots, node.name) === null
-    if ((slot.optional || repeatSatisfied) && (!undeclared || gapAhead(specIdx))) {
+    // an undeclared section gets here, so record where its detour started.
+    if (isSkippable(slot)) {
+      detour ??= { from: specIdx, gap: null, taken: 0 }
       specIdx++
       continue
     }
 
-    // An undeclared section where a slot is expected, with no gap ahead.
-    if (undeclared) {
+    // An undeclared section where a required slot is expected, with no gap here.
+    if (slotIndexFor(slots, node.name) === null) {
       if (!allowUnknown) {
         out.push(
           ctx.finding({
