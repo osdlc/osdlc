@@ -112,9 +112,9 @@
       "line": 146,
       "title": "writeStderr comment says the running line only; it also writes the failure lines",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "6cbf6bee94b8ffa9292a656e187527f3f40ec030"
     }
   ]
 }
