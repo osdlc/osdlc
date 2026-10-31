@@ -60,9 +60,9 @@
       "line": null,
       "title": "project bin under bun: failure text says checkout runs from source",
       "comment": "https://github.com/osdlc/osdlc/pull/580#pullrequestreview-5724073496",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "020e96e367dccc00afffc2897fad34feb382589d"
     },
     {
       "id": "r2-1",
