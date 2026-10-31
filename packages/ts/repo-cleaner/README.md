@@ -21,8 +21,9 @@ hundreds, and each one is compared with the default branch, so they make a
 sweep much slower. A local report ends with a line saying what it left out.
 
 Without `gh`, a squash-merged branch is still found by comparing patches,
-but a clean worktree with no PR evidence reads `review` rather than
-`delete`.
+and a clean worktree merged by ancestry is `delete` once its branch shows
+it was worked on (see [How it decides](#how-it-decides)); one that looks
+freshly made stays `review`.
 
 On a terminal, a long sweep step draws a progress bar on stderr, and
 `apply` draws its steps as a list that updates in place: each row has its
@@ -89,6 +90,17 @@ is `needs-investigation` with the reasons spelled out, not a guess. A worktree
 holding uncommitted or unpushed work is never proposed for removal whatever
 else is true of it — losing an hour of someone's work costs more than any
 amount of clutter.
+
+A clean worktree whose HEAD is merged by ancestry alone, with no merged PR
+or patch match, needs one more sign, because a worktree that `git worktree
+add -b` just made from the default branch is merged that way too, and
+removing it would lose the ignored files of work about to start. The sign is
+in `facts.branch_used`: `commits` when the branch's reflog records a commit,
+cherry-pick, `am`, or a merge or pull that made a merge commit (a
+fast-forward only moves the branch), and `upstream` when the branch
+tracks a branch on a remote, other than the default branch (a branch made
+with `--track` from `main` or `origin/main` does not count). With either, the worktree
+is `safe-to-delete`; with neither (`null`) it stays `needs-investigation`.
 
 Some worktrees are held back whatever their branch says. Each lands in
 `facts.blockers`, and the row carries no command and has `deletable: false`:
@@ -392,7 +404,21 @@ Delete 2 items? [y/N]
 ```
 
 The re-check reads only the categories the selected rows are in, so applying
-a plan of local rows does not compare every remote branch again.
+a plan of local rows does not compare every remote branch again. A plan
+records in each repository's `fetch` whether its sweep fetched; the re-check
+fetches too when it did, so it judges against the same, current default
+branch. A plan written before that field re-checks without fetching.
+
+`--keep remote_branch:<remote>/<branch>` keeps a remote branch while the
+rest of its rows go: say, delete the worktree and local branch but leave
+the branch on the remote. A kept row is checked, not skipped. The re-check
+refuses the run if the branch is gone or its tip moved since the plan, and
+the run's first step checks the tip again with `git ls-remote`, so one that
+moves after the re-check stops the run before anything is deleted. Only the
+tip counts: a PR that closed since the plan does not refuse it. Another
+clone of the same remote does not delete a kept branch either; its row is
+dropped as `kept`. The row id is the one the plan lists,
+`<remote>/<branch>`, e.g. `origin/feat/x`.
 `--yes` skips the question. With no terminal to ask on and no `--yes`, it
 refuses with exit 2 rather than deleting. `--plan -` needs `--yes` or
 `--dry-run`, because stdin carries the plan. `--dry-run` prints the steps and

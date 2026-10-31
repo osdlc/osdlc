@@ -20,6 +20,7 @@ export const DroppedSchema = RowRefSchema.extend({
     'facts-changed',
     'not-authorized',
     'duplicate',
+    'kept',
   ]),
   detail: z.string(),
 })
@@ -31,6 +32,7 @@ export const StepSchema = z.object({
   /** Null for the closing prune, which belongs to no row. */
   row: RowRefSchema.nullable(),
   action: z.enum([
+    'verify-remote',
     'unlock-worktree',
     'remove-worktree',
     'delete-local',

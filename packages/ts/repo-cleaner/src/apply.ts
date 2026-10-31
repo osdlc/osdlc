@@ -18,7 +18,7 @@
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import type { CommandRunner } from '@osdlc/command-seam'
+import { shellJoin, type CommandRunner } from '@osdlc/command-seam'
 import { CommandFailed, Git, PUSH_REJECTIONS } from '@osdlc/typed-git'
 
 import { localDeleteCommand, remoteDeleteCommand } from './branches.ts'
@@ -86,6 +86,24 @@ export interface ApplyOptions extends HostHooks {
   swept?: ReadonlyMap<string, readonly SweepItem[]> | undefined
   /** Rows dropped before this run, such as by a preview; recorded first in the receipt. */
   dropped?: readonly Dropped[] | undefined
+  /**
+   * Remote branch rows to keep: not deleted, but checked. Each must be a
+   * `remote_branch` row of the plan; its id is `<remote>/<branch>`, as in the
+   * plan, e.g. `origin/topic`. The re-check refuses the run with
+   * {@link ApplyRefused} when a kept branch is gone or its tip is not the
+   * planned one, and the run's first steps check each tip again with
+   * `ls-remote`, so a branch that moves after the re-check stops the run
+   * before anything is deleted. A kept row cannot also be selected.
+   */
+  keep?: readonly RowSelection[] | undefined
+  /**
+   * Fetch each repository's remote before the re-sweep. Defaults to what the
+   * plan repository records in `fetch`: a plan swept after a fetch is
+   * re-checked after one. Remote branch tips are read live either way; the
+   * fetch moves the default branch those tips and the local refs are judged
+   * against. A failed fetch fails the run before any step.
+   */
+  fetch?: boolean | undefined
   /** Passed to the re-sweep's `onProgress`, for a status line. */
   onSweepProgress?: ((progress: SweepProgress) => void) | undefined
   /**
@@ -102,6 +120,9 @@ export interface ApplyOptions extends HostHooks {
 
 /** A selection or grant the plan cannot satisfy. Nothing has been touched. */
 export class ApplyArgumentError extends Error {}
+
+/** A kept row is gone or moved since the plan, so the run refuses. Nothing has been touched. */
+export class ApplyRefused extends Error {}
 
 /** `<category>:<id>`, split at the first colon. */
 export function parseRowRef(text: string): RowRef {
@@ -205,6 +226,7 @@ function resweep(repo: PlanRepo, scope: readonly Scope[], opts: ApplyOptions): S
     remote: repo.remote,
     noGh: repo.no_gh,
     branch: repo.branch ?? undefined,
+    fetch: opts.fetch ?? repo.fetch,
     scope,
     cwd: opts.callerCwd,
     git: opts.git,
@@ -221,19 +243,40 @@ function resweep(repo: PlanRepo, scope: readonly Scope[], opts: ApplyOptions): S
 /** Re-sweep, then split the selection into rows to run and rows dropped. */
 function recheck(
   selected: readonly Selected[],
+  kept: readonly Selected[],
   grants: readonly Grant[],
   implicit: boolean,
   opts: ApplyOptions,
-): { accepted: Accepted[]; dropped: Dropped[] } {
+): { accepted: Accepted[]; dropped: Dropped[]; verified: Accepted[] } {
   const swept = new Map<PlanRepo, SweepItem[]>()
-  for (const { repo } of selected) {
+  const all = [...selected, ...kept]
+  for (const { repo } of all) {
     if (swept.has(repo)) continue
     // Only the categories the selection is in: a plan of local rows need not
     // compare every remote branch again.
-    const scope = new Set(
-      selected.filter((s) => s.repo === repo).map((s) => SCOPE_OF[s.ref.category]),
-    )
+    const scope = new Set(all.filter((s) => s.repo === repo).map((s) => SCOPE_OF[s.ref.category]))
     swept.set(repo, resweep(repo, [...scope], opts))
+  }
+
+  // A kept branch is checked, not dropped: one that moved refuses the run.
+  const verified: Accepted[] = []
+  for (const { repo, ref } of kept) {
+    const planned = repo.rows.find((row) => sameRow(row, ref))!
+    const item = swept.get(repo)!.find((it) => sameRow(it as RowRef, ref))
+    if (item === undefined) {
+      throw new ApplyRefused(`kept ${label(ref)} is no longer in the sweep; refusing to apply`)
+    }
+    // The tip alone: a PR that closed since the plan does not move the branch.
+    const plannedSha = planned.fingerprint['sha']
+    if (typeof plannedSha !== 'string' || shaOf(item) === null) {
+      throw new ApplyRefused(`kept ${label(ref)} has no tip to check; refusing to apply`)
+    }
+    if (shaOf(item) !== plannedSha) {
+      throw new ApplyRefused(
+        `kept ${label(ref)} moved since the plan (planned ${String(plannedSha)}, now ${String(item.facts['sha'])}); refusing to apply`,
+      )
+    }
+    verified.push({ repo: repo.root, item, force: false })
   }
 
   const accepted: Accepted[] = []
@@ -271,7 +314,7 @@ function recheck(
     }
     accepted.push({ repo: repo.root, item, force: granted(grants, ref, 'discard-changes') })
   }
-  return { accepted, dropped }
+  return { accepted, dropped, verified }
 }
 
 function pending(
@@ -296,9 +339,33 @@ function pending(
 const pruneStep = (repo: string, row: RowRef | null): Step =>
   pending(repo, row, 'prune-worktrees', worktreePruneCommand(repo))
 
+/** A row's sha fact, or null when it has none. */
+function shaOf(item: SweepItem): string | null {
+  return typeof item.facts['sha'] === 'string' ? item.facts['sha'] : null
+}
+
+/** A remote branch row's remote, its full ref on that remote, and its branch name. */
+function remoteRefOf(item: SweepItem): { remote: string; ref: string; branch: string } {
+  const branch = String(item.facts['branch'])
+  return { remote: String(item.facts['remote']), ref: `refs/heads/${branch}`, branch }
+}
+
+/** The step that checks a kept remote branch's tip, just before anything is deleted. */
+function verifyStep({ repo, item }: Accepted): Step {
+  const sha = shaOf(item)
+  const { remote, ref } = remoteRefOf(item)
+  return pending(
+    repo,
+    { category: item.category, id: item.id },
+    'verify-remote',
+    shellJoin(['git', 'ls-remote', remote, ref]),
+    sha,
+  )
+}
+
 function stepsFor({ repo, item, force }: Accepted): Step[] {
   const ref: RowRef = { category: item.category, id: item.id }
-  const sha = typeof item.facts['sha'] === 'string' ? item.facts['sha'] : null
+  const sha = shaOf(item)
   switch (item.category) {
     case 'worktree': {
       // Remove and prune both skip a locked worktree, so a stale lock goes first.
@@ -320,11 +387,7 @@ function stepsFor({ repo, item, force }: Accepted): Step[] {
           repo,
           ref,
           'delete-remote',
-          remoteDeleteCommand(
-            String(item.facts['remote']),
-            String(item.facts['branch']),
-            sha ?? '',
-          ),
+          remoteDeleteCommand(remoteRefOf(item).remote, remoteRefOf(item).branch, sha ?? ''),
           sha,
         ),
       ]
@@ -395,9 +458,17 @@ function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe
       if (at.resolveRef(`refs/heads/${name}`) !== null) throw new Error('ref still resolves')
       return 'ref does not resolve'
     }
+    case 'verify-remote': {
+      const { remote, ref } = remoteRefOf(row!.item)
+      const tip = at.lsRemote(remote, ref).find((r) => r.ref === ref)
+      if (tip === undefined) throw new Error(`refused: kept ${ref} is gone from ${remote}`)
+      if (tip.sha !== step.expected_sha) {
+        throw new Error(`refused: kept ${ref} moved to ${tip.sha}, planned ${step.expected_sha}`)
+      }
+      return 'tip unchanged; kept'
+    }
     case 'delete-remote': {
-      const remote = String(row!.item.facts['remote'])
-      const ref = `refs/heads/${String(row!.item.facts['branch'])}`
+      const { remote, ref } = remoteRefOf(row!.item)
       const report = at.push(remote, `:${ref}`, {
         forceWithLease: { ref, expect: step.expected_sha! },
       })
@@ -456,9 +527,23 @@ function remoteKey(git: Git, repo: string, remote: string): string | null {
  * run, so the later row is dropped as `duplicate`.
  */
 function onePerRemoteBranch(
-  { accepted, dropped }: { accepted: Accepted[]; dropped: Dropped[] },
+  {
+    accepted,
+    dropped,
+    verified,
+  }: { accepted: Accepted[]; dropped: Dropped[]; verified: Accepted[] },
   git: Git,
 ): { accepted: Accepted[]; dropped: Dropped[] } {
+  const keyOf = (row: Accepted): string | null => {
+    const remote = remoteKey(git, row.repo, String(row.item.facts['remote']))
+    return remote === null ? null : `${remote}\0${remoteRefOf(row.item).branch}`
+  }
+  // A branch kept through one clone stays, whichever clone lists it.
+  const keptAt = new Map<string, string>()
+  for (const row of verified) {
+    const key = keyOf(row)
+    if (key !== null) keptAt.set(key, row.repo)
+  }
   const seen = new Map<string, string>()
   const kept: Accepted[] = []
   const extra: Dropped[] = []
@@ -467,8 +552,18 @@ function onePerRemoteBranch(
       kept.push(row)
       continue
     }
-    const remote = remoteKey(git, row.repo, String(row.item.facts['remote']))
-    const key = remote === null ? null : `${remote}\0${String(row.item.facts['branch'])}`
+    const key = keyOf(row)
+    const keeper = key === null ? undefined : keptAt.get(key)
+    if (keeper !== undefined) {
+      extra.push({
+        repo: row.repo,
+        category: row.item.category,
+        id: row.item.id,
+        reason: 'kept',
+        detail: `the same remote branch is kept through ${keeper}`,
+      })
+      continue
+    }
     const first = key === null ? undefined : seen.get(key)
     if (first !== undefined) {
       extra.push({
@@ -513,8 +608,23 @@ export function applyPlan(
           .flatMap((r) =>
             r.rows.map((row) => ({ category: row.category, id: row.id, repo: r.root })),
           )
+  const kept = locate(plan, opts.keep ?? [], opts.repoRoot)
+  for (const k of kept) {
+    if (k.ref.category !== 'remote_branch') {
+      throw new ApplyArgumentError(`--keep takes a remote_branch row, not ${label(k.ref)}`)
+    }
+  }
+  const isKept = (row: RowSelection): boolean =>
+    kept.some(
+      (k) =>
+        sameRow(k.ref, row) &&
+        (row.repo === undefined || resolve(row.repo) === resolve(k.repo.root)),
+    )
+  for (const row of requested) {
+    if (isKept(row)) throw new ApplyArgumentError(`row ${label(row)} is both selected and kept`)
+  }
   const rows = wanted.filter(
-    (row, i) => wanted.findIndex((other) => sameSelection(other, row)) === i,
+    (row, i) => wanted.findIndex((other) => sameSelection(other, row)) === i && !isKept(row),
   )
   if (rows.length === 0) throw new ApplyArgumentError('the plan has no rows to apply')
   const selected = locate(plan, rows, opts.repoRoot)
@@ -533,7 +643,7 @@ export function applyPlan(
     dropped: [],
     steps: [],
   }
-  const rechecked = recheck(selected, grants, opts.safeOnly ?? requested.length === 0, opts)
+  const rechecked = recheck(selected, kept, grants, opts.safeOnly ?? requested.length === 0, opts)
   const { accepted, dropped } = onePerRemoteBranch(
     rechecked,
     new Git(opts.callerCwd, { runner: opts.git }),
@@ -543,9 +653,11 @@ export function applyPlan(
   const ordered = PLAN_CATEGORIES.flatMap((category) =>
     accepted.filter((row) => row.item.category === category),
   )
-  const plannedSteps: Array<[Step, Accepted | null]> = ordered.flatMap((row) =>
-    stepsFor(row).map((step): [Step, Accepted | null] => [step, row]),
-  )
+  const plannedSteps: Array<[Step, Accepted | null]> = [
+    // Kept tips first: one that moved stops the run before anything is deleted.
+    ...rechecked.verified.map((row): [Step, Accepted | null] => [verifyStep(row), row]),
+    ...ordered.flatMap((row) => stepsFor(row).map((step): [Step, Accepted | null] => [step, row])),
+  ]
   for (const repo of new Set(ordered.map((row) => row.repo))) {
     plannedSteps.push([pruneStep(repo, null), null])
   }

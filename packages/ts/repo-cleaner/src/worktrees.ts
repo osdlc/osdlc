@@ -451,6 +451,25 @@ export function classifyWorktree(opts: {
 
   if (pr && pr.state === 'OPEN') return keep(`open PR #${pr.number}`, { requires })
 
+  // Merged by ancestry alone: a worktree just made from the default branch is
+  // merged that way too, so ancestry needs a sign the branch was worked on.
+  if (facts['merged'] === true && branch && head !== null) {
+    const used = branchUse(git.at(repo.root), branch, repo.mainBranch)
+    facts['branch_used'] = used
+    if (used !== null) {
+      return makeItem({
+        category: 'worktree',
+        id: path,
+        classification: 'safe-to-delete',
+        action: 'remove',
+        reason: `clean; merged into ${landedRef(repo)}, and ${USE_REASON[used]}`,
+        facts,
+        commands: safeRemove,
+        requires,
+      })
+    }
+  }
+
   const parts = [`Worktree \`${path}\` is clean.`]
   if (branch) parts.push(`Branch: \`${branch}\`.`)
   parts.push(pr ? `PR #${pr.number} is ${pr.state}.` : 'No associated PR.')
@@ -467,4 +486,47 @@ export function classifyWorktree(opts: {
     investigationParts: parts,
     requires,
   })
+}
+
+/** How a branch shows it was worked on, for a worktree merged by ancestry alone. */
+export type BranchUse = 'commits' | 'upstream'
+
+const USE_REASON: Record<BranchUse, string> = {
+  commits: 'the branch has commits made on it',
+  upstream: 'the branch was pushed to its own upstream',
+}
+
+/**
+ * Reflog entries that put work on a branch: a commit, a cherry-pick, an `am`,
+ * or a merge or pull that made a merge commit. A fast-forward merge or pull,
+ * a rebase, a reset or a rename only moves a branch, which a fresh branch
+ * tracking the default branch does on its first `git pull`.
+ */
+function isWorkEntry(entry: string): boolean {
+  if (/^(commit|cherry-pick|am)\b/.test(entry)) return true
+  return /^(merge|pull)\b/.test(entry) && !/Fast-forward/.test(entry)
+}
+
+/**
+ * The sign that `branch` was worked on, or null for a branch that looks
+ * freshly made. `commits`: its reflog records work (see {@link isWorkEntry}). `upstream`: it tracks a branch on a remote, and not
+ * the default branch (`mainBranch`) of any remote, so someone pushed it as
+ * its own branch. A branch with neither, such as one `git worktree add -b`
+ * just made from the default branch, with or without `--track`, reads as
+ * null: removing its worktree could lose ignored files from work about to
+ * start.
+ */
+export function branchUse(git: Git, branch: string, mainBranch: string): BranchUse | null {
+  // `raw`: a branch with no reflog (core.logAllRefUpdates off) exits non-zero.
+  const reflog = git.raw(['reflog', 'show', '--format=%gs', `refs/heads/${branch}`, '--'])
+  if (reflog.exitCode === 0 && reflog.stdout.split('\n').some(isWorkEntry)) {
+    return 'commits'
+  }
+  // From the branch's own config, not the resolved name: a branch tracking a
+  // local branch has remote `.`, and one tracking `upstream/main` merges the
+  // default branch however its remote is spelled.
+  const remote = git.configGet(`branch.${branch}.remote`)
+  const merge = git.configGet(`branch.${branch}.merge`)
+  if (remote && remote !== '.' && merge && merge !== `refs/heads/${mainBranch}`) return 'upstream'
+  return null
 }

@@ -916,3 +916,90 @@ describe('fetch', () => {
     expect(sweep.repo?.fetched).toBe(false)
   })
 })
+
+describe('a clean worktree merged by ancestry alone (#582)', () => {
+  let parent: string
+
+  beforeAll(() => {
+    parent = realpathSync(mkdtempSync(join(tmpdir(), 'repo-cleaner-used-')))
+  }, HOOK_TIMEOUT_MS)
+
+  afterAll(() => rmSync(parent, { recursive: true, force: true }), HOOK_TIMEOUT_MS)
+
+  /** A checkout whose origin accepts a push to `main`, and a worktree path under `parent`. */
+  function setup(name: string) {
+    const { origin, checkout } = makeOriginAndCheckout({ parent })
+    git(['checkout', '-q', '--detach'], origin.dir)
+    const wt = join(parent, `${name}-${Math.random().toString(36).slice(2, 8)}`)
+    return { root: checkout.dir, wt }
+  }
+  const worktreeRow = (root: string, wt: string): SweepItem | undefined =>
+    itemsOf(sweepRepo(root, { noGh: true, cwd: root }).items, 'worktree').get(realpathSync(wt))
+
+  test('a worked-on branch fast-forwarded into main leaves a deletable worktree', () => {
+    // The issue's reproduction: a commit on topic, pushed, main fast-forwarded to it.
+    const { root, wt } = setup('topic')
+    git(['worktree', 'add', '-q', '-b', 'topic', wt], root)
+    commit(wt, 'topic')
+    git(['push', '-q', '-u', 'origin', 'topic'], wt)
+    git(['merge', '-q', '--ff-only', 'topic'], root)
+    git(['push', '-q', 'origin', 'main'], root)
+    const row = worktreeRow(root, wt)
+    expect(row?.classification).toBe('safe-to-delete')
+    expect(row?.facts['branch_used']).toBe('commits')
+    expect(row?.reason).toBe(
+      'clean; merged into origin/main, and the branch has commits made on it',
+    )
+  })
+
+  test('a worktree just made from main stays a review row', () => {
+    const { root, wt } = setup('fresh')
+    git(['worktree', 'add', '-q', '-b', 'fresh', wt, 'main'], root)
+    const row = worktreeRow(root, wt)
+    expect(row?.classification).toBe('needs-investigation')
+    expect(row?.facts['branch_used']).toBeNull()
+  })
+
+  test('one made from origin/main, tracking it, stays a review row too', () => {
+    const { root, wt } = setup('tracking')
+    git(['worktree', 'add', '-q', '--track', '-b', 'tracking', wt, 'origin/main'], root)
+    expect(git(['rev-parse', '--abbrev-ref', 'tracking@{upstream}'], root)).toBe('origin/main')
+    expect(worktreeRow(root, wt)?.classification).toBe('needs-investigation')
+  })
+
+  test('a fresh branch that only fast-forwarded on a pull stays a review row', () => {
+    const { root, wt } = setup('pulled')
+    git(['worktree', 'add', '-q', '--track', '-b', 'pulled', wt, 'origin/main'], root)
+    commit(root, 'main moves on')
+    git(['push', '-q', 'origin', 'main'], root)
+    git(['pull', '-q', '--ff-only'], wt)
+    expect(git(['reflog', 'show', '--format=%gs', 'refs/heads/pulled'], root)).toMatch(
+      /^pull.*Fast-forward/m,
+    )
+    const row = worktreeRow(root, wt)
+    expect(row?.classification).toBe('needs-investigation')
+    expect(row?.facts['branch_used']).toBeNull()
+  })
+
+  test('one tracking local main is not counted as pushed', () => {
+    const { root, wt } = setup('local-track')
+    git(['worktree', 'add', '-q', '--track', '-b', 'local-track', wt, 'main'], root)
+    expect(git(['config', 'branch.local-track.remote'], root)).toBe('.')
+    const row = worktreeRow(root, wt)
+    expect(row?.classification).toBe('needs-investigation')
+    expect(row?.facts['branch_used']).toBeNull()
+  })
+
+  test('with no reflog, an upstream of its own is the sign', () => {
+    const { root, wt } = setup('pushed')
+    git(['worktree', 'add', '-q', '-b', 'pushed', wt], root)
+    commit(wt, 'pushed')
+    git(['push', '-q', '-u', 'origin', 'pushed'], wt)
+    git(['merge', '-q', '--ff-only', 'pushed'], root)
+    git(['push', '-q', 'origin', 'main'], root)
+    rmSync(join(root, '.git', 'logs', 'refs', 'heads', 'pushed'), { force: true })
+    const row = worktreeRow(root, wt)
+    expect(row?.classification).toBe('safe-to-delete')
+    expect(row?.facts['branch_used']).toBe('upstream')
+  })
+})

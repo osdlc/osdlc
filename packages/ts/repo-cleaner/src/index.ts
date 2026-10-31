@@ -37,6 +37,7 @@ export { DiscoveryFailed, discoverRepo } from './discover.ts'
 export { assessLanding, patchEquivalent, type Landing, type LandingCheck } from './landing.ts'
 export {
   ApplyArgumentError,
+  ApplyRefused,
   applyPlan,
   type RowSelection,
   parseGrant,

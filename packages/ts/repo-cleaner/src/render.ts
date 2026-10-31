@@ -419,7 +419,9 @@ export function summarizeReceipt(receipt: Receipt): ApplySummary {
     if (s.result === 'failed') out.failed += 1
     if (s.row === null) continue
     if (s.result === 'pending') {
-      if (s.action !== 'unlock-worktree') out.notRun += 1
+      // Rows not reached are rows a run would have deleted; an unlock or a
+      // tip check deletes nothing.
+      if (s.action !== 'unlock-worktree' && s.action !== 'verify-remote') out.notRun += 1
       continue
     }
     if (s.result !== 'ok' && s.result !== 'would-run') continue
@@ -469,6 +471,7 @@ export function renderApplySummary(receipt: Receipt): string[] {
 
 /** The word a preview shows for a step: what it does to the row. */
 export const STEP_VERB: Record<Step['action'], string> = {
+  'verify-remote': 'verify',
   'unlock-worktree': 'unlock',
   'remove-worktree': 'delete',
   'delete-local': 'delete',
