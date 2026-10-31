@@ -155,16 +155,27 @@ test.skipIf(process.platform === 'win32' || typeof process.execve !== 'function'
     const exited = new Promise<NodeJS.Signals | null>((done) =>
       proc.on('exit', (_, sig) => done(sig)),
     )
-    const deadline = Date.now() + 10_000
-    while (!existsSync(pidFile) || readFileSync(pidFile, 'utf-8') === '') {
-      if (Date.now() > deadline) throw new Error('the child never wrote its pid')
-      await new Promise((r) => setTimeout(r, 20))
+    let childPid: number | undefined
+    try {
+      const deadline = Date.now() + 10_000
+      while (!existsSync(pidFile) || readFileSync(pidFile, 'utf-8') === '') {
+        if (Date.now() > deadline) throw new Error('the child never wrote its pid')
+        await new Promise((r) => setTimeout(r, 20))
+      }
+      childPid = Number(readFileSync(pidFile, 'utf-8'))
+      expect(childPid).toBe(proc.pid)
+      proc.kill('SIGTERM')
+      expect(await exited).toBe('SIGTERM')
+      expect(() => process.kill(childPid ?? 0, 0)).toThrow()
+    } finally {
+      // A failed run must not leave the parent or a spawned child behind.
+      proc.kill('SIGKILL')
+      try {
+        if (childPid !== undefined) process.kill(childPid, 'SIGKILL')
+      } catch {
+        // Already gone.
+      }
     }
-    const childPid = Number(readFileSync(pidFile, 'utf-8'))
-    expect(childPid).toBe(proc.pid)
-    proc.kill('SIGTERM')
-    expect(await exited).toBe('SIGTERM')
-    expect(() => process.kill(childPid, 0)).toThrow()
   },
   15_000,
 )

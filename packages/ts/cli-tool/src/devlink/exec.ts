@@ -11,8 +11,8 @@
  * parent's signals: a SIGTERM to the parent orphans it, and Ctrl-C gives the
  * shell its prompt back while the child still runs. One process, with the
  * same pid, has neither problem, and its exit status is the child's own.
- * Where `execve` is missing (Windows, Node before 23.11) a synchronous spawn
- * whose exit code becomes this process's is the fallback.
+ * Where `execve` is missing (Windows, or Node before 22.15) a synchronous
+ * spawn whose exit code becomes this process's is the fallback.
  *
  * This does not go through `@osdlc/command-seam`, on purpose. The program
  * started inherits stdio and is the program the user invoked, so nothing is
@@ -140,7 +140,11 @@ export function execSelection(
  * is lost.
  */
 function writeStderr(line: string): void {
-  writeSync(2, `${line}\n`)
+  try {
+    writeSync(2, `${line}\n`)
+  } catch {
+    // Informational only: a closed or full stderr must not stop the hand-off.
+  }
 }
 
 function defaultExecve(): ExecOptions['execve'] {

@@ -83,7 +83,7 @@ sequenceDiagram
 
 On POSIX the hook calls `process.execve`, so the project copy takes over the
 same process, as the bash launcher's `exec` does. Where `execve` is missing,
-on Windows and on Node before 23.11, the hook spawns the copy instead, waits
+on Windows and on a Node before 22.15, the hook spawns the copy instead, waits
 for it, and exits with its exit code.
 
 The child deletes `TOOL_LAUNCH_LAYER` once it has read it, so anything the
