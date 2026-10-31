@@ -159,8 +159,7 @@ export function cwdCheckout(spec: ToolSpec, start: string): string | null {
 
 /**
  * The real directory of `packageName` in the nearest `node_modules` at or
- * above `start`, as Node's `require` finds it from there, following a pnpm
- * symlink into its store. Its `package.json` must have that `name`. Null
+ * above `start`, following a pnpm symlink into its store. Its `package.json` must have that `name`. Null
  * when there is none.
  *
  * Only the folders above `start` are searched. `createRequire(...).resolve`
