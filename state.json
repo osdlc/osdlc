@@ -1,12 +1,24 @@
 {
   "schema": 1,
   "pr": 569,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "ca60241a2d177e64b0e022b9d26c7a10b54b79a4",
+  "base": "34dee01ee706163d800d06fd4f68ef3ad5e4fab1",
+  "round": 1,
   "claim": {
     "owner": "KellyMBP.local:claude-q7m2xk",
     "at": "2026-10-31T07:15:09.116Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/wayfinder/src/cli.ts",
+      "line": 265,
+      "title": "way --version --json now prints plain text instead of the version document",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
