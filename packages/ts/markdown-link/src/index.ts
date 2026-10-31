@@ -16,6 +16,7 @@ export {
   isVaultLinkUrl,
   mdLinkTarget,
   parseInner,
+  percentDecode,
   targetRange,
 } from './parse.ts'
 export { type TypedRef, displayText, parseTypedRef } from './display.ts'
