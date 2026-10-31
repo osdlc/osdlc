@@ -302,6 +302,36 @@ describe('apply', () => {
     expect(saved.dropped).toEqual(out.receipt.dropped)
   })
 
+  test('a run with no receipt file says so on stderr', () => {
+    const fx = buildFixture()
+    const res = run(['apply', '--branch', BRANCH, ...SWEEP, ...rowsOf(fx), '--yes'], fx.root)
+    expect(res.code).toBe(0)
+    expect(res.err).toContain('no receipt written')
+  })
+
+  test('an empty plan reports a status that matches the run', () => {
+    const fx = buildFixture()
+    const plan = join(fx.root, 'empty.json')
+    writeFileSync(plan, JSON.stringify({ version: 1, created_at: 'x', repos: [] }))
+    const real = run(['apply', '--plan', plan, '--yes', '--output', 'json'], fx.root)
+    expect((JSON.parse(real.out) as { receipt: Receipt }).receipt.status).toBe('complete')
+    const dry = run(['apply', '--plan', plan, '--dry-run', '--output', 'json'], fx.root)
+    expect((JSON.parse(dry.out) as { receipt: Receipt }).receipt.status).toBe('dry-run')
+  })
+
+  test('two clones of one remote: apply deletes each remote branch once', () => {
+    const fx = buildFixture()
+    const parent = tempDir()
+    sh(parent, ['clone', '-q', fx.bare, 'a'])
+    sh(parent, ['clone', '-q', fx.bare, 'b'])
+    sh(join(parent, 'a'), ['fetch', '-q'])
+    const res = run(['apply', ...SWEEP, '--only', 'remotes', '--yes', 'a', 'b'], parent)
+    expect(res.code).toBe(0)
+    expect(res.out).toContain('duplicate')
+    expect(res.out).toContain('status: complete')
+    expect(branchRefs(fx.bare)).not.toContain(BRANCH)
+  })
+
   test('a no deletes nothing', () => {
     const fx = buildFixture()
     const res = run(['apply', '--branch', BRANCH, ...SWEEP], fx.root, { confirm: () => false })

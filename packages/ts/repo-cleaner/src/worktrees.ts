@@ -13,7 +13,7 @@ import { shellJoin } from '@osdlc/command-seam'
 import { nodeGuard } from '@osdlc/path-guard/node'
 import type { Git } from '@osdlc/typed-git'
 
-import { gapSentence, recordPr } from './branches.ts'
+import { gapSentence, mergedFact, recordPr } from './branches.ts'
 import {
   confirmationNote,
   judgeLanding,
@@ -335,10 +335,12 @@ export function classifyWorktree(opts: {
   const patchLanded = patch !== null && patch.check !== null
   const unlanded = unpushed.length > 0 && !landed && !landingConfirmed(patch)
   if (onDisk && head !== null) {
-    // Merged: HEAD's work is on the default branch. `soft`: a missing default
-    // ref reads as not merged.
-    facts['merged'] =
-      landed || patchLanded || git.at(repo.root).soft.isAncestor(head, landedRef(repo))
+    // `soft`: a missing default ref reads as not merged.
+    facts['merged'] = mergedFact({
+      landed,
+      patchLanded,
+      ancestor: git.at(repo.root).soft.isAncestor(head, landedRef(repo)),
+    })
   }
   const requires = authorizationsFor({
     'abandon-unmerged': unlanded,

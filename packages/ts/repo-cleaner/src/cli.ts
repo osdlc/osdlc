@@ -40,7 +40,7 @@ import {
   writePlan,
   type Plan,
 } from './plan.ts'
-import type { Receipt, RowRef, Step } from './receipt.ts'
+import { RECEIPT_VERSION, type Receipt, type RowRef, type Step } from './receipt.ts'
 import {
   proposedCommands,
   renderCountsJson,
@@ -58,7 +58,7 @@ import {
   type StatusLine,
 } from './status-line.ts'
 import { sweepRepos, type SweepReposOptions } from './sweep.ts'
-import type { Scope, SweepProgress, SweepResult } from './types.ts'
+import type { Scope, SweepItem, SweepProgress, SweepResult } from './types.ts'
 
 const EXIT_NOTHING_TO_SWEEP = 10
 const EXIT_STEP_FAILED = 11
@@ -206,7 +206,7 @@ const applyCli = () =>
       repoRoot: {
         kind: 'string',
         valueName: 'path',
-        help: 'apply only the plan repository rooted here',
+        help: 'with a plan of several repositories: apply only the one rooted here',
       },
       receipt: {
         kind: 'string',
@@ -281,8 +281,10 @@ interface SweepValues {
 }
 
 type Swept =
-  | { ok: true; result: SweepResult; branch: string | undefined; values: SweepValues }
-  | { ok: false; code: number }
+  | { kind: 'ok'; result: SweepResult; branch: string | undefined; values: SweepValues }
+  /** No entry named a repository; the verb reports it and exits 10. */
+  | { kind: 'nothing'; result: SweepResult }
+  | { kind: 'exit'; code: number }
 
 /** Validate the sweep flags and run the sweep, or answer with the exit code. */
 function sweep(
@@ -290,29 +292,24 @@ function sweep(
   v: SweepValues,
   paths: readonly string[],
   ctx: CliContext,
-  render: (result: SweepResult) => string,
   status: StatusLine,
 ): Swept {
   const only = v.only?.filter((s) => s !== '')
   const unknown = (only ?? []).filter((s) => !(s in ONLY))
   if (unknown.length > 0) {
-    return {
-      ok: false,
-      code: usageError(ctx, name, `unknown --only value(s): ${unknown.join(', ')}`),
-    }
+    const message = `unknown --only value(s): ${unknown.join(', ')}`
+    return { kind: 'exit', code: usageError(ctx, name, message) }
   }
   if (v.branch !== undefined && paths.length > 0) {
-    return {
-      ok: false,
-      code: usageError(ctx, name, '--branch sweeps this repository only; drop the paths'),
-    }
+    const message = '--branch sweeps this repository only; drop the paths'
+    return { kind: 'exit', code: usageError(ctx, name, message) }
   }
 
   let branch: string | undefined
   try {
     branch = v.branch === undefined ? undefined : resolveBranch(v.branch, new Git(ctx.cwd))
   } catch (err) {
-    return { ok: false, code: failure(ctx, err) }
+    return { kind: 'exit', code: failure(ctx, err) }
   }
 
   const options: SweepReposOptions = {
@@ -335,15 +332,12 @@ function sweep(
     const err = new Error(
       `--branch sweeps one repository; ${result.repos.length} found under ${ctx.cwd}`,
     )
-    return { ok: false, code: failure(ctx, err) }
+    return { kind: 'exit', code: failure(ctx, err) }
   }
   const refused = branch === undefined ? null : (result.repos[0]?.error ?? null)
-  if (refused !== null) return { ok: false, code: failure(ctx, new Error(refused)) }
-  if (result.repos.length === 0) {
-    ctx.io.stdout(render(result))
-    return { ok: false, code: EXIT_NOTHING_TO_SWEEP }
-  }
-  return { ok: true, result, branch, values: v }
+  if (refused !== null) return { kind: 'exit', code: failure(ctx, new Error(refused)) }
+  if (result.repos.length === 0) return { kind: 'nothing', result }
+  return { kind: 'ok', result, branch, values: v }
 }
 
 /**
@@ -357,7 +351,7 @@ function reportUnreadable(ctx: CliContext, name: string, result: SweepResult): b
   return failed.length > 0
 }
 
-function planOf(swept: Extract<Swept, { ok: true }>, now: Date): Plan {
+function planOf(swept: Extract<Swept, { kind: 'ok' }>, now: Date): Plan {
   const opts = {
     remote: swept.values.remote ?? null,
     noGh: !swept.values.gh,
@@ -379,8 +373,12 @@ function runStatus(argv: readonly string[], ctx: CliContext, status: StatusLine)
   const v = parsed.values
   const render = (r: SweepResult): string =>
     v.output === 'json' ? renderJson(r) : renderText(r, { keep: v.keep })
-  const swept = sweep(NAME, v, parsed.positionals, ctx, render, status)
-  if (!swept.ok) return swept.code
+  const swept = sweep(NAME, v, parsed.positionals, ctx, status)
+  if (swept.kind === 'exit') return swept.code
+  if (swept.kind === 'nothing') {
+    ctx.io.stdout(render(swept.result))
+    return EXIT_NOTHING_TO_SWEEP
+  }
 
   if (v.commands) {
     const commands = proposedCommands(swept.result)
@@ -399,10 +397,10 @@ function runSummary(argv: readonly string[], ctx: CliContext, status: StatusLine
   const v = parsed.values
   const render = (r: SweepResult): string =>
     v.output === 'json' ? renderCountsJson(r) : renderCountsText(r)
-  const swept = sweep(name, v, parsed.positionals, ctx, render, status)
-  if (!swept.ok) return swept.code
+  const swept = sweep(name, v, parsed.positionals, ctx, status)
+  if (swept.kind === 'exit') return swept.code
   ctx.io.stdout(render(swept.result))
-  return EXIT.ok
+  return swept.kind === 'nothing' ? EXIT_NOTHING_TO_SWEEP : EXIT.ok
 }
 
 function runPlan(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
@@ -411,18 +409,13 @@ function runPlan(argv: readonly string[], ctx: CliContext, status: StatusLine): 
   if (parsed.status === 'help') return EXIT.ok
   if (parsed.status === 'error') return usageError(ctx, name, parsed.message)
   const v = parsed.values
-  const swept = sweep(
-    name,
-    v,
-    parsed.positionals,
-    ctx,
-    (r) => {
-      ctx.io.stderr(renderSummary(r) + '\n')
-      return ''
-    },
-    status,
-  )
-  if (!swept.ok) return swept.code
+  const swept = sweep(name, v, parsed.positionals, ctx, status)
+  if (swept.kind === 'exit') return swept.code
+  // stdout carries only the plan, so the summary goes to stderr either way.
+  if (swept.kind === 'nothing') {
+    ctx.io.stderr(renderSummary(swept.result) + '\n')
+    return EXIT_NOTHING_TO_SWEEP
+  }
 
   const plan = planOf(swept, new Date())
   const unreadable = reportUnreadable(ctx, name, swept.result)
@@ -447,6 +440,87 @@ function wouldRun(receipt: Receipt): number {
   return receipt.steps.filter((s) => s.row !== null).length
 }
 
+type ApplyValues = Extract<
+  ReturnType<ReturnType<typeof applyCli>['parse']>,
+  { status: 'ok' }
+>['values']
+
+/** Where `apply`'s plan came from, and what that decides about the run. */
+interface LoadedPlan {
+  plan: Plan
+  /** Shown in the receipt: the plan's path, `(stdin)` or `(swept)`. */
+  source: string
+  receiptPath: string | null
+  /** A swept repository could not be read: the run exits 1 whatever else happens. */
+  unreadable: boolean
+  /** The sweep's items by repository root, so the preview need not sweep again. */
+  swept: Map<string, SweepItem[]> | undefined
+}
+
+/** Sweep and plan in memory, or read `--plan`; or answer with the exit code. */
+function loadPlan(
+  name: string,
+  v: ApplyValues,
+  paths: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps,
+  status: StatusLine,
+  now: Date,
+): LoadedPlan | number {
+  const receiptPath = v.receipt === undefined ? null : resolve(ctx.cwd, v.receipt)
+  if (v.plan === undefined) {
+    const swept = sweep(name, v, paths, ctx, status)
+    if (swept.kind === 'exit') return swept.code
+    if (swept.kind === 'nothing') {
+      ctx.io.stdout(v.output === 'json' ? renderJson(swept.result) : renderText(swept.result))
+      return EXIT_NOTHING_TO_SWEEP
+    }
+    const items = new Map<string, SweepItem[]>()
+    for (const r of swept.result.repos) if (r.repo !== null) items.set(r.repo.root, r.items)
+    return {
+      plan: planOf(swept, now),
+      source: '(swept)',
+      receiptPath,
+      unreadable: reportUnreadable(ctx, name, swept.result),
+      swept: items,
+    }
+  }
+  try {
+    if (v.plan === '-') {
+      const plan = parsePlan((deps.readStdin ?? readAllStdin)(), 'stdin')
+      return { plan, source: '(stdin)', receiptPath, unreadable: false, swept: undefined }
+    }
+    const source = resolve(ctx.cwd, v.plan)
+    const plan = readPlan(source)
+    return {
+      plan,
+      source,
+      receiptPath: receiptPath ?? receiptBeside(source, now),
+      unreadable: false,
+      swept: undefined,
+    }
+  } catch (err) {
+    return failure(ctx, err)
+  }
+}
+
+/** The run's flags that contradict each other, as a usage message, or null. */
+function applyConflict(v: ApplyValues, paths: readonly string[]): string | null {
+  if (v.plan !== undefined) {
+    const sweepFlags = [
+      paths.length > 0 ? 'paths' : null,
+      v.only !== undefined ? '--only' : null,
+      v.branch !== undefined ? '--branch' : null,
+      v.remote !== undefined ? '--remote' : null,
+    ].filter((f) => f !== null)
+    if (sweepFlags.length > 0) return `--plan fixes what is swept; drop ${sweepFlags.join(', ')}`
+  }
+  if (v.plan === '-' && !v.yes && !v.dryRun) {
+    return '--plan - reads the plan from stdin, so it cannot ask; pass --yes or --dry-run'
+  }
+  return null
+}
+
 function runApply(
   argv: readonly string[],
   ctx: CliContext,
@@ -469,75 +543,16 @@ function runApply(
     if (err instanceof ApplyArgumentError) return usageError(ctx, name, err.message)
     throw err
   }
-
-  const fromStdin = v.plan === '-'
-  if (v.plan !== undefined) {
-    const sweepFlags = [
-      paths.length > 0 ? 'paths' : null,
-      v.only !== undefined ? '--only' : null,
-      v.branch !== undefined ? '--branch' : null,
-      v.remote !== undefined ? '--remote' : null,
-    ].filter((f) => f !== null)
-    if (sweepFlags.length > 0) {
-      return usageError(ctx, name, `--plan fixes what is swept; drop ${sweepFlags.join(', ')}`)
-    }
-  }
-  if (fromStdin && !v.yes && !v.dryRun) {
-    return usageError(
-      ctx,
-      name,
-      '--plan - reads the plan from stdin, so it cannot ask; pass --yes or --dry-run',
-    )
-  }
+  const conflict = applyConflict(v, paths)
+  if (conflict !== null) return usageError(ctx, name, conflict)
 
   const now = new Date()
-  let plan: Plan
-  let planSource: string
-  // A repository the sweep could not read contributes no rows; the run says so and exits 1.
-  let unreadable = false
-  const ok = (): number => (unreadable ? EXIT.error : EXIT.ok)
-  let receiptPath: string | null = v.receipt === undefined ? null : resolve(ctx.cwd, v.receipt)
-  if (v.plan === undefined) {
-    const swept = sweep(
-      name,
-      v,
-      paths,
-      ctx,
-      (r) => (v.output === 'json' ? renderJson(r) : renderText(r)),
-      status,
-    )
-    if (!swept.ok) return swept.code
-    unreadable = reportUnreadable(ctx, name, swept.result)
-    plan = planOf(swept, now)
-    planSource = '(swept)'
-  } else {
-    try {
-      if (fromStdin) {
-        plan = parsePlan((deps.readStdin ?? readAllStdin)(), 'stdin')
-        planSource = '(stdin)'
-      } else {
-        planSource = resolve(ctx.cwd, v.plan)
-        plan = readPlan(planSource)
-        receiptPath ??= receiptBeside(planSource, now)
-      }
-    } catch (err) {
-      return failure(ctx, err)
-    }
-  }
+  const loaded = loadPlan(name, v, paths, ctx, deps, status, now)
+  if (typeof loaded === 'number') return loaded
+  const { plan, source, receiptPath } = loaded
+  const ok = (): number => (loaded.unreadable ? EXIT.error : EXIT.ok)
 
   const repoRoot = v.repoRoot === undefined ? undefined : resolve(ctx.cwd, v.repoRoot)
-  const base = {
-    callerCwd: ctx.cwd,
-    planPath: planSource,
-    repoRoot,
-    ...(v.progress
-      ? {
-          onSweepProgress: (p: SweepProgress) => status.update(`re-checking ${describeSweep(p)}`),
-          onStep: (i: number, total: number, step: Step) =>
-            status.update(describeStep(i, total, step)),
-        }
-      : {}),
-  }
   const print = (receipt: Receipt, shownPath: string | null): void => {
     ctx.io.stdout(
       v.output === 'json'
@@ -546,17 +561,41 @@ function runApply(
     )
   }
 
+  const planned = plan.repos.filter(
+    (r) => repoRoot === undefined || resolve(r.root) === resolve(repoRoot),
+  )
+  if (rows.length === 0 && planned.every((r) => r.rows.length === 0)) {
+    if (v.output === 'json') print(emptyReceipt(source, now, v.dryRun), null)
+    else ctx.io.stdout('nothing to delete\n')
+    return ok()
+  }
+
+  const base = {
+    callerCwd: ctx.cwd,
+    planPath: source,
+    repoRoot,
+    // An implicit selection runs only safe-to-delete rows, in the preview and
+    // in the run it confirms, whose rows are passed explicitly.
+    safeOnly: rows.length === 0,
+    ...(v.progress
+      ? {
+          onSweepProgress: (p: SweepProgress) => status.update(`re-checking ${describeSweep(p)}`),
+          onStep: (i: number, total: number, step: Step) =>
+            status.update(describeStep(i, total, step)),
+        }
+      : {}),
+  }
+
   let preview: Receipt
   try {
-    preview = applyPlan(plan, rows, grants, { ...base, dryRun: true, receiptPath: null })
+    // A sweep that just ran is the preview's re-check; the run that deletes sweeps again.
+    preview = applyPlan(plan, rows, grants, {
+      ...base,
+      dryRun: true,
+      receiptPath: null,
+      swept: loaded.swept,
+    })
   } catch (err) {
-    if (err instanceof ApplyArgumentError) {
-      if (rows.length === 0 && plan.repos.every((r) => r.rows.length === 0)) {
-        if (v.output === 'json') print(emptyReceipt(planSource, now), null)
-        else ctx.io.stdout('nothing to delete\n')
-        return ok()
-      }
-    }
     return failure(ctx, err)
   }
 
@@ -565,21 +604,9 @@ function runApply(
     print(preview, null)
     return ok()
   }
-
   if (!v.yes) {
-    // The preview is for the person answering, so it goes where the question does.
-    const show = v.output === 'json' ? ctx.io.stderr : ctx.io.stdout
-    show(renderReceipt(preview, null))
-    const answer = (deps.confirm ?? terminalConfirm)(
-      `Delete ${count} item${count === 1 ? '' : 's'}?`,
-    )
-    if (answer === null) {
-      return usageError(ctx, name, 'refusing to delete without a terminal to ask; pass --yes')
-    }
-    if (!answer) {
-      ctx.io.stderr('nothing deleted\n')
-      return EXIT.ok
-    }
+    const declined = confirm(ctx, name, preview, count, v.output === 'json', deps)
+    if (declined !== null) return declined
   }
 
   // Only what the preview showed: rows it dropped stay dropped.
@@ -603,15 +630,43 @@ function runApply(
     return failure(ctx, err)
   }
   print(receipt, receiptPath)
+  if (receiptPath === null) {
+    ctx.io.stderr(`${name}: no receipt written; pass --receipt <file> to keep one\n`)
+  }
   return receipt.status === 'failed' ? EXIT_STEP_FAILED : ok()
 }
 
-function emptyReceipt(plan: string, now: Date): Receipt {
+/**
+ * Show the preview and ask. Null to go ahead; otherwise the exit code: 0 for
+ * a no, 2 when there is no one to ask.
+ */
+function confirm(
+  ctx: CliContext,
+  name: string,
+  preview: Receipt,
+  count: number,
+  json: boolean,
+  deps: MainDeps,
+): number | null {
+  // The preview is for the person answering, so it goes where the question does.
+  ;(json ? ctx.io.stderr : ctx.io.stdout)(renderReceipt(preview, null))
+  const answer = (deps.confirm ?? terminalConfirm)(`Delete ${count} item${count === 1 ? '' : 's'}?`)
+  if (answer === null) {
+    return usageError(ctx, name, 'refusing to delete without a terminal to ask; pass --yes')
+  }
+  if (!answer) {
+    ctx.io.stderr('nothing deleted\n')
+    return EXIT.ok
+  }
+  return null
+}
+
+function emptyReceipt(plan: string, now: Date, dryRun: boolean): Receipt {
   const at = now.toISOString()
   return {
-    version: 1,
+    version: RECEIPT_VERSION,
     plan,
-    status: 'dry-run',
+    status: dryRun ? 'dry-run' : 'complete',
     started_at: at,
     finished_at: at,
     dropped: [],

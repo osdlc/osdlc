@@ -56,7 +56,14 @@ export {
   type PlanRepo,
   type PlannableRow,
 } from './plan.ts'
-export { ReceiptSchema, type Dropped, type Receipt, type RowRef, type Step } from './receipt.ts'
+export {
+  RECEIPT_VERSION,
+  ReceiptSchema,
+  type Dropped,
+  type Receipt,
+  type RowRef,
+  type Step,
+} from './receipt.ts'
 export {
   defaultProcessProbe,
   isIdleShell,

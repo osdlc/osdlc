@@ -9,14 +9,23 @@
  */
 
 import { afterEach, describe, expect, test } from 'vitest'
-import { chmodSync, existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { Git, PUSH_REJECTIONS } from '@osdlc/typed-git'
 import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { sh } from './helpers.ts'
-import { applyPlan, type Grant } from '../src/apply.ts'
+import { applyPlan, type Grant, type RowSelection } from '../src/apply.ts'
 import { PLAN_VERSION, parsePlan, planRepo, readPlan, writePlan, type Plan } from '../src/plan.ts'
 import type { Receipt, RowRef } from '../src/receipt.ts'
 import { sweepRepo } from '../src/sweep.ts'
@@ -321,6 +330,65 @@ describe('applyPlan', () => {
         planPath: '(test)',
       }),
     ).toThrow('pass --repo-root')
+  })
+
+  test('two clones of one remote delete its branch once; the second row is a duplicate', () => {
+    const fx = buildFixture()
+    const second = realpathSync(mkdtempSync(join(tmpdir(), 'repo-cleaner-clone-')))
+    cleanups.push(() => rmSync(second, { recursive: true, force: true }))
+    sh(second, ['clone', '-q', fx.bare, 'b'])
+    const b = join(second, 'b')
+    const plan: Plan = {
+      ...makePlan(fx.root),
+      repos: [...makePlan(fx.root).repos, ...makePlan(b).repos],
+    }
+    // Pin by the roots git reported, which are resolved (`/private/var` on macOS).
+    const [rootA, rootB] = plan.repos.map((r) => r.root) as [string, string]
+    const rows: RowSelection[] = [
+      { category: 'remote_branch', id: 'origin/merged-a', repo: rootA },
+      { category: 'remote_branch', id: 'origin/merged-a', repo: rootB },
+    ]
+    const receipt = applyPlan(plan, rows, [], {
+      callerCwd: fx.root,
+      dryRun: false,
+      receiptPath: null,
+      planPath: '(test)',
+    })
+    expect(receipt.status).toBe('complete')
+    expect(receipt.steps.filter((s) => s.action === 'delete-remote')).toHaveLength(1)
+    expect(receipt.dropped).toMatchObject([{ repo: b, id: 'origin/merged-a', reason: 'duplicate' }])
+    expect(remoteHeads(fx.bare)).not.toContain('refs/heads/merged-a')
+  })
+
+  test('safeOnly keeps the review-row guard on rows that are named', () => {
+    const fx = buildFixture()
+    const receipt = applyPlan(makePlan(fx.root), [{ category: 'worktree', id: fx.worktree }], [], {
+      callerCwd: fx.root,
+      dryRun: true,
+      receiptPath: null,
+      planPath: '(test)',
+      safeOnly: true,
+    })
+    expect(receipt.dropped.map((d) => d.reason)).toEqual(['needs-review'])
+  })
+
+  test('swept items stand in for the re-sweep', () => {
+    const fx = buildFixture()
+    const { repo, items } = sweepRepo(fx.root, { noGh: true, cwd: fx.root })
+    const pinned = items.map((i) => (i.id === 'merged-a' ? { ...i, deletable: false } : i))
+    const receipt = applyPlan(
+      makePlan(fx.root),
+      [{ category: 'local_branch', id: 'merged-a' }],
+      [],
+      {
+        callerCwd: fx.root,
+        dryRun: true,
+        receiptPath: null,
+        planPath: '(test)',
+        swept: new Map([[repo!.root, pinned]]),
+      },
+    )
+    expect(receipt.dropped.map((d) => d.reason)).toEqual(['not-deletable'])
   })
 
   test('rows dropped before the run are recorded first in the receipt file', () => {
