@@ -7,6 +7,7 @@
 import { readFileSync } from 'node:fs'
 import { z } from 'zod'
 
+import { PROVIDER_CHOICES, type ProviderChoice } from './providers/types.ts'
 import { AUTHORIZATIONS, type SweepItem } from './types.ts'
 import { writeJsonAtomic } from './write-json.ts'
 
@@ -31,6 +32,8 @@ export const PlanRepoSchema = z.object({
   /** The `remote` the sweep ran with; the re-sweep uses the same. */
   remote: z.string().nullable(),
   no_gh: z.boolean(),
+  /** The provider choice the sweep ran with; absent is `auto`. `no_gh` wins over it. */
+  provider: z.enum(PROVIDER_CHOICES).optional(),
   /** The `branch` the sweep was narrowed to; the re-sweep uses the same. */
   branch: z.string().nullable().default(null),
   rows: z.array(PlanRowSchema),
@@ -91,7 +94,12 @@ export function sameFingerprint(a: Record<string, unknown>, b: Record<string, un
 /** One repository's plan entry: its deletable rows. */
 export function planRepo(
   root: string,
-  opts: { remote: string | null; noGh: boolean; branch?: string | null },
+  opts: {
+    remote: string | null
+    noGh: boolean
+    branch?: string | null
+    provider?: ProviderChoice | undefined
+  },
   items: readonly PlannableRow[],
 ): PlanRepo {
   const rows: PlanRow[] = []
@@ -104,7 +112,14 @@ export function planRepo(
       fingerprint: fingerprint(item),
     })
   }
-  return { root, remote: opts.remote, no_gh: opts.noGh, branch: opts.branch ?? null, rows }
+  return {
+    root,
+    remote: opts.remote,
+    no_gh: opts.noGh,
+    ...(opts.provider === undefined || opts.provider === 'auto' ? {} : { provider: opts.provider }),
+    branch: opts.branch ?? null,
+    rows,
+  }
 }
 
 /** A UTC timestamp safe in a file name, e.g. `2026-10-04T12-30-05-123Z`. */
