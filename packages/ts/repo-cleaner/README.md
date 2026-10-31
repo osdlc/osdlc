@@ -18,7 +18,8 @@ slower. When they are left out, the report ends with a line saying so.
 
 On a terminal, the report and the apply preview are colored: red for a
 delete, blue for a prune, yellow for a review or a skipped row, green for a
-keep. `NO_COLOR` turns this off, and a pipe or a file never gets color.
+keep. `NO_COLOR` turns this off. A pipe or a file gets no color unless
+`FORCE_COLOR` asks for it.
 
 ```console
 $ repo-cleaner --remotes

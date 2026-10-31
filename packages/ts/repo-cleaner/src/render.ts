@@ -7,7 +7,7 @@
  * behind every verdict.
  */
 
-import { ansiColors, paint } from '@osdlc/ux'
+import { ansiColors, paint, stripControls } from '@osdlc/ux'
 
 import type { Receipt, Step } from './receipt.ts'
 import {
@@ -488,7 +488,8 @@ function resultWord(step: Step, style: Style): string {
 /**
  * What `apply` is about to do, for the person asked to approve it: per
  * repository, each row and the command that deletes it, the rows it will
- * skip and why, then the counts.
+ * skip and why, then the counts. Terminal controls are stripped from what it
+ * shows, so a path or name cannot hide part of what is approved.
  */
 export function renderPreview(receipt: Receipt, style: Style = PLAIN): string {
   const repos = [
@@ -500,19 +501,19 @@ export function renderPreview(receipt: Receipt, style: Style = PLAIN): string {
   ]
   const categoryWidth = Math.max(0, ...rows.map((r) => r.category.length))
   const row = (r: { category: string; id: string } | null): string =>
-    r === null ? '' : `${pad(r.category, categoryWidth)}  ${ellipsize(r.id, 60)}`
+    r === null ? '' : `${pad(r.category, categoryWidth)}  ${ellipsize(stripControls(r.id), 60)}`
   const blocks: string[] = []
   for (const repo of repos) {
-    const lines = [style.strong(repo)]
+    const lines = [style.strong(stripControls(repo))]
     for (const s of receipt.steps.filter((s) => s.repo === repo)) {
       const verb = STEP_VERB[s.action]
       const color = actionStyle(style, verb === 'unlock' ? 'review' : verb)
       lines.push(`  ${color(pad(verb, 6))}  ${row(s.row)}`.trimEnd())
-      lines.push(`          ${style.muted(s.command)}`)
+      lines.push(`          ${style.muted(stripControls(s.command))}`)
     }
     for (const d of receipt.dropped.filter((d) => d.repo === repo)) {
       lines.push(`  ${style.review(pad('skip', 6))}  ${row(d)}`)
-      lines.push(`          ${d.reason}: ${d.detail}`)
+      lines.push(`          ${d.reason}: ${stripControls(d.detail)}`)
     }
     blocks.push(lines.join('\n'))
   }
@@ -529,12 +530,13 @@ export function renderReceipt(
 ): string {
   const lines: string[] = []
   for (const d of receipt.dropped) {
-    lines.push(`${style.review('dropped  ')}${d.category}:${d.id} — ${d.reason} (${d.detail})`)
+    const shown = stripControls(`${d.category}:${d.id} — ${d.reason} (${d.detail})`)
+    lines.push(`${style.review('dropped  ')}${shown}`)
   }
   for (const s of receipt.steps) {
     const what = s.row === null ? s.command : `${s.row.category}:${s.row.id} — ${s.command}`
     const tail = s.error ?? s.verification
-    lines.push(`${resultWord(s, style)} ${what}${tail ? ` (${tail})` : ''}`)
+    lines.push(`${resultWord(s, style)} ${stripControls(`${what}${tail ? ` (${tail})` : ''}`)}`)
   }
   if (lines.length > 0) lines.push('')
   const [counts = '', ...rest] = renderApplySummary(receipt)
@@ -543,7 +545,7 @@ export function renderReceipt(
     style.muted(
       receiptPath === null
         ? `status: ${receipt.status}`
-        : `receipt: ${receiptPath} (${receipt.status})`,
+        : `receipt: ${stripControls(receiptPath)} (${receipt.status})`,
     ),
   )
   return lines.join('\n') + '\n'
