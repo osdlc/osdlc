@@ -326,7 +326,11 @@ describe('color', () => {
       env: { ...base, ...env },
       terminal: { stdin: true, stdout: true, stderr: false },
     })
-    const code = main(argv, ctx, { confirm: () => null, ...deps })
+    const code = main(argv, ctx, {
+      confirm: () => null,
+      terminalSize: () => ({ width: 200, height: 40 }),
+      ...deps,
+    })
     return { code, out: ctx.io.out, err: ctx.io.err }
   }
 
@@ -360,6 +364,33 @@ describe('color', () => {
     expect(out).not.toMatch(/^ok {7}/m)
     expect(out).toContain('deleted: 1 worktree, 1 local branch, 1 remote branch')
     expect(branchRefs(fx.bare)).not.toContain(BRANCH)
+  })
+
+  test('a live run that fails shows the cross on the board and the error in full', () => {
+    const fx = buildFixture()
+    const hook = join(fx.bare, 'hooks', 'pre-receive')
+    writeFileSync(hook, '#!/bin/sh\nexit 1\n')
+    chmodSync(hook, 0o755)
+    const res = colorRun(
+      [
+        'apply',
+        '--branch',
+        BRANCH,
+        ...SWEEP,
+        '--remotes',
+        '--yes',
+        '--row',
+        `remote_branch:origin/${BRANCH}`,
+      ],
+      fx.root,
+      { NO_COLOR: '1' },
+    )
+    expect(res.code).toBe(11)
+    expect(res.out).toContain(`█ ✗ delete  remote_branch  origin/${BRANCH}`)
+    // Under the board, the full error.
+    expect(res.out).toMatch(
+      /\n {2}✗ delete +remote_branch +origin\/feat\/s\n +.*pre-receive hook declined/,
+    )
   })
 
   test('a live run names a row its own re-check dropped after the preview', () => {

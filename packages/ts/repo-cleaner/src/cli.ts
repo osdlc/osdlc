@@ -68,6 +68,7 @@ import {
   statusLine,
   type StatusLine,
 } from './status-line.ts'
+import { stepBoard, type StepBoard } from './step-board.ts'
 import { sweepRepos, type SweepReposOptions } from './sweep.ts'
 import type { Scope, SweepItem, SweepProgress, SweepResult } from './types.ts'
 
@@ -262,6 +263,8 @@ export interface MainDeps {
   readStdin?: () => string
   /** Whether stderr is a terminal, so a status line may be drawn. Defaults to `isatty(2)`. */
   stderrIsTerminal?: boolean
+  /** The terminal's size, for the live step board. Defaults to stdout's columns and rows. */
+  terminalSize?: () => { width: number; height: number }
 }
 
 const PAUSE = new Int32Array(new SharedArrayBuffer(4))
@@ -753,6 +756,13 @@ function runApply(
     (g) =>
       g.row === null || approved.some((r) => r.category === g.row!.category && r.id === g.row!.id),
   )
+  const size =
+    deps.terminalSize ??
+    (() => ({
+      width: ctx.terminal?.columns || process.stdout.columns || 80,
+      height: process.stdout.rows || 24,
+    }))
+  let board: StepBoard | undefined
   let receipt: Receipt
   try {
     receipt = applyPlan(plan, approved, approvedGrants, {
@@ -762,10 +772,13 @@ function runApply(
       dropped: preview.dropped,
       ...(live
         ? {
-            onStepDone: (_i: number, _total: number, step: Step) => {
-              status.clear()
-              ctx.io.stdout(renderStepDone(step, style) + '\n')
+            // The board carries the run's progress; the status line stays clear.
+            onStart: (steps: readonly Step[]) => {
+              board = stepBoard(ctx.io.stdout, steps, size, style)
+              board.draw(null)
             },
+            onStep: (i: number) => board?.draw(i),
+            onStepDone: () => board?.draw(null),
           }
         : {}),
     })
@@ -778,7 +791,10 @@ function runApply(
     // while the question was open: say which, since it gets no tick.
     const seen = new Set(preview.dropped.map(dropKey))
     const late = receipt.dropped.filter((d) => !seen.has(dropKey(d)))
-    if (late.length > 0) ctx.io.stdout(renderPreviewDrops(late, style))
+    if (late.length > 0) ctx.io.stdout(`\n${renderPreviewDrops(late, style)}`)
+    // A failed step's error, in full: its row on the board is cut to the width.
+    const failed = receipt.steps.find((s) => s.result === 'failed')
+    if (failed !== undefined) ctx.io.stdout(`\n${renderStepDone(failed, style)}\n`)
     ctx.io.stdout('\n')
   }
   print(receipt, receiptPath, !live)

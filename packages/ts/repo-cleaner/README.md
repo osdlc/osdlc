@@ -24,9 +24,21 @@ Without `gh`, a squash-merged branch is still found by comparing patches,
 but a clean worktree with no PR evidence reads `review` rather than
 `delete`.
 
-On a terminal, a long step draws a progress bar on stderr. `apply` lists
-every step it will run, then ticks each one off (`✓`, or `✗` and the error)
-as it finishes, with a bar for the whole run.
+On a terminal, a long sweep step draws a progress bar on stderr, and
+`apply` draws its steps as a list that updates in place: each row has its
+own bar, empty while it waits, half full while it runs and full with a `✓`
+(or `✗`) when it is done, with a bar for the whole run underneath:
+
+```text
+  ██████████ ✓ delete  local_branch  feat/a
+  █████░░░░░ › delete  local_branch  feat/b
+  ░░░░░░░░░░   delete  remote_branch  origin/feat/b
+  ░░░░░░░░░░   prune
+  ████████░░░░░░░░░░░░░░░░░░░░░░ 1/4
+```
+
+A list taller than the terminal scrolls to keep the running step in view.
+A failed step's error is printed in full under the list.
 
 On a terminal, the report and the apply preview are colored: red for a
 delete, blue for a prune, yellow for a review or a skipped row, green for a

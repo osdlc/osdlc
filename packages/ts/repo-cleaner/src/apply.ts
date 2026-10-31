@@ -88,6 +88,12 @@ export interface ApplyOptions extends HostHooks {
   dropped?: readonly Dropped[] | undefined
   /** Passed to the re-sweep's `onProgress`, for a status line. */
   onSweepProgress?: ((progress: SweepProgress) => void) | undefined
+  /**
+   * Told once the steps are planned, before the first runs, with the list
+   * itself: each step's `result` is updated in place as the run goes. Not
+   * called under `dryRun`.
+   */
+  onStart?: ((steps: readonly Step[]) => void) | undefined
   /** Told before each step runs: its 0-based index, the step count and the step. Not called under `dryRun`. */
   onStep?: ((index: number, total: number, step: Step) => void) | undefined
   /** Told after each step, with its `result` set (`ok`, or `failed` and the run stops), before the receipt is saved. Not called under `dryRun`. */
@@ -556,6 +562,7 @@ export function applyPlan(
     if (receiptPath !== null) writeJsonAtomic(receiptPath, receipt)
   }
   save()
+  opts.onStart?.(receipt.steps)
   const git = new Git(opts.callerCwd, { runner: opts.git })
   const probe = opts.probe ?? defaultProcessProbe()
   // Worktrees whose lock this run cleared. typed-git has no `worktree lock`
