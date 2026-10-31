@@ -114,8 +114,32 @@ export interface DevlinkWhere {
  */
 export type MainFn = (argv: readonly string[], ctx: CliContext) => number | Promise<number>
 
-/** Run `main` and set the process's exit code from what it returns. */
+/**
+ * Exit quietly when the reader of `stream` goes away, as `tool --json | head -1`
+ * does: the rest of the output has nowhere to go, which is not an error. Any
+ * other write error is thrown as before. {@link runMain} installs it on stdout
+ * and stderr when it uses the process's own streams.
+ */
+export function quietOnBrokenPipe(
+  stream: Pick<NodeJS.WriteStream, 'on'>,
+  exit: (code: number) => void = (code) => process.exit(code),
+): void {
+  stream.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code !== 'EPIPE') throw err
+    exit(0)
+  })
+}
+
+/**
+ * Run `main` and set the process's exit code from what it returns. Without
+ * `options.context`, a closed stdout or stderr pipe ends the run quietly with
+ * exit 0 ({@link quietOnBrokenPipe}) instead of an unhandled `EPIPE`.
+ */
 export async function runMain(main: MainFn, options: RunMainOptions): Promise<void> {
+  if (options.context === undefined) {
+    quietOnBrokenPipe(process.stdout)
+    quietOnBrokenPipe(process.stderr)
+  }
   const ctx = options.context ?? processContext()
   const argv = options.argv ?? process.argv.slice(2)
   if (options.devlink !== undefined) {

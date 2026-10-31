@@ -10,6 +10,7 @@
 import type { Receipt } from './receipt.ts'
 import {
   emptyBucket,
+  isPrune,
   isUnfetched,
   summarize,
   type DuplicateCheckout,
@@ -97,7 +98,9 @@ export function renderRepo(sweep: RepoSweep, opts: { keep?: boolean } = {}): str
   const idWidth = Math.min(38, Math.max(...shown.map((item) => ellipsize(item.id, 38).length)))
   const categoryWidth = Math.max(...shown.map((item) => item.category.length))
   for (const item of shown) {
-    const action = ACTION_LABEL[item.classification] ?? item.classification
+    const action = isPrune(item)
+      ? 'prune'
+      : (ACTION_LABEL[item.classification] ?? item.classification)
     const note = requiresNote(item)
     lines.push(
       `  ${pad(item.category, categoryWidth)}  ${pad(ellipsize(item.id, 38), idWidth)}  ${pad(action, 6)}  ${item.reason}${note ? `; ${note}` : ''}`,
@@ -116,6 +119,7 @@ function totals(result: SweepResult): SummaryBucket {
       out.total += bucket.total
       out.merged += bucket.merged
       out['safe-to-delete'] += bucket['safe-to-delete']
+      out.prune += bucket.prune
       out['safe-to-keep'] += bucket['safe-to-keep']
       out['needs-investigation'] += bucket['needs-investigation']
     }
@@ -160,7 +164,8 @@ export function renderSummary(result: SweepResult): string {
     )
   }
   const suffix = tail.length > 0 ? ` (${tail.join(', ')})` : ''
-  return `${counts['safe-to-delete']} to delete, ${counts['needs-investigation']} to review, across ${repos}${suffix}.`
+  const prune = counts.prune > 0 ? `${counts.prune} to prune, ` : ''
+  return `${counts['safe-to-delete'] - counts.prune} to delete, ${prune}${counts['needs-investigation']} to review, across ${repos}${suffix}.`
 }
 
 const COUNT_LABEL: Record<(typeof CATEGORY_ORDER)[number], string> = {
@@ -169,18 +174,19 @@ const COUNT_LABEL: Record<(typeof CATEGORY_ORDER)[number], string> = {
   remote_branch: 'remote branches',
 }
 
-const COUNT_COLUMNS = [
-  'total',
-  'merged',
-  'safe-to-delete',
-  'needs-investigation',
-  'safe-to-keep',
-] as const
-const COUNT_HEADINGS = ['total', 'merged', 'delete', 'review', 'keep']
+/** A count table's columns. `delete` leaves out the rows `prune` counts, so each row is in one of delete, prune, review and keep. */
+const COUNT_COLUMNS: ReadonlyArray<{ heading: string; of: (b: SummaryBucket) => number }> = [
+  { heading: 'total', of: (b) => b.total },
+  { heading: 'merged', of: (b) => b.merged },
+  { heading: 'delete', of: (b) => b['safe-to-delete'] - b.prune },
+  { heading: 'prune', of: (b) => b.prune },
+  { heading: 'review', of: (b) => b['needs-investigation'] },
+  { heading: 'keep', of: (b) => b['safe-to-keep'] },
+]
 
 /**
  * One repository as counts: a row per category with its total, how many are
- * merged, and how many the sweep would delete, review or keep.
+ * merged, and how many the sweep would delete, prune, review or keep.
  */
 export function renderCounts(sweep: RepoSweep): string {
   const lines = [repoHeader(sweep)]
@@ -191,10 +197,12 @@ export function renderCounts(sweep: RepoSweep): string {
   const buckets = summarize(sweep.items)
   const labelWidth = Math.max(...Object.values(COUNT_LABEL).map((l) => l.length))
   const cell = (text: string, heading: string): string => text.padStart(Math.max(heading.length, 5))
-  lines.push(`  ${' '.repeat(labelWidth)}  ${COUNT_HEADINGS.map((h) => cell(h, h)).join('  ')}`)
+  lines.push(
+    `  ${' '.repeat(labelWidth)}  ${COUNT_COLUMNS.map(({ heading }) => cell(heading, heading)).join('  ')}`,
+  )
   for (const category of CATEGORY_ORDER) {
     const bucket = buckets[category] ?? emptyBucket()
-    const cells = COUNT_COLUMNS.map((col, i) => cell(count(bucket[col]), COUNT_HEADINGS[i]!))
+    const cells = COUNT_COLUMNS.map(({ heading, of }) => cell(count(of(bucket)), heading))
     lines.push(`  ${pad(COUNT_LABEL[category], labelWidth)}  ${cells.join('  ')}`)
   }
   return lines.join('\n')

@@ -4,7 +4,7 @@
  * Four verbs over one set of sweep filters:
  *
  *   status  (the default) inventory and classify; read-only but for the fetch
- *   summary the same sweep as counts: totals, merged, delete, review, keep
+ *   summary the same sweep as counts: totals, merged, delete, prune, review, keep
  *   plan    write the deletable rows as a plan, to stdout or a file
  *   apply   re-check, show the steps, ask, then delete
  *
@@ -26,10 +26,12 @@ import { readSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { isatty } from 'node:tty'
 
-import { EXIT, askYesNo, canPrompt, defineCli, type CliContext } from '@osdlc/cli-tool'
+import { EXIT, askYesNo, canPrompt, defineCli, systemDirs, type CliContext } from '@osdlc/cli-tool'
 import { Git } from '@osdlc/typed-git'
 
 import { resolveBranch } from './branches.ts'
+import { VENDOR_DIRS } from './devlink.ts'
+import { ensureMirror } from './remote-mirror.ts'
 import { ApplyArgumentError, applyPlan, parseGrant, parseRowRef, type Grant } from './apply.ts'
 import {
   PLAN_VERSION,
@@ -91,6 +93,13 @@ const SWEEP_FLAGS = {
     valueName: 'name',
     help: 'remote to measure against (default: origin)',
   },
+  remoteUrl: {
+    kind: 'list',
+    valueName: 'url',
+    default: [],
+    commaSeparated: false,
+    help: 'sweep the branches of this remote with no checkout of your own, through a clone kept in the cache directory; repeatable',
+  },
   gh: { kind: 'boolean', negatable: true, help: 'classify on git evidence alone' },
   fetch: {
     kind: 'boolean',
@@ -135,7 +144,7 @@ const statusCli = () =>
     },
     epilogue: `commands:
   ${NAME} [status]   this report (the default)
-  ${NAME} summary    counts per repository: total, merged, delete, review, keep
+  ${NAME} summary    counts per repository: total, merged, delete, prune, review, keep
   ${NAME} plan       write the deletable rows as a plan
   ${NAME} apply      re-check, show the steps, ask, delete
   ${NAME} dev        run ${NAME} from a development checkout
@@ -149,7 +158,7 @@ const summaryCli = () =>
     name: `${NAME} summary`,
     summary:
       'Count local branches, worktrees and remote branches per repository: how many there are, ' +
-      'how many are merged into the default branch, and how many would be deleted, reviewed or kept.',
+      'how many are merged into the default branch, and how many would be deleted, pruned, reviewed or kept.',
     positionals: PATHS,
     flags: { ...SWEEP_FLAGS, output: OUTPUT },
     epilogue:
@@ -277,6 +286,7 @@ interface SweepValues {
   only?: string[] | undefined
   branch?: string | undefined
   remote?: string | undefined
+  remoteUrl: string[]
   gh: boolean
   fetch: boolean
   progress: boolean
@@ -306,6 +316,18 @@ function sweep(
     const message = '--branch sweeps this repository only; drop the paths'
     return { kind: 'exit', code: usageError(ctx, name, message) }
   }
+  const urls = v.remoteUrl.filter((u) => u !== '')
+  if (urls.length > 0) {
+    const conflict =
+      paths.length > 0
+        ? '--remote-url sweeps a remote, not a checkout; drop the paths'
+        : v.branch !== undefined
+          ? '--branch reads the checkout you are in; it does not combine with --remote-url'
+          : (only ?? []).some((s) => s !== 'remotes')
+            ? '--remote-url has remote branches only; drop --only or pass --only remotes'
+            : null
+    if (conflict !== null) return { kind: 'exit', code: usageError(ctx, name, conflict) }
+  }
 
   let branch: string | undefined
   try {
@@ -327,8 +349,22 @@ function sweep(
     ...(only === undefined ? {} : { scope: only.map((s) => ONLY[s]!) }),
     ...(v.remote === undefined ? {} : { remote: v.remote }),
   }
+  let entries = paths.length > 0 ? [...paths] : [ctx.cwd]
+  if (urls.length > 0) {
+    const cache = systemDirs(VENDOR_DIRS, { env: ctx.env }).standalone(NAME).cache().app('remotes')
+    try {
+      entries = urls.map((url, i) => {
+        if (v.progress) status.update(`${NAME}: cloning remote ${i + 1}/${urls.length}`)
+        return ensureMirror(url, cache.path)
+      })
+    } catch (err) {
+      status.clear()
+      return { kind: 'exit', code: failure(ctx, err) }
+    }
+    options.scope = ['remote-branches']
+  }
   if (v.progress) status.update(`${NAME}: finding repositories`)
-  const result = sweepRepos(paths.length > 0 ? paths : [ctx.cwd], options)
+  const result = sweepRepos(entries, options)
   status.clear()
   if (branch !== undefined && result.repos.length > 1) {
     const err = new Error(

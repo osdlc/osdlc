@@ -379,7 +379,7 @@ export function classifyWorktree(opts: {
       category: 'worktree',
       id: path,
       classification: 'safe-to-delete',
-      action: 'remove',
+      action: 'prune',
       reason: dirPresent
         ? 'directory is no longer a checkout (no .git); prune the stale link, the directory stays'
         : 'worktree directory no longer on disk; prune the stale link',

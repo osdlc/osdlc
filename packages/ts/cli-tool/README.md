@@ -305,6 +305,11 @@ becomes its line and its category's exit code (see Failures). It prints no
 stack trace, because a trace says where the code was, not what the person who
 typed the command should do.
 
+When it uses the process's own streams (no `context`), a closed pipe on
+stdout or stderr, as in `tool --json | head -1`, ends the run quietly with
+exit 0 instead of an unhandled `EPIPE`. `quietOnBrokenPipe(stream)` is the
+same guard for a tool that does not use `runMain`.
+
 Pass `version` and a first argument of `--version` prints `<name> <version>`,
 as `defineApp` does, and exits 0
 without calling `main`.
