@@ -90,9 +90,9 @@
       "line": 14,
       "title": "execve exists from Node 22.15, not 23.11",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "f8042fcc0e9ca9ec53da290bad4ed08634c1cfc6"
     },
     {
       "id": "r6-3",
