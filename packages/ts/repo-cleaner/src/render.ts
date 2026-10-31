@@ -114,6 +114,7 @@ function totals(result: SweepResult): SummaryBucket {
   for (const sweep of result.repos) {
     for (const bucket of Object.values(summarize(sweep.items))) {
       out.total += bucket.total
+      out.merged += bucket.merged
       out['safe-to-delete'] += bucket['safe-to-delete']
       out['safe-to-keep'] += bucket['safe-to-keep']
       out['needs-investigation'] += bucket['needs-investigation']
@@ -160,6 +161,78 @@ export function renderSummary(result: SweepResult): string {
   }
   const suffix = tail.length > 0 ? ` (${tail.join(', ')})` : ''
   return `${counts['safe-to-delete']} to delete, ${counts['needs-investigation']} to review, across ${repos}${suffix}.`
+}
+
+const COUNT_LABEL: Record<(typeof CATEGORY_ORDER)[number], string> = {
+  local_branch: 'local branches',
+  worktree: 'worktrees',
+  remote_branch: 'remote branches',
+}
+
+const COUNT_COLUMNS = [
+  'total',
+  'merged',
+  'safe-to-delete',
+  'needs-investigation',
+  'safe-to-keep',
+] as const
+const COUNT_HEADINGS = ['total', 'merged', 'delete', 'review', 'keep']
+
+/**
+ * One repository as counts: a row per category with its total, how many are
+ * merged, and how many the sweep would delete, review or keep.
+ */
+export function renderCounts(sweep: RepoSweep): string {
+  const lines = [repoHeader(sweep)]
+  if (sweep.error !== null) {
+    lines.push(`  error: ${sweep.error}`)
+    return lines.join('\n')
+  }
+  const buckets = summarize(sweep.items)
+  const labelWidth = Math.max(...Object.values(COUNT_LABEL).map((l) => l.length))
+  const cell = (text: string, heading: string): string => text.padStart(Math.max(heading.length, 5))
+  lines.push(`  ${' '.repeat(labelWidth)}  ${COUNT_HEADINGS.map((h) => cell(h, h)).join('  ')}`)
+  for (const category of CATEGORY_ORDER) {
+    const bucket = buckets[category] ?? emptyBucket()
+    const cells = COUNT_COLUMNS.map((col, i) => cell(count(bucket[col]), COUNT_HEADINGS[i]!))
+    lines.push(`  ${pad(COUNT_LABEL[category], labelWidth)}  ${cells.join('  ')}`)
+  }
+  return lines.join('\n')
+}
+
+/** The whole run as counts: a table per repository, then the one-line summary. */
+export function renderCountsText(result: SweepResult): string {
+  const blocks = result.repos.map(renderCounts)
+  if (result.unresolved.length > 0) {
+    const lines = ['unresolved']
+    const width = Math.max(...result.unresolved.map((row) => row.entry.length))
+    for (const row of result.unresolved) lines.push(`  ${pad(row.entry, width)}   ${row.reason}`)
+    blocks.push(lines.join('\n'))
+  }
+  const scan = renderScan(result)
+  blocks.push(scan === null ? renderSummary(result) : `${scan}\n${renderSummary(result)}`)
+  return blocks.join('\n\n') + '\n'
+}
+
+/** The whole run's counts as JSON: no rows, no facts. */
+export function renderCountsJson(result: SweepResult): string {
+  return (
+    JSON.stringify(
+      {
+        repos: result.repos.map((sweep) => ({
+          path: sweep.path,
+          error: sweep.error,
+          repo: sweep.repo,
+          summary: summarize(sweep.items),
+        })),
+        unresolved: result.unresolved,
+        scan: result.scan,
+        summary: totals(result),
+      },
+      null,
+      2,
+    ) + '\n'
+  )
 }
 
 /** The "Duplicate checkouts" section, or null when there are none. */

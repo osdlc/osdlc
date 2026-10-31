@@ -179,13 +179,15 @@ export function emptyScan(): ScanStats {
 
 export interface SummaryBucket {
   total: number
+  /** Rows whose work is on the default branch (`facts.merged`). Rows kept for structure are not judged. */
+  merged: number
   'safe-to-delete': number
   'safe-to-keep': number
   'needs-investigation': number
 }
 
 export function emptyBucket(): SummaryBucket {
-  return { total: 0, 'safe-to-delete': 0, 'safe-to-keep': 0, 'needs-investigation': 0 }
+  return { total: 0, merged: 0, 'safe-to-delete': 0, 'safe-to-keep': 0, 'needs-investigation': 0 }
 }
 
 /** Per-category counts over `items`. */
@@ -194,6 +196,7 @@ export function summarize(items: readonly SweepItem[]): Record<string, SummaryBu
   for (const item of items) {
     const bucket = (out[item.category] ??= emptyBucket())
     bucket.total += 1
+    if (item.facts['merged'] === true) bucket.merged += 1
     bucket[item.classification] += 1
   }
   return out

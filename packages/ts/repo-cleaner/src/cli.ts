@@ -1,9 +1,10 @@
 /**
  * `repo-cleaner` — what has been merged, and what can go away.
  *
- * Three verbs over one set of sweep filters:
+ * Four verbs over one set of sweep filters:
  *
  *   status  (the default) inventory and classify; read-only but for the fetch
+ *   summary the same sweep as counts: totals, merged, delete, review, keep
  *   plan    write the deletable rows as a plan, to stdout or a file
  *   apply   re-check, show the steps, ask, then delete
  *
@@ -39,7 +40,15 @@ import {
   type Plan,
 } from './plan.ts'
 import type { Receipt, RowRef } from './receipt.ts'
-import { proposedCommands, renderJson, renderReceipt, renderSummary, renderText } from './render.ts'
+import {
+  proposedCommands,
+  renderCountsJson,
+  renderCountsText,
+  renderJson,
+  renderReceipt,
+  renderSummary,
+  renderText,
+} from './render.ts'
 import { sweepRepos, type SweepReposOptions } from './sweep.ts'
 import type { Scope, SweepResult } from './types.ts'
 
@@ -111,12 +120,26 @@ const statusCli = () =>
     },
     epilogue: `commands:
   ${NAME} [status]   this report (the default)
+  ${NAME} summary    counts per repository: total, merged, delete, review, keep
   ${NAME} plan       write the deletable rows as a plan
   ${NAME} apply      re-check, show the steps, ask, delete
   ${NAME} dev        run ${NAME} from a development checkout
 
 Each command takes --help. A checkout directory named like a command is
 swept as ./<name>.`,
+  })
+
+const summaryCli = () =>
+  defineCli({
+    name: `${NAME} summary`,
+    summary:
+      'Count local branches, worktrees and remote branches per repository: how many there are, ' +
+      'how many are merged into the default branch, and how many would be deleted, reviewed or kept.',
+    positionals: PATHS,
+    flags: { ...SWEEP_FLAGS, output: OUTPUT },
+    epilogue:
+      'merged: the work is on the default branch. Rows kept for structure (the default ' +
+      'branch, the primary worktree) are counted in total but not judged merged.',
   })
 
 const planCli = () =>
@@ -313,6 +336,20 @@ function runStatus(argv: readonly string[], ctx: CliContext): number {
   return EXIT.ok
 }
 
+function runSummary(argv: readonly string[], ctx: CliContext): number {
+  const name = `${NAME} summary`
+  const parsed = summaryCli().parse(argv, ctx.io)
+  if (parsed.status === 'help') return EXIT.ok
+  if (parsed.status === 'error') return usageError(ctx, name, parsed.message)
+  const v = parsed.values
+  const render = (r: SweepResult): string =>
+    v.output === 'json' ? renderCountsJson(r) : renderCountsText(r)
+  const swept = sweep(name, v, parsed.positionals, ctx, render)
+  if (!swept.ok) return swept.code
+  ctx.io.stdout(render(swept.result))
+  return EXIT.ok
+}
+
 function runPlan(argv: readonly string[], ctx: CliContext): number {
   const name = `${NAME} plan`
   const parsed = planCli().parse(argv, ctx.io)
@@ -490,6 +527,7 @@ function emptyReceipt(plan: string, now: Date): Receipt {
 /** `main(argv, ctx)`: returns an exit code, never exits. */
 export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = {}): number {
   const [sub, ...rest] = argv
+  if (sub === 'summary') return runSummary(rest, ctx)
   if (sub === 'plan') return runPlan(rest, ctx)
   if (sub === 'apply') return runApply(rest, ctx, deps)
   if (sub === 'status') return runStatus(rest, ctx)

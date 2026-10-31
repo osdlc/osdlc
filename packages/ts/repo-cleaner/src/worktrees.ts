@@ -327,6 +327,12 @@ export function classifyWorktree(opts: {
   if (patch !== null) recordLanding(facts, patch)
   const patchLanded = patch !== null && patch.check !== null
   const unlanded = unpushed.length > 0 && !landed && !landingConfirmed(patch)
+  if (onDisk && head !== null) {
+    // Merged: HEAD's work is on the default branch. `soft`: a missing default
+    // ref reads as not merged.
+    facts['merged'] =
+      landed || landingConfirmed(patch) || git.at(repo.root).soft.isAncestor(head, landedRef(repo))
+  }
   const requires = authorizationsFor({
     'abandon-unmerged': unlanded,
     'discard-changes': dirtyFiles.length > 0,

@@ -192,9 +192,21 @@ export function classifyLocalBranch(opts: {
   const pinned = (reason: string): SweepItem => keep(reason, { deletable: false })
 
   if (name === repo.mainBranch) return pinned('default branch')
-  if (name === repo.currentBranch) return pinned('current HEAD')
-  if (worktreeBranches.has(name))
-    return pinned('checked out in a worktree (handle via that worktree)')
+  const held =
+    name === repo.currentBranch
+      ? 'current HEAD'
+      : worktreeBranches.has(name)
+        ? 'checked out in a worktree (handle via that worktree)'
+        : null
+  if (held !== null) {
+    // Never deletable here, but still counted as merged or not: by ancestry or
+    // an exact-head merged PR, without the patch checks a deletable row gets.
+    // `soft`: a missing default ref reads as not merged.
+    const pr = prs.get(name)
+    const { landed } = recordPr(facts, pr, sha, repo)
+    facts['merged'] = landed || git.at(repo.root).soft.isAncestor(sha, landedRef(repo))
+    return pinned(held)
+  }
 
   // Work merged only into an unpushed local default has not landed. A missing
   // remote-tracking ref exits 128: ancestry unknown (null).
@@ -213,6 +225,8 @@ export function classifyLocalBranch(opts: {
   if (patch !== null) recordLanding(facts, patch)
   const patchLanded = patch !== null && patch.check !== null
   const unmerged = !landed && !isAncestor && !landingConfirmed(patch)
+  // Merged: the work is on the default branch, by ancestry, an exact-head merged PR or a patch match.
+  facts['merged'] = landed || isAncestor || patchLanded
   if (!landed && !isAncestor) {
     facts['unique_commits'] = git.at(repo.root).aheadBehind(repo.mainBranch, sha).ahead
   }
@@ -353,6 +367,8 @@ export function classifyRemoteBranch(opts: {
   if (patch !== null) recordLanding(facts, patch)
   const patchLanded = patch !== null && patch.check !== null
   const unmerged = !landed && !isAncestor && !landingConfirmed(patch)
+  // Merged: the work is on the default branch, by ancestry, an exact-head merged PR or a patch match.
+  facts['merged'] = landed || isAncestor || patchLanded
   if (!landed && !isAncestor) {
     // Unknown (null) when the clone lacks `sha` or `remoteMain`, as above.
     const counted = git.at(repo.root).try.aheadBehind(remoteMain, sha)

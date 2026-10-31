@@ -74,7 +74,7 @@ describe('arguments', () => {
   test('--help exits 0 and names every command', () => {
     const res = run(['--help'], tempDir())
     expect(res.code).toBe(0)
-    for (const verb of ['[status]', 'plan', 'apply'])
+    for (const verb of ['[status]', 'summary', 'plan', 'apply'])
       expect(res.out).toContain(`repo-cleaner ${verb}`)
     expect(run(['apply', '--help'], tempDir()).code).toBe(0)
     expect(run(['plan', '--help'], tempDir()).code).toBe(0)
@@ -153,6 +153,40 @@ describe('plan', () => {
     const res = run(['plan', '--branch', BRANCH, ...SWEEP, '--only', 'remotes'], fx.root)
     const plan = JSON.parse(res.out) as { repos: Array<{ rows: Array<{ category: string }> }> }
     expect(plan.repos[0]!.rows.map((r) => r.category)).toEqual(['remote_branch'])
+  })
+})
+
+describe('summary', () => {
+  test('counts each category, with how many are merged', () => {
+    const fx = buildFixture()
+    sh(fx.root, ['branch', 'stale-unmerged'])
+    sh(fx.root, ['checkout', '-q', 'stale-unmerged'])
+    sh(fx.root, ['commit', '-q', '--allow-empty', '-m', 'not merged'])
+    sh(fx.root, ['checkout', '-q', 'main'])
+    const res = run(['summary', ...SWEEP, '--output', 'json'], fx.root)
+    expect(res.code).toBe(0)
+    const out = JSON.parse(res.out) as {
+      repos: Array<{ summary: Record<string, { total: number; merged: number }> }>
+      summary: { total: number; merged: number }
+    }
+    const counts = out.repos[0]!.summary
+    // main (default, not judged), feat/s (held by the worktree, merged), stale-unmerged.
+    expect(counts['local_branch']).toMatchObject({ total: 3, merged: 1 })
+    // The primary worktree is not judged; the feature worktree is merged.
+    expect(counts['worktree']).toMatchObject({ total: 2, merged: 1 })
+    // origin/main (not judged) and origin/feat/s (merged).
+    expect(counts['remote_branch']).toMatchObject({ total: 2, merged: 1 })
+    expect(out.summary).toMatchObject({ total: 7, merged: 3 })
+    expect(res.out).not.toContain('"items"')
+  })
+
+  test('text shows one table per repository and the closing summary line', () => {
+    const fx = buildFixture()
+    const res = run(['summary', ...SWEEP], fx.root)
+    expect(res.code).toBe(0)
+    expect(res.out).toMatch(/total\s+merged\s+delete\s+review\s+keep/)
+    expect(res.out).toMatch(/local branches\s+2\s+1\s/)
+    expect(res.out).toContain('across 1 repository')
   })
 })
 

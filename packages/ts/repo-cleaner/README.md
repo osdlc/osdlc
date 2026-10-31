@@ -205,11 +205,29 @@ worktree, the primary or caller's worktree) has `deletable: false`.
 
 ```bash
 repo-cleaner [status]   # the report: what is merged, what can go (the default)
+repo-cleaner summary    # counts per repository: total, merged, delete, review, keep
 repo-cleaner plan       # the deletable rows as a plan, to stdout or -o <file>
 repo-cleaner apply      # re-check, show the steps, ask, delete
 ```
 
-All three take the same paths and sweep options.
+All four take the same paths and sweep options.
+
+```console
+$ repo-cleaner summary
+/Users/me/work/api  (acme/api, default main, origin)
+                   total  merged  delete  review   keep
+  local branches      12       8       6       1      5
+  worktrees            4       3       2       1      1
+  remote branches     40      31      30       6      4
+
+38 to delete, 8 to review, across 1 repository.
+```
+
+`merged` counts rows whose work is on the default branch: by ancestry, by a
+merged PR at the branch's head, or by a patch match. A branch checked out in a
+worktree counts as merged by ancestry or PR alone. The default branch and the
+primary worktree are counted in `total` but not judged. Each row's verdict is
+in its `facts.merged`.
 
 ## Scope is opt-in
 
@@ -261,8 +279,8 @@ Every command that sweeps takes these:
 | `--output json` | The full inventory, facts included |
 
 `--version` prints `repo-cleaner <version>` and exits; it must be the first
-argument. A checkout directory named like a command (`status`, `plan`,
-`apply`, `dev`) is swept as `./status` and so on: `dev` runs the tool from a
+argument. A checkout directory named like a command (`status`, `summary`,
+`plan`, `apply`, `dev`) is swept as `./status` and so on: `dev` runs the tool from a
 checkout (see Running from a checkout).
 
 ## Plan and apply
