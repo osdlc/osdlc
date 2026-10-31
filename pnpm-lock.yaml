@@ -46,8 +46,8 @@ catalogs:
       specifier: ^2.9.0
       version: 2.9.1
     zod:
-      specifier: 4.4.3
-      version: 4.4.3
+      specifier: ^4.6.6
+      version: 4.6.7
 
 importers:
 
@@ -132,7 +132,7 @@ importers:
     devDependencies:
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.2
-        version: 1.32.2(zod@4.4.3)
+        version: 1.32.2(zod@4.6.7)
       '@osdlc/prettier-config':
         specifier: workspace:^
         version: link:../prettier-config
@@ -162,7 +162,7 @@ importers:
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.6.7
 
   packages/ts/code-host:
     dependencies:
@@ -183,7 +183,7 @@ importers:
         version: link:../typed-git
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.6.7
     devDependencies:
       '@osdlc/prettier-config':
         specifier: workspace:^
@@ -315,7 +315,7 @@ importers:
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.6.7
 
   packages/ts/detect-harness:
     dependencies:
@@ -364,7 +364,7 @@ importers:
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.6.7
 
   packages/ts/etag-write:
     devDependencies:
@@ -543,7 +543,7 @@ importers:
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.6.7
 
   packages/ts/markdown-link:
     devDependencies:
@@ -610,7 +610,7 @@ importers:
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.6.7
 
   packages/ts/path-guard:
     devDependencies:
@@ -673,7 +673,7 @@ importers:
         version: 2.9.1
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.6.7
     devDependencies:
       '@osdlc/prettier-config':
         specifier: workspace:^
@@ -728,7 +728,7 @@ importers:
         version: link:../ux
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.6.7
     devDependencies:
       '@osdlc/prettier-config':
         specifier: workspace:^
@@ -826,7 +826,7 @@ importers:
         version: 5.0.5(@types/node@26.6.5)(@vitest/coverage-v8@5.0.5)(jsdom@26.1.0)(vite@8.3.4(@types/node@26.6.5)(yaml@2.9.1))
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.6.7
 
   packages/ts/tiered-dirs:
     devDependencies:
@@ -1061,7 +1061,7 @@ importers:
         version: link:../ux
       zod:
         specifier: 'catalog:'
-        version: 4.4.3
+        version: 4.6.7
     devDependencies:
       '@osdlc/color':
         specifier: workspace:^
@@ -2830,8 +2830,8 @@ packages:
     peerDependencies:
       zod: ^3.25.28 || ^4
 
-  zod@4.4.3:
-    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -3057,7 +3057,7 @@ snapshots:
       tinyglobby: 0.2.17
       yaml: 2.9.1
 
-  '@modelcontextprotocol/sdk@1.32.2(zod@4.4.3)':
+  '@modelcontextprotocol/sdk@1.32.2(zod@4.6.7)':
     dependencies:
       '@hono/node-server': 2.1.5(hono@4.13.13)
       ajv: 8.20.0
@@ -3074,8 +3074,8 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
-      zod: 4.4.3
-      zod-to-json-schema: 3.25.2(zod@4.4.3)
+      zod: 4.6.7
+      zod-to-json-schema: 3.25.2(zod@4.6.7)
     transitivePeerDependencies:
       - supports-color
 
@@ -4608,10 +4608,10 @@ snapshots:
       y18n: 5.0.8
       yargs-parser: 20.2.9
 
-  zod-to-json-schema@3.25.2(zod@4.4.3):
+  zod-to-json-schema@3.25.2(zod@4.6.7):
     dependencies:
-      zod: 4.4.3
+      zod: 4.6.7
 
-  zod@4.4.3: {}
+  zod@4.6.7: {}
 
   zwitch@2.0.4: {}

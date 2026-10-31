@@ -20,7 +20,7 @@ catalog:
   typescript: ~6.0.3
   vitest: ^5.0.5
   yaml: ^2.9.0
-  zod: 4.4.3
+  zod: ^4.6.6
   semver: ^7.8.5
   '@arethetypeswrong/cli': 0.18.5
   '@changesets/cli': 3.0.3
