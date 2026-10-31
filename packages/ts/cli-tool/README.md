@@ -412,7 +412,7 @@ The order is:
 | 5 | local | this copy |
 
 See [devlink](./devlink/README.md) for the details and the verbs, and
-[launch order](./docs/architecture/launch-order.md) for the decision drawn out.
+[launch order](./docs/guide/launch-order.md) for the decision drawn out.
 
 `tool --where` is handed on like any other argument, so the process that
 answers is the one that runs. Its `chosen by` line names the layer: `env

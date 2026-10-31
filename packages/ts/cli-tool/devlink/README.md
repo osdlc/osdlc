@@ -65,7 +65,7 @@ cannot read `package.json`.
 The `running … (why)` line on stderr appears only on a hand-off to another
 copy, never for `local`. `<NAME>_QUIET=1` silences it.
 
-[Launch order](../docs/architecture/launch-order.md) walks through the
+[Launch order](../docs/guide/launch-order.md) walks through the
 decision with diagrams, the variables, and what `--where` prints for each
 layer.
 
@@ -206,7 +206,7 @@ Branch and HEAD are read from `.git` directly (a plain repo or a worktree's
 import-local, webpack-cli, the Angular and ember CLIs, gulp-cli, turbo and nx
 also run a project's own copy; npm, pnpm and bun link and yalc are the
 symlink and copy versions of `dev link`. [Launch
-order](../docs/architecture/launch-order.md#how-other-tools-do-it) compares
+order](../docs/guide/launch-order.md#how-other-tools-do-it) compares
 them with devlink, tool by tool.
 
 ## What is not here
