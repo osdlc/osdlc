@@ -50,6 +50,7 @@ usage: ${n} dev <verb> [options]
                             the canonical install
   off                       back to the canonical install
   status                    which checkout runs now, and why
+                            ('${n} --where' asks the running process)
   history                   every checkout ever linked, most recent first
 
   --json      machine output      --dry-run   report, write nothing

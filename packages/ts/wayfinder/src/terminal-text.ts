@@ -21,10 +21,8 @@
  * anything. The set of control characters is ux's own, from `controlPattern`.
  */
 
-import { EXIT, type CliIo } from '@osdlc/cli-tool'
+import type { CliIo } from '@osdlc/cli-tool'
 import { controlPattern } from '@osdlc/ux'
-
-import { BIN } from './app.ts'
 
 /**
  * C0 (tab and newline included), DEL, C1, and the bidi controls: the marks
@@ -104,20 +102,11 @@ export function safeStderr(io: CliIo): CliIo {
 }
 
 /**
- * Runs `run` and returns its exit code. An error it throws is printed to
- * `stderr` as one terminal-safe line, and the code is `EXIT.error`. For the
- * installed `way`, so an error no command caught cannot reach the terminal
- * raw, as Node's own handler would print it.
+ * `io` with both streams made terminal-safe: stdout through
+ * {@link safeJsonStdout} with `json`, else {@link safeStdout}, and stderr
+ * through {@link safeStderr}. For output wayfinder does not write itself,
+ * such as `runMain`'s `--where` and `way dev`.
  */
-export async function guardedExit(
-  run: () => number | Promise<number>,
-  stderr: (text: string) => void = (text) => process.stderr.write(text),
-): Promise<number> {
-  try {
-    return await run()
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    stderr(`${BIN}: ${terminalSafe(message)}\n`)
-    return EXIT.error
-  }
+export function safeIo(io: CliIo, opts: { json: boolean }): CliIo {
+  return safeStderr(opts.json ? safeJsonStdout(io) : safeStdout(io))
 }

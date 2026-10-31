@@ -39,6 +39,23 @@ try {
   assert.equal(help.status, 0, help.stderr)
   assert.match(help.stdout, /^usage: way /m)
 
+  // `runMain` answers these before `main` runs.
+  const version = way(['--version'])
+  assert.equal(version.status, 0, version.stderr)
+  assert.match(version.stdout, /^way \d+\.\d+\.\d+/)
+  const where = way(['--where', '--json'])
+  assert.equal(where.status, 0, where.stderr)
+  const at = JSON.parse(where.stdout)
+  assert.equal(at.name, 'way')
+  assert.ok(['install', 'checkout'].includes(at.from.kind), where.stdout)
+  assert.equal(at.chosenBy.layer, 'self')
+
+  if (process.platform !== 'win32') {
+    const dev = way(['dev', 'status'])
+    assert.equal(dev.status, 0, dev.stderr)
+    assert.match(dev.stdout, /^active: local/m)
+  }
+
   const dir = join(base, 'project')
   mkdirSync(dir)
   writeFileSync(

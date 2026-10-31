@@ -1,13 +1,14 @@
 /**
  * `runMain` with `devlinkHook`: `dev` is answered, a selected checkout runs in
- * place of this code, and a process that was handed off runs its own main.
+ * place of this code, a process that was handed off runs its own main, and
+ * `--where` says which layer chose the process that answers it.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { devlinkHook } from '../../src/devlink/index.ts'
+import { devlinkHook, homePath } from '../../src/devlink/index.ts'
 import { captureContext, runMain } from '../../src/index.ts'
 import { SPEC, sandbox, seedCheckout, type Sandbox } from './support.ts'
 
@@ -49,6 +50,7 @@ function run(env: Record<string, string>, argv: string[], script?: string) {
       context,
       argv,
       version: '1.2.3',
+      // The hook's script is the one --where reports; runMain is given none.
       devlink: devlinkHook(SPEC, script === undefined ? {} : { script }),
     }),
   }
@@ -108,5 +110,100 @@ describe('runMain with devlink', () => {
     await r.done
     // Not recognised as its own checkout, so TOOLY_HOME naming it hands off.
     expect(process.exitCode).toBe(5)
+  })
+})
+
+describe('runMain --where with devlink', () => {
+  test('a process handed off by TOOLY_HOME names its checkout and the env layer', async () => {
+    const other = seedCheckout(join(sb.root, 'other'))
+    const script = join(other, 'src', 'cli.ts')
+    const r = run({ TOOLY_HOME: other, TOOLY_LAUNCH_LAYER: 'env' }, ['--where'], script)
+    await r.done
+    expect(r.called()).toBe(false)
+    expect(process.exitCode).toBe(0)
+    expect(r.context.io.out).toBe(
+      `tooly 1.2.3\nfile      ${script}\nfrom      checkout ${other}\nchosen by env ($TOOLY_HOME)\n`,
+    )
+  })
+
+  test('a process handed off by the link names the link file', async () => {
+    const other = seedCheckout(join(sb.root, 'other'))
+    const script = join(other, 'src', 'cli.ts')
+    const r = run({ TOOLY_LAUNCH_LAYER: 'link' }, ['--where', '--json'], script)
+    await r.done
+    expect(r.called()).toBe(false)
+    expect(JSON.parse(r.context.io.out)).toEqual({
+      name: 'tooly',
+      version: '1.2.3',
+      file: script,
+      compiled: false,
+      from: { kind: 'checkout', path: other },
+      chosenBy: {
+        checkout: other,
+        layer: 'link',
+        text: `link (${homePath(SPEC)})`,
+        linkFile: homePath(SPEC),
+      },
+    })
+  })
+
+  test('an install that nothing handed off says no layer selected another', async () => {
+    const installed = seedCheckout(join(sb.root, 'node_modules', 'tooly'))
+    const script = join(installed, 'bin', 'tooly')
+    const r = run({}, ['--where'], script)
+    await r.done
+    expect(r.called()).toBe(false)
+    expect(r.context.io.out).toBe(
+      `tooly 1.2.3\nfile      ${script}\nfrom      install ${installed}\n` +
+        'chosen by this install (no devlink layer selected another)\n',
+    )
+  })
+
+  test('a layer that names this checkout is reported, with no hand-off', async () => {
+    const self = seedCheckout(join(sb.root, 'self'))
+    const r = run({ TOOLY_HOME: self }, ['--where'], join(self, 'bin', 'tooly'))
+    await r.done
+    expect(r.context.io.out).toContain(`from      checkout ${self}\n`)
+    expect(r.context.io.out).toContain('chosen by this checkout (TOOLY_HOME, which is this one)\n')
+  })
+
+  test.each([
+    ['cwd', 'cwd (a checkout above the working directory)'],
+    ['local', "local (the launcher's own checkout; no devlink layer selected another)"],
+    ['custom', 'custom (as $TOOLY_LAUNCH_LAYER says)'],
+  ])('a process handed off by the %s layer says so', async (layer, text) => {
+    const other = seedCheckout(join(sb.root, 'other'))
+    const r = run({ TOOLY_LAUNCH_LAYER: layer }, ['--where'], join(other, 'src', 'cli.ts'))
+    await r.done
+    expect(r.called()).toBe(false)
+    expect(r.context.io.out).toContain(`from      checkout ${other}\n`)
+    expect(r.context.io.out).toContain(`chosen by ${text}\n`)
+  })
+
+  test('a runMain script that disagrees with the hook does not split the answer', async () => {
+    const other = seedCheckout(join(sb.root, 'other'))
+    const script = join(other, 'src', 'cli.ts')
+    const context = captureContext({
+      cwd: sb.root,
+      env: { HOME: sb.home, TOOLY_LAUNCH_LAYER: 'env' },
+    })
+    await runMain(() => 0, {
+      name: 'tooly',
+      context,
+      argv: ['--where'],
+      script: join(sb.root, 'node_modules', 'tooly', 'bin', 'tooly'),
+      devlink: devlinkHook(SPEC, { script }),
+    })
+    expect(context.io.out).toContain(`file      ${script}\n`)
+    expect(context.io.out).toContain(`from      checkout ${other}\n`)
+  })
+
+  test('the process that hands off does not answer --where itself', async () => {
+    const other = seedCheckout(join(sb.root, 'other'))
+    const report = join(sb.root, 'report')
+    const r = run({ TOOLY_HOME: other, PATH: fakeBunDir(report) }, ['--where'])
+    await r.done
+    expect(r.context.io.out).toBe('')
+    expect(readFileSync(report, 'utf-8')).toContain(`${join(other, 'src/cli.ts')} --where`)
   })
 })

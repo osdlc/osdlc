@@ -108,5 +108,6 @@ the tool registry, and `session.store` the directory probes are stored in.
 `config`, `trust`, `guide` and `clean` are `@osdlc/cli-tool`'s shared
 commands over wayfinder's stores (`config-command.ts`, `trust-command.ts`,
 `guide.ts`, `clean-command.ts`), mounted in `createWayApp` like the rest.
-`dev` parses its own arguments, so `main` in `src/cli.ts` runs it before the
-tree, and help does not list it.
+`dev` parses its own arguments, so cli-tool's devlink hook, which `runWay` in
+`src/cli.ts` passes to `runMain`, answers it before `main` runs, and help does
+not list it.

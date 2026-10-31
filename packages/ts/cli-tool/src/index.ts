@@ -62,4 +62,4 @@ export type { AskYesNoOptions } from './prompt.ts'
 export { DEFAULT_WIDTH, MAX_WIDTH, columns, helpWidth, wrapText } from './wrap.ts'
 
 export { runMain } from './run-main.ts'
-export type { DevlinkHook, MainFn, RunMainOptions } from './run-main.ts'
+export type { DevlinkHook, DevlinkWhere, MainFn, RunMainOptions } from './run-main.ts'

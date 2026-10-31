@@ -14,11 +14,11 @@ import { captureIo } from '@osdlc/cli-tool'
 import { stripControls } from '@osdlc/ux'
 import { CATALOG_SCHEMA_VERSION, type Catalog, type Task } from '@osdlc/system-model/detect'
 
-import { main } from '../src/cli.ts'
+import { main, runWay } from '../src/cli.ts'
 import { startupSummary } from '../src/serve/index.ts'
 import {
-  guardedExit,
   jsonText,
+  safeIo,
   safeJsonStdout,
   safeStderr,
   safeStdout,
@@ -125,23 +125,47 @@ describe('terminalSafe', () => {
     expect(JSON.parse(io.out)).toEqual(value)
   })
 
-  test('guardedExit prints a thrown error as one terminal-safe line and returns 1', async () => {
+  test('runWay prints an error no command caught terminal-safe and exits 1', async () => {
+    const io = captureIo()
     const lines: string[] = []
-    const code = await guardedExit(
-      () => {
-        throw new Error(`bad ${CLIPBOARD}\nnext`)
+    const context = {
+      io: {
+        ...io,
+        stdout: () => {
+          throw new Error(`bad ${CLIPBOARD}\nnext`)
+        },
+        stderr: (text: string) => void lines.push(text),
       },
-      (text) => lines.push(text),
-    )
-    expect(code).toBe(1)
+      cwd: process.cwd(),
+      // Told it was handed off, so the hook does not read the real link.
+      env: { WAY_LAUNCH_LAYER: 'local' },
+    }
+    try {
+      await runWay({ argv: ['--help'], context })
+      expect(process.exitCode).toBe(1)
+    } finally {
+      process.exitCode = undefined
+    }
     expect(lines).toHaveLength(1)
-    expect(lines[0]).toMatch(/^way: bad /)
-    expect(lines[0]?.slice(0, -1)).not.toMatch(RAW_CONTROL)
-    expect(await guardedExit(async () => 3)).toBe(3)
+    expect(lines[0]).toMatch(/^way: bad .*\nnext\n$/)
+    expect(lines[0]).not.toMatch(RAW_CONTROL)
   })
 
   test('leaves printable text, including non-ASCII, alone', () => {
     expect(terminalSafe('déploy — 部署 ✓')).toBe('déploy — 部署 ✓')
+  })
+
+  test('safeIo cleans both streams, and stdout as JSON with json', () => {
+    for (const json of [false, true]) {
+      const io = captureIo()
+      const safe = safeIo(io, { json })
+      safe.stdout(`${JSON.stringify({ v: `a ${CLIPBOARD}${C1}` })}\n`)
+      safe.stderr(`warn ${CLIPBOARD}\nnext\n`)
+      expect(io.out).not.toMatch(RAW_CONTROL)
+      expect(io.err).not.toMatch(RAW_CONTROL)
+      expect(io.err).toMatch(/\nnext\n$/)
+      if (json) expect(JSON.parse(io.out)).toEqual({ v: `a ${CLIPBOARD}${C1}` })
+    }
   })
 
   test('safeStderr cleans stderr only', () => {

@@ -19,7 +19,14 @@ import { join } from 'node:path'
 
 import { afterEach, beforeEach, expect, test } from 'vitest'
 
-import { captureContext, envVars, runMain, systemDirs, type DevlinkHook } from '@osdlc/cli-tool'
+import {
+  captureContext,
+  envVars,
+  runMain,
+  systemDirs,
+  type DevlinkHook,
+  type DevlinkWhere,
+} from '@osdlc/cli-tool'
 import {
   appendHistory,
   clearActive,
@@ -261,7 +268,7 @@ test('the dev verbs mounted for a tool with no CLI framework', () => {
   expect(typeof processIo.stdout).toBe('function')
 })
 
-test('runMain with devlinkHook: dev is answered, and with no link main runs', async () => {
+test('runMain with devlinkHook: dev is answered, with no link main runs, and --where says so', async () => {
   const self = checkout('self')
   const hookOptions: DevlinkHookOptions = { script: join(self, SPEC.launcher) }
   const hook: DevlinkHook = devlinkHook(SPEC, hookOptions)
@@ -281,6 +288,23 @@ test('runMain with devlinkHook: dev is answered, and with no link main runs', as
     const plain = captureContext({ cwd: root, env })
     await runMain(main, { name: 'tooly', context: plain, argv: ['list'], devlink: hook })
     expect(ran).toBe(true)
+
+    // `--where` asks the hook which layer chose this process: none did.
+    const where = captureContext({ cwd: root, env })
+    const script = join(self, SPEC.launcher)
+    await runMain(main, {
+      name: 'tooly',
+      context: where,
+      argv: ['--where', '--json'],
+      devlink: hook,
+      script,
+    })
+    const chosen: DevlinkWhere = JSON.parse(where.io.out).chosenBy
+    expect(chosen).toEqual({
+      checkout: self,
+      layer: 'self',
+      text: 'this checkout (no devlink layer selected another)',
+    })
   } finally {
     process.exitCode = before ?? 0
   }
