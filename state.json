@@ -13,9 +13,9 @@
       "line": 188,
       "title": "project lookup also searches NODE_PATH and Node's global folders",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "020e96e367dccc00afffc2897fad34feb382589d"
     },
     {
       "id": "r1-2",
