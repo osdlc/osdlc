@@ -1,5 +1,14 @@
 # @osdlc/markdown-contract
 
+## 0.7.1
+
+### Patch Changes
+
+- dd2265e: `markdown-contract --where` shows the version on its first line, as the other CLIs do.
+- Updated dependencies [14d4351]
+- Updated dependencies [dd2265e]
+  - @osdlc/cli-tool@0.13.0
+
 ## 0.7.0
 
 ### Minor Changes
