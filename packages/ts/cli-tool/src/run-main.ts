@@ -18,11 +18,15 @@
  * is the wrong default for a command someone typed. It says where the code
  * was, not what the person should do. A tool that wants traces can catch
  * inside its own `main`.
+ *
+ * A first argument of `--version` or `--where` is answered here, after the
+ * devlink hook and without calling `main`.
  */
 
 import { EXIT } from './exit.ts'
 import { exitCodeFor, failureOf, renderError, renderFailure } from './failure.ts'
 import { processContext, type CliContext } from './io.ts'
+import { renderWhere, where } from './where.ts'
 
 /**
  * Options for running a main function: the tool's name, and the context and
@@ -41,18 +45,57 @@ export interface RunMainOptions {
    */
   version?: string
   /**
-   * Runs before `--version` and `main`; a number is the exit code and ends the
-   * run, null goes on. Pass `devlinkHook(spec)` from `@osdlc/cli-tool/devlink`
-   * to run the tool from a development checkout, as `way` and `sdlc` do.
+   * Runs before `--version`, `--where` and `main`; a number is the exit code
+   * and ends the run, null goes on. Pass `devlinkHook(spec)` from
+   * `@osdlc/cli-tool/devlink` to run the tool from a development checkout, as
+   * `way` and `sdlc` do.
    */
   devlink?: DevlinkHook
+  /**
+   * The script that is running, which `--where` reports. Defaults to
+   * `process.argv[1]`.
+   */
+  script?: string
+  /**
+   * The binary that is running, which `--where` reports in place of a
+   * bun-compiled binary's virtual script path. Defaults to `process.execPath`.
+   */
+  execPath?: string
 }
 
 /**
  * What {@link RunMainOptions.devlink} takes: answer `dev`, or hand the run to
  * another checkout, and return its exit code; null runs this process's `main`.
+ * A plain function is one.
  */
-export type DevlinkHook = (argv: readonly string[], ctx: CliContext) => number | null
+export interface DevlinkHook {
+  (argv: readonly string[], ctx: CliContext): number | null
+  /**
+   * After the hook returned null: where this process runs from and which
+   * layer chose it, for `--where`. Null or absent leaves the `chosen by` line
+   * out.
+   */
+  describe?: () => DevlinkWhere | null
+}
+
+/**
+ * What a {@link DevlinkHook} tells `--where`.
+ * @experimental
+ */
+export interface DevlinkWhere {
+  /** The tool's checkout the running script belongs to, or null for an install. */
+  checkout: string | null
+  /**
+   * The layer that chose this process. `env`, `cwd` or `link` when a launcher
+   * handed off to it, `local` when a bash launcher ran its own checkout, and
+   * `self` when no hand-off happened. Another value is a launcher's own.
+   */
+  layer: string
+  /** The `chosen by` line, in plain words. */
+  text: string
+  /** For the `link` layer: the link file that named the checkout. */
+  linkFile?: string
+}
 
 /**
  * A tool's main function. It takes the arguments and the context and returns
@@ -73,6 +116,18 @@ export async function runMain(main: MainFn, options: RunMainOptions): Promise<vo
   }
   if (options.version !== undefined && argv[0] === '--version') {
     ctx.io.stdout(`${options.name} ${options.version}\n`)
+    process.exitCode = EXIT.ok
+    return
+  }
+  if (argv[0] === '--where') {
+    const w = where({
+      name: options.name,
+      version: options.version,
+      script: options.script ?? process.argv[1],
+      execPath: options.execPath ?? process.execPath,
+      devlink: options.devlink?.describe?.() ?? null,
+    })
+    ctx.io.stdout(argv.includes('--json') ? `${JSON.stringify(w)}\n` : renderWhere(w))
     process.exitCode = EXIT.ok
     return
   }

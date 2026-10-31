@@ -309,6 +309,26 @@ Pass `version` and a first argument of `--version` prints `<name> <version>`,
 as `defineApp` does, and exits 0
 without calling `main`.
 
+A first argument of `--where` says which code is answering, and also exits 0
+without calling `main`:
+
+```
+$ tool --where
+tool 1.4.0
+file      /home/me/src/tool/bin/tool.js
+from      checkout /home/me/src/tool
+chosen by link (/home/me/.config/tool/home)
+```
+
+`file` is the realpath of the running script (`process.argv[1]`); for a
+bun-compiled binary, whose script path is virtual, it is `process.execPath`,
+marked `(compiled binary)`. `from` is `install <package dir>` when that path
+goes through `node_modules`, `checkout <root>` when devlink finds the tool's
+checkout above it, and otherwise the nearest `package.json` directory.
+`chosen by` appears only with devlink (see "Running from a checkout"). Add
+`--json` for one object with the same facts. The `script` and `execPath`
+options stand in for `process.argv[1]` and `process.execPath` in tests.
+
 ### The version
 
 `cli-tool-stamp-version`, run in a package's directory, writes
@@ -369,6 +389,13 @@ The hook finds the checkout it runs from by walking up from the script, never
 through `node_modules`, so a link to itself is a no-op. The process it hands
 off to is told so through `TOOL_LAUNCH_LAYER` and runs its own `main`. See
 [devlink](./devlink/README.md) for the layers and the verbs.
+
+`tool --where` is handed on like any other argument, so the process that
+answers is the one that runs. Its `chosen by` line names the layer: `env
+($TOOL_HOME)`, `cwd`, `link (<link file>)`, `local` for a bash launcher's own
+checkout, or `this install` / `this checkout` when nothing handed off. The
+hook reports this through its `describe()`, which `runMain` calls; a custom
+`DevlinkHook` without one gets no `chosen by` line.
 
 ### Asking yes or no
 
@@ -792,7 +819,7 @@ follow `@osdlc/tiered-dirs`.
 
 The experimental exports of `@osdlc/cli-tool`:
 
-`DEFAULT_WIDTH`, `MAX_WIDTH`, `Terminal`, `VendorDirs`, `closestMatches`, `colorEnabled`, `columns`,
+`DEFAULT_WIDTH`, `DevlinkWhere`, `MAX_WIDTH`, `Terminal`, `VendorDirs`, `closestMatches`, `colorEnabled`, `columns`,
 `didYouMean`, `helpWidth`, `systemDirs`, `wrapText`
 
 The experimental exports of `@osdlc/cli-tool/command`:

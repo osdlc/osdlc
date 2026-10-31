@@ -10,6 +10,7 @@ tooly dev history            # every checkout ever linked, most recent first
 tooly dev use #2             # back to an earlier one …
 tooly dev use canonical      # … or to the install itself
 tooly dev status             # which checkout runs now, and why
+tooly --where                # ask the running process (with runMain)
 ```
 
 `tooly` here is any tool that mounts this package under its `dev` noun.
