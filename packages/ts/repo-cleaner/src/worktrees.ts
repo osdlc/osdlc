@@ -198,6 +198,7 @@ export function gatherWorktrees(
   git: Git,
   only: string | undefined,
   probe: ProcessProbe,
+  tick?: (done: number, total: number) => void,
 ): [SweepItem[], Set<string>] {
   const all = git.at(repo.root).worktrees()
   const pathsByBranch = new Map<string, string[]>()
@@ -209,7 +210,8 @@ export function gatherWorktrees(
   const entries = only === undefined ? all : all.filter((entry) => entry.branch === only)
 
   const items: SweepItem[] = []
-  for (const entry of entries) {
+  for (const [i, entry] of entries.entries()) {
+    tick?.(i, entries.length)
     const branch = entry.branch ?? ''
     items.push(
       classifyWorktree({

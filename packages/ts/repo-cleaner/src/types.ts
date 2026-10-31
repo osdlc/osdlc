@@ -12,6 +12,20 @@ export type Classification = 'safe-to-delete' | 'safe-to-keep' | 'needs-investig
 /** The kinds of thing a sweep inventories. */
 export type Category = 'local_branch' | 'worktree' | 'remote_branch'
 
+/**
+ * What a sweep is doing, for a status line. `repo` is the path being swept;
+ * `index` and `of` place it among the run's repositories. `done` and `total`
+ * count items within a step that walks many.
+ */
+export interface SweepProgress {
+  repo: string
+  index: number
+  of: number
+  step: 'discover' | 'fetch' | 'prs' | 'worktrees' | 'local-branches' | 'remote-branches'
+  done?: number
+  total?: number
+}
+
 /** Which categories to gather. */
 export const ALL_SCOPES = ['local-branches', 'worktrees', 'remote-branches'] as const
 

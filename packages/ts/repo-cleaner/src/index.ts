@@ -106,6 +106,7 @@ export {
   type Scope,
   type SummaryBucket,
   type SweepItem,
+  type SweepProgress,
   type SweepResult,
   type UnresolvedEntry,
 } from './types.ts'

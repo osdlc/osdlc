@@ -133,6 +133,36 @@ describe('arguments', () => {
 
 const branchRefs = (dir: string): string => sh(dir, ['for-each-ref', 'refs/heads/'])
 
+describe('status line', () => {
+  test('drawn on a terminal stderr, erased before the report, never on stdout', () => {
+    const fx = buildFixture()
+    const res = run(['summary', ...SWEEP], fx.root, { stderrIsTerminal: true })
+    expect(res.code).toBe(0)
+    expect(res.err).toContain('\r\x1b[2K')
+    expect(res.err).toContain('checking remote branches')
+    expect(res.err.endsWith('\r\x1b[2K')).toBe(true)
+    expect(res.out).not.toContain('\x1b')
+  })
+
+  test('--no-progress, or a stderr that is not a terminal, draws none', () => {
+    const fx = buildFixture()
+    const off = run(['summary', ...SWEEP, '--no-progress'], fx.root, { stderrIsTerminal: true })
+    expect(off.err).not.toContain('\x1b')
+    const piped = run(['summary', ...SWEEP], fx.root)
+    expect(piped.err).not.toContain('\x1b')
+  })
+
+  test('apply shows the re-check and each step', () => {
+    const fx = buildFixture()
+    const res = run(['apply', '--branch', BRANCH, ...SWEEP, ...rowsOf(fx), '--yes'], fx.root, {
+      stderrIsTerminal: true,
+    })
+    expect(res.code).toBe(0)
+    expect(res.err).toContain('re-checking')
+    expect(res.err).toContain('deleting 1/')
+  })
+})
+
 describe('plan', () => {
   test('writes the plan to stdout by default and the summary to stderr', () => {
     const fx = buildFixture()

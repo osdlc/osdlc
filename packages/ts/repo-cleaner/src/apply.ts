@@ -34,7 +34,7 @@ import {
 } from './plan.ts'
 import type { Dropped, Receipt, RowRef, Step } from './receipt.ts'
 import { sweepRepo } from './sweep.ts'
-import { AUTHORIZATIONS, type Authorization, type SweepItem } from './types.ts'
+import { AUTHORIZATIONS, type Authorization, type SweepItem, type SweepProgress } from './types.ts'
 import { worktreePruneCommand, worktreeRemoveCommand, worktreeUnlockCommand } from './worktrees.ts'
 import { writeJsonAtomic } from './write-json.ts'
 
@@ -64,6 +64,10 @@ export interface ApplyOptions extends HostHooks {
   /** Limit the run to the plan repository rooted here. */
   repoRoot?: string | undefined
   now?: () => Date
+  /** Passed to the re-sweep's `onProgress`, for a status line. */
+  onSweepProgress?: ((progress: SweepProgress) => void) | undefined
+  /** Told before each step runs: its 0-based index, the step count and the step. Not called under `dryRun`. */
+  onStep?: ((index: number, total: number, step: Step) => void) | undefined
 }
 
 /** A selection or grant the plan cannot satisfy. Nothing has been touched. */
@@ -146,6 +150,7 @@ function resweep(repo: PlanRepo, opts: ApplyOptions): SweepItem[] {
     git: opts.git,
     gh: opts.gh,
     probe: opts.probe,
+    onProgress: opts.onSweepProgress,
   })
   if (sweep.repo === null || sweep.error !== null) {
     throw new Error(sweep.error ?? `could not read repository: ${repo.root}`)
@@ -414,7 +419,8 @@ export function applyPlan(
   // Worktrees whose lock this run cleared. typed-git has no `worktree lock`
   // verb, so a failed remove cannot put the lock back; the receipt says so.
   const unlocked = new Set<string>()
-  for (const [step, row] of plannedSteps) {
+  for (const [i, [step, row]] of plannedSteps.entries()) {
+    opts.onStep?.(i, plannedSteps.length, step)
     try {
       step.verification = execute(step, row, git, probe)
       step.result = 'ok'

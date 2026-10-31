@@ -129,10 +129,12 @@ export function gatherLocalBranches(
   worktreeBranches: ReadonlySet<string>,
   git: Git,
   only?: string,
+  tick?: (done: number, total: number) => void,
 ): SweepItem[] {
   const rows = git.at(repo.root).forEachRef('refs/heads/', { format: LOCAL_FORMAT })
   const items: SweepItem[] = []
-  for (const line of rows) {
+  for (const [i, line] of rows.entries()) {
+    tick?.(i, rows.length)
     const parts = line.split('\t')
     if (parts.length !== 5) continue
     const [name, upstream, track, lastCommit, sha] = parts as [
@@ -307,6 +309,7 @@ export function gatherRemoteBranches(
   localBranchNames: ReadonlySet<string>,
   git: Git,
   only?: string,
+  tick?: (done: number, total: number) => void,
 ): SweepItem[] {
   if (repo.remote === null) return []
   // Default door: an unreachable remote throws rather than rendering as "the
@@ -314,7 +317,8 @@ export function gatherRemoteBranches(
   const pattern = only === undefined ? undefined : `refs/heads/${only}`
   const rows = git.at(repo.root).lsRemote(repo.remote, pattern, { heads: true })
   const items: SweepItem[] = []
-  for (const { sha, ref } of rows) {
+  for (const [i, { sha, ref }] of rows.entries()) {
+    tick?.(i, rows.length)
     if (!ref.startsWith('refs/heads/')) continue
     const name = ref.slice('refs/heads/'.length)
     if (only !== undefined && name !== only) continue

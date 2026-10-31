@@ -24,6 +24,7 @@
 
 import { readSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
+import { isatty } from 'node:tty'
 
 import { EXIT, askYesNo, canPrompt, defineCli, type CliContext } from '@osdlc/cli-tool'
 import { Git } from '@osdlc/typed-git'
@@ -39,7 +40,7 @@ import {
   writePlan,
   type Plan,
 } from './plan.ts'
-import type { Receipt, RowRef } from './receipt.ts'
+import type { Receipt, RowRef, Step } from './receipt.ts'
 import {
   proposedCommands,
   renderCountsJson,
@@ -49,8 +50,15 @@ import {
   renderSummary,
   renderText,
 } from './render.ts'
+import {
+  NO_STATUS_LINE,
+  describeStep,
+  describeSweep,
+  statusLine,
+  type StatusLine,
+} from './status-line.ts'
 import { sweepRepos, type SweepReposOptions } from './sweep.ts'
-import type { Scope, SweepResult } from './types.ts'
+import type { Scope, SweepProgress, SweepResult } from './types.ts'
 
 const EXIT_NOTHING_TO_SWEEP = 10
 const EXIT_STEP_FAILED = 11
@@ -86,6 +94,11 @@ const SWEEP_FLAGS = {
     kind: 'boolean',
     negatable: true,
     help: 'classify on the remote-tracking refs already on disk',
+  },
+  progress: {
+    kind: 'boolean',
+    negatable: true,
+    help: 'no status line on stderr (drawn only when stderr is a terminal)',
   },
 } as const
 
@@ -220,6 +233,8 @@ export interface MainDeps {
   confirm?: Confirm
   /** Reads `--plan -`. Defaults to stdin. */
   readStdin?: () => string
+  /** Whether stderr is a terminal, so a status line may be drawn. Defaults to `isatty(2)`. */
+  stderrIsTerminal?: boolean
 }
 
 const PAUSE = new Int32Array(new SharedArrayBuffer(4))
@@ -262,6 +277,7 @@ interface SweepValues {
   remote?: string | undefined
   gh: boolean
   fetch: boolean
+  progress: boolean
 }
 
 type Swept =
@@ -275,6 +291,7 @@ function sweep(
   paths: readonly string[],
   ctx: CliContext,
   render: (result: SweepResult) => string,
+  status: StatusLine,
 ): Swept {
   const only = v.only?.filter((s) => s !== '')
   const unknown = (only ?? []).filter((s) => !(s in ONLY))
@@ -307,10 +324,13 @@ function sweep(
     // Mid-walk, while the wait is happening — the summary comes too late to
     // explain why the tool appeared to hang.
     onWarn: (message) => ctx.io.stderr(`${NAME}: ${message}\n`),
+    ...(v.progress ? { onProgress: (p) => status.update(describeSweep(p)) } : {}),
     ...(only === undefined ? {} : { scope: only.map((s) => ONLY[s]!) }),
     ...(v.remote === undefined ? {} : { remote: v.remote }),
   }
+  if (v.progress) status.update(`${NAME}: finding repositories`)
   const result = sweepRepos(paths.length > 0 ? paths : [ctx.cwd], options)
+  status.clear()
   if (branch !== undefined && result.repos.length > 1) {
     const err = new Error(
       `--branch sweeps one repository; ${result.repos.length} found under ${ctx.cwd}`,
@@ -341,14 +361,14 @@ function planOf(swept: Extract<Swept, { ok: true }>, now: Date): Plan {
   }
 }
 
-function runStatus(argv: readonly string[], ctx: CliContext): number {
+function runStatus(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
   const parsed = statusCli().parse(argv, ctx.io)
   if (parsed.status === 'help') return EXIT.ok
   if (parsed.status === 'error') return usageError(ctx, NAME, parsed.message)
   const v = parsed.values
   const render = (r: SweepResult): string =>
     v.output === 'json' ? renderJson(r) : renderText(r, { keep: v.keep })
-  const swept = sweep(NAME, v, parsed.positionals, ctx, render)
+  const swept = sweep(NAME, v, parsed.positionals, ctx, render, status)
   if (!swept.ok) return swept.code
 
   if (v.commands) {
@@ -360,7 +380,7 @@ function runStatus(argv: readonly string[], ctx: CliContext): number {
   return EXIT.ok
 }
 
-function runSummary(argv: readonly string[], ctx: CliContext): number {
+function runSummary(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
   const name = `${NAME} summary`
   const parsed = summaryCli().parse(argv, ctx.io)
   if (parsed.status === 'help') return EXIT.ok
@@ -368,22 +388,29 @@ function runSummary(argv: readonly string[], ctx: CliContext): number {
   const v = parsed.values
   const render = (r: SweepResult): string =>
     v.output === 'json' ? renderCountsJson(r) : renderCountsText(r)
-  const swept = sweep(name, v, parsed.positionals, ctx, render)
+  const swept = sweep(name, v, parsed.positionals, ctx, render, status)
   if (!swept.ok) return swept.code
   ctx.io.stdout(render(swept.result))
   return EXIT.ok
 }
 
-function runPlan(argv: readonly string[], ctx: CliContext): number {
+function runPlan(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
   const name = `${NAME} plan`
   const parsed = planCli().parse(argv, ctx.io)
   if (parsed.status === 'help') return EXIT.ok
   if (parsed.status === 'error') return usageError(ctx, name, parsed.message)
   const v = parsed.values
-  const swept = sweep(name, v, parsed.positionals, ctx, (r) => {
-    ctx.io.stderr(renderSummary(r) + '\n')
-    return ''
-  })
+  const swept = sweep(
+    name,
+    v,
+    parsed.positionals,
+    ctx,
+    (r) => {
+      ctx.io.stderr(renderSummary(r) + '\n')
+      return ''
+    },
+    status,
+  )
   if (!swept.ok) return swept.code
 
   const plan = planOf(swept, new Date())
@@ -408,7 +435,12 @@ function wouldRun(receipt: Receipt): number {
   return receipt.steps.filter((s) => s.row !== null).length
 }
 
-function runApply(argv: readonly string[], ctx: CliContext, deps: MainDeps): number {
+function runApply(
+  argv: readonly string[],
+  ctx: CliContext,
+  deps: MainDeps,
+  status: StatusLine,
+): number {
   const name = `${NAME} apply`
   const parsed = applyCli().parse(argv, ctx.io)
   if (parsed.status === 'help') return EXIT.ok
@@ -451,8 +483,13 @@ function runApply(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   let planSource: string
   let receiptPath: string | null = v.receipt === undefined ? null : resolve(ctx.cwd, v.receipt)
   if (v.plan === undefined) {
-    const swept = sweep(name, v, paths, ctx, (r) =>
-      v.output === 'json' ? renderJson(r) : renderText(r),
+    const swept = sweep(
+      name,
+      v,
+      paths,
+      ctx,
+      (r) => (v.output === 'json' ? renderJson(r) : renderText(r)),
+      status,
     )
     if (!swept.ok) return swept.code
     plan = planOf(swept, now)
@@ -473,7 +510,18 @@ function runApply(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   }
 
   const repoRoot = v.repoRoot === undefined ? undefined : resolve(ctx.cwd, v.repoRoot)
-  const base = { callerCwd: ctx.cwd, planPath: planSource, repoRoot }
+  const base = {
+    callerCwd: ctx.cwd,
+    planPath: planSource,
+    repoRoot,
+    ...(v.progress
+      ? {
+          onSweepProgress: (p: SweepProgress) => status.update(`re-checking ${describeSweep(p)}`),
+          onStep: (i: number, total: number, step: Step) =>
+            status.update(describeStep(i, total, step)),
+        }
+      : {}),
+  }
   const print = (receipt: Receipt, shownPath: string | null): void => {
     ctx.io.stdout(
       v.output === 'json'
@@ -550,10 +598,30 @@ function emptyReceipt(plan: string, now: Date): Receipt {
 
 /** `main(argv, ctx)`: returns an exit code, never exits. */
 export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = {}): number {
+  const terminal = deps.stderrIsTerminal ?? isatty(2)
+  const status = terminal
+    ? statusLine(ctx.io.stderr, () => process.stderr.columns || 80)
+    : NO_STATUS_LINE
+  // Anything else written erases the status line first, so it never trails into output.
+  const io = {
+    stdout: (text: string) => {
+      status.clear()
+      ctx.io.stdout(text)
+    },
+    stderr: (text: string) => {
+      status.clear()
+      ctx.io.stderr(text)
+    },
+  }
+  const c: CliContext = { ...ctx, io }
   const [sub, ...rest] = argv
-  if (sub === 'summary') return runSummary(rest, ctx)
-  if (sub === 'plan') return runPlan(rest, ctx)
-  if (sub === 'apply') return runApply(rest, ctx, deps)
-  if (sub === 'status') return runStatus(rest, ctx)
-  return runStatus(argv, ctx)
+  try {
+    if (sub === 'summary') return runSummary(rest, c, status)
+    if (sub === 'plan') return runPlan(rest, c, status)
+    if (sub === 'apply') return runApply(rest, c, deps, status)
+    if (sub === 'status') return runStatus(rest, c, status)
+    return runStatus(argv, c, status)
+  } finally {
+    status.clear()
+  }
 }
