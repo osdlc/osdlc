@@ -274,17 +274,21 @@ describe('runWay goes through runMain', () => {
     }
   })
 
-  test('--where with a path holding control characters prints it terminal-safe', async () => {
-    const pkg = join(tmp, 'node_modules', '@osdlc', 'wayfinder')
-    const dir = join(pkg, 'b\u001b]0;pwned\u0007\u202e')
-    mkdirSync(dir, { recursive: true })
-    const script = join(dir, 'way.js')
-    writeFileSync(script, '')
-    for (const argv of [['--where'], ['--where', '--json']]) {
-      const r = await run(argv, { HOME: home }, { script })
-      expect(r.out).not.toMatch(/[\u001b\u0007\u202e]/)
-    }
-  })
+  // POSIX only: Windows does not allow control characters in file names.
+  test.skipIf(WINDOWS)(
+    '--where with a path holding control characters prints it terminal-safe',
+    async () => {
+      const pkg = join(tmp, 'node_modules', '@osdlc', 'wayfinder')
+      const dir = join(pkg, 'b\u001b]0;pwned\u0007\u202e')
+      mkdirSync(dir, { recursive: true })
+      const script = join(dir, 'way.js')
+      writeFileSync(script, '')
+      for (const argv of [['--where'], ['--where', '--json']]) {
+        const r = await run(argv, { HOME: home }, { script })
+        expect(r.out).not.toMatch(/[\u001b\u0007\u202e]/)
+      }
+    },
+  )
 
   // POSIX only: `way dev` is not available on Windows.
   test.skipIf(WINDOWS)('dev is answered by the hook, terminal-safe', async () => {
