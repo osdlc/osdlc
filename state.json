@@ -79,9 +79,9 @@
       "line": 143,
       "title": "writeSync on fd 2 can throw and abort the hand-off",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "f8042fcc0e9ca9ec53da290bad4ed08634c1cfc6"
     },
     {
       "id": "r6-2",
