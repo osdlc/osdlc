@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Under strict order, an unknown section no longer makes a later optional
+  section, or a repeat of a filled repeatable section, `structure/section-order`.
+  An unknown section now moves the order check only to a `gap()` that takes it.
+  This matches the `@osdlc/markdown-contract` fix, and corpus fixture v39
+  covers it in both engines.
+
 ## [0.3.2] - Unreleased
 
 The first release as `markdown-contract`, in step with

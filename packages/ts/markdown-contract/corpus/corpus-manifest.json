@@ -1095,5 +1095,20 @@
         "expected": "38-body-text-rule-hint.fail.expected.json"
       }
     ]
+  },
+  {
+    "id": "v39",
+    "contract": "39-strict-order-unknown-sections.contract.yaml",
+    "shared": true,
+    "cases": [
+      {
+        "source": "39-strict-order-unknown-sections.pass.md",
+        "expected": "39-strict-order-unknown-sections.pass.expected.json"
+      },
+      {
+        "source": "39-strict-order-unknown-sections.fail.md",
+        "expected": "39-strict-order-unknown-sections.fail.expected.json"
+      }
+    ]
   }
 ]

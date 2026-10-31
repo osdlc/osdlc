@@ -1,0 +1,16 @@
+mcVersion: 2
+kind: contract
+# fixture: v39 — Unknown sections under strict order  (TS fixture: 39-strict-order-unknown-sections.ts)
+
+body:
+  order: strict
+  additionalSections: true
+  sections:
+    - section: Summary
+    - section: Scope
+    - section: Status
+      minContains: 0
+      maxContains: 1
+    - section: References
+      minContains: 0
+      maxContains: 1
