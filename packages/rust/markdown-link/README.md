@@ -108,6 +108,17 @@ are listed in the [changelog](CHANGELOG.md).
 
 Short notes on settled design choices are in [decisions/](decisions/).
 
+## TypeScript twin
+
+[`@osdlc/markdown-link`](https://www.npmjs.com/package/@osdlc/markdown-link)
+is the TypeScript twin of the crate's parsing half: the code lexer, the link
+scanner, display text and typed references. It does not resolve links yet. It
+sits beside the crate, in
+[`packages/ts/markdown-link`](https://github.com/osdlc/osdlc/tree/main/packages/ts/markdown-link).
+Its tests read this crate's `tests/fixtures/conformance.json`, so the two
+agree on every case in it. Its offsets count UTF-16 code units, where the
+crate's count bytes.
+
 ## Source
 
 The crate lives in the [osdlc/osdlc](https://github.com/osdlc/osdlc)

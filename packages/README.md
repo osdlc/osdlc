@@ -82,7 +82,8 @@ the standard.
   `pnpm run check:conformance` checks the suites. `tiered-dirs` and
   `config-layers` have moved there. Until they move, `path-guard` keeps
   `packages/rust/path-guard/tests/fixtures/parity.json`, `frontmatter-lossless`
-  its crate's `tests/fixtures/conformance.json`, `markdown-contract` runs
+  and `markdown-link` their crates' `tests/fixtures/conformance.json`,
+  `markdown-contract` runs
   the TypeScript package's `corpus/` directly, and `glob-intersect` runs
   `@osdlc/intersect`'s `fixtures/` directly. `etag-write` has no shared
   cases yet.
@@ -166,6 +167,10 @@ Developed here, in this repository:
 - `packages/ts/markdown-contract` (`@osdlc/markdown-contract` on npm,
   contracts for markdown documents: one parse gives findings with lines and a
   typed model; contracts in TypeScript or YAML, a folder runner and a CLI)
+- `packages/ts/markdown-link` (`@osdlc/markdown-link` on npm, wikilink and
+  relative markdown link parsing with spans, and the code lexer that keeps
+  links in code out; the TypeScript implementation of the parsing half of the
+  `markdown-link` crate)
 - `packages/ts/path-guard` (`@osdlc/path-guard` on npm, a path containment
   guard: lexical validation, then a symlink-aware proof that a path stays
   inside its root; the TypeScript implementation of the `path-guard` crate)
