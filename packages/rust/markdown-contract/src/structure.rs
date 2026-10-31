@@ -365,9 +365,34 @@ fn matches_slot_from(slots: &[Slot<'_>], name: &str, from: usize) -> Option<usiz
         .map(|s| s.spec_idx)
 }
 
-/// strict: recognized sections in declared order, contiguous; unknowns admitted only at a
-/// `gap()` window. A two-cursor positional walk over (declared specs × doc sections),
-/// ported line-for-line from the TS `checkStrict`.
+/// True when the walk may pass `slot` without a section for it: the slot is optional, or it
+/// is a repeatable slot that already has a section. A repeatable slot's bounds are checked
+/// separately (repeat-count).
+fn is_skippable(slot: &Slot<'_>, slot_fill: &HashMap<usize, usize>) -> bool {
+    slot.optional || (slot.repeatable && slot_fill.get(&slot.spec_idx).copied().unwrap_or(0) > 0)
+}
+
+/// Set while unknown sections have moved the strict walk past declared slots.
+struct Detour {
+    /// The spec index the unknown sections started from.
+    from: usize,
+    /// The gap that took them, if any.
+    gap: Option<usize>,
+    /// How many of them that gap took.
+    taken: usize,
+}
+
+/// strict: declared sections in declared order; unknown sections go to a `gap()` when one
+/// is reachable, and are otherwise reported unless `allow_unknown`. A two-cursor walk over
+/// (declared specs × doc sections), ported line-for-line from the TS `checkStrict`:
+///   - An unknown section skips optional and filled repeatable slots, and is counted toward
+///     a gap it reaches. Where a required slot or the end stops it, it is reported under
+///     `allow_unknown: false`.
+///   - A declared section for a slot that unknown sections skipped, before any declared
+///     section fills a slot, sends the walk back to where they started. Under
+///     `allow_unknown: true` the gap count they added is taken back. Under
+///     `allow_unknown: false` the walk goes back only when no gap took them, since there
+///     they had to be in the gap.
 fn check_strict(
     nodes: &[SectionNode],
     specs: &[Spec],
@@ -390,6 +415,9 @@ fn check_strict(
     // the cursor to absorb consecutive matching peers.
     let mut slot_fill: HashMap<usize, usize> = HashMap::new();
 
+    // The next declared section that fills a slot clears it.
+    let mut detour: Option<Detour> = None;
+
     let mut spec_idx = 0usize;
     let mut doc_idx = 0usize;
     while doc_idx < nodes.len() {
@@ -401,10 +429,23 @@ fn check_strict(
         // was reported on the early section, and a second section for a filled
         // non-repeatable slot is `structure/duplicate-section`. Either way it neither
         // moves the walk nor counts toward a gap.
-        if let Some(passed) = slots
+        let passed = slots
             .iter()
-            .find(|s| s.spec_idx < spec_idx && s.admits(&node.name))
+            .find(|s| s.spec_idx < spec_idx && s.admits(&node.name));
+        if let (Some(p), Some(d)) = (passed, &detour)
+            && p.spec_idx >= d.from
+            && (allow_unknown || d.gap.is_none())
         {
+            // Unknown sections skipped this slot. They came before it, so go back to where
+            // they started and check the section again.
+            if let Some(g) = d.gap {
+                *gap_count.entry(g).or_insert(0) -= d.taken;
+            }
+            spec_idx = d.from;
+            detour = None;
+            continue;
+        }
+        if let Some(passed) = passed {
             let fill = slot_fill.get(&passed.spec_idx).copied().unwrap_or(0);
             if (passed.optional && fill == 0) || (passed.repeatable && fill > 0) {
                 out.push(ctx.finding(
@@ -448,6 +489,10 @@ fn check_strict(
                 continue;
             }
             *gap_count.entry(spec_idx).or_insert(0) += 1;
+            if let Some(d) = &mut detour {
+                d.gap = Some(spec_idx);
+                d.taken += 1;
+            }
             doc_idx += 1;
             continue;
         }
@@ -459,6 +504,7 @@ fn check_strict(
             .expect("slot at cursor spec");
         if slot.admits(&node.name) {
             *slot_fill.entry(spec_idx).or_insert(0) += 1;
+            detour = None;
             // A repeatable slot stays on the cursor to consume consecutive matching peers.
             if !slot.repeatable {
                 spec_idx += 1;
@@ -467,14 +513,9 @@ fn check_strict(
             continue;
         }
 
-        // A repeatable slot that has already consumed ≥1 peer is satisfied — treat it
-        // like an optional slot as the walk moves on.
-        let repeat_satisfied =
-            slot.repeatable && slot_fill.get(&spec_idx).copied().unwrap_or(0) > 0;
-
         // Doesn't match the cursor slot. If it matches a later slot, it jumped ahead.
         if let Some(later) = matches_slot_from(slots, &node.name, spec_idx + 1) {
-            if !slot.optional && !repeat_satisfied {
+            if !is_skippable(slot, &slot_fill) {
                 out.push(ctx.finding(
                     FindingSpec::new(
                         "structure/section-order",
@@ -491,6 +532,7 @@ fn check_strict(
             // This section fills the later slot. As for the cursor slot, a repeatable one
             // stays on the cursor for the next matching section, and any other is done.
             *slot_fill.entry(later).or_insert(0) += 1;
+            detour = None;
             let later_repeatable = slots.iter().any(|s| s.spec_idx == later && s.repeatable);
             spec_idx = if later_repeatable { later } else { later + 1 };
             doc_idx += 1;
@@ -498,7 +540,13 @@ fn check_strict(
         }
 
         // The cursor slot is optional (or a satisfied repeatable) and unmatched → skip it.
-        if slot.optional || repeat_satisfied {
+        // Only an unknown section gets here, so record where its detour started.
+        if is_skippable(slot, &slot_fill) {
+            detour.get_or_insert(Detour {
+                from: spec_idx,
+                gap: None,
+                taken: 0,
+            });
             spec_idx += 1;
             continue;
         }
@@ -1417,6 +1465,142 @@ mod tests {
         assert_eq!(
             ids(&validate("## B\n\n## B\n", &c, "s.md")),
             vec!["structure/duplicate-section"]
+        );
+    }
+
+    // ── strict: an unknown section does not move the walk past declared slots ──
+    // The repro and a real order error with unknown sections between are corpus fixture v39.
+
+    fn strict_open(specs: Vec<Spec>) -> Contract {
+        body(
+            LevelOpts {
+                order: Order::Strict,
+                allow_unknown: true,
+            },
+            specs,
+        )
+    }
+
+    #[test]
+    fn strict_several_optional_sections_after_unknown_ones_pass() {
+        let c = strict_open(vec![
+            section("A"),
+            optional(section("B")),
+            optional(section("C")),
+            optional(section("D")),
+        ]);
+        let source = "## A\n\n## X\n\n## B\n\n## Y\n\n## Z\n\n## D\n";
+        assert!(validate(source, &c, "s.md").is_empty());
+    }
+
+    #[test]
+    fn strict_a_filled_repeatable_section_repeated_after_an_unknown_one_passes() {
+        let c = strict_open(vec![section("A"), repeatable("R"), optional(section("D"))]);
+        let source = "## A\n\n## R\n\n## X\n\n## R\n\n## D\n";
+        assert!(validate(source, &c, "s.md").is_empty());
+    }
+
+    #[test]
+    fn strict_a_required_section_after_an_unknown_one_passes() {
+        let c = strict_open(vec![section("A"), optional(section("B")), section("D")]);
+        assert!(validate("## A\n\n## X\n\n## D\n", &c, "s.md").is_empty());
+    }
+
+    #[test]
+    fn strict_closed_reports_the_unknown_section_only() {
+        let c = strict(vec![section("A"), section("B"), optional(section("D"))]);
+        let findings = validate("## A\n\n## B\n\n## X\n\n## D\n", &c, "s.md");
+        assert_eq!(
+            brief(&findings),
+            vec![("structure/section-order", FindingLevel::Error, Some(5))]
+        );
+        assert_eq!(
+            findings[0].message,
+            "unexpected section ‘X’ after the declared sequence"
+        );
+    }
+
+    #[test]
+    fn strict_an_unknown_section_still_moves_the_walk_to_a_gap() {
+        let c = strict_open(vec![
+            section("A"),
+            optional(section("B")),
+            gap_bounds(None, Some(1)),
+            section("D"),
+        ]);
+        assert!(validate("## A\n\n## X\n\n## D\n", &c, "s.md").is_empty());
+        assert_eq!(
+            ids(&validate("## A\n\n## X\n\n## Y\n\n## D\n", &c, "s.md")),
+            vec!["structure/gap-count"]
+        );
+    }
+
+    // The gap cases. The pass case and a real order error across a gap are corpus fixture
+    // v39a.
+
+    #[test]
+    fn strict_an_optional_section_after_an_unknown_one_with_a_trailing_gap_passes() {
+        let c = strict_open(vec![section("A"), optional(section("B")), gap()]);
+        assert!(validate("## A\n\n## X\n\n## B\n", &c, "s.md").is_empty());
+    }
+
+    #[test]
+    fn strict_unknown_sections_before_a_skipped_optional_do_not_count_toward_the_gap() {
+        let c = strict_open(vec![
+            section("A"),
+            optional(section("B")),
+            gap_bounds(None, Some(1)),
+            section("D"),
+        ]);
+        // X and Y come before B, so only Z is in the gap.
+        let source = "## A\n\n## X\n\n## Y\n\n## B\n\n## Z\n\n## D\n";
+        assert!(validate(source, &c, "s.md").is_empty());
+    }
+
+    #[test]
+    fn strict_closed_with_a_gap_ahead_the_unknown_is_in_the_gap_so_b_is_out_of_order() {
+        let c = strict(vec![
+            section("A"),
+            optional(section("B")),
+            gap(),
+            section("D"),
+        ]);
+        assert_eq!(
+            brief(&validate("## A\n\n## X\n\n## B\n\n## D\n", &c, "s.md")),
+            vec![("structure/section-order", FindingLevel::Error, Some(5))]
+        );
+    }
+
+    #[test]
+    fn strict_closed_at_a_required_slot_reports_the_unknown_in_the_strict_prefix() {
+        let c = strict(vec![section("A"), optional(section("B")), section("C")]);
+        let findings = validate("## A\n\n## X\n\n## B\n\n## C\n", &c, "s.md");
+        assert_eq!(
+            brief(&findings),
+            vec![("structure/section-order", FindingLevel::Error, Some(3))]
+        );
+        assert_eq!(
+            findings[0].message,
+            "unexpected section ‘X’ in the strict prefix; extras are only permitted after a gap"
+        );
+    }
+
+    #[test]
+    fn strict_a_required_slot_before_a_gap_stops_the_unknown_section_as_on_main() {
+        let specs = || {
+            vec![
+                section("A"),
+                optional(section("B")),
+                section("C"),
+                gap(),
+                section("D"),
+            ]
+        };
+        let source = "## A\n\n## X\n\n## C\n\n## D\n";
+        assert!(validate(source, &strict_open(specs()), "s.md").is_empty());
+        assert_eq!(
+            brief(&validate(source, &strict(specs()), "s.md")),
+            vec![("structure/section-order", FindingLevel::Error, Some(3))]
         );
     }
 }

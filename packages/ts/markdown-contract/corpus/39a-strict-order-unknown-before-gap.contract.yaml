@@ -1,0 +1,14 @@
+mcVersion: 2
+kind: contract
+# fixture: v39a — Unknown sections under strict order, with a gap  (TS fixture: 39a-strict-order-unknown-before-gap.ts)
+
+body:
+  order: strict
+  additionalSections: true
+  sections:
+    - section: Summary
+    - section: Status
+      minContains: 0
+      maxContains: 1
+    - gap: {}
+    - section: References

@@ -25,6 +25,8 @@ import v35 from './35-leaf-hints.js'
 import v36 from './36-null-first-type-union.js'
 import v37 from './37-code-block-value.js'
 import v38 from './38-body-text-rule-hint.js'
+import v39 from './39-strict-order-unknown-sections.js'
+import v39a from './39a-strict-order-unknown-before-gap.js'
 
 export const validationFixtures: ValidationFixture[] = [
   v01,
@@ -47,4 +49,6 @@ export const validationFixtures: ValidationFixture[] = [
   v36,
   v37,
   v38,
+  v39,
+  v39a,
 ]

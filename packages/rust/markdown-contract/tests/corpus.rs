@@ -153,8 +153,8 @@ fn shared_corpus_fixtures_match_the_goldens() {
     );
     assert!(cases_run > 0, "no corpus case ran");
     assert_eq!(
-        shared, 63,
-        "the corpus holds 63 shared fixtures; update this count when it changes"
+        shared, 65,
+        "the corpus holds 65 shared fixtures; update this count when it changes"
     );
     assert_eq!(
         skipped, 8,
