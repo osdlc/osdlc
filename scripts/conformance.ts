@@ -3,8 +3,10 @@
 // docs/planning/standards/S-conformance-suites.md.
 //
 //   node scripts/conformance.ts               check every family
-//   node scripts/conformance.ts --regenerate  also run each generator, then
-//                                             fail if a suite changed
+//   node scripts/conformance.ts --regenerate  also build each TypeScript
+//                                             reference and what it imports,
+//                                             run each generator, then fail
+//                                             if a suite changed
 //   node scripts/conformance.ts --regenerate --reference ts
 //                                             only the families whose
 //                                             reference is TypeScript
@@ -331,11 +333,35 @@ function suiteFiles(root: string, family: string): Map<string, string> {
 }
 
 /**
- * Runs each family's generator, `reference` limiting them to one language,
- * and reports each suite file a generator changed, added or removed.
+ * The pnpm `--filter` flags that pick each TypeScript reference and the
+ * workspace libraries it depends on, `reference` limiting the families to one
+ * language. A generator runs its package's sources, which import other
+ * workspace libraries through their dist/, so these are built first. Cargo
+ * builds a Rust reference's dependencies itself.
+ */
+export function generatorBuildFilters(families: Record<string, Family>, reference: string | undefined): string[] {
+  const filters: string[] = []
+  for (const f of Object.values(families)) {
+    if (f.reference !== 'ts' || (reference !== undefined && f.reference !== reference)) continue
+    const ts = f.implementations.find((i) => i.language === 'ts')
+    if (ts !== undefined) filters.push('--filter', `${ts.name}...`)
+  }
+  return filters
+}
+
+/**
+ * Builds what the generators import, runs each family's generator,
+ * `reference` limiting them to one language, and reports each suite file a
+ * generator changed, added or removed.
  */
 function regenerate(root: string, reference: string | undefined): string[] {
   const families = JSON.parse(readFileSync(join(root, 'packages/conformance/families.json'), 'utf8')) as Record<string, Family>
+  const filters = generatorBuildFilters(families, reference)
+  if (filters.length > 0) {
+    const build = [...filters, '--if-present', 'run', 'build']
+    console.log(`pnpm ${build.join(' ')}`)
+    execFileSync('pnpm', build, { cwd: root, stdio: 'inherit' })
+  }
   const problems: string[] = []
   for (const [name, f] of Object.entries(families)) {
     if (reference !== undefined && f.reference !== reference) continue
