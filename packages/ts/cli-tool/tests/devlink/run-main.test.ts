@@ -51,7 +51,10 @@ function run(env: Record<string, string>, argv: string[], script?: string) {
       argv,
       version: '1.2.3',
       // The hook's script is the one --where reports; runMain is given none.
-      devlink: devlinkHook(SPEC, script === undefined ? {} : { script }),
+      devlink: devlinkHook(SPEC, {
+        execve: undefined,
+        ...(script === undefined ? {} : { script }),
+      }),
     }),
   }
 }

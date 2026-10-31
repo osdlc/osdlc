@@ -249,6 +249,8 @@ test.skipIf(!hasBun)(
       env: { ...process.env },
       announce: (l) => lines.push(l),
       bun: 'bun',
+      // Spawn rather than replace the test process.
+      execve: undefined,
     }
     expect(execSelection(SPEC, resolve(SPEC, opts), [], exec)).toBeNull()
     const selection = resolve(SPEC, { ...opts, env: { TOOLY_HOME: a } })

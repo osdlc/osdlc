@@ -68,26 +68,63 @@ sequenceDiagram
   participant You
   participant G as global bin
   participant H as devlinkHook (global)
-  participant C as child process
-  participant HC as devlinkHook (child)
+  participant C as project copy (same pid)
+  participant HC as devlinkHook (project copy)
   You->>G: tool build
   G->>H: runMain asks the hook first
   H->>H: resolve: project install at ./node_modules/@acme/tool
-  H->>C: spawn node bin/tool.js build, TOOL_LAUNCH_LAYER=project
+  H->>C: replaces itself (execve): node bin/tool.js build, TOOL_LAUNCH_LAYER=project
   C->>HC: runMain asks the hook first
   HC->>HC: TOOL_LAUNCH_LAYER is set: delete it, remember "project"
   HC-->>C: null: run this copy's main
   C->>C: main(build)
-  C-->>H: exit code
-  H-->>G: same exit code
-  G-->>You: process exits with it
+  C-->>You: process exits with main's code
 ```
+
+On POSIX the hook calls `process.execve`, so the project copy takes over the
+same process, as the bash launcher's `exec` does. Where `execve` is missing,
+on Windows and on Node before 23.11, the hook spawns the copy instead, waits
+for it, and exits with its exit code.
 
 The child deletes `TOOL_LAUNCH_LAYER` once it has read it, so anything the
 child starts (a git hook, a shell, a nested run of the tool) decides for
 itself again. A pinned copy from an older release does not know that
 variable. It still stops after one hop, because when it resolves it finds the
 project's `node_modules` copy, which is itself.
+
+## Signals, stdin and exit codes
+
+- **Environment.** The copy that runs gets this process's environment, plus
+  `TOOL_LAUNCH_LAYER` set to the layer that chose it.
+- **stdin, stdout, stderr** are the same file descriptors. Nothing is piped or
+  captured, so a terminal stays a terminal.
+- **Exit codes** are exact. With `execve` the exit is the program's own. With
+  the spawn fallback the parent exits with the child's code, or 128 plus the
+  signal number when a signal ended it.
+- **Signals** are exact with `execve`: there is one process with one pid, so
+  Ctrl-C and a `kill` reach the program that runs.
+- **The fallback** cannot forward signals. A SIGTERM sent to the parent's pid
+  stops the parent and leaves the child running, and the shell can get its
+  prompt back before the child ends. Ctrl-C in a terminal reaches both,
+  because they share the foreground process group.
+- **The `running …` line** is written to stderr synchronously, before
+  `execve`, so it is never lost in a buffer.
+
+## Running through npx, node or deno
+
+- **npx, `pnpm exec`, bunx** already run the project's copy. When that copy's
+  hook reaches the project layer, it finds itself and runs, so there is no
+  hop. An npx copy in its temporary cache, with no project copy installed,
+  also runs itself.
+- **The dev layers still apply under npx.** A `TOOL_HOME`, a checkout above
+  the cwd, or a dev link hands off as it would from the global command.
+- **`node path/to/bin`** behaves as the global command does: the hook sees the
+  same script and makes the same choice.
+- **The runtime for a project copy** is `process.execPath` when running under
+  Node, so the Node version that started the tool carries over. Under Bun it
+  is the `node` found on the absolute entries of `PATH`.
+- **Deno** is not supported for hand-offs. When `process.versions.deno` is set,
+  the hook runs the copy that started, as local, and prints nothing.
 
 ## The layers
 
@@ -163,7 +200,8 @@ chosen by project install (/work/app/node_modules/@acme/tool)
 
 A tool can instead commit a bash launcher rendered by `renderLauncher(spec)`.
 sdlc does this. The launcher decides in bash, before any JavaScript runtime
-starts, and then `exec`s bun or node. Its order is the same for the layers it
+starts, and then `exec`s bun or node, so like the hook's `execve` it replaces
+itself and signals and exit codes are exact. Its order is the same for the layers it
 has: env, cwd (when on), link, local. The differences:
 
 - **No project layer.** Finding the package and its `bin` means reading
@@ -191,7 +229,8 @@ anything not confirmed there is marked unverified.
   different version from a Yarn workspace's root `node_modules`, and
   [#15](https://github.com/sindresorhus/import-local/issues/15), a
   `pkgDir.sync is not a function` error after upgrades. We copied the
-  real-path "is it me" check. We spawn `node` instead of `require()`, because
+  real-path "is it me" check. We start `node` (by `execve`, else a spawn)
+instead of `require()`, because
   a bin may be ESM with top-level await, may expect its own runtime, and should
   not share module state with the global copy.
   [Source](https://github.com/sindresorhus/import-local)
@@ -285,7 +324,7 @@ anything not confirmed there is marked unverified.
 
 | Tool | HOME env | own checkout | dev link | project install | global | loop guard | version warning | says which copy runs |
 |---|---|---|---|---|---|---|---|---|
-| devlink | yes | yes, opt-in | yes | yes, by spawn | yes | env var and real path | when versions differ | `--where`, `dev status` |
+| devlink | yes | yes, opt-in | yes | yes, by execve (spawn on Windows) | yes | env var and real path | when versions differ | `--where`, `dev status` |
 | import-local | no | no | no | yes, in process | yes | real path | no | no |
 | webpack-cli | no | no | no | yes, in process | yes | real path | no | no |
 | Angular CLI | no | no | no | yes, in process | yes | in process | global newer | warning only |

@@ -149,9 +149,12 @@ process.exitCode = handedOff ?? (await main(argv))
 
 `execSelection` returns `null` for a `local` selection, meaning run your own
 code. Otherwise it sets `<NAME>_LAUNCH_LAYER` to the winning layer, as the bash
-launcher does, and spawns `bun --no-env-file --config=<null device> run
-<entry>` with inherited stdio and returns its exit code. This is the one place
-the package spawns. The child is the program the user invoked. The two flags
+launcher does, and runs `bun --no-env-file --config=<null device> run
+<entry>` (or a project copy's bin under node). On POSIX it replaces the
+process with `process.execve`, as the bash launcher's `exec` does, so signals
+and the exit status belong to the program that runs. On Windows, and on a Node
+without `execve`, it spawns with inherited stdio and returns the exit code.
+This is the one place the package starts a process. The two flags
 keep Bun from reading `.env*` and `bunfig.toml` in the cwd, which is often a
 repository the user does not control: a `.env` would set the tool's
 environment, and a `bunfig.toml` `preload` would run that repository's code

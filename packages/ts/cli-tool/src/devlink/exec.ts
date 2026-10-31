@@ -6,13 +6,21 @@
  * copy's bin under the runtime its `#!` line names, given the bin's path, so
  * on Windows no `.cmd` shim is involved.
  *
- * This spawn does not go through `@osdlc/command-seam`, on purpose. The child
- * inherits stdio and is the program the user invoked, so nothing is captured.
- * The closest thing to `exec` a JavaScript process has is a synchronous spawn
- * whose exit code becomes its own.
+ * On POSIX the hand-off replaces this process with `process.execve`, as the
+ * bash launcher does with `exec`. A spawned child cannot be given the
+ * parent's signals: a SIGTERM to the parent orphans it, and Ctrl-C gives the
+ * shell its prompt back while the child still runs. One process, with the
+ * same pid, has neither problem, and its exit status is the child's own.
+ * Where `execve` is missing (Windows, Node before 23.11) a synchronous spawn
+ * whose exit code becomes this process's is the fallback.
+ *
+ * This does not go through `@osdlc/command-seam`, on purpose. The program
+ * started inherits stdio and is the program the user invoked, so nothing is
+ * captured.
  */
 
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
+import { writeSync } from 'node:fs'
 import { devNull, constants as osConstants } from 'node:os'
 
 import { which } from '@osdlc/command-seam'
@@ -59,6 +67,13 @@ export interface ExecOptions {
    * is the cwd, so a `bun` in the repository the user stands in never runs.
    */
   bun?: string
+  /**
+   * Replaces this process with `file`, as `process.execve` does. Defaults to
+   * `process.execve` outside Windows when it exists; when it is missing the
+   * hand-off is a synchronous spawn instead. A stand-in that returns makes
+   * the hand-off return 0. Given as `undefined`, the hand-off is always a spawn.
+   */
+  execve?: ((file: string, args: string[], env: Record<string, string>) => void) | undefined
 }
 
 /**
@@ -75,7 +90,7 @@ export function execSelection(
 ): number | null {
   if (selection.source === 'local') return null
   const env = opts.env ?? process.env
-  const announce = opts.announce ?? ((line: string) => process.stderr.write(`${line}\n`))
+  const announce = opts.announce ?? writeStderr
   if (env[quietVar(spec)] !== '1' && !sameVersion(selection, opts.version)) {
     announce(`${spec.name}: running ${selection.entry} (${reasonLine(selection, opts.version)})`)
   }
@@ -91,8 +106,7 @@ export function execSelection(
       )
       return 1
     }
-    const result = spawnSync(node, [selection.entry, ...argv], spawnOpts(childEnv))
-    return finish(result, (why) =>
+    return run(node, [selection.entry, ...argv], childEnv, opts, (why) =>
       announce(
         `${spec.name}: the project's copy at ${selection.checkout} could not start ${node} (${why}). ` +
           `Set ${projectVar(spec)}=0 to use this install.`,
@@ -115,14 +129,54 @@ export function execSelection(
     announce(`${spec.name}: ${what} needs bun on an absolute PATH entry. ${fix}`)
     return 1
   }
-  const result = spawnSync(bun, [...bunRunArgs(selection.entry), ...argv], spawnOpts(childEnv))
-  return finish(result, (why) =>
+  return run(bun, [...bunRunArgs(selection.entry), ...argv], childEnv, opts, (why) =>
     announce(`${spec.name}: ${what} could not start ${bun} (${why}). ${fix}`),
   )
 }
 
-function spawnOpts(env: Record<string, string | undefined>) {
-  return { stdio: 'inherit' as const, env: env as NodeJS.ProcessEnv }
+/**
+ * The "running X" line, written before `execve` replaces the process, so it
+ * is written synchronously: a `process.stderr.write` still queued on a pipe
+ * is lost.
+ */
+function writeStderr(line: string): void {
+  writeSync(2, `${line}\n`)
+}
+
+function defaultExecve(): ExecOptions['execve'] {
+  const execve = process.execve
+  if (process.platform === 'win32' || typeof execve !== 'function') return undefined
+  return (file, args, env) => execve(file, args, env)
+}
+
+/**
+ * Hand the run to `file`: replace this process when `execve` is available,
+ * else spawn it and wait. Returns only when it could not start, or after the
+ * spawned fallback ends.
+ */
+function run(
+  file: string,
+  args: readonly string[],
+  env: Record<string, string | undefined>,
+  opts: ExecOptions,
+  failed: (why: string) => void,
+): number {
+  const execve = 'execve' in opts ? opts.execve : defaultExecve()
+  if (execve !== undefined) {
+    const strings = Object.fromEntries(
+      Object.entries(env).filter((e): e is [string, string] => e[1] !== undefined),
+    )
+    try {
+      execve(file, [file, ...args], strings)
+    } catch (error) {
+      // ENOENT or EACCES: execve(2) failed and this process is still here.
+      failed(error instanceof Error ? error.message : String(error))
+      return 1
+    }
+    return 0
+  }
+  const result = spawnSync(file, args, { stdio: 'inherit', env: env as NodeJS.ProcessEnv })
+  return finish(result, failed)
 }
 
 /** A project hand-off to a copy of the version that is running says nothing. */
@@ -147,7 +201,11 @@ function defaultNode(env: Record<string, string | undefined>): string | undefine
   })
 }
 
-/** The exit code of a finished hand-off, or 1 after `failed` when it could not start. */
+/**
+ * The exit code of the spawned fallback, or 1 after `failed` when it could not
+ * start. A signal sent to this process is not forwarded to the child, which
+ * is why the spawn is only the fallback.
+ */
 function finish(result: SpawnSyncReturns<Buffer>, failed: (why: string) => void): number {
   if (result.error !== undefined) {
     failed(result.error.message)

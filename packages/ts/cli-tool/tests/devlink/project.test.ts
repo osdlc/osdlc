@@ -185,6 +185,7 @@ describe('execSelection: a project copy', () => {
       env,
       version,
       node: process.execPath,
+      execve: undefined,
       announce: (line) => lines.push(line),
     })
     return { code, lines, ran: JSON.parse(readFileSync(out, 'utf-8')) as unknown, p }
@@ -215,6 +216,7 @@ describe('execSelection: a project copy', () => {
     const code = execSelection(PSPEC, sel, [], {
       env: { TOOLY_QUIET: '1' },
       bun: join(sb.root, 'no-such-bun'),
+      execve: undefined,
       announce: (line) => lines.push(line),
     })
     expect(code).toBe(1)
@@ -230,6 +232,7 @@ describe('execSelection: a project copy', () => {
     const code = execSelection(PSPEC, sel, [], {
       env: { TOOLY_QUIET: '1' },
       node: join(sb.root, 'no-such-node'),
+      execve: undefined,
       announce: (line) => lines.push(line),
     })
     expect(code).toBe(1)
