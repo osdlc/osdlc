@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/osdlc/osdlc/compare/tradecraft/v0.4.0...tradecraft/v0.4.1) - 2026-10-31
+
+### Other
+
+- Remove the skillwright code that moved to osdlc/skillwright ([#556](https://github.com/osdlc/osdlc/pull/556))
+
 ## [0.4.0] - Unreleased
 
 ### Changed
