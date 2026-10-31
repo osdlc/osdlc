@@ -48,13 +48,26 @@ way dev history          # every checkout ever linked, most recent first, with b
 way dev use '#2'         # back to an earlier one …
 way dev use canonical    # … or to the install itself
 way dev status           # which checkout runs now, and why
+way --where              # ask the running process: its file, and the layer that chose it
 ```
 
 The first match wins, in this order: `WAY_HOME`, the linked checkout, then the
 install. `way` never picks a checkout from the cwd, so a repository you run it
 in cannot choose the code that runs. A checkout must hold `src/cli.ts` and a
 `package.json` named `@osdlc/wayfinder`; anything else is skipped. The shim
-prints which one it chose on stderr, and `WAY_QUIET=1` silences it. State
+prints which one it chose on stderr, and `WAY_QUIET=1` silences it.
+`way --where` is handed on like any other argument, so the process that
+answers is the one that runs:
+
+```text
+$ WAY_HOME=~/src/osdlc/packages/ts/wayfinder way --where
+way: running /home/me/src/osdlc/packages/ts/wayfinder/src/cli.ts (WAY_HOME)
+way 0.11.5
+file      /home/me/src/osdlc/packages/ts/wayfinder/src/cli.ts
+from      checkout /home/me/src/osdlc/packages/ts/wayfinder
+chosen by env ($WAY_HOME)
+```
+ State
 is kept in `${XDG_CONFIG_HOME:-~/.config}/way` on Linux and macOS and
 `%APPDATA%\way` on Windows, or under `$WAYFINDER_ROOT/config/way` when that
 is set. `way clean --dev` removes it,
@@ -476,6 +489,7 @@ way config | trust | clean | guide
 way help [command]       help for a command; --all for every flag
 way schema <command>     the JSON Schema of a command's --json document
 way --version
+way --where              the file that answers, and which devlink layer chose it; --json for one object
 ```
 
 `run` takes a task's `id` or its command line, when only one task has it, such

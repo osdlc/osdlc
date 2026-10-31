@@ -2,7 +2,9 @@
  * `way`: browse and run every task in a repository.
  *
  * The commands are a `@osdlc/cli-tool` command tree (`commands/index.ts`).
- * This module is the entry point: it runs `dev`, which parses its own
+ * This module is the entry point. {@link runWay} runs {@link main} through
+ * cli-tool's `runMain`, which hands off to a linked checkout and answers
+ * `--version` and `--where`. `main` runs `dev`, which parses its own
  * arguments, maps the old surface flags onto commands, and hands the rest to
  * the tree.
  *
@@ -12,9 +14,17 @@
  * execution: the repository must also be trusted (see `core/session.ts`).
  */
 
-import { EXIT, processContext, processIo, type CliIo } from '@osdlc/cli-tool'
+import {
+  EXIT,
+  processContext,
+  processIo,
+  runMain,
+  type CliContext,
+  type CliIo,
+  type DevlinkHook,
+} from '@osdlc/cli-tool'
 import { errorDocument } from '@osdlc/cli-tool/command'
-import { runDevCli } from '@osdlc/cli-tool/devlink'
+import { devlinkHook, runDevCli } from '@osdlc/cli-tool/devlink'
 import { installGroupSignalForwarding } from '@osdlc/command-seam'
 import { homeDir } from '@osdlc/trust-repo'
 
@@ -24,7 +34,8 @@ import { GLOBALS } from './commands/shared.ts'
 import { WAYFINDER_SPEC, checkoutRoot } from './devlink.ts'
 import type { GuideTool } from './guide.ts'
 import { flushWrites } from './core/writes.ts'
-import { safeJsonStdout, safeStderr, safeStdout } from './terminal-text.ts'
+import { safeJsonStdout, safeStderr, safeStdout, terminalSafe } from './terminal-text.ts'
+import { VERSION } from './version.generated.ts'
 
 /**
  * Exit quietly when the reader of `stream` goes away, as `way list --json |
@@ -204,8 +215,64 @@ export async function main(
   return code
 }
 
+/**
+ * What {@link runWay} takes in place of the process's own: the arguments, the
+ * context, the home directory and the running script. A test passes them.
+ */
+export interface RunWayOptions {
+  argv?: readonly string[]
+  /** With a context, `main` writes to its `io`. */
+  context?: CliContext
+  home?: string
+  script?: string
+}
+
+/**
+ * Run `way` as a process and set its exit code, through `runMain`. The devlink
+ * hook hands off to the checkout `WAY_HOME` or `way dev link` names, and
+ * `runMain` answers `--version` and `--where`, then runs {@link main}. `dev`
+ * is left to `main`, which answers it after global flags too and keeps its
+ * output terminal-safe. What `runMain` prints itself (the hand-off line,
+ * `--where`, an error no command caught) is made terminal-safe here.
+ */
+export async function runWay(options: RunWayOptions = {}): Promise<void> {
+  const argv = options.argv ?? process.argv.slice(2)
+  const hook = devlinkHook(
+    WAYFINDER_SPEC,
+    options.script === undefined ? {} : { script: options.script },
+  )
+  const devlink: DevlinkHook = (words, ctx) => {
+    const at = commandWordIndex(words)
+    return at !== -1 && words[at] === 'dev' ? null : hook(words, ctx)
+  }
+  devlink.describe = () => hook.describe?.() ?? null
+  const given = options.context
+  const base = given ?? processContext()
+  const head = argv.includes('--') ? argv.slice(0, argv.indexOf('--')) : argv
+  const out = head.includes('--json') ? safeJsonStdout(base.io) : safeStdout(base.io)
+  // Each line `runMain` writes to stderr is one line, so a newline inside it goes too.
+  const io: CliIo = {
+    ...out,
+    stderr: (text) => out.stderr(`${terminalSafe(text.replace(/\n$/, ''))}\n`),
+  }
+  await runMain(
+    // `main` makes its own output safe. It takes the process's streams as they
+    // are, since it installs signal and broken-pipe handling only for those.
+    (words, ctx) =>
+      main([...words], ctx.env, options.home, given === undefined ? processIo : given.io),
+    {
+      name: BIN,
+      version: VERSION,
+      context: { ...base, io },
+      argv,
+      devlink,
+      ...(options.script === undefined ? {} : { script: options.script }),
+    },
+  )
+}
+
 // Runs when executed directly (devlink runs a checkout's `src/cli.ts` under
 // Bun); inert when imported by the bin.
 if (import.meta.main) {
-  process.exitCode = await main(process.argv.slice(2))
+  await runWay()
 }
