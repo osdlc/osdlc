@@ -1,12 +1,57 @@
 {
   "schema": 1,
   "pr": 571,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "8a9c794be92fa84d56aa8fbcc57c0c7dc342a59d",
+  "base": "0b50724ae2110f538b1707d4b922390d62b45c60",
+  "round": 1,
   "claim": {
     "owner": "KellyMBP.local:claude-r7m2vq",
     "at": "2026-10-31T07:35:56.650Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/markdown-contract/src/core/structure.ts",
+      "line": 466,
+      "title": "Undeclared section bound for a gap still flags a later optional section (allowUnknown: true)",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/rust/markdown-contract/src/structure.rs",
+      "line": 530,
+      "title": "Same residual false positive in the Rust walk when a gap follows",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/markdown-contract/src/core/structure.ts",
+      "line": 373,
+      "title": "Skippable-slot rule written twice (gapAhead and the loop)",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "checkStrict header still says undeclared sections are only allowed at a gap",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
