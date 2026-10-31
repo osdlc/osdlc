@@ -135,15 +135,15 @@ export function execSelection(
 }
 
 /**
- * The "running X" line, written before `execve` replaces the process, so it
- * is written synchronously: a `process.stderr.write` still queued on a pipe
- * is lost.
+ * The default announce: the running line and the could-not-start lines. It
+ * writes synchronously because a `process.stderr.write` still queued on a
+ * pipe is lost when `execve` replaces the process.
  */
 function writeStderr(line: string): void {
   try {
     writeSync(2, `${line}\n`)
   } catch {
-    // Informational only: a closed or full stderr must not stop the hand-off.
+    // A closed or full stderr must not stop the hand-off; a failure still exits 1.
   }
 }
 
