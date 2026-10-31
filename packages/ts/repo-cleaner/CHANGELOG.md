@@ -1,5 +1,34 @@
 # @osdlc/repo-cleaner
 
+## 0.10.0
+
+### Minor Changes
+
+- 6e4284b: **Breaking:** repo-cleaner no longer reads a config file. It sweeps the repository you are in, or the paths you pass, which can be directories holding checkouts. `--all` and `--config` are removed: pass the directories instead (`repo-cleaner ~/Developer ~/work`), or keep them in a shell alias. Removed from the library: `CONFIG_ENV`, `DEFAULT_CONFIG`, `RepoCleanerConfigSchema`, `TOOL`, `clearConfigCache`, `configPath`, `configuredRepos`, `loadConfig` and `RepoCleanerConfig`. `REPO_CLEANER_MACHINE_CONFIG` is no longer read. The package no longer depends on `@osdlc/config-layers`.
+- 6e4284b: A status line on stderr while a run works: which repository (`[2/5]` in a run of several), and which step — reading the repository, fetching, listing pull requests (gh), checking worktrees, local or remote branches with a count (`37/427`) — and, in `apply`, the re-check and each delete step. It is drawn only when stderr is a terminal, erased before any other output, and turned off with `--no-progress`.
+  
+  Library: `SweepOptions.onProgress` receives a `SweepProgress` before each step and each item; `ApplyOptions.onSweepProgress` and `onStep` do the same for `applyPlan`.
+- 6e4284b: New `repo-cleaner summary`: a table per repository counting local branches, worktrees and remote branches, with how many are merged into the default branch and how many the sweep would delete, review or keep. `--output json` gives the counts without the rows.
+  
+  Each row now records `facts.merged`: true when its work is on the default branch by ancestry, an exact-head merged PR or a patch match. A branch checked out in a worktree, or at HEAD, is judged by ancestry or PR alone. The default branch and the primary or current worktree carry none. `SummaryBucket` gains `merged`, so the JSON report's `summary` counts it too.
+- 6e4284b: **Breaking:** the CLI is three commands over one set of sweep options, and `apply` asks before it deletes.
+  
+  - `repo-cleaner [status]` is the report, as before.
+  - `repo-cleaner plan` writes the plan to stdout, or to a file with `-o <file>`. It replaces `--write-plan` and `--plan-out`. Plans no longer go to a hidden directory by default.
+  - `repo-cleaner apply` sweeps and plans in memory, or reads `--plan <file>` (`-` reads stdin). With no `--row` it applies every row the re-check judges `safe-to-delete`, and drops a row to review with the new reason `needs-review`; name a review row with `--row` to apply it. It re-checks each row, prints the steps and asks `Delete N items? [y/N]`. `--yes` (`-y`) skips the question. With no terminal and no `--yes` it refuses with exit 2. `--plan -` needs `--yes` or `--dry-run`. On yes it runs only the steps it showed.
+  - `--only worktrees,branches,remotes` replaces `--scope local-branches,worktrees,remote-branches`, and works on every command.
+  - `--allow <risk>[=<category>:<id>]` replaces `--authorize`.
+  - Receipts go beside a `--plan` file as `<plan>.receipt-<timestamp>.json`, or to `--receipt <file>`. `--receipt-dir` and the default receipts directory are removed. A run that swept, or read stdin, writes a receipt only with `--receipt`.
+  
+  Library: `applyPlan` with an empty row list selects every row of the plan and drops each one not judged `safe-to-delete` (`needs-review`), and `receiptPath` may be `null` to write no receipt. New `parsePlan(text, source)`. `stampedPath` is removed; use `fileStamp`.
+
+### Patch Changes
+
+- 6e4284b: A registered worktree whose directory still exists but whose `.git` is gone (git lists it as prunable) no longer makes the whole repository unreadable with `git status: This is not a git repository`. It is a `safe-to-delete` row whose command is `git worktree prune`, which drops the registration and leaves the directory; `facts.directory_left` is true.
+- 6e4284b: `apply` fixes: a branch name two repositories share applies in both instead of failing as ambiguous; a repository the sweep could not read (such as a failed fetch) is named on stderr and exits 1 instead of reading as "nothing to delete", and `plan` does the same; the receipt file records the rows the preview dropped; a worktree's fingerprint includes `on_disk`, so a prune row whose directory came back is dropped rather than removed. The status line strips terminal controls from paths and fits wide characters to the terminal's width. A worktree's `facts.merged` counts a patch match the same way a branch's does.
+  
+  Library: `applyPlan` takes `RowSelection` rows (a row with an optional `repo`) and `ApplyOptions.dropped`.
+
 ## 0.9.3
 
 ### Patch Changes
