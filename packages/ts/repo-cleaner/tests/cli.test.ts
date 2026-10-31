@@ -22,7 +22,6 @@ import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { sh } from './helpers.ts'
 import { main } from '../src/cli.ts'
-import { CONFIG_ENV, clearConfigCache } from '../src/config.ts'
 import type { Receipt } from '../src/receipt.ts'
 import { worktreeRemoveCommand } from '../src/worktrees.ts'
 
@@ -81,20 +80,11 @@ describe('arguments', () => {
     const cwd = tempDir()
     expect(run(['--bogus'], cwd).code).toBe(2)
     expect(run(['--scope', 'nope'], cwd).code).toBe(2)
-    expect(run(['--branch', 'x', '--all'], cwd).code).toBe(2)
+    expect(run(['--branch', 'x', 'some/path'], cwd).code).toBe(2)
+    expect(run(['--all'], cwd).code).toBe(2)
     expect(run(['apply', '--plan', 'p.json', '--row', 'nope'], cwd).code).toBe(2)
     expect(run(['apply'], cwd).code).toBe(2)
-    expect(run(['--config', 'c.yaml'], cwd).code).toBe(2)
     expect(run(['apply', '--plan', 'p.json', '--authorize', 'a=nope'], cwd).code).toBe(2)
-  })
-
-  test('--config points --all at that file and leaves the environment alone', () => {
-    const cwd = tempDir()
-    const config = join(cwd, 'config.yaml')
-    writeFileSync(config, 'repos: []\n')
-    const previous = process.env[CONFIG_ENV]
-    expect(run(['--all', '--config', config], cwd).code).toBe(10)
-    expect(process.env[CONFIG_ENV]).toBe(previous)
   })
 
   test('--branch HEAD outside a repository exits 1', () => {
@@ -106,19 +96,6 @@ describe('arguments', () => {
   test('nothing to sweep exits 10', () => {
     const cwd = tempDir()
     expect(run([], cwd).code).toBe(10)
-
-    const config = join(cwd, 'config.yaml')
-    writeFileSync(config, 'repos: []\n')
-    const previous = process.env[CONFIG_ENV]
-    process.env[CONFIG_ENV] = config
-    clearConfigCache()
-    try {
-      expect(run(['--all'], cwd).code).toBe(10)
-    } finally {
-      if (previous === undefined) delete process.env[CONFIG_ENV]
-      else process.env[CONFIG_ENV] = previous
-      clearConfigCache()
-    }
   })
 
   test('an unreadable plan exits 1', () => {

@@ -687,9 +687,6 @@ importers:
       '@osdlc/command-seam':
         specifier: workspace:^
         version: link:../command-seam
-      '@osdlc/config-layers':
-        specifier: workspace:^
-        version: link:../config-layers
       '@osdlc/path-guard':
         specifier: workspace:^
         version: link:../path-guard

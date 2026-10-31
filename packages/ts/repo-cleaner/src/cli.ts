@@ -5,7 +5,7 @@
  * remote first unless `--no-fetch`, and writes nothing but an optional plan.
  * `repo-cleaner apply` deletes the rows of a plan that were selected and
  * authorized. Scope is opt-in: the sweep covers the repository you are
- * standing in unless `--all` or a path says otherwise.
+ * standing in unless a path says otherwise.
  *
  * Exit codes:
  *   0   swept; or every selected row was applied or dropped with a reason
@@ -22,14 +22,7 @@ import { Git } from '@osdlc/typed-git'
 
 import { resolveBranch } from './branches.ts'
 import { ApplyArgumentError, applyPlan, parseGrant, parseRowRef, type Grant } from './apply.ts'
-import {
-  CONFIG_ENV,
-  TOOL,
-  VENDOR_DIRS,
-  clearConfigCache,
-  configPath,
-  configuredRepos,
-} from './config.ts'
+import { VENDOR_DIRS } from './devlink.ts'
 import { PLAN_VERSION, planRepo, readPlan, stampedPath, writePlan } from './plan.ts'
 import type { RowRef } from './receipt.ts'
 import { proposedCommands, renderJson, renderReceipt, renderText } from './render.ts'
@@ -43,13 +36,12 @@ const EXIT_STEP_FAILED = 11
 function stateDir(ctx: CliContext, kind: 'plans' | 'receipts'): string {
   return resolve(
     TieredDirs.fromEnv(VENDOR_DIRS.vendor, VENDOR_DIRS.envVars, { env: ctx.env })
-      .standalone(TOOL)
+      .standalone(VENDOR_DIRS.vendor)
       .durable().path,
     kind,
   )
 }
 
-/** Built per run: the help names the config path as the environment has it then. */
 const sweepCli = () =>
   defineCli({
     name: 'repo-cleaner',
@@ -64,8 +56,6 @@ const sweepCli = () =>
       },
     ],
     flags: {
-      all: { kind: 'boolean', help: 'sweep the repositories in the config file' },
-      config: { kind: 'string', valueName: 'path', help: 'config file to read' },
       scope: {
         kind: 'list',
         valueName: 'list',
@@ -109,7 +99,6 @@ const sweepCli = () =>
 
 A checkout directory named "apply" or "dev" is swept as ./apply or ./dev.
 
-config: ${configPath()}
 plans:  <durable home>/repo-cleaner/plans/ unless --plan-out`,
   })
 
@@ -168,21 +157,6 @@ function failure(ctx: CliContext, err: unknown): number {
   return EXIT.error
 }
 
-/** Runs `fn` with the shared loader pointed at `path`, then restores it. */
-function withConfigFile<T>(path: string | undefined, fn: () => T): T {
-  if (path === undefined) return fn()
-  const prior = process.env[CONFIG_ENV]
-  process.env[CONFIG_ENV] = path
-  clearConfigCache()
-  try {
-    return fn()
-  } finally {
-    if (prior === undefined) delete process.env[CONFIG_ENV]
-    else process.env[CONFIG_ENV] = prior
-    clearConfigCache()
-  }
-}
-
 function runSweep(argv: readonly string[], ctx: CliContext): number {
   const parsed = sweepCli().parse(argv, ctx.io)
   if (parsed.status === 'help') return EXIT.ok
@@ -195,16 +169,8 @@ function runSweep(argv: readonly string[], ctx: CliContext): number {
   if (unknown.length > 0) {
     return usageError(ctx, 'repo-cleaner', `unknown scope(s): ${unknown.join(', ')}`)
   }
-  if (v.branch !== undefined && (v.all || paths.length > 0)) {
-    return usageError(
-      ctx,
-      'repo-cleaner',
-      '--branch sweeps this repository only; drop --all and paths',
-    )
-  }
-
-  if (v.config !== undefined && !v.all) {
-    return usageError(ctx, 'repo-cleaner', '--config is read only with --all')
+  if (v.branch !== undefined && paths.length > 0) {
+    return usageError(ctx, 'repo-cleaner', '--branch sweeps this repository only; drop the paths')
   }
 
   let branch: string | undefined
@@ -214,15 +180,7 @@ function runSweep(argv: readonly string[], ctx: CliContext): number {
     return failure(ctx, err)
   }
 
-  const entries = [...paths]
-  if (v.all) {
-    try {
-      entries.push(...withConfigFile(v.config, () => configuredRepos(undefined, ctx.cwd)))
-    } catch (err) {
-      return failure(ctx, err)
-    }
-  }
-  if (entries.length === 0) entries.push(ctx.cwd)
+  const entries = paths.length > 0 ? [...paths] : [ctx.cwd]
 
   const options: SweepReposOptions = {
     baseDir: ctx.cwd,

@@ -63,7 +63,6 @@
   "dependencies": {
     "@osdlc/cli-tool": "workspace:^",
     "@osdlc/command-seam": "workspace:^",
-    "@osdlc/config-layers": "workspace:^",
     "@osdlc/path-guard": "workspace:^",
     "@osdlc/typed-gh": "workspace:^",
     "@osdlc/typed-git": "workspace:^",

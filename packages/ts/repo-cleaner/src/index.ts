@@ -86,17 +86,6 @@ export {
   requiresNote,
 } from './render.ts'
 export {
-  CONFIG_ENV,
-  DEFAULT_CONFIG,
-  RepoCleanerConfigSchema,
-  TOOL,
-  clearConfigCache,
-  configPath,
-  configuredRepos,
-  loadConfig,
-  type RepoCleanerConfig,
-} from './config.ts'
-export {
   ALL_SCOPES,
   AUTHORIZATIONS,
   authorizationsFor,

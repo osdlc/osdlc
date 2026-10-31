@@ -7,9 +7,11 @@
  * `REPO_CLEANER_HOME` or `repo-cleaner dev link` hand off to a checkout.
  */
 
+import { envVars } from '@osdlc/cli-tool'
 import { validateSpec, type ToolSpec } from '@osdlc/cli-tool/devlink'
 
-import { VENDOR_DIRS } from './config.ts'
+/** Whose directories devlink's state lives under: vendor `repo-cleaner`, moved by the `REPO_CLEANER_*` override variables. */
+export const VENDOR_DIRS = { vendor: 'repo-cleaner', envVars: envVars('REPO_CLEANER') }
 
 export const DEVLINK_SPEC: ToolSpec = validateSpec({
   name: 'repo-cleaner',

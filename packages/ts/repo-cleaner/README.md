@@ -207,7 +207,6 @@ worktree, the primary or caller's worktree) has `deletable: false`.
 repo-cleaner                        # the repository you are standing in
 repo-cleaner ~/work/api ~/work/web  # named repositories
 repo-cleaner ~/Developer            # every checkout under it
-repo-cleaner --all                  # every repository in the config file
 ```
 
 A bare invocation never fans out. What an argument names is read off the disk
@@ -235,8 +234,6 @@ one that says which it could not find.
 
 | Flag | Effect |
 | --- | --- |
-| `--all` | Sweep the repositories named in the config file |
-| `--config <path>` | Config file to read |
 | `--scope <list>` | `local-branches`, `worktrees`, `remote-branches` |
 | `--remote <name>` | Remote to measure against (default `origin`) |
 | `--no-gh` | Classify on git evidence alone |
@@ -278,42 +275,10 @@ otherwise. `--dry-run` checks again and prints the steps without writing anythin
 | Code | Meaning |
 | --- | --- |
 | `0` | Swept; or every selected row was applied or dropped with a reason |
-| `1` | Failed against the state it found: a `{name}` token nothing defines, an unreadable plan, a row not in the plan |
-| `2` | Cannot run as typed: an unknown flag, a malformed `--row`, `--branch` with `--all` or a path |
+| `1` | Failed against the state it found: an unreadable plan, a row not in the plan |
+| `2` | Cannot run as typed: an unknown flag, a malformed `--row`, `--branch` with a path |
 | `10` | Nothing to sweep: no entry named a repository |
 | `11` | `apply` stopped at a failed step; the receipt says which |
-
-## Configuration
-
-Only the CLI reads a config file. The library takes repositories as an
-argument, so a host that already knows where its repositories are passes them
-in.
-
-```yaml
-paths:
-  dev: ~/Developer
-repos:
-  - '{dev}'
-  - ~/work/api
-```
-
-`paths:` names a directory once; any `repos:` entry then refers to it as
-`{name}`. A token nothing defines is an error, not an empty path.
-
-The file is [`@osdlc/config-layers`](https://www.npmjs.com/package/@osdlc/config-layers)'s machine config — `config.yaml` in the host
-OS's config home, resolved through
-[`@osdlc/tiered-dirs`](https://www.npmjs.com/package/@osdlc/tiered-dirs)' standalone tier (`repo-cleaner`
-directory, `REPO_CLEANER_*` override variables):
-
-| OS | Path |
-| --- | --- |
-| macOS | `~/Library/Application Support/repo-cleaner/config.yaml` |
-| Linux and other | `$XDG_CONFIG_HOME/repo-cleaner/config.yaml`, else `~/.config/repo-cleaner/config.yaml` |
-| Windows | `%APPDATA%\repo-cleaner\config.yaml` |
-
-`REPO_CLEANER_MACHINE_CONFIG`, or `--config <path>`, relocates it. A missing,
-unreadable or malformed file degrades to no repositories rather than failing
-the run.
 
 ## As a library
 
