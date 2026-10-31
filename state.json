@@ -70,7 +70,7 @@
       "path": "packages/ts/cli-tool/src/devlink/resolve.ts",
       "line": 162,
       "title": "projectInstall doc says it finds the copy as require does, then says it does not",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/580#discussion_r4432634685",
       "status": "fixed",
       "reason": null,
       "fixedIn": "3eb9a6fe620a98a99b3de15f4f3888b1fbeb4a84"
