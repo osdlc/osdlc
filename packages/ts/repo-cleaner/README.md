@@ -3,9 +3,9 @@
 What has been merged into the default branch, and what can go away.
 
 Point it at a repository and it inventories the local branches and
-worktrees, and with `--remotes` the remote branches too, classifying each as `safe-to-delete`, `safe-to-keep` or
-`needs-investigation` — with the evidence behind the verdict and the literal
-command that would act on it.
+worktrees, and with `--remotes` the remote branches too, classifying each
+as `safe-to-delete`, `safe-to-keep` or `needs-investigation` — with the
+evidence behind the verdict and the literal command that would act on it.
 
 `repo-cleaner` (or `repo-cleaner status`) never deletes anything. It prints
 the commands that would. `repo-cleaner apply` deletes: it checks each row

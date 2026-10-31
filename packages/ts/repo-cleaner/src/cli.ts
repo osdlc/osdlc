@@ -45,19 +45,19 @@ import {
 } from './plan.ts'
 import { RECEIPT_VERSION, type Receipt, type RowRef, type Step } from './receipt.ts'
 import {
+  PLAIN,
   proposedCommands,
   renderCountsJson,
   renderCountsText,
   renderJson,
-  PLAIN,
   renderPreview,
   renderReceipt,
   renderSummary,
   renderText,
-  TERMINAL_STYLE,
-  type Style,
   rowsActedOn,
   summarizeReceipt,
+  TERMINAL_STYLE,
+  type Style,
 } from './render.ts'
 import {
   NO_STATUS_LINE,
