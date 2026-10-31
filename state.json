@@ -101,9 +101,9 @@
       "line": 154,
       "title": "the SIGTERM test leaves processes running when it fails",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "f8042fcc0e9ca9ec53da290bad4ed08634c1cfc6"
     }
   ]
 }
