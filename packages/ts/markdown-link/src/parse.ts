@@ -109,12 +109,10 @@ export function isWhitespace(c: string): boolean {
  * This answers "is this file an attachment", not "can it be displayed".
  * `tiff` and `heic` are real attachments a photo library produces that no
  * browser reliably paints: they belong in a graph and a search index, not in
- * an `<img>`. `@osdlc/markdown-render`'s `EMBEDDABLE_EXTENSIONS` is the subset
- * the reading view renders.
+ * an `<img>`.
  *
- * The TypeScript authority. The Rust `markdown-link` crate and
- * `@sdlc/vault-graph-core` hold copies, and
- * `scripts/guard-attachment-extensions.ts` fails the build if they disagree.
+ * The Rust `markdown-link` crate's `ATTACHMENT_EXTENSIONS` is the same list;
+ * `tests/attachment-extensions.test.ts` fails if they disagree.
  */
 export const ATTACHMENT_EXTENSIONS: readonly string[] = [
   'png',

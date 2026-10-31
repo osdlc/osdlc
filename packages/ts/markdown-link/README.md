@@ -8,6 +8,44 @@ Each function gives the same answer as its Rust namesake.
 
 Resolution (`LinkIndex`) is not here yet.
 
+## Why
+
+Notes link to each other with `[[Note]]`, `[[Note#Heading|alias]]`,
+`![[image.png]]` and relative markdown links. A tool that builds a link graph,
+indexes a folder of notes or rewrites links on a rename must find every one of
+them, skip the ones inside code, and know exactly where each sits in the text.
+A regular expression gets code spans, escaped pipes and embed sizes wrong.
+
+This package finds them with the same rules as the Rust crate, so a TypeScript
+tool and a Rust tool that read the same notes agree on every link.
+
+## Who it is for
+
+Programs that read or change a folder of notes in TypeScript: link graph
+builders, search indexers, renderers, linters and rename tools.
+
+## When not to use it
+
+- You render markdown with remark or micromark and only want wikilinks turned
+  into links. A remark or micromark wikilink plugin fits the pipeline better.
+- You need a full markdown parser or an editor model. This package only finds
+  links and blanks code.
+- You need to resolve a link to a file. That is the Rust crate's `LinkIndex`,
+  which has no TypeScript twin yet.
+
+## How it compares
+
+- remark and micromark plugins, such as
+  [`@moritzrs/micromark-extension-ofm-wikilink`](https://www.npmjs.com/package/@moritzrs/micromark-extension-ofm-wikilink)
+  and
+  [`@sgawarat/remark-obsidian-wikilink`](https://www.npmjs.com/package/@sgawarat/remark-obsidian-wikilink),
+  parse wikilinks as part of a markdown syntax tree. They need the unified
+  toolchain, and they do not share a case file with a Rust implementation.
+- This package works on the plain text, with no dependencies. It returns spans
+  into the original string, so a caller can rewrite a link in place.
+- The same author's Rust [`markdown-link`](https://crates.io/crates/markdown-link)
+  crate is the reference. Use it from Rust; use this package from TypeScript.
+
 ## Install
 
 ```sh
@@ -58,8 +96,10 @@ repository, so they agree on every case in it.
 
 ## Stability
 
-This is a 0.x package. Breaking changes are possible between minor versions,
-and the CHANGELOG marks them.
+This is a 0.x package. Every export is stable in 0.x. No export is
+experimental, beta or alpha, and `tests/stability.test.ts` fails if one is
+tagged so. A breaking change comes only in a new minor version, and the
+CHANGELOG marks it.
 
 ## Runtimes and platforms
 
