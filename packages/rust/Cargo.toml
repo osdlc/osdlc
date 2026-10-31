@@ -60,8 +60,8 @@ agent-adapt = { path = "agent-adapt", version = "0.19.3" }
 config-layers = { path = "config-layers", version = "0.8.1" }
 etag-write = { path = "etag-write", version = "0.2.4" }
 frontmatter-lossless = { path = "frontmatter-lossless", version = "1.1.1" }
-markdown-link = { path = "markdown-link", version = "0.5.3" }
-markdown-relink = { path = "markdown-relink", version = "0.1.8" }
+markdown-link = { path = "markdown-link", version = "0.5.4" }
+markdown-relink = { path = "markdown-relink", version = "0.1.9" }
 markdown-vault-fs = { path = "markdown-vault-fs", version = "0.3.1" }
 path-guard = { path = "path-guard", version = "0.3.2" }
 slug-collate = { path = "slug-collate", version = "0.2.0" }
