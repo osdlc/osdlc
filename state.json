@@ -15,10 +15,10 @@
       "path": "packages/ts/markdown-contract/src/core/structure.ts",
       "line": 466,
       "title": "Undeclared section bound for a gap still flags a later optional section (allowUnknown: true)",
-      "comment": null,
-      "status": "open",
+      "comment": "https://github.com/osdlc/osdlc/pull/571#discussion_r4430976840",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "48dd20d2"
     },
     {
       "id": "r1-2",
@@ -26,10 +26,10 @@
       "path": "packages/rust/markdown-contract/src/structure.rs",
       "line": 530,
       "title": "Same residual false positive in the Rust walk when a gap follows",
-      "comment": null,
-      "status": "open",
+      "comment": "https://github.com/osdlc/osdlc/pull/571#discussion_r4430976842",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "48dd20d2"
     },
     {
       "id": "r1-3",
@@ -37,7 +37,7 @@
       "path": "packages/ts/markdown-contract/src/core/structure.ts",
       "line": 373,
       "title": "Skippable-slot rule written twice (gapAhead and the loop)",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/571#discussion_r4430976843",
       "status": "open",
       "reason": null,
       "fixedIn": null
@@ -45,10 +45,10 @@
     {
       "id": "r1-4",
       "round": 1,
-      "path": null,
-      "line": null,
+      "path": "packages/ts/markdown-contract/src/core/structure.ts",
+      "line": 324,
       "title": "checkStrict header still says undeclared sections are only allowed at a gap",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/571#pullrequestreview-5721841100",
       "status": "open",
       "reason": null,
       "fixedIn": null
