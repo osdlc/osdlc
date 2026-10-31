@@ -197,6 +197,17 @@ describe('runWay goes through runMain', () => {
     expect(r.out).toBe(`way ${VERSION}\n`)
   })
 
+  test('--version --json prints the version document', async () => {
+    const r = await run(['--version', '--json'], { HOME: home })
+    expect(r.code).toBe(0)
+    expect(JSON.parse(r.out)).toEqual({
+      schemaVersion: 1,
+      kind: 'version',
+      name: 'way',
+      version: VERSION,
+    })
+  })
+
   test('--where from an install, with no layer set', async () => {
     const pkg = join(tmp, 'node_modules', '@osdlc', 'wayfinder')
     mkdirSync(join(pkg, 'bin'), { recursive: true })

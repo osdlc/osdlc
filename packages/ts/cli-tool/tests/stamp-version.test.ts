@@ -90,6 +90,23 @@ describe('runMain --version', () => {
     expect(called).toBe(false)
   })
 
+  test('--version --json prints the version document defineApp prints', async () => {
+    const context = captureContext()
+    await runMain(() => 1, {
+      name: 'tooly',
+      context,
+      argv: ['--version', '--json'],
+      version: '4.5.6',
+    })
+    expect(JSON.parse(context.io.out)).toEqual({
+      schemaVersion: 1,
+      kind: 'version',
+      name: 'tooly',
+      version: '4.5.6',
+    })
+    expect(process.exitCode).toBe(0)
+  })
+
   test('without a version, --version reaches main', async () => {
     const context = captureContext()
     let seen: readonly string[] = []

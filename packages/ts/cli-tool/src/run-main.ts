@@ -26,6 +26,7 @@
 import { EXIT } from './exit.ts'
 import { exitCodeFor, failureOf, renderError, renderFailure } from './failure.ts'
 import { processContext, type CliContext } from './io.ts'
+import { renderVersion } from './version-text.ts'
 import { renderWhere, where } from './where.ts'
 
 /**
@@ -40,8 +41,9 @@ export interface RunMainOptions {
   /** Defaults to `process.argv.slice(2)`. */
   argv?: readonly string[]
   /**
-   * When set, a first argument of `--version` prints `<name> <version>`, as
-   * `defineApp` does, and exits 0 without calling `main`. Pass the `VERSION` that `cli-tool-stamp-version` writes.
+   * When set, a first argument of `--version` prints `<name> <version>`, or
+   * the version document with `--json`, as `defineApp` does, and exits 0
+   * without calling `main`. Pass the `VERSION` that `cli-tool-stamp-version` writes.
    */
   version?: string
   /**
@@ -124,7 +126,7 @@ export async function runMain(main: MainFn, options: RunMainOptions): Promise<vo
     }
   }
   if (options.version !== undefined && argv[0] === '--version') {
-    ctx.io.stdout(`${options.name} ${options.version}\n`)
+    ctx.io.stdout(renderVersion(options.name, options.version, argv.includes('--json')))
     process.exitCode = EXIT.ok
     return
   }

@@ -43,6 +43,7 @@ import {
   type Placed,
 } from './help.ts'
 import { errorDocument } from './error.ts'
+import { renderVersion } from '../version-text.ts'
 import { documentSchema, documentZod, inputSchema, kebab, type JsonSchema } from './schema.ts'
 
 /**
@@ -519,11 +520,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       )
     }
     if (node.path.length === 0 && has('--version')) {
-      if (wantsJson) {
-        base.io.stdout(
-          `${JSON.stringify({ schemaVersion: 1, kind: 'version', name: spec.name, version: spec.version }, null, 2)}\n`,
-        )
-      } else base.io.stdout(`${spec.name} ${spec.version}\n`)
+      base.io.stdout(renderVersion(spec.name, spec.version, wantsJson))
       return EXIT.ok
     }
 
