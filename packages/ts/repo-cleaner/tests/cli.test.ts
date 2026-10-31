@@ -240,8 +240,15 @@ describe('apply', () => {
       fx.root,
     )
     expect(applied.code).toBe(0)
-    const out = JSON.parse(applied.out) as { receiptPath: string; receipt: Receipt }
+    const out = JSON.parse(applied.out) as {
+      receiptPath: string
+      receipt: Receipt
+      summary: unknown
+    }
     expect(out.receipt.status).toBe('complete')
+    expect(out.summary).toMatchObject({
+      deleted: { worktree: 1, local_branch: 1, remote_branch: 1 },
+    })
     // The worktree path holds a space; the receipt's command quotes it.
     expect(out.receipt.steps[0]!.command).toContain(`'${fx.worktree}'`)
     expect(dirname(out.receiptPath)).toBe(dirname(plan))
@@ -263,6 +270,8 @@ describe('apply', () => {
     })
     expect(res.code).toBe(0)
     expect(asked).toEqual(['Delete 3 items?'])
+    expect(res.out).toContain('would delete: 1 worktree, 1 local branch, 1 remote branch')
+    expect(res.out).toContain('deleted: 1 worktree, 1 local branch, 1 remote branch')
     expect(res.out).toContain('would-run')
     expect(res.out).toContain('status: complete')
     expect(existsSync(fx.worktree)).toBe(false)
@@ -300,6 +309,62 @@ describe('apply', () => {
     const saved = JSON.parse(readFileSync(out.receiptPath, 'utf-8')) as Receipt
     expect(saved.dropped.map((d) => d.reason)).toContain('needs-review')
     expect(saved.dropped).toEqual(out.receipt.dropped)
+  })
+
+  test('a run with no receipt file says so on stderr', () => {
+    const fx = buildFixture()
+    const res = run(['apply', '--branch', BRANCH, ...SWEEP, ...rowsOf(fx), '--yes'], fx.root)
+    expect(res.code).toBe(0)
+    expect(res.err).toContain('no receipt written')
+  })
+
+  test('an empty plan reports a status that matches the run', () => {
+    const fx = buildFixture()
+    const plan = join(fx.root, 'empty.json')
+    writeFileSync(plan, JSON.stringify({ version: 1, created_at: 'x', repos: [] }))
+    const real = run(['apply', '--plan', plan, '--yes', '--output', 'json'], fx.root)
+    expect((JSON.parse(real.out) as { receipt: Receipt }).receipt.status).toBe('complete')
+    const dry = run(['apply', '--plan', plan, '--dry-run', '--output', 'json'], fx.root)
+    expect((JSON.parse(dry.out) as { receipt: Receipt }).receipt.status).toBe('dry-run')
+  })
+
+  test('two clones of one remote: apply deletes each remote branch once', () => {
+    const fx = buildFixture()
+    const parent = tempDir()
+    sh(parent, ['clone', '-q', fx.bare, 'a'])
+    sh(parent, ['clone', '-q', fx.bare, 'b'])
+    sh(join(parent, 'a'), ['fetch', '-q'])
+    const res = run(['apply', ...SWEEP, '--only', 'remotes', '--yes', 'a', 'b'], parent)
+    expect(res.code).toBe(0)
+    expect(res.out).toContain('duplicate')
+    expect(res.out).toContain('status: complete')
+    expect(branchRefs(fx.bare)).not.toContain(BRANCH)
+  })
+
+  test('a row that turns into a review row while the question waits is dropped, not run', () => {
+    const fx = buildFixture()
+    sh(fx.root, ['branch', 'extra', 'main'])
+    const res = run(['apply', ...SWEEP, '--only', 'branches'], fx.root, {
+      confirm: () => {
+        // Work lands on `extra` after the preview judged it merged.
+        sh(fx.root, ['checkout', '-q', 'extra'])
+        sh(fx.root, ['commit', '-q', '--allow-empty', '-m', 'late'])
+        sh(fx.root, ['checkout', '-q', 'main'])
+        return true
+      },
+    })
+    expect(res.code).toBe(0)
+    expect(res.out).toMatch(/dropped\s+local_branch:extra — needs-review/)
+    expect(branchRefs(fx.root)).toContain('refs/heads/extra')
+  })
+
+  test('--repo-root that names no plan repository exits 1', () => {
+    const fx = buildFixture()
+    const plan = join(fx.root, 'p.json')
+    run(['plan', '--branch', BRANCH, ...SWEEP, '-o', plan], fx.root)
+    const res = run(['apply', '--plan', plan, '--repo-root', tempDir(), '--yes'], fx.root)
+    expect(res.code).toBe(1)
+    expect(res.err).toContain('no plan repository at')
   })
 
   test('a no deletes nothing', () => {

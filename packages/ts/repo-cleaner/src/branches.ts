@@ -84,6 +84,19 @@ export function gapSentence(pr: PRInfo, gap: PrEvidenceGap, repo: RepoInfo): str
     : `PR #${pr.number} merged at head ${pr.headOid ?? '(unknown)'}, which is not this tip, so it is not landing proof (head-moved).`
 }
 
+/**
+ * `facts.merged`: the work is on the default branch, by an exact-head merged
+ * PR, by ancestry or by a patch match. Every category records it this way, so
+ * `summary` counts one definition.
+ */
+export function mergedFact(e: {
+  landed: boolean
+  ancestor: boolean
+  patchLanded: boolean
+}): boolean {
+  return e.landed || e.ancestor || e.patchLanded
+}
+
 /** What deleting a branch needs: its unlanded commits, and its open PR. */
 function branchRequires(unmerged: boolean, pr: PRInfo | undefined): Authorization[] {
   return authorizationsFor({
@@ -206,7 +219,11 @@ export function classifyLocalBranch(opts: {
     // `soft`: a missing default ref reads as not merged.
     const pr = prs.get(name)
     const { landed } = recordPr(facts, pr, sha, repo)
-    facts['merged'] = landed || git.at(repo.root).soft.isAncestor(sha, landedRef(repo))
+    facts['merged'] = mergedFact({
+      landed,
+      ancestor: git.at(repo.root).soft.isAncestor(sha, landedRef(repo)),
+      patchLanded: false,
+    })
     return pinned(held)
   }
 
@@ -227,8 +244,7 @@ export function classifyLocalBranch(opts: {
   if (patch !== null) recordLanding(facts, patch)
   const patchLanded = patch !== null && patch.check !== null
   const unmerged = !landed && !isAncestor && !landingConfirmed(patch)
-  // Merged: the work is on the default branch, by ancestry, an exact-head merged PR or a patch match.
-  facts['merged'] = landed || isAncestor || patchLanded
+  facts['merged'] = mergedFact({ landed, ancestor: isAncestor, patchLanded })
   if (!landed && !isAncestor) {
     facts['unique_commits'] = git.at(repo.root).aheadBehind(repo.mainBranch, sha).ahead
   }
@@ -371,8 +387,7 @@ export function classifyRemoteBranch(opts: {
   if (patch !== null) recordLanding(facts, patch)
   const patchLanded = patch !== null && patch.check !== null
   const unmerged = !landed && !isAncestor && !landingConfirmed(patch)
-  // Merged: the work is on the default branch, by ancestry, an exact-head merged PR or a patch match.
-  facts['merged'] = landed || isAncestor || patchLanded
+  facts['merged'] = mergedFact({ landed, ancestor: isAncestor, patchLanded })
   if (!landed && !isAncestor) {
     // Unknown (null) when the clone lacks `sha` or `remoteMain`, as above.
     const counted = git.at(repo.root).try.aheadBehind(remoteMain, sha)

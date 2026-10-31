@@ -315,7 +315,83 @@ export function proposedCommands(result: SweepResult): string[] {
   return out
 }
 
-/** An apply run as text: dropped rows, each step, then where the receipt is. */
+/** What an apply run did, or would do, counted by kind. */
+export interface ApplySummary {
+  /** Rows deleted (or, in a dry run, that would be), by category. Pruned worktrees are not counted here. */
+  deleted: { worktree: number; local_branch: number; remote_branch: number }
+  /** Worktrees whose stale registration was pruned; their directories were gone or left alone. */
+  pruned: number
+  /** Dropped rows by reason. */
+  dropped: Record<string, number>
+  /** Steps that failed: 0 or 1, since the first failure stops the run. */
+  failed: number
+  /** Row steps never reached because a step failed. */
+  notRun: number
+}
+
+/** Count a receipt's outcome. A dry run's `would-run` steps count as done. */
+export function summarizeReceipt(receipt: Receipt): ApplySummary {
+  const out: ApplySummary = {
+    deleted: { worktree: 0, local_branch: 0, remote_branch: 0 },
+    pruned: 0,
+    dropped: {},
+    failed: 0,
+    notRun: 0,
+  }
+  for (const d of receipt.dropped) out.dropped[d.reason] = (out.dropped[d.reason] ?? 0) + 1
+  for (const s of receipt.steps) {
+    if (s.result === 'failed') out.failed += 1
+    if (s.row === null) continue
+    if (s.result === 'pending') {
+      if (s.action !== 'unlock-worktree') out.notRun += 1
+      continue
+    }
+    if (s.result !== 'ok' && s.result !== 'would-run') continue
+    if (s.action === 'remove-worktree') out.deleted.worktree += 1
+    else if (s.action === 'prune-worktrees') out.pruned += 1
+    else if (s.action === 'delete-local') out.deleted.local_branch += 1
+    else if (s.action === 'delete-remote') out.deleted.remote_branch += 1
+  }
+  return out
+}
+
+/** Rows a receipt deletes or prunes, which is what a person is asked to approve. */
+export function rowsActedOn(summary: ApplySummary): number {
+  const d = summary.deleted
+  return d.worktree + d.local_branch + d.remote_branch + summary.pruned
+}
+
+const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
+
+/** The closing lines of an apply run: what it deleted, dropped and could not finish. */
+export function renderApplySummary(receipt: Receipt): string[] {
+  const s = summarizeReceipt(receipt)
+  const dry = receipt.status === 'dry-run'
+  const parts = [
+    s.deleted.worktree > 0 ? plural(s.deleted.worktree, 'worktree', 'worktrees') : null,
+    s.deleted.local_branch > 0
+      ? plural(s.deleted.local_branch, 'local branch', 'local branches')
+      : null,
+    s.deleted.remote_branch > 0
+      ? plural(s.deleted.remote_branch, 'remote branch', 'remote branches')
+      : null,
+    s.pruned > 0 ? `${plural(s.pruned, 'stale worktree', 'stale worktrees')} pruned` : null,
+  ].filter((p) => p !== null)
+  const lines = [
+    `${dry ? 'would delete' : 'deleted'}: ${parts.length > 0 ? parts.join(', ') : 'nothing'}`,
+  ]
+  const dropped = Object.entries(s.dropped)
+  if (dropped.length > 0) {
+    const total = dropped.reduce((n, [, c]) => n + c, 0)
+    lines.push(`dropped ${total}: ${dropped.map(([reason, c]) => `${c} ${reason}`).join(', ')}`)
+  }
+  if (s.failed > 0) {
+    lines.push(`stopped at a failed step; ${plural(s.notRun, 'row', 'rows')} not run`)
+  }
+  return lines
+}
+
+/** An apply run as text: dropped rows, each step, a summary, then where the receipt is. */
 export function renderReceipt(receipt: Receipt, receiptPath: string | null): string {
   const lines: string[] = []
   for (const d of receipt.dropped) {
@@ -326,6 +402,8 @@ export function renderReceipt(receipt: Receipt, receiptPath: string | null): str
     const tail = s.error ?? s.verification
     lines.push(`${s.result.padEnd(8)} ${what}${tail ? ` (${tail})` : ''}`)
   }
+  if (lines.length > 0) lines.push('')
+  lines.push(...renderApplySummary(receipt))
   lines.push(
     receiptPath === null
       ? `status: ${receipt.status}`

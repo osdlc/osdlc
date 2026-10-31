@@ -4,13 +4,23 @@ import { z } from 'zod'
 
 import { PLAN_CATEGORIES } from './plan.ts'
 
+/** The receipt format's version, written into every receipt. */
+export const RECEIPT_VERSION = 1
+
 export const RowRefSchema = z.object({ category: z.enum(PLAN_CATEGORIES), id: z.string() })
 
 export type RowRef = z.infer<typeof RowRefSchema>
 
 export const DroppedSchema = RowRefSchema.extend({
   repo: z.string(),
-  reason: z.enum(['gone', 'not-deletable', 'needs-review', 'facts-changed', 'not-authorized']),
+  reason: z.enum([
+    'gone',
+    'not-deletable',
+    'needs-review',
+    'facts-changed',
+    'not-authorized',
+    'duplicate',
+  ]),
   detail: z.string(),
 })
 
@@ -37,7 +47,7 @@ export const StepSchema = z.object({
 export type Step = z.infer<typeof StepSchema>
 
 export const ReceiptSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(RECEIPT_VERSION),
   plan: z.string(),
   status: z.enum(['dry-run', 'applying', 'complete', 'failed']),
   started_at: z.string(),

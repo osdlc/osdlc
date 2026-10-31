@@ -32,7 +32,7 @@ import {
   type Plan,
   type PlanRepo,
 } from './plan.ts'
-import type { Dropped, Receipt, RowRef, Step } from './receipt.ts'
+import { RECEIPT_VERSION, type Dropped, type Receipt, type RowRef, type Step } from './receipt.ts'
 import { sweepRepo } from './sweep.ts'
 import { AUTHORIZATIONS, type Authorization, type SweepItem, type SweepProgress } from './types.ts'
 import { worktreePruneCommand, worktreeRemoveCommand, worktreeUnlockCommand } from './worktrees.ts'
@@ -64,6 +64,20 @@ export interface ApplyOptions extends HostHooks {
   /** Limit the run to the plan repository rooted here. */
   repoRoot?: string | undefined
   now?: () => Date
+  /**
+   * Drop each selected row the re-check does not judge `safe-to-delete`.
+   * Defaults to true when no rows are requested, so a row to review runs only
+   * when it is named. Pass it to keep that guard on a run whose rows came
+   * from such a selection, such as the run a preview confirmed.
+   */
+  safeOnly?: boolean | undefined
+  /**
+   * Items to re-check against instead of sweeping again, keyed by repository
+   * root, already annotated: the hook is not applied to them again. For a
+   * preview straight after a sweep; the run that deletes should always sweep
+   * again.
+   */
+  swept?: ReadonlyMap<string, readonly SweepItem[]> | undefined
   /** Rows dropped before this run, such as by a preview; recorded first in the receipt. */
   dropped?: readonly Dropped[] | undefined
   /** Passed to the re-sweep's `onProgress`, for a status line. */
@@ -162,6 +176,10 @@ interface Accepted {
 
 /** The plan repository's rows as they stand now, with the host's overlay applied. */
 function resweep(repo: PlanRepo, opts: ApplyOptions): SweepItem[] {
+  const given = opts.swept?.get(repo.root)
+  if (given !== undefined) {
+    return [...given]
+  }
   const sweep = sweepRepo(repo.root, {
     remote: repo.remote,
     noGh: repo.no_gh,
@@ -369,6 +387,78 @@ function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe
 }
 
 /**
+ * A network URL as `host[:port]/path`, the same for `git@host:o/r.git`,
+ * `ssh://git@host/o/r` and `https://host/o/r/`; the whole path is kept, so
+ * nested groups stay apart. Null for a path on this machine, including
+ * `file://` and a Windows drive path.
+ */
+export function networkRemoteKey(url: string): string | null {
+  const u = url.trim()
+  if (/^[a-z]:[\\/]/i.test(u) || /^file:/i.test(u)) return null
+  const uri = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/]+@)?([^/:]+)(?::(\d+))?(\/.*)?$/i.exec(u)
+  const scp = uri === null ? /^(?:[^@/:]+@)?([^/:]+):(?!\/\/)(.+)$/.exec(u) : null
+  const host = uri?.[1] ?? scp?.[1]
+  if (host === undefined) return null
+  const port = uri?.[2] === undefined ? '' : `:${uri[2]}`
+  const path = (uri?.[3] ?? scp?.[2] ?? '').replace(/^\/+|\/+$/g, '').replace(/\.git$/, '')
+  return `${host.toLowerCase()}${port}/${path}`
+}
+
+/**
+ * One string per remote repository, so two clones that push to the same one
+ * agree. Built from the push URLs git would use (`remote get-url --push
+ * --all`, which applies `url.*.insteadOf` and `pushInsteadOf`): a network URL
+ * by {@link networkRemoteKey}, a local path resolved against the repository
+ * and kept as written, `.git` and all. Null when git reports no URL; such a
+ * row is never treated as a duplicate.
+ */
+function remoteKey(git: Git, repo: string, remote: string): string | null {
+  const urls = git.at(repo).try.remoteGetUrls(remote, { push: true })
+  if (!urls.ok || urls.value === null || urls.value.length === 0) return null
+  const keys = urls.value.map(
+    (url) =>
+      networkRemoteKey(url) ?? resolve(repo, url.trim().replace(/^file:\/\/(localhost)?/i, '')),
+  )
+  return [...new Set(keys)].sort().join('\n')
+}
+
+/**
+ * Keep the first row for each remote branch. Two clones of one remote each
+ * list its branches; deleting one twice fails the second push and stops the
+ * run, so the later row is dropped as `duplicate`.
+ */
+function onePerRemoteBranch(
+  { accepted, dropped }: { accepted: Accepted[]; dropped: Dropped[] },
+  git: Git,
+): { accepted: Accepted[]; dropped: Dropped[] } {
+  const seen = new Map<string, string>()
+  const kept: Accepted[] = []
+  const extra: Dropped[] = []
+  for (const row of accepted) {
+    if (row.item.category !== 'remote_branch') {
+      kept.push(row)
+      continue
+    }
+    const remote = remoteKey(git, row.repo, String(row.item.facts['remote']))
+    const key = remote === null ? null : `${remote}\0${String(row.item.facts['branch'])}`
+    const first = key === null ? undefined : seen.get(key)
+    if (first !== undefined) {
+      extra.push({
+        repo: row.repo,
+        category: row.item.category,
+        id: row.item.id,
+        reason: 'duplicate',
+        detail: `the same remote branch is deleted from ${first}`,
+      })
+      continue
+    }
+    if (key !== null) seen.set(key, row.repo)
+    kept.push(row)
+  }
+  return { accepted: kept, dropped: [...dropped, ...extra] }
+}
+
+/**
  * Apply the `requested` rows of `plan` under `grants`. An empty `requested`
  * selects every row of the plan (of `repoRoot`'s repository, when given) and
  * then drops each one the re-sweep does not judge `safe-to-delete`: a row to
@@ -407,7 +497,7 @@ export function applyPlan(
   }
 
   const receipt: Receipt = {
-    version: 1,
+    version: RECEIPT_VERSION,
     plan: opts.planPath,
     status: opts.dryRun ? 'dry-run' : 'applying',
     started_at: now().toISOString(),
@@ -415,7 +505,11 @@ export function applyPlan(
     dropped: [],
     steps: [],
   }
-  const { accepted, dropped } = recheck(selected, grants, requested.length === 0, opts)
+  const rechecked = recheck(selected, grants, opts.safeOnly ?? requested.length === 0, opts)
+  const { accepted, dropped } = onePerRemoteBranch(
+    rechecked,
+    new Git(opts.callerCwd, { runner: opts.git }),
+  )
   receipt.dropped = [...(opts.dropped ?? []), ...dropped]
 
   const ordered = PLAN_CATEGORIES.flatMap((category) =>
