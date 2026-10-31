@@ -22,7 +22,7 @@
  *   11  apply stopped at a failed step; the receipt says which
  */
 
-import { readFileSync } from 'node:fs'
+import { readSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 
 import { EXIT, askYesNo, canPrompt, defineCli, type CliContext } from '@osdlc/cli-tool'
@@ -220,6 +220,30 @@ export interface MainDeps {
   confirm?: Confirm
   /** Reads `--plan -`. Defaults to stdin. */
   readStdin?: () => string
+}
+
+const PAUSE = new Int32Array(new SharedArrayBuffer(4))
+
+/**
+ * All of stdin, synchronously. A pipe can be non-blocking and still empty
+ * when the writer upstream has not produced anything yet; `readFileSync(0)`
+ * fails with EAGAIN there, so this waits and retries until end of input.
+ */
+function readAllStdin(): string {
+  const chunks: Buffer[] = []
+  const buf = Buffer.alloc(65536)
+  for (;;) {
+    let n: number
+    try {
+      n = readSync(0, buf, 0, buf.length, null)
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EAGAIN') throw e
+      Atomics.wait(PAUSE, 0, 0, 50)
+      continue
+    }
+    if (n === 0) return Buffer.concat(chunks).toString('utf8')
+    chunks.push(Buffer.from(buf.subarray(0, n)))
+  }
 }
 
 function usageError(ctx: CliContext, name: string, message: string): number {
@@ -436,7 +460,7 @@ function runApply(argv: readonly string[], ctx: CliContext, deps: MainDeps): num
   } else {
     try {
       if (fromStdin) {
-        plan = parsePlan((deps.readStdin ?? (() => readFileSync(0, 'utf-8')))(), 'stdin')
+        plan = parsePlan((deps.readStdin ?? readAllStdin)(), 'stdin')
         planSource = '(stdin)'
       } else {
         planSource = resolve(ctx.cwd, v.plan)

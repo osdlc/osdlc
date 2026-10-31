@@ -277,15 +277,20 @@ describe('applyPlan', () => {
     expect(existsSync(fx.worktree)).toBe(false)
   })
 
-  test('no rows selects every planned row; one needing a risk is dropped, not run', () => {
+  test('no rows selects every safe-to-delete row; review rows are dropped, not run', () => {
     const fx = buildFixture()
     const { receipt } = apply(fx, makePlan(fx.root), [])
     expect(receipt.status).toBe('complete')
-    expect(receipt.dropped.map((d) => [d.id, d.reason])).toEqual([['unmerged', 'not-authorized']])
+    // Review rows run only when named: the worktree (no disposability signal
+    // without gh) and the unmerged branch.
+    expect(receipt.dropped.map((d) => [d.id, d.reason])).toEqual([
+      [fx.worktree, 'needs-review'],
+      ['unmerged', 'needs-review'],
+    ])
     expect(refs(fx.root)).not.toContain('refs/heads/merged-a ')
     expect(refs(fx.root)).not.toContain('refs/heads/merged-b ')
     expect(refs(fx.root)).toContain('refs/heads/unmerged ')
-    expect(existsSync(fx.worktree)).toBe(false)
+    expect(existsSync(fx.worktree)).toBe(true)
   })
 
   test('a null receiptPath applies without writing a receipt', () => {

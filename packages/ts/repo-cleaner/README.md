@@ -295,8 +295,9 @@ repo-cleaner plan | repo-cleaner apply --plan - --yes
 
 A plan holds each deletable row with a fingerprint of the facts behind its
 verdict. `apply` either sweeps and plans in memory, or reads a plan with
-`--plan <file>` (`-` reads stdin). It applies every row of the plan, or only
-the rows named with `--row <category>:<id>`.
+`--plan <file>` (`-` reads stdin). With no `--row` it applies every row judged
+`safe-to-delete` and drops each row to review as `needs-review`. Name a row
+with `--row <category>:<id>` to apply it, review rows included.
 
 Before it deletes anything, `apply` sweeps again and drops a row that is gone,
 no longer deletable, whose facts moved, or that carries a risk you did not

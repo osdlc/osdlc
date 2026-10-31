@@ -10,7 +10,7 @@ export type RowRef = z.infer<typeof RowRefSchema>
 
 export const DroppedSchema = RowRefSchema.extend({
   repo: z.string(),
-  reason: z.enum(['gone', 'not-deletable', 'facts-changed', 'not-authorized']),
+  reason: z.enum(['gone', 'not-deletable', 'needs-review', 'facts-changed', 'not-authorized']),
   detail: z.string(),
 })
 

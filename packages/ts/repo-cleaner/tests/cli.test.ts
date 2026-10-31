@@ -70,6 +70,15 @@ function buildFixture(): Fixture {
 
 const SWEEP = ['--no-gh', '--no-fetch']
 
+/** All three rows of the fixture's branch. Without gh the worktree is a review row, so it is named. */
+function rowsOf(fx: Fixture): string[] {
+  return [
+    `worktree:${fx.worktree}`,
+    `local_branch:${BRANCH}`,
+    `remote_branch:origin/${BRANCH}`,
+  ].flatMap((r) => ['--row', r])
+}
+
 describe('arguments', () => {
   test('--help exits 0 and names every command', () => {
     const res = run(['--help'], tempDir())
@@ -196,7 +205,10 @@ describe('apply', () => {
     const plan = join(fx.root, '.plans', 'p.json')
     expect(run(['plan', '--branch', 'HEAD', ...SWEEP, '-o', plan], fx.worktree).code).toBe(0)
 
-    const applied = run(['apply', '--plan', plan, '--yes', '--output', 'json'], fx.root)
+    const applied = run(
+      ['apply', '--plan', plan, ...rowsOf(fx), '--yes', '--output', 'json'],
+      fx.root,
+    )
     expect(applied.code).toBe(0)
     const out = JSON.parse(applied.out) as { receiptPath: string; receipt: Receipt }
     expect(out.receipt.status).toBe('complete')
@@ -213,7 +225,7 @@ describe('apply', () => {
   test('without a plan: sweeps, shows the steps, and deletes on yes', () => {
     const fx = buildFixture()
     const asked: string[] = []
-    const res = run(['apply', '--branch', BRANCH, ...SWEEP], fx.root, {
+    const res = run(['apply', '--branch', BRANCH, ...SWEEP, ...rowsOf(fx)], fx.root, {
       confirm: (q) => {
         asked.push(q)
         return true
@@ -225,6 +237,17 @@ describe('apply', () => {
     expect(res.out).toContain('status: complete')
     expect(existsSync(fx.worktree)).toBe(false)
     expect(branchRefs(fx.bare)).not.toContain(BRANCH)
+  })
+
+  test('with no --row a review row is dropped, not applied', () => {
+    const fx = buildFixture()
+    const res = run(
+      ['apply', '--branch', BRANCH, ...SWEEP, '--only', 'worktrees', '--yes'],
+      fx.root,
+    )
+    expect(res.code).toBe(0)
+    expect(res.out).toContain('needs-review')
+    expect(existsSync(fx.worktree)).toBe(true)
   })
 
   test('a no deletes nothing', () => {

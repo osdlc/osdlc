@@ -157,6 +157,7 @@ function resweep(repo: PlanRepo, opts: ApplyOptions): SweepItem[] {
 function recheck(
   selected: readonly Selected[],
   grants: readonly Grant[],
+  implicit: boolean,
   opts: ApplyOptions,
 ): { accepted: Accepted[]; dropped: Dropped[] } {
   const swept = new Map<PlanRepo, SweepItem[]>()
@@ -178,6 +179,10 @@ function recheck(
     }
     if (!item.deletable) {
       drop('not-deletable', item.reason)
+      continue
+    }
+    if (implicit && item.classification !== 'safe-to-delete') {
+      drop('needs-review', `${item.reason}; name it with --row to apply it`)
       continue
     }
     const now = fingerprint(item)
@@ -339,10 +344,11 @@ function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe
 }
 
 /**
- * Apply the `requested` rows of `plan` under `grants`; an empty `requested`
- * selects every row of the plan (of `repoRoot`'s repository, when given). A
- * row named twice runs once. A row whose `requires` was not granted is
- * dropped, never run.
+ * Apply the `requested` rows of `plan` under `grants`. An empty `requested`
+ * selects every row of the plan (of `repoRoot`'s repository, when given) and
+ * then drops each one the re-sweep does not judge `safe-to-delete`: a row to
+ * review runs only when it is named. A row named twice runs once. A row whose
+ * `requires` was not granted is dropped, never run.
  *
  * @throws ApplyArgumentError before touching anything, when a row or grant does
  *   not fit the plan.
@@ -378,7 +384,7 @@ export function applyPlan(
     dropped: [],
     steps: [],
   }
-  const { accepted, dropped } = recheck(selected, grants, opts)
+  const { accepted, dropped } = recheck(selected, grants, requested.length === 0, opts)
   receipt.dropped = dropped
 
   const ordered = PLAN_CATEGORIES.flatMap((category) =>
