@@ -23,10 +23,10 @@
     {
       "id": "r2-1",
       "round": 2,
-      "path": "packages/ts/wayfinder/src/devlink.ts",
-      "line": 41,
+      "path": "packages/ts/wayfinder/src/cli.ts",
+      "line": 32,
       "title": "checkoutRoot is now dead in production; only tests import it",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/569#discussion_r4430975031",
       "status": "fixed",
       "reason": null,
       "fixedIn": "03925512f715fc6e881d7fa250da2c25f4ec22c7"
