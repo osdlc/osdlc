@@ -32,7 +32,11 @@ function tilde(path: string, home: string): string {
 export function describeSweep(p: SweepProgress, home: string = homedir()): string {
   const where = p.of > 1 ? `[${p.index}/${p.of}] ` : ''
   const count = p.done === undefined ? '' : ` ${p.done + 1}/${p.total}`
-  return `${where}${STEP_TEXT[p.step]}${count} · ${tilde(p.repo, home)}`
+  const text =
+    p.step === 'prs' && p.tool !== undefined
+      ? `listing pull requests (${p.tool})`
+      : STEP_TEXT[p.step]
+  return `${where}${text}${count} · ${tilde(p.repo, home)}`
 }
 
 /** An apply step as one line, e.g. `deleting 3/7: delete-remote origin/feat/x`. */

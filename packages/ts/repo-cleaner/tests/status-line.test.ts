@@ -25,6 +25,11 @@ describe('describeSweep', () => {
       'listing pull requests (gh) · /srv/api',
     )
   })
+
+  test('the pull request step names the CLI it asks', () => {
+    const p = { repo: '/srv/api', index: 1, of: 1, step: 'prs', tool: 'glab' } as const
+    expect(describeSweep(p, '/home/me')).toBe('listing pull requests (glab) · /srv/api')
+  })
 })
 
 describe('describeStep', () => {

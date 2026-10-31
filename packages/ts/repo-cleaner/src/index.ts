@@ -76,6 +76,21 @@ export {
 } from './processes.ts'
 export { fetchPrs } from './prs.ts'
 export {
+  PROVIDER_CHOICES,
+  PROVIDER_NAMES,
+  chooseProvider,
+  forgeTarget,
+  githubProvider,
+  gitlabProvider,
+  probeProvider,
+  providers,
+  type ForgeTarget,
+  type PrProvider,
+  type ProviderChoice,
+  type ProviderName,
+  type ProviderStatus,
+} from './providers/index.ts'
+export {
   expandTilde,
   isCheckoutRoot,
   resolveEntries,

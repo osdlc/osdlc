@@ -39,7 +39,7 @@ Three signals settle most items. The first two are enough alone; the third needs
 
 | Signal | Source |
 | --- | --- |
-| A `MERGED` pull request from this repository, into the default branch, whose head commit is the branch tip | `gh pr list`, one listing per repository |
+| A `MERGED` pull request from this repository, into the default branch, whose head commit is the branch tip | `gh pr list` (or `glab` for GitLab), one listing per repository |
 | The branch tip is reachable from the default branch | `git merge-base --is-ancestor` |
 | The branch's changes are on the default branch under other commit ids (rebase merge, cherry-pick, squash merge) | `git cherry` plus `git merge-tree`, see [Patch equivalence](#patch-equivalence) |
 
@@ -180,8 +180,9 @@ table cannot be read the worktree is held back as `process-probe-failed`. A
 host or test supplies its own probe.
 Nothing is ever killed.
 
-Without `gh`, or without authentication, classification proceeds on git
-evidence alone and the report says so.
+Without the provider's CLI (`gh`, or `glab` for GitLab), or without
+authentication, classification proceeds on git evidence alone and the report
+says so. See [Providers (prototype)](#providers-prototype).
 
 Every branch delete names the full sha the sweep judged. `update-ref -d` and
 the pinned `--force-with-lease` push both refuse when the branch has moved
@@ -267,7 +268,8 @@ Every command that sweeps takes these:
 | `--only <list>` | `worktrees`, `branches`, `remotes` (default: all three) |
 | `--branch <name\|HEAD>` | One branch of this repository: its worktree, local and remote branch. Refuses the default branch |
 | `--remote <name>` | Remote to measure against (default `origin`) |
-| `--no-gh` | Classify on git evidence alone |
+| `--provider <name>` | Where pull requests come from: `auto` (default, by the remote's host), `github`, `gitlab` or `none` |
+| `--no-gh` | Classify on git evidence alone; the same as `--provider none` |
 | `--no-fetch` | Skip the fetch; the header then says `not fetched` |
 
 `status` also takes:
@@ -381,10 +383,46 @@ or `needs-investigation`.
 An issue tracker's linkage, applied this way, is a host's own layer over the
 sweep and `applyPlan`.
 
+## Providers (prototype)
+
+Pull request evidence comes from a provider. Classification reads the same
+fields whichever one answered: number, state, head branch, head commit, target
+branch.
+
+| Provider | CLI | Listing |
+| --- | --- | --- |
+| `github` | `gh` | `gh pr list --state all`, up to 300 |
+| `gitlab` | `glab` | `glab api projects/<path>/merge_requests?state=all`, 100 a page, up to 300 |
+
+`--provider auto` (the default) reads the remote's host: a host with `gitlab`
+in its name is GitLab, any other is GitHub, which is what the tool did before
+providers existed. Name one with `--provider github|gitlab` for a host the
+name does not give away, or `--provider none` to skip pull requests. A plan
+records the choice, so `apply` re-checks with the same provider.
+
+GitLab maps onto the same evidence: `opened` and `locked` are `OPEN`, `merged`
+is `MERGED`, `closed` is `CLOSED`, `sha` is the head commit and `target_branch`
+the base. A merge request from a fork (source project is not the target
+project) is dropped, as a cross-repository PR is on GitHub. The project path is
+read off the remote URL with its groups (`group/sub/name`), and `glab` is asked
+for that host with `--hostname`.
+
+Not done yet:
+
+- Gitea, Forgejo and Bitbucket.
+- Mapping a self-hosted host to a provider in config; today it is the host
+  name or `--provider`.
+- Auth edge cases: tokens without API scope, `glab` signed in to a different
+  host than the remote, rate limits. Each reads as "no PR found".
+- Squash metadata. GitLab reports `squash_commit_sha`; it is not used, so a
+  squashed MR proves landing only by its head commit, as on GitHub.
+- `--branch` on GitLab asks for that exact source branch; GitLab has no prefix
+  filter.
+
 ## Runtime dependencies
 
-`git` on `PATH`, and `gh` when PR state should count. Authentication is `gh`'s
-own — this package reads no token.
+`git` on `PATH`, and `gh` (or `glab` for GitLab) when PR state should count.
+Authentication is the CLI's own — this package reads no token.
 
 ## Running from a checkout
 

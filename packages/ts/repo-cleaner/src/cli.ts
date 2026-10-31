@@ -40,6 +40,7 @@ import {
   writePlan,
   type Plan,
 } from './plan.ts'
+import { PROVIDER_CHOICES, type ProviderChoice } from './providers/index.ts'
 import { RECEIPT_VERSION, type Receipt, type RowRef, type Step } from './receipt.ts'
 import {
   proposedCommands,
@@ -92,6 +93,12 @@ const SWEEP_FLAGS = {
     help: 'remote to measure against (default: origin)',
   },
   gh: { kind: 'boolean', negatable: true, help: 'classify on git evidence alone' },
+  provider: {
+    kind: 'enum',
+    choices: PROVIDER_CHOICES,
+    valueName: 'name',
+    help: 'where pull requests come from: auto (by remote host), github (gh), gitlab (glab), none',
+  },
   fetch: {
     kind: 'boolean',
     negatable: true,
@@ -278,6 +285,7 @@ interface SweepValues {
   branch?: string | undefined
   remote?: string | undefined
   gh: boolean
+  provider?: ProviderChoice | undefined
   fetch: boolean
   progress: boolean
 }
@@ -307,6 +315,11 @@ function sweep(
     return { kind: 'exit', code: usageError(ctx, name, message) }
   }
 
+  if (!v.gh && v.provider !== undefined && v.provider !== 'none') {
+    const message = `--no-gh asks no provider; drop it or --provider ${v.provider}`
+    return { kind: 'exit', code: usageError(ctx, name, message) }
+  }
+
   let branch: string | undefined
   try {
     branch = v.branch === undefined ? undefined : resolveBranch(v.branch, new Git(ctx.cwd))
@@ -318,6 +331,7 @@ function sweep(
     baseDir: ctx.cwd,
     cwd: ctx.cwd,
     noGh: !v.gh,
+    provider: v.provider,
     fetch: v.fetch,
     branch,
     // Mid-walk, while the wait is happening — the summary comes too late to
@@ -356,7 +370,8 @@ function reportUnreadable(ctx: CliContext, name: string, result: SweepResult): b
 function planOf(swept: Extract<Swept, { kind: 'ok' }>, now: Date): Plan {
   const opts = {
     remote: swept.values.remote ?? null,
-    noGh: !swept.values.gh,
+    noGh: !swept.values.gh || swept.values.provider === 'none',
+    provider: swept.values.provider,
     branch: swept.branch ?? null,
   }
   return {
