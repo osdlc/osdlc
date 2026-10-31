@@ -145,7 +145,7 @@ stays `Clone`, `Send` and `Sync`.
 
 Several crates guard paths. path-guard differs by pairing a lexical pre-check
 with a symlink-aware containment proof over a pluggable resolver, and by
-sharing one cross-language conformance fixture with a TypeScript twin.
+sharing one cross-language conformance suite with a TypeScript implementation.
 
 - `path_jail`, `strict-path`: resolve a path and confine it to a root. Similar
   goal; path-guard adds the lexical layer and the pluggable `Resolver`, and
@@ -188,8 +188,9 @@ path was refused.
 
 ## Twin
 
-`@osdlc/path-guard` 0.3.x is the TypeScript twin. Both read one conformance
-fixture, so they agree on every case. Its `lexical` namespace,
+`@osdlc/path-guard` 0.3.x is the TypeScript twin. Both run one conformance
+suite, `packages/conformance/path-guard/suite.json` in the repository, so
+they agree on every case. Its `lexical` namespace,
 `PathGuard` class and `nodeGuard` match this crate's `lexical` module, `Guard`
 and `Guard::std()`. Its race-checked file helpers in `@osdlc/path-guard/node`
 have no Rust counterpart.

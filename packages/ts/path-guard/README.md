@@ -39,7 +39,7 @@ onto a root. It has no dependencies. The
 
 `@osdlc/path-guard` pairs a lexical check with a symlink-aware proof that works
 for paths that do not exist yet, takes any filesystem through a `Resolver`, and
-shares one test fixture with the `path-guard` Rust crate. If you need only one
+shares one conformance suite with the `path-guard` Rust crate. If you need only one
 of those halves, a smaller package may fit better.
 
 ## Install
@@ -291,8 +291,9 @@ The Rust crate [`path-guard`](https://crates.io/crates/path-guard) 0.3.x has the
 same shape: a `lexical` module and a `Guard` bound to one `Resolver`. Its source
 is in
 [`packages/rust/path-guard`](https://github.com/osdlc/osdlc/tree/main/packages/rust/path-guard).
-Both read one conformance fixture,
-`packages/rust/path-guard/tests/fixtures/parity.json` in the repository, so
+Both run one conformance suite,
+`packages/conformance/path-guard/suite.json` in the repository, of which this
+package is the reference, so
 they agree on every case in it. `tryResolve`, the `@osdlc/path-guard/lexical`
 entry, the race-checked helpers of `@osdlc/path-guard/node` and the
 `PathErrorKind` type exist only in TypeScript.
