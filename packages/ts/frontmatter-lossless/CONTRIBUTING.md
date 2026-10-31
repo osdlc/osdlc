@@ -30,7 +30,7 @@ pnpm test
 ```
 
 `pnpm test` runs the Vitest suite. Most tests run the source.
-`tests/corpus-dist.test.ts` runs the conformance corpus on the built package.
+`tests/corpus-dist.test.ts` runs the conformance suite on the built package.
 Build first.
 
 `pnpm run smoke` runs `tests/smoke.mjs`, a short check of the built package
@@ -45,13 +45,19 @@ pnpm run lint
 pnpm run format:check
 ```
 
-## The conformance corpus
+## The conformance suite
 
-The tests read the `frontmatter-lossless` Rust crate's corpus in place, at
-`packages/rust/frontmatter-lossless/tests/fixtures/conformance.json`; the
-package keeps no copy. A change to how notes are split changes both
-implementations and the corpus together. See
-[D-07](https://github.com/osdlc/osdlc/blob/main/packages/ts/frontmatter-lossless/docs/planning/decisions/D-07-conformance-corpus.md).
+`packages/conformance/frontmatter-lossless/suite.json` is the family's
+conformance suite, run by this package's `tests/index.test.ts` (on the source)
+and `tests/corpus-dist.test.ts` (on `dist/`), both through
+`tests/conformance.ts`, and by the Rust crate's `tests/conformance.rs`. The
+Rust crate is the family's reference. A new case goes into the suite: write
+its `input` by hand, then run `cargo run -p frontmatter-lossless --example
+conformance-write` from `packages/rust` to write its expected value. A change
+to how notes are split changes both implementations and the suite together.
+See
+[D-07](https://github.com/osdlc/osdlc/blob/main/packages/ts/frontmatter-lossless/docs/planning/decisions/D-07-conformance-corpus.md)
+and [S-conformance-suites](https://github.com/osdlc/osdlc/blob/main/docs/planning/standards/S-conformance-suites.md).
 
 ## Code style
 
