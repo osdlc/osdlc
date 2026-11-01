@@ -98,7 +98,13 @@ export {
   type Resolution,
   type ResolveOptions,
 } from './resolve.ts'
-export { sweepRepo, sweepRepos, type SweepOptions, type SweepReposOptions } from './sweep.ts'
+export {
+  holdFreedBranches,
+  sweepRepo,
+  sweepRepos,
+  type SweepOptions,
+  type SweepReposOptions,
+} from './sweep.ts'
 export {
   proposedCommands,
   renderJson,

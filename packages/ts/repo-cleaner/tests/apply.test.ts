@@ -74,6 +74,13 @@ function buildFixture(): Fixture {
   return { root, bare: pair.bare.dir, worktree: realpathSync(worktree) }
 }
 
+/** Commit on `wt-branch` in the worktree and merge it into main, so both can go. */
+function mergeWorktreeBranch(fx: Fixture): void {
+  sh(fx.worktree, ['commit', '--allow-empty', '-m', 'feat: worktree work'])
+  sh(fx.root, ['merge', '-q', '--no-ff', '-m', 'Merge wt-branch', 'wt-branch'])
+  sh(fx.root, ['push', '-q', 'origin', 'main'])
+}
+
 function makePlan(root: string): Plan {
   const { repo, items } = sweepRepo(root, { noProvider: true, cwd: root })
   return {
@@ -361,13 +368,6 @@ describe('applyPlan', () => {
     expect(new Git(fx.root).configGet('branch.merged-a.remote')).toBeNull()
     expect((JSON.parse(readFileSync(receiptPath, 'utf-8')) as Receipt).status).toBe('complete')
   })
-
-  /** Commit on `wt-branch` in the worktree and merge it into main, so both can go. */
-  function mergeWorktreeBranch(fx: Fixture): void {
-    sh(fx.worktree, ['commit', '--allow-empty', '-m', 'feat: worktree work'])
-    sh(fx.root, ['merge', '-q', '--no-ff', '-m', 'Merge wt-branch', 'wt-branch'])
-    sh(fx.root, ['push', '-q', 'origin', 'main'])
-  }
 
   test('removes a merged worktree and deletes its branch in one run', () => {
     const fx = buildFixture()
@@ -894,5 +894,33 @@ describe('plan files', () => {
       annotate: (_repo, items) => items.map((item) => ({ ...item, deletable: false })),
     })
     expect(receipt.dropped.map((d) => d.reason)).toEqual(['not-deletable'])
+  })
+
+  test('a branch freed by a worktree the host holds back is kept with it', () => {
+    const fx = buildFixture()
+    mergeWorktreeBranch(fx)
+    const plan = makePlan(fx.root)
+    const receipt = applyPlan(
+      plan,
+      [
+        { category: 'local_branch', id: 'wt-branch' },
+        { category: 'worktree', id: fx.worktree },
+      ],
+      [],
+      {
+        callerCwd: fx.root,
+        dryRun: true,
+        receiptPath: join(fx.root, 'unused.json'),
+        planPath: 'plan.json',
+        annotate: (_repo, items) =>
+          items.map((item) =>
+            item.id === fx.worktree ? { ...item, action: 'keep', deletable: false } : item,
+          ),
+      },
+    )
+    expect(receipt.dropped.map((d) => [d.id, d.reason, d.detail])).toEqual([
+      ['wt-branch', 'not-deletable', 'checked out in a worktree (handle via that worktree)'],
+      [fx.worktree, 'not-deletable', expect.any(String)],
+    ])
   })
 })
