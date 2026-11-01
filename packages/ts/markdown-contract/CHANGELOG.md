@@ -1,5 +1,12 @@
 # @osdlc/markdown-contract
 
+## 0.7.3
+
+### Patch Changes
+
+- Updated dependencies [a3ef86d]
+  - @osdlc/cli-tool@0.15.0
+
 ## 0.7.2
 
 ### Patch Changes

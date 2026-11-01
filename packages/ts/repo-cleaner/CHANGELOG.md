@@ -1,5 +1,12 @@
 # @osdlc/repo-cleaner
 
+## 0.14.1
+
+### Patch Changes
+
+- Updated dependencies [a3ef86d]
+  - @osdlc/cli-tool@0.15.0
+
 ## 0.14.0
 
 ### Minor Changes
