@@ -24,6 +24,7 @@ export function realPath(path: string): string | null {
  * The package directory an installed file belongs to: the directory under
  * the last `node_modules` segment of `real` (two levels for a scoped name).
  * Null when `real` does not go through `node_modules`.
+ * @experimental
  */
 export function installDir(real: string): string | null {
   const segments = real.split(sep)

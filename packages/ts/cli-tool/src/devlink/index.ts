@@ -81,6 +81,10 @@ export type { LauncherOptions } from './launcher.ts'
 export { execSelection } from './exec.ts'
 export type { ExecOptions } from './exec.ts'
 
+export { missingDependency } from './deps.ts'
+
+export { installDir } from '../where.ts'
+
 export { devlinkHook } from './hook.ts'
 export type { DevlinkHookOptions } from './hook.ts'
 

@@ -47,12 +47,14 @@ import {
   homePath,
   homeVar,
   install,
+  installDir,
   isCheckout,
   isOnPath,
   launchLayerVar,
   launcherCheckout,
   launcherDrift,
   link,
+  missingDependency,
   off,
   pathNames,
   quietVar,
@@ -258,6 +260,19 @@ test.skipIf(!hasBun)(
     expect(lines[0]).toContain('running')
   },
 )
+
+test('a checkout that was cloned but not installed is refused before a hand-off', () => {
+  const a = checkout('a')
+  writeFileSync(join(a, 'package.json'), JSON.stringify({ dependencies: { left: '1' } }))
+  // devlinkHook does this check itself; a tool with its own launcher can too.
+  expect(missingDependency(a, join(a, SPEC.marker))).toBe('node_modules')
+  mkdirSync(join(a, 'node_modules', 'left'), { recursive: true })
+  expect(missingDependency(a, join(a, SPEC.marker))).toBeNull()
+  // The package an installed file belongs to, for a launcher telling an install from a checkout.
+  expect(installDir(join('/p', 'node_modules', '@s', 'tool', 'bin', 'tool.js'))).toBe(
+    join('/p', 'node_modules', '@s', 'tool'),
+  )
+})
 
 test('the dev verbs mounted for a tool with no CLI framework', () => {
   const a = checkout('a')

@@ -10,6 +10,7 @@ import { processIo } from '../io.ts'
 import type { DevlinkHook, DevlinkWhere } from '../run-main.ts'
 import { installDir, realPath } from '../where.ts'
 import { runDevCli } from './cli.ts'
+import { missingDependency, missingDependencyLine } from './deps.ts'
 import { execSelection, type ExecOptions } from './exec.ts'
 import { cwdCheckout, resolve, type Selection } from './resolve.ts'
 import { homeVar, launchLayerVar, quietVar, type ToolSpec } from './spec.ts'
@@ -36,7 +37,9 @@ export interface DevlinkHookOptions {
  * hook deletes that variable from `ctx.env` and from `process.env` once it has
  * read it, so a process this run starts (a git hook, a shell, a nested run of
  * the tool) resolves for itself. It keeps the value for its `describe`, which
- * `runMain` asks when it answers `--where`.
+ * `runMain` asks when it answers `--where`. A checkout chosen by the env, cwd
+ * or link layer whose `node_modules` is incomplete is refused with exit 1 and
+ * a line saying to run `bun install` there.
  * @experimental
  */
 export function devlinkHook(spec: ToolSpec, opts: DevlinkHookOptions = {}): DevlinkHook {
@@ -80,6 +83,14 @@ export function devlinkHook(spec: ToolSpec, opts: DevlinkHookOptions = {}): Devl
         ctx.io.stderr(`${spec.name}: ${selection.hint}\n`)
       }
       described = { ...notHandedOff(self, selection), ...(script === undefined ? {} : { script }) }
+    } else if (selection.source !== 'project') {
+      // A checkout runs from source, so its node_modules must be complete. A
+      // project copy is an install, which its package manager completed.
+      const missing = missingDependency(selection.checkout, selection.entry)
+      if (missing !== null) {
+        ctx.io.stderr(`${missingDependencyLine(spec.name, selection.checkout, missing)}\n`)
+        return 1
+      }
     }
     return execSelection(spec, selection, argv, {
       env: ctx.env,

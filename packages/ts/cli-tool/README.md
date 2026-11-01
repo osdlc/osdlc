@@ -397,6 +397,9 @@ which code runs and why. `tool dev off` goes back to the installed copy.
 The hook finds the checkout it runs from by walking up from the script, never
 through `node_modules`, so a link to itself is a no-op. The process it hands
 off to is told so through `TOOL_LAUNCH_LAYER` and runs its own `main`.
+Under Bun the hand-off reuses the running bun. A checkout whose
+`node_modules` is missing or incomplete is refused with exit 1 and a line
+saying to run `bun install` there.
 
 Outside a link, a project with `@acme/tool` in its `node_modules` runs that
 copy's bin under node, as `npx tool` would, so the project's pinned version
@@ -412,7 +415,9 @@ The order is:
 | 5 | local | this copy |
 
 See [devlink](./devlink/README.md) for the details and the verbs, and
-[launch order](./docs/guide/launch-order.md) for the decision drawn out.
+[launch order](./docs/guide/launch-order.md) for the decision drawn out, one
+run step by step, tools with their own entry script (such as sdlc), and a
+checklist for adopting devlink in a new CLI.
 
 `tool --where` is handed on like any other argument, so the process that
 answers is the one that runs. Its `chosen by` line names the layer: `env
@@ -889,8 +894,8 @@ The experimental exports of `@osdlc/cli-tool/devlink`:
 `RunOptions`, `Selected`, `Selection`, `ShimStatus`, `Source`, `StateOptions`, `StatusResult`,
 `ToolSpec`, `UseInput`, `UseResult`, `appendHistory`, `clearActive`, `cwdCheckout`, `cwdDevVar`,
 `defaultBinDir`, `devlinkHook`, `entryOf`, `envStem`, `execSelection`, `findOnPath`, `gitHead`, `history`,
-`historyPath`, `homePath`, `homeVar`, `install`, `isCheckout`, `isOnPath`, `launchLayerVar`,
-`launcherCheckout`, `launcherDrift`, `link`, `off`, `pathNames`, `processIo`, `projectVar`, `quietVar`,
+`historyPath`, `homePath`, `homeVar`, `install`, `installDir`, `isCheckout`, `isOnPath`, `launchLayerVar`,
+`launcherCheckout`, `launcherDrift`, `link`, `missingDependency`, `off`, `pathNames`, `processIo`, `projectVar`, `quietVar`,
 `readActive`, `readHistory`, `readShimTarget`, `renderLauncher`, `renderShim`, `resolve`,
 `runDevCli`, `samePath`, `stateDir`, `status`, `suppressed`, `usage`, `use`, `validateSpec`,
 `writeActive`

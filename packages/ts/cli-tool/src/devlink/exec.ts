@@ -11,7 +11,8 @@
  * parent's signals: a SIGTERM to the parent orphans it, and Ctrl-C gives the
  * shell its prompt back while the child still runs. One process, with the
  * same pid, has neither problem, and its exit status is the child's own.
- * Where `execve` is missing (Windows, or Node before 22.15) a synchronous
+ * Where `execve` is missing (Windows, or Node before 22.15), or fails for a
+ * reason other than a missing or unrunnable file, a synchronous
  * spawn whose exit code becomes this process's is the fallback.
  *
  * This does not go through `@osdlc/command-seam`, on purpose. The program
@@ -62,9 +63,10 @@ export interface ExecOptions {
    */
   node?: string
   /**
-   * The `bun` to run, used as given. Defaults to the `bun` found on the
-   * absolute entries of `env`'s `PATH`. A relative entry is skipped, and so
-   * is the cwd, so a `bun` in the repository the user stands in never runs.
+   * The `bun` to run, used as given. Defaults to this process's own binary
+   * under Bun, else the `bun` found on the absolute entries of `env`'s
+   * `PATH`. A relative entry is skipped, and so is the cwd, so a `bun` in the
+   * repository the user stands in never runs.
    */
   bun?: string
   /**
@@ -115,6 +117,7 @@ export function execSelection(
   }
   const bun =
     opts.bun ??
+    runningBun() ??
     which('bun', { absolutePathOnly: true, env: { PATH: env['PATH'], PATHEXT: env['PATHEXT'] } })
   // A project copy whose `#!` names bun is not a checkout, and `dev off` does not affect it.
   const what =
@@ -172,12 +175,17 @@ function run(
     )
     try {
       execve(file, [file, ...args], strings)
+      return 0
     } catch (error) {
-      // ENOENT or EACCES: execve(2) failed and this process is still here.
-      failed(error instanceof Error ? error.message : String(error))
-      return 1
+      // execve(2) failed and this process is still here. A missing or
+      // unrunnable file fails a spawn the same way; any other error (the API
+      // changed, or a runtime that cannot replace itself) gets the spawn.
+      const code = (error as { code?: unknown } | null)?.code
+      if (code === 'ENOENT' || code === 'EACCES') {
+        failed(error instanceof Error ? error.message : String(error))
+        return 1
+      }
     }
-    return 0
   }
   const result = spawnSync(file, args, { stdio: 'inherit', env: env as NodeJS.ProcessEnv })
   return finish(result, failed)
@@ -195,6 +203,19 @@ function reasonLine(selection: Selected, running: string | null | undefined): st
   const theirs = selection.version ?? 'unknown version'
   const ours = typeof running === 'string' ? running : 'unknown'
   return `${selection.reason}, ${theirs}; this install is ${ours}`
+}
+
+/**
+ * This process's own binary when it runs under Bun, else undefined. The first
+ * `bun` on `PATH` can be a proto shim, and a proto shim refuses to start bun
+ * from inside bun ("re-entered proto ... would loop"), so a hand-off from bun
+ * reuses the bun that is already running.
+ */
+export function runningBun(
+  versions: Record<string, string | undefined> = process.versions,
+  execPath: string = process.execPath,
+): string | undefined {
+  return versions['bun'] === undefined ? undefined : execPath
 }
 
 function defaultNode(env: Record<string, string | undefined>): string | undefined {

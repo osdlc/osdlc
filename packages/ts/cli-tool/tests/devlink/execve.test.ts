@@ -12,7 +12,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 import { captureIo, type CliContext } from '../../src/index.ts'
-import { execSelection } from '../../src/devlink/exec.ts'
+import { execSelection, runningBun } from '../../src/devlink/exec.ts'
 import { devlinkHook } from '../../src/devlink/hook.ts'
 import type { Selected } from '../../src/devlink/resolve.ts'
 import { SPEC, sandbox, seedCheckout, type Sandbox } from './support.ts'
@@ -97,7 +97,9 @@ describe('execSelection with execve', () => {
       node: '/no/node',
       announce: (line) => lines.push(line),
       execve: () => {
-        throw new Error("ENOENT, No such file or directory '/no/node'")
+        throw Object.assign(new Error("ENOENT, No such file or directory '/no/node'"), {
+          code: 'ENOENT',
+        })
       },
     })
     expect(code).toBe(1)
@@ -105,6 +107,38 @@ describe('execSelection with execve', () => {
       `tooly: the project's copy at ${projectSel.checkout} could not start /no/node ` +
         `(ENOENT, No such file or directory '/no/node'). Set TOOLY_PROJECT=0 to use this install.`,
     ])
+  })
+
+  test('an execve that fails for another reason falls back to a spawn', () => {
+    const entry = join(sb.root, 'exit7.js')
+    writeFileSync(entry, 'process.exit(7)\n')
+    const tried: string[] = []
+    const lines: string[] = []
+    const code = execSelection(SPEC, { ...projectSel, entry }, [], {
+      env: { TOOLY_QUIET: '1', PATH: process.env['PATH'] },
+      node: process.execPath,
+      announce: (line) => lines.push(line),
+      execve: (file) => {
+        tried.push(file)
+        throw new Error('execve is not what it was')
+      },
+    })
+    expect(tried).toEqual([process.execPath])
+    expect(code).toBe(7)
+    expect(lines).toEqual([])
+  })
+})
+
+describe('runningBun', () => {
+  test('is this binary under Bun, so a proto shim on PATH is never asked to start bun', () => {
+    expect(runningBun({ bun: '1.3.0', node: '24.3.0' }, '/home/u/.proto/tools/bun/1.3.0/bun')).toBe(
+      '/home/u/.proto/tools/bun/1.3.0/bun',
+    )
+  })
+
+  test('is undefined under Node and Deno', () => {
+    expect(runningBun({ node: '24.3.0' }, '/usr/bin/node')).toBeUndefined()
+    expect(runningBun({ deno: '2.5.0' }, '/usr/bin/deno')).toBeUndefined()
   })
 })
 
