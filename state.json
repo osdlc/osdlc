@@ -49,9 +49,9 @@
       "line": 267,
       "title": "README host section does not mention holdFreedBranches",
       "comment": "https://github.com/osdlc/osdlc/pull/600#pullrequestreview-5727270422",
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "364799d21d816e6024f761717a960460839c7d81"
     }
   ]
 }
