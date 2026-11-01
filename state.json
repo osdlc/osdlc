@@ -24,9 +24,9 @@
       "line": 21,
       "title": "A checkout with no dependencies and no node_modules is refused",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "67eaa7cab76616c3f1f7b5288ddb5b7bbcd9b29f"
     }
   ]
 }
