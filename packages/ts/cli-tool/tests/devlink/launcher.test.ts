@@ -267,15 +267,24 @@ describe('bash launcher agrees with resolve()', () => {
     })
   })
 
-  test('a checkout with a package.json but no node_modules fails with a hint', () => {
+  test('a checkout with dependencies but no node_modules fails with a hint', () => {
     const a = checkoutWithLauncher(join(sb.root, 'a'))
     const b = seedCheckout(join(sb.root, 'b'))
-    writeFileSync(join(b, 'package.json'), '{}\n')
+    writeFileSync(join(b, 'package.json'), '{"dependencies":{"left":"1"}}\n')
     const r = run(join(a, SPEC.launcher), join(b, 'src'))
     expect(r.code).toBe(1)
     expect(r.out).toBe('')
     expect(r.err).toBe(`tooly: ${b} has no node_modules. Run 'bun install' there.`)
-    mkdirSync(join(b, 'node_modules'))
+    mkdirSync(join(b, 'node_modules', 'left'), { recursive: true })
+    expect(run(join(a, SPEC.launcher), join(b, 'src')).out).toBe(
+      `${BUN_RUN} ${b}/src/cli.ts arg1 arg two`,
+    )
+  })
+
+  test('a checkout with no dependencies needs no node_modules', () => {
+    const a = checkoutWithLauncher(join(sb.root, 'a'))
+    const b = seedCheckout(join(sb.root, 'b'))
+    writeFileSync(join(b, 'package.json'), '{"bin":{"tooly":"src/cli.ts"}}\n')
     expect(run(join(a, SPEC.launcher), join(b, 'src')).out).toBe(
       `${BUN_RUN} ${b}/src/cli.ts arg1 arg two`,
     )
@@ -293,7 +302,7 @@ describe('bash launcher agrees with resolve()', () => {
     expect(r.code).toBe(1)
     expect(r.out).toBe('')
     expect(r.err).toBe(`tooly: ${b} is missing package '@scope/gone'. Run 'bun install' there.`)
-    // Installing it (anywhere up to the checkout root) clears the hint; devDependencies are not checked.
+    // Installing it (in any node_modules at or above the checkout) clears the hint; devDependencies are not checked.
     mkdirSync(join(b, 'node_modules', '@scope', 'gone'), { recursive: true })
     const ok = run(join(a, SPEC.launcher), join(b, 'src'))
     expect(ok.code).toBe(0)
@@ -361,6 +370,17 @@ describe('bash launcher agrees with resolve()', () => {
     expect(ok.code).toBe(0)
     expect(ok.err).toBe('')
     expect(ok.out).toBe(`${BUN_RUN} ${b}/src/cli.ts arg1 arg two`)
+  })
+
+  test('a dependency hoisted above the checkout counts, as bun finds it there', () => {
+    const a = checkoutWithLauncher(join(sb.root, 'a'))
+    const b = seedCheckout(join(sb.root, 'ws', 'b'))
+    writeFileSync(join(b, 'package.json'), '{\n  "dependencies": {\n    "hoisted": "1"\n  }\n}\n')
+    mkdirSync(join(sb.root, 'ws', 'node_modules', 'hoisted'), { recursive: true })
+    const r = run(join(a, SPEC.launcher), join(b, 'src'))
+    expect(r.code).toBe(0)
+    expect(r.err).toBe('')
+    expect(r.out).toBe(`${BUN_RUN} ${b}/src/cli.ts arg1 arg two`)
   })
 
   test('a nested dependency is satisfied from an intermediate node_modules, not the root', () => {

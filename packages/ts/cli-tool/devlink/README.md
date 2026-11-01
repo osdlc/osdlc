@@ -152,18 +152,28 @@ code. Otherwise it sets `<NAME>_LAUNCH_LAYER` to the winning layer, as the bash
 launcher does, and runs `bun --no-env-file --config=<null device> run
 <entry>` (or a project copy's bin under node). On POSIX it replaces the
 process with `process.execve`, as the bash launcher's `exec` does, so signals
-and the exit status belong to the program that runs. On Windows, and on a Node
-without `execve`, it spawns with inherited stdio and returns the exit code.
+and the exit status belong to the program that runs. On Windows, on a Node
+without `execve`, and when `execve` fails for a reason other than `ENOENT` or
+`EACCES`, it spawns with inherited stdio and returns the exit code.
 This is the one place the package starts a process. The two flags
 keep Bun from reading `.env*` and `bunfig.toml` in the cwd, which is often a
 repository the user does not control: a `.env` would set the tool's
 environment, and a `bunfig.toml` `preload` would run that repository's code
 first. The bash launcher passes the same flags. A checkout's own
-`bunfig.toml` is not read either. `bun` itself is looked up on the absolute
-`PATH` entries only, so a `bun` the cwd's repository ships is never run
+`bunfig.toml` is not read either. Under Bun the `bun` is the one already
+running (`process.execPath`), because the first `bun` on `PATH` can be a
+proto shim that refuses to start bun from inside bun. Otherwise `bun` is
+looked up on the absolute `PATH` entries only, so a `bun` the cwd's repository ships is never run
 through a relative entry or, on Windows, the current folder. With none
 found, `execSelection` says so and returns 1. Pass `{ bun }` to name the
 binary yourself.
+
+`devlinkHook` also refuses a checkout chosen by the env, cwd or link layer
+whose dependencies are not installed, as the bash launcher's `need_deps` does,
+so a fresh clone says `<name>: <checkout> has no node_modules. Run 'bun
+install' there.` (or names the missing package) and exits 1, instead of
+failing inside the checkout's code. `missingDependency(checkout, entry)` is
+that check, for a launcher written by hand.
 
 A bash launcher is for a tool whose canonical install is a compiled binary or
 built JavaScript, so the choice must be made before any runtime exists.

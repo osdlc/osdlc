@@ -28,17 +28,19 @@ flowchart TD
   guard -- "yes: a copy started me" --> self1["run this copy's main"]
   guard -- no --> env{"TOOL_HOME names a checkout?"}
   env -- yes --> ownE{"is it this checkout?"}
-  ownE -- no --> bun1["hand off: checkout source under bun"]
+  ownE -- no --> deps{"is the checkout's node_modules complete?"}
+  deps -- yes --> bun["hand off: checkout source under bun"]
+  deps -- no --> refuse["print: run 'bun install' there; exit 1"]
   ownE -- yes --> self2["run this copy's main"]
   env -- no --> sup{"a suppressor is set?"}
   sup -- yes --> self3["run this copy's main"]
   sup -- no --> cwd{"cwdLayer on and a checkout is above the cwd?"}
   cwd -- yes --> ownC{"is it this checkout?"}
-  ownC -- no --> bun2["hand off: checkout source under bun"]
+  ownC -- no --> deps
   ownC -- yes --> self2
   cwd -- no --> link{"tool dev link names a checkout?"}
   link -- yes --> ownL{"is it this checkout?"}
-  ownL -- no --> bun3["hand off: checkout source under bun"]
+  ownL -- no --> deps
   ownL -- yes --> self2
   link -- no --> proj{"packageName set, project layer on, and node_modules has the package with a bin for this tool?"}
   proj -- yes --> ownP{"is it the running copy, by real path?"}
@@ -56,9 +58,79 @@ Notes on the diagram:
 - "Is it this checkout" and "is it the running copy" stop a copy from handing
   off to itself. A project's `node_modules` entry can be a workspace symlink to
   the very checkout that is running; that counts as the running copy too.
+- A checkout runs from source, so before handing off the hook checks that
+  its dependencies are installed (see step 5 below). A project copy is not
+  checked: it is an install, which its package manager completed.
 - `tool dev …` never hands off and never looks at the project: it changes
   your own link, wherever you stand. `--version` and `--where` do hand off, so
   they describe the copy that would really run in that directory.
+
+## One run, step by step
+
+What happens between typing `tool build` and the shell getting its exit code
+back, in order. Each step either finishes the run or passes to the next.
+
+1. **The bin starts.** The `#!` line of the installed bin (or the
+   checkout's entry, or `node path/to/bin`) starts a runtime, and the bin
+   calls `runMain(main, { name, version, devlink: devlinkHook(spec) })`.
+2. **runMain asks the hook first.** Nothing of `main` has run yet, not even
+   argument parsing.
+3. **`dev …` is answered here.** When the first word is `dev`, the hook runs
+   `tool dev link`, `off`, `status` and the rest itself, and the run ends with
+   their exit code. This never hands off.
+4. **Was this process handed off to?** When `TOOL_LAUNCH_LAYER` is set, a
+   copy before this one already chose this copy. The hook deletes the
+   variable, remembers the layer for `--where`, and goes to step 7. Under
+   Deno the hook also goes to step 7, as `local`.
+5. **The layers, in order.** The first one that matches wins:
+   - **env**: `TOOL_HOME` is an absolute path to a checkout (a folder with
+     the spec's `marker` file).
+   - **cwd**, only when the spec sets `cwdLayer`: a checkout of this tool is
+     at or above the working directory.
+   - **link**: `tool dev link` wrote a checkout path to the link file.
+   - **project**, only when the spec sets `packageName`: a `node_modules`
+     above the working directory holds that package with a bin for this tool.
+   - **local**: none of the above. When the project's `package.json` lists
+     the package but it is not installed, the hook prints a one-line hint.
+
+   A suppressor turns off cwd, link and project. A layer that names the copy
+   already running counts as local. For env, cwd and link the hook then
+   checks the checkout's `node_modules`, as the bash launcher does: when a
+   package listed in `dependencies` (from the entry's folder up to the
+   checkout) is not in any `node_modules` at or above it, as bun looks, it
+   prints
+   `tool: <checkout> has no node_modules. Run 'bun install' there.` or
+   `tool: <checkout> is missing package '<name>'. Run 'bun install' there.`
+   and the run ends with exit 1. The first line is for a checkout with no
+   `node_modules` at all. A checkout with no dependencies needs none.
+6. **Hand off, or not.** For local the hook returns and runMain goes on to
+   step 7. Otherwise:
+   - The hook prints `tool: running <file> (<why>)` to stderr. For the
+     project layer it prints only when the versions differ, and
+     `TOOL_QUIET=1` silences it.
+   - It sets `TOOL_LAUNCH_LAYER` to the layer's name in the environment of the
+     copy it starts.
+   - A checkout runs under bun: the bun that is already running when this
+     process is bun, else the first `bun` on an absolute `PATH` entry. Reusing
+     the running bun matters because the first `bun` on `PATH` can be a proto
+     shim, and a proto shim refuses to start bun from inside bun ("re-entered
+     proto … would loop"). A project copy runs under node, or bun when its
+     `#!` line says bun.
+   - On macOS and Linux it calls `process.execve`: this process becomes the
+     other copy, with the same pid. On Windows, on Node before 22.15, or when
+     `execve` fails for a reason other than a missing or unrunnable file, it
+     spawns the copy, waits, and exits with its code. A missing or unrunnable
+     runtime prints `could not start …` and exits 1.
+
+   The copy that starts begins again at step 1, and at step 4 it finds
+   `TOOL_LAUNCH_LAYER` set, so it never hands off a second time.
+7. **`--version` and `--where`.** runMain answers these now, in the copy that
+   really runs, and exits 0. `--where` names the layer found at step 4 or 5.
+8. **main runs.** runMain parses the arguments and calls `main`.
+9. **Exit code.** main's return value, or the exit code for a thrown
+   error, becomes the process's exit code. After an `execve` hand-off this is
+   the code the shell sees; after a spawn hand-off, the first process exits
+   with it.
 
 ## One hand-off
 
@@ -123,6 +195,8 @@ project's `node_modules` copy, which is itself.
 - **The runtime for a project copy** is `process.execPath` when running under
   Node, so the Node version that started the tool carries over. Under Bun it
   is the `node` found on the absolute entries of `PATH`.
+- **The runtime for a checkout** is bun: `process.execPath` when running
+  under Bun, else the `bun` found on the absolute entries of `PATH`.
 - **Deno** is not supported for hand-offs. When `process.versions.deno` is set,
   the hook runs the copy that started, as local, and prints nothing.
 
@@ -196,22 +270,72 @@ chosen by project install (/work/app/node_modules/@acme/tool)
 
 `tool --where --json` prints the same facts as one JSON object.
 
-## The bash launcher (sdlc)
+## A tool with its own entry script
 
-A tool can instead commit a bash launcher rendered by `renderLauncher(spec)`.
-sdlc does this. The launcher decides in bash, before any JavaScript runtime
-starts, and then `exec`s bun or node, so like the hook's `execve` it replaces
-itself and signals and exit codes are exact. Its order is the same for the layers it
-has: env, cwd (when on), link, local. The differences:
+Most tools need nothing more than the bin's `#!` line: it names node (or
+bun), and the hook does the rest. A tool needs its own entry script when the
+`#!` line cannot pick the runtime, for example:
 
-- **No project layer.** Finding the package and its `bin` means reading
-  `package.json`, and the launcher does not parse JSON. For the same reason
-  `renderLauncher` refuses a spec that sets `packageName`.
-- **The `local` case** runs the launcher's own checkout: its built entry under
-  node when one is present and the checkout is not a development checkout,
-  else its source under bun. It exports `TOOL_LAUNCH_LAYER=local`.
-- **The `running …` line** now follows the same rule as the hook: it prints
-  only on a hand-off to another checkout, never for local.
+- its source uses something only one runtime or a build step understands,
+  such as path aliases that bun resolves and node does not, so a checkout
+  must run under bun and an install must run its built file under node;
+- a plugin harness calls a fixed path, such as
+  `${CLAUDE_PLUGIN_ROOT}/cli/tool`, without naming a runtime.
+
+There are two ways to write one:
+
+- **A hand-written runtime picker, with the layers in process.** A small
+  bash script chooses the runtime and starts the tool's entry, and that entry
+  calls `runMain` with `devlinkHook(spec)` as every other tool does. The
+  layers, the deps check, `--where` and the hand-off are the hook's, so they
+  match the other tools. sdlc moved to this in
+  [sksizer/dev#3901](https://github.com/sksizer/dev/pull/3901): its picker is
+  `cli/sdlc`, which runs the source under bun in a checkout and the built
+  `sdlc.js` under node in a plugin pack. How sdlc launches, and what it does
+  beyond cli-tool, is in
+  [sdlc's launch guide](https://github.com/sksizer/dev/blob/main/docs/guide/launch.md).
+- **A rendered bash launcher.** `renderLauncher(spec)` still writes a bash
+  script that runs the layers itself, before any runtime starts, and then
+  `exec`s bun or node. It has the env, cwd (when on), link and local layers,
+  checks `node_modules` the same way, and exports `TOOL_LAUNCH_LAYER`. It has
+  no project layer, because finding a package's bin means reading
+  `package.json`, which the launcher does not parse; `renderLauncher` refuses
+  a spec that sets `packageName`. For `local` it runs the launcher's own
+  checkout: the built entry under node when one is present and the checkout
+  is not a development checkout, else the source under bun.
+  `launcherDrift` tells a committed launcher that no longer matches its spec.
+
+## Adopting devlink in a new CLI
+
+1. **Write the spec**, once, in its own module (`src/devlink.ts`), with
+   `validateSpec`:
+   - `name`: the command you type, which also gives the variable stem
+     (`TOOL_HOME` and the rest).
+   - `marker`: a file, relative to the checkout root, that only this tool's
+     checkout has (usually its source entry, `src/cli.ts`).
+   - `packageName`: the npm name; it turns the project layer on.
+   - `entry`: the source file a hand-off runs under bun, relative to the
+     checkout (defaults to `marker`).
+   - `launcher`: the bin, relative to the checkout.
+   - `vendorDirs`: where the link file and history live, and the variables
+     that move them (`{ vendor, envVars: envVars('TOOL') }`).
+   - `aliases`, if the tool has other command names.
+   - `suppressors`: variables a host program sets (such as a plugin root) so
+     that your link never changes the code it runs.
+   - `cwdLayer`: leave it off unless working inside the checkout without a
+     link is a daily need.
+2. **Call runMain with the hook** in the bin's module:
+   `await runMain(main, { name, version: VERSION, devlink: devlinkHook(SPEC) })`.
+3. **Stamp the version.** Add `"stamp-version": "cli-tool-stamp-version"`,
+   run it first in `build`, and commit `src/version.generated.ts` (see the
+   README's "The version").
+4. **Write the tests:**
+   - the package folder is a checkout of the tool (`isCheckout`) and its
+     parent folder is not, so the `marker` is right;
+   - `tool --version` prints `tool <version>` from package.json;
+   - `tool dev status` runs and no test hands off: give each test its own
+     `HOME`, and unset `TOOL_HOME`, so a link you set while developing never
+     runs in place of the code under test.
 
 ## How other tools do it
 
