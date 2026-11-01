@@ -257,6 +257,20 @@ describe('devlinkHook: the project layer', () => {
     })
   })
 
+  test('a project copy is not checked for its dependencies: its package manager installed them', () => {
+    // Above the install, not inside it, so the checkout check would refuse it.
+    const p = project('proj', { dependencies: { left: '1' } })
+    const calls: string[] = []
+    const hook = devlinkHook(PSPEC, {
+      script: join(sb.root, 'elsewhere', 'tooly.js'),
+      execve: (file) => calls.push(file),
+    })
+    const io = captureIo()
+    expect(hook([], ctx(p.root, { TOOLY_QUIET: '1', PATH: '' }, io))).toBe(0)
+    expect(io.err).toBe('')
+    expect(calls).toHaveLength(1)
+  })
+
   test('a project copy started without the env guard (an older release) still stops: the path check finds itself', () => {
     const p = project()
     const hook = devlinkHook(PSPEC, { script: p.bin })

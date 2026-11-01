@@ -62,12 +62,11 @@ describe('missingDependency', () => {
     expect(missingDependency(co, join(pkg, 'src', 'cli.ts'))).toBeNull()
   })
 
-  test('does not look above the checkout', () => {
+  test('finds a dependency hoisted above the checkout, as bun does for a workspace member', () => {
     installed(sb.root, 'a')
     const co = seedCheckout(join(sb.root, 'co'))
     writePackage(co, { a: '1' })
-    mkdirSync(join(co, 'node_modules'))
-    expect(missingDependency(co, join(co, 'src/cli.ts'))).toBe('a')
+    expect(missingDependency(co, join(co, 'src/cli.ts'))).toBeNull()
   })
 
   test('a checkout with no package.json needs nothing', () => {
@@ -77,14 +76,14 @@ describe('missingDependency', () => {
 })
 
 describe('devlinkHook refuses a checkout without its dependencies', () => {
-  function runHook(env: Record<string, string>) {
+  function runHook(env: Record<string, string>, cwd = sb.root) {
     const calls: string[] = []
     const hook = devlinkHook(SPEC, {
       script: join(sb.root, 'elsewhere', 'tooly.js'),
       execve: (file) => calls.push(file),
     })
     const io = captureIo()
-    const ctx: CliContext = { io, cwd: sb.root, env: { HOME: sb.home, ...env } }
+    const ctx: CliContext = { io, cwd, env: { HOME: sb.home, ...env } }
     return { code: hook([], ctx), calls, err: io.err }
   }
 
@@ -104,6 +103,14 @@ describe('devlinkHook refuses a checkout without its dependencies', () => {
     const r = runHook({ TOOLY_HOME: co, TOOLY_QUIET: '1' })
     expect(r.code).toBe(1)
     expect(r.err).toBe(`tooly: ${co} is missing package 'a'. Run 'bun install' there.\n`)
+  })
+
+  test('a checkout found by the cwd layer is checked too', () => {
+    const co = seedCheckout(join(sb.root, 'co'))
+    writePackage(co, { a: '1' })
+    const r = runHook({ TOOLY_QUIET: '1' }, co)
+    expect(r.code).toBe(1)
+    expect(r.err).toBe(`tooly: ${co} has no node_modules. Run 'bun install' there.\n`)
   })
 
   test('a complete checkout hands off', () => {
