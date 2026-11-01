@@ -187,4 +187,7 @@ Each has a recommendation; none is decided yet.
 - [sksizer/dev#3901](https://github.com/sksizer/dev/pull/3901): cli-tool 0.14; sdlc's layers
   in-process; `FAMILY_ROOT` for the vault apps.
 - [#592](https://github.com/osdlc/osdlc/pull/592): the running bun, the dependency check in the
-  hook, the `execve` fallback, and this item and the sdlc launch guide moved here from sksizer/dev.
+  hook, the `execve` fallback.
+- This item and the sdlc launch guide moved here from sksizer/dev
+  ([sksizer/dev#3902](https://github.com/sksizer/dev/pull/3902),
+  [sksizer/dev#3903](https://github.com/sksizer/dev/pull/3903)).
