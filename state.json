@@ -24,9 +24,9 @@
       "line": 9,
       "title": "\"the paths below are in that repository\" also covers ~/, ${CLAUDE_PLUGIN_ROOT} and npm-package paths",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "d9938b7b991566efbb80c5c0b0baf908d02c5cb1"
     }
   ]
 }
