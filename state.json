@@ -24,9 +24,9 @@
       "line": 245,
       "title": "items passed in opts.swept skip holdFreedBranches",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "364799d21d816e6024f761717a960460839c7d81"
     },
     {
       "id": "r1-3",
