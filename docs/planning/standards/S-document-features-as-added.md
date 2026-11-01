@@ -1,4 +1,4 @@
-# S-0003: Document a feature when it is added
+# S-document-features-as-added: Document a feature when it is added
 
 ## Purpose
 
@@ -25,7 +25,7 @@ where a library documents each feature.
   page under the library's `docs/guide/`. The site publishes those pages: in
   the library's sidebar group, or in its own section for an app such as
   `wayfinder`. A TypeScript library has no `docs/reference/`;
-  [S-0001](./S-0001-package-shape-ts.md) allows only `docs/planning/` and
+  [S-package-shape-ts](./S-package-shape-ts.md) allows only `docs/planning/` and
   `docs/guide/`.
 - **Internal changes need no docs.** A refactor, a fix that restores
   documented behaviour, or a change to private code with no effect a user can
