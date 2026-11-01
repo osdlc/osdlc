@@ -1,5 +1,12 @@
 # @osdlc/pr-update
 
+## 0.9.5
+
+### Patch Changes
+
+- Updated dependencies [41439a6]
+  - @osdlc/cli-tool@0.16.0
+
 ## 0.9.4
 
 ### Patch Changes

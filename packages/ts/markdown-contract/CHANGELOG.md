@@ -1,5 +1,12 @@
 # @osdlc/markdown-contract
 
+## 0.7.4
+
+### Patch Changes
+
+- Updated dependencies [41439a6]
+  - @osdlc/cli-tool@0.16.0
+
 ## 0.7.3
 
 ### Patch Changes
