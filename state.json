@@ -3,7 +3,7 @@
   "pr": 592,
   "head": "67eaa7cab76616c3f1f7b5288ddb5b7bbcd9b29f",
   "base": "cde983c9896095f9b0a4ac0593ee88321b173ed6",
-  "round": 2,
+  "round": 3,
   "claim": {
     "owner": "Mac.local:claude-q8m4vz",
     "at": "2026-11-01T01:37:25.954Z"
@@ -30,6 +30,28 @@
       "status": "fixed",
       "reason": null,
       "fixedIn": "67eaa7cab76616c3f1f7b5288ddb5b7bbcd9b29f"
+    },
+    {
+      "id": "r3-1",
+      "round": 3,
+      "path": "packages/ts/cli-tool/src/devlink/deps.ts",
+      "line": 54,
+      "title": "A workspace-member checkout with hoisted dependencies is refused for good",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r3-2",
+      "round": 3,
+      "path": "packages/ts/cli-tool/src/devlink/hook.ts",
+      "line": 86,
+      "title": "No test pins that the project layer skips the deps check",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
     }
   ]
 }
