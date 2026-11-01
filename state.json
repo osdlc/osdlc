@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 595,
-  "head": "d1ee47b44567095b79f3cdeeaf9619feb7763dea",
+  "head": "6d5fe7f5c3e975a696d472dbd8f9f69c92e268f2",
   "base": "5cba9183624e64ee13ff8d2da800738cdf986468",
-  "round": 1,
+  "round": 2,
   "claim": {
     "owner": "KellyMBP.local:claude-q7m2xd",
     "at": "2026-11-01T03:26:15.286Z"
@@ -19,6 +19,17 @@
       "status": "fixed",
       "reason": null,
       "fixedIn": "6d5fe7f5c3e975a696d472dbd8f9f69c92e268f2"
+    },
+    {
+      "id": "r2-1",
+      "round": 2,
+      "path": "packages/ts/cli-tool/docs/guide/sdlc-launch.md",
+      "line": 9,
+      "title": "\"the paths below are in that repository\" also covers ~/, ${CLAUDE_PLUGIN_ROOT} and npm-package paths",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
     }
   ]
 }
