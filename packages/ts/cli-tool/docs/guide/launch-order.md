@@ -95,13 +95,13 @@ back, in order. Each step either finishes the run or passes to the next.
 
    A suppressor turns off cwd, link and project. A layer that names the copy
    already running counts as local. For env, cwd and link the hook then
-   checks the checkout's `node_modules`, as the bash launcher does: when the
-   checkout has a `package.json` and no `node_modules`, or a package listed
-   in `dependencies` (from the entry's folder up to the checkout) is not
-   installed, it prints
+   checks the checkout's `node_modules`, as the bash launcher does: when a
+   package listed in `dependencies` (from the entry's folder up to the
+   checkout) is not installed, it prints
    `tool: <checkout> has no node_modules. Run 'bun install' there.` or
    `tool: <checkout> is missing package '<name>'. Run 'bun install' there.`
-   and the run ends with exit 1.
+   and the run ends with exit 1. The first line is for a checkout with no
+   `node_modules` at all. A checkout with no dependencies needs none.
 6. **Hand off, or not.** For local the hook returns and runMain goes on to
    step 7. Otherwise:
    - The hook prints `tool: running <file> (<why>)` to stderr. For the

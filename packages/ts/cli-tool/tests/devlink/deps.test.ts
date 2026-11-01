@@ -29,10 +29,16 @@ function installed(dir: string, dep: string): void {
 }
 
 describe('missingDependency', () => {
-  test('a checkout with a package.json and no node_modules', () => {
+  test('a checkout with dependencies and no node_modules', () => {
+    const co = seedCheckout(join(sb.root, 'co'))
+    writePackage(co, { a: '1' })
+    expect(missingDependency(co, join(co, 'src/cli.ts'))).toBe('node_modules')
+  })
+
+  test('a checkout with no dependencies needs no node_modules, as bun creates none', () => {
     const co = seedCheckout(join(sb.root, 'co'))
     writePackage(co, {})
-    expect(missingDependency(co, join(co, 'src/cli.ts'))).toBe('node_modules')
+    expect(missingDependency(co, join(co, 'src/cli.ts'))).toBeNull()
   })
 
   test('names the first dependency with no node_modules entry', () => {

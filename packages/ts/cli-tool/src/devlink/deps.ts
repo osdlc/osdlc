@@ -10,20 +10,20 @@ import { dirname, join, resolve } from 'node:path'
 
 /**
  * The first dependency of `entry` that `checkout` has not installed, or null
- * when all are. `'node_modules'` means the checkout has a `package.json` and
- * no `node_modules` at all. Otherwise it is a name from the `dependencies` of
- * a `package.json` between the entry's directory and the checkout, with no
- * `node_modules/<name>` at or above that `package.json`, up to the checkout.
+ * when all are. It is a name from the `dependencies` of a `package.json`
+ * between the entry's directory and the checkout, with no
+ * `node_modules/<name>` at or above that `package.json`, up to the checkout;
+ * or `'node_modules'` when one is missing and the checkout has no
+ * `node_modules` at all. A checkout with no dependencies needs no
+ * `node_modules`, and bun creates none for it.
  * @experimental
  */
 export function missingDependency(checkout: string, entry: string): string | null {
   const root = resolve(checkout)
-  if (existsSync(join(root, 'package.json')) && !existsSync(join(root, 'node_modules'))) {
-    return 'node_modules'
-  }
   for (let pkg = dirname(resolve(entry)); ; pkg = dirname(pkg)) {
     for (const dep of dependencies(join(pkg, 'package.json'))) {
-      if (!installedAbove(dep, pkg, root)) return dep
+      if (installedAbove(dep, pkg, root)) continue
+      return existsSync(join(root, 'node_modules')) ? dep : 'node_modules'
     }
     if (pkg === root || dirname(pkg) === pkg) return null
   }
