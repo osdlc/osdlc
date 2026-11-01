@@ -42,7 +42,8 @@ layer, the model is four lines. The full reference, with diagrams and how other 
 
 ## What exists today
 
-**cli-tool devlink (osdlc, 0.14).** A hook that `runMain` calls before `main`.
+**cli-tool devlink (osdlc, 0.14).** A hook that `runMain` calls before `main`. This section and the
+next describe 0.14; 0.15 adds decisions 1, 2 and 10.
 
 | Order | Layer | On by default | Runs |
 |---|---|---|---|
@@ -102,15 +103,15 @@ can't be redirected by a link or a project copy. `family` does the same
 
 ## Decisions to make
 
-Each has a recommendation; none is decided yet.
+Each has a recommendation. 1, 2 and 10 are done, in cli-tool 0.15; the rest are open.
 
 1. **Use the running bun for a hand-off, in cli-tool.** Any tool run under bun can hit the proto
    shim loop. Done in [#592](https://github.com/osdlc/osdlc/pull/592); sdlc's copy goes when it
-   takes that release.
+   moves to cli-tool 0.15.
 2. **Refuse a checkout that is missing `node_modules`, in the hook.** cli-tool's bash launcher
    template already had this check (`need_deps`), but the in-process hook did not. Done in
    [#592](https://github.com/osdlc/osdlc/pull/592), which also exports `missingDependency` and
-   `installDir`; sdlc's copy goes when it takes that release.
+   `installDir`; sdlc's copy goes when it moves to cli-tool 0.15.
 3. **sdlc's own `dev` commands.** sdlc answers `dev …` with its own ops, not cli-tool's
    `runDevCli`. Options:
    - A: switch sdlc to `runDevCli`, after comparing the two command sets (verbs, output, link file).
@@ -169,7 +170,7 @@ Each has a recommendation; none is decided yet.
 
 1. Done: [#592](https://github.com/osdlc/osdlc/pull/592) has decisions 1, 2 and 10, and rewrote
    `launch-order.md`'s section on sdlc as "A tool with its own entry script".
-2. A dev PR: take that cli-tool release, delete sdlc's copies of 1 and 2, decide 3, and add 9 (lazy
+2. A dev PR: move to cli-tool 0.15, delete sdlc's copies of 1 and 2, decide 3, and add 9 (lazy
    import).
 3. A cli-tool PR for 4, 5 and 6 once decided.
 4. With publishing sdlc: decisions 7 and 8.
