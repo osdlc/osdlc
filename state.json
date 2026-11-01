@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "pr": 592,
-  "head": "5b7abc7a2c3750433242e3f97f4f5989a89d8bab",
+  "head": "67eaa7cab76616c3f1f7b5288ddb5b7bbcd9b29f",
   "base": "cde983c9896095f9b0a4ac0593ee88321b173ed6",
-  "round": 1,
+  "round": 2,
   "claim": {
     "owner": "Mac.local:claude-r7d2kx",
     "at": "2026-11-01T01:28:03.093Z"
