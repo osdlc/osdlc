@@ -257,7 +257,7 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "frontmatter-lossless"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "serde_json",
 ]
@@ -440,7 +440,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-link"
-version = "0.5.4"
+version = "0.5.5"
 dependencies = [
  "frontmatter-lossless",
  "serde_json",
@@ -450,7 +450,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-relink"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "etag-write",
  "frontmatter-lossless",
