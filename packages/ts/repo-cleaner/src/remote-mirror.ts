@@ -151,7 +151,7 @@ export interface CachedMirror {
   bytes: number
   /** A clone left behind by a run that stopped before it finished. */
   partial: boolean
-  /** Null for a usable mirror; otherwise what {@link mirrorProblem} found. Null for a partial clone. */
+  /** What {@link mirrorProblem} found; null for a usable mirror and for a partial clone. */
   problem: string | null
 }
 

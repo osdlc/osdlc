@@ -125,9 +125,9 @@ export interface AskYesNoOptions {
    * when something was thrown away.
    */
   discardTypeAhead?: boolean
-  /** Runs `stty` for {@link discardTypeAhead}. Defaults to the real `stty`. */
+  /** For tests: runs `stty` for {@link discardTypeAhead}. Defaults to the real `stty`. */
   stty?: Stty
-  /** Whether `fd` is a terminal. Defaults to `isatty(fd)`. */
+  /** For tests: whether `fd` is a terminal. Defaults to `isatty(fd)`. */
   isTerminal?: boolean
 }
 

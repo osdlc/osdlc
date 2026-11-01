@@ -930,7 +930,8 @@ function runCache(argv: readonly string[], ctx: CliContext): number {
     return cacheList(ctx, dir, json)
   }
   if (verb === 'remove') {
-    if (v.all === urls.length > 0) {
+    const hasUrls = urls.length > 0
+    if (hasUrls === v.all) {
       return usageError(ctx, name, 'remove takes URLs or --all, not both and not neither')
     }
     return cacheRemove(ctx, name, dir, v.all ? null : urls, json)
@@ -956,6 +957,30 @@ function cacheList(ctx: CliContext, dir: string, json: boolean): number {
 }
 
 /**
+ * The clones to remove: those of `urls`, or every entry when `urls` is null,
+ * each with the URL to name it by (credentials removed), and the URLs that
+ * have none.
+ */
+function cacheTargets(
+  dir: string,
+  urls: readonly string[] | null,
+): { targets: Array<{ dir: string; label: string }>; missing: string[] } {
+  if (urls === null) {
+    const targets = listMirrors(dir).map((m) => ({ dir: m.dir, label: m.url ?? '(no origin)' }))
+    return { targets, missing: [] }
+  }
+  const targets: Array<{ dir: string; label: string }> = []
+  const missing: string[] = []
+  for (const url of urls) {
+    const shown = redactUrl(url)
+    const found = cachedMirrorOf(url, dir)
+    if (found === null) missing.push(shown)
+    else targets.push({ dir: found, label: shown })
+  }
+  return { targets, missing }
+}
+
+/**
  * Remove the clones of `urls`, or every entry when `urls` is null. A URL with
  * no clone, or a clone that cannot be removed, is reported and the rest still
  * go; either makes the exit 1.
@@ -967,18 +992,7 @@ function cacheRemove(
   urls: readonly string[] | null,
   json: boolean,
 ): number {
-  const missing: string[] = []
-  const targets: Array<{ dir: string; label: string }> = []
-  if (urls === null) {
-    for (const m of listMirrors(dir)) targets.push({ dir: m.dir, label: m.url ?? '(no origin)' })
-  } else {
-    for (const url of urls) {
-      const shown = redactUrl(url)
-      const found = cachedMirrorOf(url, dir)
-      if (found === null) missing.push(shown)
-      else targets.push({ dir: found, label: shown })
-    }
-  }
+  const { targets, missing } = cacheTargets(dir, urls)
   const removed: string[] = []
   const failed: Array<{ dir: string; error: string }> = []
   for (const t of targets) {
