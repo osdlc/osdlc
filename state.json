@@ -37,7 +37,7 @@
       "path": "packages/ts/cli-tool/src/devlink/deps.ts",
       "line": 54,
       "title": "A workspace-member checkout with hoisted dependencies is refused for good",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/592#discussion_r4434027359",
       "status": "fixed",
       "reason": null,
       "fixedIn": "5423c59096fba73b24a75853eaedfab324365cf2"
@@ -48,7 +48,7 @@
       "path": "packages/ts/cli-tool/src/devlink/hook.ts",
       "line": 86,
       "title": "No test pins that the project layer skips the deps check",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/592#discussion_r4434027360",
       "status": "fixed",
       "reason": null,
       "fixedIn": "5423c59096fba73b24a75853eaedfab324365cf2"
