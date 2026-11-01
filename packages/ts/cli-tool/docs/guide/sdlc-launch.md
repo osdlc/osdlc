@@ -6,8 +6,8 @@ description: How sdlc, a tool with its own entry script, uses devlink, and where
 Every time you type `sdlc`, it first decides which copy of sdlc should run. This page explains how
 it decides, where sdlc differs from the other cli-tool CLIs, and the tasks you will do with it.
 It is the worked example for [A tool with its own entry script](./launch-order.md#a-tool-with-its-own-entry-script).
-sdlc lives in [sksizer/dev](https://github.com/sksizer/dev); paths below such as
-`solutions/ontological/…` and `lib/…` are in that repository, under `solutions/ontological/`.
+sdlc lives in [sksizer/dev](https://github.com/sksizer/dev), and the paths below are in that
+repository. Short ones, such as `lib/…` and `cli/sdlc`, are under `solutions/ontological/`.
 
 ## The short version
 
