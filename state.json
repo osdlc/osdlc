@@ -35,9 +35,9 @@
       "line": null,
       "title": "localDeleteCommand doc says only a --branch sweep proposes a branch checked out in a worktree",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "99d3714e94d1bd03e0b6c5e818117b1bbbab2b67"
     },
     {
       "id": "r1-4",
