@@ -35,9 +35,9 @@
       "line": 260,
       "title": "no test for a dropped worktree row or a worktree demoted to review",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "364799d21d816e6024f761717a960460839c7d81"
     },
     {
       "id": "r1-4",
