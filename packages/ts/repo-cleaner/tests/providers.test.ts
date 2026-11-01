@@ -197,6 +197,48 @@ describe('the GitLab provider', () => {
     expect(fetchPrs(repoWith(GITLAB), gitlabProvider(failing)).size).toBe(0)
   })
 
+  test('a page whose output was cut short is no evidence', () => {
+    const page = JSON.stringify([
+      {
+        iid: 1,
+        state: 'merged',
+        source_branch: 'feat',
+        sha: 'a',
+        target_branch: 'main',
+        source_project_id: 1,
+        target_project_id: 1,
+      },
+    ])
+    const cut = { run: () => ({ exitCode: 0, stdout: page, stderr: '', outputIncomplete: true }) }
+    expect(fetchPrs(repoWith(GITLAB), gitlabProvider(cut)).size).toBe(0)
+  })
+
+  test('a merge request with a mistyped field is skipped', () => {
+    const page = JSON.stringify([
+      {
+        iid: 1,
+        state: 'merged',
+        source_branch: 'feat',
+        sha: 'a',
+        merged_at: 7,
+        target_branch: 'main',
+        source_project_id: 1,
+        target_project_id: 1,
+      },
+      {
+        iid: 2,
+        state: 'merged',
+        source_branch: 'ok',
+        sha: 'b',
+        target_branch: 'main',
+        source_project_id: 1,
+        target_project_id: 1,
+      },
+    ])
+    const glab = { run: () => ({ exitCode: 0, stdout: page, stderr: '' }) }
+    expect([...fetchPrs(repoWith(GITLAB), gitlabProvider(glab)).keys()]).toEqual(['ok'])
+  })
+
   test('the provider is not asked when unauthenticated, absent or a different one', () => {
     const glab = cannedGlab([{ iid: 1, state: 'merged', source_branch: 'x', sha: 'a' }])
     const provider = gitlabProvider(glab)

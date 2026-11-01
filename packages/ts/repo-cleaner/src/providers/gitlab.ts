@@ -7,7 +7,12 @@
  * against the one the sweep measures.
  */
 
-import type { CommandResult, CommandRunner } from '@osdlc/command-seam'
+import {
+  parseJsonResult,
+  runFailed,
+  type CommandResult,
+  type CommandRunner,
+} from '@osdlc/command-seam'
 
 import type { PRInfo } from '../types.ts'
 import { PR_LIMIT } from './github.ts'
@@ -29,18 +34,27 @@ interface MergeRequest {
   state: string
   source_branch: string
   target_branch: string
-  sha: string | null
-  merged_at: string | null
-  web_url: string
-  title: string
+  sha?: string | null
+  merged_at?: string | null
+  web_url?: string
+  title?: string
   source_project_id: number
   target_project_id: number
+}
+
+/** Absent, or of the given type (null counting where `nullable`). */
+function optional(value: unknown, type: 'string', nullable = false): boolean {
+  return value === undefined || (nullable && value === null) || typeof value === type
 }
 
 function isMergeRequest(value: unknown): value is MergeRequest {
   if (typeof value !== 'object' || value === null) return false
   const mr = value as Record<string, unknown>
   return (
+    optional(mr['sha'], 'string', true) &&
+    optional(mr['merged_at'], 'string', true) &&
+    optional(mr['web_url'], 'string') &&
+    optional(mr['title'], 'string') &&
     typeof mr['iid'] === 'number' &&
     typeof mr['state'] === 'string' &&
     typeof mr['source_branch'] === 'string' &&
@@ -63,13 +77,14 @@ export function mergeRequestToPr(mr: MergeRequest): PRInfo | null {
     headRef: mr.source_branch,
     headOid: typeof mr.sha === 'string' && mr.sha !== '' ? mr.sha : null,
     baseRef: mr.target_branch,
-    title: typeof mr.title === 'string' ? mr.title : '',
-    url: typeof mr.web_url === 'string' ? mr.web_url : '',
+    title: mr.title ?? '',
+    url: mr.web_url ?? '',
   }
 }
 
+/** Exited 0 with all its output captured. */
 function succeeded(result: CommandResult): boolean {
-  return result.neverExited !== true && result.exitCode === 0
+  return !runFailed(result)
 }
 
 /**
@@ -106,15 +121,12 @@ export function gitlabProvider(glab: CommandRunner): PrProvider {
           ...hostArgs(target.host),
           `projects/${project}/merge_requests?${query.toString()}`,
         ])
-        // A failed page fails the listing: a missing open MR would read as no MR.
+        // A failed, cut-short or unreadable page fails the listing: a missing
+        // open MR would read as no MR.
         if (!succeeded(result)) return null
-        let rows: unknown
-        try {
-          rows = JSON.parse(result.stdout)
-        } catch {
-          return null
-        }
-        if (!Array.isArray(rows)) return null
+        const listed = parseJsonResult(result)
+        if (!listed.ok || !Array.isArray(listed.value)) return null
+        const rows: unknown[] = listed.value
         for (const row of rows) {
           if (!isMergeRequest(row)) continue
           const pr = mergeRequestToPr(row)
