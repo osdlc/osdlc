@@ -629,6 +629,106 @@ describe('--remote-url', () => {
       readdirSync(cache, { recursive: true }).filter((p) => String(p).includes('partial')),
     ).toEqual([])
   })
+
+  describe('cache', () => {
+    test('list shows each clone with its URL, and remove drops one by URL', () => {
+      const fx = buildFixture()
+      const cache = tempDir()
+      const away = tempDir()
+      expect(remoteRun(['cache'], away, cache).out).toMatch(/^no clones in /)
+      expect(remoteRun(['--remote-url', fx.bare, ...SWEEP], away, cache).code).toBe(0)
+
+      const list = remoteRun(['cache', 'list'], away, cache)
+      expect(list.code).toBe(0)
+      expect(list.out).toContain(fx.bare)
+      expect(list.out).toMatch(/1 clone, [\d.]+ (B|KB|MB), in /)
+      const json = JSON.parse(remoteRun(['cache', '--output', 'json'], away, cache).out) as {
+        mirrors: Array<{ dir: string; url: string; problem: string | null }>
+      }
+      expect(json.mirrors).toHaveLength(1)
+      expect(json.mirrors[0]).toMatchObject({ url: fx.bare, problem: null })
+
+      const removed = remoteRun(['cache', 'remove', fx.bare], away, cache)
+      expect(removed.code).toBe(0)
+      expect(existsSync(json.mirrors[0]!.dir)).toBe(false)
+      const again = remoteRun(['cache', 'remove', fx.bare], away, cache)
+      expect(again.code).toBe(1)
+      expect(again.err).toContain('no clone of')
+    })
+
+    test('remove --all removes every clone, a stopped clone included', () => {
+      const fx = buildFixture()
+      const cache = tempDir()
+      const away = tempDir()
+      expect(remoteRun(['--remote-url', fx.bare, ...SWEEP], away, cache).code).toBe(0)
+      const dir = (
+        JSON.parse(remoteRun(['cache', '--output', 'json'], away, cache).out) as {
+          cache: string
+        }
+      ).cache
+      mkdirSync(join(dir, 'x-123.partial-99'))
+      mkdirSync(join(dir, 'y\x1b[31m-1.partial-98'))
+      const listed = remoteRun(['cache'], away, cache).out
+      expect(listed).toContain('left by a stopped clone')
+      expect(listed).not.toContain('\x1b')
+      const res = remoteRun(['cache', 'remove', '--all'], away, cache)
+      expect(res.code).toBe(0)
+      expect(readdirSync(dir)).toEqual([])
+    })
+
+    test('remove --output json names the URLs with no clone', () => {
+      const cache = tempDir()
+      const away = tempDir()
+      const res = remoteRun(
+        ['cache', 'remove', 'https://u:TOKEN@host.example/a/b.git', '--output', 'json'],
+        away,
+        cache,
+      )
+      expect(res.code).toBe(1)
+      const json = JSON.parse(res.out) as {
+        removed: string[]
+        missing: string[]
+        failed: unknown[]
+      }
+      expect(json).toMatchObject({
+        removed: [],
+        missing: ['https://host.example/a/b.git'],
+        failed: [],
+      })
+      expect(res.out + res.err).not.toContain('TOKEN')
+    })
+
+    test('a clone that cannot be removed is reported, and the rest still go', () => {
+      if (process.platform === 'win32' || process.getuid?.() === 0) return
+      const fx = buildFixture()
+      const cache = tempDir()
+      const away = tempDir()
+      expect(remoteRun(['--remote-url', fx.bare, ...SWEEP], away, cache).code).toBe(0)
+      const dir = (
+        JSON.parse(remoteRun(['cache', '--output', 'json'], away, cache).out) as { cache: string }
+      ).cache
+      const stuck = join(dir, 'z-stuck.partial-97')
+      mkdirSync(join(stuck, 'inner'), { recursive: true })
+      chmodSync(stuck, 0o500)
+      try {
+        const res = remoteRun(['cache', 'remove', '--all'], away, cache)
+        expect(res.code).toBe(1)
+        expect(res.err).toContain('cannot remove')
+        expect(readdirSync(dir)).toEqual(['z-stuck.partial-97'])
+      } finally {
+        chmodSync(stuck, 0o700)
+      }
+    })
+
+    test('remove needs URLs or --all, and list takes neither', () => {
+      const cache = tempDir()
+      const away = tempDir()
+      expect(remoteRun(['cache', 'remove'], away, cache).code).toBe(2)
+      expect(remoteRun(['cache', 'remove', '--all', 'x'], away, cache).code).toBe(2)
+      expect(remoteRun(['cache', 'list', 'x'], away, cache).code).toBe(2)
+      expect(remoteRun(['cache', 'prune'], away, cache).err).toContain('use list or remove')
+    })
+  })
 })
 
 describe('apply', () => {

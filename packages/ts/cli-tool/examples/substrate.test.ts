@@ -27,6 +27,7 @@ import {
   DOMAIN_EXIT_MAX,
   DOMAIN_EXIT_MIN,
   didYouMean,
+  discardTypeAhead,
   envVars,
   EXIT,
   EXIT_FAILURE,
@@ -52,6 +53,7 @@ import {
   type CliDecl,
   type CliIo,
   type CountFlag,
+  type DiscardTypeAheadOptions,
   type EnumFlag,
   type EnvVars,
   type ExitCode,
@@ -64,6 +66,7 @@ import {
   type PositionalDecl,
   type RunMainOptions,
   type StringFlag,
+  type Stty,
   type Terminal,
   type ResolveOptions,
   type TristateFlag,
@@ -246,6 +249,25 @@ test('asking yes or no reads one line and falls back to the default', () => {
     closeSync(again)
   }
   expect(typeof canPrompt()).toBe('boolean')
+})
+
+test('keys typed before a question are thrown away, through stty on a terminal', () => {
+  // A fake stty stands in for the terminal; the real one is the default.
+  const modes: string[][] = []
+  const stty: Stty = (args) => {
+    modes.push([...args])
+    return args[0] === '-g' ? 'saved' : ''
+  }
+  const file = join(dir, 'typed')
+  writeFileSync(file, 'y\n')
+  const fd = openSync(file, 'r')
+  try {
+    const options: DiscardTypeAheadOptions = { fd, stty }
+    expect(discardTypeAhead(options)).toBe(2)
+  } finally {
+    closeSync(fd)
+  }
+  expect(modes.at(-1)).toEqual(['saved'])
 })
 
 test('re-exported helpers: close matches and per-OS directories', () => {
