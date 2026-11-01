@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.10](https://github.com/osdlc/osdlc/compare/markdown-relink/v0.1.9...markdown-relink/v0.1.10) - 2026-11-01
+
+### Other
+
+- updated the following local packages: frontmatter-lossless, markdown-link
+
 ## [0.1.9](https://github.com/osdlc/osdlc/compare/markdown-relink/v0.1.8...markdown-relink/v0.1.9) - 2026-10-31
 
 ### Other
