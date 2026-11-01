@@ -127,6 +127,8 @@ export interface AskYesNoOptions {
   discardTypeAhead?: boolean
   /** Runs `stty` for {@link discardTypeAhead}. Defaults to the real `stty`. */
   stty?: Stty
+  /** Whether `fd` is a terminal. Defaults to `isatty(fd)`. */
+  isTerminal?: boolean
 }
 
 /**
@@ -137,7 +139,7 @@ export function askYesNo(question: string, opts: AskYesNoOptions = {}): boolean 
   const defaultYes = opts.defaultYes ?? false
   const write = opts.write ?? ((text: string) => process.stderr.write(text))
   const fd = opts.fd ?? 0
-  if ((opts.discardTypeAhead ?? true) && isatty(fd)) {
+  if ((opts.discardTypeAhead ?? true) && (opts.isTerminal ?? isatty(fd))) {
     const discarded = discardTypeAhead({
       fd,
       ...(opts.stty === undefined ? {} : { stty: opts.stty }),

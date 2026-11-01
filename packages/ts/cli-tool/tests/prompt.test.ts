@@ -115,6 +115,26 @@ describe('discardTypeAhead', () => {
     )
   })
 
+  test('askYesNo on a terminal throws early input away and says so', () => {
+    const { stty } = fakeStty()
+    const written: string[] = []
+    const answer = withInput('y\n', (fd) =>
+      askYesNo('Go?', { fd, stty, isTerminal: true, write: (t) => written.push(t) }),
+    )
+    // The early `y` is gone; the read then meets end of input, the default.
+    expect(answer).toBe(false)
+    expect(written).toEqual(['(ignored what was typed before this question)\n', 'Go? [y/N] '])
+  })
+
+  test('askYesNo on a terminal with nothing typed early asks plainly', () => {
+    const { stty } = fakeStty()
+    const written: string[] = []
+    withInput('', (fd) =>
+      askYesNo('Go?', { fd, stty, isTerminal: true, write: (t) => written.push(t) }),
+    )
+    expect(written).toEqual(['Go? [y/N] '])
+  })
+
   test('askYesNo leaves input that is not a terminal alone', () => {
     const { calls, stty } = fakeStty()
     const answer = withInput('y\n', (fd) => askYesNo('Go?', { fd, stty, write: () => {} }))

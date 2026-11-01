@@ -149,11 +149,9 @@ export interface CachedMirror {
   url: string | null
   /** Bytes on disk, every file under the directory counted. */
   bytes: number
-  /**
-   * Null for a usable mirror. Otherwise why it is not one: a clone left
-   * behind by a run that stopped (`partial`), or what {@link mirrorProblem}
-   * found.
-   */
+  /** A clone left behind by a run that stopped before it finished. */
+  partial: boolean
+  /** Null for a usable mirror; otherwise what {@link mirrorProblem} found. Null for a partial clone. */
   problem: string | null
 }
 
@@ -182,11 +180,11 @@ export function listMirrors(
     .map((name) => {
       const dir = join(cacheDir, name)
       const bytes = sizeOf(dir)
-      if (PARTIAL.test(name)) return { dir, url: null, bytes, problem: 'partial' }
+      if (PARTIAL.test(name)) return { dir, url: null, bytes, partial: true, problem: null }
       const problem = mirrorProblem(dir, undefined, opts)
       const urls = new Git(dir, { runner: opts.git }).try.remoteGetUrls('origin')
       const url = urls.ok && urls.value.length > 0 ? redactUrl(urls.value[0]!) : null
-      return { dir, url, bytes, problem }
+      return { dir, url, bytes, partial: false, problem }
     })
 }
 

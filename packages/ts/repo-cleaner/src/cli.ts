@@ -907,10 +907,8 @@ function sizeText(bytes: number): string {
 }
 
 function cacheLine(m: CachedMirror): string {
-  const note =
-    m.problem === null
-      ? ''
-      : `  (${m.problem === 'partial' ? 'left by a stopped clone' : m.problem})`
+  const why = m.partial ? 'left by a stopped clone' : m.problem
+  const note = why === null ? '' : `  (${why})`
   // A URL, directory name or git message is outside text: no terminal controls.
   return (
     stripControls(`${sizeText(m.bytes).padStart(9)}  ${m.url ?? '(no origin)'}  ${m.dir}${note}`) +
@@ -927,55 +925,80 @@ function runCache(argv: readonly string[], ctx: CliContext): number {
   const [verb = 'list', ...urls] = parsed.positionals
   const dir = mirrorCache(ctx)
   const json = v.output === 'json'
-
   if (verb === 'list') {
     if (urls.length > 0 || v.all) return usageError(ctx, name, 'list takes no URLs and no --all')
-    const mirrors = listMirrors(dir)
-    if (json) {
-      ctx.io.stdout(`${JSON.stringify({ cache: dir, mirrors }, null, 2)}\n`)
-      return EXIT.ok
+    return cacheList(ctx, dir, json)
+  }
+  if (verb === 'remove') {
+    if (v.all === urls.length > 0) {
+      return usageError(ctx, name, 'remove takes URLs or --all, not both and not neither')
     }
-    if (mirrors.length === 0) {
-      ctx.io.stdout(`no clones in ${dir}\n`)
-      return EXIT.ok
-    }
-    for (const m of mirrors) ctx.io.stdout(cacheLine(m))
-    const total = mirrors.reduce((sum, m) => sum + m.bytes, 0)
-    ctx.io.stdout(
-      `${mirrors.length} clone${mirrors.length === 1 ? '' : 's'}, ${sizeText(total)}, in ${dir}\n`,
-    )
+    return cacheRemove(ctx, name, dir, v.all ? null : urls, json)
+  }
+  return usageError(ctx, name, `unknown verb ${JSON.stringify(verb)}; use list or remove`)
+}
+
+function cacheList(ctx: CliContext, dir: string, json: boolean): number {
+  const mirrors = listMirrors(dir)
+  if (json) {
+    ctx.io.stdout(`${JSON.stringify({ cache: dir, mirrors }, null, 2)}\n`)
     return EXIT.ok
   }
-
-  if (verb !== 'remove')
-    return usageError(ctx, name, `unknown verb ${JSON.stringify(verb)}; use list or remove`)
-  if (v.all === urls.length > 0) {
-    return usageError(ctx, name, 'remove takes URLs or --all, not both and not neither')
+  if (mirrors.length === 0) {
+    ctx.io.stdout(`no clones in ${dir}\n`)
+    return EXIT.ok
   }
-  let missing = 0
-  const targets: CachedMirror[] = []
-  if (v.all) {
-    targets.push(...listMirrors(dir))
+  for (const m of mirrors) ctx.io.stdout(cacheLine(m))
+  const total = mirrors.reduce((sum, m) => sum + m.bytes, 0)
+  const count = `${mirrors.length} clone${mirrors.length === 1 ? '' : 's'}`
+  ctx.io.stdout(`${count}, ${sizeText(total)}, in ${dir}\n`)
+  return EXIT.ok
+}
+
+/**
+ * Remove the clones of `urls`, or every entry when `urls` is null. A URL with
+ * no clone, or a clone that cannot be removed, is reported and the rest still
+ * go; either makes the exit 1.
+ */
+function cacheRemove(
+  ctx: CliContext,
+  name: string,
+  dir: string,
+  urls: readonly string[] | null,
+  json: boolean,
+): number {
+  const missing: string[] = []
+  const targets: Array<{ dir: string; label: string }> = []
+  if (urls === null) {
+    for (const m of listMirrors(dir)) targets.push({ dir: m.dir, label: m.url ?? '(no origin)' })
   } else {
     for (const url of urls) {
+      const shown = redactUrl(url)
       const found = cachedMirrorOf(url, dir)
-      if (found === null) {
-        ctx.io.stderr(`${name}: no clone of ${stripControls(redactUrl(url))}\n`)
-        missing++
-        continue
-      }
-      targets.push({ dir: found, url: redactUrl(url), bytes: 0, problem: null })
+      if (found === null) missing.push(shown)
+      else targets.push({ dir: found, label: shown })
     }
   }
   const removed: string[] = []
+  const failed: Array<{ dir: string; error: string }> = []
   for (const t of targets) {
-    rmSync(t.dir, { recursive: true, force: true })
-    removed.push(t.dir)
-    if (!json) ctx.io.stdout(stripControls(`removed ${t.url ?? '(no origin)'}  ${t.dir}`) + '\n')
+    try {
+      rmSync(t.dir, { recursive: true, force: true })
+      removed.push(t.dir)
+      if (!json) ctx.io.stdout(stripControls(`removed ${t.label}  ${t.dir}`) + '\n')
+    } catch (err) {
+      const error = err instanceof Error ? err.message : String(err)
+      failed.push({ dir: t.dir, error })
+      ctx.io.stderr(stripControls(`${name}: cannot remove ${t.label}  ${t.dir}: ${error}`) + '\n')
+    }
   }
-  if (json) ctx.io.stdout(`${JSON.stringify({ cache: dir, removed }, null, 2)}\n`)
-  else if (removed.length === 0 && missing === 0) ctx.io.stdout(`no clones in ${dir}\n`)
-  return missing > 0 ? EXIT.error : EXIT.ok
+  for (const url of missing) ctx.io.stderr(stripControls(`${name}: no clone of ${url}`) + '\n')
+  if (json) {
+    ctx.io.stdout(`${JSON.stringify({ cache: dir, removed, missing, failed }, null, 2)}\n`)
+  } else if (targets.length === 0 && missing.length === 0) {
+    ctx.io.stdout(`no clones in ${dir}\n`)
+  }
+  return missing.length > 0 || failed.length > 0 ? EXIT.error : EXIT.ok
 }
 
 function emptyReceipt(plan: string, now: Date, dryRun: boolean): Receipt {

@@ -676,6 +676,50 @@ describe('--remote-url', () => {
       expect(readdirSync(dir)).toEqual([])
     })
 
+    test('remove --output json names the URLs with no clone', () => {
+      const cache = tempDir()
+      const away = tempDir()
+      const res = remoteRun(
+        ['cache', 'remove', 'https://u:TOKEN@host.example/a/b.git', '--output', 'json'],
+        away,
+        cache,
+      )
+      expect(res.code).toBe(1)
+      const json = JSON.parse(res.out) as {
+        removed: string[]
+        missing: string[]
+        failed: unknown[]
+      }
+      expect(json).toMatchObject({
+        removed: [],
+        missing: ['https://host.example/a/b.git'],
+        failed: [],
+      })
+      expect(res.out + res.err).not.toContain('TOKEN')
+    })
+
+    test('a clone that cannot be removed is reported, and the rest still go', () => {
+      if (process.platform === 'win32' || process.getuid?.() === 0) return
+      const fx = buildFixture()
+      const cache = tempDir()
+      const away = tempDir()
+      expect(remoteRun(['--remote-url', fx.bare, ...SWEEP], away, cache).code).toBe(0)
+      const dir = (
+        JSON.parse(remoteRun(['cache', '--output', 'json'], away, cache).out) as { cache: string }
+      ).cache
+      const stuck = join(dir, 'z-stuck.partial-97')
+      mkdirSync(join(stuck, 'inner'), { recursive: true })
+      chmodSync(stuck, 0o500)
+      try {
+        const res = remoteRun(['cache', 'remove', '--all'], away, cache)
+        expect(res.code).toBe(1)
+        expect(res.err).toContain('cannot remove')
+        expect(readdirSync(dir)).toEqual(['z-stuck.partial-97'])
+      } finally {
+        chmodSync(stuck, 0o700)
+      }
+    })
+
     test('remove needs URLs or --all, and list takes neither', () => {
       const cache = tempDir()
       const away = tempDir()
