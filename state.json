@@ -15,7 +15,7 @@
       "path": "packages/ts/cli-tool/src/devlink/exec.ts",
       "line": 218,
       "title": "runningBun returns a bun-compiled tool's own binary",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/592#discussion_r4433992618",
       "status": "fixed",
       "reason": null,
       "fixedIn": "86410c660536f3492af2472ab9e4988fe857b9c7"
@@ -26,7 +26,7 @@
       "path": "packages/ts/cli-tool/src/devlink/deps.ts",
       "line": 21,
       "title": "A checkout with no dependencies and no node_modules is refused",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/592#discussion_r4433992624",
       "status": "fixed",
       "reason": null,
       "fixedIn": "67eaa7cab76616c3f1f7b5288ddb5b7bbcd9b29f"
