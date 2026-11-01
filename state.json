@@ -1,12 +1,35 @@
 {
   "schema": 1,
   "pr": 592,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "5b7abc7a2c3750433242e3f97f4f5989a89d8bab",
+  "base": "cde983c9896095f9b0a4ac0593ee88321b173ed6",
+  "round": 1,
   "claim": {
     "owner": "Mac.local:claude-r7d2kx",
     "at": "2026-11-01T01:23:45.498Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/cli-tool/src/devlink/exec.ts",
+      "line": 218,
+      "title": "runningBun returns a bun-compiled tool's own binary",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/cli-tool/src/devlink/deps.ts",
+      "line": 21,
+      "title": "A checkout with no dependencies and no node_modules is refused",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
