@@ -253,7 +253,7 @@ const applyCli = () =>
       output: OUTPUT,
     },
     epilogue: `risks: abandon-unmerged, discard-changes, confirm-open-pr
-A row that carries a risk you did not --allow is dropped, never deleted.`,
+A row that carries a risk you did not --allow is skipped, never deleted.`,
   })
 
 /**

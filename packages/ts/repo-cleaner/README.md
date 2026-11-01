@@ -34,7 +34,7 @@ own bar, empty while it waits, half full while it runs and full with a `✓`
   ██████████ ✓ delete  local_branch  feat/a
   █████░░░░░ › delete  local_branch  feat/b
   ░░░░░░░░░░   delete  remote_branch  origin/feat/b
-  ░░░░░░░░░░   prune
+  ░░░░░░░░░░   prune   worktree records in /Users/me/work/api
   ████████░░░░░░░░░░░░░░░░░░░░░░ 1/4
 ```
 
@@ -393,13 +393,13 @@ asks `Delete N items? [y/N]`:
 /Users/me/work/api
   delete  local_branch   fix/login-redirect
           git update-ref -d refs/heads/fix/login-redirect 3f9c2e1d…
-  prune
+  prune   worktree records
           git -C /Users/me/work/api worktree prune
   skip    worktree       /Users/me/work/api/wt/spike
           needs-review: clean but no clear disposability signal; name it with --row to apply it
 
 would delete: 1 local branch
-dropped 1: 1 needs-review
+skipped 1, not deleted: 1 needs-review (name with --row)
 Delete 2 items? [y/N]
 ```
 
@@ -432,7 +432,7 @@ Every run ends with what it did:
 
 ```text
 deleted: 1 worktree, 3 local branches, 2 remote branches, 1 stale worktree pruned
-dropped 2: 1 needs-review, 1 duplicate
+skipped 2, not deleted: 1 needs-review (name with --row), 1 duplicate
 status: complete
 ```
 

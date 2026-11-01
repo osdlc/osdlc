@@ -798,7 +798,7 @@ describe('apply', () => {
       },
     })
     expect(res.code).toBe(0)
-    expect(res.out).toMatch(/dropped\s+local_branch:extra — needs-review/)
+    expect(res.out).toMatch(/skipped\s+local_branch:extra — needs-review/)
     expect(branchRefs(fx.root)).toContain('refs/heads/extra')
   })
 
