@@ -13,9 +13,9 @@
       "line": 218,
       "title": "runningBun returns a bun-compiled tool's own binary",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "86410c660536f3492af2472ab9e4988fe857b9c7"
     },
     {
       "id": "r1-2",
