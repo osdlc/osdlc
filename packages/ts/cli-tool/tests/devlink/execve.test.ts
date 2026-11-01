@@ -136,6 +136,12 @@ describe('runningBun', () => {
     )
   })
 
+  test('is undefined for a bun-compiled tool, whose binary is the tool, not bun', () => {
+    expect(runningBun({ bun: '1.3.0' }, '/usr/local/bin/tooly')).toBeUndefined()
+    // A Windows bun is bun.exe.
+    expect(runningBun({ bun: '1.3.0' }, join(sb.root, 'bun.exe'))).toBe(join(sb.root, 'bun.exe'))
+  })
+
   test('is undefined under Node and Deno', () => {
     expect(runningBun({ node: '24.3.0' }, '/usr/bin/node')).toBeUndefined()
     expect(runningBun({ deno: '2.5.0' }, '/usr/bin/deno')).toBeUndefined()

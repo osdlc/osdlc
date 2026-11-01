@@ -23,6 +23,7 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import { writeSync } from 'node:fs'
 import { devNull, constants as osConstants } from 'node:os'
+import { basename } from 'node:path'
 
 import { which } from '@osdlc/command-seam'
 
@@ -206,7 +207,9 @@ function reasonLine(selection: Selected, running: string | null | undefined): st
 }
 
 /**
- * This process's own binary when it runs under Bun, else undefined. The first
+ * This process's own binary when it is bun, else undefined. A bun-compiled
+ * tool also sets `versions.bun`, but its binary is the tool, so it gets
+ * undefined. The first
  * `bun` on `PATH` can be a proto shim, and a proto shim refuses to start bun
  * from inside bun ("re-entered proto ... would loop"), so a hand-off from bun
  * reuses the bun that is already running.
@@ -215,7 +218,8 @@ export function runningBun(
   versions: Record<string, string | undefined> = process.versions,
   execPath: string = process.execPath,
 ): string | undefined {
-  return versions['bun'] === undefined ? undefined : execPath
+  const isBun = versions['bun'] !== undefined && /^bun(\.exe)?$/i.test(basename(execPath))
+  return isBun ? execPath : undefined
 }
 
 function defaultNode(env: Record<string, string | undefined>): string | undefined {
