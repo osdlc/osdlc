@@ -13,9 +13,9 @@
       "line": 267,
       "title": "going rule keeps a branch freed when a host demotes its worktree to review, unlike the sweep's own full-sweep rule",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "364799d21d816e6024f761717a960460839c7d81"
     },
     {
       "id": "r1-2",
