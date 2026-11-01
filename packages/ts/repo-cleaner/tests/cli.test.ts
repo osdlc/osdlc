@@ -667,7 +667,10 @@ describe('--remote-url', () => {
         }
       ).cache
       mkdirSync(join(dir, 'x-123.partial-99'))
-      expect(remoteRun(['cache'], away, cache).out).toContain('left by a stopped clone')
+      mkdirSync(join(dir, 'y\x1b[31m-1.partial-98'))
+      const listed = remoteRun(['cache'], away, cache).out
+      expect(listed).toContain('left by a stopped clone')
+      expect(listed).not.toContain('\x1b')
       const res = remoteRun(['cache', 'remove', '--all'], away, cache)
       expect(res.code).toBe(0)
       expect(readdirSync(dir)).toEqual([])

@@ -30,7 +30,7 @@ import { isatty } from 'node:tty'
 
 import { EXIT, askYesNo, canPrompt, defineCli, systemDirs, type CliContext } from '@osdlc/cli-tool'
 import { Git } from '@osdlc/typed-git'
-import { detectColorLevel } from '@osdlc/ux'
+import { detectColorLevel, stripControls } from '@osdlc/ux'
 
 import { resolveBranch } from './branches.ts'
 import { VENDOR_DIRS } from './devlink.ts'
@@ -911,7 +911,11 @@ function cacheLine(m: CachedMirror): string {
     m.problem === null
       ? ''
       : `  (${m.problem === 'partial' ? 'left by a stopped clone' : m.problem})`
-  return `${sizeText(m.bytes).padStart(9)}  ${m.url ?? '(no origin)'}  ${m.dir}${note}\n`
+  // A URL, directory name or git message is outside text: no terminal controls.
+  return (
+    stripControls(`${sizeText(m.bytes).padStart(9)}  ${m.url ?? '(no origin)'}  ${m.dir}${note}`) +
+    '\n'
+  )
 }
 
 function runCache(argv: readonly string[], ctx: CliContext): number {
@@ -956,7 +960,7 @@ function runCache(argv: readonly string[], ctx: CliContext): number {
     for (const url of urls) {
       const found = cachedMirrorOf(url, dir)
       if (found === null) {
-        ctx.io.stderr(`${name}: no clone of ${redactUrl(url)}\n`)
+        ctx.io.stderr(`${name}: no clone of ${stripControls(redactUrl(url))}\n`)
         missing++
         continue
       }
@@ -967,7 +971,7 @@ function runCache(argv: readonly string[], ctx: CliContext): number {
   for (const t of targets) {
     rmSync(t.dir, { recursive: true, force: true })
     removed.push(t.dir)
-    if (!json) ctx.io.stdout(`removed ${t.url ?? '(no origin)'}  ${t.dir}\n`)
+    if (!json) ctx.io.stdout(stripControls(`removed ${t.url ?? '(no origin)'}  ${t.dir}`) + '\n')
   }
   if (json) ctx.io.stdout(`${JSON.stringify({ cache: dir, removed }, null, 2)}\n`)
   else if (removed.length === 0 && missing === 0) ctx.io.stdout(`no clones in ${dir}\n`)

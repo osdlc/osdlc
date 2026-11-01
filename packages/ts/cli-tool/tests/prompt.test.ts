@@ -108,6 +108,13 @@ describe('discardTypeAhead', () => {
     expect(calls.at(-1)).toEqual(['saved-mode'])
   })
 
+  test('a mode that cannot be put back is an error, not a default answer', () => {
+    const { stty } = fakeStty(['saved-mode'])
+    expect(() => withInput('y\n', (fd) => discardTypeAhead({ fd, stty }))).toThrow(
+      /cannot restore the terminal mode/,
+    )
+  })
+
   test('askYesNo leaves input that is not a terminal alone', () => {
     const { calls, stty } = fakeStty()
     const answer = withInput('y\n', (fd) => askYesNo('Go?', { fd, stty, write: () => {} }))

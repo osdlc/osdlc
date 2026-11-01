@@ -65,6 +65,8 @@ export interface DiscardTypeAheadOptions {
  * where a read cannot reach it. Leaving canonical mode for a moment hands it
  * to the reader; `min 0 time 0` makes a read with nothing waiting return at
  * once. The saved mode is put back before this returns.
+ *
+ * @throws Error when the saved mode cannot be put back.
  */
 export function discardTypeAhead(opts: DiscardTypeAheadOptions = {}): number {
   const fd = opts.fd ?? 0
@@ -91,7 +93,11 @@ export function discardTypeAhead(opts: DiscardTypeAheadOptions = {}): number {
       discarded += n
     }
   } finally {
-    stty([saved])
+    // A terminal left in `min 0 time 0` would answer the next read with an
+    // empty line, which is the default answer. Better to stop than to ask.
+    if (stty([saved]) === null) {
+      throw new Error('cannot restore the terminal mode after reading typed-ahead input')
+    }
   }
   return discarded
 }
