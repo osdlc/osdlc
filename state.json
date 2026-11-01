@@ -26,7 +26,7 @@
       "path": "packages/ts/cli-tool/docs/guide/sdlc-launch.md",
       "line": 9,
       "title": "\"the paths below are in that repository\" also covers ~/, ${CLAUDE_PLUGIN_ROOT} and npm-package paths",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/595#discussion_r4434256582",
       "status": "fixed",
       "reason": null,
       "fixedIn": "d9938b7b991566efbb80c5c0b0baf908d02c5cb1"
