@@ -46,9 +46,9 @@
       "line": null,
       "title": "SweepOptions.branch doc omits that the branch stays pinned when worktrees are out of scope",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "99d3714e94d1bd03e0b6c5e818117b1bbbab2b67"
     }
   ]
 }
