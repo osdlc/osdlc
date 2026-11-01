@@ -15,7 +15,7 @@
       "path": "packages/ts/cli-tool/docs/guide/sdlc-launch.md",
       "line": 10,
       "title": "Repo-path sentence says solutions/ontological/… is under solutions/ontological/",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/595#discussion_r4434252071",
       "status": "fixed",
       "reason": null,
       "fixedIn": "6d5fe7f5c3e975a696d472dbd8f9f69c92e268f2"
