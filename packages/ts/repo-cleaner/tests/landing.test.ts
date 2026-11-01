@@ -57,7 +57,7 @@ function rebaseMerge(dir: string, branch: string): void {
 }
 
 const sweep = (dir: string, opts: Parameters<typeof sweepRepo>[1] = {}) =>
-  sweepRepo(dir, { noGh: true, cwd: dir, ...opts })
+  sweepRepo(dir, { noProvider: true, cwd: dir, ...opts })
 
 function row(items: SweepItem[], category: string, id: string): SweepItem {
   const found = items.find((item) => item.category === category && item.id === id)
@@ -530,7 +530,7 @@ describe('merged PR at an earlier head', () => {
     const later = commitFile(dir, 'later.txt', 'later\n', 'feat: after the merge')
     sh(dir, ['checkout', '-q', 'main'])
     sh(dir, ['cherry-pick', later])
-    const item = branchRow(dir, 'feat', { noGh: false, ...prFor(dir, first!) })
+    const item = branchRow(dir, 'feat', { noProvider: false, ...prFor(dir, first!) })
     expect(item.classification).toBe('safe-to-delete')
     expect(item.facts['landing_check']).toBe('head-moved')
     expect((item.facts['pr'] as Record<string, unknown>)['evidence']).toBe('head-moved')
@@ -546,7 +546,7 @@ describe('merged PR at an earlier head', () => {
     sh(dir, ['checkout', '-q', 'feat'])
     commitFile(dir, 'later.txt', 'later\n', 'feat: after the merge')
     sh(dir, ['checkout', '-q', 'main'])
-    const item = branchRow(dir, 'feat', { noGh: false, ...prFor(dir, first!) })
+    const item = branchRow(dir, 'feat', { noProvider: false, ...prFor(dir, first!) })
     expect(item.classification).toBe('needs-investigation')
     expect(item.facts['landing']).toBeUndefined()
     expect(item.facts['unmatched_commits']).toEqual([
@@ -566,7 +566,7 @@ describe('merged PR at an earlier head', () => {
     sh(dir, ['checkout', '-q', 'main'])
     commitFile(dir, 'main.txt', 'main moved on\n', 'main: moves on')
     sh(dir, ['cherry-pick', later])
-    const item = branchRow(dir, 'feat', { noGh: false, ...prFor(dir, first!) })
+    const item = branchRow(dir, 'feat', { noProvider: false, ...prFor(dir, first!) })
     expect(item.classification).toBe('needs-investigation')
   })
 
@@ -578,7 +578,7 @@ describe('merged PR at an earlier head', () => {
     commitFile(dir, 'later.txt', 'later\n', 'feat: after')
     sh(dir, ['checkout', '-q', 'main'])
     const item = branchRow(dir, 'feat', {
-      noGh: false,
+      noProvider: false,
       ...prFor(dir, 'f'.repeat(40)),
     })
     expect(item.classification).toBe('needs-investigation')
@@ -862,7 +862,11 @@ describe('failing closed', () => {
 
   test('a sweep over a failing check keeps the branch for a person', () => {
     const git = interposedRunner((argv) => (is(argv, 'cherry') ? failure() : undefined))
-    const item = row(sweepRepo(dir, { noGh: true, cwd: dir, git }).items, 'local_branch', 'feat')
+    const item = row(
+      sweepRepo(dir, { noProvider: true, cwd: dir, git }).items,
+      'local_branch',
+      'feat',
+    )
     expect(item.classification).toBe('needs-investigation')
     expect(item.facts['landing']).toBeUndefined()
   })

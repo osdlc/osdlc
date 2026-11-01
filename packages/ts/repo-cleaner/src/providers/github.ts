@@ -24,24 +24,21 @@ export const PR_LIMIT = 300
 /**
  * A provider over `gh pr list`. `gh` picks the repository from the checkout's
  * remotes, so `target` is not consulted.
- *
- * typed-gh's `head` filter is exact, so a head prefix goes through gh's
- * `head:` search, which matches by prefix.
  */
 export function githubProvider(gh: Gh): PrProvider {
   return {
     name: 'github',
-    tool: 'gh',
+    words: { tool: 'gh', noun: 'PR', listing: 'gh pr list' },
     probe(root) {
       const available = gh.at(root).installed()
       return { available, authenticated: available && gh.at(root).authenticated() }
     },
-    listPrs(root, _target, headPrefix) {
+    listPrs(root, _target, branch) {
       const rows = gh.at(root).prList({
         state: 'all',
         limit: PR_LIMIT,
         fields: FIELDS,
-        search: headPrefix === undefined ? undefined : `head:${headPrefix}`,
+        head: branch,
       })
       if (rows === null) return null
       const prs: PRInfo[] = []

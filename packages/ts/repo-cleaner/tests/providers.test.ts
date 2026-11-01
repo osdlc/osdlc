@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
+import { Gh } from '@osdlc/typed-gh'
 import { makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 
 import { cannedGh, cannedGlab, git } from './helpers.ts'
@@ -19,6 +20,7 @@ import { fetchPrs } from '../src/prs.ts'
 import {
   chooseProvider,
   forgeTarget,
+  githubProvider,
   gitlabProvider,
   type ProviderStatus,
 } from '../src/providers/index.ts'
@@ -30,6 +32,8 @@ const HOOK_TIMEOUT_MS = 60_000
 const GITLAB: ProviderStatus = {
   name: 'gitlab',
   tool: 'glab',
+  noun: 'merge request',
+  listing: 'glab api',
   available: true,
   authenticated: true,
   host: 'gitlab.example.com',
@@ -44,8 +48,6 @@ function repoWith(provider: ProviderStatus | null): RepoInfo {
     remote: 'origin',
     currentBranch: 'main',
     provider,
-    hasGh: provider?.available ?? false,
-    ghAuthenticated: provider?.authenticated ?? false,
     fetched: false,
   }
 }
@@ -150,14 +152,42 @@ describe('the GitLab provider', () => {
     expect(glab.calls.filter((argv) => argv[0] === 'api')).toHaveLength(3)
   })
 
-  test('a head prefix is sent as the source branch and checked again', () => {
+  test('a branch is sent as the exact source branch, and other heads are dropped', () => {
     const glab = cannedGlab([
       { iid: 1, state: 'merged', source_branch: 'feat', sha: 'a' },
-      { iid: 2, state: 'merged', source_branch: 'other', sha: 'b' },
+      { iid: 2, state: 'merged', source_branch: 'feat-2', sha: 'b' },
     ])
     const prs = fetchPrs(repoWith(GITLAB), gitlabProvider(glab), 'feat')
     expect([...prs.keys()]).toEqual(['feat'])
-    expect(glab.calls.find((argv) => argv[0] === 'api')?.[3]).toContain('source_branch=feat')
+    expect(glab.calls.find((argv) => argv[0] === 'api')?.[3]).toMatch(/[?&]source_branch=feat(&|$)/)
+  })
+
+  test('GitHub is asked with an exact --head, and other heads are dropped', () => {
+    const calls: string[][] = []
+    const canned = cannedGh([
+      { number: 1, state: 'MERGED', headRefName: 'feat', headRefOid: 'a' },
+      { number: 2, state: 'MERGED', headRefName: 'feat-2', headRefOid: 'b' },
+    ])
+    const gh = new Gh('/srv/proj', {
+      runner: {
+        run: (argv, opts) => {
+          calls.push(argv)
+          return canned.run(argv, opts)
+        },
+      },
+    })
+    const github: ProviderStatus = {
+      ...GITLAB,
+      name: 'github',
+      tool: 'gh',
+      noun: 'PR',
+      listing: 'gh pr list',
+    }
+    const prs = fetchPrs(repoWith(github), githubProvider(gh), 'feat')
+    expect([...prs.keys()]).toEqual(['feat'])
+    const list = calls.find((argv) => argv[1] === 'list')!
+    expect(list[list.indexOf('--head') + 1]).toBe('feat')
+    expect(list).not.toContain('--search')
   })
 
   test('a failed listing is no evidence, not an empty one', () => {
@@ -239,7 +269,7 @@ describe('a sweep of a GitLab checkout', () => {
   test('without the MR the branch is left for review, and the reason names glab', () => {
     const feat = localFeat({ glab: cannedGlab([]) })
     expect(feat?.classification).toBe('needs-investigation')
-    expect(feat?.investigationParts.join(' ')).toContain('No merge request found via `glab`.')
+    expect(feat?.investigationParts.join(' ')).toContain('No merge request found via `glab api`.')
   })
 
   test('--provider github overrides the host', () => {
@@ -250,9 +280,9 @@ describe('a sweep of a GitLab checkout', () => {
     expect(glab.calls).toEqual([])
   })
 
-  test('noGh asks no provider at all', () => {
+  test('noProvider asks no provider at all', () => {
     const glab = cannedGlab([{ iid: 12, state: 'merged', source_branch: 'feat', sha: tip }])
-    const sweep = sweepRepo(checkout, { cwd: checkout, noGh: true, glab })
+    const sweep = sweepRepo(checkout, { cwd: checkout, noProvider: true, glab })
     expect(sweep.repo?.provider).toBeNull()
     expect(glab.calls).toEqual([])
   })
@@ -272,6 +302,13 @@ describe('a sweep of a GitLab checkout', () => {
     expect(parsePlan(JSON.stringify({ ...plan, repos: [old] }), 'old').repos[0]?.provider).toBe(
       undefined,
     )
+  })
+
+  test('without --remotes the plan records that no provider was asked', () => {
+    const ctx = captureContext({ cwd: checkout })
+    const code = main(['plan', '--provider', 'gitlab', '--no-progress'], ctx, {})
+    expect(code).toBe(0)
+    expect(parsePlan(ctx.io.out, 'stdout').repos[0]?.no_gh).toBe(true)
   })
 
   test('the CLI refuses --no-gh with another provider', () => {

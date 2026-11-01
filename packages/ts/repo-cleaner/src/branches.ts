@@ -81,8 +81,7 @@ export function recordPr(
 export function noPrSentence(repo: RepoInfo): string {
   const provider = repo.provider
   if (provider === null) return 'No PR lookup (no provider).'
-  if (provider === undefined || provider.name === 'github') return 'No PR found via `gh pr list`.'
-  return `No merge request found via \`${provider.tool}\`.`
+  return `No ${provider.noun} found via \`${provider.listing}\`.`
 }
 
 /** One sentence on why a merged PR did not count, for `investigationParts`. */

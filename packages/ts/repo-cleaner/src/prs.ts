@@ -7,18 +7,12 @@
  * `providers/`.
  */
 
-import type { Gh } from '@osdlc/typed-gh'
-
-import { githubProvider, type PrProvider } from './providers/index.ts'
+import type { PrProvider } from './providers/index.ts'
 import type { PRInfo, RepoInfo } from './types.ts'
 
 /** Open outranks merged outranks closed, and a newer PR outranks an older. */
 function priority(state: string): number {
   return ({ OPEN: 3, MERGED: 2, CLOSED: 1 } as Record<string, number>)[state] ?? 0
-}
-
-function isProvider(source: Gh | PrProvider): source is PrProvider {
-  return 'listPrs' in source
 }
 
 /**
@@ -35,33 +29,27 @@ function isProvider(source: Gh | PrProvider): source is PrProvider {
  * unauthenticated or failing, or when there is no provider. Classification
  * degrades to git evidence and the report says so.
  *
- * @param source The provider to ask. A `Gh` client is read as the GitHub
- *   provider, the only one before providers existed.
- * @param headPrefix Ask only for PRs whose head starts with this; the map is
- *   still keyed by exact head, and the prefix is checked again here.
+ * @param provider The provider to ask. It is asked only when it is the one
+ *   `repo.provider` names and that probe found it signed in.
+ * @param branch Ask only for PRs whose head is exactly this branch; rows
+ *   for any other head are dropped here too.
  */
 export function fetchPrs(
   repo: RepoInfo,
-  source: Gh | PrProvider,
-  headPrefix?: string,
+  provider: PrProvider,
+  branch?: string,
 ): Map<string, PRInfo> {
   const byHead = new Map<string, PRInfo>()
-  const provider = isProvider(source) ? source : githubProvider(source)
   const status = repo.provider
-  if (status === undefined) {
-    // A RepoInfo built without a provider status: the gh fields decide.
-    if (!(repo.hasGh && repo.ghAuthenticated)) return byHead
-  } else if (status === null || status.name !== provider.name || !status.authenticated) {
-    return byHead
-  }
+  if (status === null || status.name !== provider.name || !status.authenticated) return byHead
 
-  const rows = provider.listPrs(repo.root, status ?? { host: null, project: null }, headPrefix)
+  const rows = provider.listPrs(repo.root, status, branch)
   if (rows === null) return byHead
 
   for (const info of rows) {
     const head = info.headRef
     if (!head) continue
-    if (headPrefix !== undefined && !head.startsWith(headPrefix)) continue
+    if (branch !== undefined && head !== branch) continue
     const existing = byHead.get(head)
     if (existing === undefined) {
       byHead.set(head, info)

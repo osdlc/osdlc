@@ -465,7 +465,7 @@ that swept, or read its plan from stdin, writes a receipt only when
 ```ts
 import { sweepRepo, sweepRepos } from '@osdlc/repo-cleaner'
 
-const sweep = sweepRepo('/Users/me/work/api', { noGh: true })
+const sweep = sweepRepo('/Users/me/work/api', { noProvider: true })
 for (const item of sweep.items) {
   console.log(item.classification, item.id, item.reason)
 }
@@ -532,8 +532,11 @@ Not done yet:
   host than the remote, rate limits. Each reads as "no PR found".
 - Squash metadata. GitLab reports `squash_commit_sha`; it is not used, so a
   squashed MR proves landing only by its head commit, as on GitHub.
-- `--branch` on GitLab asks for that exact source branch; GitLab has no prefix
-  filter.
+- GitLab under a sub-path (`https://host/gitlab/group/proj`). The URL does not
+  say where the install ends and the project begins, so the whole path is read
+  as the project, `glab` is asked for a project that does not exist, and the
+  listing fails. That reads as "no PR found": rows stay at `review`, nothing is
+  deleted on its account.
 
 ## Runtime dependencies
 

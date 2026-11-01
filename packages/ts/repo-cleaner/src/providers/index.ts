@@ -76,5 +76,5 @@ export function probeProvider(
   const name = chooseProvider(choice, target)
   if (name === null) return null
   const provider = all[name]
-  return { name, tool: provider.tool, ...target, ...provider.probe(root, target) }
+  return { name, ...provider.words, ...target, ...provider.probe(root, target) }
 }

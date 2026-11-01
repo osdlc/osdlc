@@ -63,15 +63,11 @@ export interface RepoInfo {
   remote: string | null
   currentBranch: string
   /**
-   * The provider asked for pull requests and what its probe found; null when
-   * none was (`--provider none`, `--no-gh`). Absent on a RepoInfo built
-   * elsewhere, which {@link hasGh} and {@link ghAuthenticated} then describe.
+   * The provider asked for pull requests and what its probe found: whether
+   * its CLI is installed and signed in. Null when none was asked
+   * (`--provider none`, `--no-gh`, or a sweep without `--remotes`).
    */
-  provider?: ProviderStatus | null
-  /** The provider's CLI is installed, whichever provider it is. Kept for hosts that read it; prefer `provider`. */
-  hasGh: boolean
-  /** The provider's CLI is signed in. Kept for hosts that read it; prefer `provider`. */
-  ghAuthenticated: boolean
+  provider: ProviderStatus | null
   /** True when the sweep fetched the remote before classifying. */
   fetched: boolean
 }

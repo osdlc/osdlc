@@ -31,6 +31,11 @@ export const PlanRepoSchema = z.object({
   root: z.string(),
   /** The `remote` the sweep ran with; the re-sweep uses the same. */
   remote: z.string().nullable(),
+  /**
+   * True when the sweep asked no provider for pull requests. The name is the
+   * plan format's, from when GitHub was the only provider; renaming it would
+   * break every plan already written.
+   */
   no_gh: z.boolean(),
   /** The provider choice the sweep ran with; absent is `auto`. `no_gh` wins over it. */
   provider: z.enum(PROVIDER_CHOICES).optional(),
@@ -102,7 +107,7 @@ export function planRepo(
   root: string,
   opts: {
     remote: string | null
-    noGh: boolean
+    noProvider: boolean
     branch?: string | null
     fetch?: boolean
     provider?: ProviderChoice | undefined
@@ -122,7 +127,7 @@ export function planRepo(
   return {
     root,
     remote: opts.remote,
-    no_gh: opts.noGh,
+    no_gh: opts.noProvider,
     ...(opts.provider === undefined || opts.provider === 'auto' ? {} : { provider: opts.provider }),
     branch: opts.branch ?? null,
     fetch: opts.fetch ?? false,

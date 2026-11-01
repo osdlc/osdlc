@@ -25,11 +25,19 @@ export interface ForgeTarget {
   project: string | null
 }
 
-/** The provider chosen for a repository, and what its probe found. */
-export interface ProviderStatus extends ForgeTarget {
-  name: ProviderName
-  /** The CLI the provider runs, for a report: `gh`, `glab`. */
+/** How a report names a provider's requests and the lookup that lists them. */
+export interface ProviderWords {
+  /** The CLI the provider runs: `gh`, `glab`. */
   tool: string
+  /** What the forge calls one request: `PR`, `merge request`. */
+  noun: string
+  /** The command that lists them, as a report quotes it: `gh pr list`. */
+  listing: string
+}
+
+/** The provider chosen for a repository, and what its probe found. */
+export interface ProviderStatus extends ForgeTarget, ProviderWords {
+  name: ProviderName
   /** The CLI is installed. */
   available: boolean
   /** The CLI has credentials for `host`. */
@@ -39,7 +47,7 @@ export interface ProviderStatus extends ForgeTarget {
 /** One source of pull request evidence. */
 export interface PrProvider {
   readonly name: ProviderName
-  readonly tool: string
+  readonly words: ProviderWords
   /** Whether the CLI is installed and signed in for `target`'s host. */
   probe(root: string, target: ForgeTarget): { available: boolean; authenticated: boolean }
   /**
@@ -47,8 +55,8 @@ export interface PrProvider {
    * null when the listing failed. A failure is not "no PRs": the caller
    * classifies on git evidence alone.
    *
-   * @param headPrefix Narrow the listing to heads that start with this, where
-   *   the provider can. The caller checks the prefix again.
+   * @param branch Narrow the listing to this exact head branch. The caller
+   *   checks the head again, so a provider that cannot narrow may list all.
    */
-  listPrs(root: string, target: ForgeTarget, headPrefix?: string): PRInfo[] | null
+  listPrs(root: string, target: ForgeTarget, branch?: string): PRInfo[] | null
 }

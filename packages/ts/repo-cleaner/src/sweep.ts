@@ -34,7 +34,7 @@ export interface SweepOptions {
   /** Remote to measure against. Defaults to `origin`, then the first one. */
   remote?: string | null
   /** Ask no provider and classify on git evidence alone. Same as `provider: 'none'`, and wins over it. */
-  noGh?: boolean
+  noProvider?: boolean
   /**
    * Which provider to ask for pull requests: `github` (`gh`), `gitlab`
    * (`glab`), `none`, or `auto`, which reads the remote's host. Defaults to `auto`.
@@ -122,7 +122,7 @@ export function sweepRepo(path: string, opts: SweepOptions = {}): RepoSweep {
   try {
     repo = discoverRepo(path, {
       remote: opts.remote ?? null,
-      allowGh: opts.noGh !== true,
+      allowProvider: opts.noProvider !== true,
       provider: opts.provider,
       git,
       gh,

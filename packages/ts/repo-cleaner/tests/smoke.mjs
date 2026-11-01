@@ -38,7 +38,7 @@ try {
   git('commit', '--allow-empty', '-q', '-m', 'initial')
   git('branch', 'fix/done')
 
-  const sweep = sweepRepo(root, { noGh: true, cwd: root })
+  const sweep = sweepRepo(root, { noProvider: true, cwd: root })
   const item = sweep.items.find((i) => i.id === 'fix/done')
   assert.ok(item, 'the merged branch is inventoried')
   assert.equal(item.classification, 'safe-to-delete')

@@ -225,7 +225,7 @@ function resweep(repo: PlanRepo, scope: readonly Scope[], opts: ApplyOptions): S
   }
   const sweep = sweepRepo(repo.root, {
     remote: repo.remote,
-    noGh: repo.no_gh,
+    noProvider: repo.no_gh,
     provider: repo.provider,
     branch: repo.branch ?? undefined,
     fetch: opts.fetch ?? repo.fetch,

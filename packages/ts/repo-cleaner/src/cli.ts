@@ -336,7 +336,7 @@ type Swept =
       /** What the sweep gathered. */
       scope: readonly Scope[]
       /** True when the sweep did not call gh, so the re-check must not either. */
-      noGh: boolean
+      noProvider: boolean
     }
   /** No entry named a repository; the verb reports it and exits 10. */
   | { kind: 'nothing'; result: SweepResult }
@@ -430,7 +430,7 @@ function sweep(
     baseDir: ctx.cwd,
     cwd: ctx.cwd,
     // Local by default means offline: the fetch and gh go with remote branches.
-    noGh: !(online && v.gh) || v.provider === 'none',
+    noProvider: !(online && v.gh) || v.provider === 'none',
     fetch: online && v.fetch,
     provider: v.provider,
     branch,
@@ -466,7 +466,7 @@ function sweep(
   const refused = branch === undefined ? null : (result.repos[0]?.error ?? null)
   if (refused !== null) return { kind: 'exit', code: failure(ctx, new Error(refused)) }
   if (result.repos.length === 0) return { kind: 'nothing', result }
-  return { kind: 'ok', result, branch, values: v, scope, noGh: options.noGh === true }
+  return { kind: 'ok', result, branch, values: v, scope, noProvider: options.noProvider === true }
 }
 
 /**
@@ -483,7 +483,7 @@ function reportUnreadable(ctx: CliContext, name: string, result: SweepResult): b
 function planOf(swept: Extract<Swept, { kind: 'ok' }>, now: Date): Plan {
   const opts = {
     remote: swept.values.remote ?? null,
-    noGh: swept.noGh,
+    noProvider: swept.noProvider,
     provider: swept.values.provider,
     branch: swept.branch ?? null,
   }

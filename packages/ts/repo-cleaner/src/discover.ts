@@ -45,7 +45,7 @@ export function discoverRepo(
   opts: {
     remote?: string | null
     /** False is `provider: 'none'`, whatever `provider` says. */
-    allowGh?: boolean
+    allowProvider?: boolean
     /** Which provider to ask for pull requests. Defaults to `auto`, by the remote's host. */
     provider?: ProviderChoice | undefined
     git: Git
@@ -58,7 +58,7 @@ export function discoverRepo(
 ): RepoInfo {
   const { git, gh } = opts
   const remoteHint = opts.remote ?? null
-  const allowGh = opts.allowGh ?? true
+  const allowProvider = opts.allowProvider ?? true
 
   // `topLevel()` answers null for exit 128 only — "this is not a repository",
   // which is the answer to the question. Any other git failure throws.
@@ -107,7 +107,7 @@ export function discoverRepo(
 
   // Installed and signed in are probed separately: "not installed" and "not
   // authenticated" send a person somewhere different.
-  const choice: ProviderChoice = allowGh ? (opts.provider ?? 'auto') : 'none'
+  const choice: ProviderChoice = allowProvider ? (opts.provider ?? 'auto') : 'none'
   const target = forgeTarget(remoteUrl)
   const provider = probeProvider(
     choice,
@@ -115,8 +115,6 @@ export function discoverRepo(
     target,
     opts.providers ?? providers({ gh, glab: opts.glab }),
   )
-  const hasGh = provider?.available ?? false
-  const ghAuthenticated = provider?.authenticated ?? false
 
   return {
     root,
@@ -125,8 +123,6 @@ export function discoverRepo(
     remote,
     currentBranch,
     provider,
-    hasGh,
-    ghAuthenticated,
     fetched: false,
   }
 }

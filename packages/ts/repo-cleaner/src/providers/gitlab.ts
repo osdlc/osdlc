@@ -75,24 +75,20 @@ function succeeded(result: CommandResult): boolean {
 /**
  * A provider over `glab`. It needs `target.project`: without one there is
  * nothing to ask, and the listing answers null.
- *
- * GitLab filters `source_branch` by exact name only, so a head prefix is sent
- * as an exact branch. The sweep only narrows to one exact branch, so this is
- * enough for it; a caller with a true prefix gets the exact match only.
  */
 export function gitlabProvider(glab: CommandRunner): PrProvider {
   const run = (root: string, argv: string[]): CommandResult => glab.run(argv, { cwd: root })
   const hostArgs = (host: string | null): string[] => (host === null ? [] : ['--hostname', host])
   return {
     name: 'gitlab',
-    tool: 'glab',
+    words: { tool: 'glab', noun: 'merge request', listing: 'glab api' },
     probe(root, target) {
       const available = succeeded(run(root, ['--version']))
       const authenticated =
         available && succeeded(run(root, ['auth', 'status', ...hostArgs(target.host)]))
       return { available, authenticated }
     },
-    listPrs(root, target, headPrefix) {
+    listPrs(root, target, branch) {
       if (target.project === null) return null
       const project = encodeURIComponent(target.project)
       const prs: PRInfo[] = []
@@ -104,7 +100,7 @@ export function gitlabProvider(glab: CommandRunner): PrProvider {
           order_by: 'updated_at',
           sort: 'desc',
         })
-        if (headPrefix !== undefined) query.set('source_branch', headPrefix)
+        if (branch !== undefined) query.set('source_branch', branch)
         const result = run(root, [
           'api',
           ...hostArgs(target.host),

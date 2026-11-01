@@ -287,7 +287,7 @@ describe('apply', () => {
     return {
       version: PLAN_VERSION,
       created_at: new Date().toISOString(),
-      repos: [planRepo(repo!.root, { remote: null, noGh: false }, items)],
+      repos: [planRepo(repo!.root, { remote: null, noProvider: false }, items)],
     }
   }
 
