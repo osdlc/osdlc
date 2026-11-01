@@ -386,10 +386,9 @@ Every command that sweeps takes these:
 | `--only <list>` | `worktrees`, `branches`, `remotes` (default: `worktrees,branches`) |
 | `--remotes` | Also sweep remote branches. Slower: each one is compared with the default branch |
 | `--branch <name\|HEAD>` | One branch of this repository: its worktree and local branch, and its remote branch with `--remotes`. Refuses the default branch |
-| `--remote <name>` | Remote to measure against (default `origin`) |
+| `--measure-remote <name>` | The remote whose default branch work is measured against (default `origin`) |
 | `--remote-url <url>` | Sweep this remote's branches with no checkout of your own (see [A remote with no checkout](#a-remote-with-no-checkout)); repeatable |
-| `--provider <name>` | With `--remotes`: where pull requests come from: `auto` (default, by the remote's host), `github`, `gitlab` or `none` |
-| `--no-gh` | With `--remotes`: classify on git evidence alone; the same as `--provider none`. Without `--remotes`, no provider is asked |
+| `--provider <name>` | With `--remotes`: where pull requests come from: `auto` (default, by the remote's host), `github`, `gitlab`, or `none` to classify on git evidence alone |
 | `--no-fetch` | With `--remotes`: skip the fetch; the header then says `not fetched`. Without `--remotes`, nothing is fetched |
 
 `status` also takes:
