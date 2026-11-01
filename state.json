@@ -13,9 +13,9 @@
       "line": 10,
       "title": "Repo-path sentence says solutions/ontological/… is under solutions/ontological/",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "6d5fe7f5c3e975a696d472dbd8f9f69c92e268f2"
     }
   ]
 }
