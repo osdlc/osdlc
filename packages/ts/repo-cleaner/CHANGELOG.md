@@ -1,5 +1,11 @@
 # @osdlc/repo-cleaner
 
+## 0.17.0
+
+### Minor Changes
+
+- b036603: `holdFreedBranches(items)` keeps a branch freed for its worktree's removal when that worktree no longer goes, such as when a host's `annotate` holds the worktree back. `applyPlan` runs it after `annotate`. A host should run it on its own annotated rows too, so the counts and the plan match what `apply` will do.
+
 ## 0.16.0
 
 ### Minor Changes
