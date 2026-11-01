@@ -441,7 +441,25 @@ export function rowsActedOn(summary: ApplySummary): number {
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
 
-/** The closing lines of an apply run: what it deleted, dropped and could not finish. */
+/**
+ * How to include a skipped row next time, for the reasons a person can act
+ * on. A `not-authorized` detail is `needs <risk>, <risk>` (see `recheck`).
+ */
+function dropHints(receipt: Receipt): Partial<Record<string, string>> {
+  const risks = new Set<string>()
+  for (const d of receipt.dropped) {
+    if (d.reason !== 'not-authorized') continue
+    for (const risk of d.detail.replace(/^needs /, '').split(', ')) if (risk) risks.add(risk)
+  }
+  return {
+    'needs-review': 'name with --row',
+    ...(risks.size > 0
+      ? { 'not-authorized': [...risks].map((r) => `--allow ${r}`).join(', ') }
+      : {}),
+  }
+}
+
+/** The closing lines of an apply run: what it deleted, skipped and could not finish. */
 export function renderApplySummary(receipt: Receipt): string[] {
   const s = summarizeReceipt(receipt)
   const dry = receipt.status === 'dry-run'
@@ -461,7 +479,12 @@ export function renderApplySummary(receipt: Receipt): string[] {
   const dropped = Object.entries(s.dropped)
   if (dropped.length > 0) {
     const total = dropped.reduce((n, [, c]) => n + c, 0)
-    lines.push(`dropped ${total}: ${dropped.map(([reason, c]) => `${c} ${reason}`).join(', ')}`)
+    const hints = dropHints(receipt)
+    const counts = dropped.map(([reason, c]) => {
+      const hint = hints[reason]
+      return hint === undefined ? `${c} ${reason}` : `${c} ${reason} (${hint})`
+    })
+    lines.push(`skipped ${total}, not deleted: ${counts.join(', ')}`)
   }
   if (s.failed > 0) {
     lines.push(`stopped at a failed step; ${plural(s.notRun, 'row', 'rows')} not run`)
@@ -511,7 +534,11 @@ export function renderPreview(receipt: Receipt, style: Style = PLAIN): string {
     for (const s of receipt.steps.filter((s) => s.repo === repo)) {
       const verb = STEP_VERB[s.action]
       const color = actionStyle(style, verb === 'unlock' ? 'review' : verb)
-      lines.push(s.row === null ? `  ${color(verb)}` : `  ${color(pad(verb, 6))}  ${row(s.row)}`)
+      lines.push(
+        s.row === null
+          ? `  ${color(pad(verb, 6))}  worktree records`
+          : `  ${color(pad(verb, 6))}  ${row(s.row)}`,
+      )
       lines.push(`          ${style.muted(stripControls(s.command))}`)
     }
     for (const d of receipt.dropped.filter((d) => d.repo === repo)) {
@@ -557,7 +584,7 @@ export function renderReceipt(
   // A run shown live has printed its dropped rows and steps already.
   for (const d of opts.steps === false ? [] : receipt.dropped) {
     const shown = stripControls(`${d.category}:${d.id} — ${d.reason} (${d.detail})`)
-    lines.push(`${style.review('dropped  ')}${shown}`)
+    lines.push(`${style.review('skipped  ')}${shown}`)
   }
   for (const s of opts.steps === false ? [] : receipt.steps) {
     const what = s.row === null ? s.command : `${s.row.category}:${s.row.id} — ${s.command}`

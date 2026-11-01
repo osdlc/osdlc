@@ -71,11 +71,15 @@ describe('apply summary', () => {
     const r = receipt(
       'dry-run',
       [step('delete-local', 'would-run', 'a')],
-      [drop('x', 'needs-review'), drop('y', 'needs-review'), drop('z', 'not-authorized')],
+      [
+        drop('x', 'needs-review'),
+        drop('y', 'needs-review'),
+        { ...drop('z', 'not-authorized'), detail: 'needs abandon-unmerged' },
+      ],
     )
     expect(renderApplySummary(r)).toEqual([
       'would delete: 1 local branch',
-      'dropped 3: 2 needs-review, 1 not-authorized',
+      'skipped 3, not deleted: 2 needs-review (name with --row), 1 not-authorized (--allow abandon-unmerged)',
     ])
   })
 
@@ -114,13 +118,13 @@ describe('renderPreview', () => {
         '/r',
         '  delete  local_branch  feat/a',
         '          git delete-local',
-        '  prune',
+        '  prune   worktree records',
         '          git prune-worktrees',
         '  skip    local_branch  feat/b',
         '          needs-review: ',
         '',
         'would delete: 1 local branch',
-        'dropped 1: 1 needs-review',
+        'skipped 1, not deleted: 1 needs-review (name with --row)',
         '',
       ].join('\n'),
     )

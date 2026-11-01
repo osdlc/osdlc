@@ -18,7 +18,8 @@ const TOTAL_BAR = 30
 
 function label(step: Step): string {
   const verb = STEP_VERB[step.action]
-  if (step.row === null) return verb
+  // The closing prune belongs to no row: it clears the repository's stale worktree records.
+  if (step.row === null) return stripControls(`${verb.padEnd(6)}  worktree records in ${step.repo}`)
   return stripControls(`${verb.padEnd(6)}  ${step.row.category}  ${step.row.id}`)
 }
 

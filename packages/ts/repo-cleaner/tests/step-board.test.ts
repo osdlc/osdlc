@@ -25,7 +25,7 @@ describe('boardLines', () => {
       '  ██████████ ✓ delete  local_branch  a',
       '  █████░░░░░ › delete  local_branch  b',
       '  ░░░░░░░░░░   delete  local_branch  c',
-      '  ░░░░░░░░░░   prune',
+      '  ░░░░░░░░░░   prune   worktree records in /r',
       `  ${'█'.repeat(8)}${'░'.repeat(22)} 1/4`,
     ])
   })
