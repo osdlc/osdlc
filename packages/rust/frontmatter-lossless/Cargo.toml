@@ -21,11 +21,21 @@ include = [
 [lib]
 name = "frontmatter_lossless"
 
-# tests/conformance.rs only: it reads tests/fixtures/conformance.json, the
-# corpus the TypeScript package (packages/ts/frontmatter-lossless) also reads.
-# The crate parses no JSON at runtime.
+# The conformance suite's generator: `cargo run -p frontmatter-lossless
+# --example conformance-write` rewrites the expected values in
+# packages/conformance/frontmatter-lossless/suite.json. It lives under tests/,
+# beside the runner it shares code with, so it is not published.
+[[example]]
+name = "conformance-write"
+path = "tests/conformance/write.rs"
+
+# tests/conformance.rs and the generator only: they read and write the
+# family's suite, packages/conformance/frontmatter-lossless/suite.json, which
+# the TypeScript package (packages/ts/frontmatter-lossless) also runs.
+# `preserve_order` keeps the suite's keys in the order they are written. The
+# crate parses no JSON at runtime.
 [dev-dependencies]
-serde_json = { workspace = true }
+serde_json = { workspace = true, features = ["preserve_order"] }
 
 [lints]
 workspace = true

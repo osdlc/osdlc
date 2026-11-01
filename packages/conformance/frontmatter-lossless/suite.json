@@ -1,0 +1,1317 @@
+{
+  "family": "frontmatter-lossless",
+  "reference": "rust",
+  "referenceVersion": "1.1.1",
+  "sections": {
+    "split": {
+      "description": "Strict split of `source`. `yaml` is null when there is no block. `yaml_range` ({start, end}) and `body_start` are offsets into `source` in UTF-8 bytes, and `yaml_range` is {0, 0} when `yaml` is null. `open_eol` and `close_eol` are the line endings after the fences, `close_eol` empty when the file ends at the closing fence. `close_sep` is false only for an empty block with no line between its fences. `unterminated` is true when an opening fence never closes. Every runner also checks that composing the result with its shape gives `source` back byte for byte, and that the offsets index `yaml` and `body` in `source`.",
+      "cases": [
+        {
+          "name": "plain",
+          "input": {
+            "source": "---\ntitle: Plain\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "title: Plain",
+            "yaml_range": {
+              "start": 4,
+              "end": 16
+            },
+            "body": "body\n",
+            "body_start": 21,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "no_frontmatter",
+          "input": {
+            "source": "just prose, no fence\n"
+          },
+          "expect": {
+            "yaml": null,
+            "yaml_range": {
+              "start": 0,
+              "end": 0
+            },
+            "body": "just prose, no fence\n",
+            "body_start": 0,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "bom",
+          "input": {
+            "source": "\ufeff---\ntitle: BOM\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "title: BOM",
+            "yaml_range": {
+              "start": 7,
+              "end": 17
+            },
+            "body": "body\n",
+            "body_start": 22,
+            "bom": true,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "bom_no_frontmatter",
+          "input": {
+            "source": "\ufeffjust prose\n"
+          },
+          "expect": {
+            "yaml": null,
+            "yaml_range": {
+              "start": 0,
+              "end": 0
+            },
+            "body": "just prose\n",
+            "body_start": 3,
+            "bom": true,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "crlf",
+          "input": {
+            "source": "---\r\ntitle: CRLF\r\n---\r\nbody\r\n"
+          },
+          "expect": {
+            "yaml": "title: CRLF\r",
+            "yaml_range": {
+              "start": 5,
+              "end": 17
+            },
+            "body": "body\r\n",
+            "body_start": 23,
+            "bom": false,
+            "open_eol": "\r\n",
+            "close_eol": "\r\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "bom_and_crlf",
+          "input": {
+            "source": "\ufeff---\r\ntitle: both\r\n---\r\nbody\r\n"
+          },
+          "expect": {
+            "yaml": "title: both\r",
+            "yaml_range": {
+              "start": 8,
+              "end": 20
+            },
+            "body": "body\r\n",
+            "body_start": 26,
+            "bom": true,
+            "open_eol": "\r\n",
+            "close_eol": "\r\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "empty_frontmatter",
+          "input": {
+            "source": "---\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "",
+            "yaml_range": {
+              "start": 4,
+              "end": 4
+            },
+            "body": "body\n",
+            "body_start": 8,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": false,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "empty_frontmatter_crlf",
+          "input": {
+            "source": "---\r\n---\r\nbody\r\n"
+          },
+          "expect": {
+            "yaml": "",
+            "yaml_range": {
+              "start": 5,
+              "end": 5
+            },
+            "body": "body\r\n",
+            "body_start": 10,
+            "bom": false,
+            "open_eol": "\r\n",
+            "close_eol": "\r\n",
+            "close_sep": false,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "no_trailing_newline",
+          "input": {
+            "source": "---\ntitle: Terse\n---\nbody"
+          },
+          "expect": {
+            "yaml": "title: Terse",
+            "yaml_range": {
+              "start": 4,
+              "end": 16
+            },
+            "body": "body",
+            "body_start": 21,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "file_ends_at_closing_fence",
+          "input": {
+            "source": "---\na: 1\n---"
+          },
+          "expect": {
+            "yaml": "a: 1",
+            "yaml_range": {
+              "start": 4,
+              "end": 8
+            },
+            "body": "",
+            "body_start": 12,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "file_ends_at_closing_fence_plus_newline",
+          "input": {
+            "source": "---\na: 1\n---\n"
+          },
+          "expect": {
+            "yaml": "a: 1",
+            "yaml_range": {
+              "start": 4,
+              "end": 8
+            },
+            "body": "",
+            "body_start": 13,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "crlf_ends_at_closing_fence",
+          "input": {
+            "source": "---\r\na: 1\r\n---"
+          },
+          "expect": {
+            "yaml": "a: 1\r",
+            "yaml_range": {
+              "start": 5,
+              "end": 10
+            },
+            "body": "",
+            "body_start": 14,
+            "bom": false,
+            "open_eol": "\r\n",
+            "close_eol": "",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "body_contains_a_fence",
+          "input": {
+            "source": "---\na: 1\n---\nintro\n\n---\n\noutro\n"
+          },
+          "expect": {
+            "yaml": "a: 1",
+            "yaml_range": {
+              "start": 4,
+              "end": 8
+            },
+            "body": "intro\n\n---\n\noutro\n",
+            "body_start": 13,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "unterminated_block",
+          "input": {
+            "source": "---\ntitle: hi\nstill going\n"
+          },
+          "expect": {
+            "yaml": null,
+            "yaml_range": {
+              "start": 0,
+              "end": 0
+            },
+            "body": "---\ntitle: hi\nstill going\n",
+            "body_start": 0,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": true
+          }
+        },
+        {
+          "name": "comments_and_blank_lines",
+          "input": {
+            "source": "---\n# top\ntitle: x   # inline\n\nk: v\n---\n\nBody.\n"
+          },
+          "expect": {
+            "yaml": "# top\ntitle: x   # inline\n\nk: v",
+            "yaml_range": {
+              "start": 4,
+              "end": 35
+            },
+            "body": "\nBody.\n",
+            "body_start": 40,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "empty_file",
+          "input": {
+            "source": ""
+          },
+          "expect": {
+            "yaml": null,
+            "yaml_range": {
+              "start": 0,
+              "end": 0
+            },
+            "body": "",
+            "body_start": 0,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "opener_only",
+          "input": {
+            "source": "---\n"
+          },
+          "expect": {
+            "yaml": null,
+            "yaml_range": {
+              "start": 0,
+              "end": 0
+            },
+            "body": "---\n",
+            "body_start": 0,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": true
+          }
+        },
+        {
+          "name": "bare_dashes",
+          "input": {
+            "source": "---"
+          },
+          "expect": {
+            "yaml": null,
+            "yaml_range": {
+              "start": 0,
+              "end": 0
+            },
+            "body": "---",
+            "body_start": 0,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "padded_fences_are_lenient_only",
+          "input": {
+            "source": "--- \ntitle: x\n--- \nbody\n"
+          },
+          "expect": {
+            "yaml": null,
+            "yaml_range": {
+              "start": 0,
+              "end": 0
+            },
+            "body": "--- \ntitle: x\n--- \nbody\n",
+            "body_start": 0,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "leading_blank_lines_are_lenient_only",
+          "input": {
+            "source": "\n\n---\na: 1\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": null,
+            "yaml_range": {
+              "start": 0,
+              "end": 0
+            },
+            "body": "\n\n---\na: 1\n---\nbody\n",
+            "body_start": 0,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "bom_and_blank_lines_are_lenient_only",
+          "input": {
+            "source": "\ufeff\n\n---\na: 1\n---\n"
+          },
+          "expect": {
+            "yaml": null,
+            "yaml_range": {
+              "start": 0,
+              "end": 0
+            },
+            "body": "\n\n---\na: 1\n---\n",
+            "body_start": 3,
+            "bom": true,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "blank_line_only_frontmatter",
+          "input": {
+            "source": "---\n\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "",
+            "yaml_range": {
+              "start": 4,
+              "end": 4
+            },
+            "body": "body\n",
+            "body_start": 9,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "yaml_is_itself_a_blank_line",
+          "input": {
+            "source": "---\n\n\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "\n",
+            "yaml_range": {
+              "start": 4,
+              "end": 5
+            },
+            "body": "body\n",
+            "body_start": 10,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "yaml_ending_in_a_blank_line",
+          "input": {
+            "source": "---\na: 1\n\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "a: 1\n",
+            "yaml_range": {
+              "start": 4,
+              "end": 9
+            },
+            "body": "body\n",
+            "body_start": 14,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "dashes_then_text_do_not_close",
+          "input": {
+            "source": "---\na: 1\n---x\nb: 2\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "a: 1\n---x\nb: 2",
+            "yaml_range": {
+              "start": 4,
+              "end": 18
+            },
+            "body": "body\n",
+            "body_start": 23,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "dashes_then_text_leave_the_block_unterminated",
+          "input": {
+            "source": "---\na: 1\n---x\n"
+          },
+          "expect": {
+            "yaml": null,
+            "yaml_range": {
+              "start": 0,
+              "end": 0
+            },
+            "body": "---\na: 1\n---x\n",
+            "body_start": 0,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": true
+          }
+        },
+        {
+          "name": "lone_cr_after_closing_dashes_is_not_crlf",
+          "input": {
+            "source": "---\na: 1\n---\rb: 2\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "a: 1\n---\rb: 2",
+            "yaml_range": {
+              "start": 4,
+              "end": 17
+            },
+            "body": "body\n",
+            "body_start": 22,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "lone_cr_after_opening_dashes_is_not_a_fence",
+          "input": {
+            "source": "---\ra: 1\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": null,
+            "yaml_range": {
+              "start": 0,
+              "end": 0
+            },
+            "body": "---\ra: 1\n---\nbody\n",
+            "body_start": 0,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "adjacent_fences_at_end_of_file",
+          "input": {
+            "source": "---\n---"
+          },
+          "expect": {
+            "yaml": "",
+            "yaml_range": {
+              "start": 4,
+              "end": 4
+            },
+            "body": "",
+            "body_start": 7,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "",
+            "close_sep": false,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "unterminated_crlf",
+          "input": {
+            "source": "---\r\ntitle: A\r\nno closing fence\r\n"
+          },
+          "expect": {
+            "yaml": null,
+            "yaml_range": {
+              "start": 0,
+              "end": 0
+            },
+            "body": "---\r\ntitle: A\r\nno closing fence\r\n",
+            "body_start": 0,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": true
+          }
+        },
+        {
+          "name": "unterminated_bom_and_crlf",
+          "input": {
+            "source": "\ufeff---\r\ntitle: A\r\n"
+          },
+          "expect": {
+            "yaml": null,
+            "yaml_range": {
+              "start": 0,
+              "end": 0
+            },
+            "body": "---\r\ntitle: A\r\n",
+            "body_start": 3,
+            "bom": true,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": true
+          }
+        },
+        {
+          "name": "indented_opener",
+          "input": {
+            "source": "  ---\na: 1\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": null,
+            "yaml_range": {
+              "start": 0,
+              "end": 0
+            },
+            "body": "  ---\na: 1\n---\nbody\n",
+            "body_start": 0,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "indented_closer",
+          "input": {
+            "source": "---\na: 1\n  ---\nb: 2\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "a: 1\n  ---\nb: 2",
+            "yaml_range": {
+              "start": 4,
+              "end": 19
+            },
+            "body": "body\n",
+            "body_start": 24,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "bom_after_leading_spaces",
+          "input": {
+            "source": "  \ufeff---\na: 1\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": null,
+            "yaml_range": {
+              "start": 0,
+              "end": 0
+            },
+            "body": "  \ufeff---\na: 1\n---\nbody\n",
+            "body_start": 0,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "bom_inside_the_yaml",
+          "input": {
+            "source": "---\ntitle: a\ufeffb\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "title: a\ufeffb",
+            "yaml_range": {
+              "start": 4,
+              "end": 16
+            },
+            "body": "body\n",
+            "body_start": 21,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        },
+        {
+          "name": "multibyte_text_before_the_body",
+          "input": {
+            "source": "---\ntitle: café ☕ 😀\n---\nbody 😀\n"
+          },
+          "expect": {
+            "yaml": "title: café ☕ 😀",
+            "yaml_range": {
+              "start": 4,
+              "end": 25
+            },
+            "body": "body 😀\n",
+            "body_start": 30,
+            "bom": false,
+            "open_eol": "\n",
+            "close_eol": "\n",
+            "close_sep": true,
+            "unterminated": false
+          }
+        }
+      ]
+    },
+    "split_lenient": {
+      "description": "Lenient, read-only split of `source`. `expect` is null when no block is found, otherwise the `yaml` and `body` text.",
+      "cases": [
+        {
+          "name": "plain",
+          "input": {
+            "source": "---\ntitle: Plain\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "title: Plain",
+            "body": "body\n"
+          }
+        },
+        {
+          "name": "no_frontmatter",
+          "input": {
+            "source": "just prose, no fence\n"
+          },
+          "expect": null
+        },
+        {
+          "name": "bom",
+          "input": {
+            "source": "\ufeff---\ntitle: BOM\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "title: BOM",
+            "body": "body\n"
+          }
+        },
+        {
+          "name": "bom_no_frontmatter",
+          "input": {
+            "source": "\ufeffjust prose\n"
+          },
+          "expect": null
+        },
+        {
+          "name": "crlf",
+          "input": {
+            "source": "---\r\ntitle: CRLF\r\n---\r\nbody\r\n"
+          },
+          "expect": {
+            "yaml": "title: CRLF",
+            "body": "body\r\n"
+          }
+        },
+        {
+          "name": "bom_and_crlf",
+          "input": {
+            "source": "\ufeff---\r\ntitle: both\r\n---\r\nbody\r\n"
+          },
+          "expect": {
+            "yaml": "title: both",
+            "body": "body\r\n"
+          }
+        },
+        {
+          "name": "empty_frontmatter",
+          "input": {
+            "source": "---\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "",
+            "body": "body\n"
+          }
+        },
+        {
+          "name": "empty_frontmatter_crlf",
+          "input": {
+            "source": "---\r\n---\r\nbody\r\n"
+          },
+          "expect": {
+            "yaml": "",
+            "body": "body\r\n"
+          }
+        },
+        {
+          "name": "no_trailing_newline",
+          "input": {
+            "source": "---\ntitle: Terse\n---\nbody"
+          },
+          "expect": {
+            "yaml": "title: Terse",
+            "body": "body"
+          }
+        },
+        {
+          "name": "file_ends_at_closing_fence",
+          "input": {
+            "source": "---\na: 1\n---"
+          },
+          "expect": {
+            "yaml": "a: 1",
+            "body": ""
+          }
+        },
+        {
+          "name": "file_ends_at_closing_fence_plus_newline",
+          "input": {
+            "source": "---\na: 1\n---\n"
+          },
+          "expect": {
+            "yaml": "a: 1",
+            "body": ""
+          }
+        },
+        {
+          "name": "crlf_ends_at_closing_fence",
+          "input": {
+            "source": "---\r\na: 1\r\n---"
+          },
+          "expect": {
+            "yaml": "a: 1",
+            "body": ""
+          }
+        },
+        {
+          "name": "body_contains_a_fence",
+          "input": {
+            "source": "---\na: 1\n---\nintro\n\n---\n\noutro\n"
+          },
+          "expect": {
+            "yaml": "a: 1",
+            "body": "intro\n\n---\n\noutro\n"
+          }
+        },
+        {
+          "name": "unterminated_block",
+          "input": {
+            "source": "---\ntitle: hi\nstill going\n"
+          },
+          "expect": null
+        },
+        {
+          "name": "comments_and_blank_lines",
+          "input": {
+            "source": "---\n# top\ntitle: x   # inline\n\nk: v\n---\n\nBody.\n"
+          },
+          "expect": {
+            "yaml": "# top\ntitle: x   # inline\n\nk: v",
+            "body": "\nBody.\n"
+          }
+        },
+        {
+          "name": "empty_file",
+          "input": {
+            "source": ""
+          },
+          "expect": null
+        },
+        {
+          "name": "opener_only",
+          "input": {
+            "source": "---\n"
+          },
+          "expect": null
+        },
+        {
+          "name": "bare_dashes",
+          "input": {
+            "source": "---"
+          },
+          "expect": null
+        },
+        {
+          "name": "padded_fences_are_lenient_only",
+          "input": {
+            "source": "--- \ntitle: x\n--- \nbody\n"
+          },
+          "expect": {
+            "yaml": "title: x",
+            "body": "body\n"
+          }
+        },
+        {
+          "name": "leading_blank_lines_are_lenient_only",
+          "input": {
+            "source": "\n\n---\na: 1\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "a: 1",
+            "body": "body\n"
+          }
+        },
+        {
+          "name": "bom_and_blank_lines_are_lenient_only",
+          "input": {
+            "source": "\ufeff\n\n---\na: 1\n---\n"
+          },
+          "expect": {
+            "yaml": "a: 1",
+            "body": ""
+          }
+        },
+        {
+          "name": "blank_line_only_frontmatter",
+          "input": {
+            "source": "---\n\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "",
+            "body": "body\n"
+          }
+        },
+        {
+          "name": "yaml_is_itself_a_blank_line",
+          "input": {
+            "source": "---\n\n\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "\n",
+            "body": "body\n"
+          }
+        },
+        {
+          "name": "yaml_ending_in_a_blank_line",
+          "input": {
+            "source": "---\na: 1\n\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "a: 1\n",
+            "body": "body\n"
+          }
+        },
+        {
+          "name": "dashes_then_text_do_not_close",
+          "input": {
+            "source": "---\na: 1\n---x\nb: 2\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "a: 1\n---x\nb: 2",
+            "body": "body\n"
+          }
+        },
+        {
+          "name": "dashes_then_text_leave_the_block_unterminated",
+          "input": {
+            "source": "---\na: 1\n---x\n"
+          },
+          "expect": null
+        },
+        {
+          "name": "lone_cr_after_closing_dashes_is_not_crlf",
+          "input": {
+            "source": "---\na: 1\n---\rb: 2\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "a: 1\n---\rb: 2",
+            "body": "body\n"
+          }
+        },
+        {
+          "name": "lone_cr_after_opening_dashes_is_not_a_fence",
+          "input": {
+            "source": "---\ra: 1\n---\nbody\n"
+          },
+          "expect": null
+        },
+        {
+          "name": "adjacent_fences_at_end_of_file",
+          "input": {
+            "source": "---\n---"
+          },
+          "expect": {
+            "yaml": "",
+            "body": ""
+          }
+        },
+        {
+          "name": "unterminated_crlf",
+          "input": {
+            "source": "---\r\ntitle: A\r\nno closing fence\r\n"
+          },
+          "expect": null
+        },
+        {
+          "name": "unterminated_bom_and_crlf",
+          "input": {
+            "source": "\ufeff---\r\ntitle: A\r\n"
+          },
+          "expect": null
+        },
+        {
+          "name": "indented_opener",
+          "input": {
+            "source": "  ---\na: 1\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "a: 1",
+            "body": "body\n"
+          }
+        },
+        {
+          "name": "indented_closer",
+          "input": {
+            "source": "---\na: 1\n  ---\nb: 2\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "a: 1\n  ---\nb: 2",
+            "body": "body\n"
+          }
+        },
+        {
+          "name": "bom_after_leading_spaces",
+          "input": {
+            "source": "  \ufeff---\na: 1\n---\nbody\n"
+          },
+          "expect": null
+        },
+        {
+          "name": "bom_inside_the_yaml",
+          "input": {
+            "source": "---\ntitle: a\ufeffb\n---\nbody\n"
+          },
+          "expect": {
+            "yaml": "title: a\ufeffb",
+            "body": "body\n"
+          }
+        },
+        {
+          "name": "multibyte_text_before_the_body",
+          "input": {
+            "source": "---\ntitle: café ☕ 😀\n---\nbody 😀\n"
+          },
+          "expect": {
+            "yaml": "title: café ☕ 😀",
+            "body": "body 😀\n"
+          }
+        }
+      ]
+    },
+    "compose_edit": {
+      "description": "Compose `yaml` (null for no block) and `body` with the shape the strict split reads from `source`. `out` is the note written. Every runner also checks that `out` splits back to `yaml` and `body`.",
+      "cases": [
+        {
+          "name": "empty_frontmatter",
+          "input": {
+            "source": "---\n---\nbody\n",
+            "yaml": "title: x",
+            "body": "body\n"
+          },
+          "expect": {
+            "out": "---\ntitle: x\n---\nbody\n"
+          }
+        },
+        {
+          "name": "empty_frontmatter_crlf",
+          "input": {
+            "source": "---\r\n---\r\nbody\r\n",
+            "yaml": "title: x\r",
+            "body": "body\r\n"
+          },
+          "expect": {
+            "out": "---\r\ntitle: x\r\n---\r\nbody\r\n"
+          }
+        },
+        {
+          "name": "file_ends_at_closing_fence",
+          "input": {
+            "source": "---\na: 1\n---",
+            "yaml": "a: 1",
+            "body": "new\n"
+          },
+          "expect": {
+            "out": "---\na: 1\n---\nnew\n"
+          }
+        },
+        {
+          "name": "crlf_ends_at_closing_fence",
+          "input": {
+            "source": "---\r\na: 1\r\n---",
+            "yaml": "a: 1\r",
+            "body": "new\r\n"
+          },
+          "expect": {
+            "out": "---\r\na: 1\r\n---\r\nnew\r\n"
+          }
+        },
+        {
+          "name": "crlf_value_swap",
+          "input": {
+            "source": "---\r\ntitle: old\r\n---\r\nbody\r\n",
+            "yaml": "title: new\r",
+            "body": "body\r\n"
+          },
+          "expect": {
+            "out": "---\r\ntitle: new\r\n---\r\nbody\r\n"
+          }
+        },
+        {
+          "name": "adjacent_fences_at_end_of_file_gain_a_body",
+          "input": {
+            "source": "---\n---",
+            "yaml": "",
+            "body": "new\n"
+          },
+          "expect": {
+            "out": "---\n---\nnew\n"
+          }
+        },
+        {
+          "name": "bom_kept_through_an_edit",
+          "input": {
+            "source": "\ufeff---\ntitle: a\n---\nbody\n",
+            "yaml": "title: b",
+            "body": "body\n"
+          },
+          "expect": {
+            "out": "\ufeff---\ntitle: b\n---\nbody\n"
+          }
+        },
+        {
+          "name": "no_block_stays_body_only",
+          "input": {
+            "source": "just prose\n",
+            "yaml": null,
+            "body": "new prose\n"
+          },
+          "expect": {
+            "out": "new prose\n"
+          }
+        },
+        {
+          "name": "block_removed",
+          "input": {
+            "source": "---\na: 1\n---\nbody\n",
+            "yaml": null,
+            "body": "body\n"
+          },
+          "expect": {
+            "out": "body\n"
+          }
+        }
+      ]
+    },
+    "new_shape": {
+      "description": "Make the shape for a new note from `eol` (\"\\n\" or \"\\r\\n\", null for the default) and `bom` (null for the default), then compose `yaml` (null for no block) and `body` with it. `shape` is the shape made and `out` the note written. Every runner also checks that `out` splits back to `yaml` and `body`.",
+      "cases": [
+        {
+          "name": "defaults",
+          "input": {
+            "eol": null,
+            "bom": null,
+            "yaml": "title: A",
+            "body": "# A\n"
+          },
+          "expect": {
+            "shape": {
+              "bom": false,
+              "open_eol": "\n",
+              "close_eol": "\n",
+              "close_sep": true
+            },
+            "out": "---\ntitle: A\n---\n# A\n"
+          }
+        },
+        {
+          "name": "lf",
+          "input": {
+            "eol": "\n",
+            "bom": false,
+            "yaml": "a: 1\nb: 2",
+            "body": "body\n"
+          },
+          "expect": {
+            "shape": {
+              "bom": false,
+              "open_eol": "\n",
+              "close_eol": "\n",
+              "close_sep": true
+            },
+            "out": "---\na: 1\nb: 2\n---\nbody\n"
+          }
+        },
+        {
+          "name": "crlf",
+          "input": {
+            "eol": "\r\n",
+            "bom": false,
+            "yaml": "a: 1\r\nb: 2\r",
+            "body": "body\r\n"
+          },
+          "expect": {
+            "shape": {
+              "bom": false,
+              "open_eol": "\r\n",
+              "close_eol": "\r\n",
+              "close_sep": true
+            },
+            "out": "---\r\na: 1\r\nb: 2\r\n---\r\nbody\r\n"
+          }
+        },
+        {
+          "name": "lf_with_bom",
+          "input": {
+            "eol": "\n",
+            "bom": true,
+            "yaml": "a: 1",
+            "body": "body\n"
+          },
+          "expect": {
+            "shape": {
+              "bom": true,
+              "open_eol": "\n",
+              "close_eol": "\n",
+              "close_sep": true
+            },
+            "out": "\ufeff---\na: 1\n---\nbody\n"
+          }
+        },
+        {
+          "name": "crlf_with_bom",
+          "input": {
+            "eol": "\r\n",
+            "bom": true,
+            "yaml": "a: 1\r",
+            "body": "body\r\n"
+          },
+          "expect": {
+            "shape": {
+              "bom": true,
+              "open_eol": "\r\n",
+              "close_eol": "\r\n",
+              "close_sep": true
+            },
+            "out": "\ufeff---\r\na: 1\r\n---\r\nbody\r\n"
+          }
+        },
+        {
+          "name": "an_empty_block",
+          "input": {
+            "eol": null,
+            "bom": null,
+            "yaml": "",
+            "body": "body\n"
+          },
+          "expect": {
+            "shape": {
+              "bom": false,
+              "open_eol": "\n",
+              "close_eol": "\n",
+              "close_sep": true
+            },
+            "out": "---\n\n---\nbody\n"
+          }
+        },
+        {
+          "name": "an_empty_body",
+          "input": {
+            "eol": null,
+            "bom": null,
+            "yaml": "a: 1",
+            "body": ""
+          },
+          "expect": {
+            "shape": {
+              "bom": false,
+              "open_eol": "\n",
+              "close_eol": "\n",
+              "close_sep": true
+            },
+            "out": "---\na: 1\n---\n"
+          }
+        },
+        {
+          "name": "no_block",
+          "input": {
+            "eol": null,
+            "bom": null,
+            "yaml": null,
+            "body": "body\n"
+          },
+          "expect": {
+            "shape": {
+              "bom": false,
+              "open_eol": "\n",
+              "close_eol": "\n",
+              "close_sep": true
+            },
+            "out": "body\n"
+          }
+        }
+      ]
+    }
+  }
+}
