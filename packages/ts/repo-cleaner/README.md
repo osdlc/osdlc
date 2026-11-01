@@ -529,8 +529,14 @@ so the rows it checks again are the rows the host planned from.
 
 This works because of how the ladder is ordered. Every verdict the sweep
 reaches on its own evidence outranks anything a host could contribute, so a
-host never has to veto one. It only sharpens the rows left at `safe-to-keep`
-or `needs-investigation`.
+host rarely has to veto one. It mostly sharpens the rows left at
+`safe-to-keep` or `needs-investigation`.
+
+A host that does hold back or demote a worktree row must also keep that
+worktree's branch, which the sweep freed because the worktree was going. Pass
+the annotated rows through `holdFreedBranches(items, { branchScoped })`, with
+`branchScoped` set for a `branch` sweep. `applyPlan` does the same after its
+`annotate` hook, so the plan and the run agree.
 
 An issue tracker's linkage, applied this way, is a host's own layer over the
 sweep and `applyPlan`.
