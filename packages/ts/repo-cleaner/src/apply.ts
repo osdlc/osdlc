@@ -317,7 +317,24 @@ function recheck(
     }
     accepted.push({ repo: repo.root, item, force: granted(grants, ref, 'discard-changes') })
   }
-  return { accepted, dropped, verified }
+  // A branch freed by its worktree's removal goes only with that worktree.
+  const leaving = new Set(
+    accepted.filter((row) => row.item.category === 'worktree').map((row) => row.item.id),
+  )
+  const held = accepted.filter((row) => {
+    const worktree = row.item.facts['worktree']
+    return typeof worktree === 'string' && !leaving.has(worktree)
+  })
+  for (const { repo, item } of held) {
+    dropped.push({
+      repo,
+      category: item.category,
+      id: item.id,
+      reason: 'not-deletable',
+      detail: `checked out in ${String(item.facts['worktree'])}, which this run does not remove`,
+    })
+  }
+  return { accepted: accepted.filter((row) => !held.includes(row)), dropped, verified }
 }
 
 function pending(

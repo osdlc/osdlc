@@ -180,15 +180,26 @@ export function sweepRepo(path: string, opts: SweepOptions = {}): RepoSweep {
 
     let localBranchNames = new Set<string>()
     if (scope.has('local-branches') || scope.has('remote-branches')) {
-      const pinned =
-        only === undefined
-          ? worktreeBranches
-          : new Set(
-              worktreeItems
-                .filter((item) => !item.deletable)
-                .map((item) => String(item.facts['branch'])),
-            )
+      // A branch whose worktree goes in the same plan is judged on its own:
+      // apply removes worktrees before it deletes branches. A full sweep frees
+      // the branch of a safe-to-delete worktree; a branch-scoped sweep frees
+      // the named branch when its worktree is deletable at all.
+      const freed = new Map<string, string>()
+      if (scope.has('worktrees')) {
+        for (const item of worktreeItems) {
+          const branch = item.facts['branch']
+          const goes =
+            item.deletable && (only !== undefined || item.classification === 'safe-to-delete')
+          if (goes && typeof branch === 'string') freed.set(branch, item.id)
+        }
+      }
+      const pinned = new Set([...worktreeBranches].filter((name) => !freed.has(name)))
       const localItems = gatherLocalBranches(repo, prs, pinned, git, only, ticker('local-branches'))
+      // Apply drops a freed branch unless the same run removes its worktree.
+      for (const item of localItems) {
+        const worktree = freed.get(item.id)
+        if (worktree !== undefined) item.facts['worktree'] = worktree
+      }
       localBranchNames = new Set(localItems.map((item) => item.id))
       if (scope.has('local-branches')) items.push(...localItems)
     }

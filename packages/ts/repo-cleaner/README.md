@@ -270,6 +270,12 @@ approves them by name:
 A row kept for structure (default branch, current HEAD, a branch held by a
 worktree, the primary or caller's worktree) has `deletable: false`.
 
+A branch whose worktree is `safe-to-delete` is not held by it: the sweep judges
+the branch on its own and records the worktree's path in `facts.worktree`, so
+one run removes the worktree and then deletes the branch. `apply` deletes such
+a branch only when the same run removes its worktree, and skips it otherwise.
+With `--only branches` no worktree is swept, so the branch stays held.
+
 ## Commands
 
 ```bash

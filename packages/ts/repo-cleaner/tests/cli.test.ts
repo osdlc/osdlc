@@ -473,10 +473,10 @@ describe('color', () => {
       },
     )
     expect(res.code).toBe(0)
-    expect(asked).toEqual(['Delete 2 items?'])
+    expect(asked).toEqual(['Delete 1 item?'])
     expect(res.out).toContain('\x1b[31mdelete')
     expect(res.out).toContain('\x1b[33mskip')
-    expect(res.out).toContain('\x1b[1mwould delete: 1 local branch, 1 remote branch')
+    expect(res.out).toContain('\x1b[1mwould delete: 1 remote branch')
     expect(branchRefs(fx.bare)).toContain(BRANCH)
   })
 })
@@ -928,7 +928,9 @@ describe('apply', () => {
     const res = run(['apply', '--branch', BRANCH, ...SWEEP, '--remotes'], fx.root)
     expect(res.code).toBe(2)
     expect(res.out).toContain(`delete  remote_branch  origin/${BRANCH}`)
-    expect(res.out).toContain('would delete: 1 local branch, 1 remote branch')
+    // The branch goes only with its worktree, which needs --row here.
+    expect(res.out).toContain('which this run does not remove')
+    expect(res.out).toContain('would delete: 1 remote branch')
     expect(res.err).toContain('--yes')
     expect(existsSync(fx.worktree)).toBe(true)
   })
