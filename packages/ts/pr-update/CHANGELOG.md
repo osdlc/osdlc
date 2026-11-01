@@ -1,5 +1,12 @@
 # @osdlc/pr-update
 
+## 0.9.4
+
+### Patch Changes
+
+- Updated dependencies [a3ef86d]
+  - @osdlc/cli-tool@0.15.0
+
 ## 0.9.3
 
 ### Patch Changes

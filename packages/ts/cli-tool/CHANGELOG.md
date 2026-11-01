@@ -1,5 +1,11 @@
 # @osdlc/cli-tool
 
+## 0.15.0
+
+### Minor Changes
+
+- a3ef86d: devlink: a hand-off from a process running under Bun reuses that bun, so a proto shim first on `PATH` no longer breaks it. `devlinkHook` refuses a checkout chosen by the env, cwd or link layer whose `node_modules` is missing or incomplete, with the bash launcher's "Run 'bun install' there" lines and exit 1. A checkout with no dependencies needs no `node_modules`, in the hook and in `renderLauncher`'s `need_deps`. An `execve` that fails for a reason other than `ENOENT` or `EACCES` falls back to a spawn. New exports from `@osdlc/cli-tool/devlink`: `missingDependency` and `installDir`. The launch-order guide gains "One run, step by step", "A tool with its own entry script" and "Adopting devlink in a new CLI".
+
 ## 0.14.0
 
 ### Minor Changes
