@@ -25,7 +25,7 @@ test('a branch merged into main is listed as safe to delete, and still exists', 
   git(['branch', 'fix/login-redirect'])
   const tip = git(['rev-parse', 'fix/login-redirect'])
 
-  const sweep = sweepRepo(root, { noGh: true, cwd: root })
+  const sweep = sweepRepo(root, { noProvider: true, cwd: root })
 
   const item = sweep.items.find(
     (i) => i.category === 'local_branch' && i.id === 'fix/login-redirect',

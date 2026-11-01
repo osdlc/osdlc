@@ -51,9 +51,10 @@ export interface Grant {
 }
 
 export interface ApplyOptions extends HostHooks {
-  /** Injected runners. Defaults spawn the real `git` and `gh`. */
+  /** Injected runners. Defaults spawn the real `git`, `gh` and `glab`. */
   git?: CommandRunner | undefined
   gh?: CommandRunner | undefined
+  glab?: CommandRunner | undefined
   /**
    * Answers lock-owner and working-directory questions, for the re-sweep and
    * for the checks just before an unlock and a remove. Defaults to `ps` and
@@ -224,13 +225,15 @@ function resweep(repo: PlanRepo, scope: readonly Scope[], opts: ApplyOptions): S
   }
   const sweep = sweepRepo(repo.root, {
     remote: repo.remote,
-    noGh: repo.no_gh,
+    noProvider: repo.no_gh,
+    provider: repo.provider,
     branch: repo.branch ?? undefined,
     fetch: opts.fetch ?? repo.fetch,
     scope,
     cwd: opts.callerCwd,
     git: opts.git,
     gh: opts.gh,
+    glab: opts.glab,
     probe: opts.probe,
     onProgress: opts.onSweepProgress,
   })

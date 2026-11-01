@@ -70,3 +70,56 @@ export function cannedGh(prs: CannedPr[]): CommandRunner {
     },
   }
 }
+
+export interface CannedMr {
+  iid: number
+  state: 'opened' | 'merged' | 'closed' | 'locked'
+  source_branch: string
+  sha: string
+  target_branch?: string
+  /** Defaults to the target project's id, so the MR is not a fork's. */
+  source_project_id?: number
+}
+
+/**
+ * A `glab` that answers `api …/merge_requests` with `mrs` (100 to a page,
+ * filtered by `source_branch`) and fails everything else. `calls` records
+ * every argv it was given.
+ */
+export function cannedGlab(
+  mrs: CannedMr[],
+  opts: { installed?: boolean; authenticated?: boolean } = {},
+): CommandRunner & { calls: string[][] } {
+  const rows = mrs.map((mr) => ({
+    target_branch: 'main',
+    source_project_id: 1,
+    target_project_id: 1,
+    merged_at: mr.state === 'merged' ? '2020-01-02T00:00:00Z' : null,
+    title: `MR ${mr.iid}`,
+    web_url: `https://gitlab.example.invalid/-/merge_requests/${mr.iid}`,
+    ...mr,
+  }))
+  const calls: string[][] = []
+  return {
+    calls,
+    run(argv) {
+      calls.push([...argv])
+      const ok = (stdout = '') => ({ exitCode: 0, stdout, stderr: '' })
+      if (opts.installed === false) {
+        return { exitCode: 1, stdout: '', stderr: '', neverExited: true, reason: 'spawn' as const }
+      }
+      if (argv[0] === '--version') return ok('glab 1.50.0')
+      if (argv[0] === 'auth') {
+        return opts.authenticated === false ? { exitCode: 1, stdout: '', stderr: 'no token' } : ok()
+      }
+      if (argv[0] === 'api') {
+        const url = new URL(`https://x/${argv.at(-1)!}`)
+        const page = Number(url.searchParams.get('page') ?? '1')
+        const branch = url.searchParams.get('source_branch')
+        const matching = rows.filter((r) => branch === null || r.source_branch === branch)
+        return ok(JSON.stringify(matching.slice((page - 1) * 100, page * 100)))
+      }
+      return { exitCode: 1, stdout: '', stderr: 'not canned' }
+    },
+  }
+}

@@ -43,6 +43,7 @@ import {
   writePlan,
   type Plan,
 } from './plan.ts'
+import { PROVIDER_CHOICES, type ProviderChoice } from './providers/index.ts'
 import { RECEIPT_VERSION, type Receipt, type RowRef, type Step } from './receipt.ts'
 import {
   PLAIN,
@@ -115,7 +116,13 @@ const SWEEP_FLAGS = {
   gh: {
     kind: 'boolean',
     negatable: true,
-    help: 'with --remotes: classify on git evidence alone (without --remotes gh is never called)',
+    help: 'with --remotes: classify on git evidence alone, the same as --provider none (without --remotes no provider is asked)',
+  },
+  provider: {
+    kind: 'enum',
+    choices: PROVIDER_CHOICES,
+    valueName: 'name',
+    help: 'with --remotes: where pull requests come from: auto (by remote host), github (gh), gitlab (glab), none',
   },
   fetch: {
     kind: 'boolean',
@@ -315,6 +322,7 @@ interface SweepValues {
   remoteUrl: string[]
   remotes: boolean
   gh: boolean
+  provider?: ProviderChoice | undefined
   fetch: boolean
   progress: boolean
 }
@@ -328,7 +336,7 @@ type Swept =
       /** What the sweep gathered. */
       scope: readonly Scope[]
       /** True when the sweep did not call gh, so the re-check must not either. */
-      noGh: boolean
+      noProvider: boolean
     }
   /** No entry named a repository; the verb reports it and exits 10. */
   | { kind: 'nothing'; result: SweepResult }
@@ -404,6 +412,11 @@ function sweep(
     if (conflict !== null) return { kind: 'exit', code: usageError(ctx, name, conflict) }
   }
 
+  if (!v.gh && v.provider !== undefined && v.provider !== 'none') {
+    const message = `--no-gh asks no provider; drop it or --provider ${v.provider}`
+    return { kind: 'exit', code: usageError(ctx, name, message) }
+  }
+
   let branch: string | undefined
   try {
     branch = v.branch === undefined ? undefined : resolveBranch(v.branch, new Git(ctx.cwd))
@@ -417,8 +430,9 @@ function sweep(
     baseDir: ctx.cwd,
     cwd: ctx.cwd,
     // Local by default means offline: the fetch and gh go with remote branches.
-    noGh: !(online && v.gh),
+    noProvider: !(online && v.gh) || v.provider === 'none',
     fetch: online && v.fetch,
+    provider: v.provider,
     branch,
     // Mid-walk, while the wait is happening — the summary comes too late to
     // explain why the tool appeared to hang.
@@ -452,7 +466,7 @@ function sweep(
   const refused = branch === undefined ? null : (result.repos[0]?.error ?? null)
   if (refused !== null) return { kind: 'exit', code: failure(ctx, new Error(refused)) }
   if (result.repos.length === 0) return { kind: 'nothing', result }
-  return { kind: 'ok', result, branch, values: v, scope, noGh: options.noGh === true }
+  return { kind: 'ok', result, branch, values: v, scope, noProvider: options.noProvider === true }
 }
 
 /**
@@ -469,7 +483,8 @@ function reportUnreadable(ctx: CliContext, name: string, result: SweepResult): b
 function planOf(swept: Extract<Swept, { kind: 'ok' }>, now: Date): Plan {
   const opts = {
     remote: swept.values.remote ?? null,
-    noGh: swept.noGh,
+    noProvider: swept.noProvider,
+    provider: swept.values.provider,
     branch: swept.branch ?? null,
   }
   return {

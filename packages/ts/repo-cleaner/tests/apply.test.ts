@@ -75,11 +75,11 @@ function buildFixture(): Fixture {
 }
 
 function makePlan(root: string): Plan {
-  const { repo, items } = sweepRepo(root, { noGh: true, cwd: root })
+  const { repo, items } = sweepRepo(root, { noProvider: true, cwd: root })
   return {
     version: PLAN_VERSION,
     created_at: new Date().toISOString(),
-    repos: [planRepo(repo!.root, { remote: null, noGh: true }, items)],
+    repos: [planRepo(repo!.root, { remote: null, noProvider: true }, items)],
   }
 }
 
@@ -108,11 +108,11 @@ describe('applyPlan fetches as the plan did', () => {
   /** A plan of `merged-a`'s local row, and a push to `main` the worker has not fetched. */
   function setup(fetch: boolean) {
     const fx = buildFixture()
-    const { repo, items } = sweepRepo(fx.root, { noGh: true, cwd: fx.root, fetch })
+    const { repo, items } = sweepRepo(fx.root, { noProvider: true, cwd: fx.root, fetch })
     const plan: Plan = {
       version: PLAN_VERSION,
       created_at: new Date().toISOString(),
-      repos: [planRepo(repo!.root, { remote: null, noGh: true, fetch }, items)],
+      repos: [planRepo(repo!.root, { remote: null, noProvider: true, fetch }, items)],
     }
     const other = join(realpathSync(mkdtempSync(join(tmpdir(), 'rc-other-'))), 'c')
     cleanups.push(() => rmSync(dirname(other), { recursive: true, force: true }))
@@ -516,7 +516,7 @@ describe('applyPlan', () => {
     rmSync(join(fx.worktree, '.git'))
     writeFileSync(join(fx.worktree, 'left.txt'), 'kept\n')
 
-    const sweep = sweepRepo(fx.root, { noGh: true, cwd: fx.root })
+    const sweep = sweepRepo(fx.root, { noProvider: true, cwd: fx.root })
     expect(sweep.error).toBeNull()
     const row = sweep.items.find((i) => i.id === fx.worktree)!
     expect(row).toMatchObject({
@@ -641,8 +641,8 @@ describe('applyPlan', () => {
       version: PLAN_VERSION,
       created_at: 'x',
       repos: roots.map((root) => {
-        const { repo, items } = sweepRepo(root, { noGh: true, cwd: root })
-        return planRepo(repo!.root, { remote: null, noGh: true }, items)
+        const { repo, items } = sweepRepo(root, { noProvider: true, cwd: root })
+        return planRepo(repo!.root, { remote: null, noProvider: true }, items)
       }),
     }
     const receipt = applyPlan(plan, [], [], {
@@ -669,7 +669,7 @@ describe('applyPlan', () => {
 
   test('swept items stand in for the re-sweep', () => {
     const fx = buildFixture()
-    const { repo, items } = sweepRepo(fx.root, { noGh: true, cwd: fx.root })
+    const { repo, items } = sweepRepo(fx.root, { noProvider: true, cwd: fx.root })
     const pinned = items.map((i) => (i.id === 'merged-a' ? { ...i, deletable: false } : i))
     const receipt = applyPlan(
       makePlan(fx.root),

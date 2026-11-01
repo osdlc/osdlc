@@ -1,12 +1,21 @@
 /**
  * What the sweep must know about a repository before it can classify anything:
  * where its main checkout is, what its default branch is called, which remote
- * to measure against, and whether `gh` can be asked about pull requests.
+ * to measure against, and which provider can be asked about pull requests.
  */
 
 import { parseRemoteRepo, type Git } from '@osdlc/typed-git'
+import type { CommandRunner } from '@osdlc/command-seam'
 import type { Gh } from '@osdlc/typed-gh'
 
+import {
+  forgeTarget,
+  probeProvider,
+  providers,
+  type PrProvider,
+  type ProviderChoice,
+  type ProviderName,
+} from './providers/index.ts'
 import type { RepoInfo } from './types.ts'
 
 /**
@@ -33,11 +42,23 @@ export class DiscoveryFailed extends Error {
  */
 export function discoverRepo(
   hint: string,
-  opts: { remote?: string | null; allowGh?: boolean; git: Git; gh: Gh },
+  opts: {
+    remote?: string | null
+    /** False is `provider: 'none'`, whatever `provider` says. */
+    allowProvider?: boolean
+    /** Which provider to ask for pull requests. Defaults to `auto`, by the remote's host. */
+    provider?: ProviderChoice | undefined
+    git: Git
+    gh: Gh
+    /** The `glab` runner for the GitLab provider. Defaults to the real binary. */
+    glab?: CommandRunner | undefined
+    /** The providers to choose from. Defaults to {@link providers} over `gh` and `glab`. */
+    providers?: Record<ProviderName, PrProvider> | undefined
+  },
 ): RepoInfo {
   const { git, gh } = opts
   const remoteHint = opts.remote ?? null
-  const allowGh = opts.allowGh ?? true
+  const allowProvider = opts.allowProvider ?? true
 
   // `topLevel()` answers null for exit 128 only — "this is not a repository",
   // which is the answer to the question. Any other git failure throws.
@@ -78,17 +99,32 @@ export function discoverRepo(
 
   // A short name for the report's header, so a fan-out over long paths stays
   // readable. It also keys duplicate checkouts.
-  const slug = remote === null ? null : remoteSlugOf(git.at(root).try.remoteGetUrl(remote))
+  const url = remote === null ? null : git.at(root).try.remoteGetUrl(remote)
+  const slug = url === null ? null : remoteSlugOf(url)
+  const remoteUrl = url?.ok === true && typeof url.value === 'string' ? url.value : null
 
   const currentBranch = git.at(root).headRef() ?? ''
 
-  // The two halves separately, not `ready()`: the report says "gh not
-  // available" and "gh not authenticated" differently, because they send a
-  // person somewhere different.
-  const hasGh = allowGh && gh.at(root).installed()
-  const ghAuthenticated = hasGh && gh.at(root).authenticated()
+  // Installed and signed in are probed separately: "not installed" and "not
+  // authenticated" send a person somewhere different.
+  const choice: ProviderChoice = allowProvider ? (opts.provider ?? 'auto') : 'none'
+  const target = forgeTarget(remoteUrl)
+  const provider = probeProvider(
+    choice,
+    root,
+    target,
+    opts.providers ?? providers({ gh, glab: opts.glab }),
+  )
 
-  return { root, slug, mainBranch, remote, currentBranch, hasGh, ghAuthenticated, fetched: false }
+  return {
+    root,
+    slug,
+    mainBranch,
+    remote,
+    currentBranch,
+    provider,
+    fetched: false,
+  }
 }
 
 /**
