@@ -80,7 +80,8 @@ export interface ApplyOptions extends HostHooks {
   safeOnly?: boolean | undefined
   /**
    * Items to re-check against instead of sweeping again, keyed by repository
-   * root, already annotated: the hook is not applied to them again. For a
+   * root, already annotated: the hook is not applied to them again, though
+   * `holdFreedBranches` is, so a freed branch matches its worktree. For a
    * preview straight after a sweep; the run that deletes should always sweep
    * again.
    */
@@ -219,9 +220,10 @@ const SCOPE_OF: Record<RowRef['category'], Scope> = {
 
 /** The plan repository's rows as they stand now, with the host's overlay applied. */
 function resweep(repo: PlanRepo, scope: readonly Scope[], opts: ApplyOptions): SweepItem[] {
+  const branchScoped = repo.branch != null
   const given = opts.swept?.get(repo.root)
   if (given !== undefined) {
-    return [...given]
+    return holdFreedBranches([...given], { branchScoped })
   }
   const sweep = sweepRepo(repo.root, {
     remote: repo.remote,
@@ -242,7 +244,7 @@ function resweep(repo: PlanRepo, scope: readonly Scope[], opts: ApplyOptions): S
   }
   return opts.annotate === undefined
     ? sweep.items
-    : holdFreedBranches(opts.annotate(sweep.repo, sweep.items))
+    : holdFreedBranches(opts.annotate(sweep.repo, sweep.items), { branchScoped })
 }
 
 /** Re-sweep, then split the selection into rows to run and rows dropped. */

@@ -189,9 +189,9 @@ export function sweepRepo(path: string, opts: SweepOptions = {}): RepoSweep {
       if (scope.has('worktrees')) {
         for (const item of worktreeItems) {
           const branch = item.facts['branch']
-          const goes =
-            item.deletable && (only !== undefined || item.classification === 'safe-to-delete')
-          if (goes && typeof branch === 'string') freed.set(branch, item.id)
+          if (freesBranch(item, only !== undefined) && typeof branch === 'string') {
+            freed.set(branch, item.id)
+          }
         }
       }
       const pinned = new Set([...worktreeBranches].filter((name) => !freed.has(name)))
@@ -256,15 +256,28 @@ export function sweepRepos(entries: readonly string[], opts: SweepReposOptions =
 }
 
 /**
- * Keep again each branch a sweep freed for its worktree's removal when that
- * worktree no longer goes: a host's `annotate` held it back, or it is gone
- * from the rows. Run it on annotated rows, so the counts and the plan match
- * what `applyPlan` will do.
+ * Whether worktree row `item` frees its branch to be judged on its own. A full
+ * sweep frees it only for a safe-to-delete worktree; a branch-scoped sweep,
+ * where the caller named the branch, for any deletable one.
  */
-export function holdFreedBranches(items: SweepItem[]): SweepItem[] {
+function freesBranch(item: SweepItem, branchScoped: boolean): boolean {
+  return item.deletable && (branchScoped || item.classification === 'safe-to-delete')
+}
+
+/**
+ * Keep again each branch a sweep freed for its worktree's removal when that
+ * worktree no longer frees it by the sweep's own rule: a host's `annotate`
+ * held it back or demoted it, or dropped its row. Run it on annotated rows,
+ * with `branchScoped` set for a `branch` sweep, so the counts and the plan
+ * match what `applyPlan` will do. Running it twice changes nothing.
+ */
+export function holdFreedBranches(
+  items: SweepItem[],
+  opts: { branchScoped?: boolean } = {},
+): SweepItem[] {
   const going = new Set(
     items
-      .filter((it) => it.category === 'worktree' && it.deletable && it.action !== 'keep')
+      .filter((it) => it.category === 'worktree' && freesBranch(it, opts.branchScoped === true))
       .map((it) => it.id),
   )
   return items.map((item) => {

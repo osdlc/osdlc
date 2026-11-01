@@ -896,6 +896,26 @@ describe('plan files', () => {
     expect(receipt.dropped.map((d) => d.reason)).toEqual(['not-deletable'])
   })
 
+  test('rows passed in as swept go through holdFreedBranches too', () => {
+    const fx = buildFixture()
+    mergeWorktreeBranch(fx)
+    const plan = makePlan(fx.root)
+    const { items } = sweepRepo(fx.root, { noProvider: true, cwd: fx.root })
+    const held = items.map((item) =>
+      item.id === fx.worktree ? { ...item, action: 'keep', deletable: false } : item,
+    )
+    const receipt = applyPlan(plan, [{ category: 'local_branch', id: 'wt-branch' }], [], {
+      callerCwd: fx.root,
+      dryRun: true,
+      receiptPath: join(fx.root, 'unused.json'),
+      planPath: 'plan.json',
+      swept: new Map([[plan.repos[0]!.root, held]]),
+    })
+    expect(receipt.dropped.map((d) => [d.id, d.detail])).toEqual([
+      ['wt-branch', 'checked out in a worktree (handle via that worktree)'],
+    ])
+  })
+
   test('a branch freed by a worktree the host holds back is kept with it', () => {
     const fx = buildFixture()
     mergeWorktreeBranch(fx)

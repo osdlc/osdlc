@@ -10,7 +10,7 @@ import type { RepoInfo, SweepItem } from './types.ts'
 /**
  * Re-rank a repository's swept rows with what the host knows. Runs after the
  * sweep, on its output; it never reaches into classification. A host that
- * holds back a worktree passes its own annotated rows through
+ * holds back or demotes a worktree passes its own annotated rows through
  * `holdFreedBranches`, as `applyPlan` does, so that worktree's branch is kept
  * too.
  */

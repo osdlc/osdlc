@@ -834,6 +834,24 @@ describe('merged-PR evidence', () => {
     expect(itemsOf(holdFreedBranches(items), 'local_branch').get('wt-landed')?.deletable).toBe(true)
   })
 
+  test('a freed branch is kept again when a host drops its worktree row', () => {
+    const held = holdFreedBranches(items.filter((item) => item.id !== landedWorktree))
+    expect(itemsOf(held, 'local_branch').get('wt-landed')?.deletable).toBe(false)
+  })
+
+  test('a worktree a host demotes to review keeps its branch, unless the sweep named it', () => {
+    const demoted = items.map((item) =>
+      item.id === landedWorktree
+        ? { ...item, classification: 'needs-investigation' as const, action: 'review' }
+        : item,
+    )
+    const full = itemsOf(holdFreedBranches(demoted), 'local_branch').get('wt-landed')
+    expect(full?.deletable).toBe(false)
+    // A branch-scoped sweep frees the named branch for any deletable worktree.
+    const scoped = holdFreedBranches(demoted, { branchScoped: true })
+    expect(itemsOf(scoped, 'local_branch').get('wt-landed')?.deletable).toBe(true)
+  })
+
   test('a branch-scoped sweep reports that branch alone, from inside its worktree', () => {
     const sweep = sweepRepo(checkout, { cwd: landedWorktree, gh, branch: 'wt-landed' })
     expect(sweep.error).toBeNull()
