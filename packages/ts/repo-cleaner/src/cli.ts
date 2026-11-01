@@ -8,6 +8,8 @@
  *   plan    write the deletable rows as a plan, to stdout or a file
  *   apply   re-check, show the steps, ask, then delete
  *
+ * and `cache`, which lists and removes the clones `--remote-url` keeps.
+ *
  * `apply` works from a saved plan (`--plan`) or sweeps first. Either way it
  * re-checks every row, prints the steps it would run and asks before deleting;
  * `--yes` skips the question. Without a terminal and without `--yes` it
@@ -22,7 +24,7 @@
  *   11  apply stopped at a failed step; the receipt says which
  */
 
-import { existsSync, readSync, realpathSync } from 'node:fs'
+import { existsSync, readSync, realpathSync, rmSync } from 'node:fs'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import { isatty } from 'node:tty'
 
@@ -32,7 +34,14 @@ import { detectColorLevel } from '@osdlc/ux'
 
 import { resolveBranch } from './branches.ts'
 import { VENDOR_DIRS } from './devlink.ts'
-import { ensureMirror, mirrorProblem } from './remote-mirror.ts'
+import {
+  cachedMirrorOf,
+  ensureMirror,
+  listMirrors,
+  mirrorProblem,
+  redactUrl,
+  type CachedMirror,
+} from './remote-mirror.ts'
 import { ApplyArgumentError, applyPlan, parseGrant, parseRowRef, type Grant } from './apply.ts'
 import {
   PLAN_VERSION,
@@ -171,6 +180,7 @@ const statusCli = () =>
   ${NAME} summary    counts per repository: total, merged, delete, prune, review, keep
   ${NAME} plan       write the deletable rows as a plan
   ${NAME} apply      re-check, show the steps, ask, delete
+  ${NAME} cache      list or remove the clones --remote-url keeps
   ${NAME} dev        run ${NAME} from a development checkout
 
 Each command takes --help. A checkout directory named like a command is
@@ -261,6 +271,29 @@ const applyCli = () =>
     },
     epilogue: `risks: abandon-unmerged, discard-changes, confirm-open-pr
 A row that carries a risk you did not --allow is skipped, never deleted.`,
+  })
+
+const cacheCli = () =>
+  defineCli({
+    name: `${NAME} cache`,
+    summary:
+      'List the clones --remote-url keeps in the cache directory, or remove them. ' +
+      'A removed clone is cloned again by the next --remote-url run.',
+    positionals: [
+      { name: 'verb', help: 'list (the default) or remove' },
+      {
+        name: 'url',
+        variadic: true,
+        help: 'with remove: the URL whose clone to remove, as given to --remote-url',
+      },
+    ],
+    flags: {
+      all: { kind: 'boolean', help: 'with remove: remove every clone' },
+      output: OUTPUT,
+    },
+    epilogue:
+      'A plan written with --remote-url names its clone. Removing the clone means that plan ' +
+      'can no longer be applied; sweep again instead.',
   })
 
 /**
@@ -861,6 +894,86 @@ function confirm(
   return null
 }
 
+/** `bytes` as a short size: `512 B`, `3.4 MB`. */
+function sizeText(bytes: number): string {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  let value = bytes
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit++
+  }
+  return unit === 0 ? `${value} B` : `${value.toFixed(1)} ${units[unit]}`
+}
+
+function cacheLine(m: CachedMirror): string {
+  const note =
+    m.problem === null
+      ? ''
+      : `  (${m.problem === 'partial' ? 'left by a stopped clone' : m.problem})`
+  return `${sizeText(m.bytes).padStart(9)}  ${m.url ?? '(no origin)'}  ${m.dir}${note}\n`
+}
+
+function runCache(argv: readonly string[], ctx: CliContext): number {
+  const name = `${NAME} cache`
+  const parsed = cacheCli().parse(argv, ctx.io)
+  if (parsed.status === 'help') return EXIT.ok
+  if (parsed.status === 'error') return usageError(ctx, name, parsed.message)
+  const v = parsed.values
+  const [verb = 'list', ...urls] = parsed.positionals
+  const dir = mirrorCache(ctx)
+  const json = v.output === 'json'
+
+  if (verb === 'list') {
+    if (urls.length > 0 || v.all) return usageError(ctx, name, 'list takes no URLs and no --all')
+    const mirrors = listMirrors(dir)
+    if (json) {
+      ctx.io.stdout(`${JSON.stringify({ cache: dir, mirrors }, null, 2)}\n`)
+      return EXIT.ok
+    }
+    if (mirrors.length === 0) {
+      ctx.io.stdout(`no clones in ${dir}\n`)
+      return EXIT.ok
+    }
+    for (const m of mirrors) ctx.io.stdout(cacheLine(m))
+    const total = mirrors.reduce((sum, m) => sum + m.bytes, 0)
+    ctx.io.stdout(
+      `${mirrors.length} clone${mirrors.length === 1 ? '' : 's'}, ${sizeText(total)}, in ${dir}\n`,
+    )
+    return EXIT.ok
+  }
+
+  if (verb !== 'remove')
+    return usageError(ctx, name, `unknown verb ${JSON.stringify(verb)}; use list or remove`)
+  if (v.all === urls.length > 0) {
+    return usageError(ctx, name, 'remove takes URLs or --all, not both and not neither')
+  }
+  let missing = 0
+  const targets: CachedMirror[] = []
+  if (v.all) {
+    targets.push(...listMirrors(dir))
+  } else {
+    for (const url of urls) {
+      const found = cachedMirrorOf(url, dir)
+      if (found === null) {
+        ctx.io.stderr(`${name}: no clone of ${redactUrl(url)}\n`)
+        missing++
+        continue
+      }
+      targets.push({ dir: found, url: redactUrl(url), bytes: 0, problem: null })
+    }
+  }
+  const removed: string[] = []
+  for (const t of targets) {
+    rmSync(t.dir, { recursive: true, force: true })
+    removed.push(t.dir)
+    if (!json) ctx.io.stdout(`removed ${t.url ?? '(no origin)'}  ${t.dir}\n`)
+  }
+  if (json) ctx.io.stdout(`${JSON.stringify({ cache: dir, removed }, null, 2)}\n`)
+  else if (removed.length === 0 && missing === 0) ctx.io.stdout(`no clones in ${dir}\n`)
+  return missing > 0 ? EXIT.error : EXIT.ok
+}
+
 function emptyReceipt(plan: string, now: Date, dryRun: boolean): Receipt {
   const at = now.toISOString()
   return {
@@ -897,6 +1010,7 @@ export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = 
     if (sub === 'summary') return runSummary(rest, c, status)
     if (sub === 'plan') return runPlan(rest, c, status)
     if (sub === 'apply') return runApply(rest, c, deps, status)
+    if (sub === 'cache') return runCache(rest, c)
     if (sub === 'status') return runStatus(rest, c, status)
     return runStatus(argv, c, status)
   } finally {

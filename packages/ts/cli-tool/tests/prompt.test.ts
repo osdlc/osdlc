@@ -3,7 +3,7 @@ import { closeSync, mkdtempSync, openSync, rmSync, writeFileSync } from 'node:fs
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { askYesNo, isYes, readLine } from '../src/index.ts'
+import { askYesNo, discardTypeAhead, isYes, readLine } from '../src/index.ts'
 
 let dir: string
 beforeEach(() => {
@@ -68,5 +68,50 @@ describe('askYesNo', () => {
     )
     expect(answer).toBe(expected)
     expect(written).toEqual([defaultYes ? 'Go? [Y/n] ' : 'Go? [y/N] '])
+  })
+})
+
+describe('discardTypeAhead', () => {
+  /** A fake `stty` that records its calls and answers `-g` with a saved mode. */
+  function fakeStty(fail: string[] = []) {
+    const calls: string[][] = []
+    const stty = (args: readonly string[]) => {
+      calls.push([...args])
+      if (fail.includes(args[0]!)) return null
+      return args[0] === '-g' ? 'saved-mode' : ''
+    }
+    return { calls, stty }
+  }
+
+  test('reads everything waiting, then puts the saved mode back', () => {
+    const { calls, stty } = fakeStty()
+    const discarded = withInput('y\npartial', (fd) => discardTypeAhead({ fd, stty }))
+    expect(discarded).toBe(9)
+    expect(calls).toEqual([['-g'], ['-icanon', 'min', '0', 'time', '0'], ['saved-mode']])
+  })
+
+  test('without stty nothing is read', () => {
+    const { calls, stty } = fakeStty(['-g'])
+    withInput('y\n', (fd) => {
+      expect(discardTypeAhead({ fd, stty })).toBe(0)
+      expect(readLine(fd)).toBe('y')
+    })
+    expect(calls).toEqual([['-g']])
+  })
+
+  test('a mode change that fails reads nothing and restores the saved mode', () => {
+    const { calls, stty } = fakeStty(['-icanon'])
+    withInput('y\n', (fd) => {
+      expect(discardTypeAhead({ fd, stty })).toBe(0)
+      expect(readLine(fd)).toBe('y')
+    })
+    expect(calls.at(-1)).toEqual(['saved-mode'])
+  })
+
+  test('askYesNo leaves input that is not a terminal alone', () => {
+    const { calls, stty } = fakeStty()
+    const answer = withInput('y\n', (fd) => askYesNo('Go?', { fd, stty, write: () => {} }))
+    expect(answer).toBe(true)
+    expect(calls).toEqual([])
   })
 })

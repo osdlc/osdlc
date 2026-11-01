@@ -68,6 +68,28 @@ npm install @osdlc/repo-cleaner
 
 ESM only. Compiled JavaScript with type declarations, for Node 22 or newer.
 
+For the command, install it globally:
+
+```sh
+npm install -g @osdlc/repo-cleaner
+```
+
+If the shell then says `Unknown command` or `command not found`, npm put the
+command in a directory that is not on `PATH`. `npm prefix -g` prints where
+it went; the command is in its `bin`. This is common with a Node version
+manager (proto, nvm, fnm, volta): each Node version has its own global
+directory, and a shell setup that names one version's `bin` directly misses
+the others. Let the manager set `PATH` instead. In fish, with proto:
+
+```fish
+# ~/.config/fish/config.fish, in place of a fish_add_path …/node/<version>/bin line
+proto activate fish | source
+```
+
+nvm users in fish can use a fish port such as `nvm.fish`; fnm has
+`fnm env --use-on-cd --shell fish | source`. Then open a new shell and check
+with `type repo-cleaner`.
+
 ## How it decides
 
 Three signals settle most items. The first two are enough alone; the third needs a content check too (see [Patch equivalence](#patch-equivalence)):
@@ -255,9 +277,15 @@ repo-cleaner [status]   # the report: what is merged, what can go (the default)
 repo-cleaner summary    # counts per repository: total, merged, delete, prune, review, keep
 repo-cleaner plan       # the deletable rows as a plan, to stdout or -o <file>
 repo-cleaner apply      # re-check, show the steps, ask, delete
+repo-cleaner cache      # list or remove the clones --remote-url keeps
 ```
 
-All four take the same paths and sweep options.
+The first four take the same paths and sweep options. A checkout directory
+named like a command is swept as `./<name>`.
+
+`apply` asks before deleting, and throws away anything typed while the sweep
+ran, so a key pressed early cannot answer the question. It says so when it
+did.
 
 ```console
 $ repo-cleaner summary --remotes
@@ -329,7 +357,10 @@ pushed to the URL from the clone, compare-and-swap as always.
 
 The clone is kept, not deleted after the run, so a plan written with
 `--remote-url` can be applied later from anywhere: the plan names the clone's
-directory. Remove the directory to drop it. The clone is a full one, not
+directory. `repo-cleaner cache` lists the clones with their URL and size;
+`repo-cleaner cache remove <url>` drops one, and `cache remove --all` drops
+every one, a clone left by a stopped run included. A plan whose clone was
+removed cannot be applied; sweep again. The clone is a full one, not
 `--filter=blob:none`: the patch check reads file contents, and a partial
 clone fetches them one branch at a time.
 

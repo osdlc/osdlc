@@ -14,6 +14,7 @@ import { afterEach, beforeEach, expect, test } from 'vitest'
 import {
   askYesNo,
   canPrompt,
+  discardTypeAhead,
   captureContext,
   captureIo,
   closestMatches,
@@ -46,6 +47,8 @@ import {
   systemDirs,
   TieredDirs,
   type AskYesNoOptions,
+  type DiscardTypeAheadOptions,
+  type Stty,
   type BooleanFlag,
   type Cli,
   type CliContext,
@@ -246,6 +249,25 @@ test('asking yes or no reads one line and falls back to the default', () => {
     closeSync(again)
   }
   expect(typeof canPrompt()).toBe('boolean')
+})
+
+test('keys typed before a question are thrown away, through stty on a terminal', () => {
+  // A fake stty stands in for the terminal; the real one is the default.
+  const modes: string[][] = []
+  const stty: Stty = (args) => {
+    modes.push([...args])
+    return args[0] === '-g' ? 'saved' : ''
+  }
+  const file = join(dir, 'typed')
+  writeFileSync(file, 'y\n')
+  const fd = openSync(file, 'r')
+  try {
+    const options: DiscardTypeAheadOptions = { fd, stty }
+    expect(discardTypeAhead(options)).toBe(2)
+  } finally {
+    closeSync(fd)
+  }
+  expect(modes.at(-1)).toEqual(['saved'])
 })
 
 test('re-exported helpers: close matches and per-OS directories', () => {

@@ -14,7 +14,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
 import type { CommandRunner } from '@osdlc/command-seam'
@@ -139,4 +139,64 @@ export function ensureMirror(
     )
   }
   return dir
+}
+
+/** One entry of the mirror cache, as `cache list` reports it. */
+export interface CachedMirror {
+  /** The entry's directory. */
+  dir: string
+  /** The URL it was cloned from, credentials removed; null when there is none to read. */
+  url: string | null
+  /** Bytes on disk, every file under the directory counted. */
+  bytes: number
+  /**
+   * Null for a usable mirror. Otherwise why it is not one: a clone left
+   * behind by a run that stopped (`partial`), or what {@link mirrorProblem}
+   * found.
+   */
+  problem: string | null
+}
+
+const PARTIAL = /\.partial-\d+$/
+
+/** Bytes under `path`, symlinks counted as themselves, not followed. */
+function sizeOf(path: string): number {
+  const stat = lstatSync(path, { throwIfNoEntry: false })
+  if (stat === undefined) return 0
+  if (!stat.isDirectory()) return stat.size
+  let total = 0
+  for (const name of readdirSync(path)) total += sizeOf(join(path, name))
+  return total
+}
+
+/** Every entry under `cacheDir`, sorted by directory; none when the cache does not exist. */
+export function listMirrors(
+  cacheDir: string,
+  opts: { git?: CommandRunner | undefined } = {},
+): CachedMirror[] {
+  if (!existsSync(cacheDir)) return []
+  return readdirSync(cacheDir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort()
+    .map((name) => {
+      const dir = join(cacheDir, name)
+      const bytes = sizeOf(dir)
+      if (PARTIAL.test(name)) return { dir, url: null, bytes, problem: 'partial' }
+      const problem = mirrorProblem(dir, undefined, opts)
+      const urls = new Git(dir, { runner: opts.git }).try.remoteGetUrls('origin')
+      const url = urls.ok && urls.value.length > 0 ? redactUrl(urls.value[0]!) : null
+      return { dir, url, bytes, problem }
+    })
+}
+
+/**
+ * The mirror directory `url` would use under `cacheDir`, when there is one;
+ * null when there is none. The lookup is by name, the same one
+ * {@link ensureMirror} clones to, so the URL must be the one the sweep was
+ * given, credentials included.
+ */
+export function cachedMirrorOf(url: string, cacheDir: string): string | null {
+  const dir = join(cacheDir, mirrorName(url))
+  return existsSync(dir) ? dir : null
 }

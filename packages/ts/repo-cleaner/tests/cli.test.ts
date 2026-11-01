@@ -629,6 +629,59 @@ describe('--remote-url', () => {
       readdirSync(cache, { recursive: true }).filter((p) => String(p).includes('partial')),
     ).toEqual([])
   })
+
+  describe('cache', () => {
+    test('list shows each clone with its URL, and remove drops one by URL', () => {
+      const fx = buildFixture()
+      const cache = tempDir()
+      const away = tempDir()
+      expect(remoteRun(['cache'], away, cache).out).toMatch(/^no clones in /)
+      expect(remoteRun(['--remote-url', fx.bare, ...SWEEP], away, cache).code).toBe(0)
+
+      const list = remoteRun(['cache', 'list'], away, cache)
+      expect(list.code).toBe(0)
+      expect(list.out).toContain(fx.bare)
+      expect(list.out).toMatch(/1 clone, [\d.]+ (B|KB|MB), in /)
+      const json = JSON.parse(remoteRun(['cache', '--output', 'json'], away, cache).out) as {
+        mirrors: Array<{ dir: string; url: string; problem: string | null }>
+      }
+      expect(json.mirrors).toHaveLength(1)
+      expect(json.mirrors[0]).toMatchObject({ url: fx.bare, problem: null })
+
+      const removed = remoteRun(['cache', 'remove', fx.bare], away, cache)
+      expect(removed.code).toBe(0)
+      expect(existsSync(json.mirrors[0]!.dir)).toBe(false)
+      const again = remoteRun(['cache', 'remove', fx.bare], away, cache)
+      expect(again.code).toBe(1)
+      expect(again.err).toContain('no clone of')
+    })
+
+    test('remove --all removes every clone, a stopped clone included', () => {
+      const fx = buildFixture()
+      const cache = tempDir()
+      const away = tempDir()
+      expect(remoteRun(['--remote-url', fx.bare, ...SWEEP], away, cache).code).toBe(0)
+      const dir = (
+        JSON.parse(remoteRun(['cache', '--output', 'json'], away, cache).out) as {
+          cache: string
+        }
+      ).cache
+      mkdirSync(join(dir, 'x-123.partial-99'))
+      expect(remoteRun(['cache'], away, cache).out).toContain('left by a stopped clone')
+      const res = remoteRun(['cache', 'remove', '--all'], away, cache)
+      expect(res.code).toBe(0)
+      expect(readdirSync(dir)).toEqual([])
+    })
+
+    test('remove needs URLs or --all, and list takes neither', () => {
+      const cache = tempDir()
+      const away = tempDir()
+      expect(remoteRun(['cache', 'remove'], away, cache).code).toBe(2)
+      expect(remoteRun(['cache', 'remove', '--all', 'x'], away, cache).code).toBe(2)
+      expect(remoteRun(['cache', 'list', 'x'], away, cache).code).toBe(2)
+      expect(remoteRun(['cache', 'prune'], away, cache).err).toContain('use list or remove')
+    })
+  })
 })
 
 describe('apply', () => {
