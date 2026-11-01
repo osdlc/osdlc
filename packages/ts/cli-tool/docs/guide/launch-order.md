@@ -293,7 +293,7 @@ There are two ways to write one:
   `cli/sdlc`, which runs the source under bun in a checkout and the built
   `sdlc.js` under node in a plugin pack. How sdlc launches, and what it does
   beyond cli-tool, is in
-  [sdlc's launch guide](https://github.com/sksizer/dev/blob/main/docs/guide/launch.md).
+  [How sdlc launches](./sdlc-launch.md).
 - **A rendered bash launcher.** `renderLauncher(spec)` still writes a bash
   script that runs the layers itself, before any runtime starts, and then
   `exec`s bun or node. It has the env, cwd (when on), link and local layers,
