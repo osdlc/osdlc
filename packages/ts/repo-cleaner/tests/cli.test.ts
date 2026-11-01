@@ -332,6 +332,8 @@ describe('local by default means offline', () => {
     expect(JSON.parse(run(['plan'], fx.root).out).repos[0].remote).toBeNull()
     const typo = run(['status', '--remote'], fx.root)
     expect(typo.code).toBe(2)
+    expect(typo.err).toContain("unknown option '--remote'")
+    expect(typo.err).toContain('Did you mean --remotes?')
     expect(run(['apply', '--plan', 'p.json', '--measure-remote', 'origin'], fx.root).err).toContain(
       '--measure-remote',
     )

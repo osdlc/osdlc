@@ -357,6 +357,6 @@ describe('a sweep of a GitLab checkout', () => {
     const ctx = captureContext({ cwd: checkout })
     const code = main(['status', '--no-gh'], ctx, { confirm: () => null })
     expect(code).toBe(2)
-    expect(ctx.io.err).toContain('--no-gh')
+    expect(ctx.io.err).toContain("unknown option '--no-gh'")
   })
 })
