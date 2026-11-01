@@ -785,6 +785,26 @@ describe('merged-PR evidence', () => {
     expect(wt?.requires).toEqual([])
   })
 
+  test('a full sweep frees the branch of a worktree it removes, and no other', () => {
+    const branches = itemsOf(items, 'local_branch')
+    const freed = branches.get('wt-landed')
+    expect(freed?.deletable).toBe(true)
+    expect(freed?.classification).toBe('safe-to-delete')
+    expect(freed?.facts['worktree']).toBe(landedWorktree)
+    // Its worktree is left for a person, so the branch stays with it.
+    expect(branches.get('wt-moved')?.reason).toBe(
+      'checked out in a worktree (handle via that worktree)',
+    )
+    expect(branches.get('wt-moved')?.facts['worktree']).toBeUndefined()
+  })
+
+  test('without worktrees in scope, a branch checked out in one stays kept', () => {
+    const sweep = sweepRepo(checkout, { cwd: checkout, gh, scope: ['local-branches'] })
+    const branch = itemsOf(sweep.items, 'local_branch').get('wt-landed')
+    expect(branch?.deletable).toBe(false)
+    expect(branch?.facts['worktree']).toBeUndefined()
+  })
+
   test('a branch-scoped sweep reports that branch alone, from inside its worktree', () => {
     const sweep = sweepRepo(checkout, { cwd: landedWorktree, gh, branch: 'wt-landed' })
     expect(sweep.error).toBeNull()

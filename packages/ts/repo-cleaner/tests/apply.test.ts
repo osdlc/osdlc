@@ -362,6 +362,66 @@ describe('applyPlan', () => {
     expect((JSON.parse(readFileSync(receiptPath, 'utf-8')) as Receipt).status).toBe('complete')
   })
 
+  /** Commit on `wt-branch` in the worktree and merge it into main, so both can go. */
+  function mergeWorktreeBranch(fx: Fixture): void {
+    sh(fx.worktree, ['commit', '--allow-empty', '-m', 'feat: worktree work'])
+    sh(fx.root, ['merge', '-q', '--no-ff', '-m', 'Merge wt-branch', 'wt-branch'])
+    sh(fx.root, ['push', '-q', 'origin', 'main'])
+  }
+
+  test('removes a merged worktree and deletes its branch in one run', () => {
+    const fx = buildFixture()
+    mergeWorktreeBranch(fx)
+    const plan = makePlan(fx.root)
+    const { receipt } = apply(fx, plan, [
+      { category: 'local_branch', id: 'wt-branch' },
+      { category: 'worktree', id: fx.worktree },
+    ])
+
+    expect(receipt.dropped).toEqual([])
+    expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
+      ['remove-worktree', 'ok'],
+      ['delete-local', 'ok'],
+      ['prune-worktrees', 'ok'],
+    ])
+    expect(existsSync(fx.worktree)).toBe(false)
+    expect(refs(fx.root)).not.toContain('refs/heads/wt-branch ')
+  })
+
+  test('a branch freed by its worktree is not deleted without that worktree', () => {
+    const fx = buildFixture()
+    mergeWorktreeBranch(fx)
+    const plan = makePlan(fx.root)
+    expect(plan.repos[0]!.rows.some((r) => r.id === 'wt-branch')).toBe(true)
+    const { receipt } = apply(fx, plan, [{ category: 'local_branch', id: 'wt-branch' }])
+
+    expect(receipt.dropped.map((d) => [d.id, d.reason])).toEqual([['wt-branch', 'not-deletable']])
+    expect(existsSync(fx.worktree)).toBe(true)
+    expect(refs(fx.root)).toContain('refs/heads/wt-branch ')
+  })
+
+  test('a freed branch picked with another worktree is dropped, not refused mid-run', () => {
+    const fx = buildFixture()
+    mergeWorktreeBranch(fx)
+    const other = join(dirname(fx.worktree), 'wt-b')
+    sh(fx.root, ['worktree', 'add', '-q', other, 'merged-b'])
+    const plan = makePlan(fx.root)
+    const { receipt } = apply(fx, plan, [
+      { category: 'local_branch', id: 'wt-branch' },
+      { category: 'worktree', id: realpathSync(other) },
+    ])
+
+    expect(receipt.dropped.map((d) => [d.id, d.reason, d.detail])).toEqual([
+      [
+        'wt-branch',
+        'not-deletable',
+        `checked out in ${fx.worktree}, which this run does not remove`,
+      ],
+    ])
+    expect(receipt.status).toBe('complete')
+    expect(refs(fx.root)).toContain('refs/heads/wt-branch ')
+  })
+
   test('drops a branch that moved after the plan and leaves it alone', () => {
     const fx = buildFixture()
     const plan = makePlan(fx.root)
