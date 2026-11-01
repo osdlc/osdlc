@@ -1,5 +1,12 @@
 # @osdlc/wayfinder
 
+## 0.12.3
+
+### Patch Changes
+
+- Updated dependencies [41439a6]
+  - @osdlc/cli-tool@0.16.0
+
 ## 0.12.2
 
 ### Patch Changes
