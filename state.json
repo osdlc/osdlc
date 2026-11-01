@@ -15,7 +15,7 @@
       "path": "packages/ts/repo-cleaner/src/sweep.ts",
       "line": 267,
       "title": "going rule keeps a branch freed when a host demotes its worktree to review, unlike the sweep's own full-sweep rule",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/600#discussion_r4434960561",
       "status": "fixed",
       "reason": null,
       "fixedIn": "364799d21d816e6024f761717a960460839c7d81"
@@ -26,7 +26,7 @@
       "path": "packages/ts/repo-cleaner/src/apply.ts",
       "line": 245,
       "title": "items passed in opts.swept skip holdFreedBranches",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/600#discussion_r4434960564",
       "status": "fixed",
       "reason": null,
       "fixedIn": "364799d21d816e6024f761717a960460839c7d81"
@@ -37,7 +37,7 @@
       "path": "packages/ts/repo-cleaner/src/sweep.ts",
       "line": 260,
       "title": "no test for a dropped worktree row or a worktree demoted to review",
-      "comment": null,
+      "comment": "https://github.com/osdlc/osdlc/pull/600#discussion_r4434960567",
       "status": "fixed",
       "reason": null,
       "fixedIn": "364799d21d816e6024f761717a960460839c7d81"
@@ -45,13 +45,13 @@
     {
       "id": "r1-4",
       "round": 1,
-      "path": null,
-      "line": null,
+      "path": "src/sweep.ts",
+      "line": 267,
       "title": "README host section does not mention holdFreedBranches",
-      "comment": null,
-      "status": "fixed",
+      "comment": "https://github.com/osdlc/osdlc/pull/600#pullrequestreview-5727270422",
+      "status": "open",
       "reason": null,
-      "fixedIn": "364799d21d816e6024f761717a960460839c7d81"
+      "fixedIn": null
     }
   ]
 }
