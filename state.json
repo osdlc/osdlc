@@ -35,9 +35,9 @@
       "line": 54,
       "title": "A workspace-member checkout with hoisted dependencies is refused for good",
       "comment": null,
-      "status": "open",
+      "status": "fixed",
       "reason": null,
-      "fixedIn": null
+      "fixedIn": "5423c59096fba73b24a75853eaedfab324365cf2"
     },
     {
       "id": "r3-2",
