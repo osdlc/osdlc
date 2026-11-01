@@ -13,7 +13,7 @@ Object.defineProperty(process, 'platform', { value: 'win32' })
 vi.resetModules()
 const { PathGuard } = await import('../src/guard.ts')
 const { PathError } = await import('../src/errors.ts')
-const { readSuite, run } = await import('./conformance.ts')
+const { nothing, readSuite, run } = await import('./conformance.ts')
 Object.defineProperty(process, 'platform', platform)
 
 function enoent(): never {
@@ -32,8 +32,6 @@ function table(entries: Record<string, string>, links: Record<string, string> = 
     readlink: (path) => links[path] ?? enoent(),
   }
 }
-
-const nothing: Resolver = { realpath: enoent, readlink: enoent }
 
 function thrownBy(run: () => unknown): unknown {
   try {

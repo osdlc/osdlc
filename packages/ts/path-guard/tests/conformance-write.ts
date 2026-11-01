@@ -22,7 +22,8 @@ type Case = import('./conformance.ts').Case
 type Outcome = import('./conformance.ts').Outcome
 
 /** The host a case is written on: this one, unless the case runs on `windows` only. */
-const writtenOn = (c: Case) => (c.platforms?.includes('unix') === false ? 'windows' : 'unix')
+const writtenOn = (c: Case) =>
+  c.platforms !== undefined && !c.platforms.includes('unix') ? 'windows' : 'unix'
 
 const suite = readSuite()
 

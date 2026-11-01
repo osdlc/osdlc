@@ -160,7 +160,7 @@ export function landsIn(root: string, path: string): boolean {
 }
 
 /** `{ expect: shape(value) }`, or `{ error }` for a `PathError`. Any other throw goes through. */
-function outcome<T>(run: () => T, shape: (value: T) => Record<string, unknown>): Outcome {
+export function outcome<T>(run: () => T, shape: (value: T) => Record<string, unknown>): Outcome {
   let value: T
   try {
     value = run()
