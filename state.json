@@ -1,12 +1,57 @@
 {
   "schema": 1,
   "pr": 598,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "b587fe1b24b470029b1a239d9000eaf17ff646b1",
+  "base": "b38c54e9ced6c8becc9f68f1b3513f01a148aab7",
+  "round": 1,
   "claim": {
     "owner": "KellyMBP.local:claude-79b5k3",
     "at": "2026-11-01T08:18:41.965Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/repo-cleaner/src/sweep.ts",
+      "line": 200,
+      "title": "A host annotate that holds a worktree leaves its freed branch shown and planned as delete",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/repo-cleaner/src/sweep.ts",
+      "line": 188,
+      "title": "No test for --branch with worktrees out of scope, whose behaviour this line changes",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/repo-cleaner/src/branches.ts",
+      "line": null,
+      "title": "localDeleteCommand doc says only a --branch sweep proposes a branch checked out in a worktree",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/repo-cleaner/src/sweep.ts",
+      "line": null,
+      "title": "SweepOptions.branch doc omits that the branch stays pinned when worktrees are out of scope",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
