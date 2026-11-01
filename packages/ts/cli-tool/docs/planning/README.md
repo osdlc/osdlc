@@ -12,6 +12,7 @@ there.
 | Folder                     | Holds                                         | Ids    |
 | -------------------------- | --------------------------------------------- | ------ |
 | [`decisions/`](decisions/) | Choices that shape the package, one per topic | `D-nn` |
+| [`backlog/`](backlog/)     | Ideas not yet scheduled                       | `B-nn` |
 
 Ids are numbers in order of writing, zero-padded to two digits so they sort.
 They are never reused. Each decision has a `state`: `accepted` or
@@ -21,3 +22,8 @@ They are never reused. Each decision has a `state`: `accepted` or
 
 - [D-01](decisions/D-01-failures-share-one-exit-table.md): Classified failures
   share one message form and one exit table
+
+## Backlog
+
+- [B-01](backlog/B-01-one-launch-pattern.md): CLI launch: one pattern across
+  cli-tool and sdlc, and the decisions left
