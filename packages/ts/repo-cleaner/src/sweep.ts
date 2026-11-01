@@ -10,7 +10,7 @@ import { Git } from '@osdlc/typed-git'
 import { Gh } from '@osdlc/typed-gh'
 import type { CommandRunner } from '@osdlc/command-seam'
 
-import { gatherLocalBranches, gatherRemoteBranches } from './branches.ts'
+import { HELD_BY_WORKTREE, gatherLocalBranches, gatherRemoteBranches } from './branches.ts'
 import { DiscoveryFailed, discoverRepo } from './discover.ts'
 import { defaultProcessProbe, type ProcessProbe } from './processes.ts'
 import { fetchPrs } from './prs.ts'
@@ -56,7 +56,8 @@ export interface SweepOptions {
    * its remote branch. The default branch is refused. `cwd` is ignored, so the
    * worktree is judged on its facts, and the local branch is not pinned for
    * being checked out there: apply removes the worktree first. It stays pinned
-   * when that worktree is blocked or cannot be removed.
+   * when that worktree is blocked or cannot be removed, or when `scope` leaves
+   * worktrees out.
    */
   branch?: string | undefined
   /** Injected runners. Defaults spawn the real `git`, `gh` and `glab`. */
@@ -252,4 +253,35 @@ export function sweepRepos(entries: readonly string[], opts: SweepReposOptions =
     scan: resolution.scan,
     duplicates: findDuplicateCheckouts(repos.map((sweep) => sweep.repo)),
   }
+}
+
+/**
+ * Keep again each branch a sweep freed for its worktree's removal when that
+ * worktree no longer goes: a host's `annotate` held it back, or it is gone
+ * from the rows. Run it on annotated rows, so the counts and the plan match
+ * what `applyPlan` will do.
+ */
+export function holdFreedBranches(items: SweepItem[]): SweepItem[] {
+  const going = new Set(
+    items
+      .filter((it) => it.category === 'worktree' && it.deletable && it.action !== 'keep')
+      .map((it) => it.id),
+  )
+  return items.map((item) => {
+    const worktree = item.facts['worktree']
+    if (item.category !== 'local_branch' || typeof worktree !== 'string') return item
+    if (going.has(worktree)) return item
+    const { worktree: _, ...facts } = item.facts
+    return {
+      ...item,
+      classification: 'safe-to-keep',
+      action: 'keep',
+      reason: HELD_BY_WORKTREE,
+      facts,
+      commands: [],
+      investigationParts: [],
+      requires: [],
+      deletable: false,
+    }
+  })
 }

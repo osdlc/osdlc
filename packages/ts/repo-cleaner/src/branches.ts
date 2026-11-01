@@ -120,11 +120,14 @@ export function resolveBranch(value: string, git: Git): string {
   return current
 }
 
+/** Why a branch checked out in a worktree is kept. */
+export const HELD_BY_WORKTREE = 'checked out in a worktree (handle via that worktree)'
+
 /**
  * Delete local branch `name` only while it still points at `sha` (the full
- * sha). Same caveats as `deleteRef` in `@osdlc/typed-git`. Only a `branch`
- * sweep proposes a branch checked out in a worktree, and only alongside that
- * worktree's removal, which must run first.
+ * sha). Same caveats as `deleteRef` in `@osdlc/typed-git`. A sweep proposes a
+ * branch checked out in a worktree only alongside that worktree's removal,
+ * which must run first.
  */
 export function localDeleteCommand(name: string, sha: string): string {
   return shellJoin(['git', 'update-ref', '-d', `refs/heads/${name}`, sha])
@@ -218,7 +221,7 @@ export function classifyLocalBranch(opts: {
     name === repo.currentBranch
       ? 'current HEAD'
       : worktreeBranches.has(name)
-        ? 'checked out in a worktree (handle via that worktree)'
+        ? HELD_BY_WORKTREE
         : null
   if (held !== null) {
     // Never deletable here, but still counted as merged or not: by ancestry or
