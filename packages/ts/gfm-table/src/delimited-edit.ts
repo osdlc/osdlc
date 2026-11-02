@@ -1,6 +1,7 @@
 /**
- * Edits to a delimited file as byte changes. Each change touches only the
- * bytes it must, so a file keeps its delimiter, line endings, byte order
+ * Edits to a delimited file as text changes. Offsets are UTF-16 string
+ * indices, as everywhere in this package. Each change touches only the
+ * characters it must, so a file keeps its delimiter, line endings, byte order
  * mark and the quoting of every field the edit does not reach. Pass the
  * {@link DelimitedRead} of the current text. After applying a change, read
  * the new text with {@link rereadDelimited}, which keeps the delimiter and
@@ -8,11 +9,20 @@
  * header cell would turn the header into a row.
  *
  * No edit leaves a line that reads as blank. The reader skips blank lines,
- * so a record whose only field is empty is written `""`.
+ * so a record whose only field is empty is written `""` ({@link EMPTY_RECORD}).
  */
 
 import type { TextChange } from './cell-text.ts'
 import { readDelimited, type DelimitedRead, type DelimitedRecord } from './delimited.ts'
+
+/** How a record of one empty field is written, so it does not read as a blank line. */
+const EMPTY_RECORD = '""'
+
+/** A RangeError unless `n` is a non-negative integer. */
+function checkIndex(name: string, n: number): void {
+  if (!Number.isInteger(n) || n < 0)
+    throw new RangeError(`${name} must be a non-negative integer, got ${n}`)
+}
 
 /**
  * A field as the file must write it, with each `"` doubled inside quotes.
@@ -36,7 +46,7 @@ export function quoteDelimitedField(value: string, delimiter: string, alwaysQuot
  * @experimental
  */
 export function delimitedRecordText(fields: readonly string[], delimiter: string): string {
-  if (fields.length === 0 || (fields.length === 1 && fields[0] === '')) return '""'
+  if (fields.length === 0 || (fields.length === 1 && fields[0] === '')) return EMPTY_RECORD
   return fields.map((f) => quoteDelimitedField(f, delimiter)).join(delimiter)
 }
 
@@ -58,7 +68,8 @@ function allRecords(read: DelimitedRead): DelimitedRecord[] {
 /**
  * Set field `column` of `record` to `value`. The field keeps its quotes if
  * it had them. A short record gets empty fields up to `column`, so editing a
- * padding cell of a ragged row fills the row out.
+ * padding cell of a ragged row fills the row out. Throws a RangeError for a
+ * negative or fractional `column`.
  *
  * @experimental
  */
@@ -68,6 +79,7 @@ export function setDelimitedField(
   column: number,
   value: string,
 ): TextChange {
+  checkIndex('column', column)
   const span = record.spans[column]
   if (span) {
     const lone = record.spans.length === 1 && value === ''
@@ -87,8 +99,9 @@ export function setDelimitedField(
 
 /**
  * Insert a body row so it becomes row `at` (0 is the first row after the
- * header; `read.rows.length` appends). The new line uses the file's line
- * ending. Appending keeps the file's trailing line break, or its lack of one.
+ * header; `read.rows.length` or more appends). The new line uses the file's
+ * line ending. Appending keeps the file's trailing line break, or its lack of
+ * one. Throws a RangeError for a negative or fractional `at`.
  *
  * @experimental
  */
@@ -97,6 +110,7 @@ export function insertDelimitedRow(
   at: number,
   fields: readonly string[],
 ): TextChange {
+  checkIndex('at', at)
   const line = delimitedRecordText(fields, read.delimiter)
   const eol = read.lineEnding
   const before = read.rows[at]
@@ -128,11 +142,13 @@ export function deleteDelimitedRow(read: DelimitedRead, index: number): TextChan
 /**
  * Insert a column so it becomes column `at` in every record that reaches it.
  * The header's new cell is `header`; body cells are empty. A record shorter
- * than `at` is left as it is. Changes are in file order.
+ * than `at` is left as it is. Changes are in file order. Throws a RangeError
+ * for a negative or fractional `at`.
  *
  * @experimental
  */
 export function insertDelimitedColumn(read: DelimitedRead, at: number, header = ''): TextChange[] {
+  checkIndex('at', at)
   const changes: TextChange[] = []
   for (const record of allRecords(read)) {
     const text = quoteDelimitedField(record === read.headerRecord ? header : '', read.delimiter)
@@ -158,12 +174,12 @@ export function deleteDelimitedColumn(read: DelimitedRead, column: number): Text
     const span = spans[column]
     if (!span) continue
     if (spans.length === 1) {
-      changes.push({ from: span.from, to: span.to, insert: '""' })
+      changes.push({ from: span.from, to: span.to, insert: EMPTY_RECORD })
       continue
     }
     const kept = spans[column === 0 ? 1 : 0]!
     if (spans.length === 2 && kept.from === kept.to) {
-      changes.push({ from: record.from, to: record.to, insert: '""' })
+      changes.push({ from: record.from, to: record.to, insert: EMPTY_RECORD })
     } else if (column < spans.length - 1) {
       changes.push({ from: span.from, to: spans[column + 1]!.from, insert: '' })
     } else {
@@ -175,7 +191,10 @@ export function deleteDelimitedColumn(read: DelimitedRead, column: number): Text
 
 /**
  * Apply changes to the text they were made against. Changes must not
- * overlap; they may come in any order.
+ * overlap. They are applied by offset, whatever order they come in, except
+ * that inserts at the same offset are applied in the order given: insert the
+ * one that should come first first. Filling the last row's padding cell and
+ * appending a row both insert at that row's end, for example.
  *
  * @experimental
  */

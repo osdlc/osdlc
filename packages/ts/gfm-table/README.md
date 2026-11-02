@@ -93,7 +93,7 @@ larger document and use the result against the document.
   strict, for the clipboard.
 - Editing delimited files: each record carries its fields' offsets, so
   `setDelimitedField`, `insertDelimitedRow`, `deleteDelimitedRow`,
-  `insertDelimitedColumn` and `deleteDelimitedColumn` return byte changes
+  `insertDelimitedColumn` and `deleteDelimitedColumn` return text changes
   (`TextChange`) that touch only what the edit must. The file keeps its
   delimiter, line endings, byte order mark and the quoting of every other
   field. `applyDelimitedChanges` applies them, and `rereadDelimited` reads the
@@ -142,7 +142,7 @@ applyDelimitedChanges(text, setDelimitedField(file, file.rows[1]!, 1, 'yes, fine
   re-pads a table's existing source and keeps each cell's bytes as written.
 - CSV libraries read and write CSV in full. This package has only what a table
   editor needs for the clipboard and for opening a CSV-like file: strict RFC
-  4180 for paste, a tolerant reader that reports problems by line, and byte
+  4180 for paste, a tolerant reader that reports problems by line, and text
   changes that edit one field, row or column without rewriting the file.
 
 ## Stability

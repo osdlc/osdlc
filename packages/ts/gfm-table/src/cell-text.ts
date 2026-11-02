@@ -48,8 +48,8 @@ export function escapeCellInsert(text: string): string {
 }
 
 /**
- * One change to a text: replace `from`..`to` with `insert`. An insert has
- * `to` equal to `from`. {@link literalPipeFixes} and the delimited-file edits
+ * One change to a text: replace `from`..`to` with `insert`. Offsets are
+ * UTF-16 string indices. An insert has `to` equal to `from`. {@link literalPipeFixes} and the delimited-file edits
  * return these.
  */
 export interface TextChange {

@@ -350,3 +350,30 @@ describe('helpers', () => {
     ).toThrow(RangeError)
   })
 })
+
+describe('arguments', () => {
+  test('a negative or fractional index is a RangeError', () => {
+    const read = readDelimited('a,b\n1,2\n')
+    expect(() => setDelimitedField(read, read.rows[0]!, -1, 'x')).toThrow(RangeError)
+    expect(() => setDelimitedField(read, read.rows[0]!, 1.5, 'x')).toThrow(RangeError)
+    expect(() => insertDelimitedRow(read, -1, ['x'])).toThrow(RangeError)
+    expect(() => insertDelimitedColumn(read, -1)).toThrow(RangeError)
+  })
+
+  test('an `at` past the last row appends', () => {
+    const text = 'a,b\n1,2\n'
+    const read = readDelimited(text)
+    expect(applyDelimitedChanges(text, insertDelimitedRow(read, 99, ['3', '4']))).toBe(
+      'a,b\n1,2\n3,4\n',
+    )
+  })
+
+  test('inserts at the same offset apply in the order given', () => {
+    const text = 'h1,h2\nr'
+    const read = readDelimited(text)
+    const fill = setDelimitedField(read, read.rows[0]!, 1, 'x')
+    const append = insertDelimitedRow(read, 1, ['n', 'm'])
+    expect(fill.from).toBe(append.from)
+    expect(applyDelimitedChanges(text, [fill, append])).toBe('h1,h2\nr,x\nn,m')
+  })
+})

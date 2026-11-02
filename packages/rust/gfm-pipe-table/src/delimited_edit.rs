@@ -16,6 +16,10 @@ use std::fmt;
 use crate::cell_text::TextChange;
 use crate::delimited::{DelimitedRead, DelimitedRecord, ReadDelimitedOptions, read_delimited};
 
+/// How a record of one empty field is written, so it does not read as a
+/// blank line.
+const EMPTY_RECORD: &str = "\"\"";
+
 /// A field as the file must write it, with each `"` doubled inside quotes.
 ///
 /// `always_quote` quotes even when the value does not need it, as for a
@@ -37,8 +41,8 @@ pub fn quote_delimited_field(value: &str, delimiter: char, always_quote: bool) -
 /// Experimental: any release may change or remove it.
 pub fn delimited_record_text<S: AsRef<str>>(fields: &[S], delimiter: char) -> String {
     match fields {
-        [] => return "\"\"".to_owned(),
-        [only] if only.as_ref().is_empty() => return "\"\"".to_owned(),
+        [] => return EMPTY_RECORD.to_owned(),
+        [only] if only.as_ref().is_empty() => return EMPTY_RECORD.to_owned(),
         _ => {}
     }
     let mut out = String::new();
@@ -99,9 +103,10 @@ pub fn set_delimited_field(
 }
 
 /// Insert a body row so it becomes row `at` (0 is the first row after the
-/// header; `read.rows.len()` appends). The new line uses the file's line
-/// ending. Appending keeps the file's trailing line break, or its lack of
-/// one.
+/// header; `read.rows.len()` or more appends). The new line uses the file's
+/// line ending. Appending keeps the file's trailing line break, or its lack
+/// of one. An empty `fields` needs its type spelled out:
+/// `&[] as &[&str]`.
 ///
 /// Experimental: any release may change or remove it.
 pub fn insert_delimited_row<S: AsRef<str>>(
@@ -194,11 +199,11 @@ pub fn delete_delimited_column(read: &DelimitedRead, column: usize) -> Vec<TextC
             continue;
         };
         let (from, to, insert) = if spans.len() == 1 {
-            (span.from, span.to, "\"\"")
+            (span.from, span.to, EMPTY_RECORD)
         } else {
             let kept = spans[if column == 0 { 1 } else { 0 }];
             if spans.len() == 2 && kept.from == kept.to {
-                (record.from, record.to, "\"\"")
+                (record.from, record.to, EMPTY_RECORD)
             } else if column < spans.len() - 1 {
                 (span.from, spans[column + 1].from, "")
             } else {
@@ -232,7 +237,11 @@ impl fmt::Display for OverlappingChanges {
 impl std::error::Error for OverlappingChanges {}
 
 /// Apply changes to the text they were made against. Changes must not
-/// overlap; they may come in any order. Pass one change as
+/// overlap. They are applied by offset, whatever order they come in, except
+/// that inserts at the same offset are applied in the order given: insert the
+/// one that should come first first. Filling the last row's padding cell and
+/// appending a row both insert at that row's end, for example. Pass one
+/// change as
 /// `std::slice::from_ref(&change)`.
 ///
 /// # Errors
