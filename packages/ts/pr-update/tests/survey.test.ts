@@ -500,6 +500,10 @@ describe('surveyRows carries the plan', () => {
     const { rows } = surveyRows(git, [pr(7, 'topic', 'main')], opts({ worktrees: null }))
     expect(rows[0]!.unpushedLocal).toBe(true)
     expect(rows[0]!.strategyRule).toBe('guard:unpushed-local')
+    // The reason names the real cause, not a checkout that may not exist.
+    expect(rows[0]!.strategyReason).toBe(
+      'could not list worktrees, so assuming unpushed work in another checkout',
+    )
   })
 
   test('an unmeasurable repository still lists its PRs', () => {
@@ -732,6 +736,7 @@ describe('runSurvey scoped by --pr', () => {
     expect(report.prs[0]!.unpushedLocal).toBe(true)
     expect(report.prs[0]!.strategy).not.toBe('rebase')
     expect(report.prs[0]!.strategyRule).toBe('guard:unpushed-local')
+    expect(report.prs[0]!.strategyReason).toMatch(/^could not list worktrees/)
   })
 
   test('AC-2: fetches and merge-trees only the PR and its stack parents, listing once', () => {
