@@ -56,6 +56,7 @@ export const CATCHING_UP: Record<string, string> = {
  * crate it is built from (yaml-splice) is not a family and stays.
  */
 export const UNMIGRATED = new Set([
+  'packages/ts/gfm-table',
   'packages/ts/markdown-link',
   'packages/ts/path-guard',
   'packages/ts/yaml-splice',
