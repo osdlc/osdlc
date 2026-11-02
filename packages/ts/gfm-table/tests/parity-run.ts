@@ -255,7 +255,9 @@ export const RUNNERS: Record<string, (c: Case) => unknown> = {
     const options: { delimiter?: Delimiter; header?: boolean } = {}
     if (c.delimiter !== undefined) options.delimiter = c.delimiter
     if (c.header !== undefined) options.header = c.header
-    const read = readDelimited(c.text, options)
-    return { ...read, rows: read.rows.map(recordJson) }
+    // Only what both twins report. The record spans, `headerRecord`,
+    // `lineEnding` and `bom` are TypeScript-only so far.
+    const { delimiter, header, rows, width, issues } = readDelimited(c.text, options)
+    return { delimiter, header, rows: rows.map(recordJson), width, issues }
   },
 }

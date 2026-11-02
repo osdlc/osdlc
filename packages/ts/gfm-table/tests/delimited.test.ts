@@ -101,8 +101,8 @@ describe('parseDelimited', () => {
   })
 
   test('empty text has no records', () => {
-    expect(parseDelimited('', ',')).toEqual({ records: [], issues: [] })
-    expect(parseDelimited('﻿', ',')).toEqual({ records: [], issues: [] })
+    expect(parseDelimited('', ',')).toEqual({ records: [], issues: [], lineEnding: '\n' })
+    expect(parseDelimited('﻿', ',')).toEqual({ records: [], issues: [], lineEnding: '\n' })
   })
 })
 
@@ -190,9 +190,12 @@ describe('readDelimited', () => {
     expect(readDelimited('')).toEqual({
       delimiter: ',',
       header: null,
+      headerRecord: null,
       rows: [],
       width: 0,
       issues: [],
+      lineEnding: '\n',
+      bom: false,
     })
   })
 

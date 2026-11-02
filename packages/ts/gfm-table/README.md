@@ -91,6 +91,13 @@ larger document and use the result against the document.
   (`looksLikeHeader`), and reports each problem by line instead of failing.
   `parseDelimited` is the reader without the sniffing. `gridFromCsv` stays
   strict, for the clipboard.
+- Editing delimited files: each record carries its fields' offsets, so
+  `setDelimitedField`, `insertDelimitedRow`, `deleteDelimitedRow`,
+  `insertDelimitedColumn` and `deleteDelimitedColumn` return byte changes
+  (`DelimitedChange`) that touch only what the edit must. The file keeps its
+  delimiter, line endings, byte order mark and the quoting of every other
+  field. `applyDelimitedChanges` applies them; `quoteDelimitedField` and
+  `delimitedRecordText` write fields and lines.
 
 Each export has TSDoc in the source. Your editor shows it.
 
@@ -112,6 +119,15 @@ file.header // ['name', 'qty']
 file.issues // [{ line: 3, message: '1 fields, header has 2' }]
 ```
 
+```ts
+import { applyDelimitedChanges, readDelimited, setDelimitedField } from '@osdlc/gfm-table'
+
+const text = 'name,note\r\n"Ada","hi"\r\nBob,ok\r\n'
+const file = readDelimited(text)
+applyDelimitedChanges(text, setDelimitedField(file, file.rows[1]!, 1, 'yes, fine'))
+// 'name,note\r\n"Ada","hi"\r\nBob,"yes, fine"\r\n'
+```
+
 ## How it compares
 
 - micromark, remark and markdown-it parse whole documents into a tree, and
@@ -125,7 +141,8 @@ file.issues // [{ line: 3, message: '1 fields, header has 2' }]
   re-pads a table's existing source and keeps each cell's bytes as written.
 - CSV libraries read and write CSV in full. This package has only what a table
   editor needs for the clipboard and for opening a CSV-like file: strict RFC
-  4180 for paste, and a tolerant reader that reports problems by line.
+  4180 for paste, a tolerant reader that reports problems by line, and byte
+  changes that edit one field, row or column without rewriting the file.
 
 ## Stability
 
@@ -142,7 +159,11 @@ The experimental exports:
   `hasTrailingPipe`, `LineSplice`, `RowPad`
 - `readDelimited`, `parseDelimited`, `sniffDelimiter`, `looksLikeHeader`,
   `DELIMITERS`, `DELIMITER_NAMES`, `Delimiter`, `DelimitedRead`,
-  `DelimitedRecord`, `DelimitedIssue`, `ReadDelimitedOptions`
+  `DelimitedRecord`, `DelimitedFieldSpan`, `DelimitedLineEnding`,
+  `DelimitedIssue`, `ReadDelimitedOptions`
+- `setDelimitedField`, `insertDelimitedRow`, `deleteDelimitedRow`,
+  `insertDelimitedColumn`, `deleteDelimitedColumn`, `applyDelimitedChanges`,
+  `quoteDelimitedField`, `delimitedRecordText`, `DelimitedChange`
 
 ## Runtimes and platforms
 

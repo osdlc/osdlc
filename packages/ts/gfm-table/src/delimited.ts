@@ -44,6 +44,21 @@ export interface DelimitedIssue {
 }
 
 /**
+ * Where one field sits in the source, as UTF-16 offsets. A quoted field's
+ * span includes its quotes, so replacing the span replaces the whole field.
+ *
+ * @experimental
+ */
+export interface DelimitedFieldSpan {
+  /** Offset of the field's first character (its opening quote, if quoted). */
+  from: number
+  /** Offset just past the field's last character. */
+  to: number
+  /** Whether the field was written in quotes that closed. */
+  quoted: boolean
+}
+
+/**
  * One record as written: fields untrimmed, not padded to the header.
  *
  * @experimental
@@ -51,11 +66,26 @@ export interface DelimitedIssue {
 export interface DelimitedRecord {
   /** The record's fields, untrimmed. */
   fields: string[]
+  /** Each field's place in the source, one per field. */
+  spans: DelimitedFieldSpan[]
   /** 1-based line the record starts on. */
   line: number
+  /** Offset of the record's first character. */
+  from: number
+  /** Offset just past the record's last field, before its line break. */
+  to: number
+  /** Offset just past the record's line break; `to` when it has none. */
+  end: number
   /** The first problem reading this record, if any. */
   issue?: string
 }
+
+/**
+ * A line break as a file writes it.
+ *
+ * @experimental
+ */
+export type DelimitedLineEnding = '\r\n' | '\n' | '\r'
 
 /**
  * A file read by {@link readDelimited}.
@@ -67,12 +97,18 @@ export interface DelimitedRead {
   delimiter: Delimiter
   /** The header cells, or null when the first record is data. */
   header: string[] | null
+  /** The header as a record, with its spans; null when there is no header. */
+  headerRecord: DelimitedRecord | null
   /** Body records, after the header. */
   rows: DelimitedRecord[]
   /** The widest of the header and every row. */
   width: number
   /** Every problem, by line. */
   issues: DelimitedIssue[]
+  /** The first record's line break; `\n` when no record has one. */
+  lineEnding: DelimitedLineEnding
+  /** Whether the text starts with a byte order mark. */
+  bom: boolean
 }
 
 /** Count a delimiter per line outside quotes, over the first `maxLines` lines. */
@@ -161,21 +197,26 @@ const isEnd = (ch: string | undefined, delim: string) =>
  * quoted field may hold delimiters, `""` and line breaks. An unclosed quote
  * is read as literal text up to the next delimiter or line end. Text after a
  * closing quote is kept. Blank lines add no record. Records end at CRLF, LF or CR.
+ * Each record carries the offsets of its fields, so a caller can rewrite one
+ * field without touching the rest of the text.
  *
  * @experimental
  */
 export function parseDelimited(
   text: string,
   delimiter: string,
-): { records: DelimitedRecord[]; issues: DelimitedIssue[] } {
+): { records: DelimitedRecord[]; issues: DelimitedIssue[]; lineEnding: DelimitedLineEnding } {
   const records: DelimitedRecord[] = []
   const issues: DelimitedIssue[] = []
+  let lineEnding: DelimitedLineEnding | undefined
   let i = text.charCodeAt(0) === 0xfeff ? 1 : 0
   let line = 1
   const len = text.length
   while (i < len) {
     const fields: string[] = []
+    const spans: DelimitedFieldSpan[] = []
     const start = line
+    const from = i
     let issue: string | undefined
     const report = (message: string) => {
       issues.push({ line, message })
@@ -183,6 +224,8 @@ export function parseDelimited(
     }
     for (;;) {
       let field: string
+      const fieldFrom = i
+      let quoted = false
       if (text[i] === '"') {
         let close = findClosingQuote(text, i + 1)
         // A quote that closes on a later line and is not followed by a
@@ -199,7 +242,9 @@ export function parseDelimited(
           line += countBreaks(text, i + 1, close)
           field = text.slice(i + 1, close).replace(/""/g, '"')
           i = close + 1
+          quoted = true
           if (!isEnd(text[i], delimiter)) {
+            quoted = false
             const end = nextBreakOrDelim(text, i, delimiter)
             report('Text after a closing quote; kept as written')
             field += text.slice(i, end)
@@ -212,21 +257,24 @@ export function parseDelimited(
         i = end
       }
       fields.push(field)
+      spans.push({ from: fieldFrom, to: i, quoted })
       if (text[i] === delimiter) {
         i++
         continue
       }
       break
     }
+    const to = i
     if (text[i] === '\r') i++
     if (text[i] === '\n') i++
     line++
     if (fields.length === 1 && fields[0] === '') continue
-    const record: DelimitedRecord = { fields, line: start }
+    if (lineEnding === undefined && i > to) lineEnding = text.slice(to, i) as DelimitedLineEnding
+    const record: DelimitedRecord = { fields, spans, line: start, from, to, end: i }
     if (issue !== undefined) record.issue = issue
     records.push(record)
   }
-  return { records, issues }
+  return { records, issues, lineEnding: lineEnding ?? '\n' }
 }
 
 const NUMBER = /^[-+]?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?$/
@@ -266,9 +314,10 @@ export interface ReadDelimitedOptions {
  */
 export function readDelimited(text: string, options: ReadDelimitedOptions = {}): DelimitedRead {
   const delimiter = options.delimiter ?? sniffDelimiter(text)
-  const { records, issues } = parseDelimited(text, delimiter)
+  const { records, issues, lineEnding } = parseDelimited(text, delimiter)
   const header = (options.header ?? looksLikeHeader(records[0]?.fields)) && records.length > 0
-  const headerCells = header ? records[0]!.fields : null
+  const headerRecord = header ? records[0]! : null
+  const headerCells = headerRecord?.fields ?? null
   const rows = header ? records.slice(1) : records
   let width = headerCells?.length ?? 0
   for (const r of rows) if (r.fields.length > width) width = r.fields.length
@@ -281,5 +330,14 @@ export function readDelimited(text: string, options: ReadDelimitedOptions = {}):
     added = true
   }
   if (added) issues.sort((a, b) => a.line - b.line)
-  return { delimiter, header: headerCells, rows, width, issues }
+  return {
+    delimiter,
+    header: headerCells,
+    headerRecord,
+    rows,
+    width,
+    issues,
+    lineEnding,
+    bom: text.charCodeAt(0) === 0xfeff,
+  }
 }

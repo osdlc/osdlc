@@ -31,6 +31,14 @@ import {
   padTable,
   parseAlign,
   parseDelimited,
+  applyDelimitedChanges,
+  deleteDelimitedColumn,
+  deleteDelimitedRow,
+  delimitedRecordText,
+  insertDelimitedColumn,
+  insertDelimitedRow,
+  quoteDelimitedField,
+  setDelimitedField,
   pasteRect,
   readDelimited,
   readTable,
@@ -56,6 +64,9 @@ import {
   type DelimitedIssue,
   type DelimitedRead,
   type DelimitedRecord,
+  type DelimitedChange,
+  type DelimitedFieldSpan,
+  type DelimitedLineEnding,
   type Delimiter,
   type LineSplice,
   type PadTableOptions,
@@ -254,5 +265,33 @@ describe('open a CSV-like file', () => {
     expect(sniffDelimiter('a\tb\nc\td\n')).toBe('\t')
     expect(looksLikeHeader(['id', 'name'])).toBe(true)
     expect(parseDelimited('a,"b,c"\n', ',').records[0]?.fields).toEqual(['a', 'b,c'])
+  })
+})
+
+describe('edit a CSV-like file', () => {
+  test('set a field, keeping everything else as written', () => {
+    const text = 'name,note\r\n"Ada","hi"\r\nBob,ok\r\n'
+    const file = readDelimited(text)
+    const eol: DelimitedLineEnding = file.lineEnding
+    const span: DelimitedFieldSpan | undefined = file.rows[0]?.spans[1]
+    const change: DelimitedChange = setDelimitedField(file, file.rows[1]!, 1, 'yes, fine')
+    expect(eol).toBe('\r\n')
+    expect(span?.quoted).toBe(true)
+    expect(applyDelimitedChanges(text, change)).toBe(
+      'name,note\r\n"Ada","hi"\r\nBob,"yes, fine"\r\n',
+    )
+  })
+
+  test('rows and columns', () => {
+    const text = 'a,b\n1,2\n'
+    const file = readDelimited(text)
+    expect(applyDelimitedChanges(text, insertDelimitedRow(file, 1, ['3', '4']))).toBe(
+      'a,b\n1,2\n3,4\n',
+    )
+    expect(applyDelimitedChanges(text, deleteDelimitedRow(file, 0)!)).toBe('a,b\n')
+    expect(applyDelimitedChanges(text, insertDelimitedColumn(file, 1, 'x'))).toBe('a,x,b\n1,,2\n')
+    expect(applyDelimitedChanges(text, deleteDelimitedColumn(file, 0))).toBe('b\n2\n')
+    expect(quoteDelimitedField('a"b', ',')).toBe('"a""b"')
+    expect(delimitedRecordText(['a', 'b;c'], ';')).toBe('a;"b;c"')
   })
 })
