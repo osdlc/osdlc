@@ -2,42 +2,52 @@
  * Edits to a delimited file as byte changes. Each change touches only the
  * bytes it must, so a file keeps its delimiter, line endings, byte order
  * mark and the quoting of every field the edit does not reach. Pass the
- * {@link DelimitedRead} of the current text; read the text again after
- * applying a change.
+ * {@link DelimitedRead} of the current text. After applying a change, read
+ * the new text with {@link rereadDelimited}, which keeps the delimiter and
+ * header decision: a fresh {@link readDelimited} sniffs again, and clearing a
+ * header cell would turn the header into a row.
+ *
+ * No edit leaves a line that reads as blank. The reader skips blank lines,
+ * so a record whose only field is empty is written `""`.
  */
 
-import type { DelimitedRead, DelimitedRecord } from './delimited.ts'
+import type { TextChange } from './cell-text.ts'
+import { readDelimited, type DelimitedRead, type DelimitedRecord } from './delimited.ts'
 
 /**
- * Replace `from`..`to` of the old text with `insert`. An insert has `to`
- * equal to `from`.
+ * A field as the file must write it, with each `"` doubled inside quotes.
  *
+ * @param value The field's text.
+ * @param delimiter The file's delimiter.
+ * @param alwaysQuote Quote even when the value does not need it, as for a
+ *   field that was quoted before. Otherwise the value is quoted only when it
+ *   holds the delimiter, a quote or a line break.
  * @experimental
  */
-export interface DelimitedChange {
-  from: number
-  to: number
-  insert: string
-}
-
-/**
- * A field as the file must write it: in quotes when it holds the delimiter,
- * a quote or a line break, or when `quote` is set, with each `"` doubled.
- *
- * @experimental
- */
-export function quoteDelimitedField(value: string, delimiter: string, quote = false): string {
-  if (!quote && !value.includes(delimiter) && !/["\r\n]/.test(value)) return value
+export function quoteDelimitedField(value: string, delimiter: string, alwaysQuote = false): string {
+  if (!alwaysQuote && !value.includes(delimiter) && !/["\r\n]/.test(value)) return value
   return `"${value.replace(/"/g, '""')}"`
 }
 
 /**
- * A record as one line of text, without its line break.
+ * A record as one line of text, without its line break. A record of no
+ * fields, or one empty field, is `""`, so it reads back as a record.
  *
  * @experimental
  */
 export function delimitedRecordText(fields: readonly string[], delimiter: string): string {
+  if (fields.length === 0 || (fields.length === 1 && fields[0] === '')) return '""'
   return fields.map((f) => quoteDelimitedField(f, delimiter)).join(delimiter)
+}
+
+/**
+ * Read text produced by an edit the way `read` was read: same delimiter,
+ * same header decision.
+ *
+ * @experimental
+ */
+export function rereadDelimited(text: string, read: DelimitedRead): DelimitedRead {
+  return readDelimited(text, { delimiter: read.delimiter, header: read.headerRecord !== null })
 }
 
 /** The header, then the body rows, in file order. */
@@ -57,13 +67,14 @@ export function setDelimitedField(
   record: DelimitedRecord,
   column: number,
   value: string,
-): DelimitedChange {
+): TextChange {
   const span = record.spans[column]
   if (span) {
+    const lone = record.spans.length === 1 && value === ''
     return {
       from: span.from,
       to: span.to,
-      insert: quoteDelimitedField(value, read.delimiter, span.quoted),
+      insert: quoteDelimitedField(value, read.delimiter, span.quoted || lone),
     }
   }
   const missing = column - record.spans.length + 1
@@ -85,7 +96,7 @@ export function insertDelimitedRow(
   read: DelimitedRead,
   at: number,
   fields: readonly string[],
-): DelimitedChange {
+): TextChange {
   const line = delimitedRecordText(fields, read.delimiter)
   const eol = read.lineEnding
   const before = read.rows[at]
@@ -106,12 +117,11 @@ export function insertDelimitedRow(
  *
  * @experimental
  */
-export function deleteDelimitedRow(read: DelimitedRead, index: number): DelimitedChange | null {
+export function deleteDelimitedRow(read: DelimitedRead, index: number): TextChange | null {
   const row = read.rows[index]
   if (!row) return null
   if (row.end > row.to) return { from: row.from, to: row.end, insert: '' }
-  const records = allRecords(read)
-  const prev = records[records.indexOf(row) - 1]
+  const prev = index > 0 ? read.rows[index - 1] : read.headerRecord
   return { from: prev ? prev.to : row.from, to: row.to, insert: '' }
 }
 
@@ -122,12 +132,8 @@ export function deleteDelimitedRow(read: DelimitedRead, index: number): Delimite
  *
  * @experimental
  */
-export function insertDelimitedColumn(
-  read: DelimitedRead,
-  at: number,
-  header = '',
-): DelimitedChange[] {
-  const changes: DelimitedChange[] = []
+export function insertDelimitedColumn(read: DelimitedRead, at: number, header = ''): TextChange[] {
+  const changes: TextChange[] = []
   for (const record of allRecords(read)) {
     const text = quoteDelimitedField(record === read.headerRecord ? header : '', read.delimiter)
     const span = record.spans[at]
@@ -140,21 +146,29 @@ export function insertDelimitedColumn(
 
 /**
  * Delete column `column` from every record that has it, with one of its
- * delimiters. A record whose only field it is keeps an empty field, so the
- * line stays a record. Changes are in file order.
+ * delimiters. A record left with one empty field, or none, is written `""`,
+ * so it stays a record. Changes are in file order.
  *
  * @experimental
  */
-export function deleteDelimitedColumn(read: DelimitedRead, column: number): DelimitedChange[] {
-  const changes: DelimitedChange[] = []
+export function deleteDelimitedColumn(read: DelimitedRead, column: number): TextChange[] {
+  const changes: TextChange[] = []
   for (const record of allRecords(read)) {
     const { spans } = record
     const span = spans[column]
     if (!span) continue
-    if (spans.length === 1) changes.push({ from: span.from, to: span.to, insert: '' })
-    else if (column < spans.length - 1)
+    if (spans.length === 1) {
+      changes.push({ from: span.from, to: span.to, insert: '""' })
+      continue
+    }
+    const kept = spans[column === 0 ? 1 : 0]!
+    if (spans.length === 2 && kept.from === kept.to) {
+      changes.push({ from: record.from, to: record.to, insert: '""' })
+    } else if (column < spans.length - 1) {
       changes.push({ from: span.from, to: spans[column + 1]!.from, insert: '' })
-    else changes.push({ from: spans[column - 1]!.to, to: span.to, insert: '' })
+    } else {
+      changes.push({ from: spans[column - 1]!.to, to: span.to, insert: '' })
+    }
   }
   return changes
 }
@@ -167,9 +181,9 @@ export function deleteDelimitedColumn(read: DelimitedRead, column: number): Deli
  */
 export function applyDelimitedChanges(
   text: string,
-  changes: DelimitedChange | readonly DelimitedChange[],
+  changes: TextChange | readonly TextChange[],
 ): string {
-  const list = (Array.isArray(changes) ? [...changes] : [changes]) as DelimitedChange[]
+  const list = (Array.isArray(changes) ? [...changes] : [changes]) as TextChange[]
   list.sort((a, b) => a.from - b.from || a.to - b.to)
   let out = ''
   let at = 0

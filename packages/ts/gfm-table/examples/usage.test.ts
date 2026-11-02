@@ -6,14 +6,18 @@
 import { describe, expect, test } from 'vitest'
 
 import {
+  applyDelimitedChanges,
   CELL_SOURCE_ATTR,
   cellTextFromSource,
   clipboardLines,
   deleteCellSplice,
+  deleteDelimitedColumn,
+  deleteDelimitedRow,
+  delimitedRecordText,
   DELIMITER_NAMES,
   DELIMITERS,
-  endsWithEscape,
   EMPTY_ROW,
+  endsWithEscape,
   escapeCell,
   escapeCellInsert,
   escapeCodeCell,
@@ -23,6 +27,8 @@ import {
   hasTrailingPipe,
   htmlFromGrid,
   insertCellSplice,
+  insertDelimitedColumn,
+  insertDelimitedRow,
   isDelimiterRow,
   literalPipeFixes,
   looksLikeHeader,
@@ -31,24 +37,19 @@ import {
   padTable,
   parseAlign,
   parseDelimited,
-  applyDelimitedChanges,
-  deleteDelimitedColumn,
-  deleteDelimitedRow,
-  delimitedRecordText,
-  insertDelimitedColumn,
-  insertDelimitedRow,
-  quoteDelimitedField,
-  setDelimitedField,
   pasteRect,
+  quoteDelimitedField,
   readDelimited,
   readTable,
   rectangular,
   renderTable,
+  rereadDelimited,
   rowCellSources,
   rowCellTexts,
   rowFromPipes,
   rowLineText,
   rowPipes,
+  setDelimitedField,
   sniffDelimiter,
   sourceOffset,
   splitRow,
@@ -61,16 +62,14 @@ import {
   type CellRect,
   type CellText,
   type ColumnAlign,
+  type DelimitedFieldSpan,
   type DelimitedIssue,
+  type DelimitedLineEnding,
   type DelimitedRead,
   type DelimitedRecord,
-  type DelimitedChange,
-  type DelimitedFieldSpan,
-  type DelimitedLineEnding,
   type Delimiter,
   type LineSplice,
   type PadTableOptions,
-  type PipeFix,
   type ReadDelimitedOptions,
   type RenderTableOptions,
   type RowPad,
@@ -80,6 +79,7 @@ import {
   type TableGrid,
   type TableInput,
   type TableRowSpan,
+  type TextChange,
 } from '@osdlc/gfm-table'
 
 /** Apply one line splice to its line. */
@@ -211,7 +211,7 @@ describe('edit the text of one cell', () => {
 
   test('typed text is escaped, and pipes stay literal', () => {
     expect(escapeCellInsert('x|y')).toBe('x\\|y')
-    const fixes: PipeFix[] = literalPipeFixes('a\\|', [{ from: 2, to: 3 }])
+    const fixes: TextChange[] = literalPipeFixes('a\\|', [{ from: 2, to: 3 }])
     expect(fixes).toEqual([{ from: 2, to: 2, insert: '\\' }])
     expect(endsWithEscape('a\\')).toBe(true)
   })
@@ -274,7 +274,7 @@ describe('edit a CSV-like file', () => {
     const file = readDelimited(text)
     const eol: DelimitedLineEnding = file.lineEnding
     const span: DelimitedFieldSpan | undefined = file.rows[0]?.spans[1]
-    const change: DelimitedChange = setDelimitedField(file, file.rows[1]!, 1, 'yes, fine')
+    const change: TextChange = setDelimitedField(file, file.rows[1]!, 1, 'yes, fine')
     expect(eol).toBe('\r\n')
     expect(span?.quoted).toBe(true)
     expect(applyDelimitedChanges(text, change)).toBe(
@@ -291,6 +291,8 @@ describe('edit a CSV-like file', () => {
     expect(applyDelimitedChanges(text, deleteDelimitedRow(file, 0)!)).toBe('a,b\n')
     expect(applyDelimitedChanges(text, insertDelimitedColumn(file, 1, 'x'))).toBe('a,x,b\n1,,2\n')
     expect(applyDelimitedChanges(text, deleteDelimitedColumn(file, 0))).toBe('b\n2\n')
+    const edited = applyDelimitedChanges(text, setDelimitedField(file, file.headerRecord!, 0, ''))
+    expect(rereadDelimited(edited, file).header).toEqual(['', 'b'])
     expect(quoteDelimitedField('a"b', ',')).toBe('"a""b"')
     expect(delimitedRecordText(['a', 'b;c'], ';')).toBe('a;"b;c"')
   })

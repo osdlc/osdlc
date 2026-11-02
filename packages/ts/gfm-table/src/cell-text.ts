@@ -47,8 +47,12 @@ export function escapeCellInsert(text: string): string {
   return text.replace(/\r\n|\r|\n/g, ' ').replace(/\|/g, '\\|')
 }
 
-/** One change from {@link literalPipeFixes}: replace `from`..`to` with `insert`. */
-export interface PipeFix {
+/**
+ * One change to a text: replace `from`..`to` with `insert`. An insert has
+ * `to` equal to `from`. {@link literalPipeFixes} and the delimited-file edits
+ * return these.
+ */
+export interface TextChange {
   from: number
   to: number
   insert: string
@@ -64,8 +68,8 @@ export interface PipeFix {
 export function literalPipeFixes(
   text: string,
   inserted: readonly { from: number; to: number }[],
-): PipeFix[] {
-  const fixes: PipeFix[] = []
+): TextChange[] {
+  const fixes: TextChange[] = []
   let run = 0
   for (let i = 0; i < text.length; i++) {
     const ch = text[i]!

@@ -9,6 +9,7 @@ import {
   parseDelimited,
   quoteDelimitedField,
   readDelimited,
+  rereadDelimited,
   setDelimitedField,
 } from '../src/index.ts'
 
@@ -197,16 +198,130 @@ describe('deleteDelimitedColumn', () => {
     expect(applyDelimitedChanges(text, deleteDelimitedColumn(read, 2))).toBe('a,b\n1,"2,5"\n')
   })
 
-  test('the only column leaves empty records; short rows are skipped', () => {
+  test('a record left with one empty field is written `""`', () => {
+    const text = 'name,note\nAda,\n,x\nBob,ok\n'
+    const read = readDelimited(text)
+    const out = applyDelimitedChanges(text, deleteDelimitedColumn(read, 1))
+    expect(out).toBe('name\nAda\n""\nBob\n')
+    expect(rereadDelimited(out, read).rows.map((r) => r.fields)).toEqual([['Ada'], [''], ['Bob']])
+  })
+
+  test('the only column leaves `""` records; short rows are skipped', () => {
     const text = 'a\n1\n'
-    expect(
-      applyDelimitedChanges(text, deleteDelimitedColumn(readDelimited(text, { header: true }), 0)),
-    ).toBe('\n\n')
+    const read = readDelimited(text, { header: true })
+    const out = applyDelimitedChanges(text, deleteDelimitedColumn(read, 0))
+    expect(out).toBe('""\n""\n')
+    expect(rereadDelimited(out, read).rows).toHaveLength(1)
     const ragged = 'a,b\n1\n'
     expect(applyDelimitedChanges(ragged, deleteDelimitedColumn(readDelimited(ragged), 1))).toBe(
       'a\n1\n',
     )
   })
+})
+
+describe('no edit loses a row', () => {
+  test('clearing the only field of a row', () => {
+    const text = 'a\n1\n2\n'
+    const read = readDelimited(text, { header: true })
+    const out = applyDelimitedChanges(text, setDelimitedField(read, read.rows[0]!, 0, ''))
+    expect(out).toBe('a\n""\n2\n')
+    expect(rereadDelimited(out, read).rows.map((r) => r.fields)).toEqual([[''], ['2']])
+  })
+
+  test('inserting an empty row', () => {
+    for (const fields of [[], ['']]) {
+      const text = 'a\n1\n'
+      const read = readDelimited(text, { header: true })
+      const out = applyDelimitedChanges(text, insertDelimitedRow(read, 1, fields))
+      expect(out).toBe('a\n1\n""\n')
+      expect(rereadDelimited(out, read).rows).toHaveLength(2)
+    }
+  })
+
+  test('a `""` line is a record; a blank line is not', () => {
+    expect(parseDelimited('a\n""\n\nb\n', ',').records.map((r) => r.fields)).toEqual([
+      ['a'],
+      [''],
+      ['b'],
+    ])
+  })
+})
+
+describe('rereadDelimited', () => {
+  test('keeps the header when a header cell is cleared or made a number', () => {
+    const text = 'name,year\nAda,1815\n'
+    const read = readDelimited(text)
+    for (const value of ['', '2024']) {
+      const out = applyDelimitedChanges(text, setDelimitedField(read, read.headerRecord!, 1, value))
+      expect(readDelimited(out).header).toBeNull()
+      const again = rereadDelimited(out, read)
+      expect(again.header).toEqual(['name', value])
+      expect(again.rows).toHaveLength(1)
+    }
+  })
+
+  test('keeps the delimiter', () => {
+    const text = 'a;b\n1;2\n'
+    const read = readDelimited(text)
+    const out = applyDelimitedChanges(text, setDelimitedField(read, read.rows[0]!, 0, 'x,y,z'))
+    expect(rereadDelimited(out, read).delimiter).toBe(';')
+  })
+})
+
+/** Every edit, applied to each file, read back against the expected cells. */
+describe('read back', () => {
+  const files = [
+    'h1,h2,h3\n1,"a,b",3\n4,,6\n',
+    'h1,h2,h3\r\n1,2,3\r\n4,5,6',
+    '\ufeffh1\th2\th3\r1\t2\t3\r',
+    'h1;h2;h3\n"x\ny";2;3\n4;5\n',
+  ]
+  const model = (read: ReturnType<typeof readDelimited>) => [
+    read.header,
+    ...read.rows.map((r) => r.fields),
+  ]
+  for (const text of files) {
+    const read = readDelimited(text, { header: true })
+    const before = model(read)
+    const check = (out: string, expected: (string[] | null)[]) => {
+      const again = rereadDelimited(out, read)
+      expect(model(again)).toEqual(expected)
+      expect(again.lineEnding).toBe(read.lineEnding)
+      expect(again.bom).toBe(read.bom)
+    }
+    test(`set, insert and delete on ${JSON.stringify(text)}`, () => {
+      check(applyDelimitedChanges(text, setDelimitedField(read, read.rows[0]!, 1, 'new "v", x')), [
+        before[0]!,
+        before[1]!.map((f, i) => (i === 1 ? 'new "v", x' : f)),
+        ...before.slice(2),
+      ])
+      check(applyDelimitedChanges(text, insertDelimitedRow(read, 0, ['p', 'q', 'r'])), [
+        before[0]!,
+        ['p', 'q', 'r'],
+        ...before.slice(1),
+      ])
+      check(applyDelimitedChanges(text, insertDelimitedRow(read, read.rows.length, ['p'])), [
+        ...before,
+        ['p'],
+      ])
+      check(applyDelimitedChanges(text, deleteDelimitedRow(read, 0)!), [
+        before[0]!,
+        ...before.slice(2),
+      ])
+      check(
+        applyDelimitedChanges(text, deleteDelimitedRow(read, read.rows.length - 1)!),
+        before.slice(0, -1),
+      )
+      check(
+        applyDelimitedChanges(text, insertDelimitedColumn(read, 1, 'new')),
+        before.map((r, i) => (r!.length >= 1 ? [r![0]!, i === 0 ? 'new' : '', ...r!.slice(1)] : r)),
+      )
+      check(
+        applyDelimitedChanges(text, deleteDelimitedColumn(read, 0)),
+        before.map((r) => r!.slice(1)),
+      )
+    })
+  }
 })
 
 describe('helpers', () => {

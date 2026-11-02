@@ -54,7 +54,10 @@ export interface DelimitedFieldSpan {
   from: number
   /** Offset just past the field's last character. */
   to: number
-  /** Whether the field was written in quotes that closed. */
+  /**
+   * Whether the field is exactly one quoted string: its quotes closed and no
+   * text follows the closing quote (`"a"b` is not quoted).
+   */
   quoted: boolean
 }
 
@@ -196,7 +199,8 @@ const isEnd = (ch: string | undefined, delim: string) =>
  * RFC 4180 records, tolerant of bad input. A leading BOM is dropped. A
  * quoted field may hold delimiters, `""` and line breaks. An unclosed quote
  * is read as literal text up to the next delimiter or line end. Text after a
- * closing quote is kept. Blank lines add no record. Records end at CRLF, LF or CR.
+ * closing quote is kept. Blank lines add no record; a line holding only `""`
+ * is a record of one empty field. Records end at CRLF, LF or CR.
  * Each record carries the offsets of its fields, so a caller can rewrite one
  * field without touching the rest of the text.
  *
@@ -205,11 +209,17 @@ const isEnd = (ch: string | undefined, delim: string) =>
 export function parseDelimited(
   text: string,
   delimiter: string,
-): { records: DelimitedRecord[]; issues: DelimitedIssue[]; lineEnding: DelimitedLineEnding } {
+): {
+  records: DelimitedRecord[]
+  issues: DelimitedIssue[]
+  lineEnding: DelimitedLineEnding
+  bom: boolean
+} {
   const records: DelimitedRecord[] = []
   const issues: DelimitedIssue[] = []
   let lineEnding: DelimitedLineEnding | undefined
-  let i = text.charCodeAt(0) === 0xfeff ? 1 : 0
+  const bom = text.charCodeAt(0) === 0xfeff
+  let i = bom ? 1 : 0
   let line = 1
   const len = text.length
   while (i < len) {
@@ -268,13 +278,13 @@ export function parseDelimited(
     if (text[i] === '\r') i++
     if (text[i] === '\n') i++
     line++
-    if (fields.length === 1 && fields[0] === '') continue
+    if (to === from) continue
     if (lineEnding === undefined && i > to) lineEnding = text.slice(to, i) as DelimitedLineEnding
     const record: DelimitedRecord = { fields, spans, line: start, from, to, end: i }
     if (issue !== undefined) record.issue = issue
     records.push(record)
   }
-  return { records, issues, lineEnding: lineEnding ?? '\n' }
+  return { records, issues, lineEnding: lineEnding ?? '\n', bom }
 }
 
 const NUMBER = /^[-+]?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?$/
@@ -314,7 +324,7 @@ export interface ReadDelimitedOptions {
  */
 export function readDelimited(text: string, options: ReadDelimitedOptions = {}): DelimitedRead {
   const delimiter = options.delimiter ?? sniffDelimiter(text)
-  const { records, issues, lineEnding } = parseDelimited(text, delimiter)
+  const { records, issues, lineEnding, bom } = parseDelimited(text, delimiter)
   const header = (options.header ?? looksLikeHeader(records[0]?.fields)) && records.length > 0
   const headerRecord = header ? records[0]! : null
   const headerCells = headerRecord?.fields ?? null
@@ -338,6 +348,6 @@ export function readDelimited(text: string, options: ReadDelimitedOptions = {}):
     width,
     issues,
     lineEnding,
-    bom: text.charCodeAt(0) === 0xfeff,
+    bom,
   }
 }

@@ -78,7 +78,7 @@ larger document and use the result against the document.
   `escapeCell` (a cell written at once), `escapeCellInsert` (text typed into
   a cell), `escapeCodeCell` (a cell inside a backtick code span),
   `literalPipeFixes` and `endsWithEscape`, with the types `CellText` and
-  `PipeFix`.
+  `TextChange`.
 - Edits: `rowLineText`, `insertCellSplice`, `deleteCellSplice`,
   `padRowSplice`, `tableLines` and `hasTrailingPipe`, with the types
   `LineSplice` and `RowPad`. Each splice changes only its own bytes.
@@ -94,10 +94,11 @@ larger document and use the result against the document.
 - Editing delimited files: each record carries its fields' offsets, so
   `setDelimitedField`, `insertDelimitedRow`, `deleteDelimitedRow`,
   `insertDelimitedColumn` and `deleteDelimitedColumn` return byte changes
-  (`DelimitedChange`) that touch only what the edit must. The file keeps its
+  (`TextChange`) that touch only what the edit must. The file keeps its
   delimiter, line endings, byte order mark and the quoting of every other
-  field. `applyDelimitedChanges` applies them; `quoteDelimitedField` and
-  `delimitedRecordText` write fields and lines.
+  field. `applyDelimitedChanges` applies them, and `rereadDelimited` reads the
+  result with the same delimiter and header decision. `quoteDelimitedField`
+  and `delimitedRecordText` write fields and lines.
 
 Each export has TSDoc in the source. Your editor shows it.
 
@@ -163,7 +164,7 @@ The experimental exports:
   `DelimitedIssue`, `ReadDelimitedOptions`
 - `setDelimitedField`, `insertDelimitedRow`, `deleteDelimitedRow`,
   `insertDelimitedColumn`, `deleteDelimitedColumn`, `applyDelimitedChanges`,
-  `quoteDelimitedField`, `delimitedRecordText`, `DelimitedChange`
+  `rereadDelimited`, `quoteDelimitedField`, `delimitedRecordText`
 
 ## Runtimes and platforms
 
