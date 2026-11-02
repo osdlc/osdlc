@@ -9,7 +9,9 @@
 //! Each runner below takes a case's inputs and builds the JSON value the
 //! case's `expected` holds. Offsets in the fixture are UTF-8 byte offsets,
 //! this crate's own; the TypeScript runner converts its UTF-16 indices to
-//! them. A refusal is `{"error": kind}`.
+//! them. A refusal is `{"error": kind}`: `invalid_max_column_width` from
+//! `pad_table`, which this crate's types cannot hold, and
+//! `overlapping_changes` from `apply_delimited_changes`.
 //!
 //! Compiled in with `include_str!` rather than read at run time, so the test
 //! binary carries the fixture and a moved or deleted fixture is a build error.
@@ -59,12 +61,16 @@ fn align(v: &str) -> ColumnAlign {
     }
 }
 
-fn delimiter(v: &str) -> Delimiter {
-    let mut chars = v.chars();
+fn one_char(v: &Value) -> char {
+    let mut chars = s(v).chars();
     let (Some(c), None) = (chars.next(), chars.next()) else {
-        panic!("a delimiter is one character, not {v:?}");
+        panic!("a delimiter is one character, not {v}");
     };
-    Delimiter::from_char(c).expect("one of DELIMITERS")
+    c
+}
+
+fn delimiter(v: &Value) -> Delimiter {
+    Delimiter::from_char(one_char(v)).expect("one of DELIMITERS")
 }
 
 fn span(row: &TableRowSpan) -> Value {
@@ -100,7 +106,61 @@ fn aligns(a: &[ColumnAlign]) -> Value {
 }
 
 fn record(r: &DelimitedRecord) -> Value {
-    json!({"fields": r.fields, "line": r.line, "issue": r.issue})
+    json!({
+        "fields": r.fields,
+        "spans": r.spans.iter().map(|s| json!({"from": s.from, "to": s.to, "quoted": s.quoted})).collect::<Vec<_>>(),
+        "line": r.line,
+        "from": r.from,
+        "to": r.to,
+        "end": r.end,
+        "issue": r.issue,
+    })
+}
+
+fn read_json(read: &DelimitedRead) -> Value {
+    json!({
+        "delimiter": read.delimiter.as_char().to_string(),
+        "header": read.header,
+        "header_record": read.header_record.as_ref().map(record),
+        "rows": read.rows.iter().map(record).collect::<Vec<_>>(),
+        "width": read.width,
+        "issues": issues(&read.issues),
+        "line_ending": read.line_ending.as_str(),
+        "bom": read.bom,
+    })
+}
+
+/// The case's `text` read with its `delimiter` and `header` options.
+fn read_case(c: &Value) -> DelimitedRead {
+    let mut options = ReadDelimitedOptions::new();
+    if let Some(d) = c.get("delimiter") {
+        options = options.with_delimiter(delimiter(d));
+    }
+    if let Some(h) = c.get("header") {
+        options = options.with_header(b(h));
+    }
+    read_delimited(s(&c["text"]), &options)
+}
+
+fn change_json(ch: &TextChange) -> Value {
+    json!({"from": ch.from, "to": ch.to, "insert": ch.insert})
+}
+
+/// Changes to `text`, and the text they make.
+fn changes_json(text: &str, changes: &[TextChange]) -> Value {
+    json!({
+        "changes": changes.iter().map(change_json).collect::<Vec<_>>(),
+        "text": apply_delimited_changes(text, changes).expect("changes that do not overlap"),
+    })
+}
+
+/// One change, or none, and the text it makes.
+fn one_change_json(text: &str, ch: Option<TextChange>) -> Value {
+    let applied = match &ch {
+        Some(ch) => apply_delimited_changes(text, std::slice::from_ref(ch)).expect("one change"),
+        None => text.to_owned(),
+    };
+    json!({"change": ch.as_ref().map(change_json), "text": applied})
 }
 
 fn issues(i: &[DelimitedIssue]) -> Value {
@@ -319,13 +379,14 @@ fn run(section: &str, c: &Value) -> Value {
         }
 
         "sniff_delimiter" => json!(sniff_delimiter(s(&c["text"])).as_char().to_string()),
-        "delimiter_name" => json!(delimiter(s(&c["delimiter"])).name()),
+        "delimiter_name" => json!(delimiter(&c["delimiter"]).name()),
         "parse_delimited" => {
-            let d = s(&c["delimiter"]).chars().next().unwrap();
-            let parsed = parse_delimited(s(&c["text"]), d);
+            let parsed = parse_delimited(s(&c["text"]), one_char(&c["delimiter"]));
             json!({
                 "records": parsed.records.iter().map(record).collect::<Vec<_>>(),
                 "issues": issues(&parsed.issues),
+                "line_ending": parsed.line_ending.as_str(),
+                "bom": parsed.bom,
             })
         }
         "looks_like_header" => {
@@ -336,22 +397,65 @@ fn run(section: &str, c: &Value) -> Value {
             };
             json!(looks_like_header(&first))
         }
-        "read_delimited" => {
-            let mut options = ReadDelimitedOptions::new();
-            if let Some(d) = c.get("delimiter") {
-                options = options.with_delimiter(delimiter(s(d)));
+        "read_delimited" => read_json(&read_case(c)),
+
+        "quote_delimited_field" => json!(quote_delimited_field(
+            s(&c["value"]),
+            one_char(&c["delimiter"]),
+            c.get("always_quote").is_some_and(b),
+        )),
+        "delimited_record_text" => json!(delimited_record_text(
+            &strings(&c["fields"]),
+            one_char(&c["delimiter"])
+        )),
+        "reread_delimited" => read_json(&reread_delimited(s(&c["next"]), &read_case(c))),
+        "set_delimited_field" => {
+            let read = read_case(c);
+            // `record` counts the header, when there is one, as record 0.
+            let records: Vec<&DelimitedRecord> =
+                read.header_record.iter().chain(&read.rows).collect();
+            let change = set_delimited_field(
+                &read,
+                records[n(&c["record"])],
+                n(&c["column"]),
+                s(&c["value"]),
+            );
+            one_change_json(s(&c["text"]), Some(change))
+        }
+        "insert_delimited_row" => {
+            let change = insert_delimited_row(&read_case(c), n(&c["at"]), &strings(&c["fields"]));
+            one_change_json(s(&c["text"]), Some(change))
+        }
+        "delete_delimited_row" => one_change_json(
+            s(&c["text"]),
+            delete_delimited_row(&read_case(c), n(&c["index"])),
+        ),
+        "insert_delimited_column" => {
+            let header = c.get("header_text").map_or("", s);
+            changes_json(
+                s(&c["text"]),
+                &insert_delimited_column(&read_case(c), n(&c["at"]), header),
+            )
+        }
+        "delete_delimited_column" => changes_json(
+            s(&c["text"]),
+            &delete_delimited_column(&read_case(c), n(&c["column"])),
+        ),
+        "apply_delimited_changes" => {
+            let changes: Vec<TextChange> = c["changes"]
+                .as_array()
+                .expect("an array")
+                .iter()
+                .map(|ch| TextChange {
+                    from: n(&ch["from"]),
+                    to: n(&ch["to"]),
+                    insert: s(&ch["insert"]).to_owned(),
+                })
+                .collect();
+            match apply_delimited_changes(s(&c["text"]), &changes) {
+                Ok(text) => json!(text),
+                Err(OverlappingChanges { .. }) => json!({"error": "overlapping_changes"}),
             }
-            if let Some(h) = c.get("header") {
-                options = options.with_header(b(h));
-            }
-            let read = read_delimited(s(&c["text"]), &options);
-            json!({
-                "delimiter": read.delimiter.as_char().to_string(),
-                "header": read.header,
-                "rows": read.rows.iter().map(record).collect::<Vec<_>>(),
-                "width": read.width,
-                "issues": issues(&read.issues),
-            })
         }
         other => panic!("unknown section {other}: add a runner for it"),
     }
@@ -402,6 +506,15 @@ const SECTIONS: &[&str] = &[
     "parse_delimited",
     "looks_like_header",
     "read_delimited",
+    "quote_delimited_field",
+    "delimited_record_text",
+    "set_delimited_field",
+    "insert_delimited_row",
+    "delete_delimited_row",
+    "insert_delimited_column",
+    "delete_delimited_column",
+    "reread_delimited",
+    "apply_delimited_changes",
 ];
 
 #[test]

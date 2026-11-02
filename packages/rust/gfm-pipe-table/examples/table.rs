@@ -1,10 +1,12 @@
 //! Read, write, pad and edit a GFM pipe table, then copy it as TSV and CSV.
+//! Last, edit one field of a CSV file without rewriting the rest.
 //!
 //! Run with `cargo run -p gfm-pipe-table --example table`.
 
 use gfm_pipe_table::{
-    PadTableOptions, RenderTableOptions, TableInput, grid_from_csv, insert_cell_splice, pad_table,
-    read_table, render_table, row_cell_texts, split_row, to_csv, tsv_from_grid,
+    PadTableOptions, ReadDelimitedOptions, RenderTableOptions, TableInput, apply_delimited_changes,
+    grid_from_csv, insert_cell_splice, pad_table, read_delimited, read_table, render_table,
+    row_cell_texts, set_delimited_field, split_row, to_csv, tsv_from_grid,
 };
 
 fn main() {
@@ -49,4 +51,16 @@ fn main() {
             &row[change.to..]
         );
     }
+
+    // Set one field of a CSV file. The line endings and the other fields'
+    // quotes stay as written; the new value is quoted because it needs it.
+    let text = "name,note\r\n\"Ada\",\"hi\"\r\nBob,ok\r\n";
+    let file = read_delimited(text, &ReadDelimitedOptions::new());
+    let change = set_delimited_field(&file, &file.rows[1], 1, "yes, fine");
+    let edited = apply_delimited_changes(text, &[change]).expect("one change");
+    assert_eq!(
+        edited,
+        "name,note\r\n\"Ada\",\"hi\"\r\nBob,\"yes, fine\"\r\n"
+    );
+    println!("{edited:?}");
 }

@@ -74,6 +74,21 @@ pub struct DelimitedIssue {
     pub message: String,
 }
 
+/// Where one field sits in the source, as byte offsets. A quoted field's
+/// span includes its quotes, so replacing the span replaces the whole field.
+///
+/// Experimental: any release may change or remove it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DelimitedFieldSpan {
+    /// Offset of the field's first byte (its opening quote, if quoted).
+    pub from: usize,
+    /// Offset just past the field's last byte.
+    pub to: usize,
+    /// Whether the field is exactly one quoted string: its quotes closed and
+    /// no text follows the closing quote (`"a"b` is not quoted).
+    pub quoted: bool,
+}
+
 /// One record as written: fields untrimmed, not padded to the header.
 ///
 /// Experimental: any release may change or remove it.
@@ -81,10 +96,43 @@ pub struct DelimitedIssue {
 pub struct DelimitedRecord {
     /// The record's fields, untrimmed.
     pub fields: Vec<String>,
+    /// Each field's place in the source, one per field.
+    pub spans: Vec<DelimitedFieldSpan>,
     /// 1-based line the record starts on.
     pub line: usize,
+    /// Offset of the record's first byte.
+    pub from: usize,
+    /// Offset just past the record's last field, before its line break.
+    pub to: usize,
+    /// Offset just past the record's line break; `to` when it has none.
+    pub end: usize,
     /// The first problem reading this record, if any.
     pub issue: Option<String>,
+}
+
+/// A line break as a file writes it.
+///
+/// Experimental: any release may change or remove it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum DelimitedLineEnding {
+    /// `\r\n`
+    CrLf,
+    /// `\n`, the default for a file with no line break.
+    #[default]
+    Lf,
+    /// `\r`
+    Cr,
+}
+
+impl DelimitedLineEnding {
+    /// The line break's text.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CrLf => "\r\n",
+            Self::Lf => "\n",
+            Self::Cr => "\r",
+        }
+    }
 }
 
 /// Records and problems from [`parse_delimited`].
@@ -96,6 +144,11 @@ pub struct DelimitedParse {
     pub records: Vec<DelimitedRecord>,
     /// Every problem, in the order found.
     pub issues: Vec<DelimitedIssue>,
+    /// The first record's line break; [`DelimitedLineEnding::Lf`] when no
+    /// record has one.
+    pub line_ending: DelimitedLineEnding,
+    /// Whether the text starts with a byte order mark.
+    pub bom: bool,
 }
 
 /// A file read by [`read_delimited`].
@@ -108,12 +161,20 @@ pub struct DelimitedRead {
     pub delimiter: Delimiter,
     /// The header cells, or `None` when the first record is data.
     pub header: Option<Vec<String>>,
+    /// The header as a record, with its spans; `None` when there is no
+    /// header.
+    pub header_record: Option<DelimitedRecord>,
     /// Body records, after the header.
     pub rows: Vec<DelimitedRecord>,
     /// The widest of the header and every row.
     pub width: usize,
     /// Every problem, by line.
     pub issues: Vec<DelimitedIssue>,
+    /// The first record's line break; [`DelimitedLineEnding::Lf`] when no
+    /// record has one.
+    pub line_ending: DelimitedLineEnding,
+    /// Whether the text starts with a byte order mark.
+    pub bom: bool,
 }
 
 /// Count a delimiter per line outside quotes, over the first `max_lines`
@@ -214,8 +275,10 @@ fn count_breaks(bytes: &[u8], from: usize, to: usize) -> usize {
 /// Parse RFC 4180 records, tolerant of bad input. A leading BOM is dropped.
 /// A quoted field may hold delimiters, `""` and line breaks. An unclosed
 /// quote is read as literal text up to the next delimiter or line end. Text
-/// after a closing quote is kept. Blank lines add no record. Records end at
-/// CRLF, LF or CR.
+/// after a closing quote is kept. Blank lines add no record; a line holding
+/// only `""` is a record of one empty field. Records end at CRLF, LF or CR.
+/// Each record carries the byte offsets of its fields, so a caller can
+/// rewrite one field without touching the rest of the text.
 ///
 /// The TypeScript twin takes the delimiter as a string and compares it with
 /// one UTF-16 unit of the text at a time, so a delimiter outside the Basic
@@ -239,11 +302,15 @@ pub fn parse_delimited(text: &str, delimiter: char) -> DelimitedParse {
 
     let mut records = Vec::new();
     let mut issues = Vec::new();
-    let mut i = if text.starts_with('\u{feff}') { 3 } else { 0 };
+    let mut line_ending = None;
+    let bom = text.starts_with('\u{feff}');
+    let mut i = if bom { '\u{feff}'.len_utf8() } else { 0 };
     let mut line = 1;
     while i < len {
         let mut fields = Vec::new();
+        let mut spans = Vec::new();
         let start = line;
+        let from = i;
         let mut issue: Option<String> = None;
         let mut report = |line: usize, message: &str, issues: &mut Vec<DelimitedIssue>| {
             issues.push(DelimitedIssue {
@@ -254,6 +321,8 @@ pub fn parse_delimited(text: &str, delimiter: char) -> DelimitedParse {
         };
         loop {
             let field: String;
+            let field_from = i;
+            let mut quoted = false;
             if bytes.get(i) == Some(&b'"') {
                 let mut close = find_closing_quote(bytes, i + 1);
                 // A quote that closes on a later line and is not followed by
@@ -275,7 +344,9 @@ pub fn parse_delimited(text: &str, delimiter: char) -> DelimitedParse {
                         line += count_breaks(bytes, i + 1, close);
                         let mut f = text[i + 1..close].replace("\"\"", "\"");
                         i = close + 1;
+                        quoted = true;
                         if !is_end(i) {
+                            quoted = false;
                             let end = next_break_or_delim(i);
                             report(
                                 line,
@@ -294,12 +365,18 @@ pub fn parse_delimited(text: &str, delimiter: char) -> DelimitedParse {
                 i = end;
             }
             fields.push(field);
+            spans.push(DelimitedFieldSpan {
+                from: field_from,
+                to: i,
+                quoted,
+            });
             if i < len && at_delim(i) {
                 i += delim.len();
                 continue;
             }
             break;
         }
+        let to = i;
         if bytes.get(i) == Some(&b'\r') {
             i += 1;
         }
@@ -307,16 +384,33 @@ pub fn parse_delimited(text: &str, delimiter: char) -> DelimitedParse {
             i += 1;
         }
         line += 1;
-        if fields.len() == 1 && fields[0].is_empty() {
+        if to == from {
             continue;
+        }
+        if line_ending.is_none() {
+            line_ending = match &bytes[to..i] {
+                b"\r\n" => Some(DelimitedLineEnding::CrLf),
+                b"\n" => Some(DelimitedLineEnding::Lf),
+                b"\r" => Some(DelimitedLineEnding::Cr),
+                _ => None,
+            };
         }
         records.push(DelimitedRecord {
             fields,
+            spans,
             line: start,
+            from,
+            to,
+            end: i,
             issue,
         });
     }
-    DelimitedParse { records, issues }
+    DelimitedParse {
+        records,
+        issues,
+        line_ending: line_ending.unwrap_or_default(),
+        bom,
+    }
 }
 
 /// Whether `s` is a number as the TypeScript twin's pattern reads one:
@@ -442,15 +536,18 @@ pub fn read_delimited(text: &str, options: &ReadDelimitedOptions) -> DelimitedRe
     let DelimitedParse {
         mut records,
         mut issues,
+        line_ending,
+        bom,
     } = parse_delimited(text, delimiter.as_char());
     let wants_header = options
         .header
         .unwrap_or_else(|| looks_like_header(records.first().map_or(&[][..], |r| &r.fields[..])));
-    let header = if wants_header && !records.is_empty() {
-        Some(records.remove(0).fields)
+    let header_record = if wants_header && !records.is_empty() {
+        Some(records.remove(0))
     } else {
         None
     };
+    let header = header_record.as_ref().map(|r| r.fields.clone());
     let mut rows = records;
     let width = rows
         .iter()
@@ -483,9 +580,12 @@ pub fn read_delimited(text: &str, options: &ReadDelimitedOptions) -> DelimitedRe
     DelimitedRead {
         delimiter,
         header,
+        header_record,
         rows,
         width,
         issues,
+        line_ending,
+        bom,
     }
 }
 

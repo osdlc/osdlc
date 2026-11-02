@@ -25,6 +25,11 @@
 //!   [`clipboard_lines`].
 //! - Delimited files: [`read_delimited`], [`parse_delimited`],
 //!   [`sniff_delimiter`], [`looks_like_header`].
+//! - Editing delimited files: [`set_delimited_field`],
+//!   [`insert_delimited_row`], [`delete_delimited_row`],
+//!   [`insert_delimited_column`], [`delete_delimited_column`],
+//!   [`apply_delimited_changes`], [`reread_delimited`],
+//!   [`quote_delimited_field`], [`delimited_record_text`].
 //!
 //! ```
 //! use gfm_pipe_table::{RenderTableOptions, TableInput, read_table, render_table, row_cell_texts};
@@ -48,6 +53,7 @@
 
 mod cell_text;
 mod delimited;
+mod delimited_edit;
 mod grid;
 mod js;
 mod pad;
@@ -58,12 +64,18 @@ mod width;
 mod width_data;
 
 pub use cell_text::{
-    CellText, PipeFix, cell_text_from_source, ends_with_escape, escape_cell, escape_cell_insert,
+    CellText, TextChange, cell_text_from_source, ends_with_escape, escape_cell, escape_cell_insert,
     escape_code_cell, literal_pipe_fixes, source_offset, text_offset,
 };
 pub use delimited::{
-    DELIMITERS, DelimitedIssue, DelimitedParse, DelimitedRead, DelimitedRecord, Delimiter,
-    ReadDelimitedOptions, looks_like_header, parse_delimited, read_delimited, sniff_delimiter,
+    DELIMITERS, DelimitedFieldSpan, DelimitedIssue, DelimitedLineEnding, DelimitedParse,
+    DelimitedRead, DelimitedRecord, Delimiter, ReadDelimitedOptions, looks_like_header,
+    parse_delimited, read_delimited, sniff_delimiter,
+};
+pub use delimited_edit::{
+    OverlappingChanges, apply_delimited_changes, delete_delimited_column, delete_delimited_row,
+    delimited_record_text, insert_delimited_column, insert_delimited_row, quote_delimited_field,
+    reread_delimited, set_delimited_field,
 };
 pub use grid::{
     CELL_SOURCE_ATTR, CellGrid, CellRect, PasteRect, clipboard_lines, grid_from_csv,
