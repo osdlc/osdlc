@@ -18,6 +18,7 @@ pub struct TableCell {
 
 /// A table read from its row lines.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct TableData {
     /// The header row's cells.
     pub header: Vec<TableCell>,
@@ -100,15 +101,33 @@ pub struct TableInput {
 }
 
 /// Options for [`render_table`].
+///
+/// `#[non_exhaustive]`, so a later release can add a field without a breaking
+/// change: build it with [`RenderTableOptions::new`] and its `with_*` methods.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct RenderTableOptions<'a> {
     /// Joins the lines. Default `\n`.
     pub line_break: &'a str,
 }
 
+impl<'a> RenderTableOptions<'a> {
+    /// The defaults: lines joined by `\n`.
+    pub const fn new() -> Self {
+        Self { line_break: "\n" }
+    }
+
+    /// These options with lines joined by `line_break`.
+    #[must_use]
+    pub const fn with_line_break(mut self, line_break: &'a str) -> Self {
+        self.line_break = line_break;
+        self
+    }
+}
+
 impl Default for RenderTableOptions<'_> {
     fn default() -> Self {
-        Self { line_break: "\n" }
+        Self::new()
     }
 }
 
@@ -150,6 +169,7 @@ pub struct TableGridIssue {
 ///
 /// Experimental: any release may change or remove it.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct TableGrid {
     /// Header cell texts.
     pub header: Vec<String>,

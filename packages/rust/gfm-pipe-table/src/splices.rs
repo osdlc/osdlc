@@ -197,6 +197,7 @@ pub fn insert_cell_splice(line: &str, span: &TableRowSpan, at: usize, filler: &s
 ///
 /// Experimental: any release may change or remove it.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct RowPad {
     /// Absolute offset to insert at.
     pub from: usize,

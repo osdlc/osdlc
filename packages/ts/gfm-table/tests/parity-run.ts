@@ -117,7 +117,8 @@ function spliceJson(line: string, base: number, splice: LineSplice) {
       insert: change.insert ?? '',
     },
     anchor: o(splice.anchor),
-    offset: splice.offset,
+    // The offset counts into the inserted text, from the anchor.
+    offset: change ? byteOffset(change.insert ?? '', splice.offset) : splice.offset,
   }
 }
 
