@@ -1,5 +1,12 @@
 # @osdlc/config-layers
 
+## 0.8.1
+
+### Patch Changes
+
+- Updated dependencies [f3a4945]
+  - @osdlc/gfm-table@0.5.0
+
 ## 0.8.0
 
 ### Minor Changes
