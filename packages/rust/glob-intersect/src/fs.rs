@@ -219,7 +219,7 @@ pub fn resolve_intersection<A: AsRef<str>, B: AsRef<str>>(
 mod tests {
     use super::*;
 
-    /// The corpus's `fs.*` cases cover the default shape. These pin the
+    /// The conformance suite's `fs_*` sections cover the default shape. These pin the
     /// resolution controls it does not reach — `absolute`, `only_files`, and a
     /// dotfile's trip through the walk to the L1 `dot` decision.
     fn tree(files: &[&str]) -> tempfile::TempDir {
