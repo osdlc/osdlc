@@ -1,6 +1,6 @@
 [package]
 name = "markdown-vault-fs"
-version = "0.3.1"
+version = "0.3.2"
 edition.workspace = true
 rust-version.workspace = true
 description = "Vault filesystem primitives: the visibility-policy walk, the excluded-files rules, the `_system/` rules, statSync-shaped timestamps, and a re-export of the path-guard containment guard"
