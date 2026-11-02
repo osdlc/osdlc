@@ -1,105 +1,27 @@
 /**
- * Conformance tests for @osdlc/frontmatter-lossless: the TypeScript side of
- * the shared framing corpus. The `frontmatter-lossless` Rust crate runs the
- * same fixtures. Each fixture checks the strict split, the lenient split,
- * the offsets, a byte-identical round trip, and its `edit` case if it has one.
+ * Tests for @osdlc/frontmatter-lossless against its TypeScript source.
  *
- * This file also ports the Rust crate's hand-written tests (BOM inside the
- * text, CRLF value swap, new text written into an empty block or after a
- * closing fence at the end of the file), so the two suites cover the same
- * cases even where the corpus JSON has no field for them.
- *
- * The corpus is the crate's,
- * packages/rust/frontmatter-lossless/tests/fixtures/conformance.json, and this
- * suite reads it in place, so a case added to it reaches both suites. See
+ * The family's conformance suite,
+ * packages/conformance/frontmatter-lossless/suite.json, holds the cases this
+ * package and the Rust `frontmatter-lossless` crate must agree on: the strict
+ * split with its offsets, the lenient split, composing an edit into a note's
+ * shape, and a new note's shape. The crate is the reference and writes every
+ * expected value. `conformance.ts` runs the suite. `corpus-dist.test.ts` runs
+ * it again against the built `dist/`. See
  * docs/planning/decisions/D-07-conformance-corpus.md.
+ *
+ * The tests after it are hand-written: ports of the Rust crate's own tests and
+ * branches the suite's values cannot express.
  */
 import { test, expect, describe } from 'vitest'
-import {
-  split,
-  compose,
-  newShape,
-  splitLenient,
-  type CloseEol,
-  type OpenEol,
-} from '../src/index.ts'
-// The corpus is the crate's; this suite reads it in place.
-import corpus from '../../../rust/frontmatter-lossless/tests/fixtures/conformance.json'
 
-interface Fixture {
-  name: string
-  source: string
-  split: {
-    yaml: string | null
-    body: string
-    bom: boolean
-    openEol: OpenEol
-    closeEol: CloseEol
-    closeSep: boolean
-  }
-  lenient: { yaml: string; body: string } | null
-  edit?: { yaml: string; body: string; out: string }
-}
-
-const fixtures = corpus as Fixture[]
+import * as lib from '../src/index.ts'
+import { split, compose, newShape, splitLenient } from '../src/index.ts'
+import { runSuite } from './conformance.ts'
 
 const BOM = '\uFEFF'
 
-describe('shared conformance corpus', () => {
-  test('the corpus is non-empty', () => {
-    expect(fixtures.length).toBeGreaterThan(0)
-  })
-
-  for (const fx of fixtures) {
-    test(`[${fx.name}] split matches the shared contract`, () => {
-      const s = split(fx.source)
-      expect(s.yaml).toBe(fx.split.yaml)
-      expect(s.body).toBe(fx.split.body)
-      expect(s.shape.bom).toBe(fx.split.bom)
-      expect(s.shape.openEol).toBe(fx.split.openEol)
-      expect(s.shape.closeEol).toBe(fx.split.closeEol)
-      expect(s.shape.closeSep).toBe(fx.split.closeSep)
-    })
-
-    // The property that matters: split a note and compose it again, and get
-    // the original file byte for byte. Anything that normalises fences, drops
-    // or doubles a BOM, or rewrites CRLF fails here.
-    test(`[${fx.name}] round trip is byte-identical`, () => {
-      const s = split(fx.source)
-      expect(compose(s.yaml, s.body, s.shape)).toBe(fx.source)
-    })
-
-    test(`[${fx.name}] lenient matches the shared contract`, () => {
-      const l = splitLenient(fx.source)
-      if (fx.lenient === null) {
-        expect(l).toBeNull()
-      } else {
-        expect(l).not.toBeNull()
-        expect(l?.yaml).toBe(fx.lenient.yaml)
-        expect(l?.body).toBe(fx.lenient.body)
-      }
-    })
-
-    const edit = fx.edit
-    if (edit) {
-      test(`[${fx.name}] new text composed into its shape splits back`, () => {
-        const out = compose(edit.yaml, edit.body, split(fx.source).shape)
-        expect(out).toBe(edit.out)
-        expect(split(out)).toMatchObject({ yaml: edit.yaml, body: edit.body })
-      })
-    }
-
-    // `yamlRange` and `bodyStart` index the original source exactly, as
-    // UTF-16 string indices (see the module doc).
-    test(`[${fx.name}] offsets index the original source`, () => {
-      const s = split(fx.source)
-      if (s.yaml !== null) {
-        expect(fx.source.slice(s.yamlRange.start, s.yamlRange.end)).toBe(s.yaml)
-      }
-      expect(fx.source.slice(s.bodyStart)).toBe(s.body)
-    })
-  }
-})
+runSuite(lib)
 
 describe('framing details (mirrors of the Rust hand-written tests)', () => {
   test('a BOM anywhere but index zero is ordinary content, not framing', () => {
@@ -132,7 +54,7 @@ describe('framing details (mirrors of the Rust hand-written tests)', () => {
   })
 })
 
-describe('branches the corpus does not reach', () => {
+describe('branches the suite also reaches, checked field by field', () => {
   test('a note that is only two adjacent fences, with nothing after', () => {
     const s = split('---\n---')
     expect(s.yaml).toBe('')
@@ -232,13 +154,6 @@ describe('unterminated', () => {
       expect(split(src).unterminated).toBe(false)
     })
   }
-
-  test('across the corpus, only a note with no block can be flagged', () => {
-    for (const fx of fixtures) {
-      const s = split(fx.source)
-      if (s.unterminated) expect(s.yaml).toBeNull()
-    }
-  })
 })
 
 describe('newShape', () => {

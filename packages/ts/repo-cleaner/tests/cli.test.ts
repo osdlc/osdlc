@@ -70,7 +70,7 @@ function buildFixture(): Fixture {
   return { root, bare: pair.bare.dir, worktree: realpathSync(worktree) }
 }
 
-const SWEEP = ['--no-gh', '--no-fetch']
+const SWEEP = ['--provider', 'none', '--no-fetch']
 
 /** All three rows of the fixture's branch, named so a run does not depend on how each is judged. */
 function rowsOf(fx: Fixture): string[] {
@@ -309,18 +309,34 @@ describe('local by default means offline', () => {
     const local = run(['status'], fx.root)
     expect(local.code).toBe(0)
     expect(local.out).toContain('not fetched')
-    expect(local.out).toContain('Local only: nothing fetched, no gh')
+    expect(local.out).toContain('Local only: nothing fetched, no pull requests looked up')
     expect(sh(fx.root, ['rev-parse', 'origin/main'])).toBe(before)
     const plan = JSON.parse(run(['plan'], fx.root).out) as Plan
     expect(plan.repos[0]!.no_gh).toBe(true)
     expect(plan.repos[0]!.fetch).toBe(false)
-    const fetched = JSON.parse(run(['plan', '--remotes', '--no-gh'], fx.root).out) as Plan
+    const fetched = JSON.parse(
+      run(['plan', '--remotes', '--provider', 'none'], fx.root).out,
+    ) as Plan
     expect(fetched.repos[0]!.fetch).toBe(true)
 
-    const online = run(['status', '--remotes', '--no-gh'], fx.root)
+    const online = run(['status', '--remotes', '--provider', 'none'], fx.root)
     expect(online.code).toBe(0)
     expect(online.out).not.toContain('not fetched')
     expect(sh(fx.root, ['rev-parse', 'origin/main'])).not.toBe(before)
+  })
+
+  test('--measure-remote names the remote to measure against; --remote is not a flag', () => {
+    const fx = buildFixture()
+    const plan = JSON.parse(run(['plan', '--measure-remote', 'origin'], fx.root).out) as Plan
+    expect(plan.repos[0]!.remote).toBe('origin')
+    expect(JSON.parse(run(['plan'], fx.root).out).repos[0].remote).toBeNull()
+    const typo = run(['status', '--remote'], fx.root)
+    expect(typo.code).toBe(2)
+    expect(typo.err).toContain("unknown option '--remote'")
+    expect(typo.err).toContain('Did you mean --remotes?')
+    expect(run(['apply', '--plan', 'p.json', '--measure-remote', 'origin'], fx.root).err).toContain(
+      '--measure-remote',
+    )
   })
 })
 
@@ -540,7 +556,7 @@ describe('--remote-url', () => {
 
     // A branch pushed since is found on the next run: the mirror is fetched, not re-cloned.
     sh(fx.root, ['push', '-q', 'origin', `main:refs/heads/feat/later`])
-    const again = remoteRun(['--remote-url', fx.bare, '--no-gh'], away, cache)
+    const again = remoteRun(['--remote-url', fx.bare, '--provider', 'none'], away, cache)
     expect(again.code).toBe(0)
     expect(again.out).toMatch(/origin\/feat\/later\s+delete/)
   })
@@ -832,10 +848,10 @@ describe('apply', () => {
   test('a repository the sweep cannot read fails the run instead of reading as empty', () => {
     const fx = buildFixture()
     sh(fx.root, ['remote', 'set-url', 'origin', join(tempDir(), 'missing.git')])
-    const res = run(['apply', '--remotes', '--no-gh', '--yes'], fx.root)
+    const res = run(['apply', '--remotes', '--provider', 'none', '--yes'], fx.root)
     expect(res.code).toBe(1)
     expect(res.err).toContain('fetch failed')
-    const plan = run(['plan', '--remotes', '--no-gh'], fx.root)
+    const plan = run(['plan', '--remotes', '--provider', 'none'], fx.root)
     expect(plan.code).toBe(1)
     expect(plan.err).toContain('fetch failed')
   })

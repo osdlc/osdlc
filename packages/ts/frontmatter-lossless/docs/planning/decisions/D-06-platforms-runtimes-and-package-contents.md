@@ -16,7 +16,7 @@ created: 2026-10-17
 - The package ships compiled ESM and `.d.ts` files only, under `dist/`. It
   does not ship its TypeScript source, and `exports` has no `bun` condition.
   There is no CommonJS build.
-- Tests run on Node: CI runs the conformance corpus and a smoke check against
+- Tests run on Node: CI runs the conformance suite and a smoke check against
   the built package on Node 22 and 24, and runs the clean-consumer check on
   the packed tarball. The unit tests run on Vitest under Node.
 - Another runtime, such as Deno or a browser, is claimed only once a test

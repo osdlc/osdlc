@@ -10,6 +10,12 @@
 //   node scripts/conformance.ts --regenerate --reference ts
 //                                             only the families whose
 //                                             reference is TypeScript
+//   node scripts/conformance.ts --write       only run the generators, as
+//                                             --regenerate does, and keep
+//                                             what they write. The version
+//                                             bumps use it: each suite
+//                                             records its reference's
+//                                             version, so a bump changes it
 //
 // The checks:
 //
@@ -50,11 +56,10 @@ export const CATCHING_UP: Record<string, string> = {
  * crate it is built from (yaml-splice) is not a family and stays.
  */
 export const UNMIGRATED = new Set([
-  'packages/ts/frontmatter-lossless',
+  'packages/ts/gfm-table',
   'packages/ts/markdown-link',
   'packages/ts/yaml-splice',
   'packages/rust/markdown-contract',
-  'packages/rust/glob-intersect',
 ])
 
 export interface Implementation {
@@ -348,12 +353,18 @@ export function generatorBuildFilters(families: Record<string, Family>, referenc
   return filters
 }
 
+/** A suite file a generator changed, added or removed, and the generator that did. */
+interface Regenerated {
+  file: string
+  generator: string
+}
+
 /**
  * Builds what the generators import, runs each family's generator,
- * `reference` limiting them to one language, and reports each suite file a
- * generator changed, added or removed.
+ * `reference` limiting them to one language, and returns each suite file a
+ * generator changed, added or removed. The new files stay on disk.
  */
-function regenerate(root: string, reference: string | undefined): string[] {
+function regenerate(root: string, reference: string | undefined): Regenerated[] {
   const families = JSON.parse(readFileSync(join(root, 'packages/conformance/families.json'), 'utf8')) as Record<string, Family>
   const filters = generatorBuildFilters(families, reference)
   if (filters.length > 0) {
@@ -361,7 +372,7 @@ function regenerate(root: string, reference: string | undefined): string[] {
     console.log(`pnpm ${build.join(' ')}`)
     execFileSync('pnpm', build, { cwd: root, stdio: 'inherit' })
   }
-  const problems: string[] = []
+  const changed: Regenerated[] = []
   for (const [name, f] of Object.entries(families)) {
     if (reference !== undefined && f.reference !== reference) continue
     const before = suiteFiles(root, name)
@@ -371,20 +382,28 @@ function regenerate(root: string, reference: string | undefined): string[] {
     execFileSync(cmd!, args, { cwd, stdio: 'inherit' })
     const after = suiteFiles(root, name)
     for (const file of new Set([...before.keys(), ...after.keys()])) {
-      if (before.get(file) !== after.get(file)) {
-        problems.push(`packages/conformance/${name}/${file}: its generator changed it; run \`${f.generator}\` and commit the result`)
-      }
+      if (before.get(file) !== after.get(file)) changed.push({ file: `packages/conformance/${name}/${file}`, generator: f.generator })
     }
   }
-  return problems
+  return changed
 }
 
 function main(): void {
   const args = process.argv.slice(2)
   const at = args.indexOf('--reference')
   const reference = at === -1 ? undefined : args[at + 1]
+  // No checks first: a version bump writes the suites even when a check
+  // fails, and the pull request it opens fails CI there instead.
+  if (args.includes('--write')) {
+    for (const c of regenerate(process.cwd(), reference)) console.log(`rewrote ${c.file}`)
+    return
+  }
   const problems = checkRepo(process.cwd())
-  if (problems.length === 0 && args.includes('--regenerate')) problems.push(...regenerate(process.cwd(), reference))
+  if (problems.length === 0 && args.includes('--regenerate')) {
+    for (const c of regenerate(process.cwd(), reference)) {
+      problems.push(`${c.file}: its generator changed it; run \`${c.generator}\` and commit the result`)
+    }
+  }
   if (problems.length > 0) {
     for (const p of problems) console.error(`  ${p}`)
     console.error(`\n${problems.length} conformance problem(s)`)

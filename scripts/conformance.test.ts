@@ -2,10 +2,12 @@
 //
 //   node --test scripts/conformance.test.ts
 import { strict as assert } from 'node:assert'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import {
   checkRepo,
@@ -164,8 +166,15 @@ test('suite readers and cross-language reads are found in test sources', () => {
   assert.equal(readsAcross('packages/ts/x', ["'./fixtures/a.json'"]), false)
 })
 
+type Put = (file: string, text: string) => void
+
 /** A repository on disk with one family, `edit` changing files before the check. */
-function repo(edit: (put: (file: string, text: string) => void) => void = () => {}): string[] {
+function repo(edit: (put: Put) => void = () => {}): string[] {
+  return inRepo(edit, checkRepo)
+}
+
+/** `run` on that repository, after `edit`; the repository is removed afterwards. */
+function inRepo<T>(edit: (put: Put) => void, run: (root: string) => T): T {
   const root = mkdtempSync(join(tmpdir(), 'conformance-'))
   const put = (file: string, text: string) => {
     mkdirSync(dirname(join(root, file)), { recursive: true })
@@ -180,7 +189,7 @@ function repo(edit: (put: (file: string, text: string) => void) => void = () => 
     put('packages/rust/dirs/Cargo.toml', '[package]\nname = "dirs"\nversion = "0.2.0"\n')
     put('packages/rust/dirs/tests/c.rs', 'include_str!("../../../conformance/dirs/suite.json")')
     edit(put)
-    return checkRepo(root)
+    return run(root)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
@@ -209,4 +218,63 @@ test('a repository check finds an unread suite, an unlisted reader, version drif
     repo((put) => put('packages/ts/stray/tests/x.test.ts', "'../../../rust/stray/tests/fixtures/parity.json'")),
     ["packages/ts/stray: reads the other language's fixtures; move them to a suite in packages/conformance/"],
   )
+})
+
+/**
+ * Run the script with `args` on the conforming repository, its family
+ * referenced by the crate. A `cargo` stand-in first on PATH runs a generator
+ * that stamps `referenceVersion` 9.9.9, as a version bump makes it. `edit`
+ * changes files first.
+ */
+function runStamping(args: string[], edit: (put: Put) => void = () => {}) {
+  return inRepo(
+    (put) => {
+      // Run from packages/rust, as a Rust generator is.
+      put(
+        'bin/cargo',
+        `#!/bin/sh\nexec '${process.execPath}' -e "const fs = require('node:fs'); const p = '../conformance/dirs/suite.json'; ` +
+          `fs.writeFileSync(p, JSON.stringify({ ...JSON.parse(fs.readFileSync(p, 'utf8')), referenceVersion: '9.9.9' }))"\n`,
+      )
+      const family = { ...FAMILY, reference: 'rust', generator: 'cargo run -p dirs --example conformance-write' }
+      put('packages/conformance/families.json', JSON.stringify({ dirs: family }))
+      put('packages/conformance/dirs/suite.json', JSON.stringify({ ...SUITE, reference: 'rust' }))
+      edit(put)
+    },
+    (root) => {
+      chmodSync(join(root, 'bin/cargo'), 0o755)
+      const script = fileURLToPath(new URL('./conformance.ts', import.meta.url))
+      const env = { ...process.env, PATH: `${join(root, 'bin')}:${process.env['PATH'] ?? ''}` }
+      const run = spawnSync(process.execPath, [script, ...args], { cwd: root, env, encoding: 'utf8' })
+      const suite = JSON.parse(readFileSync(join(root, 'packages/conformance/dirs/suite.json'), 'utf8')) as {
+        referenceVersion: string
+      }
+      return { status: run.status, out: run.stdout + run.stderr, version: suite.referenceVersion }
+    },
+  )
+}
+
+// The cargo stand-in is a shell script.
+const UNIX = { skip: process.platform === 'win32' }
+
+test('--regenerate fails on a suite its generator changed, naming the generator', UNIX, () => {
+  const res = runStamping(['--regenerate'])
+  assert.equal(res.status, 1)
+  assert.match(
+    res.out,
+    /packages\/conformance\/dirs\/suite\.json: its generator changed it; run `cargo run -p dirs --example conformance-write` and commit the result/,
+  )
+})
+
+test('--regenerate checks first, and runs no generator when a check fails', UNIX, () => {
+  const res = runStamping(['--regenerate'], (put) => put('packages/rust/dirs/tests/c.rs', '// reads nothing'))
+  assert.equal(res.status, 1)
+  assert.equal(res.version, '0.2.0')
+  assert.match(res.out, /no test under packages\/rust\/dirs\/tests/)
+})
+
+test('--write keeps what the generator wrote and exits 0, even when a check fails', UNIX, () => {
+  const res = runStamping(['--write'], (put) => put('packages/rust/dirs/tests/c.rs', '// reads nothing'))
+  assert.equal(res.status, 0, res.out)
+  assert.equal(res.version, '9.9.9')
+  assert.match(res.out, /rewrote packages\/conformance\/dirs\/suite\.json/)
 })

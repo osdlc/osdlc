@@ -119,7 +119,7 @@ Each export has TSDoc in the source. Your editor shows it.
   is the layer under such an editor.
 
 The `frontmatter-lossless` Rust crate is this package's twin: the same
-algorithm and the same conformance corpus. Its offsets are UTF-8 byte offsets.
+algorithm and the same conformance suite. Its offsets are UTF-8 byte offsets.
 
 ## Stability
 

@@ -1,154 +1,131 @@
-//! Framing conformance corpus for `frontmatter-lossless`.
+//! Runs the frontmatter-lossless conformance suite,
+//! `packages/conformance/frontmatter-lossless/suite.json`.
 //!
-//! The cases the framing must get right: BOM, CRLF, empty and unterminated
-//! blocks, byte offsets, and round trips. Each fixture holds one case a simple
-//! splitter gets wrong. Each property is checked against the whole corpus, so a
-//! regression in one code path fails every fixture it affects.
+//! The suite holds the cases this crate and the TypeScript
+//! `@osdlc/frontmatter-lossless` package must agree on: BOM, CRLF, empty and
+//! unterminated blocks, byte offsets, the lenient split, and composing new
+//! text into a shape. This crate is the family's reference: its generator,
+//! `tests/conformance/write.rs`, writes every `expect` from
+//! `tests/conformance/run.rs`, which this test shares. Every section and case
+//! runs here. A missing section, a case with no name, and a section, case
+//! key or input key this test does not know all fail it.
 //!
-//! The corpus is plain JSON at `tests/fixtures/conformance.json`, and this
-//! file loads it. The TypeScript version, `@osdlc/frontmatter-lossless`, reads
-//! the same file, so the two implementations agree on every case. Each fixture
-//! is `{ name, source, split, lenient }` where `split` is the strict
-//! [`split`] outcome (`yaml` null when there is no block, plus the
-//! `bom`/`openEol`/`closeEol` shape) and `lenient` is the [`split_lenient`]
-//! outcome (`null` when it finds no block). The round trip,
-//! `compose(split(src)) == src`, is checked for every fixture rather than
-//! stored. A fixture may also carry `edit`
-//! (`{ yaml, body, out }`): composing that new yaml and body with the source's
-//! shape must give `out`, and `out` must split back to them.
+//! On top of the stored values it checks the properties the values cannot say
+//! on their own: a strict split composes back to its source byte for byte,
+//! the offsets index the source, and composed text splits back to what went
+//! in. The tests after it are hand-written cases the suite has no field for.
 
-use frontmatter_lossless::{compose, split, split_lenient};
-use serde_json::Value as Json;
+use frontmatter_lossless::{compose, split};
+use serde_json::Value;
 
-const CORPUS: &str = include_str!("fixtures/conformance.json");
+#[path = "conformance/run.rs"]
+#[allow(dead_code, reason = "shared with the generator, which uses all of it")]
+mod run;
 
-fn fixtures() -> Vec<Json> {
-    let root: Json = serde_json::from_str(CORPUS).expect("conformance.json is valid JSON");
-    let fixtures = root.as_array().expect("conformance.json is a JSON array");
-    assert!(!fixtures.is_empty(), "the corpus is empty");
-    fixtures.clone()
-}
+/// Compiled in rather than read at runtime: the test binary then carries the
+/// suite, and a moved or deleted suite is a build error, not a late panic.
+const SUITE_JSON: &str = include_str!("../../../conformance/frontmatter-lossless/suite.json");
 
-fn str_of<'a>(fx: &'a Json, key: &str) -> &'a str {
-    fx.get(key)
-        .and_then(Json::as_str)
-        .unwrap_or_else(|| panic!("fixture field {key:?} must be a string: {fx}"))
-}
-
-/// The whole shared corpus, one test. A failure lists every failing fixture by
+/// Every case of the suite, one test. A failure lists every failing case by
 /// name rather than stopping at the first, so a change shows everything it
 /// breaks.
 #[test]
-fn shared_conformance_corpus() {
+fn conformance_suite() {
+    let suite: Value = serde_json::from_str(SUITE_JSON).expect("suite.json is valid JSON");
+    assert_eq!(suite["family"], "frontmatter-lossless");
+    assert_eq!(suite["reference"], "rust");
+    let sections = suite["sections"]
+        .as_object()
+        .expect("sections is an object");
+    let mut found: Vec<&str> = sections.keys().map(String::as_str).collect();
+    found.sort_unstable();
+    let mut known = run::SECTIONS.to_vec();
+    known.sort_unstable();
+    assert_eq!(
+        found, known,
+        "the suite's sections are not the ones this crate runs"
+    );
     let mut failures = Vec::new();
-    for fx in fixtures() {
-        let name = fx.get("name").and_then(Json::as_str).unwrap_or("<unnamed>");
-        if let Err(msg) = run_fixture(&fx) {
-            failures.push(format!("  [{name}] {msg}"));
+    let (mut total, mut ran) = (0, 0);
+    for (section, body) in sections {
+        let cases = body["cases"].as_array().expect("cases is a list");
+        for case in cases {
+            total += 1;
+            let Some(name) = case["name"].as_str() else {
+                failures.push(format!("  {section}: a case has no string name"));
+                continue;
+            };
+            match run_case(section, case) {
+                Ok(()) => ran += 1,
+                Err(msg) => failures.push(format!("  {section} [{name}] {msg}")),
+            }
         }
     }
     assert!(
         failures.is_empty(),
-        "conformance corpus failures:\n{}",
+        "conformance suite failures:\n{}",
         failures.join("\n")
     );
+    assert!(total > 0, "the suite has no cases");
+    assert_eq!(ran, total, "every case runs");
 }
 
-fn run_fixture(fx: &Json) -> Result<(), String> {
-    let source = str_of(fx, "source");
-    let expect = fx.get("split").ok_or("fixture is missing \"split\"")?;
+fn run_case(section: &str, case: &Value) -> Result<(), String> {
+    let map = case.as_object().ok_or("not an object")?;
+    if let Some(k) = map.keys().find(|k| !run::CASE_KEYS.contains(&k.as_str())) {
+        return Err(format!("unknown case key {k}"));
+    }
+    let input = map.get("input").ok_or("no input")?;
+    let want = map.get("expect").ok_or("no expect")?;
+    let got = run::run(section, input)?;
+    if &got != want {
+        return Err(format!("got {got}, want {want}"));
+    }
+    match section {
+        "split" => split_properties(run::text(run::fields(input, &["source"])?, "source")?),
+        "compose_edit" | "new_shape" => {
+            let out = run::text(got.as_object().ok_or("expect is not an object")?, "out")?;
+            let i = input.as_object().ok_or("input is not an object")?;
+            splits_back(out, run::maybe_text(i, "yaml")?, run::text(i, "body")?)
+        }
+        _ => Ok(()),
+    }
+}
 
-    // Strict split: yaml, body and shape all match the stored values.
-    let s = split(source);
-    let want_yaml = expect.get("yaml").ok_or("split.yaml is required")?;
-    match (s.yaml, want_yaml.as_str()) {
-        (Some(got), Some(want)) if got == want => {}
-        (None, _) if want_yaml.is_null() => {}
-        (got, _) => return Err(format!("split.yaml: got {got:?}, want {want_yaml}")),
-    }
-    if s.body != str_of(expect, "body") {
-        return Err(format!(
-            "split.body: got {:?}, want {:?}",
-            s.body,
-            str_of(expect, "body")
-        ));
-    }
-    if s.shape.bom != expect.get("bom").and_then(Json::as_bool).unwrap_or(false) {
-        return Err(format!("split.bom: got {}", s.shape.bom));
-    }
-    if s.shape.open_eol.as_str() != str_of(expect, "openEol") {
-        return Err(format!("split.openEol: got {:?}", s.shape.open_eol));
-    }
-    if s.shape.close_eol.as_str() != str_of(expect, "closeEol") {
-        return Err(format!("split.closeEol: got {:?}", s.shape.close_eol));
-    }
-    let want_sep = expect
-        .get("closeSep")
-        .and_then(Json::as_bool)
-        .ok_or("split.closeSep is required")?;
-    if s.shape.close_sep != want_sep {
-        return Err(format!("split.closeSep: got {}", s.shape.close_sep));
-    }
-
-    // The property that matters: split a note and compose it again, and get
-    // the original file byte for byte. Anything that normalises fences, drops
-    // or doubles a BOM, or rewrites CRLF fails on every shape it affects.
+/// The property that matters: split a note and compose it again, and get the
+/// original file byte for byte. Anything that normalises fences, drops or
+/// doubles a BOM, or rewrites CRLF fails on every shape it affects. The
+/// offsets index the source exactly, so an edit can use real byte offsets.
+fn split_properties(src: &str) -> Result<(), String> {
+    let s = split(src);
     let out = compose(s.yaml, s.body, s.shape);
-    if out != source {
+    if out != src {
         return Err(format!("round trip was not byte-identical: {out:?}"));
     }
-
-    // Lenient split: the tolerant read-only split matches the stored values.
-    let lenient = fx.get("lenient").ok_or("fixture is missing \"lenient\"")?;
-    match (split_lenient(source), lenient.as_object()) {
-        (None, None) if lenient.is_null() => {}
-        (Some(ls), Some(_)) => {
-            let (yaml, body) = (ls.yaml, ls.body);
-            if yaml != str_of(lenient, "yaml") || body != str_of(lenient, "body") {
-                return Err(format!(
-                    "lenient: got ({yaml:?}, {body:?}), want ({:?}, {:?})",
-                    str_of(lenient, "yaml"),
-                    str_of(lenient, "body")
-                ));
-            }
-        }
-        (got, _) => return Err(format!("lenient: got {got:?}, want {lenient}")),
+    if let Some(yaml) = s.yaml
+        && &src[s.yaml_range.clone()] != yaml
+    {
+        return Err("yaml_range does not index yaml".into());
     }
-
-    // Edit: new text composed into the source's shape lands where a later
-    // split finds it again.
-    if let Some(edit) = fx.get("edit") {
-        let (yaml, body) = (str_of(edit, "yaml"), str_of(edit, "body"));
-        let out = compose(Some(yaml), body, s.shape);
-        if out != str_of(edit, "out") {
-            return Err(format!("edit: got {out:?}, want {:?}", str_of(edit, "out")));
-        }
-        let back = split(&out);
-        if back.yaml != Some(yaml) || back.body != body {
-            return Err(format!(
-                "edit: split back to ({:?}, {:?})",
-                back.yaml, back.body
-            ));
-        }
+    if &src[s.body_start..] != s.body {
+        return Err("body_start does not index body".into());
+    }
+    if s.unterminated && s.yaml.is_some() {
+        return Err("only a note with no block can be unterminated".into());
     }
     Ok(())
 }
 
-/// `yaml_range` and `body_start` index the original source exactly, so an edit
-/// can use real byte offsets. (Offsets are byte positions into the UTF-8
-/// source. The TypeScript package uses UTF-16 string indices instead and checks
-/// its own offsets against the source string.)
-#[test]
-fn offsets_index_the_original_source_across_the_corpus() {
-    for fx in fixtures() {
-        let name = fx.get("name").and_then(Json::as_str).unwrap_or("<unnamed>");
-        let src = str_of(&fx, "source");
-        let s = split(src);
-        if let Some(yaml) = s.yaml {
-            assert_eq!(&src[s.yaml_range.clone()], yaml, "{name}: yaml_range wrong");
-        }
-        assert_eq!(&src[s.body_start..], s.body, "{name}: body_start wrong");
+/// Text composed into a shape lands where a later split finds it again.
+fn splits_back(out: &str, yaml: Option<&str>, body: &str) -> Result<(), String> {
+    let back = split(out);
+    if back.yaml != yaml || back.body != body {
+        return Err(format!(
+            "{out:?} split back to ({:?}, {:?})",
+            back.yaml, back.body
+        ));
     }
+    Ok(())
 }
 
 /// The empty block is a shape of its own: [`split`] returns it as `Some("")`

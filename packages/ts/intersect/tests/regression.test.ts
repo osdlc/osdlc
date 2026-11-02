@@ -1,10 +1,10 @@
 /**
- * Regression tests that the shared corpus cannot express.
+ * Regression tests that the conformance suite cannot express.
  *
- * `fixtures/*.cases.json` is the conformance spec that this package and the
- * Rust peer crate `intersect` (in sksizer/dev) both run. A fixed bug that fits
- * one input/output case goes there, so both packages fail together. This file
- * holds what a case cannot state: an expectation over a temp directory's
+ * `packages/conformance/intersect/suite.json` is the conformance suite that
+ * this package and the Rust crate `glob-intersect` both run. A fixed bug that
+ * fits one input/output case goes there, so both packages fail together. This
+ * file holds what a case cannot state: an expectation over a temp directory's
  * absolute paths, and a property checked across a generated set of patterns.
  */
 import { describe, expect, test } from 'vitest'

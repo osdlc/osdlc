@@ -1,0 +1,2212 @@
+{
+  "family": "intersect",
+  "reference": "ts",
+  "referenceVersion": "0.3.1",
+  "sections": {
+    "parse": {
+      "description": "Split a path or glob string into segments. Input: `path` (string), and optionally `opts.separator` (string). Expect: the segment array.",
+      "cases": [
+        {
+          "name": "parse: splits on the / separator",
+          "input": {
+            "path": "src/api/**"
+          },
+          "expect": [
+            "src",
+            "api",
+            "**"
+          ]
+        },
+        {
+          "name": "parse: a trailing separator is normalized off",
+          "input": {
+            "path": "src/api/"
+          },
+          "expect": [
+            "src",
+            "api"
+          ]
+        },
+        {
+          "name": "parse: a custom separator splits on that character",
+          "input": {
+            "path": "a:b:c",
+            "opts": {
+              "separator": ":"
+            }
+          },
+          "expect": [
+            "a",
+            "b",
+            "c"
+          ]
+        },
+        {
+          "name": "parse: an empty separator acts as /",
+          "input": {
+            "path": "a/b",
+            "opts": {
+              "separator": ""
+            }
+          },
+          "expect": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "name": "parse: an empty separator on the empty string gives one empty segment",
+          "input": {
+            "path": "",
+            "opts": {
+              "separator": ""
+            }
+          },
+          "expect": [
+            ""
+          ]
+        },
+        {
+          "name": "parse: an empty separator does not split an astral character",
+          "input": {
+            "path": "😀/b",
+            "opts": {
+              "separator": ""
+            }
+          },
+          "expect": [
+            "😀",
+            "b"
+          ]
+        }
+      ]
+    },
+    "segments_intersects": {
+      "description": "Whether two segment patterns share a matching path. Input: `a`, `b` (segment arrays, already split). `opts` is optional and holds the matching options `dot`, `caseInsensitive` and `globstarMatchesZero`. Expect: a boolean.",
+      "cases": [
+        {
+          "name": "intersects: glob subtree overlaps a concrete file",
+          "input": {
+            "a": [
+              "src",
+              "**",
+              "*.ts"
+            ],
+            "b": [
+              "src",
+              "api",
+              "handler.ts"
+            ]
+          },
+          "expect": true
+        },
+        {
+          "name": "intersects: disjoint subtrees do not overlap",
+          "input": {
+            "a": [
+              "src",
+              "api",
+              "**"
+            ],
+            "b": [
+              "src",
+              "web",
+              "**"
+            ]
+          },
+          "expect": false
+        },
+        {
+          "name": "intersects: exact segment paths that are equal overlap",
+          "input": {
+            "a": [
+              "src",
+              "siteA",
+              "components"
+            ],
+            "b": [
+              "src",
+              "siteA",
+              "components"
+            ]
+          },
+          "expect": true
+        },
+        {
+          "name": "intersects: an exact path does not overlap a child path",
+          "input": {
+            "a": [
+              "src",
+              "siteA",
+              "components"
+            ],
+            "b": [
+              "src",
+              "siteA",
+              "components",
+              "Button.vue"
+            ]
+          },
+          "expect": false
+        },
+        {
+          "name": "intersects: globstar spans zero segments",
+          "input": {
+            "a": [
+              "a",
+              "**",
+              "b"
+            ],
+            "b": [
+              "a",
+              "b"
+            ],
+            "opts": {
+              "globstarMatchesZero": true
+            }
+          },
+          "expect": true
+        },
+        {
+          "name": "intersects: leading-dot exclusion survives a zero-width star (*.env vs .env)",
+          "input": {
+            "a": [
+              "*.env"
+            ],
+            "b": [
+              ".env"
+            ]
+          },
+          "expect": false
+        },
+        {
+          "name": "intersects: later-position dot still matches (*.env vs a.env)",
+          "input": {
+            "a": [
+              "*.env"
+            ],
+            "b": [
+              "a.env"
+            ]
+          },
+          "expect": true
+        },
+        {
+          "name": "intersects: leading-dot exclusion survives a globstar prefix (** */*.env vs .env)",
+          "input": {
+            "a": [
+              "**",
+              "*.env"
+            ],
+            "b": [
+              ".env"
+            ]
+          },
+          "expect": false
+        },
+        {
+          "name": "segments dot: a leading-dot segment is excluded by default",
+          "input": {
+            "a": [
+              "*"
+            ],
+            "b": [
+              ".env"
+            ]
+          },
+          "expect": false
+        },
+        {
+          "name": "segments dot: dot:true lets a star match a dotfile",
+          "input": {
+            "a": [
+              "*"
+            ],
+            "b": [
+              ".env"
+            ],
+            "opts": {
+              "dot": true
+            }
+          },
+          "expect": true
+        },
+        {
+          "name": "segments dot: globstar excludes a leading-dot segment by default",
+          "input": {
+            "a": [
+              "src",
+              "**",
+              "*.ts"
+            ],
+            "b": [
+              "src",
+              ".hidden",
+              "x.ts"
+            ]
+          },
+          "expect": false
+        },
+        {
+          "name": "segments dot: a trailing-literal star excludes a dotfile by default (*.env vs .env)",
+          "input": {
+            "a": [
+              "*.env"
+            ],
+            "b": [
+              ".env"
+            ]
+          },
+          "expect": false
+        },
+        {
+          "name": "segments dot: dot:true lets a trailing-literal star match a dotfile (*.env vs .env)",
+          "input": {
+            "a": [
+              "*.env"
+            ],
+            "b": [
+              ".env"
+            ],
+            "opts": {
+              "dot": true
+            }
+          },
+          "expect": true
+        },
+        {
+          "name": "segments caseInsensitive: differing case overlaps when set",
+          "input": {
+            "a": [
+              "SRC",
+              "**"
+            ],
+            "b": [
+              "src",
+              "api.ts"
+            ],
+            "opts": {
+              "caseInsensitive": true
+            }
+          },
+          "expect": true
+        },
+        {
+          "name": "segments caseInsensitive: case matters by default",
+          "input": {
+            "a": [
+              "SRC",
+              "**"
+            ],
+            "b": [
+              "src",
+              "api.ts"
+            ]
+          },
+          "expect": false
+        },
+        {
+          "name": "segments globstarMatchesZero: globstar spans zero segments by default",
+          "input": {
+            "a": [
+              "a",
+              "**",
+              "b"
+            ],
+            "b": [
+              "a",
+              "b"
+            ]
+          },
+          "expect": true
+        },
+        {
+          "name": "segments globstarMatchesZero: disabled requires at least one segment",
+          "input": {
+            "a": [
+              "a",
+              "**",
+              "b"
+            ],
+            "b": [
+              "a",
+              "b"
+            ],
+            "opts": {
+              "globstarMatchesZero": false
+            }
+          },
+          "expect": false
+        },
+        {
+          "name": "segments globstarMatchesZero: still matches one intervening segment when disabled",
+          "input": {
+            "a": [
+              "a",
+              "**",
+              "b"
+            ],
+            "b": [
+              "a",
+              "x",
+              "b"
+            ],
+            "opts": {
+              "globstarMatchesZero": false
+            }
+          },
+          "expect": true
+        }
+      ]
+    },
+    "segments_matches": {
+      "description": "Whether a segment path matches a segment pattern. Input: `path`, `pattern` (segment arrays). `opts` is optional and holds the matching options `dot`, `caseInsensitive` and `globstarMatchesZero`. Expect: a boolean.",
+      "cases": [
+        {
+          "name": "matches: subtree glob matches a nested segmented path",
+          "input": {
+            "path": [
+              "src",
+              "siteA",
+              "components",
+              "Button.vue"
+            ],
+            "pattern": [
+              "src",
+              "**",
+              "*.vue"
+            ]
+          },
+          "expect": true
+        },
+        {
+          "name": "matches: single-star does not cross a segment boundary",
+          "input": {
+            "path": [
+              "src",
+              "api",
+              "user.ts"
+            ],
+            "pattern": [
+              "src",
+              "*"
+            ]
+          },
+          "expect": false
+        },
+        {
+          "name": "matches: a wildcard segment does not match a leading-dot path (.vue vs *.vue)",
+          "input": {
+            "path": [
+              ".vue"
+            ],
+            "pattern": [
+              "*.vue"
+            ]
+          },
+          "expect": false
+        },
+        {
+          "name": "matches: an explicit leading literal dot still matches (.env vs .*)",
+          "input": {
+            "path": [
+              ".env"
+            ],
+            "pattern": [
+              ".*"
+            ]
+          },
+          "expect": true
+        },
+        {
+          "name": "segments dot: matches op honors the dot option",
+          "input": {
+            "path": [
+              ".env"
+            ],
+            "pattern": [
+              "*"
+            ],
+            "opts": {
+              "dot": true
+            }
+          },
+          "expect": true
+        }
+      ]
+    },
+    "segments_witness": {
+      "description": "A path both segment patterns match, or null. Input: `a`, `b` (segment arrays). `opts` is optional and holds the matching options `dot`, `caseInsensitive` and `globstarMatchesZero`. Expect: the witness as a segment array, or null. The witness comes from a breadth-first search: segments are tried in pattern order, and among equal-length paths the first found wins, so an implementation copies that order.",
+      "cases": [
+        {
+          "name": "witness: overlapping patterns yield a common segmented path",
+          "input": {
+            "a": [
+              "src",
+              "api",
+              "**"
+            ],
+            "b": [
+              "src",
+              "**",
+              "handler.ts"
+            ]
+          },
+          "expect": [
+            "src",
+            "api",
+            "handler.ts"
+          ]
+        },
+        {
+          "name": "witness: disjoint patterns yield null",
+          "input": {
+            "a": [
+              "src",
+              "api",
+              "**"
+            ],
+            "b": [
+              "src",
+              "web",
+              "**"
+            ]
+          },
+          "expect": null
+        }
+      ]
+    },
+    "intersects": {
+      "description": "Whether two pattern sets share a matching path. Input: `a`, `b` (Patterns). A `Patterns` value is a glob string or an array of them, a set meaning their union. `opts` is optional and holds the matching options `dot`, `caseInsensitive` and `globstarMatchesZero`. Expect: a boolean.",
+      "cases": [
+        {
+          "name": "exact match: identical no-wildcard paths overlap",
+          "input": {
+            "a": "src/siteA/components",
+            "b": "src/siteA/components"
+          },
+          "expect": true
+        },
+        {
+          "name": "exact match: a bare path does not match a child (no dir inference)",
+          "input": {
+            "a": "src/siteA/components",
+            "b": "src/siteA/components/Button.vue"
+          },
+          "expect": false
+        },
+        {
+          "name": "subtree **: an explicit subtree matches a file beneath it",
+          "input": {
+            "a": "src/siteA/components/**",
+            "b": "src/siteA/components/Button.vue"
+          },
+          "expect": true
+        },
+        {
+          "name": "subtree **: glob overlaps a concrete file inside it",
+          "input": {
+            "a": "src/**/*.ts",
+            "b": "src/api/handler.ts"
+          },
+          "expect": true
+        },
+        {
+          "name": "star *: single-star matches within one segment",
+          "input": {
+            "a": "src/*.ts",
+            "b": "src/index.ts"
+          },
+          "expect": true
+        },
+        {
+          "name": "star *: single-star does not cross a separator",
+          "input": {
+            "a": "src/*.ts",
+            "b": "src/api/index.ts"
+          },
+          "expect": false
+        },
+        {
+          "name": "question ?: matches exactly one character",
+          "input": {
+            "a": "file?.ts",
+            "b": "file1.ts"
+          },
+          "expect": true
+        },
+        {
+          "name": "question ?: does not match two characters",
+          "input": {
+            "a": "file?.ts",
+            "b": "file10.ts"
+          },
+          "expect": false
+        },
+        {
+          "name": "braces {a,b}: an alternative matches",
+          "input": {
+            "a": "**/*.{vue,html}",
+            "b": "src/siteA/Button.vue"
+          },
+          "expect": true
+        },
+        {
+          "name": "braces {a,b}: a non-listed extension does not match",
+          "input": {
+            "a": "**/*.{vue,html}",
+            "b": "src/siteA/app.css"
+          },
+          "expect": false
+        },
+        {
+          "name": "character class [...]: an in-range character matches",
+          "input": {
+            "a": "file[0-9].ts",
+            "b": "file3.ts"
+          },
+          "expect": true
+        },
+        {
+          "name": "character class [...]: an out-of-range character does not match",
+          "input": {
+            "a": "file[0-9].ts",
+            "b": "fileA.ts"
+          },
+          "expect": false
+        },
+        {
+          "name": "negated class [!...]: excludes the listed characters",
+          "input": {
+            "a": "file[!0-9].ts",
+            "b": "fileA.ts"
+          },
+          "expect": true
+        },
+        {
+          "name": "disjoint: non-overlapping subtrees are false",
+          "input": {
+            "a": "src/api/**",
+            "b": "src/web/**"
+          },
+          "expect": false
+        },
+        {
+          "name": "set input: an array is the union of its patterns",
+          "input": {
+            "a": [
+              "src/api/**",
+              "src/db/**"
+            ],
+            "b": "src/db/pool.ts"
+          },
+          "expect": true
+        },
+        {
+          "name": "set input: disjoint sets do not overlap",
+          "input": {
+            "a": [
+              "a/**"
+            ],
+            "b": [
+              "b/**",
+              "c/**"
+            ]
+          },
+          "expect": false
+        },
+        {
+          "name": "negated class: excluding the whole fallback alphabet still meets ?",
+          "input": {
+            "a": "[^a-zA-Z0-9._-]",
+            "b": "?"
+          },
+          "expect": true
+        },
+        {
+          "name": "negated class: excluding the whole fallback alphabet still meets another negated class",
+          "input": {
+            "a": "[^a-zA-Z0-9._-]",
+            "b": "[^b]"
+          },
+          "expect": true
+        },
+        {
+          "name": "negated class: two classes that together exclude the fallback alphabet still overlap",
+          "input": {
+            "a": "[^a-zA-Z]",
+            "b": "[^0-9._-]"
+          },
+          "expect": true
+        },
+        {
+          "name": "negated class: a negated class and the class it negates do not overlap",
+          "input": {
+            "a": "[^a-z]",
+            "b": "[a-z]"
+          },
+          "expect": false
+        },
+        {
+          "name": "depth: 64 nested brace groups are accepted",
+          "input": {
+            "a": "{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{a}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}",
+            "b": "a"
+          },
+          "expect": true
+        },
+        {
+          "name": "depth: 65 nested brace groups throw PATTERN_TOO_DEEP",
+          "input": {
+            "a": "{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{a}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}",
+            "b": "a"
+          },
+          "error": {
+            "kind": "pattern_too_deep"
+          }
+        },
+        {
+          "name": "syntax: a number range {1..3} throws UNSUPPORTED_SYNTAX",
+          "input": {
+            "a": "a{1..3}",
+            "b": "a"
+          },
+          "error": {
+            "kind": "unsupported_syntax"
+          }
+        },
+        {
+          "name": "syntax: a negative number range {-2..2} throws UNSUPPORTED_SYNTAX",
+          "input": {
+            "a": "a{-2..2}",
+            "b": "a"
+          },
+          "error": {
+            "kind": "unsupported_syntax"
+          }
+        },
+        {
+          "name": "syntax: a number range with a step {1..9..2} throws UNSUPPORTED_SYNTAX",
+          "input": {
+            "a": "a{1..9..2}",
+            "b": "a"
+          },
+          "error": {
+            "kind": "unsupported_syntax"
+          }
+        },
+        {
+          "name": "syntax: a brace group holding a slash throws UNSUPPORTED_SYNTAX",
+          "input": {
+            "a": "{x/y,z}",
+            "b": "a"
+          },
+          "error": {
+            "kind": "unsupported_syntax"
+          }
+        },
+        {
+          "name": "syntax: a class holding a slash throws UNSUPPORTED_SYNTAX",
+          "input": {
+            "a": "[a/b]",
+            "b": "a"
+          },
+          "error": {
+            "kind": "unsupported_syntax"
+          }
+        },
+        {
+          "name": "syntax: the extglob +(a|b) throws UNSUPPORTED_SYNTAX",
+          "input": {
+            "a": "+(a|b)",
+            "b": "a"
+          },
+          "error": {
+            "kind": "unsupported_syntax"
+          }
+        },
+        {
+          "name": "syntax: the extglob @(a|b) throws UNSUPPORTED_SYNTAX",
+          "input": {
+            "a": "@(a|b)",
+            "b": "a"
+          },
+          "error": {
+            "kind": "unsupported_syntax"
+          }
+        },
+        {
+          "name": "syntax: the extglob !(b) throws UNSUPPORTED_SYNTAX",
+          "input": {
+            "a": "!(b)",
+            "b": "a"
+          },
+          "error": {
+            "kind": "unsupported_syntax"
+          }
+        },
+        {
+          "name": "syntax: the extglob ?(a) throws UNSUPPORTED_SYNTAX",
+          "input": {
+            "a": "?(a)",
+            "b": "a"
+          },
+          "error": {
+            "kind": "unsupported_syntax"
+          }
+        },
+        {
+          "name": "syntax: the extglob *(a) throws UNSUPPORTED_SYNTAX",
+          "input": {
+            "a": "*(a)",
+            "b": "a"
+          },
+          "error": {
+            "kind": "unsupported_syntax"
+          }
+        },
+        {
+          "name": "syntax: x}/{y as a pattern is plain text and matches itself",
+          "input": {
+            "a": "x}/{y",
+            "b": "x}/{y"
+          },
+          "expect": true
+        },
+        {
+          "name": "syntax: {a}/b} is plain text for the second segment",
+          "input": {
+            "a": "{a}/b}",
+            "b": "a/b}"
+          },
+          "expect": true
+        },
+        {
+          "name": "syntax: []/] throws UNSUPPORTED_SYNTAX",
+          "input": {
+            "a": "[]/]",
+            "b": "a"
+          },
+          "error": {
+            "kind": "unsupported_syntax"
+          }
+        },
+        {
+          "name": "syntax: {[}/x] throws UNSUPPORTED_SYNTAX",
+          "input": {
+            "a": "{[}/x]",
+            "b": "a"
+          },
+          "error": {
+            "kind": "unsupported_syntax"
+          }
+        },
+        {
+          "name": "dot: a leading-dot segment is excluded by default",
+          "input": {
+            "a": "*",
+            "b": ".env"
+          },
+          "expect": false
+        },
+        {
+          "name": "dot: dot:true lets a star match a dotfile",
+          "input": {
+            "a": "*",
+            "b": ".env",
+            "opts": {
+              "dot": true
+            }
+          },
+          "expect": true
+        },
+        {
+          "name": "caseInsensitive: differing case overlaps when set",
+          "input": {
+            "a": "SRC/**",
+            "b": "src/api.ts",
+            "opts": {
+              "caseInsensitive": true
+            }
+          },
+          "expect": true
+        },
+        {
+          "name": "caseInsensitive: case matters by default",
+          "input": {
+            "a": "SRC/**",
+            "b": "src/api.ts"
+          },
+          "expect": false
+        },
+        {
+          "name": "globstarMatchesZero: globstar spans zero segments by default",
+          "input": {
+            "a": "a/**/b",
+            "b": "a/b"
+          },
+          "expect": true
+        },
+        {
+          "name": "globstarMatchesZero: disabled requires at least one segment",
+          "input": {
+            "a": "a/**/b",
+            "b": "a/b",
+            "opts": {
+              "globstarMatchesZero": false
+            }
+          },
+          "expect": false
+        },
+        {
+          "name": "globstarMatchesZero: still matches one intervening segment when disabled",
+          "input": {
+            "a": "a/**/b",
+            "b": "a/x/b",
+            "opts": {
+              "globstarMatchesZero": false
+            }
+          },
+          "expect": true
+        },
+        {
+          "name": "caseInsensitive: intersects does not fold a-umlaut",
+          "input": {
+            "a": "Ä",
+            "b": "ä",
+            "opts": {
+              "caseInsensitive": true
+            }
+          },
+          "expect": false
+        },
+        {
+          "name": "caseInsensitive: intersects folds ASCII in a class",
+          "input": {
+            "a": "[A-Z]",
+            "b": "q",
+            "opts": {
+              "caseInsensitive": true
+            }
+          },
+          "expect": true
+        }
+      ]
+    },
+    "matches": {
+      "description": "Whether a path matches a pattern set. Input: `path` (string), `patterns` (Patterns). A `Patterns` value is a glob string or an array of them, a set meaning their union. `opts` is optional and holds the matching options `dot`, `caseInsensitive` and `globstarMatchesZero`. Expect: a boolean.",
+      "cases": [
+        {
+          "name": "matches: path is inside the first pattern of the set",
+          "input": {
+            "path": "src/api/user.ts",
+            "patterns": [
+              "src/api/**",
+              "**/*.test.ts"
+            ]
+          },
+          "expect": true
+        },
+        {
+          "name": "matches: path matches none of the set",
+          "input": {
+            "path": "README.md",
+            "patterns": [
+              "src/api/**",
+              "**/*.test.ts"
+            ]
+          },
+          "expect": false
+        },
+        {
+          "name": "unicode: ? spans one astral character, not one code unit",
+          "input": {
+            "path": "a😀b.ts",
+            "patterns": [
+              "a?b.ts"
+            ]
+          },
+          "expect": true
+        },
+        {
+          "name": "unicode: a character class holds an astral character as one member",
+          "input": {
+            "path": "😀.ts",
+            "patterns": [
+              "[😀x].ts"
+            ]
+          },
+          "expect": true
+        },
+        {
+          "name": "literal path: [id] in a path is a name, not a class",
+          "input": {
+            "path": "pages/[id].vue",
+            "patterns": "pages/d.vue"
+          },
+          "expect": false
+        },
+        {
+          "name": "literal path: the escaped pattern matches the same name",
+          "input": {
+            "path": "pages/[id].vue",
+            "patterns": "pages/\\[id\\].vue"
+          },
+          "expect": true
+        },
+        {
+          "name": "literal path: * in a path is a name, not a wildcard",
+          "input": {
+            "path": "*",
+            "patterns": "a"
+          },
+          "expect": false
+        },
+        {
+          "name": "literal path: the escaped * pattern matches the name",
+          "input": {
+            "path": "*",
+            "patterns": "\\*"
+          },
+          "expect": true
+        },
+        {
+          "name": "literal path: a pattern wildcard still matches a plain path",
+          "input": {
+            "path": "a",
+            "patterns": "*"
+          },
+          "expect": true
+        },
+        {
+          "name": "literal path: a path with an extglob lookalike is a name",
+          "input": {
+            "path": "+(a|b)",
+            "patterns": "+\\(a|b\\)"
+          },
+          "expect": true
+        },
+        {
+          "name": "syntax: a brace group that holds a slash throws UNSUPPORTED_SYNTAX in matches",
+          "input": {
+            "path": "x/y",
+            "patterns": "{x/y,z}"
+          },
+          "error": {
+            "kind": "unsupported_syntax"
+          }
+        },
+        {
+          "name": "syntax: a class that holds a slash throws UNSUPPORTED_SYNTAX in matches",
+          "input": {
+            "path": "a",
+            "patterns": "[a/b]"
+          },
+          "error": {
+            "kind": "unsupported_syntax"
+          }
+        },
+        {
+          "name": "syntax: an unclosed { with no closer later is a literal",
+          "input": {
+            "path": "a{1..3",
+            "patterns": "a{1..3"
+          },
+          "expect": true
+        },
+        {
+          "name": "syntax: a lone ( after + with no ) is a literal",
+          "input": {
+            "path": "+(a",
+            "patterns": "+(a"
+          },
+          "expect": true
+        },
+        {
+          "name": "syntax: an escaped extglob is a literal",
+          "input": {
+            "path": "+(a|b)",
+            "patterns": "+\\(a|b\\)"
+          },
+          "expect": true
+        },
+        {
+          "name": "syntax: a one-branch group {a} is the group, not literal text",
+          "input": {
+            "path": "a",
+            "patterns": "{a}"
+          },
+          "expect": true
+        },
+        {
+          "name": "syntax: [[:alpha:]] is not a POSIX class",
+          "input": {
+            "path": "a",
+            "patterns": "[[:alpha:]]"
+          },
+          "expect": false
+        },
+        {
+          "name": "syntax: a reversed range [c-a] matches nothing",
+          "input": {
+            "path": "a",
+            "patterns": "[c-a]"
+          },
+          "expect": false
+        },
+        {
+          "name": "syntax: a backslash inside a class is literal",
+          "input": {
+            "path": "]",
+            "patterns": "[\\]]"
+          },
+          "expect": false
+        },
+        {
+          "name": "syntax: * matches the empty segment",
+          "input": {
+            "path": "src//a.ts",
+            "patterns": "src/*/a.ts"
+          },
+          "expect": true
+        },
+        {
+          "name": "syntax: x}/{y is plain text, a stray } before an opening { in a later segment",
+          "input": {
+            "path": "x}/{y",
+            "patterns": "x\\}/\\{y"
+          },
+          "expect": true
+        },
+        {
+          "name": "dot: matches op honors the dot option",
+          "input": {
+            "path": ".env",
+            "patterns": [
+              "*"
+            ],
+            "opts": {
+              "dot": true
+            }
+          },
+          "expect": true
+        },
+        {
+          "name": "segments dot: a dotted brace branch does not license its sibling branches",
+          "input": {
+            "path": ".env",
+            "patterns": [
+              "{*.env,.x}"
+            ]
+          },
+          "expect": false
+        },
+        {
+          "name": "segments dot: the dotted brace branch still matches its own dotfile",
+          "input": {
+            "path": ".x",
+            "patterns": [
+              "{*.env,.x}"
+            ]
+          },
+          "expect": true
+        },
+        {
+          "name": "segments dot: dot:true lets the starred brace branch match a dotfile",
+          "input": {
+            "path": ".env",
+            "patterns": [
+              "{*.env,.x}"
+            ],
+            "opts": {
+              "dot": true
+            }
+          },
+          "expect": true
+        },
+        {
+          "name": "caseInsensitive: ASCII letters fold",
+          "input": {
+            "path": "A",
+            "patterns": "a",
+            "opts": {
+              "caseInsensitive": true
+            }
+          },
+          "expect": true
+        },
+        {
+          "name": "caseInsensitive: sharp s does not match [S]",
+          "input": {
+            "path": "ß",
+            "patterns": "[S]",
+            "opts": {
+              "caseInsensitive": true
+            }
+          },
+          "expect": false
+        },
+        {
+          "name": "caseInsensitive: sharp s does not match SS",
+          "input": {
+            "path": "ß",
+            "patterns": "SS",
+            "opts": {
+              "caseInsensitive": true
+            }
+          },
+          "expect": false
+        },
+        {
+          "name": "caseInsensitive: A-umlaut does not match a-umlaut",
+          "input": {
+            "path": "Ä",
+            "patterns": "ä",
+            "opts": {
+              "caseInsensitive": true
+            }
+          },
+          "expect": false
+        },
+        {
+          "name": "caseInsensitive: the Kelvin sign does not match k",
+          "input": {
+            "path": "K",
+            "patterns": "k",
+            "opts": {
+              "caseInsensitive": true
+            }
+          },
+          "expect": false
+        },
+        {
+          "name": "caseInsensitive: a class folds ASCII only",
+          "input": {
+            "path": "Q",
+            "patterns": "[a-z]",
+            "opts": {
+              "caseInsensitive": true
+            }
+          },
+          "expect": true
+        },
+        {
+          "name": "dot: * does not match .b before a brace of nothing",
+          "input": {
+            "path": ".b",
+            "patterns": "{,}.b"
+          },
+          "expect": false
+        },
+        {
+          "name": "dot: a literal .b matches",
+          "input": {
+            "path": ".b",
+            "patterns": ".b"
+          },
+          "expect": true
+        },
+        {
+          "name": "dot: a brace with a dot branch matches a dotfile",
+          "input": {
+            "path": ".env",
+            "patterns": "{.env,a.env}"
+          },
+          "expect": true
+        },
+        {
+          "name": "dot: a brace of nothing before .env does not",
+          "input": {
+            "path": ".env",
+            "patterns": "{,a}.env"
+          },
+          "expect": false
+        },
+        {
+          "name": "dot: dot true makes {,}.b match",
+          "input": {
+            "path": ".b",
+            "patterns": "{,}.b",
+            "opts": {
+              "dot": true
+            }
+          },
+          "expect": true
+        },
+        {
+          "name": "dot: dot true makes {,a}.env match",
+          "input": {
+            "path": ".env",
+            "patterns": "{,a}.env",
+            "opts": {
+              "dot": true
+            }
+          },
+          "expect": true
+        },
+        {
+          "name": "dot: with dot true * matches ..",
+          "input": {
+            "path": "a/../b",
+            "patterns": "a/*/b",
+            "opts": {
+              "dot": true
+            }
+          },
+          "expect": true
+        }
+      ]
+    },
+    "which_match": {
+      "description": "The patterns of a set that a path matches, in set order. Input: `path` (string), `patterns` (Patterns). A `Patterns` value is a glob string or an array of them, a set meaning their union. `opts` is optional and holds the matching options `dot`, `caseInsensitive` and `globstarMatchesZero`. Expect: a string array.",
+      "cases": [
+        {
+          "name": "whichMatch: returns every matching pattern in registration order",
+          "input": {
+            "path": "src/api/user.test.ts",
+            "patterns": [
+              "src/api/**",
+              "**/*.test.ts",
+              "docs/**"
+            ]
+          },
+          "expect": [
+            "src/api/**",
+            "**/*.test.ts"
+          ]
+        },
+        {
+          "name": "whichMatch: empty when nothing matches",
+          "input": {
+            "path": "README.md",
+            "patterns": [
+              "src/api/**",
+              "**/*.test.ts"
+            ]
+          },
+          "expect": []
+        },
+        {
+          "name": "literal path: whichMatch reads the path literally",
+          "input": {
+            "path": "src/[a].ts",
+            "patterns": [
+              "src/a.ts",
+              "src/\\[a\\].ts"
+            ]
+          },
+          "expect": [
+            "src/\\[a\\].ts"
+          ]
+        }
+      ]
+    },
+    "overlapping": {
+      "description": "The patterns of `query` that overlap any of `candidates`, in query order. Input: `query` (Patterns), `candidates` (string array). A `Patterns` value is a glob string or an array of them, a set meaning their union. `opts` is optional and holds the matching options `dot`, `caseInsensitive` and `globstarMatchesZero`. Expect: a string array.",
+      "cases": [
+        {
+          "name": "overlapping: returns the query patterns that overlap the candidate set",
+          "input": {
+            "query": [
+              "src/api/**",
+              "src/db/schema.ts"
+            ],
+            "candidates": [
+              "src/api/routes/*.ts",
+              "docs/**"
+            ]
+          },
+          "expect": [
+            "src/api/**"
+          ]
+        },
+        {
+          "name": "overlapping: empty when no query pattern overlaps",
+          "input": {
+            "query": [
+              "docs/**"
+            ],
+            "candidates": [
+              "src/api/**",
+              "src/db/schema.ts"
+            ]
+          },
+          "expect": []
+        },
+        {
+          "name": "overlapping: preserves query order across multiple overlaps",
+          "input": {
+            "query": [
+              "src/api/**",
+              "src/db/**",
+              "docs/**"
+            ],
+            "candidates": [
+              "src/db/pool.ts",
+              "src/api/user.ts"
+            ]
+          },
+          "expect": [
+            "src/api/**",
+            "src/db/**"
+          ]
+        },
+        {
+          "name": "overlapping: a single string query is a one-element set",
+          "input": {
+            "query": "src/api/**",
+            "candidates": [
+              "src/api/routes/list.ts",
+              "docs/**"
+            ]
+          },
+          "expect": [
+            "src/api/**"
+          ]
+        },
+        {
+          "name": "overlapping: a single string is a one-element candidate set",
+          "input": {
+            "query": [
+              "a/**",
+              "b/**"
+            ],
+            "candidates": "a/x"
+          },
+          "expect": [
+            "a/**"
+          ]
+        },
+        {
+          "name": "overlapping: filters the query, not the candidates",
+          "input": {
+            "query": [
+              "src/api/**",
+              "src/db/schema.ts"
+            ],
+            "candidates": [
+              "src/api/routes/*.ts",
+              "docs/**"
+            ]
+          },
+          "expect": [
+            "src/api/**"
+          ]
+        }
+      ]
+    },
+    "witness": {
+      "description": "A path both pattern sets match, or null. Input: `a`, `b` (Patterns). A `Patterns` value is a glob string or an array of them, a set meaning their union. `opts` is optional and holds the matching options `dot`, `caseInsensitive` and `globstarMatchesZero`. Expect: the witness path, or null. The witness comes from a breadth-first search: segments are tried in pattern order, and among equal-length paths the first found wins, so an implementation copies that order.",
+      "cases": [
+        {
+          "name": "witness: overlapping patterns return a concrete common path",
+          "input": {
+            "a": "src/api/**",
+            "b": "src/**/handler.ts"
+          },
+          "expect": "src/api/handler.ts"
+        },
+        {
+          "name": "witness: disjoint patterns return null",
+          "input": {
+            "a": "src/api/**",
+            "b": "src/web/**"
+          },
+          "expect": null
+        },
+        {
+          "name": "witness: the shared segment of two stars is a real, non-empty segment",
+          "input": {
+            "a": "src/*",
+            "b": "src/*"
+          },
+          "expect": "src/a"
+        },
+        {
+          "name": "witness: a common segment-vector no path string can spell is reported as none",
+          "input": {
+            "a": "*/*",
+            "b": "*/{,.a}"
+          },
+          "expect": null
+        },
+        {
+          "name": "witness: a negated class that excludes the fallback alphabet still has a one-character witness",
+          "input": {
+            "a": "[^a-zA-Z0-9._-]",
+            "b": "?"
+          },
+          "expect": "`"
+        },
+        {
+          "name": "witness: keeps searching past an empty segment before a brace of nothing",
+          "input": {
+            "a": "a/**/{,x}",
+            "b": "a/{,y}/**"
+          },
+          "expect": "a/y/x"
+        },
+        {
+          "name": "witness: keeps searching past an empty segment before **",
+          "input": {
+            "a": "a//**",
+            "b": "**"
+          },
+          "expect": "a//a"
+        },
+        {
+          "name": "witness: two patterns with an empty segment before ** share a longer path",
+          "input": {
+            "a": "a//**",
+            "b": "a//**"
+          },
+          "expect": "a//a"
+        },
+        {
+          "name": "witness: a leading empty segment before ** is searched past",
+          "input": {
+            "a": "**",
+            "b": "//**"
+          },
+          "expect": "//a"
+        },
+        {
+          "name": "witness: a common path that only ends in an empty segment is still null",
+          "input": {
+            "a": "a/{,x}",
+            "b": "a/{,y}"
+          },
+          "expect": null
+        },
+        {
+          "name": "witness: a path with glob characters is read back literally",
+          "input": {
+            "a": "\\[a\\]",
+            "b": "\\[a\\]"
+          },
+          "expect": "[a]"
+        }
+      ]
+    },
+    "registry_applicable_to": {
+      "description": "Index labeled patterns, then list the ids whose patterns overlap a scope, in entry order. Input: `entries` (array of `{ id, patterns }`), `scope` (Patterns). A `Patterns` value is a glob string or an array of them, a set meaning their union. `opts` is optional and holds the matching options `dot`, `caseInsensitive` and `globstarMatchesZero`. Expect: an id array.",
+      "cases": [
+        {
+          "name": "applicableTo: returns overlapping ids in registration order",
+          "input": {
+            "entries": [
+              {
+                "id": "guidelines/UI",
+                "patterns": [
+                  "**/*.{vue,html,jsx}"
+                ]
+              },
+              {
+                "id": "guidelines/UI/vue",
+                "patterns": [
+                  "**/*.vue"
+                ]
+              },
+              {
+                "id": "guidelines/api",
+                "patterns": [
+                  "src/api/**"
+                ]
+              }
+            ],
+            "scope": "src/siteA/components/**"
+          },
+          "expect": [
+            "guidelines/UI",
+            "guidelines/UI/vue"
+          ]
+        },
+        {
+          "name": "applicableTo: a non-overlapping registry yields no ids",
+          "input": {
+            "entries": [
+              {
+                "id": "guidelines/api",
+                "patterns": [
+                  "src/api/**"
+                ]
+              }
+            ],
+            "scope": "docs/**"
+          },
+          "expect": []
+        },
+        {
+          "name": "applicableTo: a set scope works the same way",
+          "input": {
+            "entries": [
+              {
+                "id": "guidelines/UI",
+                "patterns": [
+                  "**/*.{vue,html,jsx}"
+                ]
+              },
+              {
+                "id": "guidelines/UI/vue",
+                "patterns": [
+                  "**/*.vue"
+                ]
+              },
+              {
+                "id": "guidelines/api",
+                "patterns": [
+                  "src/api/**"
+                ]
+              }
+            ],
+            "scope": [
+              "src/siteA/components/**",
+              "src/siteA/pages/*.vue"
+            ]
+          },
+          "expect": [
+            "guidelines/UI",
+            "guidelines/UI/vue"
+          ]
+        },
+        {
+          "name": "applicableTo: registration order is preserved general-to-specific",
+          "input": {
+            "entries": [
+              {
+                "id": "general",
+                "patterns": [
+                  "src/**"
+                ]
+              },
+              {
+                "id": "specific",
+                "patterns": [
+                  "src/api/**"
+                ]
+              }
+            ],
+            "scope": "src/api/routes/**"
+          },
+          "expect": [
+            "general",
+            "specific"
+          ]
+        },
+        {
+          "name": "index: a duplicate id throws at construction",
+          "input": {
+            "entries": [
+              {
+                "id": "guidelines/UI",
+                "patterns": [
+                  "**/*.vue"
+                ]
+              },
+              {
+                "id": "guidelines/UI",
+                "patterns": [
+                  "**/*.html"
+                ]
+              }
+            ],
+            "scope": "**/*.vue"
+          },
+          "error": {
+            "kind": "duplicate_registry_id"
+          }
+        },
+        {
+          "name": "applicableTo: registration order is preserved even against alphabetical order",
+          "input": {
+            "entries": [
+              {
+                "id": "zzz",
+                "patterns": [
+                  "**/*.ts"
+                ]
+              },
+              {
+                "id": "aaa",
+                "patterns": [
+                  "**/*.ts"
+                ]
+              }
+            ],
+            "scope": "src/x.ts"
+          },
+          "expect": [
+            "zzz",
+            "aaa"
+          ]
+        },
+        {
+          "name": "duplicate id throws DUPLICATE_REGISTRY_ID",
+          "input": {
+            "entries": [
+              {
+                "id": "a",
+                "patterns": [
+                  "src/**"
+                ]
+              },
+              {
+                "id": "a",
+                "patterns": [
+                  "docs/**"
+                ]
+              }
+            ],
+            "scope": "src/**"
+          },
+          "error": {
+            "kind": "duplicate_registry_id"
+          }
+        },
+        {
+          "name": "unsupported syntax in an entry throws at construction",
+          "input": {
+            "entries": [
+              {
+                "id": "a",
+                "patterns": [
+                  "+(a|b)"
+                ]
+              }
+            ],
+            "scope": "a"
+          },
+          "error": {
+            "kind": "unsupported_syntax"
+          }
+        }
+      ]
+    },
+    "registry_matching": {
+      "description": "Index labeled patterns, then list the ids whose patterns match a path, in entry order. Input: `entries` (array of `{ id, patterns }`), `path` (string). `opts` is optional and holds the matching options `dot`, `caseInsensitive` and `globstarMatchesZero`. Expect: an id array.",
+      "cases": [
+        {
+          "name": "matching: a concrete file returns overlapping ids in registration order",
+          "input": {
+            "entries": [
+              {
+                "id": "guidelines/UI",
+                "patterns": [
+                  "**/*.{vue,html,jsx}"
+                ]
+              },
+              {
+                "id": "guidelines/UI/vue",
+                "patterns": [
+                  "**/*.vue"
+                ]
+              },
+              {
+                "id": "guidelines/api",
+                "patterns": [
+                  "src/api/**"
+                ]
+              }
+            ],
+            "path": "src/siteA/components/Button.vue"
+          },
+          "expect": [
+            "guidelines/UI",
+            "guidelines/UI/vue"
+          ]
+        },
+        {
+          "name": "matching: a path with a glob character is read literally",
+          "input": {
+            "entries": [
+              {
+                "id": "x",
+                "patterns": "src/a.ts"
+              }
+            ],
+            "path": "src/*.ts"
+          },
+          "expect": []
+        },
+        {
+          "name": "matching: the escaped pattern matches the literal name",
+          "input": {
+            "entries": [
+              {
+                "id": "x",
+                "patterns": "src/\\*.ts"
+              }
+            ],
+            "path": "src/*.ts"
+          },
+          "expect": [
+            "x"
+          ]
+        }
+      ]
+    },
+    "fs_files_in_scope": {
+      "description": "The files on disk that a pattern set matches. Input: `tree` (relative file paths, created empty under a new temp directory), optionally `symlinks` (`{ link: target }`, created after the tree, the target written as given), `unreadable` (directories of the tree set to mode 000), `cwd` (the directory to run in, relative to the temp directory; it may be missing or a file; default the temp directory), `cwdRelative` (pass `cwd` relative to the process working directory), `patterns` (Patterns), and `opts` with `dot`, `caseInsensitive`, `globstarMatchesZero`, `ignore` (string array), `onlyFiles` (boolean, default true) and `absolute` (boolean). Expect: the paths, `/`-separated and relative to the temp directory, sorted by code point. With `opts.absolute` the call returns absolute paths, and each must be the temp directory joined with the expected relative path. A case with `unreadable` cannot run as root, where mode 000 does not stop a read.",
+      "cases": [
+        {
+          "name": "filesInScope: concrete on-disk files under the scope",
+          "input": {
+            "tree": [
+              "src/api/user.ts",
+              "src/api/routes/list.ts",
+              "src/db/pool.ts",
+              "src/web/app.ts",
+              "README.md"
+            ],
+            "patterns": [
+              "src/api/**",
+              "src/db/**"
+            ]
+          },
+          "expect": [
+            "src/api/routes/list.ts",
+            "src/api/user.ts",
+            "src/db/pool.ts"
+          ]
+        },
+        {
+          "name": "filesInScope: ignore excludes matching files",
+          "input": {
+            "tree": [
+              "src/api/user.ts",
+              "src/api/routes/list.ts",
+              "src/api/user.test.ts"
+            ],
+            "patterns": [
+              "src/api/**"
+            ],
+            "opts": {
+              "ignore": [
+                "**/*.test.ts"
+              ]
+            }
+          },
+          "expect": [
+            "src/api/routes/list.ts",
+            "src/api/user.ts"
+          ]
+        },
+        {
+          "name": "filesInScope: an on-disk name carrying glob metacharacters is matched literally",
+          "input": {
+            "tree": [
+              "pages/[id].vue",
+              "pages/i.vue",
+              "pages/other.vue"
+            ],
+            "patterns": [
+              "pages/d.vue"
+            ]
+          },
+          "expect": []
+        },
+        {
+          "name": "filesInScope: an escaped pattern reaches a name carrying glob metacharacters",
+          "input": {
+            "tree": [
+              "pages/[id].vue",
+              "pages/i.vue",
+              "pages/other.vue"
+            ],
+            "patterns": [
+              "pages/\\[id\\].vue"
+            ]
+          },
+          "expect": [
+            "pages/[id].vue"
+          ]
+        },
+        {
+          "name": "filesInScope: onlyFiles:false returns directories as plain paths",
+          "input": {
+            "tree": [
+              "src/api/user.ts"
+            ],
+            "patterns": [
+              "src/**"
+            ],
+            "opts": {
+              "onlyFiles": false
+            }
+          },
+          "expect": [
+            "src",
+            "src/api",
+            "src/api/user.ts"
+          ]
+        },
+        {
+          "name": "filesInScope: symbolic links are neither followed nor listed",
+          "input": {
+            "tree": [
+              "real/a.ts",
+              "src/b.ts"
+            ],
+            "symlinks": {
+              "link-dir": "real",
+              "link-file": "src/b.ts",
+              "dangling": "nowhere",
+              "loop": "loop"
+            },
+            "patterns": [
+              "**"
+            ]
+          },
+          "expect": [
+            "real/a.ts",
+            "src/b.ts"
+          ],
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "filesInScope: onlyFiles:false lists directories but not symbolic links",
+          "input": {
+            "tree": [
+              "real/a.ts"
+            ],
+            "symlinks": {
+              "link-dir": "real",
+              "link-file": "real/a.ts"
+            },
+            "patterns": [
+              "**"
+            ],
+            "opts": {
+              "onlyFiles": false
+            }
+          },
+          "expect": [
+            "real",
+            "real/a.ts"
+          ],
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "filesInScope: absolute with a relative cwd returns absolute paths",
+          "input": {
+            "tree": [
+              "src/a.ts",
+              "src/b.ts"
+            ],
+            "cwdRelative": true,
+            "patterns": [
+              "src/**"
+            ],
+            "opts": {
+              "absolute": true
+            }
+          },
+          "expect": [
+            "src/a.ts",
+            "src/b.ts"
+          ]
+        },
+        {
+          "name": "filesInScope: results sort by code point, not by UTF-16 unit",
+          "input": {
+            "tree": [
+              "～.ts",
+              "😀.ts",
+              "a.ts"
+            ],
+            "patterns": [
+              "*.ts"
+            ]
+          },
+          "expect": [
+            "a.ts",
+            "～.ts",
+            "😀.ts"
+          ]
+        },
+        {
+          "name": "filesInScope: a missing cwd throws IO_ERROR",
+          "input": {
+            "tree": [
+              "a.ts"
+            ],
+            "cwd": "missing",
+            "patterns": [
+              "**"
+            ]
+          },
+          "error": {
+            "kind": "io_error"
+          }
+        },
+        {
+          "name": "filesInScope: a cwd that is a file throws IO_ERROR",
+          "input": {
+            "tree": [
+              "a.ts"
+            ],
+            "cwd": "a.ts",
+            "patterns": [
+              "**"
+            ]
+          },
+          "error": {
+            "kind": "io_error"
+          }
+        },
+        {
+          "name": "filesInScope: an unreadable directory throws IO_ERROR",
+          "input": {
+            "tree": [
+              "ok/a.ts",
+              "locked/b.ts"
+            ],
+            "unreadable": [
+              "locked"
+            ],
+            "patterns": [
+              "**"
+            ]
+          },
+          "error": {
+            "kind": "io_error"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "filesInScope: ignore with a bare directory name excludes only that exact path",
+          "input": {
+            "tree": [
+              "node_modules/x/index.js",
+              "src/a.ts"
+            ],
+            "patterns": [
+              "**"
+            ],
+            "opts": {
+              "ignore": [
+                "node_modules"
+              ]
+            }
+          },
+          "expect": [
+            "node_modules/x/index.js",
+            "src/a.ts"
+          ]
+        },
+        {
+          "name": "filesInScope: ignore with a directory glob excludes its contents",
+          "input": {
+            "tree": [
+              "node_modules/x/index.js",
+              "src/a.ts"
+            ],
+            "patterns": [
+              "**"
+            ],
+            "opts": {
+              "ignore": [
+                "node_modules/**"
+              ]
+            }
+          },
+          "expect": [
+            "src/a.ts"
+          ]
+        },
+        {
+          "name": "filesInScope: a pattern with a leading ./ matches no file",
+          "input": {
+            "tree": [
+              "src/a.ts"
+            ],
+            "patterns": [
+              "./src/a.ts"
+            ]
+          },
+          "expect": []
+        },
+        {
+          "name": "filesInScope: a pattern with a leading / matches no file",
+          "input": {
+            "tree": [
+              "src/a.ts"
+            ],
+            "patterns": [
+              "/src/a.ts"
+            ]
+          },
+          "expect": []
+        },
+        {
+          "name": "filesInScope: ! is not negation in ignore",
+          "input": {
+            "tree": [
+              "src/a.ts",
+              "src/b.ts"
+            ],
+            "patterns": [
+              "src/**"
+            ],
+            "opts": {
+              "ignore": [
+                "**",
+                "!src/a.ts"
+              ]
+            }
+          },
+          "expect": []
+        },
+        {
+          "name": "filesInScope: dotfiles are listed but ** skips them by default",
+          "input": {
+            "tree": [
+              ".env",
+              "src/.hidden.ts",
+              "src/a.ts",
+              ".github/workflows/ci.yml"
+            ],
+            "patterns": [
+              "**"
+            ]
+          },
+          "expect": [
+            "src/a.ts"
+          ]
+        },
+        {
+          "name": "filesInScope: dot:true lets ** reach dotfiles and dot directories",
+          "input": {
+            "tree": [
+              ".env",
+              "src/.hidden.ts",
+              "src/a.ts",
+              ".github/workflows/ci.yml"
+            ],
+            "patterns": [
+              "**"
+            ],
+            "opts": {
+              "dot": true
+            }
+          },
+          "expect": [
+            ".env",
+            ".github/workflows/ci.yml",
+            "src/.hidden.ts",
+            "src/a.ts"
+          ]
+        }
+      ]
+    },
+    "fs_resolve_intersection": {
+      "description": "The files on disk that both pattern sets match. Input: as `fs_files_in_scope`, with `a` and `b` (Patterns) in place of `patterns`. Expect: as `fs_files_in_scope`.",
+      "cases": [
+        {
+          "name": "resolveIntersection: files that fall in BOTH sets",
+          "input": {
+            "tree": [
+              "src/api/user.ts",
+              "src/api/routes/list.ts",
+              "src/api/README.md",
+              "src/db/pool.ts"
+            ],
+            "a": [
+              "src/**/*.ts"
+            ],
+            "b": [
+              "src/api/**"
+            ]
+          },
+          "expect": [
+            "src/api/routes/list.ts",
+            "src/api/user.ts"
+          ]
+        },
+        {
+          "name": "resolveIntersection: an on-disk name carrying glob metacharacters is matched literally",
+          "input": {
+            "tree": [
+              "pages/[id].vue",
+              "pages/i.vue"
+            ],
+            "a": [
+              "pages/**"
+            ],
+            "b": [
+              "pages/d.vue"
+            ]
+          },
+          "expect": []
+        },
+        {
+          "name": "resolveIntersection: symbolic links are not followed",
+          "input": {
+            "tree": [
+              "real/a.ts"
+            ],
+            "symlinks": {
+              "link-dir": "real"
+            },
+            "a": [
+              "**"
+            ],
+            "b": [
+              "link-dir/**"
+            ]
+          },
+          "expect": [],
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "resolveIntersection: a missing cwd throws IO_ERROR",
+          "input": {
+            "tree": [
+              "a.ts"
+            ],
+            "cwd": "missing",
+            "a": [
+              "**"
+            ],
+            "b": [
+              "**"
+            ]
+          },
+          "error": {
+            "kind": "io_error"
+          }
+        },
+        {
+          "name": "resolveIntersection: dot:true intersects a dot directory",
+          "input": {
+            "tree": [
+              ".env",
+              "src/a.ts",
+              ".github/workflows/ci.yml"
+            ],
+            "a": [
+              "**"
+            ],
+            "b": [
+              ".github/**"
+            ],
+            "opts": {
+              "dot": true
+            }
+          },
+          "expect": [
+            ".github/workflows/ci.yml"
+          ]
+        }
+      ]
+    }
+  }
+}

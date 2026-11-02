@@ -7,6 +7,22 @@
       { "language": "rust", "dir": "packages/rust/config-layers", "name": "config-layers" }
     ]
   },
+  "frontmatter-lossless": {
+    "reference": "rust",
+    "generator": "cargo run -p frontmatter-lossless --example conformance-write",
+    "implementations": [
+      { "language": "rust", "dir": "packages/rust/frontmatter-lossless", "name": "frontmatter-lossless" },
+      { "language": "ts", "dir": "packages/ts/frontmatter-lossless", "name": "@osdlc/frontmatter-lossless" }
+      ]
+    },
+  "intersect": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/intersect conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/intersect", "name": "@osdlc/intersect" },
+      { "language": "rust", "dir": "packages/rust/glob-intersect", "name": "glob-intersect" }
+    ]
+  },
   "path-guard": {
     "reference": "ts",
     "generator": "pnpm --filter @osdlc/path-guard conformance:write",

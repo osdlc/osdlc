@@ -5,9 +5,10 @@
 //! except through the opt-in [`fs`] layer.
 //!
 //! This crate is the Rust peer of `@osdlc/intersect`. Both are held in
-//! agreement by one language-neutral corpus owned by `@osdlc/intersect`
-//! (`packages/ts/intersect/fixtures/` in the osdlc repository), which this
-//! crate's tests read directly. It lets a Rust program, such as a task
+//! agreement by one language-neutral conformance suite
+//! (`packages/conformance/intersect/suite.json` in the osdlc repository),
+//! which `@osdlc/intersect` generates as the reference and this crate's tests
+//! run. It lets a Rust program, such as a task
 //! scheduler that checks scope conflicts, ask the question without a call
 //! into another process.
 //!
