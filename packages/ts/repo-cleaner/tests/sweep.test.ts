@@ -29,7 +29,7 @@ import { cannedGh, commit, git } from './helpers.ts'
 import { localDeleteCommand, remoteDeleteCommand } from '../src/branches.ts'
 import { renderJson, renderRepo, renderScan, renderText } from '../src/render.ts'
 import { resolveEntries } from '../src/resolve.ts'
-import { sweepRepo, sweepRepos } from '../src/sweep.ts'
+import { holdFreedBranches, sweepRepo, sweepRepos } from '../src/sweep.ts'
 import type { RepoSweep, SweepItem } from '../src/types.ts'
 
 /**
@@ -803,6 +803,53 @@ describe('merged-PR evidence', () => {
     const branch = itemsOf(sweep.items, 'local_branch').get('wt-landed')
     expect(branch?.deletable).toBe(false)
     expect(branch?.facts['worktree']).toBeUndefined()
+  })
+
+  test('a branch-scoped sweep without worktrees in scope keeps the branch', () => {
+    const sweep = sweepRepo(checkout, {
+      cwd: checkout,
+      gh,
+      branch: 'wt-landed',
+      scope: ['local-branches'],
+    })
+    expect(sweep.items.map((item) => [item.id, item.deletable])).toEqual([['wt-landed', false]])
+  })
+
+  test('a freed branch is kept again once a host holds its worktree back', () => {
+    const held = holdFreedBranches(
+      items.map((item) =>
+        item.id === landedWorktree ? { ...item, action: 'keep', deletable: false } : item,
+      ),
+    )
+    const branch = itemsOf(held, 'local_branch').get('wt-landed')
+    expect(branch).toMatchObject({
+      action: 'keep',
+      classification: 'safe-to-keep',
+      deletable: false,
+      commands: [],
+      reason: 'checked out in a worktree (handle via that worktree)',
+    })
+    expect(branch?.facts['worktree']).toBeUndefined()
+    // Untouched: the worktree still goes, so its branch stays freed.
+    expect(itemsOf(holdFreedBranches(items), 'local_branch').get('wt-landed')?.deletable).toBe(true)
+  })
+
+  test('a freed branch is kept again when a host drops its worktree row', () => {
+    const held = holdFreedBranches(items.filter((item) => item.id !== landedWorktree))
+    expect(itemsOf(held, 'local_branch').get('wt-landed')?.deletable).toBe(false)
+  })
+
+  test('a worktree a host demotes to review keeps its branch, unless the sweep named it', () => {
+    const demoted = items.map((item) =>
+      item.id === landedWorktree
+        ? { ...item, classification: 'needs-investigation' as const, action: 'review' }
+        : item,
+    )
+    const full = itemsOf(holdFreedBranches(demoted), 'local_branch').get('wt-landed')
+    expect(full?.deletable).toBe(false)
+    // A branch-scoped sweep frees the named branch for any deletable worktree.
+    const scoped = holdFreedBranches(demoted, { branchScoped: true })
+    expect(itemsOf(scoped, 'local_branch').get('wt-landed')?.deletable).toBe(true)
   })
 
   test('a branch-scoped sweep reports that branch alone, from inside its worktree', () => {

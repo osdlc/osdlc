@@ -10,7 +10,7 @@ import { Git } from '@osdlc/typed-git'
 import { Gh } from '@osdlc/typed-gh'
 import type { CommandRunner } from '@osdlc/command-seam'
 
-import { gatherLocalBranches, gatherRemoteBranches } from './branches.ts'
+import { HELD_BY_WORKTREE, gatherLocalBranches, gatherRemoteBranches } from './branches.ts'
 import { DiscoveryFailed, discoverRepo } from './discover.ts'
 import { defaultProcessProbe, type ProcessProbe } from './processes.ts'
 import { fetchPrs } from './prs.ts'
@@ -56,7 +56,8 @@ export interface SweepOptions {
    * its remote branch. The default branch is refused. `cwd` is ignored, so the
    * worktree is judged on its facts, and the local branch is not pinned for
    * being checked out there: apply removes the worktree first. It stays pinned
-   * when that worktree is blocked or cannot be removed.
+   * when that worktree is blocked or cannot be removed, or when `scope` leaves
+   * worktrees out.
    */
   branch?: string | undefined
   /** Injected runners. Defaults spawn the real `git`, `gh` and `glab`. */
@@ -188,9 +189,9 @@ export function sweepRepo(path: string, opts: SweepOptions = {}): RepoSweep {
       if (scope.has('worktrees')) {
         for (const item of worktreeItems) {
           const branch = item.facts['branch']
-          const goes =
-            item.deletable && (only !== undefined || item.classification === 'safe-to-delete')
-          if (goes && typeof branch === 'string') freed.set(branch, item.id)
+          if (freesBranch(item, only !== undefined) && typeof branch === 'string') {
+            freed.set(branch, item.id)
+          }
         }
       }
       const pinned = new Set([...worktreeBranches].filter((name) => !freed.has(name)))
@@ -252,4 +253,48 @@ export function sweepRepos(entries: readonly string[], opts: SweepReposOptions =
     scan: resolution.scan,
     duplicates: findDuplicateCheckouts(repos.map((sweep) => sweep.repo)),
   }
+}
+
+/**
+ * Whether worktree row `item` frees its branch to be judged on its own. A full
+ * sweep frees it only for a safe-to-delete worktree; a branch-scoped sweep,
+ * where the caller named the branch, for any deletable one.
+ */
+function freesBranch(item: SweepItem, branchScoped: boolean): boolean {
+  return item.deletable && (branchScoped || item.classification === 'safe-to-delete')
+}
+
+/**
+ * Keep again each branch a sweep freed for its worktree's removal when that
+ * worktree no longer frees it by the sweep's own rule: a host's `annotate`
+ * held it back or demoted it, or dropped its row. Run it on annotated rows,
+ * with `branchScoped` set for a `branch` sweep, so the counts and the plan
+ * match what `applyPlan` will do. Running it twice changes nothing.
+ */
+export function holdFreedBranches(
+  items: SweepItem[],
+  opts: { branchScoped?: boolean } = {},
+): SweepItem[] {
+  const going = new Set(
+    items
+      .filter((it) => it.category === 'worktree' && freesBranch(it, opts.branchScoped === true))
+      .map((it) => it.id),
+  )
+  return items.map((item) => {
+    const worktree = item.facts['worktree']
+    if (item.category !== 'local_branch' || typeof worktree !== 'string') return item
+    if (going.has(worktree)) return item
+    const { worktree: _, ...facts } = item.facts
+    return {
+      ...item,
+      classification: 'safe-to-keep',
+      action: 'keep',
+      reason: HELD_BY_WORKTREE,
+      facts,
+      commands: [],
+      investigationParts: [],
+      requires: [],
+      deletable: false,
+    }
+  })
 }

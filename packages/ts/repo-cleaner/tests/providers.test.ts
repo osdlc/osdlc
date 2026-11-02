@@ -353,10 +353,10 @@ describe('a sweep of a GitLab checkout', () => {
     expect(parsePlan(ctx.io.out, 'stdout').repos[0]?.no_gh).toBe(true)
   })
 
-  test('the CLI refuses --no-gh with another provider', () => {
+  test('--no-gh is gone: --provider none does the same', () => {
     const ctx = captureContext({ cwd: checkout })
-    const code = main(['status', '--no-gh', '--provider', 'gitlab'], ctx, { confirm: () => null })
+    const code = main(['status', '--no-gh'], ctx, { confirm: () => null })
     expect(code).toBe(2)
-    expect(ctx.io.err).toContain('--no-gh asks no provider')
+    expect(ctx.io.err).toContain("unknown option '--no-gh'")
   })
 })

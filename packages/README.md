@@ -79,11 +79,11 @@ the standard.
   conformance suite checks it: `packages/conformance/<family>/`, listed in
   `packages/conformance/families.json`, run by every implementation's tests,
   with expected values written by the reference implementation's generator.
-  `pnpm run check:conformance` checks the suites. `tiered-dirs` and
-  `config-layers` have moved there. Until they move, `path-guard` and
-  `gfm-pipe-table` (the Rust implementation of `@osdlc/gfm-table`) keep
-  `packages/rust/<name>/tests/fixtures/parity.json`, `frontmatter-lossless`
-  and `markdown-link` their crates' `tests/fixtures/conformance.json`,
+  `pnpm run check:conformance` checks the suites. `tiered-dirs`,
+  `config-layers` and `frontmatter-lossless` have moved there. Until they
+  move, `path-guard` and `gfm-pipe-table` (the Rust implementation of
+  `@osdlc/gfm-table`) keep `packages/rust/<name>/tests/fixtures/parity.json`,
+  `markdown-link` its crate's `tests/fixtures/conformance.json`,
   `markdown-contract` runs the TypeScript package's `corpus/` directly, and
   `glob-intersect` runs `@osdlc/intersect`'s `fixtures/` directly. `etag-write`
   has no shared cases yet.
