@@ -4,10 +4,7 @@
   "head": "037f506144cee60cff78d480e03691adcbf5d1dd",
   "base": "39d8e12c8676db90fd741d4dbc35f29a9b5270d6",
   "round": 1,
-  "claim": {
-    "owner": "LMDETemplate:claude-vq6",
-    "at": "2026-11-02T04:52:35.045Z"
-  },
+  "claim": null,
   "findings": [
     {
       "id": "r1-1",
