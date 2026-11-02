@@ -115,7 +115,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        node: ['22', '24']
+        node: ['22', '24', '26']
     env:
       FILTER: ${{ needs.changes.outputs.filter }}
       BUILD: ${{ needs.changes.outputs.build }}
@@ -206,7 +206,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['22', '24']
+        node: ['22', '24', '26']
     defaults:
       run:
         shell: bash
