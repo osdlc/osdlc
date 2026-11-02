@@ -1,5 +1,12 @@
 # @osdlc/markdown-contract
 
+## 0.7.5
+
+### Patch Changes
+
+- Updated dependencies [f3a4945]
+  - @osdlc/gfm-table@0.5.0
+
 ## 0.7.4
 
 ### Patch Changes
