@@ -7,12 +7,14 @@
 import { expect, test } from 'vitest'
 
 import {
+  fromTarget,
   Gh,
   graphql,
   nodesAt,
   prMerge,
   prView,
   type CommandRunner,
+  type FromTarget,
   type GraphqlOptions,
   type GraphqlVariable,
 } from '@osdlc/typed-gh'
@@ -42,13 +44,18 @@ test('every label, across GraphQL pages', () => {
       labels(first: 100, after: $endCursor) { pageInfo { hasNextPage endCursor } nodes { name } }
     }
   }`
-  const variables: Record<string, GraphqlVariable> = { owner: '{owner}', name: '{repo}' }
+  // The client has no repo, so gh fills these from the clone. A plain string
+  // such as '{owner}' would be sent as written.
+  const owner: FromTarget = fromTarget('owner')
+  const variables: Record<string, GraphqlVariable> = { owner, name: fromTarget('repo') }
   const opts: GraphqlOptions = { paginate: true }
 
   const pages = gh.graphql(query, variables, opts)
 
   expect(nodesAt(pages, ['repository', 'labels'])).toEqual([{ name: 'bug' }, { name: 'docs' }])
-  expect(graphql(query, variables, opts).argv).toContain('--paginate')
+  const argv = graphql(query, variables, opts).argv
+  expect(argv).toContain('--paginate')
+  expect(argv).toEqual(expect.arrayContaining(['-F', 'owner={owner}', '-F', 'name={repo}']))
 })
 
 test('a page with errors is no answer at all', () => {
