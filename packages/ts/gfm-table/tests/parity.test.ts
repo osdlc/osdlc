@@ -4,7 +4,8 @@
  * `tests/parity.rs` also reads. This suite reads it by its path in the
  * repository, so a case added on either side goes in the fixture, never in
  * one package's own suite. Every section has a runner in parity-run.ts, and
- * an unknown section fails the run.
+ * an unknown section fails the run, as does a case key its section's
+ * `_inputs` entry does not list.
  */
 
 import { readFileSync } from 'node:fs'
@@ -27,10 +28,12 @@ interface Case {
 }
 
 const sections = Object.entries(fixture).filter(([key]) => !key.startsWith('_'))
+const inputs = fixture._inputs as Record<string, string[]>
 
-test('every section has a runner', () => {
-  expect(sections.map(([key]) => key).filter((key) => !(key in RUNNERS))).toEqual([])
-  expect(Object.keys(RUNNERS).filter((key) => !(key in fixture))).toEqual([])
+test('every section has a runner and an input list', () => {
+  const names = sections.map(([key]) => key).sort()
+  expect(Object.keys(RUNNERS).sort()).toEqual(names)
+  expect(Object.keys(inputs).sort()).toEqual(names)
 })
 
 test('the byte offset conversion', () => {
@@ -45,7 +48,11 @@ for (const [section, cases] of sections) {
   describe(section, () => {
     for (const c of cases as Case[]) {
       test(c.name, () => {
-        expect(RUNNERS[section]!(c)).toEqual(c.expected)
+        // Only the section's inputs: a misspelled key would be ignored.
+        const allowed = ['name', 'expected', ...(inputs[section] ?? [])]
+        expect(Object.keys(c).filter((key) => !allowed.includes(key))).toEqual([])
+        expect(c).toHaveProperty('expected')
+        expect(RUNNERS[section]!(c)).toStrictEqual(c.expected)
       })
     }
   })

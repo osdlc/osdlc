@@ -10,7 +10,11 @@ use crate::table::read_table;
 use crate::width::display_width;
 
 /// Options for [`pad_table`].
+///
+/// `#[non_exhaustive]`, so a later release can add a field without a breaking
+/// change: build it with [`PadTableOptions::new`] and its `with_*` methods.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct PadTableOptions {
     /// The widest cell, in display columns, that counts toward its column's
     /// width. A wider cell does not widen its column. Where it is wider than
@@ -20,6 +24,22 @@ pub struct PadTableOptions {
     /// The TypeScript twin takes a number and throws a `RangeError` for one
     /// that is not a positive integer; here the type holds only those.
     pub max_column_width: Option<NonZeroUsize>,
+}
+
+impl PadTableOptions {
+    /// The defaults: no column width limit.
+    pub const fn new() -> Self {
+        Self {
+            max_column_width: None,
+        }
+    }
+
+    /// These options with [`PadTableOptions::max_column_width`] set to `width`.
+    #[must_use]
+    pub const fn with_max_column_width(mut self, width: NonZeroUsize) -> Self {
+        self.max_column_width = Some(width);
+        self
+    }
 }
 
 /// Whether `text` holds a character whose width depends on the terminal and

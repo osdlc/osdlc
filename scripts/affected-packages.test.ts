@@ -38,6 +38,12 @@ test('a Rust twin maps to its TypeScript twin', () => {
   assert.deepEqual(pr(['packages/rust/feed-wasm/src/lib.rs']), ['packages/ts/feed-wasm'])
 })
 
+test('a Rust twin with another name maps through RUST_TWIN_NAMES', () => {
+  const named = new Map([...manifests, ['packages/ts/gfm-table', { name: '@x/gfm-table' }]])
+  const files = ['packages/rust/gfm-pipe-table/tests/fixtures/parity.json']
+  assert.deepEqual(pick({ event: 'pull_request', files, manifests: named }), ['packages/ts/gfm-table'])
+})
+
 test('a file outside every package picks nothing', () => {
   assert.deepEqual(pr(['packages/README.md', '.changeset/a-change.md']), [])
 })
