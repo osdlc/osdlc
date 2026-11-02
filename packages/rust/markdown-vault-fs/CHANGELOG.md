@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.2](https://github.com/osdlc/osdlc/compare/markdown-vault-fs/v0.3.1...markdown-vault-fs/v0.3.2) - 2026-11-02
+
+### Other
+
+- updated the following local packages: path-guard
+
 ## [0.3.1] - Unreleased
 
 First public release. Filesystem primitives for a folder of Markdown notes (a "vault"): a

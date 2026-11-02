@@ -472,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-vault-fs"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "path-guard",
  "regex",
@@ -538,7 +538,7 @@ dependencies = [
 
 [[package]]
 name = "path-guard"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "serde",
  "serde_json",

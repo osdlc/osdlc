@@ -3,7 +3,7 @@ import { join } from 'node:path'
 
 import { describe, expect, test } from 'vitest'
 
-import { PathError, PathGuard, type Resolver } from '../src/index.ts'
+import { PathGuard, type Resolver } from '../src/index.ts'
 import { nodeGuard, nodeResolver } from '../src/node.ts'
 import {
   CASE_KEYS,
@@ -13,6 +13,7 @@ import {
   checkInput,
   inScratch,
   landsIn,
+  outcome,
   readSuite,
   run,
 } from './conformance.ts'
@@ -38,6 +39,13 @@ const sections = suite.sections
  * test below, not the collection of this file.
  */
 const casesOf = (name: string): Case[] => sections[name]?.cases ?? []
+
+/** A section's cases for `unix` only: those with a `..`, which pin the POSIX rule. */
+const unixOnly = (name: string): Case[] =>
+  casesOf(name).filter((c) => c.platforms !== undefined && !c.platforms.includes('windows'))
+
+/** The on-disk sections whose `unix`-only cases the Windows test below checks. */
+const CHECKED_ON_WINDOWS = ['resolve_on_disk', 'contains_on_disk']
 
 /** Whether a case runs on this host. */
 function runsHere(c: Case): boolean {
@@ -76,8 +84,9 @@ describe('conformance suite', () => {
   test('runs some case of every section here', () => {
     for (const [name, section] of Object.entries(sections)) {
       const here = section.cases.filter(runsHere).length
-      // On Windows every contains_on_disk case holds a `..`; the test below checks those.
-      if (!(WINDOWS && name === 'contains_on_disk')) expect(here, name).toBeGreaterThan(0)
+      // On Windows the test below checks an on-disk section's `unix`-only cases.
+      const onWindows = WINDOWS && CHECKED_ON_WINDOWS.includes(name) ? unixOnly(name).length : 0
+      expect(here + onWindows, name).toBeGreaterThan(0)
     }
   })
 
@@ -98,9 +107,6 @@ describe('conformance suite', () => {
 // link's target, so it runs on `unix` only. Node on Windows folds `..` as text
 // first, so there the guard must agree with where the filesystem puts the path.
 describe.runIf(WINDOWS)('on-disk cases for unix only, on Windows', () => {
-  const unixOnly = (section: string) =>
-    casesOf(section).filter((c) => c.platforms?.includes('windows') === false)
-
   describe('resolve_on_disk', () => {
     for (const c of unixOnly('resolve_on_disk')) {
       test(c.name, () => {
@@ -132,16 +138,6 @@ describe.runIf(WINDOWS)('on-disk cases for unix only, on Windows', () => {
     }
   })
 })
-
-/** `{ expect: shape(value) }` or `{ error }`, as the suite spells an outcome. */
-function outcome<T>(run: () => T, shape: (value: T) => Record<string, unknown>): object {
-  try {
-    return { expect: shape(run()) }
-  } catch (e) {
-    if (e instanceof PathError) return { error: { kind: e.kind } }
-    throw e
-  }
-}
 
 /** A case's own outcome, as {@link outcome} spells it. */
 const want = (c: Case) => (c.error === undefined ? { expect: c.expect } : { error: c.error })
