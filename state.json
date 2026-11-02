@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "pr": 610,
+  "head": null,
+  "base": null,
+  "round": 0,
+  "claim": {
+    "owner": "LMDETemplate:claude-vq6",
+    "at": "2026-11-02T04:52:35.045Z"
+  },
+  "findings": []
+}
