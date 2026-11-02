@@ -4,7 +4,7 @@
 //! `packages/ts/gfm-table`, which reads it in place: same input, same result.
 //! A case added on either side goes in the fixture, never in one package's
 //! own suite. Every section is read here, and an unknown section fails the
-//! run.
+//! run, as does a case key its section's `_inputs` entry does not list.
 //!
 //! Each runner below takes a case's inputs and builds the JSON value the
 //! case's `expected` holds. Offsets in the fixture are UTF-8 byte offsets,
@@ -193,15 +193,21 @@ fn run(section: &str, c: &Value) -> Value {
         "render_table" => {
             let input = TableInput {
                 header: strings(&c["header"]),
-                align: c["align"]
-                    .as_array()
-                    .map(|a| a.iter().map(|x| align(s(x))).collect())
+                align: c
+                    .get("align")
+                    .map(|a| {
+                        a.as_array()
+                            .expect("an array")
+                            .iter()
+                            .map(|x| align(s(x)))
+                            .collect()
+                    })
                     .unwrap_or_default(),
                 rows: grid(&c["rows"]),
             };
-            let options = match c["line_break"].as_str() {
-                Some(line_break) => RenderTableOptions { line_break },
-                None => RenderTableOptions::default(),
+            let options = match c.get("line_break") {
+                Some(line_break) => RenderTableOptions::new().with_line_break(s(line_break)),
+                None => RenderTableOptions::new(),
             };
             json!(render_table(&input, &options))
         }
@@ -216,10 +222,11 @@ fn run(section: &str, c: &Value) -> Value {
         },
         "pad_table" => match max_column_width(&c["max_column_width"]) {
             Err(refusal) => refusal,
-            Ok(max_column_width) => json!(pad_table(
-                s(&c["table"]),
-                &PadTableOptions { max_column_width }
-            )),
+            Ok(max_column_width) => {
+                let mut options = PadTableOptions::new();
+                options.max_column_width = max_column_width;
+                json!(pad_table(s(&c["table"]), &options))
+            }
         },
         "display_width" => json!(display_width(s(&c["text"]))),
 
@@ -291,7 +298,7 @@ fn run(section: &str, c: &Value) -> Value {
         )),
         "paste_rect" => {
             let g = grid(&c["grid"]);
-            let range = (!c["range"].is_null()).then(|| cell_rect(&c["range"]));
+            let range = c.get("range").map(cell_rect);
             match paste_rect(&g, n(&c["start"][0]), n(&c["start"][1]), range) {
                 None => Value::Null,
                 Some(p) => json!({
@@ -330,10 +337,13 @@ fn run(section: &str, c: &Value) -> Value {
             json!(looks_like_header(&first))
         }
         "read_delimited" => {
-            let options = ReadDelimitedOptions {
-                delimiter: c["delimiter"].as_str().map(delimiter),
-                header: c["header"].as_bool(),
-            };
+            let mut options = ReadDelimitedOptions::new();
+            if let Some(d) = c.get("delimiter") {
+                options = options.with_delimiter(delimiter(s(d)));
+            }
+            if let Some(h) = c.get("header") {
+                options = options.with_header(b(h));
+            }
             let read = read_delimited(s(&c["text"]), &options);
             json!({
                 "delimiter": read.delimiter.as_char().to_string(),
@@ -347,22 +357,103 @@ fn run(section: &str, c: &Value) -> Value {
     }
 }
 
+/// Every section `run` has an arm for. The fixture's sections and its
+/// `_inputs` must be exactly these.
+const SECTIONS: &[&str] = &[
+    "split_row",
+    "row_from_pipes",
+    "row_pipes",
+    "is_delimiter_row",
+    "parse_align",
+    "cell_text",
+    "source_offset",
+    "text_offset",
+    "escape_cell",
+    "escape_cell_insert",
+    "escape_code_cell",
+    "ends_with_escape",
+    "literal_pipe_fixes",
+    "row_cell_texts",
+    "row_cell_sources",
+    "read_table",
+    "table_grid",
+    "render_table",
+    "pad_table",
+    "display_width",
+    "row_line_text",
+    "insert_cell_splice",
+    "delete_cell_splice",
+    "pad_row_splice",
+    "has_trailing_pipe",
+    "table_lines",
+    "rectangular",
+    "pad_row",
+    "clipboard_lines",
+    "grid_from_tsv",
+    "tsv_from_grid",
+    "to_csv",
+    "grid_from_csv",
+    "grid_from_csv_paste",
+    "html_from_grid",
+    "paste_rect",
+    "round_trip",
+    "sniff_delimiter",
+    "delimiter_name",
+    "parse_delimited",
+    "looks_like_header",
+    "read_delimited",
+];
+
 #[test]
 fn every_case_matches() {
     let fixture: Map<String, Value> = serde_json::from_str(FIXTURE).expect("parity.json parses");
+    let inputs = fixture["_inputs"]
+        .as_object()
+        .expect("_inputs is an object");
+    let mut names: Vec<&str> = fixture
+        .keys()
+        .map(String::as_str)
+        .filter(|k| !k.starts_with('_'))
+        .collect();
+    names.sort_unstable();
+    let mut known = SECTIONS.to_vec();
+    known.sort_unstable();
+    assert_eq!(
+        names, known,
+        "the fixture's sections are not the ones run here"
+    );
+    let mut listed: Vec<&str> = inputs.keys().map(String::as_str).collect();
+    listed.sort_unstable();
+    assert_eq!(listed, known, "_inputs does not list exactly the sections");
+
     let mut failures = Vec::new();
     let mut count = 0;
     for (section, cases) in &fixture {
         if section.starts_with('_') {
             continue;
         }
+        let allowed = strings(&inputs[section]);
         for case in cases.as_array().expect("a section is a list of cases") {
             count += 1;
+            let keys = case.as_object().expect("a case is an object");
+            // Only the section's inputs: a misspelled key would be ignored.
+            let unknown: Vec<&String> = keys
+                .keys()
+                .filter(|k| *k != "name" && *k != "expected" && !allowed.contains(k))
+                .collect();
+            assert!(
+                unknown.is_empty(),
+                "{section} / {}: keys {unknown:?} are not in _inputs",
+                case["name"]
+            );
+            let expected = keys
+                .get("expected")
+                .unwrap_or_else(|| panic!("{section} / {}: no expected", case["name"]));
             let got = run(section, case);
-            if got != case["expected"] {
+            if &got != expected {
                 failures.push(format!(
-                    "{section} / {}:\n  expected {}\n  got      {got}",
-                    case["name"], case["expected"]
+                    "{section} / {}:\n  expected {expected}\n  got      {got}",
+                    case["name"]
                 ));
             }
         }

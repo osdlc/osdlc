@@ -13,6 +13,7 @@ use crate::js;
 ///
 /// Experimental: any release may change or remove it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Delimiter {
     /// `,`
     Comma,
@@ -101,6 +102,7 @@ pub struct DelimitedParse {
 ///
 /// Experimental: any release may change or remove it.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct DelimitedRead {
     /// The delimiter used, given or sniffed.
     pub delimiter: Delimiter,
@@ -393,13 +395,40 @@ pub fn looks_like_header<S: AsRef<str>>(first: &[S]) -> bool {
 
 /// Options for [`read_delimited`].
 ///
-/// Experimental: any release may change or remove it.
+/// Experimental: any release may change or remove it. `#[non_exhaustive]`:
+/// build it with [`ReadDelimitedOptions::new`] and its `with_*` methods.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct ReadDelimitedOptions {
     /// The delimiter to use; skips sniffing.
     pub delimiter: Option<Delimiter>,
     /// Whether the first record is a header; skips header detection.
     pub header: Option<bool>,
+}
+
+impl ReadDelimitedOptions {
+    /// The defaults: sniff the delimiter and detect a header.
+    pub const fn new() -> Self {
+        Self {
+            delimiter: None,
+            header: None,
+        }
+    }
+
+    /// These options with `delimiter`, skipping sniffing.
+    #[must_use]
+    pub const fn with_delimiter(mut self, delimiter: Delimiter) -> Self {
+        self.delimiter = Some(delimiter);
+        self
+    }
+
+    /// These options with the first record a header or not, skipping header
+    /// detection.
+    #[must_use]
+    pub const fn with_header(mut self, header: bool) -> Self {
+        self.header = Some(header);
+        self
+    }
 }
 
 /// Read a delimited file: sniff the delimiter, detect a header, parse
