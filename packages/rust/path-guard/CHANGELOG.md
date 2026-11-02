@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.3](https://github.com/osdlc/osdlc/compare/path-guard/v0.3.2...path-guard/v0.3.3) - 2026-11-02
+
+### Other
+
+- move path-guard to packages/conformance ([#562](https://github.com/osdlc/osdlc/pull/562))
+
 ### Fixed
 
 - On a target with neither Unix nor Windows paths, such as `wasm32-unknown-unknown`, a rooted path
