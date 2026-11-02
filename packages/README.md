@@ -80,12 +80,12 @@ the standard.
   `packages/conformance/families.json`, run by every implementation's tests,
   with expected values written by the reference implementation's generator.
   `pnpm run check:conformance` checks the suites. `tiered-dirs`,
-  `config-layers` and `intersect` have moved there. Until they move,
-  `path-guard` keeps `packages/rust/path-guard/tests/fixtures/parity.json`,
-  `frontmatter-lossless` and `markdown-link` their crates'
-  `tests/fixtures/conformance.json`, and `markdown-contract` runs the
-  TypeScript package's `corpus/` directly. `etag-write` has no shared cases
-  yet.
+  `config-layers`, `frontmatter-lossless` and `intersect` have moved there.
+  Until they move, `path-guard` and `gfm-pipe-table` (the Rust implementation
+  of `@osdlc/gfm-table`) keep `packages/rust/<name>/tests/fixtures/parity.json`,
+  `markdown-link` its crate's `tests/fixtures/conformance.json`, and
+  `markdown-contract` runs the TypeScript package's `corpus/` directly.
+  `etag-write` has no shared cases yet.
 - **Each language's idiom.** An implementation does not copy the other's names or
   signatures when that breaks its own language's habits. Rust uses
   snake_case, `Result`, traits and the standard library's words. TypeScript
@@ -132,6 +132,9 @@ Developed here, in this repository:
 - `packages/rust/config-layers` (`config-layers` on crates.io)
 - `packages/rust/etag-write` (`etag-write` on crates.io)
 - `packages/rust/frontmatter-lossless` (`frontmatter-lossless` on crates.io)
+- `packages/rust/gfm-pipe-table` (`gfm-pipe-table`, the Rust implementation of
+  `@osdlc/gfm-table`: GFM pipe tables as strings and byte offsets; not on
+  crates.io yet)
 - `packages/rust/glob-intersect` (`glob-intersect`, the Rust implementation of
   `@osdlc/intersect`: do two globs share a path; not on crates.io yet)
 - `packages/rust/markdown-contract` (`markdown-contract` on crates.io, the Rust implementation
@@ -338,6 +341,8 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    Held now (each crate's `Cargo.toml` names what it waits for):
    - `markdown-contract`, until the parity fixes from the review of
      [#460](https://github.com/osdlc/osdlc/pull/460) land.
+   - `gfm-pipe-table`, until its first release can have a release-plz run of
+     its own: it needs `CARGO_REGISTRY_TOKEN` (rules 3, 4 and 7).
 
 #### Versions and breaking changes
 

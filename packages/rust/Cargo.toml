@@ -9,7 +9,7 @@
 [workspace]
 # resolver 3 picks dependency versions that support `rust-version` (the MSRV).
 resolver = "3"
-members = ["agent-adapt", "config-layers", "etag-write", "frontmatter-lossless", "glob-intersect", "markdown-contract", "markdown-link", "markdown-relink", "markdown-vault-fs", "path-guard", "slug-collate", "tiered-dirs", "tradecraft", "typed-git", "yaml-splice", "yaml-splice-wasm"]
+members = ["agent-adapt", "config-layers", "etag-write", "frontmatter-lossless", "gfm-pipe-table", "glob-intersect", "markdown-contract", "markdown-link", "markdown-relink", "markdown-vault-fs", "path-guard", "slug-collate", "tiered-dirs", "tradecraft", "typed-git", "yaml-splice", "yaml-splice-wasm"]
 
 [workspace.package]
 edition = "2024"
@@ -59,9 +59,10 @@ wasm-bindgen = "=0.2.126"
 agent-adapt = { path = "agent-adapt", version = "0.19.3" }
 config-layers = { path = "config-layers", version = "0.8.1" }
 etag-write = { path = "etag-write", version = "0.2.4" }
-frontmatter-lossless = { path = "frontmatter-lossless", version = "1.1.1" }
-markdown-link = { path = "markdown-link", version = "0.5.4" }
-markdown-relink = { path = "markdown-relink", version = "0.1.9" }
+frontmatter-lossless = { path = "frontmatter-lossless", version = "1.1.2" }
+gfm-pipe-table = { path = "gfm-pipe-table", version = "0.4.0" }
+markdown-link = { path = "markdown-link", version = "0.5.5" }
+markdown-relink = { path = "markdown-relink", version = "0.1.10" }
 markdown-vault-fs = { path = "markdown-vault-fs", version = "0.3.1" }
 path-guard = { path = "path-guard", version = "0.3.2" }
 slug-collate = { path = "slug-collate", version = "0.2.0" }
