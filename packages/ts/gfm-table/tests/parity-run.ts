@@ -11,18 +11,24 @@
  * whose offsets index cell text (`cell_text`, `source_offset`,
  * `text_offset`) hold ASCII text only, where the two agree.
  *
- * A refusal is `{ error: kind }`. The one refusal is `pad_table`'s
- * `RangeError` for a `maxColumnWidth` that is not a positive integer, kind
- * `invalid_max_column_width`; the Rust twin's type cannot hold such a value.
+ * A refusal is `{ error: kind }`. There are two: `pad_table`'s `RangeError`
+ * for a `maxColumnWidth` that is not a positive integer, kind
+ * `invalid_max_column_width`, which the Rust twin's type cannot hold; and
+ * `apply_delimited_changes`' `RangeError` for changes that overlap, kind
+ * `overlapping_changes`, the Rust twin's `OverlappingChanges` error.
  */
 
 import { displayWidth } from '../src/width.ts'
 import {
+  applyDelimitedChanges,
   type CellRect,
   type ColumnAlign,
   cellTextFromSource,
   clipboardLines,
   deleteCellSplice,
+  deleteDelimitedColumn,
+  deleteDelimitedRow,
+  delimitedRecordText,
   DELIMITER_NAMES,
   type Delimiter,
   endsWithEscape,
@@ -35,6 +41,8 @@ import {
   hasTrailingPipe,
   htmlFromGrid,
   insertCellSplice,
+  insertDelimitedColumn,
+  insertDelimitedRow,
   isDelimiterRow,
   type LineSplice,
   literalPipeFixes,
@@ -45,15 +53,18 @@ import {
   parseAlign,
   parseDelimited,
   pasteRect,
+  quoteDelimitedField,
   readDelimited,
   readTable,
   rectangular,
   renderTable,
+  rereadDelimited,
   rowCellSources,
   rowCellTexts,
   rowFromPipes,
   rowLineText,
   rowPipes,
+  setDelimitedField,
   sniffDelimiter,
   sourceOffset,
   splitRow,
@@ -63,7 +74,9 @@ import {
   textOffset,
   toCsv,
   tsvFromGrid,
+  type DelimitedRead,
   type DelimitedRecord,
+  type TextChange,
 } from '../src/index.ts'
 
 const encoder = new TextEncoder()
@@ -124,8 +137,60 @@ function spliceJson(line: string, base: number, splice: LineSplice) {
 
 const isAscii = (text: string) => [...text].every((ch) => ch.codePointAt(0)! < 0x80)
 
-function recordJson(r: DelimitedRecord) {
-  return { fields: r.fields, line: r.line, issue: r.issue ?? null }
+/** A record of `text`, its offsets as bytes. */
+function recordJson(text: string, r: DelimitedRecord) {
+  const o = (at: number) => byteOffset(text, at)
+  return {
+    fields: r.fields,
+    spans: r.spans.map((s) => ({ from: o(s.from), to: o(s.to), quoted: s.quoted })),
+    line: r.line,
+    from: o(r.from),
+    to: o(r.to),
+    end: o(r.end),
+    issue: r.issue ?? null,
+  }
+}
+
+/** A read of `text`, in the fixture's spelling. */
+function readJson(text: string, read: DelimitedRead) {
+  return {
+    delimiter: read.delimiter,
+    header: read.header,
+    header_record: read.headerRecord && recordJson(text, read.headerRecord),
+    rows: read.rows.map((r) => recordJson(text, r)),
+    width: read.width,
+    issues: read.issues,
+    line_ending: read.lineEnding,
+    bom: read.bom,
+  }
+}
+
+/** The case's `text` read with its `delimiter` and `header` options. */
+function readCase(c: Case): DelimitedRead {
+  const options: { delimiter?: Delimiter; header?: boolean } = {}
+  if (c.delimiter !== undefined) options.delimiter = c.delimiter
+  if (c.header !== undefined) options.header = c.header
+  return readDelimited(c.text, options)
+}
+
+/** Changes to `text`, their offsets as bytes, and the text they make. */
+function changesJson(text: string, changes: TextChange[]) {
+  return {
+    changes: changes.map((ch) => changeJson(text, ch)),
+    text: applyDelimitedChanges(text, changes),
+  }
+}
+
+function changeJson(text: string, ch: TextChange) {
+  return { from: byteOffset(text, ch.from), to: byteOffset(text, ch.to), insert: ch.insert }
+}
+
+/** One change, or none, and the text it makes. */
+function oneChangeJson(text: string, ch: TextChange | null) {
+  return {
+    change: ch && changeJson(text, ch),
+    text: ch ? applyDelimitedChanges(text, ch) : text,
+  }
 }
 
 /** A case as the fixture holds it: any inputs. */
@@ -247,15 +312,44 @@ export const RUNNERS: Record<string, (c: Case) => unknown> = {
   sniff_delimiter: (c) => sniffDelimiter(c.text),
   delimiter_name: (c) => DELIMITER_NAMES[c.delimiter as Delimiter],
   parse_delimited: (c) => {
-    const { records, issues } = parseDelimited(c.text, c.delimiter)
-    return { records: records.map(recordJson), issues }
+    const { records, issues, lineEnding, bom } = parseDelimited(c.text, c.delimiter)
+    return {
+      records: records.map((r) => recordJson(c.text, r)),
+      issues,
+      line_ending: lineEnding,
+      bom,
+    }
   },
   looks_like_header: (c) => looksLikeHeader(c.first ?? undefined),
-  read_delimited: (c) => {
-    const options: { delimiter?: Delimiter; header?: boolean } = {}
-    if (c.delimiter !== undefined) options.delimiter = c.delimiter
-    if (c.header !== undefined) options.header = c.header
-    const read = readDelimited(c.text, options)
-    return { ...read, rows: read.rows.map(recordJson) }
+  read_delimited: (c) => readJson(c.text, readCase(c)),
+
+  quote_delimited_field: (c) => quoteDelimitedField(c.value, c.delimiter, c.always_quote),
+  delimited_record_text: (c) => delimitedRecordText(c.fields, c.delimiter),
+  reread_delimited: (c) => readJson(c.next, rereadDelimited(c.next, readCase(c))),
+  set_delimited_field: (c) => {
+    const read = readCase(c)
+    // `record` counts the header, when there is one, as record 0.
+    const records = read.headerRecord ? [read.headerRecord, ...read.rows] : read.rows
+    return oneChangeJson(c.text, setDelimitedField(read, records[c.record]!, c.column, c.value))
+  },
+  insert_delimited_row: (c) =>
+    oneChangeJson(c.text, insertDelimitedRow(readCase(c), c.at, c.fields)),
+  delete_delimited_row: (c) => oneChangeJson(c.text, deleteDelimitedRow(readCase(c), c.index)),
+  insert_delimited_column: (c) =>
+    changesJson(c.text, insertDelimitedColumn(readCase(c), c.at, c.header_text)),
+  delete_delimited_column: (c) => changesJson(c.text, deleteDelimitedColumn(readCase(c), c.column)),
+  apply_delimited_changes: (c) => {
+    const at = (b: number) => utf16Offset(c.text, b)
+    const changes = (c.changes as TextChange[]).map((ch) => ({
+      from: at(ch.from),
+      to: at(ch.to),
+      insert: ch.insert,
+    }))
+    try {
+      return applyDelimitedChanges(c.text, changes)
+    } catch (e) {
+      if (e instanceof RangeError) return { error: 'overlapping_changes' }
+      throw e
+    }
   },
 }

@@ -67,14 +67,17 @@ pub fn escape_cell_insert(text: &str) -> String {
     replace_breaks(text, " ").replace('|', "\\|")
 }
 
-/// One change from [`literal_pipe_fixes`]: replace `from..to` with `insert`.
+/// One change to a text: replace the bytes `from..to` with `insert`. An
+/// insert has `to` equal to `from`. [`literal_pipe_fixes`] and the
+/// delimited-file edits, such as
+/// [`set_delimited_field`](crate::set_delimited_field), return these.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct PipeFix {
+pub struct TextChange {
     /// Byte offset where the change starts, in the text.
     pub from: usize,
     /// Byte offset where the change ends; equal to `from` for an insert.
     pub to: usize,
-    /// The bytes to put there: one backslash, or nothing.
+    /// The bytes to put there; empty for a delete.
     pub insert: String,
 }
 
@@ -83,7 +86,7 @@ pub struct PipeFix {
 /// A pipe after an odd run gets one more backslash when an edit inserted
 /// into that run or the pipe (`inserted`, byte ranges in `text`), and loses
 /// one otherwise (a deleted backslash takes its pair with it).
-pub fn literal_pipe_fixes(text: &str, inserted: &[Range<usize>]) -> Vec<PipeFix> {
+pub fn literal_pipe_fixes(text: &str, inserted: &[Range<usize>]) -> Vec<TextChange> {
     let mut fixes = Vec::new();
     let mut run = 0;
     for (i, b) in text.bytes().enumerate() {
@@ -91,13 +94,13 @@ pub fn literal_pipe_fixes(text: &str, inserted: &[Range<usize>]) -> Vec<PipeFix>
             let start = i - run;
             let typed = inserted.iter().any(|r| r.start <= i && r.end > start);
             fixes.push(if typed {
-                PipeFix {
+                TextChange {
                     from: i,
                     to: i,
                     insert: "\\".to_owned(),
                 }
             } else {
-                PipeFix {
+                TextChange {
                     from: i - 1,
                     to: i,
                     insert: String::new(),

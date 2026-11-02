@@ -50,7 +50,16 @@
     "delimiter_name": ["delimiter"],
     "parse_delimited": ["text", "delimiter"],
     "looks_like_header": ["first"],
-    "read_delimited": ["text", "delimiter", "header"]
+    "read_delimited": ["text", "delimiter", "header"],
+    "quote_delimited_field": ["value", "delimiter", "always_quote"],
+    "delimited_record_text": ["fields", "delimiter"],
+    "set_delimited_field": ["text", "delimiter", "header", "record", "column", "value"],
+    "insert_delimited_row": ["text", "delimiter", "header", "at", "fields"],
+    "delete_delimited_row": ["text", "delimiter", "header", "index"],
+    "insert_delimited_column": ["text", "delimiter", "header", "at", "header_text"],
+    "delete_delimited_column": ["text", "delimiter", "header", "column"],
+    "reread_delimited": ["text", "delimiter", "header", "next"],
+    "apply_delimited_changes": ["text", "changes"]
   },
   "split_row": [
     {
@@ -4448,7 +4457,22 @@
               "a",
               "b"
             ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 1,
+                "quoted": false
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "quoted": false
+              }
+            ],
             "line": 1,
+            "from": 0,
+            "to": 3,
+            "end": 4,
             "issue": null
           },
           {
@@ -4456,11 +4480,28 @@
               "1",
               "2"
             ],
+            "spans": [
+              {
+                "from": 4,
+                "to": 5,
+                "quoted": false
+              },
+              {
+                "from": 6,
+                "to": 7,
+                "quoted": false
+              }
+            ],
             "line": 2,
+            "from": 4,
+            "to": 7,
+            "end": 8,
             "issue": null
           }
         ],
-        "issues": []
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -4474,7 +4515,22 @@
               "a",
               "b"
             ],
+            "spans": [
+              {
+                "from": 3,
+                "to": 4,
+                "quoted": false
+              },
+              {
+                "from": 5,
+                "to": 6,
+                "quoted": false
+              }
+            ],
             "line": 1,
+            "from": 3,
+            "to": 6,
+            "end": 7,
             "issue": null
           },
           {
@@ -4482,11 +4538,28 @@
               "1",
               "2"
             ],
+            "spans": [
+              {
+                "from": 7,
+                "to": 8,
+                "quoted": false
+              },
+              {
+                "from": 9,
+                "to": 10,
+                "quoted": false
+              }
+            ],
             "line": 2,
+            "from": 7,
+            "to": 10,
+            "end": 10,
             "issue": null
           }
         ],
-        "issues": []
+        "issues": [],
+        "line_ending": "\n",
+        "bom": true
       }
     },
     {
@@ -4501,7 +4574,27 @@
               "c\"d",
               "e\nf"
             ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 5,
+                "quoted": true
+              },
+              {
+                "from": 6,
+                "to": 12,
+                "quoted": true
+              },
+              {
+                "from": 13,
+                "to": 18,
+                "quoted": true
+              }
+            ],
             "line": 1,
+            "from": 0,
+            "to": 18,
+            "end": 19,
             "issue": null
           },
           {
@@ -4509,11 +4602,28 @@
               "x",
               "y"
             ],
+            "spans": [
+              {
+                "from": 19,
+                "to": 20,
+                "quoted": false
+              },
+              {
+                "from": 21,
+                "to": 22,
+                "quoted": false
+              }
+            ],
             "line": 3,
+            "from": 19,
+            "to": 22,
+            "end": 22,
             "issue": null
           }
         ],
-        "issues": []
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -4526,18 +4636,40 @@
             "fields": [
               "a"
             ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 1,
+                "quoted": false
+              }
+            ],
             "line": 1,
+            "from": 0,
+            "to": 1,
+            "end": 2,
             "issue": null
           },
           {
             "fields": [
               "b"
             ],
+            "spans": [
+              {
+                "from": 4,
+                "to": 5,
+                "quoted": false
+              }
+            ],
             "line": 4,
+            "from": 4,
+            "to": 5,
+            "end": 5,
             "issue": null
           }
         ],
-        "issues": []
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -4550,25 +4682,57 @@
             "fields": [
               "a"
             ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 1,
+                "quoted": false
+              }
+            ],
             "line": 1,
+            "from": 0,
+            "to": 1,
+            "end": 3,
             "issue": null
           },
           {
             "fields": [
               "b"
             ],
+            "spans": [
+              {
+                "from": 3,
+                "to": 4,
+                "quoted": false
+              }
+            ],
             "line": 2,
+            "from": 3,
+            "to": 4,
+            "end": 5,
             "issue": null
           },
           {
             "fields": [
               "c"
             ],
+            "spans": [
+              {
+                "from": 5,
+                "to": 6,
+                "quoted": false
+              }
+            ],
             "line": 3,
+            "from": 5,
+            "to": 6,
+            "end": 6,
             "issue": null
           }
         ],
-        "issues": []
+        "issues": [],
+        "line_ending": "\r\n",
+        "bom": false
       }
     },
     {
@@ -4582,7 +4746,22 @@
               "\"abc",
               "def"
             ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 4,
+                "quoted": false
+              },
+              {
+                "from": 5,
+                "to": 8,
+                "quoted": false
+              }
+            ],
             "line": 1,
+            "from": 0,
+            "to": 8,
+            "end": 9,
             "issue": "Unclosed quote; read as text"
           },
           {
@@ -4590,7 +4769,22 @@
               "x",
               "y"
             ],
+            "spans": [
+              {
+                "from": 9,
+                "to": 10,
+                "quoted": false
+              },
+              {
+                "from": 11,
+                "to": 12,
+                "quoted": false
+              }
+            ],
             "line": 2,
+            "from": 9,
+            "to": 12,
+            "end": 12,
             "issue": null
           }
         ],
@@ -4599,7 +4793,9 @@
             "line": 1,
             "message": "Unclosed quote; read as text"
           }
-        ]
+        ],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -4613,7 +4809,22 @@
               "abcd",
               "e"
             ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 6,
+                "quoted": false
+              },
+              {
+                "from": 7,
+                "to": 8,
+                "quoted": false
+              }
+            ],
             "line": 1,
+            "from": 0,
+            "to": 8,
+            "end": 8,
             "issue": "Text after a closing quote; kept as written"
           }
         ],
@@ -4622,7 +4833,9 @@
             "line": 1,
             "message": "Text after a closing quote; kept as written"
           }
-        ]
+        ],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -4635,7 +4848,17 @@
             "fields": [
               "\"a"
             ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 2,
+                "quoted": false
+              }
+            ],
             "line": 1,
+            "from": 0,
+            "to": 2,
+            "end": 3,
             "issue": "Unclosed quote; read as text"
           },
           {
@@ -4643,14 +4866,39 @@
               "b\"c",
               "d"
             ],
+            "spans": [
+              {
+                "from": 3,
+                "to": 6,
+                "quoted": false
+              },
+              {
+                "from": 7,
+                "to": 8,
+                "quoted": false
+              }
+            ],
             "line": 2,
+            "from": 3,
+            "to": 8,
+            "end": 9,
             "issue": null
           },
           {
             "fields": [
               "e"
             ],
+            "spans": [
+              {
+                "from": 9,
+                "to": 10,
+                "quoted": false
+              }
+            ],
             "line": 3,
+            "from": 9,
+            "to": 10,
+            "end": 10,
             "issue": null
           }
         ],
@@ -4659,7 +4907,9 @@
             "line": 1,
             "message": "Unclosed quote; read as text"
           }
-        ]
+        ],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -4673,7 +4923,22 @@
               "a",
               "b;c"
             ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 1,
+                "quoted": false
+              },
+              {
+                "from": 2,
+                "to": 7,
+                "quoted": true
+              }
+            ],
             "line": 1,
+            "from": 0,
+            "to": 7,
+            "end": 8,
             "issue": null
           },
           {
@@ -4681,11 +4946,28 @@
               "1",
               "2"
             ],
+            "spans": [
+              {
+                "from": 8,
+                "to": 9,
+                "quoted": false
+              },
+              {
+                "from": 10,
+                "to": 11,
+                "quoted": false
+              }
+            ],
             "line": 2,
+            "from": 8,
+            "to": 11,
+            "end": 11,
             "issue": null
           }
         ],
-        "issues": []
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -4699,11 +4981,28 @@
               "a",
               "b"
             ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 1,
+                "quoted": false
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "quoted": false
+              }
+            ],
             "line": 1,
+            "from": 0,
+            "to": 3,
+            "end": 3,
             "issue": null
           }
         ],
-        "issues": []
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -4717,7 +5016,22 @@
               "中",
               "文"
             ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 3,
+                "quoted": false
+              },
+              {
+                "from": 4,
+                "to": 7,
+                "quoted": false
+              }
+            ],
             "line": 1,
+            "from": 0,
+            "to": 7,
+            "end": 8,
             "issue": null
           },
           {
@@ -4725,11 +5039,28 @@
               "é,👍",
               "x"
             ],
+            "spans": [
+              {
+                "from": 8,
+                "to": 17,
+                "quoted": true
+              },
+              {
+                "from": 18,
+                "to": 19,
+                "quoted": false
+              }
+            ],
             "line": 2,
+            "from": 8,
+            "to": 19,
+            "end": 19,
             "issue": null
           }
         ],
-        "issues": []
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -4742,357 +5073,867 @@
             "fields": [
               "\"x"
             ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 2,
+                "quoted": false
+              }
+            ],
             "line": 1,
+            "from": 0,
+            "to": 2,
+            "end": 3,
             "issue": "Unclosed quote; read as text"
           },
           {
             "fields": [
               "x"
             ],
+            "spans": [
+              {
+                "from": 3,
+                "to": 4,
+                "quoted": false
+              }
+            ],
             "line": 2,
+            "from": 3,
+            "to": 4,
+            "end": 5,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 5,
+                "to": 6,
+                "quoted": false
+              }
             ],
             "line": 3,
+            "from": 5,
+            "to": 6,
+            "end": 7,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 7,
+                "to": 8,
+                "quoted": false
+              }
             ],
             "line": 4,
+            "from": 7,
+            "to": 8,
+            "end": 9,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 9,
+                "to": 10,
+                "quoted": false
+              }
             ],
             "line": 5,
+            "from": 9,
+            "to": 10,
+            "end": 11,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 11,
+                "to": 12,
+                "quoted": false
+              }
             ],
             "line": 6,
+            "from": 11,
+            "to": 12,
+            "end": 13,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 13,
+                "to": 14,
+                "quoted": false
+              }
             ],
             "line": 7,
+            "from": 13,
+            "to": 14,
+            "end": 15,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 15,
+                "to": 16,
+                "quoted": false
+              }
             ],
             "line": 8,
+            "from": 15,
+            "to": 16,
+            "end": 17,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 17,
+                "to": 18,
+                "quoted": false
+              }
             ],
             "line": 9,
+            "from": 17,
+            "to": 18,
+            "end": 19,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 19,
+                "to": 20,
+                "quoted": false
+              }
             ],
             "line": 10,
+            "from": 19,
+            "to": 20,
+            "end": 21,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 21,
+                "to": 22,
+                "quoted": false
+              }
             ],
             "line": 11,
+            "from": 21,
+            "to": 22,
+            "end": 23,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 23,
+                "to": 24,
+                "quoted": false
+              }
             ],
             "line": 12,
+            "from": 23,
+            "to": 24,
+            "end": 25,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 25,
+                "to": 26,
+                "quoted": false
+              }
             ],
             "line": 13,
+            "from": 25,
+            "to": 26,
+            "end": 27,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 27,
+                "to": 28,
+                "quoted": false
+              }
             ],
             "line": 14,
+            "from": 27,
+            "to": 28,
+            "end": 29,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 29,
+                "to": 30,
+                "quoted": false
+              }
             ],
             "line": 15,
+            "from": 29,
+            "to": 30,
+            "end": 31,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 31,
+                "to": 32,
+                "quoted": false
+              }
             ],
             "line": 16,
+            "from": 31,
+            "to": 32,
+            "end": 33,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 33,
+                "to": 34,
+                "quoted": false
+              }
             ],
             "line": 17,
+            "from": 33,
+            "to": 34,
+            "end": 35,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 35,
+                "to": 36,
+                "quoted": false
+              }
             ],
             "line": 18,
+            "from": 35,
+            "to": 36,
+            "end": 37,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 37,
+                "to": 38,
+                "quoted": false
+              }
             ],
             "line": 19,
+            "from": 37,
+            "to": 38,
+            "end": 39,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 39,
+                "to": 40,
+                "quoted": false
+              }
             ],
             "line": 20,
+            "from": 39,
+            "to": 40,
+            "end": 41,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 41,
+                "to": 42,
+                "quoted": false
+              }
             ],
             "line": 21,
+            "from": 41,
+            "to": 42,
+            "end": 43,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 43,
+                "to": 44,
+                "quoted": false
+              }
             ],
             "line": 22,
+            "from": 43,
+            "to": 44,
+            "end": 45,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 45,
+                "to": 46,
+                "quoted": false
+              }
             ],
             "line": 23,
+            "from": 45,
+            "to": 46,
+            "end": 47,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 47,
+                "to": 48,
+                "quoted": false
+              }
             ],
             "line": 24,
+            "from": 47,
+            "to": 48,
+            "end": 49,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 49,
+                "to": 50,
+                "quoted": false
+              }
             ],
             "line": 25,
+            "from": 49,
+            "to": 50,
+            "end": 51,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 51,
+                "to": 52,
+                "quoted": false
+              }
             ],
             "line": 26,
+            "from": 51,
+            "to": 52,
+            "end": 53,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 53,
+                "to": 54,
+                "quoted": false
+              }
             ],
             "line": 27,
+            "from": 53,
+            "to": 54,
+            "end": 55,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 55,
+                "to": 56,
+                "quoted": false
+              }
             ],
             "line": 28,
+            "from": 55,
+            "to": 56,
+            "end": 57,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 57,
+                "to": 58,
+                "quoted": false
+              }
             ],
             "line": 29,
+            "from": 57,
+            "to": 58,
+            "end": 59,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 59,
+                "to": 60,
+                "quoted": false
+              }
             ],
             "line": 30,
+            "from": 59,
+            "to": 60,
+            "end": 61,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 61,
+                "to": 62,
+                "quoted": false
+              }
             ],
             "line": 31,
+            "from": 61,
+            "to": 62,
+            "end": 63,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 63,
+                "to": 64,
+                "quoted": false
+              }
             ],
             "line": 32,
+            "from": 63,
+            "to": 64,
+            "end": 65,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 65,
+                "to": 66,
+                "quoted": false
+              }
             ],
             "line": 33,
+            "from": 65,
+            "to": 66,
+            "end": 67,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 67,
+                "to": 68,
+                "quoted": false
+              }
             ],
             "line": 34,
+            "from": 67,
+            "to": 68,
+            "end": 69,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 69,
+                "to": 70,
+                "quoted": false
+              }
             ],
             "line": 35,
+            "from": 69,
+            "to": 70,
+            "end": 71,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 71,
+                "to": 72,
+                "quoted": false
+              }
             ],
             "line": 36,
+            "from": 71,
+            "to": 72,
+            "end": 73,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 73,
+                "to": 74,
+                "quoted": false
+              }
             ],
             "line": 37,
+            "from": 73,
+            "to": 74,
+            "end": 75,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 75,
+                "to": 76,
+                "quoted": false
+              }
             ],
             "line": 38,
+            "from": 75,
+            "to": 76,
+            "end": 77,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 77,
+                "to": 78,
+                "quoted": false
+              }
             ],
             "line": 39,
+            "from": 77,
+            "to": 78,
+            "end": 79,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 79,
+                "to": 80,
+                "quoted": false
+              }
             ],
             "line": 40,
+            "from": 79,
+            "to": 80,
+            "end": 81,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 81,
+                "to": 82,
+                "quoted": false
+              }
             ],
             "line": 41,
+            "from": 81,
+            "to": 82,
+            "end": 83,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 83,
+                "to": 84,
+                "quoted": false
+              }
             ],
             "line": 42,
+            "from": 83,
+            "to": 84,
+            "end": 85,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 85,
+                "to": 86,
+                "quoted": false
+              }
             ],
             "line": 43,
+            "from": 85,
+            "to": 86,
+            "end": 87,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 87,
+                "to": 88,
+                "quoted": false
+              }
             ],
             "line": 44,
+            "from": 87,
+            "to": 88,
+            "end": 89,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 89,
+                "to": 90,
+                "quoted": false
+              }
             ],
             "line": 45,
+            "from": 89,
+            "to": 90,
+            "end": 91,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 91,
+                "to": 92,
+                "quoted": false
+              }
             ],
             "line": 46,
+            "from": 91,
+            "to": 92,
+            "end": 93,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 93,
+                "to": 94,
+                "quoted": false
+              }
             ],
             "line": 47,
+            "from": 93,
+            "to": 94,
+            "end": 95,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 95,
+                "to": 96,
+                "quoted": false
+              }
             ],
             "line": 48,
+            "from": 95,
+            "to": 96,
+            "end": 97,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 97,
+                "to": 98,
+                "quoted": false
+              }
             ],
             "line": 49,
+            "from": 97,
+            "to": 98,
+            "end": 99,
             "issue": null
           },
           {
             "fields": [
               "x"
+            ],
+            "spans": [
+              {
+                "from": 99,
+                "to": 100,
+                "quoted": false
+              }
             ],
             "line": 50,
+            "from": 99,
+            "to": 100,
+            "end": 101,
             "issue": null
           },
           {
             "fields": [
               "x"
             ],
+            "spans": [
+              {
+                "from": 101,
+                "to": 102,
+                "quoted": false
+              }
+            ],
             "line": 51,
+            "from": 101,
+            "to": 102,
+            "end": 103,
             "issue": null
           },
           {
@@ -5100,7 +5941,22 @@
               "\"",
               "b"
             ],
+            "spans": [
+              {
+                "from": 103,
+                "to": 104,
+                "quoted": false
+              },
+              {
+                "from": 105,
+                "to": 106,
+                "quoted": false
+              }
+            ],
             "line": 52,
+            "from": 103,
+            "to": 106,
+            "end": 106,
             "issue": "Unclosed quote; read as text"
           }
         ],
@@ -5113,7 +5969,9 @@
             "line": 52,
             "message": "Unclosed quote; read as text"
           }
-        ]
+        ],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -5122,7 +5980,9 @@
       "delimiter": ",",
       "expected": {
         "records": [],
-        "issues": []
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -5131,7 +5991,9 @@
       "delimiter": ",",
       "expected": {
         "records": [],
-        "issues": []
+        "issues": [],
+        "line_ending": "\n",
+        "bom": true
       }
     },
     {
@@ -5145,11 +6007,241 @@
               "",
               "a"
             ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 2,
+                "quoted": true
+              },
+              {
+                "from": 3,
+                "to": 4,
+                "quoted": false
+              }
+            ],
             "line": 1,
+            "from": 0,
+            "to": 4,
+            "end": 4,
             "issue": null
           }
         ],
-        "issues": []
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
+      }
+    },
+    {
+      "name": "a `\"\"` line is a record; a blank line is not",
+      "text": "a\n\"\"\n\nb\n",
+      "delimiter": ",",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "a"
+            ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 1,
+                "quoted": false
+              }
+            ],
+            "line": 1,
+            "from": 0,
+            "to": 1,
+            "end": 2,
+            "issue": null
+          },
+          {
+            "fields": [
+              ""
+            ],
+            "spans": [
+              {
+                "from": 2,
+                "to": 4,
+                "quoted": true
+              }
+            ],
+            "line": 2,
+            "from": 2,
+            "to": 4,
+            "end": 5,
+            "issue": null
+          },
+          {
+            "fields": [
+              "b"
+            ],
+            "spans": [
+              {
+                "from": 6,
+                "to": 7,
+                "quoted": false
+              }
+            ],
+            "line": 4,
+            "from": 6,
+            "to": 7,
+            "end": 8,
+            "issue": null
+          }
+        ],
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
+      }
+    },
+    {
+      "name": "spans of plain and quoted fields",
+      "text": "a,\"b,c\"\r\nx,y",
+      "delimiter": ",",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "a",
+              "b,c"
+            ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 1,
+                "quoted": false
+              },
+              {
+                "from": 2,
+                "to": 7,
+                "quoted": true
+              }
+            ],
+            "line": 1,
+            "from": 0,
+            "to": 7,
+            "end": 9,
+            "issue": null
+          },
+          {
+            "fields": [
+              "x",
+              "y"
+            ],
+            "spans": [
+              {
+                "from": 9,
+                "to": 10,
+                "quoted": false
+              },
+              {
+                "from": 11,
+                "to": 12,
+                "quoted": false
+              }
+            ],
+            "line": 2,
+            "from": 9,
+            "to": 12,
+            "end": 12,
+            "issue": null
+          }
+        ],
+        "issues": [],
+        "line_ending": "\r\n",
+        "bom": false
+      }
+    },
+    {
+      "name": "a CR line ending",
+      "text": "a\rb\n",
+      "delimiter": ",",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "a"
+            ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 1,
+                "quoted": false
+              }
+            ],
+            "line": 1,
+            "from": 0,
+            "to": 1,
+            "end": 2,
+            "issue": null
+          },
+          {
+            "fields": [
+              "b"
+            ],
+            "spans": [
+              {
+                "from": 2,
+                "to": 3,
+                "quoted": false
+              }
+            ],
+            "line": 2,
+            "from": 2,
+            "to": 3,
+            "end": 4,
+            "issue": null
+          }
+        ],
+        "issues": [],
+        "line_ending": "\r",
+        "bom": false
+      }
+    },
+    {
+      "name": "blank lines do not set the line ending",
+      "text": "\r\n\na\rb",
+      "delimiter": ",",
+      "expected": {
+        "records": [
+          {
+            "fields": [
+              "a"
+            ],
+            "spans": [
+              {
+                "from": 3,
+                "to": 4,
+                "quoted": false
+              }
+            ],
+            "line": 3,
+            "from": 3,
+            "to": 4,
+            "end": 5,
+            "issue": null
+          },
+          {
+            "fields": [
+              "b"
+            ],
+            "spans": [
+              {
+                "from": 5,
+                "to": 6,
+                "quoted": false
+              }
+            ],
+            "line": 4,
+            "from": 5,
+            "to": 6,
+            "end": 6,
+            "issue": null
+          }
+        ],
+        "issues": [],
+        "line_ending": "\r",
+        "bom": false
       }
     }
   ],
@@ -5279,20 +6371,68 @@
           "name",
           "qty"
         ],
+        "header_record": {
+          "fields": [
+            "name",
+            "qty"
+          ],
+          "spans": [
+            {
+              "from": 0,
+              "to": 4,
+              "quoted": false
+            },
+            {
+              "from": 5,
+              "to": 8,
+              "quoted": false
+            }
+          ],
+          "line": 1,
+          "from": 0,
+          "to": 8,
+          "end": 9,
+          "issue": null
+        },
         "rows": [
           {
             "fields": [
               "apple",
               "3"
             ],
+            "spans": [
+              {
+                "from": 9,
+                "to": 14,
+                "quoted": false
+              },
+              {
+                "from": 15,
+                "to": 16,
+                "quoted": false
+              }
+            ],
             "line": 2,
+            "from": 9,
+            "to": 16,
+            "end": 17,
             "issue": null
           },
           {
             "fields": [
               "pear"
             ],
+            "spans": [
+              {
+                "from": 17,
+                "to": 21,
+                "quoted": false
+              }
+            ],
             "line": 3,
+            "from": 17,
+            "to": 21,
+            "end": 22,
             "issue": "1 fields, header has 2"
           }
         ],
@@ -5302,7 +6442,9 @@
             "line": 3,
             "message": "1 fields, header has 2"
           }
-        ]
+        ],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -5311,13 +6453,29 @@
       "expected": {
         "delimiter": ",",
         "header": null,
+        "header_record": null,
         "rows": [
           {
             "fields": [
               "1",
               "2"
             ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 1,
+                "quoted": false
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "quoted": false
+              }
+            ],
             "line": 1,
+            "from": 0,
+            "to": 3,
+            "end": 4,
             "issue": "2 fields, widest row has 3"
           },
           {
@@ -5326,7 +6484,27 @@
               "4",
               "5"
             ],
+            "spans": [
+              {
+                "from": 4,
+                "to": 5,
+                "quoted": false
+              },
+              {
+                "from": 6,
+                "to": 7,
+                "quoted": false
+              },
+              {
+                "from": 8,
+                "to": 9,
+                "quoted": false
+              }
+            ],
             "line": 2,
+            "from": 4,
+            "to": 9,
+            "end": 9,
             "issue": null
           }
         ],
@@ -5336,7 +6514,9 @@
             "line": 1,
             "message": "2 fields, widest row has 3"
           }
-        ]
+        ],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -5348,17 +6528,46 @@
         "header": [
           "a;b"
         ],
+        "header_record": {
+          "fields": [
+            "a;b"
+          ],
+          "spans": [
+            {
+              "from": 0,
+              "to": 3,
+              "quoted": false
+            }
+          ],
+          "line": 1,
+          "from": 0,
+          "to": 3,
+          "end": 4,
+          "issue": null
+        },
         "rows": [
           {
             "fields": [
               "1;2"
             ],
+            "spans": [
+              {
+                "from": 4,
+                "to": 7,
+                "quoted": false
+              }
+            ],
             "line": 2,
+            "from": 4,
+            "to": 7,
+            "end": 7,
             "issue": null
           }
         ],
         "width": 1,
-        "issues": []
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -5371,18 +6580,58 @@
           "1",
           "2"
         ],
+        "header_record": {
+          "fields": [
+            "1",
+            "2"
+          ],
+          "spans": [
+            {
+              "from": 0,
+              "to": 1,
+              "quoted": false
+            },
+            {
+              "from": 2,
+              "to": 3,
+              "quoted": false
+            }
+          ],
+          "line": 1,
+          "from": 0,
+          "to": 3,
+          "end": 4,
+          "issue": null
+        },
         "rows": [
           {
             "fields": [
               "3",
               "4"
             ],
+            "spans": [
+              {
+                "from": 4,
+                "to": 5,
+                "quoted": false
+              },
+              {
+                "from": 6,
+                "to": 7,
+                "quoted": false
+              }
+            ],
             "line": 2,
+            "from": 4,
+            "to": 7,
+            "end": 7,
             "issue": null
           }
         ],
         "width": 2,
-        "issues": []
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -5392,13 +6641,29 @@
       "expected": {
         "delimiter": ",",
         "header": null,
+        "header_record": null,
         "rows": [
           {
             "fields": [
               "a",
               "b"
             ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 1,
+                "quoted": false
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "quoted": false
+              }
+            ],
             "line": 1,
+            "from": 0,
+            "to": 3,
+            "end": 4,
             "issue": null
           },
           {
@@ -5406,12 +6671,29 @@
               "1",
               "2"
             ],
+            "spans": [
+              {
+                "from": 4,
+                "to": 5,
+                "quoted": false
+              },
+              {
+                "from": 6,
+                "to": 7,
+                "quoted": false
+              }
+            ],
             "line": 2,
+            "from": 4,
+            "to": 7,
+            "end": 7,
             "issue": null
           }
         ],
         "width": 2,
-        "issues": []
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -5420,9 +6702,12 @@
       "expected": {
         "delimiter": ",",
         "header": null,
+        "header_record": null,
         "rows": [],
         "width": 0,
-        "issues": []
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -5434,9 +6719,34 @@
           "a",
           "b"
         ],
+        "header_record": {
+          "fields": [
+            "a",
+            "b"
+          ],
+          "spans": [
+            {
+              "from": 0,
+              "to": 1,
+              "quoted": false
+            },
+            {
+              "from": 2,
+              "to": 3,
+              "quoted": false
+            }
+          ],
+          "line": 1,
+          "from": 0,
+          "to": 3,
+          "end": 3,
+          "issue": null
+        },
         "rows": [],
         "width": 2,
-        "issues": []
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -5448,12 +6758,45 @@
           "a",
           "b"
         ],
+        "header_record": {
+          "fields": [
+            "a",
+            "b"
+          ],
+          "spans": [
+            {
+              "from": 0,
+              "to": 1,
+              "quoted": false
+            },
+            {
+              "from": 2,
+              "to": 3,
+              "quoted": false
+            }
+          ],
+          "line": 1,
+          "from": 0,
+          "to": 3,
+          "end": 4,
+          "issue": null
+        },
         "rows": [
           {
             "fields": [
               "\"x"
             ],
+            "spans": [
+              {
+                "from": 4,
+                "to": 6,
+                "quoted": false
+              }
+            ],
             "line": 2,
+            "from": 4,
+            "to": 6,
+            "end": 7,
             "issue": "Unclosed quote; read as text"
           },
           {
@@ -5462,7 +6805,27 @@
               "2",
               "3"
             ],
+            "spans": [
+              {
+                "from": 7,
+                "to": 8,
+                "quoted": false
+              },
+              {
+                "from": 9,
+                "to": 10,
+                "quoted": false
+              },
+              {
+                "from": 11,
+                "to": 12,
+                "quoted": false
+              }
+            ],
             "line": 3,
+            "from": 7,
+            "to": 12,
+            "end": 12,
             "issue": "3 fields, header has 2"
           }
         ],
@@ -5476,7 +6839,9 @@
             "line": 3,
             "message": "3 fields, header has 2"
           }
-        ]
+        ],
+        "line_ending": "\n",
+        "bom": false
       }
     },
     {
@@ -5488,6 +6853,29 @@
           "a",
           "b"
         ],
+        "header_record": {
+          "fields": [
+            "a",
+            "b"
+          ],
+          "spans": [
+            {
+              "from": 0,
+              "to": 1,
+              "quoted": false
+            },
+            {
+              "from": 2,
+              "to": 3,
+              "quoted": false
+            }
+          ],
+          "line": 1,
+          "from": 0,
+          "to": 3,
+          "end": 4,
+          "issue": null
+        },
         "rows": [
           {
             "fields": [
@@ -5495,7 +6883,27 @@
               "2",
               "3"
             ],
+            "spans": [
+              {
+                "from": 4,
+                "to": 5,
+                "quoted": false
+              },
+              {
+                "from": 6,
+                "to": 7,
+                "quoted": false
+              },
+              {
+                "from": 8,
+                "to": 9,
+                "quoted": false
+              }
+            ],
             "line": 2,
+            "from": 4,
+            "to": 9,
+            "end": 10,
             "issue": "3 fields, header has 2"
           },
           {
@@ -5503,7 +6911,22 @@
               "4",
               "5"
             ],
+            "spans": [
+              {
+                "from": 10,
+                "to": 11,
+                "quoted": false
+              },
+              {
+                "from": 12,
+                "to": 13,
+                "quoted": false
+              }
+            ],
             "line": 3,
+            "from": 10,
+            "to": 13,
+            "end": 13,
             "issue": null
           }
         ],
@@ -5513,7 +6936,1424 @@
             "line": 2,
             "message": "3 fields, header has 2"
           }
-        ]
+        ],
+        "line_ending": "\n",
+        "bom": false
+      }
+    },
+    {
+      "name": "line ending, BOM and the header record",
+      "text": "﻿name\tqty\rapple\t3\r",
+      "expected": {
+        "delimiter": "\t",
+        "header": [
+          "name",
+          "qty"
+        ],
+        "header_record": {
+          "fields": [
+            "name",
+            "qty"
+          ],
+          "spans": [
+            {
+              "from": 3,
+              "to": 7,
+              "quoted": false
+            },
+            {
+              "from": 8,
+              "to": 11,
+              "quoted": false
+            }
+          ],
+          "line": 1,
+          "from": 3,
+          "to": 11,
+          "end": 12,
+          "issue": null
+        },
+        "rows": [
+          {
+            "fields": [
+              "apple",
+              "3"
+            ],
+            "spans": [
+              {
+                "from": 12,
+                "to": 17,
+                "quoted": false
+              },
+              {
+                "from": 18,
+                "to": 19,
+                "quoted": false
+              }
+            ],
+            "line": 2,
+            "from": 12,
+            "to": 19,
+            "end": 20,
+            "issue": null
+          }
+        ],
+        "width": 2,
+        "issues": [],
+        "line_ending": "\r",
+        "bom": true
+      }
+    }
+  ],
+  "quote_delimited_field": [
+    {
+      "name": "plain text is not quoted",
+      "value": "plain",
+      "delimiter": ",",
+      "expected": "plain"
+    },
+    {
+      "name": "quoted when asked",
+      "value": "plain",
+      "delimiter": ",",
+      "always_quote": true,
+      "expected": "\"plain\""
+    },
+    {
+      "name": "the delimiter",
+      "value": "a,b",
+      "delimiter": ",",
+      "expected": "\"a,b\""
+    },
+    {
+      "name": "a quote is doubled",
+      "value": "say \"hi\"",
+      "delimiter": ",",
+      "expected": "\"say \"\"hi\"\"\""
+    },
+    {
+      "name": "a CR",
+      "value": "a\rb",
+      "delimiter": ",",
+      "expected": "\"a\rb\""
+    },
+    {
+      "name": "an LF",
+      "value": "a\nb",
+      "delimiter": ";",
+      "expected": "\"a\nb\""
+    },
+    {
+      "name": "another delimiter's character",
+      "value": "x,y",
+      "delimiter": ";",
+      "expected": "x,y"
+    },
+    {
+      "name": "a tab delimiter",
+      "value": "x\ty",
+      "delimiter": "\t",
+      "expected": "\"x\ty\""
+    },
+    {
+      "name": "empty",
+      "value": "",
+      "delimiter": ",",
+      "expected": ""
+    },
+    {
+      "name": "empty, quoted when asked",
+      "value": "",
+      "delimiter": ",",
+      "always_quote": true,
+      "expected": "\"\""
+    }
+  ],
+  "delimited_record_text": [
+    {
+      "name": "no fields is `\"\"`",
+      "fields": [],
+      "delimiter": ",",
+      "expected": "\"\""
+    },
+    {
+      "name": "one empty field is `\"\"`",
+      "fields": [
+        ""
+      ],
+      "delimiter": ",",
+      "expected": "\"\""
+    },
+    {
+      "name": "two empty fields",
+      "fields": [
+        "",
+        ""
+      ],
+      "delimiter": ",",
+      "expected": ","
+    },
+    {
+      "name": "quotes only the fields that need it",
+      "fields": [
+        "a",
+        "b\tc"
+      ],
+      "delimiter": "\t",
+      "expected": "a\t\"b\tc\""
+    },
+    {
+      "name": "a semicolon delimiter",
+      "fields": [
+        "a",
+        "b;c",
+        "d,e"
+      ],
+      "delimiter": ";",
+      "expected": "a;\"b;c\";d,e"
+    },
+    {
+      "name": "quotes and breaks",
+      "fields": [
+        "\"q\"",
+        "x\r\ny"
+      ],
+      "delimiter": ",",
+      "expected": "\"\"\"q\"\"\",\"x\r\ny\""
+    }
+  ],
+  "set_delimited_field": [
+    {
+      "name": "changes only that field",
+      "text": "a,b\n1,2\n3,4\n",
+      "record": 2,
+      "column": 0,
+      "value": "9",
+      "expected": {
+        "change": {
+          "from": 8,
+          "to": 9,
+          "insert": "9"
+        },
+        "text": "a,b\n1,2\n9,4\n"
+      }
+    },
+    {
+      "name": "keeps CRLF, the BOM and the quoting of other fields",
+      "text": "﻿\"a\",b\r\n\"1\",\"2\"\r\n",
+      "record": 1,
+      "column": 1,
+      "value": "z",
+      "expected": {
+        "change": {
+          "from": 14,
+          "to": 17,
+          "insert": "\"z\""
+        },
+        "text": "﻿\"a\",b\r\n\"1\",\"z\"\r\n"
+      }
+    },
+    {
+      "name": "quotes a value holding the delimiter",
+      "text": "a,b\n1,2\n",
+      "record": 1,
+      "column": 0,
+      "value": "x,y",
+      "expected": {
+        "change": {
+          "from": 4,
+          "to": 5,
+          "insert": "\"x,y\""
+        },
+        "text": "a,b\n\"x,y\",2\n"
+      }
+    },
+    {
+      "name": "doubles quotes",
+      "text": "a,b\n1,2\n",
+      "record": 1,
+      "column": 0,
+      "value": "say \"hi\"",
+      "expected": {
+        "change": {
+          "from": 4,
+          "to": 5,
+          "insert": "\"say \"\"hi\"\"\""
+        },
+        "text": "a,b\n\"say \"\"hi\"\"\",2\n"
+      }
+    },
+    {
+      "name": "quotes a line break",
+      "text": "a,b\n1,2\n",
+      "record": 1,
+      "column": 0,
+      "value": "two\nlines",
+      "expected": {
+        "change": {
+          "from": 4,
+          "to": 5,
+          "insert": "\"two\nlines\""
+        },
+        "text": "a,b\n\"two\nlines\",2\n"
+      }
+    },
+    {
+      "name": "does not quote another delimiter's character",
+      "text": "a;b\n1;2\n",
+      "record": 1,
+      "column": 0,
+      "value": "x,y",
+      "expected": {
+        "change": {
+          "from": 4,
+          "to": 5,
+          "insert": "x,y"
+        },
+        "text": "a;b\nx,y;2\n"
+      }
+    },
+    {
+      "name": "a quoted field stays quoted",
+      "text": "a,b\n\"1\",2\n",
+      "record": 1,
+      "column": 0,
+      "value": "plain",
+      "expected": {
+        "change": {
+          "from": 4,
+          "to": 7,
+          "insert": "\"plain\""
+        },
+        "text": "a,b\n\"plain\",2\n"
+      }
+    },
+    {
+      "name": "a multi-line field is replaced whole",
+      "text": "a,b\n\"x\ny\",z\n",
+      "record": 1,
+      "column": 0,
+      "value": "one",
+      "expected": {
+        "change": {
+          "from": 4,
+          "to": 9,
+          "insert": "\"one\""
+        },
+        "text": "a,b\n\"one\",z\n"
+      }
+    },
+    {
+      "name": "a padding cell of a ragged row fills the row out",
+      "text": "a,b,c\n1\n",
+      "record": 1,
+      "column": 2,
+      "value": "z",
+      "expected": {
+        "change": {
+          "from": 7,
+          "to": 7,
+          "insert": ",,z"
+        },
+        "text": "a,b,c\n1,,z\n"
+      }
+    },
+    {
+      "name": "the first padding cell",
+      "text": "a,b,c\n1\n",
+      "record": 1,
+      "column": 1,
+      "value": "y",
+      "expected": {
+        "change": {
+          "from": 7,
+          "to": 7,
+          "insert": ",y"
+        },
+        "text": "a,b,c\n1,y\n"
+      }
+    },
+    {
+      "name": "a padding cell on the last line, with no break",
+      "text": "a,b,c\n1",
+      "record": 1,
+      "column": 2,
+      "value": "z",
+      "expected": {
+        "change": {
+          "from": 7,
+          "to": 7,
+          "insert": ",,z"
+        },
+        "text": "a,b,c\n1,,z"
+      }
+    },
+    {
+      "name": "clearing the lone field writes `\"\"`",
+      "text": "a\n1\n2\n",
+      "header": true,
+      "record": 1,
+      "column": 0,
+      "value": "",
+      "expected": {
+        "change": {
+          "from": 2,
+          "to": 3,
+          "insert": "\"\""
+        },
+        "text": "a\n\"\"\n2\n"
+      }
+    },
+    {
+      "name": "clearing one of two fields leaves it empty",
+      "text": "a,b\n1,2\n",
+      "record": 1,
+      "column": 0,
+      "value": "",
+      "expected": {
+        "change": {
+          "from": 4,
+          "to": 5,
+          "insert": ""
+        },
+        "text": "a,b\n,2\n"
+      }
+    },
+    {
+      "name": "the header",
+      "text": "a,b\n1,2\n",
+      "record": 0,
+      "column": 1,
+      "value": "B",
+      "expected": {
+        "change": {
+          "from": 2,
+          "to": 3,
+          "insert": "B"
+        },
+        "text": "a,B\n1,2\n"
+      }
+    },
+    {
+      "name": "a headerless file counts from its first row",
+      "text": "1,2\n3,4\n",
+      "record": 0,
+      "column": 1,
+      "value": "x",
+      "expected": {
+        "change": {
+          "from": 2,
+          "to": 3,
+          "insert": "x"
+        },
+        "text": "1,x\n3,4\n"
+      }
+    },
+    {
+      "name": "wide text",
+      "text": "名,b\n中,文\n",
+      "delimiter": ",",
+      "header": true,
+      "record": 1,
+      "column": 1,
+      "value": "é,👍",
+      "expected": {
+        "change": {
+          "from": 10,
+          "to": 13,
+          "insert": "\"é,👍\""
+        },
+        "text": "名,b\n中,\"é,👍\"\n"
+      }
+    }
+  ],
+  "insert_delimited_row": [
+    {
+      "name": "before a row, with the file's CRLF",
+      "text": "a,b\r\n1,2\r\n",
+      "at": 0,
+      "fields": [
+        "x",
+        "y,z"
+      ],
+      "expected": {
+        "change": {
+          "from": 5,
+          "to": 5,
+          "insert": "x,\"y,z\"\r\n"
+        },
+        "text": "a,b\r\nx,\"y,z\"\r\n1,2\r\n"
+      }
+    },
+    {
+      "name": "appending keeps a trailing break",
+      "text": "a,b\n1,2\n",
+      "at": 1,
+      "fields": [
+        "3",
+        "4"
+      ],
+      "expected": {
+        "change": {
+          "from": 8,
+          "to": 8,
+          "insert": "3,4\n"
+        },
+        "text": "a,b\n1,2\n3,4\n"
+      }
+    },
+    {
+      "name": "appending keeps the lack of one",
+      "text": "a,b\n1,2",
+      "at": 1,
+      "fields": [
+        "3",
+        "4"
+      ],
+      "expected": {
+        "change": {
+          "from": 7,
+          "to": 7,
+          "insert": "\n3,4"
+        },
+        "text": "a,b\n1,2\n3,4"
+      }
+    },
+    {
+      "name": "after a header with a break",
+      "text": "a,b\n",
+      "at": 0,
+      "fields": [
+        "3",
+        "4"
+      ],
+      "expected": {
+        "change": {
+          "from": 4,
+          "to": 4,
+          "insert": "3,4\n"
+        },
+        "text": "a,b\n3,4\n"
+      }
+    },
+    {
+      "name": "after a header without one",
+      "text": "a,b",
+      "at": 0,
+      "fields": [
+        "3",
+        "4"
+      ],
+      "expected": {
+        "change": {
+          "from": 3,
+          "to": 3,
+          "insert": "\n3,4"
+        },
+        "text": "a,b\n3,4"
+      }
+    },
+    {
+      "name": "into an empty file",
+      "text": "",
+      "at": 0,
+      "fields": [
+        "x"
+      ],
+      "expected": {
+        "change": {
+          "from": 0,
+          "to": 0,
+          "insert": "x\n"
+        },
+        "text": "x\n"
+      }
+    },
+    {
+      "name": "into a file of only a BOM, after it",
+      "text": "﻿",
+      "at": 0,
+      "fields": [
+        "x"
+      ],
+      "expected": {
+        "change": {
+          "from": 3,
+          "to": 3,
+          "insert": "x\n"
+        },
+        "text": "﻿x\n"
+      }
+    },
+    {
+      "name": "before the first row of a BOM file",
+      "text": "﻿h\n1\n",
+      "header": true,
+      "at": 0,
+      "fields": [
+        "x"
+      ],
+      "expected": {
+        "change": {
+          "from": 5,
+          "to": 5,
+          "insert": "x\n"
+        },
+        "text": "﻿h\nx\n1\n"
+      }
+    },
+    {
+      "name": "a CR file",
+      "text": "a\rb\r",
+      "header": true,
+      "at": 1,
+      "fields": [
+        "c"
+      ],
+      "expected": {
+        "change": {
+          "from": 4,
+          "to": 4,
+          "insert": "c\r"
+        },
+        "text": "a\rb\rc\r"
+      }
+    },
+    {
+      "name": "no fields is written `\"\"`",
+      "text": "a\n1\n",
+      "header": true,
+      "at": 1,
+      "fields": [],
+      "expected": {
+        "change": {
+          "from": 4,
+          "to": 4,
+          "insert": "\"\"\n"
+        },
+        "text": "a\n1\n\"\"\n"
+      }
+    },
+    {
+      "name": "one empty field is written `\"\"`",
+      "text": "a\n1\n",
+      "header": true,
+      "at": 1,
+      "fields": [
+        ""
+      ],
+      "expected": {
+        "change": {
+          "from": 4,
+          "to": 4,
+          "insert": "\"\"\n"
+        },
+        "text": "a\n1\n\"\"\n"
+      }
+    },
+    {
+      "name": "a headerless file",
+      "text": "1,2\n3,4\n",
+      "at": 1,
+      "fields": [
+        "5",
+        "6"
+      ],
+      "expected": {
+        "change": {
+          "from": 4,
+          "to": 4,
+          "insert": "5,6\n"
+        },
+        "text": "1,2\n5,6\n3,4\n"
+      }
+    }
+  ],
+  "delete_delimited_row": [
+    {
+      "name": "the first row, with its break",
+      "text": "a,b\n1,2\n3,4\n",
+      "index": 0,
+      "expected": {
+        "change": {
+          "from": 4,
+          "to": 8,
+          "insert": ""
+        },
+        "text": "a,b\n3,4\n"
+      }
+    },
+    {
+      "name": "the last row, with its break",
+      "text": "a,b\n1,2\n3,4\n",
+      "index": 1,
+      "expected": {
+        "change": {
+          "from": 8,
+          "to": 12,
+          "insert": ""
+        },
+        "text": "a,b\n1,2\n"
+      }
+    },
+    {
+      "name": "the last line without a break takes the break before it",
+      "text": "a,b\n1,2\n3,4",
+      "index": 1,
+      "expected": {
+        "change": {
+          "from": 7,
+          "to": 11,
+          "insert": ""
+        },
+        "text": "a,b\n1,2"
+      }
+    },
+    {
+      "name": "the only row, without a break, after the header",
+      "text": "a,b\n1,2",
+      "index": 0,
+      "expected": {
+        "change": {
+          "from": 3,
+          "to": 7,
+          "insert": ""
+        },
+        "text": "a,b"
+      }
+    },
+    {
+      "name": "a multi-line row goes whole",
+      "text": "a,b\n\"x\ny\",z\n1,2\n",
+      "index": 0,
+      "expected": {
+        "change": {
+          "from": 4,
+          "to": 12,
+          "insert": ""
+        },
+        "text": "a,b\n1,2\n"
+      }
+    },
+    {
+      "name": "the only row of a headerless file without a break",
+      "text": "1,2",
+      "index": 0,
+      "expected": {
+        "change": {
+          "from": 0,
+          "to": 3,
+          "insert": ""
+        },
+        "text": ""
+      }
+    },
+    {
+      "name": "the first row of a headerless file",
+      "text": "1,2\n3,4",
+      "index": 0,
+      "expected": {
+        "change": {
+          "from": 0,
+          "to": 4,
+          "insert": ""
+        },
+        "text": "3,4"
+      }
+    },
+    {
+      "name": "a CR file",
+      "text": "a\r1\r2",
+      "header": true,
+      "index": 1,
+      "expected": {
+        "change": {
+          "from": 3,
+          "to": 5,
+          "insert": ""
+        },
+        "text": "a\r1"
+      }
+    },
+    {
+      "name": "a BOM and CRLF file",
+      "text": "﻿a\r\n1\r\n",
+      "header": true,
+      "index": 0,
+      "expected": {
+        "change": {
+          "from": 6,
+          "to": 9,
+          "insert": ""
+        },
+        "text": "﻿a\r\n"
+      }
+    },
+    {
+      "name": "a missing row is null",
+      "text": "a,b\n",
+      "index": 0,
+      "expected": {
+        "change": null,
+        "text": "a,b\n"
+      }
+    }
+  ],
+  "insert_delimited_column": [
+    {
+      "name": "at the start",
+      "text": "a,b\n1,2\n",
+      "at": 0,
+      "header_text": "x",
+      "expected": {
+        "changes": [
+          {
+            "from": 0,
+            "to": 0,
+            "insert": "x,"
+          },
+          {
+            "from": 4,
+            "to": 4,
+            "insert": ","
+          }
+        ],
+        "text": "x,a,b\n,1,2\n"
+      }
+    },
+    {
+      "name": "in the middle",
+      "text": "a,b\n1,2\n",
+      "at": 1,
+      "header_text": "x",
+      "expected": {
+        "changes": [
+          {
+            "from": 2,
+            "to": 2,
+            "insert": "x,"
+          },
+          {
+            "from": 6,
+            "to": 6,
+            "insert": ","
+          }
+        ],
+        "text": "a,x,b\n1,,2\n"
+      }
+    },
+    {
+      "name": "at the end",
+      "text": "a,b\n1,2\n",
+      "at": 2,
+      "header_text": "x",
+      "expected": {
+        "changes": [
+          {
+            "from": 3,
+            "to": 3,
+            "insert": ",x"
+          },
+          {
+            "from": 7,
+            "to": 7,
+            "insert": ","
+          }
+        ],
+        "text": "a,b,x\n1,2,\n"
+      }
+    },
+    {
+      "name": "the header label is quoted when it needs it; short rows are left alone",
+      "text": "a,b,c\n1\n",
+      "at": 2,
+      "header_text": "p,q",
+      "expected": {
+        "changes": [
+          {
+            "from": 4,
+            "to": 4,
+            "insert": "\"p,q\","
+          }
+        ],
+        "text": "a,b,\"p,q\",c\n1\n"
+      }
+    },
+    {
+      "name": "a row exactly as long as the position gets the cell at its end",
+      "text": "a,b,c\n1,2\n",
+      "at": 2,
+      "header_text": "x",
+      "expected": {
+        "changes": [
+          {
+            "from": 4,
+            "to": 4,
+            "insert": "x,"
+          },
+          {
+            "from": 9,
+            "to": 9,
+            "insert": ","
+          }
+        ],
+        "text": "a,b,x,c\n1,2,\n"
+      }
+    },
+    {
+      "name": "no header label is an empty cell",
+      "text": "a,b\n1,2\n",
+      "at": 1,
+      "expected": {
+        "changes": [
+          {
+            "from": 2,
+            "to": 2,
+            "insert": ","
+          },
+          {
+            "from": 6,
+            "to": 6,
+            "insert": ","
+          }
+        ],
+        "text": "a,,b\n1,,2\n"
+      }
+    },
+    {
+      "name": "a headerless file gets empty cells",
+      "text": "1,2\n3,4\n",
+      "at": 1,
+      "header_text": "x",
+      "expected": {
+        "changes": [
+          {
+            "from": 2,
+            "to": 2,
+            "insert": ","
+          },
+          {
+            "from": 6,
+            "to": 6,
+            "insert": ","
+          }
+        ],
+        "text": "1,,2\n3,,4\n"
+      }
+    },
+    {
+      "name": "a BOM and CRLF file",
+      "text": "﻿a;b\r\n1;2",
+      "at": 0,
+      "header_text": "x",
+      "expected": {
+        "changes": [
+          {
+            "from": 3,
+            "to": 3,
+            "insert": "x;"
+          },
+          {
+            "from": 8,
+            "to": 8,
+            "insert": ";"
+          }
+        ],
+        "text": "﻿x;a;b\r\n;1;2"
+      }
+    }
+  ],
+  "delete_delimited_column": [
+    {
+      "name": "the first",
+      "text": "a,b,c\n1,\"2,5\",3\n",
+      "column": 0,
+      "expected": {
+        "changes": [
+          {
+            "from": 0,
+            "to": 2,
+            "insert": ""
+          },
+          {
+            "from": 6,
+            "to": 8,
+            "insert": ""
+          }
+        ],
+        "text": "b,c\n\"2,5\",3\n"
+      }
+    },
+    {
+      "name": "the middle",
+      "text": "a,b,c\n1,\"2,5\",3\n",
+      "column": 1,
+      "expected": {
+        "changes": [
+          {
+            "from": 2,
+            "to": 4,
+            "insert": ""
+          },
+          {
+            "from": 8,
+            "to": 14,
+            "insert": ""
+          }
+        ],
+        "text": "a,c\n1,3\n"
+      }
+    },
+    {
+      "name": "the last",
+      "text": "a,b,c\n1,\"2,5\",3\n",
+      "column": 2,
+      "expected": {
+        "changes": [
+          {
+            "from": 3,
+            "to": 5,
+            "insert": ""
+          },
+          {
+            "from": 13,
+            "to": 15,
+            "insert": ""
+          }
+        ],
+        "text": "a,b\n1,\"2,5\"\n"
+      }
+    },
+    {
+      "name": "a record left with one empty field is written `\"\"`",
+      "text": "name,note\nAda,\n,x\nBob,ok\n",
+      "column": 1,
+      "expected": {
+        "changes": [
+          {
+            "from": 4,
+            "to": 9,
+            "insert": ""
+          },
+          {
+            "from": 13,
+            "to": 14,
+            "insert": ""
+          },
+          {
+            "from": 15,
+            "to": 17,
+            "insert": "\"\""
+          },
+          {
+            "from": 21,
+            "to": 24,
+            "insert": ""
+          }
+        ],
+        "text": "name\nAda\n\"\"\nBob\n"
+      }
+    },
+    {
+      "name": "the only column leaves `\"\"` records",
+      "text": "a\n1\n",
+      "header": true,
+      "column": 0,
+      "expected": {
+        "changes": [
+          {
+            "from": 0,
+            "to": 1,
+            "insert": "\"\""
+          },
+          {
+            "from": 2,
+            "to": 3,
+            "insert": "\"\""
+          }
+        ],
+        "text": "\"\"\n\"\"\n"
+      }
+    },
+    {
+      "name": "short rows are skipped",
+      "text": "a,b\n1\n",
+      "column": 1,
+      "expected": {
+        "changes": [
+          {
+            "from": 1,
+            "to": 3,
+            "insert": ""
+          }
+        ],
+        "text": "a\n1\n"
+      }
+    },
+    {
+      "name": "a BOM and CRLF file",
+      "text": "﻿a,b\r\n1,2\r\n",
+      "column": 0,
+      "expected": {
+        "changes": [
+          {
+            "from": 3,
+            "to": 5,
+            "insert": ""
+          },
+          {
+            "from": 8,
+            "to": 10,
+            "insert": ""
+          }
+        ],
+        "text": "﻿b\r\n2\r\n"
+      }
+    }
+  ],
+  "reread_delimited": [
+    {
+      "name": "keeps the header when a header cell is cleared",
+      "text": "name,year\nAda,1815\n",
+      "next": "name,\nAda,1815\n",
+      "expected": {
+        "delimiter": ",",
+        "header": [
+          "name",
+          ""
+        ],
+        "header_record": {
+          "fields": [
+            "name",
+            ""
+          ],
+          "spans": [
+            {
+              "from": 0,
+              "to": 4,
+              "quoted": false
+            },
+            {
+              "from": 5,
+              "to": 5,
+              "quoted": false
+            }
+          ],
+          "line": 1,
+          "from": 0,
+          "to": 5,
+          "end": 6,
+          "issue": null
+        },
+        "rows": [
+          {
+            "fields": [
+              "Ada",
+              "1815"
+            ],
+            "spans": [
+              {
+                "from": 6,
+                "to": 9,
+                "quoted": false
+              },
+              {
+                "from": 10,
+                "to": 14,
+                "quoted": false
+              }
+            ],
+            "line": 2,
+            "from": 6,
+            "to": 14,
+            "end": 15,
+            "issue": null
+          }
+        ],
+        "width": 2,
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
+      }
+    },
+    {
+      "name": "keeps the header when a header cell is made a number",
+      "text": "name,year\nAda,1815\n",
+      "next": "name,2024\nAda,1815\n",
+      "expected": {
+        "delimiter": ",",
+        "header": [
+          "name",
+          "2024"
+        ],
+        "header_record": {
+          "fields": [
+            "name",
+            "2024"
+          ],
+          "spans": [
+            {
+              "from": 0,
+              "to": 4,
+              "quoted": false
+            },
+            {
+              "from": 5,
+              "to": 9,
+              "quoted": false
+            }
+          ],
+          "line": 1,
+          "from": 0,
+          "to": 9,
+          "end": 10,
+          "issue": null
+        },
+        "rows": [
+          {
+            "fields": [
+              "Ada",
+              "1815"
+            ],
+            "spans": [
+              {
+                "from": 10,
+                "to": 13,
+                "quoted": false
+              },
+              {
+                "from": 14,
+                "to": 18,
+                "quoted": false
+              }
+            ],
+            "line": 2,
+            "from": 10,
+            "to": 18,
+            "end": 19,
+            "issue": null
+          }
+        ],
+        "width": 2,
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
+      }
+    },
+    {
+      "name": "keeps the delimiter",
+      "text": "a;b\n1;2\n",
+      "next": "a;b\n\"x,y,z\";2\n",
+      "expected": {
+        "delimiter": ";",
+        "header": [
+          "a",
+          "b"
+        ],
+        "header_record": {
+          "fields": [
+            "a",
+            "b"
+          ],
+          "spans": [
+            {
+              "from": 0,
+              "to": 1,
+              "quoted": false
+            },
+            {
+              "from": 2,
+              "to": 3,
+              "quoted": false
+            }
+          ],
+          "line": 1,
+          "from": 0,
+          "to": 3,
+          "end": 4,
+          "issue": null
+        },
+        "rows": [
+          {
+            "fields": [
+              "x,y,z",
+              "2"
+            ],
+            "spans": [
+              {
+                "from": 4,
+                "to": 11,
+                "quoted": true
+              },
+              {
+                "from": 12,
+                "to": 13,
+                "quoted": false
+              }
+            ],
+            "line": 2,
+            "from": 4,
+            "to": 13,
+            "end": 14,
+            "issue": null
+          }
+        ],
+        "width": 2,
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
+      }
+    },
+    {
+      "name": "a headerless file stays headerless",
+      "text": "1,2\n3,4\n",
+      "next": "a,b\n3,4\n",
+      "expected": {
+        "delimiter": ",",
+        "header": null,
+        "header_record": null,
+        "rows": [
+          {
+            "fields": [
+              "a",
+              "b"
+            ],
+            "spans": [
+              {
+                "from": 0,
+                "to": 1,
+                "quoted": false
+              },
+              {
+                "from": 2,
+                "to": 3,
+                "quoted": false
+              }
+            ],
+            "line": 1,
+            "from": 0,
+            "to": 3,
+            "end": 4,
+            "issue": null
+          },
+          {
+            "fields": [
+              "3",
+              "4"
+            ],
+            "spans": [
+              {
+                "from": 4,
+                "to": 5,
+                "quoted": false
+              },
+              {
+                "from": 6,
+                "to": 7,
+                "quoted": false
+              }
+            ],
+            "line": 2,
+            "from": 4,
+            "to": 7,
+            "end": 8,
+            "issue": null
+          }
+        ],
+        "width": 2,
+        "issues": [],
+        "line_ending": "\n",
+        "bom": false
+      }
+    }
+  ],
+  "apply_delimited_changes": [
+    {
+      "name": "changes in any order",
+      "text": "abc",
+      "changes": [
+        {
+          "from": 2,
+          "to": 3,
+          "insert": "Z"
+        },
+        {
+          "from": 0,
+          "to": 1,
+          "insert": "X"
+        }
+      ],
+      "expected": "XbZ"
+    },
+    {
+      "name": "two inserts at one offset keep their order",
+      "text": "ab",
+      "changes": [
+        {
+          "from": 1,
+          "to": 1,
+          "insert": "x"
+        },
+        {
+          "from": 1,
+          "to": 1,
+          "insert": "y"
+        }
+      ],
+      "expected": "axyb"
+    },
+    {
+      "name": "touching changes",
+      "text": "ab",
+      "changes": [
+        {
+          "from": 0,
+          "to": 1,
+          "insert": ""
+        },
+        {
+          "from": 1,
+          "to": 2,
+          "insert": "Q"
+        }
+      ],
+      "expected": "Q"
+    },
+    {
+      "name": "no changes",
+      "text": "ab",
+      "changes": [],
+      "expected": "ab"
+    },
+    {
+      "name": "wide text",
+      "text": "中,文",
+      "changes": [
+        {
+          "from": 4,
+          "to": 7,
+          "insert": "x"
+        }
+      ],
+      "expected": "中,x"
+    },
+    {
+      "name": "overlapping changes are refused",
+      "text": "abc",
+      "changes": [
+        {
+          "from": 0,
+          "to": 2,
+          "insert": ""
+        },
+        {
+          "from": 1,
+          "to": 3,
+          "insert": ""
+        }
+      ],
+      "expected": {
+        "error": "overlapping_changes"
       }
     }
   ]
