@@ -345,6 +345,7 @@ export function surveyRows(
           ahead: m.ahead,
           reviews: pr.reviewCount,
           unpushedLocal: unpushed,
+          worktreesUnknown: opts.measurable && opts.worktrees === null,
           crossRepo: pr.isCrossRepository,
         },
         opts.cfg,
