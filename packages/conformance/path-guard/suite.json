@@ -1,0 +1,2865 @@
+{
+  "family": "path-guard",
+  "reference": "ts",
+  "referenceVersion": "0.3.1",
+  "sections": {
+    "validate_relative": {
+      "description": "`lexical.validateRelative(path)` (Rust `lexical::validate_relative`): a root-relative path checked as text. `expect.path` is the path with `\\` folded to `/` and trailing slashes dropped. Pure text, the same on every host.",
+      "cases": [
+        {
+          "name": "plain file",
+          "input": {
+            "path": "Notes/a.md"
+          },
+          "expect": {
+            "path": "Notes/a.md"
+          }
+        },
+        {
+          "name": "single segment",
+          "input": {
+            "path": "a.md"
+          },
+          "expect": {
+            "path": "a.md"
+          }
+        },
+        {
+          "name": "trailing slash dropped",
+          "input": {
+            "path": "a/b/"
+          },
+          "expect": {
+            "path": "a/b"
+          }
+        },
+        {
+          "name": "several trailing slashes dropped",
+          "input": {
+            "path": "a/b///"
+          },
+          "expect": {
+            "path": "a/b"
+          }
+        },
+        {
+          "name": "backslashes fold to slashes",
+          "input": {
+            "path": "Notes\\a.md"
+          },
+          "expect": {
+            "path": "Notes/a.md"
+          }
+        },
+        {
+          "name": "dots inside a name",
+          "input": {
+            "path": "My ..dotfiles note.md"
+          },
+          "expect": {
+            "path": "My ..dotfiles note.md"
+          }
+        },
+        {
+          "name": "double dot inside a segment",
+          "input": {
+            "path": "Notes/v1..2 comparison.md"
+          },
+          "expect": {
+            "path": "Notes/v1..2 comparison.md"
+          }
+        },
+        {
+          "name": "leading dot name",
+          "input": {
+            "path": ".hidden/a.md"
+          },
+          "expect": {
+            "path": ".hidden/a.md"
+          }
+        },
+        {
+          "name": "three dots is a name",
+          "input": {
+            "path": "a/.../b"
+          },
+          "expect": {
+            "path": "a/.../b"
+          }
+        },
+        {
+          "name": "tilde not at the start",
+          "input": {
+            "path": "a/~b"
+          },
+          "expect": {
+            "path": "a/~b"
+          }
+        },
+        {
+          "name": "colon not in drive position",
+          "input": {
+            "path": "ab:c"
+          },
+          "expect": {
+            "path": "ab:c"
+          }
+        },
+        {
+          "name": "unicode name",
+          "input": {
+            "path": "Notes/café.md"
+          },
+          "expect": {
+            "path": "Notes/café.md"
+          }
+        },
+        {
+          "name": "empty",
+          "input": {
+            "path": ""
+          },
+          "error": {
+            "kind": "empty"
+          }
+        },
+        {
+          "name": "bare slash",
+          "input": {
+            "path": "/"
+          },
+          "error": {
+            "kind": "absolute"
+          }
+        },
+        {
+          "name": "NUL byte",
+          "input": {
+            "path": "a\u0000b"
+          },
+          "error": {
+            "kind": "nul"
+          }
+        },
+        {
+          "name": "NUL wins over traversal",
+          "input": {
+            "path": "../a\u0000"
+          },
+          "error": {
+            "kind": "nul"
+          }
+        },
+        {
+          "name": "home tilde",
+          "input": {
+            "path": "~/.ssh/id_rsa"
+          },
+          "error": {
+            "kind": "tilde"
+          }
+        },
+        {
+          "name": "bare tilde",
+          "input": {
+            "path": "~"
+          },
+          "error": {
+            "kind": "tilde"
+          }
+        },
+        {
+          "name": "drive with backslash",
+          "input": {
+            "path": "C:\\Windows"
+          },
+          "error": {
+            "kind": "windows_path"
+          }
+        },
+        {
+          "name": "drive with slash",
+          "input": {
+            "path": "C:/Windows"
+          },
+          "error": {
+            "kind": "windows_path"
+          }
+        },
+        {
+          "name": "lower-case drive",
+          "input": {
+            "path": "c:x"
+          },
+          "error": {
+            "kind": "windows_path"
+          }
+        },
+        {
+          "name": "UNC share",
+          "input": {
+            "path": "\\\\srv\\share"
+          },
+          "error": {
+            "kind": "windows_path"
+          }
+        },
+        {
+          "name": "absolute",
+          "input": {
+            "path": "/etc/passwd"
+          },
+          "error": {
+            "kind": "absolute"
+          }
+        },
+        {
+          "name": "absolute with backslash",
+          "input": {
+            "path": "\\etc\\passwd"
+          },
+          "error": {
+            "kind": "absolute"
+          }
+        },
+        {
+          "name": "leading parent",
+          "input": {
+            "path": "../etc/passwd"
+          },
+          "error": {
+            "kind": "parent_segment"
+          }
+        },
+        {
+          "name": "parent after a name",
+          "input": {
+            "path": "Notes/../../etc/passwd"
+          },
+          "error": {
+            "kind": "parent_segment"
+          }
+        },
+        {
+          "name": "parent spelled with backslashes",
+          "input": {
+            "path": "Notes\\..\\..\\etc"
+          },
+          "error": {
+            "kind": "parent_segment"
+          }
+        },
+        {
+          "name": "bare parent",
+          "input": {
+            "path": ".."
+          },
+          "error": {
+            "kind": "parent_segment"
+          }
+        },
+        {
+          "name": "trailing parent",
+          "input": {
+            "path": "a/.."
+          },
+          "error": {
+            "kind": "parent_segment"
+          }
+        },
+        {
+          "name": "empty segment",
+          "input": {
+            "path": "a//b"
+          },
+          "error": {
+            "kind": "degenerate_segment"
+          }
+        },
+        {
+          "name": "leading dot segment",
+          "input": {
+            "path": "./a"
+          },
+          "error": {
+            "kind": "degenerate_segment"
+          }
+        },
+        {
+          "name": "inner dot segment",
+          "input": {
+            "path": "a/./b"
+          },
+          "error": {
+            "kind": "degenerate_segment"
+          }
+        },
+        {
+          "name": "bare dot",
+          "input": {
+            "path": "."
+          },
+          "error": {
+            "kind": "degenerate_segment"
+          }
+        },
+        {
+          "name": "dot segment before a parent",
+          "input": {
+            "path": "./../a"
+          },
+          "error": {
+            "kind": "degenerate_segment"
+          }
+        }
+      ]
+    },
+    "windows_names": {
+      "description": "`lexical.validateRelative(path)` with an `onWarning` handler (Rust `lexical::windows_names`). `expect.warnings` are the segments that name a Windows device or an alternate data stream, in order, the same on every host. `error` is the kind `validate_relative` refuses the path with; such a path gives no warning.",
+      "cases": [
+        {
+          "name": "a device name",
+          "input": {
+            "path": "NUL"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "NUL"
+              }
+            ]
+          }
+        },
+        {
+          "name": "a device name in lower case",
+          "input": {
+            "path": "nul"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "nul"
+              }
+            ]
+          }
+        },
+        {
+          "name": "a device name with an extension",
+          "input": {
+            "path": "NUL.txt"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "NUL.txt"
+              }
+            ]
+          }
+        },
+        {
+          "name": "a device name with a space before the extension",
+          "input": {
+            "path": "NUL .txt"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "NUL .txt"
+              }
+            ]
+          }
+        },
+        {
+          "name": "a device name with two extensions",
+          "input": {
+            "path": "com1.tar.gz"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "com1.tar.gz"
+              }
+            ]
+          }
+        },
+        {
+          "name": "COM0 is added to the list",
+          "input": {
+            "path": "COM0"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "COM0"
+              }
+            ]
+          }
+        },
+        {
+          "name": "the last printer port",
+          "input": {
+            "path": "LPT9"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "LPT9"
+              }
+            ]
+          }
+        },
+        {
+          "name": "a superscript port number",
+          "input": {
+            "path": "COM¹"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "COM¹"
+              }
+            ]
+          }
+        },
+        {
+          "name": "the console input device",
+          "input": {
+            "path": "CONIN$"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "CONIN$"
+              }
+            ]
+          }
+        },
+        {
+          "name": "the console output device",
+          "input": {
+            "path": "CONOUT$"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "CONOUT$"
+              }
+            ]
+          }
+        },
+        {
+          "name": "a device name with a trailing dot",
+          "input": {
+            "path": "CON."
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "CON."
+              }
+            ]
+          }
+        },
+        {
+          "name": "a device name with a trailing space",
+          "input": {
+            "path": "CON "
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "CON "
+              }
+            ]
+          }
+        },
+        {
+          "name": "a device name after a directory",
+          "input": {
+            "path": "a/aux"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "aux"
+              }
+            ]
+          }
+        },
+        {
+          "name": "a device name after a backslash",
+          "input": {
+            "path": "a\\NUL"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "NUL"
+              }
+            ]
+          }
+        },
+        {
+          "name": "a stream on a name",
+          "input": {
+            "path": "ab:c"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "alternate_stream",
+                "segment": "ab:c"
+              }
+            ]
+          }
+        },
+        {
+          "name": "a stream on a file",
+          "input": {
+            "path": "file.txt:stream"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "alternate_stream",
+                "segment": "file.txt:stream"
+              }
+            ]
+          }
+        },
+        {
+          "name": "a stream after a directory",
+          "input": {
+            "path": "a/b:c.txt"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "alternate_stream",
+                "segment": "b:c.txt"
+              }
+            ]
+          }
+        },
+        {
+          "name": "a device name with a colon is a device name",
+          "input": {
+            "path": "CON:"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "CON:"
+              }
+            ]
+          }
+        },
+        {
+          "name": "a device name with a stream is a device name",
+          "input": {
+            "path": "NUL:x"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "NUL:x"
+              }
+            ]
+          }
+        },
+        {
+          "name": "a device name, then a stream",
+          "input": {
+            "path": "NUL/a:b"
+          },
+          "expect": {
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "NUL"
+              },
+              {
+                "kind": "alternate_stream",
+                "segment": "a:b"
+              }
+            ]
+          }
+        },
+        {
+          "name": "a name that starts with a device name",
+          "input": {
+            "path": "console"
+          },
+          "expect": {
+            "warnings": []
+          }
+        },
+        {
+          "name": "a device name followed by more text",
+          "input": {
+            "path": "nul-x"
+          },
+          "expect": {
+            "warnings": []
+          }
+        },
+        {
+          "name": "CLOCK$ is not a device",
+          "input": {
+            "path": "CLOCK$"
+          },
+          "expect": {
+            "warnings": []
+          }
+        },
+        {
+          "name": "COM10 is not a device",
+          "input": {
+            "path": "COM10"
+          },
+          "expect": {
+            "warnings": []
+          }
+        },
+        {
+          "name": "a dotless i does not fold to I: case folding is ASCII only",
+          "input": {
+            "path": "conın$"
+          },
+          "expect": {
+            "warnings": []
+          }
+        },
+        {
+          "name": "a drive is refused before the check",
+          "input": {
+            "path": "C:x"
+          },
+          "error": {
+            "kind": "windows_path"
+          }
+        },
+        {
+          "name": "a parent is refused before the check",
+          "input": {
+            "path": "../NUL"
+          },
+          "error": {
+            "kind": "parent_segment"
+          }
+        }
+      ]
+    },
+    "resolve": {
+      "description": "`guard.resolve(root, path)` under a resolver for which no path exists, so a case pins the lexical fold and the order of the checks without a filesystem. `expect.path` is the joined path, `/`-separated. A `/v`-style root is not absolute on Windows, so there the runners put each path that starts with `/` on drive `C:`, and take the drive off the answer.",
+      "cases": [
+        {
+          "name": "joins under the root",
+          "input": {
+            "root": "/v",
+            "path": "Notes/a.md"
+          },
+          "expect": {
+            "path": "/v/Notes/a.md"
+          }
+        },
+        {
+          "name": "trailing slash dropped",
+          "input": {
+            "root": "/v",
+            "path": "Notes/"
+          },
+          "expect": {
+            "path": "/v/Notes"
+          }
+        },
+        {
+          "name": "backslashes fold",
+          "input": {
+            "root": "/v",
+            "path": "Notes\\a.md"
+          },
+          "expect": {
+            "path": "/v/Notes/a.md"
+          }
+        },
+        {
+          "name": "lexical refusal comes first",
+          "input": {
+            "root": "/v",
+            "path": "../v/a.md"
+          },
+          "error": {
+            "kind": "parent_segment"
+          }
+        },
+        {
+          "name": "absolute refused",
+          "input": {
+            "root": "/v",
+            "path": "/v/a.md"
+          },
+          "error": {
+            "kind": "absolute"
+          }
+        },
+        {
+          "name": "an empty root contains nothing",
+          "input": {
+            "root": "",
+            "path": "a.md"
+          },
+          "error": {
+            "kind": "empty_root"
+          }
+        },
+        {
+          "name": "a parent at the filesystem root stays there",
+          "input": {
+            "root": "/../v",
+            "path": "a.md"
+          },
+          "expect": {
+            "path": "/../v/a.md"
+          }
+        },
+        {
+          "name": "a root that folds to nothing contains nothing",
+          "input": {
+            "root": "missing/..",
+            "path": "a.md"
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        },
+        {
+          "name": "a relative root is refused",
+          "input": {
+            "root": "v",
+            "path": "a.md"
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        },
+        {
+          "name": "an empty root is refused before the path is checked",
+          "input": {
+            "root": "",
+            "path": "../a.md"
+          },
+          "error": {
+            "kind": "empty_root"
+          }
+        },
+        {
+          "name": "a relative root is refused before the path is checked",
+          "input": {
+            "root": "v",
+            "path": "../a.md"
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        }
+      ]
+    },
+    "resolve_windows_names": {
+      "description": "`guard.resolve(root, path)` under an absolute root the runner picks for its host (`/v`, or `C:\\v` on Windows), with a resolver for which no path exists. `expect.path` is the joined path below the root, `/`-separated, and `expect.warnings` the calls to the guard's warning handler, in order. On Windows the guard refuses a device name or an alternate data stream and calls no handler; elsewhere it accepts the path and warns. A case whose answer differs by host is written once per platform, and the generator writes the `windows` one by loading the reference as on Windows.",
+      "cases": [
+        {
+          "name": "a device name, on unix",
+          "input": {
+            "path": "NUL"
+          },
+          "expect": {
+            "path": "NUL",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "NUL"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a device name, on windows",
+          "input": {
+            "path": "NUL"
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "a device name in lower case, on unix",
+          "input": {
+            "path": "nul"
+          },
+          "expect": {
+            "path": "nul",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "nul"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a device name in lower case, on windows",
+          "input": {
+            "path": "nul"
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "a device name with an extension, on unix",
+          "input": {
+            "path": "NUL.txt"
+          },
+          "expect": {
+            "path": "NUL.txt",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "NUL.txt"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a device name with an extension, on windows",
+          "input": {
+            "path": "NUL.txt"
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "a device name with a space before the extension, on unix",
+          "input": {
+            "path": "NUL .txt"
+          },
+          "expect": {
+            "path": "NUL .txt",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "NUL .txt"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a device name with a space before the extension, on windows",
+          "input": {
+            "path": "NUL .txt"
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "a device name with two extensions, on unix",
+          "input": {
+            "path": "com1.tar.gz"
+          },
+          "expect": {
+            "path": "com1.tar.gz",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "com1.tar.gz"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a device name with two extensions, on windows",
+          "input": {
+            "path": "com1.tar.gz"
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "COM0 is added to the list, on unix",
+          "input": {
+            "path": "COM0"
+          },
+          "expect": {
+            "path": "COM0",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "COM0"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "COM0 is added to the list, on windows",
+          "input": {
+            "path": "COM0"
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "the last printer port, on unix",
+          "input": {
+            "path": "LPT9"
+          },
+          "expect": {
+            "path": "LPT9",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "LPT9"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "the last printer port, on windows",
+          "input": {
+            "path": "LPT9"
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "a superscript port number, on unix",
+          "input": {
+            "path": "COM¹"
+          },
+          "expect": {
+            "path": "COM¹",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "COM¹"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a superscript port number, on windows",
+          "input": {
+            "path": "COM¹"
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "the console input device, on unix",
+          "input": {
+            "path": "CONIN$"
+          },
+          "expect": {
+            "path": "CONIN$",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "CONIN$"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "the console input device, on windows",
+          "input": {
+            "path": "CONIN$"
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "the console output device, on unix",
+          "input": {
+            "path": "CONOUT$"
+          },
+          "expect": {
+            "path": "CONOUT$",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "CONOUT$"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "the console output device, on windows",
+          "input": {
+            "path": "CONOUT$"
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "a device name with a trailing dot, on unix",
+          "input": {
+            "path": "CON."
+          },
+          "expect": {
+            "path": "CON.",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "CON."
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a device name with a trailing dot, on windows",
+          "input": {
+            "path": "CON."
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "a device name with a trailing space, on unix",
+          "input": {
+            "path": "CON "
+          },
+          "expect": {
+            "path": "CON ",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "CON "
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a device name with a trailing space, on windows",
+          "input": {
+            "path": "CON "
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "a device name after a directory, on unix",
+          "input": {
+            "path": "a/aux"
+          },
+          "expect": {
+            "path": "a/aux",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "aux"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a device name after a directory, on windows",
+          "input": {
+            "path": "a/aux"
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "a device name after a backslash, on unix",
+          "input": {
+            "path": "a\\NUL"
+          },
+          "expect": {
+            "path": "a/NUL",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "NUL"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a device name after a backslash, on windows",
+          "input": {
+            "path": "a\\NUL"
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "a stream on a name, on unix",
+          "input": {
+            "path": "ab:c"
+          },
+          "expect": {
+            "path": "ab:c",
+            "warnings": [
+              {
+                "kind": "alternate_stream",
+                "segment": "ab:c"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a stream on a name, on windows",
+          "input": {
+            "path": "ab:c"
+          },
+          "error": {
+            "kind": "alternate_stream"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "a stream on a file, on unix",
+          "input": {
+            "path": "file.txt:stream"
+          },
+          "expect": {
+            "path": "file.txt:stream",
+            "warnings": [
+              {
+                "kind": "alternate_stream",
+                "segment": "file.txt:stream"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a stream on a file, on windows",
+          "input": {
+            "path": "file.txt:stream"
+          },
+          "error": {
+            "kind": "alternate_stream"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "a stream after a directory, on unix",
+          "input": {
+            "path": "a/b:c.txt"
+          },
+          "expect": {
+            "path": "a/b:c.txt",
+            "warnings": [
+              {
+                "kind": "alternate_stream",
+                "segment": "b:c.txt"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a stream after a directory, on windows",
+          "input": {
+            "path": "a/b:c.txt"
+          },
+          "error": {
+            "kind": "alternate_stream"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "a device name with a colon is a device name, on unix",
+          "input": {
+            "path": "CON:"
+          },
+          "expect": {
+            "path": "CON:",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "CON:"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a device name with a colon is a device name, on windows",
+          "input": {
+            "path": "CON:"
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "a device name with a stream is a device name, on unix",
+          "input": {
+            "path": "NUL:x"
+          },
+          "expect": {
+            "path": "NUL:x",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "NUL:x"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a device name with a stream is a device name, on windows",
+          "input": {
+            "path": "NUL:x"
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "a device name, then a stream: the first match is refused, on unix",
+          "input": {
+            "path": "NUL/a:b"
+          },
+          "expect": {
+            "path": "NUL/a:b",
+            "warnings": [
+              {
+                "kind": "reserved_name",
+                "segment": "NUL"
+              },
+              {
+                "kind": "alternate_stream",
+                "segment": "a:b"
+              }
+            ]
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a device name, then a stream: the first match is refused, on windows",
+          "input": {
+            "path": "NUL/a:b"
+          },
+          "error": {
+            "kind": "reserved_name"
+          },
+          "platforms": [
+            "windows"
+          ]
+        },
+        {
+          "name": "a name that starts with a device name",
+          "input": {
+            "path": "console"
+          },
+          "expect": {
+            "path": "console",
+            "warnings": []
+          }
+        },
+        {
+          "name": "a device name followed by more text",
+          "input": {
+            "path": "nul-x"
+          },
+          "expect": {
+            "path": "nul-x",
+            "warnings": []
+          }
+        },
+        {
+          "name": "CLOCK$ is not a device",
+          "input": {
+            "path": "CLOCK$"
+          },
+          "expect": {
+            "path": "CLOCK$",
+            "warnings": []
+          }
+        },
+        {
+          "name": "COM10 is not a device",
+          "input": {
+            "path": "COM10"
+          },
+          "expect": {
+            "path": "COM10",
+            "warnings": []
+          }
+        },
+        {
+          "name": "a drive is refused before the check",
+          "input": {
+            "path": "C:x"
+          },
+          "error": {
+            "kind": "windows_path"
+          }
+        },
+        {
+          "name": "a parent is refused before the check",
+          "input": {
+            "path": "../NUL"
+          },
+          "error": {
+            "kind": "parent_segment"
+          }
+        }
+      ]
+    },
+    "contains": {
+      "description": "`guard.contains(outer, inner)` under a resolver for which no path exists. `expect.contains` is the answer, and `error` a refused argument. On Windows the paths go on drive `C:`, as in `resolve`.",
+      "cases": [
+        {
+          "name": "a root contains itself",
+          "input": {
+            "outer": "/v",
+            "inner": "/v"
+          },
+          "expect": {
+            "contains": true
+          }
+        },
+        {
+          "name": "a child",
+          "input": {
+            "outer": "/v",
+            "inner": "/v/a/b"
+          },
+          "expect": {
+            "contains": true
+          }
+        },
+        {
+          "name": "a name prefix is not a parent",
+          "input": {
+            "outer": "/v",
+            "inner": "/vee/a"
+          },
+          "expect": {
+            "contains": false
+          }
+        },
+        {
+          "name": "a sibling",
+          "input": {
+            "outer": "/v",
+            "inner": "/w/a"
+          },
+          "expect": {
+            "contains": false
+          }
+        },
+        {
+          "name": "the parent of the root",
+          "input": {
+            "outer": "/v/a",
+            "inner": "/v"
+          },
+          "expect": {
+            "contains": false
+          }
+        },
+        {
+          "name": "dots fold back inside",
+          "input": {
+            "outer": "/v",
+            "inner": "/x/../v/out"
+          },
+          "expect": {
+            "contains": true
+          }
+        },
+        {
+          "name": "dots fold outside",
+          "input": {
+            "outer": "/v",
+            "inner": "/v/../w/out"
+          },
+          "expect": {
+            "contains": false
+          }
+        },
+        {
+          "name": "dot segments dropped",
+          "input": {
+            "outer": "/v",
+            "inner": "/v/./a/./b"
+          },
+          "expect": {
+            "contains": true
+          }
+        },
+        {
+          "name": "dots in the root fold too",
+          "input": {
+            "outer": "/x/../v",
+            "inner": "/v/a"
+          },
+          "expect": {
+            "contains": true
+          }
+        },
+        {
+          "name": "a parent at the filesystem root stays there",
+          "input": {
+            "outer": "/v",
+            "inner": "/../v/a"
+          },
+          "expect": {
+            "contains": true
+          }
+        },
+        {
+          "name": "an empty outer holds no absolute path",
+          "input": {
+            "outer": "",
+            "inner": "/v/a"
+          },
+          "error": {
+            "kind": "empty_root"
+          }
+        },
+        {
+          "name": "an empty outer holds no relative path",
+          "input": {
+            "outer": "",
+            "inner": "a"
+          },
+          "error": {
+            "kind": "empty_root"
+          }
+        },
+        {
+          "name": "an outer that folds to nothing holds nothing",
+          "input": {
+            "outer": "missing/..",
+            "inner": "/v"
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        },
+        {
+          "name": "a relative outer is refused",
+          "input": {
+            "outer": "v",
+            "inner": "/v/a"
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        },
+        {
+          "name": "a relative inner is refused",
+          "input": {
+            "outer": "/v",
+            "inner": "v/a"
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        },
+        {
+          "name": "an empty inner is refused",
+          "input": {
+            "outer": "/v",
+            "inner": ""
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        }
+      ]
+    },
+    "absolute": {
+      "description": "`lexical.absolute(path, cwd)`: the path made absolute against `cwd` and folded as text. POSIX paths on every host.",
+      "cases": [
+        {
+          "name": "already folded",
+          "input": {
+            "path": "/a/b",
+            "cwd": "/w"
+          },
+          "expect": {
+            "path": "/a/b"
+          }
+        },
+        {
+          "name": "trailing slash dropped",
+          "input": {
+            "path": "/a/b/",
+            "cwd": "/w"
+          },
+          "expect": {
+            "path": "/a/b"
+          }
+        },
+        {
+          "name": "empty segments collapse",
+          "input": {
+            "path": "//a///b",
+            "cwd": "/w"
+          },
+          "expect": {
+            "path": "/a/b"
+          }
+        },
+        {
+          "name": "dot segments dropped",
+          "input": {
+            "path": "/a/./b/.",
+            "cwd": "/w"
+          },
+          "expect": {
+            "path": "/a/b"
+          }
+        },
+        {
+          "name": "a parent removes the component before it",
+          "input": {
+            "path": "/a/b/../c",
+            "cwd": "/w"
+          },
+          "expect": {
+            "path": "/a/c"
+          }
+        },
+        {
+          "name": "a run of parents",
+          "input": {
+            "path": "/a/b/c/../../d",
+            "cwd": "/w"
+          },
+          "expect": {
+            "path": "/a/d"
+          }
+        },
+        {
+          "name": "a parent that folds to the root",
+          "input": {
+            "path": "/a/..",
+            "cwd": "/w"
+          },
+          "expect": {
+            "path": "/"
+          }
+        },
+        {
+          "name": "the root alone",
+          "input": {
+            "path": "/",
+            "cwd": "/w"
+          },
+          "expect": {
+            "path": "/"
+          }
+        },
+        {
+          "name": "a parent at the root stays at the root",
+          "input": {
+            "path": "/../a",
+            "cwd": "/w"
+          },
+          "expect": {
+            "path": "/a"
+          }
+        },
+        {
+          "name": "several parents past the root",
+          "input": {
+            "path": "/a/../../../b",
+            "cwd": "/w"
+          },
+          "expect": {
+            "path": "/b"
+          }
+        },
+        {
+          "name": "names made of dots are names",
+          "input": {
+            "path": "/a/.../..b/c",
+            "cwd": "/w"
+          },
+          "expect": {
+            "path": "/a/.../..b/c"
+          }
+        },
+        {
+          "name": "a relative path joins onto cwd",
+          "input": {
+            "path": "a/b",
+            "cwd": "/w"
+          },
+          "expect": {
+            "path": "/w/a/b"
+          }
+        },
+        {
+          "name": "a relative path folds after the join",
+          "input": {
+            "path": "a/../b",
+            "cwd": "/w"
+          },
+          "expect": {
+            "path": "/w/b"
+          }
+        },
+        {
+          "name": "a leading parent leaves cwd",
+          "input": {
+            "path": "../a",
+            "cwd": "/w/x"
+          },
+          "expect": {
+            "path": "/w/a"
+          }
+        },
+        {
+          "name": "parents past the root stop there",
+          "input": {
+            "path": "../../a",
+            "cwd": "/w"
+          },
+          "expect": {
+            "path": "/a"
+          }
+        },
+        {
+          "name": "cwd is folded too",
+          "input": {
+            "path": "a",
+            "cwd": "/w/./x/../y/"
+          },
+          "expect": {
+            "path": "/w/y/a"
+          }
+        },
+        {
+          "name": "a backslash is part of a name",
+          "input": {
+            "path": "a\\b",
+            "cwd": "/w"
+          },
+          "expect": {
+            "path": "/w/a\\b"
+          }
+        },
+        {
+          "name": "a relative cwd is refused",
+          "input": {
+            "path": "a",
+            "cwd": "w"
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        },
+        {
+          "name": "a relative cwd is refused for an absolute path too",
+          "input": {
+            "path": "/a",
+            "cwd": "w"
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        },
+        {
+          "name": "an empty cwd is refused",
+          "input": {
+            "path": "a",
+            "cwd": ""
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        },
+        {
+          "name": "an empty path is the folded cwd",
+          "input": {
+            "path": "",
+            "cwd": "/w/./x"
+          },
+          "expect": {
+            "path": "/w/x"
+          }
+        }
+      ]
+    },
+    "is_under": {
+      "description": "`lexical.isUnder(root, path)` (Rust `lexical::is_under`): whether the folded path is the root or below it. POSIX paths on every host.",
+      "cases": [
+        {
+          "name": "a root is under itself",
+          "input": {
+            "root": "/vault",
+            "path": "/vault"
+          },
+          "expect": {
+            "under": true
+          }
+        },
+        {
+          "name": "the filesystem root is under itself",
+          "input": {
+            "root": "/",
+            "path": "/"
+          },
+          "expect": {
+            "under": true
+          }
+        },
+        {
+          "name": "a child",
+          "input": {
+            "root": "/vault",
+            "path": "/vault/a.md"
+          },
+          "expect": {
+            "under": true
+          }
+        },
+        {
+          "name": "a deeper descendant",
+          "input": {
+            "root": "/vault",
+            "path": "/vault/a/b/c.md"
+          },
+          "expect": {
+            "under": true
+          }
+        },
+        {
+          "name": "a child of the filesystem root",
+          "input": {
+            "root": "/",
+            "path": "/etc"
+          },
+          "expect": {
+            "under": true
+          }
+        },
+        {
+          "name": "a sibling with a name prefix",
+          "input": {
+            "root": "/vault",
+            "path": "/vault2"
+          },
+          "expect": {
+            "under": false
+          }
+        },
+        {
+          "name": "a file in a sibling with a name prefix",
+          "input": {
+            "root": "/vault",
+            "path": "/vault2/a.md"
+          },
+          "expect": {
+            "under": false
+          }
+        },
+        {
+          "name": "a prefix of the root's name",
+          "input": {
+            "root": "/vault",
+            "path": "/vaul"
+          },
+          "expect": {
+            "under": false
+          }
+        },
+        {
+          "name": "the parent of the root",
+          "input": {
+            "root": "/vault/a",
+            "path": "/vault"
+          },
+          "expect": {
+            "under": false
+          }
+        },
+        {
+          "name": "dots fold outside",
+          "input": {
+            "root": "/vault",
+            "path": "/vault/../etc"
+          },
+          "expect": {
+            "under": false
+          }
+        },
+        {
+          "name": "dots fold back inside",
+          "input": {
+            "root": "/vault",
+            "path": "/vault/a/../b.md"
+          },
+          "expect": {
+            "under": true
+          }
+        },
+        {
+          "name": "dots in the root fold too",
+          "input": {
+            "root": "/vault/a/..",
+            "path": "/vault/b"
+          },
+          "expect": {
+            "under": true
+          }
+        },
+        {
+          "name": "a parent at the filesystem root stays there",
+          "input": {
+            "root": "/vault",
+            "path": "/../vault/a"
+          },
+          "expect": {
+            "under": true
+          }
+        },
+        {
+          "name": "a trailing slash on the root",
+          "input": {
+            "root": "/vault/",
+            "path": "/vault/a.md"
+          },
+          "expect": {
+            "under": true
+          }
+        },
+        {
+          "name": "a trailing slash on the path",
+          "input": {
+            "root": "/vault",
+            "path": "/vault/a/"
+          },
+          "expect": {
+            "under": true
+          }
+        },
+        {
+          "name": "empty and dot segments dropped",
+          "input": {
+            "root": "/vault",
+            "path": "/vault//./a"
+          },
+          "expect": {
+            "under": true
+          }
+        },
+        {
+          "name": "a relative path is refused",
+          "input": {
+            "root": "/vault",
+            "path": "a.md"
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        },
+        {
+          "name": "a relative root is refused",
+          "input": {
+            "root": "vault",
+            "path": "/vault/a.md"
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        },
+        {
+          "name": "an empty root is refused",
+          "input": {
+            "root": "",
+            "path": "/vault"
+          },
+          "error": {
+            "kind": "empty_root"
+          }
+        },
+        {
+          "name": "an empty root is refused before the path is checked",
+          "input": {
+            "root": "",
+            "path": "a.md"
+          },
+          "error": {
+            "kind": "empty_root"
+          }
+        },
+        {
+          "name": "an empty path is refused",
+          "input": {
+            "root": "/vault",
+            "path": ""
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        }
+      ]
+    },
+    "to_relative": {
+      "description": "`lexical.toRelative(root, path)` (Rust `lexical::to_relative`): the path below the root, `/`-separated, and `\"\"` for the root itself. POSIX paths on every host.",
+      "cases": [
+        {
+          "name": "a nested file",
+          "input": {
+            "root": "/v",
+            "path": "/v/Notes/a.md"
+          },
+          "expect": {
+            "path": "Notes/a.md"
+          }
+        },
+        {
+          "name": "a file in the root",
+          "input": {
+            "root": "/v",
+            "path": "/v/a.md"
+          },
+          "expect": {
+            "path": "a.md"
+          }
+        },
+        {
+          "name": "the root itself is the empty path",
+          "input": {
+            "root": "/v",
+            "path": "/v"
+          },
+          "expect": {
+            "path": ""
+          }
+        },
+        {
+          "name": "a trailing slash on the path",
+          "input": {
+            "root": "/v",
+            "path": "/v/Notes/"
+          },
+          "expect": {
+            "path": "Notes"
+          }
+        },
+        {
+          "name": "a trailing slash on the root",
+          "input": {
+            "root": "/v/",
+            "path": "/v/a.md"
+          },
+          "expect": {
+            "path": "a.md"
+          }
+        },
+        {
+          "name": "a trailing slash on the root, path is the root",
+          "input": {
+            "root": "/v/",
+            "path": "/v"
+          },
+          "expect": {
+            "path": ""
+          }
+        },
+        {
+          "name": "a relative root and path",
+          "input": {
+            "root": ".",
+            "path": "./a/b"
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        },
+        {
+          "name": "empty segments and a trailing slash dropped",
+          "input": {
+            "root": "/v",
+            "path": "/v//Notes///a.md/"
+          },
+          "expect": {
+            "path": "Notes/a.md"
+          }
+        },
+        {
+          "name": "dot and empty segments dropped",
+          "input": {
+            "root": "/v",
+            "path": "/v/./Notes//./a.md"
+          },
+          "expect": {
+            "path": "Notes/a.md"
+          }
+        },
+        {
+          "name": "the filesystem root as the root",
+          "input": {
+            "root": "/",
+            "path": "/a/b"
+          },
+          "expect": {
+            "path": "a/b"
+          }
+        },
+        {
+          "name": "dots inside a name",
+          "input": {
+            "root": "/v",
+            "path": "/v/..a/b..md"
+          },
+          "expect": {
+            "path": "..a/b..md"
+          }
+        },
+        {
+          "name": "outside the root",
+          "input": {
+            "root": "/v",
+            "path": "/other/a.md"
+          },
+          "error": {
+            "kind": "not_under_root"
+          }
+        },
+        {
+          "name": "a name prefix is not under the root",
+          "input": {
+            "root": "/vault",
+            "path": "/vault2/a.md"
+          },
+          "error": {
+            "kind": "not_under_root"
+          }
+        },
+        {
+          "name": "the parent of the root",
+          "input": {
+            "root": "/v/a",
+            "path": "/v"
+          },
+          "error": {
+            "kind": "not_under_root"
+          }
+        },
+        {
+          "name": "the filesystem root",
+          "input": {
+            "root": "/v",
+            "path": "/"
+          },
+          "error": {
+            "kind": "not_under_root"
+          }
+        },
+        {
+          "name": "a relative path is not under an absolute root",
+          "input": {
+            "root": "/v",
+            "path": "v/a.md"
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        },
+        {
+          "name": "a parent leaving the root",
+          "input": {
+            "root": "/v",
+            "path": "/v/../w"
+          },
+          "error": {
+            "kind": "parent_segment"
+          }
+        },
+        {
+          "name": "a parent inside the path",
+          "input": {
+            "root": "/v",
+            "path": "/v/a/../b"
+          },
+          "error": {
+            "kind": "parent_segment"
+          }
+        },
+        {
+          "name": "a trailing parent",
+          "input": {
+            "root": "/v",
+            "path": "/v/a/.."
+          },
+          "error": {
+            "kind": "parent_segment"
+          }
+        },
+        {
+          "name": "an empty root with an absolute path",
+          "input": {
+            "root": "",
+            "path": "/a"
+          },
+          "error": {
+            "kind": "empty_root"
+          }
+        }
+      ]
+    },
+    "resolve_on_disk": {
+      "description": "The real-disk guard's `resolve(root, path)` against a tree built in a scratch directory from `dirs`, `files` and `links` (link path to target text; a target that starts with `/` is rooted at the scratch directory). `root` is relative to the scratch directory, and so is `expect.path`, `/`-separated. A case with a `..` anywhere pins the POSIX rule, where `link/..` is the parent of the link's target. Windows folds `..` as text before it follows a link, so such a case runs on `unix` only, and on Windows the runners check it against where the filesystem puts the path instead. That covers \"a chain of links with long targets spends the call budget\" too: its targets hold `..`, so on Windows the chain is cheap.",
+      "cases": [
+        {
+          "name": "a dangling link to a missing file outside",
+          "input": {
+            "dirs": [
+              "root",
+              "outside"
+            ],
+            "links": {
+              "root/x.json": "/outside/planted.json"
+            },
+            "root": "root",
+            "path": "x.json"
+          },
+          "error": {
+            "kind": "escapes"
+          }
+        },
+        {
+          "name": "a dangling relative link to a missing file outside",
+          "input": {
+            "dirs": [
+              "root",
+              "outside"
+            ],
+            "links": {
+              "root/x.json": "../outside/planted.json"
+            },
+            "root": "root",
+            "path": "x.json"
+          },
+          "error": {
+            "kind": "escapes"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a dangling link to a missing file inside",
+          "input": {
+            "dirs": [
+              "root"
+            ],
+            "links": {
+              "root/x.json": "/root/new.json"
+            },
+            "root": "root",
+            "path": "x.json"
+          },
+          "expect": {
+            "path": "root/x.json"
+          }
+        },
+        {
+          "name": "a relative target resolves against the link's directory",
+          "input": {
+            "dirs": [
+              "root/sub"
+            ],
+            "links": {
+              "root/sub/x.json": "../new.json"
+            },
+            "root": "root",
+            "path": "sub/x.json"
+          },
+          "expect": {
+            "path": "root/sub/x.json"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a relative target that climbs out of the link's directory",
+          "input": {
+            "dirs": [
+              "root/sub"
+            ],
+            "links": {
+              "root/sub/x.json": "../../planted.json"
+            },
+            "root": "root",
+            "path": "sub/x.json"
+          },
+          "error": {
+            "kind": "escapes"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a chain of dangling links that ends outside",
+          "input": {
+            "dirs": [
+              "root",
+              "outside"
+            ],
+            "links": {
+              "root/a.json": "b.json",
+              "root/b.json": "/outside/planted.json"
+            },
+            "root": "root",
+            "path": "a.json"
+          },
+          "error": {
+            "kind": "escapes"
+          }
+        },
+        {
+          "name": "a chain of dangling links that ends inside",
+          "input": {
+            "dirs": [
+              "root"
+            ],
+            "links": {
+              "root/a.json": "b.json",
+              "root/b.json": "c.json"
+            },
+            "root": "root",
+            "path": "a.json"
+          },
+          "expect": {
+            "path": "root/a.json"
+          }
+        },
+        {
+          "name": "a dangling link as a directory",
+          "input": {
+            "dirs": [
+              "root",
+              "outside"
+            ],
+            "links": {
+              "root/d": "/outside/missing"
+            },
+            "root": "root",
+            "path": "d/x.json"
+          },
+          "error": {
+            "kind": "escapes"
+          }
+        },
+        {
+          "name": "a dangling link to a missing directory inside",
+          "input": {
+            "dirs": [
+              "root"
+            ],
+            "links": {
+              "root/d": "later"
+            },
+            "root": "root",
+            "path": "d/x.json"
+          },
+          "expect": {
+            "path": "root/d/x.json"
+          }
+        },
+        {
+          "name": "a dangling link whose target sits under a link out",
+          "input": {
+            "dirs": [
+              "root",
+              "outside"
+            ],
+            "links": {
+              "root/x.json": "out/planted.json",
+              "root/out": "/outside"
+            },
+            "root": "root",
+            "path": "x.json"
+          },
+          "error": {
+            "kind": "escapes"
+          }
+        },
+        {
+          "name": "a dangling link reached through a link that stays inside",
+          "input": {
+            "dirs": [
+              "root/real",
+              "outside"
+            ],
+            "links": {
+              "root/alias": "real",
+              "root/real/x.json": "/outside/planted.json"
+            },
+            "root": "root",
+            "path": "alias/x.json"
+          },
+          "error": {
+            "kind": "escapes"
+          }
+        },
+        {
+          "name": "a link loop",
+          "input": {
+            "dirs": [
+              "root"
+            ],
+            "links": {
+              "root/a": "b",
+              "root/b": "a"
+            },
+            "root": "root",
+            "path": "a"
+          },
+          "error": {
+            "kind": "unresolvable"
+          }
+        },
+        {
+          "name": "a root whose walk gives up is unresolvable",
+          "input": {
+            "dirs": [
+              "root"
+            ],
+            "links": {
+              "root/loop": "loop"
+            },
+            "root": "root/loop",
+            "path": "a"
+          },
+          "error": {
+            "kind": "unresolvable"
+          }
+        },
+        {
+          "name": "a link to itself",
+          "input": {
+            "dirs": [
+              "root"
+            ],
+            "links": {
+              "root/a": "a"
+            },
+            "root": "root",
+            "path": "a/x.json"
+          },
+          "error": {
+            "kind": "unresolvable"
+          }
+        },
+        {
+          "name": "a link out to a directory that exists",
+          "input": {
+            "dirs": [
+              "root",
+              "outside"
+            ],
+            "links": {
+              "root/escape": "/outside"
+            },
+            "root": "root",
+            "path": "escape/new.md"
+          },
+          "error": {
+            "kind": "escapes"
+          }
+        },
+        {
+          "name": "a link to a file that exists inside",
+          "input": {
+            "dirs": [
+              "root"
+            ],
+            "files": [
+              "root/a.md"
+            ],
+            "links": {
+              "root/alias.md": "a.md"
+            },
+            "root": "root",
+            "path": "alias.md"
+          },
+          "expect": {
+            "path": "root/alias.md"
+          }
+        },
+        {
+          "name": "a root that does not exist yet under a symlinked parent",
+          "input": {
+            "dirs": [
+              "real"
+            ],
+            "links": {
+              "sym": "/real"
+            },
+            "root": "sym/vault/Workflows",
+            "path": "a.md"
+          },
+          "expect": {
+            "path": "sym/vault/Workflows/a.md"
+          }
+        },
+        {
+          "name": "a dangling link whose target climbs back out of a link behind a missing name",
+          "input": {
+            "dirs": [
+              "root/a",
+              "outside/deep/deeper"
+            ],
+            "links": {
+              "root/a/link": "/outside/deep/deeper",
+              "root/x.json": "a/link/missing/../../planted.json"
+            },
+            "root": "root",
+            "path": "x.json"
+          },
+          "error": {
+            "kind": "escapes"
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a chain of links with long targets spends the call budget",
+          "input": {
+            "dirs": [
+              "root"
+            ],
+            "links": {
+              "root/l0": "zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../l1",
+              "root/l1": "zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../l2",
+              "root/l2": "zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../l3",
+              "root/l3": "zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../l4",
+              "root/l4": "zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../l5",
+              "root/l5": "zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../l6",
+              "root/l6": "zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../l7",
+              "root/l7": "zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../zz/../new.json"
+            },
+            "root": "root",
+            "path": "l0"
+          },
+          "error": {
+            "kind": "unresolvable"
+          },
+          "platforms": [
+            "unix"
+          ]
+        }
+      ]
+    },
+    "contains_on_disk": {
+      "description": "The real-disk guard's `contains(outer, inner)` against a tree built in a scratch directory, as in `resolve_on_disk`. `outer` and `inner` are relative to the scratch directory and joined to it as text, so a `..` is not folded first. `expect.contains` is the answer. The runners then create `inner` and check that the filesystem puts it inside `outer` exactly when the answer is true, so a case cannot pin a wrong answer. A case with a `..` runs on `unix` only, and on Windows the runners make only the filesystem check.",
+      "cases": [
+        {
+          "name": "one `..` after a missing name behind a link out",
+          "input": {
+            "dirs": [
+              "root/a",
+              "outside/deep/deeper"
+            ],
+            "links": {
+              "root/a/link": "/outside/deep/deeper"
+            },
+            "outer": "root",
+            "inner": "root/a/link/missing/.."
+          },
+          "expect": {
+            "contains": false
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "two `..` after a missing name behind a link out",
+          "input": {
+            "dirs": [
+              "root/a",
+              "outside/deep/deeper"
+            ],
+            "links": {
+              "root/a/link": "/outside/deep/deeper"
+            },
+            "outer": "root",
+            "inner": "root/a/link/missing/../.."
+          },
+          "expect": {
+            "contains": false
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "three `..` climbing past the link",
+          "input": {
+            "dirs": [
+              "root/a",
+              "outside/deep/deeper"
+            ],
+            "links": {
+              "root/a/link": "/outside/deep/deeper"
+            },
+            "outer": "root",
+            "inner": "root/a/link/missing/../../.."
+          },
+          "expect": {
+            "contains": false
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "two `..` behind a link in from outside land inside",
+          "input": {
+            "dirs": [
+              "root/deep/deeper",
+              "elsewhere"
+            ],
+            "links": {
+              "elsewhere/link": "/root/deep/deeper"
+            },
+            "outer": "root",
+            "inner": "elsewhere/link/missing/../.."
+          },
+          "expect": {
+            "contains": true
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a `..` behind a link that lands outside the root",
+          "input": {
+            "dirs": [
+              "root/a/b",
+              "root/x"
+            ],
+            "links": {
+              "root/a/b/link": "/root/x"
+            },
+            "outer": "root",
+            "inner": "root/a/b/link/missing/../../.."
+          },
+          "expect": {
+            "contains": false
+          },
+          "platforms": [
+            "unix"
+          ]
+        },
+        {
+          "name": "a link reached after a missing name folds away",
+          "input": {
+            "dirs": [
+              "root",
+              "outside/deep"
+            ],
+            "links": {
+              "root/link": "/outside/deep"
+            },
+            "outer": "root",
+            "inner": "root/missing/../link/../y"
+          },
+          "expect": {
+            "contains": false
+          },
+          "platforms": [
+            "unix"
+          ]
+        }
+      ]
+    },
+    "real_path": {
+      "description": "The real-disk guard's `realPath(path)` (Rust `real_path`) against a tree built in a scratch directory, as in `resolve_on_disk`. A `path` or `expect.path` that starts with `/` is rooted at the real path of the scratch directory; any other `path` is passed as written. Windows folds `..` as text first, which gives the same answers for these cases, so they run on every host.",
+      "cases": [
+        {
+          "name": "a path that exists",
+          "input": {
+            "dirs": [
+              "root"
+            ],
+            "files": [
+              "root/a.md"
+            ],
+            "path": "/root/a.md"
+          },
+          "expect": {
+            "path": "/root/a.md"
+          }
+        },
+        {
+          "name": "a link to a file that exists",
+          "input": {
+            "dirs": [
+              "root"
+            ],
+            "files": [
+              "root/a.md"
+            ],
+            "links": {
+              "root/alias.md": "a.md"
+            },
+            "path": "/root/alias.md"
+          },
+          "expect": {
+            "path": "/root/a.md"
+          }
+        },
+        {
+          "name": "a link to a directory, then a missing name",
+          "input": {
+            "dirs": [
+              "real"
+            ],
+            "links": {
+              "alias": "/real"
+            },
+            "path": "/alias/new.md"
+          },
+          "expect": {
+            "path": "/real/new.md"
+          }
+        },
+        {
+          "name": "a dangling link is followed",
+          "input": {
+            "dirs": [
+              "root"
+            ],
+            "links": {
+              "root/x.json": "new.json"
+            },
+            "path": "/root/x.json"
+          },
+          "expect": {
+            "path": "/root/new.json"
+          }
+        },
+        {
+          "name": "a missing path is not an error",
+          "input": {
+            "dirs": [
+              "root"
+            ],
+            "path": "/root/missing/a.md"
+          },
+          "expect": {
+            "path": "/root/missing/a.md"
+          }
+        },
+        {
+          "name": "a parent behind a missing name folds against the real path",
+          "input": {
+            "dirs": [
+              "root"
+            ],
+            "path": "/root/missing/../a.md"
+          },
+          "expect": {
+            "path": "/root/a.md"
+          }
+        },
+        {
+          "name": "a walk that gives up on a link loop keeps the path",
+          "input": {
+            "dirs": [
+              "root"
+            ],
+            "links": {
+              "root/loop": "loop"
+            },
+            "path": "/root/loop/x"
+          },
+          "expect": {
+            "path": "/root/loop/x"
+          }
+        },
+        {
+          "name": "a walk that gives up folds a parent as text",
+          "input": {
+            "dirs": [
+              "root"
+            ],
+            "links": {
+              "root/loop": "loop"
+            },
+            "path": "/root/loop/../x"
+          },
+          "expect": {
+            "path": "/root/x"
+          }
+        },
+        {
+          "name": "a relative path is refused",
+          "input": {
+            "path": "root/a.md"
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        },
+        {
+          "name": "an empty path is refused",
+          "input": {
+            "path": ""
+          },
+          "error": {
+            "kind": "not_absolute"
+          }
+        }
+      ]
+    }
+  }
+}

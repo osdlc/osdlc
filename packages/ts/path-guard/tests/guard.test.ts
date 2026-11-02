@@ -558,7 +558,7 @@ describe('lexical.absolute', () => {
   })
 })
 
-// Outcomes are in the parity fixture. This checks the error message, which it does not hold.
+// Outcomes are in the conformance suite. This checks the error message, which it does not hold.
 describe('lexical.toRelative', () => {
   test('throws a PathError that names the paths', () => {
     expect(thrown(() => lexical.toRelative('/v', '/other/a.md'))).toMatchObject({
@@ -608,7 +608,7 @@ describe('guard.tryResolve', () => {
   })
 })
 
-// The Windows refusals are in tests/windows-paths.test.ts and the parity fixture.
+// The Windows refusals are in tests/windows-paths.test.ts and the conformance suite.
 describe.skipIf(WINDOWS)('Windows names, on other platforms', () => {
   const fs = table({ '/v': '/v' })
 

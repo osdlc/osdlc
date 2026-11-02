@@ -13,6 +13,22 @@
     "implementations": [
       { "language": "rust", "dir": "packages/rust/frontmatter-lossless", "name": "frontmatter-lossless" },
       { "language": "ts", "dir": "packages/ts/frontmatter-lossless", "name": "@osdlc/frontmatter-lossless" }
+      ]
+    },
+  "intersect": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/intersect conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/intersect", "name": "@osdlc/intersect" },
+      { "language": "rust", "dir": "packages/rust/glob-intersect", "name": "glob-intersect" }
+    ]
+  },
+  "path-guard": {
+    "reference": "ts",
+    "generator": "pnpm --filter @osdlc/path-guard conformance:write",
+    "implementations": [
+      { "language": "ts", "dir": "packages/ts/path-guard", "name": "@osdlc/path-guard" },
+      { "language": "rust", "dir": "packages/rust/path-guard", "name": "path-guard" }
     ]
   },
   "tiered-dirs": {
@@ -21,14 +37,6 @@
     "implementations": [
       { "language": "ts", "dir": "packages/ts/tiered-dirs", "name": "@osdlc/tiered-dirs" },
       { "language": "rust", "dir": "packages/rust/tiered-dirs", "name": "tiered-dirs" }
-    ]
-  },
-  "intersect": {
-    "reference": "ts",
-    "generator": "pnpm --filter @osdlc/intersect conformance:write",
-    "implementations": [
-      { "language": "ts", "dir": "packages/ts/intersect", "name": "@osdlc/intersect" },
-      { "language": "rust", "dir": "packages/rust/glob-intersect", "name": "glob-intersect" }
     ]
   }
 }
