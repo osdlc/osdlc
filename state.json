@@ -1,12 +1,156 @@
 {
   "schema": 1,
   "pr": 610,
-  "head": null,
-  "base": null,
-  "round": 0,
+  "head": "037f506144cee60cff78d480e03691adcbf5d1dd",
+  "base": "39d8e12c8676db90fd741d4dbc35f29a9b5270d6",
+  "round": 1,
   "claim": {
     "owner": "LMDETemplate:claude-vq6",
     "at": "2026-11-02T04:52:35.045Z"
   },
-  "findings": []
+  "findings": [
+    {
+      "id": "r1-1",
+      "round": 1,
+      "path": "packages/ts/gfm-table/src/delimited-edit.ts",
+      "line": 157,
+      "title": "deleteDelimitedColumn drops every row whose remaining field is empty",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-2",
+      "round": 1,
+      "path": "packages/ts/gfm-table/src/delimited-edit.ts",
+      "line": 66,
+      "title": "setDelimitedField to '' on a one-field record makes the row vanish",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-3",
+      "round": 1,
+      "path": "packages/ts/gfm-table/src/delimited-edit.ts",
+      "line": 89,
+      "title": "insertDelimitedRow with [''] or [] writes a blank line, not a row",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-4",
+      "round": 1,
+      "path": "packages/ts/gfm-table/src/delimited-edit.ts",
+      "line": 5,
+      "title": "Re-reading with default options can flip the header or delimiter",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-5",
+      "round": 1,
+      "path": "packages/ts/gfm-table/tests/delimited-edit.test.ts",
+      "line": 204,
+      "title": "Test pins the one-column data loss as expected output",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-6",
+      "round": 1,
+      "path": ".changeset/gfm-table-delimited-edits.md",
+      "line": 2,
+      "title": "Minor bump splits the twins' shared major.minor",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-7",
+      "round": 1,
+      "path": "packages/ts/gfm-table/src/delimited.ts",
+      "line": 57,
+      "title": "DelimitedFieldSpan.quoted doc is wrong for text after a closing quote",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-8",
+      "round": 1,
+      "path": "packages/ts/gfm-table/src/delimited-edit.ts",
+      "line": 29,
+      "title": "quote parameter described in prose, not a @param or a name",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-9",
+      "round": 1,
+      "path": "packages/ts/gfm-table/src/delimited-edit.ts",
+      "line": 17,
+      "title": "DelimitedChange is a second copy of PipeFix",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-10",
+      "round": 1,
+      "path": "packages/ts/gfm-table/src/delimited-edit.ts",
+      "line": 114,
+      "title": "indexOf over a fresh array to find the previous record",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-11",
+      "round": 1,
+      "path": "packages/ts/gfm-table/src/delimited.ts",
+      "line": 341,
+      "title": "BOM test computed twice",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-12",
+      "round": 1,
+      "path": "packages/ts/gfm-table/examples/usage.test.ts",
+      "line": 34,
+      "title": "New imports break the list's alphabetical order",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    },
+    {
+      "id": "r1-13",
+      "round": 1,
+      "path": null,
+      "line": null,
+      "title": "Rust twin README says the behaviour is the same",
+      "comment": null,
+      "status": "open",
+      "reason": null,
+      "fixedIn": null
+    }
+  ]
 }
