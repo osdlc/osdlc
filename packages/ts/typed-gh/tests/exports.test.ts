@@ -28,6 +28,7 @@ const FUNCTIONS = [
   'editLabel',
   'editPr',
   'editPrBody',
+  'fromTarget',
   'graphql',
   'installed',
   'issueCommentEdit',
