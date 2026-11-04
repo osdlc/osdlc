@@ -1,6 +1,10 @@
 [package]
 name = "markdown-relink"
 version = "0.2.0"
+# Held back with markdown-corpus, which it depends on: it cannot publish
+# before markdown-corpus 0.1.0 is on crates.io. Remove this line, and its
+# entry in release-plz.toml, with markdown-corpus's.
+publish = false
 edition.workspace = true
 rust-version.workspace = true
 description = "Rename and move a note without breaking the vault: the inbound-wikilink rewrite set, computed as a reviewable plan and applied under per-file compare-and-swap"

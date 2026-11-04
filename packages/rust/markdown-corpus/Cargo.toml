@@ -1,6 +1,12 @@
 [package]
 name = "markdown-corpus"
 version = "0.1.0"
+# Held back for one release-plz run: markdown-vault-fs 0.4.0 publishes
+# through trusted publishing first, and a first release needs
+# CARGO_REGISTRY_TOKEN, so the two cannot share a run (packages/README.md,
+# crates.io rules 3, 4 and 7). Remove this line, and its entry in
+# release-plz.toml, in a pull request of its own.
+publish = false
 edition.workspace = true
 rust-version.workspace = true
 description = "The corpus model for a folder of Markdown notes: every note and file, outgoing links and backlinks by kind, inline tags and frontmatter, read through a Vfs and refreshed incrementally."

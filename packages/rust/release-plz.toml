@@ -32,6 +32,18 @@ publish = false
 release = false
 
 # Held back until its first release can have a release-plz run of its own; see its Cargo.toml.
+# Held back for one run so markdown-vault-fs can publish through trusted
+# publishing first; see the note in their Cargo.toml.
+[[package]]
+name = "markdown-corpus"
+publish = false
+release = false
+
+[[package]]
+name = "markdown-relink"
+publish = false
+release = false
+
 [[package]]
 name = "gfm-pipe-table"
 publish = false
