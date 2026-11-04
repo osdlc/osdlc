@@ -1,9 +1,12 @@
 # markdown-vault-fs
 
-Filesystem primitives for a folder of Markdown notes (a "vault"). Every read
-goes through a [`vfs-seam`](https://crates.io/crates/vfs-seam) `Vfs`, so the
-same walk runs on a disk, in an in-memory tree in tests, and in a
-`wasm32-unknown-unknown` host. None of the modules parses YAML or Markdown:
+The vault layer for a folder of Markdown notes (a "vault"), over
+[`vfs-walk`](https://crates.io/crates/vfs-walk). Every read goes through a
+[`vfs-seam`](https://crates.io/crates/vfs-seam) `Vfs`, so the same walk runs
+on a disk, in an in-memory tree in tests, and in a `wasm32-unknown-unknown`
+host. `vfs-walk` does the traversal; this crate passes it the vault rules. To
+walk plain files (assets, scripts) without vault rules, use `vfs-walk`
+directly. None of the modules parses YAML or Markdown:
 
 - `walk` — walk the vault under a visibility policy. `ContentNotes` skips
   dot- and underscore-prefixed entries, `IncludingUnderscore` skips only
@@ -24,6 +27,7 @@ same walk runs on a disk, in an in-memory tree in tests, and in a
   a symlink cannot escape it.
 - `stat` — a file's modification time through a `Vfs`, and, for native
   callers, millisecond floats in the shape Node's `statSync()` reports.
+  Re-exported from `vfs-walk`.
 - `native` — the walk over the real filesystem, one line each (the default
   `native` feature).
 
@@ -59,8 +63,8 @@ let abs = guard.resolve(vault, "Projects/Alpha.md")?;
 assert!(guard.resolve(vault, "../etc/passwd").is_err());
 ```
 
-Five dependencies: `vfs-seam`, `path-guard`, `regex`, `serde_json` and
-`thiserror`.
+Five dependencies: `vfs-seam`, `vfs-walk`, `path-guard`, `regex` and
+`serde_json`.
 
 ## Stability
 

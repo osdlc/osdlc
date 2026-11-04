@@ -145,7 +145,8 @@ Developed here, in this repository:
 - `packages/rust/markdown-vault` (`markdown-vault` on crates.io, the vault
   model: notes, links and backlinks by kind, tags, frontmatter and document
   trees, read through `vfs-seam` and refreshed incrementally)
-- `packages/rust/markdown-vault-fs` (`markdown-vault-fs` on crates.io)
+- `packages/rust/markdown-vault-fs` (`markdown-vault-fs` on crates.io, the
+  vault layer over `vfs-walk`)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
@@ -156,6 +157,9 @@ Developed here, in this repository:
 - `packages/rust/vfs-seam` (`vfs-seam` on crates.io, the file-access trait the
   vault crates read through, with `std::fs`, in-memory and preview
   implementations; builds for `wasm32-unknown-unknown`)
+- `packages/rust/vfs-walk` (`vfs-walk` on crates.io, the folder walk over
+  `vfs-seam`, with no Markdown or vault rules; builds for
+  `wasm32-unknown-unknown`)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
   for its npm package (not published to crates.io)

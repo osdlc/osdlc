@@ -495,8 +495,8 @@ dependencies = [
  "regex",
  "serde_json",
  "tempfile",
- "thiserror",
  "vfs-seam",
+ "vfs-walk",
 ]
 
 [[package]]
@@ -1095,6 +1095,15 @@ version = "0.1.0"
 dependencies = [
  "tempfile",
  "thiserror",
+]
+
+[[package]]
+name = "vfs-walk"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "thiserror",
+ "vfs-seam",
 ]
 
 [[package]]

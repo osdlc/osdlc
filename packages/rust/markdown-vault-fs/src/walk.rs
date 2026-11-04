@@ -9,6 +9,10 @@
 //! test's in-memory tree and behind a wasm host. [`crate::native`] has the
 //! one-line forms over the real filesystem.
 //!
+//! The traversal is [`vfs_walk`]'s. This module is the vault layer on it:
+//! the visibility policy, the excluded files, notes versus attachments and
+//! multi-root scoping become the filter it passes in.
+//!
 //! Entries come back in **tree order**: depth-first, and ordered within each
 //! directory by name as a `String` (byte order). That is a stability
 //! guarantee, not a collation one: the same vault always yields the same
@@ -21,10 +25,13 @@
 //! `.obsidian/app.json`, unless the caller passes its own rules or turns them
 //! off with [`Hide`]. `Everything` walks never apply them.
 
+use std::cell::RefCell;
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use vfs_seam::{Vfs, VfsError};
+use vfs_seam::Vfs;
+use vfs_walk::{Candidate, Errors, Symlinks};
 
 use crate::hide::{self, HideRules};
 
@@ -219,17 +226,9 @@ pub struct WalkOutcome {
 }
 
 /// Why a walk stopped. Only returned when [`WalkOptions::refuse_symlinks`]
-/// or [`WalkOptions::propagate_errors`] asks for it.
-#[derive(Debug, thiserror::Error)]
-pub enum WalkError {
-    /// A symlink, with `refuse_symlinks` on.
-    #[error("{}: a symlink, and this walk refuses them", .0.display())]
-    Symlink(PathBuf),
-    /// A folder that could not be listed or a file that could not be
-    /// statted, with `propagate_errors` on.
-    #[error(transparent)]
-    Io(#[from] VfsError),
-}
+/// or [`WalkOptions::propagate_errors`] asks for it. The same type as
+/// `vfs-walk`'s.
+pub use vfs_walk::WalkError;
 
 /// Walk a vault through `vfs`, applying the visibility policy.
 ///
@@ -242,6 +241,11 @@ pub fn walk(vfs: &dyn Vfs, vault_dir: &Path, opts: &WalkOptions) -> Result<Vec<E
 }
 
 /// [`walk`], additionally reporting configured roots that are not there.
+///
+/// The traversal is `vfs-walk`'s. This function turns the vault rules into
+/// its filter: the visibility policy and the excluded files decide what the
+/// vault shows, and the note, attachment and exclude options decide what this
+/// walk collects.
 pub fn walk_reporting(
     vfs: &dyn Vfs,
     vault_dir: &Path,
@@ -262,33 +266,74 @@ pub fn walk_reporting(
     }
     .filter(|h| !h.is_empty());
 
-    let mut walker = Walker {
-        vfs,
-        vault_dir,
-        opts,
-        hide,
-        seen: std::collections::HashSet::new(),
-        out: Vec::new(),
-        dedupe: false,
+    let rooted = !opts.roots.is_empty();
+    // First root wins across overlapping roots. Only consulted on a rooted
+    // walk: the whole-vault walk visits each file once.
+    let seen = RefCell::new(HashSet::new());
+    let collects = |rel: &str| -> bool {
+        let name = rel.rsplit('/').next().unwrap_or(rel);
+        opts.collects(rel, name) && (!rooted || seen.borrow_mut().insert(rel.to_owned()))
     };
-    let mut missing_roots = Vec::new();
+    // A refused link fails the walk whatever it points at, so with links
+    // refused the collect rules wait until the walk has looked at the file.
+    // Otherwise they run first and spare the stat.
+    let collect_early = !opts.refuse_symlinks;
+    let filter = |c: &Candidate<'_>| {
+        shows(opts.visibility, hide, rooted, c) && (c.is_dir || !collect_early || collects(c.rel))
+    };
+    let inner = vfs_walk::WalkOptions {
+        skip_names: opts.skip_names.clone(),
+        prune_dirs: opts.prune_dirs.clone(),
+        filter: Some(&filter),
+        symlinks: if opts.refuse_symlinks {
+            Symlinks::Refuse
+        } else {
+            Symlinks::List
+        },
+        errors: if opts.propagate_errors {
+            Errors::Propagate
+        } else {
+            Errors::Skip
+        },
+    };
 
-    if opts.roots.is_empty() {
-        walker.dir(vault_dir, "")?;
-    } else {
-        walker.dedupe = true;
+    let mut subtrees = Vec::new();
+    let mut missing_roots = Vec::new();
+    if rooted {
         for root in &opts.roots {
             let rel = relative_root(root);
             // A root that climbs out of the vault yields nothing.
             if rel.split('/').any(|seg| seg == "..") {
                 continue;
             }
-            let root_dir = join_rel(vault_dir, &rel);
-            if !vfs.exists(&root_dir) {
+            if !vfs.exists(&join_rel(vault_dir, &rel)) {
                 missing_roots.push(root.clone());
                 continue;
             }
-            walker.dir(&root_dir, &rel)?;
+            subtrees.push(rel);
+        }
+    } else {
+        subtrees.push(String::new());
+    }
+
+    let mut entries = Vec::new();
+    for sub in &subtrees {
+        for found in vfs_walk::walk_subtree(vfs, vault_dir, sub, &inner)?.entries {
+            if !collect_early && !collects(&found.rel) {
+                continue;
+            }
+            if found.size < opts.min_bytes {
+                continue;
+            }
+            let name = found.rel.rsplit('/').next().unwrap_or(&found.rel);
+            entries.push(Entry {
+                is_note: is_note(name),
+                rel: found.rel,
+                abs: found.abs,
+                size: found.size,
+                mtime_ms: found.mtime_ms,
+                is_symlink: found.is_symlink,
+            });
         }
     }
 
@@ -296,7 +341,7 @@ pub fn walk_reporting(
     // sequence deterministic; a collation is the caller's to declare. See the
     // module docs.
     Ok(WalkOutcome {
-        entries: walker.out,
+        entries,
         missing_roots,
     })
 }
@@ -311,146 +356,68 @@ pub fn walk_notes(vfs: &dyn Vfs, vault_dir: &Path) -> Vec<String> {
         .collect()
 }
 
-/// One walk's state.
-struct Walker<'a> {
-    vfs: &'a dyn Vfs,
-    vault_dir: &'a Path,
-    opts: &'a WalkOptions,
-    hide: Option<&'a HideRules>,
-    /// First-root-wins across overlapping roots. Only consulted when
-    /// `dedupe` is on: the whole-vault walk visits each file once.
-    seen: std::collections::HashSet<String>,
-    out: Vec<Entry>,
-    dedupe: bool,
+/// Whether the vault shows this file or folder: the visibility policy and the
+/// excluded files. A folder it does not show is not entered.
+///
+/// The starting folder of a rooted walk is never asked about, and folders
+/// above it are never visited, so for a file the whole vault-relative path is
+/// checked again: a root inside a hidden or underscore folder cannot smuggle
+/// in files the same policy hides anywhere else.
+fn shows(
+    visibility: Visibility,
+    hide: Option<&HideRules>,
+    rooted: bool,
+    c: &Candidate<'_>,
+) -> bool {
+    if visibility.skips(c.name) {
+        return false;
+    }
+    if c.is_dir {
+        return hide.is_none_or(|h| !h.hides(c.rel, true));
+    }
+    if let Some(h) = hide {
+        let hidden = if rooted {
+            h.hides_path(c.rel, false)
+        } else {
+            h.hides(c.rel, false)
+        };
+        if hidden {
+            return false;
+        }
+    }
+    visibility.admits_path(c.rel)
 }
 
-impl Walker<'_> {
-    /// Lists `dir` (vault-relative `rel`, empty for the vault root) and
-    /// visits its entries in name order. The starting folder's own name is
-    /// not judged: a configured root that is hidden or underscore-prefixed is
-    /// the user's explicit choice, so the policy applies only to what is
-    /// inside it.
-    fn dir(&mut self, dir: &Path, rel: &str) -> Result<(), WalkError> {
-        let mut entries = match self.vfs.read_dir(dir) {
-            Ok(entries) => entries,
-            Err(e) if self.opts.propagate_errors => return Err(e.into()),
-            Err(_) => return Ok(()),
-        };
-        entries.sort_by(|a, b| a.name.cmp(&b.name));
-        for entry in entries {
-            let name = entry.name;
-            if self.opts.visibility.skips(&name) || self.opts.skip_names.contains(&name) {
-                continue;
-            }
-            let child_rel = if rel.is_empty() {
-                name.clone()
-            } else {
-                format!("{rel}/{name}")
-            };
-            let path = dir.join(&name);
-            if entry.is_dir {
-                if self.opts.prune_dirs.contains(&name) {
-                    continue;
-                }
-                if let Some(hide) = self.hide
-                    && hide.hides(&child_rel, true)
-                {
-                    continue;
-                }
-                self.dir(&path, &child_rel)?;
-            } else {
-                self.file(&path, child_rel, &name)?;
-            }
-        }
-        Ok(())
-    }
+fn is_note(name: &str) -> bool {
+    name.to_lowercase().ends_with(".md")
+}
 
-    fn file(&mut self, path: &Path, rel: String, name: &str) -> Result<(), WalkError> {
-        let opts = self.opts;
-        // Folders above a root are never visited, so a rooted walk checks them here.
-        if let Some(hide) = self.hide {
-            let hidden = if self.dedupe {
-                hide.hides_path(&rel, false)
-            } else {
-                hide.hides(&rel, false)
-            };
-            if hidden {
-                return Ok(());
-            }
-        }
-        // A root can sit inside a hidden or underscore subtree, in which case
-        // the walk above never sees the offending segment. Re-check the whole
-        // vault-relative path so a root cannot smuggle in files the same
-        // policy would hide anywhere else.
-        if !opts.visibility.admits_path(&rel) {
-            return Ok(());
-        }
-        // Asked before the kind filters when links are refused, so a refused
-        // link fails the walk whatever it points at.
-        let mut meta = None;
-        if opts.refuse_symlinks {
-            let m = self.stat(path)?;
-            if m.is_some_and(|m| m.is_symlink) {
-                return Err(WalkError::Symlink(path.to_path_buf()));
-            }
-            meta = Some(m);
-        }
-        if opts
+impl WalkOptions {
+    /// Whether this walk collects a file it can see: the exclude list, then
+    /// notes versus attachments and the attachment extensions.
+    fn collects(&self, rel: &str, name: &str) -> bool {
+        if self
             .exclude
             .iter()
             .any(|x| !x.is_empty() && rel.contains(x.as_str()))
         {
-            return Ok(());
+            return false;
         }
-        let is_note = name.to_lowercase().ends_with(".md");
-        if is_note && !opts.notes {
-            return Ok(());
+        let is_note = is_note(name);
+        if is_note {
+            return self.notes;
         }
-        if !is_note {
-            if !opts.attachments {
-                return Ok(());
-            }
-            if !opts.attachment_extensions.is_empty() {
-                let ext = Path::new(name)
-                    .extension()
-                    .map(|e| e.to_string_lossy().to_lowercase())
-                    .unwrap_or_default();
-                if !opts.attachment_extensions.contains(&ext) {
-                    return Ok(());
-                }
-            }
+        if !self.attachments {
+            return false;
         }
-        if self.dedupe && !self.seen.insert(rel.clone()) {
-            return Ok(());
+        if self.attachment_extensions.is_empty() {
+            return true;
         }
-        let meta = match meta {
-            Some(m) => m,
-            None => self.stat(path)?,
-        };
-        let (size, mtime_ms, is_symlink) = meta
-            .map(|m| (m.len, m.modified_ms, m.is_symlink))
-            .unwrap_or((0, None, false));
-        if size < opts.min_bytes {
-            return Ok(());
-        }
-        self.out.push(Entry {
-            abs: join_rel(self.vault_dir, &rel),
-            rel,
-            is_note,
-            size,
-            mtime_ms,
-            is_symlink,
-        });
-        Ok(())
-    }
-
-    /// The entry's metadata; `None` for a stat that failed and is skipped.
-    fn stat(&self, path: &Path) -> Result<Option<vfs_seam::Metadata>, WalkError> {
-        match self.vfs.metadata(path) {
-            Ok(m) => Ok(Some(m)),
-            Err(e) if self.opts.propagate_errors => Err(e.into()),
-            Err(_) => Ok(None),
-        }
+        let ext = Path::new(name)
+            .extension()
+            .map(|e| e.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        self.attachment_extensions.contains(&ext)
     }
 }
 
@@ -911,5 +878,16 @@ mod tests {
         };
         let err = crate::native::walk(d.path(), &strict).unwrap_err();
         assert!(matches!(err, WalkError::Symlink(_)), "{err}");
+
+        // A refused link fails the walk even when the walk would not collect
+        // it: a notes-only walk still refuses a linked image.
+        std::fs::remove_file(d.path().join("link.md")).unwrap();
+        std::fs::remove_file(d.path().join("dirlink")).unwrap();
+        std::os::unix::fs::symlink(d.path().join("real.md"), d.path().join("link.png")).unwrap();
+        let err = crate::native::walk(d.path(), &strict).unwrap_err();
+        assert!(matches!(err, WalkError::Symlink(_)), "{err}");
+        // Without refusal the notes-only walk does not list it.
+        let entries = crate::native::walk(d.path(), &WalkOptions::content_notes()).unwrap();
+        assert!(!entries.iter().any(|e| e.rel == "link.png"));
     }
 }

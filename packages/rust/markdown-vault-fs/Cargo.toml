@@ -3,7 +3,7 @@ name = "markdown-vault-fs"
 version = "0.4.0"
 edition.workspace = true
 rust-version.workspace = true
-description = "Vault filesystem primitives over a Vfs: the visibility-policy walk, the excluded-files rules read from .obsidian/app.json, the `_system/` rules, file timestamps, and a re-export of the path-guard containment guard"
+description = "The vault layer over vfs-walk: notes versus attachments, the visibility-policy walk, the excluded-files rules read from .obsidian/app.json, the `_system/` rules, and a re-export of the path-guard containment guard"
 license.workspace = true
 repository.workspace = true
 homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/markdown-vault-fs"
@@ -32,8 +32,8 @@ native = ["vfs-seam/native"]
 path-guard = { workspace = true }
 regex = { workspace = true }
 serde_json = { workspace = true }
-thiserror = { workspace = true }
 vfs-seam = { workspace = true }
+vfs-walk = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -147,10 +147,10 @@ jobs:
           RUSTDOCFLAGS='-D warnings' cargo doc --no-deps -p yaml-splice --no-default-features --locked
 
       # Without `native`, these crates do no I/O through std::fs.
-      - name: vfs-seam, markdown-vault-fs and markdown-vault without default features
+      - name: vfs-seam, vfs-walk, markdown-vault-fs and markdown-vault without default features
         run: |
-          cargo clippy -p vfs-seam -p markdown-vault-fs -p markdown-vault --no-default-features --all-targets --locked -- -D warnings
-          cargo test -p vfs-seam -p markdown-vault-fs -p markdown-vault --no-default-features --locked
+          cargo clippy -p vfs-seam -p vfs-walk -p markdown-vault-fs -p markdown-vault --no-default-features --all-targets --locked -- -D warnings
+          cargo test -p vfs-seam -p vfs-walk -p markdown-vault-fs -p markdown-vault --no-default-features --locked
 
       # Without `native`, the crate does no I/O; the corpus test still runs.
       - name: markdown-contract without default features
@@ -278,7 +278,7 @@ jobs:
   # wasm32, wasm-bindgen, wasm-opt) and checks that the result equals the wasm
   # committed in packages/ts/yaml-splice/wasm/, so the npm package ships what
   # its source builds. On a difference it uploads the rebuilt files.
-  # It also builds vfs-seam, markdown-vault-fs, markdown-vault and
+  # It also builds vfs-seam, vfs-walk, markdown-vault-fs, markdown-vault and
   # markdown-contract for wasm32 without default features.
   #
   # A version bump alone changes the wasm bytes: cargo hashes each crate's
@@ -314,7 +314,7 @@ jobs:
       # no I/O of their own.
       - name: Build the vault crates for wasm32
         working-directory: packages/rust
-        run: cargo build -p vfs-seam -p markdown-vault-fs -p markdown-vault -p markdown-contract --no-default-features --target wasm32-unknown-unknown --locked
+        run: cargo build -p vfs-seam -p vfs-walk -p markdown-vault-fs -p markdown-vault -p markdown-contract --no-default-features --target wasm32-unknown-unknown --locked
 
       - name: The committed wasm matches the rebuild
         run: |

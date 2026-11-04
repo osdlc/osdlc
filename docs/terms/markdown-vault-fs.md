@@ -6,7 +6,7 @@ The vault layer over [vfs-walk](vfs-walk.md): notes versus attachments, visibili
 
 ## In code
 
-`packages/rust/markdown-vault-fs`: `walk`, `hide`, `path`, `stat`. Today it holds the general walk too; that moves to `vfs-walk`.
+`packages/rust/markdown-vault-fs`: `walk` (the vault rules, passed to `vfs-walk` as its filter), `hide`, `path`, and `stat` re-exported from `vfs-walk`.
 
 ## Not to be confused with
 
