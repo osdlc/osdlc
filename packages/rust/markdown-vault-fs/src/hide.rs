@@ -18,8 +18,101 @@
 //! everything inside it; the walk prunes such a folder rather than walking
 //! it. A regex entry never hides a folder: it tests each file path below.
 //!
-//! Where the list lives, and reading it, is the caller's job; this module
-//! only compiles and matches.
+//! [`load`] reads the list from where Obsidian keeps it,
+//! `.obsidian/app.json`, through a [`Vfs`]. Every walk applies it by default
+//! (see [`crate::walk::Hide`]). A tool that keeps the list somewhere else
+//! compiles its own entries with [`HideRules::parse`].
+
+use std::path::Path;
+use std::sync::Arc;
+
+use vfs_seam::Vfs;
+
+/// Where Obsidian keeps a vault's settings, vault-relative.
+pub const OBSIDIAN_APP_JSON: &str = ".obsidian/app.json";
+/// The key in [`OBSIDIAN_APP_JSON`] that holds the excluded files.
+pub const OBSIDIAN_KEY: &str = "userIgnoreFilters";
+
+/// A vault's excluded files as read by [`load`].
+#[derive(Debug, Clone, Default)]
+pub struct HideList {
+    /// The entries as written, blanks and bad regexes included.
+    pub entries: Vec<String>,
+    /// The entries compiled.
+    pub rules: Arc<HideRules>,
+    /// Entries skipped while compiling, and items that are not strings.
+    pub warnings: Vec<String>,
+    /// Set when the file cannot be read or does not parse. The list is then
+    /// empty.
+    pub error: Option<String>,
+}
+
+/// Reads the vault's excluded files from `.obsidian/app.json`
+/// (`userIgnoreFilters`) under `vault_dir`.
+///
+/// A missing file or key is an empty list. A file that cannot be read or
+/// does not parse is an empty list with [`HideList::error`] set: one bad
+/// settings file must not stop a walk.
+pub fn load(vfs: &dyn Vfs, vault_dir: &Path) -> HideList {
+    let path = vault_dir.join(".obsidian").join("app.json");
+    let bytes = match vfs.read_file(&path) {
+        Ok(bytes) => bytes,
+        Err(e) if e.is_not_found() => return HideList::default(),
+        Err(e) => {
+            return HideList {
+                error: Some(format!("{OBSIDIAN_APP_JSON}: {}", e.io_error())),
+                ..HideList::default()
+            };
+        }
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    match parse_app_json(&text) {
+        Ok((entries, mut warnings)) => {
+            let (rules, skipped) = HideRules::parse(&entries);
+            warnings.extend(skipped);
+            HideList {
+                entries,
+                rules: Arc::new(rules),
+                warnings,
+                error: None,
+            }
+        }
+        Err(error) => HideList {
+            error: Some(format!("{OBSIDIAN_APP_JSON}: {error}")),
+            ..HideList::default()
+        },
+    }
+}
+
+/// The `userIgnoreFilters` entries in the text of an `app.json`, and a
+/// warning for each item that is not a string. An empty file, or one with no
+/// such key, is an empty list. Text that is not a JSON object, or a key that
+/// is not a list, is an error.
+pub fn parse_app_json(text: &str) -> Result<(Vec<String>, Vec<String>), String> {
+    if text.trim().is_empty() {
+        return Ok((Vec::new(), Vec::new()));
+    }
+    let root: serde_json::Value =
+        serde_json::from_str(text).map_err(|e| format!("not valid JSON: {e}"))?;
+    let obj = root.as_object().ok_or("not a JSON object")?;
+    match obj.get(OBSIDIAN_KEY) {
+        None | Some(serde_json::Value::Null) => Ok((Vec::new(), Vec::new())),
+        Some(serde_json::Value::Array(items)) => {
+            let mut entries = Vec::new();
+            let mut warnings = Vec::new();
+            for (i, item) in items.iter().enumerate() {
+                match item.as_str() {
+                    Some(s) => entries.push(s.to_string()),
+                    None => {
+                        warnings.push(format!("{OBSIDIAN_KEY} item {i} is not a string; skipped"))
+                    }
+                }
+            }
+            Ok((entries, warnings))
+        }
+        Some(_) => Err(format!("`{OBSIDIAN_KEY}` is not a list")),
+    }
+}
 
 /// One compiled entry.
 #[derive(Debug, Clone)]
@@ -197,5 +290,62 @@ mod tests {
         assert!(r.hides("Archive/x.md", false));
         assert!(r.hides("Archive", true));
         assert!(r.hides("Boards/a.canvas", false));
+    }
+
+    fn vault(app_json: Option<&str>) -> vfs_seam::MemVfs {
+        let vfs = vfs_seam::MemVfs::new();
+        vfs.insert("/v/a.md", "").unwrap();
+        if let Some(text) = app_json {
+            vfs.insert("/v/.obsidian/app.json", text).unwrap();
+        }
+        vfs
+    }
+
+    #[test]
+    fn load_reads_prefixes_folders_and_regexes_from_app_json() {
+        let vfs = vault(Some(
+            r#"{"alwaysUpdateLinks":true,"userIgnoreFilters":["Archive/","/\\.excalidraw\\.md$/","Notes/secret.md"]}"#,
+        ));
+        let list = load(&vfs, Path::new("/v"));
+        assert_eq!(list.error, None);
+        assert_eq!(list.entries.len(), 3, "{:?}", list.entries);
+        assert!(list.rules.hides("Archive/old.md", false));
+        assert!(list.rules.hides("Draw/A.excalidraw.md", false));
+        assert!(list.rules.hides("Notes/secret.md", false));
+        assert!(!list.rules.hides("Notes/other.md", false));
+    }
+
+    #[test]
+    fn load_of_a_missing_file_or_key_is_an_empty_list() {
+        for vfs in [
+            vault(None),
+            vault(Some("")),
+            vault(Some("{}")),
+            vault(Some(r#"{"userIgnoreFilters":null}"#)),
+        ] {
+            let list = load(&vfs, Path::new("/v"));
+            assert!(list.rules.is_empty());
+            assert_eq!(list.error, None);
+        }
+    }
+
+    #[test]
+    fn load_of_a_broken_file_is_an_empty_list_with_an_error() {
+        for text in ["{not json", "[]", r#"{"userIgnoreFilters":"Archive/"}"#] {
+            let list = load(&vault(Some(text)), Path::new("/v"));
+            assert!(list.rules.is_empty(), "{text}");
+            assert!(list.error.is_some(), "{text}");
+        }
+    }
+
+    #[test]
+    fn load_skips_an_item_that_is_not_a_string_with_a_warning() {
+        let list = load(
+            &vault(Some(r#"{"userIgnoreFilters":["Keep/",3,"/(?<=x)y/"]}"#)),
+            Path::new("/v"),
+        );
+        assert_eq!(list.entries, vec!["Keep/", "/(?<=x)y/"]);
+        assert_eq!(list.warnings.len(), 2, "{:?}", list.warnings);
+        assert!(list.rules.hides("Keep/a.md", false));
     }
 }

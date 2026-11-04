@@ -28,11 +28,12 @@ The vault directory must be an absolute path.
 ```rust,no_run
 use std::path::Path;
 use markdown_relink::{VaultFacts, execute, plan};
+use markdown_relink::vfs_seam::NativeVfs;
 
 let vault = Path::new("/path/to/vault");
 let facts = VaultFacts::scan(vault);
 
-let p = plan(vault, &facts, "Projects/Alpha.md", "Archive/Alpha.md")?;
+let p = plan(&NativeVfs, vault, &facts, "Projects/Alpha.md", "Archive/Alpha.md")?;
 if let Some(reason) = &p.conflict {
     eprintln!("refused: {reason}");
 } else {

@@ -3,7 +3,7 @@
  * `markdown-link` crate's `display_text` and `parse_typed_ref`.
  */
 
-import { type WikiLink, isWhitespace, parseInner, splitAlias, trim } from './parse.ts'
+import { type WikiLink, isSizeSpec, isWhitespace, parseInner, splitAlias, trim } from './parse.ts'
 
 /**
  * Replace each wikilink and embed with what a reader sees for it, for
@@ -51,14 +51,9 @@ function shown(link: WikiLink): string {
   if (alias !== null && link.embed) {
     const pipe = alias.lastIndexOf('|')
     const last = pipe === -1 ? alias : alias.slice(pipe + 1)
-    if (isSize(trim(last))) alias = pipe === -1 ? '' : trim(alias.slice(0, pipe))
+    if (isSizeSpec(trim(last))) alias = pipe === -1 ? '' : trim(alias.slice(0, pipe))
   }
   return alias || link.target
-}
-
-/** `300` or `300x200`: an embed's width, or width and height. */
-function isSize(s: string): boolean {
-  return /^[0-9]+(?:x[0-9]+)?$/.test(s)
 }
 
 /**

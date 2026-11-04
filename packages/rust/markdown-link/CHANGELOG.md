@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-04
+
+Options for tools that render or publish notes, a strict resolver, and helpers
+that write a resolved link back out. The defaults keep the old behaviour,
+except for block references, which now have a field of their own. There is no
+0.6: this release joins `@osdlc/markdown-link` on 0.7.
+
+### Added
+
+- `ScanOptions` and `body_links_spanned_with(body, &ScanOptions)`: pick the
+  code rules (`CodeRules::SkillExport`), skip links inside HTML comments
+  (`skip_html_comments`), and read `[[#Heading]]` and `[[#^block]]` as a link
+  to the note they are in, with an empty target (`self_links`).
+  `ScanOptions::default()` is what `body_links_spanned` does.
+- `parse_inner_self`: `parse_inner` that also reads a body with no target and
+  a `#` fragment as a link to the note it is written in.
+- `WikiLink::block` and `BodyLink::block`: a `#^id` fragment, without the `^`.
+- `WikiLink::size` and `BodyLink::size`: an embed's `|300` or `|300x200`, as
+  `Size { width, height }`. `Size::parse` and `is_size_spec` read one. The
+  alias still holds it as written.
+- `BodyLink::heading`.
+- `LinkIndex::candidates(target, from)`: every path a link could mean,
+  shortest first, the field `resolve_from` chooses from.
+- `LinkIndex::resolve_strict(target, from)`: resolve without guessing. It
+  takes a candidate only when it is the only one, its whole path is the
+  target, or it sits at the target's path from the linking note's folder.
+  Otherwise `ResolveError::Ambiguous` lists every candidate.
+- `relative_link(from, to, fragment)`: the relative markdown link from one
+  vault-relative file to another, each segment encoded as `encodeURIComponent`
+  does and the fragment as `encodeURI` does with `#` escaped.
+  `encode_uri_component`, `encode_uri_fragment` and `escape_label` are public
+  too.
+
+### Changed
+
+- A `#^id` fragment is a block, not a heading. `parse_inner("Note#^abc", _)`
+  gives `heading: None, block: Some("abc")`, where it gave
+  `heading: Some("^abc")`. A heading path such as `Note#Parent#Child` is
+  unchanged.
+- `WikiLink` and `BodyLink` have new public fields, so code that builds one
+  with a struct literal must set them.
+
 ## [0.5.5](https://github.com/osdlc/osdlc/compare/markdown-link/v0.5.4...markdown-link/v0.5.5) - 2026-11-01
 
 ### Other

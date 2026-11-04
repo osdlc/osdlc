@@ -34,6 +34,11 @@
 //! are Unicode-aware. The loader rejects a source the crate cannot compile. The README
 //! lists the other differences from the TS package.
 //!
+//! [`select`] picks part of a note the way an Obsidian link fragment does
+//! (`#Heading`, `#Parent#Child`, `#^block-id`), as a byte range or as text;
+//! [`DocTree`] has the same as methods, and every [`SectionNode`] and
+//! [`BlockNode`] carries its byte range in [`DocTree::body`].
+//!
 //! This file is a barrel only: it re-exports, it holds no logic.
 
 mod camel;
@@ -48,6 +53,7 @@ mod parse;
 mod registry;
 mod runner;
 mod schema;
+pub mod select;
 mod slots;
 mod structure;
 mod text_constraints;

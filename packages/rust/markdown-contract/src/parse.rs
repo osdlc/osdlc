@@ -121,9 +121,11 @@ pub fn parse_document(source: &str) -> DocTree {
         }
     });
 
-    // comrak does not skip a BOM, so strip it before parsing the body.
+    // comrak does not skip a BOM, so strip it before parsing the body. Byte
+    // ranges still count from the start of `split.body`, BOM included.
     let body = split.body.strip_prefix('\u{feff}').unwrap_or(&split.body);
-    let root = project_body(body, line_offset);
+    let base = split.body.len() - body.len();
+    let root = project_body(body, line_offset, base);
     DocTree {
         frontmatter,
         body: split.body,
@@ -143,11 +145,58 @@ fn gfm_options() -> Options<'static> {
     options
 }
 
-fn project_body(body: &str, line_offset: u32) -> SectionNode {
+/// What the projection needs besides the node: the line shift for positions,
+/// the body's lines, and where each line starts, for byte ranges.
+struct Cx<'s> {
+    /// lines before the body, added to every sourcepos line
+    off: u32,
+    /// the body's lines (terminators stripped)
+    lines: Vec<&'s str>,
+    /// the byte offset of each line's start in the parsed text
+    starts: Vec<usize>,
+    /// bytes in front of the parsed text in `DocTree::body` (a skipped BOM)
+    base: usize,
+    /// the parsed text's length
+    len: usize,
+}
+
+impl Cx<'_> {
+    /// The byte offset of a 1-based (line, column) point, with `column` 0
+    /// meaning the line's start.
+    fn offset(&self, line: usize, column: usize) -> usize {
+        let start = self
+            .starts
+            .get(line.saturating_sub(1))
+            .copied()
+            .unwrap_or(self.len);
+        (start + column.saturating_sub(1)).min(self.len)
+    }
+
+    /// A node's bytes in `DocTree::body`: from its first byte to one past its
+    /// last.
+    fn range_of<'a>(&self, node: &'a AstNode<'a>) -> std::ops::Range<usize> {
+        let sp = node.data.borrow().sourcepos;
+        let start = self.offset(sp.start.line, sp.start.column);
+        let end = (self.offset(sp.end.line, sp.end.column) + 1)
+            .min(self.len)
+            .max(start);
+        self.base + start..self.base + end
+    }
+}
+
+fn project_body(body: &str, line_offset: u32, base: usize) -> SectionNode {
     let arena = Arena::new();
     let root = comrak::parse_document(&arena, body, &gfm_options());
-    let lines: Vec<&str> = body.lines().collect();
-    build_tree(root, line_offset, &lines)
+    let mut starts = vec![0];
+    starts.extend(body.match_indices('\n').map(|(i, _)| i + 1));
+    let cx = Cx {
+        off: line_offset,
+        lines: body.lines().collect(),
+        starts,
+        base,
+        len: body.len(),
+    };
+    build_tree(root, &cx)
 }
 
 /// A node's start point as a `SourcePos` (1-based line + col), shifted to document lines.
@@ -191,7 +240,7 @@ fn flatten_list_item<'a>(item: &'a AstNode<'a>) -> String {
     js::trim(&parts.join(" ")).to_string()
 }
 
-fn project_list<'a>(node: &'a AstNode<'a>, ordered: bool, off: u32) -> BlockNode {
+fn project_list<'a>(node: &'a AstNode<'a>, ordered: bool, cx: &Cx) -> BlockNode {
     let items = node
         .children()
         .map(|li| {
@@ -202,7 +251,7 @@ fn project_list<'a>(node: &'a AstNode<'a>, ordered: bool, off: u32) -> BlockNode
             ListItem {
                 text: flatten_list_item(li),
                 checked,
-                pos: pos_of(li, off),
+                pos: pos_of(li, cx.off),
             }
         })
         .collect();
@@ -210,11 +259,12 @@ fn project_list<'a>(node: &'a AstNode<'a>, ordered: bool, off: u32) -> BlockNode
         ordered,
         items,
         anchor: None,
-        pos: pos_of(node, off),
+        pos: pos_of(node, cx.off),
+        range: cx.range_of(node),
     }
 }
 
-fn project_code<'a>(node: &'a AstNode<'a>, off: u32) -> BlockNode {
+fn project_code<'a>(node: &'a AstNode<'a>, cx: &Cx) -> BlockNode {
     let (lang, value, fenced) = match &node.data.borrow().value {
         // mdast's `value` drops the final line break that comrak's `literal` keeps.
         NodeValue::CodeBlock(cb) => (
@@ -233,15 +283,17 @@ fn project_code<'a>(node: &'a AstNode<'a>, off: u32) -> BlockNode {
         value,
         fenced,
         anchor: None,
-        pos: pos_of(node, off),
+        pos: pos_of(node, cx.off),
+        range: cx.range_of(node),
     }
 }
 
-fn project_paragraph<'a>(node: &'a AstNode<'a>, off: u32) -> BlockNode {
+fn project_paragraph<'a>(node: &'a AstNode<'a>, cx: &Cx) -> BlockNode {
     BlockNode::Paragraph {
         text: js::trim(&flatten_to_string(node.children())).to_string(),
         anchor: None,
-        pos: pos_of(node, off),
+        pos: pos_of(node, cx.off),
+        range: cx.range_of(node),
     }
 }
 
@@ -250,7 +302,7 @@ fn project_paragraph<'a>(node: &'a AstNode<'a>, off: u32) -> BlockNode {
 /// is a single cell holding only a `^block-id`, it is lifted out as the table's
 /// anchor, as the TS projection does. comrak pads short rows with empty cells, so the
 /// cell count is read from the row's source line (`lines` are the body's lines).
-fn project_table<'a>(node: &'a AstNode<'a>, off: u32, lines: &[&str]) -> BlockNode {
+fn project_table<'a>(node: &'a AstNode<'a>, cx: &Cx) -> BlockNode {
     let mut columns = Vec::new();
     let mut rows: Vec<Vec<String>> = Vec::new();
     let mut row_pos = Vec::new();
@@ -265,14 +317,15 @@ fn project_table<'a>(node: &'a AstNode<'a>, off: u32, lines: &[&str]) -> BlockNo
             columns = cells;
         } else {
             last_row_line = row.data.borrow().sourcepos.start.line;
-            row_pos.push(pos_of(row, off));
+            row_pos.push(pos_of(row, cx.off));
             rows.push(cells);
         }
     }
 
     let mut anchor = None;
     if !rows.is_empty()
-        && let Some(id) = lines
+        && let Some(id) = cx
+            .lines
             .get(last_row_line.wrapping_sub(1))
             .and_then(|line| single_cell_anchor(line))
     {
@@ -286,7 +339,8 @@ fn project_table<'a>(node: &'a AstNode<'a>, off: u32, lines: &[&str]) -> BlockNo
         rows,
         row_pos,
         anchor,
-        pos: pos_of(node, off),
+        pos: pos_of(node, cx.off),
+        range: cx.range_of(node),
     }
 }
 
@@ -304,13 +358,13 @@ fn single_cell_anchor(line: &str) -> Option<&str> {
 
 /// Project one root-level node to a block, or `None` when it carries no block (headings
 /// are handled by the section walker; blockquotes etc. are not hoisted).
-fn project_block<'a>(node: &'a AstNode<'a>, off: u32, lines: &[&str]) -> Option<BlockNode> {
+fn project_block<'a>(node: &'a AstNode<'a>, cx: &Cx) -> Option<BlockNode> {
     let value = &node.data.borrow().value;
     match value {
-        NodeValue::Paragraph => Some(project_paragraph(node, off)),
-        NodeValue::CodeBlock(_) => Some(project_code(node, off)),
-        NodeValue::List(l) => Some(project_list(node, l.list_type == ListType::Ordered, off)),
-        NodeValue::Table(_) => Some(project_table(node, off, lines)),
+        NodeValue::Paragraph => Some(project_paragraph(node, cx)),
+        NodeValue::CodeBlock(_) => Some(project_code(node, cx)),
+        NodeValue::List(l) => Some(project_list(node, l.list_type == ListType::Ordered, cx)),
+        NodeValue::Table(_) => Some(project_table(node, cx)),
         _ => None,
     }
 }
@@ -348,8 +402,8 @@ fn bind_anchor(sec: &mut SectionNode, id: &str) {
 }
 
 /// Project one non-heading root node and attach its block to the current section.
-fn attach_content_node<'a>(sec: &mut SectionNode, node: &'a AstNode<'a>, off: u32, lines: &[&str]) {
-    let Some(mut block) = project_block(node, off, lines) else {
+fn attach_content_node<'a>(sec: &mut SectionNode, node: &'a AstNode<'a>, cx: &Cx) {
+    let Some(mut block) = project_block(node, cx) else {
         return; // blockquote / nested content yields no section-level block
     };
 
@@ -369,9 +423,10 @@ fn attach_content_node<'a>(sec: &mut SectionNode, node: &'a AstNode<'a>, off: u3
 
 /// Close every open section at `depth` or deeper, attaching each popped section to its
 /// parent. The root (the stack's first entry) is never popped.
-fn pop_to_depth(stack: &mut Vec<SectionNode>, depth: u8) {
+fn pop_to_depth(stack: &mut Vec<SectionNode>, depth: u8, end: usize) {
     while stack.len() > 1 && stack.last().expect("non-empty stack").depth >= depth {
-        let done = stack.pop().expect("len > 1");
+        let mut done = stack.pop().expect("len > 1");
+        done.range.end = end;
         stack.last_mut().expect("root remains").sections.push(done);
     }
 }
@@ -380,7 +435,7 @@ fn pop_to_depth(stack: &mut Vec<SectionNode>, depth: u8) {
 /// document title (`root.name`), a later H1 is a section of depth 1, and each other
 /// heading nests under the nearest open section of smaller depth, keeping its true
 /// depth.
-fn build_tree<'a>(root: &'a AstNode<'a>, off: u32, lines: &[&str]) -> SectionNode {
+fn build_tree<'a>(root: &'a AstNode<'a>, cx: &Cx) -> SectionNode {
     let doc_root = SectionNode::new("", 1, SourcePos::line(0));
     let mut title: Option<String> = None;
     let mut stack: Vec<SectionNode> = vec![doc_root];
@@ -397,15 +452,20 @@ fn build_tree<'a>(root: &'a AstNode<'a>, off: u32, lines: &[&str]) -> SectionNod
                 title = Some(name);
                 continue;
             }
-            pop_to_depth(&mut stack, level);
-            stack.push(SectionNode::new(name, level, pos_of(node, off)));
+            let start = cx.range_of(node).start;
+            pop_to_depth(&mut stack, level, start);
+            let mut section = SectionNode::new(name, level, pos_of(node, cx.off));
+            section.range = start..start;
+            stack.push(section);
             continue;
         }
-        attach_content_node(stack.last_mut().expect("non-empty stack"), node, off, lines);
+        attach_content_node(stack.last_mut().expect("non-empty stack"), node, cx);
     }
 
-    pop_to_depth(&mut stack, 1); // close every open section back into the root
+    let end = cx.base + cx.len;
+    pop_to_depth(&mut stack, 1, end); // close every open section back into the root
     let mut doc_root = stack.pop().expect("root");
+    doc_root.range = 0..end;
     doc_root.name = title.unwrap_or_default();
     doc_root
 }
@@ -431,9 +491,12 @@ mod tests {
             vec![BlockNode::Paragraph {
                 text: "Plain prose.".into(),
                 anchor: None,
-                pos: SourcePos::at(3, 1)
+                pos: SourcePos::at(3, 1),
+                range: 13..25,
             }]
         );
+        assert_eq!(sec.range, 0..26);
+        assert_eq!(tree.root.range, 0..26);
     }
 
     #[test]
@@ -528,6 +591,7 @@ mod tests {
             row_pos,
             anchor,
             pos,
+            ..
         } = &tree.root.sections[0].blocks[0]
         else {
             panic!("expected a table");
@@ -720,5 +784,52 @@ mod tests {
             panic!()
         };
         assert_eq!(text, "see [[D-0002]] and ![[Diagram]]");
+    }
+
+    #[test]
+    fn section_and_block_ranges_are_body_bytes() {
+        let doc = "---\na: 1\n---\n# T\n\n## A\n\npara\n\n### A1\n\n- x\n- y\n\n## B\n\n```\n## not\n```\n";
+        let tree = parse_document(doc);
+        let body = tree.body.as_str();
+        let a = &tree.root.sections[0];
+        assert_eq!(
+            &body[a.range.clone()],
+            "## A\n\npara\n\n### A1\n\n- x\n- y\n\n"
+        );
+        assert_eq!(&body[a.blocks[0].range()], "para");
+        let a1 = &a.sections[0];
+        assert_eq!(&body[a1.range.clone()], "### A1\n\n- x\n- y\n\n");
+        assert_eq!(&body[a1.blocks[0].range()], "- x\n- y");
+        let b = &tree.root.sections[1];
+        assert_eq!(&body[b.range.clone()], "## B\n\n```\n## not\n```\n");
+        assert_eq!(&body[b.blocks[0].range()], "```\n## not\n```");
+        assert_eq!(tree.root.range, 0..body.len());
+    }
+
+    #[test]
+    fn ranges_count_a_leading_bom() {
+        let tree = parse_document("\u{feff}## A\n\npara\n");
+        let sec = &tree.root.sections[0];
+        assert_eq!(&tree.body[sec.range.clone()], "## A\n\npara\n");
+        assert_eq!(&tree.body[sec.blocks[0].range()], "para");
+    }
+
+    #[test]
+    fn block_by_id_finds_a_block_in_any_section() {
+        let tree = parse_document("## A\n\n### B\n\nfound ^here\n");
+        let block = tree.block_by_id("here").expect("bound block");
+        assert_eq!(&tree.body[block.range()], "found ^here");
+        assert!(tree.block_by_id("nowhere").is_none());
+        assert_eq!(&tree.body[tree.block_range_by_id("here").unwrap()], "found");
+    }
+
+    #[test]
+    fn heading_selection_on_the_tree_counts_the_title_h1() {
+        let tree = parse_document("# T\n\n## A\n\na\n\n## B\n");
+        let r = tree.section_by_heading_path(&["T", "A"]).unwrap();
+        assert_eq!(&tree.body[r], "## A\n\na");
+        let r = tree.section_by_selector("T#B").unwrap();
+        assert_eq!(&tree.body[r], "## B");
+        assert!(tree.section_by_heading_path(&["A", "B"]).is_none());
     }
 }

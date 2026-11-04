@@ -211,8 +211,10 @@ fn fixture_vault_collides_exactly_where_it_means_to() {
 // ---------------------------------------------------------------------------
 
 /// Obsidian step 0: `[[#heading]]` resolves to the source file itself.
-/// `parse_inner` rejects an empty target outright, so the reference never even
-/// reaches the index — `body_links` drops it and the link vanishes.
+/// `parse_inner` rejects an empty target outright, so by default the reference
+/// never reaches the index — `body_links` drops it and the link vanishes.
+/// `ScanOptions::self_links` (and `parse_inner_self`) opt in to Obsidian's
+/// reading, with an empty target the caller maps to the linking note.
 #[test]
 fn diverges_same_file_subpath_links_are_dropped_not_resolved_to_self() {
     assert_eq!(parse_inner("#heading", false), None);
@@ -786,15 +788,15 @@ fn escaped_alias_pipe_is_not_part_of_the_target() {
     assert_eq!(targets, ["Note", "Pic"]);
 }
 
-/// A block id is not distinguished from a heading — it is stored raw in
-/// `heading`, `^` included. Callers can detect it, but nothing in the crate
-/// does. Obsidian keeps the two apart (`resolveSubpath` branches on `^`).
+/// A block id is kept apart from a heading, as Obsidian does
+/// (`resolveSubpath` branches on `^`): `#^id` fills `block`, not `heading`.
 #[test]
-fn diverges_block_ids_are_stored_as_headings() {
+fn agrees_block_ids_are_split_from_headings() {
     assert!(note_body("parsing/subpaths.md").contains("[[note#^abc123]]"));
     let l = parse_inner("note#^abc123", false).unwrap();
     assert_eq!(l.target, "note");
-    assert_eq!(l.heading.as_deref(), Some("^abc123"));
+    assert_eq!(l.heading, None);
+    assert_eq!(l.block.as_deref(), Some("abc123"));
     // The footnote form is parse-only: its inner `[` makes the whole reference
     // malformed to `body_links`, so it cannot be written into a fixture note
     // and still be harvested.

@@ -140,9 +140,13 @@ Developed here, in this repository:
 - `packages/rust/markdown-contract` (`markdown-contract` on crates.io, the Rust implementation
   of `@osdlc/markdown-contract`: contracts for markdown documents, checked
   against the package's corpus)
+- `packages/rust/markdown-corpus` (`markdown-corpus` on crates.io, the corpus
+  model for a folder of Markdown notes: notes, links and backlinks by kind,
+  tags and frontmatter, read through `vfs-seam` and refreshed incrementally)
 - `packages/rust/markdown-link` (`markdown-link` on crates.io)
 - `packages/rust/markdown-relink` (`markdown-relink` on crates.io)
-- `packages/rust/markdown-vault-fs` (`markdown-vault-fs` on crates.io)
+- `packages/rust/markdown-vault-fs` (`markdown-vault-fs` on crates.io, the
+  vault layer over `vfs-walk`)
 - `packages/rust/path-guard` (`path-guard` on crates.io)
 - `packages/rust/slug-collate` (`slug-collate` on crates.io)
 - `packages/rust/tiered-dirs` (`tiered-dirs` on crates.io)
@@ -150,6 +154,12 @@ Developed here, in this repository:
   name. It only points to `skillwright`.)
 - `packages/rust/typed-git` (`typed-git` on crates.io, the Rust implementation of
   `@osdlc/typed-git`: a typed git client)
+- `packages/rust/vfs-seam` (`vfs-seam` on crates.io, the file-access trait the
+  vault crates read through, with `std::fs`, in-memory and preview
+  implementations; builds for `wasm32-unknown-unknown`)
+- `packages/rust/vfs-walk` (`vfs-walk` on crates.io, the folder walk over
+  `vfs-seam`, with no Markdown or vault rules; builds for
+  `wasm32-unknown-unknown`)
 - `packages/rust/yaml-splice` (`yaml-splice` on crates.io)
 - `packages/rust/yaml-splice-wasm`, the WebAssembly build of `yaml-splice`
   for its npm package (not published to crates.io)
@@ -339,8 +349,6 @@ Rust crates are released by `.github/workflows/release-plz.yml` with
    `packages/rust/release-plz.toml`.
    Once what it waits for is out, remove both in a pull request of its own.
    Held now (each crate's `Cargo.toml` names what it waits for):
-   - `markdown-contract`, until the parity fixes from the review of
-     [#460](https://github.com/osdlc/osdlc/pull/460) land.
    - `gfm-pipe-table`, until its first release can have a release-plz run of
      its own: it needs `CARGO_REGISTRY_TOKEN` (rules 3, 4 and 7).
 

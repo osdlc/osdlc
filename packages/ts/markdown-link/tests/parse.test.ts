@@ -24,7 +24,9 @@ test('parseInner passes the embed flag through', () => {
   expect(parseInner('img.png|100', true)).toEqual({
     target: 'img.png',
     heading: null,
+    block: null,
     alias: '100',
+    size: { width: 100, height: null },
     embed: true,
   })
 })

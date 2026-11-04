@@ -282,11 +282,12 @@
       }
     },
     {
-      "name": "block_reference_is_a_heading",
+      "name": "block_reference_is_split_from_the_heading",
       "inner": "Note#^block",
       "parsed": {
         "target": "Note",
-        "heading": "^block",
+        "heading": null,
+        "block": "block",
         "alias": null,
         "targetAt": 0
       }
@@ -475,7 +476,8 @@
           "target": "a",
           "alias": "Alias",
           "at": 36,
-          "text": "[[a#h|Alias]]"
+          "text": "[[a#h|Alias]]",
+          "heading": "h"
         }
       ]
     },
@@ -646,7 +648,11 @@
           "target": "img.png",
           "alias": "100",
           "at": 2,
-          "text": "![[img.png|100]]"
+          "text": "![[img.png|100]]",
+          "size": {
+            "width": 100,
+            "height": null
+          }
         }
       ]
     },
@@ -794,6 +800,231 @@
           "alias": null,
           "at": 0,
           "text": "[[a`|`b]]"
+        }
+      ]
+    },
+    {
+      "name": "heading_path_keeps_inner_hashes",
+      "inner": "Note#Parent#Child",
+      "parsed": {
+        "target": "Note",
+        "heading": "Parent#Child",
+        "block": null,
+        "alias": null,
+        "targetAt": 0
+      }
+    },
+    {
+      "name": "block_id_is_trimmed",
+      "inner": "Note#^ abc ",
+      "parsed": {
+        "target": "Note",
+        "heading": null,
+        "block": "abc",
+        "alias": null,
+        "targetAt": 0
+      }
+    },
+    {
+      "name": "embed_size_is_read_from_the_alias",
+      "inner": "img.png|300",
+      "embed": true,
+      "parsed": {
+        "target": "img.png",
+        "heading": null,
+        "alias": "300",
+        "targetAt": 0,
+        "size": {
+          "width": 300,
+          "height": null
+        }
+      }
+    },
+    {
+      "name": "embed_size_with_height_after_a_label",
+      "inner": "img.png|alt text|640x480",
+      "embed": true,
+      "parsed": {
+        "target": "img.png",
+        "heading": null,
+        "alias": "alt text|640x480",
+        "targetAt": 0,
+        "size": {
+          "width": 640,
+          "height": 480
+        }
+      }
+    },
+    {
+      "name": "a_link_has_no_size",
+      "inner": "Note|300",
+      "parsed": {
+        "target": "Note",
+        "heading": null,
+        "alias": "300",
+        "targetAt": 0,
+        "size": null
+      }
+    },
+    {
+      "name": "embed_alias_that_is_not_a_size",
+      "inner": "img.png|300px",
+      "embed": true,
+      "parsed": {
+        "target": "img.png",
+        "heading": null,
+        "alias": "300px",
+        "targetAt": 0,
+        "size": null
+      }
+    },
+    {
+      "name": "body_block_and_size_fields",
+      "body": "![[Note#^b1]] ![[pic.png|20x30]]",
+      "links": [
+        {
+          "kind": "embed",
+          "raw": "Note#^b1",
+          "target": "Note",
+          "alias": null,
+          "at": 0,
+          "text": "![[Note#^b1]]",
+          "heading": null,
+          "block": "b1"
+        },
+        {
+          "kind": "embed",
+          "raw": "pic.png|20x30",
+          "target": "pic.png",
+          "alias": "20x30",
+          "at": 14,
+          "text": "![[pic.png|20x30]]",
+          "size": {
+            "width": 20,
+            "height": 30
+          }
+        }
+      ]
+    },
+    {
+      "name": "self_links_are_dropped_by_default",
+      "body": "[[#Intro]] [[#^b1]]",
+      "links": []
+    },
+    {
+      "name": "self_links_option_reads_a_bare_fragment",
+      "body": "[[#Intro]] ![[#^b1|x]] [[|alias]]",
+      "options": {
+        "selfLinks": true
+      },
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "#Intro",
+          "target": "",
+          "alias": null,
+          "at": 0,
+          "text": "[[#Intro]]",
+          "heading": "Intro"
+        },
+        {
+          "kind": "embed",
+          "raw": "#^b1|x",
+          "target": "",
+          "alias": "x",
+          "at": 11,
+          "text": "![[#^b1|x]]",
+          "block": "b1"
+        }
+      ]
+    },
+    {
+      "name": "html_comment_links_are_found_by_default",
+      "body": "a <!-- [[Hidden]] --> b",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "Hidden",
+          "target": "Hidden",
+          "alias": null,
+          "at": 7,
+          "text": "[[Hidden]]"
+        }
+      ]
+    },
+    {
+      "name": "html_comment_option_skips_links_inside",
+      "body": "<!-- [[Hidden]] -->[[Shown]]\n<!-- open [[Gone]]",
+      "options": {
+        "skipHtmlComments": true
+      },
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "Shown",
+          "target": "Shown",
+          "alias": null,
+          "at": 19,
+          "text": "[[Shown]]"
+        }
+      ]
+    },
+    {
+      "name": "html_comment_inside_code_does_not_open",
+      "body": "`<!--` [[Kept]] -->",
+      "options": {
+        "skipHtmlComments": true
+      },
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "Kept",
+          "target": "Kept",
+          "alias": null,
+          "at": 7,
+          "text": "[[Kept]]"
+        }
+      ]
+    },
+    {
+      "name": "commonmark_code_rules_end_a_span_at_a_heading",
+      "body": "`a\n# [[H]] `\n[[In]]",
+      "options": {
+        "codeRules": "commonmark"
+      },
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "H",
+          "target": "H",
+          "alias": null,
+          "at": 5,
+          "text": "[[H]]"
+        },
+        {
+          "kind": "wikilink",
+          "raw": "In",
+          "target": "In",
+          "alias": null,
+          "at": 13,
+          "text": "[[In]]"
+        }
+      ]
+    },
+    {
+      "name": "skill_export_code_rules_option",
+      "body": "`a\n# [[H]] `\n[[In]]",
+      "options": {
+        "codeRules": "skill-export"
+      },
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "In",
+          "target": "In",
+          "alias": null,
+          "at": 13,
+          "text": "[[In]]"
         }
       ]
     }

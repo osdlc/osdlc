@@ -7,8 +7,11 @@ import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
   type BodyLinkKind,
+  type ScanOptions,
+  type Size,
   bodyLinks,
   bodyLinksSpanned,
+  bodyLinksSpannedWith,
   displayText,
   isVaultLinkUrl,
   mdLinkTarget,
@@ -29,7 +32,15 @@ interface CodeCase {
 interface InnerCase {
   name: string
   inner: string
-  parsed: { target: string; heading: string | null; alias: string | null; targetAt: number } | null
+  embed?: boolean
+  parsed: {
+    target: string
+    heading: string | null
+    alias: string | null
+    targetAt: number
+    block?: string | null
+    size?: Size | null
+  } | null
 }
 
 interface UrlCase {
@@ -42,6 +53,7 @@ interface UrlCase {
 interface BodyCase {
   name: string
   body: string
+  options?: ScanOptions
   links: {
     kind: BodyLinkKind
     raw: string
@@ -49,7 +61,23 @@ interface BodyCase {
     alias: string | null
     at: number
     text: string
+    heading?: string | null
+    block?: string | null
+    size?: Size | null
   }[]
+}
+
+/**
+ * Adds `key` to `actual` when the expected case names it or the value is not
+ * null, so a case that leaves an optional key out still pins it to null.
+ */
+function optional(
+  actual: Record<string, unknown>,
+  expected: object | undefined,
+  key: string,
+  value: unknown,
+): void {
+  if ((expected !== undefined && key in expected) || value !== null) actual[key] = value
 }
 
 type ParseCase = InnerCase | UrlCase | BodyCase
@@ -105,34 +133,47 @@ describe('parse cases', () => {
   for (const c of cases.parse) {
     test(c.name, () => {
       if ('inner' in c) {
-        const link = parseInner(c.inner, false)
+        const link = parseInner(c.inner, c.embed ?? false)
         const range = targetRange(c.inner)
-        const actual =
-          link === null || range === null
-            ? null
-            : {
-                target: link.target,
-                heading: link.heading,
-                alias: link.alias,
-                targetAt: codePoints(c.inner.slice(0, range.start)),
-              }
+        let actual: Record<string, unknown> | null = null
+        if (link !== null && range !== null) {
+          actual = {
+            target: link.target,
+            heading: link.heading,
+            alias: link.alias,
+            targetAt: codePoints(c.inner.slice(0, range.start)),
+          }
+          optional(actual, c.parsed ?? undefined, 'block', link.block)
+          optional(actual, c.parsed ?? undefined, 'size', link.size)
+        }
         expect(actual).toEqual(c.parsed)
         if (range !== null) expect(c.inner.slice(range.start, range.end)).toBe(link!.target)
       } else if ('url' in c) {
         expect(isVaultLinkUrl(c.url)).toBe(c.vaultLink)
         expect(mdLinkTarget(c.url)).toBe(c.target)
       } else {
-        const spanned = bodyLinksSpanned(c.body)
+        const spanned =
+          c.options === undefined
+            ? bodyLinksSpanned(c.body)
+            : bodyLinksSpannedWith(c.body, c.options)
         expect(
-          spanned.map((link) => ({
-            kind: link.kind,
-            raw: link.raw,
-            target: link.target,
-            alias: link.alias,
-            at: codePoints(c.body.slice(0, link.start)),
-            text: c.body.slice(link.start, link.end),
-          })),
+          spanned.map((link, n) => {
+            const actual: Record<string, unknown> = {
+              kind: link.kind,
+              raw: link.raw,
+              target: link.target,
+              alias: link.alias,
+              at: codePoints(c.body.slice(0, link.start)),
+              text: c.body.slice(link.start, link.end),
+            }
+            const want = c.links[n]
+            optional(actual, want, 'heading', link.heading)
+            optional(actual, want, 'block', link.block)
+            optional(actual, want, 'size', link.size)
+            return actual
+          }),
         ).toEqual(c.links)
+        if (c.options !== undefined) return
         expect(bodyLinks(c.body)).toEqual(
           spanned.map((link) => ({
             target: link.target,

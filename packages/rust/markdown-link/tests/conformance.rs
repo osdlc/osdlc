@@ -11,12 +11,17 @@
 //!
 //! - `inner`, a wikilink body, with `parsed`: [`parse_inner`]'s target,
 //!   heading and alias, and `targetAt`, where [`target_range`] starts, or
-//!   `null` when there is no target.
+//!   `null` when there is no target. `embed: true` parses it as an embed.
+//!   `parsed` may also hold `block` and `size` (`{ width, height }`); a key
+//!   left out means `null`.
 //! - `url`, a markdown link URL, with `vaultLink` ([`is_vault_link_url`]) and
 //!   `target` ([`md_link_target`]).
 //! - `body`, with `links`: [`body_links_spanned`]'s links, each with `at`, the
-//!   start of its span, and `text`, the source it spans. [`body_links`] must
-//!   agree with them.
+//!   start of its span, and `text`, the source it spans. A link may also hold
+//!   `heading`, `block` and `size`; a key left out means `null`. With
+//!   `options` (`{ codeRules, skipHtmlComments, selfLinks }`, each optional)
+//!   the scan is [`body_links_spanned_with`]; without, [`body_links`] must
+//!   agree with the links too.
 //!
 //! `display` pins [`display_text`]: each case is `{ name, text, display }`.
 //!
@@ -28,8 +33,9 @@
 
 use markdown_link::code::{CodeRules, strip_code_with};
 use markdown_link::{
-    BodyLinkKind, LinkKind, body_links, body_links_spanned, display_text, is_vault_link_url,
-    md_link_target, parse_inner, parse_typed_ref, strip_code, target_range,
+    BodyLinkKind, LinkKind, ScanOptions, Size, body_links, body_links_spanned,
+    body_links_spanned_with, display_text, is_vault_link_url, md_link_target, parse_inner,
+    parse_typed_ref, strip_code, target_range,
 };
 use serde_json::Value as Json;
 
@@ -87,6 +93,35 @@ fn code_cases() {
     );
 }
 
+fn size_json(size: Option<Size>) -> Json {
+    match size {
+        Some(size) => serde_json::json!({ "width": size.width, "height": size.height }),
+        None => Json::Null,
+    }
+}
+
+/// Adds `key` to `actual` when the expected case names it or the value is
+/// not null, so a case that leaves an optional key out still pins it to null.
+fn optional(actual: &mut Json, expected: &Json, key: &str, value: Json) {
+    if expected.get(key).is_some() || !value.is_null() {
+        actual[key] = value;
+    }
+}
+
+fn scan_options(case: &Json) -> Option<ScanOptions> {
+    let options = case.get("options")?;
+    let flag = |key: &str| options.get(key).and_then(Json::as_bool).unwrap_or(false);
+    Some(ScanOptions {
+        code_rules: match options.get("codeRules").and_then(Json::as_str) {
+            None | Some("commonmark") => CodeRules::CommonMark,
+            Some("skill-export") => CodeRules::SkillExport,
+            Some(other) => panic!("unknown codeRules {other:?}"),
+        },
+        skip_html_comments: flag("skipHtmlComments"),
+        self_links: flag("selfLinks"),
+    })
+}
+
 /// The number of characters in `text` before byte `at`.
 fn chars_before(text: &str, at: usize) -> usize {
     text[..at].chars().count()
@@ -94,14 +129,18 @@ fn chars_before(text: &str, at: usize) -> usize {
 
 fn inner_failures(name: &str, inner: &str, case: &Json) -> Vec<String> {
     let parsed = &case["parsed"];
-    let actual = parse_inner(inner, false).map(|link| {
+    let embed = case.get("embed").and_then(Json::as_bool).unwrap_or(false);
+    let actual = parse_inner(inner, embed).map(|link| {
         let range = target_range(inner).expect("parse_inner found a target");
-        serde_json::json!({
+        let mut actual = serde_json::json!({
             "target": link.target,
             "heading": link.heading,
             "alias": link.alias,
             "targetAt": chars_before(inner, range.start),
-        })
+        });
+        optional(&mut actual, parsed, "block", opt_str(link.block));
+        optional(&mut actual, parsed, "size", size_json(link.size));
+        actual
     });
     let actual = actual.unwrap_or(Json::Null);
     if actual == *parsed {
@@ -132,23 +171,33 @@ fn url_failures(name: &str, url: &str, case: &Json) -> Vec<String> {
 fn body_failures(name: &str, body: &str, case: &Json) -> Vec<String> {
     let mut failures = Vec::new();
     let expected = case["links"].as_array().expect("links is an array");
-    let spanned = body_links_spanned(body);
+    let options = scan_options(case);
+    let spanned = match &options {
+        Some(options) => body_links_spanned_with(body, options),
+        None => body_links_spanned(body),
+    };
     let actual: Vec<Json> = spanned
         .iter()
-        .map(|link| {
+        .enumerate()
+        .map(|(n, link)| {
             let kind = match link.kind {
                 BodyLinkKind::Wikilink => "wikilink",
                 BodyLinkKind::Embed => "embed",
                 BodyLinkKind::Markdown => "markdown",
             };
-            serde_json::json!({
+            let mut actual = serde_json::json!({
                 "kind": kind,
                 "raw": link.raw,
                 "target": link.target,
                 "alias": link.alias,
                 "at": chars_before(body, link.byte_start),
                 "text": &body[link.byte_start..link.byte_end],
-            })
+            });
+            let want = expected.get(n).unwrap_or(&Json::Null);
+            optional(&mut actual, want, "heading", opt_str(link.heading.clone()));
+            optional(&mut actual, want, "block", opt_str(link.block.clone()));
+            optional(&mut actual, want, "size", size_json(link.size));
+            actual
         })
         .collect();
     if actual != *expected {
@@ -157,6 +206,9 @@ fn body_failures(name: &str, body: &str, case: &Json) -> Vec<String> {
             Json::Array(expected.clone()),
             Json::Array(actual)
         ));
+    }
+    if options.is_some() {
+        return failures;
     }
     let plain: Vec<(String, LinkKind)> = body_links(body)
         .into_iter()
@@ -244,4 +296,10 @@ fn typed_ref_cases() {
         "typedRef case failures:\n{}",
         failures.join("\n")
     );
+}
+
+/// An optional string as JSON. Spelled out because `From<Option<T>>` for
+/// `serde_json::Value` is newer than the oldest serde_json this crate allows.
+fn opt_str(value: Option<String>) -> serde_json::Value {
+    value.map_or(serde_json::Value::Null, serde_json::Value::String)
 }
