@@ -478,7 +478,6 @@ name = "markdown-vault"
 version = "0.1.0"
 dependencies = [
  "frontmatter-lossless",
- "markdown-contract",
  "markdown-link",
  "markdown-vault-fs",
  "slug-collate",
