@@ -1,9 +1,9 @@
 [package]
 name = "markdown-vault-fs"
-version = "0.3.2"
+version = "0.4.0"
 edition.workspace = true
 rust-version.workspace = true
-description = "Vault filesystem primitives: the visibility-policy walk, the excluded-files rules, the `_system/` rules, statSync-shaped timestamps, and a re-export of the path-guard containment guard"
+description = "Vault filesystem primitives over a Vfs: the visibility-policy walk, the excluded-files rules read from .obsidian/app.json, the `_system/` rules, file timestamps, and a re-export of the path-guard containment guard"
 license.workspace = true
 repository.workspace = true
 homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/markdown-vault-fs"
@@ -19,15 +19,29 @@ include = [
   "LICENSE-APACHE",
 ]
 
+[features]
+default = ["native"]
+# The `native` module: the walk over std::fs. Leave it off for
+# wasm32-unknown-unknown; the rest of the crate reads only through a Vfs.
+native = ["vfs-seam/native"]
+
 # Deliberately YAML-free: nothing here parses vault content, so the crate stays
-# small and pulls in no markdown or YAML stack.
+# small and pulls in no markdown or YAML stack. serde_json reads
+# `.obsidian/app.json`.
 [dependencies]
 path-guard = { workspace = true }
 regex = { workspace = true }
-walkdir = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+vfs-seam = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+vfs-seam = { workspace = true, features = ["native"] }
+
+[[example]]
+name = "list_notes"
+required-features = ["native"]
 
 [lints]
 workspace = true

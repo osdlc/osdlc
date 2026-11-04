@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-04
+
+The walk reads through a `vfs-seam` `Vfs`, so it runs on any host, wasm
+included, and it applies the vault's excluded files by default.
+
+### Changed
+
+- `walk`, `walk_reporting` and `walk_notes` take a `&dyn Vfs` before the vault
+  directory. `walk` and `walk_reporting` return `Result<_, WalkError>`; with
+  the default options they never fail. The `native` module (default `native`
+  feature) has the old one-line forms over the real filesystem:
+  `native::walk(dir, opts)`, `native::walk_reporting`, `native::walk_notes`.
+- `WalkOptions::hide` is a `Hide`: `Vault` (the default) reads
+  `.obsidian/app.json`, `Rules(Arc<HideRules>)` passes your own, `Off` hides
+  nothing. Before, the default hid nothing.
+- `Entry::mtime: Option<SystemTime>` is now `Entry::mtime_ms: Option<i64>`,
+  whole milliseconds from `Vfs::metadata`.
+- Names within a folder sort as `String`s (byte order). For UTF-8 names this
+  is the order `walkdir` gave.
+- `Entry::abs` is the vault directory joined with `rel`.
+
+### Added
+
+- `WalkOptions::refuse_symlinks`, `propagate_errors`, `skip_names` and
+  `prune_dirs`, and `WalkError` (`Symlink`, `Io`).
+- `hide::load(vfs, vault_dir) -> HideList`, which reads `userIgnoreFilters`
+  from `.obsidian/app.json` (moved from determined's `determined-vault`), and
+  `hide::parse_app_json`. A missing file is an empty list; a broken one is an
+  empty list with `HideList::error` set.
+- `stat::modified_ms(vfs, path)`.
+- `vfs_seam` re-exported.
+
+### Removed
+
+- `WalkOptions::follow_links`. A `Vfs` lists a symlinked folder as a file, so
+  the walk never follows links.
+- The `walkdir` dependency.
+
 ## [0.3.2](https://github.com/osdlc/osdlc/compare/markdown-vault-fs/v0.3.1...markdown-vault-fs/v0.3.2) - 2026-11-02
 
 ### Other

@@ -18,9 +18,27 @@
 //! the index's `system_time_ms` used the `as_secs_f64` form and was safe only
 //! because its callers rounded to whole milliseconds first, and nothing said
 //! so.
+//!
+//! # Through a `Vfs`
+//!
+//! A [`Vfs`] reports whole milliseconds ([`vfs_seam::Metadata::modified_ms`]),
+//! which is what the walk and the vault caches stamp a file with:
+//! [`modified_ms`] asks for it. The float forms below need a
+//! `std::fs::Metadata`, so they are for native callers that must match node's
+//! `statSync()` to the last bit.
 
 use std::fs::Metadata;
+use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use vfs_seam::Vfs;
+
+/// A file's last modification through `vfs`, in whole milliseconds since the
+/// epoch. `None` when the file is not there or the host has no time for it,
+/// which a cache must treat as never fresh.
+pub fn modified_ms(vfs: &dyn Vfs, path: &Path) -> Option<i64> {
+    vfs.metadata(path).ok().and_then(|m| m.modified_ms)
+}
 
 /// Milliseconds since the epoch, node's arithmetic exactly.
 ///
@@ -75,6 +93,19 @@ mod tests {
         );
         assert_eq!(ours, 1_784_508_521_000.015_9);
         assert_eq!(convenient, 1_784_508_521_000.015_6);
+    }
+
+    #[test]
+    fn modified_ms_reads_the_vfs_time() {
+        let vfs = vfs_seam::MemVfs::new();
+        vfs.insert("/v/a.md", "x").unwrap();
+        vfs.set_modified(Path::new("/v/a.md"), Some(1_700_000_000_123))
+            .unwrap();
+        assert_eq!(
+            modified_ms(&vfs, Path::new("/v/a.md")),
+            Some(1_700_000_000_123)
+        );
+        assert_eq!(modified_ms(&vfs, Path::new("/v/gone.md")), None);
     }
 
     #[test]

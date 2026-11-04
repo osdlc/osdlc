@@ -1,0 +1,39 @@
+[package]
+name = "vfs-seam"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "A file-access trait for libraries that must also run without a filesystem: one object-safe Vfs with a std::fs implementation, an in-memory tree, a write-capturing preview overlay, and a Clock for code that needs the time on wasm32."
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/vfs-seam"
+readme = "README.md"
+keywords = ["vfs", "filesystem", "wasm", "testing", "io"]
+categories = ["filesystem", "wasm"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[features]
+default = ["native"]
+# NativeVfs (std::fs) and SystemClock. Leave it off for
+# wasm32-unknown-unknown; the rest of the crate does no I/O of its own.
+native = []
+
+[dependencies]
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
+
+[[example]]
+name = "preview"
+required-features = ["native"]

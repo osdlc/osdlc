@@ -59,10 +59,14 @@ impl VaultFacts {
     /// The standalone path. A caller holding warm caches should populate the
     /// fields directly instead — that is the whole reason they are public.
     pub fn scan(vault_dir: &Path) -> VaultFacts {
-        let entries = markdown_vault_fs::walk::walk(
+        let entries = markdown_vault_fs::native::walk(
             vault_dir,
-            &markdown_vault_fs::walk::WalkOptions::notes_and_attachments(),
-        );
+            &markdown_vault_fs::walk::WalkOptions {
+                hide: markdown_vault_fs::Hide::Off,
+                ..markdown_vault_fs::walk::WalkOptions::notes_and_attachments()
+            },
+        )
+        .unwrap_or_default();
         let mut facts = VaultFacts {
             paths: entries.iter().map(|e| e.rel.clone()).collect(),
             ..VaultFacts::default()

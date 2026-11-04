@@ -114,9 +114,11 @@ pub fn bundle_entry(path: &str) -> Option<(&str, &str)> {
 pub fn bundle_members(vault_dir: &Path, dir: &str) -> Vec<String> {
     let opts = markdown_vault_fs::walk::WalkOptions {
         roots: vec![dir.to_string()],
+        hide: markdown_vault_fs::Hide::Off,
         ..markdown_vault_fs::walk::WalkOptions::notes_and_attachments()
     };
-    markdown_vault_fs::walk::walk(vault_dir, &opts)
+    markdown_vault_fs::native::walk(vault_dir, &opts)
+        .unwrap_or_default()
         .into_iter()
         .map(|e| e.rel)
         .collect()
