@@ -19,7 +19,27 @@ include = [
   "LICENSE-APACHE",
 ]
 
+[features]
+default = ["native"]
+# NativeVfs and SystemClock from vfs-seam, and the native walk. Leave it off
+# for wasm32-unknown-unknown; the crate itself does no I/O but through a Vfs.
+native = ["vfs-seam/native", "markdown-vault-fs/native"]
+
 [dependencies]
+frontmatter-lossless = { workspace = true }
+markdown-contract = { workspace = true }
+markdown-link = { workspace = true }
+markdown-vault-fs = { workspace = true }
+slug-collate = { workspace = true }
+vfs-seam = { workspace = true }
+yaml-splice = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[[example]]
+name = "backlinks"
+required-features = ["native"]
 
 [lints]
 workspace = true

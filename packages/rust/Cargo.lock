@@ -464,16 +464,28 @@ dependencies = [
  "etag-write",
  "frontmatter-lossless",
  "markdown-link",
+ "markdown-vault",
  "markdown-vault-fs",
  "slug-collate",
  "tempfile",
  "thiserror",
+ "vfs-seam",
  "yaml-splice",
 ]
 
 [[package]]
 name = "markdown-vault"
 version = "0.1.0"
+dependencies = [
+ "frontmatter-lossless",
+ "markdown-contract",
+ "markdown-link",
+ "markdown-vault-fs",
+ "slug-collate",
+ "tempfile",
+ "vfs-seam",
+ "yaml-splice",
+]
 
 [[package]]
 name = "markdown-vault-fs"

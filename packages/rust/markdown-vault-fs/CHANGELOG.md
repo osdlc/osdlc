@@ -37,6 +37,8 @@ included, and it applies the vault's excluded files by default.
   `hide::parse_app_json`. A missing file is an empty list; a broken one is an
   empty list with `HideList::error` set.
 - `stat::modified_ms(vfs, path)`.
+- `path::guard(vfs)` and `VfsResolver`: the containment guard over a `Vfs`.
+  `Resolver` is re-exported from `path-guard`.
 - `vfs_seam` re-exported.
 
 ### Removed

@@ -51,6 +51,11 @@ impl VfsError {
     pub fn io_error(&self) -> &io::Error {
         &self.source
     }
+
+    /// The underlying `io::Error`, for an API that speaks `std::io`.
+    pub fn into_io_error(self) -> io::Error {
+        self.source
+    }
 }
 
 /// `Result` with a [`VfsError`].

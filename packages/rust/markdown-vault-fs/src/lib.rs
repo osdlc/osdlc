@@ -43,7 +43,7 @@ pub mod stat;
 pub mod walk;
 
 pub use hide::{HideList, HideRules};
-pub use path::{Guard, PathError, SYSTEM_PREFIX, is_system_path, system_route};
+pub use path::{Guard, PathError, SYSTEM_PREFIX, VfsResolver, is_system_path, system_route};
 pub use stat::{created_ms, modified_ms, ms_since_epoch, mtime_ms};
 pub use vfs_seam;
 pub use walk::{

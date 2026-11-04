@@ -146,6 +146,12 @@ jobs:
           cargo test -p yaml-splice --no-default-features --locked
           RUSTDOCFLAGS='-D warnings' cargo doc --no-deps -p yaml-splice --no-default-features --locked
 
+      # Without `native`, these crates do no I/O through std::fs.
+      - name: vfs-seam, markdown-vault-fs and markdown-vault without default features
+        run: |
+          cargo clippy -p vfs-seam -p markdown-vault-fs -p markdown-vault --no-default-features --all-targets --locked -- -D warnings
+          cargo test -p vfs-seam -p markdown-vault-fs -p markdown-vault --no-default-features --locked
+
       # Without `native`, the crate does no I/O; the corpus test still runs.
       - name: markdown-contract without default features
         run: |
@@ -272,7 +278,8 @@ jobs:
   # wasm32, wasm-bindgen, wasm-opt) and checks that the result equals the wasm
   # committed in packages/ts/yaml-splice/wasm/, so the npm package ships what
   # its source builds. On a difference it uploads the rebuilt files.
-  # It also builds markdown-contract for wasm32 without default features.
+  # It also builds vfs-seam, markdown-vault-fs, markdown-vault and
+  # markdown-contract for wasm32 without default features.
   #
   # A version bump alone changes the wasm bytes: cargo hashes each crate's
   # version into the crate hash it gives rustc (`-C metadata`), and that hash
@@ -303,9 +310,11 @@ jobs:
       - name: Build the wasm with build.sh
         run: bash packages/rust/yaml-splice-wasm/build.sh
 
-      - name: Build markdown-contract for wasm32
+      # The crates a wasm host reads a vault through. Without `native` they do
+      # no I/O of their own.
+      - name: Build the vault crates for wasm32
         working-directory: packages/rust
-        run: cargo build -p markdown-contract --no-default-features --target wasm32-unknown-unknown --locked
+        run: cargo build -p vfs-seam -p markdown-vault-fs -p markdown-vault -p markdown-contract --no-default-features --target wasm32-unknown-unknown --locked
 
       - name: The committed wasm matches the rebuild
         run: |

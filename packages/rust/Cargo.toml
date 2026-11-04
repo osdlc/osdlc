@@ -65,7 +65,7 @@ markdown-contract = { path = "markdown-contract", version = "0.4.0", default-fea
 markdown-link = { path = "markdown-link", version = "0.7.0" }
 markdown-relink = { path = "markdown-relink", version = "0.2.0" }
 markdown-vault = { path = "markdown-vault", version = "0.1.0" }
-markdown-vault-fs = { path = "markdown-vault-fs", version = "0.4.0" }
+markdown-vault-fs = { path = "markdown-vault-fs", version = "0.4.0", default-features = false }
 path-guard = { path = "path-guard", version = "0.3.3" }
 slug-collate = { path = "slug-collate", version = "0.2.0" }
 tiered-dirs = { path = "tiered-dirs", version = "0.3" }
