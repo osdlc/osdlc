@@ -6,7 +6,40 @@
 //! a link" is how two scanners start disagreeing about what the vault
 //! contains.
 
-use crate::{is_vault_link_url, md_link_target, parse_inner, strip_code};
+use crate::code::{CodeRules, strip_code_with};
+use crate::{Size, is_vault_link_url, md_link_target, parse_inner, parse_inner_self};
+
+/// What a body scan counts as a link. [`ScanOptions::default`] is what
+/// [`body_links_spanned`] and [`crate::body_links`] use.
+///
+/// # Examples
+///
+/// ```
+/// use markdown_link::code::CodeRules;
+/// use markdown_link::{ScanOptions, body_links_spanned_with};
+///
+/// let options = ScanOptions {
+///     code_rules: CodeRules::SkillExport,
+///     skip_html_comments: true,
+///     self_links: true,
+/// };
+/// let links = body_links_spanned_with("<!-- [[hidden]] --> [[#Intro]]", &options);
+/// assert_eq!(links.len(), 1);
+/// assert_eq!(links[0].target, "");
+/// assert_eq!(links[0].heading.as_deref(), Some("Intro"));
+/// ```
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ScanOptions {
+    /// Which rules decide what is code. Links in code are not links.
+    pub code_rules: CodeRules,
+    /// Skip links inside HTML comments, `<!--` to `-->` or the end of the
+    /// body. Off by default: a comment's links are found.
+    pub skip_html_comments: bool,
+    /// Read a wikilink with no target and a `#` fragment, `[[#Heading]]` or
+    /// `[[#^block]]`, as a link to the note it is written in, with an empty
+    /// [`BodyLink::target`]. Off by default: such a link is dropped.
+    pub self_links: bool,
+}
 
 /// What syntax produced a [`BodyLink`].
 ///
@@ -39,12 +72,21 @@ pub struct BodyLink {
     pub raw: String,
     /// What resolution runs against. A wikilink's `raw` minus `#heading` /
     /// `^block` / `|alias` and the `\` escaping the pipe; a markdown link's URL
-    /// percent-decoded and minus a trailing `.md`.
+    /// percent-decoded and minus a trailing `.md`. Empty for a link to the
+    /// note it is written in (see [`ScanOptions::self_links`]).
     pub target: String,
+    /// A wikilink's `#heading`, as [`crate::WikiLink::heading`]. `None` for a
+    /// markdown link.
+    pub heading: Option<String>,
+    /// A wikilink's `#^block`, as [`crate::WikiLink::block`]. `None` for a
+    /// markdown link.
+    pub block: Option<String>,
     /// A wikilink's or embed's `|alias`: the text after the first `|` outside
     /// code, read from the body so code inside it is kept. `None` when there
     /// is none or it is empty, and for a markdown link.
     pub alias: Option<String>,
+    /// An embed's size, `|300` or `|300x200`, as [`crate::WikiLink::size`].
+    pub size: Option<Size>,
     /// Byte offset within the **body** where the whole link syntax starts. An
     /// embed's leading `!` is inside it.
     pub byte_start: usize,
@@ -62,7 +104,7 @@ pub struct BodyLink {
 ///
 /// # Why the offsets need a char table
 ///
-/// [`strip_code`] preserves the **character** count of its input, not the byte
+/// [`crate::strip_code`] preserves the **character** count of its input, not the byte
 /// count — a multi-byte char inside a code span comes back as a one-byte space.
 /// So a position found in the stripped text is a valid char index into the
 /// original and never a valid byte index, and the two tables below are what
@@ -84,7 +126,19 @@ pub struct BodyLink {
 /// assert_eq!(&body[links[1].byte_start..links[1].byte_end], "[[Note#h|alias]]");
 /// ```
 pub fn body_links_spanned(body: &str) -> Vec<BodyLink> {
-    let stripped = strip_code(body);
+    body_links_spanned_with(body, &ScanOptions::default())
+}
+
+/// [`body_links_spanned`] under `options`: which code rules apply, whether
+/// HTML comments hide links, and whether `[[#Heading]]` is a link.
+///
+/// A comment is found after code is blanked, so a `<!--` inside code does not
+/// open one.
+pub fn body_links_spanned_with(body: &str, options: &ScanOptions) -> Vec<BodyLink> {
+    let mut stripped = strip_code_with(body, options.code_rules);
+    if options.skip_html_comments {
+        stripped = blank_comments(&stripped);
+    }
     let chars: Vec<char> = stripped.chars().collect();
     // char index -> byte offset, in the ORIGINAL body, plus an end sentinel so
     // an exclusive range that runs to the end of the body is representable.
@@ -120,7 +174,12 @@ pub fn body_links_spanned(body: &str) -> Vec<BodyLink> {
                 j += 1;
             }
             if closed && !inner.is_empty() {
-                if let Some(link) = parse_inner(&inner, embed) {
+                let parsed = if options.self_links {
+                    parse_inner_self(&inner, embed)
+                } else {
+                    parse_inner(&inner, embed)
+                };
+                if let Some(link) = parsed {
                     // Split at the pipe `parse_inner` used, found in the
                     // stripped chars so a `|` in code is not one, then read
                     // the alias from the body so code inside it is kept.
@@ -138,6 +197,9 @@ pub fn body_links_spanned(body: &str) -> Vec<BodyLink> {
                         },
                         raw: inner,
                         target: link.target,
+                        heading: link.heading,
+                        block: link.block,
+                        size: link.size,
                         alias,
                         // An embed's `!` is part of the syntax a rename has to
                         // rewrite, so it is inside the span.
@@ -158,6 +220,26 @@ pub fn body_links_spanned(body: &str) -> Vec<BodyLink> {
         }
         i += 1;
     }
+    out
+}
+
+/// `text` with every HTML comment, `<!--` to `-->` or the end, blanked to
+/// spaces, newlines kept. The character count does not change.
+fn blank_comments(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(open) = rest.find("<!--") {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 4..];
+        let end = after.find("-->").map_or(rest.len(), |at| open + 4 + at + 3);
+        out.extend(
+            rest[open..end]
+                .chars()
+                .map(|c| if c == '\n' { '\n' } else { ' ' }),
+        );
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
     out
 }
 
@@ -208,7 +290,10 @@ fn spanned_markdown_link(
         BodyLink {
             kind: BodyLinkKind::Markdown,
             target: md_link_target(&url),
+            heading: None,
+            block: None,
             alias: None,
+            size: None,
             raw: url,
             byte_start: at[start],
             byte_end: at[end],

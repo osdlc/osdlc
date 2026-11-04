@@ -86,6 +86,41 @@ assert_eq!(index.resolve("Plan"), Some("Projects/Plan.md"));
 assert_eq!(body_links(note)[1].kind, LinkKind::Embed);
 ```
 
+### Options for a stricter reader
+
+The defaults above are the long-standing behaviour. A tool that renders or
+publishes notes can ask for more:
+
+- `body_links_spanned_with(body, &ScanOptions { .. })` picks the code rules
+  (`CodeRules::SkillExport` for skill renderers), skips links inside HTML
+  comments, and reads `[[#Heading]]` as a link to the note it is in.
+- Each parsed link carries its `heading`, its `block` (`#^id`) and an embed's
+  `size` (`|300` or `|300x200`).
+- `LinkIndex::resolve_strict` refuses a name several files answer to,
+  returning `ResolveError::Ambiguous` with every candidate, where
+  `resolve_from` picks one. `LinkIndex::candidates` lists them.
+- `relative_link(from, to, fragment)`, `encode_uri_component`,
+  `encode_uri_fragment` and `escape_label` write a resolved link back out as
+  a relative markdown link.
+
+```rust
+use markdown_link::code::CodeRules;
+use markdown_link::{LinkIndex, ResolveError, ScanOptions, body_links_spanned_with, relative_link};
+
+let options = ScanOptions {
+    code_rules: CodeRules::SkillExport,
+    skip_html_comments: true,
+    self_links: true,
+};
+let links = body_links_spanned_with("<!-- [[Draft]] --> [[Plan#^step2]]", &options);
+assert_eq!(links.len(), 1);
+assert_eq!(links[0].block.as_deref(), Some("step2"));
+
+let index = LinkIndex::build(&["a/Plan.md".to_string(), "b/Plan.md".to_string()]);
+assert!(matches!(index.resolve_strict("Plan", "x.md"), Err(ResolveError::Ambiguous(_))));
+assert_eq!(relative_link("a/x.md", "a/Plan.md", Some("Step 2")), "Plan.md#Step%202");
+```
+
 The public items are documented on [docs.rs](https://docs.rs/markdown-link).
 
 ## Supported versions
@@ -112,7 +147,9 @@ Short notes on settled design choices are in [decisions/](decisions/).
 
 [`@osdlc/markdown-link`](https://www.npmjs.com/package/@osdlc/markdown-link)
 is the TypeScript twin of the crate's parsing half: the code lexer, the link
-scanner, display text and typed references. It does not resolve links yet. It
+scanner (with `ScanOptions`), display text and typed references. It does
+not resolve or write links yet: `LinkIndex`, `relative_link` and the URI
+encoders are Rust only. It
 sits beside the crate, in
 [`packages/ts/markdown-link`](https://github.com/osdlc/osdlc/tree/main/packages/ts/markdown-link).
 Its tests read this crate's `tests/fixtures/conformance.json`, so the two

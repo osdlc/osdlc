@@ -60,7 +60,8 @@ npm install @osdlc/markdown-link
 import { bodyLinksSpanned } from '@osdlc/markdown-link'
 
 bodyLinksSpanned('See [[Note#h|alias]] and `[[not a link]]`')
-// [{ kind: 'wikilink', raw: 'Note#h|alias', target: 'Note', alias: 'alias', start: 4, end: 20 }]
+// [{ kind: 'wikilink', raw: 'Note#h|alias', target: 'Note', heading: 'h', block: null,
+//    alias: 'alias', size: null, start: 4, end: 20 }]
 ```
 
 ## Exports
@@ -69,14 +70,21 @@ bodyLinksSpanned('See [[Note#h|alias]] and `[[not a link]]`')
   `\n` and the code point count, so links in code are not harvested.
   `stripCodeWith(text, rules)` takes `'commonmark'` (the default) or
   `'skill-export'`.
-- One link: `parseInner` splits a wikilink body into target, heading and
-  alias; `targetRange` is where the target sits in it.
+- One link: `parseInner` splits a wikilink body into target, heading, block
+  (`#^id`), alias and, for an embed, size; `targetRange` is where the target
+  sits in it. `parseInnerSelf` also reads a body with no target and a `#`
+  fragment, `#Heading`, as a link to the note it is in, with an empty target.
+  `isSizeSpec` and `parseSize` read `300` or `300x200`.
 - Markdown link URLs: `isVaultLinkUrl` says whether a URL is a note or an
   attachment; `mdLinkTarget` percent-decodes it and drops `.md`.
   `percentDecode` is that decoding alone: `percentDecode('My%20Note')` is
   `'My Note'`, and a `%` that is not valid hex or UTF-8 stays as written.
 - A body: `bodyLinksSpanned` finds every wikilink, embed and relative markdown
   link, with its span; `bodyLinks` is the same scan without spans.
+  `bodyLinksSpannedWith(body, options)` takes `ScanOptions`: `codeRules`,
+  `skipHtmlComments` (links in `<!-- -->` are not links) and `selfLinks`
+  (`[[#Heading]]` is a link with an empty target). The defaults are
+  `bodyLinksSpanned`'s.
 - Display text: `displayText` replaces each wikilink and embed with what a
   reader sees, its alias or else its target. An embed's `|300` or `|300x200`
   is a size, not text, so `![[img.png|300]]` shows `img.png`.
@@ -90,7 +98,9 @@ The Rust crate reports byte offsets.
 ## Twin
 
 The Rust crate `markdown-link` has the parsing functions above under their
-snake_case names. It also resolves links (`LinkIndex`), reads links in
+snake_case names. It also resolves links (`LinkIndex`, with `candidates` and
+`resolve_strict`), writes relative links (`relative_link`,
+`encode_uri_component`, `encode_uri_fragment`, `escape_label`), reads links in
 frontmatter and has smaller helpers, which this package does not have yet.
 Both suites read one case file,
 `packages/rust/markdown-link/tests/fixtures/conformance.json` in the

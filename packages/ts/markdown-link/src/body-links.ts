@@ -3,8 +3,29 @@
  * `markdown-link` crate's `body_links_spanned` and `body_links`.
  */
 
-import { stripCode } from './code.ts'
-import { isVaultLinkUrl, isWhitespace, mdLinkTarget, parseInner, trim } from './parse.ts'
+import { type CodeRules, stripCodeWith } from './code.ts'
+import {
+  type Size,
+  isVaultLinkUrl,
+  isWhitespace,
+  mdLinkTarget,
+  parseInner,
+  parseInnerSelf,
+  trim,
+} from './parse.ts'
+
+/** What a body scan counts as a link. Every field is optional; the defaults are what `bodyLinksSpanned` uses. */
+export interface ScanOptions {
+  /** Which rules decide what is code. Default `'commonmark'`. */
+  codeRules?: CodeRules
+  /** Skip links inside HTML comments, `<!--` to `-->` or the end. Default `false`. */
+  skipHtmlComments?: boolean
+  /**
+   * Read `[[#Heading]]` or `[[#^block]]` as a link to the note it is written
+   * in, with an empty `target`. Default `false`: such a link is dropped.
+   */
+  selfLinks?: boolean
+}
 
 /** What syntax produced a `BodyLink`. */
 export type BodyLinkKind = 'wikilink' | 'embed' | 'markdown'
@@ -20,9 +41,16 @@ export interface BodyLink {
   /**
    * What resolution runs against. A wikilink's `raw` minus `#heading` /
    * `^block` / `|alias` and the `\` escaping the pipe; a markdown link's URL
-   * percent-decoded and minus a trailing `.md`.
+   * percent-decoded and minus a trailing `.md`. Empty for a link to the note
+   * it is written in (see `ScanOptions.selfLinks`).
    */
   target: string
+  /** A wikilink's `#heading`, as `WikiLink.heading`. `null` for a markdown link. */
+  heading: string | null
+  /** A wikilink's `#^block`, as `WikiLink.block`. `null` for a markdown link. */
+  block: string | null
+  /** An embed's size, as `WikiLink.size`. */
+  size: Size | null
   /**
    * A wikilink's or embed's `|alias`: the text after the first `|` outside
    * code, read from the body so code inside it is kept. `null` when there is
@@ -76,7 +104,18 @@ export function bodyLinks(body: string): RawLink[] {
  * is one into the body, and a table converts it to a UTF-16 offset.
  */
 export function bodyLinksSpanned(body: string): BodyLink[] {
-  const chars = Array.from(stripCode(body))
+  return bodyLinksSpannedWith(body, {})
+}
+
+/**
+ * `bodyLinksSpanned` under `options`: which code rules apply, whether HTML
+ * comments hide links, and whether `[[#Heading]]` is a link. A comment is
+ * found after code is blanked, so a `<!--` inside code does not open one.
+ */
+export function bodyLinksSpannedWith(body: string, options: ScanOptions): BodyLink[] {
+  let stripped = stripCodeWith(body, options.codeRules ?? 'commonmark')
+  if (options.skipHtmlComments === true) stripped = blankComments(stripped)
+  const chars = Array.from(stripped)
   // Code point index -> UTF-16 offset in the body, plus an end sentinel.
   const at: number[] = []
   let offset = 0
@@ -114,7 +153,8 @@ export function bodyLinksSpanned(body: string): BodyLink[] {
         j++
       }
       if (closed && inner !== '') {
-        const link = parseInner(inner, embed)
+        const link =
+          options.selfLinks === true ? parseInnerSelf(inner, embed) : parseInner(inner, embed)
         if (link !== null) {
           // Split at the pipe `parseInner` used, found in the stripped chars
           // so a `|` in code is not one, then read the alias from the body so
@@ -124,7 +164,10 @@ export function bodyLinksSpanned(body: string): BodyLink[] {
             kind: embed ? 'embed' : 'wikilink',
             raw: inner,
             target: link.target,
+            heading: link.heading,
+            block: link.block,
             alias,
+            size: link.size,
             start: at[embed ? i - 1 : i]!,
             end: at[j + 2]!,
           })
@@ -144,6 +187,25 @@ export function bodyLinksSpanned(body: string): BodyLink[] {
     i++
   }
   return out
+}
+
+/**
+ * `text` with every HTML comment, `<!--` to `-->` or the end, blanked to
+ * spaces, newlines kept. The code point count does not change.
+ */
+function blankComments(text: string): string {
+  let out = ''
+  let rest = text
+  for (;;) {
+    const open = rest.indexOf('<!--')
+    if (open === -1) break
+    out += rest.slice(0, open)
+    const close = rest.indexOf('-->', open + 4)
+    const end = close === -1 ? rest.length : close + 3
+    for (const c of rest.slice(open, end)) out += c === '\n' ? '\n' : ' '
+    rest = rest.slice(end)
+  }
+  return out + rest
 }
 
 /**
@@ -185,7 +247,10 @@ function markdownLink(
       kind: 'markdown',
       raw: url,
       target: mdLinkTarget(url),
+      heading: null,
+      block: null,
       alias: null,
+      size: null,
       start: at[start]!,
       end: at[end]!,
     },
