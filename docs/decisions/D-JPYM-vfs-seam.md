@@ -8,7 +8,7 @@ Accepted 2026-11-04. Part of
 - **New crate `vfs-seam`:** the `Vfs` trait and its backends (native,
   in-memory, preview) plus a `Clock`. Nothing else.
 - **Every vault crate reads and writes only through it:** `vfs-walk`,
-  `markdown-vault-fs`, `markdown-vault` and `markdown-relink`'s planning.
+  `markdown-vault-fs`, `markdown-corpus` and `markdown-relink`'s planning.
   Native forms stay for existing callers.
 - **It builds for wasm.** `NativeVfs` and `SystemClock` sit behind the
   default `native` feature. The trait is not bound by `Send` or `Sync`, so

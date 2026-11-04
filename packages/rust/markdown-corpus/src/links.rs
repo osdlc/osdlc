@@ -2,7 +2,7 @@
 //! walk.
 //!
 //! [`LinkGraph`] walks every file a link can point at (notes and
-//! attachments, `_system/` and the vault's excluded files included, as
+//! attachments, `_system/` and the corpus's excluded files included, as
 //! Obsidian resolves links to them), reads each note's body once, and keeps
 //! [`NoteFacts`] for it: outgoing links with spans and lines, frontmatter
 //! links, and inline tags. It inverts the edges into a backlink map at the
@@ -17,20 +17,20 @@
 //!
 //! A completed sweep is reused for 500 ms (60 s once
 //! [`LinkGraph::set_watched`] says change events arrive), so a burst of reads
-//! shares one walk. A different vault always walks. The time comes from the
+//! shares one walk. A different corpus always walks. The time comes from the
 //! [`Clock`] passed in, so this runs on hosts with no system clock.
 //!
 //! # Locking
 //!
 //! One mutex over the whole state. The walk and the per-note reads run with
 //! no lock held, against a snapshot; the swap at the end takes the lock
-//! briefly. A sweep that started before a vault switch, or before an
+//! briefly. A sweep that started before a corpus switch, or before an
 //! [`LinkGraph::apply_changes`] landed, does not install its older result.
 //!
 //! # Resolution is not cached per note
 //!
 //! [`NoteFacts::links`] holds targets as written. What a target resolves to
-//! depends on the whole vault (creating `Alpha.md` changes every `[[Alpha]]`),
+//! depends on the whole corpus (creating `Alpha.md` changes every `[[Alpha]]`),
 //! so it is recomputed from the suffix index each sweep.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -47,7 +47,7 @@ use crate::tags::{NoTags, TagLexer};
 /// How long a completed sweep counts as current, in milliseconds.
 pub const REFRESH_TTL_MS: i64 = 500;
 
-/// [`REFRESH_TTL_MS`] while the vault is under a filesystem watch.
+/// [`REFRESH_TTL_MS`] while the corpus is under a filesystem watch.
 pub const WATCHED_TTL_MS: i64 = 60_000;
 
 /// How many source notes one [`LinkGraph::backlinks`] answer carries. The
@@ -150,7 +150,7 @@ struct GraphState {
     /// When the sweep behind `notes` finished, by the caller's clock. `None`
     /// is never fresh.
     swept_at: Option<i64>,
-    /// Bumped on each vault switch; a sweep from before one is discarded.
+    /// Bumped on each corpus switch; a sweep from before one is discarded.
     generation: u64,
     /// Bumped by each [`LinkGraph::apply_changes`]; a sweep from before one
     /// is discarded.
@@ -160,7 +160,7 @@ struct GraphState {
     stale_marks: u64,
 }
 
-/// A cached, incrementally refreshed link graph over every file in a vault.
+/// A cached, incrementally refreshed link graph over every file in a corpus.
 /// `Send + Sync`: the file system and clock are passed to each call, never
 /// kept.
 pub struct LinkGraph {
@@ -257,21 +257,21 @@ impl LinkGraph {
         }
     }
 
-    /// Walks the vault and brings the graph up to date, reusing a sweep
-    /// younger than the TTL over the same vault. A reused sweep reports the
+    /// Walks the corpus and brings the graph up to date, reusing a sweep
+    /// younger than the TTL over the same corpus. A reused sweep reports the
     /// cache as `unchanged`.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> GraphStats {
         self.sweep(vfs, clock.now_ms(), vault_dir, true)
     }
 
     /// [`Self::refresh`] that always walks. For a caller that has just
-    /// changed the vault and must see its own edit.
+    /// changed the corpus and must see its own edit.
     pub fn refresh_now(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> GraphStats {
         self.sweep(vfs, clock.now_ms(), vault_dir, false)
     }
 
     fn sweep(&self, vfs: &dyn Vfs, now: i64, vault_dir: &Path, honor_ttl: bool) -> GraphStats {
-        // 1. Under the lock: decide whether to walk, claim a new vault, and
+        // 1. Under the lock: decide whether to walk, claim a new corpus, and
         // take the map to compare against.
         let (generation, applied, stale_marks, cache, prev_paths) = {
             let mut state = self.state.lock().unwrap();
@@ -288,7 +288,7 @@ impl LinkGraph {
                 }
             } else {
                 // Claimed before the walk, so a reader mid-sweep sees an
-                // empty graph, never the previous vault's edges.
+                // empty graph, never the previous corpus's edges.
                 *state = GraphState {
                     for_vault: Some(vault_dir.to_path_buf()),
                     generation: state.generation + 1,
@@ -407,7 +407,7 @@ impl LinkGraph {
     ///
     /// The file system decides each path: present (spelled as listed in its
     /// folder) or gone. A changed note is re-read; the suffix index is
-    /// rebuilt only when the path set moved. A batch against another vault,
+    /// rebuilt only when the path set moved. A batch against another corpus,
     /// or while no sweep is fresh, does nothing here, but marks the graph so
     /// a sweep that read the files before the change is not stamped fresh.
     pub fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
@@ -497,7 +497,7 @@ impl LinkGraph {
         }
     }
 
-    /// Says the vault is under a filesystem watch, so a sweep stays fresh for
+    /// Says the corpus is under a filesystem watch, so a sweep stays fresh for
     /// [`WATCHED_TTL_MS`]. One-way.
     pub fn set_watched(&self) {
         self.watched.store(true, Ordering::SeqCst);

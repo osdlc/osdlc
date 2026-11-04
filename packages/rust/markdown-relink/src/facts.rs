@@ -15,7 +15,7 @@
 //! crate stays a pure function over a vault, testable with a `tempdir` and no
 //! host.
 //!
-//! [`VaultFacts::from_vault`] builds it from the shared vault model, and
+//! [`VaultFacts::from_corpus`] builds it from the shared corpus model, and
 //! [`VaultFacts::scan`] is the standalone path: load that model from disk first. It is what the crate's own tests run against, so the
 //! algorithm is exercised against a snapshot nothing else produced.
 
@@ -54,13 +54,13 @@ pub struct VaultFacts {
 }
 
 impl VaultFacts {
-    /// The snapshot out of a loaded [`markdown_vault::Vault`]: its paths, each
+    /// The snapshot out of a loaded [`markdown_corpus::Corpus`]: its paths, each
     /// note's body links with spans, and each note's frontmatter link values.
     ///
-    /// The path a caller holding the vault model takes, so the planner reads
+    /// The path a caller holding the corpus model takes, so the planner reads
     /// the same walk, links and resolution corpus every other tool does.
-    pub fn from_vault(vault: &markdown_vault::Vault) -> VaultFacts {
-        let frontmatter = vault
+    pub fn from_corpus(corpus: &markdown_corpus::Corpus) -> VaultFacts {
+        let frontmatter = corpus
             .frontmatter_links()
             .into_iter()
             .map(|(path, links)| {
@@ -75,25 +75,25 @@ impl VaultFacts {
             })
             .collect();
         VaultFacts {
-            paths: vault.paths(),
-            links: vault.body_links(),
+            paths: corpus.paths(),
+            links: corpus.body_links(),
             frontmatter,
         }
     }
 
     /// Build the snapshot by loading the vault from the real filesystem:
-    /// [`markdown_vault::Vault::load`] over `NativeVfs`, then
-    /// [`VaultFacts::from_vault`].
+    /// [`markdown_corpus::Corpus::load`] over `NativeVfs`, then
+    /// [`VaultFacts::from_corpus`].
     ///
     /// The standalone path. A caller holding warm caches should build the
     /// snapshot from them instead.
     pub fn scan(vault_dir: &Path) -> VaultFacts {
-        let vault = markdown_vault::Vault::load(
+        let corpus = markdown_corpus::Corpus::load(
             &vfs_seam::NativeVfs,
             vault_dir,
-            markdown_vault::LoadOptions::default(),
+            markdown_corpus::LoadOptions::default(),
         );
-        VaultFacts::from_vault(&vault)
+        VaultFacts::from_corpus(&corpus)
     }
 
     /// How many notes the snapshot covers.

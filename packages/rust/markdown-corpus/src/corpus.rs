@@ -1,4 +1,4 @@
-//! [`Vault`]: the link graph and the frontmatter index over one vault root,
+//! [`Corpus`]: the link graph and the frontmatter index over one corpus root,
 //! loaded in one call.
 
 use std::collections::BTreeMap;
@@ -13,7 +13,7 @@ use crate::links::{BacklinkPage, Edge, GraphStats, LinkGraph, join_rel};
 use crate::note::{Note, read_note};
 use crate::tags::TagLexer;
 
-/// How [`Vault::load`] builds the model.
+/// How [`Corpus::load`] builds the model.
 #[derive(Clone, Default)]
 pub struct LoadOptions {
     /// The inline-tag lexer. `None` finds no tags.
@@ -28,42 +28,42 @@ impl std::fmt::Debug for LoadOptions {
     }
 }
 
-/// What a [`Vault::refresh`] changed, per cache.
+/// What a [`Corpus::refresh`] changed, per cache.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct VaultStats {
+pub struct CorpusStats {
     /// The link graph's changes.
     pub links: GraphStats,
     /// The frontmatter index's changes.
     pub frontmatter: RefreshStats,
 }
 
-/// One vault, its link graph and its frontmatter index.
+/// One corpus, its link graph and its frontmatter index.
 ///
-/// [`Vault::load`] builds both in one call, for a CLI or a wasm host that
-/// reads a vault once. A long-lived host keeps the `Vault` and calls
-/// [`Vault::refresh`] or [`Vault::apply_changes`] as files change. `Send +
+/// [`Corpus::load`] builds both in one call, for a CLI or a wasm host that
+/// reads a corpus once. A long-lived host keeps the `Corpus` and calls
+/// [`Corpus::refresh`] or [`Corpus::apply_changes`] as files change. `Send +
 /// Sync`, like the two caches.
 #[derive(Debug)]
-pub struct Vault {
+pub struct Corpus {
     root: PathBuf,
     links: LinkGraph,
     frontmatter: FrontmatterIndex,
 }
 
-impl Vault {
-    /// Walks and reads the vault at `root` through `vfs` once.
+impl Corpus {
+    /// Walks and reads the corpus at `root` through `vfs` once.
     ///
-    /// The load is stamped at time 0, so the first [`Vault::refresh`] with a
-    /// real clock walks again; [`Vault::apply_changes`] works straight away.
-    pub fn load(vfs: &dyn Vfs, root: impl Into<PathBuf>, opts: LoadOptions) -> Vault {
-        let vault = Vault::empty(root, opts);
-        vault.refresh_now(vfs, &FixedClock::new(0));
-        vault
+    /// The load is stamped at time 0, so the first [`Corpus::refresh`] with a
+    /// real clock walks again; [`Corpus::apply_changes`] works straight away.
+    pub fn load(vfs: &dyn Vfs, root: impl Into<PathBuf>, opts: LoadOptions) -> Corpus {
+        let corpus = Corpus::empty(root, opts);
+        corpus.refresh_now(vfs, &FixedClock::new(0));
+        corpus
     }
 
-    /// A vault at `root` with nothing read yet; the first refresh reads it.
-    pub fn empty(root: impl Into<PathBuf>, opts: LoadOptions) -> Vault {
-        Vault {
+    /// A corpus at `root` with nothing read yet; the first refresh reads it.
+    pub fn empty(root: impl Into<PathBuf>, opts: LoadOptions) -> Corpus {
+        Corpus {
             root: root.into(),
             links: match opts.tags {
                 Some(tags) => LinkGraph::with_tags(tags),
@@ -73,7 +73,7 @@ impl Vault {
         }
     }
 
-    /// The vault directory.
+    /// The corpus directory.
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -89,16 +89,16 @@ impl Vault {
     }
 
     /// Brings both caches up to date, reusing a sweep younger than the TTL.
-    pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock) -> VaultStats {
-        VaultStats {
+    pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock) -> CorpusStats {
+        CorpusStats {
             links: self.links.refresh(vfs, clock, &self.root),
             frontmatter: self.frontmatter.refresh(vfs, clock, &self.root),
         }
     }
 
-    /// [`Vault::refresh`] that always walks.
-    pub fn refresh_now(&self, vfs: &dyn Vfs, clock: &dyn Clock) -> VaultStats {
-        VaultStats {
+    /// [`Corpus::refresh`] that always walks.
+    pub fn refresh_now(&self, vfs: &dyn Vfs, clock: &dyn Clock) -> CorpusStats {
+        CorpusStats {
             links: self.links.refresh_now(vfs, clock, &self.root),
             frontmatter: self.frontmatter.refresh_now(vfs, clock, &self.root),
         }
@@ -149,7 +149,7 @@ impl Vault {
         self.links.resolve(target, from)
     }
 
-    /// [`Vault::resolve`] that refuses an ambiguous target.
+    /// [`Corpus::resolve`] that refuses an ambiguous target.
     pub fn resolve_strict(&self, target: &str, from: &str) -> Result<String, ResolveError> {
         self.links.resolve_strict(target, from)
     }
@@ -164,7 +164,7 @@ impl Vault {
         self.links.outbound(source)
     }
 
-    /// Reads the note at vault-relative `rel` without failing on its
+    /// Reads the note at corpus-relative `rel` without failing on its
     /// frontmatter. See [`read_note`].
     pub fn read_note(&self, vfs: &dyn Vfs, rel: &str) -> Result<Note, VfsError> {
         let bytes = vfs.read_file(&join_rel(&self.root, rel))?;
@@ -179,7 +179,7 @@ mod tests {
     use super::*;
     use crate::links::EdgeKind;
 
-    fn vault_fs() -> MemVfs {
+    fn corpus_fs() -> MemVfs {
         let d = MemVfs::new();
         d.insert(
             "/v/Home.md",
@@ -195,8 +195,8 @@ mod tests {
 
     #[test]
     fn load_reads_links_and_frontmatter_in_one_pass() {
-        let d = vault_fs();
-        let v = Vault::load(&d, "/v", LoadOptions::default());
+        let d = corpus_fs();
+        let v = Corpus::load(&d, "/v", LoadOptions::default());
         assert_eq!(v.paths(), ["Alpha.md", "Bad.md", "Home.md"]);
         assert_eq!(v.backlinks("Alpha.md").total, 1);
         assert_eq!(v.resolve("Alpha", "Home.md").as_deref(), Some("Alpha.md"));
@@ -207,8 +207,8 @@ mod tests {
 
     #[test]
     fn body_and_frontmatter_links_are_kept_per_note() {
-        let d = vault_fs();
-        let v = Vault::load(&d, "/v", LoadOptions::default());
+        let d = corpus_fs();
+        let v = Corpus::load(&d, "/v", LoadOptions::default());
         let body = v.body_links();
         assert_eq!(body["Home.md"][0].target, "Alpha");
         assert_eq!(body["Home.md"][0].heading.as_deref(), Some("Intro"));
@@ -221,8 +221,8 @@ mod tests {
 
     #[test]
     fn apply_changes_updates_both_caches_without_a_walk() {
-        let d = vault_fs();
-        let v = Vault::load(&d, "/v", LoadOptions::default());
+        let d = corpus_fs();
+        let v = Corpus::load(&d, "/v", LoadOptions::default());
         d.insert("/v/Alpha.md", "---\nstatus: done\n---\n[[Home]]\n")
             .unwrap();
         v.apply_changes(&d, &["Alpha.md".to_string()]);
@@ -239,8 +239,8 @@ mod tests {
 
     #[test]
     fn read_note_tolerates_bad_frontmatter() {
-        let d = vault_fs();
-        let v = Vault::empty("/v", LoadOptions::default());
+        let d = corpus_fs();
+        let v = Corpus::empty("/v", LoadOptions::default());
         let note = v.read_note(&d, "Bad.md").unwrap();
         assert!(note.parse_error.is_some());
         assert!(note.body.contains("[[Gone]]"));
@@ -248,8 +248,8 @@ mod tests {
     }
 
     #[test]
-    fn a_vault_is_send_and_sync() {
+    fn a_corpus_is_send_and_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<Vault>();
+        assert_send_sync::<Corpus>();
     }
 }

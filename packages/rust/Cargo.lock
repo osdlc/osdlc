@@ -448,6 +448,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "markdown-corpus"
+version = "0.1.0"
+dependencies = [
+ "frontmatter-lossless",
+ "markdown-link",
+ "markdown-vault-fs",
+ "slug-collate",
+ "tempfile",
+ "vfs-seam",
+ "yaml-splice",
+]
+
+[[package]]
 name = "markdown-link"
 version = "0.7.0"
 dependencies = [
@@ -463,25 +476,12 @@ version = "0.2.0"
 dependencies = [
  "etag-write",
  "frontmatter-lossless",
+ "markdown-corpus",
  "markdown-link",
- "markdown-vault",
  "markdown-vault-fs",
  "slug-collate",
  "tempfile",
  "thiserror",
- "vfs-seam",
- "yaml-splice",
-]
-
-[[package]]
-name = "markdown-vault"
-version = "0.1.0"
-dependencies = [
- "frontmatter-lossless",
- "markdown-link",
- "markdown-vault-fs",
- "slug-collate",
- "tempfile",
  "vfs-seam",
  "yaml-splice",
 ]

@@ -21,7 +21,7 @@ Accepted 2026-11-04. Came out of skillwright's architecture review
 
 The crates: [D-JPYM](D-JPYM-vfs-seam.md) (file access),
 [D-DUFX](D-DUFX-vfs-walk-and-vault-layer.md) (the walk),
-[D-ODPP](D-ODPP-markdown-vault.md) (the vault model).
+[D-ODPP](D-ODPP-markdown-corpus.md) (the corpus model, `markdown-corpus`).
 
 ## Why
 

@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.1.0] - 2026-11-04
 
-The first release: the one vault model, moved out of determined.
+The first release: the one corpus model, moved out of determined.
 
 ### Added
 
-- `Vault`: `load`, `refresh`, `apply_changes`, and accessors for paths, body
+- `Corpus`: `load`, `refresh`, `apply_changes`, and accessors for paths, body
   links, frontmatter links, notes, backlinks and outbound edges.
 - `LinkGraph`: an incremental link graph with backlinks, inbound and outbound
   edges by `EdgeKind` (link, embed, frontmatter), unresolved edges kept,

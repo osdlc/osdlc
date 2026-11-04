@@ -5,7 +5,7 @@
 //! folders, no excluded files), reads each note through [`read_note`] and
 //! keeps the parse. It follows [`crate::links`]'s rules: `(size, mtime)`
 //! freshness, a TTL from the caller's [`Clock`], reads with no lock held, and
-//! a sweep from before a vault switch, an apply, an invalidate or a clear is
+//! a sweep from before a corpus switch, an apply, an invalidate or a clear is
 //! not installed.
 //!
 //! A malformed note is kept with an empty mapping and
@@ -27,7 +27,7 @@ use crate::note::{note_title, read_note};
 /// One note's cached parse.
 #[derive(Debug, Clone, PartialEq)]
 pub struct IndexedNote {
-    /// Vault-relative path.
+    /// Corpus-relative path.
     pub path: String,
     /// The file name without `.md`.
     pub title: String,
@@ -91,8 +91,8 @@ impl FrontmatterIndex {
         FrontmatterIndex::default()
     }
 
-    /// Walks the vault and brings the index up to date, reusing a walk
-    /// younger than the TTL over the same vault.
+    /// Walks the corpus and brings the index up to date, reusing a walk
+    /// younger than the TTL over the same corpus.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> RefreshStats {
         self.sweep(vfs, clock.now_ms(), vault_dir, true)
     }
@@ -114,7 +114,7 @@ impl FrontmatterIndex {
         self.changes.load(Ordering::SeqCst)
     }
 
-    /// Says the vault is under a filesystem watch, so a walk stays fresh for
+    /// Says the corpus is under a filesystem watch, so a walk stays fresh for
     /// [`WATCHED_TTL_MS`]. One-way.
     pub fn set_watched(&self) {
         self.watched.store(true, Ordering::SeqCst);
@@ -258,7 +258,7 @@ impl FrontmatterIndex {
     /// it is gone) without a walk, keeping the freshness stamp.
     ///
     /// A path a content walk would not yield, or a call against another
-    /// vault, does nothing. With no fresh walk to edit it only marks the
+    /// corpus, does nothing. With no fresh walk to edit it only marks the
     /// index, so a walk that read the note before the change is not stamped
     /// fresh.
     pub fn apply_change(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str) {

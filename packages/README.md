@@ -140,11 +140,11 @@ Developed here, in this repository:
 - `packages/rust/markdown-contract` (`markdown-contract` on crates.io, the Rust implementation
   of `@osdlc/markdown-contract`: contracts for markdown documents, checked
   against the package's corpus)
+- `packages/rust/markdown-corpus` (`markdown-corpus` on crates.io, the corpus
+  model for a folder of Markdown notes: notes, links and backlinks by kind,
+  tags and frontmatter, read through `vfs-seam` and refreshed incrementally)
 - `packages/rust/markdown-link` (`markdown-link` on crates.io)
 - `packages/rust/markdown-relink` (`markdown-relink` on crates.io)
-- `packages/rust/markdown-vault` (`markdown-vault` on crates.io, the vault
-  model: notes, links and backlinks by kind, tags, frontmatter and document
-  trees, read through `vfs-seam` and refreshed incrementally)
 - `packages/rust/markdown-vault-fs` (`markdown-vault-fs` on crates.io, the
   vault layer over `vfs-walk`)
 - `packages/rust/path-guard` (`path-guard` on crates.io)

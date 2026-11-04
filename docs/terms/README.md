@@ -9,6 +9,6 @@ The words used for the shared vault crates. One file per term. A term marked _pl
 | [vfs-seam](vfs-seam.md)                   | current           | The crate holding the `Vfs` file-access trait and its backends                  |
 | [vfs-walk](vfs-walk.md)                   | current           | The crate that walks a folder tree through `vfs-seam`, with no vault rules      |
 | [markdown-vault-fs](markdown-vault-fs.md) | current, changing | The vault layer over `vfs-walk`                                                 |
-| [markdown-vault](markdown-vault.md)       | current           | The crate that models a vault                                                   |
+| [markdown-corpus](markdown-corpus.md)     | current           | The crate that models a corpus (a vault)                                        |
 
 Decisions are in [../decisions](../decisions/README.md).

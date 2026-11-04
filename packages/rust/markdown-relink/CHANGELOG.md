@@ -10,7 +10,7 @@ project adheres to [Semantic Versioning](https://semver.org/).
 ## [0.2.0] - 2026-11-04
 
 Planning reads the vault through a `vfs-seam` `Vfs`, and the vault snapshot
-comes from the shared `markdown-vault` model.
+comes from the shared `markdown-corpus` model.
 
 ### Changed
 
@@ -18,14 +18,14 @@ comes from the shared `markdown-vault` model.
   `&vfs_seam::NativeVfs` for the real filesystem. `bundle_members` takes one
   too. `execute` and `execute_bundle` are unchanged: they write through
   `etag-write`'s compare-and-swap on the real filesystem.
-- `VaultFacts::scan` loads a `markdown_vault::Vault` and calls `from_vault`.
+- `VaultFacts::scan` loads a `markdown_corpus::Corpus` and calls `from_corpus`.
   Its frontmatter references now also hold plain file-path values (for
   example `cover: img/a.png`), not only wikilinks; they are reported, never
   rewritten. `paths` is sorted by `slug_collate::compare_paths`.
 
 ### Added
 
-- `VaultFacts::from_vault(&markdown_vault::Vault)`.
+- `VaultFacts::from_corpus(&markdown_corpus::Corpus)`.
 - `vfs_seam` re-exported.
 
 ## [0.1.10](https://github.com/osdlc/osdlc/compare/markdown-relink/v0.1.9...markdown-relink/v0.1.10) - 2026-11-01

@@ -66,8 +66,10 @@ New crates have a thick green border. File access goes through one trait,
 the browser. `vfs-walk` walks any tree through it and knows nothing about
 Markdown or vaults. `markdown-vault-fs` is the vault layer on top: it reads
 the vault's excluded files (Obsidian's `userIgnoreFilters`, for example) and
-passes them to the walk as a filter. `markdown-vault` is the one vault model, built from
-determined's `LinkGraph`. Everything that needs a vault graph uses it.
+passes them to the walk as a filter. `markdown-corpus` is the one corpus
+model, built from determined's `LinkGraph`. A corpus is a folder of
+Markdown notes and the files they link to; an Obsidian vault is one example.
+Everything that needs a link graph over notes uses it.
 
 ```mermaid
 %%{init: {"flowchart": {"htmlLabels": false, "wrappingWidth": 400}}}%%
@@ -78,8 +80,8 @@ flowchart TB
   classDef ext fill:#ffffff,stroke:#bbb,stroke-dasharray:3 3,color:#666
 
   subgraph VAULT[vault]
-    MR["<b>markdown-relink</b> 0.2<br/>rename / move plans,<br/>facts from the vault model"]:::md
-    MV["<b>markdown-vault</b> 0.1<br/>the vault model: link graph,<br/>backlinks, frontmatter index,<br/>tolerant note read, refresh"]:::new
+    MR["<b>markdown-relink</b> 0.2<br/>rename / move plans,<br/>facts from the corpus model"]:::md
+    MV["<b>markdown-corpus</b> 0.1<br/>the corpus model: link graph,<br/>backlinks, frontmatter index,<br/>tolerant note read, refresh"]:::new
     MVF["<b>markdown-vault-fs</b> 0.4<br/>vault layer: notes vs attachments,<br/>excluded files, _system rules"]:::md
   end
 
@@ -134,14 +136,14 @@ As an image: [markdown-ecosystem-after.svg](img/markdown-ecosystem-after.svg).
 | Crate               | Before                                              | After                                                                                   |
 | ------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | `vfs-seam`          | — (lived in skillwright core)                       | New. The one file-access trait.                                                         |
-| `markdown-vault`    | — (determined's `LinkGraph` and `FrontmatterIndex`) | New. The one vault model.                                                               |
+| `markdown-corpus`   | — (determined's `LinkGraph` and `FrontmatterIndex`) | New. The one corpus model.                                                              |
 | `vfs-walk`          | — (inside `markdown-vault-fs`)                      | New. The general walk, with no Markdown or vault rules.                                 |
 | `markdown-vault-fs` | 0.3, walks with `std::fs`                           | 0.4, the vault layer on `vfs-walk`; reads the vault's excluded files and passes them in |
 | `markdown-link`     | 0.5                                                 | 0.7, scan options, strict resolve, link encoding from skillwright                       |
 | `markdown-contract` | 0.3, not published                                  | 0.4, published; heading and block selection from skillwright                            |
-| `markdown-relink`   | 0.1, its own scan                                   | 0.2, facts from `markdown-vault`; plans read through `vfs-seam`                         |
+| `markdown-relink`   | 0.1, its own scan                                   | 0.2, facts from `markdown-corpus`; plans read through `vfs-seam`                        |
 
-`markdown-tags` is still in the dev repo, so `markdown-vault` takes a
+`markdown-tags` is still in the dev repo, so `markdown-corpus` takes a
 `TagLexer` instead of depending on it.
 
 ## Regenerating the images

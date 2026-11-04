@@ -1334,14 +1334,14 @@ fn planning_reads_through_a_vfs_and_writes_nothing() {
 }
 
 #[test]
-fn from_vault_takes_the_vault_models_paths_links_and_frontmatter() {
+fn from_corpus_takes_the_corpus_models_paths_links_and_frontmatter() {
     let vfs = vfs_seam::MemVfs::new();
     vfs.insert("/v/a.md", "# A\n").unwrap();
     vfs.insert("/v/b.md", "---\nup: \"[[a]]\"\n---\nsee [[a]]\n")
         .unwrap();
     vfs.insert("/v/img.png", "png").unwrap();
-    let vault = markdown_vault::Vault::load(&vfs, "/v", markdown_vault::LoadOptions::default());
-    let facts = VaultFacts::from_vault(&vault);
+    let corpus = markdown_corpus::Corpus::load(&vfs, "/v", markdown_corpus::LoadOptions::default());
+    let facts = VaultFacts::from_corpus(&corpus);
     let mut paths = facts.paths.clone();
     paths.sort();
     assert_eq!(paths, ["a.md", "b.md", "img.png"]);

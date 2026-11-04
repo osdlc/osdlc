@@ -10,4 +10,4 @@ The vault layer over [vfs-walk](vfs-walk.md): notes versus attachments, visibili
 
 ## Not to be confused with
 
-[markdown-vault](markdown-vault.md), the vault model built on this walk.
+[markdown-corpus](markdown-corpus.md), the corpus model built on this walk.
