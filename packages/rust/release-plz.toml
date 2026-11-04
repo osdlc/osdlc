@@ -31,13 +31,6 @@ name = "yaml-splice-wasm"
 publish = false
 release = false
 
-# Held back until the parity fixes from the review of
-# https://github.com/osdlc/osdlc/pull/460 land; see its Cargo.toml.
-[[package]]
-name = "markdown-contract"
-publish = false
-release = false
-
 # Held back until its first release can have a release-plz run of its own; see its Cargo.toml.
 [[package]]
 name = "gfm-pipe-table"

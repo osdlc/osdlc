@@ -439,6 +439,7 @@ version = "0.4.0"
 dependencies = [
  "comrak",
  "globset",
+ "markdown-link",
  "regex",
  "serde",
  "serde_json",
