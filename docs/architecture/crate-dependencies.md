@@ -3,8 +3,7 @@
 Who depends on whom across skillwright, osdlc and determined, and what each
 crate does. Only osdlc-family crates are shown; `serde`, `thiserror` and the
 like are left out. The target follows
-skillwright's
-[D-TZFV](https://github.com/osdlc/skillwright/blob/main/docs/decisions/D-TZFV-shared-vault-model.md): one implementation per
+[D-YRKH](../decisions/D-YRKH-one-implementation-per-vault-concept.md): one implementation per
 concept.
 
 How the osdlc markdown crates depend on each other is in

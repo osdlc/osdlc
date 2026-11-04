@@ -4,7 +4,7 @@ How the osdlc markdown crates fit together, before and after
 [osdlc#618](https://github.com/osdlc/osdlc/pull/618), including the planned
 split of the general walk into `vfs-walk`. Arrows point from a
 crate to what it depends on. Versions are the ones in each `Cargo.toml`.
-skillwright's [D-TZFV](https://github.com/osdlc/skillwright/blob/main/docs/decisions/D-TZFV-shared-vault-model.md) gives the reasons, and
+The [decisions](../decisions/README.md) give the reasons, and
 [crate-dependencies.md](crate-dependencies.md) shows how skillwright and
 determined use these crates.
 
