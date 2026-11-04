@@ -138,7 +138,7 @@ fn inner_failures(name: &str, inner: &str, case: &Json) -> Vec<String> {
             "alias": link.alias,
             "targetAt": chars_before(inner, range.start),
         });
-        optional(&mut actual, parsed, "block", link.block.into());
+        optional(&mut actual, parsed, "block", opt_str(link.block));
         optional(&mut actual, parsed, "size", size_json(link.size));
         actual
     });
@@ -194,8 +194,8 @@ fn body_failures(name: &str, body: &str, case: &Json) -> Vec<String> {
                 "text": &body[link.byte_start..link.byte_end],
             });
             let want = expected.get(n).unwrap_or(&Json::Null);
-            optional(&mut actual, want, "heading", link.heading.clone().into());
-            optional(&mut actual, want, "block", link.block.clone().into());
+            optional(&mut actual, want, "heading", opt_str(link.heading.clone()));
+            optional(&mut actual, want, "block", opt_str(link.block.clone()));
             optional(&mut actual, want, "size", size_json(link.size));
             actual
         })
@@ -296,4 +296,10 @@ fn typed_ref_cases() {
         "typedRef case failures:\n{}",
         failures.join("\n")
     );
+}
+
+/// An optional string as JSON. Spelled out because `From<Option<T>>` for
+/// `serde_json::Value` is newer than the oldest serde_json this crate allows.
+fn opt_str(value: Option<String>) -> serde_json::Value {
+    value.map_or(serde_json::Value::Null, serde_json::Value::String)
 }
