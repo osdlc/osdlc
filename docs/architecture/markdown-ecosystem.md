@@ -79,7 +79,7 @@ flowchart TB
   classDef new fill:#eaf7ee,stroke:#3f9b5b,stroke-width:3px
   classDef ext fill:#ffffff,stroke:#bbb,stroke-dasharray:3 3,color:#666
 
-  subgraph VAULT[vault]
+  subgraph VAULT[corpus]
     MR["<b>markdown-relink</b> 0.2<br/>rename / move plans,<br/>facts from the corpus model"]:::md
     MV["<b>markdown-corpus</b> 0.1<br/>the corpus model: link graph,<br/>backlinks, frontmatter index,<br/>tolerant note read, refresh"]:::new
     MVF["<b>markdown-vault-fs</b> 0.4<br/>vault layer: notes vs attachments,<br/>excluded files, _system rules"]:::md

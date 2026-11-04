@@ -2,7 +2,7 @@
 
 Status: current.
 
-Paths a vault marks to be left out of every tool's view, such as Obsidian's `userIgnoreFilters` in `.obsidian/app.json`. Every vault walk honours them by default ([D-DUFX](../decisions/D-DUFX-vfs-walk-and-vault-layer.md)).
+Paths a [corpus](corpus.md) marks to be left out of every tool's view, such as Obsidian's `userIgnoreFilters` in `.obsidian/app.json`. Every corpus walk honours them by default ([D-DUFX](../decisions/D-DUFX-vfs-walk-and-vault-layer.md)).
 
 ## In code
 

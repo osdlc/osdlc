@@ -2,7 +2,7 @@
 
 Status: current.
 
-The crate that models a corpus, a folder of markdown notes and the files they link to (see [vault](vault.md)): every file, every note, each note's outgoing and incoming links, link resolution, inline tags and incremental refresh ([D-ODPP](../decisions/D-ODPP-markdown-corpus.md)).
+The crate that models a corpus, a folder of markdown notes and the files they link to (see [corpus](corpus.md)): every file, every note, each note's outgoing and incoming links, link resolution, inline tags and incremental refresh ([D-ODPP](../decisions/D-ODPP-markdown-corpus.md)).
 
 ## In code
 
