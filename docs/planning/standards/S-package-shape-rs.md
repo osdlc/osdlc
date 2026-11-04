@@ -23,7 +23,7 @@ published crate (the default) keeps all of these:
 - **A package list that ships the docs.** `include` has an entry under `src/`
   (such as `src/**/*.rs`), and lists `README.md`, `CHANGELOG.md`, `LICENSE-MIT`
   and `LICENSE-APACHE`. It may list more, such as tests and fixtures. `cargo
-  package` in CI builds the crate from that list.
+package` in CI builds the crate from that list.
 - **The same files.** The crate directory holds `README.md`, `CHANGELOG.md`,
   `LICENSE-MIT`, `LICENSE-APACHE`, `src/` and `examples/`.
 - **The same README and CHANGELOG.** `README.md` starts `# <name>`, has an

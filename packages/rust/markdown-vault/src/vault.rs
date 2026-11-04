@@ -5,7 +5,6 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use markdown_contract::DocTree;
 use markdown_link::{BodyLink, RawLink, ResolveError};
 use vfs_seam::{Clock, FixedClock, Vfs, VfsError};
 
@@ -171,21 +170,6 @@ impl Vault {
         let bytes = vfs.read_file(&join_rel(&self.root, rel))?;
         Ok(read_note(&String::from_utf8_lossy(&bytes)))
     }
-
-    /// The document tree of the note at vault-relative `rel`, for heading and
-    /// block selection. See [`document`].
-    pub fn document(&self, vfs: &dyn Vfs, rel: &str) -> Result<DocTree, VfsError> {
-        document(vfs, &join_rel(&self.root, rel))
-    }
-}
-
-/// The document tree of the note at `path`, parsed by `markdown-contract`.
-/// Only reading the file can fail.
-pub fn document(vfs: &dyn Vfs, path: &Path) -> Result<DocTree, VfsError> {
-    let bytes = vfs.read_file(path)?;
-    Ok(markdown_contract::parse_document(&String::from_utf8_lossy(
-        &bytes,
-    )))
 }
 
 #[cfg(test)]
@@ -254,15 +238,13 @@ mod tests {
     }
 
     #[test]
-    fn read_note_tolerates_bad_frontmatter_and_document_parses_the_body() {
+    fn read_note_tolerates_bad_frontmatter() {
         let d = vault_fs();
         let v = Vault::empty("/v", LoadOptions::default());
         let note = v.read_note(&d, "Bad.md").unwrap();
         assert!(note.parse_error.is_some());
         assert!(note.body.contains("[[Gone]]"));
         assert!(v.read_note(&d, "Missing.md").is_err());
-        assert!(v.document(&d, "Alpha.md").is_ok());
-        assert!(document(&d, Path::new("/v/Missing.md")).is_err());
     }
 
     #[test]

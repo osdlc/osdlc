@@ -15,9 +15,10 @@
 //! - inline tags, through a [`TagLexer`] the caller supplies;
 //! - each content note's parsed frontmatter ([`FrontmatterIndex`]), read
 //!   tolerantly: a malformed block is an empty mapping and a diagnostic, never
-//!   a failed walk ([`read_note`]);
-//! - each note's document tree from `markdown-contract`, for heading and
-//!   block selection ([`document`]).
+//!   a failed walk ([`read_note`]).
+//!
+//! A note's document tree (headings, blocks) is not part of the model: a
+//! caller that needs one parses the note with `markdown-contract`.
 //!
 //! # Through a `Vfs`
 //!
@@ -71,5 +72,5 @@ pub use links::{
 pub use markdown_link::{BodyLink, LinkIndex, RawLink, ResolveError};
 pub use note::{Note, note_title, read_note};
 pub use tags::{NoTags, TagCount, TagLexer, census};
-pub use vault::{LoadOptions, Vault, VaultStats, document};
+pub use vault::{LoadOptions, Vault, VaultStats};
 pub use vfs_seam;

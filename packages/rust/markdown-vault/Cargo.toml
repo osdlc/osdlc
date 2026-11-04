@@ -3,7 +3,7 @@ name = "markdown-vault"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
-description = "The vault model: every note and file, outgoing links and backlinks by kind, inline tags, frontmatter and each note's document tree, read through a Vfs and refreshed incrementally."
+description = "The vault model: every note and file, outgoing links and backlinks by kind, inline tags and frontmatter, read through a Vfs and refreshed incrementally."
 license.workspace = true
 repository.workspace = true
 homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/markdown-vault"
@@ -27,7 +27,6 @@ native = ["vfs-seam/native", "markdown-vault-fs/native"]
 
 [dependencies]
 frontmatter-lossless = { workspace = true }
-markdown-contract = { workspace = true }
 markdown-link = { workspace = true }
 markdown-vault-fs = { workspace = true }
 slug-collate = { workspace = true }

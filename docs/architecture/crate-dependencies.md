@@ -133,11 +133,11 @@ flowchart TB
   CLI -- rename, move --> MR
   WASM --> CORE
   CORE --> MV
+  CORE -- headings, blocks --> MC
   CORE --> AA
   CORE --> VFS
   MV --> MVF
   MV --> ML
-  MV --> MC
   MV --> FL
   MV --> VFS
   MVF --> VW

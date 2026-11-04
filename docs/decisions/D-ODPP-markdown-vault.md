@@ -10,9 +10,11 @@ Accepted 2026-11-04. Part of
   here and put on `vfs-seam`: every file, every note, outgoing links,
   backlinks, inline tags, link resolution through `markdown-link`, and
   incremental refresh.
-- **It adds** typed edges (link, embed, frontmatter), unresolved edges, each
-  note's document tree from `markdown-contract`, and a one-shot
-  `Vault::load` beside incremental refresh.
+- **It adds** typed edges (link, embed, frontmatter), unresolved edges, and
+  a one-shot `Vault::load` beside incremental refresh.
+- **A note's document tree is not part of it.** A caller that needs headings
+  or blocks parses the note with `markdown-contract` itself, so tools that
+  only need the graph don't build a Markdown parser.
 - **One bad note never stops a load.** A note with malformed frontmatter
   reads as body only.
 - **Tags come through a `TagLexer`** the caller supplies, since the tag
@@ -38,4 +40,6 @@ the shared crates.
 
 ## Reopen if
 
-A caller needs a model shape this one can't provide with an option.
+- A caller needs a model shape this one can't provide with an option.
+- Checking heading and block links across the whole vault becomes a
+  feature; then the document tree may join, behind a feature flag.
