@@ -26,8 +26,13 @@ include = [
 # `markdown_link::{normalize_target, suffixes, strip_md_ext, percent_decode}`
 # and spells none of them a second time.
 markdown-link = { workspace = true }
+# The vault model VaultFacts is built from.
+markdown-vault = { workspace = true }
 # The vault walk and the two-layer vault-relative path guard.
-markdown-vault-fs = { workspace = true }
+markdown-vault-fs = { workspace = true, features = ["native"] }
+# Planning reads the vault through a Vfs; applying a plan stays on std::fs,
+# behind etag-write's compare-and-swap.
+vfs-seam = { workspace = true, features = ["native"] }
 slug-collate = { workspace = true }
 # The atomic compare-and-swap write the plan is applied under.
 etag-write = { workspace = true }

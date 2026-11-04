@@ -53,6 +53,8 @@
 
 use std::path::Path;
 
+use vfs_seam::{NativeVfs, Vfs};
+
 use crate::error::TransformError;
 use markdown_link::body_links_spanned;
 
@@ -107,17 +109,17 @@ pub fn bundle_entry(path: &str) -> Option<(&str, &str)> {
 /// std::fs::write(vault.path().join("review/review.md"), "# Review\n").unwrap();
 /// std::fs::write(vault.path().join("review/scripts/run.sh"), "x\n").unwrap();
 ///
-/// let mut members = bundle_members(vault.path(), "review");
+/// let mut members = bundle_members(&vfs_seam::NativeVfs, vault.path(), "review");
 /// members.sort();
 /// assert_eq!(members, ["review/review.md", "review/scripts/run.sh"]);
 /// ```
-pub fn bundle_members(vault_dir: &Path, dir: &str) -> Vec<String> {
+pub fn bundle_members(vfs: &dyn Vfs, vault_dir: &Path, dir: &str) -> Vec<String> {
     let opts = markdown_vault_fs::walk::WalkOptions {
         roots: vec![dir.to_string()],
         hide: markdown_vault_fs::Hide::Off,
         ..markdown_vault_fs::walk::WalkOptions::notes_and_attachments()
     };
-    markdown_vault_fs::native::walk(vault_dir, &opts)
+    markdown_vault_fs::walk(vfs, vault_dir, &opts)
         .unwrap_or_default()
         .into_iter()
         .map(|e| e.rel)
@@ -137,6 +139,7 @@ pub fn bundle_members(vault_dir: &Path, dir: &str) -> Vec<String> {
 /// path guard. A refused plan is not an error: it comes back as `Ok` with
 /// [`RenamePlan::conflict`] set.
 pub fn plan_bundle(
+    vfs: &dyn Vfs,
     vault_dir: &Path,
     facts: &VaultFacts,
     from: &str,
@@ -144,7 +147,7 @@ pub fn plan_bundle(
 ) -> Result<RenamePlan, TransformError> {
     let from = markdown_vault_fs::path::lexical::validate_relative(from)?;
     let to = markdown_vault_fs::path::lexical::validate_relative(to)?;
-    let from_abs = markdown_vault_fs::Guard::std().resolve(vault_dir, &from)?;
+    let from_abs = markdown_vault_fs::path::guard(vfs).resolve(vault_dir, &from)?;
 
     let refuse = |reason: String| {
         Ok(RenamePlan {
@@ -158,7 +161,7 @@ pub fn plan_bundle(
     // Every refusal a single-file rename names — same path, `_system/`, a
     // hidden directory, not markdown, source missing — applies to the entry
     // note exactly as it does to any other file.
-    if let Some(reason) = plan::refusal(&from, &to, &from_abs) {
+    if let Some(reason) = plan::refusal(vfs, &from, &to, &from_abs) {
         return refuse(reason);
     }
 
@@ -173,14 +176,14 @@ pub fn plan_bundle(
         ));
     };
 
-    let to_dir_abs = markdown_vault_fs::Guard::std().resolve(vault_dir, to_dir)?;
-    if to_dir_abs.exists() {
+    let to_dir_abs = markdown_vault_fs::path::guard(vfs).resolve(vault_dir, to_dir)?;
+    if vfs.exists(&to_dir_abs) {
         return refuse(format!("{to_dir} already exists"));
     }
 
     // The directory move's own path map: the entry note plus every peer,
     // each mapped to the same position under the new directory.
-    let members = bundle_members(vault_dir, from_dir);
+    let members = bundle_members(vfs, vault_dir, from_dir);
     let prefix = format!("{from_dir}/");
     let mut pairs: Vec<(String, String)> = Vec::with_capacity(members.len());
     let mut peers: Vec<BundlePeer> = Vec::new();
@@ -277,8 +280,8 @@ pub fn plan_bundle(
 
     for note_path in candidates {
         let note_path = note_path.clone();
-        let abs = markdown_vault_fs::Guard::std().resolve(vault_dir, &note_path)?;
-        let Ok(bytes) = std::fs::read(&abs) else {
+        let abs = markdown_vault_fs::path::guard(vfs).resolve(vault_dir, &note_path)?;
+        let Ok(bytes) = vfs.read_file(&abs) else {
             diagnostics.push(Diagnostic {
                 code: DiagnosticCode::UnreadableCandidate,
                 note_path: note_path.clone(),
@@ -368,9 +371,7 @@ pub fn plan_bundle(
     if !expect.iter().any(|e| e.path == from) {
         expect.push(FileEtag {
             path: from.clone(),
-            etag: etag_write::etag_of_file(&from_abs)
-                .map_err(|e| TransformError::Io(format!("reading {from}: {}", e.source)))?
-                .unwrap_or_default(),
+            etag: plan::etag_through(vfs, &from, &from_abs)?,
         });
     }
     expect.sort_by(|a, b| a.path.cmp(&b.path));
@@ -435,7 +436,7 @@ pub fn execute_bundle(
     subject_etag: Option<&str>,
     expect: &[FileEtag],
 ) -> Result<RenameResult, TransformError> {
-    let plan = plan_bundle(vault_dir, facts, from, to)?;
+    let plan = plan_bundle(&NativeVfs, vault_dir, facts, from, to)?;
     let refuse = |reason: String| RenameResult {
         conflict: Some(reason),
         ..RenameResult::default()

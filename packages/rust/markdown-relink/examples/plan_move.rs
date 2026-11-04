@@ -5,6 +5,7 @@
 
 use std::path::Path;
 
+use markdown_relink::vfs_seam::NativeVfs;
 use markdown_relink::{VaultFacts, plan};
 
 fn main() {
@@ -15,7 +16,7 @@ fn main() {
     };
     let vault = Path::new(vault);
     let facts = VaultFacts::scan(vault);
-    match plan(vault, &facts, from, to) {
+    match plan(&NativeVfs, vault, &facts, from, to) {
         Ok(p) => match &p.conflict {
             Some(reason) => println!("refused: {reason}"),
             None => {

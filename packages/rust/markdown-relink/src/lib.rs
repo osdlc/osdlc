@@ -102,6 +102,7 @@ pub use bundle::{execute_bundle, plan_bundle};
 pub use error::TransformError;
 pub use facts::{FrontmatterRef, VaultFacts};
 pub use plan::{plan, plan_redirect};
+pub use vfs_seam;
 
 /// One file's byte edits, with the etag they were computed against.
 ///
