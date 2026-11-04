@@ -34,6 +34,9 @@ the shared crates.
 
 ## Consequences
 
+- The TS `@osdlc/markdown-vault` becomes this crate's twin: the same
+  model, with a shared `conformance.json` both suites pass, as
+  `markdown-link` does. Not done yet.
 - determined's graph, `markdown-relink` and skillwright's load use one model.
 - `VaultFacts::from_vault` needs a whole `Vault`. Building it from a
   `LinkGraph` alone is a follow-up; determined does it itself until then.
