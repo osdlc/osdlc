@@ -1,0 +1,4 @@
+#!/bin/sh
+echo "LAYOUT-PROBE-OK"
+echo "argv0=$0"
+echo "pwd=$(pwd)"

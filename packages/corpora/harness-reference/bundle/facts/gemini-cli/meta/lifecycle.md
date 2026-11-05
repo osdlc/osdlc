@@ -18,6 +18,7 @@ observations:
     source: notes-gemini
     checked_version: "0.46.0"
     evidence: run
+    probe: gemini-sign-in
 sources:
   - id: harness-comparison
     resource: "https://github.com/osdlc/skillwright/blob/main/harness-reference/sources/harness-comparison.md"

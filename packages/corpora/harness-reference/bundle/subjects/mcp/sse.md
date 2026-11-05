@@ -2,7 +2,7 @@
 type: Subject
 title: SSE transport keys
 description: The keys that declare a server-sent-events MCP server.
-order: 35
+order: 47
 tags: [mcp]
 ---
 

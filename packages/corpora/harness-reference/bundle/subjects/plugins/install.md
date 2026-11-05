@@ -2,7 +2,7 @@
 type: Subject
 title: Plugin install
 description: How a plugin or package is installed.
-order: 39
+order: 51
 tags: [plugins]
 ---
 

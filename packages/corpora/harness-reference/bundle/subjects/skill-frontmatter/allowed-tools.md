@@ -2,7 +2,7 @@
 type: Subject
 title: allowed-tools
 description: "The `allowed-tools` field that lists tools a skill pre-approves to run."
-order: 25
+order: 36
 tags: [skill-frontmatter]
 ---
 

@@ -2,7 +2,7 @@
 type: Subject
 title: Session environment
 description: Environment variables the harness exports to the commands it runs.
-order: 47
+order: 62
 tags: [cli]
 ---
 

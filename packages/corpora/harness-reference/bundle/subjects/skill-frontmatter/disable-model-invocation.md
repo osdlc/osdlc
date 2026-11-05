@@ -2,7 +2,7 @@
 type: Subject
 title: disable-model-invocation
 description: The field that stops the model from invoking a skill on its own.
-order: 26
+order: 37
 tags: [skill-frontmatter]
 ---
 

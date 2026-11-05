@@ -2,7 +2,7 @@
 type: Subject
 title: Plugin manifest
 description: The manifest file that makes a directory a plugin or package.
-order: 37
+order: 49
 tags: [plugins]
 ---
 

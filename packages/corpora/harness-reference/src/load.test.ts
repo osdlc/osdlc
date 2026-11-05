@@ -5,29 +5,40 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { BUNDLE, ROOT, load, parseConcept, repoRoot, semverOrder } from './load.ts'
+import { BUNDLE, PROBES, ROOT, load, parseConcept, repoRoot, semverOrder } from './load.ts'
 import { type Change, changes, current, renderSite } from './render.ts'
 import type { Fact, Observation } from './schema.ts'
 import { checkSchemas } from './validate.ts'
 
 const REPO = repoRoot(ROOT)
 let copy = ''
+let probes = ''
 
 before(() => {
   copy = mkdtempSync(join(tmpdir(), 'harness-reference-'))
   cpSync(BUNDLE, copy, { recursive: true })
+  probes = mkdtempSync(join(tmpdir(), 'harness-reference-probes-'))
+  cpSync(PROBES, probes, { recursive: true })
 })
-after(() => rmSync(copy, { recursive: true, force: true }))
+after(() => {
+  rmSync(copy, { recursive: true, force: true })
+  rmSync(probes, { recursive: true, force: true })
+})
 
-/** Load the shared copy with one file rewritten, then put the file back. */
+/**
+ * Load the shared copies with one file rewritten, then put the file back.
+ * `rel` is inside the bundle, or inside probes/ when it starts with `probes/`.
+ */
 function loadWith(rel: string, edit: (text: string) => string): string[] {
-  const path = join(copy, rel)
+  const path = rel.startsWith('probes/')
+    ? join(probes, rel.slice('probes/'.length))
+    : join(copy, rel)
   const original = readFileSync(path, 'utf8')
   const edited = edit(original)
   if (edited === original) throw new Error(`edit to ${rel} changed nothing`)
   writeFileSync(path, edited)
   try {
-    return load(copy, REPO).errors
+    return load(copy, REPO, probes).errors
   } finally {
     writeFileSync(path, original)
   }
@@ -133,6 +144,65 @@ describe('validation', () => {
   })
 })
 
+describe('probes and models', () => {
+  const run = 'facts/claude-code/cli/session-env.md'
+
+  test('a run observation must name its probe', () => {
+    const errors = loadWith(run, (t) => t.replace('    probe: claude-session-env\n', ''))
+    assert.ok(has(errors, 'evidence run needs a probe'))
+  })
+
+  test('a run observation must carry checked_version', () => {
+    const errors = loadWith(run, (t) => t.replace('    checked_version: "2.1.294"\n', ''))
+    assert.ok(has(errors, 'evidence run needs a checked_version'))
+  })
+
+  test('a probe must exist', () => {
+    const errors = loadWith(run, (t) => t.replace('probe: claude-session-env', 'probe: no-such'))
+    assert.ok(has(errors, 'probe "no-such" has no probes/no-such/probe.md'))
+  })
+
+  test('a probe needs evidence run', () => {
+    const errors = loadWith(run, (t) => t.replace('evidence: run', 'evidence: docs'))
+    assert.ok(has(errors, 'probe is set, but evidence is not run'))
+  })
+
+  test("a probe must list the fact's subject", () => {
+    const errors = loadWith('probes/claude-session-env/probe.md', (t) =>
+      t.replace('subjects: [cli/session-env]', 'subjects: [cli/headless]'),
+    )
+    assert.ok(has(errors, 'does not list subject cli/session-env'))
+  })
+
+  test('a probe needs commands for each harness it lists', () => {
+    const errors = loadWith('probes/claude-session-env/probe.md', (t) =>
+      t.replace('harnesses: [claude-code]', 'harnesses: [claude-code, codex]'),
+    )
+    assert.ok(has(errors, 'no commands for harness "codex"'))
+  })
+
+  test('a probe command may not name a home directory', () => {
+    const errors = loadWith('probes/claude-session-env/probe.md', (t) =>
+      t.replace('"claude --version"', '"ls /home/someone/.claude"'),
+    )
+    assert.ok(has(errors, 'names a home directory'))
+  })
+
+  test('model is refused on a subject not marked model_dependent', () => {
+    const errors = loadWith(run, (t) =>
+      t.replace('    evidence: run\n', '    evidence: run\n    model: some-model\n'),
+    )
+    assert.ok(has(errors, 'is not model_dependent'))
+  })
+
+  test('model is accepted on a model_dependent subject', () => {
+    const errors = loadWith('subjects/cli/session-env.md', (t) =>
+      t.replace('tags: [cli]\n', 'tags: [cli]\nmodel_dependent: true\n'),
+    )
+    assert.deepEqual(errors, [])
+  })
+})
+
 describe('schema files', () => {
   test('--write-schema writes files the check accepts; a changed or missing file is stale', () => {
     const dir = mkdtempSync(join(tmpdir(), 'harness-reference-schema-'))
@@ -203,6 +273,16 @@ describe('render', () => {
       assert.ok(files.has(p))
     for (const h of dataset.harnesses) assert.ok(files.has(`harnesses/${h.id}.html`))
     for (const s of dataset.subjects) assert.ok(files.has(`subjects/${s.id}.html`))
+    assert.ok(files.has('probes/index.html'))
+    for (const p of dataset.probes) assert.ok(files.has(`probes/${p.id}.html`))
+    assert.ok(
+      files
+        .get('probes/plugin-layout.html')
+        ?.includes('href="../subjects/skills/relative-paths.html"'),
+    )
+    assert.ok(
+      files.get('harnesses/claude-code.html')?.includes('href="../probes/claude-session-env.html"'),
+    )
     assert.ok(
       files
         .get('harnesses/claude-code.html')

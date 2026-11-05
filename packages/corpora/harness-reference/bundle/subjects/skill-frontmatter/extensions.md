@@ -2,7 +2,7 @@
 type: Subject
 title: Harness-only fields
 description: Frontmatter fields one harness adds beyond the spec.
-order: 27
+order: 38
 tags: [skill-frontmatter]
 ---
 

@@ -17,6 +17,7 @@ export const TYPE = {
   harness: 'Harness',
   standard: 'Standard',
   fact: 'Harness Fact',
+  probe: 'Harness Probe',
 } as const
 
 const id = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, 'use lowercase letters, digits and hyphens')
@@ -51,7 +52,15 @@ export const categorySchema = z
   .strict()
 
 /** A subject's id and category come from its path: `subjects/<category>/<name>.md`. */
-export const subjectSchema = z.object({ type: z.literal(TYPE.subject), ...okfBase, order }).strict()
+export const subjectSchema = z
+  .object({
+    type: z.literal(TYPE.subject),
+    ...okfBase,
+    order,
+    /** The model matters more than the harness here, so observations may name a `model`. */
+    model_dependent: z.boolean().optional(),
+  })
+  .strict()
 
 /** A harness's id comes from its path: `harnesses/<id>.md`. */
 export const harnessSchema = z
@@ -92,6 +101,10 @@ export const observationSchema = z
     checked_version: z.string().min(1).optional(),
     /** How the source learned it. */
     evidence: z.enum(EVIDENCE).optional(),
+    /** The probe that produced a `run` observation; required with `evidence: run`. */
+    probe: id.optional(),
+    /** The model the observation was made with; only on subjects marked `model_dependent`. */
+    model: z.string().min(1).optional(),
     note: z.string().min(1).optional(),
   })
   .strict()
@@ -122,6 +135,26 @@ export const factSchema = z
     message: 'a fact needs at least one observation or one open question',
   })
 
+/**
+ * A reproducible run: `probes/<id>/probe.md`, with an optional `fixture/` folder beside it.
+ * Its commands run from the probe folder, so every path in them is relative.
+ */
+export const probeSchema = z
+  .object({
+    type: z.literal(TYPE.probe),
+    ...okfBase,
+    /** The subjects a run answers. */
+    subjects: z.array(subjectId).min(1),
+    harnesses: z.array(id).min(1),
+    /** Shell steps per harness, in order; every harness in `harnesses` has an entry. */
+    commands: z.record(id, z.array(z.string().min(1)).min(1)),
+    /** What to write down from a run. */
+    record: z.array(z.string().min(1)).min(1),
+    /** What a run touches beyond the probe folder, such as account-wide state. */
+    safety: z.array(z.string().min(1)),
+  })
+  .strict()
+
 /** The bundle-root index.md frontmatter (OKF v0.2 §12). */
 export const rootIndexSchema = z.object({ okf_version: z.literal('0.2') }).strict()
 
@@ -139,6 +172,11 @@ export interface Subject extends z.infer<typeof subjectSchema> {
 export interface Harness extends z.infer<typeof harnessSchema> {
   id: string
 }
+export interface Probe extends z.infer<typeof probeSchema> {
+  id: string
+  /** Whether `probes/<id>/fixture/` exists. */
+  fixture: boolean
+}
 export interface Fact extends z.infer<typeof factSchema> {
   /** The OKF concept id: the path inside the bundle without `.md`. */
   conceptId: string
@@ -150,4 +188,5 @@ export const JSON_SCHEMAS = {
   'subject.schema.json': subjectSchema,
   'harness.schema.json': harnessSchema,
   'fact.schema.json': factSchema,
+  'probe.schema.json': probeSchema,
 } as const

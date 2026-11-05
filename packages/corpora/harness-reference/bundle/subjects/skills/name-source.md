@@ -2,7 +2,7 @@
 type: Subject
 title: Skill name source
 description: "Where the skill's runtime name comes from (frontmatter `name`, directory, or both)."
-order: 13
+order: 15
 tags: [skills]
 ---
 

@@ -1,12 +1,12 @@
 ---
 type: Subject
 title: How the agent loads a skill
-description: The mechanism the model uses to load a skill body.
-order: 18
+description: "How the model loads a skill body, and when: at startup, when the task matches, or only on invocation."
+order: 24
 tags: [skills]
 ---
 
-The mechanism the model uses to load a skill body.
+How the model loads a skill body, and when: at startup, when the task matches, or only on invocation.
 
 Part of the [Skills](/categories/skills.md) category. Each harness's observations for this subject
 are in `facts/<harness>/skills/agent-loading.md`.

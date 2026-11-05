@@ -2,7 +2,7 @@
 type: Subject
 title: Subagent definition
 description: Where subagent definitions live and in what file format.
-order: 28
+order: 40
 tags: [subagents]
 ---
 

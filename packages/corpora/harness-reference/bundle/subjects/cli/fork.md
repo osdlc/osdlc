@@ -2,7 +2,7 @@
 type: Subject
 title: Fork a session
 description: Whether a saved session can be cloned into a new one.
-order: 44
+order: 59
 tags: [cli]
 ---
 

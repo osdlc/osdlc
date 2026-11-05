@@ -2,7 +2,7 @@
 type: Subject
 title: name
 description: "The `name` field, its limits and whether it is required."
-order: 20
+order: 31
 tags: [skill-frontmatter]
 ---
 

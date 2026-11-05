@@ -1,0 +1,10 @@
+vault: vault
+namespace: sw
+assets:
+  - from: scripts/tool
+    to: bin/tool
+marketplace:
+  name: probe-market
+  default_plugin: layout-probe
+  out: out
+  launcher_path: bin/tool

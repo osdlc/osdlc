@@ -23,13 +23,17 @@ observations:
     until: null
     observed: "2026-10-01"
     source: skill-naming
+    checked_version: "0.99.1"
     evidence: run
+    probe: pi-version
   - value: { version: "1.1.0", context: installed build }
     since: "1.1.0"
     until: null
     observed: "2026-10-09"
     source: notes-pi
+    checked_version: "1.1.0"
     evidence: run
+    probe: pi-version
 sources:
   - id: harness-comparison
     resource: "https://github.com/osdlc/skillwright/blob/main/harness-reference/sources/harness-comparison.md"

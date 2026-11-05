@@ -3,7 +3,10 @@
  * output path to file content. Pure: nothing here touches the disk.
  */
 import type { Dataset } from './load.ts'
-import type { Fact, Harness, Observation, Source, Subject } from './schema.ts'
+import type { Fact, Harness, Observation, Probe, Source, Subject } from './schema.ts'
+
+/** Where a probe's fixture is browsed. */
+const PROBE_TREE = 'https://github.com/osdlc/skillwright/tree/main/harness-reference/probes/'
 
 const esc = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -39,6 +42,15 @@ export function current(f: Fact): Observation | undefined {
   return f.observations.filter((o) => o.until === null).at(-1)
 }
 
+/**
+ * Every observation that holds now from the latest date: observations made on
+ * one date answer different parts of the subject, so they are shown together.
+ */
+export function currentSet(f: Fact): Observation[] {
+  const last = current(f)
+  return last ? f.observations.filter((o) => o.until === null && o.observed === last.observed) : []
+}
+
 function versionRange(o: Observation): string {
   if (o.since === null && o.until === null) return ''
   if (o.until === null) return `from ${o.since}`
@@ -51,12 +63,17 @@ function sourceLink(f: Fact, sid: string): string {
   return s ? `<a href="${esc(s.resource)}" title="${esc(s.title)}">${esc(s.id)}</a>` : esc(sid)
 }
 
-function observationMeta(f: Fact, o: Observation): string {
+const probeHref = (id: string, up: string): string => `${up}probes/${id}.html`
+
+/** `up` is the path from the page back to the site root. */
+function observationMeta(f: Fact, o: Observation, up: string): string {
   const bits = [`observed ${o.observed}`]
   const range = versionRange(o)
   if (range) bits.push(range)
   if (o.checked_version) bits.push(`checked on ${esc(o.checked_version)}`)
+  if (o.model) bits.push(`model ${esc(o.model)}`)
   if (o.evidence) bits.push(esc(o.evidence))
+  if (o.probe) bits.push(`probe <a href="${probeHref(o.probe, up)}">${esc(o.probe)}</a>`)
   let src = sourceLink(f, o.source)
   if (o.via) src += ` via ${sourceLink(f, o.via)}`
   if (o.locator) src += ` <span class="loc">${text(o.locator)}</span>`
@@ -91,13 +108,14 @@ td.gap { color: var(--muted); text-align: center; }
 .when { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
 .yes { color: var(--yes); font-weight: 600; } .no { color: var(--no); font-weight: 600; } .partial { color: var(--partial); font-weight: 600; }
 code { font-size: 12px; overflow-wrap: anywhere; }
+pre { background: var(--head); padding: 8px; overflow-x: auto; font-size: 12px; }
 ul.obs { padding-left: 20px; } ul.obs li { margin-bottom: 8px; }
 .tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--line); margin-right: 6px; }
 </style>
 </head>
 <body>
 <header>
-<nav><a href="${up}index.html">Comparison</a><a href="${up}changes.html">Changes</a><a href="${up}gaps.html">Gaps</a></nav>
+<nav><a href="${up}index.html">Comparison</a><a href="${up}changes.html">Changes</a><a href="${up}gaps.html">Gaps</a><a href="${up}probes/index.html">Probes</a></nav>
 <h1>${esc(title)}</h1>
 </header>
 ${body}
@@ -106,17 +124,54 @@ ${body}
 `
 }
 
-function observationList(f: Fact): string {
+function observationList(f: Fact, up: string): string {
   return `<ul class="obs">${f.observations
     .map(
       (o) =>
-        `<li>${renderValue(o.value)}${o.note ? `<br><span class="muted">${text(o.note)}</span>` : ''}<br><span class="when">${observationMeta(f, o)}</span></li>`,
+        `<li>${renderValue(o.value)}${o.note ? `<br><span class="muted">${text(o.note)}</span>` : ''}<br><span class="when">${observationMeta(f, o, up)}</span></li>`,
     )
     .join('')}</ul>${
     f.open?.length
       ? `<p class="muted">Open: ${f.open.map((q) => text(q.question)).join(' ')}</p>`
       : ''
   }`
+}
+
+function probePage(p: Probe, ds: Dataset): string {
+  const up = '../'
+  const harnessById = new Map(ds.harnesses.map((h) => [h.id, h]))
+  const subjectById = new Map(ds.subjects.map((s) => [s.id, s]))
+  const subjects = p.subjects
+    .map((id) => subjectById.get(id))
+    .filter((s): s is Subject => s !== undefined)
+    .map((s) => `<li><a href="${up}subjects/${s.id}.html">${esc(s.title)}</a></li>`)
+    .join('')
+  const commands = p.harnesses
+    .map((id) => {
+      const h = harnessById.get(id)
+      const name = h ? `<a href="${up}harnesses/${h.id}.html">${esc(h.title)}</a>` : esc(id)
+      return `<h3>${name}</h3><pre>${(p.commands[id] ?? []).map(esc).join('\n')}</pre>`
+    })
+    .join('')
+  const list = (items: string[]): string =>
+    items.length
+      ? `<ul>${items.map((i) => `<li>${text(i)}</li>`).join('')}</ul>`
+      : '<p class="muted">None.</p>'
+  const backs = ds.facts
+    .flatMap((f) => f.observations.filter((o) => o.probe === p.id).map((o) => ({ f, o })))
+    .map(({ f, o }) => {
+      const h = harnessById.get(f.harness)
+      const s = subjectById.get(f.subject)
+      return `<li>${h ? esc(h.title) : esc(f.harness)} · ${s ? `<a href="${up}subjects/${s.id}.html">${esc(s.title)}</a>` : esc(f.subject)}: ${renderValue(o.value)}<span class="when">${observationMeta(f, o, up)}</span></li>`
+    })
+  const fixture = p.fixture
+    ? `<p>Fixture: <a href="${PROBE_TREE}${esc(p.id)}/fixture">probes/${esc(p.id)}/fixture/</a>. Commands run from the probe folder.</p>`
+    : '<p class="muted">No fixture.</p>'
+  return page(
+    p.title,
+    1,
+    `<p>${text(p.description)}</p>${fixture}<h2>Answers</h2><ul>${subjects}</ul><h2>Commands</h2>${commands}<h2>Record</h2>${list(p.record)}<h2>Safety</h2>${list(p.safety)}<h2>Observations it backs</h2>${backs.length ? `<ul class="obs">${backs.join('')}</ul>` : '<p class="muted">None yet.</p>'}`,
+  )
 }
 
 export interface Change {
@@ -129,8 +184,9 @@ export interface Change {
 export function changes(facts: Fact[]): Change[] {
   const out: Change[] = []
   for (const f of facts)
-    f.observations.forEach((o, i) => {
-      const prev = f.observations[i - 1]
+    f.observations.forEach((o) => {
+      // Observations from one date are parts of one answer, so compare with the last earlier date.
+      const prev = f.observations.filter((p) => p.observed < o.observed).at(-1)
       const kind = !prev ? 'first observed' : sameValue(prev, o) ? 're-observed' : 'changed'
       out.push({ date: o.observed, fact: f, obs: o, kind })
     })
@@ -146,7 +202,7 @@ function changeLog(list: Change[], label: (c: Change, up: string) => string, up:
         `<h3>${date}</h3><ul class="obs">${cs
           .map(
             (c) =>
-              `<li><span class="tag">${c.kind}</span>${label(c, up)}: ${renderValue(c.obs.value)}<span class="when">${observationMeta(c.fact, c.obs)}</span></li>`,
+              `<li><span class="tag">${c.kind}</span>${label(c, up)}: ${renderValue(c.obs.value)}<span class="when">${observationMeta(c.fact, c.obs, up)}</span></li>`,
           )
           .join('')}</ul>`,
     )
@@ -186,10 +242,17 @@ export function renderSite(ds: Dataset): Map<string, string> {
       const rows = subjects.map((s) => {
         const cells = columns.map((h) => {
           const f = factBy.get(`${h.id} ${s.id}`)
-          const o = f && current(f)
-          if (!f || !o) return `<td class="gap">${f?.open?.length ? 'open question' : '—'}</td>`
-          const more = f.observations.length > 1 ? ` · ${f.observations.length} observations` : ''
-          return `<td>${renderValue(o.value)}<span class="when">${o.observed}${versionRange(o) ? ` · ${versionRange(o)}` : ''}${more}</span></td>`
+          const now = f ? currentSet(f) : []
+          if (!f || now.length === 0)
+            return `<td class="gap">${f?.open?.length ? 'open question' : '—'}</td>`
+          const older = f.observations.length - now.length
+          const more = older > 0 ? ` · ${older} earlier` : ''
+          return `<td>${now
+            .map(
+              (o, i) =>
+                `${renderValue(o.value)}<span class="when">${o.observed}${versionRange(o) ? ` · ${versionRange(o)}` : ''}${o.model ? ` · model ${esc(o.model)}` : ''}${i === now.length - 1 ? more : ''}</span>`,
+            )
+            .join('')}</td>`
         })
         return `<tr><th class="row"><a href="${subjectHref(s, '')}">${esc(s.title)}</a></th>${cells.join('')}</tr>`
       })
@@ -220,7 +283,7 @@ export function renderSite(ds: Dataset): Map<string, string> {
         return `<h3>${esc(c.title)}</h3>${fs
           .map((f) => {
             const s = subjectById.get(f.subject)!
-            return `<h4><a href="${subjectHref(s, '../')}">${esc(s.title)}</a></h4>${observationList(f)}`
+            return `<h4><a href="${subjectHref(s, '../')}">${esc(s.title)}</a></h4>${observationList(f, '../')}`
           })
           .join('')}`
       })
@@ -246,7 +309,7 @@ export function renderSite(ds: Dataset): Map<string, string> {
       .map((h) => {
         const f = factBy.get(`${h.id} ${s.id}`)
         if (!f) return ''
-        return `<h3><a href="${harnessHref(h, '../../')}">${esc(h.title)}</a></h3>${observationList(f)}`
+        return `<h3><a href="${harnessHref(h, '../../')}">${esc(h.title)}</a></h3>${observationList(f, '../../')}`
       })
       .join('')
     const missing = tools.filter((h) => !covers(h, s)).map((h) => h.title)
@@ -255,7 +318,7 @@ export function renderSite(ds: Dataset): Map<string, string> {
       page(
         s.title,
         2,
-        `<p>${esc(s.description)}</p>${rows}${missing.length ? `<p class="muted">No observation in force: ${esc(missing.join(', '))}.</p>` : ''}`,
+        `<p>${text(s.description)}</p>${s.model_dependent ? '<p class="muted">The model matters here as much as the harness; an observation may name the model it was made with.</p>' : ''}${rows}${missing.length ? `<p class="muted">No observation in force: ${esc(missing.join(', '))}.</p>` : ''}`,
       ),
     )
   }
@@ -310,6 +373,22 @@ export function renderSite(ds: Dataset): Map<string, string> {
       ),
     )
   }
+
+  // probes/<id>.html: how to reproduce a run, and the facts it backs; probes/index.html lists them
+  for (const p of ds.probes) write(`probes/${p.id}.html`, probePage(p, ds))
+  write(
+    'probes/index.html',
+    page(
+      'Probes',
+      1,
+      `<p>Reproducible runs. Every observation with evidence <em>run</em> names the probe that produced it.</p><ul>${ds.probes
+        .map(
+          (p) =>
+            `<li><a href="${probeHref(p.id, '../')}">${esc(p.title)}</a>: ${text(p.description)}</li>`,
+        )
+        .join('')}</ul>`,
+    ),
+  )
 
   write('data.json', `${JSON.stringify(ds, null, 2)}\n`)
   return files
