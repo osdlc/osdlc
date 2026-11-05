@@ -80,7 +80,9 @@ export type AbandonReason = 'bracket' | 'code' | 'empty-target' | 'unclosed'
  * renderer would otherwise leave in its output as literal brackets. A `[[`
  * inside code, or inside an HTML comment when `skipHtmlComments` is on, is not
  * reported, and nor is one that a link found after it starts inside:
- * `[[[Note]]` is a literal `[` and a link.
+ * `[[[Note]]` is a literal `[` and a link. A run of `[` with no link after it,
+ * such as `[[[TODO`, is one entry: from the first `[[`, with the reason and
+ * end of the last.
  */
 export interface AbandonedLink {
   reason: AbandonReason
@@ -263,7 +265,26 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
     }
     i++
   }
-  return { links: out, abandoned }
+  return { links: out, abandoned: mergeRuns(abandoned) }
+}
+
+/**
+ * Folds each abandoned `[[` that starts inside the one before it into that
+ * one, so a run of `[` such as `[[[TODO` is one entry: from the first `[[`,
+ * with the reason and end of the last.
+ */
+function mergeRuns(abandoned: AbandonedLink[]): AbandonedLink[] {
+  const out: AbandonedLink[] = []
+  for (const next of abandoned) {
+    const run = out[out.length - 1]
+    if (run !== undefined && next.start < run.end) {
+      run.reason = next.reason
+      run.end = next.end
+    } else {
+      out.push(next)
+    }
+  }
+  return out
 }
 
 /**

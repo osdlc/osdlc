@@ -22,7 +22,9 @@ new cases.
   before `]]`), `Code` (the target is only code), `EmptyTarget` (`[[]]`,
   `[[ |alias]]`, or `[[#Heading]]` without `self_links`) or `Unclosed`.
   A `[[` that a link found after it starts inside is not reported:
-  `[[[Note]]` is a literal `[` and a link.
+  `[[[Note]]` is a literal `[` and a link. A run of `[` with no link after
+  it, such as `[[[TODO`, is one entry: from the first `[[`, with the reason
+  and end of the last.
   `body_links_spanned_with` is unchanged and returns `scan_body_with`'s links.
 - `tests/fixtures/conformance.json`: a body case may list `abandoned`; one
   that leaves it out expects none.

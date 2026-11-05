@@ -118,7 +118,8 @@ pub enum AbandonReason {
 /// literal brackets. A `[[` inside code, or inside an HTML comment when
 /// [`ScanOptions::skip_html_comments`] is on, is not reported, and nor is one
 /// that a link found after it starts inside: `[[[Note]]` is a literal `[`
-/// and a link.
+/// and a link. A run of `[` with no link after it, such as `[[[TODO`, is
+/// one entry: from the first `[[`, with the reason and end of the last.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AbandonedLink {
     /// Why it is not a link.
@@ -343,8 +344,25 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
     }
     BodyScan {
         links: out,
-        abandoned,
+        abandoned: merge_runs(abandoned),
     }
+}
+
+/// Folds each abandoned `[[` that starts inside the one before it into that
+/// one, so a run of `[` such as `[[[TODO` is one entry: from the first `[[`,
+/// with the reason and end of the last.
+fn merge_runs(abandoned: Vec<AbandonedLink>) -> Vec<AbandonedLink> {
+    let mut out: Vec<AbandonedLink> = Vec::with_capacity(abandoned.len());
+    for next in abandoned {
+        match out.last_mut() {
+            Some(run) if next.byte_start < run.byte_end => {
+                run.reason = next.reason;
+                run.byte_end = next.byte_end;
+            }
+            _ => out.push(next),
+        }
+    }
+    out
 }
 
 /// Drops each abandoned `[[` whose second `[` opens a link: `bracket` is the

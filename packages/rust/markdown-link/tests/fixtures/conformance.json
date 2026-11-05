@@ -1202,6 +1202,41 @@
       ]
     },
     {
+      "name": "abandoned_a_run_of_brackets_is_one_span",
+      "body": "[[[TODO and [[[[x",
+      "links": [],
+      "abandoned": [
+        {
+          "reason": "bracket",
+          "at": 0,
+          "text": "[[[TODO and "
+        },
+        {
+          "reason": "unclosed",
+          "at": 12,
+          "text": "[[[[x"
+        }
+      ]
+    },
+    {
+      "name": "abandoned_a_run_takes_the_last_reason",
+      "body": "[[[]] ![[[x",
+      "links": [],
+      "abandoned": [
+        {
+          "reason": "empty-target",
+          "at": 0,
+          "text": "[[[]]"
+        },
+        {
+          "reason": "unclosed",
+          "embed": true,
+          "at": 6,
+          "text": "![[[x"
+        }
+      ]
+    },
+    {
       "name": "abandoned_kept_before_an_embed",
       "body": "[[x![[B]] [[![[C]]",
       "links": [
