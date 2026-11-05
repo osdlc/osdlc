@@ -6,15 +6,7 @@ tags: [skills]
 harness: claude-code
 subject: skills/discovery-walk
 observations:
-  - value: {"parent_dirs": "yes, from the start directory up to the repository root", "nested_dirs": "load lazily when Claude reads or edits a file in that subdirectory"}
-    since: null
-    until: null
-    observed: "2026-11-04"
-    source: claude-code-skills
-    locator: "Load skills in monorepos and subdirectories"
-    evidence: docs
-    note: "Read through a fetch tool that summarises, so the quoted wording may be paraphrased."
-  - value: {"nested_dirs": "not loaded at startup; load the first time Claude reads or edits a file there"}
+  - value: {"parent_dirs": "yes, from the start directory up to the repository root", "nested_dirs": "not loaded at startup; load the first time Claude reads or edits a file in that subdirectory"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -59,10 +51,9 @@ How skill folders are found: parent directories of the working directory, nested
 
 ## Observations
 
-- 2026-11-04: parent dirs: yes, from the start directory up to the repository root; nested dirs: load lazily when Claude reads or edits a file in that subdirectory. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^claude-code-skills]
+- 2026-11-04: parent dirs: yes, from the start directory up to the repository root; nested dirs: not loaded at startup; load the first time Claude reads or edits a file in that subdirectory. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^claude-code-skills]
 
   > Claude Code loads project skills from .claude/skills/ in the directory where you start it and in every parent directory up to the repository root
-- 2026-11-04: nested dirs: not loaded at startup; load the first time Claude reads or edits a file there. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^claude-code-skills]
 
   > Skills in a .claude/skills/ directory below where you started don't load at startup. They load the first time Claude reads or edits a file in that subdirectory and stay available for the rest of the session.
 - 2026-11-04: symlinks: supported; target read once even if several links point at it. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^claude-code-skills]

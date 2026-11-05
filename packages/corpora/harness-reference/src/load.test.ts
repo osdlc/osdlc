@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { BUNDLE, PROBES, ROOT, load, parseConcept, repoRoot, semverOrder } from './load.ts'
-import { type Change, changes, current, renderSite } from './render.ts'
+import { type Change, changes, current, currentSet, renderSite } from './render.ts'
 import type { Fact, Observation } from './schema.ts'
 import { checkSchemas } from './validate.ts'
 
@@ -182,10 +182,26 @@ describe('probes and models', () => {
   })
 
   test('a probe command may not name a home directory', () => {
-    const errors = loadWith('probes/claude-session-env/probe.md', (t) =>
-      t.replace('"claude --version"', '"ls /home/someone/.claude"'),
+    for (const command of [
+      'ls /home/someone/.claude',
+      'ls ~/.claude',
+      'cat $HOME/.cursor/x',
+      'cat ${HOME}/.cursor/x',
+      'PATH=a:/Users/someone/bin claude',
+      'echo $(ls /Users/someone)',
+    ]) {
+      const errors = loadWith('probes/claude-session-env/probe.md', (t) =>
+        t.replace('"claude --version"', JSON.stringify(command)),
+      )
+      assert.ok(has(errors, 'names a home directory'), command)
+    }
+  })
+
+  test('two same-date observations may not answer the same key', () => {
+    const errors = loadWith('facts/agent-skills/skills/bundled-files.md', (t) =>
+      t.replace('{"activation_tool_listing":', '{"detail":'),
     )
-    assert.ok(has(errors, 'names a home directory'))
+    assert.ok(has(errors, 'key "detail" is already answered by observation 1 from the same date'))
   })
 
   test('model is refused on a subject not marked model_dependent', () => {
@@ -263,6 +279,54 @@ describe('render', () => {
         ['2026-01-01', 'first observed'],
       ],
     )
+  })
+
+  test('currentSet is every observation still in force, of any date', () => {
+    const a = obs({ x: 1 }, '2026-01-01')
+    const b = obs({ x: 0 }, '2026-01-01', '1.0.0')
+    const c = obs({ y: 2 }, '2026-02-01')
+    assert.deepEqual(currentSet(factOf([a, b, c])), [a, c])
+  })
+
+  test('changes compares a part with the earlier observations that answer its keys', () => {
+    const fact = factOf([
+      obs({ x: 1 }, '2026-01-01'),
+      obs({ y: 1 }, '2026-01-01'),
+      obs({ x: 2 }, '2026-02-01'),
+      obs({ z: 1 }, '2026-02-01'),
+      obs({ y: 1 }, '2026-03-01'),
+      obs({ x: 2, w: 1 }, '2026-03-01'),
+    ])
+    assert.deepEqual(
+      changes([fact]).map((c: Change) => [c.date, Object.keys(c.obs.value).join(','), c.kind]),
+      [
+        ['2026-03-01', 'y', 're-observed'],
+        ['2026-03-01', 'x,w', 'changed'],
+        ['2026-02-01', 'x', 'changed'],
+        ['2026-02-01', 'z', 'first observed'],
+        ['2026-01-01', 'x', 'first observed'],
+        ['2026-01-01', 'y', 'first observed'],
+      ],
+    )
+  })
+
+  test('a comparison cell shows every observation in force and counts the superseded', () => {
+    const { dataset } = load()
+    if (!dataset) throw new Error('bundle did not load')
+    const observations = [
+      obs({ marker: 'gamma-old' }, '2026-01-01', '1.0.0'),
+      obs({ marker: 'alpha-one' }, '2026-01-01'),
+      obs({ other: 'beta-two' }, '2026-02-01'),
+    ]
+    const facts = dataset.facts.map((f) =>
+      f.conceptId === 'facts/codex/skills/user-dirs' ? { ...f, observations } : f,
+    )
+    const index = renderSite({ ...dataset, facts }).get('index.html') ?? ''
+    const cell = index.split('<td').find((c) => c.includes('alpha-one'))
+    assert.ok(cell?.includes('alpha-one'))
+    assert.ok(cell?.includes('beta-two'))
+    assert.ok(cell?.includes('· 1 superseded'))
+    assert.ok(!cell?.includes('gamma-old'))
   })
 
   test('renderSite writes every page, with links relative to each page', () => {

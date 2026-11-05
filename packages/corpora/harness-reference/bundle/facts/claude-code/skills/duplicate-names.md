@@ -13,23 +13,7 @@ observations:
     source: claude-marketplace-reference
     via: skill-naming
     evidence: docs
-  - value: {"scope": "within enterprise, personal, project", "result": "one shadows the other", "winner": "enterprise over personal, personal over project"}
-    since: null
-    until: null
-    observed: "2026-11-04"
-    source: claude-code-skills
-    locator: "Resolve skills that share a name (table)"
-    evidence: docs
-    note: "Read through a fetch tool that summarises, so the quoted wording may be paraphrased."
-  - value: {"scope": "plugin skill versus other locations", "result": "both load; plugin skill is namespaced /plugin-name:skill-name"}
-    since: null
-    until: null
-    observed: "2026-11-04"
-    source: claude-code-skills
-    locator: "Resolve skills that share a name (table)"
-    evidence: docs
-    note: "Read through a fetch tool that summarises, so the quoted wording may be paraphrased."
-  - value: {"scope": "user skill versus bundled skill", "result": "user skill replaces the bundled command, not its aliases"}
+  - value: {"enterprise_personal_project": "one shadows the other: enterprise over personal, personal over project", "plugin_vs_other_locations": "both load; plugin skill is namespaced /plugin-name:skill-name", "user_vs_bundled": "user skill replaces the bundled command, not its aliases"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -60,13 +44,11 @@ What the sources say about [Duplicate skill names](/subjects/skills/duplicate-na
 
 - 2026-10-01: across plugins: distinct (`a:review`, `b:review`); same plugin two marketplaces:
   identical prefix, no documented tiebreak.[^claude-marketplace-reference][^skill-naming]
-- 2026-11-04: scope: within enterprise, personal, project; result: one shadows the other; winner: enterprise over personal, personal over project. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^claude-code-skills]
+- 2026-11-04: enterprise personal project: one shadows the other: enterprise over personal, personal over project; plugin vs other locations: both load; plugin skill is namespaced /plugin-name:skill-name; user vs bundled: user skill replaces the bundled command, not its aliases. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^claude-code-skills]
 
   > Two of enterprise, personal, and project | Enterprise over personal, and personal over project. With deploy in both ~/.claude/skills/ and the project's .claude/skills/, /deploy runs the personal one
-- 2026-11-04: scope: plugin skill versus other locations; result: both load; plugin skill is namespaced /plugin-name:skill-name. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^claude-code-skills]
 
   > A plugin skill and a skill at any of the locations above | Both load, because plugin skills are namespaced as /plugin-name:skill-name
-- 2026-11-04: scope: user skill versus bundled skill; result: user skill replaces the bundled command, not its aliases. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^claude-code-skills]
 
   > Your skill replaces the bundled command, but not its aliases.
 

@@ -53,6 +53,8 @@ Rules:
   and the validator checks that the file exists.
 - `value` is an object. `supported` (`true`, `false` or `"partial"`) is the headline field when one
   applies. Other keys are snake_case and depend on the subject.
+- Observations made on one date, still in force and with the same `model` are parts of one answer,
+  so each answers its own keys. Merge two parts that answer the same key, or give them distinct keys.
 - `open` lists questions the sources leave unresolved. A fact may hold only open questions.
 - `evidence: run` needs a `probe`, the id of a folder under `probes/` whose `probe.md` lists the
   fact's harness and subject, and a `checked_version`. `probe` is refused on any other evidence.
@@ -85,7 +87,7 @@ a concept. The frontmatter holds:
 | `safety`    | What a run touches beyond the probe folder, such as account-wide state   |
 
 Every path in a command is relative to the probe folder. The validator refuses a command that
-names a home directory, a subject or harness with no concept, and a harness with no commands.
+names a home directory (`/Users/`, `/home/`, `~/` or `$HOME`), a subject or harness with no concept, and a harness with no commands.
 
 To record a run, add an observation with `evidence: run`, `probe: <id>`, the `checked_version` the
 run used, and `model` where the subject allows it.
@@ -106,7 +108,8 @@ pnpm run write-schema   # rewrite schema/*.json after changing src/schema.ts
 CI runs `pnpm run check` when anything under `harness-reference/` changes
 (`.github/workflows/harness-reference.yml`).
 
-`generate` writes `index.html` (the current state, one table per category), a page per harness and
+`generate` writes `index.html` (the current state, one table per category; each cell lists every
+observation still in force), a page per harness and
 per subject, a page per probe under `probes/` (linked from the observations it backs),
 `changes.html` (every observation by date), `gaps.html` (open questions and cells with no
 observation in force) and `data.json` (the whole bundle).

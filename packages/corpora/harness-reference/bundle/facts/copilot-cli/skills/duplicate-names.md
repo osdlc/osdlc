@@ -21,7 +21,7 @@ observations:
     source: copilot-cli-config-dir-reference
     evidence: docs
     note: "Read through a fetch tool that summarises, so the quoted wording may be paraphrased."
-  - value: {"result": "first found wins for duplicate names; built-in skills lowest priority"}
+  - value: {"built_in_skills": "lowest priority; first found wins for duplicate names"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -52,7 +52,7 @@ What happens when two skills share a name, within one scope or across scopes (pr
 - 2026-11-04: across scopes: project over personal. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^copilot-cli-config-dir-reference]
 
   > Project-level skills take precedence over personal skills if they share the same name.
-- 2026-11-04: result: first found wins for duplicate names; built-in skills lowest priority. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^copilot-cli-command-reference]
+- 2026-11-04: built in skills: lowest priority; first found wins for duplicate names. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^copilot-cli-command-reference]
 
   > Skills are loaded from these locations in priority order (first found wins for duplicate names).
 

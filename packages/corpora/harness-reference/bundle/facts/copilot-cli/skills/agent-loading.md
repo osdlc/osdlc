@@ -6,7 +6,7 @@ tags: [skills]
 harness: copilot-cli
 subject: skills/agent-loading
 observations:
-  - value: {"body_on": "when relevant to the task, not in every conversation"}
+  - value: {"loaded_when_relevant": "when relevant to the task, not in every conversation"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -50,7 +50,7 @@ How the model loads a skill body, and when: at startup, when the task matches, o
 
 ## Observations
 
-- 2026-11-04: body on: when relevant to the task, not in every conversation. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^copilot-cli-about-agent-skills]
+- 2026-11-04: loaded when relevant: when relevant to the task, not in every conversation. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^copilot-cli-about-agent-skills]
 
   > rather than including the whole workflow in every conversation.
 - 2026-11-04: body at startup: no; body on: when invoked via /SKILL-NAME or automatically by the agent; content is injected into the conversation. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^copilot-cli-command-reference]

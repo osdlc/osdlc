@@ -20,7 +20,7 @@ observations:
     source: cursor-skills
     locator: "How skills work"
     evidence: docs
-  - value: {"progressive": true}
+  - value: {"resources_on_demand": true}
     since: null
     until: null
     observed: "2026-11-04"
@@ -53,7 +53,7 @@ What the sources say about [How the agent loads a skill](/subjects/skills/agent-
 - 2026-11-04: progressive: yes; manual invocation: type / in Agent chat; attaches the skill to one message.[^cursor-skills]
 
   > A skill invoked this way attaches to one message.
-- 2026-11-04: progressive: yes.[^cursor-skills]
+- 2026-11-04: resources on demand: yes.[^cursor-skills]
 
   > Skills load resources on demand, keeping context usage efficient.
 

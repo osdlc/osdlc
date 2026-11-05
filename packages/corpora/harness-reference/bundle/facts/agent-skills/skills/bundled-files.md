@@ -13,7 +13,7 @@ observations:
     source: agentskills-specification
     locator: "Progressive disclosure"
     evidence: docs
-  - value: {"supported": false, "detail": "activation tool may list bundled files but should not read them eagerly"}
+  - value: {"activation_tool_listing": "the activation tool may list bundled files but should not read them eagerly"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -38,7 +38,7 @@ Whether files beside SKILL.md (scripts, references, assets) load into context wi
 - 2026-11-04: supported: no; detail: resources load only when required.[^agentskills-specification]
 
   > Resources (as needed): Files (e.g. those in scripts/, references/, or assets/) are loaded only when required
-- 2026-11-04: supported: no; detail: activation tool may list bundled files but should not read them eagerly. Implementer guide, not the normative spec.[^agentskills-client-guide]
+- 2026-11-04: activation tool listing: the activation tool may list bundled files but should not read them eagerly. Implementer guide, not the normative spec.[^agentskills-client-guide]
 
   > it can also enumerate supporting files (scripts, references, assets) in the skill directory — but it should not eagerly read them.
 

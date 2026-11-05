@@ -116,8 +116,8 @@ export function repoRoot(from: string = ROOT): string | null {
   }
 }
 
-/** A path that names one machine: an absolute home directory. Probe commands stay relative. */
-const MACHINE_PATH = /(^|[\s'"=])\/(Users|home)\//
+/** A path that names one machine: a home directory, absolute, `~/` or `$HOME`. Probe commands stay relative. */
+const MACHINE_PATH = /(^|[\s'"=:(])(\/(Users|home)\/|~\/|\$\{?HOME\b)/
 
 /** Read `probes/<id>/probe.md` for each folder under `dir`. */
 function loadProbes(dir: string, errors: string[]): Probe[] {
@@ -349,6 +349,20 @@ export function load(
             ? semverOrder(o.since, o.until)
             : o.since.localeCompare(o.until)
         if (order >= 0) errors.push(`${at}: since must come before until`)
+      }
+    })
+    // Parts of one answer (same date and model, still in force) must answer different keys.
+    const answered = new Map<string, number>()
+    fact.observations.forEach((o, i) => {
+      if (o.until !== null) return
+      for (const key of Object.keys(o.value)) {
+        const slot = `${o.observed} ${o.model ?? ''} ${key}`
+        const first = answered.get(slot)
+        if (first === undefined) answered.set(slot, i + 1)
+        else
+          errors.push(
+            `${where}: observation ${i + 1}: key "${key}" is already answered by observation ${first} from the same date; merge them or use distinct keys`,
+          )
       }
     })
     for (const q of fact.open ?? []) cite(`${where}: open question`, q.source)

@@ -42,14 +42,13 @@ export function current(f: Fact): Observation | undefined {
   return f.observations.filter((o) => o.until === null).at(-1)
 }
 
-/**
- * Every observation that holds now from the latest date: observations made on
- * one date answer different parts of the subject, so they are shown together.
- */
+/** Every observation still in force, oldest first. Each answers its own keys. */
 export function currentSet(f: Fact): Observation[] {
-  const last = current(f)
-  return last ? f.observations.filter((o) => o.until === null && o.observed === last.observed) : []
+  return f.observations.filter((o) => o.until === null)
 }
+
+const sharesKey = (a: Observation, b: Observation): boolean =>
+  Object.keys(a.value).some((k) => k in b.value)
 
 function versionRange(o: Observation): string {
   if (o.since === null && o.until === null) return ''
@@ -185,9 +184,18 @@ export function changes(facts: Fact[]): Change[] {
   const out: Change[] = []
   for (const f of facts)
     f.observations.forEach((o) => {
-      // Observations from one date are parts of one answer, so compare with the last earlier date.
-      const prev = f.observations.filter((p) => p.observed < o.observed).at(-1)
-      const kind = !prev ? 'first observed' : sameValue(prev, o) ? 're-observed' : 'changed'
+      // Compare with the latest earlier observations that answer one of the same keys.
+      const related = f.observations.filter(
+        (p) => p.observed < o.observed && (p.model ?? '') === (o.model ?? '') && sharesKey(p, o),
+      )
+      const lastDate = related.at(-1)?.observed
+      const prev = related.filter((p) => p.observed === lastDate)
+      const kind =
+        prev.length === 0
+          ? 'first observed'
+          : prev.some((p) => sameValue(p, o))
+            ? 're-observed'
+            : 'changed'
       out.push({ date: o.observed, fact: f, obs: o, kind })
     })
   return out.sort((a, b) => b.date.localeCompare(a.date))
@@ -245,8 +253,8 @@ export function renderSite(ds: Dataset): Map<string, string> {
           const now = f ? currentSet(f) : []
           if (!f || now.length === 0)
             return `<td class="gap">${f?.open?.length ? 'open question' : '—'}</td>`
-          const older = f.observations.length - now.length
-          const more = older > 0 ? ` · ${older} earlier` : ''
+          const superseded = f.observations.length - now.length
+          const more = superseded > 0 ? ` · ${superseded} superseded` : ''
           return `<td>${now
             .map(
               (o, i) =>
@@ -266,7 +274,7 @@ export function renderSite(ds: Dataset): Map<string, string> {
       page(
         'Harness comparison',
         0,
-        `<p>What each coding-agent harness does today, one row per subject. Each cell is the latest observation still in force, with the date it was checked. A dash means no observation is in force for it. ${tools.length} harnesses, ${standards.length} standards, ${ds.subjects.length} subjects, ${obsCount} observations.</p><p>${toc}</p>${sections.join('\n')}`,
+        `<p>What each coding-agent harness does today, one row per subject. Each cell lists every observation still in force, with the date it was checked. A dash means no observation is in force for it. ${tools.length} harnesses, ${standards.length} standards, ${ds.subjects.length} subjects, ${obsCount} observations.</p><p>${toc}</p>${sections.join('\n')}`,
       ),
     )
   }

@@ -13,7 +13,7 @@ observations:
     source: agentskills-specification
     locator: "Progressive disclosure"
     evidence: docs
-  - value: {"mechanism": "file-read activation or dedicated tool activation; user may also activate with /skill-name or $skill-name"}
+  - value: {"user_activation": "/skill-name or $skill-name, besides file-read or dedicated tool activation by the model"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -38,7 +38,7 @@ How the model loads a skill body, and when: at startup, when the task matches, o
 - 2026-11-04: body at startup: no; body on: when the skill is activated; mechanism: file read of SKILL.md, or a dedicated activation tool.[^agentskills-specification]
 
   > Instructions (< 5000 tokens recommended): The full SKILL.md body is loaded when the skill is activated
-- 2026-11-04: mechanism: file-read activation or dedicated tool activation; user may also activate with /skill-name or $skill-name. Implementer guide, not the normative spec.[^agentskills-client-guide]
+- 2026-11-04: user activation: /skill-name or $skill-name, besides file-read or dedicated tool activation by the model. Implementer guide, not the normative spec.[^agentskills-client-guide]
 
   > File-read activation: The model calls its standard file-read tool with the SKILL.md path from the catalog.
 

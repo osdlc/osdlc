@@ -13,7 +13,7 @@ observations:
     source: claude-code-plugins-reference
     locator: "Environment variables, Where each variable resolves"
     evidence: docs
-  - value: {"variable": "${CLAUDE_PLUGIN_DATA}", "resolves_to": "~/.claude/plugins/data/<id>/, kept across updates"}
+  - value: {"data_variable": "${CLAUDE_PLUGIN_DATA}", "data_resolves_to": "~/.claude/plugins/data/<id>/, kept across updates"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -52,7 +52,7 @@ Variables a skill can use to name its plugin's folder, such as `${CLAUDE_PLUGIN_
 - 2026-11-04: variable: ${CLAUDE_PLUGIN_ROOT}; resolves to: absolute path of the plugin's installed version; substituted in: skill, command and agent markdown body, hook command and args, MCP stdio command, args, env, MCP http/sse/ws url, headers, headersHelper, LSP command, args, env, workspaceFolder.[^claude-code-plugins-reference]
 
   > Skill, command, and agent content | Anywhere in the Markdown body | Not applicable
-- 2026-11-04: variable: ${CLAUDE_PLUGIN_DATA}; resolves to: ~/.claude/plugins/data/<id>/, kept across updates.[^claude-code-plugins-reference]
+- 2026-11-04: data variable: ${CLAUDE_PLUGIN_DATA}; data resolves to: ~/.claude/plugins/data/<id>/, kept across updates.[^claude-code-plugins-reference]
 
   > ~/.claude/plugins/data/<id>/, created on first reference and kept across plugin updates.
 - 2026-11-04: not in bash tool env: yes; substituted in skill also: allowed-tools Bash rules.[^claude-code-plugins-reference]

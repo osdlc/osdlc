@@ -14,7 +14,7 @@ observations:
     locator: "Frontmatter reference, description"
     evidence: docs
     note: "Read through a fetch tool that summarises, so the quoted wording may be paraphrased."
-  - value: {"advice": "check the description includes keywords users would naturally say"}
+  - value: {"troubleshooting_advice": "check the description includes keywords users would naturally say"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -47,7 +47,7 @@ Whether the model picks a skill from its description alone when the user does no
 - 2026-11-04: model picks from description: yes; advice: put the key use case first; include keywords users would say. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^claude-code-skills]
 
   > Claude uses this to decide when to apply the skill. If omitted, uses the first non-empty line of the markdown content. Put the key use case first
-- 2026-11-04: advice: check the description includes keywords users would naturally say. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^claude-code-skills]
+- 2026-11-04: troubleshooting advice: check the description includes keywords users would naturally say. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^claude-code-skills]
 
   > Check the description includes keywords users would naturally say
 - 2026-11-04: malformed yaml: skill body loads with empty metadata so Claude cannot match the description; /skill-name still works.[^claude-code-skills]
