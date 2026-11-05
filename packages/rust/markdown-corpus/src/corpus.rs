@@ -572,6 +572,21 @@ mod tests {
     }
 
     #[test]
+    fn an_apply_agrees_with_the_sweep_on_a_note_it_cannot_stat() {
+        let d = corpus_fs();
+        let vfs = crate::links::hooks::StatHook::denied(&d, PathBuf::from("/v/Home.md"));
+        let v = Corpus::load(&vfs, "/v", LoadOptions::default());
+        let swept = (v.snapshot(), v.note("Home.md"));
+        assert!(swept.0.paths.contains(&"Home.md".to_string()));
+        assert_eq!(swept.1.as_ref().map(|n| n.mtime_ns), Some(None));
+
+        v.apply_changes(&vfs, &["Home.md".to_string()]);
+        assert_eq!(v.links().applied(), 1);
+        assert_eq!(v.snapshot(), swept.0, "the graph keeps it as the sweep did");
+        assert_eq!(v.note("Home.md"), swept.1, "and so does the index");
+    }
+
+    #[test]
     fn a_corpus_is_send_and_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<Corpus>();

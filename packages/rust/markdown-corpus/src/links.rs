@@ -1235,32 +1235,51 @@ pub(crate) mod hooks {
         }
     }
 
-    /// A [`Vfs`] over `inner` that runs `then` once, just after the first
-    /// [`Vfs::metadata`] call on `path` has read it and before that call
-    /// returns. So a test can change the corpus, or land another call,
-    /// exactly between a stat and what the caller does with it.
-    pub struct AfterStat<'a> {
-        pub inner: &'a dyn Vfs,
-        pub path: PathBuf,
-        pub then: RefCell<Option<Box<dyn FnOnce() + 'a>>>,
+    /// A [`Vfs`] over `inner` with one path's [`Vfs::metadata`] changed.
+    pub struct StatHook<'a> {
+        inner: &'a dyn Vfs,
+        path: PathBuf,
+        then: RefCell<Option<Box<dyn FnOnce() + 'a>>>,
+        denied: bool,
     }
 
-    impl<'a> AfterStat<'a> {
-        pub fn new(inner: &'a dyn Vfs, path: PathBuf, then: impl FnOnce() + 'a) -> Self {
-            AfterStat {
+    impl<'a> StatHook<'a> {
+        /// Runs `then` once, just after the first stat of `path` has read
+        /// it and before that call returns. So a test can change the
+        /// corpus, or land another call, exactly between a stat and what
+        /// the caller does with it.
+        pub fn after(inner: &'a dyn Vfs, path: PathBuf, then: impl FnOnce() + 'a) -> Self {
+            StatHook {
                 inner,
                 path,
                 then: RefCell::new(Some(Box::new(then))),
+                denied: false,
+            }
+        }
+
+        /// Every stat of `path` fails, as a folder readable but not
+        /// searchable leaves its files: listed, but no metadata.
+        pub fn denied(inner: &'a dyn Vfs, path: PathBuf) -> Self {
+            StatHook {
+                inner,
+                path,
+                then: RefCell::new(None),
+                denied: true,
             }
         }
     }
 
-    impl Vfs for AfterStat<'_> {
+    impl Vfs for StatHook<'_> {
         fn metadata(&self, path: &Path) -> Result<Metadata, VfsError> {
+            if path != self.path {
+                return self.inner.metadata(path);
+            }
+            if self.denied {
+                let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+                return Err(VfsError::io(path, denied));
+            }
             let meta = self.inner.metadata(path);
-            if path == self.path
-                && let Some(f) = self.then.borrow_mut().take()
-            {
+            if let Some(f) = self.then.borrow_mut().take() {
                 f();
             }
             meta

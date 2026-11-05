@@ -264,7 +264,7 @@ fn an_apply_cannot_undo_a_later_apply_with_what_it_read_first() {
     // Apply A stats the note while it is gone. Before A acts on that, the
     // note comes back and apply B reads it, unless A already holds the
     // apply lock, in which case B must wait for A.
-    let vfs = crate::links::hooks::AfterStat::new(&*d, join_rel(root(), "Notes/a.md"), || {
+    let vfs = crate::links::hooks::StatHook::after(&*d, join_rel(root(), "Notes/a.md"), || {
         put(&d, "Notes/a.md", "---\nstatus: back\n---\nbody\n");
         if let Ok(free) = index.apply_lock.try_lock() {
             drop(free);

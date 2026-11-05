@@ -26,7 +26,10 @@ nanoseconds.
   `exclude` or notes versus attachments rule it out. `Unlisted`: the path is
   the walk's, but metadata from the vfs says the walk would not list it now
   (gone, under `min_bytes`, a folder, under a symlinked folder, or a symlink
-  when the walk refuses them). `Listed`: the walk would list it.
+  when the walk refuses them). `Listed`: the walk would list it. A file
+  that cannot be statted is `Listed` when the walk would list it anyway
+  (errors skipped, `min_bytes` 0, each folder down to it lists it), as the
+  walk lists it with size 0.
   `WalkOptions::admits` is `admission == Listed`, and
   `WalkOptions::admissions` answers for a list, reading the excluded files
   once.

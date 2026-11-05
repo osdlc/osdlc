@@ -544,7 +544,7 @@ fn a_batch_cannot_undo_a_later_batch_with_what_it_read_first() {
     // Batch A stats the note while it is gone. Before A acts on that, the
     // note comes back and batch B applies it, unless A already holds the
     // apply lock, in which case B must wait for A.
-    let vfs = super::hooks::AfterStat::new(&*d, join_rel(root(), &x[0]), || {
+    let vfs = super::hooks::StatHook::after(&*d, join_rel(root(), &x[0]), || {
         put(&d, "Projects/Alpha.md", "# Alpha\n");
         if let Ok(free) = g.apply_lock.try_lock() {
             drop(free);
