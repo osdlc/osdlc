@@ -25,14 +25,15 @@ nanoseconds.
   the roots, `skip_names`, `prune_dirs`, the visibility, the excluded files,
   `exclude` or notes versus attachments rule it out. `Unlisted`: the path is
   the walk's, but metadata from the vfs says the walk would not list it now
-  (gone, under `min_bytes`, a folder, under a symlinked folder, or a symlink
-  when the walk refuses them). `Listed`: the walk would list it. A file
+  (gone, under `min_bytes`, a folder, under a symlinked folder or a folder
+  that cannot be listed, spelled otherwise than its folder lists it, or a
+  symlink when the walk refuses them). It lists each folder from the walk's
+  start down, as the walk does. `Listed`: the walk would list it. A file
   that cannot be statted is `Listed` when the walk would list it anyway
-  (errors skipped, `min_bytes` 0, each folder down to it lists it), as the
-  walk lists it with size 0.
+  (errors skipped, `min_bytes` 0), as the walk lists it with size 0.
   `WalkOptions::admits` is `admission == Listed`, and
   `WalkOptions::admissions` answers for a list, reading the excluded files
-  once.
+  and each folder's listing once.
 - `WalkOptions::reads_rules_from(rel)`: whether `rel` is the excluded-files
   list the walk reads (`.obsidian/app.json` under `Hide::Vault`). A change
   to it can move any path, so a cache walks again.

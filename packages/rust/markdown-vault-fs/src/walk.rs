@@ -26,7 +26,7 @@
 //! off with [`Hide`]. `Everything` walks never apply them.
 
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -401,8 +401,9 @@ pub enum Admission {
     /// a change to it.
     Outside,
     /// The path is the walk's, but the walk would not list it now: it is
-    /// gone, too small, a folder, a refused symlink or under a symlinked
-    /// folder. A cache drops it.
+    /// gone, too small, a folder, a refused symlink, under a symlinked
+    /// folder or a folder that cannot be listed, or spelled otherwise than
+    /// its folder lists it. A cache drops it.
     Unlisted,
     /// The walk would list it. A cache reads it.
     Listed,
@@ -432,10 +433,13 @@ impl WalkOptions {
     /// The roots, the skip and prune lists, the visibility policy, the
     /// excluded files (read from the vault for [`Hide::Vault`]), the exclude
     /// list and notes versus attachments decide [`Admission::Outside`]. Then
-    /// metadata from `vfs` decides [`Admission::Unlisted`]: a file that is
-    /// gone, a symlinked folder on the path below the walk's start (never
-    /// entered), a file under [`WalkOptions::min_bytes`], a folder, or a
-    /// symlink under [`WalkOptions::refuse_symlinks`].
+    /// the file system decides [`Admission::Unlisted`], as the walk reaches
+    /// a file: by listing each folder from the walk's start down. A folder
+    /// on the way that cannot be listed or is a symlink (never entered), or
+    /// a file its folder does not list by that spelling (gone, or the old
+    /// name after a case-only rename on a case-insensitive file system), is
+    /// unlisted. So is a folder, a file under [`WalkOptions::min_bytes`] or
+    /// a symlink under [`WalkOptions::refuse_symlinks`].
     ///
     /// It answers for one path. Under `refuse_symlinks` a whole walk fails
     /// on any symlink it sees, and under
@@ -444,16 +448,18 @@ impl WalkOptions {
     ///
     /// A file whose metadata cannot be read for another reason than being
     /// gone is what a walk that skips errors makes of it: listed with size 0
-    /// and no time ([`Admission::Listed`]) when each folder from the walk's
-    /// start down to it can be listed and lists it, and `min_bytes` is 0.
-    /// Otherwise, and always under `propagate_errors`, it is
-    /// [`Admission::Unlisted`].
+    /// and no time ([`Admission::Listed`]) when `min_bytes` is 0. Otherwise,
+    /// and always under `propagate_errors`, it is [`Admission::Unlisted`].
+    ///
+    /// Each call lists the folders on the path; [`WalkOptions::admissions`]
+    /// lists each folder once for the whole batch.
     ///
     /// Expects the normalised form [`crate::path::lexical::validate_relative`]
     /// returns. A path with an empty, `.` or `..` segment is outside.
     pub fn admission(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str) -> Admission {
         let hide = self.hide_rules(vfs, vault_dir);
-        self.admission_with(vfs, vault_dir, rel, hide.as_deref())
+        let mut listings = Listings::default();
+        self.admission_with(vfs, vault_dir, rel, hide.as_deref(), &mut listings)
     }
 
     /// Whether this walk would list the file at `rel` now:
@@ -463,7 +469,7 @@ impl WalkOptions {
     }
 
     /// [`WalkOptions::admission`] for each of `rels`, in order, reading the
-    /// excluded files once.
+    /// excluded files once and each folder's listing once.
     pub fn admissions<'r>(
         &self,
         vfs: &dyn Vfs,
@@ -471,12 +477,12 @@ impl WalkOptions {
         rels: &'r [String],
     ) -> Vec<(&'r String, Admission)> {
         let hide = self.hide_rules(vfs, vault_dir);
+        let mut listings = Listings::default();
         rels.iter()
             .map(|rel| {
-                (
-                    rel,
-                    self.admission_with(vfs, vault_dir, rel, hide.as_deref()),
-                )
+                let admission =
+                    self.admission_with(vfs, vault_dir, rel, hide.as_deref(), &mut listings);
+                (rel, admission)
             })
             .collect()
     }
@@ -499,6 +505,7 @@ impl WalkOptions {
         vault_dir: &Path,
         rel: &str,
         hide: Option<&HideRules>,
+        listings: &mut Listings,
     ) -> Admission {
         if rel
             .split('/')
@@ -509,12 +516,10 @@ impl WalkOptions {
         {
             return Admission::Outside;
         }
-        // `None` when `rel` is not under `root` by this walk's rules; else
-        // whether the walk enters every folder down to it. As in `vfs_walk`,
-        // the skip and prune lists apply below where the walk starts, and a
-        // symlinked folder below it is listed as a file, not entered. A root
-        // inside a pruned folder is still walked.
-        let from_root = |root: &str| -> Option<(bool, usize)> {
+        // Where the walk starts for each root `rel` is under by this walk's
+        // rules. As in `vfs_walk`, the skip and prune lists apply below the
+        // start. A root inside a pruned folder is still walked.
+        let start_of = |root: &str| -> Option<usize> {
             let tail = if root.is_empty() {
                 Some(rel)
             } else {
@@ -530,50 +535,39 @@ impl WalkOptions {
             {
                 return None;
             }
-            // Each `/` in the tail ends a folder below the start.
-            let base = rel.len() - tail.len();
-            let entered = tail.match_indices('/').all(|(k, _)| {
-                let folder = join_rel(vault_dir, &rel[..base + k]);
-                !vfs.metadata(&folder).is_ok_and(|m| m.is_symlink)
-            });
-            Some((entered, base))
+            Some(rel.len() - tail.len())
         };
-        let mut reached = if self.roots.is_empty() {
-            vec![from_root("")]
+        let starts: Vec<usize> = if self.roots.is_empty() {
+            start_of("").into_iter().collect()
         } else {
             self.roots
                 .iter()
                 .map(|r| relative_root(r))
                 .filter(|root| !root.split('/').any(|seg| seg == ".."))
-                .map(|root| from_root(&root))
+                .filter_map(|root| start_of(&root))
                 .collect()
-        }
-        .into_iter()
-        .flatten()
-        .peekable();
-        if reached.peek().is_none() {
+        };
+        if starts.is_empty() {
             return Admission::Outside;
         }
-        let Some((_, base)) = reached.find(|(entered, _)| *entered) else {
+        // The walk finds a file by listing each folder from its start down,
+        // so a file is listed only when every one of them lists the next: a
+        // folder it cannot list, a symlinked folder (listed as a file) or a
+        // different spelling stops it.
+        if !starts
+            .iter()
+            .any(|&start| listings.lists(vfs, vault_dir, rel, start))
+        {
             return Admission::Unlisted;
-        };
+        }
         match vfs.metadata(&join_rel(vault_dir, rel)) {
-            Ok(m)
-                if !m.is_dir
-                    && m.len >= self.min_bytes
-                    && !(m.is_symlink && self.refuse_symlinks) =>
-            {
+            Ok(m) if m.len >= self.min_bytes && !(m.is_symlink && self.refuse_symlinks) => {
                 Admission::Listed
             }
             Ok(_) => Admission::Unlisted,
             // A walk that skips errors lists a file it cannot stat, with
-            // size 0, when it finds the file by listing its folders.
-            Err(e)
-                if !e.is_not_found()
-                    && !self.propagate_errors
-                    && self.min_bytes == 0
-                    && listed_down(vfs, vault_dir, rel, base) =>
-            {
+            // size 0.
+            Err(e) if !e.is_not_found() && !self.propagate_errors && self.min_bytes == 0 => {
                 Admission::Listed
             }
             Err(_) => Admission::Unlisted,
@@ -617,23 +611,35 @@ fn relative_root(root: &str) -> String {
         .join("/")
 }
 
-/// Whether listing each folder from the walk's start, `rel[..start]`, down
-/// to `rel`'s own folder finds `rel`, a folder for each segment but the last
-/// and a file for the last: how the walk reaches a file without a stat.
-fn listed_down(vfs: &dyn Vfs, vault_dir: &Path, rel: &str, start: usize) -> bool {
-    let mut folder = join_rel(vault_dir, &rel[..start]);
-    let mut names = rel[start..].split('/').peekable();
-    while let Some(name) = names.next() {
-        let more = names.peek().is_some();
-        let Ok(entries) = vfs.read_dir(&folder) else {
-            return false;
-        };
-        if !entries.iter().any(|e| e.name == name && e.is_dir == more) {
-            return false;
+/// Folder listings read for one admission or one batch: each folder's
+/// entries as `(name, is_dir)`, `None` when it cannot be listed.
+#[derive(Default)]
+struct Listings(HashMap<PathBuf, Option<HashSet<(String, bool)>>>);
+
+impl Listings {
+    /// Whether listing each folder from the walk's start, `rel[..start]`,
+    /// down to `rel`'s own folder finds `rel`: a folder for each segment but
+    /// the last and a file for the last, spelled as `rel` spells it. How the
+    /// walk reaches a file.
+    fn lists(&mut self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str, start: usize) -> bool {
+        let mut folder = join_rel(vault_dir, &rel[..start]);
+        let mut names = rel[start..].split('/').peekable();
+        while let Some(name) = names.next() {
+            let more = names.peek().is_some();
+            let entries = self.0.entry(folder.clone()).or_insert_with(|| {
+                let entries = vfs.read_dir(&folder).ok()?;
+                Some(entries.into_iter().map(|e| (e.name, e.is_dir)).collect())
+            });
+            if !entries
+                .as_ref()
+                .is_some_and(|e| e.contains(&(name.to_string(), more)))
+            {
+                return false;
+            }
+            folder.push(name);
         }
-        folder.push(name);
+        true
     }
-    true
 }
 
 /// `vault_dir` joined with each segment of a `/`-separated relative path.
@@ -1132,18 +1138,25 @@ mod tests {
         }
     }
 
-    /// A [`Vfs`] over a [`MemVfs`] that cannot stat one file, as a folder
-    /// readable but not searchable leaves it: listed, but no metadata.
-    struct NoStat<'a> {
+    /// A [`Vfs`] over a [`MemVfs`] that is denied one call on one path.
+    struct Denied<'a> {
         inner: &'a MemVfs,
         path: PathBuf,
+        /// `true`: the folder at `path` cannot be listed, as one searchable
+        /// but not readable leaves it. `false`: the file at `path` cannot be
+        /// statted, as a folder readable but not searchable leaves it.
+        list: bool,
     }
 
-    impl Vfs for NoStat<'_> {
+    fn denied(path: &Path) -> vfs_seam::VfsError {
+        let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        vfs_seam::VfsError::io(path, denied)
+    }
+
+    impl Vfs for Denied<'_> {
         fn metadata(&self, path: &Path) -> Result<vfs_seam::Metadata, vfs_seam::VfsError> {
-            if path == self.path {
-                let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
-                return Err(vfs_seam::VfsError::io(path, denied));
+            if !self.list && path == self.path {
+                return Err(denied(path));
             }
             self.inner.metadata(path)
         }
@@ -1151,6 +1164,9 @@ mod tests {
             self.inner.read_file(path)
         }
         fn read_dir(&self, path: &Path) -> Result<Vec<vfs_seam::DirEntry>, vfs_seam::VfsError> {
+            if self.list && path == self.path {
+                return Err(denied(path));
+            }
             self.inner.read_dir(path)
         }
         fn write_file(&self, path: &Path, bytes: &[u8]) -> Result<(), vfs_seam::VfsError> {
@@ -1179,9 +1195,10 @@ mod tests {
     #[test]
     fn admits_a_file_it_cannot_stat_as_the_walk_lists_it() {
         let d = fixture();
-        let vfs = NoStat {
+        let vfs = Denied {
             inner: &d,
             path: Path::new(V).join("Notes/alpha.md"),
+            list: false,
         };
         let at = |opts: &WalkOptions, rel| opts.admission(&vfs, Path::new(V), rel);
         let lists = |opts: &WalkOptions| walk(&vfs, Path::new(V), opts).map(rels);
@@ -1228,6 +1245,85 @@ mod tests {
 
         // A gone file is still gone.
         assert_eq!(at(&notes, "Notes/deleted.md"), Admission::Unlisted);
+    }
+
+    #[test]
+    fn admits_nothing_under_a_folder_it_cannot_list() {
+        let d = fixture();
+        mk(&d, "Zed/deep/note.md", "x");
+        let vfs = Denied {
+            inner: &d,
+            path: Path::new(V).join("Zed"),
+            list: true,
+        };
+        let rooted = WalkOptions {
+            roots: vec!["Zed/deep".into()],
+            ..WalkOptions::content_notes()
+        };
+        for opts in [WalkOptions::content_notes(), rooted.clone()] {
+            let walked = rels(walk(&vfs, Path::new(V), &opts).unwrap());
+            let rels: Vec<String> = vec!["Zed/deep/note.md".into(), "Notes/alpha.md".into()];
+            let admitted: Vec<bool> = opts
+                .admissions(&vfs, Path::new(V), &rels)
+                .into_iter()
+                .map(|(_, a)| a == Admission::Listed)
+                .collect();
+            let expected: Vec<bool> = rels.iter().map(|r| walked.contains(r)).collect();
+            assert_eq!(admitted, expected, "{opts:?}");
+            assert_eq!(
+                opts.admits(&vfs, Path::new(V), "Zed/deep/note.md"),
+                walked.contains(&"Zed/deep/note.md".to_string())
+            );
+        }
+        // The rooted walk starts below the folder it cannot list.
+        assert!(rooted.admits(&vfs, Path::new(V), "Zed/deep/note.md"));
+        assert_eq!(
+            WalkOptions::content_notes().admission(&vfs, Path::new(V), "Zed/deep/note.md"),
+            Admission::Unlisted
+        );
+    }
+
+    #[test]
+    fn admits_only_the_spelling_its_folder_lists() {
+        let d = fixture();
+        let notes = WalkOptions::content_notes();
+        // MemVfs is case-sensitive, so this stat fails; the folder listing
+        // decides either way.
+        assert_eq!(
+            notes.admission(&d, Path::new(V), "Notes/Alpha.md"),
+            Admission::Unlisted
+        );
+        assert_eq!(
+            notes.admission(&d, Path::new(V), "Notes/alpha.md"),
+            Admission::Listed
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn admits_nothing_under_a_native_folder_it_cannot_list() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let v = dir.path();
+        std::fs::create_dir(v.join("locked")).unwrap();
+        std::fs::write(v.join("locked/a.md"), "x").unwrap();
+        std::fs::write(v.join("open.md"), "x").unwrap();
+        let mode = |m| std::fs::set_permissions(v.join("locked"), PermissionsExt::from_mode(m));
+        // Searchable, not readable: a stat inside works, a listing fails.
+        mode(0o311).unwrap();
+        let listable = std::fs::read_dir(v.join("locked")).is_ok();
+        let opts = WalkOptions::content_notes();
+        let vfs = vfs_seam::NativeVfs;
+        let walked = walk(&vfs, v, &opts).map(rels);
+        let locked = opts.admission(&vfs, v, "locked/a.md");
+        let open = opts.admission(&vfs, v, "open.md");
+        mode(0o755).unwrap();
+        if listable {
+            return; // Running as root: permissions do not apply.
+        }
+        assert_eq!(walked.unwrap(), ["open.md"]);
+        assert_eq!(locked, Admission::Unlisted);
+        assert_eq!(open, Admission::Listed);
     }
 
     #[test]
