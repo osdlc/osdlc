@@ -66,6 +66,40 @@ export interface BodyLink {
   end: number
 }
 
+/**
+ * Why the scanner gave up on a `[[`. `'bracket'`: a `[` or `]` came before
+ * the closing `]]`. `'code'`: closed, but the target is empty once the code
+ * inside it is blanked. `'empty-target'`: closed with an empty target (`[[]]`,
+ * `[[ |alias]]`, or `[[#Heading]]` when `selfLinks` is off). `'unclosed'`: no
+ * `]]` before the end of the body.
+ */
+export type AbandonReason = 'bracket' | 'code' | 'empty-target' | 'unclosed'
+
+/**
+ * A `[[` the scanner found outside code and did not read as a link: what a
+ * renderer would otherwise leave in its output as literal brackets. A `[[`
+ * inside code, or inside an HTML comment when `skipHtmlComments` is on, is not
+ * reported.
+ */
+export interface AbandonedLink {
+  reason: AbandonReason
+  /** Whether a `!` came before the `[[`. */
+  embed: boolean
+  /**
+   * UTF-16 offsets of what the scanner read, from the `[[` (or the `!` before
+   * it): past the `]]` for `'code'` and `'empty-target'`, up to the `[` or `]`
+   * it stopped at for `'bracket'`, and the end of the body for `'unclosed'`.
+   */
+  start: number
+  end: number
+}
+
+/** What `scanBodyWith` found: the links, and the `[[` it gave up on. */
+export interface BodyScan {
+  links: BodyLink[]
+  abandoned: AbandonedLink[]
+}
+
 /** What kind of reference produced a `RawLink`. */
 export type LinkKind = 'wikilink' | 'embed'
 
@@ -113,6 +147,14 @@ export function bodyLinksSpanned(body: string): BodyLink[] {
  * found after code is blanked, so a `<!--` inside code does not open one.
  */
 export function bodyLinksSpannedWith(body: string, options: ScanOptions): BodyLink[] {
+  return scanBodyWith(body, options).links
+}
+
+/**
+ * `bodyLinksSpannedWith`, and each `[[` it gave up on: one holding a `[` or
+ * `]`, one whose target is empty or only code, and one never closed.
+ */
+export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
   let stripped = stripCodeWith(body, options.codeRules ?? 'commonmark')
   if (options.skipHtmlComments === true) stripped = blankComments(stripped)
   const chars = Array.from(stripped)
@@ -127,19 +169,22 @@ export function bodyLinksSpannedWith(body: string, options: ScanOptions): BodyLi
   if (chars.length + 1 !== at.length) {
     // `stripCode` must keep the code point count. If it ever does not,
     // reporting no links beats reporting spans that index the wrong text.
-    return []
+    return { links: [], abandoned: [] }
   }
 
   const out: BodyLink[] = []
+  const abandoned: AbandonedLink[] = []
   const scan = new UrlScan()
   let i = 0
   while (i < chars.length) {
     if (chars[i] === '[' && chars[i + 1] === '[') {
       const embed = i > 0 && chars[i - 1] === '!'
+      const start = at[embed ? i - 1 : i]!
       let j = i + 2
       let inner = ''
       let pipe = -1
       let closed = false
+      let bracket = false
       while (j + 1 < chars.length) {
         if (chars[j] === ']' && chars[j + 1] === ']') {
           closed = true
@@ -147,14 +192,39 @@ export function bodyLinksSpannedWith(body: string, options: ScanOptions): BodyLi
         }
         // `[[` never nests, and `[` or `]` inside is a malformed link: stop
         // rather than swallow the rest of the note.
-        if (chars[j] === '[' || chars[j] === ']') break
+        if (chars[j] === '[' || chars[j] === ']') {
+          bracket = true
+          break
+        }
         if (pipe === -1 && chars[j] === '|') pipe = j
         inner += chars[j]
         j++
       }
-      if (closed && inner !== '') {
-        const link =
-          options.selfLinks === true ? parseInnerSelf(inner, embed) : parseInner(inner, embed)
+      if (!closed) {
+        abandoned.push({
+          reason: bracket ? 'bracket' : 'unclosed',
+          embed,
+          start,
+          end: bracket ? at[j]! : body.length,
+        })
+      }
+      if (closed) {
+        let link = null
+        if (inner !== '') {
+          link =
+            options.selfLinks === true ? parseInnerSelf(inner, embed) : parseInner(inner, embed)
+        }
+        if (link === null) {
+          // Code inside was blanked to spaces, so the body there differs from
+          // the stripped text.
+          const heldCode = body.slice(at[i + 2], at[j]) !== chars.slice(i + 2, j).join('')
+          abandoned.push({
+            reason: heldCode ? 'code' : 'empty-target',
+            embed,
+            start,
+            end: at[j + 2]!,
+          })
+        }
         if (link !== null) {
           // Split at the pipe `parseInner` used, found in the stripped chars
           // so a `|` in code is not one, then read the alias from the body so
@@ -168,7 +238,7 @@ export function bodyLinksSpannedWith(body: string, options: ScanOptions): BodyLi
             block: link.block,
             alias,
             size: link.size,
-            start: at[embed ? i - 1 : i]!,
+            start,
             end: at[j + 2]!,
           })
         }
@@ -186,7 +256,7 @@ export function bodyLinksSpannedWith(body: string, options: ScanOptions): BodyLi
     }
     i++
   }
-  return out
+  return { links: out, abandoned }
 }
 
 /**

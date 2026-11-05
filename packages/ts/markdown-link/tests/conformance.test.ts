@@ -6,6 +6,7 @@
 import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
+  type AbandonReason,
   type BodyLinkKind,
   type ScanOptions,
   type Size,
@@ -17,6 +18,7 @@ import {
   mdLinkTarget,
   parseInner,
   parseTypedRef,
+  scanBodyWith,
   stripCode,
   stripCodeWith,
   targetRange,
@@ -65,6 +67,8 @@ interface BodyCase {
     block?: string | null
     size?: Size | null
   }[]
+  /** Each `[[` the scan gave up on. Left out: none. */
+  abandoned?: { reason: AbandonReason; embed?: boolean; at: number; text: string }[]
 }
 
 /**
@@ -173,6 +177,16 @@ describe('parse cases', () => {
             return actual
           }),
         ).toEqual(c.links)
+        const scan = scanBodyWith(c.body, c.options ?? {})
+        expect(scan.links).toEqual(spanned)
+        expect(
+          scan.abandoned.map((a) => ({
+            reason: a.reason,
+            ...(a.embed ? { embed: true } : {}),
+            at: codePoints(c.body.slice(0, a.start)),
+            text: c.body.slice(a.start, a.end),
+          })),
+        ).toEqual(c.abandoned ?? [])
         if (c.options !== undefined) return
         expect(bodyLinks(c.body)).toEqual(
           spanned.map((link) => ({

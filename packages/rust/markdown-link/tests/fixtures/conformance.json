@@ -314,7 +314,7 @@
     },
     {
       "name": "unicode_whitespace_is_trimmed",
-      "inner": "\u00a0Note\u0085|a",
+      "inner": " Note|a",
       "parsed": {
         "target": "Note",
         "heading": null,
@@ -324,9 +324,9 @@
     },
     {
       "name": "byte_order_mark_is_not_whitespace",
-      "inner": "\ufeffNote",
+      "inner": "﻿Note",
       "parsed": {
-        "target": "\ufeffNote",
+        "target": "﻿Note",
         "heading": null,
         "alias": null,
         "targetAt": 0
@@ -418,7 +418,7 @@
       "name": "byte_order_mark_survives_decoding",
       "url": "%EF%BB%BFa.md",
       "vaultLink": true,
-      "target": "\ufeffa"
+      "target": "﻿a"
     },
     {
       "name": "attachment_extension_ignores_case",
@@ -589,7 +589,24 @@
     {
       "name": "empty_targets_are_dropped",
       "body": "[[]] [[ ]] [[|alias]]",
-      "links": []
+      "links": [],
+      "abandoned": [
+        {
+          "reason": "empty-target",
+          "at": 0,
+          "text": "[[]]"
+        },
+        {
+          "reason": "empty-target",
+          "at": 5,
+          "text": "[[ ]]"
+        },
+        {
+          "reason": "empty-target",
+          "at": 11,
+          "text": "[[|alias]]"
+        }
+      ]
     },
     {
       "name": "a_bracket_inside_ends_the_link",
@@ -602,6 +619,13 @@
           "alias": null,
           "at": 8,
           "text": "[[c]]"
+        }
+      ],
+      "abandoned": [
+        {
+          "reason": "bracket",
+          "at": 0,
+          "text": "[[a"
         }
       ]
     },
@@ -622,7 +646,14 @@
     {
       "name": "unclosed_links",
       "body": "[[abc [a](x.md",
-      "links": []
+      "links": [],
+      "abandoned": [
+        {
+          "reason": "bracket",
+          "at": 0,
+          "text": "[[abc "
+        }
+      ]
     },
     {
       "name": "wikilink_may_cross_a_line_break",
@@ -722,20 +753,20 @@
     },
     {
       "name": "next_line_character_ends_a_url",
-      "body": "[a](x\u0085y.md)",
+      "body": "[a](xy.md)",
       "links": []
     },
     {
       "name": "byte_order_mark_does_not_end_a_url",
-      "body": "[a](x\ufeffy.md)",
+      "body": "[a](x﻿y.md)",
       "links": [
         {
           "kind": "markdown",
-          "raw": "x\ufeffy.md",
-          "target": "x\ufeffy",
+          "raw": "x﻿y.md",
+          "target": "x﻿y",
           "alias": null,
           "at": 0,
-          "text": "[a](x\ufeffy.md)"
+          "text": "[a](x﻿y.md)"
         }
       ]
     },
@@ -909,7 +940,19 @@
     {
       "name": "self_links_are_dropped_by_default",
       "body": "[[#Intro]] [[#^b1]]",
-      "links": []
+      "links": [],
+      "abandoned": [
+        {
+          "reason": "empty-target",
+          "at": 0,
+          "text": "[[#Intro]]"
+        },
+        {
+          "reason": "empty-target",
+          "at": 11,
+          "text": "[[#^b1]]"
+        }
+      ]
     },
     {
       "name": "self_links_option_reads_a_bare_fragment",
@@ -935,6 +978,13 @@
           "at": 11,
           "text": "![[#^b1|x]]",
           "block": "b1"
+        }
+      ],
+      "abandoned": [
+        {
+          "reason": "empty-target",
+          "at": 23,
+          "text": "[[|alias]]"
         }
       ]
     },
@@ -1025,6 +1075,92 @@
           "alias": null,
           "at": 13,
           "text": "[[In]]"
+        }
+      ]
+    },
+    {
+      "name": "abandoned_a_bracket_inside",
+      "body": "A [[Shared|see [1]]] B [[x]y]] C",
+      "links": [],
+      "abandoned": [
+        {
+          "reason": "bracket",
+          "at": 2,
+          "text": "[[Shared|see "
+        },
+        {
+          "reason": "bracket",
+          "at": 23,
+          "text": "[[x"
+        }
+      ]
+    },
+    {
+      "name": "abandoned_only_code_in_the_target",
+      "body": "[[`Shared`]] [[`a` b]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "    b",
+          "target": "b",
+          "alias": null,
+          "at": 13,
+          "text": "[[`a` b]]"
+        }
+      ],
+      "abandoned": [
+        {
+          "reason": "code",
+          "at": 0,
+          "text": "[[`Shared`]]"
+        }
+      ]
+    },
+    {
+      "name": "abandoned_never_closed",
+      "body": "é [[open\nto the end",
+      "links": [],
+      "abandoned": [
+        {
+          "reason": "unclosed",
+          "at": 2,
+          "text": "[[open\nto the end"
+        }
+      ]
+    },
+    {
+      "name": "abandoned_an_embed_keeps_its_bang",
+      "body": "![[]] ![[img [x]]]",
+      "links": [],
+      "abandoned": [
+        {
+          "reason": "empty-target",
+          "embed": true,
+          "at": 0,
+          "text": "![[]]"
+        },
+        {
+          "reason": "bracket",
+          "embed": true,
+          "at": 6,
+          "text": "![[img "
+        }
+      ]
+    },
+    {
+      "name": "abandoned_not_reported_in_code_or_a_skipped_comment",
+      "body": "`[[]]` <!-- [[ --> [[ok]]",
+      "options": {
+        "skipHtmlComments": true
+      },
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "ok",
+          "target": "ok",
+          "alias": null,
+          "at": 19,
+          "text": "[[ok]]"
         }
       ]
     }
@@ -1197,7 +1333,7 @@
     },
     {
       "name": "unicode_space_in_slug",
-      "value": "[[events/a\u00a0b]]",
+      "value": "[[events/a b]]",
       "typedRef": null
     },
     {

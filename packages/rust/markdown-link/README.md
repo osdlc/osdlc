@@ -94,6 +94,10 @@ publishes notes can ask for more:
 - `body_links_spanned_with(body, &ScanOptions { .. })` picks the code rules
   (`CodeRules::SkillExport` for skill renderers), skips links inside HTML
   comments, and reads `[[#Heading]]` as a link to the note it is in.
+- `scan_body_with(body, &options)` returns those links and `abandoned`: each
+  `[[` the scan gave up on, with an `AbandonReason` (`Bracket`, `Code`,
+  `EmptyTarget`, `Unclosed`) and its span, so a renderer can flag link
+  syntax it would otherwise leave in the text.
 - Each parsed link carries its `heading`, its `block` (`#^id`) and an embed's
   `size` (`|300` or `|300x200`).
 - `LinkIndex::resolve_strict` refuses a name several files answer to,

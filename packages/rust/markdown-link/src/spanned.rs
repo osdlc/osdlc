@@ -1,6 +1,8 @@
 //! The body link scanner: every link in a body, with its byte span.
 //!
-//! [`crate::body_links`] is this scanner with the spans dropped. The rules for
+//! [`crate::body_links`] is this scanner with the spans dropped.
+//! [`scan_body_with`] also reports each `[[` it gave up on, so a caller can
+//! flag link syntax that was left in the text. The rules for
 //! a markdown link are delegated ([`crate::is_vault_link_url`],
 //! [`crate::md_link_target`]) rather than restated: two spellings of "is this
 //! a link" is how two scanners start disagreeing about what the vault
@@ -94,6 +96,51 @@ pub struct BodyLink {
     pub byte_end: usize,
 }
 
+/// Why the scanner gave up on a `[[`. See [`AbandonedLink`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AbandonReason {
+    /// A `[` or `]` came before the closing `]]`: `[[` never nests, so
+    /// `[[a [1]]]` and `[[x]y]]` are not links.
+    Bracket,
+    /// Closed, but the target is empty once the code inside it is blanked:
+    /// ``[[`Note`]]``.
+    Code,
+    /// Closed with an empty target: `[[]]`, `[[ |alias]]`, or `[[#Heading]]`
+    /// when [`ScanOptions::self_links`] is off.
+    EmptyTarget,
+    /// No `]]` before the end of the body.
+    Unclosed,
+}
+
+/// A `[[` the scanner found outside code and did not read as a link.
+///
+/// What a renderer or a publisher would otherwise leave in its output as
+/// literal brackets. A `[[` inside code, or inside an HTML comment when
+/// [`ScanOptions::skip_html_comments`] is on, is not reported.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AbandonedLink {
+    /// Why it is not a link.
+    pub reason: AbandonReason,
+    /// Whether a `!` came before the `[[`.
+    pub embed: bool,
+    /// Byte offset within the **body** of the `[[`, or of the `!` before it.
+    pub byte_start: usize,
+    /// Byte offset just past what the scanner read: past the `]]` for
+    /// [`AbandonReason::Code`] and [`AbandonReason::EmptyTarget`], up to the
+    /// `[` or `]` it stopped at for [`AbandonReason::Bracket`], and the end of
+    /// the body for [`AbandonReason::Unclosed`].
+    pub byte_end: usize,
+}
+
+/// What [`scan_body_with`] found: the links, and the `[[` it gave up on.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BodyScan {
+    /// The links, as [`body_links_spanned_with`] returns them.
+    pub links: Vec<BodyLink>,
+    /// Each `[[` that is not a link, in encounter order.
+    pub abandoned: Vec<AbandonedLink>,
+}
+
 /// Every wikilink, embed and relative markdown link in a body, in encounter
 /// order, **with byte spans**.
 ///
@@ -135,6 +182,27 @@ pub fn body_links_spanned(body: &str) -> Vec<BodyLink> {
 /// A comment is found after code is blanked, so a `<!--` inside code does not
 /// open one.
 pub fn body_links_spanned_with(body: &str, options: &ScanOptions) -> Vec<BodyLink> {
+    scan_body_with(body, options).links
+}
+
+/// [`body_links_spanned_with`], and each `[[` it gave up on
+/// ([`AbandonedLink`]): one holding a `[` or `]`, one whose target is empty
+/// or only code, and one never closed.
+///
+/// # Examples
+///
+/// ```
+/// use markdown_link::{AbandonReason, ScanOptions, scan_body_with};
+///
+/// let body = "[[Note]] [[a [1]]] [[]]";
+/// let scan = scan_body_with(body, &ScanOptions::default());
+/// assert_eq!(scan.links.len(), 1);
+/// let reasons: Vec<_> = scan.abandoned.iter().map(|a| a.reason).collect();
+/// assert_eq!(reasons, [AbandonReason::Bracket, AbandonReason::EmptyTarget]);
+/// let first = &scan.abandoned[0];
+/// assert_eq!(&body[first.byte_start..first.byte_end], "[[a ");
+/// ```
+pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
     let mut stripped = strip_code_with(body, options.code_rules);
     if options.skip_html_comments {
         stripped = blank_comments(&stripped);
@@ -148,18 +216,21 @@ pub fn body_links_spanned_with(body: &str, options: &ScanOptions) -> Vec<BodyLin
         // `strip_code` must preserve the char count. If it ever does not,
         // reporting no links beats reporting spans that index the wrong bytes
         // and would splice mid-character.
-        return Vec::new();
+        return BodyScan::default();
     }
 
     let mut out = Vec::new();
+    let mut abandoned = Vec::new();
     let mut scan = UrlScan::default();
     let mut i = 0usize;
     while i < chars.len() {
         if chars[i] == '[' && chars.get(i + 1) == Some(&'[') {
             let embed = i > 0 && chars[i - 1] == '!';
+            let start = at[if embed { i - 1 } else { i }];
             let mut j = i + 2;
             let mut inner = String::new();
             let mut closed = false;
+            let mut bracket = false;
             while j + 1 < chars.len() {
                 if chars[j] == ']' && chars[j + 1] == ']' {
                     closed = true;
@@ -168,17 +239,49 @@ pub fn body_links_spanned_with(body: &str, options: &ScanOptions) -> Vec<BodyLin
                 // `[[` never nests, and `[`/`]` inside would be a malformed
                 // link — bail rather than swallow the rest of the note.
                 if chars[j] == '[' || chars[j] == ']' {
+                    bracket = true;
                     break;
                 }
                 inner.push(chars[j]);
                 j += 1;
             }
-            if closed && !inner.is_empty() {
-                let parsed = if options.self_links {
+            if !closed {
+                abandoned.push(AbandonedLink {
+                    reason: if bracket {
+                        AbandonReason::Bracket
+                    } else {
+                        AbandonReason::Unclosed
+                    },
+                    embed,
+                    byte_start: start,
+                    byte_end: if bracket { at[j] } else { body.len() },
+                });
+            }
+            if closed {
+                let parsed = if inner.is_empty() {
+                    None
+                } else if options.self_links {
                     parse_inner_self(&inner, embed)
                 } else {
                     parse_inner(&inner, embed)
                 };
+                if parsed.is_none() {
+                    // Code inside was blanked to spaces, so the body's bytes
+                    // there differ from the stripped chars.
+                    let held_code = body[at[i + 2]..at[j]]
+                        .chars()
+                        .ne(chars[i + 2..j].iter().copied());
+                    abandoned.push(AbandonedLink {
+                        reason: if held_code {
+                            AbandonReason::Code
+                        } else {
+                            AbandonReason::EmptyTarget
+                        },
+                        embed,
+                        byte_start: start,
+                        byte_end: at[j + 2],
+                    });
+                }
                 if let Some(link) = parsed {
                     // Split at the pipe `parse_inner` used, found in the
                     // stripped chars so a `|` in code is not one, then read
@@ -203,7 +306,7 @@ pub fn body_links_spanned_with(body: &str, options: &ScanOptions) -> Vec<BodyLin
                         alias,
                         // An embed's `!` is part of the syntax a rename has to
                         // rewrite, so it is inside the span.
-                        byte_start: at[if embed { i - 1 } else { i }],
+                        byte_start: start,
                         byte_end: at[j + 2],
                     });
                 }
@@ -220,7 +323,10 @@ pub fn body_links_spanned_with(body: &str, options: &ScanOptions) -> Vec<BodyLin
         }
         i += 1;
     }
-    out
+    BodyScan {
+        links: out,
+        abandoned,
+    }
 }
 
 /// `text` with every HTML comment, `<!--` to `-->` or the end, blanked to
