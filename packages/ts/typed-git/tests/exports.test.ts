@@ -18,6 +18,10 @@ import {
   runCheckedAsync,
   spawnRunner,
   spawnRunnerAsync,
+  spawnRunnerBytes,
+  spawnRunnerBytesAsync,
+  type AsyncBytesCommandRunner,
+  type BytesCommandRunner,
   type CleanOptions,
   type CommitFlags,
   type ConfigGetOptions,
@@ -30,6 +34,7 @@ import {
   type RemoteGetUrlOptions,
   type RemoteSetBranchesOptions,
   type RemoteSetHeadOptions,
+  type StatusEntriesOptions,
   type StatusEntry,
   type WorktreeAddOptions,
 } from '../src/index.ts'
@@ -63,6 +68,19 @@ describe('re-exported runners', () => {
     const r = await spawnRunnerAsync('git').run(['--version'], { cwd: CWD })
     expect(r.exitCode).toBe(0)
     expect(r.stdout.startsWith('git version')).toBe(true)
+  })
+
+  test('spawnRunnerBytes and spawnRunnerBytesAsync return stdout as bytes', async () => {
+    const sync: BytesCommandRunner = spawnRunnerBytes('git')
+    const async: AsyncBytesCommandRunner = spawnRunnerBytesAsync('git')
+    for (const r of [
+      sync.run(['--version'], { cwd: CWD }),
+      await async.run(['--version'], { cwd: CWD }),
+    ]) {
+      expect(r.exitCode).toBe(0)
+      expect(Buffer.isBuffer(r.stdout)).toBe(true)
+      expect(r.stdout.toString().startsWith('git version')).toBe(true)
+    }
   })
 
   test('runChecked returns the result on exit 0 and throws CommandFailed otherwise', () => {
@@ -134,6 +152,7 @@ describe('public surface', () => {
     const setHead: RemoteSetHeadOptions = { auto: true }
     const setBranches: RemoteSetBranchesOptions = { add: true }
     const gc: GcOptions = { prune: false }
+    const statusEntries: StatusEntriesOptions = { ignored: true }
     expect([
       status,
       clean,
@@ -150,7 +169,8 @@ describe('public surface', () => {
       setHead,
       setBranches,
       gc,
-    ]).toHaveLength(15)
+      statusEntries,
+    ]).toHaveLength(16)
   })
 
   test('the backend seam is marked experimental', () => {

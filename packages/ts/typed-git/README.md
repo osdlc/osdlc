@@ -674,7 +674,7 @@ exit throws the classified failure.
 | `symbolicRef(ref)` | `symbolic-ref <ref>` | `128` → `null` |
 | `currentBranch()` | `branch --show-current` | none — `null` when detached |
 | `statusPorcelain({ paths })` | `status --porcelain` | none |
-| `statusEntries()` | `status --porcelain -z --untracked-files=all` | none — `{ x, y, path }` rows; a rename is one row, with the source dropped |
+| `statusEntries({ ignored })` | `status --porcelain -z --untracked-files=all [--ignored]` | none — `{ x, y, path }` rows; a rename is one row, with the source dropped; `ignored` adds each ignored file as a `!` row |
 | `isDirty({ paths })` | `statusPorcelain().length > 0` | none |
 | `hasStagedChanges()` | `diff --cached --quiet` | `1` → `true`, `0` → `false` — on an unborn HEAD the index is compared against the empty tree; outside a repository (`129`) it throws |
 | `branches(pattern)` | `branch --list --format=%(refname:lstrip=2)` | none |
@@ -697,7 +697,7 @@ exit throws the classified failure.
 | `diffNameStatus({ cached, range, noRenames, paths })` | `diff --name-status -z` | none |
 | `diffStat({ rangeArgs, paths })` | `diff --stat` | none — raw stdout |
 | `diffCheck({ paths })` | `diff --check` | `1`, `2` → `{ ok: false, output }` |
-| `diffText(rev?, { staged, paths })` | `diff [--cached] [rev]` | none — empty string only when nothing differs; a bad rev or a non-repository throws |
+| `diffText(rev?, { staged, binary, paths })` | `diff [--cached] [--binary] [rev]` | none — empty string only when nothing differs; a bad rev or a non-repository throws; `binary` writes a binary file's change as a patch `git apply` replays |
 | `diffAddedFile(relPath)` | `diff --no-index -- /dev/null <path>` | none — exit 1 with output is success; exit 1 with no output, or exit 2, throws |
 | `log(opts)` | `log` | none — raw stdout, unsplit |
 | `logLines(opts)` | `log`, split and filtered | none |
@@ -774,6 +774,8 @@ other non-zero exit throws.
 | --- | --- |
 | `raw(argv, opts)` | Run anything. Returns `CommandResult`; you read `exitCode`. |
 | `rawChecked(argv, opts)` | Same, but throws the classified failure on a non-zero exit or on output cut short at a cap or a timeout. |
+| `rawBytes(argv, opts)` | `raw` with stdout as a `Buffer`: the bytes git wrote, never decoded. Experimental. |
+| `rawBytesChecked(argv, opts)` | `rawChecked` with stdout as a `Buffer`. Experimental. |
 | `at(cwd)` | The same client rooted elsewhere, reusing the runner or backend. |
 | `try.*` | The whole surface again, returning `Result<T, GitFailure>` (from `@osdlc/result`) instead of throwing. |
 | `soft.*` | Every verb with an absence value, returning it instead of throwing. |
@@ -781,6 +783,44 @@ other non-zero exit throws.
 Use `raw` for a one-off command, such as `update-ref`, `tag -a` or a patch
 from `diff --unified`. A git command gets its own verb only when it has a
 parser worth sharing or an absence worth declaring.
+
+### Byte-exact output
+
+Every verb, `raw` and `rawChecked` decode stdout as UTF-8. Bytes that are not
+valid UTF-8 become U+FFFD, so a blob, a file name or a patch line in another
+encoding changes on the way. `rawBytes` and `rawBytesChecked` return stdout
+as the bytes git wrote. Stderr stays text, and a failure reads as it does for
+`rawChecked`.
+
+```ts
+const blob = git.rawBytesChecked(["cat-file", "blob", "HEAD:logo.png"]).stdout;
+createHash("sha256").update(blob).digest("hex"); // the hash of the blob itself
+
+git.rawBytesChecked(["status", "--porcelain", "-z", "--ignored"]).stdout; // names as stored
+git.rawBytesChecked(["diff", "--cached", "--binary"]).stdout;            // a patch, byte for byte
+```
+
+They run on a second runner, `bytesRunner` (a `BytesCommandRunner` on `Git`,
+an `AsyncBytesCommandRunner` on `cliBackend`). Without a `runner` it defaults
+to command-seam's bytes runner, with the same absolute-`PATH` rule. A client
+given a `runner` and no `bytesRunner` throws `UnsupportedRequest` from both,
+so a fake or a supervised runner is never bypassed by a default spawn:
+
+```ts
+new Git(cwd, { runner: fake, bytesRunner: fakeBytes });
+new AsyncGit(cwd, { backend: cliBackend({ runner, bytesRunner }) });
+```
+
+They are experimental because command-seam's bytes runners are. `input` is
+still a string, so bytes cannot be piped in yet (see [Limits](#limits)).
+
+Two verb options cover the common byte-sensitive cases without dropping to
+`rawBytes`. `statusEntries({ ignored: true })` adds each ignored file as a
+`{ x: "!", y: "!" }` row. `diffText(rev, { binary: true })` writes a binary
+file's change as a `GIT binary patch`, which is ASCII, so the string holds it
+intact and `rawChecked(["apply"], { input: patch })` replays it. A text file
+whose lines are not UTF-8 still loses bytes in `diffText`. Read that patch
+with `rawBytesChecked`.
 
 ## Driving the CLI, or something else
 
@@ -805,7 +845,7 @@ await new AsyncGit(cwd, { backend }).worktrees();           // UnsupportedReques
 ```
 
 Because a request is data, it can also be logged, queued, or replayed. The
-exception is `raw`, which is argv by definition.
+exceptions are `raw` and `rawBytes`, which are argv by definition.
 
 ## Injecting the subprocess seam
 
@@ -854,13 +894,15 @@ A fake without the pin must answer `["--version"]` (once per runner) with
 
 `runner: undefined` is the same as omitting it, so a caller holding an optional
 runner passes it straight through, without a conditional spread. `cliBackend`
-accepts it too.
+accepts it too. The same holds for `bytesRunner`, the runner behind
+`rawBytes` (see [Byte-exact output](#byte-exact-output)). A fake `runner`
+needs a fake `bytesRunner` beside it before `rawBytes` can run.
 
 The runner and result types, `CommandFailed`, `spawnRunner`, `spawnRunnerAsync`,
-`runChecked`, `runCheckedAsync` and `asAsync` are re-exported from command-seam,
-so wiring a runner or catching a `CommandFailed` needs one import rather than
-two. Import other runners, such as `spawnRunnerBytes` and `streamRunner`, from
-`@osdlc/command-seam`.
+`spawnRunnerBytes`, `spawnRunnerBytesAsync`, `runChecked`, `runCheckedAsync`
+and `asAsync` are re-exported from command-seam, so wiring a runner or catching
+a `CommandFailed` needs one import rather than two. Import other runners, such
+as `streamRunner`, from `@osdlc/command-seam`.
 
 ## Also: git references
 
@@ -1018,10 +1060,13 @@ de-duplicate.
   the classified failure. `AsyncGit` has no such cap. The `maxOutputBytes` call
   option sets the cap for one call on either client. Output cut short at a
   cap or a timeout is a failure, never an answer.
-- stdout is text. There is no verb or call option that returns raw bytes,
-  such as a binary blob. Use command-seam's `spawnRunnerBytes` for that.
-  `raw` and `rawChecked` take `input` as a string, so binary stdin, such as
-  `hash-object --stdin` on a binary file, needs that runner too.
+- Verbs return text. Only `rawBytes` and `rawBytesChecked` return stdout as
+  bytes. `input` is a string on every call, `rawBytes` too, because
+  command-seam takes stdin as a string. For binary stdin, such as
+  `hash-object --stdin` on a binary file or `apply` of a patch read with
+  `rawBytes`, write the bytes to a file and pass its path
+  (`hash-object <file>`, `apply <file>`). See
+  [D-03](docs/planning/decisions/D-03-byte-output.md).
 - Output is captured, never streamed. For live progress from `clone` or
   `fetch`, run git through command-seam's `streamRunner`.
 - `Git` cannot cancel a call. `AsyncGit` takes a `signal`.
