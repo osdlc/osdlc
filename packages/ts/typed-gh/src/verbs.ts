@@ -16,10 +16,23 @@
 
 import { notAnOption, stderrOrError, type CommandResult } from '@osdlc/command-seam'
 
-import { parseLabels, parsePrSearchHit, parsePullRequest, parseRepository } from './parse.ts'
+import {
+  parseLabels,
+  parsePrActivity,
+  parsePrSearchHit,
+  parsePullRequest,
+  parseRepository,
+} from './parse.ts'
 import { isAbsent, type Thing } from './failure.ts'
 import { isRepoSlug, parsePrUrl } from './repo.ts'
-import type { IssueRow, Label, PrSearchHit, PullRequest, Repository } from './types.ts'
+import type {
+  IssueRow,
+  Label,
+  PrActivityItem,
+  PrSearchHit,
+  PullRequest,
+  Repository,
+} from './types.ts'
 
 /** Whether a failed run says GitHub has no such `thing`. Reads the same text the classifier reads. */
 function noSuch(thing: Thing): (r: CommandResult) => boolean {
@@ -243,6 +256,9 @@ function manyOrNull(r: CommandResult): PullRequest[] | null {
  * through GitHub search, which returns at most 1000 results, is also
  * `truncated` when 1000 rows came back: `prList` with a non-empty `search` or
  * an `author`, `issueList` with a `label`, and `searchPrs`.
+ *
+ * `prActivity` has no `limit` and reads every page. Its `truncated` is true
+ * when a review held more inline comments than it reads.
  */
 export interface ListResult<T> {
   rows: T[]
@@ -1300,6 +1316,161 @@ export function prReviewThreads(number: number, target?: GhTarget): GhVerb<Revie
           lastCommentAuthor: typeof login === 'string' ? login : null,
         }
       })
+    },
+  }
+}
+
+/**
+ * The timeline item types {@link prActivity} reads, by their GraphQL
+ * `itemTypes` names: what was written, what was pushed, and changes of
+ * state. Labels, assignees, review requests, references and the other item
+ * types are left out.
+ */
+const PR_ACTIVITY_ITEM_TYPES = [
+  'ISSUE_COMMENT',
+  'PULL_REQUEST_REVIEW',
+  'PULL_REQUEST_COMMIT',
+  'CLOSED_EVENT',
+  'REOPENED_EVENT',
+  'MERGED_EVENT',
+  'READY_FOR_REVIEW_EVENT',
+  'CONVERT_TO_DRAFT_EVENT',
+  'HEAD_REF_FORCE_PUSHED_EVENT',
+  'BASE_REF_CHANGED_EVENT',
+]
+
+/**
+ * The most inline comments read per review. A review with more makes the
+ * answer `truncated`. gh follows only the timeline's own pages.
+ */
+const PR_ACTIVITY_REVIEW_COMMENTS = 100
+
+const ACTOR = 'author { __typename login }'
+const TEXT = 'fullDatabaseId body lastEditedAt url'
+
+/**
+ * The query {@link prActivity} sends. `pageInfo` comes before `nodes`: gh
+ * follows the first `pageInfo` in the answer, so it must be the timeline's.
+ * The inline comments under a review carry `totalCount`, not a `pageInfo`,
+ * for the same reason.
+ */
+const PR_ACTIVITY_QUERY = [
+  'query($owner: String!, $name: String!, $number: Int!, $since: DateTime, $endCursor: String) {',
+  '  repository(owner: $owner, name: $name) {',
+  '    pullRequest(number: $number) {',
+  `      timelineItems(first: 100, after: $endCursor, since: $since, itemTypes: [${PR_ACTIVITY_ITEM_TYPES.join(', ')}]) {`,
+  '        pageInfo { hasNextPage endCursor }',
+  '        nodes {',
+  '          __typename',
+  `          ... on IssueComment { id ${ACTOR} createdAt ${TEXT} }`,
+  `          ... on PullRequestReview { id ${ACTOR} state submittedAt ${TEXT}`,
+  `            comments(first: ${PR_ACTIVITY_REVIEW_COMMENTS}) { totalCount nodes { id ${ACTOR} createdAt ${TEXT} path line originalLine outdated replyTo { id } } } }`,
+  '          ... on PullRequestCommit { id commit { oid committedDate messageHeadline author { user { __typename login } } } }',
+  '          ... on ClosedEvent { id actor { __typename login } createdAt }',
+  '          ... on ReopenedEvent { id actor { __typename login } createdAt }',
+  '          ... on MergedEvent { id actor { __typename login } createdAt commit { oid } }',
+  '          ... on ReadyForReviewEvent { id actor { __typename login } createdAt }',
+  '          ... on ConvertToDraftEvent { id actor { __typename login } createdAt }',
+  '          ... on HeadRefForcePushedEvent { id actor { __typename login } createdAt beforeCommit { oid } afterCommit { oid } }',
+  '          ... on BaseRefChangedEvent { id actor { __typename login } createdAt previousRefName currentRefName }',
+  '        }',
+  '      }',
+  '    }',
+  '  }',
+  '}',
+].join('\n')
+
+/** An ISO 8601 date and time with a zone: `2026-11-05T09:30:00Z`, `2026-11-05T10:30:00.5+01:00`. */
+const ISO_DATE_TIME =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/i
+
+/**
+ * The time `text` names, in milliseconds, or `NaN` unless it is an
+ * {@link ISO_DATE_TIME} on a real calendar day. `Date.parse` alone reads
+ * `02-30` as March 2nd and hour 24 as the next day.
+ */
+function isoTime(text: string): number {
+  const m = ISO_DATE_TIME.exec(text)
+  if (m === null) return Number.NaN
+  const [year, month, day, hour] = m.slice(1, 5).map(Number) as [number, number, number, number]
+  const calendar = new Date(Date.UTC(year, month - 1, day))
+  const real =
+    calendar.getUTCFullYear() === year &&
+    calendar.getUTCMonth() === month - 1 &&
+    calendar.getUTCDate() === day &&
+    hour <= 23
+  return real ? Date.parse(text) : Number.NaN
+}
+
+/**
+ * Options for {@link prActivity}.
+ *
+ * @experimental
+ */
+export interface PrActivityOptions {
+  /**
+   * Only the items GitHub's `since` filter keeps: an ISO 8601 date and time
+   * with a zone, such as `2026-11-05T09:30:00Z`. It is sent in UTC. `null`
+   * and `''` mean the same as leaving it out, so a stored value can be passed
+   * as it is. Anything else throws `RangeError`.
+   */
+  since?: string | null | undefined
+}
+
+/**
+ * A pull request's activity as one list: its comments, reviews and their
+ * inline comments, commits, force pushes, and changes of state (closed,
+ * reopened, merged, ready for review, back to draft, a new base). It reads
+ * the PR's GraphQL `timelineItems` and follows every page.
+ *
+ * The rows are in GitHub's timeline order, oldest first, and each review is
+ * followed by its inline comments. `truncated` is true when a review held
+ * more than 100 inline comments: only the first 100 are read.
+ *
+ * With `since`, GitHub filters the timeline itself and returns only the
+ * items it dates from that time on. GitHub does not say whether an item at
+ * exactly `since` is kept, and its times are to the second, so to poll, pass
+ * the newest `at` seen and drop the ids already seen. Nor does it say that
+ * an older item edited later comes back, so read without `since` to see
+ * edits.
+ *
+ * Null when the call failed or a page could not be read whole, as for
+ * {@link graphql}. GitHub's "Could not resolve to a PullRequest" is `absent`,
+ * so the methods that throw return `null` for a PR that does not exist. A
+ * `number` that is not a positive integer throws `RangeError`.
+ *
+ * @experimental
+ */
+export function prActivity(
+  number: number,
+  opts: PrActivityOptions = {},
+  target?: GhTarget,
+): GhVerb<ListResult<PrActivityItem> | null> {
+  if (!Number.isSafeInteger(number) || number <= 0) {
+    throw new RangeError(`prActivity: number must be a positive integer, got ${number}`)
+  }
+  const variables: Record<string, GraphqlVariable> = {
+    owner: fromTarget('owner'),
+    name: fromTarget('repo'),
+    number,
+  }
+  const since = opts.since
+  if (since !== undefined && since !== null && since !== '') {
+    const time = isoTime(since)
+    if (Number.isNaN(time)) {
+      throw new RangeError(
+        `prActivity: since must be an ISO 8601 date and time with a zone, got ${JSON.stringify(since)}`,
+      )
+    }
+    variables['since'] = new Date(time).toISOString()
+  }
+  const query = graphql(PR_ACTIVITY_QUERY, variables, { paginate: true }, target)
+  return {
+    ...query,
+    absent: noSuch('pr'),
+    parse(r) {
+      const pages = query.parse(r)
+      return pages === null ? null : parsePrActivity(pages)
     },
   }
 }

@@ -16,7 +16,15 @@ import { spawnRunnerAsync, type AsyncCommandRunner, type CommandResult } from '@
 import { runCheckedGhAsync, softAsync, triedAsync, type Soft, type TriedAsync } from './doors.ts'
 import { runVerbAsync } from './run.ts'
 import { ownerRepoSlug, parseOwnerRepo, parsePrRef } from './repo.ts'
-import type { IssueRow, Label, OwnerRepo, PrSearchHit, PullRequest, Repository } from './types.ts'
+import type {
+  IssueRow,
+  Label,
+  OwnerRepo,
+  PrActivityItem,
+  PrSearchHit,
+  PullRequest,
+  Repository,
+} from './types.ts'
 import * as v from './verbs.ts'
 import type {
   ApiOptions,
@@ -30,9 +38,9 @@ import type {
 } from './verbs.ts'
 
 /**
- * Per-call options for {@link AsyncGh}. Sixteen methods accept them: `raw`, `rawChecked`,
- * `prList`, `prView`, `prFind`, `openPrFor`, `prViewSettled`, `prBody`, `api`, `graphql`,
- * `labelList`, `issueList`, `issueView`, `repoList`, `repoView` and `searchPrs`.
+ * Per-call options for {@link AsyncGh}. Seventeen methods accept them: `raw`, `rawChecked`,
+ * `prList`, `prView`, `prFind`, `openPrFor`, `prViewSettled`, `prBody`, `prActivity`, `api`,
+ * `graphql`, `labelList`, `issueList`, `issueView`, `repoList`, `repoView` and `searchPrs`.
  */
 export interface AsyncCallOptions {
   /**
@@ -391,6 +399,19 @@ export class AsyncGh {
   /** A PR's review threads. Rejects when they could not be read completely. `soft.prReviewThreads` resolves null instead. */
   async prReviewThreads(number: number): Promise<v.ReviewThread[]> {
     return this.read(v.prReviewThreads(number, this.target))
+  }
+
+  /**
+   * A PR's activity as one list, or null when there is no such PR. Rejects
+   * when gh fails or a page could not be read whole. See `Gh.prActivity`.
+   *
+   * @experimental
+   */
+  async prActivity(
+    number: number,
+    opts: v.PrActivityOptions & AsyncCallOptions = {},
+  ): Promise<ListResult<PrActivityItem> | null> {
+    return this.exec(v.prActivity(number, opts, this.target), opts)
   }
 
   /** Create a label (or force it to `opts`'s color/description if it exists). */

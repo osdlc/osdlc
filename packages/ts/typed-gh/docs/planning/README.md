@@ -30,6 +30,8 @@ A decision is named for its topic, not numbered. Each has a `state`.
   judged
 - [List truncation](decisions/lists-report-truncation.md): a list says when its
   limit cut it short
+- [A pull request's activity](decisions/pr-activity.md): one GraphQL timeline
+  read, not the REST timeline
 - [Runtimes and package contents](decisions/runtimes-and-package-contents.md)
 - [First version and API](decisions/first-version-and-api.md): first version
   0.5.0, API signed off

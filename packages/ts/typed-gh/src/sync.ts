@@ -33,7 +33,15 @@ import type {
   PrListOptions,
 } from './verbs.ts'
 import { ownerRepoSlug, parseOwnerRepo, parsePrRef } from './repo.ts'
-import type { IssueRow, Label, OwnerRepo, PrSearchHit, PullRequest, Repository } from './types.ts'
+import type {
+  IssueRow,
+  Label,
+  OwnerRepo,
+  PrActivityItem,
+  PrSearchHit,
+  PullRequest,
+  Repository,
+} from './types.ts'
 
 /**
  * Makes a runner for a binary. A CLI passes one factory to every place that
@@ -472,6 +480,21 @@ export class Gh {
   /** A PR's review threads. Throws when they could not be read completely. */
   prReviewThreads(number: number): v.ReviewThread[] {
     return this.read(v.prReviewThreads(number, this.target))
+  }
+
+  /**
+   * A PR's comments, reviews, inline comments, commits and changes of state,
+   * as one list in GitHub's timeline order, optionally only those since
+   * `opts.since`. Null when there is no such PR. Throws when gh fails or a
+   * page could not be read whole. See the `prActivity` verb.
+   *
+   * @experimental
+   */
+  prActivity(
+    number: number,
+    opts: v.PrActivityOptions & { timeoutMs?: number | undefined } = {},
+  ): ListResult<PrActivityItem> | null {
+    return this.exec(v.prActivity(number, opts, this.target), opts.timeoutMs)
   }
 
   /** Create a label (or force it to `opts`'s color/description if it already exists). */

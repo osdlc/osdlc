@@ -27,6 +27,7 @@ import type {
   Comment,
   Label,
   MergeableState,
+  PrActivityItem,
   PrSearchHit,
   PullRequest,
   Repository,
@@ -302,6 +303,183 @@ export function parsePrSearchHit(raw: unknown): PrSearchHit | null {
     updatedAt: strOrNull(raw['updatedAt']),
     closedAt: searchTime(raw['closedAt']),
   }
+}
+
+// ── a pull request's activity ───────────────────────────────────────────────
+
+/**
+ * A GraphQL `Actor`, whose `__typename` says whether it is a bot. GraphQL
+ * sends a bot's bare login, with no `[bot]` or `app/` to mark it.
+ */
+function graphqlActor(x: unknown): Actor | null {
+  const actor = parseActor(x)
+  if (actor === null || !isRecord(x) || x['__typename'] !== 'Bot') return actor
+  return { ...actor, isBot: true }
+}
+
+function intOrNull(x: unknown): number | null {
+  return typeof x === 'number' && Number.isInteger(x) ? x : null
+}
+
+/** The `oid` of a GraphQL `Commit`, or null. */
+function oidOf(x: unknown): string | null {
+  return isRecord(x) ? strOrNull(x['oid']) : null
+}
+
+/** The events whose only fields are the common ones, by GraphQL type. */
+const PLAIN_EVENTS: Record<
+  string,
+  'closed' | 'reopened' | 'ready-for-review' | 'converted-to-draft'
+> = {
+  ClosedEvent: 'closed',
+  ReopenedEvent: 'reopened',
+  ReadyForReviewEvent: 'ready-for-review',
+  ConvertToDraftEvent: 'converted-to-draft',
+}
+
+/** The text fields of a comment, a review or a review comment. */
+function textOf(node: Record<string, unknown>): {
+  body: string
+  editedAt: string | null
+  url: string
+  restId: string | null
+} {
+  return {
+    body: str(node['body']),
+    editedAt: strOrNull(node['lastEditedAt']),
+    url: str(node['url']),
+    // `fullDatabaseId` is a BigInt, which GraphQL sends as a string.
+    restId: idOrNull(node['fullDatabaseId']),
+  }
+}
+
+/**
+ * The items of one timeline node: one, none for a type this package does not
+ * read, or a review followed by its inline comments. Null when the node
+ * cannot be read: it is not an object, it has no `id`, a commit has no
+ * `oid`, or a review has no `comments` list. `truncated` is true when a
+ * review held more inline comments than the query asked for.
+ */
+function activityOf(node: unknown): { items: PrActivityItem[]; truncated: boolean } | null {
+  if (!isRecord(node)) return null
+  const id = strOrNull(node['id'])
+  if (id === null) return null
+  const type = node['__typename']
+  const actor = graphqlActor(node['author'] ?? node['actor'])
+  const one = (item: PrActivityItem) => ({ items: [item], truncated: false })
+
+  if (type === 'IssueComment') {
+    return one({ kind: 'comment', id, at: strOrNull(node['createdAt']), actor, ...textOf(node) })
+  }
+  if (type === 'PullRequestReview') {
+    const comments = node['comments']
+    if (!isRecord(comments) || !Array.isArray(comments['nodes'])) return null
+    const items: PrActivityItem[] = [
+      {
+        kind: 'review',
+        id,
+        at: strOrNull(node['submittedAt']),
+        actor,
+        state: str(node['state']),
+        ...textOf(node),
+      },
+    ]
+    for (const c of comments['nodes']) {
+      if (!isRecord(c)) return null
+      const commentId = strOrNull(c['id'])
+      if (commentId === null) return null
+      const replyTo = c['replyTo']
+      items.push({
+        kind: 'review-comment',
+        id: commentId,
+        at: strOrNull(c['createdAt']),
+        actor: graphqlActor(c['author']),
+        ...textOf(c),
+        reviewId: id,
+        path: str(c['path']),
+        line: intOrNull(c['line']),
+        originalLine: intOrNull(c['originalLine']),
+        outdated: bool(c['outdated']),
+        replyToId: isRecord(replyTo) ? strOrNull(replyTo['id']) : null,
+      })
+    }
+    const total = comments['totalCount']
+    const truncated = typeof total === 'number' && total > comments['nodes'].length
+    return { items, truncated }
+  }
+  if (type === 'PullRequestCommit') {
+    const commit = node['commit']
+    const sha = oidOf(commit)
+    if (!isRecord(commit) || sha === null) return null
+    const author = commit['author']
+    return one({
+      kind: 'commit',
+      id,
+      at: strOrNull(commit['committedDate']),
+      actor: isRecord(author) ? graphqlActor(author['user']) : null,
+      sha,
+      headline: str(commit['messageHeadline']),
+    })
+  }
+  const at = strOrNull(node['createdAt'])
+  const plain = typeof type === 'string' ? PLAIN_EVENTS[type] : undefined
+  if (plain !== undefined) return one({ kind: plain, id, at, actor })
+  if (type === 'MergedEvent') {
+    return one({ kind: 'merged', id, at, actor, sha: oidOf(node['commit']) })
+  }
+  if (type === 'HeadRefForcePushedEvent') {
+    return one({
+      kind: 'head-force-pushed',
+      id,
+      at,
+      actor,
+      beforeSha: oidOf(node['beforeCommit']),
+      afterSha: oidOf(node['afterCommit']),
+    })
+  }
+  if (type === 'BaseRefChangedEvent') {
+    return one({
+      kind: 'base-changed',
+      id,
+      at,
+      actor,
+      from: str(node['previousRefName']),
+      to: str(node['currentRefName']),
+    })
+  }
+  // A type the query did not ask for. GitHub may add one; skip it.
+  return { items: [], truncated: false }
+}
+
+/**
+ * A pull request's activity from the `data` of each page of the
+ * `prActivity` query, in GitHub's timeline order: oldest first, and each
+ * review followed by its inline comments.
+ *
+ * Null when any page lacks `repository.pullRequest.timelineItems.nodes`, or
+ * any node cannot be read, so a page that came back short is never read as
+ * less activity. `truncated` is true when a review held more inline comments
+ * than were read.
+ */
+export function parsePrActivity(
+  pages: readonly unknown[],
+): { rows: PrActivityItem[]; truncated: boolean } | null {
+  const rows: PrActivityItem[] = []
+  let truncated = false
+  for (const page of pages) {
+    const repository = isRecord(page) ? page['repository'] : null
+    const pr = isRecord(repository) ? repository['pullRequest'] : null
+    const timeline = isRecord(pr) ? pr['timelineItems'] : null
+    const nodes = isRecord(timeline) ? timeline['nodes'] : null
+    if (!Array.isArray(nodes)) return null
+    for (const node of nodes) {
+      const read = activityOf(node)
+      if (read === null) return null
+      rows.push(...read.items)
+      truncated ||= read.truncated
+    }
+  }
+  return { rows, truncated }
 }
 
 /**

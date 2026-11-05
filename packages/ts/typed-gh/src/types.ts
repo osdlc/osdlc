@@ -229,3 +229,97 @@ export interface PrSearchHit {
   updatedAt: string | null
   closedAt: string | null
 }
+
+/** What every {@link PrActivityItem} carries, whatever its kind. */
+interface PrActivityBase {
+  /** GitHub's GraphQL node id. Stable, so a caller that polls can de-duplicate by it. */
+  id: string
+  /**
+   * When it happened: a comment's or an event's `createdAt`, a review's
+   * `submittedAt` (null while the review is pending), a commit's
+   * `committedDate`.
+   */
+  at: string | null
+  /**
+   * Who did it: a comment's or review's author, an event's actor, or the
+   * GitHub account of a commit's author. Null when the account is gone, or
+   * a commit's author has no GitHub account.
+   */
+  actor: Actor | null
+}
+
+/** Text someone wrote on the pull request: a comment, a review, or an inline review comment. */
+interface PrActivityText {
+  body: string
+  /** When the text was last edited. Null when it never was. */
+  editedAt: string | null
+  url: string
+  /**
+   * GitHub's numeric REST id, as text. For a comment, that is the id
+   * `issueCommentEdit` takes. Null when GitHub sent none.
+   */
+  restId: string | null
+}
+
+/**
+ * One entry of a pull request's activity. Narrow on `kind` to read the
+ * fields that kind has. {@link PrActivityKind} lists the kinds.
+ *
+ * @experimental
+ */
+export type PrActivityItem =
+  | (PrActivityBase & PrActivityText & { kind: 'comment' })
+  | (PrActivityBase & PrActivityText & { kind: 'review'; state: ReviewState })
+  | (PrActivityBase &
+      PrActivityText & {
+        kind: 'review-comment'
+        /** The node id of the review this comment belongs to. The review comes before it in the list. */
+        reviewId: string
+        /** The file the comment is on. */
+        path: string
+        /** The line in the current diff. Null when the comment is outdated. */
+        line: number | null
+        /** The line in the diff the comment was written on. */
+        originalLine: number | null
+        /** True when the code the comment was on has changed since. */
+        outdated: boolean
+        /** The node id of the comment this one replies to. Null for the first comment of a thread. */
+        replyToId: string | null
+      })
+  | (PrActivityBase & {
+      kind: 'commit'
+      sha: string
+      /** The first line of the commit message. */
+      headline: string
+    })
+  | (PrActivityBase & { kind: 'closed' | 'reopened' | 'ready-for-review' | 'converted-to-draft' })
+  | (PrActivityBase & {
+      kind: 'merged'
+      /** The merge commit. Null when GitHub sent none. */
+      sha: string | null
+    })
+  | (PrActivityBase & {
+      kind: 'head-force-pushed'
+      /** The head before the push. Null when GitHub no longer has that commit. */
+      beforeSha: string | null
+      /** The head after the push. */
+      afterSha: string | null
+    })
+  | (PrActivityBase & {
+      kind: 'base-changed'
+      /** The base branch before the change. */
+      from: string
+      /** The base branch after it. */
+      to: string
+    })
+
+/**
+ * The kinds of {@link PrActivityItem}: what was written (`comment`,
+ * `review`, `review-comment`), what was pushed (`commit`,
+ * `head-force-pushed`), and how the pull request changed state (`closed`,
+ * `reopened`, `merged`, `ready-for-review`, `converted-to-draft`,
+ * `base-changed`).
+ *
+ * @experimental
+ */
+export type PrActivityKind = PrActivityItem['kind']
