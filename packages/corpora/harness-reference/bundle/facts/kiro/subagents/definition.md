@@ -6,7 +6,7 @@ tags: [subagents]
 harness: kiro
 subject: subagents/definition
 observations:
-  - value: { location: ".kiro/agents/", format: JSON or markdown }
+  - value: { location: ".kiro/agents", format: JSON or markdown }
     since: null
     until: null
     observed: "2026-08-08"
@@ -22,6 +22,6 @@ What the sources say about [Subagent definition](/subjects/subagents/definition.
 
 ## Observations
 
-- 2026-08-08: location: .kiro/agents/; format: JSON or markdown.[^harness-comparison]
+- 2026-08-08: location: .kiro/agents; format: JSON or markdown.[^harness-comparison]
 
 [^harness-comparison]: Harness comparison (researched 2026-08-08)

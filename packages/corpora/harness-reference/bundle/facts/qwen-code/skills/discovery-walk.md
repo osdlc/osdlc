@@ -13,7 +13,7 @@ observations:
     source: qwen-code-skills
     evidence: docs
     note: "Read through a fetch tool that summarises, so the quoted wording may be paraphrased."
-  - value: {"project_dirs": [".qwen/skills/", ".agents/skills/"], "personal_dirs": ["~/.qwen/skills/", "~/.agents/skills/"]}
+  - value: {"project_dirs": [".qwen/skills", ".agents/skills"], "personal_dirs": ["~/.qwen/skills", "~/.agents/skills"]}
     since: null
     until: null
     observed: "2026-11-04"
@@ -38,7 +38,7 @@ How skill folders are found: parent directories of the working directory, nested
 - 2026-11-04: symlinks: followed, target can be anywhere; custom dirs nested: a skill nested deeper than the custom directory is not found. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^qwen-code-skills]
 
   > Symlinked Skill folders are followed, and their target can live anywhere on disk.
-- 2026-11-04: project dirs: .qwen/skills/, .agents/skills/; personal dirs: ~/.qwen/skills/, ~/.agents/skills/. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^qwen-code-skills]
+- 2026-11-04: project dirs: .qwen/skills, .agents/skills; personal dirs: ~/.qwen/skills, ~/.agents/skills. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^qwen-code-skills]
 
   > Project: `.qwen/skills/` and `.agents/skills/`
 

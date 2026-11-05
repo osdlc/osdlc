@@ -6,7 +6,7 @@ tags: [skills]
 harness: amp
 subject: skills/discovery-walk
 observations:
-  - value: {"parents": ".agents/skills/ in the project and searched parent directories", "recursive": "up to five directories below each skills root"}
+  - value: {"parents": ".agents/skills in the project and searched parent directories", "recursive": "up to five directories below each skills root"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -28,7 +28,7 @@ How skill folders are found: parent directories of the working directory, nested
 
 ## Observations
 
-- 2026-11-04: parents: .agents/skills/ in the project and searched parent directories; recursive: up to five directories below each skills root.[^amp-skills]
+- 2026-11-04: parents: .agents/skills in the project and searched parent directories; recursive: up to five directories below each skills root.[^amp-skills]
 
   > Amp searches local skill directories recursively, up to five directories below each skills root.
 

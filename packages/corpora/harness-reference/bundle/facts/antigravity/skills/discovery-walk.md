@@ -6,7 +6,7 @@ tags: [skills]
 harness: antigravity
 subject: skills/discovery-walk
 observations:
-  - value: {"parent_directories": "read up to the repository root", "cli_extra_dirs": ["~/.gemini/antigravity-cli/skills/", "~/.gemini/skills/"], "workspace_dir": ".agents/skills (.agent/skills still supported)"}
+  - value: {"parent_directories": "read up to the repository root", "cli_extra_dirs": ["~/.gemini/antigravity-cli/skills", "~/.gemini/skills"], "workspace_dir": ".agents/skills (.agent/skills still supported)"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -28,7 +28,7 @@ How skill folders are found: parent directories of the working directory, nested
 
 ## Observations
 
-- 2026-11-04: parent directories: read up to the repository root; cli extra dirs: ~/.gemini/antigravity-cli/skills/, ~/.gemini/skills/; workspace dir: .agents/skills (.agent/skills still supported). Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^antigravity-skills]
+- 2026-11-04: parent directories: read up to the repository root; cli extra dirs: ~/.gemini/antigravity-cli/skills, ~/.gemini/skills; workspace dir: .agents/skills (.agent/skills still supported). Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^antigravity-skills]
 
   > Antigravity also reads `.agents/skills/` in each parent folder up to the repository root.
 

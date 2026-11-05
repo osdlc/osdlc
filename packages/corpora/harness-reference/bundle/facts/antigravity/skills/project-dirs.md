@@ -6,7 +6,7 @@ tags: [skills]
 harness: antigravity
 subject: skills/project-dirs
 observations:
-  - value: { dirs: [".agents/skills/"] }
+  - value: { dirs: [".agents/skills"] }
     since: null
     until: null
     observed: "2026-10-09"
@@ -24,7 +24,7 @@ from.
 
 ## Observations
 
-- 2026-10-09: dirs: `.agents/skills/`. From Antigravity's migration docs, as recorded in the
+- 2026-10-09: dirs: `.agents/skills`. From Antigravity's migration docs, as recorded in the
   comparison's 2026-10-09 update.[^harness-comparison]
 
 [^harness-comparison]: Harness comparison (researched 2026-08-08)

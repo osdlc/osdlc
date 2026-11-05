@@ -6,7 +6,7 @@ tags: [config]
 harness: kiro
 subject: config/main-file
 observations:
-  - value: { file: ".kiro/ tree", format: JSON }
+  - value: { file: ".kiro tree", format: JSON }
     since: null
     until: null
     observed: "2026-08-08"
@@ -22,6 +22,6 @@ What the sources say about [Main config file](/subjects/config/main-file.md) in
 
 ## Observations
 
-- 2026-08-08: file: .kiro/ tree; format: JSON.[^harness-comparison]
+- 2026-08-08: file: .kiro tree; format: JSON.[^harness-comparison]
 
 [^harness-comparison]: Harness comparison (researched 2026-08-08)

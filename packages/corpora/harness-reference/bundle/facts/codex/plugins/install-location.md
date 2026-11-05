@@ -6,7 +6,7 @@ tags: [plugins]
 harness: codex
 subject: plugins/install-location
 observations:
-  - value: {"path": "~/.codex/plugins/cache/$MARKETPLACE_NAME/$PLUGIN_NAME/$VERSION/", "local_plugin_version": "local"}
+  - value: {"path": "~/.codex/plugins/cache/$MARKETPLACE_NAME/$PLUGIN_NAME/$VERSION", "local_plugin_version": "local"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -36,7 +36,7 @@ Where an installed plugin's files go, and whether a local plugin is copied or us
 
 ## Observations
 
-- 2026-11-04: path: ~/.codex/plugins/cache/$MARKETPLACE_NAME/$PLUGIN_NAME/$VERSION/; local plugin version: local. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^codex-plugins-build]
+- 2026-11-04: path: ~/.codex/plugins/cache/$MARKETPLACE_NAME/$PLUGIN_NAME/$VERSION; local plugin version: local. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^codex-plugins-build]
 
   > ChatGPT installs plugins into ~/.codex/plugins/cache/$MARKETPLACE_NAME/$PLUGIN_NAME/$VERSION/.
 - 2026-11-04: uninstall: removes the plugin bundle from the environment. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^codex-plugins]

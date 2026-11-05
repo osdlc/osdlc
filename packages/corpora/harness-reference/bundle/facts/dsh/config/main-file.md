@@ -6,7 +6,7 @@ tags: [config]
 harness: dsh
 subject: config/main-file
 observations:
-  - value: { file: "cordis.patch.yml layers: bundle patches, $DSH_HOME/profiles/<name>/, $DSH_HOME/, then --patch files", format: YAML, merge: "a later layer replaces a row's whole config" }
+  - value: { file: "cordis.patch.yml layers: bundle patches, $DSH_HOME/profiles/<name>, $DSH_HOME, then --patch files", format: YAML, merge: "a later layer replaces a row's whole config" }
     since: null
     until: null
     observed: "2026-10-08"
@@ -25,7 +25,7 @@ What the sources say about [Main config file](/subjects/config/main-file.md) in
 
 ## Observations
 
-- 2026-10-08: file: cordis.patch.yml layers: bundle patches, $DSH_HOME/profiles/<name>/, $DSH_HOME/,
+- 2026-10-08: file: cordis.patch.yml layers: bundle patches, $DSH_HOME/profiles/<name>, $DSH_HOME,
   then --patch files; format: YAML; merge: a later layer replaces a row's whole
   config.[^notes-dsh]
 

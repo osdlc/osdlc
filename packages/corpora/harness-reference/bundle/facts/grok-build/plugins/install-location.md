@@ -6,7 +6,7 @@ tags: [plugins]
 harness: grok-build
 subject: plugins/install-location
 observations:
-  - value: {"discovery_dirs": [".grok/plugins/ (project, needs trust)", "~/.grok/plugins/ (user, auto-trusted)", "[plugins].paths"], "claude_equivalents": ".claude/plugins/ also work"}
+  - value: {"discovery_dirs": [".grok/plugins (project, needs trust)", "~/.grok/plugins (user, auto-trusted)", "[plugins].paths"], "claude_equivalents": ".claude/plugins also work"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -28,7 +28,7 @@ Where an installed plugin's files go, and whether a local plugin is copied or us
 
 ## Observations
 
-- 2026-11-04: discovery dirs: .grok/plugins/ (project, needs trust), ~/.grok/plugins/ (user, auto-trusted), [plugins].paths; claude equivalents: .claude/plugins/ also work.[^grok-build-plugins]
+- 2026-11-04: discovery dirs: .grok/plugins (project, needs trust), ~/.grok/plugins (user, auto-trusted), [plugins].paths; claude equivalents: .claude/plugins also work.[^grok-build-plugins]
 
   > | `~/.grok/plugins/` | User, every project | Trusted automatically |
 

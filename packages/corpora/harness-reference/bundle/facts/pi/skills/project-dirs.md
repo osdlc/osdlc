@@ -6,7 +6,7 @@ tags: [skills]
 harness: pi
 subject: skills/project-dirs
 observations:
-  - value: { dirs: [".pi/skills/", ".agents/skills/"] }
+  - value: { dirs: [".pi/skills", ".agents/skills"] }
     since: null
     until: null
     observed: "2026-08-08"
@@ -36,7 +36,7 @@ What the sources say about [Project skill directories](/subjects/skills/project-
 
 ## Observations
 
-- 2026-08-08: dirs: `.pi/skills/`, `.agents/skills/`.[^harness-comparison]
+- 2026-08-08: dirs: `.pi/skills`, `.agents/skills`.[^harness-comparison]
 - 2026-10-01: dirs: `<cwd>/.pi/skills`, `.agents/skills`; scope: .agents/skills in each ancestor up
   to the git root.[^pi-repo][^skill-naming]
 

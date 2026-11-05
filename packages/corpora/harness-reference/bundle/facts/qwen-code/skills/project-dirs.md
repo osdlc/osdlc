@@ -6,7 +6,7 @@ tags: [skills]
 harness: qwen-code
 subject: skills/project-dirs
 observations:
-  - value: { dirs: [".qwen/skills/"] }
+  - value: { dirs: [".qwen/skills"] }
     since: null
     until: null
     observed: "2026-08-08"
@@ -22,6 +22,6 @@ What the sources say about [Project skill directories](/subjects/skills/project-
 
 ## Observations
 
-- 2026-08-08: dirs: `.qwen/skills/`.[^harness-comparison]
+- 2026-08-08: dirs: `.qwen/skills`.[^harness-comparison]
 
 [^harness-comparison]: Harness comparison (researched 2026-08-08)

@@ -6,7 +6,7 @@ tags: [skills]
 harness: agent-skills
 subject: skills/discovery-walk
 observations:
-  - value: {"scope_paths": ["<project>/.agents/skills/", "~/.agents/skills/", "client-specific directories"], "ancestor_dirs": "some implementations scan ancestor directories up to the git root", "scan_bounds": "max depth 4-6 levels, max 2000 directories suggested"}
+  - value: {"scope_paths": [".agents/skills", "~/.agents/skills", "client-specific directories"], "ancestor_dirs": "some implementations scan ancestor directories up to the git root", "scan_bounds": "max depth 4-6 levels, max 2000 directories suggested"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -32,7 +32,7 @@ How skill folders are found: parent directories of the working directory, nested
 
 ## Observations
 
-- 2026-11-04: scope paths: <project>/.agents/skills/, ~/.agents/skills/, client-specific directories; ancestor dirs: some implementations scan ancestor directories up to the git root; scan bounds: max depth 4-6 levels, max 2000 directories suggested. Implementer guide; the spec does not mandate where skill directories live.[^agentskills-client-guide]
+- 2026-11-04: scope paths: .agents/skills, ~/.agents/skills, client-specific directories; ancestor dirs: some implementations scan ancestor directories up to the git root; scan bounds: max depth 4-6 levels, max 2000 directories suggested. Implementer guide; the spec does not mandate where skill directories live.[^agentskills-client-guide]
 
   > Other additional locations include ancestor directories up to the git root (useful for monorepos)
 

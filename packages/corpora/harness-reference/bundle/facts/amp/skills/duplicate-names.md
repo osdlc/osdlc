@@ -6,7 +6,7 @@ tags: [skills]
 harness: amp
 subject: skills/duplicate-names
 observations:
-  - value: {"winner": "first in precedence order", "order": ["~/.config/agents/skills/", "~/.agents/skills/", "~/.config/amp/skills/", ".agents/skills/ (project and searched parents)", ".claude/skills/ (those directories)", "~/.claude/skills/", "~/.claude/plugins/cache/", "amp.skills.path directories", "personal skills repository", "workspace skills repository", "official Amp skills"]}
+  - value: {"winner": "first in precedence order", "order": ["~/.config/agents/skills", "~/.agents/skills", "~/.config/amp/skills", ".agents/skills (project and searched parents)", ".claude/skills (those directories)", "~/.claude/skills", "~/.claude/plugins/cache", "amp.skills.path directories", "personal skills repository", "workspace skills repository", "official Amp skills"]}
     since: null
     until: null
     observed: "2026-11-04"
@@ -31,7 +31,7 @@ What happens when two skills share a name, within one scope or across scopes (pr
 
 ## Observations
 
-- 2026-11-04: winner: first in precedence order; order: ~/.config/agents/skills/, ~/.agents/skills/, ~/.config/amp/skills/, .agents/skills/ (project and searched parents), .claude/skills/ (those directories), ~/.claude/skills/, ~/.claude/plugins/cache/, amp.skills.path directories, personal skills repository, workspace skills repository, official Amp skills.[^amp-skills]
+- 2026-11-04: winner: first in precedence order; order: ~/.config/agents/skills, ~/.agents/skills, ~/.config/amp/skills, .agents/skills (project and searched parents), .claude/skills (those directories), ~/.claude/skills, ~/.claude/plugins/cache, amp.skills.path directories, personal skills repository, workspace skills repository, official Amp skills.[^amp-skills]
 
   > Amp uses the first skill with a given frontmatter `name`.
 - 2026-11-04: plugin skills: qualified as <plugin-name>:<skill-name>, so they do not compete with bare names.[^amp-skills]

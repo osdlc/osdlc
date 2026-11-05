@@ -6,7 +6,7 @@ tags: [plugins]
 harness: copilot-cli
 subject: plugins/install-location
 observations:
-  - value: {"marketplace": "~/.copilot/installed-plugins/MARKETPLACE/PLUGIN-NAME", "direct": "~/.copilot/installed-plugins/_direct/SOURCE-ID/"}
+  - value: {"marketplace": "~/.copilot/installed-plugins/MARKETPLACE/PLUGIN-NAME", "direct": "~/.copilot/installed-plugins/_direct/SOURCE-ID"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -42,7 +42,7 @@ Where an installed plugin's files go, and whether a local plugin is copied or us
 
 ## Observations
 
-- 2026-11-04: marketplace: ~/.copilot/installed-plugins/MARKETPLACE/PLUGIN-NAME; direct: ~/.copilot/installed-plugins/_direct/SOURCE-ID/. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^copilot-cli-plugin-reference]
+- 2026-11-04: marketplace: ~/.copilot/installed-plugins/MARKETPLACE/PLUGIN-NAME; direct: ~/.copilot/installed-plugins/_direct/SOURCE-ID. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^copilot-cli-plugin-reference]
 
   > ~/.copilot/installed-plugins/MARKETPLACE/PLUGIN-NAME
 - 2026-11-04: layout: marketplace installs under installed-plugins/{marketplace-name}/{plugin-name}/; direct under installed-plugins/_direct/. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^copilot-cli-config-dir-reference]

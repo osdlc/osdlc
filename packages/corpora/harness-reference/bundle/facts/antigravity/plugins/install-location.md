@@ -6,7 +6,7 @@ tags: [plugins]
 harness: antigravity
 subject: plugins/install-location
 observations:
-  - value: {"path": "~/.gemini/config/plugins/<plugin_name>/", "workspace_path": ".agents/plugins/"}
+  - value: {"path": "~/.gemini/config/plugins/<plugin_name>", "workspace_path": ".agents/plugins"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -31,7 +31,7 @@ Where an installed plugin's files go, and whether a local plugin is copied or us
 
 ## Observations
 
-- 2026-11-04: path: ~/.gemini/config/plugins/<plugin_name>/; workspace path: .agents/plugins/. Another docs page names ~/.gemini/antigravity-cli/plugins/<plugin_name>/ (seen only in a search summary). Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^antigravity-plugins]
+- 2026-11-04: path: ~/.gemini/config/plugins/<plugin_name>; workspace path: .agents/plugins. Another docs page names ~/.gemini/antigravity-cli/plugins/<plugin_name>/ (seen only in a search summary). Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^antigravity-plugins]
 
   > When installed, the CLI stages plugin assets in your global configuration directory:
 

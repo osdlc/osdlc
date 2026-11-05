@@ -6,7 +6,7 @@ tags: [instructions]
 harness: claude-code
 subject: instructions/rules
 observations:
-  - value: { supported: true, dir: ".claude/rules/" }
+  - value: { supported: true, dir: ".claude/rules" }
     since: null
     until: null
     observed: "2026-08-08"
@@ -23,6 +23,6 @@ what decides when they attach.
 
 ## Observations
 
-- 2026-08-08: supported: `true`; dir: .claude/rules/.[^harness-comparison]
+- 2026-08-08: supported: `true`; dir: .claude/rules.[^harness-comparison]
 
 [^harness-comparison]: Harness comparison (researched 2026-08-08)
