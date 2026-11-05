@@ -57,7 +57,8 @@
 //! rather than a second implementation.
 //!
 //! Nor is there a cache. [`VaultFacts`] is a snapshot a caller supplies —
-//! a host application can hand over its warm link graph and frontmatter index,
+//! a host application can hand over its warm link graph
+//! ([`VaultFacts::from_graph`]) or corpus ([`VaultFacts::from_corpus`]),
 //! and [`VaultFacts::scan`] builds the same thing from a walk for anyone who
 //! has neither. Keeping the caches out is what leaves this crate a pure
 //! function over a vault, and what lets the arrow between the two crates point

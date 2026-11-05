@@ -1,6 +1,6 @@
 [package]
 name = "markdown-relink"
-version = "0.2.0"
+version = "0.3.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Rename and move a note without breaking the vault: the inbound-wikilink rewrite set, computed as a reviewable plan and applied under per-file compare-and-swap"
@@ -36,8 +36,8 @@ vfs-seam = { workspace = true, features = ["native"] }
 slug-collate = { workspace = true }
 # The atomic compare-and-swap write the plan is applied under.
 etag-write = { workspace = true }
-# Byte-exact frontmatter split, and the YAML parse behind `VaultFacts`.
-frontmatter-lossless = { workspace = true }
+# The YAML parse behind `VaultFacts`. The frontmatter split is
+# `markdown_corpus::split_with`, so the plan splits as the snapshot did.
 yaml-splice = { workspace = true }
 thiserror = { workspace = true }
 

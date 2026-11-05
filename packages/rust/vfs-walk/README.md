@@ -19,8 +19,9 @@ It knows nothing about Markdown or vaults. The caller passes its rules in:
 
 Entries come back depth first, sorted by name within each folder (`String`
 byte order), with the size and modification time from one stat each. The
-`stat` module also has Node's `statSync()` millisecond floats for native
-callers.
+time is whole nanoseconds; `Entry::mtime_ms_f64` gives the fractional
+milliseconds Node's `statSync()` reports, to the last bit. The `stat` module
+has the same floats for native callers that hold a `std::fs::Metadata`.
 
 ## Install
 

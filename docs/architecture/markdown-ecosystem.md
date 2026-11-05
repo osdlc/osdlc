@@ -80,19 +80,19 @@ flowchart TB
   classDef ext fill:#ffffff,stroke:#bbb,stroke-dasharray:3 3,color:#666
 
   subgraph VAULT[corpus]
-    MR["<b>markdown-relink</b> 0.2<br/>rename / move plans,<br/>facts from the corpus model"]:::md
-    MV["<b>markdown-corpus</b> 0.1<br/>the corpus model: link graph,<br/>backlinks, frontmatter index,<br/>tolerant note read, refresh"]:::new
-    MVF["<b>markdown-vault-fs</b> 0.4<br/>vault layer: notes vs attachments,<br/>excluded files, _system rules"]:::md
+    MR["<b>markdown-relink</b> 0.3<br/>rename / move plans,<br/>facts from the corpus model"]:::md
+    MV["<b>markdown-corpus</b> 0.2<br/>the corpus model: link graph,<br/>backlinks, frontmatter index,<br/>tolerant note read, refresh"]:::new
+    MVF["<b>markdown-vault-fs</b> 0.5<br/>vault layer: notes vs attachments,<br/>excluded files, _system rules"]:::md
   end
 
   subgraph DOC[one note]
     MC["<b>markdown-contract</b> 0.4<br/>document tree, heading and<br/>block selection (published)"]:::md
-    ML["<b>markdown-link</b> 0.7<br/>parse links with options,<br/>strict resolve, link encoding"]:::md
+    ML["<b>markdown-link</b> 0.8<br/>parse links with options,<br/>strict resolve, link encoding"]:::md
   end
 
   subgraph IO[file access]
-    VW["<b>vfs-walk</b> 0.1<br/>general walk: prune, skip, filter,<br/>symlink and error policy, mtimes"]:::new
-    VFS["<b>vfs-seam</b> 0.1<br/>Vfs trait: native, memory,<br/>preview; Clock"]:::new
+    VW["<b>vfs-walk</b> 0.2<br/>general walk: prune, skip, filter,<br/>symlink and error policy, mtimes"]:::new
+    VFS["<b>vfs-seam</b> 0.2<br/>Vfs trait: native, memory,<br/>preview; Clock"]:::new
   end
 
   subgraph BASE[building blocks]
@@ -145,6 +145,21 @@ As an image: [markdown-ecosystem-after.svg](img/markdown-ecosystem-after.svg).
 
 `markdown-tags` is still in the dev repo, so `markdown-corpus` takes a
 `TagLexer` instead of depending on it.
+
+## Since osdlc#618
+
+Gaps found while determined and skillwright moved onto these crates, closed as
+options with today's behaviour as the default
+([D-YRKH](../decisions/D-YRKH-one-implementation-per-vault-concept.md)):
+
+| Crate               | Version | Change                                                                                              |
+| ------------------- | ------- | --------------------------------------------------------------------------------------------------- |
+| `vfs-seam`          | 0.2     | Modification times in nanoseconds; `modified_ms_f64` equals node's `mtimeMs`                        |
+| `vfs-walk`          | 0.2     | `Entry::mtime_ns`                                                                                   |
+| `markdown-vault-fs` | 0.5     | `Entry::mtime_ns`; `WalkOptions::admits` asks whether a walk would list one path                    |
+| `markdown-corpus`   | 0.2     | Each cache takes the caller's `WalkOptions`; `try_load`; lenient frontmatter split; `with_snapshot` |
+| `markdown-relink`   | 0.3     | `VaultFacts::from_graph`, from a `LinkGraph` alone                                                  |
+| `markdown-link`     | 0.8     | `scan_body_with` also reports each `[[` it gave up on; `@osdlc/markdown-link` 0.8.0 has the same    |
 
 ## Regenerating the images
 

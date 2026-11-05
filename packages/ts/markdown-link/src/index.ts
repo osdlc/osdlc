@@ -25,12 +25,16 @@ export {
 } from './parse.ts'
 export { type TypedRef, displayText, parseTypedRef } from './display.ts'
 export {
+  type AbandonReason,
+  type AbandonedLink,
   type BodyLink,
   type BodyLinkKind,
+  type BodyScan,
   type LinkKind,
   type RawLink,
   type ScanOptions,
   bodyLinks,
   bodyLinksSpanned,
   bodyLinksSpannedWith,
+  scanBodyWith,
 } from './body-links.ts'

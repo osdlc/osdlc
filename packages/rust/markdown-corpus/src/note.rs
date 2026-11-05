@@ -4,8 +4,13 @@
 //! frontmatter. A malformed block degrades to an empty mapping plus
 //! [`Note::parse_error`], and the body is still returned, so a walk over
 //! thousands of notes never stops on one.
+//!
+//! [`read_note_with`] picks how the block is found ([`SplitMode`]): the strict
+//! split `frontmatter-lossless` writes back byte for byte, or its lenient
+//! split, which also takes a block with spaces around a fence or blank lines
+//! before it.
 
-use frontmatter_lossless::{NewShapeOptions, NoteShape, new_shape, split};
+use frontmatter_lossless::{NewShapeOptions, NoteShape, new_shape, split, split_lenient};
 use yaml_splice::Mapping;
 use yaml_splice::parse::{ParseError, parse_mapping};
 
@@ -40,12 +45,58 @@ impl Default for Note {
     }
 }
 
-/// Reads a note's text without ever failing. See the [module docs](self).
-pub fn read_note(src: &str) -> Note {
+/// How a note's frontmatter block is found.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SplitMode {
+    /// `frontmatter_lossless::split`: the block opens on the first line with
+    /// exactly `---` and closes on a line with exactly `---`. What a tool that
+    /// writes the note back wants.
+    #[default]
+    Strict,
+    /// `frontmatter_lossless::split_lenient`: blank lines may come before the
+    /// opening fence and spaces after either fence. What a tool that only
+    /// reads notes, such as a site or skill build, may want. A note with no
+    /// block by this rule is read strictly.
+    Lenient,
+}
+
+/// A note's frontmatter text (when it has a block) and its body, split by
+/// `mode`, as both caches split it. The body is always a suffix of `src`, so
+/// it starts at byte `src.len() - body.len()`: what a tool that splices the
+/// body at spans the caches found needs.
+pub fn split_with(src: &str, mode: SplitMode) -> (Option<&str>, &str) {
+    if mode == SplitMode::Lenient
+        && let Some(s) = split_lenient(src)
+    {
+        return (Some(s.yaml), s.body);
+    }
     let s = split(src);
-    match s.yaml {
+    (s.yaml, s.body)
+}
+
+/// Reads a note's text without ever failing. See the [module docs](self).
+/// The same as [`read_note_with`] under [`SplitMode::Strict`].
+pub fn read_note(src: &str) -> Note {
+    read_note_with(src, SplitMode::Strict)
+}
+
+/// [`read_note`] with the frontmatter found by `mode`.
+///
+/// [`Note::shape`] is always the strict split's. For a block only the lenient
+/// split finds, it is the framing of a note with no frontmatter, so a writer
+/// that puts the note back with it reframes the block.
+pub fn read_note_with(src: &str, mode: SplitMode) -> Note {
+    let s = split(src);
+    let lenient = (mode == SplitMode::Lenient)
+        .then(|| split_lenient(src))
+        .flatten();
+    let (yaml, body) = match lenient {
+        Some(l) => (Some(l.yaml), l.body),
+        None => (s.yaml, s.body),
+    };
+    match yaml {
         None => Note {
-            body: s.body.to_string(),
+            body: body.to_string(),
             shape: s.shape,
             ..Note::default()
         },
@@ -61,7 +112,7 @@ pub fn read_note(src: &str) -> Note {
             Note {
                 frontmatter,
                 frontmatter_yaml: yaml.to_string(),
-                body: s.body.to_string(),
+                body: body.to_string(),
                 shape: s.shape,
                 parse_error,
             }
@@ -115,6 +166,27 @@ mod tests {
         let note = read_note("# Title\n");
         assert_eq!(note.body, "# Title\n");
         assert!(note.parse_error.is_none());
+    }
+
+    #[test]
+    fn the_lenient_split_takes_a_block_the_strict_one_does_not() {
+        let src = "\n---  \ntitle: A\n---\nbody\n";
+        let strict = read_note(src);
+        assert!(strict.frontmatter.is_empty());
+        assert_eq!(strict.body, src);
+
+        let lenient = read_note_with(src, SplitMode::Lenient);
+        assert_eq!(
+            lenient.frontmatter.get("title").and_then(Value::as_str),
+            Some("A")
+        );
+        assert_eq!(lenient.body, "body\n");
+        // A note both splits agree on reads the same either way.
+        let plain = "---\ntitle: A\n---\nbody\n";
+        let (a, b) = (read_note(plain), read_note_with(plain, SplitMode::Lenient));
+        assert_eq!((a.frontmatter, a.body), (b.frontmatter, b.body));
+        // No block by either rule: all body.
+        assert_eq!(read_note_with("# T\n", SplitMode::Lenient).body, "# T\n");
     }
 
     #[test]

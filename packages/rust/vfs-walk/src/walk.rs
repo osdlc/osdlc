@@ -101,13 +101,27 @@ pub struct Entry {
     pub abs: PathBuf,
     /// Size in bytes.
     pub size: u64,
-    /// Last modification in milliseconds since the Unix epoch, from the same
-    /// [`Vfs::metadata`] call that produced `size`. `None` when the host could
-    /// not supply one, which a cache must treat as never fresh.
-    pub mtime_ms: Option<i64>,
-    /// The entry is a symlink. `size` and `mtime_ms` describe the link; a
+    /// Last modification in nanoseconds since the Unix epoch
+    /// ([`Metadata::modified_ns`]), from the same [`Vfs::metadata`] call that
+    /// produced `size`. `None` when the host could not supply one, which a
+    /// cache must treat as never fresh.
+    pub mtime_ns: Option<i64>,
+    /// The entry is a symlink. `size` and `mtime_ns` describe the link; a
     /// cache that stamps file contents must re-stat through it.
     pub is_symlink: bool,
+}
+
+impl Entry {
+    /// [`Entry::mtime_ns`] in whole milliseconds, rounded down.
+    pub fn mtime_ms(&self) -> Option<i64> {
+        self.mtime_ns.map(vfs_seam::ns_to_ms)
+    }
+
+    /// [`Entry::mtime_ns`] in fractional milliseconds, equal to node's
+    /// `statSync().mtimeMs` ([`vfs_seam::ns_to_ms_f64`]).
+    pub fn mtime_ms_f64(&self) -> Option<f64> {
+        self.mtime_ns.map(vfs_seam::ns_to_ms_f64)
+    }
 }
 
 /// A walk and the errors it skipped.
@@ -225,8 +239,8 @@ impl Walker<'_, '_> {
                 None
             }
         };
-        let (size, mtime_ms, is_symlink) = meta
-            .map(|m: Metadata| (m.len, m.modified_ms, m.is_symlink))
+        let (size, mtime_ns, is_symlink) = meta
+            .map(|m: Metadata| (m.len, m.modified_ns, m.is_symlink))
             .unwrap_or((0, None, false));
         if is_symlink {
             match self.opts.symlinks {
@@ -239,7 +253,7 @@ impl Walker<'_, '_> {
             rel,
             abs: path,
             size,
-            mtime_ms,
+            mtime_ns,
             is_symlink,
         });
         Ok(())
@@ -362,13 +376,15 @@ mod tests {
     fn entries_carry_the_vfs_size_and_time() {
         let d = MemVfs::new();
         d.insert(Path::new(R).join("a.md"), "abc").unwrap();
-        d.set_modified(&Path::new(R).join("a.md"), Some(1234))
+        d.set_modified_ns(&Path::new(R).join("a.md"), Some(1_234_000_567))
             .unwrap();
         let entry = walk(&d, Path::new(R), &WalkOptions::default())
             .unwrap()
             .remove(0);
         assert_eq!(entry.size, 3);
-        assert_eq!(entry.mtime_ms, Some(1234));
+        assert_eq!(entry.mtime_ns, Some(1_234_000_567));
+        assert_eq!(entry.mtime_ms(), Some(1234));
+        assert_eq!(entry.mtime_ms_f64(), Some(1_234.000_567));
         assert_eq!(entry.abs, Path::new(R).join("a.md"));
         assert!(!entry.is_symlink);
     }

@@ -16,7 +16,9 @@ directly. None of the modules parses YAML or Markdown:
   other rules or turns them off. Options also refuse symlinks, fail on read
   errors, skip names such as `.DS_Store`, and prune folders such as
   `node_modules`. Entries come back in name order (`String` byte order),
-  depth first.
+  depth first. `WalkOptions::admission` says whether a walk would list a
+  given path, would not list it now, or never lists it, for a cache told
+  that one path changed.
 - `hide` — excluded files in Obsidian's `userIgnoreFilters` syntax: a
   case-insensitive path prefix, or a case-insensitive regex written `/.../`.
   `hide::load` reads the list from `.obsidian/app.json`.
@@ -25,8 +27,9 @@ directly. None of the modules parses YAML or Markdown:
   from a client. The guard rejects bad paths lexically (absolute, `..`, empty
   segments), then checks containment against the canonicalized vault root, so
   a symlink cannot escape it.
-- `stat` — a file's modification time through a `Vfs`, and, for native
-  callers, millisecond floats in the shape Node's `statSync()` reports.
+- `stat` — a file's modification time through a `Vfs` (nanoseconds, or
+  whole milliseconds), and, for native callers, millisecond floats in the
+  shape Node's `statSync()` reports.
   Re-exported from `vfs-walk`.
 - `native` — the walk over the real filesystem, one line each (the default
   `native` feature).

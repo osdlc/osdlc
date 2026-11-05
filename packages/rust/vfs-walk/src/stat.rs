@@ -21,11 +21,12 @@
 //!
 //! # Through a `Vfs`
 //!
-//! A [`Vfs`] reports whole milliseconds ([`vfs_seam::Metadata::modified_ms`]),
+//! A [`Vfs`] reports whole nanoseconds ([`vfs_seam::Metadata::modified_ns`]),
 //! which is what the walk and the vault caches stamp a file with:
-//! [`modified_ms`] asks for it. The float forms below need a
-//! `std::fs::Metadata`, so they are for native callers that must match node's
-//! `statSync()` to the last bit.
+//! [`modified_ns`] asks for it, and [`vfs_seam::ns_to_ms_f64`] turns it into
+//! node's float with the same arithmetic as [`ms_since_epoch`]. The float
+//! forms below take a `SystemTime` or a `std::fs::Metadata`, for native
+//! callers that hold one.
 
 use std::fs::Metadata;
 use std::path::Path;
@@ -33,11 +34,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use vfs_seam::Vfs;
 
-/// A file's last modification through `vfs`, in whole milliseconds since the
-/// epoch. `None` when the file is not there or the host has no time for it,
-/// which a cache must treat as never fresh.
+/// A file's last modification through `vfs`, in nanoseconds since the epoch.
+/// `None` when the file is not there or the host has no time for it, which a
+/// cache must treat as never fresh.
+pub fn modified_ns(vfs: &dyn Vfs, path: &Path) -> Option<i64> {
+    vfs.metadata(path).ok().and_then(|m| m.modified_ns)
+}
+
+/// [`modified_ns`] in whole milliseconds, rounded down.
 pub fn modified_ms(vfs: &dyn Vfs, path: &Path) -> Option<i64> {
-    vfs.metadata(path).ok().and_then(|m| m.modified_ms)
+    modified_ns(vfs, path).map(vfs_seam::ns_to_ms)
 }
 
 /// Milliseconds since the epoch, node's arithmetic exactly.
@@ -93,14 +99,23 @@ mod tests {
         );
         assert_eq!(ours, 1_784_508_521_000.015_9);
         assert_eq!(convenient, 1_784_508_521_000.015_6);
+        // The `Vfs` stamp gives the same float.
+        assert_eq!(
+            vfs_seam::ns_to_ms_f64(1_784_508_521_000_015_838).to_bits(),
+            ours.to_bits()
+        );
     }
 
     #[test]
     fn modified_ms_reads_the_vfs_time() {
         let vfs = vfs_seam::MemVfs::new();
         vfs.insert("/v/a.md", "x").unwrap();
-        vfs.set_modified(Path::new("/v/a.md"), Some(1_700_000_000_123))
+        vfs.set_modified_ns(Path::new("/v/a.md"), Some(1_700_000_000_123_456_789))
             .unwrap();
+        assert_eq!(
+            modified_ns(&vfs, Path::new("/v/a.md")),
+            Some(1_700_000_000_123_456_789)
+        );
         assert_eq!(
             modified_ms(&vfs, Path::new("/v/a.md")),
             Some(1_700_000_000_123)

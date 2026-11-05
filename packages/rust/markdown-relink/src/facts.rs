@@ -15,7 +15,8 @@
 //! crate stays a pure function over a vault, testable with a `tempdir` and no
 //! host.
 //!
-//! [`VaultFacts::from_corpus`] builds it from the shared corpus model, and
+//! [`VaultFacts::from_corpus`] builds it from the shared corpus model,
+//! [`VaultFacts::from_graph`] from that model's link graph alone, and
 //! [`VaultFacts::scan`] is the standalone path: load that model from disk first. It is what the crate's own tests run against, so the
 //! algorithm is exercised against a snapshot nothing else produced.
 
@@ -51,6 +52,11 @@ pub struct VaultFacts {
     pub links: BTreeMap<String, Vec<BodyLink>>,
     /// Per note, the link-shaped values in its frontmatter.
     pub frontmatter: BTreeMap<String, Vec<FrontmatterRef>>,
+    /// How the notes were split into frontmatter and body when the links
+    /// were found. The planner re-scans each note it edits with the same
+    /// split, so a link is a body link or a frontmatter value the same way in
+    /// the snapshot and in the plan.
+    pub split: markdown_corpus::SplitMode,
 }
 
 impl VaultFacts {
@@ -58,10 +64,22 @@ impl VaultFacts {
     /// note's body links with spans, and each note's frontmatter link values.
     ///
     /// The path a caller holding the corpus model takes, so the planner reads
-    /// the same walk, links and resolution corpus every other tool does.
+    /// the same walk, links and resolution corpus every other tool does. The
+    /// same as [`VaultFacts::from_graph`] on the corpus's link graph.
     pub fn from_corpus(corpus: &markdown_corpus::Corpus) -> VaultFacts {
-        let frontmatter = corpus
-            .frontmatter_links()
+        VaultFacts::from_graph(corpus.links())
+    }
+
+    /// The snapshot out of a [`markdown_corpus::LinkGraph`] alone, for a host
+    /// that keeps a graph and no whole `Corpus`.
+    ///
+    /// The paths, body links and frontmatter links are read under one lock
+    /// hold ([`markdown_corpus::LinkGraph::snapshot`]), so they come from
+    /// the same sweep even while another thread refreshes the graph.
+    pub fn from_graph(graph: &markdown_corpus::LinkGraph) -> VaultFacts {
+        let snapshot = graph.snapshot();
+        let frontmatter = snapshot
+            .frontmatter_links
             .into_iter()
             .map(|(path, links)| {
                 let refs = links
@@ -75,9 +93,10 @@ impl VaultFacts {
             })
             .collect();
         VaultFacts {
-            paths: corpus.paths(),
-            links: corpus.body_links(),
+            paths: snapshot.paths,
+            links: snapshot.body_links,
             frontmatter,
+            split: graph.split_mode(),
         }
     }
 

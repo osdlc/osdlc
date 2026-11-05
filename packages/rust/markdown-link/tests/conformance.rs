@@ -21,7 +21,10 @@
 //!   `heading`, `block` and `size`; a key left out means `null`. With
 //!   `options` (`{ codeRules, skipHtmlComments, selfLinks }`, each optional)
 //!   the scan is [`body_links_spanned_with`]; without, [`body_links`] must
-//!   agree with the links too.
+//!   agree with the links too. `abandoned` lists each `[[` the scan gave up
+//!   on ([`scan_body_with`]), as `{ reason, at, text }`, with `embed: true`
+//!   for one after a `!`. `reason` is `bracket`, `code`, `empty-target` or
+//!   `unclosed`. A case that leaves `abandoned` out expects none.
 //!
 //! `display` pins [`display_text`]: each case is `{ name, text, display }`.
 //!
@@ -33,9 +36,9 @@
 
 use markdown_link::code::{CodeRules, strip_code_with};
 use markdown_link::{
-    BodyLinkKind, LinkKind, ScanOptions, Size, body_links, body_links_spanned,
+    AbandonReason, BodyLinkKind, LinkKind, ScanOptions, Size, body_links, body_links_spanned,
     body_links_spanned_with, display_text, is_vault_link_url, md_link_target, parse_inner,
-    parse_typed_ref, strip_code, target_range,
+    parse_typed_ref, scan_body_with, strip_code, target_range,
 };
 use serde_json::Value as Json;
 
@@ -204,6 +207,41 @@ fn body_failures(name: &str, body: &str, case: &Json) -> Vec<String> {
         failures.push(format!(
             "  [{name}] body_links_spanned\n    expected {}\n    actual   {}",
             Json::Array(expected.clone()),
+            Json::Array(actual)
+        ));
+    }
+    let scan = scan_body_with(body, &options.unwrap_or_default());
+    if scan.links != spanned {
+        failures.push(format!("  [{name}] scan_body_with's links differ"));
+    }
+    let expected = case.get("abandoned").map_or_else(Vec::new, |a| {
+        a.as_array().expect("abandoned is an array").clone()
+    });
+    let actual: Vec<Json> = scan
+        .abandoned
+        .iter()
+        .map(|a| {
+            let reason = match a.reason {
+                AbandonReason::Bracket => "bracket",
+                AbandonReason::Code => "code",
+                AbandonReason::EmptyTarget => "empty-target",
+                AbandonReason::Unclosed => "unclosed",
+            };
+            let mut actual = serde_json::json!({
+                "reason": reason,
+                "at": chars_before(body, a.byte_start),
+                "text": &body[a.byte_start..a.byte_end],
+            });
+            if a.embed {
+                actual["embed"] = Json::Bool(true);
+            }
+            actual
+        })
+        .collect();
+    if actual != expected {
+        failures.push(format!(
+            "  [{name}] scan_body_with abandoned\n    expected {}\n    actual   {}",
+            Json::Array(expected),
             Json::Array(actual)
         ));
     }

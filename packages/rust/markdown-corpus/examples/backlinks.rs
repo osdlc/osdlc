@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use markdown_corpus::vfs_seam::NativeVfs;
-use markdown_corpus::{Corpus, LoadOptions, fill_contexts};
+use markdown_corpus::{Corpus, LoadOptions};
 
 fn main() {
     let mut args = std::env::args().skip(1);
@@ -16,7 +16,7 @@ fn main() {
     let root = std::path::absolute(Path::new(&dir)).unwrap_or_else(|_| dir.clone().into());
     let corpus = Corpus::load(&NativeVfs, root, LoadOptions::default());
     let mut page = corpus.backlinks(&note);
-    fill_contexts(&NativeVfs, corpus.root(), &mut page.backlinks);
+    corpus.fill_contexts(&NativeVfs, &mut page.backlinks);
     for backlink in &page.backlinks {
         for ctx in &backlink.contexts {
             println!("{}:{}: {}", backlink.source_path, ctx.line, ctx.text);

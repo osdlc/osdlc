@@ -7,6 +7,28 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-04
+
+Built on `markdown-corpus` 0.2, `markdown-link` 0.8 and `vfs-seam` 0.2.
+
+### Added
+
+- `VaultFacts::from_graph(&markdown_corpus::LinkGraph)`: the snapshot from a
+  link graph alone, read under one lock hold so the paths and links come from
+  one sweep. `from_corpus` now goes through it.
+- `VaultFacts::split`: how the notes were split when the links were found,
+  the graph's `split_mode()` in `from_graph` and `from_corpus`. The planner
+  re-scans each note it edits with this split, so with a lenient corpus a
+  link in a block only the lenient split takes is a frontmatter value in both
+  the snapshot and the plan, and is not rewritten.
+
+### Changed
+
+- `VaultFacts` has a new public field, `split`; a struct literal must set it
+  or use `..VaultFacts::default()` (`Strict`).
+- No longer depends on `frontmatter-lossless`; the split comes from
+  `markdown_corpus::split_with`.
+
 ## [0.2.0] - 2026-11-04
 
 Planning reads the vault through a `vfs-seam` `Vfs`, and the vault snapshot

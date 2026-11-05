@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-04
+
+The scanner reports each `[[` it gave up on. Nothing is removed or changed.
+`@osdlc/markdown-link` gets the same in its 0.8.0, and both suites read the
+new cases.
+
+### Added
+
+- `scan_body_with(body, &ScanOptions) -> BodyScan`: the links
+  `body_links_spanned_with` returns, and `abandoned`, each `[[` found outside
+  code that is not a link, as an `AbandonedLink` (`reason`, `embed`,
+  `byte_start`, `byte_end`). `AbandonReason` is `Bracket` (a `[` or `]`
+  before `]]`), `Code` (the target is only code), `EmptyTarget` (`[[]]`,
+  `[[ |alias]]`, or `[[#Heading]]` without `self_links`) or `Unclosed`.
+  A `[[` that a link found after it starts inside is not reported:
+  `[[[Note]]` is a literal `[` and a link. A run of `[` with no link after
+  it, such as `[[[TODO`, is one entry: from the first `[[`, with the reason
+  and end of the last.
+  `body_links_spanned_with` is unchanged and returns `scan_body_with`'s links.
+- `tests/fixtures/conformance.json`: a body case may list `abandoned`; one
+  that leaves it out expects none.
+
+### Fixed
+
+- `percent_decode` takes an escape only when both characters after `%` are
+  hex digits. `u8::from_str_radix` also takes a sign, so `%+5` decoded; it now
+  stays as written. The conformance case `plus_sign_reads_as_a_hex_byte` is
+  now `a_sign_is_not_a_hex_digit`, and `@osdlc/markdown-link`'s
+  `percentDecode` matches.
+
 ## [0.7.0] - 2026-11-04
 
 Options for tools that render or publish notes, a strict resolver, and helpers

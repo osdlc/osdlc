@@ -302,9 +302,7 @@ pub fn plan_bundle(
             });
             continue;
         };
-        let split = frontmatter_lossless::split(content);
-        let body = split.body;
-        let body_start = split.body_start;
+        let (body, body_start) = crate::plan::body_of(content, facts.split);
 
         let mut edits: Vec<ByteEdit> = Vec::new();
         for link in body_links_spanned(body) {

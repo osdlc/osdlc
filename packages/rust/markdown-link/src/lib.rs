@@ -747,6 +747,7 @@ fn take_link(chars: &[char], start: usize) -> Option<(String, usize)> {
 ///
 /// assert_eq!(percent_decode("My%20Note"), "My Note");
 /// assert_eq!(percent_decode("%zz"), "%zz"); // not hex, kept as written
+/// assert_eq!(percent_decode("%+5"), "%+5"); // a sign is not a hex digit
 /// assert_eq!(percent_decode("%FF"), "%FF"); // not UTF-8, kept as written
 /// ```
 pub fn percent_decode(s: &str) -> String {
@@ -754,13 +755,17 @@ pub fn percent_decode(s: &str) -> String {
     let mut out: Vec<u8> = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() {
-            let hex = std::str::from_utf8(&b[i + 1..i + 3]).ok();
-            if let Some(v) = hex.and_then(|h| u8::from_str_radix(h, 16).ok()) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
+        // Two ASCII hex digits, no more: `from_str_radix` alone would also
+        // take a sign, so `%+5` would decode.
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && b[i + 1].is_ascii_hexdigit()
+            && b[i + 2].is_ascii_hexdigit()
+        {
+            let hex = std::str::from_utf8(&b[i + 1..i + 3]).expect("ASCII");
+            out.push(u8::from_str_radix(hex, 16).expect("two hex digits"));
+            i += 3;
+            continue;
         }
         out.push(b[i]);
         i += 1;
@@ -1310,6 +1315,16 @@ mod tests {
         let links = body_links("[a](Notes/x.md) [b](https://example.com/y.md) [c](<sp ace.md>)");
         let targets: Vec<_> = links.into_iter().map(|l| l.target).collect();
         assert_eq!(targets, vec!["Notes/x"]);
+    }
+
+    #[test]
+    fn percent_decode_takes_only_two_hex_digits() {
+        // `u8::from_str_radix` takes a leading sign; an escape does not.
+        assert_eq!(percent_decode("%+5"), "%+5");
+        assert_eq!(percent_decode("a%+41b"), "a%+41b");
+        assert_eq!(percent_decode("%-1"), "%-1");
+        assert_eq!(percent_decode("%+5 and%20this"), "%+5 and this");
+        assert_eq!(percent_decode("%4a%4A"), "JJ");
     }
 
     #[test]

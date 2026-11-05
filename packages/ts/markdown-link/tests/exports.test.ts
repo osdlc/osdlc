@@ -36,13 +36,17 @@ const VALUES = [
   'parseSize',
   'parseTypedRef',
   'percentDecode',
+  'scanBodyWith',
   'stripCode',
   'stripCodeWith',
   'targetRange',
 ]
 const TYPES = [
+  'AbandonReason',
+  'AbandonedLink',
   'BodyLink',
   'BodyLinkKind',
+  'BodyScan',
   'CodeRules',
   'LinkKind',
   'RawLink',

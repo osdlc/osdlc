@@ -61,11 +61,16 @@ assert_eq!(corpus.resolve("Alpha", "Home.md").as_deref(), Some("Alpha.md"));
   `Corpus`, `LinkGraph` and `FrontmatterIndex` stay `Send + Sync` and run the
   same against a real disk, an in-memory corpus or a browser.
 - **Freshness.** A note is re-read only when its size or modification time
-  moves. A sweep younger than a short TTL (500 ms, or 60 s under a file
+  (in nanoseconds) moves. A sweep younger than a short TTL (500 ms, or 60 s under a file
   watch) is reused. `apply_changes` updates named paths without a walk.
 - **Two walks.** The link graph walks every file a link could reach, excluded
   files included, so a link into one still resolves. The frontmatter index
-  walks content notes only.
+  walks content notes only. Both are yours to change in `LoadOptions`
+  (`link_walk`, `frontmatter_walk`): roots, dot files, pruned folders such as
+  `node_modules`, refused symlinks, read errors and your own excluded files.
+  `Corpus::try_load` returns a walk error instead of skipping it.
+- **Frontmatter.** Notes split strictly by default. `SplitMode::Lenient`
+  also takes a block with blank lines before it or spaces after a fence.
 - **Edges.** Each edge is a link, an embed or a frontmatter reference.
   Unresolved edges are kept.
 - **Tags.** Tag syntax is not built in. Pass a `TagLexer` in `LoadOptions` to

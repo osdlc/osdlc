@@ -16,8 +16,8 @@
 //! - [`WalkOptions::errors`] skips, reports or propagates a folder that cannot
 //!   be listed and a file that cannot be statted.
 //!
-//! Each [`Entry`] carries the size and modification time from the one stat
-//! the walk makes. [`stat`] has the time helpers, including Node's
+//! Each [`Entry`] carries the size and modification time (in nanoseconds)
+//! from the one stat the walk makes. [`stat`] has the time helpers, including Node's
 //! `statSync()` millisecond floats for native callers.
 //!
 //! # Order
@@ -34,7 +34,7 @@
 pub mod stat;
 pub mod walk;
 
-pub use stat::{created_ms, modified_ms, ms_since_epoch, mtime_ms};
+pub use stat::{created_ms, modified_ms, modified_ns, ms_since_epoch, mtime_ms};
 pub use vfs_seam;
 pub use walk::{
     Candidate, Entry, Errors, Filter, Symlinks, WalkError, WalkOptions, WalkOutcome, walk,

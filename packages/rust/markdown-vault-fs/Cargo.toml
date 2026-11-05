@@ -1,6 +1,6 @@
 [package]
 name = "markdown-vault-fs"
-version = "0.4.0"
+version = "0.5.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "The vault layer over vfs-walk: notes versus attachments, the visibility-policy walk, the excluded-files rules read from .obsidian/app.json, the `_system/` rules, and a re-export of the path-guard containment guard"

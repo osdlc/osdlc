@@ -242,10 +242,48 @@ fn a_vault_switch_always_bypasses_the_ttl() {
 }
 
 #[test]
+fn a_switch_to_an_empty_corpus_counts_as_a_change() {
+    let a = vault();
+    a.create_dir_all(Path::new("/w")).unwrap();
+    let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
+    index.refresh(&*a, &c, root());
+    let before = index.changes();
+    index.refresh(&*a, &c, Path::new("/w"));
+    assert!(index.is_empty());
+    assert_eq!(index.changes(), before + 1, "two notes became none");
+}
+
+#[test]
+fn an_apply_cannot_undo_a_later_apply_with_what_it_read_first() {
+    // An atomic save: the note is gone for a moment, then back.
+    let d = vault();
+    let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
+    index.refresh(&*d, &c, root());
+    d.remove(&join_rel(root(), "Notes/a.md")).unwrap();
+    let later_ran = std::cell::Cell::new(false);
+    // Apply A lists the note's folder while the note is gone. Before A
+    // acts on that, the note comes back and apply B reads it, unless A
+    // already holds the apply lock, in which case B must wait for A.
+    let vfs = crate::links::hooks::StatHook::after(&*d, join_rel(root(), "Notes/a.md"), || {
+        put(&d, "Notes/a.md", "---\nstatus: back\n---\nbody\n");
+        if let Ok(free) = index.apply_lock.try_lock() {
+            drop(free);
+            index.apply_change(&*d, root(), "Notes/a.md");
+            later_ran.set(true);
+        }
+    });
+    index.apply_change(&vfs, root(), "Notes/a.md");
+    if !later_ran.get() {
+        index.apply_change(&*d, root(), "Notes/a.md");
+    }
+    assert_eq!(status(&index, "Notes/a.md").as_deref(), Some("back"));
+}
+
+#[test]
 fn a_note_with_no_modification_time_is_retried_instead_of_cached_forever() {
     let d = vault();
     let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
-    d.set_modified(&join_rel(root(), "Notes/b.md"), None)
+    d.set_modified_ns(&join_rel(root(), "Notes/b.md"), None)
         .unwrap();
     index.refresh(&*d, &c, root());
     let second = index.refresh_now(&*d, &c, root());
@@ -367,9 +405,41 @@ fn clear_forgets_everything() {
     let d = vault();
     let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
     index.refresh(&*d, &c, root());
+    let before = index.changes();
     index.clear();
     assert!(index.is_empty());
+    assert_eq!(index.changes(), before + 1, "emptied");
+    index.clear();
+    assert_eq!(index.changes(), before + 1, "already empty");
     assert_eq!(index.refresh(&*d, &c, root()).added, 2);
+}
+
+#[test]
+fn apply_change_drops_the_old_spelling_of_a_case_only_rename() {
+    let d = vault();
+    let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
+    index.refresh(&*d, &c, root());
+    d.rename(
+        &join_rel(root(), "Notes/a.md"),
+        &join_rel(root(), "Notes/A.md"),
+    )
+    .unwrap();
+    // A case-insensitive file system still stats the old spelling.
+    let vfs = crate::links::hooks::StatHook::aliased(
+        &*d,
+        join_rel(root(), "Notes/a.md"),
+        join_rel(root(), "Notes/A.md"),
+    );
+    index.apply_changes(&vfs, root(), &["Notes/a.md".into(), "Notes/A.md".into()]);
+    let paths = || -> Vec<String> {
+        let (notes, _) = index.page(0, None);
+        notes.iter().map(|n| n.path.clone()).collect()
+    };
+    let applied = paths();
+    index.refresh_now(&vfs, &c, root());
+    let swept = paths();
+    assert_eq!(swept, ["Notes/A.md", "Notes/b.md"]);
+    assert_eq!(applied, swept, "the apply agrees with the sweep");
 }
 
 #[test]
@@ -385,6 +455,24 @@ fn a_malformed_note_is_indexed_with_a_diagnostic_rather_than_skipped() {
 }
 
 #[test]
+fn the_stamp_keeps_the_nanoseconds() {
+    let d = vault();
+    let b = join_rel(root(), "Notes/b.md");
+    d.set_modified_ns(&b, Some(1_784_508_521_000_015_838))
+        .unwrap();
+    let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
+    index.refresh(&*d, &c, root());
+    let note = index.get("Notes/b.md").unwrap();
+    assert_eq!(note.mtime_ns, Some(1_784_508_521_000_015_838));
+    assert_eq!(note.mtime_ms_f64(), Some(1_784_508_521_000.015_9));
+
+    put(&d, "Notes/b.md", "---\ntitle: Z\n---\nbody\n");
+    d.set_modified_ns(&b, Some(1_784_508_521_000_015_839))
+        .unwrap();
+    assert_eq!(index.refresh_now(&*d, &c, root()).updated, 1);
+}
+
+#[test]
 fn a_same_size_edit_with_the_same_time_is_the_documented_blind_spot() {
     let d = vault();
     let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
@@ -392,7 +480,7 @@ fn a_same_size_edit_with_the_same_time_is_the_documented_blind_spot() {
     let before = index.get("Notes/b.md").unwrap();
 
     put(&d, "Notes/b.md", "---\ntitle: Z\n---\nbody\n");
-    d.set_modified(&join_rel(root(), "Notes/b.md"), before.mtime_ms)
+    d.set_modified_ns(&join_rel(root(), "Notes/b.md"), before.mtime_ns)
         .unwrap();
     let stats = index.refresh_now(&*d, &c, root());
     assert_eq!(stats.unchanged, 2, "the edit is invisible to (mtime, size)");
@@ -482,5 +570,26 @@ mod native {
             status(&index, "Notes/dangling.md").as_deref(),
             Some("final")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_apply_keeps_a_dangling_symlink_the_walk_lists() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "Notes/a.md", "---\nstatus: draft\n---\nbody\n");
+        std::os::unix::fs::symlink(
+            d.path().join("Notes/not-yet-there.md"),
+            d.path().join("Notes/dangling.md"),
+        )
+        .unwrap();
+        let index = FrontmatterIndex::new();
+        index.refresh(&NativeVfs, &SystemClock, d.path());
+        assert!(index.get("Notes/dangling.md").is_some());
+        index.apply_change(&NativeVfs, d.path(), "Notes/dangling.md");
+        let kept = index
+            .get("Notes/dangling.md")
+            .expect("as the walk lists it");
+        assert!(kept.parse_error.is_some());
+        assert_eq!(kept.mtime_ns, None, "never fresh, so a sweep retries it");
     }
 }

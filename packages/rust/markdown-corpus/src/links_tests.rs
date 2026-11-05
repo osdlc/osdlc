@@ -130,11 +130,89 @@ fn a_deleted_note_leaves_the_graph() {
 fn a_note_with_no_modification_time_is_rescanned_every_sweep() {
     let d = linked_vault();
     let (g, c) = (graph(), FixedClock::new(0));
-    d.set_modified(&join_rel(root(), "Home.md"), None).unwrap();
+    d.set_modified_ns(&join_rel(root(), "Home.md"), None)
+        .unwrap();
     g.refresh(&*d, &c, root());
     let stats = g.refresh_now(&*d, &c, root());
     assert_eq!(stats.updated, 1, "no stamp never compares fresh");
     assert_eq!(stats.unchanged, 3);
+}
+
+#[test]
+fn a_same_size_edit_inside_one_millisecond_is_still_seen() {
+    let d = vault(&[
+        ("Home.md", "[[Alpha]]\n"),
+        ("Alpha.md", "a"),
+        ("Bravo.md", "b"),
+    ]);
+    let home = join_rel(root(), "Home.md");
+    d.set_modified_ns(&home, Some(5_000_000_100)).unwrap();
+    let (g, c) = (graph(), FixedClock::new(0));
+    g.refresh(&*d, &c, root());
+    assert_eq!(g.backlinks("Alpha.md").total, 1);
+
+    // Same size, and 400 ns later: the whole milliseconds do not move.
+    put(&d, "Home.md", "[[Bravo]]\n");
+    d.set_modified_ns(&home, Some(5_000_000_500)).unwrap();
+    let stats = g.refresh_now(&*d, &c, root());
+    assert_eq!(stats.updated, 1);
+    assert_eq!(g.backlinks("Bravo.md").total, 1);
+}
+
+#[test]
+fn a_snapshot_reads_paths_and_notes_from_one_sweep() {
+    let d = linked_vault();
+    let (g, c) = (graph(), FixedClock::new(0));
+    g.refresh(&*d, &c, root());
+    let (paths, notes) = g.with_snapshot(|paths, notes| (paths.to_vec(), notes.len()));
+    assert_eq!(paths, g.paths());
+    assert_eq!(notes, 4);
+    assert!(paths.contains(&"assets/diagram.svg".to_string()));
+}
+
+#[test]
+fn the_default_walk_keeps_excluded_files_and_a_caller_walk_can_drop_them() {
+    let d = linked_vault();
+    put(
+        &d,
+        ".obsidian/app.json",
+        r#"{"userIgnoreFilters":["Projects/"]}"#,
+    );
+    let (g, c) = (graph(), FixedClock::new(0));
+    g.refresh(&*d, &c, root());
+    assert!(g.paths().contains(&"Projects/Alpha.md".to_string()));
+
+    let hiding = graph().with_walk(WalkOptions::notes_and_attachments());
+    hiding.refresh(&*d, &c, root());
+    assert!(!hiding.paths().iter().any(|p| p.starts_with("Projects/")));
+    // A change under a hidden folder is not the graph's.
+    put(&d, "Projects/Gamma.md", "[[Home]]\n");
+    hiding.apply_changes(&*d, root(), &["Projects/Gamma.md".to_string()]);
+    assert!(!hiding.paths().contains(&"Projects/Gamma.md".to_string()));
+    g.apply_changes(&*d, root(), &["Projects/Gamma.md".to_string()]);
+    assert!(g.paths().contains(&"Projects/Gamma.md".to_string()));
+}
+
+#[test]
+fn a_failed_walk_leaves_the_graph_as_it_was() {
+    let d = linked_vault();
+    let strict = WalkOptions {
+        propagate_errors: true,
+        ..LinkGraph::default_walk()
+    };
+    let (g, c) = (graph().with_walk(strict), FixedClock::new(0));
+    g.try_refresh(&*d, &c, root()).unwrap();
+    assert_eq!(g.len(), 4);
+    // The corpus folder is gone, so it cannot be listed.
+    d.remove(root()).unwrap();
+    let err = g.try_refresh_now(&*d, &c, root()).unwrap_err();
+    assert!(
+        matches!(err, WalkError::Io(ref e) if e.is_not_found()),
+        "{err}"
+    );
+    assert_eq!(g.len(), 4, "the last good sweep stays");
+    assert_eq!(g.refresh_now(&*d, &c, root()), GraphStats::default());
+    assert_eq!(g.backlinks("Projects/Alpha.md").total, 2);
 }
 
 // ── Coalescing ─────────────────────────────────────────────────────────
@@ -369,33 +447,6 @@ fn an_apply_installs_what_it_read() {
 }
 
 #[test]
-fn spelled_as_listed_reads_the_folder_not_the_stat() {
-    let d = vault(&[("home.md", "# home\n")]);
-    let mut listings = DirListings::default();
-    assert!(spelled_as_listed(
-        &*d,
-        &join_rel(root(), "home.md"),
-        &mut listings
-    ));
-    assert!(!spelled_as_listed(
-        &*d,
-        &join_rel(root(), "Home.md"),
-        &mut listings
-    ));
-    assert!(!spelled_as_listed(
-        &*d,
-        &join_rel(root(), "HOME.MD"),
-        &mut listings
-    ));
-    assert!(spelled_as_listed(
-        &*d,
-        &join_rel(root(), "other.md"),
-        &mut listings
-    ));
-    assert_eq!(listings.len(), 1, "one listing serves the whole batch");
-}
-
-#[test]
 fn apply_changes_drops_the_old_spelling_of_a_case_only_rename() {
     let d = vault(&[("Alpha.md", "# Alpha\n"), ("Home.md", "See [[Alpha]] #t\n")]);
     let (g, c) = (graph(), FixedClock::new(0));
@@ -438,6 +489,48 @@ fn a_vault_switch_always_bypasses_the_ttl_and_clears() {
 
     g.refresh(&*a, &c, root());
     assert_eq!(back_of(&g, "Projects/Alpha.md").len(), 2);
+}
+
+#[test]
+fn a_switch_to_an_empty_corpus_counts_as_a_rebuild() {
+    let a = linked_vault();
+    a.create_dir_all(Path::new("/w")).unwrap();
+    let (g, c) = (graph(), FixedClock::new(0));
+    g.refresh(&*a, &c, root());
+    assert_eq!(g.rebuilds(), 1);
+    // The graph went from four notes to none: a reader keyed on the count
+    // must see it.
+    g.refresh(&*a, &c, Path::new("/w"));
+    assert!(g.is_empty());
+    assert_eq!(g.rebuilds(), 2);
+}
+
+#[test]
+fn a_batch_cannot_undo_a_later_batch_with_what_it_read_first() {
+    // An atomic save: the note is gone for a moment, then back.
+    let d = linked_vault();
+    let (g, c) = (graph(), FixedClock::new(0));
+    g.refresh(&*d, &c, root());
+    rm(&d, "Projects/Alpha.md");
+    let x = vec!["Projects/Alpha.md".to_string()];
+    let later_ran = std::cell::Cell::new(false);
+    // Batch A lists the note's folder while the note is gone. Before A
+    // acts on that, the note comes back and batch B applies it, unless A
+    // already holds the apply lock, in which case B must wait for A.
+    let vfs = super::hooks::StatHook::after(&*d, join_rel(root(), &x[0]), || {
+        put(&d, "Projects/Alpha.md", "# Alpha\n");
+        if let Ok(free) = g.apply_lock.try_lock() {
+            drop(free);
+            g.apply_changes(&*d, root(), &x);
+            later_ran.set(true);
+        }
+    });
+    g.apply_changes(&vfs, root(), &x);
+    if !later_ran.get() {
+        g.apply_changes(&*d, root(), &x);
+    }
+    assert!(g.paths().contains(&x[0]), "the note is back");
+    assert_eq!(g.backlinks("Projects/Alpha.md").total, 2);
 }
 
 // ── Cost, pinned ───────────────────────────────────────────────────────
@@ -580,7 +673,7 @@ fn contexts_carry_the_line_number_and_fill_with_the_source_line() {
     let g = graph();
     g.refresh(&*d, &FixedClock::new(0), root());
     let mut back = back_of(&g, "Projects/Alpha.md");
-    fill_contexts(&*d, root(), &mut back);
+    g.fill_contexts(&*d, root(), &mut back);
     let home = &back[0];
     assert_eq!(home.contexts.len(), 2);
     assert!(home.contexts[0].text.contains("[[Projects/Alpha]]"));
@@ -588,6 +681,21 @@ fn contexts_carry_the_line_number_and_fill_with_the_source_line() {
     assert_eq!(home.contexts[0].line, 3);
     let body = NoteBody::read(&*d, root(), "Home.md").unwrap();
     assert_eq!(body.offset, 3, "three frontmatter lines precede the body");
+}
+
+#[test]
+fn contexts_fill_from_the_corpus_the_page_came_from() {
+    // The same note in two corpora, with different text on the link's line.
+    let d = vault(&[("Home.md", "See [[Alpha]] here.\n"), ("Alpha.md", "a")]);
+    d.insert("/w/Home.md", "Other text.\n").unwrap();
+    d.insert("/w/Alpha.md", "a").unwrap();
+    let (g, c) = (graph(), FixedClock::new(0));
+    g.refresh(&*d, &c, root());
+    let mut back = back_of(&g, "Alpha.md");
+    // Another caller moves the shared graph to the other corpus.
+    g.refresh(&*d, &c, Path::new("/w"));
+    g.fill_contexts(&*d, root(), &mut back);
+    assert_eq!(back[0].contexts[0].text, "See [[Alpha]] here.");
 }
 
 #[test]
@@ -893,4 +1001,45 @@ mod native {
             5
         );
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_apply_keeps_a_symlink_the_walk_lists_whatever_it_points_at() {
+        let d = native_linked();
+        let elsewhere = tempfile::tempdir().unwrap();
+        // A symlinked folder is listed as a file, and a dangling note link
+        // as a note with nothing read.
+        std::os::unix::fs::symlink(elsewhere.path(), d.path().join("assets")).unwrap();
+        std::os::unix::fs::symlink(d.path().join("Gone.md"), d.path().join("Dangling.md")).unwrap();
+        let g = LinkGraph::new();
+        g.refresh_now(&NativeVfs, &SystemClock, d.path());
+        let swept = g.paths();
+        assert!(swept.contains(&"assets".to_string()));
+        assert!(swept.contains(&"Dangling.md".to_string()));
+        assert_eq!(g.len(), 5);
+
+        let changed = ["assets".to_string(), "Dangling.md".to_string()];
+        g.apply_changes(&NativeVfs, d.path(), &changed);
+        assert_eq!(g.applied(), 1);
+        assert_eq!(g.paths(), swept, "the apply agrees with the sweep");
+        assert_eq!(g.len(), 5);
+    }
+}
+
+#[test]
+fn a_snapshot_is_the_paths_and_links_of_one_sweep() {
+    let d = linked_vault();
+    let g = graph();
+    g.refresh(&*d, &FixedClock::new(0), root());
+    let snap = g.snapshot();
+    assert_eq!(snap.paths, g.paths());
+    assert_eq!(snap.body_links, g.body_links());
+    assert_eq!(snap.frontmatter_links, g.frontmatter_links());
+    assert!(!snap.body_links.is_empty());
+    assert!(
+        snap.frontmatter_links
+            .values()
+            .all(|links| !links.is_empty()),
+        "a note with no frontmatter links is left out"
+    );
 }

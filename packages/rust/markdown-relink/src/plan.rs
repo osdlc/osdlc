@@ -34,6 +34,7 @@ use std::path::Path;
 use vfs_seam::Vfs;
 
 use crate::error::TransformError;
+use markdown_corpus::SplitMode;
 use markdown_link::body_links_spanned;
 
 use crate::facts::VaultFacts;
@@ -467,6 +468,7 @@ pub fn plan(
         &to,
         &pre,
         &post,
+        facts.split,
         &mut diagnostics,
     )?;
 
@@ -556,6 +558,7 @@ pub fn plan_redirect(
         &to,
         &pre,
         &post,
+        facts.split,
         &mut diagnostics,
     )?;
     expect.sort_by(|a, b| a.path.cmp(&b.path));
@@ -601,6 +604,7 @@ fn inbound_rewrites(
     to: &str,
     pre: &Corpus,
     post: &Corpus,
+    split: SplitMode,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<(Vec<FileEdits>, Vec<FileEtag>), TransformError> {
     let mut files: Vec<FileEdits> = Vec::new();
@@ -645,9 +649,7 @@ fn inbound_rewrites(
             });
             continue;
         };
-        let split = frontmatter_lossless::split(content);
-        let body = split.body;
-        let body_start = split.body_start;
+        let (body, body_start) = body_of(content, split);
 
         let mut edits: Vec<ByteEdit> = Vec::new();
         for link in body_links_spanned(body) {
@@ -781,6 +783,13 @@ pub(crate) fn etag_through(vfs: &dyn Vfs, rel: &str, abs: &Path) -> Result<Strin
             e.io_error()
         ))),
     }
+}
+
+/// A note's body and the byte it starts at, split as the snapshot was
+/// ([`VaultFacts::split`]), so its links are the ones the snapshot found.
+pub(crate) fn body_of(content: &str, split: SplitMode) -> (&str, usize) {
+    let (_, body) = markdown_corpus::split_with(content, split);
+    (body, content.len() - body.len())
 }
 
 /// 1-indexed line of a byte offset within the whole file.

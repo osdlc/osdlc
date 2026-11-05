@@ -8,6 +8,22 @@
 //! links, and inline tags. It inverts the edges into a backlink map at the
 //! end of each sweep, so "what links here" is a lookup.
 //!
+//! # The walk
+//!
+//! [`LinkGraph::default_walk`] is the walk above. [`LinkGraph::with_walk`]
+//! replaces it: other roots, pruned folders, dot files, refused symlinks,
+//! propagated errors or excluded files of the caller's own
+//! ([`Hide::Rules`]). [`LinkGraph::apply_changes`] asks the walk about each
+//! path ([`WalkOptions::admission`]): it ignores one outside the walk, drops
+//! one the walk would no longer list, and reads the rest.
+//! [`LinkGraph::with_split`]
+//! picks how each note's frontmatter is found.
+//!
+//! [`LinkGraph::refresh`] never fails: a walk error (only possible when the
+//! walk refuses symlinks or propagates errors) leaves the graph as it was,
+//! or empty when the call moved it to another corpus.
+//! [`LinkGraph::try_refresh`] returns it.
+//!
 //! # Freshness
 //!
 //! A note is re-read when its `(size, mtime)` differs from the cached one. A
@@ -33,15 +49,16 @@
 //! depends on the whole corpus (creating `Alpha.md` changes every `[[Alpha]]`),
 //! so it is recomputed from the suffix index each sweep.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use markdown_link::{BodyLink, BodyLinkKind, LinkIndex, RawLink, ResolveError};
-use markdown_vault_fs::walk::{Hide, Visibility, WalkOptions};
-use vfs_seam::{Clock, Vfs};
+use markdown_vault_fs::walk::{Admission, Hide, WalkError, WalkOptions};
+use vfs_seam::{Clock, Metadata, Vfs};
 
+use crate::note::{SplitMode, read_note_with, split_with};
 use crate::tags::{NoTags, TagLexer};
 
 /// How long a completed sweep counts as current, in milliseconds.
@@ -112,7 +129,7 @@ pub struct NoteFacts {
     pub tags: Vec<Vec<String>>,
     size: u64,
     /// `None` when the note could not be stamped; never compares fresh.
-    mtime_ms: Option<i64>,
+    mtime_ns: Option<i64>,
 }
 
 impl NoteFacts {
@@ -171,12 +188,16 @@ pub struct LinkGraph {
     /// batches install in the order they read the files. Taken before `state`.
     apply_lock: Mutex<()>,
     tags: Arc<dyn TagLexer + Send + Sync>,
+    walk: WalkOptions,
+    split: SplitMode,
 }
 
 impl std::fmt::Debug for LinkGraph {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LinkGraph")
             .field("state", &self.state)
+            .field("walk", &self.walk)
+            .field("split", &self.split)
             .finish_non_exhaustive()
     }
 }
@@ -218,7 +239,7 @@ pub struct Backlink {
 pub struct LinkContext {
     /// The 1-indexed body line.
     pub line: u64,
-    /// The line's text, trimmed. Empty until [`fill_contexts`] reads it.
+    /// The line's text, trimmed. Empty until [`LinkGraph::fill_contexts`] reads it.
     pub text: String,
     /// A link or an embed.
     pub kind: EdgeKind,
@@ -254,23 +275,113 @@ impl LinkGraph {
             watched: AtomicBool::new(false),
             apply_lock: Mutex::new(()),
             tags,
+            walk: LinkGraph::default_walk(),
+            split: SplitMode::default(),
+        }
+    }
+
+    /// The walk a graph uses unless told otherwise: notes and attachments,
+    /// `_system/` included, and no excluded files ([`Hide::Off`]), so a link
+    /// into an excluded file still resolves.
+    pub fn default_walk() -> WalkOptions {
+        WalkOptions {
+            hide: Hide::Off,
+            ..WalkOptions::notes_and_attachments()
+        }
+    }
+
+    /// This graph, walking with `walk` instead of [`Self::default_walk`].
+    /// Set it before the first refresh: a graph already built keeps its
+    /// notes until the next sweep.
+    pub fn with_walk(mut self, walk: WalkOptions) -> Self {
+        self.walk = walk;
+        self
+    }
+
+    /// This graph, finding each note's frontmatter by `split`. Body links,
+    /// their lines and the frontmatter links all follow it.
+    pub fn with_split(mut self, split: SplitMode) -> Self {
+        self.split = split;
+        self
+    }
+
+    /// The walk this graph sweeps with.
+    pub fn walk_options(&self) -> &WalkOptions {
+        &self.walk
+    }
+
+    /// How this graph finds each note's frontmatter.
+    pub fn split_mode(&self) -> SplitMode {
+        self.split
+    }
+
+    /// Fills each backlink context's `text` from its source note's body,
+    /// read from the corpus at `vault_dir` (the one the backlinks came
+    /// from) and split as this graph splits ([`Self::split_mode`]), so the
+    /// lines match. One read per source, so call it on a capped page.
+    ///
+    /// The corpus is passed in, not taken from the graph: a graph that
+    /// another thread moves to another corpus must not fill a page with the
+    /// other corpus's lines.
+    pub fn fill_contexts(&self, vfs: &dyn Vfs, vault_dir: &Path, backlinks: &mut [Backlink]) {
+        for entry in backlinks.iter_mut() {
+            let Some(body) = NoteBody::read_with(vfs, vault_dir, &entry.source_path, self.split)
+            else {
+                continue;
+            };
+            for ctx in entry.contexts.iter_mut() {
+                if let Some(line) = body.line(ctx.line) {
+                    ctx.text = line.to_string();
+                }
+            }
         }
     }
 
     /// Walks the corpus and brings the graph up to date, reusing a sweep
     /// younger than the TTL over the same corpus. A reused sweep reports the
-    /// cache as `unchanged`.
+    /// cache as `unchanged`. A walk error leaves the graph as it was (empty
+    /// when `vault_dir` is another corpus) and reports nothing changed;
+    /// [`Self::try_refresh`] returns it.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> GraphStats {
-        self.sweep(vfs, clock.now_ms(), vault_dir, true)
+        self.try_refresh(vfs, clock, vault_dir).unwrap_or_default()
     }
 
     /// [`Self::refresh`] that always walks. For a caller that has just
     /// changed the corpus and must see its own edit.
     pub fn refresh_now(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> GraphStats {
+        self.try_refresh_now(vfs, clock, vault_dir)
+            .unwrap_or_default()
+    }
+
+    /// [`Self::refresh`] that returns a walk error instead of leaving the
+    /// graph as it was. Only a walk that refuses symlinks or propagates
+    /// errors can fail.
+    pub fn try_refresh(
+        &self,
+        vfs: &dyn Vfs,
+        clock: &dyn Clock,
+        vault_dir: &Path,
+    ) -> Result<GraphStats, WalkError> {
+        self.sweep(vfs, clock.now_ms(), vault_dir, true)
+    }
+
+    /// [`Self::refresh_now`] that returns a walk error.
+    pub fn try_refresh_now(
+        &self,
+        vfs: &dyn Vfs,
+        clock: &dyn Clock,
+        vault_dir: &Path,
+    ) -> Result<GraphStats, WalkError> {
         self.sweep(vfs, clock.now_ms(), vault_dir, false)
     }
 
-    fn sweep(&self, vfs: &dyn Vfs, now: i64, vault_dir: &Path, honor_ttl: bool) -> GraphStats {
+    fn sweep(
+        &self,
+        vfs: &dyn Vfs,
+        now: i64,
+        vault_dir: &Path,
+        honor_ttl: bool,
+    ) -> Result<GraphStats, WalkError> {
         // 1. Under the lock: decide whether to walk, claim a new corpus, and
         // take the map to compare against.
         let (generation, applied, stale_marks, cache, prev_paths) = {
@@ -280,15 +391,16 @@ impl LinkGraph {
                     && let Some(done) = state.swept_at
                     && (0..self.ttl()).contains(&(now - done))
                 {
-                    return GraphStats {
+                    return Ok(GraphStats {
                         unchanged: state.notes.len(),
                         resolvable: state.index.len(),
                         ..GraphStats::default()
-                    };
+                    });
                 }
             } else {
                 // Claimed before the walk, so a reader mid-sweep sees an
                 // empty graph, never the previous corpus's edges.
+                let emptied = !state.paths.is_empty();
                 *state = GraphState {
                     for_vault: Some(vault_dir.to_path_buf()),
                     generation: state.generation + 1,
@@ -296,6 +408,11 @@ impl LinkGraph {
                     stale_marks: state.stale_marks,
                     ..GraphState::default()
                 };
+                // Emptying the graph moved its content, even if the walk
+                // below then fails or finds nothing.
+                if emptied {
+                    self.rebuilds.fetch_add(1, Ordering::SeqCst);
+                }
             }
             (
                 state.generation,
@@ -306,13 +423,9 @@ impl LinkGraph {
             )
         };
 
-        // 2. Walk and read with no lock held. Excluded files stay: links to
-        // them still resolve, as in Obsidian.
-        let opts = WalkOptions {
-            hide: Hide::Off,
-            ..WalkOptions::notes_and_attachments()
-        };
-        let entries = markdown_vault_fs::walk::walk(vfs, vault_dir, &opts).unwrap_or_default();
+        // 2. Walk and read with no lock held. By default excluded files stay:
+        // links to them still resolve, as in Obsidian.
+        let entries = markdown_vault_fs::walk::walk(vfs, vault_dir, &self.walk)?;
         // Sorted by the comparator `apply_changes` binary-searches with.
         let mut paths: Vec<String> = entries.iter().map(|e| e.rel.clone()).collect();
         paths.sort_by(|a, b| slug_collate::compare_paths(a, b));
@@ -324,13 +437,13 @@ impl LinkGraph {
             let stamp = if entry.is_symlink {
                 stamp_of(vfs, &entry.abs)
             } else {
-                entry.mtime_ms.map(|m| (entry.size, m))
+                entry.mtime_ns.map(|m| (entry.size, m))
             };
             let reusable = stamp
                 .and_then(|(size, mtime)| {
                     cache
                         .get(&entry.rel)
-                        .filter(|c| c.size == size && c.mtime_ms == Some(mtime))
+                        .filter(|c| c.size == size && c.mtime_ns == Some(mtime))
                 })
                 .map(Arc::clone);
             if let Some(facts) = reusable {
@@ -343,7 +456,7 @@ impl LinkGraph {
                 None => (0, None),
             };
             let existed = cache.contains_key(&entry.rel);
-            let facts = scan_note(vfs, &*self.tags, &entry.abs, size, mtime);
+            let facts = scan_note(vfs, &*self.tags, self.split, &entry.abs, size, mtime);
             seen.insert(entry.rel, Arc::new(facts));
             if existed {
                 stats.updated += 1;
@@ -364,7 +477,7 @@ impl LinkGraph {
                 state.swept_at = Some(now);
             }
             stats.resolvable = state.index.len();
-            return stats;
+            return Ok(stats);
         }
 
         let index = LinkIndex::build(&paths);
@@ -388,11 +501,12 @@ impl LinkGraph {
             // that sees the new count reads the new map.
             self.rebuilds.fetch_add(1, Ordering::SeqCst);
         }
-        stats
+        Ok(stats)
     }
 
     /// How many sweeps rebuilt the index and the edges. A clean sweep does
-    /// not count.
+    /// not count. A switch to another corpus empties the graph first, and
+    /// that counts too, whatever the walk then finds.
     pub fn rebuilds(&self) -> u64 {
         self.rebuilds.load(Ordering::SeqCst)
     }
@@ -407,18 +521,43 @@ impl LinkGraph {
     ///
     /// The file system decides each path: present (spelled as listed in its
     /// folder) or gone. A changed note is re-read; the suffix index is
-    /// rebuilt only when the path set moved. A batch against another corpus,
-    /// or while no sweep is fresh, does nothing here, but marks the graph so
-    /// a sweep that read the files before the change is not stamped fresh.
+    /// rebuilt only when the path set moved. A path outside the graph's walk
+    /// ([`WalkOptions::admission`]) is ignored, and one the walk would no
+    /// longer list (too small, a refused symlink, under a symlinked folder
+    /// or a folder that cannot be listed) is dropped as if gone. A batch
+    /// against another
+    /// corpus, or while no sweep is fresh, does nothing here, but marks the
+    /// graph so a sweep that read the files before the change is not stamped
+    /// fresh.
+    ///
+    /// A change to a file the walk reads its rules from
+    /// ([`WalkOptions::reads_rules_from`], the excluded files under
+    /// [`Hide::Vault`]) can move any path, so it marks the graph stale and
+    /// the next refresh walks.
     pub fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
-        let admitted: Vec<&String> = rels
-            .iter()
-            .filter(|rel| Visibility::IncludingUnderscore.admits_path(rel))
+        self.apply_paths(vfs, vault_dir, rels);
+        if rels.iter().any(|rel| self.walk.reads_rules_from(rel))
+            && self.state.lock().unwrap().for_vault.as_deref() == Some(vault_dir)
+        {
+            self.mark_stale();
+        }
+    }
+
+    /// [`Self::apply_changes`] path by path.
+    fn apply_paths(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
+        // The admissions read the file system, so they are taken under the
+        // apply lock: a batch that read a file before another batch must not
+        // install after it.
+        let _apply = self.apply_lock.lock().unwrap();
+        let admitted: Vec<(&String, Admission)> = self
+            .walk
+            .admissions(vfs, vault_dir, rels)
+            .into_iter()
+            .filter(|(_, admission)| *admission != Admission::Outside)
             .collect();
         if admitted.is_empty() {
             return;
         }
-        let _apply = self.apply_lock.lock().unwrap();
         {
             let mut state = self.state.lock().unwrap();
             if state.for_vault.as_deref() != Some(vault_dir) {
@@ -435,18 +574,21 @@ impl LinkGraph {
             File,
             Gone,
         }
-        let mut listings = DirListings::default();
         let scanned: Vec<(&String, Seen)> = admitted
             .into_iter()
-            .map(|rel| {
+            .map(|(rel, admission)| {
                 let abs = join_rel(vault_dir, rel);
-                let seen = match stamp_of(vfs, &abs) {
-                    None => Seen::Gone,
-                    Some(_) if !spelled_as_listed(vfs, &abs, &mut listings) => Seen::Gone,
-                    Some((size, mtime)) if rel.to_lowercase().ends_with(".md") => {
-                        Seen::Note(scan_note(vfs, &*self.tags, &abs, size, Some(mtime)))
-                    }
-                    Some(_) => Seen::File,
+                // The admission says whether the walk lists the path. As in
+                // the sweep, a note it lists is read through a link, and one
+                // that cannot be stamped (a dangling link, a link to a
+                // folder) is kept with nothing read and never fresh.
+                let seen = if admission == Admission::Unlisted {
+                    Seen::Gone
+                } else if rel.to_lowercase().ends_with(".md") {
+                    let (size, mtime) = stamp_listed(vfs, &abs);
+                    Seen::Note(scan_note(vfs, &*self.tags, self.split, &abs, size, mtime))
+                } else {
+                    Seen::File
                 };
                 (rel, seen)
             })
@@ -532,6 +674,38 @@ impl LinkGraph {
     /// says where the bytes are.
     pub fn with_notes<T>(&self, f: impl FnOnce(&BTreeMap<String, Arc<NoteFacts>>) -> T) -> T {
         f(&self.state.lock().unwrap().notes)
+    }
+
+    /// Borrows every path and every note's facts from one lock hold, so the
+    /// two come from the same sweep or apply. [`Self::paths`] then
+    /// [`Self::with_notes`] could straddle a refresh.
+    pub fn with_snapshot<T>(
+        &self,
+        f: impl FnOnce(&[String], &BTreeMap<String, Arc<NoteFacts>>) -> T,
+    ) -> T {
+        let state = self.state.lock().unwrap();
+        f(&state.paths, &state.notes)
+    }
+
+    /// Every path, body link and frontmatter link, read under one lock hold
+    /// ([`Self::with_snapshot`]), so all three come from the same sweep.
+    pub fn snapshot(&self) -> LinkSnapshot {
+        self.with_snapshot(|paths, notes| LinkSnapshot {
+            paths: paths.to_vec(),
+            body_links: body_links_of(notes),
+            frontmatter_links: frontmatter_links_of(notes),
+        })
+    }
+
+    /// Each note's outgoing body links, as written, with body-relative spans.
+    pub fn body_links(&self) -> BTreeMap<String, Vec<BodyLink>> {
+        self.with_notes(body_links_of)
+    }
+
+    /// Each note's frontmatter references (wikilinks and file paths, with the
+    /// top-level key). Notes with none are left out.
+    pub fn frontmatter_links(&self) -> BTreeMap<String, Vec<RawLink>> {
+        self.with_notes(frontmatter_links_of)
     }
 
     /// Every file the last sweep saw, notes and attachments, in
@@ -838,7 +1012,25 @@ fn invert(notes: &NoteMap, index: &LinkIndex) -> Inverted {
 /// cannot be stamped. A missing mtime is no stamp: it would otherwise compare
 /// equal to itself and never be re-read.
 pub(crate) fn stamp_of(vfs: &dyn Vfs, abs: &Path) -> Option<(u64, i64)> {
-    let mut meta = vfs.metadata(abs).ok()?;
+    stamp_through(vfs, abs, vfs.metadata(abs).ok()?)
+}
+
+/// `(size, mtime)` for a file the walk lists: [`stamp_of`], or when that
+/// fails (a dangling link, a link to a folder, no time) the size of the
+/// entry itself and no time, which never compares fresh.
+pub(crate) fn stamp_listed(vfs: &dyn Vfs, abs: &Path) -> (u64, Option<i64>) {
+    let Ok(entry) = vfs.metadata(abs) else {
+        return (0, None);
+    };
+    match stamp_through(vfs, abs, entry) {
+        Some((size, mtime)) => (size, Some(mtime)),
+        None => (entry.len, None),
+    }
+}
+
+/// [`stamp_of`] given the entry's own metadata.
+fn stamp_through(vfs: &dyn Vfs, abs: &Path, entry: Metadata) -> Option<(u64, i64)> {
+    let mut meta = entry;
     if meta.is_symlink {
         let target = vfs.canonicalize(abs).ok()?;
         meta = vfs.metadata(&target).ok()?;
@@ -846,7 +1038,7 @@ pub(crate) fn stamp_of(vfs: &dyn Vfs, abs: &Path) -> Option<(u64, i64)> {
     if meta.is_dir {
         return None;
     }
-    Some((meta.len, meta.modified_ms?))
+    Some((meta.len, meta.modified_ns?))
 }
 
 /// `vault_dir` joined with each segment of a `/`-separated path.
@@ -858,70 +1050,36 @@ pub(crate) fn join_rel(vault_dir: &Path, rel: &str) -> PathBuf {
     path
 }
 
-struct DirNames {
-    exact: HashSet<String>,
-    lowercased: HashSet<String>,
-}
-
-/// Each folder's listing, read once per batch. `None` marks one that could
-/// not be read.
-type DirListings = HashMap<PathBuf, Option<DirNames>>;
-
-/// Whether `abs`'s last segment is spelled as its folder lists it.
-///
-/// On a case-insensitive file system a stat of `Home.md` succeeds after a
-/// rename to `home.md`, so the stat alone keeps the old spelling alive. This
-/// is false only when the folder lists a different-case spelling and not
-/// this one.
-fn spelled_as_listed(vfs: &dyn Vfs, abs: &Path, listings: &mut DirListings) -> bool {
-    let (Some(parent), Some(name)) = (abs.parent(), abs.file_name().and_then(|n| n.to_str()))
-    else {
-        return true;
-    };
-    let listing = listings.entry(parent.to_path_buf()).or_insert_with(|| {
-        let entries = vfs.read_dir(parent).ok()?;
-        let exact: HashSet<String> = entries.into_iter().map(|e| e.name).collect();
-        let lowercased = exact.iter().map(|n| n.to_lowercase()).collect();
-        Some(DirNames { exact, lowercased })
-    });
-    let Some(names) = listing else {
-        return true;
-    };
-    names.exact.contains(name) || !names.lowercased.contains(&name.to_lowercase())
-}
-
 /// Reads one note and derives its facts. An unreadable note has empty facts,
 /// stamped, so a later change retries it.
 fn scan_note(
     vfs: &dyn Vfs,
     tags: &dyn TagLexer,
+    split: SplitMode,
     abs: &Path,
     size: u64,
-    mtime_ms: Option<i64>,
+    mtime_ns: Option<i64>,
 ) -> NoteFacts {
     let Ok(bytes) = vfs.read_file(abs) else {
         return NoteFacts {
             size,
-            mtime_ms,
+            mtime_ns,
             ..NoteFacts::default()
         };
     };
     let source = String::from_utf8_lossy(&bytes);
     // Body only: a `[[link]]` in a frontmatter value is a frontmatter edge.
-    let split = frontmatter_lossless::split(&source);
-    let body = split.body;
+    let (yaml, body) = split_with(&source, split);
     // Parsed only when the YAML could hold a link or a path at all.
-    let frontmatter_links = if split
-        .yaml
-        .is_some_and(|y| y.contains("[[") || markdown_link::may_hold_frontmatter_paths(y))
-    {
-        let fm = crate::note::read_note(&source).frontmatter;
-        let mut links = markdown_link::frontmatter_links(&fm);
-        links.extend(markdown_link::frontmatter_paths(&fm));
-        links
-    } else {
-        Vec::new()
-    };
+    let frontmatter_links =
+        if yaml.is_some_and(|y| y.contains("[[") || markdown_link::may_hold_frontmatter_paths(y)) {
+            let fm = read_note_with(&source, split).frontmatter;
+            let mut links = markdown_link::frontmatter_links(&fm);
+            links.extend(markdown_link::frontmatter_paths(&fm));
+            links
+        } else {
+            Vec::new()
+        };
     let links = markdown_link::body_links_spanned(body);
     let lines = links.iter().map(|l| line_of(body, l.byte_start)).collect();
     NoteFacts {
@@ -930,7 +1088,7 @@ fn scan_note(
         frontmatter_links,
         tags: tags.lex(body).into_iter().map(dedupe).collect(),
         size,
-        mtime_ms,
+        mtime_ns,
     }
 }
 
@@ -950,19 +1108,35 @@ fn dedupe(items: Vec<String>) -> Vec<String> {
         .collect()
 }
 
-/// Fills each backlink context's `text` from its source note's body: one
-/// read per source, so call it on a capped page.
-pub fn fill_contexts(vfs: &dyn Vfs, vault_dir: &Path, backlinks: &mut [Backlink]) {
-    for entry in backlinks.iter_mut() {
-        let Some(body) = NoteBody::read(vfs, vault_dir, &entry.source_path) else {
-            continue;
-        };
-        for ctx in entry.contexts.iter_mut() {
-            if let Some(line) = body.line(ctx.line) {
-                ctx.text = line.to_string();
-            }
-        }
-    }
+/// A [`LinkGraph`]'s paths and links from one sweep. See
+/// [`LinkGraph::snapshot`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LinkSnapshot {
+    /// Every file the sweep saw, notes and attachments, in
+    /// `slug_collate::compare_paths` order.
+    pub paths: Vec<String>,
+    /// Each note's outgoing body links. See [`LinkGraph::body_links`].
+    pub body_links: BTreeMap<String, Vec<BodyLink>>,
+    /// Each note's frontmatter references; notes with none are left out. See
+    /// [`LinkGraph::frontmatter_links`].
+    pub frontmatter_links: BTreeMap<String, Vec<RawLink>>,
+}
+
+fn body_links_of(notes: &BTreeMap<String, Arc<NoteFacts>>) -> BTreeMap<String, Vec<BodyLink>> {
+    notes
+        .iter()
+        .map(|(path, facts)| (path.clone(), facts.links.clone()))
+        .collect()
+}
+
+fn frontmatter_links_of(
+    notes: &BTreeMap<String, Arc<NoteFacts>>,
+) -> BTreeMap<String, Vec<RawLink>> {
+    notes
+        .iter()
+        .filter(|(_, facts)| !facts.frontmatter_links.is_empty())
+        .map(|(path, facts)| (path.clone(), facts.frontmatter_links.clone()))
+        .collect()
 }
 
 /// A note's body lines, numbered as the graph numbers its links, and how
@@ -975,11 +1149,22 @@ pub struct NoteBody {
 }
 
 impl NoteBody {
-    /// Reads `rel` under `vault_dir`; `None` when it cannot be read.
+    /// Reads `rel` under `vault_dir`, split strictly; `None` when it cannot
+    /// be read.
     pub fn read(vfs: &dyn Vfs, vault_dir: &Path, rel: &str) -> Option<NoteBody> {
+        NoteBody::read_with(vfs, vault_dir, rel, SplitMode::Strict)
+    }
+
+    /// [`NoteBody::read`] with the frontmatter found by `split`.
+    pub fn read_with(
+        vfs: &dyn Vfs,
+        vault_dir: &Path,
+        rel: &str,
+        split: SplitMode,
+    ) -> Option<NoteBody> {
         let bytes = vfs.read_file(&join_rel(vault_dir, rel)).ok()?;
         let source = String::from_utf8_lossy(&bytes);
-        let body = frontmatter_lossless::split(&source).body;
+        let (_, body) = split_with(&source, split);
         let head = &source[..source.len().saturating_sub(body.len())];
         Some(NoteBody {
             lines: body.lines().map(str::to_string).collect(),
@@ -1000,6 +1185,9 @@ pub(crate) mod hooks {
     //! Run once between a sweep's walk and its swap (or an apply's read and
     //! its install), so a test can land a concurrent call exactly there.
     use std::cell::RefCell;
+    use std::path::{Path, PathBuf};
+
+    use vfs_seam::{DirEntry, Metadata, Vfs, VfsError};
 
     type Hook = RefCell<Option<Box<dyn FnOnce()>>>;
 
@@ -1025,6 +1213,124 @@ pub(crate) mod hooks {
     pub fn run_mid_apply() {
         if let Some(f) = MID_APPLY.with(|h| h.borrow_mut().take()) {
             f();
+        }
+    }
+
+    /// A [`Vfs`] over `inner` with what it reports about one path changed.
+    pub struct StatHook<'a> {
+        inner: &'a dyn Vfs,
+        path: PathBuf,
+        on_stat: OnStat<'a>,
+    }
+
+    enum OnStat<'a> {
+        After(RefCell<Option<Box<dyn FnOnce() + 'a>>>),
+        Denied,
+        As(PathBuf),
+    }
+
+    impl<'a> StatHook<'a> {
+        /// Runs `then` once, just after the first read of `path` (a stat of
+        /// it or a listing of its folder) and before that call returns. So
+        /// a test can change the corpus, or land another call, exactly
+        /// between a read and what the caller does with it.
+        pub fn after(inner: &'a dyn Vfs, path: PathBuf, then: impl FnOnce() + 'a) -> Self {
+            StatHook {
+                inner,
+                path,
+                on_stat: OnStat::After(RefCell::new(Some(Box::new(then)))),
+            }
+        }
+
+        /// Every stat of `path` fails, as a folder readable but not
+        /// searchable leaves its files: listed, but no metadata.
+        pub fn denied(inner: &'a dyn Vfs, path: PathBuf) -> Self {
+            StatHook {
+                inner,
+                path,
+                on_stat: OnStat::Denied,
+            }
+        }
+
+        /// A stat of `path` reads `real` instead, as a case-insensitive
+        /// file system answers for another spelling of a file.
+        pub fn aliased(inner: &'a dyn Vfs, path: PathBuf, real: PathBuf) -> Self {
+            StatHook {
+                inner,
+                path,
+                on_stat: OnStat::As(real),
+            }
+        }
+    }
+
+    fn run_once(then: &RefCell<Option<Box<dyn FnOnce() + '_>>>) {
+        if let Some(f) = then.borrow_mut().take() {
+            f();
+        }
+    }
+
+    impl Vfs for StatHook<'_> {
+        fn metadata(&self, path: &Path) -> Result<Metadata, VfsError> {
+            if path != self.path {
+                return self.inner.metadata(path);
+            }
+            match &self.on_stat {
+                OnStat::Denied => {
+                    let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+                    Err(VfsError::io(path, denied))
+                }
+                OnStat::As(real) => self.inner.metadata(real),
+                OnStat::After(then) => {
+                    let meta = self.inner.metadata(path);
+                    run_once(then);
+                    meta
+                }
+            }
+        }
+        fn read_file(&self, path: &Path) -> Result<Vec<u8>, VfsError> {
+            self.inner.read_file(path)
+        }
+        fn read_dir(&self, path: &Path) -> Result<Vec<DirEntry>, VfsError> {
+            let entries = self.inner.read_dir(path);
+            if let OnStat::After(then) = &self.on_stat
+                && self.path.parent() == Some(path)
+            {
+                run_once(then);
+            }
+            entries
+        }
+        fn write_file(&self, path: &Path, bytes: &[u8]) -> Result<(), VfsError> {
+            self.inner.write_file(path, bytes)
+        }
+        fn create_dir_all(&self, path: &Path) -> Result<(), VfsError> {
+            self.inner.create_dir_all(path)
+        }
+        fn exists(&self, path: &Path) -> bool {
+            self.inner.exists(path)
+        }
+        fn is_executable(&self, path: &Path) -> bool {
+            self.inner.is_executable(path)
+        }
+        fn set_executable(&self, path: &Path, yes: bool) -> Result<(), VfsError> {
+            self.inner.set_executable(path, yes)
+        }
+        fn rename(&self, from: &Path, to: &Path) -> Result<(), VfsError> {
+            self.inner.rename(from, to)
+        }
+        fn remove(&self, path: &Path) -> Result<(), VfsError> {
+            self.inner.remove(path)
+        }
+        fn is_symlink(&self, path: &Path) -> bool {
+            self.inner.is_symlink(path)
+        }
+        fn canonicalize(&self, path: &Path) -> Result<PathBuf, VfsError> {
+            self.inner.canonicalize(path)
+        }
+        fn sees_links(&self) -> bool {
+            self.inner.sees_links()
+        }
+        fn read_link(&self, path: &Path) -> Result<PathBuf, VfsError> {
+            self.inner.read_link(path)
         }
     }
 }

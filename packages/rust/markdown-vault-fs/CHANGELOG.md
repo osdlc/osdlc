@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-04
+
+Built on `vfs-seam` 0.2 and `vfs-walk` 0.2, whose modification times are
+nanoseconds.
+
+### Changed
+
+- `Entry::mtime_ms: Option<i64>` is now `Entry::mtime_ns: Option<i64>`,
+  nanoseconds since the epoch. `Entry::mtime_ms()` and
+  `Entry::mtime_ms_f64()` (node's `mtimeMs`) read it.
+
+### Added
+
+- `WalkOptions::admission(vfs, vault_dir, rel) -> Admission`: what this walk
+  makes of `rel`, asked of a path that did not come from a walk. `Outside`:
+  the roots, `skip_names`, `prune_dirs`, the visibility, the excluded files,
+  `exclude` or notes versus attachments rule it out. `Unlisted`: the path is
+  the walk's, but metadata from the vfs says the walk would not list it now
+  (gone, under `min_bytes`, a folder, under a symlinked folder or a folder
+  that cannot be listed, spelled otherwise than its folder lists it, or a
+  symlink when the walk refuses them). It lists each folder from the walk's
+  start down, as the walk does. `Listed`: the walk would list it. A file
+  that cannot be statted is `Listed` when the walk would list it anyway
+  (errors skipped, `min_bytes` 0), as the walk lists it with size 0.
+  `WalkOptions::admits` is `admission == Listed`, and
+  `WalkOptions::admissions` answers for a list, reading the excluded files
+  and each folder's listing once.
+- `WalkOptions::reads_rules_from(rel)`: whether `rel` is the excluded-files
+  list the walk reads (`.obsidian/app.json` under `Hide::Vault`). A change
+  to it can move any path, so a cache walks again.
+- `stat::modified_ns` re-exported.
+
 ## [0.4.0] - 2026-11-04
 
 The walk reads through a `vfs-seam` `Vfs`, so it runs on any host, wasm
