@@ -37,6 +37,8 @@ can see walk errors. Modification times are nanoseconds.
 - A switch to another corpus that empties a cache now moves
   `LinkGraph::rebuilds` and `FrontmatterIndex::changes`, also when the new
   corpus is empty or its walk fails.
+- `FrontmatterIndex::clear` moves `FrontmatterIndex::changes` when it empties
+  the index. Before, a cache keyed on `changes` kept the cleared entries.
 - The free function `fill_contexts(vfs, root, backlinks)` is now the method
   `LinkGraph::fill_contexts(vfs, root, backlinks)`, with
   `Corpus::fill_contexts(vfs, backlinks)` on top, which passes its own root.
