@@ -70,6 +70,7 @@
     "@vitest/coverage-v8": "catalog:",
     "oxlint": "catalog:",
     "prettier": "catalog:",
+    "rolldown": "^1.2.14",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
