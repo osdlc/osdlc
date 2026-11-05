@@ -10,7 +10,7 @@
   "scripts": {
     "validate": "pnpm run validate:alpha && pnpm run validate:beta",
     "validate:alpha": "node src/alpha/validate.ts",
-    "validate:beta": "node src/markdown-db/cli.ts validate corpora/beta",
+    "validate:beta": "markdown-db validate corpora/beta",
     "write-schema": "node src/alpha/validate.ts --write-schema",
     "test": "node --test src/*/*.test.ts",
     "typecheck": "tsc -p tsconfig.json",
@@ -18,10 +18,7 @@
     "check": "pnpm run validate && pnpm run test && pnpm run typecheck && pnpm run generate"
   },
   "dependencies": {
-    "@osdlc/frontmatter-lossless": "1.1.2",
-    "@osdlc/markdown-link": "0.8.0",
-    "ajv": "8.20.0",
-    "ajv-formats": "3.0.1",
+    "@osdlc/markdown-db": "workspace:*",
     "yaml": "2.9.1",
     "zod": "4.4.3"
   },
