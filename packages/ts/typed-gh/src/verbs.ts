@@ -1352,7 +1352,9 @@ const TEXT = 'fullDatabaseId body lastEditedAt url'
  * The query {@link prActivity} sends. `pageInfo` comes before `nodes`: gh
  * follows the first `pageInfo` in the answer, so it must be the timeline's.
  * The inline comments under a review carry `totalCount`, not a `pageInfo`,
- * for the same reason.
+ * for the same reason. A merge's `commit` is aliased `mergeCommit`: it is
+ * `Commit` where a commit's is `Commit!`, and GraphQL refuses two fields of
+ * one name and different types in the same selection.
  */
 const PR_ACTIVITY_QUERY = [
   'query($owner: String!, $name: String!, $number: Int!, $since: DateTime, $endCursor: String) {',
@@ -1368,7 +1370,7 @@ const PR_ACTIVITY_QUERY = [
   '          ... on PullRequestCommit { id commit { oid committedDate messageHeadline author { user { __typename login } } } }',
   '          ... on ClosedEvent { id actor { __typename login } createdAt }',
   '          ... on ReopenedEvent { id actor { __typename login } createdAt }',
-  '          ... on MergedEvent { id actor { __typename login } createdAt commit { oid } }',
+  '          ... on MergedEvent { id actor { __typename login } createdAt mergeCommit: commit { oid } }',
   '          ... on ReadyForReviewEvent { id actor { __typename login } createdAt }',
   '          ... on ConvertToDraftEvent { id actor { __typename login } createdAt }',
   '          ... on HeadRefForcePushedEvent { id actor { __typename login } createdAt beforeCommit { oid } afterCommit { oid } }',
@@ -1393,7 +1395,9 @@ function isoTime(text: string): number {
   const m = ISO_DATE_TIME.exec(text)
   if (m === null) return Number.NaN
   const [year, month, day, hour] = m.slice(1, 5).map(Number) as [number, number, number, number]
-  const calendar = new Date(Date.UTC(year, month - 1, day))
+  // Not `Date.UTC`, which reads the years 0 to 99 as 1900 to 1999.
+  const calendar = new Date(0)
+  calendar.setUTCFullYear(year, month - 1, day)
   const real =
     calendar.getUTCFullYear() === year &&
     calendar.getUTCMonth() === month - 1 &&

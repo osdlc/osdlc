@@ -145,7 +145,7 @@ const events = [
     id: 'ME_1',
     actor: user('octocat'),
     createdAt: '2026-11-01T16:00:00Z',
-    commit: { oid: 'fff000' },
+    mergeCommit: { oid: 'fff000' },
   },
 ]
 
@@ -180,6 +180,13 @@ describe('the prActivity verb', () => {
     expect(query.indexOf('pageInfo')).toBeLessThan(query.indexOf('nodes'))
   })
 
+  test("aliases a merge's commit, whose type differs from a commit's", () => {
+    const query = variables(prActivity(7).argv)['query']!
+    expect(query).toContain('... on MergedEvent {')
+    expect(query).toContain('mergeCommit: commit { oid }')
+    expect(query).toContain('... on PullRequestCommit { id commit {')
+  })
+
   test('names the target repository and host', () => {
     const argv = prActivity(7, {}, { repo: 'acme/widgets', hostname: 'github.acme.com' }).argv
     expect(argv.slice(2, 4)).toEqual(['--hostname', 'github.acme.com'])
@@ -199,6 +206,13 @@ describe('the prActivity verb', () => {
     expect(prActivity(7, { since: '2026-11-05T09:30:00Z' }).argv).toEqual(
       expect.arrayContaining(['-f', 'since=2026-11-05T09:30:00.000Z']),
     )
+    // Go's zero time, which gh prints for a time not set.
+    expect(variables(prActivity(7, { since: '0001-01-01T00:00:00Z' }).argv)['since']).toBe(
+      '0001-01-01T00:00:00.000Z',
+    )
+    expect(variables(prActivity(7, { since: '0099-12-31T23:59:59Z' }).argv)['since']).toBe(
+      '0099-12-31T23:59:59.000Z',
+    )
   })
 
   test('null and empty since mean no since', () => {
@@ -215,6 +229,7 @@ describe('the prActivity verb', () => {
     '2026-13-45T09:30:00Z',
     '2026-02-30T09:30:00Z',
     '2026-04-31T09:30:00Z',
+    '0099-02-29T09:30:00Z',
     '2026-11-05T24:00:00Z',
     ' 2026-11-05T09:30:00Z',
   ])('since %p throws RangeError', (since) => {
@@ -382,7 +397,8 @@ describe('reading the timeline', () => {
   })
 
   test('a type the query did not ask for is skipped', () => {
-    const labeled = { __typename: 'LabeledEvent', id: 'LE_1', createdAt: '2026-11-01T10:00:00Z' }
+    // With no fragment for its type, GitHub sends the `__typename` alone.
+    const labeled = { __typename: 'LabeledEvent' }
     expect(
       prActivity(7)
         .parse(ok([page([labeled, comment])]))

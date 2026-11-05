@@ -337,6 +337,17 @@ const PLAIN_EVENTS: Record<
   ConvertToDraftEvent: 'converted-to-draft',
 }
 
+/** The timeline types the `prActivity` query has a fragment for. */
+const READ_TYPES = new Set([
+  'IssueComment',
+  'PullRequestReview',
+  'PullRequestCommit',
+  ...Object.keys(PLAIN_EVENTS),
+  'MergedEvent',
+  'HeadRefForcePushedEvent',
+  'BaseRefChangedEvent',
+])
+
 /** The text fields of a comment, a review or a review comment. */
 function textOf(node: Record<string, unknown>): {
   body: string
@@ -356,15 +367,18 @@ function textOf(node: Record<string, unknown>): {
 /**
  * The items of one timeline node: one, none for a type this package does not
  * read, or a review followed by its inline comments. Null when the node
- * cannot be read: it is not an object, it has no `id`, a commit has no
- * `oid`, or a review has no `comments` list. `truncated` is true when a
- * review held more inline comments than the query asked for.
+ * cannot be read: it is not an object, a type it reads has no `id`, a
+ * commit has no `oid`, or a review has no `comments` list. `truncated` is
+ * true when a review held more inline comments than the query asked for.
  */
 function activityOf(node: unknown): { items: PrActivityItem[]; truncated: boolean } | null {
   if (!isRecord(node)) return null
+  const type = node['__typename']
+  // A type the query has no fragment for comes back as its `__typename`
+  // alone, with no `id`. GitHub may add one; skip it.
+  if (typeof type === 'string' && !READ_TYPES.has(type)) return { items: [], truncated: false }
   const id = strOrNull(node['id'])
   if (id === null) return null
-  const type = node['__typename']
   const actor = graphqlActor(node['author'] ?? node['actor'])
   const one = (item: PrActivityItem) => ({ items: [item], truncated: false })
 
@@ -425,7 +439,7 @@ function activityOf(node: unknown): { items: PrActivityItem[]; truncated: boolea
   const plain = typeof type === 'string' ? PLAIN_EVENTS[type] : undefined
   if (plain !== undefined) return one({ kind: plain, id, at, actor })
   if (type === 'MergedEvent') {
-    return one({ kind: 'merged', id, at, actor, sha: oidOf(node['commit']) })
+    return one({ kind: 'merged', id, at, actor, sha: oidOf(node['mergeCommit']) })
   }
   if (type === 'HeadRefForcePushedEvent') {
     return one({
@@ -447,7 +461,7 @@ function activityOf(node: unknown): { items: PrActivityItem[]; truncated: boolea
       to: str(node['currentRefName']),
     })
   }
-  // A type the query did not ask for. GitHub may add one; skip it.
+  // A node with no `__typename`, which the query always asks for.
   return { items: [], truncated: false }
 }
 
