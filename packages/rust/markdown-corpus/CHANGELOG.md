@@ -23,6 +23,10 @@ can see walk errors. Modification times are nanoseconds.
 - `FrontmatterIndex::apply_change` and `LinkGraph::apply_changes` take a path
   only when the cache's walk would list it (`WalkOptions::admits`). With the
   default walks this is what they took before.
+- The free function `fill_contexts(vfs, root, backlinks)` is now the method
+  `LinkGraph::fill_contexts(vfs, root, backlinks)`, with
+  `Corpus::fill_contexts(vfs, backlinks)` on top. It splits each note as the
+  graph does, so a lenient corpus gets the right lines.
 
 ### Added
 
@@ -36,8 +40,8 @@ can see walk errors. Modification times are nanoseconds.
   `with_split` set them.
 - `LoadOptions::split` and `SplitMode` (`Strict`, the default, or `Lenient`
   for `frontmatter_lossless::split_lenient`), and `read_note_with(src, mode)`.
-  Both caches and `Corpus::read_note` follow it. `NoteBody::read_with` and
-  `fill_contexts_with` number lines the same way.
+  Both caches, `Corpus::read_note` and `LinkGraph::fill_contexts` follow it.
+  `NoteBody::read_with` numbers lines the same way.
 - `Corpus::try_load`, `Corpus::try_refresh` and `Corpus::try_refresh_now`
   return a walk error instead of leaving a cache empty or as it was.
 - `LinkGraph::with_walk`, `with_split`, `walk_options`, `split_mode`,

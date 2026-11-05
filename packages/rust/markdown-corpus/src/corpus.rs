@@ -10,7 +10,7 @@ use markdown_vault_fs::walk::{WalkError, WalkOptions};
 use vfs_seam::{Clock, FixedClock, Vfs, VfsError};
 
 use crate::frontmatter::{FrontmatterIndex, IndexedNote, RefreshStats};
-use crate::links::{BacklinkPage, Edge, GraphStats, LinkGraph, join_rel};
+use crate::links::{Backlink, BacklinkPage, Edge, GraphStats, LinkGraph, join_rel};
 use crate::note::{Note, SplitMode, read_note_with};
 use crate::tags::TagLexer;
 
@@ -262,6 +262,12 @@ impl Corpus {
         self.links.backlinks(path)
     }
 
+    /// Fills each backlink context's `text` from its source note. See
+    /// [`LinkGraph::fill_contexts`].
+    pub fn fill_contexts(&self, vfs: &dyn Vfs, backlinks: &mut [Backlink]) {
+        self.links.fill_contexts(vfs, &self.root, backlinks);
+    }
+
     /// Every edge out of `source`. See [`LinkGraph::outbound`].
     pub fn outbound(&self, source: &str) -> Vec<Edge> {
         self.links.outbound(source)
@@ -511,7 +517,7 @@ mod tests {
         assert_eq!(kinds, [EdgeKind::Link, EdgeKind::Frontmatter]);
         assert!(lenient.read_note(&d, "A.md").unwrap().parse_error.is_none());
         let mut back = lenient.backlinks("B.md").backlinks;
-        crate::fill_contexts_with(&d, Path::new("/v"), SplitMode::Lenient, &mut back);
+        lenient.fill_contexts(&d, &mut back);
         assert_eq!(back[0].contexts[0].text, "Body [[B]].");
     }
 

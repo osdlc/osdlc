@@ -237,7 +237,7 @@ pub struct Backlink {
 pub struct LinkContext {
     /// The 1-indexed body line.
     pub line: u64,
-    /// The line's text, trimmed. Empty until [`fill_contexts`] reads it.
+    /// The line's text, trimmed. Empty until [`LinkGraph::fill_contexts`] reads it.
     pub text: String,
     /// A link or an embed.
     pub kind: EdgeKind,
@@ -311,6 +311,23 @@ impl LinkGraph {
     /// How this graph finds each note's frontmatter.
     pub fn split_mode(&self) -> SplitMode {
         self.split
+    }
+
+    /// Fills each backlink context's `text` from its source note's body, split
+    /// as this graph splits it ([`Self::split_mode`]), so the lines match.
+    /// One read per source, so call it on a capped page.
+    pub fn fill_contexts(&self, vfs: &dyn Vfs, vault_dir: &Path, backlinks: &mut [Backlink]) {
+        for entry in backlinks.iter_mut() {
+            let Some(body) = NoteBody::read_with(vfs, vault_dir, &entry.source_path, self.split)
+            else {
+                continue;
+            };
+            for ctx in entry.contexts.iter_mut() {
+                if let Some(line) = body.line(ctx.line) {
+                    ctx.text = line.to_string();
+                }
+            }
+        }
     }
 
     /// Walks the corpus and brings the graph up to date, reusing a sweep
@@ -1039,33 +1056,6 @@ fn dedupe(items: Vec<String>) -> Vec<String> {
         .into_iter()
         .filter(|t| seen.insert(t.clone()))
         .collect()
-}
-
-/// Fills each backlink context's `text` from its source note's body: one
-/// read per source, so call it on a capped page. Splits each note strictly;
-/// [`fill_contexts_with`] takes the graph's [`SplitMode`].
-pub fn fill_contexts(vfs: &dyn Vfs, vault_dir: &Path, backlinks: &mut [Backlink]) {
-    fill_contexts_with(vfs, vault_dir, SplitMode::Strict, backlinks);
-}
-
-/// [`fill_contexts`] with each note split by `split`, so the lines match a
-/// graph built [`LinkGraph::with_split`].
-pub fn fill_contexts_with(
-    vfs: &dyn Vfs,
-    vault_dir: &Path,
-    split: SplitMode,
-    backlinks: &mut [Backlink],
-) {
-    for entry in backlinks.iter_mut() {
-        let Some(body) = NoteBody::read_with(vfs, vault_dir, &entry.source_path, split) else {
-            continue;
-        };
-        for ctx in entry.contexts.iter_mut() {
-            if let Some(line) = body.line(ctx.line) {
-                ctx.text = line.to_string();
-            }
-        }
-    }
 }
 
 /// A note's body lines, numbered as the graph numbers its links, and how

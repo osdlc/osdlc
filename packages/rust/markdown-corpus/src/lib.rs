@@ -75,7 +75,7 @@ pub use corpus::{Corpus, CorpusStats, LoadOptions};
 pub use frontmatter::{FrontmatterIndex, IndexedNote, RefreshStats};
 pub use links::{
     Backlink, BacklinkPage, Edge, EdgeKind, GraphStats, LinkContext, LinkGraph,
-    MAX_BACKLINK_SOURCES, NoteBody, NoteFacts, fill_contexts, fill_contexts_with,
+    MAX_BACKLINK_SOURCES, NoteBody, NoteFacts,
 };
 pub use markdown_link::{BodyLink, LinkIndex, RawLink, ResolveError};
 pub use markdown_vault_fs;
