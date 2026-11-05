@@ -1,5 +1,4 @@
 ---
-name: goose
 vendor: Agentic AI Foundation (Linux Foundation)
 homepage: "https://goose-docs.ai"
 docs: "https://goose-docs.ai"

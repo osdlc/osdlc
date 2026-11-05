@@ -1,5 +1,4 @@
 ---
-name: Pi
 vendor: Earendil Inc.
 homepage: "https://pi.dev"
 docs: "https://pi.dev/docs"

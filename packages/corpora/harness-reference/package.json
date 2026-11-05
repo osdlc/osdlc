@@ -2,7 +2,7 @@
   "name": "harness-reference",
   "private": true,
   "type": "module",
-  "description": "A versioned, cited record of how coding-agent harnesses differ, as an OKF v0.2 bundle, with its validator and page generator.",
+  "description": "A versioned, cited record of how coding-agent harnesses differ, kept as Markdown corpora, with their validators and the alpha page generator.",
   "license": "MIT OR Apache-2.0",
   "engines": {
     "node": ">=24"

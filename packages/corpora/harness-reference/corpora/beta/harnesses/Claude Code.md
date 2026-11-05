@@ -1,5 +1,4 @@
 ---
-name: Claude Code
 vendor: Anthropic
 homepage: "https://www.claude.com/product/claude-code"
 docs: "https://code.claude.com/docs/en/overview"

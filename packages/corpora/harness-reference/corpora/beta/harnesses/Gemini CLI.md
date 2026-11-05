@@ -1,5 +1,4 @@
 ---
-name: Gemini CLI
 vendor: Google
 homepage: "https://geminicli.com"
 docs: "https://geminicli.com/docs/"
@@ -9,7 +8,7 @@ open_source: true
 cli: gemini
 surfaces: [cli, ide]
 status: current
-successor: antigravity
+successor: "[Antigravity](Antigravity.md)"
 versioning: semver
 checked: '2026-11-05'
 sources:

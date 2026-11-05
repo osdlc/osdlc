@@ -1,5 +1,4 @@
 ---
-name: DeepSeek Harness
 vendor: DeepSeek
 homepage: "https://deepseek.com/harness"
 docs: "https://deepseek-harness.github.io/deepseek-harness/"

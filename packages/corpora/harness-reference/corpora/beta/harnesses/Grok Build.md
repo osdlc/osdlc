@@ -1,5 +1,4 @@
 ---
-name: Grok Build
 vendor: SpaceXAI
 homepage: "https://x.ai/cli"
 docs: "https://docs.x.ai/build/overview"

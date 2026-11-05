@@ -1,5 +1,4 @@
 ---
-name: Codex CLI
 vendor: OpenAI
 homepage: "https://github.com/openai/codex"
 docs: "https://learn.chatgpt.com/docs/codex/cli"

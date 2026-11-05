@@ -1,5 +1,4 @@
 ---
-name: Amp
 vendor: Amp Frontier Corporation
 homepage: "https://ampcode.com"
 docs: "https://ampcode.com/manual"

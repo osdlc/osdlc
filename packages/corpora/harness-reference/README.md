@@ -12,7 +12,7 @@ The record is kept as corpora: folders of Markdown files, each with its own sche
 - `corpora/alpha/sources/`: research notes the alpha corpus cites. Upstream docs and repositories
   are cited by their own URLs.
 - `corpora/beta/`: the beta corpus, built up step by step. Step one is one file per harness. Its
-  schema is a hand-written JSON Schema in `corpora/beta/schemas/`. See
+  schema is a hand-written JSON Schema in `corpora/beta/harnesses/harnesses.schema.md`. See
   [corpora/beta/README.md](corpora/beta/README.md).
 - `probes/`: reproducible runs that back `evidence: run` observations.
 - `src/alpha/`: the alpha schema, validator, page generator and tests.

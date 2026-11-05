@@ -1,5 +1,4 @@
 ---
-name: Cursor
 vendor: Anysphere
 homepage: "https://cursor.com"
 docs: "https://cursor.com/docs"

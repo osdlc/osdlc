@@ -1,5 +1,4 @@
 ---
-name: OpenCode
 vendor: Anomaly
 homepage: "https://opencode.ai"
 docs: "https://opencode.ai/docs"

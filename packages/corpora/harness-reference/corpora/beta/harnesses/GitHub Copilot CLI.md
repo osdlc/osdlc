@@ -1,5 +1,4 @@
 ---
-name: GitHub Copilot CLI
 vendor: GitHub
 homepage: "https://github.com/github/copilot-cli"
 docs: "https://docs.github.com/en/copilot/concepts/agents/about-copilot-cli"

@@ -1,5 +1,4 @@
 ---
-name: Qwen Code
 vendor: Qwen (QwenLM)
 homepage: "https://github.com/QwenLM/qwen-code"
 docs: "https://qwenlm.github.io/qwen-code-docs/en/users/overview"
@@ -9,7 +8,7 @@ open_source: true
 cli: qwen
 surfaces: [cli, ide, desktop, web]
 status: current
-fork_of: gemini-cli
+fork_of: "[Gemini CLI](Gemini%20CLI.md)"
 versioning: semver
 checked: '2026-11-05'
 sources:

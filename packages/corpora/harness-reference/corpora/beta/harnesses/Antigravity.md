@@ -1,5 +1,4 @@
 ---
-name: Antigravity
 vendor: Google
 homepage: "https://antigravity.google"
 docs: "https://antigravity.google/docs/overview"

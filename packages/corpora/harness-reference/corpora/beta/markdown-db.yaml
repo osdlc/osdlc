@@ -1,5 +1,0 @@
-markdown-db: 0
-types:
-  harness:
-    path: harnesses/{id}.md
-    schema: schemas/harness.schema.json

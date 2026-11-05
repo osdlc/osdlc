@@ -1,5 +1,4 @@
 ---
-name: Kiro
 vendor: AWS
 homepage: "https://kiro.dev"
 docs: "https://kiro.dev/docs/"
