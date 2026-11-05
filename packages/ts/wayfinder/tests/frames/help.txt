@@ -5,6 +5,8 @@ LIST
   type            narrow the list
   enter           run the task, asking for arguments first; copy a skill
   ^y              copy the selected task's command line, or a skill's /name
+  ^g              on a skill: start an agent CLI with it, asking first for
+                  what its hint names
   tab, shift+tab  next / previous tab: all, each runner, skills
   ,               settings: runners, discovery, excluded paths and trust
   ^s              trust this repository, after a y/n question
@@ -16,7 +18,5 @@ LIST
   ↑, ↓, ^p, ^n    move by one row
   pgup, pgdn      move by a screenful
   home, end, ^a   first / last row
-  backspace, ^u   delete a character / clear the query
-  ?               this list of keys
 ──────────────────────────────────────────────────────────────────────────────
 esc back

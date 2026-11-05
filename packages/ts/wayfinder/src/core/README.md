@@ -12,7 +12,8 @@ run a task with the same argument rules.
 | `run.ts` | `handOff`: give the terminal to a task and wait for it | no |
 | `writes.ts` | `trackWrite`, `flushWrites`: the view and store writes made after an answer, awaited before exit | yes |
 | `filter.ts` | `filterTasks`, `keepsTask`, `sourceDepth`, `TaskFilter` | yes |
-| `skills.ts` | `SkillRow`, `filterSkills`, `skillLine`: the Skills group | yes |
+| `skills.ts` | `SkillRow`, `filterSkills`, `skillLine`: the Skills group; `HANDOFF_HARNESSES` and `skillPrompt`, the first prompt a skill is handed to an agent with | yes |
+| `../skills.ts` | `readSkills`; `agentClis` and `planSkillHandOff`, which find the agent CLI on `PATH` and plan the hand-off that `run --agent` and `^g` spawn with `handOff` | no |
 | `unknowns.ts` | `unknownsOf`, `unknownLine`, `Unknown` | yes |
 | `../vocabulary.ts` | every label a person reads: `TASK_NOUN`, `runnerLabel`, `withheldLabel`, `parametersUnknownLabel`, `staleLabel` and the rest | yes |
 | `../app.ts` | the names: `APP` (`wayfinder`) and `BIN` (`way`) | yes |

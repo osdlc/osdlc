@@ -106,8 +106,10 @@ order.
 
 Skills are not tasks. An agent runs one when you type `/<name>`, so Run
 copies `/<name>` and nothing is spawned; `way run /review` says so and exits
-1. `list` and `query` print a `/<name> [hint]` line for each skill after the
-tasks, and search matches a skill's name and description as it matches a
+1. Starting an agent with the skill is a separate action you ask for:
+`way run /review --agent -- 123` or `^g` in the terminal UI (see
+[Handing a skill to an agent](#handing-a-skill-to-an-agent)). `list` and
+`query` print a `/<name> [hint]` line for each skill after the tasks, and search matches a skill's name and description as it matches a
 task. `--json` puts them in `skills`: `name`, `description`, `argumentHint`,
 `path`, `scope`, `origin` (`project`, `user` or `plugin:<id>`), `harnesses`
 and `invoke`. They are read from files by `@osdlc/detect-harness`; nothing
@@ -115,12 +117,47 @@ runs. The `skills` setting chooses which: `project` (the default) lists the
 repository's own, `all` adds yours and your plugins' from the home folder, and
 `off` lists none.
 
+### Handing a skill to an agent
+
+`way run /<name> --agent` starts an agent's CLI in this terminal, in the
+repository root, with the skill as its first prompt, and exits with the
+agent's exit code. It is an interactive session, heavier than a task, so it
+is never the default: Run and Enter still copy.
+
+```text
+way run /review --agent -- 123          claude '/review 123'
+way run /release --harness codex        codex '$release', for a skill Codex reads
+way run /review --agent --dry-run       what it would start; --json for the run document
+```
+
+- **Which agent.** Of the agents that read the skill (its `harnesses`), the
+  first whose CLI is on `PATH`, in this order: Claude Code (`claude`), Codex
+  (`codex`), Cursor (`cursor-agent`). `--harness <claude|codex|cursor>`
+  picks one, and is refused when that agent does not read the skill or is
+  not on `PATH`. Only absolute `PATH` entries are searched, so a file the
+  repository ships is never started.
+- **The prompt.** The skill as that agent names it, `/<name>` (Codex:
+  `$<name>`), then the words after `--`, joined by spaces. The skill's
+  `argument-hint` says what they are; it is never sent itself. With no
+  words, `run` notes what the hint asks for and starts the agent anyway.
+- **Nothing else changes.** The CLI is spawned without a shell, with no
+  added variables. A skill name or words holding a control character start
+  nothing.
+
+In the terminal UI, `^g` on a skill does the same with the first agent. A
+skill with an `argument-hint` asks first: the key line becomes
+`claude ▸ /review `, Enter starts the agent with what you typed (which may
+be nothing), and `esc` goes back. The line under a skill row says which
+agent `^g` starts. The web view only copies. Why these choices:
+[D-QMVA](https://github.com/osdlc/osdlc/blob/main/docs/decisions/D-QMVA-wayfinder-skill-handoff.md).
+
 ## The terminal UI
 
 ```text
 enter  run the selected task, handing it this terminal
        (a task that takes arguments asks for them first)
 ^y     copy its command line (on a skill: /<name>)
+^g     on a skill: start an agent CLI with it (claude "/<name> …")
 tab    next tab (all · just · node-scripts │ dependencies │ tools … │ skills)
 ,      settings: runners, discovery, excluded paths and trust
 ^s     trust this repository, when runners are withheld for want of it
@@ -498,7 +535,9 @@ as `way run 'npm run build'`. Arguments after `--` are bound the way the tool
 expects, as the terminal UI and the page bind them. A task that ends on a
 signal exits 128 plus the signal number. `--dry-run --json` prints the
 `argv`, `cwd` and `env` it would run. A plain `run --json` is refused,
-because the task owns stdout.
+because the task owns stdout. On an agent skill, `--agent` (or `--harness`)
+starts an agent CLI with it instead; its run document has the skill's id as
+`task` and `/<name> [hint]` as `display`.
 
 Global flags go before or after the command word: `way -C ../app list` and
 `way list -C ../app` are the same. A start directory that does not exist is an
