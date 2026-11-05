@@ -8,4 +8,4 @@
 - Help is generated: `pr-update <command> --help`, `--help --all` for the long form (the `--repair-agent` agents, one per line, are there now), `pr-update help` and `pr-update schema`. `pr-update` alone still lists the commands and exits 0.
 - Errors read `pr-update: <message>` with the usage line, and under `--json` also print the error document on stdout. An unexpected error is reported by the app (exit 1) rather than thrown out of `main`.
 - `--output jsonl` and `--json --output text` are refused (exit 2).
-- For an adapter: `survey` is read-only, `update` is destructive, and an `update` call that passes `trust`, `repairAgent` or `repairCommand` is command-line only.
+- For an adapter: `survey` is read-only, `update` is destructive, and an `update` call that passes `trust`, `repairAgent`, `repairCommand` or `report` is command-line only.

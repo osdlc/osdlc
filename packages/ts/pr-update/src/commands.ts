@@ -420,10 +420,14 @@ export function updateCommand(seams: CliSeams) {
     schemaVersion: SCHEMA_VERSION,
     destructive: true,
     // Consent given on the command line (trust for one run, a repair the
-    // person names) is the person's own. An agent or a web page calling
-    // through an adapter must not give it for them.
+    // person names, a file to clear and write the report to) is the person's
+    // own. An agent or a web page calling through an adapter must not give it
+    // for them.
     exposureOf: ({ flags }) =>
-      flags.trust === true || flags.repairAgent !== undefined || flags.repairCommand !== undefined
+      flags.trust === true ||
+      flags.repairAgent !== undefined ||
+      flags.repairCommand !== undefined ||
+      flags.report !== undefined
         ? 'cli-only'
         : 'all',
     async run({ flags }, ctx) {

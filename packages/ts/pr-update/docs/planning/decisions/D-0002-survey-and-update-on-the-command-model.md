@@ -58,8 +58,9 @@ itself and printed the engine's report as it stood.
   `runMain`, which printed the same line.
 - **Exposure.** `survey` is `readOnly`. `update` is `destructive` (it can
   force-push), and a call that gives consent on the command line (`--trust`,
-  `--repair-agent`, `--repair-command`) is `cli-only`: an agent calling
-  through an adapter must not grant itself trust or name the command to run.
+  `--repair-agent`, `--repair-command`, `--report`) is `cli-only`: an agent
+  calling through an adapter must not grant itself trust, name the command to
+  run, or pick a file for the run to remove and write.
 
 ## Why
 

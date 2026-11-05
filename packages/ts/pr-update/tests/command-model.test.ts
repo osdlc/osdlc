@@ -6,7 +6,7 @@
  */
 
 import { afterAll, describe, expect, test } from 'vitest'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -211,6 +211,19 @@ describe('the declarations an adapter reads', () => {
   ])('an adapter may not give consent on the command line: %s', async (_, args) => {
     const r = await app.call(['update'], args, { cwd, env: isolatedEnv(cwd) }, { surface: 'mcp' })
     expect(r).toMatchObject({ status: 'refused', reason: 'cli-only' })
+  })
+
+  test('an adapter may not name a report file, so it cannot clear or write one', async () => {
+    const victim = join(cwd, 'victim.txt')
+    writeFileSync(victim, 'keep')
+    const r = await app.call(
+      ['update'],
+      { report: victim },
+      { cwd, env: isolatedEnv(cwd) },
+      { surface: 'mcp' },
+    )
+    expect(r).toMatchObject({ status: 'refused', reason: 'cli-only' })
+    expect(readFileSync(victim, 'utf8')).toBe('keep')
   })
 
   test('an adapter call takes currentBranch where the command line takes a bare --branch', () => {
