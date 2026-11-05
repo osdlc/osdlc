@@ -430,9 +430,12 @@ impl FrontmatterIndex {
         state.applied += 1;
     }
 
-    /// Forgets everything.
+    /// Forgets everything. Emptying the entries moves [`Self::changes`].
     pub fn clear(&self) {
         let mut state = self.state.lock().unwrap();
+        if !state.entries.is_empty() {
+            self.changes.fetch_add(1, Ordering::SeqCst);
+        }
         state.entries = Arc::default();
         state.walked_at = None;
         state.applied += 1;

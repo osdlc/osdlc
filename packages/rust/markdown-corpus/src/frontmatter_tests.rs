@@ -405,8 +405,12 @@ fn clear_forgets_everything() {
     let d = vault();
     let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
     index.refresh(&*d, &c, root());
+    let before = index.changes();
     index.clear();
     assert!(index.is_empty());
+    assert_eq!(index.changes(), before + 1, "emptying the entries is a change");
+    index.clear();
+    assert_eq!(index.changes(), before + 1, "clearing an empty index is not");
     assert_eq!(index.refresh(&*d, &c, root()).added, 2);
 }
 
