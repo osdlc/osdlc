@@ -6,7 +6,7 @@ tags: [skills]
 harness: codex
 subject: skills/user-dirs
 observations:
-  - value: { dirs: ["~/.agents/skills/"], moved_from: "~/.codex/skills/" }
+  - value: { dirs: ["~/.agents/skills"], moved_from: "~/.codex/skills" }
     since: null
     until: null
     observed: "2026-08-08"
@@ -37,7 +37,7 @@ What the sources say about [User skill directories](/subjects/skills/user-dirs.m
 
 ## Observations
 
-- 2026-08-08: dirs: `~/.agents/skills/`; moved from: ~/.codex/skills/. The source records the move
+- 2026-08-08: dirs: `~/.agents/skills`; moved from: ~/.codex/skills. The source records the move
   without a version.[^harness-comparison]
 - 2026-10-01: dirs: `~/.agents/skills`; deprecated:
   `$CODEX_HOME/skills`.[^codex-repo][^skill-naming]

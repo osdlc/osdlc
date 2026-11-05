@@ -6,7 +6,7 @@ tags: [plugins]
 harness: claude-code
 subject: plugins/install-location
 observations:
-  - value: {"marketplace_plugins": "~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/", "root_override": "CLAUDE_CODE_PLUGIN_CACHE_DIR"}
+  - value: {"marketplace_plugins": "~/.claude/plugins/cache/<marketplace>/<plugin>/<version>", "root_override": "CLAUDE_CODE_PLUGIN_CACHE_DIR"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -38,7 +38,7 @@ Where an installed plugin's files go, and whether a local plugin is copied or us
 
 ## Observations
 
-- 2026-11-04: marketplace plugins: ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/; root override: CLAUDE_CODE_PLUGIN_CACHE_DIR.[^claude-code-plugin-loading]
+- 2026-11-04: marketplace plugins: ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>; root override: CLAUDE_CODE_PLUGIN_CACHE_DIR.[^claude-code-plugin-loading]
 
   > cache/<marketplace>/<plugin>/<version>/ | One directory per installed version of a marketplace plugin.
 - 2026-11-04: local plugin: --plugin-dir and skills-directory plugins load in place, never copied.[^claude-code-plugin-loading]

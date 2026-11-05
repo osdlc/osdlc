@@ -6,7 +6,7 @@ tags: [meta]
 harness: kiro
 subject: meta/lifecycle
 observations:
-  - value: { status: current, note: "successor to Amazon Q Developer; the .amazonq/ tree is read for compatibility only" }
+  - value: { status: current, note: "successor to Amazon Q Developer; the .amazonq tree is read for compatibility only" }
     since: null
     until: null
     observed: "2026-08-08"
@@ -22,7 +22,7 @@ General availability, preview status, sunset, or a named successor.
 
 ## Observations
 
-- 2026-08-08: status: current; note: successor to Amazon Q Developer; the .amazonq/ tree is read for
+- 2026-08-08: status: current; note: successor to Amazon Q Developer; the .amazonq tree is read for
   compatibility only.[^harness-comparison]
 
 [^harness-comparison]: Harness comparison (researched 2026-08-08)

@@ -6,7 +6,7 @@ tags: [skills]
 harness: copilot-cli
 subject: skills/discovery-walk
 observations:
-  - value: {"locations": ["<project>/.github/skills/", "<project>/.agents/skills/", "<project>/.claude/skills/", "parent .github/skills/ (monorepo)", "~/.copilot/skills/", "~/.agents/skills/"], "extra_dirs": "COPILOT_SKILLS_DIRS, comma-separated"}
+  - value: {"locations": [".github/skills", ".agents/skills", ".claude/skills", "parent .github/skills (monorepo)", "~/.copilot/skills", "~/.agents/skills"], "extra_dirs": "COPILOT_SKILLS_DIRS, comma-separated"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -52,7 +52,7 @@ How skill folders are found: parent directories of the working directory, nested
 
 ## Observations
 
-- 2026-11-04: locations: <project>/.github/skills/, <project>/.agents/skills/, <project>/.claude/skills/, parent .github/skills/ (monorepo), ~/.copilot/skills/, ~/.agents/skills/; extra dirs: COPILOT_SKILLS_DIRS, comma-separated. Table row paraphrased by the fetch tool. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^copilot-cli-command-reference]
+- 2026-11-04: locations: .github/skills, .agents/skills, .claude/skills, parent .github/skills (monorepo), ~/.copilot/skills, ~/.agents/skills; extra dirs: COPILOT_SKILLS_DIRS, comma-separated. Table row paraphrased by the fetch tool. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^copilot-cli-command-reference]
 
   > Parent .github/skills/ | Inherited | Monorepo parent directory support.
 - 2026-11-04: exclusion: ignoredSkillsLocations setting excludes directories and their descendants. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^copilot-cli-command-reference]

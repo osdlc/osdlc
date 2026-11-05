@@ -6,7 +6,7 @@ tags: [plugins]
 harness: opencode
 subject: plugins/install-location
 observations:
-  - value: {"npm_plugins": "installed with Bun at startup; cached in ~/.cache/opencode/node_modules/", "local_plugins": "loaded directly from the plugin directory"}
+  - value: {"npm_plugins": "installed with Bun at startup; cached in ~/.cache/opencode/node_modules", "local_plugins": "loaded directly from the plugin directory"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -28,7 +28,7 @@ Where an installed plugin's files go, and whether a local plugin is copied or us
 
 ## Observations
 
-- 2026-11-04: npm plugins: installed with Bun at startup; cached in ~/.cache/opencode/node_modules/; local plugins: loaded directly from the plugin directory.[^opencode-plugins]
+- 2026-11-04: npm plugins: installed with Bun at startup; cached in ~/.cache/opencode/node_modules; local plugins: loaded directly from the plugin directory.[^opencode-plugins]
 
   > **npm plugins** are installed automatically using Bun at startup. Packages and their dependencies are cached in `~/.cache/opencode/node_modules/`.
 

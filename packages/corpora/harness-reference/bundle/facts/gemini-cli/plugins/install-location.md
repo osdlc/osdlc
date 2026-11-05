@@ -6,7 +6,7 @@ tags: [plugins]
 harness: gemini-cli
 subject: plugins/install-location
 observations:
-  - value: {"path": "<home>/.gemini/extensions", "local_install": "copied", "link_command": "symlink to the development directory"}
+  - value: {"path": "~/.gemini/extensions", "local_install": "copied", "link_command": "symlink to the development directory"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -24,7 +24,7 @@ Where an installed plugin's files go, and whether a local plugin is copied or us
 
 ## Observations
 
-- 2026-11-04: path: <home>/.gemini/extensions; local install: copied; link command: symlink to the development directory. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^gemini-cli-extensions-reference]
+- 2026-11-04: path: ~/.gemini/extensions; local install: copied; link command: symlink to the development directory. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^gemini-cli-extensions-reference]
 
   > Gemini CLI loads extensions from `<home>/.gemini/extensions`.
 

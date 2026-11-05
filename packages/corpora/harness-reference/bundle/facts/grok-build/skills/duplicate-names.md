@@ -6,7 +6,7 @@ tags: [skills]
 harness: grok-build
 subject: skills/duplicate-names
 observations:
-  - value: {"behavior": "higher-priority location overrides lower", "order": ["./.grok/skills (cwd)", "<repo_root>/.grok/skills", "~/.grok/skills and ~/.claude/skills", "project .claude and .cursor skills rank high"], "plugin_skill": "does not override a native skill; stays available as plugin:name", "builtin_collision": "both stay invocable, skill advertised under a scope-qualified name such as /user:commit"}
+  - value: {"behavior": "higher-priority location overrides lower", "order": [".grok/skills (cwd)", "<repo_root>/.grok/skills", "~/.grok/skills and ~/.claude/skills", "project .claude and .cursor skills rank high"], "plugin_skill": "does not override a native skill; stays available as plugin:name", "builtin_collision": "both stay invocable, skill advertised under a scope-qualified name such as /user:commit"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -29,7 +29,7 @@ What happens when two skills share a name, within one scope or across scopes (pr
 
 ## Observations
 
-- 2026-11-04: behavior: higher-priority location overrides lower; order: ./.grok/skills (cwd), <repo_root>/.grok/skills, ~/.grok/skills and ~/.claude/skills, project .claude and .cursor skills rank high; plugin skill: does not override a native skill; stays available as plugin:name; builtin collision: both stay invocable, skill advertised under a scope-qualified name such as /user:commit. The table lists ./.claude/skills as High but above ~/.grok/skills; exact tie order between .grok, .agents and .claude at one tier is not stated.[^grok-build-skills]
+- 2026-11-04: behavior: higher-priority location overrides lower; order: .grok/skills (cwd), <repo_root>/.grok/skills, ~/.grok/skills and ~/.claude/skills, project .claude and .cursor skills rank high; plugin skill: does not override a native skill; stays available as plugin:name; builtin collision: both stay invocable, skill advertised under a scope-qualified name such as /user:commit. The table lists ./.claude/skills as High but above ~/.grok/skills; exact tie order between .grok, .agents and .claude at one tier is not stated.[^grok-build-skills]
 
   > Grok deduplicates skills by name -- a higher-priority location overrides a lower one.
 

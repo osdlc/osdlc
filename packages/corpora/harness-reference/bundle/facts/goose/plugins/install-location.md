@@ -6,7 +6,7 @@ tags: [plugins]
 harness: goose
 subject: plugins/install-location
 observations:
-  - value: {"user": "~/.agents/plugins/<plugin-name>/", "project": "<project>/.agents/plugins/<plugin-name>/"}
+  - value: {"user": "~/.agents/plugins/<plugin-name>", "project": ".agents/plugins/<plugin-name>"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -24,7 +24,7 @@ Where an installed plugin's files go, and whether a local plugin is copied or us
 
 ## Observations
 
-- 2026-11-04: user: ~/.agents/plugins/<plugin-name>/; project: <project>/.agents/plugins/<plugin-name>/.[^goose-plugins]
+- 2026-11-04: user: ~/.agents/plugins/<plugin-name>; project: .agents/plugins/<plugin-name>.[^goose-plugins]
 
   > | User plugin | `~/.agents/plugins/<plugin-name>/` | Includes plugins installed with `goose plugin install` and plugins manually copied into your user plugins directory. |
 

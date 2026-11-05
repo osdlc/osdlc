@@ -6,7 +6,7 @@ tags: [skills]
 harness: codex
 subject: skills/discovery-walk
 observations:
-  - value: {"parent_dirs": "yes, from current working directory up to the repository root", "locations": ["$CWD/.agents/skills", "$CWD/../.agents/skills", "$REPO_ROOT/.agents/skills", "$HOME/.agents/skills", "/etc/codex/skills", "bundled system skills"]}
+  - value: {"parent_dirs": "yes, from current working directory up to the repository root", "locations": ["$CWD/.agents/skills", "$CWD/../.agents/skills", "$REPO_ROOT/.agents/skills", "~/.agents/skills", "/etc/codex/skills", "bundled system skills"]}
     since: null
     until: null
     observed: "2026-11-04"
@@ -37,7 +37,7 @@ How skill folders are found: parent directories of the working directory, nested
 
 ## Observations
 
-- 2026-11-04: parent dirs: yes, from current working directory up to the repository root; locations: $CWD/.agents/skills, $CWD/../.agents/skills, $REPO_ROOT/.agents/skills, $HOME/.agents/skills, /etc/codex/skills, bundled system skills. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^codex-skills]
+- 2026-11-04: parent dirs: yes, from current working directory up to the repository root; locations: $CWD/.agents/skills, $CWD/../.agents/skills, $REPO_ROOT/.agents/skills, ~/.agents/skills, /etc/codex/skills, bundled system skills. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^codex-skills]
 
   > in every directory from your current working directory up to the repository root.
 - 2026-11-04: symlinks: supported; target followed when scanning. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^codex-skills]

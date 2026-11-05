@@ -6,7 +6,7 @@ tags: [instructions]
 harness: claude-code
 subject: instructions/files
 observations:
-  - value: { files: [CLAUDE.md, ".claude/rules/"] }
+  - value: { files: [CLAUDE.md, ".claude/rules"] }
     since: null
     until: null
     observed: "2026-08-08"
@@ -23,6 +23,6 @@ project and user level.
 
 ## Observations
 
-- 2026-08-08: files: `CLAUDE.md`, `.claude/rules/`.[^harness-comparison]
+- 2026-08-08: files: `CLAUDE.md`, `.claude/rules`.[^harness-comparison]
 
 [^harness-comparison]: Harness comparison (researched 2026-08-08)

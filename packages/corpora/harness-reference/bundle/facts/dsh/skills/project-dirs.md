@@ -6,7 +6,7 @@ tags: [skills]
 harness: dsh
 subject: skills/project-dirs
 observations:
-  - value: { dirs: ["<proj>/.dsh/skills", "<proj>/.agents/skills", customSkillDirs], layout: "<name>/SKILL.md or a flat <name>.md", order: priority order as listed }
+  - value: { dirs: [".dsh/skills", ".agents/skills"], dirs_setting: customSkillDirs, layout: "<name>/SKILL.md or a flat <name>.md", order: "priority order as listed, then the customSkillDirs directories, then the user roots" }
     since: null
     until: null
     observed: "2026-10-08"
@@ -26,7 +26,8 @@ from.
 
 ## Observations
 
-- 2026-10-08: dirs: `<proj>/.dsh/skills`, `<proj>/.agents/skills`, `customSkillDirs`; layout:
-  <name>/SKILL.md or a flat <name>.md; order: priority order as listed.[^notes-dsh]
+- 2026-10-08: dirs: `.dsh/skills`, `.agents/skills`; dirs setting: `customSkillDirs`; layout:
+  <name>/SKILL.md or a flat <name>.md; order: priority order as listed, then the customSkillDirs
+  directories, then the user roots.[^notes-dsh]
 
 [^notes-dsh]: DeepSeek Harness (dsh): harness notes for a dispatcher

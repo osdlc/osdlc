@@ -64,6 +64,26 @@ Rules:
   path in SKILL.md (`skills/relative-paths`).
 - `checked_version`, `locator`, `model` and `note` are optional.
 
+### Paths in values
+
+A path in a `value` is data, not a quote, so one location is spelled one way:
+
+- A project path is relative to the project root: `.agents/skills`, not `./.agents/skills`,
+  `<proj>/.agents/skills` or `<project>/.agents/skills`.
+- A home path starts with `~/`: `~/.agents/skills`, not `$HOME/.agents/skills` or
+  `<home>/.agents/skills`.
+- No trailing slash: `.claude/rules`, not `.claude/rules/`.
+- `$VAR` stays only where the harness itself names a variable, such as `$CODEX_HOME`,
+  `$DSH_HOME` or `$CWD` in a walk. A placeholder with its own meaning, such as `<repo_root>/`,
+  stays too.
+- A setting that lists directories is not a directory. It gets its own key, such as
+  `dirs_setting`.
+
+The validator flags a trailing slash, a leading `./`, a `<proj>/`, `<project>/`, `<cwd>/` or
+`<home>/` prefix, and `$HOME`, on any word in a value string that starts with `.`, `~`, `$` or `<`
+and holds a `/`. Strings under a `commands` key are shell and keep their own spelling. Quotes in a
+fact's body keep the source's spelling.
+
 The Markdown body explains the fact in prose, with footnotes keyed to `sources` ids (OKF §5.1). The
 generator reads only frontmatter.
 

@@ -6,7 +6,7 @@ tags: [skills]
 harness: kiro
 subject: skills/discovery-walk
 observations:
-  - value: {"workspace_dir": ".kiro/skills/", "global_dir": "~/.kiro/skills/"}
+  - value: {"workspace_dir": ".kiro/skills", "global_dir": "~/.kiro/skills"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -28,7 +28,7 @@ How skill folders are found: parent directories of the working directory, nested
 
 ## Observations
 
-- 2026-11-04: workspace dir: .kiro/skills/; global dir: ~/.kiro/skills/. Directory list taken from a fetch summary of the page. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^kiro-skills]
+- 2026-11-04: workspace dir: .kiro/skills; global dir: ~/.kiro/skills. Directory list taken from a fetch summary of the page. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^kiro-skills]
 
   > Only `.kiro/skills/` (workspace) and `~/.kiro/skills/` (global) are listed.
 

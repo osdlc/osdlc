@@ -6,7 +6,7 @@ tags: [skills]
 harness: cursor
 subject: skills/project-dirs
 observations:
-  - value: { dirs: [".cursor/skills/", ".agents/", ".claude/", ".codex/"] }
+  - value: { dirs: [".cursor/skills", ".agents/skills", ".claude/skills", ".codex/skills"] }
     since: null
     until: null
     observed: "2026-08-08"
@@ -35,7 +35,7 @@ What the sources say about [Project skill directories](/subjects/skills/project-
 
 ## Observations
 
-- 2026-08-08: dirs: `.cursor/skills/`, `.agents/`, `.claude/`, `.codex/`.[^harness-comparison]
+- 2026-08-08: dirs: `.cursor/skills`, `.agents/skills`, `.claude/skills`, `.codex/skills`.[^harness-comparison]
 - 2026-10-01: dirs: `.agents/skills`, `.cursor/skills`; legacy: `.claude/skills`, `.codex/skills`;
   nested: `true`.[^cursor-skills][^skill-naming]
 

@@ -6,7 +6,7 @@ tags: [plugins]
 harness: qwen-code
 subject: plugins/install-location
 observations:
-  - value: {"path": "<home>/.qwen/extensions", "local_path_install": "copied"}
+  - value: {"path": "~/.qwen/extensions", "local_path_install": "copied"}
     since: null
     until: null
     observed: "2026-11-04"
@@ -24,7 +24,7 @@ Where an installed plugin's files go, and whether a local plugin is copied or us
 
 ## Observations
 
-- 2026-11-04: path: <home>/.qwen/extensions; local path install: copied. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^qwen-code-extensions]
+- 2026-11-04: path: ~/.qwen/extensions; local path install: copied. Read through a fetch tool that summarises, so the quoted wording may be paraphrased.[^qwen-code-extensions]
 
   > On startup, Qwen Code looks for extensions in `<home>/.qwen/extensions`.
 

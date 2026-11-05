@@ -2,7 +2,8 @@
  * Read the OKF bundle under bundle/ and check it: OKF v0.2 conformance (§11),
  * each concept's frontmatter against its schema, then the rules a schema
  * cannot state (ids from paths, references between concepts, source ids,
- * version spelling, observation order, repository links that must resolve).
+ * version and path spelling, observation order, repository links that must
+ * resolve).
  * Probes under probes/ are read and checked alongside it.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
@@ -118,6 +119,34 @@ export function repoRoot(from: string = ROOT): string | null {
 
 /** A path that names one machine: a home directory, absolute, `~/` or `$HOME`. Probe commands stay relative. */
 const MACHINE_PATH = /(^|[\s'"=:(])(\/(Users|home)\/|~\/|\$\{?HOME\b)/
+
+/**
+ * Non-canonical path spellings in one value string (see README "Paths in values"): a trailing
+ * slash, a leading `./`, a `<proj>/`-style project or home prefix, or `$HOME` where `~` is meant.
+ * A path is a word that starts with `.`, `~`, `$` or `<` and holds a `/`.
+ */
+export function pathSpellingIssues(text: string): string[] {
+  const found: string[] = []
+  if (/\$\{?HOME\b/.test(text)) found.push('write $HOME as ~')
+  for (const raw of text.split(/\s+/)) {
+    const word = raw.replace(/^[(`'"[]+/, '').replace(/[`'",;.)\]]+$/, '')
+    if (!/^[.~$<]/.test(word) || !word.includes('/')) continue
+    if (word.endsWith('/')) found.push(`drop the trailing slash in "${word}"`)
+    if (word.startsWith('./')) found.push(`drop the leading ./ in "${word}"`)
+    if (/^<(proj|project|cwd)>\//.test(word)) found.push(`drop the project prefix in "${word}"`)
+    if (word.startsWith('<home>/')) found.push(`write <home>/ as ~/ in "${word}"`)
+  }
+  return found
+}
+
+/** Every string in a value, skipping `commands`, whose shell words keep their own spelling. */
+function valueStrings(v: unknown): string[] {
+  if (typeof v === 'string') return [v]
+  if (Array.isArray(v)) return v.flatMap(valueStrings)
+  if (v !== null && typeof v === 'object')
+    return Object.entries(v).flatMap(([k, x]) => (k === 'commands' ? [] : valueStrings(x)))
+  return []
+}
 
 /** Read `probes/<id>/probe.md` for each folder under `dir`. */
 function loadProbes(dir: string, errors: string[]): Probe[] {
@@ -311,6 +340,8 @@ export function load(
       if (o.via !== undefined) cite(at, o.via)
       for (const key of Object.keys(o.value))
         if (!VALUE_KEY.test(key)) errors.push(`${at}: value key "${key}" is not snake_case`)
+      for (const s of valueStrings(o.value))
+        for (const issue of pathSpellingIssues(s)) errors.push(`${at}: ${issue}`)
       if (o.evidence === 'run') {
         if (o.probe === undefined) errors.push(`${at}: evidence run needs a probe`)
         if (o.checked_version === undefined)

@@ -5,7 +5,16 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { BUNDLE, PROBES, ROOT, load, parseConcept, repoRoot, semverOrder } from './load.ts'
+import {
+  BUNDLE,
+  PROBES,
+  ROOT,
+  load,
+  parseConcept,
+  pathSpellingIssues,
+  repoRoot,
+  semverOrder,
+} from './load.ts'
 import { type Change, changes, current, currentSet, renderSite } from './render.ts'
 import type { Fact, Observation } from './schema.ts'
 import { checkSchemas } from './validate.ts'
@@ -55,6 +64,51 @@ describe('the bundle', () => {
 
   test('schema/*.json matches src/schema.ts', () => {
     assert.deepEqual(checkSchemas(join(ROOT, 'schema'), false), [])
+  })
+})
+
+describe('path spelling in values', () => {
+  test('canonical paths pass', () => {
+    for (const s of [
+      '.agents/skills',
+      '~/.agents/skills',
+      '$CODEX_HOME/skills',
+      '$CWD/../.agents/skills',
+      '<repo_root>/.grok/skills',
+      '.grok/plugins (project, needs trust)',
+      'optional scripts/, references/, assets/',
+    ])
+      assert.deepEqual(pathSpellingIssues(s), [], s)
+  })
+
+  test('non-canonical paths are flagged', () => {
+    for (const s of [
+      '.agents/skills/',
+      '~/.grok/plugins/ (user)',
+      'moved from ~/.codex/skills/.',
+      './.grok/skills',
+      '<proj>/.dsh/skills',
+      '<project>/.agents/skills',
+      '<cwd>/.pi/skills',
+      '<home>/.gemini/extensions',
+      '$HOME/.agents/skills',
+      '${HOME}/.agents/skills',
+    ])
+      assert.equal(pathSpellingIssues(s).length, 1, s)
+  })
+
+  test('a trailing slash in a fact value is refused', () => {
+    const errors = loadWith('facts/claude-code/skills/project-dirs.md', (t) =>
+      t.replace('dirs: [".claude/skills"]', 'dirs: [".claude/skills/"]'),
+    )
+    assert.ok(has(errors, 'drop the trailing slash in ".claude/skills/"'))
+  })
+
+  test('shell commands keep their own spelling', () => {
+    const errors = loadWith('facts/pi/plugins/install.md', (t) =>
+      t.replace('[pi install ./dir,', '[pi install ./other/,'),
+    )
+    assert.deepEqual(errors, [])
   })
 })
 

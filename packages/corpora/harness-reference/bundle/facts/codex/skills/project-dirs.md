@@ -6,7 +6,7 @@ tags: [skills]
 harness: codex
 subject: skills/project-dirs
 observations:
-  - value: { dirs: [".agents/skills/"] }
+  - value: { dirs: [".agents/skills"] }
     since: null
     until: null
     observed: "2026-08-08"
@@ -36,7 +36,7 @@ What the sources say about [Project skill directories](/subjects/skills/project-
 
 ## Observations
 
-- 2026-08-08: dirs: `.agents/skills/`.[^harness-comparison]
+- 2026-08-08: dirs: `.agents/skills`.[^harness-comparison]
 - 2026-10-01: dirs: `.codex/skills`, `.agents/skills`; scope: each ancestor of the working
   directory.[^codex-repo][^skill-naming]
 
