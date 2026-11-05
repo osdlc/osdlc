@@ -10,7 +10,7 @@ import { closeSync, openSync, readSync, writeSync } from 'node:fs'
 import { isatty } from 'node:tty'
 
 import { EXIT } from './exit.ts'
-import { safe } from './safe.ts'
+import { safeLine } from './safe.ts'
 
 /** Only `y` or `yes`, in any case, means yes. */
 export function isYes(answer: string): boolean {
@@ -323,6 +323,8 @@ export interface AskYesNoOptions extends PromptOptions {
 interface Asking {
   fd: number
   write: (text: string) => void
+  /** Whether `fd` is a terminal, so a person reads what is written. */
+  terminal: boolean
   required: boolean
   flag: string | undefined
 }
@@ -346,7 +348,7 @@ function startAsking(opts: PromptOptions): Asking {
     })
     if (discarded > 0) write('(ignored what was typed before this question)\n')
   }
-  return { fd, write, required, flag: opts.flag }
+  return { fd, write, terminal, required, flag: opts.flag }
 }
 
 /** One answer, trimmed. `null` at end of input, or a throw when an answer is required. */
@@ -386,9 +388,9 @@ export interface AskTextOptions extends PromptOptions {
  * one line. White space around the answer is trimmed. An empty answer, or end
  * of input, gives `default`, or the empty string when there is none.
  *
- * The default is printed with terminal controls removed, since it is often
- * data from outside the tool (a branch name, a path). The question is printed
- * as given.
+ * The default is printed on one line with terminal controls removed (a line
+ * feed or tab shows as `\n` or `\t`), since it is often data from outside the
+ * tool (a branch name, a path). The question is printed as given.
  *
  * @throws {@link NotInteractiveError} when `required` is set and nobody can answer.
  * @experimental
@@ -396,7 +398,7 @@ export interface AskTextOptions extends PromptOptions {
 export function askText(question: string, opts: AskTextOptions = {}): string {
   const fallback = opts.default ?? ''
   const asking = startAsking(opts)
-  asking.write(fallback === '' ? `${question} ` : `${question} [${safe(fallback)}] `)
+  asking.write(fallback === '' ? `${question} ` : `${question} [${safeLine(fallback)}] `)
   const answer = readAnswer(asking)
   return answer === null || answer === '' ? fallback : answer
 }
@@ -429,17 +431,21 @@ function choiceFor<T extends string>(answer: string, choices: readonly T[]): T |
  * Write `question` and the choices as a numbered list, then read one line
  * and return the choice it names: its number, or its text (in any case, when
  * only one choice matches). An empty answer gives `default`. Any other
- * answer, or an empty one with no default, says what to type and asks again.
+ * answer, or an empty one with no default, says what to type and asks again
+ * when `fd` is a terminal. When it is not (a pipe, a file), nobody reads the
+ * re-ask and the next line belongs to whatever reads next, so it throws.
  *
  * End of input gives `default`. With no default there is nothing to give,
  * so it throws.
  *
- * The choices and the default are printed with terminal controls removed,
+ * Each choice, the default and an answer echoed back are printed on one line
+ * with terminal controls removed (a line feed or tab shows as `\n` or `\t`),
  * since they are often data from outside the tool (branch names, remotes).
  * The question is printed as given.
  *
  * @throws Error when `choices` is empty or lists a choice twice, or `default`
- *   is not one of them.
+ *   is not one of them; and when `fd` is not a terminal and the answer names
+ *   no choice.
  * @throws {@link NotInteractiveError} when `required` is set and nobody can
  *   answer, or when input ends with no default to give.
  * @experimental
@@ -460,7 +466,7 @@ export function askChoice<const T extends string>(
   const range = choices.length === 1 ? '1' : `1-${choices.length}`
   const hint = fallback === undefined ? '' : ` [${choices.indexOf(fallback) + 1}]`
   const line = `Choose ${range}${hint}: `
-  const list = choices.map((c, i) => `  ${i + 1}) ${safe(c)}\n`).join('')
+  const list = choices.map((c, i) => `  ${i + 1}) ${safeLine(c)}\n`).join('')
   asking.write(`${question}\n${list}${line}`)
   const help = choices.length === 1 ? 'Type 1.' : `Type a number from 1 to ${choices.length}.`
   for (;;) {
@@ -472,7 +478,13 @@ export function askChoice<const T extends string>(
     if (answer === '' && fallback !== undefined) return fallback
     const chosen = answer === '' ? undefined : choiceFor(answer, choices)
     if (chosen !== undefined) return chosen
-    const shown = safe(answer)
+    const shown = safeLine(answer)
+    if (!asking.terminal) {
+      const what = shown === '' ? 'an empty line' : `'${shown}'`
+      const named = choices.map(safeLine).join(', ')
+      const pass = asking.flag === undefined ? '' : `. Pass ${asking.flag} instead.`
+      throw new Error(`no answer: ${what} is not one of the choices (${named})${pass}`)
+    }
     const said = shown === '' ? '' : `'${shown}' is not one of the choices. `
     asking.write(`${said}${help}\n${line}`)
   }

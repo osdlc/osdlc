@@ -410,6 +410,55 @@ describe('askChoice', () => {
     expect(written).toContain('Choose 1: Type 1.\nChoose 1: ')
   })
 
+  test('a line feed or tab in a choice, the default or the answer shows, and the list keeps one line per choice', () => {
+    const choices = ['a\n  2) b', 'c\td']
+    const { written } = choose('x\ty\n2\n', choices, { default: 'c\td' })
+    expect(written).toBe(
+      'Which remote?\n  1) a\\n  2) b\n  2) c\\td\nChoose 1-2 [2]: ' +
+        "'x\\ty' is not one of the choices. Type a number from 1 to 2.\nChoose 1-2 [2]: ",
+    )
+    const asked: string[] = []
+    withInput('\n', (fd) =>
+      askText('Branch?', { fd, write: (t) => asked.push(t), default: 'ma\nin\tx' }),
+    )
+    expect(asked).toEqual(['Branch? [ma\\nin\\tx] '])
+  })
+
+  test('on input that is not a terminal, a bad answer throws instead of asking again', () => {
+    withInput('y\ny\ny\nnext\n', (fd) => {
+      const written: string[] = []
+      const e = thrown(() =>
+        askChoice('Format?', ['text', 'json'], { fd, write: (t) => written.push(t) }),
+      )
+      expect(e).toBeInstanceOf(Error)
+      expect(e).not.toBeInstanceOf(NotInteractiveError)
+      expect((e as Error).message).toBe("no answer: 'y' is not one of the choices (text, json)")
+      expect(written).toEqual(['Format?\n  1) text\n  2) json\nChoose 1-2: '])
+      // Only the first line was read; the rest is left for whatever reads next.
+      expect(readLine(fd)).toBe('y')
+    })
+  })
+
+  test('on input that is not a terminal, an empty line with no default throws and names the flag', () => {
+    const e = withInput('\n', (fd) =>
+      thrown(() =>
+        askChoice('Format?', ['text', 'json'], { fd, write: () => {}, flag: '--format' }),
+      ),
+    )
+    expect((e as Error).message).toBe(
+      'no answer: an empty line is not one of the choices (text, json). Pass --format instead.',
+    )
+  })
+
+  test('on input that is not a terminal, a good answer or an empty line with a default still answers', () => {
+    const ask = (input: string, opts: { default?: 'text' | 'json' } = {}) =>
+      withInput(input, (fd) =>
+        askChoice('Format?', ['text', 'json'], { fd, write: () => {}, ...opts }),
+      )
+    expect(ask('json\n')).toBe('json')
+    expect(ask('\n', { default: 'json' })).toBe('json')
+  })
+
   test.each([
     [[], {}, 'askChoice needs at least one choice'],
     [['a', 'b', 'a'], {}, "askChoice lists 'a' twice"],

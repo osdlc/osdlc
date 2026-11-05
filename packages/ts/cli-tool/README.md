@@ -439,7 +439,10 @@ a key pressed while a long step ran cannot answer it.
   gives the default, shown in brackets, or the empty string.
 - `askChoice(question, choices, { default })` prints the choices as a numbered
   list and returns the one named by its number or its text (in any case, when
-  only one choice matches). Anything else says what to type and asks again.
+  only one choice matches). On a terminal, anything else says what to type
+  and asks again. When stdin is not a terminal it throws instead, so
+  `yes | tooly` cannot loop and a bad line does not eat the next question's
+  answer.
   The return type is the union of the choices.
 
 ```ts
@@ -450,8 +453,9 @@ const format = askChoice('Output format?', ['text', 'json'], { default: 'text' }
 // Choose 1-2 [1]:
 ```
 
-A default, and each choice, is printed with terminal controls removed, since
-it is often data from outside the tool. The question is printed as given.
+A default, and each choice, is printed on one line with terminal controls
+removed (a line feed or tab shows as `\n` or `\t`), since it is often data from
+outside the tool. The question is printed as given.
 
 At the end of input each prompt gives its default; `askChoice` with no
 default throws `NotInteractiveError`. Check `canPrompt()` before asking. It is
@@ -470,7 +474,7 @@ its `exit`: 2 for `no-terminal`, as the standard asks, and 1 for
 `not-interactive`.
 
 ```ts
-if (!flags.yes) askYesNo('Delete 3 branches?', { required: true, flag: '--yes' })
+if (!flags.yes && !askYesNo('Delete 3 branches?', { required: true, flag: '--yes' })) return EXIT.ok
 // with stdin piped: "tooly: cannot ask: there is no terminal to answer on. Pass --yes instead." and exit 2
 ```
 

@@ -35,12 +35,17 @@ created: 2026-11-05
 - **`askChoice` takes a number or the text.** A number in range picks by
   position. Otherwise the exact text, then the text in another case when only
   one choice matches. Anything else, and an empty line with no default, says
-  what to type and asks again. End of input gives the default, and with no
+  what to type and asks again when the input is a terminal. When it is not,
+  it throws a plain `Error` naming the answer and the choices: nobody reads
+  the re-ask, `yes | tool` would loop forever, and each re-read would eat a
+  line meant for the next question. End of input gives the default, and with no
   default throws `end-of-input` even when not required: there is nothing to
   return. An empty list, a choice listed twice, or a default that is not a
   choice throws a plain `Error` before anything is written.
 - **Data is printed safe, the question as given.** Choices, a default and an
-  answer echoed back have terminal controls removed. The question is the
+  answer echoed back have terminal controls removed and stay on one line: a
+  line feed or tab shows as `\n` or `\t`, so a choice cannot add a fake
+  entry to the numbered list. The question is the
   tool's own text and may carry its own styling.
 - **The new exports are experimental.** `askYesNo`, `canPrompt`, `readLine`
   and `isYes` stay stable; the new prompts, the terminal helpers, the error
