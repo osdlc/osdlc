@@ -523,8 +523,9 @@ impl LinkGraph {
     /// folder) or gone. A changed note is re-read; the suffix index is
     /// rebuilt only when the path set moved. A path outside the graph's walk
     /// ([`WalkOptions::admission`]) is ignored, and one the walk would no
-    /// longer list (too small, a refused symlink, under a symlinked folder)
-    /// is dropped as if gone. A batch against another
+    /// longer list (too small, a refused symlink, under a symlinked folder
+    /// or a folder that cannot be listed) is dropped as if gone. A batch
+    /// against another
     /// corpus, or while no sweep is fresh, does nothing here, but marks the
     /// graph so a sweep that read the files before the change is not stamped
     /// fresh.

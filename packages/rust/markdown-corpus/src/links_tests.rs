@@ -514,9 +514,9 @@ fn a_batch_cannot_undo_a_later_batch_with_what_it_read_first() {
     rm(&d, "Projects/Alpha.md");
     let x = vec!["Projects/Alpha.md".to_string()];
     let later_ran = std::cell::Cell::new(false);
-    // Batch A stats the note while it is gone. Before A acts on that, the
-    // note comes back and batch B applies it, unless A already holds the
-    // apply lock, in which case B must wait for A.
+    // Batch A lists the note's folder while the note is gone. Before A
+    // acts on that, the note comes back and batch B applies it, unless A
+    // already holds the apply lock, in which case B must wait for A.
     let vfs = super::hooks::StatHook::after(&*d, join_rel(root(), &x[0]), || {
         put(&d, "Projects/Alpha.md", "# Alpha\n");
         if let Ok(free) = g.apply_lock.try_lock() {

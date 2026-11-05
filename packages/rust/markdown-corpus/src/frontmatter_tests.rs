@@ -261,9 +261,9 @@ fn an_apply_cannot_undo_a_later_apply_with_what_it_read_first() {
     index.refresh(&*d, &c, root());
     d.remove(&join_rel(root(), "Notes/a.md")).unwrap();
     let later_ran = std::cell::Cell::new(false);
-    // Apply A stats the note while it is gone. Before A acts on that, the
-    // note comes back and apply B reads it, unless A already holds the
-    // apply lock, in which case B must wait for A.
+    // Apply A lists the note's folder while the note is gone. Before A
+    // acts on that, the note comes back and apply B reads it, unless A
+    // already holds the apply lock, in which case B must wait for A.
     let vfs = crate::links::hooks::StatHook::after(&*d, join_rel(root(), "Notes/a.md"), || {
         put(&d, "Notes/a.md", "---\nstatus: back\n---\nbody\n");
         if let Ok(free) = index.apply_lock.try_lock() {
