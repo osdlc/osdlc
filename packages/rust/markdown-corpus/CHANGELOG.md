@@ -29,10 +29,11 @@ can see walk errors. Modification times are nanoseconds.
   through a symlink (a dangling link, a link to a folder); before, an apply
   dropped it until the next sweep. The admissions are read under the apply
   lock, so a batch never installs what it read before a later batch.
-- `FrontmatterIndex::apply_change` drops a path its folder lists with
-  different case, as `LinkGraph::apply_changes` already did. Before, on a
-  case-insensitive file system, a case-only rename left the old spelling in
-  the index until the next sweep.
+- An apply drops a path under a folder that cannot be listed, as the sweep
+  never sees it, and a path its folder lists with different case. Before, the
+  frontmatter index kept the old spelling of a case-only rename on a
+  case-insensitive file system until the next sweep, and both caches kept a
+  file under a folder that could be searched but not listed.
 - An applied change to the excluded-files list a cache's walk reads
   (`.obsidian/app.json` under `Hide::Vault`, the frontmatter index's
   default) marks that cache stale, so the next refresh walks. Before, it

@@ -447,33 +447,6 @@ fn an_apply_installs_what_it_read() {
 }
 
 #[test]
-fn spelled_as_listed_reads_the_folder_not_the_stat() {
-    let d = vault(&[("home.md", "# home\n")]);
-    let mut listings = DirListings::default();
-    assert!(spelled_as_listed(
-        &*d,
-        &join_rel(root(), "home.md"),
-        &mut listings
-    ));
-    assert!(!spelled_as_listed(
-        &*d,
-        &join_rel(root(), "Home.md"),
-        &mut listings
-    ));
-    assert!(!spelled_as_listed(
-        &*d,
-        &join_rel(root(), "HOME.MD"),
-        &mut listings
-    ));
-    assert!(spelled_as_listed(
-        &*d,
-        &join_rel(root(), "other.md"),
-        &mut listings
-    ));
-    assert_eq!(listings.len(), 1, "one listing serves the whole batch");
-}
-
-#[test]
 fn apply_changes_drops_the_old_spelling_of_a_case_only_rename() {
     let d = vault(&[("Alpha.md", "# Alpha\n"), ("Home.md", "See [[Alpha]] #t\n")]);
     let (g, c) = (graph(), FixedClock::new(0));

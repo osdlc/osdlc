@@ -49,7 +49,7 @@
 //! depends on the whole corpus (creating `Alpha.md` changes every `[[Alpha]]`),
 //! so it is recomputed from the suffix index each sweep.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -573,7 +573,6 @@ impl LinkGraph {
             File,
             Gone,
         }
-        let mut listings = DirListings::default();
         let scanned: Vec<(&String, Seen)> = admitted
             .into_iter()
             .map(|(rel, admission)| {
@@ -582,9 +581,7 @@ impl LinkGraph {
                 // the sweep, a note it lists is read through a link, and one
                 // that cannot be stamped (a dangling link, a link to a
                 // folder) is kept with nothing read and never fresh.
-                let seen = if admission == Admission::Unlisted
-                    || !spelled_as_listed(vfs, &abs, &mut listings)
-                {
+                let seen = if admission == Admission::Unlisted {
                     Seen::Gone
                 } else if rel.to_lowercase().ends_with(".md") {
                     let (size, mtime) = stamp_listed(vfs, &abs);
@@ -1052,38 +1049,6 @@ pub(crate) fn join_rel(vault_dir: &Path, rel: &str) -> PathBuf {
     path
 }
 
-pub(crate) struct DirNames {
-    exact: HashSet<String>,
-    lowercased: HashSet<String>,
-}
-
-/// Each folder's listing, read once per batch. `None` marks one that could
-/// not be read.
-pub(crate) type DirListings = HashMap<PathBuf, Option<DirNames>>;
-
-/// Whether `abs`'s last segment is spelled as its folder lists it.
-///
-/// On a case-insensitive file system a stat of `Home.md` succeeds after a
-/// rename to `home.md`, so the stat alone keeps the old spelling alive. This
-/// is false only when the folder lists a different-case spelling and not
-/// this one.
-pub(crate) fn spelled_as_listed(vfs: &dyn Vfs, abs: &Path, listings: &mut DirListings) -> bool {
-    let (Some(parent), Some(name)) = (abs.parent(), abs.file_name().and_then(|n| n.to_str()))
-    else {
-        return true;
-    };
-    let listing = listings.entry(parent.to_path_buf()).or_insert_with(|| {
-        let entries = vfs.read_dir(parent).ok()?;
-        let exact: HashSet<String> = entries.into_iter().map(|e| e.name).collect();
-        let lowercased = exact.iter().map(|n| n.to_lowercase()).collect();
-        Some(DirNames { exact, lowercased })
-    });
-    let Some(names) = listing else {
-        return true;
-    };
-    names.exact.contains(name) || !names.lowercased.contains(&name.to_lowercase())
-}
-
 /// Reads one note and derives its facts. An unreadable note has empty facts,
 /// stamped, so a later change retries it.
 fn scan_note(
@@ -1250,7 +1215,7 @@ pub(crate) mod hooks {
         }
     }
 
-    /// A [`Vfs`] over `inner` with one path's [`Vfs::metadata`] changed.
+    /// A [`Vfs`] over `inner` with what it reports about one path changed.
     pub struct StatHook<'a> {
         inner: &'a dyn Vfs,
         path: PathBuf,
@@ -1264,10 +1229,10 @@ pub(crate) mod hooks {
     }
 
     impl<'a> StatHook<'a> {
-        /// Runs `then` once, just after the first stat of `path` has read
-        /// it and before that call returns. So a test can change the
-        /// corpus, or land another call, exactly between a stat and what
-        /// the caller does with it.
+        /// Runs `then` once, just after the first read of `path` (a stat of
+        /// it or a listing of its folder) and before that call returns. So
+        /// a test can change the corpus, or land another call, exactly
+        /// between a read and what the caller does with it.
         pub fn after(inner: &'a dyn Vfs, path: PathBuf, then: impl FnOnce() + 'a) -> Self {
             StatHook {
                 inner,
@@ -1297,6 +1262,12 @@ pub(crate) mod hooks {
         }
     }
 
+    fn run_once(then: &RefCell<Option<Box<dyn FnOnce() + '_>>>) {
+        if let Some(f) = then.borrow_mut().take() {
+            f();
+        }
+    }
+
     impl Vfs for StatHook<'_> {
         fn metadata(&self, path: &Path) -> Result<Metadata, VfsError> {
             if path != self.path {
@@ -1310,9 +1281,7 @@ pub(crate) mod hooks {
                 OnStat::As(real) => self.inner.metadata(real),
                 OnStat::After(then) => {
                     let meta = self.inner.metadata(path);
-                    if let Some(f) = then.borrow_mut().take() {
-                        f();
-                    }
+                    run_once(then);
                     meta
                 }
             }
@@ -1321,7 +1290,13 @@ pub(crate) mod hooks {
             self.inner.read_file(path)
         }
         fn read_dir(&self, path: &Path) -> Result<Vec<DirEntry>, VfsError> {
-            self.inner.read_dir(path)
+            let entries = self.inner.read_dir(path);
+            if let OnStat::After(then) = &self.on_stat
+                && self.path.parent() == Some(path)
+            {
+                run_once(then);
+            }
+            entries
         }
         fn write_file(&self, path: &Path, bytes: &[u8]) -> Result<(), VfsError> {
             self.inner.write_file(path, bytes)
