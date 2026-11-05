@@ -393,6 +393,20 @@ fn is_note(name: &str) -> bool {
     name.to_lowercase().ends_with(".md")
 }
 
+/// What a walk makes of one path. See [`WalkOptions::admission`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Admission {
+    /// The walk never lists this path, whatever is on disk. A cache ignores
+    /// a change to it.
+    Outside,
+    /// The path is the walk's, but the walk would not list it now: it is
+    /// gone, too small, a folder, a refused symlink or under a symlinked
+    /// folder. A cache drops it.
+    Unlisted,
+    /// The walk would list it. A cache reads it.
+    Listed,
+}
+
 impl WalkOptions {
     /// The excluded-files rules this walk applies, read from the vault for
     /// [`Hide::Vault`]. `None` when it applies none: [`Hide::Off`], an empty
@@ -409,73 +423,83 @@ impl WalkOptions {
         .filter(|h| !h.is_empty())
     }
 
-    /// Whether this walk would list the file at vault-relative `rel`: the
-    /// same rules [`walk`] applies, asked of a path that did not come from a
-    /// walk. For a cache that is told a path changed and must decide whether
-    /// it is one of its own.
+    /// What this walk makes of the file at vault-relative `rel`: the same
+    /// rules [`walk`] applies, asked of a path that did not come from a walk.
+    /// For a cache that is told a path changed and must decide whether to
+    /// ignore it, drop it or read it.
     ///
-    /// Checks the roots, the skip and prune lists, the visibility policy,
-    /// the excluded files (read from the vault for [`Hide::Vault`]), the
-    /// exclude list and notes versus attachments. Then it reads metadata from
-    /// `vfs`: a symlinked folder on the path below the walk's start is never
-    /// entered, a file under [`WalkOptions::min_bytes`] is dropped, a
-    /// directory is not a file, and a symlink is refused under
-    /// [`WalkOptions::refuse_symlinks`]. A file that is gone is admitted, so a
-    /// cache can drop it. The error policy is not checked: it needs a walk
-    /// that fails.
+    /// The roots, the skip and prune lists, the visibility policy, the
+    /// excluded files (read from the vault for [`Hide::Vault`]), the exclude
+    /// list and notes versus attachments decide [`Admission::Outside`]. Then
+    /// metadata from `vfs` decides [`Admission::Unlisted`]: a file that is
+    /// gone, a symlinked folder on the path below the walk's start (never
+    /// entered), a file under [`WalkOptions::min_bytes`], a folder, or a
+    /// symlink under [`WalkOptions::refuse_symlinks`].
+    ///
+    /// It answers for one path. Under `refuse_symlinks` a whole walk fails
+    /// on any symlink it sees, and under
+    /// [`WalkOptions::propagate_errors`] on any error; neither is checked
+    /// here.
     ///
     /// Expects the normalised form [`crate::path::lexical::validate_relative`]
-    /// returns. A path with an empty, `.` or `..` segment is not admitted.
-    pub fn admits(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str) -> bool {
+    /// returns. A path with an empty, `.` or `..` segment is outside.
+    pub fn admission(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str) -> Admission {
         let hide = self.hide_rules(vfs, vault_dir);
-        self.admits_with(vfs, vault_dir, rel, hide.as_deref())
+        self.admission_with(vfs, vault_dir, rel, hide.as_deref())
     }
 
-    /// [`WalkOptions::admits`] for each of `rels`, reading the excluded files
-    /// once. Returns the ones admitted, in order.
-    pub fn admitted<'r>(
+    /// Whether this walk would list the file at `rel` now:
+    /// [`WalkOptions::admission`] is [`Admission::Listed`].
+    pub fn admits(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str) -> bool {
+        self.admission(vfs, vault_dir, rel) == Admission::Listed
+    }
+
+    /// [`WalkOptions::admission`] for each of `rels`, in order, reading the
+    /// excluded files once.
+    pub fn admissions<'r>(
         &self,
         vfs: &dyn Vfs,
         vault_dir: &Path,
         rels: &'r [String],
-    ) -> Vec<&'r String> {
+    ) -> Vec<(&'r String, Admission)> {
         let hide = self.hide_rules(vfs, vault_dir);
         rels.iter()
-            .filter(|rel| self.admits_with(vfs, vault_dir, rel, hide.as_deref()))
+            .map(|rel| {
+                (
+                    rel,
+                    self.admission_with(vfs, vault_dir, rel, hide.as_deref()),
+                )
+            })
             .collect()
     }
 
-    fn admits_with(
+    fn admission_with(
         &self,
         vfs: &dyn Vfs,
         vault_dir: &Path,
         rel: &str,
         hide: Option<&HideRules>,
-    ) -> bool {
+    ) -> Admission {
         if rel
             .split('/')
             .any(|s| s.is_empty() || s == "." || s == "..")
-        {
-            return false;
-        }
-        if !self.visibility.admits_path(rel)
+            || !self.visibility.admits_path(rel)
             || hide.is_some_and(|h| h.hides_path(rel, false))
             || !self.collects(rel, rel.rsplit('/').next().unwrap_or(rel))
         {
-            return false;
+            return Admission::Outside;
         }
-        // As in `vfs_walk`, the skip and prune lists apply below where the
-        // walk starts, and a symlinked folder below it is listed as a file,
-        // not entered. A root inside a pruned folder is still walked.
-        let walks_from = |root: &str| {
+        // `None` when `rel` is not under `root` by this walk's rules; else
+        // whether the walk enters every folder down to it. As in `vfs_walk`,
+        // the skip and prune lists apply below where the walk starts, and a
+        // symlinked folder below it is listed as a file, not entered. A root
+        // inside a pruned folder is still walked.
+        let from_root = |root: &str| -> Option<bool> {
             let tail = if root.is_empty() {
                 Some(rel)
             } else {
                 rel.strip_prefix(root).and_then(|r| r.strip_prefix('/'))
-            };
-            let Some(tail) = tail else {
-                return false;
-            };
+            }?;
             let dirs = tail.rsplit_once('/').map_or("", |(dirs, _)| dirs);
             if tail
                 .split('/')
@@ -484,31 +508,43 @@ impl WalkOptions {
                     .split('/')
                     .any(|d| self.prune_dirs.iter().any(|n| n == d))
             {
-                return false;
+                return None;
             }
             // Each `/` in the tail ends a folder below the start.
             let base = rel.len() - tail.len();
-            tail.match_indices('/').all(|(k, _)| {
+            Some(tail.match_indices('/').all(|(k, _)| {
                 let folder = join_rel(vault_dir, &rel[..base + k]);
                 !vfs.metadata(&folder).is_ok_and(|m| m.is_symlink)
-            })
+            }))
         };
-        let reached = if self.roots.is_empty() {
-            walks_from("")
+        let mut reached = if self.roots.is_empty() {
+            vec![from_root("")]
         } else {
             self.roots
                 .iter()
                 .map(|r| relative_root(r))
-                .any(|root| !root.split('/').any(|seg| seg == "..") && walks_from(&root))
-        };
-        if !reached {
-            return false;
+                .filter(|root| !root.split('/').any(|seg| seg == ".."))
+                .map(|root| from_root(&root))
+                .collect()
+        }
+        .into_iter()
+        .flatten()
+        .peekable();
+        if reached.peek().is_none() {
+            return Admission::Outside;
+        }
+        if !reached.any(|entered| entered) {
+            return Admission::Unlisted;
         }
         match vfs.metadata(&join_rel(vault_dir, rel)) {
-            Ok(m) => {
-                !m.is_dir && m.len >= self.min_bytes && !(m.is_symlink && self.refuse_symlinks)
+            Ok(m)
+                if !m.is_dir
+                    && m.len >= self.min_bytes
+                    && !(m.is_symlink && self.refuse_symlinks) =>
+            {
+                Admission::Listed
             }
-            Err(_) => true,
+            _ => Admission::Unlisted,
         }
     }
 
@@ -1027,8 +1063,12 @@ mod tests {
                 );
             }
             let all: Vec<String> = files.iter().map(|f| f.to_string()).collect();
-            let admitted: Vec<&String> = opts.admitted(&d, Path::new(V), &all);
-            assert_eq!(admitted.len(), walked.len(), "{opts:?}");
+            let listed = opts
+                .admissions(&d, Path::new(V), &all)
+                .into_iter()
+                .filter(|(_, a)| *a == Admission::Listed)
+                .count();
+            assert_eq!(listed, walked.len(), "{opts:?}");
         }
         let notes = WalkOptions::content_notes();
         for bad in [
@@ -1056,11 +1096,20 @@ mod tests {
                 "{rel}"
             );
         }
-        // A file that is gone is admitted, so a cache drops it.
-        assert!(opts.admits(&d, Path::new(V), "Notes/deleted.md"));
+        // The walk's own path, but not listed now: a cache drops it.
+        let at = |opts: &WalkOptions, rel| opts.admission(&d, Path::new(V), rel);
+        assert_eq!(
+            at(&opts, "Notes/alpha.md"),
+            Admission::Unlisted,
+            "too small"
+        );
+        assert_eq!(at(&opts, "Notes/deleted.md"), Admission::Unlisted, "gone");
+        assert_eq!(at(&opts, "Notes/img.png"), Admission::Listed);
+        assert_eq!(at(&opts, ".trash/x.md"), Admission::Outside);
         // A folder is not a file, whatever its name.
         mk(&d, "Folder.md/inner.md", "x");
-        assert!(!WalkOptions::content_notes().admits(&d, Path::new(V), "Folder.md"));
+        let notes = WalkOptions::content_notes();
+        assert_eq!(at(&notes, "Folder.md"), Admission::Unlisted);
     }
 
     #[cfg(unix)]
@@ -1082,8 +1131,11 @@ mod tests {
         assert_eq!(listed(&lists), ["real/link.md", "real/sub/note.md"]);
         assert!(lists.admits(&vfs, v, "real/link.md"));
         assert!(lists.admits(&vfs, v, "real/sub/note.md"));
-        // Under a symlinked folder: never entered, so not admitted.
-        assert!(!lists.admits(&vfs, v, "linked/sub/note.md"));
+        // Under a symlinked folder: never entered, so not listed.
+        assert_eq!(
+            lists.admission(&vfs, v, "linked/sub/note.md"),
+            Admission::Unlisted
+        );
 
         // A walk that refuses symlinks fails on one, so none is admitted.
         let refuses = WalkOptions {
@@ -1091,7 +1143,10 @@ mod tests {
             ..WalkOptions::content_notes()
         };
         assert!(walk(&vfs, v, &refuses).is_err());
-        assert!(!refuses.admits(&vfs, v, "real/link.md"));
+        assert_eq!(
+            refuses.admission(&vfs, v, "real/link.md"),
+            Admission::Unlisted
+        );
         assert!(refuses.admits(&vfs, v, "real/sub/note.md"));
 
         // A root that is itself a symlinked folder is entered.

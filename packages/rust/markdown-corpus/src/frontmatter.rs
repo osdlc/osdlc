@@ -18,7 +18,8 @@
 //! [`FrontmatterIndex::with_walk`] replaces it, for example with a tool's own
 //! excluded files as [`Hide::Rules`](markdown_vault_fs::walk::Hide::Rules).
 //! Every answer follows it: the walk, [`FrontmatterIndex::apply_change`]
-//! (which takes a path only when the walk would list it),
+//! (which ignores a path outside the walk and drops one the walk would no
+//! longer list),
 //! [`FrontmatterIndex::changes`], [`FrontmatterIndex::page`] and
 //! [`FrontmatterIndex::len`]. [`FrontmatterIndex::with_split`] picks how
 //! each note's block is found.
@@ -28,7 +29,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use markdown_vault_fs::walk::{WalkError, WalkOptions};
+use markdown_vault_fs::walk::{Admission, WalkError, WalkOptions};
 use vfs_seam::{Clock, Vfs};
 use yaml_splice::Mapping;
 
@@ -333,28 +334,33 @@ impl FrontmatterIndex {
     /// Brings one note's entry up to date (re-stat, re-parse, or remove when
     /// it is gone) without a walk, keeping the freshness stamp.
     ///
-    /// A path the index's walk would not yield ([`WalkOptions::admits`]), a
-    /// file that is not a note, or a call against another corpus, does
-    /// nothing. With no fresh walk to edit it only marks the index, so a walk
+    /// A path outside the index's walk ([`WalkOptions::admission`]), a file
+    /// that is not a note, or a call against another corpus, does nothing. A
+    /// note the walk would no longer list (gone, too small, a refused
+    /// symlink) is removed. With no fresh walk to edit it only marks the index, so a walk
     /// that read the note before the change is not stamped fresh.
     pub fn apply_change(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str) {
-        if is_note(rel) && self.walk.admits(vfs, vault_dir, rel) {
-            self.apply_admitted(vfs, vault_dir, rel);
+        if is_note(rel) {
+            let admission = self.walk.admission(vfs, vault_dir, rel);
+            self.apply_admitted(vfs, vault_dir, rel, admission);
         }
     }
 
     /// [`Self::apply_change`] for each of `rels`, reading the excluded files
-    /// once ([`WalkOptions::admitted`]).
+    /// once ([`WalkOptions::admissions`]).
     pub(crate) fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
-        for rel in self.walk.admitted(vfs, vault_dir, rels) {
+        for (rel, admission) in self.walk.admissions(vfs, vault_dir, rels) {
             if is_note(rel) {
-                self.apply_admitted(vfs, vault_dir, rel);
+                self.apply_admitted(vfs, vault_dir, rel, admission);
             }
         }
     }
 
-    /// [`Self::apply_change`] for a note the walk admits.
-    fn apply_admitted(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str) {
+    /// [`Self::apply_change`] for a note, given what the walk makes of it.
+    fn apply_admitted(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str, admission: Admission) {
+        if admission == Admission::Outside {
+            return;
+        }
         let _apply = self.apply_lock.lock().unwrap();
         {
             let mut state = self.state.lock().unwrap();
@@ -368,6 +374,7 @@ impl FrontmatterIndex {
         }
         let abs = join_rel(vault_dir, rel);
         let parsed = stamp_of(vfs, &abs)
+            .filter(|_| admission == Admission::Listed)
             .map(|(size, mtime)| parse_one(vfs, self.split, rel, &abs, size, Some(mtime)));
 
         #[cfg(test)]

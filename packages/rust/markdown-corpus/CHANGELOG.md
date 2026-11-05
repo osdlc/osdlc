@@ -20,9 +20,11 @@ can see walk errors. Modification times are nanoseconds.
 - `IndexedNote::mtime_ms` is now `IndexedNote::mtime_ns`, nanoseconds since
   the epoch, from `vfs-seam` 0.2. `IndexedNote::mtime_ms_f64()` is node's
   `mtimeMs`. A same-size edit inside one millisecond is now seen.
-- `FrontmatterIndex::apply_change` and `LinkGraph::apply_changes` take a path
-  only when the cache's walk would list it (`WalkOptions::admits`). With the
-  default walks this is what they took before.
+- `FrontmatterIndex::apply_change` and `LinkGraph::apply_changes` ask the
+  cache's walk about each path (`WalkOptions::admission`). A path outside the
+  walk is ignored, as before. A path the walk would not list now (gone, under
+  `min_bytes`, a folder, a refused symlink, under a symlinked folder) is
+  dropped from the cache; before, only a gone file was.
 - The free function `fill_contexts(vfs, root, backlinks)` is now the method
   `LinkGraph::fill_contexts(vfs, root, backlinks)`, with
   `Corpus::fill_contexts(vfs, backlinks)` on top. It splits each note as the

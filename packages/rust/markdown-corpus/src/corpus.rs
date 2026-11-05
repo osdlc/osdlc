@@ -422,6 +422,33 @@ mod tests {
     }
 
     #[test]
+    fn an_apply_drops_a_cached_note_the_walk_would_no_longer_list() {
+        let d = MemVfs::new();
+        d.insert("/v/A.md", "---\nk: v\n---\n[[B]] and some text\n")
+            .unwrap();
+        d.insert("/v/B.md", "b").unwrap();
+        let opts = LoadOptions::default()
+            .with_link_walk(WalkOptions {
+                min_bytes: 10,
+                ..LinkGraph::default_walk()
+            })
+            .with_frontmatter_walk(WalkOptions {
+                min_bytes: 10,
+                ..FrontmatterIndex::default_walk()
+            });
+        let v = Corpus::load(&d, "/v", opts);
+        assert_eq!(v.paths(), ["A.md"]);
+        assert!(v.note("A.md").is_some());
+
+        // Too small now: the next sweep would drop it, so the apply does.
+        d.insert("/v/A.md", "x").unwrap();
+        v.apply_changes(&d, &["A.md".to_string()]);
+        assert!(v.paths().is_empty());
+        assert!(v.body_links().is_empty());
+        assert!(v.note("A.md").is_none());
+    }
+
+    #[test]
     fn roots_scope_both_walks() {
         let d = options_fs();
         let notes = vec!["Notes".to_string()];

@@ -55,5 +55,6 @@ pub use stat::{created_ms, modified_ms, modified_ns, ms_since_epoch, mtime_ms};
 pub use vfs_seam;
 pub use vfs_walk;
 pub use walk::{
-    Entry, Hide, Visibility, WalkError, WalkOptions, WalkOutcome, walk, walk_notes, walk_reporting,
+    Admission, Entry, Hide, Visibility, WalkError, WalkOptions, WalkOutcome, walk, walk_notes,
+    walk_reporting,
 };

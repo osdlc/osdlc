@@ -13,8 +13,10 @@
 //! [`LinkGraph::default_walk`] is the walk above. [`LinkGraph::with_walk`]
 //! replaces it: other roots, pruned folders, dot files, refused symlinks,
 //! propagated errors or excluded files of the caller's own
-//! ([`Hide::Rules`]). [`LinkGraph::apply_changes`] takes a path only when the
-//! walk would list it ([`WalkOptions::admits`]). [`LinkGraph::with_split`]
+//! ([`Hide::Rules`]). [`LinkGraph::apply_changes`] asks the walk about each
+//! path ([`WalkOptions::admission`]): it ignores one outside the walk, drops
+//! one the walk would no longer list, and reads the rest.
+//! [`LinkGraph::with_split`]
 //! picks how each note's frontmatter is found.
 //!
 //! [`LinkGraph::refresh`] never fails: a walk error (only possible when the
@@ -53,7 +55,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use markdown_link::{BodyLink, BodyLinkKind, LinkIndex, RawLink, ResolveError};
-use markdown_vault_fs::walk::{Hide, WalkError, WalkOptions};
+use markdown_vault_fs::walk::{Admission, Hide, WalkError, WalkOptions};
 use vfs_seam::{Clock, Vfs};
 
 use crate::note::{SplitMode, read_note_with, split_with};
@@ -507,13 +509,20 @@ impl LinkGraph {
     ///
     /// The file system decides each path: present (spelled as listed in its
     /// folder) or gone. A changed note is re-read; the suffix index is
-    /// rebuilt only when the path set moved. A path the graph's walk would not
-    /// list ([`WalkOptions::admits`]) is ignored. A batch against another
+    /// rebuilt only when the path set moved. A path outside the graph's walk
+    /// ([`WalkOptions::admission`]) is ignored, and one the walk would no
+    /// longer list (too small, a refused symlink, under a symlinked folder)
+    /// is dropped as if gone. A batch against another
     /// corpus, or while no sweep is fresh, does nothing here, but marks the
     /// graph so a sweep that read the files before the change is not stamped
     /// fresh.
     pub fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
-        let admitted = self.walk.admitted(vfs, vault_dir, rels);
+        let admitted: Vec<(&String, Admission)> = self
+            .walk
+            .admissions(vfs, vault_dir, rels)
+            .into_iter()
+            .filter(|(_, admission)| *admission != Admission::Outside)
+            .collect();
         if admitted.is_empty() {
             return;
         }
@@ -537,9 +546,10 @@ impl LinkGraph {
         let mut listings = DirListings::default();
         let scanned: Vec<(&String, Seen)> = admitted
             .into_iter()
-            .map(|rel| {
+            .map(|(rel, admission)| {
                 let abs = join_rel(vault_dir, rel);
                 let seen = match stamp_of(vfs, &abs) {
+                    _ if admission == Admission::Unlisted => Seen::Gone,
                     None => Seen::Gone,
                     Some(_) if !spelled_as_listed(vfs, &abs, &mut listings) => Seen::Gone,
                     Some((size, mtime)) if rel.to_lowercase().ends_with(".md") => Seen::Note(
