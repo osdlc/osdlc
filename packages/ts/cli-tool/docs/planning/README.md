@@ -22,6 +22,8 @@ They are never reused. Each decision has a `state`: `accepted` or
 
 - [D-01](decisions/D-01-failures-share-one-exit-table.md): Classified failures
   share one message form and one exit table
+- [D-02](decisions/D-02-devlink-state-dir-is-a-home-path.md): A devlink
+  spec's own state directory is a path under the home
 
 ## Backlog
 

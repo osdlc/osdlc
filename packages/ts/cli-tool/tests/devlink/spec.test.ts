@@ -20,7 +20,29 @@ describe('validateSpec', () => {
     ['an alias that climbs out', { aliases: ['../x'] }, /alias/],
     ['an alias with a slash', { aliases: ['a/b'] }, /alias/],
     ['an empty alias', { aliases: [''] }, /alias/],
+    ['an empty stateDir', { stateDir: '' }, /stateDir/],
+    ['a stateDir that is the home itself', { stateDir: '~' }, /stateDir/],
+    ['a stateDir of ~/ alone', { stateDir: '~/' }, /stateDir/],
+    ['an absolute stateDir', { stateDir: '/var/lib/tooly' }, /stateDir/],
+    ['a stateDir without ~/', { stateDir: '.tooly' }, /stateDir/],
+    ["another account's stateDir", { stateDir: '~root/.tooly' }, /stateDir/],
+    ['a stateDir that climbs out', { stateDir: '~/../x' }, /stateDir/],
+    ['a stateDir with a ./ segment', { stateDir: '~/./x' }, /stateDir/],
+    ['a stateDir with an empty segment', { stateDir: '~/a//b' }, /stateDir/],
+    ['a stateDir with a trailing slash', { stateDir: '~/.tooly/' }, /stateDir/],
+    ['a stateDir with a backslash', { stateDir: '~\\.tooly' }, /stateDir/],
+    ['a stateDir with a space', { stateDir: '~/my tool' }, /stateDir/],
+    ['a stateDir with a shell expansion', { stateDir: '~/$USER' }, /stateDir/],
+    ['a stateDir with a quote', { stateDir: '~/a"b' }, /stateDir/],
   ])('refuses %s', (_name, change, message) => {
     expect(() => validateSpec({ ...SPEC, ...change })).toThrow(message)
   })
+
+  test.each(['~/.tooly', '~/.local/state/tooly', '~/tool_y-1.0'])(
+    'accepts the stateDir %j',
+    (v) => {
+      const spec = { ...SPEC, stateDir: v }
+      expect(validateSpec(spec)).toBe(spec)
+    },
+  )
 })
