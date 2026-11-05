@@ -8,7 +8,7 @@ Every value is backed by an upstream page: the vendor's site, docs, repository, 
 release list. Our own research notes are never the evidence.
 
 The corpus follows [markdown-db](../../../docs/standards/S-GFFY-markdown-db.md). It is data only.
-The validator lives in `../../src/markdown-db/`.
+The validator is the [`@osdlc/markdown-db`](../../../packages/ts/markdown-db/README.md) package.
 
 ## Layout
 
@@ -39,10 +39,10 @@ A public repository that holds only issues, docs or install scripts is not a sou
 From `harness-reference/`:
 
 ```sh
-pnpm run validate:beta   # node src/markdown-db/cli.ts validate corpora/beta
+pnpm run validate:beta   # markdown-db validate corpora/beta
 pnpm run check           # every corpus: validate, test, typecheck, generate
 ```
 
 The validator checks each record against the schema, its id, and every link in it: `successor` and
-`fork_of` must link to an existing harness. `node src/markdown-db/cli.ts validate --fix corpora/beta`
+`fork_of` must link to an existing harness. `pnpm exec markdown-db validate --fix corpora/beta`
 rewrites any wikilinks as relative links first.

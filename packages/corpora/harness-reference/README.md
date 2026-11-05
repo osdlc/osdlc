@@ -18,8 +18,8 @@ a [markdown-db](../docs/standards/S-GFFY-markdown-db.md) corpus.
 - `probes/`: reproducible runs that back `evidence: run` observations.
 - `src/alpha/`: the alpha schema, validator, page generator and tests.
 - `schema/alpha/`: JSON Schemas generated from `src/alpha/schema.ts`, for other tools.
-- `src/markdown-db/`: the validator for any corpus that follows
-  [markdown-db](../docs/standards/S-GFFY-markdown-db.md), the beta corpus's format.
+- `src/beta/`: tests of the beta corpus. The corpus is checked by the
+  [`@osdlc/markdown-db`](../packages/ts/markdown-db/README.md) validator, a workspace package.
 
 ## The alpha corpus
 
@@ -128,15 +128,15 @@ Node 24 runs the TypeScript in `src/` directly. From this folder:
 
 ```sh
 pnpm run validate       # check both corpora, alpha's links into this repository, and schema/alpha/*.json
-pnpm run test           # validator and renderer tests
+pnpm run test           # alpha validator, renderer and beta corpus tests
 pnpm run typecheck
 pnpm run generate       # write the alpha pages to dist/ (not committed)
 pnpm run check          # all four
 pnpm run write-schema   # rewrite schema/alpha/*.json after changing src/alpha/schema.ts
 ```
 
-CI runs `pnpm run check` when anything under `harness-reference/` changes
-(`.github/workflows/harness-reference.yml`).
+CI runs `pnpm run check` when anything under `harness-reference/` or `packages/ts/markdown-db/`
+changes (`.github/workflows/harness-reference.yml`).
 
 `generate` writes `index.html` (the current state, one table per category; each cell lists every
 observation still in force), a page per harness and
