@@ -1373,8 +1373,12 @@ fn from_graph_takes_the_same_facts_from_a_graph_alone() {
     assert_eq!(facts.frontmatter, from_corpus.frontmatter);
     assert_eq!(facts.frontmatter.keys().collect::<Vec<_>>(), ["b.md"]);
 
-    // A plan from the graph's facts finds the note that links in.
-    let plan = plan::plan(&vfs, Path::new("/v"), &facts, "a.md", "c.md").expect("plan");
-    assert!(plan.conflict.is_none());
-    assert!(plan.expect.iter().any(|e| e.path == "b.md"));
+    // A plan from the graph's facts finds the note that links in. `/v` is
+    // absolute only on unix, and the planner insists on an absolute root.
+    #[cfg(unix)]
+    {
+        let plan = plan::plan(&vfs, Path::new("/v"), &facts, "a.md", "c.md").expect("plan");
+        assert!(plan.conflict.is_none());
+        assert!(plan.expect.iter().any(|e| e.path == "b.md"));
+    }
 }
