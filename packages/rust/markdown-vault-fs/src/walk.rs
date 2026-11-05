@@ -560,8 +560,14 @@ impl WalkOptions {
         {
             return Admission::Unlisted;
         }
+        // A batch's listing can be older than this stat, so the stat also
+        // decides that the path is still a file.
         match vfs.metadata(&join_rel(vault_dir, rel)) {
-            Ok(m) if m.len >= self.min_bytes && !(m.is_symlink && self.refuse_symlinks) => {
+            Ok(m)
+                if !m.is_dir
+                    && m.len >= self.min_bytes
+                    && !(m.is_symlink && self.refuse_symlinks) =>
+            {
                 Admission::Listed
             }
             Ok(_) => Admission::Unlisted,
@@ -1140,7 +1146,8 @@ mod tests {
         }
     }
 
-    /// A [`Vfs`] over a [`MemVfs`] that is denied one call on one path.
+    /// A [`Vfs`] over a [`MemVfs`] that is denied or misled on one call on
+    /// one path.
     struct Denied<'a> {
         inner: &'a MemVfs,
         path: PathBuf,
@@ -1155,6 +1162,9 @@ mod tests {
         /// The folder at `path` cannot be listed, as one searchable but not
         /// readable leaves it.
         List,
+        /// The file at `path` stats as a folder, as one replaced by a folder
+        /// after its folder was listed does.
+        Folder,
     }
 
     fn denied(path: &Path) -> vfs_seam::VfsError {
@@ -1164,8 +1174,12 @@ mod tests {
 
     impl Vfs for Denied<'_> {
         fn metadata(&self, path: &Path) -> Result<vfs_seam::Metadata, vfs_seam::VfsError> {
-            if self.call == Call::Stat && path == self.path {
-                return Err(denied(path));
+            if path == self.path {
+                match self.call {
+                    Call::Stat => return Err(denied(path)),
+                    Call::Folder => return Ok(vfs_seam::Metadata::dir_ns(None)),
+                    Call::List => {}
+                }
             }
             self.inner.metadata(path)
         }
@@ -1289,6 +1303,26 @@ mod tests {
         assert_eq!(
             WalkOptions::content_notes().admission(&vfs, Path::new(V), "Zed/deep/note.md"),
             Admission::Unlisted
+        );
+    }
+
+    #[test]
+    fn admits_no_folder_even_where_its_folder_listed_a_file() {
+        // In a batch the folder's listing can be older than the stat.
+        let d = fixture();
+        let vfs = Denied {
+            inner: &d,
+            path: Path::new(V).join("Notes/alpha.md"),
+            call: Call::Folder,
+        };
+        let notes = WalkOptions::content_notes();
+        assert_eq!(
+            notes.admission(&vfs, Path::new(V), "Notes/alpha.md"),
+            Admission::Unlisted
+        );
+        assert_eq!(
+            notes.admission(&vfs, Path::new(V), "Notes/beta.md"),
+            Admission::Listed
         );
     }
 
