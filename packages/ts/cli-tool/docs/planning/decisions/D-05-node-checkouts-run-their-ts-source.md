@@ -1,11 +1,11 @@
 ---
-id: D-03
+id: D-05
 type: decision
 state: accepted
 created: 2026-11-05
 ---
 
-# D-03: A node checkout runs its TypeScript source through Node's type stripping
+# D-05: A node checkout runs its TypeScript source through Node's type stripping
 
 ## Decision
 

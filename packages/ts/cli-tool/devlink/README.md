@@ -223,7 +223,7 @@ properties), mark type-only imports with `import type`, import its own files
 with their `.ts` extension, and not rely on `paths` aliases; a `.tsx` or `.jsx` entry is refused by `validateSpec`. A
 tool whose code needs more than that keeps `runtime: 'bun'`, or points
 `entry` at a built `.js` file and builds before it runs. The reasons are in
-[D-03](../docs/planning/decisions/D-03-node-checkouts-run-their-ts-source.md).
+[D-05](../docs/planning/decisions/D-05-node-checkouts-run-their-ts-source.md).
 
 `dev link` and `dev use` check the entry before they write the link, and
 refuse with exit 1 when it cannot run:
