@@ -302,9 +302,9 @@ pub fn plan_bundle(
             });
             continue;
         };
-        let split = frontmatter_lossless::split(content);
-        let body = split.body;
-        let body_start = split.body_start;
+        // Split as the snapshot was, so its links are the ones found here.
+        let (_, body) = markdown_corpus::split_with(content, facts.split);
+        let body_start = content.len() - body.len();
 
         let mut edits: Vec<ByteEdit> = Vec::new();
         for link in body_links_spanned(body) {

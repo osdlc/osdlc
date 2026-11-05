@@ -58,6 +58,9 @@ can see walk errors. Modification times are nanoseconds.
   for `frontmatter_lossless::split_lenient`), and `read_note_with(src, mode)`.
   Both caches, `Corpus::read_note` and `LinkGraph::fill_contexts` follow it.
   `NoteBody::read_with` numbers lines the same way.
+- `split_with(src, mode)`: a note's frontmatter text and body as both caches
+  split it; the body is a suffix of `src`. For a tool that splices at the
+  spans the caches found.
 - `Corpus::try_load`, `Corpus::try_refresh` and `Corpus::try_refresh_now`
   return a walk error instead of leaving a cache empty or as it was. Both
   caches are refreshed even when the first walk fails.

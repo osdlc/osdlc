@@ -80,6 +80,6 @@ pub use links::{
 pub use markdown_link::{BodyLink, LinkIndex, RawLink, ResolveError};
 pub use markdown_vault_fs;
 pub use markdown_vault_fs::walk::{Hide, WalkError, WalkOptions};
-pub use note::{Note, SplitMode, note_title, read_note, read_note_with};
+pub use note::{Note, SplitMode, note_title, read_note, read_note_with, split_with};
 pub use tags::{NoTags, TagCount, TagLexer, census};
 pub use vfs_seam;

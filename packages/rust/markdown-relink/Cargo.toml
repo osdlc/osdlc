@@ -36,8 +36,8 @@ vfs-seam = { workspace = true, features = ["native"] }
 slug-collate = { workspace = true }
 # The atomic compare-and-swap write the plan is applied under.
 etag-write = { workspace = true }
-# Byte-exact frontmatter split, and the YAML parse behind `VaultFacts`.
-frontmatter-lossless = { workspace = true }
+# The YAML parse behind `VaultFacts`. The frontmatter split is
+# `markdown_corpus::split_with`, so the plan splits as the snapshot did.
 yaml-splice = { workspace = true }
 thiserror = { workspace = true }
 

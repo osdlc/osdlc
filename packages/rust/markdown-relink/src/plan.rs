@@ -34,6 +34,7 @@ use std::path::Path;
 use vfs_seam::Vfs;
 
 use crate::error::TransformError;
+use markdown_corpus::SplitMode;
 use markdown_link::body_links_spanned;
 
 use crate::facts::VaultFacts;
@@ -467,6 +468,7 @@ pub fn plan(
         &to,
         &pre,
         &post,
+        facts.split,
         &mut diagnostics,
     )?;
 
@@ -556,6 +558,7 @@ pub fn plan_redirect(
         &to,
         &pre,
         &post,
+        facts.split,
         &mut diagnostics,
     )?;
     expect.sort_by(|a, b| a.path.cmp(&b.path));
@@ -601,6 +604,7 @@ fn inbound_rewrites(
     to: &str,
     pre: &Corpus,
     post: &Corpus,
+    split: SplitMode,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<(Vec<FileEdits>, Vec<FileEtag>), TransformError> {
     let mut files: Vec<FileEdits> = Vec::new();
@@ -645,9 +649,9 @@ fn inbound_rewrites(
             });
             continue;
         };
-        let split = frontmatter_lossless::split(content);
-        let body = split.body;
-        let body_start = split.body_start;
+        // Split as the snapshot was, so its links are the ones found here.
+        let (_, body) = markdown_corpus::split_with(content, split);
+        let body_start = content.len() - body.len();
 
         let mut edits: Vec<ByteEdit> = Vec::new();
         for link in body_links_spanned(body) {

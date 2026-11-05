@@ -61,8 +61,10 @@ pub enum SplitMode {
 }
 
 /// A note's frontmatter text (when it has a block) and its body, split by
-/// `mode`. The body is always a suffix of `src`.
-pub(crate) fn split_with(src: &str, mode: SplitMode) -> (Option<&str>, &str) {
+/// `mode`, as both caches split it. The body is always a suffix of `src`, so
+/// it starts at byte `src.len() - body.len()`: what a tool that splices the
+/// body at spans the caches found needs.
+pub fn split_with(src: &str, mode: SplitMode) -> (Option<&str>, &str) {
     if mode == SplitMode::Lenient
         && let Some(s) = split_lenient(src)
     {

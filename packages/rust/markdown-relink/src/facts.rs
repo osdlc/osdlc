@@ -52,6 +52,11 @@ pub struct VaultFacts {
     pub links: BTreeMap<String, Vec<BodyLink>>,
     /// Per note, the link-shaped values in its frontmatter.
     pub frontmatter: BTreeMap<String, Vec<FrontmatterRef>>,
+    /// How the notes were split into frontmatter and body when the links
+    /// were found. The planner re-scans each note it edits with the same
+    /// split, so a link is a body link or a frontmatter value the same way in
+    /// the snapshot and in the plan.
+    pub split: markdown_corpus::SplitMode,
 }
 
 impl VaultFacts {
@@ -91,6 +96,7 @@ impl VaultFacts {
             paths: snapshot.paths,
             links: snapshot.body_links,
             frontmatter,
+            split: graph.split_mode(),
         }
     }
 

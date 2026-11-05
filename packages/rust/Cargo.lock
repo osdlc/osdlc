@@ -475,7 +475,6 @@ name = "markdown-relink"
 version = "0.3.0"
 dependencies = [
  "etag-write",
- "frontmatter-lossless",
  "markdown-corpus",
  "markdown-link",
  "markdown-vault-fs",
