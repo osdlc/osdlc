@@ -262,10 +262,10 @@ impl Corpus {
         self.links.backlinks(path)
     }
 
-    /// Fills each backlink context's `text` from its source note. See
-    /// [`LinkGraph::fill_contexts`].
+    /// Fills each backlink context's `text` from its source note in this
+    /// corpus. See [`LinkGraph::fill_contexts`].
     pub fn fill_contexts(&self, vfs: &dyn Vfs, backlinks: &mut [Backlink]) {
-        self.links.fill_contexts(vfs, backlinks);
+        self.links.fill_contexts(vfs, &self.root, backlinks);
     }
 
     /// Every edge out of `source`. See [`LinkGraph::outbound`].

@@ -700,11 +700,7 @@ fn contexts_carry_the_line_number_and_fill_with_the_source_line() {
     let g = graph();
     g.refresh(&*d, &FixedClock::new(0), root());
     let mut back = back_of(&g, "Projects/Alpha.md");
-    // A graph that holds no corpus has nowhere to read from.
-    let mut unread = back.clone();
-    graph().fill_contexts(&*d, &mut unread);
-    assert!(unread[0].contexts.iter().all(|c| c.text.is_empty()));
-    g.fill_contexts(&*d, &mut back);
+    g.fill_contexts(&*d, root(), &mut back);
     let home = &back[0];
     assert_eq!(home.contexts.len(), 2);
     assert!(home.contexts[0].text.contains("[[Projects/Alpha]]"));
@@ -712,6 +708,21 @@ fn contexts_carry_the_line_number_and_fill_with_the_source_line() {
     assert_eq!(home.contexts[0].line, 3);
     let body = NoteBody::read(&*d, root(), "Home.md").unwrap();
     assert_eq!(body.offset, 3, "three frontmatter lines precede the body");
+}
+
+#[test]
+fn contexts_fill_from_the_corpus_the_page_came_from() {
+    // The same note in two corpora, with different text on the link's line.
+    let d = vault(&[("Home.md", "See [[Alpha]] here.\n"), ("Alpha.md", "a")]);
+    d.insert("/w/Home.md", "Other text.\n").unwrap();
+    d.insert("/w/Alpha.md", "a").unwrap();
+    let (g, c) = (graph(), FixedClock::new(0));
+    g.refresh(&*d, &c, root());
+    let mut back = back_of(&g, "Alpha.md");
+    // Another caller moves the shared graph to the other corpus.
+    g.refresh(&*d, &c, Path::new("/w"));
+    g.fill_contexts(&*d, root(), &mut back);
+    assert_eq!(back[0].contexts[0].text, "See [[Alpha]] here.");
 }
 
 #[test]
