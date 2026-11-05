@@ -612,9 +612,10 @@ fn relative_root(root: &str) -> String {
 }
 
 /// Folder listings read for one admission or one batch: each folder's
-/// entries as `(name, is_dir)`, `None` when it cannot be listed.
+/// entry names and whether each is a folder, `None` when it cannot be
+/// listed.
 #[derive(Default)]
-struct Listings(HashMap<PathBuf, Option<HashSet<(String, bool)>>>);
+struct Listings(HashMap<PathBuf, Option<HashMap<String, bool>>>);
 
 impl Listings {
     /// Whether listing each folder from the walk's start, `rel[..start]`,
@@ -626,14 +627,15 @@ impl Listings {
         let mut names = rel[start..].split('/').peekable();
         while let Some(name) = names.next() {
             let more = names.peek().is_some();
-            let entries = self.0.entry(folder.clone()).or_insert_with(|| {
-                let entries = vfs.read_dir(&folder).ok()?;
-                Some(entries.into_iter().map(|e| (e.name, e.is_dir)).collect())
-            });
-            if !entries
-                .as_ref()
-                .is_some_and(|e| e.contains(&(name.to_string(), more)))
-            {
+            if !self.0.contains_key(&folder) {
+                let entries = vfs
+                    .read_dir(&folder)
+                    .ok()
+                    .map(|entries| entries.into_iter().map(|e| (e.name, e.is_dir)).collect());
+                self.0.insert(folder.clone(), entries);
+            }
+            let found = self.0[&folder].as_ref().and_then(|e| e.get(name));
+            if found != Some(&more) {
                 return false;
             }
             folder.push(name);
@@ -1142,10 +1144,17 @@ mod tests {
     struct Denied<'a> {
         inner: &'a MemVfs,
         path: PathBuf,
-        /// `true`: the folder at `path` cannot be listed, as one searchable
-        /// but not readable leaves it. `false`: the file at `path` cannot be
-        /// statted, as a folder readable but not searchable leaves it.
-        list: bool,
+        call: Call,
+    }
+
+    #[derive(PartialEq)]
+    enum Call {
+        /// The file at `path` cannot be statted, as a folder readable but
+        /// not searchable leaves it.
+        Stat,
+        /// The folder at `path` cannot be listed, as one searchable but not
+        /// readable leaves it.
+        List,
     }
 
     fn denied(path: &Path) -> vfs_seam::VfsError {
@@ -1155,7 +1164,7 @@ mod tests {
 
     impl Vfs for Denied<'_> {
         fn metadata(&self, path: &Path) -> Result<vfs_seam::Metadata, vfs_seam::VfsError> {
-            if !self.list && path == self.path {
+            if self.call == Call::Stat && path == self.path {
                 return Err(denied(path));
             }
             self.inner.metadata(path)
@@ -1164,7 +1173,7 @@ mod tests {
             self.inner.read_file(path)
         }
         fn read_dir(&self, path: &Path) -> Result<Vec<vfs_seam::DirEntry>, vfs_seam::VfsError> {
-            if self.list && path == self.path {
+            if self.call == Call::List && path == self.path {
                 return Err(denied(path));
             }
             self.inner.read_dir(path)
@@ -1198,7 +1207,7 @@ mod tests {
         let vfs = Denied {
             inner: &d,
             path: Path::new(V).join("Notes/alpha.md"),
-            list: false,
+            call: Call::Stat,
         };
         let at = |opts: &WalkOptions, rel| opts.admission(&vfs, Path::new(V), rel);
         let lists = |opts: &WalkOptions| walk(&vfs, Path::new(V), opts).map(rels);
@@ -1254,7 +1263,7 @@ mod tests {
         let vfs = Denied {
             inner: &d,
             path: Path::new(V).join("Zed"),
-            list: true,
+            call: Call::List,
         };
         let rooted = WalkOptions {
             roots: vec!["Zed/deep".into()],
