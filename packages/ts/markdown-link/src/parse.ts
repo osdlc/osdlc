@@ -275,16 +275,11 @@ export function percentDecode(s: string): string {
   }
 }
 
-/**
- * Two bytes read as Rust's `u8::from_str_radix(_, 16)` reads them: two hex
- * digits, or a `+` sign and one hex digit.
- */
+/** Two bytes read as two hex digits, or `null`. A sign is not a digit. */
 function hexByte(a: number, b: number): number | null {
-  const low = hexDigit(b)
-  if (low === null) return null
-  if (a === 0x2b) return low
   const high = hexDigit(a)
-  return high === null ? null : high * 16 + low
+  const low = hexDigit(b)
+  return high === null || low === null ? null : high * 16 + low
 }
 
 function hexDigit(byte: number): number | null {

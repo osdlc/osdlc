@@ -409,10 +409,10 @@
       "target": "a%2"
     },
     {
-      "name": "plus_sign_reads_as_a_hex_byte",
+      "name": "a_sign_is_not_a_hex_digit",
       "url": "a%+41.md",
       "vaultLink": true,
-      "target": "a\u00041"
+      "target": "a%+41"
     },
     {
       "name": "byte_order_mark_survives_decoding",

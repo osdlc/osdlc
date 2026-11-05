@@ -25,6 +25,14 @@ new cases.
 - `tests/fixtures/conformance.json`: a body case may list `abandoned`; one
   that leaves it out expects none.
 
+### Fixed
+
+- `percent_decode` takes an escape only when both characters after `%` are
+  hex digits. `u8::from_str_radix` also takes a sign, so `%+5` decoded; it now
+  stays as written. The conformance case `plus_sign_reads_as_a_hex_byte` is
+  now `a_sign_is_not_a_hex_digit`, and `@osdlc/markdown-link`'s
+  `percentDecode` matches.
+
 ## [0.7.0] - 2026-11-04
 
 Options for tools that render or publish notes, a strict resolver, and helpers
