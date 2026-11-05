@@ -1163,6 +1163,26 @@
           "text": "[[ok]]"
         }
       ]
+    },
+    {
+      "name": "abandoned_a_skipped_comment_is_an_empty_target_not_code",
+      "body": "[[<!-- todo -->]] [[`x`<!-- y -->]]",
+      "options": {
+        "skipHtmlComments": true
+      },
+      "links": [],
+      "abandoned": [
+        {
+          "reason": "empty-target",
+          "at": 0,
+          "text": "[[<!-- todo -->]]"
+        },
+        {
+          "reason": "code",
+          "at": 18,
+          "text": "[[`x`<!-- y -->]]"
+        }
+      ]
     }
   ],
   "display": [

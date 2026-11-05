@@ -155,9 +155,12 @@ export function bodyLinksSpannedWith(body: string, options: ScanOptions): BodyLi
  * `]`, one whose target is empty or only code, and one never closed.
  */
 export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
-  let stripped = stripCodeWith(body, options.codeRules ?? 'commonmark')
-  if (options.skipHtmlComments === true) stripped = blankComments(stripped)
-  const chars = Array.from(stripped)
+  const codeBlanked = stripCodeWith(body, options.codeRules ?? 'commonmark')
+  const skipComments = options.skipHtmlComments === true
+  const chars = Array.from(skipComments ? blankComments(codeBlanked) : codeBlanked)
+  // With comments blanked too, the code points with only code blanked, made
+  // the first time an abandoned link needs them.
+  let codeChars: string[] | null = null
   // Code point index -> UTF-16 offset in the body, plus an end sentinel.
   const at: number[] = []
   let offset = 0
@@ -216,8 +219,9 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
         }
         if (link === null) {
           // Code inside was blanked to spaces, so the body there differs from
-          // the stripped text.
-          const heldCode = body.slice(at[i + 2], at[j]) !== chars.slice(i + 2, j).join('')
+          // the code-blanked text. A blanked comment is not code.
+          const code = skipComments ? (codeChars ??= Array.from(codeBlanked)) : chars
+          const heldCode = body.slice(at[i + 2], at[j]) !== code.slice(i + 2, j).join('')
           abandoned.push({
             reason: heldCode ? 'code' : 'empty-target',
             embed,

@@ -203,11 +203,18 @@ pub fn body_links_spanned_with(body: &str, options: &ScanOptions) -> Vec<BodyLin
 /// assert_eq!(&body[first.byte_start..first.byte_end], "[[a ");
 /// ```
 pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
-    let mut stripped = strip_code_with(body, options.code_rules);
-    if options.skip_html_comments {
-        stripped = blank_comments(&stripped);
-    }
-    let chars: Vec<char> = stripped.chars().collect();
+    let code_blanked = strip_code_with(body, options.code_rules);
+    let comments_blanked = options
+        .skip_html_comments
+        .then(|| blank_comments(&code_blanked));
+    let chars: Vec<char> = comments_blanked
+        .as_deref()
+        .unwrap_or(&code_blanked)
+        .chars()
+        .collect();
+    // With comments blanked too, the chars with only code blanked, made the
+    // first time an abandoned link needs them.
+    let mut code_chars: Option<Vec<char>> = None;
     // char index -> byte offset, in the ORIGINAL body, plus an end sentinel so
     // an exclusive range that runs to the end of the body is representable.
     let mut at: Vec<usize> = body.char_indices().map(|(i, _)| i).collect();
@@ -267,10 +274,17 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                 };
                 if parsed.is_none() {
                     // Code inside was blanked to spaces, so the body's bytes
-                    // there differ from the stripped chars.
+                    // there differ from the code-blanked chars. A blanked
+                    // comment is not code.
+                    let code = match comments_blanked {
+                        Some(_) => code_chars
+                            .get_or_insert_with(|| code_blanked.chars().collect())
+                            .as_slice(),
+                        None => chars.as_slice(),
+                    };
                     let held_code = body[at[i + 2]..at[j]]
                         .chars()
-                        .ne(chars[i + 2..j].iter().copied());
+                        .ne(code[i + 2..j].iter().copied());
                     abandoned.push(AbandonedLink {
                         reason: if held_code {
                             AbandonReason::Code
