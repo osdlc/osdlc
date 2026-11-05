@@ -54,6 +54,27 @@ exit code (see Exit codes), never "no open PRs". The message is the one every
 tool built on `@osdlc/cli-tool` prints for that failure, for example
 `pr-update: gh is not signed in to GitHub. Run \`gh auth login\`.`
 
+## The command line
+
+`survey`, `update`, `config` and `trust` are one `@osdlc/cli-tool` command
+tree, so every command answers the same way:
+
+- `--json` (or `--output json`) prints one JSON document on stdout: the
+  command's output with `schemaVersion` and `kind` in front (`"kind":
+  "survey"`, `"kind": "update"`). Without it the output is text.
+- `pr-update --help` and `pr-update` alone list the commands;
+  `pr-update <command> --help` shows a command's flags, and `--help --all` (or
+  `pr-update help <command> --full`) adds the long description, the hidden
+  flags, the exit codes and examples. `pr-update help --json` is the same as
+  data.
+- `pr-update schema` prints each command's input and output JSON Schema.
+- An error is one `pr-update: <message>` line on stderr, with the command's
+  usage line for a usage error. Under `--json` the error document
+  (`"kind": "error"`, with `code`, `message` and `exit`) is printed on stdout
+  too.
+
+A bare `--branch` means the branch checked out in the current directory.
+
 ## Why this exists as its own package
 
 A stack of PRs drifts all the time. Every merge to `main` puts the next PR one
@@ -252,8 +273,8 @@ some other way than the terminal.
 ## A report a host can read
 
 `update --report <file>` writes the run's result as JSON (the same document
-`--json` prints) through a temp file and a rename, so a reader never sees half
-of it. Any report left by an earlier run is removed first, so a file that is
+`--json` prints, `schemaVersion` and `kind` included) through a temp file and
+a rename, so a reader never sees half of it. Any report left by an earlier run is removed first, so a file that is
 there belongs to this run. It is written whenever the run produced a result,
 on a clean exit and on a conflict or failure alike. Each PR's entry carries its
 `status`, the `strategy` that ran, `strategyFallback`, `repaired`, `conflicts`
