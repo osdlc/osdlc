@@ -12,8 +12,23 @@ release list. Our own research notes are never the evidence.
 - `harnesses/<id>.md`: one harness. The id is the filename, in lowercase letters, digits and
   hyphens. YAML frontmatter holds the fields below; the body is two to four plain sentences on what
   it is, who makes it, and anything notable.
-- `../../src/beta/`: the schema (`schema.ts`), the validator (`validate.ts`) and its tests.
-- `../../schema/beta/harness.schema.json`: the JSON Schema, generated from `schema.ts`.
+- `markdown-db.yaml`: the manifest. It lists the entry types, their path patterns and schemas.
+- `schemas/harness.schema.json`: the schema, written by hand. It is the source of truth for the
+  fields below. For YAML editor support, put
+  `# yaml-language-server: $schema=../schemas/harness.schema.json` on the first line of a
+  standalone YAML file. Entries here do not carry it.
+
+The corpus is data only. The format is defined in
+[`../../markdown-db/SPEC.md`](../../markdown-db/SPEC.md). Implementations live in
+`../../src/markdown-db/`.
+
+## Schema notes
+
+- `x-ref` marks a property whose value is the id of another entry. `"x-ref": "harness"` on
+  `successor` and `fork_of` means the value must be the id of an existing harness.
+- Beta is not OKF. An entry's type comes from its folder, so entries carry no `type` field. An OKF
+  export may come later as a build output.
+- `license` is allowed only when `open_source` is true.
 
 ## Fields
 
@@ -52,10 +67,9 @@ A public repository that holds only issues, docs or install scripts is not a sou
 From `harness-reference/`:
 
 ```sh
-pnpm run validate:beta       # check every file and that schema/beta/harness.schema.json is current
-pnpm run write-schema:beta   # rewrite schema/beta/harness.schema.json after changing src/beta/schema.ts
-pnpm run check               # every corpus: validate, test, typecheck, generate
+pnpm run validate:beta   # node src/markdown-db/cli.ts validate corpora/beta
+pnpm run check           # every corpus: validate, test, typecheck, generate
 ```
 
-The validator checks each file's frontmatter against the schema, that `successor` and `fork_of`
-name harnesses that exist, and that the body is not empty.
+The validator checks each entry against its schema, that every `x-ref` value names an entry that
+exists, and that every file under `harnesses/` matches the path pattern.

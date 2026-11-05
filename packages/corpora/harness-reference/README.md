@@ -11,12 +11,15 @@ The record is kept as corpora: folders of Markdown files, each with its own sche
   and wrong values go in. New research goes into a later corpus.
 - `corpora/alpha/sources/`: research notes the alpha corpus cites. Upstream docs and repositories
   are cited by their own URLs.
-- `corpora/beta/`: the beta corpus, built up step by step. Step one is one file per harness. See
+- `corpora/beta/`: the beta corpus, built up step by step. Step one is one file per harness. Its
+  schema is a hand-written JSON Schema in `corpora/beta/schemas/`. See
   [corpora/beta/README.md](corpora/beta/README.md).
 - `probes/`: reproducible runs that back `evidence: run` observations.
 - `src/alpha/`: the alpha schema, validator, page generator and tests.
 - `schema/alpha/`: JSON Schemas generated from `src/alpha/schema.ts`, for other tools.
-- `src/beta/` and `schema/beta/`: the same for the beta corpus.
+- `markdown-db/SPEC.md`: the spec for the beta corpus's format. The corpus is data only; its
+  manifest is `corpora/beta/markdown-db.yaml`. Implementations live in `src/`.
+- `src/markdown-db/`: the generic validator for any corpus that follows the spec.
 
 ## The alpha corpus
 

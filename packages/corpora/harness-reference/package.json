@@ -10,16 +10,15 @@
   "scripts": {
     "validate": "pnpm run validate:alpha && pnpm run validate:beta",
     "validate:alpha": "node src/alpha/validate.ts",
-    "validate:beta": "node src/beta/validate.ts",
-    "write-schema": "pnpm run write-schema:alpha && pnpm run write-schema:beta",
-    "write-schema:alpha": "node src/alpha/validate.ts --write-schema",
-    "write-schema:beta": "node src/beta/validate.ts --write-schema",
+    "validate:beta": "node src/markdown-db/cli.ts validate corpora/beta",
     "test": "node --test src/*/*.test.ts",
     "typecheck": "tsc -p tsconfig.json",
     "generate": "node src/alpha/generate.ts",
     "check": "pnpm run validate && pnpm run test && pnpm run typecheck && pnpm run generate"
   },
   "dependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
     "yaml": "2.9.1",
     "zod": "4.4.3"
   },
