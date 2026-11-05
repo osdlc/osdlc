@@ -22,6 +22,8 @@ They are never reused. Each decision has a `state`: `accepted` or
 
 - [D-01](decisions/D-01-failures-share-one-exit-table.md): Classified failures
   share one message form and one exit table
+- [D-03](decisions/D-03-devlink-dead-link-falls-back-through-a-candidates-file.md):
+  A dead devlink link can fall back through a plain-text candidates file
 
 ## Backlog
 

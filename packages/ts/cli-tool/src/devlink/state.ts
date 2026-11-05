@@ -8,6 +8,13 @@
  *   history.jsonl    every link / use / off event, one JSON object per line,
  *                    append-only. `history` and `use #n` are views over it.
  *
+ * A spec that sets `onDeadLink: 'newest-surviving'` keeps a third file there:
+ *
+ *   candidates       the checkouts `link` and `use` selected, newest first, one
+ *                    absolute path per line, rewritten whole on each. When the
+ *                    link names a checkout that is gone, `resolve` and the bash
+ *                    launcher (with `read`) run the first one that survives.
+ *
  * It is config rather than durable state. The user sets and clears it on
  * purpose, and losing it loses only the link. The launcher reads the `home`
  * file by name.
@@ -30,6 +37,12 @@ export const HOME_FILE = 'home'
  * @experimental
  */
 export const HISTORY_FILE = 'history.jsonl'
+/**
+ * The name of the file that lists the checkouts to fall back to, newest
+ * first, for a spec with `onDeadLink: 'newest-surviving'`.
+ * @experimental
+ */
+export const CANDIDATES_FILE = 'candidates'
 
 /**
  * The kinds of change the history records: `link`, `use` and `off`.
@@ -210,4 +223,50 @@ function isHistoryEvent(value: unknown): value is HistoryEvent {
     (v['event'] === 'link' || v['event'] === 'use' || v['event'] === 'off') &&
     (typeof v['checkout'] === 'string' || v['checkout'] === null)
   )
+}
+
+/**
+ * The path of the file that lists the checkouts to fall back to when the link
+ * is dead.
+ * @experimental
+ */
+export function candidatesPath(spec: ToolSpec, opts: StateOptions = {}): string {
+  return join(stateDir(spec, opts), CANDIDATES_FILE)
+}
+
+/**
+ * The fall-back checkouts on disk, newest first: each non-empty line, as
+ * written. Empty when the file is absent or unreadable, as `readActive` is, so
+ * a bad state path never breaks `resolve`. Lines are not trimmed, because the
+ * bash launcher's `read -r` does not trim them either.
+ * @experimental
+ */
+export function readCandidates(spec: ToolSpec, opts: StateOptions = {}): string[] {
+  let text: string
+  try {
+    text = readFileSync(candidatesPath(spec, opts), 'utf-8')
+  } catch {
+    return []
+  }
+  return text.split('\n').filter((line) => line.length > 0)
+}
+
+/**
+ * Replace the fall-back list with `checkouts`, newest first, one per line.
+ * Atomic, so the launcher never reads half a list. Throws for a path with a
+ * line break, which one line per path cannot hold.
+ * @experimental
+ */
+export function writeCandidates(
+  spec: ToolSpec,
+  checkouts: readonly string[],
+  opts: StateOptions = {},
+): void {
+  const bad = checkouts.find((c) => /[\n\r]/.test(c))
+  if (bad !== undefined) {
+    throw new Error(`devlink: a candidate path cannot hold a line break: ${JSON.stringify(bad)}`)
+  }
+  const path = candidatesPath(spec, opts)
+  mkdirSync(dirname(path), { recursive: true })
+  atomicWrite(path, checkouts.map((c) => `${c}\n`).join(''))
 }
