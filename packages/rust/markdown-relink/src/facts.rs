@@ -69,35 +69,29 @@ impl VaultFacts {
     /// that keeps a graph and no whole `Corpus`.
     ///
     /// The paths, body links and frontmatter links are read under one lock
-    /// hold ([`markdown_corpus::LinkGraph::with_snapshot`]), so they come from
+    /// hold ([`markdown_corpus::LinkGraph::snapshot`]), so they come from
     /// the same sweep even while another thread refreshes the graph.
     pub fn from_graph(graph: &markdown_corpus::LinkGraph) -> VaultFacts {
-        graph.with_snapshot(|paths, notes| {
-            let links = notes
-                .iter()
-                .map(|(path, facts)| (path.clone(), facts.links.clone()))
-                .collect();
-            let frontmatter = notes
-                .iter()
-                .filter(|(_, facts)| !facts.frontmatter_links.is_empty())
-                .map(|(path, facts)| {
-                    let refs = facts
-                        .frontmatter_links
-                        .iter()
-                        .map(|l| FrontmatterRef {
-                            field: l.field.clone(),
-                            target: l.target.clone(),
-                        })
-                        .collect();
-                    (path.clone(), refs)
-                })
-                .collect();
-            VaultFacts {
-                paths: paths.to_vec(),
-                links,
-                frontmatter,
-            }
-        })
+        let snapshot = graph.snapshot();
+        let frontmatter = snapshot
+            .frontmatter_links
+            .into_iter()
+            .map(|(path, links)| {
+                let refs = links
+                    .into_iter()
+                    .map(|l| FrontmatterRef {
+                        field: l.field,
+                        target: l.target,
+                    })
+                    .collect();
+                (path, refs)
+            })
+            .collect();
+        VaultFacts {
+            paths: snapshot.paths,
+            links: snapshot.body_links,
+            frontmatter,
+        }
     }
 
     /// Build the snapshot by loading the vault from the real filesystem:

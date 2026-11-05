@@ -50,6 +50,10 @@ can see walk errors. Modification times are nanoseconds.
   as it was on a walk error, or empty when the call switched corpora.
 - `LinkGraph::with_snapshot(|paths, notes| ..)`: every path and every note's
   facts from one lock hold.
+- `LinkGraph::snapshot()` (and `Corpus::snapshot()`) returns a
+  `LinkSnapshot`: the paths, body links and frontmatter links from one sweep.
+  `LinkGraph::body_links()` and `LinkGraph::frontmatter_links()` are the
+  maps `Corpus` already had; the `Corpus` methods now call them.
 - `Hide`, `WalkError`, `WalkOptions` and the `markdown_vault_fs` crate
   re-exported.
 

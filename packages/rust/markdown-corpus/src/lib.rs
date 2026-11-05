@@ -74,7 +74,7 @@ pub mod tags;
 pub use corpus::{Corpus, CorpusStats, LoadOptions};
 pub use frontmatter::{FrontmatterIndex, IndexedNote, RefreshStats};
 pub use links::{
-    Backlink, BacklinkPage, Edge, EdgeKind, GraphStats, LinkContext, LinkGraph,
+    Backlink, BacklinkPage, Edge, EdgeKind, GraphStats, LinkContext, LinkGraph, LinkSnapshot,
     MAX_BACKLINK_SOURCES, NoteBody, NoteFacts,
 };
 pub use markdown_link::{BodyLink, LinkIndex, RawLink, ResolveError};

@@ -972,3 +972,21 @@ mod native {
         );
     }
 }
+
+#[test]
+fn a_snapshot_is_the_paths_and_links_of_one_sweep() {
+    let d = linked_vault();
+    let g = graph();
+    g.refresh(&*d, &FixedClock::new(0), root());
+    let snap = g.snapshot();
+    assert_eq!(snap.paths, g.paths());
+    assert_eq!(snap.body_links, g.body_links());
+    assert_eq!(snap.frontmatter_links, g.frontmatter_links());
+    assert!(!snap.body_links.is_empty());
+    assert!(
+        snap.frontmatter_links
+            .values()
+            .all(|links| !links.is_empty()),
+        "a note with no frontmatter links is left out"
+    );
+}

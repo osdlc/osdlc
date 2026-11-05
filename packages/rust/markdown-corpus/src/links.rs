@@ -644,6 +644,27 @@ impl LinkGraph {
         f(&state.paths, &state.notes)
     }
 
+    /// Every path, body link and frontmatter link, read under one lock hold
+    /// ([`Self::with_snapshot`]), so all three come from the same sweep.
+    pub fn snapshot(&self) -> LinkSnapshot {
+        self.with_snapshot(|paths, notes| LinkSnapshot {
+            paths: paths.to_vec(),
+            body_links: body_links_of(notes),
+            frontmatter_links: frontmatter_links_of(notes),
+        })
+    }
+
+    /// Each note's outgoing body links, as written, with body-relative spans.
+    pub fn body_links(&self) -> BTreeMap<String, Vec<BodyLink>> {
+        self.with_notes(body_links_of)
+    }
+
+    /// Each note's frontmatter references (wikilinks and file paths, with the
+    /// top-level key). Notes with none are left out.
+    pub fn frontmatter_links(&self) -> BTreeMap<String, Vec<RawLink>> {
+        self.with_notes(frontmatter_links_of)
+    }
+
     /// Every file the last sweep saw, notes and attachments, in
     /// `slug_collate::compare_paths` order.
     pub fn paths(&self) -> Vec<String> {
@@ -1055,6 +1076,37 @@ fn dedupe(items: Vec<String>) -> Vec<String> {
     items
         .into_iter()
         .filter(|t| seen.insert(t.clone()))
+        .collect()
+}
+
+/// A [`LinkGraph`]'s paths and links from one sweep. See
+/// [`LinkGraph::snapshot`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LinkSnapshot {
+    /// Every file the sweep saw, notes and attachments, in
+    /// `slug_collate::compare_paths` order.
+    pub paths: Vec<String>,
+    /// Each note's outgoing body links. See [`LinkGraph::body_links`].
+    pub body_links: BTreeMap<String, Vec<BodyLink>>,
+    /// Each note's frontmatter references; notes with none are left out. See
+    /// [`LinkGraph::frontmatter_links`].
+    pub frontmatter_links: BTreeMap<String, Vec<RawLink>>,
+}
+
+fn body_links_of(notes: &BTreeMap<String, Arc<NoteFacts>>) -> BTreeMap<String, Vec<BodyLink>> {
+    notes
+        .iter()
+        .map(|(path, facts)| (path.clone(), facts.links.clone()))
+        .collect()
+}
+
+fn frontmatter_links_of(
+    notes: &BTreeMap<String, Arc<NoteFacts>>,
+) -> BTreeMap<String, Vec<RawLink>> {
+    notes
+        .iter()
+        .filter(|(_, facts)| !facts.frontmatter_links.is_empty())
+        .map(|(path, facts)| (path.clone(), facts.frontmatter_links.clone()))
         .collect()
 }
 

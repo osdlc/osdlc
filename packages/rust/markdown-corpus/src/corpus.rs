@@ -10,7 +10,7 @@ use markdown_vault_fs::walk::{WalkError, WalkOptions};
 use vfs_seam::{Clock, FixedClock, Vfs, VfsError};
 
 use crate::frontmatter::{FrontmatterIndex, IndexedNote, RefreshStats};
-use crate::links::{Backlink, BacklinkPage, Edge, GraphStats, LinkGraph, join_rel};
+use crate::links::{Backlink, BacklinkPage, Edge, GraphStats, LinkGraph, LinkSnapshot, join_rel};
 use crate::note::{Note, SplitMode, read_note_with};
 use crate::tags::TagLexer;
 
@@ -220,26 +220,21 @@ impl Corpus {
         self.links.paths()
     }
 
-    /// Each note's outgoing body links, as written, with body-relative spans.
+    /// Each note's outgoing body links. See [`LinkGraph::body_links`].
     pub fn body_links(&self) -> BTreeMap<String, Vec<BodyLink>> {
-        self.links.with_notes(|notes| {
-            notes
-                .iter()
-                .map(|(path, facts)| (path.clone(), facts.links.clone()))
-                .collect()
-        })
+        self.links.body_links()
     }
 
-    /// Each note's frontmatter references (wikilinks and file paths, with the
-    /// top-level key). Notes with none are left out.
+    /// Each note's frontmatter references. See
+    /// [`LinkGraph::frontmatter_links`].
     pub fn frontmatter_links(&self) -> BTreeMap<String, Vec<RawLink>> {
-        self.links.with_notes(|notes| {
-            notes
-                .iter()
-                .filter(|(_, facts)| !facts.frontmatter_links.is_empty())
-                .map(|(path, facts)| (path.clone(), facts.frontmatter_links.clone()))
-                .collect()
-        })
+        self.links.frontmatter_links()
+    }
+
+    /// Every path, body link and frontmatter link from one sweep. See
+    /// [`LinkGraph::snapshot`].
+    pub fn snapshot(&self) -> LinkSnapshot {
+        self.links.snapshot()
     }
 
     /// One content note's cached frontmatter.
