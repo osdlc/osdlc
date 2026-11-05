@@ -785,7 +785,6 @@ pub(crate) fn etag_through(vfs: &dyn Vfs, rel: &str, abs: &Path) -> Result<Strin
     }
 }
 
-/// 1-indexed line of a byte offset within the whole file.
 /// A note's body and the byte it starts at, split as the snapshot was
 /// ([`VaultFacts::split`]), so its links are the ones the snapshot found.
 pub(crate) fn body_of(content: &str, split: SplitMode) -> (&str, usize) {
@@ -793,6 +792,7 @@ pub(crate) fn body_of(content: &str, split: SplitMode) -> (&str, usize) {
     (body, content.len() - body.len())
 }
 
+/// 1-indexed line of a byte offset within the whole file.
 pub(crate) fn line_of(content: &str, byte: usize) -> u64 {
     1 + content[..byte.min(content.len())]
         .bytes()
