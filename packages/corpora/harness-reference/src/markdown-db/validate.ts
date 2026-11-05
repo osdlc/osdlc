@@ -2,26 +2,29 @@
  * markdown-db validator (docs/standards/S-GFFY-markdown-db.md, version 0). Nothing here knows a
  * particular corpus: every rule comes from the standard, the root file or a type's schema.
  */
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { type Dirent, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, extname, join, posix } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { Ajv2020, type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js'
 import addFormatsModule, { type FormatsPlugin } from 'ajv-formats'
+import { split } from '@osdlc/frontmatter-lossless'
 import { parse as parseYaml } from 'yaml'
 import {
   extractLinks,
   fold,
+  FORMATS,
   type Link,
   markdownLink,
   matchWikilink,
   RECORD_EXTENSIONS,
+  wikilinkIndex,
+  type WikilinkIndex,
 } from './links.ts'
 
 // ajv-formats is CommonJS: under Node's ESM loader the plugin is the `default` property.
 const addFormats = (addFormatsModule as unknown as { default: FormatsPlugin }).default
 
 export const ROOT_FILES = ['markdown-db.md', 'markdown-db.yaml', 'markdown-db.json']
-const FORMATS: Record<string, string> = { md: '.md', yaml: '.yaml', json: '.json' }
 const ROOT_KEYS = new Set(['markdown-db', 'id', 'formats'])
 
 type Data = Record<string, unknown>
@@ -48,14 +51,19 @@ interface Corpus {
   root: string
   name: string
   id: string | undefined
-  files: string[]
-  dirs: Set<string>
+  files: Set<string>
+  /** Files and folders by their NFC form, for relative links. */
+  filesByNfc: Map<string, string>
+  dirsByNfc: Set<string>
   nested: string[]
+  /** The corpus's files, and the files of the corpora nested in it, for wikilinks. */
+  wikilinks: WikilinkIndex
+  nestedWikilinks: WikilinkIndex
   types: Map<string, Type>
   /** The type of each record file. */
   recordType: Map<string, Type>
   /** Files whose links are checked: the root file, schema files and records, with their data. */
-  checked: Map<string, Data | undefined>
+  checked: Map<string, { text: string; data: Data | undefined }>
   errors: string[]
   warnings: string[]
 }
@@ -73,59 +81,60 @@ export interface CorpusReport {
 }
 
 const skipped = (name: string): boolean => name.startsWith('.') || name === 'node_modules'
-const hasRootFile = (abs: string): boolean => ROOT_FILES.some((f) => existsSync(join(abs, f)))
+const entries = (abs: string): Dirent[] => readdirSync(abs, { withFileTypes: true })
+// Exact names: existsSync ignores case on macOS and Windows.
+const hasRootFile = (names: Dirent[]): boolean =>
+  names.some((d) => d.isFile() && ROOT_FILES.includes(d.name))
 
 /** Every corpus root at or below `dir`, nested ones included. */
 export function findCorpora(dir: string): string[] {
   const found: string[] = []
   const visit = (abs: string): void => {
-    if (hasRootFile(abs)) found.push(abs)
-    for (const d of readdirSync(abs, { withFileTypes: true }))
-      if (d.isDirectory() && !skipped(d.name)) visit(join(abs, d.name))
+    const names = entries(abs)
+    if (hasRootFile(names)) found.push(abs)
+    for (const d of names) if (d.isDirectory() && !skipped(d.name)) visit(join(abs, d.name))
   }
   visit(dir)
   return found
 }
 
-/** The corpus's files and folders, relative and with `/`, stopping at nested corpora. */
-function walk(root: string): { files: string[]; dirs: string[]; nested: string[] } {
+/**
+ * The corpus's files and folders, relative and with `/`, stopping at nested corpora, and the files
+ * of those nested corpora.
+ */
+function walk(root: string): {
+  files: string[]
+  dirs: string[]
+  nested: string[]
+  nestedFiles: string[]
+} {
   const files: string[] = []
   const dirs: string[] = []
   const nested: string[] = []
-  const visit = (rel: string): void => {
-    for (const d of readdirSync(join(root, rel), { withFileTypes: true })) {
+  const nestedFiles: string[] = []
+  const visit = (rel: string, names: Dirent[], inNested: boolean): void => {
+    for (const d of names) {
       if (skipped(d.name)) continue
       const path = rel === '' ? d.name : `${rel}/${d.name}`
-      if (d.isFile()) files.push(path)
-      else if (!d.isDirectory()) continue
-      else if (hasRootFile(join(root, path))) nested.push(path)
-      else {
-        dirs.push(path)
-        visit(path)
-      }
+      if (d.isFile()) (inNested ? nestedFiles : files).push(path)
+      if (!d.isDirectory()) continue
+      const sub = entries(join(root, path))
+      const startsNested = !inNested && hasRootFile(sub)
+      if (startsNested) nested.push(path)
+      else if (!inNested) dirs.push(path)
+      visit(path, sub, inNested || startsNested)
     }
   }
-  visit('')
-  return { files: files.sort(), dirs: dirs.sort(), nested }
-}
-
-/** Offsets of a Markdown file's frontmatter (`yaml` is undefined when it has none) and body. */
-export function splitFrontmatter(text: string): {
-  yaml: string | undefined
-  yamlStart: number
-  bodyStart: number
-} {
-  const m = /^﻿?---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/.exec(text)
-  if (!m) return { yaml: undefined, yamlStart: 0, bodyStart: 0 }
-  return { yaml: m[1] ?? '', yamlStart: m[0].indexOf('\n') + 1, bodyStart: m[0].length }
+  visit('', entries(root), false)
+  return { files: files.sort(), dirs: dirs.sort(), nested, nestedFiles: nestedFiles.sort() }
 }
 
 /** A file's data: the frontmatter of a `.md` file, else the whole file. Empty data is `{}`. */
 export function readData(text: string, ext: string): Data {
   let data: unknown
   if (ext === '.md') {
-    const { yaml } = splitFrontmatter(text)
-    data = yaml === undefined ? {} : parseYaml(yaml)
+    const { yaml } = split(text)
+    data = yaml === null ? {} : parseYaml(yaml)
   } else if (ext === '.json') data = text.trim() === '' ? {} : JSON.parse(text)
   else data = parseYaml(text)
   data ??= {}
@@ -168,14 +177,17 @@ const stem = (file: string): string => basename(file, extname(file))
 
 /** Read the root file, the types and their records, checking everything but links. */
 function load(root: string): Corpus {
-  const { files, dirs, nested } = walk(root)
+  const { files, dirs, nested, nestedFiles } = walk(root)
   const c: Corpus = {
     root,
     name: basename(root),
     id: undefined,
-    files,
-    dirs: new Set(dirs),
+    files: new Set(files),
+    filesByNfc: new Map(files.map((f) => [f.normalize('NFC'), f])),
+    dirsByNfc: new Set(dirs.map((d) => d.normalize('NFC'))),
     nested,
+    wikilinks: wikilinkIndex(files),
+    nestedWikilinks: wikilinkIndex(nestedFiles),
     types: new Map(),
     recordType: new Map(),
     checked: new Map(),
@@ -184,34 +196,42 @@ function load(root: string): Corpus {
   }
   const extensions = readRoot(c)
   if (extensions === undefined) return c
-  const schemaFiles = readTypes(c)
-  readRecords(c, extensions, schemaFiles)
+  const schemaFiles = readTypes(c, dirs)
+  readRecords(c, files, extensions, schemaFiles)
   return c
 }
 
-const read = (c: Corpus, file: string): string => readFileSync(join(c.root, file), 'utf8')
+/**
+ * Read `file`'s data and keep its text for the link checks. Reports a parse error and returns
+ * undefined.
+ */
+function readChecked(c: Corpus, file: string): Data | undefined {
+  const text = readFileSync(join(c.root, file), 'utf8')
+  let data: Data | undefined
+  try {
+    data = readData(text, extname(file))
+  } catch (e) {
+    c.errors.push(`${file}: ${(e as Error).message}`)
+  }
+  c.checked.set(file, { text, data })
+  return data
+}
 
 /** Check the root file. Returns the record extensions it allows, or undefined to stop. */
 function readRoot(c: Corpus): string[] | undefined {
-  const rootFiles = ROOT_FILES.filter((f) => c.files.includes(f))
+  const rootFiles = ROOT_FILES.filter((f) => c.files.has(f))
   const rootFile = rootFiles[0]
   if (rootFile === undefined) {
     c.errors.push(`${c.root}: no ${ROOT_FILES.join(', ')}`)
     return undefined
   }
   if (rootFiles.length > 1) c.errors.push(`${rootFiles.join(', ')}: a folder holds one root file`)
-  let data: Data
-  try {
-    data = readData(read(c, rootFile), extname(rootFile))
-  } catch (e) {
-    c.errors.push(`${rootFile}: ${(e as Error).message}`)
-    return undefined
-  }
+  const data = readChecked(c, rootFile)
+  if (data === undefined) return undefined
   if (data['markdown-db'] !== 0) {
     c.errors.push(`${rootFile}: markdown-db: must be 0, the only version this validator supports`)
     return undefined
   }
-  c.checked.set(rootFile, data)
   const id = data['id']
   if (id !== undefined && (typeof id !== 'string' || id.trim() === ''))
     c.errors.push(`${rootFile}: id: must be a non-empty string`)
@@ -233,18 +253,26 @@ function readRoot(c: Corpus): string[] | undefined {
 }
 
 /** Find the types: folders holding `<their name>.schema.{md,yaml,json}`. Returns every schema file. */
-function readTypes(c: Corpus): Set<string> {
-  const ajv = new Ajv2020({ allErrors: true, strict: true })
+function readTypes(c: Corpus, dirs: string[]): Set<string> {
+  // strictSchema only: a misspelled keyword is an error. The other strict options reject valid
+  // JSON Schema 2020-12, such as `properties` without `type: object`.
+  const ajv = new Ajv2020({
+    allErrors: true,
+    strictSchema: true,
+    strictTypes: false,
+    strictTuples: false,
+    strictRequired: false,
+  })
   addFormats(ajv)
   ajv.addKeyword({ keyword: 'x-ref', schemaType: 'string' })
   ajv.addKeyword({ keyword: 'x-id-pattern', schemaType: 'string' })
   const schemaFiles = new Set<string>()
   const typeDirs = new Map<string, string>()
-  for (const dir of c.dirs) {
+  for (const dir of dirs) {
     const name = basename(dir)
-    const found = Object.values(FORMATS)
-      .map((ext) => `${dir}/${name}.schema${ext}`)
-      .filter((f) => c.files.includes(f))
+    const found = RECORD_EXTENSIONS.map((ext) => `${dir}/${name}.schema${ext}`).filter((f) =>
+      c.files.has(f),
+    )
     const schemaFile = found[0]
     if (schemaFile === undefined) continue
     for (const f of found) schemaFiles.add(f)
@@ -273,14 +301,8 @@ function readTypes(c: Corpus): Set<string> {
       records: new Map(),
     }
     c.types.set(name, type)
-    let schema: Data
-    try {
-      schema = readData(read(c, schemaFile), extname(schemaFile))
-    } catch (e) {
-      c.errors.push(`${schemaFile}: ${(e as Error).message}`)
-      continue
-    }
-    c.checked.set(schemaFile, schema)
+    const schema = readChecked(c, schemaFile)
+    if (schema === undefined) continue
     try {
       type.validate = ajv.compile(schema)
     } catch (e) {
@@ -320,17 +342,27 @@ function readTypes(c: Corpus): Set<string> {
 }
 
 /** Check each type's records: the .md, .yaml and .json files under its folder, at any depth. */
-function readRecords(c: Corpus, extensions: string[], schemaFiles: Set<string>): void {
+function readRecords(
+  c: Corpus,
+  files: string[],
+  extensions: string[],
+  schemaFiles: Set<string>,
+): void {
   for (const type of c.types.values()) {
     const ids = new Map<string, string>()
-    for (const file of c.files) {
+    for (const file of files) {
       if (!file.startsWith(`${type.dir}/`) || schemaFiles.has(file)) continue
       const ext = extname(file)
-      if (ext === '.yml') {
+      const lower = ext.toLowerCase()
+      if (lower === '.yml') {
         c.errors.push(`${file}: use the .yaml extension`)
         continue
       }
-      if (!RECORD_EXTENSIONS.includes(ext)) continue
+      if (!RECORD_EXTENSIONS.includes(lower)) continue
+      if (ext !== lower) {
+        c.errors.push(`${file}: use the lower-case ${lower} extension`)
+        continue
+      }
       if (!extensions.includes(ext)) {
         c.errors.push(`${file}: format ${ext.slice(1)} is not in the corpus's formats`)
         continue
@@ -345,15 +377,8 @@ function readRecords(c: Corpus, extensions: string[], schemaFiles: Set<string>):
       if (other !== undefined) c.errors.push(`${file}: id: "${id}" is also ${other}`)
       else ids.set(fold(id), file)
 
-      let data: Data
-      try {
-        data = readData(read(c, file), ext)
-      } catch (e) {
-        c.errors.push(`${file}: ${(e as Error).message}`)
-        c.checked.set(file, undefined)
-        continue
-      }
-      c.checked.set(file, data)
+      const data = readChecked(c, file)
+      if (data === undefined) continue
       if (type.validate !== undefined && !type.validate(data)) {
         // The if/then wrapper repeats the `then` failure at the root.
         for (const e of type.validate.errors ?? [])
@@ -368,14 +393,20 @@ function readRecords(c: Corpus, extensions: string[], schemaFiles: Set<string>):
 /** A file in the corpus, a problem, or undefined for a link not checked (a URL, or within the file). */
 type Resolution = { file: string } | { problem: string; warn?: true } | undefined
 
+const BETWEEN_CORPORA = 'leaves the corpus; v0 does not define links between corpora'
+
 /** Where `link`, held by `from`, points in the corpus. */
 function resolve(c: Corpus, from: string, link: Link): Resolution {
   if (link.kind === 'wiki') {
-    if (link.target === '') return undefined
-    const found = matchWikilink(link.target, c.files)
+    const wiki = `[[${link.target}]]`
+    if (link.target.startsWith('/'))
+      return { problem: `${wiki}: links in a corpus must be relative` }
+    const found = matchWikilink(link.target, c.wikilinks)
     if (found.length === 1) return { file: found[0] as string }
-    if (found.length === 0) return { problem: `[[${link.target}]]: no file matches` }
-    return { problem: `[[${link.target}]]: ambiguous, matches ${found.join(', ')}` }
+    if (found.length > 1) return { problem: `${wiki}: ambiguous, matches ${found.join(', ')}` }
+    if (matchWikilink(link.target, c.nestedWikilinks).length > 0)
+      return { problem: `${wiki}: ${BETWEEN_CORPORA}`, warn: true }
+    return { problem: `${wiki}: no file matches` }
   }
   const dest = link.target
   if (dest === '' || /^[a-z][a-z0-9+.-]*:/i.test(dest)) return undefined
@@ -389,14 +420,16 @@ function resolve(c: Corpus, from: string, link: Link): Resolution {
   const joined = posix.normalize(posix.join(posix.dirname(from), path)).replace(/\/$/, '')
   const outside = joined === '..' || joined.startsWith('../')
   if (outside || c.nested.some((n) => joined === n || joined.startsWith(`${n}/`)))
+    return { problem: `${dest}: ${BETWEEN_CORPORA}`, warn: true }
+  const key = joined.normalize('NFC')
+  const file = c.filesByNfc.get(key)
+  if (file !== undefined) return { file }
+  if (key === '.' || c.dirsByNfc.has(key)) return { file: joined }
+  if (joined.split('/').some(skipped))
     return {
-      problem: `${dest}: leaves the corpus; v0 does not define links between corpora`,
+      problem: `${dest}: leaves the corpus, which excludes dot paths and node_modules`,
       warn: true,
     }
-  const key = joined.normalize('NFC')
-  const file = c.files.find((f) => f.normalize('NFC') === key)
-  if (file !== undefined) return { file }
-  if (key === '.' || [...c.dirs].some((d) => d.normalize('NFC') === key)) return { file: joined }
   return { problem: `${dest}: no such file` }
 }
 
@@ -423,13 +456,10 @@ function checkLinks(c: Corpus): void {
         `${file}: ${field}: [[${link.target}]] is a wikilink; validate --fix rewrites it`,
       )
   }
-  for (const [file, data] of c.checked) {
-    if (file.endsWith('.md')) {
-      const text = read(c, file)
-      const body = text.slice(splitFrontmatter(text).bodyStart)
-      for (const link of extractLinks(body, { markdown: true }))
+  for (const [file, { text, data }] of c.checked) {
+    if (extname(file) === '.md')
+      for (const link of extractLinks(split(text).body))
         report(file, 'body', resolve(c, file, link), link)
-    }
     eachString(data, '', (field, s) => {
       for (const link of extractLinks(s)) report(file, field, resolve(c, file, link), link)
     })
@@ -455,6 +485,8 @@ function checkLinks(c: Corpus): void {
           const r = resolve(c, file, link)
           if (r === undefined)
             c.errors.push(`${file}: ${ref.field}: must link to a file, not a URL`)
+          else if ('problem' in r && r.warn)
+            c.errors.push(`${file}: ${ref.field}: must link to a ${ref.type} record in this corpus`)
           else if ('file' in r && c.recordType.get(r.file)?.name !== ref.type)
             c.errors.push(`${file}: ${ref.field}: ${r.file} is not a ${ref.type} record`)
         }
@@ -480,16 +512,15 @@ function withoutLinks(value: unknown): unknown {
 function fixWikilinks(c: Corpus): { fixed: string[]; warnings: string[] } {
   const fixed: string[] = []
   const warnings: string[] = []
-  for (const [file, data] of c.checked) {
+  for (const [file, { text, data }] of c.checked) {
     if (data === undefined) continue
-    const text = read(c, file)
     const ext = extname(file)
     // Each region's offset in the file, and its links.
     const regions: [number, Link[]][] = []
     if (ext === '.md') {
-      const { yaml, yamlStart, bodyStart } = splitFrontmatter(text)
-      if (yaml !== undefined) regions.push([yamlStart, extractLinks(yaml)])
-      regions.push([bodyStart, extractLinks(text.slice(bodyStart), { markdown: true })])
+      const { yaml, yamlRange, body, bodyStart } = split(text)
+      if (yaml !== null) regions.push([yamlRange.start, extractLinks(yaml)])
+      regions.push([bodyStart, extractLinks(body)])
     } else regions.push([0, extractLinks(text)])
 
     const edits: { start: number; end: number; with: string }[] = []
@@ -527,8 +558,9 @@ function fixWikilinks(c: Corpus): { fixed: string[]; warnings: string[] } {
 
 /** Validate the corpus at `root`. With `fix`, rewrite its wikilinks first. */
 export function validateCorpus(root: string, { fix = false } = {}): CorpusReport {
-  const fixes = fix ? fixWikilinks(load(root)) : { fixed: [], warnings: [] }
-  const c = load(root)
+  let c = load(root)
+  const fixes = fix ? fixWikilinks(c) : { fixed: [], warnings: [] }
+  if (fixes.fixed.length > 0) c = load(root)
   checkLinks(c)
   return {
     root,

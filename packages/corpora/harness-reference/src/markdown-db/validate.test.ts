@@ -5,7 +5,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
-import { extractLinks, markdownLink, matchWikilink } from './links.ts'
+import { extractLinks, markdownLink, matchWikilink, wikilinkIndex } from './links.ts'
 import { findCorpora, validateCorpus } from './validate.ts'
 
 const NOTES_SCHEMA = JSON.stringify({
@@ -132,6 +132,15 @@ describe('corpus and root file', () => {
     assert.deepEqual(errors(), [])
   })
 
+  test('root file names match exactly, whatever the file system', () => {
+    put('more/MARKDOWN-DB.md', '---\nmarkdown-db: 0\n---\n')
+    put('notes/Note B.md', note('', '[x](../more/MARKDOWN-DB.md)\n'))
+    assert.deepEqual(findCorpora(dir), [dir])
+    const report = run()
+    assert.deepEqual(report.errors, [])
+    assert.deepEqual(report.warnings, [])
+  })
+
   test('a corpus inside a type folder fails', () => {
     put('notes/inner/markdown-db.yaml', 'markdown-db: 0\n')
     assert.ok(has(errors(), 'notes/inner: a corpus must not sit inside type folder notes'))
@@ -198,6 +207,16 @@ describe('types and records', () => {
     assert.ok(has(errors(), 'tags/U.yml: use the .yaml extension'))
   })
 
+  test('a record extension in another case fails', () => {
+    put('notes/Upper.MD', note())
+    put('tags/U.YAML', 'label: U\n')
+    put('tags/V.YML', 'label: V\n')
+    const e = errors()
+    assert.ok(has(e, 'notes/Upper.MD: use the lower-case .md extension'))
+    assert.ok(has(e, 'tags/U.YAML: use the lower-case .yaml extension'))
+    assert.ok(has(e, 'tags/V.YML: use the .yaml extension'))
+  })
+
   test('two schema files in one type fail', () => {
     put('tags/tags.schema.json', '{}')
     assert.ok(has(errors(), 'a type holds one schema file'))
@@ -216,6 +235,18 @@ describe('types and records', () => {
   test('a bad schema fails', () => {
     put('tags/tags.schema.yaml', 'type: object\nrequried: [label]\n')
     assert.ok(has(errors(), 'tags/tags.schema.yaml: strict mode: unknown keyword'))
+  })
+
+  test('valid JSON Schema 2020-12 passes: only unknown keywords are strict', () => {
+    // Each of these failed under ajv's full strict mode (strictTypes, strictRequired).
+    put('tags/tags.schema.yaml', 'properties:\n  label: { type: string }\n')
+    rmSync(join(dir, 'cards/cards.schema.md'))
+    put('cards/cards.schema.json', '{"type": "object", "required": ["anything", "other"]}')
+    put('notes/notes.schema.json', '{"type": "object", "properties": {"name": {"minLength": 1}}}')
+    put('cards/C.json', '{"anything": 1, "other": 2}\n')
+    const report = run()
+    assert.deepEqual(report.errors, [])
+    assert.deepEqual(report.warnings, [])
   })
 })
 
@@ -265,6 +296,14 @@ describe('x-ref', () => {
   test('a dangling link fails', () => {
     put('notes/Note B.md', note('partner: "[Gone](Gone.md)"\n'))
     assert.ok(has(errors(), 'notes/Note B.md: partner: Gone.md: no such file'))
+  })
+
+  test('a link that leaves the corpus fails', () => {
+    put('more/inner/markdown-db.yaml', 'markdown-db: 0\n')
+    put('notes/Note B.md', note('partner: "[Y](../../Y.md)"\n'))
+    assert.ok(has(errors(), 'notes/Note B.md: partner: must link to a notes record in this corpus'))
+    put('notes/Note B.md', note('partner: "[Y](../more/inner/Y.md)"\n'))
+    assert.ok(has(errors(), 'notes/Note B.md: partner: must link to a notes record in this corpus'))
   })
 
   test('a link to a record of another type fails', () => {
@@ -359,6 +398,31 @@ describe('links', () => {
     assert.equal(report.warnings.filter((w) => w.includes('leaves the corpus')).length, 2)
   })
 
+  test('a link into a dot path or node_modules warns that it leaves the corpus', () => {
+    put('.config/x.md', 'x\n')
+    put('node_modules/y.md', 'y\n')
+    put('notes/Note B.md', note('', '[c](../.config/x.md) [n](../node_modules/y.md)\n'))
+    const report = run()
+    assert.deepEqual(report.errors, [])
+    assert.ok(has(report.warnings, '../.config/x.md: leaves the corpus, which excludes dot paths'))
+    assert.ok(has(report.warnings, '../node_modules/y.md: leaves the corpus'))
+  })
+
+  test('a wikilink into a nested corpus warns, as the Markdown link does', () => {
+    put('inner/markdown-db.md', '---\nmarkdown-db: 0\n---\n')
+    put('inner/N.md', 'N\n')
+    put('notes/Note B.md', note('', '[[inner/N]] and [x](../inner/N.md)\n'))
+    const report = run()
+    assert.deepEqual(report.errors, [])
+    assert.ok(has(report.warnings, '[[inner/N]]: leaves the corpus'))
+    assert.ok(has(report.warnings, '../inner/N.md: leaves the corpus'))
+  })
+
+  test('a wikilink that starts with / fails', () => {
+    put('notes/Note B.md', note('', '[[/notes/Note A]]\n'))
+    assert.ok(has(errors(), '[[/notes/Note A]]: links in a corpus must be relative'))
+  })
+
   test('a wikilink resolves by unique suffix; none or two matches fail', () => {
     put('notes/Note B.md', note('', '[[notes/Note A]] [[note a.md|alias]] ![[T]]\n'))
     const report = run()
@@ -426,7 +490,7 @@ describe('links.ts', () => {
   })
 
   test('matchWikilink matches whole segments only', () => {
-    const files = ['a/Claude Code.md', 'b/Old Claude Code.md', 'c/x.yaml']
+    const files = wikilinkIndex(['a/Claude Code.md', 'b/Old Claude Code.md', 'c/x.yaml'])
     assert.deepEqual(matchWikilink('claude code', files), ['a/Claude Code.md'])
     assert.deepEqual(matchWikilink('x', files), ['c/x.yaml'])
   })
