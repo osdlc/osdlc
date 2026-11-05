@@ -415,6 +415,40 @@ fn clear_forgets_everything() {
 }
 
 #[test]
+fn apply_change_drops_the_old_spelling_of_a_case_only_rename() {
+    let d = vault();
+    let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
+    index.refresh(&*d, &c, root());
+    d.rename(
+        &join_rel(root(), "Notes/a.md"),
+        &join_rel(root(), "Notes/A.md"),
+    )
+    .unwrap();
+    // A case-insensitive file system still stats the old spelling.
+    let vfs = crate::links::hooks::StatHook::aliased(
+        &*d,
+        join_rel(root(), "Notes/a.md"),
+        join_rel(root(), "Notes/A.md"),
+    );
+    index.apply_changes(&vfs, root(), &["Notes/a.md".into(), "Notes/A.md".into()]);
+    let applied: Vec<String> = index
+        .page(0, None)
+        .0
+        .iter()
+        .map(|n| n.path.clone())
+        .collect();
+    index.refresh_now(&vfs, &c, root());
+    let swept: Vec<String> = index
+        .page(0, None)
+        .0
+        .iter()
+        .map(|n| n.path.clone())
+        .collect();
+    assert_eq!(swept, ["Notes/A.md", "Notes/b.md"]);
+    assert_eq!(applied, swept, "the apply agrees with the sweep");
+}
+
+#[test]
 fn a_malformed_note_is_indexed_with_a_diagnostic_rather_than_skipped() {
     let d = vault();
     put(&d, "Notes/broken.md", "---\na: [1, 2\nb: }{\n---\nBODY\n");

@@ -1052,14 +1052,14 @@ pub(crate) fn join_rel(vault_dir: &Path, rel: &str) -> PathBuf {
     path
 }
 
-struct DirNames {
+pub(crate) struct DirNames {
     exact: HashSet<String>,
     lowercased: HashSet<String>,
 }
 
 /// Each folder's listing, read once per batch. `None` marks one that could
 /// not be read.
-type DirListings = HashMap<PathBuf, Option<DirNames>>;
+pub(crate) type DirListings = HashMap<PathBuf, Option<DirNames>>;
 
 /// Whether `abs`'s last segment is spelled as its folder lists it.
 ///
@@ -1067,7 +1067,7 @@ type DirListings = HashMap<PathBuf, Option<DirNames>>;
 /// rename to `home.md`, so the stat alone keeps the old spelling alive. This
 /// is false only when the folder lists a different-case spelling and not
 /// this one.
-fn spelled_as_listed(vfs: &dyn Vfs, abs: &Path, listings: &mut DirListings) -> bool {
+pub(crate) fn spelled_as_listed(vfs: &dyn Vfs, abs: &Path, listings: &mut DirListings) -> bool {
     let (Some(parent), Some(name)) = (abs.parent(), abs.file_name().and_then(|n| n.to_str()))
     else {
         return true;
@@ -1260,6 +1260,7 @@ pub(crate) mod hooks {
     enum OnStat<'a> {
         After(RefCell<Option<Box<dyn FnOnce() + 'a>>>),
         Denied,
+        As(PathBuf),
     }
 
     impl<'a> StatHook<'a> {
@@ -1284,6 +1285,16 @@ pub(crate) mod hooks {
                 on_stat: OnStat::Denied,
             }
         }
+
+        /// A stat of `path` reads `real` instead, as a case-insensitive
+        /// file system answers for another spelling of a file.
+        pub fn aliased(inner: &'a dyn Vfs, path: PathBuf, real: PathBuf) -> Self {
+            StatHook {
+                inner,
+                path,
+                on_stat: OnStat::As(real),
+            }
+        }
     }
 
     impl Vfs for StatHook<'_> {
@@ -1296,6 +1307,7 @@ pub(crate) mod hooks {
                     let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
                     Err(VfsError::io(path, denied))
                 }
+                OnStat::As(real) => self.inner.metadata(real),
                 OnStat::After(then) => {
                     let meta = self.inner.metadata(path);
                     if let Some(f) = then.borrow_mut().take() {

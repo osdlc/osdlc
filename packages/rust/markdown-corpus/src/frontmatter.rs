@@ -33,7 +33,10 @@ use markdown_vault_fs::walk::{Admission, WalkError, WalkOptions};
 use vfs_seam::{Clock, Vfs};
 use yaml_splice::Mapping;
 
-use crate::links::{REFRESH_TTL_MS, WATCHED_TTL_MS, join_rel, stamp_listed, stamp_of};
+use crate::links::{
+    DirListings, REFRESH_TTL_MS, WATCHED_TTL_MS, join_rel, spelled_as_listed, stamp_listed,
+    stamp_of,
+};
 use crate::note::{SplitMode, note_title, read_note_with};
 
 /// One note's cached parse.
@@ -342,8 +345,9 @@ impl FrontmatterIndex {
     /// A path outside the index's walk ([`WalkOptions::admission`]), a file
     /// that is not a note, or a call against another corpus, does nothing. A
     /// note the walk would no longer list (gone, too small, a refused
-    /// symlink) is removed. With no fresh walk to edit it only marks the index, so a walk
-    /// that read the note before the change is not stamped fresh.
+    /// symlink, or a spelling its folder does not list) is removed. With no
+    /// fresh walk to edit it only marks the index, so a walk that read the
+    /// note before the change is not stamped fresh.
     ///
     /// A change to the excluded-files list the walk reads
     /// ([`WalkOptions::reads_rules_from`]) marks the index stale, so the next
@@ -361,8 +365,9 @@ impl FrontmatterIndex {
             // the apply lock: an apply that read a note before another apply
             // must not install after it.
             let _apply = self.apply_lock.lock().unwrap();
+            let mut listings = DirListings::default();
             for (rel, admission) in self.walk.admissions(vfs, vault_dir, &notes) {
-                self.apply_admitted(vfs, vault_dir, rel, admission);
+                self.apply_admitted(vfs, vault_dir, rel, admission, &mut listings);
             }
         }
         if rels.iter().any(|rel| self.walk.reads_rules_from(rel))
@@ -374,7 +379,14 @@ impl FrontmatterIndex {
 
     /// [`Self::apply_change`] for a note, given what the walk makes of it.
     /// The caller holds the apply lock.
-    fn apply_admitted(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str, admission: Admission) {
+    fn apply_admitted(
+        &self,
+        vfs: &dyn Vfs,
+        vault_dir: &Path,
+        rel: &str,
+        admission: Admission,
+        listings: &mut DirListings,
+    ) {
         if admission == Admission::Outside {
             return;
         }
@@ -390,8 +402,11 @@ impl FrontmatterIndex {
         }
         let abs = join_rel(vault_dir, rel);
         // As in the sweep, a listed note that cannot be stamped (a dangling
-        // link) is kept with the size of the link and never fresh.
-        let parsed = (admission == Admission::Listed).then(|| {
+        // link) is kept with the size of the link and never fresh. A spelling
+        // its folder does not list (the old name after a case-only rename on
+        // a case-insensitive file system) is gone, as in the link graph.
+        let listed = admission == Admission::Listed && spelled_as_listed(vfs, &abs, listings);
+        let parsed = listed.then(|| {
             let (size, mtime) = stamp_listed(vfs, &abs);
             parse_one(vfs, self.split, rel, &abs, size, mtime)
         });
