@@ -53,8 +53,9 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    /// A file of `len` bytes, last changed at `modified_ns`.
-    pub fn file(len: u64, modified_ns: Option<i64>) -> Self {
+    /// A file of `len` bytes, last changed at `modified_ns` (nanoseconds
+    /// since the Unix epoch).
+    pub fn file_ns(len: u64, modified_ns: Option<i64>) -> Self {
         Self {
             len,
             modified_ns,
@@ -63,8 +64,9 @@ impl Metadata {
         }
     }
 
-    /// A directory.
-    pub fn dir(modified_ns: Option<i64>) -> Self {
+    /// A directory, last changed at `modified_ns` (nanoseconds since the
+    /// Unix epoch).
+    pub fn dir_ns(modified_ns: Option<i64>) -> Self {
         Self {
             len: 0,
             modified_ns,
@@ -452,8 +454,8 @@ impl Vfs for MemVfs {
         let path = normalize(path);
         let inner = self.inner.borrow();
         match inner.files.get(&path) {
-            Some(file) => Ok(Metadata::file(file.bytes.len() as u64, file.modified_ns)),
-            None if inner.dirs.contains(&path) => Ok(Metadata::dir(None)),
+            Some(file) => Ok(Metadata::file_ns(file.bytes.len() as u64, file.modified_ns)),
+            None if inner.dirs.contains(&path) => Ok(Metadata::dir_ns(None)),
             None => Err(missing(&path)),
         }
     }
@@ -861,10 +863,10 @@ impl Vfs for PreviewVfs<'_> {
                 .get(&path)
                 .or_else(|| overlay.moved.get(&path))
             {
-                return Ok(Metadata::file(file.bytes.len() as u64, None));
+                return Ok(Metadata::file_ns(file.bytes.len() as u64, None));
             }
             if overlay.dirs.contains(&path) {
-                return Ok(Metadata::dir(None));
+                return Ok(Metadata::dir_ns(None));
             }
             if overlay.suppressed(&path) {
                 return Err(missing(&path));
