@@ -23,8 +23,11 @@ nanoseconds.
 - `WalkOptions::admits(vfs, vault_dir, rel)`: whether this walk would list
   `rel`, asked of a path that did not come from a walk. It checks the roots,
   `skip_names`, `prune_dirs`, the visibility, the excluded files, `exclude`
-  and notes versus attachments. `WalkOptions::admitted` does the same for a
-  list, reading the excluded files once.
+  and notes versus attachments, then reads metadata from the vfs: a file
+  under `min_bytes`, a folder, a file under a symlinked folder, or a symlink
+  when the walk refuses them is not admitted. A file that is gone is, so a
+  cache can drop it. `WalkOptions::admitted` does the same for a list,
+  reading the excluded files once.
 - `stat::modified_ns` re-exported.
 
 ## [0.4.0] - 2026-11-04

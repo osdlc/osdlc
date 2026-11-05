@@ -409,22 +409,26 @@ impl WalkOptions {
         .filter(|h| !h.is_empty())
     }
 
-    /// Whether this walk would list the file at vault-relative `rel`, were
-    /// it there: the same rules [`walk`] applies, asked of a path that did not
-    /// come from a walk. For a cache that is told a path changed and must
-    /// decide whether it is one of its own.
+    /// Whether this walk would list the file at vault-relative `rel`: the
+    /// same rules [`walk`] applies, asked of a path that did not come from a
+    /// walk. For a cache that is told a path changed and must decide whether
+    /// it is one of its own.
     ///
     /// Checks the roots, the skip and prune lists, the visibility policy,
     /// the excluded files (read from the vault for [`Hide::Vault`]), the
-    /// exclude list and notes versus attachments. Not
-    /// [`WalkOptions::min_bytes`], which needs the file's size, and not the
-    /// symlink and error policies, which need the file.
+    /// exclude list and notes versus attachments. Then it reads metadata from
+    /// `vfs`: a symlinked folder on the path below the walk's start is never
+    /// entered, a file under [`WalkOptions::min_bytes`] is dropped, a
+    /// directory is not a file, and a symlink is refused under
+    /// [`WalkOptions::refuse_symlinks`]. A file that is gone is admitted, so a
+    /// cache can drop it. The error policy is not checked: it needs a walk
+    /// that fails.
     ///
     /// Expects the normalised form [`crate::path::lexical::validate_relative`]
     /// returns. A path with an empty, `.` or `..` segment is not admitted.
     pub fn admits(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str) -> bool {
         let hide = self.hide_rules(vfs, vault_dir);
-        self.admits_hiding(rel, hide.as_deref())
+        self.admits_with(vfs, vault_dir, rel, hide.as_deref())
     }
 
     /// [`WalkOptions::admits`] for each of `rels`, reading the excluded files
@@ -437,50 +441,79 @@ impl WalkOptions {
     ) -> Vec<&'r String> {
         let hide = self.hide_rules(vfs, vault_dir);
         rels.iter()
-            .filter(|rel| self.admits_hiding(rel, hide.as_deref()))
+            .filter(|rel| self.admits_with(vfs, vault_dir, rel, hide.as_deref()))
             .collect()
     }
 
-    fn admits_hiding(&self, rel: &str, hide: Option<&HideRules>) -> bool {
+    fn admits_with(
+        &self,
+        vfs: &dyn Vfs,
+        vault_dir: &Path,
+        rel: &str,
+        hide: Option<&HideRules>,
+    ) -> bool {
         if rel
             .split('/')
             .any(|s| s.is_empty() || s == "." || s == "..")
         {
             return false;
         }
-        // The skip and prune lists apply below where the walk starts, as in
-        // `vfs_walk`: a root inside a pruned folder is still walked.
-        let walks = |tail: &str| {
+        if !self.visibility.admits_path(rel)
+            || hide.is_some_and(|h| h.hides_path(rel, false))
+            || !self.collects(rel, rel.rsplit('/').next().unwrap_or(rel))
+        {
+            return false;
+        }
+        // As in `vfs_walk`, the skip and prune lists apply below where the
+        // walk starts, and a symlinked folder below it is listed as a file,
+        // not entered. A root inside a pruned folder is still walked.
+        let walks_from = |root: &str| {
+            let tail = if root.is_empty() {
+                rel
+            } else {
+                match rel.strip_prefix(root).and_then(|r| r.strip_prefix('/')) {
+                    Some(tail) => tail,
+                    None => return false,
+                }
+            };
             let dirs = tail.rsplit_once('/').map_or("", |(dirs, _)| dirs);
-            !tail
+            if tail
                 .split('/')
                 .any(|s| self.skip_names.iter().any(|n| n == s))
-                && !dirs
+                || dirs
                     .split('/')
                     .any(|d| self.prune_dirs.iter().any(|n| n == d))
+            {
+                return false;
+            }
+            let mut end = rel.len() - tail.len();
+            for dir in dirs.split('/').filter(|d| !d.is_empty()) {
+                end += dir.len();
+                let folder = join_rel(vault_dir, &rel[..end]);
+                if vfs.metadata(&folder).is_ok_and(|m| m.is_symlink) {
+                    return false;
+                }
+                end += 1;
+            }
+            true
         };
         let reached = if self.roots.is_empty() {
-            walks(rel)
+            walks_from("")
         } else {
-            self.roots.iter().map(|r| relative_root(r)).any(|root| {
-                if root.split('/').any(|seg| seg == "..") {
-                    false
-                } else if root.is_empty() {
-                    walks(rel)
-                } else {
-                    rel.strip_prefix(root.as_str())
-                        .and_then(|r| r.strip_prefix('/'))
-                        .is_some_and(walks)
-                }
-            })
+            self.roots
+                .iter()
+                .map(|r| relative_root(r))
+                .any(|root| !root.split('/').any(|seg| seg == "..") && walks_from(&root))
         };
         if !reached {
             return false;
         }
-        if !self.visibility.admits_path(rel) || hide.is_some_and(|h| h.hides_path(rel, false)) {
-            return false;
+        match vfs.metadata(&join_rel(vault_dir, rel)) {
+            Ok(m) => {
+                !m.is_dir && m.len >= self.min_bytes && !(m.is_symlink && self.refuse_symlinks)
+            }
+            Err(_) => true,
         }
-        self.collects(rel, rel.rsplit('/').next().unwrap_or(rel))
     }
 
     /// Whether this walk collects a file it can see: the exclude list, then
@@ -1010,6 +1043,68 @@ mod tests {
         ] {
             assert!(!notes.admits(&d, Path::new(V), bad), "{bad}");
         }
+    }
+
+    #[test]
+    fn admits_reads_size_and_kind_from_the_vfs() {
+        let d = fixture();
+        let opts = WalkOptions {
+            min_bytes: 10,
+            ..WalkOptions::notes_and_attachments()
+        };
+        let walked = rels(w(&d, &opts));
+        for rel in ["Notes/alpha.md", "Notes/img.png", "_attachments/photo.jpeg"] {
+            assert_eq!(
+                opts.admits(&d, Path::new(V), rel),
+                walked.iter().any(|w| w == rel),
+                "{rel}"
+            );
+        }
+        // A file that is gone is admitted, so a cache drops it.
+        assert!(opts.admits(&d, Path::new(V), "Notes/deleted.md"));
+        // A folder is not a file, whatever its name.
+        mk(&d, "Folder.md/inner.md", "x");
+        assert!(!WalkOptions::content_notes().admits(&d, Path::new(V), "Folder.md"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn admits_follows_the_walk_on_symlinks() {
+        use std::os::unix::fs::symlink;
+        let dir = tempfile::tempdir().unwrap();
+        let v = dir.path();
+        std::fs::create_dir_all(v.join("real/sub")).unwrap();
+        std::fs::write(v.join("real/sub/note.md"), "x").unwrap();
+        symlink(v.join("real/sub/note.md"), v.join("real/link.md")).unwrap();
+        symlink(v.join("real"), v.join("linked")).unwrap();
+        let vfs = vfs_seam::NativeVfs;
+        let listed = |opts: &WalkOptions| -> Vec<String> {
+            walk(&vfs, v, opts).map(rels).unwrap_or_default()
+        };
+
+        let lists = WalkOptions::content_notes();
+        assert_eq!(listed(&lists), ["real/link.md", "real/sub/note.md"]);
+        assert!(lists.admits(&vfs, v, "real/link.md"));
+        assert!(lists.admits(&vfs, v, "real/sub/note.md"));
+        // Under a symlinked folder: never entered, so not admitted.
+        assert!(!lists.admits(&vfs, v, "linked/sub/note.md"));
+
+        // A walk that refuses symlinks fails on one, so none is admitted.
+        let refuses = WalkOptions {
+            refuse_symlinks: true,
+            ..WalkOptions::content_notes()
+        };
+        assert!(walk(&vfs, v, &refuses).is_err());
+        assert!(!refuses.admits(&vfs, v, "real/link.md"));
+        assert!(refuses.admits(&vfs, v, "real/sub/note.md"));
+
+        // A root that is itself a symlinked folder is entered.
+        let rooted = WalkOptions {
+            roots: vec!["linked".into()],
+            ..WalkOptions::content_notes()
+        };
+        assert!(listed(&rooted).contains(&"linked/sub/note.md".to_string()));
+        assert!(rooted.admits(&vfs, v, "linked/sub/note.md"));
     }
 
     #[test]
