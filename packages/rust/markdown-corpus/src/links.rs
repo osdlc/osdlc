@@ -400,6 +400,7 @@ impl LinkGraph {
             } else {
                 // Claimed before the walk, so a reader mid-sweep sees an
                 // empty graph, never the previous corpus's edges.
+                let emptied = !state.paths.is_empty();
                 *state = GraphState {
                     for_vault: Some(vault_dir.to_path_buf()),
                     generation: state.generation + 1,
@@ -407,6 +408,11 @@ impl LinkGraph {
                     stale_marks: state.stale_marks,
                     ..GraphState::default()
                 };
+                // Emptying the graph moved its content, even if the walk
+                // below then fails or finds nothing.
+                if emptied {
+                    self.rebuilds.fetch_add(1, Ordering::SeqCst);
+                }
             }
             (
                 state.generation,
@@ -499,7 +505,8 @@ impl LinkGraph {
     }
 
     /// How many sweeps rebuilt the index and the edges. A clean sweep does
-    /// not count.
+    /// not count. A switch to another corpus empties the graph first, and
+    /// that counts too, whatever the walk then finds.
     pub fn rebuilds(&self) -> u64 {
         self.rebuilds.load(Ordering::SeqCst)
     }

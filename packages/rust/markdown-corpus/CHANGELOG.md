@@ -29,6 +29,9 @@ can see walk errors. Modification times are nanoseconds.
   through a symlink (a dangling link, a link to a folder); before, an apply
   dropped it until the next sweep. The admissions are read under the apply
   lock, so a batch never installs what it read before a later batch.
+- A switch to another corpus that empties a cache now moves
+  `LinkGraph::rebuilds` and `FrontmatterIndex::changes`, also when the new
+  corpus is empty or its walk fails.
 - The free function `fill_contexts(vfs, root, backlinks)` is now the method
   `LinkGraph::fill_contexts(vfs, backlinks)`, with
   `Corpus::fill_contexts(vfs, backlinks)` on top. It reads from the corpus

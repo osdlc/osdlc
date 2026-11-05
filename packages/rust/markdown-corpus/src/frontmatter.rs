@@ -228,6 +228,11 @@ impl FrontmatterIndex {
                     });
                 }
             } else {
+                // Emptying the index is a change, even if the walk below then
+                // fails or finds nothing.
+                if !state.entries.is_empty() {
+                    self.changes.fetch_add(1, Ordering::SeqCst);
+                }
                 state.entries = Arc::default();
                 state.for_vault = Some(vault_dir.to_path_buf());
                 state.walked_at = None;

@@ -519,6 +519,20 @@ fn a_vault_switch_always_bypasses_the_ttl_and_clears() {
 }
 
 #[test]
+fn a_switch_to_an_empty_corpus_counts_as_a_rebuild() {
+    let a = linked_vault();
+    a.create_dir_all(Path::new("/w")).unwrap();
+    let (g, c) = (graph(), FixedClock::new(0));
+    g.refresh(&*a, &c, root());
+    assert_eq!(g.rebuilds(), 1);
+    // The graph went from four notes to none: a reader keyed on the count
+    // must see it.
+    g.refresh(&*a, &c, Path::new("/w"));
+    assert!(g.is_empty());
+    assert_eq!(g.rebuilds(), 2);
+}
+
+#[test]
 fn a_batch_cannot_undo_a_later_batch_with_what_it_read_first() {
     // An atomic save: the note is gone for a moment, then back.
     let d = linked_vault();

@@ -242,6 +242,18 @@ fn a_vault_switch_always_bypasses_the_ttl() {
 }
 
 #[test]
+fn a_switch_to_an_empty_corpus_counts_as_a_change() {
+    let a = vault();
+    a.create_dir_all(Path::new("/w")).unwrap();
+    let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
+    index.refresh(&*a, &c, root());
+    let before = index.changes();
+    index.refresh(&*a, &c, Path::new("/w"));
+    assert!(index.is_empty());
+    assert_eq!(index.changes(), before + 1, "two notes became none");
+}
+
+#[test]
 fn an_apply_cannot_undo_a_later_apply_with_what_it_read_first() {
     // An atomic save: the note is gone for a moment, then back.
     let d = vault();
