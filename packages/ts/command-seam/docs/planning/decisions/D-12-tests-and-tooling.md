@@ -21,6 +21,10 @@ In the package:
 - Test titles describe behaviour. They carry no tracking ids.
 - A test that needs a grandchild in its own session starts it with the
   test's own runtime, not with perl.
+- A grandchild test that must also hold on Windows has a variant built from
+  the test's own runtime (`process.execPath`), not `sh`, and that variant
+  runs on every platform. Its grandchild is started `detached`, so only the
+  behaviour under test can end it. The `sh` variant may stay, POSIX only.
 - `typecheck` covers the tests and the examples as well as the source.
 - `tsconfig.json` extends `@osdlc/tsconfig/node-lib`, with no `paths` and no
   `customConditions`: the package's own name and its workspace siblings resolve
@@ -32,7 +36,8 @@ In the package:
   `format` and `lint` run in a clean checkout.
 - The workspace in osdlc/osdlc uses pnpm with a committed lockfile. Every
   GitHub Action there is pinned to a commit SHA. CI runs on Node 22 and 24,
-  on Linux and macOS.
+  on Linux and macOS. The suite also runs on Windows as tier 2
+  (`packages-windows-tier2.yml`), which reports but never blocks.
 
 ## Why
 
@@ -41,6 +46,13 @@ In the package:
 - Typechecked tests catch a test that calls the API wrongly.
 - The runtime is always present, so the grandchild test never skips for a
   missing tool.
+- On Windows the `sh` is Git Bash (MSYS). Its `$!` may not be a Windows
+  pid, so a probe or a kill by that pid can reach some other process, and
+  its writes to a closed pipe do not reliably fail. A Node process has a
+  real pid and a write that fails. Node also kills the attached processes a
+  Node parent started when that parent dies (a Windows job object), so an
+  attached grandchild would die with the child and pass a test for the wrong
+  reason ([#491](https://github.com/osdlc/osdlc/issues/491)).
 - A lockfile and pinned actions make CI repeatable and limit what a
   compromised dependency can do.
 - Shared config packages keep one source for the compiler and format rules
