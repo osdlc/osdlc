@@ -14,6 +14,7 @@ import { z } from 'zod'
 import { CONFIG_INVALID_EXIT, ConfigInvalidError } from '../src/config-error.ts'
 import { assembleConfig, readMappingFile, readParsedFile } from '../src/loader.ts'
 import { defineMigrations } from '../src/migrate.ts'
+import { scaffoldLocalYaml, scaffoldYaml, starterYaml } from '../src/scaffold.ts'
 import { pathMatcher, stripUnknownKeys } from '../src/unknown-keys.ts'
 import { defineConfigSection } from '../src/section.ts'
 
@@ -614,6 +615,59 @@ limits:
       expect(layers.migrated).toEqual([])
     }
     expect(lines).toEqual([])
+  })
+
+  test('currentVersion is the last step, 1 with no step, and null when unversioned', () => {
+    expect(mount().currentVersion).toBe(2)
+    const opts = { file: CONFIG_FILE, sections: [docs], unknownTopLevel: 'reject' as const }
+    expect(assembleConfig({ ...opts, migrations: [] }).currentVersion).toBe(1)
+    expect(assembleConfig(opts).currentVersion).toBeNull()
+  })
+
+  test('files scaffolded at currentVersion load with no migration and migrate plans none', () => {
+    // A step whose `run` is not idempotent: it must never see a file already in the new shape.
+    const handle = assembleConfig({
+      file: CONFIG_FILE,
+      sections: [docs, limits],
+      unknownTopLevel: 'reject',
+      resolve: NO_ENV,
+      migrations: defineMigrations([
+        { to: 2, moves: [['site', 'docs_site']] },
+        {
+          to: 3,
+          run: (raw) => {
+            const limits = raw.limits as { implement?: number } | undefined
+            if (limits?.implement !== undefined) limits.implement *= 2
+            return raw
+          },
+        },
+      ]),
+    })
+    const version = handle.currentVersion
+    expect(version).toBe(3)
+    const files = [
+      scaffoldYaml(handle.fileSchema, ['# h'], { version }),
+      starterYaml(handle.fileSchema, { header: ['# h'], categories: ['core'], version }),
+    ]
+    for (const text of files) {
+      const path = write('tooly.yaml', text)
+      write('tooly.local.yaml', scaffoldLocalYaml(handle.fileSchema, ['# l'], { version }))
+      handle.clearCache()
+      const layers = handle.loadLayers(root)
+      expect(layers.migrated).toEqual([])
+      expect(layers.merged.limits.implement).toBe(5)
+      expect(handle.migrate(root, { dryRun: true })).toMatchObject([
+        { path, from: 3, applied: [], text: null },
+        { layer: 'local', from: 3, applied: [], text: null },
+      ])
+    }
+    expect(lines).toEqual([])
+  })
+
+  test('a file scaffolded without version is read as version 1 and migrated', () => {
+    const handle = mount()
+    const path = write('tooly.yaml', scaffoldYaml(handle.fileSchema, ['# h']))
+    expect(handle.loadLayers(root).migrated).toMatchObject([{ file: path, from: 1, to: 2 }])
   })
 
   test('without migrations, version is an ordinary key', () => {

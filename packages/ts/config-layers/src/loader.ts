@@ -383,6 +383,13 @@ export interface ConfigHandle<S extends readonly ConfigSection[]> {
    */
   readonly fileSchema: z.ZodObject<ShapeOf<S>>
   /**
+   * The version the last migration produces (1 for `migrations: []`), or
+   * `null` when the files are not versioned. A file without `version` is
+   * version 1, so every file a tool creates should carry this one: pass it as
+   * `version` to `scaffoldYaml`, `scaffoldLocalYaml` or `starterYaml`.
+   */
+  readonly currentVersion: number | null
+  /**
    * Load and type-check the project file deep-merged with its overlay (when
    * present), returning the config with all defaults filled. Neither file
    * present is not an error. Memoized per resolved file, successes only. A
@@ -719,6 +726,7 @@ export function assembleConfig<const S extends readonly ConfigSection[]>(
   return {
     schema,
     fileSchema,
+    currentVersion: migrations === undefined ? null : currentVersion,
     load: (projectRoot) => loadLayers(projectRoot).merged,
     loadLayers,
     migrate,

@@ -72,6 +72,11 @@ the file instead of rendering it again.
 - A tool that validates a versioned project file's raw mapping itself, as
   `pr-update`'s `config set` does, must leave `version` out first. No tool does
   this yet; `pr-update` has no migrations.
+- A file without `version` reads as version 1, so a new file in the current
+  shape would go through every step. Every file a tool creates must carry
+  the current version: `ConfigHandle.currentVersion`, passed as `version` to
+  `scaffoldYaml`, `scaffoldLocalYaml` or `starterYaml`. The same holds for a
+  file a tool's `config set` creates from a header.
 - The project file's `migrate` keeps no `.bak`. The project file is in
   version control, and the overlay is small and per checkout.
 - The Rust crate has no versioning or migrations. That is listed in the

@@ -220,6 +220,12 @@ step yet). Then:
   in memory, before the unknown-key handling and validation. `version` is not a section key, so it
   is never an unknown key.
 - `version` must be an integer of at least 1. Anything else is a `ConfigInvalidError` (exit 14).
+- Every file a tool creates must carry the current `version`, which the handle exposes as
+  `currentVersion`. A file without `version` is version 1, so a new file in the current shape
+  would otherwise go through every step, and a `run` step that is not idempotent would change it.
+  `scaffoldYaml`, `scaffoldLocalYaml` and `starterYaml` take `version` and write a live
+  `version: <n>` line under the header:
+  `scaffoldYaml(handle.fileSchema, header, { version: handle.currentVersion })`.
 - A file newer than the last step is read as-is, with one stderr line per handle:
   `tooly.yaml: version 5 is newer than this tool's 2; read as-is`. When the file then fails the
   schema, the error carries the same line under `version`.
@@ -354,6 +360,7 @@ crossFieldIssues?, migrations? })` builds a handle from the sections a tool moun
 | Member | Does |
 |---|---|
 | `schema` / `fileSchema` | the schema over every mounted section (strict unless `unknownTopLevel` is `'ignore'`), and the same schema for validating one file alone |
+| `currentVersion` | the last migration's `to` (1 for `migrations: []`), or `null` without `migrations` |
 | `load(root)` | the project file with the overlay deep-merged over it before validation, validated once, memoized per resolved file. Reloads when either file's stat signature changes |
 | `loadLayers(root)` | `load`, plus the two raw layers, the resolved `files` and the layer files read through migrations |
 | `readLayers(root)` | the raw layers without validating, for diagnostics of a broken file |
@@ -415,7 +422,7 @@ The functions a `config` command is built from. None of them names a tool.
 | `provenance.ts` | `resolveLayeredSteps`/`resolveLayeredValue`: resolve a setting through the env (steps only), local, project and default layers, and record which layer each part came from as `{layer, mode}` (`ValueLayer`, `StepProvenance`) |
 | `explain.ts` | `resolveKeyPath`, `splitKeyPath`, `describeShape`, `defaultOf`, `nestedFields`, `jsonSchemaOf`, `omitPath` over a schema shape |
 | `edit.ts` | `setPath`/`unsetPath`: dotted-path edits that keep every byte outside the edited value, built on `@osdlc/yaml-splice`. `reconcileYaml`: the edits that turn a file into a target document |
-| `scaffold.ts` | `scaffoldYaml`, `scaffoldLocalYaml`, `starterYaml`: an annotated file derived from the schema (the starter groups keys in the caller's category order) |
+| `scaffold.ts` | `scaffoldYaml`, `scaffoldLocalYaml`, `starterYaml`: an annotated file derived from the schema (the starter groups keys in the caller's category order). Option `version` writes a live `version: <n>` line under the header |
 | `reference.ts` | `renderReference`: a markdown reference page from the schema and its meta, grouped in the caller's category order |
 | `merge.ts` | `deepMergeConfig`: mappings merge per key, arrays and scalars replace. The exception is a top-level `schedules:` list, which merges by entry `name` |
 
