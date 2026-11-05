@@ -35,9 +35,10 @@ In the package:
   config packages are devDependencies, as are `prettier` and `oxlint`, so
   `format` and `lint` run in a clean checkout.
 - The workspace in osdlc/osdlc uses pnpm with a committed lockfile. Every
-  GitHub Action there is pinned to a commit SHA. CI runs on Node 22 and 24,
-  on Linux and macOS. The suite also runs on Windows as tier 2
-  (`packages-windows-tier2.yml`), which reports but never blocks.
+  GitHub Action there is pinned to a commit SHA. CI runs on Node 22, 24 and
+  26, on Linux and macOS. The suite also runs on Windows as tier 2
+  (`packages-windows-tier2.yml`, Node 22 and 24), which reports but never
+  blocks.
 
 ## Why
 
