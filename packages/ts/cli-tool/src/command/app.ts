@@ -13,6 +13,7 @@ import { defineCli, type FlagSpec, type FlagValues } from '../define-cli.ts'
 import { EXIT, type ExitCode } from '../exit.ts'
 import { exitCodeFor, failureOf, renderError, renderFailure } from '../failure.ts'
 import { colorEnabled, type CliContext } from '../io.ts'
+import { NotInteractiveError } from '../prompt.ts'
 import { safe } from '../safe.ts'
 import { helpWidth } from '../wrap.ts'
 import {
@@ -631,6 +632,7 @@ export function defineApp<G extends FlagSpec = Record<never, never>>(spec: AppSp
       if (err instanceof CommandError) {
         return fail(err.code, err.message, err.exit, err.hint !== undefined ? `${err.hint}\n` : '')
       }
+      if (err instanceof NotInteractiveError) return fail('not-interactive', err.message, err.exit)
       const failure = failureOf(err)
       if (failure !== null) {
         base.io.stderr(renderFailure(failure, spec.name))

@@ -1,9 +1,23 @@
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { closeSync, mkdtempSync, openSync, rmSync, writeFileSync } from 'node:fs'
+import { afterEach, beforeEach, describe, expect, expectTypeOf, test } from 'vitest'
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { isatty } from 'node:tty'
 
-import { askYesNo, discardTypeAhead, isYes, readLine } from '../src/index.ts'
+import {
+  askChoice,
+  askText,
+  askYesNo,
+  captureContext,
+  discardTypeAhead,
+  EXIT,
+  isYes,
+  NotInteractiveError,
+  openTty,
+  readLine,
+  requireInteractive,
+  runMain,
+} from '../src/index.ts'
 
 let dir: string
 beforeEach(() => {
@@ -140,5 +154,355 @@ describe('discardTypeAhead', () => {
     const answer = withInput('y\n', (fd) => askYesNo('Go?', { fd, stty, write: () => {} }))
     expect(answer).toBe(true)
     expect(calls).toEqual([])
+  })
+})
+
+/** What `fn` threw. Fails the test when it returned. */
+function thrown(fn: () => unknown): unknown {
+  try {
+    fn()
+  } catch (e) {
+    return e
+  }
+  throw new Error('expected a throw')
+}
+
+/**
+ * Options for a prompt reading `fd` as if it were a terminal, with nothing
+ * typed early, collecting what is written.
+ */
+function onTerminal(fd: number, written: string[]) {
+  return {
+    fd,
+    isTerminal: true,
+    discardTypeAhead: false,
+    write: (t: string) => void written.push(t),
+  }
+}
+
+describe('NotInteractiveError', () => {
+  test('no terminal is a usage error (exit 2) that names the flag', () => {
+    const e = new NotInteractiveError('no-terminal', { flag: '--yes' })
+    expect(e).toBeInstanceOf(Error)
+    expect(e).toMatchObject({ name: 'NotInteractiveError', reason: 'no-terminal', flag: '--yes' })
+    expect(e.exit).toBe(EXIT.usage)
+    expect(e.message).toBe('cannot ask: there is no terminal to answer on. Pass --yes instead.')
+  })
+
+  test('ended input is a failed run (exit 1)', () => {
+    const e = new NotInteractiveError('end-of-input')
+    expect(e).toMatchObject({ reason: 'end-of-input', flag: undefined, exit: EXIT.error })
+    expect(e.message).toBe('no answer: input ended before one was typed')
+  })
+
+  test('runMain prints the message and exits with its code', async () => {
+    const before = process.exitCode
+    try {
+      const context = captureContext()
+      await runMain(
+        () => {
+          throw new NotInteractiveError('no-terminal', { flag: '--yes' })
+        },
+        { name: 'tooly', context, argv: [] },
+      )
+      expect(context.io.err).toBe(
+        'tooly: cannot ask: there is no terminal to answer on. Pass --yes instead.\n',
+      )
+      expect(process.exitCode).toBe(2)
+    } finally {
+      process.exitCode = before ?? 0
+    }
+  })
+})
+
+describe('required prompts', () => {
+  test('input that is not a terminal throws before asking and reads nothing', () => {
+    const written: string[] = []
+    withInput('y\n', (fd) => {
+      const e = thrown(() =>
+        askYesNo('Go?', { fd, required: true, flag: '--yes', write: (t) => written.push(t) }),
+      )
+      expect(e).toBeInstanceOf(NotInteractiveError)
+      expect(e).toMatchObject({ reason: 'no-terminal', flag: '--yes', exit: 2 })
+      expect(readLine(fd)).toBe('y')
+    })
+    expect(written).toEqual([])
+  })
+
+  test('an answer on a terminal is read as usual, and an empty line still gives the default', () => {
+    const written: string[] = []
+    expect(
+      withInput('y\n', (fd) => askYesNo('Go?', { ...onTerminal(fd, written), required: true })),
+    ).toBe(true)
+    expect(
+      withInput('\n', (fd) =>
+        askYesNo('Go?', { ...onTerminal(fd, written), required: true, defaultYes: true }),
+      ),
+    ).toBe(true)
+  })
+
+  test('end of input throws instead of giving the default', () => {
+    const e = withInput('', (fd) =>
+      thrown(() => askYesNo('Go?', { ...onTerminal(fd, []), required: true, defaultYes: true })),
+    )
+    expect(e).toMatchObject({ reason: 'end-of-input', exit: 1 })
+  })
+
+  test.each([
+    ['askText', (fd: number) => askText('Name?', { ...onTerminal(fd, []), required: true })],
+    [
+      'askChoice',
+      (fd: number) =>
+        askChoice('Pick', ['a', 'b'], { ...onTerminal(fd, []), required: true, default: 'a' }),
+    ],
+  ])('%s throws at end of input too', (_name, ask) => {
+    expect(withInput('', (fd) => thrown(() => ask(fd)))).toMatchObject({ reason: 'end-of-input' })
+  })
+
+  test.each([
+    ['askText', (fd: number) => askText('Name?', { fd, required: true, write: () => {} })],
+    [
+      'askChoice',
+      (fd: number) => askChoice('Pick', ['a'], { fd, required: true, write: () => {} }),
+    ],
+  ])('%s throws when the input is not a terminal', (_name, ask) => {
+    expect(withInput('a\n', (fd) => thrown(() => ask(fd)))).toMatchObject({ reason: 'no-terminal' })
+  })
+
+  test.skipIf(isatty(2))('with the default write, stderr that is not a terminal throws', () => {
+    const e = withInput('y\n', (fd) =>
+      thrown(() =>
+        askYesNo('Go?', { fd, isTerminal: true, discardTypeAhead: false, required: true }),
+      ),
+    )
+    expect(e).toMatchObject({ reason: 'no-terminal' })
+  })
+
+  test('without required, input that is not a terminal still answers', () => {
+    expect(withInput('y\n', (fd) => askYesNo('Go?', { fd, write: () => {} }))).toBe(true)
+  })
+})
+
+describe('askText', () => {
+  test.each([
+    ['  main \n', undefined, 'main'],
+    ['\n', 'main', 'main'],
+    ['', 'main', 'main'],
+    ['\n', undefined, ''],
+    ['', undefined, ''],
+    ['dev\n', 'main', 'dev'],
+    ['é ü\r\n', undefined, 'é ü'],
+  ])('answer %p with default %p is %p', (input, fallback, expected) => {
+    const answer = withInput(input, (fd) =>
+      askText('Branch?', {
+        fd,
+        write: () => {},
+        ...(fallback === undefined ? {} : { default: fallback }),
+      }),
+    )
+    expect(answer).toBe(expected)
+  })
+
+  test('the question shows the default in brackets, with terminal controls removed', () => {
+    const written: string[] = []
+    withInput('\n', (fd) =>
+      askText('Branch?', { fd, write: (t) => written.push(t), default: 'ma\x1b[2Jin' }),
+    )
+    withInput('\n', (fd) => askText('Branch?', { fd, write: (t) => written.push(t) }))
+    expect(written).toEqual(['Branch? [main] ', 'Branch? '])
+  })
+
+  test('reads one line and leaves the next', () => {
+    withInput('first\nsecond\n', (fd) => {
+      expect(askText('A?', { fd, write: () => {} })).toBe('first')
+      expect(readLine(fd)).toBe('second')
+    })
+  })
+
+  test('on a terminal, keys typed early are thrown away first', () => {
+    const written: string[] = []
+    const stty = (args: readonly string[]) => (args[0] === '-g' ? 'saved' : '')
+    const answer = withInput('early\n', (fd) =>
+      askText('Name?', { fd, stty, isTerminal: true, default: 'x', write: (t) => written.push(t) }),
+    )
+    expect(answer).toBe('x')
+    expect(written).toEqual(['(ignored what was typed before this question)\n', 'Name? [x] '])
+  })
+})
+
+describe('askChoice', () => {
+  const REMOTES = ['origin', 'upstream', 'fork'] as const
+
+  /** Ask for one of `choices` with `input` typed, and collect what was written. */
+  function choose<T extends string>(
+    input: string,
+    choices: readonly T[],
+    opts: { default?: T } = {},
+  ): { chosen: T; written: string } {
+    const written: string[] = []
+    const chosen = withInput(input, (fd) =>
+      askChoice('Which remote?', choices, { ...onTerminal(fd, written), ...opts }),
+    )
+    return { chosen, written: written.join('') }
+  }
+
+  test('writes the question, a numbered list and the range', () => {
+    expect(choose('1\n', REMOTES).written).toBe(
+      'Which remote?\n  1) origin\n  2) upstream\n  3) fork\nChoose 1-3: ',
+    )
+    expect(choose('\n', REMOTES, { default: 'fork' }).written).toContain('Choose 1-3 [3]: ')
+    expect(choose('1\n', ['only']).written).toBe('Which remote?\n  1) only\nChoose 1: ')
+  })
+
+  test.each([
+    ['2\n', 'upstream'],
+    [' 3 \n', 'fork'],
+    ['03\n', 'fork'],
+    ['origin\n', 'origin'],
+    ['UPSTREAM\n', 'upstream'],
+  ])('%p picks %p', (input, expected) => {
+    expect(choose(input, REMOTES).chosen).toBe(expected)
+  })
+
+  test('an empty line gives the default', () => {
+    expect(choose('\n', REMOTES, { default: 'upstream' }).chosen).toBe('upstream')
+  })
+
+  test('a bad answer says what to type and asks again', () => {
+    const { chosen, written } = choose('4\nnope\n0\n2\n', REMOTES)
+    expect(chosen).toBe('upstream')
+    expect(written).toBe(
+      'Which remote?\n  1) origin\n  2) upstream\n  3) fork\nChoose 1-3: ' +
+        "'4' is not one of the choices. Type a number from 1 to 3.\nChoose 1-3: " +
+        "'nope' is not one of the choices. Type a number from 1 to 3.\nChoose 1-3: " +
+        "'0' is not one of the choices. Type a number from 1 to 3.\nChoose 1-3: ",
+    )
+  })
+
+  test('an empty line with no default asks again', () => {
+    const { chosen, written } = choose('\nfork\n', REMOTES)
+    expect(chosen).toBe('fork')
+    expect(written.endsWith('Choose 1-3: Type a number from 1 to 3.\nChoose 1-3: ')).toBe(true)
+  })
+
+  test('text that matches two choices in another case asks again; the exact text picks', () => {
+    expect(choose('MAIN\nMain\n', ['main', 'Main']).chosen).toBe('Main')
+    expect(choose('MAIN\nMain\n', ['main', 'Main']).written).toContain("'MAIN' is not one")
+  })
+
+  test('a number in range picks by position; out of range, a choice with that text still matches', () => {
+    expect(choose('1\n', ['10', '20']).chosen).toBe('10')
+    expect(choose('20\n', ['10', '20']).chosen).toBe('20')
+  })
+
+  test('end of input gives the default, or throws with no default', () => {
+    expect(choose('', REMOTES, { default: 'origin' }).chosen).toBe('origin')
+    expect(choose('nope\n', REMOTES, { default: 'origin' }).chosen).toBe('origin')
+    const e = thrown(() => choose('nope\n', REMOTES))
+    expect(e).toBeInstanceOf(NotInteractiveError)
+    expect(e).toMatchObject({ reason: 'end-of-input' })
+  })
+
+  test('choices and the answer echoed back are printed with terminal controls removed', () => {
+    const { written } = choose('\x1b]0;x\x07\n1\n', ['a\x1b[31mb'])
+    expect(written).not.toContain('\x1b')
+    expect(written).toContain('  1) ab\n')
+    expect(written).toContain('Choose 1: Type 1.\nChoose 1: ')
+  })
+
+  test.each([
+    [[], {}, 'askChoice needs at least one choice'],
+    [['a', 'b', 'a'], {}, "askChoice lists 'a' twice"],
+    [['a', 'b'], { default: 'c' }, "askChoice's default 'c' is not one of the choices"],
+  ])('choices %p with %p are a mistake in the caller', (choices, opts, message) => {
+    const written: string[] = []
+    expect(() =>
+      withInput('1\n', (fd) =>
+        askChoice('Pick', choices as string[], { ...onTerminal(fd, written), ...opts }),
+      ),
+    ).toThrow(message)
+    expect(written).toEqual([])
+  })
+
+  test('returns the type of the choices it was given', () => {
+    const chosen = withInput('1\n', (fd) => askChoice('Pick', ['text', 'json'], onTerminal(fd, [])))
+    expectTypeOf(chosen).toEqualTypeOf<'text' | 'json'>()
+    expect(chosen).toBe('text')
+  })
+})
+
+describe('openTty', () => {
+  /** A regular file standing in for the terminal device, with `content` to read. */
+  function device(content = ''): string {
+    const path = join(dir, 'tty')
+    writeFileSync(path, content)
+    return path
+  }
+
+  test('stdin and stderr, when both are terminals', () => {
+    const tty = openTty({ isTerminal: () => true, path: join(dir, 'missing') })
+    expect(tty).toMatchObject({ fd: 0, source: 'stdio' })
+    tty!.close()
+    tty!.close()
+  })
+
+  test.each([
+    ['stdin is not a terminal', (fd: number) => fd === 2],
+    ['stderr is not a terminal', (fd: number) => fd === 0],
+  ])('otherwise the terminal device, read and written: %s', (_case, stdio) => {
+    const path = device('yes\n')
+    const tty = openTty({ path, isTerminal: (fd) => fd > 2 || stdio(fd) })
+    expect(tty).not.toBeNull()
+    try {
+      expect(tty!.source).toBe('device')
+      expect(tty!.fd).toBeGreaterThan(2)
+      expect(readLine(tty!.fd)).toBe('yes')
+      tty!.write('Go? ')
+      expect(readFileSync(path, 'utf8')).toBe('yes\nGo? ')
+    } finally {
+      tty!.close()
+    }
+    // Closing twice is safe: the second does nothing.
+    tty!.close()
+  })
+
+  test('a prompt reads its answer from the device it opened', () => {
+    // A regular file has one offset for reading and writing, so the question
+    // is collected here; the case above shows `write` reaches the device.
+    const tty = openTty({ path: device('2\n'), isTerminal: (fd) => fd > 2 })!
+    const written: string[] = []
+    try {
+      const chosen = askChoice('Pick', ['a', 'b'], {
+        ...onTerminal(tty.fd, written),
+        required: true,
+      })
+      expect(chosen).toBe('b')
+    } finally {
+      tty.close()
+    }
+    expect(written).toEqual(['Pick\n  1) a\n  2) b\nChoose 1-2: '])
+  })
+
+  test('null when there is no device', () => {
+    expect(openTty({ path: join(dir, 'missing'), isTerminal: () => false })).toBeNull()
+  })
+
+  test('null when what opened is not a terminal', () => {
+    expect(openTty({ path: device(), isTerminal: () => false })).toBeNull()
+  })
+})
+
+describe('requireInteractive', () => {
+  test('returns the terminal openTty finds', () => {
+    const tty = requireInteractive({ isTerminal: () => true })
+    expect(tty.source).toBe('stdio')
+  })
+
+  test('throws a no-terminal error naming the flag when there is none', () => {
+    const e = thrown(() =>
+      requireInteractive({ path: join(dir, 'missing'), isTerminal: () => false, flag: '--yes' }),
+    )
+    expect(e).toBeInstanceOf(NotInteractiveError)
+    expect(e).toMatchObject({ reason: 'no-terminal', flag: '--yes', exit: 2 })
   })
 })

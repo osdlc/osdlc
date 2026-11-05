@@ -14,7 +14,9 @@
  * kind. So a missing tool, a signed-out `gh` and a network failure read the
  * same in every tool that throws the classified failure (`@osdlc/typed-git`,
  * `@osdlc/typed-gh` and `@osdlc/code-host` do). A bare `CommandFailed` carries
- * only command-seam's kinds, so its generic `exit` kind exits 1. A stack trace
+ * only command-seam's kinds, so its generic `exit` kind exits 1. A thrown
+ * `NotInteractiveError` (a prompt with nobody to answer it) prints its message
+ * and exits with its own code: 2 when there was no terminal. A stack trace
  * is the wrong default for a command someone typed. It says where the code
  * was, not what the person should do. A tool that wants traces can catch
  * inside its own `main`.
@@ -26,6 +28,7 @@
 import { EXIT } from './exit.ts'
 import { exitCodeFor, failureOf, renderError, renderFailure } from './failure.ts'
 import { processContext, type CliContext } from './io.ts'
+import { NotInteractiveError } from './prompt.ts'
 import { renderVersion } from './version-text.ts'
 import { renderWhere, where } from './where.ts'
 
@@ -183,6 +186,11 @@ export async function runMain(main: MainFn, options: RunMainOptions): Promise<vo
   try {
     process.exitCode = await main(argv, ctx)
   } catch (err) {
+    if (err instanceof NotInteractiveError) {
+      ctx.io.stderr(renderError(err.message, options.name))
+      process.exitCode = err.exit
+      return
+    }
     const failure = failureOf(err)
     if (failure !== null) {
       ctx.io.stderr(renderFailure(failure, options.name))

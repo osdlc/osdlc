@@ -56,8 +56,29 @@ export type {
 export { envVars, systemDirs, TieredDirs } from '@osdlc/config-layers/dirs'
 export { closestMatches, didYouMean } from '@osdlc/config-layers/did-you-mean'
 export type { EnvVars, ResolveOptions, VendorDirs } from '@osdlc/config-layers/dirs'
-export { askYesNo, canPrompt, discardTypeAhead, isYes, readLine } from './prompt.ts'
-export type { AskYesNoOptions, DiscardTypeAheadOptions, Stty } from './prompt.ts'
+export {
+  askChoice,
+  askText,
+  askYesNo,
+  canPrompt,
+  discardTypeAhead,
+  isYes,
+  NotInteractiveError,
+  openTty,
+  readLine,
+  requireInteractive,
+} from './prompt.ts'
+export type {
+  AskChoiceOptions,
+  AskTextOptions,
+  AskYesNoOptions,
+  DiscardTypeAheadOptions,
+  OpenTtyOptions,
+  PromptOptions,
+  PromptTerminal,
+  RequireInteractiveOptions,
+  Stty,
+} from './prompt.ts'
 
 export { DEFAULT_WIDTH, MAX_WIDTH, columns, helpWidth, wrapText } from './wrap.ts'
 
