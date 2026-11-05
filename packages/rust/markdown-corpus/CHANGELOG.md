@@ -29,6 +29,11 @@ can see walk errors. Modification times are nanoseconds.
   through a symlink (a dangling link, a link to a folder); before, an apply
   dropped it until the next sweep. The admissions are read under the apply
   lock, so a batch never installs what it read before a later batch.
+- An applied change to the excluded-files list a cache's walk reads
+  (`.obsidian/app.json` under `Hide::Vault`, the frontmatter index's
+  default) marks that cache stale, so the next refresh walks. Before, it
+  was ignored as outside the walk, and newly excluded files stayed until
+  the TTL ran out.
 - A switch to another corpus that empties a cache now moves
   `LinkGraph::rebuilds` and `FrontmatterIndex::changes`, also when the new
   corpus is empty or its walk fails.

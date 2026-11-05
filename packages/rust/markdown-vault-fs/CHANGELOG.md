@@ -33,6 +33,9 @@ nanoseconds.
   `WalkOptions::admits` is `admission == Listed`, and
   `WalkOptions::admissions` answers for a list, reading the excluded files
   once.
+- `WalkOptions::reads_rules_from(rel)`: whether `rel` is the excluded-files
+  list the walk reads (`.obsidian/app.json` under `Hide::Vault`). A change
+  to it can move any path, so a cache walks again.
 - `stat::modified_ns` re-exported.
 
 ## [0.4.0] - 2026-11-04

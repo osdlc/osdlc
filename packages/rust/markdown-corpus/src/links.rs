@@ -528,7 +528,22 @@ impl LinkGraph {
     /// corpus, or while no sweep is fresh, does nothing here, but marks the
     /// graph so a sweep that read the files before the change is not stamped
     /// fresh.
+    ///
+    /// A change to a file the walk reads its rules from
+    /// ([`WalkOptions::reads_rules_from`], the excluded files under
+    /// [`Hide::Vault`]) can move any path, so it marks the graph stale and
+    /// the next refresh walks.
     pub fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
+        self.apply_paths(vfs, vault_dir, rels);
+        if rels.iter().any(|rel| self.walk.reads_rules_from(rel))
+            && self.state.lock().unwrap().for_vault.as_deref() == Some(vault_dir)
+        {
+            self.mark_stale();
+        }
+    }
+
+    /// [`Self::apply_changes`] path by path.
+    fn apply_paths(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
         // The admissions read the file system, so they are taken under the
         // apply lock: a batch that read a file before another batch must not
         // install after it.

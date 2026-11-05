@@ -587,6 +587,31 @@ mod tests {
     }
 
     #[test]
+    fn an_edit_to_the_excluded_files_makes_both_caches_walk_again() {
+        let d = corpus_fs();
+        let opts = LoadOptions::default().with_link_walk(WalkOptions {
+            hide: Hide::Vault,
+            ..LinkGraph::default_walk()
+        });
+        let v = Corpus::load(&d, "/v", opts);
+        let c = FixedClock::new(0);
+        assert!(v.note("Alpha.md").is_some());
+        d.insert(
+            "/v/.obsidian/app.json",
+            r#"{"userIgnoreFilters":["Alpha.md"]}"#,
+        )
+        .unwrap();
+        v.apply_changes(&d, &[".obsidian/app.json".to_string()]);
+        // Inside the TTL of the load, yet both walk again.
+        let stats = v.refresh(&d, &c);
+        assert_eq!((stats.links.removed, stats.frontmatter.removed), (1, 1));
+        assert!(!v.paths().contains(&"Alpha.md".to_string()));
+        assert!(v.note("Alpha.md").is_none());
+        // Without a stale mark, a refresh inside the TTL does not walk.
+        assert_eq!(v.refresh(&d, &c).links.removed, 0);
+    }
+
+    #[test]
     fn a_corpus_is_send_and_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<Corpus>();

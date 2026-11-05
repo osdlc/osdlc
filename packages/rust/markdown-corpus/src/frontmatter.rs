@@ -344,23 +344,36 @@ impl FrontmatterIndex {
     /// note the walk would no longer list (gone, too small, a refused
     /// symlink) is removed. With no fresh walk to edit it only marks the index, so a walk
     /// that read the note before the change is not stamped fresh.
+    ///
+    /// A change to the excluded-files list the walk reads
+    /// ([`WalkOptions::reads_rules_from`]) marks the index stale, so the next
+    /// refresh walks.
     pub fn apply_change(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str) {
         self.apply_changes(vfs, vault_dir, &[rel.to_string()]);
     }
 
     /// [`Self::apply_change`] for each of `rels`, reading the excluded files
     /// once ([`WalkOptions::admissions`]).
+    ///
+    /// A change to a file the walk reads its rules from
+    /// ([`WalkOptions::reads_rules_from`], the excluded files under the
+    /// default walk) can move any note, so it marks the index stale and the
+    /// next refresh walks.
     pub(crate) fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
         let notes: Vec<String> = rels.iter().filter(|rel| is_note(rel)).cloned().collect();
-        if notes.is_empty() {
-            return;
+        if !notes.is_empty() {
+            // The admissions read the file system, so they are taken under
+            // the apply lock: an apply that read a note before another apply
+            // must not install after it.
+            let _apply = self.apply_lock.lock().unwrap();
+            for (rel, admission) in self.walk.admissions(vfs, vault_dir, &notes) {
+                self.apply_admitted(vfs, vault_dir, rel, admission);
+            }
         }
-        // The admissions read the file system, so they are taken under the
-        // apply lock: an apply that read a note before another apply must
-        // not install after it.
-        let _apply = self.apply_lock.lock().unwrap();
-        for (rel, admission) in self.walk.admissions(vfs, vault_dir, &notes) {
-            self.apply_admitted(vfs, vault_dir, rel, admission);
+        if rels.iter().any(|rel| self.walk.reads_rules_from(rel))
+            && self.state.lock().unwrap().for_vault.as_deref() == Some(vault_dir)
+        {
+            self.mark_stale();
         }
     }
 

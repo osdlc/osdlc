@@ -481,6 +481,18 @@ impl WalkOptions {
             .collect()
     }
 
+    /// Whether this walk reads its rules from the file at vault-relative
+    /// `rel`: the vault's excluded files ([`hide::OBSIDIAN_APP_JSON`]) under
+    /// [`Hide::Vault`], unless the walk sees `Everything`. A change to that
+    /// file can change what the walk lists anywhere, which
+    /// [`WalkOptions::admission`] cannot say path by path, so a cache walks
+    /// again.
+    pub fn reads_rules_from(&self, rel: &str) -> bool {
+        matches!(self.hide, Hide::Vault)
+            && self.visibility != Visibility::Everything
+            && rel == hide::OBSIDIAN_APP_JSON
+    }
+
     fn admission_with(
         &self,
         vfs: &dyn Vfs,
@@ -1221,6 +1233,23 @@ mod tests {
 
         // A gone file is still gone.
         assert_eq!(at(&notes, "Notes/deleted.md"), Admission::Unlisted);
+    }
+
+    #[test]
+    fn a_walk_reads_its_rules_from_the_excluded_files_only_when_it_applies_them() {
+        let app = ".obsidian/app.json";
+        assert!(WalkOptions::content_notes().reads_rules_from(app));
+        assert!(!WalkOptions::content_notes().reads_rules_from("Notes/alpha.md"));
+        let off = WalkOptions {
+            hide: Hide::Off,
+            ..WalkOptions::content_notes()
+        };
+        assert!(!off.reads_rules_from(app));
+        let everything = WalkOptions {
+            visibility: Visibility::Everything,
+            ..WalkOptions::content_notes()
+        };
+        assert!(!everything.reads_rules_from(app), "it ignores them");
     }
 
     #[test]
