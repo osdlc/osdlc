@@ -500,7 +500,7 @@ try {
 
 Use `openTty` only where stdin carries data. A command that only asks should
 read the answer from stdin, so a script can still answer it. See
-[D-02](docs/planning/decisions/D-02-prompts-fail-instead-of-guessing.md) for
+[D-04](docs/planning/decisions/D-04-prompts-fail-instead-of-guessing.md) for
 why.
 
 ### Whose directories

@@ -1,11 +1,11 @@
 ---
-id: D-02
+id: D-04
 type: decision
 state: accepted
 created: 2026-11-05
 ---
 
-# D-02: Prompts fail instead of guessing, and reach the terminal only when asked
+# D-04: Prompts fail instead of guessing, and reach the terminal only when asked
 
 ## Decision
 

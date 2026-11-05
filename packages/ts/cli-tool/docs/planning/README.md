@@ -22,7 +22,7 @@ They are never reused. Each decision has a `state`: `accepted` or
 
 - [D-01](decisions/D-01-failures-share-one-exit-table.md): Classified failures
   share one message form and one exit table
-- [D-02](decisions/D-02-prompts-fail-instead-of-guessing.md): Prompts fail
+- [D-04](decisions/D-04-prompts-fail-instead-of-guessing.md): Prompts fail
   instead of guessing, and reach the terminal only when asked
 
 ## Backlog
