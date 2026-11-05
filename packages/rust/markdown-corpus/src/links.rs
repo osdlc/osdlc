@@ -315,12 +315,17 @@ impl LinkGraph {
         self.split
     }
 
-    /// Fills each backlink context's `text` from its source note's body, split
-    /// as this graph splits it ([`Self::split_mode`]), so the lines match.
-    /// One read per source, so call it on a capped page.
-    pub fn fill_contexts(&self, vfs: &dyn Vfs, vault_dir: &Path, backlinks: &mut [Backlink]) {
+    /// Fills each backlink context's `text` from its source note's body, read
+    /// from the corpus this graph holds and split as it splits it
+    /// ([`Self::split_mode`]), so the lines match. One read per source, so
+    /// call it on a capped page. A graph that has not been refreshed fills
+    /// nothing.
+    pub fn fill_contexts(&self, vfs: &dyn Vfs, backlinks: &mut [Backlink]) {
+        let Some(vault_dir) = self.state.lock().unwrap().for_vault.clone() else {
+            return;
+        };
         for entry in backlinks.iter_mut() {
-            let Some(body) = NoteBody::read_with(vfs, vault_dir, &entry.source_path, self.split)
+            let Some(body) = NoteBody::read_with(vfs, &vault_dir, &entry.source_path, self.split)
             else {
                 continue;
             };

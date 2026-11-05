@@ -26,9 +26,10 @@ can see walk errors. Modification times are nanoseconds.
   `min_bytes`, a folder, a refused symlink, under a symlinked folder) is
   dropped from the cache; before, only a gone file was.
 - The free function `fill_contexts(vfs, root, backlinks)` is now the method
-  `LinkGraph::fill_contexts(vfs, root, backlinks)`, with
-  `Corpus::fill_contexts(vfs, backlinks)` on top. It splits each note as the
-  graph does, so a lenient corpus gets the right lines.
+  `LinkGraph::fill_contexts(vfs, backlinks)`, with
+  `Corpus::fill_contexts(vfs, backlinks)` on top. It reads from the corpus
+  the graph holds and splits each note as the graph does, so a lenient
+  corpus gets the right lines.
 
 ### Added
 

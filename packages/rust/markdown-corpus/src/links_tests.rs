@@ -658,7 +658,11 @@ fn contexts_carry_the_line_number_and_fill_with_the_source_line() {
     let g = graph();
     g.refresh(&*d, &FixedClock::new(0), root());
     let mut back = back_of(&g, "Projects/Alpha.md");
-    g.fill_contexts(&*d, root(), &mut back);
+    // A graph that holds no corpus has nowhere to read from.
+    let mut unread = back.clone();
+    graph().fill_contexts(&*d, &mut unread);
+    assert!(unread[0].contexts.iter().all(|c| c.text.is_empty()));
+    g.fill_contexts(&*d, &mut back);
     let home = &back[0];
     assert_eq!(home.contexts.len(), 2);
     assert!(home.contexts[0].text.contains("[[Projects/Alpha]]"));
