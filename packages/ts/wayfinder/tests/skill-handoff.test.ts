@@ -5,7 +5,7 @@
  */
 
 import { chmod, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 
 import { afterAll, describe, expect, test } from 'vitest'
 
@@ -106,7 +106,7 @@ describe.skipIf(!POSIX)('agentClis', () => {
 
   test('a relative PATH entry is not searched, so the repository cannot ship the agent', async () => {
     const repo = await bin({ claude: NOOP })
-    expect(agentClis(skill(), { PATH: '.' }, 'linux')).toEqual([])
+    expect(agentClis(skill(), { PATH: relative(process.cwd(), repo) }, 'linux')).toEqual([])
     expect(agentClis(skill(), { PATH: repo }, 'linux')).toHaveLength(1)
   })
 })
