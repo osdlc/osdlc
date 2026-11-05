@@ -13,6 +13,7 @@ observations:
     source: notes-claude
     checked_version: "2.1.294"
     evidence: run
+    probe: claude-session-env
     note: "Checked in a live session; the source says 2.1.x exports both. The date is the source's `checked` date."
 sources:
   - id: notes-claude

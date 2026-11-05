@@ -2,7 +2,7 @@
 type: Subject
 title: Resume a session
 description: "How a saved session is resumed, and whether a new prompt can be passed."
-order: 43
+order: 58
 tags: [cli]
 ---
 

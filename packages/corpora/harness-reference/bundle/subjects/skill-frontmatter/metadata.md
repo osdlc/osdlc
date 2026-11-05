@@ -2,7 +2,7 @@
 type: Subject
 title: metadata
 description: "The `metadata` map for keys the spec does not define."
-order: 24
+order: 35
 tags: [skill-frontmatter]
 ---
 

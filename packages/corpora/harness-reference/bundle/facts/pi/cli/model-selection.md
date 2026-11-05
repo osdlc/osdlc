@@ -13,6 +13,7 @@ observations:
     source: notes-pi
     checked_version: "1.1.0"
     evidence: run
+    probe: pi-model-selection
 sources:
   - id: notes-pi
     resource: "https://github.com/osdlc/skillwright/blob/main/harness-reference/sources/harnesses-pi.md"

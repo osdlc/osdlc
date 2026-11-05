@@ -6,6 +6,7 @@ hook and MCP formats, and their CLI session surface. Every value has a date and 
 generator turns the record into static HTML pages.
 
 - `bundle/`: the data.
+- `probes/`: reproducible runs that back `evidence: run` observations.
 - `sources/`: research notes the bundle cites. Upstream docs and repositories are cited by their own
   URLs.
 - `src/`: the schema, validator, page generator and tests.
@@ -23,6 +24,7 @@ root `index.md` declares `okf_version: "0.2"`.
 | Subject category                | `categories/<id>.md`                  | `Subject Category`      |
 | Subject (a comparison row)      | `subjects/<category>/<name>.md`       | `Subject`               |
 | Fact (one harness, one subject) | `facts/<harness>/<category>/<name>.md` | `Harness Fact`          |
+| Probe (a reproducible run)      | `../probes/<id>/probe.md`             | `Harness Probe`         |
 
 Ids come from paths, as OKF concept ids do. A fact also names its `harness` and `subject` in
 frontmatter, and the validator checks they match the path.
@@ -51,8 +53,16 @@ Rules:
   and the validator checks that the file exists.
 - `value` is an object. `supported` (`true`, `false` or `"partial"`) is the headline field when one
   applies. Other keys are snake_case and depend on the subject.
+- Observations made on one date, still in force and with the same `model` are parts of one answer,
+  so each answers its own keys. Merge two parts that answer the same key, or give them distinct keys.
 - `open` lists questions the sources leave unresolved. A fact may hold only open questions.
-- `checked_version`, `locator` and `note` are optional.
+- `evidence: run` needs a `probe`, the id of a folder under `probes/` whose `probe.md` lists the
+  fact's harness and subject, and a `checked_version`. `probe` is refused on any other evidence.
+- `model` names the model an observation was made with. It is allowed only on subjects whose
+  concept sets `model_dependent: true`: those where the model matters as much as the harness, such
+  as picking a skill from its description (`skills/description-match`) and following a relative
+  path in SKILL.md (`skills/relative-paths`).
+- `checked_version`, `locator`, `model` and `note` are optional.
 
 The Markdown body explains the fact in prose, with footnotes keyed to `sources` ids (OKF §5.1). The
 generator reads only frontmatter.
@@ -60,6 +70,27 @@ generator reads only frontmatter.
 OKF has no notion of a value that changes across versions. The observations list is this bundle's
 own frontmatter extension, which OKF allows (§4.1). OKF `log.md` files are not used, and nothing
 sets `generated` or `verified`, so OKF consumers read every concept as unverified.
+
+## Probes
+
+A probe is a run anyone can repeat: `probes/<id>/probe.md`, plus an optional `fixture/` folder of
+the files the run needs. Probes sit outside `bundle/`, so a fixture's own Markdown is never read as
+a concept. The frontmatter holds:
+
+| Key         | Holds                                                                    |
+| ----------- | ------------------------------------------------------------------------ |
+| `type`      | `Harness Probe`                                                          |
+| `subjects`  | The subjects a run answers                                               |
+| `harnesses` | The harnesses it runs on                                                 |
+| `commands`  | Shell steps per harness, run from the probe folder                       |
+| `record`    | What to write down from a run                                            |
+| `safety`    | What a run touches beyond the probe folder, such as account-wide state   |
+
+Every path in a command is relative to the probe folder. The validator refuses a command that
+names a home directory (`/Users/`, `/home/`, `~/` or `$HOME`), a subject or harness with no concept, and a harness with no commands.
+
+To record a run, add an observation with `evidence: run`, `probe: <id>`, the `checked_version` the
+run used, and `model` where the subject allows it.
 
 ## Checking it
 
@@ -77,9 +108,11 @@ pnpm run write-schema   # rewrite schema/*.json after changing src/schema.ts
 CI runs `pnpm run check` when anything under `harness-reference/` changes
 (`.github/workflows/harness-reference.yml`).
 
-`generate` writes `index.html` (the current state, one table per category), a page per harness and
-per subject, `changes.html` (every observation by date), `gaps.html` (open questions and cells with
-no observation in force) and `data.json` (the whole bundle).
+`generate` writes `index.html` (the current state, one table per category; each cell lists every
+observation still in force), a page per harness and
+per subject, a page per probe under `probes/` (linked from the observations it backs),
+`changes.html` (every observation by date), `gaps.html` (open questions and cells with no
+observation in force) and `data.json` (the whole bundle).
 
 ## Adding an observation
 

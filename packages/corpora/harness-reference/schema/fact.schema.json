@@ -89,6 +89,14 @@
             "type": "string",
             "enum": ["docs", "source", "help-text", "run", "changelog", "inferred"]
           },
+          "probe": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1
+          },
           "note": {
             "type": "string",
             "minLength": 1

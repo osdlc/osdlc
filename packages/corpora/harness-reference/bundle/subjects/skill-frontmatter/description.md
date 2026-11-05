@@ -2,7 +2,7 @@
 type: Subject
 title: description
 description: "The `description` field, its limits and whether it is required."
-order: 21
+order: 32
 tags: [skill-frontmatter]
 ---
 

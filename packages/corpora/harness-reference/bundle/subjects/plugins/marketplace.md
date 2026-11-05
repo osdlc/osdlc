@@ -2,7 +2,7 @@
 type: Subject
 title: Marketplace
 description: "Whether plugins are distributed through a marketplace, and its format."
-order: 38
+order: 50
 tags: [plugins]
 ---
 

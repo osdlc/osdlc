@@ -2,7 +2,7 @@
 type: Subject
 title: Send to a live session
 description: Whether a message can be delivered into a session that is already running.
-order: 45
+order: 60
 tags: [cli]
 ---
 

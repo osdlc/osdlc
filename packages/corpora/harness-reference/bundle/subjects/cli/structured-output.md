@@ -2,7 +2,7 @@
 type: Subject
 title: Structured output
 description: Machine-readable output formats for headless runs.
-order: 41
+order: 56
 tags: [cli]
 ---
 

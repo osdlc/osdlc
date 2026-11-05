@@ -20,6 +20,7 @@ observations:
     locator: "packages/coding-agent/docs/packages.md:12-14 at 88ff80b986e34d4fbd1fa94a4df65c60ae964516"
     checked_version: "0.99.1"
     evidence: run
+    probe: pi-package-install
     note: "A local install was run and appeared in `pi list`; skill loading was not run."
 sources:
   - id: harness-comparison

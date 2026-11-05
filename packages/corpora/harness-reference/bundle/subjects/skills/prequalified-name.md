@@ -2,7 +2,7 @@
 type: Subject
 title: Pre-qualified skill name
 description: "What happens when a plugin skill's frontmatter `name` already carries the `<plugin>:` prefix."
-order: 16
+order: 18
 tags: [skills]
 ---
 

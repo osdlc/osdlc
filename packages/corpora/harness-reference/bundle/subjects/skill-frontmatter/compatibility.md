@@ -2,7 +2,7 @@
 type: Subject
 title: compatibility
 description: "The `compatibility` field and its limit."
-order: 23
+order: 34
 tags: [skill-frontmatter]
 ---
 

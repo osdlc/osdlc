@@ -2,7 +2,7 @@
 type: Subject
 title: Plugin skill runtime name
 description: "The name a skill gets when it ships in a plugin, for plugin `acme-tools` and skill `review`."
-order: 15
+order: 17
 tags: [skills]
 ---
 

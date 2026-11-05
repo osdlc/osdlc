@@ -2,7 +2,7 @@
 type: Subject
 title: Model and effort flags
 description: "Flags that pick the model, provider and reasoning effort for a run."
-order: 46
+order: 61
 tags: [cli]
 ---
 

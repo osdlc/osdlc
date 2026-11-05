@@ -2,7 +2,7 @@
 type: Subject
 title: User invocation syntax
 description: What a user types to run a skill.
-order: 17
+order: 20
 tags: [skills]
 ---
 

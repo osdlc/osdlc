@@ -2,7 +2,7 @@
 type: Subject
 title: Command files
 description: "Whether custom commands are defined as files, and what replaced them."
-order: 29
+order: 41
 tags: [commands]
 ---
 

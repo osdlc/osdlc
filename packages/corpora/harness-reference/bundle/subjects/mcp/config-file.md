@@ -2,7 +2,7 @@
 type: Subject
 title: MCP config file
 description: "The file and key that hold MCP server definitions, and its format."
-order: 32
+order: 44
 tags: [mcp]
 ---
 

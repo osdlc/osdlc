@@ -2,7 +2,7 @@
 type: Subject
 title: Skill name validation
 description: "What the harness checks about a skill name, and whether a failure blocks loading."
-order: 14
+order: 16
 tags: [skills]
 ---
 

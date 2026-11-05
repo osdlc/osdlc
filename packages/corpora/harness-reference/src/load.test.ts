@@ -5,29 +5,40 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { BUNDLE, ROOT, load, parseConcept, repoRoot, semverOrder } from './load.ts'
-import { type Change, changes, current, renderSite } from './render.ts'
+import { BUNDLE, PROBES, ROOT, load, parseConcept, repoRoot, semverOrder } from './load.ts'
+import { type Change, changes, current, currentSet, renderSite } from './render.ts'
 import type { Fact, Observation } from './schema.ts'
 import { checkSchemas } from './validate.ts'
 
 const REPO = repoRoot(ROOT)
 let copy = ''
+let probes = ''
 
 before(() => {
   copy = mkdtempSync(join(tmpdir(), 'harness-reference-'))
   cpSync(BUNDLE, copy, { recursive: true })
+  probes = mkdtempSync(join(tmpdir(), 'harness-reference-probes-'))
+  cpSync(PROBES, probes, { recursive: true })
 })
-after(() => rmSync(copy, { recursive: true, force: true }))
+after(() => {
+  rmSync(copy, { recursive: true, force: true })
+  rmSync(probes, { recursive: true, force: true })
+})
 
-/** Load the shared copy with one file rewritten, then put the file back. */
+/**
+ * Load the shared copies with one file rewritten, then put the file back.
+ * `rel` is inside the bundle, or inside probes/ when it starts with `probes/`.
+ */
 function loadWith(rel: string, edit: (text: string) => string): string[] {
-  const path = join(copy, rel)
+  const path = rel.startsWith('probes/')
+    ? join(probes, rel.slice('probes/'.length))
+    : join(copy, rel)
   const original = readFileSync(path, 'utf8')
   const edited = edit(original)
   if (edited === original) throw new Error(`edit to ${rel} changed nothing`)
   writeFileSync(path, edited)
   try {
-    return load(copy, REPO).errors
+    return load(copy, REPO, probes).errors
   } finally {
     writeFileSync(path, original)
   }
@@ -133,6 +144,81 @@ describe('validation', () => {
   })
 })
 
+describe('probes and models', () => {
+  const run = 'facts/claude-code/cli/session-env.md'
+
+  test('a run observation must name its probe', () => {
+    const errors = loadWith(run, (t) => t.replace('    probe: claude-session-env\n', ''))
+    assert.ok(has(errors, 'evidence run needs a probe'))
+  })
+
+  test('a run observation must carry checked_version', () => {
+    const errors = loadWith(run, (t) => t.replace('    checked_version: "2.1.294"\n', ''))
+    assert.ok(has(errors, 'evidence run needs a checked_version'))
+  })
+
+  test('a probe must exist', () => {
+    const errors = loadWith(run, (t) => t.replace('probe: claude-session-env', 'probe: no-such'))
+    assert.ok(has(errors, 'probe "no-such" has no probes/no-such/probe.md'))
+  })
+
+  test('a probe needs evidence run', () => {
+    const errors = loadWith(run, (t) => t.replace('evidence: run', 'evidence: docs'))
+    assert.ok(has(errors, 'probe is set, but evidence is not run'))
+  })
+
+  test("a probe must list the fact's subject", () => {
+    const errors = loadWith('probes/claude-session-env/probe.md', (t) =>
+      t.replace('subjects: [cli/session-env]', 'subjects: [cli/headless]'),
+    )
+    assert.ok(has(errors, 'does not list subject cli/session-env'))
+  })
+
+  test('a probe needs commands for each harness it lists', () => {
+    const errors = loadWith('probes/claude-session-env/probe.md', (t) =>
+      t.replace('harnesses: [claude-code]', 'harnesses: [claude-code, codex]'),
+    )
+    assert.ok(has(errors, 'no commands for harness "codex"'))
+  })
+
+  test('a probe command may not name a home directory', () => {
+    for (const command of [
+      'ls /home/someone/.claude',
+      'ls ~/.claude',
+      'cat $HOME/.cursor/x',
+      'cat ${HOME}/.cursor/x',
+      'PATH=a:/Users/someone/bin claude',
+      'echo $(ls /Users/someone)',
+    ]) {
+      const errors = loadWith('probes/claude-session-env/probe.md', (t) =>
+        t.replace('"claude --version"', JSON.stringify(command)),
+      )
+      assert.ok(has(errors, 'names a home directory'), command)
+    }
+  })
+
+  test('two same-date observations may not answer the same key', () => {
+    const errors = loadWith('facts/agent-skills/skills/bundled-files.md', (t) =>
+      t.replace('{"activation_tool_listing":', '{"detail":'),
+    )
+    assert.ok(has(errors, 'key "detail" is already answered by observation 1 from the same date'))
+  })
+
+  test('model is refused on a subject not marked model_dependent', () => {
+    const errors = loadWith(run, (t) =>
+      t.replace('    evidence: run\n', '    evidence: run\n    model: some-model\n'),
+    )
+    assert.ok(has(errors, 'is not model_dependent'))
+  })
+
+  test('model is accepted on a model_dependent subject', () => {
+    const errors = loadWith('subjects/cli/session-env.md', (t) =>
+      t.replace('tags: [cli]\n', 'tags: [cli]\nmodel_dependent: true\n'),
+    )
+    assert.deepEqual(errors, [])
+  })
+})
+
 describe('schema files', () => {
   test('--write-schema writes files the check accepts; a changed or missing file is stale', () => {
     const dir = mkdtempSync(join(tmpdir(), 'harness-reference-schema-'))
@@ -195,6 +281,54 @@ describe('render', () => {
     )
   })
 
+  test('currentSet is every observation still in force, of any date', () => {
+    const a = obs({ x: 1 }, '2026-01-01')
+    const b = obs({ x: 0 }, '2026-01-01', '1.0.0')
+    const c = obs({ y: 2 }, '2026-02-01')
+    assert.deepEqual(currentSet(factOf([a, b, c])), [a, c])
+  })
+
+  test('changes compares a part with the earlier observations that answer its keys', () => {
+    const fact = factOf([
+      obs({ x: 1 }, '2026-01-01'),
+      obs({ y: 1 }, '2026-01-01'),
+      obs({ x: 2 }, '2026-02-01'),
+      obs({ z: 1 }, '2026-02-01'),
+      obs({ y: 1 }, '2026-03-01'),
+      obs({ x: 2, w: 1 }, '2026-03-01'),
+    ])
+    assert.deepEqual(
+      changes([fact]).map((c: Change) => [c.date, Object.keys(c.obs.value).join(','), c.kind]),
+      [
+        ['2026-03-01', 'y', 're-observed'],
+        ['2026-03-01', 'x,w', 'changed'],
+        ['2026-02-01', 'x', 'changed'],
+        ['2026-02-01', 'z', 'first observed'],
+        ['2026-01-01', 'x', 'first observed'],
+        ['2026-01-01', 'y', 'first observed'],
+      ],
+    )
+  })
+
+  test('a comparison cell shows every observation in force and counts the superseded', () => {
+    const { dataset } = load()
+    if (!dataset) throw new Error('bundle did not load')
+    const observations = [
+      obs({ marker: 'gamma-old' }, '2026-01-01', '1.0.0'),
+      obs({ marker: 'alpha-one' }, '2026-01-01'),
+      obs({ other: 'beta-two' }, '2026-02-01'),
+    ]
+    const facts = dataset.facts.map((f) =>
+      f.conceptId === 'facts/codex/skills/user-dirs' ? { ...f, observations } : f,
+    )
+    const index = renderSite({ ...dataset, facts }).get('index.html') ?? ''
+    const cell = index.split('<td').find((c) => c.includes('alpha-one'))
+    assert.ok(cell?.includes('alpha-one'))
+    assert.ok(cell?.includes('beta-two'))
+    assert.ok(cell?.includes('· 1 superseded'))
+    assert.ok(!cell?.includes('gamma-old'))
+  })
+
   test('renderSite writes every page, with links relative to each page', () => {
     const { dataset } = load()
     if (!dataset) throw new Error('bundle did not load')
@@ -203,6 +337,16 @@ describe('render', () => {
       assert.ok(files.has(p))
     for (const h of dataset.harnesses) assert.ok(files.has(`harnesses/${h.id}.html`))
     for (const s of dataset.subjects) assert.ok(files.has(`subjects/${s.id}.html`))
+    assert.ok(files.has('probes/index.html'))
+    for (const p of dataset.probes) assert.ok(files.has(`probes/${p.id}.html`))
+    assert.ok(
+      files
+        .get('probes/plugin-layout.html')
+        ?.includes('href="../subjects/skills/relative-paths.html"'),
+    )
+    assert.ok(
+      files.get('harnesses/claude-code.html')?.includes('href="../probes/claude-session-env.html"'),
+    )
     assert.ok(
       files
         .get('harnesses/claude-code.html')

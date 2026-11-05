@@ -2,7 +2,7 @@
 type: Subject
 title: Hook events
 description: The lifecycle events a hook can attach to.
-order: 31
+order: 43
 tags: [hooks]
 ---
 

@@ -2,7 +2,7 @@
 type: Subject
 title: Main config file
 description: "The harness's main settings file and its format."
-order: 36
+order: 48
 tags: [config]
 ---
 

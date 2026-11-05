@@ -2,7 +2,7 @@
 type: Subject
 title: Hook configuration
 description: Where hooks are configured and whether they are shell commands or code plugins.
-order: 30
+order: 42
 tags: [hooks]
 ---
 

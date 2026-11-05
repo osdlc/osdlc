@@ -3,6 +3,7 @@
  * each concept's frontmatter against its schema, then the rules a schema
  * cannot state (ids from paths, references between concepts, source ids,
  * version spelling, observation order, repository links that must resolve).
+ * Probes under probes/ are read and checked alongside it.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve, sep } from 'node:path'
@@ -13,16 +14,19 @@ import {
   type Category,
   type Fact,
   type Harness,
+  type Probe,
   type Subject,
   categorySchema,
   factSchema,
   harnessSchema,
+  probeSchema,
   rootIndexSchema,
   subjectSchema,
 } from './schema.ts'
 
 export const ROOT = resolve(import.meta.dirname, '..')
 export const BUNDLE = join(ROOT, 'bundle')
+export const PROBES = join(ROOT, 'probes')
 
 /** Links into this repository are written as GitHub blob URLs so they work outside it. */
 const REPO_BLOB = 'https://github.com/osdlc/skillwright/blob/main/'
@@ -32,6 +36,7 @@ export interface Dataset {
   subjects: Subject[]
   harnesses: Harness[]
   facts: Fact[]
+  probes: Probe[]
 }
 
 export interface LoadResult {
@@ -111,11 +116,50 @@ export function repoRoot(from: string = ROOT): string | null {
   }
 }
 
+/** A path that names one machine: a home directory, absolute, `~/` or `$HOME`. Probe commands stay relative. */
+const MACHINE_PATH = /(^|[\s'"=:(])(\/(Users|home)\/|~\/|\$\{?HOME\b)/
+
+/** Read `probes/<id>/probe.md` for each folder under `dir`. */
+function loadProbes(dir: string, errors: string[]): Probe[] {
+  if (!existsSync(dir)) return []
+  const probes: Probe[] = []
+  for (const name of readdirSync(dir).sort()) {
+    const folder = join(dir, name)
+    if (!statSync(folder).isDirectory()) continue
+    const where = `probes/${name}/probe.md`
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
+      errors.push(`probes/${name}: use lowercase letters, digits and hyphens`)
+      continue
+    }
+    const file = join(folder, 'probe.md')
+    if (!existsSync(file)) {
+      errors.push(`${where}: missing`)
+      continue
+    }
+    try {
+      const r = probeSchema.safeParse(parseConcept(readFileSync(file, 'utf8')).frontmatter)
+      if (!r.success) {
+        errors.push(...issues(where, r.error))
+        continue
+      }
+      probes.push({ ...r.data, id: name, fixture: existsSync(join(folder, 'fixture')) })
+    } catch (e) {
+      errors.push(`${where}: ${(e as Error).message}`)
+    }
+  }
+  return probes
+}
+
 /**
- * Load and check a bundle. `repo` is the checkout repository links resolve
- * against; null skips that check, as it must once the folder leaves the repo.
+ * Load and check a bundle and its probes. `repo` is the checkout repository
+ * links resolve against; null skips that check, as it must once the folder
+ * leaves the repo.
  */
-export function load(bundle: string = BUNDLE, repo: string | null = repoRoot(bundle)): LoadResult {
+export function load(
+  bundle: string = BUNDLE,
+  repo: string | null = repoRoot(bundle),
+  probesDir: string = PROBES,
+): LoadResult {
   const errors: string[] = []
   const docs: Doc[] = []
 
@@ -196,8 +240,26 @@ export function load(bundle: string = BUNDLE, repo: string | null = repoRoot(bun
   harnesses.sort(byOrder)
 
   const categoryIds = new Set(categories.map((c) => c.id))
-  const subjectIds = new Set(subjects.map((s) => s.id))
+  const subjectById = new Map(subjects.map((s) => [s.id, s]))
   const harnessById = new Map(harnesses.map((h) => [h.id, h]))
+  const probes = loadProbes(probesDir, errors)
+  const probeById = new Map(probes.map((p) => [p.id, p]))
+  for (const p of probes) {
+    const where = `probes/${p.id}/probe.md`
+    for (const s of p.subjects)
+      if (!subjectById.has(s)) errors.push(`${where}: subject "${s}" has no subjects/ concept`)
+    for (const h of p.harnesses)
+      if (!harnessById.has(h)) errors.push(`${where}: harness "${h}" has no harnesses/ concept`)
+    const listed = new Set(p.harnesses)
+    for (const h of p.harnesses)
+      if (!(h in p.commands)) errors.push(`${where}: no commands for harness "${h}"`)
+    for (const [h, steps] of Object.entries(p.commands)) {
+      if (!listed.has(h)) errors.push(`${where}: commands for "${h}", which is not in harnesses`)
+      for (const step of steps)
+        if (MACHINE_PATH.test(step))
+          errors.push(`${where}: command "${step}" names a home directory; use a relative path`)
+    }
+  }
   for (const s of subjects)
     if (!categoryIds.has(s.category))
       errors.push(`subjects/${s.id}.md: no category concept categories/${s.category}.md`)
@@ -225,8 +287,8 @@ export function load(bundle: string = BUNDLE, repo: string | null = repoRoot(bun
     const where = `${fact.conceptId}.md`
     const harness = harnessById.get(fact.harness)
     if (!harness) errors.push(`${where}: harness "${fact.harness}" has no harnesses/ concept`)
-    if (!subjectIds.has(fact.subject))
-      errors.push(`${where}: subject "${fact.subject}" has no subjects/ concept`)
+    const subject = subjectById.get(fact.subject)
+    if (!subject) errors.push(`${where}: subject "${fact.subject}" has no subjects/ concept`)
 
     const ids = new Set<string>()
     for (const s of fact.sources) {
@@ -249,6 +311,25 @@ export function load(bundle: string = BUNDLE, repo: string | null = repoRoot(bun
       if (o.via !== undefined) cite(at, o.via)
       for (const key of Object.keys(o.value))
         if (!VALUE_KEY.test(key)) errors.push(`${at}: value key "${key}" is not snake_case`)
+      if (o.evidence === 'run') {
+        if (o.probe === undefined) errors.push(`${at}: evidence run needs a probe`)
+        if (o.checked_version === undefined)
+          errors.push(`${at}: evidence run needs a checked_version`)
+      } else if (o.probe !== undefined) {
+        errors.push(`${at}: probe is set, but evidence is not run`)
+      }
+      if (o.probe !== undefined) {
+        const p = probeById.get(o.probe)
+        if (!p) errors.push(`${at}: probe "${o.probe}" has no probes/${o.probe}/probe.md`)
+        else {
+          if (!p.harnesses.includes(fact.harness))
+            errors.push(`${at}: probe "${p.id}" does not list harness ${fact.harness}`)
+          if (!p.subjects.includes(fact.subject))
+            errors.push(`${at}: probe "${p.id}" does not list subject ${fact.subject}`)
+        }
+      }
+      if (o.model !== undefined && subject && subject.model_dependent !== true)
+        errors.push(`${at}: model is set, but subject ${fact.subject} is not model_dependent`)
       if (!harness) return
       for (const [label, v] of [
         ['since', o.since],
@@ -270,6 +351,20 @@ export function load(bundle: string = BUNDLE, repo: string | null = repoRoot(bun
         if (order >= 0) errors.push(`${at}: since must come before until`)
       }
     })
+    // Parts of one answer (same date and model, still in force) must answer different keys.
+    const answered = new Map<string, number>()
+    fact.observations.forEach((o, i) => {
+      if (o.until !== null) return
+      for (const key of Object.keys(o.value)) {
+        const slot = `${o.observed} ${o.model ?? ''} ${key}`
+        const first = answered.get(slot)
+        if (first === undefined) answered.set(slot, i + 1)
+        else
+          errors.push(
+            `${where}: observation ${i + 1}: key "${key}" is already answered by observation ${first} from the same date; merge them or use distinct keys`,
+          )
+      }
+    })
     for (const q of fact.open ?? []) cite(`${where}: open question`, q.source)
     for (const sid of ids)
       if (!cited.has(sid)) errors.push(`${where}: sources entry "${sid}" is never cited`)
@@ -286,5 +381,5 @@ export function load(bundle: string = BUNDLE, repo: string | null = repoRoot(bun
 
   if (harnesses.length === 0 || subjects.length === 0)
     errors.push('bundle: no harnesses or no subjects found')
-  return { dataset: { categories, subjects, harnesses, facts }, errors }
+  return { dataset: { categories, subjects, harnesses, facts, probes }, errors }
 }

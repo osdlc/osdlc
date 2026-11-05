@@ -2,7 +2,7 @@
 type: Subject
 title: license
 description: "The `license` field."
-order: 22
+order: 33
 tags: [skill-frontmatter]
 ---
 

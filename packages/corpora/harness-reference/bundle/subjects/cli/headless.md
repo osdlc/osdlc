@@ -2,7 +2,7 @@
 type: Subject
 title: Headless run
 description: "The flag or subcommand for a one-shot, non-interactive run."
-order: 40
+order: 55
 tags: [cli]
 ---
 

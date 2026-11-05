@@ -2,7 +2,7 @@
 type: Subject
 title: stdio transport keys
 description: The keys that declare a stdio MCP server.
-order: 33
+order: 45
 tags: [mcp]
 ---
 

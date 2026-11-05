@@ -2,7 +2,7 @@
 type: Subject
 title: Streamable HTTP transport keys
 description: The keys that declare a streamable HTTP MCP server.
-order: 34
+order: 46
 tags: [mcp]
 ---
 

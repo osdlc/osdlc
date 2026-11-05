@@ -2,7 +2,7 @@
 type: Subject
 title: Open with a chosen session id
 description: Whether a new session can be opened under a caller-chosen id or name.
-order: 42
+order: 57
 tags: [cli]
 ---
 
