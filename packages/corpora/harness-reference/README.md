@@ -127,12 +127,12 @@ run used, and `model` where the subject allows it.
 Node 24 runs the TypeScript in `src/` directly. From this folder:
 
 ```sh
-pnpm run validate       # check both corpora, alpha's links into this repository, and schema/*/*.json
+pnpm run validate       # check both corpora, alpha's links into this repository, and schema/alpha/*.json
 pnpm run test           # validator and renderer tests
 pnpm run typecheck
 pnpm run generate       # write the alpha pages to dist/ (not committed)
 pnpm run check          # all four
-pnpm run write-schema   # rewrite schema/*/*.json after changing a schema.ts
+pnpm run write-schema   # rewrite schema/alpha/*.json after changing src/alpha/schema.ts
 ```
 
 CI runs `pnpm run check` when anything under `harness-reference/` changes

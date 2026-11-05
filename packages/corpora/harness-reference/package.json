@@ -11,6 +11,7 @@
     "validate": "pnpm run validate:alpha && pnpm run validate:beta",
     "validate:alpha": "node src/alpha/validate.ts",
     "validate:beta": "node src/markdown-db/cli.ts validate corpora/beta",
+    "write-schema": "node src/alpha/validate.ts --write-schema",
     "test": "node --test src/*/*.test.ts",
     "typecheck": "tsc -p tsconfig.json",
     "generate": "node src/alpha/generate.ts",
