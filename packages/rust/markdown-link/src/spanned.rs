@@ -350,12 +350,13 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
 
 /// Folds each abandoned `[[` that starts inside the one before it into that
 /// one, so a run of `[` such as `[[[TODO` is one entry: from the first `[[`,
-/// with the reason and end of the last.
+/// with the reason and end of the last. As in [`drop_overlapped`], an
+/// embed's `!` does not count: in `[[x![[y` the embed is its own entry.
 fn merge_runs(abandoned: Vec<AbandonedLink>) -> Vec<AbandonedLink> {
     let mut out: Vec<AbandonedLink> = Vec::with_capacity(abandoned.len());
     for next in abandoned {
         match out.last_mut() {
-            Some(run) if next.byte_start < run.byte_end => {
+            Some(run) if next.byte_start + usize::from(next.embed) < run.byte_end => {
                 run.reason = next.reason;
                 run.byte_end = next.byte_end;
             }

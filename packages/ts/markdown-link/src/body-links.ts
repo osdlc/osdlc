@@ -271,13 +271,14 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
 /**
  * Folds each abandoned `[[` that starts inside the one before it into that
  * one, so a run of `[` such as `[[[TODO` is one entry: from the first `[[`,
- * with the reason and end of the last.
+ * with the reason and end of the last. As in `dropOverlapped`, an embed's `!`
+ * does not count: in `[[x![[y` the embed is its own entry.
  */
 function mergeRuns(abandoned: AbandonedLink[]): AbandonedLink[] {
   const out: AbandonedLink[] = []
   for (const next of abandoned) {
     const run = out[out.length - 1]
-    if (run !== undefined && next.start < run.end) {
+    if (run !== undefined && next.start + (next.embed ? 1 : 0) < run.end) {
       run.reason = next.reason
       run.end = next.end
     } else {

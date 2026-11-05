@@ -1237,6 +1237,35 @@
       ]
     },
     {
+      "name": "abandoned_an_embed_after_an_abandoned_link_is_not_part_of_its_run",
+      "body": "[[x![[y [[![[z",
+      "links": [],
+      "abandoned": [
+        {
+          "reason": "bracket",
+          "at": 0,
+          "text": "[[x!"
+        },
+        {
+          "reason": "bracket",
+          "embed": true,
+          "at": 3,
+          "text": "![[y "
+        },
+        {
+          "reason": "bracket",
+          "at": 8,
+          "text": "[[!"
+        },
+        {
+          "reason": "unclosed",
+          "embed": true,
+          "at": 10,
+          "text": "![[z"
+        }
+      ]
+    },
+    {
       "name": "abandoned_kept_before_an_embed",
       "body": "[[x![[B]] [[![[C]]",
       "links": [
