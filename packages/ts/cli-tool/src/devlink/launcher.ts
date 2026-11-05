@@ -10,7 +10,8 @@
  * The config directory is inlined for the same reason: the launcher cannot
  * call TypeScript code. It matches `@osdlc/tiered-dirs`' `config` home under
  * the `xdg` convention, including the vendor's `<P>_CONFIG_DIR` and `<P>_ROOT`
- * overrides. The launcher does not run on Windows.
+ * overrides, or the spec's `stateDir` under the home when no override is set.
+ * The launcher does not run on Windows.
  *
  * The `local` case: when rendered with `{ builtEntry }` (a path relative to
  * the checkout root), that file runs under Node when present, else the source
@@ -33,6 +34,7 @@ import {
   launchLayerVar,
   quietVar,
   runtimeOf,
+  stateDirSegments,
   type ToolSpec,
 } from './spec.ts'
 
@@ -109,8 +111,8 @@ export function launcherCheckout(spec: ToolSpec, launcherPath: string): string |
 
 /**
  * Produce the text of the launcher script for a tool. Throws when the spec
- * sets `packageName`, which the bash checks cannot read, or a `runtime`
- * other than `bun` and `node`.
+ * sets `packageName`, which the bash checks cannot read, a `runtime` other
+ * than `bun` and `node`, or a `stateDir` that `validateSpec` would refuse.
  * @experimental
  */
 export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): string {
@@ -141,6 +143,7 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   const layerVar = launchLayerVar(spec)
   const configVar = spec.vendorDirs.envVars.dirs.config
   const rootVar = spec.vendorDirs.envVars.root
+  const stateSegments = stateDirSegments(spec)
   for (const v of [configVar, rootVar]) {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(v)) {
       throw new Error(
@@ -288,11 +291,19 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
     p('fi')
     p()
   }
-  p('# ── link: `<config>/' + name + '/home`, written by `' + name + ' dev link|use` ─────')
-  p('# Mirrors @osdlc/tiered-dirs standalone("' + name + '").config(): the launcher runs')
-  p('# before a runtime exists, so it cannot call the SDK. A HOME that is unset or')
-  p("# relative counts as unset, and the account's home is used, as there. With no")
-  p('# usable home the layer is skipped.')
+  if (stateSegments === null) {
+    p('# ── link: `<config>/' + name + '/home`, written by `' + name + ' dev link|use` ─────')
+    p('# Mirrors @osdlc/tiered-dirs standalone("' + name + '").config(): the launcher runs')
+    p('# before a runtime exists, so it cannot call the SDK. A HOME that is unset or')
+    p("# relative counts as unset, and the account's home is used, as there. With no")
+    p('# usable home the layer is skipped.')
+  } else {
+    p(`# ── link: \`~/${stateSegments.join('/')}/home\`, written by \`${name} dev link|use\` ─────`)
+    p("# The spec's stateDir, as stateDir() resolves it: the launcher runs before a")
+    p('# runtime exists, so it cannot call the SDK. A HOME that is unset or relative')
+    p("# counts as unset, and the account's home is used, as there. With no usable")
+    p('# home the layer is skipped.')
+  }
   p(`if [ -z "$home" ]${guard}; then`)
   p('  user_home="${HOME:-}"')
   p('  case "$user_home" in')
@@ -305,19 +316,29 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p('      case "$user_home" in /*) ;; *) user_home="" ;; esac ;;')
   p('  esac')
   p('  cfg=""')
-  p(`  # ${configVar}, then ${rootVar}/config, then the xdg convention, as in`)
-  p('  # @osdlc/tiered-dirs. A relative override is an error there, so it reads')
-  p('  # nothing here. Only an absolute XDG_CONFIG_HOME counts.')
+  if (stateSegments === null) {
+    p(`  # ${configVar}, then ${rootVar}/config, then the xdg convention, as in`)
+    p('  # @osdlc/tiered-dirs. A relative override is an error there, so it reads')
+    p('  # nothing here. Only an absolute XDG_CONFIG_HOME counts.')
+  } else {
+    p(`  # ${configVar}, then ${rootVar}/config, as in @osdlc/tiered-dirs, then the`)
+    p("  # spec's stateDir. A relative override is an error there, so it reads")
+    p('  # nothing here. XDG_CONFIG_HOME is not read.')
+  }
   p(`  case "\${${configVar}:-}" in`)
   p(`    /*) cfg="$${configVar}/${name}" ;;`)
   p('    "")')
   p(`      case "\${${rootVar}:-}" in`)
   p(`        /*) cfg="$${rootVar}/config/${name}" ;;`)
   p('        "")')
-  p('          case "${XDG_CONFIG_HOME:-}" in')
-  p(`            /*) cfg="$XDG_CONFIG_HOME/${name}" ;;`)
-  p(`            *) [ -z "$user_home" ] || cfg="$user_home/.config/${name}" ;;`)
-  p('          esac ;;')
+  if (stateSegments === null) {
+    p('          case "${XDG_CONFIG_HOME:-}" in')
+    p(`            /*) cfg="$XDG_CONFIG_HOME/${name}" ;;`)
+    p(`            *) [ -z "$user_home" ] || cfg="$user_home/.config/${name}" ;;`)
+    p('          esac ;;')
+  } else {
+    p(`          [ -z "$user_home" ] || cfg="$user_home/${stateSegments.join('/')}" ;;`)
+  }
   p('      esac ;;')
   p('  esac')
   p('  linked=""')

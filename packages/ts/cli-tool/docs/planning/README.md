@@ -22,6 +22,8 @@ They are never reused. Each decision has a `state`: `accepted` or
 
 - [D-01](decisions/D-01-failures-share-one-exit-table.md): Classified failures
   share one message form and one exit table
+- [D-02](decisions/D-02-devlink-state-dir-is-a-home-path.md): A devlink
+  spec's own state directory is a path under the home
 - [D-05](decisions/D-05-node-checkouts-run-their-ts-source.md): A node
   checkout runs its TypeScript source through Node's type stripping
 

@@ -449,7 +449,10 @@ import { envVars } from '@osdlc/cli-tool'
 const vendorDirs = { vendor: 'com.example', envVars: envVars('EXAMPLE') }
 ```
 
-`systemDirs(vendorDirs)` resolves them through `@osdlc/tiered-dirs`.
+`systemDirs(vendorDirs)` resolves them through `@osdlc/tiered-dirs`. A devlink
+spec can keep its state under a directory of its own instead, with
+`stateDir: '~/.tool'`; the override variables still move it (see
+[devlink](./devlink/README.md)).
 
 ## The command tree
 

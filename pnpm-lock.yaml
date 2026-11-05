@@ -123,6 +123,9 @@ importers:
       '@osdlc/result':
         specifier: workspace:^
         version: link:../result
+      '@osdlc/tiered-dirs':
+        specifier: workspace:^
+        version: link:../tiered-dirs
       '@osdlc/ux':
         specifier: workspace:^
         version: link:../ux
@@ -943,6 +946,9 @@ importers:
       prettier:
         specifier: 'catalog:'
         version: 3.9.6
+      rolldown:
+        specifier: ^1.2.14
+        version: 1.2.14
       typescript:
         specifier: 'catalog:'
         version: 6.0.3

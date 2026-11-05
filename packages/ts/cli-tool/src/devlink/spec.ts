@@ -16,8 +16,8 @@ import { envStem as stemOf, type VendorDirs } from '@osdlc/config-layers/dirs'
 export interface ToolSpec {
   /**
    * The command name, such as `tooly`. It is the PATH name `install` writes,
-   * the standalone segment the state lives under (`<config>/<name>/`),
-   * and the stem of every environment variable.
+   * the standalone segment the state lives under (`<config>/<name>/`, unless
+   * {@link stateDir} moves it), and the stem of every environment variable.
    */
   name: string
   /**
@@ -88,14 +88,29 @@ export interface ToolSpec {
   /**
    * Whose config home the state lives in: the vendor and its override
    * variables. The bash launcher reads the same path: the vendor's
-   * `<P>_CONFIG_DIR`, then `<P>_ROOT`, then the `xdg` default (it always uses
-   * the `xdg` convention and ignores `<P>_CONVENTION`). A relative value of
-   * the one in use reads no link. The launcher reads only those two: a
+   * `<P>_CONFIG_DIR`, then `<P>_ROOT`, then {@link stateDir} when set, else
+   * the `xdg` default (it always uses the `xdg` convention and ignores
+   * `<P>_CONVENTION`). A relative value of the one in use reads no link.
+   * The launcher reads only those two: a
    * relative override of another kind (such as `<P>_CACHE_DIR`), or
    * `<P>_REQUIRE_OVERRIDE`, makes `dev link` throw but does not stop the
    * launcher following a link written before.
    */
   vendorDirs: VendorDirs
+  /**
+   * Where the state lives when no override variable moves it, in place of
+   * the `xdg` default: a directory under the user's home, written `~/` and
+   * then one or more segments, such as `~/.tooly`. It is the directory that
+   * holds the `home` and `history.jsonl` files; `<name>` is not appended. The
+   * vendor's `<P>_CONFIG_DIR` and `<P>_ROOT` still win and still place the
+   * state at `<dir>/<name>` and `<root>/config/<name>`. `XDG_CONFIG_HOME` is
+   * not read when this is set. The bash launcher bakes the same path in.
+   *
+   * Each segment is letters, digits, `.`, `_` and `-`, and not `.` or `..`.
+   * `validateSpec` and `renderLauncher` refuse anything else. A function of
+   * the home directory is not accepted, because the launcher could not run it.
+   */
+  stateDir?: string
 }
 
 /**
@@ -265,5 +280,28 @@ export function validateSpec(spec: ToolSpec): ToolSpec {
       `devlink: node cannot run a JSX entry, got ${JSON.stringify(entryOf(spec))}; point entry at a .ts or .js file`,
     )
   }
+  stateDirSegments(spec)
   return spec
+}
+
+/**
+ * The segments of `spec.stateDir` below the home directory (`~/.tooly` →
+ * `['.tooly']`), or null when the spec does not set it. Throws for a value
+ * that is not `~/` and then safe segments: the bash launcher puts it inside a
+ * double-quoted string, so `$`, quotes and backslashes must never reach it.
+ * @internal
+ */
+export function stateDirSegments(spec: ToolSpec): string[] | null {
+  const value = spec.stateDir
+  if (value === undefined) return null
+  const segments = value.startsWith('~/') ? value.slice(2).split('/') : []
+  if (
+    segments.length === 0 ||
+    segments.some((s) => s === '.' || s === '..' || !/^[A-Za-z0-9._-]+$/.test(s))
+  ) {
+    throw new Error(
+      `devlink: stateDir must be ~/ and then a relative path of letters, digits, '.', '_' and '-', got ${JSON.stringify(value)}`,
+    )
+  }
+  return segments
 }

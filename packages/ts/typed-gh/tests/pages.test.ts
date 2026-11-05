@@ -228,6 +228,8 @@ describe('readOnly', () => {
     setIssueLabel: () => pkg.setIssueLabel(1, null, 'x'),
     createLabel: () => pkg.createLabel({ name: 'x', color: 'fff', description: '' }),
     editLabel: () => pkg.editLabel('x', {}),
+    raw: () => pkg.raw(['api', 'user']),
+    rawChecked: () => pkg.rawChecked(['api', 'user']),
   }
   const READS = new Set([
     'prList',
@@ -254,10 +256,11 @@ describe('readOnly', () => {
     })
   }
 
-  test('a verb that is not read-only is checked; prDiff is the one checked read', () => {
+  test('a verb that is not read-only is checked, but raw; prDiff is the one checked read', () => {
     for (const [name, build] of Object.entries(VERBS)) {
       const verb = build()
-      if (!verb.readOnly) expect(verb.checked).toBe(true)
+      // `raw` is the escape hatch: any argv, any exit code, returned as it came.
+      if (!verb.readOnly && name !== 'raw') expect(verb.checked).toBe(true)
       if (verb.checked && verb.readOnly) expect(name).toBe('prDiff')
     }
   })

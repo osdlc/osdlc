@@ -329,6 +329,8 @@ There are two ways to write one:
    - `launcher`: the bin, relative to the checkout.
    - `vendorDirs`: where the link file and history live, and the variables
      that move them (`{ vendor, envVars: envVars('TOOL') }`).
+   - `stateDir`, only if the tool keeps its state under its own directory
+     (`'~/.tool'`) rather than `~/.config/tool`. The variables still move it.
    - `aliases`, if the tool has other command names.
    - `suppressors`: variables a host program sets (such as a plugin root) so
      that your link never changes the code it runs.
