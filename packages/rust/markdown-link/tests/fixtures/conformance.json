@@ -1202,6 +1202,40 @@
       ]
     },
     {
+      "name": "abandoned_kept_before_an_embed",
+      "body": "[[x![[B]] [[![[C]]",
+      "links": [
+        {
+          "kind": "embed",
+          "raw": "B",
+          "target": "B",
+          "alias": null,
+          "at": 3,
+          "text": "![[B]]"
+        },
+        {
+          "kind": "embed",
+          "raw": "C",
+          "target": "C",
+          "alias": null,
+          "at": 12,
+          "text": "![[C]]"
+        }
+      ],
+      "abandoned": [
+        {
+          "reason": "bracket",
+          "at": 0,
+          "text": "[[x!"
+        },
+        {
+          "reason": "bracket",
+          "at": 10,
+          "text": "[[!"
+        }
+      ]
+    },
+    {
       "name": "abandoned_a_skipped_comment_is_an_empty_target_not_code",
       "body": "[[<!-- todo -->]] [[`x`<!-- y -->]]",
       "options": {

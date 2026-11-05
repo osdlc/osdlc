@@ -235,7 +235,7 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
           // so a `|` in code is not one, then read the alias from the body so
           // code inside it is kept.
           const alias = pipe === -1 ? null : trim(body.slice(at[pipe + 1], at[j])) || null
-          dropOverlapped(abandoned, start)
+          dropOverlapped(abandoned, at[i]!)
           out.push({
             kind: embed ? 'embed' : 'wikilink',
             raw: inner,
@@ -255,7 +255,7 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
     if (chars[i] === '[') {
       const found = markdownLink(chars, i, at, scan)
       if (found !== null) {
-        dropOverlapped(abandoned, found.link.start)
+        dropOverlapped(abandoned, at[i]!)
         out.push(found.link)
         i = found.next
         continue
@@ -267,12 +267,18 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
 }
 
 /**
- * Drops each abandoned `[[` that a link starting at `start` begins inside.
- * After a `[` or `]` the scanner moves on one code point, so `[[[Note]]` is a
- * literal `[` and a link, not a `[[` given up on.
+ * Drops each abandoned `[[` whose second `[` opens a link: `bracket` is the
+ * offset of the link's first `[`, after any `!`. After a `[` or `]` the
+ * scanner moves on one code point, so `[[[Note]]` is a literal `[` and a link,
+ * not a `[[` given up on. An embed's `!` right after an abandoned `[[`, as in
+ * `[[x![[B]]`, does not count.
  */
-function dropOverlapped(abandoned: AbandonedLink[], start: number): void {
-  while (abandoned.length > 0 && abandoned[abandoned.length - 1]!.end > start) abandoned.pop()
+function dropOverlapped(abandoned: AbandonedLink[], bracket: number): void {
+  for (;;) {
+    const last = abandoned[abandoned.length - 1]
+    if (last === undefined || last.start + (last.embed ? 1 : 0) + 2 <= bracket) return
+    abandoned.pop()
+  }
 }
 
 /**

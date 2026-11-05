@@ -308,7 +308,7 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                         .map(|p| body[at[i + 3 + p]..at[j]].trim())
                         .filter(|alias| !alias.is_empty())
                         .map(str::to_string);
-                    drop_overlapped(&mut abandoned, start);
+                    drop_overlapped(&mut abandoned, at[i]);
                     out.push(BodyLink {
                         kind: if embed {
                             BodyLinkKind::Embed
@@ -334,8 +334,8 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
         if chars[i] == '['
             && let Some(link) = spanned_markdown_link(&chars, i, &at, &mut scan)
         {
+            drop_overlapped(&mut abandoned, at[i]);
             i = link.1;
-            drop_overlapped(&mut abandoned, link.0.byte_start);
             out.push(link.0);
             continue;
         }
@@ -347,11 +347,16 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
     }
 }
 
-/// Drops each abandoned `[[` that a link starting at `start` begins inside.
-/// After a `[` or `]` the scanner moves on one char, so `[[[Note]]` is a
-/// literal `[` and a link, not a `[[` given up on.
-fn drop_overlapped(abandoned: &mut Vec<AbandonedLink>, start: usize) {
-    while abandoned.last().is_some_and(|a| a.byte_end > start) {
+/// Drops each abandoned `[[` whose second `[` opens a link: `bracket` is the
+/// byte offset of the link's first `[`, after any `!`. After a `[` or `]` the
+/// scanner moves on one char, so `[[[Note]]` is a literal `[` and a link,
+/// not a `[[` given up on. An embed's `!` right after an abandoned `[[`, as
+/// in `[[x![[B]]`, does not count.
+fn drop_overlapped(abandoned: &mut Vec<AbandonedLink>, bracket: usize) {
+    while abandoned
+        .last()
+        .is_some_and(|a| a.byte_start + usize::from(a.embed) + 2 > bracket)
+    {
         abandoned.pop();
     }
 }
