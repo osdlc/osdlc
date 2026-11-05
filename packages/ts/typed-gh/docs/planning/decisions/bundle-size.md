@@ -22,7 +22,9 @@ created: 2026-11-05
   `raw` and `rawChecked` methods run these verbs, so the two forms cannot
   drift apart. `runCheckedGh` stays internal.
 - `tests/bundle.test.ts` bundles the verb path with tree-shaking and fails if
-  it carries a client or a verb it does not call.
+  it carries a client or a verb it does not call. It checks every value the
+  package exports, except the few the path needs, so a verb added later is
+  checked too.
 
 ## Why
 

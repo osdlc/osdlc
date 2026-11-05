@@ -3,15 +3,18 @@
  * bundles only the verbs it calls. A bundler drops an unused function but
  * not an unused method, so a `Gh` keeps every verb and parser. This test
  * bundles both shapes of diffkit's two calls (`prDiff`, then a raw checked
- * call) with tree-shaking on, and fails as soon as the verb path pulls in a
- * client or a verb it does not call. See
- * docs/planning/decisions/bundle-size.md.
+ * call) with tree-shaking on. It fails as soon as the verb path carries any
+ * value the package exports, other than the few that path calls, or one of the
+ * client's internal helpers. The list comes from the exports, so a verb added
+ * later is checked too. See docs/planning/decisions/bundle-size.md.
  */
 
 import { fileURLToPath } from 'node:url'
 
 import { rolldown } from 'rolldown'
 import { describe, expect, test } from 'vitest'
+
+import * as surface from '../src/index.ts'
 
 const INDEX = fileURLToPath(new URL('../src/index.ts', import.meta.url))
 
@@ -54,20 +57,35 @@ console.log(gh.prDiff(7))
 console.log(gh.rawChecked(['api', 'repos/{owner}/{repo}/pulls/7/files']).stdout)
 `
 
-/** Names that only a bundle carrying the whole client has. */
+/**
+ * The exports the verb path calls, or that what it calls needs: the runner,
+ * the failure classifier `rawChecked` throws through, and the error the
+ * runner throws.
+ */
+const VERB_PATH_NEEDS = new Set([
+  'prDiff',
+  'rawChecked',
+  'runVerb',
+  'defaultRunnerFactory',
+  'classifyGhFailure',
+  'CommandFailed',
+])
+
+/** Helpers the clients use that the package does not export. */
+const CLIENT_INTERNALS = ['triedSync', 'softSync', 'parsePrSearchHit', 'parseRepository']
+
+/**
+ * Every value the verb path must not carry: each export (the classes, verbs,
+ * parsers and field lists) outside `VERB_PATH_NEEDS`, and the client internals.
+ */
 const UNUSED = [
-  /\bclass Gh\b/,
-  /\bclass AsyncGh\b/,
-  /\bfunction searchPrs\b/,
-  /\bfunction repoList\b/,
-  /\bfunction graphql\b/,
-  /\bfunction parsePrSearchHit\b/,
-  /\bfunction parseRepository\b/,
-  /\bfunction triedSync\b/,
-  /\bfunction softSync\b/,
+  ...Object.keys(surface).filter((name) => !VERB_PATH_NEEDS.has(name)),
+  ...CLIENT_INTERNALS,
 ]
 
-const present = (code: string) => UNUSED.filter((name) => name.test(code)).map(String)
+/** The names in `UNUSED` that `code` declares. */
+const present = (code: string) =>
+  UNUSED.filter((name) => new RegExp(`\\b(?:function|class|const|let|var) ${name}\\b`).test(code))
 
 describe('the bundle of a tool that calls two verbs', () => {
   test('through runVerb, it carries those verbs and no client', async () => {
@@ -80,7 +98,16 @@ describe('the bundle of a tool that calls two verbs', () => {
 
   test('through a Gh, it carries every verb (the check sees them when they are there)', async () => {
     expect(present(await bundle(CLIENT_PATH))).toEqual(
-      UNUSED.filter((name) => !/AsyncGh/.test(String(name))).map(String),
+      expect.arrayContaining([
+        'Gh',
+        'searchPrs',
+        'repoList',
+        'graphql',
+        'prList',
+        'pickPrForBranch',
+        'PR_VIEW_FIELDS',
+        ...CLIENT_INTERNALS,
+      ]),
     )
   }, 30_000)
 })
