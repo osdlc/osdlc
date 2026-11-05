@@ -43,7 +43,7 @@ can see walk errors. Modification times are nanoseconds.
 - `LinkGraph::with_walk`, `with_split`, `walk_options`, `split_mode`,
   `try_refresh` and `try_refresh_now`; the same on `FrontmatterIndex`
   (without `split_mode`). Their `refresh` and `refresh_now` leave the cache
-  as it was on a walk error.
+  as it was on a walk error, or empty when the call switched corpora.
 - `LinkGraph::with_snapshot(|paths, notes| ..)`: every path and every note's
   facts from one lock hold.
 - `Hide`, `WalkError`, `WalkOptions` and the `markdown_vault_fs` crate

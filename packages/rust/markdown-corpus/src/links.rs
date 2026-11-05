@@ -18,7 +18,8 @@
 //! picks how each note's frontmatter is found.
 //!
 //! [`LinkGraph::refresh`] never fails: a walk error (only possible when the
-//! walk refuses symlinks or propagates errors) leaves the graph as it was.
+//! walk refuses symlinks or propagates errors) leaves the graph as it was,
+//! or empty when the call moved it to another corpus.
 //! [`LinkGraph::try_refresh`] returns it.
 //!
 //! # Freshness
@@ -314,8 +315,9 @@ impl LinkGraph {
 
     /// Walks the corpus and brings the graph up to date, reusing a sweep
     /// younger than the TTL over the same corpus. A reused sweep reports the
-    /// cache as `unchanged`. A walk error leaves the graph as it was and
-    /// reports nothing changed; [`Self::try_refresh`] returns it.
+    /// cache as `unchanged`. A walk error leaves the graph as it was (empty
+    /// when `vault_dir` is another corpus) and reports nothing changed;
+    /// [`Self::try_refresh`] returns it.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> GraphStats {
         self.try_refresh(vfs, clock, vault_dir).unwrap_or_default()
     }

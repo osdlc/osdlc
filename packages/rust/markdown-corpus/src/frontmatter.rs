@@ -139,8 +139,8 @@ impl FrontmatterIndex {
 
     /// Walks the corpus and brings the index up to date, reusing a walk
     /// younger than the TTL over the same corpus. A walk error leaves the
-    /// index as it was and reports nothing changed;
-    /// [`Self::try_refresh`] returns it.
+    /// index as it was (empty when `vault_dir` is another corpus) and reports
+    /// nothing changed; [`Self::try_refresh`] returns it.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> RefreshStats {
         self.try_refresh(vfs, clock, vault_dir).unwrap_or_default()
     }
