@@ -469,12 +469,12 @@ impl WalkOptions {
         // not entered. A root inside a pruned folder is still walked.
         let walks_from = |root: &str| {
             let tail = if root.is_empty() {
-                rel
+                Some(rel)
             } else {
-                match rel.strip_prefix(root).and_then(|r| r.strip_prefix('/')) {
-                    Some(tail) => tail,
-                    None => return false,
-                }
+                rel.strip_prefix(root).and_then(|r| r.strip_prefix('/'))
+            };
+            let Some(tail) = tail else {
+                return false;
             };
             let dirs = tail.rsplit_once('/').map_or("", |(dirs, _)| dirs);
             if tail
@@ -486,16 +486,12 @@ impl WalkOptions {
             {
                 return false;
             }
-            let mut end = rel.len() - tail.len();
-            for dir in dirs.split('/').filter(|d| !d.is_empty()) {
-                end += dir.len();
-                let folder = join_rel(vault_dir, &rel[..end]);
-                if vfs.metadata(&folder).is_ok_and(|m| m.is_symlink) {
-                    return false;
-                }
-                end += 1;
-            }
-            true
+            // Each `/` in the tail ends a folder below the start.
+            let base = rel.len() - tail.len();
+            tail.match_indices('/').all(|(k, _)| {
+                let folder = join_rel(vault_dir, &rel[..base + k]);
+                !vfs.metadata(&folder).is_ok_and(|m| m.is_symlink)
+            })
         };
         let reached = if self.roots.is_empty() {
             walks_from("")
