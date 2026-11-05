@@ -8,10 +8,12 @@
     "node": ">=24"
   },
   "scripts": {
-    "validate": "pnpm run validate:alpha",
+    "validate": "pnpm run validate:alpha && pnpm run validate:beta",
     "validate:alpha": "node src/alpha/validate.ts",
-    "write-schema": "pnpm run write-schema:alpha",
+    "validate:beta": "node src/beta/validate.ts",
+    "write-schema": "pnpm run write-schema:alpha && pnpm run write-schema:beta",
     "write-schema:alpha": "node src/alpha/validate.ts --write-schema",
+    "write-schema:beta": "node src/beta/validate.ts --write-schema",
     "test": "node --test src/*/*.test.ts",
     "typecheck": "tsc -p tsconfig.json",
     "generate": "node src/alpha/generate.ts",

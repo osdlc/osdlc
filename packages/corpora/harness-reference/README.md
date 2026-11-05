@@ -11,9 +11,12 @@ The record is kept as corpora: folders of Markdown files, each with its own sche
   and wrong values go in. New research goes into a later corpus.
 - `corpora/alpha/sources/`: research notes the alpha corpus cites. Upstream docs and repositories
   are cited by their own URLs.
+- `corpora/beta/`: the beta corpus, built up step by step. Step one is one file per harness. See
+  [corpora/beta/README.md](corpora/beta/README.md).
 - `probes/`: reproducible runs that back `evidence: run` observations.
 - `src/alpha/`: the alpha schema, validator, page generator and tests.
 - `schema/alpha/`: JSON Schemas generated from `src/alpha/schema.ts`, for other tools.
+- `src/beta/` and `schema/beta/`: the same for the beta corpus.
 
 ## The alpha corpus
 
@@ -121,12 +124,12 @@ run used, and `model` where the subject allows it.
 Node 24 runs the TypeScript in `src/` directly. From this folder:
 
 ```sh
-pnpm run validate       # check the corpus, its links into this repository, and schema/alpha/*.json
+pnpm run validate       # check both corpora, alpha's links into this repository, and schema/*/*.json
 pnpm run test           # validator and renderer tests
 pnpm run typecheck
-pnpm run generate       # write the pages to dist/ (not committed)
+pnpm run generate       # write the alpha pages to dist/ (not committed)
 pnpm run check          # all four
-pnpm run write-schema   # rewrite schema/alpha/*.json after changing src/alpha/schema.ts
+pnpm run write-schema   # rewrite schema/*/*.json after changing a schema.ts
 ```
 
 CI runs `pnpm run check` when anything under `harness-reference/` changes
