@@ -66,6 +66,61 @@ const OK = (stdout: string): CommandResult => ({ exitCode: 0, stdout, stderr: ''
 const FAIL: CommandResult = { exitCode: 128, stdout: '', stderr: 'fatal: nope' }
 const EXIT = (exitCode: number): CommandResult => ({ exitCode, stdout: '', stderr: '' })
 
+/** Names git's fsck reports as `hasDotgit`, besides `.git` in any case. */
+const DOTGIT_ALIASES = [
+  'git~1',
+  'GIT~1',
+  '.git.',
+  '.git ',
+  '.git. . ',
+  '.git:x',
+  '.Git::$INDEX_ALLOCATION',
+  '.git\\x',
+  'git~1 .',
+  'git~1:x',
+  '.g‌it',
+  '﻿.GIT',
+  '.git⁯',
+]
+/** Names close to those that git reads as ordinary names. */
+const DOTGIT_NEAR_MISSES = [
+  'git',
+  '.gi',
+  '.gitx',
+  '.git-x',
+  'git~2',
+  'git~1x',
+  // HFS+ ignores the code point but does not drop the dot; NTFS does neither.
+  '.git‌.',
+  // Only ASCII letters fold.
+  '.gİt',
+]
+/** Names git's fsck treats as `.gitmodules`. */
+const GITMODULES_ALIASES = [
+  '.gitmodules',
+  '.GITMODULES',
+  '.gitmodules.',
+  '.gitmodules :x',
+  '.gitmod‌ules',
+  'gitmod~1',
+  'GITMOD~4',
+  'gitmod~1 ',
+  'gi7eba~1',
+  'GI7EBA~9',
+  'gi7eb~12',
+]
+const GITMODULES_NEAR_MISSES = [
+  'gitmodules',
+  '.gitmodulesx',
+  // Unlike `.git`, git does not end `.gitmodules` at a backslash.
+  '.gitmodules\\x',
+  'gitmod~',
+  'gitmod~5',
+  'gi7ebc~1',
+  'gi7eba~1x',
+  '﻿gitmod~1',
+]
+
 describe('Git — argv construction (fake runner)', () => {
   test('showAtRev builds show <rev>:<path> and returns stdout', () => {
     const { runner, calls } = recorder(OK('content\n'))
@@ -627,6 +682,17 @@ describe('Git — argv construction (fake runner)', () => {
       [[{ ...entry, path: '..' }], 'is not a name git allows'],
       [[{ ...entry, path: '.git' }], 'is not a name git allows'],
       [[{ ...entry, path: '.GIT' }], 'is not a name git allows'],
+      // NTFS and HFS+ read each of these as `.git` (CVE-2014-9390, CVE-2019-1352).
+      ...DOTGIT_ALIASES.map((path): [MktreeEntry[], string] => [
+        [{ ...entry, path }],
+        'is not a name git allows',
+      ]),
+      ...GITMODULES_ALIASES.flatMap((path) =>
+        ['120000', '040000', '160000'].map((mode): [MktreeEntry[], string] => [
+          [{ ...entry, mode, path }],
+          `is read by git as .gitmodules, which must be a file (got mode ${mode})`,
+        ]),
+      ),
       [[{ ...entry, path: 'a/b' }], 'without "/" or NUL'],
       [[{ ...entry, path: 'a\x00b' }], 'without "/" or NUL'],
       [[entry, { ...entry, mode: '040000', sha: 'b'.repeat(40) }], 'entry "ok" appears twice'],
@@ -640,13 +706,50 @@ describe('Git — argv construction (fake runner)', () => {
       expect(() => git.try.mktree(entries)).toThrow(TypeError)
       expect(calls).toEqual([])
     }
-    // `.gitignore` and `..x` are ordinary names.
+    // `.gitignore`, `..x` and the near misses git does not read as `.git` are
+    // ordinary names, and a `.gitmodules` file or executable is fine.
     const { runner, calls } = recorder(OK(`${blob}\n`))
     new Git('/repo', { runner }).mktree([
       { ...entry, path: '.gitignore' },
       { ...entry, path: '..x' },
+      ...DOTGIT_NEAR_MISSES.map((path) => ({ ...entry, path })),
+      ...GITMODULES_NEAR_MISSES.map((path) => ({ ...entry, mode: '120000', path })),
+      { ...entry, path: '.gitmodules' },
+      { ...entry, mode: '100755', path: 'gitmod~1' },
     ])
     expect(calls).toHaveLength(1)
+  })
+
+  test('mktree refuses exactly the names git fsck reports', () => {
+    // Write each name with git's own mktree, which takes them all, and ask
+    // fsck: the lists above must match what git checks, not what we expect.
+    const fx = makeGitFixture()
+    try {
+      const git = fx.git
+      const blob = git.hashObject('x\n', { write: true })
+      const write = (mode: string, path: string) =>
+        git
+          .rawChecked(['mktree', '-z'], { input: `${mode} blob ${blob}\t${path}\x00` })
+          .stdout.trim()
+      const cases = [
+        ...DOTGIT_ALIASES.map((path) => [path, write('100644', path), 'hasDotgit'] as const),
+        ...GITMODULES_ALIASES.map(
+          (path) => [path, write('120000', path), 'gitmodulesSymlink'] as const,
+        ),
+        ...[...DOTGIT_NEAR_MISSES, ...GITMODULES_NEAR_MISSES].map(
+          (path) => [path, write('120000', path), null] as const,
+        ),
+      ]
+      const fsck = git.raw(['fsck', '--strict', '--no-dangling'])
+      const report = fsck.stdout + fsck.stderr
+      expect(fsck.exitCode).not.toBe(0)
+      for (const [path, tree, message] of cases) {
+        const said = new RegExp(`tree ${tree}: (\\w+)`).exec(report)?.[1] ?? null
+        expect([path, said]).toEqual([path, message])
+      }
+    } finally {
+      fx.cleanup()
+    }
   })
 
   test('updateRef passes the old value git compares, and the reflog reason', () => {
@@ -729,6 +832,10 @@ describe('Git — argv construction (fake runner)', () => {
         FailureError,
       )
       expect(() => git.mktree([{ mode: '040000', sha: blob, path: 'x' }])).toThrow(FailureError)
+      // Except a submodule commit, which lives in another repository: git takes any sha.
+      expect(git.mktree([{ mode: '160000', sha: 'a'.repeat(40), path: 'sub' }])).toMatch(
+        /^[0-9a-f]{40}$/,
+      )
       // Objects only: no commit, no ref.
       expect(git.hasHistory()).toBe(false)
     } finally {

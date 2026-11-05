@@ -33,11 +33,23 @@ write a commit and point a ref at it without the index or a checkout
   this shape, so `mktree(lsTree(rev))` writes the same tree back.
 - `mktree` checks each entry before git runs and throws a `TypeError` for a
   mode other than the five git writes, a type that does not match the mode,
-  a sha that is not a full sha, a name that is empty, `.`, `..` or `.git` in
-  any letter case, a name with `/` or NUL, and a name given twice. git's
-  `mktree` refuses only the `/` (NUL cannot reach it with `-z`). It writes
-  the rest, and `git fsck --strict` reports each one. A duplicate or an
-  empty name fails plain `git fsck` too.
+  a sha that is not a full sha, a name that is empty, `.` or `..`, a name
+  git reads as `.git`, a `.gitmodules` that is not a file, a name with `/`
+  or NUL, and a name given twice. git's `mktree` refuses only the `/` (NUL
+  cannot reach it with `-z`). It writes the rest, and `git fsck --strict`
+  reports each one. A duplicate or an empty name, and a `.gitmodules` that
+  is a symlink, a tree or a submodule, fail plain `git fsck` too.
+- "Reads as `.git`" and "reads as `.gitmodules`" are ports of git's
+  `is_ntfs_dotgit`, `is_hfs_dotgit` and their `.gitmodules` twins, which
+  fsck uses for `hasDotgit` and `gitmodulesSymlink`. They cover any letter
+  case; the NTFS forms (trailing dots and spaces, anything from `:` on, the
+  short names `git~1`, `gitmod~1` to `~4` and `gi7eba~N`); and the HFS+
+  forms (`.git` with an ignorable code point such as U+200C inside). These
+  are the names behind CVE-2014-9390 and CVE-2019-1352. A test writes each
+  one with git's own `mktree` and checks that fsck flags it, and that the
+  near misses in the same table are ordinary names.
+- A submodule (`160000`) entry's sha is not checked by git, since the
+  commit lives in another repository, so `mktree` takes any full sha there.
 - `hashObject` and `mktree` sit with `commitTree` under Queries in the
   README: each writes an object and moves no ref. `updateRef` sits beside
   `deleteRef` under Mutations.

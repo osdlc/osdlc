@@ -1576,7 +1576,10 @@ export interface MktreeEntry {
   type?: 'blob' | 'tree' | 'commit' | undefined
   /** The full sha of an object already in the store. */
   sha: string
-  /** The entry's name: no `/`, no NUL, not empty, `.`, `..` or `.git`. */
+  /**
+   * The entry's name: no `/`, no NUL, not empty, `.`, `..`, or a name git
+   * reads as `.git` (see {@link mktree}).
+   */
   path: string
 }
 
@@ -1589,6 +1592,75 @@ const TREE_MODE_TYPES: Readonly<Record<string, NonNullable<MktreeEntry['type']>>
   '160000': 'commit',
 }
 
+/** Code points HFS+ ignores in a name (git's `next_hfs_char`). */
+const HFS_IGNORED = /[‌-‏‪-‮⁪-⁯﻿]/gu
+
+/** Lower-case the ASCII letters only, as git does against its ASCII needles. */
+const asciiLower = (s: string): string => s.replace(/[A-Z]/g, (c) => c.toLowerCase())
+
+/**
+ * HFS+ reads `name` as `.<needle>` (git's `is_hfs_dot_generic`): equal to it
+ * in ASCII letter case once the ignorable code points are dropped.
+ */
+function hfsReadsAs(name: string, needle: string): boolean {
+  return asciiLower(name.replace(HFS_IGNORED, '')) === `.${needle}`
+}
+
+/**
+ * NTFS drops trailing dots and spaces, and a `:` starts an alternate data
+ * stream. True when `rest` holds only dots and spaces before its end, a `:`,
+ * or, with `backslash`, a `\` (git checks that one for `.git` only).
+ */
+function ntfsTailIsEmpty(rest: string, backslash: boolean): boolean {
+  return (backslash ? /^[. ]*(?:$|[:\\])/ : /^[. ]*(?:$|:)/).test(rest)
+}
+
+/**
+ * A name git's fsck reports as `hasDotgit` (git's `is_hfs_dotgit` and
+ * `is_ntfs_dotgit`), and checkout refuses on every platform.
+ */
+function readsAsDotGit(name: string): boolean {
+  if (hfsReadsAs(name, 'git')) return true
+  const lower = asciiLower(name)
+  if (lower.startsWith('.git')) return ntfsTailIsEmpty(name.slice(4), true)
+  if (lower.startsWith('git~1')) return ntfsTailIsEmpty(name.slice(5), true)
+  return false
+}
+
+/**
+ * A name git's fsck treats as `.gitmodules` (git's `is_hfs_dotgitmodules`
+ * and `is_ntfs_dotgitmodules`): the HFS+ and NTFS spellings, the short names
+ * `gitmod~1` to `~4`, and the 8.3 fallback short name, whose prefix
+ * `gi7eba` git took from a hash of the long name.
+ */
+function readsAsDotGitmodules(name: string): boolean {
+  if (hfsReadsAs(name, 'gitmodules')) return true
+  const lower = asciiLower(name)
+  if (lower.startsWith('.gitmodules')) return ntfsTailIsEmpty(name.slice(11), false)
+  if (/^gitmod~[1-4]/.test(lower)) return ntfsTailIsEmpty(name.slice(8), false)
+  // The fallback: a leading part of `gi7eba` (at most six characters), `~`,
+  // a digit 1-9, then digits up to eight characters. This follows git's loop
+  // step for step, so a `~` at index 7 reads one character past eight.
+  const prefix = 'gi7eba'
+  let sawTilde = false
+  let i = 0
+  for (; i < 8; i++) {
+    const c = lower[i]
+    if (c === undefined) return false
+    if (sawTilde) {
+      if (c < '0' || c > '9') return false
+    } else if (c === '~') {
+      i++
+      const d = lower[i]
+      if (d === undefined || d < '1' || d > '9') return false
+      sawTilde = true
+    } else if (i >= 6 || c !== prefix[i]) {
+      return false
+    }
+  }
+  return ntfsTailIsEmpty(name.slice(i), false)
+}
+
 /**
  * Write a tree object holding `entries` and return its sha (`git mktree -z`).
  * No entries writes the empty tree.
@@ -1596,15 +1668,26 @@ const TREE_MODE_TYPES: Readonly<Record<string, NonNullable<MktreeEntry['type']>>
  * The entries go to git on stdin, NUL-terminated, so a name may hold spaces,
  * tabs or newlines. git sorts them into tree order itself. It refuses a
  * name with `/`, but it would write a duplicate name, an empty name, `.`,
- * `..`, `.git`, or a mode such as `100664`, each of which `git fsck
- * --strict` reports. Each of those throws a `TypeError` here, before git
- * runs, as do a name with `/` or NUL, a sha that is not a full sha, and a
- * type that does not match the mode. `.git` is refused in any letter case,
- * as `checkout` refuses it.
+ * `..`, a name git reads as `.git`, a `.gitmodules` that is not a file, or
+ * a mode such as `100664`, each of which `git fsck --strict` reports. Each
+ * of those throws a `TypeError` here, before git runs, as do a name with
+ * `/` or NUL, a sha that is not a full sha, and a type that does not match
+ * the mode.
  *
- * Every sha must name an object already in the store, of the entry's type;
- * otherwise git exits 128 and this throws. `absent: []`, and a reply that is
- * not a sha throws.
+ * A name git reads as `.git` is one git's fsck reports as `hasDotgit`:
+ * `.git` in any letter case; the NTFS spellings, which are `.git` or
+ * `git~1` followed only by dots and spaces, or by anything from a `:` or
+ * `\` on (`.git.`, `.git ` and `.git::$INDEX_ALLOCATION`); and the HFS+
+ * ones, which are `.git` with an ignorable code point such as U+200C
+ * anywhere in it. The same spellings of `.gitmodules`, with the short names
+ * `gitmod~1` to `~4` and the 8.3 fallback `gi7eba~1`, must be a file, mode
+ * `100644` or `100755`: git fsck reports a symlink, a tree or a submodule
+ * there even without `--strict`.
+ *
+ * Every sha must name an object already in the store, of the entry's type,
+ * except a submodule (`160000`) commit, which git does not check; otherwise
+ * git exits 128 and this throws. `absent: []`, and a reply that is not a
+ * sha throws.
  */
 export function mktree(entries: readonly MktreeEntry[]): GitVerb<string> {
   const names = new Set<string>()
@@ -1618,11 +1701,14 @@ export function mktree(entries: readonly MktreeEntry[]): GitVerb<string> {
       throw bad(`has type ${JSON.stringify(given)}, but mode ${mode} is a ${type}`)
     }
     if (!FULL_SHA.test(sha)) throw bad(`needs a full sha (got ${JSON.stringify(sha)})`)
-    if (path === '' || path === '.' || path === '..' || path.toLowerCase() === '.git') {
+    if (path === '' || path === '.' || path === '..' || readsAsDotGit(path)) {
       throw bad('is not a name git allows in a tree')
     }
     if (path.includes('/') || path.includes('\x00')) {
       throw bad('must be one name, without "/" or NUL')
+    }
+    if (mode !== '100644' && mode !== '100755' && readsAsDotGitmodules(path)) {
+      throw bad(`is read by git as .gitmodules, which must be a file (got mode ${mode})`)
     }
     if (names.has(path)) throw bad('appears twice')
     names.add(path)

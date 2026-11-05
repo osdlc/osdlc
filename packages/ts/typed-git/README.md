@@ -463,7 +463,16 @@ or, for `null`, only while it does not exist, so two writers cannot both
 win. The one that loses gets a thrown failure (exit 128, `is at … but
 expected …` or `reference already exists` in `detail`) and can re-read the
 ref and try again. `mktree` takes one directory level: a subdirectory is an
-entry with mode `040000` and the sha of a tree written before it. The
+entry with mode `040000` and the sha of a tree written before it.
+
+Before git runs, `mktree` throws a `TypeError` for a name that git's fsck
+reports, so a tool that builds names from data keys cannot write a tree a
+host's push check rejects. That covers `.git` and the spellings NTFS and
+HFS+ read as `.git`, such as `git~1`, `.git.` and `.git` with a zero-width
+character inside, and a `.gitmodules` (or `gitmod~1`) that is not a file.
+Each sha must name an object already in the store, except a submodule
+(`160000`) commit: it lives in another repository, and git does not check
+it. The
 [orphan-commit example](https://github.com/osdlc/osdlc/tree/main/packages/ts/typed-git/examples/orphan-commit.ts)
 runs the whole sequence.
 
@@ -734,7 +743,7 @@ exit throws the classified failure.
 | `cherry(upstream, head)` | `cherry <upstream> [<head>]` | none — `{ sha, equivalent }` per commit; empty output is `[]`, an unreadable line throws |
 | `commitTree(tree, { parents, message })` | `commit-tree <tree> [-p <parent>]... -m <message>` | none — writes an object and no ref; needs a git identity |
 | `hashObject(content, { write })` | `hash-object [-w] --stdin` | none — the blob sha; `write` stores the blob; `content` goes on stdin as UTF-8, unfiltered |
-| `mktree(entries)` | `mktree -z` | none — writes a tree object and no ref; each entry is `{ mode, type?, sha, path }`, one name per entry; a duplicate name, a mode git does not write, or a name such as `.git` that `git fsck --strict` reports throws a `TypeError` |
+| `mktree(entries)` | `mktree -z` | none — writes a tree object and no ref; each entry is `{ mode, type?, sha, path }`, one name per entry; a duplicate name, a mode git does not write, a name git reads as `.git` (including `git~1`, `.git.` and the HFS+ spellings), or a `.gitmodules` that is not a file, each of which `git fsck --strict` reports, throws a `TypeError` |
 | `remotes()` | `remote` | none — names, not remotes |
 | `remote()` | `remote` | none — deprecated alias of `remotes()` |
 | `remoteGetUrl(name, { push })` | `remote get-url [--push] <name>` | `2` → `null` (unknown remote) — the first URL |
