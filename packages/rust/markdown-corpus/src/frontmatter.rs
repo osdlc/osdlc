@@ -11,18 +11,29 @@
 //! A malformed note is kept with an empty mapping and
 //! [`IndexedNote::parse_error`] set: a projection never dies on one bad note
 //! and never pretends it is not there.
+//!
+//! # The walk
+//!
+//! [`FrontmatterIndex::default_walk`] is the content walk above.
+//! [`FrontmatterIndex::with_walk`] replaces it, for example with a tool's own
+//! excluded files as [`Hide::Rules`](markdown_vault_fs::walk::Hide::Rules).
+//! Every answer follows it: the walk, [`FrontmatterIndex::apply_change`]
+//! (which takes a path only when the walk would list it),
+//! [`FrontmatterIndex::changes`], [`FrontmatterIndex::page`] and
+//! [`FrontmatterIndex::len`]. [`FrontmatterIndex::with_split`] picks how
+//! each note's block is found.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use markdown_vault_fs::walk::{Visibility, WalkOptions};
+use markdown_vault_fs::walk::{WalkError, WalkOptions};
 use vfs_seam::{Clock, Vfs};
 use yaml_splice::Mapping;
 
 use crate::links::{REFRESH_TTL_MS, WATCHED_TTL_MS, join_rel, stamp_of};
-use crate::note::{note_title, read_note};
+use crate::note::{SplitMode, note_title, read_note_with};
 
 /// One note's cached parse.
 #[derive(Debug, Clone, PartialEq)]
@@ -91,6 +102,8 @@ pub struct FrontmatterIndex {
     changes: AtomicU64,
     watched: AtomicBool,
     apply_lock: Mutex<()>,
+    walk: WalkOptions,
+    split: SplitMode,
 }
 
 impl FrontmatterIndex {
@@ -99,14 +112,64 @@ impl FrontmatterIndex {
         FrontmatterIndex::default()
     }
 
+    /// The walk an index uses unless told otherwise: content notes only (no
+    /// `_system/`, no dot folders) and the corpus's own excluded files.
+    pub fn default_walk() -> WalkOptions {
+        WalkOptions::content_notes()
+    }
+
+    /// This index, walking with `walk` instead of [`Self::default_walk`].
+    /// Only notes are indexed, whatever else the walk lists. Set it before
+    /// the first refresh.
+    pub fn with_walk(mut self, walk: WalkOptions) -> Self {
+        self.walk = walk;
+        self
+    }
+
+    /// This index, finding each note's frontmatter by `split`.
+    pub fn with_split(mut self, split: SplitMode) -> Self {
+        self.split = split;
+        self
+    }
+
+    /// The walk this index sweeps with.
+    pub fn walk_options(&self) -> &WalkOptions {
+        &self.walk
+    }
+
     /// Walks the corpus and brings the index up to date, reusing a walk
-    /// younger than the TTL over the same corpus.
+    /// younger than the TTL over the same corpus. A walk error leaves the
+    /// index as it was and reports nothing changed;
+    /// [`Self::try_refresh`] returns it.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> RefreshStats {
-        self.sweep(vfs, clock.now_ms(), vault_dir, true)
+        self.try_refresh(vfs, clock, vault_dir).unwrap_or_default()
     }
 
     /// [`Self::refresh`] that always walks.
     pub fn refresh_now(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> RefreshStats {
+        self.try_refresh_now(vfs, clock, vault_dir)
+            .unwrap_or_default()
+    }
+
+    /// [`Self::refresh`] that returns a walk error instead of leaving the
+    /// index as it was. Only a walk that refuses symlinks or propagates
+    /// errors can fail.
+    pub fn try_refresh(
+        &self,
+        vfs: &dyn Vfs,
+        clock: &dyn Clock,
+        vault_dir: &Path,
+    ) -> Result<RefreshStats, WalkError> {
+        self.sweep(vfs, clock.now_ms(), vault_dir, true)
+    }
+
+    /// [`Self::refresh_now`] that returns a walk error.
+    pub fn try_refresh_now(
+        &self,
+        vfs: &dyn Vfs,
+        clock: &dyn Clock,
+        vault_dir: &Path,
+    ) -> Result<RefreshStats, WalkError> {
         self.sweep(vfs, clock.now_ms(), vault_dir, false)
     }
 
@@ -144,7 +207,13 @@ impl FrontmatterIndex {
         }
     }
 
-    fn sweep(&self, vfs: &dyn Vfs, now: i64, vault_dir: &Path, honor_ttl: bool) -> RefreshStats {
+    fn sweep(
+        &self,
+        vfs: &dyn Vfs,
+        now: i64,
+        vault_dir: &Path,
+        honor_ttl: bool,
+    ) -> Result<RefreshStats, WalkError> {
         let (generation, applied, stale_marks, cache) = {
             let mut state = self.state.lock().unwrap();
             if state.for_vault.as_deref() == Some(vault_dir) {
@@ -152,10 +221,10 @@ impl FrontmatterIndex {
                     && let Some(done) = state.walked_at
                     && (0..self.ttl()).contains(&(now - done))
                 {
-                    return RefreshStats {
+                    return Ok(RefreshStats {
                         unchanged: state.entries.len(),
                         ..RefreshStats::default()
-                    };
+                    });
                 }
             } else {
                 state.entries = Arc::default();
@@ -172,12 +241,11 @@ impl FrontmatterIndex {
         };
         self.sweeps.fetch_add(1, Ordering::SeqCst);
 
-        let entries = markdown_vault_fs::walk::walk(vfs, vault_dir, &WalkOptions::content_notes())
-            .unwrap_or_default();
+        let entries = markdown_vault_fs::walk::walk(vfs, vault_dir, &self.walk)?;
         let mut stats = RefreshStats::default();
         let mut seen: NoteMap = BTreeMap::new();
 
-        for entry in entries {
+        for entry in entries.into_iter().filter(|e| e.is_note) {
             let stamp = if entry.is_symlink {
                 stamp_of(vfs, &entry.abs)
             } else {
@@ -197,7 +265,7 @@ impl FrontmatterIndex {
                 None => (entry.size, None),
             };
             let existed = cache.contains_key(&entry.rel);
-            let note = parse_one(vfs, &entry.rel, &entry.abs, size, mtime);
+            let note = parse_one(vfs, self.split, &entry.rel, &entry.abs, size, mtime);
             if existed {
                 stats.updated += 1;
             } else {
@@ -220,7 +288,7 @@ impl FrontmatterIndex {
                 self.changes.fetch_add(1, Ordering::SeqCst);
             }
         }
-        stats
+        Ok(stats)
     }
 
     /// One note's cached parse. Does not refresh.
@@ -265,15 +333,12 @@ impl FrontmatterIndex {
     /// Brings one note's entry up to date (re-stat, re-parse, or remove when
     /// it is gone) without a walk, keeping the freshness stamp.
     ///
-    /// A path a content walk would not yield, or a call against another
-    /// corpus, does nothing. With no fresh walk to edit it only marks the
-    /// index, so a walk that read the note before the change is not stamped
-    /// fresh.
+    /// A path the index's walk would not yield ([`WalkOptions::admits`]), a
+    /// file that is not a note, or a call against another corpus, does
+    /// nothing. With no fresh walk to edit it only marks the index, so a walk
+    /// that read the note before the change is not stamped fresh.
     pub fn apply_change(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str) {
-        let hide = markdown_vault_fs::hide::load(vfs, vault_dir).rules;
-        if !rel.to_lowercase().ends_with(".md")
-            || !Visibility::ContentNotes.admits_path_hiding(rel, &hide)
-        {
+        if !rel.to_lowercase().ends_with(".md") || !self.walk.admits(vfs, vault_dir, rel) {
             return;
         }
         let _apply = self.apply_lock.lock().unwrap();
@@ -288,8 +353,8 @@ impl FrontmatterIndex {
             }
         }
         let abs = join_rel(vault_dir, rel);
-        let parsed =
-            stamp_of(vfs, &abs).map(|(size, mtime)| parse_one(vfs, rel, &abs, size, Some(mtime)));
+        let parsed = stamp_of(vfs, &abs)
+            .map(|(size, mtime)| parse_one(vfs, self.split, rel, &abs, size, Some(mtime)));
 
         #[cfg(test)]
         crate::links::hooks::run_mid_apply();
@@ -336,6 +401,7 @@ impl FrontmatterIndex {
 
 fn parse_one(
     vfs: &dyn Vfs,
+    split: SplitMode,
     rel: &str,
     abs: &Path,
     size: u64,
@@ -352,7 +418,7 @@ fn parse_one(
             mtime_ns,
         };
     };
-    let note = read_note(&String::from_utf8_lossy(&bytes));
+    let note = read_note_with(&String::from_utf8_lossy(&bytes), split);
     IndexedNote {
         path: rel.to_string(),
         title,

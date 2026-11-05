@@ -42,6 +42,13 @@
 //! resolves links to excluded files. The frontmatter index walks the content
 //! notes only, excluded files left out.
 //!
+//! Both walks are the caller's to change ([`LoadOptions::link_walk`],
+//! [`LoadOptions::frontmatter_walk`], or `with_walk` on each cache): the
+//! roots walked, dot files, pruned folders such as `node_modules`, refused
+//! symlinks, propagated read errors, and excluded files of the caller's own
+//! as [`Hide::Rules`]. [`Corpus::try_load`] returns a walk error that
+//! [`Corpus::load`] would leave as an empty cache.
+//!
 //! ```
 //! use markdown_corpus::{Corpus, LoadOptions};
 //! use markdown_corpus::vfs_seam::MemVfs;
@@ -68,9 +75,11 @@ pub use corpus::{Corpus, CorpusStats, LoadOptions};
 pub use frontmatter::{FrontmatterIndex, IndexedNote, RefreshStats};
 pub use links::{
     Backlink, BacklinkPage, Edge, EdgeKind, GraphStats, LinkContext, LinkGraph,
-    MAX_BACKLINK_SOURCES, NoteBody, NoteFacts, fill_contexts,
+    MAX_BACKLINK_SOURCES, NoteBody, NoteFacts, fill_contexts, fill_contexts_with,
 };
 pub use markdown_link::{BodyLink, LinkIndex, RawLink, ResolveError};
-pub use note::{Note, note_title, read_note};
+pub use markdown_vault_fs;
+pub use markdown_vault_fs::walk::{Hide, WalkError, WalkOptions};
+pub use note::{Note, SplitMode, note_title, read_note, read_note_with};
 pub use tags::{NoTags, TagCount, TagLexer, census};
 pub use vfs_seam;

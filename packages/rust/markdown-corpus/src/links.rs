@@ -8,6 +8,19 @@
 //! links, and inline tags. It inverts the edges into a backlink map at the
 //! end of each sweep, so "what links here" is a lookup.
 //!
+//! # The walk
+//!
+//! [`LinkGraph::default_walk`] is the walk above. [`LinkGraph::with_walk`]
+//! replaces it: other roots, pruned folders, dot files, refused symlinks,
+//! propagated errors or excluded files of the caller's own
+//! ([`Hide::Rules`]). [`LinkGraph::apply_changes`] takes a path only when the
+//! walk would list it ([`WalkOptions::admits`]). [`LinkGraph::with_split`]
+//! picks how each note's frontmatter is found.
+//!
+//! [`LinkGraph::refresh`] never fails: a walk error (only possible when the
+//! walk refuses symlinks or propagates errors) leaves the graph as it was.
+//! [`LinkGraph::try_refresh`] returns it.
+//!
 //! # Freshness
 //!
 //! A note is re-read when its `(size, mtime)` differs from the cached one. A
@@ -39,9 +52,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use markdown_link::{BodyLink, BodyLinkKind, LinkIndex, RawLink, ResolveError};
-use markdown_vault_fs::walk::{Hide, Visibility, WalkOptions};
+use markdown_vault_fs::walk::{Hide, WalkError, WalkOptions};
 use vfs_seam::{Clock, Vfs};
 
+use crate::note::{SplitMode, read_note_with, split_with};
 use crate::tags::{NoTags, TagLexer};
 
 /// How long a completed sweep counts as current, in milliseconds.
@@ -171,12 +185,16 @@ pub struct LinkGraph {
     /// batches install in the order they read the files. Taken before `state`.
     apply_lock: Mutex<()>,
     tags: Arc<dyn TagLexer + Send + Sync>,
+    walk: WalkOptions,
+    split: SplitMode,
 }
 
 impl std::fmt::Debug for LinkGraph {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("LinkGraph")
             .field("state", &self.state)
+            .field("walk", &self.walk)
+            .field("split", &self.split)
             .finish_non_exhaustive()
     }
 }
@@ -254,23 +272,90 @@ impl LinkGraph {
             watched: AtomicBool::new(false),
             apply_lock: Mutex::new(()),
             tags,
+            walk: LinkGraph::default_walk(),
+            split: SplitMode::default(),
         }
+    }
+
+    /// The walk a graph uses unless told otherwise: notes and attachments,
+    /// `_system/` included, and no excluded files ([`Hide::Off`]), so a link
+    /// into an excluded file still resolves.
+    pub fn default_walk() -> WalkOptions {
+        WalkOptions {
+            hide: Hide::Off,
+            ..WalkOptions::notes_and_attachments()
+        }
+    }
+
+    /// This graph, walking with `walk` instead of [`Self::default_walk`].
+    /// Set it before the first refresh: a graph already built keeps its
+    /// notes until the next sweep.
+    pub fn with_walk(mut self, walk: WalkOptions) -> Self {
+        self.walk = walk;
+        self
+    }
+
+    /// This graph, finding each note's frontmatter by `split`. Body links,
+    /// their lines and the frontmatter links all follow it.
+    pub fn with_split(mut self, split: SplitMode) -> Self {
+        self.split = split;
+        self
+    }
+
+    /// The walk this graph sweeps with.
+    pub fn walk_options(&self) -> &WalkOptions {
+        &self.walk
+    }
+
+    /// How this graph finds each note's frontmatter.
+    pub fn split_mode(&self) -> SplitMode {
+        self.split
     }
 
     /// Walks the corpus and brings the graph up to date, reusing a sweep
     /// younger than the TTL over the same corpus. A reused sweep reports the
-    /// cache as `unchanged`.
+    /// cache as `unchanged`. A walk error leaves the graph as it was and
+    /// reports nothing changed; [`Self::try_refresh`] returns it.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> GraphStats {
-        self.sweep(vfs, clock.now_ms(), vault_dir, true)
+        self.try_refresh(vfs, clock, vault_dir).unwrap_or_default()
     }
 
     /// [`Self::refresh`] that always walks. For a caller that has just
     /// changed the corpus and must see its own edit.
     pub fn refresh_now(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> GraphStats {
+        self.try_refresh_now(vfs, clock, vault_dir)
+            .unwrap_or_default()
+    }
+
+    /// [`Self::refresh`] that returns a walk error instead of leaving the
+    /// graph as it was. Only a walk that refuses symlinks or propagates
+    /// errors can fail.
+    pub fn try_refresh(
+        &self,
+        vfs: &dyn Vfs,
+        clock: &dyn Clock,
+        vault_dir: &Path,
+    ) -> Result<GraphStats, WalkError> {
+        self.sweep(vfs, clock.now_ms(), vault_dir, true)
+    }
+
+    /// [`Self::refresh_now`] that returns a walk error.
+    pub fn try_refresh_now(
+        &self,
+        vfs: &dyn Vfs,
+        clock: &dyn Clock,
+        vault_dir: &Path,
+    ) -> Result<GraphStats, WalkError> {
         self.sweep(vfs, clock.now_ms(), vault_dir, false)
     }
 
-    fn sweep(&self, vfs: &dyn Vfs, now: i64, vault_dir: &Path, honor_ttl: bool) -> GraphStats {
+    fn sweep(
+        &self,
+        vfs: &dyn Vfs,
+        now: i64,
+        vault_dir: &Path,
+        honor_ttl: bool,
+    ) -> Result<GraphStats, WalkError> {
         // 1. Under the lock: decide whether to walk, claim a new corpus, and
         // take the map to compare against.
         let (generation, applied, stale_marks, cache, prev_paths) = {
@@ -280,11 +365,11 @@ impl LinkGraph {
                     && let Some(done) = state.swept_at
                     && (0..self.ttl()).contains(&(now - done))
                 {
-                    return GraphStats {
+                    return Ok(GraphStats {
                         unchanged: state.notes.len(),
                         resolvable: state.index.len(),
                         ..GraphStats::default()
-                    };
+                    });
                 }
             } else {
                 // Claimed before the walk, so a reader mid-sweep sees an
@@ -306,13 +391,9 @@ impl LinkGraph {
             )
         };
 
-        // 2. Walk and read with no lock held. Excluded files stay: links to
-        // them still resolve, as in Obsidian.
-        let opts = WalkOptions {
-            hide: Hide::Off,
-            ..WalkOptions::notes_and_attachments()
-        };
-        let entries = markdown_vault_fs::walk::walk(vfs, vault_dir, &opts).unwrap_or_default();
+        // 2. Walk and read with no lock held. By default excluded files stay:
+        // links to them still resolve, as in Obsidian.
+        let entries = markdown_vault_fs::walk::walk(vfs, vault_dir, &self.walk)?;
         // Sorted by the comparator `apply_changes` binary-searches with.
         let mut paths: Vec<String> = entries.iter().map(|e| e.rel.clone()).collect();
         paths.sort_by(|a, b| slug_collate::compare_paths(a, b));
@@ -343,7 +424,7 @@ impl LinkGraph {
                 None => (0, None),
             };
             let existed = cache.contains_key(&entry.rel);
-            let facts = scan_note(vfs, &*self.tags, &entry.abs, size, mtime);
+            let facts = scan_note(vfs, &*self.tags, self.split, &entry.abs, size, mtime);
             seen.insert(entry.rel, Arc::new(facts));
             if existed {
                 stats.updated += 1;
@@ -364,7 +445,7 @@ impl LinkGraph {
                 state.swept_at = Some(now);
             }
             stats.resolvable = state.index.len();
-            return stats;
+            return Ok(stats);
         }
 
         let index = LinkIndex::build(&paths);
@@ -388,7 +469,7 @@ impl LinkGraph {
             // that sees the new count reads the new map.
             self.rebuilds.fetch_add(1, Ordering::SeqCst);
         }
-        stats
+        Ok(stats)
     }
 
     /// How many sweeps rebuilt the index and the edges. A clean sweep does
@@ -407,14 +488,13 @@ impl LinkGraph {
     ///
     /// The file system decides each path: present (spelled as listed in its
     /// folder) or gone. A changed note is re-read; the suffix index is
-    /// rebuilt only when the path set moved. A batch against another corpus,
-    /// or while no sweep is fresh, does nothing here, but marks the graph so
-    /// a sweep that read the files before the change is not stamped fresh.
+    /// rebuilt only when the path set moved. A path the graph's walk would not
+    /// list ([`WalkOptions::admits`]) is ignored. A batch against another
+    /// corpus, or while no sweep is fresh, does nothing here, but marks the
+    /// graph so a sweep that read the files before the change is not stamped
+    /// fresh.
     pub fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
-        let admitted: Vec<&String> = rels
-            .iter()
-            .filter(|rel| Visibility::IncludingUnderscore.admits_path(rel))
-            .collect();
+        let admitted = self.walk.admitted(vfs, vault_dir, rels);
         if admitted.is_empty() {
             return;
         }
@@ -443,9 +523,9 @@ impl LinkGraph {
                 let seen = match stamp_of(vfs, &abs) {
                     None => Seen::Gone,
                     Some(_) if !spelled_as_listed(vfs, &abs, &mut listings) => Seen::Gone,
-                    Some((size, mtime)) if rel.to_lowercase().ends_with(".md") => {
-                        Seen::Note(scan_note(vfs, &*self.tags, &abs, size, Some(mtime)))
-                    }
+                    Some((size, mtime)) if rel.to_lowercase().ends_with(".md") => Seen::Note(
+                        scan_note(vfs, &*self.tags, self.split, &abs, size, Some(mtime)),
+                    ),
                     Some(_) => Seen::File,
                 };
                 (rel, seen)
@@ -532,6 +612,17 @@ impl LinkGraph {
     /// says where the bytes are.
     pub fn with_notes<T>(&self, f: impl FnOnce(&BTreeMap<String, Arc<NoteFacts>>) -> T) -> T {
         f(&self.state.lock().unwrap().notes)
+    }
+
+    /// Borrows every path and every note's facts from one lock hold, so the
+    /// two come from the same sweep or apply. [`Self::paths`] then
+    /// [`Self::with_notes`] could straddle a refresh.
+    pub fn with_snapshot<T>(
+        &self,
+        f: impl FnOnce(&[String], &BTreeMap<String, Arc<NoteFacts>>) -> T,
+    ) -> T {
+        let state = self.state.lock().unwrap();
+        f(&state.paths, &state.notes)
     }
 
     /// Every file the last sweep saw, notes and attachments, in
@@ -895,6 +986,7 @@ fn spelled_as_listed(vfs: &dyn Vfs, abs: &Path, listings: &mut DirListings) -> b
 fn scan_note(
     vfs: &dyn Vfs,
     tags: &dyn TagLexer,
+    split: SplitMode,
     abs: &Path,
     size: u64,
     mtime_ns: Option<i64>,
@@ -908,20 +1000,17 @@ fn scan_note(
     };
     let source = String::from_utf8_lossy(&bytes);
     // Body only: a `[[link]]` in a frontmatter value is a frontmatter edge.
-    let split = frontmatter_lossless::split(&source);
-    let body = split.body;
+    let (yaml, body) = split_with(&source, split);
     // Parsed only when the YAML could hold a link or a path at all.
-    let frontmatter_links = if split
-        .yaml
-        .is_some_and(|y| y.contains("[[") || markdown_link::may_hold_frontmatter_paths(y))
-    {
-        let fm = crate::note::read_note(&source).frontmatter;
-        let mut links = markdown_link::frontmatter_links(&fm);
-        links.extend(markdown_link::frontmatter_paths(&fm));
-        links
-    } else {
-        Vec::new()
-    };
+    let frontmatter_links =
+        if yaml.is_some_and(|y| y.contains("[[") || markdown_link::may_hold_frontmatter_paths(y)) {
+            let fm = read_note_with(&source, split).frontmatter;
+            let mut links = markdown_link::frontmatter_links(&fm);
+            links.extend(markdown_link::frontmatter_paths(&fm));
+            links
+        } else {
+            Vec::new()
+        };
     let links = markdown_link::body_links_spanned(body);
     let lines = links.iter().map(|l| line_of(body, l.byte_start)).collect();
     NoteFacts {
@@ -951,10 +1040,22 @@ fn dedupe(items: Vec<String>) -> Vec<String> {
 }
 
 /// Fills each backlink context's `text` from its source note's body: one
-/// read per source, so call it on a capped page.
+/// read per source, so call it on a capped page. Splits each note strictly;
+/// [`fill_contexts_with`] takes the graph's [`SplitMode`].
 pub fn fill_contexts(vfs: &dyn Vfs, vault_dir: &Path, backlinks: &mut [Backlink]) {
+    fill_contexts_with(vfs, vault_dir, SplitMode::Strict, backlinks);
+}
+
+/// [`fill_contexts`] with each note split by `split`, so the lines match a
+/// graph built [`LinkGraph::with_split`].
+pub fn fill_contexts_with(
+    vfs: &dyn Vfs,
+    vault_dir: &Path,
+    split: SplitMode,
+    backlinks: &mut [Backlink],
+) {
     for entry in backlinks.iter_mut() {
-        let Some(body) = NoteBody::read(vfs, vault_dir, &entry.source_path) else {
+        let Some(body) = NoteBody::read_with(vfs, vault_dir, &entry.source_path, split) else {
             continue;
         };
         for ctx in entry.contexts.iter_mut() {
@@ -975,11 +1076,22 @@ pub struct NoteBody {
 }
 
 impl NoteBody {
-    /// Reads `rel` under `vault_dir`; `None` when it cannot be read.
+    /// Reads `rel` under `vault_dir`, split strictly; `None` when it cannot
+    /// be read.
     pub fn read(vfs: &dyn Vfs, vault_dir: &Path, rel: &str) -> Option<NoteBody> {
+        NoteBody::read_with(vfs, vault_dir, rel, SplitMode::Strict)
+    }
+
+    /// [`NoteBody::read`] with the frontmatter found by `split`.
+    pub fn read_with(
+        vfs: &dyn Vfs,
+        vault_dir: &Path,
+        rel: &str,
+        split: SplitMode,
+    ) -> Option<NoteBody> {
         let bytes = vfs.read_file(&join_rel(vault_dir, rel)).ok()?;
         let source = String::from_utf8_lossy(&bytes);
-        let body = frontmatter_lossless::split(&source).body;
+        let (_, body) = split_with(&source, split);
         let head = &source[..source.len().saturating_sub(body.len())];
         Some(NoteBody {
             lines: body.lines().map(str::to_string).collect(),

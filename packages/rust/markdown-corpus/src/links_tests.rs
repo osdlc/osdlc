@@ -159,6 +159,62 @@ fn a_same_size_edit_inside_one_millisecond_is_still_seen() {
     assert_eq!(g.backlinks("Bravo.md").total, 1);
 }
 
+#[test]
+fn a_snapshot_reads_paths_and_notes_from_one_sweep() {
+    let d = linked_vault();
+    let (g, c) = (graph(), FixedClock::new(0));
+    g.refresh(&*d, &c, root());
+    let (paths, notes) = g.with_snapshot(|paths, notes| (paths.to_vec(), notes.len()));
+    assert_eq!(paths, g.paths());
+    assert_eq!(notes, 4);
+    assert!(paths.contains(&"assets/diagram.svg".to_string()));
+}
+
+#[test]
+fn the_default_walk_keeps_excluded_files_and_a_caller_walk_can_drop_them() {
+    let d = linked_vault();
+    put(
+        &d,
+        ".obsidian/app.json",
+        r#"{"userIgnoreFilters":["Projects/"]}"#,
+    );
+    let (g, c) = (graph(), FixedClock::new(0));
+    g.refresh(&*d, &c, root());
+    assert!(g.paths().contains(&"Projects/Alpha.md".to_string()));
+
+    let hiding = graph().with_walk(WalkOptions::notes_and_attachments());
+    hiding.refresh(&*d, &c, root());
+    assert!(!hiding.paths().iter().any(|p| p.starts_with("Projects/")));
+    // A change under a hidden folder is not the graph's.
+    put(&d, "Projects/Gamma.md", "[[Home]]\n");
+    hiding.apply_changes(&*d, root(), &["Projects/Gamma.md".to_string()]);
+    assert!(!hiding.paths().contains(&"Projects/Gamma.md".to_string()));
+    g.apply_changes(&*d, root(), &["Projects/Gamma.md".to_string()]);
+    assert!(g.paths().contains(&"Projects/Gamma.md".to_string()));
+}
+
+#[test]
+fn a_failed_walk_leaves_the_graph_as_it_was() {
+    let d = linked_vault();
+    let strict = WalkOptions {
+        propagate_errors: true,
+        ..LinkGraph::default_walk()
+    };
+    let (g, c) = (graph().with_walk(strict), FixedClock::new(0));
+    g.try_refresh(&*d, &c, root()).unwrap();
+    assert_eq!(g.len(), 4);
+    // The corpus folder is gone, so it cannot be listed.
+    d.remove(root()).unwrap();
+    let err = g.try_refresh_now(&*d, &c, root()).unwrap_err();
+    assert!(
+        matches!(err, WalkError::Io(ref e) if e.is_not_found()),
+        "{err}"
+    );
+    assert_eq!(g.len(), 4, "the last good sweep stays");
+    assert_eq!(g.refresh_now(&*d, &c, root()), GraphStats::default());
+    assert_eq!(g.backlinks("Projects/Alpha.md").total, 2);
+}
+
 // ── Coalescing ─────────────────────────────────────────────────────────
 
 #[test]
