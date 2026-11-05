@@ -65,7 +65,7 @@ export interface RepoInfo {
   /**
    * The provider asked for pull requests and what its probe found: whether
    * its CLI is installed and signed in. Null when none was asked
-   * (`--provider none`, `--no-gh`, or a sweep without `--remotes`).
+   * (`--provider none`, or a sweep without `--remotes`).
    */
   provider: ProviderStatus | null
   /** True when the sweep fetched the remote before classifying. */

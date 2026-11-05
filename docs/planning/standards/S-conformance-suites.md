@@ -52,8 +52,16 @@ to the same behaviour by the same data.
       "reference": "ts",
       "generator": "pnpm --filter @osdlc/gfm-table conformance:write",
       "implementations": [
-        { "language": "ts", "dir": "packages/ts/gfm-table", "name": "@osdlc/gfm-table" },
-        { "language": "rust", "dir": "packages/rust/gfm-pipe-table", "name": "gfm-pipe-table" }
+        {
+          "language": "ts",
+          "dir": "packages/ts/gfm-table",
+          "name": "@osdlc/gfm-table"
+        },
+        {
+          "language": "rust",
+          "dir": "packages/rust/gfm-pipe-table",
+          "name": "gfm-pipe-table"
+        }
       ]
     }
   }
@@ -181,34 +189,34 @@ is committed, its file takes the format above, and both tests point at the
 new path. The README's "Twin libraries" section becomes "Library families"
 and points here.
 
-| Family | Implementations | Fixture today | Reference |
-|---|---|---|---|
-| agent-call | TS, Rust `osdlc-agent-call` | `rust/osdlc-agent-call/tests/fixtures/parity.json` | TS |
-| cli-tool | TS, Rust `osdlc-cli-tool` | `rust/osdlc-cli-tool/tests/fixtures/parity.json` | TS |
-| code-host | TS, Rust | `rust/code-host/tests/fixtures/parity.json` | TS |
-| color | TS, Rust `srgb-color` | `rust/srgb-color/tests/fixtures/parity.json` | TS |
-| command-seam | TS, Rust | `rust/command-seam/tests/fixtures/parity.json` | TS |
-| config-layers | TS, Rust | moved: `conformance/config-layers/suite.json` | TS |
-| detect-harness | TS, Rust | `rust/detect-harness/tests/fixtures/parity.json` | TS |
-| etag-write | TS, Rust | `rust/etag-write/tests/fixtures/parity.json` | TS |
-| fenced-lock | TS, Rust | `rust/fenced-lock/tests/fixtures/parity.json` | TS |
-| frontmatter-lossless | Rust, TS | `rust/frontmatter-lossless/tests/fixtures/conformance.json` | Rust |
-| gfm-table | TS, Rust `gfm-pipe-table` | `rust/gfm-pipe-table/tests/fixtures/parity.json` | TS |
-| intersect | TS, Rust `glob-intersect` | `ts/intersect/fixtures/*.cases.json` | TS |
-| manifest-graph | TS, Rust | `rust/manifest-graph/tests/fixtures/parity.json` | TS |
-| markdown-contract | TS, Rust | `ts/markdown-contract/corpus/`, `rust/markdown-contract/tests/fixtures/parity.json` | TS |
-| markdown-link | Rust, TS | `rust/markdown-link/tests/fixtures/conformance.json` | Rust |
-| markdown-tags | Rust, TS | `rust/markdown-tags/tests/fixtures/conformance.json` | Rust |
-| observe | TS, Rust `osdlc-observe` | `rust/osdlc-observe/tests/fixtures/parity.json` | TS |
-| path-guard | TS, Rust | `rust/path-guard/tests/fixtures/parity.json` | TS |
-| pr-update | TS, Rust | `rust/pr-update/tests/fixtures/parity.json` | TS |
-| repo-cleaner | TS, Rust | `rust/repo-cleaner/tests/fixtures/parity.json` | TS |
-| system-model | TS, Rust | `rust/system-model/tests/fixtures/parity.json` | TS |
-| tiered-dirs | TS, Rust | moved: `conformance/tiered-dirs/suite.json` | TS |
-| tool-router | TS, Rust | `rust/tool-router/tests/fixtures/parity.json` | TS |
-| trust-repo | TS, Rust | `rust/trust-repo/tests/fixtures/parity.json` | TS |
-| typed-gh | TS, Rust | `rust/typed-gh/tests/fixtures/parity.json` | TS |
-| typed-git | TS, Rust | `rust/typed-git/tests/fixtures/parity.json` | TS |
+| Family               | Implementations             | Fixture today                                                                       | Reference |
+| -------------------- | --------------------------- | ----------------------------------------------------------------------------------- | --------- |
+| agent-call           | TS, Rust `osdlc-agent-call` | `rust/osdlc-agent-call/tests/fixtures/parity.json`                                  | TS        |
+| cli-tool             | TS, Rust `osdlc-cli-tool`   | `rust/osdlc-cli-tool/tests/fixtures/parity.json`                                    | TS        |
+| code-host            | TS, Rust                    | `rust/code-host/tests/fixtures/parity.json`                                         | TS        |
+| color                | TS, Rust `srgb-color`       | `rust/srgb-color/tests/fixtures/parity.json`                                        | TS        |
+| command-seam         | TS, Rust                    | `rust/command-seam/tests/fixtures/parity.json`                                      | TS        |
+| config-layers        | TS, Rust                    | moved: `conformance/config-layers/suite.json`                                       | TS        |
+| detect-harness       | TS, Rust                    | `rust/detect-harness/tests/fixtures/parity.json`                                    | TS        |
+| etag-write           | TS, Rust                    | `rust/etag-write/tests/fixtures/parity.json`                                        | TS        |
+| fenced-lock          | TS, Rust                    | `rust/fenced-lock/tests/fixtures/parity.json`                                       | TS        |
+| frontmatter-lossless | Rust, TS                    | moved: `conformance/frontmatter-lossless/suite.json`                                | Rust      |
+| gfm-table            | TS, Rust `gfm-pipe-table`   | `rust/gfm-pipe-table/tests/fixtures/parity.json`                                    | TS        |
+| intersect            | TS, Rust `glob-intersect`   | moved: `conformance/intersect/suite.json`                                           | TS        |
+| manifest-graph       | TS, Rust                    | `rust/manifest-graph/tests/fixtures/parity.json`                                    | TS        |
+| markdown-contract    | TS, Rust                    | `ts/markdown-contract/corpus/`, `rust/markdown-contract/tests/fixtures/parity.json` | TS        |
+| markdown-link        | Rust, TS                    | `rust/markdown-link/tests/fixtures/conformance.json`                                | Rust      |
+| markdown-tags        | Rust, TS                    | `rust/markdown-tags/tests/fixtures/conformance.json`                                | Rust      |
+| observe              | TS, Rust `osdlc-observe`    | `rust/osdlc-observe/tests/fixtures/parity.json`                                     | TS        |
+| path-guard           | TS, Rust                    | moved: `conformance/path-guard/suite.json`                                          | TS        |
+| pr-update            | TS, Rust                    | `rust/pr-update/tests/fixtures/parity.json`                                         | TS        |
+| repo-cleaner         | TS, Rust                    | `rust/repo-cleaner/tests/fixtures/parity.json`                                      | TS        |
+| system-model         | TS, Rust                    | `rust/system-model/tests/fixtures/parity.json`                                      | TS        |
+| tiered-dirs          | TS, Rust                    | moved: `conformance/tiered-dirs/suite.json`                                         | TS        |
+| tool-router          | TS, Rust                    | `rust/tool-router/tests/fixtures/parity.json`                                       | TS        |
+| trust-repo           | TS, Rust                    | `rust/trust-repo/tests/fixtures/parity.json`                                        | TS        |
+| typed-gh             | TS, Rust                    | `rust/typed-gh/tests/fixtures/parity.json`                                          | TS        |
+| typed-git            | TS, Rust                    | `rust/typed-git/tests/fixtures/parity.json`                                         | TS        |
 
 Paths are under `packages/`. Many of these families exist only on local
 `rust-twin/*` branches so far. `yaml-splice` is a binding and is not listed.

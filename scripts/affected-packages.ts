@@ -92,6 +92,15 @@ function dependencies(manifests: Manifests): Map<string, string[]> {
 }
 
 /**
+ * Rust crates whose TypeScript twin has another name and whose family has not
+ * moved to packages/conformance/ yet (`gfm-table` was taken on crates.io).
+ * An entry goes when its family is listed in families.json.
+ */
+export const RUST_TWIN_NAMES: Record<string, string> = {
+  'gfm-pipe-table': 'gfm-table',
+}
+
+/**
  * The package directories to check, sorted. `files` is the changed files, or
  * null when the diff failed.
  */
@@ -118,7 +127,7 @@ export function pick({
     }
     const m = /^packages\/(ts|rust)\/([^/]+)\//.exec(file)
     if (m === null) continue
-    const names = m[1] === 'rust' ? [m[2]!, m[2]!.replace(/-wasm$/, '')] : [m[2]!]
+    const names = m[1] === 'rust' ? [m[2]!, m[2]!.replace(/-wasm$/, ''), RUST_TWIN_NAMES[m[2]!] ?? m[2]!] : [m[2]!]
     for (const name of names) if (manifests.has(`packages/ts/${name}`)) out.add(`packages/ts/${name}`)
   }
   // Add dependents until nothing changes.

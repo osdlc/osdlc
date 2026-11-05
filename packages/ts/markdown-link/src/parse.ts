@@ -6,10 +6,45 @@
 
 /** A parsed `[[target#heading|alias]]`. */
 export interface WikiLink {
+  /** The target, trimmed, minus any `#heading`, `#^block` and `|alias`. */
   target: string
+  /**
+   * The text after the first `#`, trimmed, unless it starts with `^`, which
+   * makes it a `block`. A heading path such as `Parent#Child` keeps its inner `#`.
+   */
   heading: string | null
+  /** A block reference, `Note#^id`: the text after `#^`, trimmed. */
+  block: string | null
+  /** The text after the first `|`, trimmed. An embed's size stays in it as written. */
   alias: string | null
+  /** An embed's `|300` or `|300x200`, read from the last `|` part of its alias. */
+  size: Size | null
   embed: boolean
+}
+
+/** An embed's display size, `|300` (width) or `|300x200` (width and height). */
+export interface Size {
+  width: number
+  height: number | null
+}
+
+/** Whether `spec` is an image size, `300` or `300x200`. */
+export function isSizeSpec(spec: string): boolean {
+  return /^[0-9]+(?:x[0-9]+)?$/.test(spec)
+}
+
+/**
+ * Read `300` or `300x200` as a `Size`. `null` for anything else, and for a
+ * number too large for the Rust crate's `u32`.
+ */
+export function parseSize(spec: string): Size | null {
+  if (!isSizeSpec(spec)) return null
+  const [w, h] = spec.split('x') as [string, string | undefined]
+  const width = Number(w)
+  const height = h === undefined ? null : Number(h)
+  const fits = (n: number): boolean => n <= 0xffffffff
+  if (!fits(width) || (height !== null && !fits(height))) return null
+  return { width, height }
 }
 
 /** A half-open range of UTF-16 offsets, `[start, end)`. */
@@ -30,14 +65,40 @@ export interface TextRange {
 export function parseInner(inner: string, embed: boolean): WikiLink | null {
   const target = targetRange(inner)
   if (target === null) return null
-  const [beforeAlias, alias] = splitAlias(inner)
+  return parseParts(inner, inner.slice(target.start, target.end), embed)
+}
+
+/**
+ * `parseInner`, except that a body with no target and a `#` fragment, such as
+ * `#Heading` or `#^block`, is a link to the note it is written in: its target
+ * is empty. This is how Obsidian reads `[[#Heading]]`.
+ */
+export function parseInnerSelf(inner: string, embed: boolean): WikiLink | null {
+  const link = parseInner(inner, embed)
+  if (link !== null) return link
+  const [beforeAlias] = splitAlias(inner)
+  if (!trimStart(beforeAlias).startsWith('#')) return null
+  return parseParts(inner, '', embed)
+}
+
+/** The fragment, alias and size of `inner`, around an already-found target. */
+function parseParts(inner: string, target: string, embed: boolean): WikiLink {
+  const [beforeAlias, rawAlias] = splitAlias(inner)
   const hash = beforeAlias.indexOf('#')
-  return {
-    target: inner.slice(target.start, target.end),
-    heading: hash === -1 ? null : trim(beforeAlias.slice(hash + 1)),
-    alias: alias === null ? null : trim(alias),
-    embed,
+  let heading: string | null = null
+  let block: string | null = null
+  if (hash !== -1) {
+    const fragment = trim(beforeAlias.slice(hash + 1))
+    if (fragment.startsWith('^')) block = trim(fragment.slice(1))
+    else heading = fragment
   }
+  const alias = rawAlias === null ? null : trim(rawAlias)
+  let size: Size | null = null
+  if (embed && alias !== null) {
+    const pipe = alias.lastIndexOf('|')
+    size = parseSize(trim(pipe === -1 ? alias : alias.slice(pipe + 1)))
+  }
+  return { target, heading, block, alias, size, embed }
 }
 
 /**
@@ -214,16 +275,11 @@ export function percentDecode(s: string): string {
   }
 }
 
-/**
- * Two bytes read as Rust's `u8::from_str_radix(_, 16)` reads them: two hex
- * digits, or a `+` sign and one hex digit.
- */
+/** Two bytes read as two hex digits, or `null`. A sign is not a digit. */
 function hexByte(a: number, b: number): number | null {
-  const low = hexDigit(b)
-  if (low === null) return null
-  if (a === 0x2b) return low
   const high = hexDigit(a)
-  return high === null ? null : high * 16 + low
+  const low = hexDigit(b)
+  return high === null || low === null ? null : high * 16 + low
 }
 
 function hexDigit(byte: number): number | null {

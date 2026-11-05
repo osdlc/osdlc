@@ -1,0 +1,103 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/),
+and this project adheres to [Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+## [0.2.0] - 2026-11-04
+
+Callers choose how each cache walks the corpus and how notes are split, and
+can see walk errors. Modification times are nanoseconds.
+
+### Changed
+
+- `LoadOptions` is `#[non_exhaustive]`. Build it from
+  `LoadOptions::default()` and the `with_` methods (or set fields on it);
+  a struct literal no longer compiles.
+- `IndexedNote::mtime_ms` is now `IndexedNote::mtime_ns`, nanoseconds since
+  the epoch, from `vfs-seam` 0.2. `IndexedNote::mtime_ms_f64()` is node's
+  `mtimeMs`. A same-size edit inside one millisecond is now seen.
+- `FrontmatterIndex::apply_change` and `LinkGraph::apply_changes` ask the
+  cache's walk about each path (`WalkOptions::admission`). A path outside the
+  walk is ignored, as before. A path the walk would not list now (gone, under
+  `min_bytes`, a folder, a refused symlink, under a symlinked folder) is
+  dropped from the cache; before, only a gone file was. A path the walk
+  lists is kept, as the sweep keeps it, even when it cannot be stamped
+  through a symlink (a dangling link, a link to a folder); before, an apply
+  dropped it until the next sweep. The admissions are read under the apply
+  lock, so a batch never installs what it read before a later batch.
+- An apply drops a path under a folder that cannot be listed, as the sweep
+  never sees it, and a path its folder lists with different case. Before, the
+  frontmatter index kept the old spelling of a case-only rename on a
+  case-insensitive file system until the next sweep, and both caches kept a
+  file under a folder that could be searched but not listed.
+- An applied change to the excluded-files list a cache's walk reads
+  (`.obsidian/app.json` under `Hide::Vault`, the frontmatter index's
+  default) marks that cache stale, so the next refresh walks. Before, it
+  was ignored as outside the walk, and newly excluded files stayed until
+  the TTL ran out.
+- A switch to another corpus that empties a cache now moves
+  `LinkGraph::rebuilds` and `FrontmatterIndex::changes`, also when the new
+  corpus is empty or its walk fails.
+- `FrontmatterIndex::clear` moves `FrontmatterIndex::changes` when it empties
+  the index. Before, a cache keyed on `changes` kept the cleared entries.
+- The free function `fill_contexts(vfs, root, backlinks)` is now the method
+  `LinkGraph::fill_contexts(vfs, root, backlinks)`, with
+  `Corpus::fill_contexts(vfs, backlinks)` on top, which passes its own root.
+  It splits each note as the graph does, so a lenient corpus gets the right
+  lines. The root is passed in, so a graph shared across corpora never fills
+  a page from the wrong one.
+
+### Added
+
+- `LoadOptions::link_walk` and `LoadOptions::frontmatter_walk`
+  (`markdown-vault-fs` `WalkOptions`): roots, dot files, pruned folders,
+  refused symlinks, propagated errors and the caller's own excluded files
+  (`Hide::Rules`). The defaults are the walks as before:
+  `LinkGraph::default_walk()` (notes and attachments, `Hide::Off`) and
+  `FrontmatterIndex::default_walk()` (content notes, the corpus's excluded
+  files). `with_tags`, `with_link_walk`, `with_frontmatter_walk` and
+  `with_split` set them.
+- `LoadOptions::split` and `SplitMode` (`Strict`, the default, or `Lenient`
+  for `frontmatter_lossless::split_lenient`), and `read_note_with(src, mode)`.
+  Both caches, `Corpus::read_note` and `LinkGraph::fill_contexts` follow it.
+  `NoteBody::read_with` numbers lines the same way.
+- `split_with(src, mode)`: a note's frontmatter text and body as both caches
+  split it; the body is a suffix of `src`. For a tool that splices at the
+  spans the caches found.
+- `Corpus::try_load`, `Corpus::try_refresh` and `Corpus::try_refresh_now`
+  return a walk error instead of leaving a cache empty or as it was. Both
+  caches are refreshed even when the first walk fails.
+- `LinkGraph::with_walk`, `with_split`, `walk_options`, `split_mode`,
+  `try_refresh` and `try_refresh_now`; the same on `FrontmatterIndex`
+  (without `split_mode`). Their `refresh` and `refresh_now` leave the cache
+  as it was on a walk error, or empty when the call switched corpora.
+- `LinkGraph::with_snapshot(|paths, notes| ..)`: every path and every note's
+  facts from one lock hold.
+- `LinkGraph::snapshot()` (and `Corpus::snapshot()`) returns a
+  `LinkSnapshot`: the paths, body links and frontmatter links from one sweep.
+  `LinkGraph::body_links()` and `LinkGraph::frontmatter_links()` are the
+  maps `Corpus` already had; the `Corpus` methods now call them.
+- `Hide`, `WalkError`, `WalkOptions` and the `markdown_vault_fs` crate
+  re-exported.
+
+## [0.1.0] - 2026-11-04
+
+The first release: the one corpus model, moved out of determined.
+
+### Added
+
+- `Corpus`: `load`, `refresh`, `apply_changes`, and accessors for paths, body
+  links, frontmatter links, notes, backlinks and outbound edges.
+- `LinkGraph`: an incremental link graph with backlinks, inbound and outbound
+  edges by `EdgeKind` (link, embed, frontmatter), unresolved edges kept,
+  `resolve` and `resolve_strict`.
+- `FrontmatterIndex`: an incremental parse of every content note's
+  frontmatter, with a diagnostic for a note that does not parse.
+- `read_note`: reads a note without failing on its frontmatter.
+- `TagLexer` and `census` for tags in any syntax.
+- All file and clock access goes through `vfs-seam`; the `native` feature
+  (on by default) enables the real file system.

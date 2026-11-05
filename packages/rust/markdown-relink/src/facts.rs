@@ -15,8 +15,9 @@
 //! crate stays a pure function over a vault, testable with a `tempdir` and no
 //! host.
 //!
-//! [`VaultFacts::scan`] is the standalone path: build the same snapshot by walking
-//! and reading. It is what the crate's own tests run against, so the
+//! [`VaultFacts::from_corpus`] builds it from the shared corpus model,
+//! [`VaultFacts::from_graph`] from that model's link graph alone, and
+//! [`VaultFacts::scan`] is the standalone path: load that model from disk first. It is what the crate's own tests run against, so the
 //! algorithm is exercised against a snapshot nothing else produced.
 
 use std::collections::BTreeMap;
@@ -51,49 +52,67 @@ pub struct VaultFacts {
     pub links: BTreeMap<String, Vec<BodyLink>>,
     /// Per note, the link-shaped values in its frontmatter.
     pub frontmatter: BTreeMap<String, Vec<FrontmatterRef>>,
+    /// How the notes were split into frontmatter and body when the links
+    /// were found. The planner re-scans each note it edits with the same
+    /// split, so a link is a body link or a frontmatter value the same way in
+    /// the snapshot and in the plan.
+    pub split: markdown_corpus::SplitMode,
 }
 
 impl VaultFacts {
-    /// Build the snapshot by walking and reading the vault.
+    /// The snapshot out of a loaded [`markdown_corpus::Corpus`]: its paths, each
+    /// note's body links with spans, and each note's frontmatter link values.
     ///
-    /// The standalone path. A caller holding warm caches should populate the
-    /// fields directly instead — that is the whole reason they are public.
-    pub fn scan(vault_dir: &Path) -> VaultFacts {
-        let entries = markdown_vault_fs::walk::walk(
-            vault_dir,
-            &markdown_vault_fs::walk::WalkOptions::notes_and_attachments(),
-        );
-        let mut facts = VaultFacts {
-            paths: entries.iter().map(|e| e.rel.clone()).collect(),
-            ..VaultFacts::default()
-        };
-        for entry in entries.into_iter().filter(|e| e.is_note) {
-            // An unreadable note contributes nothing rather than aborting the
-            // scan: a projection over thousands of notes must never die on one.
-            let Ok(source) = std::fs::read_to_string(&entry.abs) else {
-                continue;
-            };
-            let split = frontmatter_lossless::split(&source);
-            facts.links.insert(
-                entry.rel.clone(),
-                markdown_link::body_links_spanned(split.body),
-            );
-            if let Some(yaml) = split.yaml
-                && let Ok(mapping) = yaml_splice::parse::parse_mapping(yaml)
-            {
-                let refs: Vec<FrontmatterRef> = markdown_link::frontmatter_links(&mapping)
+    /// The path a caller holding the corpus model takes, so the planner reads
+    /// the same walk, links and resolution corpus every other tool does. The
+    /// same as [`VaultFacts::from_graph`] on the corpus's link graph.
+    pub fn from_corpus(corpus: &markdown_corpus::Corpus) -> VaultFacts {
+        VaultFacts::from_graph(corpus.links())
+    }
+
+    /// The snapshot out of a [`markdown_corpus::LinkGraph`] alone, for a host
+    /// that keeps a graph and no whole `Corpus`.
+    ///
+    /// The paths, body links and frontmatter links are read under one lock
+    /// hold ([`markdown_corpus::LinkGraph::snapshot`]), so they come from
+    /// the same sweep even while another thread refreshes the graph.
+    pub fn from_graph(graph: &markdown_corpus::LinkGraph) -> VaultFacts {
+        let snapshot = graph.snapshot();
+        let frontmatter = snapshot
+            .frontmatter_links
+            .into_iter()
+            .map(|(path, links)| {
+                let refs = links
                     .into_iter()
                     .map(|l| FrontmatterRef {
                         field: l.field,
                         target: l.target,
                     })
                     .collect();
-                if !refs.is_empty() {
-                    facts.frontmatter.insert(entry.rel, refs);
-                }
-            }
+                (path, refs)
+            })
+            .collect();
+        VaultFacts {
+            paths: snapshot.paths,
+            links: snapshot.body_links,
+            frontmatter,
+            split: graph.split_mode(),
         }
-        facts
+    }
+
+    /// Build the snapshot by loading the vault from the real filesystem:
+    /// [`markdown_corpus::Corpus::load`] over `NativeVfs`, then
+    /// [`VaultFacts::from_corpus`].
+    ///
+    /// The standalone path. A caller holding warm caches should build the
+    /// snapshot from them instead.
+    pub fn scan(vault_dir: &Path) -> VaultFacts {
+        let corpus = markdown_corpus::Corpus::load(
+            &vfs_seam::NativeVfs,
+            vault_dir,
+            markdown_corpus::LoadOptions::default(),
+        );
+        VaultFacts::from_corpus(&corpus)
     }
 
     /// How many notes the snapshot covers.

@@ -32,8 +32,10 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 pub mod code;
+mod href;
 mod spanned;
 pub use code::strip_code;
+pub use href::{encode_uri_component, encode_uri_fragment, escape_label, relative_link};
 pub use spanned::*;
 
 /// What kind of reference produced a [`RawLink`].
@@ -66,14 +68,103 @@ pub struct RawLink {
 /// A parsed `[[target#heading|alias]]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WikiLink {
-    /// The link target, trimmed, minus any `#heading` and `|alias`.
+    /// The link target, trimmed, minus any `#heading`, `#^block` and `|alias`.
     pub target: String,
-    /// The text after the first `#` in the target part, trimmed.
+    /// The text after the first `#` in the target part, trimmed, unless it
+    /// starts with `^`, which makes it a [`WikiLink::block`]. A heading path
+    /// such as `Parent#Child` keeps its inner `#`.
     pub heading: Option<String>,
-    /// The text after the first `|`, trimmed.
+    /// A block reference, `Note#^id`: the text after `#^`, trimmed.
+    pub block: Option<String>,
+    /// The text after the first `|`, trimmed. An embed's size (`|300`) stays
+    /// in it as written; [`WikiLink::size`] reads it.
     pub alias: Option<String>,
+    /// An embed's `|300` or `|300x200`: the last `|` part of its alias, when
+    /// that is a size. `None` for a link that is not an embed.
+    pub size: Option<Size>,
     /// Whether the link was written as an embed, `![[...]]`.
     pub embed: bool,
+}
+
+/// An embed's display size, `|300` (width) or `|300x200` (width and height).
+///
+/// # Examples
+///
+/// ```
+/// use markdown_link::Size;
+///
+/// assert_eq!(Size::parse("300"), Some(Size { width: 300, height: None }));
+/// assert_eq!(Size::parse("300x200"), Some(Size { width: 300, height: Some(200) }));
+/// assert_eq!(Size::parse("wide"), None);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Size {
+    /// The width in pixels.
+    pub width: u32,
+    /// The height in pixels, when given.
+    pub height: Option<u32>,
+}
+
+impl Size {
+    /// Read `300` or `300x200`. `None` for anything else, and for a number too
+    /// large for a `u32`.
+    pub fn parse(spec: &str) -> Option<Size> {
+        if !is_size_spec(spec) {
+            return None;
+        }
+        match spec.split_once('x') {
+            Some((w, h)) => Some(Size {
+                width: w.parse().ok()?,
+                height: Some(h.parse().ok()?),
+            }),
+            None => Some(Size {
+                width: spec.parse().ok()?,
+                height: None,
+            }),
+        }
+    }
+}
+
+/// Whether `spec` is an image size, `^\d+(x\d+)?$`: `300` or `300x200`.
+///
+/// A link that shows an alias needs this to tell a size from a label.
+///
+/// # Examples
+///
+/// ```
+/// use markdown_link::is_size_spec;
+///
+/// assert!(is_size_spec("300"));
+/// assert!(is_size_spec("640x480"));
+/// assert!(!is_size_spec("x480"));
+/// assert!(!is_size_spec("300px"));
+/// ```
+pub fn is_size_spec(spec: &str) -> bool {
+    let digits = |p: &str| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit());
+    match spec.split_once('x') {
+        Some((w, h)) => digits(w) && digits(h),
+        None => digits(spec),
+    }
+}
+
+/// The size an embed's alias ends in, if any: the trimmed text after its last
+/// `|`, or the whole alias.
+fn alias_size(alias: Option<&str>, embed: bool) -> Option<Size> {
+    if !embed {
+        return None;
+    }
+    let alias = alias?;
+    let last = alias.rsplit_once('|').map_or(alias, |(_, last)| last);
+    Size::parse(last.trim())
+}
+
+/// A wikilink fragment, the text after the first `#`, as a heading or a block.
+fn split_fragment(fragment: &str) -> (Option<String>, Option<String>) {
+    let fragment = fragment.trim();
+    match fragment.strip_prefix('^') {
+        Some(block) => (None, Some(block.trim().to_string())),
+        None => (Some(fragment.to_string()), None),
+    }
 }
 
 /// Parse a single wikilink body (the text between the brackets).
@@ -92,11 +183,19 @@ pub struct WikiLink {
 ///     WikiLink {
 ///         target: "Note".into(),
 ///         heading: Some("Intro".into()),
+///         block: None,
 ///         alias: Some("Read me".into()),
+///         size: None,
 ///         embed: false,
 ///     }
 /// );
 ///
+/// // A `#^id` fragment is a block, not a heading.
+/// let block = parse_inner("Note#^abc", false).unwrap();
+/// assert_eq!((block.heading, block.block.as_deref()), (None, Some("abc")));
+/// // An embed's trailing `|300` is its size; the alias keeps it as written.
+/// let image = parse_inner("img.png|300", true).unwrap();
+/// assert_eq!(image.size.map(|s| s.width), Some(300));
 /// // The `\` that escapes the pipe in a table cell is dropped.
 /// assert_eq!(parse_inner("Note\\|alias", false).unwrap().target, "Note");
 /// // A link with no target is not a link.
@@ -104,15 +203,50 @@ pub struct WikiLink {
 /// ```
 pub fn parse_inner(inner: &str, embed: bool) -> Option<WikiLink> {
     let target = target_range(inner)?;
+    Some(parse_parts(inner, inner[target].to_string(), embed))
+}
+
+/// [`parse_inner`], except that a link with no target and a `#` fragment,
+/// such as `#Heading` or `#^block`, is a link to the note it is written in:
+/// its target is empty. This is how Obsidian reads `[[#Heading]]`.
+///
+/// # Examples
+///
+/// ```
+/// use markdown_link::parse_inner_self;
+///
+/// let link = parse_inner_self("#Intro", false).unwrap();
+/// assert_eq!((link.target.as_str(), link.heading.as_deref()), ("", Some("Intro")));
+/// assert!(parse_inner_self("|alias only", false).is_none());
+/// assert_eq!(parse_inner_self("Note", false).unwrap().target, "Note");
+/// ```
+pub fn parse_inner_self(inner: &str, embed: bool) -> Option<WikiLink> {
+    if let Some(link) = parse_inner(inner, embed) {
+        return Some(link);
+    }
+    let (before_alias, _) = split_alias(inner);
+    if !before_alias.trim_start().starts_with('#') {
+        return None;
+    }
+    Some(parse_parts(inner, String::new(), embed))
+}
+
+/// The fragment, alias and size of `inner`, around an already-found target.
+fn parse_parts(inner: &str, target: String, embed: bool) -> WikiLink {
     let (before_alias, alias) = split_alias(inner);
-    Some(WikiLink {
-        target: inner[target].to_string(),
-        heading: before_alias
-            .split_once('#')
-            .map(|(_, h)| h.trim().to_string()),
-        alias: alias.map(|a| a.trim().to_string()),
+    let (heading, block) = match before_alias.split_once('#') {
+        Some((_, fragment)) => split_fragment(fragment),
+        None => (None, None),
+    };
+    let alias = alias.map(|a| a.trim().to_string());
+    WikiLink {
+        target,
+        heading,
+        block,
+        size: alias_size(alias.as_deref(), embed),
+        alias,
         embed,
-    })
+    }
 }
 
 /// Byte range of [`parse_inner`]'s target within `inner`, for a caller that
@@ -519,22 +653,13 @@ fn shown(link: &WikiLink) -> &str {
             return alias;
         }
         let (rest, last) = alias.rsplit_once('|').unwrap_or(("", alias));
-        if is_size(last.trim()) {
+        if is_size_spec(last.trim()) {
             rest.trim()
         } else {
             alias
         }
     });
     alias.filter(|a| !a.is_empty()).unwrap_or(&link.target)
-}
-
-/// `300` or `300x200`: an embed's width, or width and height.
-fn is_size(s: &str) -> bool {
-    let digits = |p: &str| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit());
-    match s.split_once('x') {
-        Some((w, h)) => digits(w) && digits(h),
-        None => digits(s),
-    }
 }
 
 /// A typed reference, `[[type/slug]]` or `[[type/slug|Alias]]`: a
@@ -622,6 +747,7 @@ fn take_link(chars: &[char], start: usize) -> Option<(String, usize)> {
 ///
 /// assert_eq!(percent_decode("My%20Note"), "My Note");
 /// assert_eq!(percent_decode("%zz"), "%zz"); // not hex, kept as written
+/// assert_eq!(percent_decode("%+5"), "%+5"); // a sign is not a hex digit
 /// assert_eq!(percent_decode("%FF"), "%FF"); // not UTF-8, kept as written
 /// ```
 pub fn percent_decode(s: &str) -> String {
@@ -629,13 +755,17 @@ pub fn percent_decode(s: &str) -> String {
     let mut out: Vec<u8> = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() {
-            let hex = std::str::from_utf8(&b[i + 1..i + 3]).ok();
-            if let Some(v) = hex.and_then(|h| u8::from_str_radix(h, 16).ok()) {
-                out.push(v);
-                i += 3;
-                continue;
-            }
+        // Two ASCII hex digits, no more: `from_str_radix` alone would also
+        // take a sign, so `%+5` would decode.
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && b[i + 1].is_ascii_hexdigit()
+            && b[i + 2].is_ascii_hexdigit()
+        {
+            let hex = std::str::from_utf8(&b[i + 1..i + 3]).expect("ASCII");
+            out.push(u8::from_str_radix(hex, 16).expect("two hex digits"));
+            i += 3;
+            continue;
         }
         out.push(b[i]);
         i += 1;
@@ -644,6 +774,33 @@ pub fn percent_decode(s: &str) -> String {
     // would turn a resolvable link into a permanent ghost node.
     String::from_utf8(out).unwrap_or_else(|_| s.to_string())
 }
+
+/// Why [`LinkIndex::resolve_strict`] did not resolve a target.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolveError {
+    /// No file answers to the target.
+    NotFound,
+    /// Several files answer to it and the link names none of them outright.
+    /// Every candidate, shortest first.
+    Ambiguous(Vec<String>),
+}
+
+impl std::fmt::Display for ResolveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResolveError::NotFound => f.write_str("no file matches the link"),
+            ResolveError::Ambiguous(candidates) => {
+                write!(
+                    f,
+                    "the link matches several files: {}",
+                    candidates.join(", ")
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for ResolveError {}
 
 /// A suffix index: every file is reachable by any suffix of its path.
 ///
@@ -913,7 +1070,7 @@ impl LinkIndex {
         // vault, falls through to the vault-wide lookup below.
         if let Some(joined) = join_relative(target, from) {
             let key = normalize_target(&joined);
-            if let Some(field) = self.candidates(&key) {
+            if let Some(field) = self.field(&key) {
                 // The field holds every path this key is a SUFFIX of; the
                 // joined path names one exactly.
                 if let Some(hit) = field.iter().find(|p| normalize_target(p) == key) {
@@ -922,7 +1079,7 @@ impl LinkIndex {
             }
         }
         let key = normalize_target(target);
-        let field = match self.candidates(&key) {
+        let field = match self.field(&key) {
             Some(field) => field,
             None => {
                 // Pathed miss -> basename fallback. See the module docs.
@@ -930,17 +1087,106 @@ impl LinkIndex {
                 if slash == 0 {
                     return None;
                 }
-                self.candidates(&key[slash + 1..])?
+                self.field(&key[slash + 1..])?
             }
         };
         prefer_in_folder(field, from)
+    }
+
+    /// Every path `target`, written in `from`, could mean, shortest first:
+    /// the field [`LinkIndex::resolve_from`] chooses from. Empty when nothing
+    /// answers to it.
+    ///
+    /// A `./` or `../` target that names a file gives that one file. A pathed
+    /// target that misses gives the field of its last segment, the same
+    /// fallback `resolve_from` takes.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use markdown_link::LinkIndex;
+    ///
+    /// let index = LinkIndex::build(&["b/a.md".to_string(), "notes/a.md".to_string()]);
+    /// assert_eq!(index.candidates("a", "x.md"), ["b/a.md", "notes/a.md"]);
+    /// assert_eq!(index.candidates("./a", "notes/x.md"), ["notes/a.md"]);
+    /// assert!(index.candidates("nothing", "x.md").is_empty());
+    /// ```
+    pub fn candidates(&self, target: &str, from: &str) -> &[String] {
+        if let Some(joined) = join_relative(target, from) {
+            let key = normalize_target(&joined);
+            if let Some(field) = self.field(&key)
+                && let Some(hit) = field.iter().find(|p| normalize_target(p) == key)
+            {
+                return std::slice::from_ref(hit);
+            }
+        }
+        let key = normalize_target(target);
+        if let Some(field) = self.field(&key) {
+            return field;
+        }
+        match key.rfind('/') {
+            Some(slash) if slash > 0 => self.field(&key[slash + 1..]).unwrap_or(&[]),
+            _ => &[],
+        }
+    }
+
+    /// Resolve `target`, written in `from`, refusing to guess.
+    ///
+    /// Where [`LinkIndex::resolve_from`] picks among several candidates (same
+    /// folder first, then the shortest path), this takes one only when the
+    /// link names it outright:
+    ///
+    /// 1. a `./` or `../` target that names a file;
+    /// 2. the only candidate;
+    /// 3. the candidate whose whole vault-relative path is the target;
+    /// 4. the candidate at the target's path from the linking note's folder.
+    ///
+    /// Anything else with more than one candidate is
+    /// [`ResolveError::Ambiguous`], with every candidate, shortest first. An
+    /// empty target (a link to the note it is written in) is
+    /// [`ResolveError::NotFound`]; the caller knows which note that is.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use markdown_link::{LinkIndex, ResolveError};
+    ///
+    /// let index = LinkIndex::build(&["b/a.md".to_string(), "notes/a.md".to_string()]);
+    /// assert_eq!(
+    ///     index.resolve_strict("a", "x.md"),
+    ///     Err(ResolveError::Ambiguous(vec!["b/a.md".into(), "notes/a.md".into()]))
+    /// );
+    /// assert_eq!(index.resolve_strict("notes/a", "x.md"), Ok("notes/a.md"));
+    /// // `a` from inside `notes/` is `notes/a.md` by its path from there.
+    /// assert_eq!(index.resolve_strict("a", "notes/x.md"), Ok("notes/a.md"));
+    /// assert_eq!(index.resolve_strict("zzz", "x.md"), Err(ResolveError::NotFound));
+    /// ```
+    pub fn resolve_strict(&self, target: &str, from: &str) -> Result<&str, ResolveError> {
+        let field = self.candidates(target, from);
+        match field {
+            [] => return Err(ResolveError::NotFound),
+            [only] => return Ok(only),
+            _ => {}
+        }
+        let key = normalize_target(target);
+        if let Some(hit) = field.iter().find(|p| normalize_target(p) == key) {
+            return Ok(hit);
+        }
+        let folder = source_folder(from);
+        if !folder.is_empty() {
+            let joined = format!("{folder}/{key}");
+            if let Some(hit) = field.iter().find(|p| normalize_target(p) == joined) {
+                return Ok(hit);
+            }
+        }
+        Err(ResolveError::Ambiguous(field.to_vec()))
     }
 
     /// Every path a key answers to, shortest first.
     ///
     /// One borrowed entry for the overwhelmingly common unique case, and the
     /// stored field only where more than one file competes.
-    fn candidates(&self, key: &str) -> Option<&[String]> {
+    fn field(&self, key: &str) -> Option<&[String]> {
         if let Some(field) = self.ambiguous.get(key) {
             return Some(field);
         }
@@ -1069,6 +1315,16 @@ mod tests {
         let links = body_links("[a](Notes/x.md) [b](https://example.com/y.md) [c](<sp ace.md>)");
         let targets: Vec<_> = links.into_iter().map(|l| l.target).collect();
         assert_eq!(targets, vec!["Notes/x"]);
+    }
+
+    #[test]
+    fn percent_decode_takes_only_two_hex_digits() {
+        // `u8::from_str_radix` takes a leading sign; an escape does not.
+        assert_eq!(percent_decode("%+5"), "%+5");
+        assert_eq!(percent_decode("a%+41b"), "a%+41b");
+        assert_eq!(percent_decode("%-1"), "%-1");
+        assert_eq!(percent_decode("%+5 and%20this"), "%+5 and this");
+        assert_eq!(percent_decode("%4a%4A"), "JJ");
     }
 
     #[test]
@@ -1221,5 +1477,75 @@ mod tests {
     fn unicode_targets_resolve() {
         let idx = LinkIndex::build(&["Заметки/Привет.md".to_string()]);
         assert_eq!(idx.resolve("привет"), Some("Заметки/Привет.md"));
+    }
+
+    fn strict_index() -> LinkIndex {
+        LinkIndex::build(&[
+            "a.md".to_string(),
+            "x/a.md".to_string(),
+            "y/b.md".to_string(),
+            "z/b.md".to_string(),
+            "photo.jpg".to_string(),
+        ])
+    }
+
+    #[test]
+    fn resolve_strict_takes_the_exact_path_over_a_deeper_namesake() {
+        assert_eq!(strict_index().resolve_strict("a", "q/n.md"), Ok("a.md"));
+        assert_eq!(strict_index().resolve_strict("x/a", "q/n.md"), Ok("x/a.md"));
+    }
+
+    #[test]
+    fn resolve_strict_refuses_a_contested_name_with_every_candidate() {
+        assert_eq!(
+            strict_index().resolve_strict("b", "n.md"),
+            Err(ResolveError::Ambiguous(vec![
+                "y/b.md".to_string(),
+                "z/b.md".to_string()
+            ]))
+        );
+        // A pathed miss falls back to the basename, strictly too.
+        assert!(matches!(
+            strict_index().resolve_strict("other/b", "n.md"),
+            Err(ResolveError::Ambiguous(_))
+        ));
+        // Written next to one of them, the name is that one.
+        assert_eq!(strict_index().resolve_strict("b", "z/n.md"), Ok("z/b.md"));
+        assert_eq!(
+            strict_index().resolve_strict("../y/b", "z/n.md"),
+            Ok("y/b.md")
+        );
+    }
+
+    #[test]
+    fn resolve_strict_never_reads_a_bare_name_as_an_attachment() {
+        assert_eq!(
+            strict_index().resolve_strict("photo", "n.md"),
+            Err(ResolveError::NotFound)
+        );
+        assert_eq!(
+            strict_index().resolve_strict("photo.jpg", "n.md"),
+            Ok("photo.jpg")
+        );
+        assert_eq!(
+            strict_index().resolve_strict("", "n.md"),
+            Err(ResolveError::NotFound)
+        );
+    }
+
+    #[test]
+    fn candidates_agree_with_resolve_from() {
+        let index = strict_index();
+        for (target, from) in [
+            ("b", "n.md"),
+            ("b", "z/n.md"),
+            ("a", "x/n.md"),
+            ("x", "n.md"),
+        ] {
+            assert_eq!(
+                index.resolve_from(target, from),
+                prefer_in_folder(index.candidates(target, from), from)
+            );
+        }
     }
 }

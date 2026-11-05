@@ -6,7 +6,15 @@
 import { describe, expect, test } from 'vitest'
 
 import * as pkg from '../src/index.ts'
-import { api, graphql, nodesAt, type CommandResult, type GhVerb } from '../src/index.ts'
+import {
+  api,
+  fromTarget,
+  graphql,
+  nodesAt,
+  type CommandResult,
+  type GhVerb,
+  type GraphqlVariable,
+} from '../src/index.ts'
 
 const out = (body: unknown): CommandResult => ({
   exitCode: 0,
@@ -73,8 +81,8 @@ describe('graphql', () => {
     ])
   })
 
-  test('{owner} and {repo} come from the target, or are left for gh to fill', () => {
-    const vars = { owner: '{owner}', name: '{repo}' }
+  test('fromTarget comes from the target, or is left for gh to fill', () => {
+    const vars = { owner: fromTarget('owner'), name: fromTarget('repo') }
     const filled = graphql('query { a }', vars, {}, { repo: 'acme/widgets', hostname: 'h.io' })
     expect(filled.argv.slice(0, 8)).toEqual([
       'api',
@@ -92,6 +100,29 @@ describe('graphql', () => {
       '-F',
       'name={repo}',
     ])
+  })
+
+  test('a plain string is sent as written, even {owner}', () => {
+    const vars = { branch: '{owner}', other: '{repo}' }
+    for (const target of [undefined, { repo: 'acme/widgets' }]) {
+      expect(graphql('query { a }', vars, {}, target).argv).toEqual([
+        'api',
+        'graphql',
+        '-f',
+        'branch={owner}',
+        '-f',
+        'other={repo}',
+        '-f',
+        'query=query { a }',
+      ])
+    }
+  })
+
+  test('fromTarget takes owner or repo only', () => {
+    expect(() => fromTarget('branch' as 'owner')).toThrow(RangeError)
+    expect(Object.isFrozen(fromTarget('owner'))).toBe(true)
+    const forged = { x: { fromTarget: 'branch' } } as unknown as Record<string, GraphqlVariable>
+    expect(() => graphql('query { a }', forged)).toThrow(RangeError)
   })
 
   test('paginate slurps the pages and needs $endCursor', () => {

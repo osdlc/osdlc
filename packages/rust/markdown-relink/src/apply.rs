@@ -60,6 +60,8 @@
 
 use std::path::{Path, PathBuf};
 
+use vfs_seam::NativeVfs;
+
 use crate::error::TransformError;
 use etag_write::WriteError;
 
@@ -88,7 +90,7 @@ pub fn execute(
     subject_etag: Option<&str>,
     expect: &[FileEtag],
 ) -> Result<RenameResult, TransformError> {
-    let plan = plan(vault_dir, facts, from, to)?;
+    let plan = plan(&NativeVfs, vault_dir, facts, from, to)?;
     let refuse = |reason: String| RenameResult {
         conflict: Some(reason),
         ..RenameResult::default()
@@ -139,7 +141,7 @@ pub fn execute(
     // window as it can be closed to without a filesystem that will say whether
     // two names are one file.
     let mut reservation = if from.to_lowercase() == to.to_lowercase() {
-        if crate::plan::dir_has_exact_name(vault_dir, &to) {
+        if crate::plan::dir_has_exact_name(&NativeVfs, vault_dir, &to) {
             return Ok(refuse(format!("{to} already exists")));
         }
         None

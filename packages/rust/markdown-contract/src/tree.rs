@@ -11,6 +11,8 @@
 //! This module is data-only; the comrak projection that builds it lives in
 //! [`crate::parse`].
 
+use std::ops::Range;
+
 use crate::finding::SourcePos;
 
 /// The block kinds the structure plane's kind-gate distinguishes.
@@ -61,6 +63,8 @@ pub enum BlockNode {
         anchor: Option<String>,
         /// where the table starts
         pos: SourcePos,
+        /// the bytes of the table in [`DocTree::body`]
+        range: Range<usize>,
     },
     /// A list.
     List {
@@ -72,6 +76,8 @@ pub enum BlockNode {
         anchor: Option<String>,
         /// where the list starts
         pos: SourcePos,
+        /// the bytes of the list in [`DocTree::body`]
+        range: Range<usize>,
     },
     /// A fenced or indented code block.
     Code {
@@ -86,6 +92,8 @@ pub enum BlockNode {
         anchor: Option<String>,
         /// where the block starts
         pos: SourcePos,
+        /// the bytes of the block in [`DocTree::body`]
+        range: Range<usize>,
     },
     /// A paragraph.
     Paragraph {
@@ -95,6 +103,8 @@ pub enum BlockNode {
         anchor: Option<String>,
         /// where the paragraph starts
         pos: SourcePos,
+        /// the bytes of the paragraph in [`DocTree::body`]
+        range: Range<usize>,
     },
 }
 
@@ -116,6 +126,17 @@ impl BlockNode {
             | BlockNode::List { pos, .. }
             | BlockNode::Code { pos, .. }
             | BlockNode::Paragraph { pos, .. } => *pos,
+        }
+    }
+
+    /// The block's bytes in [`DocTree::body`], from its first byte to its last
+    /// (an absorbed `^block-id` line included).
+    pub fn range(&self) -> Range<usize> {
+        match self {
+            BlockNode::Table { range, .. }
+            | BlockNode::List { range, .. }
+            | BlockNode::Code { range, .. }
+            | BlockNode::Paragraph { range, .. } => range.clone(),
         }
     }
 
@@ -156,6 +177,11 @@ pub struct SectionNode {
     pub blocks: Vec<BlockNode>,
     /// section-level `^block-id`s (block-bound ids live on the block)
     pub anchors: Vec<String>,
+    /// the section's bytes in [`DocTree::body`]: from the start of its heading
+    /// line to the start of the next heading of the same or a shallower depth,
+    /// or the end of the body. Subsections are inside it. The root's range is
+    /// the whole body.
+    pub range: Range<usize>,
 }
 
 impl SectionNode {
@@ -176,7 +202,16 @@ impl SectionNode {
             sections: Vec::new(),
             blocks: Vec::new(),
             anchors: Vec::new(),
+            range: 0..0,
         }
+    }
+
+    /// The first block bound to `^id`, here or in any subsection, depth first.
+    pub fn block_by_id(&self, id: &str) -> Option<&BlockNode> {
+        self.blocks
+            .iter()
+            .find(|b| b.anchor() == Some(id))
+            .or_else(|| self.sections.iter().find_map(|s| s.block_by_id(id)))
     }
 }
 
@@ -207,6 +242,34 @@ pub struct DocTree {
     pub root: SectionNode,
 }
 
+impl DocTree {
+    /// The section that a heading path names, as a byte range in
+    /// [`Self::body`], trimmed. Obsidian's rules, not the tree's: every
+    /// heading counts, the first H1 included, and the segments before the
+    /// last must be the nearest headings above it. See [`crate::select`].
+    pub fn section_by_heading_path(&self, path: &[&str]) -> Option<Range<usize>> {
+        crate::select::heading_path_range(&self.body, path)
+    }
+
+    /// The section a link fragment's heading selector (`Heading`,
+    /// `Parent#Child`, or a heading whose text holds `#`) names, as a byte
+    /// range in [`Self::body`]. See [`crate::select::heading_range`].
+    pub fn section_by_selector(&self, selector: &str) -> Option<Range<usize>> {
+        crate::select::heading_range(&self.body, selector)
+    }
+
+    /// The text a `^id` block marker labels, as a byte range in
+    /// [`Self::body`], marker excluded. See [`crate::select::block_range`].
+    pub fn block_range_by_id(&self, id: &str) -> Option<Range<usize>> {
+        crate::select::block_range(&self.body, id)
+    }
+
+    /// The projected block bound to `^id`, in any section, depth first.
+    pub fn block_by_id(&self, id: &str) -> Option<&BlockNode> {
+        self.root.block_by_id(id)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -225,9 +288,11 @@ mod tests {
             text: "hello".into(),
             anchor: Some("summary".into()),
             pos: SourcePos::at(3, 1),
+            range: 4..9,
         };
         assert_eq!(b.kind(), BlockKind::Paragraph);
         assert_eq!(b.pos(), SourcePos::at(3, 1));
         assert_eq!(b.anchor(), Some("summary"));
+        assert_eq!(b.range(), 4..9);
     }
 }

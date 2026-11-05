@@ -4,14 +4,16 @@
 
 use std::path::Path;
 
-use markdown_vault_fs::{WalkOptions, walk};
+use markdown_vault_fs::{WalkOptions, native};
 
 fn main() {
     let Some(vault) = std::env::args().nth(1) else {
         eprintln!("usage: list_notes <vault-dir>");
         std::process::exit(2);
     };
-    for entry in walk(Path::new(&vault), &WalkOptions::content_notes()) {
+    let entries =
+        native::walk(Path::new(&vault), &WalkOptions::content_notes()).unwrap_or_default();
+    for entry in entries {
         println!("{} ({} bytes)", entry.rel, entry.size);
     }
 }

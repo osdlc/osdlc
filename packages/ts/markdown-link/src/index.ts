@@ -11,20 +11,30 @@
 export { type CodeRules, stripCode, stripCodeWith } from './code.ts'
 export {
   ATTACHMENT_EXTENSIONS,
+  type Size,
   type TextRange,
   type WikiLink,
+  isSizeSpec,
   isVaultLinkUrl,
   mdLinkTarget,
   parseInner,
+  parseInnerSelf,
+  parseSize,
   percentDecode,
   targetRange,
 } from './parse.ts'
 export { type TypedRef, displayText, parseTypedRef } from './display.ts'
 export {
+  type AbandonReason,
+  type AbandonedLink,
   type BodyLink,
   type BodyLinkKind,
+  type BodyScan,
   type LinkKind,
   type RawLink,
+  type ScanOptions,
   bodyLinks,
   bodyLinksSpanned,
+  bodyLinksSpannedWith,
+  scanBodyWith,
 } from './body-links.ts'

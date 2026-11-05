@@ -95,6 +95,29 @@ describe('the unpushed-work guard is not negotiable', () => {
     expect(out.strategy).toBe('merge')
     expect(out.rule).toBe('guard:unpushed-local')
   })
+
+  test('when the worktrees could not be listed, the reason says so', () => {
+    const d = defaults()
+    const skip = chooseStrategy(signals({ unpushedLocal: true, worktreesUnknown: true }), cfg())
+    expect(skip.strategy).toBe('skip')
+    expect(skip.rule).toBe('guard:unpushed-local')
+    expect(skip.reason).toBe(
+      'could not list worktrees, so assuming unpushed work in another checkout',
+    )
+    const merge = chooseStrategy(
+      signals({ unpushedLocal: true, worktreesUnknown: true }),
+      cfg({ guards: { ...d.guards, unpushed_local: 'merge' } }),
+    )
+    expect(merge.strategy).toBe('merge')
+    expect(merge.reason).toBe(
+      'merging rather than rewriting: could not list worktrees, so assuming unpushed work in another checkout',
+    )
+  })
+
+  test('a seen checkout keeps the checked-out-elsewhere reason', () => {
+    const out = chooseStrategy(signals({ unpushedLocal: true }), cfg())
+    expect(out.reason).toBe('head branch is checked out elsewhere with unpushed commits')
+  })
 })
 
 describe('overrides', () => {

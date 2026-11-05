@@ -41,7 +41,7 @@ impl Fixture {
     }
 
     fn plan(&self, from: &str, to: &str) -> RenamePlan {
-        plan::plan(self.path(), &self.facts(), from, to).expect("plan")
+        plan::plan(&vfs_seam::NativeVfs, self.path(), &self.facts(), from, to).expect("plan")
     }
 
     fn apply(&self, p: &RenamePlan) -> crate::RenameResult {
@@ -100,7 +100,8 @@ impl Fixture {
     }
 
     fn plan_bundle(&self, from: &str, to: &str) -> RenamePlan {
-        crate::bundle::plan_bundle(self.path(), &self.facts(), from, to).expect("plan_bundle")
+        crate::bundle::plan_bundle(&vfs_seam::NativeVfs, self.path(), &self.facts(), from, to)
+            .expect("plan_bundle")
     }
 
     fn apply_bundle(&self, p: &RenamePlan) -> crate::RenameResult {
@@ -458,7 +459,14 @@ fn a_candidate_that_became_unreadable_is_disclosed_rather_than_dropped() {
     let facts = f.facts();
     std::fs::remove_file(f.path().join("One.md")).unwrap();
 
-    let plan = plan::plan(f.path(), &facts, "Alpha.md", "Beta.md").expect("plan");
+    let plan = plan::plan(
+        &vfs_seam::NativeVfs,
+        f.path(),
+        &facts,
+        "Alpha.md",
+        "Beta.md",
+    )
+    .expect("plan");
     assert!(
         codes(&plan).contains(&"unreadable_candidate"),
         "{:?}",
@@ -483,7 +491,14 @@ fn a_candidate_that_stopped_being_utf8_is_diagnosed_rather_than_spliced() {
     bytes.push(b'\n');
     std::fs::write(f.path().join("One.md"), &bytes).unwrap();
 
-    let plan = plan::plan(f.path(), &facts, "Alpha.md", "Beta.md").expect("plan");
+    let plan = plan::plan(
+        &vfs_seam::NativeVfs,
+        f.path(),
+        &facts,
+        "Alpha.md",
+        "Beta.md",
+    )
+    .expect("plan");
     assert!(
         codes(&plan).contains(&"invalid_utf8_candidate"),
         "{:?}",
@@ -1248,6 +1263,7 @@ fn a_redirect_points_every_inbound_link_at_the_kept_copy() {
         ),
     ]);
     let plan = plan::plan_redirect(
+        &vfs_seam::NativeVfs,
         fx.path(),
         &fx.facts(),
         "old/overview copy.md",
@@ -1274,6 +1290,130 @@ fn a_redirect_points_every_inbound_link_at_the_kept_copy() {
 #[test]
 fn a_redirect_to_a_missing_note_is_refused() {
     let fx = Fixture::new(&[("a.md", "# A\n")]);
-    let plan = plan::plan_redirect(fx.path(), &fx.facts(), "a.md", "b.md").unwrap();
+    let plan =
+        plan::plan_redirect(&vfs_seam::NativeVfs, fx.path(), &fx.facts(), "a.md", "b.md").unwrap();
     assert_eq!(plan.conflict.as_deref(), Some("no note at b.md"));
+}
+
+#[cfg(unix)]
+#[test]
+fn planning_reads_through_a_vfs_and_writes_nothing() {
+    use vfs_seam::Vfs;
+    let vfs = vfs_seam::MemVfs::new();
+    vfs.insert("/v/a.md", "# A\n").unwrap();
+    vfs.insert("/v/b.md", "see [[a]] and [[a#Top]]\n").unwrap();
+    let mut facts = VaultFacts {
+        paths: vec!["a.md".into(), "b.md".into()],
+        ..VaultFacts::default()
+    };
+    facts.links.insert(
+        "b.md".into(),
+        markdown_link::body_links_spanned("see [[a]] and [[a#Top]]\n"),
+    );
+    let vault = Path::new("/v");
+
+    let plan = plan::plan(&vfs, vault, &facts, "a.md", "c.md").expect("plan");
+    assert_eq!(plan.conflict, None);
+    let b = plan.files.iter().find(|f| f.path == "b.md").expect("b.md");
+    assert_eq!(b.edits.len(), 2);
+    assert!(
+        plan.expect
+            .iter()
+            .any(|e| e.path == "a.md" && !e.etag.is_empty())
+    );
+    // A plan is a preview: the tree is as it was.
+    assert_eq!(
+        vfs.read_file(&vault.join("b.md")).unwrap(),
+        b"see [[a]] and [[a#Top]]\n"
+    );
+
+    let taken = plan::plan(&vfs, vault, &facts, "a.md", "b.md").expect("plan");
+    assert_eq!(taken.conflict.as_deref(), Some("b.md already exists"));
+    let missing = plan::plan(&vfs, vault, &facts, "gone.md", "c.md").expect("plan");
+    assert_eq!(missing.conflict.as_deref(), Some("no note at gone.md"));
+}
+
+#[test]
+fn from_corpus_takes_the_corpus_models_paths_links_and_frontmatter() {
+    let vfs = vfs_seam::MemVfs::new();
+    vfs.insert("/v/a.md", "# A\n").unwrap();
+    vfs.insert("/v/b.md", "---\nup: \"[[a]]\"\n---\nsee [[a]]\n")
+        .unwrap();
+    vfs.insert("/v/img.png", "png").unwrap();
+    let corpus = markdown_corpus::Corpus::load(&vfs, "/v", markdown_corpus::LoadOptions::default());
+    let facts = VaultFacts::from_corpus(&corpus);
+    let mut paths = facts.paths.clone();
+    paths.sort();
+    assert_eq!(paths, ["a.md", "b.md", "img.png"]);
+    assert_eq!(facts.links["b.md"].len(), 1);
+    assert_eq!(facts.links["b.md"][0].target, "a");
+    assert_eq!(
+        facts.frontmatter["b.md"],
+        [crate::FrontmatterRef {
+            field: Some("up".into()),
+            target: "a".into()
+        }]
+    );
+}
+
+#[test]
+fn from_graph_takes_the_same_facts_from_a_graph_alone() {
+    let vfs = vfs_seam::MemVfs::new();
+    vfs.insert("/v/a.md", "# A\n").unwrap();
+    vfs.insert("/v/b.md", "---\nup: \"[[a]]\"\n---\nsee [[a]]\n")
+        .unwrap();
+    vfs.insert("/v/img.png", "png").unwrap();
+    let graph = markdown_corpus::LinkGraph::new();
+    graph.refresh(&vfs, &vfs_seam::FixedClock::new(0), Path::new("/v"));
+    let facts = VaultFacts::from_graph(&graph);
+    let corpus = markdown_corpus::Corpus::load(&vfs, "/v", markdown_corpus::LoadOptions::default());
+    let from_corpus = VaultFacts::from_corpus(&corpus);
+    assert_eq!(facts.paths, from_corpus.paths);
+    assert_eq!(facts.links, from_corpus.links);
+    assert_eq!(facts.frontmatter, from_corpus.frontmatter);
+    assert_eq!(facts.frontmatter.keys().collect::<Vec<_>>(), ["b.md"]);
+
+    // A plan from the graph's facts finds the note that links in. `/v` is
+    // absolute only on unix, and the planner insists on an absolute root.
+    #[cfg(unix)]
+    {
+        let plan = plan::plan(&vfs, Path::new("/v"), &facts, "a.md", "c.md").expect("plan");
+        assert!(plan.conflict.is_none());
+        assert!(plan.expect.iter().any(|e| e.path == "b.md"));
+    }
+}
+
+#[test]
+fn a_lenient_snapshot_plans_with_the_lenient_split() {
+    // The block opens after a blank line, so only the lenient split takes
+    // it: there `[[a]]` in `up:` is a frontmatter value, never rewritten.
+    let src = "\n---\nup: \"[[a]]\"\n---\nsee [[a]]\n";
+    let vfs = vfs_seam::MemVfs::new();
+    vfs.insert("/v/a.md", "# A\n").unwrap();
+    vfs.insert("/v/b.md", src).unwrap();
+    let opts =
+        markdown_corpus::LoadOptions::default().with_split(markdown_corpus::SplitMode::Lenient);
+    let corpus = markdown_corpus::Corpus::load(&vfs, "/v", opts);
+    let facts = VaultFacts::from_corpus(&corpus);
+    assert_eq!(facts.split, markdown_corpus::SplitMode::Lenient);
+    assert_eq!(facts.links["b.md"].len(), 1);
+    assert_eq!(facts.frontmatter["b.md"].len(), 1);
+    assert_eq!(
+        VaultFacts::scan(Path::new("/nowhere")).split,
+        markdown_corpus::SplitMode::Strict
+    );
+
+    // `/v` is absolute only on unix, and the planner insists on an absolute
+    // root.
+    #[cfg(unix)]
+    {
+        let plan = plan::plan(&vfs, Path::new("/v"), &facts, "a.md", "c.md").expect("plan");
+        let b = plan.files.iter().find(|f| f.path == "b.md").expect("b.md");
+        let offsets: Vec<usize> = b.edits.iter().map(|e| e.offset).collect();
+        assert_eq!(
+            offsets,
+            [src.find("[[a]]\n").unwrap() + 2],
+            "the body link only"
+        );
+    }
 }

@@ -89,6 +89,8 @@ test('the owner-agreed items are experimental, and prDiff is stable', () => {
       'nodesAt',
       'GraphqlOptions',
       'GraphqlVariable',
+      'fromTarget',
+      'FromTarget',
     ].sort(),
   )
   expect(tagged().exports.get('prDiff')).toBe(false)
