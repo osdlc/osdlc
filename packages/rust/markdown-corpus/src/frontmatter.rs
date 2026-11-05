@@ -2,7 +2,7 @@
 //! frontmatter, kept.
 //!
 //! [`FrontmatterIndex`] walks the content notes (no `_system/`, no dot
-//! folders, no excluded files), reads each note through [`read_note`] and
+//! folders, no excluded files), reads each note through [`read_note`](crate::read_note) and
 //! keeps the parse. It follows [`crate::links`]'s rules: `(size, mtime)`
 //! freshness, a TTL from the caller's [`Clock`], reads with no lock held, and
 //! a sweep from before a corpus switch, an apply, an invalidate or a clear is

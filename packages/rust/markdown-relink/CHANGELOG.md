@@ -7,6 +7,16 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-04
+
+Built on `markdown-corpus` 0.2, `markdown-link` 0.8 and `vfs-seam` 0.2.
+
+### Added
+
+- `VaultFacts::from_graph(&markdown_corpus::LinkGraph)`: the snapshot from a
+  link graph alone, read under one lock hold so the paths and links come from
+  one sweep. `from_corpus` now goes through it.
+
 ## [0.2.0] - 2026-11-04
 
 Planning reads the vault through a `vfs-seam` `Vfs`, and the vault snapshot

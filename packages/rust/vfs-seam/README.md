@@ -17,6 +17,9 @@ in memory, or a JavaScript object behind a wasm bridge.
 - `MemVfs`: a tree in memory, as strict as `std::fs` about missing parents and
   occupied destinations. Each write moves the file's modification time, and a
   test can set one by hand.
+- `Metadata`: a file's size and its modification time in nanoseconds, which
+  is exact and compares exactly. `modified_ms_f64` turns it into the
+  fractional milliseconds node reports as `mtimeMs`, with node's arithmetic.
 - `PreviewVfs`: wraps another `Vfs`, reads through it, and captures writes,
   renames and removals instead of doing them. A dry run reports what it
   captured.

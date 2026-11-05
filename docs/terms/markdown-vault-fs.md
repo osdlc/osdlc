@@ -6,7 +6,7 @@ The [corpus](corpus.md) layer over [vfs-walk](vfs-walk.md): notes versus attachm
 
 ## In code
 
-`packages/rust/markdown-vault-fs`: `walk` (the corpus rules, passed to `vfs-walk` as its filter), `hide`, `path`, and `stat` re-exported from `vfs-walk`.
+`packages/rust/markdown-vault-fs`: `walk` (the corpus rules, passed to `vfs-walk` as its filter, and `WalkOptions::admits` for one path), `hide`, `path`, and `stat` re-exported from `vfs-walk`.
 
 ## Not to be confused with
 

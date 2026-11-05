@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-04
+
+Built on `vfs-seam` 0.2, whose modification times are nanoseconds.
+
+### Changed
+
+- `Entry::mtime_ms: Option<i64>` is now `Entry::mtime_ns: Option<i64>`,
+  nanoseconds since the epoch.
+
+### Added
+
+- `Entry::mtime_ms` (whole milliseconds) and `Entry::mtime_ms_f64` (node's
+  `mtimeMs`).
+- `stat::modified_ns(vfs, path)`. `stat::modified_ms` still returns whole
+  milliseconds.
+
 ## [0.1.0] - 2026-11-04
 
 First release. The general walk moved out of `markdown-vault-fs`, so code

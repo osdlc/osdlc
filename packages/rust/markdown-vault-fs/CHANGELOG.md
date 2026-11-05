@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-04
+
+Built on `vfs-seam` 0.2 and `vfs-walk` 0.2, whose modification times are
+nanoseconds.
+
+### Changed
+
+- `Entry::mtime_ms: Option<i64>` is now `Entry::mtime_ns: Option<i64>`,
+  nanoseconds since the epoch. `Entry::mtime_ms()` and
+  `Entry::mtime_ms_f64()` (node's `mtimeMs`) read it.
+
+### Added
+
+- `WalkOptions::admits(vfs, vault_dir, rel)`: whether this walk would list
+  `rel`, asked of a path that did not come from a walk. It checks the roots,
+  `skip_names`, `prune_dirs`, the visibility, the excluded files, `exclude`
+  and notes versus attachments. `WalkOptions::admitted` does the same for a
+  list, reading the excluded files once.
+- `stat::modified_ns` re-exported.
+
 ## [0.4.0] - 2026-11-04
 
 The walk reads through a `vfs-seam` `Vfs`, so it runs on any host, wasm

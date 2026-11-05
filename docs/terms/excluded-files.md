@@ -6,4 +6,4 @@ Paths a [corpus](corpus.md) marks to be left out of every tool's view, such as O
 
 ## In code
 
-`markdown-vault-fs`'s `hide` module reads and compiles the list; [vfs-walk](vfs-walk.md) applies it as a filter.
+`markdown-vault-fs`'s `hide` module reads and compiles the list; [vfs-walk](vfs-walk.md) applies it as a filter. A tool with its own list passes it as `Hide::Rules`, for example to [markdown-corpus](markdown-corpus.md)'s frontmatter walk.

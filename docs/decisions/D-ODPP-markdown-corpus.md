@@ -46,6 +46,7 @@ the shared crates.
 - determined's graph, `markdown-relink` and skillwright's load use one model.
 - `VaultFacts::from_corpus` needs a whole `Corpus`. Building it from a
   `LinkGraph` alone is a follow-up; determined does it itself until then.
+  (Done in `markdown-relink` 0.3: `VaultFacts::from_graph`.)
 
 ## Reopen if
 
