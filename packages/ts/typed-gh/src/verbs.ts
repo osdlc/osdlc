@@ -603,11 +603,41 @@ function flattenPages(body: unknown): unknown {
 }
 
 /**
- * A GraphQL variable. gh sends a string with `-f` and the rest with `-F`.
+ * A GraphQL variable filled from the target's repository: its owner, or its
+ * name. Make one with {@link fromTarget}.
  *
  * @experimental
  */
-export type GraphqlVariable = string | number | boolean | null
+export interface FromTarget {
+  readonly fromTarget: 'owner' | 'repo'
+}
+
+/**
+ * A {@link graphql} variable that holds the target repository's owner or
+ * name. With a target repo, the value comes from it. Without one, gh fills
+ * it from the clone's repository. A plain string is always sent as written,
+ * so a real value of `{owner}` stays `{owner}`.
+ *
+ * ```ts
+ * gh.graphql(query, { owner: fromTarget('owner'), name: fromTarget('repo') })
+ * ```
+ *
+ * @experimental
+ */
+export function fromTarget(part: 'owner' | 'repo'): FromTarget {
+  if (part !== 'owner' && part !== 'repo') {
+    throw new RangeError(`fromTarget: expected 'owner' or 'repo', got ${JSON.stringify(part)}`)
+  }
+  return Object.freeze({ fromTarget: part })
+}
+
+/**
+ * A GraphQL variable. gh sends a string with `-f`, as written, and the rest
+ * with `-F`. A {@link FromTarget} is filled from the target's repository.
+ *
+ * @experimental
+ */
+export type GraphqlVariable = string | number | boolean | null | FromTarget
 
 /**
  * Options for {@link graphql}.
@@ -650,8 +680,8 @@ function writesOrStreams(document: string): boolean {
  * carries `errors` or lacks `data`. A partial answer counts as a failure. Read one
  * connection across the pages with {@link nodesAt}.
  *
- * A string variable of exactly `{owner}` or `{repo}` is filled from the
- * target's repo, or by gh from the clone. A document holding any mutation or
+ * A {@link fromTarget} variable is filled from the target's repo, or by gh
+ * from the clone. A plain string is sent as written. A document holding any mutation or
  * subscription throws `RangeError`, as does a variable named `query` or
  * `operationName`, which gh would send as the request's own fields. This is a
  * read, and changes go through `raw`.
@@ -682,11 +712,17 @@ export function graphql(
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || key === 'query' || key === 'operationName') {
       throw new RangeError(`graphql: bad variable name ${JSON.stringify(key)}`)
     }
-    if (typeof value === 'string') {
-      const filled = value === '{owner}' ? owner : value === '{repo}' ? name : undefined
+    if (typeof value === 'object' && value !== null) {
+      const part = value.fromTarget
+      if (part !== 'owner' && part !== 'repo') {
+        throw new RangeError(`graphql: variable ${key} is not a fromTarget marker`)
+      }
+      const filled = part === 'owner' ? owner : name
+      // `-F` lets gh fill the placeholder from the clone; `-f` never fills.
       if (filled !== undefined) argv.push('-f', `${key}=${filled}`)
-      else if (value === '{owner}' || value === '{repo}') argv.push('-F', `${key}=${value}`)
-      else argv.push('-f', `${key}=${value}`)
+      else argv.push('-F', `${key}={${part}}`)
+    } else if (typeof value === 'string') {
+      argv.push('-f', `${key}=${value}`)
     } else {
       argv.push('-F', `${key}=${value === null ? 'null' : String(value)}`)
     }

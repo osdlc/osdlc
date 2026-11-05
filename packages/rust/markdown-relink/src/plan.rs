@@ -31,7 +31,10 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
+use vfs_seam::Vfs;
+
 use crate::error::TransformError;
+use markdown_corpus::SplitMode;
 use markdown_link::body_links_spanned;
 
 use crate::facts::VaultFacts;
@@ -332,6 +335,7 @@ pub(crate) fn suffix_at_depth(path_no_ext: &str, depth: usize) -> String {
 /// path guard. A refused plan is not an error: it comes back as `Ok` with
 /// [`RenamePlan::conflict`] set.
 pub fn plan(
+    vfs: &dyn Vfs,
     vault_dir: &Path,
     facts: &VaultFacts,
     from: &str,
@@ -339,8 +343,8 @@ pub fn plan(
 ) -> Result<RenamePlan, TransformError> {
     let from = markdown_vault_fs::path::lexical::validate_relative(from)?;
     let to = markdown_vault_fs::path::lexical::validate_relative(to)?;
-    let from_abs = markdown_vault_fs::Guard::std().resolve(vault_dir, &from)?;
-    let to_abs = markdown_vault_fs::Guard::std().resolve(vault_dir, &to)?;
+    let from_abs = markdown_vault_fs::path::guard(vfs).resolve(vault_dir, &from)?;
+    let to_abs = markdown_vault_fs::path::guard(vfs).resolve(vault_dir, &to)?;
 
     let refuse = |reason: String| {
         Ok(RenamePlan {
@@ -351,7 +355,7 @@ pub fn plan(
         })
     };
 
-    if let Some(reason) = refusal(&from, &to, &from_abs) {
+    if let Some(reason) = refusal(vfs, &from, &to, &from_abs) {
         return refuse(reason);
     }
 
@@ -363,9 +367,9 @@ pub fn plan(
     // what the directory listing below establishes.
     let case_only = from != to && from.to_lowercase() == to.to_lowercase();
     let occupied = if case_only {
-        dir_has_exact_name(vault_dir, &to)
+        dir_has_exact_name(vfs, vault_dir, &to)
     } else {
-        to_abs.exists()
+        vfs.exists(&to_abs)
     };
     if occupied {
         return refuse(format!("{to} already exists"));
@@ -457,12 +461,14 @@ pub fn plan(
     }
 
     let (files, mut expect) = inbound_rewrites(
+        vfs,
         vault_dir,
         &candidates,
         &from,
         &to,
         &pre,
         &post,
+        facts.split,
         &mut diagnostics,
     )?;
 
@@ -472,9 +478,7 @@ pub fn plan(
     if !expect.iter().any(|e| e.path == from) {
         expect.push(FileEtag {
             path: from.clone(),
-            etag: etag_write::etag_of_file(&from_abs)
-                .map_err(|e| TransformError::Io(format!("reading {from}: {}", e.source)))?
-                .unwrap_or_default(),
+            etag: etag_through(vfs, &from, &from_abs)?,
         });
     }
     expect.sort_by(|a, b| a.path.cmp(&b.path));
@@ -512,6 +516,7 @@ pub fn plan(
 /// path guard. A refused plan is not an error: it comes back as `Ok` with
 /// [`RenamePlan::conflict`] set.
 pub fn plan_redirect(
+    vfs: &dyn Vfs,
     vault_dir: &Path,
     facts: &VaultFacts,
     from: &str,
@@ -519,11 +524,12 @@ pub fn plan_redirect(
 ) -> Result<RenamePlan, TransformError> {
     let from = markdown_vault_fs::path::lexical::validate_relative(from)?;
     let to = markdown_vault_fs::path::lexical::validate_relative(to)?;
-    let from_abs = markdown_vault_fs::Guard::std().resolve(vault_dir, &from)?;
-    let to_abs = markdown_vault_fs::Guard::std().resolve(vault_dir, &to)?;
+    let from_abs = markdown_vault_fs::path::guard(vfs).resolve(vault_dir, &from)?;
+    let to_abs = markdown_vault_fs::path::guard(vfs).resolve(vault_dir, &to)?;
 
-    let refused = refusal(&from, &to, &from_abs)
-        .or_else(|| (!to_abs.is_file()).then(|| format!("no note at {to}")));
+    let refused = refusal(vfs, &from, &to, &from_abs).or_else(|| {
+        (!vfs.metadata(&to_abs).is_ok_and(|m| !m.is_dir)).then(|| format!("no note at {to}"))
+    });
     if let Some(reason) = refused {
         return Ok(RenamePlan {
             from,
@@ -545,12 +551,14 @@ pub fn plan_redirect(
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
     let candidates = linking_notes(facts, &pre, &from);
     let (files, mut expect) = inbound_rewrites(
+        vfs,
         vault_dir,
         &candidates,
         &from,
         &to,
         &pre,
         &post,
+        facts.split,
         &mut diagnostics,
     )?;
     expect.sort_by(|a, b| a.path.cmp(&b.path));
@@ -585,13 +593,18 @@ fn linking_notes<'a>(facts: &'a VaultFacts, pre: &Corpus, from: &str) -> Vec<&'a
 /// The byte edits that repoint every link in `candidates` resolving to
 /// `from` (against `pre`) at `to` (as `post` resolves it), and the etags they
 /// were computed against. Shared by [`plan`] and [`plan_redirect`].
+// The reader, the vault and the two corpora are all this needs; bundling them
+// into a struct for one private call buys nothing.
+#[allow(clippy::too_many_arguments)]
 fn inbound_rewrites(
+    vfs: &dyn Vfs,
     vault_dir: &Path,
     candidates: &[&String],
     from: &str,
     to: &str,
     pre: &Corpus,
     post: &Corpus,
+    split: SplitMode,
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Result<(Vec<FileEdits>, Vec<FileEtag>), TransformError> {
     let mut files: Vec<FileEdits> = Vec::new();
@@ -599,8 +612,8 @@ fn inbound_rewrites(
 
     for note_path in candidates {
         let note_path = (*note_path).clone();
-        let abs = markdown_vault_fs::Guard::std().resolve(vault_dir, &note_path)?;
-        let Ok(bytes) = std::fs::read(&abs) else {
+        let abs = markdown_vault_fs::path::guard(vfs).resolve(vault_dir, &note_path)?;
+        let Ok(bytes) = vfs.read_file(&abs) else {
             // Unreadable now, cached a moment ago. Not an error — a plan over
             // thousands of notes must not die on one, and the file is simply
             // absent from the rewrite set (and so from `expect`, which is what
@@ -636,9 +649,7 @@ fn inbound_rewrites(
             });
             continue;
         };
-        let split = frontmatter_lossless::split(content);
-        let body = split.body;
-        let body_start = split.body_start;
+        let (body, body_start) = body_of(content, split);
 
         let mut edits: Vec<ByteEdit> = Vec::new();
         for link in body_links_spanned(body) {
@@ -706,7 +717,7 @@ fn inbound_rewrites(
 /// `_system/`, a hidden directory, not markdown, source missing — one
 /// predicate for both shapes rather than a second copy that could drift from
 /// this one.
-pub(crate) fn refusal(from: &str, to: &str, from_abs: &Path) -> Option<String> {
+pub(crate) fn refusal(vfs: &dyn Vfs, from: &str, to: &str, from_abs: &Path) -> Option<String> {
     if from == to {
         return Some("the source and the destination are the same path".to_string());
     }
@@ -732,7 +743,7 @@ pub(crate) fn refusal(from: &str, to: &str, from_abs: &Path) -> Option<String> {
             return Some(format!("{label} is not a markdown note"));
         }
     }
-    if !from_abs.exists() {
+    if !vfs.exists(from_abs) {
         return Some(format!("no note at {from}"));
     }
     None
@@ -749,17 +760,36 @@ pub(crate) fn refusal(from: &str, to: &str, from_abs: &Path) -> Option<String> {
 /// `pub(crate)` for [`crate::apply`]: the case-only branch there cannot reserve
 /// its destination (on a case-insensitive filesystem the destination *is* the
 /// source), so it re-asks this question instead.
-pub(crate) fn dir_has_exact_name(vault_dir: &Path, rel: &str) -> bool {
+pub(crate) fn dir_has_exact_name(vfs: &dyn Vfs, vault_dir: &Path, rel: &str) -> bool {
     let (dir, name) = match rel.rsplit_once('/') {
         Some((d, n)) => (vault_dir.join(d), n),
         None => (vault_dir.to_path_buf(), rel),
     };
-    let Ok(entries) = std::fs::read_dir(&dir) else {
+    let Ok(entries) = vfs.read_dir(&dir) else {
         return false;
     };
-    entries
-        .filter_map(Result::ok)
-        .any(|e| e.file_name().to_string_lossy() == name)
+    entries.iter().any(|e| e.name == name)
+}
+
+/// The etag of the file at `abs` as `vfs` reads it, or an empty string when
+/// it is not there, which is what `etag_write::etag_of_file` gives a missing
+/// file.
+pub(crate) fn etag_through(vfs: &dyn Vfs, rel: &str, abs: &Path) -> Result<String, TransformError> {
+    match vfs.read_file(abs) {
+        Ok(bytes) => Ok(etag_write::etag(&bytes)),
+        Err(e) if e.is_not_found() => Ok(String::new()),
+        Err(e) => Err(TransformError::Io(format!(
+            "reading {rel}: {}",
+            e.io_error()
+        ))),
+    }
+}
+
+/// A note's body and the byte it starts at, split as the snapshot was
+/// ([`VaultFacts::split`]), so its links are the ones the snapshot found.
+pub(crate) fn body_of(content: &str, split: SplitMode) -> (&str, usize) {
+    let (_, body) = markdown_corpus::split_with(content, split);
+    (body, content.len() - body.len())
 }
 
 /// 1-indexed line of a byte offset within the whole file.

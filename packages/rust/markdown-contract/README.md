@@ -20,6 +20,10 @@ returns findings, each with a finding id, a level and a line number.
 - `load_config` and `run_corpus` route the files of a folder to contracts by
   glob and return the findings and an exit code (0 when no finding has level
   `error`, 1 otherwise).
+- `parse_document` gives the document tree the checks read. Every section
+  and block carries its byte range in the body.
+- `select` picks part of a note the way an Obsidian link fragment does:
+  `#Heading`, `#Parent#Child` and `#^block-id`.
 - The crate never changes the documents it checks.
 
 This is the Rust twin of the npm package
@@ -30,11 +34,8 @@ for exactly what it checks.
 
 ## Install
 
-The crate is not yet on crates.io. Until its first release, depend on it
-from git:
-
-```toml
-markdown-contract = { git = "https://github.com/osdlc/osdlc" }
+```sh
+cargo add markdown-contract
 ```
 
 ### Cargo features
@@ -45,7 +46,7 @@ markdown-contract = { git = "https://github.com/osdlc/osdlc" }
   `default-features = false` for `wasm32-unknown-unknown`:
 
   ```toml
-  markdown-contract = { git = "https://github.com/osdlc/osdlc", default-features = false }
+  markdown-contract = { version = "0.4", default-features = false }
   ```
 
 ## Quick start
@@ -84,6 +85,31 @@ assert!(findings.iter().all(|f| f.level == FindingLevel::Error));
 `examples/validate.rs` is the same program with printed output. Run it with
 `cargo run --example validate`.
 
+## Selecting part of a note
+
+`select` reads a link fragment as Obsidian does. Every ATX heading counts,
+an H1 included; a section runs to the next heading of the same or a
+shallower level; a heading inside fenced code is not a heading; and a path
+(`Parent#Child`) needs its leading segments to be the nearest headings above
+the last one. Each function returns the selection trimmed, as text or as a
+byte range in the body.
+
+```rust
+use markdown_contract::{parse_document, select};
+
+let note = "---\ntitle: x\n---\n# Guide\n\n## Setup\n\nInstall it. ^install\n\n## Use\n";
+let tree = parse_document(note);
+
+let range = tree.section_by_heading_path(&["Guide", "Setup"]).unwrap();
+assert_eq!(&tree.body[range], "## Setup\n\nInstall it. ^install");
+assert_eq!(select::block(&tree.body, "install").as_deref(), Some("Install it."));
+assert_eq!(tree.block_by_id("install").unwrap().range(), tree.root.sections[0].blocks[0].range());
+```
+
+The document tree is a different view: there the first H1 is the title, not
+a section. Its `SectionNode::range` and `BlockNode::range()` are byte ranges
+in `DocTree::body` too.
+
 ## Parity with the TypeScript package
 
 Both packages are checked against one corpus of contracts, documents and
@@ -101,8 +127,8 @@ documents outside the corpus are not checked. Fixtures that need custom `rule`
 or `docRule` functions cannot be written in YAML, so the corpus marks them
 TypeScript-only and the crate skips them.
 
-The crate and the package are versioned separately: crate 0.3.2 was checked
-against the corpus of `@osdlc/markdown-contract` 0.3.2. `comrak` is
+The crate and the package are versioned separately: crate 0.4.0 is checked
+against the corpus of `@osdlc/markdown-contract` 0.3. `comrak` is
 pinned to an exact version: the line numbers come from its parser, and a
 release of `comrak` can move them.
 

@@ -1,0 +1,44 @@
+[package]
+name = "markdown-corpus"
+version = "0.2.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "The corpus model for a folder of Markdown notes: every note and file, outgoing links and backlinks by kind, inline tags and frontmatter, read through a Vfs and refreshed incrementally."
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/markdown-corpus"
+readme = "README.md"
+keywords = ["markdown", "corpus", "notes", "backlinks", "wikilink"]
+categories = ["text-processing", "filesystem"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[features]
+default = ["native"]
+# NativeVfs and SystemClock from vfs-seam, and the native walk. Leave it off
+# for wasm32-unknown-unknown; the crate itself does no I/O but through a Vfs.
+native = ["vfs-seam/native", "markdown-vault-fs/native"]
+
+[dependencies]
+frontmatter-lossless = { workspace = true }
+markdown-link = { workspace = true }
+markdown-vault-fs = { workspace = true }
+slug-collate = { workspace = true }
+vfs-seam = { workspace = true }
+yaml-splice = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[[example]]
+name = "backlinks"
+required-features = ["native"]
+
+[lints]
+workspace = true

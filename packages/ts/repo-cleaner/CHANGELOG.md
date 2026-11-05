@@ -1,5 +1,24 @@
 # @osdlc/repo-cleaner
 
+## 0.17.1
+
+### Patch Changes
+
+- Updated dependencies [4f764b7]
+  - @osdlc/typed-gh@0.15.0
+
+## 0.17.0
+
+### Minor Changes
+
+- b036603: `holdFreedBranches(items)` keeps a branch freed for its worktree's removal when that worktree no longer goes, such as when a host's `annotate` holds the worktree back. `applyPlan` runs it after `annotate`. A host should run it on its own annotated rows too, so the counts and the plan match what `apply` will do.
+
+## 0.16.0
+
+### Minor Changes
+
+- db33c17: **Breaking (CLI):** `--remote <name>` is now `--measure-remote <name>`, so it is no longer one letter away from `--remotes`. Typing `--remote` when you meant `--remotes` used to fail with "argument missing". `--no-gh` is gone; use `--provider none`, which does the same. The help no longer says the tool asks `gh`, since the provider can be GitLab.
+
 ## 0.15.0
 
 ### Minor Changes

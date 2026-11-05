@@ -1,8 +1,8 @@
 # Checks the Cargo workspace under packages/rust/, and the wasm built from it
 # that packages/ts/yaml-splice/ commits, on
-# every pull request and push to main. It also runs when the markdown-contract corpus or the intersect
-# fixtures change, because the markdown-contract and glob-intersect crates' tests read them, and when a
-# conformance suite under packages/conformance/ changes, because the crates' tests read those.
+# every pull request and push to main. It also runs when the markdown-contract corpus changes,
+# because the markdown-contract crate's tests read it, and when a conformance suite under
+# packages/conformance/ changes, because the crates' tests read those.
 #
 # The workflow always runs, so its final `rust` job always reports. That job
 # is the one to require in the "Protect main" ruleset. A workflow-level
@@ -88,7 +88,7 @@ jobs:
               files='*'
               ;;
           esac
-          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/conformance/|scripts/conformance|packages/ts/yaml-splice/wasm/|packages/ts/markdown-contract/corpus/|packages/ts/intersect/fixtures/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
+          if [ "$files" = '*' ] || grep -qE '^(packages/rust/|packages/conformance/|scripts/conformance|packages/ts/yaml-splice/wasm/|packages/ts/markdown-contract/corpus/|\.github/workflows/(rust-ci|release-plz)\.yml$|\.github/actions/rust-|scripts/(crates-io-|semver-|package-shape-rs))' <<<"$files"; then
             echo "rust=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=false" >> "$GITHUB_OUTPUT"
@@ -146,11 +146,25 @@ jobs:
           cargo test -p yaml-splice --no-default-features --locked
           RUSTDOCFLAGS='-D warnings' cargo doc --no-deps -p yaml-splice --no-default-features --locked
 
+      # Without `native`, these crates do no I/O through std::fs.
+      - name: vfs-seam, vfs-walk, markdown-vault-fs and markdown-corpus without default features
+        run: |
+          cargo clippy -p vfs-seam -p vfs-walk -p markdown-vault-fs -p markdown-corpus --no-default-features --all-targets --locked -- -D warnings
+          cargo test -p vfs-seam -p vfs-walk -p markdown-vault-fs -p markdown-corpus --no-default-features --locked
+
       # Without `native`, the crate does no I/O; the corpus test still runs.
       - name: markdown-contract without default features
         run: |
           cargo clippy -p markdown-contract --no-default-features --all-targets --locked -- -D warnings
           cargo test -p markdown-contract --no-default-features --locked
+
+      # Without `fs`, the crate does no I/O; the pure sections of the
+      # conformance suite still run, and the `fs_*` sections' test is reported
+      # as ignored.
+      - name: glob-intersect without default features
+        run: |
+          cargo clippy -p glob-intersect --no-default-features --all-targets --locked -- -D warnings
+          cargo test -p glob-intersect --no-default-features --locked
 
       # Builds each crate from its packaged files only, so a file missing from
       # a crate's `include` list fails here and not on crates.io. Crates with
@@ -264,7 +278,8 @@ jobs:
   # wasm32, wasm-bindgen, wasm-opt) and checks that the result equals the wasm
   # committed in packages/ts/yaml-splice/wasm/, so the npm package ships what
   # its source builds. On a difference it uploads the rebuilt files.
-  # It also builds markdown-contract for wasm32 without default features.
+  # It also builds vfs-seam, vfs-walk, markdown-vault-fs, markdown-corpus and
+  # markdown-contract for wasm32 without default features.
   #
   # A version bump alone changes the wasm bytes: cargo hashes each crate's
   # version into the crate hash it gives rustc (`-C metadata`), and that hash
@@ -295,9 +310,11 @@ jobs:
       - name: Build the wasm with build.sh
         run: bash packages/rust/yaml-splice-wasm/build.sh
 
-      - name: Build markdown-contract for wasm32
+      # The crates a wasm host reads a vault through. Without `native` they do
+      # no I/O of their own.
+      - name: Build the vault crates for wasm32
         working-directory: packages/rust
-        run: cargo build -p markdown-contract --no-default-features --target wasm32-unknown-unknown --locked
+        run: cargo build -p vfs-seam -p vfs-walk -p markdown-vault-fs -p markdown-corpus -p markdown-contract --no-default-features --target wasm32-unknown-unknown --locked
 
       - name: The committed wasm matches the rebuild
         run: |

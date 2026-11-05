@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-04
+
+The first release on crates.io. 0.3.2 below was never published.
+
+### Added
+
+- `select`: pick part of a note the way an Obsidian link fragment does.
+  `heading` and `heading_range` read a selector (`Heading`, `Parent#Child`,
+  or a heading whose text holds `#`), `heading_path` and `heading_path_range`
+  a path already split, `block` and `block_range` a `^block-id`, and
+  `fragment` and `fragment_range` any of these or none. `atx_heading` reads
+  one heading line. Every heading counts, the first H1 included, and a
+  heading inside fenced code does not.
+- `DocTree::section_by_heading_path`, `DocTree::section_by_selector` and
+  `DocTree::block_range_by_id`, the same selection on a parsed document, as a
+  byte range in `DocTree::body`.
+- `DocTree::block_by_id` and `SectionNode::block_by_id`: the projected block
+  bound to a `^block-id`.
+- `BlockNode::range()`: a block's bytes in `DocTree::body`.
+- A dependency on `markdown-link`, whose fence lexer `select` uses.
+
+### Changed
+
+- Breaking: `SectionNode` has a new public field, `range`, and each
+  `BlockNode` variant a new field, `range`, so code that builds them with a
+  struct literal must set it. `range` is the bytes of the section (its
+  heading line to the next heading that closes it) or block in
+  `DocTree::body`; the root section's range is the whole body.
+
 ### Fixed
 
 - Under strict order, an unknown section no longer makes a later optional

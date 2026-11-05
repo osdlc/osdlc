@@ -1,11 +1,53 @@
 //! Vault-relative paths: the containment guard and the `_system/` rules.
 //!
-//! The guard lives in the `path-guard` crate. [`Guard`], [`PathError`] and the
-//! text checks in [`lexical`] are re-exported here, so a vault caller needs one
-//! dependency. A caller that needs a custom filesystem depends on `path-guard`
-//! directly for `Resolver`.
+//! The guard lives in the `path-guard` crate. [`Guard`], [`PathError`],
+//! [`Resolver`] and the text checks in [`lexical`] are re-exported here, so a
+//! vault caller needs one dependency. [`guard`] is a guard over a [`Vfs`], for
+//! code that reads the vault through one.
 
-pub use path_guard::{Guard, PathError, lexical};
+use std::io;
+use std::path::{Path, PathBuf};
+
+pub use path_guard::{Guard, PathError, Resolver, lexical};
+use vfs_seam::Vfs;
+
+/// A [`Resolver`] that asks a [`Vfs`]: links resolve through
+/// [`Vfs::canonicalize`] and [`Vfs::read_link`], and a path that is not there
+/// fails, as the resolver contract requires. Over a host with no links (an
+/// in-memory tree) the containment check is lexical.
+#[derive(Clone, Copy)]
+pub struct VfsResolver<'a>(pub &'a dyn Vfs);
+
+impl std::fmt::Debug for VfsResolver<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("VfsResolver").finish_non_exhaustive()
+    }
+}
+
+impl Resolver for VfsResolver<'_> {
+    fn canonicalize(&self, p: &Path) -> io::Result<PathBuf> {
+        if !self.0.exists(p) {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "no such file or directory",
+            ));
+        }
+        self.0
+            .canonicalize(p)
+            .map_err(vfs_seam::VfsError::into_io_error)
+    }
+
+    fn read_link(&self, p: &Path) -> io::Result<PathBuf> {
+        self.0
+            .read_link(p)
+            .map_err(vfs_seam::VfsError::into_io_error)
+    }
+}
+
+/// The containment guard over `vfs`.
+pub fn guard(vfs: &dyn Vfs) -> Guard<VfsResolver<'_>> {
+    Guard::new(VfsResolver(vfs))
+}
 
 /// The `_system/` prefix, as a policy rather than as a string literal.
 ///
@@ -78,6 +120,21 @@ mod tests {
         assert!(!is_system_path("Notes/_system/x.md"));
         assert!(!is_system_path("_system"), "the separator is part of it");
         assert!(!is_system_path(""));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn the_vfs_guard_keeps_paths_inside_the_vault() {
+        let vfs = vfs_seam::MemVfs::new();
+        vfs.insert("/v/Notes/a.md", "x").unwrap();
+        let g = guard(&vfs);
+        assert_eq!(
+            g.resolve(Path::new("/v"), "Notes/a.md").unwrap(),
+            Path::new("/v/Notes/a.md")
+        );
+        // Not there yet is fine: a rename destination.
+        assert!(g.resolve(Path::new("/v"), "Notes/new.md").is_ok());
+        assert!(g.resolve(Path::new("/v"), "../etc/passwd").is_err());
     }
 
     #[test]

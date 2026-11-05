@@ -34,6 +34,11 @@ export interface StrategySignals {
   /** The head branch is checked out somewhere holding unpushed commits. */
   unpushedLocal: boolean
   /**
+   * The worktrees could not be listed, so `unpushedLocal` is assumed rather
+   * than seen. Only the reason's wording changes: the guard still applies.
+   */
+  worktreesUnknown?: boolean
+  /**
    * The head branch lives in a fork, so it is not on this repository's
    * `origin` and this run cannot push to it.
    */
@@ -118,8 +123,11 @@ export function chooseStrategy(signals: StrategySignals, cfg: PrUpdateConfig): S
     return {
       strategy: cfg.guards.unpushed_local,
       rule: 'guard:unpushed-local',
-      reason:
-        cfg.guards.unpushed_local === 'skip'
+      reason: signals.worktreesUnknown
+        ? cfg.guards.unpushed_local === 'skip'
+          ? 'could not list worktrees, so assuming unpushed work in another checkout'
+          : 'merging rather than rewriting: could not list worktrees, so assuming unpushed work in another checkout'
+        : cfg.guards.unpushed_local === 'skip'
           ? 'head branch is checked out elsewhere with unpushed commits'
           : 'merging rather than rewriting: unpushed commits exist in another checkout',
     }

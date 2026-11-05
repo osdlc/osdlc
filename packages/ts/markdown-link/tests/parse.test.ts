@@ -24,7 +24,9 @@ test('parseInner passes the embed flag through', () => {
   expect(parseInner('img.png|100', true)).toEqual({
     target: 'img.png',
     heading: null,
+    block: null,
     alias: '100',
+    size: { width: 100, height: null },
     embed: true,
   })
 })
@@ -44,6 +46,10 @@ test('percentDecode decodes UTF-8 and keeps what does not decode', () => {
   expect(percentDecode('%zz')).toBe('%zz')
   expect(percentDecode('100%')).toBe('100%')
   expect(percentDecode('100% of%20it')).toBe('100% of it')
+  // Two hex digits, no sign: `%+5` stays as written.
+  expect(percentDecode('%+5')).toBe('%+5')
+  expect(percentDecode('a%+41b')).toBe('a%+41b')
+  expect(percentDecode('%+5 and%20this')).toBe('%+5 and this')
   // Not UTF-8: the whole string is kept as written.
   expect(percentDecode('%FF')).toBe('%FF')
   expect(percentDecode('a%20b%FF')).toBe('a%20b%FF')

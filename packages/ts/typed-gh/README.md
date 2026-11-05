@@ -466,6 +466,9 @@ const branches = gh.api('repos/{owner}/{repo}/branches', { paginate: true }).bod
 `graphql` (experimental) runs a query and returns each page's `data`. It throws when the
 call failed or any page has `errors` or no `data` (`soft.graphql` is `null`). A partial answer counts as a failure. `nodesAt` joins
 one connection's `nodes` across the pages, and is `null` when any page lacks them.
+`fromTarget('owner')` and `fromTarget('repo')` fill a variable from the client's repo, or let gh
+fill it from the clone. A plain string is always sent as written, so a real value of `{owner}` stays
+`{owner}`.
 
 ```ts
 const query = `query($owner: String!, $name: String!, $endCursor: String) {
@@ -476,7 +479,11 @@ const query = `query($owner: String!, $name: String!, $endCursor: String) {
     }
   }
 }`
-const pages = gh.graphql(query, { owner: '{owner}', name: '{repo}' }, { paginate: true })
+const pages = gh.graphql(
+  query,
+  { owner: fromTarget('owner'), name: fromTarget('repo') },
+  { paginate: true },
+)
 const prs = nodesAt(pages, ['repository', 'pullRequests'])
 ```
 
@@ -663,6 +670,7 @@ The experimental items:
 - `nodesAt`
 - `GraphqlOptions`
 - `GraphqlVariable`
+- `fromTarget` and `FromTarget`
 
 Every other export and method is stable, `prDiff` included. So is `@osdlc/typed-gh/testing`: its
 builders and their row types. Their default values may change in any minor release.

@@ -110,10 +110,10 @@ const SWEEP_FLAGS = {
     valueName: 'name|HEAD',
     help: 'only this branch of this repository: its worktree and local branch, and its remote branch with --remotes',
   },
-  remote: {
+  measureRemote: {
     kind: 'string',
     valueName: 'name',
-    help: 'remote to measure against (default: origin)',
+    help: 'the remote whose default branch work is measured against (default: origin)',
   },
   remoteUrl: {
     kind: 'list',
@@ -122,16 +122,11 @@ const SWEEP_FLAGS = {
     commaSeparated: false,
     help: 'sweep the branches of this remote with no checkout of your own, through a clone kept in the cache directory; repeatable',
   },
-  gh: {
-    kind: 'boolean',
-    negatable: true,
-    help: 'with --remotes: classify on git evidence alone, the same as --provider none (without --remotes no provider is asked)',
-  },
   provider: {
     kind: 'enum',
     choices: PROVIDER_CHOICES,
     valueName: 'name',
-    help: 'with --remotes: where pull requests come from: auto (by remote host), github (gh), gitlab (glab), none',
+    help: 'with --remotes: where pull requests come from: auto (by remote host), github (gh), gitlab (glab), or none to classify on git evidence alone',
   },
   fetch: {
     kind: 'boolean',
@@ -167,7 +162,7 @@ const statusCli = () =>
     summary:
       'Inventory local branches and worktrees (remote branches too with --remotes), and say ' +
       'which have been merged into the default branch. Offline unless --remotes, which fetches ' +
-      'each remote first and asks gh about pull requests; deletes nothing.',
+      'each remote first and asks the remote host about pull requests; deletes nothing.',
     positionals: PATHS,
     flags: {
       ...SWEEP_FLAGS,
@@ -351,10 +346,9 @@ function failure(ctx: CliContext, err: unknown): number {
 interface SweepValues {
   only?: string[] | undefined
   branch?: string | undefined
-  remote?: string | undefined
+  measureRemote?: string | undefined
   remoteUrl: string[]
   remotes: boolean
-  gh: boolean
   provider?: ProviderChoice | undefined
   fetch: boolean
   progress: boolean
@@ -387,7 +381,7 @@ function remotesNote(swept: Swept, style: Style): string {
   if (!swept.result.repos.some((r) => r.repo?.remote != null)) return ''
   return (
     style.muted(
-      'Local only: nothing fetched, no gh, remote branches not checked; add --remotes for all three.',
+      'Local only: nothing fetched, no pull requests looked up, remote branches not checked; add --remotes for all three.',
     ) + '\n'
   )
 }
@@ -445,11 +439,6 @@ function sweep(
     if (conflict !== null) return { kind: 'exit', code: usageError(ctx, name, conflict) }
   }
 
-  if (!v.gh && v.provider !== undefined && v.provider !== 'none') {
-    const message = `--no-gh asks no provider; drop it or --provider ${v.provider}`
-    return { kind: 'exit', code: usageError(ctx, name, message) }
-  }
-
   let branch: string | undefined
   try {
     branch = v.branch === undefined ? undefined : resolveBranch(v.branch, new Git(ctx.cwd))
@@ -462,8 +451,8 @@ function sweep(
   const options: SweepReposOptions = {
     baseDir: ctx.cwd,
     cwd: ctx.cwd,
-    // Local by default means offline: the fetch and gh go with remote branches.
-    noProvider: !(online && v.gh) || v.provider === 'none',
+    // Local by default means offline: the fetch and the pull-request lookup go with remote branches.
+    noProvider: !online || v.provider === 'none',
     fetch: online && v.fetch,
     provider: v.provider,
     branch,
@@ -472,7 +461,7 @@ function sweep(
     onWarn: (message) => ctx.io.stderr(`${NAME}: ${message}\n`),
     ...(v.progress ? { onProgress: (p) => status.update(describeSweep(p)) } : {}),
     scope,
-    ...(v.remote === undefined ? {} : { remote: v.remote }),
+    ...(v.measureRemote === undefined ? {} : { remote: v.measureRemote }),
   }
   let entries = paths.length > 0 ? [...paths] : [ctx.cwd]
   if (urls.length > 0) {
@@ -515,7 +504,7 @@ function reportUnreadable(ctx: CliContext, name: string, result: SweepResult): b
 
 function planOf(swept: Extract<Swept, { kind: 'ok' }>, now: Date): Plan {
   const opts = {
-    remote: swept.values.remote ?? null,
+    remote: swept.values.measureRemote ?? null,
     noProvider: swept.noProvider,
     provider: swept.values.provider,
     branch: swept.branch ?? null,
@@ -683,7 +672,7 @@ function applyConflict(v: ApplyValues, paths: readonly string[]): string | null 
       paths.length > 0 ? 'paths' : null,
       v.only !== undefined ? '--only' : null,
       v.branch !== undefined ? '--branch' : null,
-      v.remote !== undefined ? '--remote' : null,
+      v.measureRemote !== undefined ? '--measure-remote' : null,
       v.remoteUrl.length > 0 ? '--remote-url' : null,
     ].filter((f) => f !== null)
     if (sweepFlags.length > 0) return `--plan fixes what is swept; drop ${sweepFlags.join(', ')}`

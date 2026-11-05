@@ -25,7 +25,17 @@ import {
 } from '@osdlc/markdown-link'
 
 assert.deepEqual(bodyLinksSpanned('See [[Note#h|alias]] and `[[not a link]]`'), [
-  { kind: 'wikilink', raw: 'Note#h|alias', target: 'Note', alias: 'alias', start: 4, end: 20 },
+  {
+    kind: 'wikilink',
+    raw: 'Note#h|alias',
+    target: 'Note',
+    heading: 'h',
+    block: null,
+    alias: 'alias',
+    size: null,
+    start: 4,
+    end: 20,
+  },
 ])
 assert.deepEqual(bodyLinks('[[A]] ![[b.png]]'), [
   { target: 'A', kind: 'wikilink' },

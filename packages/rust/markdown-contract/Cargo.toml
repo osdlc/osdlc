@@ -1,16 +1,12 @@
 [package]
 name = "markdown-contract"
-version = "0.3.2"
-# Held back from crates.io for now. The parity fixes from the review of
-# https://github.com/osdlc/osdlc/pull/460 landed in #464; to publish, remove
-# this line in a pull request of its own: a first release needs its own release-plz run
-# (see scripts/crates-io-auth-plan.ts).
-publish = false
+version = "0.4.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Contracts for markdown documents: declare the frontmatter, headings, tables and lists a document must have, and get findings with line numbers. The Rust twin of @osdlc/markdown-contract."
 license.workspace = true
 repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/markdown-contract"
 readme = "README.md"
 keywords = ["markdown", "validation", "contract", "frontmatter", "lint"]
 categories = ["parser-implementations", "text-processing", "development-tools"]
@@ -33,6 +29,8 @@ native = []
 [dependencies]
 comrak = { workspace = true }
 globset = { workspace = true }
+# The fence lexer behind `select`: a heading inside fenced code is not one.
+markdown-link = { workspace = true }
 regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

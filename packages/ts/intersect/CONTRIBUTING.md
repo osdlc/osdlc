@@ -42,11 +42,18 @@ pnpm run lint
 pnpm run format:check
 ```
 
-## The test corpus
+## The conformance suite
 
-The files in `fixtures/*.cases.json` hold the expected answers. The tests in
-`tests/fixtures.test.ts` run every case. Add a new case to the matching file
-first, then change the code.
+`packages/conformance/intersect/suite.json` is the family's conformance suite,
+run by this package's `tests/conformance.test.ts` and by the Rust crate
+`glob-intersect`'s `tests/conformance.rs`. This package is the family's
+reference. A behaviour change goes into the suite first: write the case's
+`input` by hand in the section for its operation, then run
+`pnpm run conformance:write` (on Linux or macOS, not as root) to write its
+`expect` or `error`, and both packages' tests cover it. Never write those by
+hand.
+[S-conformance-suites](../../../docs/planning/standards/S-conformance-suites.md)
+is the standard.
 
 ## Code style
 

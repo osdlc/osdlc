@@ -386,10 +386,9 @@ Every command that sweeps takes these:
 | `--only <list>` | `worktrees`, `branches`, `remotes` (default: `worktrees,branches`) |
 | `--remotes` | Also sweep remote branches. Slower: each one is compared with the default branch |
 | `--branch <name\|HEAD>` | One branch of this repository: its worktree and local branch, and its remote branch with `--remotes`. Refuses the default branch |
-| `--remote <name>` | Remote to measure against (default `origin`) |
+| `--measure-remote <name>` | The remote whose default branch work is measured against (default `origin`) |
 | `--remote-url <url>` | Sweep this remote's branches with no checkout of your own (see [A remote with no checkout](#a-remote-with-no-checkout)); repeatable |
-| `--provider <name>` | With `--remotes`: where pull requests come from: `auto` (default, by the remote's host), `github`, `gitlab` or `none` |
-| `--no-gh` | With `--remotes`: classify on git evidence alone; the same as `--provider none`. Without `--remotes`, no provider is asked |
+| `--provider <name>` | With `--remotes`: where pull requests come from: `auto` (default, by the remote's host), `github`, `gitlab`, or `none` to classify on git evidence alone |
 | `--no-fetch` | With `--remotes`: skip the fetch; the header then says `not fetched`. Without `--remotes`, nothing is fetched |
 
 `status` also takes:
@@ -530,8 +529,14 @@ so the rows it checks again are the rows the host planned from.
 
 This works because of how the ladder is ordered. Every verdict the sweep
 reaches on its own evidence outranks anything a host could contribute, so a
-host never has to veto one. It only sharpens the rows left at `safe-to-keep`
-or `needs-investigation`.
+host rarely has to veto one. It mostly sharpens the rows left at
+`safe-to-keep` or `needs-investigation`.
+
+A host that does hold back or demote a worktree row must also keep that
+worktree's branch, which the sweep freed because the worktree was going. Pass
+the annotated rows through `holdFreedBranches(items, { branchScoped })`, with
+`branchScoped` set for a `branch` sweep. `applyPlan` does the same after its
+`annotate` hook, so the plan and the run agree.
 
 An issue tracker's linkage, applied this way, is a host's own layer over the
 sweep and `applyPlan`.
