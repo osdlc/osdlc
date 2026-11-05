@@ -1355,3 +1355,26 @@ fn from_corpus_takes_the_corpus_models_paths_links_and_frontmatter() {
         }]
     );
 }
+
+#[test]
+fn from_graph_takes_the_same_facts_from_a_graph_alone() {
+    let vfs = vfs_seam::MemVfs::new();
+    vfs.insert("/v/a.md", "# A\n").unwrap();
+    vfs.insert("/v/b.md", "---\nup: \"[[a]]\"\n---\nsee [[a]]\n")
+        .unwrap();
+    vfs.insert("/v/img.png", "png").unwrap();
+    let graph = markdown_corpus::LinkGraph::new();
+    graph.refresh(&vfs, &vfs_seam::FixedClock::new(0), Path::new("/v"));
+    let facts = VaultFacts::from_graph(&graph);
+    let corpus = markdown_corpus::Corpus::load(&vfs, "/v", markdown_corpus::LoadOptions::default());
+    let from_corpus = VaultFacts::from_corpus(&corpus);
+    assert_eq!(facts.paths, from_corpus.paths);
+    assert_eq!(facts.links, from_corpus.links);
+    assert_eq!(facts.frontmatter, from_corpus.frontmatter);
+    assert_eq!(facts.frontmatter.keys().collect::<Vec<_>>(), ["b.md"]);
+
+    // A plan from the graph's facts finds the note that links in.
+    let plan = plan::plan(&vfs, Path::new("/v"), &facts, "a.md", "c.md").expect("plan");
+    assert!(plan.conflict.is_none());
+    assert!(plan.expect.iter().any(|e| e.path == "b.md"));
+}
