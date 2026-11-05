@@ -33,7 +33,7 @@ import {
   type CommandRunner,
 } from '../src/index.ts'
 import { mergedEnv } from '../src/sync.ts'
-import { gone, reap } from './support/procs.ts'
+import { alive, gone, reap } from './support/procs.ts'
 import { BUN, NODE } from './support/runtimes.ts'
 
 const CWD = process.cwd()
@@ -395,7 +395,8 @@ describe('an async timeout says so', () => {
 describe('a timeout that fires after the child exited', () => {
   // POSIX only: on Windows, starting an MSYS `sh` and its `sleep` can take
   // longer than the 240 ms deadline, so the timeout fires first (seen on the
-  // windows tier 2 job, https://github.com/osdlc/osdlc/pull/492).
+  // windows tier 2 job, https://github.com/osdlc/osdlc/pull/492). The next
+  // test checks the same behaviour on every platform with Node processes.
   test.skipIf(process.platform === 'win32')(
     'reports the exit code, not a timeout, while a grandchild holds the pipes',
     async () => {
@@ -422,6 +423,47 @@ describe('a timeout that fires after the child exited', () => {
     },
     15_000,
   )
+
+  test('reports the exit code, not a timeout, while a Node grandchild holds the pipes', async () => {
+    // The test above with Node processes, so it also runs on Windows. The
+    // child starts a grandchild that shares its stdout and stderr and lives
+    // 10 s, so `close` does not come when the child exits. The grandchild is
+    // detached: on Windows, Node kills the attached processes it started when
+    // their parent dies, and `close` would then settle the run instead.
+    //
+    // The timeout must fire after the child exits and before EXIT_GRACE_MS
+    // (async.ts, 250 ms) ends. Starting Node can take over 500 ms on a loaded
+    // runner, so the child exits at a fixed time 1.375 s out rather than as
+    // soon as it can, and the timeout fires 125 ms after that, in the middle
+    // of the grace.
+    await withTempDirAsync(async (dir) => {
+      const pidFile = join(dir, 'pid')
+      let pid = 0
+      try {
+        const t0 = Date.now()
+        const child = [
+          `const { spawn } = require('node:child_process')`,
+          `const g = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 10_000)'], { detached: true, stdio: ['ignore', 'inherit', 'inherit'] })`,
+          `require('node:fs').writeFileSync(${JSON.stringify(pidFile)}, String(g.pid))`,
+          `setTimeout(() => process.exit(0), Math.max(0, ${t0 + 1_375} - Date.now()))`,
+        ].join('\n')
+        const r = await spawnRunnerAsync(process.execPath).run(['-e', child], {
+          cwd: CWD,
+          timeoutMs: 1_500,
+        })
+        pid = Number(readFileSync(pidFile, 'utf8').trim())
+        expect(r.exitCode).toBe(0)
+        expect(r.neverExited).toBeUndefined()
+        expect(r.stderr).toBe('')
+        // The run did not wait for the grandchild, which still holds the pipes.
+        expect(Date.now() - t0).toBeLessThan(5_000)
+        expect(pid).toBeGreaterThan(0)
+        expect(alive(pid)).toBe(true)
+      } finally {
+        reap(pid)
+      }
+    })
+  }, 15_000)
 })
 
 describe('the stream runner reports a failed spawn', () => {
