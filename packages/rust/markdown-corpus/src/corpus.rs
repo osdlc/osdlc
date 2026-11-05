@@ -113,7 +113,6 @@ pub struct Corpus {
     root: PathBuf,
     links: LinkGraph,
     frontmatter: FrontmatterIndex,
-    split: SplitMode,
 }
 
 impl Corpus {
@@ -155,7 +154,6 @@ impl Corpus {
             frontmatter: FrontmatterIndex::new()
                 .with_walk(opts.frontmatter_walk)
                 .with_split(opts.split),
-            split: opts.split,
         }
     }
 
@@ -276,7 +274,10 @@ impl Corpus {
     /// [`crate::read_note_with`].
     pub fn read_note(&self, vfs: &dyn Vfs, rel: &str) -> Result<Note, VfsError> {
         let bytes = vfs.read_file(&join_rel(&self.root, rel))?;
-        Ok(read_note_with(&String::from_utf8_lossy(&bytes), self.split))
+        Ok(read_note_with(
+            &String::from_utf8_lossy(&bytes),
+            self.links.split_mode(),
+        ))
     }
 }
 

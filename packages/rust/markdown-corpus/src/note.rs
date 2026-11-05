@@ -85,9 +85,12 @@ pub fn read_note(src: &str) -> Note {
 /// that puts the note back with it reframes the block.
 pub fn read_note_with(src: &str, mode: SplitMode) -> Note {
     let s = split(src);
-    let (yaml, body) = match mode {
-        SplitMode::Strict => (s.yaml, s.body),
-        SplitMode::Lenient => split_with(src, mode),
+    let lenient = (mode == SplitMode::Lenient)
+        .then(|| split_lenient(src))
+        .flatten();
+    let (yaml, body) = match lenient {
+        Some(l) => (Some(l.yaml), l.body),
+        None => (s.yaml, s.body),
     };
     match yaml {
         None => Note {
