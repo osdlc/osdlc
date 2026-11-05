@@ -23,7 +23,13 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { Git, forceWithLeaseArg, type CommandResult, type CommandRunner } from '../src/index.ts'
+import {
+  Git,
+  forceWithLeaseArg,
+  type CommandResult,
+  type CommandRunner,
+  type MktreeEntry,
+} from '../src/index.ts'
 import { makeGitFixture } from '../src/testing.ts'
 
 // ── fake-runner layer ───────────────────────────────────────────────────────
@@ -546,6 +552,238 @@ describe('Git — argv construction (fake runner)', () => {
       expect(git.cherry('HEAD', 'HEAD')).toEqual([])
       expect(git.cherry('HEAD~1', 'HEAD')).toEqual([{ sha: head, equivalent: false }])
       expect(() => git.cherry('HEAD', 'no-such-rev')).toThrow(FailureError)
+    } finally {
+      fx.cleanup()
+    }
+  })
+
+  test('hashObject feeds the content on stdin and reads a sha', () => {
+    const sha = 'd'.repeat(40)
+    const { runner, calls } = recorder(OK(`${sha}\n`))
+    const git = new Git('/repo', { runner })
+    expect(git.hashObject('hello\n')).toBe(sha)
+    expect(git.hashObject('', { write: true })).toBe(sha)
+    expect(calls).toEqual([
+      { argv: ['hash-object', '--stdin'], cwd: '/repo', input: 'hello\n' },
+      { argv: ['hash-object', '-w', '--stdin'], cwd: '/repo', input: '' },
+    ])
+    for (const out of ['', 'not a sha\n', `${'d'.repeat(39)}\n`]) {
+      expect(() => new Git('/repo', { runner: recorder(OK(out)).runner }).hashObject('x')).toThrow(
+        FailureError,
+      )
+    }
+    expect(() => new Git('/repo', { runner: recorder(FAIL).runner }).hashObject('x')).toThrow(
+      FailureError,
+    )
+  })
+
+  test('mktree writes NUL-terminated ls-tree rows on stdin, the type read from the mode', () => {
+    const [blob, tree, commit] = ['a'.repeat(40), 'b'.repeat(40), 'c'.repeat(40)]
+    const sha = 'e'.repeat(64)
+    const { runner, calls } = recorder(OK(`${sha}\n`))
+    expect(
+      new Git('/repo', { runner }).mktree([
+        { mode: '100644', sha: blob, path: 'a file.txt' },
+        { mode: '100755', type: 'blob', sha: blob, path: 'run\tme' },
+        { mode: '120000', sha: blob, path: 'link' },
+        { mode: '040000', sha: tree, path: 'dir' },
+        { mode: '160000', sha: commit, path: 'sub\nmodule' },
+      ]),
+    ).toBe(sha)
+    expect(calls[0]!.argv).toEqual(['mktree', '-z'])
+    expect(calls[0]!.input).toBe(
+      [
+        `100644 blob ${blob}\ta file.txt`,
+        `100755 blob ${blob}\trun\tme`,
+        `120000 blob ${blob}\tlink`,
+        `040000 tree ${tree}\tdir`,
+        `160000 commit ${commit}\tsub\nmodule`,
+      ].join('\x00') + '\x00',
+    )
+    // No entries is the empty tree: git still runs, with nothing on stdin.
+    const empty = recorder(OK(`${sha}\n`))
+    new Git('/repo', { runner: empty.runner }).mktree([])
+    expect(empty.calls).toEqual([{ argv: ['mktree', '-z'], cwd: '/repo', input: '' }])
+    expect(() =>
+      new Git('/repo', { runner: recorder(OK('')).runner }).mktree([
+        { mode: '100644', sha: blob, path: 'a' },
+      ]),
+    ).toThrow(FailureError)
+  })
+
+  test('mktree refuses an entry git would write into a broken tree, before it runs', () => {
+    const blob = 'a'.repeat(40)
+    const entry = { mode: '100644', sha: blob, path: 'ok' }
+    const cases: Array<[MktreeEntry[], string]> = [
+      [[{ ...entry, mode: '100664' }], 'has mode "100664", which git does not write'],
+      [[{ ...entry, mode: '40000' }], 'has mode "40000"'],
+      [[{ ...entry, type: 'tree' }], 'has type "tree", but mode 100644 is a blob'],
+      [[{ ...entry, mode: '040000', type: 'blob' }], 'mode 040000 is a tree'],
+      [[{ ...entry, sha: 'a'.repeat(39) }], 'needs a full sha'],
+      [[{ ...entry, sha: 'HEAD' }], 'needs a full sha'],
+      [[{ ...entry, sha: 'A'.repeat(40) }], 'needs a full sha'],
+      [[{ ...entry, path: '' }], 'is not a name git allows'],
+      [[{ ...entry, path: '.' }], 'is not a name git allows'],
+      [[{ ...entry, path: '..' }], 'is not a name git allows'],
+      [[{ ...entry, path: '.git' }], 'is not a name git allows'],
+      [[{ ...entry, path: '.GIT' }], 'is not a name git allows'],
+      [[{ ...entry, path: 'a/b' }], 'without "/" or NUL'],
+      [[{ ...entry, path: 'a\x00b' }], 'without "/" or NUL'],
+      [[entry, { ...entry, mode: '040000', sha: 'b'.repeat(40) }], 'entry "ok" appears twice'],
+    ]
+    for (const [entries, message] of cases) {
+      const { runner, calls } = recorder(OK(`${blob}\n`))
+      const git = new Git('/repo', { runner })
+      expect(() => git.mktree(entries)).toThrow(TypeError)
+      expect(() => git.mktree(entries)).toThrow(message)
+      // try does not catch it: it is not a git failure.
+      expect(() => git.try.mktree(entries)).toThrow(TypeError)
+      expect(calls).toEqual([])
+    }
+    // `.gitignore` and `..x` are ordinary names.
+    const { runner, calls } = recorder(OK(`${blob}\n`))
+    new Git('/repo', { runner }).mktree([
+      { ...entry, path: '.gitignore' },
+      { ...entry, path: '..x' },
+    ])
+    expect(calls).toHaveLength(1)
+  })
+
+  test('updateRef passes the old value git compares, and the reflog reason', () => {
+    const [next, old] = ['a'.repeat(40), 'b'.repeat(64)]
+    const { runner, calls } = recorder(OK(''))
+    const git = new Git('/repo', { runner })
+    git.updateRef('refs/heads/data', next, { oldSha: old })
+    git.updateRef('refs/heads/data', next, { oldSha: null })
+    git.updateRef('HEAD', 'main', { oldSha: old, reason: '-m store: write' })
+    expect(calls.map((c) => c.argv)).toEqual([
+      ['update-ref', 'refs/heads/data', next, old],
+      // An empty old value is git's "must not exist yet".
+      ['update-ref', 'refs/heads/data', next, ''],
+      ['update-ref', '-m', '-m store: write', 'HEAD', 'main', old],
+    ])
+    expect(() =>
+      new Git('/repo', { runner: recorder(FAIL).runner }).updateRef('refs/heads/x', next, {
+        oldSha: null,
+      }),
+    ).toThrow(FailureError)
+  })
+
+  test('updateRef refuses a short ref name and an old value that is not a full sha', () => {
+    const { runner, calls } = recorder(OK(''))
+    const git = new Git('/repo', { runner })
+    const sha = 'a'.repeat(40)
+    for (const ref of ['main', 'heads/main', 'ORIG_HEAD', 'refs', '']) {
+      expect(() => git.updateRef(ref, sha, { oldSha: null })).toThrow(
+        `typed-git: updateRef: ref must be HEAD or start with "refs/" (got ${JSON.stringify(ref)})`,
+      )
+    }
+    // A name would resolve when git checks it, so the check could never fail.
+    for (const oldSha of ['refs/heads/main', 'HEAD', 'a'.repeat(12), '']) {
+      expect(() => git.updateRef('refs/heads/main', sha, { oldSha })).toThrow(
+        'typed-git: updateRef: oldSha must be a full sha',
+      )
+    }
+    // A caller without types that leaves it out is told it is required.
+    expect(() => git.updateRef('refs/heads/main', sha, {} as { oldSha: null })).toThrow(
+      'typed-git: updateRef: oldSha is required',
+    )
+    expect(() => git.try.updateRef('main', sha, { oldSha: null })).toThrow(TypeError)
+    expect(calls).toEqual([])
+  })
+
+  test('hashObject and mktree against a real repository', () => {
+    const fx = makeGitFixture()
+    try {
+      const git = fx.git
+      // The well-known ids: the same bytes give the same sha in every repository.
+      expect(git.hashObject('hello\n')).toBe('ce013625030ba8dba906f756967f9e9ca394464a')
+      expect(git.hashObject('')).toBe('e69de29bb2d1d6434b8b29ae775ad8c2e48c5391')
+      // Without `write` the sha is computed and nothing is stored.
+      expect(git.objectExists('ce013625030ba8dba906f756967f9e9ca394464a')).toBe(false)
+
+      const text = 'héllo, wörld ✓\r\nno trailing newline'
+      const blob = git.hashObject(text, { write: true })
+      expect(git.objectExists(blob)).toBe(true)
+      expect(git.raw(['cat-file', 'blob', blob]).stdout).toBe(text)
+
+      expect(git.mktree([])).toBe('4b825dc642cb6eb9a060e54bf8d69288fbee4904')
+      const inner = git.mktree([{ mode: '100644', sha: blob, path: 'inner.txt' }])
+      const tree = git.mktree([
+        { mode: '100644', sha: blob, path: 'z last' },
+        { mode: '100755', sha: blob, path: 'a\nfirst' },
+        { mode: '040000', sha: inner, path: 'dir' },
+      ])
+      const rows = git.lsTree(tree)
+      // git sorts the entries itself, and the names survive whole.
+      expect(rows.map((r) => [r.mode, r.type, r.path])).toEqual([
+        ['100755', 'blob', 'a\nfirst'],
+        ['040000', 'tree', 'dir'],
+        ['100644', 'blob', 'z last'],
+      ])
+      // An ls-tree row is an mktree entry, so a tree reads back to itself.
+      expect(git.mktree(rows)).toBe(tree)
+
+      // An object that is not in the store, or not of the mode's type, is git's to refuse.
+      expect(() => git.mktree([{ mode: '100644', sha: '1'.repeat(40), path: 'x' }])).toThrow(
+        FailureError,
+      )
+      expect(() => git.mktree([{ mode: '040000', sha: blob, path: 'x' }])).toThrow(FailureError)
+      // Objects only: no commit, no ref.
+      expect(git.hasHistory()).toBe(false)
+    } finally {
+      fx.cleanup()
+    }
+  })
+
+  test('updateRef against a real repository: create, move, and lose the race', () => {
+    const fx = makeGitFixture()
+    try {
+      const base = fx.commit('base', { 'a.txt': 'a\n' })
+      const git = fx.git
+      const tree = git.mktree([
+        { mode: '100644', sha: git.hashObject('one\n', { write: true }), path: 'data' },
+      ])
+      const first = git.commitTree(tree, { message: 'first' })
+      const second = git.commitTree(tree, { parents: [first], message: 'second' })
+
+      git.updateRef('refs/heads/data', first, { oldSha: null, reason: 'store: create' })
+      expect(git.resolveRef('refs/heads/data')).toBe(first)
+      expect(git.raw(['reflog', 'show', '--format=%gs', 'refs/heads/data']).stdout).toBe(
+        'store: create\n',
+      )
+      // Creating again fails: the ref exists now.
+      expect(() => git.updateRef('refs/heads/data', second, { oldSha: null })).toThrow(
+        /reference already exists/,
+      )
+
+      git.updateRef('refs/heads/data', second, { oldSha: first })
+      expect(git.resolveRef('refs/heads/data')).toBe(second)
+      // A stale old value fails and leaves the ref where it was.
+      const stale = git.try.updateRef('refs/heads/data', first, { oldSha: first })
+      expect(stale.ok).toBe(false)
+      expect(stale.ok ? '' : stale.error.detail).toMatch(/but expected/)
+      expect(git.resolveRef('refs/heads/data')).toBe(second)
+      // An old value for a ref that does not exist fails too.
+      expect(() => git.updateRef('refs/heads/none', first, { oldSha: first })).toThrow(FailureError)
+      expect(git.resolveRef('refs/heads/none')).toBeNull()
+
+      // HEAD, the index and the working tree did not move.
+      expect(git.resolveRef('HEAD')).toBe(base)
+      expect(git.isDirty()).toBe(false)
+
+      // HEAD on a branch moves the branch, under the same check.
+      expect(() => git.updateRef('HEAD', second, { oldSha: first })).toThrow(FailureError)
+      git.updateRef('HEAD', second, { oldSha: base })
+      expect(git.resolveRef('refs/heads/main')).toBe(second)
+      expect(git.headRef()).toBe('main')
+
+      // git refuses an object that does not exist, and a tree on a branch.
+      expect(() => git.updateRef('refs/heads/x', '1'.repeat(40), { oldSha: null })).toThrow(
+        FailureError,
+      )
+      expect(() => git.updateRef('refs/heads/x', tree, { oldSha: null })).toThrow(FailureError)
+      expect(git.resolveRef('refs/heads/x')).toBeNull()
     } finally {
       fx.cleanup()
     }

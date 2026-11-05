@@ -443,6 +443,30 @@ need to call `lsFilesUnmerged()` after it. And it takes
 both sides as arguments rather than merging into the current branch, so
 nothing depends on where `HEAD` happens to be.
 
+## Writing a commit without a checkout
+
+`hashObject`, `mktree`, `commitTree` and `updateRef` write a commit straight
+into the object store and point a ref at it. The index, the working tree and
+`HEAD` stay as they are, so a tool can keep data on a side branch while
+someone works in the checkout:
+
+```ts
+const parent = git.resolveRef("refs/heads/data"); // null: no branch yet
+const blob = git.hashObject(json, { write: true });
+const tree = git.mktree([{ mode: "100644", sha: blob, path: "state.json" }]);
+const commit = git.commitTree(tree, { parents: parent ? [parent] : [], message: "Save" });
+git.updateRef("refs/heads/data", commit, { oldSha: parent });
+```
+
+`oldSha` is required. git moves the ref only while it still holds `oldSha`,
+or, for `null`, only while it does not exist, so two writers cannot both
+win. The one that loses gets a thrown failure (exit 128, `is at … but
+expected …` or `reference already exists` in `detail`) and can re-read the
+ref and try again. `mktree` takes one directory level: a subdirectory is an
+entry with mode `040000` and the sha of a tree written before it. The
+[orphan-commit example](https://github.com/osdlc/osdlc/tree/main/packages/ts/typed-git/examples/orphan-commit.ts)
+runs the whole sequence.
+
 ## Pushing: a rejected ref is a value
 
 `push` runs `git push --porcelain` and returns one result per ref, so a
@@ -709,6 +733,8 @@ exit throws the classified failure.
 | `aheadBehind(base, tip)` | `rev-list --left-right --count <base>...<tip>` | none |
 | `cherry(upstream, head)` | `cherry <upstream> [<head>]` | none — `{ sha, equivalent }` per commit; empty output is `[]`, an unreadable line throws |
 | `commitTree(tree, { parents, message })` | `commit-tree <tree> [-p <parent>]... -m <message>` | none — writes an object and no ref; needs a git identity |
+| `hashObject(content, { write })` | `hash-object [-w] --stdin` | none — the blob sha; `write` stores the blob; `content` goes on stdin as UTF-8, unfiltered |
+| `mktree(entries)` | `mktree -z` | none — writes a tree object and no ref; each entry is `{ mode, type?, sha, path }`, one name per entry; a duplicate name, a mode git does not write, or a name such as `.git` that `git fsck --strict` reports throws a `TypeError` |
 | `remotes()` | `remote` | none — names, not remotes |
 | `remote()` | `remote` | none — deprecated alias of `remotes()` |
 | `remoteGetUrl(name, { push })` | `remote get-url [--push] <name>` | `2` → `null` (unknown remote) — the first URL |
@@ -741,6 +767,7 @@ Integration, declares exit 1 absent and returns the rejected refs.
 | `clean({ directories })` | `clean -f`, or `-fd` — ignored files are kept |
 | `deleteBranch(name, { force })` | `branch -d` / `-D` |
 | `deleteRef(ref, { expected })` | `update-ref -d <ref> <expected>` — refuses when `ref` has moved |
+| `updateRef(ref, sha, { oldSha, reason })` | `update-ref [-m <reason>] <ref> <sha> <oldSha>` — refuses when `ref` is not at `oldSha`; `oldSha: null` refuses when `ref` exists. `ref` is `HEAD` or a full `refs/…` name, and `oldSha` a full sha; anything else throws a `TypeError` |
 | `worktreeAdd(path, { branch, resetBranch, startPoint, detach })` | `worktree add` — `branch` is `-b`; `resetBranch` picks `-B` (create, or reset an existing branch), as for `checkout` |
 | `worktreeRemove(path, { force })` | `worktree remove` |
 | `worktreeMove(from, to, { force })` | `worktree move` |
@@ -778,9 +805,10 @@ other non-zero exit throws.
 | `try.*` | The whole surface again, returning `Result<T, GitFailure>` (from `@osdlc/result`) instead of throwing. |
 | `soft.*` | Every verb with an absence value, returning it instead of throwing. |
 
-Use `raw` for a one-off command, such as `update-ref`, `tag -a` or a patch
-from `diff --unified`. A git command gets its own verb only when it has a
-parser worth sharing or an absence worth declaring.
+Use `raw` for a one-off command, such as `tag -a`, `update-ref --stdin` for
+several refs in one transaction, or a patch from `diff --unified`. A git
+command gets its own verb only when it has a parser worth sharing or an
+absence worth declaring.
 
 ## Driving the CLI, or something else
 
@@ -1020,8 +1048,9 @@ de-duplicate.
   cap or a timeout is a failure, never an answer.
 - stdout is text. There is no verb or call option that returns raw bytes,
   such as a binary blob. Use command-seam's `spawnRunnerBytes` for that.
-  `raw` and `rawChecked` take `input` as a string, so binary stdin, such as
-  `hash-object --stdin` on a binary file, needs that runner too.
+  `raw`, `rawChecked` and `hashObject` take their input as a string, so
+  binary stdin, such as a binary file for `hash-object --stdin`, needs that
+  runner too.
 - Output is captured, never streamed. For live progress from `clone` or
   `fetch`, run git through command-seam's `streamRunner`.
 - `Git` cannot cancel a call. `AsyncGit` takes a `signal`.

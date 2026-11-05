@@ -43,6 +43,9 @@ import {
   type CherryEntry,
   type CommitTreeOptions,
   type CommitOptions,
+  type HashObjectOptions,
+  type MktreeEntry,
+  type UpdateRefOptions,
   type CheckoutOptions,
   type ConfigGetOptions,
   type CloneOptions,
@@ -671,6 +674,19 @@ export class Git {
     return this.exec(v.commitTree(tree, commitOpts), opts)
   }
 
+  /**
+   * The blob sha of `content`; `{ write: true }` also writes the blob. See
+   * `hashObject` in `verbs.ts`.
+   */
+  hashObject(content: string, opts: GitSyncCallOptions & HashObjectOptions = {}): string {
+    return this.exec(v.hashObject(content, opts), opts)
+  }
+
+  /** Write a tree of `entries` and return its sha; no ref moves. See `mktree` in `verbs.ts`. */
+  mktree(entries: readonly MktreeEntry[], opts: GitSyncCallOptions = {}): string {
+    return this.exec(v.mktree(entries), opts)
+  }
+
   /** Configured remote names (`git remote`); `[]` when there are none. */
   remotes(opts: GitSyncCallOptions = {}): string[] {
     return this.exec(v.remote(), opts)
@@ -815,6 +831,14 @@ export class Git {
   /** Delete `ref` only while it points at `expected`. See `deleteRef` in `verbs.ts`. */
   deleteRef(ref: string, opts: GitSyncCallOptions & { expected: string }): void {
     this.exec(v.deleteRef(ref, opts), opts)
+  }
+
+  /**
+   * Point `ref` at `sha` only while it holds `oldSha` (`null`: only while it
+   * does not exist). See `updateRef` in `verbs.ts`.
+   */
+  updateRef(ref: string, sha: string, opts: GitSyncCallOptions & UpdateRefOptions): void {
+    this.exec(v.updateRef(ref, sha, opts), opts)
   }
 
   /**

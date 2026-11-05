@@ -26,11 +26,14 @@ import {
   type DiffCheckResult,
   type DiffTextOptions,
   type GcOptions,
+  type HashObjectOptions,
+  type MktreeEntry,
   type PushOptions,
   type RemoteGetUrlOptions,
   type RemoteSetBranchesOptions,
   type RemoteSetHeadOptions,
   type StatusEntry,
+  type UpdateRefOptions,
   type WorktreeAddOptions,
 } from '../src/index.ts'
 import type {
@@ -134,6 +137,9 @@ describe('public surface', () => {
     const setHead: RemoteSetHeadOptions = { auto: true }
     const setBranches: RemoteSetBranchesOptions = { add: true }
     const gc: GcOptions = { prune: false }
+    const hashObject: HashObjectOptions = { write: true }
+    const mktree: MktreeEntry = { mode: '100644', sha: 'a'.repeat(40), path: 'a' }
+    const updateRef: UpdateRefOptions = { oldSha: null }
     expect([
       status,
       clean,
@@ -150,7 +156,10 @@ describe('public surface', () => {
       setHead,
       setBranches,
       gc,
-    ]).toHaveLength(15)
+      hashObject,
+      mktree,
+      updateRef,
+    ]).toHaveLength(18)
   })
 
   test('the backend seam is marked experimental', () => {
