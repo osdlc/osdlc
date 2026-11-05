@@ -309,7 +309,8 @@ There are two ways to write one:
   a spec that sets `packageName`. For `local` it runs the launcher's own
   checkout: the built entry under node when one is present and the checkout
   is not a development checkout, else the source under bun (under node with
-  `runtime: 'node'`).
+  `runtime: 'node'`, where a checkout under a `node_modules` folder is never
+  a development checkout).
   `launcherDrift` tells a committed launcher that no longer matches its spec.
 
 ## Adopting devlink in a new CLI

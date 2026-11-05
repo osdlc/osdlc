@@ -16,7 +16,9 @@
  * the checkout root), that file runs under Node when present, else the source
  * entry runs under the spec's runtime. A dev checkout (installed with
  * `node_modules`, and with that runtime on PATH) skips the built entry, so a
- * committed bundle never hides the source being edited. This is the
+ * committed bundle never hides the source being edited. Under node, a
+ * checkout whose path has a `node_modules` folder is an install, never a dev
+ * checkout, since `npm i -g` nests its dependencies there. This is the
  * canonical-install shape for a tool that ships built JavaScript. A tool whose canonical install is elsewhere
  * (an npm shim) points `install` at that shim instead and never renders this.
  */
@@ -358,9 +360,20 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
     p('# built entry never shadows the code being edited. Anything else — an')
     p('# install, or an uninstalled clone — runs the built entry.')
     p('dev_checkout=0')
-    p(
-      `if is_checkout "$self" && [ -d "$self/node_modules" ] && find_abs ${rt.bin} >/dev/null; then dev_checkout=1; fi`,
-    )
+    const devTest = `if is_checkout "$self" && [ -d "$self/node_modules" ] && find_abs ${rt.bin} >/dev/null; then dev_checkout=1; fi`
+    if (rt.bin === 'bun') {
+      // A bun spec's lines read as they did before `runtime`, so committed launchers do not drift.
+      p(devTest)
+    } else {
+      // Node on PATH is no sign of development, and `npm i -g` nests the
+      // package's own node_modules inside it, so the path decides.
+      p('# Under a node_modules folder it is an install (npm nests its dependencies')
+      p('# there too), and node will not strip types there: run the built entry.')
+      p('case "$self/" in')
+      p('  */node_modules/*) ;;')
+      p(`  *) ${devTest} ;;`)
+      p('esac')
+    }
     p(`if [ "$dev_checkout" = "0" ] && [ -f "$here/${builtRel}" ]; then`)
     p('  if ! node="$(find_abs node)"; then')
     p(

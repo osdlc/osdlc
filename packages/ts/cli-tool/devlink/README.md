@@ -195,7 +195,10 @@ fails when the committed file no longer matches the rendered one. Pass
 `{ builtEntry }` to prefer a built file under Node. A dev checkout of the
 tool itself (`node_modules` present, and `bun` on PATH, or `node` for a
 `runtime: 'node'` spec) still runs its own source, so a committed built entry
-never hides the code being edited.
+never hides the code being edited. Under node, a checkout whose path has a
+`node_modules` folder is an install and runs the built entry, since `npm i -g`
+nests the package's dependencies in its own `node_modules` and node will not
+strip types there.
 
 The package's launcher test drives the rendered script through every layer with
 a fake `bun` on PATH and asserts it picks what `resolve()` picks.

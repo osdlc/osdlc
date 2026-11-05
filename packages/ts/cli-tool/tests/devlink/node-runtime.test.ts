@@ -571,6 +571,24 @@ describe('the bash launcher with a node spec', () => {
     )
   })
 
+  test('with a built entry: a checkout under node_modules is an install, even with its own node_modules', () => {
+    // `npm i -g` lays a package out as <prefix>/lib/node_modules/<name>/, its
+    // dependencies nested in its own node_modules.
+    const a = checkoutWithLauncher(join(sb.root, 'lib', 'node_modules', 'tooly'), 'bin/tooly.js')
+    writeFileSync(join(a, 'bin', 'tooly.js'), '')
+    mkdirSync(join(a, 'node_modules'))
+    expect(run(join(a, NSPEC.launcher), sb.root).out).toBe(
+      `NODE ${a}/bin/tooly.js arg1 arg two LAYER=local`,
+    )
+    // A folder whose name only ends in node_modules is not one.
+    const b = checkoutWithLauncher(join(sb.root, 'my_node_modules', 'tooly'), 'bin/tooly.js')
+    writeFileSync(join(b, 'bin', 'tooly.js'), '')
+    mkdirSync(join(b, 'node_modules'))
+    expect(run(join(b, NSPEC.launcher), sb.root).out).toBe(
+      `NODE ${b}/src/cli.ts arg1 arg two LAYER=local`,
+    )
+  })
+
   test('a real node runs a real TypeScript checkout through the launcher', () => {
     const a = checkoutWithLauncher(join(sb.root, 'a'))
     const b = seedCheckout(join(sb.root, 'b'))

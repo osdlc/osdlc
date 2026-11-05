@@ -33,6 +33,9 @@ created: 2026-11-05
   version is read from `process.versions`, else the first `node` on an
   absolute `PATH` entry, which is asked `node --version` once.
 - The launch does not check the Node version.
+- The bash launcher's `local` layer with a `builtEntry`, under node, never
+  counts a checkout whose path has a `node_modules` folder as a dev checkout:
+  it runs the built entry.
 - A project's copy is not affected by `runtime`: it runs under the runtime
   its bin's `#!` line names, as before.
 - A checkout whose dependencies are missing is told to run its package
@@ -73,6 +76,10 @@ created: 2026-11-05
 - The `node_modules` refusal is Node's own rule
   (`ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING`). Linking a checkout that
   sits in one would always fail at launch, so it is refused when linked.
+  The launcher's own checkout never goes through `dev link`, and `node` on
+  PATH says nothing about development, while `npm i -g` nests the package's
+  dependencies in its own `node_modules`. So under node the launcher reads
+  the path: one under `node_modules` is an install.
 - The project layer reads the bin's `#!` line because a published bin
   already names its runtime. A spec's runtime describes the tool's source,
   which an installed copy does not run.
