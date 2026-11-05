@@ -188,24 +188,29 @@ impl Corpus {
         }
     }
 
-    /// [`Corpus::refresh`] that returns the first walk error. A cache whose
-    /// walk failed is left as it was.
+    /// [`Corpus::refresh`] that returns the first walk error. Both caches
+    /// are refreshed either way; a cache whose walk failed is left as it was.
     pub fn try_refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock) -> Result<CorpusStats, WalkError> {
+        let links = self.links.try_refresh(vfs, clock, &self.root);
+        let frontmatter = self.frontmatter.try_refresh(vfs, clock, &self.root);
         Ok(CorpusStats {
-            links: self.links.try_refresh(vfs, clock, &self.root)?,
-            frontmatter: self.frontmatter.try_refresh(vfs, clock, &self.root)?,
+            links: links?,
+            frontmatter: frontmatter?,
         })
     }
 
-    /// [`Corpus::refresh_now`] that returns the first walk error.
+    /// [`Corpus::refresh_now`] that returns the first walk error. Both
+    /// caches are refreshed either way.
     pub fn try_refresh_now(
         &self,
         vfs: &dyn Vfs,
         clock: &dyn Clock,
     ) -> Result<CorpusStats, WalkError> {
+        let links = self.links.try_refresh_now(vfs, clock, &self.root);
+        let frontmatter = self.frontmatter.try_refresh_now(vfs, clock, &self.root);
         Ok(CorpusStats {
-            links: self.links.try_refresh_now(vfs, clock, &self.root)?,
-            frontmatter: self.frontmatter.try_refresh_now(vfs, clock, &self.root)?,
+            links: links?,
+            frontmatter: frontmatter?,
         })
     }
 
@@ -508,6 +513,29 @@ mod tests {
         assert!(matches!(err, WalkError::Symlink(_)), "{err}");
         let v = Corpus::load(&vfs_seam::NativeVfs, dir.path(), LoadOptions::default());
         assert_eq!(v.paths(), ["link.md", "real.md"]);
+    }
+
+    #[cfg(all(unix, feature = "native"))]
+    #[test]
+    fn try_refresh_refreshes_the_cache_whose_walk_did_not_fail() {
+        use vfs_seam::{NativeVfs, SystemClock};
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.md"), "x").unwrap();
+        let refuse = WalkOptions {
+            refuse_symlinks: true,
+            ..LinkGraph::default_walk()
+        };
+        let opts = LoadOptions::default().with_link_walk(refuse);
+        let v = Corpus::try_load(&NativeVfs, dir.path(), opts).unwrap();
+        // The link walk sees `_system/`, the frontmatter walk does not.
+        std::fs::create_dir(dir.path().join("_system")).unwrap();
+        std::os::unix::fs::symlink(dir.path().join("a.md"), dir.path().join("_system/l.md"))
+            .unwrap();
+        std::fs::write(dir.path().join("b.md"), "---\nt: b\n---\n").unwrap();
+        let err = v.try_refresh_now(&NativeVfs, &SystemClock).unwrap_err();
+        assert!(matches!(err, WalkError::Symlink(_)), "{err}");
+        assert_eq!(v.paths(), ["a.md"], "the failed graph is as it was");
+        assert!(v.note("b.md").is_some(), "the index still refreshed");
     }
 
     #[test]
