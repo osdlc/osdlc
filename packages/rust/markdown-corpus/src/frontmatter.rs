@@ -354,11 +354,6 @@ impl FrontmatterIndex {
 
     /// [`Self::apply_change`] for each of `rels`, reading the excluded files
     /// once ([`WalkOptions::admissions`]).
-    ///
-    /// A change to a file the walk reads its rules from
-    /// ([`WalkOptions::reads_rules_from`], the excluded files under the
-    /// default walk) can move any note, so it marks the index stale and the
-    /// next refresh walks.
     pub(crate) fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
         let notes: Vec<String> = rels.iter().filter(|rel| is_note(rel)).cloned().collect();
         if !notes.is_empty() {

@@ -621,24 +621,19 @@ fn relative_root(root: &str) -> String {
 /// to `rel`'s own folder finds `rel`, a folder for each segment but the last
 /// and a file for the last: how the walk reaches a file without a stat.
 fn listed_down(vfs: &dyn Vfs, vault_dir: &Path, rel: &str, start: usize) -> bool {
-    let mut at = start;
-    loop {
-        let (name, more) = match rel[at..].split_once('/') {
-            Some((name, _)) => (name, true),
-            None => (&rel[at..], false),
-        };
-        let folder = join_rel(vault_dir, &rel[..at]);
+    let mut folder = join_rel(vault_dir, &rel[..start]);
+    let mut names = rel[start..].split('/').peekable();
+    while let Some(name) = names.next() {
+        let more = names.peek().is_some();
         let Ok(entries) = vfs.read_dir(&folder) else {
             return false;
         };
         if !entries.iter().any(|e| e.name == name && e.is_dir == more) {
             return false;
         }
-        if !more {
-            return true;
-        }
-        at += name.len() + 1;
+        folder.push(name);
     }
+    true
 }
 
 /// `vault_dir` joined with each segment of a `/`-separated relative path.

@@ -302,9 +302,7 @@ pub fn plan_bundle(
             });
             continue;
         };
-        // Split as the snapshot was, so its links are the ones found here.
-        let (_, body) = markdown_corpus::split_with(content, facts.split);
-        let body_start = content.len() - body.len();
+        let (body, body_start) = crate::plan::body_of(content, facts.split);
 
         let mut edits: Vec<ByteEdit> = Vec::new();
         for link in body_links_spanned(body) {

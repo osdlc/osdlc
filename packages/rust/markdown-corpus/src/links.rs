@@ -1254,8 +1254,12 @@ pub(crate) mod hooks {
     pub struct StatHook<'a> {
         inner: &'a dyn Vfs,
         path: PathBuf,
-        then: RefCell<Option<Box<dyn FnOnce() + 'a>>>,
-        denied: bool,
+        on_stat: OnStat<'a>,
+    }
+
+    enum OnStat<'a> {
+        After(RefCell<Option<Box<dyn FnOnce() + 'a>>>),
+        Denied,
     }
 
     impl<'a> StatHook<'a> {
@@ -1267,8 +1271,7 @@ pub(crate) mod hooks {
             StatHook {
                 inner,
                 path,
-                then: RefCell::new(Some(Box::new(then))),
-                denied: false,
+                on_stat: OnStat::After(RefCell::new(Some(Box::new(then)))),
             }
         }
 
@@ -1278,8 +1281,7 @@ pub(crate) mod hooks {
             StatHook {
                 inner,
                 path,
-                then: RefCell::new(None),
-                denied: true,
+                on_stat: OnStat::Denied,
             }
         }
     }
@@ -1289,15 +1291,19 @@ pub(crate) mod hooks {
             if path != self.path {
                 return self.inner.metadata(path);
             }
-            if self.denied {
-                let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
-                return Err(VfsError::io(path, denied));
+            match &self.on_stat {
+                OnStat::Denied => {
+                    let denied = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+                    Err(VfsError::io(path, denied))
+                }
+                OnStat::After(then) => {
+                    let meta = self.inner.metadata(path);
+                    if let Some(f) = then.borrow_mut().take() {
+                        f();
+                    }
+                    meta
+                }
             }
-            let meta = self.inner.metadata(path);
-            if let Some(f) = self.then.borrow_mut().take() {
-                f();
-            }
-            meta
         }
         fn read_file(&self, path: &Path) -> Result<Vec<u8>, VfsError> {
             self.inner.read_file(path)
