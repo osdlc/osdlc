@@ -7,11 +7,11 @@
  * their own runner all use the same definitions and the same parsing.
  *
  * `checked` marks a verb the runner throws for on a non-zero exit, with
- * stderr. That is every mutation, and `prDiff`, which is a read. Other
- * queries run unchecked, and `parse` turns a failure into `null`, which is
- * what `soft` returns. The clients' methods that throw read them through
- * `settle` (see `doors.ts`) instead. There a failure throws, except where the
- * verb declares `absent` or is a `probe`.
+ * stderr. That is every mutation, `prDiff`, which is a read, and
+ * `rawChecked`. Other queries run unchecked, and `parse` turns a failure into
+ * `null`, which is what `soft` returns. The clients' methods that throw read
+ * them through `settle` (see `doors.ts`) instead. There a failure throws,
+ * except where the verb declares `absent` or is a `probe`.
  */
 
 import { notAnOption, stderrOrError, type CommandResult } from '@osdlc/command-seam'
@@ -29,11 +29,12 @@ function noSuch(thing: Thing): (r: CommandResult) => boolean {
 /** One `gh` invocation: what to run, and how to read what came back. */
 export interface GhVerb<T> {
   argv: string[]
-  /** True for every mutation and for `prDiff`: throw on a non-zero exit instead of parsing. */
+  /** True for every mutation, `prDiff` and `rawChecked`: throw on a non-zero exit instead of parsing. */
   checked: boolean
   /**
    * True when the call only reads and changes nothing on GitHub. Every query
-   * is read-only, and so is `prDiff`. No mutation is. A caller that
+   * is read-only, and so is `prDiff`. No mutation is, and neither are `raw`
+   * and `rawChecked`, whose argv the library cannot judge. A caller that
    * keeps an allowlist of safe calls can check this before running a verb.
    */
   readOnly: boolean
@@ -45,10 +46,10 @@ export interface GhVerb<T> {
    */
   env?: Record<string, string> | undefined
   /**
-   * True for a read whose failure is part of its answer. `installed`,
-   * `authStatus` and `api` return what `parse` makes of any result, from the
-   * plain method and from `try`; they have no soft form. Other reads throw
-   * from the plain method when gh exits non-zero.
+   * True for a call whose failure is part of its answer. `installed`,
+   * `authStatus`, `api` and `raw` return what `parse` makes of any result,
+   * from the plain method and from `try`; they have no soft form. Other reads
+   * throw from the plain method when gh exits non-zero.
    */
   probe?: boolean | undefined
   /**
@@ -1680,6 +1681,29 @@ export function createReview(
       }
     },
   }
+}
+
+// ── raw calls ───────────────────────────────────────────────────────────────
+
+/**
+ * Any `gh` call, as a verb whose value is the `CommandResult`, whatever the
+ * exit code: `Gh.raw` as data. It adds no `--repo` and no host, so put them
+ * in `argv`. It is a `probe`, so `runVerb` returns a failed or cut-short
+ * result rather than throwing, and it is not `readOnly`, since the library
+ * cannot tell what `argv` does.
+ */
+export function raw(argv: readonly string[]): GhVerb<CommandResult> {
+  return { argv: [...argv], checked: false, readOnly: false, probe: true, parse: (r) => r }
+}
+
+/**
+ * {@link raw}, checked: `Gh.rawChecked` as data. `runVerb` returns the
+ * `CommandResult` when gh exits 0 with its whole output, and otherwise throws
+ * a `FailureError` carrying the classified `GhFailure`. So a tool that runs
+ * one call the verb table lacks needs no `Gh` for it.
+ */
+export function rawChecked(argv: readonly string[]): GhVerb<CommandResult> {
+  return { argv: [...argv], checked: true, readOnly: false, parse: (r) => r }
 }
 
 // ── helpers over the parsed rows ────────────────────────────────────────────

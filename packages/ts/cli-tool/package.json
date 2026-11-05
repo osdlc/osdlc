@@ -115,6 +115,7 @@
     "@osdlc/config-layers": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
     "@osdlc/result": "workspace:^",
+    "@osdlc/tiered-dirs": "workspace:^",
     "@osdlc/ux": "workspace:^",
     "commander": "^12.1.0"
   },

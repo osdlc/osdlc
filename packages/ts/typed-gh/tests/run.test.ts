@@ -10,7 +10,10 @@ import {
   AsyncGh,
   Gh,
   createReview,
+  prDiff,
   prView,
+  raw,
+  rawChecked,
   repoList,
   runVerb,
   runVerbAsync,
@@ -19,6 +22,7 @@ import {
   type CommandResult,
   type CommandRunOptions,
   type CommandRunner,
+  type GhFailure,
 } from '../src/index.ts'
 
 const ok = (stdout: string): CommandResult => ({ exitCode: 0, stdout, stderr: '' })
@@ -97,7 +101,130 @@ describe('runVerbAsync', () => {
   })
 })
 
+describe('raw and rawChecked as verbs', () => {
+  const FAIL: CommandResult = { exitCode: 1, stdout: '', stderr: 'HTTP 401: Bad credentials' }
+  const NO_GH: CommandResult = {
+    exitCode: 1,
+    stdout: '',
+    stderr: '',
+    neverExited: true,
+    reason: 'spawn',
+    error: 'spawn gh ENOENT',
+  }
+  const PARTIAL: CommandResult = { ...ok('half'), outputIncomplete: true }
+  const opts = { cwd: '/repo' }
+
+  /** The `GhFailure` that `run` throws or rejects with. */
+  async function failureOf(run: () => unknown): Promise<GhFailure> {
+    try {
+      await run()
+    } catch (error) {
+      if (error instanceof FailureError) return error.failure as GhFailure
+      throw error
+    }
+    throw new Error('expected a failure')
+  }
+
+  test('raw runs argv as given, adding no --repo, host or stdin', () => {
+    const { calls, runner } = spy(ok('x'))
+    runVerb(raw(['api', 'user']), runner, { cwd: '/repo', timeoutMs: 3 })
+    expect(calls).toEqual([{ argv: ['api', 'user'], opts: { cwd: '/repo', timeoutMs: 3 } }])
+  })
+
+  test('the verbs copy argv, so a later change to the array does not reach the run', () => {
+    const argv = ['api', 'user']
+    const a = raw(argv)
+    const b = rawChecked(argv)
+    argv.push('--paginate')
+    expect(a.argv).toEqual(['api', 'user'])
+    expect(b.argv).toEqual(['api', 'user'])
+  })
+
+  test('raw returns the result as it came: a failure, gh missing, output cut short', async () => {
+    for (const result of [ok('fine'), FAIL, NO_GH, PARTIAL]) {
+      expect(runVerb(raw(['x']), spy(result).runner, opts)).toEqual(result)
+      expect(await runVerbAsync(raw(['x']), spy(result).runner, opts)).toEqual(result)
+    }
+  })
+
+  test('rawChecked returns the result when gh exits 0 with its whole output', async () => {
+    expect(runVerb(rawChecked(['x']), spy(ok('fine')).runner, opts).stdout).toBe('fine')
+    expect(await runVerbAsync(rawChecked(['x']), spy(ok('')).runner, opts)).toEqual(ok(''))
+  })
+
+  test('rawChecked throws the classified failure, with argv, for a non-zero exit', async () => {
+    const thrown = await failureOf(() =>
+      runVerb(rawChecked(['api', 'user']), spy(FAIL).runner, opts),
+    )
+    expect(thrown).toMatchObject({ kind: 'not-authenticated', argv: ['api', 'user'], exitCode: 1 })
+    const rejected = await failureOf(() =>
+      runVerbAsync(rawChecked(['api', 'user']), spy(FAIL).runner, opts),
+    )
+    expect(rejected).toEqual(thrown)
+  })
+
+  test('rawChecked throws not-installed when gh never ran', async () => {
+    const failure = await failureOf(() => runVerb(rawChecked(['x']), spy(NO_GH).runner, opts))
+    expect(failure.kind).toBe('not-installed')
+    expect(failure.hint).toContain('https://cli.github.com')
+  })
+
+  test('rawChecked throws for output cut short, though gh exited 0', async () => {
+    expect(() => runVerb(rawChecked(['x']), spy(PARTIAL).runner, opts)).toThrow(FailureError)
+    await expect(runVerbAsync(rawChecked(['x']), spy(PARTIAL).runner, opts)).rejects.toThrow(
+      FailureError,
+    )
+  })
+
+  test('runVerbAsync passes the signal and timeout to both', async () => {
+    const signal = new AbortController().signal
+    for (const verb of [raw(['x']), rawChecked(['x'])]) {
+      const { calls, runner } = spy(ok(''))
+      await runVerbAsync(verb, runner, { cwd: '/repo', timeoutMs: 4, signal })
+      expect(calls[0]!.opts).toEqual({ cwd: '/repo', timeoutMs: 4, signal })
+    }
+  })
+
+  test('a tool needs no Gh for a diff and a raw checked call', () => {
+    const { calls, runner } = spy(ok('the diff'))
+    expect(runVerb(prDiff(7), runner, opts)).toBe('the diff')
+    runVerb(rawChecked(['api', 'repos/{owner}/{repo}/pulls/7/files']), runner, opts)
+    expect(calls.map((c) => c.argv)).toEqual([
+      ['pr', 'diff', '7'],
+      ['api', 'repos/{owner}/{repo}/pulls/7/files'],
+    ])
+  })
+})
+
 describe('the clients go through it', () => {
+  test('Gh and AsyncGh run raw and rawChecked as the verbs do', async () => {
+    const want = spy(ok('x'))
+    runVerb(raw(['api', 'user']), want.runner, { cwd: '/repo', timeoutMs: 5 })
+    runVerb(rawChecked(['api', 'user']), want.runner, { cwd: '/repo', timeoutMs: 5 })
+    const a = spy(ok('x'))
+    const gh = new Gh('/repo', { runner: a.runner })
+    expect(gh.raw(['api', 'user'], { timeoutMs: 5 })).toEqual(ok('x'))
+    expect(gh.rawChecked(['api', 'user'], { timeoutMs: 5 })).toEqual(ok('x'))
+    const b = spy(ok('x'))
+    const agh = new AsyncGh('/repo', { runner: b.runner })
+    expect(await agh.raw(['api', 'user'], { timeoutMs: 5 })).toEqual(ok('x'))
+    expect(await agh.rawChecked(['api', 'user'], { timeoutMs: 5 })).toEqual(ok('x'))
+    expect(a.calls).toEqual(want.calls)
+    expect(b.calls).toEqual(want.calls)
+  })
+
+  test('AsyncGh.raw rejects, and does not throw, when the runner throws', async () => {
+    const throwing: AsyncCommandRunner = {
+      run: () => {
+        throw new Error('runner broke')
+      },
+    }
+    const agh = new AsyncGh('/repo', { runner: throwing })
+    const pending = agh.raw(['x'])
+    await expect(pending).rejects.toThrow('runner broke')
+    await expect(agh.rawChecked(['x'])).rejects.toThrow('runner broke')
+  })
+
   test('Gh and AsyncGh send the host as env and the timeout through', async () => {
     const a = spy(ok('[]'))
     new Gh('/repo', { runner: a.runner, ...HOST }).repoList('acme', { timeoutMs: 9 })

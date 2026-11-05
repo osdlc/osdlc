@@ -389,7 +389,8 @@ describe('spawnRunnerAsync — capture contract', () => {
   // POSIX only (https://github.com/osdlc/osdlc/issues/491): on Windows the
   // grandchild is an MSYS subshell. Its `$!` may not be a Windows pid, and its
   // writes do not reliably fail once the pipe closes. The test failed and is
-  // the likely cause of the hung windows tier 2 jobs.
+  // the likely cause of the hung windows tier 2 jobs. The next test checks
+  // the same behaviour on every platform with a Node grandchild.
   test.skipIf(process.platform === 'win32')(
     'the timeout path detaches from the pipes a surviving grandchild holds',
     async () => {
@@ -426,6 +427,85 @@ describe('spawnRunnerAsync — capture contract', () => {
     },
     10_000,
   )
+
+  test('the timeout path detaches from the pipes a surviving Node grandchild holds', async () => {
+    // The test above, with Node processes in place of `sh`, so it also runs
+    // on Windows: `process.pid` is a real pid there, and a write to a pipe
+    // whose read end is closed fails. The direct child starts the grandchild
+    // and then idles until the timeout kills it.
+    //
+    // The grandchild is detached. On Windows, Node puts the processes it
+    // starts in a job object that kills them when their parent dies, so an
+    // attached grandchild would die with the child and pass this test
+    // without the pipes ever closing. Detached, only a failed write ends it.
+    //
+    // The grandchild writes a short line to stdout every 5 ms. Once the
+    // parent closes the read end, a write fails and stdout emits `error`
+    // (EPIPE; on Windows EPIPE or EOF). The grandchild then records the error
+    // code and exits. Writing slowly keeps the parent's buffered output small
+    // while the test waits. It records its pid after its first successful
+    // write, so the pid file means it is running and holding the pipes.
+    const dir = mkdtempSync(join(tmpdir(), 'seam-pipe-detach-node-'))
+    const pidFile = join(dir, 'pid')
+    const whyFile = join(dir, 'why')
+    let pid = 0
+    try {
+      const writer = [
+        `const { writeFileSync } = require('node:fs')`,
+        `const line = 'x'.repeat(63) + '\\n'`,
+        `let started = false`,
+        `process.stdout.on('error', (e) => {`,
+        `  writeFileSync(${JSON.stringify(whyFile)}, String(e.code))`,
+        `  process.exit(0)`,
+        `})`,
+        `setInterval(() => {`,
+        `  process.stdout.write(line, (e) => {`,
+        `    if (e || started) return`,
+        `    started = true`,
+        `    writeFileSync(${JSON.stringify(pidFile)}, String(process.pid))`,
+        `  })`,
+        `}, 5)`,
+        // A backstop. The test reaps the grandchild, and asserts it is gone
+        // long before this.
+        `setTimeout(() => process.exit(1), 30_000)`,
+      ].join('\n')
+      const child = [
+        `const { spawn } = require('node:child_process')`,
+        `spawn(process.execPath, ['-e', ${JSON.stringify(writer)}], { detached: true, stdio: ['ignore', 'inherit', 'inherit'] })`,
+        `setInterval(() => {}, 1_000)`,
+      ].join('\n')
+      const readPid = (): number => {
+        try {
+          return Number(readFileSync(pidFile, 'utf-8').trim()) || 0
+        } catch {
+          return 0
+        }
+      }
+      const r = await spawnRunnerAsync(process.execPath).run(['-e', child], {
+        cwd: CWD,
+        timeoutMs: 250,
+        // Starting two Node processes can take longer than the deadline on a
+        // loaded Windows runner. The timer starts after `onSpawn` returns, so
+        // block here until the grandchild is writing.
+        onSpawn: () => {
+          const end = performance.now() + 10_000
+          while (readPid() === 0 && performance.now() < end) {
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)
+          }
+        },
+      })
+      pid = readPid()
+      expect(r.neverExited).toBe(true)
+      expect(r.reason).toBe('timeout')
+      expect(pid).toBeGreaterThan(0)
+      expect(await gone(pid)).toBe(true)
+      // It ended because a write failed, so the parent closed the read end.
+      expect(readFileSync(whyFile, 'utf-8')).toMatch(/^E[A-Z]+$/)
+    } finally {
+      reap(pid)
+      rmSync(dir, { recursive: true, force: true })
+    }
+  }, 20_000)
 })
 
 describe('spawnRunnerAsync — processGroup', () => {

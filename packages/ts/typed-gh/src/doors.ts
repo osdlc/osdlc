@@ -42,12 +42,12 @@ import type { GhVerb } from './verbs.ts'
  * Read the result of running `verb` as the methods that throw do.
  *
  * A checked verb has already thrown on a non-zero exit (the runner is
- * {@link runCheckedGh}). A probe (`installed`, `authStatus`, `api`) carries its
- * failure in its value. A read that exited non-zero throws the classified
- * failure, unless the verb's `absent` says the result is still an answer: gh's
- * "there is no such thing", which `parse` turns into `null`, or a partial
- * `graphql` response. A read that exited 0 but parsed to `null`
- * could not be read completely, and throws.
+ * {@link runCheckedGh}). A probe (`installed`, `authStatus`, `api`, `raw`)
+ * carries its failure in its value. A read that exited non-zero throws the
+ * classified failure, unless the verb's `absent` says the result is still an
+ * answer: gh's "there is no such thing", which `parse` turns into `null`, or a
+ * partial `graphql` response. A read that exited 0 but parsed to `null` could
+ * not be read completely, and throws.
  *
  * A result flagged `outputIncomplete` throws for every verb but a probe, as
  * typed-git's `gate` does: gh exited, but the runner stopped reading at the
