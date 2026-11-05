@@ -19,7 +19,7 @@ release list. Our own research notes are never the evidence.
   standalone YAML file. Entries here do not carry it.
 
 The corpus is data only. The format is defined in
-[`../../markdown-db/SPEC.md`](../../markdown-db/SPEC.md). Implementations live in
+[markdown-db](../../../docs/standards/S-GFFY-markdown-db.md). Implementations live in
 `../../src/markdown-db/`.
 
 ## Schema notes

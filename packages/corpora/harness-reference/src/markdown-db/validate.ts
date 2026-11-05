@@ -1,5 +1,5 @@
 /**
- * markdown-db validator (spec: markdown-db/SPEC.md, version 0). Reads a
+ * markdown-db validator (docs/standards/S-GFFY-markdown-db.md, version 0). Reads a
  * corpus's manifest, then checks every type's entries. Nothing here knows a
  * particular corpus: every rule comes from the manifest, the schemas or the spec.
  */

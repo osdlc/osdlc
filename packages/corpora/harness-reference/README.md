@@ -17,9 +17,8 @@ The record is kept as corpora: folders of Markdown files, each with its own sche
 - `probes/`: reproducible runs that back `evidence: run` observations.
 - `src/alpha/`: the alpha schema, validator, page generator and tests.
 - `schema/alpha/`: JSON Schemas generated from `src/alpha/schema.ts`, for other tools.
-- `markdown-db/SPEC.md`: the spec for the beta corpus's format. The corpus is data only; its
-  manifest is `corpora/beta/markdown-db.yaml`. Implementations live in `src/`.
-- `src/markdown-db/`: the generic validator for any corpus that follows the spec.
+- `src/markdown-db/`: the validator for any corpus that follows
+  [markdown-db](../docs/standards/S-GFFY-markdown-db.md), the beta corpus's format.
 
 ## The alpha corpus
 
