@@ -112,7 +112,7 @@ pub struct NoteFacts {
     pub tags: Vec<Vec<String>>,
     size: u64,
     /// `None` when the note could not be stamped; never compares fresh.
-    mtime_ms: Option<i64>,
+    mtime_ns: Option<i64>,
 }
 
 impl NoteFacts {
@@ -324,13 +324,13 @@ impl LinkGraph {
             let stamp = if entry.is_symlink {
                 stamp_of(vfs, &entry.abs)
             } else {
-                entry.mtime_ms.map(|m| (entry.size, m))
+                entry.mtime_ns.map(|m| (entry.size, m))
             };
             let reusable = stamp
                 .and_then(|(size, mtime)| {
                     cache
                         .get(&entry.rel)
-                        .filter(|c| c.size == size && c.mtime_ms == Some(mtime))
+                        .filter(|c| c.size == size && c.mtime_ns == Some(mtime))
                 })
                 .map(Arc::clone);
             if let Some(facts) = reusable {
@@ -846,7 +846,7 @@ pub(crate) fn stamp_of(vfs: &dyn Vfs, abs: &Path) -> Option<(u64, i64)> {
     if meta.is_dir {
         return None;
     }
-    Some((meta.len, meta.modified_ms?))
+    Some((meta.len, meta.modified_ns?))
 }
 
 /// `vault_dir` joined with each segment of a `/`-separated path.
@@ -897,12 +897,12 @@ fn scan_note(
     tags: &dyn TagLexer,
     abs: &Path,
     size: u64,
-    mtime_ms: Option<i64>,
+    mtime_ns: Option<i64>,
 ) -> NoteFacts {
     let Ok(bytes) = vfs.read_file(abs) else {
         return NoteFacts {
             size,
-            mtime_ms,
+            mtime_ns,
             ..NoteFacts::default()
         };
     };
@@ -930,7 +930,7 @@ fn scan_note(
         frontmatter_links,
         tags: tags.lex(body).into_iter().map(dedupe).collect(),
         size,
-        mtime_ms,
+        mtime_ns,
     }
 }
 

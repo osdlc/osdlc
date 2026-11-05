@@ -130,11 +130,33 @@ fn a_deleted_note_leaves_the_graph() {
 fn a_note_with_no_modification_time_is_rescanned_every_sweep() {
     let d = linked_vault();
     let (g, c) = (graph(), FixedClock::new(0));
-    d.set_modified(&join_rel(root(), "Home.md"), None).unwrap();
+    d.set_modified_ns(&join_rel(root(), "Home.md"), None)
+        .unwrap();
     g.refresh(&*d, &c, root());
     let stats = g.refresh_now(&*d, &c, root());
     assert_eq!(stats.updated, 1, "no stamp never compares fresh");
     assert_eq!(stats.unchanged, 3);
+}
+
+#[test]
+fn a_same_size_edit_inside_one_millisecond_is_still_seen() {
+    let d = vault(&[
+        ("Home.md", "[[Alpha]]\n"),
+        ("Alpha.md", "a"),
+        ("Bravo.md", "b"),
+    ]);
+    let home = join_rel(root(), "Home.md");
+    d.set_modified_ns(&home, Some(5_000_000_100)).unwrap();
+    let (g, c) = (graph(), FixedClock::new(0));
+    g.refresh(&*d, &c, root());
+    assert_eq!(g.backlinks("Alpha.md").total, 1);
+
+    // Same size, and 400 ns later: the whole milliseconds do not move.
+    put(&d, "Home.md", "[[Bravo]]\n");
+    d.set_modified_ns(&home, Some(5_000_000_500)).unwrap();
+    let stats = g.refresh_now(&*d, &c, root());
+    assert_eq!(stats.updated, 1);
+    assert_eq!(g.backlinks("Bravo.md").total, 1);
 }
 
 // ── Coalescing ─────────────────────────────────────────────────────────

@@ -202,16 +202,29 @@ pub struct Entry {
     pub is_note: bool,
     /// Size in bytes.
     pub size: u64,
-    /// Last modification in milliseconds since the Unix epoch, from the same
+    /// Last modification in nanoseconds since the Unix epoch, from the same
     /// [`Vfs::metadata`] call that produced `size`, so an incremental cache
     /// can stamp `(size, mtime)` without a second stat per file. `None` when
     /// the host could not supply one, which a cache must treat as never
-    /// fresh.
-    pub mtime_ms: Option<i64>,
-    /// The walk does not follow links, so `size`/`mtime_ms` describe the
+    /// fresh. [`Entry::mtime_ms_f64`] is node's `mtimeMs` for it.
+    pub mtime_ns: Option<i64>,
+    /// The walk does not follow links, so `size`/`mtime_ns` describe the
     /// LINK for a symlink entry. A cache that stamps file contents must
     /// re-stat these through the link.
     pub is_symlink: bool,
+}
+
+impl Entry {
+    /// [`Entry::mtime_ns`] in whole milliseconds, rounded down.
+    pub fn mtime_ms(&self) -> Option<i64> {
+        self.mtime_ns.map(vfs_seam::ns_to_ms)
+    }
+
+    /// [`Entry::mtime_ns`] in fractional milliseconds, equal to node's
+    /// `statSync().mtimeMs` ([`vfs_seam::ns_to_ms_f64`]).
+    pub fn mtime_ms_f64(&self) -> Option<f64> {
+        self.mtime_ns.map(vfs_seam::ns_to_ms_f64)
+    }
 }
 
 /// A walk plus what it could not reach.
@@ -251,20 +264,8 @@ pub fn walk_reporting(
     vault_dir: &Path,
     opts: &WalkOptions,
 ) -> Result<WalkOutcome, WalkError> {
-    let loaded;
-    let hide: Option<&HideRules> = if opts.visibility == Visibility::Everything {
-        None
-    } else {
-        match &opts.hide {
-            Hide::Vault => {
-                loaded = hide::load(vfs, vault_dir).rules;
-                Some(loaded.as_ref())
-            }
-            Hide::Rules(rules) => Some(rules.as_ref()),
-            Hide::Off => None,
-        }
-    }
-    .filter(|h| !h.is_empty());
+    let hide = opts.hide_rules(vfs, vault_dir);
+    let hide = hide.as_deref();
 
     let rooted = !opts.roots.is_empty();
     // First root wins across overlapping roots. Only consulted on a rooted
@@ -331,7 +332,7 @@ pub fn walk_reporting(
                 rel: found.rel,
                 abs: found.abs,
                 size: found.size,
-                mtime_ms: found.mtime_ms,
+                mtime_ns: found.mtime_ns,
                 is_symlink: found.is_symlink,
             });
         }
@@ -393,6 +394,81 @@ fn is_note(name: &str) -> bool {
 }
 
 impl WalkOptions {
+    /// The excluded-files rules this walk applies, read from the vault for
+    /// [`Hide::Vault`]. `None` when it applies none: [`Hide::Off`], an empty
+    /// list, or an `Everything` walk.
+    fn hide_rules(&self, vfs: &dyn Vfs, vault_dir: &Path) -> Option<Arc<HideRules>> {
+        if self.visibility == Visibility::Everything {
+            return None;
+        }
+        match &self.hide {
+            Hide::Vault => Some(hide::load(vfs, vault_dir).rules),
+            Hide::Rules(rules) => Some(Arc::clone(rules)),
+            Hide::Off => None,
+        }
+        .filter(|h| !h.is_empty())
+    }
+
+    /// Whether this walk would list the file at vault-relative `rel`, were
+    /// it there: the same rules [`walk`] applies, asked of a path that did not
+    /// come from a walk. For a cache that is told a path changed and must
+    /// decide whether it is one of its own.
+    ///
+    /// Checks the roots, the skip and prune lists, the visibility policy,
+    /// the excluded files (read from the vault for [`Hide::Vault`]), the
+    /// exclude list and notes versus attachments. Not
+    /// [`WalkOptions::min_bytes`], which needs the file's size, and not the
+    /// symlink and error policies, which need the file.
+    ///
+    /// Expects the normalised form [`crate::path::lexical::validate_relative`]
+    /// returns. A path with an empty, `.` or `..` segment is not admitted.
+    pub fn admits(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str) -> bool {
+        let hide = self.hide_rules(vfs, vault_dir);
+        self.admits_hiding(rel, hide.as_deref())
+    }
+
+    /// [`WalkOptions::admits`] for each of `rels`, reading the excluded files
+    /// once. Returns the ones admitted, in order.
+    pub fn admitted<'r>(
+        &self,
+        vfs: &dyn Vfs,
+        vault_dir: &Path,
+        rels: &'r [String],
+    ) -> Vec<&'r String> {
+        let hide = self.hide_rules(vfs, vault_dir);
+        rels.iter()
+            .filter(|rel| self.admits_hiding(rel, hide.as_deref()))
+            .collect()
+    }
+
+    fn admits_hiding(&self, rel: &str, hide: Option<&HideRules>) -> bool {
+        let segs: Vec<&str> = rel.split('/').collect();
+        if segs.iter().any(|s| s.is_empty() || *s == "." || *s == "..") {
+            return false;
+        }
+        let (name, dirs) = segs.split_last().expect("split yields one segment");
+        if segs.iter().any(|s| self.skip_names.iter().any(|n| n == s))
+            || dirs.iter().any(|d| self.prune_dirs.iter().any(|n| n == d))
+        {
+            return false;
+        }
+        if !self.roots.is_empty()
+            && !self.roots.iter().map(|r| relative_root(r)).any(|root| {
+                !root.split('/').any(|seg| seg == "..")
+                    && (root.is_empty()
+                        || rel
+                            .strip_prefix(root.as_str())
+                            .is_some_and(|r| r.starts_with('/')))
+            })
+        {
+            return false;
+        }
+        if !self.visibility.admits_path(rel) || hide.is_some_and(|h| h.hides_path(rel, false)) {
+            return false;
+        }
+        self.collects(rel, name)
+    }
+
     /// Whether this walk collects a file it can see: the exclude list, then
     /// notes versus attachments and the attachment extensions.
     fn collects(&self, rel: &str, name: &str) -> bool {
@@ -824,14 +900,16 @@ mod tests {
     #[test]
     fn entries_carry_the_vfs_size_and_time() {
         let d = fixture();
-        d.set_modified(&Path::new(V).join("Notes/alpha.md"), Some(1234))
+        d.set_modified_ns(&Path::new(V).join("Notes/alpha.md"), Some(1_234_500_000))
             .unwrap();
         let alpha = w(&d, &WalkOptions::content_notes())
             .into_iter()
             .find(|e| e.rel == "Notes/alpha.md")
             .unwrap();
         assert_eq!(alpha.size, 1);
-        assert_eq!(alpha.mtime_ms, Some(1234));
+        assert_eq!(alpha.mtime_ns, Some(1_234_500_000));
+        assert_eq!(alpha.mtime_ms(), Some(1234));
+        assert_eq!(alpha.mtime_ms_f64(), Some(1_234.5));
         assert_eq!(alpha.abs, Path::new(V).join("Notes").join("alpha.md"));
         assert!(!alpha.is_symlink);
     }
@@ -848,6 +926,76 @@ mod tests {
             walk(&d, Path::new(V), &strict),
             Err(WalkError::Io(e)) if e.is_not_found()
         ));
+    }
+
+    #[test]
+    fn admits_agrees_with_the_walk_for_every_file() {
+        let d = fixture();
+        mk(&d, "node_modules/pkg/readme.md", "x");
+        mk(&d, "Notes/.DS_Store", "x");
+        mk(&d, "Archive/old.md", "x");
+        mk(
+            &d,
+            ".obsidian/app.json",
+            r#"{"userIgnoreFilters":["Archive/"]}"#,
+        );
+        let files = [
+            "Notes/alpha.md",
+            "Notes/beta.md",
+            "Notes/img.png",
+            "Notes/.DS_Store",
+            "_system/config.md",
+            "_attachments/photo.jpeg",
+            ".trash/gone.md",
+            ".obsidian/app.json",
+            "Zed/deep/note.md",
+            "node_modules/pkg/readme.md",
+            "Archive/old.md",
+        ];
+        let everything = WalkOptions {
+            visibility: Visibility::Everything,
+            attachments: true,
+            skip_names: vec![".DS_Store".into()],
+            prune_dirs: vec!["node_modules".into(), ".obsidian".into()],
+            ..Default::default()
+        };
+        for opts in [
+            WalkOptions::content_notes(),
+            WalkOptions::notes_and_attachments(),
+            WalkOptions {
+                hide: Hide::Off,
+                ..WalkOptions::notes_and_attachments()
+            },
+            attachments_in(&["_attachments", "Zed"]),
+            hiding(&["Zed/"], WalkOptions::content_notes()),
+            WalkOptions {
+                exclude: vec!["beta".into()],
+                attachment_extensions: vec!["png".into()],
+                ..WalkOptions::notes_and_attachments()
+            },
+            everything,
+        ] {
+            let walked = rels(w(&d, &opts));
+            for rel in files {
+                assert_eq!(
+                    opts.admits(&d, Path::new(V), rel),
+                    walked.iter().any(|w| w == rel),
+                    "{rel} under {opts:?}"
+                );
+            }
+            let all: Vec<String> = files.iter().map(|f| f.to_string()).collect();
+            let admitted: Vec<&String> = opts.admitted(&d, Path::new(V), &all);
+            assert_eq!(admitted.len(), walked.len(), "{opts:?}");
+        }
+        let notes = WalkOptions::content_notes();
+        for bad in [
+            "",
+            "Notes//alpha.md",
+            "./Notes/alpha.md",
+            "../v/Notes/alpha.md",
+        ] {
+            assert!(!notes.admits(&d, Path::new(V), bad), "{bad}");
+        }
     }
 
     #[test]

@@ -38,8 +38,16 @@ pub struct IndexedNote {
     pub parse_error: Option<String>,
     /// Size in bytes when read.
     pub size: u64,
-    /// Modification time in milliseconds when read. `None` is never fresh.
-    pub mtime_ms: Option<i64>,
+    /// Modification time in nanoseconds when read. `None` is never fresh.
+    pub mtime_ns: Option<i64>,
+}
+
+impl IndexedNote {
+    /// [`IndexedNote::mtime_ns`] in fractional milliseconds, equal to node's
+    /// `statSync().mtimeMs` for the file as read ([`vfs_seam::ns_to_ms_f64`]).
+    pub fn mtime_ms_f64(&self) -> Option<f64> {
+        self.mtime_ns.map(vfs_seam::ns_to_ms_f64)
+    }
 }
 
 /// What a refresh changed.
@@ -173,12 +181,12 @@ impl FrontmatterIndex {
             let stamp = if entry.is_symlink {
                 stamp_of(vfs, &entry.abs)
             } else {
-                entry.mtime_ms.map(|m| (entry.size, m))
+                entry.mtime_ns.map(|m| (entry.size, m))
             };
             if let Some((size, mtime)) = stamp
                 && let Some(cached) = cache.get(&entry.rel)
                 && cached.size == size
-                && cached.mtime_ms == Some(mtime)
+                && cached.mtime_ns == Some(mtime)
             {
                 stats.unchanged += 1;
                 seen.insert(entry.rel.clone(), Arc::clone(cached));
@@ -331,7 +339,7 @@ fn parse_one(
     rel: &str,
     abs: &Path,
     size: u64,
-    mtime_ms: Option<i64>,
+    mtime_ns: Option<i64>,
 ) -> IndexedNote {
     let title = note_title(rel);
     let Ok(bytes) = vfs.read_file(abs) else {
@@ -341,7 +349,7 @@ fn parse_one(
             frontmatter: Mapping::new(),
             parse_error: Some("could not read the file".into()),
             size,
-            mtime_ms,
+            mtime_ns,
         };
     };
     let note = read_note(&String::from_utf8_lossy(&bytes));
@@ -351,7 +359,7 @@ fn parse_one(
         frontmatter: note.frontmatter,
         parse_error: note.parse_error,
         size,
-        mtime_ms,
+        mtime_ns,
     }
 }
 

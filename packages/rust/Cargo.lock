@@ -449,7 +449,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-corpus"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "frontmatter-lossless",
  "markdown-link",
@@ -462,7 +462,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-link"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "frontmatter-lossless",
  "serde_json",
@@ -472,7 +472,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-relink"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "etag-write",
  "frontmatter-lossless",
@@ -488,7 +488,7 @@ dependencies = [
 
 [[package]]
 name = "markdown-vault-fs"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "path-guard",
  "regex",
@@ -1090,7 +1090,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vfs-seam"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "tempfile",
  "thiserror",
@@ -1098,7 +1098,7 @@ dependencies = [
 
 [[package]]
 name = "vfs-walk"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "tempfile",
  "thiserror",

@@ -245,7 +245,7 @@ fn a_vault_switch_always_bypasses_the_ttl() {
 fn a_note_with_no_modification_time_is_retried_instead_of_cached_forever() {
     let d = vault();
     let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
-    d.set_modified(&join_rel(root(), "Notes/b.md"), None)
+    d.set_modified_ns(&join_rel(root(), "Notes/b.md"), None)
         .unwrap();
     index.refresh(&*d, &c, root());
     let second = index.refresh_now(&*d, &c, root());
@@ -385,6 +385,24 @@ fn a_malformed_note_is_indexed_with_a_diagnostic_rather_than_skipped() {
 }
 
 #[test]
+fn the_stamp_keeps_the_nanoseconds() {
+    let d = vault();
+    let b = join_rel(root(), "Notes/b.md");
+    d.set_modified_ns(&b, Some(1_784_508_521_000_015_838))
+        .unwrap();
+    let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
+    index.refresh(&*d, &c, root());
+    let note = index.get("Notes/b.md").unwrap();
+    assert_eq!(note.mtime_ns, Some(1_784_508_521_000_015_838));
+    assert_eq!(note.mtime_ms_f64(), Some(1_784_508_521_000.015_9));
+
+    put(&d, "Notes/b.md", "---\ntitle: Z\n---\nbody\n");
+    d.set_modified_ns(&b, Some(1_784_508_521_000_015_839))
+        .unwrap();
+    assert_eq!(index.refresh_now(&*d, &c, root()).updated, 1);
+}
+
+#[test]
 fn a_same_size_edit_with_the_same_time_is_the_documented_blind_spot() {
     let d = vault();
     let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
@@ -392,7 +410,7 @@ fn a_same_size_edit_with_the_same_time_is_the_documented_blind_spot() {
     let before = index.get("Notes/b.md").unwrap();
 
     put(&d, "Notes/b.md", "---\ntitle: Z\n---\nbody\n");
-    d.set_modified(&join_rel(root(), "Notes/b.md"), before.mtime_ms)
+    d.set_modified_ns(&join_rel(root(), "Notes/b.md"), before.mtime_ns)
         .unwrap();
     let stats = index.refresh_now(&*d, &c, root());
     assert_eq!(stats.unchanged, 2, "the edit is invisible to (mtime, size)");

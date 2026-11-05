@@ -25,40 +25,84 @@ pub struct DirEntry {
 /// modification time, the two things an incremental cache stamps a file with.
 ///
 /// Symlinks are not followed, as with [`DirEntry::is_dir`].
+///
+/// # Why the time is whole nanoseconds
+///
+/// The time is an `i64` count of nanoseconds, not milliseconds and not a
+/// float. It is what the operating system reports, so nothing is lost, and
+/// two stamps compare exactly. A host that must match a JavaScript tool's
+/// fractional `mtimeMs` (for JS consumers, e.g. Obsidian, or a cache shared
+/// with node) derives it with [`Metadata::modified_ms_f64`], which does
+/// node's arithmetic. An `f64` of milliseconds cannot hold every nanosecond
+/// of a present-day time, so storing one would lose the value it is derived
+/// from. An `i64` covers the years 1677 to 2262; a time outside them is
+/// `None`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Metadata {
     /// Size in bytes. `0` for a directory.
     pub len: u64,
-    /// Last modification, in milliseconds since the Unix epoch. `None` when
+    /// Last modification, in nanoseconds since the Unix epoch. `None` when
     /// the host cannot supply one, which a cache must treat as never fresh.
-    pub modified_ms: Option<i64>,
+    /// A host with only milliseconds multiplies by 1,000,000.
+    pub modified_ns: Option<i64>,
     /// Whether the path is a directory.
     pub is_dir: bool,
-    /// Whether the path is itself a symlink. `len` and `modified_ms` then
+    /// Whether the path is itself a symlink. `len` and `modified_ns` then
     /// describe the link, not its target.
     pub is_symlink: bool,
 }
 
 impl Metadata {
-    /// A file of `len` bytes, last changed at `modified_ms`.
-    pub fn file(len: u64, modified_ms: Option<i64>) -> Self {
+    /// A file of `len` bytes, last changed at `modified_ns`.
+    pub fn file(len: u64, modified_ns: Option<i64>) -> Self {
         Self {
             len,
-            modified_ms,
+            modified_ns,
             is_dir: false,
             is_symlink: false,
         }
     }
 
     /// A directory.
-    pub fn dir(modified_ms: Option<i64>) -> Self {
+    pub fn dir(modified_ns: Option<i64>) -> Self {
         Self {
             len: 0,
-            modified_ms,
+            modified_ns,
             is_dir: true,
             is_symlink: false,
         }
     }
+
+    /// The modification time in whole milliseconds, rounded down. See
+    /// [`ns_to_ms`].
+    pub fn modified_ms(&self) -> Option<i64> {
+        self.modified_ns.map(ns_to_ms)
+    }
+
+    /// The modification time in fractional milliseconds, equal to node's
+    /// `fs.statSync().mtimeMs` for the same file. See [`ns_to_ms_f64`].
+    pub fn modified_ms_f64(&self) -> Option<f64> {
+        self.modified_ns.map(ns_to_ms_f64)
+    }
+}
+
+/// Nanoseconds since the epoch as whole milliseconds, rounded down (toward
+/// the past, also before 1970).
+pub fn ns_to_ms(ns: i64) -> i64 {
+    ns.div_euclid(1_000_000)
+}
+
+/// Nanoseconds since the epoch as fractional milliseconds, with node's
+/// arithmetic: `sec * 1000 + nsec / 1e6` in `f64`, where `sec` and `nsec`
+/// are the parts of a POSIX `timespec` (`nsec` is never negative).
+///
+/// The two operations, in that order, are the point. `ns as f64 / 1e6`
+/// rounds differently in the last bit for most present-day times, and a cache
+/// that compares `mtimeMs` exactly would then see every file as changed.
+pub fn ns_to_ms_f64(ns: i64) -> f64 {
+    let sec = ns.div_euclid(1_000_000_000);
+    let nsec = ns.rem_euclid(1_000_000_000);
+    sec as f64 * 1000.0 + nsec as f64 / 1_000_000.0
 }
 
 /// The host's filesystem, as this crate needs it.
@@ -188,10 +232,10 @@ pub struct NativeVfs;
 impl Vfs for NativeVfs {
     fn metadata(&self, path: &Path) -> Result<Metadata, VfsError> {
         let meta = std::fs::symlink_metadata(path).map_err(|e| VfsError::io(path, e))?;
-        let modified_ms = meta.modified().ok().map(system_time_ms);
+        let modified_ns = meta.modified().ok().and_then(system_time_ns);
         Ok(Metadata {
             len: if meta.is_dir() { 0 } else { meta.len() },
-            modified_ms,
+            modified_ns,
             is_dir: meta.is_dir(),
             is_symlink: meta.file_type().is_symlink(),
         })
@@ -333,9 +377,11 @@ impl Vfs for NativeVfs {
 /// # Modification times
 ///
 /// Every write stamps the file with the next tick of a counter that starts at
-/// 1 and goes up by one per write, so a rewrite always reads as changed, even
-/// at the same size. [`MemVfs::set_modified`] sets a file's time outright, for
-/// a test that wants a particular one. Directories report no time.
+/// 1 ms and goes up by 1 ms per write, so a rewrite always reads as changed,
+/// even at the same size, and in whole milliseconds too.
+/// [`MemVfs::set_modified_ns`] sets a file's time outright, to the
+/// nanosecond, for a test that wants a particular one. Directories report no
+/// time.
 #[derive(Debug, Default)]
 pub struct MemVfs {
     inner: RefCell<Tree>,
@@ -352,7 +398,7 @@ struct Tree {
 struct MemFile {
     bytes: Vec<u8>,
     executable: bool,
-    modified_ms: Option<i64>,
+    modified_ns: Option<i64>,
 }
 
 impl MemVfs {
@@ -374,22 +420,24 @@ impl MemVfs {
     }
 
     /// Sets the modification time [`Vfs::metadata`] reports for the file at
-    /// `path`. The next write to it stamps a new time over this one.
-    pub fn set_modified(&self, path: &Path, modified_ms: Option<i64>) -> Result<(), VfsError> {
+    /// `path`, in nanoseconds since the epoch. The next write to it stamps a
+    /// new time over this one.
+    pub fn set_modified_ns(&self, path: &Path, modified_ns: Option<i64>) -> Result<(), VfsError> {
         let path = normalize(path);
         match self.inner.borrow_mut().files.get_mut(&path) {
             Some(file) => {
-                file.modified_ms = modified_ms;
+                file.modified_ns = modified_ns;
                 Ok(())
             }
             None => Err(missing(&path)),
         }
     }
 
+    /// The next write's time: one more millisecond, in nanoseconds.
     fn next_tick(&self) -> i64 {
         let next = self.tick.get() + 1;
         self.tick.set(next);
-        next
+        next * 1_000_000
     }
 }
 
@@ -404,7 +452,7 @@ impl Vfs for MemVfs {
         let path = normalize(path);
         let inner = self.inner.borrow();
         match inner.files.get(&path) {
-            Some(file) => Ok(Metadata::file(file.bytes.len() as u64, file.modified_ms)),
+            Some(file) => Ok(Metadata::file(file.bytes.len() as u64, file.modified_ns)),
             None if inner.dirs.contains(&path) => Ok(Metadata::dir(None)),
             None => Err(missing(&path)),
         }
@@ -462,13 +510,13 @@ impl Vfs for MemVfs {
         // Rewriting a file keeps its mode, as an `fs::write` over an existing
         // file does.
         let executable = inner.files.get(&path).is_some_and(|f| f.executable);
-        let modified_ms = Some(self.next_tick());
+        let modified_ns = Some(self.next_tick());
         inner.files.insert(
             path,
             MemFile {
                 bytes: bytes.to_vec(),
                 executable,
-                modified_ms,
+                modified_ns,
             },
         );
         Ok(())
@@ -1124,11 +1172,14 @@ pub fn normalize(path: &Path) -> PathBuf {
 
 /// Milliseconds since the Unix epoch, negative before it.
 #[cfg(feature = "native")]
-fn system_time_ms(t: std::time::SystemTime) -> i64 {
+/// A system time as nanoseconds since the epoch, negative before it. `None`
+/// outside what an `i64` holds (before 1677 or after 2262).
+#[cfg(feature = "native")]
+fn system_time_ns(t: std::time::SystemTime) -> Option<i64> {
     use std::time::UNIX_EPOCH;
     match t.duration_since(UNIX_EPOCH) {
-        Ok(d) => i64::try_from(d.as_millis()).unwrap_or(i64::MAX),
-        Err(e) => -i64::try_from(e.duration().as_millis()).unwrap_or(i64::MAX),
+        Ok(d) => i64::try_from(d.as_nanos()).ok(),
+        Err(e) => i64::try_from(e.duration().as_nanos()).ok().map(|ns| -ns),
     }
 }
 
@@ -1734,6 +1785,21 @@ mod tests {
     }
 
     #[test]
+    fn nanoseconds_become_milliseconds_with_nodes_arithmetic() {
+        // A time whose nanoseconds do not divide evenly: `as_secs_f64() *
+        // 1000.0`, the obvious form, rounds elsewhere in the last bit.
+        let ns = 1_784_508_521_000_015_838;
+        let obvious = std::time::Duration::from_nanos(ns as u64).as_secs_f64() * 1000.0;
+        assert_eq!(ns_to_ms_f64(ns), 1_784_508_521_000.015_9);
+        assert_eq!(obvious, 1_784_508_521_000.015_6);
+        assert_eq!(ns_to_ms(ns), 1_784_508_521_000);
+        // Before the epoch the whole part rounds toward the past and the
+        // fraction stays positive, as in a `timespec`.
+        assert_eq!(ns_to_ms(-1), -1);
+        assert_eq!(ns_to_ms_f64(-1_500_000), -1.5);
+    }
+
+    #[test]
     fn mem_vfs_metadata_reports_size_and_a_time_each_write_moves() {
         let vfs = MemVfs::new();
         vfs.insert("/v/notes/a.md", "alpha").unwrap();
@@ -1744,23 +1810,23 @@ mod tests {
         vfs.write_file(Path::new("/v/notes/a.md"), b"omega")
             .unwrap();
         let second = vfs.metadata(Path::new("/v/notes/a.md")).unwrap();
-        assert!(second.modified_ms > first.modified_ms);
+        assert!(second.modified_ns > first.modified_ns);
+        // Each write moves the whole milliseconds too.
+        assert!(second.modified_ms() > first.modified_ms());
 
-        vfs.set_modified(Path::new("/v/notes/a.md"), Some(42))
+        vfs.set_modified_ns(Path::new("/v/notes/a.md"), Some(42_500_001))
             .unwrap();
-        assert_eq!(
-            vfs.metadata(Path::new("/v/notes/a.md"))
-                .unwrap()
-                .modified_ms,
-            Some(42)
-        );
+        let set = vfs.metadata(Path::new("/v/notes/a.md")).unwrap();
+        assert_eq!(set.modified_ns, Some(42_500_001));
+        assert_eq!(set.modified_ms(), Some(42));
+        assert_eq!(set.modified_ms_f64(), Some(42.500_001));
         assert!(vfs.metadata(Path::new("/v/notes")).unwrap().is_dir);
         assert!(
             vfs.metadata(Path::new("/v/gone.md"))
                 .unwrap_err()
                 .is_not_found()
         );
-        assert!(vfs.set_modified(Path::new("/v/gone.md"), None).is_err());
+        assert!(vfs.set_modified_ns(Path::new("/v/gone.md"), None).is_err());
     }
 
     #[test]
@@ -1770,7 +1836,19 @@ mod tests {
         std::fs::write(&file, "abc").unwrap();
         let meta = NativeVfs.metadata(&file).unwrap();
         assert_eq!(meta.len, 3);
-        assert!(meta.modified_ms.is_some_and(|ms| ms > 0));
+        assert!(meta.modified_ns.is_some_and(|ns| ns > 0));
+        // The same time node reports as `mtimeMs`, to the last bit.
+        let std_meta = std::fs::metadata(&file).unwrap();
+        let d = std_meta
+            .modified()
+            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap();
+        let node = d.as_secs() as f64 * 1000.0 + f64::from(d.subsec_nanos()) / 1_000_000.0;
+        assert_eq!(
+            meta.modified_ms_f64().map(f64::to_bits),
+            Some(node.to_bits())
+        );
         assert!(NativeVfs.metadata(dir.path()).unwrap().is_dir);
         assert!(
             NativeVfs
@@ -1788,7 +1866,7 @@ mod tests {
         assert_eq!(preview.metadata(Path::new("/v/a.md")).unwrap().len, 5);
         preview.write_file(Path::new("/v/b.md"), b"bravo!").unwrap();
         let b = preview.metadata(Path::new("/v/b.md")).unwrap();
-        assert_eq!((b.len, b.modified_ms), (6, None));
+        assert_eq!((b.len, b.modified_ns), (6, None));
         preview.remove(Path::new("/v/a.md")).unwrap();
         assert!(preview.metadata(Path::new("/v/a.md")).is_err());
     }

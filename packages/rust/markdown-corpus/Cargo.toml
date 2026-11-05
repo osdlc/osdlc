@@ -1,6 +1,6 @@
 [package]
 name = "markdown-corpus"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "The corpus model for a folder of Markdown notes: every note and file, outgoing links and backlinks by kind, inline tags and frontmatter, read through a Vfs and refreshed incrementally."

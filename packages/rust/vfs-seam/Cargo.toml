@@ -1,6 +1,6 @@
 [package]
 name = "vfs-seam"
-version = "0.1.0"
+version = "0.2.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "A file-access trait for libraries that must also run without a filesystem: one object-safe Vfs with a std::fs implementation, an in-memory tree, a write-capturing preview overlay, and a Clock for code that needs the time on wasm32."
