@@ -24,7 +24,11 @@ can see walk errors. Modification times are nanoseconds.
   cache's walk about each path (`WalkOptions::admission`). A path outside the
   walk is ignored, as before. A path the walk would not list now (gone, under
   `min_bytes`, a folder, a refused symlink, under a symlinked folder) is
-  dropped from the cache; before, only a gone file was.
+  dropped from the cache; before, only a gone file was. A path the walk
+  lists is kept, as the sweep keeps it, even when it cannot be stamped
+  through a symlink (a dangling link, a link to a folder); before, an apply
+  dropped it until the next sweep. The admissions are read under the apply
+  lock, so a batch never installs what it read before a later batch.
 - The free function `fill_contexts(vfs, root, backlinks)` is now the method
   `LinkGraph::fill_contexts(vfs, backlinks)`, with
   `Corpus::fill_contexts(vfs, backlinks)` on top. It reads from the corpus
@@ -46,7 +50,8 @@ can see walk errors. Modification times are nanoseconds.
   Both caches, `Corpus::read_note` and `LinkGraph::fill_contexts` follow it.
   `NoteBody::read_with` numbers lines the same way.
 - `Corpus::try_load`, `Corpus::try_refresh` and `Corpus::try_refresh_now`
-  return a walk error instead of leaving a cache empty or as it was.
+  return a walk error instead of leaving a cache empty or as it was. Both
+  caches are refreshed even when the first walk fails.
 - `LinkGraph::with_walk`, `with_split`, `walk_options`, `split_mode`,
   `try_refresh` and `try_refresh_now`; the same on `FrontmatterIndex`
   (without `split_mode`). Their `refresh` and `refresh_now` leave the cache

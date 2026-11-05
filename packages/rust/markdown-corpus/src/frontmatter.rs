@@ -33,7 +33,7 @@ use markdown_vault_fs::walk::{Admission, WalkError, WalkOptions};
 use vfs_seam::{Clock, Vfs};
 use yaml_splice::Mapping;
 
-use crate::links::{REFRESH_TTL_MS, WATCHED_TTL_MS, join_rel, stamp_of};
+use crate::links::{REFRESH_TTL_MS, WATCHED_TTL_MS, join_rel, stamp_listed, stamp_of};
 use crate::note::{SplitMode, note_title, read_note_with};
 
 /// One note's cached parse.
@@ -340,28 +340,31 @@ impl FrontmatterIndex {
     /// symlink) is removed. With no fresh walk to edit it only marks the index, so a walk
     /// that read the note before the change is not stamped fresh.
     pub fn apply_change(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str) {
-        if is_note(rel) {
-            let admission = self.walk.admission(vfs, vault_dir, rel);
-            self.apply_admitted(vfs, vault_dir, rel, admission);
-        }
+        self.apply_changes(vfs, vault_dir, &[rel.to_string()]);
     }
 
     /// [`Self::apply_change`] for each of `rels`, reading the excluded files
     /// once ([`WalkOptions::admissions`]).
     pub(crate) fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
-        for (rel, admission) in self.walk.admissions(vfs, vault_dir, rels) {
-            if is_note(rel) {
-                self.apply_admitted(vfs, vault_dir, rel, admission);
-            }
+        let notes: Vec<String> = rels.iter().filter(|rel| is_note(rel)).cloned().collect();
+        if notes.is_empty() {
+            return;
+        }
+        // The admissions read the file system, so they are taken under the
+        // apply lock: an apply that read a note before another apply must
+        // not install after it.
+        let _apply = self.apply_lock.lock().unwrap();
+        for (rel, admission) in self.walk.admissions(vfs, vault_dir, &notes) {
+            self.apply_admitted(vfs, vault_dir, rel, admission);
         }
     }
 
     /// [`Self::apply_change`] for a note, given what the walk makes of it.
+    /// The caller holds the apply lock.
     fn apply_admitted(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str, admission: Admission) {
         if admission == Admission::Outside {
             return;
         }
-        let _apply = self.apply_lock.lock().unwrap();
         {
             let mut state = self.state.lock().unwrap();
             if state.for_vault.as_deref() != Some(vault_dir) {
@@ -373,9 +376,12 @@ impl FrontmatterIndex {
             }
         }
         let abs = join_rel(vault_dir, rel);
-        let parsed = stamp_of(vfs, &abs)
-            .filter(|_| admission == Admission::Listed)
-            .map(|(size, mtime)| parse_one(vfs, self.split, rel, &abs, size, Some(mtime)));
+        // As in the sweep, a listed note that cannot be stamped (a dangling
+        // link) is kept with the size of the link and never fresh.
+        let parsed = (admission == Admission::Listed).then(|| {
+            let (size, mtime) = stamp_listed(vfs, &abs);
+            parse_one(vfs, self.split, rel, &abs, size, mtime)
+        });
 
         #[cfg(test)]
         crate::links::hooks::run_mid_apply();

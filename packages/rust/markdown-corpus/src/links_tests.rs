@@ -518,6 +518,34 @@ fn a_vault_switch_always_bypasses_the_ttl_and_clears() {
     assert_eq!(back_of(&g, "Projects/Alpha.md").len(), 2);
 }
 
+#[test]
+fn a_batch_cannot_undo_a_later_batch_with_what_it_read_first() {
+    // An atomic save: the note is gone for a moment, then back.
+    let d = linked_vault();
+    let (g, c) = (graph(), FixedClock::new(0));
+    g.refresh(&*d, &c, root());
+    rm(&d, "Projects/Alpha.md");
+    let x = vec!["Projects/Alpha.md".to_string()];
+    let later_ran = std::cell::Cell::new(false);
+    // Batch A stats the note while it is gone. Before A acts on that, the
+    // note comes back and batch B applies it, unless A already holds the
+    // apply lock, in which case B must wait for A.
+    let vfs = super::hooks::AfterStat::new(&*d, join_rel(root(), &x[0]), || {
+        put(&d, "Projects/Alpha.md", "# Alpha\n");
+        if let Ok(free) = g.apply_lock.try_lock() {
+            drop(free);
+            g.apply_changes(&*d, root(), &x);
+            later_ran.set(true);
+        }
+    });
+    g.apply_changes(&vfs, root(), &x);
+    if !later_ran.get() {
+        g.apply_changes(&*d, root(), &x);
+    }
+    assert!(g.paths().contains(&x[0]), "the note is back");
+    assert_eq!(g.backlinks("Projects/Alpha.md").total, 2);
+}
+
 // ── Cost, pinned ───────────────────────────────────────────────────────
 
 #[test]
@@ -974,6 +1002,29 @@ mod native {
             g.refresh_now(&NativeVfs, &SystemClock, d.path()).unchanged,
             5
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_apply_keeps_a_symlink_the_walk_lists_whatever_it_points_at() {
+        let d = native_linked();
+        let elsewhere = tempfile::tempdir().unwrap();
+        // A symlinked folder is listed as a file, and a dangling note link
+        // as a note with nothing read.
+        std::os::unix::fs::symlink(elsewhere.path(), d.path().join("assets")).unwrap();
+        std::os::unix::fs::symlink(d.path().join("Gone.md"), d.path().join("Dangling.md")).unwrap();
+        let g = LinkGraph::new();
+        g.refresh_now(&NativeVfs, &SystemClock, d.path());
+        let swept = g.paths();
+        assert!(swept.contains(&"assets".to_string()));
+        assert!(swept.contains(&"Dangling.md".to_string()));
+        assert_eq!(g.len(), 5);
+
+        let changed = ["assets".to_string(), "Dangling.md".to_string()];
+        g.apply_changes(&NativeVfs, d.path(), &changed);
+        assert_eq!(g.applied(), 1);
+        assert_eq!(g.paths(), swept, "the apply agrees with the sweep");
+        assert_eq!(g.len(), 5);
     }
 }
 

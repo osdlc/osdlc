@@ -56,7 +56,7 @@ use std::sync::{Arc, Mutex};
 
 use markdown_link::{BodyLink, BodyLinkKind, LinkIndex, RawLink, ResolveError};
 use markdown_vault_fs::walk::{Admission, Hide, WalkError, WalkOptions};
-use vfs_seam::{Clock, Vfs};
+use vfs_seam::{Clock, Metadata, Vfs};
 
 use crate::note::{SplitMode, read_note_with, split_with};
 use crate::tags::{NoTags, TagLexer};
@@ -522,6 +522,10 @@ impl LinkGraph {
     /// graph so a sweep that read the files before the change is not stamped
     /// fresh.
     pub fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
+        // The admissions read the file system, so they are taken under the
+        // apply lock: a batch that read a file before another batch must not
+        // install after it.
+        let _apply = self.apply_lock.lock().unwrap();
         let admitted: Vec<(&String, Admission)> = self
             .walk
             .admissions(vfs, vault_dir, rels)
@@ -531,7 +535,6 @@ impl LinkGraph {
         if admitted.is_empty() {
             return;
         }
-        let _apply = self.apply_lock.lock().unwrap();
         {
             let mut state = self.state.lock().unwrap();
             if state.for_vault.as_deref() != Some(vault_dir) {
@@ -553,14 +556,19 @@ impl LinkGraph {
             .into_iter()
             .map(|(rel, admission)| {
                 let abs = join_rel(vault_dir, rel);
-                let seen = match stamp_of(vfs, &abs) {
-                    _ if admission == Admission::Unlisted => Seen::Gone,
-                    None => Seen::Gone,
-                    Some(_) if !spelled_as_listed(vfs, &abs, &mut listings) => Seen::Gone,
-                    Some((size, mtime)) if rel.to_lowercase().ends_with(".md") => Seen::Note(
-                        scan_note(vfs, &*self.tags, self.split, &abs, size, Some(mtime)),
-                    ),
-                    Some(_) => Seen::File,
+                // The admission says whether the walk lists the path. As in
+                // the sweep, a note it lists is read through a link, and one
+                // that cannot be stamped (a dangling link, a link to a
+                // folder) is kept with nothing read and never fresh.
+                let seen = if admission == Admission::Unlisted
+                    || !spelled_as_listed(vfs, &abs, &mut listings)
+                {
+                    Seen::Gone
+                } else if rel.to_lowercase().ends_with(".md") {
+                    let (size, mtime) = stamp_listed(vfs, &abs);
+                    Seen::Note(scan_note(vfs, &*self.tags, self.split, &abs, size, mtime))
+                } else {
+                    Seen::File
                 };
                 (rel, seen)
             })
@@ -984,7 +992,25 @@ fn invert(notes: &NoteMap, index: &LinkIndex) -> Inverted {
 /// cannot be stamped. A missing mtime is no stamp: it would otherwise compare
 /// equal to itself and never be re-read.
 pub(crate) fn stamp_of(vfs: &dyn Vfs, abs: &Path) -> Option<(u64, i64)> {
-    let mut meta = vfs.metadata(abs).ok()?;
+    stamp_through(vfs, abs, vfs.metadata(abs).ok()?)
+}
+
+/// `(size, mtime)` for a file the walk lists: [`stamp_of`], or when that
+/// fails (a dangling link, a link to a folder, no time) the size of the
+/// entry itself and no time, which never compares fresh.
+pub(crate) fn stamp_listed(vfs: &dyn Vfs, abs: &Path) -> (u64, Option<i64>) {
+    let Ok(entry) = vfs.metadata(abs) else {
+        return (0, None);
+    };
+    match stamp_through(vfs, abs, entry) {
+        Some((size, mtime)) => (size, Some(mtime)),
+        None => (entry.len, None),
+    }
+}
+
+/// [`stamp_of`] given the entry's own metadata.
+fn stamp_through(vfs: &dyn Vfs, abs: &Path, entry: Metadata) -> Option<(u64, i64)> {
+    let mut meta = entry;
     if meta.is_symlink {
         let target = vfs.canonicalize(abs).ok()?;
         meta = vfs.metadata(&target).ok()?;
@@ -1171,6 +1197,9 @@ pub(crate) mod hooks {
     //! Run once between a sweep's walk and its swap (or an apply's read and
     //! its install), so a test can land a concurrent call exactly there.
     use std::cell::RefCell;
+    use std::path::{Path, PathBuf};
+
+    use vfs_seam::{DirEntry, Metadata, Vfs, VfsError};
 
     type Hook = RefCell<Option<Box<dyn FnOnce()>>>;
 
@@ -1196,6 +1225,77 @@ pub(crate) mod hooks {
     pub fn run_mid_apply() {
         if let Some(f) = MID_APPLY.with(|h| h.borrow_mut().take()) {
             f();
+        }
+    }
+
+    /// A [`Vfs`] over `inner` that runs `then` once, just after the first
+    /// [`Vfs::metadata`] call on `path` has read it and before that call
+    /// returns. So a test can change the corpus, or land another call,
+    /// exactly between a stat and what the caller does with it.
+    pub struct AfterStat<'a> {
+        pub inner: &'a dyn Vfs,
+        pub path: PathBuf,
+        pub then: RefCell<Option<Box<dyn FnOnce() + 'a>>>,
+    }
+
+    impl<'a> AfterStat<'a> {
+        pub fn new(inner: &'a dyn Vfs, path: PathBuf, then: impl FnOnce() + 'a) -> Self {
+            AfterStat {
+                inner,
+                path,
+                then: RefCell::new(Some(Box::new(then))),
+            }
+        }
+    }
+
+    impl Vfs for AfterStat<'_> {
+        fn metadata(&self, path: &Path) -> Result<Metadata, VfsError> {
+            let meta = self.inner.metadata(path);
+            if path == self.path
+                && let Some(f) = self.then.borrow_mut().take()
+            {
+                f();
+            }
+            meta
+        }
+        fn read_file(&self, path: &Path) -> Result<Vec<u8>, VfsError> {
+            self.inner.read_file(path)
+        }
+        fn read_dir(&self, path: &Path) -> Result<Vec<DirEntry>, VfsError> {
+            self.inner.read_dir(path)
+        }
+        fn write_file(&self, path: &Path, bytes: &[u8]) -> Result<(), VfsError> {
+            self.inner.write_file(path, bytes)
+        }
+        fn create_dir_all(&self, path: &Path) -> Result<(), VfsError> {
+            self.inner.create_dir_all(path)
+        }
+        fn exists(&self, path: &Path) -> bool {
+            self.inner.exists(path)
+        }
+        fn is_executable(&self, path: &Path) -> bool {
+            self.inner.is_executable(path)
+        }
+        fn set_executable(&self, path: &Path, yes: bool) -> Result<(), VfsError> {
+            self.inner.set_executable(path, yes)
+        }
+        fn rename(&self, from: &Path, to: &Path) -> Result<(), VfsError> {
+            self.inner.rename(from, to)
+        }
+        fn remove(&self, path: &Path) -> Result<(), VfsError> {
+            self.inner.remove(path)
+        }
+        fn is_symlink(&self, path: &Path) -> bool {
+            self.inner.is_symlink(path)
+        }
+        fn canonicalize(&self, path: &Path) -> Result<PathBuf, VfsError> {
+            self.inner.canonicalize(path)
+        }
+        fn sees_links(&self) -> bool {
+            self.inner.sees_links()
+        }
+        fn read_link(&self, path: &Path) -> Result<PathBuf, VfsError> {
+            self.inner.read_link(path)
         }
     }
 }

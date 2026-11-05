@@ -242,6 +242,32 @@ fn a_vault_switch_always_bypasses_the_ttl() {
 }
 
 #[test]
+fn an_apply_cannot_undo_a_later_apply_with_what_it_read_first() {
+    // An atomic save: the note is gone for a moment, then back.
+    let d = vault();
+    let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
+    index.refresh(&*d, &c, root());
+    d.remove(&join_rel(root(), "Notes/a.md")).unwrap();
+    let later_ran = std::cell::Cell::new(false);
+    // Apply A stats the note while it is gone. Before A acts on that, the
+    // note comes back and apply B reads it, unless A already holds the
+    // apply lock, in which case B must wait for A.
+    let vfs = crate::links::hooks::AfterStat::new(&*d, join_rel(root(), "Notes/a.md"), || {
+        put(&d, "Notes/a.md", "---\nstatus: back\n---\nbody\n");
+        if let Ok(free) = index.apply_lock.try_lock() {
+            drop(free);
+            index.apply_change(&*d, root(), "Notes/a.md");
+            later_ran.set(true);
+        }
+    });
+    index.apply_change(&vfs, root(), "Notes/a.md");
+    if !later_ran.get() {
+        index.apply_change(&*d, root(), "Notes/a.md");
+    }
+    assert_eq!(status(&index, "Notes/a.md").as_deref(), Some("back"));
+}
+
+#[test]
 fn a_note_with_no_modification_time_is_retried_instead_of_cached_forever() {
     let d = vault();
     let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
@@ -500,5 +526,26 @@ mod native {
             status(&index, "Notes/dangling.md").as_deref(),
             Some("final")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_apply_keeps_a_dangling_symlink_the_walk_lists() {
+        let d = tempfile::tempdir().unwrap();
+        write(d.path(), "Notes/a.md", "---\nstatus: draft\n---\nbody\n");
+        std::os::unix::fs::symlink(
+            d.path().join("Notes/not-yet-there.md"),
+            d.path().join("Notes/dangling.md"),
+        )
+        .unwrap();
+        let index = FrontmatterIndex::new();
+        index.refresh(&NativeVfs, &SystemClock, d.path());
+        assert!(index.get("Notes/dangling.md").is_some());
+        index.apply_change(&NativeVfs, d.path(), "Notes/dangling.md");
+        let kept = index
+            .get("Notes/dangling.md")
+            .expect("as the walk lists it");
+        assert!(kept.parse_error.is_some());
+        assert_eq!(kept.mtime_ns, None, "never fresh, so a sweep retries it");
     }
 }
