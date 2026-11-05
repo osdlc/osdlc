@@ -212,9 +212,7 @@ impl Corpus {
     /// Brings both caches up to date for named changed paths, without a walk.
     pub fn apply_changes(&self, vfs: &dyn Vfs, rels: &[String]) {
         self.links.apply_changes(vfs, &self.root, rels);
-        for rel in rels {
-            self.frontmatter.apply_change(vfs, &self.root, rel);
-        }
+        self.frontmatter.apply_changes(vfs, &self.root, rels);
     }
 
     /// Every file a link can resolve to, notes and attachments.

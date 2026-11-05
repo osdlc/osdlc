@@ -338,9 +338,23 @@ impl FrontmatterIndex {
     /// nothing. With no fresh walk to edit it only marks the index, so a walk
     /// that read the note before the change is not stamped fresh.
     pub fn apply_change(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str) {
-        if !rel.to_lowercase().ends_with(".md") || !self.walk.admits(vfs, vault_dir, rel) {
-            return;
+        if is_note(rel) && self.walk.admits(vfs, vault_dir, rel) {
+            self.apply_admitted(vfs, vault_dir, rel);
         }
+    }
+
+    /// [`Self::apply_change`] for each of `rels`, reading the excluded files
+    /// once ([`WalkOptions::admitted`]).
+    pub(crate) fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
+        for rel in self.walk.admitted(vfs, vault_dir, rels) {
+            if is_note(rel) {
+                self.apply_admitted(vfs, vault_dir, rel);
+            }
+        }
+    }
+
+    /// [`Self::apply_change`] for a note the walk admits.
+    fn apply_admitted(&self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str) {
         let _apply = self.apply_lock.lock().unwrap();
         {
             let mut state = self.state.lock().unwrap();
@@ -397,6 +411,10 @@ impl FrontmatterIndex {
         state.walked_at = None;
         state.applied += 1;
     }
+}
+
+fn is_note(rel: &str) -> bool {
+    rel.to_lowercase().ends_with(".md")
 }
 
 fn parse_one(
