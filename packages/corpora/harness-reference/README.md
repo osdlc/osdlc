@@ -5,16 +5,19 @@ instructions, how skills are named and called, which frontmatter fields they hon
 hook and MCP formats, and their CLI session surface. Every value has a date and a source. A small
 generator turns the record into static HTML pages.
 
-- `bundle/`: the data.
+The record is kept as corpora: folders of Markdown files, each with its own schema and validator.
+
+- `corpora/alpha/`: the alpha corpus, the first prototype. It is frozen: only fixes to links, paths
+  and wrong values go in. New research goes into a later corpus.
+- `corpora/alpha/sources/`: research notes the alpha corpus cites. Upstream docs and repositories
+  are cited by their own URLs.
 - `probes/`: reproducible runs that back `evidence: run` observations.
-- `sources/`: research notes the bundle cites. Upstream docs and repositories are cited by their own
-  URLs.
-- `src/`: the schema, validator, page generator and tests.
-- `schema/`: JSON Schemas generated from `src/schema.ts`, for other tools.
+- `src/alpha/`: the alpha schema, validator, page generator and tests.
+- `schema/alpha/`: JSON Schemas generated from `src/alpha/schema.ts`, for other tools.
 
-## Format
+## The alpha corpus
 
-`bundle/` is an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+`corpora/alpha/` is an [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
 (OKF) **v0.2** bundle: a folder of Markdown files with YAML frontmatter, one concept per file. The
 root `index.md` declares `okf_version: "0.2"`.
 
@@ -38,7 +41,7 @@ observations:
     until: '2.1.246' # first version it no longer holds in; null while it still holds
     observed: '2026-10-01' # the date the source checked it
     source: claude-changelog # a sources[].id
-    via: skill-naming # the note in sources/ that recorded an upstream source
+    via: skill-naming # the note in corpora/alpha/sources/ that recorded an upstream source
     evidence: changelog # docs | source | help-text | run | changelog | inferred
 ```
 
@@ -88,14 +91,14 @@ fact's body keep the source's spelling.
 The Markdown body explains the fact in prose, with footnotes keyed to `sources` ids (OKF §5.1). The
 generator reads only frontmatter.
 
-OKF has no notion of a value that changes across versions. The observations list is this bundle's
+OKF has no notion of a value that changes across versions. The observations list is this corpus's
 own frontmatter extension, which OKF allows (§4.1). OKF `log.md` files are not used, and nothing
 sets `generated` or `verified`, so OKF consumers read every concept as unverified.
 
 ## Probes
 
 A probe is a run anyone can repeat: `probes/<id>/probe.md`, plus an optional `fixture/` folder of
-the files the run needs. Probes sit outside `bundle/`, so a fixture's own Markdown is never read as
+the files the run needs. Probes sit outside `corpora/`, so a fixture's own Markdown is never read as
 a concept. The frontmatter holds:
 
 | Key         | Holds                                                                    |
@@ -118,12 +121,12 @@ run used, and `model` where the subject allows it.
 Node 24 runs the TypeScript in `src/` directly. From this folder:
 
 ```sh
-pnpm run validate       # check the bundle, its links into this repository, and schema/*.json
+pnpm run validate       # check the corpus, its links into this repository, and schema/alpha/*.json
 pnpm run test           # validator and renderer tests
 pnpm run typecheck
 pnpm run generate       # write the pages to dist/ (not committed)
 pnpm run check          # all four
-pnpm run write-schema   # rewrite schema/*.json after changing src/schema.ts
+pnpm run write-schema   # rewrite schema/alpha/*.json after changing src/alpha/schema.ts
 ```
 
 CI runs `pnpm run check` when anything under `harness-reference/` changes
@@ -133,13 +136,13 @@ CI runs `pnpm run check` when anything under `harness-reference/` changes
 observation still in force), a page per harness and
 per subject, a page per probe under `probes/` (linked from the observations it backs),
 `changes.html` (every observation by date), `gaps.html` (open questions and cells with no
-observation in force) and `data.json` (the whole bundle).
+observation in force) and `data.json` (the whole corpus).
 
-## Adding an observation
+## Correcting an alpha fact
 
-1. Open `bundle/facts/<harness>/<category>/<name>.md`, or copy a sibling.
+1. Open `corpora/alpha/facts/<harness>/<category>/<name>.md`, or copy a sibling.
 2. Append the observation and keep the list oldest first. Add any new source to `sources`. Cite a
-   public URL; if the source is a note of your own, add it under `sources/` and cite its GitHub URL.
+   public URL; if the source is a note of your own, add it under `corpora/alpha/sources/` and cite its GitHub URL.
 3. Add a line to the body's `## Observations` list with its footnote.
 4. Run `pnpm run check`.
 

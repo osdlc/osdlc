@@ -8,11 +8,13 @@
     "node": ">=24"
   },
   "scripts": {
-    "validate": "node src/validate.ts",
-    "write-schema": "node src/validate.ts --write-schema",
-    "test": "node --test src/*.test.ts",
+    "validate": "pnpm run validate:alpha",
+    "validate:alpha": "node src/alpha/validate.ts",
+    "write-schema": "pnpm run write-schema:alpha",
+    "write-schema:alpha": "node src/alpha/validate.ts --write-schema",
+    "test": "node --test src/*/*.test.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "generate": "node src/generate.ts",
+    "generate": "node src/alpha/generate.ts",
     "check": "pnpm run validate && pnpm run test && pnpm run typecheck && pnpm run generate"
   },
   "dependencies": {
