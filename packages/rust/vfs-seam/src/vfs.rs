@@ -1170,8 +1170,6 @@ pub fn normalize(path: &Path) -> PathBuf {
     out
 }
 
-/// Milliseconds since the Unix epoch, negative before it.
-#[cfg(feature = "native")]
 /// A system time as nanoseconds since the epoch, negative before it. `None`
 /// outside what an `i64` holds (before 1677 or after 2262).
 #[cfg(feature = "native")]
