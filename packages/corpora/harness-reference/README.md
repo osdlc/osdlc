@@ -74,13 +74,14 @@ A path in a `value` is data, not a quote, so one location is spelled one way:
   `<home>/.agents/skills`.
 - No trailing slash: `.claude/rules`, not `.claude/rules/`.
 - `$VAR` stays only where the harness itself names a variable, such as `$CODEX_HOME`,
-  `$DSH_HOME` or `$CWD` in a walk. A placeholder with its own meaning, such as `<repo_root>/`,
-  stays too.
+  `$DSH_HOME` or `$CWD` in a walk. `$HOME` is the exception: it is always written `~`.
+- A placeholder with its own meaning stays: `<repo_root>/`, and `<cwd>/` for a path read only in
+  the directory the harness starts in, which can be below the project root.
 - A setting that lists directories is not a directory. It gets its own key, such as
   `dirs_setting`.
 
-The validator flags a trailing slash, a leading `./`, a `<proj>/`, `<project>/`, `<cwd>/` or
-`<home>/` prefix, and `$HOME`, on any word in a value string that starts with `.`, `~`, `$` or `<`
+The validator flags a trailing slash, a leading `./`, a `<proj>/`, `<project>/` or `<home>/`
+prefix, and `$HOME`, on any word in a value string that starts with `.`, `~`, `$` or `<`
 and holds a `/`. Strings under a `commands` key are shell and keep their own spelling. Quotes in a
 fact's body keep the source's spelling.
 

@@ -11,7 +11,7 @@ observations:
     until: null
     observed: "2026-08-08"
     source: harness-comparison
-  - value: { dirs: [".pi/skills", ".agents/skills"], scope: ".agents/skills in each ancestor up to the git root" }
+  - value: { dirs: ["<cwd>/.pi/skills", ".agents/skills"], scope: ".agents/skills in each ancestor up to the git root" }
     since: null
     until: null
     observed: "2026-10-01"
@@ -37,7 +37,7 @@ What the sources say about [Project skill directories](/subjects/skills/project-
 ## Observations
 
 - 2026-08-08: dirs: `.pi/skills`, `.agents/skills`.[^harness-comparison]
-- 2026-10-01: dirs: `.pi/skills`, `.agents/skills`; scope: .agents/skills in each ancestor up
+- 2026-10-01: dirs: `<cwd>/.pi/skills`, `.agents/skills`; scope: .agents/skills in each ancestor up
   to the git root.[^pi-repo][^skill-naming]
 
 [^harness-comparison]: Harness comparison (researched 2026-08-08)

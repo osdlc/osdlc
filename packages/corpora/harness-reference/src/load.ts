@@ -120,20 +120,16 @@ export function repoRoot(from: string = ROOT): string | null {
 /** A path that names one machine: a home directory, absolute, `~/` or `$HOME`. Probe commands stay relative. */
 const MACHINE_PATH = /(^|[\s'"=:(])(\/(Users|home)\/|~\/|\$\{?HOME\b)/
 
-/**
- * Non-canonical path spellings in one value string (see README "Paths in values"): a trailing
- * slash, a leading `./`, a `<proj>/`-style project or home prefix, or `$HOME` where `~` is meant.
- * A path is a word that starts with `.`, `~`, `$` or `<` and holds a `/`.
- */
+/** Non-canonical path spellings in one value string; the rules are in README "Paths in values". */
 export function pathSpellingIssues(text: string): string[] {
   const found: string[] = []
   if (/\$\{?HOME\b/.test(text)) found.push('write $HOME as ~')
   for (const raw of text.split(/\s+/)) {
-    const word = raw.replace(/^[(`'"[]+/, '').replace(/[`'",;.)\]]+$/, '')
+    const word = raw.replace(/^[(`'"[]+/, '').replace(/[`'",;:.?!)\]]+$/, '')
     if (!/^[.~$<]/.test(word) || !word.includes('/')) continue
     if (word.endsWith('/')) found.push(`drop the trailing slash in "${word}"`)
     if (word.startsWith('./')) found.push(`drop the leading ./ in "${word}"`)
-    if (/^<(proj|project|cwd)>\//.test(word)) found.push(`drop the project prefix in "${word}"`)
+    if (/^<(proj|project)>\//.test(word)) found.push(`drop the project prefix in "${word}"`)
     if (word.startsWith('<home>/')) found.push(`write <home>/ as ~/ in "${word}"`)
   }
   return found
