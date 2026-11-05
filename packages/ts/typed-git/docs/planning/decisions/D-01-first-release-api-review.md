@@ -98,7 +98,7 @@ check in 4.
    need a second runner on `Git` and on `cliBackend`, and a request kind a
    non-CLI backend would have to serve. command-seam's bytes runner is
    experimental. Callers keep `spawnRunnerBytes`. Revisited in
-   [D-03](D-03-byte-output.md): byte output is adopted as `rawBytes` and
+   [D-04](D-04-byte-output.md): byte output is adopted as `rawBytes` and
    `rawBytesChecked`; byte input is still declined.
 6. Streamed output: declined. command-seam streams only through
    `streamRunner`, which captures nothing. A streamed verb would have no
@@ -113,7 +113,7 @@ The adopter's other claims hold: `rawChecked` takes `input`, `deleteRef`
 takes `{ expected }`, `lsFilesTagged` exists, and per-call `env` carries
 `GIT_CONFIG_COUNT` entries. One limit: `input` is a string, so binary stdin
 such as `hash-object --stdin` on a binary file does not fit `rawChecked`.
-[D-03](D-03-byte-output.md) keeps this limit.
+[D-04](D-04-byte-output.md) keeps this limit.
 
 The new options on the `configGet` and `remoteGetUrl` request kinds are
 optional. A backend that ignores them answers for the default scope and the

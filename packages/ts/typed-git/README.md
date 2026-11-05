@@ -1066,7 +1066,7 @@ de-duplicate.
   `hash-object --stdin` on a binary file or `apply` of a patch read with
   `rawBytes`, write the bytes to a file and pass its path
   (`hash-object <file>`, `apply <file>`). See
-  [D-03](docs/planning/decisions/D-03-byte-output.md).
+  [D-04](docs/planning/decisions/D-04-byte-output.md).
 - Output is captured, never streamed. For live progress from `clone` or
   `fetch`, run git through command-seam's `streamRunner`.
 - `Git` cannot cancel a call. `AsyncGit` takes a `signal`.

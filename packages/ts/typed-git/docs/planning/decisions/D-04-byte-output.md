@@ -1,11 +1,11 @@
 ---
-id: D-03
+id: D-04
 type: decision
 state: accepted
 created: 2026-11-05
 ---
 
-# D-03: Byte output through `rawBytes`
+# D-04: Byte output through `rawBytes`
 
 ## Decision
 
