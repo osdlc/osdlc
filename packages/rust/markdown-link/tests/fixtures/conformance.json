@@ -1165,6 +1165,43 @@
       ]
     },
     {
+      "name": "abandoned_not_reported_inside_a_link_found_after_it",
+      "body": "[[[Note]]] [[a](x.md) [[[[Deep]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "Note",
+          "target": "Note",
+          "alias": null,
+          "at": 1,
+          "text": "[[Note]]"
+        },
+        {
+          "kind": "markdown",
+          "raw": "x.md",
+          "target": "x",
+          "alias": null,
+          "at": 12,
+          "text": "[a](x.md)"
+        },
+        {
+          "kind": "wikilink",
+          "raw": "Deep",
+          "target": "Deep",
+          "alias": null,
+          "at": 24,
+          "text": "[[Deep]]"
+        }
+      ],
+      "abandoned": [
+        {
+          "reason": "bracket",
+          "at": 22,
+          "text": "[["
+        }
+      ]
+    },
+    {
       "name": "abandoned_a_skipped_comment_is_an_empty_target_not_code",
       "body": "[[<!-- todo -->]] [[`x`<!-- y -->]]",
       "options": {

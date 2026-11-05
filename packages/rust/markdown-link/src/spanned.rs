@@ -116,7 +116,9 @@ pub enum AbandonReason {
 ///
 /// What a renderer or a publisher would otherwise leave in its output as
 /// literal brackets. A `[[` inside code, or inside an HTML comment when
-/// [`ScanOptions::skip_html_comments`] is on, is not reported.
+/// [`ScanOptions::skip_html_comments`] is on, is not reported, and nor is one
+/// that a link found after it starts inside: `[[[Note]]` is a literal `[`
+/// and a link.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AbandonedLink {
     /// Why it is not a link.
@@ -306,6 +308,7 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                         .map(|p| body[at[i + 3 + p]..at[j]].trim())
                         .filter(|alias| !alias.is_empty())
                         .map(str::to_string);
+                    drop_overlapped(&mut abandoned, start);
                     out.push(BodyLink {
                         kind: if embed {
                             BodyLinkKind::Embed
@@ -332,6 +335,7 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
             && let Some(link) = spanned_markdown_link(&chars, i, &at, &mut scan)
         {
             i = link.1;
+            drop_overlapped(&mut abandoned, link.0.byte_start);
             out.push(link.0);
             continue;
         }
@@ -340,6 +344,15 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
     BodyScan {
         links: out,
         abandoned,
+    }
+}
+
+/// Drops each abandoned `[[` that a link starting at `start` begins inside.
+/// After a `[` or `]` the scanner moves on one char, so `[[[Note]]` is a
+/// literal `[` and a link, not a `[[` given up on.
+fn drop_overlapped(abandoned: &mut Vec<AbandonedLink>, start: usize) {
+    while abandoned.last().is_some_and(|a| a.byte_end > start) {
+        abandoned.pop();
     }
 }
 

@@ -79,7 +79,8 @@ export type AbandonReason = 'bracket' | 'code' | 'empty-target' | 'unclosed'
  * A `[[` the scanner found outside code and did not read as a link: what a
  * renderer would otherwise leave in its output as literal brackets. A `[[`
  * inside code, or inside an HTML comment when `skipHtmlComments` is on, is not
- * reported.
+ * reported, and nor is one that a link found after it starts inside:
+ * `[[[Note]]` is a literal `[` and a link.
  */
 export interface AbandonedLink {
   reason: AbandonReason
@@ -234,6 +235,7 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
           // so a `|` in code is not one, then read the alias from the body so
           // code inside it is kept.
           const alias = pipe === -1 ? null : trim(body.slice(at[pipe + 1], at[j])) || null
+          dropOverlapped(abandoned, start)
           out.push({
             kind: embed ? 'embed' : 'wikilink',
             raw: inner,
@@ -253,6 +255,7 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
     if (chars[i] === '[') {
       const found = markdownLink(chars, i, at, scan)
       if (found !== null) {
+        dropOverlapped(abandoned, found.link.start)
         out.push(found.link)
         i = found.next
         continue
@@ -261,6 +264,15 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
     i++
   }
   return { links: out, abandoned }
+}
+
+/**
+ * Drops each abandoned `[[` that a link starting at `start` begins inside.
+ * After a `[` or `]` the scanner moves on one code point, so `[[[Note]]` is a
+ * literal `[` and a link, not a `[[` given up on.
+ */
+function dropOverlapped(abandoned: AbandonedLink[], start: number): void {
+  while (abandoned.length > 0 && abandoned[abandoned.length - 1]!.end > start) abandoned.pop()
 }
 
 /**
