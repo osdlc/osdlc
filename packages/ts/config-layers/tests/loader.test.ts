@@ -8,10 +8,12 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { WriteConflictError } from '@osdlc/etag-write'
 import { z } from 'zod'
 
 import { CONFIG_INVALID_EXIT, ConfigInvalidError } from '../src/config-error.ts'
 import { assembleConfig, readMappingFile, readParsedFile } from '../src/loader.ts'
+import { defineMigrations } from '../src/migrate.ts'
 import { pathMatcher, stripUnknownKeys } from '../src/unknown-keys.ts'
 import { defineConfigSection } from '../src/section.ts'
 
@@ -533,6 +535,250 @@ describe("assembleConfig — unknownTopLevel 'warn'", () => {
     write('tooly.yaml', 'docs_site: mine\n')
     mount().load(root)
     expect(lines).toEqual([])
+  })
+})
+
+describe('assembleConfig — migrations', () => {
+  let lines: string[]
+  let restore: () => void
+  beforeEach(() => {
+    lines = []
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation(((t: string | Uint8Array) => {
+      lines.push(String(t))
+      return true
+    }) as typeof process.stderr.write)
+    restore = () => spy.mockRestore()
+  })
+  afterEach(() => restore())
+
+  // Version 1 had `limits.jobs` and a top-level `site`; version 2 renamed both.
+  const migrations = defineMigrations([
+    {
+      to: 2,
+      moves: [
+        ['limits.jobs', 'limits.implement'],
+        ['site', 'docs_site'],
+      ],
+    },
+  ])
+  const mount = (unknownTopLevel: 'reject' | 'warn' | 'ignore' = 'reject') =>
+    assembleConfig({
+      file: CONFIG_FILE,
+      sections: [docs, limits],
+      unknownTopLevel,
+      resolve: NO_ENV,
+      migrations,
+    })
+
+  const OLD = `# Project config.
+
+site: www   # the published site
+
+limits:
+  # How many run at once.
+  jobs: 3
+  names: [a]
+`
+
+  test('an old file loads through the migrations in memory and is not rewritten', () => {
+    const path = write('tooly.yaml', OLD)
+    const layers = mount().loadLayers(root)
+    expect(layers.merged).toEqual({ docs_site: 'www', limits: { implement: 3, names: ['a'] } })
+    expect(layers.project).toEqual({
+      docs_site: 'www',
+      limits: { implement: 3, names: ['a'] },
+      version: 2,
+    })
+    expect(layers.migrated).toEqual([
+      {
+        file: path,
+        from: 1,
+        to: 2,
+        applied: [2],
+        warnings: [
+          { to: 2, message: "moved 'limits.jobs' to 'limits.implement'" },
+          { to: 2, message: "moved 'site' to 'docs_site'" },
+        ],
+      },
+    ])
+    expect(readFileSync(path, 'utf-8')).toBe(OLD)
+    expect(lines).toEqual([])
+  })
+
+  test('version is not a section key in any mode', () => {
+    write('tooly.yaml', 'version: 2\ndocs_site: mine\n')
+    for (const mode of ['reject', 'warn', 'ignore'] as const) {
+      const layers = mount(mode).loadLayers(root)
+      expect(layers.merged).toEqual({ docs_site: 'mine', limits: { implement: 5, names: [] } })
+      expect(layers.unknownKeys).toEqual([])
+      expect(layers.migrated).toEqual([])
+    }
+    expect(lines).toEqual([])
+  })
+
+  test('without migrations, version is an ordinary key', () => {
+    write('tooly.yaml', 'version: 2\n')
+    const plain = assembleConfig({
+      file: CONFIG_FILE,
+      sections: [docs],
+      unknownTopLevel: 'reject',
+      resolve: NO_ENV,
+    })
+    expect(() => plain.load(root)).toThrow(/Unrecognized key: "version"/)
+  })
+
+  test('the overlay carries its own version and migrates on its own', () => {
+    write('tooly.yaml', 'version: 2\nlimits:\n  implement: 1\n')
+    const local = write('tooly.local.yaml', 'limits:\n  jobs: 7\n')
+    const layers = mount().loadLayers(root)
+    expect(layers.merged.limits.implement).toBe(7)
+    expect(layers.migrated.map((m) => m.file)).toEqual([local])
+  })
+
+  test.each([['two'], ['0'], ['1.5'], ['[1]']])(
+    'a version of %s is invalid, with exit 14',
+    (value) => {
+      write('tooly.yaml', `version: ${value}\n`)
+      let err: unknown
+      try {
+        mount().load(root)
+      } catch (e) {
+        err = e
+      }
+      expect(err).toBeInstanceOf(ConfigInvalidError)
+      expect((err as ConfigInvalidError).exitCode).toBe(CONFIG_INVALID_EXIT)
+      expect((err as ConfigInvalidError).issues[0]!.path).toBe('version')
+      expect((err as Error).message).toMatch(/must be an integer of at least 1/)
+    },
+  )
+
+  test('a newer file is read as-is, with one line on stderr per handle', () => {
+    write('tooly.yaml', 'version: 5\ndocs_site: mine\n')
+    const handle = mount()
+    expect(handle.load(root).docs_site).toBe('mine')
+    handle.load(root)
+    write('tooly.yaml', 'version: 5\ndocs_site: mine\n# edited\n')
+    handle.load(root)
+    expect(lines).toEqual(["tooly.yaml: version 5 is newer than this tool's 2; read as-is\n"])
+  })
+
+  test('a newer file that fails the schema says it is newer in the error', () => {
+    write('tooly.yaml', 'version: 5\nfuture_section: 1\n')
+    expect(() => mount().load(root)).toThrow(
+      /Unrecognized key: "future_section"[\s\S]*version: tooly\.yaml: version 5 is newer than this tool's 2; read as-is/,
+    )
+    expect(lines).toEqual([])
+  })
+
+  test('a migrated file that is still invalid fails as any invalid file does', () => {
+    write('tooly.yaml', 'limits:\n  jobs: -1\n')
+    expect(() => mount().load(root)).toThrow(/limits\.implement/)
+  })
+
+  test('migrate rewrites each old file as edits, keeping its comments', () => {
+    const project = write('tooly.yaml', OLD)
+    const local = write('tooly.local.yaml', '# mine\nversion: 2\nlimits:\n  names: [b]\n')
+    const handle = mount()
+    expect(handle.load(root).limits.implement).toBe(3)
+    // A moved key goes after its new parent's last key. A comment line of its
+    // own, and blank lines, stay where they were.
+    const migrated = `# Project config.
+
+
+limits:
+  # How many run at once.
+  names: [a]
+  implement: 3
+docs_site: www
+version: 2
+`
+    const results = handle.migrate(root, { dryRun: true })
+    expect(results).toEqual([
+      {
+        layer: 'project',
+        path: project,
+        from: 1,
+        to: 2,
+        applied: [2],
+        warnings: [
+          { to: 2, message: "moved 'limits.jobs' to 'limits.implement'" },
+          { to: 2, message: "moved 'site' to 'docs_site'" },
+        ],
+        written: false,
+        rewrite: 'edited',
+        text: migrated,
+      },
+      {
+        layer: 'local',
+        path: local,
+        from: 2,
+        to: 2,
+        applied: [],
+        warnings: [],
+        written: false,
+        rewrite: null,
+        text: null,
+      },
+    ])
+    expect(readFileSync(project, 'utf-8')).toBe(OLD)
+
+    expect(handle.migrate(root).map((r) => r.written)).toEqual([true, false])
+    expect(readFileSync(project, 'utf-8')).toBe(migrated)
+    expect(readFileSync(local, 'utf-8')).toBe('# mine\nversion: 2\nlimits:\n  names: [b]\n')
+    // The handle sees the rewrite at its next call, and reads the same config.
+    const after = handle.loadLayers(root)
+    expect(after.merged).toEqual({ docs_site: 'www', limits: { implement: 3, names: ['b'] } })
+    expect(after.migrated).toEqual([])
+    expect(handle.migrate(root).map((r) => r.applied)).toEqual([[], []])
+  })
+
+  test('migrate with no files does nothing', () => {
+    expect(mount().migrate(root)).toEqual([])
+  })
+
+  test('migrate refuses, writing nothing, when any file is unusable', () => {
+    const project = write('tooly.yaml', OLD)
+    write('tooly.local.yaml', 'version: zero\n')
+    expect(() => mount().migrate(root)).toThrow(ConfigInvalidError)
+    expect(readFileSync(project, 'utf-8')).toBe(OLD)
+    write('tooly.local.yaml', '- a list\n')
+    expect(() => mount().migrate(root)).toThrow(/top level must be a mapping/)
+    write('tooly.local.yaml', 'a: [\n')
+    expect(() => mount().migrate(root)).toThrow(/YAML parse error/)
+    expect(readFileSync(project, 'utf-8')).toBe(OLD)
+  })
+
+  test('migrate does not overwrite an edit saved after it read the file', () => {
+    let path = ''
+    const racy = assembleConfig({
+      file: CONFIG_FILE,
+      sections: [docs, limits],
+      unknownTopLevel: 'reject',
+      resolve: NO_ENV,
+      migrations: defineMigrations([
+        {
+          to: 2,
+          run: (raw) => {
+            writeFileSync(path, 'docs_site: edited\n')
+            return raw
+          },
+        },
+      ]),
+    })
+    path = write('tooly.yaml', 'docs_site: old\n')
+    expect(() => racy.migrate(root)).toThrow(WriteConflictError)
+    expect(readFileSync(path, 'utf-8')).toBe('docs_site: edited\n')
+  })
+
+  test('without migrations, migrate applies nothing and writes nothing', () => {
+    const path = write('tooly.yaml', 'docs_site: x\n')
+    const plain = assembleConfig({
+      file: CONFIG_FILE,
+      sections: [docs],
+      unknownTopLevel: 'reject',
+      resolve: NO_ENV,
+    })
+    expect(plain.migrate(root)).toMatchObject([{ path, applied: [], written: false }])
   })
 })
 

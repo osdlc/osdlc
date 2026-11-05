@@ -10,7 +10,9 @@ A command that cannot run without a setting should give one clear message when
 the setting is missing. This package provides:
 
 - project config built from sections, with a memoized loader;
-- a machine file loader that never throws, with migrations;
+- a machine file loader that never throws;
+- versioned migrations for both files, declared as moves, that rewrite a file
+  without losing its comments and never overwrite an edit saved meanwhile;
 - a `paths:` map of named directories;
 - the "needs" check.
 
@@ -114,8 +116,9 @@ unmet need.
 | `loadWithIssues()` | `{ value, issues }`: `load()`'s value plus one issue per thing it dropped |
 | `clearCache()` | drop the memoised value (tests) |
 | `check(raw)` | the load issues `raw` would have that the file on disk does not |
-| `write(text)` | replace the file atomically and keep the old one as `<file>.bak`. Throws, writing nothing, if `text` is not a mapping or `check` finds a new issue |
-| `migrate({ dryRun? })` | run the migrations on the file and return `{ path, from, to, applied, written }`. Writes only when a step applied |
+| `read()` | `{ text, etag }` of the file, or `null` when there is none |
+| `write(text, { etag? })` | replace the file atomically, keep the old one as `<file>.bak` and return the new etag. Throws, writing nothing, if `text` is not a mapping or `check` finds a new issue. Given the `etag` that `read()` returned (or `null` for no file), the write is a compare-and-swap: a file changed since throws `WriteConflictError` from `@osdlc/etag-write` and is left as it is, `.bak` included |
+| `migrate({ dryRun? })` | run the migrations on the file and return `{ path, from, to, applied, warnings, written, rewrite, text }`. Writes only when a step applied |
 | `currentVersion` | the last migration's `to`, or 1 |
 | `env` | the override variable's name |
 
@@ -129,15 +132,108 @@ a `code` and a `message`. The code is `unknown_key`, `invalid`, `unreadable`, `y
 them. Options `env`, `fileName` and `dirs` change the variable, the file name and how the
 directories are resolved (a test passes a rooted one).
 
-Option `migrations` is an ordered `MachineMigration[]` (`{ from, to, run(raw) }`). The schema should
-declare an optional integer `version`. A file without one is version 1. The loader runs every step
-from the file's version on, in memory, before validation. A file newer than the last step is read
-as-is with a `newer_version` issue. `migrate()` saves the result through `write`. The rewrite
-drops the file's comments, and the `.bak` keeps them. `migrateMachineRaw` is exported on its own.
-The atomic write uses `@osdlc/etag-write`.
+Option `migrations` is an ordered `ConfigMigration[]` (`{ from, to, run(raw, warn) }`), usually
+built by `defineMigrations` (see [Migrations](#migrations)). The schema should declare an optional
+integer `version`. A file without one is version 1. The loader runs every step from the file's
+version on, in memory, before validation. A file newer than the last step is read as-is with a
+`newer_version` issue. `migrate()` saves the result through `write`, as a compare-and-swap against
+the text it read, so an edit saved while it ran is not overwritten. The rewrite edits only the
+values that changed (`rewrite: 'edited'`), so the file keeps its comments. When that cannot be done
+(a nested change under a `<<: *anchor` defined elsewhere), the document is rendered again
+(`rewrite: 'reserialized'`), which drops the comments, and the `.bak` keeps them. `text` is the new
+file, also on a dry run. The writes use `@osdlc/etag-write`.
+
+A `config set` on the machine file reads, edits and writes back with the etag:
+
+<!-- snippet: machine-cas -->
+
+```ts
+const seen = machine.read()
+const text = setPath(seen?.text ?? '', ['repos'], ['~/dev'])
+machine.write(text, { etag: seen?.etag ?? null }) // WriteConflictError if it changed since
+```
 
 The library ships no machine schema. `pathsSchema` and `substitutePathNames` (`paths.ts`) handle
 the `paths:` map that a tool's machine and project schemas can share.
+
+## Migrations
+
+A config file's version is its top-level integer `version`. A file without one is version 1.
+`defineMigrations(steps)` turns a list of steps into the `ConfigMigration[]` that both
+`machineConfigFile` and `assembleConfig` take:
+
+<!-- snippet: migrations -->
+
+```ts
+import { defineMigrations } from '@osdlc/config-layers'
+
+const migrations = defineMigrations([
+  { to: 2, moves: [['agent.claude.command', 'agents.claude.command']] },
+  {
+    to: 3,
+    moves: [['dirs', 'repos']],
+    run: (raw, warn) => {
+      if ('legacy' in raw) warn('legacy is no longer read; removed')
+      delete raw.legacy
+      return raw
+    },
+  },
+])
+```
+
+Each step goes from the previous step's `to` (1 for the first) to its own. `to` must be an integer
+that grows from step to step. Within a step:
+
+- `moves` run first, in order. Each `[from, to]` is a dotted path, or a list of segments for a key
+  that holds a dot. An absent `from` is no change.
+- The destination wins. When `to` is already set, even to `null`, that value is kept and the one at
+  `from` is dropped, with a warning.
+- When a segment on the way to `to` is not a mapping (`to` is `a.b` and `a` is a string), the move
+  cannot happen. `from` stays where it is, with a warning, and the schema decides what to do with
+  it.
+- `pruneEmpty` (default `true`) then removes each mapping on `from`'s path that the move left with
+  no keys, so a strict schema does not reject `{ agent: { claude: {} } }`. A mapping that was empty
+  already is left alone.
+- `run(raw, warn)` runs last, on the moved document. It gets a copy it may change.
+
+`defineMigrations` throws on steps out of order and on a move whose paths contain one another.
+
+`migrateConfigRaw(raw, migrations)` is the driver both loaders use. It returns `{ raw, applied,
+warnings }`: the migrated document with its final `version`, the version each step produced, and
+what the steps reported: one `{ to, message }` per move whose `from` was set, and per `warn`
+call. A file at or past the
+last step comes back unchanged. `currentConfigVersion(migrations)` is the last step's `to`.
+`MachineMigration`, `migrateMachineRaw` and `currentMachineVersion` are the older names of the same
+type and functions, and are deprecated.
+
+`reconcileYaml(text, target)` writes a migrated document back. It edits `text` until it reads as
+`target`, one `setPath` or `unsetPath` per value that differs, so comments, blank lines and key
+order stay everywhere else. A list that changed is replaced whole. A new key goes after its parent's
+last key, so a moved key lands at the end of its new parent. A comment on a line of its own above a
+removed key stays where it was. It throws when the edits cannot give `target`. Both `migrate`
+methods call it.
+
+The project file is versioned when `assembleConfig` gets `migrations` (`[]` versions it with no
+step yet). Then:
+
+- The project file and its overlay each carry their own `version`, and each is migrated on its own,
+  in memory, before the unknown-key handling and validation. `version` is not a section key, so it
+  is never an unknown key.
+- `version` must be an integer of at least 1. Anything else is a `ConfigInvalidError` (exit 14).
+- A file newer than the last step is read as-is, with one stderr line per handle:
+  `tooly.yaml: version 5 is newer than this tool's 2; read as-is`. When the file then fails the
+  schema, the error carries the same line under `version`.
+- `loadLayers(root).migrated` lists each file a step ran on (`{ file, from, to, applied,
+  warnings }`), so a tool can suggest its `config migrate`. `project` and `local` are the migrated
+  mappings. `readLayers` returns the files as they are on disk.
+- `migrate(root, { dryRun? })` rewrites each layer file that a step applies to, with
+  `reconcileYaml`, and returns one `{ layer, path, from, to, applied, warnings, written, rewrite,
+  text }` per file that exists. Each write is a compare-and-swap against the text it read: an edit
+  saved in between throws `WriteConflictError` and that file is left as it is. A file that cannot
+  be read or parsed, is not a mapping or has a bad `version` throws `ConfigInvalidError` before
+  anything is written. It keeps no `.bak`; the project file is in version control.
+
+Without `migrations`, `version` is an ordinary key, as before.
 
 ## Needs
 
@@ -253,14 +349,15 @@ plain `defineConfigSection` carries plain strings. `checkConfigMeta(shape)` with
 vocabulary checks only their structure.
 
 `assembleConfig({ file, sections, unknownTopLevel, label?, parseProblem?,
-crossFieldIssues? })` builds a handle from the sections a tool mounts:
+crossFieldIssues?, migrations? })` builds a handle from the sections a tool mounts:
 
 | Member | Does |
 |---|---|
 | `schema` / `fileSchema` | the schema over every mounted section (strict unless `unknownTopLevel` is `'ignore'`), and the same schema for validating one file alone |
 | `load(root)` | the project file with the overlay deep-merged over it before validation, validated once, memoized per resolved file. Reloads when either file's stat signature changes |
-| `loadLayers(root)` | `load`, plus the two raw layers and the resolved `files` |
+| `loadLayers(root)` | `load`, plus the two raw layers, the resolved `files` and the layer files read through migrations |
 | `readLayers(root)` | the raw layers without validating, for diagnostics of a broken file |
+| `migrate(root, { dryRun? })` | rewrite each layer file that a migration step applies to, keeping its comments (see [Migrations](#migrations)) |
 | `clearCache()` | drop the memo (tests) |
 
 `unknownTopLevel` says what happens to a top-level key that no mounted section owns:
@@ -317,7 +414,7 @@ The functions a `config` command is built from. None of them names a tool.
 | `meta.ts`, `vocabulary.ts`, `meta-kit.ts` | the meta structure, `defineConfigVocabulary`, and `checkConfigMeta`/`readConfigMeta`. Also the test helpers a tool's meta test calls (`consumerProblems`, `enforcementProblems`, `machineLayerKeys`, `applierAndReservedProblems`), each returning its problems |
 | `provenance.ts` | `resolveLayeredSteps`/`resolveLayeredValue`: resolve a setting through the env (steps only), local, project and default layers, and record which layer each part came from as `{layer, mode}` (`ValueLayer`, `StepProvenance`) |
 | `explain.ts` | `resolveKeyPath`, `splitKeyPath`, `describeShape`, `defaultOf`, `nestedFields`, `jsonSchemaOf`, `omitPath` over a schema shape |
-| `edit.ts` | `setPath`/`unsetPath`: dotted-path edits that keep every byte outside the edited value, built on `@osdlc/yaml-splice` |
+| `edit.ts` | `setPath`/`unsetPath`: dotted-path edits that keep every byte outside the edited value, built on `@osdlc/yaml-splice`. `reconcileYaml`: the edits that turn a file into a target document |
 | `scaffold.ts` | `scaffoldYaml`, `scaffoldLocalYaml`, `starterYaml`: an annotated file derived from the schema (the starter groups keys in the caller's category order) |
 | `reference.ts` | `renderReference`: a markdown reference page from the schema and its meta, grouped in the caller's category order |
 | `merge.ts` | `deepMergeConfig`: mappings merge per key, arrays and scalars replace. The exception is a top-level `schedules:` list, which merges by entry `name` |
@@ -371,6 +468,7 @@ is left out of the suite and listed in this table.
 | `!!float 1` and an unknown tag such as `!custom 6` | the value reads as its text, a string | the value reads as a number |
 | Dotted `paths:` resolution in a map | not provided | `resolve_paths_at` |
 | Invalid config | `ConfigInvalidError`, exit code 14 | `FileProblem` |
+| Versioned files and migrations | `version`, `defineMigrations`, `migrateConfigRaw`, `migrate()` on both files | not provided |
 | Platforms | Linux and macOS | Linux, macOS and Windows |
 
 ## How it compares
@@ -408,33 +506,36 @@ package.
 
 The experimental exports:
 
-`APPLY_PREFIX`, `AppliesVia`, `AssembleConfigOptions`, `CONFIG_INVALID_EXIT`, `CONSUMER_REF`,
-`ConfigFileSpec`, `ConfigHandle`, `ConfigInvalidError`, `ConfigIssue`, `ConfigKeyMeta`,
-`ConfigKeyMetaSchema`, `ConfigLayers`, `ConfigMetaIssue`, `ConfigNeed`, `ConfigNeeds`,
-`ConfigNeedsOptions`, `ConfigOf`, `ConfigSection`, `ConfigSectionHooks`, `ConfigVocabulary`,
-`ConfigVocabularySpec`, `ConsumerSchema`, `DeprecatedKeyUse`, `Deprecation`, `DeprecationSchema`,
-`KeyScopes`, `LayerCheckContext`, `MACHINE_CONFIG_ISSUE_CODES`, `MachineConfigFile`,
-`MachineConfigFileOptions`, `MachineConfigIssue`, `MachineConfigLoad`, `MachineMigrateResult`,
-`MachineMigration`, `MessageOptions`, `MetOptions`, `MetaTerms`, `MetaValidator`, `NestedField`,
-`PATH_NAME`, `PLANNED_PREFIX`, `ParsedFileRead`, `PathNameError`, `PathNames`, `PathsSchemaOptions`,
-`RELOADS_ON_CHANGE`, `RawLayer`, `RawLayeredSteps`, `ReadMappingOptions`, `ReferenceOptions`,
-`RegisteredKeyMeta`, `RegisteredKeyMetaSchema`, `ResolveConfigFileOptions`,
-`ResolveConfigPathOptions`, `ResolveKeyPathOptions`, `ResolveLayeredStepsOptions`,
-`ResolveLayeredValueOptions`, `ResolvedConfigFile`, `ResolvedKey`, `ResolvedLayeredSteps`,
-`ResolvedLayeredValue`, `ResolvedStep`, `STABILITY_LEVELS`, `ScaffoldOptions`, `Stability`,
-`StabilitySchema`, `StarterOptions`, `StepMode`, `StepProvenance`, `StrippedKeys`,
-`SubstituteOptions`, `TermsOf`, `UnknownKeyUse`, `ValueLayer`, `VendorDirs`,
-`applierAndReservedProblems`, `applierOf`, `assembleConfig`, `checkConfigMeta`, `closestMatches`,
-`configNeeds`, `consumerProblems`, `currentMachineVersion`, `deepMergeConfig`, `defaultOf`,
-`defineConfigSection`, `defineConfigVocabulary`, `deprecatedKeysSet`, `deprecationMessage`,
+`APPLY_PREFIX`, `AppliesVia`, `AssembleConfigOptions`, `BASE_CONFIG_VERSION`, `CONFIG_INVALID_EXIT`,
+`CONSUMER_REF`, `ConfigFileMigrateResult`, `ConfigFileSpec`, `ConfigHandle`, `ConfigInvalidError`,
+`ConfigIssue`, `ConfigKeyMeta`, `ConfigKeyMetaSchema`, `ConfigLayers`, `ConfigMetaIssue`,
+`ConfigMigration`, `ConfigNeed`, `ConfigNeeds`, `ConfigNeedsOptions`, `ConfigOf`, `ConfigSection`,
+`ConfigSectionHooks`, `ConfigVocabulary`, `ConfigVocabularySpec`, `ConsumerSchema`,
+`DeprecatedKeyUse`, `Deprecation`, `DeprecationSchema`, `KeyScopes`, `LayerCheckContext`,
+`LayerMigration`, `MACHINE_CONFIG_ISSUE_CODES`, `MachineConfigFile`, `MachineConfigFileOptions`,
+`MachineConfigIssue`, `MachineConfigLoad`, `MachineMigrateResult`, `MachineMigration`,
+`MachineWriteOptions`, `MessageOptions`, `MetOptions`, `MetaTerms`, `MetaValidator`, `MigratedRaw`,
+`MigrationPath`, `MigrationStep`, `MigrationWarning`, `NestedField`, `PATH_NAME`, `PLANNED_PREFIX`,
+`ParsedFileRead`, `PathNameError`, `PathNames`, `PathsSchemaOptions`, `RELOADS_ON_CHANGE`,
+`RawLayer`, `RawLayeredSteps`, `ReadMappingOptions`, `ReferenceOptions`, `RegisteredKeyMeta`,
+`RegisteredKeyMetaSchema`, `ResolveConfigFileOptions`, `ResolveConfigPathOptions`,
+`ResolveKeyPathOptions`, `ResolveLayeredStepsOptions`, `ResolveLayeredValueOptions`,
+`ResolvedConfigFile`, `ResolvedKey`, `ResolvedLayeredSteps`, `ResolvedLayeredValue`, `ResolvedStep`,
+`STABILITY_LEVELS`, `ScaffoldOptions`, `Stability`, `StabilitySchema`, `StarterOptions`, `StepMode`,
+`StepProvenance`, `StrippedKeys`, `SubstituteOptions`, `TermsOf`, `UnknownKeyUse`, `ValueLayer`,
+`VendorDirs`, `applierAndReservedProblems`, `applierOf`, `assembleConfig`, `checkConfigMeta`,
+`closestMatches`, `configNeeds`, `consumerProblems`, `currentConfigVersion`,
+`currentMachineVersion`, `deepMergeConfig`, `defaultOf`, `defineConfigSection`,
+`defineConfigVocabulary`, `defineMigrations`, `deprecatedKeysSet`, `deprecationMessage`,
 `describeShape`, `descriptionOf`, `didYouMean`, `enforcementProblems`, `envStem`, `getIn`,
 `isReserved`, `jsonSchemaOf`, `keyDescription`, `keyExists`, `leafSchema`, `machineConfigFile`,
-`machineLayerKeys`, `migrateMachineRaw`, `nestedFields`, `omitPath`, `overlayPath`, `pathMatcher`,
-`pathNames`, `pathsSchema`, `projectLayerIssues`, `readConfigMeta`, `readMappingFile`,
-`readParsedFile`, `renderReference`, `resolveConfigFile`, `resolveConfigPath`, `resolveKeyPath`,
-`resolveLayeredSteps`, `resolveLayeredValue`, `scaffoldLocalYaml`, `scaffoldYaml`, `setPath`,
-`splitKeyPath`, `starterYaml`, `stripUnknownKeys`, `substitutePathNames`, `systemDirs`,
-`topLevelKeys`, `unknownKeyMessage`, `unsetPath`, `valueAt`, `valueIsSet`
+`machineLayerKeys`, `migrateConfigRaw`, `migrateMachineRaw`, `nestedFields`, `omitPath`,
+`overlayPath`, `pathMatcher`, `pathNames`, `pathsSchema`, `projectLayerIssues`, `readConfigMeta`,
+`readMappingFile`, `readParsedFile`, `reconcileYaml`, `renderReference`, `resolveConfigFile`,
+`resolveConfigPath`, `resolveKeyPath`, `resolveLayeredSteps`, `resolveLayeredValue`,
+`scaffoldLocalYaml`, `scaffoldYaml`, `setPath`, `splitKeyPath`, `starterYaml`, `stripUnknownKeys`,
+`substitutePathNames`, `systemDirs`, `topLevelKeys`, `unknownKeyMessage`, `unsetPath`, `valueAt`,
+`valueIsSet`
 
 A test compares this list with the `@experimental` tags in the source.
 

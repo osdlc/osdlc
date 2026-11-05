@@ -19,17 +19,18 @@
 import { copyFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { atomicWrite } from '@osdlc/etag-write'
-import { stringify as yamlStringify } from 'yaml'
+import { atomicWrite, etag, etagOfFile, WriteConflictError, writeCas } from '@osdlc/etag-write'
 import type { z } from 'zod'
 
+import { rewriteMigrated } from './edit.ts'
 import { parseYamlText } from './loader.ts'
 import {
-  currentMachineVersion,
-  machineVersionOf,
-  migrateMachineRaw,
-  type MachineMigration,
-} from './machine-migrate.ts'
+  configVersionOf,
+  currentConfigVersion,
+  migrateConfigRaw,
+  type ConfigMigration,
+  type MigrationWarning,
+} from './migrate.ts'
 import { stripUnknownKeys } from './unknown-keys.ts'
 import { isPlainObject } from './value.ts'
 import { envStem, systemDirs, type TieredDirs, type VendorDirs } from './dirs.ts'
@@ -56,10 +57,11 @@ export interface MachineConfigFileOptions<S extends z.ZodTypeAny> {
   dirs?: () => TieredDirs
   /**
    * Ordered steps from older file versions to the current one, run on the raw
-   * document before validation. The schema should declare an optional
-   * integer `version`. Default none: every file is version 1.
+   * document before validation ({@link defineMigrations} builds them from
+   * declarative moves). The schema should declare an optional integer
+   * `version`. Default none: every file is version 1.
    */
-  migrations?: readonly MachineMigration[]
+  migrations?: readonly ConfigMigration[]
 }
 
 /**
@@ -98,6 +100,13 @@ export interface MachineConfigLoad<T> {
 /**
  * What {@link MachineConfigFile.migrate} did. `applied` lists the version each step produced.
  *
+ * `text` is the file as the migration rewrites it, `null` when no step
+ * applied. `rewrite` says how it was made: `edited` when only the values
+ * that changed were edited, so every comment outside them is kept;
+ * `reserialized` when the change could not be made as edits and the whole
+ * document was rendered again, which drops its comments; `null` when no step
+ * applied.
+ *
  * @experimental
  */
 export interface MachineMigrateResult {
@@ -106,6 +115,25 @@ export interface MachineMigrateResult {
   to: number
   applied: number[]
   written: boolean
+  warnings: MigrationWarning[]
+  rewrite: 'edited' | 'reserialized' | null
+  text: string | null
+}
+
+/**
+ * Options for {@link MachineConfigFile.write}.
+ *
+ * @experimental
+ */
+export interface MachineWriteOptions {
+  /**
+   * The etag of the file as the caller read it ({@link MachineConfigFile.read}),
+   * or `null` when it read no file. The write is then a compare-and-swap: it
+   * throws `WriteConflictError` from `@osdlc/etag-write`, and writes nothing,
+   * when the file changed since. Leave it out to replace the file whatever is
+   * on disk.
+   */
+  etag?: string | null
 }
 
 /**
@@ -133,20 +161,32 @@ export interface MachineConfigFile<S extends z.ZodTypeAny> {
   /** The version the last migration produces; 1 when there are none. */
   readonly currentVersion: number
   /**
+   * The file's text and its etag, to edit and hand back to {@link write}
+   * with `{ etag }`. `null` when there is no file. Throws when it cannot be
+   * read.
+   */
+  read(): { text: string; etag: string } | null
+  /**
    * The load issues `raw` would have that the file on disk does not. A
    * problem already in the file does not block an unrelated edit.
    */
   check(raw: Record<string, unknown>): MachineConfigIssue[]
   /**
-   * Replace the file with `text`. Throws, writing nothing, when `text` is not
-   * a YAML mapping or {@link check} finds a new issue. Copies the old file to
-   * `<path>.bak`, writes atomically and clears the cache.
+   * Replace the file with `text` and return its new etag. Throws, writing
+   * nothing, when `text` is not a YAML mapping or {@link check} finds a new
+   * issue, and, given `etag`, when the file changed since it was read. Copies
+   * the old file to `<path>.bak`, writes atomically and clears the cache.
    */
-  write(text: string): void
+  write(text: string, opts?: MachineWriteOptions): string
   /**
    * Run the migrations on the file and write the result when any applied,
-   * unless `dryRun`. The rewrite drops the file's comments; the `.bak` keeps
-   * them. Throws when the file cannot be read or parsed.
+   * unless `dryRun`. Only the values that changed are edited, so the file's
+   * comments are kept (`rewrite: 'edited'`); when that cannot be done, the
+   * document is rendered again (`rewrite: 'reserialized'`) and the `.bak`
+   * keeps the comments. The write is a compare-and-swap against the text the
+   * migration read: an edit saved in between makes it throw
+   * `WriteConflictError` and write nothing. Throws when the file cannot be
+   * read or parsed.
    */
   migrate(opts?: { dryRun?: boolean }): MachineMigrateResult
 }
@@ -163,7 +203,7 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
   const fileName = opts.fileName ?? 'config.yaml'
   const dirs = opts.dirs ?? (() => systemDirs(opts.vendorDirs))
   const migrations = opts.migrations ?? []
-  const currentVersion = currentMachineVersion(migrations)
+  const currentVersion = currentConfigVersion(migrations)
   let cache: { path: string; result: MachineConfigLoad<z.output<S>> } | null = null
 
   const path = (): string => {
@@ -196,14 +236,14 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
       const message = 'the document is not a mapping; using defaults'
       return { value: defaults(), issues: [{ path: [], code: 'not_mapping', message }] }
     }
-    const version = machineVersionOf(raw)
+    const version = configVersionOf(raw)
     if (version > currentVersion) {
       const result = salvage(schema, raw)
       const message = `version ${version} is newer than this tool's ${currentVersion}; read as-is`
       result.issues.unshift({ path: ['version'], code: 'newer_version', message })
       return result
     }
-    return salvage(schema, migrateMachineRaw(raw, migrations).raw)
+    return salvage(schema, migrateConfigRaw(raw, migrations).raw)
   }
 
   const loadWithIssues = (): MachineConfigLoad<z.output<S>> => {
@@ -215,7 +255,7 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
   }
 
   const issuesOf = (raw: Record<string, unknown>): MachineConfigIssue[] =>
-    salvage(schema, migrateMachineRaw(raw, migrations).raw).issues
+    salvage(schema, migrateConfigRaw(raw, migrations).raw).issues
 
   const issueKey = (i: MachineConfigIssue): string => `${i.code}:${i.path.join('.')}`
 
@@ -231,7 +271,19 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
     return issuesOf(raw).filter((i) => !known.has(issueKey(i)))
   }
 
-  const write = (text: string): void => {
+  const read = (): { text: string; etag: string } | null => {
+    let bytes: Buffer
+    try {
+      bytes = readFileSync(path())
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+      throw err
+    }
+    // The etag is of the bytes, so text that does not round-trip through UTF-8 still matches.
+    return { text: bytes.toString('utf-8'), etag: etag(bytes) }
+  }
+
+  const write = (text: string, o: MachineWriteOptions = {}): string => {
     const file = path()
     const raw: unknown = parseYamlText(text) ?? {}
     if (!isPlainObject(raw)) throw new Error(`${file}: the document is not a mapping`)
@@ -240,24 +292,50 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
       const lines = added.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
       throw new Error(`refusing to write ${file}:\n  ${lines.join('\n  ')}`)
     }
+    const cas = o.etag !== undefined
+    // Checked before the backup too, so a refused write leaves the old `.bak` alone.
+    // `writeCas` checks again, just before the rename.
+    if (cas) {
+      const onDisk = etagOfFile(file)
+      if (onDisk !== null && onDisk !== o.etag) {
+        throw new WriteConflictError(file, o.etag === null ? 'exists-without-etag' : 'changed')
+      }
+    }
     if (existsSync(file)) copyFileSync(file, `${file}.bak`)
-    atomicWrite(file, text)
     cache = null
+    if (cas) return writeCas(file, text, o.etag ?? null)
+    atomicWrite(file, text)
+    return etag(text)
   }
 
   const migrate = (o: { dryRun?: boolean } = {}): MachineMigrateResult => {
     const file = path()
-    if (!existsSync(file)) {
-      return { path: file, from: currentVersion, to: currentVersion, applied: [], written: false }
+    const current = read()
+    if (current === null) {
+      return {
+        path: file,
+        from: currentVersion,
+        to: currentVersion,
+        applied: [],
+        written: false,
+        warnings: [],
+        rewrite: null,
+        text: null,
+      }
     }
-    const raw: unknown = parseYamlText(readFileSync(file, 'utf-8')) ?? {}
+    const raw: unknown = parseYamlText(current.text) ?? {}
     if (!isPlainObject(raw)) throw new Error(`${file}: the document is not a mapping`)
-    const from = machineVersionOf(raw)
-    const migrated = migrateMachineRaw(raw, migrations)
-    const to = machineVersionOf(migrated.raw)
-    const written = migrated.applied.length > 0 && o.dryRun !== true
-    if (written) write(yamlStringify(migrated.raw))
-    return { path: file, from, to, applied: migrated.applied, written }
+    const from = configVersionOf(raw)
+    const migrated = migrateConfigRaw(raw, migrations)
+    const to = configVersionOf(migrated.raw)
+    const base = { path: file, from, to, applied: migrated.applied, warnings: migrated.warnings }
+    if (migrated.applied.length === 0) {
+      return { ...base, written: false, rewrite: null, text: null }
+    }
+    const next = rewriteMigrated(current.text, migrated.raw)
+    const written = o.dryRun !== true
+    if (written) write(next.text, { etag: current.etag })
+    return { ...base, written, rewrite: next.rewrite, text: next.text }
   }
 
   return {
@@ -271,6 +349,7 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
       cache = null
     },
     currentVersion,
+    read,
     check,
     write,
     migrate,

@@ -26,6 +26,13 @@
  * level. Only `'warn'` drops it. A file that does not exist is not an error.
  * With neither file present the result is the all-defaults object.
  *
+ * With `migrations`, each file is versioned: its top-level `version` is read
+ * and the steps from that version on run on the file's raw mapping, in
+ * memory, before anything else looks at it. The project file and its overlay
+ * each carry their own version. `version` is then not a section key, so it is
+ * never an unknown key. Loading never writes; {@link ConfigHandle.migrate}
+ * rewrites the files on request.
+ *
  * Only {@link resolveConfigFile} decides where the files are. The memo is keyed
  * by the resolved project file, so two files never share an entry. Each entry
  * records the stat signature of both files, so a long-running host sees an edit
@@ -35,11 +42,21 @@
 import { readFileSync, statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 
+import { etag, writeCas } from '@osdlc/etag-write'
+
 import { isAlias, isMap, isScalar, isSeq, parseDocument, visit } from 'yaml'
 import { z } from 'zod'
 
 import { ConfigInvalidError, type ConfigIssue } from './config-error.ts'
 import { deprecatedKeysSet, deprecationMessage } from './deprecation.ts'
+import { rewriteMigrated } from './edit.ts'
+import {
+  configVersionOf,
+  currentConfigVersion,
+  migrateConfigRaw,
+  type ConfigMigration,
+  type MigrationWarning,
+} from './migrate.ts'
 
 /**
  * Whether a loaded handle re-reads its files when their stat signature
@@ -227,6 +244,14 @@ export interface AssembleConfigOptions<S extends readonly ConfigSection[]> {
   crossFieldIssues?: (config: ConfigOf<S>) => ConfigIssue[]
   /** Reading options for tests: the environment and working directory the resolver sees. */
   resolve?: Pick<ResolveConfigFileOptions, 'env' | 'cwd'>
+  /**
+   * Version the files: ordered steps from older file versions to the current
+   * one ({@link defineMigrations} builds them from declarative moves). Each
+   * file's top-level `version` must then be an integer of at least 1, and a
+   * file without one is version 1. `[]` versions the files with no step yet.
+   * Leave it out and `version` is an ordinary key.
+   */
+  migrations?: readonly ConfigMigration[]
 }
 
 /** The parsed shape of a section list. */
@@ -253,6 +278,31 @@ export interface UnknownKeyUse {
   path: string
 }
 
+/** The one line that says a layer file is newer than the last migration. */
+function newerVersionMessage(file: string, version: number, current: number): string {
+  return `${basename(file)}: version ${version} is newer than this tool's ${current}; read as-is`
+}
+
+/**
+ * Parse `text` as {@link readMappingFile} does, or say why it is not a
+ * mapping. For a caller that needs the exact text it parsed.
+ */
+function mappingOf(
+  text: string,
+  parseProblem: ((message: string) => string) | undefined,
+): Record<string, unknown> | string {
+  let raw: unknown
+  try {
+    raw = parseYamlText(text)
+  } catch (e) {
+    const message = (e as Error).message
+    return parseProblem?.(message) ?? `YAML parse error: ${message}`
+  }
+  if (raw === null || raw === undefined) return {}
+  if (typeof raw !== 'object' || Array.isArray(raw)) return 'top level must be a mapping'
+  return raw as Record<string, unknown>
+}
+
 /**
  * The one line that says an unknown key was ignored.
  *
@@ -263,14 +313,30 @@ export function unknownKeyMessage(file: string, path: string): string {
 }
 
 /**
+ * A layer file that loaded through migrations: the version it has on disk and
+ * the one it was read as.
+ *
+ * @experimental
+ */
+export interface LayerMigration {
+  /** The layer file. */
+  file: string
+  from: number
+  to: number
+  /** The version each step that ran produced, in order. */
+  applied: number[]
+  warnings: MigrationWarning[]
+}
+
+/**
  * The two raw layers plus the merged, validated result, and where the files are.
  *
  * @experimental
  */
 export interface ConfigLayers<C> {
-  /** Parsed project file mapping; `null` when absent. */
+  /** Parsed project file mapping, after any migration; `null` when absent. */
   project: Record<string, unknown> | null
-  /** Parsed overlay mapping; `null` when absent. */
+  /** Parsed overlay mapping, after any migration; `null` when absent. */
   local: Record<string, unknown> | null
   /** The schema parse over `deepMergeConfig(project, local)`. */
   merged: C
@@ -278,6 +344,29 @@ export interface ConfigLayers<C> {
   unknownKeys: UnknownKeyUse[]
   /** The resolved pair the layers were read from. */
   files: ResolvedConfigFile
+  /** Each layer file a migration step ran on, in memory; empty when every file is current. */
+  migrated: LayerMigration[]
+}
+
+/**
+ * What {@link ConfigHandle.migrate} did to one layer file. `text` is the file
+ * as the migration rewrites it, `null` when no step applied. `rewrite` is
+ * `edited` when only the values that changed were edited, so the file's
+ * comments are kept, and `reserialized` when the document had to be rendered
+ * again, which drops them.
+ *
+ * @experimental
+ */
+export interface ConfigFileMigrateResult {
+  layer: 'project' | 'local'
+  path: string
+  from: number
+  to: number
+  applied: number[]
+  warnings: MigrationWarning[]
+  written: boolean
+  rewrite: 'edited' | 'reserialized' | null
+  text: string | null
 }
 
 /**
@@ -314,6 +403,19 @@ export interface ConfigHandle<S extends readonly ConfigSection[]> {
     local: Record<string, unknown> | null
     files: ResolvedConfigFile
   }
+  /**
+   * Run the migrations on each layer file that exists (the project file, then
+   * its overlay) and rewrite each one a step applied to, unless `dryRun`. Only
+   * the values that changed are edited, so comments elsewhere are kept. Each
+   * write is a compare-and-swap against the text the migration read: an edit
+   * saved in between throws `WriteConflictError` (`@osdlc/etag-write`) and
+   * leaves that file as it is. Throws {@link ConfigInvalidError}, writing
+   * nothing, when a file cannot be read or parsed, is not a mapping or has an
+   * invalid `version`. The result is not validated against the schema: it
+   * reads back as what {@link load} already reads in memory. Without
+   * `migrations`, no step applies to any file.
+   */
+  migrate(projectRoot: string, opts?: { dryRun?: boolean }): ConfigFileMigrateResult[]
   /** Drop every memo entry (tests). */
   clearCache(): void
 }
@@ -361,6 +463,8 @@ export function assembleConfig<const S extends readonly ConfigSection[]>(
   const fileSchema = build(fileShape)
   const keepStrict = pathMatcher(options.strictAt ?? [])
   const mounted = new Set<string>(sections.map((s) => s.key))
+  const migrations = options.migrations
+  const currentVersion = currentConfigVersion(migrations ?? [])
 
   // One entry per `project\0root` key, never evicted. A host sees only a few config files
   // (per project, the root pair or the file the env var names), so the map stays small.
@@ -372,6 +476,39 @@ export function assembleConfig<const S extends readonly ConfigSection[]>(
     readMappingFile(path, {
       ...(options.parseProblem !== undefined ? { parseProblem: options.parseProblem } : {}),
     })
+
+  /** Why a layer's `version` is not an integer of at least 1, or `null` when it is (or need not be). */
+  const versionProblem = (path: string, data: Record<string, unknown> | null): string | null => {
+    if (migrations === undefined || data === null || !Object.hasOwn(data, 'version')) return null
+    const v = data.version
+    if (typeof v === 'number' && Number.isInteger(v) && v >= 1) return null
+    return `${path}: must be an integer of at least 1, got ${JSON.stringify(v) ?? String(v)}`
+  }
+
+  /**
+   * Run the migrations on one layer's data. A file at or past the last step
+   * is left as it is. `null` when no step applied.
+   */
+  const migrateData = (
+    file: string,
+    data: Record<string, unknown> | null,
+  ): { raw: Record<string, unknown>; migration: LayerMigration } | null => {
+    if (migrations === undefined || data === null) return null
+    const from = configVersionOf(data)
+    if (from >= currentVersion) return null
+    const result = migrateConfigRaw(data, migrations)
+    if (result.applied.length === 0) return null
+    const to = configVersionOf(result.raw)
+    const { applied, warnings } = result
+    return { raw: result.raw, migration: { file, from, to, applied, warnings } }
+  }
+
+  /** A layer's data as the sections see it: with `migrations`, `version` is not a section key. */
+  const sectionData = (data: Record<string, unknown>): Record<string, unknown> => {
+    if (migrations === undefined || !Object.hasOwn(data, 'version')) return data
+    const { version: _version, ...rest } = data
+    return rest
+  }
 
   /** Under `'ignore'`, only the mounted keys reach the parse; the rest is never looked at. */
   const mountedOnly = (merged: Record<string, unknown>): Record<string, unknown> =>
@@ -392,13 +529,38 @@ export function assembleConfig<const S extends readonly ConfigSection[]>(
         label,
       )
     }
+    const badVersions = [projectLayer, localLayer].flatMap(
+      (l) => versionProblem(l.path, l.data) ?? [],
+    )
+    if (badVersions.length > 0) {
+      throw new ConfigInvalidError(
+        existing,
+        badVersions.map((message) => ({ path: 'version', message })),
+        label,
+      )
+    }
+    const migrated: LayerMigration[] = []
+    for (const layer of [projectLayer, localLayer]) {
+      const step = migrateData(layer.path, layer.data)
+      if (step === null) continue
+      layer.data = step.raw
+      migrated.push(step.migration)
+    }
+    // A file a newer tool wrote: read as-is. Its new keys may then fail the schema, and the
+    // error says why; when it loads, one stderr line per handle says so (below).
+    const newer = [projectLayer, localLayer].flatMap((layer) => {
+      if (migrations === undefined || layer.data === null) return []
+      const version = configVersionOf(layer.data)
+      return version > currentVersion ? [{ file: layer.path, version }] : []
+    })
 
     // `'warn'`: unknown keys are stripped from each layer separately, against the per-file
     // schema, so each removal names the file that set it. The merge sees only known keys.
     const unknownKeys: UnknownKeyUse[] = []
     const known = (layer: RawLayer): Record<string, unknown> => {
-      if (unknownTopLevel !== 'warn' || layer.data === null) return layer.data ?? {}
-      const stripped = stripUnknownKeys(fileSchema, layer.data, keepStrict)
+      const data = sectionData(layer.data ?? {})
+      if (unknownTopLevel !== 'warn') return data
+      const stripped = stripUnknownKeys(fileSchema, data, keepStrict)
       for (const path of stripped.unknown) {
         unknownKeys.push({ file: layer.path, path: path.join('.') })
       }
@@ -410,10 +572,16 @@ export function assembleConfig<const S extends readonly ConfigSection[]>(
     if (!result.success) {
       throw new ConfigInvalidError(
         existing,
-        result.error.issues.map((issue) => ({
-          path: issue.path.length > 0 ? issue.path.join('.') : '(root)',
-          message: issue.message,
-        })),
+        [
+          ...result.error.issues.map((issue) => ({
+            path: issue.path.length > 0 ? issue.path.join('.') : '(root)',
+            message: issue.message,
+          })),
+          ...newer.map(({ file, version }) => ({
+            path: 'version',
+            message: newerVersionMessage(file, version, currentVersion),
+          })),
+        ],
         label,
       )
     }
@@ -441,6 +609,12 @@ export function assembleConfig<const S extends readonly ConfigSection[]>(
       process.stderr.write(`${deprecationMessage(`${setIn} key '${key}'`, deprecated)}\n`)
     }
     // Same once-per-handle rule: a reload of an edited file does not repeat a line.
+    for (const { file, version } of newer) {
+      const id = `${files.project}\0version\0${file}\0${version}`
+      if (warned.has(id)) continue
+      warned.add(id)
+      process.stderr.write(`${newerVersionMessage(file, version, currentVersion)}\n`)
+    }
     for (const { file, path } of unknownKeys) {
       const id = `${files.project}\0unknown\0${file}\0${path}`
       if (warned.has(id)) continue
@@ -453,7 +627,78 @@ export function assembleConfig<const S extends readonly ConfigSection[]>(
       merged: config,
       unknownKeys,
       files,
+      migrated,
     }
+  }
+
+  function migrate(projectRoot: string, o: { dryRun?: boolean } = {}): ConfigFileMigrateResult[] {
+    const files = resolveConfigFile(projectRoot, resolveOpts())
+    const write = o.dryRun !== true
+    const plans: { result: ConfigFileMigrateResult; seen: string }[] = []
+    const existing: string[] = []
+    const problems: ConfigIssue[] = []
+    for (const [layer, path] of [
+      ['project', files.project],
+      ['local', files.local],
+    ] as const) {
+      let bytes: Buffer
+      try {
+        bytes = readFileSync(path)
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code === 'ENOENT') continue
+        existing.push(path)
+        problems.push({ path: '(root)', message: `${path}: read failed: ${(e as Error).message}` })
+        continue
+      }
+      existing.push(path)
+      const text = bytes.toString('utf-8')
+      const raw = mappingOf(text, options.parseProblem)
+      if (typeof raw === 'string') {
+        problems.push({ path: '(root)', message: `${path}: ${raw}` })
+        continue
+      }
+      const bad = versionProblem(path, raw)
+      if (bad !== null) {
+        problems.push({ path: 'version', message: bad })
+        continue
+      }
+      const from = configVersionOf(raw)
+      const step = migrateData(path, raw)
+      if (step === null) {
+        const result: ConfigFileMigrateResult = {
+          layer,
+          path,
+          from,
+          to: from,
+          applied: [],
+          warnings: [],
+          written: false,
+          rewrite: null,
+          text: null,
+        }
+        plans.push({ result, seen: '' })
+        continue
+      }
+      const next = rewriteMigrated(text, step.raw)
+      const { to, applied, warnings } = step.migration
+      const result: ConfigFileMigrateResult = {
+        layer,
+        path,
+        from,
+        to,
+        applied,
+        warnings,
+        written: write,
+        rewrite: next.rewrite,
+        text: next.text,
+      }
+      plans.push({ result, seen: etag(bytes) })
+    }
+    if (problems.length > 0) throw new ConfigInvalidError(existing, problems, label)
+    for (const { result, seen } of plans) {
+      if (result.written && result.text !== null) writeCas(result.path, result.text, seen)
+    }
+    return plans.map((p) => p.result)
   }
 
   function loadLayers(projectRoot: string): ConfigLayers<ConfigOf<S>> {
@@ -476,6 +721,7 @@ export function assembleConfig<const S extends readonly ConfigSection[]>(
     fileSchema,
     load: (projectRoot) => loadLayers(projectRoot).merged,
     loadLayers,
+    migrate,
     readLayers(projectRoot) {
       const files = resolveConfigFile(projectRoot, resolveOpts())
       return { project: readRaw(files.project).data, local: readRaw(files.local).data, files }
