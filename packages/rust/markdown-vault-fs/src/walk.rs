@@ -142,8 +142,9 @@ pub struct WalkOptions {
     /// entered.
     pub refuse_symlinks: bool,
     /// Fail the walk with [`WalkError::Io`] when a folder cannot be listed or
-    /// a file cannot be statted. Off by default: the entry is skipped, so a
-    /// projection survives one unreadable file.
+    /// a file cannot be statted. Off by default: a folder that cannot be
+    /// listed yields nothing, and a file that cannot be statted is listed
+    /// with size 0 and no time, so a projection survives one unreadable file.
     pub propagate_errors: bool,
     /// File and folder names skipped wherever they appear, such as
     /// `.DS_Store`. Exact, case-sensitive matches on the name alone.
@@ -439,7 +440,9 @@ impl WalkOptions {
     /// It answers for one path. Under `refuse_symlinks` a whole walk fails
     /// on any symlink it sees, and under
     /// [`WalkOptions::propagate_errors`] on any error; neither is checked
-    /// here.
+    /// here. A file whose metadata cannot be read is
+    /// [`Admission::Unlisted`], though a walk that skips errors lists a file
+    /// it cannot stat with size 0.
     ///
     /// Expects the normalised form [`crate::path::lexical::validate_relative`]
     /// returns. A path with an empty, `.` or `..` segment is outside.
