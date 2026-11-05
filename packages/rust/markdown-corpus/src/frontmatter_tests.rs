@@ -408,9 +408,9 @@ fn clear_forgets_everything() {
     let before = index.changes();
     index.clear();
     assert!(index.is_empty());
-    assert_eq!(index.changes(), before + 1, "emptying the entries is a change");
+    assert_eq!(index.changes(), before + 1, "emptied");
     index.clear();
-    assert_eq!(index.changes(), before + 1, "clearing an empty index is not");
+    assert_eq!(index.changes(), before + 1, "already empty");
     assert_eq!(index.refresh(&*d, &c, root()).added, 2);
 }
 
