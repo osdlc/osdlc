@@ -3,8 +3,8 @@
  *
  * A launcher on PATH runs before any JavaScript runtime is chosen. The
  * canonical install may be a compiled binary, and the linked checkout runs
- * under Bun. So the resolution checks in `resolve.ts` are written again here
- * in bash. The template is the single source. A tool renders it into its repo,
+ * under Bun, or Node when the spec says `runtime: 'node'`. So the resolution
+ * checks in `resolve.ts` are written again here in bash. The template is the single source. A tool renders it into its repo,
  * and a test checks that the committed file still matches (`launcherDrift`).
  *
  * The config directory is inlined for the same reason: the launcher cannot
@@ -14,17 +14,25 @@
  *
  * The `local` case: when rendered with `{ builtEntry }` (a path relative to
  * the checkout root), that file runs under Node when present, else the source
- * entry runs under Bun. A dev checkout (installed with `node_modules`, and
- * with Bun on PATH) skips the built entry, so a committed bundle never hides
- * the source being edited. This is the canonical-install shape for a tool
- * that ships built JavaScript. A tool whose canonical install is elsewhere
+ * entry runs under the spec's runtime. A dev checkout (installed with
+ * `node_modules`, and with that runtime on PATH) skips the built entry, so a
+ * committed bundle never hides the source being edited. This is the
+ * canonical-install shape for a tool that ships built JavaScript. A tool whose canonical install is elsewhere
  * (an npm shim) points `install` at that shim instead and never renders this.
  */
 
 import { readFileSync, realpathSync } from 'node:fs'
 import { dirname, posix, relative, resolve as resolvePath } from 'node:path'
 
-import { cwdDevVar, entryOf, homeVar, launchLayerVar, quietVar, type ToolSpec } from './spec.ts'
+import {
+  cwdDevVar,
+  entryOf,
+  homeVar,
+  launchLayerVar,
+  quietVar,
+  runtimeOf,
+  type ToolSpec,
+} from './spec.ts'
 
 /**
  * Options for the launcher script, such as a built entry to prefer under Node.
@@ -44,6 +52,29 @@ export interface LauncherOptions {
  * `exec.ts` explains why.
  */
 const BUN_FLAGS = '--no-env-file --config=/dev/null'
+
+/**
+ * How the launcher runs a source entry under each runtime: the binary it
+ * finds, the arguments before the entry, the name its comments use, where to
+ * get it, and what it says to run when a dependency is missing. Node needs no
+ * flags: it reads no `.env` or config file from the cwd unless told to.
+ */
+const RUNTIMES = {
+  bun: {
+    bin: 'bun',
+    args: `${BUN_FLAGS} run `,
+    title: 'Bun',
+    install: 'Install Bun (https://bun.sh)',
+    deps: "Run 'bun install' there.",
+  },
+  node: {
+    bin: 'node',
+    args: '',
+    title: 'Node',
+    install: 'Install Node (https://nodejs.org)',
+    deps: "Run its package manager's install there.",
+  },
+} as const
 
 /**
  * Prints the keys of a package.json `dependencies` object, one per line.
@@ -76,7 +107,8 @@ export function launcherCheckout(spec: ToolSpec, launcherPath: string): string |
 
 /**
  * Produce the text of the launcher script for a tool. Throws when the spec
- * sets `packageName`, which the bash checks cannot read.
+ * sets `packageName`, which the bash checks cannot read, or a `runtime`
+ * other than `bun` and `node`.
  * @experimental
  */
 export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): string {
@@ -97,6 +129,13 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   const suppressorGuard = suppressors.map((v) => `[ -z "\${${v}+x}" ]`).join(' && ')
   const guard = suppressorGuard.length > 0 ? ` && ${suppressorGuard}` : ''
   const built = opts.builtEntry
+  const runtime = runtimeOf(spec)
+  if (!Object.hasOwn(RUNTIMES, runtime)) {
+    throw new Error(
+      `devlink: runtime must be 'bun' or 'node', got ${JSON.stringify(runtime as unknown)}`,
+    )
+  }
+  const rt = RUNTIMES[runtime]
   const layerVar = launchLayerVar(spec)
   const configVar = spec.vendorDirs.envVars.dirs.config
   const rootVar = spec.vendorDirs.envVars.root
@@ -179,12 +218,12 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p(`  [ -n "$1" ] && [ -d "$1" ] && [ -f "$1/${marker}" ]`)
   p('}')
   p()
-  p("# Source under Bun resolves imports from the checkout's own node_modules; a fresh")
+  p(`# Source under ${rt.title} resolves imports from the checkout's own node_modules; a fresh`)
   p('# worktree has none, and a fast-forward that adds a dependency leaves it one')
   p('# package short. Either way the first import would fail far from the cause, so')
   p('# name the checkout and the fix up front. $1 is the checkout, $2 the entry; the')
   p('# packages checked are the `dependencies` of every package.json from the entry up')
-  p('# to the checkout, each looked up the way Bun walks node_modules: up to the')
+  p(`# to the checkout, each looked up the way ${rt.title} walks node_modules: up to the`)
   p("# filesystem root, since a workspace member's dependencies can be hoisted")
   p('# above it. A checkout with no dependencies has no node_modules, and needs none.')
   p('need_deps() {')
@@ -201,10 +240,10 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p('          d="$up"')
   p('        done')
   p('        if [ ! -d "$1/node_modules" ]; then')
-  p(`          echo "${name}: $1 has no node_modules. Run 'bun install' there." >&2`)
+  p(`          echo "${name}: $1 has no node_modules. ${rt.deps}" >&2`)
   p('          exit 1')
   p('        fi')
-  p(`        echo "${name}: $1 is missing package '$dep'. Run 'bun install' there." >&2`)
+  p(`        echo "${name}: $1 is missing package '$dep'. ${rt.deps}" >&2`)
   p('        exit 1')
   p('      done')
   p('    fi')
@@ -286,23 +325,23 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   )
   p('fi')
   p()
-  p('# ── a selected checkout other than this one runs its source under Bun ──')
+  p(`# ── a selected checkout other than this one runs its source under ${rt.title} ──`)
   p('if [ -n "$home" ]; then')
   p('  home_real="$(cd -P "$home" && pwd)"')
   p('  if [ "$home_real" != "$self" ]; then')
-  p('    if ! bun="$(find_abs bun)"; then')
+  p(`    if ! ${rt.bin}="$(find_abs ${rt.bin})"; then`)
+  // A bun spec's line reads as it did before `runtime`, so committed launchers do not drift.
+  const under = rt.bin === 'bun' ? '' : ' under node'
   p(
-    `      echo "${name}: the selected checkout ($home_real) runs from source and needs bun on an absolute PATH entry." >&2`,
+    `      echo "${name}: the selected checkout ($home_real) runs from source${under} and needs ${rt.bin} on an absolute PATH entry." >&2`,
   )
-  p(
-    `      echo "      Install Bun (https://bun.sh), or run '${name} dev off' to use the local install." >&2`,
-  )
+  p(`      echo "      ${rt.install}, or run '${name} dev off' to use the local install." >&2`)
   p('      exit 1')
   p('    fi')
   p(`    need_deps "$home_real" "$home_real/${entry}"`)
   p(`    announce "$home_real/${entry}" "$via"`)
   p(`    export ${layerVar}="$layer"`)
-  p(`    exec "$bun" ${BUN_FLAGS} run "$home_real/${entry}" "$@"`)
+  p(`    exec "$${rt.bin}" ${rt.args}"$home_real/${entry}" "$@"`)
   p('  fi')
   p(
     "  # The selected checkout is this launcher's own: it reads as the install, not as a dev selection.",
@@ -315,12 +354,12 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
     const builtRel = posix.relative(launcherDir === '.' ? '' : launcherDir, built)
     // `node_modules` is the sign. A plugin harness's clone of the repo has the
     // source but was never installed, so it uses the built entry.
-    p('# A dev checkout (installed, with bun) runs its source, so a committed')
+    p(`# A dev checkout (installed, with ${rt.bin}) runs its source, so a committed`)
     p('# built entry never shadows the code being edited. Anything else — an')
     p('# install, or an uninstalled clone — runs the built entry.')
     p('dev_checkout=0')
     p(
-      'if is_checkout "$self" && [ -d "$self/node_modules" ] && find_abs bun >/dev/null; then dev_checkout=1; fi',
+      `if is_checkout "$self" && [ -d "$self/node_modules" ] && find_abs ${rt.bin} >/dev/null; then dev_checkout=1; fi`,
     )
     p(`if [ "$dev_checkout" = "0" ] && [ -f "$here/${builtRel}" ]; then`)
     p('  if ! node="$(find_abs node)"; then')
@@ -333,15 +372,15 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
     p(`  exec "$node" "$here/${builtRel}" "$@"`)
     p('fi')
   }
-  p('if ! bun="$(find_abs bun)"; then')
+  p(`if ! ${rt.bin}="$(find_abs ${rt.bin})"; then`)
   p(
-    `  echo "${name}: the source entry needs bun on an absolute PATH entry. Install Bun (https://bun.sh)." >&2`,
+    `  echo "${name}: the source entry needs ${rt.bin} on an absolute PATH entry. ${rt.install}." >&2`,
   )
   p('  exit 1')
   p('fi')
   p(`need_deps "$self" "$self/${entry}"`)
   p(`export ${layerVar}="$layer"`)
-  p(`exec "$bun" ${BUN_FLAGS} run "$self/${entry}" "$@"`)
+  p(`exec "$${rt.bin}" ${rt.args}"$self/${entry}" "$@"`)
   return lines.join('\n') + '\n'
 }
 

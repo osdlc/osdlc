@@ -116,7 +116,8 @@ import { validateSpec, type ToolSpec } from '@osdlc/cli-tool/devlink'
 export const SPEC: ToolSpec = validateSpec({
   name: 'tooly',          // the command; the state segment; the env stem
   marker: 'bin/tooly.js', // exists in every checkout of this tool, nowhere else
-  entry: 'src/cli.ts',    // what a selected checkout runs under bun (default: marker)
+  entry: 'src/cli.ts',    // what a selected checkout runs (default: marker)
+  runtime: 'bun',         // optional: 'node' runs the entry under node instead
   launcher: 'bin/tooly.js', // what the PATH shim from `install` runs
   aliases: ['ty'],         // extra PATH names
   packageName: '@example/tooly', // optional: package.json name a checkout must have
@@ -150,7 +151,8 @@ process.exitCode = handedOff ?? (await main(argv))
 `execSelection` returns `null` for a `local` selection, meaning run your own
 code. Otherwise it sets `<NAME>_LAUNCH_LAYER` to the winning layer, as the bash
 launcher does, and runs `bun --no-env-file --config=<null device> run
-<entry>` (or a project copy's bin under node). On POSIX it replaces the
+<entry>` (`node <entry>` for a `runtime: 'node'` spec, and a project copy's
+bin under the runtime its `#!` line names). On POSIX it replaces the
 process with `process.execve`, as the bash launcher's `exec` does, so signals
 and the exit status belong to the program that runs. On Windows, on a Node
 without `execve`, and when `execve` fails for a reason other than `ENOENT` or
@@ -172,8 +174,10 @@ binary yourself.
 whose dependencies are not installed, as the bash launcher's `need_deps` does,
 so a fresh clone says `<name>: <checkout> has no node_modules. Run 'bun
 install' there.` (or names the missing package) and exits 1, instead of
-failing inside the checkout's code. `missingDependency(checkout, entry)` is
-that check, for a launcher written by hand.
+failing inside the checkout's code. For a `runtime: 'node'` spec the line
+says `Run its package manager's install there.` instead.
+`missingDependency(checkout, entry)` is that check, for a launcher written by
+hand.
 
 A bash launcher is for a tool whose canonical install is a compiled binary or
 built JavaScript, so the choice must be made before any runtime exists.
@@ -185,14 +189,53 @@ the marker must be unique. The bash launcher reads a drive path such as
 `C:/x` in `<NAME>_HOME` as absolute only under Git Bash, MSYS or Cygwin, as
 `resolve()` does only on Windows. It finds `bun` and `node` on the absolute
 `PATH` entries only, as `execSelection` does, and exits 1 with a message
-when none is found. The tool commits the result, and `launcherDrift(spec, checkout)` in its test suite
+when none is found. With `runtime: 'node'` it runs every source entry under
+node instead of bun. The tool commits the result, and `launcherDrift(spec, checkout)` in its test suite
 fails when the committed file no longer matches the rendered one. Pass
 `{ builtEntry }` to prefer a built file under Node. A dev checkout of the
-tool itself (`node_modules` present, `bun` on PATH) still runs its own
-source, so a committed built entry never hides the code being edited.
+tool itself (`node_modules` present, and `bun` on PATH, or `node` for a
+`runtime: 'node'` spec) still runs its own source, so a committed built entry
+never hides the code being edited.
 
 The package's launcher test drives the rendered script through every layer with
 a fake `bun` on PATH and asserts it picks what `resolve()` picks.
+
+## A checkout that runs under node
+
+A tool whose source runs under node sets `runtime: 'node'` in its spec. A
+selected checkout then runs `node <entry>`, by the entry's path, with no
+flags: node reads no `.env` or config file from the cwd unless told to. The
+`node` is the one running when this process is node, else the first `node` on
+an absolute `PATH` entry; pass `{ node }` to `execSelection` to name it. The
+bash launcher does the same for a selected checkout and for its own source.
+A project's copy is not affected: it runs under the runtime its bin's `#!`
+line names, whatever the spec says.
+
+The entry is the source itself, not a built file, so the code you edit is the
+code that runs, as it is under bun. A TypeScript entry (`.ts`, `.mts`, `.cts`)
+runs through Node's own type stripping, which is on by default from Node 22.18
+(and 23.6). Node strips types and nothing else, so the checkout's code must
+use only erasable syntax (no `enum`, no `namespace`, no parameter
+properties), mark type-only imports with `import type`, import its own files
+with their `.ts` extension, and not rely on `paths` aliases; a `.tsx` or `.jsx` entry is refused by `validateSpec`. A
+tool whose code needs more than that keeps `runtime: 'bun'`, or points
+`entry` at a built `.js` file and builds before it runs. The reasons are in
+[D-03](../docs/planning/decisions/D-03-node-checkouts-run-their-ts-source.md).
+
+`dev link` and `dev use` check the entry before they write the link, and
+refuse with exit 1 when it cannot run:
+
+```text
+tooly dev: cannot run /src/tooly: src/cli.ts is TypeScript, which node runs only from 22.18 on; /usr/bin/node is v22.17.0. Install Node 22.18 or later, or point the spec's entry at a built .js file.
+```
+
+The entry must be a file, under either runtime. Under node, a TypeScript
+entry must not sit under a `node_modules` folder, where node refuses to strip
+types, and the `node` found as above must be 22.18 or later. The running node
+answers from `process.versions`; under bun, `node --version` is asked once.
+The launch itself does not check the version again, since under bun that
+would cost a spawn on every run; a node that is downgraded after `dev link`
+fails with its own `Unknown file extension ".ts"` error.
 
 ## The verbs
 

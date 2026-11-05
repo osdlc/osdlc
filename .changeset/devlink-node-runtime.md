@@ -1,0 +1,5 @@
+---
+'@osdlc/cli-tool': minor
+---
+
+devlink: a `ToolSpec` can set `runtime: 'node'` so a checkout chosen by `<NAME>_HOME`, the cwd or `dev link` runs `node <entry>` instead of `bun run`, in `execSelection` and in the bash launcher from `renderLauncher` (which also runs its own source under node then). A `.ts` entry runs from source through Node's type stripping, which needs Node 22.18 or later. `dev link` and `dev use` now check the entry before writing the link: it must be a file (under bun too), and for a node spec with a TypeScript entry it must not sit under `node_modules` and the `node` that will run it must be 22.18 or later. `validateSpec` refuses another runtime, and a `.tsx` or `.jsx` entry under node. A missing dependency in a node checkout says to run its package manager's install. A spec without `runtime` behaves as before and renders the same bash launcher, byte for byte.

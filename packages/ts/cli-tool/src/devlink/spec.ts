@@ -51,10 +51,21 @@ export interface ToolSpec {
    */
   projectLayer?: boolean
   /**
-   * The source entry to run under Bun inside a selected checkout, relative to
-   * the checkout root. Defaults to {@link marker}.
+   * The source entry a selected checkout runs, relative to the checkout
+   * root, under {@link runtime}. Defaults to {@link marker}.
    */
   entry?: string
+  /**
+   * What runs a selected checkout's {@link entry}: `bun` (the default) runs
+   * it with `bun run`, `node` runs it with `node <entry>`. Under node a
+   * TypeScript entry (`.ts`, `.mts`, `.cts`) runs from source through
+   * Node's type stripping, which needs Node 22.18 or later; a `.js` entry
+   * runs as it is. `dev link` and `dev use` check that the entry can run.
+   * The bash launcher runs its own checkout's source the same way. A
+   * project's copy is not affected: it runs under the runtime its bin's
+   * `#!` line names.
+   */
+  runtime?: 'bun' | 'node'
   /**
    * The executable the PATH shim from `install` runs, relative to the checkout
    * root. It is the tool's own launcher: a bash script that resolves before any
@@ -188,6 +199,14 @@ export function entryOf(spec: ToolSpec): string {
 }
 
 /**
+ * What runs a selected checkout's entry: the spec's `runtime`, else `bun`.
+ * @internal
+ */
+export function runtimeOf(spec: ToolSpec): 'bun' | 'node' {
+  return spec.runtime ?? 'bun'
+}
+
+/**
  * Every PATH name `install` writes: the tool's own, then its aliases.
  *
  * @experimental
@@ -234,6 +253,17 @@ export function validateSpec(spec: ToolSpec): ToolSpec {
   }
   if (spec.packageName !== undefined && spec.packageName.length === 0) {
     throw new Error('devlink: packageName must not be empty')
+  }
+  if (spec.runtime !== undefined && spec.runtime !== 'bun' && spec.runtime !== 'node') {
+    throw new Error(
+      `devlink: runtime must be 'bun' or 'node', got ${JSON.stringify(spec.runtime as unknown)}`,
+    )
+  }
+  // Node strips types but does not transform JSX, so it cannot run either.
+  if (spec.runtime === 'node' && /\.[jt]sx$/.test(entryOf(spec))) {
+    throw new Error(
+      `devlink: node cannot run a JSX entry, got ${JSON.stringify(entryOf(spec))}; point entry at a .ts or .js file`,
+    )
   }
   return spec
 }

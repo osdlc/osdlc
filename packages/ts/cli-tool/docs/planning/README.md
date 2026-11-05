@@ -22,6 +22,8 @@ They are never reused. Each decision has a `state`: `accepted` or
 
 - [D-01](decisions/D-01-failures-share-one-exit-table.md): Classified failures
   share one message form and one exit table
+- [D-03](decisions/D-03-node-checkouts-run-their-ts-source.md): A node
+  checkout runs its TypeScript source through Node's type stripping
 
 ## Backlog
 
