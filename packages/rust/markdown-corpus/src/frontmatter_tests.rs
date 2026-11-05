@@ -431,19 +431,13 @@ fn apply_change_drops_the_old_spelling_of_a_case_only_rename() {
         join_rel(root(), "Notes/A.md"),
     );
     index.apply_changes(&vfs, root(), &["Notes/a.md".into(), "Notes/A.md".into()]);
-    let applied: Vec<String> = index
-        .page(0, None)
-        .0
-        .iter()
-        .map(|n| n.path.clone())
-        .collect();
+    let paths = || -> Vec<String> {
+        let (notes, _) = index.page(0, None);
+        notes.iter().map(|n| n.path.clone()).collect()
+    };
+    let applied = paths();
     index.refresh_now(&vfs, &c, root());
-    let swept: Vec<String> = index
-        .page(0, None)
-        .0
-        .iter()
-        .map(|n| n.path.clone())
-        .collect();
+    let swept = paths();
     assert_eq!(swept, ["Notes/A.md", "Notes/b.md"]);
     assert_eq!(applied, swept, "the apply agrees with the sweep");
 }
