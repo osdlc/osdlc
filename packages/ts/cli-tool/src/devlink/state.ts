@@ -1,6 +1,7 @@
 /**
  * The two files devlink keeps per tool, in the config home of the tool's
- * standalone tier (`<config>/<name>/`, under the `xdg` convention):
+ * standalone tier (`<config>/<name>/`, under the `xdg` convention), or in the
+ * directory the spec's `stateDir` names (`~/.tooly/`):
  *
  *   home             the active link: one absolute checkout path, or absent.
  *                    A bash launcher reads it with `cat`, which is why it is a
@@ -25,7 +26,8 @@ import { dirname, join } from 'node:path'
 
 import { atomicWrite } from '@osdlc/etag-write'
 import { systemDirs, type TieredDirs } from '@osdlc/config-layers/dirs'
-import type { ToolSpec } from './spec.ts'
+import { homeDir } from '@osdlc/tiered-dirs'
+import { stateDirSegments, type ToolSpec } from './spec.ts'
 
 /**
  * The name of the file that holds the active link.
@@ -77,7 +79,8 @@ export interface StateOptions {
    * The directories to resolve against. Defaults to `spec.vendorDirs` on the
    * running system. Tests inject a rooted one so files go under a temp dir.
    * The bash launcher cannot see this option. To move the state for real
-   * use, set the vendor's `<P>_CONFIG_DIR` or `<P>_ROOT`, which both read.
+   * use, set the vendor's `<P>_CONFIG_DIR` or `<P>_ROOT`, which both read,
+   * or the spec's `stateDir`. When given, `stateDir` is not read.
    */
   dirs?: TieredDirs
   /**
@@ -89,19 +92,53 @@ export interface StateOptions {
 }
 
 /**
+ * Pinned to `xdg`: `<PREFIX>_CONVENTION` must not move the file away from
+ * where the bash launcher reads it.
+ */
+const XDG_PINNED = { convention: 'xdg', conventionFromEnv: false } as const
+
+/**
  * `<config>/<name>` for this tool, under the `xdg` convention:
  * `${XDG_CONFIG_HOME:-~/.config}/<name>` on Linux and macOS, `%APPDATA%\<name>`
- * on Windows. The vendor's `<P>_CONFIG_DIR` and `<P>_ROOT` move it, and the
- * bash launcher reads them too, so it reads the same path.
+ * on Windows. A spec that sets `stateDir` (`~/.tooly`) replaces that default
+ * with the directory under the user's home. The vendor's `<P>_CONFIG_DIR` and
+ * `<P>_ROOT` move it either way, and the bash launcher reads them too, so it
+ * reads the same path.
+ *
+ * Given `opts.dirs`, the state is that tree's config home and `stateDir` is
+ * not read. In a test runner process, tiered-dirs' per-process test root
+ * wins over `stateDir` as it wins over the `xdg` default, so a test never
+ * touches the user's real link.
  *
  * @experimental
  */
 export function stateDir(spec: ToolSpec, opts: StateOptions = {}): string {
-  // Pinned: `<PREFIX>_CONVENTION` must not move the file away from where the
-  // bash launcher reads it.
-  const dirs =
-    opts.dirs ?? systemDirs(spec.vendorDirs, { convention: 'xdg', conventionFromEnv: false })
-  return dirs.standalone(spec.name).config().path
+  if (opts.dirs !== undefined) return opts.dirs.standalone(spec.name).config().path
+  const segments = stateDirSegments(spec)
+  // Resolved even when `stateDir` is set, so a relative override and
+  // `<P>_REQUIRE_OVERRIDE` throw as they do without it.
+  const config = systemDirs(spec.vendorDirs, XDG_PINNED).standalone(spec.name).config().path
+  if (segments === null) return config
+  const vars = spec.vendorDirs.envVars
+  // An empty value counts as unset, as in tiered-dirs and the launcher.
+  if (process.env[vars.dirs.config] || process.env[vars.root]) return config
+  if (testRootApplied(spec, config)) return config
+  return join(homeDir(), ...segments)
+}
+
+/**
+ * Whether `config`, resolved with neither the config nor the root variable
+ * set, came from tiered-dirs' test root. Resolving again without the test
+ * root gives a different path, or throws (`<P>_REQUIRE_OVERRIDE`, or no
+ * home), only when it did.
+ */
+function testRootApplied(spec: ToolSpec, config: string): boolean {
+  try {
+    const outside = systemDirs(spec.vendorDirs, { ...XDG_PINNED, testRoot: false })
+    return outside.standalone(spec.name).config().path !== config
+  } catch {
+    return true
+  }
 }
 
 /**
