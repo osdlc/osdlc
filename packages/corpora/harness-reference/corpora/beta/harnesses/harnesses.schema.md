@@ -84,25 +84,11 @@ $defs:
 # Harnesses
 
 One record per harness. The file name is the product's name as the vendor writes it, such as
-`Claude Code.md` or `goose.md`. The frontmatter holds the fields below. The body is two to four
-plain sentences on what it is, who makes it, and anything notable.
+`Claude Code.md` or `goose.md`. A record's frontmatter holds its fields. Its body is two to four
+plain sentences on what the harness is, who makes it, and anything notable.
 
-| Field         | Required | Holds                                                                   |
-| ------------- | -------- | ----------------------------------------------------------------------- |
-| `vendor`      | yes      | The company or organization that makes it                               |
-| `homepage`    | yes      | The product's main page                                                 |
-| `docs`        | yes      | The start of its user documentation                                     |
-| `repository`  | no       | The public source repository; omitted when the source is not public     |
-| `license`     | no       | SPDX license id; only set when `open_source` is true                    |
-| `open_source` | yes      | Whether its source is published under an open-source license            |
-| `cli`         | no       | The command a user types to start it; omitted when it has no CLI        |
-| `surfaces`    | yes      | One or more of `cli`, `ide`, `desktop`, `web`                           |
-| `status`      | yes      | `current`, `sunsetting` or `retired`                                    |
-| `successor`   | no       | A link to the harness the vendor names as its replacement               |
-| `fork_of`     | no       | A link to the harness it was forked from                                |
-| `versioning`  | yes      | `semver`, `date` or `unknown`, as its releases show                     |
-| `checked`     | yes      | The date the record was last checked against its sources (`YYYY-MM-DD`) |
-| `sources`     | yes      | `{ url, title }` pages that back every value above; at least one        |
+This file's frontmatter is the schema and the only list of the fields: each field's `description`
+says what it holds. The rules below are the ones a description does not say clearly.
 
 - `successor` and `fork_of` are relative links to another harness, written as a quoted string:
   `successor: "[Antigravity](Antigravity.md)"`. `x-ref: harnesses` makes the validator check that

@@ -16,8 +16,8 @@ The validator lives in `../../src/markdown-db/`.
   front page.
 - `harnesses/`: the `harnesses` type. One record per harness, named after the product as the vendor
   writes it, such as `Claude Code.md`.
-- `harnesses/harnesses.schema.md`: the schema, written by hand as a JSON Schema in the frontmatter.
-  Its body lists the fields. It is the source of truth for them.
+- `harnesses/harnesses.schema.md`: the schema, a hand-written JSON Schema in the frontmatter. It is
+  the source of truth for the fields; the body explains them.
 
 `successor` and `fork_of` are relative links to another harness record, written as quoted strings:
 `successor: "[Antigravity](Antigravity.md)"`.

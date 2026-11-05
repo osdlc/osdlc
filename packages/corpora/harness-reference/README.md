@@ -5,7 +5,8 @@ instructions, how skills are named and called, which frontmatter fields they hon
 hook and MCP formats, and their CLI session surface. Every value has a date and a source. A small
 generator turns the record into static HTML pages.
 
-The record is kept as corpora: folders of Markdown files, each with its own schema and validator.
+The record is kept in `corpora/`: `alpha`, a frozen OKF bundle with its own validator, and `beta`,
+a [markdown-db](../docs/standards/S-GFFY-markdown-db.md) corpus.
 
 - `corpora/alpha/`: the alpha corpus, the first prototype. It is frozen: only fixes to links, paths
   and wrong values go in. New research goes into a later corpus.
