@@ -51,6 +51,9 @@ created: 2026-10-19
   machine. A process that is a new session writes its own `launched` event in
   its own directory, with its own meta.
 - The record gains `meta?: M`.
+- `meta` is for the caller's own fields only. The fields observe already
+  defines, such as `run`, `subject`, `task` and `parent`, stay where they are,
+  and `meta` never shadows them.
 - Schema evolution. The event schema parses `meta` as a plain object, and the
   reducer validates it against the reading model's schema. A `launched` event
   whose meta fails a newer schema still yields a record without `meta`, and its

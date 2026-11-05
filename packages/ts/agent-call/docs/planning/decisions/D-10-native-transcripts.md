@@ -51,6 +51,21 @@ created: 2026-10-19
 - The package reads and never writes. Copying the logs somewhere, and the rules
   for replacing an earlier copy, are the caller's.
 
+- `CLAUDE_CONFIG_DIR` and `CODEX_HOME` count only when they hold an absolute
+  path. An empty or relative value counts as unset, the same rule
+  `@osdlc/detect-harness` applies.
+
+### Where the locations come from
+
+`@osdlc/detect-harness` keeps a table of where each harness keeps its files.
+That table already names the claude transcripts folder (`{config}/projects`)
+and the codex sessions folder (`{config}/sessions`), as paths only;
+detect-harness never reads them. agent-call has no dependencies and keeps it
+that way, so it does not import the table. It holds its own copy of the few
+paths it reads instead, and its tests pin the same values. The table has no
+entry for codex's `archived_sessions` or claude's per-session `subagents`
+folder; those would be added there as paths, so the two packages agree.
+
 ### claude
 
 - The log is `<config>/projects/<cwd>/<id>.jsonl`.
