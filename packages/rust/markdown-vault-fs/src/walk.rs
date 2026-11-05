@@ -442,31 +442,45 @@ impl WalkOptions {
     }
 
     fn admits_hiding(&self, rel: &str, hide: Option<&HideRules>) -> bool {
-        let segs: Vec<&str> = rel.split('/').collect();
-        if segs.iter().any(|s| s.is_empty() || *s == "." || *s == "..") {
-            return false;
-        }
-        let (name, dirs) = segs.split_last().expect("split yields one segment");
-        if segs.iter().any(|s| self.skip_names.iter().any(|n| n == s))
-            || dirs.iter().any(|d| self.prune_dirs.iter().any(|n| n == d))
+        if rel
+            .split('/')
+            .any(|s| s.is_empty() || s == "." || s == "..")
         {
             return false;
         }
-        if !self.roots.is_empty()
-            && !self.roots.iter().map(|r| relative_root(r)).any(|root| {
-                !root.split('/').any(|seg| seg == "..")
-                    && (root.is_empty()
-                        || rel
-                            .strip_prefix(root.as_str())
-                            .is_some_and(|r| r.starts_with('/')))
+        // The skip and prune lists apply below where the walk starts, as in
+        // `vfs_walk`: a root inside a pruned folder is still walked.
+        let walks = |tail: &str| {
+            let dirs = tail.rsplit_once('/').map_or("", |(dirs, _)| dirs);
+            !tail
+                .split('/')
+                .any(|s| self.skip_names.iter().any(|n| n == s))
+                && !dirs
+                    .split('/')
+                    .any(|d| self.prune_dirs.iter().any(|n| n == d))
+        };
+        let reached = if self.roots.is_empty() {
+            walks(rel)
+        } else {
+            self.roots.iter().map(|r| relative_root(r)).any(|root| {
+                if root.split('/').any(|seg| seg == "..") {
+                    false
+                } else if root.is_empty() {
+                    walks(rel)
+                } else {
+                    rel.strip_prefix(root.as_str())
+                        .and_then(|r| r.strip_prefix('/'))
+                        .is_some_and(walks)
+                }
             })
-        {
+        };
+        if !reached {
             return false;
         }
         if !self.visibility.admits_path(rel) || hide.is_some_and(|h| h.hides_path(rel, false)) {
             return false;
         }
-        self.collects(rel, name)
+        self.collects(rel, rel.rsplit('/').next().unwrap_or(rel))
     }
 
     /// Whether this walk collects a file it can see: the exclude list, then
@@ -995,6 +1009,34 @@ mod tests {
             "../v/Notes/alpha.md",
         ] {
             assert!(!notes.admits(&d, Path::new(V), bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn admits_walks_a_root_inside_a_pruned_folder() {
+        let d = fixture();
+        mk(&d, "node_modules/pkg/readme.md", "x");
+        mk(&d, "node_modules/pkg/node_modules/dep/readme.md", "x");
+        mk(&d, "node_modules/pkg/.DS_Store.md", "x");
+        let opts = WalkOptions {
+            roots: vec!["node_modules/pkg".into()],
+            skip_names: vec![".DS_Store.md".into()],
+            prune_dirs: vec!["node_modules".into()],
+            ..WalkOptions::content_notes()
+        };
+        let walked = rels(w(&d, &opts));
+        assert_eq!(walked, ["node_modules/pkg/readme.md"]);
+        for rel in [
+            "node_modules/pkg/readme.md",
+            "node_modules/pkg/node_modules/dep/readme.md",
+            "node_modules/pkg/.DS_Store.md",
+            "Notes/alpha.md",
+        ] {
+            assert_eq!(
+                opts.admits(&d, Path::new(V), rel),
+                walked.iter().any(|w| w == rel),
+                "{rel}"
+            );
         }
     }
 
