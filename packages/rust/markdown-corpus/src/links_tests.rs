@@ -227,6 +227,25 @@ fn a_failed_walk_leaves_the_graph_as_it_was() {
     assert!(g.try_refresh(&*d, &c, root()).is_err());
 }
 
+#[test]
+fn applies_still_land_after_a_failed_walk() {
+    let d = linked_vault();
+    let locked = hooks::StatHook::unreadable(&*d, join_rel(root(), "Projects/Beta.md"));
+    let (g, c) = (walking(Errors::Propagate), FixedClock::new(0));
+    g.try_refresh(&*d, &c, root()).unwrap();
+    // Beta changed, so the walk reads it again, and cannot.
+    put(&d, "Projects/Beta.md", "changed, and now locked\n");
+    assert!(g.try_refresh_now(&locked, &c, root()).is_err());
+    put(&d, "Home.md", "No links now.\n");
+    g.apply_changes(&*d, root(), &["Home.md".to_string()]);
+    assert_eq!(g.applied(), 1);
+    assert_eq!(
+        g.backlinks("Projects/Alpha.md").total,
+        1,
+        "Home's links are gone"
+    );
+}
+
 fn walking(errors: Errors) -> LinkGraph {
     graph().with_walk(WalkOptions {
         errors,

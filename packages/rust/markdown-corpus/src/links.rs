@@ -413,8 +413,9 @@ impl LinkGraph {
         clock: &dyn Clock,
         vault_dir: &Path,
     ) -> Result<GraphStats, WalkError> {
-        self.sweep(vfs, clock.now_ms(), vault_dir, true)
-            .inspect_err(|_| self.mark_stale())
+        let now = clock.now_ms();
+        self.sweep(vfs, now, vault_dir, true)
+            .inspect_err(|_| self.spend_ttl(vault_dir, now))
     }
 
     /// [`Self::refresh_now`] that returns a walk error.
@@ -424,8 +425,9 @@ impl LinkGraph {
         clock: &dyn Clock,
         vault_dir: &Path,
     ) -> Result<GraphStats, WalkError> {
-        self.sweep(vfs, clock.now_ms(), vault_dir, false)
-            .inspect_err(|_| self.mark_stale())
+        let now = clock.now_ms();
+        self.sweep(vfs, now, vault_dir, false)
+            .inspect_err(|_| self.spend_ttl(vault_dir, now))
     }
 
     fn sweep(
@@ -713,6 +715,10 @@ impl LinkGraph {
             return;
         }
         state.applied += 1;
+        if stale {
+            state.swept_at = None;
+            state.stale_marks += 1;
+        }
         let mut paths_changed = false;
         let mut notes_changed = false;
         // The files the apply looked at, listed before or now. What it met
@@ -746,10 +752,6 @@ impl LinkGraph {
                 Seen::File => {}
                 Seen::Gone => notes_changed |= notes.remove(rel.as_str()).is_some(),
             }
-        }
-        if stale {
-            state.swept_at = None;
-            state.stale_marks += 1;
         }
         let unreadable = Arc::make_mut(&mut state.unreadable);
         unreadable.retain(|e| !files.contains(e.path()));
@@ -800,6 +802,18 @@ impl LinkGraph {
         let mut state = self.state.lock().unwrap();
         state.swept_at = None;
         state.stale_marks += 1;
+    }
+
+    /// After a failed walk at `now`: the last good sweep stays, and keeps
+    /// taking applies, but no longer counts as fresh, so the next refresh
+    /// walks again rather than hide the failure.
+    fn spend_ttl(&self, vault_dir: &Path, now: i64) {
+        let mut state = self.state.lock().unwrap();
+        if state.for_vault.as_deref() == Some(vault_dir)
+            && let Some(done) = state.swept_at.as_mut()
+        {
+            *done = (*done).min(now - self.ttl());
+        }
     }
 
     fn ttl(&self) -> i64 {

@@ -514,6 +514,19 @@ fn a_note_spelled_otherwise_than_on_disk_makes_the_next_refresh_walk() {
 }
 
 #[test]
+fn a_change_to_the_obsidian_folder_makes_the_next_refresh_walk() {
+    let d = vault();
+    let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
+    index.refresh(&*d, &c, root());
+    let sweeps = index.sweeps();
+    index.refresh(&*d, &c, root());
+    assert_eq!(index.sweeps(), sweeps, "fresh");
+    index.apply_change(&*d, root(), ".obsidian");
+    index.refresh(&*d, &c, root());
+    assert_eq!(index.sweeps(), sweeps + 1);
+}
+
+#[test]
 fn a_failed_walk_is_reported_as_the_index_stands() {
     let d = vault();
     let strict = WalkOptions {
@@ -528,8 +541,7 @@ fn a_failed_walk_is_reported_as_the_index_stands() {
     d.remove(root()).unwrap();
     let stats = index.refresh_now(&*d, &c, root());
     assert_eq!((stats.unchanged, stats.is_empty()), (2, true));
-    // `refresh`, once the TTL is out, the same.
-    c.advance(crate::links::REFRESH_TTL_MS);
+    // A failed walk is not fresh: `refresh`, inside the TTL, walks again.
     let sweeps = index.sweeps();
     assert_eq!(index.refresh(&*d, &c, root()), stats);
     assert_eq!(index.sweeps(), sweeps + 1, "it walked");

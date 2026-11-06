@@ -175,8 +175,9 @@ impl FrontmatterIndex {
         clock: &dyn Clock,
         vault_dir: &Path,
     ) -> Result<RefreshStats, WalkError> {
-        self.sweep(vfs, clock.now_ms(), vault_dir, true)
-            .inspect_err(|_| self.mark_stale())
+        let now = clock.now_ms();
+        self.sweep(vfs, now, vault_dir, true)
+            .inspect_err(|_| self.spend_ttl(vault_dir, now))
     }
 
     /// [`Self::refresh_now`] that returns a walk error.
@@ -186,8 +187,9 @@ impl FrontmatterIndex {
         clock: &dyn Clock,
         vault_dir: &Path,
     ) -> Result<RefreshStats, WalkError> {
-        self.sweep(vfs, clock.now_ms(), vault_dir, false)
-            .inspect_err(|_| self.mark_stale())
+        let now = clock.now_ms();
+        self.sweep(vfs, now, vault_dir, false)
+            .inspect_err(|_| self.spend_ttl(vault_dir, now))
     }
 
     /// How many walks this index has done.
@@ -214,6 +216,18 @@ impl FrontmatterIndex {
         let mut state = self.state.lock().unwrap();
         state.walked_at = None;
         state.stale_marks += 1;
+    }
+
+    /// After a failed walk at `now`: the last good walk stays, and keeps
+    /// taking applies, but no longer counts as fresh, so the next refresh
+    /// walks again rather than hide the failure.
+    fn spend_ttl(&self, vault_dir: &Path, now: i64) {
+        let mut state = self.state.lock().unwrap();
+        if state.for_vault.as_deref() == Some(vault_dir)
+            && let Some(done) = state.walked_at.as_mut()
+        {
+            *done = (*done).min(now - self.ttl());
+        }
     }
 
     fn ttl(&self) -> i64 {
@@ -400,26 +414,26 @@ impl FrontmatterIndex {
     /// once ([`WalkOptions::admissions`]).
     pub(crate) fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
         let notes: Vec<String> = rels.iter().filter(|rel| is_note(rel)).cloned().collect();
+        // The admissions read the file system, so they are taken under the
+        // apply lock: an apply that read a note before another apply must
+        // not install after it.
+        let _apply = self.apply_lock.lock().unwrap();
+        let mut respelled = false;
         if !notes.is_empty() {
-            // The admissions read the file system, so they are taken under
-            // the apply lock: an apply that read a note before another apply
-            // must not install after it.
-            let _apply = self.apply_lock.lock().unwrap();
-            let mut respelled = false;
             for (rel, admission) in self.walk.admissions(vfs, vault_dir, &notes) {
                 respelled |= admission == Admission::Respelled;
                 self.apply_admitted(vfs, vault_dir, rel, admission);
             }
-            // Gone by that spelling, there by the disk's, which only a walk
-            // finds. Marked after the batch, so the rest of it still applies.
-            if respelled && self.state.lock().unwrap().for_vault.as_deref() == Some(vault_dir) {
-                self.mark_stale();
-            }
         }
-        if rels.iter().any(|rel| self.walk.reads_rules_from(rel))
-            && self.state.lock().unwrap().for_vault.as_deref() == Some(vault_dir)
-        {
-            self.mark_stale();
+        // A respelled note is there by the disk's spelling, which only a walk
+        // finds, and the excluded files can move any note. Marked after the
+        // batch, so the rest of it still applies.
+        if respelled || rels.iter().any(|rel| self.walk.reads_rules_from(rel)) {
+            let mut state = self.state.lock().unwrap();
+            if state.for_vault.as_deref() == Some(vault_dir) {
+                state.walked_at = None;
+                state.stale_marks += 1;
+            }
         }
     }
 

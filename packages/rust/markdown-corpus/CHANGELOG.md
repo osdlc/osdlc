@@ -38,9 +38,9 @@ never reads. Built on `markdown-vault-fs` 0.6.
 - `refresh` and `refresh_now`, on both caches, report a failed walk as the
   cache stands (every note `unchanged`, and `resolvable` on the graph), as
   a reused sweep does. Before, they reported all zeros while the cache
-  still held its notes. A failed walk now also leaves the cache stale, so
-  the next refresh walks again instead of reusing the last good sweep
-  inside the TTL.
+  still held its notes. A failed walk also spends the TTL of the last good
+  sweep, so the next refresh walks again instead of reusing it; the cache
+  still takes applies.
 - An apply that names a path its folder lists under another spelling
   (`Admission::Respelled`) drops it, as before, and now marks the cache
   stale, so the next refresh walks and reads the file by the disk's
