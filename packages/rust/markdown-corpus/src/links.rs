@@ -389,17 +389,18 @@ impl LinkGraph {
     /// Walks the corpus and brings the graph up to date, reusing a sweep
     /// younger than the TTL over the same corpus. A reused sweep reports the
     /// cache as `unchanged`. A walk error leaves the graph as it was (empty
-    /// when `vault_dir` is another corpus) and reports nothing changed;
-    /// [`Self::try_refresh`] returns it.
+    /// when `vault_dir` is another corpus) and reports it the same way, as
+    /// it stands; [`Self::try_refresh`] returns the error.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> GraphStats {
-        self.try_refresh(vfs, clock, vault_dir).unwrap_or_default()
+        self.try_refresh(vfs, clock, vault_dir)
+            .unwrap_or_else(|_| unchanged(&self.state.lock().unwrap()))
     }
 
     /// [`Self::refresh`] that always walks. For a caller that has just
     /// changed the corpus and must see its own edit.
     pub fn refresh_now(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> GraphStats {
         self.try_refresh_now(vfs, clock, vault_dir)
-            .unwrap_or_default()
+            .unwrap_or_else(|_| unchanged(&self.state.lock().unwrap()))
     }
 
     /// [`Self::refresh`] that returns a walk error instead of leaving the
@@ -440,11 +441,7 @@ impl LinkGraph {
                     && let Some(done) = state.swept_at
                     && (0..self.ttl()).contains(&(now - done))
                 {
-                    return Ok(GraphStats {
-                        unchanged: state.notes.len(),
-                        resolvable: state.index.len(),
-                        ..GraphStats::default()
-                    });
+                    return Ok(unchanged(&state));
                 }
             } else {
                 // Claimed before the walk, so a reader mid-sweep sees an
@@ -593,8 +590,11 @@ impl LinkGraph {
     /// rebuilt only when the path set moved. A path outside the graph's walk
     /// ([`WalkOptions::admission`]) is ignored, and one the walk would no
     /// longer list (too small, a refused symlink, under a symlinked folder
-    /// or a folder that cannot be listed) is dropped as if gone. A batch
-    /// against another
+    /// or a folder that cannot be listed) is dropped as if gone. So is a
+    /// path its folder lists under another spelling
+    /// ([`Admission::Respelled`]: another case, or another Unicode form as
+    /// on HFS+), which also marks the graph stale, so the next refresh walks
+    /// and finds the file by the spelling on disk. A batch against another
     /// corpus, or while no sweep is fresh, does nothing here, but marks the
     /// graph so a sweep that read the files before the change is not stamped
     /// fresh.
@@ -612,16 +612,17 @@ impl LinkGraph {
     /// a folder that can no longer be listed is dropped, and the folder is
     /// reported by the next sweep.
     pub fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
-        self.apply_paths(vfs, vault_dir, rels);
-        if rels.iter().any(|rel| self.walk.reads_rules_from(rel))
+        let respelled = self.apply_paths(vfs, vault_dir, rels);
+        if (respelled || rels.iter().any(|rel| self.walk.reads_rules_from(rel)))
             && self.state.lock().unwrap().for_vault.as_deref() == Some(vault_dir)
         {
             self.mark_stale();
         }
     }
 
-    /// [`Self::apply_changes`] path by path.
-    fn apply_paths(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
+    /// [`Self::apply_changes`] path by path. Whether a path was
+    /// [`Admission::Respelled`], so the graph must walk to find its spelling.
+    fn apply_paths(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) -> bool {
         // The admissions read the file system, so they are taken under the
         // apply lock: a batch that read a file before another batch must not
         // install after it.
@@ -632,17 +633,18 @@ impl LinkGraph {
             .into_iter()
             .filter(|(_, admission)| *admission != Admission::Outside)
             .collect();
+        let respelled = admitted.iter().any(|(_, a)| *a == Admission::Respelled);
         if admitted.is_empty() {
-            return;
+            return false;
         }
         {
             let mut state = self.state.lock().unwrap();
             if state.for_vault.as_deref() != Some(vault_dir) {
-                return;
+                return false;
             }
             if state.swept_at.is_none() {
                 state.stale_marks += 1;
-                return;
+                return respelled;
             }
         }
 
@@ -664,7 +666,7 @@ impl LinkGraph {
                 // What it cannot stat or read is reported as the sweep
                 // reports it. An apply cannot fail; under `Propagate` the
                 // next refresh walks and does.
-                let seen = if admission == Admission::Unlisted {
+                let seen = if admission != Admission::Listed {
                     // A walk that propagates errors fails on a file it
                     // cannot stat, rather than leaving it out.
                     if self.walk.errors == Errors::Propagate
@@ -700,7 +702,7 @@ impl LinkGraph {
 
         let mut state = self.state.lock().unwrap();
         if state.for_vault.as_deref() != Some(vault_dir) {
-            return;
+            return false;
         }
         state.applied += 1;
         if stale {
@@ -753,6 +755,7 @@ impl LinkGraph {
             state.frontmatter = Arc::new(inverted.frontmatter);
             state.unresolved = Arc::new(inverted.unresolved);
         }
+        respelled
     }
 
     /// What the graph could not read, under [`Errors::Report`]: each folder
@@ -1042,6 +1045,16 @@ impl LinkGraph {
     /// Whether no note is cached.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+/// The graph as it stands, every note counted unchanged: what a reused
+/// sweep, or a failed one, reports.
+fn unchanged(state: &GraphState) -> GraphStats {
+    GraphStats {
+        unchanged: state.notes.len(),
+        resolvable: state.index.len(),
+        ..GraphStats::default()
     }
 }
 

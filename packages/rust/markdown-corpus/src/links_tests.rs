@@ -211,7 +211,16 @@ fn a_failed_walk_leaves_the_graph_as_it_was() {
         "{err}"
     );
     assert_eq!(g.len(), 4, "the last good sweep stays");
-    assert_eq!(g.refresh_now(&*d, &c, root()), GraphStats::default());
+    // `refresh` reports the graph as it stands, as a reused sweep does.
+    let resolvable = g.with_index(|i| i.len());
+    assert_eq!(
+        g.refresh_now(&*d, &c, root()),
+        GraphStats {
+            unchanged: 4,
+            resolvable,
+            ..GraphStats::default()
+        }
+    );
     assert_eq!(g.backlinks("Projects/Alpha.md").total, 2);
 }
 
@@ -628,6 +637,30 @@ fn an_apply_installs_what_it_read() {
     // The file moved after the read; the next refresh sees it.
     g.refresh_now(&*d, &c, root());
     assert_eq!(g.backlink_sources("B.md"), vec!["Home.md"]);
+}
+
+#[test]
+fn a_path_spelled_otherwise_than_on_disk_makes_the_next_refresh_walk() {
+    let d = vault(&[("Alpha.md", "# Alpha\n"), ("Home.md", "See [[Alpha]]\n")]);
+    let (g, c) = (graph(), FixedClock::new(0));
+    g.refresh_now(&*d, &c, root());
+    put(&d, "Home.md", "No links.\n");
+    // A watcher reports the edit by a spelling the file system answers for
+    // but the folder does not list (another case, or another Unicode form).
+    let vfs = hooks::StatHook::aliased(
+        &*d,
+        join_rel(root(), "home.md"),
+        join_rel(root(), "Home.md"),
+    );
+    g.apply_changes(&vfs, root(), &["home.md".to_string()]);
+    assert_eq!(
+        g.paths(),
+        ["Alpha.md", "Home.md"],
+        "not keyed by that spelling"
+    );
+    // Inside the TTL, yet the refresh walks and reads the edit.
+    assert_eq!(g.refresh(&vfs, &c, root()).updated, 1);
+    assert!(g.backlink_sources("Alpha.md").is_empty());
 }
 
 #[test]

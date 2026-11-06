@@ -18,6 +18,16 @@ A walk can keep going past what it cannot read and say what that was.
   `Propagate` (was `true`) or the new `Report`.
 - `WalkOutcome` is no longer `Clone`: its new `errors` field holds
   `VfsError`s, which are not.
+- `Admission` has a new variant, `Respelled`: the file system answers for
+  the path, but a folder on the way lists it under another spelling
+  (another case on a case-insensitive file system, or another Unicode form,
+  as on HFS+). Before, such a path was `Unlisted`, so a cache dropped it
+  and kept the file under the disk's spelling as it was. A name the file
+  system answers for but a folder's listing lacks is listed again first,
+  so a file that came after the listing is still `Listed`.
+- `WalkOptions::reads_rules_from` also answers yes for the folder that
+  holds the excluded-files list (`.obsidian`), as a watcher reports it on
+  its removal or rename.
 
 ### Added
 

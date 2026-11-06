@@ -150,17 +150,28 @@ impl FrontmatterIndex {
     }
 
     /// Walks the corpus and brings the index up to date, reusing a walk
-    /// younger than the TTL over the same corpus. A walk error leaves the
-    /// index as it was (empty when `vault_dir` is another corpus) and reports
-    /// nothing changed; [`Self::try_refresh`] returns it.
+    /// younger than the TTL over the same corpus. A reused walk reports the
+    /// index as `unchanged`. A walk error leaves the index as it was (empty
+    /// when `vault_dir` is another corpus) and reports it the same way, as
+    /// it stands; [`Self::try_refresh`] returns the error.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> RefreshStats {
-        self.try_refresh(vfs, clock, vault_dir).unwrap_or_default()
+        self.try_refresh(vfs, clock, vault_dir)
+            .unwrap_or_else(|_| self.unchanged())
     }
 
     /// [`Self::refresh`] that always walks.
     pub fn refresh_now(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> RefreshStats {
         self.try_refresh_now(vfs, clock, vault_dir)
-            .unwrap_or_default()
+            .unwrap_or_else(|_| self.unchanged())
+    }
+
+    /// The index as it stands, every note counted unchanged: what a reused
+    /// walk, or a failed one, reports.
+    fn unchanged(&self) -> RefreshStats {
+        RefreshStats {
+            unchanged: self.len(),
+            ..RefreshStats::default()
+        }
     }
 
     /// [`Self::refresh`] that returns a walk error instead of leaving the
@@ -381,9 +392,11 @@ impl FrontmatterIndex {
     /// A path outside the index's walk ([`WalkOptions::admission`]), a file
     /// that is not a note, or a call against another corpus, does nothing. A
     /// note the walk would no longer list (gone, too small, a refused
-    /// symlink, or a spelling its folder does not list) is removed. With no
-    /// fresh walk to edit it only marks the index, so a walk that read the
-    /// note before the change is not stamped fresh.
+    /// symlink) is removed. So is a note its folder lists under another
+    /// spelling ([`Admission::Respelled`]), which also marks the index stale,
+    /// so the next refresh walks and finds it by the spelling on disk. With
+    /// no fresh walk to edit it only marks the index, so a walk that read
+    /// the note before the change is not stamped fresh.
     ///
     /// A change to the excluded-files list the walk reads
     /// ([`WalkOptions::reads_rules_from`]) marks the index stale, so the next
@@ -396,16 +409,18 @@ impl FrontmatterIndex {
     /// once ([`WalkOptions::admissions`]).
     pub(crate) fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
         let notes: Vec<String> = rels.iter().filter(|rel| is_note(rel)).cloned().collect();
+        let mut respelled = false;
         if !notes.is_empty() {
             // The admissions read the file system, so they are taken under
             // the apply lock: an apply that read a note before another apply
             // must not install after it.
             let _apply = self.apply_lock.lock().unwrap();
             for (rel, admission) in self.walk.admissions(vfs, vault_dir, &notes) {
+                respelled |= admission == Admission::Respelled;
                 self.apply_admitted(vfs, vault_dir, rel, admission);
             }
         }
-        if rels.iter().any(|rel| self.walk.reads_rules_from(rel))
+        if (respelled || rels.iter().any(|rel| self.walk.reads_rules_from(rel)))
             && self.state.lock().unwrap().for_vault.as_deref() == Some(vault_dir)
         {
             self.mark_stale();
