@@ -420,6 +420,7 @@ fn is_note(name: &str) -> bool {
 
 /// What a walk makes of one path. See [`WalkOptions::admission`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Admission {
     /// The walk never lists this path, whatever is on disk. A cache ignores
     /// a change to it.
@@ -484,7 +485,8 @@ impl WalkOptions {
     /// [`Admission::Unlisted`].
     ///
     /// Each call lists the folders on the path; [`WalkOptions::admissions`]
-    /// lists each folder once for the whole batch.
+    /// lists each folder once for the whole batch, and a second time only
+    /// when the file system answers for a name the first listing lacked.
     ///
     /// Expects the normalised form [`crate::path::lexical::validate_relative`]
     /// returns. A path with an empty, `.` or `..` segment is outside.
@@ -501,7 +503,8 @@ impl WalkOptions {
     }
 
     /// [`WalkOptions::admission`] for each of `rels`, in order, reading the
-    /// excluded files once and each folder's listing once.
+    /// excluded files once and each folder's listing once (twice at most,
+    /// see [`WalkOptions::admission`]).
     pub fn admissions<'r>(
         &self,
         vfs: &dyn Vfs,
@@ -594,22 +597,23 @@ impl WalkOptions {
             .iter()
             .map(|&start| listings.reach(vfs, vault_dir, rel, start))
             .collect();
-        if !reached.contains(&Reach::Listed) {
-            return if reached.contains(&Reach::Respelled) {
-                Admission::Respelled
-            } else {
-                Admission::Unlisted
-            };
-        }
+        let found = if reached.contains(&Reach::Listed) {
+            Admission::Listed
+        } else if reached.contains(&Reach::Respelled) {
+            Admission::Respelled
+        } else {
+            return Admission::Unlisted;
+        };
         // A batch's listing can be older than this stat, so the stat also
-        // decides that the path is still a file.
+        // decides that the path is still a file the walk would list. A
+        // respelled path to one it would not list is simply unlisted.
         match vfs.metadata(&join_rel(vault_dir, rel)) {
             Ok(m)
                 if !m.is_dir
                     && m.len >= self.min_bytes
                     && !(m.is_symlink && self.refuse_symlinks) =>
             {
-                Admission::Listed
+                found
             }
             Ok(_) => Admission::Unlisted,
             // A walk that skips or reports errors lists a file it cannot
@@ -617,7 +621,7 @@ impl WalkOptions {
             Err(e)
                 if !e.is_not_found() && self.errors != Errors::Propagate && self.min_bytes == 0 =>
             {
-                Admission::Listed
+                found
             }
             Err(_) => Admission::Unlisted,
         }
@@ -660,11 +664,19 @@ fn relative_root(root: &str) -> String {
         .join("/")
 }
 
-/// Folder listings read for one admission or one batch: each folder's
-/// entry names and whether each is a folder, `None` when it cannot be
-/// listed.
+/// Folder listings read for one admission or one batch.
 #[derive(Default)]
-struct Listings(HashMap<PathBuf, Option<HashMap<String, bool>>>);
+struct Listings {
+    /// Each folder's entry names and whether each is a folder, `None` when
+    /// it cannot be listed.
+    folders: HashMap<PathBuf, Option<HashMap<String, bool>>>,
+    /// Folders listed again because the file system answered for a name
+    /// the first listing lacked. Each is listed again once per batch.
+    relisted: HashSet<PathBuf>,
+    /// For a name a folder does not list: whether the file system answers
+    /// for it.
+    answers: HashMap<PathBuf, bool>,
+}
 
 /// Whether listing each folder down to a path finds it. See
 /// [`Listings::reach`].
@@ -698,19 +710,21 @@ impl Listings {
         let mut names = rel[start..].split('/').peekable();
         while let Some(name) = names.next() {
             let more = names.peek().is_some();
-            if !self.0.contains_key(&folder) {
+            if !self.folders.contains_key(&folder) {
                 self.list(vfs, &folder);
             }
             let mut found = self.found(&folder, name);
             // The file system answers for a name the listing lacks: either
             // the file came after the listing, or its folder spells it
             // otherwise. A fresh listing tells them apart.
-            if found == Found::Missing && vfs.metadata(&folder.join(name)).is_ok() {
-                self.list(vfs, &folder);
-                found = match self.found(&folder, name) {
-                    Found::Missing => return Reach::Respelled,
-                    listed => listed,
-                };
+            if found == Found::Missing && self.answers(vfs, folder.join(name)) {
+                if self.relisted.insert(folder.clone()) {
+                    self.list(vfs, &folder);
+                    found = self.found(&folder, name);
+                }
+                if found == Found::Missing {
+                    return Reach::Respelled;
+                }
             }
             match found {
                 Found::Entry(is_dir) if is_dir == more => {}
@@ -727,12 +741,20 @@ impl Listings {
             .read_dir(folder)
             .ok()
             .map(|entries| entries.into_iter().map(|e| (e.name, e.is_dir)).collect());
-        self.0.insert(folder.to_path_buf(), entries);
+        self.folders.insert(folder.to_path_buf(), entries);
+    }
+
+    /// Whether a stat of `path`, a name its folder does not list, succeeds.
+    fn answers(&mut self, vfs: &dyn Vfs, path: PathBuf) -> bool {
+        *self
+            .answers
+            .entry(path)
+            .or_insert_with_key(|path| vfs.metadata(path).is_ok())
     }
 
     /// What the cached listing of `folder` says of `name`.
     fn found(&self, folder: &Path, name: &str) -> Found {
-        match &self.0[folder] {
+        match &self.folders[folder] {
             None => Found::Unlistable,
             Some(listed) => listed
                 .get(name)
@@ -1256,9 +1278,9 @@ mod tests {
         /// The file at `path` stats as a folder, as one replaced by a folder
         /// after its folder was listed does.
         Folder,
-        /// A stat of `path` answers for this other path, as a
-        /// case-insensitive or normalization-insensitive file system answers
-        /// for another spelling of a file.
+        /// A stat of `path`, or of a path under it, answers for this other
+        /// path, as a case-insensitive or normalization-insensitive file
+        /// system answers for another spelling of a file or folder.
         Alias(PathBuf),
     }
 
@@ -1269,12 +1291,21 @@ mod tests {
 
     impl Vfs for Denied<'_> {
         fn metadata(&self, path: &Path) -> Result<vfs_seam::Metadata, vfs_seam::VfsError> {
+            if let Call::Alias(real) = &self.call
+                && let Ok(rest) = path.strip_prefix(&self.path)
+            {
+                let real = if rest.as_os_str().is_empty() {
+                    real.clone()
+                } else {
+                    real.join(rest)
+                };
+                return self.inner.metadata(&real);
+            }
             if path == self.path {
                 match &self.call {
                     Call::Stat => return Err(denied(path)),
                     Call::Folder => return Ok(vfs_seam::Metadata::dir_ns(None)),
-                    Call::Alias(real) => return self.inner.metadata(real),
-                    Call::List => {}
+                    Call::Alias(_) | Call::List => {}
                 }
             }
             self.inner.metadata(path)
@@ -1542,9 +1573,23 @@ mod tests {
             );
             assert!(!rels(walk(&vfs, Path::new(V), &notes).unwrap()).contains(&rel.to_string()));
         }
-        // A spelling nothing answers for is gone.
+        // A spelling nothing answers for is gone, and a respelled path to a
+        // file the walk would not list is simply unlisted.
         assert_eq!(
             notes.admission(&d, Path::new(V), "Notes/gone.md"),
+            Admission::Unlisted
+        );
+        let vfs = Denied {
+            inner: &d,
+            path: Path::new(V).join("Notes/Alpha.md"),
+            call: Call::Alias(Path::new(V).join("Notes/alpha.md")),
+        };
+        let sized = WalkOptions {
+            min_bytes: 2,
+            ..WalkOptions::content_notes()
+        };
+        assert_eq!(
+            sized.admission(&vfs, Path::new(V), "Notes/Alpha.md"),
             Admission::Unlisted
         );
     }

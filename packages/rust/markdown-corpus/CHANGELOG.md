@@ -40,10 +40,12 @@ never reads. Built on `markdown-vault-fs` 0.6.
   a reused sweep does. Before, they reported all zeros while the cache
   still held its notes.
 - An apply that names a path its folder lists under another spelling
-  (`Admission::Respelled`) drops it, as before, and now marks the cache
-  stale, so the next refresh walks and reads the file by the disk's
-  spelling. Before, an edit a watcher reported in another Unicode form or
-  case was lost until the TTL ran out.
+  (`Admission::Respelled`) drops it, as before. When the cache never held
+  that spelling, it now also marks the cache stale, so the next refresh
+  walks and reads the file by the disk's spelling. Before, an edit a
+  watcher reported in another Unicode form or case was lost until the TTL
+  ran out. The old name after a case-only rename on a case-insensitive
+  file system was held, so it is only dropped, and no walk follows.
 - A change reported for the `.obsidian` folder itself marks a cache whose
   walk reads `.obsidian/app.json` stale, as a change to the file does.
 - The docs of `Note::shape` and `read_note_with` say what the strict

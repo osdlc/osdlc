@@ -663,6 +663,53 @@ fn a_path_spelled_otherwise_than_on_disk_makes_the_next_refresh_walk() {
     assert!(g.backlink_sources("Alpha.md").is_empty());
 }
 
+/// Whether `refresh` walks: a mid-sweep hook only runs in a walk.
+fn walks(g: &LinkGraph, vfs: &dyn Vfs, c: &FixedClock) -> bool {
+    let walked = Rc::new(std::cell::Cell::new(false));
+    let flag = Rc::clone(&walked);
+    mid_sweep(move || flag.set(true));
+    g.refresh(vfs, c, root());
+    // A reused sweep leaves the hook unrun; clear it.
+    mid_sweep(|| {});
+    walked.get()
+}
+
+#[test]
+fn a_case_only_rename_on_a_case_insensitive_disk_needs_no_walk() {
+    let d = vault(&[("Alpha.md", "# Alpha\n"), ("Home.md", "See [[Alpha]]\n")]);
+    let (g, c) = (graph(), FixedClock::new(0));
+    g.refresh_now(&*d, &c, root());
+    d.rename(&join_rel(root(), "Home.md"), &join_rel(root(), "home.md"))
+        .unwrap();
+    // The old spelling still stats; the graph held it, so it is just gone.
+    let vfs = hooks::StatHook::aliased(
+        &*d,
+        join_rel(root(), "Home.md"),
+        join_rel(root(), "home.md"),
+    );
+    g.apply_changes(
+        &vfs,
+        root(),
+        &["Home.md".to_string(), "home.md".to_string()],
+    );
+    assert_eq!(g.paths(), ["Alpha.md", "home.md"]);
+    assert!(!walks(&g, &vfs, &c));
+}
+
+#[test]
+fn a_change_to_the_obsidian_folder_makes_the_next_refresh_walk() {
+    let d = linked_vault();
+    let g = graph().with_walk(WalkOptions {
+        hide: Hide::Vault,
+        ..LinkGraph::default_walk()
+    });
+    let c = FixedClock::new(0);
+    g.refresh(&*d, &c, root());
+    assert!(!walks(&g, &*d, &c));
+    g.apply_changes(&*d, root(), &[".obsidian".to_string()]);
+    assert!(walks(&g, &*d, &c));
+}
+
 #[test]
 fn apply_changes_drops_the_old_spelling_of_a_case_only_rename() {
     let d = vault(&[("Alpha.md", "# Alpha\n"), ("Home.md", "See [[Alpha]] #t\n")]);

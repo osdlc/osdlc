@@ -153,25 +153,17 @@ impl FrontmatterIndex {
     /// younger than the TTL over the same corpus. A reused walk reports the
     /// index as `unchanged`. A walk error leaves the index as it was (empty
     /// when `vault_dir` is another corpus) and reports it the same way, as
-    /// it stands; [`Self::try_refresh`] returns the error.
+    /// it stands when the call returns; [`Self::try_refresh`] returns the
+    /// error.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> RefreshStats {
         self.try_refresh(vfs, clock, vault_dir)
-            .unwrap_or_else(|_| self.unchanged())
+            .unwrap_or_else(|_| unchanged(&self.state.lock().unwrap()))
     }
 
     /// [`Self::refresh`] that always walks.
     pub fn refresh_now(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> RefreshStats {
         self.try_refresh_now(vfs, clock, vault_dir)
-            .unwrap_or_else(|_| self.unchanged())
-    }
-
-    /// The index as it stands, every note counted unchanged: what a reused
-    /// walk, or a failed one, reports.
-    fn unchanged(&self) -> RefreshStats {
-        RefreshStats {
-            unchanged: self.len(),
-            ..RefreshStats::default()
-        }
+            .unwrap_or_else(|_| unchanged(&self.state.lock().unwrap()))
     }
 
     /// [`Self::refresh`] that returns a walk error instead of leaving the
@@ -244,10 +236,7 @@ impl FrontmatterIndex {
                     && let Some(done) = state.walked_at
                     && (0..self.ttl()).contains(&(now - done))
                 {
-                    return Ok(RefreshStats {
-                        unchanged: state.entries.len(),
-                        ..RefreshStats::default()
-                    });
+                    return Ok(unchanged(&state));
                 }
             } else {
                 // Emptying the index is a change, even if the walk below then
@@ -393,8 +382,9 @@ impl FrontmatterIndex {
     /// that is not a note, or a call against another corpus, does nothing. A
     /// note the walk would no longer list (gone, too small, a refused
     /// symlink) is removed. So is a note its folder lists under another
-    /// spelling ([`Admission::Respelled`]), which also marks the index stale,
-    /// so the next refresh walks and finds it by the spelling on disk. With
+    /// spelling ([`Admission::Respelled`]). When the index never held that
+    /// spelling, this also marks the index stale, so the next refresh walks
+    /// and finds the note by the spelling on disk. With
     /// no fresh walk to edit it only marks the index, so a walk that read
     /// the note before the change is not stamped fresh.
     ///
@@ -409,18 +399,16 @@ impl FrontmatterIndex {
     /// once ([`WalkOptions::admissions`]).
     pub(crate) fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
         let notes: Vec<String> = rels.iter().filter(|rel| is_note(rel)).cloned().collect();
-        let mut respelled = false;
         if !notes.is_empty() {
             // The admissions read the file system, so they are taken under
             // the apply lock: an apply that read a note before another apply
             // must not install after it.
             let _apply = self.apply_lock.lock().unwrap();
             for (rel, admission) in self.walk.admissions(vfs, vault_dir, &notes) {
-                respelled |= admission == Admission::Respelled;
                 self.apply_admitted(vfs, vault_dir, rel, admission);
             }
         }
-        if (respelled || rels.iter().any(|rel| self.walk.reads_rules_from(rel)))
+        if rels.iter().any(|rel| self.walk.reads_rules_from(rel))
             && self.state.lock().unwrap().for_vault.as_deref() == Some(vault_dir)
         {
             self.mark_stale();
@@ -479,6 +467,10 @@ impl FrontmatterIndex {
             return;
         }
         state.applied += 1;
+        // A spelling the index never held is one a watcher reported
+        // otherwise than the disk: only a walk finds the note. One it held
+        // is the old name after a case-only rename, now dropped.
+        stale |= admission == Admission::Respelled && !state.entries.contains_key(rel);
         if stale {
             state.walked_at = None;
             state.stale_marks += 1;
@@ -525,6 +517,15 @@ impl FrontmatterIndex {
         state.unreadable = Arc::default();
         state.walked_at = None;
         state.applied += 1;
+    }
+}
+
+/// The index as it stands, every note counted unchanged: what a reused
+/// walk, or a failed one, reports.
+fn unchanged(state: &IndexState) -> RefreshStats {
+    RefreshStats {
+        unchanged: state.entries.len(),
+        ..RefreshStats::default()
     }
 }
 

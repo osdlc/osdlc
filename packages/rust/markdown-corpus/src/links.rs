@@ -390,7 +390,8 @@ impl LinkGraph {
     /// younger than the TTL over the same corpus. A reused sweep reports the
     /// cache as `unchanged`. A walk error leaves the graph as it was (empty
     /// when `vault_dir` is another corpus) and reports it the same way, as
-    /// it stands; [`Self::try_refresh`] returns the error.
+    /// it stands when the call returns; [`Self::try_refresh`] returns the
+    /// error.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> GraphStats {
         self.try_refresh(vfs, clock, vault_dir)
             .unwrap_or_else(|_| unchanged(&self.state.lock().unwrap()))
@@ -593,8 +594,12 @@ impl LinkGraph {
     /// or a folder that cannot be listed) is dropped as if gone. So is a
     /// path its folder lists under another spelling
     /// ([`Admission::Respelled`]: another case, or another Unicode form as
-    /// on HFS+), which also marks the graph stale, so the next refresh walks
-    /// and finds the file by the spelling on disk. A batch against another
+    /// on HFS+). When the graph never held that spelling, the change was
+    /// reported otherwise than the disk spells it, so this also marks the
+    /// graph stale and the next refresh walks and finds the file by the
+    /// spelling on disk. When it did (the old name after a case-only rename
+    /// on a case-insensitive file system), dropping it is all there is to
+    /// do. A batch against another
     /// corpus, or while no sweep is fresh, does nothing here, but marks the
     /// graph so a sweep that read the files before the change is not stamped
     /// fresh.
@@ -612,17 +617,16 @@ impl LinkGraph {
     /// a folder that can no longer be listed is dropped, and the folder is
     /// reported by the next sweep.
     pub fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
-        let respelled = self.apply_paths(vfs, vault_dir, rels);
-        if (respelled || rels.iter().any(|rel| self.walk.reads_rules_from(rel)))
+        self.apply_paths(vfs, vault_dir, rels);
+        if rels.iter().any(|rel| self.walk.reads_rules_from(rel))
             && self.state.lock().unwrap().for_vault.as_deref() == Some(vault_dir)
         {
             self.mark_stale();
         }
     }
 
-    /// [`Self::apply_changes`] path by path. Whether a path was
-    /// [`Admission::Respelled`], so the graph must walk to find its spelling.
-    fn apply_paths(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) -> bool {
+    /// [`Self::apply_changes`] path by path.
+    fn apply_paths(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
         // The admissions read the file system, so they are taken under the
         // apply lock: a batch that read a file before another batch must not
         // install after it.
@@ -633,18 +637,17 @@ impl LinkGraph {
             .into_iter()
             .filter(|(_, admission)| *admission != Admission::Outside)
             .collect();
-        let respelled = admitted.iter().any(|(_, a)| *a == Admission::Respelled);
         if admitted.is_empty() {
-            return false;
+            return;
         }
         {
             let mut state = self.state.lock().unwrap();
             if state.for_vault.as_deref() != Some(vault_dir) {
-                return false;
+                return;
             }
             if state.swept_at.is_none() {
                 state.stale_marks += 1;
-                return respelled;
+                return;
             }
         }
 
@@ -652,6 +655,8 @@ impl LinkGraph {
             Note(NoteFacts),
             File,
             Gone,
+            /// Gone by this spelling, but there by the disk's.
+            Respelled,
         }
         let mut unread = Unread::new(self.walk.errors);
         let mut stale = false;
@@ -666,7 +671,9 @@ impl LinkGraph {
                 // What it cannot stat or read is reported as the sweep
                 // reports it. An apply cannot fail; under `Propagate` the
                 // next refresh walks and does.
-                let seen = if admission != Admission::Listed {
+                let seen = if admission == Admission::Respelled {
+                    Seen::Respelled
+                } else if admission != Admission::Listed {
                     // A walk that propagates errors fails on a file it
                     // cannot stat, rather than leaving it out.
                     if self.walk.errors == Errors::Propagate
@@ -702,13 +709,9 @@ impl LinkGraph {
 
         let mut state = self.state.lock().unwrap();
         if state.for_vault.as_deref() != Some(vault_dir) {
-            return false;
+            return;
         }
         state.applied += 1;
-        if stale {
-            state.swept_at = None;
-            state.stale_marks += 1;
-        }
         let mut paths_changed = false;
         let mut notes_changed = false;
         // The files the apply looked at, listed before or now. What it met
@@ -722,6 +725,10 @@ impl LinkGraph {
             if present || listed.is_ok() {
                 files.insert(abs);
             }
+            // A spelling the graph never held is one a watcher reported
+            // otherwise than the disk: only a walk finds the file. One it
+            // held is the old name after a case-only rename, now dropped.
+            stale |= matches!(seen, Seen::Respelled) && listed.is_err();
             match listed {
                 Ok(i) if !present => {
                     paths.remove(i);
@@ -740,8 +747,14 @@ impl LinkGraph {
                     notes_changed = true;
                 }
                 Seen::File => {}
-                Seen::Gone => notes_changed |= notes.remove(rel.as_str()).is_some(),
+                Seen::Gone | Seen::Respelled => {
+                    notes_changed |= notes.remove(rel.as_str()).is_some()
+                }
             }
+        }
+        if stale {
+            state.swept_at = None;
+            state.stale_marks += 1;
         }
         let unreadable = Arc::make_mut(&mut state.unreadable);
         unreadable.retain(|e| !files.contains(e.path()));
@@ -755,7 +768,6 @@ impl LinkGraph {
             state.frontmatter = Arc::new(inverted.frontmatter);
             state.unresolved = Arc::new(inverted.unresolved);
         }
-        respelled
     }
 
     /// What the graph could not read, under [`Errors::Report`]: each folder

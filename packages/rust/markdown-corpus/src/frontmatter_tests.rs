@@ -528,6 +528,11 @@ fn a_failed_walk_is_reported_as_the_index_stands() {
     d.remove(root()).unwrap();
     let stats = index.refresh_now(&*d, &c, root());
     assert_eq!((stats.unchanged, stats.is_empty()), (2, true));
+    // `refresh`, once the TTL is out, the same.
+    c.advance(crate::links::REFRESH_TTL_MS);
+    let sweeps = index.sweeps();
+    assert_eq!(index.refresh(&*d, &c, root()), stats);
+    assert_eq!(index.sweeps(), sweeps + 1, "it walked");
     assert_eq!(index.len(), 2);
 }
 
