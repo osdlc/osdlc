@@ -238,7 +238,6 @@ describe('sparing a remote branch (#583)', () => {
     expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
       ['verify-remote', 'ok'],
       ['delete-branch', 'ok'],
-      ['prune-worktrees', 'ok'],
     ])
     expect(receipt.steps[0]!.verification).toBe('tip unchanged; spared')
     expect(remoteHeads(fx.bare)).toContain('refs/heads/merged-a')
@@ -390,7 +389,7 @@ describe('sparing a worktree or a local branch', () => {
     const p = makePlan(fx.root)
     const shown = preview(fx, p, { pick: [wt(fx.worktree), 'branch:wt-branch'] })
     expect(shown.dropped).toEqual([])
-    expect(shown.steps.map((s) => s.row)).toEqual([wt(fx.worktree), 'branch:wt-branch', null])
+    expect(shown.steps.map((s) => s.row)).toEqual([wt(fx.worktree), 'branch:wt-branch'])
   })
 })
 
@@ -402,7 +401,6 @@ describe('naming rows', () => {
     expect(shown.approval.pick).toEqual([{ repo: p.repos[0]!.root, id: 'branch:merged-a' }])
     expect(shown.steps.map((s) => [s.action, s.row])).toEqual([
       ['delete-branch', 'branch:merged-a'],
-      ['prune-worktrees', null],
     ])
   })
 
@@ -447,7 +445,7 @@ describe('unusedAllows', () => {
         { risk: 'abandon-unmerged', row: 'branch:merged-a' },
       ],
     })
-    expect(shown.steps.map((s) => s.row)).toEqual(['branch:merged-a', 'branch:unmerged', null])
+    expect(shown.steps.map((s) => s.row)).toEqual(['branch:merged-a', 'branch:unmerged'])
     expect(shown.unusedAllows).toEqual([
       { risk: 'discard-changes', row: null },
       { risk: 'abandon-unmerged', row: 'branch:merged-a' },
@@ -528,6 +526,14 @@ describe('resolveApproval refuses', () => {
         { risk: 'abandon-unmerged', row: { repo: '/r', id: 'branch:feat/x' } },
       ],
     })
+  })
+
+  test('a bare path holding a colon is a bare name, not a kind', () => {
+    const p = handPlan()
+    p.repos[0]!.rows.push({ ...p.repos[0]!.rows[0]!, id: 'worktree:/w/a:b' })
+    expect(resolveApproval(p, { pick: ['/w/a:b'] }, '/').pick).toEqual([
+      { repo: '/r', id: 'worktree:/w/a:b' },
+    ])
   })
 
   test('bad-input: an unknown kind, a kind with no name, an empty row, an unknown risk', () => {
@@ -644,7 +650,7 @@ describe('check and run', () => {
     expect(done).toEqual(['delete-branch:ok'])
   })
 
-  test('runs worktree, local, remote, prune in order and verifies each', () => {
+  test('runs worktree, local, remote in order and verifies each', () => {
     const fx = buildFixture()
     const p = makePlan(fx.root)
     const { receipt, receiptPath } = apply(fx, p, {
@@ -657,7 +663,6 @@ describe('check and run', () => {
       'remove-worktree',
       'delete-branch',
       'delete-remote',
-      'prune-worktrees',
     ])
     expect(receipt.steps.every((s) => s.result === 'ok')).toBe(true)
     expect(existsSync(fx.worktree)).toBe(false)
@@ -683,7 +688,6 @@ describe('check and run', () => {
     expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
       ['remove-worktree', 'ok'],
       ['delete-branch', 'ok'],
-      ['prune-worktrees', 'ok'],
     ])
     expect(existsSync(fx.worktree)).toBe(false)
     expect(refs(fx.root)).not.toContain('refs/heads/wt-branch ')
@@ -783,7 +787,7 @@ describe('check and run', () => {
     })
 
     expect(receipt.status).toBe('failed')
-    expect(receipt.steps.map((s) => s.result)).toEqual(['failed', 'pending', 'pending'])
+    expect(receipt.steps.map((s) => s.result)).toEqual(['failed', 'pending'])
     // The summary, git's reason once in parentheses, then the reference text.
     const error = receipt.steps[0]!.error!
     expect(error).toMatch(/^\[remote rejected\] \([^()]+\): /)
@@ -799,11 +803,7 @@ describe('check and run', () => {
 
     const shown = preview(fx, p, { pick: ['branch:merged-a', 'remote:origin/merged-a'] })
 
-    expect(shown.steps.map((s) => s.action)).toEqual([
-      'delete-branch',
-      'delete-remote',
-      'prune-worktrees',
-    ])
+    expect(shown.steps.map((s) => s.action)).toEqual(['delete-branch', 'delete-remote'])
     expect(shown.steps.every((s) => s.result === 'would-run')).toBe(true)
     expect(refs(fx.root)).toBe(before)
     expect(existsSync(join(fx.root, '.receipts'))).toBe(false)
@@ -871,7 +871,52 @@ describe('check and run', () => {
       pick: ['branch:merged-a', 'branch:merged-a', 'merged-a'],
     })
     expect(receipt.status).toBe('complete')
-    expect(receipt.steps.map((s) => s.action)).toEqual(['delete-branch', 'prune-worktrees'])
+    expect(receipt.steps.map((s) => s.action)).toEqual(['delete-branch'])
+  })
+
+  test('a spared gone worktree keeps its record while the rest of the run goes', () => {
+    const fx = buildFixture()
+    const other = join(fx.root, '..', 'wt-gone')
+    sh(fx.root, ['worktree', 'add', '-q', '-b', 'gone-branch', other, 'main'])
+    const gone = realpathSync(other)
+    rmSync(fx.worktree, { recursive: true, force: true })
+    rmSync(gone, { recursive: true, force: true })
+    const { receipt } = apply(fx, makePlan(fx.root), {
+      pick: [wt(fx.worktree), 'branch:merged-a'],
+      spare: [wt(gone)],
+    })
+    expect(receipt.status).toBe('complete')
+    expect(receipt.steps.map((s) => s.action)).toEqual(['prune-worktrees', 'delete-branch'])
+    const listed = sh(fx.root, ['worktree', 'list', '--porcelain'])
+    expect(listed).not.toContain(fx.worktree)
+    expect(listed).toContain(gone)
+  })
+
+  test('a worktree left without its .git is not pruned while another gone one would go too', () => {
+    const fx = buildFixture()
+    const other = join(fx.root, '..', 'wt-gone')
+    sh(fx.root, ['worktree', 'add', '-q', '-b', 'gone-branch', other, 'main'])
+    const gone = realpathSync(other)
+    rmSync(join(fx.worktree, '.git'))
+    rmSync(gone, { recursive: true, force: true })
+    const p = makePlan(fx.root)
+
+    // The repository-wide prune would also drop `gone`, which is not picked.
+    const alone = preview(fx, p, { pick: [wt(fx.worktree)] })
+    expect(alone.steps).toEqual([])
+    expect(alone.dropped).toMatchObject([
+      { row: wt(fx.worktree), reason: 'blocked', detail: expect.stringContaining(gone) },
+    ])
+
+    // Picked together, `gone` goes by its own record first, then the prune.
+    const { receipt } = apply(fx, p, { pick: [wt(fx.worktree), wt(gone)] })
+    expect(receipt.status).toBe('complete')
+    expect(receipt.steps.map((s) => [s.row, s.command.split(' ').slice(3).join(' ')])).toEqual([
+      [wt(gone), `worktree remove ${gone}`],
+      [wt(fx.worktree), 'worktree prune'],
+    ])
+    expect(existsSync(fx.worktree)).toBe(true)
+    expect(sh(fx.root, ['worktree', 'list', '--porcelain'])).not.toContain('wt-')
   })
 
   test('prunes a worktree whose directory is gone', () => {
@@ -1014,10 +1059,7 @@ describe('check and run', () => {
     run(shown, { cwd: fx.root, receiptPath, source: '(test)' })
     const saved = JSON.parse(readFileSync(receiptPath, 'utf-8')) as Receipt
     expect(saved.dropped).toEqual(shown.dropped)
-    expect(saved.steps.map((s) => [s.row, s.result])).toEqual([
-      ['branch:merged-a', 'ok'],
-      [null, 'ok'],
-    ])
+    expect(saved.steps.map((s) => [s.row, s.result])).toEqual([['branch:merged-a', 'ok']])
     expect(refs(fx.root)).toContain('refs/heads/unmerged ')
   })
 

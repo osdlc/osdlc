@@ -352,7 +352,6 @@ export function summarizeRun(r: {
   for (const d of r.dropped) out.dropped[d.reason] = (out.dropped[d.reason] ?? 0) + 1
   for (const s of r.steps) {
     if (s.result === 'failed') out.failed += 1
-    if (s.row === null) continue
     if (s.result === 'pending') {
       // Rows not reached are rows a run would have deleted; an unlock or a
       // tip check deletes nothing.
@@ -466,11 +465,7 @@ export function renderPreview(
     for (const s of p.steps.filter((s) => s.repo === repo)) {
       const verb = STEP_VERB[s.action]
       const color = wordStyle(style, verb === 'unlock' || verb === 'verify' ? 'review' : verb)
-      lines.push(
-        s.row === null
-          ? `  ${color(pad(verb, 6))}  worktree records`
-          : `  ${color(pad(verb, 6))}  ${shownRow(s.row)}`,
-      )
+      lines.push(`  ${color(pad(verb, 6))}  ${shownRow(s.row)}`)
       lines.push(`          ${style.muted(stripControls(s.command))}`)
     }
     for (const d of p.dropped.filter((d) => d.repo === repo)) {
@@ -506,9 +501,7 @@ export function renderLateDrops(dropped: readonly Dropped[], style: Style = PLAI
  */
 export function renderStepFailure(step: Step, style: Style = PLAIN): string {
   const verb = STEP_VERB[step.action]
-  const line = stripControls(
-    `${pad(verb, 6)}  ${step.row === null ? '' : shownRow(step.row)}`.trimEnd(),
-  )
+  const line = stripControls(`${pad(verb, 6)}  ${shownRow(step.row)}`)
   return `  ${style.delete('✗')} ${line}\n      ${style.delete(stripControls(step.error ?? 'failed'))}`
 }
 
@@ -527,7 +520,7 @@ export function renderReceipt(
     )
   }
   for (const s of opts.steps === false ? [] : receipt.steps) {
-    const what = s.row === null ? s.command : `${s.row} — ${s.command}`
+    const what = `${s.row} — ${s.command}`
     const tail = s.error ?? s.verification
     lines.push(`${resultWord(s, style)} ${stripControls(`${what}${tail ? ` (${tail})` : ''}`)}`)
   }

@@ -324,7 +324,6 @@ describe('run', () => {
     expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
       ['unlock-worktree', 'ok'],
       ['remove-worktree', 'ok'],
-      ['prune-worktrees', 'ok'],
     ])
     expect(receipt.steps[0]!.verification).toBe('lock owner dead, unlocked')
     expect(receipt.steps.slice(0, 2).map((s) => s.row)).toEqual([pick(fx), pick(fx)])
@@ -344,7 +343,6 @@ describe('run', () => {
     expect(shown.steps.map((s) => [s.action, s.result])).toEqual([
       ['unlock-worktree', 'would-run'],
       ['remove-worktree', 'would-run'],
-      ['prune-worktrees', 'would-run'],
     ])
     expect(locked(fx)).toBe(true)
     expect(existsSync(fx.worktree)).toBe(true)
@@ -432,7 +430,6 @@ describe('run', () => {
     expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
       ['unlock-worktree', 'ok'],
       ['remove-worktree', 'failed'],
-      ['prune-worktrees', 'pending'],
     ])
     expect(receipt.steps[1]!.error).toContain('not restored')
     expect(locked(fx)).toBe(false)
@@ -457,7 +454,6 @@ describe('run', () => {
     expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
       ['unlock-worktree', 'ok'],
       ['prune-worktrees', 'ok'],
-      ['prune-worktrees', 'ok'],
     ])
     expect(sh(fx.root, ['worktree', 'list', '--porcelain'])).not.toContain(fx.worktree)
   })
@@ -466,7 +462,7 @@ describe('run', () => {
     const fx = buildFixture()
     const probe = fakeProbe()
     const receipt = apply(fx, makePlan(fx, probe), probe)
-    expect(receipt.steps.map((s) => s.action)).toEqual(['remove-worktree', 'prune-worktrees'])
+    expect(receipt.steps.map((s) => s.action)).toEqual(['remove-worktree'])
   })
 })
 

@@ -54,8 +54,8 @@ export const STEP_ACTIONS = [
 
 export const StepSchema = z.object({
   repo: z.string(),
-  /** Null for the closing prune, which belongs to no row. */
-  row: RowIdSchema.nullable(),
+  /** The row the step acts on. */
+  row: RowIdSchema,
   action: z.enum(STEP_ACTIONS),
   command: z.string(),
   expectedSha: z.string().nullable(),

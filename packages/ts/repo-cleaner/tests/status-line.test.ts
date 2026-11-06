@@ -54,12 +54,9 @@ describe('describeStep', () => {
     verification: null,
   })
 
-  test('names the row, or the repository for the closing prune', () => {
+  test('names the row', () => {
     expect(describeStep(2, 7, step('remote:origin/x'))).toBe(
       'deleting ██████░░░░░░░░░░░░░░ 3/7: delete-remote remote:origin/x',
-    )
-    expect(describeStep(6, 7, step(null))).toBe(
-      'deleting █████████████████░░░ 7/7: prune-worktrees /r',
     )
   })
 })

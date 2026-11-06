@@ -431,7 +431,6 @@ describe('color', () => {
     expect(done).toBeGreaterThan(preview)
     expect(out).toContain(`✓ delete  worktree:`)
     expect(out).toContain(`✓ delete  branch:${BRANCH}`)
-    expect(out).toContain('✓ prune')
     // The steps are not listed a second time under the counts.
     expect(out).not.toMatch(/^ok {7}/m)
     expect(out).toContain('deleted: 1 worktree, 1 local branch, 1 remote branch')

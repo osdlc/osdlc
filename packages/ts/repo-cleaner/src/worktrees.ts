@@ -346,11 +346,10 @@ function classifyWorktree(opts: {
   evidence.onDisk = onDisk
   evidence.directoryLeft = dirPresent && !onDisk
 
-  // A gone worktree has no checkout to ask for its git dir, but the git dir
-  // may still hold submodule history that the prune would delete.
-  const submodules = inspectSubmodules(git, path, {
-    gitDir: onDisk ? null : opts.gitDirOf(path),
-  })
+  // The worktree's git dir from the map read once per repository; a gone
+  // worktree has no checkout to ask, and its git dir may still hold
+  // submodule history that removing it would delete.
+  const submodules = inspectSubmodules(git, path, { gitDir: opts.gitDirOf(path) })
   const submoduleDirty = submodules.dirty.reduce((n, s) => n + s.dirtyFiles, 0)
   if (submodules.submodules.length > 0) {
     evidence.submodules = submoduleFacts(submodules)

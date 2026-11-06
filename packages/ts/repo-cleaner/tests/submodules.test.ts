@@ -380,7 +380,7 @@ describe('running a worktree with submodules', () => {
     expect(existsSync(join(fx.worktree, 'new.txt'))).toBe(true)
   })
 
-  test("the closing prune leaves a gone worktree's unpushed submodule work alone", () => {
+  test('a run that does not select a gone worktree leaves it, and its submodule work, alone', () => {
     const fx = buildFixture()
     sh(join(fx.worktree, 'sub'), ['commit', '--allow-empty', '-m', 'local only'])
     rmSync(fx.worktree, { recursive: true, force: true })
@@ -389,9 +389,9 @@ describe('running a worktree with submodules', () => {
     const { plan } = planOf(fx, ['branch'])
     const receipt = run(fx, plan, {}, [], ['branch:merged-x'])
     expect(receipt.status).toBe('complete')
-    const prune = receipt.steps.find((s) => s.action === 'prune-worktrees')!
-    expect(prune.verification).toMatch(/^not pruned: .*sub \(1 unpushed commit\)/)
+    expect(receipt.steps.map((s) => s.action)).toEqual(['delete-branch'])
     expect(existsSync(join(fx.gitDir, 'modules', 'sub'))).toBe(true)
+    expect(sh(fx.root, ['worktree', 'list'])).toContain(fx.worktree)
   })
 
   test('prunes a gone worktree and its submodule work under abandon-unmerged', () => {

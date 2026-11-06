@@ -14,8 +14,11 @@
  *    one with submodules is removed with `--force` after its files and every
  *    submodule are checked again;
  * 3. local branches;
- * 4. remote branches;
- * 5. one prune per repository.
+ * 4. remote branches.
+ *
+ * A worktree whose directory is gone goes by its own record. One left without
+ * its `.git` takes the repository-wide prune, last, and only while that prune
+ * would drop nothing the run does not select.
  *
  * Branch deletes are compare-and-swap on the planned sha. Every step is
  * verified, and the receipt is rewritten after each.
@@ -34,7 +37,7 @@ import { fingerprint, runnable, sameFingerprint, type Plan, type PlanRepo } from
 import { busyHolders, defaultProcessProbe, parseLockOwner, type ProcessProbe } from './processes.ts'
 import { RECEIPT_VERSION, type Dropped, type Receipt, type Step } from './receipt.ts'
 import { defaultCacheDir, mirrorProblem } from './remote-mirror.ts'
-import { inspectSubmodules, submoduleHazards, worktreeGitDirs } from './submodules.ts'
+import { inspectSubmodules, submoduleHazards } from './submodules.ts'
 import { holdFreedBranches, sweepRepo, type Runners } from './sweep.ts'
 import {
   KINDS,
@@ -51,7 +54,7 @@ import {
   parseRowId,
 } from './types.ts'
 import { errorText } from './util.ts'
-import { removeIsForced, worktreeCommands, worktreePruneCommand } from './worktrees.ts'
+import { removeIsForced, worktreeCommands } from './worktrees.ts'
 import { writeJsonAtomic } from './write-json.ts'
 
 /** A risk allowed for every row (`row` absent), or for one row. */
@@ -142,7 +145,11 @@ export interface RowRef {
   name: string
 }
 
-/** `kind:name`, or a bare name. A prefix that is not a kind is an error, not a bare name. */
+/**
+ * `kind:name`, or a bare name. A word before a colon that is not a kind is an
+ * error (a typo such as `wt:x`), but a path is a bare name whatever colons it
+ * holds: a prefix with a path separator in it is never a kind.
+ */
 export function parseRowRef(text: string): RowRef {
   if (text === '') throw new RepoCleanerError('bad-input', 'an empty row')
   const id = parseRowId(text)
@@ -152,7 +159,7 @@ export function parseRowRef(text: string): RowRef {
     return id
   }
   const colon = text.indexOf(':')
-  if (colon > 1) {
+  if (colon > 1 && !/[\\/]/.test(text.slice(0, colon))) {
     throw new RepoCleanerError(
       'bad-input',
       `bad row ${JSON.stringify(text)}: expected <kind>:<name> with kind one of ${KINDS.join(', ')}, or a bare name`,
@@ -571,7 +578,7 @@ function onePerRemoteBranch(r: Rechecked, git: Git): { accepted: Accepted[]; dro
 
 function pending(
   repo: string,
-  row: RowId | null,
+  row: RowId,
   action: Step['action'],
   command: string,
   expectedSha: string | null = null,
@@ -587,9 +594,6 @@ function pending(
     verification: null,
   }
 }
-
-const pruneStep = (repo: string, row: RowId | null): Step =>
-  pending(repo, row, 'prune-worktrees', worktreePruneCommand(repo))
 
 function verifyStep({ repo, row }: Accepted): Step {
   const r = row as RemoteRow
@@ -644,8 +648,8 @@ interface Planned {
   steps: Array<[Step, Accepted | null]>
   dropped: Dropped[]
   accepted: Accepted[]
-  /** Gone worktrees this run prunes with `abandon-unmerged`: their submodule work may go. */
-  abandoned: Set<string>
+  /** Worktrees this run removes or prunes, by resolved path. */
+  removedHere: Set<string>
 }
 
 function planSteps(
@@ -659,40 +663,52 @@ function planSteps(
   const rechecked = recheck(plan, approval, opts, safeOnly)
   const unique = onePerRemoteBranch(rechecked, git)
   const dropped = [...unique.dropped]
-  const abandoned = new Set(
-    unique.accepted
-      .filter((a) => a.row.kind === 'worktree' && a.abandon)
-      .map((a) => resolve(a.row.name)),
-  )
   // A worktree whose directory is left without its `.git` goes only by the
-  // repository-wide prune; while that prune would also delete another gone
-  // worktree's unpushed submodule work, the row cannot run.
+  // repository-wide `git worktree prune`, which drops every gone worktree.
+  // It runs last, and only while every other gone worktree it would drop goes
+  // in this run anyway: a prune must not take a row the run did not select.
+  const removedHere = new Set(
+    unique.accepted.filter((a) => a.row.kind === 'worktree').map((a) => resolve(a.row.name)),
+  )
   const accepted = unique.accepted.filter((a) => {
-    if (
-      a.row.kind !== 'worktree' ||
-      a.row.action !== 'prune' ||
-      a.row.evidence.directoryLeft !== true
-    ) {
-      return true
-    }
-    const hazards = pruneHazards(git.at(a.repo), abandoned)
-    if (hazards.length === 0) return true
+    if (!prunesAll(a.row)) return true
+    const others = pruneCollateral(git.at(a.repo), removedHere)
+    if (others.length === 0) return true
     dropped.push({
       repo: a.repo,
       row: a.row.id,
       reason: 'blocked',
-      detail: `pruning it would delete submodule work of another gone worktree: ${hazards.join('; ')}`,
+      detail: `pruning it would also drop ${others.join(', ')}, which this run does not remove`,
     })
     return false
   })
-  const ordered = KINDS.flatMap((kind) => accepted.filter((a) => a.row.kind === kind))
+  const ordered = KINDS.flatMap((kind) => {
+    const of = accepted.filter((a) => a.row.kind === kind)
+    return [...of.filter((a) => !prunesAll(a.row)), ...of.filter((a) => prunesAll(a.row))]
+  })
   const steps: Array<[Step, Accepted | null]> = [
     // Spared tips first: one that moved stops the run before anything is deleted.
     ...rechecked.verified.map((a): [Step, Accepted | null] => [verifyStep(a), a]),
     ...ordered.flatMap((a) => stepsFor(a).map((step): [Step, Accepted | null] => [step, a])),
   ]
-  for (const repo of new Set(ordered.map((a) => a.repo))) steps.push([pruneStep(repo, null), null])
-  return { steps, dropped, accepted: ordered, abandoned }
+  return { steps, dropped, accepted: ordered, removedHere }
+}
+
+/** A worktree row whose deletion takes the repository-wide prune: its directory is left without its `.git`. */
+function prunesAll(row: Row): boolean {
+  return row.kind === 'worktree' && row.action === 'prune' && row.evidence.directoryLeft === true
+}
+
+/**
+ * The gone worktrees a `git worktree prune` in `at` would drop besides those
+ * in `removed`: every one whose checkout is gone and that is not locked
+ * (prune skips a locked one).
+ */
+function pruneCollateral(at: Git, removed: ReadonlySet<string>): string[] {
+  return at
+    .worktrees()
+    .filter((w) => !w.locked && !existsSync(join(w.path, '.git')) && !removed.has(resolve(w.path)))
+    .map((w) => w.path)
 }
 
 /** Plan repositories kept in the remote URL cache must still push only where they fetch from. */
@@ -772,39 +788,13 @@ function assertSafeToForce(path: string, git: Git, a: Accepted): void {
   if (reasons.length > 0) throw new Error(`refused: ${reasons.join('; ')}`)
 }
 
-/**
- * The gone worktrees a `git worktree prune` here would delete submodule work
- * with: each keeps, in its own git dir, a submodule git dir holding commits or
- * stashes no remote has, or one that cannot be read. Locked ones are left out,
- * since prune skips them, and so are those in `abandoned`, whose rows this run
- * prunes with `abandon-unmerged` allowed.
- */
-function pruneHazards(at: Git, abandoned: ReadonlySet<string>): string[] {
-  const gone = at.worktrees().filter((w) => !w.locked && !existsSync(join(w.path, '.git')))
-  if (gone.length === 0) return []
-  const common = at.soft.gitCommonDir()
-  if (common === null) return []
-  const gitDirs = worktreeGitDirs(common)
-  const out: string[] = []
-  for (const w of gone) {
-    const gitDir = gitDirs.get(resolve(w.path))
-    if (gitDir === undefined) continue
-    const hazards = submoduleHazards(inspectSubmodules(at, w.path, { gitDir }), {
-      discard: true,
-      abandon: abandoned.has(resolve(w.path)),
-    })
-    if (hazards.length > 0) out.push(`${w.path}: ${hazards.join('; ')}`)
-  }
-  return out
-}
-
 /** Run one step, then confirm it took. Throws with the reason on failure. */
 function execute(
   step: Step,
   a: Accepted | null,
   git: Git,
   probe: ProcessProbe,
-  abandoned: ReadonlySet<string>,
+  removedHere: ReadonlySet<string>,
 ): string {
   const at = git.at(step.repo)
   const registered = (path: string): boolean =>
@@ -828,22 +818,22 @@ function execute(
       return 'lock owner dead, unlocked'
     }
     case 'prune-worktrees': {
+      if (row?.kind !== 'worktree') throw new Error('prune without a worktree')
       // A worktree whose directory is gone goes on its own.
-      if (row?.kind === 'worktree' && row.evidence.directoryLeft !== true) {
+      if (row.evidence.directoryLeft !== true) {
         at.worktreeRemove(row.name)
         if (registered(row.name)) throw new Error('still registered after remove')
         return 'unregistered'
       }
-      // `git worktree prune` drops every gone worktree, not just this row's,
-      // and each one's git dir with it, submodule git dirs included.
-      const hazards = pruneHazards(at, abandoned)
-      if (hazards.length > 0) {
-        if (row === undefined) return `not pruned: ${hazards.join('; ')}`
-        throw new Error(`refused: pruning would delete submodule work: ${hazards.join('; ')}`)
+      // `git worktree prune` drops every gone worktree, not just this row's;
+      // asked again, so one that went stale since the check is not taken.
+      const others = pruneCollateral(at, removedHere)
+      if (others.length > 0) {
+        throw new Error(`refused: pruning would also drop ${others.join(', ')}`)
       }
       at.worktreePrune()
-      if (row !== undefined && registered(row.name)) throw new Error('still registered after prune')
-      return row === undefined ? 'pruned' : 'unregistered'
+      if (registered(row.name)) throw new Error('still registered after prune')
+      return 'unregistered'
     }
     case 'remove-worktree': {
       if (row?.kind !== 'worktree') throw new Error('remove without a worktree')
@@ -912,7 +902,7 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   // Only the rows the preview would run, pinned to their repositories. A
   // spared tip check is not a selection; the approval carries it again.
   const shown = preview.steps.flatMap((s) =>
-    s.row === null || s.action === 'verify-remote' ? [] : [{ repo: s.repo, id: s.row }],
+    s.action === 'verify-remote' ? [] : [{ repo: s.repo, id: s.row }],
   )
   const pick = uniq(shown)
   const approval: ResolvedApproval = {
@@ -956,14 +946,14 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   opts.onStart?.(receipt.steps)
   const git = new Git(cwd, { runner: opts.git })
   const probe = opts.probe ?? defaultProcessProbe()
-  const { abandoned } = planned
+  const { removedHere } = planned
   // Worktrees whose lock this run cleared. typed-git has no `worktree lock`
   // verb, so a failed remove cannot put the lock back; the receipt says so.
   const unlocked = new Set<string>()
   for (const [i, [step, a]] of plannedSteps.entries()) {
     opts.onStep?.(i, plannedSteps.length, step)
     try {
-      step.verification = execute(step, a, git, probe, abandoned)
+      step.verification = execute(step, a, git, probe, removedHere)
       step.result = 'ok'
       if (step.action === 'unlock-worktree') unlocked.add(a!.row.name)
     } catch (err) {

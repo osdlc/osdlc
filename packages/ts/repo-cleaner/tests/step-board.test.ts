@@ -3,11 +3,12 @@ import { describe, expect, test } from 'vitest'
 import type { Step } from '../src/receipt.ts'
 import { boardLines, stepBoard } from '../src/step-board.ts'
 
-function step(id: string | null, result: Step['result'] = 'pending'): Step {
+function step(id: string, result: Step['result'] = 'pending'): Step {
+  const prune = id.startsWith('/')
   return {
     repo: '/r',
-    row: id === null ? null : `branch:${id}`,
-    action: id === null ? 'prune-worktrees' : 'delete-branch',
+    row: prune ? `worktree:${id}` : `branch:${id}`,
+    action: prune ? 'prune-worktrees' : 'delete-branch',
     command: '',
     expectedSha: null,
     result,
@@ -20,12 +21,12 @@ const SIZE = { width: 80, height: 24 }
 
 describe('boardLines', () => {
   test('a row per step: full and ticked when done, half while running, empty while waiting', () => {
-    const steps = [step('a', 'ok'), step('b'), step('c'), step(null)]
+    const steps = [step('a', 'ok'), step('b'), step('c'), step('/gone')]
     expect(boardLines(steps, 1, SIZE)).toEqual([
       '  ██████████ ✓ delete  branch:a',
       '  █████░░░░░ › delete  branch:b',
       '  ░░░░░░░░░░   delete  branch:c',
-      '  ░░░░░░░░░░   prune   worktree records in /r',
+      '  ░░░░░░░░░░   prune   worktree:/gone',
       `  ${'█'.repeat(8)}${'░'.repeat(22)} 1/4`,
     ])
   })

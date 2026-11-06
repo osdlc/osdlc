@@ -10,12 +10,12 @@ import {
 } from '../src/render.ts'
 import type { Kind, RowId } from '../src/types.ts'
 
-function step(action: Step['action'], result: Step['result'], name: string | null): Step {
+function step(action: Step['action'], result: Step['result'], name: string): Step {
   const kind: Kind =
     action === 'delete-branch' ? 'branch' : action === 'delete-remote' ? 'remote' : 'worktree'
   return {
     repo: '/r',
-    row: name === null ? null : (`${kind}:${name}` as RowId),
+    row: `${kind}:${name}` as RowId,
     action,
     command: `git ${action}`,
     expectedSha: null,
@@ -45,7 +45,6 @@ describe('run summary', () => {
       step('delete-branch', 'ok', 'a'),
       step('delete-branch', 'ok', 'b'),
       step('delete-remote', 'ok', 'origin/a'),
-      step('prune-worktrees', 'ok', null),
     ])
     expect(summarizeRun(r)).toEqual({
       deleted: { worktree: 1, branch: 2, remote: 1 },
@@ -80,7 +79,6 @@ describe('run summary', () => {
       step('delete-branch', 'ok', 'a'),
       step('delete-remote', 'failed', 'origin/a'),
       step('delete-remote', 'pending', 'origin/b'),
-      step('prune-worktrees', 'pending', null),
     ])
     expect(renderRunSummary(r)).toEqual([
       'deleted: 1 local branch',
@@ -110,7 +108,7 @@ describe('renderPreview', () => {
   test('per repository: each step with its command under it, each skipped row, then the counts', () => {
     const r = receipt(
       'dry-run',
-      [step('delete-branch', 'would-run', 'feat/a'), step('prune-worktrees', 'would-run', null)],
+      [step('delete-branch', 'would-run', 'feat/a'), step('prune-worktrees', 'would-run', '/gone')],
       [drop('feat/b', 'needs-pick')],
     )
     expect(renderPreview(r)).toBe(
@@ -118,12 +116,12 @@ describe('renderPreview', () => {
         '/r',
         '  delete  branch:feat/a',
         '          git delete-branch',
-        '  prune   worktree records',
+        '  prune   worktree:/gone',
         '          git prune-worktrees',
         '  skip    branch:feat/b',
         '          needs-pick: ',
         '',
-        'would delete: 1 local branch',
+        'would delete: 1 local branch, 1 stale worktree pruned',
         'skipped 1, not deleted: 1 needs-pick (name with --pick)',
         '',
       ].join('\n'),

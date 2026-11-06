@@ -51,7 +51,7 @@ whole run underneath:
   ██████████ ✓ delete  branch:feat/a
   █████░░░░░ › delete  branch:feat/b
   ░░░░░░░░░░   delete  remote:origin/feat/b
-  ░░░░░░░░░░   prune   worktree records in /Users/me/work/api
+  ░░░░░░░░░░   prune   worktree:/Users/me/work/wt/old
   ████████░░░░░░░░░░░░░░░░░░░░░░ 1/4
 ```
 
@@ -203,12 +203,12 @@ failure. Without `--pick` it runs every row judged `delete`.
 /Users/me/work/api
   delete  branch:fix/login-redirect
           git update-ref -d refs/heads/fix/login-redirect 3f9c2e1d…
-  prune   worktree records
-          git -C /Users/me/work/api worktree prune
+  prune   worktree:/Users/me/work/wt/old
+          git -C /Users/me/work/api worktree remove /Users/me/work/wt/old
   skip    worktree:/Users/me/work/wt/spike
           needs-pick: review: clean but no clear disposability signal; pick it to run it
 
-would delete: 1 local branch
+would delete: 1 local branch, 1 stale worktree pruned
 skipped 1, not deleted: 1 needs-pick (name with --pick)
 Delete 2 items? [y/N]
 ```
@@ -446,10 +446,10 @@ in a left-over submodule git dir makes the prune row a `review` that carries
 `abandon-unmerged`.
 A worktree whose directory is gone is removed by its own record. One whose
 directory is left without its `.git` takes the repository-wide `git worktree
-prune`, which drops every gone worktree, not only the planned one, so `clean`
-drops such a row (`blocked`, with the reason) while another gone worktree it
-was not allowed keeps such work; the closing prune of a run skips instead, and
-its receipt step says why.
+prune`, which drops every gone worktree, not only the planned one. So such a
+row runs last, and only while every other gone worktree that prune would drop
+goes in the same run; otherwise `clean` drops it (`blocked`, with the reason).
+A run never drops the record of a gone worktree it did not select.
 
 Commits count as pushed only when a remote-tracking ref of the submodule holds
 them. A superproject that records a submodule commit reachable from no branch
@@ -603,7 +603,7 @@ local rows does not compare every remote branch again, and it fetches when the
 plan's sweep did, so it judges against the same, current default branch.
 
 On yes it runs only the steps it showed: spared remote tips first, then
-worktrees, local branches, remote branches and a prune, in that order. Branch
+worktrees, local branches and remote branches, in that order. Branch
 deletes are compare-and-swap, every step is verified, and the first failure
 stops the run. Every run ends with what it did:
 

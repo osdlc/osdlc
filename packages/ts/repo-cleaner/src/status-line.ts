@@ -50,7 +50,7 @@ export function describeSweep(p: SweepProgress, home: string = homedir()): strin
 
 /** A run's step as one line, e.g. `deleting ██████░░░░ 3/7: delete-remote remote:origin/feat/x`. */
 export function describeStep(index: number, total: number, step: Step): string {
-  const what = step.row ?? step.repo
+  const what = step.row
   return `deleting ${progressBar(index, total)} ${index + 1}/${total}: ${step.action} ${what}`
 }
 
