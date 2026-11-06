@@ -72,8 +72,9 @@ export function isPlanCategory(category: string): category is PlanCategory {
 /**
  * The facts a row's verdict rests on. A branch: its sha and its PR's number
  * and state. A worktree: HEAD, branch, how much unlanded work it holds and
- * whether its lock was stale and whether it is on disk, so a lock taken or
- * revived after planning, or a directory that came back, drops the row.
+ * whether its lock was stale, whether it is on disk, and each submodule's
+ * state, so a lock taken or revived after planning, a directory that came
+ * back, or a submodule that changed, drops the row.
  */
 export function fingerprint(item: PlannableRow): Record<string, unknown> {
   const f = item.facts
@@ -87,6 +88,10 @@ export function fingerprint(item: PlannableRow): Record<string, unknown> {
       // Prune or remove: a directory that came back between plan and apply
       // must not turn a prune into a remove.
       on_disk: f['on_disk'] ?? null,
+      // A submodule that moved, or gained changes or commits, since the plan
+      // was judged clean and pushed against other state. Absent (null) for a
+      // worktree without submodules, so older plans still match those.
+      submodules: f['submodules'] ?? null,
     }
   }
   const pr = f['pr'] as { number?: unknown; state?: unknown } | undefined

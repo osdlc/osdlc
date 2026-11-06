@@ -33,6 +33,14 @@ export {
   worktreeUnlockCommand,
   type WorktreeBlocker,
 } from './worktrees.ts'
+export {
+  inspectSubmodules,
+  submoduleFacts,
+  submoduleHazards,
+  worktreeGitDir,
+  type Submodule,
+  type SubmoduleReport,
+} from './submodules.ts'
 export { DiscoveryFailed, discoverRepo } from './discover.ts'
 export { assessLanding, patchEquivalent, type Landing, type LandingCheck } from './landing.ts'
 export {

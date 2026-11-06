@@ -7,6 +7,8 @@
  *
  * 1. worktrees, each unlocked first when its lock's owner is dead, and each
  *    checked again for live processes just before it is unlocked or removed;
+ *    one with submodules is removed with `--force`, after its files and every
+ *    submodule are checked again;
  * 2. local branches;
  * 3. remote branches;
  * 4. one prune per repository.
@@ -16,7 +18,7 @@
  */
 
 import { existsSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import { shellJoin, type CommandRunner } from '@osdlc/command-seam'
 import { CommandFailed, Git, PUSH_REJECTIONS } from '@osdlc/typed-git'
@@ -33,6 +35,7 @@ import {
   type PlanRepo,
 } from './plan.ts'
 import { RECEIPT_VERSION, type Dropped, type Receipt, type RowRef, type Step } from './receipt.ts'
+import { inspectSubmodules, submoduleHazards, worktreeGitDir } from './submodules.ts'
 import { holdFreedBranches, sweepRepo } from './sweep.ts'
 import {
   AUTHORIZATIONS,
@@ -398,9 +401,15 @@ function stepsFor({ repo, item, force }: Accepted): Step[] {
           ? [pending(repo, ref, 'unlock-worktree', worktreeUnlockCommand(repo, item.id))]
           : []
       if (item.facts['on_disk'] === false) return [...unlock, pruneStep(repo, ref)]
+      const forced = force || item.facts['submodules_force'] === true
       return [
         ...unlock,
-        pending(repo, ref, 'remove-worktree', worktreeRemoveCommand(repo, item.id, { force })),
+        pending(
+          repo,
+          ref,
+          'remove-worktree',
+          worktreeRemoveCommand(repo, item.id, { force: forced }),
+        ),
       ]
     }
     case 'local_branch':
@@ -436,6 +445,44 @@ function assertNoLiveProcess(path: string, probe: ProcessProbe): void {
   }
 }
 
+/**
+ * Refuse a remove forced for submodules that would now lose something. The
+ * force skips git's own check, so this one stands in for it: the worktree's
+ * own files must be clean unless `discard` (the `discard-changes` grant), and
+ * every submodule clean, pushed and readable, read afresh.
+ */
+function assertSubmodulesSafe(path: string, git: Git, discard: boolean): void {
+  const reasons: string[] = []
+  if (!discard) {
+    const status = git.at(path).statusPorcelain()
+    if (status.length > 0) {
+      reasons.push(`${path} has ${status.length} modified or untracked file(s) since the sweep`)
+    }
+  }
+  reasons.push(...submoduleHazards(inspectSubmodules(git, path), { discard }))
+  if (reasons.length > 0) throw new Error(`refused: ${reasons.join('; ')}`)
+}
+
+/**
+ * The gone worktrees a `git worktree prune` here would delete submodule work
+ * with: each keeps, in its own git dir, a submodule git dir holding commits or
+ * stashes no remote has, or one that cannot be read. Locked ones are left
+ * out: prune skips them.
+ */
+function pruneHazards(at: Git): string[] {
+  const common = at.soft.gitCommonDir()
+  if (common === null) return []
+  const out: string[] = []
+  for (const w of at.worktrees()) {
+    if (w.locked || existsSync(join(w.path, '.git'))) continue
+    const gitDir = worktreeGitDir(common, w.path)
+    if (gitDir === null) continue
+    const hazards = submoduleHazards(inspectSubmodules(at, w.path, { gitDir }), { discard: true })
+    if (hazards.length > 0) out.push(`${w.path}: ${hazards.join('; ')}`)
+  }
+  return out
+}
+
 /** Run one step, then confirm it took. Throws with the reason on failure. */
 function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe): string {
   const at = git.at(step.repo)
@@ -460,6 +507,13 @@ function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe
       return 'lock owner dead, unlocked'
     }
     case 'prune-worktrees': {
+      // Prune drops every gone worktree, not just this row's, and each one's
+      // git dir with it, submodule git dirs included.
+      const hazards = pruneHazards(at)
+      if (hazards.length > 0) {
+        if (row === null) return `not pruned: ${hazards.join('; ')}`
+        throw new Error(`refused: pruning would delete submodule work: ${hazards.join('; ')}`)
+      }
       at.worktreePrune()
       if (row !== null && registered(row.item.id)) throw new Error('still registered after prune')
       return row === null ? 'pruned' : 'unregistered'
@@ -467,7 +521,9 @@ function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe
     case 'remove-worktree': {
       const path = row!.item.id
       assertNoLiveProcess(path, probe)
-      at.worktreeRemove(path, { force: row!.force })
+      const forSubmodules = row!.item.facts['submodules_force'] === true
+      if (forSubmodules) assertSubmodulesSafe(path, git, row!.force)
+      at.worktreeRemove(path, { force: row!.force || forSubmodules })
       if (existsSync(path)) throw new Error(`directory still exists: ${path}`)
       if (registered(path)) throw new Error(`still registered: ${path}`)
       return 'directory gone and unregistered'
