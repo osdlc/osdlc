@@ -31,12 +31,16 @@ import {
   type SubmoduleReport,
 } from './submodules.ts'
 import {
-  authorizationsFor,
   landedRef,
-  makeItem,
+  makeRow,
+  risksFor,
+  type Blocker,
+  type BranchUse,
   type PRInfo,
   type RepoInfo,
-  type SweepItem,
+  type RowFields,
+  type WorktreeEvidence,
+  type WorktreeRow,
 } from './types.ts'
 
 /** The command line, not run, that removes the worktree at `path`. */
@@ -74,28 +78,12 @@ function isDir(path: string): boolean {
   }
 }
 
-/** A condition that rules out removing a worktree, whatever its branch says. */
-export type WorktreeBlocker =
-  | 'locked-worktree'
-  | 'live-process'
-  | 'process-probe-failed'
-  | 'hidden-index-flags'
-  | 'nested-repository'
-  | 'branch-in-other-worktree'
-  | 'submodule-unreadable'
-
-/** True for a worktree row held back by `facts.blockers`. */
-export function hasBlockers(item: Pick<SweepItem, 'facts'>): boolean {
-  const blockers = item.facts['blockers']
-  return Array.isArray(blockers) && blockers.length > 0
-}
-
-/** Cap on `facts.hidden_index_paths`; `facts.hidden_index_flags` is the full count. */
+/** Cap on `evidence.hiddenIndexPaths`; `evidence.hiddenIndexFlags` is the full count. */
 const HIDDEN_PATHS_SHOWN = 10
 
 /**
  * The blockers on one worktree, each with the sentence telling a person what
- * to do about it. Writes the evidence for each into `facts`.
+ * to do about it. Writes the evidence for each into `evidence`.
  */
 function readBlockers(opts: {
   path: string
@@ -104,23 +92,23 @@ function readBlockers(opts: {
   locked: boolean
   lockReason: string | null
   otherWorktrees: string[]
-  facts: Record<string, unknown>
+  evidence: WorktreeEvidence
   git: Git
   probe: ProcessProbe
   submodules: SubmoduleReport
-}): [WorktreeBlocker, string][] {
-  const { path, branch, onDisk, locked, lockReason, otherWorktrees, facts, git, probe } = opts
+}): [Blocker, string][] {
+  const { path, branch, onDisk, locked, lockReason, otherWorktrees, evidence, git, probe } = opts
   const { submodules } = opts
-  const out: [WorktreeBlocker, string][] = []
+  const out: [Blocker, string][] = []
 
   if (locked) {
-    facts['lock_reason'] = lockReason
+    evidence.lockReason = lockReason
     // A lock whose owner is dead holds nothing. A lock that names no owner, or
     // one that cannot be ruled out, stays a blocker.
     const owner = parseLockOwner(lockReason)
     if (owner !== null && !probe.alive(owner.pid, owner.startedAt)) {
-      facts['stale_lock'] = true
-      facts['lock_owner'] = { pid: owner.pid, started_at: owner.startedAt ?? null }
+      evidence.staleLock = true
+      evidence.lockOwner = { pid: owner.pid, startedAt: owner.startedAt ?? null }
     } else {
       out.push([
         'locked-worktree',
@@ -137,9 +125,9 @@ function readBlockers(opts: {
       const live = probe.holders(path).sort((a, b) => a.pid - b.pid)
       const shells = live.filter(isIdleHolder)
       const busy = busyHolders(live)
-      if (shells.length > 0) facts['idle_shells'] = shells
+      if (shells.length > 0) evidence.idleShells = shells
       if (busy.length > 0) {
-        facts['live_processes'] = busy
+        evidence.liveProcesses = busy
         out.push([
           'live-process',
           `Running in the worktree: ${busy.map((h) => `${h.command} (pid ${h.pid})`).join(', ')}; stop them or wait for them to finish.`,
@@ -149,7 +137,7 @@ function readBlockers(opts: {
       // No process table to read (a host without `lsof`, a timeout): nobody
       // can say the directory is idle, so the worktree is held back.
       const message = err instanceof Error ? err.message : String(err)
-      facts['process_probe_error'] = message
+      evidence.processProbeError = message
       out.push([
         'process-probe-failed',
         `Could not tell whether a process is running in the worktree (${message}); check by hand, or fix the probe and sweep again.`,
@@ -167,8 +155,8 @@ function readBlockers(opts: {
       ...submodules.submodules.flatMap((s) => s.hiddenIndexPaths.map((p) => `${s.path}/${p}`)),
     ]
     if (hidden.length > 0) {
-      facts['hidden_index_flags'] = hidden.length
-      facts['hidden_index_paths'] = hidden.slice(0, HIDDEN_PATHS_SHOWN)
+      evidence.hiddenIndexFlags = hidden.length
+      evidence.hiddenIndexPaths = hidden.slice(0, HIDDEN_PATHS_SHOWN)
       out.push([
         'hidden-index-flags',
         `${hidden.length} file(s) are marked skip-worktree or assume-unchanged, so status may hide edits; clear the flags with \`git update-index --no-skip-worktree --no-assume-unchanged <path>\` and check again.`,
@@ -184,7 +172,7 @@ function readBlockers(opts: {
       ...submodules.submodules.flatMap((s) => s.nestedRepositories.map((p) => `${s.path}/${p}`)),
     ]
     if (nested.length > 0) {
-      facts['nested_repositories'] = nested
+      evidence.nestedRepositories = nested
       out.push([
         'nested-repository',
         `Nested repositories (${nested.join(', ')}) have their own history; move them out before removing the worktree.`,
@@ -200,7 +188,7 @@ function readBlockers(opts: {
   }
 
   if (otherWorktrees.length > 0) {
-    facts['other_worktrees'] = otherWorktrees
+    evidence.otherWorktrees = otherWorktrees
     out.push([
       'branch-in-other-worktree',
       `Branch \`${branch}\` is also checked out at ${otherWorktrees.join(', ')}; deleting the branch along with this worktree would pull it from under the other.`,
@@ -223,7 +211,7 @@ export function gatherWorktrees(
   only: string | undefined,
   probe: ProcessProbe,
   tick?: (done: number, total: number) => void,
-): [SweepItem[], Set<string>] {
+): [WorktreeRow[], Set<string>] {
   const all = git.at(repo.root).worktrees()
   const pathsByBranch = new Map<string, string[]>()
   for (const entry of all) {
@@ -233,7 +221,7 @@ export function gatherWorktrees(
   }
   const entries = only === undefined ? all : all.filter((entry) => entry.branch === only)
 
-  const items: SweepItem[] = []
+  const items: WorktreeRow[] = []
   for (const [i, entry] of entries.entries()) {
     tick?.(i, entries.length)
     const branch = entry.branch ?? ''
@@ -277,9 +265,9 @@ export function classifyWorktree(opts: {
   git: Git
   /** Answers lock-owner and working-directory questions. One per sweep: it caches the process table. */
   probe: ProcessProbe
-}): SweepItem {
+}): WorktreeRow {
   const { path, branch, head, isBare, isDetached, isPrimary, repo, prs, cwd, git } = opts
-  const facts: Record<string, unknown> = {
+  const evidence: WorktreeEvidence = {
     path,
     branch: branch || null,
     head,
@@ -287,17 +275,9 @@ export function classifyWorktree(opts: {
     detached: isDetached,
     primary: isPrimary,
   }
-  const keep = (reason: string, extra: Partial<SweepItem> = {}): SweepItem =>
-    makeItem({
-      category: 'worktree',
-      id: path,
-      classification: 'safe-to-keep',
-      action: 'keep',
-      reason,
-      facts,
-      ...extra,
-    })
-  const pinned = (reason: string): SweepItem => keep(reason, { deletable: false })
+  const row = (r: RowFields<WorktreeRow>): WorktreeRow =>
+    makeRow<WorktreeRow>({ kind: 'worktree', name: path, evidence, ...r })
+  const pinned = (why: string): WorktreeRow => row({ verdict: 'keep', action: null, why })
 
   if (isPrimary) return pinned('primary worktree (repo root)')
 
@@ -315,8 +295,8 @@ export function classifyWorktree(opts: {
   // that drops its registration leaves the directory alone.
   const dirPresent = isDir(path)
   const onDisk = dirPresent && existsSync(join(path, '.git'))
-  facts['on_disk'] = onDisk
-  facts['directory_left'] = dirPresent && !onDisk
+  evidence.onDisk = onDisk
+  evidence.directoryLeft = dirPresent && !onDisk
 
   // A gone worktree has no checkout to ask for its git dir, but the git dir
   // may still hold submodule history that the prune would delete.
@@ -325,14 +305,14 @@ export function classifyWorktree(opts: {
   })
   const submoduleDirty = submodules.dirty.reduce((n, s) => n + s.dirtyFiles, 0)
   if (submodules.submodules.length > 0) {
-    facts['submodules'] = submoduleFacts(submodules)
-    facts['submodule_dirty_files'] = submoduleDirty
+    evidence.submodules = submoduleFacts(submodules)
+    evidence.submoduleDirtyFiles = submoduleDirty
   }
   // Plain `worktree remove` refuses a worktree with submodules whatever their
   // state, so the remove is forced. The force also skips git's own check for
-  // modified and untracked files, which the sweep has made above and `apply`
+  // modified and untracked files, which the sweep makes below and `run`
   // makes again just before it removes.
-  if (onDisk && submodules.forceRequired) facts['submodules_force'] = true
+  if (onDisk && submodules.forceRequired) evidence.forcedForSubmodules = true
 
   let dirtyFiles: string[] = []
   let unpushed: string[] = []
@@ -353,30 +333,30 @@ export function classifyWorktree(opts: {
     // exist locally, and an unresolvable range renders as zero unpushed commits.
     const range = git.at(path).try.logLines({ range: `${compareAgainst}..HEAD`, format: '%h %s' })
     if (range.ok) unpushed = range.value
-    facts['compare_against'] = compareAgainst
+    evidence.compareAgainst = compareAgainst
   }
-  facts['dirty_files'] = dirtyFiles.length
-  facts['unpushed_commits'] = unpushed.length
+  evidence.dirtyFiles = dirtyFiles.length
+  evidence.unpushedCommits = unpushed.length
 
   const branchExists = !!branch && git.at(repo.root).resolveRef(branch) !== null
-  facts['branch_exists'] = branchExists
+  evidence.branchExists = branchExists
 
   const pr = branch ? prs.get(branch) : undefined
-  const { landed, gap } = recordPr(facts, pr, head ?? '', repo)
-  if (unpushed.length > 0) facts['unique_commits'] = unpushed.length
+  const { landed, gap } = recordPr(evidence, pr, head ?? '', repo)
+  if (unpushed.length > 0) evidence.uniqueCommits = unpushed.length
   // A merged PR at HEAD lands every commit, even ones the fallback
-  // `compare_against` (a squash merge, a deleted upstream) counts as ahead.
+  // `compareAgainst` (a squash merge, a deleted upstream) counts as ahead.
   // A rebase merge, cherry-pick or squash merge leaves HEAD off the default
   // branch; the patches say whether the work is there anyway. Judged from HEAD,
   // so a dirty tree is still caught by the dirty-file check below.
   const patch: Landing | null =
     landed || !onDisk || head === null ? null : judgeLanding(repo, head, pr, gap, git)
-  if (patch !== null) recordLanding(facts, patch)
+  if (patch !== null) recordLanding(evidence, patch)
   const patchLanded = patch !== null && patch.check !== null
   const unlanded = unpushed.length > 0 && !landed && !landingConfirmed(patch)
   if (onDisk && head !== null) {
     // `soft`: a missing default ref reads as not merged.
-    facts['merged'] = mergedFact({
+    evidence.merged = mergedFact({
       landed,
       patchLanded,
       ancestor: git.at(repo.root).soft.isAncestor(head, landedRef(repo)),
@@ -385,99 +365,84 @@ export function classifyWorktree(opts: {
   const dirty = dirtyFiles.length > 0 || submoduleDirty > 0
   // A submodule's git dir lives in the worktree's own git dir, so removing
   // the worktree, or pruning it once its directory is gone, deletes the
-  // submodule's commits and stashes with it. The same grant as the
-  // worktree's own unpushed commits covers them.
+  // submodule's commits and stashes with it. The same risk as the worktree's
+  // own unpushed commits covers them.
   const submoduleWork = submodules.unpushed.length > 0
   const submoduleWorkText = submoduleWork
     ? `submodule(s) ${submodules.unpushed.map((s) => `${s.path} (${unsharedPhrase(s)})`).join(', ')}`
     : ''
-  const requires = authorizationsFor({
+  const risks = risksFor({
     'abandon-unmerged': unlanded || submoduleWork,
     'discard-changes': dirty,
     'confirm-open-pr': pr?.state === 'OPEN',
   })
 
-  const blockers = readBlockers({
-    ...opts,
-    onDisk,
-    facts,
-    submodules,
-  })
-  const kinds = blockers.map(([kind]) => kind)
+  const blockers = readBlockers({ ...opts, onDisk, evidence, submodules })
   // `git worktree remove` and `prune` both skip a locked worktree, so a stale
   // lock is cleared first.
-  const unlock = facts['stale_lock'] === true ? [worktreeUnlockCommand(repo.root, path)] : []
+  const unlock = evidence.staleLock === true ? [worktreeUnlockCommand(repo.root, path)] : []
   const safeRemove = [
     ...unlock,
-    worktreeRemoveCommand(repo.root, path, { force: facts['submodules_force'] === true }),
+    worktreeRemoveCommand(repo.root, path, { force: evidence.forcedForSubmodules === true }),
   ]
   // Said in the reason of a row whose remove is forced for its submodules.
   const forced =
-    facts['submodules_force'] === true
+    evidence.forcedForSubmodules === true
       ? '; its submodules are clean and pushed, so the remove is forced'
       : ''
   const forceRemove = [...unlock, worktreeRemoveCommand(repo.root, path, { force: true })]
   const pruneOnly = [...unlock, worktreePruneCommand(repo.root)]
-  facts['blockers'] = kinds
-  if (kinds.length > 0) {
-    return makeItem({
-      category: 'worktree',
-      id: path,
-      classification: 'needs-investigation',
-      action: 'review',
-      reason: `blocked: ${kinds.join(', ')}`,
-      facts,
-      investigationParts: blockers.map(([, advice]) => advice),
-      deletable: false,
+  if (blockers.length > 0) {
+    const kinds = blockers.map(([kind]) => kind)
+    return row({
+      verdict: 'blocked',
+      action: null,
+      why: `blocked: ${kinds.join(', ')}`,
+      blockers: kinds,
+      notes: blockers.map(([, advice]) => advice),
     })
   }
 
   if (!onDisk && submoduleWork) {
-    return makeItem({
-      category: 'worktree',
-      id: path,
-      classification: 'needs-investigation',
-      action: 'review',
-      reason: `directory gone, but its git dir keeps work no remote has in ${submoduleWorkText}`,
-      facts,
+    return row({
+      verdict: 'review',
+      action: 'prune',
+      why: `directory gone, but its git dir keeps work no remote has in ${submoduleWorkText}`,
       commands: pruneOnly,
-      requires,
-      investigationParts: [
+      risks,
+      notes: [
         `Worktree ${path} is gone, but its git dir keeps ${submoduleWorkText}; pruning it deletes them.`,
-        'Push the work from that git dir, or grant abandon-unmerged to prune it anyway.',
+        'Push the work from that git dir, or allow abandon-unmerged to prune it anyway.',
       ],
     })
   }
 
   if (!onDisk) {
-    return makeItem({
-      category: 'worktree',
-      id: path,
-      classification: 'safe-to-delete',
+    return row({
+      verdict: 'delete',
       action: 'prune',
-      reason: dirPresent
-        ? 'directory is no longer a checkout (no .git); prune the stale link, the directory stays'
-        : 'worktree directory no longer on disk; prune the stale link',
-      facts,
+      why: dirPresent
+        ? 'directory is no longer a checkout (no .git); prune the stale record, the directory stays'
+        : 'worktree directory no longer on disk; prune the stale record',
       commands: pruneOnly,
     })
   }
 
+  // A dirty worktree goes only with `discard-changes`, which forces the remove.
+  const removes = dirty ? forceRemove : safeRemove
   if (dirty || unlanded || submoduleWork) {
     const inSubmodules =
       submoduleDirty > 0
         ? `, ${submoduleDirty} in submodule(s) ${submodules.dirty.map((s) => s.path).join(', ')}`
         : ''
     const workInSubmodules = submoduleWork ? `; unpushed work in ${submoduleWorkText}` : ''
-    return makeItem({
-      category: 'worktree',
-      id: path,
-      classification: 'needs-investigation',
-      action: 'review',
-      reason: `${dirtyFiles.length} dirty file(s)${inSubmodules}, ${unpushed.length} commit(s) ahead of ${facts['compare_against']}${workInSubmodules}`,
-      facts,
-      requires,
-      investigationParts: [
+    return row({
+      verdict: 'review',
+      action: 'remove',
+      why: `${dirtyFiles.length} dirty file(s)${inSubmodules}, ${unpushed.length} commit(s) ahead of ${evidence.compareAgainst}${workInSubmodules}`,
+      commands: removes,
+      risks,
+      notes: [
         `Worktree ${path} has uncommitted work or unpushed commits.`,
         `Branch: ${branch || '(detached)'}.`,
         ...(submoduleWork
@@ -495,81 +460,51 @@ export function classifyWorktree(opts: {
     })
   }
 
-  if (pr && landed) {
-    return makeItem({
-      category: 'worktree',
-      id: path,
-      classification: 'safe-to-delete',
-      action: 'remove',
-      reason: `clean; PR #${pr.number} merged${forced}`,
-      facts,
-      commands: safeRemove,
-      requires,
-    })
-  }
+  const deletes = (why: string, commands = safeRemove): WorktreeRow =>
+    row({ verdict: 'delete', action: 'remove', why, commands, risks })
 
+  if (pr && landed) return deletes(`clean; PR #${pr.number} merged${forced}`)
   if (patchLanded) {
-    return makeItem({
-      category: 'worktree',
-      id: path,
-      classification: 'safe-to-delete',
-      action: 'remove',
-      reason: `clean; patch-equivalent to commits on ${landedRef(repo)} (${patch.check}); ${confirmationNote(patch)}${forced}`,
-      facts,
-      commands: safeRemove,
-      requires,
-    })
+    return deletes(
+      `clean; patch-equivalent to commits on ${landedRef(repo)} (${patch.check}); ${confirmationNote(patch)}${forced}`,
+    )
   }
-
   if (branch && !branchExists) {
-    return makeItem({
-      category: 'worktree',
-      id: path,
-      classification: 'safe-to-delete',
+    return deletes(`branch \`${branch}\` no longer exists${forced}`, forceRemove)
+  }
+  if (pr && pr.state === 'OPEN') {
+    return row({
+      verdict: 'keep',
       action: 'remove',
-      reason: `branch \`${branch}\` no longer exists${forced}`,
-      facts,
-      commands: forceRemove,
-      requires,
+      why: `open PR #${pr.number}`,
+      commands: safeRemove,
+      risks,
     })
   }
-
-  if (pr && pr.state === 'OPEN') return keep(`open PR #${pr.number}`, { requires })
 
   // Merged by ancestry alone: a worktree just made from the default branch is
   // merged that way too, so ancestry needs a sign the branch was worked on.
-  if (facts['merged'] === true && branch && head !== null) {
+  if (evidence.merged === true && branch && head !== null) {
     const used = branchUse(git.at(repo.root), branch, repo.mainBranch)
-    facts['branch_used'] = used
+    evidence.branchUsed = used
     if (used !== null) {
-      return makeItem({
-        category: 'worktree',
-        id: path,
-        classification: 'safe-to-delete',
-        action: 'remove',
-        reason: `clean; merged into ${landedRef(repo)}, and ${USE_REASON[used]}${forced}`,
-        facts,
-        commands: safeRemove,
-        requires,
-      })
+      return deletes(`clean; merged into ${landedRef(repo)}, and ${USE_REASON[used]}${forced}`)
     }
   }
 
-  const parts = [`Worktree \`${path}\` is clean.`]
-  if (branch) parts.push(`Branch: \`${branch}\`.`)
-  parts.push(pr ? `PR #${pr.number} is ${pr.state}.` : 'No associated PR.')
-  if (pr && gap) parts.push(gapSentence(pr, gap, repo))
+  const notes = [`Worktree \`${path}\` is clean.`]
+  if (branch) notes.push(`Branch: \`${branch}\`.`)
+  notes.push(pr ? `PR #${pr.number} is ${pr.state}.` : 'No associated PR.')
+  if (pr && gap) notes.push(gapSentence(pr, gap, repo))
   const unmatched = patch === null ? null : unmatchedSentence(patch, repo)
-  if (unmatched !== null) parts.push(unmatched)
-  return makeItem({
-    category: 'worktree',
-    id: path,
-    classification: 'needs-investigation',
-    action: 'review',
-    reason: 'clean but no clear disposability signal',
-    facts,
-    investigationParts: parts,
-    requires,
+  if (unmatched !== null) notes.push(unmatched)
+  return row({
+    verdict: 'review',
+    action: 'remove',
+    why: 'clean but no clear disposability signal',
+    commands: safeRemove,
+    notes,
+    risks,
   })
 }
 
@@ -578,9 +513,6 @@ function gitDirOfGone(git: Git, root: string, path: string): string | null {
   const common = git.at(root).soft.gitCommonDir()
   return common === null ? null : worktreeGitDir(common, path)
 }
-
-/** How a branch shows it was worked on, for a worktree merged by ancestry alone. */
-export type BranchUse = 'commits' | 'upstream'
 
 const USE_REASON: Record<BranchUse, string> = {
   commits: 'the branch has commits made on it',

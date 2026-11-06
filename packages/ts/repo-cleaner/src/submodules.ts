@@ -23,6 +23,8 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 import type { Git } from '@osdlc/typed-git'
 
+import type { SubmoduleEvidence } from './types.ts'
+
 /** One submodule of a worktree, or a submodule git dir it keeps, and what removing the worktree would lose from it. */
 export interface Submodule {
   /**
@@ -298,15 +300,15 @@ export function inspectSubmodules(
   }
 }
 
-/** The report as `facts.submodules`: snake_case, for JSON output and the plan fingerprint. */
-export function submoduleFacts(report: SubmoduleReport): Record<string, unknown>[] {
+/** The report as `evidence.submodules`, for a row and its plan fingerprint. */
+export function submoduleFacts(report: SubmoduleReport): SubmoduleEvidence[] {
   return report.submodules.map((s) => ({
     path: s.path,
     populated: s.populated,
     head: s.head,
     recorded: s.recorded,
-    dirty_files: s.dirtyFiles,
-    unpushed_commits: s.unpushedCommits,
+    dirtyFiles: s.dirtyFiles,
+    unpushedCommits: s.unpushedCommits,
     stashes: s.stashes,
     ...(s.error === null ? {} : { error: s.error }),
   }))

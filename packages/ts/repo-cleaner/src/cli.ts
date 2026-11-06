@@ -1,74 +1,58 @@
 /**
  * `repo-cleaner` — what has been merged, and what can go away.
  *
- * Four verbs over one set of sweep filters:
+ *   repo-cleaner [target...]   the report; deletes nothing
+ *   repo-cleaner plan          save the rows that could be deleted, to run later
+ *   repo-cleaner clean         check again, show the steps, ask, delete
+ *   repo-cleaner cache         list or remove the clones kept for remote URL targets
  *
- *   status  (the default) inventory and classify; read-only but for the fetch
- *   summary the same sweep as counts: totals, merged, delete, prune, review, keep
- *   plan    write the deletable rows as a plan, to stdout or a file
- *   apply   re-check, show the steps, ask, then delete
- *
- * and `cache`, which lists and removes the clones `--remote-url` keeps.
- *
- * `apply` works from a saved plan (`--plan`) or sweeps first. Either way it
- * re-checks every row, prints the steps it would run and asks before deleting;
- * `--yes` skips the question. Without a terminal and without `--yes` it
- * refuses rather than deleting. Scope is opt-in: the sweep covers the
- * repository you are standing in unless a path says otherwise.
+ * Every command takes `--help`, and `--help --extended` for the full
+ * reference: what each option means, the words the report uses, and which
+ * combinations are refused. A combination that contradicts itself, or one
+ * with an option that would have no effect, is refused with exit 2 before
+ * anything is swept.
  *
  * Exit codes:
- *   0   swept; or apply ran, was declined, or had nothing to run
+ *   0   swept; or clean ran, was declined, or had nothing to do
  *   1   failed against the state it found
  *   2   cannot run as typed
- *   10  nothing to sweep: no entry named a repository
- *   11  apply stopped at a failed step; the receipt says which
+ *   10  no target named a repository
+ *   11  clean stopped at a failed step; the receipt says which
  */
 
-import { existsSync, readSync, realpathSync, rmSync } from 'node:fs'
-import { basename, dirname, join, resolve, sep } from 'node:path'
+import { readSync, rmSync } from 'node:fs'
+import { basename, dirname, join, resolve } from 'node:path'
 import { isatty } from 'node:tty'
 
-import { EXIT, askYesNo, canPrompt, defineCli, systemDirs, type CliContext } from '@osdlc/cli-tool'
-import { Git } from '@osdlc/typed-git'
+import { EXIT, askYesNo, canPrompt, defineCli, type CliContext } from '@osdlc/cli-tool'
 import { detectColorLevel, stripControls } from '@osdlc/ux'
 
-import { resolveBranch } from './branches.ts'
-import { VENDOR_DIRS } from './devlink.ts'
+import { check, run, type Allow, type Approval, type Preview } from './clean.ts'
+import { fileStamp, parsePlan, plan as planOf, readPlan, writePlan, type Plan } from './plan.ts'
+import { PROVIDER_CHOICES, type ProviderChoice } from './providers/index.ts'
+import type { Receipt, Step } from './receipt.ts'
+import { REFERENCE } from './reference.ts'
 import {
   cachedMirrorOf,
-  ensureMirror,
+  defaultCacheDir,
   listMirrors,
-  mirrorProblem,
   redactUrl,
   type CachedMirror,
 } from './remote-mirror.ts'
-import { ApplyArgumentError, applyPlan, parseGrant, parseRowRef, type Grant } from './apply.ts'
-import {
-  PLAN_VERSION,
-  fileStamp,
-  parsePlan,
-  planRepo,
-  readPlan,
-  writePlan,
-  type Plan,
-} from './plan.ts'
-import { PROVIDER_CHOICES, type ProviderChoice } from './providers/index.ts'
-import { RECEIPT_VERSION, type Receipt, type RowRef, type Step } from './receipt.ts'
 import {
   PLAIN,
-  proposedCommands,
-  renderCountsJson,
-  renderCountsText,
+  TERMINAL_STYLE,
+  renderCommands,
   renderJson,
+  renderLateDrops,
   renderPreview,
-  renderPreviewDrops,
   renderReceipt,
   renderStepFailure,
   renderSummary,
   renderText,
+  renderTotals,
   rowsActedOn,
-  summarizeReceipt,
-  TERMINAL_STYLE,
+  summarizeRun,
   type Style,
 } from './render.ts'
 import {
@@ -79,129 +63,110 @@ import {
   type StatusLine,
 } from './status-line.ts'
 import { stepBoard, type StepBoard } from './step-board.ts'
-import { sweepRepos, type SweepReposOptions } from './sweep.ts'
-import type { Scope, SweepItem, SweepProgress, SweepResult } from './types.ts'
+import { sweep as sweepTargets, sweptWith, type SweepOptions } from './sweep.ts'
+import {
+  KINDS,
+  RISKS,
+  RepoCleanerError,
+  type Kind,
+  type Risk,
+  type Sweep,
+  type SweptWith,
+} from './types.ts'
 
 const EXIT_NOTHING_TO_SWEEP = 10
 const EXIT_STEP_FAILED = 11
 
 const NAME = 'repo-cleaner'
 
-/** The `--only` names, and the sweep scope each selects. */
-const ONLY: Record<string, Scope> = {
-  worktrees: 'worktrees',
-  branches: 'local-branches',
-  remotes: 'remote-branches',
-}
+/** `--help` and its modifier: commander must not own `--help`, or it would never see `--extended`. */
+const HELP_FLAGS = {
+  help: { kind: 'boolean', short: 'h', help: 'show this message' },
+  extended: { kind: 'boolean', help: 'with --help: the full reference' },
+} as const
 
-/** The flags every verb that sweeps takes. */
+/** The flags every command that sweeps takes. */
 const SWEEP_FLAGS = {
+  remote: {
+    kind: 'boolean',
+    help: 'also judge remote branches: fetches first and looks up pull requests; slower',
+  },
+  offline: { kind: 'boolean', help: 'with --remote: do not fetch' },
   only: {
     kind: 'list',
-    valueName: 'list',
-    help: `comma-separated: ${Object.keys(ONLY).join(', ')} (default: worktrees, branches; remotes with --remotes)`,
-  },
-  remotes: {
-    kind: 'boolean',
-    help: 'also sweep remote branches, which is slower: each one is compared with the default branch',
+    valueName: 'kinds',
+    help: `only these kinds of row: ${KINDS.join(', ')} (default: worktree,branch; remote too with --remote)`,
   },
   branch: {
     kind: 'string',
     valueName: 'name|HEAD',
-    help: 'only this branch of this repository: its worktree and local branch, and its remote branch with --remotes',
+    help: "only one branch's rows: its worktree, local branch, and remote branch with --remote",
   },
-  measureRemote: {
+  against: {
     kind: 'string',
-    valueName: 'name',
-    help: 'the remote whose default branch work is measured against (default: origin)',
-  },
-  remoteUrl: {
-    kind: 'list',
-    valueName: 'url',
-    default: [],
-    commaSeparated: false,
-    help: 'sweep the branches of this remote with no checkout of your own, through a clone kept in the cache directory; repeatable',
+    valueName: 'remote',
+    help: 'the remote whose default branch counts as merged into (default: origin)',
   },
   provider: {
     kind: 'enum',
     choices: PROVIDER_CHOICES,
     valueName: 'name',
-    help: 'with --remotes: where pull requests come from: auto (by remote host), github (gh), gitlab (glab), or none to classify on git evidence alone',
+    help: 'with --remote: where pull requests come from',
   },
-  fetch: {
-    kind: 'boolean',
-    negatable: true,
-    help: 'with --remotes: classify on the remote-tracking refs already on disk (without --remotes nothing is fetched)',
-  },
-  progress: {
-    kind: 'boolean',
-    negatable: true,
-    help: 'no status line on stderr (drawn only when stderr is a terminal)',
-  },
+  progress: { kind: 'boolean', negatable: true, help: 'no progress line on stderr' },
 } as const
 
-const PATHS = [
+const TARGETS = [
   {
-    name: 'path',
+    name: 'target',
     variadic: true,
-    help: 'a checkout, or a directory containing checkouts (default: the one you are in)',
+    help: 'a checkout, a directory of checkouts, or a remote URL (default: the checkout you are in)',
   },
 ] as const
 
-const OUTPUT = {
-  kind: 'enum',
-  choices: ['text', 'json'] as const,
-  valueName: 'form',
-  default: 'text',
-  help: 'report format',
-} as const
+const MORE = `Run with --help --extended for the full reference: what every option means, the words the report uses, and which combinations are refused.`
 
-const statusCli = () =>
+const reportCli = () =>
   defineCli({
     name: NAME,
     summary:
-      'Inventory local branches and worktrees (remote branches too with --remotes), and say ' +
-      'which have been merged into the default branch. Offline unless --remotes, which fetches ' +
-      'each remote first and asks the remote host about pull requests; deletes nothing.',
-    positionals: PATHS,
+      'Say which worktrees and local branches (remote branches too, with --remote) are merged ' +
+      'into the default branch and can go, with the evidence and the command that would delete ' +
+      'each. Deletes nothing.',
+    autoHelp: false,
+    positionals: TARGETS,
     flags: {
       ...SWEEP_FLAGS,
-      keep: { kind: 'boolean', help: 'include safe-to-keep rows in the report' },
-      commands: { kind: 'boolean', help: 'print the proposed commands only' },
-      output: OUTPUT,
+      all: { kind: 'boolean', help: 'also show keep rows (with --format text)' },
+      format: {
+        kind: 'enum',
+        choices: ['text', 'json', 'summary', 'commands'] as const,
+        valueName: 'form',
+        default: 'text',
+        help: 'text (the report), json (everything), summary (counts), commands (only the safe commands)',
+      },
+      ...HELP_FLAGS,
     },
-    epilogue: `commands:
-  ${NAME} [status]   this report (the default)
-  ${NAME} summary    counts per repository: total, merged, delete, prune, review, keep
-  ${NAME} plan       write the deletable rows as a plan
-  ${NAME} apply      re-check, show the steps, ask, delete
-  ${NAME} cache      list or remove the clones --remote-url keeps
-  ${NAME} dev        run ${NAME} from a development checkout
+    shortEpilogue: `commands:
+  ${NAME} [target...]   this report (the default)
+  ${NAME} plan          save the rows that could be deleted, to run later
+  ${NAME} clean         check again, show the steps, ask, delete
+  ${NAME} cache         list or remove the clones kept for remote URL targets
+  ${NAME} dev           run ${NAME} from a development checkout
 
-Each command takes --help. A checkout directory named like a command is
-swept as ./<name>.`,
-  })
-
-const summaryCli = () =>
-  defineCli({
-    name: `${NAME} summary`,
-    summary:
-      'Count local branches and worktrees (and remote branches with --remotes) per repository: how many there are, ' +
-      'how many are merged into the default branch, and how many would be deleted, pruned, reviewed or kept.',
-    positionals: PATHS,
-    flags: { ...SWEEP_FLAGS, output: OUTPUT },
-    epilogue:
-      'merged: the work is on the default branch. Rows kept for structure (the default ' +
-      'branch, the primary worktree) are counted in total but not judged merged.',
+A checkout directory named like a command is swept as ./<name>.
+${MORE}`,
+    epilogue: REFERENCE.report,
   })
 
 const planCli = () =>
   defineCli({
     name: `${NAME} plan`,
     summary:
-      'Sweep, and write the deletable rows as a plan for `apply`: each row with the facts its ' +
-      'verdict rests on, so `apply` can tell what moved since.',
-    positionals: PATHS,
+      'Sweep, and save every row that could be deleted, each with a fingerprint of the evidence ' +
+      'behind its verdict, so `clean --plan` can run it later and drop what moved since.',
+    autoHelp: false,
+    positionals: TARGETS,
     flags: {
       ...SWEEP_FLAGS,
       out: {
@@ -211,84 +176,96 @@ const planCli = () =>
         default: '-',
         help: 'write the plan here; - is stdout (the default)',
       },
+      ...HELP_FLAGS,
     },
-    epilogue: 'The one-line summary goes to stderr, so stdout carries only the plan.',
+    shortEpilogue: `The totals line goes to stderr, so stdout carries only the plan.\n${MORE}`,
+    epilogue: REFERENCE.plan,
   })
 
-const applyCli = () =>
+const cleanCli = () =>
   defineCli({
-    name: `${NAME} apply`,
+    name: `${NAME} clean`,
     summary:
-      'Delete what a sweep or a saved plan found deletable: re-check each row, show the steps, ' +
-      'ask, then delete compare-and-swap, verifying each step.',
-    positionals: PATHS,
+      'Delete what the sweep (or a saved plan) found: check each row again, show the steps, ask, ' +
+      'then delete, compare-and-swap, verifying each step. Without --pick, every row judged ' +
+      'delete runs.',
+    autoHelp: false,
+    positionals: TARGETS,
     flags: {
       ...SWEEP_FLAGS,
-      plan: {
-        kind: 'string',
-        valueName: 'file',
-        help: 'apply this plan (- reads stdin) instead of sweeping',
-      },
-      row: {
+      pick: {
         kind: 'list',
-        valueName: 'category:id',
+        valueName: 'row',
         default: [],
         commaSeparated: false,
-        help: 'apply only this row, e.g. local_branch:feat/x; repeatable (default: every row)',
+        help: 'work on exactly these rows; a review row runs only when picked; repeatable',
       },
-      keep: {
+      spare: {
         kind: 'list',
-        valueName: 'remote_branch:id',
+        valueName: 'row',
         default: [],
         commaSeparated: false,
-        help: 'keep this remote branch, but refuse the run if its tip moved since the plan, e.g. remote_branch:origin/feat/x; repeatable',
+        help: 'leave this row alone; a spared remote branch that moved stops the run; repeatable',
       },
       allow: {
         kind: 'list',
-        valueName: 'risk[=category:id]',
+        valueName: 'risk[=row]',
         default: [],
         commaSeparated: false,
         help: 'accept a risk for every row, or for one row; repeatable',
       },
-      repoRoot: {
+      plan: {
         kind: 'string',
-        valueName: 'path',
-        help: 'with a plan of several repositories: apply only the one rooted here',
+        valueName: 'file',
+        help: 'run this plan (- reads stdin) instead of sweeping',
       },
+      yes: { kind: 'boolean', short: 'y', help: 'delete without asking' },
+      dryRun: { kind: 'boolean', help: 'check and show the steps; delete nothing' },
       receipt: {
         kind: 'string',
         valueName: 'file',
         help: 'write the receipt here (default: beside a --plan file; none otherwise)',
       },
-      yes: { kind: 'boolean', short: 'y', help: 'delete without asking' },
-      dryRun: { kind: 'boolean', help: 're-check and print the steps; delete nothing' },
-      output: OUTPUT,
+      format: {
+        kind: 'enum',
+        choices: ['text', 'json'] as const,
+        valueName: 'form',
+        default: 'text',
+        help: 'how the steps and the outcome are shown',
+      },
+      ...HELP_FLAGS,
     },
-    epilogue: `risks: abandon-unmerged, discard-changes, confirm-open-pr
-A row that carries a risk you did not --allow is skipped, never deleted.`,
+    shortEpilogue: `rows: worktree:<path>, branch:<name>, remote:<remote>/<name>, or a bare name
+risks: ${RISKS.join(', ')}
+A row that carries a risk you did not --allow is skipped, never deleted.
+${MORE}`,
+    epilogue: REFERENCE.clean,
   })
 
 const cacheCli = () =>
   defineCli({
     name: `${NAME} cache`,
     summary:
-      'List the clones --remote-url keeps in the cache directory, or remove them. ' +
-      'A removed clone is cloned again by the next --remote-url run.',
+      'List the clones kept for remote URL targets, or remove them. A removed clone is cloned ' +
+      'again by the next sweep of its URL.',
+    autoHelp: false,
     positionals: [
       { name: 'verb', help: 'list (the default) or remove' },
-      {
-        name: 'url',
-        variadic: true,
-        help: 'with remove: the URL whose clone to remove, as given to --remote-url',
-      },
+      { name: 'url', variadic: true, help: 'with remove: the URL whose clone to remove' },
     ],
     flags: {
       all: { kind: 'boolean', help: 'with remove: remove every clone' },
-      output: OUTPUT,
+      format: {
+        kind: 'enum',
+        choices: ['text', 'json'] as const,
+        valueName: 'form',
+        default: 'text',
+        help: 'how the clones are shown',
+      },
+      ...HELP_FLAGS,
     },
-    epilogue:
-      'A plan written with --remote-url names its clone. Removing the clone means that plan ' +
-      'can no longer be applied; sweep again instead.',
+    shortEpilogue: `A plan that names a removed clone cannot run; sweep again instead.\n${MORE}`,
+    epilogue: REFERENCE.cache,
   })
 
 /**
@@ -338,245 +315,206 @@ function usageError(ctx: CliContext, name: string, message: string): number {
   return EXIT.usage
 }
 
-function failure(ctx: CliContext, err: unknown): number {
-  ctx.io.stderr(`${NAME}: ${err instanceof Error ? err.message : String(err)}\n`)
+function failure(ctx: CliContext, name: string, err: unknown): number {
+  ctx.io.stderr(`${name}: ${err instanceof Error ? err.message : String(err)}\n`)
   return EXIT.error
 }
 
-interface SweepValues {
+/** A refusal as its exit code: 2 for what was typed, 1 for the state found. */
+function refusal(ctx: CliContext, name: string, err: unknown): number {
+  if (err instanceof RepoCleanerError && (err.code === 'conflict' || err.code === 'bad-input')) {
+    return usageError(ctx, name, err.message)
+  }
+  return failure(ctx, name, err)
+}
+
+type Parsed<T> =
+  { status: 'ok'; values: T; positionals: string[] } | { status: 'done'; code: number }
+
+/** Parse, and answer `--help` (and `--help --extended`) itself. */
+function parseWith<V extends { help?: boolean; extended?: boolean }>(
+  cli: {
+    parse: (argv: readonly string[], io: CliContext['io']) => unknown
+    help: (o?: { all?: boolean }) => string
+  },
+  name: string,
+  argv: readonly string[],
+  ctx: CliContext,
+): Parsed<V> {
+  const parsed = cli.parse(argv, ctx.io) as
+    | { status: 'ok'; values: V; positionals: string[] }
+    | { status: 'help' }
+    | { status: 'error'; message: string }
+  if (parsed.status === 'help') return { status: 'done', code: EXIT.ok }
+  if (parsed.status === 'error')
+    return { status: 'done', code: usageError(ctx, name, parsed.message) }
+  const v = parsed.values
+  if (v.help === true) {
+    ctx.io.stdout(cli.help({ all: v.extended === true }))
+    return { status: 'done', code: EXIT.ok }
+  }
+  if (v.extended === true) {
+    return { status: 'done', code: usageError(ctx, name, '--extended goes with --help') }
+  }
+  return parsed
+}
+
+interface HelpValues {
+  help: boolean
+  extended: boolean
+}
+
+interface SweepValues extends HelpValues {
+  remote: boolean
+  offline: boolean
   only?: string[] | undefined
   branch?: string | undefined
-  measureRemote?: string | undefined
-  remoteUrl: string[]
-  remotes: boolean
+  against?: string | undefined
   provider?: ProviderChoice | undefined
-  fetch: boolean
   progress: boolean
 }
 
-type Swept =
-  | {
-      kind: 'ok'
-      result: SweepResult
-      branch: string | undefined
-      values: SweepValues
-      /** What the sweep gathered. */
-      scope: readonly Scope[]
-      /** True when the sweep did not call gh, so the re-check must not either. */
-      noProvider: boolean
-    }
-  /** No entry named a repository; the verb reports it and exits 10. */
-  | { kind: 'nothing'; result: SweepResult }
-  | { kind: 'exit'; code: number }
+type ReportValues = SweepValues & { all: boolean; format: 'text' | 'json' | 'summary' | 'commands' }
 
-/** Color for a report on `stream`, when it is a terminal that takes color. */
+type PlanValues = SweepValues & { out: string }
+
+/** The sweep options as typed, for {@link sweptWith} and {@link sweepTargets}. */
+function sweepOptions(v: SweepValues, ctx: CliContext): SweepOptions {
+  const only = v.only?.filter((s) => s !== '')
+  return {
+    cwd: ctx.cwd,
+    remote: v.remote,
+    offline: v.offline,
+    ...(only === undefined ? {} : { only: only as Kind[] }),
+    ...(v.branch === undefined ? {} : { branch: v.branch }),
+    ...(v.against === undefined ? {} : { against: v.against }),
+    ...(v.provider === undefined ? {} : { provider: v.provider }),
+    cacheDir: defaultCacheDir(ctx.env),
+  }
+}
+
+/** Color for output on `stream`, when it is a terminal that takes color. */
 function styleFor(ctx: CliContext, stream: 'stdout' | 'stderr'): Style {
   const level = detectColorLevel({ env: ctx.env, isTTY: ctx.terminal?.[stream] === true })
   return level === 'none' ? PLAIN : TERMINAL_STYLE
 }
 
 /** The note under a text report that left remote branches out, or '' when it did not. */
-function remotesNote(swept: Swept, style: Style): string {
-  if (swept.kind !== 'ok' || swept.scope.includes('remote-branches')) return ''
-  if (!swept.result.repos.some((r) => r.repo?.remote != null)) return ''
+function remoteNote(s: Sweep, style: Style): string {
+  if (s.options.only.includes('remote')) return ''
+  if (!s.repos.some((r) => r.repo?.remote != null)) return ''
   return (
     style.muted(
-      'Local only: nothing fetched, no pull requests looked up, remote branches not checked; add --remotes for all three.',
+      'Local only: nothing fetched, no pull requests looked up, remote branches not checked; add --remote for all three.',
     ) + '\n'
   )
 }
 
-/** Where `--remote-url` keeps its clones. */
-function mirrorCache(ctx: CliContext): string {
-  return systemDirs(VENDOR_DIRS, { env: ctx.env }).standalone(NAME).cache().app('remotes').path
-}
+type Swept =
+  { kind: 'ok'; sweep: Sweep } | { kind: 'nothing'; sweep: Sweep } | { kind: 'exit'; code: number }
 
-/** Local work by default: remote branches only when asked for, with `--remotes` or `--only remotes`. */
-const LOCAL_SCOPE: readonly Scope[] = ['worktrees', 'local-branches']
-
-function sweepScope(only: readonly string[] | undefined, remotes: boolean): Scope[] {
-  const scope = only === undefined ? [...LOCAL_SCOPE] : only.map((s) => ONLY[s]!)
-  if (remotes && !scope.includes('remote-branches')) scope.push('remote-branches')
-  return scope
-}
-
-/** Validate the sweep flags and run the sweep, or answer with the exit code. */
-function sweep(
+/** Sweep, or answer with the exit code. */
+function doSweep(
   name: string,
   v: SweepValues,
-  paths: readonly string[],
+  targets: readonly string[],
   ctx: CliContext,
   status: StatusLine,
 ): Swept {
-  const only = v.only?.filter((s) => s !== '')
-  const unknown = (only ?? []).filter((s) => !(s in ONLY))
-  if (unknown.length > 0) {
-    const message = `unknown --only value(s): ${unknown.join(', ')}`
-    return { kind: 'exit', code: usageError(ctx, name, message) }
-  }
-  if (v.branch !== undefined && paths.length > 0) {
-    const message = '--branch sweeps this repository only; drop the paths'
-    return { kind: 'exit', code: usageError(ctx, name, message) }
-  }
-  // An empty URL is refused, not dropped: `--remote-url "$UNSET"` must not
-  // fall back to sweeping the checkout you are standing in.
-  if (v.remoteUrl.some((u) => u.trim() === '')) {
-    return {
-      kind: 'exit',
-      code: usageError(ctx, name, '--remote-url needs a URL; got an empty one'),
-    }
-  }
-  const urls = v.remoteUrl
-  if (urls.length > 0) {
-    const conflict =
-      paths.length > 0
-        ? '--remote-url sweeps a remote, not a checkout; drop the paths'
-        : v.branch !== undefined
-          ? '--branch reads the checkout you are in; it does not combine with --remote-url'
-          : (only ?? []).some((s) => s !== 'remotes')
-            ? '--remote-url has remote branches only; drop --only or pass --only remotes'
-            : null
-    if (conflict !== null) return { kind: 'exit', code: usageError(ctx, name, conflict) }
-  }
-
-  let branch: string | undefined
-  try {
-    branch = v.branch === undefined ? undefined : resolveBranch(v.branch, new Git(ctx.cwd))
-  } catch (err) {
-    return { kind: 'exit', code: failure(ctx, err) }
-  }
-
-  const scope: Scope[] = urls.length > 0 ? ['remote-branches'] : sweepScope(only, v.remotes)
-  const online = scope.includes('remote-branches')
-  const options: SweepReposOptions = {
-    baseDir: ctx.cwd,
-    cwd: ctx.cwd,
-    // Local by default means offline: the fetch and the pull-request lookup go with remote branches.
-    noProvider: !online || v.provider === 'none',
-    fetch: online && v.fetch,
-    provider: v.provider,
-    branch,
-    // Mid-walk, while the wait is happening — the summary comes too late to
+  const opts: SweepOptions = {
+    ...sweepOptions(v, ctx),
+    // Mid-walk, while the wait is happening: the totals come too late to
     // explain why the tool appeared to hang.
     onWarn: (message) => ctx.io.stderr(`${NAME}: ${message}\n`),
     ...(v.progress ? { onProgress: (p) => status.update(describeSweep(p)) } : {}),
-    scope,
-    ...(v.measureRemote === undefined ? {} : { remote: v.measureRemote }),
-  }
-  let entries = paths.length > 0 ? [...paths] : [ctx.cwd]
-  if (urls.length > 0) {
-    const cache = mirrorCache(ctx)
-    try {
-      entries = urls.map((url, i) => {
-        if (v.progress) status.update(`${NAME}: cloning remote ${i + 1}/${urls.length}`)
-        return ensureMirror(url, cache)
-      })
-    } catch (err) {
-      status.clear()
-      return { kind: 'exit', code: failure(ctx, err) }
-    }
   }
   if (v.progress) status.update(`${NAME}: finding repositories`)
-  const result = sweepRepos(entries, options)
-  status.clear()
-  if (branch !== undefined && result.repos.length > 1) {
-    const err = new Error(
-      `--branch sweeps one repository; ${result.repos.length} found under ${ctx.cwd}`,
-    )
-    return { kind: 'exit', code: failure(ctx, err) }
+  let result: Sweep
+  try {
+    result = sweepTargets(targets, opts)
+  } catch (err) {
+    status.clear()
+    return { kind: 'exit', code: refusal(ctx, name, err) }
   }
-  const refused = branch === undefined ? null : (result.repos[0]?.error ?? null)
-  if (refused !== null) return { kind: 'exit', code: failure(ctx, new Error(refused)) }
-  if (result.repos.length === 0) return { kind: 'nothing', result }
-  return { kind: 'ok', result, branch, values: v, scope, noProvider: options.noProvider === true }
+  status.clear()
+  const refused = v.branch === undefined ? null : (result.repos[0]?.error ?? null)
+  if (refused !== null) return { kind: 'exit', code: failure(ctx, name, new Error(refused)) }
+  if (result.repos.length === 0) return { kind: 'nothing', sweep: result }
+  return { kind: 'ok', sweep: result }
 }
 
 /**
  * Name each repository the sweep could not read, on stderr. True when there
- * was one: a verb that acts on the sweep must not pass an unread repository
- * off as an empty one.
+ * was one: a command that acts on the sweep must not pass an unread
+ * repository off as an empty one.
  */
-function reportUnreadable(ctx: CliContext, name: string, result: SweepResult): boolean {
-  const failed = result.repos.filter((r) => r.error !== null)
+function reportUnreadable(ctx: CliContext, name: string, s: Sweep): boolean {
+  const failed = s.repos.filter((r) => r.error !== null)
   for (const r of failed) ctx.io.stderr(`${name}: ${r.repo?.root ?? r.path}: ${r.error}\n`)
   return failed.length > 0
 }
 
-function planOf(swept: Extract<Swept, { kind: 'ok' }>, now: Date): Plan {
-  const opts = {
-    remote: swept.values.measureRemote ?? null,
-    noProvider: swept.noProvider,
-    provider: swept.values.provider,
-    branch: swept.branch ?? null,
-  }
-  return {
-    version: PLAN_VERSION,
-    created_at: now.toISOString(),
-    repos: swept.result.repos.flatMap((s) =>
-      s.repo === null ? [] : [planRepo(s.repo.root, { ...opts, fetch: s.repo.fetched }, s.items)],
-    ),
+/** Validate the sweep options before anything is swept; a usage error answers with exit 2. */
+function preflight(
+  name: string,
+  v: SweepValues,
+  targets: readonly string[],
+  ctx: CliContext,
+): SweptWith | number {
+  try {
+    const { urls: _, ...options } = sweptWith(targets, sweepOptions(v, ctx))
+    return options
+  } catch (err) {
+    return refusal(ctx, name, err)
   }
 }
 
-function runStatus(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
-  const parsed = statusCli().parse(argv, ctx.io)
-  if (parsed.status === 'help') return EXIT.ok
-  if (parsed.status === 'error') return usageError(ctx, NAME, parsed.message)
+function runReport(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
+  const parsed = parseWith<ReportValues>(reportCli(), NAME, argv, ctx)
+  if (parsed.status === 'done') return parsed.code
   const v = parsed.values
-  const style = styleFor(ctx, 'stdout')
-  const render = (r: SweepResult): string =>
-    v.output === 'json' ? renderJson(r) : renderText(r, { keep: v.keep, style })
-  const swept = sweep(NAME, v, parsed.positionals, ctx, status)
-  if (swept.kind === 'exit') return swept.code
-  if (swept.kind === 'nothing') {
-    ctx.io.stdout(render(swept.result))
-    return EXIT_NOTHING_TO_SWEEP
+  if (v.all && v.format !== 'text') {
+    return usageError(
+      ctx,
+      NAME,
+      `--all has no effect with --format ${v.format}: it shows keep rows in the text report`,
+    )
   }
-
-  if (v.commands) {
-    const commands = proposedCommands(swept.result)
+  const pre = preflight(NAME, v, parsed.positionals, ctx)
+  if (typeof pre === 'number') return pre
+  const style = styleFor(ctx, 'stdout')
+  const swept = doSweep(NAME, v, parsed.positionals, ctx, status)
+  if (swept.kind === 'exit') return swept.code
+  const s = swept.sweep
+  if (v.format === 'json') ctx.io.stdout(renderJson(s))
+  else if (v.format === 'summary') ctx.io.stdout(renderSummary(s, style) + remoteNote(s, style))
+  else if (v.format === 'commands') {
+    const commands = renderCommands(s)
     if (commands.length > 0) ctx.io.stdout(commands.join('\n') + '\n')
   } else {
-    ctx.io.stdout(render(swept.result))
-    if (v.output === 'text') ctx.io.stdout(remotesNote(swept, style))
+    ctx.io.stdout(renderText(s, { all: v.all, style }) + remoteNote(s, style))
   }
-  return EXIT.ok
-}
-
-function runSummary(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
-  const name = `${NAME} summary`
-  const parsed = summaryCli().parse(argv, ctx.io)
-  if (parsed.status === 'help') return EXIT.ok
-  if (parsed.status === 'error') return usageError(ctx, name, parsed.message)
-  const v = parsed.values
-  const style = styleFor(ctx, 'stdout')
-  const render = (r: SweepResult): string =>
-    v.output === 'json' ? renderCountsJson(r) : renderCountsText(r, style)
-  const swept = sweep(name, v, parsed.positionals, ctx, status)
-  if (swept.kind === 'exit') return swept.code
-  ctx.io.stdout(render(swept.result))
-  if (v.output === 'text') ctx.io.stdout(remotesNote(swept, style))
   return swept.kind === 'nothing' ? EXIT_NOTHING_TO_SWEEP : EXIT.ok
 }
 
 function runPlan(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
   const name = `${NAME} plan`
-  const parsed = planCli().parse(argv, ctx.io)
-  if (parsed.status === 'help') return EXIT.ok
-  if (parsed.status === 'error') return usageError(ctx, name, parsed.message)
+  const parsed = parseWith<PlanValues>(planCli(), name, argv, ctx)
+  if (parsed.status === 'done') return parsed.code
   const v = parsed.values
-  const swept = sweep(name, v, parsed.positionals, ctx, status)
+  const pre = preflight(name, v, parsed.positionals, ctx)
+  if (typeof pre === 'number') return pre
+  const swept = doSweep(name, v, parsed.positionals, ctx, status)
   if (swept.kind === 'exit') return swept.code
-  // stdout carries only the plan, so the summary goes to stderr either way.
+  // stdout carries only the plan, so the totals go to stderr either way.
   if (swept.kind === 'nothing') {
-    ctx.io.stderr(renderSummary(swept.result) + '\n')
+    ctx.io.stderr(renderTotals(swept.sweep) + '\n')
     return EXIT_NOTHING_TO_SWEEP
   }
-
-  const plan = planOf(swept, new Date())
-  const unreadable = reportUnreadable(ctx, name, swept.result)
+  const plan = planOf(swept.sweep)
+  const unreadable = reportUnreadable(ctx, name, swept.sweep)
   const style = styleFor(ctx, 'stderr')
-  ctx.io.stderr(renderSummary(swept.result, style) + '\n' + remotesNote(swept, style))
+  ctx.io.stderr(renderTotals(swept.sweep, style) + '\n' + remoteNote(swept.sweep, style))
   if (v.out === '-') {
     ctx.io.stdout(`${JSON.stringify(plan, null, 2)}\n`)
   } else {
@@ -593,218 +531,240 @@ function receiptBeside(planPath: string, now: Date): string {
   return join(dirname(planPath), `${stem}.receipt-${fileStamp(now)}.json`)
 }
 
-const dropKey = (d: Receipt['dropped'][number]): string =>
-  JSON.stringify([d.repo, d.category, d.id])
+const dropKey = (d: Receipt['dropped'][number]): string => JSON.stringify([d.repo, d.row])
 
-/** Rows the run would delete or prune: one each, however many steps (an unlock, a remove) it takes. */
-function wouldRun(receipt: Receipt): number {
-  return rowsActedOn(summarizeReceipt(receipt))
+type CleanValues = SweepValues & {
+  pick: string[]
+  spare: string[]
+  allow: string[]
+  plan?: string | undefined
+  yes: boolean
+  dryRun: boolean
+  receipt?: string | undefined
+  format: 'text' | 'json'
 }
 
-type ApplyValues = Extract<
-  ReturnType<ReturnType<typeof applyCli>['parse']>,
-  { status: 'ok' }
->['values']
+/** `<risk>` for every row, or `<risk>=<row>` for one. */
+function parseAllow(text: string): Allow {
+  const eq = text.indexOf('=')
+  const risk = eq < 0 ? text : text.slice(0, eq)
+  if (!(RISKS as readonly string[]).includes(risk)) {
+    throw new RepoCleanerError(
+      'bad-input',
+      `unknown risk ${JSON.stringify(risk)}: expected one of ${RISKS.join(', ')}`,
+    )
+  }
+  if (eq < 0) return { risk: risk as Risk }
+  const row = text.slice(eq + 1)
+  if (row === '') throw new RepoCleanerError('bad-input', `--allow ${text} names no row`)
+  return { risk: risk as Risk, row }
+}
 
-/** Where `apply`'s plan came from, and what that decides about the run. */
+/** The run's options that contradict each other, as a usage message, or null. */
+function cleanConflict(v: CleanValues, targets: readonly string[]): string | null {
+  if (v.plan !== undefined) {
+    const fixed = [
+      targets.length > 0 ? 'targets' : null,
+      v.only !== undefined ? '--only' : null,
+      v.branch !== undefined ? '--branch' : null,
+      v.remote ? '--remote' : null,
+      v.offline ? '--offline' : null,
+      v.against !== undefined ? '--against' : null,
+      v.provider !== undefined ? '--provider' : null,
+    ].filter((f) => f !== null)
+    if (fixed.length > 0) return `--plan already fixed what is swept; drop ${fixed.join(', ')}`
+  }
+  if (v.plan === '-' && !v.yes && !v.dryRun) {
+    return '--plan - reads the plan from stdin, so nothing can ask; pass --yes or --dry-run'
+  }
+  if (v.yes && v.dryRun)
+    return '--yes and --dry-run contradict: one deletes without asking, the other deletes nothing'
+  if (v.receipt !== undefined && v.dryRun)
+    return '--receipt has no effect with --dry-run: nothing runs to record'
+  const both = v.pick.filter((p) => v.spare.includes(p))
+  if (both.length > 0) return `${both[0]} is both picked and spared`
+  return null
+}
+
+/** A row reference that no sweep with these options could hold, as a usage message, or null. */
+function refConflict(options: SweptWith, refs: Array<[string, string]>): string | null {
+  for (const [flag, text] of refs) {
+    const colon = text.indexOf(':')
+    const kind = colon > 1 ? text.slice(0, colon) : null
+    const name = colon > 1 ? text.slice(colon + 1) : text
+    if (kind === null || !(KINDS as readonly string[]).includes(kind)) continue
+    if (!options.only.includes(kind as Kind)) {
+      return `${flag} ${text}: the sweep has no ${kind} rows (it sweeps ${options.only.join(', ')})`
+    }
+    const b = options.branch
+    if (
+      b !== null &&
+      b !== 'HEAD' &&
+      ((kind === 'branch' && name !== b) || (kind === 'remote' && !name.endsWith(`/${b}`)))
+    ) {
+      return `${flag} ${text} is not a row of --branch ${b}`
+    }
+  }
+  return null
+}
+
+/** Where `clean`'s plan came from, and what that decides about the run. */
 interface LoadedPlan {
   plan: Plan
   /** Shown in the receipt: the plan's path, `(stdin)` or `(swept)`. */
   source: string
-  receiptPath: string | null
+  receiptPath: string | undefined
   /** A swept repository could not be read: the run exits 1 whatever else happens. */
   unreadable: boolean
-  /** The sweep's items by repository root, so the preview need not sweep again. */
-  swept: Map<string, SweepItem[]> | undefined
+  /** The sweep just made, so the preview need not sweep again. */
+  sweep: Sweep | undefined
 }
 
-/** Sweep and plan in memory, or read `--plan`; or answer with the exit code. */
 function loadPlan(
   name: string,
-  v: ApplyValues,
-  paths: readonly string[],
+  v: CleanValues,
+  targets: readonly string[],
   ctx: CliContext,
   deps: MainDeps,
   status: StatusLine,
   now: Date,
 ): LoadedPlan | number {
-  const receiptPath = v.receipt === undefined ? null : resolve(ctx.cwd, v.receipt)
+  const receiptPath = v.receipt === undefined ? undefined : resolve(ctx.cwd, v.receipt)
   if (v.plan === undefined) {
-    const swept = sweep(name, v, paths, ctx, status)
+    const swept = doSweep(name, v, targets, ctx, status)
     if (swept.kind === 'exit') return swept.code
     if (swept.kind === 'nothing') {
-      ctx.io.stdout(v.output === 'json' ? renderJson(swept.result) : renderText(swept.result))
+      ctx.io.stdout(v.format === 'json' ? renderJson(swept.sweep) : renderText(swept.sweep))
       return EXIT_NOTHING_TO_SWEEP
     }
-    const items = new Map<string, SweepItem[]>()
-    for (const r of swept.result.repos) if (r.repo !== null) items.set(r.repo.root, r.items)
     return {
-      plan: planOf(swept, now),
+      plan: planOf(swept.sweep, now),
       source: '(swept)',
       receiptPath,
-      unreadable: reportUnreadable(ctx, name, swept.result),
-      swept: items,
+      unreadable: reportUnreadable(ctx, name, swept.sweep),
+      sweep: swept.sweep,
     }
   }
   try {
     if (v.plan === '-') {
       const plan = parsePlan((deps.readStdin ?? readAllStdin)(), 'stdin')
-      return { plan, source: '(stdin)', receiptPath, unreadable: false, swept: undefined }
+      return { plan, source: '(stdin)', receiptPath, unreadable: false, sweep: undefined }
     }
     const source = resolve(ctx.cwd, v.plan)
-    const plan = readPlan(source)
     return {
-      plan,
+      plan: readPlan(source),
       source,
       receiptPath: receiptPath ?? receiptBeside(source, now),
       unreadable: false,
-      swept: undefined,
+      sweep: undefined,
     }
   } catch (err) {
-    return failure(ctx, err)
+    return refusal(ctx, name, err)
   }
 }
 
-/** The run's flags that contradict each other, as a usage message, or null. */
-function applyConflict(v: ApplyValues, paths: readonly string[]): string | null {
-  if (v.plan !== undefined) {
-    const sweepFlags = [
-      paths.length > 0 ? 'paths' : null,
-      v.only !== undefined ? '--only' : null,
-      v.branch !== undefined ? '--branch' : null,
-      v.measureRemote !== undefined ? '--measure-remote' : null,
-      v.remoteUrl.length > 0 ? '--remote-url' : null,
-    ].filter((f) => f !== null)
-    if (sweepFlags.length > 0) return `--plan fixes what is swept; drop ${sweepFlags.join(', ')}`
-  }
-  if (v.plan === '-' && !v.yes && !v.dryRun) {
-    return '--plan - reads the plan from stdin, so it cannot ask; pass --yes or --dry-run'
-  }
-  return null
-}
-
-function runApply(
+function runClean(
   argv: readonly string[],
   ctx: CliContext,
   deps: MainDeps,
   status: StatusLine,
 ): number {
-  const name = `${NAME} apply`
-  const parsed = applyCli().parse(argv, ctx.io)
-  if (parsed.status === 'help') return EXIT.ok
-  if (parsed.status === 'error') return usageError(ctx, name, parsed.message)
+  const name = `${NAME} clean`
+  const parsed = parseWith<CleanValues>(cleanCli(), name, argv, ctx)
+  if (parsed.status === 'done') return parsed.code
   const v = parsed.values
-  const paths = parsed.positionals
+  const targets = parsed.positionals
 
-  let rows: RowRef[]
-  let keep: RowRef[]
-  let grants: Grant[]
+  let allow: Allow[]
   try {
-    rows = v.row.map(parseRowRef)
-    keep = v.keep.map(parseRowRef)
-    grants = v.allow.map(parseGrant)
+    allow = v.allow.map(parseAllow)
   } catch (err) {
-    if (err instanceof ApplyArgumentError) return usageError(ctx, name, err.message)
-    throw err
+    return refusal(ctx, name, err)
   }
-  const conflict = applyConflict(v, paths)
+  const conflict = cleanConflict(v, targets)
   if (conflict !== null) return usageError(ctx, name, conflict)
+  if (v.plan === undefined) {
+    const pre = preflight(name, v, targets, ctx)
+    if (typeof pre === 'number') return pre
+    const refs: Array<[string, string]> = [
+      ...v.pick.map((r): [string, string] => ['--pick', r]),
+      ...v.spare.map((r): [string, string] => ['--spare', r]),
+      ...allow.flatMap((a): Array<[string, string]> =>
+        a.row === undefined ? [] : [['--allow', a.row]],
+      ),
+    ]
+    const bad = refConflict(pre, refs)
+    if (bad !== null) return usageError(ctx, name, bad)
+  }
 
   const now = new Date()
-  const loaded = loadPlan(name, v, paths, ctx, deps, status, now)
+  const loaded = loadPlan(name, v, targets, ctx, deps, status, now)
   if (typeof loaded === 'number') return loaded
   const { plan, source, receiptPath } = loaded
-  // A plan from `--remote-url` names a clone in the cache. Its deletes are
-  // pushed from there, so the clone must still push only where it fetches from.
-  const cacheDir = mirrorCache(ctx)
-  const cache = (existsSync(cacheDir) ? realpathSync(cacheDir) : cacheDir) + sep
-  for (const repo of plan.repos) {
-    if (!repo.root.startsWith(cache)) continue
-    const problem = mirrorProblem(repo.root)
-    if (problem !== null) return failure(ctx, new Error(`${problem}; refusing to apply`))
-  }
   const ok = (): number => (loaded.unreadable ? EXIT.error : EXIT.ok)
+  const approval: Approval = { pick: v.pick, spare: v.spare, allow }
 
-  const repoRoot = v.repoRoot === undefined ? undefined : resolve(ctx.cwd, v.repoRoot)
   // On a terminal the run is shown live: every step first, then each one
-  // checked off as it finishes, with a bar on the status line.
-  const live = v.output === 'text' && ctx.terminal?.stdout === true
+  // checked off as it finishes.
+  const live = v.format === 'text' && ctx.terminal?.stdout === true
   const style = styleFor(ctx, 'stdout')
-  const print = (receipt: Receipt, shownPath: string | null, steps = true): void => {
-    ctx.io.stdout(
-      v.output === 'json'
-        ? `${JSON.stringify({ receiptPath: shownPath, summary: summarizeReceipt(receipt), receipt }, null, 2)}\n`
-        : renderReceipt(receipt, shownPath, style, { steps }),
-    )
-  }
 
-  const planned = plan.repos.filter(
-    (r) => repoRoot === undefined || resolve(r.root) === resolve(repoRoot),
-  )
-  if (repoRoot !== undefined && planned.length === 0) {
-    return failure(ctx, new Error(`no plan repository at ${repoRoot}`))
-  }
-  if (rows.length === 0 && planned.every((r) => r.rows.length === 0)) {
-    if (v.output === 'json') print(emptyReceipt(source, now, v.dryRun), null)
-    else ctx.io.stdout('nothing to delete\n')
+  if (v.pick.length === 0 && plan.repos.every((r) => r.rows.length === 0)) {
+    if (v.format === 'json') {
+      ctx.io.stdout(
+        `${JSON.stringify({ dryRun: v.dryRun, summary: summarizeRun({ steps: [], dropped: [] }), steps: [], dropped: [] }, null, 2)}\n`,
+      )
+    } else {
+      ctx.io.stdout('nothing to delete\n')
+    }
     return ok()
   }
 
-  const base = {
-    callerCwd: ctx.cwd,
-    planPath: source,
-    repoRoot,
-    keep,
-    // An implicit selection runs only safe-to-delete rows, in the preview and
-    // in the run it confirms, whose rows are passed explicitly.
-    safeOnly: rows.length === 0,
+  const shared = {
+    cwd: ctx.cwd,
     ...(v.progress
       ? {
-          onSweepProgress: (p: SweepProgress) => status.update(`re-checking ${describeSweep(p)}`),
-          onStep: (i: number, total: number, step: Step) =>
-            status.update(describeStep(i, total, step)),
+          onProgress: (p: Parameters<typeof describeSweep>[0]) =>
+            status.update(`re-checking ${describeSweep(p)}`),
         }
       : {}),
   }
-
-  let preview: Receipt
+  let preview: Preview
   try {
-    // A sweep that just ran is the preview's re-check; the run that deletes sweeps again.
-    preview = applyPlan(plan, rows, grants, {
-      ...base,
-      dryRun: true,
-      receiptPath: null,
-      swept: loaded.swept,
+    // A sweep that just ran is the preview's re-check; the run sweeps again.
+    preview = check(plan, approval, {
+      ...shared,
+      sweep: loaded.sweep,
+      cacheDir: defaultCacheDir(ctx.env),
     })
   } catch (err) {
-    if (err instanceof ApplyArgumentError) return usageError(ctx, name, err.message)
-    return failure(ctx, err)
+    status.clear()
+    return refusal(ctx, name, err)
   }
+  status.clear()
 
-  const count = wouldRun(preview)
+  const showPreview = (): void => {
+    if (v.format === 'json') {
+      ctx.io.stdout(
+        `${JSON.stringify({ dryRun: true, summary: summarizeRun(preview), steps: preview.steps, dropped: preview.dropped, unusedAllows: preview.unusedAllows }, null, 2)}\n`,
+      )
+    } else {
+      ctx.io.stdout(renderPreview(preview, style))
+    }
+  }
+  const count = rowsActedOn(summarizeRun(preview))
   if (v.dryRun || count === 0) {
-    if (live) ctx.io.stdout(renderPreview(preview, style))
-    else print(preview, null)
+    showPreview()
     return ok()
   }
   if (!v.yes) {
-    const declined = confirm(ctx, name, preview, count, v.output === 'json', deps)
+    const declined = confirm(ctx, name, preview, count, v.format === 'json', deps)
     if (declined !== null) return declined
   } else if (live) {
     ctx.io.stdout(renderPreview(preview, style))
   }
   if (live) ctx.io.stdout('\n')
 
-  // Only what the preview showed: rows it dropped stay dropped.
-  // Pinned to their repositories: a branch name two repositories share stays two rows.
-  // A kept row's tip check is not a selection; `keep` carries it again.
-  const approved = preview.steps.flatMap((s) =>
-    s.row === null || s.action === 'verify-remote' ? [] : [{ ...s.row, repo: s.repo }],
-  )
-  const approvedGrants = grants.filter(
-    (g) =>
-      g.row === null || approved.some((r) => r.category === g.row!.category && r.id === g.row!.id),
-  )
   const size =
     deps.terminalSize ??
     (() => ({
@@ -814,11 +774,11 @@ function runApply(
   let board: StepBoard | undefined
   let receipt: Receipt
   try {
-    receipt = applyPlan(plan, approved, approvedGrants, {
-      ...base,
-      dryRun: false,
+    receipt = run(preview, {
+      ...shared,
+      source,
       receiptPath,
-      dropped: preview.dropped,
+      now: () => new Date(),
       ...(live
         ? {
             // The board carries the run's progress; the status line stays clear.
@@ -831,15 +791,19 @@ function runApply(
               board?.draw(null)
               // Here rather than after the run: a receipt that then cannot be
               // saved must not take the step's own error with it.
-              if (step.result === 'failed') {
-                ctx.io.stdout(`\n${renderStepFailure(step, style)}\n`)
-              }
+              if (step.result === 'failed') ctx.io.stdout(`\n${renderStepFailure(step, style)}\n`)
             },
           }
-        : {}),
+        : v.progress
+          ? {
+              onStep: (i: number, total: number, step: Step) =>
+                status.update(describeStep(i, total, step)),
+            }
+          : {}),
     })
   } catch (err) {
-    return failure(ctx, err)
+    status.clear()
+    return refusal(ctx, name, err)
   }
   status.clear()
   if (live) {
@@ -847,11 +811,17 @@ function runApply(
     // while the question was open: say which, since it gets no tick.
     const seen = new Set(preview.dropped.map(dropKey))
     const late = receipt.dropped.filter((d) => !seen.has(dropKey(d)))
-    if (late.length > 0) ctx.io.stdout(`\n${renderPreviewDrops(late, style)}`)
+    if (late.length > 0) ctx.io.stdout(`\n${renderLateDrops(late, style)}`)
     ctx.io.stdout('\n')
   }
-  print(receipt, receiptPath, !live)
-  if (receiptPath === null) {
+  if (v.format === 'json') {
+    ctx.io.stdout(
+      `${JSON.stringify({ receiptPath: receiptPath ?? null, summary: summarizeRun(receipt), receipt }, null, 2)}\n`,
+    )
+  } else {
+    ctx.io.stdout(renderReceipt(receipt, receiptPath ?? null, style, { steps: !live }))
+  }
+  if (receiptPath === undefined) {
     ctx.io.stderr(`${name}: no receipt written; pass --receipt <file> to keep one\n`)
   }
   return receipt.status === 'failed' ? EXIT_STEP_FAILED : ok()
@@ -864,7 +834,7 @@ function runApply(
 function confirm(
   ctx: CliContext,
   name: string,
-  preview: Receipt,
+  preview: Preview,
   count: number,
   json: boolean,
   deps: MainDeps,
@@ -903,29 +873,6 @@ function cacheLine(m: CachedMirror): string {
     stripControls(`${sizeText(m.bytes).padStart(9)}  ${m.url ?? '(no origin)'}  ${m.dir}${note}`) +
     '\n'
   )
-}
-
-function runCache(argv: readonly string[], ctx: CliContext): number {
-  const name = `${NAME} cache`
-  const parsed = cacheCli().parse(argv, ctx.io)
-  if (parsed.status === 'help') return EXIT.ok
-  if (parsed.status === 'error') return usageError(ctx, name, parsed.message)
-  const v = parsed.values
-  const [verb = 'list', ...urls] = parsed.positionals
-  const dir = mirrorCache(ctx)
-  const json = v.output === 'json'
-  if (verb === 'list') {
-    if (urls.length > 0 || v.all) return usageError(ctx, name, 'list takes no URLs and no --all')
-    return cacheList(ctx, dir, json)
-  }
-  if (verb === 'remove') {
-    const hasUrls = urls.length > 0
-    if (hasUrls === v.all) {
-      return usageError(ctx, name, 'remove takes URLs or --all, not both and not neither')
-    }
-    return cacheRemove(ctx, name, dir, v.all ? null : urls, json)
-  }
-  return usageError(ctx, name, `unknown verb ${JSON.stringify(verb)}; use list or remove`)
 }
 
 function cacheList(ctx: CliContext, dir: string, json: boolean): number {
@@ -1004,17 +951,31 @@ function cacheRemove(
   return missing.length > 0 || failed.length > 0 ? EXIT.error : EXIT.ok
 }
 
-function emptyReceipt(plan: string, now: Date, dryRun: boolean): Receipt {
-  const at = now.toISOString()
-  return {
-    version: RECEIPT_VERSION,
-    plan,
-    status: dryRun ? 'dry-run' : 'complete',
-    started_at: at,
-    finished_at: at,
-    dropped: [],
-    steps: [],
+function runCache(argv: readonly string[], ctx: CliContext): number {
+  const name = `${NAME} cache`
+  const parsed = parseWith<HelpValues & { all: boolean; format: 'text' | 'json' }>(
+    cacheCli(),
+    name,
+    argv,
+    ctx,
+  )
+  if (parsed.status === 'done') return parsed.code
+  const v = parsed.values
+  const [verb = 'list', ...urls] = parsed.positionals
+  const dir = defaultCacheDir(ctx.env)
+  const json = v.format === 'json'
+  if (verb === 'list') {
+    if (urls.length > 0 || v.all) return usageError(ctx, name, 'list takes no URLs and no --all')
+    return cacheList(ctx, dir, json)
   }
+  if (verb === 'remove') {
+    const hasUrls = urls.length > 0
+    if (hasUrls === v.all) {
+      return usageError(ctx, name, 'remove takes URLs or --all, not both and not neither')
+    }
+    return cacheRemove(ctx, name, dir, v.all ? null : urls, json)
+  }
+  return usageError(ctx, name, `unknown verb ${JSON.stringify(verb)}; use list or remove`)
 }
 
 /** `main(argv, ctx)`: returns an exit code, never exits. */
@@ -1037,12 +998,10 @@ export function main(argv: readonly string[], ctx: CliContext, deps: MainDeps = 
   const c: CliContext = { ...ctx, io }
   const [sub, ...rest] = argv
   try {
-    if (sub === 'summary') return runSummary(rest, c, status)
     if (sub === 'plan') return runPlan(rest, c, status)
-    if (sub === 'apply') return runApply(rest, c, deps, status)
+    if (sub === 'clean') return runClean(rest, c, deps, status)
     if (sub === 'cache') return runCache(rest, c)
-    if (sub === 'status') return runStatus(rest, c, status)
-    return runStatus(argv, c, status)
+    return runReport(argv, c, status)
   } finally {
     status.clear()
   }

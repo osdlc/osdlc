@@ -1,5 +1,5 @@
 /**
- * `apply`'s steps as a vertical list redrawn in place on a terminal: one row
+ * A run's steps as a vertical list redrawn in place on a terminal: one row
  * per step with its own bar, empty while it waits, half full while it runs,
  * full and ticked when it is done, and a bar for the whole run under the
  * list. The run is synchronous, so the board moves between steps, not on a
@@ -20,7 +20,7 @@ function label(step: Step): string {
   const verb = STEP_VERB[step.action]
   // The closing prune belongs to no row: it clears the repository's stale worktree records.
   if (step.row === null) return stripControls(`${verb.padEnd(6)}  worktree records in ${step.repo}`)
-  return stripControls(`${verb.padEnd(6)}  ${step.row.category}  ${step.row.id}`)
+  return stripControls(`${verb.padEnd(6)}  ${step.row}`)
 }
 
 /**

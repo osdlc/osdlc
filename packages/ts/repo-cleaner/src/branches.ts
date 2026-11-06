@@ -22,14 +22,20 @@ import {
   type Landing,
 } from './landing.ts'
 import {
-  authorizationsFor,
   landedRef,
-  makeItem,
-  type Authorization,
+  makeRow,
+  risksFor,
+  type BranchEvidence,
+  type BranchRow,
+  type LandingEvidence,
   type PRInfo,
+  type PrEvidence,
   type PrEvidenceGap,
+  type RemoteEvidence,
+  type RemoteRow,
   type RepoInfo,
-  type SweepItem,
+  type Risk,
+  type RowFields,
 } from './types.ts'
 
 /**
@@ -51,29 +57,29 @@ export function prCapturesTip(pr: PRInfo, tip: string, repo: RepoInfo): true | P
 }
 
 /**
- * `facts.pr`, plus `evidence` for a merged PR: `exact-head` when it proves
+ * `evidence.pr`, plus `proof` for a merged PR: `exact-head` when it proves
  * `tip` landed, otherwise the gap. Returns whether it counts as landing proof.
  */
 export function recordPr(
-  facts: Record<string, unknown>,
+  evidence: LandingEvidence,
   pr: PRInfo | undefined,
   tip: string,
   repo: RepoInfo,
 ): { landed: boolean; gap: PrEvidenceGap | null } {
   if (pr === undefined) return { landed: false, gap: null }
-  const out: Record<string, unknown> = {
+  const out: PrEvidence = {
     number: pr.number,
     state: pr.state,
-    merged_at: pr.mergedAt,
+    mergedAt: pr.mergedAt,
     url: pr.url,
     title: pr.title,
-    head_oid: pr.headOid,
-    base_ref: pr.baseRef,
+    headOid: pr.headOid,
+    baseRef: pr.baseRef,
   }
-  facts['pr'] = out
+  evidence.pr = out
   if (pr.state !== 'MERGED') return { landed: false, gap: null }
   const verdict = prCapturesTip(pr, tip, repo)
-  out['evidence'] = verdict === true ? 'exact-head' : verdict
+  out.proof = verdict === true ? 'exact-head' : verdict
   return verdict === true ? { landed: true, gap: null } : { landed: false, gap: verdict }
 }
 
@@ -84,7 +90,7 @@ export function noPrSentence(repo: RepoInfo): string {
   return `No ${provider.noun} found via \`${provider.listing}\`.`
 }
 
-/** One sentence on why a merged PR did not count, for `investigationParts`. */
+/** One sentence on why a merged PR did not count, for a row's notes. */
 export function gapSentence(pr: PRInfo, gap: PrEvidenceGap, repo: RepoInfo): string {
   return gap === 'other-base'
     ? `PR #${pr.number} merged into \`${pr.baseRef}\`, not \`${repo.mainBranch}\`, so it is not landing proof (other-base).`
@@ -92,9 +98,9 @@ export function gapSentence(pr: PRInfo, gap: PrEvidenceGap, repo: RepoInfo): str
 }
 
 /**
- * `facts.merged`: the work is on the default branch, by an exact-head merged
- * PR, by ancestry or by a patch match. Every category records it this way, so
- * `summary` counts one definition.
+ * `evidence.merged`: the work is on the default branch, by an exact-head
+ * merged PR, by ancestry or by a patch match. Every kind records it this way,
+ * so the counts use one definition.
  */
 export function mergedFact(e: {
   landed: boolean
@@ -105,8 +111,8 @@ export function mergedFact(e: {
 }
 
 /** What deleting a branch needs: its unlanded commits, and its open PR. */
-function branchRequires(unmerged: boolean, pr: PRInfo | undefined): Authorization[] {
-  return authorizationsFor({
+function branchRisks(unmerged: boolean, pr: PRInfo | undefined): Risk[] {
+  return risksFor({
     'abandon-unmerged': unmerged,
     'confirm-open-pr': pr?.state === 'OPEN',
   })
@@ -153,9 +159,9 @@ export function gatherLocalBranches(
   git: Git,
   only?: string,
   tick?: (done: number, total: number) => void,
-): SweepItem[] {
+): BranchRow[] {
   const rows = git.at(repo.root).forEachRef('refs/heads/', { format: LOCAL_FORMAT })
-  const items: SweepItem[] = []
+  const items: BranchRow[] = []
   for (const [i, line] of rows.entries()) {
     tick?.(i, rows.length)
     const parts = line.split('\t')
@@ -195,26 +201,18 @@ export function classifyLocalBranch(opts: {
   prs: Map<string, PRInfo>
   worktreeBranches: ReadonlySet<string>
   git: Git
-}): SweepItem {
+}): BranchRow {
   const { name, upstream, track, lastCommit, sha, repo, prs, worktreeBranches, git } = opts
-  const facts: Record<string, unknown> = {
+  const evidence: BranchEvidence = {
     branch: name,
     upstream: upstream || null,
     track: track || null,
-    last_commit: lastCommit,
+    lastCommit,
     sha,
   }
-  const keep = (reason: string, extra: Partial<SweepItem> = {}): SweepItem =>
-    makeItem({
-      category: 'local_branch',
-      id: name,
-      classification: 'safe-to-keep',
-      action: 'keep',
-      reason,
-      facts,
-      ...extra,
-    })
-  const pinned = (reason: string): SweepItem => keep(reason, { deletable: false })
+  const row = (r: RowFields<BranchRow>): BranchRow =>
+    makeRow<BranchRow>({ kind: 'branch', name, evidence, ...r })
+  const pinned = (why: string): BranchRow => row({ verdict: 'keep', action: null, why })
 
   if (name === repo.mainBranch) return pinned('default branch')
   const held =
@@ -228,8 +226,8 @@ export function classifyLocalBranch(opts: {
     // an exact-head merged PR, without the patch checks a deletable row gets.
     // `soft`: a missing default ref reads as not merged.
     const pr = prs.get(name)
-    const { landed } = recordPr(facts, pr, sha, repo)
-    facts['merged'] = mergedFact({
+    const { landed } = recordPr(evidence, pr, sha, repo)
+    evidence.merged = mergedFact({
       landed,
       ancestor: git.at(repo.root).soft.isAncestor(sha, landedRef(repo)),
       patchLanded: false,
@@ -240,86 +238,58 @@ export function classifyLocalBranch(opts: {
   // Work merged only into an unpushed local default has not landed. A missing
   // remote-tracking ref exits 128: ancestry unknown (null).
   const compareRef = landedRef(repo)
-  facts['compare_against'] = compareRef
+  evidence.compareAgainst = compareRef
   const ancestry = git.at(repo.root).try.isAncestor(name, compareRef)
   const ancestor = ancestry.ok ? ancestry.value : null
-  facts['ancestor_of_remote_main'] = ancestor
+  evidence.ancestorOfRemoteMain = ancestor
   const isAncestor = ancestor === true
 
   const pr = prs.get(name)
-  const { landed, gap } = recordPr(facts, pr, sha, repo)
+  const { landed, gap } = recordPr(evidence, pr, sha, repo)
   // Rebase merges, cherry-picks and squash merges leave the tip off the default
   // branch; the patches say whether the work is there anyway.
   const patch: Landing | null = landed || isAncestor ? null : judgeLanding(repo, sha, pr, gap, git)
-  if (patch !== null) recordLanding(facts, patch)
+  if (patch !== null) recordLanding(evidence, patch)
   const patchLanded = patch !== null && patch.check !== null
   const unmerged = !landed && !isAncestor && !landingConfirmed(patch)
-  facts['merged'] = mergedFact({ landed, ancestor: isAncestor, patchLanded })
+  evidence.merged = mergedFact({ landed, ancestor: isAncestor, patchLanded })
   if (!landed && !isAncestor) {
-    facts['unique_commits'] = git.at(repo.root).aheadBehind(repo.mainBranch, sha).ahead
+    evidence.uniqueCommits = git.at(repo.root).aheadBehind(repo.mainBranch, sha).ahead
   }
-  const requires = branchRequires(unmerged, pr)
+  const risks = branchRisks(unmerged, pr)
+  const commands = [localDeleteCommand(name, sha)]
+  const deletes = (why: string): BranchRow =>
+    row({ verdict: 'delete', action: 'delete', why, commands, risks })
 
-  const deleteCmd = [localDeleteCommand(name, sha)]
-
-  if (pr && landed) {
-    return makeItem({
-      category: 'local_branch',
-      id: name,
-      classification: 'safe-to-delete',
-      action: 'delete',
-      reason: `PR #${pr.number} merged`,
-      facts,
-      commands: deleteCmd,
-      requires,
-    })
-  }
-  if (isAncestor) {
-    return makeItem({
-      category: 'local_branch',
-      id: name,
-      classification: 'safe-to-delete',
-      action: 'delete',
-      reason: `fully merged into ${compareRef}`,
-      facts,
-      commands: deleteCmd,
-      requires,
-    })
-  }
+  if (pr && landed) return deletes(`PR #${pr.number} merged`)
+  if (isAncestor) return deletes(`fully merged into ${compareRef}`)
   if (patchLanded) {
-    return makeItem({
-      category: 'local_branch',
-      id: name,
-      classification: 'safe-to-delete',
-      action: 'delete',
-      reason: `patch-equivalent to commits on ${compareRef} (${patch.check}); ${confirmationNote(patch)}`,
-      facts,
-      commands: deleteCmd,
-      requires,
-    })
+    return deletes(
+      `patch-equivalent to commits on ${compareRef} (${patch.check}); ${confirmationNote(patch)}`,
+    )
   }
-  if (pr && pr.state === 'OPEN') return keep(`open PR #${pr.number}`, { requires })
+  if (pr && pr.state === 'OPEN') {
+    return row({ verdict: 'keep', action: 'delete', why: `open PR #${pr.number}`, commands, risks })
+  }
 
   const lead =
     ancestor === null
       ? `Remote default branch \`${compareRef}\` was not found, so ancestry is unknown.`
       : `Branch \`${name}\` is not an ancestor of \`${compareRef}\`.`
-  const parts = [lead]
-  parts.push(upstream ? `Tracks \`${upstream}\` (${track || 'in sync'}).` : 'Has no upstream.')
-  parts.push(pr ? `Associated PR #${pr.number} is ${pr.state} (${pr.url}).` : noPrSentence(repo))
-  if (pr && gap) parts.push(gapSentence(pr, gap, repo))
+  const notes = [lead]
+  notes.push(upstream ? `Tracks \`${upstream}\` (${track || 'in sync'}).` : 'Has no upstream.')
+  notes.push(pr ? `Associated PR #${pr.number} is ${pr.state} (${pr.url}).` : noPrSentence(repo))
+  if (pr && gap) notes.push(gapSentence(pr, gap, repo))
   const unmatched = patch === null ? null : unmatchedSentence(patch, repo)
-  if (unmatched !== null) parts.push(unmatched)
-  parts.push(`Last commit: ${lastCommit} (${sha}).`)
-  return makeItem({
-    category: 'local_branch',
-    id: name,
-    classification: 'needs-investigation',
-    action: 'review',
-    reason: 'mixed or absent signals',
-    facts,
-    investigationParts: parts,
-    requires,
+  if (unmatched !== null) notes.push(unmatched)
+  notes.push(`Last commit: ${lastCommit} (${sha}).`)
+  return row({
+    verdict: 'review',
+    action: 'delete',
+    why: 'mixed or absent signals',
+    commands,
+    notes,
+    risks,
   })
 }
 
@@ -332,13 +302,13 @@ export function gatherRemoteBranches(
   git: Git,
   only?: string,
   tick?: (done: number, total: number) => void,
-): SweepItem[] {
+): RemoteRow[] {
   if (repo.remote === null) return []
   // Default door: an unreachable remote throws rather than rendering as "the
   // remote has no branches". `[]` here means the remote really has none.
   const pattern = only === undefined ? undefined : `refs/heads/${only}`
   const rows = git.at(repo.root).lsRemote(repo.remote, pattern, { heads: true })
-  const items: SweepItem[] = []
+  const items: RemoteRow[] = []
   for (const [i, { sha, ref }] of rows.entries()) {
     tick?.(i, rows.length)
     if (!ref.startsWith('refs/heads/')) continue
@@ -356,105 +326,71 @@ export function classifyRemoteBranch(opts: {
   prs: Map<string, PRInfo>
   localBranchNames: ReadonlySet<string>
   git: Git
-}): SweepItem {
-  const { name, sha, repo, prs, localBranchNames, git } = opts
-  const id = `${repo.remote}/${name}`
-  const facts: Record<string, unknown> = {
-    branch: name,
-    remote: repo.remote,
+}): RemoteRow {
+  const { name: branch, sha, repo, prs, localBranchNames, git } = opts
+  const remote = repo.remote ?? ''
+  const name = `${remote}/${branch}`
+  const evidence: RemoteEvidence = {
+    branch,
+    remote,
     sha,
-    has_local: localBranchNames.has(name),
+    hasLocal: localBranchNames.has(branch),
   }
-  const keep = (reason: string, extra: Partial<SweepItem> = {}): SweepItem =>
-    makeItem({
-      category: 'remote_branch',
-      id,
-      classification: 'safe-to-keep',
-      action: 'keep',
-      reason,
-      facts,
-      ...extra,
-    })
+  const row = (r: RowFields<RemoteRow>): RemoteRow =>
+    makeRow<RemoteRow>({ kind: 'remote', name, evidence, ...r })
 
-  if (name === repo.mainBranch) return keep('default branch', { deletable: false })
+  if (branch === repo.mainBranch)
+    return row({ verdict: 'keep', action: null, why: 'default branch' })
 
   const remoteMain = landedRef(repo)
   // `soft`: `sha` comes from `ls-remote`, so the clone may never have fetched
   // it, and `remoteMain` may not exist either. Both exit 128; this row renders
   // "cannot tell" as false.
   const isAncestor = git.at(repo.root).soft.isAncestor(sha, remoteMain)
-  facts['ancestor_of_remote_main'] = isAncestor
+  evidence.ancestorOfRemoteMain = isAncestor
 
-  const pr = prs.get(name)
-  const { landed, gap } = recordPr(facts, pr, sha, repo)
+  const pr = prs.get(branch)
+  const { landed, gap } = recordPr(evidence, pr, sha, repo)
   // `sha` came from `ls-remote` and may not be in this clone; the check then
   // finds nothing and the branch stays unlanded.
   const patch: Landing | null = landed || isAncestor ? null : judgeLanding(repo, sha, pr, gap, git)
-  if (patch !== null) recordLanding(facts, patch)
+  if (patch !== null) recordLanding(evidence, patch)
   const patchLanded = patch !== null && patch.check !== null
   const unmerged = !landed && !isAncestor && !landingConfirmed(patch)
-  facts['merged'] = mergedFact({ landed, ancestor: isAncestor, patchLanded })
+  evidence.merged = mergedFact({ landed, ancestor: isAncestor, patchLanded })
   if (!landed && !isAncestor) {
     // Unknown (null) when the clone lacks `sha` or `remoteMain`, as above.
     const counted = git.at(repo.root).try.aheadBehind(remoteMain, sha)
-    facts['unique_commits'] = counted.ok ? counted.value.ahead : null
+    evidence.uniqueCommits = counted.ok ? counted.value.ahead : null
   }
-  const requires = branchRequires(unmerged, pr)
+  const risks = branchRisks(unmerged, pr)
+  const commands = repo.remote === null ? [] : [remoteDeleteCommand(repo.remote, branch, sha)]
+  const deletes = (why: string): RemoteRow =>
+    row({ verdict: 'delete', action: 'delete', why, commands, risks })
 
-  const deleteCmd = repo.remote === null ? [] : [remoteDeleteCommand(repo.remote, name, sha)]
-
-  if (pr && landed) {
-    return makeItem({
-      category: 'remote_branch',
-      id,
-      classification: 'safe-to-delete',
-      action: 'delete',
-      reason: `PR #${pr.number} merged (auto-delete didn't fire)`,
-      facts,
-      commands: deleteCmd,
-      requires,
-    })
-  }
-  if (isAncestor) {
-    return makeItem({
-      category: 'remote_branch',
-      id,
-      classification: 'safe-to-delete',
-      action: 'delete',
-      reason: `fully merged into ${remoteMain}`,
-      facts,
-      commands: deleteCmd,
-      requires,
-    })
-  }
+  if (pr && landed) return deletes(`PR #${pr.number} merged (auto-delete didn't fire)`)
+  if (isAncestor) return deletes(`fully merged into ${remoteMain}`)
   if (patchLanded) {
-    return makeItem({
-      category: 'remote_branch',
-      id,
-      classification: 'safe-to-delete',
-      action: 'delete',
-      reason: `patch-equivalent to commits on ${remoteMain} (${patch.check}); ${confirmationNote(patch)}`,
-      facts,
-      commands: deleteCmd,
-      requires,
-    })
+    return deletes(
+      `patch-equivalent to commits on ${remoteMain} (${patch.check}); ${confirmationNote(patch)}`,
+    )
   }
-  if (pr && pr.state === 'OPEN') return keep(`open PR #${pr.number}`, { requires })
+  if (pr && pr.state === 'OPEN') {
+    return row({ verdict: 'keep', action: 'delete', why: `open PR #${pr.number}`, commands, risks })
+  }
 
-  const parts = [`Remote branch \`${id}\` is not an ancestor of \`${remoteMain}\`.`]
-  parts.push(pr ? `Associated PR #${pr.number} is ${pr.state}.` : 'No PR found.')
-  if (pr && gap) parts.push(gapSentence(pr, gap, repo))
+  const notes = [`Remote branch \`${name}\` is not an ancestor of \`${remoteMain}\`.`]
+  notes.push(pr ? `Associated PR #${pr.number} is ${pr.state}.` : 'No PR found.')
+  if (pr && gap) notes.push(gapSentence(pr, gap, repo))
   const unmatched = patch === null ? null : unmatchedSentence(patch, repo)
-  if (unmatched !== null) parts.push(unmatched)
-  parts.push('Decide whether to push more work, delete, or leave it as long-lived.')
-  return makeItem({
-    category: 'remote_branch',
-    id,
-    classification: 'needs-investigation',
-    action: 'review',
-    reason: 'mixed or absent signals',
-    facts,
-    investigationParts: parts,
-    requires,
+  if (unmatched !== null) notes.push(unmatched)
+  notes.push('Decide whether to push more work, delete, or leave it as long-lived.')
+  return row({
+    verdict: 'review',
+    action: 'delete',
+    why: 'mixed or absent signals',
+    commands,
+    notes,
+    risks,
   })
 }

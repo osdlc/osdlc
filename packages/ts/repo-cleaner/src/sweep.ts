@@ -1,102 +1,308 @@
 /**
- * The sweep itself: one repository, or many.
+ * The sweep: resolve the targets, then inventory every repository they name.
  *
- * Every item carries the command that would act on it, and running that
- * command is the caller's decision. The only write is the optional fetch,
- * which updates remote-tracking refs and nothing else.
+ * Every row carries the commands that would act on it, and running them is
+ * the caller's decision. The only write is the fetch a sweep of remote
+ * branches makes, which updates remote-tracking refs and nothing else, and the
+ * clone a remote URL target is swept through.
  */
 
+import { existsSync, realpathSync } from 'node:fs'
+import { isAbsolute, resolve } from 'node:path'
+
+import type { CommandRunner } from '@osdlc/command-seam'
 import { Git } from '@osdlc/typed-git'
 import { Gh } from '@osdlc/typed-gh'
-import type { CommandRunner } from '@osdlc/command-seam'
 
-import { HELD_BY_WORKTREE, gatherLocalBranches, gatherRemoteBranches } from './branches.ts'
-import { DiscoveryFailed, discoverRepo } from './discover.ts'
+import {
+  HELD_BY_WORKTREE,
+  gatherLocalBranches,
+  gatherRemoteBranches,
+  resolveBranch,
+} from './branches.ts'
+import { discoverRepo } from './discover.ts'
+import type { Annotate } from './hooks.ts'
 import { defaultProcessProbe, type ProcessProbe } from './processes.ts'
 import { fetchPrs } from './prs.ts'
-import { providers, type ProviderChoice } from './providers/index.ts'
-import { resolveEntries } from './resolve.ts'
+import { PROVIDER_CHOICES, providers, type ProviderChoice } from './providers/index.ts'
+import { defaultCacheDir, ensureMirror, isRemoteUrl, redactUrl } from './remote-mirror.ts'
+import { expandTilde, resolveEntries } from './resolve.ts'
 import {
-  ALL_SCOPES,
+  KINDS,
+  RepoCleanerError,
+  countRows,
+  emptyBucket,
+  emptyScan,
   findDuplicateCheckouts,
+  type Counts,
+  type Kind,
   type PRInfo,
   type RepoSweep,
-  type Scope,
-  type SweepItem,
+  type Row,
+  type Sweep,
   type SweepProgress,
-  type SweepResult,
+  type SweptWith,
+  type WorktreeRow,
 } from './types.ts'
 import { gatherWorktrees } from './worktrees.ts'
 
-export interface SweepOptions {
-  /** Which categories to gather. Defaults to all of them. */
-  scope?: Iterable<Scope | string>
-  /** Remote to measure against. Defaults to `origin`, then the first one. */
-  remote?: string | null
-  /** Ask no provider and classify on git evidence alone. Same as `provider: 'none'`, and wins over it. */
-  noProvider?: boolean
-  /**
-   * Which provider to ask for pull requests: `github` (`gh`), `gitlab`
-   * (`glab`), `none`, or `auto`, which reads the remote's host. Defaults to `auto`.
-   */
-  provider?: ProviderChoice | undefined
-  /**
-   * Run `git fetch --prune <remote>` before classifying, so ancestry is read
-   * against fresh remote-tracking refs. A failed fetch makes the repository
-   * an error row. Off by default.
-   */
-  fetch?: boolean
-  /**
-   * Where the caller is standing. A worktree containing it is never proposed
-   * for removal. Defaults to the process's cwd.
-   */
-  cwd?: string
-  /**
-   * Inventory one branch only: the worktree holding it, its local branch and
-   * its remote branch. The default branch is refused. `cwd` is ignored, so the
-   * worktree is judged on its facts, and the local branch is not pinned for
-   * being checked out there: apply removes the worktree first. It stays pinned
-   * when that worktree is blocked or cannot be removed, or when `scope` leaves
-   * worktrees out.
-   */
-  branch?: string | undefined
-  /** Injected runners. Defaults spawn the real `git`, `gh` and `glab`. */
+/** Runners and the process probe: what a test or a host injects. */
+export interface Runners {
+  /** Defaults spawn the real `git`, `gh` and `glab`. */
   git?: CommandRunner | undefined
   gh?: CommandRunner | undefined
   glab?: CommandRunner | undefined
   /**
    * Answers whether a worktree lock's owner is alive and which processes work
-   * inside a worktree. Defaults to {@link defaultProcessProbe}, one per
-   * repository, over `ps` and `lsof`.
+   * inside a worktree. Defaults to {@link defaultProcessProbe}, over `ps` and
+   * `lsof`.
    */
   probe?: ProcessProbe | undefined
-  /** Told before each step, and before each item of a step that walks many. For a status line. */
+}
+
+export interface SweepOptions extends Runners {
+  /** Only these kinds of row. Default: `worktree` and `branch`, and `remote` with `remote`. Naming `remote` implies `remote`. */
+  only?: readonly Kind[] | undefined
+  /** Also judge remote branches: fetches each remote first and looks up pull requests. */
+  remote?: boolean | undefined
+  /** With `remote`: do not fetch; judge against the remote-tracking refs on disk. */
+  offline?: boolean | undefined
+  /** The remote whose default branch counts as "merged into". Default `origin`, then the first remote. */
+  against?: string | undefined
+  /** With `remote`: where pull requests come from. Default `auto`, by the remote's host. */
+  provider?: ProviderChoice | undefined
+  /**
+   * One branch only: its worktree, its local branch, and its remote branch
+   * with `remote`. `HEAD` is the branch checked out at the target. Takes at
+   * most one target, no remote URL, and never the default branch.
+   */
+  branch?: string | undefined
+  /**
+   * Where the caller is standing: the base for relative targets, the target
+   * when none is given, and a worktree that is never offered for removal.
+   * Defaults to the process's cwd.
+   */
+  cwd?: string | undefined
+  /** Where remote URL targets' clones are kept. Defaults to {@link defaultCacheDir}. */
+  cacheDir?: string | undefined
+  /** A host's re-ranking of each repository's rows. */
+  annotate?: Annotate | undefined
+  /** Told before each step, and before each row of a step that walks many. For a status line. */
   onProgress?: ((progress: SweepProgress) => void) | undefined
-  /** Where this repository sits in a run of several, for {@link onProgress}. Defaults to 1 of 1. */
-  position?: { index: number; of: number } | undefined
+  /** Told, mid-walk, that a target directory is enormous. Defaults to stderr. */
+  onWarn?: ((message: string) => void) | undefined
 }
 
-function scopeSet(scope: SweepOptions['scope']): Set<string> {
-  return new Set<string>(scope === undefined ? ALL_SCOPES : [...scope])
-}
+const LOCAL: readonly Kind[] = ['worktree', 'branch']
 
-function clients(path: string, opts: SweepOptions): { git: Git; gh: Gh } {
+/**
+ * The sweep `targets` and `opts` ask for, as a plan records it. Throws a
+ * {@link RepoCleanerError} for options that contradict each other or would
+ * have no effect, before anything is read.
+ */
+export function sweptWith(
+  targets: readonly string[],
+  opts: Omit<SweepOptions, keyof Runners | 'annotate' | 'onProgress' | 'onWarn' | 'cacheDir'>,
+): SweptWith & { urls: boolean } {
+  const cwd = opts.cwd ?? process.cwd()
+  const conflict = (message: string): never => {
+    throw new RepoCleanerError('conflict', message)
+  }
+  if (targets.some((t) => t.trim() === '')) {
+    throw new RepoCleanerError('bad-input', 'a target is empty')
+  }
+  const only = opts.only === undefined ? undefined : [...new Set(opts.only)]
+  const unknown = (only ?? []).filter((k) => !(KINDS as readonly string[]).includes(k))
+  if (unknown.length > 0) {
+    throw new RepoCleanerError(
+      'bad-input',
+      `unknown kind(s) ${unknown.join(', ')}: expected ${KINDS.join(', ')}`,
+    )
+  }
+  if (only !== undefined && only.length === 0) {
+    throw new RepoCleanerError('bad-input', 'only names no kind')
+  }
+  if (
+    opts.provider !== undefined &&
+    !(PROVIDER_CHOICES as readonly string[]).includes(opts.provider)
+  ) {
+    throw new RepoCleanerError('bad-input', `unknown provider ${JSON.stringify(opts.provider)}`)
+  }
+
+  const exists = (t: string): boolean => existsSync(resolve(cwd, expandTilde(t)))
+  const isUrl = targets.map((t) => isRemoteUrl(t, exists))
+  const urls = isUrl.some(Boolean)
+  if (urls && !isUrl.every(Boolean)) {
+    conflict('a remote URL target sweeps remote branches only; sweep it apart from checkouts')
+  }
+  if (urls && only !== undefined && only.some((k) => k !== 'remote')) {
+    conflict(`a remote URL has only remote branches; drop --only ${only.join(',')}`)
+  }
+  if (urls && opts.branch !== undefined) {
+    conflict('--branch reads one branch of a checkout; it does not take a remote URL')
+  }
+  if (urls && opts.offline === true) {
+    conflict('a remote URL target is fetched to be swept; --offline would have no effect')
+  }
+  if (opts.branch !== undefined && targets.length > 1) {
+    conflict(`--branch sweeps one repository; ${targets.length} targets given`)
+  }
+  const remote = urls || opts.remote === true || (only ?? []).includes('remote')
+  if (opts.remote === true && only !== undefined && !only.includes('remote')) {
+    conflict(`--remote includes remote branches, but --only ${only.join(',')} leaves them out`)
+  }
+  if (opts.offline === true && !remote) {
+    conflict('--offline has no effect without --remote: nothing is fetched anyway')
+  }
+  if (opts.provider !== undefined && !remote) {
+    conflict(
+      '--provider has no effect without --remote: pull requests are looked up only for remote branches',
+    )
+  }
+  const kinds: Kind[] = urls
+    ? ['remote']
+    : only !== undefined
+      ? KINDS.filter((k) => only.includes(k))
+      : remote
+        ? [...LOCAL, 'remote']
+        : [...LOCAL]
   return {
-    git: new Git(path, { runner: opts.git }),
-    gh: new Gh(path, { runner: opts.gh }),
+    only: kinds,
+    remote,
+    offline: opts.offline === true,
+    against: opts.against ?? null,
+    provider: remote ? (opts.provider ?? 'auto') : 'none',
+    branch: opts.branch ?? null,
+    urls,
   }
 }
 
+function sumCounts(all: readonly Counts[]): Counts {
+  const out: Counts = { worktree: emptyBucket(), branch: emptyBucket(), remote: emptyBucket() }
+  for (const c of all) {
+    for (const kind of KINDS) {
+      for (const key of Object.keys(out[kind]) as (keyof Counts[Kind])[]) {
+        out[kind][key] += c[kind][key]
+      }
+    }
+  }
+  return out
+}
+
 /**
- * Inventory one repository.
+ * Sweep `targets`: checkouts, directories to search for checkouts, or remote
+ * URLs (swept through a clone kept in `cacheDir`, remote branches only). No
+ * target sweeps the checkout at `cwd`.
  *
- * Never throws for a repository that cannot be read: the failure is returned
- * as `error`, because a fan-out must not end on its first bad entry. A
- * single-repository caller checks that field.
+ * Never throws for a repository it cannot read: that one comes back with
+ * `error` set, because a fan-out must not end on its first bad entry. Throws a
+ * {@link RepoCleanerError} for options that contradict each other, before
+ * reading anything.
  */
-export function sweepRepo(path: string, opts: SweepOptions = {}): RepoSweep {
-  const scope = scopeSet(opts.scope)
-  const { git, gh } = clients(path, opts)
+export function sweep(targets: readonly string[], opts: SweepOptions = {}): Sweep {
+  const cwd = opts.cwd ?? process.cwd()
+  const { urls, ...options } = sweptWith(targets, opts)
+  let branch = options.branch ?? undefined
+  if (branch === 'HEAD') {
+    const at = targets[0] === undefined ? cwd : resolve(cwd, expandTilde(targets[0]))
+    try {
+      branch = resolveBranch('HEAD', new Git(at, { runner: opts.git }))
+    } catch (err) {
+      throw new RepoCleanerError('conflict', err instanceof Error ? err.message : String(err))
+    }
+    options.branch = branch
+  }
+
+  const failed: RepoSweep[] = []
+  let entries: string[] = targets.length > 0 ? [...targets] : [cwd]
+  if (urls) {
+    const cache = opts.cacheDir ?? defaultCacheDir()
+    entries = []
+    for (const url of targets) {
+      try {
+        entries.push(ensureMirror(url, cache, { git: opts.git }))
+      } catch (err) {
+        failed.push(errorSweep(redactUrl(url), err))
+      }
+    }
+  }
+  const resolution =
+    entries.length === 0
+      ? { repos: [], unresolved: [], scan: emptyScan() }
+      : resolveEntries(entries, {
+          git: new Git(cwd, { runner: opts.git }),
+          baseDir: cwd,
+          ...(opts.onWarn === undefined ? {} : { onWarn: opts.onWarn }),
+        })
+  if (branch !== undefined && resolution.repos.length > 1) {
+    throw new RepoCleanerError(
+      'conflict',
+      `--branch sweeps one repository; ${resolution.repos.length} found under ${entries[0]}`,
+    )
+  }
+  const of = resolution.repos.length
+  const repos = [
+    ...failed,
+    ...resolution.repos.map((root, i) =>
+      sweepRepo(root, {
+        ...opts,
+        only: options.only,
+        against: options.against ?? undefined,
+        provider: options.provider,
+        fetch: options.remote && !options.offline,
+        branch,
+        cwd,
+        position: { index: i + 1, of },
+      }),
+    ),
+  ]
+  return {
+    repos,
+    unresolved: resolution.unresolved,
+    scan: resolution.scan,
+    duplicates: findDuplicateCheckouts(repos.map((s) => s.repo)),
+    counts: sumCounts(repos.map((s) => s.counts)),
+    options,
+  }
+}
+
+function emptyCounts(): Counts {
+  return countRows([])
+}
+
+function errorSweep(path: string, err: unknown): RepoSweep {
+  return {
+    path,
+    repo: null,
+    rows: [],
+    counts: emptyCounts(),
+    error: err instanceof Error ? err.message : String(err),
+  }
+}
+
+/** What {@link sweepRepo} takes: a sweep's options, already resolved. */
+export interface RepoSweepOptions extends Runners {
+  only: readonly Kind[]
+  against?: string | undefined
+  provider: ProviderChoice
+  fetch: boolean
+  branch?: string | undefined
+  cwd: string
+  annotate?: Annotate | undefined
+  onProgress?: ((progress: SweepProgress) => void) | undefined
+  position?: { index: number; of: number } | undefined
+}
+
+/**
+ * Inventory one repository, annotated and with freed branches held, as
+ * {@link sweep} does for each. The engine `check` and `run` re-sweep with.
+ * Never throws for a repository it cannot read; throws a `conflict` for a
+ * `branch` that is the default branch.
+ */
+export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
+  const kinds = new Set<Kind>(opts.only)
+  const git = new Git(path, { runner: opts.git })
+  const gh = new Gh(path, { runner: opts.gh })
   const known = providers({ gh, glab: opts.glab })
   const only = opts.branch
   const at = opts.position ?? { index: 1, of: 1 }
@@ -122,34 +328,39 @@ export function sweepRepo(path: string, opts: SweepOptions = {}): RepoSweep {
   let repo
   try {
     repo = discoverRepo(path, {
-      remote: opts.remote ?? null,
-      allowProvider: opts.noProvider !== true,
+      remote: opts.against ?? null,
+      allowProvider: opts.provider !== 'none',
       provider: opts.provider,
       git,
       gh,
       providers: known,
     })
   } catch (err) {
-    if (err instanceof DiscoveryFailed) return { repo: null, path, items: [], error: err.message }
-    return { repo: null, path, items: [], error: err instanceof Error ? err.message : String(err) }
+    // A `DiscoveryFailed`, or anything else that kept the repository from being read.
+    return errorSweep(path, err)
   }
 
   if (only === repo.mainBranch) {
-    return { repo, path, items: [], error: `refusing to clean up the default branch \`${only}\`` }
+    throw new RepoCleanerError(
+      'conflict',
+      `--branch ${only} is the default branch, which is never a candidate for deletion`,
+    )
   }
-  const cwd = only === undefined ? (opts.cwd ?? process.cwd()) : repo.root
+  // A branch sweep judges the worktree on its own evidence, wherever the caller stands.
+  const cwd = only === undefined ? opts.cwd : repo.root
 
-  if (opts.fetch === true && repo.remote !== null) {
+  if (opts.fetch && repo.remote !== null) {
     report('fetch')
     const fetched = git
       .at(repo.root)
       .try.fetch(repo.remote, undefined, { prune: true, quiet: true, noWriteFetchHead: true })
     if (!fetched.ok) {
       return {
+        ...errorSweep(
+          path,
+          new Error(`fetch failed: ${fetched.error.detail || fetched.error.message}`),
+        ),
         repo,
-        path,
-        items: [],
-        error: `fetch failed: ${fetched.error.detail || fetched.error.message}`,
       }
     }
     repo = { ...repo, fetched: true }
@@ -160,141 +371,128 @@ export function sweepRepo(path: string, opts: SweepOptions = {}): RepoSweep {
     if (status?.authenticated === true) report('prs', undefined, undefined, status.tool)
     const prs =
       status === null ? new Map<string, PRInfo>() : fetchPrs(repo, known[status.name], only)
-    const items: SweepItem[] = []
+    const rows: Row[] = []
 
     // Worktrees are gathered whenever local branches are, even if they are not
     // reported: a branch checked out in one must not be judged on its own.
-    let worktreeItems: SweepItem[] = []
+    let worktreeRows: WorktreeRow[] = []
     let worktreeBranches = new Set<string>()
-    if (scope.has('worktrees') || scope.has('local-branches')) {
-      ;[worktreeItems, worktreeBranches] = gatherWorktrees(
+    if (kinds.has('worktree') || kinds.has('branch')) {
+      ;[worktreeRows, worktreeBranches] = gatherWorktrees(
         repo,
         prs,
         cwd,
         git,
         only,
         opts.probe ?? defaultProcessProbe(),
-        ticker('worktrees'),
+        ticker('worktree'),
       )
     }
-    if (scope.has('worktrees')) items.push(...worktreeItems)
+    if (kinds.has('worktree')) rows.push(...worktreeRows)
 
     let localBranchNames = new Set<string>()
-    if (scope.has('local-branches') || scope.has('remote-branches')) {
-      // A branch whose worktree goes in the same plan is judged on its own:
-      // apply removes worktrees before it deletes branches. A full sweep frees
-      // the branch of a safe-to-delete worktree; a branch-scoped sweep frees
-      // the named branch when its worktree is deletable at all.
+    if (kinds.has('branch') || kinds.has('remote')) {
+      // A branch whose worktree goes in the same run is judged on its own:
+      // a run removes worktrees before it deletes branches.
       const freed = new Map<string, string>()
-      if (scope.has('worktrees')) {
-        for (const item of worktreeItems) {
-          const branch = item.facts['branch']
-          if (freesBranch(item, only !== undefined) && typeof branch === 'string') {
-            freed.set(branch, item.id)
-          }
+      if (kinds.has('worktree')) {
+        for (const row of worktreeRows) {
+          const branch = row.evidence.branch
+          if (freesBranch(row, only !== undefined) && branch !== null) freed.set(branch, row.name)
         }
       }
       const pinned = new Set([...worktreeBranches].filter((name) => !freed.has(name)))
-      const localItems = gatherLocalBranches(repo, prs, pinned, git, only, ticker('local-branches'))
-      // Apply drops a freed branch unless the same run removes its worktree.
-      for (const item of localItems) {
-        const worktree = freed.get(item.id)
-        if (worktree !== undefined) item.facts['worktree'] = worktree
+      const localRows = gatherLocalBranches(repo, prs, pinned, git, only, ticker('branch'))
+      // A run drops a freed branch unless it also removes the worktree.
+      for (const row of localRows) {
+        const worktree = freed.get(row.name)
+        if (worktree !== undefined) row.evidence.worktree = worktree
       }
-      localBranchNames = new Set(localItems.map((item) => item.id))
-      if (scope.has('local-branches')) items.push(...localItems)
+      localBranchNames = new Set(localRows.map((row) => row.name))
+      if (kinds.has('branch')) rows.push(...localRows)
     }
 
-    if (scope.has('remote-branches')) {
-      items.push(
-        ...gatherRemoteBranches(repo, prs, localBranchNames, git, only, ticker('remote-branches')),
-      )
+    if (kinds.has('remote')) {
+      rows.push(...gatherRemoteBranches(repo, prs, localBranchNames, git, only, ticker('remote')))
     }
 
-    return { repo, path, items, error: null }
+    const annotated =
+      opts.annotate === undefined
+        ? rows
+        : holdFreedBranches(opts.annotate(repo, rows), only !== undefined)
+    return { path, repo, rows: annotated, counts: countRows(annotated), error: null }
   } catch (err) {
-    return {
-      repo,
-      path,
-      items: [],
-      error: err instanceof Error ? err.message : String(err),
-    }
-  }
-}
-
-export interface SweepReposOptions extends SweepOptions {
-  /** Base for a relative entry. Defaults to the process's cwd. */
-  baseDir?: string
-  /** Told, mid-walk, that a container entry is enormous. Defaults to stderr. */
-  onWarn?: ((message: string) => void) | undefined
-}
-
-/**
- * Resolve `entries` and inventory every repository they name.
- *
- * Entries may be checkouts or directories containing checkouts; see
- * {@link resolveEntries}. A repository that fails discovery becomes an error
- * row and the sweep continues.
- */
-export function sweepRepos(entries: readonly string[], opts: SweepReposOptions = {}): SweepResult {
-  const probe = new Git(opts.baseDir ?? process.cwd(), { runner: opts.git })
-  const resolution = resolveEntries(entries, {
-    git: probe,
-    ...(opts.baseDir === undefined ? {} : { baseDir: opts.baseDir }),
-    ...(opts.onWarn === undefined ? {} : { onWarn: opts.onWarn }),
-  })
-  const of = resolution.repos.length
-  const repos = resolution.repos.map((root, i) =>
-    sweepRepo(root, { ...opts, position: { index: i + 1, of } }),
-  )
-  return {
-    repos,
-    unresolved: resolution.unresolved,
-    scan: resolution.scan,
-    duplicates: findDuplicateCheckouts(repos.map((sweep) => sweep.repo)),
+    if (err instanceof RepoCleanerError) throw err
+    return { ...errorSweep(path, err), repo }
   }
 }
 
 /**
- * Whether worktree row `item` frees its branch to be judged on its own. A full
- * sweep frees it only for a safe-to-delete worktree; a branch-scoped sweep,
- * where the caller named the branch, for any deletable one.
+ * Whether worktree row `row` frees its branch to be judged on its own. A full
+ * sweep frees it only for a worktree judged `delete`; a branch sweep, where the
+ * caller named the branch, for any worktree that can be removed.
  */
-function freesBranch(item: SweepItem, branchScoped: boolean): boolean {
-  return item.deletable && (branchScoped || item.classification === 'safe-to-delete')
+function freesBranch(row: Row, branchScoped: boolean): boolean {
+  return row.action !== null && (branchScoped || row.verdict === 'delete')
 }
 
 /**
- * Keep again each branch a sweep freed for its worktree's removal when that
- * worktree no longer frees it by the sweep's own rule: a host's `annotate`
- * held it back or demoted it, or dropped its row. Run it on annotated rows,
- * with `branchScoped` set for a `branch` sweep, so the counts and the plan
- * match what `applyPlan` will do. Running it twice changes nothing.
+ * Keep again each branch the sweep freed for its worktree's removal when that
+ * worktree no longer frees it: a host's `annotate` held it back, demoted it,
+ * or dropped its row. Running it twice changes nothing.
  */
-export function holdFreedBranches(
-  items: SweepItem[],
-  opts: { branchScoped?: boolean } = {},
-): SweepItem[] {
+export function holdFreedBranches(rows: Row[], branchScoped: boolean): Row[] {
   const going = new Set(
-    items
-      .filter((it) => it.category === 'worktree' && freesBranch(it, opts.branchScoped === true))
-      .map((it) => it.id),
+    rows.filter((r) => r.kind === 'worktree' && freesBranch(r, branchScoped)).map((r) => r.name),
   )
-  return items.map((item) => {
-    const worktree = item.facts['worktree']
-    if (item.category !== 'local_branch' || typeof worktree !== 'string') return item
-    if (going.has(worktree)) return item
-    const { worktree: _, ...facts } = item.facts
+  return rows.map((row) => {
+    if (row.kind !== 'branch' || row.evidence.worktree === undefined) return row
+    if (going.has(row.evidence.worktree)) return row
+    const { worktree: _, ...evidence } = row.evidence
     return {
-      ...item,
-      classification: 'safe-to-keep',
-      action: 'keep',
-      reason: HELD_BY_WORKTREE,
-      facts,
+      ...row,
+      verdict: 'keep',
+      action: null,
+      why: HELD_BY_WORKTREE,
+      evidence,
       commands: [],
-      investigationParts: [],
-      requires: [],
-      deletable: false,
+      notes: [],
+      risks: [],
     }
   })
+}
+
+/**
+ * The worktree at `path`, judged as a sweep judges it: its verdict, risks,
+ * blockers and evidence, submodules included. Reads git and the process
+ * table; asks no provider.
+ *
+ * @throws RepoCleanerError (`not-found`) when `path` is not a linked worktree
+ *   of a repository git can read.
+ */
+export function inspectWorktree(
+  path: string,
+  opts: Runners & { cwd?: string | undefined; annotate?: Annotate | undefined } = {},
+): WorktreeRow {
+  const cwd = opts.cwd ?? process.cwd()
+  const abs = isAbsolute(path) ? path : resolve(cwd, path)
+  const real = existsSync(abs) ? realpathSync(abs) : abs
+  const common = new Git(existsSync(abs) ? abs : cwd, { runner: opts.git }).soft.gitCommonDir()
+  if (common === null) throw new RepoCleanerError('not-found', `${path} is not in a repository`)
+  const root =
+    new Git(resolve(common, '..'), { runner: opts.git }).soft.topLevel() ?? resolve(common, '..')
+  const swept = sweepRepo(root, {
+    ...opts,
+    only: ['worktree'],
+    provider: 'none',
+    fetch: false,
+    cwd,
+  })
+  if (swept.error !== null) throw new RepoCleanerError('not-found', swept.error)
+  const row = swept.rows.find(
+    (r): r is WorktreeRow => r.kind === 'worktree' && (r.name === real || r.name === abs),
+  )
+  if (row === undefined)
+    throw new RepoCleanerError('not-found', `${path} is not a worktree of ${root}`)
+  return row
 }

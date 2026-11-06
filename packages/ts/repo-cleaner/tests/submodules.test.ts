@@ -11,19 +11,20 @@
  */
 
 import { afterEach, describe, expect, test } from 'vitest'
-import { existsSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { Git } from '@osdlc/typed-git'
 import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { sh } from './helpers.ts'
-import { applyPlan, type ApplyOptions, type Grant } from '../src/apply.ts'
-import { PLAN_VERSION, planRepo, type Plan } from '../src/plan.ts'
+import { check, run as runPreview, type Approval, type RunOptions } from '../src/clean.ts'
+import { plan as makePlan, type Plan } from '../src/plan.ts'
 import type { Receipt } from '../src/receipt.ts'
 import { inspectSubmodules, submoduleHazards, worktreeGitDir } from '../src/submodules.ts'
-import { sweepRepo } from '../src/sweep.ts'
-import type { Scope, SweepItem } from '../src/types.ts'
+import { inspectWorktree, sweep } from '../src/sweep.ts'
+import type { Kind, Sweep, WorktreeRow } from '../src/types.ts'
 
 const cleanups: Array<() => void> = []
 afterEach(() => {
@@ -74,40 +75,39 @@ function buildFixture(opts: { nested?: boolean } = {}): Fixture {
   return { root, worktree: wt, gitDir }
 }
 
-function worktreeRow(fx: Fixture): SweepItem {
-  const { items } = sweepRepo(fx.root, { noProvider: true, cwd: fx.root, scope: ['worktrees'] })
-  return items.find((it) => it.category === 'worktree' && it.id === fx.worktree)!
+function worktreeRow(fx: Fixture): WorktreeRow {
+  const { rows } = sweep([fx.root], { cwd: fx.root, only: ['worktree'] }).repos[0]!
+  return rows.find((r): r is WorktreeRow => r.kind === 'worktree' && r.name === fx.worktree)!
 }
 
 function planOf(
   fx: Fixture,
-  scope: Scope[] = ['worktrees'],
+  only: Kind[] = ['worktree'],
 ): {
   plan: Plan
-  items: SweepItem[]
+  swept: Sweep
 } {
-  const { repo, items } = sweepRepo(fx.root, { noProvider: true, cwd: fx.root, scope })
-  const plan: Plan = {
-    version: PLAN_VERSION,
-    created_at: new Date().toISOString(),
-    repos: [planRepo(repo!.root, { remote: 'origin', noProvider: true }, items)],
-  }
-  return { plan, items }
+  const swept = sweep([fx.root], { cwd: fx.root, only })
+  return { plan: makePlan(swept), swept }
 }
 
+const wtId = (fx: Fixture): string => `worktree:${fx.worktree}`
+
+/**
+ * Check the plan with the worktree picked, then run it. `checkWith` is the
+ * sweep the check reads instead of sweeping again, as a preview straight after
+ * a sweep does; the run always sweeps again.
+ */
 function run(
   fx: Fixture,
   plan: Plan,
-  opts: Partial<ApplyOptions> = {},
-  grants: Grant[] = [],
+  opts: Partial<RunOptions> & { checkWith?: Sweep } = {},
+  allow: Approval['allow'] = [],
+  pick: string[] = [wtId(fx)],
 ): Receipt {
-  return applyPlan(plan, [{ category: 'worktree', id: fx.worktree }], grants, {
-    callerCwd: fx.root,
-    dryRun: false,
-    receiptPath: null,
-    planPath: 'plan.json',
-    ...opts,
-  })
+  const { checkWith, ...runOpts } = opts
+  const preview = check(plan, { pick, allow }, { cwd: fx.root, sweep: checkWith })
+  return runPreview(preview, { cwd: fx.root, source: 'plan.json', ...runOpts })
 }
 
 describe('inspectSubmodules', () => {
@@ -180,13 +180,13 @@ describe('sweeping a worktree with submodules', () => {
   test('clean and pushed: safe to delete, removed with --force', () => {
     const fx = buildFixture()
     const row = worktreeRow(fx)
-    expect(row.classification).toBe('safe-to-delete')
-    expect(row.deletable).toBe(true)
-    expect(row.facts['submodules_force']).toBe(true)
-    expect(row.reason).toMatch(/submodules are clean and pushed, so the remove is forced/)
+    expect(row.verdict).toBe('delete')
+    expect(row.action).toBe('remove')
+    expect(row.evidence.forcedForSubmodules).toBe(true)
+    expect(row.why).toMatch(/submodules are clean and pushed, so the remove is forced/)
     expect(row.commands).toEqual([`git -C ${fx.root} worktree remove --force ${fx.worktree}`])
-    expect(row.facts['submodules']).toMatchObject([
-      { path: 'sub', populated: true, dirty_files: 0, unpushed_commits: 0 },
+    expect(row.evidence.submodules).toMatchObject([
+      { path: 'sub', populated: true, dirtyFiles: 0, unpushedCommits: 0 },
     ])
   })
 
@@ -194,12 +194,12 @@ describe('sweeping a worktree with submodules', () => {
     const fx = buildFixture()
     sh(join(fx.worktree, 'sub'), ['commit', '--allow-empty', '-m', 'local only'])
     const row = worktreeRow(fx)
-    expect(row.classification).toBe('needs-investigation')
-    expect(row.deletable).toBe(true)
-    expect(row.facts['blockers']).toEqual([])
+    expect(row.verdict).toBe('review')
+    expect(row.action).toBe('remove')
+    expect(row.blockers).toEqual([])
     // The new commit also moves the gitlink, which the superproject shows as a change.
-    expect(row.requires).toEqual(['abandon-unmerged', 'discard-changes'])
-    expect(row.reason).toMatch(/unpushed work in submodule\(s\) sub \(1 unpushed commit\)/)
+    expect(row.risks).toEqual(['abandon-unmerged', 'discard-changes'])
+    expect(row.why).toMatch(/unpushed work in submodule\(s\) sub \(1 unpushed commit\)/)
   })
 
   test('a submodule stash needs abandon-unmerged alone', () => {
@@ -208,18 +208,18 @@ describe('sweeping a worktree with submodules', () => {
     writeFileSync(join(sub, 'scratch.txt'), 'wip\n')
     sh(sub, ['stash', 'push', '-q', '--include-untracked'])
     const row = worktreeRow(fx)
-    expect(row.requires).toEqual(['abandon-unmerged'])
-    expect(row.reason).toMatch(/sub \(1 stash\)/)
+    expect(row.risks).toEqual(['abandon-unmerged'])
+    expect(row.why).toMatch(/sub \(1 stash\)/)
   })
 
   test('a dirty submodule needs discard-changes', () => {
     const fx = buildFixture()
     writeFileSync(join(fx.worktree, 'sub', 'scratch.txt'), 'wip\n')
     const row = worktreeRow(fx)
-    expect(row.classification).toBe('needs-investigation')
-    expect(row.requires).toEqual(['discard-changes'])
-    expect(row.facts['submodule_dirty_files']).toBe(1)
-    expect(row.reason).toMatch(/1 in submodule\(s\) sub/)
+    expect(row.verdict).toBe('review')
+    expect(row.risks).toEqual(['discard-changes'])
+    expect(row.evidence.submoduleDirtyFiles).toBe(1)
+    expect(row.why).toMatch(/1 in submodule\(s\) sub/)
   })
 
   test('hidden index flags inside a submodule block, as in the worktree itself', () => {
@@ -232,8 +232,9 @@ describe('sweeping a worktree with submodules', () => {
     sh(sub, ['fetch', '-q', 'origin'])
     sh(sub, ['update-index', '--skip-worktree', 'tracked.txt'])
     const row = worktreeRow(fx)
-    expect(row.facts['blockers']).toContain('hidden-index-flags')
-    expect(row.facts['hidden_index_paths']).toEqual(['sub/tracked.txt'])
+    expect(row.verdict).toBe('blocked')
+    expect(row.blockers).toContain('hidden-index-flags')
+    expect(row.evidence.hiddenIndexPaths).toEqual(['sub/tracked.txt'])
   })
 
   test('a gone worktree whose git dir keeps unpushed submodule work needs abandon-unmerged', () => {
@@ -241,14 +242,52 @@ describe('sweeping a worktree with submodules', () => {
     sh(join(fx.worktree, 'sub'), ['commit', '--allow-empty', '-m', 'local only'])
     rmSync(fx.worktree, { recursive: true, force: true })
     const row = worktreeRow(fx)
-    expect(row.facts['on_disk']).toBe(false)
-    expect(row.classification).toBe('needs-investigation')
-    expect(row.requires).toEqual(['abandon-unmerged'])
+    expect(row.evidence.onDisk).toBe(false)
+    expect(row.verdict).toBe('review')
+    expect(row.action).toBe('prune')
+    expect(row.risks).toEqual(['abandon-unmerged'])
     expect(row.commands).toEqual([`git -C ${fx.root} worktree prune`])
   })
 })
 
-describe('applying a worktree with submodules', () => {
+describe('inspectWorktree', () => {
+  test('judges one worktree as the sweep does, its submodules included', () => {
+    const fx = buildFixture({ nested: true })
+    sh(join(fx.worktree, 'sub', 'inner'), ['commit', '--allow-empty', '-m', 'local only'])
+    const row = inspectWorktree(fx.worktree, { cwd: fx.root })
+    expect(row.kind).toBe('worktree')
+    expect(row.id).toBe(wtId(fx))
+    expect(row.evidence.forcedForSubmodules).toBe(true)
+    expect(row.evidence.submodules).toMatchObject([
+      { path: 'sub', populated: true, dirtyFiles: 1, unpushedCommits: 0, stashes: 0 },
+      { path: 'sub/inner', populated: true, dirtyFiles: 0, unpushedCommits: 1, stashes: 0 },
+    ])
+    expect(row.evidence.submoduleDirtyFiles).toBe(1)
+    expect(row.verdict).toBe('review')
+    expect(row.risks).toEqual(['abandon-unmerged', 'discard-changes'])
+    expect(row).toEqual(worktreeRow(fx))
+  })
+
+  test('takes a path relative to cwd', () => {
+    const fx = buildFixture()
+    const row = inspectWorktree('../wt', { cwd: fx.root })
+    expect(row.id).toBe(wtId(fx))
+    expect(row.evidence.submodules).toMatchObject([
+      { path: 'sub', populated: true, dirtyFiles: 0, unpushedCommits: 0, stashes: 0 },
+    ])
+  })
+
+  test('a path in no repository is not-found', () => {
+    const fx = buildFixture()
+    const outside = realpathSync(mkdtempSync(join(tmpdir(), 'repo-cleaner-outside-')))
+    cleanups.push(() => rmSync(outside, { recursive: true, force: true }))
+    expect(() => inspectWorktree(outside, { cwd: fx.root })).toThrow(
+      expect.objectContaining({ code: 'not-found' }),
+    )
+  })
+})
+
+describe('running a worktree with submodules', () => {
   test('removes a clean one, which plain `worktree remove` refuses', () => {
     const fx = buildFixture()
     const plain = new Git(fx.root).try.worktreeRemove(fx.worktree)
@@ -271,7 +310,7 @@ describe('applying a worktree with submodules', () => {
     const fx = buildFixture()
     writeFileSync(join(fx.worktree, 'sub', 'scratch.txt'), 'wip\n')
     const { plan } = planOf(fx)
-    const receipt = run(fx, plan, {}, [{ name: 'discard-changes', row: null }])
+    const receipt = run(fx, plan, {}, ['discard-changes'])
     expect(receipt.status).toBe('complete')
     expect(existsSync(fx.worktree)).toBe(false)
   })
@@ -280,11 +319,8 @@ describe('applying a worktree with submodules', () => {
     const fx = buildFixture()
     const { plan } = planOf(fx)
     sh(join(fx.worktree, 'sub'), ['commit', '--allow-empty', '-m', 'late'])
-    const receipt = run(fx, plan, {}, [
-      { name: 'abandon-unmerged', row: null },
-      { name: 'discard-changes', row: null },
-    ])
-    expect(receipt.dropped).toMatchObject([{ id: fx.worktree, reason: 'facts-changed' }])
+    const receipt = run(fx, plan, {}, ['abandon-unmerged', 'discard-changes'])
+    expect(receipt.dropped).toMatchObject([{ row: wtId(fx), reason: 'changed' }])
     expect(existsSync(fx.worktree)).toBe(true)
   })
 
@@ -292,9 +328,9 @@ describe('applying a worktree with submodules', () => {
     const fx = buildFixture()
     sh(join(fx.worktree, 'sub'), ['commit', '--allow-empty', '-m', 'local only'])
     const { plan } = planOf(fx)
-    const receipt = run(fx, plan, {}, [{ name: 'discard-changes', row: null }])
+    const receipt = run(fx, plan, {}, ['discard-changes'])
     expect(receipt.dropped).toMatchObject([
-      { id: fx.worktree, reason: 'not-authorized', detail: 'needs abandon-unmerged' },
+      { row: wtId(fx), reason: 'not-allowed', detail: 'needs abandon-unmerged' },
     ])
     expect(existsSync(fx.worktree)).toBe(true)
   })
@@ -304,8 +340,8 @@ describe('applying a worktree with submodules', () => {
     sh(join(fx.worktree, 'sub', 'inner'), ['commit', '--allow-empty', '-m', 'local only'])
     const { plan } = planOf(fx)
     const receipt = run(fx, plan, {}, [
-      { name: 'abandon-unmerged', row: { category: 'worktree', id: fx.worktree } },
-      { name: 'discard-changes', row: { category: 'worktree', id: fx.worktree } },
+      { risk: 'abandon-unmerged', row: wtId(fx) },
+      { risk: 'discard-changes', row: wtId(fx) },
     ])
     expect(receipt.status).toBe('complete')
     expect(existsSync(fx.worktree)).toBe(false)
@@ -314,11 +350,17 @@ describe('applying a worktree with submodules', () => {
 
   test('refuses the forced remove when a submodule gained work after the re-check', () => {
     const fx = buildFixture()
-    const { plan, items } = planOf(fx)
-    // Re-check against the earlier sweep, as a preview does; the work lands
-    // between it and the remove.
-    sh(join(fx.worktree, 'sub'), ['commit', '--allow-empty', '-m', 'late'])
-    const receipt = run(fx, plan, { swept: new Map([[fx.root, items]]) })
+    const { plan, swept } = planOf(fx)
+    // Checked against the earlier sweep, as a preview does; the work lands
+    // after the run's own re-sweep, just before the remove.
+    const receipt = run(fx, plan, {
+      checkWith: swept,
+      onStep: (_i, _n, step) => {
+        if (step.action === 'remove-worktree') {
+          sh(join(fx.worktree, 'sub'), ['commit', '--allow-empty', '-m', 'late'])
+        }
+      },
+    })
     expect(receipt.status).toBe('failed')
     expect(receipt.steps[0]!.error).toMatch(/refused: .*sub \(1 unpushed commit\)/)
     expect(existsSync(join(fx.worktree, 'sub'))).toBe(true)
@@ -326,9 +368,13 @@ describe('applying a worktree with submodules', () => {
 
   test('refuses the forced remove when the worktree itself got dirty after the re-check', () => {
     const fx = buildFixture()
-    const { plan, items } = planOf(fx)
-    writeFileSync(join(fx.worktree, 'new.txt'), 'late\n')
-    const receipt = run(fx, plan, { swept: new Map([[fx.root, items]]) })
+    const { plan, swept } = planOf(fx)
+    const receipt = run(fx, plan, {
+      checkWith: swept,
+      onStep: (_i, _n, step) => {
+        if (step.action === 'remove-worktree') writeFileSync(join(fx.worktree, 'new.txt'), 'late\n')
+      },
+    })
     expect(receipt.status).toBe('failed')
     expect(receipt.steps[0]!.error).toMatch(/refused: .*1 modified or untracked file/)
     expect(existsSync(join(fx.worktree, 'new.txt'))).toBe(true)
@@ -340,13 +386,8 @@ describe('applying a worktree with submodules', () => {
     rmSync(fx.worktree, { recursive: true, force: true })
     sh(fx.root, ['branch', 'merged-x', 'main'])
     sh(fx.root, ['push', '-q', 'origin', 'merged-x'])
-    const { plan } = planOf(fx, ['local-branches'])
-    const receipt = applyPlan(plan, [{ category: 'local_branch', id: 'merged-x' }], [], {
-      callerCwd: fx.root,
-      dryRun: false,
-      receiptPath: null,
-      planPath: 'plan.json',
-    })
+    const { plan } = planOf(fx, ['branch'])
+    const receipt = run(fx, plan, {}, [], ['branch:merged-x'])
     expect(receipt.status).toBe('complete')
     const prune = receipt.steps.find((s) => s.action === 'prune-worktrees')!
     expect(prune.verification).toMatch(/^not pruned: .*sub \(1 unpushed commit\)/)
@@ -358,7 +399,7 @@ describe('applying a worktree with submodules', () => {
     sh(join(fx.worktree, 'sub'), ['commit', '--allow-empty', '-m', 'local only'])
     rmSync(fx.worktree, { recursive: true, force: true })
     const { plan } = planOf(fx)
-    const receipt = run(fx, plan, {}, [{ name: 'abandon-unmerged', row: null }])
+    const receipt = run(fx, plan, {}, ['abandon-unmerged'])
     expect(receipt.status).toBe('complete')
     expect(existsSync(fx.gitDir)).toBe(false)
   })
