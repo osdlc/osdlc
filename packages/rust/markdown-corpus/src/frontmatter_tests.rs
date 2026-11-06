@@ -310,10 +310,14 @@ fn a_reporting_index_keeps_a_note_it_cannot_read_and_names_it() {
     assert_eq!(index.refresh_now(&*d, &c, root()).updated, 1);
     assert!(index.unreadable().is_empty());
     assert!(index.get("Notes/b.md").unwrap().parse_error.is_none());
-    // An apply that cannot read it reports it again.
+    // An apply that cannot read it leaves the report to the next refresh,
+    // which walks inside the TTL.
     index.apply_change(&locked, root(), "Notes/b.md");
+    assert!(index.unreadable().is_empty());
+    index.refresh(&locked, &c, root());
     assert_eq!(index.unreadable()[0].path(), b);
     index.apply_change(&*d, root(), "Notes/b.md");
+    index.refresh(&*d, &c, root());
     assert!(index.unreadable().is_empty());
 
     // Skipped: kept as unreadable, nothing reported. Propagated: fails.

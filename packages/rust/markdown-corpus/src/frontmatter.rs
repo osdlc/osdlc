@@ -29,9 +29,10 @@
 //! again (and counts it unchanged while it still cannot read it). The
 //! walk's [`WalkOptions::errors`] decides the rest, as for the link graph:
 //! [`Errors::Report`] keeps the error in [`FrontmatterIndex::unreadable`],
-//! and [`Errors::Propagate`] fails the sweep. An apply that cannot stat or
-//! read a note under `Propagate` marks the index stale, so the next refresh
-//! walks and fails on it.
+//! and [`Errors::Propagate`] fails the sweep. The report is the last
+//! sweep's: an apply that cannot stat or read a note, or that names one the
+//! report holds, marks the index stale, so the next refresh walks and
+//! replaces the report, or fails.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -42,7 +43,9 @@ use markdown_vault_fs::walk::{Admission, Errors, WalkError, WalkOptions};
 use vfs_seam::{Clock, Vfs, VfsError};
 use yaml_splice::Mapping;
 
-use crate::links::{REFRESH_TTL_MS, Unread, WATCHED_TTL_MS, join_rel, stamp_listed, stamp_of};
+use crate::links::{
+    REFRESH_TTL_MS, Unread, WATCHED_TTL_MS, apply_met, join_rel, read_error, stamp_listed, stamp_of,
+};
 use crate::note::{SplitMode, note_title, read_note_with};
 
 /// One note's cached parse.
@@ -288,12 +291,15 @@ impl FrontmatterIndex {
             let (note, error) = parse_one(vfs, self.split, &entry.rel, &entry.abs, size, mtime);
             if let Some(e) = error {
                 unread.met(e)?;
-                // Unreadable before too: nothing moved.
-                if let Some(prev) = cached.filter(|c| c.parse_error.as_deref() == Some(UNREAD)) {
-                    stats.unchanged += 1;
-                    seen.insert(entry.rel, Arc::clone(prev));
-                    continue;
-                }
+            }
+            // Unreadable before too: nothing moved.
+            let unread_now = note.parse_error.as_deref() == Some(UNREAD);
+            if unread_now
+                && let Some(prev) = cached.filter(|c| c.parse_error.as_deref() == Some(UNREAD))
+            {
+                stats.unchanged += 1;
+                seen.insert(entry.rel, Arc::clone(prev));
+                continue;
             }
             if cached.is_some() {
                 stats.updated += 1;
@@ -353,9 +359,9 @@ impl FrontmatterIndex {
     /// What the index could not read, under [`Errors::Report`]: each folder
     /// the last walk could not list and each file it could not stat (in walk
     /// order), then each note it listed but could not read, once per path.
-    /// An apply replaces the entry for the note it names with what it met; a
-    /// folder's entry clears on the next sweep. Empty under the other
-    /// [`Errors`] policies.
+    /// Empty under the other [`Errors`] policies. An apply leaves it as it
+    /// is; one that would change it marks the index stale, so the next
+    /// refresh replaces it whole.
     ///
     /// Each path is the corpus folder joined with the corpus-relative path.
     /// An entry for a note [`Self::get`] has is one the index could not stat
@@ -431,28 +437,25 @@ impl FrontmatterIndex {
         let abs = join_rel(vault_dir, rel);
         // As in the sweep, a listed note that cannot be stamped (a dangling
         // link) is kept with the size of the link and never fresh.
-        let mut unread = Unread::new(self.walk.errors);
+        // An error the walk would report or propagate leaves the report to
+        // the next sweep: the apply marks the index stale.
+        let errors = self.walk.errors;
         let mut stale = false;
         // A walk that propagates errors fails on a note it cannot stat,
         // rather than leaving it out.
         if admission == Admission::Unlisted
-            && self.walk.errors == Errors::Propagate
+            && errors == Errors::Propagate
             && let Err(e) = vfs.metadata(&abs)
         {
-            stale |= unread.met(e).is_err();
+            stale |= apply_met(errors, &e);
         }
-        // What it cannot stat or read is reported as the sweep reports it.
-        // An apply cannot fail; under `Propagate` the next refresh walks and
-        // does.
         let parsed = (admission == Admission::Listed).then(|| {
             let (size, mtime) = stamp_listed(vfs, &abs).unwrap_or_else(|e| {
-                stale |= unread.met(e).is_err();
+                stale |= apply_met(errors, &e);
                 (0, None)
             });
             let (note, error) = parse_one(vfs, self.split, rel, &abs, size, mtime);
-            if let Some(e) = error {
-                stale |= unread.met(e).is_err();
-            }
+            stale |= error.is_some_and(|e| apply_met(errors, &e));
             note
         });
 
@@ -464,16 +467,13 @@ impl FrontmatterIndex {
             return;
         }
         state.applied += 1;
+        // A note the report names may read differently now; only a sweep
+        // replaces the report.
+        stale |= state.unreadable.iter().any(|e| e.path() == abs);
         if stale {
             state.walked_at = None;
             state.stale_marks += 1;
         }
-        // What the apply met replaces what was known about the note; a
-        // folder's entry stays until the next sweep.
-        if parsed.is_some() || state.entries.contains_key(rel) {
-            Arc::make_mut(&mut state.unreadable).retain(|e| e.path() != abs);
-        }
-        Arc::make_mut(&mut state.unreadable).extend(unread.into_errors());
         let entries = Arc::make_mut(&mut state.entries);
         match parsed {
             Some(note) => {
@@ -521,8 +521,8 @@ fn is_note(rel: &str) -> bool {
 }
 
 /// Reads and parses one note. A note that cannot be read is kept with a
-/// parse error and no time, so it is never fresh, and the read error beside
-/// it.
+/// parse error and no time, so it is never fresh, and the error to report
+/// beside it ([`read_error`]).
 fn parse_one(
     vfs: &dyn Vfs,
     split: SplitMode,
@@ -543,7 +543,7 @@ fn parse_one(
                 size,
                 mtime_ns: None,
             };
-            return (note, Some(e));
+            return (note, read_error(vfs, abs, e));
         }
     };
     let note = read_note_with(&String::from_utf8_lossy(&bytes), split);

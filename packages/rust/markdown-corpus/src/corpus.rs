@@ -651,8 +651,10 @@ mod tests {
         // Both caches met it; it is named once.
         let named: Vec<PathBuf> = v.unreadable().iter().map(|e| e.path().into()).collect();
         assert_eq!(named, [alpha]);
-        // An apply that reads it clears it from both caches.
+        // An apply that reads it makes the next refresh walk both caches
+        // and clear it.
         v.apply_changes(&d, &["Alpha.md".to_string()]);
+        v.refresh(&d, &FixedClock::new(0));
         assert!(v.unreadable().is_empty());
         assert!(
             Corpus::load(&locked, "/v", LoadOptions::default())

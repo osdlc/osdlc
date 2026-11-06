@@ -299,35 +299,19 @@ fn an_apply_that_cannot_read_under_propagate_makes_the_next_refresh_fail() {
 }
 
 #[test]
-fn an_apply_keeps_reporting_a_file_it_still_cannot_stat() {
+fn an_apply_on_a_reported_path_leaves_the_report_to_the_next_sweep() {
     let d = linked_vault();
     let svg = join_rel(root(), "assets/diagram.svg");
     let locked = hooks::StatHook::denied(&*d, svg.clone());
     let (g, c) = (walking(Errors::Report), FixedClock::new(0));
     g.refresh(&locked, &c, root());
     assert_eq!(paths_of(g.unreadable()), vec![svg.clone()]);
-    let changed = ["assets/diagram.svg".to_string()];
-    g.apply_changes(&locked, root(), &changed);
-    assert_eq!(paths_of(g.unreadable()), vec![svg], "as the sweep has it");
-    g.apply_changes(&*d, root(), &changed);
+    // Readable again: the apply leaves the report as it is, and the next
+    // refresh, inside the TTL, walks and replaces it.
+    g.apply_changes(&*d, root(), &["assets/diagram.svg".to_string()]);
+    assert_eq!(paths_of(g.unreadable()), vec![svg]);
+    g.refresh(&*d, &c, root());
     assert!(g.unreadable().is_empty());
-}
-
-#[test]
-fn a_clean_sweep_does_not_put_back_what_an_apply_cleared() {
-    let d = linked_vault();
-    let beta = join_rel(root(), "Projects/Beta.md");
-    let locked = hooks::StatHook::unreadable(&*d, beta);
-    let (g, c) = (Rc::new(walking(Errors::Report)), FixedClock::new(0));
-    g.refresh(&locked, &c, root());
-    assert_eq!(g.unreadable().len(), 1);
-    // The next sweep is clean (Beta is still unreadable, so unchanged), and
-    // an apply that reads Beta lands in the middle of it.
-    let (g2, d2) = (Rc::clone(&g), Rc::clone(&d));
-    mid_sweep(move || g2.apply_changes(&*d2, root(), &["Projects/Beta.md".to_string()]));
-    g.refresh_now(&locked, &c, root());
-    assert!(g.unreadable().is_empty(), "the apply's report stands");
-    assert!(!g.outbound("Projects/Beta.md").is_empty());
 }
 
 #[test]
@@ -355,7 +339,7 @@ fn a_file_gone_between_its_listing_and_its_stat_is_not_unreadable() {
 }
 
 #[test]
-fn an_apply_updates_what_the_graph_could_not_read() {
+fn an_apply_that_meets_an_unreadable_note_makes_the_next_refresh_report_it() {
     let d = linked_vault();
     let beta = join_rel(root(), "Projects/Beta.md");
     let locked = hooks::StatHook::unreadable(&*d, beta.clone());
@@ -363,12 +347,18 @@ fn an_apply_updates_what_the_graph_could_not_read() {
     g.refresh(&*d, &c, root());
     assert!(g.unreadable().is_empty());
     let changed = ["Projects/Beta.md".to_string()];
+    // The apply cannot read it: it keeps empty facts, and the next refresh
+    // walks and reports it.
     g.apply_changes(&locked, root(), &changed);
-    assert_eq!(paths_of(g.unreadable()), [beta]);
     assert!(g.outbound("Projects/Beta.md").is_empty());
+    assert!(g.unreadable().is_empty(), "the report is the last sweep's");
+    g.refresh(&locked, &c, root());
+    assert_eq!(paths_of(g.unreadable()), [beta]);
+    // Readable again: the same, the other way.
     g.apply_changes(&*d, root(), &changed);
-    assert!(g.unreadable().is_empty());
     assert!(!g.outbound("Projects/Beta.md").is_empty());
+    g.refresh(&*d, &c, root());
+    assert!(g.unreadable().is_empty());
 }
 
 #[test]
@@ -1188,9 +1178,12 @@ mod native {
 
     #[cfg(unix)]
     #[test]
-    fn a_dangling_symlink_is_not_an_unreadable_note() {
+    fn a_dangling_symlink_or_one_to_a_folder_is_not_an_unreadable_note() {
         let d = native_linked();
         std::os::unix::fs::symlink(d.path().join("not-yet.md"), d.path().join("Link.md")).unwrap();
+        // Nor is a `.md` symlink to a folder, which the walk lists as a file.
+        std::fs::create_dir(d.path().join("folder")).unwrap();
+        std::os::unix::fs::symlink(d.path().join("folder"), d.path().join("Dir.md")).unwrap();
         for errors in [Errors::Report, Errors::Propagate] {
             let g = LinkGraph::new().with_walk(WalkOptions {
                 errors,
@@ -1199,7 +1192,16 @@ mod native {
             g.try_refresh_now(&NativeVfs, &SystemClock, d.path())
                 .unwrap();
             assert!(g.paths().contains(&"Link.md".to_string()));
+            assert!(g.paths().contains(&"Dir.md".to_string()));
             assert!(g.unreadable().is_empty(), "{errors:?}");
+            let index = crate::FrontmatterIndex::new().with_walk(WalkOptions {
+                errors,
+                ..crate::FrontmatterIndex::default_walk()
+            });
+            index
+                .try_refresh_now(&NativeVfs, &SystemClock, d.path())
+                .unwrap();
+            assert!(index.unreadable().is_empty(), "{errors:?}");
         }
     }
 
