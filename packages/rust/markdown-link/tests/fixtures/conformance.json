@@ -82,12 +82,12 @@
     },
     {
       "name": "multibyte_inside_a_span",
-      "source": "`日本語` [[x]]",
+      "source": "`\u65e5\u672c\u8a9e` [[x]]",
       "stripped": "      [[x]]"
     },
     {
       "name": "multibyte_inside_a_fence",
-      "source": "~~~\nsanté [[x]]\n~~~\n",
+      "source": "~~~\nsant\u00e9 [[x]]\n~~~\n",
       "stripped": "   \n           \n   \n"
     },
     {
@@ -176,8 +176,461 @@
     {
       "name": "astral_character_inside_a_span",
       "note": "One space per character, not per UTF-16 code unit.",
-      "source": "`😀` [[x]]",
+      "source": "`\ud83d\ude00` [[x]]",
       "stripped": "    [[x]]"
+    },
+    {
+      "name": "indented_code_is_code",
+      "source": "Text\n\n    [[x]]\n      y\n\nz",
+      "stripped": "Text\n\n         \n       \n\nz",
+      "ranges": [
+        [
+          6,
+          23
+        ]
+      ]
+    },
+    {
+      "name": "indented_code_blank_lines_split_ranges",
+      "source": "    [[a]]\n\n    [[b]]",
+      "stripped": "         \n\n         ",
+      "ranges": [
+        [
+          0,
+          9
+        ],
+        [
+          11,
+          20
+        ]
+      ]
+    },
+    {
+      "name": "indented_line_continuing_a_paragraph_is_not_code",
+      "source": "Text\n    [[x]]",
+      "stripped": "Text\n    [[x]]",
+      "ranges": []
+    },
+    {
+      "name": "indented_code_after_a_heading",
+      "source": "# H\n    [[x]]",
+      "stripped": "# H\n         ",
+      "ranges": [
+        [
+          4,
+          13
+        ]
+      ]
+    },
+    {
+      "name": "tab_indented_code",
+      "source": "\t[[x]]",
+      "stripped": "      ",
+      "ranges": [
+        [
+          0,
+          6
+        ]
+      ]
+    },
+    {
+      "name": "list_item_text_indented_four_is_not_code",
+      "source": "- item\n\n    [[x]]",
+      "stripped": "- item\n\n    [[x]]",
+      "ranges": []
+    },
+    {
+      "name": "list_item_holds_indented_code",
+      "source": "- item\n\n      [[x]]",
+      "stripped": "- item\n\n           ",
+      "ranges": [
+        [
+          8,
+          19
+        ]
+      ]
+    },
+    {
+      "name": "ordered_item_text_indented_four_is_not_code",
+      "source": "1. item\n\n    [[x]]",
+      "stripped": "1. item\n\n    [[x]]",
+      "ranges": []
+    },
+    {
+      "name": "lazy_line_keeps_the_list_item",
+      "source": "- a\nb\n\n    [[x]]",
+      "stripped": "- a\nb\n\n    [[x]]",
+      "ranges": []
+    },
+    {
+      "name": "text_ends_the_list_item",
+      "source": "- a\n\nb\n\n    [[x]]",
+      "stripped": "- a\n\nb\n\n         ",
+      "ranges": [
+        [
+          8,
+          17
+        ]
+      ]
+    },
+    {
+      "name": "fence_in_a_nested_list_item",
+      "source": "- a\n  - b\n\n    ```\n    [[x]]\n\n    ```\nc",
+      "stripped": "- a\n  - b\n\n       \n         \n\n       \nc",
+      "ranges": [
+        [
+          11,
+          37
+        ]
+      ]
+    },
+    {
+      "name": "fence_indented_four_at_top_level_is_indented_code",
+      "source": "    ```\n    [[x]]\n    ```\n[[y]]",
+      "stripped": "       \n         \n       \n[[y]]",
+      "ranges": [
+        [
+          0,
+          25
+        ]
+      ]
+    },
+    {
+      "name": "inline_math",
+      "note": "Not CommonMark: math as Obsidian and GitHub write it.",
+      "source": "a $[[x]]$ b",
+      "stripped": "a         b",
+      "ranges": [
+        [
+          2,
+          9
+        ]
+      ]
+    },
+    {
+      "name": "display_math",
+      "note": "Not CommonMark: math as Obsidian and GitHub write it.",
+      "source": "$$\n[[x]]\n$$\nb",
+      "stripped": "  \n     \n  \nb",
+      "ranges": [
+        [
+          0,
+          11
+        ]
+      ]
+    },
+    {
+      "name": "display_math_stops_at_a_blank_line",
+      "source": "$$ [[x]]\n\n$$",
+      "stripped": "$$ [[x]]\n\n$$",
+      "ranges": []
+    },
+    {
+      "name": "dollar_amounts_are_not_math",
+      "source": "$5 and $10 [[x]]",
+      "stripped": "$5 and $10 [[x]]",
+      "ranges": []
+    },
+    {
+      "name": "math_needs_text_inside_its_dollars",
+      "source": "$ [[x]] $",
+      "stripped": "$ [[x]] $",
+      "ranges": []
+    },
+    {
+      "name": "escaped_dollar_is_text",
+      "source": "\\$[[x]]$",
+      "stripped": "\\$[[x]]$",
+      "ranges": []
+    },
+    {
+      "name": "math_stays_on_its_line",
+      "source": "$[[x]]\n$",
+      "stripped": "$[[x]]\n$",
+      "ranges": []
+    },
+    {
+      "name": "pre_block",
+      "source": "<pre>\n[[x]]\n</pre>\n[[y]]",
+      "stripped": "     \n     \n      \n[[y]]",
+      "ranges": [
+        [
+          0,
+          18
+        ]
+      ]
+    },
+    {
+      "name": "pre_block_closes_on_its_first_line",
+      "source": "<PRE class=\"a\">[[x]]</pre>\n[[y]]",
+      "stripped": "                          \n[[y]]",
+      "ranges": [
+        [
+          0,
+          26
+        ]
+      ]
+    },
+    {
+      "name": "unclosed_pre_block_runs_to_the_end",
+      "source": "<script>\n[[x]]\n\n[[y]]",
+      "stripped": "        \n     \n\n     ",
+      "ranges": [
+        [
+          0,
+          21
+        ]
+      ]
+    },
+    {
+      "name": "pre_mid_line_is_not_a_block",
+      "source": "a <pre>[[x]]</pre>",
+      "stripped": "a <pre>[[x]]</pre>",
+      "ranges": []
+    },
+    {
+      "name": "autolink",
+      "source": "<https://x/[[a]]> [[b]]",
+      "stripped": "                  [[b]]",
+      "ranges": [
+        [
+          0,
+          17
+        ]
+      ]
+    },
+    {
+      "name": "autolink_needs_a_scheme",
+      "source": "<x/[[a]]> <a:[[b]]>",
+      "stripped": "<x/[[a]]> <a:[[b]]>",
+      "ranges": []
+    },
+    {
+      "name": "backtick_in_a_comment_opens_nothing",
+      "note": "CommonMark reads the comment first, as it starts first.",
+      "source": "<!-- ` -->[[a]]`b`",
+      "stripped": "<!-- ` -->[[a]]   ",
+      "ranges": [
+        [
+          15,
+          18
+        ]
+      ]
+    },
+    {
+      "name": "fence_in_a_comment_opens_nothing",
+      "source": "<!--\n```\n-->\n[[a]]",
+      "stripped": "<!--\n```\n-->\n[[a]]",
+      "ranges": []
+    },
+    {
+      "name": "comment_inside_a_span_is_code",
+      "source": "`<!--` [[a]] -->",
+      "stripped": "       [[a]] -->",
+      "ranges": [
+        [
+          0,
+          6
+        ]
+      ]
+    },
+    {
+      "name": "display_math_stops_at_a_fence",
+      "source": "Costs $$ maybe\n```js\nlet x = 1 // $$\n```\n[[Real]]\n",
+      "stripped": "Costs $$ maybe\n     \n               \n   \n[[Real]]\n",
+      "ranges": [
+        [
+          15,
+          40
+        ]
+      ]
+    },
+    {
+      "name": "display_math_on_a_heading_stays_on_its_line",
+      "source": "# h $$\n[[a]]\nb $$",
+      "stripped": "# h $$\n[[a]]\nb $$",
+      "strippedSkillExport": "# h   \n     \n    ",
+      "ranges": []
+    },
+    {
+      "name": "span_stops_at_a_pre_line",
+      "source": "Run `cmd\n<pre>\nx` [[Secret]]\n</pre>\n",
+      "stripped": "Run `cmd\n     \n             \n      \n",
+      "ranges": [
+        [
+          9,
+          35
+        ]
+      ]
+    },
+    {
+      "name": "span_stops_at_a_fence_in_a_list_item",
+      "source": "- a `b\n    ```\n    c` [[x]]\n    ```\n[[After]]\n",
+      "stripped": "- a `b\n       \n            \n       \n[[After]]\n",
+      "ranges": [
+        [
+          7,
+          35
+        ]
+      ]
+    },
+    {
+      "name": "less_indented_line_ends_a_list_item_and_its_fence",
+      "source": "- item\n  ```\n  code\n\nafter [[Real]]\n",
+      "stripped": "- item\n     \n      \n\nafter [[Real]]\n",
+      "ranges": [
+        [
+          7,
+          20
+        ]
+      ]
+    },
+    {
+      "name": "comment_line_is_a_block_before_indented_code",
+      "source": "<!-- note -->\n    [[InCode]]\n",
+      "stripped": "<!-- note -->\n              \n",
+      "ranges": [
+        [
+          14,
+          28
+        ]
+      ]
+    },
+    {
+      "name": "escaped_backslash_before_a_dollar",
+      "source": "\\\\$x$ \\$y$",
+      "stripped": "\\\\    \\$y$",
+      "ranges": [
+        [
+          2,
+          5
+        ]
+      ]
+    },
+    {
+      "name": "unclosed_comment_in_a_line_is_text",
+      "source": "Write <!-- to open a comment.\n\n```\n[[x]]\n```\n`[[y]]`",
+      "stripped": "Write <!-- to open a comment.\n\n   \n     \n   \n       ",
+      "ranges": [
+        [
+          31,
+          52
+        ]
+      ]
+    },
+    {
+      "name": "unclosed_comment_starting_a_line_runs_to_the_end",
+      "source": "<!-- draft\n`[[x]]`",
+      "stripped": "<!-- draft\n`[[x]]`",
+      "ranges": []
+    },
+    {
+      "name": "fence_on_a_list_marker_line",
+      "source": "- ```\n  [[a]]\n  ```\n  [[b]]\n- next",
+      "stripped": "     \n       \n     \n  [[b]]\n- next",
+      "ranges": [
+        [
+          0,
+          19
+        ]
+      ]
+    },
+    {
+      "name": "span_stops_at_a_comment_line",
+      "source": "a `x\n<!-- c -->\n[[y]] `",
+      "stripped": "a `x\n<!-- c -->\n[[y]] `",
+      "ranges": []
+    },
+    {
+      "name": "display_math_stops_at_a_comment_line",
+      "source": "a $$x\n<!-- c -->\n[[y]] $$",
+      "stripped": "a $$x\n<!-- c -->\n[[y]] $$",
+      "ranges": []
+    },
+    {
+      "name": "escaped_dollars_do_not_close_display_math",
+      "source": "$$a\\$$ [[b]] $$",
+      "stripped": "               ",
+      "ranges": [
+        [
+          0,
+          15
+        ]
+      ]
+    },
+    {
+      "name": "comment_later_in_a_line_stays_in_its_block",
+      "source": "a <!-- x\n```\n[[y]]\n-->\n[[z]]\n```\n[[w]]\n",
+      "stripped": "a <!-- x\n   \n     \n   \n     \n   \n[[w]]\n",
+      "ranges": [
+        [
+          9,
+          32
+        ]
+      ]
+    },
+    {
+      "name": "second_ordered_item_holds_a_fence",
+      "source": "1. a\n2. ```\n   [[x]]\n   ```\n   [[y]]\n",
+      "stripped": "1. a\n      \n        \n      \n   [[y]]\n",
+      "ranges": [
+        [
+          5,
+          27
+        ]
+      ]
+    },
+    {
+      "name": "style_block",
+      "source": "<style>\n[[x]]\n</style>\n[[y]]",
+      "stripped": "       \n     \n        \n[[y]]",
+      "ranges": [
+        [
+          0,
+          22
+        ]
+      ]
+    },
+    {
+      "name": "textarea_block_closes_on_its_first_line",
+      "source": "<textarea>[[x]]</textarea>\n[[y]]",
+      "stripped": "                          \n[[y]]",
+      "ranges": [
+        [
+          0,
+          26
+        ]
+      ]
+    },
+    {
+      "name": "math_does_not_close_after_a_space",
+      "source": "$a $ [[x]]",
+      "stripped": "$a $ [[x]]",
+      "ranges": []
+    },
+    {
+      "name": "math_does_not_close_before_a_digit",
+      "source": "$a$5 [[x]]",
+      "stripped": "$a$5 [[x]]",
+      "ranges": []
+    },
+    {
+      "name": "math_does_not_close_at_an_escaped_dollar",
+      "source": "$a\\$ [[x]]",
+      "stripped": "$a\\$ [[x]]",
+      "ranges": []
+    },
+    {
+      "name": "a_dollar_after_a_digit_opens_no_math",
+      "source": "5$, [[Note]], 10$.",
+      "stripped": "5$, [[Note]], 10$.",
+      "ranges": []
+    },
+    {
+      "name": "a_dollar_after_a_digit_opens_no_math_before_a_slash",
+      "source": "5$/month [[Note]] or 10$/month",
+      "stripped": "5$/month [[Note]] or 10$/month",
+      "ranges": []
     }
   ],
   "parse": [
@@ -314,7 +767,7 @@
     },
     {
       "name": "unicode_whitespace_is_trimmed",
-      "inner": " Note|a",
+      "inner": "\u00a0Note\u0085|a",
       "parsed": {
         "target": "Note",
         "heading": null,
@@ -324,9 +777,9 @@
     },
     {
       "name": "byte_order_mark_is_not_whitespace",
-      "inner": "﻿Note",
+      "inner": "\ufeffNote",
       "parsed": {
-        "target": "﻿Note",
+        "target": "\ufeffNote",
         "heading": null,
         "alias": null,
         "targetAt": 0
@@ -334,9 +787,9 @@
     },
     {
       "name": "target_offset_counts_characters",
-      "inner": " Café#x",
+      "inner": " Caf\u00e9#x",
       "parsed": {
-        "target": "Café",
+        "target": "Caf\u00e9",
         "heading": "x",
         "alias": null,
         "targetAt": 1
@@ -388,7 +841,7 @@
       "name": "percent_encoded_utf8",
       "url": "Caf%C3%A9.md",
       "vaultLink": true,
-      "target": "Café"
+      "target": "Caf\u00e9"
     },
     {
       "name": "invalid_utf8_keeps_the_url",
@@ -418,7 +871,7 @@
       "name": "byte_order_mark_survives_decoding",
       "url": "%EF%BB%BFa.md",
       "vaultLink": true,
-      "target": "﻿a"
+      "target": "\ufeffa"
     },
     {
       "name": "attachment_extension_ignores_case",
@@ -717,7 +1170,7 @@
     },
     {
       "name": "offsets_count_characters",
-      "body": "日本 [[x]]",
+      "body": "\u65e5\u672c [[x]]",
       "links": [
         {
           "kind": "wikilink",
@@ -731,7 +1184,7 @@
     },
     {
       "name": "offsets_after_astral_characters_and_code",
-      "body": "📝 [[x]] `😀` [[y]]",
+      "body": "\ud83d\udcdd [[x]] `\ud83d\ude00` [[y]]",
       "links": [
         {
           "kind": "wikilink",
@@ -753,20 +1206,20 @@
     },
     {
       "name": "next_line_character_ends_a_url",
-      "body": "[a](xy.md)",
+      "body": "[a](x\u0085y.md)",
       "links": []
     },
     {
       "name": "byte_order_mark_does_not_end_a_url",
-      "body": "[a](x﻿y.md)",
+      "body": "[a](x\ufeffy.md)",
       "links": [
         {
           "kind": "markdown",
-          "raw": "x﻿y.md",
-          "target": "x﻿y",
+          "raw": "x\ufeffy.md",
+          "target": "x\ufeffy",
           "alias": null,
           "at": 0,
-          "text": "[a](x﻿y.md)"
+          "text": "[a](x\ufeffy.md)"
         }
       ]
     },
@@ -1118,7 +1571,7 @@
     },
     {
       "name": "abandoned_never_closed",
-      "body": "é [[open\nto the end",
+      "body": "\u00e9 [[open\nto the end",
       "links": [],
       "abandoned": [
         {
@@ -1318,6 +1771,299 @@
           "text": "[[`x`<!-- y -->]]"
         }
       ]
+    },
+    {
+      "name": "markdown_link_text_may_hold_brackets_that_balance",
+      "body": "[[WIP] Fix](fix.md)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "fix.md",
+          "target": "fix",
+          "alias": null,
+          "at": 0,
+          "text": "[[WIP] Fix](fix.md)"
+        }
+      ]
+    },
+    {
+      "name": "abandoned_not_reported_for_a_markdown_link_with_a_bracket_in_its_text",
+      "body": "[[WIP] Fix](https://example.com)",
+      "links": []
+    },
+    {
+      "name": "abandoned_not_reported_for_a_markdown_link_inside_brackets",
+      "body": "[[Note](Note.md)]",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "Note.md",
+          "target": "Note",
+          "alias": null,
+          "at": 1,
+          "text": "[Note](Note.md)"
+        }
+      ]
+    },
+    {
+      "name": "abandoned_not_reported_for_a_defined_reference_link",
+      "body": "[[1] and [[WIP] x][Ref]\n\n[1]: https://example.com\n[ref]: https://example.com",
+      "links": []
+    },
+    {
+      "name": "abandoned_an_undefined_reference_link",
+      "body": "[[WIP] x][1]",
+      "links": [],
+      "abandoned": [
+        {
+          "reason": "bracket",
+          "at": 0,
+          "text": "[[WIP"
+        }
+      ]
+    },
+    {
+      "name": "abandoned_a_bracket_before_a_wikilink_label",
+      "body": "[[TODO][[Other]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "Other",
+          "target": "Other",
+          "alias": null,
+          "at": 7,
+          "text": "[[Other]]"
+        }
+      ],
+      "abandoned": [
+        {
+          "reason": "bracket",
+          "at": 0,
+          "text": "[[TODO"
+        }
+      ]
+    },
+    {
+      "name": "markdown_link_text_holding_a_wikilink_is_not_a_markdown_link",
+      "body": "[see [[Note]]](a.md)",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "Note",
+          "target": "Note",
+          "alias": null,
+          "at": 5,
+          "text": "[[Note]]"
+        }
+      ]
+    },
+    {
+      "name": "markdown_link_text_does_not_cross_a_blank_line",
+      "body": "[a\n\nb](x.md)",
+      "links": []
+    },
+    {
+      "name": "markdown_link_text_escaped_bracket",
+      "body": "[a\\](x.md) [b\\]](y.md)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "y.md",
+          "target": "y",
+          "alias": null,
+          "at": 11,
+          "text": "[b\\]](y.md)"
+        }
+      ]
+    },
+    {
+      "name": "abandoned_none_in_indented_code",
+      "body": "Text\n\n    x = [[1, 2], [3]]",
+      "links": []
+    },
+    {
+      "name": "abandoned_none_in_math_pre_or_autolinks",
+      "body": "$[[1,2]]$\n\n<pre>\n[[a\n</pre>\n\n<https://x/[[a>",
+      "links": []
+    },
+    {
+      "name": "comment_backtick_does_not_hide_a_link",
+      "body": "<!-- don't use ` here --> [[A]] `x`",
+      "options": {
+        "skipHtmlComments": true
+      },
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "A",
+          "target": "A",
+          "alias": null,
+          "at": 26,
+          "text": "[[A]]"
+        }
+      ]
+    },
+    {
+      "name": "comment_backtick_does_not_hide_a_link_default",
+      "body": "<!-- don't use ` here --> [[A]] `x`",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "A",
+          "target": "A",
+          "alias": null,
+          "at": 26,
+          "text": "[[A]]"
+        }
+      ]
+    },
+    {
+      "name": "markdown_link_after_an_escaped_backslash",
+      "body": "\\\\[a](b.md)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "b.md",
+          "target": "b",
+          "alias": null,
+          "at": 2,
+          "text": "[a](b.md)"
+        }
+      ]
+    },
+    {
+      "name": "abandoned_reported_when_no_destination_follows",
+      "body": "[[WIP] Fix](has space)",
+      "links": [],
+      "abandoned": [
+        {
+          "reason": "bracket",
+          "at": 0,
+          "text": "[[WIP"
+        }
+      ]
+    },
+    {
+      "name": "markdown_link_with_dollars_in_its_url",
+      "body": "[a](notes/$x$.md)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "notes/$x$.md",
+          "target": "notes/$x$",
+          "alias": null,
+          "at": 0,
+          "text": "[a](notes/$x$.md)"
+        }
+      ]
+    },
+    {
+      "name": "abandoned_not_reported_for_an_angled_url",
+      "body": "[[WIP] Fix](<https://example.com>)",
+      "links": []
+    },
+    {
+      "name": "abandoned_an_empty_definition_label_defines_nothing",
+      "body": "[]: x\n\n[[]",
+      "links": [],
+      "abandoned": [
+        {
+          "reason": "unclosed",
+          "at": 7,
+          "text": "[[]"
+        }
+      ]
+    },
+    {
+      "name": "markdown_link_text_holding_a_link_is_not_a_link",
+      "body": "[a [b](y.md) c](x.md)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "y.md",
+          "target": "y",
+          "alias": null,
+          "at": 3,
+          "text": "[b](y.md)"
+        }
+      ]
+    },
+    {
+      "name": "a_code_span_in_parentheses_after_a_bracket_is_code",
+      "body": "x](`[[b]]`) [[a]](`[[c]]`)",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "a",
+          "target": "a",
+          "alias": null,
+          "at": 12,
+          "text": "[[a]]"
+        }
+      ]
+    },
+    {
+      "name": "a_non_ascii_space_ends_a_destination",
+      "body": "[a](x\u00a0`[[b]]`)",
+      "links": []
+    },
+    {
+      "name": "a_dollar_inside_a_word_opens_no_math",
+      "body": "[[A$B]] and [[C$D]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "A$B",
+          "target": "A$B",
+          "alias": null,
+          "at": 0,
+          "text": "[[A$B]]"
+        },
+        {
+          "kind": "wikilink",
+          "raw": "C$D",
+          "target": "C$D",
+          "alias": null,
+          "at": 12,
+          "text": "[[C$D]]"
+        }
+      ]
+    },
+    {
+      "name": "a_dollar_at_a_word_end_opens_no_math",
+      "body": "[[Cost$]] and [[$Budget]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "Cost$",
+          "target": "Cost$",
+          "alias": null,
+          "at": 0,
+          "text": "[[Cost$]]"
+        },
+        {
+          "kind": "wikilink",
+          "raw": "$Budget",
+          "target": "$Budget",
+          "alias": null,
+          "at": 14,
+          "text": "[[$Budget]]"
+        }
+      ]
+    },
+    {
+      "name": "a_line_of_only_code_is_not_blank",
+      "body": "[a\n`b`\nc](x.md)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "x.md",
+          "target": "x",
+          "alias": null,
+          "at": 0,
+          "text": "[a\n`b`\nc](x.md)"
+        }
+      ]
     }
   ],
   "display": [
@@ -1488,7 +2234,7 @@
     },
     {
       "name": "unicode_space_in_slug",
-      "value": "[[events/a b]]",
+      "value": "[[events/a\u00a0b]]",
       "typedRef": null
     },
     {

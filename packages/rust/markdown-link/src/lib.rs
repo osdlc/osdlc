@@ -275,8 +275,24 @@ pub fn target_range(inner: &str) -> Option<Range<usize>> {
     Some(lead..lead + target.len())
 }
 
-/// `inner` split at the first `|`, minus the `\` that escapes it.
-fn split_alias(inner: &str) -> (&str, Option<&str>) {
+/// A wikilink body split at its first `|`: the text before it, minus the
+/// `\` that escapes the pipe in a table cell, and the text after it, or
+/// `None` when there is no `|`. Neither part is trimmed.
+///
+/// The first part is the destination as written, `#heading` included, which
+/// a caller that quotes the link back needs. [`parse_inner`] reads both parts
+/// from this split.
+///
+/// # Examples
+///
+/// ```
+/// use markdown_link::split_alias;
+///
+/// assert_eq!(split_alias("Note#h\\|Alias"), ("Note#h", Some("Alias")));
+/// assert_eq!(split_alias(" Note "), (" Note ", None));
+/// assert_eq!(split_alias("a|b|c"), ("a", Some("b|c")));
+/// ```
+pub fn split_alias(inner: &str) -> (&str, Option<&str>) {
     match inner.split_once('|') {
         Some((t, a)) => (t.strip_suffix('\\').unwrap_or(t), Some(a)),
         None => (inner, None),

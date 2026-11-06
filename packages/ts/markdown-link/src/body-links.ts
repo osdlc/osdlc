@@ -3,7 +3,7 @@
  * `markdown-link` crate's `body_links_spanned` and `body_links`.
  */
 
-import { type CodeRules, stripCodeWith } from './code.ts'
+import { type CodeRules, blank, regions } from './code.ts'
 import {
   type Size,
   isVaultLinkUrl,
@@ -18,7 +18,10 @@ import {
 export interface ScanOptions {
   /** Which rules decide what is code. Default `'commonmark'`. */
   codeRules?: CodeRules
-  /** Skip links inside HTML comments, `<!--` to `-->` or the end. Default `false`. */
+  /**
+   * Skip links inside HTML comments, as the code lexer finds them. Default
+   * `false`.
+   */
   skipHtmlComments?: boolean
   /**
    * Read `[[#Heading]]` or `[[#^block]]` as a link to the note it is written
@@ -79,10 +82,12 @@ export type AbandonReason = 'bracket' | 'code' | 'empty-target' | 'unclosed'
  * A `[[` the scanner found outside code and did not read as a link: what a
  * renderer would otherwise leave in its output as literal brackets. A `[[`
  * inside code, or inside an HTML comment when `skipHtmlComments` is on, is not
- * reported, and nor is one that a link found after it starts inside:
- * `[[[Note]]` is a literal `[` and a link. A run of `[` with no link after it,
- * such as `[[[TODO`, is one entry: from the first `[[`, with the reason and
- * end of the last.
+ * reported. Nor is one that a link found after it starts inside, `[[[Note]]`
+ * being a literal `[` and a link, or one whose first or second `[` opens a
+ * Markdown link, of any URL: `[[WIP] Fix](https://example.com)`,
+ * `[[Note](Note.md)]`, or `[[1]` with a `[1]: …` definition in the body. A
+ * run of `[` with no link after it, such as `[[[TODO`, is one entry: from the
+ * first `[[`, with the reason and end of the last.
  */
 export interface AbandonedLink {
   reason: AbandonReason
@@ -135,6 +140,10 @@ export function bodyLinks(body: string): RawLink[] {
  *
  * Code is blanked before matching, `[[` never nests, and a markdown link
  * counts only when `isVaultLinkUrl` accepts its URL and it carries no scheme.
+ * A markdown link's text may hold brackets that balance, but no `[[`, no
+ * link and no blank line, so `[[WIP] Fix](fix.md)` is a link and the
+ * wikilink in `[see [[Note]]](a.md)` stays a wikilink. A `\[` or `\]` in it
+ * does not count as a bracket. Its destination is read as written.
  *
  * The scan walks code points. `stripCode` keeps the code point count of its
  * input, not its UTF-16 length, so a code point index into the stripped text
@@ -146,8 +155,9 @@ export function bodyLinksSpanned(body: string): BodyLink[] {
 
 /**
  * `bodyLinksSpanned` under `options`: which code rules apply, whether HTML
- * comments hide links, and whether `[[#Heading]]` is a link. A comment is
- * found after code is blanked, so a `<!--` inside code does not open one.
+ * comments hide links, and whether `[[#Heading]]` is a link. Code and
+ * comments are found in one pass, left to right, so a `<!--` inside code does
+ * not open a comment and a backtick inside a comment does not open code.
  */
 export function bodyLinksSpannedWith(body: string, options: ScanOptions): BodyLink[] {
   return scanBodyWith(body, options).links
@@ -158,9 +168,14 @@ export function bodyLinksSpannedWith(body: string, options: ScanOptions): BodyLi
  * `]`, one whose target is empty or only code, and one never closed.
  */
 export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
-  const codeBlanked = stripCodeWith(body, options.codeRules ?? 'commonmark')
+  const found = regions(body, options.codeRules ?? 'commonmark')
+  const codeBlanked = (): string =>
+    blank(
+      body,
+      found.filter((region) => region.kind === 'code'),
+    )
   const skipComments = options.skipHtmlComments === true
-  const chars = Array.from(skipComments ? blankComments(codeBlanked) : codeBlanked)
+  const chars = Array.from(skipComments ? blank(body, found) : codeBlanked())
   // With comments blanked too, the code points with only code blanked, made
   // the first time an abandoned link needs them.
   let codeChars: string[] | null = null
@@ -178,9 +193,11 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
     return { links: [], abandoned: [] }
   }
 
+  const brackets = new Brackets(chars, body, at)
+  // Made the first time a `](` is reached.
+  let scan: UrlScan | null = null
   const out: BodyLink[] = []
   const abandoned: AbandonedLink[] = []
-  const scan = new UrlScan()
   let i = 0
   while (i < chars.length) {
     if (chars[i] === '[' && chars[i + 1] === '[') {
@@ -223,7 +240,7 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
         if (link === null) {
           // Code inside was blanked to spaces, so the body there differs from
           // the code-blanked text. A blanked comment is not code.
-          const code = skipComments ? (codeChars ??= Array.from(codeBlanked)) : chars
+          const code = skipComments ? (codeChars ??= Array.from(codeBlanked())) : chars
           const heldCode = body.slice(at[i + 2], at[j]) !== code.slice(i + 2, j).join('')
           abandoned.push({
             reason: heldCode ? 'code' : 'empty-target',
@@ -254,12 +271,20 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
         continue
       }
     }
-    if (chars[i] === '[') {
-      const found = markdownLink(chars, i, at, scan)
-      if (found !== null) {
+    const close = chars[i] === '[' ? brackets.textEnd(i) : undefined
+    if (close !== undefined) {
+      if (chars[close + 1] === '(') scan ??= new UrlScan(body)
+      const destination = chars[close + 1] === '(' ? scan!.destination(close) : null
+      if (
+        overlaps(abandoned, at[i]!) &&
+        (destination !== null || brackets.isReference(chars, i, close))
+      ) {
         dropOverlapped(abandoned, at[i]!)
-        out.push(found.link)
-        i = found.next
+      }
+      const link = destination === null ? null : markdownLink(i, destination, at, scan!)
+      if (link !== null) {
+        out.push(link)
+        i = destination!.end
         continue
       }
     }
@@ -289,142 +314,238 @@ function mergeRuns(abandoned: AbandonedLink[]): AbandonedLink[] {
 }
 
 /**
- * Drops each abandoned `[[` whose second `[` opens a link: `bracket` is the
- * offset of the link's first `[`, after any `!`. After a `[` or `]` the
- * scanner moves on one code point, so `[[[Note]]` is a literal `[` and a link,
- * not a `[[` given up on. An embed's `!` right after an abandoned `[[`, as in
- * `[[x![[B]]`, does not count.
+ * Whether the last abandoned `[[` has its first or second `[` at or after
+ * `bracket`, the offset of a `[`. An embed's `!` right after an abandoned
+ * `[[`, as in `[[x![[B]]`, does not count.
+ */
+function overlaps(abandoned: AbandonedLink[], bracket: number): boolean {
+  const last = abandoned[abandoned.length - 1]
+  return last !== undefined && last.start + (last.embed ? 1 : 0) + 2 > bracket
+}
+
+/**
+ * Drops each abandoned `[[` whose first or second `[` opens a link: `bracket`
+ * is the offset of the link's first `[`, after any `!`. After a `[` or `]`
+ * the scanner moves on one code point, so `[[[Note]]` is a literal `[` and a
+ * link, not a `[[` given up on.
  */
 function dropOverlapped(abandoned: AbandonedLink[], bracket: number): void {
-  for (;;) {
-    const last = abandoned[abandoned.length - 1]
-    if (last === undefined || last.start + (last.embed ? 1 : 0) + 2 <= bracket) return
-    abandoned.pop()
-  }
+  while (overlaps(abandoned, bracket)) abandoned.pop()
 }
 
 /**
- * `text` with every HTML comment, `<!--` to `-->` or the end, blanked to
- * spaces, newlines kept. The code point count does not change.
+ * The brackets of a body's Markdown links: where the text of each link that
+ * a `[` could open ends, and the labels of the link reference definitions.
  */
-function blankComments(text: string): string {
-  let out = ''
-  let rest = text
-  for (;;) {
-    const open = rest.indexOf('<!--')
-    if (open === -1) break
-    out += rest.slice(0, open)
-    const close = rest.indexOf('-->', open + 4)
-    const end = close === -1 ? rest.length : close + 3
-    for (const c of rest.slice(open, end)) out += c === '\n' ? '\n' : ' '
-    rest = rest.slice(end)
+class Brackets {
+  /**
+   * The code point index of each `]` that closes link text, by the index of
+   * its `[`. The brackets between balance, hold no `[[` and no `](` (a
+   * link's text holds no link), and no blank line comes between them. A `\[`
+   * or `\]` is not a bracket.
+   */
+  private readonly ends = new Map<number, number>()
+  /** Each `[label]: …` definition's label, as `normalizeLabel` gives it. */
+  private readonly labels = new Set<string>()
+
+  /**
+   * `chars` are the body's code points with code blanked, and `at` maps a
+   * code point index to its UTF-16 offset in `body`. A blank line is read in
+   * `body`, so a line that is only code is not blank.
+   */
+  constructor(chars: string[], body: string, at: number[]) {
+    // Each open `[`, and how many `[[` had started when it was pushed,
+    // counting one that it starts.
+    const open: [number, number][] = []
+    let seen = 0
+    for (let k = 0; k < chars.length; k++) {
+      const c = chars[k]
+      if (c === '\\' && k + 1 < chars.length && chars[k + 1] !== '\n') {
+        // An escaped character, `\[` and `\\` among them. A `\` at the end
+        // of a line escapes nothing.
+        k++
+      } else if (c === '[') {
+        if (chars[k + 1] === '[') seen++
+        open.push([k, seen])
+      } else if (c === ']') {
+        const popped = open.pop()
+        if (popped !== undefined && popped[1] === seen) this.ends.set(popped[0], k)
+        if (chars[k + 1] === '(') seen++
+      } else if (c === '\n') {
+        let next = at[k + 1]!
+        while (body[next] === ' ' || body[next] === '\t' || body[next] === '\r') next++
+        if (next >= body.length || body[next] === '\n') open.length = 0
+        this.define(chars, k + 1)
+      }
+    }
+    this.define(chars, 0)
   }
-  return out + rest
+
+  /** The `]` that ends the text of a link opened by the `[` at `start`. */
+  textEnd(start: number): number | undefined {
+    return this.ends.get(start)
+  }
+
+  /**
+   * Whether the `[` at `start`, whose text ends at `close`, opens a reference
+   * link whose label a definition in the body names: `[text][label]`,
+   * `[label][]` or `[label]`.
+   */
+  isReference(chars: string[], start: number, close: number): boolean {
+    let label = chars.slice(start + 1, close)
+    if (chars[close + 1] === '[') {
+      let end = close + 2
+      while (end < chars.length && chars[end] !== '[' && chars[end] !== ']') end++
+      if (chars[end] !== ']') return false
+      const written = chars.slice(close + 2, end)
+      if (!written.every(isWhitespace)) label = written
+    }
+    return this.labels.has(normalizeLabel(label))
+  }
+
+  /**
+   * Notes the label of a link reference definition, `[label]:` after up to
+   * three spaces, starting the line at `at`.
+   */
+  private define(chars: string[], at: number): void {
+    let i = at
+    while (i < at + 3 && chars[i] === ' ') i++
+    if (chars[i] !== '[') return
+    let end = i + 1
+    while (end < chars.length && chars[end] !== '[' && chars[end] !== ']' && chars[end] !== '\n')
+      end++
+    const label = normalizeLabel(chars.slice(i + 1, end))
+    if (chars[end] === ']' && chars[end + 1] === ':' && label !== '') this.labels.add(label)
+  }
 }
 
 /**
- * `[text](relative/note.md)` starting at `start`, and the code point index
- * just past it, or `null` when this is not one.
- *
- * The shape is the regex `\[[^\]]*\]\(<?([^)>\s]+?)>?\)`, walked by hand so
- * positions index the body. A URL containing whitespace is not a link. The
- * URL is read in place and built only for a link, so a body of failed
- * attempts stays linear.
+ * A link label as a definition and a reference match it: lowercase, with
+ * each run of whitespace one space and none at either end. Empty for a label
+ * of only whitespace, which no reference matches.
+ */
+function normalizeLabel(label: string[]): string {
+  const words: string[] = []
+  let word = ''
+  for (const c of label) {
+    if (isWhitespace(c)) {
+      if (word !== '') words.push(word)
+      word = ''
+    } else {
+      word += c
+    }
+  }
+  if (word !== '') words.push(word)
+  return words.join(' ').toLowerCase()
+}
+
+/** An inline link's destination: `(url)` or `(<url>)` after the `]` that ends its text. */
+interface Destination {
+  /** The code point index where the URL starts. */
+  urlStart: number
+  /** The code point index just past the URL. */
+  urlEnd: number
+  /** The code point index just past the `)`. */
+  end: number
+}
+
+/**
+ * `[text](relative/note.md)` starting at `start`, with its `destination`, or
+ * `null` when it is not a link this dialect harvests. The URL is built only
+ * for a link, so a body of failed attempts stays linear.
  */
 function markdownLink(
-  chars: string[],
   start: number,
+  { urlStart, urlEnd, end }: Destination,
   at: number[],
   scan: UrlScan,
-): { link: BodyLink; next: number } | null {
-  let j = start + 1
-  while (j < chars.length && chars[j] !== ']' && chars[j] !== '[') j++
-  if (chars[j] !== ']' || chars[j + 1] !== '(') return null
-  const angled = chars[j + 2] === '<'
-  const urlStart = angled ? j + 3 : j + 2
-  const urlEnd = scan.urlEnd(chars, urlStart)
-  let end = urlEnd
-  if (angled) {
-    if (chars[end] !== '>') return null
-    end++
-  }
-  if (chars[end] !== ')') return null
-  end++
+): BodyLink | null {
   // Not a link this dialect harvests. The caller advances one code point, so
   // a match may start at an inner `[`: `[a[b](x.md)` is a link.
-  if (!scan.isVaultLink(chars, urlStart, urlEnd) || hasScheme(chars, urlStart, urlEnd)) {
+  if (!scan.isVaultLink(urlStart, urlEnd) || hasScheme(scan.chars, urlStart, urlEnd)) {
     return null
   }
-  const url = chars.slice(urlStart, urlEnd).join('')
+  const url = scan.chars.slice(urlStart, urlEnd).join('')
   return {
-    link: {
-      kind: 'markdown',
-      raw: url,
-      target: mdLinkTarget(url),
-      heading: null,
-      block: null,
-      alias: null,
-      size: null,
-      start: at[start]!,
-      end: at[end]!,
-    },
-    next: end,
+    kind: 'markdown',
+    raw: url,
+    target: mdLinkTarget(url),
+    heading: null,
+    block: null,
+    alias: null,
+    size: null,
+    start: at[start]!,
+    end: at[end]!,
   }
 }
 
 /**
- * What earlier markdown link attempts learned about the URLs they read. Each
- * attempt starts later than the one before, so remembering the last answer of
- * each kind keeps a body of failed attempts linear.
+ * A body's code points as written, and tables over them that let each
+ * markdown link attempt read its URL in constant time, whatever order the
+ * attempts come in, so a body of failed attempts stays linear.
+ *
+ * A destination is read as written, not with code blanked: a link's
+ * destination is read where its `](` is, so no code or math starts in it, and
+ * `[a](notes/$x$.md)` is a link.
  */
 class UrlScan {
-  /** The first `)`, `>` or whitespace at or after `from` is at `stop`. */
-  private from = -1
-  private stop = -1
-  private end = -1
-  private markFrom = -1
-  /**
-   * The last `.` or `/` in `[markFrom, end)`, or below `markFrom` when there
-   * is none.
-   */
-  private mark = -1
-  /** `isVaultLinkUrl` of `chars[tailStart, end)`, by `tailStart`. */
-  private answers = new Map<number, boolean>()
+  readonly chars: string[]
+  /** For each index, the first `)`, `>` or whitespace at or after it. */
+  private readonly stop: number[]
+  /** For each index, the last `.` or `/` before it, or -1. */
+  private readonly mark: number[]
+  /** `isVaultLinkUrl` of each URL tail asked so far, by `start,end`. */
+  private readonly answers = new Map<string, boolean>()
 
-  /** Where a URL starting at `from` ends: the first `)`, `>` or whitespace. */
-  urlEnd(chars: string[], from: number): number {
-    if (from >= this.from && from <= this.stop) return this.stop
-    let k = from
-    while (k < chars.length && chars[k] !== ')' && chars[k] !== '>' && !isWhitespace(chars[k]!)) {
-      k++
+  constructor(body: string) {
+    const chars = Array.from(body)
+    this.chars = chars
+    this.stop = Array.from({ length: chars.length + 1 }, () => chars.length)
+    for (let k = chars.length - 1; k >= 0; k--) {
+      const c = chars[k]!
+      this.stop[k] = c === ')' || c === '>' || isWhitespace(c) ? k : this.stop[k + 1]!
     }
-    this.from = from
-    this.stop = k
-    return k
+    this.mark = Array.from({ length: chars.length + 1 }, () => -1)
+    for (let k = 0; k < chars.length; k++) {
+      this.mark[k + 1] = chars[k] === '.' || chars[k] === '/' ? k : this.mark[k]!
+    }
+  }
+
+  /**
+   * The destination after the `]` at `close`, when its shape is the regex
+   * `\(<?([^)>\s]*)>?\)`. A URL containing whitespace is not one.
+   */
+  destination(close: number): Destination | null {
+    const chars = this.chars
+    if (chars[close + 1] !== '(') return null
+    const angled = chars[close + 2] === '<'
+    const urlStart = angled ? close + 3 : close + 2
+    const urlEnd = this.stop[Math.min(urlStart, chars.length)]!
+    let end = urlEnd
+    if (angled) {
+      if (chars[end] !== '>') return null
+      end++
+    }
+    return chars[end] === ')' ? { urlStart, urlEnd, end: end + 1 } : null
   }
 
   /**
    * `isVaultLinkUrl` of `chars[from, end)`. That answer depends only on
    * whether the URL ends in `.md` after at least one character and on the
    * extension of its last segment. So the URL from the character before its
-   * last `.` gives the same answer, and that tail is shared by every attempt
+   * last `.` gives the same answer, and that tail is shared by every URL
    * ending at `end`.
    */
-  isVaultLink(chars: string[], from: number, end: number): boolean {
-    if (end !== this.end || from < this.markFrom) {
-      let mark = end - 1
-      while (mark >= from && chars[mark] !== '.' && chars[mark] !== '/') mark--
-      this.end = end
-      this.markFrom = from
-      this.mark = mark
-      this.answers.clear()
-    }
-    if (this.mark < from || chars[this.mark] === '/') return false
-    const tailStart = Math.max(from, this.mark - 1)
-    let answer = this.answers.get(tailStart)
+  isVaultLink(from: number, end: number): boolean {
+    const chars = this.chars
+    const mark = this.mark[end]!
+    if (mark < from || chars[mark] !== '.') return false
+    const tailStart = Math.max(from, mark - 1)
+    const key = `${tailStart},${end}`
+    let answer = this.answers.get(key)
     if (answer === undefined) {
       answer = isVaultLinkUrl(chars.slice(tailStart, end).join(''))
-      this.answers.set(tailStart, answer)
+      this.answers.set(key, answer)
     }
     return answer
   }

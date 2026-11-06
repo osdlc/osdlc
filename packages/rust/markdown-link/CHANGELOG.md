@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-06
+
+More of a body counts as code, so fewer links are found in it, and a
+Markdown link with brackets in its text is found. These change what
+`body_links`, `body_links_spanned_with`, `scan_body_with` and `strip_code`
+return for some bodies, so this is a breaking release. `@osdlc/markdown-link`
+makes the same changes in its 0.9.0, and both suites read the new cases.
+
+### Changed
+
+- **Code.** `strip_code` and every scanner also treat these as code:
+  indented code (a line indented four or more columns past its block's
+  text, unless it continues a paragraph), math (`$$…$$` in its block, as a
+  span stays in its block, and `$…$` on one line; a `$` right after a
+  letter or digit, as in `5$`, opens none), `<pre>`, `<script>`, `<style>` and `<textarea>`
+  blocks, and autolinks such as `<https://example.com>`. A fence may now sit
+  in a list item, up to three spaces past the item's text or on the item's
+  first line (`- ````), and ends with the item at a line indented less than
+  the item's text. The lexer follows list
+  items far enough for both, so a list item's own text indented four spaces
+  is still text. A span or `$$` stops at a line that opens a fence or raw
+  HTML block, and a line starting with `<!--` is a block of its own. The
+  lexer still does not know about block quotes.
+- **Comments and code in one pass.** An HTML comment is found in the same
+  left-to-right pass as code, whichever starts first. A backtick, `$` or
+  fence inside a comment no longer opens code, whether or not
+  `skip_html_comments` is on, and `<!--` inside code still opens nothing.
+  A comment that starts a line runs to the next `-->` or the end of the
+  body. One later in a line stays in its block, as a span does, and is text
+  when it does not close there, as in CommonMark. Before, any comment ran to
+  the next `-->` or the end.
+  A `\` escapes a `$` only when it is not itself escaped.
+- **Markdown link text.** A Markdown link's text may hold brackets that
+  balance, so `[[WIP] Fix](fix.md)` is a link. It may not hold `[[`, so the
+  wikilink in `[see [[Note]]](a.md)` stays a wikilink, nor a link, so in
+  `[a [b](y.md) c](x.md)` the link is `y.md`. It may not cross a blank line
+  (a line of only code is not blank), and `\[` and `\]` are not brackets in it (`\\[` is). The destination is
+  read as written, not with code blanked, so `[a](notes/$x$.md)` is a link.
+- **Abandoned `[[`.** A `[[` whose first or second `[` opens a Markdown link
+  is not reported, whatever the link's URL: `[[WIP] Fix](https://x)`,
+  `[[Note](Note.md)]`, or a reference link whose label a `[label]: …`
+  definition in the body names, such as `[[1]`. An inline link needs a
+  destination of the shape the scanner reads, so `[[WIP] x](has space)` is
+  still reported, and so, for now, is a link with a title.
+
+### Added
+
+- `code::code_ranges(text, rules)`: the byte ranges that are code, what
+  `strip_code_with` blanks, in order and merged where only a line break
+  separates them. HTML comments are in none.
+- `split_alias` is public: a wikilink body split at its first `|`, without
+  the `\` that escapes the pipe in a table cell.
+- `tests/fixtures/conformance.json`: a `code` case may list `ranges`.
+
 ## [0.8.0] - 2026-11-04
 
 The scanner reports each `[[` it gave up on. Nothing is removed or changed.

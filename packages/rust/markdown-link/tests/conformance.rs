@@ -6,6 +6,8 @@
 //! `stripped` is [`strip_code`]'s output for `source` and
 //! `strippedSkillExport` is the output under [`CodeRules::SkillExport`] when
 //! it differs. An optional `note` says where an answer departs from CommonMark.
+//! An optional `ranges` pins [`code_ranges`] under [`CodeRules::CommonMark`],
+//! as `[start, end]` pairs.
 //!
 //! `parse` pins the link parsers. Each case names one input:
 //!
@@ -34,7 +36,7 @@
 //! Offsets in the case file count characters, so neither twin's own unit
 //! (bytes here, UTF-16 code units in TypeScript) leaks into it.
 
-use markdown_link::code::{CodeRules, strip_code_with};
+use markdown_link::code::{CodeRules, code_ranges, strip_code_with};
 use markdown_link::{
     AbandonReason, BodyLinkKind, LinkKind, ScanOptions, Size, body_links, body_links_spanned,
     body_links_spanned_with, display_text, is_vault_link_url, md_link_target, parse_inner,
@@ -86,6 +88,22 @@ fn code_cases() {
             }
             if actual.chars().count() != source.chars().count() {
                 failures.push(format!("  [{name}] {rules:?} char count changed"));
+            }
+        }
+        if let Some(expected) = case.get("ranges") {
+            let actual: Json = code_ranges(source, CodeRules::CommonMark)
+                .into_iter()
+                .map(|range| {
+                    serde_json::json!([
+                        chars_before(source, range.start),
+                        chars_before(source, range.end)
+                    ])
+                })
+                .collect();
+            if actual != *expected {
+                failures.push(format!(
+                    "  [{name}] code_ranges\n    expected {expected}\n    actual   {actual}"
+                ));
             }
         }
     }
