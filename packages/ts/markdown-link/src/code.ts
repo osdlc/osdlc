@@ -4,7 +4,7 @@
  * in full.
  *
  * In short, code is fenced code, indented code, inline code spans, math
- * (`$$…$$` and `$…$`), raw HTML blocks (`<pre>`, `<script>`, `<style>`,
+ * (`$$…$$` in its block and `$…$` on one line), raw HTML blocks (`<pre>`, `<script>`, `<style>`,
  * `<textarea>`) and autolinks. An HTML comment is not code, but a backtick,
  * `$` or fence inside one opens nothing. `'commonmark'` (the default)
  * follows CommonMark for fences and spans, and `'skill-export'` keeps the
@@ -95,6 +95,11 @@ class Fences {
 
   isOpen(): boolean {
     return this.open !== null
+  }
+
+  /** Ends the open fence, if any. */
+  reset(): void {
+    this.open = null
   }
 
   /** Classify the line `s[start, end)` and step past it. */
@@ -197,40 +202,59 @@ class Spans {
    * The backtick run that starts at `start`: its length, and where the span it
    * opens closes (the start of the closing run), or `null` if it does not.
    */
-  close(start: number): [number, number | null] {
+  close(start: number, ends: LineTest = () => false): [number, number | null] {
     const length = runLength(this.s, start, this.s.length)
     const from = start + length
     const runs = this.noClose
     if (runs !== null && runs.start <= from && from < runs.end && !runs.hasClose(length, from)) {
       return [length, null]
     }
-    const found = this.search(length, from)
-    if ('close' in found) return [length, found.close]
-    this.noClose = new BlockRuns(this.s, from, found.blockEnd, this.rules)
-    return [length, null]
-  }
-
-  /** The close, or the end of the block when there is none. */
-  private search(length: number, from: number): { close: number } | { blockEnd: number } {
     const s = this.s
-    let at = from
-    for (;;) {
+    const found = this.inBlock(from, ends, (start) => {
+      let at = start
       while (at < s.length && s.charCodeAt(at) !== NEWLINE) {
         if (s.charCodeAt(at) !== BACKTICK) {
           at++
           continue
         }
         const run = runLength(s, at, s.length)
-        if (closes(run, length, this.rules)) return { close: at }
+        if (closes(run, length, this.rules)) return { found: at }
         at += run
       }
-      const next = at + 1
+      return { lineEnd: at }
+    })
+    if ('found' in found) return [length, found.found]
+    this.noClose = new BlockRuns(this.s, from, found.blockEnd, this.rules)
+    return [length, null]
+  }
+
+  /**
+   * Calls `find(at)` on the rest of the current line from `from`, then on
+   * each later line of the block a span opened there may reach, until it
+   * finds something. `find` returns what it found, or the end of the line
+   * when it found nothing. A line that `ends` accepts ends the block too.
+   */
+  inBlock(
+    from: number,
+    ends: LineTest,
+    find: (at: number) => { found: number } | { lineEnd: number },
+  ): { found: number } | { blockEnd: number } {
+    const s = this.s
+    let at = from
+    for (;;) {
+      const result = find(at)
+      if ('found' in result) return result
+      const next = result.lineEnd + 1
       if (this.oneLine || next >= s.length) return { blockEnd: Math.min(next, s.length) }
-      if (endsSpanBlock(s, next, lineEnd(s, next), this.rules)) return { blockEnd: next }
+      const end = lineEnd(s, next)
+      if (endsSpanBlock(s, next, end, this.rules) || ends(next, end)) return { blockEnd: next }
       at = next
     }
   }
 }
+
+/** A test on the line `s[start, end)` of the text being scanned. */
+type LineTest = (start: number, end: number) => boolean
 
 function closes(run: number, length: number, rules: CodeRules): boolean {
   return rules === 'commonmark' ? run === length : run >= length
@@ -275,29 +299,15 @@ function startsBlock(s: string, start: number, end: number): boolean {
   const indented = start + leadingSpaces(s, start, end, 3)
   let rest = start
   while (rest < end && (s.charCodeAt(rest) === SPACE || s.charCodeAt(rest) === TAB)) rest++
-  const endsMarker = (at: number): boolean =>
-    at >= end || s.charCodeAt(at) === SPACE || s.charCodeAt(at) === TAB
-
   let equals = indented
   while (equals < end && s[equals] === '=') equals++
   const setext = equals > indented && isBlank(s, equals, end)
   const quote = rest < end && s[rest] === '>'
-  const bullet = rest < end && '-*+'.includes(s[rest]!) && endsMarker(rest + 1)
-  let digitsEnd = rest
-  while (digitsEnd < end && isAsciiDigit(s.charCodeAt(digitsEnd))) digitsEnd++
-  const digits = digitsEnd - rest
-  const ordered =
-    digits >= 1 &&
-    digits <= 9 &&
-    digitsEnd < end &&
-    (s[digitsEnd] === '.' || s[digitsEnd] === ')') &&
-    endsMarker(digitsEnd + 1)
   return (
     isOneLineBlock(s, start, end) ||
     setext ||
     quote ||
-    bullet ||
-    ordered ||
+    listMarker(s, rest, end) !== null ||
     thematicBreak(s, indented, end)
   )
 }
@@ -418,7 +428,7 @@ export function regions(text: string, rules: CodeRules): Region[] {
     const start = offset
     const c = text.charCodeAt(offset)
     if (c === BACKTICK) {
-      const [run, close] = spans.close(offset)
+      const [run, close] = spans.close(offset, (from, to) => blocks.opensCode(text, from, to))
       if (close === null) {
         offset += run
         continue
@@ -426,7 +436,7 @@ export function regions(text: string, rules: CodeRules): Region[] {
       offset = close + run
       push(start, offset, 'code')
     } else if (c === DOLLAR && !escaped(text, offset)) {
-      const found = mathEnd(text, offset, math)
+      const found = mathEnd(text, offset, spans, blocks, math)
       if ('skip' in found) {
         offset += found.skip
         continue
@@ -477,10 +487,10 @@ class Blocks {
   private readonly rules: CodeRules
   private readonly fences: Fences
   /**
-   * The column a fence's lines are read from: where the text of the list
-   * item it opened in starts.
+   * Where the text of the list item that the open fence or raw HTML block is
+   * in starts. A fence's lines are read from there.
    */
-  private fenceBase = 0
+  private base = 0
   /** Whether a `<pre>`, `<script>`, `<style>` or `<textarea>` block is open. */
   private rawHtml = false
   /** The column where each open list item's text starts, innermost last. */
@@ -503,25 +513,20 @@ class Blocks {
   codeLine(s: string, start: number, lineEndAt: number): boolean {
     const end = lineEndAt > start && s.charCodeAt(lineEndAt - 1) === CR ? lineEndAt - 1 : lineEndAt
     const [column, rest] = indent(s, start, end, 0)
-    if (this.rawHtml) {
-      this.rawHtml = !closesRawHtml(s, start, end)
+    if ((this.rawHtml || this.fences.isOpen()) && (column >= this.base || isBlank(s, rest, end))) {
+      if (this.rawHtml) this.rawHtml = !closesRawHtml(s, start, end)
+      else if (column <= this.base + 3) this.fences.line(s, rest, end)
       return true
     }
-    if (this.fences.isOpen()) {
-      if (column <= this.fenceBase + 3) this.fences.line(s, rest, end)
-      return true
-    }
+    // A line indented less than the text of the list item a fence or raw
+    // HTML block is in ends the item, and the block with it.
+    this.rawHtml = false
+    this.fences.reset()
     if (isBlank(s, rest, end)) {
       this.paragraph = false
       return false
     }
-    let base = 0
-    for (let i = this.items.length - 1; i >= 0; i--) {
-      if (this.items[i]! <= column) {
-        base = this.items[i]!
-        break
-      }
-    }
+    const base = this.baseAt(column)
     const relative = column - base
     if (this.paragraph && (relative >= 4 || !this.interrupts(s, rest, end))) {
       // A lazy or indented continuation line: the paragraph and the list
@@ -531,11 +536,12 @@ class Blocks {
     this.items = this.items.filter((item) => item <= column)
     if (relative >= 4) return true
     if (this.fences.line(s, rest, end) === 'marker') {
-      this.fenceBase = base
+      this.base = base
       this.paragraph = false
       return true
     }
     if (opensRawHtml(s, rest, end)) {
+      this.base = base
       this.rawHtml = !closesRawHtml(s, start, end)
       this.paragraph = false
       return true
@@ -544,7 +550,8 @@ class Blocks {
     if (
       thematicBreak(s, rest, end) ||
       atxHeading(s, rest, end) ||
-      isSetext(s, rest, end, this.paragraph)
+      isSetext(s, rest, end, this.paragraph) ||
+      s.startsWith('<!--', rest)
     ) {
       this.paragraph = false
     } else if (marker !== null) {
@@ -559,6 +566,30 @@ class Blocks {
   }
 
   /**
+   * Where the text of the innermost open list item that a line starting at
+   * `column` is in starts, or 0.
+   */
+  private baseAt(column: number): number {
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      if (this.items[i]! <= column) return this.items[i]!
+    }
+    return 0
+  }
+
+  /**
+   * Whether the line `s[start, end)`, read as the next line of a paragraph,
+   * opens a fence or a raw HTML block: where an inline span or math must stop.
+   */
+  opensCode(s: string, start: number, lineEndAt: number): boolean {
+    const end = lineEndAt > start && s.charCodeAt(lineEndAt - 1) === CR ? lineEndAt - 1 : lineEndAt
+    const [column, rest] = indent(s, start, end, 0)
+    return (
+      column - this.baseAt(column) <= 3 &&
+      (opensFence(s, rest, end, this.rules) !== null || opensRawHtml(s, rest, end))
+    )
+  }
+
+  /**
    * Whether the line from `at`, its first character that is not a space or
    * tab, to `end` starts a block that ends a paragraph. A list item does
    * when it has text and is a bullet or starts at 1.
@@ -568,6 +599,7 @@ class Blocks {
     return (
       opensFence(s, at, end, this.rules) !== null ||
       opensRawHtml(s, at, end) ||
+      s.startsWith('<!--', at) ||
       thematicBreak(s, at, end) ||
       atxHeading(s, at, end) ||
       isSetext(s, at, end, true) ||
@@ -657,19 +689,39 @@ function closesRawHtml(s: string, start: number, end: number): boolean {
   return RAW_HTML_TAGS.some((tag) => line.includes(`</${tag}>`))
 }
 
-/** Whether a `\` comes right before `at`. */
+/** Whether the character at `at` is escaped: an odd number of `\` comes right before it. */
 function escaped(s: string, at: number): boolean {
-  return at > 0 && s[at - 1] === '\\'
+  let i = at
+  while (i > 0 && s[i - 1] === '\\') i--
+  return (at - i) % 2 === 1
 }
 
 /**
  * The math that the `$` at `at` opens: the index just past its close, or how
- * many `$` to step past as text.
+ * many `$` to step past as text. `$$` closes at the next `$$` in the block a
+ * span opened there would stay in.
  */
-function mathEnd(s: string, at: number, inline: MathClose): { end: number } | { skip: number } {
+function mathEnd(
+  s: string,
+  at: number,
+  spans: Spans,
+  blocks: Blocks,
+  inline: MathClose,
+): { end: number } | { skip: number } {
   if (s[at + 1] === '$') {
-    const close = displayMathClose(s, at + 2)
-    return close === null ? { skip: 2 } : { end: close + 2 }
+    const found = spans.inBlock(
+      at + 2,
+      (from, to) => blocks.opensCode(s, from, to),
+      (from) => {
+        let i = from
+        while (i < s.length && s.charCodeAt(i) !== NEWLINE) {
+          if (s.startsWith('$$', i)) return { found: i }
+          i++
+        }
+        return { lineEnd: i }
+      },
+    )
+    return 'found' in found ? { end: found.found + 2 } : { skip: 2 }
   }
   const next = s.charCodeAt(at + 1)
   if (Number.isNaN(next) || next === SPACE || next === TAB || next === CR || next === NEWLINE) {
@@ -679,58 +731,34 @@ function mathEnd(s: string, at: number, inline: MathClose): { end: number } | { 
   return close === null ? { skip: 1 } : { end: close + 1 }
 }
 
-/** The next `$$` at or after `from`, before a blank line. */
-function displayMathClose(s: string, from: number): number | null {
-  let at = from
-  for (;;) {
-    const end = lineEnd(s, at)
-    const found = s.slice(at, end).indexOf('$$')
-    if (found !== -1) return at + found
-    const next = end + 1
-    if (next >= s.length || isBlank(s, next, lineEnd(s, next))) return null
-    at = next
-  }
-}
-
 /**
  * Finds the `$` that closes inline math, for a scan that asks at positions
- * that only move forward. The last answer is kept: a `$` closes math whatever
- * opened it, so it answers every later question on its line that starts at
- * or before it.
+ * that only move forward. A `$` closes math whatever opened it, and the scan
+ * steps past each close it is given, so only a search that found nothing is
+ * worth keeping: no later search on its line finds anything either.
  */
 class MathClose {
-  private from = -1
-  private end = -1
-  private close: number | null = null
+  /** The end of the line on which a search found no close, or -1. */
+  private noneUntil = -1
 
   find(s: string, from: number): number | null {
-    if (
-      this.from !== -1 &&
-      this.from <= from &&
-      from <= this.end &&
-      (this.close === null || this.close >= from)
-    ) {
-      return this.close
-    }
-    const end = lineEnd(s, from)
-    let close: number | null = null
-    for (let at = from; at < end; at++) {
+    if (from <= this.noneUntil) return null
+    let at = from
+    while (at < s.length && s.charCodeAt(at) !== NEWLINE) {
       const before = s[at - 1]
       if (
         s[at] === '$' &&
         before !== ' ' &&
         before !== '\t' &&
-        before !== '\\' &&
+        !escaped(s, at) &&
         !isAsciiDigit(s.charCodeAt(at + 1))
       ) {
-        close = at
-        break
+        return at
       }
+      at++
     }
-    this.from = from
-    this.end = end
-    this.close = close
-    return close
+    this.noneUntil = at
+    return null
   }
 }
 

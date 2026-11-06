@@ -13,11 +13,11 @@
 //!   in), unless it continues a paragraph. A tab moves to the next multiple
 //!   of four columns.
 //! - **Inline code spans.**
-//! - **Math.** `$$` up to the next `$$` before a blank line, and `$` up to
-//!   the next `$` on the same line. The opening `$` must have a character
-//!   other than a space or tab after it. The closing `$` must have one before
-//!   it and no digit after it, so `$5 and $10` is not math. A `$` with a `\`
-//!   before it does neither.
+//! - **Math.** `$$` up to the next `$$` in its block, as a span stays in its
+//!   block, and `$` up to the next `$` on the same line. The opening `$` must
+//!   have a character other than a space or tab after it. The closing `$`
+//!   must have one before it and no digit after it, so `$5 and $10` is not
+//!   math. A `$` escaped by a `\` (an odd number of them) does neither.
 //! - **Raw HTML blocks.** A line starting with `<pre`, `<script`, `<style` or
 //!   `<textarea`, through the line holding a closing tag of any of the four,
 //!   or the end of the input.
@@ -26,7 +26,13 @@
 //! An HTML comment, `<!--` to `-->` or the end of the input, is not code, but
 //! the lexer steps over it: a backtick, `$` or fence inside a comment opens
 //! nothing. Inline, whichever of a span, math, a comment or an autolink
-//! starts first wins, and the text up to its close is read as written.
+//! starts first wins, and the text up to its close is read as written. A
+//! line that starts with `<!--` is a block of its own, so indented code may
+//! follow it.
+//!
+//! A fence or raw HTML block in a list item ends at a line indented less
+//! than the item's text, as the item does. A span or `$$` does not reach a
+//! line that opens a fence or raw HTML block.
 //!
 //! [`CodeRules::CommonMark`], the default, follows CommonMark for fences and
 //! spans:
@@ -52,7 +58,7 @@
 //! - Only a blank line or a fence marker line ends a span's block.
 //!
 //! Math, raw HTML blocks, autolinks and indented code follow the same rules
-//! under both.
+//! under both, except that `$$` stays in its block as a span does under each.
 //!
 //! The lexer reads one line at a time. It follows list items far enough to
 //! know where their text starts, and does not know about block quotes, so a
@@ -266,6 +272,16 @@ impl<'a> Spans<'a> {
     /// `start` is a backtick. The run is the backticks from `start` on, which
     /// under [`CodeRules::SkillExport`] may be the rest of a closing run.
     pub fn close(&mut self, start: usize) -> (usize, Option<usize>) {
+        self.close_in(start, &|_| false)
+    }
+
+    /// [`Spans::close`], where a line that `ends` accepts also ends a span's
+    /// block. `ends` must give the same answer for a line each time.
+    pub(crate) fn close_in(
+        &mut self,
+        start: usize,
+        ends: &dyn Fn(&[u8]) -> bool,
+    ) -> (usize, Option<usize>) {
         debug_assert_eq!(self.bytes.get(start), Some(&b'`'));
         let length = run_length(self.bytes, start);
         let from = start + length;
@@ -276,7 +292,7 @@ impl<'a> Spans<'a> {
         {
             return (length, None);
         }
-        match self.search(length, from) {
+        match self.search(length, from, ends) {
             Ok(close) => (length, Some(close)),
             Err(end) => {
                 self.no_close = Some(BlockRuns::new(self.bytes, from, end, self.rules));
@@ -286,10 +302,14 @@ impl<'a> Spans<'a> {
     }
 
     /// The close, or the end of the block when there is none.
-    fn search(&self, length: usize, from: usize) -> Result<usize, usize> {
+    fn search(
+        &self,
+        length: usize,
+        from: usize,
+        ends: &dyn Fn(&[u8]) -> bool,
+    ) -> Result<usize, usize> {
         let bytes = self.bytes;
-        let mut at = from;
-        loop {
+        self.in_block(from, ends, |mut at| {
             while at < bytes.len() && bytes[at] != b'\n' {
                 if bytes[at] != b'`' {
                     at += 1;
@@ -301,11 +321,34 @@ impl<'a> Spans<'a> {
                 }
                 at += run;
             }
-            let next = at + 1;
+            Err(at)
+        })
+    }
+
+    /// Calls `find(at)` on the rest of the current line from `from`, then on
+    /// each later line of the block a span opened there may reach, until it
+    /// finds something. `find` returns what it found, or the end of the line
+    /// when it found nothing. `Err` with the end of the block when nothing is
+    /// found. A line that `ends` accepts ends the block too.
+    pub(crate) fn in_block<T>(
+        &self,
+        from: usize,
+        ends: &dyn Fn(&[u8]) -> bool,
+        mut find: impl FnMut(usize) -> Result<T, usize>,
+    ) -> Result<T, usize> {
+        let bytes = self.bytes;
+        let mut at = from;
+        loop {
+            let end = match find(at) {
+                Ok(found) => return Ok(found),
+                Err(end) => end,
+            };
+            let next = end + 1;
             if self.one_line || next >= bytes.len() {
                 return Err(next.min(bytes.len()));
             }
-            if ends_span_block(&bytes[next..line_end(bytes, next)], self.rules) {
+            let line = &bytes[next..line_end(bytes, next)];
+            if ends_span_block(line, self.rules) || ends(line) {
                 return Err(next);
             }
             at = next;
@@ -395,17 +438,14 @@ fn starts_block(line: &[u8]) -> bool {
         .iter()
         .take_while(|b| matches!(b, b' ' | b'\t'))
         .count()..];
-    let ends_marker = |at: usize, text: &[u8]| matches!(text.get(at), None | Some(b' ' | b'\t'));
-
     let equals = indented.iter().take_while(|b| **b == b'=').count();
     let setext = equals > 0 && is_blank(&indented[equals..]);
     let quote = rest.first() == Some(&b'>');
-    let bullet = matches!(rest.first(), Some(b'-' | b'*' | b'+')) && ends_marker(1, rest);
-    let digits = rest.iter().take_while(|b| b.is_ascii_digit()).count();
-    let ordered = (1..=9).contains(&digits)
-        && matches!(rest.get(digits), Some(b'.' | b')'))
-        && ends_marker(digits + 1, rest);
-    is_one_line_block(line) || setext || quote || bullet || ordered || thematic_break(indented)
+    is_one_line_block(line)
+        || setext
+        || quote
+        || list_marker(rest).is_some()
+        || thematic_break(indented)
 }
 
 /// Three or more of one of `-`, `*` or `_`, with only spaces or tabs between.
@@ -543,7 +583,7 @@ pub(crate) fn regions(text: &str, rules: CodeRules) -> Vec<(Range<usize>, Region
         let start = offset;
         let (region, end) = match bytes[offset] {
             b'`' => {
-                let (run, close) = spans.close(offset);
+                let (run, close) = spans.close_in(offset, &|line| blocks.opens_code(line));
                 match close {
                     Some(close) => (Region::Code, close + run),
                     None => {
@@ -552,13 +592,15 @@ pub(crate) fn regions(text: &str, rules: CodeRules) -> Vec<(Range<usize>, Region
                     }
                 }
             }
-            b'$' if !escaped(bytes, offset) => match math_end(bytes, offset, &mut math) {
-                Ok(end) => (Region::Code, end),
-                Err(skip) => {
-                    offset += skip;
-                    continue;
+            b'$' if !escaped(bytes, offset) => {
+                match math_end(bytes, offset, &spans, &blocks, &mut math) {
+                    Ok(end) => (Region::Code, end),
+                    Err(skip) => {
+                        offset += skip;
+                        continue;
+                    }
                 }
-            },
+            }
             b'<' if bytes[offset..].starts_with(b"<!--") => {
                 let end = text[offset + 4..]
                     .find("-->")
@@ -609,9 +651,9 @@ pub(crate) fn blank(text: &str, ranges: impl IntoIterator<Item = Range<usize>>) 
 struct Blocks {
     rules: CodeRules,
     fences: Fences,
-    /// The column a fence's lines are read from: where the text of the list
-    /// item it opened in starts.
-    fence_base: usize,
+    /// Where the text of the list item that the open fence or raw HTML block
+    /// is in starts. A fence's lines are read from there.
+    base: usize,
     /// Whether a `<pre>`, `<script>`, `<style>` or `<textarea>` block is open.
     raw_html: bool,
     /// The column where each open list item's text starts, innermost last.
@@ -626,7 +668,7 @@ impl Blocks {
         Self {
             rules,
             fences: Fences::new(rules),
-            fence_base: 0,
+            base: 0,
             raw_html: false,
             items: Vec::new(),
             paragraph: false,
@@ -640,27 +682,24 @@ impl Blocks {
         let line = line.strip_suffix(b"\r").unwrap_or(line);
         let (column, width) = indent(line, 0, 0);
         let rest = &line[width..];
-        if self.raw_html {
-            self.raw_html = !closes_raw_html(line);
-            return true;
-        }
-        if self.fences.open.is_some() {
-            if column <= self.fence_base + 3 {
+        if (self.raw_html || self.fences.open.is_some()) && (column >= self.base || is_blank(rest))
+        {
+            if self.raw_html {
+                self.raw_html = !closes_raw_html(line);
+            } else if column <= self.base + 3 {
                 self.fences.line(rest);
             }
             return true;
         }
+        // A line indented less than the text of the list item a fence or raw
+        // HTML block is in ends the item, and the block with it.
+        self.raw_html = false;
+        self.fences.open = None;
         if is_blank(rest) {
             self.paragraph = false;
             return false;
         }
-        let base = self
-            .items
-            .iter()
-            .rev()
-            .find(|&&item| item <= column)
-            .copied()
-            .unwrap_or(0);
+        let base = self.base_at(column);
         let relative = column - base;
         if self.paragraph && (relative >= 4 || !self.interrupts(rest)) {
             // A lazy or indented continuation line: the paragraph and the
@@ -672,16 +711,21 @@ impl Blocks {
             return true;
         }
         if self.fences.line(rest) == FenceLine::Marker {
-            self.fence_base = base;
+            self.base = base;
             self.paragraph = false;
             return true;
         }
         if opens_raw_html(rest) {
+            self.base = base;
             self.raw_html = !closes_raw_html(line);
             self.paragraph = false;
             return true;
         }
-        if thematic_break(rest) || atx_heading(rest) || is_setext(rest, self.paragraph) {
+        if thematic_break(rest)
+            || atx_heading(rest)
+            || is_setext(rest, self.paragraph)
+            || rest.starts_with(b"<!--")
+        {
             self.paragraph = false;
         } else if let Some((marker, text)) = list_marker(rest) {
             let (spaces_end, text_at) = indent(line, width + marker, column + marker);
@@ -698,12 +742,34 @@ impl Blocks {
         false
     }
 
+    /// Where the text of the innermost open list item that a line starting
+    /// at `column` is in starts, or 0.
+    fn base_at(&self, column: usize) -> usize {
+        self.items
+            .iter()
+            .rev()
+            .find(|&&item| item <= column)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Whether `line`, read as the next line of a paragraph, opens a fence or
+    /// a raw HTML block: where an inline span or math must stop.
+    fn opens_code(&self, line: &[u8]) -> bool {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        let (column, width) = indent(line, 0, 0);
+        let rest = &line[width..];
+        column - self.base_at(column) <= 3
+            && (opens_fence(rest, self.rules).is_some() || opens_raw_html(rest))
+    }
+
     /// Whether `rest`, a line from its first character that is not a space
     /// or tab, starts a block that ends a paragraph. A list item does when it
     /// has text and is a bullet or starts at 1.
     fn interrupts(&self, rest: &[u8]) -> bool {
         opens_fence(rest, self.rules).is_some()
             || opens_raw_html(rest)
+            || rest.starts_with(b"<!--")
             || thematic_break(rest)
             || atx_heading(rest)
             || is_setext(rest, true)
@@ -789,18 +855,39 @@ fn closes_raw_html(line: &[u8]) -> bool {
     })
 }
 
-/// Whether a `\` comes right before `at`.
+/// Whether the character at `at` is escaped: an odd number of `\` comes
+/// right before it.
 fn escaped(bytes: &[u8], at: usize) -> bool {
-    at > 0 && bytes[at - 1] == b'\\'
+    bytes[..at]
+        .iter()
+        .rev()
+        .take_while(|b| **b == b'\\')
+        .count()
+        % 2
+        == 1
 }
 
 /// The math that the `$` at `at` opens: `Ok` with the index just past its
-/// close, or `Err` with how many `$` to step past as text.
-fn math_end(bytes: &[u8], at: usize, inline: &mut MathClose) -> Result<usize, usize> {
+/// close, or `Err` with how many `$` to step past as text. `$$` closes at the
+/// next `$$` in the block a span opened there would stay in.
+fn math_end(
+    bytes: &[u8],
+    at: usize,
+    spans: &Spans<'_>,
+    blocks: &Blocks,
+    inline: &mut MathClose,
+) -> Result<usize, usize> {
     if bytes.get(at + 1) == Some(&b'$') {
-        return display_math_close(bytes, at + 2)
-            .map(|close| close + 2)
-            .ok_or(2);
+        let close = spans.in_block(at + 2, &|line| blocks.opens_code(line), |mut at| {
+            while at < bytes.len() && bytes[at] != b'\n' {
+                if bytes[at..].starts_with(b"$$") {
+                    return Ok(at);
+                }
+                at += 1;
+            }
+            Err(at)
+        });
+        return close.map(|close| close + 2).map_err(|_| 2);
     }
     if bytes
         .get(at + 1)
@@ -811,50 +898,34 @@ fn math_end(bytes: &[u8], at: usize, inline: &mut MathClose) -> Result<usize, us
     inline.find(bytes, at + 1).map(|close| close + 1).ok_or(1)
 }
 
-/// The next `$$` at or after `from`, before a blank line.
-fn display_math_close(bytes: &[u8], from: usize) -> Option<usize> {
-    let mut at = from;
-    loop {
-        let end = line_end(bytes, at);
-        if let Some(i) = bytes[at..end].windows(2).position(|pair| pair == b"$$") {
-            return Some(at + i);
-        }
-        let next = end + 1;
-        if next >= bytes.len() || is_blank(&bytes[next..line_end(bytes, next)]) {
-            return None;
-        }
-        at = next;
-    }
-}
-
 /// Finds the `$` that closes inline math, for a scan that asks at positions
-/// that only move forward. The last answer is kept: a `$` closes math
-/// whatever opened it, so it answers every later question on its line that
-/// starts at or before it.
+/// that only move forward. A `$` closes math whatever opened it, and the scan
+/// steps past each close it is given, so only a search that found nothing is
+/// worth keeping: no later search on its line finds anything either.
 #[derive(Debug, Default)]
 struct MathClose {
-    /// `(from, end, close)`: the first closing `$` in `from..end`, the rest
-    /// of a line, is at `close`.
-    last: Option<(usize, usize, Option<usize>)>,
+    /// The end of the line on which a search found no close.
+    none_until: Option<usize>,
 }
 
 impl MathClose {
     fn find(&mut self, bytes: &[u8], from: usize) -> Option<usize> {
-        if let Some((start, end, close)) = self.last
-            && start <= from
-            && from <= end
-            && close.is_none_or(|close| close >= from)
-        {
-            return close;
+        if self.none_until.is_some_and(|end| from <= end) {
+            return None;
         }
-        let end = line_end(bytes, from);
-        let close = (from..end).find(|&at| {
-            bytes[at] == b'$'
-                && !matches!(bytes[at - 1], b' ' | b'\t' | b'\\')
+        let mut at = from;
+        while at < bytes.len() && bytes[at] != b'\n' {
+            if bytes[at] == b'$'
+                && !matches!(bytes[at - 1], b' ' | b'\t')
+                && !escaped(bytes, at)
                 && !bytes.get(at + 1).is_some_and(u8::is_ascii_digit)
-        });
-        self.last = Some((from, end, close));
-        close
+            {
+                return Some(at);
+            }
+            at += 1;
+        }
+        self.none_until = Some(at);
+        None
     }
 }
 
@@ -1024,6 +1095,7 @@ mod tests {
     #[test]
     fn a_pass_is_linear_on_long_lines_and_unclosed_runs() {
         let long_line = "`a` [[x]] ".repeat(200_000);
+        let long_math = "$a$ [[x]] $$b$$ ".repeat(100_000);
         fn unclosed(lengths: impl Iterator<Item = usize>) -> String {
             lengths
                 .map(|n| format!("x {} text\n", "`".repeat(n)))
@@ -1032,7 +1104,7 @@ mod tests {
         let rising = unclosed(1..=2000);
         let falling = unclosed((1..=2000).rev());
         for rules in BOTH {
-            for text in [&long_line, &rising, &falling] {
+            for text in [&long_line, &long_math, &rising, &falling] {
                 let started = std::time::Instant::now();
                 let out = strip_code_with(text, rules);
                 let elapsed = started.elapsed();

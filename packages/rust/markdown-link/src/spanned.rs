@@ -216,21 +216,22 @@ pub fn body_links_spanned_with(body: &str, options: &ScanOptions) -> Vec<BodyLin
 /// ```
 pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
     let regions = regions(body, options.code_rules);
-    let code_blanked = blank(
-        body,
-        regions
-            .iter()
-            .filter(|(_, region)| *region == Region::Code)
-            .map(|(range, _)| range.clone()),
-    );
-    let comments_blanked = options
-        .skip_html_comments
-        .then(|| blank(body, regions.iter().map(|(range, _)| range.clone())));
-    let chars: Vec<char> = comments_blanked
-        .as_deref()
-        .unwrap_or(&code_blanked)
-        .chars()
-        .collect();
+    let code_blanked = || {
+        blank(
+            body,
+            regions
+                .iter()
+                .filter(|(_, region)| *region == Region::Code)
+                .map(|(range, _)| range.clone()),
+        )
+    };
+    let chars: Vec<char> = if options.skip_html_comments {
+        blank(body, regions.iter().map(|(range, _)| range.clone()))
+    } else {
+        code_blanked()
+    }
+    .chars()
+    .collect();
     // With comments blanked too, the chars with only code blanked, made the
     // first time an abandoned link needs them.
     let mut code_chars: Option<Vec<char>> = None;
@@ -246,9 +247,9 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
     }
 
     let brackets = Brackets::new(&chars);
+    let mut scan = UrlScan::new(&chars);
     let mut out = Vec::new();
     let mut abandoned = Vec::new();
-    let mut scan = UrlScan::default();
     let mut i = 0usize;
     while i < chars.len() {
         if chars[i] == '[' && chars.get(i + 1) == Some(&'[') {
@@ -296,11 +297,12 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
                     // Code inside was blanked to spaces, so the body's bytes
                     // there differ from the code-blanked chars. A blanked
                     // comment is not code.
-                    let code = match comments_blanked {
-                        Some(_) => code_chars
-                            .get_or_insert_with(|| code_blanked.chars().collect())
-                            .as_slice(),
-                        None => chars.as_slice(),
+                    let code = if options.skip_html_comments {
+                        code_chars
+                            .get_or_insert_with(|| code_blanked().chars().collect())
+                            .as_slice()
+                    } else {
+                        chars.as_slice()
                     };
                     let held_code = body[at[i + 2]..at[j]]
                         .chars()
@@ -352,12 +354,17 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
         if chars[i] == '['
             && let Some(close) = brackets.text_end(i)
         {
-            if overlaps(&abandoned, at[i]) && brackets.opens_link(&chars, i, close) {
+            let destination = scan.destination(&chars, close);
+            if overlaps(&abandoned, at[i])
+                && (destination.is_some() || brackets.is_reference(&chars, i, close))
+            {
                 drop_overlapped(&mut abandoned, at[i]);
             }
-            if let Some(link) = spanned_markdown_link(&chars, i, close, &at, &mut scan) {
-                i = link.1;
-                out.push(link.0);
+            if let Some(destination) = destination
+                && let Some(link) = spanned_markdown_link(&chars, i, destination, &at, &mut scan)
+            {
+                i = destination.end;
+                out.push(link);
                 continue;
             }
         }
@@ -429,7 +436,9 @@ impl Brackets {
         let mut k = 0usize;
         while k < chars.len() {
             match chars[k] {
-                '\\' if matches!(chars.get(k + 1), Some('[' | ']')) => k += 1,
+                // An escaped character, `\[` and `\\` among them. A `\` at
+                // the end of a line escapes nothing.
+                '\\' if chars.get(k + 1).is_some_and(|c| *c != '\n') => k += 1,
                 '[' => {
                     if chars.get(k + 1) == Some(&'[') {
                         pairs += 1;
@@ -472,13 +481,11 @@ impl Brackets {
     }
 
     /// Whether the `[` at `start`, whose text ends at `close`, opens a
-    /// Markdown link: `(` follows its `]`, or it is a reference link whose
-    /// label a definition in the body names (`[text][label]`, `[label][]` or
-    /// `[label]`).
-    fn opens_link(&self, chars: &[char], start: usize, close: usize) -> bool {
+    /// reference link whose label a definition in the body names:
+    /// `[text][label]`, `[label][]` or `[label]`.
+    fn is_reference(&self, chars: &[char], start: usize, close: usize) -> bool {
         let text = &chars[start + 1..close];
         let label = match chars.get(close + 1) {
-            Some('(') => return true,
             Some('[') => {
                 let rest = &chars[close + 2..];
                 match rest.iter().position(|c| matches!(c, '[' | ']')) {
@@ -517,40 +524,36 @@ fn normalize_label(label: &[char]) -> String {
         .to_lowercase()
 }
 
-/// `[text](relative/note.md)` starting at `start`, whose text ends at the `]`
-/// at `close`, and the char index just past it. `None` when this is not one.
+/// An inline link's destination: `(url)` or `(<url>)` after the `]` that
+/// ends its text.
+#[derive(Debug, Clone, Copy)]
+struct Destination {
+    /// The char index where the URL starts.
+    url_start: usize,
+    /// The char index just past the URL.
+    url_end: usize,
+    /// The char index just past the `)`.
+    end: usize,
+}
+
+/// `[text](relative/note.md)` starting at `start`, with its `destination`.
+/// `None` when it is not a link this dialect harvests.
 ///
-/// After the text, the shape is the regex `\(<?([^)>\s]+?)>?\)`, walked by
-/// hand so positions index the original body. [`is_vault_link_url`] decides
-/// "is this a reference" and [`md_link_target`] "what does it point at". A
-/// URL containing whitespace is not a link: `[c](<sp ace.md>)` matches
-/// nothing. The URL is read in place and built only for a link, so a body of
+/// [`is_vault_link_url`] decides "is this a reference" and [`md_link_target`]
+/// "what does it point at". The URL is built only for a link, so a body of
 /// failed attempts stays linear.
 fn spanned_markdown_link(
     chars: &[char],
     start: usize,
-    close: usize,
+    destination: Destination,
     at: &[usize],
     scan: &mut UrlScan,
-) -> Option<(BodyLink, usize)> {
-    let j = close;
-    if chars.get(j + 1) != Some(&'(') {
-        return None;
-    }
-    let angled = chars.get(j + 2) == Some(&'<');
-    let url_start = if angled { j + 3 } else { j + 2 };
-    let url_end = scan.url_end(chars, url_start);
-    let mut end = url_end;
-    if angled {
-        if chars.get(end) != Some(&'>') {
-            return None;
-        }
-        end += 1;
-    }
-    if chars.get(end) != Some(&')') {
-        return None;
-    }
-    end += 1;
+) -> Option<BodyLink> {
+    let Destination {
+        url_start,
+        url_end,
+        end,
+    } = destination;
     if !scan.is_vault_link(chars, url_start, url_end) || has_scheme(&chars[url_start..url_end]) {
         // Not a link this dialect harvests. The caller advances ONE character
         // rather than skipping past the `[text](…)` it just walked, so a match
@@ -558,87 +561,95 @@ fn spanned_markdown_link(
         return None;
     }
     let url: String = chars[url_start..url_end].iter().collect();
-    Some((
-        BodyLink {
-            kind: BodyLinkKind::Markdown,
-            target: md_link_target(&url),
-            heading: None,
-            block: None,
-            alias: None,
-            size: None,
-            raw: url,
-            byte_start: at[start],
-            byte_end: at[end],
-        },
-        end,
-    ))
+    Some(BodyLink {
+        kind: BodyLinkKind::Markdown,
+        target: md_link_target(&url),
+        heading: None,
+        block: None,
+        alias: None,
+        size: None,
+        raw: url,
+        byte_start: at[start],
+        byte_end: at[end],
+    })
 }
 
-/// What earlier markdown link attempts learned about the URLs they read. Each
-/// attempt starts later than the one before, so remembering the last answer
-/// of each kind keeps a body of failed attempts linear.
-#[derive(Debug, Default)]
-struct UrlScan {
-    /// `(from, stop)`: the first `)`, `>` or whitespace at or after `from` is
-    /// at `stop`.
-    stop: Option<(usize, usize)>,
-    tail: Option<UrlTail>,
-}
-
-/// URLs ending at `end`: the last `.` or `/` at or after `from`, and
-/// [`is_vault_link_url`] of each tail asked so far, by its start.
+/// Tables over a body's chars that let each markdown link attempt read its
+/// URL in constant time, whatever order the attempts come in, so a body of
+/// failed attempts stays linear.
 #[derive(Debug)]
-struct UrlTail {
-    end: usize,
-    from: usize,
-    mark: Option<usize>,
-    answers: Vec<(usize, bool)>,
+struct UrlScan {
+    /// For each char index, the first `)`, `>` or whitespace at or after it.
+    stop: Vec<usize>,
+    /// For each char index, the last `.` or `/` before it.
+    mark: Vec<Option<usize>>,
+    /// [`is_vault_link_url`] of each URL tail asked so far, by its start and
+    /// end.
+    answers: HashMap<(usize, usize), bool>,
 }
 
 impl UrlScan {
-    /// Where a URL starting at `from` ends: the first `)`, `>` or whitespace.
-    fn url_end(&mut self, chars: &[char], from: usize) -> usize {
-        if let Some((start, stop)) = self.stop
-            && (start..=stop).contains(&from)
-        {
-            return stop;
+    fn new(chars: &[char]) -> Self {
+        let mut stop = vec![chars.len(); chars.len() + 1];
+        for k in (0..chars.len()).rev() {
+            stop[k] = if matches!(chars[k], ')' | '>') || chars[k].is_whitespace() {
+                k
+            } else {
+                stop[k + 1]
+            };
         }
-        let mut k = from;
-        while k < chars.len() && !matches!(chars[k], ')' | '>') && !chars[k].is_whitespace() {
-            k += 1;
+        let mut mark = vec![None; chars.len() + 1];
+        for k in 0..chars.len() {
+            mark[k + 1] = if matches!(chars[k], '.' | '/') {
+                Some(k)
+            } else {
+                mark[k]
+            };
         }
-        self.stop = Some((from, k));
-        k
+        Self {
+            stop,
+            mark,
+            answers: HashMap::new(),
+        }
+    }
+
+    /// The destination after the `]` at `close`, when its shape is the regex
+    /// `\(<?([^)>\s]*)>?\)`. A URL containing whitespace is not one:
+    /// `[c](<sp ace.md>)` has none.
+    fn destination(&self, chars: &[char], close: usize) -> Option<Destination> {
+        if chars.get(close + 1) != Some(&'(') {
+            return None;
+        }
+        let angled = chars.get(close + 2) == Some(&'<');
+        let url_start = if angled { close + 3 } else { close + 2 };
+        let url_end = self.stop[url_start.min(chars.len())];
+        let mut end = url_end;
+        if angled {
+            if chars.get(end) != Some(&'>') {
+                return None;
+            }
+            end += 1;
+        }
+        (chars.get(end) == Some(&')')).then_some(Destination {
+            url_start,
+            url_end,
+            end: end + 1,
+        })
     }
 
     /// [`is_vault_link_url`] of `chars[from..end]`. That answer depends only
     /// on whether the URL ends in `.md` after at least one character and on
     /// the extension of its last segment. So the URL from the character before
     /// its last `.` gives the same answer, and that tail is shared by every
-    /// attempt ending at `end`.
+    /// URL ending at `end`.
     fn is_vault_link(&mut self, chars: &[char], from: usize, end: usize) -> bool {
-        let tail = match &mut self.tail {
-            Some(tail) if tail.end == end && tail.from <= from => tail,
-            slot => slot.insert(UrlTail {
-                end,
-                from,
-                mark: chars[from..end]
-                    .iter()
-                    .rposition(|c| matches!(c, '.' | '/'))
-                    .map(|i| from + i),
-                answers: Vec::new(),
-            }),
-        };
-        let Some(mark) = tail.mark.filter(|&mark| mark >= from && chars[mark] == '.') else {
+        let Some(mark) = self.mark[end].filter(|&mark| mark >= from && chars[mark] == '.') else {
             return false;
         };
         let tail_start = from.max(mark.saturating_sub(1));
-        if let Some(&(_, answer)) = tail.answers.iter().find(|(at, _)| *at == tail_start) {
-            return answer;
-        }
-        let answer = is_vault_link_url(&chars[tail_start..end].iter().collect::<String>());
-        tail.answers.push((tail_start, answer));
-        answer
+        *self.answers.entry((tail_start, end)).or_insert_with(|| {
+            is_vault_link_url(&chars[tail_start..end].iter().collect::<String>())
+        })
     }
 }
 
@@ -682,6 +693,7 @@ mod tests {
                 "$x ".repeat(n),
                 "<a:".repeat(n),
                 "- x\n  ".repeat(n),
+                format!("{}{}", "[a".repeat(n), "](x".repeat(n)),
             ] {
                 let started = std::time::Instant::now();
                 assert!(body_links_spanned(&body).is_empty());

@@ -433,6 +433,79 @@
           6
         ]
       ]
+    },
+    {
+      "name": "display_math_stops_at_a_fence",
+      "source": "Costs $$ maybe\n```js\nlet x = 1 // $$\n```\n[[Real]]\n",
+      "stripped": "Costs $$ maybe\n     \n               \n   \n[[Real]]\n",
+      "ranges": [
+        [
+          15,
+          40
+        ]
+      ]
+    },
+    {
+      "name": "display_math_on_a_heading_stays_on_its_line",
+      "source": "# h $$\n[[a]]\nb $$",
+      "stripped": "# h $$\n[[a]]\nb $$",
+      "strippedSkillExport": "# h   \n     \n    ",
+      "ranges": []
+    },
+    {
+      "name": "span_stops_at_a_pre_line",
+      "source": "Run `cmd\n<pre>\nx` [[Secret]]\n</pre>\n",
+      "stripped": "Run `cmd\n     \n             \n      \n",
+      "ranges": [
+        [
+          9,
+          35
+        ]
+      ]
+    },
+    {
+      "name": "span_stops_at_a_fence_in_a_list_item",
+      "source": "- a `b\n    ```\n    c` [[x]]\n    ```\n[[After]]\n",
+      "stripped": "- a `b\n       \n            \n       \n[[After]]\n",
+      "ranges": [
+        [
+          7,
+          35
+        ]
+      ]
+    },
+    {
+      "name": "less_indented_line_ends_a_list_item_and_its_fence",
+      "source": "- item\n  ```\n  code\n\nafter [[Real]]\n",
+      "stripped": "- item\n     \n      \n\nafter [[Real]]\n",
+      "ranges": [
+        [
+          7,
+          20
+        ]
+      ]
+    },
+    {
+      "name": "comment_line_is_a_block_before_indented_code",
+      "source": "<!-- note -->\n    [[InCode]]\n",
+      "stripped": "<!-- note -->\n              \n",
+      "ranges": [
+        [
+          14,
+          28
+        ]
+      ]
+    },
+    {
+      "name": "escaped_backslash_before_a_dollar",
+      "source": "\\\\$x$ \\$y$",
+      "stripped": "\\\\    \\$y$",
+      "ranges": [
+        [
+          2,
+          5
+        ]
+      ]
     }
   ],
   "parse": [
@@ -1716,6 +1789,32 @@
           "alias": null,
           "at": 26,
           "text": "[[A]]"
+        }
+      ]
+    },
+    {
+      "name": "markdown_link_after_an_escaped_backslash",
+      "body": "\\\\[a](b.md)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "b.md",
+          "target": "b",
+          "alias": null,
+          "at": 2,
+          "text": "[a](b.md)"
+        }
+      ]
+    },
+    {
+      "name": "abandoned_reported_when_no_destination_follows",
+      "body": "[[WIP] Fix](has space)",
+      "links": [],
+      "abandoned": [
+        {
+          "reason": "bracket",
+          "at": 0,
+          "text": "[[WIP"
         }
       ]
     }
