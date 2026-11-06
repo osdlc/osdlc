@@ -467,8 +467,11 @@ export function holdFreedBranches(rows: Row[], branchScoped: boolean): Row[] {
  * blockers and evidence, submodules included. Reads git and the process
  * table; asks no provider.
  *
- * @throws RepoCleanerError (`not-found`) when `path` is not a linked worktree
- *   of a repository git can read.
+ * The main checkout is a worktree too: it comes back as its `keep` row
+ * ("primary worktree").
+ *
+ * @throws RepoCleanerError (`not-found`) when `path` is not a worktree of a
+ *   repository git can read.
  */
 export function inspectWorktree(
   path: string,
