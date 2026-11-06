@@ -593,17 +593,20 @@ impl WalkOptions {
         // so a file is listed only when every one of them lists the next: a
         // folder it cannot list, a symlinked folder (listed as a file) or a
         // different spelling stops it.
-        let reached: Vec<Reach> = starts
-            .iter()
-            .map(|&start| listings.reach(vfs, vault_dir, rel, start))
-            .collect();
-        let found = if reached.contains(&Reach::Listed) {
-            Admission::Listed
-        } else if reached.contains(&Reach::Respelled) {
-            Admission::Respelled
-        } else {
-            return Admission::Unlisted;
-        };
+        let mut found = Admission::Unlisted;
+        for &start in &starts {
+            match listings.reach(vfs, vault_dir, rel, start) {
+                Reach::Listed => {
+                    found = Admission::Listed;
+                    break;
+                }
+                Reach::Respelled => found = Admission::Respelled,
+                Reach::Unlisted => {}
+            }
+        }
+        if found == Admission::Unlisted {
+            return found;
+        }
         // A batch's listing can be older than this stat, so the stat also
         // decides that the path is still a file the walk would list. A
         // respelled path to one it would not list is simply unlisted.
@@ -674,8 +677,8 @@ struct Listings {
     /// the first listing lacked. Each is listed again once per batch.
     relisted: HashSet<PathBuf>,
     /// For a name a folder does not list: whether the file system answers
-    /// for it.
-    answers: HashMap<PathBuf, bool>,
+    /// for it, and with a folder or not.
+    answers: HashMap<PathBuf, Option<bool>>,
 }
 
 /// Whether listing each folder down to a path finds it. See
@@ -702,12 +705,14 @@ impl Listings {
     /// Whether listing each folder from the walk's start, `rel[..start]`,
     /// down to `rel`'s own folder finds `rel`: a folder for each segment but
     /// the last and a file for the last, spelled as `rel` spells it. How the
-    /// walk reaches a file. [`Reach::Respelled`] when a folder does not list
-    /// a name by that spelling but the file system answers for it, and a
-    /// fresh listing of that folder still lacks it.
+    /// walk reaches a file. [`Reach::Respelled`] when the path is reached
+    /// so, except that a folder lists a name on the way under another
+    /// spelling: it lacks the name, even listed afresh, but the file system
+    /// answers for it.
     fn reach(&mut self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str, start: usize) -> Reach {
         let mut folder = join_rel(vault_dir, &rel[..start]);
         let mut names = rel[start..].split('/').peekable();
+        let mut respelled = false;
         while let Some(name) = names.next() {
             let more = names.peek().is_some();
             if !self.folders.contains_key(&folder) {
@@ -716,14 +721,20 @@ impl Listings {
             let mut found = self.found(&folder, name);
             // The file system answers for a name the listing lacks: either
             // the file came after the listing, or its folder spells it
-            // otherwise. A fresh listing tells them apart.
-            if found == Found::Missing && self.answers(vfs, folder.join(name)) {
+            // otherwise. A fresh listing tells them apart. A name listed
+            // otherwise stands as the file system answers for it, and the
+            // folders below are listed by this spelling, as the file system
+            // also answers for them.
+            if found == Found::Missing
+                && let Some(is_dir) = self.answers(vfs, folder.join(name))
+            {
                 if self.relisted.insert(folder.clone()) {
                     self.list(vfs, &folder);
                     found = self.found(&folder, name);
                 }
                 if found == Found::Missing {
-                    return Reach::Respelled;
+                    respelled = true;
+                    found = Found::Entry(is_dir);
                 }
             }
             match found {
@@ -732,7 +743,11 @@ impl Listings {
             }
             folder.push(name);
         }
-        Reach::Listed
+        if respelled {
+            Reach::Respelled
+        } else {
+            Reach::Listed
+        }
     }
 
     /// Lists `folder` into the cache, `None` when it cannot be listed.
@@ -744,12 +759,13 @@ impl Listings {
         self.folders.insert(folder.to_path_buf(), entries);
     }
 
-    /// Whether a stat of `path`, a name its folder does not list, succeeds.
-    fn answers(&mut self, vfs: &dyn Vfs, path: PathBuf) -> bool {
+    /// Whether a stat of `path`, a name its folder does not list, succeeds,
+    /// and whether it is a folder if so.
+    fn answers(&mut self, vfs: &dyn Vfs, path: PathBuf) -> Option<bool> {
         *self
             .answers
             .entry(path)
-            .or_insert_with_key(|path| vfs.metadata(path).is_ok())
+            .or_insert_with_key(|path| vfs.metadata(path).ok().map(|m| m.is_dir))
     }
 
     /// What the cached listing of `folder` says of `name`.
@@ -1317,6 +1333,11 @@ mod tests {
             if self.call == Call::List && path == self.path {
                 return Err(denied(path));
             }
+            if let Call::Alias(real) = &self.call
+                && let Ok(rest) = path.strip_prefix(&self.path)
+            {
+                return self.inner.read_dir(&real.join(rest));
+            }
             self.inner.read_dir(path)
         }
         fn write_file(&self, path: &Path, bytes: &[u8]) -> Result<(), vfs_seam::VfsError> {
@@ -1556,16 +1577,14 @@ mod tests {
         // The folders list `Notes/alpha.md`. A file system that ignores case
         // or Unicode form also answers for another spelling of the file, or
         // of a folder on the way.
-        for (asked, real) in [("Notes/Alpha.md", "Notes/alpha.md"), ("notes", "Notes")] {
+        for (asked, real, rel) in [
+            ("Notes/Alpha.md", "Notes/alpha.md", "Notes/Alpha.md"),
+            ("notes", "Notes", "notes/alpha.md"),
+        ] {
             let vfs = Denied {
                 inner: &d,
                 path: Path::new(V).join(asked),
                 call: Call::Alias(Path::new(V).join(real)),
-            };
-            let rel = if asked == "notes" {
-                "notes/alpha.md"
-            } else {
-                asked
             };
             assert_eq!(
                 notes.admission(&vfs, Path::new(V), rel),
@@ -1573,6 +1592,16 @@ mod tests {
             );
             assert!(!rels(walk(&vfs, Path::new(V), &notes).unwrap()).contains(&rel.to_string()));
         }
+        // Below a respelled folder the rest of the path is still checked.
+        let vfs = Denied {
+            inner: &d,
+            path: Path::new(V).join("notes"),
+            call: Call::Alias(Path::new(V).join("Notes")),
+        };
+        assert_eq!(
+            notes.admission(&vfs, Path::new(V), "notes/missing.md"),
+            Admission::Unlisted
+        );
         // A spelling nothing answers for is gone, and a respelled path to a
         // file the walk would not list is simply unlisted.
         assert_eq!(

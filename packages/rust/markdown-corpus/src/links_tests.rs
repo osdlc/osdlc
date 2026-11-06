@@ -211,7 +211,7 @@ fn a_failed_walk_leaves_the_graph_as_it_was() {
         "{err}"
     );
     assert_eq!(g.len(), 4, "the last good sweep stays");
-    // `refresh` reports the graph as it stands, as a reused sweep does.
+    // A failed walk is reported as the graph stands, as a reused sweep is.
     let resolvable = g.with_index(|i| i.len());
     assert_eq!(
         g.refresh_now(&*d, &c, root()),
@@ -222,6 +222,9 @@ fn a_failed_walk_leaves_the_graph_as_it_was() {
         }
     );
     assert_eq!(g.backlinks("Projects/Alpha.md").total, 2);
+    // A failed walk is not fresh: inside the TTL, the next one walks, and
+    // fails, again.
+    assert!(g.try_refresh(&*d, &c, root()).is_err());
 }
 
 fn walking(errors: Errors) -> LinkGraph {
@@ -669,31 +672,31 @@ fn walks(g: &LinkGraph, vfs: &dyn Vfs, c: &FixedClock) -> bool {
     let flag = Rc::clone(&walked);
     mid_sweep(move || flag.set(true));
     g.refresh(vfs, c, root());
-    // A reused sweep leaves the hook unrun; clear it.
+    // A reused sweep leaves the hook unrun; replace it with one that does
+    // nothing.
     mid_sweep(|| {});
     walked.get()
 }
 
 #[test]
-fn a_case_only_rename_on_a_case_insensitive_disk_needs_no_walk() {
+fn a_case_only_rename_on_a_case_insensitive_disk_walks_once() {
     let d = vault(&[("Alpha.md", "# Alpha\n"), ("Home.md", "See [[Alpha]]\n")]);
     let (g, c) = (graph(), FixedClock::new(0));
     g.refresh_now(&*d, &c, root());
     d.rename(&join_rel(root(), "Home.md"), &join_rel(root(), "home.md"))
         .unwrap();
-    // The old spelling still stats; the graph held it, so it is just gone.
+    // The old spelling still stats: it is dropped, and the next refresh
+    // walks, in case the watcher never reports the new one.
     let vfs = hooks::StatHook::aliased(
         &*d,
         join_rel(root(), "Home.md"),
         join_rel(root(), "home.md"),
     );
-    g.apply_changes(
-        &vfs,
-        root(),
-        &["Home.md".to_string(), "home.md".to_string()],
-    );
+    g.apply_changes(&vfs, root(), &["Home.md".to_string()]);
+    assert_eq!(g.paths(), ["Alpha.md"]);
+    assert!(walks(&g, &vfs, &c));
     assert_eq!(g.paths(), ["Alpha.md", "home.md"]);
-    assert!(!walks(&g, &vfs, &c));
+    assert!(!walks(&g, &vfs, &c), "once");
 }
 
 #[test]

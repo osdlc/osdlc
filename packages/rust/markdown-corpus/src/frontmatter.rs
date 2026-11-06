@@ -154,7 +154,7 @@ impl FrontmatterIndex {
     /// index as `unchanged`. A walk error leaves the index as it was (empty
     /// when `vault_dir` is another corpus) and reports it the same way, as
     /// it stands when the call returns; [`Self::try_refresh`] returns the
-    /// error.
+    /// error. A failed walk is never fresh: the next refresh walks again.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> RefreshStats {
         self.try_refresh(vfs, clock, vault_dir)
             .unwrap_or_else(|_| unchanged(&self.state.lock().unwrap()))
@@ -176,6 +176,7 @@ impl FrontmatterIndex {
         vault_dir: &Path,
     ) -> Result<RefreshStats, WalkError> {
         self.sweep(vfs, clock.now_ms(), vault_dir, true)
+            .inspect_err(|_| self.mark_stale())
     }
 
     /// [`Self::refresh_now`] that returns a walk error.
@@ -186,6 +187,7 @@ impl FrontmatterIndex {
         vault_dir: &Path,
     ) -> Result<RefreshStats, WalkError> {
         self.sweep(vfs, clock.now_ms(), vault_dir, false)
+            .inspect_err(|_| self.mark_stale())
     }
 
     /// How many walks this index has done.
@@ -382,9 +384,8 @@ impl FrontmatterIndex {
     /// that is not a note, or a call against another corpus, does nothing. A
     /// note the walk would no longer list (gone, too small, a refused
     /// symlink) is removed. So is a note its folder lists under another
-    /// spelling ([`Admission::Respelled`]). When the index never held that
-    /// spelling, this also marks the index stale, so the next refresh walks
-    /// and finds the note by the spelling on disk. With
+    /// spelling ([`Admission::Respelled`]), which also marks the index stale,
+    /// so the next refresh walks and finds the note by the spelling on disk. With
     /// no fresh walk to edit it only marks the index, so a walk that read
     /// the note before the change is not stamped fresh.
     ///
@@ -404,8 +405,15 @@ impl FrontmatterIndex {
             // the apply lock: an apply that read a note before another apply
             // must not install after it.
             let _apply = self.apply_lock.lock().unwrap();
+            let mut respelled = false;
             for (rel, admission) in self.walk.admissions(vfs, vault_dir, &notes) {
+                respelled |= admission == Admission::Respelled;
                 self.apply_admitted(vfs, vault_dir, rel, admission);
+            }
+            // Gone by that spelling, there by the disk's, which only a walk
+            // finds. Marked after the batch, so the rest of it still applies.
+            if respelled && self.state.lock().unwrap().for_vault.as_deref() == Some(vault_dir) {
+                self.mark_stale();
             }
         }
         if rels.iter().any(|rel| self.walk.reads_rules_from(rel))
@@ -467,10 +475,6 @@ impl FrontmatterIndex {
             return;
         }
         state.applied += 1;
-        // A spelling the index never held is one a watcher reported
-        // otherwise than the disk: only a walk finds the note. One it held
-        // is the old name after a case-only rename, now dropped.
-        stale |= admission == Admission::Respelled && !state.entries.contains_key(rel);
         if stale {
             state.walked_at = None;
             state.stale_marks += 1;

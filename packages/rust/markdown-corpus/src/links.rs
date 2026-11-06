@@ -391,7 +391,7 @@ impl LinkGraph {
     /// cache as `unchanged`. A walk error leaves the graph as it was (empty
     /// when `vault_dir` is another corpus) and reports it the same way, as
     /// it stands when the call returns; [`Self::try_refresh`] returns the
-    /// error.
+    /// error. A failed walk is never fresh: the next refresh walks again.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> GraphStats {
         self.try_refresh(vfs, clock, vault_dir)
             .unwrap_or_else(|_| unchanged(&self.state.lock().unwrap()))
@@ -414,6 +414,7 @@ impl LinkGraph {
         vault_dir: &Path,
     ) -> Result<GraphStats, WalkError> {
         self.sweep(vfs, clock.now_ms(), vault_dir, true)
+            .inspect_err(|_| self.mark_stale())
     }
 
     /// [`Self::refresh_now`] that returns a walk error.
@@ -424,6 +425,7 @@ impl LinkGraph {
         vault_dir: &Path,
     ) -> Result<GraphStats, WalkError> {
         self.sweep(vfs, clock.now_ms(), vault_dir, false)
+            .inspect_err(|_| self.mark_stale())
     }
 
     fn sweep(
@@ -594,12 +596,10 @@ impl LinkGraph {
     /// or a folder that cannot be listed) is dropped as if gone. So is a
     /// path its folder lists under another spelling
     /// ([`Admission::Respelled`]: another case, or another Unicode form as
-    /// on HFS+). When the graph never held that spelling, the change was
-    /// reported otherwise than the disk spells it, so this also marks the
-    /// graph stale and the next refresh walks and finds the file by the
-    /// spelling on disk. When it did (the old name after a case-only rename
-    /// on a case-insensitive file system), dropping it is all there is to
-    /// do. A batch against another
+    /// on HFS+), which also marks the graph stale, so the next refresh
+    /// walks and finds the file by the spelling on disk. That includes the
+    /// old name after a case-only rename on a case-insensitive file system,
+    /// which costs one walk. A batch against another
     /// corpus, or while no sweep is fresh, does nothing here, but marks the
     /// graph so a sweep that read the files before the change is not stamped
     /// fresh.
@@ -655,8 +655,6 @@ impl LinkGraph {
             Note(NoteFacts),
             File,
             Gone,
-            /// Gone by this spelling, but there by the disk's.
-            Respelled,
         }
         let mut unread = Unread::new(self.walk.errors);
         let mut stale = false;
@@ -672,7 +670,10 @@ impl LinkGraph {
                 // reports it. An apply cannot fail; under `Propagate` the
                 // next refresh walks and does.
                 let seen = if admission == Admission::Respelled {
-                    Seen::Respelled
+                    // Gone by this spelling, there by the disk's, which only
+                    // a walk finds.
+                    stale = true;
+                    Seen::Gone
                 } else if admission != Admission::Listed {
                     // A walk that propagates errors fails on a file it
                     // cannot stat, rather than leaving it out.
@@ -725,10 +726,6 @@ impl LinkGraph {
             if present || listed.is_ok() {
                 files.insert(abs);
             }
-            // A spelling the graph never held is one a watcher reported
-            // otherwise than the disk: only a walk finds the file. One it
-            // held is the old name after a case-only rename, now dropped.
-            stale |= matches!(seen, Seen::Respelled) && listed.is_err();
             match listed {
                 Ok(i) if !present => {
                     paths.remove(i);
@@ -747,9 +744,7 @@ impl LinkGraph {
                     notes_changed = true;
                 }
                 Seen::File => {}
-                Seen::Gone | Seen::Respelled => {
-                    notes_changed |= notes.remove(rel.as_str()).is_some()
-                }
+                Seen::Gone => notes_changed |= notes.remove(rel.as_str()).is_some(),
             }
         }
         if stale {
