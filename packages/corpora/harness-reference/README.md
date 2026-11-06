@@ -5,11 +5,11 @@ instructions, how skills are named and called, which frontmatter fields they hon
 hook and MCP formats, and their CLI session surface. Every value has a date and a source. A small
 generator turns the record into static HTML pages.
 
-The record is kept in `corpora/`: `alpha`, a frozen OKF bundle with its own validator, and `beta`,
-a [markdown-db](../docs/standards/S-GFFY-markdown-db.md) corpus.
+The record is kept in `corpora/`: `alpha`, an OKF bundle with its own validator, and `beta`, a
+[markdown-db](../docs/standards/S-GFFY-markdown-db.md) corpus.
 
-- `corpora/alpha/`: the alpha corpus, the first prototype. It is frozen: only fixes to links, paths
-  and wrong values go in. New research goes into a later corpus.
+- `corpora/alpha/`: the alpha corpus, the first prototype. New subjects and facts go here until
+  beta can hold subjects and facts; then alpha is frozen and its facts move to beta.
 - `corpora/alpha/sources/`: research notes the alpha corpus cites. Upstream docs and repositories
   are cited by their own URLs.
 - `corpora/beta/`: the beta corpus, built up step by step. Step one is one file per harness. Its
