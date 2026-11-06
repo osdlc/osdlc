@@ -22,7 +22,8 @@ makes the same changes in its 0.9.0, and both suites read the new cases.
 - **Code.** `strip_code` and every scanner also treat these as code:
   indented code (a line indented four or more columns past its block's
   text, unless it continues a paragraph), math (`$$…$$` in its block, as a
-  span stays in its block, and `$…$` on one line), `<pre>`, `<script>`, `<style>` and `<textarea>`
+  span stays in its block, and `$…$` on one line; a `$` right after a
+  letter or digit, as in `5$`, opens none), `<pre>`, `<script>`, `<style>` and `<textarea>`
   blocks, and autolinks such as `<https://example.com>`. A fence may now sit
   in a list item, up to three spaces past the item's text or on the item's
   first line (`- ````), and ends with the item at a line indented less than
@@ -43,8 +44,8 @@ makes the same changes in its 0.9.0, and both suites read the new cases.
 - **Markdown link text.** A Markdown link's text may hold brackets that
   balance, so `[[WIP] Fix](fix.md)` is a link. It may not hold `[[`, so the
   wikilink in `[see [[Note]]](a.md)` stays a wikilink, nor a link, so in
-  `[a [b](y.md) c](x.md)` the link is `y.md`. It may not cross a blank line,
-  and `\[` and `\]` are not brackets in it (`\\[` is). The destination is
+  `[a [b](y.md) c](x.md)` the link is `y.md`. It may not cross a blank line
+  (a line of only code is not blank), and `\[` and `\]` are not brackets in it (`\\[` is). The destination is
   read as written, not with code blanked, so `[a](notes/$x$.md)` is a link.
 - **Abandoned `[[`.** A `[[` whose first or second `[` opens a Markdown link
   is not reported, whatever the link's URL: `[[WIP] Fix](https://x)`,

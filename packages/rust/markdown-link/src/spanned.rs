@@ -260,7 +260,7 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
         return BodyScan::default();
     }
 
-    let brackets = Brackets::new(&chars);
+    let brackets = Brackets::new(&chars, body, &at);
     // Made the first time a `](` is reached.
     let mut scan: Option<UrlScan> = None;
     let mut out = Vec::new();
@@ -455,7 +455,10 @@ struct Brackets {
 }
 
 impl Brackets {
-    fn new(chars: &[char]) -> Self {
+    /// `chars` are the body's with code blanked, and `at` maps a char index
+    /// to its byte offset in `body`. A blank line is read in `body`, so a
+    /// line that is only code is not blank.
+    fn new(chars: &[char], body: &str, at: &[usize]) -> Self {
         let mut brackets = Brackets::default();
         // Each open `[`, and how many `[[` and `](` had been seen when it was
         // pushed, counting a `[[` that it starts.
@@ -484,15 +487,14 @@ impl Brackets {
                     }
                 }
                 '\n' => {
-                    let rest = &chars[k + 1..];
-                    let blank = rest
+                    let blank = body.as_bytes()[at[k + 1]..]
                         .iter()
-                        .find(|c| !matches!(c, ' ' | '\t' | '\r'))
-                        .is_none_or(|c| *c == '\n');
+                        .find(|b| !matches!(b, b' ' | b'\t' | b'\r'))
+                        .is_none_or(|b| *b == b'\n');
                     if blank {
                         open.clear();
                     }
-                    if let Some(label) = definition_label(rest) {
+                    if let Some(label) = definition_label(&chars[k + 1..]) {
                         brackets.labels.insert(label);
                     }
                 }

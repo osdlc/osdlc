@@ -601,6 +601,36 @@
           26
         ]
       ]
+    },
+    {
+      "name": "math_does_not_close_after_a_space",
+      "source": "$a $ [[x]]",
+      "stripped": "$a $ [[x]]",
+      "ranges": []
+    },
+    {
+      "name": "math_does_not_close_before_a_digit",
+      "source": "$a$5 [[x]]",
+      "stripped": "$a$5 [[x]]",
+      "ranges": []
+    },
+    {
+      "name": "math_does_not_close_at_an_escaped_dollar",
+      "source": "$a\\$ [[x]]",
+      "stripped": "$a\\$ [[x]]",
+      "ranges": []
+    },
+    {
+      "name": "a_dollar_after_a_digit_opens_no_math",
+      "source": "5$, [[Note]], 10$.",
+      "stripped": "5$, [[Note]], 10$.",
+      "ranges": []
+    },
+    {
+      "name": "a_dollar_after_a_digit_opens_no_math_before_a_slash",
+      "source": "5$/month [[Note]] or 10$/month",
+      "stripped": "5$/month [[Note]] or 10$/month",
+      "ranges": []
     }
   ],
   "parse": [
@@ -2474,6 +2504,78 @@
           "at": 18,
           "text": "[b](b.md (x\\)y))",
           "title": "x\\)y"
+        }
+      ]
+    },
+    {
+      "name": "absolute_urls_and_spaces_are_not_links",
+      "body": "[a](Notes/x.md) [b](https://example.com/y.md) [c](<sp ace.md>)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "Notes/x.md",
+          "target": "Notes/x",
+          "alias": null,
+          "at": 0,
+          "text": "[a](Notes/x.md)"
+        }
+      ]
+    },
+    {
+      "name": "a_dollar_inside_a_word_opens_no_math",
+      "body": "[[A$B]] and [[C$D]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "A$B",
+          "target": "A$B",
+          "alias": null,
+          "at": 0,
+          "text": "[[A$B]]"
+        },
+        {
+          "kind": "wikilink",
+          "raw": "C$D",
+          "target": "C$D",
+          "alias": null,
+          "at": 12,
+          "text": "[[C$D]]"
+        }
+      ]
+    },
+    {
+      "name": "a_dollar_at_a_word_end_opens_no_math",
+      "body": "[[Cost$]] and [[$Budget]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "Cost$",
+          "target": "Cost$",
+          "alias": null,
+          "at": 0,
+          "text": "[[Cost$]]"
+        },
+        {
+          "kind": "wikilink",
+          "raw": "$Budget",
+          "target": "$Budget",
+          "alias": null,
+          "at": 14,
+          "text": "[[$Budget]]"
+        }
+      ]
+    },
+    {
+      "name": "a_line_of_only_code_is_not_blank",
+      "body": "[a\n`b`\nc](x.md)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "x.md",
+          "target": "x",
+          "alias": null,
+          "at": 0,
+          "text": "[a\n`b`\nc](x.md)"
         }
       ]
     }

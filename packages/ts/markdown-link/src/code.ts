@@ -443,7 +443,12 @@ export function regions(text: string, rules: CodeRules): Region[] {
       }
       offset = close + run
       push(start, offset, 'code')
-    } else if (c === DOLLAR && !escaped(text, offset)) {
+    } else if (
+      c === DOLLAR &&
+      !escaped(text, offset) &&
+      // A `$` right after a letter or digit, as in `5$` or `A$B`, is text.
+      !(offset > 0 && /^[A-Za-z0-9]$/.test(text[offset - 1]!))
+    ) {
       const found = mathEnd(text, offset, spans, blocks, math)
       if ('skip' in found) {
         offset += found.skip

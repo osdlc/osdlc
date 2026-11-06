@@ -17,7 +17,9 @@
 //!   block, and `$` up to the next `$` on the same line. The opening `$` must
 //!   have a character other than a space or tab after it. The closing `$`
 //!   must have one before it and no digit after it, so `$5 and $10` is not
-//!   math. A `$` escaped by a `\` (an odd number of them) does neither.
+//!   math. A `$` escaped by a `\` (an odd number of them) does neither, and
+//!   one right after an ASCII letter or digit, as in `5$` or `A$B`, opens
+//!   nothing.
 //! - **Raw HTML blocks.** A line starting with `<pre`, `<script`, `<style` or
 //!   `<textarea`, through the line holding a closing tag of any of the four,
 //!   or the end of the input.
@@ -601,7 +603,11 @@ pub(crate) fn regions(text: &str, rules: CodeRules) -> Vec<(Range<usize>, Region
                     }
                 }
             }
-            b'$' if !escaped(bytes, offset) => {
+            // A `$` right after a letter or digit, as in `5$` or `A$B`, is
+            // text.
+            b'$' if !escaped(bytes, offset)
+                && !(offset > 0 && bytes[offset - 1].is_ascii_alphanumeric()) =>
+            {
                 match math_end(bytes, offset, &spans, &blocks, &mut math) {
                     Ok(end) => (Region::Code, end),
                     Err(skip) => {
