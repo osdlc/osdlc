@@ -13,14 +13,14 @@ observations:
     source: antigravity-plugins
     locator: "CLI shell subcommands (agy plugin)"
     evidence: docs
-  - value: { listing: "submit through the Antigravity Marketplace partner intake form" }
+  - value: { intake_form_build_plugins: "submit through the Antigravity Marketplace partner intake form" }
     since: null
     until: null
     observed: "2026-11-05"
     source: antigravity-build-plugins
     locator: "Publish to the Antigravity Marketplace"
     evidence: docs
-  - value: { listing: "interest form to submit a validated plugin to the Antigravity Marketplace" }
+  - value: { interest_form_marketplace: "interest form to submit a validated plugin to the Antigravity Marketplace" }
     since: null
     until: null
     observed: "2026-11-05"
