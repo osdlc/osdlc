@@ -287,6 +287,15 @@ fn an_apply_that_cannot_read_under_propagate_makes_the_next_refresh_fail() {
     g.apply_changes(&locked, root(), &["Projects/Beta.md".to_string()]);
     // Inside the TTL, yet the refresh walks and fails.
     assert!(g.try_refresh(&locked, &c, root()).is_err());
+
+    // The same for a note it cannot even stat, which the apply leaves out.
+    let d = linked_vault();
+    let denied = hooks::StatHook::denied(&*d, join_rel(root(), "Projects/Beta.md"));
+    let g = walking(Errors::Propagate);
+    g.set_watched();
+    g.try_refresh(&*d, &c, root()).unwrap();
+    g.apply_changes(&denied, root(), &["Projects/Beta.md".to_string()]);
+    assert!(g.try_refresh(&denied, &c, root()).is_err());
 }
 
 #[test]
@@ -329,7 +338,20 @@ fn a_reporting_graph_names_a_folder_it_cannot_list() {
     let g = walking(Errors::Report);
     g.refresh(&locked, &FixedClock::new(0), root());
     assert!(!g.paths().iter().any(|p| p.starts_with("Projects/")));
-    assert_eq!(paths_of(g.unreadable()), [projects]);
+    assert_eq!(paths_of(g.unreadable()), vec![projects.clone()]);
+    // An apply that names the folder leaves its entry to the next sweep.
+    g.apply_changes(&locked, root(), &["Projects".to_string()]);
+    assert_eq!(paths_of(g.unreadable()), vec![projects]);
+}
+
+#[test]
+fn a_file_gone_between_its_listing_and_its_stat_is_not_unreadable() {
+    let d = linked_vault();
+    let beta = join_rel(root(), "Projects/Beta.md");
+    let gone = hooks::StatHook::vanished(&*d, beta);
+    let g = walking(Errors::Report);
+    g.refresh(&gone, &FixedClock::new(0), root());
+    assert!(g.unreadable().is_empty());
 }
 
 #[test]

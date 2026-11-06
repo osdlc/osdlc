@@ -336,7 +336,8 @@ impl LinkGraph {
     /// and no backlinks from them, and [`Self::len`] does not count them.
     /// For a caller that needs the paths under some folders (dot-named
     /// tooling folders, say) but not their links. Set it before the first
-    /// refresh.
+    /// refresh: a graph already built keeps the facts it read until the
+    /// next sweep.
     pub fn with_list_only(
         mut self,
         list_only: impl Fn(&str) -> bool + Send + Sync + 'static,
@@ -475,7 +476,7 @@ impl LinkGraph {
         // links to them still resolve, as in Obsidian.
         let walked = markdown_vault_fs::walk::walk_reporting(vfs, vault_dir, &self.walk)?;
         let entries = walked.entries;
-        let mut unread = Unread::new(self.walk.errors, walked.errors);
+        let mut unread = Unread::new(self.walk.errors).walked(walked.errors, vault_dir);
         // Sorted by the comparator `apply_changes` binary-searches with.
         let mut paths: Vec<String> = entries.iter().map(|e| e.rel.clone()).collect();
         paths.sort_by(|a, b| slug_collate::compare_paths(a, b));
@@ -601,8 +602,15 @@ impl LinkGraph {
     /// A change to a file the walk reads its rules from
     /// ([`WalkOptions::reads_rules_from`], the excluded files under
     /// [`Hide::Vault`]) can move any path, so it marks the graph stale and
-    /// the next refresh walks. So does a note it cannot read under
-    /// [`Errors::Propagate`], so the next refresh fails on it.
+    /// the next refresh walks. So does a file it cannot stat or a note it
+    /// cannot read under [`Errors::Propagate`], so the next refresh fails on
+    /// it; until a refresh succeeds the graph takes no applies, as after any
+    /// stale mark, so a caller under `Propagate` uses
+    /// [`Self::try_refresh`] to see why.
+    ///
+    /// An apply does not list folders beyond the paths it names: a note in
+    /// a folder that can no longer be listed is dropped, and the folder is
+    /// reported by the next sweep.
     pub fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
         self.apply_paths(vfs, vault_dir, rels);
         if rels.iter().any(|rel| self.walk.reads_rules_from(rel))
@@ -643,7 +651,7 @@ impl LinkGraph {
             File,
             Gone,
         }
-        let mut unread = Unread::new(self.walk.errors, Vec::new());
+        let mut unread = Unread::new(self.walk.errors);
         let mut stale = false;
         let scanned: Vec<(&String, PathBuf, Seen)> = admitted
             .into_iter()
@@ -657,6 +665,13 @@ impl LinkGraph {
                 // reports it. An apply cannot fail; under `Propagate` the
                 // next refresh walks and does.
                 let seen = if admission == Admission::Unlisted {
+                    // A walk that propagates errors fails on a file it
+                    // cannot stat, rather than leaving it out.
+                    if self.walk.errors == Errors::Propagate
+                        && let Err(e) = vfs.metadata(&abs)
+                    {
+                        stale |= unread.met(e).is_err();
+                    }
                     Seen::Gone
                 } else if rel.to_lowercase().ends_with(".md") && self.reads(rel) {
                     let (size, mtime) = stamp_listed(vfs, &abs).unwrap_or_else(|e| {
@@ -669,7 +684,9 @@ impl LinkGraph {
                     }
                     Seen::Note(facts)
                 } else {
-                    if let Err(e) = vfs.metadata(&abs) {
+                    if self.walk.errors != Errors::Skip
+                        && let Err(e) = vfs.metadata(&abs)
+                    {
                         stale |= unread.met(e).is_err();
                     }
                     Seen::File
@@ -690,16 +707,20 @@ impl LinkGraph {
             state.swept_at = None;
             state.stale_marks += 1;
         }
-        // What the apply read replaces what was known about those paths.
-        let unreadable = Arc::make_mut(&mut state.unreadable);
-        unreadable.retain(|e| !scanned.iter().any(|(_, abs, _)| e.path() == abs));
-        unreadable.extend(unread.into_errors());
         let mut paths_changed = false;
         let mut notes_changed = false;
-        for (rel, _, seen) in scanned {
+        // The files the apply looked at, listed before or now. What it met
+        // on them replaces what was known; a folder's entry stays until the
+        // next sweep.
+        let mut files = HashSet::new();
+        for (rel, abs, seen) in scanned {
             let present = matches!(seen, Seen::Note(_) | Seen::File);
             let paths = Arc::make_mut(&mut state.paths);
-            match paths.binary_search_by(|p| slug_collate::compare_paths(p, rel)) {
+            let listed = paths.binary_search_by(|p| slug_collate::compare_paths(p, rel));
+            if present || listed.is_ok() {
+                files.insert(abs);
+            }
+            match listed {
                 Ok(i) if !present => {
                     paths.remove(i);
                     paths_changed = true;
@@ -720,6 +741,9 @@ impl LinkGraph {
                 Seen::Gone => notes_changed |= notes.remove(rel.as_str()).is_some(),
             }
         }
+        let unreadable = Arc::make_mut(&mut state.unreadable);
+        unreadable.retain(|e| !files.contains(e.path()));
+        unreadable.extend(unread.into_errors());
         if paths_changed {
             state.index = LinkIndex::build(&state.paths);
         }
@@ -1173,17 +1197,24 @@ pub(crate) struct Unread {
 }
 
 impl Unread {
-    /// Starting from what the walk itself reported.
-    pub(crate) fn new(policy: Errors, walk_errors: Vec<VfsError>) -> Unread {
-        let mut unread = Unread {
+    pub(crate) fn new(policy: Errors) -> Unread {
+        Unread {
             policy,
             errors: Vec::new(),
             paths: HashSet::new(),
-        };
-        for e in walk_errors {
-            unread.keep(e);
         }
-        unread
+    }
+
+    /// Starting from what the walk of `vault_dir` reported. A `NotFound` is
+    /// kept only for `vault_dir` itself: a file or folder below it that is
+    /// not there went away during the walk.
+    pub(crate) fn walked(mut self, errors: Vec<VfsError>, vault_dir: &Path) -> Unread {
+        for e in errors {
+            if !e.is_not_found() || e.path() == vault_dir {
+                self.keep(e);
+            }
+        }
+        self
     }
 
     fn keep(&mut self, e: VfsError) {
@@ -1401,6 +1432,7 @@ pub(crate) mod hooks {
         Denied,
         As(PathBuf),
         Unreadable,
+        Vanished,
     }
 
     impl<'a> StatHook<'a> {
@@ -1437,6 +1469,16 @@ pub(crate) mod hooks {
             }
         }
 
+        /// `path` is listed in its folder, but a stat or read of it finds
+        /// nothing, as when it is deleted just after the listing.
+        pub fn vanished(inner: &'a dyn Vfs, path: PathBuf) -> Self {
+            StatHook {
+                inner,
+                path,
+                on_stat: OnStat::Vanished,
+            }
+        }
+
         /// A stat of `path` reads `real` instead, as a case-insensitive
         /// file system answers for another spelling of a file.
         pub fn aliased(inner: &'a dyn Vfs, path: PathBuf, real: PathBuf) -> Self {
@@ -1470,6 +1512,10 @@ pub(crate) mod hooks {
                 OnStat::Denied => Err(denied(path)),
                 OnStat::As(real) => self.inner.metadata(real),
                 OnStat::Unreadable => self.inner.metadata(path),
+                OnStat::Vanished => Err(VfsError::io(
+                    path,
+                    std::io::Error::from(std::io::ErrorKind::NotFound),
+                )),
                 OnStat::After(then) => {
                     let meta = self.inner.metadata(path);
                     run_once(then);
@@ -1478,8 +1524,15 @@ pub(crate) mod hooks {
             }
         }
         fn read_file(&self, path: &Path) -> Result<Vec<u8>, VfsError> {
-            if path == self.path && matches!(self.on_stat, OnStat::Unreadable | OnStat::Denied) {
-                return Err(denied(path));
+            if path == self.path {
+                match self.on_stat {
+                    OnStat::Unreadable | OnStat::Denied => return Err(denied(path)),
+                    OnStat::Vanished => {
+                        let gone = std::io::Error::from(std::io::ErrorKind::NotFound);
+                        return Err(VfsError::io(path, gone));
+                    }
+                    _ => {}
+                }
             }
             self.inner.read_file(path)
         }

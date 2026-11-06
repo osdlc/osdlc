@@ -28,18 +28,17 @@
 //! [`IndexedNote::parse_error`] set and no time, so every sweep tries it
 //! again (and counts it unchanged while it still cannot read it). The
 //! walk's [`WalkOptions::errors`] decides the rest, as for the link graph:
-//! [`Errors::Report`](crate::Errors::Report) keeps the error in
-//! [`FrontmatterIndex::unreadable`], and
-//! [`Errors::Propagate`](crate::Errors::Propagate) fails the sweep. An apply
-//! that cannot read a note under `Propagate` marks the index stale, so the
-//! next refresh walks and fails on it.
+//! [`Errors::Report`] keeps the error in [`FrontmatterIndex::unreadable`],
+//! and [`Errors::Propagate`] fails the sweep. An apply that cannot stat or
+//! read a note under `Propagate` marks the index stale, so the next refresh
+//! walks and fails on it.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use markdown_vault_fs::walk::{Admission, WalkError, WalkOptions};
+use markdown_vault_fs::walk::{Admission, Errors, WalkError, WalkOptions};
 use vfs_seam::{Clock, Vfs, VfsError};
 use yaml_splice::Mapping;
 
@@ -262,7 +261,7 @@ impl FrontmatterIndex {
 
         let walked = markdown_vault_fs::walk::walk_reporting(vfs, vault_dir, &self.walk)?;
         let entries = walked.entries;
-        let mut unread = Unread::new(self.walk.errors, walked.errors);
+        let mut unread = Unread::new(self.walk.errors).walked(walked.errors, vault_dir);
         let mut stats = RefreshStats::default();
         let mut seen: NoteMap = BTreeMap::new();
 
@@ -351,13 +350,12 @@ impl FrontmatterIndex {
         (window, entries.len())
     }
 
-    /// What the index could not read, under
-    /// [`Errors::Report`](crate::Errors::Report): each folder the last walk
-    /// could not list and each file it could not stat (in walk order), then
-    /// each note it listed but could not read, once per path. An apply
-    /// replaces the entry for the note it names with what it met; a folder's
-    /// entry clears on the next sweep. Empty under the other
-    /// [`Errors`](crate::Errors) policies.
+    /// What the index could not read, under [`Errors::Report`]: each folder
+    /// the last walk could not list and each file it could not stat (in walk
+    /// order), then each note it listed but could not read, once per path.
+    /// An apply replaces the entry for the note it names with what it met; a
+    /// folder's entry clears on the next sweep. Empty under the other
+    /// [`Errors`] policies.
     ///
     /// Each path is the corpus folder joined with the corpus-relative path.
     /// An entry for a note [`Self::get`] has is one the index could not stat
@@ -433,8 +431,16 @@ impl FrontmatterIndex {
         let abs = join_rel(vault_dir, rel);
         // As in the sweep, a listed note that cannot be stamped (a dangling
         // link) is kept with the size of the link and never fresh.
-        let mut unread = Unread::new(self.walk.errors, Vec::new());
+        let mut unread = Unread::new(self.walk.errors);
         let mut stale = false;
+        // A walk that propagates errors fails on a note it cannot stat,
+        // rather than leaving it out.
+        if admission == Admission::Unlisted
+            && self.walk.errors == Errors::Propagate
+            && let Err(e) = vfs.metadata(&abs)
+        {
+            stale |= unread.met(e).is_err();
+        }
         // What it cannot stat or read is reported as the sweep reports it.
         // An apply cannot fail; under `Propagate` the next refresh walks and
         // does.
@@ -462,10 +468,12 @@ impl FrontmatterIndex {
             state.walked_at = None;
             state.stale_marks += 1;
         }
-        // What the apply read replaces what was known about the note.
-        let unreadable = Arc::make_mut(&mut state.unreadable);
-        unreadable.retain(|e| e.path() != abs);
-        unreadable.extend(unread.into_errors());
+        // What the apply met replaces what was known about the note; a
+        // folder's entry stays until the next sweep.
+        if parsed.is_some() || state.entries.contains_key(rel) {
+            Arc::make_mut(&mut state.unreadable).retain(|e| e.path() != abs);
+        }
+        Arc::make_mut(&mut state.unreadable).extend(unread.into_errors());
         let entries = Arc::make_mut(&mut state.entries);
         match parsed {
             Some(note) => {
