@@ -2366,6 +2366,28 @@
           "title": "t"
         }
       ]
+    },
+    {
+      "name": "an_empty_url_takes_no_title",
+      "body": "[a](\n\n\"[[Note]]\") [b](\n) [[c]]",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "Note",
+          "target": "Note",
+          "alias": null,
+          "at": 7,
+          "text": "[[Note]]"
+        },
+        {
+          "kind": "wikilink",
+          "raw": "c",
+          "target": "c",
+          "alias": null,
+          "at": 25,
+          "text": "[[c]]"
+        }
+      ]
     }
   ],
   "display": [

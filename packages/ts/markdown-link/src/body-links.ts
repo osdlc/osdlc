@@ -568,7 +568,7 @@ class UrlScan {
    * break between the parts. The URL is `<…>`, which may hold spaces but no
    * `<`, or a run with no whitespace whose parentheses balance. A `\`
    * escapes the next character, but not a line break. Unlike CommonMark, a
-   * title and a `<…>` URL stay on one line.
+   * title stays on one line.
    */
   destination(close: number): Destination | null {
     const chars = this.chars
@@ -588,7 +588,7 @@ class UrlScan {
       const paren = this.unopenedClose[from]!
       if (paren < space) {
         urlEnd = paren
-      } else if (this.depth[space] === this.depth[from]) {
+      } else if (space > from && this.depth[space] === this.depth[from]) {
         urlEnd = space
       } else {
         return null

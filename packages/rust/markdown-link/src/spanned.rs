@@ -702,7 +702,7 @@ impl UrlScan {
     /// break between the parts. The URL is `<…>`, which may hold spaces but
     /// no `<`, or a run with no whitespace whose parentheses balance. A `\`
     /// escapes the next character, but not a line break. Unlike CommonMark, a
-    /// title and a `<…>` URL stay on one line.
+    /// title stays on one line.
     fn destination(&self, close: usize) -> Option<Destination> {
         let chars = &self.chars;
         if chars.get(close + 1) != Some(&'(') {
@@ -717,7 +717,7 @@ impl UrlScan {
             let paren = self.unopened_close[from];
             if paren < space {
                 (from, paren, paren)
-            } else if self.depth[space] == self.depth[from] {
+            } else if space > from && self.depth[space] == self.depth[from] {
                 (from, space, space)
             } else {
                 return None;

@@ -61,7 +61,7 @@ makes the same changes in its 0.9.0, and both suites read the new cases.
   `[c](<sp ace.md>)` is a link to `sp ace`. Whitespace, with at most one
   line break, may come around the URL and the title. A `\` escapes the next
   character, and the URL and title keep it as written. Unlike CommonMark, a
-  title and a `<…>` URL stay on one line. A URL starting with `//` names a
+  title stays on one line. A URL starting with `//` names a
   host, so `[a](//example.com/x.md)` is no longer a link. A Markdown link
   the scanner does not keep, such as one to an `https:` URL, is stepped over
   whole, so a `[[x]]` in its title is not a wikilink.
