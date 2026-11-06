@@ -4,6 +4,7 @@ use vfs_seam::{FixedClock, MemVfs};
 use yaml_splice::Value;
 
 use super::*;
+use crate::Errors;
 use crate::links::hooks::{mid_apply, mid_sweep};
 
 const V: &str = "/v";
@@ -277,6 +278,59 @@ fn an_apply_cannot_undo_a_later_apply_with_what_it_read_first() {
         index.apply_change(&*d, root(), "Notes/a.md");
     }
     assert_eq!(status(&index, "Notes/a.md").as_deref(), Some("back"));
+}
+
+#[test]
+fn a_reporting_index_keeps_a_note_it_cannot_read_and_names_it() {
+    let d = vault();
+    let b = join_rel(root(), "Notes/b.md");
+    let locked = crate::links::hooks::StatHook::unreadable(&*d, b.clone());
+    let walk = |errors| WalkOptions {
+        errors,
+        ..FrontmatterIndex::default_walk()
+    };
+    let c = FixedClock::new(0);
+    let index = FrontmatterIndex::new().with_walk(walk(Errors::Report));
+    index.refresh(&locked, &c, root());
+    let note = index.get("Notes/b.md").unwrap();
+    assert!(note.parse_error.is_some());
+    assert_eq!(note.mtime_ns, None, "never fresh");
+    let reported: Vec<PathBuf> = index
+        .unreadable()
+        .iter()
+        .map(|e| e.path().to_path_buf())
+        .collect();
+    assert_eq!(reported, vec![b.clone()]);
+    // Tried again on the next sweep: unchanged while still unreadable, then
+    // read and no longer reported.
+    let changes = index.changes();
+    assert!(index.refresh_now(&locked, &c, root()).is_empty());
+    assert_eq!(index.changes(), changes);
+    assert_eq!(index.unreadable().len(), 1);
+    assert_eq!(index.refresh_now(&*d, &c, root()).updated, 1);
+    assert!(index.unreadable().is_empty());
+    assert!(index.get("Notes/b.md").unwrap().parse_error.is_none());
+    // An apply that cannot read it leaves the report to the next refresh,
+    // which walks inside the TTL.
+    index.apply_change(&locked, root(), "Notes/b.md");
+    assert!(index.unreadable().is_empty());
+    index.refresh(&locked, &c, root());
+    assert_eq!(index.unreadable()[0].path(), b);
+    index.apply_change(&*d, root(), "Notes/b.md");
+    index.refresh(&*d, &c, root());
+    assert!(index.unreadable().is_empty());
+
+    // Skipped: kept as unreadable, nothing reported. Propagated: fails.
+    let skip = FrontmatterIndex::new();
+    skip.refresh(&locked, &c, root());
+    assert!(skip.get("Notes/b.md").unwrap().parse_error.is_some());
+    assert!(skip.unreadable().is_empty());
+    let strict = FrontmatterIndex::new().with_walk(walk(Errors::Propagate));
+    assert!(strict.try_refresh(&locked, &c, root()).is_err());
+    // An apply cannot fail, but it makes the next refresh walk, and fail.
+    strict.try_refresh(&*d, &c, root()).unwrap();
+    strict.apply_change(&locked, root(), "Notes/b.md");
+    assert!(strict.try_refresh(&locked, &c, root()).is_err());
 }
 
 #[test]
@@ -557,8 +611,9 @@ mod native {
         .unwrap();
         let index = FrontmatterIndex::new();
         assert_eq!(index.refresh(&NativeVfs, &SystemClock, d.path()).added, 2);
+        // Read again, and still unreadable, so unchanged.
         let second = index.refresh_now(&NativeVfs, &SystemClock, d.path());
-        assert_eq!((second.unchanged, second.updated), (1, 1));
+        assert_eq!((second.unchanged, second.updated), (2, 0));
 
         write(
             d.path(),
