@@ -52,14 +52,17 @@ makes the same changes in its 0.9.0, and both suites read the new cases.
   definition in the body names, such as `[[1]`. An inline link needs a
   destination of the shape the scanner reads, so `[[WIP] x](has space)` is
   still reported.
-- **Markdown link destinations** are read as CommonMark reads an inline
-  link. A title in `"…"`, `'…'` or `(…)` may follow the URL after
+- **Markdown link destinations** are read much as CommonMark reads an
+  inline link. A title in `"…"`, `'…'` or `(…)` may follow the URL after
   whitespace, so `[a](a.md "Hint")` is a link. Parentheses that balance may
   sit in the URL, so `[Notes](notes/Foo%20(beta).md)` is a link to
-  `notes/Foo (beta)`. A `<…>` destination may hold spaces, so
+  `notes/Foo (beta)`, and an unbalanced one is no longer read: `[a](a(b.md)`
+  was a link and is not. A `<…>` destination may hold spaces, so
   `[c](<sp ace.md>)` is a link to `sp ace`. Whitespace, with at most one
   line break, may come around the URL and the title. A `\` escapes the next
-  character, and the URL and title keep it as written.
+  character, and the URL and title keep it as written. Unlike CommonMark, a
+  title and a `<…>` URL stay on one line. A URL starting with `//` names a
+  host, so `[a](//example.com/x.md)` is no longer a link.
 
 ### Added
 

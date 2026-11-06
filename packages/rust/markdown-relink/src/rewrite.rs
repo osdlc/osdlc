@@ -74,10 +74,16 @@ pub(crate) fn target_span(body: &str, link: &BodyLink) -> Option<Range<usize>> {
         }
         BodyLinkKind::Markdown => {
             let span = body.get(link.byte_start..link.byte_end)?;
-            // The label cannot contain `]` — the scanner stops there — so
-            // there is exactly one `](` and it is the one before the URL.
+            // The label cannot contain `](`, as a link's text holds no
+            // link, so the first `](` is the one before the URL. Whitespace
+            // and a line break may come before the URL.
             let paren = span.find("](")?;
-            let mut url_start = paren + 2;
+            let mut url_start = paren
+                + 2
+                + span[paren + 2..]
+                    .bytes()
+                    .take_while(|b| matches!(b, b' ' | b'\t' | b'\r' | b'\n'))
+                    .count();
             if span.as_bytes().get(url_start) == Some(&b'<') {
                 url_start += 1;
             }
@@ -182,6 +188,9 @@ mod tests {
         assert_eq!(span_text("| [[ Alpha \\|a]] |"), "Alpha");
         assert_eq!(span_text("see [t](Projects/Alpha.md)"), "Projects/Alpha.md");
         assert_eq!(span_text("see [t](My%20Note.md)"), "My%20Note.md");
+        // Space before the URL and a title after it are not part of it.
+        assert_eq!(span_text("see [t]( \n<My Note.md> \"Hint\")"), "My Note.md");
+        assert_eq!(span_text("see [[WIP] t](a(b).md 'x')"), "a(b).md");
     }
 
     #[test]

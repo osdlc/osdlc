@@ -2228,6 +2228,52 @@
       "name": "abandoned_not_reported_for_a_link_with_a_title",
       "body": "[[WIP] Fix](https://example.com \"Title\")",
       "links": []
+    },
+    {
+      "name": "title_stays_on_its_line",
+      "body": "[a](a.md \"start\n- [[Real]] item\")",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "Real",
+          "target": "Real",
+          "alias": null,
+          "at": 18,
+          "text": "[[Real]]"
+        }
+      ]
+    },
+    {
+      "name": "escaped_line_break_does_not_join_a_title",
+      "body": "[a](a.md \"x\\\n\ny\")",
+      "links": []
+    },
+    {
+      "name": "escaped_line_break_does_not_join_an_angled_url",
+      "body": "[a](<a\\\nb.md>)",
+      "links": []
+    },
+    {
+      "name": "protocol_relative_url_is_external",
+      "body": "[a](//example.com/x.md)",
+      "links": []
+    },
+    {
+      "name": "protocol_relative_url_is_external_for_all_markdown_links",
+      "body": "[a](//example.com/x) [b](/root/y)",
+      "options": {
+        "allMarkdownLinks": true
+      },
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "/root/y",
+          "target": "/root/y",
+          "alias": null,
+          "at": 21,
+          "text": "[b](/root/y)"
+        }
+      ]
     }
   ],
   "display": [

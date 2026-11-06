@@ -479,7 +479,7 @@ function markdownLink(
   const harvested = all ? urlEnd > urlStart : scan.isVaultLink(urlStart, urlEnd)
   // Not a link this dialect harvests. The caller advances one code point, so
   // a match may start at an inner `[`: `[a[b](x.md)` is a link.
-  if (!harvested || hasScheme(scan.chars, urlStart, urlEnd)) return null
+  if (!harvested || isExternal(scan.chars, urlStart, urlEnd)) return null
   const url = scan.chars.slice(urlStart, urlEnd).join('')
   return {
     kind: 'markdown',
@@ -542,10 +542,11 @@ class UrlScan {
     // The first unescaped `)` at each depth, from the right: the first `)` at
     // a code point's own depth is where the depth first falls below it.
     this.unopenedClose = Array.from({ length: n + 1 }, () => n)
-    const firstClose = new Map<number, number>()
+    // A depth lies in `-n..n`, so `depth + n` indexes `firstClose`.
+    const firstClose: number[] = Array.from({ length: 2 * n + 1 }, () => n)
     for (let k = n - 1; k >= 0; k--) {
-      if (chars[k] === ')' && !escaped[k]) firstClose.set(this.depth[k]!, k)
-      this.unopenedClose[k] = firstClose.get(this.depth[k]!) ?? n
+      if (chars[k] === ')' && !escaped[k]) firstClose[this.depth[k]! + n] = k
+      this.unopenedClose[k] = firstClose[this.depth[k]! + n]!
     }
     this.mark = Array.from({ length: n + 1 }, () => -1)
     for (let k = 0; k < n; k++) {
@@ -554,12 +555,13 @@ class UrlScan {
   }
 
   /**
-   * The destination and title after the `]` at `close`, as CommonMark reads
-   * an inline link: `(`, then a URL, then a title in `"…"`, `'…'` or `(…)`
-   * after whitespace, then `)`, with whitespace and at most one line break
-   * between the parts. The URL is `<…>`, which may hold spaces but no line
-   * break or `<`, or a run with no whitespace whose parentheses balance. A
-   * `\` escapes the next character.
+   * The destination and title after the `]` at `close`, much as CommonMark
+   * reads an inline link: `(`, then a URL, then a title in `"…"`, `'…'` or
+   * `(…)` after whitespace, then `)`, with whitespace and at most one line
+   * break between the parts. The URL is `<…>`, which may hold spaces but no
+   * `<`, or a run with no whitespace whose parentheses balance. A `\`
+   * escapes the next character, but not a line break. Unlike CommonMark, a
+   * title and a `<…>` URL stay on one line.
    */
   destination(close: number): Destination | null {
     const chars = this.chars
@@ -569,7 +571,7 @@ class UrlScan {
     let urlEnd: number
     let afterUrl: number
     if (chars[from] === '<') {
-      const end = this.delimited(from + 1, '>', ['<', '\n'])
+      const end = this.delimited(from + 1, '>', ['<'])
       if (end === null) return null
       urlStart = from + 1
       urlEnd = end
@@ -620,22 +622,16 @@ class UrlScan {
   }
 
   /**
-   * The index of the first unescaped `close` at or after `from`, when no
-   * unescaped code point of `refused` and no blank line comes before it.
+   * The index of the first unescaped `close` at or after `from` on the same
+   * line, when no unescaped code point of `refused` comes before it.
    */
   private delimited(from: number, close: string, refused: string[]): number | null {
     const chars = this.chars
     for (let at = from; at < chars.length; at++) {
       const c = chars[at]!
       if (c === close) return at
-      if (refused.includes(c)) return null
-      if (c === '\\') {
-        at++
-      } else if (c === '\n') {
-        let next = at + 1
-        while (chars[next] === ' ' || chars[next] === '\t' || chars[next] === '\r') next++
-        if (next >= chars.length || chars[next] === '\n') return null
-      }
+      if (c === '\n' || refused.includes(c)) return null
+      if (c === '\\' && at + 1 < chars.length && chars[at + 1] !== '\n') at++
     }
     return null
   }
@@ -660,6 +656,17 @@ class UrlScan {
     }
     return answer
   }
+}
+
+/**
+ * Whether `chars[from, end)` points outside the vault: it has a URI scheme,
+ * or starts with `//` and names a host.
+ */
+function isExternal(chars: string[], from: number, end: number): boolean {
+  return (
+    (end - from >= 2 && chars[from] === '/' && chars[from + 1] === '/') ||
+    hasScheme(chars, from, end)
+  )
 }
 
 /**

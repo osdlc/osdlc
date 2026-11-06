@@ -586,7 +586,7 @@ fn spanned_markdown_link(
     } else {
         scan.is_vault_link(url_start, url_end)
     };
-    if !harvested || has_scheme(&scan.chars[url_start..url_end]) {
+    if !harvested || is_external(&scan.chars[url_start..url_end]) {
         // Not a link this dialect harvests. The caller advances ONE character
         // rather than skipping past the `[text](…)` it just walked, so a match
         // may start at an inner `[`: `[a[b](x.md)` is a link.
@@ -621,7 +621,7 @@ struct UrlScan {
     space: Vec<usize>,
     /// For each char index, how many unescaped `(` before it are not closed
     /// by an unescaped `)` before it, less any `)` with no `(`.
-    depth: Vec<i64>,
+    depth: Vec<isize>,
     /// For each char index, the first unescaped `)` at or after it that closes
     /// a `(` before it: where a destination starting there ends.
     unopened_close: Vec<usize>,
@@ -646,7 +646,7 @@ impl UrlScan {
         }
         // Which chars a `\` escapes, and the paren depth before each char.
         let mut escaped = vec![false; n];
-        let mut depth = vec![0i64; n + 1];
+        let mut depth = vec![0isize; n + 1];
         for k in 0..n {
             escaped[k] = k > 0 && chars[k - 1] == '\\' && !escaped[k - 1];
             depth[k + 1] = depth[k]
@@ -658,13 +658,15 @@ impl UrlScan {
         }
         // The first unescaped `)` at each depth, from the right: the first
         // `)` at a char's own depth is where the depth first falls below it.
+        // A depth lies in `-n..=n`, so `depth + n` indexes `first_close`.
         let mut unopened_close = vec![n; n + 1];
-        let mut first_close: HashMap<i64, usize> = HashMap::new();
+        let mut first_close = vec![n; 2 * n + 1];
+        let slot = |depth: isize| (depth + n as isize) as usize;
         for k in (0..n).rev() {
             if chars[k] == ')' && !escaped[k] {
-                first_close.insert(depth[k], k);
+                first_close[slot(depth[k])] = k;
             }
-            unopened_close[k] = first_close.get(&depth[k]).copied().unwrap_or(n);
+            unopened_close[k] = first_close[slot(depth[k])];
         }
         let mut mark = vec![None; n + 1];
         for k in 0..n {
@@ -684,12 +686,13 @@ impl UrlScan {
         }
     }
 
-    /// The destination and title after the `]` at `close`, as CommonMark
+    /// The destination and title after the `]` at `close`, much as CommonMark
     /// reads an inline link: `(`, then a URL, then a title in `"…"`, `'…'` or
     /// `(…)` after whitespace, then `)`, with whitespace and at most one line
     /// break between the parts. The URL is `<…>`, which may hold spaces but
-    /// no line break or `<`, or a run with no whitespace whose parentheses
-    /// balance. A `\` escapes the next character.
+    /// no `<`, or a run with no whitespace whose parentheses balance. A `\`
+    /// escapes the next character, but not a line break. Unlike CommonMark, a
+    /// title and a `<…>` URL stay on one line.
     fn destination(&self, close: usize) -> Option<Destination> {
         let chars = &self.chars;
         if chars.get(close + 1) != Some(&'(') {
@@ -697,7 +700,7 @@ impl UrlScan {
         }
         let from = self.skip_space(close + 2);
         let (url_start, url_end, after_url) = if chars.get(from) == Some(&'<') {
-            let end = self.delimited(from + 1, '>', &['<', '\n'])?;
+            let end = self.delimited(from + 1, '>', &['<'])?;
             (from + 1, end, end + 1)
         } else {
             let space = self.space[from];
@@ -749,8 +752,8 @@ impl UrlScan {
         }
     }
 
-    /// The index of the first unescaped `close` at or after `from`, when no
-    /// unescaped char of `refused` and no blank line comes before it.
+    /// The index of the first unescaped `close` at or after `from` on the
+    /// same line, when no unescaped char of `refused` comes before it.
     fn delimited(&self, from: usize, close: char, refused: &[char]) -> Option<usize> {
         let chars = &self.chars;
         let mut at = from;
@@ -759,22 +762,11 @@ impl UrlScan {
             if c == close {
                 return Some(at);
             }
-            if refused.contains(&c) {
+            if c == '\n' || refused.contains(&c) {
                 return None;
             }
-            match c {
-                '\\' => at += 1,
-                '\n' => {
-                    let rest = &chars[at + 1..];
-                    let blank = rest
-                        .iter()
-                        .find(|c| !matches!(c, ' ' | '\t' | '\r'))
-                        .is_none_or(|c| *c == '\n');
-                    if blank {
-                        return None;
-                    }
-                }
-                _ => {}
+            if c == '\\' && chars.get(at + 1).is_some_and(|next| *next != '\n') {
+                at += 1;
             }
             at += 1;
         }
@@ -795,6 +787,12 @@ impl UrlScan {
             is_vault_link_url(&chars[tail_start..end].iter().collect::<String>())
         })
     }
+}
+
+/// Whether a URL points outside the vault: it has a URI scheme, or starts
+/// with `//` and names a host.
+fn is_external(url: &[char]) -> bool {
+    url.starts_with(&['/', '/']) || has_scheme(url)
 }
 
 /// `http:`, `mailto:`, an app-specific scheme — anything with a URI scheme is external.
