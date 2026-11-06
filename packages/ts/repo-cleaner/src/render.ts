@@ -15,6 +15,7 @@ import {
   KINDS,
   isPrune,
   isUnfetched,
+  parseRowId,
   totalOf,
   type Bucket,
   type DuplicateCheckout,
@@ -437,7 +438,15 @@ function resultWord(step: Step, style: Style): string {
   return step.action === 'prune-worktrees' ? style.prune(word) : style.delete(word)
 }
 
-const shownRow = (id: string): string => ellipsize(stripControls(id), 70)
+/**
+ * A row id for a preview line, its name shortened from the left to fit; the
+ * kind in front always stays, so a long path still says what kind of row it is.
+ */
+function shownRow(id: string): string {
+  const parsed = parseRowId(id)
+  if (parsed === null) return ellipsize(stripControls(id), 70)
+  return `${parsed.kind}:${ellipsize(stripControls(parsed.name), 70 - parsed.kind.length - 1)}`
+}
 
 /**
  * What a run is about to do, for the person asked to approve it: per

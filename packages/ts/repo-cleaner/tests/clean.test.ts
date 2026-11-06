@@ -276,7 +276,8 @@ describe('sparing a remote branch (#583)', () => {
     // The second clone names its remote `upstream`, so `remote:origin/merged-a` names one row.
     const second = tempDir('repo-cleaner-clone-')
     sh(second, ['clone', '-q', '-o', 'upstream', fx.bare, 'b'])
-    const [rootA, rootB] = [fx.root, join(second, 'b')]
+    // As git reports them: macOS puts the temp dir behind a symlink (/var to /private/var).
+    const [rootA, rootB] = [realpathSync(fx.root), join(second, 'b')]
     const p = plan(sweepOf([rootA, rootB], fx.root))
     expect(p.repos.map((r) => r.root).sort()).toEqual([rootA, rootB].sort())
     const receipt = run(check(p, { spare: [SPARE] }, { cwd: fx.root }), {
