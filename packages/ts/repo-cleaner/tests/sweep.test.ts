@@ -446,9 +446,9 @@ describe('counts', () => {
         for (const verdict of ['review', 'blocked', 'keep'] as const) {
           expect(bucket[verdict]).toBe(rows.filter((r) => r.verdict === verdict).length)
         }
-        expect(
-          bucket.delete + bucket.prune + bucket.review + bucket.blocked + bucket.keep,
-        ).toBe(bucket.total)
+        expect(bucket.delete + bucket.prune + bucket.review + bucket.blocked + bucket.keep).toBe(
+          bucket.total,
+        )
       }
     }
     for (const kind of KINDS) {
@@ -1000,9 +1000,7 @@ describe('merged-PR evidence', () => {
 
   test('a branch-scoped sweep without worktrees in scope keeps the branch', () => {
     const swept = sweepOne(checkout, withPrs({ branch: 'wt-landed', only: ['branch', 'remote'] }))
-    expect(swept.rows.map((row) => [row.id, deletable(row)])).toEqual([
-      ['branch:wt-landed', false],
-    ])
+    expect(swept.rows.map((row) => [row.id, deletable(row)])).toEqual([['branch:wt-landed', false]])
   })
 
   test('a freed branch is kept again once a host holds its worktree back', () => {

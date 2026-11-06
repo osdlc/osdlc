@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { sweepRepo } from '@osdlc/repo-cleaner'
+import { sweep } from '@osdlc/repo-cleaner'
 
 // A branch already merged into the default branch is proposed for deletion.
 const root = realpathSync(mkdtempSync(join(tmpdir(), 'repo-cleaner-smoke-')))
@@ -38,10 +38,12 @@ try {
   git('commit', '--allow-empty', '-q', '-m', 'initial')
   git('branch', 'fix/done')
 
-  const sweep = sweepRepo(root, { noProvider: true, cwd: root })
-  const item = sweep.items.find((i) => i.id === 'fix/done')
+  const swept = sweep([root], { cwd: root })
+  assert.equal(swept.repos[0].error, null)
+  const item = swept.repos[0].rows.find((r) => r.id === 'branch:fix/done')
   assert.ok(item, 'the merged branch is inventoried')
-  assert.equal(item.classification, 'safe-to-delete')
+  assert.equal(item.verdict, 'delete')
+  assert.equal(item.action, 'delete')
 } finally {
   rmSync(root, { recursive: true, force: true })
 }

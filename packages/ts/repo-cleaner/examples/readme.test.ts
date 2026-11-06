@@ -26,7 +26,7 @@ test('a branch merged into main is proposed for deletion, and still exists', () 
   const tip = git(['rev-parse', 'fix/login-redirect'])
 
   const result = sweep([root], { cwd: root })
-  const row = result.repos[0].rows.find((r) => r.id === 'branch:fix/login-redirect')
+  const row = result.repos[0]?.rows.find((r) => r.id === 'branch:fix/login-redirect')
 
   expect(row?.verdict).toBe('delete')
   expect(row?.commands).toEqual([`git update-ref -d refs/heads/fix/login-redirect ${tip}`])

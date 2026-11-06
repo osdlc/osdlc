@@ -276,8 +276,9 @@ describe('sparing a remote branch (#583)', () => {
     // The second clone names its remote `upstream`, so `remote:origin/merged-a` names one row.
     const second = tempDir('repo-cleaner-clone-')
     sh(second, ['clone', '-q', '-o', 'upstream', fx.bare, 'b'])
-    const p = plan(sweepOf([fx.root, join(second, 'b')], fx.root))
-    const [rootA, rootB] = p.repos.map((r) => r.root) as [string, string]
+    const [rootA, rootB] = [fx.root, join(second, 'b')]
+    const p = plan(sweepOf([rootA, rootB], fx.root))
+    expect(p.repos.map((r) => r.root).sort()).toEqual([rootA, rootB].sort())
     const receipt = run(check(p, { spare: [SPARE] }, { cwd: fx.root }), {
       cwd: fx.root,
       source: '(test)',
@@ -686,9 +687,29 @@ describe('check and run', () => {
     expect(p.repos[0]!.rows.some((r) => r.id === 'branch:wt-branch')).toBe(true)
     const { receipt } = apply(fx, p, { pick: ['branch:wt-branch'] })
 
-    expect(receipt.dropped.map((d) => [d.row, d.reason])).toEqual([['branch:wt-branch', 'held']])
+    expect(receipt.dropped.map((d) => [d.row, d.detail])).toEqual([
+      ['branch:wt-branch', 'checked out in a worktree (handle via that worktree)'],
+    ])
+    expect(receipt.steps).toEqual([])
     expect(existsSync(fx.worktree)).toBe(true)
     expect(refs(fx.root)).toContain('refs/heads/wt-branch ')
+  })
+
+  // src bug: picked alone, the re-sweep covers only branches (clean.ts:321), so
+  // the worktree never frees the branch (sweep.ts:383) and the row drops as a
+  // structural `keep`. Picked beside another worktree, the same row drops as
+  // `held` — the reason for "a branch whose worktree this run does not remove".
+  test.fails('a freed branch picked without its worktree drops as held', () => {
+    const fx = buildFixture()
+    mergeWorktreeBranch(fx)
+    const shown = preview(fx, makePlan(fx.root), { pick: ['branch:wt-branch'] })
+    expect(shown.dropped.map((d) => [d.row, d.reason, d.detail])).toEqual([
+      [
+        'branch:wt-branch',
+        'held',
+        `checked out in ${fx.worktree}, which this run does not remove`,
+      ],
+    ])
   })
 
   test('a freed branch picked with another worktree is dropped, not refused mid-run', () => {
@@ -934,13 +955,13 @@ describe('check and run', () => {
     sh(b, ['config', `url.${fx.bare}.insteadOf`, 'alias:project'])
     sh(b, ['remote', 'set-url', 'upstream', 'alias:project'])
     const p = plan(sweepOf([fx.root, b], fx.root))
-    const [, rootB] = p.repos.map((r) => r.root) as [string, string]
+    expect(p.repos.map((r) => r.root)).toContain(b)
     const shown = check(
       p,
       { pick: ['remote:origin/merged-a', 'remote:upstream/merged-a'] },
       { cwd: fx.root },
     )
-    expect(shown.dropped.map((d) => [d.repo, d.reason])).toEqual([[rootB, 'duplicate']])
+    expect(shown.dropped.map((d) => [d.repo, d.reason])).toEqual([[b, 'duplicate']])
   })
 
   test('local remotes `x` and `x.git` are different remotes', () => {

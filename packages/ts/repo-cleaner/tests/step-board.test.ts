@@ -6,10 +6,10 @@ import { boardLines, stepBoard } from '../src/step-board.ts'
 function step(id: string | null, result: Step['result'] = 'pending'): Step {
   return {
     repo: '/r',
-    row: id === null ? null : { category: 'local_branch', id },
-    action: id === null ? 'prune-worktrees' : 'delete-local',
+    row: id === null ? null : `branch:${id}`,
+    action: id === null ? 'prune-worktrees' : 'delete-branch',
     command: '',
-    expected_sha: null,
+    expectedSha: null,
     result,
     error: null,
     verification: null,
@@ -22,9 +22,9 @@ describe('boardLines', () => {
   test('a row per step: full and ticked when done, half while running, empty while waiting', () => {
     const steps = [step('a', 'ok'), step('b'), step('c'), step(null)]
     expect(boardLines(steps, 1, SIZE)).toEqual([
-      '  ██████████ ✓ delete  local_branch  a',
-      '  █████░░░░░ › delete  local_branch  b',
-      '  ░░░░░░░░░░   delete  local_branch  c',
+      '  ██████████ ✓ delete  branch:a',
+      '  █████░░░░░ › delete  branch:b',
+      '  ░░░░░░░░░░   delete  branch:c',
       '  ░░░░░░░░░░   prune   worktree records in /r',
       `  ${'█'.repeat(8)}${'░'.repeat(22)} 1/4`,
     ])
@@ -32,7 +32,7 @@ describe('boardLines', () => {
 
   test('a failed step is crossed', () => {
     const lines = boardLines([step('a', 'ok'), step('b', 'failed')], null, SIZE)
-    expect(lines[1]).toBe('  ██████████ ✗ delete  local_branch  b')
+    expect(lines[1]).toBe('  ██████████ ✗ delete  branch:b')
     expect(lines[2]).toMatch(/ 2\/2$/)
   })
 
@@ -43,11 +43,11 @@ describe('boardLines', () => {
     expect(lines).toHaveLength(8)
     expect(lines[0]).toBe('  … 19 above')
     expect(lines.slice(1, 6).map((l) => l.split('  ').pop())).toEqual([
-      'b19',
-      'b20',
-      'b21',
-      'b22',
-      'b23',
+      'branch:b19',
+      'branch:b20',
+      'branch:b21',
+      'branch:b22',
+      'branch:b23',
     ])
     expect(lines[1]).toContain('✓')
     expect(lines[2]).toContain('›')
@@ -59,7 +59,7 @@ describe('boardLines', () => {
     const steps = Array.from({ length: 5 }, (_, i) => step(`b${i}`))
     const lines = boardLines(steps, 2, { width: 80, height: 3 })
     expect(lines).toHaveLength(2)
-    expect(lines[0]).toContain('› delete  local_branch  b2')
+    expect(lines[0]).toContain('› delete  branch:b2')
   })
 
   test('every line fits a narrow terminal, the total bar included', () => {
@@ -86,8 +86,8 @@ describe('stepBoard', () => {
     board.draw(1)
     expect(out[0]).not.toContain('\x1b[3A')
     expect(out[1]!.startsWith('\x1b[3A')).toBe(true)
-    expect(out[1]).toContain('✓ delete  local_branch  a')
-    expect(out[1]).toContain('› delete  local_branch  b')
+    expect(out[1]).toContain('✓ delete  branch:a')
+    expect(out[1]).toContain('› delete  branch:b')
   })
 
   test('a frame shorter than the last one blanks the rows the last one drew', () => {
