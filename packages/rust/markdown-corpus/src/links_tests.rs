@@ -290,6 +290,38 @@ fn an_apply_that_cannot_read_under_propagate_makes_the_next_refresh_fail() {
 }
 
 #[test]
+fn an_apply_keeps_reporting_a_file_it_still_cannot_stat() {
+    let d = linked_vault();
+    let svg = join_rel(root(), "assets/diagram.svg");
+    let locked = hooks::StatHook::denied(&*d, svg.clone());
+    let (g, c) = (walking(Errors::Report), FixedClock::new(0));
+    g.refresh(&locked, &c, root());
+    assert_eq!(paths_of(g.unreadable()), vec![svg.clone()]);
+    let changed = ["assets/diagram.svg".to_string()];
+    g.apply_changes(&locked, root(), &changed);
+    assert_eq!(paths_of(g.unreadable()), vec![svg], "as the sweep has it");
+    g.apply_changes(&*d, root(), &changed);
+    assert!(g.unreadable().is_empty());
+}
+
+#[test]
+fn a_clean_sweep_does_not_put_back_what_an_apply_cleared() {
+    let d = linked_vault();
+    let beta = join_rel(root(), "Projects/Beta.md");
+    let locked = hooks::StatHook::unreadable(&*d, beta);
+    let (g, c) = (Rc::new(walking(Errors::Report)), FixedClock::new(0));
+    g.refresh(&locked, &c, root());
+    assert_eq!(g.unreadable().len(), 1);
+    // The next sweep is clean (Beta is still unreadable, so unchanged), and
+    // an apply that reads Beta lands in the middle of it.
+    let (g2, d2) = (Rc::clone(&g), Rc::clone(&d));
+    mid_sweep(move || g2.apply_changes(&*d2, root(), &["Projects/Beta.md".to_string()]));
+    g.refresh_now(&locked, &c, root());
+    assert!(g.unreadable().is_empty(), "the apply's report stands");
+    assert!(!g.outbound("Projects/Beta.md").is_empty());
+}
+
+#[test]
 fn a_reporting_graph_names_a_folder_it_cannot_list() {
     let d = linked_vault();
     let projects = join_rel(root(), "Projects");
@@ -1130,6 +1162,23 @@ mod native {
             g.refresh_now(&NativeVfs, &SystemClock, d.path()).unchanged,
             5
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_symlink_is_not_an_unreadable_note() {
+        let d = native_linked();
+        std::os::unix::fs::symlink(d.path().join("not-yet.md"), d.path().join("Link.md")).unwrap();
+        for errors in [Errors::Report, Errors::Propagate] {
+            let g = LinkGraph::new().with_walk(WalkOptions {
+                errors,
+                ..LinkGraph::default_walk()
+            });
+            g.try_refresh_now(&NativeVfs, &SystemClock, d.path())
+                .unwrap();
+            assert!(g.paths().contains(&"Link.md".to_string()));
+            assert!(g.unreadable().is_empty(), "{errors:?}");
+        }
     }
 
     #[cfg(unix)]

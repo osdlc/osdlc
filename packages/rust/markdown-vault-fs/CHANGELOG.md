@@ -24,8 +24,8 @@ A walk can keep going past what it cannot read and say what that was.
 - `Errors::Report`: the walk skips what it cannot read, as `Skip` does, and
   `walk_reporting` returns each folder it could not list and each file it
   could not stat in `WalkOutcome::errors`, in the order met. A folder that
-  overlapping roots both reach is reported once, and a file the walk does
-  not collect is not reported. `WalkOptions::admission` answers under
+  overlapping roots both reach is reported once. A file the walk does not
+  list (not collected, or dropped by `min_bytes`) is not reported. `WalkOptions::admission` answers under
   `Report` as under `Skip`.
 - `Errors` re-exported from the crate root and `walk`.
 

@@ -34,8 +34,9 @@
 //! passed over. [`Errors::Propagate`]: the sweep fails. A note that could
 //! not be read is never fresh, so every sweep tries it again; one that still
 //! cannot be read counts as unchanged, so it does not make the sweep
-//! rebuild. A note that went away between the walk and its read counts as
-//! unreadable, with [`std::io::ErrorKind::NotFound`].
+//! rebuild. A note that is not there when read (gone since the walk, or a
+//! dangling symlink) is not an error: it has empty facts until the next
+//! sweep drops it or its target arrives.
 //!
 //! # Freshness
 //!
@@ -510,7 +511,7 @@ impl LinkGraph {
             let cached = cache.get(&entry.rel);
             let (facts, error) = scan_note(vfs, &*self.tags, self.split, &entry.abs, size, mtime);
             if let Some(e) = error {
-                unread.note(e)?;
+                unread.met(e)?;
                 // Unreadable before too: nothing moved, so the sweep can
                 // stay clean.
                 if let Some(prev) = cached.filter(|c| c.unread) {
@@ -652,18 +653,25 @@ impl LinkGraph {
                 // the sweep, a note it lists is read through a link, and one
                 // that cannot be stamped (a dangling link, a link to a
                 // folder) is kept with nothing read and never fresh.
+                // What it cannot stat or read is reported as the sweep
+                // reports it. An apply cannot fail; under `Propagate` the
+                // next refresh walks and does.
                 let seen = if admission == Admission::Unlisted {
                     Seen::Gone
                 } else if rel.to_lowercase().ends_with(".md") && self.reads(rel) {
-                    let (size, mtime) = stamp_listed(vfs, &abs);
+                    let (size, mtime) = stamp_listed(vfs, &abs).unwrap_or_else(|e| {
+                        stale |= unread.met(e).is_err();
+                        (0, None)
+                    });
                     let (facts, error) = scan_note(vfs, &*self.tags, self.split, &abs, size, mtime);
-                    // An apply cannot fail; under `Propagate` the next
-                    // refresh walks and does.
                     if let Some(e) = error {
-                        stale |= unread.note(e).is_err();
+                        stale |= unread.met(e).is_err();
                     }
                     Seen::Note(facts)
                 } else {
+                    if let Err(e) = vfs.metadata(&abs) {
+                        stale |= unread.met(e).is_err();
+                    }
                     Seen::File
                 };
                 (rel, abs, seen)
@@ -727,11 +735,17 @@ impl LinkGraph {
     /// the last sweep could not list and each file it could not stat (in
     /// walk order), then each note it listed but could not read, once per
     /// path. An apply replaces the entries for the paths it names with what
-    /// it met, so a note it now reads leaves the list and one it cannot read
-    /// joins it; a folder's entry clears on the next sweep. Empty under the
+    /// it met (a stat or a read), so a note it now reads leaves the list and
+    /// one it cannot read joins it; a folder's entry clears on the next
+    /// sweep. Empty under the
     /// other [`Errors`] policies.
     ///
     /// Each path is the corpus folder joined with the corpus-relative path.
+    /// An entry for a path in [`Self::paths`] is a file the graph could not
+    /// stat or a note it could not read; any other entry is a folder it
+    /// could not list. A note that is not there when read (gone since the
+    /// walk, or a dangling symlink) is not an entry.
+    ///
     /// Read under its own lock hold, like [`Self::paths`]: on a graph shared
     /// across threads it can come from a later sweep or apply than a
     /// [`Self::snapshot`] taken before it.
@@ -1117,15 +1131,15 @@ pub(crate) fn stamp_of(vfs: &dyn Vfs, abs: &Path) -> Option<(u64, i64)> {
 
 /// `(size, mtime)` for a file the walk lists: [`stamp_of`], or when that
 /// fails (a dangling link, a link to a folder, no time) the size of the
-/// entry itself and no time, which never compares fresh.
-pub(crate) fn stamp_listed(vfs: &dyn Vfs, abs: &Path) -> (u64, Option<i64>) {
-    let Ok(entry) = vfs.metadata(abs) else {
-        return (0, None);
-    };
-    match stamp_through(vfs, abs, entry) {
+/// entry itself and no time, which never compares fresh. The error when
+/// the entry itself cannot be statted; the walk lists it with size 0 and no
+/// time.
+pub(crate) fn stamp_listed(vfs: &dyn Vfs, abs: &Path) -> Result<(u64, Option<i64>), VfsError> {
+    let entry = vfs.metadata(abs)?;
+    Ok(match stamp_through(vfs, abs, entry) {
         Some((size, mtime)) => (size, Some(mtime)),
         None => (entry.len, None),
-    }
+    })
 }
 
 /// [`stamp_of`] given the entry's own metadata.
@@ -1178,11 +1192,16 @@ impl Unread {
         }
     }
 
-    /// A note the cache listed but could not read: nothing under
-    /// [`Errors::Skip`], kept once per path under [`Errors::Report`] (a file
-    /// the walk could not stat is already there), the error under
-    /// [`Errors::Propagate`].
-    pub(crate) fn note(&mut self, e: VfsError) -> Result<(), WalkError> {
+    /// An error the cache met on a path the walk lists: a note it could not
+    /// read, or in an apply a file it could not stat. Nothing under
+    /// [`Errors::Skip`], kept once per path under [`Errors::Report`], the
+    /// error under [`Errors::Propagate`]. A path that is not there is not an
+    /// error: the file went away since it was listed (the next sweep drops
+    /// it), or it is a symlink whose target is not there yet.
+    pub(crate) fn met(&mut self, e: VfsError) -> Result<(), WalkError> {
+        if e.is_not_found() {
+            return Ok(());
+        }
         match self.policy {
             Errors::Skip => {}
             Errors::Report => self.keep(e),

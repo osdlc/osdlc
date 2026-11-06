@@ -288,9 +288,9 @@ impl FrontmatterIndex {
             let cached = cache.get(&entry.rel);
             let (note, error) = parse_one(vfs, self.split, &entry.rel, &entry.abs, size, mtime);
             if let Some(e) = error {
-                unread.note(e)?;
+                unread.met(e)?;
                 // Unreadable before too: nothing moved.
-                if let Some(prev) = cached.filter(|c| c.as_ref() == &note) {
+                if let Some(prev) = cached.filter(|c| c.parse_error.as_deref() == Some(UNREAD)) {
                     stats.unchanged += 1;
                     seen.insert(entry.rel, Arc::clone(prev));
                     continue;
@@ -351,15 +351,18 @@ impl FrontmatterIndex {
         (window, entries.len())
     }
 
-    /// What the index could not read, under [`Errors::Report`](crate::Errors::Report): each folder
-    /// the last walk could not list and each file it could not stat (in walk
-    /// order), then each note it listed but could not read, once per path.
-    /// An apply replaces the entry for the note it names with what it met;
-    /// a folder's entry clears on the next sweep. Empty under the other
-    /// [`Errors`](crate::Errors) policies. See
-    /// [`LinkGraph::unreadable`](crate::LinkGraph::unreadable).
+    /// What the index could not read, under
+    /// [`Errors::Report`](crate::Errors::Report): each folder the last walk
+    /// could not list and each file it could not stat (in walk order), then
+    /// each note it listed but could not read, once per path. An apply
+    /// replaces the entry for the note it names with what it met; a folder's
+    /// entry clears on the next sweep. Empty under the other
+    /// [`Errors`](crate::Errors) policies.
     ///
     /// Each path is the corpus folder joined with the corpus-relative path.
+    /// An entry for a note [`Self::get`] has is one the index could not stat
+    /// or read; any other entry is a folder. See
+    /// [`LinkGraph::unreadable`](crate::LinkGraph::unreadable).
     pub fn unreadable(&self) -> Vec<Arc<VfsError>> {
         (*self.state.lock().unwrap().unreadable).clone()
     }
@@ -432,13 +435,17 @@ impl FrontmatterIndex {
         // link) is kept with the size of the link and never fresh.
         let mut unread = Unread::new(self.walk.errors, Vec::new());
         let mut stale = false;
+        // What it cannot stat or read is reported as the sweep reports it.
+        // An apply cannot fail; under `Propagate` the next refresh walks and
+        // does.
         let parsed = (admission == Admission::Listed).then(|| {
-            let (size, mtime) = stamp_listed(vfs, &abs);
+            let (size, mtime) = stamp_listed(vfs, &abs).unwrap_or_else(|e| {
+                stale |= unread.met(e).is_err();
+                (0, None)
+            });
             let (note, error) = parse_one(vfs, self.split, rel, &abs, size, mtime);
-            // An apply cannot fail; under `Propagate` the next refresh walks
-            // and does.
             if let Some(e) = error {
-                stale = unread.note(e).is_err();
+                stale |= unread.met(e).is_err();
             }
             note
         });
@@ -498,6 +505,9 @@ impl FrontmatterIndex {
     }
 }
 
+/// [`IndexedNote::parse_error`] for a note that could not be read.
+const UNREAD: &str = "could not read the file";
+
 fn is_note(rel: &str) -> bool {
     rel.to_lowercase().ends_with(".md")
 }
@@ -521,7 +531,7 @@ fn parse_one(
                 path: rel.to_string(),
                 title,
                 frontmatter: Mapping::new(),
-                parse_error: Some("could not read the file".into()),
+                parse_error: Some(UNREAD.into()),
                 size,
                 mtime_ns: None,
             };

@@ -240,10 +240,12 @@ pub struct WalkOutcome {
     /// legitimately lacks a root until the user creates it, and the UI says so
     /// rather than silently reporting zero files.
     pub missing_roots: Vec<String>,
-    /// Each folder the walk could not list and each file it could not stat,
-    /// in the order met, once each. A file that went away between its
-    /// folder's listing and its stat is here too, as `NotFound`. A file the
-    /// walk does not collect is not. Only filled under [`Errors::Report`].
+    /// Each folder the walk could not list and each file it lists but could
+    /// not stat, in the order met, once each. A file that went away between
+    /// its folder's listing and its stat is here too, as `NotFound`. A file
+    /// the walk does not list (not collected, or under
+    /// [`WalkOptions::min_bytes`] at the size 0 a failed stat gives it) is
+    /// not. Only filled under [`Errors::Report`].
     pub errors: Vec<VfsError>,
 }
 
@@ -328,21 +330,21 @@ pub fn walk_reporting(
     }
 
     let mut entries = Vec::new();
-    let mut errors: Vec<VfsError> = Vec::new();
+    let mut errors = Vec::new();
     // Overlapping roots list a folder under both; it is reported once.
     let mut reported = HashSet::new();
     for sub in &subtrees {
-        let outcome = vfs_walk::walk_subtree(vfs, vault_dir, sub, &inner)?;
-        let mut met = outcome.errors;
-        for found in outcome.entries {
-            if !collect_early && !collects(&found.rel) {
-                // Not this walk's file, so its stat error is not either.
+        let vfs_walk::WalkOutcome {
+            entries: found_entries,
+            errors: met,
+        } = vfs_walk::walk_subtree(vfs, vault_dir, sub, &inner)?;
+        // A stat error is reported only for a file the walk lists.
+        let mut dropped = HashSet::new();
+        for found in found_entries {
+            if (!collect_early && !collects(&found.rel)) || found.size < opts.min_bytes {
                 if !met.is_empty() {
-                    met.retain(|e| e.path() != found.abs);
+                    dropped.insert(found.abs);
                 }
-                continue;
-            }
-            if found.size < opts.min_bytes {
                 continue;
             }
             let name = found.rel.rsplit('/').next().unwrap_or(&found.rel);
@@ -355,10 +357,9 @@ pub fn walk_reporting(
                 is_symlink: found.is_symlink,
             });
         }
-        errors.extend(
-            met.into_iter()
-                .filter(|e| !rooted || reported.insert(e.path().to_path_buf())),
-        );
+        errors.extend(met.into_iter().filter(|e| {
+            !dropped.contains(e.path()) && (!rooted || reported.insert(e.path().to_path_buf()))
+        }));
     }
 
     // No sort here. The name order inside each folder already makes the
@@ -1394,6 +1395,17 @@ mod tests {
         };
         assert!(
             walk_reporting(&img, Path::new(V), &refusing)
+                .unwrap()
+                .errors
+                .is_empty()
+        );
+        // Nor is a file `min_bytes` drops at the size 0 a failed stat gives.
+        let sized = WalkOptions {
+            min_bytes: 1,
+            ..report.clone()
+        };
+        assert!(
+            walk_reporting(&stat, Path::new(V), &sized)
                 .unwrap()
                 .errors
                 .is_empty()
