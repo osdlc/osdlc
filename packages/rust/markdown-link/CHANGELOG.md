@@ -62,7 +62,9 @@ makes the same changes in its 0.9.0, and both suites read the new cases.
   line break, may come around the URL and the title. A `\` escapes the next
   character, and the URL and title keep it as written. Unlike CommonMark, a
   title and a `<…>` URL stay on one line. A URL starting with `//` names a
-  host, so `[a](//example.com/x.md)` is no longer a link.
+  host, so `[a](//example.com/x.md)` is no longer a link. A Markdown link
+  the scanner does not keep, such as one to an `https:` URL, is stepped over
+  whole, so a `[[x]]` in its title is not a wikilink.
 
 ### Added
 
@@ -72,11 +74,14 @@ makes the same changes in its 0.9.0, and both suites read the new cases.
 - `split_alias` is public: a wikilink body split at its first `|`, without
   the `\` that escapes the pipe in a table cell.
 - `BodyLink::title`: a markdown link's title, as written between its
-  delimiters. `None` for a wikilink or embed, and for a link with none.
+  delimiters. `None` for a wikilink or embed, and for a link with none. A
+  struct literal of `BodyLink` must name it.
 - `ScanOptions::all_markdown_links`: read every relative inline Markdown
   link, whatever its target (a `.yaml` file, a folder, a name with no
   extension), where by default only a note or an attachment counts. A link
-  with a URI scheme or an empty destination is never read.
+  with a URI scheme, a URL starting with `//` or an empty destination is
+  never read. The target keeps any `#fragment` or `?query`. A struct literal
+  of `ScanOptions` must name it, or end in `..Default::default()`.
 - `tests/fixtures/conformance.json`: a `code` case may list `ranges`, a body
   link may hold `title`, and `options` may set `allMarkdownLinks`.
 

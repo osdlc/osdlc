@@ -32,7 +32,9 @@ export interface ScanOptions {
    * Read every relative inline Markdown link, whatever its target: a `.yaml`
    * file, a folder, a name with no extension. Default `false`: a Markdown link
    * counts only when `isVaultLinkUrl` accepts its URL. A link with a URI
-   * scheme, or with an empty destination, is never read.
+   * scheme, a URL starting with `//` or an empty destination is never read.
+   * The target keeps any `#fragment` or `?query` as written, and loses `.md`
+   * only at its end: `[a](a.md#Intro)` targets `a.md#Intro`.
    */
   allMarkdownLinks?: boolean
 }
@@ -295,13 +297,12 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
       ) {
         dropOverlapped(abandoned, at[i]!)
       }
-      const link =
-        destination === null
-          ? null
-          : markdownLink(i, destination, at, scan!, options.allMarkdownLinks === true)
-      if (link !== null) {
-        out.push(link)
-        i = destination!.end
+      if (destination !== null) {
+        // A Markdown link, kept or not: its destination and title hold no
+        // link, so the scan moves past it.
+        const link = markdownLink(i, destination, at, scan!, options.allMarkdownLinks === true)
+        if (link !== null) out.push(link)
+        i = destination.end
         continue
       }
     }
@@ -477,8 +478,6 @@ function markdownLink(
   all: boolean,
 ): BodyLink | null {
   const harvested = all ? urlEnd > urlStart : scan.isVaultLink(urlStart, urlEnd)
-  // Not a link this dialect harvests. The caller advances one code point, so
-  // a match may start at an inner `[`: `[a[b](x.md)` is a link.
   if (!harvested || isExternal(scan.chars, urlStart, urlEnd)) return null
   const url = scan.chars.slice(urlStart, urlEnd).join('')
   return {
@@ -500,10 +499,11 @@ function markdownLink(
  * markdown link attempt read its destination in constant time, so a body of
  * failed attempts stays linear.
  *
- * A destination and title are read as written, not with code blanked:
- * CommonMark reads them where the link's `](` is, before any code or math
- * that would start in them, so `[a](notes/$x$.md)` is a link and the title of
- * ``[a](a.md "`")`` is a backtick.
+ * A destination and title are read as written, not with code blanked, as
+ * CommonMark reads them where the link's `](` is: `[a](notes/$x$.md)` is a
+ * link, and the title of ``[a](a.md "`")`` is a backtick. The code lexer does
+ * not know links, so it may still open code at such a backtick, which can hide
+ * text after the link.
  */
 class UrlScan {
   readonly chars: string[]
@@ -533,21 +533,27 @@ class UrlScan {
       this.space[k] = isWhitespace(chars[k]!) ? k : this.space[k + 1]!
     }
     // Which code points a `\` escapes, and the paren depth before each one.
-    const escaped: boolean[] = Array.from({ length: n }, () => false)
     this.depth = Array.from({ length: n + 1 }, () => 0)
+    let escaped = false
+    let lowest = 0
+    let highest = 0
     for (let k = 0; k < n; k++) {
-      escaped[k] = k > 0 && chars[k - 1] === '\\' && !escaped[k - 1]
       const c = chars[k]
-      this.depth[k + 1] = this.depth[k]! + (escaped[k] ? 0 : c === '(' ? 1 : c === ')' ? -1 : 0)
+      const d = this.depth[k]! + (escaped ? 0 : c === '(' ? 1 : c === ')' ? -1 : 0)
+      this.depth[k + 1] = d
+      lowest = Math.min(lowest, d)
+      highest = Math.max(highest, d)
+      escaped = !escaped && c === '\\'
     }
     // The first unescaped `)` at each depth, from the right: the first `)` at
-    // a code point's own depth is where the depth first falls below it.
+    // a code point's own depth is where the depth first falls below it. An
+    // unescaped `)` is where the depth falls.
     this.unopenedClose = Array.from({ length: n + 1 }, () => n)
-    // A depth lies in `-n..n`, so `depth + n` indexes `firstClose`.
-    const firstClose: number[] = Array.from({ length: 2 * n + 1 }, () => n)
+    const firstClose: number[] = Array.from({ length: highest - lowest + 1 }, () => n)
     for (let k = n - 1; k >= 0; k--) {
-      if (chars[k] === ')' && !escaped[k]) firstClose[this.depth[k]! + n] = k
-      this.unopenedClose[k] = firstClose[this.depth[k]! + n]!
+      const slot = this.depth[k]! - lowest
+      if (this.depth[k + 1]! < this.depth[k]!) firstClose[slot] = k
+      this.unopenedClose[k] = firstClose[slot]!
     }
     this.mark = Array.from({ length: n + 1 }, () => -1)
     for (let k = 0; k < n; k++) {
@@ -605,13 +611,16 @@ class UrlScan {
     return chars[end] === ')' ? { urlStart, urlEnd, title, end: end + 1 } : null
   }
 
-  /** The index past the spaces and tabs from `at`, and at most one line break among them. */
+  /**
+   * The index past the spaces and tabs from `at`, and at most one line break
+   * among them. A `\r` counts only before a `\n`.
+   */
   private skipSpace(from: number): number {
     let at = from
     let lineBreak = false
     for (;;) {
       const c = this.chars[at]
-      if (c === ' ' || c === '\t' || c === '\r') {
+      if (c === ' ' || c === '\t' || (c === '\r' && this.chars[at + 1] === '\n')) {
         at++
       } else if (c === '\n' && !lineBreak) {
         lineBreak = true

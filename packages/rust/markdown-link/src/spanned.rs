@@ -47,8 +47,10 @@ pub struct ScanOptions {
     /// Read every relative inline Markdown link, whatever its target: a
     /// `.yaml` file, a folder, a name with no extension. Off by default: a
     /// Markdown link counts only when [`crate::is_vault_link_url`] accepts
-    /// its URL. A link with a URI scheme, or with an empty destination, is
-    /// never read.
+    /// its URL. A link with a URI scheme, a URL starting with `//` or an empty
+    /// destination is never read. The target keeps any `#fragment` or
+    /// `?query` as written, and loses `.md` only at its end:
+    /// `[a](a.md#Intro)` targets `a.md#Intro`, and `[x](#h)` targets `#h`.
     pub all_markdown_links: bool,
 }
 
@@ -380,11 +382,17 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
             }
             if let Some(destination) = destination
                 && let Some(scan) = scan
-                && let Some(link) =
-                    spanned_markdown_link(i, destination, &at, scan, options.all_markdown_links)
             {
+                // A Markdown link, kept or not: its destination and title
+                // hold no link, so the scan moves past it.
+                out.extend(spanned_markdown_link(
+                    i,
+                    destination,
+                    &at,
+                    scan,
+                    options.all_markdown_links,
+                ));
                 i = destination.end;
-                out.push(link);
                 continue;
             }
         }
@@ -587,9 +595,7 @@ fn spanned_markdown_link(
         scan.is_vault_link(url_start, url_end)
     };
     if !harvested || is_external(&scan.chars[url_start..url_end]) {
-        // Not a link this dialect harvests. The caller advances ONE character
-        // rather than skipping past the `[text](…)` it just walked, so a match
-        // may start at an inner `[`: `[a[b](x.md)` is a link.
+        // Not a link this dialect harvests.
         return None;
     }
     let url: String = scan.chars[url_start..url_end].iter().collect();
@@ -611,10 +617,11 @@ fn spanned_markdown_link(
 /// link attempt read its destination in constant time, so a body of failed
 /// attempts stays linear.
 ///
-/// A destination and title are read as written, not with code blanked:
-/// CommonMark reads them where the link's `](` is, before any code or math
-/// that would start in them, so `[a](notes/$x$.md)` is a link and the title
-/// of ``[a](a.md "`")`` is a backtick.
+/// A destination and title are read as written, not with code blanked, as
+/// CommonMark reads them where the link's `](` is: `[a](notes/$x$.md)` is a
+/// link, and the title of ``[a](a.md "`")`` is a backtick. The code lexer
+/// does not know links, so it may still open code at such a backtick, which
+/// can hide text after the link.
 #[derive(Debug)]
 struct UrlScan {
     chars: Vec<char>,
@@ -646,25 +653,27 @@ impl UrlScan {
             };
         }
         // Which chars a `\` escapes, and the paren depth before each char.
-        let mut escaped = vec![false; n];
         let mut depth = vec![0isize; n + 1];
+        let mut escaped = false;
         for k in 0..n {
-            escaped[k] = k > 0 && chars[k - 1] == '\\' && !escaped[k - 1];
             depth[k + 1] = depth[k]
-                + match (chars[k], escaped[k]) {
+                + match (chars[k], escaped) {
                     ('(', false) => 1,
                     (')', false) => -1,
                     _ => 0,
                 };
+            escaped = !escaped && chars[k] == '\\';
         }
         // The first unescaped `)` at each depth, from the right: the first
         // `)` at a char's own depth is where the depth first falls below it.
-        // A depth lies in `-n..=n`, so `depth + n` indexes `first_close`.
+        // An unescaped `)` is where the depth falls.
+        let lowest = depth.iter().copied().min().unwrap_or(0);
+        let highest = depth.iter().copied().max().unwrap_or(0);
+        let slot = |depth: isize| (depth - lowest) as usize;
+        let mut first_close = vec![n; slot(highest) + 1];
         let mut unopened_close = vec![n; n + 1];
-        let mut first_close = vec![n; 2 * n + 1];
-        let slot = |depth: isize| (depth + n as isize) as usize;
         for k in (0..n).rev() {
-            if chars[k] == ')' && !escaped[k] {
+            if depth[k + 1] < depth[k] {
                 first_close[slot(depth[k])] = k;
             }
             unopened_close[k] = first_close[slot(depth[k])];
@@ -738,12 +747,13 @@ impl UrlScan {
     }
 
     /// The index past the spaces and tabs from `at`, and at most one line
-    /// break among them.
+    /// break among them. A `\r` counts only before a `\n`.
     fn skip_space(&self, mut at: usize) -> usize {
         let mut line_break = false;
         loop {
             match self.chars.get(at) {
-                Some(' ' | '\t' | '\r') => at += 1,
+                Some(' ' | '\t') => at += 1,
+                Some('\r') if self.chars.get(at + 1) == Some(&'\n') => at += 1,
                 Some('\n') if !line_break => {
                     line_break = true;
                     at += 1;

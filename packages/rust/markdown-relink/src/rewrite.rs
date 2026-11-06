@@ -74,24 +74,23 @@ pub(crate) fn target_span(body: &str, link: &BodyLink) -> Option<Range<usize>> {
         }
         BodyLinkKind::Markdown => {
             let span = body.get(link.byte_start..link.byte_end)?;
-            // The label cannot contain `](`, as a link's text holds no
-            // link, so the first `](` is the one before the URL. Whitespace
-            // and a line break may come before the URL.
-            let paren = span.find("](")?;
-            let mut url_start = paren
-                + 2
-                + span[paren + 2..]
-                    .bytes()
-                    .take_while(|b| matches!(b, b' ' | b'\t' | b'\r' | b'\n'))
-                    .count();
-            if span.as_bytes().get(url_start) == Some(&b'<') {
-                url_start += 1;
-            }
-            let url_end = url_start + link.raw.len();
-            if span.get(url_start..url_end) != Some(link.raw.as_str()) {
-                return None;
-            }
-            Some(link.byte_start + url_start..link.byte_start + url_end)
+            // The URL follows a `](`, after any whitespace and a `<`. The
+            // label holds no `](` outside code, as a link's text holds no
+            // link, so the first `](` that the URL follows is the one.
+            span.match_indices("](").find_map(|(paren, _)| {
+                let mut url_start = paren
+                    + 2
+                    + span[paren + 2..]
+                        .bytes()
+                        .take_while(|b| matches!(b, b' ' | b'\t' | b'\r' | b'\n'))
+                        .count();
+                if span.as_bytes().get(url_start) == Some(&b'<') {
+                    url_start += 1;
+                }
+                let url_end = url_start + link.raw.len();
+                (span.get(url_start..url_end) == Some(link.raw.as_str()))
+                    .then(|| link.byte_start + url_start..link.byte_start + url_end)
+            })
         }
     }
 }
@@ -191,6 +190,8 @@ mod tests {
         // Space before the URL and a title after it are not part of it.
         assert_eq!(span_text("see [t]( \n<My Note.md> \"Hint\")"), "My Note.md");
         assert_eq!(span_text("see [[WIP] t](a(b).md 'x')"), "a(b).md");
+        // A `](` in code in the label is not the one.
+        assert_eq!(span_text("see [`](`](a.md)"), "a.md");
     }
 
     #[test]

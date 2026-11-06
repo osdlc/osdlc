@@ -91,8 +91,10 @@ bodyLinksSpanned('See [[Note#h|alias]] and `[[not a link]]`')
   `skipHtmlComments` (links in `<!-- -->` are not links), `selfLinks`
   (`[[#Heading]]` is a link with an empty target) and `allMarkdownLinks`
   (every relative Markdown link, whatever its target). A markdown link's
-  destination is read as CommonMark reads it, with its `title`, balanced
-  parentheses in the path and spaces in a `<…>` URL. The defaults are
+  destination is read much as CommonMark reads it, with its `title`,
+  balanced parentheses in the path and spaces in a `<…>` URL. Unlike
+  CommonMark, a title and a `<…>` URL stay on one line, and backslash
+  escapes stay in the URL and title as written. The defaults are
   `bodyLinksSpanned`'s. `scanBodyWith(body, options)` returns those links
   and `abandoned`, each `[[` the scan gave up on as an `AbandonedLink`
   (`reason`, `embed`, `start`, `end`), so a caller can flag link syntax left
