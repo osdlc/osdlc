@@ -32,6 +32,25 @@ never reads. Built on `markdown-vault-fs` 0.6.
   unchanged, so it does not rebuild the graph or move
   `FrontmatterIndex::changes`. A dangling symlink, which was counted as
   updated on every sweep, now counts as unchanged too.
+- `refresh` and `refresh_now`, on both caches, report a failed walk as the
+  cache stands (every note `unchanged`, and `resolvable` on the graph), as
+  a reused sweep does. Before, they reported all zeros while the cache
+  still held its notes. A failed walk also spends the TTL of the last good
+  sweep, so the next refresh walks again instead of reusing it; the cache
+  still takes applies.
+- An apply that names a path its folder lists under another spelling
+  (`Admission::Respelled`) drops it, as before, and now marks the cache
+  stale, so the next refresh walks and reads the file by the disk's
+  spelling. Before, an edit a watcher reported in another Unicode form or
+  case was lost until the TTL ran out. The old name after a case-only
+  rename on a case-insensitive file system is respelled too, so such a
+  rename costs one walk.
+- A change reported for the `.obsidian` folder itself marks a cache whose
+  walk reads `.obsidian/app.json` stale, as a change to the file does.
+- The docs of `Note::shape` and `read_note_with` say what the strict
+  framing means under `SplitMode::Lenient`: for an oddly fenced note where
+  the two splits end the block at different fences, it frames the strict
+  block, not the one read, so a writer splits strictly.
 
 ### Added
 

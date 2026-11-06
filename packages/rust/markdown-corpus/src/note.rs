@@ -26,7 +26,9 @@ pub struct Note {
     pub frontmatter_yaml: String,
     /// Everything after the closing fence, verbatim.
     pub body: String,
-    /// The framing (BOM, fences, line endings) to restore on write.
+    /// The framing (BOM, fences, line endings) to restore on write, from
+    /// the strict split. Under [`SplitMode::Lenient`] it can frame another
+    /// block than the one read; see [`read_note_with`].
     pub shape: NoteShape,
     /// Why the frontmatter did not parse, when it did not. A diagnostic, not
     /// a failure: the note is still usable.
@@ -82,9 +84,16 @@ pub fn read_note(src: &str) -> Note {
 
 /// [`read_note`] with the frontmatter found by `mode`.
 ///
-/// [`Note::shape`] is always the strict split's. For a block only the lenient
-/// split finds, it is the framing of a note with no frontmatter, so a writer
-/// that puts the note back with it reframes the block.
+/// [`Note::shape`] is always the strict split's, whatever `mode` read. It
+/// frames the block read only when both splits take the same block. Under
+/// [`SplitMode::Lenient`] they can differ: for a block only the lenient split
+/// finds, the shape is that of a note with no frontmatter; and for an oddly
+/// fenced note where both find a block but end it at different fences (a
+/// `--- ` with a trailing space before a plain `---`), it frames the strict
+/// split's block, not the one in [`Note::frontmatter_yaml`]. So a Lenient
+/// [`Note`] is not safe to put back together from its parts: a writer reads
+/// with [`SplitMode::Strict`]. The lenient split records no framing of its
+/// own.
 pub fn read_note_with(src: &str, mode: SplitMode) -> Note {
     let s = split(src);
     let lenient = (mode == SplitMode::Lenient)
@@ -187,6 +196,18 @@ mod tests {
         assert_eq!((a.frontmatter, a.body), (b.frontmatter, b.body));
         // No block by either rule: all body.
         assert_eq!(read_note_with("# T\n", SplitMode::Lenient).body, "# T\n");
+    }
+
+    #[test]
+    fn the_shape_frames_the_strict_block_even_when_the_lenient_one_is_read() {
+        // The lenient split ends the block at `--- `, the strict one at `---`.
+        let src = "---\na: 1\n--- \nb: 2\n---\nbody\n";
+        let strict = read_note(src);
+        let lenient = read_note_with(src, SplitMode::Lenient);
+        assert_eq!(strict.frontmatter_yaml, "a: 1\n--- \nb: 2");
+        assert_eq!(lenient.frontmatter_yaml, "a: 1");
+        assert_eq!(lenient.body, "b: 2\n---\nbody\n");
+        assert_eq!(lenient.shape, strict.shape, "the strict split's framing");
     }
 
     #[test]

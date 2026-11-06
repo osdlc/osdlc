@@ -153,17 +153,20 @@ impl FrontmatterIndex {
     }
 
     /// Walks the corpus and brings the index up to date, reusing a walk
-    /// younger than the TTL over the same corpus. A walk error leaves the
-    /// index as it was (empty when `vault_dir` is another corpus) and reports
-    /// nothing changed; [`Self::try_refresh`] returns it.
+    /// younger than the TTL over the same corpus. A reused walk reports the
+    /// index as `unchanged`. A walk error leaves the index as it was (empty
+    /// when `vault_dir` is another corpus) and reports it the same way, as
+    /// it stands when the call returns; [`Self::try_refresh`] returns the
+    /// error. A failed walk is never fresh: the next refresh walks again.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> RefreshStats {
-        self.try_refresh(vfs, clock, vault_dir).unwrap_or_default()
+        self.try_refresh(vfs, clock, vault_dir)
+            .unwrap_or_else(|_| unchanged(&self.state.lock().unwrap()))
     }
 
     /// [`Self::refresh`] that always walks.
     pub fn refresh_now(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> RefreshStats {
         self.try_refresh_now(vfs, clock, vault_dir)
-            .unwrap_or_default()
+            .unwrap_or_else(|_| unchanged(&self.state.lock().unwrap()))
     }
 
     /// [`Self::refresh`] that returns a walk error instead of leaving the
@@ -214,6 +217,18 @@ impl FrontmatterIndex {
         state.stale_marks += 1;
     }
 
+    /// After a failed walk at `now`: the last good walk stays, and keeps
+    /// taking applies, but no longer counts as fresh, so the next refresh
+    /// walks again rather than hide the failure.
+    fn spend_ttl(&self, vault_dir: &Path, now: i64) {
+        let mut state = self.state.lock().unwrap();
+        if state.for_vault.as_deref() == Some(vault_dir)
+            && let Some(done) = state.walked_at.as_mut()
+        {
+            *done = (*done).min(now - self.ttl());
+        }
+    }
+
     fn ttl(&self) -> i64 {
         if self.watched.load(Ordering::SeqCst) {
             WATCHED_TTL_MS
@@ -222,7 +237,20 @@ impl FrontmatterIndex {
         }
     }
 
+    /// One refresh. A failed walk spends the last good sweep's TTL, so the
+    /// next refresh walks again.
     fn sweep(
+        &self,
+        vfs: &dyn Vfs,
+        now: i64,
+        vault_dir: &Path,
+        honor_ttl: bool,
+    ) -> Result<RefreshStats, WalkError> {
+        self.walk_and_swap(vfs, now, vault_dir, honor_ttl)
+            .inspect_err(|_| self.spend_ttl(vault_dir, now))
+    }
+
+    fn walk_and_swap(
         &self,
         vfs: &dyn Vfs,
         now: i64,
@@ -236,10 +264,7 @@ impl FrontmatterIndex {
                     && let Some(done) = state.walked_at
                     && (0..self.ttl()).contains(&(now - done))
                 {
-                    return Ok(RefreshStats {
-                        unchanged: state.entries.len(),
-                        ..RefreshStats::default()
-                    });
+                    return Ok(unchanged(&state));
                 }
             } else {
                 // Emptying the index is a change, even if the walk below then
@@ -387,9 +412,11 @@ impl FrontmatterIndex {
     /// A path outside the index's walk ([`WalkOptions::admission`]), a file
     /// that is not a note, or a call against another corpus, does nothing. A
     /// note the walk would no longer list (gone, too small, a refused
-    /// symlink, or a spelling its folder does not list) is removed. With no
-    /// fresh walk to edit it only marks the index, so a walk that read the
-    /// note before the change is not stamped fresh.
+    /// symlink) is removed. So is a note its folder lists under another
+    /// spelling ([`Admission::Respelled`]), which also marks the index stale,
+    /// so the next refresh walks and finds the note by the spelling on disk. With
+    /// no fresh walk to edit it only marks the index, so a walk that read
+    /// the note before the change is not stamped fresh.
     ///
     /// A change to the excluded-files list the walk reads
     /// ([`WalkOptions::reads_rules_from`]) marks the index stale, so the next
@@ -402,19 +429,26 @@ impl FrontmatterIndex {
     /// once ([`WalkOptions::admissions`]).
     pub(crate) fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
         let notes: Vec<String> = rels.iter().filter(|rel| is_note(rel)).cloned().collect();
+        // The admissions read the file system, so they are taken under the
+        // apply lock: an apply that read a note before another apply must
+        // not install after it.
+        let _apply = self.apply_lock.lock().unwrap();
+        let mut respelled = false;
         if !notes.is_empty() {
-            // The admissions read the file system, so they are taken under
-            // the apply lock: an apply that read a note before another apply
-            // must not install after it.
-            let _apply = self.apply_lock.lock().unwrap();
             for (rel, admission) in self.walk.admissions(vfs, vault_dir, &notes) {
+                respelled |= admission == Admission::Respelled;
                 self.apply_admitted(vfs, vault_dir, rel, admission);
             }
         }
-        if rels.iter().any(|rel| self.walk.reads_rules_from(rel))
-            && self.state.lock().unwrap().for_vault.as_deref() == Some(vault_dir)
-        {
-            self.mark_stale();
+        // A respelled note is there by the disk's spelling, which only a walk
+        // finds, and the excluded files can move any note. Marked after the
+        // batch, so the rest of it still applies.
+        if respelled || rels.iter().any(|rel| self.walk.reads_rules_from(rel)) {
+            let mut state = self.state.lock().unwrap();
+            if state.for_vault.as_deref() == Some(vault_dir) {
+                state.walked_at = None;
+                state.stale_marks += 1;
+            }
         }
     }
 
@@ -510,6 +544,15 @@ impl FrontmatterIndex {
         state.unreadable = Arc::default();
         state.walked_at = None;
         state.applied += 1;
+    }
+}
+
+/// The index as it stands, every note counted unchanged: what a reused
+/// walk, or a failed one, reports.
+fn unchanged(state: &IndexState) -> RefreshStats {
+    RefreshStats {
+        unchanged: state.entries.len(),
+        ..RefreshStats::default()
     }
 }
 

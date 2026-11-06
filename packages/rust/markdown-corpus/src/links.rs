@@ -390,17 +390,19 @@ impl LinkGraph {
     /// Walks the corpus and brings the graph up to date, reusing a sweep
     /// younger than the TTL over the same corpus. A reused sweep reports the
     /// cache as `unchanged`. A walk error leaves the graph as it was (empty
-    /// when `vault_dir` is another corpus) and reports nothing changed;
-    /// [`Self::try_refresh`] returns it.
+    /// when `vault_dir` is another corpus) and reports it the same way, as
+    /// it stands when the call returns; [`Self::try_refresh`] returns the
+    /// error. A failed walk is never fresh: the next refresh walks again.
     pub fn refresh(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> GraphStats {
-        self.try_refresh(vfs, clock, vault_dir).unwrap_or_default()
+        self.try_refresh(vfs, clock, vault_dir)
+            .unwrap_or_else(|_| unchanged(&self.state.lock().unwrap()))
     }
 
     /// [`Self::refresh`] that always walks. For a caller that has just
     /// changed the corpus and must see its own edit.
     pub fn refresh_now(&self, vfs: &dyn Vfs, clock: &dyn Clock, vault_dir: &Path) -> GraphStats {
         self.try_refresh_now(vfs, clock, vault_dir)
-            .unwrap_or_default()
+            .unwrap_or_else(|_| unchanged(&self.state.lock().unwrap()))
     }
 
     /// [`Self::refresh`] that returns a walk error instead of leaving the
@@ -425,7 +427,20 @@ impl LinkGraph {
         self.sweep(vfs, clock.now_ms(), vault_dir, false)
     }
 
+    /// One refresh. A failed walk spends the last good sweep's TTL, so the
+    /// next refresh walks again.
     fn sweep(
+        &self,
+        vfs: &dyn Vfs,
+        now: i64,
+        vault_dir: &Path,
+        honor_ttl: bool,
+    ) -> Result<GraphStats, WalkError> {
+        self.walk_and_swap(vfs, now, vault_dir, honor_ttl)
+            .inspect_err(|_| self.spend_ttl(vault_dir, now))
+    }
+
+    fn walk_and_swap(
         &self,
         vfs: &dyn Vfs,
         now: i64,
@@ -441,11 +456,7 @@ impl LinkGraph {
                     && let Some(done) = state.swept_at
                     && (0..self.ttl()).contains(&(now - done))
                 {
-                    return Ok(GraphStats {
-                        unchanged: state.notes.len(),
-                        resolvable: state.index.len(),
-                        ..GraphStats::default()
-                    });
+                    return Ok(unchanged(&state));
                 }
             } else {
                 // Claimed before the walk, so a reader mid-sweep sees an
@@ -596,8 +607,13 @@ impl LinkGraph {
     /// rebuilt only when the path set moved. A path outside the graph's walk
     /// ([`WalkOptions::admission`]) is ignored, and one the walk would no
     /// longer list (too small, a refused symlink, under a symlinked folder
-    /// or a folder that cannot be listed) is dropped as if gone. A batch
-    /// against another
+    /// or a folder that cannot be listed) is dropped as if gone. So is a
+    /// path its folder lists under another spelling
+    /// ([`Admission::Respelled`]: another case, or another Unicode form as
+    /// on HFS+), which also marks the graph stale, so the next refresh
+    /// walks and finds the file by the spelling on disk. That includes the
+    /// old name after a case-only rename on a case-insensitive file system,
+    /// which costs one walk. A batch against another
     /// corpus, or while no sweep is fresh, does nothing here, but marks the
     /// graph so a sweep that read the files before the change is not stamped
     /// fresh.
@@ -667,7 +683,12 @@ impl LinkGraph {
                 // the sweep, a note it lists is read through a link, and one
                 // that cannot be stamped (a dangling link, a link to a
                 // folder) is kept with nothing read and never fresh.
-                let seen = if admission == Admission::Unlisted {
+                let seen = if admission == Admission::Respelled {
+                    // Gone by this spelling, there by the disk's, which only
+                    // a walk finds.
+                    stale = true;
+                    Seen::Gone
+                } else if admission != Admission::Listed {
                     // A walk that propagates errors fails on a file it
                     // cannot stat, rather than leaving it out.
                     if errors == Errors::Propagate
@@ -787,6 +808,18 @@ impl LinkGraph {
         let mut state = self.state.lock().unwrap();
         state.swept_at = None;
         state.stale_marks += 1;
+    }
+
+    /// After a failed walk at `now`: the last good sweep stays, and keeps
+    /// taking applies, but no longer counts as fresh, so the next refresh
+    /// walks again rather than hide the failure.
+    fn spend_ttl(&self, vault_dir: &Path, now: i64) {
+        let mut state = self.state.lock().unwrap();
+        if state.for_vault.as_deref() == Some(vault_dir)
+            && let Some(done) = state.swept_at.as_mut()
+        {
+            *done = (*done).min(now - self.ttl());
+        }
     }
 
     fn ttl(&self) -> i64 {
@@ -1039,6 +1072,16 @@ impl LinkGraph {
     /// Whether no note is cached.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+}
+
+/// The graph as it stands, every note counted unchanged: what a reused
+/// sweep, or a failed one, reports.
+fn unchanged(state: &GraphState) -> GraphStats {
+    GraphStats {
+        unchanged: state.notes.len(),
+        resolvable: state.index.len(),
+        ..GraphStats::default()
     }
 }
 
