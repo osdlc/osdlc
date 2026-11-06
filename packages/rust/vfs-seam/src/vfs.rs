@@ -44,8 +44,8 @@ pub struct Metadata {
     pub len: u64,
     /// Last modification, in nanoseconds since the Unix epoch. `None` when
     /// the host cannot supply one, which a cache must treat as never fresh.
-    /// A host with only whole milliseconds multiplies by 1,000,000; a JS
-    /// host with node's fractional `mtimeMs` uses [`ms_f64_to_ns`].
+    /// A host with only whole milliseconds uses `ms.checked_mul(1_000_000)`;
+    /// a JS host with node's fractional `mtimeMs` uses [`ms_f64_to_ns`].
     pub modified_ns: Option<i64>,
     /// Whether the path is a directory.
     pub is_dir: bool,
@@ -1244,6 +1244,99 @@ fn into_itself(path: &Path) -> VfsError {
         ),
     )
 }
+
+/// The time conversions are pure, so they are tested in every build,
+/// including the `--no-default-features` one a JS host uses.
+#[cfg(test)]
+mod time_tests {
+    use super::*;
+
+    #[test]
+    fn nanoseconds_become_milliseconds_with_nodes_arithmetic() {
+        // A time whose nanoseconds do not divide evenly: `as_secs_f64() *
+        // 1000.0`, the obvious form, rounds elsewhere in the last bit.
+        let ns = 1_784_508_521_000_015_838;
+        let obvious = std::time::Duration::from_nanos(ns as u64).as_secs_f64() * 1000.0;
+        assert_eq!(ns_to_ms_f64(ns), 1_784_508_521_000.015_9);
+        assert_eq!(obvious, 1_784_508_521_000.015_6);
+        assert_eq!(ns_to_ms(ns), 1_784_508_521_000);
+        // Before the epoch the whole part rounds toward the past and the
+        // fraction stays positive, as in a `timespec`.
+        assert_eq!(ns_to_ms(-1), -1);
+        assert_eq!(ns_to_ms_f64(-1_500_000), -1.5);
+    }
+
+    #[test]
+    fn a_js_mtime_becomes_nanoseconds_and_keeps_its_fraction() {
+        assert_eq!(ms_f64_to_ns(1.5), Some(1_500_000));
+        assert_eq!(ms_f64_to_ns(42.500_001), Some(42_500_001));
+        assert_eq!(ms_f64_to_ns(0.000_001), Some(1));
+        // Below a nanosecond, the fraction rounds to the nearest one, also
+        // up into the next millisecond.
+        assert_eq!(ms_f64_to_ns(0.000_000_4), Some(0));
+        assert_eq!(ms_f64_to_ns(0.000_000_6), Some(1));
+        assert_eq!(ms_f64_to_ns(0.999_999_9), Some(1_000_000));
+        // Before the epoch the fraction still counts up from the whole
+        // millisecond below, as in `ns_to_ms_f64`.
+        assert_eq!(ms_f64_to_ns(-1.25), Some(-1_250_000));
+        assert_eq!(ms_f64_to_ns(-0.0), Some(0));
+        assert_eq!(ms_f64_to_ns(-1e-300), Some(0));
+        // Subnormals.
+        assert_eq!(ms_f64_to_ns(5e-324), Some(0));
+        assert_eq!(ms_f64_to_ns(-5e-324), Some(0));
+
+        // A present-day `mtimeMs`. `ms * 1e6` lands on a nanosecond whose
+        // `mtimeMs` is a different `f64`, so a cache would see a change.
+        let ms = ns_to_ms_f64(1_793_352_519_934_700_969);
+        let obvious = (ms * 1_000_000.0).round() as i64;
+        assert_ne!(ns_to_ms_f64(obvious), ms);
+        let ns = ms_f64_to_ns(ms).unwrap();
+        assert_eq!(ns_to_ms_f64(ns), ms);
+        assert_eq!(ns_to_ms(ns), 1_793_352_519_934);
+    }
+
+    #[test]
+    fn ns_to_ms_f64_and_back_gives_the_same_mtime_ms() {
+        let check = |ns: i64| {
+            let ms = ns_to_ms_f64(ns);
+            let back = ms_f64_to_ns(ms).unwrap_or_else(|| panic!("{ns} is in range"));
+            assert_eq!(ns_to_ms_f64(back).to_bits(), ms.to_bits(), "{ns}");
+            back
+        };
+        for ns in [i64::MIN, i64::MIN + 1, -1, 0, 1, i64::MAX - 1, i64::MAX] {
+            check(ns);
+        }
+        // A fixed xorshift sequence: the whole range, around now, and the
+        // weeks either side of 1970, where an `f64` of milliseconds still
+        // holds every nanosecond and the time itself comes back.
+        let mut x: u64 = 0x9e37_79b9_7f4a_7c15;
+        for _ in 0..10_000 {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            check(x as i64);
+            check(1_700_000_000_000_000_000 + (x % 200_000_000_000_000_000) as i64);
+            let early = (x as i64) % 4_000_000_000_000_000;
+            assert_eq!(check(early), early);
+        }
+    }
+
+    #[test]
+    fn a_js_mtime_that_is_no_i64_of_nanoseconds_is_none() {
+        assert_eq!(ms_f64_to_ns(f64::NAN), None);
+        assert_eq!(ms_f64_to_ns(f64::INFINITY), None);
+        assert_eq!(ms_f64_to_ns(f64::NEG_INFINITY), None);
+        assert_eq!(ms_f64_to_ns(1e300), None);
+        assert_eq!(ms_f64_to_ns(-1e300), None);
+        // The next `f64` past either end of the `i64` range.
+        let max = ns_to_ms_f64(i64::MAX);
+        let min = ns_to_ms_f64(i64::MIN);
+        assert!(ms_f64_to_ns(max).is_some() && ms_f64_to_ns(min).is_some());
+        assert_eq!(ms_f64_to_ns(f64::from_bits(max.to_bits() + 1)), None);
+        assert_eq!(ms_f64_to_ns(f64::from_bits(min.to_bits() + 1)), None);
+    }
+}
+
 #[cfg(all(test, feature = "native"))]
 mod tests {
     use super::*;
@@ -1811,88 +1904,6 @@ mod tests {
         );
         assert!(preview.read_link(tmp.path()).is_err(), "not a link");
         assert!(MemVfs::new().read_link(tmp.path()).is_err(), "no links");
-    }
-
-    #[test]
-    fn nanoseconds_become_milliseconds_with_nodes_arithmetic() {
-        // A time whose nanoseconds do not divide evenly: `as_secs_f64() *
-        // 1000.0`, the obvious form, rounds elsewhere in the last bit.
-        let ns = 1_784_508_521_000_015_838;
-        let obvious = std::time::Duration::from_nanos(ns as u64).as_secs_f64() * 1000.0;
-        assert_eq!(ns_to_ms_f64(ns), 1_784_508_521_000.015_9);
-        assert_eq!(obvious, 1_784_508_521_000.015_6);
-        assert_eq!(ns_to_ms(ns), 1_784_508_521_000);
-        // Before the epoch the whole part rounds toward the past and the
-        // fraction stays positive, as in a `timespec`.
-        assert_eq!(ns_to_ms(-1), -1);
-        assert_eq!(ns_to_ms_f64(-1_500_000), -1.5);
-    }
-
-    #[test]
-    fn a_js_mtime_becomes_nanoseconds_and_keeps_its_fraction() {
-        assert_eq!(ms_f64_to_ns(1.5), Some(1_500_000));
-        assert_eq!(ms_f64_to_ns(42.500_001), Some(42_500_001));
-        assert_eq!(ms_f64_to_ns(0.000_001), Some(1));
-        // Below a nanosecond, the fraction rounds to the nearest one, also
-        // up into the next millisecond.
-        assert_eq!(ms_f64_to_ns(0.000_000_4), Some(0));
-        assert_eq!(ms_f64_to_ns(0.000_000_6), Some(1));
-        assert_eq!(ms_f64_to_ns(0.999_999_9), Some(1_000_000));
-        // Before the epoch the fraction still counts up from the whole
-        // millisecond below, as in `ns_to_ms_f64`.
-        assert_eq!(ms_f64_to_ns(-1.25), Some(-1_250_000));
-        assert_eq!(ms_f64_to_ns(-0.0), Some(0));
-        assert_eq!(ms_f64_to_ns(-1e-300), Some(0));
-
-        // A present-day `mtimeMs`. `ms * 1e6` lands on a nanosecond whose
-        // `mtimeMs` is a different `f64`, so a cache would see a change.
-        let ms = ns_to_ms_f64(1_793_352_519_934_700_969);
-        let obvious = (ms * 1_000_000.0).round() as i64;
-        assert_ne!(ns_to_ms_f64(obvious), ms);
-        let ns = ms_f64_to_ns(ms).unwrap();
-        assert_eq!(ns_to_ms_f64(ns), ms);
-        assert_eq!(ns_to_ms(ns), 1_793_352_519_934);
-    }
-
-    #[test]
-    fn ns_to_ms_f64_and_back_gives_the_same_mtime_ms() {
-        let check = |ns: i64| {
-            let ms = ns_to_ms_f64(ns);
-            let back = ms_f64_to_ns(ms).unwrap_or_else(|| panic!("{ns} is in range"));
-            assert_eq!(ns_to_ms_f64(back).to_bits(), ms.to_bits(), "{ns}");
-            back
-        };
-        for ns in [i64::MIN, i64::MIN + 1, -1, 0, 1, i64::MAX - 1, i64::MAX] {
-            check(ns);
-        }
-        // A fixed xorshift sequence: the whole range, around now, and the
-        // first weeks after 1970, where an `f64` of milliseconds still holds
-        // every nanosecond and the time itself comes back.
-        let mut x: u64 = 0x9e37_79b9_7f4a_7c15;
-        for _ in 0..10_000 {
-            x ^= x << 13;
-            x ^= x >> 7;
-            x ^= x << 17;
-            check(x as i64);
-            check(1_700_000_000_000_000_000 + (x % 200_000_000_000_000_000) as i64);
-            let early = (x as i64) % 4_000_000_000_000_000;
-            assert_eq!(check(early), early);
-        }
-    }
-
-    #[test]
-    fn a_js_mtime_that_is_no_i64_of_nanoseconds_is_none() {
-        assert_eq!(ms_f64_to_ns(f64::NAN), None);
-        assert_eq!(ms_f64_to_ns(f64::INFINITY), None);
-        assert_eq!(ms_f64_to_ns(f64::NEG_INFINITY), None);
-        assert_eq!(ms_f64_to_ns(1e300), None);
-        assert_eq!(ms_f64_to_ns(-1e300), None);
-        // The next `f64` past either end of the `i64` range.
-        let max = ns_to_ms_f64(i64::MAX);
-        let min = ns_to_ms_f64(i64::MIN);
-        assert!(ms_f64_to_ns(max).is_some() && ms_f64_to_ns(min).is_some());
-        assert_eq!(ms_f64_to_ns(f64::from_bits(max.to_bits() + 1)), None);
-        assert_eq!(ms_f64_to_ns(f64::from_bits(min.to_bits() + 1)), None);
     }
 
     #[test]
