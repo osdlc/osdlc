@@ -6,7 +6,7 @@
  * losing an hour of someone's work costs more than any amount of clutter.
  */
 
-import { existsSync, statSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { isAbsolute, join, sep } from 'node:path'
 
 import { shellJoin } from '@osdlc/command-seam'
@@ -25,9 +25,11 @@ import {
 import { busyHolders, isIdleHolder, parseLockOwner, type ProcessProbe } from './processes.ts'
 import {
   inspectSubmodules,
+  readIndexHazards,
   submoduleFacts,
-  unsharedPhrase,
-  worktreeGitDir,
+  unpushedPhrase,
+  unreadablePhrase,
+  worktreeGitDirs,
   type SubmoduleReport,
 } from './submodules.ts'
 import {
@@ -42,6 +44,7 @@ import {
   type WorktreeEvidence,
   type WorktreeRow,
 } from './types.ts'
+import { isDir } from './util.ts'
 
 /** The command line, not run, that removes the worktree at `path`. */
 export function worktreeRemoveCommand(
@@ -70,12 +73,36 @@ export function worktreePruneCommand(root: string): string {
   return shellJoin(['git', '-C', root, 'worktree', 'prune'])
 }
 
-function isDir(path: string): boolean {
-  try {
-    return statSync(path).isDirectory()
-  } catch {
-    return false
-  }
+/**
+ * Whether removing this worktree takes `git worktree remove --force`: its
+ * submodules make plain remove refuse, it has modified or untracked files
+ * (which only `discard-changes` lets go), or its branch is gone. The force
+ * skips git's own cleanliness check, so a run checks again itself first.
+ */
+export function removeIsForced(e: WorktreeEvidence): boolean {
+  return (
+    e.forcedForSubmodules === true ||
+    (e.dirtyFiles ?? 0) > 0 ||
+    (e.submoduleDirtyFiles ?? 0) > 0 ||
+    (e.branch !== null && e.branchExists === false)
+  )
+}
+
+/** The commands that carry out `action` on the worktree whose evidence is `e`: an unlock first for a stale lock. */
+export function worktreeCommands(
+  root: string,
+  e: WorktreeEvidence,
+  action: 'remove' | 'prune',
+): string[] {
+  // `git worktree remove` and `prune` both skip a locked worktree, so a stale
+  // lock is cleared first.
+  const unlock = e.staleLock === true ? [worktreeUnlockCommand(root, e.path)] : []
+  return [
+    ...unlock,
+    action === 'prune'
+      ? worktreePruneCommand(root)
+      : worktreeRemoveCommand(root, e.path, { force: removeIsForced(e) }),
+  ]
 }
 
 /** Cap on `evidence.hiddenIndexPaths`; `evidence.hiddenIndexFlags` is the full count. */
@@ -144,16 +171,13 @@ function readBlockers(opts: {
       ])
     }
 
-    const at = git.at(path)
-    // Status hides edits to these files, so "clean" cannot be trusted. A
-    // submodule's count too: `--force` removes its files with the rest.
-    const hidden = [
-      ...at
-        .lsFilesTagged()
-        .filter((row) => row.tag === 'S' || row.tag !== row.tag.toUpperCase())
-        .map((row) => row.path),
-      ...submodules.submodules.flatMap((s) => s.hiddenIndexPaths.map((p) => `${s.path}/${p}`)),
-    ]
+    // Status hides edits to flagged files, so "clean" cannot be trusted, and a
+    // nested repository has its own history. A submodule's count too: `--force`
+    // removes its files with the rest.
+    const own = readIndexHazards(git.at(path), path)
+    const inSubmodules = (pick: (s: SubmoduleReport['submodules'][number]) => string[]) =>
+      submodules.submodules.flatMap((s) => pick(s).map((p) => `${s.path}/${p}`))
+    const hidden = [...own.hiddenIndexPaths, ...inSubmodules((s) => s.hiddenIndexPaths)]
     if (hidden.length > 0) {
       evidence.hiddenIndexFlags = hidden.length
       evidence.hiddenIndexPaths = hidden.slice(0, HIDDEN_PATHS_SHOWN)
@@ -163,14 +187,7 @@ function readBlockers(opts: {
       ])
     }
 
-    // No `excludeStandard`: an ignored directory can hold a repository too.
-    // Only the top of each listed directory is checked.
-    const nested = [
-      ...at
-        .lsFiles({ others: true, directory: true })
-        .filter((entry) => entry.endsWith('/') && existsSync(join(path, entry, '.git'))),
-      ...submodules.submodules.flatMap((s) => s.nestedRepositories.map((p) => `${s.path}/${p}`)),
-    ]
+    const nested = [...own.nestedRepositories, ...inSubmodules((s) => s.nestedRepositories)]
     if (nested.length > 0) {
       evidence.nestedRepositories = nested
       out.push([
@@ -183,7 +200,7 @@ function readBlockers(opts: {
   if (submodules.unreadable.length > 0) {
     out.push([
       'submodule-unreadable',
-      `Could not read submodule(s) ${submodules.unreadable.map((s) => `${s.path} (${s.error})`).join(', ')}; check them by hand, then sweep again.`,
+      `Could not read ${unreadablePhrase(submodules.unreadable)}; check them by hand, then sweep again.`,
     ])
   }
 
@@ -208,7 +225,7 @@ export function gatherWorktrees(
   prs: Map<string, PRInfo>,
   cwd: string,
   git: Git,
-  only: string | undefined,
+  only: { branch?: string | undefined; path?: string | undefined },
   probe: ProcessProbe,
   tick?: (done: number, total: number) => void,
 ): [WorktreeRow[], Set<string>] {
@@ -219,7 +236,21 @@ export function gatherWorktrees(
       pathsByBranch.set(entry.branch, [...(pathsByBranch.get(entry.branch) ?? []), entry.path])
     }
   }
-  const entries = only === undefined ? all : all.filter((entry) => entry.branch === only)
+  const entries = all.filter(
+    (entry) =>
+      (only.branch === undefined || entry.branch === only.branch) &&
+      (only.path === undefined || entry.path === only.path),
+  )
+  // Read once, and only when a worktree is gone: its git dir may still hold
+  // submodule history that the prune would delete.
+  let gitDirs: Map<string, string> | undefined
+  const gitDirOf = (path: string): string | null => {
+    if (gitDirs === undefined) {
+      const common = git.at(repo.root).soft.gitCommonDir()
+      gitDirs = common === null ? new Map() : worktreeGitDirs(common)
+    }
+    return gitDirs.get(path) ?? null
+  }
 
   const items: WorktreeRow[] = []
   for (const [i, entry] of entries.entries()) {
@@ -241,13 +272,14 @@ export function gatherWorktrees(
         cwd,
         git,
         probe,
+        gitDirOf,
       }),
     )
   }
   return [items, new Set(pathsByBranch.keys())]
 }
 
-export function classifyWorktree(opts: {
+function classifyWorktree(opts: {
   path: string
   branch: string
   /** The worktree's HEAD commit; null when git reported none. */
@@ -265,6 +297,8 @@ export function classifyWorktree(opts: {
   git: Git
   /** Answers lock-owner and working-directory questions. One per sweep: it caches the process table. */
   probe: ProcessProbe
+  /** The private git dir of a linked worktree, by path. */
+  gitDirOf: (path: string) => string | null
 }): WorktreeRow {
   const { path, branch, head, isBare, isDetached, isPrimary, repo, prs, cwd, git } = opts
   const evidence: WorktreeEvidence = {
@@ -301,7 +335,7 @@ export function classifyWorktree(opts: {
   // A gone worktree has no checkout to ask for its git dir, but the git dir
   // may still hold submodule history that the prune would delete.
   const submodules = inspectSubmodules(git, path, {
-    gitDir: onDisk ? null : gitDirOfGone(git, repo.root, path),
+    gitDir: onDisk ? null : opts.gitDirOf(path),
   })
   const submoduleDirty = submodules.dirty.reduce((n, s) => n + s.dirtyFiles, 0)
   if (submodules.submodules.length > 0) {
@@ -368,9 +402,7 @@ export function classifyWorktree(opts: {
   // submodule's commits and stashes with it. The same risk as the worktree's
   // own unpushed commits covers them.
   const submoduleWork = submodules.unpushed.length > 0
-  const submoduleWorkText = submoduleWork
-    ? `submodule(s) ${submodules.unpushed.map((s) => `${s.path} (${unsharedPhrase(s)})`).join(', ')}`
-    : ''
+  const submoduleWorkText = submoduleWork ? unpushedPhrase(submodules.unpushed) : ''
   const risks = risksFor({
     'abandon-unmerged': unlanded || submoduleWork,
     'discard-changes': dirty,
@@ -378,20 +410,13 @@ export function classifyWorktree(opts: {
   })
 
   const blockers = readBlockers({ ...opts, onDisk, evidence, submodules })
-  // `git worktree remove` and `prune` both skip a locked worktree, so a stale
-  // lock is cleared first.
-  const unlock = evidence.staleLock === true ? [worktreeUnlockCommand(repo.root, path)] : []
-  const safeRemove = [
-    ...unlock,
-    worktreeRemoveCommand(repo.root, path, { force: evidence.forcedForSubmodules === true }),
-  ]
+  const removes = worktreeCommands(repo.root, evidence, 'remove')
+  const pruneOnly = worktreeCommands(repo.root, evidence, 'prune')
   // Said in the reason of a row whose remove is forced for its submodules.
   const forced =
     evidence.forcedForSubmodules === true
       ? '; its submodules are clean and pushed, so the remove is forced'
       : ''
-  const forceRemove = [...unlock, worktreeRemoveCommand(repo.root, path, { force: true })]
-  const pruneOnly = [...unlock, worktreePruneCommand(repo.root)]
   if (blockers.length > 0) {
     const kinds = blockers.map(([kind]) => kind)
     return row({
@@ -428,8 +453,6 @@ export function classifyWorktree(opts: {
     })
   }
 
-  // A dirty worktree goes only with `discard-changes`, which forces the remove.
-  const removes = dirty ? forceRemove : safeRemove
   if (dirty || unlanded || submoduleWork) {
     const inSubmodules =
       submoduleDirty > 0
@@ -460,8 +483,8 @@ export function classifyWorktree(opts: {
     })
   }
 
-  const deletes = (why: string, commands = safeRemove): WorktreeRow =>
-    row({ verdict: 'delete', action: 'remove', why, commands, risks })
+  const deletes = (why: string): WorktreeRow =>
+    row({ verdict: 'delete', action: 'remove', why, commands: removes, risks })
 
   if (pr && landed) return deletes(`clean; PR #${pr.number} merged${forced}`)
   if (patchLanded) {
@@ -470,14 +493,14 @@ export function classifyWorktree(opts: {
     )
   }
   if (branch && !branchExists) {
-    return deletes(`branch \`${branch}\` no longer exists${forced}`, forceRemove)
+    return deletes(`branch \`${branch}\` no longer exists${forced}`)
   }
   if (pr && pr.state === 'OPEN') {
     return row({
       verdict: 'keep',
       action: 'remove',
       why: `open PR #${pr.number}`,
-      commands: safeRemove,
+      commands: removes,
       risks,
     })
   }
@@ -502,16 +525,10 @@ export function classifyWorktree(opts: {
     verdict: 'review',
     action: 'remove',
     why: 'clean but no clear disposability signal',
-    commands: safeRemove,
+    commands: removes,
     notes,
     risks,
   })
-}
-
-/** The private git dir of a worktree whose directory is gone, or null when git does not name one. */
-function gitDirOfGone(git: Git, root: string, path: string): string | null {
-  const common = git.at(root).soft.gitCommonDir()
-  return common === null ? null : worktreeGitDir(common, path)
 }
 
 const USE_REASON: Record<BranchUse, string> = {
@@ -539,7 +556,7 @@ function isWorkEntry(entry: string): boolean {
  * null: removing its worktree could lose ignored files from work about to
  * start.
  */
-export function branchUse(git: Git, branch: string, mainBranch: string): BranchUse | null {
+function branchUse(git: Git, branch: string, mainBranch: string): BranchUse | null {
   // `raw`: a branch with no reflog (core.logAllRefUpdates off) exits non-zero.
   const reflog = git.raw(['reflog', 'show', '--format=%gs', `refs/heads/${branch}`, '--'])
   if (reflog.exitCode === 0 && reflog.stdout.split('\n').some(isWorkEntry)) {

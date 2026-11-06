@@ -13,17 +13,18 @@
  *
  * {@link inspectSubmodules} reads every submodule, nested ones included, and
  * every left-over git dir, and reports what each holds that removal would
- * lose. The sweep turns that into the same authorizations the worktree's own
- * work needs (`discard-changes`, `abandon-unmerged`); `applyPlan` reads it
- * again just before a forced remove and refuses if anything changed.
+ * lose. The sweep turns that into the same risks the worktree's own work
+ * carries (`discard-changes`, `abandon-unmerged`); `run` reads it again just
+ * before a forced remove and refuses if anything changed.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 
 import type { Git } from '@osdlc/typed-git'
 
 import type { SubmoduleEvidence } from './types.ts'
+import { errorText, isDir } from './util.ts'
 
 /** One submodule of a worktree, or a submodule git dir it keeps, and what removing the worktree would lose from it. */
 export interface Submodule {
@@ -47,7 +48,7 @@ export interface Submodule {
   unpushedCommits: number
   /** Stash entries. A linked worktree's submodule stashes live in its private git dir. */
   stashes: number
-  /** Files marked skip-worktree or assume-unchanged, whose edits status hides. Capped at 10. */
+  /** Files marked skip-worktree or assume-unchanged, whose edits status hides. */
   hiddenIndexPaths: string[]
   /** Untracked or ignored directories inside it that hold a repository of their own. */
   nestedRepositories: string[]
@@ -73,49 +74,62 @@ export interface SubmoduleReport {
   unreadable: Submodule[]
 }
 
-/** Cap on {@link Submodule.hiddenIndexPaths}. */
-const HIDDEN_PATHS_SHOWN = 10
-
-function isDir(path: string): boolean {
-  try {
-    return statSync(path).isDirectory()
-  } catch {
-    return false
+/**
+ * What `status` cannot show in the checkout at `dir`: files marked
+ * skip-worktree or assume-unchanged, whose edits status hides, and untracked
+ * or ignored directories that hold a repository of their own (no
+ * `excludeStandard`: an ignored directory can hold one too; only the top of
+ * each listed directory is checked). For a worktree and each submodule alike.
+ */
+export function readIndexHazards(
+  at: Git,
+  dir: string,
+): { hiddenIndexPaths: string[]; nestedRepositories: string[] } {
+  return {
+    hiddenIndexPaths: at
+      .lsFilesTagged()
+      .filter((row) => row.tag === 'S' || row.tag !== row.tag.toUpperCase())
+      .map((row) => row.path),
+    nestedRepositories: at
+      .lsFiles({ others: true, directory: true })
+      .filter((p) => p.endsWith('/') && existsSync(join(dir, p, '.git'))),
   }
 }
 
-const message = (err: unknown): string => (err instanceof Error ? err.message : String(err))
+/**
+ * The private git dir of each linked worktree of the repository whose shared
+ * git dir is `commonDir`, by the worktree's path; read once from every
+ * `<commonDir>/worktrees/<id>/gitdir`. Works for a worktree whose directory is
+ * gone, where `rev-parse` has nothing to run in.
+ */
+export function worktreeGitDirs(commonDir: string): Map<string, string> {
+  const admin = join(commonDir, 'worktrees')
+  const out = new Map<string, string>()
+  let ids: string[]
+  try {
+    ids = readdirSync(admin)
+  } catch {
+    return out
+  }
+  for (const id of ids) {
+    try {
+      const pointer = readFileSync(join(admin, id, 'gitdir'), 'utf-8').trim()
+      const dotGit = isAbsolute(pointer) ? pointer : join(admin, id, pointer)
+      out.set(resolve(dirname(dotGit)), join(admin, id))
+    } catch {
+      // Not a worktree's admin dir, or one being written; not one of ours either way.
+    }
+  }
+  return out
+}
 
 /** A repository's git dir: `HEAD` and `objects` side by side. */
 const isGitDir = (dir: string): boolean =>
   existsSync(join(dir, 'HEAD')) && isDir(join(dir, 'objects'))
 
-/**
- * The private git dir of the linked worktree at `worktree`, found by reading
- * each `<commonDir>/worktrees/<id>/gitdir`; null when none points at it. Works
- * for a worktree whose directory is gone, where `rev-parse` has nothing to
- * run in.
- */
+/** The private git dir of the linked worktree at `worktree`; null when none points at it. See {@link worktreeGitDirs}. */
 export function worktreeGitDir(commonDir: string, worktree: string): string | null {
-  const admin = join(commonDir, 'worktrees')
-  let ids: string[]
-  try {
-    ids = readdirSync(admin)
-  } catch {
-    return null
-  }
-  const want = resolve(worktree)
-  for (const id of ids) {
-    try {
-      const pointer = readFileSync(join(admin, id, 'gitdir'), 'utf-8').trim()
-      if (resolve(dirname(isAbsolute(pointer) ? pointer : join(admin, id, pointer))) === want) {
-        return join(admin, id)
-      }
-    } catch {
-      // Not a worktree's admin dir, or one being written; not ours either way.
-    }
-  }
-  return null
+  return worktreeGitDirs(commonDir).get(resolve(worktree)) ?? null
 }
 
 /** Every git dir under `modules`, a nested submodule's (`<name>/modules/<name>`) included. */
@@ -152,11 +166,15 @@ function count(git: Git, argv: string[]): number {
 /**
  * Commits on HEAD or a local branch that no remote-tracking ref has, and the
  * stash's entries. `prefix` goes before each git command: `--git-dir` and
- * `--work-tree` for a git dir with no checkout.
+ * `--work-tree` for a git dir with no checkout. `hasHead` is asked of git when
+ * the caller does not know it already.
  */
-function unsharedWork(git: Git, prefix: string[]): { unpushedCommits: number; stashes: number } {
+function unsharedWork(
+  git: Git,
+  prefix: string[],
+  hasHead = git.raw([...prefix, 'rev-parse', '--verify', '--quiet', 'HEAD']).exitCode === 0,
+): { unpushedCommits: number; stashes: number } {
   // An unborn HEAD (a git dir whose clone never finished) has no commits of its own.
-  const hasHead = git.raw([...prefix, 'rev-parse', '--verify', '--quiet', 'HEAD']).exitCode === 0
   const tips = [...(hasHead ? ['HEAD'] : []), '--branches']
   return {
     unpushedCommits: count(git, [...prefix, 'rev-list', '--count', ...tips, '--not', '--remotes']),
@@ -196,22 +214,15 @@ function readCheckout(git: Git, dir: string, entry: Submodule, out: Submodule[])
     entry.head = at.resolveRef('HEAD')
     entry.gitDir = at.gitDir()
     entry.dirtyFiles = at.statusPorcelain().length
-    const work = unsharedWork(at, [])
+    const work = unsharedWork(at, [], entry.head !== null)
     entry.unpushedCommits = work.unpushedCommits
     entry.stashes = work.stashes
-    entry.hiddenIndexPaths = at
-      .lsFilesTagged()
-      .filter((row) => row.tag === 'S' || row.tag !== row.tag.toUpperCase())
-      .map((row) => row.path)
-      .slice(0, HIDDEN_PATHS_SHOWN)
-    entry.nestedRepositories = at
-      .lsFiles({ others: true, directory: true })
-      .filter((p) => p.endsWith('/') && existsSync(join(dir, p, '.git')))
+    Object.assign(entry, readIndexHazards(at, dir))
     for (const child of at.submodules()) {
       readSubmodule(git, dir, `${entry.path}/${child.path}`, child.path, child.commit, out)
     }
   } catch (err) {
-    entry.error = message(err)
+    entry.error = errorText(err)
   }
 }
 
@@ -262,7 +273,7 @@ export function inspectSubmodules(
         readSubmodule(git, worktree, sub.path, sub.path, sub.commit, out)
       }
     } catch (err) {
-      topError = message(err)
+      topError = errorText(err)
     }
   }
 
@@ -270,10 +281,11 @@ export function inspectSubmodules(
   // one, and so does a worktree whose directory was deleted. Its history goes
   // with the worktree's git dir all the same.
   const modules = gitDir === null ? null : join(gitDir, 'modules')
-  const used = out.flatMap((s) => (s.gitDir === null ? [] : [resolve(s.gitDir)]))
-  if (modules !== null && isDir(modules)) {
+  const used = new Set(out.flatMap((s) => (s.gitDir === null ? [] : [resolve(s.gitDir)])))
+  const hasModules = modules !== null && isDir(modules)
+  if (modules !== null && hasModules) {
     for (const { name, dir } of moduleGitDirs(modules)) {
-      if (used.includes(resolve(dir))) continue
+      if (used.has(resolve(dir))) continue
       const entry = blank(name, null)
       entry.gitDir = dir
       try {
@@ -284,7 +296,7 @@ export function inspectSubmodules(
         entry.unpushedCommits = work.unpushedCommits
         entry.stashes = work.stashes
       } catch (err) {
-        entry.error = message(err)
+        entry.error = errorText(err)
       }
       out.push(entry)
     }
@@ -293,7 +305,7 @@ export function inspectSubmodules(
 
   return {
     submodules: out,
-    forceRequired: out.some((s) => s.populated) || (modules !== null && isDir(modules)),
+    forceRequired: out.some((s) => s.populated) || hasModules,
     dirty: out.filter((s) => s.dirtyFiles > 0),
     unpushed: out.filter((s) => s.unpushedCommits > 0 || s.stashes > 0),
     unreadable: out.filter((s) => s.error !== null),
@@ -328,17 +340,10 @@ export function submoduleHazards(
 ): string[] {
   const out: string[] = []
   const names = (subs: Submodule[]): string => subs.map((s) => s.path).join(', ')
-  if (report.unreadable.length > 0) {
-    out.push(
-      `could not read submodule(s) ${report.unreadable.map((s) => `${s.path} (${s.error})`).join(', ')}`,
-    )
-  }
+  if (report.unreadable.length > 0)
+    out.push(`could not read ${unreadablePhrase(report.unreadable)}`)
   if (opts.abandon !== true && report.unpushed.length > 0) {
-    out.push(
-      `submodule(s) ${report.unpushed
-        .map((s) => `${s.path} (${unsharedPhrase(s)})`)
-        .join(', ')} hold work no remote has`,
-    )
+    out.push(`${unpushedPhrase(report.unpushed)} hold work no remote has`)
   }
   const hidden = report.submodules.filter((s) => s.hiddenIndexPaths.length > 0)
   if (hidden.length > 0) out.push(`submodule(s) ${names(hidden)} hide edits behind index flags`)
@@ -348,6 +353,16 @@ export function submoduleHazards(
     out.push(`submodule(s) ${names(report.dirty)} have uncommitted changes`)
   }
   return out
+}
+
+/** `submodule(s) sub (1 unpushed commit), deps/x (2 stashes)`. */
+export function unpushedPhrase(subs: readonly Submodule[]): string {
+  return `submodule(s) ${subs.map((s) => `${s.path} (${unsharedPhrase(s)})`).join(', ')}`
+}
+
+/** `submodule(s) sub (<why it could not be read>)`. */
+export function unreadablePhrase(subs: readonly Submodule[]): string {
+  return `submodule(s) ${subs.map((s) => `${s.path} (${s.error})`).join(', ')}`
 }
 
 /** `2 unpushed commits, 1 stash`. */

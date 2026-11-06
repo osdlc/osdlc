@@ -8,23 +8,33 @@ import { readFileSync } from 'node:fs'
 import { z } from 'zod'
 
 import { PROVIDER_CHOICES } from './providers/types.ts'
-import { KINDS, RISKS, RepoCleanerError, type Row, type RowId, type Sweep } from './types.ts'
+import {
+  ACTIONS,
+  KINDS,
+  RISKS,
+  RepoCleanerError,
+  VERDICTS,
+  parseRowId,
+  type Row,
+  type RowId,
+  type Sweep,
+} from './types.ts'
 import { writeJsonAtomic } from './write-json.ts'
 
 export const PLAN_VERSION = 2
 
-const RowIdSchema = z.custom<RowId>(
-  (v) =>
-    typeof v === 'string' && KINDS.some((k) => v.startsWith(`${k}:`) && v.length > k.length + 1),
+/** A row id, `<kind>:<name>` with a name; shared by the plan and the receipt. */
+export const RowIdSchema = z.custom<RowId>(
+  (v) => typeof v === 'string' && (parseRowId(v)?.name ?? '') !== '',
   { message: 'expected <kind>:<name>' },
 )
 
 export const PlanRowSchema = z.object({
   id: RowIdSchema,
   /** The sweep's verdict when the plan was made. Without a pick, only `delete` rows run. */
-  verdict: z.enum(['delete', 'review', 'keep', 'blocked']),
+  verdict: z.enum(VERDICTS),
   /** What deleting it does; null for a row that can never be deleted, kept so a pick of it is skipped with its reason. */
-  action: z.enum(['remove', 'prune', 'delete']).nullable(),
+  action: z.enum(ACTIONS).nullable(),
   risks: z.array(z.enum(RISKS)),
   fingerprint: z.record(z.string(), z.unknown()),
 })
@@ -43,7 +53,7 @@ export type PlanRepo = z.infer<typeof PlanRepoSchema>
 export const PlanSchema = z.object({
   version: z.literal(PLAN_VERSION),
   createdAt: z.string(),
-  /** What was swept; the re-check sweeps the same. */
+  /** What was swept; the re-check sweeps the same. `SweptWith` is this object's type. */
   options: z.object({
     only: z.array(z.enum(KINDS)),
     remote: z.boolean(),
@@ -97,7 +107,7 @@ export function sameFingerprint(a: Record<string, unknown>, b: Record<string, un
  * with an action run; the rest are there so a pick of one is skipped with its
  * reason rather than refused as unknown.
  */
-export function planRows(rows: readonly Row[]): PlanRow[] {
+function planRows(rows: readonly Row[]): PlanRow[] {
   return rows.map((row) => ({
     id: row.id,
     verdict: row.verdict,
@@ -117,14 +127,7 @@ export function plan(sweep: Sweep, now: Date = new Date()): Plan {
   return {
     version: PLAN_VERSION,
     createdAt: now.toISOString(),
-    options: {
-      only: sweep.options.only,
-      remote: sweep.options.remote,
-      offline: sweep.options.offline,
-      against: sweep.options.against,
-      provider: sweep.options.provider,
-      branch: sweep.options.branch,
-    },
+    options: { ...sweep.options },
     repos: sweep.repos.flatMap((s) =>
       s.repo === null
         ? []

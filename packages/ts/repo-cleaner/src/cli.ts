@@ -24,20 +24,21 @@ import { readSync, rmSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { isatty } from 'node:tty'
 
-import { EXIT, askYesNo, canPrompt, defineCli, type CliContext } from '@osdlc/cli-tool'
+import {
+  EXIT,
+  askYesNo,
+  canPrompt,
+  defineCli,
+  type Cli,
+  type CliContext,
+  type FlagSpec,
+  type FlagValues,
+} from '@osdlc/cli-tool'
 import { detectColorLevel, stripControls } from '@osdlc/ux'
 
-import { check, run, type Allow, type Approval, type Preview } from './clean.ts'
-import {
-  fileStamp,
-  parsePlan,
-  plan as planOf,
-  readPlan,
-  runnable,
-  writePlan,
-  type Plan,
-} from './plan.ts'
-import { PROVIDER_CHOICES, type ProviderChoice } from './providers/index.ts'
+import { check, checkApproval, parseAllow, run, type Approval, type Preview } from './clean.ts'
+import { fileStamp, parsePlan, plan as planOf, readPlan, writePlan, type Plan } from './plan.ts'
+import { PROVIDER_CHOICES } from './providers/index.ts'
 import type { Receipt, Step } from './receipt.ts'
 import { REFERENCE } from './reference.ts'
 import {
@@ -72,15 +73,7 @@ import {
 } from './status-line.ts'
 import { stepBoard, type StepBoard } from './step-board.ts'
 import { sweep as sweepTargets, sweptWith, type SweepOptions } from './sweep.ts'
-import {
-  KINDS,
-  RISKS,
-  RepoCleanerError,
-  type Kind,
-  type Risk,
-  type Sweep,
-  type SweptWith,
-} from './types.ts'
+import { KINDS, RISKS, RepoCleanerError, type Kind, type Sweep } from './types.ts'
 
 const EXIT_NOTHING_TO_SWEEP = 10
 const EXIT_STEP_FAILED = 11
@@ -123,6 +116,16 @@ const SWEEP_FLAGS = {
   },
   progress: { kind: 'boolean', negatable: true, help: 'no progress line on stderr' },
 } as const
+
+/** A repeatable flag that takes a row (or `risk[=row]`) each time, never split on commas. */
+const rowList = <V extends string>(valueName: V, help: string) =>
+  ({
+    kind: 'list',
+    valueName,
+    default: [] as readonly string[],
+    commaSeparated: false,
+    help,
+  }) as const
 
 const TARGETS = [
   {
@@ -201,27 +204,15 @@ const cleanCli = () =>
     positionals: TARGETS,
     flags: {
       ...SWEEP_FLAGS,
-      pick: {
-        kind: 'list',
-        valueName: 'row',
-        default: [],
-        commaSeparated: false,
-        help: 'work on exactly these rows; a review row runs only when picked; repeatable',
-      },
-      spare: {
-        kind: 'list',
-        valueName: 'row',
-        default: [],
-        commaSeparated: false,
-        help: 'leave this row alone; a spared remote branch that moved stops the run; repeatable',
-      },
-      allow: {
-        kind: 'list',
-        valueName: 'risk[=row]',
-        default: [],
-        commaSeparated: false,
-        help: 'accept a risk for every row, or for one row; repeatable',
-      },
+      pick: rowList(
+        'row',
+        'work on exactly these rows; a review row runs only when picked; repeatable',
+      ),
+      spare: rowList(
+        'row',
+        'leave this row alone; a spared remote branch that moved stops the run; repeatable',
+      ),
+      allow: rowList('risk[=row]', 'accept a risk for every row, or for one row; repeatable'),
       plan: {
         kind: 'string',
         valueName: 'file',
@@ -339,52 +330,33 @@ function refusal(ctx: CliContext, name: string, err: unknown): number {
 type Parsed<T> =
   { status: 'ok'; values: T; positionals: string[] } | { status: 'done'; code: number }
 
+/** The values a command's declared flags parse to. */
+type ValuesOf<C> = C extends Cli<infer F> ? FlagValues<F> : never
+
 /** Parse, and answer `--help` (and `--help --extended`) itself. */
-function parseWith<V extends { help?: boolean; extended?: boolean }>(
-  cli: {
-    parse: (argv: readonly string[], io: CliContext['io']) => unknown
-    help: (o?: { all?: boolean }) => string
-  },
+function parseWith<F extends FlagSpec & typeof HELP_FLAGS>(
+  cli: Cli<F>,
   name: string,
   argv: readonly string[],
   ctx: CliContext,
-): Parsed<V> {
-  const parsed = cli.parse(argv, ctx.io) as
-    | { status: 'ok'; values: V; positionals: string[] }
-    | { status: 'help' }
-    | { status: 'error'; message: string }
+): Parsed<FlagValues<F>> {
+  const parsed = cli.parse(argv, ctx.io)
   if (parsed.status === 'help') return { status: 'done', code: EXIT.ok }
-  if (parsed.status === 'error')
+  if (parsed.status === 'error') {
     return { status: 'done', code: usageError(ctx, name, parsed.message) }
-  const v = parsed.values
-  if (v.help === true) {
-    ctx.io.stdout(cli.help({ all: v.extended === true }))
+  }
+  const v = parsed.values as FlagValues<F> & ValuesOf<Cli<typeof HELP_FLAGS>>
+  if (v.help) {
+    ctx.io.stdout(cli.help({ all: v.extended }))
     return { status: 'done', code: EXIT.ok }
   }
-  if (v.extended === true) {
+  if (v.extended) {
     return { status: 'done', code: usageError(ctx, name, '--extended goes with --help') }
   }
   return parsed
 }
 
-interface HelpValues {
-  help: boolean
-  extended: boolean
-}
-
-interface SweepValues extends HelpValues {
-  remote: boolean
-  offline: boolean
-  only?: string[] | undefined
-  branch?: string | undefined
-  against?: string | undefined
-  provider?: ProviderChoice | undefined
-  progress: boolean
-}
-
-type ReportValues = SweepValues & { all: boolean; format: 'text' | 'json' | 'summary' | 'commands' }
-
-type PlanValues = SweepValues & { out: string }
+type SweepValues = FlagValues<typeof SWEEP_FLAGS>
 
 /** The sweep options as typed, for {@link sweptWith} and {@link sweepTargets}. */
 function sweepOptions(v: SweepValues, ctx: CliContext): SweepOptions {
@@ -462,23 +434,8 @@ function reportUnreadable(ctx: CliContext, name: string, s: Sweep): boolean {
   return failed.length > 0
 }
 
-/** Validate the sweep options before anything is swept; a usage error answers with exit 2. */
-function preflight(
-  name: string,
-  v: SweepValues,
-  targets: readonly string[],
-  ctx: CliContext,
-): SweptWith | number {
-  try {
-    const { urls: _, ...options } = sweptWith(targets, sweepOptions(v, ctx))
-    return options
-  } catch (err) {
-    return refusal(ctx, name, err)
-  }
-}
-
 function runReport(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
-  const parsed = parseWith<ReportValues>(reportCli(), NAME, argv, ctx)
+  const parsed = parseWith(reportCli(), NAME, argv, ctx)
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   if (v.all && v.format !== 'text') {
@@ -488,8 +445,6 @@ function runReport(argv: readonly string[], ctx: CliContext, status: StatusLine)
       `--all has no effect with --format ${v.format}: it shows keep rows in the text report`,
     )
   }
-  const pre = preflight(NAME, v, parsed.positionals, ctx)
-  if (typeof pre === 'number') return pre
   const style = styleFor(ctx, 'stdout')
   const swept = doSweep(NAME, v, parsed.positionals, ctx, status)
   if (swept.kind === 'exit') return swept.code
@@ -507,11 +462,9 @@ function runReport(argv: readonly string[], ctx: CliContext, status: StatusLine)
 
 function runPlan(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
   const name = `${NAME} plan`
-  const parsed = parseWith<PlanValues>(planCli(), name, argv, ctx)
+  const parsed = parseWith(planCli(), name, argv, ctx)
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
-  const pre = preflight(name, v, parsed.positionals, ctx)
-  if (typeof pre === 'number') return pre
   const swept = doSweep(name, v, parsed.positionals, ctx, status)
   if (swept.kind === 'exit') return swept.code
   // stdout carries only the plan, so the totals go to stderr either way.
@@ -541,32 +494,7 @@ function receiptBeside(planPath: string, now: Date): string {
 
 const dropKey = (d: Receipt['dropped'][number]): string => JSON.stringify([d.repo, d.row])
 
-type CleanValues = SweepValues & {
-  pick: string[]
-  spare: string[]
-  allow: string[]
-  plan?: string | undefined
-  yes: boolean
-  dryRun: boolean
-  receipt?: string | undefined
-  format: 'text' | 'json'
-}
-
-/** `<risk>` for every row, or `<risk>=<row>` for one. */
-function parseAllow(text: string): Allow {
-  const eq = text.indexOf('=')
-  const risk = eq < 0 ? text : text.slice(0, eq)
-  if (!(RISKS as readonly string[]).includes(risk)) {
-    throw new RepoCleanerError(
-      'bad-input',
-      `unknown risk ${JSON.stringify(risk)}: expected one of ${RISKS.join(', ')}`,
-    )
-  }
-  if (eq < 0) return { risk: risk as Risk }
-  const row = text.slice(eq + 1)
-  if (row === '') throw new RepoCleanerError('bad-input', `--allow ${text} names no row`)
-  return { risk: risk as Risk, row }
-}
+type CleanValues = ValuesOf<ReturnType<typeof cleanCli>>
 
 /** The run's options that contradict each other, as a usage message, or null. */
 function cleanConflict(v: CleanValues, targets: readonly string[]): string | null {
@@ -589,30 +517,6 @@ function cleanConflict(v: CleanValues, targets: readonly string[]): string | nul
     return '--yes and --dry-run contradict: one deletes without asking, the other deletes nothing'
   if (v.receipt !== undefined && v.dryRun)
     return '--receipt has no effect with --dry-run: nothing runs to record'
-  const both = v.pick.filter((p) => v.spare.includes(p))
-  if (both.length > 0) return `${both[0]} is both picked and spared`
-  return null
-}
-
-/** A row reference that no sweep with these options could hold, as a usage message, or null. */
-function refConflict(options: SweptWith, refs: Array<[string, string]>): string | null {
-  for (const [flag, text] of refs) {
-    const colon = text.indexOf(':')
-    const kind = colon > 1 ? text.slice(0, colon) : null
-    const name = colon > 1 ? text.slice(colon + 1) : text
-    if (kind === null || !(KINDS as readonly string[]).includes(kind)) continue
-    if (!options.only.includes(kind as Kind)) {
-      return `${flag} ${text}: the sweep has no ${kind} rows (it sweeps ${options.only.join(', ')})`
-    }
-    const b = options.branch
-    if (
-      b !== null &&
-      b !== 'HEAD' &&
-      ((kind === 'branch' && name !== b) || (kind === 'remote' && !name.endsWith(`/${b}`)))
-    ) {
-      return `${flag} ${text} is not a row of --branch ${b}`
-    }
-  }
   return null
 }
 
@@ -678,31 +582,27 @@ function runClean(
   status: StatusLine,
 ): number {
   const name = `${NAME} clean`
-  const parsed = parseWith<CleanValues>(cleanCli(), name, argv, ctx)
+  const parsed = parseWith(cleanCli(), name, argv, ctx)
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   const targets = parsed.positionals
 
-  let allow: Allow[]
+  let approval: Approval
   try {
-    allow = v.allow.map(parseAllow)
+    approval = { pick: v.pick, spare: v.spare, allow: v.allow.map(parseAllow) }
   } catch (err) {
     return refusal(ctx, name, err)
   }
   const conflict = cleanConflict(v, targets)
   if (conflict !== null) return usageError(ctx, name, conflict)
+  // Refuse what can be refused before sweeping; a saved plan's own options
+  // are checked when the approval is resolved against it.
   if (v.plan === undefined) {
-    const pre = preflight(name, v, targets, ctx)
-    if (typeof pre === 'number') return pre
-    const refs: Array<[string, string]> = [
-      ...v.pick.map((r): [string, string] => ['--pick', r]),
-      ...v.spare.map((r): [string, string] => ['--spare', r]),
-      ...allow.flatMap((a): Array<[string, string]> =>
-        a.row === undefined ? [] : [['--allow', a.row]],
-      ),
-    ]
-    const bad = refConflict(pre, refs)
-    if (bad !== null) return usageError(ctx, name, bad)
+    try {
+      checkApproval(sweptWith(targets, sweepOptions(v, ctx)), approval)
+    } catch (err) {
+      return refusal(ctx, name, err)
+    }
   }
 
   const now = new Date()
@@ -710,25 +610,11 @@ function runClean(
   if (typeof loaded === 'number') return loaded
   const { plan, source, receiptPath } = loaded
   const ok = (): number => (loaded.unreadable ? EXIT.error : EXIT.ok)
-  const approval: Approval = { pick: v.pick, spare: v.spare, allow }
 
   // On a terminal the run is shown live: every step first, then each one
   // checked off as it finishes.
   const live = v.format === 'text' && ctx.terminal?.stdout === true
   const style = styleFor(ctx, 'stdout')
-
-  // Nothing could run, and nothing named needs checking against the plan.
-  const named = v.pick.length > 0 || v.spare.length > 0 || allow.some((a) => a.row !== undefined)
-  if (!named && plan.repos.every((r) => !r.rows.some(runnable))) {
-    if (v.format === 'json') {
-      ctx.io.stdout(
-        `${JSON.stringify({ dryRun: v.dryRun, summary: summarizeRun({ steps: [], dropped: [] }), steps: [], dropped: [] }, null, 2)}\n`,
-      )
-    } else {
-      ctx.io.stdout('nothing to delete\n')
-    }
-    return ok()
-  }
 
   const shared = {
     cwd: ctx.cwd,
@@ -756,7 +642,7 @@ function runClean(
   const showPreview = (): void => {
     if (v.format === 'json') {
       ctx.io.stdout(
-        `${JSON.stringify({ dryRun: true, summary: summarizeRun(preview), steps: preview.steps, dropped: preview.dropped, unusedAllows: preview.unusedAllows }, null, 2)}\n`,
+        `${JSON.stringify({ dryRun: v.dryRun, summary: summarizeRun(preview), steps: preview.steps, dropped: preview.dropped, unusedAllows: preview.unusedAllows }, null, 2)}\n`,
       )
     } else {
       ctx.io.stdout(renderPreview(preview, style))
@@ -963,12 +849,7 @@ function cacheRemove(
 
 function runCache(argv: readonly string[], ctx: CliContext): number {
   const name = `${NAME} cache`
-  const parsed = parseWith<HelpValues & { all: boolean; format: 'text' | 'json' }>(
-    cacheCli(),
-    name,
-    argv,
-    ctx,
-  )
+  const parsed = parseWith(cacheCli(), name, argv, ctx)
   if (parsed.status === 'done') return parsed.code
   const v = parsed.values
   const [verb = 'list', ...urls] = parsed.positionals

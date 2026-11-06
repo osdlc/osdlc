@@ -31,10 +31,8 @@ import {
   KINDS,
   RepoCleanerError,
   countRows,
-  emptyBucket,
   emptyScan,
   findDuplicateCheckouts,
-  type Counts,
   type Kind,
   type PRInfo,
   type RepoSweep,
@@ -102,7 +100,10 @@ const LOCAL: readonly Kind[] = ['worktree', 'branch']
  */
 export function sweptWith(
   targets: readonly string[],
-  opts: Omit<SweepOptions, keyof Runners | 'annotate' | 'onProgress' | 'onWarn' | 'cacheDir'>,
+  opts: Omit<
+    SweepOptions,
+    Exclude<keyof Runners, 'git'> | 'annotate' | 'onProgress' | 'onWarn' | 'cacheDir'
+  >,
 ): SweptWith & { urls: boolean } {
   const cwd = opts.cwd ?? process.cwd()
   const conflict = (message: string): never => {
@@ -166,27 +167,26 @@ export function sweptWith(
       : remote
         ? [...LOCAL, 'remote']
         : [...LOCAL]
+  // `HEAD` is the branch checked out at the target, resolved here so the
+  // options checked before the sweep are the ones the plan records.
+  let branch = opts.branch ?? null
+  if (branch === 'HEAD') {
+    const at = targets[0] === undefined ? cwd : resolve(cwd, expandTilde(targets[0]))
+    try {
+      branch = resolveBranch('HEAD', new Git(at, { runner: opts.git }))
+    } catch (err) {
+      throw new RepoCleanerError('conflict', err instanceof Error ? err.message : String(err))
+    }
+  }
   return {
     only: kinds,
     remote,
     offline: opts.offline === true,
     against: opts.against ?? null,
     provider: remote ? (opts.provider ?? 'auto') : 'none',
-    branch: opts.branch ?? null,
+    branch,
     urls,
   }
-}
-
-function sumCounts(all: readonly Counts[]): Counts {
-  const out: Counts = { worktree: emptyBucket(), branch: emptyBucket(), remote: emptyBucket() }
-  for (const c of all) {
-    for (const kind of KINDS) {
-      for (const key of Object.keys(out[kind]) as (keyof Counts[Kind])[]) {
-        out[kind][key] += c[kind][key]
-      }
-    }
-  }
-  return out
 }
 
 /**
@@ -202,16 +202,7 @@ function sumCounts(all: readonly Counts[]): Counts {
 export function sweep(targets: readonly string[], opts: SweepOptions = {}): Sweep {
   const cwd = opts.cwd ?? process.cwd()
   const { urls, ...options } = sweptWith(targets, opts)
-  let branch = options.branch ?? undefined
-  if (branch === 'HEAD') {
-    const at = targets[0] === undefined ? cwd : resolve(cwd, expandTilde(targets[0]))
-    try {
-      branch = resolveBranch('HEAD', new Git(at, { runner: opts.git }))
-    } catch (err) {
-      throw new RepoCleanerError('conflict', err instanceof Error ? err.message : String(err))
-    }
-    options.branch = branch
-  }
+  const branch = options.branch ?? undefined
 
   const failed: RepoSweep[] = []
   let entries: string[] = targets.length > 0 ? [...targets] : [cwd]
@@ -261,13 +252,9 @@ export function sweep(targets: readonly string[], opts: SweepOptions = {}): Swee
     unresolved: resolution.unresolved,
     scan: resolution.scan,
     duplicates: findDuplicateCheckouts(repos.map((s) => s.repo)),
-    counts: sumCounts(repos.map((s) => s.counts)),
+    counts: countRows(repos.flatMap((s) => s.rows)),
     options,
   }
-}
-
-function emptyCounts(): Counts {
-  return countRows([])
 }
 
 function errorSweep(path: string, err: unknown): RepoSweep {
@@ -275,18 +262,20 @@ function errorSweep(path: string, err: unknown): RepoSweep {
     path,
     repo: null,
     rows: [],
-    counts: emptyCounts(),
+    counts: countRows([]),
     error: err instanceof Error ? err.message : String(err),
   }
 }
 
 /** What {@link sweepRepo} takes: a sweep's options, already resolved. */
-export interface RepoSweepOptions extends Runners {
+interface RepoSweepOptions extends Runners {
   only: readonly Kind[]
   against?: string | undefined
   provider: ProviderChoice
   fetch: boolean
   branch?: string | undefined
+  /** Only the worktree at this path; for {@link inspectWorktree}. */
+  worktree?: string | undefined
   cwd: string
   annotate?: Annotate | undefined
   onProgress?: ((progress: SweepProgress) => void) | undefined
@@ -383,7 +372,7 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
         prs,
         cwd,
         git,
-        only,
+        { branch: only, path: opts.worktree },
         opts.probe ?? defaultProcessProbe(),
         ticker('worktree'),
       )
@@ -419,7 +408,7 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
     const annotated =
       opts.annotate === undefined
         ? rows
-        : holdFreedBranches(opts.annotate(repo, rows), only !== undefined)
+        : holdFreedBranches(opts.annotate(repo, rows).map(blockedHasNoAction), only !== undefined)
     return { path, repo, rows: annotated, counts: countRows(annotated), error: null }
   } catch (err) {
     if (err instanceof RepoCleanerError) throw err
@@ -434,6 +423,13 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
  */
 function freesBranch(row: Row, branchScoped: boolean): boolean {
   return row.action !== null && (branchScoped || row.verdict === 'delete')
+}
+
+/** A row a host marked `blocked` can never be deleted: it keeps no action and no command. */
+function blockedHasNoAction(row: Row): Row {
+  return row.verdict === 'blocked' && row.action !== null
+    ? { ...row, action: null, commands: [] }
+    : row
 }
 
 /**
@@ -479,23 +475,25 @@ export function inspectWorktree(
 ): WorktreeRow {
   const cwd = opts.cwd ?? process.cwd()
   const abs = isAbsolute(path) ? path : resolve(cwd, path)
-  const real = existsSync(abs) ? realpathSync(abs) : abs
-  const common = new Git(existsSync(abs) ? abs : cwd, { runner: opts.git }).soft.gitCommonDir()
-  if (common === null) throw new RepoCleanerError('not-found', `${path} is not in a repository`)
-  const root =
-    new Git(resolve(common, '..'), { runner: opts.git }).soft.topLevel() ?? resolve(common, '..')
-  const swept = sweepRepo(root, {
+  const there = existsSync(abs)
+  const real = there ? realpathSync(abs) : abs
+  // From the worktree itself when it is there; a gone one is read from the
+  // repository the caller stands in. The sweep finds the main checkout.
+  const swept = sweepRepo(there ? real : cwd, {
     ...opts,
     only: ['worktree'],
     provider: 'none',
     fetch: false,
     cwd,
+    worktree: real,
   })
   if (swept.error !== null) throw new RepoCleanerError('not-found', swept.error)
-  const row = swept.rows.find(
-    (r): r is WorktreeRow => r.kind === 'worktree' && (r.name === real || r.name === abs),
-  )
-  if (row === undefined)
-    throw new RepoCleanerError('not-found', `${path} is not a worktree of ${root}`)
+  const row = swept.rows.find((r): r is WorktreeRow => r.kind === 'worktree')
+  if (row === undefined) {
+    throw new RepoCleanerError(
+      'not-found',
+      `${path} is not a worktree of ${swept.repo?.root ?? cwd}`,
+    )
+  }
   return row
 }

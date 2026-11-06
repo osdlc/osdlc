@@ -42,7 +42,6 @@ import {
 import {
   KINDS,
   RepoCleanerError,
-  deletable,
   totalOf,
   type Bucket,
   type Kind,
@@ -321,8 +320,8 @@ describe('sweep', () => {
     expect(branches.get('wt-clean')?.action).toBeNull()
     expect(worktrees.get(root)?.action).toBeNull()
     expect(worktrees.get(join(root, 'wt', 'clean'))?.action).toBeNull()
-    expect(deletable(branches.get('live-branch')!)).toBe(true)
-    for (const row of swept.rows.filter((r) => !deletable(r))) expect(row.risks).toEqual([])
+    expect(branches.get('live-branch')!.action).not.toBeNull()
+    for (const row of swept.rows.filter((r) => r.action === null)) expect(row.risks).toEqual([])
   })
 
   test('only selects kinds', () => {
@@ -464,7 +463,7 @@ describe('counts', () => {
     expect(rootCounts.remote.total).toBe(0)
     const json = JSON.parse(renderJson(swept)) as { counts: unknown; totals: Bucket }
     expect(json.counts).toEqual(swept.counts)
-    expect(json.totals).toEqual(totalOf([swept.counts]))
+    expect(json.totals).toEqual(totalOf(swept.counts))
   })
 })
 
@@ -1000,7 +999,9 @@ describe('merged-PR evidence', () => {
 
   test('a branch-scoped sweep without worktrees in scope keeps the branch', () => {
     const swept = sweepOne(checkout, withPrs({ branch: 'wt-landed', only: ['branch', 'remote'] }))
-    expect(swept.rows.map((row) => [row.id, deletable(row)])).toEqual([['branch:wt-landed', false]])
+    expect(swept.rows.map((row) => [row.id, row.action !== null])).toEqual([
+      ['branch:wt-landed', false],
+    ])
   })
 
   test('a freed branch is kept again once a host holds its worktree back', () => {

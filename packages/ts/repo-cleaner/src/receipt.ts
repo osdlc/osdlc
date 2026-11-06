@@ -2,15 +2,10 @@
 
 import { z } from 'zod'
 
-import { KINDS, type RowId } from './types.ts'
+import { RowIdSchema } from './plan.ts'
 
 /** The receipt format's version, written into every receipt. */
 export const RECEIPT_VERSION = 2
-
-const RowIdSchema = z.custom<RowId>(
-  (v) => typeof v === 'string' && KINDS.some((k) => v.startsWith(`${k}:`)),
-  { message: 'expected <kind>:<name>' },
-)
 
 /**
  * Why a row did not run:

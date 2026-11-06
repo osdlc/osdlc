@@ -23,6 +23,7 @@ import {
   type Row,
   type Sweep,
 } from './types.ts'
+import { plural } from './util.ts'
 
 /** Branches first, then worktrees, then remotes, whatever order they were gathered in. */
 const KIND_ORDER: readonly Kind[] = ['branch', 'worktree', 'remote']
@@ -88,7 +89,7 @@ function ellipsize(s: string, max: number): string {
  * A row's risks for a report, e.g. `needs --allow abandon-unmerged (drops 3
  * commits), confirm-open-pr`. Empty when the row carries none.
  */
-export function risksNote(row: Pick<Row, 'risks' | 'evidence'>): string {
+function risksNote(row: Pick<Row, 'risks' | 'evidence'>): string {
   if (row.risks.length === 0) return ''
   const count = row.evidence.uniqueCommits
   const names = row.risks.map((name) =>
@@ -121,7 +122,7 @@ function repoHeader(sweep: RepoSweep): string {
 }
 
 /** The word a report shows for a row: its verdict, or `prune` for a `delete` that only prunes. */
-export function verdictWord(row: Pick<Row, 'verdict' | 'action'>): string {
+function verdictWord(row: Pick<Row, 'verdict' | 'action'>): string {
   return isPrune(row) ? 'prune' : row.verdict
 }
 
@@ -168,6 +169,10 @@ function count(n: number): string {
   return n.toLocaleString('en-US')
 }
 
+/** `1 target`, `1,204 directories`. */
+const counted = (n: number, one: string, many: string): string =>
+  `${count(n)} ${n === 1 ? one : many}`
+
 /**
  * What the search cost, or null when nothing was searched — every target
  * named a checkout outright.
@@ -179,9 +184,9 @@ function count(n: number): string {
 export function renderScan(sweep: Pick<Sweep, 'scan'>): string | null {
   const { scan } = sweep
   if (scan.containers === 0) return null
-  const entries = `${scan.containers} ${scan.containers === 1 ? 'target' : 'targets'}`
-  const dirs = `${count(scan.directoriesScanned)} ${scan.directoriesScanned === 1 ? 'directory' : 'directories'}`
-  const found = `${count(scan.checkoutsFound)} ${scan.checkoutsFound === 1 ? 'checkout' : 'checkouts'}`
+  const entries = counted(scan.containers, 'target', 'targets')
+  const dirs = counted(scan.directoriesScanned, 'directory', 'directories')
+  const found = counted(scan.checkoutsFound, 'checkout', 'checkouts')
   const line = `searched ${entries}: ${dirs} read, ${found} found.`
   if (scan.depthLimited === 0) return line
   return `${line} ${count(scan.depthLimited)} left unopened at the depth limit.`
@@ -189,15 +194,13 @@ export function renderScan(sweep: Pick<Sweep, 'scan'>): string | null {
 
 /** The one-line verdict a person reads first, and often only. */
 export function renderTotals(sweep: Sweep, style: Style = PLAIN): string {
-  const t = totalOf([sweep.counts])
-  const repos = `${sweep.repos.length} ${sweep.repos.length === 1 ? 'repository' : 'repositories'}`
+  const t = totalOf(sweep.counts)
+  const repos = counted(sweep.repos.length, 'repository', 'repositories')
   const errors = sweep.repos.filter((r) => r.error !== null).length
   const tail: string[] = []
   if (errors > 0) tail.push(`${errors} unreadable`)
   if (sweep.unresolved.length > 0) {
-    tail.push(
-      `${sweep.unresolved.length} ${sweep.unresolved.length === 1 ? 'target' : 'targets'} unresolved`,
-    )
+    tail.push(`${counted(sweep.unresolved.length, 'target', 'targets')} unresolved`)
   }
   const suffix = tail.length > 0 ? ` (${tail.join(', ')})` : ''
   const prune = t.prune > 0 ? `${style.prune(`${t.prune} to prune`)}, ` : ''
@@ -229,10 +232,18 @@ function renderUnresolved(sweep: Sweep): string | null {
   return lines.join('\n')
 }
 
-function closing(sweep: Sweep, style: Style): string {
+/** `blocks`, then the unresolved targets, what the search cost and the totals, as one report. */
+function report(blocks: string[], sweep: Sweep, style: Style): string {
+  const unresolved = renderUnresolved(sweep)
   const scan = renderScan(sweep)
   const totals = renderTotals(sweep, style)
-  return scan === null ? totals : `${scan}\n${totals}`
+  return (
+    [
+      ...blocks,
+      ...(unresolved === null ? [] : [unresolved]),
+      scan === null ? totals : `${scan}\n${totals}`,
+    ].join('\n\n') + '\n'
+  )
 }
 
 /** The sweep as counts (`--format summary`): a table per repository, then the totals line. */
@@ -254,10 +265,7 @@ export function renderSummary(sweep: Sweep, style: Style = PLAIN): string {
     }
     return lines.join('\n')
   })
-  const unresolved = renderUnresolved(sweep)
-  if (unresolved !== null) blocks.push(unresolved)
-  blocks.push(closing(sweep, style))
-  return blocks.join('\n\n') + '\n'
+  return report(blocks, sweep, style)
 }
 
 /** The "Duplicate checkouts" section, or null when there are none. */
@@ -278,10 +286,7 @@ export function renderText(sweep: Sweep, opts: { all?: boolean; style?: Style } 
     ...(duplicates === null ? [] : [duplicates]),
     ...sweep.repos.map((r) => renderRepo(r, opts)),
   ]
-  const unresolved = renderUnresolved(sweep)
-  if (unresolved !== null) blocks.push(unresolved)
-  blocks.push(closing(sweep, opts.style ?? PLAIN))
-  return blocks.join('\n\n') + '\n'
+  return report(blocks, sweep, opts.style ?? PLAIN)
 }
 
 /** The sweep as JSON: every row with its evidence, the counts, and what was swept. */
@@ -296,7 +301,7 @@ export function renderJson(sweep: Sweep, extra: Record<string, unknown> = {}): s
         scan: sweep.scan,
         duplicates: sweep.duplicates,
         counts: sweep.counts,
-        totals: totalOf([sweep.counts]),
+        totals: totalOf(sweep.counts),
       },
       null,
       2,
@@ -366,8 +371,6 @@ export function summarizeRun(r: {
 export function rowsActedOn(summary: RunSummary): number {
   return KINDS.reduce((n, k) => n + summary.deleted[k], 0) + summary.pruned
 }
-
-const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`
 
 /**
  * How to include a dropped row next time, for the reasons a person can act

@@ -9,6 +9,7 @@
  */
 
 import type { LandingCheck } from './landing.ts'
+import type { Plan } from './plan.ts'
 import type { ProcessHolder } from './processes.ts'
 import type { ProviderStatus } from './providers/types.ts'
 
@@ -30,6 +31,18 @@ export function rowId(kind: Kind, name: string): RowId {
 }
 
 /**
+ * `<kind>:<name>` split, or null when `text` has no kind in front. A
+ * one-letter prefix is a Windows drive (`C:\\…`), not a kind.
+ */
+export function parseRowId(text: string): { kind: Kind; name: string } | null {
+  const colon = text.indexOf(':')
+  if (colon <= 1) return null
+  const kind = text.slice(0, colon)
+  if (!(KINDS as readonly string[]).includes(kind)) return null
+  return { kind: kind as Kind, name: text.slice(colon + 1) }
+}
+
+/**
  * What the sweep concluded about a row.
  *
  *   `delete`   its work is on the default branch, or it is otherwise safe to lose
@@ -39,14 +52,18 @@ export function rowId(kind: Kind, name: string): RowId {
  *              when picked
  *   `blocked`  something rules removal out; never deleted, whatever is granted
  */
-export type Verdict = 'delete' | 'review' | 'keep' | 'blocked'
+export const VERDICTS = ['delete', 'review', 'keep', 'blocked'] as const
+
+export type Verdict = (typeof VERDICTS)[number]
 
 /**
  * What deleting a row does: `remove` a worktree, `prune` the stale record of
  * a worktree whose directory is gone, `delete` a branch. Null on a row that
  * can never be deleted.
  */
-export type Action = 'remove' | 'prune' | 'delete'
+export const ACTIONS = ['remove', 'prune', 'delete'] as const
+
+export type Action = (typeof ACTIONS)[number]
 
 /**
  * A risk an action carries, which a person approves by name:
@@ -93,15 +110,8 @@ export interface PRInfo {
   url: string
 }
 
-/** A row's pull request, as evidence. */
-export interface PrEvidence {
-  number: number
-  state: string
-  mergedAt: string | null
-  url: string
-  title: string
-  headOid: string | null
-  baseRef: string
+/** A row's pull request, as evidence: the PR without its head branch, which the row names already. */
+export type PrEvidence = Omit<PRInfo, 'headRef'> & {
   /** For a merged PR: `exact-head` when it proves the tip landed, otherwise the gap. */
   proof?: 'exact-head' | PrEvidenceGap
 }
@@ -237,11 +247,6 @@ export interface RemoteRow extends RowCommon {
 /** One thing that could be deleted, and the sweep's verdict on it. */
 export type Row = WorktreeRow | BranchRow | RemoteRow
 
-/** True when `row` can be deleted at all: it has an action. */
-export function deletable(row: Pick<Row, 'action'>): boolean {
-  return row.action !== null
-}
-
 /** A row whose deletion only prunes a stale worktree record. */
 export function isPrune(row: Pick<Row, 'verdict' | 'action'>): boolean {
   return row.verdict === 'delete' && row.action === 'prune'
@@ -320,7 +325,7 @@ export function emptyBucket(): Bucket {
 
 /** Per-kind counts over `rows`, every kind present. */
 export function countRows(rows: readonly Row[]): Counts {
-  const out: Counts = { worktree: emptyBucket(), branch: emptyBucket(), remote: emptyBucket() }
+  const out = Object.fromEntries(KINDS.map((k) => [k, emptyBucket()])) as Counts
   for (const row of rows) {
     const bucket = out[row.kind]
     bucket.total += 1
@@ -332,12 +337,10 @@ export function countRows(rows: readonly Row[]): Counts {
 }
 
 /** `counts` summed across kinds. */
-export function totalOf(counts: readonly Counts[]): Bucket {
+export function totalOf(counts: Counts): Bucket {
   const out = emptyBucket()
-  for (const c of counts) {
-    for (const kind of KINDS) {
-      for (const key of Object.keys(out) as (keyof Bucket)[]) out[key] += c[kind][key]
-    }
+  for (const kind of KINDS) {
+    for (const key of Object.keys(out) as (keyof Bucket)[]) out[key] += counts[kind][key]
   }
   return out
 }
@@ -384,15 +387,7 @@ export interface DuplicateCheckout {
 }
 
 /** The options a sweep ran with, as a plan records them so a re-check runs the same sweep. */
-export interface SweptWith {
-  only: Kind[]
-  remote: boolean
-  offline: boolean
-  /** The remote named with `against`; null for the default (`origin`, then the first). */
-  against: string | null
-  provider: 'auto' | 'github' | 'gitlab' | 'none'
-  branch: string | null
-}
+export type SweptWith = Plan['options']
 
 /** Every repository swept in one run, plus the targets that named none. */
 export interface Sweep {

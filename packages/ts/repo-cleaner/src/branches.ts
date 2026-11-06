@@ -50,7 +50,7 @@ const LOCAL_FORMAT =
  * and its head commit is `tip`. Fork PRs never reach here; `fetchPrs` drops
  * them. A PR with no reported head counts as `head-moved`.
  */
-export function prCapturesTip(pr: PRInfo, tip: string, repo: RepoInfo): true | PrEvidenceGap {
+function prCapturesTip(pr: PRInfo, tip: string, repo: RepoInfo): true | PrEvidenceGap {
   if (pr.baseRef !== repo.mainBranch) return 'other-base'
   if (pr.headOid === null || pr.headOid !== tip) return 'head-moved'
   return true
@@ -67,15 +67,8 @@ export function recordPr(
   repo: RepoInfo,
 ): { landed: boolean; gap: PrEvidenceGap | null } {
   if (pr === undefined) return { landed: false, gap: null }
-  const out: PrEvidence = {
-    number: pr.number,
-    state: pr.state,
-    mergedAt: pr.mergedAt,
-    url: pr.url,
-    title: pr.title,
-    headOid: pr.headOid,
-    baseRef: pr.baseRef,
-  }
+  const { headRef: _, ...rest } = pr
+  const out: PrEvidence = rest
   evidence.pr = out
   if (pr.state !== 'MERGED') return { landed: false, gap: null }
   const verdict = prCapturesTip(pr, tip, repo)
@@ -84,7 +77,7 @@ export function recordPr(
 }
 
 /** Why a branch has no PR, naming where the sweep looked. */
-export function noPrSentence(repo: RepoInfo): string {
+function noPrSentence(repo: RepoInfo): string {
   const provider = repo.provider
   if (provider === null) return 'No PR lookup (no provider).'
   return `No ${provider.noun} found via \`${provider.listing}\`.`
@@ -191,7 +184,7 @@ export function gatherLocalBranches(
   return items
 }
 
-export function classifyLocalBranch(opts: {
+function classifyLocalBranch(opts: {
   name: string
   upstream: string
   track: string
@@ -319,7 +312,7 @@ export function gatherRemoteBranches(
   return items
 }
 
-export function classifyRemoteBranch(opts: {
+function classifyRemoteBranch(opts: {
   name: string
   sha: string
   repo: RepoInfo

@@ -919,7 +919,7 @@ describe('clean', () => {
     const dry = run(['clean', '--plan', plan, '--dry-run', '--format', 'json'], fx.root)
     expect(dry.code).toBe(0)
     expect(JSON.parse(dry.out)).toMatchObject({ dryRun: true, steps: [], dropped: [] })
-    expect(run(['clean', '--plan', plan, '--yes'], fx.root).out).toBe('nothing to delete\n')
+    expect(run(['clean', '--plan', plan, '--yes'], fx.root).out).toMatch(/^would delete: nothing$/m)
   })
 
   test('two clones of one remote: clean deletes each remote branch once', () => {
@@ -1358,7 +1358,7 @@ describe('refused combinations', () => {
       )
       untouched(fx)
     })
-    // "nothing to delete" must not answer before --spare and --allow are checked.
+    // A plan where nothing could run still has its --spare and --allow rows checked.
     test('a spared or allowed row the plan does not have, when no plan row could run', () => {
       const fx = buildFixture()
       // The fixture's only local branch besides main is held by its worktree: nothing could run.
