@@ -928,7 +928,7 @@ describe('check and run', () => {
     expectRefused(
       () => check(p, { pick: ['branch:merged-b'] }, { cwd: a.root }),
       'ambiguous',
-      /sweep only its repository/,
+      /sweep or plan only the repository it is in/,
     )
   })
 

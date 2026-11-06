@@ -166,8 +166,10 @@ $ repo-cleaner --format summary --remote
 ```
 
 `prune` counts worktree rows whose directory is gone, or is no longer a
-checkout: deleting one runs `git worktree prune` to drop the stale record, and
-a directory that is still there stays. `merged` counts rows whose work is on
+checkout: deleting one drops the stale record, with `git worktree remove
+<path>` for a directory that is gone (that worktree's record alone) and the
+repository-wide `git worktree prune` for one left without its `.git`, and a
+directory that is still there stays. `merged` counts rows whose work is on
 the default branch, by ancestry, by a merged PR at the branch's head, or by a
 patch match; the default branch and the primary worktree are counted in
 `total` but not judged.
@@ -249,7 +251,7 @@ name or path works when only one row has it.
 
 | Row | What it is | Deleted with |
 | --- | --- | --- |
-| `worktree:<path>` | a linked worktree | `git worktree remove`, or `git worktree prune` when its directory is already gone |
+| `worktree:<path>` | a linked worktree | `git worktree remove`; when its directory is already gone, the same on its record alone, or `git worktree prune` when the directory is left without its `.git` |
 | `branch:<name>` | a local branch | `git update-ref -d refs/heads/<name> <sha>` |
 | `remote:<remote>/<name>` | a branch on a remote | `git push --force-with-lease=…:<sha> <remote> :refs/heads/<name>` |
 
@@ -315,8 +317,9 @@ anything is swept; a row named two ways (a bare name and its id), and an
 Refused after the sweep, before deleting, with exit 1:
 
 - a picked, spared or allowed row the plan does not have;
-- a row name that matches rows in more than one repository: name it by its
-  full id, or sweep only its repository;
+- a row name that matches rows in more than one repository: sweep or plan
+  only the repository it is in (a bare name can also be given as its full id,
+  when the matches are of different kinds);
 - a spared remote branch that is gone or moved since the plan.
 
 Allowed, because nothing contradicts:
@@ -441,9 +444,12 @@ drops the row first.
 A worktree whose directory is gone is read through its git dir: unpushed work
 in a left-over submodule git dir makes the prune row a `review` that carries
 `abandon-unmerged`.
-A `git worktree prune` drops every gone worktree, not only the planned one, so
-`clean` refuses a prune step while a gone worktree it was not allowed keeps such
-work; the closing prune of a run skips instead, and its receipt step says why.
+A worktree whose directory is gone is removed by its own record. One whose
+directory is left without its `.git` takes the repository-wide `git worktree
+prune`, which drops every gone worktree, not only the planned one, so `clean`
+drops such a row (`blocked`, with the reason) while another gone worktree it
+was not allowed keeps such work; the closing prune of a run skips instead, and
+its receipt step says why.
 
 Commits count as pushed only when a remote-tracking ref of the submodule holds
 them. A superproject that records a submodule commit reachable from no branch

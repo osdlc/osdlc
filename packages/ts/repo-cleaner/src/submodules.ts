@@ -24,7 +24,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 import type { Git } from '@osdlc/typed-git'
 
 import type { SubmoduleEvidence } from './types.ts'
-import { errorText, isDir } from './util.ts'
+import { errorText, isDir, plural } from './util.ts'
 
 /** One submodule of a worktree, or a submodule git dir it keeps, and what removing the worktree would lose from it. */
 export interface Submodule {
@@ -126,11 +126,6 @@ export function worktreeGitDirs(commonDir: string): Map<string, string> {
 /** A repository's git dir: `HEAD` and `objects` side by side. */
 const isGitDir = (dir: string): boolean =>
   existsSync(join(dir, 'HEAD')) && isDir(join(dir, 'objects'))
-
-/** The private git dir of the linked worktree at `worktree`; null when none points at it. See {@link worktreeGitDirs}. */
-export function worktreeGitDir(commonDir: string, worktree: string): string | null {
-  return worktreeGitDirs(commonDir).get(resolve(worktree)) ?? null
-}
 
 /** Every git dir under `modules`, a nested submodule's (`<name>/modules/<name>`) included. */
 function moduleGitDirs(modules: string, prefix = ''): { name: string; dir: string }[] {
@@ -283,7 +278,7 @@ export function inspectSubmodules(
   const modules = gitDir === null ? null : join(gitDir, 'modules')
   const used = new Set(out.flatMap((s) => (s.gitDir === null ? [] : [resolve(s.gitDir)])))
   const hasModules = modules !== null && isDir(modules)
-  if (modules !== null && hasModules) {
+  if (hasModules) {
     for (const { name, dir } of moduleGitDirs(modules)) {
       if (used.has(resolve(dir))) continue
       const entry = blank(name, null)
@@ -368,9 +363,8 @@ export function unreadablePhrase(subs: readonly Submodule[]): string {
 /** `2 unpushed commits, 1 stash`. */
 export function unsharedPhrase(s: Pick<Submodule, 'unpushedCommits' | 'stashes'>): string {
   const parts: string[] = []
-  if (s.unpushedCommits > 0) {
-    parts.push(`${s.unpushedCommits} unpushed commit${s.unpushedCommits === 1 ? '' : 's'}`)
-  }
-  if (s.stashes > 0) parts.push(`${s.stashes} stash${s.stashes === 1 ? '' : 'es'}`)
+  if (s.unpushedCommits > 0)
+    parts.push(plural(s.unpushedCommits, 'unpushed commit', 'unpushed commits'))
+  if (s.stashes > 0) parts.push(plural(s.stashes, 'stash', 'stashes'))
   return parts.join(', ')
 }

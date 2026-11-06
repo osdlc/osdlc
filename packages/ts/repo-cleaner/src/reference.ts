@@ -80,8 +80,8 @@ const CACHE = `repo-cleaner cache [list | remove <url>... | remove --all]
 
 const WORDS = `Rows
   One thing that could be deleted, named <kind>:<name>:
-    worktree:<path>         a linked worktree: removed with git worktree remove, or
-                            pruned when its directory is already gone
+    worktree:<path>         a linked worktree: removed with git worktree remove, or,
+                            when its directory is already gone, its record pruned
     branch:<name>           a local branch, deleted with git update-ref -d <sha>
     remote:<remote>/<name>  a branch on a remote, deleted by a push with a lease
   A bare name or path works when only one row has it.

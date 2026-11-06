@@ -22,7 +22,7 @@ import { sh } from './helpers.ts'
 import { check, run as runPreview, type Approval, type RunOptions } from '../src/clean.ts'
 import { plan as makePlan, type Plan } from '../src/plan.ts'
 import type { Receipt } from '../src/receipt.ts'
-import { inspectSubmodules, submoduleHazards, worktreeGitDir } from '../src/submodules.ts'
+import { inspectSubmodules, submoduleHazards, worktreeGitDirs } from '../src/submodules.ts'
 import { inspectWorktree, sweep } from '../src/sweep.ts'
 import type { Kind, Sweep, WorktreeRow } from '../src/types.ts'
 
@@ -170,7 +170,7 @@ describe('inspectSubmodules', () => {
     sh(join(fx.worktree, 'sub'), ['commit', '--allow-empty', '-m', 'local only'])
     rmSync(fx.worktree, { recursive: true, force: true })
     const common = new Git(fx.root).gitCommonDir()!
-    expect(worktreeGitDir(common, fx.worktree)).toBe(fx.gitDir)
+    expect(worktreeGitDirs(common).get(fx.worktree)).toBe(fx.gitDir)
     const report = inspectSubmodules(new Git(fx.root), fx.worktree, { gitDir: fx.gitDir })
     expect(report.unpushed).toMatchObject([{ path: 'sub', unpushedCommits: 1 }])
   })
@@ -246,7 +246,7 @@ describe('sweeping a worktree with submodules', () => {
     expect(row.verdict).toBe('review')
     expect(row.action).toBe('prune')
     expect(row.risks).toEqual(['abandon-unmerged'])
-    expect(row.commands).toEqual([`git -C ${fx.root} worktree prune`])
+    expect(row.commands).toEqual([`git -C ${fx.root} worktree remove ${fx.worktree}`])
   })
 })
 

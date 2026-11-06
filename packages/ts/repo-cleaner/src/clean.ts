@@ -51,12 +51,7 @@ import {
   parseRowId,
 } from './types.ts'
 import { errorText } from './util.ts'
-import {
-  removeIsForced,
-  worktreePruneCommand,
-  worktreeRemoveCommand,
-  worktreeUnlockCommand,
-} from './worktrees.ts'
+import { removeIsForced, worktreeCommands, worktreePruneCommand } from './worktrees.ts'
 import { writeJsonAtomic } from './write-json.ts'
 
 /** A risk allowed for every row (`row` absent), or for one row. */
@@ -269,7 +264,7 @@ function resolveRef(plan: Plan, text: string, flag: string, cwd: string): Resolv
     const where = [...new Set(hits.map((h) => `${h.id} in ${h.repo}`))].join(', ')
     throw new RepoCleanerError(
       'ambiguous',
-      `${flag} ${text} matches ${hits.length} rows (${where}); name one by its full id, or sweep only its repository`,
+      `${flag} ${text} matches ${hits.length} rows (${where}); sweep or plan only the repository it is in${ref.kind === null ? ', or name it by its full id' : ''}`,
     )
   }
   return hits[0]!
@@ -610,20 +605,16 @@ function verifyStep({ repo, row }: Accepted): Step {
 function stepsFor({ repo, row }: Accepted): Step[] {
   switch (row.kind) {
     case 'worktree': {
-      // Remove and prune both skip a locked worktree, so a stale lock goes first.
-      const unlock =
-        row.evidence.staleLock === true
-          ? [pending(repo, row.id, 'unlock-worktree', worktreeUnlockCommand(repo, row.name))]
-          : []
-      if (row.action === 'prune') return [...unlock, pruneStep(repo, row.id)]
+      // The row's own commands: a stale lock's unlock, then the remove or prune.
+      const commands = worktreeCommands(
+        repo,
+        row.evidence,
+        row.action === 'prune' ? 'prune' : 'remove',
+      )
+      const last = commands.at(-1)!
       return [
-        ...unlock,
-        pending(
-          repo,
-          row.id,
-          'remove-worktree',
-          worktreeRemoveCommand(repo, row.name, { force: removeIsForced(row.evidence) }),
-        ),
+        ...(commands.length > 1 ? [pending(repo, row.id, 'unlock-worktree', commands[0]!)] : []),
+        pending(repo, row.id, row.action === 'prune' ? 'prune-worktrees' : 'remove-worktree', last),
       ]
     }
     case 'branch':
@@ -653,6 +644,8 @@ interface Planned {
   steps: Array<[Step, Accepted | null]>
   dropped: Dropped[]
   accepted: Accepted[]
+  /** Gone worktrees this run prunes with `abandon-unmerged`: their submodule work may go. */
+  abandoned: Set<string>
 }
 
 function planSteps(
@@ -662,8 +655,36 @@ function planSteps(
   safeOnly: boolean,
 ): Planned {
   const cwd = opts.cwd ?? process.cwd()
+  const git = new Git(cwd, { runner: opts.git })
   const rechecked = recheck(plan, approval, opts, safeOnly)
-  const { accepted, dropped } = onePerRemoteBranch(rechecked, new Git(cwd, { runner: opts.git }))
+  const unique = onePerRemoteBranch(rechecked, git)
+  const dropped = [...unique.dropped]
+  const abandoned = new Set(
+    unique.accepted
+      .filter((a) => a.row.kind === 'worktree' && a.abandon)
+      .map((a) => resolve(a.row.name)),
+  )
+  // A worktree whose directory is left without its `.git` goes only by the
+  // repository-wide prune; while that prune would also delete another gone
+  // worktree's unpushed submodule work, the row cannot run.
+  const accepted = unique.accepted.filter((a) => {
+    if (
+      a.row.kind !== 'worktree' ||
+      a.row.action !== 'prune' ||
+      a.row.evidence.directoryLeft !== true
+    ) {
+      return true
+    }
+    const hazards = pruneHazards(git.at(a.repo), abandoned)
+    if (hazards.length === 0) return true
+    dropped.push({
+      repo: a.repo,
+      row: a.row.id,
+      reason: 'blocked',
+      detail: `pruning it would delete submodule work of another gone worktree: ${hazards.join('; ')}`,
+    })
+    return false
+  })
   const ordered = KINDS.flatMap((kind) => accepted.filter((a) => a.row.kind === kind))
   const steps: Array<[Step, Accepted | null]> = [
     // Spared tips first: one that moved stops the run before anything is deleted.
@@ -671,7 +692,7 @@ function planSteps(
     ...ordered.flatMap((a) => stepsFor(a).map((step): [Step, Accepted | null] => [step, a])),
   ]
   for (const repo of new Set(ordered.map((a) => a.repo))) steps.push([pruneStep(repo, null), null])
-  return { steps, dropped, accepted: ordered }
+  return { steps, dropped, accepted: ordered, abandoned }
 }
 
 /** Plan repositories kept in the remote URL cache must still push only where they fetch from. */
@@ -807,8 +828,14 @@ function execute(
       return 'lock owner dead, unlocked'
     }
     case 'prune-worktrees': {
-      // Prune drops every gone worktree, not just this row's, and each one's
-      // git dir with it, submodule git dirs included.
+      // A worktree whose directory is gone goes on its own.
+      if (row?.kind === 'worktree' && row.evidence.directoryLeft !== true) {
+        at.worktreeRemove(row.name)
+        if (registered(row.name)) throw new Error('still registered after remove')
+        return 'unregistered'
+      }
+      // `git worktree prune` drops every gone worktree, not just this row's,
+      // and each one's git dir with it, submodule git dirs included.
       const hazards = pruneHazards(at, abandoned)
       if (hazards.length > 0) {
         if (row === undefined) return `not pruned: ${hazards.join('; ')}`
@@ -929,13 +956,7 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   opts.onStart?.(receipt.steps)
   const git = new Git(cwd, { runner: opts.git })
   const probe = opts.probe ?? defaultProcessProbe()
-  // Gone worktrees this run prunes with `abandon-unmerged`: their submodule
-  // work was approved for deletion, so a prune need not spare it.
-  const abandoned = new Set(
-    planned.accepted
-      .filter((a) => a.row.kind === 'worktree' && a.abandon)
-      .map((a) => resolve(a.row.name)),
-  )
+  const { abandoned } = planned
   // Worktrees whose lock this run cleared. typed-git has no `worktree lock`
   // verb, so a failed remove cannot put the lock back; the receipt says so.
   const unlocked = new Set<string>()

@@ -6,8 +6,8 @@
  * losing an hour of someone's work costs more than any amount of clutter.
  */
 
-import { existsSync } from 'node:fs'
-import { isAbsolute, join, sep } from 'node:path'
+import { existsSync, realpathSync } from 'node:fs'
+import { isAbsolute, join, resolve, sep } from 'node:path'
 
 import { shellJoin } from '@osdlc/command-seam'
 import { nodeGuard } from '@osdlc/path-guard/node'
@@ -88,7 +88,14 @@ export function removeIsForced(e: WorktreeEvidence): boolean {
   )
 }
 
-/** The commands that carry out `action` on the worktree whose evidence is `e`: an unlock first for a stale lock. */
+/**
+ * The commands that carry out `action` on the worktree whose evidence is `e`:
+ * an unlock first for a stale lock. A prune of a worktree whose directory is
+ * gone removes that worktree's record alone (`git worktree remove` takes a
+ * missing directory); one whose directory is left without its `.git` needs
+ * the repository-wide `git worktree prune`, which `git worktree remove`
+ * refuses to stand in for.
+ */
 export function worktreeCommands(
   root: string,
   e: WorktreeEvidence,
@@ -99,9 +106,11 @@ export function worktreeCommands(
   const unlock = e.staleLock === true ? [worktreeUnlockCommand(root, e.path)] : []
   return [
     ...unlock,
-    action === 'prune'
-      ? worktreePruneCommand(root)
-      : worktreeRemoveCommand(root, e.path, { force: removeIsForced(e) }),
+    action === 'remove'
+      ? worktreeRemoveCommand(root, e.path, { force: removeIsForced(e) })
+      : e.directoryLeft === true
+        ? worktreePruneCommand(root)
+        : worktreeRemoveCommand(root, e.path),
   ]
 }
 
@@ -236,10 +245,15 @@ export function gatherWorktrees(
       pathsByBranch.set(entry.branch, [...(pathsByBranch.get(entry.branch) ?? []), entry.path])
     }
   }
+  // A path matches however git spelled it: as listed, resolved, or through symlinks.
+  const samePath = (listed: string, wanted: string): boolean =>
+    listed === wanted ||
+    resolve(listed) === wanted ||
+    (existsSync(listed) && realpathSync(listed) === wanted)
   const entries = all.filter(
     (entry) =>
       (only.branch === undefined || entry.branch === only.branch) &&
-      (only.path === undefined || entry.path === only.path),
+      (only.path === undefined || samePath(entry.path, only.path)),
   )
   // Read once, and only when a worktree is gone: its git dir may still hold
   // submodule history that the prune would delete.
@@ -249,7 +263,7 @@ export function gatherWorktrees(
       const common = git.at(repo.root).soft.gitCommonDir()
       gitDirs = common === null ? new Map() : worktreeGitDirs(common)
     }
-    return gitDirs.get(path) ?? null
+    return gitDirs.get(resolve(path)) ?? null
   }
 
   const items: WorktreeRow[] = []

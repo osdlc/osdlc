@@ -476,7 +476,7 @@ export function inspectWorktree(
   const cwd = opts.cwd ?? process.cwd()
   const abs = isAbsolute(path) ? path : resolve(cwd, path)
   const there = existsSync(abs)
-  const real = there ? realpathSync(abs) : abs
+  const real = there ? realpathSync(abs) : resolve(abs)
   // From the worktree itself when it is there; a gone one is read from the
   // repository the caller stands in. The sweep finds the main checkout.
   const swept = sweepRepo(there ? real : cwd, {
