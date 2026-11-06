@@ -211,7 +211,10 @@ function granted(grants: readonly Grant[], ref: RowRef, name: Authorization): bo
 interface Accepted {
   repo: string
   item: SweepItem
+  /** `discard-changes` was granted: the remove is forced. */
   force: boolean
+  /** `abandon-unmerged` was granted: work no remote has may go, a submodule's included. */
+  abandon: boolean
 }
 
 /** The sweep scope that gathers each row category. */
@@ -286,7 +289,7 @@ function recheck(
         `kept ${label(ref)} moved since the plan (planned ${String(plannedSha)}, now ${String(item.facts['sha'])}); refusing to apply`,
       )
     }
-    verified.push({ repo: repo.root, item, force: false })
+    verified.push({ repo: repo.root, item, force: false, abandon: false })
   }
 
   const accepted: Accepted[] = []
@@ -322,7 +325,12 @@ function recheck(
       drop('not-authorized', `needs ${missing.join(', ')}`)
       continue
     }
-    accepted.push({ repo: repo.root, item, force: granted(grants, ref, 'discard-changes') })
+    accepted.push({
+      repo: repo.root,
+      item,
+      force: granted(grants, ref, 'discard-changes'),
+      abandon: granted(grants, ref, 'abandon-unmerged'),
+    })
   }
   // A branch freed by its worktree's removal goes only with that worktree.
   const leaving = new Set(
@@ -446,20 +454,22 @@ function assertNoLiveProcess(path: string, probe: ProcessProbe): void {
 }
 
 /**
- * Refuse a remove forced for submodules that would now lose something. The
- * force skips git's own check, so this one stands in for it: the worktree's
- * own files must be clean unless `discard` (the `discard-changes` grant), and
- * every submodule clean, pushed and readable, read afresh.
+ * Refuse a remove forced for submodules that would now lose something not
+ * granted. The force skips git's own check, so this one stands in for it: the
+ * worktree's own files must be clean unless `discard-changes` was granted, and
+ * every submodule clean (or `discard-changes`), pushed (or `abandon-unmerged`)
+ * and readable, read afresh.
  */
-function assertSubmodulesSafe(path: string, git: Git, discard: boolean): void {
+function assertSubmodulesSafe(path: string, git: Git, row: Accepted): void {
   const reasons: string[] = []
-  if (!discard) {
+  if (!row.force) {
     const status = git.at(path).statusPorcelain()
     if (status.length > 0) {
       reasons.push(`${path} has ${status.length} modified or untracked file(s) since the sweep`)
     }
   }
-  reasons.push(...submoduleHazards(inspectSubmodules(git, path), { discard }))
+  const report = inspectSubmodules(git, path)
+  reasons.push(...submoduleHazards(report, { discard: row.force, abandon: row.abandon }))
   if (reasons.length > 0) throw new Error(`refused: ${reasons.join('; ')}`)
 }
 
@@ -467,9 +477,10 @@ function assertSubmodulesSafe(path: string, git: Git, discard: boolean): void {
  * The gone worktrees a `git worktree prune` here would delete submodule work
  * with: each keeps, in its own git dir, a submodule git dir holding commits or
  * stashes no remote has, or one that cannot be read. Locked ones are left
- * out: prune skips them.
+ * out, since prune skips them, and so are those in `abandoned`, whose rows
+ * this run prunes under an `abandon-unmerged` grant.
  */
-function pruneHazards(at: Git): string[] {
+function pruneHazards(at: Git, abandoned: ReadonlySet<string>): string[] {
   const common = at.soft.gitCommonDir()
   if (common === null) return []
   const out: string[] = []
@@ -477,14 +488,23 @@ function pruneHazards(at: Git): string[] {
     if (w.locked || existsSync(join(w.path, '.git'))) continue
     const gitDir = worktreeGitDir(common, w.path)
     if (gitDir === null) continue
-    const hazards = submoduleHazards(inspectSubmodules(at, w.path, { gitDir }), { discard: true })
+    const hazards = submoduleHazards(inspectSubmodules(at, w.path, { gitDir }), {
+      discard: true,
+      abandon: abandoned.has(resolve(w.path)),
+    })
     if (hazards.length > 0) out.push(`${w.path}: ${hazards.join('; ')}`)
   }
   return out
 }
 
 /** Run one step, then confirm it took. Throws with the reason on failure. */
-function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe): string {
+function execute(
+  step: Step,
+  row: Accepted | null,
+  git: Git,
+  probe: ProcessProbe,
+  abandoned: ReadonlySet<string>,
+): string {
   const at = git.at(step.repo)
   const registered = (path: string): boolean =>
     at.worktrees().some((w) => resolve(w.path) === resolve(path))
@@ -509,7 +529,7 @@ function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe
     case 'prune-worktrees': {
       // Prune drops every gone worktree, not just this row's, and each one's
       // git dir with it, submodule git dirs included.
-      const hazards = pruneHazards(at)
+      const hazards = pruneHazards(at, abandoned)
       if (hazards.length > 0) {
         if (row === null) return `not pruned: ${hazards.join('; ')}`
         throw new Error(`refused: pruning would delete submodule work: ${hazards.join('; ')}`)
@@ -522,7 +542,7 @@ function execute(step: Step, row: Accepted | null, git: Git, probe: ProcessProbe
       const path = row!.item.id
       assertNoLiveProcess(path, probe)
       const forSubmodules = row!.item.facts['submodules_force'] === true
-      if (forSubmodules) assertSubmodulesSafe(path, git, row!.force)
+      if (forSubmodules) assertSubmodulesSafe(path, git, row!)
       at.worktreeRemove(path, { force: row!.force || forSubmodules })
       if (existsSync(path)) throw new Error(`directory still exists: ${path}`)
       if (registered(path)) throw new Error(`still registered: ${path}`)
@@ -757,13 +777,20 @@ export function applyPlan(
   opts.onStart?.(receipt.steps)
   const git = new Git(opts.callerCwd, { runner: opts.git })
   const probe = opts.probe ?? defaultProcessProbe()
+  // Gone worktrees this run prunes with `abandon-unmerged`: their submodule
+  // work was approved for deletion, so a prune need not spare it.
+  const abandoned = new Set(
+    ordered
+      .filter((r) => r.item.category === 'worktree' && r.abandon)
+      .map((r) => resolve(r.item.id)),
+  )
   // Worktrees whose lock this run cleared. typed-git has no `worktree lock`
   // verb, so a failed remove cannot put the lock back; the receipt says so.
   const unlocked = new Set<string>()
   for (const [i, [step, row]] of plannedSteps.entries()) {
     opts.onStep?.(i, plannedSteps.length, step)
     try {
-      step.verification = execute(step, row, git, probe)
+      step.verification = execute(step, row, git, probe, abandoned)
       step.result = 'ok'
       if (step.action === 'unlock-worktree') unlocked.add(row!.item.id)
     } catch (err) {

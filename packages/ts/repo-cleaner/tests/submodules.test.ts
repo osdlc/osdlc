@@ -190,13 +190,26 @@ describe('sweeping a worktree with submodules', () => {
     ])
   })
 
-  test('an unpushed submodule commit blocks the worktree', () => {
+  test("an unpushed submodule commit needs abandon-unmerged, as the worktree's own would", () => {
     const fx = buildFixture()
     sh(join(fx.worktree, 'sub'), ['commit', '--allow-empty', '-m', 'local only'])
     const row = worktreeRow(fx)
-    expect(row.deletable).toBe(false)
-    expect(row.facts['blockers']).toContain('submodule-unpushed')
-    expect(row.investigationParts.join(' ')).toMatch(/sub \(1 unpushed commit\)/)
+    expect(row.classification).toBe('needs-investigation')
+    expect(row.deletable).toBe(true)
+    expect(row.facts['blockers']).toEqual([])
+    // The new commit also moves the gitlink, which the superproject shows as a change.
+    expect(row.requires).toEqual(['abandon-unmerged', 'discard-changes'])
+    expect(row.reason).toMatch(/unpushed work in submodule\(s\) sub \(1 unpushed commit\)/)
+  })
+
+  test('a submodule stash needs abandon-unmerged alone', () => {
+    const fx = buildFixture()
+    const sub = join(fx.worktree, 'sub')
+    writeFileSync(join(sub, 'scratch.txt'), 'wip\n')
+    sh(sub, ['stash', 'push', '-q', '--include-untracked'])
+    const row = worktreeRow(fx)
+    expect(row.requires).toEqual(['abandon-unmerged'])
+    expect(row.reason).toMatch(/sub \(1 stash\)/)
   })
 
   test('a dirty submodule needs discard-changes', () => {
@@ -223,14 +236,15 @@ describe('sweeping a worktree with submodules', () => {
     expect(row.facts['hidden_index_paths']).toEqual(['sub/tracked.txt'])
   })
 
-  test('a gone worktree whose git dir keeps unpushed submodule work is not pruned', () => {
+  test('a gone worktree whose git dir keeps unpushed submodule work needs abandon-unmerged', () => {
     const fx = buildFixture()
     sh(join(fx.worktree, 'sub'), ['commit', '--allow-empty', '-m', 'local only'])
     rmSync(fx.worktree, { recursive: true, force: true })
     const row = worktreeRow(fx)
     expect(row.facts['on_disk']).toBe(false)
-    expect(row.deletable).toBe(false)
-    expect(row.facts['blockers']).toEqual(['submodule-unpushed'])
+    expect(row.classification).toBe('needs-investigation')
+    expect(row.requires).toEqual(['abandon-unmerged'])
+    expect(row.commands).toEqual([`git -C ${fx.root} worktree prune`])
   })
 })
 
@@ -262,13 +276,40 @@ describe('applying a worktree with submodules', () => {
     expect(existsSync(fx.worktree)).toBe(false)
   })
 
-  test('drops the row when a submodule changed after the plan', () => {
+  test('drops the row when a submodule changed after the plan, grant or not', () => {
     const fx = buildFixture()
     const { plan } = planOf(fx)
     sh(join(fx.worktree, 'sub'), ['commit', '--allow-empty', '-m', 'late'])
-    const receipt = run(fx, plan)
-    expect(receipt.dropped).toMatchObject([{ id: fx.worktree, reason: 'not-deletable' }])
+    const receipt = run(fx, plan, {}, [
+      { name: 'abandon-unmerged', row: null },
+      { name: 'discard-changes', row: null },
+    ])
+    expect(receipt.dropped).toMatchObject([{ id: fx.worktree, reason: 'facts-changed' }])
     expect(existsSync(fx.worktree)).toBe(true)
+  })
+
+  test('without abandon-unmerged, a row with unpushed submodule work is dropped', () => {
+    const fx = buildFixture()
+    sh(join(fx.worktree, 'sub'), ['commit', '--allow-empty', '-m', 'local only'])
+    const { plan } = planOf(fx)
+    const receipt = run(fx, plan, {}, [{ name: 'discard-changes', row: null }])
+    expect(receipt.dropped).toMatchObject([
+      { id: fx.worktree, reason: 'not-authorized', detail: 'needs abandon-unmerged' },
+    ])
+    expect(existsSync(fx.worktree)).toBe(true)
+  })
+
+  test('with abandon-unmerged, removes a worktree and its unpushed submodule work', () => {
+    const fx = buildFixture({ nested: true })
+    sh(join(fx.worktree, 'sub', 'inner'), ['commit', '--allow-empty', '-m', 'local only'])
+    const { plan } = planOf(fx)
+    const receipt = run(fx, plan, {}, [
+      { name: 'abandon-unmerged', row: { category: 'worktree', id: fx.worktree } },
+      { name: 'discard-changes', row: { category: 'worktree', id: fx.worktree } },
+    ])
+    expect(receipt.status).toBe('complete')
+    expect(existsSync(fx.worktree)).toBe(false)
+    expect(existsSync(fx.gitDir)).toBe(false)
   })
 
   test('refuses the forced remove when a submodule gained work after the re-check', () => {
@@ -310,5 +351,15 @@ describe('applying a worktree with submodules', () => {
     const prune = receipt.steps.find((s) => s.action === 'prune-worktrees')!
     expect(prune.verification).toMatch(/^not pruned: .*sub \(1 unpushed commit\)/)
     expect(existsSync(join(fx.gitDir, 'modules', 'sub'))).toBe(true)
+  })
+
+  test('prunes a gone worktree and its submodule work under abandon-unmerged', () => {
+    const fx = buildFixture()
+    sh(join(fx.worktree, 'sub'), ['commit', '--allow-empty', '-m', 'local only'])
+    rmSync(fx.worktree, { recursive: true, force: true })
+    const { plan } = planOf(fx)
+    const receipt = run(fx, plan, {}, [{ name: 'abandon-unmerged', row: null }])
+    expect(receipt.status).toBe('complete')
+    expect(existsSync(fx.gitDir)).toBe(false)
   })
 })

@@ -82,7 +82,6 @@ export type WorktreeBlocker =
   | 'hidden-index-flags'
   | 'nested-repository'
   | 'branch-in-other-worktree'
-  | 'submodule-unpushed'
   | 'submodule-unreadable'
 
 /** True for a worktree row held back by `facts.blockers`. */
@@ -193,15 +192,6 @@ function readBlockers(opts: {
     }
   }
 
-  // A submodule's git dir lives in the worktree's own git dir, so removing
-  // the worktree, or pruning it once its directory is gone, deletes the
-  // submodule's history with it. No grant covers that: push or move it first.
-  if (submodules.unpushed.length > 0) {
-    out.push([
-      'submodule-unpushed',
-      `Submodule(s) ${submodules.unpushed.map((s) => `${s.path} (${unsharedPhrase(s)})`).join(', ')} hold work no remote has, in git dirs that go with the worktree; push it, or move it out, before removing the worktree.`,
-    ])
-  }
   if (submodules.unreadable.length > 0) {
     out.push([
       'submodule-unreadable',
@@ -393,8 +383,16 @@ export function classifyWorktree(opts: {
     })
   }
   const dirty = dirtyFiles.length > 0 || submoduleDirty > 0
+  // A submodule's git dir lives in the worktree's own git dir, so removing
+  // the worktree, or pruning it once its directory is gone, deletes the
+  // submodule's commits and stashes with it. The same grant as the
+  // worktree's own unpushed commits covers them.
+  const submoduleWork = submodules.unpushed.length > 0
+  const submoduleWorkText = submoduleWork
+    ? `submodule(s) ${submodules.unpushed.map((s) => `${s.path} (${unsharedPhrase(s)})`).join(', ')}`
+    : ''
   const requires = authorizationsFor({
-    'abandon-unmerged': unlanded,
+    'abandon-unmerged': unlanded || submoduleWork,
     'discard-changes': dirty,
     'confirm-open-pr': pr?.state === 'OPEN',
   })
@@ -434,6 +432,23 @@ export function classifyWorktree(opts: {
     })
   }
 
+  if (!onDisk && submoduleWork) {
+    return makeItem({
+      category: 'worktree',
+      id: path,
+      classification: 'needs-investigation',
+      action: 'review',
+      reason: `directory gone, but its git dir keeps work no remote has in ${submoduleWorkText}`,
+      facts,
+      commands: pruneOnly,
+      requires,
+      investigationParts: [
+        `Worktree ${path} is gone, but its git dir keeps ${submoduleWorkText}; pruning it deletes them.`,
+        'Push the work from that git dir, or grant abandon-unmerged to prune it anyway.',
+      ],
+    })
+  }
+
   if (!onDisk) {
     return makeItem({
       category: 'worktree',
@@ -448,22 +463,28 @@ export function classifyWorktree(opts: {
     })
   }
 
-  if (dirty || unlanded) {
+  if (dirty || unlanded || submoduleWork) {
     const inSubmodules =
       submoduleDirty > 0
         ? `, ${submoduleDirty} in submodule(s) ${submodules.dirty.map((s) => s.path).join(', ')}`
         : ''
+    const workInSubmodules = submoduleWork ? `; unpushed work in ${submoduleWorkText}` : ''
     return makeItem({
       category: 'worktree',
       id: path,
       classification: 'needs-investigation',
       action: 'review',
-      reason: `${dirtyFiles.length} dirty file(s)${inSubmodules}, ${unpushed.length} commit(s) ahead of ${facts['compare_against']}`,
+      reason: `${dirtyFiles.length} dirty file(s)${inSubmodules}, ${unpushed.length} commit(s) ahead of ${facts['compare_against']}${workInSubmodules}`,
       facts,
       requires,
       investigationParts: [
         `Worktree ${path} has uncommitted work or unpushed commits.`,
         `Branch: ${branch || '(detached)'}.`,
+        ...(submoduleWork
+          ? [
+              `Removing it also deletes the work in ${submoduleWorkText}, whose git dirs live in the worktree's own.`,
+            ]
+          : []),
         ...(patchLanded && unlanded
           ? [
               `Its commits are patch-equivalent to commits on ${landedRef(repo)} (${patch.check}), but ${confirmationNote(patch)}.`,

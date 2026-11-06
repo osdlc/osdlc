@@ -13,8 +13,9 @@
  *
  * {@link inspectSubmodules} reads every submodule, nested ones included, and
  * every left-over git dir, and reports what each holds that removal would
- * lose. The sweep turns that into blockers and authorizations; `applyPlan`
- * reads it again just before a forced remove and refuses if anything changed.
+ * lose. The sweep turns that into the same authorizations the worktree's own
+ * work needs (`discard-changes`, `abandon-unmerged`); `applyPlan` reads it
+ * again just before a forced remove and refuses if anything changed.
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
@@ -313,13 +314,15 @@ export function submoduleFacts(report: SubmoduleReport): Record<string, unknown>
 
 /**
  * Why a forced remove of a worktree with this report would lose something,
- * one sentence each; empty when it would lose nothing. `discard` accepts
- * modified and untracked files (the `discard-changes` grant). Commits, stashes
- * and an unreadable submodule are never accepted: no grant covers them.
+ * one sentence each; empty when it would lose nothing. The grants accept what
+ * they accept in the worktree itself: `discard` (`discard-changes`) modified
+ * and untracked files, `abandon` (`abandon-unmerged`) commits and stashes no
+ * remote has. An unreadable submodule, hidden index flags and nested
+ * repositories are never accepted.
  */
 export function submoduleHazards(
   report: SubmoduleReport,
-  opts: { discard?: boolean } = {},
+  opts: { discard?: boolean; abandon?: boolean } = {},
 ): string[] {
   const out: string[] = []
   const names = (subs: Submodule[]): string => subs.map((s) => s.path).join(', ')
@@ -328,7 +331,7 @@ export function submoduleHazards(
       `could not read submodule(s) ${report.unreadable.map((s) => `${s.path} (${s.error})`).join(', ')}`,
     )
   }
-  if (report.unpushed.length > 0) {
+  if (opts.abandon !== true && report.unpushed.length > 0) {
     out.push(
       `submodule(s) ${report.unpushed
         .map((s) => `${s.path} (${unsharedPhrase(s)})`)

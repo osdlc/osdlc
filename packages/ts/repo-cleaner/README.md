@@ -135,8 +135,7 @@ Some worktrees are held back whatever their branch says. Each lands in
 | `hidden-index-flags` | Files marked skip-worktree or assume-unchanged hide edits from `status`. |
 | `nested-repository` | An untracked or ignored directory holds a repository with its own history. |
 | `branch-in-other-worktree` | Another worktree has the same branch checked out (`facts.other_worktrees`). |
-| `submodule-unpushed` | A submodule holds commits no remote has, or a stash; removing the worktree deletes them (see [Submodules](#submodules)). |
-| `submodule-unreadable` | A submodule could not be read, so nobody can say it is safe to lose. |
+| `submodule-unreadable` | A submodule could not be read, so nobody can say it is safe to lose (see [Submodules](#submodules)). |
 
 ### Submodules
 
@@ -151,11 +150,13 @@ skips git's own check for modified and untracked files.
 
 So the sweep reads every submodule itself, nested ones through their parents,
 and every left-over submodule git dir, and records what it found in
-`facts.submodules`:
+`facts.submodules`. A submodule is judged as part of its worktree: the same
+authorizations cover the same risks wherever they are, and one grant for a
+worktree row covers its submodules too.
 
 | Found in a submodule | Effect on the worktree row |
 | --- | --- |
-| Commits on HEAD or a local branch that no remote-tracking ref holds, or a stash | `submodule-unpushed` blocker. No grant covers it: push the work, or move it out |
+| Commits on HEAD or a local branch that no remote-tracking ref holds, or a stash | `needs-investigation`, requires `abandon-unmerged`; the reason names each submodule and what it holds |
 | Modified, staged or untracked files | `needs-investigation`, requires `discard-changes`; `facts.submodule_dirty_files` counts them |
 | Skip-worktree or assume-unchanged files, nested repositories | `hidden-index-flags`, `nested-repository`, with the submodule's path in front |
 | A git call that failed | `submodule-unreadable` blocker |
@@ -164,20 +165,20 @@ A worktree whose submodules are all clean and pushed is judged as any other,
 and when it is `safe-to-delete` its command is `git worktree remove --force`
 (`facts.submodules_force` is `true`, and the reason says why). Just before that
 remove, `apply` checks the worktree's own files and every submodule again,
-since git will not, and refuses the step if anything changed. A submodule's
+since git will not, and refuses the step if it would lose anything not granted. A submodule's
 state is part of the plan fingerprint, so a submodule that moved since the plan
 drops the row first.
 
 A worktree whose directory is gone is read through its git dir: unpushed work
-in a left-over submodule git dir blocks the prune row. A `git worktree prune`
-drops every gone worktree, not only the planned one, so `apply` refuses a prune
-step while any gone worktree keeps such work; the closing prune of a run skips
-instead, and its receipt step says why.
+in a left-over submodule git dir makes the prune row require `abandon-unmerged`.
+A `git worktree prune` drops every gone worktree, not only the planned one, so
+`apply` refuses a prune step while a gone worktree it was not granted keeps such
+work; the closing prune of a run skips instead, and its receipt step says why.
 
 Commits count as pushed only when a remote-tracking ref of the submodule holds
 them. A superproject that records a submodule commit reachable from no branch
-on the submodule's remote (fetched by sha, or on a branch since deleted) blocks
-until a fetch brings it under one.
+on the submodule's remote (fetched by sha, or on a branch since deleted) needs
+`abandon-unmerged` until a fetch brings it under one.
 
 ### Patch equivalence
 
@@ -306,8 +307,8 @@ approves them by name:
 
 | Authorization | When a row needs it |
 | --- | --- |
-| `abandon-unmerged` | Commits not on the default branch and not captured by an exact-head merged PR; a worktree's unpushed commits. `facts.unique_commits` counts them. |
-| `discard-changes` | A worktree has modified, staged or untracked files. |
+| `abandon-unmerged` | Commits not on the default branch and not captured by an exact-head merged PR; a worktree's unpushed commits, and its submodules' commits and stashes no remote has. `facts.unique_commits` counts the worktree's own. |
+| `discard-changes` | A worktree, or one of its submodules, has modified, staged or untracked files. |
 | `confirm-open-pr` | The branch has an open PR. |
 
 A row kept for structure (default branch, current HEAD, a branch held by a
@@ -570,7 +571,7 @@ report.unpushed // submodules whose commits or stashes no remote has
 for (const sub of report.submodules) {
   console.log(sub.path, sub.head, sub.dirtyFiles, sub.unpushedCommits, sub.stashes)
 }
-submoduleHazards(report, { discard: false }) // [] when a forced remove loses nothing
+submoduleHazards(report, { discard: false, abandon: false }) // [] when a forced remove loses nothing ungranted
 ```
 
 It never throws for a submodule it cannot read: that one has `error` set and is
