@@ -630,7 +630,7 @@ that swept, or read its plan from stdin, writes a receipt only when
 import { check, plan, render, run, sweep } from '@osdlc/repo-cleaner'
 
 const result = sweep(['/Users/me/work/api'], { remote: true })
-for (const row of result.repos[0].rows) {
+for (const row of result.repos[0]?.rows ?? []) {
   console.log(row.id, row.verdict, row.why, row.risks)
 }
 
