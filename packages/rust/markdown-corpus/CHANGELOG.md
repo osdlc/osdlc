@@ -20,14 +20,11 @@ never reads. Built on `markdown-vault-fs` 0.6.
 - The walk's `errors` now covers a note the cache lists but cannot read.
   Under `Errors::Propagate` that fails the sweep (and `Corpus::try_load`);
   before, the note got empty facts, as it still does under `Errors::Skip`.
-  An apply that meets such an error, or a file it cannot stat, marks the
-  cache stale, so the next refresh walks and fails; until one succeeds the
-  cache takes no applies, as after any stale mark.
 - A path that is not there is not an error under any policy: a file gone
   between its listing and its stat, a note gone since the walk, or a
-  dangling symlink. A note keeps empty facts until the next sweep drops it
-  or its target arrives. The walk's `NotFound` for the corpus folder itself
-  is still reported.
+  dangling symlink. Nor is a `.md` symlink to a folder, which the walk
+  lists as a file. Such a note keeps empty facts, as before. The walk's
+  `NotFound` for the corpus folder itself is still reported.
 - A note that cannot be read is never fresh, in both caches, so every
   sweep tries it again. Before, it was stamped like a note that was read,
   and a note made readable again without a change to its size or time
@@ -63,9 +60,11 @@ never reads. Built on `markdown-vault-fs` 0.6.
   `LinkGraph::unreadable()`, `FrontmatterIndex::unreadable()` and
   `Corpus::unreadable()` (both caches, each path once) return them. An
   entry for a path the cache lists is a file or note; any other is a folder.
-  An apply replaces the entries for the files it names with the stat and
-  read errors it met. A folder's entry clears on the next sweep, and an
-  apply does not report a folder that can no longer be listed.
+  The report is the last sweep's. Under `Report` or `Propagate`, an apply
+  that meets a stat or read error, or that names a path the report holds,
+  marks the cache stale, so the next refresh walks and replaces the report
+  whole (or fails, under `Propagate`). Until a refresh succeeds the cache
+  takes no applies, as after any stale mark.
 - `LinkGraph::with_list_only(|rel| ..)`: notes the predicate picks are
   listed, as files a link resolves to, but never read, so they have no
   facts or edges. For a caller that needs the paths under dot-named

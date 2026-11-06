@@ -420,7 +420,6 @@ fn is_note(name: &str) -> bool {
 
 /// What a walk makes of one path. See [`WalkOptions::admission`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 pub enum Admission {
     /// The walk never lists this path, whatever is on disk. A cache ignores
     /// a change to it.
@@ -596,12 +595,12 @@ impl WalkOptions {
         let mut found = Admission::Unlisted;
         for &start in &starts {
             match listings.reach(vfs, vault_dir, rel, start) {
-                Reach::Listed => {
+                Admission::Listed => {
                     found = Admission::Listed;
                     break;
                 }
-                Reach::Respelled => found = Admission::Respelled,
-                Reach::Unlisted => {}
+                Admission::Respelled => found = Admission::Respelled,
+                Admission::Unlisted | Admission::Outside => {}
             }
         }
         if found == Admission::Unlisted {
@@ -681,15 +680,6 @@ struct Listings {
     answers: HashMap<PathBuf, Option<bool>>,
 }
 
-/// Whether listing each folder down to a path finds it. See
-/// [`Listings::reach`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Reach {
-    Listed,
-    Unlisted,
-    Respelled,
-}
-
 /// What one folder's listing says of one name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Found {
@@ -705,11 +695,12 @@ impl Listings {
     /// Whether listing each folder from the walk's start, `rel[..start]`,
     /// down to `rel`'s own folder finds `rel`: a folder for each segment but
     /// the last and a file for the last, spelled as `rel` spells it. How the
-    /// walk reaches a file. [`Reach::Respelled`] when the path is reached
-    /// so, except that a folder lists a name on the way under another
-    /// spelling: it lacks the name, even listed afresh, but the file system
-    /// answers for it.
-    fn reach(&mut self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str, start: usize) -> Reach {
+    /// walk reaches a file. [`Admission::Listed`] or [`Admission::Unlisted`],
+    /// or [`Admission::Respelled`] when the path is reached so, except that
+    /// a folder lists a name on the way under another spelling: it lacks the
+    /// name, even listed afresh, but the file system answers for it. Never
+    /// [`Admission::Outside`].
+    fn reach(&mut self, vfs: &dyn Vfs, vault_dir: &Path, rel: &str, start: usize) -> Admission {
         let mut folder = join_rel(vault_dir, &rel[..start]);
         let mut names = rel[start..].split('/').peekable();
         let mut respelled = false;
@@ -739,14 +730,14 @@ impl Listings {
             }
             match found {
                 Found::Entry(is_dir) if is_dir == more => {}
-                _ => return Reach::Unlisted,
+                _ => return Admission::Unlisted,
             }
             folder.push(name);
         }
         if respelled {
-            Reach::Respelled
+            Admission::Respelled
         } else {
-            Reach::Listed
+            Admission::Listed
         }
     }
 

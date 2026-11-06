@@ -30,7 +30,6 @@ A walk can keep going past what it cannot read and say what that was.
   as usual, and a respelled path to a file the walk would not list (a
   folder, under `min_bytes`, a refused symlink) is `Unlisted`. The roots,
   `skip_names`, `prune_dirs` and `exclude` still match the path as given.
-- `Admission` is `#[non_exhaustive]`.
 - `WalkOptions::reads_rules_from` also answers yes for the folder that
   holds the excluded-files list (`.obsidian`), as a watcher reports it on
   its removal or rename.
