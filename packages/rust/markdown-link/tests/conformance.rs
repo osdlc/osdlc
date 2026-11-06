@@ -20,8 +20,9 @@
 //!   `target` ([`md_link_target`]).
 //! - `body`, with `links`: [`body_links_spanned`]'s links, each with `at`, the
 //!   start of its span, and `text`, the source it spans. A link may also hold
-//!   `heading`, `block` and `size`; a key left out means `null`. With
-//!   `options` (`{ codeRules, skipHtmlComments, selfLinks }`, each optional)
+//!   `heading`, `title`, `block` and `size`; a key left out means `null`.
+//!   With `options` (`{ codeRules, skipHtmlComments, selfLinks,
+//!   allMarkdownLinks }`, each optional)
 //!   the scan is [`body_links_spanned_with`]; without, [`body_links`] must
 //!   agree with the links too. `abandoned` lists each `[[` the scan gave up
 //!   on ([`scan_body_with`]), as `{ reason, at, text }`, with `embed: true`
@@ -140,6 +141,7 @@ fn scan_options(case: &Json) -> Option<ScanOptions> {
         },
         skip_html_comments: flag("skipHtmlComments"),
         self_links: flag("selfLinks"),
+        all_markdown_links: flag("allMarkdownLinks"),
     })
 }
 
@@ -216,6 +218,7 @@ fn body_failures(name: &str, body: &str, case: &Json) -> Vec<String> {
             });
             let want = expected.get(n).unwrap_or(&Json::Null);
             optional(&mut actual, want, "heading", opt_str(link.heading.clone()));
+            optional(&mut actual, want, "title", opt_str(link.title.clone()));
             optional(&mut actual, want, "block", opt_str(link.block.clone()));
             optional(&mut actual, want, "size", size_json(link.size));
             actual

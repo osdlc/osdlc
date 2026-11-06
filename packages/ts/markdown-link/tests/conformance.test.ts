@@ -67,6 +67,7 @@ interface BodyCase {
     at: number
     text: string
     heading?: string | null
+    title?: string | null
     block?: string | null
     size?: Size | null
   }[]
@@ -183,6 +184,7 @@ describe('parse cases', () => {
             }
             const want = c.links[n]
             optional(actual, want, 'heading', link.heading)
+            optional(actual, want, 'title', link.title)
             optional(actual, want, 'block', link.block)
             optional(actual, want, 'size', link.size)
             return actual
