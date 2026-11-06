@@ -197,7 +197,7 @@ fn the_default_walk_keeps_excluded_files_and_a_caller_walk_can_drop_them() {
 fn a_failed_walk_leaves_the_graph_as_it_was() {
     let d = linked_vault();
     let strict = WalkOptions {
-        propagate_errors: true,
+        errors: Errors::Propagate,
         ..LinkGraph::default_walk()
     };
     let (g, c) = (graph().with_walk(strict), FixedClock::new(0));
@@ -212,6 +212,109 @@ fn a_failed_walk_leaves_the_graph_as_it_was() {
     );
     assert_eq!(g.len(), 4, "the last good sweep stays");
     assert_eq!(g.refresh_now(&*d, &c, root()), GraphStats::default());
+    assert_eq!(g.backlinks("Projects/Alpha.md").total, 2);
+}
+
+fn walking(errors: Errors) -> LinkGraph {
+    graph().with_walk(WalkOptions {
+        errors,
+        ..LinkGraph::default_walk()
+    })
+}
+
+fn paths_of(errors: Vec<Arc<VfsError>>) -> Vec<PathBuf> {
+    errors.iter().map(|e| e.path().to_path_buf()).collect()
+}
+
+#[test]
+fn a_reporting_graph_keeps_going_past_a_note_it_cannot_read_and_names_it() {
+    let d = linked_vault();
+    let beta = join_rel(root(), "Projects/Beta.md");
+    let locked = hooks::StatHook::unreadable(&*d, beta.clone());
+    let c = FixedClock::new(0);
+
+    let g = walking(Errors::Report);
+    assert_eq!(g.refresh(&locked, &c, root()).added, 4);
+    assert!(g.paths().contains(&"Projects/Beta.md".to_string()));
+    assert!(g.outbound("Projects/Beta.md").is_empty(), "nothing read");
+    assert_eq!(paths_of(g.unreadable()), vec![beta.clone()]);
+    // Never fresh: the next sweep tries it again, and still reports it.
+    assert_eq!(g.refresh_now(&locked, &c, root()).updated, 1);
+    assert_eq!(paths_of(g.unreadable()), vec![beta.clone()]);
+    // Readable again: read, and no longer reported.
+    assert_eq!(g.refresh_now(&*d, &c, root()).updated, 1);
+    assert!(g.unreadable().is_empty());
+    assert!(!g.outbound("Projects/Beta.md").is_empty());
+
+    // Skipped: the same graph, and nothing reported.
+    let skip = walking(Errors::Skip);
+    skip.refresh(&locked, &c, root());
+    assert_eq!(skip.paths(), g.paths());
+    assert!(skip.unreadable().is_empty());
+
+    // Propagated: the sweep fails on it.
+    let err = walking(Errors::Propagate)
+        .try_refresh(&locked, &c, root())
+        .unwrap_err();
+    assert!(
+        matches!(err, WalkError::Io(ref e) if e.path() == beta),
+        "{err}"
+    );
+}
+
+#[test]
+fn a_reporting_graph_names_a_folder_it_cannot_list() {
+    let d = linked_vault();
+    let projects = join_rel(root(), "Projects");
+    let locked = hooks::StatHook::unreadable(&*d, projects.clone());
+    let g = walking(Errors::Report);
+    g.refresh(&locked, &FixedClock::new(0), root());
+    assert!(!g.paths().iter().any(|p| p.starts_with("Projects/")));
+    assert_eq!(paths_of(g.unreadable()), [projects]);
+}
+
+#[test]
+fn an_apply_updates_what_the_graph_could_not_read() {
+    let d = linked_vault();
+    let beta = join_rel(root(), "Projects/Beta.md");
+    let locked = hooks::StatHook::unreadable(&*d, beta.clone());
+    let (g, c) = (walking(Errors::Report), FixedClock::new(0));
+    g.refresh(&*d, &c, root());
+    assert!(g.unreadable().is_empty());
+    let changed = ["Projects/Beta.md".to_string()];
+    g.apply_changes(&locked, root(), &changed);
+    assert_eq!(paths_of(g.unreadable()), [beta]);
+    assert!(g.outbound("Projects/Beta.md").is_empty());
+    g.apply_changes(&*d, root(), &changed);
+    assert!(g.unreadable().is_empty());
+    assert!(!g.outbound("Projects/Beta.md").is_empty());
+}
+
+#[test]
+fn a_list_only_note_resolves_but_is_never_read() {
+    let d = linked_vault();
+    let config = join_rel(root(), "_system/config.md");
+    let locked = hooks::StatHook::unreadable(&*d, config);
+    let g = walking(Errors::Report).with_list_only(|rel| rel.starts_with("_system/"));
+    assert_eq!(g.refresh(&locked, &FixedClock::new(0), root()).added, 3);
+    assert!(g.paths().contains(&"_system/config.md".to_string()));
+    assert!(g.unreadable().is_empty(), "never read, so never unreadable");
+    assert_eq!(g.len(), 3);
+    assert_eq!(
+        g.resolve("config", "Home.md").as_deref(),
+        Some("_system/config.md")
+    );
+    assert!(g.outbound("_system/config.md").is_empty());
+    assert!(
+        !back_of(&g, "Home.md")
+            .iter()
+            .any(|b| b.source_path == "_system/config.md")
+    );
+    // An apply lists it without reading it, too.
+    put(&d, "_system/config.md", "[[Projects/Alpha]]\n");
+    g.apply_changes(&*d, root(), &["_system/config.md".to_string()]);
+    assert_eq!(g.len(), 3);
+    assert!(g.paths().contains(&"_system/config.md".to_string()));
     assert_eq!(g.backlinks("Projects/Alpha.md").total, 2);
 }
 

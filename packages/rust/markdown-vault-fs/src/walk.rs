@@ -30,8 +30,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use vfs_seam::Vfs;
-use vfs_walk::{Candidate, Errors, Symlinks};
+use vfs_seam::{Vfs, VfsError};
+use vfs_walk::{Candidate, Symlinks};
 
 use crate::hide::{self, HideRules};
 
@@ -141,11 +141,14 @@ pub struct WalkOptions {
     /// file (see [`Entry::is_symlink`]) and a symlinked folder is never
     /// entered.
     pub refuse_symlinks: bool,
-    /// Fail the walk with [`WalkError::Io`] when a folder cannot be listed or
-    /// a file cannot be statted. Off by default: a folder that cannot be
-    /// listed yields nothing, and a file that cannot be statted is listed
-    /// with size 0 and no time, so a projection survives one unreadable file.
-    pub propagate_errors: bool,
+    /// What the walk does when a folder cannot be listed or a file cannot be
+    /// statted. [`Errors::Skip`] by default: a folder that cannot be listed
+    /// yields nothing, and a file that cannot be statted is listed with size
+    /// 0 and no time, so a projection survives one unreadable file.
+    /// [`Errors::Report`] does the same and records each error in
+    /// [`WalkOutcome::errors`]. [`Errors::Propagate`] fails the walk with
+    /// [`WalkError::Io`].
+    pub errors: Errors,
     /// File and folder names skipped wherever they appear, such as
     /// `.DS_Store`. Exact, case-sensitive matches on the name alone.
     pub skip_names: Vec<String>,
@@ -168,7 +171,7 @@ impl Default for WalkOptions {
             roots: Vec::new(),
             hide: Hide::Vault,
             refuse_symlinks: false,
-            propagate_errors: false,
+            errors: Errors::Skip,
             skip_names: Vec::new(),
             prune_dirs: Vec::new(),
         }
@@ -229,7 +232,7 @@ impl Entry {
 }
 
 /// A walk plus what it could not reach.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub struct WalkOutcome {
     /// The entries found, in walk order.
     pub entries: Vec<Entry>,
@@ -237,24 +240,32 @@ pub struct WalkOutcome {
     /// legitimately lacks a root until the user creates it, and the UI says so
     /// rather than silently reporting zero files.
     pub missing_roots: Vec<String>,
+    /// Each folder the walk could not list and each file it could not stat,
+    /// in the order met, once each. Only filled under [`Errors::Report`].
+    pub errors: Vec<VfsError>,
 }
 
 /// Why a walk stopped. Only returned when [`WalkOptions::refuse_symlinks`]
-/// or [`WalkOptions::propagate_errors`] asks for it. The same type as
-/// `vfs-walk`'s.
+/// or [`Errors::Propagate`] asks for it. The same type as `vfs-walk`'s.
 pub use vfs_walk::WalkError;
+
+/// What a walk does when a folder cannot be listed or a file cannot be
+/// statted ([`WalkOptions::errors`]). The same type as `vfs-walk`'s.
+pub use vfs_walk::Errors;
 
 /// Walk a vault through `vfs`, applying the visibility policy.
 ///
 /// With the default options nothing fails: I/O errors on individual entries
 /// are skipped, as a projection must survive one unreadable file exactly as
 /// it must survive one malformed note. [`WalkOptions::refuse_symlinks`] and
-/// [`WalkOptions::propagate_errors`] turn those into errors.
+/// [`Errors::Propagate`] turn those into errors. Under [`Errors::Report`],
+/// [`walk_reporting`] returns what was skipped; this function drops it.
 pub fn walk(vfs: &dyn Vfs, vault_dir: &Path, opts: &WalkOptions) -> Result<Vec<Entry>, WalkError> {
     Ok(walk_reporting(vfs, vault_dir, opts)?.entries)
 }
 
-/// [`walk`], additionally reporting configured roots that are not there.
+/// [`walk`], additionally reporting configured roots that are not there and,
+/// under [`Errors::Report`], what the walk could not read.
 ///
 /// The traversal is `vfs-walk`'s. This function turns the vault rules into
 /// its filter: the visibility policy and the excluded files decide what the
@@ -292,11 +303,7 @@ pub fn walk_reporting(
         } else {
             Symlinks::List
         },
-        errors: if opts.propagate_errors {
-            Errors::Propagate
-        } else {
-            Errors::Skip
-        },
+        errors: opts.errors,
     };
 
     let mut subtrees = Vec::new();
@@ -319,8 +326,16 @@ pub fn walk_reporting(
     }
 
     let mut entries = Vec::new();
+    let mut errors: Vec<VfsError> = Vec::new();
     for sub in &subtrees {
-        for found in vfs_walk::walk_subtree(vfs, vault_dir, sub, &inner)?.entries {
+        let outcome = vfs_walk::walk_subtree(vfs, vault_dir, sub, &inner)?;
+        // Overlapping roots list a folder under both; report it once.
+        for err in outcome.errors {
+            if !errors.iter().any(|e| e.path() == err.path()) {
+                errors.push(err);
+            }
+        }
+        for found in outcome.entries {
             if !collect_early && !collects(&found.rel) {
                 continue;
             }
@@ -345,6 +360,7 @@ pub fn walk_reporting(
     Ok(WalkOutcome {
         entries,
         missing_roots,
+        errors,
     })
 }
 
@@ -442,14 +458,14 @@ impl WalkOptions {
     /// a symlink under [`WalkOptions::refuse_symlinks`].
     ///
     /// It answers for one path. Under `refuse_symlinks` a whole walk fails
-    /// on any symlink it sees, and under
-    /// [`WalkOptions::propagate_errors`] on any error; neither is checked
-    /// here.
+    /// on any symlink it sees, and under [`Errors::Propagate`] on any error;
+    /// neither is checked here.
     ///
     /// A file whose metadata cannot be read for another reason than being
-    /// gone is what a walk that skips errors makes of it: listed with size 0
-    /// and no time ([`Admission::Listed`]) when `min_bytes` is 0. Otherwise,
-    /// and always under `propagate_errors`, it is [`Admission::Unlisted`].
+    /// gone is what a walk that skips or reports errors makes of it: listed
+    /// with size 0 and no time ([`Admission::Listed`]) when `min_bytes` is 0.
+    /// Otherwise, and always under [`Errors::Propagate`], it is
+    /// [`Admission::Unlisted`].
     ///
     /// Each call lists the folders on the path; [`WalkOptions::admissions`]
     /// lists each folder once for the whole batch.
@@ -571,9 +587,11 @@ impl WalkOptions {
                 Admission::Listed
             }
             Ok(_) => Admission::Unlisted,
-            // A walk that skips errors lists a file it cannot stat, with
-            // size 0.
-            Err(e) if !e.is_not_found() && !self.propagate_errors && self.min_bytes == 0 => {
+            // A walk that skips or reports errors lists a file it cannot
+            // stat, with size 0.
+            Err(e)
+                if !e.is_not_found() && self.errors != Errors::Propagate && self.min_bytes == 0 =>
+            {
                 Admission::Listed
             }
             Err(_) => Admission::Unlisted,
@@ -1063,7 +1081,7 @@ mod tests {
         let d = MemVfs::new();
         assert!(w(&d, &WalkOptions::content_notes()).is_empty());
         let strict = WalkOptions {
-            propagate_errors: true,
+            errors: Errors::Propagate,
             ..WalkOptions::content_notes()
         };
         assert!(matches!(
@@ -1260,7 +1278,7 @@ mod tests {
 
         // A walk that propagates errors fails on it.
         let strict = WalkOptions {
-            propagate_errors: true,
+            errors: Errors::Propagate,
             ..WalkOptions::content_notes()
         };
         assert!(lists(&strict).is_err());
@@ -1303,6 +1321,57 @@ mod tests {
         assert_eq!(
             WalkOptions::content_notes().admission(&vfs, Path::new(V), "Zed/deep/note.md"),
             Admission::Unlisted
+        );
+    }
+
+    #[test]
+    fn a_reporting_walk_keeps_going_and_says_what_it_could_not_read() {
+        let d = fixture();
+        mk(&d, "Zed/deep/more.md", "x");
+        let list = Denied {
+            inner: &d,
+            path: Path::new(V).join("Zed/deep"),
+            call: Call::List,
+        };
+        let report = WalkOptions {
+            errors: Errors::Report,
+            ..WalkOptions::content_notes()
+        };
+        let out = walk_reporting(&list, Path::new(V), &report).unwrap();
+        assert_eq!(rels(out.entries), ["Notes/alpha.md", "Notes/beta.md"]);
+        let paths: Vec<&Path> = out.errors.iter().map(|e| e.path()).collect();
+        assert_eq!(paths, [Path::new(V).join("Zed/deep")]);
+        // A walk that skips errors lists the same and reports nothing.
+        let skip = walk_reporting(&list, Path::new(V), &WalkOptions::content_notes()).unwrap();
+        assert_eq!(rels(skip.entries), ["Notes/alpha.md", "Notes/beta.md"]);
+        assert!(skip.errors.is_empty());
+
+        // Overlapping roots meet the folder twice; it is reported once.
+        let rooted = WalkOptions {
+            roots: vec!["Zed".into(), "Zed/deep".into()],
+            ..report.clone()
+        };
+        let out = walk_reporting(&list, Path::new(V), &rooted).unwrap();
+        assert_eq!(out.errors.len(), 1);
+
+        // A file it cannot stat is listed with size 0, and reported.
+        let stat = Denied {
+            inner: &d,
+            path: Path::new(V).join("Notes/alpha.md"),
+            call: Call::Stat,
+        };
+        let out = walk_reporting(&stat, Path::new(V), &report).unwrap();
+        assert!(
+            out.entries
+                .iter()
+                .any(|e| e.rel == "Notes/alpha.md" && e.size == 0)
+        );
+        let paths: Vec<&Path> = out.errors.iter().map(|e| e.path()).collect();
+        assert_eq!(paths, [Path::new(V).join("Notes/alpha.md")]);
+        assert_eq!(
+            report.admission(&stat, Path::new(V), "Notes/alpha.md"),
+            Admission::Listed,
+            "as the reporting walk lists it"
         );
     }
 

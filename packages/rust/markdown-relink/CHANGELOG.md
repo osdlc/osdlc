@@ -7,6 +7,14 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-06
+
+### Changed
+
+- Built on `markdown-corpus` 0.3 and `markdown-vault-fs` 0.6.
+  `VaultFacts::from_corpus` and `VaultFacts::from_graph` take that
+  version's `Corpus` and `LinkGraph`. The planner itself is unchanged.
+
 ## [0.3.0] - 2026-11-04
 
 Built on `markdown-corpus` 0.2, `markdown-link` 0.8 and `vfs-seam` 0.2.

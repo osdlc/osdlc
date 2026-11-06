@@ -280,6 +280,46 @@ fn an_apply_cannot_undo_a_later_apply_with_what_it_read_first() {
 }
 
 #[test]
+fn a_reporting_index_keeps_a_note_it_cannot_read_and_names_it() {
+    let d = vault();
+    let b = join_rel(root(), "Notes/b.md");
+    let locked = crate::links::hooks::StatHook::unreadable(&*d, b.clone());
+    let walk = |errors| WalkOptions {
+        errors,
+        ..FrontmatterIndex::default_walk()
+    };
+    let c = FixedClock::new(0);
+    let index = FrontmatterIndex::new().with_walk(walk(Errors::Report));
+    index.refresh(&locked, &c, root());
+    let note = index.get("Notes/b.md").unwrap();
+    assert!(note.parse_error.is_some());
+    assert_eq!(note.mtime_ns, None, "never fresh");
+    let reported: Vec<PathBuf> = index
+        .unreadable()
+        .iter()
+        .map(|e| e.path().to_path_buf())
+        .collect();
+    assert_eq!(reported, vec![b.clone()]);
+    // Tried again on the next sweep; once readable, no longer reported.
+    assert_eq!(index.refresh_now(&*d, &c, root()).updated, 1);
+    assert!(index.unreadable().is_empty());
+    assert!(index.get("Notes/b.md").unwrap().parse_error.is_none());
+    // An apply that cannot read it reports it again.
+    index.apply_change(&locked, root(), "Notes/b.md");
+    assert_eq!(index.unreadable()[0].path(), b);
+    index.apply_change(&*d, root(), "Notes/b.md");
+    assert!(index.unreadable().is_empty());
+
+    // Skipped: kept as unreadable, nothing reported. Propagated: fails.
+    let skip = FrontmatterIndex::new();
+    skip.refresh(&locked, &c, root());
+    assert!(skip.get("Notes/b.md").unwrap().parse_error.is_some());
+    assert!(skip.unreadable().is_empty());
+    let strict = FrontmatterIndex::new().with_walk(walk(Errors::Propagate));
+    assert!(strict.try_refresh(&locked, &c, root()).is_err());
+}
+
+#[test]
 fn a_note_with_no_modification_time_is_retried_instead_of_cached_forever() {
     let d = vault();
     let (index, c) = (FrontmatterIndex::new(), FixedClock::new(0));
