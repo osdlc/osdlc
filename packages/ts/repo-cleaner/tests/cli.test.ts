@@ -162,13 +162,13 @@ describe('help', () => {
       const res = run([...prefix, '--help'], tempDir())
       expect(res.code).toBe(0)
       expect(res.out.trimEnd()).toMatch(/Run with --help --extended for the full reference[^\n]*$/)
-      expect(res.out).not.toContain('Refused before anything is swept')
+      expect(res.out).not.toContain('Refused before anything is deleted')
     })
 
     test(`${label}: --help --extended prints the full reference`, () => {
       const res = run([...prefix, '--help', '--extended'], tempDir())
       expect(res.code).toBe(0)
-      expect(res.out).toContain('Refused before anything is swept (exit 2)')
+      expect(res.out).toContain('Refused before anything is deleted (exit 2)')
       expect(res.out).toContain('Refused after the sweep, before deleting (exit 1)')
       expect(res.out).toContain('Allowed, because nothing contradicts')
       expect(res.out).toContain('Verdicts')
@@ -1358,13 +1358,12 @@ describe('refused combinations', () => {
       )
       untouched(fx)
     })
-    // src bug: cli.ts runClean answers "nothing to delete" for a plan with no rows before
-    // check() resolves --spare and --allow, so a row the plan does not have goes unrefused.
-    test.fails('a spared or allowed row the plan does not have, when the plan has no rows', () => {
+    // "nothing to delete" must not answer before --spare and --allow are checked.
+    test('a spared or allowed row the plan does not have, when no plan row could run', () => {
       const fx = buildFixture()
-      // The fixture's only local branch besides main is held by its worktree: no plan rows.
+      // The fixture's only local branch besides main is held by its worktree: nothing could run.
       const plan = JSON.parse(run(['plan', '--only', 'branch'], fx.root).out) as Plan
-      expect(plan.repos[0]!.rows).toEqual([])
+      expect(plan.repos[0]!.rows.every((r) => r.action === null)).toBe(true)
       refused(
         run(['clean', '--only', 'branch', '--spare', 'branch:nope', '--yes'], fx.root),
         1,
@@ -1472,10 +1471,8 @@ describe('refused combinations', () => {
       untouched(fx)
     })
 
-    // src bug: plan.ts planRows leaves out every row with no action (blocked rows, structural
-    // keeps), so a picked blocked or keep row is "no such row in the plan" (exit 1) instead of
-    // skipped with its reason, as the reference's "Allowed" list says.
-    test.fails('picking a blocked row: it is skipped and shown with the reason', () => {
+    // A plan holds blocked and structural rows too, so a pick of one is skipped with its reason.
+    test('picking a blocked row: it is skipped and shown with the reason', () => {
       const fx = buildFixture()
       sh(fx.root, ['worktree', 'lock', fx.worktree])
       const res = run(
@@ -1483,16 +1480,15 @@ describe('refused combinations', () => {
         fx.root,
       )
       expect(res.code).toBe(0)
-      expect(res.out).toMatch(/skip {2}worktree:.*\n +blocked: /)
+      expect(res.out).toMatch(/skip +worktree:.*\n +blocked: /)
       expect(existsSync(fx.worktree)).toBe(true)
     })
 
-    // src bug: as above, for a structural keep row.
-    test.fails('picking a keep row: it is skipped and shown with the reason', () => {
+    test('picking a keep row: it is skipped and shown with the reason', () => {
       const fx = buildFixture()
       const res = run(['clean', '--only', 'branch', '--pick', 'branch:main', '--dry-run'], fx.root)
       expect(res.code).toBe(0)
-      expect(res.out).toMatch(/skip {2}branch:main\n +keep: /)
+      expect(res.out).toMatch(/skip +branch:main\n +keep: /)
       expect(branchRefs(fx.root)).toContain('refs/heads/main')
     })
 

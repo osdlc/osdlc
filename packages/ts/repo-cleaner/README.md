@@ -93,7 +93,7 @@ with `type repo-cleaner`.
 
 ```bash
 repo-cleaner [target...]          # the report: what is merged, what can go; deletes nothing
-repo-cleaner plan  [target...]    # save every row that could be deleted, to run later (-o <file>)
+repo-cleaner plan  [target...]    # save the sweep's rows and their evidence, to run later (-o <file>)
 repo-cleaner clean [target...]    # check again, show the steps, ask, delete
 repo-cleaner cache                # list or remove the clones kept for remote URL targets
 repo-cleaner dev                  # run repo-cleaner from a development checkout
@@ -174,8 +174,8 @@ patch match; the default branch and the primary worktree are counted in
 
 ### `repo-cleaner plan`
 
-Sweeps and saves every row that could be deleted, each with a fingerprint of
-the evidence behind its verdict, so it can be reviewed now and run later with
+Sweeps and saves every row, each with a fingerprint of the evidence behind its
+verdict, so it can be reviewed now and run later with
 `clean --plan`. `-o, --out <file>` sets where it goes; the default, `-`, is
 stdout, and the totals line goes to stderr.
 
@@ -292,7 +292,9 @@ its options would have no effect: a flag that is silently ignored leaves you
 believing something that is not true. repo-cleaner never guesses, and no
 option silently overrides another.
 
-Refused before anything is swept, with exit 2:
+Refused before anything is deleted, with exit 2. Most are refused before
+anything is swept; a row named two ways (a bare name and its id), and an
+`--allow` for a row, are checked against the plan, after the sweep:
 
 | Combination | Why |
 | --- | --- |
@@ -578,8 +580,10 @@ repo-cleaner clean --plan plan.json --pick branch:feat/x
 repo-cleaner plan | repo-cleaner clean --plan - --yes
 ```
 
-A plan holds each row that could be deleted with a fingerprint of the
-evidence behind its verdict, and the sweep options it was made with. `clean`
+A plan holds every row with a fingerprint of the evidence behind its verdict,
+and the sweep options it was made with. Without `--pick` only the rows that
+could be deleted run; the blocked and structural rows are there so a pick of
+one is skipped with its reason. `clean`
 either sweeps and plans in memory, or reads a plan with `--plan`. A plan of an
 older version is refused, not translated: sweep again.
 
@@ -645,7 +649,7 @@ const receipt = run(preview)
 | Export | What it does |
 | --- | --- |
 | `sweep(targets, opts?)` | Resolve the targets and judge every row. Options as on the command line: `only`, `remote`, `offline`, `against`, `provider`, `branch`, plus `cwd`, `cacheDir`, `annotate`, `onProgress`, `onWarn`, and the injectable `git`, `gh`, `glab` runners and `probe` |
-| `plan(sweep)` | The rows that could be deleted, fingerprinted, with the sweep's options |
+| `plan(sweep)` | Every row, fingerprinted, with the sweep's options |
 | `check(plan, approval, opts?)` | Resolve `{ pick, spare, allow }` against the plan, sweep again, and return a `Preview`: the steps, the rows dropped and why, and the allows no row needed. Deletes nothing |
 | `run(preview, opts?)` | Sweep once more and take the preview's steps, writing a `Receipt` (to `receiptPath` after every step, when given) |
 | `inspectWorktree(path, opts?)` | One worktree judged as a sweep judges it, submodules included |

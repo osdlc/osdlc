@@ -482,6 +482,7 @@ describe('resolveApproval refuses', () => {
       ({
         id,
         verdict: 'delete',
+        action: 'delete',
         risks: [],
         fingerprint: {},
       }) as Plan['repos'][number]['rows'][number]
@@ -694,8 +695,8 @@ describe('check and run', () => {
     expect(p.repos[0]!.rows.some((r) => r.id === 'branch:wt-branch')).toBe(true)
     const { receipt } = apply(fx, p, { pick: ['branch:wt-branch'] })
 
-    expect(receipt.dropped.map((d) => [d.row, d.detail])).toEqual([
-      ['branch:wt-branch', 'checked out in a worktree (handle via that worktree)'],
+    expect(receipt.dropped.map((d) => [d.row, d.reason, d.detail])).toEqual([
+      ['branch:wt-branch', 'held', `checked out in ${fx.worktree}, which this run does not remove`],
     ])
     expect(receipt.steps).toEqual([])
     expect(existsSync(fx.worktree)).toBe(true)
@@ -706,7 +707,7 @@ describe('check and run', () => {
   // the worktree never frees the branch (sweep.ts:383) and the row drops as a
   // structural `keep`. Picked beside another worktree, the same row drops as
   // `held` — the reason for "a branch whose worktree this run does not remove".
-  test.fails('a freed branch picked without its worktree drops as held', () => {
+  test('a freed branch picked without its worktree drops as held', () => {
     const fx = buildFixture()
     mergeWorktreeBranch(fx)
     const shown = preview(fx, makePlan(fx.root), { pick: ['branch:wt-branch'] })
@@ -817,7 +818,8 @@ describe('check and run', () => {
 
     expect(receipt.dropped.map((d) => [d.row, d.reason])).toEqual([
       ['branch:merged-a', 'gone'],
-      ['branch:merged-b', 'keep'],
+      // Its new worktree frees it, but this run does not remove that worktree.
+      ['branch:merged-b', 'held'],
     ])
     expect(refs(fx.root)).toContain('refs/heads/merged-b ')
   })
@@ -845,12 +847,15 @@ describe('check and run', () => {
     )
   })
 
-  test('a locked worktree stays out of a new plan and is dropped from an old one', () => {
+  test('a locked worktree is blocked in a new plan and is dropped from an old one', () => {
     const fx = buildFixture()
     const p = makePlan(fx.root)
     sh(fx.root, ['worktree', 'lock', fx.worktree])
 
-    expect(makePlan(fx.root).repos[0]!.rows.some((r) => r.id === wt(fx.worktree))).toBe(false)
+    expect(makePlan(fx.root).repos[0]!.rows.find((r) => r.id === wt(fx.worktree))).toMatchObject({
+      verdict: 'blocked',
+      action: null,
+    })
     const { receipt } = apply(fx, p, { pick: [wt(fx.worktree)] })
 
     expect(receipt.dropped.map((d) => [d.reason, d.detail])).toEqual([
@@ -1078,7 +1083,7 @@ describe('check and run', () => {
     const fx = buildFixture()
     const p = makePlan(fx.root)
     expectRefused(
-      () => preview(fx, p, { pick: ['branch:main'] }),
+      () => preview(fx, p, { pick: ['branch:no-such-branch'] }),
       'not-found',
       'no such row in the plan',
     )

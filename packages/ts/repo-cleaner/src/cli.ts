@@ -2,7 +2,7 @@
  * `repo-cleaner` — what has been merged, and what can go away.
  *
  *   repo-cleaner [target...]   the report; deletes nothing
- *   repo-cleaner plan          save the rows that could be deleted, to run later
+ *   repo-cleaner plan          save the sweep's rows and their evidence, to run later
  *   repo-cleaner clean         check again, show the steps, ask, delete
  *   repo-cleaner cache         list or remove the clones kept for remote URL targets
  *
@@ -28,7 +28,15 @@ import { EXIT, askYesNo, canPrompt, defineCli, type CliContext } from '@osdlc/cl
 import { detectColorLevel, stripControls } from '@osdlc/ux'
 
 import { check, run, type Allow, type Approval, type Preview } from './clean.ts'
-import { fileStamp, parsePlan, plan as planOf, readPlan, writePlan, type Plan } from './plan.ts'
+import {
+  fileStamp,
+  parsePlan,
+  plan as planOf,
+  readPlan,
+  runnable,
+  writePlan,
+  type Plan,
+} from './plan.ts'
 import { PROVIDER_CHOICES, type ProviderChoice } from './providers/index.ts'
 import type { Receipt, Step } from './receipt.ts'
 import { REFERENCE } from './reference.ts'
@@ -149,7 +157,7 @@ const reportCli = () =>
     },
     shortEpilogue: `commands:
   ${NAME} [target...]   this report (the default)
-  ${NAME} plan          save the rows that could be deleted, to run later
+  ${NAME} plan          save the sweep's rows and their evidence, to run later
   ${NAME} clean         check again, show the steps, ask, delete
   ${NAME} cache         list or remove the clones kept for remote URL targets
   ${NAME} dev           run ${NAME} from a development checkout
@@ -163,7 +171,7 @@ const planCli = () =>
   defineCli({
     name: `${NAME} plan`,
     summary:
-      'Sweep, and save every row that could be deleted, each with a fingerprint of the evidence ' +
+      'Sweep, and save every row, each with a fingerprint of the evidence ' +
       'behind its verdict, so `clean --plan` can run it later and drop what moved since.',
     autoHelp: false,
     positionals: TARGETS,
@@ -709,7 +717,9 @@ function runClean(
   const live = v.format === 'text' && ctx.terminal?.stdout === true
   const style = styleFor(ctx, 'stdout')
 
-  if (v.pick.length === 0 && plan.repos.every((r) => r.rows.length === 0)) {
+  // Nothing could run, and nothing named needs checking against the plan.
+  const named = v.pick.length > 0 || v.spare.length > 0 || allow.some((a) => a.row !== undefined)
+  if (!named && plan.repos.every((r) => !r.rows.some(runnable))) {
     if (v.format === 'json') {
       ctx.io.stdout(
         `${JSON.stringify({ dryRun: v.dryRun, summary: summarizeRun({ steps: [], dropped: [] }), steps: [], dropped: [] }, null, 2)}\n`,

@@ -5,7 +5,7 @@
  * `sweep` inventories worktrees, local branches and remote branches across
  * one repository or many, and judges each row: `delete`, `review`, `keep` or
  * `blocked`, with the risks its deletion carries and the evidence behind it.
- * The sweep deletes nothing. `plan` saves the rows that could be deleted;
+ * The sweep deletes nothing. `plan` saves the rows and their evidence;
  * `check` resolves a person's approval against a plan and shows the steps a
  * run would take; `run` takes them, compare-and-swap, verifying each.
  *

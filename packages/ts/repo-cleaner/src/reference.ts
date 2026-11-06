@@ -44,8 +44,8 @@ const REPORT = `The report: repo-cleaner [target...]
   --format json           Everything, evidence included, for scripts.`
 
 const PLAN = `repo-cleaner plan [target...]
-  Sweeps and saves every row that could be deleted, each with a fingerprint of the
-  evidence behind its verdict, so it can be reviewed now and run later.
+  Sweeps and saves every row, each with a fingerprint of the evidence behind its
+  verdict, so it can be reviewed now and run later with clean --plan.
   -o, --out <file>        Where the plan goes; - (the default) is stdout.`
 
 const CLEAN = `repo-cleaner clean [target...]
@@ -110,9 +110,11 @@ Risks (approve each by name with --allow)
   A worktree's submodules are part of it: one --allow on the worktree row covers
   the same risk in every submodule.`
 
-const CONFLICTS = `Refused before anything is swept (exit 2)
+const CONFLICTS = `Refused before anything is deleted (exit 2)
   A combination is refused when it contradicts itself, or when one of its options
-  would have no effect.
+  would have no effect. Most are refused before anything is swept; a row named
+  two ways (a bare name and its id), and an --allow for a row, are checked
+  against the plan, after the sweep.
     the same row in --pick and --spare
     --allow <risk>=<row> for a spared row, or for a row outside --pick
     a picked or spared row of a kind --only leaves out

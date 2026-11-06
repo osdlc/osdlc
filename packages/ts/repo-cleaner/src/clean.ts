@@ -29,7 +29,7 @@ import { CommandFailed, Git, PUSH_REJECTIONS } from '@osdlc/typed-git'
 
 import { localDeleteCommand, remoteDeleteCommand } from './branches.ts'
 import type { Annotate } from './hooks.ts'
-import { fingerprint, sameFingerprint, type Plan, type PlanRepo } from './plan.ts'
+import { fingerprint, runnable, sameFingerprint, type Plan, type PlanRepo } from './plan.ts'
 import { busyHolders, defaultProcessProbe, parseLockOwner, type ProcessProbe } from './processes.ts'
 import { RECEIPT_VERSION, type Dropped, type Receipt, type Step } from './receipt.ts'
 import { defaultCacheDir, mirrorProblem } from './remote-mirror.ts'
@@ -304,9 +304,12 @@ function recheck(
   safeOnly: boolean,
 ): Rechecked {
   const implicit = approval.pick.length === 0
+  // With no pick, every row that could run: a plan also holds the blocked and
+  // structural rows, so a pick of one can be skipped with its reason.
   const selected: Resolved[] = implicit
     ? plan.repos.flatMap((r) =>
         r.rows
+          .filter(runnable)
           .map((row) => ({ repo: r.root, id: row.id }))
           .filter((s) => !approval.spare.some((p) => same(p, s))),
       )
@@ -317,8 +320,11 @@ function recheck(
     if (swept.has(root)) continue
     const repo = plan.repos.find((r) => r.root === root)!
     // Only the kinds the selection is in: a plan of local rows need not
-    // compare every remote branch again.
-    const kinds = KINDS.filter((k) => all.some((s) => s.repo === root && nameOf(s.id).kind === k))
+    // compare every remote branch again. A branch brings its worktrees, which
+    // decide whether it is free to go or held.
+    const wanted = new Set(all.filter((s) => s.repo === root).map((s) => nameOf(s.id).kind))
+    if (wanted.has('branch') && plan.options.only.includes('worktree')) wanted.add('worktree')
+    const kinds = KINDS.filter((k) => wanted.has(k))
     swept.set(root, resweep(repo, plan, kinds, opts))
   }
   const planned = (s: Resolved) =>

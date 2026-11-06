@@ -22,7 +22,9 @@ const RowIdSchema = z.custom<RowId>(
 export const PlanRowSchema = z.object({
   id: RowIdSchema,
   /** The sweep's verdict when the plan was made. Without a pick, only `delete` rows run. */
-  verdict: z.enum(['delete', 'review', 'keep']),
+  verdict: z.enum(['delete', 'review', 'keep', 'blocked']),
+  /** What deleting it does; null for a row that can never be deleted, kept so a pick of it is skipped with its reason. */
+  action: z.enum(['remove', 'prune', 'delete']).nullable(),
   risks: z.array(z.enum(RISKS)),
   fingerprint: z.record(z.string(), z.unknown()),
 })
@@ -90,17 +92,27 @@ export function sameFingerprint(a: Record<string, unknown>, b: Record<string, un
   return true
 }
 
-/** The rows of `rows` a plan holds: every one with an action, except a blocked one. */
+/**
+ * The rows of `rows` as a plan holds them: every one. Without a pick only those
+ * with an action run; the rest are there so a pick of one is skipped with its
+ * reason rather than refused as unknown.
+ */
 export function planRows(rows: readonly Row[]): PlanRow[] {
-  const out: PlanRow[] = []
-  for (const row of rows) {
-    if (row.action === null || row.verdict === 'blocked') continue
-    out.push({ id: row.id, verdict: row.verdict, risks: row.risks, fingerprint: fingerprint(row) })
-  }
-  return out
+  return rows.map((row) => ({
+    id: row.id,
+    verdict: row.verdict,
+    action: row.action,
+    risks: row.risks,
+    fingerprint: fingerprint(row),
+  }))
 }
 
-/** A plan of `sweep`: every row that could be deleted, in every repository it read. */
+/** True when `row` could run without being picked by name: it has an action and is not blocked. */
+export function runnable(row: Pick<PlanRow, 'action' | 'verdict'>): boolean {
+  return row.action !== null && row.verdict !== 'blocked'
+}
+
+/** A plan of `sweep`: every row, in every repository it read. */
 export function plan(sweep: Sweep, now: Date = new Date()): Plan {
   return {
     version: PLAN_VERSION,
