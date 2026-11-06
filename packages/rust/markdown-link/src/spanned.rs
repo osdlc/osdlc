@@ -36,9 +36,8 @@ use crate::{Size, is_vault_link_url, md_link_target, parse_inner, parse_inner_se
 pub struct ScanOptions {
     /// Which rules decide what is code. Links in code are not links.
     pub code_rules: CodeRules,
-    /// Skip links inside HTML comments, `<!--` to `-->`, or to the end of the
-    /// body for an unclosed one that starts a line. Off by default: a
-    /// comment's links are found.
+    /// Skip links inside HTML comments, as [`crate::code`] finds them. Off by
+    /// default: a comment's links are found.
     pub skip_html_comments: bool,
     /// Read a wikilink with no target and a `#` fragment, `[[#Heading]]` or
     /// `[[#^block]]`, as a link to the note it is written in, with an empty
@@ -156,10 +155,11 @@ pub struct BodyScan {
 /// Code is blanked before matching, `[[` never nests, and a markdown link
 /// counts only when `is_vault_link_url` accepts its URL and it carries no
 /// scheme. A markdown link's text may hold brackets that balance, but no
-/// `[[` and no blank line, so `[[WIP] Fix](fix.md)` is a link and the
-/// wikilink in `[see [[Note]]](a.md)` stays a wikilink. A `\[` or `\]` in it
-/// does not count as a bracket. The span is what an editor decoration, a hover preview and a
-/// rename's link rewrite need: which bytes to touch.
+/// `[[`, no link and no blank line, so `[[WIP] Fix](fix.md)` is a link and
+/// the wikilink in `[see [[Note]]](a.md)` stays a wikilink. A `\[` or `\]`
+/// in it does not count as a bracket. Its destination is read as written.
+/// The span is what an editor decoration, a hover preview and a rename's
+/// link rewrite need: which bytes to touch.
 ///
 /// # Why the offsets need a char table
 ///
@@ -248,7 +248,8 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
     }
 
     let brackets = Brackets::new(&chars);
-    let mut scan = UrlScan::new(&chars);
+    // Made the first time a `](` is reached.
+    let mut scan: Option<UrlScan> = None;
     let mut out = Vec::new();
     let mut abandoned = Vec::new();
     let mut i = 0usize;
@@ -355,14 +356,19 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
         if chars[i] == '['
             && let Some(close) = brackets.text_end(i)
         {
-            let destination = scan.destination(&chars, close);
+            let scan = match chars.get(close + 1) {
+                Some('(') => Some(scan.get_or_insert_with(|| UrlScan::new(body))),
+                _ => None,
+            };
+            let destination = scan.as_deref().and_then(|scan| scan.destination(close));
             if overlaps(&abandoned, at[i])
                 && (destination.is_some() || brackets.is_reference(&chars, i, close))
             {
                 drop_overlapped(&mut abandoned, at[i]);
             }
             if let Some(destination) = destination
-                && let Some(link) = spanned_markdown_link(&chars, i, destination, &at, &mut scan)
+                && let Some(scan) = scan
+                && let Some(link) = spanned_markdown_link(i, destination, &at, scan)
             {
                 i = destination.end;
                 out.push(link);
@@ -420,8 +426,8 @@ fn drop_overlapped(abandoned: &mut Vec<AbandonedLink>, bracket: usize) {
 #[derive(Debug, Default)]
 struct Brackets {
     /// The char index of each `]` that closes link text, by the index of its
-    /// `[`. The brackets between balance, hold no `[[`, and no blank line
-    /// comes between them. A `\[` or `\]` is not a bracket.
+    /// `[`. The brackets between balance, hold no `[[` and no `](` (a link's
+    /// text holds no link), and no blank line comes between them. A `\[` or `\]` is not a bracket.
     text_end: HashMap<usize, usize>,
     /// Each `[label]: …` definition's label, as [`normalize_label`] gives it.
     labels: HashSet<String>,
@@ -430,10 +436,10 @@ struct Brackets {
 impl Brackets {
     fn new(chars: &[char]) -> Self {
         let mut brackets = Brackets::default();
-        // Each open `[`, and how many `[[` had started when it was pushed,
-        // counting one that it starts.
+        // Each open `[`, and how many `[[` and `](` had been seen when it was
+        // pushed, counting a `[[` that it starts.
         let mut open: Vec<(usize, usize)> = Vec::new();
-        let mut pairs = 0usize;
+        let mut seen = 0usize;
         let mut k = 0usize;
         while k < chars.len() {
             match chars[k] {
@@ -442,15 +448,18 @@ impl Brackets {
                 '\\' if chars.get(k + 1).is_some_and(|c| *c != '\n') => k += 1,
                 '[' => {
                     if chars.get(k + 1) == Some(&'[') {
-                        pairs += 1;
+                        seen += 1;
                     }
-                    open.push((k, pairs));
+                    open.push((k, seen));
                 }
                 ']' => {
                     if let Some((start, before)) = open.pop()
-                        && before == pairs
+                        && before == seen
                     {
                         brackets.text_end.insert(start, k);
+                    }
+                    if chars.get(k + 1) == Some(&'(') {
+                        seen += 1;
                     }
                 }
                 '\n' => {
@@ -545,7 +554,6 @@ struct Destination {
 /// "what does it point at". The URL is built only for a link, so a body of
 /// failed attempts stays linear.
 fn spanned_markdown_link(
-    chars: &[char],
     start: usize,
     destination: Destination,
     at: &[usize],
@@ -556,13 +564,13 @@ fn spanned_markdown_link(
         url_end,
         end,
     } = destination;
-    if !scan.is_vault_link(chars, url_start, url_end) || has_scheme(&chars[url_start..url_end]) {
+    if !scan.is_vault_link(url_start, url_end) || has_scheme(&scan.chars[url_start..url_end]) {
         // Not a link this dialect harvests. The caller advances ONE character
         // rather than skipping past the `[text](…)` it just walked, so a match
         // may start at an inner `[`: `[a[b](x.md)` is a link.
         return None;
     }
-    let url: String = chars[url_start..url_end].iter().collect();
+    let url: String = scan.chars[url_start..url_end].iter().collect();
     Some(BodyLink {
         kind: BodyLinkKind::Markdown,
         target: md_link_target(&url),
@@ -576,11 +584,16 @@ fn spanned_markdown_link(
     })
 }
 
-/// Tables over a body's chars that let each markdown link attempt read its
-/// URL in constant time, whatever order the attempts come in, so a body of
-/// failed attempts stays linear.
+/// A body's chars as written, and tables over them that let each markdown
+/// link attempt read its URL in constant time, whatever order the attempts
+/// come in, so a body of failed attempts stays linear.
+///
+/// A destination is read as written, not with code blanked: a link's
+/// destination is read where its `](` is, so no code or math starts in it,
+/// and `[a](notes/$x$.md)` is a link.
 #[derive(Debug)]
 struct UrlScan {
+    chars: Vec<char>,
     /// For each char index, the first `)`, `>` or whitespace at or after it.
     stop: Vec<usize>,
     /// For each char index, the last `.` or `/` before it.
@@ -591,7 +604,8 @@ struct UrlScan {
 }
 
 impl UrlScan {
-    fn new(chars: &[char]) -> Self {
+    fn new(body: &str) -> Self {
+        let chars: Vec<char> = body.chars().collect();
         let mut stop = vec![chars.len(); chars.len() + 1];
         for k in (0..chars.len()).rev() {
             stop[k] = if matches!(chars[k], ')' | '>') || chars[k].is_whitespace() {
@@ -609,6 +623,7 @@ impl UrlScan {
             };
         }
         Self {
+            chars,
             stop,
             mark,
             answers: HashMap::new(),
@@ -618,7 +633,8 @@ impl UrlScan {
     /// The destination after the `]` at `close`, when its shape is the regex
     /// `\(<?([^)>\s]*)>?\)`. A URL containing whitespace is not one:
     /// `[c](<sp ace.md>)` has none.
-    fn destination(&self, chars: &[char], close: usize) -> Option<Destination> {
+    fn destination(&self, close: usize) -> Option<Destination> {
+        let chars = &self.chars;
         if chars.get(close + 1) != Some(&'(') {
             return None;
         }
@@ -644,7 +660,8 @@ impl UrlScan {
     /// the extension of its last segment. So the URL from the character before
     /// its last `.` gives the same answer, and that tail is shared by every
     /// URL ending at `end`.
-    fn is_vault_link(&mut self, chars: &[char], from: usize, end: usize) -> bool {
+    fn is_vault_link(&mut self, from: usize, end: usize) -> bool {
+        let chars = &self.chars;
         let Some(mark) = self.mark[end].filter(|&mark| mark >= from && chars[mark] == '.') else {
             return false;
         };

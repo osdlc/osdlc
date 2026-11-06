@@ -27,21 +27,23 @@ makes the same changes in its 0.9.0, and both suites read the new cases.
   the item's text. The lexer follows list
   items far enough for both, so a list item's own text indented four spaces
   is still text. A span or `$$` stops at a line that opens a fence or raw
-  HTML block, and a line starting with `<!--` is a block of its own. A link's destination (`](url)`) is
-  read as written, so `[a](notes/$x$.md)` is still a link. The lexer still
-  does not know about block quotes.
+  HTML block, and a line starting with `<!--` is a block of its own. The
+  lexer still does not know about block quotes.
 - **Comments and code in one pass.** An HTML comment is found in the same
   left-to-right pass as code, whichever starts first. A backtick, `$` or
   fence inside a comment no longer opens code, whether or not
   `skip_html_comments` is on, and `<!--` inside code still opens nothing.
-  An unclosed comment runs to the end of the body only when it starts a
-  line; one later in a line is text, as in CommonMark. Before, any unclosed
-  comment ran to the end.
+  A comment that starts a line runs to the next `-->` or the end of the
+  body. One later in a line stays in its block, as a span does, and is text
+  when it does not close there, as in CommonMark. Before, any comment ran to
+  the next `-->` or the end.
   A `\` escapes a `$` only when it is not itself escaped.
 - **Markdown link text.** A Markdown link's text may hold brackets that
   balance, so `[[WIP] Fix](fix.md)` is a link. It may not hold `[[`, so the
-  wikilink in `[see [[Note]]](a.md)` stays a wikilink. It may not cross a
-  blank line, and `\[` and `\]` are not brackets in it (`\\[` is).
+  wikilink in `[see [[Note]]](a.md)` stays a wikilink, nor a link, so in
+  `[a [b](y.md) c](x.md)` the link is `y.md`. It may not cross a blank line,
+  and `\[` and `\]` are not brackets in it (`\\[` is). The destination is
+  read as written, not with code blanked, so `[a](notes/$x$.md)` is a link.
 - **Abandoned `[[`.** A `[[` whose first or second `[` opens a Markdown link
   is not reported, whatever the link's URL: `[[WIP] Fix](https://x)`,
   `[[Note](Note.md)]`, or a reference link whose label a `[label]: …`

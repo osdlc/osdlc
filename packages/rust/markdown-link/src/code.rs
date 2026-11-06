@@ -25,13 +25,12 @@
 //!
 //! An HTML comment, `<!--` to `-->`, is not code, but the lexer steps over
 //! it: a backtick, `$` or fence inside a comment opens nothing. A comment
-//! with no `-->` runs to the end of the input when it starts a line, and is
-//! text when it does not. Inline, whichever of a span, math, a comment or an
+//! that starts a line runs to the next `-->` or the end of the input. One
+//! later in a line with no `-->` in its block is text. Inline, whichever of a span, math, a comment or an
 //! autolink starts first wins, and the text up to its close is read as
-//! written. A link's destination, `](url)` or `](<url>)` with no whitespace,
-//! is read as written too: no code, math or autolink starts in it. A line
-//! that starts with `<!--` is a block of its own, so indented code may follow
-//! it.
+//! written. A comment later in a line stays in its block, as a span does. A
+//! line that starts with `<!--` is a block of its own, so indented code may
+//! follow it.
 //!
 //! A fence may open on a list item's first line (`- ````). A fence or raw
 //! HTML block in a list item ends at a line indented less than the item's
@@ -572,10 +571,12 @@ pub(crate) fn regions(text: &str, rules: CodeRules) -> Vec<(Range<usize>, Region
     let mut blocks = Blocks::new(rules);
     let mut spans = Spans::new(rules, bytes);
     let mut math = MathClose::default();
-    let mut destinations = DestinationStop::default();
-    // Whether a `-->` comes after the last `<!--` looked at. Once one does
-    // not, none after it does either.
+    // Whether a `-->` comes after the last comment that starts a line. Once
+    // one does not, none after it does either.
     let mut comment_closes = true;
+    // The end of the block in which a comment later in a line found no
+    // `-->`. No later one in that block does either.
+    let mut no_comment_close_until = 0usize;
     let mut offset = 0usize;
     while offset < bytes.len() {
         if offset == 0 || bytes[offset - 1] == b'\n' {
@@ -609,29 +610,42 @@ pub(crate) fn regions(text: &str, rules: CodeRules) -> Vec<(Range<usize>, Region
                     }
                 }
             }
-            b'<' if bytes[offset..].starts_with(b"<!--") => {
+            // A comment that starts a line is an HTML block: it runs to the
+            // next `-->`, or the end of the input.
+            b'<' if bytes[offset..].starts_with(b"<!--") && starts_line(bytes, offset) => {
                 let close = if comment_closes {
                     text[offset + 4..].find("-->")
                 } else {
                     None
                 };
                 comment_closes = close.is_some();
+                let end = close.map_or(bytes.len(), |at| offset + 4 + at + 3);
+                (Region::Comment, end)
+            }
+            // One later in a line stays in its block, as a span does, and is
+            // text when it does not close there.
+            b'<' if bytes[offset..].starts_with(b"<!--") => {
+                let close = if offset < no_comment_close_until {
+                    Err(no_comment_close_until)
+                } else {
+                    spans.in_block(offset + 4, &|line| blocks.opens_block(line), |mut at| {
+                        while at < bytes.len() && bytes[at] != b'\n' {
+                            if bytes[at..].starts_with(b"-->") {
+                                return Ok(at);
+                            }
+                            at += 1;
+                        }
+                        Err(at)
+                    })
+                };
                 match close {
-                    Some(at) => (Region::Comment, offset + 4 + at + 3),
-                    // An unclosed comment that starts a line runs to the
-                    // end of the input. One later in a line is text.
-                    None if starts_line(bytes, offset) => (Region::Comment, bytes.len()),
-                    None => {
+                    Ok(at) => (Region::Comment, at + 3),
+                    Err(block_end) => {
+                        no_comment_close_until = block_end;
                         offset += 1;
                         continue;
                     }
                 }
-            }
-            // A link's destination is read as written: no code, math or
-            // autolink starts in it.
-            b']' if bytes.get(offset + 1) == Some(&b'(') => {
-                offset = destinations.end(bytes, offset + 1).unwrap_or(offset + 1);
-                continue;
             }
             b'<' => match autolink_end(bytes, offset) {
                 Some(end) => (Region::Code, end),
@@ -800,8 +814,8 @@ impl Blocks {
     }
 
     /// Whether `rest`, a line from its first character that is not a space
-    /// or tab, starts a block that ends a paragraph. A list item does when it
-    /// has text and is a bullet or starts at 1.
+    /// or tab, starts a block that ends a paragraph. A list item does when a
+    /// list is open, or when it has text and is a bullet or starts at 1.
     fn interrupts(&self, rest: &[u8]) -> bool {
         opens_fence(rest, self.rules).is_some()
             || opens_raw_html(rest)
@@ -810,8 +824,9 @@ impl Blocks {
             || atx_heading(rest)
             || is_setext(rest, true)
             || rest.first() == Some(&b'>')
-            || list_marker(rest)
-                .is_some_and(|(length, text)| text && (length == 1 || rest[..length - 1] == *b"1"))
+            || list_marker(rest).is_some_and(|(length, text)| {
+                !self.items.is_empty() || (text && (length == 1 || rest[..length - 1] == *b"1"))
+            })
     }
 }
 
@@ -973,41 +988,6 @@ fn starts_line(bytes: &[u8], at: usize) -> bool {
         .take_while(|b| matches!(b, b' ' | b'\t'))
         .count();
     at == before || bytes[at - before - 1] == b'\n'
-}
-
-/// Finds where a link destination ends, for a scan that asks at positions
-/// that only move forward.
-#[derive(Debug, Default)]
-struct DestinationStop {
-    /// `(from, stop)`: the first `)`, `>` or whitespace at or after `from` is
-    /// at `stop`.
-    last: Option<(usize, usize)>,
-}
-
-impl DestinationStop {
-    /// The index just past the destination `(url)` or `(<url>)` whose `(` is
-    /// at `at`, the URL holding no `)`, `>` or whitespace: the shape the link
-    /// scanner reads.
-    fn end(&mut self, bytes: &[u8], at: usize) -> Option<usize> {
-        let angled = bytes.get(at + 1) == Some(&b'<');
-        let from = at + 1 + usize::from(angled);
-        let stop = match self.last {
-            Some((start, stop)) if (start..=stop).contains(&from) => stop,
-            _ => {
-                let stop = (from..bytes.len())
-                    .find(|&k| matches!(bytes[k], b')' | b'>') || bytes[k].is_ascii_whitespace())
-                    .unwrap_or(bytes.len());
-                self.last = Some((from, stop));
-                stop
-            }
-        };
-        let close = if angled {
-            (bytes.get(stop) == Some(&b'>')).then_some(stop + 1)?
-        } else {
-            stop
-        };
-        (bytes.get(close) == Some(&b')')).then_some(close + 1)
-    }
 }
 
 /// The index just past the autolink `<scheme:…>` that starts at `at`, if

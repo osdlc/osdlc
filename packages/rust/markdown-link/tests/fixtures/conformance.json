@@ -559,13 +559,46 @@
       ]
     },
     {
-      "name": "link_destination_is_read_as_written",
-      "source": "[a](notes/$x$.md) [b](<https://x>) `c`",
-      "stripped": "[a](notes/$x$.md) [b](<https://x>)    ",
+      "name": "comment_later_in_a_line_stays_in_its_block",
+      "source": "a <!-- x\n```\n[[y]]\n-->\n[[z]]\n```\n[[w]]\n",
+      "stripped": "a <!-- x\n   \n     \n   \n     \n   \n[[w]]\n",
       "ranges": [
         [
-          35,
-          38
+          9,
+          32
+        ]
+      ]
+    },
+    {
+      "name": "second_ordered_item_holds_a_fence",
+      "source": "1. a\n2. ```\n   [[x]]\n   ```\n   [[y]]\n",
+      "stripped": "1. a\n      \n        \n      \n   [[y]]\n",
+      "ranges": [
+        [
+          5,
+          27
+        ]
+      ]
+    },
+    {
+      "name": "style_block",
+      "source": "<style>\n[[x]]\n</style>\n[[y]]",
+      "stripped": "       \n     \n        \n[[y]]",
+      "ranges": [
+        [
+          0,
+          22
+        ]
+      ]
+    },
+    {
+      "name": "textarea_block_closes_on_its_first_line",
+      "source": "<textarea>[[x]]</textarea>\n[[y]]",
+      "stripped": "                          \n[[y]]",
+      "ranges": [
+        [
+          0,
+          26
         ]
       ]
     }
@@ -1910,6 +1943,39 @@
           "text": "[[]"
         }
       ]
+    },
+    {
+      "name": "markdown_link_text_holding_a_link_is_not_a_link",
+      "body": "[a [b](y.md) c](x.md)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "y.md",
+          "target": "y",
+          "alias": null,
+          "at": 3,
+          "text": "[b](y.md)"
+        }
+      ]
+    },
+    {
+      "name": "a_code_span_in_parentheses_after_a_bracket_is_code",
+      "body": "x](`[[b]]`) [[a]](`[[c]]`)",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "a",
+          "target": "a",
+          "alias": null,
+          "at": 12,
+          "text": "[[a]]"
+        }
+      ]
+    },
+    {
+      "name": "a_non_ascii_space_ends_a_destination",
+      "body": "[a](x\u00a0`[[b]]`)",
+      "links": []
     }
   ],
   "display": [

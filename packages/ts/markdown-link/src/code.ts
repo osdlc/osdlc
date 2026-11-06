@@ -4,10 +4,11 @@
  * in full.
  *
  * In short, code is fenced code, indented code, inline code spans, math
- * (`$$…$$` in its block and `$…$` on one line), raw HTML blocks (`<pre>`, `<script>`, `<style>`,
- * `<textarea>`) and autolinks. An HTML comment is not code, but a backtick,
- * `$` or fence inside one opens nothing; an unclosed one runs to the end only
- * when it starts a line. A link destination, `](url)`, is read as written. `'commonmark'` (the default)
+ * (`$$…$$` in its block and `$…$` on one line), raw HTML blocks (`<pre>`,
+ * `<script>`, `<style>`, `<textarea>`) and autolinks. An HTML comment is not
+ * code, but a backtick, `$` or fence inside one opens nothing. One that
+ * starts a line runs to `-->` or the end; one later in a line stays in its
+ * block. `'commonmark'` (the default)
  * follows CommonMark for fences and spans, and `'skill-export'` keeps the
  * looser rules of `skill-export`'s renderer. The lexer reads one line at a
  * time, following list items far enough to know where their text starts. It
@@ -31,9 +32,6 @@ const TILDE = 126
 const DOLLAR = 36
 const LESS = 60
 const GREATER = 62
-const OPEN_PAREN = 40
-const CLOSE_PAREN = 41
-const CLOSE_BRACKET = 93
 
 interface FenceRun {
   char: number
@@ -418,10 +416,12 @@ export function regions(text: string, rules: CodeRules): Region[] {
   const blocks = new Blocks(rules)
   const spans = new Spans(rules, text)
   const math = new MathClose()
-  const destinations = new DestinationStop()
-  // Whether a `-->` comes after the last `<!--` looked at. Once one does not,
-  // none after it does either.
+  // Whether a `-->` comes after the last comment that starts a line. Once
+  // one does not, none after it does either.
   let commentCloses = true
+  // The end of the block in which a comment later in a line found no `-->`.
+  // No later one in that block does either.
+  let noCommentCloseUntil = 0
   let offset = 0
   while (offset < text.length) {
     if (offset === 0 || text.charCodeAt(offset - 1) === NEWLINE) {
@@ -451,24 +451,38 @@ export function regions(text: string, rules: CodeRules): Region[] {
       }
       offset = found.end
       push(start, offset, 'code')
-    } else if (c === LESS && text.startsWith('<!--', offset)) {
+    } else if (c === LESS && text.startsWith('<!--', offset) && startsLine(text, offset)) {
+      // A comment that starts a line is an HTML block: it runs to the next
+      // `-->`, or the end of the input.
       const close: number = commentCloses ? text.indexOf('-->', offset + 4) : -1
       commentCloses = close !== -1
-      if (close !== -1) {
-        offset = close + 3
-      } else if (startsLine(text, offset)) {
-        // An unclosed comment that starts a line runs to the end of the
-        // input. One later in a line is text.
-        offset = text.length
-      } else {
+      offset = close === -1 ? text.length : close + 3
+      push(start, offset, 'comment')
+    } else if (c === LESS && text.startsWith('<!--', offset)) {
+      // One later in a line stays in its block, as a span does, and is text
+      // when it does not close there.
+      const found: { found: number } | { blockEnd: number } =
+        offset < noCommentCloseUntil
+          ? { blockEnd: noCommentCloseUntil }
+          : spans.inBlock(
+              offset + 4,
+              (from, to) => blocks.opensBlock(text, from, to),
+              (from) => {
+                let i = from
+                while (i < text.length && text.charCodeAt(i) !== NEWLINE) {
+                  if (text.startsWith('-->', i)) return { found: i }
+                  i++
+                }
+                return { lineEnd: i }
+              },
+            )
+      if ('blockEnd' in found) {
+        noCommentCloseUntil = found.blockEnd
         offset++
         continue
       }
+      offset = found.found + 3
       push(start, offset, 'comment')
-    } else if (c === CLOSE_BRACKET && text.charCodeAt(offset + 1) === OPEN_PAREN) {
-      // A link's destination is read as written: no code, math or autolink
-      // starts in it.
-      offset = destinations.end(text, offset + 1) ?? offset + 1
     } else if (c === LESS) {
       const end = autolinkEnd(text, offset)
       if (end === null) {
@@ -638,8 +652,8 @@ class Blocks {
       isSetext(s, at, end, true) ||
       s[at] === '>' ||
       (marker !== null &&
-        marker.text &&
-        (marker.length === 1 || s.slice(at, at + marker.length - 1) === '1'))
+        (this.items.length > 0 ||
+          (marker.text && (marker.length === 1 || s.slice(at, at + marker.length - 1) === '1'))))
     )
   }
 }
@@ -800,47 +814,6 @@ function startsLine(s: string, at: number): boolean {
   let i = at
   while (i > 0 && (s[i - 1] === ' ' || s[i - 1] === '\t')) i--
   return i === 0 || s.charCodeAt(i - 1) === NEWLINE
-}
-
-/** Whether a UTF-16 unit is ASCII whitespace, as Rust's `u8::is_ascii_whitespace` reads it. */
-function isAsciiWhitespace(c: number): boolean {
-  return c === SPACE || c === TAB || c === NEWLINE || c === 12 || c === CR
-}
-
-/**
- * Finds where a link destination ends, for a scan that asks at positions
- * that only move forward.
- */
-class DestinationStop {
-  /** The first `)`, `>` or whitespace at or after `from` is at `stop`. */
-  private from = -1
-  private stop = -1
-
-  /**
-   * The index just past the destination `(url)` or `(<url>)` whose `(` is at
-   * `at`, the URL holding no `)`, `>` or whitespace: the shape the link
-   * scanner reads.
-   */
-  end(s: string, at: number): number | null {
-    const angled = s.charCodeAt(at + 1) === LESS
-    const from = at + 1 + (angled ? 1 : 0)
-    if (!(from >= this.from && from <= this.stop)) {
-      let k = from
-      while (k < s.length) {
-        const c = s.charCodeAt(k)
-        if (c === CLOSE_PAREN || c === GREATER || isAsciiWhitespace(c)) break
-        k++
-      }
-      this.from = from
-      this.stop = k
-    }
-    let close = this.stop
-    if (angled) {
-      if (s.charCodeAt(close) !== GREATER) return null
-      close++
-    }
-    return s.charCodeAt(close) === CLOSE_PAREN ? close + 1 : null
-  }
 }
 
 /**

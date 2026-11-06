@@ -19,8 +19,8 @@ export interface ScanOptions {
   /** Which rules decide what is code. Default `'commonmark'`. */
   codeRules?: CodeRules
   /**
-   * Skip links inside HTML comments, `<!--` to `-->`, or to the end for an
-   * unclosed one that starts a line. Default `false`.
+   * Skip links inside HTML comments, as the code lexer finds them. Default
+   * `false`.
    */
   skipHtmlComments?: boolean
   /**
@@ -140,10 +140,10 @@ export function bodyLinks(body: string): RawLink[] {
  *
  * Code is blanked before matching, `[[` never nests, and a markdown link
  * counts only when `isVaultLinkUrl` accepts its URL and it carries no scheme.
- * A markdown link's text may hold brackets that balance, but no `[[` and no
- * blank line, so `[[WIP] Fix](fix.md)` is a link and the wikilink in
- * `[see [[Note]]](a.md)` stays a wikilink. A `\[` or `\]` in it does not
- * count as a bracket.
+ * A markdown link's text may hold brackets that balance, but no `[[`, no
+ * link and no blank line, so `[[WIP] Fix](fix.md)` is a link and the
+ * wikilink in `[see [[Note]]](a.md)` stays a wikilink. A `\[` or `\]` in it
+ * does not count as a bracket. Its destination is read as written.
  *
  * The scan walks code points. `stripCode` keeps the code point count of its
  * input, not its UTF-16 length, so a code point index into the stripped text
@@ -194,7 +194,8 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
   }
 
   const brackets = new Brackets(chars)
-  const scan = new UrlScan(chars)
+  // Made the first time a `](` is reached.
+  let scan: UrlScan | null = null
   const out: BodyLink[] = []
   const abandoned: AbandonedLink[] = []
   let i = 0
@@ -272,14 +273,15 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
     }
     const close = chars[i] === '[' ? brackets.textEnd(i) : undefined
     if (close !== undefined) {
-      const destination = scan.destination(chars, close)
+      if (chars[close + 1] === '(') scan ??= new UrlScan(body)
+      const destination = chars[close + 1] === '(' ? scan!.destination(close) : null
       if (
         overlaps(abandoned, at[i]!) &&
         (destination !== null || brackets.isReference(chars, i, close))
       ) {
         dropOverlapped(abandoned, at[i]!)
       }
-      const link = destination === null ? null : markdownLink(chars, i, destination, at, scan)
+      const link = destination === null ? null : markdownLink(i, destination, at, scan!)
       if (link !== null) {
         out.push(link)
         i = destination!.end
@@ -338,8 +340,9 @@ function dropOverlapped(abandoned: AbandonedLink[], bracket: number): void {
 class Brackets {
   /**
    * The code point index of each `]` that closes link text, by the index of
-   * its `[`. The brackets between balance, hold no `[[`, and no blank line
-   * comes between them. A `\[` or `\]` is not a bracket.
+   * its `[`. The brackets between balance, hold no `[[` and no `](` (a
+   * link's text holds no link), and no blank line comes between them. A `\[`
+   * or `\]` is not a bracket.
    */
   private readonly ends = new Map<number, number>()
   /** Each `[label]: …` definition's label, as `normalizeLabel` gives it. */
@@ -349,7 +352,7 @@ class Brackets {
     // Each open `[`, and how many `[[` had started when it was pushed,
     // counting one that it starts.
     const open: [number, number][] = []
-    let pairs = 0
+    let seen = 0
     for (let k = 0; k < chars.length; k++) {
       const c = chars[k]
       if (c === '\\' && k + 1 < chars.length && chars[k + 1] !== '\n') {
@@ -357,11 +360,12 @@ class Brackets {
         // of a line escapes nothing.
         k++
       } else if (c === '[') {
-        if (chars[k + 1] === '[') pairs++
-        open.push([k, pairs])
+        if (chars[k + 1] === '[') seen++
+        open.push([k, seen])
       } else if (c === ']') {
         const popped = open.pop()
-        if (popped !== undefined && popped[1] === pairs) this.ends.set(popped[0], k)
+        if (popped !== undefined && popped[1] === seen) this.ends.set(popped[0], k)
+        if (chars[k + 1] === '(') seen++
       } else if (c === '\n') {
         let next = k + 1
         while (chars[next] === ' ' || chars[next] === '\t' || chars[next] === '\r') next++
@@ -446,7 +450,6 @@ interface Destination {
  * for a link, so a body of failed attempts stays linear.
  */
 function markdownLink(
-  chars: string[],
   start: number,
   { urlStart, urlEnd, end }: Destination,
   at: number[],
@@ -454,10 +457,10 @@ function markdownLink(
 ): BodyLink | null {
   // Not a link this dialect harvests. The caller advances one code point, so
   // a match may start at an inner `[`: `[a[b](x.md)` is a link.
-  if (!scan.isVaultLink(chars, urlStart, urlEnd) || hasScheme(chars, urlStart, urlEnd)) {
+  if (!scan.isVaultLink(urlStart, urlEnd) || hasScheme(scan.chars, urlStart, urlEnd)) {
     return null
   }
-  const url = chars.slice(urlStart, urlEnd).join('')
+  const url = scan.chars.slice(urlStart, urlEnd).join('')
   return {
     kind: 'markdown',
     raw: url,
@@ -472,11 +475,16 @@ function markdownLink(
 }
 
 /**
- * Tables over a body's code points that let each markdown link attempt read
- * its URL in constant time, whatever order the attempts come in, so a body of
- * failed attempts stays linear.
+ * A body's code points as written, and tables over them that let each
+ * markdown link attempt read its URL in constant time, whatever order the
+ * attempts come in, so a body of failed attempts stays linear.
+ *
+ * A destination is read as written, not with code blanked: a link's
+ * destination is read where its `](` is, so no code or math starts in it, and
+ * `[a](notes/$x$.md)` is a link.
  */
 class UrlScan {
+  readonly chars: string[]
   /** For each index, the first `)`, `>` or whitespace at or after it. */
   private readonly stop: number[]
   /** For each index, the last `.` or `/` before it, or -1. */
@@ -484,7 +492,9 @@ class UrlScan {
   /** `isVaultLinkUrl` of each URL tail asked so far, by `start,end`. */
   private readonly answers = new Map<string, boolean>()
 
-  constructor(chars: string[]) {
+  constructor(body: string) {
+    const chars = Array.from(body)
+    this.chars = chars
     this.stop = Array.from({ length: chars.length + 1 }, () => chars.length)
     for (let k = chars.length - 1; k >= 0; k--) {
       const c = chars[k]!
@@ -500,7 +510,8 @@ class UrlScan {
    * The destination after the `]` at `close`, when its shape is the regex
    * `\(<?([^)>\s]*)>?\)`. A URL containing whitespace is not one.
    */
-  destination(chars: string[], close: number): Destination | null {
+  destination(close: number): Destination | null {
+    const chars = this.chars
     if (chars[close + 1] !== '(') return null
     const angled = chars[close + 2] === '<'
     const urlStart = angled ? close + 3 : close + 2
@@ -520,7 +531,8 @@ class UrlScan {
    * last `.` gives the same answer, and that tail is shared by every URL
    * ending at `end`.
    */
-  isVaultLink(chars: string[], from: number, end: number): boolean {
+  isVaultLink(from: number, end: number): boolean {
+    const chars = this.chars
     const mark = this.mark[end]!
     if (mark < from || chars[mark] !== '.') return false
     const tailStart = Math.max(from, mark - 1)

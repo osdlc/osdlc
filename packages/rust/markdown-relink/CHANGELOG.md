@@ -7,17 +7,6 @@ project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.4.0] - 2026-11-06
-
-### Changed
-
-- Built on `markdown-link` 0.9 (was 0.8). `VaultFacts::links` holds
-  `markdown_link::BodyLink` values, so this is a breaking release for a
-  caller that also uses `markdown-link` directly. markdown-link 0.9 counts
-  more of a note as code (indented code, math, `<pre>` blocks, autolinks),
-  so a plan no longer rewrites links written there, and it finds a
-  Markdown link with brackets in its text, such as `[[WIP] Fix](fix.md)`.
-
 ## [0.3.0] - 2026-11-04
 
 Built on `markdown-corpus` 0.2, `markdown-link` 0.8 and `vfs-seam` 0.2.
