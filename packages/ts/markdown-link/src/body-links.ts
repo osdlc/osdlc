@@ -500,9 +500,10 @@ function markdownLink(
  * markdown link attempt read its destination in constant time, so a body of
  * failed attempts stays linear.
  *
- * A destination is read as written, not with code blanked: a link's
- * destination is read where its `](` is, so no code or math starts in it, and
- * `[a](notes/$x$.md)` is a link.
+ * A destination and title are read as written, not with code blanked:
+ * CommonMark reads them where the link's `](` is, before any code or math
+ * that would start in them, so `[a](notes/$x$.md)` is a link and the title of
+ * ``[a](a.md "`")`` is a backtick.
  */
 class UrlScan {
   readonly chars: string[]
