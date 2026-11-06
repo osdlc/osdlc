@@ -76,13 +76,22 @@ pub(crate) fn target_span(body: &str, link: &BodyLink) -> Option<Range<usize>> {
         BodyLinkKind::Markdown => {
             let span = body.get(link.byte_start..link.byte_end)?;
             // The URL follows a `](`, after any whitespace and a `<`. The
-            // label holds no `](` outside code, as a link's text holds no
-            // link, so the first `](` outside code is the one.
+            // label holds no `](` outside code whose `]` is not escaped, as a
+            // link's text holds no link, so the first such `](` is the one.
             let code = markdown_link::code::code_ranges(span, CodeRules::CommonMark);
+            let escaped = |at: usize| {
+                span.as_bytes()[..at]
+                    .iter()
+                    .rev()
+                    .take_while(|b| **b == b'\\')
+                    .count()
+                    % 2
+                    == 1
+            };
             let paren = span
                 .match_indices("](")
                 .map(|(at, _)| at)
-                .find(|at| !code.iter().any(|range| range.contains(at)))?;
+                .find(|&at| !escaped(at) && !code.iter().any(|range| range.contains(&at)))?;
             let mut url_start = paren
                 + 2
                 + span[paren + 2..]
@@ -202,6 +211,11 @@ mod tests {
         let body = "see [`](a.md` x](a.md)";
         let span = target_span(body, &one(body)).expect("span");
         assert_eq!(span.start, body.rfind("a.md").unwrap());
+        // Nor is a `](` whose `]` is escaped.
+        let body = "see [a\\](c.md) x](c.md)";
+        let span = target_span(body, &one(body)).expect("span");
+        assert_eq!(span.start, body.rfind("c.md").unwrap());
+        assert_eq!(span_text("see [a\\](b.md) x](c.md)"), "c.md");
     }
 
     #[test]

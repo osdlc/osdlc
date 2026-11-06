@@ -699,10 +699,11 @@ impl UrlScan {
     /// The destination and title after the `]` at `close`, much as CommonMark
     /// reads an inline link: `(`, then a URL, then a title in `"…"`, `'…'` or
     /// `(…)` after whitespace, then `)`, with whitespace and at most one line
-    /// break between the parts. The URL is `<…>`, which may hold spaces but
-    /// no `<`, or a run with no whitespace whose parentheses balance. A `\`
-    /// escapes the next character, but not a line break. Unlike CommonMark, a
-    /// title stays on one line.
+    /// break between the parts, though not before an unbracketed URL. The URL
+    /// is `<…>`, which may hold spaces but no `<`, or a run with no
+    /// whitespace whose parentheses balance. A `\` escapes the next
+    /// character, but not a line break. Unlike CommonMark, a title stays on
+    /// one line, and no line break comes before an unbracketed URL.
     fn destination(&self, close: usize) -> Option<Destination> {
         let chars = &self.chars;
         if chars.get(close + 1) != Some(&'(') {
@@ -712,6 +713,10 @@ impl UrlScan {
         let (url_start, url_end, after_url) = if chars.get(from) == Some(&'<') {
             let end = self.delimited(from + 1, '>', &['<'])?;
             (from + 1, end, end + 1)
+        } else if chars[close + 2..from].contains(&'\n') {
+            // A line break before an unbracketed URL could put it on a line
+            // that starts a block quote, heading or list item.
+            return None;
         } else {
             let space = self.space[from];
             let paren = self.unopened_close[from];

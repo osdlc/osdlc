@@ -565,10 +565,11 @@ class UrlScan {
    * The destination and title after the `]` at `close`, much as CommonMark
    * reads an inline link: `(`, then a URL, then a title in `"…"`, `'…'` or
    * `(…)` after whitespace, then `)`, with whitespace and at most one line
-   * break between the parts. The URL is `<…>`, which may hold spaces but no
-   * `<`, or a run with no whitespace whose parentheses balance. A `\`
-   * escapes the next character, but not a line break. Unlike CommonMark, a
-   * title stays on one line.
+   * break between the parts, though not before an unbracketed URL. The URL
+   * is `<…>`, which may hold spaces but no `<`, or a run with no whitespace
+   * whose parentheses balance. A `\` escapes the next character, but not a
+   * line break. Unlike CommonMark, a title stays on one line, and no line
+   * break comes before an unbracketed URL.
    */
   destination(close: number): Destination | null {
     const chars = this.chars
@@ -583,6 +584,10 @@ class UrlScan {
       urlStart = from + 1
       urlEnd = end
       afterUrl = end + 1
+    } else if (chars.slice(close + 2, from).includes('\n')) {
+      // A line break before an unbracketed URL could put it on a line that
+      // starts a block quote, heading or list item.
+      return null
     } else {
       const space = this.space[from]!
       const paren = this.unopenedClose[from]!

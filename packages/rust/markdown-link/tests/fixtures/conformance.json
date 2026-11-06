@@ -2388,6 +2388,94 @@
           "text": "[[c]]"
         }
       ]
+    },
+    {
+      "name": "no_line_break_before_an_unbracketed_url",
+      "body": "[a](\n>[[W]]) [b](\n<b.md>)",
+      "links": [
+        {
+          "kind": "wikilink",
+          "raw": "W",
+          "target": "W",
+          "alias": null,
+          "at": 6,
+          "text": "[[W]]"
+        },
+        {
+          "kind": "markdown",
+          "raw": "b.md",
+          "target": "b",
+          "alias": null,
+          "at": 13,
+          "text": "[b](\n<b.md>)"
+        }
+      ]
+    },
+    {
+      "name": "no_line_break_before_an_unbracketed_url_for_all_markdown_links",
+      "body": "[a](\n#) [b](\n- \"x\")",
+      "options": {
+        "allMarkdownLinks": true
+      },
+      "links": []
+    },
+    {
+      "name": "image_with_a_title",
+      "body": "![d](img/a.png \"t\")",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "img/a.png",
+          "target": "img/a.png",
+          "alias": null,
+          "at": 1,
+          "text": "[d](img/a.png \"t\")",
+          "title": "t"
+        }
+      ]
+    },
+    {
+      "name": "image_with_an_angled_url",
+      "body": "![d](<img/a b.png>)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "img/a b.png",
+          "target": "img/a b.png",
+          "alias": null,
+          "at": 1,
+          "text": "[d](<img/a b.png>)"
+        }
+      ]
+    },
+    {
+      "name": "blank_line_between_the_url_and_the_title",
+      "body": "[a](a.md\n\n\"t\")",
+      "links": []
+    },
+    {
+      "name": "escapes_in_titles",
+      "body": "[a](a.md 'it\\'s') [b](b.md (x\\)y))",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "a.md",
+          "target": "a",
+          "alias": null,
+          "at": 0,
+          "text": "[a](a.md 'it\\'s')",
+          "title": "it\\'s"
+        },
+        {
+          "kind": "markdown",
+          "raw": "b.md",
+          "target": "b",
+          "alias": null,
+          "at": 18,
+          "text": "[b](b.md (x\\)y))",
+          "title": "x\\)y"
+        }
+      ]
     }
   ],
   "display": [
