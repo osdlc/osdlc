@@ -193,7 +193,7 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
     return { links: [], abandoned: [] }
   }
 
-  const brackets = new Brackets(chars)
+  const brackets = new Brackets(chars, body, at)
   // Made the first time a `](` is reached.
   let scan: UrlScan | null = null
   const out: BodyLink[] = []
@@ -348,7 +348,12 @@ class Brackets {
   /** Each `[label]: …` definition's label, as `normalizeLabel` gives it. */
   private readonly labels = new Set<string>()
 
-  constructor(chars: string[]) {
+  /**
+   * `chars` are the body's code points with code blanked, and `at` maps a
+   * code point index to its UTF-16 offset in `body`. A blank line is read in
+   * `body`, so a line that is only code is not blank.
+   */
+  constructor(chars: string[], body: string, at: number[]) {
     // Each open `[`, and how many `[[` had started when it was pushed,
     // counting one that it starts.
     const open: [number, number][] = []
@@ -367,9 +372,9 @@ class Brackets {
         if (popped !== undefined && popped[1] === seen) this.ends.set(popped[0], k)
         if (chars[k + 1] === '(') seen++
       } else if (c === '\n') {
-        let next = k + 1
-        while (chars[next] === ' ' || chars[next] === '\t' || chars[next] === '\r') next++
-        if (next >= chars.length || chars[next] === '\n') open.length = 0
+        let next = at[k + 1]!
+        while (body[next] === ' ' || body[next] === '\t' || body[next] === '\r') next++
+        if (next >= body.length || body[next] === '\n') open.length = 0
         this.define(chars, k + 1)
       }
     }
