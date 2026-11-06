@@ -1,19 +1,41 @@
-//! Code fences and inline code spans: finding them, and blanking them so a
-//! lexer never harvests out of them.
+//! Code, and blanking it so a lexer never harvests out of it.
 //!
 //! One lexer for every caller. This crate's link scanners, a `#tag` lexer and
 //! any tool that rewrites markdown all ask "is this code", and a second copy
-//! would be a second answer.
+//! would be a second answer. [`code_ranges`] says where the code is, and
+//! [`strip_code_with`] blanks it.
 //!
-//! [`CodeRules`] picks between two rule sets.
+//! Code is text a renderer shows as written, so a link in it is not a link:
 //!
-//! [`CodeRules::CommonMark`], the default, follows CommonMark:
+//! - **Fenced code.** [`CodeRules`] sets the rules for fences and spans.
+//! - **Indented code.** A line indented four or more columns past where its
+//!   block's text starts (the line start, or the text of the list item it is
+//!   in), unless it continues a paragraph. A tab moves to the next multiple
+//!   of four columns.
+//! - **Inline code spans.**
+//! - **Math.** `$$` up to the next `$$` before a blank line, and `$` up to
+//!   the next `$` on the same line. The opening `$` must have a character
+//!   other than a space or tab after it. The closing `$` must have one before
+//!   it and no digit after it, so `$5 and $10` is not math. A `$` with a `\`
+//!   before it does neither.
+//! - **Raw HTML blocks.** A line starting with `<pre`, `<script`, `<style` or
+//!   `<textarea`, through the line holding a closing tag of any of the four,
+//!   or the end of the input.
+//! - **Autolinks**, such as `<https://example.com/[[a]]>`.
 //!
-//! - A fence opens on a line of up to three spaces and a run of three or more
-//!   backticks or tildes. A backtick fence's info string may not hold a
-//!   backtick. The fence closes on a line holding only a run of the same
-//!   character, at least as long, and whitespace. An unclosed fence runs to
-//!   the end of the input.
+//! An HTML comment, `<!--` to `-->` or the end of the input, is not code, but
+//! the lexer steps over it: a backtick, `$` or fence inside a comment opens
+//! nothing. Inline, whichever of a span, math, a comment or an autolink
+//! starts first wins, and the text up to its close is read as written.
+//!
+//! [`CodeRules::CommonMark`], the default, follows CommonMark for fences and
+//! spans:
+//!
+//! - A fence opens on a line of up to three spaces past where its block's
+//!   text starts and a run of three or more backticks or tildes. A backtick
+//!   fence's info string may not hold a backtick. The fence closes on a line
+//!   holding only a run of the same character, at least as long, and
+//!   whitespace. An unclosed fence runs to the end of the input.
 //! - An inline span opens on a run of backticks and closes on the next run of
 //!   exactly that many. A run with no close is literal text.
 //! - A span stays inside its block. A blank line, a fence, an ATX heading, a
@@ -29,13 +51,15 @@
 //! - A longer backtick run closes a shorter span.
 //! - Only a blank line or a fence marker line ends a span's block.
 //!
-//! Both rule sets read one line at a time, so neither knows about container
-//! blocks. Indented code blocks are not code. A fence is found only when its
-//! marker starts within three spaces of the line start, so a fence nested in
-//! a list item or a block quote is missed. A list item or block quote marker
-//! ends a span's block at any indent and with any start number, even with no
-//! text after it, so it may end a span that CommonMark would continue. Nested
-//! items are indented, and ending a span early keeps text visible.
+//! Math, raw HTML blocks, autolinks and indented code follow the same rules
+//! under both.
+//!
+//! The lexer reads one line at a time. It follows list items far enough to
+//! know where their text starts, and does not know about block quotes, so a
+//! fence or indented code in a block quote is missed. A list item or block
+//! quote marker ends a span's block at any indent and with any start number,
+//! even with no text after it, so it may end a span that CommonMark would
+//! continue. Ending a span early keeps text visible.
 //!
 //! [`CodeRules::CommonMark`] also treats a line starting with `|` after up to
 //! three spaces as a one-line block, table or not. A span cannot enter or
@@ -46,12 +70,16 @@
 //! Every marker is ASCII, so a byte scan never splits a UTF-8 character.
 //!
 //! ```
-//! use markdown_link::code::{CodeRules, strip_code_with};
+//! use markdown_link::code::{CodeRules, code_ranges, strip_code_with};
 //!
-//! let text = "keep [[a]] `[[b]]`";
+//! let text = "keep [[a]] `[[b]]` $[[c]]$\n\n    [[d]]";
 //! let blanked = strip_code_with(text, CodeRules::CommonMark);
-//! assert_eq!(blanked, "keep [[a]]        ");
+//! assert_eq!(blanked, "keep [[a]]                \n\n         ");
+//! let ranges = code_ranges(text, CodeRules::CommonMark);
+//! assert_eq!(ranges, [11..18, 19..26, 28..37]);
 //! ```
+
+use std::ops::Range;
 
 /// Which rules the lexer follows. See the module doc.
 ///
@@ -407,8 +435,8 @@ fn line_end(bytes: &[u8], from: usize) -> usize {
         .map_or(bytes.len(), |i| from + i)
 }
 
-/// Blank out fenced and inline code so links and tags inside it are not
-/// harvested. [`strip_code_with`] under [`CodeRules::CommonMark`].
+/// Blank out code so links and tags inside it are not harvested.
+/// [`strip_code_with`] under [`CodeRules::CommonMark`].
 ///
 /// # Examples
 ///
@@ -426,7 +454,7 @@ pub fn strip_code(text: &str) -> String {
     strip_code_with(text, CodeRules::CommonMark)
 }
 
-/// Blank out fenced and inline code under `rules`.
+/// Blank out the code under `rules`: each of [`code_ranges`].
 ///
 /// Every character of code, fence marker lines included, becomes a space, and
 /// every `\n` stays. The output has the same number of **characters** as the
@@ -442,48 +470,414 @@ pub fn strip_code(text: &str) -> String {
 /// assert_eq!(blanked, "    x"); // 3 chars of code, now 3 one-byte spaces
 /// ```
 pub fn strip_code_with(text: &str, rules: CodeRules) -> String {
-    let bytes = text.as_bytes();
-    let mut out = String::with_capacity(text.len());
-    let mut fences = Fences::new(rules);
-    let mut spans = Spans::new(rules, bytes);
-    let mut written_up_to = 0usize;
-    let mut blank = |out: &mut String, start: usize, end: usize| {
-        out.push_str(&text[written_up_to..start]);
-        out.extend(
-            text[start..end]
-                .chars()
-                .map(|c| if c == '\n' { '\n' } else { ' ' }),
-        );
-        written_up_to = end;
-    };
+    blank(text, code_ranges(text, rules))
+}
 
+/// The byte ranges of `text` that are code under `rules`, as the module doc
+/// describes: what [`strip_code_with`] blanks.
+///
+/// The ranges are in order and do not overlap. Each holds its delimiters: a
+/// span's backticks, a fence's marker lines, an autolink's `<` and `>`. Two
+/// ranges that touch, or that only a line break separates, are one, so a
+/// fence or a run of indented code lines is one range. HTML comments are in
+/// none.
+///
+/// # Examples
+///
+/// ```
+/// use markdown_link::code::{CodeRules, code_ranges};
+///
+/// let text = "a `b` c\n```\nd\n```\n<!-- `e` -->";
+/// let ranges = code_ranges(text, CodeRules::CommonMark);
+/// assert_eq!(ranges, [2..5, 8..17]);
+/// assert_eq!(&text[ranges[1].clone()], "```\nd\n```");
+/// ```
+pub fn code_ranges(text: &str, rules: CodeRules) -> Vec<Range<usize>> {
+    regions(text, rules)
+        .into_iter()
+        .filter_map(|(range, region)| (region == Region::Code).then_some(range))
+        .collect()
+}
+
+/// What a range of [`regions`] holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Region {
+    /// Code: what [`code_ranges`] returns.
+    Code,
+    /// An HTML comment, `<!--` to `-->` or the end of the input.
+    Comment,
+}
+
+/// The code and the HTML comments in `text`, in order, from one left-to-right
+/// pass. Ranges of the same kind that touch, or that only a line break
+/// separates, are merged.
+pub(crate) fn regions(text: &str, rules: CodeRules) -> Vec<(Range<usize>, Region)> {
+    let bytes = text.as_bytes();
+    let mut out: Vec<(Range<usize>, Region)> = Vec::new();
+    let mut push = |range: Range<usize>, region: Region| {
+        if let Some((last, kind)) = out.last_mut()
+            && *kind == region
+            && (last.end == range.start
+                || (last.end + 1 == range.start && bytes[last.end] == b'\n'))
+        {
+            last.end = range.end;
+        } else if !range.is_empty() {
+            out.push((range, region));
+        }
+    };
+    let mut blocks = Blocks::new(rules);
+    let mut spans = Spans::new(rules, bytes);
+    let mut math = MathClose::default();
     let mut offset = 0usize;
     while offset < bytes.len() {
         if offset == 0 || bytes[offset - 1] == b'\n' {
             let end = line_end(bytes, offset);
             let line = &bytes[offset..end];
-            if fences.line(line) != FenceLine::Outside {
-                blank(&mut out, offset, end);
+            if blocks.code_line(line) {
+                push(offset..end, Region::Code);
                 offset = end + 1;
                 continue;
             }
             spans.line(line);
         }
-        if bytes[offset] == b'`' {
-            let (run, close) = spans.close(offset);
-            offset = match close {
-                Some(close) => {
-                    blank(&mut out, offset, close + run);
-                    close + run
+        let start = offset;
+        let (region, end) = match bytes[offset] {
+            b'`' => {
+                let (run, close) = spans.close(offset);
+                match close {
+                    Some(close) => (Region::Code, close + run),
+                    None => {
+                        offset += run;
+                        continue;
+                    }
                 }
-                None => offset + run,
-            };
-            continue;
-        }
-        offset += 1;
+            }
+            b'$' if !escaped(bytes, offset) => match math_end(bytes, offset, &mut math) {
+                Ok(end) => (Region::Code, end),
+                Err(skip) => {
+                    offset += skip;
+                    continue;
+                }
+            },
+            b'<' if bytes[offset..].starts_with(b"<!--") => {
+                let end = text[offset + 4..]
+                    .find("-->")
+                    .map_or(bytes.len(), |at| offset + 4 + at + 3);
+                (Region::Comment, end)
+            }
+            b'<' => match autolink_end(bytes, offset) {
+                Some(end) => (Region::Code, end),
+                None => {
+                    offset += 1;
+                    continue;
+                }
+            },
+            _ => {
+                offset += 1;
+                continue;
+            }
+        };
+        push(start..end, region);
+        offset = end;
+    }
+    out
+}
+
+/// `text` with every character in `ranges` but `\n` made a space. `ranges`
+/// are byte ranges, in order and not overlapping. The character count does
+/// not change.
+pub(crate) fn blank(text: &str, ranges: impl IntoIterator<Item = Range<usize>>) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut written_up_to = 0usize;
+    for range in ranges {
+        out.push_str(&text[written_up_to..range.start]);
+        out.extend(
+            text[range.clone()]
+                .chars()
+                .map(|c| if c == '\n' { '\n' } else { ' ' }),
+        );
+        written_up_to = range.end;
     }
     out.push_str(&text[written_up_to..]);
     out
+}
+
+/// The block state of a line-by-line scan: the open fence or raw HTML block,
+/// the list items the scan is in, and whether the line before was paragraph
+/// text.
+#[derive(Debug, Clone)]
+struct Blocks {
+    rules: CodeRules,
+    fences: Fences,
+    /// The column a fence's lines are read from: where the text of the list
+    /// item it opened in starts.
+    fence_base: usize,
+    /// Whether a `<pre>`, `<script>`, `<style>` or `<textarea>` block is open.
+    raw_html: bool,
+    /// The column where each open list item's text starts, innermost last.
+    items: Vec<usize>,
+    /// Whether the line before was paragraph text, which a line indented four
+    /// or more columns continues rather than starting indented code.
+    paragraph: bool,
+}
+
+impl Blocks {
+    fn new(rules: CodeRules) -> Self {
+        Self {
+            rules,
+            fences: Fences::new(rules),
+            fence_base: 0,
+            raw_html: false,
+            items: Vec::new(),
+            paragraph: false,
+        }
+    }
+
+    /// Whether `line`, which excludes its `\n`, is code from end to end: a
+    /// line of a fence, of indented code or of a raw HTML block. Steps past
+    /// it.
+    fn code_line(&mut self, line: &[u8]) -> bool {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        let (column, width) = indent(line, 0, 0);
+        let rest = &line[width..];
+        if self.raw_html {
+            self.raw_html = !closes_raw_html(line);
+            return true;
+        }
+        if self.fences.open.is_some() {
+            if column <= self.fence_base + 3 {
+                self.fences.line(rest);
+            }
+            return true;
+        }
+        if is_blank(rest) {
+            self.paragraph = false;
+            return false;
+        }
+        let base = self
+            .items
+            .iter()
+            .rev()
+            .find(|&&item| item <= column)
+            .copied()
+            .unwrap_or(0);
+        let relative = column - base;
+        if self.paragraph && (relative >= 4 || !self.interrupts(rest)) {
+            // A lazy or indented continuation line: the paragraph and the
+            // list items it is in go on.
+            return false;
+        }
+        self.items.retain(|&item| item <= column);
+        if relative >= 4 {
+            return true;
+        }
+        if self.fences.line(rest) == FenceLine::Marker {
+            self.fence_base = base;
+            self.paragraph = false;
+            return true;
+        }
+        if opens_raw_html(rest) {
+            self.raw_html = !closes_raw_html(line);
+            self.paragraph = false;
+            return true;
+        }
+        if thematic_break(rest) || atx_heading(rest) || is_setext(rest, self.paragraph) {
+            self.paragraph = false;
+        } else if let Some((marker, text)) = list_marker(rest) {
+            let (spaces_end, text_at) = indent(line, width + marker, column + marker);
+            let gap = spaces_end - (column + marker);
+            self.items.push(if text_at == line.len() || gap > 4 {
+                column + marker + 1
+            } else {
+                spaces_end
+            });
+            self.paragraph = text;
+        } else {
+            self.paragraph = true;
+        }
+        false
+    }
+
+    /// Whether `rest`, a line from its first character that is not a space
+    /// or tab, starts a block that ends a paragraph. A list item does when it
+    /// has text and is a bullet or starts at 1.
+    fn interrupts(&self, rest: &[u8]) -> bool {
+        opens_fence(rest, self.rules).is_some()
+            || opens_raw_html(rest)
+            || thematic_break(rest)
+            || atx_heading(rest)
+            || is_setext(rest, true)
+            || rest.first() == Some(&b'>')
+            || list_marker(rest)
+                .is_some_and(|(length, text)| text && (length == 1 || rest[..length - 1] == *b"1"))
+    }
+}
+
+/// The column of the first character from `at` that is not a space or tab,
+/// and its index, when `at` is at `column`. A tab moves to the next multiple
+/// of four columns.
+fn indent(line: &[u8], mut at: usize, mut column: usize) -> (usize, usize) {
+    while let Some(&byte) = line.get(at) {
+        match byte {
+            b' ' => column += 1,
+            b'\t' => column += 4 - column % 4,
+            _ => break,
+        }
+        at += 1;
+    }
+    (column, at)
+}
+
+/// A list item marker at the start of `rest`, `-`, `*`, `+`, or one to nine
+/// digits and `.` or `)`, followed by a space, a tab or the end of the line:
+/// the marker's length, and whether text follows it.
+fn list_marker(rest: &[u8]) -> Option<(usize, bool)> {
+    let digits = rest.iter().take_while(|b| b.is_ascii_digit()).count();
+    let length = match rest.first()? {
+        b'-' | b'*' | b'+' => 1,
+        _ if (1..=9).contains(&digits) && matches!(rest.get(digits), Some(b'.' | b')')) => {
+            digits + 1
+        }
+        _ => return None,
+    };
+    match rest.get(length) {
+        None | Some(b'\r') => Some((length, false)),
+        Some(b' ' | b'\t') => Some((length, !is_blank(&rest[length..]))),
+        Some(_) => None,
+    }
+}
+
+/// A line of only `=`, or of only `-` after a paragraph, then whitespace.
+fn is_setext(rest: &[u8], after_paragraph: bool) -> bool {
+    let Some(&mark @ (b'=' | b'-')) = rest.first() else {
+        return false;
+    };
+    let run = rest.iter().take_while(|b| **b == mark).count();
+    after_paragraph && is_blank(&rest[run..])
+}
+
+/// The tags whose HTML block holds text as written.
+const RAW_HTML_TAGS: [&[u8]; 4] = [b"pre", b"script", b"style", b"textarea"];
+
+/// `<pre`, `<script`, `<style` or `<textarea`, any case, then a space, a
+/// tab, `>` or the end of the line, at the start of `rest`.
+fn opens_raw_html(rest: &[u8]) -> bool {
+    let Some(name) = rest.strip_prefix(b"<") else {
+        return false;
+    };
+    RAW_HTML_TAGS.iter().any(|tag| {
+        name.len() >= tag.len()
+            && name[..tag.len()].eq_ignore_ascii_case(tag)
+            && matches!(
+                name.get(tag.len()),
+                None | Some(b' ' | b'\t' | b'>' | b'\r')
+            )
+    })
+}
+
+/// Whether `line` holds `</pre>`, `</script>`, `</style>` or `</textarea>`,
+/// in any case.
+fn closes_raw_html(line: &[u8]) -> bool {
+    line.windows(2).enumerate().any(|(at, pair)| {
+        pair == b"</"
+            && RAW_HTML_TAGS.iter().any(|tag| {
+                let name = &line[at + 2..];
+                name.len() > tag.len()
+                    && name[..tag.len()].eq_ignore_ascii_case(tag)
+                    && name[tag.len()] == b'>'
+            })
+    })
+}
+
+/// Whether a `\` comes right before `at`.
+fn escaped(bytes: &[u8], at: usize) -> bool {
+    at > 0 && bytes[at - 1] == b'\\'
+}
+
+/// The math that the `$` at `at` opens: `Ok` with the index just past its
+/// close, or `Err` with how many `$` to step past as text.
+fn math_end(bytes: &[u8], at: usize, inline: &mut MathClose) -> Result<usize, usize> {
+    if bytes.get(at + 1) == Some(&b'$') {
+        return display_math_close(bytes, at + 2)
+            .map(|close| close + 2)
+            .ok_or(2);
+    }
+    if bytes
+        .get(at + 1)
+        .is_none_or(|b| matches!(b, b' ' | b'\t' | b'\r' | b'\n'))
+    {
+        return Err(1);
+    }
+    inline.find(bytes, at + 1).map(|close| close + 1).ok_or(1)
+}
+
+/// The next `$$` at or after `from`, before a blank line.
+fn display_math_close(bytes: &[u8], from: usize) -> Option<usize> {
+    let mut at = from;
+    loop {
+        let end = line_end(bytes, at);
+        if let Some(i) = bytes[at..end].windows(2).position(|pair| pair == b"$$") {
+            return Some(at + i);
+        }
+        let next = end + 1;
+        if next >= bytes.len() || is_blank(&bytes[next..line_end(bytes, next)]) {
+            return None;
+        }
+        at = next;
+    }
+}
+
+/// Finds the `$` that closes inline math, for a scan that asks at positions
+/// that only move forward. The last answer is kept: a `$` closes math
+/// whatever opened it, so it answers every later question on its line that
+/// starts at or before it.
+#[derive(Debug, Default)]
+struct MathClose {
+    /// `(from, end, close)`: the first closing `$` in `from..end`, the rest
+    /// of a line, is at `close`.
+    last: Option<(usize, usize, Option<usize>)>,
+}
+
+impl MathClose {
+    fn find(&mut self, bytes: &[u8], from: usize) -> Option<usize> {
+        if let Some((start, end, close)) = self.last
+            && start <= from
+            && from <= end
+            && close.is_none_or(|close| close >= from)
+        {
+            return close;
+        }
+        let end = line_end(bytes, from);
+        let close = (from..end).find(|&at| {
+            bytes[at] == b'$'
+                && !matches!(bytes[at - 1], b' ' | b'\t' | b'\\')
+                && !bytes.get(at + 1).is_some_and(u8::is_ascii_digit)
+        });
+        self.last = Some((from, end, close));
+        close
+    }
+}
+
+/// The index just past the autolink `<scheme:…>` that starts at `at`, if
+/// one does. A scheme is a letter, then 1 to 31 letters, digits, `+`, `.` or
+/// `-`. The rest holds no space, control character, `<` or `>`.
+fn autolink_end(bytes: &[u8], at: usize) -> Option<usize> {
+    let rest = &bytes[at + 1..];
+    if !rest.first()?.is_ascii_alphabetic() {
+        return None;
+    }
+    let scheme = rest
+        .iter()
+        .take_while(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'.' | b'-'))
+        .count();
+    if !(2..=32).contains(&scheme) || rest.get(scheme) != Some(&b':') {
+        return None;
+    }
+    let body = &rest[scheme + 1..];
+    let close = body
+        .iter()
+        .position(|b| *b == b'>' || *b == b'<' || *b <= b' ' || *b == 0x7f)?;
+    (body[close] == b'>').then_some(at + 1 + scheme + 1 + close + 1)
 }
 
 #[cfg(test)]

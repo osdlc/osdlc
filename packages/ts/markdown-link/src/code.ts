@@ -1,15 +1,22 @@
 /**
- * Code fences and inline code spans: finding them, and blanking them so a
- * lexer never harvests out of them. A port of the `markdown-link` crate's
- * `wikilink::code` module; that module's doc states both rule sets in full.
+ * Code, and blanking it so a lexer never harvests out of it. A port of the
+ * `markdown-link` crate's `code` module; that module's doc states the rules
+ * in full.
  *
- * In short, `'commonmark'` (the default) follows CommonMark, and
- * `'skill-export'` keeps the looser rules of `skill-export`'s renderer. Both read one line at a time, so neither knows about container
- * blocks, and indented code blocks are not code.
+ * In short, code is fenced code, indented code, inline code spans, math
+ * (`$$…$$` and `$…$`), raw HTML blocks (`<pre>`, `<script>`, `<style>`,
+ * `<textarea>`) and autolinks. An HTML comment is not code, but a backtick,
+ * `$` or fence inside one opens nothing. `'commonmark'` (the default)
+ * follows CommonMark for fences and spans, and `'skill-export'` keeps the
+ * looser rules of `skill-export`'s renderer. The lexer reads one line at a
+ * time, following list items far enough to know where their text starts. It
+ * does not know about block quotes.
  *
  * Every marker is ASCII, so a scan over UTF-16 code units never splits a
  * character.
  */
+
+import type { TextRange } from './parse.ts'
 
 /** Which rules the lexer follows. */
 export type CodeRules = 'commonmark' | 'skill-export'
@@ -20,6 +27,9 @@ const TAB = 9
 const SPACE = 32
 const BACKTICK = 96
 const TILDE = 126
+const DOLLAR = 36
+const LESS = 60
+const GREATER = 62
 
 interface FenceRun {
   char: number
@@ -81,6 +91,10 @@ class Fences {
 
   constructor(rules: CodeRules) {
     this.rules = rules
+  }
+
+  isOpen(): boolean {
+    return this.open !== null
   }
 
   /** Classify the line `s[start, end)` and step past it. */
@@ -327,15 +341,15 @@ function lineEnd(s: string, from: number): number {
 }
 
 /**
- * Blank out fenced and inline code so links and tags inside it are not
- * harvested. `stripCodeWith` under `'commonmark'`.
+ * Blank out code so links and tags inside it are not harvested.
+ * `stripCodeWith` under `'commonmark'`.
  */
 export function stripCode(text: string): string {
   return stripCodeWith(text, 'commonmark')
 }
 
 /**
- * Blank out fenced and inline code under `rules`.
+ * Blank out the code under `rules`: each of `codeRanges`.
  *
  * Every character of code, fence marker lines included, becomes a space, and
  * every `\n` stays. The output has the same number of **code points** as the
@@ -344,39 +358,397 @@ export function stripCode(text: string): string {
  * becomes one space, not two.
  */
 export function stripCodeWith(text: string, rules: CodeRules): string {
-  const out: string[] = []
-  const fences = new Fences(rules)
-  const spans = new Spans(rules, text)
-  let writtenUpTo = 0
-  const blank = (start: number, end: number): void => {
-    out.push(text.slice(writtenUpTo, start))
-    for (const c of text.slice(start, end)) out.push(c === '\n' ? '\n' : ' ')
-    writtenUpTo = end
-  }
+  return blank(text, codeRanges(text, rules))
+}
 
+/**
+ * The ranges of `text` that are code under `rules`, as the module doc
+ * describes: what `stripCodeWith` blanks. UTF-16 offsets, where the Rust
+ * crate's `code_ranges` returns byte offsets.
+ *
+ * The ranges are in order and do not overlap. Each holds its delimiters: a
+ * span's backticks, a fence's marker lines, an autolink's `<` and `>`. Two
+ * ranges that touch, or that only a line break separates, are one, so a fence
+ * or a run of indented code lines is one range. HTML comments are in none.
+ */
+export function codeRanges(text: string, rules: CodeRules): TextRange[] {
+  return regions(text, rules)
+    .filter((region) => region.kind === 'code')
+    .map(({ start, end }) => ({ start, end }))
+}
+
+/** A range of `regions`: code, or an HTML comment (`<!--` to `-->` or the end). */
+export interface Region extends TextRange {
+  kind: 'code' | 'comment'
+}
+
+/**
+ * The code and the HTML comments in `text`, in order, from one left-to-right
+ * pass. Ranges of the same kind that touch, or that only a line break
+ * separates, are merged.
+ */
+export function regions(text: string, rules: CodeRules): Region[] {
+  const out: Region[] = []
+  const push = (start: number, end: number, kind: Region['kind']): void => {
+    const last = out[out.length - 1]
+    if (
+      last !== undefined &&
+      last.kind === kind &&
+      (last.end === start || (last.end + 1 === start && text.charCodeAt(last.end) === NEWLINE))
+    ) {
+      last.end = end
+    } else if (end > start) {
+      out.push({ start, end, kind })
+    }
+  }
+  const blocks = new Blocks(rules)
+  const spans = new Spans(rules, text)
+  const math = new MathClose()
   let offset = 0
   while (offset < text.length) {
     if (offset === 0 || text.charCodeAt(offset - 1) === NEWLINE) {
       const end = lineEnd(text, offset)
-      if (fences.line(text, offset, end) !== 'outside') {
-        blank(offset, end)
+      if (blocks.codeLine(text, offset, end)) {
+        push(offset, end, 'code')
         offset = end + 1
         continue
       }
       spans.line(offset, end)
     }
-    if (text.charCodeAt(offset) === BACKTICK) {
+    const start = offset
+    const c = text.charCodeAt(offset)
+    if (c === BACKTICK) {
       const [run, close] = spans.close(offset)
       if (close === null) {
         offset += run
-      } else {
-        blank(offset, close + run)
-        offset = close + run
+        continue
       }
-      continue
+      offset = close + run
+      push(start, offset, 'code')
+    } else if (c === DOLLAR && !escaped(text, offset)) {
+      const found = mathEnd(text, offset, math)
+      if ('skip' in found) {
+        offset += found.skip
+        continue
+      }
+      offset = found.end
+      push(start, offset, 'code')
+    } else if (c === LESS && text.startsWith('<!--', offset)) {
+      const close = text.indexOf('-->', offset + 4)
+      offset = close === -1 ? text.length : close + 3
+      push(start, offset, 'comment')
+    } else if (c === LESS) {
+      const end = autolinkEnd(text, offset)
+      if (end === null) {
+        offset++
+        continue
+      }
+      offset = end
+      push(start, offset, 'code')
+    } else {
+      offset++
     }
-    offset++
+  }
+  return out
+}
+
+/**
+ * `text` with every character in `ranges` but `\n` made a space. `ranges`
+ * are in order and do not overlap. The code point count does not change.
+ */
+export function blank(text: string, ranges: Iterable<TextRange>): string {
+  const out: string[] = []
+  let writtenUpTo = 0
+  for (const { start, end } of ranges) {
+    out.push(text.slice(writtenUpTo, start))
+    for (const c of text.slice(start, end)) out.push(c === '\n' ? '\n' : ' ')
+    writtenUpTo = end
   }
   out.push(text.slice(writtenUpTo))
   return out.join('')
+}
+
+/**
+ * The block state of a line-by-line scan: the open fence or raw HTML block,
+ * the list items the scan is in, and whether the line before was paragraph
+ * text.
+ */
+class Blocks {
+  private readonly rules: CodeRules
+  private readonly fences: Fences
+  /**
+   * The column a fence's lines are read from: where the text of the list
+   * item it opened in starts.
+   */
+  private fenceBase = 0
+  /** Whether a `<pre>`, `<script>`, `<style>` or `<textarea>` block is open. */
+  private rawHtml = false
+  /** The column where each open list item's text starts, innermost last. */
+  private items: number[] = []
+  /**
+   * Whether the line before was paragraph text, which a line indented four
+   * or more columns continues rather than starting indented code.
+   */
+  private paragraph = false
+
+  constructor(rules: CodeRules) {
+    this.rules = rules
+    this.fences = new Fences(rules)
+  }
+
+  /**
+   * Whether the line `s[start, end)` is code from end to end: a line of a
+   * fence, of indented code or of a raw HTML block. Steps past it.
+   */
+  codeLine(s: string, start: number, lineEndAt: number): boolean {
+    const end = lineEndAt > start && s.charCodeAt(lineEndAt - 1) === CR ? lineEndAt - 1 : lineEndAt
+    const [column, rest] = indent(s, start, end, 0)
+    if (this.rawHtml) {
+      this.rawHtml = !closesRawHtml(s, start, end)
+      return true
+    }
+    if (this.fences.isOpen()) {
+      if (column <= this.fenceBase + 3) this.fences.line(s, rest, end)
+      return true
+    }
+    if (isBlank(s, rest, end)) {
+      this.paragraph = false
+      return false
+    }
+    let base = 0
+    for (let i = this.items.length - 1; i >= 0; i--) {
+      if (this.items[i]! <= column) {
+        base = this.items[i]!
+        break
+      }
+    }
+    const relative = column - base
+    if (this.paragraph && (relative >= 4 || !this.interrupts(s, rest, end))) {
+      // A lazy or indented continuation line: the paragraph and the list
+      // items it is in go on.
+      return false
+    }
+    this.items = this.items.filter((item) => item <= column)
+    if (relative >= 4) return true
+    if (this.fences.line(s, rest, end) === 'marker') {
+      this.fenceBase = base
+      this.paragraph = false
+      return true
+    }
+    if (opensRawHtml(s, rest, end)) {
+      this.rawHtml = !closesRawHtml(s, start, end)
+      this.paragraph = false
+      return true
+    }
+    const marker = listMarker(s, rest, end)
+    if (
+      thematicBreak(s, rest, end) ||
+      atxHeading(s, rest, end) ||
+      isSetext(s, rest, end, this.paragraph)
+    ) {
+      this.paragraph = false
+    } else if (marker !== null) {
+      const markerEnd = column + marker.length
+      const [spacesEnd, textAt] = indent(s, rest + marker.length, end, markerEnd)
+      this.items.push(textAt === end || spacesEnd - markerEnd > 4 ? markerEnd + 1 : spacesEnd)
+      this.paragraph = marker.text
+    } else {
+      this.paragraph = true
+    }
+    return false
+  }
+
+  /**
+   * Whether the line from `at`, its first character that is not a space or
+   * tab, to `end` starts a block that ends a paragraph. A list item does
+   * when it has text and is a bullet or starts at 1.
+   */
+  private interrupts(s: string, at: number, end: number): boolean {
+    const marker = listMarker(s, at, end)
+    return (
+      opensFence(s, at, end, this.rules) !== null ||
+      opensRawHtml(s, at, end) ||
+      thematicBreak(s, at, end) ||
+      atxHeading(s, at, end) ||
+      isSetext(s, at, end, true) ||
+      s[at] === '>' ||
+      (marker !== null &&
+        marker.text &&
+        (marker.length === 1 || s.slice(at, at + marker.length - 1) === '1'))
+    )
+  }
+}
+
+/**
+ * The column of the first character from `at` that is not a space or tab,
+ * and its index, when `at` is at `column`. A tab moves to the next multiple
+ * of four columns.
+ */
+function indent(s: string, at: number, end: number, column: number): [number, number] {
+  let i = at
+  let col = column
+  while (i < end) {
+    const c = s.charCodeAt(i)
+    if (c === SPACE) col++
+    else if (c === TAB) col += 4 - (col % 4)
+    else break
+    i++
+  }
+  return [col, i]
+}
+
+/**
+ * A list item marker at `at`, `-`, `*`, `+`, or one to nine digits and `.`
+ * or `)`, followed by a space, a tab or the end of the line: the marker's
+ * length, and whether text follows it.
+ */
+function listMarker(s: string, at: number, end: number): { length: number; text: boolean } | null {
+  let digitsEnd = at
+  while (digitsEnd < end && isAsciiDigit(s.charCodeAt(digitsEnd))) digitsEnd++
+  const digits = digitsEnd - at
+  let length: number
+  if (at < end && '-*+'.includes(s[at]!)) length = 1
+  else if (
+    digits >= 1 &&
+    digits <= 9 &&
+    (s[digitsEnd] === '.' || s[digitsEnd] === ')') &&
+    digitsEnd < end
+  )
+    length = digits + 1
+  else return null
+  const after = at + length
+  if (after >= end || s.charCodeAt(after) === CR) return { length, text: false }
+  const c = s.charCodeAt(after)
+  if (c !== SPACE && c !== TAB) return null
+  return { length, text: !isBlank(s, after, end) }
+}
+
+/** A line of only `=`, or of only `-` after a paragraph, then whitespace. */
+function isSetext(s: string, at: number, end: number, afterParagraph: boolean): boolean {
+  if (at >= end) return false
+  const mark = s[at]
+  if (mark !== '=' && mark !== '-') return false
+  let i = at
+  while (i < end && s[i] === mark) i++
+  return afterParagraph && isBlank(s, i, end)
+}
+
+/** The tags whose HTML block holds text as written. */
+const RAW_HTML_TAGS = ['pre', 'script', 'style', 'textarea']
+
+/**
+ * `<pre`, `<script`, `<style` or `<textarea`, any case, then a space, a tab,
+ * `>` or the end of the line, at `at`.
+ */
+function opensRawHtml(s: string, at: number, end: number): boolean {
+  if (s[at] !== '<') return false
+  return RAW_HTML_TAGS.some((tag) => {
+    const after = at + 1 + tag.length
+    if (after > end || s.slice(at + 1, after).toLowerCase() !== tag) return false
+    if (after === end) return true
+    const c = s[after]
+    return c === ' ' || c === '\t' || c === '>' || c === '\r'
+  })
+}
+
+/** Whether `s[start, end)` holds `</pre>`, `</script>`, `</style>` or `</textarea>`, in any case. */
+function closesRawHtml(s: string, start: number, end: number): boolean {
+  const line = s.slice(start, end).toLowerCase()
+  return RAW_HTML_TAGS.some((tag) => line.includes(`</${tag}>`))
+}
+
+/** Whether a `\` comes right before `at`. */
+function escaped(s: string, at: number): boolean {
+  return at > 0 && s[at - 1] === '\\'
+}
+
+/**
+ * The math that the `$` at `at` opens: the index just past its close, or how
+ * many `$` to step past as text.
+ */
+function mathEnd(s: string, at: number, inline: MathClose): { end: number } | { skip: number } {
+  if (s[at + 1] === '$') {
+    const close = displayMathClose(s, at + 2)
+    return close === null ? { skip: 2 } : { end: close + 2 }
+  }
+  const next = s.charCodeAt(at + 1)
+  if (Number.isNaN(next) || next === SPACE || next === TAB || next === CR || next === NEWLINE) {
+    return { skip: 1 }
+  }
+  const close = inline.find(s, at + 1)
+  return close === null ? { skip: 1 } : { end: close + 1 }
+}
+
+/** The next `$$` at or after `from`, before a blank line. */
+function displayMathClose(s: string, from: number): number | null {
+  let at = from
+  for (;;) {
+    const end = lineEnd(s, at)
+    const found = s.slice(at, end).indexOf('$$')
+    if (found !== -1) return at + found
+    const next = end + 1
+    if (next >= s.length || isBlank(s, next, lineEnd(s, next))) return null
+    at = next
+  }
+}
+
+/**
+ * Finds the `$` that closes inline math, for a scan that asks at positions
+ * that only move forward. The last answer is kept: a `$` closes math whatever
+ * opened it, so it answers every later question on its line that starts at
+ * or before it.
+ */
+class MathClose {
+  private from = -1
+  private end = -1
+  private close: number | null = null
+
+  find(s: string, from: number): number | null {
+    if (
+      this.from !== -1 &&
+      this.from <= from &&
+      from <= this.end &&
+      (this.close === null || this.close >= from)
+    ) {
+      return this.close
+    }
+    const end = lineEnd(s, from)
+    let close: number | null = null
+    for (let at = from; at < end; at++) {
+      const before = s[at - 1]
+      if (
+        s[at] === '$' &&
+        before !== ' ' &&
+        before !== '\t' &&
+        before !== '\\' &&
+        !isAsciiDigit(s.charCodeAt(at + 1))
+      ) {
+        close = at
+        break
+      }
+    }
+    this.from = from
+    this.end = end
+    this.close = close
+    return close
+  }
+}
+
+/**
+ * The index just past the autolink `<scheme:…>` that starts at `at`, if one
+ * does. A scheme is a letter, then 1 to 31 letters, digits, `+`, `.` or `-`.
+ * The rest holds no space, control character, `<` or `>`.
+ */
+function autolinkEnd(s: string, at: number): number | null {
+  if (!/^[A-Za-z]$/.test(s[at + 1] ?? '')) return null
+  let i = at + 1
+  while (i < s.length && /^[A-Za-z0-9+.-]$/.test(s[i]!)) i++
+  const scheme = i - at - 1
+  if (scheme < 2 || scheme > 32 || s[i] !== ':') return null
+  for (i++; i < s.length; i++) {
+    const c = s.charCodeAt(i)
+    if (c === GREATER) return i + 1
+    if (c === LESS || c <= SPACE || c === 0x7f) return null
+  }
+  return null
 }

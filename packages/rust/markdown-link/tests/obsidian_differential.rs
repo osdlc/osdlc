@@ -940,28 +940,35 @@ fn double_backtick_inline_spans_are_stripped() {
     );
 }
 
-/// The fence in the list item is indented four spaces, one too many for a
-/// fence marker. Its two backtick runs still pair up as one inline span,
-/// because no line between them ends the span's block, so the link between
-/// them is stripped.
+/// The fence in the list item is indented four spaces, two past where the
+/// item's text starts, so it is a fence in the item and the link in it is
+/// code.
 #[test]
-fn agrees_a_list_item_fence_without_a_blank_line_is_stripped_as_a_span() {
+fn agrees_a_list_item_fence_is_stripped() {
     let targets = note_targets("parsing/code-spans.md");
     assert!(!targets.contains(&"indented-fence-should-not-resolve".to_string()));
     // The note yields exactly its one real reference.
     assert_eq!(targets, vec!["glossary/terms/unique-term"]);
 }
 
-/// A blank line inside that list-item fence ends the span's block, so the two
-/// backtick runs no longer pair up and the links inside leak. `strip_code`
-/// reads one line at a time and does not know the fence belongs to the list
-/// item (src/code.rs).
+/// A blank line inside a list-item fence once ended an inline span's block,
+/// so the fence's two backtick runs no longer paired up and the links inside
+/// leaked. The lexer now follows list items far enough to read the fence as
+/// a fence (src/code.rs).
 #[test]
-fn diverges_a_list_item_fence_with_a_blank_line_leaks_its_links() {
+fn a_list_item_fence_with_a_blank_line_is_code() {
     let body = "- a list item\n\n    ```\n    [[a]]\n\n    [[b]]\n    ```\n";
+    assert!(body_links(body).is_empty());
+}
+
+/// Indented code is code, as CommonMark reads it, so no reference is
+/// harvested from it. A line indented four spaces past a list item's text is code in
+/// the item; one indented less is the item's own text.
+#[test]
+fn indented_code_is_stripped() {
+    let body = "Text\n\n    [[a]]\n\n- item\n\n    [[b]]\n\n      [[c]]\n";
     let targets: Vec<String> = body_links(body).into_iter().map(|l| l.target).collect();
-    assert_eq!(targets, vec!["a", "b"]);
-    // Obsidian: no reference harvested.
+    assert_eq!(targets, vec!["b"]);
 }
 
 /// A line starting with `|` is a one-line block to `strip_code`, so a span in

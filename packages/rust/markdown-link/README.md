@@ -11,8 +11,8 @@ renames.
 markdown-link does two jobs:
 
 - Find every link in a note: `[[wikilink]]`, `![[embed]]`, relative Markdown
-  links, and links in frontmatter values. Code spans and code blocks are
-  skipped.
+  links, and links in frontmatter values. Code is skipped: code spans,
+  fenced and indented code blocks, math, `<pre>` blocks and autolinks.
 - Resolve a link target against a set of file paths. Any path suffix reaches
   a file, and when several files match, the one in the linking note's folder
   wins, then the shorter path.
@@ -97,7 +97,12 @@ publishes notes can ask for more:
 - `scan_body_with(body, &options)` returns those links and `abandoned`: each
   `[[` the scan gave up on, with an `AbandonReason` (`Bracket`, `Code`,
   `EmptyTarget`, `Unclosed`) and its span, so a renderer can flag link
-  syntax it would otherwise leave in the text.
+  syntax it would otherwise leave in the text. A `[[` whose first or second
+  `[` opens a Markdown link, such as `[[WIP] Fix](https://example.com)`, is
+  not reported.
+- `code::code_ranges(text, rules)` returns the byte ranges that are code, and
+  `split_alias(inner)` splits a wikilink body into the destination as written
+  and the alias, for a caller that must know without scanning again.
 - Each parsed link carries its `heading`, its `block` (`#^id`) and an embed's
   `size` (`|300` or `|300x200`).
 - `LinkIndex::resolve_strict` refuses a name several files answer to,

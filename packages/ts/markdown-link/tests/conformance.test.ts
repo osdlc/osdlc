@@ -13,6 +13,7 @@ import {
   bodyLinks,
   bodyLinksSpanned,
   bodyLinksSpannedWith,
+  codeRanges,
   displayText,
   isVaultLinkUrl,
   mdLinkTarget,
@@ -29,6 +30,8 @@ interface CodeCase {
   source: string
   stripped: string
   strippedSkillExport?: string
+  /** `codeRanges` under `'commonmark'`, as `[start, end]` code point pairs. */
+  ranges?: [number, number][]
 }
 
 interface InnerCase {
@@ -125,6 +128,14 @@ describe('code cases', () => {
       expect(skillExport).toBe(c.strippedSkillExport ?? c.stripped)
       expect(codePoints(commonmark)).toBe(codePoints(c.source))
       expect(codePoints(skillExport)).toBe(codePoints(c.source))
+      if (c.ranges !== undefined) {
+        expect(
+          codeRanges(c.source, 'commonmark').map((range) => [
+            codePoints(c.source.slice(0, range.start)),
+            codePoints(c.source.slice(0, range.end)),
+          ]),
+        ).toEqual(c.ranges)
+      }
     })
   }
 })

@@ -1,0 +1,5 @@
+---
+'@osdlc/markdown-link': minor
+---
+
+**Breaking:** more of a body counts as code, so fewer links are found in it. `stripCode` and every scanner also treat these as code: indented code (a line indented four or more columns past its block's text, unless it continues a paragraph), math (`$$…$$` up to a blank line, and `$…$` on one line), `<pre>`, `<script>`, `<style>` and `<textarea>` blocks, and autolinks such as `<https://example.com>`. A fence may now sit in a list item. An HTML comment is found in the same left-to-right pass as code, so a backtick, `$` or fence inside a comment no longer opens code. A Markdown link's text may hold brackets that balance (`[[WIP] Fix](fix.md)` is a link), but not `[[` or a blank line. `scanBodyWith` no longer reports a `[[` whose first or second `[` opens a Markdown link of any URL, or a reference link whose label the body defines. New: `codeRanges(text, rules)` returns the ranges that are code, and `splitAlias` is exported. Matches the Rust crate's 0.9.0.

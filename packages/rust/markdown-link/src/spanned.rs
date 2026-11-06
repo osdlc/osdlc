@@ -8,7 +8,9 @@
 //! a link" is how two scanners start disagreeing about what the vault
 //! contains.
 
-use crate::code::{CodeRules, strip_code_with};
+use std::collections::{HashMap, HashSet};
+
+use crate::code::{CodeRules, Region, blank, regions};
 use crate::{Size, is_vault_link_url, md_link_target, parse_inner, parse_inner_self};
 
 /// What a body scan counts as a link. [`ScanOptions::default`] is what
@@ -116,10 +118,13 @@ pub enum AbandonReason {
 ///
 /// What a renderer or a publisher would otherwise leave in its output as
 /// literal brackets. A `[[` inside code, or inside an HTML comment when
-/// [`ScanOptions::skip_html_comments`] is on, is not reported, and nor is one
-/// that a link found after it starts inside: `[[[Note]]` is a literal `[`
-/// and a link. A run of `[` with no link after it, such as `[[[TODO`, is
-/// one entry: from the first `[[`, with the reason and end of the last.
+/// [`ScanOptions::skip_html_comments`] is on, is not reported. Nor is one
+/// that a link found after it starts inside, `[[[Note]]` being a literal `[`
+/// and a link, or one whose first or second `[` opens a Markdown link, of
+/// any URL: `[[WIP] Fix](https://example.com)`, `[[Note](Note.md)]`, or
+/// `[[1]` with a `[1]: …` definition in the body. A run of `[` with no link
+/// after it, such as `[[[TODO`, is one entry: from the first `[[`, with the
+/// reason and end of the last.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AbandonedLink {
     /// Why it is not a link.
@@ -149,7 +154,10 @@ pub struct BodyScan {
 ///
 /// Code is blanked before matching, `[[` never nests, and a markdown link
 /// counts only when `is_vault_link_url` accepts its URL and it carries no
-/// scheme. The span is what an editor decoration, a hover preview and a
+/// scheme. A markdown link's text may hold brackets that balance, but no
+/// `[[` and no blank line, so `[[WIP] Fix](fix.md)` is a link and the
+/// wikilink in `[see [[Note]]](a.md)` stays a wikilink. A `\[` or `\]` in it
+/// does not count as a bracket. The span is what an editor decoration, a hover preview and a
 /// rename's link rewrite need: which bytes to touch.
 ///
 /// # Why the offsets need a char table
@@ -182,8 +190,9 @@ pub fn body_links_spanned(body: &str) -> Vec<BodyLink> {
 /// [`body_links_spanned`] under `options`: which code rules apply, whether
 /// HTML comments hide links, and whether `[[#Heading]]` is a link.
 ///
-/// A comment is found after code is blanked, so a `<!--` inside code does not
-/// open one.
+/// Code and comments are found in one pass, left to right, so a `<!--` inside
+/// code does not open a comment and a backtick inside a comment does not open
+/// code.
 pub fn body_links_spanned_with(body: &str, options: &ScanOptions) -> Vec<BodyLink> {
     scan_body_with(body, options).links
 }
@@ -206,10 +215,17 @@ pub fn body_links_spanned_with(body: &str, options: &ScanOptions) -> Vec<BodyLin
 /// assert_eq!(&body[first.byte_start..first.byte_end], "[[a ");
 /// ```
 pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
-    let code_blanked = strip_code_with(body, options.code_rules);
+    let regions = regions(body, options.code_rules);
+    let code_blanked = blank(
+        body,
+        regions
+            .iter()
+            .filter(|(_, region)| *region == Region::Code)
+            .map(|(range, _)| range.clone()),
+    );
     let comments_blanked = options
         .skip_html_comments
-        .then(|| blank_comments(&code_blanked));
+        .then(|| blank(body, regions.iter().map(|(range, _)| range.clone())));
     let chars: Vec<char> = comments_blanked
         .as_deref()
         .unwrap_or(&code_blanked)
@@ -229,6 +245,7 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
         return BodyScan::default();
     }
 
+    let brackets = Brackets::new(&chars);
     let mut out = Vec::new();
     let mut abandoned = Vec::new();
     let mut scan = UrlScan::default();
@@ -333,12 +350,16 @@ pub fn scan_body_with(body: &str, options: &ScanOptions) -> BodyScan {
             }
         }
         if chars[i] == '['
-            && let Some(link) = spanned_markdown_link(&chars, i, &at, &mut scan)
+            && let Some(close) = brackets.text_end(i)
         {
-            drop_overlapped(&mut abandoned, at[i]);
-            i = link.1;
-            out.push(link.0);
-            continue;
+            if overlaps(&abandoned, at[i]) && brackets.opens_link(&chars, i, close) {
+                drop_overlapped(&mut abandoned, at[i]);
+            }
+            if let Some(link) = spanned_markdown_link(&chars, i, close, &at, &mut scan) {
+                i = link.1;
+                out.push(link.0);
+                continue;
+            }
         }
         i += 1;
     }
@@ -366,60 +387,154 @@ fn merge_runs(abandoned: Vec<AbandonedLink>) -> Vec<AbandonedLink> {
     out
 }
 
-/// Drops each abandoned `[[` whose second `[` opens a link: `bracket` is the
-/// byte offset of the link's first `[`, after any `!`. After a `[` or `]` the
-/// scanner moves on one char, so `[[[Note]]` is a literal `[` and a link,
-/// not a `[[` given up on. An embed's `!` right after an abandoned `[[`, as
-/// in `[[x![[B]]`, does not count.
-fn drop_overlapped(abandoned: &mut Vec<AbandonedLink>, bracket: usize) {
-    while abandoned
+/// Whether the last abandoned `[[` has its first or second `[` at or after
+/// `bracket`, the byte offset of a `[`. An embed's `!` right after an
+/// abandoned `[[`, as in `[[x![[B]]`, does not count.
+fn overlaps(abandoned: &[AbandonedLink], bracket: usize) -> bool {
+    abandoned
         .last()
         .is_some_and(|a| a.byte_start + usize::from(a.embed) + 2 > bracket)
-    {
+}
+
+/// Drops each abandoned `[[` whose first or second `[` opens a link:
+/// `bracket` is the byte offset of the link's first `[`, after any `!`.
+/// After a `[` or `]` the scanner moves on one char, so `[[[Note]]` is a
+/// literal `[` and a link, not a `[[` given up on.
+fn drop_overlapped(abandoned: &mut Vec<AbandonedLink>, bracket: usize) {
+    while overlaps(abandoned, bracket) {
         abandoned.pop();
     }
 }
 
-/// `text` with every HTML comment, `<!--` to `-->` or the end, blanked to
-/// spaces, newlines kept. The character count does not change.
-fn blank_comments(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(open) = rest.find("<!--") {
-        out.push_str(&rest[..open]);
-        let after = &rest[open + 4..];
-        let end = after.find("-->").map_or(rest.len(), |at| open + 4 + at + 3);
-        out.extend(
-            rest[open..end]
-                .chars()
-                .map(|c| if c == '\n' { '\n' } else { ' ' }),
-        );
-        rest = &rest[end..];
-    }
-    out.push_str(rest);
-    out
+/// The brackets of a body's Markdown links: where the text of each link
+/// that a `[` could open ends, and the labels of the link reference
+/// definitions.
+#[derive(Debug, Default)]
+struct Brackets {
+    /// The char index of each `]` that closes link text, by the index of its
+    /// `[`. The brackets between balance, hold no `[[`, and no blank line
+    /// comes between them. A `\[` or `\]` is not a bracket.
+    text_end: HashMap<usize, usize>,
+    /// Each `[label]: …` definition's label, as [`normalize_label`] gives it.
+    labels: HashSet<String>,
 }
 
-/// `[text](relative/note.md)` starting at `start`, and the char index just
-/// past it. `None` when this is not one.
+impl Brackets {
+    fn new(chars: &[char]) -> Self {
+        let mut brackets = Brackets::default();
+        // Each open `[`, and how many `[[` had started when it was pushed,
+        // counting one that it starts.
+        let mut open: Vec<(usize, usize)> = Vec::new();
+        let mut pairs = 0usize;
+        let mut k = 0usize;
+        while k < chars.len() {
+            match chars[k] {
+                '\\' if matches!(chars.get(k + 1), Some('[' | ']')) => k += 1,
+                '[' => {
+                    if chars.get(k + 1) == Some(&'[') {
+                        pairs += 1;
+                    }
+                    open.push((k, pairs));
+                }
+                ']' => {
+                    if let Some((start, before)) = open.pop()
+                        && before == pairs
+                    {
+                        brackets.text_end.insert(start, k);
+                    }
+                }
+                '\n' => {
+                    let rest = &chars[k + 1..];
+                    let blank = rest
+                        .iter()
+                        .find(|c| !matches!(c, ' ' | '\t' | '\r'))
+                        .is_none_or(|c| *c == '\n');
+                    if blank {
+                        open.clear();
+                    }
+                    if let Some(label) = definition_label(rest) {
+                        brackets.labels.insert(label);
+                    }
+                }
+                _ => {}
+            }
+            k += 1;
+        }
+        if let Some(label) = definition_label(chars) {
+            brackets.labels.insert(label);
+        }
+        brackets
+    }
+
+    /// The `]` that ends the text of a link opened by the `[` at `start`.
+    fn text_end(&self, start: usize) -> Option<usize> {
+        self.text_end.get(&start).copied()
+    }
+
+    /// Whether the `[` at `start`, whose text ends at `close`, opens a
+    /// Markdown link: `(` follows its `]`, or it is a reference link whose
+    /// label a definition in the body names (`[text][label]`, `[label][]` or
+    /// `[label]`).
+    fn opens_link(&self, chars: &[char], start: usize, close: usize) -> bool {
+        let text = &chars[start + 1..close];
+        let label = match chars.get(close + 1) {
+            Some('(') => return true,
+            Some('[') => {
+                let rest = &chars[close + 2..];
+                match rest.iter().position(|c| matches!(c, '[' | ']')) {
+                    Some(end)
+                        if rest[end] == ']' && rest[..end].iter().all(|c| c.is_whitespace()) =>
+                    {
+                        text
+                    }
+                    Some(end) if rest[end] == ']' => &rest[..end],
+                    _ => return false,
+                }
+            }
+            _ => text,
+        };
+        self.labels.contains(&normalize_label(label))
+    }
+}
+
+/// The label of a link reference definition, `[label]:` after up to three
+/// spaces, at the start of `line`.
+fn definition_label(line: &[char]) -> Option<String> {
+    let indent = line.iter().take(3).take_while(|c| **c == ' ').count();
+    let rest = line[indent..].strip_prefix(&['['])?;
+    let end = rest.iter().position(|c| matches!(c, '[' | ']' | '\n'))?;
+    (rest[end] == ']' && rest.get(end + 1) == Some(&':')).then(|| normalize_label(&rest[..end]))
+}
+
+/// A link label as a definition and a reference match it: lowercase, with
+/// each run of whitespace one space and none at either end. Empty for a
+/// label of only whitespace, which no reference matches.
+fn normalize_label(label: &[char]) -> String {
+    let text: String = label.iter().collect();
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
+}
+
+/// `[text](relative/note.md)` starting at `start`, whose text ends at the `]`
+/// at `close`, and the char index just past it. `None` when this is not one.
 ///
-/// The shape is the regex `\[[^\]]*\]\(<?([^)>\s]+?)>?\)`, walked by hand so
-/// positions index the original body. [`is_vault_link_url`] decides "is this a
-/// reference" and [`md_link_target`] "what does it point at". A URL containing
-/// whitespace is not a link: `[c](<sp ace.md>)` matches nothing. The URL is
-/// read in place and built only for a link, so a body of failed attempts
-/// stays linear.
+/// After the text, the shape is the regex `\(<?([^)>\s]+?)>?\)`, walked by
+/// hand so positions index the original body. [`is_vault_link_url`] decides
+/// "is this a reference" and [`md_link_target`] "what does it point at". A
+/// URL containing whitespace is not a link: `[c](<sp ace.md>)` matches
+/// nothing. The URL is read in place and built only for a link, so a body of
+/// failed attempts stays linear.
 fn spanned_markdown_link(
     chars: &[char],
     start: usize,
+    close: usize,
     at: &[usize],
     scan: &mut UrlScan,
 ) -> Option<(BodyLink, usize)> {
-    let mut j = start + 1;
-    while j < chars.len() && chars[j] != ']' && chars[j] != '[' {
-        j += 1;
-    }
-    if chars.get(j) != Some(&']') || chars.get(j + 1) != Some(&'(') {
+    let j = close;
+    if chars.get(j + 1) != Some(&'(') {
         return None;
     }
     let angled = chars.get(j + 2) == Some(&'<');
@@ -549,18 +664,24 @@ fn has_scheme(url: &[char]) -> bool {
 mod tests {
     use super::*;
 
-    /// A quadratic URL scan takes tens of seconds on the largest of these in a
-    /// debug build; a linear one takes well under a second, even on a loaded
+    /// A quadratic URL, bracket or code scan takes tens of seconds on the
+    /// largest of these in a debug build; a linear one takes well under a second, even on a loaded
     /// machine. The bound is that wide on purpose: it catches the shape of the
     /// cost, not a slowdown.
     #[test]
-    fn the_url_scan_is_linear_in_failed_link_attempts() {
+    fn a_scan_is_linear_in_failed_link_and_code_attempts() {
         for n in [25_000, 50_000, 100_000] {
             for body in [
                 "[](a".repeat(n),
                 format!("{})", "[](a".repeat(n)),
                 format!("{}.md)", "[](a:".repeat(n)),
                 format!("{}.x)", "[](a/".repeat(n)),
+                "[".repeat(n),
+                "[[a]".repeat(n),
+                "[a]".repeat(n),
+                "$x ".repeat(n),
+                "<a:".repeat(n),
+                "- x\n  ".repeat(n),
             ] {
                 let started = std::time::Instant::now();
                 assert!(body_links_spanned(&body).is_empty());

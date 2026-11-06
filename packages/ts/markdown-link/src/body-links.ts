@@ -3,7 +3,7 @@
  * `markdown-link` crate's `body_links_spanned` and `body_links`.
  */
 
-import { type CodeRules, stripCodeWith } from './code.ts'
+import { type CodeRules, blank, regions } from './code.ts'
 import {
   type Size,
   isVaultLinkUrl,
@@ -79,10 +79,12 @@ export type AbandonReason = 'bracket' | 'code' | 'empty-target' | 'unclosed'
  * A `[[` the scanner found outside code and did not read as a link: what a
  * renderer would otherwise leave in its output as literal brackets. A `[[`
  * inside code, or inside an HTML comment when `skipHtmlComments` is on, is not
- * reported, and nor is one that a link found after it starts inside:
- * `[[[Note]]` is a literal `[` and a link. A run of `[` with no link after it,
- * such as `[[[TODO`, is one entry: from the first `[[`, with the reason and
- * end of the last.
+ * reported. Nor is one that a link found after it starts inside, `[[[Note]]`
+ * being a literal `[` and a link, or one whose first or second `[` opens a
+ * Markdown link, of any URL: `[[WIP] Fix](https://example.com)`,
+ * `[[Note](Note.md)]`, or `[[1]` with a `[1]: …` definition in the body. A
+ * run of `[` with no link after it, such as `[[[TODO`, is one entry: from the
+ * first `[[`, with the reason and end of the last.
  */
 export interface AbandonedLink {
   reason: AbandonReason
@@ -135,6 +137,10 @@ export function bodyLinks(body: string): RawLink[] {
  *
  * Code is blanked before matching, `[[` never nests, and a markdown link
  * counts only when `isVaultLinkUrl` accepts its URL and it carries no scheme.
+ * A markdown link's text may hold brackets that balance, but no `[[` and no
+ * blank line, so `[[WIP] Fix](fix.md)` is a link and the wikilink in
+ * `[see [[Note]]](a.md)` stays a wikilink. A `\[` or `\]` in it does not
+ * count as a bracket.
  *
  * The scan walks code points. `stripCode` keeps the code point count of its
  * input, not its UTF-16 length, so a code point index into the stripped text
@@ -146,8 +152,9 @@ export function bodyLinksSpanned(body: string): BodyLink[] {
 
 /**
  * `bodyLinksSpanned` under `options`: which code rules apply, whether HTML
- * comments hide links, and whether `[[#Heading]]` is a link. A comment is
- * found after code is blanked, so a `<!--` inside code does not open one.
+ * comments hide links, and whether `[[#Heading]]` is a link. Code and
+ * comments are found in one pass, left to right, so a `<!--` inside code does
+ * not open a comment and a backtick inside a comment does not open code.
  */
 export function bodyLinksSpannedWith(body: string, options: ScanOptions): BodyLink[] {
   return scanBodyWith(body, options).links
@@ -158,9 +165,13 @@ export function bodyLinksSpannedWith(body: string, options: ScanOptions): BodyLi
  * `]`, one whose target is empty or only code, and one never closed.
  */
 export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
-  const codeBlanked = stripCodeWith(body, options.codeRules ?? 'commonmark')
+  const found = regions(body, options.codeRules ?? 'commonmark')
+  const codeBlanked = blank(
+    body,
+    found.filter((region) => region.kind === 'code'),
+  )
   const skipComments = options.skipHtmlComments === true
-  const chars = Array.from(skipComments ? blankComments(codeBlanked) : codeBlanked)
+  const chars = Array.from(skipComments ? blank(body, found) : codeBlanked)
   // With comments blanked too, the code points with only code blanked, made
   // the first time an abandoned link needs them.
   let codeChars: string[] | null = null
@@ -178,6 +189,7 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
     return { links: [], abandoned: [] }
   }
 
+  const brackets = new Brackets(chars)
   const out: BodyLink[] = []
   const abandoned: AbandonedLink[] = []
   const scan = new UrlScan()
@@ -254,12 +266,15 @@ export function scanBodyWith(body: string, options: ScanOptions): BodyScan {
         continue
       }
     }
-    if (chars[i] === '[') {
-      const found = markdownLink(chars, i, at, scan)
-      if (found !== null) {
+    const close = chars[i] === '[' ? brackets.textEnd(i) : undefined
+    if (close !== undefined) {
+      if (overlaps(abandoned, at[i]!) && brackets.opensLink(chars, i, close)) {
         dropOverlapped(abandoned, at[i]!)
-        out.push(found.link)
-        i = found.next
+      }
+      const link = markdownLink(chars, i, close, at, scan)
+      if (link !== null) {
+        out.push(link.link)
+        i = link.next
         continue
       }
     }
@@ -289,57 +304,143 @@ function mergeRuns(abandoned: AbandonedLink[]): AbandonedLink[] {
 }
 
 /**
- * Drops each abandoned `[[` whose second `[` opens a link: `bracket` is the
- * offset of the link's first `[`, after any `!`. After a `[` or `]` the
- * scanner moves on one code point, so `[[[Note]]` is a literal `[` and a link,
- * not a `[[` given up on. An embed's `!` right after an abandoned `[[`, as in
- * `[[x![[B]]`, does not count.
+ * Whether the last abandoned `[[` has its first or second `[` at or after
+ * `bracket`, the offset of a `[`. An embed's `!` right after an abandoned
+ * `[[`, as in `[[x![[B]]`, does not count.
+ */
+function overlaps(abandoned: AbandonedLink[], bracket: number): boolean {
+  const last = abandoned[abandoned.length - 1]
+  return last !== undefined && last.start + (last.embed ? 1 : 0) + 2 > bracket
+}
+
+/**
+ * Drops each abandoned `[[` whose first or second `[` opens a link: `bracket`
+ * is the offset of the link's first `[`, after any `!`. After a `[` or `]`
+ * the scanner moves on one code point, so `[[[Note]]` is a literal `[` and a
+ * link, not a `[[` given up on.
  */
 function dropOverlapped(abandoned: AbandonedLink[], bracket: number): void {
-  for (;;) {
-    const last = abandoned[abandoned.length - 1]
-    if (last === undefined || last.start + (last.embed ? 1 : 0) + 2 <= bracket) return
-    abandoned.pop()
-  }
+  while (overlaps(abandoned, bracket)) abandoned.pop()
 }
 
 /**
- * `text` with every HTML comment, `<!--` to `-->` or the end, blanked to
- * spaces, newlines kept. The code point count does not change.
+ * The brackets of a body's Markdown links: where the text of each link that
+ * a `[` could open ends, and the labels of the link reference definitions.
  */
-function blankComments(text: string): string {
-  let out = ''
-  let rest = text
-  for (;;) {
-    const open = rest.indexOf('<!--')
-    if (open === -1) break
-    out += rest.slice(0, open)
-    const close = rest.indexOf('-->', open + 4)
-    const end = close === -1 ? rest.length : close + 3
-    for (const c of rest.slice(open, end)) out += c === '\n' ? '\n' : ' '
-    rest = rest.slice(end)
+class Brackets {
+  /**
+   * The code point index of each `]` that closes link text, by the index of
+   * its `[`. The brackets between balance, hold no `[[`, and no blank line
+   * comes between them. A `\[` or `\]` is not a bracket.
+   */
+  private readonly ends = new Map<number, number>()
+  /** Each `[label]: …` definition's label, as `normalizeLabel` gives it. */
+  private readonly labels = new Set<string>()
+
+  constructor(chars: string[]) {
+    // Each open `[`, and how many `[[` had started when it was pushed,
+    // counting one that it starts.
+    const open: [number, number][] = []
+    let pairs = 0
+    for (let k = 0; k < chars.length; k++) {
+      const c = chars[k]
+      if (c === '\\' && (chars[k + 1] === '[' || chars[k + 1] === ']')) {
+        k++
+      } else if (c === '[') {
+        if (chars[k + 1] === '[') pairs++
+        open.push([k, pairs])
+      } else if (c === ']') {
+        const popped = open.pop()
+        if (popped !== undefined && popped[1] === pairs) this.ends.set(popped[0], k)
+      } else if (c === '\n') {
+        let next = k + 1
+        while (chars[next] === ' ' || chars[next] === '\t' || chars[next] === '\r') next++
+        if (next >= chars.length || chars[next] === '\n') open.length = 0
+        this.define(chars, k + 1)
+      }
+    }
+    this.define(chars, 0)
   }
-  return out + rest
+
+  /** The `]` that ends the text of a link opened by the `[` at `start`. */
+  textEnd(start: number): number | undefined {
+    return this.ends.get(start)
+  }
+
+  /**
+   * Whether the `[` at `start`, whose text ends at `close`, opens a Markdown
+   * link: `(` follows its `]`, or it is a reference link whose label a
+   * definition in the body names (`[text][label]`, `[label][]` or `[label]`).
+   */
+  opensLink(chars: string[], start: number, close: number): boolean {
+    let label = chars.slice(start + 1, close)
+    if (chars[close + 1] === '(') return true
+    if (chars[close + 1] === '[') {
+      let end = close + 2
+      while (end < chars.length && chars[end] !== '[' && chars[end] !== ']') end++
+      if (chars[end] !== ']') return false
+      const written = chars.slice(close + 2, end)
+      if (!written.every(isWhitespace)) label = written
+    }
+    return this.labels.has(normalizeLabel(label))
+  }
+
+  /**
+   * Notes the label of a link reference definition, `[label]:` after up to
+   * three spaces, starting the line at `at`.
+   */
+  private define(chars: string[], at: number): void {
+    let i = at
+    while (i < at + 3 && chars[i] === ' ') i++
+    if (chars[i] !== '[') return
+    let end = i + 1
+    while (end < chars.length && chars[end] !== '[' && chars[end] !== ']' && chars[end] !== '\n')
+      end++
+    if (chars[end] === ']' && chars[end + 1] === ':') {
+      this.labels.add(normalizeLabel(chars.slice(i + 1, end)))
+    }
+  }
 }
 
 /**
- * `[text](relative/note.md)` starting at `start`, and the code point index
- * just past it, or `null` when this is not one.
+ * A link label as a definition and a reference match it: lowercase, with
+ * each run of whitespace one space and none at either end. Empty for a label
+ * of only whitespace, which no reference matches.
+ */
+function normalizeLabel(label: string[]): string {
+  const words: string[] = []
+  let word = ''
+  for (const c of label) {
+    if (isWhitespace(c)) {
+      if (word !== '') words.push(word)
+      word = ''
+    } else {
+      word += c
+    }
+  }
+  if (word !== '') words.push(word)
+  return words.join(' ').toLowerCase()
+}
+
+/**
+ * `[text](relative/note.md)` starting at `start`, whose text ends at the `]`
+ * at `close`, and the code point index just past it, or `null` when this is
+ * not one.
  *
- * The shape is the regex `\[[^\]]*\]\(<?([^)>\s]+?)>?\)`, walked by hand so
- * positions index the body. A URL containing whitespace is not a link. The
- * URL is read in place and built only for a link, so a body of failed
- * attempts stays linear.
+ * After the text, the shape is the regex `\(<?([^)>\s]+?)>?\)`, walked by
+ * hand so positions index the body. A URL containing whitespace is not a
+ * link. The URL is read in place and built only for a link, so a body of
+ * failed attempts stays linear.
  */
 function markdownLink(
   chars: string[],
   start: number,
+  close: number,
   at: number[],
   scan: UrlScan,
 ): { link: BodyLink; next: number } | null {
-  let j = start + 1
-  while (j < chars.length && chars[j] !== ']' && chars[j] !== '[') j++
-  if (chars[j] !== ']' || chars[j + 1] !== '(') return null
+  const j = close
+  if (chars[j + 1] !== '(') return null
   const angled = chars[j + 2] === '<'
   const urlStart = angled ? j + 3 : j + 2
   const urlEnd = scan.urlEnd(chars, urlStart)

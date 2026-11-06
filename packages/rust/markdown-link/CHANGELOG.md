@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-06
+
+More of a body counts as code, so fewer links are found in it, and a
+Markdown link with brackets in its text is found. These change what
+`body_links`, `body_links_spanned_with`, `scan_body_with` and `strip_code`
+return for some bodies, so this is a breaking release. `@osdlc/markdown-link`
+makes the same changes in its 0.9.0, and both suites read the new cases.
+
+### Changed
+
+- **Code.** `strip_code` and every scanner also treat these as code:
+  indented code (a line indented four or more columns past its block's
+  text, unless it continues a paragraph), math (`$$…$$` up to a blank line,
+  and `$…$` on one line), `<pre>`, `<script>`, `<style>` and `<textarea>`
+  blocks, and autolinks such as `<https://example.com>`. A fence may now sit
+  in a list item, up to three spaces past the item's text. The lexer
+  follows list items far enough for both, so a list item's own text
+  indented four spaces is still text. It still does not know about block
+  quotes.
+- **Comments and code in one pass.** An HTML comment is found in the same
+  left-to-right pass as code, whichever starts first. A backtick, `$` or
+  fence inside a comment no longer opens code, whether or not
+  `skip_html_comments` is on, and `<!--` inside code still opens nothing.
+- **Markdown link text.** A Markdown link's text may hold brackets that
+  balance, so `[[WIP] Fix](fix.md)` is a link. It may not hold `[[`, so the
+  wikilink in `[see [[Note]]](a.md)` stays a wikilink. It may not cross a
+  blank line, and `\[` and `\]` are not brackets in it.
+- **Abandoned `[[`.** A `[[` whose first or second `[` opens a Markdown link
+  is not reported, whatever the link's URL: `[[WIP] Fix](https://x)`,
+  `[[Note](Note.md)]`, or a reference link whose label a `[label]: …`
+  definition in the body names, such as `[[1]`.
+
+### Added
+
+- `code::code_ranges(text, rules)`: the byte ranges that are code, what
+  `strip_code_with` blanks, in order and merged where only a line break
+  separates them. HTML comments are in none.
+- `split_alias` is public: a wikilink body split at its first `|`, without
+  the `\` that escapes the pipe in a table cell.
+- `tests/fixtures/conformance.json`: a `code` case may list `ranges`.
+
 ## [0.8.0] - 2026-11-04
 
 The scanner reports each `[[` it gave up on. Nothing is removed or changed.
