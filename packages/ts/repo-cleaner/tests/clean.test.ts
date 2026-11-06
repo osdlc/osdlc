@@ -293,7 +293,9 @@ describe('sparing a remote branch (#583)', () => {
     })
     expect(receipt.steps.some((s) => s.action === 'delete-remote' && s.row === SPARE)).toBe(false)
     expect(
-      receipt.steps.some((s) => s.action === 'delete-remote' && s.row === 'remote:upstream/merged-a'),
+      receipt.steps.some(
+        (s) => s.action === 'delete-remote' && s.row === 'remote:upstream/merged-a',
+      ),
     ).toBe(false)
   })
 
@@ -477,7 +479,12 @@ describe('resolveApproval refuses', () => {
   /** A hand-built plan of one repository. */
   function handPlan(options: Partial<Plan['options']> = {}): Plan {
     const row = (id: string) =>
-      ({ id, verdict: 'delete', risks: [], fingerprint: {} }) as Plan['repos'][number]['rows'][number]
+      ({
+        id,
+        verdict: 'delete',
+        risks: [],
+        fingerprint: {},
+      }) as Plan['repos'][number]['rows'][number]
     return {
       version: PLAN_VERSION,
       createdAt: 'x',
@@ -704,11 +711,7 @@ describe('check and run', () => {
     mergeWorktreeBranch(fx)
     const shown = preview(fx, makePlan(fx.root), { pick: ['branch:wt-branch'] })
     expect(shown.dropped.map((d) => [d.row, d.reason, d.detail])).toEqual([
-      [
-        'branch:wt-branch',
-        'held',
-        `checked out in ${fx.worktree}, which this run does not remove`,
-      ],
+      ['branch:wt-branch', 'held', `checked out in ${fx.worktree}, which this run does not remove`],
     ])
   })
 
@@ -721,11 +724,7 @@ describe('check and run', () => {
     const { receipt } = apply(fx, p, { pick: ['branch:wt-branch', wt(realpathSync(other))] })
 
     expect(receipt.dropped.map((d) => [d.row, d.reason, d.detail])).toEqual([
-      [
-        'branch:wt-branch',
-        'held',
-        `checked out in ${fx.worktree}, which this run does not remove`,
-      ],
+      ['branch:wt-branch', 'held', `checked out in ${fx.worktree}, which this run does not remove`],
     ])
     expect(receipt.status).toBe('complete')
     expect(refs(fx.root)).toContain('refs/heads/wt-branch ')
@@ -990,7 +989,9 @@ describe('check and run', () => {
       ...swept,
       repos: swept.repos.map((r) => ({
         ...r,
-        rows: r.rows.map((row): Row => (row.id === 'branch:merged-a' ? { ...row, action: null } : row)),
+        rows: r.rows.map((row): Row =>
+          row.id === 'branch:merged-a' ? { ...row, action: null } : row,
+        ),
       })),
     }
     const shown = preview(fx, plan(swept), { pick: ['branch:merged-a'] }, { sweep: pinned })
@@ -1177,9 +1178,8 @@ describe('plan files', () => {
       ...swept,
       repos: swept.repos.map((r) => ({
         ...r,
-        rows: r.rows.map(
-          (row): Row =>
-            row.id === wt(fx.worktree) ? { ...row, verdict: 'keep', action: null } : row,
+        rows: r.rows.map((row): Row =>
+          row.id === wt(fx.worktree) ? { ...row, verdict: 'keep', action: null } : row,
         ),
       })),
     }
@@ -1199,9 +1199,8 @@ describe('plan files', () => {
       { pick: ['branch:wt-branch', wt(fx.worktree)] },
       {
         annotate: (_repo, rows) =>
-          rows.map(
-            (row): Row =>
-              row.id === wt(fx.worktree) ? { ...row, verdict: 'keep', action: null } : row,
+          rows.map((row): Row =>
+            row.id === wt(fx.worktree) ? { ...row, verdict: 'keep', action: null } : row,
           ),
       },
     )

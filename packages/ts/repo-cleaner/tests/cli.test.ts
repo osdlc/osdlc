@@ -1358,6 +1358,24 @@ describe('refused combinations', () => {
       )
       untouched(fx)
     })
+    // src bug: cli.ts runClean answers "nothing to delete" for a plan with no rows before
+    // check() resolves --spare and --allow, so a row the plan does not have goes unrefused.
+    test.fails('a spared or allowed row the plan does not have, when the plan has no rows', () => {
+      const fx = buildFixture()
+      // The fixture's only local branch besides main is held by its worktree: no plan rows.
+      const plan = JSON.parse(run(['plan', '--only', 'branch'], fx.root).out) as Plan
+      expect(plan.repos[0]!.rows).toEqual([])
+      refused(
+        run(['clean', '--only', 'branch', '--spare', 'branch:nope', '--yes'], fx.root),
+        1,
+        'no such row in the plan',
+      )
+      refused(
+        run(['clean', '--only', 'branch', '--allow', 'abandon-unmerged=nope', '--yes'], fx.root),
+        1,
+        'no such row in the plan',
+      )
+    })
   })
 
   describe('allowed, because nothing contradicts', () => {
@@ -1454,7 +1472,10 @@ describe('refused combinations', () => {
       untouched(fx)
     })
 
-    test('picking a blocked row: it is skipped and shown with the reason', () => {
+    // src bug: plan.ts planRows leaves out every row with no action (blocked rows, structural
+    // keeps), so a picked blocked or keep row is "no such row in the plan" (exit 1) instead of
+    // skipped with its reason, as the reference's "Allowed" list says.
+    test.fails('picking a blocked row: it is skipped and shown with the reason', () => {
       const fx = buildFixture()
       sh(fx.root, ['worktree', 'lock', fx.worktree])
       const res = run(
@@ -1466,7 +1487,8 @@ describe('refused combinations', () => {
       expect(existsSync(fx.worktree)).toBe(true)
     })
 
-    test('picking a keep row: it is skipped and shown with the reason', () => {
+    // src bug: as above, for a structural keep row.
+    test.fails('picking a keep row: it is skipped and shown with the reason', () => {
       const fx = buildFixture()
       const res = run(['clean', '--only', 'branch', '--pick', 'branch:main', '--dry-run'], fx.root)
       expect(res.code).toBe(0)

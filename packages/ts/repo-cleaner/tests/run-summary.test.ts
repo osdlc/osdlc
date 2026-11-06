@@ -98,10 +98,7 @@ describe('run summary', () => {
   })
 
   test('a dry-run receipt says would delete', () => {
-    const text = renderReceipt(
-      receipt('dry-run', [step('delete-branch', 'would-run', 'a')]),
-      null,
-    )
+    const text = renderReceipt(receipt('dry-run', [step('delete-branch', 'would-run', 'a')]), null)
     expect(text.trimEnd().split('\n').slice(-2)).toEqual([
       'would delete: 1 local branch',
       'status: dry-run',
