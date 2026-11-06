@@ -114,8 +114,9 @@ pub fn ns_to_ms_f64(ns: i64) -> f64 {
 /// fills in [`Metadata::modified_ns`].
 ///
 /// The whole milliseconds and the fraction are converted apart, and the
-/// fraction rounds to the nearest nanosecond. `ms * 1e6` in `f64` would not
-/// do: an `f64` of nanoseconds since 1970 has no room for the last digits.
+/// fraction rounds to the nearest nanosecond, a tie to the later one (also
+/// before 1970). `ms * 1e6` in `f64` would not do: an `f64` of nanoseconds
+/// since 1970 has no room for the last digits.
 ///
 /// The result is the nanosecond nearest the `f64`, which for a present-day
 /// time is only within about an eighth of a microsecond of the one the
@@ -1276,6 +1277,10 @@ mod time_tests {
         assert_eq!(ms_f64_to_ns(0.000_000_4), Some(0));
         assert_eq!(ms_f64_to_ns(0.000_000_6), Some(1));
         assert_eq!(ms_f64_to_ns(0.999_999_9), Some(1_000_000));
+        // An exact half (7812.5 ns) goes to the later nanosecond, on both
+        // sides of the epoch.
+        assert_eq!(ms_f64_to_ns(0.007_812_5), Some(7_813));
+        assert_eq!(ms_f64_to_ns(-0.007_812_5), Some(-7_812));
         // Before the epoch the fraction still counts up from the whole
         // millisecond below, as in `ns_to_ms_f64`.
         assert_eq!(ms_f64_to_ns(-1.25), Some(-1_250_000));
