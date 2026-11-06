@@ -32,7 +32,10 @@
 //! has empty facts. [`Errors::Report`]: the same, and the error is kept with
 //! the walk's own in [`LinkGraph::unreadable`], so a caller can say what it
 //! passed over. [`Errors::Propagate`]: the sweep fails. A note that could
-//! not be read is never fresh, so every sweep tries it again.
+//! not be read is never fresh, so every sweep tries it again; one that still
+//! cannot be read counts as unchanged, so it does not make the sweep
+//! rebuild. A note that went away between the walk and its read counts as
+//! unreadable, with [`std::io::ErrorKind::NotFound`].
 //!
 //! # Freshness
 //!
@@ -140,6 +143,8 @@ pub struct NoteFacts {
     size: u64,
     /// `None` when the note could not be stamped; never compares fresh.
     mtime_ns: Option<i64>,
+    /// The note could not be read, so the facts are empty.
+    unread: bool,
 }
 
 impl NoteFacts {
@@ -469,7 +474,7 @@ impl LinkGraph {
         // links to them still resolve, as in Obsidian.
         let walked = markdown_vault_fs::walk::walk_reporting(vfs, vault_dir, &self.walk)?;
         let entries = walked.entries;
-        let mut unreadable: Vec<Arc<VfsError>> = walked.errors.into_iter().map(Arc::new).collect();
+        let mut unread = Unread::new(self.walk.errors, walked.errors);
         // Sorted by the comparator `apply_changes` binary-searches with.
         let mut paths: Vec<String> = entries.iter().map(|e| e.rel.clone()).collect();
         paths.sort_by(|a, b| slug_collate::compare_paths(a, b));
@@ -502,13 +507,20 @@ impl LinkGraph {
                 Some((size, mtime)) => (size, Some(mtime)),
                 None => (0, None),
             };
-            let existed = cache.contains_key(&entry.rel);
-            let (facts, unread) = scan_note(vfs, &*self.tags, self.split, &entry.abs, size, mtime);
-            if let Some(e) = unread {
-                keep_read_error(self.walk.errors, e, &mut unreadable)?;
+            let cached = cache.get(&entry.rel);
+            let (facts, error) = scan_note(vfs, &*self.tags, self.split, &entry.abs, size, mtime);
+            if let Some(e) = error {
+                unread.note(e)?;
+                // Unreadable before too: nothing moved, so the sweep can
+                // stay clean.
+                if let Some(prev) = cached.filter(|c| c.unread) {
+                    stats.unchanged += 1;
+                    seen.insert(entry.rel, Arc::clone(prev));
+                    continue;
+                }
             }
             seen.insert(entry.rel, Arc::new(facts));
-            if existed {
+            if cached.is_some() {
                 stats.updated += 1;
             } else {
                 stats.added += 1;
@@ -525,7 +537,7 @@ impl LinkGraph {
         if clean && *prev_paths == paths {
             let mut state = self.state.lock().unwrap();
             if state.generation == generation && state.applied == applied {
-                state.unreadable = Arc::new(unreadable);
+                state.unreadable = Arc::new(unread.into_errors());
             }
             if state.generation == generation && state.stale_marks == stale_marks {
                 state.swept_at = Some(now);
@@ -547,7 +559,7 @@ impl LinkGraph {
             state.unresolved = Arc::new(inverted.unresolved);
             state.index = index;
             state.paths = Arc::new(paths);
-            state.unreadable = Arc::new(unreadable);
+            state.unreadable = Arc::new(unread.into_errors());
             // A stale mark that landed mid-sweep must survive the swap.
             if state.stale_marks == stale_marks {
                 state.swept_at = Some(now);
@@ -588,7 +600,8 @@ impl LinkGraph {
     /// A change to a file the walk reads its rules from
     /// ([`WalkOptions::reads_rules_from`], the excluded files under
     /// [`Hide::Vault`]) can move any path, so it marks the graph stale and
-    /// the next refresh walks.
+    /// the next refresh walks. So does a note it cannot read under
+    /// [`Errors::Propagate`], so the next refresh fails on it.
     pub fn apply_changes(&self, vfs: &dyn Vfs, vault_dir: &Path, rels: &[String]) {
         self.apply_paths(vfs, vault_dir, rels);
         if rels.iter().any(|rel| self.walk.reads_rules_from(rel))
@@ -629,7 +642,8 @@ impl LinkGraph {
             File,
             Gone,
         }
-        let mut unread = Vec::new();
+        let mut unread = Unread::new(self.walk.errors, Vec::new());
+        let mut stale = false;
         let scanned: Vec<(&String, PathBuf, Seen)> = admitted
             .into_iter()
             .map(|(rel, admission)| {
@@ -642,11 +656,11 @@ impl LinkGraph {
                     Seen::Gone
                 } else if rel.to_lowercase().ends_with(".md") && self.reads(rel) {
                     let (size, mtime) = stamp_listed(vfs, &abs);
-                    let (facts, e) = scan_note(vfs, &*self.tags, self.split, &abs, size, mtime);
-                    if let Some(e) = e
-                        && self.walk.errors == Errors::Report
-                    {
-                        unread.push(Arc::new(e));
+                    let (facts, error) = scan_note(vfs, &*self.tags, self.split, &abs, size, mtime);
+                    // An apply cannot fail; under `Propagate` the next
+                    // refresh walks and does.
+                    if let Some(e) = error {
+                        stale |= unread.note(e).is_err();
                     }
                     Seen::Note(facts)
                 } else {
@@ -664,10 +678,14 @@ impl LinkGraph {
             return;
         }
         state.applied += 1;
+        if stale {
+            state.swept_at = None;
+            state.stale_marks += 1;
+        }
         // What the apply read replaces what was known about those paths.
         let unreadable = Arc::make_mut(&mut state.unreadable);
         unreadable.retain(|e| !scanned.iter().any(|(_, abs, _)| e.path() == abs));
-        unreadable.extend(unread);
+        unreadable.extend(unread.into_errors());
         let mut paths_changed = false;
         let mut notes_changed = false;
         for (rel, _, seen) in scanned {
@@ -707,12 +725,16 @@ impl LinkGraph {
 
     /// What the graph could not read, under [`Errors::Report`]: each folder
     /// the last sweep could not list and each file it could not stat (in
-    /// walk order), then each note it listed but could not read. An apply
-    /// replaces the entries for the paths it names with what it met, so a
-    /// note it now reads leaves the list and one it cannot read joins it.
-    /// Empty under the other [`Errors`] policies.
+    /// walk order), then each note it listed but could not read, once per
+    /// path. An apply replaces the entries for the paths it names with what
+    /// it met, so a note it now reads leaves the list and one it cannot read
+    /// joins it; a folder's entry clears on the next sweep. Empty under the
+    /// other [`Errors`] policies.
     ///
     /// Each path is the corpus folder joined with the corpus-relative path.
+    /// Read under its own lock hold, like [`Self::paths`]: on a graph shared
+    /// across threads it can come from a later sweep or apply than a
+    /// [`Self::snapshot`] taken before it.
     pub fn unreadable(&self) -> Vec<Arc<VfsError>> {
         (*self.state.lock().unwrap().unreadable).clone()
     }
@@ -1128,20 +1150,50 @@ pub(crate) fn join_rel(vault_dir: &Path, rel: &str) -> PathBuf {
     path
 }
 
-/// What the walk's error policy makes of a note the cache listed but could
-/// not read: nothing, an entry in the cache's report, or a failed sweep.
-pub(crate) fn keep_read_error(
-    errors: Errors,
-    e: VfsError,
-    unreadable: &mut Vec<Arc<VfsError>>,
-) -> Result<(), WalkError> {
-    match errors {
-        Errors::Skip => Ok(()),
-        Errors::Report => {
-            unreadable.push(Arc::new(e));
-            Ok(())
+/// What one sweep or apply could not read, kept as the walk's [`Errors`]
+/// says.
+pub(crate) struct Unread {
+    policy: Errors,
+    errors: Vec<Arc<VfsError>>,
+    paths: HashSet<PathBuf>,
+}
+
+impl Unread {
+    /// Starting from what the walk itself reported.
+    pub(crate) fn new(policy: Errors, walk_errors: Vec<VfsError>) -> Unread {
+        let mut unread = Unread {
+            policy,
+            errors: Vec::new(),
+            paths: HashSet::new(),
+        };
+        for e in walk_errors {
+            unread.keep(e);
         }
-        Errors::Propagate => Err(WalkError::Io(e)),
+        unread
+    }
+
+    fn keep(&mut self, e: VfsError) {
+        if self.paths.insert(e.path().to_path_buf()) {
+            self.errors.push(Arc::new(e));
+        }
+    }
+
+    /// A note the cache listed but could not read: nothing under
+    /// [`Errors::Skip`], kept once per path under [`Errors::Report`] (a file
+    /// the walk could not stat is already there), the error under
+    /// [`Errors::Propagate`].
+    pub(crate) fn note(&mut self, e: VfsError) -> Result<(), WalkError> {
+        match self.policy {
+            Errors::Skip => {}
+            Errors::Report => self.keep(e),
+            Errors::Propagate => return Err(WalkError::Io(e)),
+        }
+        Ok(())
+    }
+
+    /// What was kept, in the order met.
+    pub(crate) fn into_errors(self) -> Vec<Arc<VfsError>> {
+        self.errors
     }
 }
 
@@ -1161,6 +1213,7 @@ fn scan_note(
         Err(e) => {
             let facts = NoteFacts {
                 size,
+                unread: true,
                 ..NoteFacts::default()
             };
             return (facts, Some(e));
@@ -1188,6 +1241,7 @@ fn scan_note(
         tags: tags.lex(body).into_iter().map(dedupe).collect(),
         size,
         mtime_ns,
+        unread: false,
     };
     (facts, None)
 }
@@ -1343,8 +1397,9 @@ pub(crate) mod hooks {
             }
         }
 
-        /// Every stat of `path` fails, as a folder readable but not
-        /// searchable leaves its files: listed, but no metadata.
+        /// Every stat and read of `path` fails, as a folder readable but not
+        /// searchable leaves its files: listed, but no metadata and no
+        /// content.
         pub fn denied(inner: &'a dyn Vfs, path: PathBuf) -> Self {
             StatHook {
                 inner,
@@ -1404,7 +1459,7 @@ pub(crate) mod hooks {
             }
         }
         fn read_file(&self, path: &Path) -> Result<Vec<u8>, VfsError> {
-            if path == self.path && matches!(self.on_stat, OnStat::Unreadable) {
+            if path == self.path && matches!(self.on_stat, OnStat::Unreadable | OnStat::Denied) {
                 return Err(denied(path));
             }
             self.inner.read_file(path)

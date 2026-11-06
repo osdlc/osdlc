@@ -17,22 +17,29 @@ never reads. Built on `markdown-vault-fs` 0.6.
 
 - The walks take `markdown-vault-fs` 0.6's `WalkOptions::errors: Errors`
   in place of `propagate_errors: bool`. `Errors` is re-exported.
-- The walk's `errors` now covers a note the cache lists but cannot read.
-  Under `Errors::Propagate` that fails the sweep (and `Corpus::try_load`);
-  before, the note got empty facts, as it still does under `Errors::Skip`.
+- The walk's `errors` now covers a note the cache lists but cannot read
+  (including one that went away between the walk and the read, with kind
+  `NotFound`). Under `Errors::Propagate` that fails the sweep (and
+  `Corpus::try_load`), and an apply that meets it marks the cache stale so
+  the next refresh walks and fails; before, the note got empty facts, as it
+  still does under `Errors::Skip`.
 - A note that cannot be read is never fresh, in both caches, so every
   sweep tries it again. Before, it was stamped like a note that was read,
   and a note made readable again without a change to its size or time
-  kept its empty facts.
+  kept its empty facts. A note that still cannot be read counts as
+  unchanged, so it does not rebuild the graph or move
+  `FrontmatterIndex::changes`. A dangling symlink, which was counted as
+  updated on every sweep, now counts as unchanged too.
 
 ### Added
 
 - `Errors::Report` in a cache's walk: the sweep skips what it cannot read,
   as `Skip` does, and keeps each folder it could not list, each file it
-  could not stat and each note it listed but could not read.
+  could not stat and each note it listed but could not read, once per path.
   `LinkGraph::unreadable()`, `FrontmatterIndex::unreadable()` and
   `Corpus::unreadable()` (both caches, each path once) return them. An
-  apply updates the entries for the paths it names.
+  apply updates the entries for the paths it names; a folder's entry
+  clears on the next sweep.
 - `LinkGraph::with_list_only(|rel| ..)`: notes the predicate picks are
   listed, as files a link resolves to, but never read, so they have no
   facts or edges. For a caller that needs the paths under dot-named

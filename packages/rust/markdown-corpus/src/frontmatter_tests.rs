@@ -4,6 +4,7 @@ use vfs_seam::{FixedClock, MemVfs};
 use yaml_splice::Value;
 
 use super::*;
+use crate::Errors;
 use crate::links::hooks::{mid_apply, mid_sweep};
 
 const V: &str = "/v";
@@ -300,7 +301,12 @@ fn a_reporting_index_keeps_a_note_it_cannot_read_and_names_it() {
         .map(|e| e.path().to_path_buf())
         .collect();
     assert_eq!(reported, vec![b.clone()]);
-    // Tried again on the next sweep; once readable, no longer reported.
+    // Tried again on the next sweep: unchanged while still unreadable, then
+    // read and no longer reported.
+    let changes = index.changes();
+    assert!(index.refresh_now(&locked, &c, root()).is_empty());
+    assert_eq!(index.changes(), changes);
+    assert_eq!(index.unreadable().len(), 1);
     assert_eq!(index.refresh_now(&*d, &c, root()).updated, 1);
     assert!(index.unreadable().is_empty());
     assert!(index.get("Notes/b.md").unwrap().parse_error.is_none());
@@ -316,6 +322,10 @@ fn a_reporting_index_keeps_a_note_it_cannot_read_and_names_it() {
     assert!(skip.get("Notes/b.md").unwrap().parse_error.is_some());
     assert!(skip.unreadable().is_empty());
     let strict = FrontmatterIndex::new().with_walk(walk(Errors::Propagate));
+    assert!(strict.try_refresh(&locked, &c, root()).is_err());
+    // An apply cannot fail, but it makes the next refresh walk, and fail.
+    strict.try_refresh(&*d, &c, root()).unwrap();
+    strict.apply_change(&locked, root(), "Notes/b.md");
     assert!(strict.try_refresh(&locked, &c, root()).is_err());
 }
 
@@ -597,8 +607,9 @@ mod native {
         .unwrap();
         let index = FrontmatterIndex::new();
         assert_eq!(index.refresh(&NativeVfs, &SystemClock, d.path()).added, 2);
+        // Read again, and still unreadable, so unchanged.
         let second = index.refresh_now(&NativeVfs, &SystemClock, d.path());
-        assert_eq!((second.unchanged, second.updated), (1, 1));
+        assert_eq!((second.unchanged, second.updated), (2, 0));
 
         write(
             d.path(),

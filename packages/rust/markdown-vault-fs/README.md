@@ -14,9 +14,9 @@ directly. None of the modules parses YAML or Markdown:
   the walk to subtrees. The vault's excluded files are dropped on top of the
   policy by default, except under `Everything`; `WalkOptions::hide` passes
   other rules or turns them off. Options also refuse symlinks, skip, report
-  or fail on read errors, skip names such as `.DS_Store`, and prune folders such as
-  `node_modules`. Entries come back in name order (`String` byte order),
-  depth first. `WalkOptions::admission` says whether a walk would list a
+  or fail on read errors, skip names such as `.DS_Store`, and prune folders
+  such as `node_modules`. Entries come back in name order (`String` byte
+  order), depth first. `WalkOptions::admission` says whether a walk would list a
   given path, would not list it now, or never lists it, for a cache told
   that one path changed.
 - `hide` — excluded files in Obsidian's `userIgnoreFilters` syntax: a

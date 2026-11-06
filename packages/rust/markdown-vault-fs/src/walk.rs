@@ -241,7 +241,9 @@ pub struct WalkOutcome {
     /// rather than silently reporting zero files.
     pub missing_roots: Vec<String>,
     /// Each folder the walk could not list and each file it could not stat,
-    /// in the order met, once each. Only filled under [`Errors::Report`].
+    /// in the order met, once each. A file that went away between its
+    /// folder's listing and its stat is here too, as `NotFound`. A file the
+    /// walk does not collect is not. Only filled under [`Errors::Report`].
     pub errors: Vec<VfsError>,
 }
 
@@ -327,16 +329,17 @@ pub fn walk_reporting(
 
     let mut entries = Vec::new();
     let mut errors: Vec<VfsError> = Vec::new();
+    // Overlapping roots list a folder under both; it is reported once.
+    let mut reported = HashSet::new();
     for sub in &subtrees {
         let outcome = vfs_walk::walk_subtree(vfs, vault_dir, sub, &inner)?;
-        // Overlapping roots list a folder under both; report it once.
-        for err in outcome.errors {
-            if !errors.iter().any(|e| e.path() == err.path()) {
-                errors.push(err);
-            }
-        }
+        let mut met = outcome.errors;
         for found in outcome.entries {
             if !collect_early && !collects(&found.rel) {
+                // Not this walk's file, so its stat error is not either.
+                if !met.is_empty() {
+                    met.retain(|e| e.path() != found.abs);
+                }
                 continue;
             }
             if found.size < opts.min_bytes {
@@ -352,6 +355,10 @@ pub fn walk_reporting(
                 is_symlink: found.is_symlink,
             });
         }
+        errors.extend(
+            met.into_iter()
+                .filter(|e| !rooted || reported.insert(e.path().to_path_buf())),
+        );
     }
 
     // No sort here. The name order inside each folder already makes the
@@ -1372,6 +1379,24 @@ mod tests {
             report.admission(&stat, Path::new(V), "Notes/alpha.md"),
             Admission::Listed,
             "as the reporting walk lists it"
+        );
+
+        // With symlinks refused every file is statted, but an attachment
+        // a notes walk does not collect is not its error to report.
+        let img = Denied {
+            inner: &d,
+            path: Path::new(V).join("Notes/img.png"),
+            call: Call::Stat,
+        };
+        let refusing = WalkOptions {
+            refuse_symlinks: true,
+            ..report.clone()
+        };
+        assert!(
+            walk_reporting(&img, Path::new(V), &refusing)
+                .unwrap()
+                .errors
+                .is_empty()
         );
     }
 

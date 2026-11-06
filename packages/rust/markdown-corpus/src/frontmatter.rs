@@ -26,23 +26,24 @@
 //!
 //! A note the walk lists but the index cannot read is kept with
 //! [`IndexedNote::parse_error`] set and no time, so every sweep tries it
-//! again. The walk's [`WalkOptions::errors`] decides the rest, as for the
-//! link graph: [`Errors::Report`] keeps the error in
-//! [`FrontmatterIndex::unreadable`], and [`Errors::Propagate`] fails the
-//! sweep.
+//! again (and counts it unchanged while it still cannot read it). The
+//! walk's [`WalkOptions::errors`] decides the rest, as for the link graph:
+//! [`Errors::Report`](crate::Errors::Report) keeps the error in
+//! [`FrontmatterIndex::unreadable`], and
+//! [`Errors::Propagate`](crate::Errors::Propagate) fails the sweep. An apply
+//! that cannot read a note under `Propagate` marks the index stale, so the
+//! next refresh walks and fails on it.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use markdown_vault_fs::walk::{Admission, Errors, WalkError, WalkOptions};
+use markdown_vault_fs::walk::{Admission, WalkError, WalkOptions};
 use vfs_seam::{Clock, Vfs, VfsError};
 use yaml_splice::Mapping;
 
-use crate::links::{
-    REFRESH_TTL_MS, WATCHED_TTL_MS, join_rel, keep_read_error, stamp_listed, stamp_of,
-};
+use crate::links::{REFRESH_TTL_MS, Unread, WATCHED_TTL_MS, join_rel, stamp_listed, stamp_of};
 use crate::note::{SplitMode, note_title, read_note_with};
 
 /// One note's cached parse.
@@ -261,7 +262,7 @@ impl FrontmatterIndex {
 
         let walked = markdown_vault_fs::walk::walk_reporting(vfs, vault_dir, &self.walk)?;
         let entries = walked.entries;
-        let mut unreadable: Vec<Arc<VfsError>> = walked.errors.into_iter().map(Arc::new).collect();
+        let mut unread = Unread::new(self.walk.errors, walked.errors);
         let mut stats = RefreshStats::default();
         let mut seen: NoteMap = BTreeMap::new();
 
@@ -284,12 +285,18 @@ impl FrontmatterIndex {
                 Some((size, mtime)) => (size, Some(mtime)),
                 None => (entry.size, None),
             };
-            let existed = cache.contains_key(&entry.rel);
-            let (note, unread) = parse_one(vfs, self.split, &entry.rel, &entry.abs, size, mtime);
-            if let Some(e) = unread {
-                keep_read_error(self.walk.errors, e, &mut unreadable)?;
+            let cached = cache.get(&entry.rel);
+            let (note, error) = parse_one(vfs, self.split, &entry.rel, &entry.abs, size, mtime);
+            if let Some(e) = error {
+                unread.note(e)?;
+                // Unreadable before too: nothing moved.
+                if let Some(prev) = cached.filter(|c| c.as_ref() == &note) {
+                    stats.unchanged += 1;
+                    seen.insert(entry.rel, Arc::clone(prev));
+                    continue;
+                }
             }
-            if existed {
+            if cached.is_some() {
                 stats.updated += 1;
             } else {
                 stats.added += 1;
@@ -304,7 +311,7 @@ impl FrontmatterIndex {
         let mut state = self.state.lock().unwrap();
         if state.generation == generation && state.applied == applied {
             state.entries = Arc::new(seen);
-            state.unreadable = Arc::new(unreadable);
+            state.unreadable = Arc::new(unread.into_errors());
             if state.stale_marks == stale_marks {
                 state.walked_at = Some(now);
             }
@@ -344,11 +351,13 @@ impl FrontmatterIndex {
         (window, entries.len())
     }
 
-    /// What the index could not read, under [`Errors::Report`]: each folder
+    /// What the index could not read, under [`Errors::Report`](crate::Errors::Report): each folder
     /// the last walk could not list and each file it could not stat (in walk
-    /// order), then each note it listed but could not read. An apply
-    /// replaces the entry for the note it names with what it met. Empty
-    /// under the other [`Errors`] policies.
+    /// order), then each note it listed but could not read, once per path.
+    /// An apply replaces the entry for the note it names with what it met;
+    /// a folder's entry clears on the next sweep. Empty under the other
+    /// [`Errors`](crate::Errors) policies. See
+    /// [`LinkGraph::unreadable`](crate::LinkGraph::unreadable).
     ///
     /// Each path is the corpus folder joined with the corpus-relative path.
     pub fn unreadable(&self) -> Vec<Arc<VfsError>> {
@@ -421,11 +430,16 @@ impl FrontmatterIndex {
         let abs = join_rel(vault_dir, rel);
         // As in the sweep, a listed note that cannot be stamped (a dangling
         // link) is kept with the size of the link and never fresh.
-        let mut unread = None;
+        let mut unread = Unread::new(self.walk.errors, Vec::new());
+        let mut stale = false;
         let parsed = (admission == Admission::Listed).then(|| {
             let (size, mtime) = stamp_listed(vfs, &abs);
-            let (note, e) = parse_one(vfs, self.split, rel, &abs, size, mtime);
-            unread = e.filter(|_| self.walk.errors == Errors::Report);
+            let (note, error) = parse_one(vfs, self.split, rel, &abs, size, mtime);
+            // An apply cannot fail; under `Propagate` the next refresh walks
+            // and does.
+            if let Some(e) = error {
+                stale = unread.note(e).is_err();
+            }
             note
         });
 
@@ -437,10 +451,14 @@ impl FrontmatterIndex {
             return;
         }
         state.applied += 1;
+        if stale {
+            state.walked_at = None;
+            state.stale_marks += 1;
+        }
         // What the apply read replaces what was known about the note.
         let unreadable = Arc::make_mut(&mut state.unreadable);
         unreadable.retain(|e| e.path() != abs);
-        unreadable.extend(unread.map(Arc::new));
+        unreadable.extend(unread.into_errors());
         let entries = Arc::make_mut(&mut state.entries);
         match parsed {
             Some(note) => {

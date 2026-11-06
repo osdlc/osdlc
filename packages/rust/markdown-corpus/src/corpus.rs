@@ -1,7 +1,7 @@
 //! [`Corpus`]: the link graph and the frontmatter index over one corpus root,
 //! loaded in one call.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -230,11 +230,13 @@ impl Corpus {
     /// reports errors.
     pub fn unreadable(&self) -> Vec<Arc<VfsError>> {
         let mut all = self.links.unreadable();
-        for e in self.frontmatter.unreadable() {
-            if !all.iter().any(|known| known.path() == e.path()) {
-                all.push(e);
-            }
-        }
+        let known: HashSet<PathBuf> = all.iter().map(|e| e.path().to_path_buf()).collect();
+        all.extend(
+            self.frontmatter
+                .unreadable()
+                .into_iter()
+                .filter(|e| !known.contains(e.path())),
+        );
         all
     }
 

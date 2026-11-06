@@ -238,8 +238,12 @@ fn a_reporting_graph_keeps_going_past_a_note_it_cannot_read_and_names_it() {
     assert!(g.paths().contains(&"Projects/Beta.md".to_string()));
     assert!(g.outbound("Projects/Beta.md").is_empty(), "nothing read");
     assert_eq!(paths_of(g.unreadable()), vec![beta.clone()]);
-    // Never fresh: the next sweep tries it again, and still reports it.
-    assert_eq!(g.refresh_now(&locked, &c, root()).updated, 1);
+    // Never fresh: the next sweep tries it again, and still reports it,
+    // but a note that is still unreadable is unchanged: no rebuild.
+    let rebuilds = g.rebuilds();
+    let again = g.refresh_now(&locked, &c, root());
+    assert_eq!((again.updated, again.unchanged), (0, 4));
+    assert_eq!(g.rebuilds(), rebuilds);
     assert_eq!(paths_of(g.unreadable()), vec![beta.clone()]);
     // Readable again: read, and no longer reported.
     assert_eq!(g.refresh_now(&*d, &c, root()).updated, 1);
@@ -260,6 +264,29 @@ fn a_reporting_graph_keeps_going_past_a_note_it_cannot_read_and_names_it() {
         matches!(err, WalkError::Io(ref e) if e.path() == beta),
         "{err}"
     );
+}
+
+#[test]
+fn a_file_it_can_neither_stat_nor_read_is_named_once() {
+    let d = linked_vault();
+    let beta = join_rel(root(), "Projects/Beta.md");
+    let locked = hooks::StatHook::denied(&*d, beta.clone());
+    let g = walking(Errors::Report);
+    g.refresh(&locked, &FixedClock::new(0), root());
+    assert_eq!(paths_of(g.unreadable()), vec![beta]);
+}
+
+#[test]
+fn an_apply_that_cannot_read_under_propagate_makes_the_next_refresh_fail() {
+    let d = linked_vault();
+    let beta = join_rel(root(), "Projects/Beta.md");
+    let locked = hooks::StatHook::unreadable(&*d, beta);
+    let (g, c) = (walking(Errors::Propagate), FixedClock::new(0));
+    g.set_watched();
+    g.try_refresh(&*d, &c, root()).unwrap();
+    g.apply_changes(&locked, root(), &["Projects/Beta.md".to_string()]);
+    // Inside the TTL, yet the refresh walks and fails.
+    assert!(g.try_refresh(&locked, &c, root()).is_err());
 }
 
 #[test]
