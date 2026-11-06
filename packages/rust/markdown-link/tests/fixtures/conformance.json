@@ -506,6 +506,68 @@
           5
         ]
       ]
+    },
+    {
+      "name": "unclosed_comment_in_a_line_is_text",
+      "source": "Write <!-- to open a comment.\n\n```\n[[x]]\n```\n`[[y]]`",
+      "stripped": "Write <!-- to open a comment.\n\n   \n     \n   \n       ",
+      "ranges": [
+        [
+          31,
+          52
+        ]
+      ]
+    },
+    {
+      "name": "unclosed_comment_starting_a_line_runs_to_the_end",
+      "source": "<!-- draft\n`[[x]]`",
+      "stripped": "<!-- draft\n`[[x]]`",
+      "ranges": []
+    },
+    {
+      "name": "fence_on_a_list_marker_line",
+      "source": "- ```\n  [[a]]\n  ```\n  [[b]]\n- next",
+      "stripped": "     \n       \n     \n  [[b]]\n- next",
+      "ranges": [
+        [
+          0,
+          19
+        ]
+      ]
+    },
+    {
+      "name": "span_stops_at_a_comment_line",
+      "source": "a `x\n<!-- c -->\n[[y]] `",
+      "stripped": "a `x\n<!-- c -->\n[[y]] `",
+      "ranges": []
+    },
+    {
+      "name": "display_math_stops_at_a_comment_line",
+      "source": "a $$x\n<!-- c -->\n[[y]] $$",
+      "stripped": "a $$x\n<!-- c -->\n[[y]] $$",
+      "ranges": []
+    },
+    {
+      "name": "escaped_dollars_do_not_close_display_math",
+      "source": "$$a\\$$ [[b]] $$",
+      "stripped": "               ",
+      "ranges": [
+        [
+          0,
+          15
+        ]
+      ]
+    },
+    {
+      "name": "link_destination_is_read_as_written",
+      "source": "[a](notes/$x$.md) [b](<https://x>) `c`",
+      "stripped": "[a](notes/$x$.md) [b](<https://x>)    ",
+      "ranges": [
+        [
+          35,
+          38
+        ]
+      ]
     }
   ],
   "parse": [
@@ -1815,6 +1877,37 @@
           "reason": "bracket",
           "at": 0,
           "text": "[[WIP"
+        }
+      ]
+    },
+    {
+      "name": "markdown_link_with_dollars_in_its_url",
+      "body": "[a](notes/$x$.md)",
+      "links": [
+        {
+          "kind": "markdown",
+          "raw": "notes/$x$.md",
+          "target": "notes/$x$",
+          "alias": null,
+          "at": 0,
+          "text": "[a](notes/$x$.md)"
+        }
+      ]
+    },
+    {
+      "name": "abandoned_not_reported_for_an_angled_url",
+      "body": "[[WIP] Fix](<https://example.com>)",
+      "links": []
+    },
+    {
+      "name": "abandoned_an_empty_definition_label_defines_nothing",
+      "body": "[]: x\n\n[[]",
+      "links": [],
+      "abandoned": [
+        {
+          "reason": "unclosed",
+          "at": 7,
+          "text": "[[]"
         }
       ]
     }

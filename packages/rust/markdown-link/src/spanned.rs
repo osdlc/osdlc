@@ -36,8 +36,9 @@ use crate::{Size, is_vault_link_url, md_link_target, parse_inner, parse_inner_se
 pub struct ScanOptions {
     /// Which rules decide what is code. Links in code are not links.
     pub code_rules: CodeRules,
-    /// Skip links inside HTML comments, `<!--` to `-->` or the end of the
-    /// body. Off by default: a comment's links are found.
+    /// Skip links inside HTML comments, `<!--` to `-->`, or to the end of the
+    /// body for an unclosed one that starts a line. Off by default: a
+    /// comment's links are found.
     pub skip_html_comments: bool,
     /// Read a wikilink with no target and a `#` fragment, `[[#Heading]]` or
     /// `[[#^block]]`, as a link to the note it is written in, with an empty
@@ -510,7 +511,8 @@ fn definition_label(line: &[char]) -> Option<String> {
     let indent = line.iter().take(3).take_while(|c| **c == ' ').count();
     let rest = line[indent..].strip_prefix(&['['])?;
     let end = rest.iter().position(|c| matches!(c, '[' | ']' | '\n'))?;
-    (rest[end] == ']' && rest.get(end + 1) == Some(&':')).then(|| normalize_label(&rest[..end]))
+    let label = normalize_label(&rest[..end]);
+    (rest[end] == ']' && rest.get(end + 1) == Some(&':') && !label.is_empty()).then_some(label)
 }
 
 /// A link label as a definition and a reference match it: lowercase, with
@@ -694,6 +696,8 @@ mod tests {
                 "<a:".repeat(n),
                 "- x\n  ".repeat(n),
                 format!("{}{}", "[a".repeat(n), "](x".repeat(n)),
+                "a <!-- ".repeat(n),
+                "](a".repeat(n),
             ] {
                 let started = std::time::Instant::now();
                 assert!(body_links_spanned(&body).is_empty());

@@ -12,7 +12,8 @@ markdown-link does two jobs:
 
 - Find every link in a note: `[[wikilink]]`, `![[embed]]`, relative Markdown
   links, and links in frontmatter values. Code is skipped: code spans,
-  fenced and indented code blocks, math, `<pre>` blocks and autolinks.
+  fenced and indented code blocks, math, `<pre>`, `<script>`, `<style>` and
+  `<textarea>` blocks, and autolinks.
 - Resolve a link target against a set of file paths. Any path suffix reaches
   a file, and when several files match, the one in the linking note's folder
   wins, then the shorter path.
@@ -99,7 +100,7 @@ publishes notes can ask for more:
   `EmptyTarget`, `Unclosed`) and its span, so a renderer can flag link
   syntax it would otherwise leave in the text. A `[[` whose first or second
   `[` opens a Markdown link, such as `[[WIP] Fix](https://example.com)`, is
-  not reported.
+  not reported. An inline link with a title is not read as one yet.
 - `code::code_ranges(text, rules)` returns the byte ranges that are code, and
   `split_alias(inner)` splits a wikilink body into the destination as written
   and the alias, for a caller that must know without scanning again.

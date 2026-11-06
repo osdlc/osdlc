@@ -22,16 +22,21 @@ makes the same changes in its 0.9.0, and both suites read the new cases.
   text, unless it continues a paragraph), math (`$$…$$` in its block, as a
   span stays in its block, and `$…$` on one line), `<pre>`, `<script>`, `<style>` and `<textarea>`
   blocks, and autolinks such as `<https://example.com>`. A fence may now sit
-  in a list item, up to three spaces past the item's text, and ends with the
-  item at a line indented less than the item's text. The lexer follows list
+  in a list item, up to three spaces past the item's text or on the item's
+  first line (`- ````), and ends with the item at a line indented less than
+  the item's text. The lexer follows list
   items far enough for both, so a list item's own text indented four spaces
   is still text. A span or `$$` stops at a line that opens a fence or raw
-  HTML block, and a line starting with `<!--` is a block of its own. The
-  lexer still does not know about block quotes.
+  HTML block, and a line starting with `<!--` is a block of its own. A link's destination (`](url)`) is
+  read as written, so `[a](notes/$x$.md)` is still a link. The lexer still
+  does not know about block quotes.
 - **Comments and code in one pass.** An HTML comment is found in the same
   left-to-right pass as code, whichever starts first. A backtick, `$` or
   fence inside a comment no longer opens code, whether or not
   `skip_html_comments` is on, and `<!--` inside code still opens nothing.
+  An unclosed comment runs to the end of the body only when it starts a
+  line; one later in a line is text, as in CommonMark. Before, any unclosed
+  comment ran to the end.
   A `\` escapes a `$` only when it is not itself escaped.
 - **Markdown link text.** A Markdown link's text may hold brackets that
   balance, so `[[WIP] Fix](fix.md)` is a link. It may not hold `[[`, so the
@@ -42,7 +47,7 @@ makes the same changes in its 0.9.0, and both suites read the new cases.
   `[[Note](Note.md)]`, or a reference link whose label a `[label]: …`
   definition in the body names, such as `[[1]`. An inline link needs a
   destination of the shape the scanner reads, so `[[WIP] x](has space)` is
-  still reported.
+  still reported, and so, for now, is a link with a title.
 
 ### Added
 

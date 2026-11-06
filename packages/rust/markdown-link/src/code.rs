@@ -23,16 +23,20 @@
 //!   or the end of the input.
 //! - **Autolinks**, such as `<https://example.com/[[a]]>`.
 //!
-//! An HTML comment, `<!--` to `-->` or the end of the input, is not code, but
-//! the lexer steps over it: a backtick, `$` or fence inside a comment opens
-//! nothing. Inline, whichever of a span, math, a comment or an autolink
-//! starts first wins, and the text up to its close is read as written. A
-//! line that starts with `<!--` is a block of its own, so indented code may
-//! follow it.
+//! An HTML comment, `<!--` to `-->`, is not code, but the lexer steps over
+//! it: a backtick, `$` or fence inside a comment opens nothing. A comment
+//! with no `-->` runs to the end of the input when it starts a line, and is
+//! text when it does not. Inline, whichever of a span, math, a comment or an
+//! autolink starts first wins, and the text up to its close is read as
+//! written. A link's destination, `](url)` or `](<url>)` with no whitespace,
+//! is read as written too: no code, math or autolink starts in it. A line
+//! that starts with `<!--` is a block of its own, so indented code may follow
+//! it.
 //!
-//! A fence or raw HTML block in a list item ends at a line indented less
-//! than the item's text, as the item does. A span or `$$` does not reach a
-//! line that opens a fence or raw HTML block.
+//! A fence may open on a list item's first line (`- ````). A fence or raw
+//! HTML block in a list item ends at a line indented less than the item's
+//! text, as the item does. A span or `$$` does not reach a line that opens a
+//! fence, a raw HTML block or a comment.
 //!
 //! [`CodeRules::CommonMark`], the default, follows CommonMark for fences and
 //! spans:
@@ -544,7 +548,7 @@ pub fn code_ranges(text: &str, rules: CodeRules) -> Vec<Range<usize>> {
 pub(crate) enum Region {
     /// Code: what [`code_ranges`] returns.
     Code,
-    /// An HTML comment, `<!--` to `-->` or the end of the input.
+    /// An HTML comment, as the module doc describes.
     Comment,
 }
 
@@ -568,6 +572,10 @@ pub(crate) fn regions(text: &str, rules: CodeRules) -> Vec<(Range<usize>, Region
     let mut blocks = Blocks::new(rules);
     let mut spans = Spans::new(rules, bytes);
     let mut math = MathClose::default();
+    let mut destinations = DestinationStop::default();
+    // Whether a `-->` comes after the last `<!--` looked at. Once one does
+    // not, none after it does either.
+    let mut comment_closes = true;
     let mut offset = 0usize;
     while offset < bytes.len() {
         if offset == 0 || bytes[offset - 1] == b'\n' {
@@ -583,7 +591,7 @@ pub(crate) fn regions(text: &str, rules: CodeRules) -> Vec<(Range<usize>, Region
         let start = offset;
         let (region, end) = match bytes[offset] {
             b'`' => {
-                let (run, close) = spans.close_in(offset, &|line| blocks.opens_code(line));
+                let (run, close) = spans.close_in(offset, &|line| blocks.opens_block(line));
                 match close {
                     Some(close) => (Region::Code, close + run),
                     None => {
@@ -602,10 +610,28 @@ pub(crate) fn regions(text: &str, rules: CodeRules) -> Vec<(Range<usize>, Region
                 }
             }
             b'<' if bytes[offset..].starts_with(b"<!--") => {
-                let end = text[offset + 4..]
-                    .find("-->")
-                    .map_or(bytes.len(), |at| offset + 4 + at + 3);
-                (Region::Comment, end)
+                let close = if comment_closes {
+                    text[offset + 4..].find("-->")
+                } else {
+                    None
+                };
+                comment_closes = close.is_some();
+                match close {
+                    Some(at) => (Region::Comment, offset + 4 + at + 3),
+                    // An unclosed comment that starts a line runs to the
+                    // end of the input. One later in a line is text.
+                    None if starts_line(bytes, offset) => (Region::Comment, bytes.len()),
+                    None => {
+                        offset += 1;
+                        continue;
+                    }
+                }
+            }
+            // A link's destination is read as written: no code, math or
+            // autolink starts in it.
+            b']' if bytes.get(offset + 1) == Some(&b'(') => {
+                offset = destinations.end(bytes, offset + 1).unwrap_or(offset + 1);
+                continue;
             }
             b'<' => match autolink_end(bytes, offset) {
                 Some(end) => (Region::Code, end),
@@ -730,12 +756,19 @@ impl Blocks {
         } else if let Some((marker, text)) = list_marker(rest) {
             let (spaces_end, text_at) = indent(line, width + marker, column + marker);
             let gap = spaces_end - (column + marker);
-            self.items.push(if text_at == line.len() || gap > 4 {
+            let item = if text_at == line.len() || gap > 4 {
                 column + marker + 1
             } else {
                 spaces_end
-            });
+            };
+            self.items.push(item);
             self.paragraph = text;
+            // A fence may open on the item's first line: `- ````.
+            if gap <= 4 && self.fences.line(&line[text_at..]) == FenceLine::Marker {
+                self.base = item;
+                self.paragraph = false;
+                return true;
+            }
         } else {
             self.paragraph = true;
         }
@@ -753,14 +786,17 @@ impl Blocks {
             .unwrap_or(0)
     }
 
-    /// Whether `line`, read as the next line of a paragraph, opens a fence or
-    /// a raw HTML block: where an inline span or math must stop.
-    fn opens_code(&self, line: &[u8]) -> bool {
+    /// Whether `line`, read as the next line of a paragraph, opens a fence, a
+    /// raw HTML block or an HTML comment block: where an inline span or math
+    /// must stop.
+    fn opens_block(&self, line: &[u8]) -> bool {
         let line = line.strip_suffix(b"\r").unwrap_or(line);
         let (column, width) = indent(line, 0, 0);
         let rest = &line[width..];
         column - self.base_at(column) <= 3
-            && (opens_fence(rest, self.rules).is_some() || opens_raw_html(rest))
+            && (opens_fence(rest, self.rules).is_some()
+                || opens_raw_html(rest)
+                || rest.starts_with(b"<!--"))
     }
 
     /// Whether `rest`, a line from its first character that is not a space
@@ -878,9 +914,9 @@ fn math_end(
     inline: &mut MathClose,
 ) -> Result<usize, usize> {
     if bytes.get(at + 1) == Some(&b'$') {
-        let close = spans.in_block(at + 2, &|line| blocks.opens_code(line), |mut at| {
+        let close = spans.in_block(at + 2, &|line| blocks.opens_block(line), |mut at| {
             while at < bytes.len() && bytes[at] != b'\n' {
-                if bytes[at..].starts_with(b"$$") {
+                if bytes[at..].starts_with(b"$$") && !escaped(bytes, at) {
                     return Ok(at);
                 }
                 at += 1;
@@ -926,6 +962,51 @@ impl MathClose {
         }
         self.none_until = Some(at);
         None
+    }
+}
+
+/// Whether only spaces and tabs come before `at` on its line.
+fn starts_line(bytes: &[u8], at: usize) -> bool {
+    let before = bytes[..at]
+        .iter()
+        .rev()
+        .take_while(|b| matches!(b, b' ' | b'\t'))
+        .count();
+    at == before || bytes[at - before - 1] == b'\n'
+}
+
+/// Finds where a link destination ends, for a scan that asks at positions
+/// that only move forward.
+#[derive(Debug, Default)]
+struct DestinationStop {
+    /// `(from, stop)`: the first `)`, `>` or whitespace at or after `from` is
+    /// at `stop`.
+    last: Option<(usize, usize)>,
+}
+
+impl DestinationStop {
+    /// The index just past the destination `(url)` or `(<url>)` whose `(` is
+    /// at `at`, the URL holding no `)`, `>` or whitespace: the shape the link
+    /// scanner reads.
+    fn end(&mut self, bytes: &[u8], at: usize) -> Option<usize> {
+        let angled = bytes.get(at + 1) == Some(&b'<');
+        let from = at + 1 + usize::from(angled);
+        let stop = match self.last {
+            Some((start, stop)) if (start..=stop).contains(&from) => stop,
+            _ => {
+                let stop = (from..bytes.len())
+                    .find(|&k| matches!(bytes[k], b')' | b'>') || bytes[k].is_ascii_whitespace())
+                    .unwrap_or(bytes.len());
+                self.last = Some((from, stop));
+                stop
+            }
+        };
+        let close = if angled {
+            (bytes.get(stop) == Some(&b'>')).then_some(stop + 1)?
+        } else {
+            stop
+        };
+        (bytes.get(close) == Some(&b')')).then_some(close + 1)
     }
 }
 

@@ -18,7 +18,10 @@ import {
 export interface ScanOptions {
   /** Which rules decide what is code. Default `'commonmark'`. */
   codeRules?: CodeRules
-  /** Skip links inside HTML comments, `<!--` to `-->` or the end. Default `false`. */
+  /**
+   * Skip links inside HTML comments, `<!--` to `-->`, or to the end for an
+   * unclosed one that starts a line. Default `false`.
+   */
   skipHtmlComments?: boolean
   /**
    * Read `[[#Heading]]` or `[[#^block]]` as a link to the note it is written
@@ -402,9 +405,8 @@ class Brackets {
     let end = i + 1
     while (end < chars.length && chars[end] !== '[' && chars[end] !== ']' && chars[end] !== '\n')
       end++
-    if (chars[end] === ']' && chars[end + 1] === ':') {
-      this.labels.add(normalizeLabel(chars.slice(i + 1, end)))
-    }
+    const label = normalizeLabel(chars.slice(i + 1, end))
+    if (chars[end] === ']' && chars[end + 1] === ':' && label !== '') this.labels.add(label)
   }
 }
 

@@ -6,7 +6,8 @@
  * In short, code is fenced code, indented code, inline code spans, math
  * (`$$…$$` in its block and `$…$` on one line), raw HTML blocks (`<pre>`, `<script>`, `<style>`,
  * `<textarea>`) and autolinks. An HTML comment is not code, but a backtick,
- * `$` or fence inside one opens nothing. `'commonmark'` (the default)
+ * `$` or fence inside one opens nothing; an unclosed one runs to the end only
+ * when it starts a line. A link destination, `](url)`, is read as written. `'commonmark'` (the default)
  * follows CommonMark for fences and spans, and `'skill-export'` keeps the
  * looser rules of `skill-export`'s renderer. The lexer reads one line at a
  * time, following list items far enough to know where their text starts. It
@@ -30,6 +31,9 @@ const TILDE = 126
 const DOLLAR = 36
 const LESS = 60
 const GREATER = 62
+const OPEN_PAREN = 40
+const CLOSE_PAREN = 41
+const CLOSE_BRACKET = 93
 
 interface FenceRun {
   char: number
@@ -387,7 +391,7 @@ export function codeRanges(text: string, rules: CodeRules): TextRange[] {
     .map(({ start, end }) => ({ start, end }))
 }
 
-/** A range of `regions`: code, or an HTML comment (`<!--` to `-->` or the end). */
+/** A range of `regions`: code, or an HTML comment, as the module doc describes. */
 export interface Region extends TextRange {
   kind: 'code' | 'comment'
 }
@@ -414,6 +418,10 @@ export function regions(text: string, rules: CodeRules): Region[] {
   const blocks = new Blocks(rules)
   const spans = new Spans(rules, text)
   const math = new MathClose()
+  const destinations = new DestinationStop()
+  // Whether a `-->` comes after the last `<!--` looked at. Once one does not,
+  // none after it does either.
+  let commentCloses = true
   let offset = 0
   while (offset < text.length) {
     if (offset === 0 || text.charCodeAt(offset - 1) === NEWLINE) {
@@ -428,7 +436,7 @@ export function regions(text: string, rules: CodeRules): Region[] {
     const start = offset
     const c = text.charCodeAt(offset)
     if (c === BACKTICK) {
-      const [run, close] = spans.close(offset, (from, to) => blocks.opensCode(text, from, to))
+      const [run, close] = spans.close(offset, (from, to) => blocks.opensBlock(text, from, to))
       if (close === null) {
         offset += run
         continue
@@ -444,9 +452,23 @@ export function regions(text: string, rules: CodeRules): Region[] {
       offset = found.end
       push(start, offset, 'code')
     } else if (c === LESS && text.startsWith('<!--', offset)) {
-      const close = text.indexOf('-->', offset + 4)
-      offset = close === -1 ? text.length : close + 3
+      const close: number = commentCloses ? text.indexOf('-->', offset + 4) : -1
+      commentCloses = close !== -1
+      if (close !== -1) {
+        offset = close + 3
+      } else if (startsLine(text, offset)) {
+        // An unclosed comment that starts a line runs to the end of the
+        // input. One later in a line is text.
+        offset = text.length
+      } else {
+        offset++
+        continue
+      }
       push(start, offset, 'comment')
+    } else if (c === CLOSE_BRACKET && text.charCodeAt(offset + 1) === OPEN_PAREN) {
+      // A link's destination is read as written: no code, math or autolink
+      // starts in it.
+      offset = destinations.end(text, offset + 1) ?? offset + 1
     } else if (c === LESS) {
       const end = autolinkEnd(text, offset)
       if (end === null) {
@@ -557,8 +579,16 @@ class Blocks {
     } else if (marker !== null) {
       const markerEnd = column + marker.length
       const [spacesEnd, textAt] = indent(s, rest + marker.length, end, markerEnd)
-      this.items.push(textAt === end || spacesEnd - markerEnd > 4 ? markerEnd + 1 : spacesEnd)
+      const gap = spacesEnd - markerEnd
+      const item = textAt === end || gap > 4 ? markerEnd + 1 : spacesEnd
+      this.items.push(item)
       this.paragraph = marker.text
+      // A fence may open on the item's first line: `- ````.
+      if (gap <= 4 && this.fences.line(s, textAt, end) === 'marker') {
+        this.base = item
+        this.paragraph = false
+        return true
+      }
     } else {
       this.paragraph = true
     }
@@ -578,14 +608,17 @@ class Blocks {
 
   /**
    * Whether the line `s[start, end)`, read as the next line of a paragraph,
-   * opens a fence or a raw HTML block: where an inline span or math must stop.
+   * opens a fence, a raw HTML block or an HTML comment block: where an inline
+   * span or math must stop.
    */
-  opensCode(s: string, start: number, lineEndAt: number): boolean {
+  opensBlock(s: string, start: number, lineEndAt: number): boolean {
     const end = lineEndAt > start && s.charCodeAt(lineEndAt - 1) === CR ? lineEndAt - 1 : lineEndAt
     const [column, rest] = indent(s, start, end, 0)
     return (
       column - this.baseAt(column) <= 3 &&
-      (opensFence(s, rest, end, this.rules) !== null || opensRawHtml(s, rest, end))
+      (opensFence(s, rest, end, this.rules) !== null ||
+        opensRawHtml(s, rest, end) ||
+        s.startsWith('<!--', rest))
     )
   }
 
@@ -711,11 +744,11 @@ function mathEnd(
   if (s[at + 1] === '$') {
     const found = spans.inBlock(
       at + 2,
-      (from, to) => blocks.opensCode(s, from, to),
+      (from, to) => blocks.opensBlock(s, from, to),
       (from) => {
         let i = from
         while (i < s.length && s.charCodeAt(i) !== NEWLINE) {
-          if (s.startsWith('$$', i)) return { found: i }
+          if (s.startsWith('$$', i) && !escaped(s, i)) return { found: i }
           i++
         }
         return { lineEnd: i }
@@ -759,6 +792,54 @@ class MathClose {
     }
     this.noneUntil = at
     return null
+  }
+}
+
+/** Whether only spaces and tabs come before `at` on its line. */
+function startsLine(s: string, at: number): boolean {
+  let i = at
+  while (i > 0 && (s[i - 1] === ' ' || s[i - 1] === '\t')) i--
+  return i === 0 || s.charCodeAt(i - 1) === NEWLINE
+}
+
+/** Whether a UTF-16 unit is ASCII whitespace, as Rust's `u8::is_ascii_whitespace` reads it. */
+function isAsciiWhitespace(c: number): boolean {
+  return c === SPACE || c === TAB || c === NEWLINE || c === 12 || c === CR
+}
+
+/**
+ * Finds where a link destination ends, for a scan that asks at positions
+ * that only move forward.
+ */
+class DestinationStop {
+  /** The first `)`, `>` or whitespace at or after `from` is at `stop`. */
+  private from = -1
+  private stop = -1
+
+  /**
+   * The index just past the destination `(url)` or `(<url>)` whose `(` is at
+   * `at`, the URL holding no `)`, `>` or whitespace: the shape the link
+   * scanner reads.
+   */
+  end(s: string, at: number): number | null {
+    const angled = s.charCodeAt(at + 1) === LESS
+    const from = at + 1 + (angled ? 1 : 0)
+    if (!(from >= this.from && from <= this.stop)) {
+      let k = from
+      while (k < s.length) {
+        const c = s.charCodeAt(k)
+        if (c === CLOSE_PAREN || c === GREATER || isAsciiWhitespace(c)) break
+        k++
+      }
+      this.from = from
+      this.stop = k
+    }
+    let close = this.stop
+    if (angled) {
+      if (s.charCodeAt(close) !== GREATER) return null
+      close++
+    }
+    return s.charCodeAt(close) === CLOSE_PAREN ? close + 1 : null
   }
 }
 

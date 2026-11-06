@@ -96,7 +96,8 @@ bodyLinksSpanned('See [[Note#h|alias]] and `[[not a link]]`')
   in the text. The reasons (`AbandonReason`) are `'bracket'` (a `[` or `]`
   before `]]`), `'code'` (the target is only code), `'empty-target'` and
   `'unclosed'`. A `[[` whose first or second `[` opens a Markdown link, such
-  as `[[WIP] Fix](https://example.com)`, is not one. Its result is a
+  as `[[WIP] Fix](https://example.com)`, is not one. An inline link with a
+  title is not read as one yet. Its result is a
   `BodyScan`.
 - Display text: `displayText` replaces each wikilink and embed with what a
   reader sees, its alias or else its target. An embed's `|300` or `|300x200`
