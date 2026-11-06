@@ -100,7 +100,9 @@ publishes notes can ask for more:
   `EmptyTarget`, `Unclosed`) and its span, so a renderer can flag link
   syntax it would otherwise leave in the text. A `[[` whose first or second
   `[` opens a Markdown link, such as `[[WIP] Fix](https://example.com)`, is
-  not reported. An inline link with a title is not read as one yet.
+  not reported.
+- `ScanOptions::all_markdown_links` reads every relative Markdown link,
+  whatever its target, and each markdown link carries its `title`.
 - `code::code_ranges(text, rules)` returns the byte ranges that are code, and
   `split_alias(inner)` splits a wikilink body into the destination as written
   and the alias, for a caller that must know without scanning again.
@@ -121,6 +123,7 @@ let options = ScanOptions {
     code_rules: CodeRules::SkillExport,
     skip_html_comments: true,
     self_links: true,
+    all_markdown_links: false,
 };
 let links = body_links_spanned_with("<!-- [[Draft]] --> [[Plan#^step2]]", &options);
 assert_eq!(links.len(), 1);

@@ -1330,7 +1330,8 @@ mod tests {
     fn relative_markdown_links_count_absolute_urls_do_not() {
         let links = body_links("[a](Notes/x.md) [b](https://example.com/y.md) [c](<sp ace.md>)");
         let targets: Vec<_> = links.into_iter().map(|l| l.target).collect();
-        assert_eq!(targets, vec!["Notes/x"]);
+        // An angle-bracketed URL may hold a space.
+        assert_eq!(targets, vec!["Notes/x", "sp ace"]);
     }
 
     #[test]
