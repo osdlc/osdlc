@@ -13,13 +13,13 @@
  * standing in.
  */
 
-import { statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { isAbsolute, join, resolve as resolvePath } from 'node:path'
 
 import { checkoutRoot, scanForCheckouts, type Git } from '@osdlc/typed-git'
 
 import { emptyScan, type ScanStats, type UnresolvedEntry } from './types.ts'
+import { isDir } from './util.ts'
 
 export interface ResolveOptions {
   /** Base for a relative entry. Defaults to the process's cwd. */
@@ -46,14 +46,6 @@ export function expandTilde(path: string, home: string = homedir()): string {
   if (path === '~') return home
   if (path.startsWith('~/')) return join(home, path.slice(2))
   return path
-}
-
-function isDir(path: string): boolean {
-  try {
-    return statSync(path).isDirectory()
-  } catch {
-    return false
-  }
 }
 
 /** True iff `dir` is itself the root of a checkout — main or linked worktree. */

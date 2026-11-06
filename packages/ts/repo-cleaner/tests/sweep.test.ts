@@ -5,7 +5,9 @@
  * ancestor, does this worktree hold uncommitted work — are git's answers, and
  * a mock would only assert that we know what we already wrote down.
  *
- * `gh` is off except in the merged-PR evidence suite, which cans its answers.
+ * Pull requests are looked up only with `remote`, and only the suites that
+ * pass a canned `gh` turn it on; they sweep `offline`, as the old default did,
+ * so nothing is fetched behind the fixture's back.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
@@ -26,11 +28,27 @@ import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture, makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 
 import { cannedGh, commit, git } from './helpers.ts'
-import { localDeleteCommand, remoteDeleteCommand } from '../src/branches.ts'
+import { HELD_BY_WORKTREE, localDeleteCommand, remoteDeleteCommand } from '../src/branches.ts'
 import { renderJson, renderRepo, renderScan, renderText } from '../src/render.ts'
 import { resolveEntries } from '../src/resolve.ts'
-import { holdFreedBranches, sweepRepo, sweepRepos } from '../src/sweep.ts'
-import type { RepoSweep, SweepItem } from '../src/types.ts'
+import {
+  holdFreedBranches,
+  inspectWorktree,
+  sweep,
+  sweepRepo,
+  sweptWith,
+  type SweepOptions,
+} from '../src/sweep.ts'
+import {
+  KINDS,
+  RepoCleanerError,
+  totalOf,
+  type Bucket,
+  type Kind,
+  type RepoSweep,
+  type Row,
+} from '../src/types.ts'
+import { worktreeRemoveCommand } from '../src/worktrees.ts'
 
 /**
  * A repository with one of each interesting condition:
@@ -96,68 +114,106 @@ afterAll(() => {
   rmSync(container, { recursive: true, force: true })
 }, HOOK_TIMEOUT_MS)
 
-function itemsOf(items: SweepItem[], category: string): Map<string, SweepItem> {
-  return new Map(items.filter((item) => item.category === category).map((item) => [item.id, item]))
+type RowOf<K extends Kind> = Extract<Row, { kind: K }>
+
+/** The rows of one kind, by name. */
+function rowsOf<K extends Kind>(rows: readonly Row[], kind: K): Map<string, RowOf<K>> {
+  return new Map(
+    rows.filter((row): row is RowOf<K> => row.kind === kind).map((row) => [row.name, row]),
+  )
 }
 
-describe('sweepRepo', () => {
+/** Sweep the one repository at `path` and return its sweep. */
+function sweepOne(path: string, opts: SweepOptions): RepoSweep {
+  const result = sweep([path], opts)
+  expect(result.repos).toHaveLength(1)
+  return result.repos[0]!
+}
+
+/** Assert `fn` throws a {@link RepoCleanerError} with `code`, and return it. */
+function refusal(fn: () => unknown, code: RepoCleanerError['code']): RepoCleanerError {
+  let caught: unknown
+  try {
+    fn()
+  } catch (err) {
+    caught = err
+  }
+  expect(caught).toBeInstanceOf(RepoCleanerError)
+  expect((caught as RepoCleanerError).code).toBe(code)
+  return caught as RepoCleanerError
+}
+
+describe('sweep', () => {
   test('discovers the repository and its default branch', () => {
-    const sweep = sweepRepo(root, { noProvider: true, cwd: root })
-    expect(sweep.error).toBeNull()
-    expect(sweep.repo?.mainBranch).toBe('main')
-    expect(sweep.repo?.remote).toBeNull()
-    expect(sweep.repo?.provider).toBeNull()
+    const swept = sweepOne(root, { cwd: root })
+    expect(swept.error).toBeNull()
+    expect(swept.repo?.mainBranch).toBe('main')
+    expect(swept.repo?.remote).toBeNull()
+    expect(swept.repo?.provider).toBeNull()
   })
 
   test('a branch merged into main is deletable on ancestry alone', () => {
-    const sweep = sweepRepo(root, { noProvider: true, cwd: root })
-    const branch = itemsOf(sweep.items, 'local_branch').get('merged-branch')
-    expect(branch?.classification).toBe('safe-to-delete')
-    expect(branch?.reason).toBe('fully merged into main')
+    const swept = sweepOne(root, { cwd: root })
+    const branch = rowsOf(swept.rows, 'branch').get('merged-branch')
+    expect(branch?.id).toBe('branch:merged-branch')
+    expect(branch?.verdict).toBe('delete')
+    expect(branch?.action).toBe('delete')
+    expect(branch?.why).toBe('fully merged into main')
     const sha = git(['rev-parse', 'merged-branch'], root)
     expect(branch?.commands).toEqual([`git update-ref -d refs/heads/merged-branch ${sha}`])
-    expect(branch?.facts['ancestor_of_remote_main']).toBe(true)
+    expect(branch?.evidence.ancestorOfRemoteMain).toBe(true)
     // No remote, so the local default branch is the measure.
-    expect(branch?.facts['compare_against']).toBe('main')
+    expect(branch?.evidence.compareAgainst).toBe('main')
   })
 
   test('a diverged branch with no other signal is left for a person', () => {
-    const sweep = sweepRepo(root, { noProvider: true, cwd: root })
-    const branch = itemsOf(sweep.items, 'local_branch').get('live-branch')
-    expect(branch?.classification).toBe('needs-investigation')
-    expect(branch?.commands).toEqual([])
-    // Parts, not a sentence: a host appends its own before rendering.
-    expect(branch!.investigationParts.length).toBeGreaterThan(1)
+    const swept = sweepOne(root, { cwd: root })
+    const branch = rowsOf(swept.rows, 'branch').get('live-branch')
+    expect(branch?.verdict).toBe('review')
+    // A review row carries the command of its action; it runs only when picked.
+    expect(branch?.action).toBe('delete')
+    expect(branch?.commands).toEqual([
+      localDeleteCommand('live-branch', git(['rev-parse', 'live-branch'], root)),
+    ])
+    // Notes, not a sentence: a host appends its own before rendering.
+    expect(branch!.notes.length).toBeGreaterThan(1)
   })
 
   test('the default branch and branches held by a worktree are kept', () => {
-    const sweep = sweepRepo(root, { noProvider: true, cwd: root })
-    const branches = itemsOf(sweep.items, 'local_branch')
-    expect(branches.get('main')?.reason).toBe('default branch')
-    expect(branches.get('wt-clean')?.reason).toBe(
+    const swept = sweepOne(root, { cwd: root })
+    const branches = rowsOf(swept.rows, 'branch')
+    expect(branches.get('main')?.verdict).toBe('keep')
+    expect(branches.get('main')?.why).toBe('default branch')
+    expect(branches.get('wt-clean')?.verdict).toBe('keep')
+    expect(branches.get('wt-clean')?.why).toBe(
       'checked out in a worktree (handle via that worktree)',
     )
   })
 
-  test('a worktree with uncommitted work is never proposed for removal', () => {
-    const sweep = sweepRepo(root, { noProvider: true, cwd: root })
-    const dirty = itemsOf(sweep.items, 'worktree').get(join(root, 'wt', 'dirty'))
-    expect(dirty?.classification).toBe('needs-investigation')
-    expect(dirty?.facts['dirty_files']).toBe(1)
-    expect(dirty?.commands).toEqual([])
+  test('a worktree with uncommitted work is never proposed for deletion outright', () => {
+    const swept = sweepOne(root, { cwd: root })
+    const path = join(root, 'wt', 'dirty')
+    const dirty = rowsOf(swept.rows, 'worktree').get(path)
+    expect(dirty?.id).toBe(`worktree:${path}`)
+    expect(dirty?.verdict).toBe('review')
+    expect(dirty?.evidence.dirtyFiles).toBe(1)
+    // Its remove is forced, so it runs only when picked and allowed discard-changes.
+    expect(dirty?.action).toBe('remove')
+    expect(dirty?.risks).toContain('discard-changes')
+    expect(dirty?.commands).toEqual([worktreeRemoveCommand(root, path, { force: true })])
   })
 
   test("the caller's own worktree is kept", () => {
     const cwd = join(root, 'wt', 'clean')
-    const sweep = sweepRepo(root, { noProvider: true, cwd })
-    expect(itemsOf(sweep.items, 'worktree').get(cwd)?.reason).toBe("current session's worktree")
+    const swept = sweepOne(root, { cwd })
+    expect(rowsOf(swept.rows, 'worktree').get(cwd)?.why).toBe("current session's worktree")
   })
 
   test('a caller in a subdirectory whose name starts with `..` is still in its worktree', () => {
     const cwd = join(root, 'wt', 'clean', '..scratch')
     mkdirSync(cwd)
-    const sweep = sweepRepo(root, { noProvider: true, cwd })
-    expect(itemsOf(sweep.items, 'worktree').get(join(root, 'wt', 'clean'))?.reason).toBe(
+    const swept = sweepOne(root, { cwd })
+    expect(rowsOf(swept.rows, 'worktree').get(join(root, 'wt', 'clean'))?.why).toBe(
       "current session's worktree",
     )
   })
@@ -165,8 +221,8 @@ describe('sweepRepo', () => {
   test('a caller who reaches its worktree through a symlink is still in its worktree', () => {
     const link = join(root, 'link-to-clean')
     symlinkSync(join(root, 'wt', 'clean'), link)
-    const sweep = sweepRepo(root, { noProvider: true, cwd: link })
-    expect(itemsOf(sweep.items, 'worktree').get(join(root, 'wt', 'clean'))?.reason).toBe(
+    const swept = sweepOne(root, { cwd: link })
+    expect(rowsOf(swept.rows, 'worktree').get(join(root, 'wt', 'clean'))?.why).toBe(
       "current session's worktree",
     )
   })
@@ -174,8 +230,8 @@ describe('sweepRepo', () => {
   test('a caller in a sibling whose name extends the worktree name is not in the worktree', () => {
     const cwd = join(root, 'wt', 'clean-old')
     mkdirSync(cwd, { recursive: true })
-    const sweep = sweepRepo(root, { noProvider: true, cwd })
-    expect(itemsOf(sweep.items, 'worktree').get(join(root, 'wt', 'clean'))?.reason).not.toBe(
+    const swept = sweepOne(root, { cwd })
+    expect(rowsOf(swept.rows, 'worktree').get(join(root, 'wt', 'clean'))?.why).not.toBe(
       "current session's worktree",
     )
   })
@@ -186,8 +242,8 @@ describe('sweepRepo', () => {
     const link = join(root, 'wt', 'clean', 'escape-link')
     symlinkSync(outside, link)
     try {
-      const sweep = sweepRepo(root, { noProvider: true, cwd: link })
-      expect(itemsOf(sweep.items, 'worktree').get(join(root, 'wt', 'clean'))?.reason).not.toBe(
+      const swept = sweepOne(root, { cwd: link })
+      expect(rowsOf(swept.rows, 'worktree').get(join(root, 'wt', 'clean'))?.why).not.toBe(
         "current session's worktree",
       )
     } finally {
@@ -202,8 +258,8 @@ describe('sweepRepo', () => {
     symlinkSync(join(clean, 'deep'), join(root, 'deep-link'))
     // `<root>/sub` (the text-folded answer) does not exist; the real one is `<clean>/sub`.
     const cwd = `${root}/deep-link/../sub`
-    const sweep = sweepRepo(root, { noProvider: true, cwd })
-    expect(itemsOf(sweep.items, 'worktree').get(clean)?.reason).toBe("current session's worktree")
+    const swept = sweepOne(root, { cwd })
+    expect(rowsOf(swept.rows, 'worktree').get(clean)?.why).toBe("current session's worktree")
   })
 
   test('a caller whose cwd no longer exists, below a symlinked parent, is still placed', () => {
@@ -211,8 +267,8 @@ describe('sweepRepo', () => {
     const via = join(root, 'link-to-clean-2')
     symlinkSync(clean, via)
     const cwd = join(via, 'gone')
-    const sweep = sweepRepo(root, { noProvider: true, cwd })
-    expect(itemsOf(sweep.items, 'worktree').get(clean)?.reason).toBe("current session's worktree")
+    const swept = sweepOne(root, { cwd })
+    expect(rowsOf(swept.rows, 'worktree').get(clean)?.why).toBe("current session's worktree")
   })
 
   test('a relative cwd that does not exist is placed against the process cwd', () => {
@@ -220,8 +276,8 @@ describe('sweepRepo', () => {
     const before = process.cwd()
     process.chdir(join(root, 'wt'))
     try {
-      const sweep = sweepRepo(root, { noProvider: true, cwd: join('clean', 'gone') })
-      expect(itemsOf(sweep.items, 'worktree').get(clean)?.reason).toBe("current session's worktree")
+      const swept = sweepOne(root, { cwd: join('clean', 'gone') })
+      expect(rowsOf(swept.rows, 'worktree').get(clean)?.why).toBe("current session's worktree")
     } finally {
       process.chdir(before)
     }
@@ -232,67 +288,190 @@ describe('sweepRepo', () => {
     const before = process.cwd()
     process.chdir(clean)
     try {
-      const sweep = sweepRepo(root, { noProvider: true, cwd: '' })
-      expect(itemsOf(sweep.items, 'worktree').get(clean)?.reason).toBe("current session's worktree")
+      const swept = sweepOne(root, { cwd: '' })
+      expect(rowsOf(swept.rows, 'worktree').get(clean)?.why).toBe("current session's worktree")
     } finally {
       process.chdir(before)
     }
   })
 
-  test('each row names the authorizations its delete needs', () => {
-    const sweep = sweepRepo(root, { noProvider: true, cwd: root })
-    const branches = itemsOf(sweep.items, 'local_branch')
-    const worktrees = itemsOf(sweep.items, 'worktree')
+  test('each row names the risks its delete carries', () => {
+    const swept = sweepOne(root, { cwd: root })
+    const branches = rowsOf(swept.rows, 'branch')
+    const worktrees = rowsOf(swept.rows, 'worktree')
 
-    expect(branches.get('merged-branch')?.requires).toEqual([])
+    expect(branches.get('merged-branch')?.risks).toEqual([])
     const live = branches.get('live-branch')
-    expect(live?.requires).toEqual(['abandon-unmerged'])
-    expect(live?.facts['unique_commits']).toBe(1)
+    expect(live?.risks).toEqual(['abandon-unmerged'])
+    expect(live?.evidence.uniqueCommits).toBe(1)
 
-    expect(worktrees.get(join(root, 'wt', 'dirty'))?.requires).toEqual(['discard-changes'])
+    expect(worktrees.get(join(root, 'wt', 'dirty'))?.risks).toEqual(['discard-changes'])
     const ahead = worktrees.get(join(root, 'wt', 'ahead'))
-    expect(ahead?.requires).toEqual(['abandon-unmerged'])
-    expect(ahead?.facts['unique_commits']).toBe(1)
-    expect(worktrees.get(join(root, 'wt', 'clean'))?.requires).toEqual([])
+    expect(ahead?.risks).toEqual(['abandon-unmerged'])
+    expect(ahead?.evidence.uniqueCommits).toBe(1)
+    expect(worktrees.get(join(root, 'wt', 'clean'))?.risks).toEqual([])
   })
 
   test('rows kept for structure are not deletable', () => {
-    const sweep = sweepRepo(root, { noProvider: true, cwd: join(root, 'wt', 'clean') })
-    const branches = itemsOf(sweep.items, 'local_branch')
-    const worktrees = itemsOf(sweep.items, 'worktree')
-    expect(branches.get('main')?.deletable).toBe(false)
-    expect(branches.get('wt-clean')?.deletable).toBe(false)
-    expect(worktrees.get(root)?.deletable).toBe(false)
-    expect(worktrees.get(join(root, 'wt', 'clean'))?.deletable).toBe(false)
-    expect(branches.get('live-branch')?.deletable).toBe(true)
-    for (const item of sweep.items.filter((i) => !i.deletable)) expect(item.requires).toEqual([])
+    const swept = sweepOne(root, { cwd: join(root, 'wt', 'clean') })
+    const branches = rowsOf(swept.rows, 'branch')
+    const worktrees = rowsOf(swept.rows, 'worktree')
+    expect(branches.get('main')?.action).toBeNull()
+    expect(branches.get('wt-clean')?.action).toBeNull()
+    expect(worktrees.get(root)?.action).toBeNull()
+    expect(worktrees.get(join(root, 'wt', 'clean'))?.action).toBeNull()
+    expect(branches.get('live-branch')!.action).not.toBeNull()
+    for (const row of swept.rows.filter((r) => r.action === null)) expect(row.risks).toEqual([])
   })
 
-  test('scope selects categories', () => {
-    const sweep = sweepRepo(root, { noProvider: true, cwd: root, scope: ['worktrees'] })
-    expect(new Set(sweep.items.map((item) => item.category))).toEqual(new Set(['worktree']))
+  test('only selects kinds', () => {
+    const swept = sweepOne(root, { cwd: root, only: ['worktree'] })
+    expect(new Set(swept.rows.map((row) => row.kind))).toEqual(new Set(['worktree']))
   })
 
   test('a path that is not a repository is an error row, not a throw', () => {
-    const sweep = sweepRepo(container, { noProvider: true, cwd: container })
-    expect(sweep.error).toContain('not a git repository')
-    expect(sweep.items).toEqual([])
+    // `sweep` resolves a container to the checkouts under it, so the per-repo
+    // engine is what meets a path that is no repository.
+    const swept = sweepRepo(container, {
+      only: ['worktree', 'branch'],
+      provider: 'none',
+      fetch: false,
+      cwd: container,
+    })
+    expect(swept.error).toContain('not a git repository')
+    expect(swept.rows).toEqual([])
   })
 
   test('the sweep mutates nothing', () => {
     const before = git(['for-each-ref', '--format=%(refname) %(objectname)', 'refs/'], root)
     const beforeStatus = git(['status', '--porcelain'], root)
-    sweepRepo(root, { noProvider: true, cwd: root })
+    sweep([root], { cwd: root })
     expect(git(['for-each-ref', '--format=%(refname) %(objectname)', 'refs/'], root)).toBe(before)
     expect(git(['status', '--porcelain'], root)).toBe(beforeStatus)
+  })
+})
+
+describe('contradictory options', () => {
+  const url = 'https://example.invalid/acme/widget.git'
+
+  /** Both `sweptWith` and `sweep` refuse `targets` with `opts` as a conflict, before reading anything. */
+  function refusesBoth(targets: string[], opts: SweepOptions): void {
+    refusal(() => sweptWith(targets, opts), 'conflict')
+    refusal(() => sweep(targets, opts), 'conflict')
+  }
+
+  test('offline without remote', () => {
+    refusesBoth([root], { cwd: root, offline: true })
+  })
+
+  test('a provider without remote', () => {
+    refusesBoth([root], { cwd: root, provider: 'github' })
+    refusesBoth([root], { cwd: root, provider: 'none' })
+  })
+
+  test('remote with an only that leaves remote out', () => {
+    refusesBoth([root], { cwd: root, remote: true, only: ['branch'] })
+    refusesBoth([root], { cwd: root, remote: true, only: ['worktree', 'branch'] })
+  })
+
+  test('a URL target mixed with a path target', () => {
+    refusesBoth([url, root], { cwd: root })
+  })
+
+  test('a URL target with only worktree', () => {
+    refusesBoth([url], { cwd: root, only: ['worktree'] })
+    refusesBoth([url], { cwd: root, only: ['branch', 'remote'] })
+  })
+
+  test('a URL target with branch or offline', () => {
+    refusesBoth([url], { cwd: root, branch: 'feature' })
+    refusesBoth([url], { cwd: root, offline: true })
+  })
+
+  test('branch with two targets', () => {
+    refusesBoth([root, join(container, 'alpha')], { cwd: root, branch: 'live-branch' })
+  })
+
+  test('branch equal to the default branch', () => {
+    const err = refusal(() => sweep([root], { cwd: root, branch: 'main' }), 'conflict')
+    expect(err.message).toContain('default branch')
+  })
+
+  test('only remote implies remote', () => {
+    const asked = { cwd: root, only: ['remote'] as Kind[], provider: 'none' as const }
+    expect(sweptWith([root], asked)).toMatchObject({ remote: true, only: ['remote'] })
+    const swept = sweep([root], asked)
+    expect(swept.options.remote).toBe(true)
+    expect(swept.options.only).toEqual(['remote'])
+    expect(swept.repos[0]?.error).toBeNull()
+  })
+})
+
+describe('inspectWorktree', () => {
+  test('returns the worktree row a sweep makes', () => {
+    const path = join(root, 'wt', 'dirty')
+    const row = inspectWorktree(path, { cwd: root })
+    expect(row.kind).toBe('worktree')
+    expect(row.id).toBe(`worktree:${path}`)
+    expect(row.verdict).toBe('review')
+    expect(row.evidence.dirtyFiles).toBe(1)
+    expect(row).toEqual(rowsOf(sweepOne(root, { cwd: root }).rows, 'worktree').get(path))
+  })
+
+  test('throws not-found for a path that is not a worktree', () => {
+    // In the repository, but no worktree of it.
+    refusal(() => inspectWorktree(join(root, 'wt'), { cwd: root }), 'not-found')
+    // In no repository at all.
+    refusal(() => inspectWorktree(join(container, 'not-a-repo'), { cwd: root }), 'not-found')
+  })
+})
+
+describe('counts', () => {
+  test("each repository's counts match its rows, and the sweep's add them up", () => {
+    const swept = sweep([root, container], { cwd: root })
+    expect(swept.repos).toHaveLength(3)
+    for (const repo of swept.repos) {
+      for (const kind of KINDS) {
+        const rows = repo.rows.filter((r) => r.kind === kind)
+        const bucket = repo.counts[kind]
+        expect(bucket.total).toBe(rows.length)
+        expect(bucket.merged).toBe(rows.filter((r) => r.evidence.merged === true).length)
+        expect(bucket.prune).toBe(
+          rows.filter((r) => r.verdict === 'delete' && r.action === 'prune').length,
+        )
+        expect(bucket.delete).toBe(
+          rows.filter((r) => r.verdict === 'delete' && r.action !== 'prune').length,
+        )
+        for (const verdict of ['review', 'blocked', 'keep'] as const) {
+          expect(bucket[verdict]).toBe(rows.filter((r) => r.verdict === verdict).length)
+        }
+        expect(bucket.delete + bucket.prune + bucket.review + bucket.blocked + bucket.keep).toBe(
+          bucket.total,
+        )
+      }
+    }
+    for (const kind of KINDS) {
+      for (const key of Object.keys(swept.counts[kind]) as (keyof Bucket)[]) {
+        expect(swept.counts[kind][key]).toBe(
+          swept.repos.reduce((n, r) => n + r.counts[kind][key], 0),
+        )
+      }
+    }
+    const rootCounts = swept.repos.find((r) => r.repo?.root === root)!.counts
+    expect(rootCounts.branch.delete).toBeGreaterThanOrEqual(1)
+    expect(rootCounts.worktree.review).toBeGreaterThanOrEqual(2)
+    expect(rootCounts.remote.total).toBe(0)
+    const json = JSON.parse(renderJson(swept)) as { counts: unknown; totals: Bucket }
+    expect(json.counts).toEqual(swept.counts)
+    expect(json.totals).toEqual(totalOf(swept.counts))
   })
 })
 
 describe('worktree blockers', () => {
   let parent: string
   let wt: (name: string) => string
-  let sweep: RepoSweep
-  let items: Map<string, SweepItem>
+  let swept: RepoSweep
+  let rows: Map<string, RowOf<'worktree'>>
   let checkout: string
   let gh: CommandRunner
 
@@ -328,35 +507,35 @@ describe('worktree blockers', () => {
         headRefOid: tip,
       })),
     )
-    sweep = sweepRepo(checkout, { cwd: checkout, gh })
-    expect(sweep.error).toBeNull()
-    items = itemsOf(sweep.items, 'worktree')
+    swept = sweepOne(checkout, { cwd: checkout, gh, remote: true, offline: true })
+    expect(swept.error).toBeNull()
+    rows = rowsOf(swept.rows, 'worktree')
   }, HOOK_TIMEOUT_MS)
 
   afterAll(() => rmSync(parent, { recursive: true, force: true }), HOOK_TIMEOUT_MS)
 
-  const blockersOf = (path: string) => items.get(path)?.facts['blockers']
+  const blockersOf = (path: string) => rows.get(path)?.blockers
 
   test('a locked worktree is held back, with its reason', () => {
-    const locked = items.get(wt('locked'))
-    expect(locked?.classification).toBe('needs-investigation')
-    expect(locked?.facts['blockers']).toEqual(['locked-worktree'])
-    expect(locked?.facts['lock_reason']).toBe('test')
-    expect(locked?.reason).toBe('blocked: locked-worktree')
+    const locked = rows.get(wt('locked'))
+    expect(locked?.verdict).toBe('blocked')
+    expect(locked?.blockers).toEqual(['locked-worktree'])
+    expect(locked?.evidence.lockReason).toBe('test')
+    expect(locked?.why).toBe('blocked: locked-worktree')
   })
 
   test('an edit hidden by skip-worktree is not reported clean', () => {
-    const hidden = items.get(wt('hidden'))
-    expect(hidden?.classification).toBe('needs-investigation')
-    expect(hidden?.facts['dirty_files']).toBe(0)
-    expect(hidden?.facts['blockers']).toEqual(['hidden-index-flags'])
-    expect(hidden?.facts['hidden_index_flags']).toBe(1)
-    expect(hidden?.facts['hidden_index_paths']).toEqual(['tracked.txt'])
+    const hidden = rows.get(wt('hidden'))
+    expect(hidden?.verdict).toBe('blocked')
+    expect(hidden?.evidence.dirtyFiles).toBe(0)
+    expect(hidden?.blockers).toEqual(['hidden-index-flags'])
+    expect(hidden?.evidence.hiddenIndexFlags).toBe(1)
+    expect(hidden?.evidence.hiddenIndexPaths).toEqual(['tracked.txt'])
   })
 
   test('a repository inside an ignored directory is found', () => {
     expect(blockersOf(wt('nested'))).toEqual(['nested-repository'])
-    expect(items.get(wt('nested'))?.facts['nested_repositories']).toEqual(['ignored/'])
+    expect(rows.get(wt('nested'))?.evidence.nestedRepositories).toEqual(['ignored/'])
   })
 
   test('a branch checked out twice blocks both worktrees, each naming the other', () => {
@@ -365,49 +544,56 @@ describe('worktree blockers', () => {
       ['shared-2', 'shared'],
     ] as const) {
       expect(blockersOf(wt(self))).toEqual(['branch-in-other-worktree'])
-      expect(items.get(wt(self))?.facts['other_worktrees']).toEqual([wt(other)])
+      expect(rows.get(wt(self))?.evidence.otherWorktrees).toEqual([wt(other)])
     }
   })
 
   test('a blocked row proposes no command and says what to do', () => {
     for (const name of ['locked', 'hidden', 'nested', 'shared', 'shared-2']) {
-      const item = items.get(wt(name))
-      expect(item?.commands).toEqual([])
-      expect(item?.investigationParts.length).toBe(1)
+      const row = rows.get(wt(name))
+      expect(row?.verdict).toBe('blocked')
+      expect(row?.commands).toEqual([])
+      expect(row?.notes.length).toBe(1)
     }
-    expect(items.get(wt('locked'))?.investigationParts[0]).toContain('git worktree unlock')
+    expect(rows.get(wt('locked'))?.notes[0]).toContain('git worktree unlock')
   })
 
   test('a blocked row is not deletable', () => {
     for (const name of ['locked', 'hidden', 'nested', 'shared', 'shared-2', 'gone']) {
-      expect(items.get(wt(name))?.deletable).toBe(false)
+      expect(rows.get(wt(name))?.action).toBeNull()
     }
   })
 
   test('a locked worktree with no directory is held back, not pruned', () => {
-    const gone = items.get(wt('gone'))
-    expect(gone?.facts['on_disk']).toBe(false)
-    expect(gone?.facts['blockers']).toEqual(['locked-worktree'])
+    const gone = rows.get(wt('gone'))
+    expect(gone?.evidence.onDisk).toBe(false)
+    expect(gone?.verdict).toBe('blocked')
+    expect(gone?.blockers).toEqual(['locked-worktree'])
     expect(gone?.commands).toEqual([])
   })
 
   test('the text report prints what to do under a blocked row', () => {
-    const text = renderRepo(sweep)
+    const text = renderRepo(swept)
     expect(text).toContain('blocked: locked-worktree')
     expect(text).toContain(`git worktree unlock ${wt('locked')}`)
   })
 
   test('a branch-scoped sweep keeps the branch of a blocked worktree pinned', () => {
+    const scoped = (branch: string): RepoSweep =>
+      sweepOne(checkout, { cwd: checkout, gh, remote: true, offline: true, branch })
     for (const name of ['locked', 'shared']) {
-      const scoped = sweepRepo(checkout, { cwd: checkout, gh, branch: `wt-${name}` })
-      expect(scoped.error).toBeNull()
-      const local = itemsOf(scoped.items, 'local_branch').get(`wt-${name}`)
-      expect(local?.deletable).toBe(false)
+      const one = scoped(`wt-${name}`)
+      expect(one.error).toBeNull()
+      const local = rowsOf(one.rows, 'branch').get(`wt-${name}`)
+      expect(local).toBeDefined()
+      expect(local?.action).toBeNull()
       expect(local?.commands).toEqual([])
     }
-    const shared = sweepRepo(checkout, { cwd: checkout, gh, branch: 'wt-shared' })
-    for (const item of shared.items.filter((it) => it.category === 'worktree')) {
-      expect(item.facts['blockers']).toEqual(['branch-in-other-worktree'])
+    const shared = scoped('wt-shared')
+    const worktrees = shared.rows.filter((row) => row.kind === 'worktree')
+    expect(worktrees.length).toBeGreaterThan(0)
+    for (const row of worktrees) {
+      expect(row.blockers).toEqual(['branch-in-other-worktree'])
     }
   })
 })
@@ -480,7 +666,7 @@ describe('duplicate checkouts', () => {
   test('two clones of one remote are reported with both roots', () => {
     const first = clone('dup-one')
     const second = clone('dup-two')
-    const result = sweepRepos([dupHome], { noProvider: true, cwd: root, baseDir: root })
+    const result = sweep([dupHome], { cwd: root })
     expect(result.duplicates).toEqual([{ slug: 'acme/dup', roots: [first, second] }])
     expect(renderText(result).startsWith('Duplicate checkouts\n  acme/dup\n')).toBe(true)
     const json = JSON.parse(renderJson(result)) as { duplicates: unknown[] }
@@ -490,11 +676,7 @@ describe('duplicate checkouts', () => {
   test('a clone and its linked worktree are not duplicates', () => {
     const dir = clone('solo')
     git(['worktree', 'add', '-b', 'solo-wt', join(dir, 'wt'), 'main'], dir)
-    const result = sweepRepos([dir, join(dir, 'wt')], {
-      noProvider: true,
-      cwd: root,
-      baseDir: root,
-    })
+    const result = sweep([dir, join(dir, 'wt')], { cwd: root })
     expect(result.duplicates).toEqual([])
     expect(renderText(result)).not.toContain('Duplicate checkouts')
   })
@@ -503,7 +685,7 @@ describe('duplicate checkouts', () => {
     const github = clone('host-github')
     const forge = clone('host-forge')
     git(['remote', 'set-url', 'origin', 'git@forge.example:acme/dup.git'], forge)
-    const result = sweepRepos([github, forge], { noProvider: true, cwd: root, baseDir: root })
+    const result = sweep([github, forge], { cwd: root })
     expect(result.duplicates).toEqual([])
     expect(result.repos.map((r) => r.repo?.slug).sort()).toEqual([
       'acme/dup',
@@ -515,57 +697,56 @@ describe('duplicate checkouts', () => {
 describe('rendering', () => {
   test('text names every repository and counts the verdicts', () => {
     const absent = join(container, 'absent')
-    const result = sweepRepos([root, container, absent], {
-      noProvider: true,
-      cwd: root,
-      baseDir: root,
-    })
+    const result = sweep([root, container, absent], { cwd: root })
     const text = renderText(result)
     expect(text).toContain(root)
     expect(text).toContain(join(container, 'alpha'))
     expect(text).toContain('merged-branch')
-    expect(text).toContain('requires abandon-unmerged (drops 1 commit)')
+    expect(text).toContain('needs --allow abandon-unmerged (drops 1 commit)')
     expect(text).toContain('unresolved')
     expect(text).toMatch(
-      /\d+ to delete, \d+ to review, across 3 repositories \(1 entry unresolved\)\./,
+      /\d+ to delete, \d+ to review, across 3 repositories \(1 target unresolved\)\./,
     )
     expect(text.endsWith('\n')).toBe(true)
   })
 
   test('the search is summarised when there was one, and silent when there was not', () => {
-    const searched = sweepRepos([container], { noProvider: true, cwd: root, baseDir: root })
+    const searched = sweep([container], { cwd: root })
     expect(renderScan(searched)).toMatch(
-      /^searched 1 entry: \d+ directories read, \d+ checkouts found\./,
+      /^searched 1 target: \d+ directories read, \d+ checkouts found\./,
     )
-    expect(renderText(searched)).toContain('searched 1 entry:')
+    expect(renderText(searched)).toContain('searched 1 target:')
 
-    const direct = sweepRepos([root], { noProvider: true, cwd: root, baseDir: root })
+    const direct = sweep([root], { cwd: root })
     expect(renderScan(direct)).toBeNull()
     expect(renderText(direct)).not.toContain('searched')
   })
 
-  test('safe-to-keep rows are hidden unless asked for', () => {
-    const result = sweepRepos([root], { noProvider: true, cwd: root, baseDir: root })
+  test('keep rows are hidden unless asked for', () => {
+    const result = sweep([root], { cwd: root })
     expect(renderText(result)).not.toContain('default branch')
-    expect(renderText(result, { keep: true })).toContain('default branch')
+    expect(renderText(result, { all: true })).toContain('default branch')
   })
 
-  test('json carries the facts and joins the investigation parts', () => {
-    const result = sweepRepos([root], { noProvider: true, cwd: root, baseDir: root })
+  test('json carries the evidence and the notes', () => {
+    const result = sweep([root], { cwd: root })
     const parsed = JSON.parse(renderJson(result)) as {
       repos: Array<{
-        items: Array<{
+        rows: Array<{
           id: string
-          facts: Record<string, unknown>
-          investigation_prompt: string | null
+          evidence: Record<string, unknown>
+          notes: string[]
         }>
       }>
-      summary: Record<string, number>
+      totals: Bucket
     }
-    const live = parsed.repos[0]!.items.find((item) => item.id === 'live-branch')!
-    expect(live.facts['ancestor_of_remote_main']).toBe(false)
-    expect(typeof live.investigation_prompt).toBe('string')
-    expect(parsed.summary['safe-to-delete']).toBeGreaterThan(0)
+    const live = parsed.repos[0]!.rows.find((row) => row.id === 'branch:live-branch')!
+    expect(live.evidence['ancestorOfRemoteMain']).toBe(false)
+    // The notes stay a list, so a program can read them one by one.
+    const swept = rowsOf(result.repos[0]!.rows, 'branch').get('live-branch')!
+    expect(live.notes).toEqual(swept.notes)
+    expect(live.notes.length).toBeGreaterThan(1)
+    expect(parsed.totals.delete).toBeGreaterThan(0)
   })
 })
 
@@ -590,11 +771,11 @@ describe('ancestry against the remote default branch', () => {
     const { checkout } = makeOriginAndCheckout({ parent })
     branchOff(checkout.dir, 'unpushed')
     git(['merge', '-q', '--no-ff', '-m', 'Merge unpushed', 'unpushed'], checkout.dir)
-    const sweep = sweepRepo(checkout.dir, { noProvider: true, cwd: checkout.dir })
-    const branch = itemsOf(sweep.items, 'local_branch').get('unpushed')
-    expect(branch?.classification).toBe('needs-investigation')
-    expect(branch?.facts['ancestor_of_remote_main']).toBe(false)
-    expect(branch?.facts['compare_against']).toBe('origin/main')
+    const swept = sweepOne(checkout.dir, { cwd: checkout.dir })
+    const branch = rowsOf(swept.rows, 'branch').get('unpushed')
+    expect(branch?.verdict).toBe('review')
+    expect(branch?.evidence.ancestorOfRemoteMain).toBe(false)
+    expect(branch?.evidence.compareAgainst).toBe('origin/main')
   })
 
   test('a branch reachable from origin/main is deletable', () => {
@@ -604,22 +785,22 @@ describe('ancestry against the remote default branch', () => {
     branchOff(checkout.dir, 'pushed')
     git(['merge', '-q', '--no-ff', '-m', 'Merge pushed', 'pushed'], checkout.dir)
     git(['push', '-q', 'origin', 'main'], checkout.dir)
-    const sweep = sweepRepo(checkout.dir, { noProvider: true, cwd: checkout.dir })
-    const branch = itemsOf(sweep.items, 'local_branch').get('pushed')
-    expect(branch?.classification).toBe('safe-to-delete')
-    expect(branch?.reason).toBe('fully merged into origin/main')
-    expect(branch?.facts['compare_against']).toBe('origin/main')
+    const swept = sweepOne(checkout.dir, { cwd: checkout.dir })
+    const branch = rowsOf(swept.rows, 'branch').get('pushed')
+    expect(branch?.verdict).toBe('delete')
+    expect(branch?.why).toBe('fully merged into origin/main')
+    expect(branch?.evidence.compareAgainst).toBe('origin/main')
   })
 
   test('a missing remote default branch leaves ancestry unknown', () => {
     const { checkout } = makeOriginAndCheckout({ parent })
     branchOff(checkout.dir, 'orphaned')
     git(['update-ref', '-d', 'refs/remotes/origin/main'], checkout.dir)
-    const sweep = sweepRepo(checkout.dir, { noProvider: true, cwd: checkout.dir })
-    const branch = itemsOf(sweep.items, 'local_branch').get('orphaned')
-    expect(branch?.classification).toBe('needs-investigation')
-    expect(branch?.facts['ancestor_of_remote_main']).toBeNull()
-    expect(branch?.investigationParts[0]).toContain('was not found')
+    const swept = sweepOne(checkout.dir, { cwd: checkout.dir })
+    const branch = rowsOf(swept.rows, 'branch').get('orphaned')
+    expect(branch?.verdict).toBe('review')
+    expect(branch?.evidence.ancestorOfRemoteMain).toBeNull()
+    expect(branch?.notes[0]).toContain('was not found')
   })
 
   test('a slashed default branch name is read whole', () => {
@@ -630,9 +811,9 @@ describe('ancestry against the remote default branch', () => {
       ['symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/release/v2'],
       checkout.dir,
     )
-    const sweep = sweepRepo(checkout.dir, { noProvider: true, cwd: checkout.dir })
-    expect(sweep.error).toBeNull()
-    expect(sweep.repo?.mainBranch).toBe('release/v2')
+    const swept = sweepOne(checkout.dir, { cwd: checkout.dir })
+    expect(swept.error).toBeNull()
+    expect(swept.repo?.mainBranch).toBe('release/v2')
   })
 })
 
@@ -646,9 +827,18 @@ describe('ancestry against the remote default branch', () => {
 describe('merged-PR evidence', () => {
   let parent: string
   let checkout: string
-  let items: SweepItem[]
+  let rows: Row[]
   let gh: CommandRunner
   let landedWorktree: string
+
+  /** What every sweep in this suite asks for: remote branches, PRs from the canned `gh`, no fetch. */
+  const withPrs = (opts: SweepOptions = {}): SweepOptions => ({
+    cwd: checkout,
+    gh,
+    remote: true,
+    offline: true,
+    ...opts,
+  })
 
   beforeAll(() => {
     parent = realpathSync(mkdtempSync(join(tmpdir(), 'repo-cleaner-prs-')))
@@ -716,188 +906,225 @@ describe('merged-PR evidence', () => {
       { number: 7, state: 'OPEN', headRefName: 'open', headRefOid: openHead! },
       { number: 8, state: 'MERGED', headRefName: 'wt-landed', headRefOid: wtLanded },
     ])
-    const sweep = sweepRepo(checkout, { cwd: checkout, gh })
-    expect(sweep.error).toBeNull()
-    items = sweep.items
+    const swept = sweepOne(checkout, withPrs())
+    expect(swept.error).toBeNull()
+    rows = swept.rows
   }, HOOK_TIMEOUT_MS)
 
   afterAll(() => rmSync(parent, { recursive: true, force: true }), HOOK_TIMEOUT_MS)
 
-  const pr = (item: SweepItem | undefined) => item?.facts['pr'] as Record<string, unknown>
-
   test('a same-repo PR into the default branch at the exact tip is landing proof', () => {
-    const landed = itemsOf(items, 'local_branch').get('landed')
-    expect(landed?.classification).toBe('safe-to-delete')
+    const landed = rowsOf(rows, 'branch').get('landed')
+    expect(landed?.verdict).toBe('delete')
     const sha = git(['rev-parse', 'landed'], checkout)
     expect(landed?.commands).toEqual([`git update-ref -d refs/heads/landed ${sha}`])
-    expect(pr(landed)['evidence']).toBe('exact-head')
+    expect(landed?.evidence.pr?.proof).toBe('exact-head')
   })
 
   test('a commit added after the merge leaves the branch for a person', () => {
-    const moved = itemsOf(items, 'local_branch').get('moved')
-    expect(moved?.classification).toBe('needs-investigation')
-    expect(pr(moved)['evidence']).toBe('head-moved')
-    expect(moved?.investigationParts.join(' ')).toContain('head-moved')
+    const moved = rowsOf(rows, 'branch').get('moved')
+    expect(moved?.verdict).toBe('review')
+    expect(moved?.evidence.pr?.proof).toBe('head-moved')
+    expect(moved?.notes.join(' ')).toContain('head-moved')
   })
 
   test('a fork PR sharing the branch name is not evidence either way', () => {
-    const branches = itemsOf(items, 'local_branch')
-    expect(branches.get('forked')?.classification).toBe('needs-investigation')
-    expect(branches.get('forked')?.facts['pr']).toBeUndefined()
-    expect(branches.get('fork-open')?.classification).toBe('needs-investigation')
+    const branches = rowsOf(rows, 'branch')
+    expect(branches.get('forked')?.verdict).toBe('review')
+    expect(branches.get('forked')?.evidence.pr).toBeUndefined()
+    expect(branches.get('fork-open')?.verdict).toBe('review')
   })
 
   test('a PR merged into another base is not landing proof', () => {
-    const other = itemsOf(items, 'local_branch').get('other-base')
-    expect(other?.classification).toBe('needs-investigation')
-    expect(pr(other)['evidence']).toBe('other-base')
+    const other = rowsOf(rows, 'branch').get('other-base')
+    expect(other?.verdict).toBe('review')
+    expect(other?.evidence.pr?.proof).toBe('other-base')
   })
 
-  test('local-branch facts carry the full sha', () => {
-    for (const item of items.filter((i) => i.category === 'local_branch')) {
-      expect(item.facts['sha']).toMatch(/^[0-9a-f]{40}$/)
+  test('local-branch evidence carries the full sha', () => {
+    const branches = [...rowsOf(rows, 'branch').values()]
+    expect(branches.length).toBeGreaterThan(0)
+    for (const row of branches) {
+      expect(row.evidence.sha).toMatch(/^[0-9a-f]{40}$/)
     }
   })
 
   test('remote branches judge the PR head against the ls-remote sha', () => {
-    const remotes = itemsOf(items, 'remote_branch')
+    const remotes = rowsOf(rows, 'remote')
     const landed = remotes.get('origin/landed')
-    expect(landed?.classification).toBe('safe-to-delete')
+    expect(landed?.id).toBe('remote:origin/landed')
+    expect(landed?.verdict).toBe('delete')
     const sha = git(['rev-parse', 'landed'], checkout)
     expect(landed?.commands).toEqual([
       `git push --force-with-lease=refs/heads/landed:${sha} origin :refs/heads/landed`,
     ])
     const moved = remotes.get('origin/moved')
-    expect(moved?.classification).toBe('needs-investigation')
-    expect(pr(moved)['evidence']).toBe('head-moved')
+    expect(moved?.verdict).toBe('review')
+    expect(moved?.evidence.pr?.proof).toBe('head-moved')
   })
 
   test('a clean worktree whose PR head is not its HEAD is left for a person', () => {
-    const wt = itemsOf(items, 'worktree').get(join(checkout, 'wt', 'moved'))
-    expect(wt?.classification).toBe('needs-investigation')
-    expect(pr(wt)['evidence']).toBe('head-moved')
+    const wt = rowsOf(rows, 'worktree').get(join(checkout, 'wt', 'moved'))
+    expect(wt?.verdict).toBe('review')
+    expect(wt?.evidence.pr?.proof).toBe('head-moved')
   })
 
   test('a worktree whose PR merged at HEAD needs nothing, though it is ahead of main', () => {
-    const wt = itemsOf(items, 'worktree').get(landedWorktree)
-    expect(wt?.facts['unpushed_commits']).toBeGreaterThan(0)
-    expect(wt?.classification).toBe('safe-to-delete')
-    expect(wt?.requires).toEqual([])
+    const wt = rowsOf(rows, 'worktree').get(landedWorktree)
+    expect(wt?.evidence.unpushedCommits).toBeGreaterThan(0)
+    expect(wt?.verdict).toBe('delete')
+    expect(wt?.risks).toEqual([])
   })
 
   test('a full sweep frees the branch of a worktree it removes, and no other', () => {
-    const branches = itemsOf(items, 'local_branch')
+    const branches = rowsOf(rows, 'branch')
     const freed = branches.get('wt-landed')
-    expect(freed?.deletable).toBe(true)
-    expect(freed?.classification).toBe('safe-to-delete')
-    expect(freed?.facts['worktree']).toBe(landedWorktree)
+    expect(freed?.action).not.toBeNull()
+    expect(freed?.verdict).toBe('delete')
+    expect(freed?.evidence.worktree).toBe(landedWorktree)
     // Its worktree is left for a person, so the branch stays with it.
-    expect(branches.get('wt-moved')?.reason).toBe(
+    expect(branches.get('wt-moved')?.why).toBe(
       'checked out in a worktree (handle via that worktree)',
     )
-    expect(branches.get('wt-moved')?.facts['worktree']).toBeUndefined()
+    expect(branches.get('wt-moved')?.evidence.worktree).toBeUndefined()
   })
 
   test('without worktrees in scope, a branch checked out in one stays kept', () => {
-    const sweep = sweepRepo(checkout, { cwd: checkout, gh, scope: ['local-branches'] })
-    const branch = itemsOf(sweep.items, 'local_branch').get('wt-landed')
-    expect(branch?.deletable).toBe(false)
-    expect(branch?.facts['worktree']).toBeUndefined()
+    const swept = sweepOne(checkout, withPrs({ only: ['branch', 'remote'] }))
+    const branch = rowsOf(swept.rows, 'branch').get('wt-landed')
+    expect(branch).toBeDefined()
+    expect(branch?.action).toBeNull()
+    expect(branch?.evidence.worktree).toBeUndefined()
   })
 
   test('a branch-scoped sweep without worktrees in scope keeps the branch', () => {
-    const sweep = sweepRepo(checkout, {
-      cwd: checkout,
-      gh,
-      branch: 'wt-landed',
-      scope: ['local-branches'],
-    })
-    expect(sweep.items.map((item) => [item.id, item.deletable])).toEqual([['wt-landed', false]])
+    const swept = sweepOne(checkout, withPrs({ branch: 'wt-landed', only: ['branch', 'remote'] }))
+    expect(swept.rows.map((row) => [row.id, row.action !== null])).toEqual([
+      ['branch:wt-landed', false],
+    ])
   })
 
   test('a freed branch is kept again once a host holds its worktree back', () => {
     const held = holdFreedBranches(
-      items.map((item) =>
-        item.id === landedWorktree ? { ...item, action: 'keep', deletable: false } : item,
+      rows.map((row) =>
+        row.kind === 'worktree' && row.name === landedWorktree
+          ? { ...row, verdict: 'keep' as const, action: null }
+          : row,
       ),
+      false,
     )
-    const branch = itemsOf(held, 'local_branch').get('wt-landed')
+    const branch = rowsOf(held, 'branch').get('wt-landed')
     expect(branch).toMatchObject({
-      action: 'keep',
-      classification: 'safe-to-keep',
-      deletable: false,
+      verdict: 'keep',
+      action: null,
       commands: [],
-      reason: 'checked out in a worktree (handle via that worktree)',
+      risks: [],
+      why: 'checked out in a worktree (handle via that worktree)',
     })
-    expect(branch?.facts['worktree']).toBeUndefined()
+    expect(branch?.evidence.worktree).toBeUndefined()
     // Untouched: the worktree still goes, so its branch stays freed.
-    expect(itemsOf(holdFreedBranches(items), 'local_branch').get('wt-landed')?.deletable).toBe(true)
+    expect(rowsOf(holdFreedBranches(rows, false), 'branch').get('wt-landed')?.action).not.toBeNull()
   })
 
   test('a freed branch is kept again when a host drops its worktree row', () => {
-    const held = holdFreedBranches(items.filter((item) => item.id !== landedWorktree))
-    expect(itemsOf(held, 'local_branch').get('wt-landed')?.deletable).toBe(false)
+    const held = holdFreedBranches(
+      rows.filter((row) => row.id !== `worktree:${landedWorktree}`),
+      false,
+    )
+    expect(rowsOf(held, 'branch').get('wt-landed')?.action).toBeNull()
   })
 
   test('a worktree a host demotes to review keeps its branch, unless the sweep named it', () => {
-    const demoted = items.map((item) =>
-      item.id === landedWorktree
-        ? { ...item, classification: 'needs-investigation' as const, action: 'review' }
-        : item,
+    const demoted = rows.map((row) =>
+      row.id === `worktree:${landedWorktree}` ? { ...row, verdict: 'review' as const } : row,
     )
-    const full = itemsOf(holdFreedBranches(demoted), 'local_branch').get('wt-landed')
-    expect(full?.deletable).toBe(false)
+    const full = rowsOf(holdFreedBranches(demoted, false), 'branch').get('wt-landed')
+    expect(full?.action).toBeNull()
     // A branch-scoped sweep frees the named branch for any deletable worktree.
-    const scoped = holdFreedBranches(demoted, { branchScoped: true })
-    expect(itemsOf(scoped, 'local_branch').get('wt-landed')?.deletable).toBe(true)
+    const scoped = holdFreedBranches(demoted, true)
+    expect(rowsOf(scoped, 'branch').get('wt-landed')?.action).not.toBeNull()
+  })
+
+  test('annotate is applied, and a worktree it holds back keeps its branch', () => {
+    const seen: string[] = []
+    const swept = sweepOne(
+      checkout,
+      withPrs({
+        annotate: (repo, rows) => {
+          seen.push(repo.root)
+          return rows.map((row) =>
+            row.id === `worktree:${landedWorktree}`
+              ? {
+                  ...row,
+                  verdict: 'keep' as const,
+                  action: null,
+                  notes: [...row.notes, 'held by the host'],
+                }
+              : row,
+          )
+        },
+      }),
+    )
+    expect(seen).toEqual([checkout])
+    const worktree = rowsOf(swept.rows, 'worktree').get(landedWorktree)
+    expect(worktree).toMatchObject({ verdict: 'keep', action: null })
+    expect(worktree?.notes).toContain('held by the host')
+    const branch = rowsOf(swept.rows, 'branch').get('wt-landed')
+    expect(branch).toMatchObject({ verdict: 'keep', action: null, why: HELD_BY_WORKTREE })
+    expect(branch?.evidence.worktree).toBeUndefined()
+    // The counts are of the annotated rows.
+    expect(swept.counts.worktree.keep).toBe(
+      swept.rows.filter((r) => r.kind === 'worktree' && r.verdict === 'keep').length,
+    )
   })
 
   test('a branch-scoped sweep reports that branch alone, from inside its worktree', () => {
-    const sweep = sweepRepo(checkout, { cwd: landedWorktree, gh, branch: 'wt-landed' })
-    expect(sweep.error).toBeNull()
-    expect(sweep.items.map((item) => [item.category, item.id])).toEqual([
+    const swept = sweepOne(checkout, withPrs({ cwd: landedWorktree, branch: 'wt-landed' }))
+    expect(swept.error).toBeNull()
+    expect(swept.rows.map((row) => [row.kind, row.name])).toEqual([
       ['worktree', landedWorktree],
-      ['local_branch', 'wt-landed'],
+      ['branch', 'wt-landed'],
     ])
-    for (const item of sweep.items) {
-      expect(item.deletable).toBe(true)
-      expect(item.classification).toBe('safe-to-delete')
-      expect(item.requires).toEqual([])
+    for (const row of swept.rows) {
+      expect(row.action).not.toBeNull()
+      expect(row.verdict).toBe('delete')
+      expect(row.risks).toEqual([])
     }
   })
 
   test('a branch-scoped sweep matches the name exactly and covers the remote', () => {
-    const sweep = sweepRepo(checkout, { cwd: checkout, gh, branch: 'open' })
-    expect(sweep.items.map((item) => item.id)).toEqual(['open', 'origin/open'])
+    const swept = sweepOne(checkout, withPrs({ branch: 'open' }))
+    expect(swept.rows.map((row) => row.id)).toEqual(['branch:open', 'remote:origin/open'])
   })
 
   test('a branch-scoped sweep refuses the default branch', () => {
-    const sweep = sweepRepo(checkout, { cwd: checkout, gh, branch: 'main' })
-    expect(sweep.items).toEqual([])
-    expect(sweep.error).toContain('default branch')
+    const err = refusal(() => sweep([checkout], withPrs({ branch: 'main' })), 'conflict')
+    expect(err.message).toContain('default branch')
   })
 
-  test('a branch with an open PR needs confirm-open-pr', () => {
-    expect(itemsOf(items, 'local_branch').get('open')?.requires).toEqual([
-      'abandon-unmerged',
-      'confirm-open-pr',
-    ])
-    const remote = itemsOf(items, 'remote_branch').get('origin/open')
-    expect(remote?.requires).toEqual(['abandon-unmerged', 'confirm-open-pr'])
-    expect(remote?.facts['unique_commits']).toBe(
+  test('a branch with an open PR is kept, and its delete needs confirm-open-pr', () => {
+    const local = rowsOf(rows, 'branch').get('open')
+    expect(local?.verdict).toBe('keep')
+    expect(local?.action).toBe('delete')
+    expect(local?.risks).toEqual(['abandon-unmerged', 'confirm-open-pr'])
+    const remote = rowsOf(rows, 'remote').get('origin/open')
+    expect(remote?.verdict).toBe('keep')
+    expect(remote?.action).toBe('delete')
+    expect(remote?.risks).toEqual(['abandon-unmerged', 'confirm-open-pr'])
+    expect(remote?.evidence.uniqueCommits).toBe(
       Number(git(['rev-list', '--count', 'origin/main..open'], checkout)),
     )
     // An exact-head merged PR needs nothing, though the tip is not an ancestor.
-    expect(itemsOf(items, 'remote_branch').get('origin/landed')?.requires).toEqual([])
-    expect(itemsOf(items, 'remote_branch').get('origin/main')?.deletable).toBe(false)
+    expect(rowsOf(rows, 'remote').get('origin/landed')?.risks).toEqual([])
+    expect(rowsOf(rows, 'remote').get('origin/main')?.action).toBeNull()
   })
 
   // Moves `landed`, so it runs last.
   test('a proposed delete refuses a branch that moved after the sweep', () => {
     const client = new Git(checkout, { env: { ...IDENTITY } })
     const run = (command: string) => client.raw(command.split(' ').slice(1)).exitCode
-    const local = itemsOf(items, 'local_branch').get('landed')!.commands[0]!
-    const remote = itemsOf(items, 'remote_branch').get('origin/landed')!.commands[0]!
+    const local = rowsOf(rows, 'branch').get('landed')!.commands[0]!
+    const remote = rowsOf(rows, 'remote').get('origin/landed')!.commands[0]!
 
     git(['checkout', '-q', 'landed'], checkout)
     commit(checkout, 'landed: pushed after the sweep')
@@ -943,8 +1170,8 @@ describe('fetch', () => {
     rmSync(base, { recursive: true, force: true })
   }, HOOK_TIMEOUT_MS)
 
-  function remoteFeature(sweep: ReturnType<typeof sweepRepo>): SweepItem | undefined {
-    return itemsOf(sweep.items, 'remote_branch').get('origin/feature')
+  function remoteFeature(swept: RepoSweep): RowOf<'remote'> | undefined {
+    return rowsOf(swept.rows, 'remote').get('origin/feature')
   }
 
   test(
@@ -953,15 +1180,20 @@ describe('fetch', () => {
       const stale = clone('stale')
       git(['merge', '--no-ff', '-m', 'Merge feature', 'feature'], upstream)
 
-      const unfetched = sweepRepo(stale, { noProvider: true, cwd: stale })
+      const unfetched = sweepOne(stale, {
+        cwd: stale,
+        remote: true,
+        offline: true,
+        provider: 'none',
+      })
       expect(unfetched.repo?.fetched).toBe(false)
-      expect(remoteFeature(unfetched)?.classification).toBe('needs-investigation')
+      expect(remoteFeature(unfetched)?.verdict).toBe('review')
       expect(renderRepo(unfetched)).toContain('not fetched')
 
-      const fetched = sweepRepo(stale, { noProvider: true, cwd: stale, fetch: true })
+      const fetched = sweepOne(stale, { cwd: stale, remote: true, provider: 'none' })
       expect(fetched.error).toBeNull()
       expect(fetched.repo?.fetched).toBe(true)
-      expect(remoteFeature(fetched)?.classification).toBe('safe-to-delete')
+      expect(remoteFeature(fetched)?.verdict).toBe('delete')
       expect(renderRepo(fetched)).not.toContain('not fetched')
     },
     HOOK_TIMEOUT_MS,
@@ -974,21 +1206,21 @@ describe('fetch', () => {
       git(['remote', 'set-url', 'origin', join(base, 'gone')], broken)
       const healthy = clone('healthy')
 
-      const result = sweepRepos([broken, healthy], { noProvider: true, cwd: base, fetch: true })
+      const result = sweep([broken, healthy], { cwd: base, remote: true, provider: 'none' })
       const [bad, good] = result.repos
       expect(bad?.error?.startsWith('fetch failed:')).toBe(true)
-      expect(bad?.items).toEqual([])
+      expect(bad?.rows).toEqual([])
       expect(good?.error).toBeNull()
       expect(good?.repo?.fetched).toBe(true)
-      expect(good!.items.length).toBeGreaterThan(0)
+      expect(good!.rows.length).toBeGreaterThan(0)
     },
     HOOK_TIMEOUT_MS,
   )
 
   test('a repository with no remote is swept without a fetch', () => {
-    const sweep = sweepRepo(root, { noProvider: true, cwd: root, fetch: true })
-    expect(sweep.error).toBeNull()
-    expect(sweep.repo?.fetched).toBe(false)
+    const swept = sweepOne(root, { cwd: root, remote: true, provider: 'none' })
+    expect(swept.error).toBeNull()
+    expect(swept.repo?.fetched).toBe(false)
   })
 })
 
@@ -1008,10 +1240,8 @@ describe('a clean worktree merged by ancestry alone (#582)', () => {
     const wt = join(parent, `${name}-${Math.random().toString(36).slice(2, 8)}`)
     return { root: checkout.dir, wt }
   }
-  const worktreeRow = (root: string, wt: string): SweepItem | undefined =>
-    itemsOf(sweepRepo(root, { noProvider: true, cwd: root }).items, 'worktree').get(
-      realpathSync(wt),
-    )
+  const worktreeRow = (root: string, wt: string): RowOf<'worktree'> | undefined =>
+    rowsOf(sweepOne(root, { cwd: root }).rows, 'worktree').get(realpathSync(wt))
 
   test('a worked-on branch fast-forwarded into main leaves a deletable worktree', () => {
     // The issue's reproduction: a commit on topic, pushed, main fast-forwarded to it.
@@ -1022,26 +1252,24 @@ describe('a clean worktree merged by ancestry alone (#582)', () => {
     git(['merge', '-q', '--ff-only', 'topic'], root)
     git(['push', '-q', 'origin', 'main'], root)
     const row = worktreeRow(root, wt)
-    expect(row?.classification).toBe('safe-to-delete')
-    expect(row?.facts['branch_used']).toBe('commits')
-    expect(row?.reason).toBe(
-      'clean; merged into origin/main, and the branch has commits made on it',
-    )
+    expect(row?.verdict).toBe('delete')
+    expect(row?.evidence.branchUsed).toBe('commits')
+    expect(row?.why).toBe('clean; merged into origin/main, and the branch has commits made on it')
   })
 
   test('a worktree just made from main stays a review row', () => {
     const { root, wt } = setup('fresh')
     git(['worktree', 'add', '-q', '-b', 'fresh', wt, 'main'], root)
     const row = worktreeRow(root, wt)
-    expect(row?.classification).toBe('needs-investigation')
-    expect(row?.facts['branch_used']).toBeNull()
+    expect(row?.verdict).toBe('review')
+    expect(row?.evidence.branchUsed).toBeNull()
   })
 
   test('one made from origin/main, tracking it, stays a review row too', () => {
     const { root, wt } = setup('tracking')
     git(['worktree', 'add', '-q', '--track', '-b', 'tracking', wt, 'origin/main'], root)
     expect(git(['rev-parse', '--abbrev-ref', 'tracking@{upstream}'], root)).toBe('origin/main')
-    expect(worktreeRow(root, wt)?.classification).toBe('needs-investigation')
+    expect(worktreeRow(root, wt)?.verdict).toBe('review')
   })
 
   test('a fresh branch that only fast-forwarded on a pull stays a review row', () => {
@@ -1054,8 +1282,8 @@ describe('a clean worktree merged by ancestry alone (#582)', () => {
       /^pull.*Fast-forward/m,
     )
     const row = worktreeRow(root, wt)
-    expect(row?.classification).toBe('needs-investigation')
-    expect(row?.facts['branch_used']).toBeNull()
+    expect(row?.verdict).toBe('review')
+    expect(row?.evidence.branchUsed).toBeNull()
   })
 
   test('one tracking local main is not counted as pushed', () => {
@@ -1063,8 +1291,8 @@ describe('a clean worktree merged by ancestry alone (#582)', () => {
     git(['worktree', 'add', '-q', '--track', '-b', 'local-track', wt, 'main'], root)
     expect(git(['config', 'branch.local-track.remote'], root)).toBe('.')
     const row = worktreeRow(root, wt)
-    expect(row?.classification).toBe('needs-investigation')
-    expect(row?.facts['branch_used']).toBeNull()
+    expect(row?.verdict).toBe('review')
+    expect(row?.evidence.branchUsed).toBeNull()
   })
 
   test('with no reflog, an upstream of its own is the sign', () => {
@@ -1076,7 +1304,7 @@ describe('a clean worktree merged by ancestry alone (#582)', () => {
     git(['push', '-q', 'origin', 'main'], root)
     rmSync(join(root, '.git', 'logs', 'refs', 'heads', 'pushed'), { force: true })
     const row = worktreeRow(root, wt)
-    expect(row?.classification).toBe('safe-to-delete')
-    expect(row?.facts['branch_used']).toBe('upstream')
+    expect(row?.verdict).toBe('delete')
+    expect(row?.evidence.branchUsed).toBe('upstream')
   })
 })
