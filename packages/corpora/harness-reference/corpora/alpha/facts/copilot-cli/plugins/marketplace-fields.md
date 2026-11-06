@@ -38,7 +38,7 @@ observations:
         - { name: mcpServers, type: "string | object", required: false, use: "MCP servers to activate on install, when the plugin ships no MCP config of its own" }
         - { name: lspServers, type: "string | object", required: false, use: "LSP config path or inline server definitions" }
         - { name: strict, type: boolean, required: false, use: "default true, full schema and validation rules; false relaxes validation" }
-      source_forms: ["relative path (string; the leading dot-slash is optional)", "github (repo, ref, sha, path)", "url (ref, sha, path)"]
+      source_forms: ["relative path (string; the leading dot-slash is optional)", "github (repo, ref, sha, path)", "url (ref, sha; other keys not documented)"]
     since: null
     until: null
     observed: "2026-11-05"
@@ -55,7 +55,7 @@ observations:
     locator: "data/reusables/copilot/copilot-cli/cli-path-to-plugins.md:1 at 17d6ee52f965e7c46f74b4339d5fa1ad6f4f4493"
     evidence: docs
 open:
-  - question: "What keys does a url source object take besides ref, sha and path? The page names the url type but shows only github objects."
+  - question: "What keys does a url source object take besides sha and ref? The page names the url type and says it accepts sha, but shows only github objects and does not list the url key itself."
     observed: "2026-11-05"
     source: copilot-cli-plugin-reference
 sources:
@@ -74,7 +74,7 @@ What the sources say about [Marketplace fields](/subjects/plugins/marketplace-fi
 
 - 2026-11-05: file: `.github/plugin/marketplace.json` (also `marketplace.json`,
   `.plugin/marketplace.json`, `.claude-plugin/marketplace.json`); top-level fields: `name`,
-  `owner` (`name`, `email`), `plugins` (all required), `metadata` (`description`, `version`,
+  `owner` (`name`, optional `email`), `plugins` (`name`, `owner` and `plugins` are required), `metadata` (`description`, `version`,
   `pluginRoot`); entry fields: `name`, `source` (required), `description`, `version`, `author`,
   `homepage`, `repository`, `license`, `keywords`, `category`, `tags`, `commands`, `agents`,
   `skills`, `hooks`, `mcpServers`, `lspServers`, `strict`; source forms: relative path, `github`,
@@ -101,7 +101,7 @@ What the sources say about [Marketplace fields](/subjects/plugins/marketplace-fi
 
 ## Open questions
 
-- The keys of a `url` source object beyond `ref`, `sha` and `path`.[^copilot-cli-plugin-reference]
+- The keys of a `url` source object beyond `sha` and `ref`; the page does not list them.[^copilot-cli-plugin-reference]
 
 [^copilot-cli-plugin-reference]: GitHub Docs: GitHub Copilot CLI plugin reference
 [^copilot-cli-path-reusable]: GitHub Docs reusable: path to plugins

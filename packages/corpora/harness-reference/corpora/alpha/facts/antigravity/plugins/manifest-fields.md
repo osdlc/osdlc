@@ -41,6 +41,7 @@ observations:
     evidence: docs
   - value:
       docs_required_for_marketplace: [name, displayName, description, version, logo, author]
+      docs_publish_checklist: [name, displayName, description, version, logo, suggestedPrompts, author]
       docs_name_pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
       precedence: ".antigravity-plugin/plugin.json wins over a root plugin.json"
     since: null
@@ -49,7 +50,11 @@ observations:
     source: antigravity-build-plugins
     locator: "Manifest file (plugin.json), Field reference"
     evidence: docs
-    note: "The page's own copy of the schema is older than the hosted one: it lacks display_name, suggested_prompts, source, sourcePath and source_path, and gives the stricter kebab-case name pattern."
+    note: "The field table marks suggestedPrompts Recommended; the Publish section's checklist lists it among the plugin.json contents. The page's own copy of the schema is older than the hosted one: it lacks display_name, suggested_prompts, source, sourcePath and source_path, and gives the stricter kebab-case name pattern."
+open:
+  - question: "Is suggestedPrompts required for the Marketplace? The Build plugins field table marks it Recommended, but the Publish to the Antigravity Marketplace section asks for a complete plugin.json (name, displayName, description, version, logo, suggestedPrompts, and author)."
+    observed: "2026-11-05"
+    source: antigravity-build-plugins
 sources:
   - id: antigravity-plugin-schema
     resource: "https://antigravity.google/schemas/v1/plugin.json"
@@ -90,11 +95,21 @@ What the sources say about [Plugin manifest fields](/subjects/plugins/manifest-f
 - 2026-11-05: the Build plugins page marks name, displayName, description, version, logo and
   author as required for the Marketplace, and gives a stricter kebab-case name pattern than the
   hosted schema. Its embedded schema copy lacks the alias and deprecated keys. The two sources
-  disagree on the name pattern and the key list.[^antigravity-build-plugins]
+  disagree on the name pattern and the key list. Within the page, the field table marks
+  `suggestedPrompts` "Recommended" while the Publish section's checklist names it among the
+  contents of a complete `plugin.json`.[^antigravity-build-plugins]
+
+  > | `suggestedPrompts` | String\[\] | Recommended | Up to **3** actionable starter prompts displayed as clickable chips on the plugin detail page. |
+
+  > Once your plugin passes `agy plugin validate --strict` and includes a complete `plugin.json` (`name`, `displayName`, `description`, `version`, `logo`, `suggestedPrompts`, and `author`), `README.md`, and bundled logo asset, submit it through the [Antigravity Marketplace partner intake form](https://forms.gle/2EX5RFYPoJe1UgxR9).
 
   > | `name` | String | **Yes** (CLI and Marketplace) / Optional (local folders) | The unique, machine-readable lowercase `kebab-case` identifier of the plugin (`^[a-z0-9]+(-[a-z0-9]+)*$`). ...
 
   > Place `plugin.json` at `<plugin-root>/plugin.json` for standalone Antigravity plugins, or inside `<plugin-root>/.antigravity-plugin/plugin.json` for multi-provider repositories ... (`.antigravity-plugin/plugin.json` takes precedence over root `plugin.json`).
+
+## Open questions
+
+- Is `suggestedPrompts` required for the Marketplace? The two statements above disagree.[^antigravity-build-plugins]
 
 [^antigravity-plugin-schema]: Antigravity plugin manifest JSON Schema (v1)
 [^antigravity-build-plugins]: Antigravity docs: Build plugins

@@ -14,7 +14,7 @@ observations:
     until: null
     observed: "2026-11-05"
     source: pi-source
-    locator: "packages/coding-agent/src/core/pi-manifest.ts:18-42; packages/coding-agent/src/core/resource-loader.ts:75-100 at 2a32a605a9f18a5f0191f65358a2e764b2f69fc7"
+    locator: "packages/coding-agent/src/core/pi-manifest.ts:18-42; packages/coding-agent/src/core/resource-loader.ts:75-100; packages/coding-agent/src/core/extensions/loader.ts:762-780 at 2a32a605a9f18a5f0191f65358a2e764b2f69fc7"
     evidence: source
 open:
   - question: "Does pi ship a command or published JSON Schema that validates the pi block in package.json? None was found in the source or the packages docs."

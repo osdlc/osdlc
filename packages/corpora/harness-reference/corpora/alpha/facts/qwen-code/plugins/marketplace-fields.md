@@ -10,8 +10,8 @@ observations:
       file: .claude-plugin/marketplace.json
       fields:
         - { name: name, type: string, required: true, use: "marketplace name shown in Discover" }
-        - { name: owner.name, type: string, required: true, use: "not documented" }
-        - { name: owner.email, type: string, required: true, use: "not documented" }
+        - { name: owner.name, type: string, required: false, use: "not documented", note: "Declared non-optional in the TS type; not checked at load." }
+        - { name: owner.email, type: string, required: false, use: "not documented", note: "Declared non-optional in the TS type; not checked at load." }
         - { name: plugins, type: array, required: true, use: "plugin entries" }
         - { name: metadata.description, type: string, required: false, use: "not documented" }
         - { name: metadata.version, type: string, required: false, use: "not documented" }
@@ -39,7 +39,7 @@ observations:
     until: null
     observed: "2026-11-05"
     source: qwen-code-claude-converter
-    locator: "packages/core/src/extension/claude-converter.ts:96-120, 520-530, 1048-1060, 1150-1300; sourceRegistry.ts:105-123, 222-245 at 1bac51b7d9e28d5c0f7d9a0a6fcd3add14443ebb"
+    locator: "packages/core/src/extension/claude-converter.ts:96-120, 520-530, 1048-1060, 1121-1127, 1150-1300; sourceRegistry.ts:105-123, 222-245 at 1bac51b7d9e28d5c0f7d9a0a6fcd3add14443ebb"
     evidence: source
 sources:
   - id: qwen-code-claude-converter
@@ -88,6 +88,18 @@ Qwen Code reads Claude Code marketplaces. It has no marketplace format of its ow
   ...
       const pluginRoot = marketplaceDir;
       const sourcePath = path.join(pluginRoot, source);
+  ```
+
+  The loader checks only that `name` is a string and `owner` is an object, so `owner.name` and
+  `owner.email` are declared in the type but not required at load (`claude-converter.ts:1121-1127`):
+
+  ```ts
+  if (
+    typeof marketplaceConfigObj['name'] !== 'string' ||
+    typeof marketplaceConfigObj['owner'] !== 'object'
+  ) {
+    return false;
+  }
   ```
 
   `metadata.pluginRoot` is declared but the relative-path branch joins the source to the
