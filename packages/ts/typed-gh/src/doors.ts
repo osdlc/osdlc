@@ -166,6 +166,7 @@ export const SOFT_METHODS = [
   'repoView',
   'searchPrs',
   'prReviewThreads',
+  'prActivity',
 ] as const
 
 /** The name of a method with a soft form. */
