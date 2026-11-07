@@ -215,3 +215,19 @@ export function thrownGitFailure(error: unknown): GitFailure | null {
   }
   return null
 }
+
+/**
+ * Thrown by a backend asked for an operation it cannot perform, and by a
+ * client asked for one its runners cannot run (`rawBytes` on a `Git` given a
+ * `runner` and no `bytesRunner`). It is not a {@link GitFailure}: no git ran.
+ * It lives here, not in `backend.ts`, so the sync client can throw it
+ * without importing the async backend.
+ */
+export class UnsupportedRequest extends Error {
+  readonly kind: string
+  constructor(kind: string, backend: string) {
+    super(`${backend} cannot perform '${kind}'`)
+    this.name = 'UnsupportedRequest'
+    this.kind = kind
+  }
+}

@@ -27,6 +27,7 @@ import {
   type CommandResult,
 } from '@osdlc/command-seam'
 
+import { UnsupportedRequest } from './failure.ts'
 import { versionedVerb } from './features.ts'
 import {
   pinnedGitVersion,
@@ -345,16 +346,6 @@ export interface GitBackend {
     request: R,
     opts?: GitCallOptions,
   ): Promise<GitResults[R['kind']]>
-}
-
-/** Thrown by a backend asked for an operation it cannot perform. */
-export class UnsupportedRequest extends Error {
-  readonly kind: string
-  constructor(kind: string, backend: string) {
-    super(`${backend} cannot perform '${kind}'`)
-    this.name = 'UnsupportedRequest'
-    this.kind = kind
-  }
 }
 
 /** Translate a request into the CLI verb that performs it. */

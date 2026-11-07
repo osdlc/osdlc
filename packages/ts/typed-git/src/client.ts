@@ -22,7 +22,6 @@ export { parseRemoteUrl, type RemoteCoordinate } from './remote-url.ts'
 export {
   cliBackend,
   partialBackend,
-  UnsupportedRequest,
   type GitBackend,
   type GitCallOptions,
   type GitRequest,
@@ -33,6 +32,7 @@ export {
 export {
   classifyGitFailure,
   describeGitFailure,
+  UnsupportedRequest,
   type GitFailure,
   type GitFailureKind,
 } from './failure.ts'

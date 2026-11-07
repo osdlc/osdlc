@@ -27,7 +27,7 @@ import {
   type CommandRunOptions,
 } from '@osdlc/command-seam'
 
-import { UnsupportedRequest } from './backend.ts'
+import { UnsupportedRequest } from './failure.ts'
 import { versionedVerb } from './features.ts'
 import { pinnedGitVersion, probeGitVersion, type GitVersion } from './git-version.ts'
 import { softSync, triedSync, type Soft, type TriedSync } from './outcome.ts'
