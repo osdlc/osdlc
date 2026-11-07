@@ -1566,9 +1566,10 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     mkdirSync(nested)
     const { checkout: dir, origin } = makeOriginAndCheckout({ parent: nested })
     // Git allows `/` in a remote's name; its refs sit under refs/remotes/origin/.
+    // Written directly: whether `git fetch` writes them varies by git version.
     git(['remote', 'add', 'origin/mirror', origin.dir], dir.dir)
-    git(['fetch', '-q', 'origin/mirror'], dir.dir)
-    expect(git(['for-each-ref', 'refs/remotes/origin/mirror/'], dir.dir)).not.toBe('')
+    const head = git(['rev-parse', 'HEAD'], dir.dir).trim()
+    git(['update-ref', 'refs/remotes/origin/mirror/main', head], dir.dir)
     const sw = sweepOne(dir.dir, { cwd: dir.dir, remote: true, offline: true, provider: 'none' })
     expect([...rowsOf(sw.rows, 'remote').keys()].filter((n) => n.includes('mirror'))).toEqual([])
   })
