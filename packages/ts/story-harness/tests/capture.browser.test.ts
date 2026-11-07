@@ -1,9 +1,9 @@
-import { mkdtemp, mkdir, readdir, rm, writeFile, readFile } from 'node:fs/promises'
-import { createServer } from 'node:net'
+import { mkdtemp, readdir, rm, writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium } from '@playwright/test'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { freePort } from './support.ts'
 import { captureStories } from '../src/runner/capture.ts'
 import { serveStatic } from '../src/runner/serve-static.ts'
 
@@ -26,17 +26,6 @@ let dir: string
 let out: string
 const outDirs: string[] = []
 
-/** Ask the OS for a free port. */
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = createServer()
-    srv.once('error', reject)
-    srv.listen(0, () => {
-      const { port } = srv.address() as { port: number }
-      srv.close(() => resolve(port))
-    })
-  })
-}
 const ids = ['x--plain', 'x--thing-dark', 'x--thing-narrow', 'x--narrowextra']
 
 async function run(extra: Record<string, unknown> = {}) {
@@ -49,7 +38,6 @@ async function run(extra: Record<string, unknown> = {}) {
 
 beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), 'shots-sb-'))
-  await mkdir(dir, { recursive: true })
   await writeFile(join(dir, 'iframe.html'), IFRAME)
   await writeFile(
     join(dir, 'index.json'),
@@ -86,13 +74,14 @@ describe('captureStories', () => {
       const b = await readFile(p)
       return [b.readUInt32BE(16), b.readUInt32BE(20)]
     }
-    let r = await run({ contains: 'plain' })
+    expect((await run({ contains: 'plain' })).ok).toBe(true)
     expect(await size(join(out, 'plain.png'))).toEqual([1440, 900])
-    r = await run({ contains: 'thing-narrow' })
+    expect((await run({ contains: 'thing-narrow' })).ok).toBe(true)
     expect(await size(join(out, 'thing-narrow.png'))).toEqual([1024, 720])
-    r = await run({ contains: 'thing-narrow', viewport: { width: 1024, height: 768 } })
+    expect(
+      (await run({ contains: 'thing-narrow', viewport: { width: 1024, height: 768 } })).ok,
+    ).toBe(true)
     expect(await size(join(out, 'thing-narrow.png'))).toEqual([1024, 768])
-    expect(r.ok).toBe(true)
   })
 
   it('writes <name>--<theme>.png for every theme in the flat layout', async () => {

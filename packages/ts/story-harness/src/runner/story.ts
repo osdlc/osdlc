@@ -172,6 +172,11 @@ interface StoryFinished {
   status: 'success' | 'error'
 }
 
+/** The story's errors so far, as `preparePage` recorded them from Storybook's channel. */
+export function storyErrors(page: Page): Promise<string[]> {
+  return page.evaluate(() => ((window as any).__STORY_SHOTS_ERRORS__ ?? []) as string[])
+}
+
 export interface OpenStoryOptions {
   /** Wait after `play` when the story sets no `settleMs`. */
   settleMs?: number
@@ -211,7 +216,7 @@ export async function openStory(
         {}) as ShotParameters,
   )
   if (params.skip) return params
-  const errors = await page.evaluate(() => (window as any).__STORY_SHOTS_ERRORS__ as string[])
+  const errors = await storyErrors(page)
   if (finished.status !== 'success' || errors.length > 0) {
     const message = `story ${id} failed:\n${errors.join('\n') || 'status ' + finished.status}`
     if (!options.onStoryError) throw new Error(message)

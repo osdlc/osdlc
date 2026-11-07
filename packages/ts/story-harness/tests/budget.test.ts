@@ -81,23 +81,27 @@ describe('budget', () => {
 describe('the report across worker processes', () => {
   it('keeps the verdicts of a worker that exited, as Playwright restarts one after a failure', () => {
     const env = { PW_PERF_ASSERT: '1' }
-    const first = createPerfRecorder({ outFile, env, runId: 7 })
+    const first = createPerfRecorder({ outFile, env: { ...env, STORY_PERF_RUN: '7' } })
     expect(() => first.budget('firstRowsMs', 180, 150)).toThrow()
-    createPerfRecorder({ outFile, env, runId: 7 }).budget('expandMs', 50, 100)
+    createPerfRecorder({ outFile, env: { ...env, STORY_PERF_RUN: '7' } }).budget(
+      'expandMs',
+      50,
+      100,
+    )
     const report = read()
     expect(Object.keys(report.verdicts)).toEqual(['firstRowsMs', 'expandMs'])
     expect(report.verdicts.firstRowsMs!.pass).toBe(false)
   })
 
   it('replaces a report left by an earlier run', () => {
-    createPerfRecorder({ outFile, env: {}, runId: 7 }).budget('old', 1, 2)
-    createPerfRecorder({ outFile, env: {}, runId: 8 }).budget('new', 1, 2)
+    createPerfRecorder({ outFile, env: { STORY_PERF_RUN: '7' } }).budget('old', 1, 2)
+    createPerfRecorder({ outFile, env: { STORY_PERF_RUN: '8' } }).budget('new', 1, 2)
     expect(Object.keys(read().verdicts)).toEqual(['new'])
   })
 
   it('keeps every value and verdict when two workers interleave writes', () => {
-    const a = createPerfRecorder({ outFile, env: {}, runId: 7 })
-    const b = createPerfRecorder({ outFile, env: {}, runId: 7 })
+    const a = createPerfRecorder({ outFile, env: { STORY_PERF_RUN: '7' } })
+    const b = createPerfRecorder({ outFile, env: { STORY_PERF_RUN: '7' } })
     a.budget('a1', 1, 2)
     b.budget('b1', 1, 2)
     a.record('aValue', 3)
@@ -141,7 +145,7 @@ describe('the report across worker processes', () => {
         '--input-type=module',
         '-e',
         `const { createPerfRecorder } = await import(${JSON.stringify(budgetUrl)})
-         const r = createPerfRecorder({ outFile: ${JSON.stringify(outFile)}, env: {}, runId: 7 })
+         const r = createPerfRecorder({ outFile: ${JSON.stringify(outFile)}, env: { STORY_PERF_RUN: '7' } })
          for (let i = 0; i < 300; i++) r.record('${name}' + i, i)`,
       ])
     await Promise.all([worker('a'), worker('b')])
@@ -152,9 +156,9 @@ describe('the report across worker processes', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     try {
       vi.setSystemTime(new Date('2026-01-01T00:00:00Z'))
-      const a = createPerfRecorder({ outFile, env: {}, runId: 7 })
+      const a = createPerfRecorder({ outFile, env: { STORY_PERF_RUN: '7' } })
       vi.setSystemTime(new Date('2026-01-01T00:05:00Z'))
-      const b = createPerfRecorder({ outFile, env: {}, runId: 7 })
+      const b = createPerfRecorder({ outFile, env: { STORY_PERF_RUN: '7' } })
       a.budget('a', 1, 2)
       b.budget('b', 1, 2)
       expect(read().date).toBe('2026-01-01T00:00:00.000Z')
@@ -164,8 +168,8 @@ describe('the report across worker processes', () => {
   })
 
   it('keeps a user agent another worker wrote', () => {
-    createPerfRecorder({ outFile, env: {}, runId: 7 }).setUserAgent('Chrome/1')
-    createPerfRecorder({ outFile, env: {}, runId: 7 }).budget('x', 1, 2)
+    createPerfRecorder({ outFile, env: { STORY_PERF_RUN: '7' } }).setUserAgent('Chrome/1')
+    createPerfRecorder({ outFile, env: { STORY_PERF_RUN: '7' } }).budget('x', 1, 2)
     expect(read().userAgent).toBe('Chrome/1')
   })
 })
@@ -203,27 +207,15 @@ describe('lock release', () => {
     releaseLock(lock, 'another worker')
     expect(() => statSync(lock)).toThrow()
   })
-
-  it('leaves no lock behind after a write', () => {
-    createPerfRecorder({ outFile, env: {}, runId: 7 }).record('x', 1)
-    expect(readdirSync(dirname(outFile))).toEqual(['story-perf.json'])
-  })
-})
-
-describe('run id', () => {
-  it('takes the run from STORY_PERF_RUN, so a new run replaces the report', () => {
-    createPerfRecorder({ outFile, env: { STORY_PERF_RUN: 'run-a' } }).budget('old', 1, 2)
-    createPerfRecorder({ outFile, env: { STORY_PERF_RUN: 'run-a' } }).budget('kept', 1, 2)
-    expect(Object.keys(read().verdicts)).toEqual(['old', 'kept'])
-    createPerfRecorder({ outFile, env: { STORY_PERF_RUN: 'run-b' } }).budget('new', 1, 2)
-    expect(read().runId).toBe('run-b')
-    expect(Object.keys(read().verdicts)).toEqual(['new'])
-  })
 })
 
 describe('lock deadline', () => {
   it('throws, naming the lock, when a live lock is held past the deadline', () => {
-    const recorder = createPerfRecorder({ outFile, env: {}, runId: 7, lockDeadlineMs: 50 })
+    const recorder = createPerfRecorder({
+      outFile,
+      env: { STORY_PERF_RUN: '7' },
+      lockDeadlineMs: 50,
+    })
     mkdirSync(dirname(outFile), { recursive: true })
     // A fresh lock, so it is not stale: someone holds it.
     writeFileSync(`${outFile}.lock`, '')

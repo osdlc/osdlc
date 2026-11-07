@@ -63,13 +63,10 @@ export async function captureStories(opts: CaptureOptions): Promise<boolean> {
   const index = JSON.parse(await readFile(join(opts.storybookDir, 'index.json'), 'utf8'))
   const ids = selectStories(index, { include: [opts.prefix], contains: opts.contains })
   const close = await serveStatic(opts.storybookDir, opts.port)
-  let browser: Awaited<ReturnType<typeof chromium.launch>>
-  try {
-    browser = await chromium.launch()
-  } catch (err) {
+  const browser = await chromium.launch().catch((err: unknown) => {
     close()
     throw err
-  }
+  })
   const baseURL = `http://127.0.0.1:${opts.port}`
   let ok = true
   try {
