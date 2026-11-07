@@ -33,8 +33,8 @@ repo-cleaner 0.18. Builds on
   Each detects itself and is skipped when absent. The first adapters, in
   run order, are `orca`, `claude-code`, `cargo` and `node`.
 - **One safety model.** Host rows follow repo-cleaner's: a fingerprint
-  compared with repo-cleaner's exported comparison, a re-check before each
-  step, risks granted by name, and a verified step in the receipt.
+  compared with repo-cleaner's exported comparison, a re-check when the run
+  starts, risks granted by name, and a verified step in the receipt.
   repo-cleaner's plan and receipt keep only their own row kinds; host-cleaner
   holds its host rows beside them in one plan file and one receipt.
 - **An unattended run grants no risk.** `--auto` applies only a fixed safe
@@ -57,7 +57,7 @@ interface HostAdapter {
   gather?(ctx: HostContext): HostRow[];
   /** Run one approved step for a row this adapter owns, then verify it. Returns the detail the receipt records. */
   execute?(step: HostStep, ctx: HostContext): string;
-  /** Replace repo-cleaner's worktree removal for worktrees this host manages. */
+  /** Run in place of `git worktree remove` for worktrees this host manages. repo-cleaner's checks before and after it still run. */
   removeWorktree?: RemoveWorktree;
 }
 ```
@@ -66,10 +66,10 @@ interface HostAdapter {
   adapter adds nothing, and the report says it was skipped.
 - Adapters' `annotate` functions chain, in run order, into repo-cleaner's
   `annotate`, so their verdicts survive every re-check.
-- `removeWorktree` is a new repo-cleaner hook that replaces only the
-  `git worktree remove` call. `clean` still runs its live-process and
-  forced-remove checks before it, and verifies afterwards that the directory
-  is gone and git no longer lists the worktree.
+- `removeWorktree` is a new repo-cleaner hook. The checks around it are
+  `clean`'s live-process and forced-remove checks before, and afterwards the
+  verification that the directory is gone and git no longer lists the
+  worktree.
 
 ### Risks and the unattended subset
 
@@ -115,9 +115,8 @@ interface HostAdapter {
   `annotate` can set, an exported fingerprint comparison, the
   `discard-archived` risk and an archive step, each described in its README
   and CHANGELOG.
-- host-cleaner's dependencies (repo-cleaner, typed-git, detect-harness,
-  command-seam, path-guard, tiered-dirs) are all released, so the package can
-  be built now.
+- host-cleaner's dependencies are all released packages in this workspace,
+  so the package can be built now.
 
 ## Work
 

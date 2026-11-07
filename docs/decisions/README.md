@@ -12,7 +12,8 @@ random keys, so parallel branches do not collide.
 | [D-ODPP](D-ODPP-markdown-corpus.md)                      | `markdown-corpus` is the one corpus model                                                      |
 | [D-L7N5](D-L7N5-host-cleaner.md)                         | Machine cleanup is a `host-cleaner` package over repo-cleaner, with optional detected adapters |
 
-Decisions about one package live in that package's `docs/planning/decisions/`, such as
+Decisions about one package live in that package's
+`docs/planning/decisions/`, such as
 [repo-cleaner's](../../packages/ts/repo-cleaner/docs/planning/README.md).
 
 Terms are defined in [../terms](../terms/README.md).
