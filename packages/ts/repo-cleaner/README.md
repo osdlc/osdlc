@@ -134,7 +134,7 @@ The report, `plan` and `clean` take these:
 | Option | Meaning |
 | --- | --- |
 | `--remote` | Also judge remote branches. Turns on the network: fetches each remote first and asks GitHub or GitLab about pull requests. Slower. |
-| `--offline` | With `--remote`: do not fetch; judge against the remote-tracking refs already on disk. |
+| `--offline` | With `--remote`: do not fetch. Judge against the remote-tracking refs already on disk, remote branches included, so judging needs no access to the remote. Pull requests are still looked up; add `--provider none` for no network at all. The refs can be stale: see [`--offline` reads what is already on disk](#--offline-reads-what-is-already-on-disk). |
 | `--only <kinds>` | Only these kinds of row: `worktree`, `branch`, `remote`, comma-separated. Default: `worktree,branch`, plus `remote` with `--remote`. Naming `remote` implies `--remote`. |
 | `--branch <name\|HEAD>` | Only the rows of one branch: its worktree, its local branch, and its remote branch with `--remote`. `HEAD` is the branch checked out at the target. Never the default branch. |
 | `--against <remote>` | The remote whose default branch counts as "merged into". Default: `origin`, then the first remote. |
@@ -240,7 +240,9 @@ the branch on the remote as a backup.
   since the plan, the run stops before deleting anything: you spared it for
   what it held, so if that changed, the rest of the plan rests on a wrong
   assumption. The run's first step checks the tip again with `git ls-remote`,
-  so one that moves after the check stops the run too.
+  so one that moves after the check stops the run too. This holds under
+  `--offline` too: `clean`'s re-check asks the remote, so a spared branch the
+  remote deleted refuses the run, whatever the tracking refs on disk say.
 - Sparing a worktree also spares its branch, which was only free to delete
   because the worktree was going.
 
@@ -274,7 +276,7 @@ you approve them by name with `--allow`:
 | --- | --- |
 | `abandon-unmerged` | Commits not on the default branch and not captured by an exact-head merged PR, or a worktree's (or its submodules') commits and stashes that no remote has. `evidence.uniqueCommits` counts the commits. |
 | `discard-changes` | Uncommitted or untracked files in the worktree or any of its submodules. |
-| `confirm-open-pr` | The branch has an open pull request; deleting the remote branch closes it. |
+| `confirm-open-pr` | The branch has an open pull request, or open pull requests could not be checked (the CLI is missing or signed out, or the listing failed) so one cannot be ruled out; deleting the remote branch closes it. |
 
 A worktree's submodules are part of it: one `--allow` on the worktree row
 covers the same risk in every submodule. A stash in the worktree itself is
@@ -320,7 +322,8 @@ Refused after the sweep, before deleting, with exit 1:
 - a row name that matches rows in more than one repository: sweep or plan
   only the repository it is in (a bare name can also be given as its full id,
   when the matches are of different kinds);
-- a spared remote branch that is gone or moved since the plan.
+- a spared remote branch that moved since the plan, or that the re-check no
+  longer finds.
 
 Allowed, because nothing contradicts:
 
@@ -568,13 +571,210 @@ table cannot be read the worktree is held back as `process-probe-failed`. A
 host or test supplies its own probe.
 Nothing is ever killed.
 
-Without the provider's CLI (`gh`, or `glab` for GitLab), or without
-authentication, classification proceeds on git evidence alone and the report
-says so. See [Providers (prototype)](#providers-prototype).
+When the provider's CLI is missing or signed out, or a lookup fails, the
+sweep keeps going on what git alone can tell it: see
+[When a lookup fails](#when-a-lookup-fails).
 
 Every branch delete names the full sha the sweep judged. `update-ref -d` and
 the pinned `--force-with-lease` push both refuse when the branch has moved
 since, so a commit pushed while you read the plan survives it.
+
+## When a lookup fails
+
+A sweep asks three things of the outside world: `git fetch` for the remote's
+current state, `git ls-remote` for its branches, and `gh` or `glab` for pull
+requests. Any of them can fail: the network is down, the repository was
+renamed or deleted, the signed-in account cannot see it, a rate limit.
+
+The rule is that a failed lookup costs only what it would have told you. The
+rows that did not need it are judged as usual, the rows that did are judged
+without it, and the repository carries a `note` saying what was missing. Only
+a failed fetch costs the whole repository.
+
+| What failed | What you get |
+| --- | --- |
+| `gh pr list` / `glab api` (the PR listing) | Every row is judged on git evidence. Remote branches with no known PR need `--allow confirm-open-pr` to delete. One note on the repository. |
+| `gh` / `glab` not installed or not signed in | The provider is never asked, so this is treated like a failed listing: every row is judged on git evidence, remote branches with no known PR need `--allow confirm-open-pr` to delete, and a note on the repository says why. Pass `--provider none` if the remote has no forge, so there is nothing to check. |
+| `git ls-remote`, after a fetch that worked | Remote branches are read from the refs that fetch just wrote. A note on the repository and on each remote row. |
+| `git fetch` | The repository is an error with no rows. Every row would otherwise be judged against an older default branch than the one you asked for. |
+
+### Example: a repository `gh` cannot see
+
+The remote names a repository that was deleted, or that your account cannot
+read. In 0.18 and earlier the repository came back as an error, and none of
+it was judged:
+
+```console
+$ repo-cleaner --remote --offline
+~/work/app  (acme/app, default main, origin, not fetched)
+  error: GitHub has no such pull request, issue or repository, or you cannot see it.
+
+0 to delete, 0 to review, across 1 repository (1 unreadable).
+```
+
+Now the merged branch is still found, and the note says what was missing:
+
+```console
+$ repo-cleaner --remote --offline
+~/work/app  (acme/app, default main, origin, not fetched)
+  note: Listing PRs with `gh pr list` failed (GitHub has no such pull request, issue or repository, or you cannot see it.); judged on git evidence alone.
+  branch  feat/login         delete   fully merged into origin/main
+          git update-ref -d refs/heads/feat/login 44d2db93…
+  remote  origin/feat/login  delete   fully merged into origin/main; needs --allow confirm-open-pr
+          git push --force-with-lease=refs/heads/feat/login:44d2db93… origin :refs/heads/feat/login
+
+2 to delete, 0 to review, across 1 repository.
+```
+
+When the remote may not be on a forge at all, the note also suggests
+`--provider none`: for a host `auto` could only guess was GitHub, or a local
+path swept with `--provider github`. Under `auto`, a local path gets no
+provider in the first place.
+
+### Why the remote branch needs `confirm-open-pr`
+
+Deleting the head branch of an open pull request closes that pull request.
+When the listing works, `repo-cleaner` knows which branches have one. When it
+failed, or could not run because `gh` is missing or signed out, it cannot
+tell, so it does not delete a remote branch on its own say:
+
+```console
+$ repo-cleaner clean --remote --offline --yes
+repo-cleaner clean: ~/work/app: Listing PRs with `gh pr list` failed (GitHub has no such pull request, …); judged on git evidence alone.
+skipped  remote:origin/feat/login — not-allowed (needs confirm-open-pr)
+ok       branch:feat/login — git update-ref -d refs/heads/feat/login 44d2db93… (ref does not resolve)
+
+deleted: 1 local branch
+skipped 1, not deleted: 1 not-allowed (--allow confirm-open-pr)
+status: complete
+```
+
+The local branch went; the remote branch stayed. To go on, pick one:
+
+- Fix the lookup (install `gh`, sign in, check the remote URL) and run again.
+- Pass `--provider none` if this remote has no forge at all, so there is no
+  pull request to lose.
+- Check for open pull requests yourself, then pass `--allow confirm-open-pr`.
+
+The same happens when `gh` is not installed or not signed in. Nothing was
+asked, so nothing can rule out an open pull request:
+
+```console
+$ repo-cleaner --remote --offline
+~/work/app  (acme/app, default main, origin, not fetched)
+  note: Could not check for open PRs: `gh` is not installed, so deleting a remote branch needs confirm-open-pr. Install `gh`, or pass `--allow confirm-open-pr` once you have checked.
+  branch  feat/login         delete   fully merged into origin/main
+          git update-ref -d refs/heads/feat/login 255acd56…
+  remote  origin/feat/login  delete   fully merged into origin/main; needs --allow confirm-open-pr
+          git push --force-with-lease=refs/heads/feat/login:255acd56… origin :refs/heads/feat/login
+
+2 to delete, 0 to review, across 1 repository.
+```
+
+`--provider none` is how you say the remote has no forge: then there is no
+lookup, no note and no gate.
+
+### `--offline` reads what is already on disk
+
+`--offline` does not fetch, and reads remote branches from the
+remote-tracking refs (`refs/remotes/<remote>/`) instead of asking the remote
+with `git ls-remote`. So judging works with no network and with a remote that
+no longer exists. In 0.18 and earlier it still called `git ls-remote`, and a
+remote that could not be read failed the whole repository:
+
+```console
+$ repo-cleaner --remote --offline --provider none     # 0.18 and earlier
+~/work/api  (default main, origin, not fetched)
+  error: git ls-remote: The remote '/srv/git/api.git' does not exist or is not a git repository. …
+```
+
+```console
+$ repo-cleaner --remote --offline --provider none     # now
+~/work/api  (default main, origin, not fetched)
+  branch  feat/login         delete   fully merged into origin/main
+          git update-ref -d refs/heads/feat/login 255acd56…
+  remote  origin/feat/login  delete   fully merged into origin/main
+          git push --force-with-lease=refs/heads/feat/login:255acd56… origin :refs/heads/feat/login
+
+2 to delete, 0 to review, across 1 repository.
+```
+
+`--offline` still asks `gh` or `glab` about pull requests. Add
+`--provider none` to judge with no network at all.
+
+The refs on disk can be stale. A remote-tracking ref stays until the next
+`git fetch --prune`, so a branch the forge deleted after its pull request
+merged still shows in the report, and a branch someone pushed to since shows
+its old tip. That is fine for a report, but `clean` deletes on the remote, so
+before it does, its re-check asks the remote itself with `git ls-remote`. A
+branch the remote no longer has is skipped as gone, and one whose tip moved
+is skipped too:
+
+```console
+$ repo-cleaner clean --remote --offline --provider none --only remote --yes
+skipped  remote:origin/feat/search — gone (no longer in the sweep)
+ok       remote:origin/feat/cart — git push … origin :refs/heads/feat/cart (ls-remote lists nothing)
+
+deleted: 1 remote branch
+skipped 1, not deleted: 1 gone
+status: complete
+```
+
+A remote branch you `--spare` (see [Pick and spare](#pick-and-spare)) that is
+gone from the remote refuses the run instead, because you spared it for what
+it held. `git fetch --prune` drops the stale tracking refs, so the report
+stops showing them.
+
+### In the library
+
+The same information is on the result, for a host to show or act on:
+
+- `RepoSweep.notes`: one sentence for each lookup the repository was judged
+  without. Empty when everything answered.
+- `RepoInfo.provider.listError`: the provider's own reason, when its listing
+  failed.
+- `Preview.notes` (`check`) and `RunOptions.onNotes` (`run`): the same notes
+  from their re-checks, which sweep again and can meet a failure the first
+  sweep did not.
+- `Step.gone` on a receipt step, and `RunSummary.gone`: a remote branch
+  someone deleted between the re-check and the run's push, counted apart from
+  what the run deleted.
+
+```ts
+import { sweep } from '@osdlc/repo-cleaner'
+
+const result = sweep(['.'], { remote: true, offline: true, provider: 'github' })
+for (const repo of result.repos) {
+  if (repo.error !== null) {
+    console.log(`${repo.path}: could not be swept: ${repo.error}`)
+    continue
+  }
+  for (const note of repo.notes) console.log(`note: ${note}`)
+  console.log(`listError: ${repo.repo?.provider?.listError ?? '(none)'}`)
+  for (const row of repo.rows) console.log(row.id, row.verdict, row.risks.join(', ') || '-')
+}
+```
+
+```text
+note: Listing PRs with `gh pr list` failed (GitHub has no such pull request, …); judged on git evidence alone.
+listError: GitHub has no such pull request, issue or repository, or you cannot see it.
+worktree:/Users/me/work/app keep -
+branch:feat/login delete -
+branch:main keep -
+remote:origin/feat/login delete confirm-open-pr
+remote:origin/main keep -
+```
+
+The local branch needs no grant: deleting it closes no pull request. The
+remote branch carries `confirm-open-pr`, so `check` drops it unless that risk
+is allowed.
+
+A `PrProvider` you write reports a failure by returning `null` or by
+throwing; either becomes `listError` and a note. Return an empty list only
+when the forge answered and there are no pull requests.
+
+The decision behind this is
+[D-UVUH](docs/planning/decisions/D-UVUH-failed-lookups.md).
 
 ## Plan and clean
 
@@ -656,8 +856,8 @@ const receipt = run(preview)
 | --- | --- |
 | `sweep(targets, opts?)` | Resolve the targets and judge every row. Options as on the command line: `only`, `remote`, `offline`, `against`, `provider`, `branch`, plus `cwd`, `cacheDir`, `annotate`, `onProgress`, `onWarn`, and the injectable `git`, `gh`, `glab` runners and `probe` |
 | `plan(sweep)` | Every row, fingerprinted, with the sweep's options |
-| `check(plan, approval, opts?)` | Resolve `{ pick, spare, allow }` against the plan, sweep again, and return a `Preview`: the steps, the rows dropped and why, and the allows no row needed. Deletes nothing |
-| `run(preview, opts?)` | Sweep once more and take the preview's steps, writing a `Receipt` (to `receiptPath` after every step, when given) |
+| `check(plan, approval, opts?)` | Resolve `{ pick, spare, allow }` against the plan, sweep again, and return a `Preview`: the steps, the rows dropped and why, the allows no row needed, and `notes`, what the re-check judged without. Deletes nothing |
+| `run(preview, opts?)` | Sweep once more and take the preview's steps, writing a `Receipt` (to `receiptPath` after every step, when given). `onNotes` hears what its own re-check judged without |
 | `inspectWorktree(path, opts?)` | One worktree judged as a sweep judges it, submodules included |
 | `readPlan`, `writePlan` | Plans on disk |
 | `render` | The command line's formats: `text`, `json`, `summary`, `commands`, `preview`, `receipt` |
@@ -688,7 +888,10 @@ a branch's `sha`, `upstream`, `track`; every kind's `merged`, `pr`,
 `uniqueCommits` and landing evidence.
 
 `sweep` never throws for a repository it cannot read: that one comes back
-with `error` set, because a fan-out must not end on its first bad entry. It
+with `error` set, because a fan-out must not end on its first bad entry. A
+lookup that only adds evidence (a pull request listing, or `ls-remote` after
+the fetch) costs that evidence and not the repository: its rows are judged
+without it, and the repository's `notes` say what was missing. It
 throws a `RepoCleanerError` for options that contradict each other, as the
 command line refuses them, before reading anything. `check` throws for an
 approval that contradicts itself, names a row the plan does not have, or
@@ -720,9 +923,10 @@ branch.
 | `github` | `gh` | `gh pr list --state all`, up to 300 |
 | `gitlab` | `glab` | `glab api projects/<path>/merge_requests?state=all`, 100 a page, up to 300 |
 
-With `--remote`, `--provider auto` (the default) reads the remote's host: a host with `gitlab`
-in its name is GitLab, any other is GitHub, which is what the tool did before
-providers existed. Name one with `--provider github|gitlab` for a host the
+With `--remote`, `--provider auto` (the default) reads the remote's host: a
+remote that names no host (a local path or `file://`) gets no provider, since
+it can have no pull requests; a host with `gitlab` in its name is GitLab; any
+other is GitHub, which is what the tool did before providers existed. Name one with `--provider github|gitlab` for a host the
 name does not give away, or `--provider none` to skip pull requests. A plan
 records the choice, so `clean` re-checks with the same provider.
 
@@ -738,20 +942,26 @@ Not done yet:
 - Gitea, Forgejo and Bitbucket.
 - Mapping a self-hosted host to a provider in config; today it is the host
   name or `--provider`.
-- Auth edge cases: tokens without API scope, `glab` signed in to a different
-  host than the remote, rate limits. Each reads as "no PR found".
+- Auth edge cases. A token without API scope, or a rate limit, is a failed
+  listing: the rows are judged on git evidence with a note (see
+  [When a lookup fails](#when-a-lookup-fails)). `glab` signed in only to a
+  different host than the remote's reads as not signed in for that host,
+  which gates remote deletes the same way.
 - Squash metadata. GitLab reports `squash_commit_sha`; it is not used, so a
   squashed MR proves landing only by its head commit, as on GitHub.
 - GitLab under a sub-path (`https://host/gitlab/group/proj`). The URL does not
   say where the install ends and the project begins, so the whole path is read
   as the project, `glab` is asked for a project that does not exist, and the
-  listing fails. That reads as "no PR found": rows stay at `review`, nothing is
-  deleted on its account.
+  listing fails. The rows are judged on git evidence with a note, and a remote
+  branch needs `--allow confirm-open-pr` to delete.
 
 ## Runtime dependencies
 
-`git` on `PATH`, and `gh` (or `glab` for GitLab) when PR state should count.
-Authentication is the CLI's own — this package reads no token.
+`git` on `PATH`, and `gh` (or `glab` for GitLab) for pull request evidence.
+Without it, deleting a remote branch needs `--allow confirm-open-pr`, or
+`--provider none` for a remote with no forge (see
+[When a lookup fails](#when-a-lookup-fails)). Authentication is the CLI's
+own — this package reads no token.
 
 ## Running from a checkout
 

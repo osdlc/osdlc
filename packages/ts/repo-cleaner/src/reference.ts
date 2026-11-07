@@ -18,7 +18,11 @@ const SWEEP = `Sweep options (the report, plan and clean)
                           each remote first and asks GitHub or GitLab about pull
                           requests. Slower.
   --offline               With --remote: do not fetch; judge against the
-                          remote-tracking refs already on disk.
+                          remote-tracking refs already on disk, remote branches
+                          included, so judging does not contact the remote. Tips can
+                          be stale; clean asks the remote before deleting on it.
+                          Pull requests are still looked up; add --provider none
+                          to judge with no network at all.
   --only <kinds>          Only these kinds of row: worktree, branch, remote,
                           comma-separated. Default: worktree,branch, plus remote with
                           --remote. Naming remote implies --remote.
@@ -59,8 +63,8 @@ const CLEAN = `repo-cleaner clean [target...]
                           Repeatable.
   --spare <row>           Leave this row alone, and make sure it is what you saw. A
                           spared row is not deleted, even if it is judged delete. A
-                          spared remote branch is still checked: if it is gone or its
-                          tip moved since the plan, the run stops before deleting
+                          spared remote branch is still checked: if its tip moved or
+                          it is gone since the plan, the run stops before deleting
                           anything. Sparing a worktree also spares its branch.
                           Repeatable.
   --allow <risk>          Accept this risk for every row that carries it.
@@ -105,8 +109,9 @@ Risks (approve each by name with --allow)
                      (or its submodules') commits and stashes that no remote has.
   discard-changes    Uncommitted or untracked files in the worktree or any of its
                      submodules.
-  confirm-open-pr    The branch has an open pull request; deleting the remote branch
-                     closes it.
+  confirm-open-pr    The branch has an open pull request, or open pull requests could
+                     not be checked (the CLI is missing or signed out, or the listing
+                     failed); deleting the remote branch closes it.
   A worktree's submodules are part of it: one --allow on the worktree row covers
   the same risk in every submodule.`
 
@@ -133,7 +138,7 @@ const CONFLICTS = `Refused before anything is deleted (exit 2)
 Refused after the sweep, before deleting (exit 1)
     a picked, spared or allowed row the plan does not have
     a row name that matches rows in more than one repository
-    a spared remote branch that is gone or moved since the plan
+    a spared remote branch that moved since the plan, or that the re-check no longer finds
 
 Allowed, because nothing contradicts
     the same row picked twice: it runs once

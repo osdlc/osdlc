@@ -52,6 +52,8 @@ import {
   type SweepProgress,
   type SweptWith,
   parseRowId,
+  sweepNotes,
+  type RepoNote,
 } from './types.ts'
 import { errorText } from './util.ts'
 import { removeIsForced, worktreeCommands } from './worktrees.ts'
@@ -71,7 +73,7 @@ export interface Allow {
  *   `pick`   work on exactly these rows; a `review` row, or a `keep` row with
  *            an action, runs only when picked. Default: every `delete` row.
  *   `spare`  leave these rows alone; a spared remote branch is still checked,
- *            and the run stops if it is gone or moved since the plan.
+ *            and the run stops if it moved or is gone since the plan.
  *   `allow`  the risks a row's action may carry.
  */
 export interface Approval {
@@ -124,6 +126,12 @@ export interface RunOptions extends Shared {
   onStep?: ((index: number, total: number, step: Step) => void) | undefined
   /** Told after each step, with its `result` set, before the receipt is saved. */
   onStepDone?: ((index: number, total: number, step: Step) => void) | undefined
+  /**
+   * Told the run's own re-check's notes, before the first step: what it judged
+   * without. The re-check may differ from the preview's, for example when a
+   * listing fails only at the run.
+   */
+  onNotes?: ((notes: RepoNote[]) => void) | undefined
 }
 
 /** What a run would do, for a person to approve: the steps, and the rows dropped and why. */
@@ -135,6 +143,12 @@ export interface Preview {
   dropped: Dropped[]
   /** Allowed risks no row that runs carries. Not an error: what a row carries can change between runs. */
   unusedAllows: { risk: Risk; row: RowId | null }[]
+  /**
+   * `RepoSweep.notes`, with each repository's root: what the re-check judged
+   * without. With a sweep passed in (`CheckOptions.sweep`), every repository
+   * of that sweep; otherwise each plan repository the re-check swept again.
+   */
+  notes: RepoNote[]
 }
 
 // ── resolving an approval ──────────────────────────────────────────────────
@@ -324,12 +338,22 @@ function allowed(allow: ResolvedApproval['allow'], at: Resolved, risk: Risk): bo
   return allow.some((a) => a.risk === risk && (a.row === null || same(a.row, at)))
 }
 
-/** The plan repository's rows as they stand now, annotated as the sweep annotated them. */
-function resweep(repo: PlanRepo, plan: Plan, kinds: readonly Kind[], opts: CheckOptions): Row[] {
+/**
+ * The plan repository's rows as they stand now, annotated as the sweep
+ * annotated them, and, when it had to sweep again, that sweep's notes on what
+ * it judged without. A sweep passed in reports its notes whole, in `recheck`.
+ */
+function resweep(
+  repo: PlanRepo,
+  plan: Plan,
+  kinds: readonly Kind[],
+  opts: CheckOptions,
+): { rows: Row[]; notes: string[] } {
   const branchScoped = plan.options.branch !== null
   const given = opts.sweep?.repos.find((r) => r.repo?.root === repo.root)
   if (given !== undefined && given.error === null) {
-    return holdFreedBranches([...given.rows], branchScoped)
+    // Its notes are reported with the rest of that sweep's, by `recheck`.
+    return { rows: holdFreedBranches([...given.rows], branchScoped), notes: [] }
   }
   const swept = sweepRepo(repo.root, {
     ...opts,
@@ -337,13 +361,16 @@ function resweep(repo: PlanRepo, plan: Plan, kinds: readonly Kind[], opts: Check
     against: plan.options.against ?? undefined,
     provider: plan.options.provider,
     fetch: repo.fetched,
+    // Offline, the plan read tracking refs that can be stale; before anything
+    // is deleted on the remote, ask the remote itself.
+    liveRemoteTips: kinds.includes('remote'),
     branch: plan.options.branch ?? undefined,
     cwd: opts.cwd ?? process.cwd(),
   })
   if (swept.repo === null || swept.error !== null) {
     throw new Error(swept.error ?? `could not read repository: ${repo.root}`)
   }
-  return swept.rows
+  return { rows: swept.rows, notes: swept.notes }
 }
 
 interface Rechecked {
@@ -351,6 +378,7 @@ interface Rechecked {
   dropped: Dropped[]
   /** Spared remote branches whose tips the run checks first. */
   verified: Accepted[]
+  notes: RepoNote[]
 }
 
 /**
@@ -387,23 +415,29 @@ function recheck(
     kindsIn.set(s.repo, kinds)
   }
   const currentRows = new Map<string, Row>()
+  const notes: RepoNote[] = []
   for (const [root, wanted] of kindsIn) {
     const repo = plan.repos.find((r) => r.root === root)!
     // Only the kinds the selection is in: a plan of local rows need not
     // compare every remote branch again. A branch brings its worktrees, which
     // decide whether it is free to go or held.
     if (wanted.has('branch') && plan.options.only.includes('worktree')) wanted.add('worktree')
-    for (const row of resweep(
+    const now = resweep(
       repo,
       plan,
       KINDS.filter((k) => wanted.has(k)),
       opts,
-    )) {
-      currentRows.set(keyOf({ repo: root, id: row.id }), row)
-    }
+    )
+    for (const row of now.rows) currentRows.set(keyOf({ repo: root, id: row.id }), row)
+    for (const note of now.notes) notes.push({ repo: root, note })
   }
   const planned = (s: Resolved) => plannedRows.get(keyOf(s))!
   const current = (s: Resolved): Row | undefined => currentRows.get(keyOf(s))
+  // A refusal ends the check before its notes are shown, so it carries them.
+  const alsoNoted = (root: string): string => {
+    const said = notes.filter((n) => n.repo === root).map((n) => n.note)
+    return said.length === 0 ? '' : ` (${said.join(' ')})`
+  }
 
   // A spared remote branch is checked, not dropped: one that moved refuses the run.
   const verified: Accepted[] = []
@@ -414,7 +448,7 @@ function recheck(
     if (row === undefined || row.kind !== 'remote') {
       throw new RepoCleanerError(
         'spared-changed',
-        `spared ${s.id} is no longer on the remote; refusing to run`,
+        `spared ${s.id} is no longer on the remote; refusing to run${alsoNoted(s.repo)}`,
       )
     }
     if (typeof plannedSha !== 'string' || row.evidence.sha !== plannedSha) {
@@ -479,7 +513,14 @@ function recheck(
       detail: `checked out in ${worktree}, which this run does not remove`,
     })
   }
-  return { accepted: kept, dropped, verified }
+  // A sweep passed in speaks for every repository it read, selected or not: a
+  // repository with nothing to run is where a missing listing matters most.
+  return {
+    accepted: kept,
+    dropped,
+    verified,
+    notes: opts.sweep === undefined ? notes : [...sweepNotes(opts.sweep), ...notes],
+  }
 }
 
 // ── one row per remote branch ──────────────────────────────────────────────
@@ -650,6 +691,7 @@ interface Planned {
   accepted: Accepted[]
   /** Worktrees this run removes or prunes, by resolved path. */
   removedHere: Set<string>
+  notes: RepoNote[]
 }
 
 function planSteps(
@@ -691,7 +733,7 @@ function planSteps(
     ...rechecked.verified.map((a): [Step, Accepted | null] => [verifyStep(a), a]),
     ...ordered.flatMap((a) => stepsFor(a).map((step): [Step, Accepted | null] => [step, a])),
   ]
-  return { steps, dropped, accepted: ordered, removedHere }
+  return { steps, dropped, accepted: ordered, removedHere, notes: rechecked.notes }
 }
 
 /** A worktree row whose deletion takes the repository-wide prune: its directory is left without its `.git`. */
@@ -733,7 +775,12 @@ export function check(plan: Plan, approval: Approval, opts: CheckOptions = {}): 
   const cwd = opts.cwd ?? process.cwd()
   checkMirrors(plan, opts.cacheDir ?? defaultCacheDir())
   const resolved = resolveApproval(plan, approval, cwd)
-  const { steps, dropped, accepted } = planSteps(plan, resolved, opts, resolved.pick.length === 0)
+  const { steps, dropped, accepted, notes } = planSteps(
+    plan,
+    resolved,
+    opts,
+    resolved.pick.length === 0,
+  )
   for (const [step] of steps) step.result = 'would-run'
   const unusedAllows = resolved.allow
     .filter(
@@ -745,7 +792,7 @@ export function check(plan: Plan, approval: Approval, opts: CheckOptions = {}): 
         ),
     )
     .map((a) => ({ risk: a.risk, row: a.row?.id ?? null }))
-  return { plan, approval: resolved, steps: steps.map(([s]) => s), dropped, unusedAllows }
+  return { plan, approval: resolved, steps: steps.map(([s]) => s), dropped, unusedAllows, notes }
 }
 
 // ── the run ────────────────────────────────────────────────────────────────
@@ -788,15 +835,24 @@ function assertSafeToForce(path: string, git: Git, a: Accepted): void {
   if (reasons.length > 0) throw new Error(`refused: ${reasons.join('; ')}`)
 }
 
-/** Run one step, then confirm it took. Throws with the reason on failure. */
+/** A remote step that found the branch already gone: its verification, marked so. */
+class Gone {
+  constructor(readonly verification: string) {}
+}
+
+/**
+ * Run one step, then confirm it took. Throws with the reason on failure.
+ */
 function execute(
   step: Step,
   a: Accepted | null,
   git: Git,
   probe: ProcessProbe,
   removedHere: ReadonlySet<string>,
-): string {
+): string | Gone {
   const at = git.at(step.repo)
+  const remoteTip = (remote: string, ref: string) =>
+    at.lsRemote(remote, ref).find((r) => r.ref === ref)
   const registered = (path: string): boolean =>
     at.worktrees().some((w) => resolve(w.path) === resolve(path))
   const row = a?.row
@@ -860,7 +916,7 @@ function execute(
     case 'verify-remote': {
       if (row?.kind !== 'remote') throw new Error('verify-remote without a remote branch')
       const ref = `refs/heads/${row.evidence.branch}`
-      const tip = at.lsRemote(row.evidence.remote, ref).find((r) => r.ref === ref)
+      const tip = remoteTip(row.evidence.remote, ref)
       if (tip === undefined)
         throw new Error(`refused: spared ${ref} is gone from ${row.evidence.remote}`)
       if (tip.sha !== step.expectedSha) {
@@ -877,11 +933,20 @@ function execute(
       })
       const refused = report.refs.find((r) => r.flag === '!')
       if (refused?.flag === '!') {
+        // Someone deleted the branch between the re-check and this push, so
+        // the lease refuses; a ref the remote no longer lists is done. Drop
+        // the tracking ref, as a delete push would have.
+        if (remoteTip(remote, ref) === undefined) {
+          // Compare-and-swap: a tracking ref that moved since is left alone.
+          at.try.deleteRef(`refs/remotes/${remote}/${row.evidence.branch}`, {
+            expected: step.expectedSha!,
+          })
+          return new Gone(`already gone from ${remote}`)
+        }
         const why = refused.rawReason === null ? '' : ` (${refused.rawReason})`
         throw new Error(`${refused.summary}${why}: ${PUSH_REJECTIONS[refused.rejection].message}`)
       }
-      if (at.lsRemote(remote, ref).some((r) => r.ref === ref))
-        throw new Error(`ls-remote still lists ${ref}`)
+      if (remoteTip(remote, ref) !== undefined) throw new Error(`ls-remote still lists ${ref}`)
       return 'ls-remote lists nothing'
     }
   }
@@ -935,6 +1000,7 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   // so a row the re-check now judges `review` drops rather than runs.
   const safeOnly = preview.approval.pick.length === 0
   const planned = planSteps(preview.plan, approval, { ...opts, sweep: undefined }, safeOnly)
+  opts.onNotes?.(planned.notes)
   const known = new Set(receipt.dropped.map((d) => `${d.repo}\0${d.row}`))
   for (const d of planned.dropped) {
     if (!known.has(`${d.repo}\0${d.row}`)) receipt.dropped.push(d)
@@ -953,7 +1019,13 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   for (const [i, [step, a]] of plannedSteps.entries()) {
     opts.onStep?.(i, plannedSteps.length, step)
     try {
-      step.verification = execute(step, a, git, probe, removedHere)
+      const done = execute(step, a, git, probe, removedHere)
+      if (done instanceof Gone) {
+        step.verification = done.verification
+        step.gone = true
+      } else {
+        step.verification = done
+      }
       step.result = 'ok'
       if (step.action === 'unlock-worktree') unlocked.add(a!.row.name)
     } catch (err) {

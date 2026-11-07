@@ -71,8 +71,10 @@ export type Action = (typeof ACTIONS)[number]
  *                       (or its submodules') commits and stashes no remote has
  *   `discard-changes`   drops modified, staged or untracked files in a worktree
  *                       or any of its submodules
- *   `confirm-open-pr`   the branch has an open pull request; deleting the remote
- *                       branch closes it
+ *   `confirm-open-pr`   the branch has an open pull request, or open pull
+ *                       requests could not be checked (the CLI is missing or
+ *                       signed out, or the listing failed) so one cannot be
+ *                       ruled out; deleting the remote branch closes it
  */
 export const RISKS = ['abandon-unmerged', 'discard-changes', 'confirm-open-pr'] as const
 
@@ -353,8 +355,27 @@ export interface RepoSweep {
   repo: RepoInfo | null
   rows: Row[]
   counts: Counts
+  /**
+   * What the sweep could not look up for this repository and judged without,
+   * one sentence each: a remote branch listing or a pull request listing that
+   * failed, or a pull request lookup the provider's CLI could not make
+   * (missing or signed out). The rows stand on the evidence that was left.
+   * Empty when nothing was missing.
+   */
+  notes: string[]
   /** Why this repository produced no rows. Null on success. */
   error: string | null
+}
+
+/** One of a repository's `notes`, with the repository's root. */
+export interface RepoNote {
+  repo: string
+  note: string
+}
+
+/** Every repository's `notes` in `sweep`, each with its repository. */
+export function sweepNotes(sweep: Pick<Sweep, 'repos'>): RepoNote[] {
+  return sweep.repos.flatMap((r) => r.notes.map((note) => ({ repo: r.repo?.root ?? r.path, note })))
 }
 
 /** A target that named no repository. */

@@ -10,14 +10,14 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { spawnRunner, type CommandResult, type CommandRunner } from '@osdlc/command-seam'
+import { type CommandResult } from '@osdlc/command-seam'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 
 import { assessLanding, patchEquivalent } from '../src/landing.ts'
 import { sweep as sweepTargets, type SweepOptions } from '../src/sweep.ts'
 import type { Kind, RepoInfo, RepoSweep, Row } from '../src/types.ts'
-import { cannedGh, commitFile, git, newRepo, sh } from './helpers.ts'
+import { cannedGh, commitFile, git, interposedRunner, newRepo, sh } from './helpers.ts'
 
 const HOOK_TIMEOUT_MS = 60_000
 
@@ -81,16 +81,6 @@ function repoInfo(dir: string): RepoInfo {
   const info = sweep(dir).repo
   if (info === null) throw new Error('not a repository')
   return info
-}
-
-/** A runner that answers some argv itself and runs the rest for real. */
-function interposedRunner(answer: (argv: string[]) => CommandResult | undefined): CommandRunner {
-  const real = spawnRunner('git', { absolutePathOnly: true })
-  return {
-    run(argv, opts) {
-      return answer(argv) ?? real.run(argv, opts)
-    },
-  }
 }
 
 /** A client over {@link interposedRunner}. */
@@ -524,6 +514,8 @@ describe('a patch match alone needs the grant', () => {
 
 describe('merged PR at an earlier head', () => {
   const prFor = (dir: string, head: string) => ({
+    // The remote is a local path, so name the provider: `auto` asks none.
+    provider: 'github' as const,
     gh: cannedGh([{ number: 7, state: 'MERGED', headRefName: 'feat', headRefOid: head }]),
   })
 
