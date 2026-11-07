@@ -58,10 +58,20 @@ export interface CaptureOptions {
   outLayout?: 'flat' | 'by-theme' | undefined
 }
 
-/** Shoot every matching story. Resolves to false if any story failed. */
+/**
+ * Shoot every matching story. Resolves to false if any story failed, or if no
+ * story matches, which is almost always a mistyped prefix.
+ */
 export async function captureStories(opts: CaptureOptions): Promise<boolean> {
   const index = JSON.parse(await readFile(join(opts.storybookDir, 'index.json'), 'utf8'))
   const ids = selectStories(index, { include: [opts.prefix], contains: opts.contains })
+  if (ids.length === 0) {
+    const filter = opts.contains
+      ? `${opts.prefix}* containing "${opts.contains}"`
+      : `${opts.prefix}*`
+    console.error(`no story in ${opts.storybookDir} matches ${filter}`)
+    return false
+  }
   const close = await serveStatic(opts.storybookDir, opts.port)
   const browser = await chromium.launch().catch((err: unknown) => {
     close()
