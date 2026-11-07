@@ -145,7 +145,7 @@ describe('the README', () => {
     const hook = join(HERE, 'hooks', 'pre-push')
     expect(statSync(hook).mode & 0o111).not.toBe(0)
     // `sh -n` parses without running.
-    const parsed = spawnRunner('sh').run(['-n', hook], {})
+    const parsed = spawnRunner('sh').run(['-n', hook], { cwd: HERE })
     expect(parsed.exitCode, parsed.stderr).toBe(0)
   })
 })
