@@ -986,6 +986,11 @@ describe('clean', () => {
       }),
     )
     expect(branchRefs(fx.bare)).not.toContain('feat/t')
+    // Spared, so not counted as gone: only a delete step counts there.
+    expect((JSON.parse(res.out) as { summary: unknown }).summary).toMatchObject({
+      deleted: { remote: 1 },
+      gone: 0,
+    })
   })
 
   test('online, a spared remote branch that is gone at the run still refuses it', () => {

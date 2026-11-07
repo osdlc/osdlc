@@ -331,11 +331,11 @@ export function renderCommands(sweep: Sweep): string[] {
 /** What a run did, or would do, counted by kind. */
 export interface RunSummary {
   /**
-   * Rows deleted (or, in a preview, that would be), by kind. Pruned worktrees
-   * and remote branches found already gone are counted apart.
+   * Rows deleted (or, in a preview, that would be), by kind. Pruned worktrees,
+   * and remote branches a delete step found already gone, are counted apart.
    */
   deleted: Record<Kind, number>
-  /** Remote branches an `--offline` plan named that the remote had already deleted. */
+  /** Remote branches a delete step found the remote had already deleted. */
   gone: number
   /** Worktrees whose stale record was pruned; their directories were gone or left alone. */
   pruned: number

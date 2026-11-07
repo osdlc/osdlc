@@ -436,9 +436,14 @@ function recheck(
     const row = current(s)
     const plannedSha = planned(s).fingerprint['sha']
     if (row === undefined || row.kind !== 'remote') {
+      // Offline the re-check reads tracking refs, so a missing row means one
+      // was pruned since the plan; a plan made now would not list it.
+      const fetched = plan.repos.find((r) => r.root === s.repo)?.fetched === true
       throw new RepoCleanerError(
         'spared-changed',
-        `spared ${s.id} is no longer on the remote; refusing to run`,
+        fetched
+          ? `spared ${s.id} is no longer on the remote; refusing to run`
+          : `spared ${s.id} is no longer among the remote-tracking refs (pruned since the plan?); refusing to run, plan again`,
       )
     }
     if (typeof plannedSha !== 'string' || row.evidence.sha !== plannedSha) {
@@ -828,8 +833,8 @@ function assertSafeToForce(path: string, git: Git, a: Accepted): void {
 /**
  * Run one step, then confirm it took. Throws with the reason on failure.
  *
- * @param offline the plan was made `--offline`, from tracking refs that can
- *   name a branch the remote already deleted.
+ * @param liveTips the re-check read this repository's remote tips live, after
+ *   a fetch, rather than from tracking refs that can outlive a deleted branch.
  */
 function execute(
   step: Step,
@@ -837,7 +842,7 @@ function execute(
   git: Git,
   probe: ProcessProbe,
   removedHere: ReadonlySet<string>,
-  offline: boolean,
+  liveTips: boolean,
 ): string {
   const at = git.at(step.repo)
   const registered = (path: string): boolean =>
@@ -904,9 +909,9 @@ function execute(
       if (row?.kind !== 'remote') throw new Error('verify-remote without a remote branch')
       const ref = `refs/heads/${row.evidence.branch}`
       const tip = at.lsRemote(row.evidence.remote, ref).find((r) => r.ref === ref)
-      // Offline, the plan read a tracking ref, which outlives a branch the
-      // remote deleted; online, the tip was read live, so its loss is a change.
-      if (tip === undefined && offline) return `${ALREADY_GONE}${row.evidence.remote}; spared`
+      // From tracking refs, the tip may name a branch the remote already
+      // deleted; read live, after a fetch, its loss is a change since then.
+      if (tip === undefined && !liveTips) return `${ALREADY_GONE}${row.evidence.remote}; spared`
       if (tip === undefined)
         throw new Error(`refused: spared ${ref} is gone from ${row.evidence.remote}`)
       if (tip.sha !== step.expectedSha) {
@@ -1007,10 +1012,12 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   // Worktrees whose lock this run cleared. typed-git has no `worktree lock`
   // verb, so a failed remove cannot put the lock back; the receipt says so.
   const unlocked = new Set<string>()
+  // Repositories the re-check fetched, so it read their remote tips live.
+  const fetched = new Set(preview.plan.repos.filter((r) => r.fetched).map((r) => r.root))
   for (const [i, [step, a]] of plannedSteps.entries()) {
     opts.onStep?.(i, plannedSteps.length, step)
     try {
-      step.verification = execute(step, a, git, probe, removedHere, preview.plan.options.offline)
+      step.verification = execute(step, a, git, probe, removedHere, fetched.has(step.repo))
       step.result = 'ok'
       if (step.action === 'unlock-worktree') unlocked.add(a!.row.name)
     } catch (err) {

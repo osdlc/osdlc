@@ -67,9 +67,10 @@ export const StepSchema = z.object({
 export type Step = z.infer<typeof StepSchema>
 
 /**
- * How a remote step's verification starts when the remote no longer listed
- * the branch: a tracking ref an `--offline` plan read had outlived it.
- * `summarizeRun` counts these apart from branches the run deleted.
+ * How a remote step's verification starts when the remote no longer lists the
+ * branch, most often because an `--offline` plan read a tracking ref that
+ * outlived it. `summarizeRun` counts a `delete-remote` step that starts so in
+ * `gone`, not `deleted`.
  */
 export const ALREADY_GONE = 'already gone from '
 
