@@ -40,6 +40,7 @@ export const SOFT_TABLE = {
   lsRemote: 'empty',
   lsFiles: 'empty',
   lsFilesTagged: 'empty',
+  submodules: 'empty',
   refs: 'empty',
   forEachRef: 'empty',
   diffNameOnly: 'empty',
