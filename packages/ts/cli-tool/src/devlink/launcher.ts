@@ -310,9 +310,32 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   p('  esac')
   p('  linked=""')
   p('  [ -z "$cfg" ] || linked="$(cat "$cfg/home" 2>/dev/null || true)"')
-  p(
-    '  if is_checkout "$linked"; then home="$linked"; via="linked checkout: $cfg/home"; layer="link"; fi',
-  )
+  if (spec.onDeadLink === 'newest-surviving') {
+    p('  if is_checkout "$linked"; then')
+    p('    home="$linked"; via="linked checkout: $cfg/home"; layer="link"')
+    // Blank counts as no link, as readActive trims it to nothing.
+    p('  elif [ -n "${linked//[[:space:]]/}" ]; then')
+    p("    # onDeadLink 'newest-surviving': the link names a checkout that is gone, so")
+    p('    # run the first absolute line of `candidates` (newest first, written by')
+    p('    # `dev link|use`) that is still a checkout, as resolve() does. A missing or')
+    p('    # unreadable list reads as empty.')
+    p('    cand=""')
+    p('    while IFS= read -r cand || [ -n "$cand" ]; do')
+    p('      case "$cand" in /*) ;; *) continue ;; esac')
+    p('      if is_checkout "$cand"; then')
+    p(
+      '        home="$cand"; via="newest surviving checkout in $cfg/candidates; the link names $linked, which is gone"; layer="link"',
+    )
+    p('        break')
+    p('      fi')
+    // stderr is redirected first, so a missing list prints nothing either.
+    p('    done 2>/dev/null <"$cfg/candidates" || true')
+    p('  fi')
+  } else {
+    p(
+      '  if is_checkout "$linked"; then home="$linked"; via="linked checkout: $cfg/home"; layer="link"; fi',
+    )
+  }
   p('fi')
   p()
   p('# ── a selected checkout other than this one runs its source under Bun ──')
