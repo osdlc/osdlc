@@ -150,8 +150,6 @@ impl WebAccessStatus {
 #[derive(Default)]
 struct Live {
     server: Option<ServerHandle>,
-    /// The tokens the running server was started with.
-    tokens: Option<StartTokens>,
 }
 
 /// The tokens a server was started with; `admin` only while the config's
@@ -326,7 +324,6 @@ impl SharingRuntime {
         if let Some(running) = live.server.take() {
             running.stop().await;
         }
-        live.tokens = None;
         let mut snap = Snapshot::default();
         // Admin off forgets the token whether or not sharing runs, so turning
         // admin on again (now or after sharing restarts) mints a fresh one
@@ -350,7 +347,6 @@ impl SharingRuntime {
                             .unwrap_or_default(),
                     };
                     live.server = Some(handle);
-                    live.tokens = Some(tokens);
                 }
                 Err(e) => snap.error = Some(e.to_string()),
             }
@@ -407,18 +403,12 @@ impl SharingRuntime {
 
 /// `url` without its `token` query parameter.
 fn strip_token(url: &str) -> String {
-    match url.split_once('?') {
-        Some((base, query)) => {
-            let kept: Vec<&str> = query
-                .split('&')
-                .filter(|p| !p.starts_with("token="))
-                .collect();
-            if kept.is_empty() {
-                base.to_owned()
-            } else {
-                format!("{base}?{}", kept.join("&"))
-            }
-        }
+    let Some((base, query)) = url.split_once('?') else {
+        return url.to_owned();
+    };
+    match crate::guard::split_token_param(query) {
+        Some((_, rest)) if rest.is_empty() => base.to_owned(),
+        Some((_, rest)) => format!("{base}?{rest}"),
         None => url.to_owned(),
     }
 }

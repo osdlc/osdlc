@@ -27,7 +27,7 @@ missing_docs = "warn"
 [workspace.dependencies]
 # web-access: the axum router it guards and serves. 0.8.0 is the first axum
 # with native async extractors, which the crate implements.
-axum = "0.8"
+axum = { version = "0.8", default-features = false }
 base64 = "0.22"
 # Pinned exactly: the line numbers markdown-contract reports are part of its
 # contract with @osdlc/markdown-contract, and a comrak release can move them.
@@ -38,10 +38,10 @@ getrandom = "0.3"
 globset = { version = "0.4", default-features = false }
 # web-access lists the host's interfaces for its Host allowlist.
 if-addrs = "0.13"
-# web-access percent-encodes share-link tokens. 2.3 is what axum 0.8 needs.
-percent-encoding = "2.3"
 # js-sys 0.3.103 is the release that pairs with wasm-bindgen 0.2.126.
 js-sys = "0.3.103"
+# web-access percent-encodes share-link tokens. 2.3 is what axum 0.8 needs.
+percent-encoding = "2.3"
 # 1.8 is the first regex that reads the `\/` escape in a contract pattern.
 regex = "1.8"
 saphyr-parser = "0.0.11"
@@ -64,9 +64,7 @@ toml = "0.8"
 # web-access's tests drive the guard with `ServiceExt::oneshot`. 0.5.2 is the
 # lowest axum 0.8 accepts.
 tower = { version = "0.5.2", features = ["util"] }
-# 0.1.37 is the lowest axum 0.8 (for web-access) accepts. The workspace
-# resolves one tracing, so the minimal-versions job needs every member to agree.
-tracing = "0.1.37"
+tracing = "0.1"
 # Pinned to the version slug-collate's normalisation code is built and tested against,
 # so the minimal-versions job does not resolve an older 0.1.x that predates it.
 unicode-normalization = "0.1.26"

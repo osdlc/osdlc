@@ -24,8 +24,8 @@ contexts, a route permission table, and a server that can be stopped.
 
 ### Changed
 
-- Breaking: the token header is `x-web-access-token`. Send the token in it
-  instead of the old header name.
+- Breaking: the token header is `x-web-access-token`, renamed from
+  `x-platform-token`. Send the token in the new header.
 - Breaking: a valid `?token=` link now answers 200 with a page that moves to
   the clean URL, instead of a 303 redirect. The `SameSite=Strict` cookie is
   then sent even when the link was opened from another site; with the 303 it
@@ -46,6 +46,11 @@ contexts, a route permission table, and a server that can be stopped.
   file name (empty, `.`, `..`, or one with a path separator).
 - Breaking: an existing token file that cannot be read (for example, not
   UTF-8) is an error. It used to be replaced with a new token.
+- Breaking: a `read` grant may not open a WebSocket (or any protocol upgrade)
+  unless a read-safe rule names the route, since a socket can carry writes.
+- Breaking: `serve` refuses `Listen::Interfaces` with no address
+  (`ServeError::NoAddress`); it used to report the server as running with
+  nothing bound.
 - Breaking: `guard::COOKIE_PREFIX` is no longer public. Use `cookie_name` and
   `is_cookie_name`.
 - `is_local_authority` and `is_local_origin` accept any letter case and refuse
@@ -55,6 +60,10 @@ contexts, a route permission table, and a server that can be stopped.
   outside `A-Z a-z 0-9 - . _ ~`, and the guard decodes them, so a token with
   `;` or a space works. A minted token has no such character.
 - `ServerHandle::stop` waits one grace period in total, not one per listener.
+  Its docs now say that it does not end connections already open.
+- `Tokens` and its entries leave the tokens out of their `Debug` output.
+- The crate uses axum without its default features (`http1` and `tokio`
+  only), so it no longer pulls in axum's JSON, form, query or tracing support.
 
 ### Removed
 

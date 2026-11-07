@@ -138,7 +138,8 @@ Every request, whatever its method, passes these checks in order:
 6. Otherwise the `web_access_<port>` cookie or the `x-web-access-token` header
    must hold one of the tokens, else 401.
 7. A `read` grant may not use a method other than `GET`, `HEAD` or `OPTIONS`,
-   else 403 `{"error":"read_only"}`, unless a read-safe rule names the route.
+   or open a WebSocket, else 403 `{"error":"read_only"}`, unless a read-safe
+   rule names the route.
 
 A request that passes carries its `AccessContext` (`webLocal` or `webRemote`)
 and its `Grant` in the request extensions. Both are axum extractors, and both

@@ -10,7 +10,8 @@ pub enum Listen {
     /// 127.0.0.1 only.
     #[default]
     Loopback,
-    /// 0.0.0.0: every interface, present and future.
+    /// 0.0.0.0: every interface. The `Host` allowlist and the share links
+    /// cover the addresses the machine has when the server starts.
     AllInterfaces,
     /// Exactly these addresses.
     Interfaces(Vec<IpAddr>),

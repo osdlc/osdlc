@@ -18,9 +18,10 @@ expect.
   restarts the server on a new port, so every grant's links and cookies stop
   working, not only the rotated one's. Keep the port the running server holds
   across a restart of the same config.
-- **An empty interface list starts nothing.** `Listen::Interfaces(vec![])`
-  binds no address, yet the status says `running: true`. Refuse it with a new
-  `ServeError` variant.
+- **Rotating while sharing is off does nothing.** `SharingRuntime::rotate`
+  returns `Ok` and leaves the token files as they are while sharing is
+  disabled, so a link that leaked keeps working once sharing is turned on
+  again. Rotate the files even while sharing is off.
 - **The host list is taken once.** With `Listen::AllInterfaces`, the allowed
   `Host` list is built from the interfaces present when the server starts, so
   an address that appears later is refused with 421, although the docs say

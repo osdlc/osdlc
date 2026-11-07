@@ -88,8 +88,10 @@ the Wi-Fi is `192.168.1.5`.
    The guard finds the token in the cookie. The request reaches your router
    with `AccessContext::WebRemote` and `Grant::Full` in its extensions.
 
-3. **Every later request carries the cookie**, so the phone stays signed in
-   until the token is rotated.
+3. **Every later request carries the cookie.** It is a session cookie, so the
+   browser keeps it until it is closed (some phone browsers keep sessions much
+   longer). Opening the link again signs the browser in again; rotating the
+   token signs it out.
 
 A script or another program skips the link and sends the header instead:
 
@@ -116,7 +118,7 @@ one that fails answers the request.
 | 4 | A loopback peer under `loopback_open` | passes with `full` | Lets the app's own window work with no token, when you allow it. |
 | 5 | `GET` with a valid `?token=` | 200 landing page | The share link (above). |
 | 6 | A valid token in the `web_access_<port>` cookie or the `x-web-access-token` header | 401 `missing or wrong token` | The token check itself. |
-| 7 | A `read` grant uses only `GET`, `HEAD`, `OPTIONS`, or a read-safe route | 403 `{"error":"read_only"}` | View-only links stay view-only. |
+| 7 | A `read` grant uses only `GET`, `HEAD`, `OPTIONS` (and no WebSocket), or a read-safe route | 403 `{"error":"read_only"}` | View-only links stay view-only. A WebSocket can carry writes. |
 
 Every response also carries `Referrer-Policy: no-referrer` and
 `X-Content-Type-Options: nosniff`.
@@ -132,6 +134,7 @@ Some examples, with `Host: 192.168.1.5:20015` unless shown:
 | `GET /ws` upgrade with `Origin: tauri://localhost` (the app's own webview) | passes |
 | `GET /a/../secret` | 400 |
 | `POST /api/save` with a `read` token | 403 `read_only` |
+| `GET /ws` WebSocket upgrade with a `read` token | 403 `read_only`, unless a read-safe rule names `GET /ws` |
 | `POST /api/search` with a `read` token, `/api/search` listed as read-safe | passes |
 | `POST /api/search/` (trailing slash) with a `read` token | 403 `read_only`, because the router may send that path to another handler |
 | `POST /api/notes/my%20note` with a `read` token, `/api/notes/*` listed as read-safe | passes |
@@ -172,7 +175,9 @@ They fail closed: with no guard in front, a handler sees `WebRemote` and `Read`.
 
 What each grant may do in each context is your decision. Write it as a
 `HostPolicy`: your own permission type, a route table, and an `allows` function.
-The crate checks it on every request, after the guard.
+Install it with `host_policy_layer`, inside the guard (see
+[Using the guard without `serve`](#using-the-guard-without-serve)); the crate
+then checks it on every request the guard lets through.
 
 ```rust
 use axum::http::Method;
@@ -317,9 +322,10 @@ let options = ServeOptions {
 };
 ```
 
-`stop()` stops accepting connections and waits up to five seconds for requests in
-flight, then ends them. Note that a connection already upgraded to a WebSocket is
-not ended by `stop()`; see [Security model](#security-model).
+`stop()` stops accepting connections, releases the ports, and waits up to five
+seconds for the server to wind down. A connection that is already open, such as
+a stream or a WebSocket, is not ended by `stop()`: it runs until it closes. See
+[Security model](#security-model).
 
 ## Using the guard without `serve`
 

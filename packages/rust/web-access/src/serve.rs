@@ -15,8 +15,9 @@ use crate::guard::{GuardPolicy, GuardState, OnDenied, Tokens, guard};
 use crate::interfaces::interfaces;
 use crate::permissions::RouteRule;
 
-/// How long `stop` waits for in-flight requests (an SSE stream never ends on
-/// its own) before the server tasks are aborted.
+/// How long `stop` waits for the server tasks to wind down before it aborts
+/// them. Aborting a server task closes its listener; it does not end
+/// connections already accepted, which run in tasks of their own.
 const GRACE: Duration = Duration::from_secs(5);
 
 /// Why `serve` refused to start.
@@ -29,6 +30,9 @@ pub enum ServeError {
     /// The config listens beyond loopback and no token was given.
     #[error("listening beyond loopback requires a token")]
     TokenRequired,
+    /// `Listen::Interfaces` names no address.
+    #[error("the listen setting names no address")]
+    NoAddress,
     /// An address could not be bound.
     #[error("could not bind {addr}: {source}")]
     Bind {
@@ -79,8 +83,11 @@ impl ServerHandle {
             .collect()
     }
 
-    /// Stop accepting, let in-flight requests finish (up to a grace period),
-    /// and release the ports.
+    /// Stop accepting new connections and release the ports, waiting up to a
+    /// grace period for the server to wind down. A connection already open,
+    /// such as a stream or an upgraded WebSocket, is not ended by `stop`: it
+    /// runs until it closes. Close long-lived connections yourself when they
+    /// must end with the server.
     pub async fn stop(self) {
         let _ = self.stop_tx.send(true);
         // One grace period for all listeners, not one each.
@@ -151,6 +158,9 @@ pub async fn serve_opts(
     }
     if tokens.is_empty() && !cfg.listen.is_loopback_only() {
         return Err(ServeError::TokenRequired);
+    }
+    if matches!(&cfg.listen, Listen::Interfaces(ips) if ips.is_empty()) {
+        return Err(ServeError::NoAddress);
     }
 
     let policy = opts.policy.unwrap_or(GuardPolicy {
@@ -300,6 +310,18 @@ mod tests {
                 .err(),
             Some(ServeError::TokenRequired)
         ));
+    }
+
+    #[tokio::test]
+    async fn an_empty_interface_list_is_refused() {
+        let cfg = WebAccessConfig {
+            enabled: true,
+            listen: Listen::Interfaces(Vec::new()),
+            port: 0,
+            admin: false,
+        };
+        let r = serve(Router::new(), &cfg, Tokens::none()).await;
+        assert!(matches!(r, Err(ServeError::NoAddress)));
     }
 
     #[tokio::test]

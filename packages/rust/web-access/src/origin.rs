@@ -23,7 +23,10 @@ pub fn is_local_origin(origin: &str) -> bool {
     let Some((scheme, rest)) = origin.split_once("://") else {
         return false;
     };
-    if !matches!(scheme, "http" | "https" | "tauri") {
+    if !["http", "https", "tauri"]
+        .iter()
+        .any(|s| s.eq_ignore_ascii_case(scheme))
+    {
         return false;
     }
     is_local_authority(rest.split('/').next().unwrap_or(""))
@@ -72,6 +75,7 @@ mod tests {
             "http://[::1]:3000",
             "tauri://localhost",
             "http://tauri.localhost",
+            "HTTP://LOCALHOST:3000",
         ] {
             assert!(is_local_origin(ok), "{ok} should be allowed");
         }

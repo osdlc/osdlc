@@ -11,7 +11,8 @@
 //!    also come from a desktop webview's own origin (`tauri://localhost`,
 //!    `http(s)://tauri.localhost`).
 //! 3. The path normalises (see [`normalize_path`]), else 400: no `.`/`..`
-//!    segment, no `\` or encoded `/`. Route rules match the normalised path.
+//!    segment, no `\` or encoded `/`. Deny rules ([`crate::HostPolicy`]) match
+//!    the normalised path; read-safe rules match the raw path.
 //! 4. A loopback peer passes with [`Grant::Full`] when
 //!    [`GuardPolicy::loopback_open`] is set.
 //! 5. A `GET` carrying a valid `?token=` sets the cookie to that token and
@@ -25,8 +26,9 @@
 //!    the `x-web-access-token` header must equal one of the [`Tokens`]
 //!    (constant-time compare against every entry), else 401. If header and
 //!    cookies match different entries, the highest [`Grant`] wins.
-//! 7. A [`Grant::Read`] request with a non-safe method is 403 `read_only`
-//!    unless a [`GuardState::with_read_safe`] rule names the route.
+//! 7. A [`Grant::Read`] request with a non-safe method, or a protocol upgrade,
+//!    is 403 `read_only` unless a [`GuardState::with_read_safe`] rule names the
+//!    route.
 //!
 //! A passing request carries its [`AccessContext`] and [`Grant`] in the request
 //! extensions (see [`crate::context`]).
@@ -147,14 +149,24 @@ impl DenialBudget {
     }
 }
 
-/// One accepted token.
-#[derive(Debug, Clone)]
+/// One accepted token. Its `Debug` leaves the token out.
+#[derive(Clone)]
 struct Entry {
     token: String,
     grant: Grant,
     /// Who it was issued to; for audit once tokens are per device.
     #[allow(dead_code)]
     label: Option<String>,
+}
+
+impl std::fmt::Debug for Entry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Entry")
+            .field("token", &"<redacted>")
+            .field("grant", &self.grant)
+            .field("label", &self.label)
+            .finish()
+    }
 }
 
 /// The accepted tokens, each with the grant it confers. They are fixed for the
@@ -333,8 +345,11 @@ impl GuardState {
         // path, the one axum routes: `/api/search/` or `/api/%73earch` may
         // reach another handler than `/api/search`. Below a `/*` prefix, an
         // encoded character (`/api/notes/my%20note`) still matches.
+        // A protocol upgrade (a WebSocket) can carry writes, so for a `read`
+        // grant it counts as non-safe like a mutating method.
+        let upgrade = req.headers().contains_key(header::UPGRADE);
         let read_only = grant == Grant::Read
-            && is_mutating(req.method())
+            && (is_mutating(req.method()) || upgrade)
             && !self
                 .read_safe
                 .iter()
@@ -439,7 +454,7 @@ fn decode_token(raw: &str) -> String {
 /// The value of `?token=`, percent-decoded, and the query with that parameter
 /// removed; `None` when the query has no `token` parameter. A value that does
 /// not decode to UTF-8 is kept as written.
-fn split_token_param(query: &str) -> Option<(String, String)> {
+pub(crate) fn split_token_param(query: &str) -> Option<(String, String)> {
     let is_token = |p: &&str| *p == "token" || p.starts_with("token=");
     // The last `token` wins, as browsers and form parsers read a repeated key.
     let raw = query.split('&').rfind(is_token)?;
@@ -1407,5 +1422,50 @@ mod tests {
         assert_eq!(pair, "web_access_3000=ab%3Bc%20d%7F");
         let res = status(app, req("GET", "/", LAN, &[("cookie", pair)])).await;
         assert_eq!(res.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn a_read_grant_cannot_open_a_websocket_unless_the_route_is_read_safe() {
+        let h = [
+            (TOKEN_HEADER, READ_TOKEN),
+            ("upgrade", "websocket"),
+            ("connection", "upgrade"),
+        ];
+        let res = status(
+            two_token_app(GuardPolicy::default()),
+            req("GET", "/", LAN, &h),
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+        // `/q` is read-safe for POST only, so a GET upgrade there is refused too.
+        let res = status(
+            two_token_app(GuardPolicy::default()),
+            req("GET", "/q", LAN, &h),
+        )
+        .await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+        // A full grant may upgrade.
+        let h = [
+            (TOKEN_HEADER, TOKEN),
+            ("upgrade", "websocket"),
+            ("connection", "upgrade"),
+        ];
+        let res = status(
+            two_token_app(GuardPolicy::default()),
+            req("GET", "/", LAN, &h),
+        )
+        .await;
+        assert_ne!(res.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn debug_output_never_shows_a_token() {
+        let tokens = Tokens::full_only("s3cret".to_owned()).with("r3ad", Grant::Read);
+        let shown = format!("{tokens:?}");
+        assert!(
+            !shown.contains("s3cret") && !shown.contains("r3ad"),
+            "{shown}"
+        );
+        assert!(shown.contains("Full"), "{shown}");
     }
 }
