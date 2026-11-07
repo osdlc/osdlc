@@ -8,8 +8,10 @@ const MARKER: &str = "**Experimental.**";
 
 /// The names in the README's Stability list (`- \`Type::item\``), last segment only.
 fn readme_items() -> BTreeSet<String> {
+    // A Windows checkout may hold CRLF line endings.
     let readme = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("README.md"))
-        .expect("README.md");
+        .expect("README.md")
+        .replace("\r\n", "\n");
     let section = readme
         .split("\n## Stability\n")
         .nth(1)
@@ -29,7 +31,9 @@ fn marked_items() -> BTreeSet<String> {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut found = BTreeSet::new();
     for entry in std::fs::read_dir(src).expect("src") {
-        let text = std::fs::read_to_string(entry.expect("entry").path()).expect("source");
+        let text = std::fs::read_to_string(entry.expect("entry").path())
+            .expect("source")
+            .replace("\r\n", "\n");
         let mut rest = text.as_str();
         while let Some(at) = rest.find(MARKER) {
             rest = &rest[at + MARKER.len()..];
