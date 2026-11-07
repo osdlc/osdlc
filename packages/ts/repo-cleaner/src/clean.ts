@@ -35,7 +35,7 @@ import { localDeleteCommand, remoteDeleteCommand } from './branches.ts'
 import type { Annotate } from './hooks.ts'
 import { fingerprint, runnable, sameFingerprint, type Plan, type PlanRepo } from './plan.ts'
 import { busyHolders, defaultProcessProbe, parseLockOwner, type ProcessProbe } from './processes.ts'
-import { ALREADY_GONE, RECEIPT_VERSION, type Dropped, type Receipt, type Step } from './receipt.ts'
+import { RECEIPT_VERSION, type Dropped, type Receipt, type Step } from './receipt.ts'
 import { defaultCacheDir, mirrorProblem } from './remote-mirror.ts'
 import { inspectSubmodules, submoduleHazards } from './submodules.ts'
 import { holdFreedBranches, sweepRepo, type Runners } from './sweep.ts'
@@ -73,9 +73,8 @@ export interface Allow {
  *   `pick`   work on exactly these rows; a `review` row, or a `keep` row with
  *            an action, runs only when picked. Default: every `delete` row.
  *   `spare`  leave these rows alone; a spared remote branch is still checked,
- *            and the run stops if it is gone or moved since the plan. From an
- *            offline plan, one the remote already deleted passes as already
- *            gone, unless its tracking ref was pruned after the plan.
+ *            and the run stops if it moved or is gone since the plan (from an
+ *            offline plan, one the remote had already deleted passes).
  *   `allow`  the risks a row's action may carry.
  */
 export interface Approval {
@@ -342,7 +341,8 @@ function allowed(allow: ResolvedApproval['allow'], at: Resolved, risk: Risk): bo
 
 /**
  * The plan repository's rows as they stand now, annotated as the sweep
- * annotated them, and the sweep's notes on what it judged without.
+ * annotated them, and, when it had to sweep again, that sweep's notes on what
+ * it judged without. A sweep passed in reports its notes whole, in `recheck`.
  */
 function resweep(
   repo: PlanRepo,
@@ -353,7 +353,8 @@ function resweep(
   const branchScoped = plan.options.branch !== null
   const given = opts.sweep?.repos.find((r) => r.repo?.root === repo.root)
   if (given !== undefined && given.error === null) {
-    return { rows: holdFreedBranches([...given.rows], branchScoped), notes: given.notes }
+    // Its notes are reported with the rest of that sweep's, by `recheck`.
+    return { rows: holdFreedBranches([...given.rows], branchScoped), notes: [] }
   }
   const swept = sweepRepo(repo.root, {
     ...opts,
@@ -440,7 +441,7 @@ function recheck(
     if (row === undefined || row.kind !== 'remote') {
       // Offline the re-check reads tracking refs, so a missing row means one
       // was pruned since the plan; a plan made now would not list it.
-      const fetched = plan.repos.find((r) => r.root === s.repo)?.fetched === true
+      const fetched = fetchedRoots(plan).has(s.repo)
       throw new RepoCleanerError(
         'spared-changed',
         fetched
@@ -516,7 +517,7 @@ function recheck(
     accepted: kept,
     dropped,
     verified,
-    notes: opts.sweep === undefined ? notes : sweepNotes(opts.sweep),
+    notes: opts.sweep === undefined ? notes : [...sweepNotes(opts.sweep), ...notes],
   }
 }
 
@@ -832,6 +833,16 @@ function assertSafeToForce(path: string, git: Git, a: Accepted): void {
   if (reasons.length > 0) throw new Error(`refused: ${reasons.join('; ')}`)
 }
 
+/** A remote step that found the branch already gone: its verification, marked so. */
+class Gone {
+  constructor(readonly verification: string) {}
+}
+
+/** The plan's repositories whose sweep fetched, so the re-check read their remote tips live. */
+function fetchedRoots(plan: Plan): Set<string> {
+  return new Set(plan.repos.filter((r) => r.fetched).map((r) => r.root))
+}
+
 /**
  * Run one step, then confirm it took. Throws with the reason on failure.
  *
@@ -845,8 +856,10 @@ function execute(
   probe: ProcessProbe,
   removedHere: ReadonlySet<string>,
   liveTips: boolean,
-): string {
+): string | Gone {
   const at = git.at(step.repo)
+  const remoteTip = (remote: string, ref: string) =>
+    at.lsRemote(remote, ref).find((r) => r.ref === ref)
   const registered = (path: string): boolean =>
     at.worktrees().some((w) => resolve(w.path) === resolve(path))
   const row = a?.row
@@ -910,10 +923,12 @@ function execute(
     case 'verify-remote': {
       if (row?.kind !== 'remote') throw new Error('verify-remote without a remote branch')
       const ref = `refs/heads/${row.evidence.branch}`
-      const tip = at.lsRemote(row.evidence.remote, ref).find((r) => r.ref === ref)
+      const tip = remoteTip(row.evidence.remote, ref)
       // From tracking refs, the tip may name a branch the remote already
       // deleted; read live, after a fetch, its loss is a change since then.
-      if (tip === undefined && !liveTips) return `${ALREADY_GONE}${row.evidence.remote}; spared`
+      if (tip === undefined && !liveTips) {
+        return new Gone(`already gone from ${row.evidence.remote}; spared`)
+      }
       if (tip === undefined)
         throw new Error(`refused: spared ${ref} is gone from ${row.evidence.remote}`)
       if (tip.sha !== step.expectedSha) {
@@ -934,17 +949,17 @@ function execute(
         // so an offline plan can name a branch the remote already deleted.
         // The lease then refuses; a ref the remote no longer lists is done.
         // Drop the stale tracking ref, as a delete push would have.
-        if (!at.lsRemote(remote, ref).some((r) => r.ref === ref)) {
-          const tracking = `refs/remotes/${remote}/${row.evidence.branch}`
-          if (at.resolveRef(tracking) === step.expectedSha)
-            at.deleteRef(tracking, { expected: step.expectedSha! })
-          return `${ALREADY_GONE}${remote}`
+        if (remoteTip(remote, ref) === undefined) {
+          // Compare-and-swap: a tracking ref that moved since is left alone.
+          at.try.deleteRef(`refs/remotes/${remote}/${row.evidence.branch}`, {
+            expected: step.expectedSha!,
+          })
+          return new Gone(`already gone from ${remote}`)
         }
         const why = refused.rawReason === null ? '' : ` (${refused.rawReason})`
         throw new Error(`${refused.summary}${why}: ${PUSH_REJECTIONS[refused.rejection].message}`)
       }
-      if (at.lsRemote(remote, ref).some((r) => r.ref === ref))
-        throw new Error(`ls-remote still lists ${ref}`)
+      if (remoteTip(remote, ref) !== undefined) throw new Error(`ls-remote still lists ${ref}`)
       return 'ls-remote lists nothing'
     }
   }
@@ -1014,12 +1029,17 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   // Worktrees whose lock this run cleared. typed-git has no `worktree lock`
   // verb, so a failed remove cannot put the lock back; the receipt says so.
   const unlocked = new Set<string>()
-  // Repositories the re-check fetched, so it read their remote tips live.
-  const fetched = new Set(preview.plan.repos.filter((r) => r.fetched).map((r) => r.root))
+  const fetched = fetchedRoots(preview.plan)
   for (const [i, [step, a]] of plannedSteps.entries()) {
     opts.onStep?.(i, plannedSteps.length, step)
     try {
-      step.verification = execute(step, a, git, probe, removedHere, fetched.has(step.repo))
+      const done = execute(step, a, git, probe, removedHere, fetched.has(step.repo))
+      if (done instanceof Gone) {
+        step.verification = done.verification
+        step.gone = true
+      } else {
+        step.verification = done
+      }
       step.result = 'ok'
       if (step.action === 'unlock-worktree') unlocked.add(a!.row.name)
     } catch (err) {

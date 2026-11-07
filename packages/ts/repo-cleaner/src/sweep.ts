@@ -35,6 +35,7 @@ import {
   findDuplicateCheckouts,
   type Kind,
   type PRInfo,
+  type RepoInfo,
   type RepoSweep,
   type Row,
   type Sweep,
@@ -258,6 +259,39 @@ export function sweep(targets: readonly string[], opts: SweepOptions = {}): Swee
   }
 }
 
+/**
+ * The repository's note about its pull request lookup, or null when the
+ * provider answered or nothing hangs on it. A failed listing is always noted;
+ * a CLI that is missing or signed out only when a remote branch could be
+ * deleted on its account, which then needs confirm-open-pr.
+ */
+function providerNote(
+  repo: RepoInfo,
+  kinds: ReadonlySet<Kind>,
+  choice: ProviderChoice,
+): string | null {
+  const status = repo.provider
+  const unchecked = status === null ? null : prsUnchecked(status)
+  if (status === null || unchecked === null) return null
+  // A local remote names no forge, and `auto` asks GitHub for any host that
+  // is not GitLab's, so a host that is not a forge lands here too. github.com
+  // is a forge: there the cause is access, not the provider.
+  const hint =
+    status.host === null ||
+    (choice === 'auto' && status.name === 'github' && status.host !== 'github.com')
+      ? ' Pass `--provider none` if this remote has no forge.'
+      : ''
+  if (unchecked.kind === 'list-failed') {
+    return `Listing ${status.noun}s with \`${status.listing}\` failed (${status.listError}); judged on git evidence alone.${hint}`
+  }
+  if (repo.remote === null || !kinds.has('remote')) return null
+  const fix =
+    unchecked.kind === 'not-installed'
+      ? `Install \`${status.tool}\``
+      : `Sign in to \`${status.tool}\``
+  return `Could not check for open ${status.noun}s: ${unchecked.why}, so deleting a remote branch needs confirm-open-pr. ${fix}, or pass \`--allow confirm-open-pr\` once you have checked.${hint}`
+}
+
 function errorSweep(path: string, err: unknown): RepoSweep {
   return {
     path,
@@ -371,32 +405,11 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
     if (status !== null) {
       const looked = lookupPrs(repo, known[status.name], only)
       prs = looked.prs
-      // A local remote names no forge, and `auto` asks GitHub for any host
-      // that is not GitLab's, so a host that is not a forge lands here too.
-      // github.com is a forge: there the cause is access, not the provider.
-      const hint =
-        status.host === null ||
-        (opts.provider === 'auto' && status.name === 'github' && status.host !== 'github.com')
-          ? ' Pass `--provider none` if this remote has no forge.'
-          : ''
       if (looked.error !== null) {
         repo = { ...repo, provider: { ...status, listError: looked.error } }
-        notes.push(
-          `Listing ${status.noun}s with \`${status.listing}\` failed (${looked.error}); judged on git evidence alone.${hint}`,
-        )
-      } else if (repo.remote !== null && kinds.has('remote')) {
-        // Never asked, so an open PR cannot be ruled out on a remote branch:
-        // say why deleting one asks first, and what would let it check.
-        const why = prsUnchecked(status)
-        if (why !== null) {
-          const fix = status.available
-            ? `Sign in to \`${status.tool}\``
-            : `Install \`${status.tool}\``
-          notes.push(
-            `Could not check for open ${status.noun}s: ${why}, so deleting a remote branch needs confirm-open-pr. ${fix}, or pass \`--allow confirm-open-pr\` once you have checked.${hint}`,
-          )
-        }
       }
+      const note = providerNote(repo, kinds, opts.provider)
+      if (note !== null) notes.push(note)
     }
     const rows: Row[] = []
 
@@ -441,7 +454,6 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
 
     if (kinds.has('remote')) {
       const remote = gatherRemoteBranches(repo, prs, localBranchNames, git, {
-        live: repo.fetched,
         only,
         tick: ticker('remote'),
       })

@@ -82,13 +82,9 @@ export function recordPr(
 function noPrSentence(repo: RepoInfo): string {
   const provider = repo.provider
   if (provider === null) return 'No PR lookup (no provider).'
-  if (!provider.available) return `No ${provider.noun} lookup (\`${provider.tool}\` not installed).`
-  if (!provider.authenticated) {
-    return `No ${provider.noun} lookup (\`${provider.tool}\` not signed in).`
-  }
-  if (provider.listError !== undefined) {
-    return `No ${provider.noun} lookup: \`${provider.listing}\` failed (${provider.listError}).`
-  }
+  // The provider's own error is in the repository's note, not on every row.
+  const unchecked = prsUnchecked(provider)
+  if (unchecked !== null) return `No ${provider.noun} lookup (${unchecked.why}).`
   return `No ${provider.noun} found via \`${provider.listing}\`.`
 }
 
@@ -331,7 +327,6 @@ export function gatherRemoteBranches(
   localBranchNames: ReadonlySet<string>,
   git: Git,
   opts: {
-    live: boolean
     only?: string | undefined
     tick?: ((done: number, total: number) => void) | undefined
   },
@@ -341,7 +336,9 @@ export function gatherRemoteBranches(
   const { only, tick } = opts
   let tips: Array<{ name: string; sha: string }> | null = null
   let note: string | null = null
-  if (opts.live) {
+  // After a fetch the remote is reachable, so ask it; without one, the
+  // tracking refs on disk are all there is.
+  if (repo.fetched) {
     const pattern = only === undefined ? undefined : `refs/heads/${only}`
     const listed = git.at(repo.root).try.lsRemote(remote, pattern, { heads: true })
     if (listed.ok) {
@@ -385,7 +382,6 @@ function trackingTips(
     .at(root)
     .refs(only === undefined ? prefix : `${prefix}${only}`)
     .flatMap(({ sha, ref }) => {
-      if (!ref.startsWith(prefix)) return []
       const name = ref.slice(prefix.length)
       return name === 'HEAD' ? [] : [{ name, sha }]
     })
@@ -439,17 +435,21 @@ function classifyRemoteBranch(opts: {
   // `--provider none` is a choice that this remote has no forge; anything else
   // that left PRs unchecked means one could be open.
   const unchecked = status === null || pr !== undefined ? null : prsUnchecked(status)
-  const prUnknown = unchecked !== null
-  const risks = branchRisks(unmerged, pr, prUnknown)
-  const commands = repo.remote === null ? [] : [remoteDeleteCommand(repo.remote, branch, sha)]
   const unknownPr =
-    unchecked !== null && status !== null
-      ? [
-          `Whether it has an open ${status.noun} is unknown (${unchecked}), so deleting it needs confirm-open-pr.`,
-        ]
-      : []
+    status === null || unchecked === null
+      ? null
+      : `Whether it has an open ${status.noun} is unknown (${unchecked.why}), so deleting it needs confirm-open-pr.`
+  const risks = branchRisks(unmerged, pr, unknownPr !== null)
+  const commands = repo.remote === null ? [] : [remoteDeleteCommand(repo.remote, branch, sha)]
   const deletes = (why: string): RemoteRow =>
-    row({ verdict: 'delete', action: 'delete', why, commands, risks, notes: unknownPr })
+    row({
+      verdict: 'delete',
+      action: 'delete',
+      why,
+      commands,
+      risks,
+      notes: unknownPr === null ? [] : [unknownPr],
+    })
 
   if (pr && landed) return deletes(`PR #${pr.number} merged (auto-delete didn't fire)`)
   if (isAncestor) return deletes(`fully merged into ${remoteMain}`)
@@ -463,9 +463,7 @@ function classifyRemoteBranch(opts: {
   }
 
   const notes = [`Remote branch \`${name}\` is not an ancestor of \`${remoteMain}\`.`]
-  notes.push(
-    pr ? `Associated PR #${pr.number} is ${pr.state}.` : (unknownPr[0] ?? noPrSentence(repo)),
-  )
+  notes.push(pr ? `Associated PR #${pr.number} is ${pr.state}.` : (unknownPr ?? noPrSentence(repo)))
   if (pr && gap) notes.push(gapSentence(pr, gap, repo))
   const unmatched = patch === null ? null : unmatchedSentence(patch, repo)
   if (unmatched !== null) notes.push(unmatched)

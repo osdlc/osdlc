@@ -4,7 +4,7 @@
  * with a bare remote.
  */
 
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
   chmodSync,
   existsSync,
@@ -937,16 +937,24 @@ describe('clean', () => {
     expect(branchRefs(fx.bare)).not.toContain(BRANCH)
   })
 
-  test('offline, a remote branch the remote already deleted is reported gone, and the run goes on', () => {
+  /**
+   * A fixture with a second merged branch pushed, so a step follows the gone
+   * one, and `BRANCH` already deleted on the remote (as a forge does after
+   * merge); the tracking ref stays until a prune.
+   */
+  function buildGoneFixture(): Fixture {
     const fx = buildFixture()
-    // A second merged branch, so a step follows the gone one.
     sh(fx.root, ['branch', 'feat/t', 'main'])
     sh(fx.root, ['push', '-q', 'origin', 'feat/t'])
-    // The forge deletes the head branch after merge; the tracking ref stays until a prune.
     sh(fx.bare, ['update-ref', '-d', `refs/heads/${BRANCH}`])
+    return fx
+  }
+
+  test('offline, a remote branch the remote already deleted is reported gone, and the run goes on', () => {
+    const fx = buildGoneFixture()
     const res = run(['clean', ...REMOTE, '--only', 'remote', '--yes', '--format', 'json'], fx.root)
     expect(res.code).toBe(0)
-    const out = JSON.parse(res.out) as { receipt: Receipt }
+    const out = JSON.parse(res.out) as { receipt: Receipt; summary: unknown }
     expect(out.receipt.status).toBe('complete')
     expect(out.receipt.steps).toContainEqual(
       expect.objectContaining({
@@ -958,24 +966,21 @@ describe('clean', () => {
     expect(branchRefs(fx.bare)).not.toContain('feat/t')
     expect(sh(fx.root, ['for-each-ref', `refs/remotes/origin/${BRANCH}`])).toBe('')
     // The run deleted one branch; the other was gone before it started.
-    expect((JSON.parse(res.out) as { summary: unknown }).summary).toMatchObject({
+    expect(out.summary).toMatchObject({
       deleted: { remote: 1 },
       gone: 1,
     })
   })
 
   test('offline, a spared remote branch the remote already deleted does not stop the run', () => {
-    const fx = buildFixture()
-    sh(fx.root, ['branch', 'feat/t', 'main'])
-    sh(fx.root, ['push', '-q', 'origin', 'feat/t'])
-    sh(fx.bare, ['update-ref', '-d', `refs/heads/${BRANCH}`])
+    const fx = buildGoneFixture()
     const spare = `remote:origin/${BRANCH}`
     const res = run(
       ['clean', ...REMOTE, '--only', 'remote', '--yes', '--spare', spare, '--format', 'json'],
       fx.root,
     )
     expect(res.code).toBe(0)
-    const out = JSON.parse(res.out) as { receipt: Receipt }
+    const out = JSON.parse(res.out) as { receipt: Receipt; summary: unknown }
     expect(out.receipt.status).toBe('complete')
     expect(out.receipt.steps).toContainEqual(
       expect.objectContaining({
@@ -987,7 +992,7 @@ describe('clean', () => {
     )
     expect(branchRefs(fx.bare)).not.toContain('feat/t')
     // Spared, so not counted as gone: only a delete step counts there.
-    expect((JSON.parse(res.out) as { summary: unknown }).summary).toMatchObject({
+    expect(out.summary).toMatchObject({
       deleted: { remote: 1 },
       gone: 0,
     })
@@ -1609,17 +1614,27 @@ function escapeRegExp(text: string): string {
 }
 
 describe('a pull request listing that fails (#653)', () => {
+  /** The remote branch was dropped as needing confirm-open-pr, and is still on the remote. */
+  function expectKeptForConfirmOpenPr(fx: Fixture, receipt: Receipt): void {
+    expect(receipt.dropped).toContainEqual(
+      expect.objectContaining({
+        row: `remote:origin/${BRANCH}`,
+        reason: 'not-allowed',
+        detail: 'needs confirm-open-pr',
+      }),
+    )
+    expect(sh(fx.root, ['ls-remote', '--heads', 'origin', BRANCH])).not.toBe('')
+  }
   /** Put `script` on PATH as `gh` for the duration of `fn`. */
   function withGh<T>(script: string, fn: () => T): T {
     const bin = tempDir()
     writeFileSync(join(bin, 'gh'), script)
     chmodSync(join(bin, 'gh'), 0o755)
-    const before = process.env['PATH']
-    process.env['PATH'] = `${bin}:${before ?? ''}`
+    vi.stubEnv('PATH', `${bin}:${process.env['PATH'] ?? ''}`)
     try {
       return fn()
     } finally {
-      process.env['PATH'] = before
+      vi.unstubAllEnvs()
     }
   }
   /** A `gh` that is installed and signed in, but whose every listing fails with `stderr`. */
@@ -1712,14 +1727,7 @@ describe('a pull request listing that fails (#653)', () => {
       expect(lines[0]).toContain('rate limited')
       // The preview's listing answered, so only the run's re-check can drop the row.
       const out = JSON.parse(res.out) as { receipt: Receipt }
-      expect(out.receipt.dropped).toContainEqual(
-        expect.objectContaining({
-          row: `remote:origin/${BRANCH}`,
-          reason: 'not-allowed',
-          detail: 'needs confirm-open-pr',
-        }),
-      )
-      expect(sh(fx.root, ['ls-remote', '--heads', 'origin', BRANCH])).not.toBe('')
+      expectKeptForConfirmOpenPr(fx, out.receipt)
     })
   })
 
@@ -1731,14 +1739,7 @@ describe('a pull request listing that fails (#653)', () => {
       expect(res.code).toBe(0)
       expect(res.err).toContain('Could not check for open PRs: `gh` is not signed in')
       const out = JSON.parse(res.out) as { receipt: Receipt }
-      expect(out.receipt.dropped).toContainEqual(
-        expect.objectContaining({
-          row: `remote:origin/${BRANCH}`,
-          reason: 'not-allowed',
-          detail: 'needs confirm-open-pr',
-        }),
-      )
-      expect(sh(fx.root, ['ls-remote', '--heads', 'origin', BRANCH])).not.toBe('')
+      expectKeptForConfirmOpenPr(fx, out.receipt)
     })
   })
 
@@ -1751,14 +1752,7 @@ describe('a pull request listing that fails (#653)', () => {
       // the note is printed once.
       expect(res.err.split('\n').filter((l) => l.includes('Listing PRs'))).toHaveLength(1)
       const out = JSON.parse(res.out) as { receipt: Receipt }
-      expect(out.receipt.dropped).toContainEqual(
-        expect.objectContaining({
-          row: `remote:origin/${BRANCH}`,
-          reason: 'not-allowed',
-          detail: 'needs confirm-open-pr',
-        }),
-      )
-      expect(sh(fx.root, ['ls-remote', '--heads', 'origin', BRANCH])).not.toBe('')
+      expectKeptForConfirmOpenPr(fx, out.receipt)
     })
   })
 })

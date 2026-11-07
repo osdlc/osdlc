@@ -29,6 +29,7 @@ import {
   askYesNo,
   canPrompt,
   defineCli,
+  renderError,
   type Cli,
   type CliContext,
   type FlagSpec,
@@ -447,10 +448,9 @@ function reportNotes(ctx: CliContext, name: string, s: Sweep): void {
   writeNotes(ctx, name, sweepNotes(s))
 }
 
-/** Notes as `<name>: <repo>: <note>` lines on stderr. A note quotes git's and the provider's output, so controls are stripped. */
+/** Notes as `<name>: <repo>: <note>` lines on stderr. A note quotes git's and the provider's output, so it goes out as an error line does, controls removed. */
 function writeNotes(ctx: CliContext, name: string, notes: readonly RepoNote[]): void {
-  for (const { repo, note } of notes)
-    ctx.io.stderr(stripControls(`${name}: ${repo}: ${note}`) + '\n')
+  for (const { repo, note } of notes) ctx.io.stderr(renderError(`${repo}: ${note}`, name))
 }
 
 function runReport(argv: readonly string[], ctx: CliContext, status: StatusLine): number {

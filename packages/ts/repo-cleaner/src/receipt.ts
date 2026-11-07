@@ -62,17 +62,15 @@ export const StepSchema = z.object({
   result: z.enum(['pending', 'would-run', 'ok', 'failed']),
   error: z.string().nullable(),
   verification: z.string().nullable(),
+  /**
+   * The remote no longer listed the branch, most often because an `--offline`
+   * plan read a tracking ref that outlived it. A `delete-remote` step so marked
+   * deleted nothing, and the run summary counts it apart. Absent otherwise.
+   */
+  gone: z.literal(true).optional(),
 })
 
 export type Step = z.infer<typeof StepSchema>
-
-/**
- * How a remote step's verification starts when the remote no longer lists the
- * branch, most often because an `--offline` plan read a tracking ref that
- * outlived it. `summarizeRun` counts a `delete-remote` step that starts so in
- * `gone`, not `deleted`.
- */
-export const ALREADY_GONE = 'already gone from '
 
 export const ReceiptSchema = z.object({
   version: z.literal(RECEIPT_VERSION),

@@ -10,7 +10,7 @@
 import { ansiColors, paint, stripControls } from '@osdlc/ux'
 
 import type { Preview } from './clean.ts'
-import { ALREADY_GONE, type Dropped, type Receipt, type Step } from './receipt.ts'
+import type { Dropped, Receipt, Step } from './receipt.ts'
 import {
   KINDS,
   isPrune,
@@ -370,7 +370,7 @@ export function summarizeRun(r: {
       continue
     }
     if (s.result !== 'ok' && s.result !== 'would-run') continue
-    if (s.action === 'delete-remote' && s.verification?.startsWith(ALREADY_GONE) === true) {
+    if (s.action === 'delete-remote' && s.gone === true) {
       out.gone += 1
       continue
     }

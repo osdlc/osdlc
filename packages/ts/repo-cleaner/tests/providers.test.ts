@@ -10,11 +10,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
-import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { Gh } from '@osdlc/typed-gh'
 import { makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 
-import { cannedGh, cannedGlab, git } from './helpers.ts'
+import { cannedGh, cannedGlab, git, interposedRunner, isGetUrlOrigin } from './helpers.ts'
 import { main } from '../src/cli.ts'
 import { parsePlan } from '../src/plan.ts'
 import { lookupPrs } from '../src/prs.ts'
@@ -197,13 +196,6 @@ describe('the GitLab provider', () => {
     expect(list).not.toContain('--search')
   })
 
-  test('a failed listing is no evidence, not an empty one', () => {
-    const failing = {
-      run: () => ({ exitCode: 1, stdout: '', stderr: '401 Unauthorized' }),
-    }
-    expect(lookupPrs(repoWith(GITLAB), gitlabProvider(failing)).prs.size).toBe(0)
-  })
-
   test('a failed listing says why, whether the provider answers null or throws', () => {
     const failing = {
       run: () => ({ exitCode: 1, stdout: '', stderr: '401 Unauthorized' }),
@@ -327,21 +319,14 @@ describe('a sweep of a GitLab checkout', () => {
 
   afterAll(() => rmSync(parent, { recursive: true, force: true }), HOOK_TIMEOUT_MS)
 
-  const realGit = spawnRunner('git', { absolutePathOnly: true })
-
   /**
    * Real git, except that `remote get-url origin` names a GitLab project. The
    * remote itself stays the fixture's origin on disk, and an offline sweep
    * reads its branches from the remote-tracking refs.
    */
-  const gitlabUrlGit: CommandRunner = {
-    run(argv, opts) {
-      if (argv.includes('remote') && argv.includes('get-url') && argv.at(-1) === 'origin') {
-        return { exitCode: 0, stdout: `${GITLAB_URL}\n`, stderr: '' }
-      }
-      return realGit.run(argv, opts)
-    },
-  }
+  const gitlabUrlGit = interposedRunner((argv) =>
+    isGetUrlOrigin(argv) ? { exitCode: 0, stdout: `${GITLAB_URL}\n`, stderr: '' } : undefined,
+  )
 
   /** A provider is asked only for a sweep with remote branches; nothing is fetched. */
   const remoteSweep = (opts: SweepOptions = {}) => {

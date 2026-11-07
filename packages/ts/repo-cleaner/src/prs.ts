@@ -12,16 +12,29 @@ import type { ProviderStatus } from './providers/types.ts'
 import type { PRInfo, RepoInfo } from './types.ts'
 import { errorText } from './util.ts'
 
+/** Why the provider did not answer, and the words for it. */
+export interface PrsUnchecked {
+  kind: 'not-installed' | 'not-signed-in' | 'list-failed'
+  /** For a sentence: "`gh` is not installed", "`gh pr list` failed". */
+  why: string
+}
+
 /**
  * Why open pull requests cannot be ruled out for this repository, or null
  * when the provider answered. A missing or signed-out CLI was never asked, and
  * a failed listing answered nothing; either way a remote branch with no known
- * PR may still have an open one.
+ * PR may still have an open one. Every sentence about a lookup that did not
+ * answer is built from this one answer.
  */
-export function prsUnchecked(status: ProviderStatus): string | null {
-  if (!status.available) return `\`${status.tool}\` is not installed`
-  if (!status.authenticated) return `\`${status.tool}\` is not signed in`
-  if (status.listError !== undefined) return `\`${status.listing}\` failed`
+export function prsUnchecked(status: ProviderStatus): PrsUnchecked | null {
+  if (!status.available)
+    return { kind: 'not-installed', why: `\`${status.tool}\` is not installed` }
+  if (!status.authenticated) {
+    return { kind: 'not-signed-in', why: `\`${status.tool}\` is not signed in` }
+  }
+  if (status.listError !== undefined) {
+    return { kind: 'list-failed', why: `\`${status.listing}\` failed` }
+  }
   return null
 }
 

@@ -23,11 +23,11 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
+import { type CommandRunner } from '@osdlc/command-seam'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture, makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 
-import { cannedGh, commit, git } from './helpers.ts'
+import { cannedGh, cannedGlab, commit, git, interposedRunner, isGetUrlOrigin } from './helpers.ts'
 import { HELD_BY_WORKTREE, localDeleteCommand, remoteDeleteCommand } from '../src/branches.ts'
 import { renderJson, renderRepo, renderScan, renderText } from '../src/render.ts'
 import { resolveEntries } from '../src/resolve.ts'
@@ -1313,38 +1313,22 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
   let parent: string
   let checkout: string
   let featureSha: string
-  const realGit = spawnRunner('git', { absolutePathOnly: true })
 
   /** Real git that counts its `ls-remote` calls and, when `fail` is set, fails them. */
   function lsRemoteGit(fail: boolean): { runner: CommandRunner; calls: () => number } {
     let calls = 0
-    return {
-      calls: () => calls,
-      runner: {
-        run(argv, opts) {
-          if (argv.includes('ls-remote')) {
-            calls += 1
-            if (fail) return { exitCode: 128, stdout: '', stderr: 'fatal: unreachable\n' }
-          }
-          return realGit.run(argv, opts)
-        },
-      },
-    }
+    const runner = interposedRunner((argv) => {
+      if (!argv.includes('ls-remote')) return undefined
+      calls += 1
+      return fail ? { exitCode: 128, stdout: '', stderr: 'fatal: unreachable\n' } : undefined
+    })
+    return { runner, calls: () => calls }
   }
 
   /** A signed-in `gh` whose `pr list` fails as it does for a repository the account cannot see. */
-  const unseeingGh: CommandRunner = {
-    run(argv) {
-      if (argv[0] === '--version' || argv[0] === 'auth') {
-        return { exitCode: 0, stdout: '', stderr: '' }
-      }
-      return {
-        exitCode: 1,
-        stdout: '',
-        stderr: "GraphQL: Could not resolve to a Repository with the name 'acme/gone'.\n",
-      }
-    },
-  }
+  const unseeingGh = cannedGh([], {
+    listError: "GraphQL: Could not resolve to a Repository with the name 'acme/gone'.\n",
+  })
 
   beforeAll(() => {
     parent = realpathSync(mkdtempSync(join(tmpdir(), 'repo-cleaner-lookups-')))
@@ -1364,18 +1348,15 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     rmSync(parent, { recursive: true, force: true })
   }, HOOK_TIMEOUT_MS)
 
+  const sweepHere = (o: Partial<SweepOptions>) =>
+    sweepOne(checkout, { cwd: checkout, remote: true, offline: true, ...o })
+
   test('offline reads remote branches from the remote-tracking refs, never the remote', () => {
     const counted = lsRemoteGit(false)
     const before = git(['remote', 'get-url', 'origin'], checkout)
     git(['remote', 'set-url', 'origin', join(parent, 'gone.git')], checkout)
     try {
-      const swept = sweepOne(checkout, {
-        cwd: checkout,
-        remote: true,
-        offline: true,
-        provider: 'none',
-        git: counted.runner,
-      })
+      const swept = sweepHere({ provider: 'none', git: counted.runner })
       expect(swept.error).toBeNull()
       expect(swept.notes).toEqual([])
       expect(counted.calls()).toBe(0)
@@ -1390,13 +1371,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
   })
 
   test('offline with --branch reads only that branch', () => {
-    const swept = sweepOne(checkout, {
-      cwd: checkout,
-      remote: true,
-      offline: true,
-      provider: 'none',
-      branch: 'feature',
-    })
+    const swept = sweepHere({ provider: 'none', branch: 'feature' })
     expect(swept.rows.filter((r) => r.kind === 'remote').map((r) => r.name)).toEqual([
       'origin/feature',
     ])
@@ -1404,12 +1379,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
 
   test('a failed ls-remote after a fetch is a note on the rows, not an error', () => {
     const failing = lsRemoteGit(true)
-    const swept = sweepOne(checkout, {
-      cwd: checkout,
-      remote: true,
-      provider: 'none',
-      git: failing.runner,
-    })
+    const swept = sweepHere({ offline: false, provider: 'none', git: failing.runner })
     expect(swept.error).toBeNull()
     expect(swept.repo?.fetched).toBe(true)
     expect(failing.calls()).toBe(1)
@@ -1423,13 +1393,8 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
   })
 
   test('a pull request listing that fails leaves the rows on git evidence, with a note', () => {
-    const swept = sweepOne(checkout, {
-      cwd: checkout,
-      remote: true,
-      offline: true,
-      provider: 'github',
-      gh: unseeingGh,
-    })
+    const sweepOpts = { provider: 'github', gh: unseeingGh } as const
+    const swept = sweepHere(sweepOpts)
     expect(swept.error).toBeNull()
     expect(swept.repo?.provider?.listError).toContain('you cannot see it')
     expect(swept.notes).toHaveLength(1)
@@ -1439,34 +1404,19 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     const branches = rowsOf(swept.rows, 'branch')
     expect(branches.get('merged')?.verdict).toBe('delete')
     expect(branches.get('live')?.verdict).toBe('review')
-    expect(branches.get('live')?.notes).toContainEqual(
-      expect.stringMatching(/^No PR lookup: `gh pr list` failed \(/),
-    )
+    // The provider's error text is in the repository note, not on the rows.
+    expect(branches.get('live')?.notes).toContain('No PR lookup (`gh pr list` failed).')
     expect(rowsOf(swept.rows, 'remote').has('origin/feature')).toBe(true)
     expect(renderRepo(swept)).toContain('note: Listing PRs with `gh pr list` failed')
     expect(
       JSON.parse(
-        renderJson(
-          sweep([checkout], {
-            cwd: checkout,
-            remote: true,
-            offline: true,
-            provider: 'github',
-            gh: unseeingGh,
-          }),
-        ),
+        renderJson(sweep([checkout], { cwd: checkout, remote: true, offline: true, ...sweepOpts })),
       ).repos[0].notes,
     ).toEqual(swept.notes)
   })
 
   test('while the listing has failed, deleting a remote branch needs confirm-open-pr', () => {
-    const swept = sweepOne(checkout, {
-      cwd: checkout,
-      remote: true,
-      offline: true,
-      provider: 'github',
-      gh: unseeingGh,
-    })
+    const swept = sweepHere({ provider: 'github', gh: unseeingGh })
     const remotes = rowsOf(swept.rows, 'remote')
     const merged = remotes.get('origin/merged')
     expect(merged?.verdict).toBe('delete')
@@ -1481,26 +1431,14 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
 
   test('the --provider none hint follows auto, not only a remote with no host', () => {
     // Real git, except that `origin` reads as a host that `auto` sends to GitHub.
-    const hostedAt = (url: string): CommandRunner => ({
-      run(argv, opts) {
-        if (argv.includes('remote') && argv.includes('get-url') && argv.at(-1) === 'origin') {
-          return { exitCode: 0, stdout: `${url}\n`, stderr: '' }
-        }
-        return realGit.run(argv, opts)
-      },
-    })
+    const hostedAt = (url: string): CommandRunner =>
+      interposedRunner((argv) =>
+        isGetUrlOrigin(argv) ? { exitCode: 0, stdout: `${url}\n`, stderr: '' } : undefined,
+      )
     const noteOf = (
       provider: 'auto' | 'github',
       url = 'https://git.example.com/acme/app.git',
-    ): string | undefined =>
-      sweepOne(checkout, {
-        cwd: checkout,
-        remote: true,
-        offline: true,
-        provider,
-        gh: unseeingGh,
-        git: hostedAt(url),
-      }).notes[0]
+    ): string | undefined => sweepHere({ provider, gh: unseeingGh, git: hostedAt(url) }).notes[0]
     const hint = 'Pass `--provider none` if this remote has no forge.'
     expect(noteOf('auto')).toContain(hint)
     // Named outright for a hosted remote, the provider is the person's choice: no hint.
@@ -1509,105 +1447,71 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     expect(noteOf('auto', 'https://github.com/acme/gone.git')).not.toContain(hint)
   })
 
-  test('a gh that is missing or signed out is named as the reason, not as no PR found', () => {
-    const answering = (failing: string): CommandRunner => ({
-      run(argv) {
-        if (argv[0] === failing) return { exitCode: 1, stdout: '', stderr: 'no' }
-        if (argv[0] === '--version' || argv[0] === 'auth') {
-          return { exitCode: 0, stdout: '', stderr: '' }
-        }
-        return { exitCode: 0, stdout: '[]', stderr: '' }
-      },
-    })
-    const swept = (gh: CommandRunner) =>
-      sweepOne(checkout, { cwd: checkout, remote: true, offline: true, provider: 'github', gh })
-    const localNotes = (gh: CommandRunner) => rowsOf(swept(gh).rows, 'branch').get('live')?.notes
-    expect(localNotes(answering('--version'))).toContain('No PR lookup (`gh` not installed).')
-    expect(localNotes(answering('auth'))).toContain('No PR lookup (`gh` not signed in).')
-    expect(localNotes(answering('none'))).toContain('No PR found via `gh pr list`.')
-
-    // A remote branch names the same reason as why an open PR cannot be ruled out.
-    const remoteNotes = (gh: CommandRunner) =>
-      rowsOf(swept(gh).rows, 'remote').get('origin/feature')?.notes
-    expect(remoteNotes(answering('--version'))).toContain(
-      'Whether it has an open PR is unknown (`gh` is not installed), so deleting it needs confirm-open-pr.',
+  test('a working gh with no PRs says none was found, on both rows', () => {
+    const swept = sweepHere({ provider: 'github', gh: cannedGh([]) })
+    expect(rowsOf(swept.rows, 'branch').get('live')?.notes).toContain(
+      'No PR found via `gh pr list`.',
     )
-    expect(remoteNotes(answering('auth'))).toContain(
-      'Whether it has an open PR is unknown (`gh` is not signed in), so deleting it needs confirm-open-pr.',
-    )
-    expect(remoteNotes(answering('none'))).toContain('No PR found via `gh pr list`.')
-
-    // With no provider at all, both say so rather than that none was found.
-    const unasked = sweepOne(checkout, {
-      cwd: checkout,
-      remote: true,
-      offline: true,
-      provider: 'none',
-    })
-    expect(rowsOf(unasked.rows, 'branch').get('live')?.notes).toContain(
-      'No PR lookup (no provider).',
-    )
-    expect(rowsOf(unasked.rows, 'remote').get('origin/feature')?.notes).toContain(
-      'No PR lookup (no provider).',
+    expect(rowsOf(swept.rows, 'remote').get('origin/feature')?.notes).toContain(
+      'No PR found via `gh pr list`.',
     )
   })
 
-  test('a gh that is missing or signed out gates remote deletes, as a failed listing does', () => {
-    const without = (failing: string): CommandRunner => ({
-      run(argv) {
-        if (argv[0] === failing) return { exitCode: 1, stdout: '', stderr: 'no' }
-        return { exitCode: 0, stdout: argv[0] === 'pr' ? '[]' : '', stderr: '' }
+  // The fixture's remote is a local path, which names no forge, so the
+  // `auto` note also says how to stop asking.
+  const hint = ' Pass `--provider none` if this remote has no forge.'
+  test.each(
+    (['auto', 'github'] as const).flatMap((provider) => [
+      {
+        provider,
+        missing: 'not installed',
+        gh: cannedGh([], { installed: false }),
+        why: '`gh` is not installed',
+        fix: 'Install `gh`',
       },
-    })
-    // The fixture's remote is a local path, which names no forge, so the
-    // note also says how to stop asking.
-    const hint = ' Pass `--provider none` if this remote has no forge.'
-    for (const provider of ['auto', 'github'] as const) {
-      for (const [failing, reason, fix] of [
-        ['--version', '`gh` is not installed', 'Install `gh`'],
-        ['auth', '`gh` is not signed in', 'Sign in to `gh`'],
-      ] as const) {
-        const sw = sweepOne(checkout, {
-          cwd: checkout,
-          remote: true,
-          offline: true,
-          provider,
-          gh: without(failing),
-        })
-        // Merged by ancestry, so still a delete, but it asks first.
-        const merged = rowsOf(sw.rows, 'remote').get('origin/merged')
-        expect(merged?.verdict).toBe('delete')
-        expect(merged?.risks).toContain('confirm-open-pr')
-        // Deleting a local branch closes no PR.
-        expect(rowsOf(sw.rows, 'branch').get('merged')?.risks ?? []).not.toContain(
-          'confirm-open-pr',
-        )
-        expect(sw.notes).toEqual([
-          `Could not check for open PRs: ${reason}, so deleting a remote branch needs confirm-open-pr. ${fix}, or pass \`--allow confirm-open-pr\` once you have checked.${hint}`,
-        ])
-      }
-    }
-    // GitLab says it in its own words.
-    const gitlab = sweepOne(checkout, {
-      cwd: checkout,
-      remote: true,
-      offline: true,
-      provider: 'gitlab',
-      glab: without('--version'),
-    })
+      {
+        provider,
+        missing: 'not signed in',
+        gh: cannedGh([], { authenticated: false }),
+        why: '`gh` is not signed in',
+        fix: 'Sign in to `gh`',
+      },
+    ]),
+  )('provider $provider, gh $missing: named as the reason and gates remote deletes', (c) => {
+    const sw = sweepHere({ provider: c.provider, gh: c.gh })
+    expect(rowsOf(sw.rows, 'branch').get('live')?.notes).toContain(`No PR lookup (${c.why}).`)
+    const remotes = rowsOf(sw.rows, 'remote')
+    expect(remotes.get('origin/feature')?.notes).toContain(
+      `Whether it has an open PR is unknown (${c.why}), so deleting it needs confirm-open-pr.`,
+    )
+    // Merged by ancestry, so still a delete, but it asks first.
+    const merged = remotes.get('origin/merged')
+    expect(merged?.verdict).toBe('delete')
+    expect(merged?.risks).toContain('confirm-open-pr')
+    // Deleting a local branch closes no PR.
+    expect(rowsOf(sw.rows, 'branch').get('merged')?.risks ?? []).not.toContain('confirm-open-pr')
+    expect(sw.notes).toEqual([
+      `Could not check for open PRs: ${c.why}, so deleting a remote branch needs confirm-open-pr. ${c.fix}, or pass \`--allow confirm-open-pr\` once you have checked.${hint}`,
+    ])
+  })
+
+  test('with no provider, both rows say so rather than that no PR was found', () => {
+    const none = sweepHere({ provider: 'none' })
+    expect(rowsOf(none.rows, 'branch').get('live')?.notes).toContain('No PR lookup (no provider).')
+    expect(rowsOf(none.rows, 'remote').get('origin/feature')?.notes).toContain(
+      'No PR lookup (no provider).',
+    )
+    // `--provider none` says this remote has no forge: nothing to ask about.
+    expect(rowsOf(none.rows, 'remote').get('origin/merged')?.risks).not.toContain('confirm-open-pr')
+    expect(none.notes).toEqual([])
+  })
+
+  test('a glab that is missing gates remote deletes in its own words', () => {
+    const gitlab = sweepHere({ provider: 'gitlab', glab: cannedGlab([], { installed: false }) })
     expect(rowsOf(gitlab.rows, 'remote').get('origin/merged')?.risks).toContain('confirm-open-pr')
     expect(gitlab.notes[0]).toMatch(
       /^Could not check for open merge requests: `glab` is not installed, .* Install `glab`,/,
     )
-    // `--provider none` says this remote has no forge: nothing to ask about.
-    const none = sweepOne(checkout, {
-      cwd: checkout,
-      remote: true,
-      offline: true,
-      provider: 'none',
-    })
-    expect(rowsOf(none.rows, 'remote').get('origin/merged')?.risks).not.toContain('confirm-open-pr')
-    expect(none.notes).toEqual([])
   })
 
   test('a repository with no remote has no remote branch to ask about, so no note', () => {
@@ -1620,7 +1524,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
       remote: true,
       offline: true,
       provider: 'github',
-      gh: { run: () => ({ exitCode: 1, stdout: '', stderr: 'not installed' }) },
+      gh: cannedGh([], { installed: false }),
     })
     expect(sw.error).toBeNull()
     expect(sw.notes).toEqual([])

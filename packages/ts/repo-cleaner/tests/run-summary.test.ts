@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { ALREADY_GONE, type Dropped, type Receipt, type Step } from '../src/receipt.ts'
+import type { Dropped, Receipt, Step } from '../src/receipt.ts'
 import {
   renderPreview,
   renderReceipt,
@@ -60,10 +60,7 @@ describe('run summary', () => {
   })
 
   test('a remote branch found already gone is not counted as deleted', () => {
-    const gone = {
-      ...step('delete-remote', 'ok', 'origin/a'),
-      verification: `${ALREADY_GONE}origin`,
-    }
+    const gone = { ...step('delete-remote', 'ok', 'origin/a'), gone: true as const }
     const r = receipt('complete', [gone, step('delete-remote', 'ok', 'origin/b')])
     expect(summarizeRun(r)).toMatchObject({ deleted: { remote: 1 }, gone: 1 })
     expect(renderRunSummary(r)).toEqual(['deleted: 1 remote branch, 1 remote branch already gone'])

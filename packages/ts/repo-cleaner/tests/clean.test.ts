@@ -162,12 +162,7 @@ describe('check and run fetch as the plan did', () => {
   test("the run's own re-check reports a listing that fails only at the run", () => {
     const fx = buildFixture()
     const good = cannedGh([])
-    const failing = {
-      run: (argv: readonly string[]) =>
-        argv[0] === '--version' || argv[0] === 'auth'
-          ? { exitCode: 0, stdout: '', stderr: '' }
-          : { exitCode: 1, stdout: '', stderr: 'boom: rate limited' },
-    }
+    const failing = cannedGh([], { listError: 'boom: rate limited' })
     const p = makePlan(fx.root, { provider: 'github', gh: good })
     const shown = check(p, { pick: ['branch:merged-a'] }, { cwd: fx.root, gh: good })
     expect(shown.notes).toEqual([])

@@ -736,7 +736,8 @@ The same information is on the result, for a host to show or act on:
 - `Preview.notes` (`check`) and `RunOptions.onNotes` (`run`): the same notes
   from their re-checks, which sweep again and can meet a failure the first
   sweep did not.
-- `RunSummary.gone`: remote branches a delete step found already gone.
+- `Step.gone` on a receipt step, and `RunSummary.gone`: a remote branch the
+  remote had already deleted, counted apart from what the run deleted.
 
 ```ts
 import { sweep } from '@osdlc/repo-cleaner'
