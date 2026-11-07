@@ -86,9 +86,9 @@ On Windows, the binary gets the console's Ctrl-C and window-close events
 itself, and Node's `kill` there ends a process outright instead of sending it
 a signal, so forwarding would only cut its cleanup short.
 
-The launcher installs these handlers before it starts the binary, so a signal
-that arrives at startup is still passed on rather than ending the launcher
-and leaving the binary running.
+The launcher installs these handlers before it starts the binary, so once it
+has found the binary, a signal is never lost and never leaves the binary
+running on its own.
 
 Why SIGINT is special: when you press Ctrl-C in a terminal, the terminal sends
 SIGINT to every process in the foreground job, the launcher and the binary

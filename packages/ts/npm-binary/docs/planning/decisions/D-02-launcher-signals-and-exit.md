@@ -14,8 +14,9 @@ created: 2026-11-07
 - SIGINT is forwarded only when none of stdin, stdout and stderr is a
   terminal, and never on Windows. Otherwise the launcher ignores it and
   waits for the child.
-- The handlers are installed before the child is spawned, so a signal that
-  arrives during startup is forwarded and never ends the launcher alone.
+- The handlers are installed before the child is spawned, so once the
+  launcher has found the binary, a signal is never lost and never leaves the
+  child running on its own.
 - The launcher exits with the child's exit code. When the child dies of a
   signal, the launcher removes its own handler and re-raises that signal on
   itself. If the signal does not end it (Node ignores SIGPIPE, and Windows
@@ -32,7 +33,6 @@ created: 2026-11-07
   launcher's pid is the only copy the child would get, so it is forwarded.
 - Re-raising makes the parent shell see the same "killed by signal" status it
   would see without the launcher.
-
 - On Windows the child receives the console's Ctrl-C and close events
   itself, and Node's `kill` there is a hard kill, so forwarding would only cut
   the child's cleanup short.

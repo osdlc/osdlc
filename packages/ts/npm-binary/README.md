@@ -146,8 +146,9 @@ Names and platforms:
 
 - `BinaryProduct`: the names one product ships under (`binary`, `launcher`,
   `scope`, `platformPrefix`, `binaryDir`).
-- `NpmPlatform`: an `os` (`darwin`, `linux`, `win32`) and a `cpu` (`arm64`,
-  `x64`), as `process.platform` and `process.arch` name them.
+- `NpmPlatform`: an `os` and a `cpu`, as `process.platform` and
+  `process.arch` name them. Any value Node reports is accepted; `darwin`,
+  `linux`, `win32`, `arm64` and `x64` are named for completion.
 - `NPM_PLATFORMS`: the default list, in publish order: `darwin-arm64`,
   `darwin-x64`, `linux-x64`, `linux-arm64`, `win32-x64`.
 - `platformKey(platform)`: `darwin-arm64`.
@@ -220,8 +221,8 @@ platform in the list you pass. What it does not do:
   and Node's `kill` on Windows is a hard kill rather than a signal.
 
 The tests run on Linux and macOS. The launcher's Windows paths (`.exe`, no
-SIGHUP, a signal that cannot be re-raised) are covered by unit tests, not by a
-Windows run.
+SIGHUP, no SIGINT forwarding, a signal that cannot be re-raised) are covered
+by unit tests, not by a Windows run.
 
 ## Stability
 
