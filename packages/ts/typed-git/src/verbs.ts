@@ -921,6 +921,49 @@ export function lsFilesTagged(): GitVerb<TaggedFile[]> {
   }
 }
 
+/** One submodule the index records: a gitlink entry (`ls-files --stage`, mode `160000`). */
+export interface IndexSubmodule {
+  /** The submodule's path from the repository root, `/`-separated. */
+  path: string
+  /** The commit the index records for it, which need not be the one checked out. */
+  commit: string
+}
+
+/** `<mode> <sha> <stage>\t<path>` */
+const STAGE_ROW = /^(\d+) ([0-9a-f]+) ([0123])\t(.*)$/s
+
+/**
+ * The submodules this repository's index records (`git ls-files --stage -z`,
+ * the mode `160000` gitlink entries), in index order.
+ *
+ * It reads the index, not `.gitmodules`, so it lists what a checkout holds:
+ * a submodule added but not committed is here, one only named in
+ * `.gitmodules` is not. It says nothing of whether a submodule is checked
+ * out: its directory holds a `.git` when it is. Nested submodules belong to
+ * the submodule's own index; ask a client at that path. A path in conflict
+ * appears once, with the commit of its lowest stage.
+ *
+ * `absent: []` — a repository with no submodules is exit 0 and no gitlinks,
+ * so `[]` means "none". Outside a repository git exits 128 and this throws.
+ */
+export function submodules(): GitVerb<IndexSubmodule[]> {
+  return {
+    argv: ['ls-files', '--stage', '-z'],
+    absent: NONE,
+    parse(r) {
+      const rows: IndexSubmodule[] = []
+      const seen = new Set<string>()
+      for (const chunk of r.stdout.split('\x00')) {
+        const m = STAGE_ROW.exec(chunk)
+        if (m === null || m[1] !== '160000' || seen.has(m[4]!)) continue
+        seen.add(m[4]!)
+        rows.push({ path: m[4]!, commit: m[2]! })
+      }
+      return rows
+    },
+  }
+}
+
 /** Options for {@link forEachRef}. */
 export interface ForEachRefOptions {
   /** `--format=` value; defaults to `%(objectname)%09%(refname)`. */

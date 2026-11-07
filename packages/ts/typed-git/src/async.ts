@@ -45,6 +45,7 @@ import {
   type RebaseOptions,
   type RebaseOutcome,
   type RemoteGetUrlOptions,
+  type IndexSubmodule,
   type TaggedFile,
   type UnmergedEntry,
   type ConfigSetOptions,
@@ -397,6 +398,11 @@ export class AsyncGit {
   /** Tracked files with their `ls-files -v` tag. See {@link Git.lsFilesTagged}. */
   lsFilesTagged(opts: GitCallOptions = {}): Promise<TaggedFile[]> {
     return this.backend.execute(this.cwd, { kind: 'lsFilesTagged' }, opts)
+  }
+
+  /** The submodules the index records. See {@link Git.submodules}. */
+  submodules(opts: GitCallOptions = {}): Promise<IndexSubmodule[]> {
+    return this.backend.execute(this.cwd, { kind: 'submodules' }, opts)
   }
 
   /**

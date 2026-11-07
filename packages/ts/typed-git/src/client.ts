@@ -107,6 +107,7 @@ export {
   type RemoteSetHeadOptions,
   type StatusEntry,
   type StatusPorcelainOptions,
+  type IndexSubmodule,
   type TaggedFile,
   type TreeEntry,
   type UnmergedEntry,

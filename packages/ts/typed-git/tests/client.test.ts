@@ -1427,6 +1427,27 @@ describe('Git — argv construction (fake runner)', () => {
     expect(calls[0]!.argv).toEqual(['ls-files', '-v', '-z'])
   })
 
+  test('submodules keeps the gitlink rows of ls-files --stage, one per path', () => {
+    const sha = 'a'.repeat(40)
+    const other = 'b'.repeat(40)
+    const { runner, calls } = recorder(
+      OK(
+        [
+          `100644 ${'c'.repeat(40)} 0\tREADME.md`,
+          `160000 ${sha} 0\tvendor/lib`,
+          `160000 ${sha} 1\tvendor/two words`,
+          `160000 ${other} 2\tvendor/two words`,
+          '',
+        ].join('\x00'),
+      ),
+    )
+    expect(new Git('/repo', { runner }).submodules()).toEqual([
+      { path: 'vendor/lib', commit: sha },
+      { path: 'vendor/two words', commit: sha },
+    ])
+    expect(calls[0]!.argv).toEqual(['ls-files', '--stage', '-z'])
+  })
+
   test('lsFiles drops empty NUL segments, including the trailing one', () => {
     const { runner } = recorder(OK('a.ts\x00'))
     expect(new Git('/repo', { runner }).lsFiles()).toEqual(['a.ts'])
@@ -1774,6 +1795,18 @@ describe('Git — real repo round trips', () => {
     expect(git.worktrees().find((w) => w.path.endsWith('wt-locked'))?.locked).toBe(false)
     git.worktreeRemove(wt)
     git.deleteBranch('task/locked', { force: true })
+  })
+
+  test('submodules reads gitlinks from a real index', () => {
+    const git = new Git(repo)
+    const head = git.resolveRef('HEAD')!
+    expect(git.submodules()).toEqual([])
+    git.rawChecked(['update-index', '--add', '--cacheinfo', `160000,${head},deps/sub`])
+    try {
+      expect(git.submodules()).toEqual([{ path: 'deps/sub', commit: head }])
+    } finally {
+      git.rawChecked(['update-index', '--force-remove', 'deps/sub'])
+    }
   })
 
   test('configRemoveSection reports whether the section existed', () => {
