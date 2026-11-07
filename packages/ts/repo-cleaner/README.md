@@ -274,7 +274,7 @@ you approve them by name with `--allow`:
 | --- | --- |
 | `abandon-unmerged` | Commits not on the default branch and not captured by an exact-head merged PR, or a worktree's (or its submodules') commits and stashes that no remote has. `evidence.uniqueCommits` counts the commits. |
 | `discard-changes` | Uncommitted or untracked files in the worktree or any of its submodules. |
-| `confirm-open-pr` | The branch has an open pull request; deleting the remote branch closes it. |
+| `confirm-open-pr` | The branch has an open pull request, or its listing failed so one cannot be ruled out; deleting the remote branch closes it. |
 
 A worktree's submodules are part of it: one `--allow` on the worktree row
 covers the same risk in every submodule. A stash in the worktree itself is
@@ -572,7 +572,9 @@ Without the provider's CLI (`gh`, or `glab` for GitLab), or without
 authentication, classification proceeds on git evidence alone and the report
 says so. A listing that fails, such as one for a repository the signed-in
 account cannot see, does the same: the repository is judged on git evidence
-and carries a `note` saying why. A remote whose branches `git ls-remote`
+and carries a `note` saying why. Deleting a remote branch with no known PR
+then needs `confirm-open-pr`, because deleting an open PR's head branch
+closes the PR. A remote whose branches `git ls-remote`
 cannot list after the fetch is read from the remote-tracking refs the fetch
 just wrote, also with a note. A failed fetch is different: every row would be
 measured against an older default branch than the one asked for, so the

@@ -18,7 +18,7 @@ Accepted 2026-11-07, in [#656](https://github.com/osdlc/osdlc/pull/656) (issues
 - **A note is a sentence on `RepoSweep.notes`.** The text and summary reports
   print notes under the repository's header, and the JSON carries them.
   `--format commands`, `plan` and `clean` print them on stderr, `clean` from
-  its re-check (`Preview.notes`).
+  its re-check (`Preview.notes`) and the run's own (`RunOptions.onNotes`).
 
 ## Why
 

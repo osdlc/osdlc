@@ -214,6 +214,15 @@ describe('the GitLab provider', () => {
     })
     const silent: PrProvider = { ...gitlabProvider(failing), listPrs: () => null }
     expect(lookupPrs(repoWith(GITLAB), silent).error).toBe('the provider gave no reason')
+    expect(lookupPrs(repoWith({ ...GITLAB, project: null }), gitlabProvider(failing)).error).toBe(
+      'the remote URL names no GitLab project',
+    )
+    const notAList = { run: () => ({ exitCode: 0, stdout: '{"not":"a list"}', stderr: '' }) }
+    expect(lookupPrs(repoWith(GITLAB), gitlabProvider(notAList)).error).toBe(
+      'page 1 is not a merge request list',
+    )
+    const mute = { run: () => ({ exitCode: 2, stdout: '', stderr: '' }) }
+    expect(lookupPrs(repoWith(GITLAB), gitlabProvider(mute)).error).toBe('glab exited 2')
     const throwing: PrProvider = {
       ...gitlabProvider(failing),
       listPrs: () => {

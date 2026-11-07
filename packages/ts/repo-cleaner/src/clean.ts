@@ -124,6 +124,12 @@ export interface RunOptions extends Shared {
   onStep?: ((index: number, total: number, step: Step) => void) | undefined
   /** Told after each step, with its `result` set, before the receipt is saved. */
   onStepDone?: ((index: number, total: number, step: Step) => void) | undefined
+  /**
+   * Told the run's own re-check's notes, before the first step: what it judged
+   * without. The re-check may differ from the preview's, for example when a
+   * listing fails only at the run.
+   */
+  onNotes?: ((notes: Preview['notes']) => void) | undefined
 }
 
 /** What a run would do, for a person to approve: the steps, and the rows dropped and why. */
@@ -135,7 +141,11 @@ export interface Preview {
   dropped: Dropped[]
   /** Allowed risks no row that runs carries. Not an error: what a row carries can change between runs. */
   unusedAllows: { risk: Risk; row: RowId | null }[]
-  /** Each re-swept repository's `RepoSweep.notes`, with its root: what the re-check judged without. */
+  /**
+   * `RepoSweep.notes`, with each repository's root: what the re-check judged
+   * without. With a sweep passed in (`CheckOptions.sweep`), every repository
+   * of that sweep; otherwise each plan repository the re-check swept again.
+   */
   notes: { repo: string; note: string }[]
 }
 
@@ -491,7 +501,15 @@ function recheck(
       detail: `checked out in ${worktree}, which this run does not remove`,
     })
   }
-  return { accepted: kept, dropped, verified, notes }
+  // A sweep passed in speaks for every repository it read, selected or not: a
+  // repository with nothing to run is where a missing listing matters most.
+  const allNotes =
+    opts.sweep === undefined
+      ? notes
+      : opts.sweep.repos.flatMap((r) =>
+          r.notes.map((note) => ({ repo: r.repo?.root ?? r.path, note })),
+        )
+  return { accepted: kept, dropped, verified, notes: allNotes }
 }
 
 // ── one row per remote branch ──────────────────────────────────────────────
@@ -953,6 +971,7 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   // so a row the re-check now judges `review` drops rather than runs.
   const safeOnly = preview.approval.pick.length === 0
   const planned = planSteps(preview.plan, approval, { ...opts, sweep: undefined }, safeOnly)
+  opts.onNotes?.(planned.notes)
   const known = new Set(receipt.dropped.map((d) => `${d.repo}\0${d.row}`))
   for (const d of planned.dropped) {
     if (!known.has(`${d.repo}\0${d.row}`)) receipt.dropped.push(d)

@@ -112,15 +112,16 @@ export function mergedFact(e: {
 }
 
 /**
- * What deleting a branch needs: its unlanded commits, and its open PR. With
- * `prUnknown`, a listing that failed, a remote branch is treated as having an
- * open PR: deleting a PR's head branch closes the PR, and nothing here can say
- * there is none.
+ * What deleting a branch needs: its unlanded commits, and its open PR.
+ *
+ * @param prUnknown The PR listing failed and none is known for the branch. A
+ *   remote branch is then treated as having an open PR: deleting a PR's head
+ *   branch closes the PR, and nothing here can say there is none.
  */
 function branchRisks(unmerged: boolean, pr: PRInfo | undefined, prUnknown = false): Risk[] {
   return risksFor({
     'abandon-unmerged': unmerged,
-    'confirm-open-pr': pr?.state === 'OPEN' || (pr === undefined && prUnknown),
+    'confirm-open-pr': pr?.state === 'OPEN' || prUnknown,
   })
 }
 
@@ -432,16 +433,15 @@ function classifyRemoteBranch(opts: {
     const counted = git.at(repo.root).try.aheadBehind(remoteMain, sha)
     evidence.uniqueCommits = counted.ok ? counted.value.ahead : null
   }
-  const listError = repo.provider?.listError
-  const risks = branchRisks(unmerged, pr, listError !== undefined)
+  const status = repo.provider
+  const prUnknown = status !== null && status.listError !== undefined && pr === undefined
+  const risks = branchRisks(unmerged, pr, prUnknown)
   const commands = repo.remote === null ? [] : [remoteDeleteCommand(repo.remote, branch, sha)]
-  // Without the listing, an open PR cannot be ruled out; the risk says so.
-  const unknownPr =
-    listError !== undefined && pr === undefined
-      ? [
-          `Whether it has an open PR is unknown (\`${repo.provider!.listing}\` failed), so deleting it needs confirm-open-pr.`,
-        ]
-      : []
+  const unknownPr = prUnknown
+    ? [
+        `Whether it has an open PR is unknown (\`${status.listing}\` failed), so deleting it needs confirm-open-pr.`,
+      ]
+    : []
   const deletes = (why: string): RemoteRow =>
     row({ verdict: 'delete', action: 'delete', why, commands, risks, notes: unknownPr })
 

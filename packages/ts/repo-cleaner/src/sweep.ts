@@ -373,8 +373,11 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
       prs = looked.prs
       if (looked.error !== null) {
         repo = { ...repo, provider: { ...status, listError: looked.error } }
+        // `auto` asks GitHub for any host, so a local or `file:` remote lands here too.
+        const hint =
+          status.host === null ? ' Pass `--provider none` if this remote has no forge.' : ''
         notes.push(
-          `Listing ${status.noun}s with \`${status.listing}\` failed (${looked.error}); judged on git evidence alone.`,
+          `Listing ${status.noun}s with \`${status.listing}\` failed (${looked.error}); judged on git evidence alone.${hint}`,
         )
       }
     }

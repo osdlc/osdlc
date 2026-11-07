@@ -1434,7 +1434,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     expect(swept.repo?.provider?.listError).toContain('you cannot see it')
     expect(swept.notes).toHaveLength(1)
     expect(swept.notes[0]).toMatch(
-      /^Listing PRs with `gh pr list` failed \(.*you cannot see it.*\); judged on git evidence alone\.$/,
+      /^Listing PRs with `gh pr list` failed \(.*you cannot see it.*\); judged on git evidence alone\. Pass `--provider none` if this remote has no forge\.$/,
     )
     const branches = rowsOf(swept.rows, 'branch')
     expect(branches.get('merged')?.verdict).toBe('delete')

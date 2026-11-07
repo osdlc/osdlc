@@ -659,8 +659,22 @@ function runClean(
     return refusal(ctx, name, err)
   }
   status.clear()
-  // The re-check's notes: from the sweep just made, or from sweeping a saved plan's repositories again.
-  writeNotes(ctx, name, preview.notes)
+  // The re-check's notes: from the sweep just made, or from sweeping a saved
+  // plan's repositories again. The run re-checks once more; only a note that
+  // is new by then is printed again.
+  const noted = new Set<string>()
+  const notesOnce = (notes: Preview['notes']): void =>
+    writeNotes(
+      ctx,
+      name,
+      notes.filter(({ repo, note }) => {
+        const key = `${repo}\0${note}`
+        if (noted.has(key)) return false
+        noted.add(key)
+        return true
+      }),
+    )
+  notesOnce(preview.notes)
 
   const showPreview = (): void => {
     if (v.format === 'json') {
@@ -698,6 +712,7 @@ function runClean(
       source,
       receiptPath,
       now: () => new Date(),
+      onNotes: notesOnce,
       ...(live
         ? {
             // The board carries the run's progress; the status line stays clear.

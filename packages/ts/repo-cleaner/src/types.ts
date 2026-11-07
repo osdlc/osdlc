@@ -71,8 +71,9 @@ export type Action = (typeof ACTIONS)[number]
  *                       (or its submodules') commits and stashes no remote has
  *   `discard-changes`   drops modified, staged or untracked files in a worktree
  *                       or any of its submodules
- *   `confirm-open-pr`   the branch has an open pull request; deleting the remote
- *                       branch closes it
+ *   `confirm-open-pr`   the branch has an open pull request, or its listing
+ *                       failed so one cannot be ruled out; deleting the
+ *                       remote branch closes it
  */
 export const RISKS = ['abandon-unmerged', 'discard-changes', 'confirm-open-pr'] as const
 

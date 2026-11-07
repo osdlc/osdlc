@@ -1594,6 +1594,31 @@ describe('a pull request listing that fails (#653)', () => {
     })
   })
 
+  test('clean reports every swept repository, one with nothing to run included', () => {
+    const fx = buildFixture()
+    // A second repository with only its default branch: nothing in it is selected.
+    const pair = makeBareAndWorker()
+    cleanups.push(pair.cleanup)
+    const bare = pair.worker.dir
+    sh(bare, ['commit', '--allow-empty', '-m', 'initial'])
+    sh(bare, ['push', '-q', '-u', 'origin', 'main'])
+    withFailingGh(STDERR, () => {
+      const res = run(['clean', ...GH, '--dry-run', '--format', 'json', fx.root, bare], fx.root)
+      expect(res.code).toBe(0)
+      const out = JSON.parse(res.out) as { notes: { repo: string; note: string }[] }
+      expect(out.notes.map((n) => n.repo).sort()).toEqual(
+        [realpathSync(fx.root), realpathSync(bare)].sort(),
+      )
+      // A local bare remote names no forge, so the note says how to stop asking.
+      expect(out.notes[0]?.note).toContain('Pass `--provider none` if this remote has no forge.')
+      for (const dir of [fx.root, bare]) {
+        expect(res.err).toContain(`repo-cleaner clean: ${realpathSync(dir)}: Listing PRs`)
+      }
+      // The run's own re-check says the same; a dry run has none, and nothing repeats.
+      expect(res.err.split('\n').filter((l) => l.includes(realpathSync(bare)))).toHaveLength(1)
+    })
+  })
+
   test('a remote branch with no known PR is not deleted without confirm-open-pr', () => {
     const fx = buildFixture()
     withFailingGh(STDERR, () => {
