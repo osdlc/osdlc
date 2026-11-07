@@ -26,16 +26,6 @@ export {
 export { checkNamespaceConflict, type CheckNamespaceConflictOptions } from './guard.ts'
 export { canonicalJson } from './canonical-json.ts'
 export {
-  CAS_REJECTION_MARKERS,
-  classifyFetchFailure,
-  classifyPush,
-  LOCAL_LOCK_MARKERS,
-  NOT_FOUND_MARKERS,
-  type FetchFailure,
-  type GitOutput,
-  type PushOutcome,
-} from './classify.ts'
-export {
   CasFailed,
   GitFailed,
   NamespaceConflict,

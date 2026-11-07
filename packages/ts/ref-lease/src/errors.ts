@@ -25,11 +25,10 @@ export type RefLeaseErrorKind =
  * extend it, for failures of its own lease logic; those carry kind `other`.
  */
 export class RefLeaseError extends Error {
-  readonly kind: RefLeaseErrorKind
+  readonly kind: RefLeaseErrorKind = 'other'
   constructor(message: string, options?: ErrorOptions) {
     super(message, options)
     this.name = 'RefLeaseError'
-    this.kind = 'other'
   }
 }
 
@@ -116,13 +115,12 @@ export class NamespaceConflict extends RefLeaseError {
   constructor(init: NamespaceConflictInit) {
     const sha = init.sha ?? null
     const remediation = init.remediation ?? null
-    let message = init.message
-    if (message === undefined) {
-      message = `namespace conflict: a literal ref at ${init.ref} blocks creation of ${init.ref}/...`
-      if (sha !== null) message += ` (sha=${sha})`
-      if (remediation) message += `; ${remediation}`
-    }
-    super(message)
+    super(
+      init.message ??
+        `namespace conflict: a literal ref at ${init.ref} blocks creation of ${init.ref}/...` +
+          (sha === null ? '' : ` (sha=${sha})`) +
+          (remediation ? `; ${remediation}` : ''),
+    )
     this.name = 'NamespaceConflict'
     this.ref = init.ref
     this.namespace = init.ref.startsWith('refs/') ? init.ref.slice('refs/'.length) : init.ref
@@ -140,6 +138,11 @@ export interface GitFailedInit {
   /** git's stderr, or the spawn error when git did not run. */
   stderr: string
   message: string
+  /**
+   * The classified failure from `@osdlc/typed-git`, when git ran through it: its
+   * `kind` tells an unreachable remote from an authentication or TLS failure.
+   */
+  cause?: unknown
 }
 
 /**
@@ -153,7 +156,7 @@ export class GitFailed extends RefLeaseError {
   readonly exitCode: number | null
   readonly stderr: string
   constructor(init: GitFailedInit) {
-    super(init.message)
+    super(init.message, init.cause === undefined ? undefined : { cause: init.cause })
     this.name = 'GitFailed'
     this.op = init.op
     this.exitCode = init.exitCode

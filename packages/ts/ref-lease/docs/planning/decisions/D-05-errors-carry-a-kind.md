@@ -14,7 +14,9 @@ Every error extends `RefLeaseError` and carries a `kind` string: `cas-failed`, `
 subclass takes one init object, so a field can be added without breaking callers.
 
 A lost compare-and-swap is `CasFailed`; any other git failure is `GitFailed`. The split is read off
-git's stderr, by the marker lists in `classify.ts`, whose cases are data in `tests/conformance/`.
+the rejection kind `@osdlc/typed-git`'s `push` reports for the ref, run in the C locale; the
+mapping is data in `tests/conformance/push.json`. A `GitFailed` keeps typed-git's classified
+failure as its `cause`.
 
 ## Why
 

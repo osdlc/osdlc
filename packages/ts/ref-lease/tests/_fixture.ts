@@ -36,6 +36,16 @@ export function makePair(): Pair {
 
 export const REF = 'refs/locks/build-cache'
 
+/** The value `fn` throws; fails the test when it returns normally. */
+export function thrownBy(fn: () => unknown): unknown {
+  try {
+    fn()
+  } catch (e) {
+    return e
+  }
+  throw new Error('expected a throw')
+}
+
 export function samplePayload(over: Record<string, unknown> = {}): Record<string, unknown> {
   return { holder: 'worker-a', token: '7f1c', state: 'held', ...over }
 }

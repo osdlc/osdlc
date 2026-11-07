@@ -6,8 +6,8 @@
  * turn that into one clear error.
  */
 
-import { GitFailed, NamespaceConflict } from './errors.ts'
-import { client, failureResult, failureStderr, type GitOptions } from './git.ts'
+import { NamespaceConflict } from './errors.ts'
+import { C_LOCALE, client, gitFailedFrom, type GitOptions } from './git.ts'
 
 /** Options for {@link checkNamespaceConflict}. */
 export interface CheckNamespaceConflictOptions extends GitOptions {
@@ -38,18 +38,13 @@ export function checkNamespaceConflict(
   namespaceRef: string,
   opts: CheckNamespaceConflictOptions = {},
 ): void {
-  const listing = client(opts).try.lsRemote(authority, namespaceRef)
+  const listing = client(opts).try.lsRemote(authority, namespaceRef, C_LOCALE)
   if (!listing.ok) {
-    const res = failureResult(listing.error)
-    const stderr = failureStderr(listing.error)
-    throw new GitFailed({
-      op: 'NAMESPACE-CHECK',
-      exitCode: res.exitCode,
-      stderr,
-      message:
-        `git ls-remote failed for namespace-conflict check on ` +
-        `${JSON.stringify(authority)}: exit=${res.exitCode} stderr=${JSON.stringify(stderr)}`,
-    })
+    throw gitFailedFrom(
+      'NAMESPACE-CHECK',
+      `git ls-remote failed for namespace-conflict check on ${JSON.stringify(authority)}`,
+      listing.error,
+    )
   }
   for (const row of listing.value) {
     if (row.ref === namespaceRef) {

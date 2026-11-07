@@ -23,7 +23,7 @@ A `decode` function's own error is passed through unchanged, and `buildLeaseComm
 
 From [examples/errors.test.ts](../../examples/errors.test.ts):
 
-<!-- snippet: examples/errors.test.ts#handle-errors -->
+<!-- snippet: handle-errors -->
 ```ts
 /** What to tell an operator, and whether trying again can help. */
 function explain(e: unknown): { message: string; retry: boolean } {
@@ -51,21 +51,15 @@ A caller retries a lost race and reports anything else. Mixing them up is costly
 that rejects every push, read as a race, gets retried forever with no message; a real race, read as
 a failure, stops a worker that only needed to re-read.
 
-The library tells them apart by git's output. A push that loses a race prints a ref-level
-rejection (`[rejected] … (stale info)`, or `cannot lock ref … but expected …` when the race is lost
-at the authority). A declined hook prints `(pre-receive hook declined)`; a bad URL prints
-`URL rejected`. The cases are listed as data in
+The library tells them apart by git's own answer for the ref. It pushes through
+[`@osdlc/typed-git`](https://www.npmjs.com/package/@osdlc/typed-git), which reports each rejected
+ref with a reason kind: `stale` (the lease check failed), `already-exists` or `lock-failed` (another
+writer got to the authority first) are a lost race. `hook-declined`, `ref-conflict` and anything
+else are a `GitFailed`, as is a push that never got an answer (a bad URL, no network, a declined
+local `pre-push` hook). The mapping is listed as data in
 [tests/conformance/push.json](../../tests/conformance/push.json).
 
-git's messages are matched in English. If your users run git in another language, give the library
-a client with `LC_ALL=C`:
-
-```ts
-import { Git } from '@osdlc/typed-git'
-
-const git = new Git(repo, { env: { LC_ALL: 'C' } })
-casReplace(authority, ref, expected, next, { git })
-```
+Pushes and fetches run git in the C locale, so this works whatever language the user's git speaks.
 
 ## Each call is one attempt
 

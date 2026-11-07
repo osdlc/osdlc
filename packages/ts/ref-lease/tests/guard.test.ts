@@ -10,7 +10,7 @@ import {
   NamespaceConflict,
 } from '@osdlc/ref-lease'
 
-import { makePair, type Pair } from './_fixture.ts'
+import { makePair, thrownBy, type Pair } from './_fixture.ts'
 
 /**
  * Put a literal ref at `ref` on the authority. receive-pack refuses a push to a
@@ -48,12 +48,7 @@ test('refs under the namespace pass', () => {
 test('a literal ref at the namespace path raises NamespaceConflict', () => {
   const sha = buildLeaseCommit({}, { cwd: env.worker })
   literalRefAtAuthority('refs/locks', sha)
-  let e: unknown
-  try {
-    checkNamespaceConflict(env.authority, 'refs/locks', { cwd: env.worker })
-  } catch (err) {
-    e = err
-  }
+  const e = thrownBy(() => checkNamespaceConflict(env.authority, 'refs/locks', { cwd: env.worker }))
   expect(e).toBeInstanceOf(NamespaceConflict)
   const c = e as NamespaceConflict
   expect([c.ref, c.namespace, c.sha]).toEqual(['refs/locks', 'locks', sha])

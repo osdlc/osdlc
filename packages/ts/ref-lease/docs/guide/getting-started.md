@@ -43,7 +43,7 @@ before they are pushed, and a local copy of each lease ref after a write or a fe
 
 From [examples/lease-lifecycle.test.ts](../../examples/lease-lifecycle.test.ts):
 
-<!-- snippet: examples/lease-lifecycle.test.ts#quick-start -->
+<!-- snippet: quick-start -->
 ```ts
 import {
   buildLeaseCommit,

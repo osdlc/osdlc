@@ -1,125 +1,124 @@
 {
-  "about": "Cases for classifyPush: what a compare-and-swap push's exit code and output mean. The stderr strings are real git output, trimmed. Every implementation of the protocol maps each case to `expected`.",
+  "about": "Cases for the push outcome: what a compare-and-swap push's per-ref result means. `flag` is git push --porcelain's status character for the ref; `rejection` is the reason kind @osdlc/typed-git reads from git's reason text (null unless flag is '!'). Every implementation of the protocol maps each case to `expected`.",
   "cases": [
-    {
-      "name": "replace succeeds",
-      "op": "replace",
-      "exitCode": 0,
-      "stdout": "",
-      "stderr": "To /tmp/authority.git\n   1a2b3c4..5d6e7f8  5d6e7f8 -> refs/locks/x",
-      "expected": "ok"
-    },
     {
       "name": "create succeeds",
       "op": "create",
-      "exitCode": 0,
-      "stdout": "",
-      "stderr": "To /tmp/authority.git\n * [new reference]   5d6e7f8 -> refs/locks/x",
+      "flag": "*",
+      "rejection": null,
+      "expected": "ok"
+    },
+    {
+      "name": "replace succeeds (forced update)",
+      "op": "replace",
+      "flag": "+",
+      "rejection": null,
+      "expected": "ok"
+    },
+    {
+      "name": "replace succeeds (fast-forward)",
+      "op": "replace",
+      "flag": " ",
+      "rejection": null,
+      "expected": "ok"
+    },
+    {
+      "name": "delete succeeds",
+      "op": "delete",
+      "flag": "-",
+      "rejection": null,
       "expected": "ok"
     },
     {
       "name": "create of a ref already at the same sha",
       "op": "create",
-      "exitCode": 0,
-      "stdout": "",
-      "stderr": "Everything up-to-date",
+      "flag": "=",
+      "rejection": null,
       "expected": "cas-failed"
     },
     {
       "name": "replace to the sha the ref already holds",
       "op": "replace",
-      "exitCode": 0,
-      "stdout": "",
-      "stderr": "Everything up-to-date",
+      "flag": "=",
+      "rejection": null,
       "expected": "ok"
     },
     {
-      "name": "lease check lost client-side",
+      "name": "lease check lost before anything was sent",
       "op": "replace",
-      "exitCode": 1,
-      "stdout": "",
-      "stderr": "To /tmp/authority.git\n ! [rejected]        5d6e7f8 -> refs/locks/x (stale info)\nerror: failed to push some refs to '/tmp/authority.git'",
+      "flag": "!",
+      "rejection": "stale",
       "expected": "cas-failed"
     },
     {
-      "name": "create of a ref that exists at another sha",
+      "name": "create of a ref that exists",
       "op": "create",
-      "exitCode": 1,
-      "stdout": "",
-      "stderr": "To /tmp/authority.git\n ! [rejected]        5d6e7f8 -> refs/locks/x (stale info)\nerror: failed to push some refs to '/tmp/authority.git'",
+      "flag": "!",
+      "rejection": "stale",
       "expected": "cas-failed"
     },
     {
-      "name": "race lost at the authority: ref moved",
+      "name": "race lost at the authority: ref created first",
+      "op": "create",
+      "flag": "!",
+      "rejection": "already-exists",
+      "expected": "cas-failed"
+    },
+    {
+      "name": "race lost at the authority: ref moved or deleted",
       "op": "replace",
-      "exitCode": 1,
-      "stdout": "",
-      "stderr": "error: cannot lock ref 'refs/locks/x': is at 9f8e7d6 but expected 1a2b3c4\nTo /tmp/authority.git\n ! [remote rejected] 5d6e7f8 -> refs/locks/x (failed to update ref)\nerror: failed to push some refs to '/tmp/authority.git'",
+      "flag": "!",
+      "rejection": "lock-failed",
       "expected": "cas-failed"
     },
     {
-      "name": "race lost at the authority: ref deleted",
-      "op": "replace",
-      "exitCode": 1,
-      "stdout": "",
-      "stderr": "error: cannot lock ref 'refs/locks/x': unable to resolve reference 'refs/locks/x'\nTo /tmp/authority.git\n ! [remote rejected] 5d6e7f8 -> refs/locks/x (failed to update ref)\nerror: failed to push some refs to '/tmp/authority.git'",
-      "expected": "cas-failed"
-    },
-    {
-      "name": "race lost at the authority: ref created",
-      "op": "create",
-      "exitCode": 1,
-      "stdout": "",
-      "stderr": "error: cannot lock ref 'refs/locks/x': reference already exists\nTo /tmp/authority.git\n ! [remote rejected] 5d6e7f8 -> refs/locks/x (failed to update ref)\nerror: failed to push some refs to '/tmp/authority.git'",
-      "expected": "cas-failed"
-    },
-    {
-      "name": "pre-receive hook declined",
-      "op": "create",
-      "exitCode": 1,
-      "stdout": "",
-      "stderr": "remote: policy says no\nTo /tmp/authority.git\n ! [remote rejected] 5d6e7f8 -> refs/locks/x (pre-receive hook declined)\nerror: failed to push some refs to '/tmp/authority.git'",
-      "expected": "git-failed"
-    },
-    {
-      "name": "directory/file ref clash",
-      "op": "create",
-      "exitCode": 1,
-      "stdout": "",
-      "stderr": "error: cannot lock ref 'refs/locks/x': 'refs/locks/x/child' exists; cannot create 'refs/locks/x'\nTo /tmp/authority.git\n ! [remote rejected] 5d6e7f8 -> refs/locks/x (failed to update ref)\nerror: failed to push some refs to '/tmp/authority.git'",
-      "expected": "git-failed"
-    },
-    {
-      "name": "directory/file ref clash, git 2.54",
-      "op": "create",
-      "exitCode": 1,
-      "stdout": "",
-      "stderr": "To /tmp/authority.git\n ! [remote rejected] 5d6e7f8 -> refs/locks/x (refname conflict)\nerror: failed to push some refs to '/tmp/authority.git'",
-      "expected": "git-failed"
-    },
-    {
-      "name": "malformed URL",
-      "op": "create",
-      "exitCode": 128,
-      "stdout": "",
-      "stderr": "fatal: unable to access 'https://bad host.invalid/x.git/': URL rejected: Bad hostname",
-      "expected": "git-failed"
-    },
-    {
-      "name": "authority does not exist",
-      "op": "replace",
-      "exitCode": 128,
-      "stdout": "",
-      "stderr": "fatal: '/tmp/nowhere' does not appear to be a git repository\nfatal: Could not read from remote repository.",
-      "expected": "git-failed"
-    },
-    {
-      "name": "marker matching ignores case",
+      "name": "delete raced by another writer",
       "op": "delete",
-      "exitCode": 1,
-      "stdout": "",
-      "stderr": " ! [REJECTED]        5d6e7f8 -> refs/locks/x (STALE INFO)",
+      "flag": "!",
+      "rejection": "lock-failed",
       "expected": "cas-failed"
+    },
+    {
+      "name": "non-fast-forward",
+      "op": "replace",
+      "flag": "!",
+      "rejection": "non-fast-forward",
+      "expected": "cas-failed"
+    },
+    {
+      "name": "remote hook declined",
+      "op": "create",
+      "flag": "!",
+      "rejection": "hook-declined",
+      "expected": "git-failed"
+    },
+    {
+      "name": "ref path clash at the authority",
+      "op": "create",
+      "flag": "!",
+      "rejection": "ref-conflict",
+      "expected": "git-failed"
+    },
+    {
+      "name": "tag already exists",
+      "op": "create",
+      "flag": "!",
+      "rejection": "tag-exists",
+      "expected": "git-failed"
+    },
+    {
+      "name": "another ref of an atomic push failed",
+      "op": "replace",
+      "flag": "!",
+      "rejection": "atomic-failed",
+      "expected": "git-failed"
+    },
+    {
+      "name": "anything unrecognised",
+      "op": "replace",
+      "flag": "!",
+      "rejection": "other",
+      "expected": "git-failed"
     }
   ]
 }

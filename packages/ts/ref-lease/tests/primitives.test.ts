@@ -24,7 +24,7 @@ import {
   type MirrorSkip,
 } from '@osdlc/ref-lease'
 
-import { makePair, REF, samplePayload, type Pair } from './_fixture.ts'
+import { makePair, REF, samplePayload, thrownBy, type Pair } from './_fixture.ts'
 
 let env: Pair
 
@@ -41,15 +41,6 @@ const authoritySha = (ref: string) => env.authorityGit.resolveRef(ref)
 const localSha = (ref: string) => env.workerGit.resolveRef(ref)
 const commit = (over: Record<string, unknown> = {}, parentSha?: string) =>
   buildLeaseCommit(samplePayload(over), { cwd: env.worker, parentSha: parentSha ?? null })
-
-function thrownBy(fn: () => unknown): unknown {
-  try {
-    fn()
-  } catch (e) {
-    return e
-  }
-  throw new Error('expected a throw')
-}
 
 /** Hold `<ref>.lock` in `repo` for ~450ms from another process, as a concurrent fetch would. */
 async function holdRefLock(repo: string, ref: string): Promise<{ release: () => void }> {
