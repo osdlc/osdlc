@@ -1536,5 +1536,18 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
       expect(notesOf(answering('auth'), kind, name)).toContain('No PR lookup (`gh` not signed in).')
       expect(notesOf(answering('none'), kind, name)).toContain('No PR found via `gh pr list`.')
     }
+    // With no provider at all, both say so rather than that none was found.
+    const unasked = sweepOne(checkout, {
+      cwd: checkout,
+      remote: true,
+      offline: true,
+      provider: 'none',
+    })
+    expect(rowsOf(unasked.rows, 'branch').get('live')?.notes).toContain(
+      'No PR lookup (no provider).',
+    )
+    expect(rowsOf(unasked.rows, 'remote').get('origin/feature')?.notes).toContain(
+      'No PR lookup (no provider).',
+    )
   })
 })
