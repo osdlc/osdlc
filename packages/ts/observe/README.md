@@ -35,6 +35,16 @@ answer cannot rely on every process ending cleanly.
    from the processes running on the machine. Reconcile compares the records
    with what is actually running and ends a record whose process is gone as
    `lost`. If the scan cannot tell, it leaves the record alone.
+5. **Secrets are scrubbed before they are written.** Logs of agent work carry
+   prompts, tool output and error messages, and those carry tokens and
+   passwords. The redactor replaces each secret it finds with
+   `[REDACTED:<rule>]` and returns only per-rule counts. It is always on:
+   options add rules, never remove them. `appendRedactedJsonl` puts it in front
+   of the JSONL writer.
+6. **Hook payloads share one envelope.** Each agent harness sends its own JSON
+   to a hook. `normalizeHook` reads the harness, event, session id, working
+   directory and transcript path out of it, keeps the body as sent, and names
+   what was missing, without ever throwing.
 
 It is for launchers and orchestrators that start agent CLIs and other
 long-running work, and for the dashboards and reports that read what they
@@ -42,9 +52,9 @@ wrote.
 
 ## When not to use it
 
-- It does not launch agents, talk to terminals, install hooks or read
-  transcripts. Your launcher does those and calls this package through small
-  ports.
+- It does not launch agents, talk to terminals, install hooks, answer hooks
+  or read transcripts. Your launcher does those and calls this package through
+  small ports.
 - It does not send metrics or traces anywhere. It writes local files that
   other tools read. For distributed tracing, use OpenTelemetry.
 - It keeps no database. A store with many thousands of sessions is a folder
@@ -65,6 +75,24 @@ wrote.
   the launcher sets.
 - **`ulid`, `ulidx`.** `newSortableId` uses the ULID layout with a prefix, so
   the package needs no ULID dependency.
+- **secretlint** finds secrets by their shape and is built to lint files. The
+  redactor runs its recommended preset as one of four passes, and adds rules for
+  what a log line holds that a file seldom does: `Authorization` and cookie
+  headers, `key=value` assignments, JSON keys named like secrets, and the values
+  of secret-named environment variables.
+- **`fast-redact` and pino's `redact` option** blank the values at paths you
+  name. They do not look inside a string, so a token in a tool's output gets
+  through. Use them for structured fields you know; use the redactor for text.
+- **`@osdlc/detect-harness`** finds the harnesses installed on a machine and
+  reads their configuration. Its harness ids are the ones the hook envelope
+  uses, so a hook event joins a harness report by id.
+
+## Guides
+
+- [Keeping secrets out of logs](./docs/guide/redaction.md): what the redactor
+  does to a line, what it catches and misses, and how to wire it into a writer.
+- [Reading hook payloads](./docs/guide/hook-payloads.md): one envelope for the
+  JSON each agent harness sends to a hook, with examples per harness.
 
 ## Install
 
@@ -78,8 +106,10 @@ ESM only. Node.js 22 or later. `zod` 4 is a peer dependency:
 the session model takes your own zod schemas, so both must come from one zod.
 The runtime dependencies are `@osdlc/command-seam`, which runs `ps`, `ioreg`,
 `reg` and `git` without a shell, `@osdlc/etag-write`, which writes the
-session record atomically, and `@osdlc/tiered-dirs`, which resolves the home
-and cache directories the machine-id cache lives under.
+session record atomically, `@osdlc/tiered-dirs`, which resolves the home
+and cache directories the machine-id cache lives under, and
+`@secretlint/core` with `@secretlint/secretlint-rule-preset-recommend`, which
+the redactor loads on the first text that could hold a secret.
 
 ## Entry points
 
@@ -87,6 +117,8 @@ and cache directories the machine-id cache lives under.
 |---|---|
 | `@osdlc/observe` | The log envelope, correlation ids and their env tags, sortable ids, the JSONL writer and readers, the machine id and the originator. |
 | `@osdlc/observe/session` | The session record: the model over your vocabulary, the state machine, the session env tags, the process scan, hook status, reconcile and the lifecycle runner. |
+| `@osdlc/observe/redact` | The redactor, the check for an extra pattern, and the JSONL writer with the redactor in front of it. |
+| `@osdlc/observe/hook` | The hook envelope: one shape for a harness's hook payload, and typed readers for its body. Experimental. |
 
 ## Quick start
 
@@ -282,6 +314,109 @@ const ps: CommandRunner = {
 const found: TaggedProcess[] | null = scanTaggedProcesses(ps, { platform: 'darwin' })
 ```
 
+### `@osdlc/observe/redact`
+
+- **Redactor.** `createRedactor(options)` takes `RedactorOptions` and returns a
+  `Redactor`, whose `redact` scrubs a string and `redactJson` every string in
+  a parsed JSON value, keys included. Both return the per-rule `Redactions`
+  and never throw: a pass that fails replaces the whole value with
+  `[REDACTED:redactor-error]`. `redact` returns `Redacted`, a branded string
+  only the redactor mints, so a field typed `Redacted` refuses a plain string
+  at compile time. `mergeRedactions` adds one count into another.
+  `RedactionRange` is what the `lint` stand-in returns.
+- **Writer.** `appendRedactedJsonl(path, line, redactor)` redacts every field
+  of `line` but the envelope's own (`v`, `ts`, `kind`, `writer`, `source`,
+  `session`, `run`, `subject`), then appends it as `appendJsonl` does.
+- **Patterns.** `redactPatternProblem(regex)` says why an extra pattern would be
+  refused: it does not compile, or it has a shape that backtracks
+  catastrophically. It loads nothing, so a config loader can call it.
+
+```ts
+import { createRedactor } from '@osdlc/observe/redact'
+
+const redactor = createRedactor({ env: { DEPLOY_TOKEN: 'dk-7f3a9c2e11b4' } })
+
+const { text, redactions } = await redactor.redact(
+  'curl -H "Authorization: Bearer dk-7f3a9c2e11b4" https://example.com',
+)
+// text: 'curl -H "Authorization: Bearer [REDACTED:auth-scheme]" https://example.com'
+// redactions: { 'auth-scheme': 1 }
+```
+
+```ts
+import { appendRedactedJsonl, createRedactor } from '@osdlc/observe/redact'
+
+const redactor = createRedactor()
+
+const redactions = await appendRedactedJsonl(
+  join(store, 'tools.jsonl'),
+  {
+    v: 1,
+    ts: new Date().toISOString(),
+    kind: 'tool.output',
+    source: 'hook',
+    session: 's-01JABCDEFGHJKMNPQRSTVWXYZ0',
+    output: 'connecting to postgres://app:s3cr3t-pa55@db.internal/prod',
+  },
+  redactor,
+)
+// The envelope's keys are kept; `output` becomes
+// 'connecting to [REDACTED:database-connection-string]'.
+```
+
+What it finds: secretlint's recommended preset (cloud, chat, package-registry
+and payment provider keys, private keys, connection strings, basic auth),
+PEM and PGP private keys, JWTs, provider API keys, URL passwords, `Authorization`
+and cookie headers, bearer tokens, a value assigned to a secret-named key
+(`DB_PASSWORD=...`, `"api_key": "..."`), a long high-entropy token after a
+key-like word, and the value of every environment variable whose name has a
+secret-like part (`KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `AUTH`...) and is 8
+characters or longer. `envNames` adds variables by name and `extraPatterns`
+adds regexes, reported as `custom:<id>`. `redactJson` also blanks the value of
+a secret-named key whatever it holds, except a number under a key that names
+a token, which is a count: `"max_tokens": 100` stays. A value with a `toJSON`
+method (a `URL`, a `Buffer`) is replaced by what that returns, then redacted,
+and an `Error` keeps its own fields and `cause`.
+
+What it misses: a secret with no shape or context (a bare 40-character AWS
+secret key with no key name or access key id nearby looks like any other
+base64), and a secret split across a line wrap.
+
+### `@osdlc/observe/hook`
+
+- **Envelope.** `normalizeHook(harness, payload)` and
+  `normalizeHookText(harness, text)` return a `HookEnvelope`
+  (`HookEnvelopeSchema`): the `HookHarness`, the `event`, `sessionId`, `cwd`,
+  `transcriptPath`, the optional `promptId`, the payload as sent in `raw`, and
+  `missing`, the `HookEnvelopeField`s it lacked. `HOOK_HARNESSES` and
+  `HOOK_ENVELOPE_FIELDS` list the values.
+- **Body readers.** `rawString`, `rawNumber` and `rawValue` read a field of the
+  body, and `isPermissionNotification` says whether a `Notification` event's
+  type means the agent waits on a person.
+
+The payload must be in the shape Claude Code and Codex send
+(`hook_event_name`, `session_id`, `cwd`, `transcript_path`). Cursor's must be
+re-keyed first, and pi and opencode have no hooks: an extension or plugin
+forwards their events in Claude Code's vocabulary.
+
+```ts
+import {
+  normalizeHookText,
+  rawNumber,
+  rawString,
+  rawValue,
+  type HookEnvelope,
+} from '@osdlc/observe/hook'
+
+const envelope: HookEnvelope = normalizeHookText('codex', stdin)
+// envelope.event: 'PostToolUse', envelope.promptId: 'turn-7'
+// envelope.missing: ['transcript_path']
+
+const tool = rawString(envelope, 'tool_name') // 'Bash'
+const ms = rawNumber(envelope, 'duration_ms') // 812
+const input = rawValue(envelope, 'tool_input') // { command: 'npm test' }
+```
+
 ## The format
 
 The names below are the on-disk and environment format. Launchers that should
@@ -307,8 +442,12 @@ see each other's sessions must agree on them.
   `~/.cache/sdlc/machine-id`. The seeds and the path keep their names so that
   machine ids do not change.
 - **Closed lists.** `SessionRunState`, `SessionOutcome`, `SessionOrigin`,
-  `LogSource` and `AgentStatus` are closed unions: a new value is a breaking
-  change (a minor version while 0.x).
+  `LogSource`, `AgentStatus`, `HookHarness` and `HookEnvelopeField` are closed
+  unions: a new value is a breaking change (a minor version while 0.x).
+- **Redaction markers.** A redacted span reads `[REDACTED:<rule>]`. The rule ids
+  are the secretlint rule names without their `@secretlint/secretlint-rule-`
+  prefix, the built-in rule names, `env:<NAME>`, `custom:<id>` and
+  `redactor-error`.
 
 ## Stability
 
@@ -321,7 +460,13 @@ The experimental exports:
 `BACKFILL_STATUSES`, `BackfillStatus`, `runHeadlessSession`,
 `runInteractiveSession`, `endSession`, `resolveRun`, `resolveLineage`,
 `LifecycleEvent`, `LifecyclePorts`, `HostOpened`, `InteractiveRun`,
-`InteractiveResult` and `RunContext`.
+`InteractiveResult`, `RunContext`, and the hook entry: `HOOK_HARNESSES`,
+`HookHarness`, `HOOK_ENVELOPE_FIELDS`, `HookEnvelopeField`,
+`HookEnvelopeSchema`, `HookEnvelope`, `normalizeHook`, `normalizeHookText`,
+`isPermissionNotification`, `rawString`, `rawNumber` and `rawValue`.
+
+The hook entry is experimental while the set of events it normalises beyond
+the envelope is undecided. The redact entry is stable.
 
 The lifecycle runner appends what a launcher writes between `launched` and
 the end, behind ports the launcher supplies:
@@ -357,6 +502,15 @@ const result = await runHeadlessSession(ports, async (onSpawn) => {
 - `resolveOriginator` records the git user name and the hostname unless its
   `identity` argument is `false`.
 - Commands (`ps`, `ioreg`, `reg`, `git`) run with argument arrays and no shell.
+- The redactor never returns or logs what it matched, only counts. It fails
+  closed: if secretlint cannot load or a pass throws, the whole value is
+  replaced. No built-in regex nests an unbounded quantifier, and each is tested
+  to finish a hostile 100 KiB input quickly. An `extraPatterns` regex is checked for the common
+  catastrophic shapes when the redactor is built, but it is yours and runs
+  unbounded. Redaction lowers the chance a secret reaches a log; it is not a
+  guarantee, so keep logs as private as their sources.
+- `normalizeHook` keeps the payload in `raw` as the harness sent it, so redact
+  it before you log it.
 
 ## Licence
 

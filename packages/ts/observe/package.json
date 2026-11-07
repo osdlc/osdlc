@@ -1,7 +1,7 @@
 {
   "name": "@osdlc/observe",
   "version": "0.4.1",
-  "description": "Observability tier: a JSONL log envelope with correlation ids passed to child processes, a stable machine id, agent session records with their state machine, a process scan and the reconcile decision that ends a record whose process is gone.",
+  "description": "Observability tier: a JSONL log envelope with correlation ids passed to child processes, a stable machine id, an always-on secret redactor in front of the JSONL writer, one envelope for coding-agent hook payloads, agent session records with their state machine, a process scan and the reconcile decision that ends a record whose process is gone.",
   "license": "MIT OR Apache-2.0",
   "author": "sksizer",
   "repository": {
@@ -22,6 +22,9 @@
     "process-scan",
     "reconcile",
     "state-machine",
+    "redaction",
+    "secrets",
+    "hooks",
     "zod",
     "typescript"
   ],
@@ -41,6 +44,14 @@
     "./session": {
       "types": "./dist/session.d.ts",
       "default": "./dist/session.js"
+    },
+    "./redact": {
+      "types": "./dist/redact.d.ts",
+      "default": "./dist/redact.js"
+    },
+    "./hook": {
+      "types": "./dist/hook.d.ts",
+      "default": "./dist/hook.js"
     }
   },
   "files": [
@@ -67,7 +78,9 @@
   "dependencies": {
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/etag-write": "workspace:^",
-    "@osdlc/tiered-dirs": "workspace:^"
+    "@osdlc/tiered-dirs": "workspace:^",
+    "@secretlint/core": "^13.0.7",
+    "@secretlint/secretlint-rule-preset-recommend": "^13.0.7"
   },
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
