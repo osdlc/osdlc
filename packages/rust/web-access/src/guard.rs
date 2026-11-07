@@ -101,7 +101,7 @@ pub enum DenialReason {
     WrongToken,
     /// The `Host` header is not on the allowlist.
     BadHost,
-    /// A mutating request carried a disallowed `Origin`.
+    /// A mutating request or a protocol upgrade carried a disallowed `Origin`.
     ForeignOrigin,
 }
 
