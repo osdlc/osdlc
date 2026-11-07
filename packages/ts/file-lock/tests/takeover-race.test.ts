@@ -11,7 +11,12 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 import { claimLock, holderGone, untouchedFor, withLock } from '../src/index.ts'
 
-const hooks = vi.hoisted(() => ({ afterRead: undefined as ((path: string) => void) | undefined }))
+import { age, DEAD_PID } from './helpers.ts'
+
+const hooks = vi.hoisted(() => ({
+  afterRead: undefined as ((path: string) => void) | undefined,
+  writes: [] as string[],
+}))
 
 vi.mock('node:fs', async (importOriginal) => {
   const real = await importOriginal<typeof import('node:fs')>()
@@ -20,11 +25,17 @@ vi.mock('node:fs', async (importOriginal) => {
     hooks.afterRead?.(String(args[0]))
     return out
   }) as typeof real.readFileSync
-  return { ...real, default: { ...real, readFileSync }, readFileSync }
+  const writeFileSync = ((...args: Parameters<typeof real.writeFileSync>) => {
+    hooks.writes.push(String(args[0]))
+    return real.writeFileSync(...args)
+  }) as typeof real.writeFileSync
+  return {
+    ...real,
+    default: { ...real, readFileSync, writeFileSync },
+    readFileSync,
+    writeFileSync,
+  }
 })
-
-// Above every platform's pid_max, so it can never name a live process.
-const DEAD_PID = 2147483646
 
 let dir: string
 let lock: string
@@ -34,6 +45,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   hooks.afterRead = undefined
+  hooks.writes.length = 0
   rmSync(dir, { recursive: true, force: true })
 })
 
@@ -80,8 +92,7 @@ test('a reaper overtaken while judging a stale lock leaves the fresh lock alone'
 
 test('withLock: a waiter overtaken while taking over a stale lock waits for the new holder', () => {
   writeFileSync(lock, JSON.stringify({ pid: DEAD_PID }))
-  const old = new Date(Date.now() - 60_000)
-  utimesSync(lock, old, old)
+  age(lock)
 
   let overtaker: boolean | undefined
   onFirstRead(() => {
@@ -89,4 +100,34 @@ test('withLock: a waiter overtaken while taking over a stale lock waits for the 
   })
   expect(() => withLock(lock, () => 'ran', { staleMs: 1000, timeoutMs: 0 })).toThrow('timed out')
   expect(overtaker).toBe(true)
+})
+
+test('a lock touched after it was judged stale is not removed', () => {
+  writeFileSync(lock, JSON.stringify({ token: 'slow' }))
+  age(lock)
+
+  // The holder's heartbeat lands between the judgement and the takeover.
+  let reads = 0
+  hooks.afterRead = (p) => {
+    if (p !== lock) return
+    reads += 1
+    if (reads === 1) {
+      const now = new Date()
+      utimesSync(lock, now, now)
+    }
+  }
+  const claim = claimLock(lock, {}, { isStale: untouchedFor(1000) })
+  hooks.afterRead = undefined
+
+  // Its next read sees a fresh lock, so the holder keeps it.
+  expect(claim.ok).toBe(false)
+  if (!claim.ok) expect(claim.holder?.content?.token).toBe('slow')
+})
+
+test('withLock writes its claim file once however long it waits', () => {
+  writeFileSync(lock, JSON.stringify({ pid: process.pid, token: 'live' }))
+  hooks.writes.length = 0
+  expect(() => withLock(lock, () => 0, { timeoutMs: 60, retryMs: 1 })).toThrow('timed out')
+  expect(hooks.writes.filter((p) => p.startsWith(`${lock}.new-`))).toHaveLength(1)
+  expect(readdirSync(dir)).toEqual(['x.lock'])
 })

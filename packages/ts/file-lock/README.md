@@ -94,7 +94,7 @@ if (claim.ok) {
 
 ## The held lock
 
-`claimLock(path, content, { isStale, markerStaleMs? })` writes `content` as
+`claimLock(path, content, { isStale })` writes `content` as
 JSON, with a fresh `token` field added, and returns `{ ok: true, token }` when
 it took the lock. When the lock is held, it reads it and asks `isStale`:
 
@@ -105,8 +105,9 @@ it took the lock. When the lock is held, it reads it and asks `isStale`:
   claimants take over one stale lock at once, one of them wins and the others
   see it as the live holder.
 
-`{ ok: false, holder: null }` means the lock kept changing under every
-attempt. The directory must exist; any error other than "already held" is
+`{ ok: false, holder: null }` means the lock could not be settled: it kept
+changing under every attempt, or it is stale and another claimant's takeover
+is still in progress. Try again shortly. The directory must exist; any error other than "already held" is
 thrown.
 
 The content is read back unchecked, cast to the type you name, so a rule should
@@ -120,8 +121,11 @@ With the token in hand:
   `untouchedFor` rule. Run it on a timer for long work.
 - `updateLock(path, token, update)` replaces the content, keeping the token.
   `update` gets the current content and returns the new fields. The new file
-  is renamed into place, so a reader never sees it half written.
-- `releaseLock(path, token)` removes the lock.
+  is renamed into place, so a reader never sees it half written. An error
+  thrown by `update` is thrown to you, and the lock is left as it was.
+- `releaseLock(path, token)` removes the lock. It renames the lock aside
+  first and checks the token there, so the file it removes is exactly the
+  file it checked.
 
 Each acts only while the lock still holds `token`, and returns whether it did
 anything. An owner whose lock was taken over gets `false` and leaves the new
@@ -146,7 +150,7 @@ The types are `LockContent`, `HeldLock`, `LockClaim`, `ClaimOptions` and
 
 ## The short section
 
-`withLock(path, fn, { staleMs?, timeoutMs?, retryMs?, markerStaleMs? })` runs
+`withLock(path, fn, { staleMs?, timeoutMs?, retryMs? })` runs
 `fn` holding the lock at `path` and releases it when `fn` returns or throws.
 The lock records this process's `pid`, and its rule is
 `untouchedFor(staleMs)`.
@@ -156,7 +160,6 @@ The lock records this process's `pid`, and its rule is
 | `staleMs` | 10 s | a lock untouched for longer is a killed holder's |
 | `timeoutMs` | 30 s | give up after waiting this long; 0 tries once |
 | `retryMs` | 5 ms | pause between attempts |
-| `markerStaleMs` | `MARKER_STALE_MS` | a takeover marker older than this is a dead reaper's |
 
 When the lock stays held, it throws `LockTimeoutError`, whose message is
 `timed out waiting for lock <path>`, with the `path` and the last `holder`
@@ -199,8 +202,9 @@ withLock(`${path}.lock`, () => {
 ## Behaviour to know
 
 - **Files beside the lock.** A claim writes `<path>.new-<uuid>` and removes it
-  before returning. A takeover creates `<path>.stale-<24 hex digits>` for
-  microseconds. A process killed in between can leave either behind. A stale
+  before returning (`withLock` writes it once and keeps it while it waits). A
+  release renames the lock to `<path>.release-<uuid>` for microseconds. A
+  takeover creates `<path>.stale-<24 hex digits>` for microseconds. A process killed in between can leave either behind. A stale
   marker blocks the takeover of that one lock content until it is
   `MARKER_STALE_MS` (10 s) old, judged by the inode's ctime; then the next
   claimant removes it.
@@ -209,6 +213,16 @@ withLock(`${path}.lock`, () => {
 - **`updateLock` checks the token, then renames.** A takeover that lands
   between the two is overwritten. A rule that never judges a live holder stale,
   such as `holderGone`, closes that window.
+- **A takeover removes only the lock it judged:** the same bytes and the same
+  mtime, so a holder that touches its lock just in time keeps it.
+- **A reaper paused mid-takeover for longer than `MARKER_STALE_MS`** (a
+  suspended laptop, a stopped process) has its marker cleared as a dead
+  reaper's. If another claimant then replaces the lock, the paused reaper can
+  remove the new lock when it resumes. A pause of 10 s inside a few
+  microseconds of work is the only way in.
+- **Keep locks in directories only their users can write.** The marker's name
+  comes from the lock's content, so anyone who can write the directory can
+  create it and hold off a takeover for 10 s at a time.
 - **`withLock` decides staleness by age.** A live holder whose section
   outlasts `staleMs` loses the lock to the next waiter, and both then run.
 - **Hard links are required.** A file system without them (some FUSE and

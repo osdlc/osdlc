@@ -22,7 +22,10 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import {
+  closeSync,
+  fstatSync,
   linkSync,
+  openSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -56,14 +59,13 @@ export type StaleRule<F extends object = Record<string, unknown>> = (held: HeldL
 export interface ClaimOptions<F extends object = Record<string, unknown>> {
   /** Answers true for a held lock that may be taken over. */
   isStale: StaleRule<F>
-  /** A takeover marker older than this is a dead reaper's. Default {@link MARKER_STALE_MS}. */
-  markerStaleMs?: number | undefined
 }
 
 /**
  * The outcome of {@link claimLock}. `ok: true` carries the token that touches,
  * rewrites and releases the lock. `ok: false` names the live holder, or has
- * `holder: null` when the lock kept changing under every attempt.
+ * `holder: null` when the lock could not be settled: it kept changing, or it
+ * is stale and another claimant's takeover is still in progress.
  */
 export type LockClaim<F extends object = Record<string, unknown>> =
   { ok: true; token: string } | { ok: false; holder: HeldLock<F> | null }
@@ -96,13 +98,24 @@ function tokenOf(path: string): string | undefined {
   return parse(readFileSync(path, 'utf-8'))?.token
 }
 
+/** The lock's text and its mtime, both from one open of the file, so they describe the same inode. */
 function readHeld<F extends object>(path: string): HeldLock<F> {
-  const raw = readFileSync(path, 'utf-8')
-  return { content: parse<F>(raw), mtimeMs: statSync(path).mtimeMs, raw }
+  const fd = openSync(path, 'r')
+  try {
+    const mtimeMs = fstatSync(fd).mtimeMs
+    const raw = readFileSync(fd, 'utf-8')
+    return { content: parse<F>(raw), mtimeMs, raw }
+  } finally {
+    closeSync(fd)
+  }
 }
 
 function serialize(content: object, token: string): string {
   return `${JSON.stringify({ ...content, token }, null, 2)}\n`
+}
+
+function markerFor(path: string, raw: string): string {
+  return `${path}.stale-${createHash('sha256').update(raw).digest('hex').slice(0, 24)}`
 }
 
 /**
@@ -117,55 +130,82 @@ export function claimLock<F extends object>(
   content: F,
   options: ClaimOptions<F>,
 ): LockClaim<F> {
-  const { isStale, markerStaleMs = MARKER_STALE_MS } = options
+  const claim = prepareClaim(path, content, options)
+  try {
+    return claim.attempt()
+  } finally {
+    claim.dispose()
+  }
+}
+
+/**
+ * A claim whose temp file is written once and attempted as often as needed, so
+ * `withLock` creates no new file on each retry. Internal: not exported from
+ * the package entry.
+ */
+export interface PreparedClaim<F extends object> {
+  attempt(): LockClaim<F>
+  /** Remove the temp file. */
+  dispose(): void
+}
+
+export function prepareClaim<F extends object>(
+  path: string,
+  content: F,
+  { isStale }: ClaimOptions<F>,
+): PreparedClaim<F> {
   const token = randomUUID()
   const tmp = `${path}.new-${token}`
   writeFileSync(tmp, serialize(content, token))
-  try {
-    let holder: HeldLock<F> | null = null
-    for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
-      try {
-        linkSync(tmp, path)
-        return { ok: true, token }
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+  return {
+    attempt: () => {
+      for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
+        try {
+          linkSync(tmp, path)
+          return { ok: true, token }
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err
+        }
+        let held: HeldLock<F>
+        try {
+          held = readHeld<F>(path)
+        } catch {
+          continue // released between the link and the read: claim again
+        }
+        if (!isStale(held)) return { ok: false, holder: held }
+        takeOver(path, held)
       }
-      let held: HeldLock<F>
-      try {
-        held = readHeld<F>(path)
-      } catch {
-        continue // released between the link and the read: claim again
-      }
-      holder = held
-      if (!isStale(held)) return { ok: false, holder }
-      takeOver(path, held, markerStaleMs)
-    }
-    return { ok: false, holder }
-  } finally {
-    rmSync(tmp, { force: true })
+      // Every holder seen was stale and mid-takeover, or the lock kept changing: no live holder to name.
+      return { ok: false, holder: null }
+    },
+    dispose: () => rmSync(tmp, { force: true }),
   }
 }
 
 /** Remove the stale lock so one of several takers can claim a new one. A loser just claims again. */
-function takeOver(path: string, seen: HeldLock<object>, markerStaleMs: number): void {
-  let stale: string
+function takeOver(path: string, seen: HeldLock<object>): void {
   try {
-    stale = readFileSync(path, 'utf-8')
+    if (readFileSync(path, 'utf-8') !== seen.raw) return // replaced since it was judged
   } catch {
     return
   }
-  if (stale !== seen.raw) return // replaced since it was judged
-  const marker = `${path}.stale-${createHash('sha256').update(stale).digest('hex').slice(0, 24)}`
+  const marker = markerFor(path, seen.raw)
   try {
     linkSync(path, marker)
   } catch (err) {
     // Another reaper holds the marker, or one died holding it. A marker that
     // old is cleared, and the caller's next attempt takes over.
-    if ((err as NodeJS.ErrnoException).code === 'EEXIST') clearDeadMarker(marker, markerStaleMs)
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') clearDeadMarker(marker)
     return
   }
   try {
-    if (readFileSync(marker, 'utf-8') === stale && readFileSync(path, 'utf-8') === stale) {
+    // Still the very lock that was judged: the same bytes, and not touched since.
+    const now = readHeld(path)
+    if (
+      readFileSync(marker, 'utf-8') === seen.raw &&
+      now.raw === seen.raw &&
+      now.mtimeMs === seen.mtimeMs
+    ) {
       rmSync(path, { force: true })
     }
   } catch {
@@ -175,9 +215,9 @@ function takeOver(path: string, seen: HeldLock<object>, markerStaleMs: number): 
   }
 }
 
-function clearDeadMarker(marker: string, markerStaleMs: number): void {
+function clearDeadMarker(marker: string): void {
   try {
-    if (Date.now() - statSync(marker).ctimeMs >= markerStaleMs) rmSync(marker, { force: true })
+    if (Date.now() - statSync(marker).ctimeMs >= MARKER_STALE_MS) rmSync(marker, { force: true })
   } catch {
     // Gone meanwhile.
   }
@@ -202,7 +242,8 @@ export function touchLock(path: string, token: string): boolean {
  * Replace the content of the lock while it still holds `token`. `update` gets
  * the current content and returns the new fields; the token is kept. The new
  * content is written to a temp file and renamed over the lock, so a reader
- * never sees it half written. Returns whether it rewrote.
+ * never sees it half written. Returns whether it rewrote. An error thrown by
+ * `update` is thrown to the caller.
  *
  * The token check and the rename are two steps: a takeover that lands between
  * them is overwritten. A rule that never judges a live holder stale, such as
@@ -213,32 +254,50 @@ export function updateLock<F extends object>(
   token: string,
   update: (content: LockContent<F>) => F,
 ): boolean {
-  let tmp: string | undefined
+  let content: LockContent<F> | null
   try {
-    const content = parse<F>(readFileSync(path, 'utf-8'))
-    if (content === null || content.token !== token) return false
-    tmp = `${path}.new-${randomUUID()}`
-    writeFileSync(tmp, serialize(update(content), token))
+    content = parse<F>(readFileSync(path, 'utf-8'))
+  } catch {
+    return false // gone: the lock was released or taken over
+  }
+  if (content === null || content.token !== token) return false
+  const next = serialize(update(content), token) // outside any catch, so the caller sees its own error
+  const tmp = `${path}.new-${randomUUID()}`
+  try {
+    writeFileSync(tmp, next)
     renameSync(tmp, path)
-    tmp = undefined
     return true
   } catch {
-    return false // gone or unreadable: the lock stays as it was
-  } finally {
-    if (tmp !== undefined) rmSync(tmp, { force: true })
+    rmSync(tmp, { force: true })
+    return false // the directory went away meanwhile: the lock stays as it was
   }
 }
 
 /**
  * Remove the lock only while it holds `token`: an owner whose lock was taken
  * over must not delete the taker's. Returns whether it removed it.
+ *
+ * The lock is renamed aside, which is atomic, and its token checked there, so
+ * the file removed is exactly the file checked. The cheap check first means a
+ * lock that is plainly someone else's is never moved. If it was taken over in
+ * the instant between that check and the rename, it is linked back, unless a
+ * new claim also landed in that instant.
  */
 export function releaseLock(path: string, token: string): boolean {
+  const aside = `${path}.release-${randomUUID()}`
   try {
     if (tokenOf(path) !== token) return false
-    rmSync(path, { force: true })
-    return true
+    renameSync(path, aside)
   } catch {
     return false // already gone
   }
+  try {
+    if (tokenOf(aside) === token) return true
+    linkSync(aside, path)
+  } catch {
+    // Unreadable, or a new claim landed while the lock was aside: that claimant holds it now.
+  } finally {
+    rmSync(aside, { force: true })
+  }
+  return false
 }

@@ -52,7 +52,9 @@ The package removes a stale lock in four steps:
 ```
 
 In the race above, B either loses the marker (step 2), or finds that
-`x.lock` no longer reads `D` (steps 1 and 3). Either way it leaves `L` alone
+`x.lock` no longer reads `D` (steps 1 and 3). Step 3 also checks that the
+lock's mtime has not changed since it was judged, so a holder that touches its
+lock at the last moment keeps it. Either way it leaves `L` alone
 and goes back to claiming. It then sees A as the live holder.
 
 The marker is named from a **hash** of the content, because the content can be
@@ -67,7 +69,9 @@ lock, so its mtime is the lock's, but creating the link sets the ctime.
 ## Release, touch, update: only with your token
 
 ```text
-releaseLock(path, token):   read x.lock; remove it only if its token is ours
+releaseLock(path, token):   read x.lock; if its token is ours, rename it to
+                            x.lock.release-<uuid>, check the token again there,
+                            and remove it (the file removed is the file checked)
 touchLock(path, token):     read x.lock; refresh its mtime only if its token is ours
 updateLock(path, token, f): read x.lock; if its token is ours, write f(content)
                             to a temp file and rename it over x.lock
@@ -86,11 +90,13 @@ With it, A's release finds B's token, does nothing and returns `false`.
 
 ## The short section
 
-`withLock(path, fn, options)` is a loop around the same calls:
+`withLock(path, fn, options)` is a loop around the same calls. It writes its
+claim file once and only retries the link:
 
 ```text
+write x.lock.new-<token> once
 until timeoutMs has passed:
-  claimLock(path, { pid }, { isStale: untouchedFor(staleMs) })
+  try the claim (link, or judge the holder with untouchedFor(staleMs))
   ok    → run fn, then releaseLock (also when fn throws), return fn's result
   held  → sleep retryMs (Atomics.wait, which blocks the thread without spinning)
 then throw LockTimeoutError(path, last holder seen)
@@ -103,6 +109,7 @@ then throw LockTimeoutError(path, last holder seen)
 | `x.lock` | while held | yes, and taken over once the rule says stale |
 | `x.lock.new-<uuid>` | during a claim or an update | rarely; harmless, safe to delete |
 | `x.lock.stale-<24 hex>` | microseconds, during a takeover | rarely; cleared after 10 s |
+| `x.lock.release-<uuid>` | microseconds, during a release | rarely; harmless, safe to delete |
 
 ## Limits
 

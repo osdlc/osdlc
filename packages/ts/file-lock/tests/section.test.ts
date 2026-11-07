@@ -1,5 +1,4 @@
 import { execFile } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import {
   existsSync,
   linkSync,
@@ -7,7 +6,6 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
-  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -18,6 +16,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
 import { LockTimeoutError, withLock } from '../src/index.ts'
 
+import { afterMarkersExpire, age, markerFor } from './helpers.ts'
+
 const run = promisify(execFile)
 const CHILD = join(import.meta.dirname, 'section.child.ts')
 
@@ -27,10 +27,9 @@ beforeEach(() => {
 })
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
-function staleLock(path: string, content = ''): void {
-  writeFileSync(path, content)
-  const old = new Date(Date.now() - 60_000)
-  utimesSync(path, old, old)
+function staleLock(path: string): void {
+  writeFileSync(path, '')
+  age(path)
 }
 
 /** Run the child `count` times at once; each bumps the counter `rounds` times. */
@@ -101,8 +100,7 @@ describe('withLock', () => {
     const lock = join(dir, 'x.lock')
     staleLock(lock)
     // a live reaper's marker: young, so it is respected
-    const marker = `${lock}.stale-${createHash('sha256').update('').digest('hex').slice(0, 24)}`
-    linkSync(lock, marker)
+    linkSync(lock, markerFor(lock, ''))
     const started = Date.now()
     expect(() => withLock(lock, () => 0, { staleMs: 1000, timeoutMs: 100 })).toThrow('timed out')
     expect(Date.now() - started).toBeLessThan(2000)
@@ -112,8 +110,8 @@ describe('withLock', () => {
   test('a marker from a killed reaper is cleared and the stale lock then taken', () => {
     const lock = join(dir, 'x.lock')
     staleLock(lock)
-    linkSync(lock, `${lock}.stale-${createHash('sha256').update('').digest('hex').slice(0, 24)}`)
-    expect(withLock(lock, () => 'ran', { staleMs: 1000, markerStaleMs: 0 })).toBe('ran')
+    linkSync(lock, markerFor(lock, ''))
+    expect(afterMarkersExpire(() => withLock(lock, () => 'ran', { staleMs: 1000 }))).toBe('ran')
     expect(readdirSync(dir)).toEqual([])
   })
 

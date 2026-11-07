@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import {
   existsSync,
   linkSync,
@@ -7,7 +6,6 @@ import {
   readFileSync,
   rmSync,
   statSync,
-  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -16,6 +14,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
 import { claimLock, releaseLock, touchLock, updateLock } from '../src/index.ts'
+
+import { afterMarkersExpire, age, markerFor } from './helpers.ts'
 
 let dir: string
 let lock: string
@@ -28,8 +28,20 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }))
 const never = { isStale: (): boolean => false }
 const always = { isStale: (): boolean => true }
 
-function markerFor(raw: string): string {
-  return `${lock}.stale-${createHash('sha256').update(raw).digest('hex').slice(0, 24)}`
+/** What the rule was shown when a claim found `lock` held. */
+function judged(): unknown {
+  let seen: unknown = 'unset'
+  claimLock(
+    lock,
+    {},
+    {
+      isStale: (h) => {
+        seen = h
+        return false
+      },
+    },
+  )
+  return seen
 }
 
 function claimed(r: ReturnType<typeof claimLock>): string {
@@ -64,18 +76,7 @@ describe('claimLock', () => {
 
   test('the rule sees the held content, mtime and raw text', () => {
     writeFileSync(lock, JSON.stringify({ pid: 1, token: 't' }))
-    let seen: unknown
-    claimLock(
-      lock,
-      {},
-      {
-        isStale: (h) => {
-          seen = h
-          return false
-        },
-      },
-    )
-    expect(seen).toEqual({
+    expect(judged()).toEqual({
       content: { pid: 1, token: 't' },
       mtimeMs: statSync(lock).mtimeMs,
       raw: JSON.stringify({ pid: 1, token: 't' }),
@@ -91,46 +92,25 @@ describe('claimLock', () => {
   test('a marker left by a reaper that died mid-takeover does not block later takeovers', () => {
     writeFileSync(lock, JSON.stringify({ token: 'dead' }))
     // the dead reaper got as far as linking its marker
-    linkSync(lock, markerFor(readFileSync(lock, 'utf-8')))
-    // a young marker may belong to a live reaper: the claim is not granted over it
-    expect(claimLock(lock, {}, always).ok).toBe(false)
+    linkSync(lock, markerFor(lock, readFileSync(lock, 'utf-8')))
+    // a young marker may belong to a live reaper: the claim is not granted over it,
+    // and the stale lock is not reported as a live holder
+    expect(claimLock(lock, {}, always)).toEqual({ ok: false, holder: null })
     // an old one is a dead reaper's: it is cleared and the takeover goes through
-    claimed(claimLock(lock, {}, { ...always, markerStaleMs: 0 }))
+    claimed(afterMarkersExpire(() => claimLock(lock, {}, always)))
     expect(readdirSync(dir)).toEqual(['x.lock'])
   })
 
   test('an unparseable lock reaches the rule with null content', () => {
     for (const raw of ['not json', '[1]', '7', JSON.stringify({ token: 7 })]) {
       writeFileSync(lock, raw)
-      let seen: unknown = 'unset'
-      claimLock(
-        lock,
-        {},
-        {
-          isStale: (h) => {
-            seen = h.content
-            return false
-          },
-        },
-      )
-      expect(seen).toBeNull()
+      expect(judged()).toMatchObject({ content: null })
     }
   })
 
   test('a lock written without a token reaches the rule with its fields', () => {
     writeFileSync(lock, JSON.stringify({ pid: 12 }))
-    let seen: unknown
-    claimLock(
-      lock,
-      {},
-      {
-        isStale: (h) => {
-          seen = h.content
-          return false
-        },
-      },
-    )
-    expect(seen).toEqual({ pid: 12 })
+    expect(judged()).toMatchObject({ content: { pid: 12 } })
   })
 
   test('claimants taking one stale lock one after another: exactly one wins', async () => {
@@ -152,8 +132,7 @@ describe('claimLock', () => {
 
 describe('touchLock', () => {
   function ageLock(): number {
-    const old = new Date(Date.now() - 60_000)
-    utimesSync(lock, old, old)
+    age(lock)
     return statSync(lock).mtimeMs
   }
 
@@ -202,20 +181,34 @@ describe('updateLock', () => {
     expect(readdirSync(dir)).toEqual([])
   })
 
-  test('an update that throws leaves the lock as it was and no temp file', () => {
+  test('an update that throws is rethrown, and leaves the lock as it was and no temp file', () => {
     const token = claimed(claimLock(lock, { pid: 1 }, never))
     const before = readFileSync(lock, 'utf-8')
-    expect(
+    expect(() =>
       updateLock(lock, token, () => {
         throw new Error('boom')
       }),
-    ).toBe(false)
+    ).toThrow('boom')
     expect(readFileSync(lock, 'utf-8')).toBe(before)
     expect(readdirSync(dir)).toEqual(['x.lock'])
   })
 })
 
 describe('releaseLock', () => {
+  test('removes our lock and leaves nothing beside it', () => {
+    const token = claimed(claimLock(lock, {}, never))
+    expect(releaseLock(lock, token)).toBe(true)
+    expect(readdirSync(dir)).toEqual([])
+  })
+
+  test("leaves a taker's lock in place and nothing beside it", () => {
+    claimed(claimLock(lock, {}, never))
+    const taker = claimed(claimLock(lock, {}, always))
+    expect(releaseLock(lock, 'old-owner')).toBe(false)
+    expect(JSON.parse(readFileSync(lock, 'utf-8')).token).toBe(taker)
+    expect(readdirSync(dir)).toEqual(['x.lock'])
+  })
+
   test('a missing lock is not an error', () => {
     expect(releaseLock(lock, 'any')).toBe(false)
   })

@@ -3,7 +3,7 @@
  * function, such as a re-read, validate and rewrite of one file.
  */
 
-import { claimLock, type HeldLock, releaseLock } from './held.ts'
+import { type HeldLock, prepareClaim, releaseLock } from './held.ts'
 import { untouchedFor } from './rules.ts'
 
 /** Options for {@link withLock}. */
@@ -14,8 +14,6 @@ export interface LockOptions {
   timeoutMs?: number | undefined
   /** Pause between attempts, in milliseconds. Default 5. */
   retryMs?: number | undefined
-  /** A takeover marker older than this is a dead reaper's. Default `MARKER_STALE_MS`. */
-  markerStaleMs?: number | undefined
 }
 
 /** {@link withLock} waited `timeoutMs` and the lock stayed held. */
@@ -33,9 +31,12 @@ export class LockTimeoutError extends Error {
   }
 }
 
+/** Nothing ever notifies it, so `Atomics.wait` on it just sleeps. */
+const SLEEPER = new Int32Array(new SharedArrayBuffer(4))
+
 /** Block the thread for `ms` without spinning. */
 function sleepSync(ms: number): void {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+  Atomics.wait(SLEEPER, 0, 0, ms)
 }
 
 /**
@@ -49,19 +50,24 @@ function sleepSync(ms: number): void {
  * lock alone). Keep `staleMs` far above the longest section.
  */
 export function withLock<T>(path: string, fn: () => T, options: LockOptions = {}): T {
-  const { staleMs = 10_000, timeoutMs = 30_000, retryMs = 5, markerStaleMs } = options
+  const { staleMs = 10_000, timeoutMs = 30_000, retryMs = 5 } = options
   const deadline = Date.now() + timeoutMs
-  const isStale = untouchedFor(staleMs)
-  for (;;) {
-    const claim = claimLock(path, { pid: process.pid }, { isStale, markerStaleMs })
-    if (claim.ok) {
-      try {
-        return fn()
-      } finally {
-        releaseLock(path, claim.token)
-      }
+  // The temp file is written once; each retry only tries the link again.
+  const prepared = prepareClaim(path, { pid: process.pid }, { isStale: untouchedFor(staleMs) })
+  let claim = prepared.attempt()
+  try {
+    while (!claim.ok) {
+      if (Date.now() >= deadline) throw new LockTimeoutError(path, claim.holder)
+      sleepSync(Math.min(retryMs, deadline - Date.now()))
+      claim = prepared.attempt()
     }
-    if (Date.now() >= deadline) throw new LockTimeoutError(path, claim.holder)
-    sleepSync(retryMs)
+  } finally {
+    prepared.dispose()
+  }
+  const { token } = claim
+  try {
+    return fn()
+  } finally {
+    releaseLock(path, token)
   }
 }

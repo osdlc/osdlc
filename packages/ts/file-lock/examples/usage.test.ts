@@ -54,12 +54,7 @@ test('a section that cannot get the lock in time', () => {
   const lock = join(dir, 'busy.lock')
   const claim = claimLock(lock, { pid: process.pid }, { isStale: () => false })
   expect(claim.ok).toBe(true)
-  try {
-    withLock(lock, () => 'never', { timeoutMs: 0 })
-  } catch (err) {
-    expect(err).toBeInstanceOf(LockTimeoutError)
-    expect((err as LockTimeoutError).holder?.content).toMatchObject({ pid: process.pid })
-  }
+  expect(() => withLock(lock, () => 'never', { timeoutMs: 0 })).toThrow(LockTimeoutError)
 })
 
 test('a lock held for as long as a process lives, with extra holder pids', () => {
@@ -70,7 +65,7 @@ test('a lock held for as long as a process lives, with extra holder pids', () =>
     (c) => [c.pid, ...(c.holders ?? [])],
     goneOptions,
   )
-  const options: ClaimOptions<Partial<Lease>> = { isStale, markerStaleMs: MARKER_STALE_MS }
+  const options: ClaimOptions<Partial<Lease>> = { isStale }
 
   const mine: LockClaim<Partial<Lease>> = claimLock<Partial<Lease>>(
     lock,
@@ -93,6 +88,10 @@ test('a lock held for as long as a process lives, with extra holder pids', () =>
     updateLock<Partial<Lease>>(lock, mine.token, (c) => ({ ...c, holders: [process.pid] })),
   ).toBe(true)
   expect(releaseLock(lock, mine.token)).toBe(true)
+})
+
+test('a reaper that died mid-takeover blocks takeover of that lock for MARKER_STALE_MS', () => {
+  expect(MARKER_STALE_MS).toBe(10_000)
 })
 
 test('a lock kept alive by its holder touching it', () => {

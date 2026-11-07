@@ -24,9 +24,10 @@ export interface HolderGoneOptions {
 }
 
 /**
- * Stale once no pid that `pids` reads from the content is alive. A lock
- * whose content cannot be parsed names no holder this rule can check, so it
- * is never judged stale. A pid can be recycled by a later process, which
+ * Stale once no pid that `pids` reads from the content is alive. Values that
+ * are not numbers name no live holder. A file that is not a JSON object was
+ * not written by `claimLock`, so this rule never judges it stale: it belongs
+ * to some other program and is left alone. A pid can be recycled by a later process, which
  * then keeps the lock held; a rule that also compares a start time closes
  * that.
  */

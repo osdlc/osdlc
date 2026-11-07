@@ -2,8 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import { type HeldLock, holderGone, pidAlive, untouchedFor } from '../src/index.ts'
 
-// Above every platform's pid_max, so it can never name a live process.
-const DEAD_PID = 2147483646
+import { DEAD_PID } from './helpers.ts'
 
 function held<F extends object>(content: F | null, mtimeMs = 0): HeldLock<F> {
   return { content, mtimeMs, raw: JSON.stringify(content) }
