@@ -73,8 +73,7 @@ export interface Allow {
  *   `pick`   work on exactly these rows; a `review` row, or a `keep` row with
  *            an action, runs only when picked. Default: every `delete` row.
  *   `spare`  leave these rows alone; a spared remote branch is still checked,
- *            and the run stops if it moved or is gone since the plan (from an
- *            offline plan, one the remote had already deleted passes).
+ *            and the run stops if it moved or is gone since the plan.
  *   `allow`  the risks a row's action may carry.
  */
 export interface Approval {
@@ -362,6 +361,9 @@ function resweep(
     against: plan.options.against ?? undefined,
     provider: plan.options.provider,
     fetch: repo.fetched,
+    // Offline, the plan read tracking refs that can be stale; before anything
+    // is deleted on the remote, ask the remote itself.
+    liveRemoteTips: kinds.includes('remote'),
     branch: plan.options.branch ?? undefined,
     cwd: opts.cwd ?? process.cwd(),
   })
@@ -431,6 +433,11 @@ function recheck(
   }
   const planned = (s: Resolved) => plannedRows.get(keyOf(s))!
   const current = (s: Resolved): Row | undefined => currentRows.get(keyOf(s))
+  // A refusal ends the check before its notes are shown, so it carries them.
+  const alsoNoted = (root: string): string => {
+    const said = notes.filter((n) => n.repo === root).map((n) => n.note)
+    return said.length === 0 ? '' : ` (${said.join(' ')})`
+  }
 
   // A spared remote branch is checked, not dropped: one that moved refuses the run.
   const verified: Accepted[] = []
@@ -439,14 +446,9 @@ function recheck(
     const row = current(s)
     const plannedSha = planned(s).fingerprint['sha']
     if (row === undefined || row.kind !== 'remote') {
-      // Offline the re-check reads tracking refs, so a missing row means one
-      // was pruned since the plan; a plan made now would not list it.
-      const fetched = fetchedRoots(plan).has(s.repo)
       throw new RepoCleanerError(
         'spared-changed',
-        fetched
-          ? `spared ${s.id} is no longer on the remote; refusing to run`
-          : `spared ${s.id} is no longer among the remote-tracking refs (pruned since the plan?); refusing to run, plan again`,
+        `spared ${s.id} is no longer on the remote; refusing to run${alsoNoted(s.repo)}`,
       )
     }
     if (typeof plannedSha !== 'string' || row.evidence.sha !== plannedSha) {
@@ -838,16 +840,8 @@ class Gone {
   constructor(readonly verification: string) {}
 }
 
-/** The plan's repositories whose sweep fetched, so the re-check read their remote tips live. */
-function fetchedRoots(plan: Plan): Set<string> {
-  return new Set(plan.repos.filter((r) => r.fetched).map((r) => r.root))
-}
-
 /**
  * Run one step, then confirm it took. Throws with the reason on failure.
- *
- * @param liveTips the re-check read this repository's remote tips live, after
- *   a fetch, rather than from tracking refs that can outlive a deleted branch.
  */
 function execute(
   step: Step,
@@ -855,7 +849,6 @@ function execute(
   git: Git,
   probe: ProcessProbe,
   removedHere: ReadonlySet<string>,
-  liveTips: boolean,
 ): string | Gone {
   const at = git.at(step.repo)
   const remoteTip = (remote: string, ref: string) =>
@@ -924,11 +917,6 @@ function execute(
       if (row?.kind !== 'remote') throw new Error('verify-remote without a remote branch')
       const ref = `refs/heads/${row.evidence.branch}`
       const tip = remoteTip(row.evidence.remote, ref)
-      // From tracking refs, the tip may name a branch the remote already
-      // deleted; read live, after a fetch, its loss is a change since then.
-      if (tip === undefined && !liveTips) {
-        return new Gone(`already gone from ${row.evidence.remote}; spared`)
-      }
       if (tip === undefined)
         throw new Error(`refused: spared ${ref} is gone from ${row.evidence.remote}`)
       if (tip.sha !== step.expectedSha) {
@@ -945,10 +933,9 @@ function execute(
       })
       const refused = report.refs.find((r) => r.flag === '!')
       if (refused?.flag === '!') {
-        // A tracking ref outlives the branch until the next `fetch --prune`,
-        // so an offline plan can name a branch the remote already deleted.
-        // The lease then refuses; a ref the remote no longer lists is done.
-        // Drop the stale tracking ref, as a delete push would have.
+        // Someone deleted the branch between the re-check and this push, so
+        // the lease refuses; a ref the remote no longer lists is done. Drop
+        // the tracking ref, as a delete push would have.
         if (remoteTip(remote, ref) === undefined) {
           // Compare-and-swap: a tracking ref that moved since is left alone.
           at.try.deleteRef(`refs/remotes/${remote}/${row.evidence.branch}`, {
@@ -1029,11 +1016,10 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   // Worktrees whose lock this run cleared. typed-git has no `worktree lock`
   // verb, so a failed remove cannot put the lock back; the receipt says so.
   const unlocked = new Set<string>()
-  const fetched = fetchedRoots(preview.plan)
   for (const [i, [step, a]] of plannedSteps.entries()) {
     opts.onStep?.(i, plannedSteps.length, step)
     try {
-      const done = execute(step, a, git, probe, removedHere, fetched.has(step.repo))
+      const done = execute(step, a, git, probe, removedHere)
       if (done instanceof Gone) {
         step.verification = done.verification
         step.gone = true

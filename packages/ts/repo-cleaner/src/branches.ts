@@ -311,11 +311,12 @@ export interface RemoteBranches {
 }
 
 /**
- * Remote branches, judged. With `live`, after a fetch, the tips are the
- * remote's own, read with `ls-remote`, which also sees branches a narrowed
- * fetch refspec leaves out. Without it, as `--offline` asks, they are the
- * remote-tracking refs on disk (`refs/remotes/<remote>/`), and the remote is
- * not contacted.
+ * Remote branches, judged. With `live` the tips are the remote's own, read
+ * with `ls-remote`, which also sees branches a narrowed fetch refspec leaves
+ * out: after a fetch, and in `clean`'s re-check, which must see the remote as
+ * it is before deleting on it. Without it, as `--offline` asks of the report
+ * and `plan`, they are the remote-tracking refs on disk
+ * (`refs/remotes/<remote>/`), and the remote is not contacted.
  *
  * A live listing that fails is not "the remote has no branches" and not a
  * reason to lose the repository's other rows: the tips come from disk
@@ -327,6 +328,7 @@ export function gatherRemoteBranches(
   localBranchNames: ReadonlySet<string>,
   git: Git,
   opts: {
+    live: boolean
     only?: string | undefined
     tick?: ((done: number, total: number) => void) | undefined
   },
@@ -336,9 +338,7 @@ export function gatherRemoteBranches(
   const { only, tick } = opts
   let tips: Array<{ name: string; sha: string }> | null = null
   let note: string | null = null
-  // After a fetch the remote is reachable, so ask it; without one, the
-  // tracking refs on disk are all there is.
-  if (repo.fetched) {
+  if (opts.live) {
     const pattern = only === undefined ? undefined : `refs/heads/${only}`
     const listed = git.at(repo.root).try.lsRemote(remote, pattern, { heads: true })
     if (listed.ok) {
@@ -349,7 +349,14 @@ export function gatherRemoteBranches(
       note = `\`git ls-remote ${remote}\` failed (${errorText(listed.error)}); remote branches are read from the remote-tracking refs on disk.`
     }
   }
-  if (tips === null) tips = trackingTips(repo.root, remote, git, only)
+  if (tips === null) {
+    tips = trackingTips(repo.root, remote, git, only)
+    // A fetched remote has at least its default branch on disk; none at all
+    // means it was never fetched, or its refs live somewhere else.
+    if (!opts.live && tips.length === 0 && only === undefined) {
+      note = `No remote-tracking refs for \`${remote}\` on disk, so no remote branches to judge; fetch it once, or drop \`--offline\`.`
+    }
+  }
 
   const items: RemoteRow[] = []
   for (const [i, { name, sha }] of tips.entries()) {
@@ -378,13 +385,18 @@ function trackingTips(
   only: string | undefined,
 ): Array<{ name: string; sha: string }> {
   const prefix = `refs/remotes/${remote}/`
-  return git
-    .at(root)
-    .refs(only === undefined ? prefix : `${prefix}${only}`)
-    .flatMap(({ sha, ref }) => {
-      const name = ref.slice(prefix.length)
-      return name === 'HEAD' ? [] : [{ name, sha }]
-    })
+  const at = git.at(root)
+  // Git allows `/` in a remote's name: `origin/mirror`'s refs sit under
+  // `refs/remotes/origin/` too, and are not `origin`'s branches.
+  const nested = at
+    .remotes()
+    .filter((r) => r.startsWith(`${remote}/`))
+    .map((r) => `refs/remotes/${r}/`)
+  return at.refs(only === undefined ? prefix : `${prefix}${only}`).flatMap(({ sha, ref }) => {
+    if (nested.some((p) => ref.startsWith(p))) return []
+    const name = ref.slice(prefix.length)
+    return name === 'HEAD' ? [] : [{ name, sha }]
+  })
 }
 
 function classifyRemoteBranch(opts: {

@@ -89,7 +89,11 @@ describe('chooseProvider', () => {
   test('auto falls back to GitHub, as before providers existed', () => {
     expect(chooseProvider('auto', at('github.com'))).toBe('github')
     expect(chooseProvider('auto', at('git.example.com'))).toBe('github')
-    expect(chooseProvider('auto', at(null))).toBe('github')
+  })
+
+  test('auto asks no provider for a remote that names no host, which can have no PRs', () => {
+    expect(chooseProvider('auto', at(null))).toBeNull()
+    expect(chooseProvider('github', at(null))).toBe('github')
   })
 
   test('an explicit choice wins over the host', () => {
@@ -229,6 +233,19 @@ describe('the GitLab provider', () => {
     })
     const unasked = lookupPrs(repoWith({ ...GITLAB, authenticated: false }), throwing)
     expect(unasked.error).toBeNull()
+    // A failure spanning several lines of output reads as one line in a note.
+    const verbose = { run: () => ({ exitCode: 1, stdout: '', stderr: 'boom\n  and more\n' }) }
+    expect(lookupPrs(repoWith(GITLAB), gitlabProvider(verbose)).error).toBe('boom and more')
+  })
+
+  test("a provider's own bug is not a failed listing: it is thrown", () => {
+    const buggy: PrProvider = {
+      ...gitlabProvider(cannedGlab([])),
+      listPrs: () => {
+        throw new TypeError("Cannot read properties of undefined (reading 'iid')")
+      },
+    }
+    expect(() => lookupPrs(repoWith(GITLAB), buggy)).toThrow(TypeError)
   })
 
   test('a page whose output was cut short is no evidence', () => {

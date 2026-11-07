@@ -24,15 +24,13 @@ Accepted 2026-11-07, in [#656](https://github.com/osdlc/osdlc/pull/656) (issues
   from `refs/remotes/<remote>/`, so judging does not contact the remote;
   `clean`'s remote steps still do. Pull requests are still looked up, unless
   `--provider none` is given.
-- **A branch the remote already deleted is gone, not a failure.** Its tracking
-  ref stays until a prune, so an offline plan can name it. When `clean`'s
-  lease push is refused and `ls-remote` no longer lists the ref, the step
-  reports it gone and drops the tracking ref, and the run summary counts it
-  apart from branches the run deleted. A spared branch that is gone passes
-  its tip check under an offline plan, unless its tracking ref was pruned
-  after the plan: then the re-check no longer finds the row and refuses, and
-  a new plan leaves it out. Online, the tips were read live, so a spared
-  branch that has since gone still refuses the run.
+- **`clean` never deletes on the strength of a tracking ref.** A tracking ref
+  stays until a prune, so an offline plan can name a branch the remote
+  already deleted, or show a tip someone has pushed past. `clean`'s re-check
+  reads the remote's tips with `ls-remote`: a branch that is gone, or whose
+  tip moved, is skipped, and a spared one refuses the run, as it would online.
+  A branch deleted between the re-check and the push is reported gone, not a
+  failure, and the run summary counts it apart (`Step.gone`).
 - **A note is a sentence on `RepoSweep.notes`.** The text and summary reports
   print notes under the repository's header, and the JSON carries them.
   `--format commands`, `plan` and `clean` print them on stderr, `clean` from

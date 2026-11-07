@@ -19,11 +19,10 @@ const SWEEP = `Sweep options (the report, plan and clean)
                           requests. Slower.
   --offline               With --remote: do not fetch; judge against the
                           remote-tracking refs already on disk, remote branches
-                          included, so judging does not contact the remote (clean's
-                          remote steps still do). Tips can be stale: a branch the
-                          remote already deleted still shows. Pull requests are
-                          still looked up; add --provider none to judge with no
-                          network at all.
+                          included, so judging does not contact the remote. Tips can
+                          be stale; clean asks the remote before deleting on it.
+                          Pull requests are still looked up; add --provider none
+                          to judge with no network at all.
   --only <kinds>          Only these kinds of row: worktree, branch, remote,
                           comma-separated. Default: worktree,branch, plus remote with
                           --remote. Naming remote implies --remote.
@@ -66,8 +65,7 @@ const CLEAN = `repo-cleaner clean [target...]
                           spared row is not deleted, even if it is judged delete. A
                           spared remote branch is still checked: if its tip moved or
                           it is gone since the plan, the run stops before deleting
-                          anything (with --offline, one the remote had already
-                          deleted passes). Sparing a worktree also spares its branch.
+                          anything. Sparing a worktree also spares its branch.
                           Repeatable.
   --allow <risk>          Accept this risk for every row that carries it.
   --allow <risk>=<row>    Accept it for that one row only.

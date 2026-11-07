@@ -63,9 +63,9 @@ export const StepSchema = z.object({
   error: z.string().nullable(),
   verification: z.string().nullable(),
   /**
-   * The remote no longer listed the branch, most often because an `--offline`
-   * plan read a tracking ref that outlived it. A `delete-remote` step so marked
-   * deleted nothing, and the run summary counts it apart. Absent otherwise.
+   * The remote no longer listed the branch when the step ran: someone deleted
+   * it after the run's re-check. A `delete-remote` step so marked deleted
+   * nothing, and the run summary counts it apart. Absent otherwise.
    */
   gone: z.literal(true).optional(),
 })

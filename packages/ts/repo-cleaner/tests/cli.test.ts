@@ -950,68 +950,57 @@ describe('clean', () => {
     return fx
   }
 
-  test('offline, a remote branch the remote already deleted is reported gone, and the run goes on', () => {
+  // `clean` asks the remote itself before deleting on it, so an offline plan's
+  // stale tracking refs never decide a remote step.
+  test('offline, a remote branch the remote already deleted is skipped as gone, and the run goes on', () => {
     const fx = buildGoneFixture()
     const res = run(['clean', ...REMOTE, '--only', 'remote', '--yes', '--format', 'json'], fx.root)
     expect(res.code).toBe(0)
     const out = JSON.parse(res.out) as { receipt: Receipt; summary: unknown }
     expect(out.receipt.status).toBe('complete')
-    expect(out.receipt.steps).toContainEqual(
-      expect.objectContaining({
-        row: `remote:origin/${BRANCH}`,
-        result: 'ok',
-        verification: 'already gone from origin',
-      }),
+    expect(out.receipt.dropped).toContainEqual(
+      expect.objectContaining({ row: `remote:origin/${BRANCH}`, reason: 'gone' }),
     )
+    expect(out.receipt.steps.map((s) => s.row)).not.toContain(`remote:origin/${BRANCH}`)
     expect(branchRefs(fx.bare)).not.toContain('feat/t')
-    expect(sh(fx.root, ['for-each-ref', `refs/remotes/origin/${BRANCH}`])).toBe('')
-    // The run deleted one branch; the other was gone before it started.
-    expect(out.summary).toMatchObject({
-      deleted: { remote: 1 },
-      gone: 1,
-    })
+    expect(out.summary).toMatchObject({ deleted: { remote: 1 }, gone: 0 })
   })
 
-  test('offline, a spared remote branch the remote already deleted does not stop the run', () => {
-    const fx = buildGoneFixture()
-    const spare = `remote:origin/${BRANCH}`
-    const res = run(
-      ['clean', ...REMOTE, '--only', 'remote', '--yes', '--spare', spare, '--format', 'json'],
-      fx.root,
-    )
-    expect(res.code).toBe(0)
-    const out = JSON.parse(res.out) as { receipt: Receipt; summary: unknown }
-    expect(out.receipt.status).toBe('complete')
-    expect(out.receipt.steps).toContainEqual(
-      expect.objectContaining({
-        row: spare,
-        action: 'verify-remote',
-        result: 'ok',
-        verification: 'already gone from origin; spared',
-      }),
-    )
-    expect(branchRefs(fx.bare)).not.toContain('feat/t')
-    // Spared, so not counted as gone: only a delete step counts there.
-    expect(out.summary).toMatchObject({
-      deleted: { remote: 1 },
-      gone: 0,
-    })
-  })
-
-  test('online, a spared remote branch that is gone at the run still refuses it', () => {
+  test('offline, a remote branch pushed to since the last fetch is skipped, and the run goes on', () => {
     const fx = buildFixture()
-    const spare = `remote:origin/${BRANCH}`
-    const plan = join(tempDir(), 'p.json')
-    // Planned live, after a fetch; the branch is then deleted before the run.
-    expect(
-      run(['plan', '--remote', '--provider', 'none', '--only', 'remote', '-o', plan], fx.root).code,
-    ).toBe(0)
-    sh(fx.bare, ['update-ref', '-d', `refs/heads/${BRANCH}`])
-    const res = run(['clean', '--plan', plan, '--yes', '--spare', spare], fx.root)
-    // The run's re-check, a live sweep, already sees it gone, before any step.
-    expect(res.code).not.toBe(0)
-    expect(res.err).toContain(`spared ${spare} is no longer on the remote; refusing to run`)
+    sh(fx.root, ['branch', 'feat/t', 'main'])
+    sh(fx.root, ['push', '-q', 'origin', 'feat/t'])
+    // Another clone pushes to BRANCH; this clone's tracking ref is now stale.
+    const other = join(tempDir(), 'other')
+    sh(dirname(other), ['clone', '-q', '-b', BRANCH, fx.bare, other])
+    sh(other, ['commit', '-q', '--allow-empty', '-m', 'more'])
+    sh(other, ['push', '-q', 'origin', BRANCH])
+    const res = run(['clean', ...REMOTE, '--only', 'remote', '--yes', '--format', 'json'], fx.root)
+    expect(res.code).toBe(0)
+    const out = JSON.parse(res.out) as { receipt: Receipt }
+    expect(out.receipt.status).toBe('complete')
+    // Judged on its new tip, it is no longer a plain delete, so it is skipped.
+    expect(out.receipt.dropped.map((d) => d.row)).toContain(`remote:origin/${BRANCH}`)
+    expect(out.receipt.steps.map((s) => s.row)).not.toContain(`remote:origin/${BRANCH}`)
+    expect(branchRefs(fx.bare)).toContain(BRANCH)
+    expect(branchRefs(fx.bare)).not.toContain('feat/t')
   })
+
+  for (const mode of ['offline', 'online'] as const) {
+    test(`${mode}, a spared remote branch that is gone at the run refuses it`, () => {
+      const fx = buildFixture()
+      const spare = `remote:origin/${BRANCH}`
+      const plan = join(tempDir(), 'p.json')
+      const sweepFlags = mode === 'offline' ? REMOTE : ['--remote', '--provider', 'none']
+      expect(run(['plan', ...sweepFlags, '--only', 'remote', '-o', plan], fx.root).code).toBe(0)
+      // The branch is deleted on the remote after the plan.
+      sh(fx.bare, ['update-ref', '-d', `refs/heads/${BRANCH}`])
+      const res = run(['clean', '--plan', plan, '--yes', '--spare', spare], fx.root)
+      // The run's re-check asks the remote, so it sees the branch gone before any step.
+      expect(res.code).not.toBe(0)
+      expect(res.err).toContain(`spared ${spare} is no longer on the remote; refusing to run`)
+    })
+  }
 
   test('a row that turns into a review row while the question waits is dropped, not run', () => {
     const fx = buildFixture()

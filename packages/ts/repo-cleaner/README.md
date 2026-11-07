@@ -240,10 +240,9 @@ the branch on the remote as a backup.
   since the plan, the run stops before deleting anything: you spared it for
   what it held, so if that changed, the rest of the plan rests on a wrong
   assumption. The run's first step checks the tip again with `git ls-remote`,
-  so one that moves after the check stops the run too. Under `--offline`, a
-  branch the remote already deleted passes as already gone, since its
-  tracking ref outlived it; one whose tracking ref was pruned after the plan
-  still stops the run.
+  so one that moves after the check stops the run too. This holds under
+  `--offline` too: `clean`'s re-check asks the remote, so a spared branch the
+  remote deleted refuses the run, whatever the tracking refs on disk say.
 - Sparing a worktree also spares its branch, which was only free to delete
   because the worktree was going.
 
@@ -613,9 +612,7 @@ $ repo-cleaner --remote --offline
 0 to delete, 0 to review, across 1 repository (1 unreadable).
 ```
 
-Now the merged branch is still found, and the note says what was missing.
-When the remote names no forge (a local path, or a host `auto` could only
-guess was GitHub), the note also suggests `--provider none`:
+Now the merged branch is still found, and the note says what was missing:
 
 ```console
 $ repo-cleaner --remote --offline
@@ -628,6 +625,11 @@ $ repo-cleaner --remote --offline
 
 2 to delete, 0 to review, across 1 repository.
 ```
+
+When the remote may not be on a forge at all, the note also suggests
+`--provider none`: for a host `auto` could only guess was GitHub, or a local
+path swept with `--provider github`. Under `auto`, a local path gets no
+provider in the first place.
 
 ### Why the remote branch needs `confirm-open-pr`
 
@@ -698,32 +700,30 @@ $ repo-cleaner --remote --offline --provider none     # now
 ```
 
 `--offline` still asks `gh` or `glab` about pull requests. Add
-`--provider none` to judge with no network at all. `clean` always contacts
-the remote for its remote steps: it pushes the deletes and checks spared tips
-with `git ls-remote`.
+`--provider none` to judge with no network at all.
 
 The refs on disk can be stale. A remote-tracking ref stays until the next
 `git fetch --prune`, so a branch the forge deleted after its pull request
-merged still shows as a row. `clean` handles that: when the delete is refused
-and the remote no longer lists the branch, the step reports it as already
-gone, removes the stale tracking ref, and the run goes on. The summary counts
-it apart from what the run deleted:
+merged still shows in the report, and a branch someone pushed to since shows
+its old tip. That is fine for a report, but `clean` deletes on the remote, so
+before it does, its re-check asks the remote itself with `git ls-remote`. A
+branch the remote no longer has is skipped as gone, and one whose tip moved
+is skipped too:
 
 ```console
 $ repo-cleaner clean --remote --offline --provider none --only remote --yes
+skipped  remote:origin/feat/search — gone (no longer in the sweep)
 ok       remote:origin/feat/cart — git push … origin :refs/heads/feat/cart (ls-remote lists nothing)
-ok       remote:origin/feat/search — git push … origin :refs/heads/feat/search (already gone from origin)
 
-deleted: 1 remote branch, 1 remote branch already gone
+deleted: 1 remote branch
+skipped 1, not deleted: 1 gone
 status: complete
 ```
 
-A remote branch you `--spare` (see [Pick and spare](#pick-and-spare)) gets
-the same treatment. If an offline plan's tip check finds it gone, the step
-reports `already gone from origin; spared` and the run goes on. If its
-tracking ref was pruned after the plan, the re-check no longer finds the row
-and refuses the run; plan again. A plan made online read its tips live, so a
-spared branch that has gone since refuses the run.
+A remote branch you `--spare` (see [Pick and spare](#pick-and-spare)) that is
+gone from the remote refuses the run instead, because you spared it for what
+it held. `git fetch --prune` drops the stale tracking refs, so the report
+stops showing them.
 
 ### In the library
 
@@ -736,8 +736,9 @@ The same information is on the result, for a host to show or act on:
 - `Preview.notes` (`check`) and `RunOptions.onNotes` (`run`): the same notes
   from their re-checks, which sweep again and can meet a failure the first
   sweep did not.
-- `Step.gone` on a receipt step, and `RunSummary.gone`: a remote branch the
-  remote had already deleted, counted apart from what the run deleted.
+- `Step.gone` on a receipt step, and `RunSummary.gone`: a remote branch
+  someone deleted between the re-check and the run's push, counted apart from
+  what the run deleted.
 
 ```ts
 import { sweep } from '@osdlc/repo-cleaner'
@@ -922,9 +923,10 @@ branch.
 | `github` | `gh` | `gh pr list --state all`, up to 300 |
 | `gitlab` | `glab` | `glab api projects/<path>/merge_requests?state=all`, 100 a page, up to 300 |
 
-With `--remote`, `--provider auto` (the default) reads the remote's host: a host with `gitlab`
-in its name is GitLab, any other is GitHub, which is what the tool did before
-providers existed. Name one with `--provider github|gitlab` for a host the
+With `--remote`, `--provider auto` (the default) reads the remote's host: a
+remote that names no host (a local path or `file://`) gets no provider, since
+it can have no pull requests; a host with `gitlab` in its name is GitLab; any
+other is GitHub, which is what the tool did before providers existed. Name one with `--provider github|gitlab` for a host the
 name does not give away, or `--provider none` to skip pull requests. A plan
 records the choice, so `clean` re-checks with the same provider.
 

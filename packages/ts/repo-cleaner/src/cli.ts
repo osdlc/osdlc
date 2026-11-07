@@ -712,7 +712,11 @@ function runClean(
       source,
       receiptPath,
       now: () => new Date(),
-      onNotes: notesOnce,
+      onNotes: (notes) => {
+        // The run's re-check draws its progress on the status line.
+        status.clear()
+        notesOnce(notes)
+      },
       ...(live
         ? {
             // The board carries the run's progress; the status line stays clear.

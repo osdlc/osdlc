@@ -87,6 +87,9 @@ export function lookupPrs(repo: RepoInfo, provider: PrProvider, branch?: string)
   try {
     rows = provider.listPrs(repo.root, status, branch)
   } catch (err) {
+    // A bug in the provider is not a listing that failed: let it fail loudly,
+    // as an error on the repository, rather than gate every remote branch.
+    if (err instanceof TypeError || err instanceof ReferenceError) throw err
     return { prs: byHead, error: errorText(err) }
   }
   if (rows === null) return { prs: byHead, error: 'the provider gave no reason' }

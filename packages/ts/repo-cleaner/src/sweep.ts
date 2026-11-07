@@ -309,6 +309,11 @@ interface RepoSweepOptions extends Runners {
   against?: string | undefined
   provider: ProviderChoice
   fetch: boolean
+  /**
+   * Read remote tips with `ls-remote` even without a fetch: `clean`'s
+   * re-check, which must not delete on the strength of a stale tracking ref.
+   */
+  liveRemoteTips?: boolean | undefined
   branch?: string | undefined
   /** Only the worktree at this path; for {@link inspectWorktree}. */
   worktree?: string | undefined
@@ -454,6 +459,7 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
 
     if (kinds.has('remote')) {
       const remote = gatherRemoteBranches(repo, prs, localBranchNames, git, {
+        live: repo.fetched || opts.liveRemoteTips === true,
         only,
         tick: ticker('remote'),
       })

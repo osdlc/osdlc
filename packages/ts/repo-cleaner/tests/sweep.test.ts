@@ -507,7 +507,14 @@ describe('worktree blockers', () => {
         headRefOid: tip,
       })),
     )
-    swept = sweepOne(checkout, { cwd: checkout, gh, remote: true, offline: true })
+    // The fixture's remote is a local path, so name the provider: `auto` asks none.
+    swept = sweepOne(checkout, {
+      cwd: checkout,
+      gh,
+      provider: 'github',
+      remote: true,
+      offline: true,
+    })
     expect(swept.error).toBeNull()
     rows = rowsOf(swept.rows, 'worktree')
   }, HOOK_TIMEOUT_MS)
@@ -580,7 +587,14 @@ describe('worktree blockers', () => {
 
   test('a branch-scoped sweep keeps the branch of a blocked worktree pinned', () => {
     const scoped = (branch: string): RepoSweep =>
-      sweepOne(checkout, { cwd: checkout, gh, remote: true, offline: true, branch })
+      sweepOne(checkout, {
+        cwd: checkout,
+        gh,
+        provider: 'github',
+        remote: true,
+        offline: true,
+        branch,
+      })
     for (const name of ['locked', 'shared']) {
       const one = scoped(`wt-${name}`)
       expect(one.error).toBeNull()
@@ -835,6 +849,8 @@ describe('merged-PR evidence', () => {
   const withPrs = (opts: SweepOptions = {}): SweepOptions => ({
     cwd: checkout,
     gh,
+    // The remote is a local path, so name the provider: `auto` asks none.
+    provider: 'github',
     remote: true,
     offline: true,
     ...opts,
@@ -1429,12 +1445,13 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     expect(remotes.get('origin/main')?.risks).toEqual([])
   })
 
+  /** Real git, except that `origin` reads as `url`; the remote itself stays the fixture's. */
+  const hostedAt = (url: string): CommandRunner =>
+    interposedRunner((argv) =>
+      isGetUrlOrigin(argv) ? { exitCode: 0, stdout: `${url}\n`, stderr: '' } : undefined,
+    )
+
   test('the --provider none hint follows auto, not only a remote with no host', () => {
-    // Real git, except that `origin` reads as a host that `auto` sends to GitHub.
-    const hostedAt = (url: string): CommandRunner =>
-      interposedRunner((argv) =>
-        isGetUrlOrigin(argv) ? { exitCode: 0, stdout: `${url}\n`, stderr: '' } : undefined,
-      )
     const noteOf = (
       provider: 'auto' | 'github',
       url = 'https://git.example.com/acme/app.git',
@@ -1457,20 +1474,26 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     )
   })
 
-  // The fixture's remote is a local path, which names no forge, so the
-  // `auto` note also says how to stop asking.
+  // `auto` asks GitHub for a github.com remote, which is a forge, so its note
+  // gives no `--provider none` hint; `--provider github` on the fixture's
+  // local-path remote, which names no forge, does.
   const hint = ' Pass `--provider none` if this remote has no forge.'
   test.each(
-    (['auto', 'github'] as const).flatMap((provider) => [
+    (
+      [
+        { provider: 'auto', git: hostedAt('https://github.com/acme/app.git'), tail: '' },
+        { provider: 'github', git: undefined, tail: hint },
+      ] as const
+    ).flatMap((p) => [
       {
-        provider,
+        ...p,
         missing: 'not installed',
         gh: cannedGh([], { installed: false }),
         why: '`gh` is not installed',
         fix: 'Install `gh`',
       },
       {
-        provider,
+        ...p,
         missing: 'not signed in',
         gh: cannedGh([], { authenticated: false }),
         why: '`gh` is not signed in',
@@ -1478,7 +1501,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
       },
     ]),
   )('provider $provider, gh $missing: named as the reason and gates remote deletes', (c) => {
-    const sw = sweepHere({ provider: c.provider, gh: c.gh })
+    const sw = sweepHere({ provider: c.provider, gh: c.gh, git: c.git })
     expect(rowsOf(sw.rows, 'branch').get('live')?.notes).toContain(`No PR lookup (${c.why}).`)
     const remotes = rowsOf(sw.rows, 'remote')
     expect(remotes.get('origin/feature')?.notes).toContain(
@@ -1491,8 +1514,16 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     // Deleting a local branch closes no PR.
     expect(rowsOf(sw.rows, 'branch').get('merged')?.risks ?? []).not.toContain('confirm-open-pr')
     expect(sw.notes).toEqual([
-      `Could not check for open PRs: ${c.why}, so deleting a remote branch needs confirm-open-pr. ${c.fix}, or pass \`--allow confirm-open-pr\` once you have checked.${hint}`,
+      `Could not check for open PRs: ${c.why}, so deleting a remote branch needs confirm-open-pr. ${c.fix}, or pass \`--allow confirm-open-pr\` once you have checked.${c.tail}`,
     ])
+  })
+
+  test('auto asks no provider for a remote that names no host, so nothing is gated', () => {
+    // The fixture's remote is a local path: it can have no pull requests.
+    const sw = sweepHere({ provider: 'auto', gh: cannedGh([], { installed: false }) })
+    expect(rowsOf(sw.rows, 'remote').get('origin/merged')?.risks).not.toContain('confirm-open-pr')
+    expect(rowsOf(sw.rows, 'branch').get('live')?.notes).toContain('No PR lookup (no provider).')
+    expect(sw.notes).toEqual([])
   })
 
   test('with no provider, both rows say so rather than that no PR was found', () => {
@@ -1528,5 +1559,29 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     })
     expect(sw.error).toBeNull()
     expect(sw.notes).toEqual([])
+  })
+
+  test('another remote named `origin/...` lends origin none of its branches', () => {
+    const nested = join(parent, 'nested')
+    mkdirSync(nested)
+    const { checkout: dir, origin } = makeOriginAndCheckout({ parent: nested })
+    // Git allows `/` in a remote's name; its refs sit under refs/remotes/origin/.
+    git(['remote', 'add', 'origin/mirror', origin.dir], dir.dir)
+    git(['fetch', '-q', 'origin/mirror'], dir.dir)
+    expect(git(['for-each-ref', 'refs/remotes/origin/mirror/'], dir.dir)).not.toBe('')
+    const sw = sweepOne(dir.dir, { cwd: dir.dir, remote: true, offline: true, provider: 'none' })
+    expect([...rowsOf(sw.rows, 'remote').keys()].filter((n) => n.includes('mirror'))).toEqual([])
+  })
+
+  test('offline, a remote with no tracking refs on disk says so', () => {
+    const dir = join(parent, 'never-fetched')
+    mkdirSync(dir)
+    makeGitFixture({ dir, initialBranch: 'main' })
+    commit(dir, 'initial commit')
+    git(['remote', 'add', 'origin', join(parent, 'nowhere.git')], dir)
+    const sw = sweepOne(dir, { cwd: dir, remote: true, offline: true, provider: 'none' })
+    expect(sw.notes).toContainEqual(
+      expect.stringMatching(/^No remote-tracking refs for `origin` on disk/),
+    )
   })
 })

@@ -285,36 +285,29 @@ describe('sparing a remote branch (#583)', () => {
     expect(summarizeRun(receipt).notRun).toBe(1)
   })
 
-  test('online, one deleted on the remote after the re-check stops the run at its tip check', () => {
-    const fx = buildFixture()
-    const gone = () => sh(fx.bare, ['update-ref', '-d', 'refs/heads/merged-a'])
-    const receipt = runIt(fx, makePlan(fx.root, { offline: false }), { onStart: gone })
-    expect(receipt.status).toBe('failed')
-    expect(receipt.steps[0]!.error).toContain('is gone from origin')
-    expect(receipt.steps[1]!.result).toBe('pending')
-  })
+  for (const offline of [false, true]) {
+    test(`${offline ? 'offline' : 'online'}, one deleted on the remote after the re-check stops the run at its tip check`, () => {
+      const fx = buildFixture()
+      const gone = () => sh(fx.bare, ['update-ref', '-d', 'refs/heads/merged-a'])
+      const receipt = runIt(fx, makePlan(fx.root, { offline }), { onStart: gone })
+      expect(receipt.status).toBe('failed')
+      expect(receipt.steps[0]!.error).toContain('is gone from origin')
+      expect(receipt.steps[1]!.result).toBe('pending')
+      expect(refs(fx.root)).toContain('refs/heads/merged-a ')
+    })
+  }
 
-  test('offline, one the remote already deleted passes its tip check and the run goes on', () => {
+  test('offline, one the remote deleted after the plan refuses the run, and its local branch stays', () => {
     const fx = buildFixture()
-    const gone = () => sh(fx.bare, ['update-ref', '-d', 'refs/heads/merged-a'])
-    const receipt = runIt(fx, makePlan(fx.root), { onStart: gone })
-    expect(receipt.status).toBe('complete')
-    expect(receipt.steps[0]!.verification).toBe('already gone from origin; spared')
-    expect(refs(fx.root)).not.toContain('refs/heads/merged-a ')
-    // Spared, not deleted: neither count takes it.
-    expect(summarizeRun(receipt)).toMatchObject({ deleted: { remote: 0 }, gone: 0 })
-  })
-
-  test('offline, one whose tracking ref was pruned since the plan refuses the run', () => {
-    const fx = buildFixture()
+    // The offline plan read the tracking ref; the re-check asks the remote.
     const p = makePlan(fx.root)
     sh(fx.bare, ['update-ref', '-d', 'refs/heads/merged-a'])
-    sh(fx.root, ['fetch', '-q', '--prune', 'origin'])
     expectRefused(
       () => runIt(fx, p),
       'spared-changed',
-      /pruned since the plan\?\); refusing to run, plan again/,
+      /spared remote:origin\/merged-a is no longer on the remote; refusing to run/,
     )
+    // The spared remote branch was the local work's backup: nothing is deleted.
     expect(refs(fx.root)).toContain('refs/heads/merged-a ')
   })
 
