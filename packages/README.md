@@ -234,6 +234,10 @@ Developed here, in this repository:
   that finds the branches, worktrees and remote branches that have been merged
   and can go away, with the evidence and the command for each, and applies an
   approved plan compare-and-swap)
+- `packages/ts/rule-review` (`@osdlc/rule-review` on npm, a tool and library
+  that reviews a change against the `CLAUDE.md` and `AGENTS.md` files that
+  govern it, one headless agent judgement per rule file, and runs a folder of
+  path-scoped check scripts)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull
