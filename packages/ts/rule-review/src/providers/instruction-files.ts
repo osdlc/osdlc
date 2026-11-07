@@ -12,7 +12,7 @@
  * instruction file whose rules are already inlined (or symlinked) is not
  * dispatched a second time.
  */
-import { dirname, relative, resolve } from 'node:path'
+import { basename, dirname, relative, resolve } from 'node:path'
 
 import { Git } from '@osdlc/typed-git'
 import { nodeGuard, readContainedFile } from '@osdlc/path-guard/node'
@@ -58,8 +58,18 @@ export const gitFileLister: FileLister = (projectRoot) => {
   const git = new Git(projectRoot)
   return [
     ...git.lsFiles({ paths: [...PATHSPECS] }),
-    ...git.lsFiles({ others: true, excludeStandard: true }),
-  ].filter((p) => (FILENAMES as readonly string[]).includes(p.split('/').pop() ?? ''))
+    ...git.lsFiles({ others: true, excludeStandard: true, paths: [...PATHSPECS] }),
+  ].filter(isInstructionFile)
+}
+
+/** True when `path`'s file name is exactly one of the instruction file names. */
+function isInstructionFile(path: string): boolean {
+  return (FILENAMES as readonly string[]).includes(basename(path))
+}
+
+/** True when a file in `dir` (repo-relative, `.` for the root) governs `file`. */
+function governs(dir: string, file: string): boolean {
+  return dir === '.' || dir === '' || file.startsWith(`${dir}/`)
 }
 
 /** Options for {@link instructionFiles}. */
@@ -80,7 +90,9 @@ export interface InstructionFilesOptions {
 
 /**
  * Discover `CLAUDE.md`/`AGENTS.md` beneath the project root. A file or import
- * whose real path leaves the project root is skipped without error.
+ * whose real path leaves the project root is skipped without error. When the
+ * context lists changed files, a file whose directory holds none of them is
+ * not read: it would be planned away.
  */
 export function instructionFiles(options: InstructionFilesOptions = {}): RuleSourceProvider {
   const list = options.list ?? gitFileLister
@@ -89,45 +101,61 @@ export function instructionFiles(options: InstructionFilesOptions = {}): RuleSou
   return {
     id: 'instruction-files',
     async discover(ctx: DiscoveryContext): Promise<RuleSource[]> {
-      const paths = [...new Set(await list(ctx.projectRoot))].sort()
+      const changed = ctx.changedFiles
+      const paths = [...new Set(await list(ctx.projectRoot))]
+        .filter((p) => changed.length === 0 || changed.some((f) => governs(dirname(p), f)))
+        .sort()
 
       const realRoot = nodeGuard.realPath(resolve(ctx.projectRoot))
-      const found: Found[] = []
-      for (const relPath of paths) {
-        const text = await readWithImports(realRoot, relPath, maxImportDepth)
-        if (text.trim() === '') continue
-        const real = relative(realRoot, nodeGuard.realPath(resolve(realRoot, relPath)))
-        found.push({ source: toSource(relPath, text), real })
-      }
+      const read = await Promise.all(
+        paths.map(async (relPath) => {
+          const real = relative(realRoot, nodeGuard.realPath(resolve(realRoot, relPath)))
+          const { text, inlined } = await readWithImports(realRoot, relPath, maxImportDepth)
+          return { relPath, real, text, inlined }
+        }),
+      )
+      const found: Found[] = read
+        .filter((r) => r.text.trim() !== '')
+        .map((r) => ({
+          source: toSource(r.relPath, r.text),
+          real: r.real,
+          covers: new Set([r.real, ...r.inlined]),
+        }))
       return found.filter((f, i) => !redundant(f, i, found)).map((f) => f.source)
     },
   }
 }
 
-/** A discovered source and the repo-relative real path of the file it was read from. */
+/** A discovered source, the real path it was read from, and every file its text holds. */
 interface Found {
   source: RuleSource
   real: string
+  /** Repo-relative real paths: the file itself and each import inlined into it. */
+  covers: ReadonlySet<string>
 }
 
 /**
  * True when a sibling in the same directory already carries all of `f`'s
  * rules, so keeping both would judge every file twice with the same rules.
  *
- * Two cases, both decided by file identity rather than by comparing prose: a
- * sibling read from the same real file (a `CLAUDE.md` symlinked to
- * `AGENTS.md`; the first by path stays), and a sibling that inlines `f` whole
- * as one of its imports (a `CLAUDE.md` whose body is `@AGENTS.md`). A sibling
- * that only happens to contain the same words is not redundant.
+ * Decided by file identity, not by comparing prose: `f` is redundant when a
+ * sibling's text holds every file `f`'s text holds. That covers a sibling read
+ * from the same real file (a `CLAUDE.md` symlinked to `AGENTS.md`; the first by
+ * path stays) and a sibling that imports `f` (a `CLAUDE.md` whose body is
+ * `@AGENTS.md`). A sibling that only happens to contain the same words is not
+ * redundant.
  */
 function redundant(f: Found, index: number, found: readonly Found[]): boolean {
   const dir = dirname(f.source.path)
-  const asImport = `<!-- imported from ${f.real} -->\n${f.source.text}`
+  const within = (a: ReadonlySet<string>, b: ReadonlySet<string>): boolean =>
+    [...a].every((x) => b.has(x))
   return found.some(
     (other, j) =>
       j !== index &&
       dirname(other.source.path) === dir &&
-      ((other.real === f.real && j < index) || other.source.text.includes(asImport)),
+      within(f.covers, other.covers) &&
+      // Two siblings that hold the same files: keep the first.
+      (!within(other.covers, f.covers) || j < index),
   )
 }
 
@@ -147,12 +175,15 @@ function toSource(relPath: string, text: string): RuleSource {
 }
 
 /**
- * Read an instruction file, inlining each `@path` import once.
+ * Read an instruction file, inlining each `@path` import once, and list the
+ * files inlined (repo-relative real paths).
  *
- * Imports are first walked breadth-first to find each file's shallowest
- * depth, then inlined depth-first, each file at that depth only. A file first
- * met through a longer chain is therefore still expanded with the most budget
- * it can have, and the result does not depend on import order.
+ * Each file has an import budget: the root has `maxDepth`, and an import has
+ * one less than the file that reached it with the most. A sibling instruction
+ * file (`CLAUDE.md` importing `@AGENTS.md`) starts again at `maxDepth`, so it
+ * is inlined whole, as it reads on its own. A file is inlined once, under the
+ * file that gave it its best budget, so the result does not depend on import
+ * order.
  *
  * Each import is fenced with its source path so the judge can tell borrowed
  * prose from the instruction file's own words, and cannot misattribute a rule.
@@ -161,43 +192,51 @@ async function readWithImports(
   realRoot: string,
   relPath: string,
   maxDepth: number,
-): Promise<string> {
-  const depthOf = new Map<string, number>([[relPath, 0]])
-  const texts = new Map<string, string>()
+): Promise<{ text: string; inlined: string[] }> {
+  const dir = dirname(relPath)
+  const fresh = (target: string): boolean =>
+    target !== relPath && dirname(target) === dir && isInstructionFile(target)
+  const budget = new Map<string, number>([[relPath, maxDepth]])
+  const parent = new Map<string, string>()
+  const texts = new Map<string, string | null>()
   const targetsOf = new Map<string, string[]>()
-  let frontier = [relPath]
-  for (let depth = 0; frontier.length > 0; depth++) {
+  let queue = [relPath]
+  while (queue.length > 0) {
     const next: string[] = []
-    for (const path of frontier) {
-      const text = await readText(realRoot, path)
-      if (text === null) continue
-      texts.set(path, text)
-      if (depth >= maxDepth) continue
+    for (const path of queue) {
+      if (!texts.has(path)) texts.set(path, await readText(realRoot, path))
+      const text = texts.get(path)
+      const left = budget.get(path) ?? 0
+      if (text === null || text === undefined || left <= 0) continue
       const targets = importTargets(realRoot, path, text)
       targetsOf.set(path, targets)
       for (const target of targets) {
-        if (depthOf.has(target)) continue
-        depthOf.set(target, depth + 1)
+        const offered = fresh(target) ? maxDepth : left - 1
+        if (offered <= (budget.get(target) ?? -1)) continue
+        budget.set(target, offered)
+        parent.set(target, path)
         next.push(target)
       }
     }
-    frontier = next
+    queue = next
   }
 
   const inlined = new Set<string>()
-  const render = (path: string, depth: number): string => {
+  const render = (path: string): string => {
     inlined.add(path)
     const text = texts.get(path) ?? ''
     const imported: string[] = []
     for (const target of targetsOf.get(path) ?? []) {
-      if (inlined.has(target) || depthOf.get(target) !== depth + 1) continue
-      const body = render(target, depth + 1)
+      if (inlined.has(target) || parent.get(target) !== path) continue
+      const body = render(target)
       if (body.trim() === '') continue
       imported.push(`\n\n<!-- imported from ${target} -->\n${body}`)
     }
     return imported.length === 0 ? text : text + imported.join('')
   }
-  return render(relPath, 0)
+  const text = render(relPath)
+  inlined.delete(relPath)
+  return { text, inlined: [...inlined].filter((p) => (texts.get(p) ?? '').trim() !== '') }
 }
 
 /** A contained file's text, or null when it is missing, unreadable or outside the root. */

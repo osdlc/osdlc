@@ -76,6 +76,28 @@ afterAll(() => {
 })
 
 describe('rule-review checks selection', () => {
+  test('with --base <branch>, CHECK_BASE is the fork point, not the branch tip', async () => {
+    const { root, git } = makeRepo({ 'src/a.ts': 'a\n', 'docs/d.md': 'd\n' })
+    try {
+      const fork = git.revParse('HEAD')!
+      git.raw(['switch', '-q', '-c', 'feature'])
+      writeFile(root, 'src/a.ts', 'a2\n')
+      commitAll(git, 'feature change')
+      // main moves on after the fork.
+      git.raw(['switch', '-q', 'main'])
+      writeFile(root, 'docs/d.md', 'd2\n')
+      commitAll(git, 'main moves on')
+      git.raw(['switch', '-q', 'feature'])
+
+      await runCli(root, '--base', 'main')
+
+      expect(seen('any', 'stdin')).toBe('src/a.ts\n')
+      expect(seen('any', 'base')).toBe(fork)
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test('--base <rev> selects by the diff against that revision', async () => {
     const { code, out } = await runCli(committed.root, '--base', committed.base)
 

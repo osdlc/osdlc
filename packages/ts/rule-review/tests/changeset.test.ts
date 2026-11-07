@@ -539,3 +539,23 @@ describe('a directory path', () => {
     }
   })
 })
+
+test('a branch named like a sha is still a branch, and the remote copy wins when it is behind', () => {
+  const { root, git } = makeRepo({ 'a.txt': 'a\n' })
+  const remote = makeRepo({ 'a.txt': 'a\n' })
+  try {
+    git.raw(['branch', 'deadbeef'])
+    git.raw(['remote', 'add', 'origin', remote.root])
+    // origin/deadbeef is ahead of the local deadbeef branch.
+    remote.git.raw(['switch', '-q', '-c', 'deadbeef'])
+    writeIn(remote.root, 'b.txt', 'b\n')
+    remote.git.add(['.'])
+    remote.git.commit({ message: 'ahead' })
+    git.raw(['fetch', '-q', 'origin', 'deadbeef:refs/remotes/origin/deadbeef'])
+
+    expect(resolveBase(git, 'deadbeef')).toBe('origin/deadbeef')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+    rmSync(remote.root, { recursive: true, force: true })
+  }
+})

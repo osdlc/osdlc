@@ -360,7 +360,9 @@ exit $status
 - Exit 0 passes and any other exit fails. A timeout or a signal is an error.
 - Each script runs from the project root with `CHECK_ROOT`, `CHECK_NAME`
   (the name after the number), `CHECK_ORDER`, `CHECK_DIR` and `CHECK_BASE`
-  (`HEAD`, the resolved `--base`, or empty with `--all`) set.
+  set. `CHECK_BASE` is the commit the changeset was measured from: `HEAD`,
+  the fork point of `--base` and `HEAD` (so `git diff "$CHECK_BASE"` shows the
+  same change), or empty with `--all`.
 - A `.md` file is a prompt check. It is listed and reported as skipped: prompt
   checks do not run yet.
 - Anything else is skipped with its reason: no number prefix, a bad name, a

@@ -58,7 +58,7 @@ Each script runs from the repository root with these variables:
 | `CHECK_NAME` | the name after the number, e.g. `shell-syntax` |
 | `CHECK_ORDER` | the number, e.g. `20` |
 | `CHECK_DIR` | the check folder |
-| `CHECK_BASE` | the base rev the changeset was taken from; empty with `--all` |
+| `CHECK_BASE` | the commit the changeset was measured from: `HEAD`, or with `--base` the fork point of that rev and `HEAD`, so `git diff "$CHECK_BASE"` shows the same change; empty with `--all` |
 
 ## Running it
 

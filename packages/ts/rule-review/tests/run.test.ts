@@ -374,7 +374,7 @@ describe('review — sharding and observed tokens', () => {
       for (const [j, file] of files.entries()) {
         // A shard's prompt names its three files and no others, so a judge
         // cannot be influenced by a diff that a different shard owns.
-        expect(prompt.includes(`<file path="${file}">`)).toBe(Math.floor(j / 3) === i)
+        expect(prompt.includes(` path=${JSON.stringify(file)}>`)).toBe(Math.floor(j / 3) === i)
       }
     }
   })
@@ -382,7 +382,7 @@ describe('review — sharding and observed tokens', () => {
   test('findings from every shard merge under the one source', async () => {
     const run = await shardedRun((spec) => {
       // Cite whichever file this shard was actually given.
-      const file = files.find((f) => spec.prompt.includes(`<file path="${f}">`))!
+      const file = files.find((f) => spec.prompt.includes(` path=${JSON.stringify(f)}>`))!
       return Promise.resolve(
         reply({
           findings: [{ file, evidence: 'x', why: 'y', severity: 'drift' }],
@@ -666,4 +666,23 @@ describe('review — after the run is aborted or has rejected', () => {
     expect(result.outcomes[0]?.error).toContain('line one line two')
     expect(result.outcomes[0]?.error).not.toMatch(/[\r\n]/)
   })
+})
+
+test('a job none of whose files has a diff is not dispatched, and degrades the run', async () => {
+  const dispatched: string[] = []
+  const result = await review({
+    projectRoot: '/repo',
+    sources: [source('root', ['**'], 0)],
+    changedFiles: ['nested/'],
+    diffs: [],
+    config: DEFAULT_CONFIG,
+    dispatch: async (spec) => {
+      dispatched.push(spec.prompt)
+      return reply({ findings: [] })
+    },
+  })
+
+  expect(dispatched).toEqual([])
+  expect(result.degraded).toBe(true)
+  expect(result.outcomes[0]?.error).toContain('none of its files has a diff')
 })

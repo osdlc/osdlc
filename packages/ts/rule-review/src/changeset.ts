@@ -69,7 +69,8 @@ export interface Changeset {
   files: readonly string[]
   /**
    * The ref the files were computed against. A check script sees it as
-   * `CHECK_BASE`; it is empty when the changeset is every tracked file.
+   * `CHECK_BASE`: the fork point the files were measured from, or empty when
+   * the changeset is every tracked file.
    */
   base: string
 }
@@ -91,14 +92,13 @@ export function defaultBase(repo: Repo): string {
 }
 
 /**
- * Rev syntax that names a commit directly rather than a branch.
- *
- * `HEAD` is the one that bites: `origin/HEAD` exists in any cloned repo as the
- * symbolic ref to the default branch, so treating every base as a branch name
- * silently rewrites `--base HEAD` into `--base main` and compares the whole
- * branch when the caller asked for the working tree.
+ * Rev syntax that no branch name can hold (`git check-ref-format` refuses
+ * `~`, `^`, `:` and `@{`), plus `HEAD`. `HEAD` is the one that bites:
+ * `origin/HEAD` exists in any cloned repo as the symbolic ref to the default
+ * branch, so treating it as a branch name would rewrite `--base HEAD` into the
+ * whole branch when the caller asked for the working tree.
  */
-const NAMES_A_COMMIT = /^HEAD$|[~^:@]|^[0-9a-f]{7,40}$/
+const NOT_A_BRANCH = /^HEAD$|[~^:]|@\{/
 
 /**
  * Resolve `base` to the ref actually worth diffing against.
@@ -121,10 +121,12 @@ const NAMES_A_COMMIT = /^HEAD$|[~^:@]|^[0-9a-f]{7,40}$/
  */
 export function resolveBase(repo: Repo, base: string): string {
   const git = asGit(repo)
-  if (NAMES_A_COMMIT.test(base)) return base
+  if (NOT_A_BRANCH.test(base)) return base
+  // Asked by full ref name, so a sha, or a branch named like one, is told
+  // apart by what exists rather than by how the name looks.
   const remote = `origin/${base}`
-  const localExists = git.objectExists(base)
-  const remoteExists = git.objectExists(remote)
+  const localExists = git.objectExists(`refs/heads/${base}`)
+  const remoteExists = git.objectExists(`refs/remotes/${remote}`)
   if (!localExists) return remoteExists ? remote : base
   if (!remoteExists) return base
   // Both exist: local an ancestor of (behind or equal to) remote keeps the

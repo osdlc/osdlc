@@ -210,6 +210,8 @@ interface PreparedJob {
   spec: ReturnType<typeof buildSpec>
   promptBytes: number
   oversize?: { bytes: number; limit: number }
+  /** False when none of the job's files has a diff, so there is nothing to judge. */
+  hasDiff: boolean
 }
 
 function prepare({ job, config }: ConfiguredJob, options: ReviewOptions): PreparedJob {
@@ -219,7 +221,16 @@ function prepare({ job, config }: ConfiguredJob, options: ReviewOptions): Prepar
     config.maxPromptBytes > 0 && promptBytes > config.maxPromptBytes
       ? { bytes: promptBytes, limit: config.maxPromptBytes }
       : undefined
-  return { job, config, spec, promptBytes, ...(oversize !== undefined ? { oversize } : {}) }
+  const files = new Set(job.files)
+  const hasDiff = options.diffs.some((d) => files.has(d.file))
+  return {
+    job,
+    config,
+    spec,
+    promptBytes,
+    hasDiff,
+    ...(oversize !== undefined ? { oversize } : {}),
+  }
 }
 
 /**
@@ -261,6 +272,13 @@ async function runJob(
       0,
       'aborted: the run was aborted before this job was dispatched',
     )
+    settle(outcome)
+    return outcome
+  }
+  if (!prepared.hasDiff) {
+    // A path git could not render (a nested checkout, say) leaves the judge
+    // nothing to read; asking would cost a call to judge an empty prompt.
+    const outcome = emptyOutcome(prepared, 0, 'not judged: none of its files has a diff')
     settle(outcome)
     return outcome
   }

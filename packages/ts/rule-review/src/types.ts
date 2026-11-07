@@ -233,7 +233,7 @@ export const DEFAULT_CONFIG: Readonly<ReviewConfig> = Object.freeze({
   concurrency: 32,
   blocking: false,
   severityFloor: 'violation',
-  exclude: [],
+  exclude: Object.freeze([]),
   timeoutMs: 600_000,
   // ~100k tokens at four bytes a token — generous next to a modern context
   // window, and deliberately so: this marks the point where a judgement is

@@ -20,8 +20,7 @@ import { say, sayError } from './output.ts'
 
 import { checksMain } from './checks-command.ts'
 import { exitCodeFor } from './findings.ts'
-import { ChangesetError, reviewChanges, type ReviewChangesResult } from './review-changes.ts'
-import { ScopeError } from './select.ts'
+import { reviewChanges, type ReviewChangesResult } from './review-changes.ts'
 import { estimateTokens, formatTokens, jobLabel } from './tokens.ts'
 import { DEFAULT_CONFIG, SEVERITY_ORDER, type ReviewConfig } from './types.ts'
 
@@ -208,7 +207,8 @@ export async function main(argv: string[]): Promise<number> {
       signal: interrupt.signal,
     })
   } catch (err) {
-    if (!(err instanceof ScopeError || err instanceof ChangesetError)) throw err
+    // Exit 1 means findings, so a run that could not complete is always 2:
+    // a bad base or pattern, a setting out of range, a provider that failed.
     sayError(err)
     return 2
   } finally {

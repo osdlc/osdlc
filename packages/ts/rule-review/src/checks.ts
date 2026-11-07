@@ -85,19 +85,23 @@ export interface ChecksPlan {
   skipped: SkippedEntry[]
 }
 
-/** The environment a script check sees, on top of the parent's. */
+/**
+ * The environment a script check sees, on top of the parent's. With no base,
+ * `CHECK_BASE` is unset rather than left out, so a value the parent exported
+ * does not leak into the script.
+ */
 export function checkEnv(
   check: ScriptCheck,
   folder: CheckFolder,
   projectRoot: string,
   base?: string,
-) {
+): Record<string, string | undefined> {
   return {
     CHECK_ROOT: projectRoot,
     CHECK_NAME: check.name,
     CHECK_ORDER: String(check.order),
     CHECK_DIR: folder.dir,
-    ...(base === undefined ? {} : { CHECK_BASE: base }),
+    CHECK_BASE: base,
   }
 }
 

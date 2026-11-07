@@ -249,6 +249,15 @@ describe('sibling instruction files that carry the same rules', () => {
     // A sibling whose text merely contains the other's words is not a copy.
     await at('narrow/AGENTS.md', '- Never use any')
     await at('narrow/CLAUDE.md', '- Never use any in tests only.')
+    // A pointer whose sibling imports two levels deep: inlined whole, it is a copy.
+    await at('deep/CLAUDE.md', '@AGENTS.md')
+    await at('deep/AGENTS.md', '- Deep rule.\n@docs/STYLE.md')
+    await at('deep/docs/STYLE.md', '- Style rule.\n@NAMING.md')
+    await at('deep/docs/NAMING.md', '- Naming rule.')
+    // Both siblings import a shared file; the first import order wins nothing.
+    await at('shared/README.md', '- Shared readme rule.')
+    await at('shared/CLAUDE.md', '@README.md\n@AGENTS.md')
+    await at('shared/AGENTS.md', '- Agents rule.\n@README.md')
   })
 
   afterAll(async () => {
@@ -268,6 +277,10 @@ describe('sibling instruction files that carry the same rules', () => {
         'both/CLAUDE.md',
         'narrow/AGENTS.md',
         'narrow/CLAUDE.md',
+        'deep/AGENTS.md',
+        'deep/CLAUDE.md',
+        'shared/AGENTS.md',
+        'shared/CLAUDE.md',
       ],
     }).discover({ projectRoot: dup, changedFiles: [] })
     return sources.map((s) => s.path)
@@ -300,5 +313,20 @@ describe('sibling instruction files that carry the same rules', () => {
       'narrow/AGENTS.md',
       'narrow/CLAUDE.md',
     ])
+  })
+
+  test('a pointer to a sibling with deep imports holds all of it, so the sibling is dropped', async () => {
+    const found = await paths()
+    expect(found.filter((p) => p.startsWith('deep/'))).toEqual(['deep/CLAUDE.md'])
+
+    const sources = await instructionFiles({ list: () => ['deep/CLAUDE.md'] }).discover({
+      projectRoot: dup,
+      changedFiles: [],
+    })
+    expect(sources[0]?.text).toContain('- Naming rule.')
+  })
+
+  test('siblings that import the same file are still one source', async () => {
+    expect((await paths()).filter((p) => p.startsWith('shared/'))).toEqual(['shared/CLAUDE.md'])
   })
 })

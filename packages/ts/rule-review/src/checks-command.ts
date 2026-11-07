@@ -22,9 +22,8 @@ import {
   runChecks,
   runToJson,
 } from './checks.ts'
-import { print, say } from './output.ts'
+import { print, say, sayError } from './output.ts'
 import { readCheckFolder } from './providers/check-folder.ts'
-import { ScopeError } from './select.ts'
 
 const CHECKS_USAGE = `rule-review checks — run a folder of check scripts
 
@@ -54,9 +53,9 @@ Environment of each script
   CHECK_NAME   the name after the number prefix, extension kept
   CHECK_ORDER  the number prefix
   CHECK_DIR    absolute path of <dir>
-  CHECK_BASE   the base rev the changeset was computed against: HEAD with no
-               flag, the resolved <rev> with --base, HEAD with --staged, and
-               empty with --all
+  CHECK_BASE   the commit the changeset was measured from: HEAD with no flag
+               or --staged, the fork point of <rev> and HEAD with --base (so
+               'git diff "$CHECK_BASE"' shows the same change), empty with --all
 
 A script reads its in-scope changed files on stdin, one repo-relative path per
 line. A script declares scope with '# applies_to: <glob>' lines in its leading
@@ -138,15 +137,20 @@ function parseChecks(argv: string[]): ChecksOptions | 'help' {
 function changesetFor(git: Git, opts: ChecksOptions): Changeset {
   if (opts.staged) return { files: stagedFiles(git), base: 'HEAD' }
   if (opts.all) return { files: trackedFiles(git), base: '' }
-  const base = resolveBase(git, opts.base ?? 'HEAD')
+  // CHECK_BASE is the fork point the files were measured from, so a script
+  // that diffs against it sees the same change its stdin lists.
+  const ref = forkPointOf(git, resolveBase(git, opts.base ?? 'HEAD'))
   // Deleted paths are left out, as `--staged` leaves them out: a script cannot run on them.
-  return { files: filesSince(git, forkPointOf(git, base), { existingOnly: true }), base }
+  return { files: filesSince(git, ref, { existingOnly: true }), base: ref }
 }
 
-/** Print a bad scope pattern as a usage error (exit 2); anything else is a real fault. */
-function reportScopeError(err: unknown): number {
-  if (!(err instanceof ScopeError)) throw err
-  say(`rule-review: ${err.message}\n`)
+/**
+ * Print why the run could not complete and return 2. Exit 1 means a check
+ * failed, so an error must never surface as 1: a bad scope pattern, and any
+ * other fault, is "could not run".
+ */
+function reportRunError(err: unknown): number {
+  sayError(err)
   return 2
 }
 
@@ -202,7 +206,7 @@ export async function checksMain(argv: string[]): Promise<number> {
     try {
       plan = planChecks(folder, changeset)
     } catch (err) {
-      return reportScopeError(err)
+      return reportRunError(err)
     }
     print(opts.json ? JSON.stringify({ dryRun: true, ...plan }, null, 2) + '\n' : formatPlan(plan))
     return 0
@@ -218,7 +222,7 @@ export async function checksMain(argv: string[]): Promise<number> {
   try {
     run = await runChecks(folder, { projectRoot: root, changeset, signal: interrupt.signal })
   } catch (err) {
-    return reportScopeError(err)
+    return reportRunError(err)
   } finally {
     process.off('SIGINT', onSignal)
     process.off('SIGTERM', onSignal)

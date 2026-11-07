@@ -77,6 +77,13 @@ path-scoped check scripts (experimental). The package was developed, unpublished
   the jobs still running, and an aborted run starts no more agents.
 - Settings are checked when a run starts: an unknown engine, a `concurrency` that is not a positive integer or `Infinity`, a negative `maxFilesPerJob`, a non-positive `timeoutMs` or an unknown `severityFloor` rejects the run with the setting's name, before any agent starts. A `NaN` concurrency used to start no judgement at all.
 - A directory path given to the changeset readers reads the whole checkout from its top level, whichever subdirectory it names.
+- The prompt fences the rules and each diff with tags whose suffix is a hash of their contents, so a change that contains `</file>` or `</rules>` cannot close its block early.
+- A judgement none of whose files has a diff is not sent to the agent; it is recorded as not judged.
+- An error that stops a run exits 2, never 1, so a CI step can tell findings from a run that could not complete.
+- `rule-review checks --base <rev>` sets `CHECK_BASE` to the fork point the files were measured from, so `git diff "$CHECK_BASE"` shows the same change; with no changeset, an inherited `CHECK_BASE` is unset.
+- A branch named like a sha or containing `@` is resolved as a branch.
+- `DEFAULT_CONFIG.exclude` is frozen too.
+- A `CLAUDE.md` that imports its sibling `AGENTS.md` inlines it whole, deep imports included, so the two are judged once; discovery reads only the instruction files whose directory holds a changed file.
 - What the command prints has terminal controls removed, so a finding, an agent error or a check's output cannot move the cursor or recolor the terminal.
 - A check script's headers are read from its first 4 KiB without reading the whole file.
 - After an abort, `runChecks` no longer reports skip rows for files that never had a turn.
