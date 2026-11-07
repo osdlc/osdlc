@@ -134,7 +134,7 @@ The report, `plan` and `clean` take these:
 | Option | Meaning |
 | --- | --- |
 | `--remote` | Also judge remote branches. Turns on the network: fetches each remote first and asks GitHub or GitLab about pull requests. Slower. |
-| `--offline` | With `--remote`: do not fetch; judge against the remote-tracking refs already on disk. Remote branches are read from those refs too, so judging does not contact the remote (`clean`'s remote steps still do). Tips can be stale: a branch the remote already deleted still shows, and `clean` reports it as already gone, whether it was to be deleted or spared. One it was to delete is counted apart from what it deleted. A spared branch whose tracking ref was pruned after the plan refuses the run instead: plan again. Pull requests are still looked up; add `--provider none` to judge with no network at all. |
+| `--offline` | With `--remote`: do not fetch. Judge against the remote-tracking refs already on disk, remote branches included, so judging needs no access to the remote. Pull requests are still looked up; add `--provider none` for no network at all. The refs can be stale: see [`--offline` reads what is already on disk](#--offline-reads-what-is-already-on-disk). |
 | `--only <kinds>` | Only these kinds of row: `worktree`, `branch`, `remote`, comma-separated. Default: `worktree,branch`, plus `remote` with `--remote`. Naming `remote` implies `--remote`. |
 | `--branch <name\|HEAD>` | Only the rows of one branch: its worktree, its local branch, and its remote branch with `--remote`. `HEAD` is the branch checked out at the target. Never the default branch. |
 | `--against <remote>` | The remote whose default branch counts as "merged into". Default: `origin`, then the first remote. |
@@ -572,21 +572,185 @@ table cannot be read the worktree is held back as `process-probe-failed`. A
 host or test supplies its own probe.
 Nothing is ever killed.
 
-Without the provider's CLI (`gh`, or `glab` for GitLab), or without
-authentication, classification proceeds on git evidence alone and the report
-says so. A listing that fails, such as one for a repository the signed-in
-account cannot see, does the same: the repository is judged on git evidence
-and carries a `note` saying why. Deleting a remote branch with no known PR
-then needs `confirm-open-pr`, because deleting an open PR's head branch
-closes the PR. A remote whose branches `git ls-remote`
-cannot list after the fetch is read from the remote-tracking refs the fetch
-just wrote, also with a note. A failed fetch is different: every row would be
-measured against an older default branch than the one asked for, so the
-repository is an error. See [Providers (prototype)](#providers-prototype).
+When the provider's CLI is missing or signed out, or a lookup fails, the
+sweep keeps going on what git alone can tell it: see
+[When a lookup fails](#when-a-lookup-fails).
 
 Every branch delete names the full sha the sweep judged. `update-ref -d` and
 the pinned `--force-with-lease` push both refuse when the branch has moved
 since, so a commit pushed while you read the plan survives it.
+
+## When a lookup fails
+
+A sweep asks three things of the outside world: `git fetch` for the remote's
+current state, `git ls-remote` for its branches, and `gh` or `glab` for pull
+requests. Any of them can fail: the network is down, the repository was
+renamed or deleted, the signed-in account cannot see it, a rate limit.
+
+The rule is that a failed lookup costs only what it would have told you. The
+rows that did not need it are judged as usual, the rows that did are judged
+without it, and the repository carries a `note` saying what was missing. Only
+a failed fetch costs the whole repository.
+
+| What failed | What you get |
+| --- | --- |
+| `gh pr list` / `glab api` (the PR listing) | Every row is judged on git evidence. Remote branches with no known PR need `--allow confirm-open-pr` to delete. One note on the repository. |
+| `gh` / `glab` not installed or not signed in | Every row is judged on git evidence, and each branch says why: "No PR lookup (`gh` not installed)." or "(`gh` not signed in)." The provider was never asked, so there is no note and no `confirm-open-pr` gate; pass `--provider none` to say so outright. |
+| `git ls-remote`, after a fetch that worked | Remote branches are read from the refs that fetch just wrote. A note on the repository and on each remote row. |
+| `git fetch` | The repository is an error with no rows. Every row would otherwise be judged against an older default branch than the one you asked for. |
+
+### Example: a repository `gh` cannot see
+
+The remote names a repository that was deleted, or that your account cannot
+read. In 0.18 and earlier the repository came back as an error and none of it was
+judged:
+
+```console
+$ repo-cleaner --remote --offline
+~/work/app  (default main, origin, not fetched)
+  error: GitHub has no such pull request, issue or repository, or you cannot see it.
+
+0 to delete, 0 to review, across 1 repository (1 unreadable).
+```
+
+Now the merged branch is still found, and the note says what was missing:
+
+```console
+$ repo-cleaner --remote --offline
+~/work/app  (default main, origin, not fetched)
+  note: Listing PRs with `gh pr list` failed (GitHub has no such pull request, issue or repository, or you cannot see it.); judged on git evidence alone. Pass `--provider none` if this remote has no forge.
+  branch  feat/login         delete   fully merged into origin/main
+          git update-ref -d refs/heads/feat/login 44d2db93…
+  remote  origin/feat/login  delete   fully merged into origin/main; needs --allow confirm-open-pr
+          git push --force-with-lease=refs/heads/feat/login:44d2db93… origin :refs/heads/feat/login
+
+2 to delete, 0 to review, across 1 repository.
+```
+
+### Why the remote branch needs `confirm-open-pr`
+
+Deleting the head branch of an open pull request closes that pull request.
+When the listing works, `repo-cleaner` knows which branches have one. When it
+failed, it cannot tell, so it does not delete a remote branch on its own say:
+
+```console
+$ repo-cleaner clean --remote --offline --yes
+repo-cleaner clean: ~/work/app: Listing PRs with `gh pr list` failed (…); judged on git evidence alone. …
+skipped  remote:origin/feat/login — not-allowed (needs confirm-open-pr)
+ok       branch:feat/login — git update-ref -d refs/heads/feat/login 44d2db93… (ref does not resolve)
+
+deleted: 1 local branch
+skipped 1, not deleted: 1 not-allowed (--allow confirm-open-pr)
+status: complete
+```
+
+The local branch went; the remote branch stayed. To go on, pick one:
+
+- Fix the lookup (sign in, check the remote URL) and run again.
+- Pass `--provider none` if this remote has no forge at all, so there is no
+  pull request to lose.
+- Check for open pull requests yourself, then pass `--allow confirm-open-pr`.
+
+### `--offline` reads what is already on disk
+
+`--offline` does not fetch, and reads remote branches from the
+remote-tracking refs (`refs/remotes/<remote>/`) instead of asking the remote
+with `git ls-remote`. So judging works with no network and with a remote that
+no longer exists. In 0.18 and earlier it still called `git ls-remote`, and a remote
+that could not be read failed the whole repository:
+
+```console
+$ repo-cleaner --remote --offline --provider none     # 0.18 and earlier
+~/work/api  (default main, origin, not fetched)
+  error: git ls-remote: The remote '/srv/git/api.git' does not exist or is not a git repository. …
+```
+
+```console
+$ repo-cleaner --remote --offline --provider none     # now
+~/work/api  (default main, origin, not fetched)
+  branch  feat/login         delete   fully merged into origin/main
+          git update-ref -d refs/heads/feat/login 255acd56…
+  remote  origin/feat/login  delete   fully merged into origin/main
+          git push --force-with-lease=refs/heads/feat/login:255acd56… origin :refs/heads/feat/login
+
+2 to delete, 0 to review, across 1 repository.
+```
+
+`--offline` still asks `gh` or `glab` about pull requests. Add
+`--provider none` to judge with no network at all. `clean` always contacts
+the remote for its remote steps: it pushes the deletes and checks spared tips
+with `git ls-remote`.
+
+The refs on disk can be stale. A remote-tracking ref stays until the next
+`git fetch --prune`, so a branch the forge deleted after its pull request
+merged still shows as a row. `clean` handles that: when the delete is refused
+and the remote no longer lists the branch, the step reports it as already
+gone, removes the stale tracking ref, and the run goes on. The summary counts
+it apart from what the run deleted:
+
+```console
+$ repo-cleaner clean --remote --offline --provider none --only remote --yes
+ok  remote:origin/feat/cart — git push … origin :refs/heads/feat/cart (ls-remote lists nothing)
+ok  remote:origin/feat/search — git push … origin :refs/heads/feat/search (already gone from origin)
+
+deleted: 1 remote branch, 1 remote branch already gone
+status: complete
+```
+
+A spared branch that is gone passes its tip check the same way, from an
+offline plan. If its tracking ref was pruned after the plan, the re-check no
+longer finds the row and refuses the run; plan again. With a plan made
+online, the tips were read live, so a spared branch that has gone since
+refuses the run.
+
+### In the library
+
+The same information is on the result, for a host to show or act on:
+
+- `RepoSweep.notes`: one sentence for each lookup the repository was judged
+  without. Empty when everything answered.
+- `RepoInfo.provider.listError`: the provider's own reason, when its listing
+  failed.
+- `Preview.notes` (`check`) and `RunOptions.onNotes` (`run`): the same notes
+  from their re-checks, which sweep again and can meet a failure the first
+  sweep did not.
+- `RunSummary.gone`: remote branches a delete step found already gone.
+
+```ts
+import { sweep } from '@osdlc/repo-cleaner'
+
+const result = sweep(['.'], { remote: true, offline: true, provider: 'github' })
+for (const repo of result.repos) {
+  if (repo.error !== null) {
+    console.log(`${repo.path}: could not be swept: ${repo.error}`)
+    continue
+  }
+  for (const note of repo.notes) console.log(`note: ${note}`)
+  console.log(`listError: ${repo.repo?.provider?.listError ?? '(none)'}`)
+  for (const row of repo.rows) console.log(row.id, row.verdict, row.risks)
+}
+```
+
+```text
+note: Listing PRs with `gh pr list` failed (GitHub has no such pull request, …); judged on git evidence alone. …
+listError: GitHub has no such pull request, issue or repository, or you cannot see it.
+worktree:/Users/me/work/app keep []
+branch:feat/login delete []
+branch:main keep []
+remote:origin/feat/login delete [ "confirm-open-pr" ]
+remote:origin/main keep []
+```
+
+The local branch needs no grant: deleting it closes no pull request. The
+remote branch carries `confirm-open-pr`, so `check` drops it unless that risk
+is allowed.
+
+A `PrProvider` you write reports a failure by returning `null` or by
+throwing; either becomes `listError` and a note. Return an empty list only
+when the forge answered and there are no pull requests.
+
+The decision behind this is
+[D-UVUH](docs/planning/decisions/D-UVUH-failed-lookups.md).
 
 ## Plan and clean
 
@@ -754,14 +918,16 @@ Not done yet:
 - Mapping a self-hosted host to a provider in config; today it is the host
   name or `--provider`.
 - Auth edge cases: tokens without API scope, `glab` signed in to a different
-  host than the remote, rate limits. Each reads as "no PR found".
+  host than the remote, rate limits. Each is a failed listing: the rows are
+  judged on git evidence with a note (see
+  [When a lookup fails](#when-a-lookup-fails)).
 - Squash metadata. GitLab reports `squash_commit_sha`; it is not used, so a
   squashed MR proves landing only by its head commit, as on GitHub.
 - GitLab under a sub-path (`https://host/gitlab/group/proj`). The URL does not
   say where the install ends and the project begins, so the whole path is read
   as the project, `glab` is asked for a project that does not exist, and the
-  listing fails. That reads as "no PR found": rows stay at `review`, nothing is
-  deleted on its account.
+  listing fails. The rows are judged on git evidence with a note, and a remote
+  branch needs `--allow confirm-open-pr` to delete.
 
 ## Runtime dependencies
 
