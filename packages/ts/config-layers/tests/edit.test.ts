@@ -323,4 +323,16 @@ describe('rewriteMigrated', () => {
     expect(out.text).not.toContain('# lost')
     expect(parse(out.text)).toEqual(target)
   })
+
+  test('renders the document again when yaml-splice refuses the edit', () => {
+    // yaml-splice matches keys case-insensitively, so editing `a` beside `A` is ambiguous.
+    const out = rewriteMigrated('# lost\nA: 1\na: 2\n', { A: 1, a: 3 })
+    expect(out.rewrite).toBe('reserialized')
+    expect(parse(out.text)).toEqual({ A: 1, a: 3 })
+  })
+
+  test('any other error is thrown, not hidden behind a re-render', () => {
+    // A step that leaves a value no JSON-shaped target can hold is a bug in the step.
+    expect(() => rewriteMigrated('# keep\na: 1\n', { a: 2n })).toThrow(TypeError)
+  })
 })

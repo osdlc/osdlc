@@ -28,7 +28,7 @@
 
 import { isDeepStrictEqual } from 'node:util'
 
-import { editYaml, type EditValue, type FieldEdit } from '@osdlc/yaml-splice'
+import { EditError, editYaml, type EditValue, type FieldEdit } from '@osdlc/yaml-splice'
 import {
   isAlias,
   isMap,
@@ -42,6 +42,17 @@ import {
 
 import { parseYamlText } from './loader.ts'
 import { isPlainObject } from './value.ts'
+
+/**
+ * An edit this module cannot make while keeping the bytes around it: a nested
+ * edit under an anchor defined elsewhere, an intermediate text that no longer
+ * parses, a result that does not read back as the target. Together with
+ * yaml-splice's `EditError`, the only failure {@link rewriteMigrated} answers
+ * by rendering the document again. Internal, not in the package index.
+ */
+class UneditableError extends Error {
+  override name = 'UneditableError'
+}
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
@@ -113,9 +124,14 @@ export function reconcileYaml(text: string, target: Record<string, unknown>): st
   for (const op of diffOps(have, want, [])) {
     out = op.kind === 'set' ? setPath(out, op.path, op.value) : unsetPath(out, op.path)
   }
-  const got = parseYamlText(out) ?? {}
+  let got: unknown
+  try {
+    got = parseYamlText(out) ?? {}
+  } catch (err) {
+    throw new UneditableError(`the edited document does not parse: ${(err as Error).message}`)
+  }
   if (!isDeepStrictEqual(got, want)) {
-    throw new Error('the edited document does not read back as the target')
+    throw new UneditableError('the edited document does not read back as the target')
   }
   return out
 }
@@ -131,7 +147,9 @@ export function rewriteMigrated(
 ): { text: string; rewrite: 'edited' | 'reserialized' } {
   try {
     return { text: reconcileYaml(text, target), rewrite: 'edited' }
-  } catch {
+  } catch (err) {
+    // Anything else is a bug, here or in a migration step, not a document the edits cannot fit.
+    if (!(err instanceof UneditableError || err instanceof EditError)) throw err
     return { text: yamlStringify(target), rewrite: 'reserialized' }
   }
 }
@@ -172,7 +190,7 @@ function diffOps(
 
 function assertPath(path: readonly string[]): void {
   if (path.length === 0 || path.some((s) => s === '')) {
-    throw new Error(`invalid key path: '${path.join('.')}'`)
+    throw new UneditableError(`invalid key path: '${path.join('.')}'`)
   }
 }
 
@@ -186,7 +204,7 @@ function edit(text: string, path: readonly string[], op: Op): string {
 
   const doc = parseDocument(text)
   if (doc.errors.length > 0) {
-    throw new Error(`YAML parse error: ${doc.errors.map((e) => e.message).join('; ')}`)
+    throw new UneditableError(`YAML parse error: ${doc.errors.map((e) => e.message).join('; ')}`)
   }
   const root = doc.contents
   const pair = isMap(root) ? findPair(root, head) : undefined
@@ -200,7 +218,7 @@ function edit(text: string, path: readonly string[], op: Op): string {
   if (isMap(node) && node.flow !== true && node.range) {
     const externalAnchor = externalAliasIn(node)
     if (externalAnchor !== null) {
-      throw new Error(
+      throw new UneditableError(
         `cannot edit nested key under '${head}': '<<: *${externalAnchor}' inside it refers to ` +
           `an anchor defined outside that block, which a byte-preserving nested edit cannot ` +
           `carry along; edit '${head}' as a whole (or the anchor's own section) instead`,
