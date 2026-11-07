@@ -227,6 +227,21 @@ describe('check and run fetch as the plan did', () => {
   })
 })
 
+describe('the re-check of an offline plan', () => {
+  test('refuses the run, touching nothing, when the remote cannot be asked', () => {
+    const fx = buildFixture()
+    const p = makePlan(fx.root)
+    // ls-remote fails; the tracking refs on disk still name merged-a.
+    sh(fx.root, ['config', 'remote.origin.uploadpack', '/bin/false'])
+    const approval = { pick: ['remote:origin/merged-a', 'branch:merged-a'] }
+    expect(() => check(p, approval, { cwd: fx.root })).toThrow(
+      /`git ls-remote origin` failed .*nothing was run/,
+    )
+    expect(remoteHeads(fx.bare)).toContain('refs/heads/merged-a')
+    expect(refs(fx.root)).toContain('refs/heads/merged-a ')
+  })
+})
+
 describe('a remote branch deleted between the re-check and the push', () => {
   test('is reported as gone, not deleted, and its tracking ref goes too', () => {
     const fx = buildFixture()

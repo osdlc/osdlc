@@ -599,6 +599,7 @@ a failed fetch costs the whole repository.
 | `gh pr list` / `glab api` (the PR listing) | Every row is judged on git evidence. Remote branches with no known PR need `--allow confirm-open-pr` to delete. One note on the repository. |
 | `gh` / `glab` not installed or not signed in | The provider is never asked, so this is treated like a failed listing: every row is judged on git evidence, remote branches with no known PR need `--allow confirm-open-pr` to delete, and a note on the repository says why. Pass `--provider none` if the remote has no forge, so there is nothing to check. |
 | `git ls-remote`, after a fetch that worked | Remote branches are read from the refs that fetch just wrote. A note on the repository and on each remote row. |
+| `git ls-remote`, in `clean`'s re-check of an `--offline` plan | The run is refused before anything runs. The refs on disk are what the re-check is there to replace, and `clean` does not delete on a remote it cannot ask. |
 | `git fetch` | The repository is an error with no rows. Every row would otherwise be judged against an older default branch than the one you asked for. |
 
 ### Example: a repository `gh` cannot see
@@ -723,6 +724,7 @@ skipped 1, not deleted: 1 gone
 status: complete
 ```
 
+If the re-check's `git ls-remote` fails, nothing runs.
 A remote branch you `--spare` (see [Pick and spare](#pick-and-spare)) that is
 gone from the remote refuses the run instead, because you spared it for what
 it held. `git fetch --prune` drops the stale tracking refs, so the report
@@ -737,8 +739,9 @@ The same information is on the result, for a host to show or act on:
 - `RepoInfo.provider.listError`: the provider's own reason, when its listing
   failed.
 - `Preview.notes` (`check`) and `RunOptions.onNotes` (`run`): the same notes
-  from their re-checks, which sweep again and can meet a failure the first
-  sweep did not.
+  from their re-checks. A re-check that sweeps again can meet a failure the
+  first sweep did not; `check` given the sweep (`CheckOptions.sweep`) reports
+  that sweep's notes instead.
 - `Step.gone` on a receipt step, and `RunSummary.gone`: a remote branch
   someone deleted between the re-check and the run's push, counted apart from
   what the run deleted.

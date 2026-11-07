@@ -272,7 +272,9 @@ function providerNote(
 ): string | null {
   const status = repo.provider
   const unchecked = status === null ? null : prsUnchecked(status)
-  if (status === null || unchecked === null) return null
+  // With no remote there is no remote branch to gate and no forge to point
+  // at; the local rows already say the lookup failed.
+  if (status === null || unchecked === null || repo.remote === null) return null
   // A local remote names no forge, and `auto` asks GitHub for any host that
   // is not GitLab's, so a host that is not a forge lands here too. github.com
   // is a forge: there the cause is access, not the provider.
@@ -284,7 +286,7 @@ function providerNote(
   if (unchecked.kind === 'list-failed') {
     return `Listing ${status.noun}s with \`${status.listing}\` failed (${status.listError}); judged on git evidence alone.${hint}`
   }
-  if (repo.remote === null || !kinds.has('remote')) return null
+  if (!kinds.has('remote')) return null
   const fix =
     unchecked.kind === 'not-installed'
       ? `Install \`${status.tool}\``
@@ -312,6 +314,8 @@ interface RepoSweepOptions extends Runners {
   /**
    * Read remote tips with `ls-remote` even without a fetch: `clean`'s
    * re-check, which must not delete on the strength of a stale tracking ref.
+   * Without a fetch, a failed `ls-remote` then fails the repository rather
+   * than fall back to those refs.
    */
   liveRemoteTips?: boolean | undefined
   branch?: string | undefined
@@ -460,6 +464,7 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
     if (kinds.has('remote')) {
       const remote = gatherRemoteBranches(repo, prs, localBranchNames, git, {
         live: repo.fetched || opts.liveRemoteTips === true,
+        strict: opts.liveRemoteTips === true && !repo.fetched,
         only,
         tick: ticker('remote'),
       })

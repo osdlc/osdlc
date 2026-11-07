@@ -1545,21 +1545,20 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     )
   })
 
-  test('a repository with no remote has no remote branch to ask about, so no note', () => {
-    const dir = join(parent, 'no-remote')
-    mkdirSync(dir)
-    makeGitFixture({ dir, initialBranch: 'main' })
-    commit(dir, 'initial commit')
-    const sw = sweepOne(dir, {
-      cwd: dir,
-      remote: true,
-      offline: true,
-      provider: 'github',
-      gh: cannedGh([], { installed: false }),
+  for (const [gh, how] of [
+    [cannedGh([], { installed: false }), 'gh not installed'],
+    [cannedGh([], { listError: 'no git remotes found' }), 'a listing that would fail'],
+  ] as const) {
+    test(`a repository with no remote has no remote branch to gate, so no note (${how})`, () => {
+      const dir = join(parent, `no-remote-${how.replace(/ /g, '-')}`)
+      mkdirSync(dir)
+      makeGitFixture({ dir, initialBranch: 'main' })
+      commit(dir, 'initial commit')
+      const sw = sweepOne(dir, { cwd: dir, remote: true, offline: true, provider: 'github', gh })
+      expect(sw.error).toBeNull()
+      expect(sw.notes).toEqual([])
     })
-    expect(sw.error).toBeNull()
-    expect(sw.notes).toEqual([])
-  })
+  }
 
   test('another remote named `origin/...` lends origin none of its branches', (ctx) => {
     const nested = join(parent, 'nested')

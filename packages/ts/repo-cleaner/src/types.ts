@@ -358,8 +358,9 @@ export interface RepoSweep {
   /**
    * What the sweep could not look up for this repository and judged without,
    * one sentence each: a remote branch listing or a pull request listing that
-   * failed, or a pull request lookup the provider's CLI could not make
-   * (missing or signed out). The rows stand on the evidence that was left.
+   * failed, a pull request lookup the provider's CLI could not make (missing
+   * or signed out), or, offline, a remote with no tracking refs on disk. The
+   * rows stand on the evidence that was left.
    * Empty when nothing was missing.
    */
   notes: string[]

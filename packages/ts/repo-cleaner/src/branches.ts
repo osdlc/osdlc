@@ -304,8 +304,8 @@ function classifyLocalBranch(opts: {
 export interface RemoteBranches {
   rows: RemoteRow[]
   /**
-   * Why the tips are the remote-tracking refs on disk though the remote's own
-   * were asked for; null otherwise.
+   * Why the tips are not the remote's own: a live listing failed and they
+   * came from disk, or offline there were none on disk. Null otherwise.
    */
   note: string | null
 }
@@ -320,7 +320,9 @@ export interface RemoteBranches {
  *
  * A live listing that fails is not "the remote has no branches" and not a
  * reason to lose the repository's other rows: the tips come from disk
- * instead, and each row and the returned note say so.
+ * instead, and each row and the returned note say so. With `strict` (`clean`'s
+ * re-check when nothing was fetched) the refs on disk are what the re-check
+ * is there to replace, so a failed listing throws instead.
  */
 export function gatherRemoteBranches(
   repo: RepoInfo,
@@ -329,6 +331,7 @@ export function gatherRemoteBranches(
   git: Git,
   opts: {
     live: boolean
+    strict?: boolean | undefined
     only?: string | undefined
     tick?: ((done: number, total: number) => void) | undefined
   },
@@ -344,6 +347,10 @@ export function gatherRemoteBranches(
     if (listed.ok) {
       tips = listed.value.flatMap(({ sha, ref }) =>
         ref.startsWith('refs/heads/') ? [{ name: ref.slice('refs/heads/'.length), sha }] : [],
+      )
+    } else if (opts.strict === true) {
+      throw new Error(
+        `\`git ls-remote ${remote}\` failed (${errorText(listed.error)}); clean deletes on a remote only after asking it, so nothing was run`,
       )
     } else {
       note = `\`git ls-remote ${remote}\` failed (${errorText(listed.error)}); remote branches are read from the remote-tracking refs on disk.`

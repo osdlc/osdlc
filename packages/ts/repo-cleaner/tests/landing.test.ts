@@ -514,7 +514,7 @@ describe('a patch match alone needs the grant', () => {
 
 describe('merged PR at an earlier head', () => {
   const prFor = (dir: string, head: string) => ({
-    // The remote is a local path, so name the provider: `auto` asks none.
+    // There is no remote, so name the provider: `auto` asks none.
     provider: 'github' as const,
     gh: cannedGh([{ number: 7, state: 'MERGED', headRefName: 'feat', headRefOid: head }]),
   })
