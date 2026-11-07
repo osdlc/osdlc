@@ -595,7 +595,7 @@ a failed fetch costs the whole repository.
 | What failed | What you get |
 | --- | --- |
 | `gh pr list` / `glab api` (the PR listing) | Every row is judged on git evidence. Remote branches with no known PR need `--allow confirm-open-pr` to delete. One note on the repository. |
-| `gh` / `glab` not installed or not signed in | Every row is judged on git evidence, and each branch says why: "No PR lookup (`gh` not installed)." or "(`gh` not signed in)." The provider was never asked, so there is no note and no `confirm-open-pr` gate; pass `--provider none` to say so outright. |
+| `gh` / `glab` not installed or not signed in | Every row is judged on git evidence. The provider was never asked, so there is no note on the repository and no `confirm-open-pr` gate. A branch left at `review` gives the reason in its `notes` (`--format json`): "No PR lookup (`gh` not installed)." or "(`gh` not signed in)." Pass `--provider none` to skip the lookup outright. |
 | `git ls-remote`, after a fetch that worked | Remote branches are read from the refs that fetch just wrote. A note on the repository and on each remote row. |
 | `git fetch` | The repository is an error with no rows. Every row would otherwise be judged against an older default branch than the one you asked for. |
 
@@ -607,18 +607,20 @@ it was judged:
 
 ```console
 $ repo-cleaner --remote --offline
-~/work/app  (default main, origin, not fetched)
+~/work/app  (acme/app, default main, origin, not fetched)
   error: GitHub has no such pull request, issue or repository, or you cannot see it.
 
 0 to delete, 0 to review, across 1 repository (1 unreadable).
 ```
 
-Now the merged branch is still found, and the note says what was missing:
+Now the merged branch is still found, and the note says what was missing.
+When the remote names no forge (a local path, or a host `auto` could only
+guess was GitHub), the note also suggests `--provider none`:
 
 ```console
 $ repo-cleaner --remote --offline
-~/work/app  (default main, origin, not fetched)
-  note: Listing PRs with `gh pr list` failed (GitHub has no such pull request, issue or repository, or you cannot see it.); judged on git evidence alone. Pass `--provider none` if this remote has no forge.
+~/work/app  (acme/app, default main, origin, not fetched)
+  note: Listing PRs with `gh pr list` failed (GitHub has no such pull request, issue or repository, or you cannot see it.); judged on git evidence alone.
   branch  feat/login         delete   fully merged into origin/main
           git update-ref -d refs/heads/feat/login 44d2db93…
   remote  origin/feat/login  delete   fully merged into origin/main; needs --allow confirm-open-pr
@@ -635,7 +637,7 @@ failed, it cannot tell, so it does not delete a remote branch on its own say:
 
 ```console
 $ repo-cleaner clean --remote --offline --yes
-repo-cleaner clean: ~/work/app: Listing PRs with `gh pr list` failed (…); judged on git evidence alone. …
+repo-cleaner clean: ~/work/app: Listing PRs with `gh pr list` failed (GitHub has no such pull request, …); judged on git evidence alone.
 skipped  remote:origin/feat/login — not-allowed (needs confirm-open-pr)
 ok       branch:feat/login — git update-ref -d refs/heads/feat/login 44d2db93… (ref does not resolve)
 
@@ -690,18 +692,19 @@ it apart from what the run deleted:
 
 ```console
 $ repo-cleaner clean --remote --offline --provider none --only remote --yes
-ok  remote:origin/feat/cart — git push … origin :refs/heads/feat/cart (ls-remote lists nothing)
-ok  remote:origin/feat/search — git push … origin :refs/heads/feat/search (already gone from origin)
+ok       remote:origin/feat/cart — git push … origin :refs/heads/feat/cart (ls-remote lists nothing)
+ok       remote:origin/feat/search — git push … origin :refs/heads/feat/search (already gone from origin)
 
 deleted: 1 remote branch, 1 remote branch already gone
 status: complete
 ```
 
-A spared branch that is gone passes its tip check the same way, from an
-offline plan. If its tracking ref was pruned after the plan, the re-check no
-longer finds the row and refuses the run; plan again. With a plan made
-online, the tips were read live, so a spared branch that has gone since
-refuses the run.
+A remote branch you `--spare` (see [Pick and spare](#pick-and-spare)) gets
+the same treatment. If an offline plan's tip check finds it gone, the step
+reports `already gone from origin; spared` and the run goes on. If its
+tracking ref was pruned after the plan, the re-check no longer finds the row
+and refuses the run; plan again. A plan made online read its tips live, so a
+spared branch that has gone since refuses the run.
 
 ### In the library
 
@@ -727,18 +730,18 @@ for (const repo of result.repos) {
   }
   for (const note of repo.notes) console.log(`note: ${note}`)
   console.log(`listError: ${repo.repo?.provider?.listError ?? '(none)'}`)
-  for (const row of repo.rows) console.log(row.id, row.verdict, row.risks)
+  for (const row of repo.rows) console.log(row.id, row.verdict, row.risks.join(', ') || '-')
 }
 ```
 
 ```text
-note: Listing PRs with `gh pr list` failed (GitHub has no such pull request, …); judged on git evidence alone. …
+note: Listing PRs with `gh pr list` failed (GitHub has no such pull request, …); judged on git evidence alone.
 listError: GitHub has no such pull request, issue or repository, or you cannot see it.
-worktree:/Users/me/work/app keep []
-branch:feat/login delete []
-branch:main keep []
-remote:origin/feat/login delete [ "confirm-open-pr" ]
-remote:origin/main keep []
+worktree:/Users/me/work/app keep -
+branch:feat/login delete -
+branch:main keep -
+remote:origin/feat/login delete confirm-open-pr
+remote:origin/main keep -
 ```
 
 The local branch needs no grant: deleting it closes no pull request. The
@@ -917,10 +920,11 @@ Not done yet:
 - Gitea, Forgejo and Bitbucket.
 - Mapping a self-hosted host to a provider in config; today it is the host
   name or `--provider`.
-- Auth edge cases: tokens without API scope, `glab` signed in to a different
-  host than the remote, rate limits. Each is a failed listing: the rows are
-  judged on git evidence with a note (see
-  [When a lookup fails](#when-a-lookup-fails)).
+- Auth edge cases. A token without API scope, or a rate limit, is a failed
+  listing: the rows are judged on git evidence with a note (see
+  [When a lookup fails](#when-a-lookup-fails)). `glab` signed in only to a
+  different host than the remote's reads as not signed in for that host: no
+  note, and no `confirm-open-pr` gate.
 - Squash metadata. GitLab reports `squash_commit_sha`; it is not used, so a
   squashed MR proves landing only by its head commit, as on GitHub.
 - GitLab under a sub-path (`https://host/gitlab/group/proj`). The URL does not

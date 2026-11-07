@@ -1519,14 +1519,22 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
         return { exitCode: 0, stdout: '[]', stderr: '' }
       },
     })
-    const liveNote = (gh: CommandRunner): string[] | undefined =>
+    const notesOf = (gh: CommandRunner, kind: 'branch' | 'remote', name: string) =>
       rowsOf(
         sweepOne(checkout, { cwd: checkout, remote: true, offline: true, provider: 'github', gh })
           .rows,
-        'branch',
-      ).get('live')?.notes
-    expect(liveNote(answering('--version'))).toContain('No PR lookup (`gh` not installed).')
-    expect(liveNote(answering('auth'))).toContain('No PR lookup (`gh` not signed in).')
-    expect(liveNote(answering('none'))).toContain('No PR found via `gh pr list`.')
+        kind,
+      ).get(name)?.notes
+    // A local branch and a remote branch, both left at review, give the same reason.
+    for (const [kind, name] of [
+      ['branch', 'live'],
+      ['remote', 'origin/feature'],
+    ] as const) {
+      expect(notesOf(answering('--version'), kind, name)).toContain(
+        'No PR lookup (`gh` not installed).',
+      )
+      expect(notesOf(answering('auth'), kind, name)).toContain('No PR lookup (`gh` not signed in).')
+      expect(notesOf(answering('none'), kind, name)).toContain('No PR found via `gh pr list`.')
+    }
   })
 })

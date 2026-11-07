@@ -457,7 +457,9 @@ function classifyRemoteBranch(opts: {
   }
 
   const notes = [`Remote branch \`${name}\` is not an ancestor of \`${remoteMain}\`.`]
-  notes.push(pr ? `Associated PR #${pr.number} is ${pr.state}.` : (unknownPr[0] ?? 'No PR found.'))
+  notes.push(
+    pr ? `Associated PR #${pr.number} is ${pr.state}.` : (unknownPr[0] ?? noPrSentence(repo)),
+  )
   if (pr && gap) notes.push(gapSentence(pr, gap, repo))
   const unmatched = patch === null ? null : unmatchedSentence(patch, repo)
   if (unmatched !== null) notes.push(unmatched)
