@@ -128,6 +128,12 @@ describe('serveStatic', () => {
     }
   })
 
+  it('answers 404 for a missing file, and serves a directory its index.html', async () => {
+    const port = await serve(sb)
+    expect((await fetchRaw('127.0.0.1', port, '/fonts/missing.woff2')).status).toBe(404)
+    expect(await fetchRaw('127.0.0.1', port, '/')).toEqual({ status: 200, body: 'storybook index' })
+  })
+
   it.skipIf(!lanAddress)('listens on loopback only', async () => {
     const port = await serve(sb)
     await expect(fetchRaw(lanAddress!, port, '/app.js')).rejects.toThrow(/ECONNREFUSED/)

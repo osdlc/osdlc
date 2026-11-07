@@ -35,6 +35,21 @@ describe('defineStoryConfig', () => {
       expect(process.env.STORY_PERF_FILE).toBe(join('/pkg', 'test-results', 'story-perf.json'))
     })
 
+    it('sets STORY_PERF_RUN once, so the workers of a run share it', () => {
+      const saved = process.env.STORY_PERF_RUN
+      try {
+        delete process.env.STORY_PERF_RUN
+        defineStoryConfig({ port: 1, mode: 'perf' })
+        const run = process.env.STORY_PERF_RUN
+        expect(run).toMatch(/^[0-9a-f-]{36}$/)
+        defineStoryConfig({ port: 1, mode: 'perf' })
+        expect(process.env.STORY_PERF_RUN).toBe(run)
+      } finally {
+        if (saved === undefined) delete process.env.STORY_PERF_RUN
+        else process.env.STORY_PERF_RUN = saved
+      }
+    })
+
     it('keeps a STORY_PERF_FILE already set', () => {
       process.env.STORY_PERF_FILE = '/custom/perf.json'
       defineStoryConfig({ port: 1, mode: 'perf', configDir: '/pkg' })

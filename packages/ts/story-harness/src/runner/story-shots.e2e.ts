@@ -14,6 +14,7 @@ import {
   isNarrowOnly,
   NARROW_VIEWPORT,
   openStory,
+  type OpenStoryOptions,
   preparePage,
   selectStories,
   splitList,
@@ -22,7 +23,10 @@ import {
 
 const storybookDir = process.env.STORYBOOK_DIR
 if (!storybookDir) throw new Error('STORYBOOK_DIR is not set; run through the story-shots command')
-const settleMs = Number(process.env.SETTLE_MS ?? 1500)
+// Unset: openStory's own default (DEFAULT_SETTLE_MS) applies.
+const openOptions: OpenStoryOptions = process.env.SETTLE_MS
+  ? { settleMs: Number(process.env.SETTLE_MS) }
+  : {}
 
 const index = JSON.parse(readFileSync(join(storybookDir, 'index.json'), 'utf8'))
 const ids = selectStories(index, {
@@ -38,7 +42,7 @@ for (const id of ids) {
       await preparePage(page)
 
       if (isNarrowOnly(id)) await page.setViewportSize(NARROW_VIEWPORT)
-      const params = await openStory(page, baseURL!, id, theme, { settleMs })
+      const params = await openStory(page, baseURL!, id, theme, openOptions)
       test.skip(!!params.skip, params.skip)
       // A shot of a crashed story is worse than none, and in update mode the
       // shot would already be written as a baseline.
@@ -47,7 +51,7 @@ for (const id of ids) {
 
       if (params.narrow && !isNarrowOnly(id)) {
         await page.setViewportSize(NARROW_VIEWPORT)
-        await openStory(page, baseURL!, id, theme, { settleMs })
+        await openStory(page, baseURL!, id, theme, openOptions)
         expect(pageErrors, 'page errors').toEqual([])
         await expect(page).toHaveScreenshot(`${id}--${theme}--narrow.png`)
       }

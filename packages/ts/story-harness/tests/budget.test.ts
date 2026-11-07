@@ -14,7 +14,12 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createPerfRecorder, removeStaleLock, type PerfReport } from '../src/playwright/budget.ts'
+import {
+  createPerfRecorder,
+  releaseLock,
+  removeStaleLock,
+  type PerfReport,
+} from '../src/playwright/budget.ts'
 
 let dir: string
 let outFile: string
@@ -186,6 +191,33 @@ describe('recorder options', () => {
     const file = join(dir, 'elsewhere', 'perf.json')
     createPerfRecorder({ env: { STORY_PERF_FILE: file } }).record('x', 1)
     expect(JSON.parse(readFileSync(file, 'utf8')).values).toEqual({ x: 1 })
+  })
+})
+
+describe('lock release', () => {
+  it('removes only a lock that still holds the releasing token', () => {
+    const lock = join(dir, 'report.json.lock')
+    writeFileSync(lock, 'another worker')
+    releaseLock(lock, 'mine')
+    expect(readFileSync(lock, 'utf8')).toBe('another worker')
+    releaseLock(lock, 'another worker')
+    expect(() => statSync(lock)).toThrow()
+  })
+
+  it('leaves no lock behind after a write', () => {
+    createPerfRecorder({ outFile, env: {}, runId: 7 }).record('x', 1)
+    expect(readdirSync(dirname(outFile))).toEqual(['story-perf.json'])
+  })
+})
+
+describe('run id', () => {
+  it('takes the run from STORY_PERF_RUN, so a new run replaces the report', () => {
+    createPerfRecorder({ outFile, env: { STORY_PERF_RUN: 'run-a' } }).budget('old', 1, 2)
+    createPerfRecorder({ outFile, env: { STORY_PERF_RUN: 'run-a' } }).budget('kept', 1, 2)
+    expect(Object.keys(read().verdicts)).toEqual(['old', 'kept'])
+    createPerfRecorder({ outFile, env: { STORY_PERF_RUN: 'run-b' } }).budget('new', 1, 2)
+    expect(read().runId).toBe('run-b')
+    expect(Object.keys(read().verdicts)).toEqual(['new'])
   })
 })
 

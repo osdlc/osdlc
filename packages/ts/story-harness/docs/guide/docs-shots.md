@@ -83,7 +83,8 @@ It reads `<packageDir>/storybook-static`, and exits 1 on a failure.
 ## Serving a build yourself
 
 `serveStatic(dir, port)` serves a static build on `127.0.0.1` only. A path outside `dir` gets a
-404, and a path with no file falls back to `index.html`. Use it for a script that drives its
+404, and so does a missing file, so a story that loads a missing asset shows the error. A
+directory serves its `index.html`. Use it for a script that drives its
 own browser:
 
 ```ts
