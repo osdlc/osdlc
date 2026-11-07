@@ -26,7 +26,13 @@
 
 import type { Git, GitSyncCallOptions } from '@osdlc/typed-git'
 
-import { landedRef, type PRInfo, type PrEvidenceGap, type RepoInfo } from './types.ts'
+import {
+  landedRef,
+  type LandingEvidence,
+  type PRInfo,
+  type PrEvidenceGap,
+  type RepoInfo,
+} from './types.ts'
 
 /** Which check showed that the work is on the landed ref. */
 export type LandingCheck =
@@ -312,14 +318,14 @@ export function patchEquivalent(
   return assessLanding(repo, tip, git, prHead).check
 }
 
-/** Write the landing evidence into a row's `facts`. */
-export function recordLanding(facts: Record<string, unknown>, landing: Landing): void {
+/** Write the landing evidence into a row's evidence. */
+export function recordLanding(evidence: LandingEvidence, landing: Landing): void {
   if (landing.check !== null) {
-    facts['landing'] = 'patch-equivalent'
-    facts['landing_check'] = landing.check
-    facts['landing_content_confirmed'] = landing.confirmed
+    evidence.landing = 'patch-equivalent'
+    evidence.landingCheck = landing.check
+    evidence.landingContentConfirmed = landing.confirmed
   } else if (landing.unmatched.length > 0) {
-    facts['unmatched_commits'] = landing.unmatched
+    evidence.unmatchedCommits = landing.unmatched
   }
 }
 

@@ -58,6 +58,7 @@ import {
   type RebaseOptions,
   type RebaseOutcome,
   type RemoteGetUrlOptions,
+  type IndexSubmodule,
   type TaggedFile,
   type UnmergedEntry,
   type ConfigSetOptions,
@@ -602,6 +603,11 @@ export class Git {
   /** Tracked files with their `ls-files -v` tag — see `lsFilesTagged` in `verbs.ts`. */
   lsFilesTagged(opts: GitSyncCallOptions = {}): TaggedFile[] {
     return this.exec(v.lsFilesTagged(), opts)
+  }
+
+  /** The submodules the index records, as `{ path, commit }` — see `submodules` in `verbs.ts`. */
+  submodules(opts: GitSyncCallOptions = {}): IndexSubmodule[] {
+    return this.exec(v.submodules(), opts)
   }
 
   /**
