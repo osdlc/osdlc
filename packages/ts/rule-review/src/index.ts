@@ -14,10 +14,12 @@
 export {
   ChangesetError,
   reviewChanges,
-  type ChangesReview,
+  type ReviewChangesResult,
   type ReviewChangesOptions,
 } from './review-changes.ts'
 export { discoverSources, review, type Dispatch, type ReviewOptions } from './run.ts'
+// The agent-call types a custom `Dispatch` takes and returns.
+export type { AgentCallSpec, AgentResult } from '@osdlc/agent-call'
 export { planJobs, type PlanResult } from './plan.ts'
 export { ScopeError } from './select.ts'
 export { buildSpec, FINDINGS_SCHEMA, type FileDiff } from './prompt.ts'

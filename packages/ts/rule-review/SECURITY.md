@@ -24,6 +24,11 @@ is the latest minor release.
   the text of the matching rule files to the agent CLI you chose, and through
   it to that agent's model provider. Do not run it on a change you may not
   send there. The agent runs read-only, with no session saved.
+- The judge reads the change and the rule files, and either can try to steer
+  it: a comment in a diff can ask the agent to report nothing. Findings are
+  evidence for a reviewer, not a security control. Do not rely on
+  `--blocking` to keep hostile changes out of a pull request from an untrusted
+  author.
 - Rule files and their `@path` imports are read only from inside the
   repository, symlinks included.
 

@@ -15,10 +15,8 @@ import {
   type DiscoveryContext,
   type FileLister,
   type InstructionFilesOptions,
-} from '../src/index.ts'
-// Internal: the default lister.
-import { gitFileLister } from '../src/providers/instruction-files.ts'
-import { makeRepo, writeFile as write } from './fixture-repo.ts'
+} from '@osdlc/rule-review'
+import { writeFile as write } from '../tests/fixture-repo.ts'
 
 test('instructionFiles mints one scoped source per instruction file', async () => {
   const root = mkdtempSync(join(tmpdir(), 'rule-review-instr-'))
@@ -69,26 +67,4 @@ test('a file reached first through a deeper import is still expanded within the 
   })
 
   expect(source!.text).toContain('Z RULE')
-})
-
-test('gitFileLister lists tracked and untracked instruction files', async () => {
-  const { root } = makeRepo({ 'CLAUDE.md': 'r\n', 'src/AGENTS.md': 'a\n', 'src/a.ts': 'x\n' })
-  write(root, 'docs/CLAUDE.md', 'new\n') // untracked, so not yet in git
-
-  expect([...(await gitFileLister(root))].sort()).toEqual([
-    'CLAUDE.md',
-    'docs/CLAUDE.md',
-    'src/AGENTS.md',
-  ])
-})
-
-test('gitFileLister skips a tracked file whose name only ends in CLAUDE.md or AGENTS.md', async () => {
-  const { root } = makeRepo({
-    'CLAUDE.md': 'r\n',
-    'docs/AGENTS.md': 'a\n',
-    'docs/SUBAGENTS.md': 'a design note\n',
-    'NOTES-CLAUDE.md': 'a note\n',
-  })
-
-  expect([...(await gitFileLister(root))].sort()).toEqual(['CLAUDE.md', 'docs/AGENTS.md'])
 })

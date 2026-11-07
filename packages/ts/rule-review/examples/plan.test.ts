@@ -12,10 +12,7 @@ import {
   planJobs,
   type PlanResult,
   type RuleSource,
-} from '../src/index.ts'
-// Internal: the matcher `planJobs` and the check runner share, and the token divisor.
-import { selectByScope, type ScopeEntry, type ScopeSelection } from '../src/select.ts'
-import { BYTES_PER_TOKEN } from '../src/tokens.ts'
+} from '@osdlc/rule-review'
 
 const sources: RuleSource[] = [
   {
@@ -79,21 +76,7 @@ test('maxFilesPerJob splits a broad source into numbered shards', () => {
   expect(jobLabel({ source: { label: 'CLAUDE.md (src)' } })).toBe('CLAUDE.md (src)')
 })
 
-test('selectByScope is the matcher planning is built on', () => {
-  const entries: ScopeEntry[] = [
-    { id: 'ts', patterns: ['**/*.ts'] },
-    { id: 'md', patterns: ['**/*.md'] },
-  ]
-  // exclude removes files from the changeset before matching.
-  const selection: ScopeSelection = selectByScope(entries, changed, ['**/b.ts'])
-
-  expect(selection.covered.get('ts')).toEqual(['src/a.ts'])
-  expect(selection.covered.get('md')).toEqual(['README.md'])
-  expect(selection.unmatched).toEqual([])
-})
-
 test('token figures estimate a prompt size for a dry run', () => {
-  expect(BYTES_PER_TOKEN).toBe(4)
   expect(estimateTokens(4000)).toBe(1000)
   expect(formatTokens(430)).toBe('430')
   expect(formatTokens(8200)).toBe('8.2k')

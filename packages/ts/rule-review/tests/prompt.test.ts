@@ -79,7 +79,7 @@ describe('the planned invocation', () => {
 
     expect(planned.argv[0]).toBe('claude')
     expect(planned.argv).toContain('claude-haiku-4-5-20251001')
-    // Nothing that could let a verification run edit the tree.
+    // Nothing that could let a review edit the tree.
     const argv = planned.argv.join(' ')
     expect(argv).not.toContain('--dangerously-skip-permissions')
     expect(argv).not.toContain('bypassPermissions')
@@ -118,4 +118,17 @@ describe('the planned invocation', () => {
       expect(typeof note.detail).toBe('string')
     }
   })
+})
+
+test('FINDINGS_SCHEMA and SEVERITY_ORDER are frozen, all the way down', async () => {
+  const { FINDINGS_SCHEMA } = await import('../src/prompt.ts')
+  const { SEVERITY_ORDER } = await import('../src/types.ts')
+  const items = (
+    (FINDINGS_SCHEMA['properties'] as Record<string, Record<string, unknown>>)[
+      'findings'
+    ] as Record<string, unknown>
+  )['items']
+  expect(Object.isFrozen(FINDINGS_SCHEMA)).toBe(true)
+  expect(Object.isFrozen(items)).toBe(true)
+  expect(Object.isFrozen(SEVERITY_ORDER)).toBe(true)
 })

@@ -26,8 +26,11 @@ created: 2026-11-07
 - `diff-verify` was weighed and dropped: `diff-verify-cli` is an unrelated
   package that verifies generated files, and the name would be read the same
   way.
-- `rule-review`, bare and as `@osdlc/rule-review`, was free on npm on
-  2026-11-07, and no package in the same space uses a name close to it.
+- `rule-review`, bare and as `@osdlc/rule-review`, was free on npm, crates.io
+  and PyPI on 2026-11-07, and no package in the same space uses a name close
+  to it. On GitHub the package lives in `osdlc/osdlc`, so it needs no
+  repository or account of its own; a GitHub user or organisation named
+  `rule-review` was not checked.
 
 ## Consequences
 

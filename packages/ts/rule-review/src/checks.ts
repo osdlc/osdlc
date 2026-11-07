@@ -203,9 +203,9 @@ async function runScript(
 
 /**
  * Run every selected script check in order. A script whose scope matches no
- * changed file is SKIP in its place; prompt checks and skipped entries follow
- * as SKIP. An abort ends the run after the check it interrupted, and the
- * skipped entries are then left out.
+ * changed file, and a prompt check, is SKIP in its place; the entries that are
+ * not checks follow as SKIP. An abort ends the run after the check it
+ * interrupted, and those entries are then left out.
  *
  * @experimental
  */

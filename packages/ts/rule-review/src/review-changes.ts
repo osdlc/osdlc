@@ -45,7 +45,7 @@ export interface ReviewChangesOptions {
 }
 
 /** What {@link reviewChanges} returns: the run, and the changeset it judged. */
-export interface ChangesReview extends ReviewRun {
+export interface ReviewChangesResult extends ReviewRun {
   /** Absolute path of the checkout's top level. */
   projectRoot: string
   /** The base as given. */
@@ -85,7 +85,9 @@ export class ChangesetError extends Error {
  * @throws {ScopeError} A source's scope or an `exclude` pattern cannot be read.
  * @throws {Error} The engine is not one `@osdlc/agent-call` knows.
  */
-export async function reviewChanges(options: ReviewChangesOptions = {}): Promise<ChangesReview> {
+export async function reviewChanges(
+  options: ReviewChangesOptions = {},
+): Promise<ReviewChangesResult> {
   const cwd = resolve(options.cwd ?? process.cwd())
   let root: string | null
   try {

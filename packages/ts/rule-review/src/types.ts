@@ -88,7 +88,7 @@ export interface ReviewJob {
 export type Severity = 'violation' | 'tension' | 'drift'
 
 /** Severity ordering, most to least serious. Index doubles as the rank. */
-export const SEVERITY_ORDER: readonly Severity[] = ['violation', 'tension', 'drift']
+export const SEVERITY_ORDER: readonly Severity[] = Object.freeze(['violation', 'tension', 'drift'])
 
 /** One rule breach, attributed to the source that judged it. */
 export interface Finding {
@@ -136,7 +136,7 @@ export interface JobOutcome {
   oversize?: { bytes: number; limit: number }
 }
 
-/** Everything one verification run produced. */
+/** Everything one review run produced. */
 export interface ReviewRun {
   jobs: ReviewJob[]
   outcomes: JobOutcome[]

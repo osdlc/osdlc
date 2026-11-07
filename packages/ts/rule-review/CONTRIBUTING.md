@@ -21,7 +21,7 @@ merged there. The design decisions and open work are in
 
 The repository is a pnpm workspace. Install from the repository root, then
 work in the package directory. The tests run on [Vitest](https://vitest.dev)
-under Node 22.22.2 or later. They need `git` on the PATH and run offline: a
+under Node `^22.22.2 || ^24.15.0 || >=26.0.0`. They need `git` on the PATH and run offline: a
 stand-in agent answers every judgement, so no model is called and no key is
 needed. The package imports its sibling libraries through their built `dist/`,
 so run `pnpm run build` at the repository root first.
@@ -34,7 +34,9 @@ pnpm test
 ```
 
 To run the CLI from a checkout, build the package and run
-`node bin/rule-review.js --help`.
+`node bin/rule-review.js --help`. To make an installed `rule-review` hand off
+to your checkout, run `rule-review dev link` in it, or set `RULE_REVIEW_HOME`
+to its path; `rule-review dev` lists the other subcommands.
 
 `pnpm run test:eval` runs a small suite against a real agent: a throwaway
 repository with planted rule breaches, scored against the known answers. It

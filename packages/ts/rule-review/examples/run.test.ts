@@ -1,12 +1,11 @@
 /**
- * Verify a changeset against one rule source, with the agent call stubbed.
+ * Review a changeset against one rule source, with the agent call stubbed.
  *
  * Shows the whole library flow end to end without spawning an agent: build a
  * RuleSource, hand it and the changed files to `review`, inject a `dispatch`
  * that returns a canned judgement, and read the ReviewRun back.
  */
 import { expect, test } from 'vitest'
-import type { AgentCallSpec, AgentResult } from '@osdlc/agent-call'
 
 import {
   DEFAULT_CONFIG,
@@ -22,7 +21,9 @@ import {
   type ReviewConfig,
   type ReviewOptions,
   type ReviewRun,
-} from '../src/index.ts'
+  type AgentCallSpec,
+  type AgentResult,
+} from '@osdlc/rule-review'
 
 const source: RuleSource = {
   id: 'instruction:src/CLAUDE.md',
@@ -45,7 +46,7 @@ const config: ReviewConfig = { ...DEFAULT_CONFIG, blocking: true }
 // It records each spec so the test can check, after `review` returns, that the
 // call was read-only JSON. An `expect` inside the stub would be swallowed by
 // the run and show up as a failed job instead.
-// Only the findings and timing fields matter to verify (see runJob in run.ts);
+// Only the findings and timing fields matter to review (see runJob in run.ts);
 // the rest fills AgentResult's type.
 const seen: AgentCallSpec[] = []
 const dispatch: Dispatch = async (spec): Promise<AgentResult> => {
@@ -79,7 +80,7 @@ const dispatch: Dispatch = async (spec): Promise<AgentResult> => {
   }
 }
 
-test('verify judges only the files a source governs', async () => {
+test('review judges only the files a source governs', async () => {
   const settled: JobOutcome[] = []
   const options: ReviewOptions = {
     projectRoot: '/repo',

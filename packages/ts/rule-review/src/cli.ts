@@ -17,7 +17,7 @@ import { BUILTIN_AGENTS } from '@osdlc/agent-call'
 
 import { checksMain } from './checks-command.ts'
 import { exitCodeFor } from './findings.ts'
-import { ChangesetError, reviewChanges, type ChangesReview } from './review-changes.ts'
+import { ChangesetError, reviewChanges, type ReviewChangesResult } from './review-changes.ts'
 import { ScopeError } from './select.ts'
 import { estimateTokens, formatTokens, jobLabel } from './tokens.ts'
 import { DEFAULT_CONFIG, type ReviewConfig, type Severity } from './types.ts'
@@ -194,7 +194,7 @@ export async function main(argv: string[]): Promise<number> {
   const onSignal = () => interrupt.abort()
   process.on('SIGINT', onSignal)
   process.on('SIGTERM', onSignal)
-  let run: ChangesReview
+  let run: ReviewChangesResult
   try {
     run = await reviewChanges({
       cwd: opts.cwd,

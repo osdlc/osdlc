@@ -2,7 +2,7 @@
  * Discovery, dispatch, and collection — the one module that does IO.
  *
  * Fan-out is concurrency-capped. There is no correctness reason for the cap:
- * verification is read-only and no job touches the working tree, so jobs
+ * a review is read-only and no job touches the working tree, so jobs
  * cannot conflict with each other. It exists purely so a wide changeset does
  * not open thirty agent processes at once.
  */
@@ -97,10 +97,11 @@ export interface ReviewOptions {
   /**
    * Per-job settings, when the caller scopes them more narrowly than the run.
    *
-   * Called once per planned job. Only the dispatch fields are read per job —
-   * engine, model, effort, and timeout. `concurrency` and `exclude` stay run-level by
-   * construction: the cap governs the whole fan-out, and exclusions are
-   * applied before any job exists.
+   * Called once per planned job. Only the fields a single judgement uses are
+   * read per job: `engine`, `binary`, `model`, `effort`, `extraArgs`,
+   * `timeoutMs` and `maxPromptBytes`. `concurrency`, `exclude` and
+   * `maxFilesPerJob` stay run-level by construction: the cap governs the whole
+   * fan-out, and exclusions and sharding are applied before any job exists.
    */
   configFor?: (job: ReviewJob) => ReviewConfig
   /**

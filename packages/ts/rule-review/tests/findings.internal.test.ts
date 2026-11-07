@@ -1,18 +1,10 @@
 /**
- * Turn a judge's structured reply into findings, merge and order them, and
- * decide the process exit code against a severity floor.
+ * Turn a judge's structured reply into findings, then merge and order them:
+ * the internal steps `review` runs on each reply.
  */
 import { expect, test } from 'vitest'
 
-import {
-  exitCodeFor,
-  meetsFloor,
-  SEVERITY_ORDER,
-  type Finding,
-  type JobOutcome,
-  type Severity,
-  type ReviewJob,
-} from '../src/index.ts'
+import { type Finding, type JobOutcome, type Severity, type ReviewJob } from '../src/index.ts'
 // Internal: the steps `review` runs on each reply.
 import { mergeFindings, parseFindings } from '../src/findings.ts'
 
@@ -44,13 +36,6 @@ test('parseFindings validates the reply and attributes it to the job', () => {
   expect(findings[0]!.file).toBe('src/a.ts')
   expect(findings[0]!.line).toBe(3)
   expect(findings[0]!.sourceId).toBe('src')
-})
-
-test('SEVERITY_ORDER and meetsFloor rank severities', () => {
-  expect([...SEVERITY_ORDER]).toEqual(['violation', 'tension', 'drift'])
-  // At or above the floor.
-  expect(meetsFloor('violation', 'tension')).toBe(true)
-  expect(meetsFloor('drift', 'tension')).toBe(false)
 })
 
 test('mergeFindings orders broad-to-specific, then by severity', () => {
@@ -85,21 +70,4 @@ test('mergeFindings orders broad-to-specific, then by severity', () => {
     ['root', 'drift'],
     ['deep', 'violation'],
   ])
-})
-
-test('exitCodeFor fails only when blocking and a finding meets the floor', () => {
-  const findings: Finding[] = [
-    {
-      sourceId: 'src',
-      sourceKind: 'instruction',
-      sourcePath: 'src/CLAUDE.md',
-      file: 'src/a.ts',
-      evidence: 'x',
-      why: 'y',
-      severity: 'tension',
-    },
-  ]
-  expect(exitCodeFor(findings, { blocking: false, severityFloor: 'drift' })).toBe(0)
-  expect(exitCodeFor(findings, { blocking: true, severityFloor: 'violation' })).toBe(0)
-  expect(exitCodeFor(findings, { blocking: true, severityFloor: 'tension' })).toBe(1)
 })

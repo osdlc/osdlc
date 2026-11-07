@@ -626,7 +626,7 @@ describe('review — after the run is aborted or has rejected', () => {
     )
   })
 
-  test('onJobSettled is not called once verify has rejected', async () => {
+  test('onJobSettled is not called once review has rejected', async () => {
     const settled: string[] = []
     let release = (): void => {}
     const held = new Promise<void>((r) => (release = r))

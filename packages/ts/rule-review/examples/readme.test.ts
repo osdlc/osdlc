@@ -141,6 +141,35 @@ describe('the README', () => {
     expect(steps[0]?.with?.['fetch-depth']).toBe(0)
   })
 
+  // jq is on GitHub's runners; skip where it is not installed.
+  const hasJq = spawnRunner('jq').run(['--version'], { cwd: HERE }).exitCode === 0
+  test.skipIf(!hasJq)(
+    'the annotation step escapes model text into one workflow command each',
+    () => {
+      const workflow = readFileSync(join(HERE, 'ci', 'github-actions.yml'), 'utf8')
+      const program = /jq -r '\n([\s\S]*?)\n\s*' rule-review\.json/.exec(workflow)?.[1]
+      expect(program).toBeDefined()
+      const run = {
+        findings: [
+          {
+            file: 'a,b.ts',
+            line: 3,
+            severity: 'violation',
+            sourcePath: 'CLAUDE.md',
+            why: 'bad\n::error::forged 100%',
+          },
+          { file: 'c.ts', severity: 'drift', sourcePath: 'x/CLAUDE.md', why: 'meh' },
+        ],
+      }
+      const out = spawnRunner('jq').run(['-r', program!], { cwd: HERE, input: JSON.stringify(run) })
+      expect(out.exitCode, out.stderr).toBe(0)
+      expect(out.stdout.trim().split('\n')).toEqual([
+        '::error file=a%2Cb.ts,line=3,title=CLAUDE.md::bad%0A::error::forged 100%25',
+        '::warning file=c.ts,title=x/CLAUDE.md::meh',
+      ])
+    },
+  )
+
   test('the plain pre-push hook is valid sh and executable', () => {
     const hook = join(HERE, 'hooks', 'pre-push')
     expect(statSync(hook).mode & 0o111).not.toBe(0)

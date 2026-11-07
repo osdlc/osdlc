@@ -35,7 +35,7 @@ It runs an agent CLI you install and sign in to yourself: Claude Code
 another engine `@osdlc/agent-call` supports. Pick one with `--engine`. Each
 judgement runs the agent read-only, with no session saved.
 
-Node.js 22.22.2 or later, on Linux or macOS. ESM only.
+Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, on Linux or macOS. ESM only.
 
 ## How it decides what to judge
 
@@ -176,10 +176,19 @@ jobs:
         # --blocking fails the job on a violation. --strict also fails it
         # when a judgement could not complete, such as a missing API key.
         run: npx -y @osdlc/rule-review@0.4 --base "$BASE" --blocking --strict --json > rule-review.json
+      # Findings hold model text, so it is escaped before it reaches a
+      # workflow command: a newline or "::" in it cannot start another one.
       - name: Annotate the findings
         if: always()
         run: |
-          jq -r '.findings[]? | "::\(if .severity == "violation" then "error" else "warning" end) file=\(.file)\(if .line then ",line=\(.line)" else "" end),title=\(.sourcePath)::\(.why)"' rule-review.json
+          jq -r '
+            def msg: gsub("%"; "%25") | gsub("\r"; "%0D") | gsub("\n"; "%0A");
+            def prop: msg | gsub(":"; "%3A") | gsub(","; "%2C");
+            .findings[]?
+            | "::\(if .severity == "violation" then "error" else "warning" end)"
+              + " file=\(.file | prop)\(if .line then ",line=\(.line)" else "" end)"
+              + ",title=\(.sourcePath | prop)::\(.why | msg)"
+          ' rule-review.json
 ```
 
 GitLab CI:
@@ -483,6 +492,31 @@ without running it.
 | `timeoutMs`      | `600000`     | Wall clock per judgement.                                              |
 | `maxPromptBytes` | `400000`     | Prompt size past which a judgement is flagged. Nothing is cut.         |
 | `maxFilesPerJob` | `12`         | Files per judgement before sharding. 0 disables.                       |
+
+## API
+
+Every export, from the one entry point `@osdlc/rule-review`. Each has TSDoc in
+the shipped `.d.ts`; the [examples](./examples) run each one.
+
+| Export | What it is |
+| --- | --- |
+| `reviewChanges(options?)` | Review a checkout's changes. Returns a `ReviewChangesResult`. |
+| `ReviewChangesOptions`, `ReviewChangesResult` | Its input, and its run plus the changeset judged. |
+| `ChangesetError` | `reviewChanges` could not start: `kind` is `not-a-repository` or `bad-base`. |
+| `review(options)` | The same run with sources, files and diffs supplied. Takes `ReviewOptions`, returns `ReviewRun`. |
+| `discoverSources(providers, ctx)` | Every provider's rule sources; refuses a duplicate id. |
+| `planJobs(sources, files, config)` | The judgements a run would make, and the sources skipped. Returns `PlanResult`. |
+| `buildSpec(job, diffs, config, cwd)`, `FINDINGS_SCHEMA` | The agent call one judgement makes, and the reply schema. |
+| `Dispatch`, `AgentCallSpec`, `AgentResult` | The agent-call seam, for a test or another transport. |
+| `ScopeError` | A scope or exclude pattern the matcher cannot read. |
+| `exitCodeFor(findings, config)`, `meetsFloor(severity, floor)` | Grading findings against the floor. |
+| `estimateTokens(bytes)`, `formatTokens(tokens)`, `jobLabel(job)` | Sizes and names for a report. |
+| `RuleSource`, `RuleSourceProvider`, `DiscoveryContext` | What a provider returns and is given. |
+| `ReviewJob`, `JobOutcome`, `Finding`, `Severity`, `SEVERITY_ORDER` | A judgement, what came of it, and the findings. |
+| `ReviewConfig`, `DEFAULT_CONFIG` | The [settings](#settings). |
+| `instructionFiles(options?)`, `InstructionFilesOptions`, `FileLister`, `INSTRUCTION_KIND` | The built-in provider. |
+| `changedFiles`, `stagedFiles`, `trackedFiles`, `fileDiffs`, `resolveBase`, `defaultBase`, `Repo`, `FileDiff` | Reading a changeset from git, given a directory or a typed-git `Git`. |
+| `readCheckFolder`, `planChecks`, `runChecks`, … | The check-folder runner; see [Stability](#stability). |
 
 ## Compared with other tools
 

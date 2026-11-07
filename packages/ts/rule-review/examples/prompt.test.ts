@@ -10,7 +10,7 @@ import {
   FINDINGS_SCHEMA,
   type FileDiff,
   type ReviewJob,
-} from '../src/index.ts'
+} from '@osdlc/rule-review'
 
 const job: ReviewJob = {
   source: {

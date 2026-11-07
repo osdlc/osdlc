@@ -15,9 +15,10 @@ import type { ReviewConfig, ReviewJob } from './types.ts'
  *
  * Also the single definition of the finding wire shape — `Finding` in
  * `types.ts` is its TypeScript mirror, and `parseFindings` validates against
- * these same constraints.
+ * these same constraints. Frozen, objects within it too, so no caller can
+ * change what every later judgement is asked for.
  */
-export const FINDINGS_SCHEMA: Record<string, unknown> = {
+export const FINDINGS_SCHEMA: Readonly<Record<string, unknown>> = deepFreeze({
   type: 'object',
   additionalProperties: false,
   required: ['findings'],
@@ -54,6 +55,15 @@ export const FINDINGS_SCHEMA: Record<string, unknown> = {
       },
     },
   },
+})
+
+/** Freeze `value` and every object and array inside it. */
+function deepFreeze<T>(value: T): T {
+  if (typeof value === 'object' && value !== null) {
+    for (const inner of Object.values(value)) deepFreeze(inner)
+    Object.freeze(value)
+  }
+  return value
 }
 
 /** A changed file paired with its unified diff. */

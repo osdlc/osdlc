@@ -65,13 +65,13 @@ describe('rule-review argument handling', () => {
   })
 
   test(
-    'a -C directory that does not exist is a usage error (2), for dfv and rule-review checks',
+    'a -C directory that does not exist is a usage error (2), for rule-review and rule-review checks',
     async () => {
       const missing = join(tmpdir(), `rule-review-missing-${process.pid}-${Date.now()}`)
 
-      const verify = await run(['-C', missing, '--dry-run'])
-      expect(verify.code).toBe(2)
-      expect(verify.err).toContain(`rule-review: ${missing}`)
+      const reviewed = await run(['-C', missing, '--dry-run'])
+      expect(reviewed.code).toBe(2)
+      expect(reviewed.err).toContain(`rule-review: ${missing}`)
 
       const checks = await run(['checks', 'chk', '-C', missing])
       expect(checks.code).toBe(2)
