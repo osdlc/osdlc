@@ -365,6 +365,59 @@ function textOf(node: Record<string, unknown>): {
 }
 
 /**
+ * A review followed by its inline comments. Null when the review has no
+ * `comments` list or one of its comments cannot be read. `truncated` is true
+ * when the review held more inline comments than the query asked for.
+ */
+function reviewActivity(
+  node: Record<string, unknown>,
+  id: string,
+  actor: Actor | null,
+): { items: PrActivityItem[]; truncated: boolean } | null {
+  const comments = node['comments']
+  if (!isRecord(comments) || !Array.isArray(comments['nodes'])) return null
+  const items: PrActivityItem[] = [
+    {
+      kind: 'review',
+      id,
+      at: strOrNull(node['submittedAt']),
+      actor,
+      state: str(node['state']),
+      ...textOf(node),
+    },
+  ]
+  for (const c of comments['nodes']) {
+    const comment = reviewCommentOf(c, id)
+    if (comment === null) return null
+    items.push(comment)
+  }
+  const total = comments['totalCount']
+  const truncated = typeof total === 'number' && total > comments['nodes'].length
+  return { items, truncated }
+}
+
+/** One inline comment of the review `reviewId`, or null when it is not an object or has no `id`. */
+function reviewCommentOf(c: unknown, reviewId: string): PrActivityItem | null {
+  if (!isRecord(c)) return null
+  const id = strOrNull(c['id'])
+  if (id === null) return null
+  const replyTo = c['replyTo']
+  return {
+    kind: 'review-comment',
+    id,
+    at: strOrNull(c['createdAt']),
+    actor: graphqlActor(c['author']),
+    ...textOf(c),
+    reviewId,
+    path: str(c['path']),
+    line: intOrNull(c['line']),
+    originalLine: intOrNull(c['originalLine']),
+    outdated: bool(c['outdated']),
+    replyToId: isRecord(replyTo) ? strOrNull(replyTo['id']) : null,
+  }
+}
+
+/**
  * The items of one timeline node: one, none for a type this package does not
  * read, or a review followed by its inline comments. Null when the node
  * cannot be read: it is not an object, a type it reads has no `id`, a
@@ -385,42 +438,7 @@ function activityOf(node: unknown): { items: PrActivityItem[]; truncated: boolea
   if (type === 'IssueComment') {
     return one({ kind: 'comment', id, at: strOrNull(node['createdAt']), actor, ...textOf(node) })
   }
-  if (type === 'PullRequestReview') {
-    const comments = node['comments']
-    if (!isRecord(comments) || !Array.isArray(comments['nodes'])) return null
-    const items: PrActivityItem[] = [
-      {
-        kind: 'review',
-        id,
-        at: strOrNull(node['submittedAt']),
-        actor,
-        state: str(node['state']),
-        ...textOf(node),
-      },
-    ]
-    for (const c of comments['nodes']) {
-      if (!isRecord(c)) return null
-      const commentId = strOrNull(c['id'])
-      if (commentId === null) return null
-      const replyTo = c['replyTo']
-      items.push({
-        kind: 'review-comment',
-        id: commentId,
-        at: strOrNull(c['createdAt']),
-        actor: graphqlActor(c['author']),
-        ...textOf(c),
-        reviewId: id,
-        path: str(c['path']),
-        line: intOrNull(c['line']),
-        originalLine: intOrNull(c['originalLine']),
-        outdated: bool(c['outdated']),
-        replyToId: isRecord(replyTo) ? strOrNull(replyTo['id']) : null,
-      })
-    }
-    const total = comments['totalCount']
-    const truncated = typeof total === 'number' && total > comments['nodes'].length
-    return { items, truncated }
-  }
+  if (type === 'PullRequestReview') return reviewActivity(node, id, actor)
   if (type === 'PullRequestCommit') {
     const commit = node['commit']
     const sha = oidOf(commit)
