@@ -1,4 +1,9 @@
-# Testing
+---
+title: Testing
+description: "Testing code that takes leases: a real git fixture, stable commit ids, simulating a race, keeping the clock out."
+sidebar:
+  order: 5
+---
 
 Test against real git: a bare repository as the authority and a working repository to run from.
 Both are temp directories, so the tests need no network.

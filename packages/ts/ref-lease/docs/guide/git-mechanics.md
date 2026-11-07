@@ -1,4 +1,9 @@
-# Git mechanics
+---
+title: Git mechanics
+description: "The git model underneath: refs, compare-and-swap, a lease's history, load, local versus hosted remotes."
+sidebar:
+  order: 6
+---
 
 The git model the protocol rests on. Skip this if you know refs and `--force-with-lease`.
 

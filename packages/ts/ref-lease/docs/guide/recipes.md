@@ -1,4 +1,9 @@
-# Recipes
+---
+title: Recipes
+description: "Copyable functions: claim or take over an expired lease, renew, release with history, list every lease, update with retry."
+sidebar:
+  order: 3
+---
 
 Each recipe is a function you can copy. They all come from
 [examples/recipes.test.ts](../../examples/recipes.test.ts), which tests them against a real git

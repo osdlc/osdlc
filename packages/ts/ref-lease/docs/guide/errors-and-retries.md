@@ -1,4 +1,9 @@
-# Errors and retries
+---
+title: Errors and retries
+description: "What each error kind means, whether to retry, and a ready-made handler."
+sidebar:
+  order: 4
+---
 
 Every error the library throws is a `RefLeaseError`. Branch on the class, or on `kind`.
 

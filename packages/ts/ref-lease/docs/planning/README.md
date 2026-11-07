@@ -1,7 +1,7 @@
 # ref-lease planning
 
 Why `@osdlc/ref-lease` has the shape it has. The [README](../../README.md) says how to use the
-package and the [guides](../guide/README.md) show it in use. This folder says why.
+package and the [guides](../guide/how-it-works.md) show it in use. This folder says why.
 
 ## Layout
 

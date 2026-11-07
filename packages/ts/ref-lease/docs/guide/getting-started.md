@@ -1,4 +1,9 @@
-# Getting started
+---
+title: Getting started
+description: "The problem ref-lease solves, a git remote to try it on, your first lease, and how to look at it with git."
+sidebar:
+  order: 2
+---
 
 ## The problem
 
@@ -11,18 +16,15 @@ database: a ref and a push.
 
 ## The idea in one picture
 
-```text
-authority (any git remote)              worker A                 worker B
-refs/locks/deploy-api ──► commit C1      read: C1                 read: C1
-                          lease.json     push C2, if still C1 ✔   push C3, if still C1 ✘ (C2 is there now)
-                          {"holder":"A"}
-```
+![Worker A and worker B both read the ref at C1. A pushes C2 only if the ref is still C1, and is accepted. B pushes C3 only if it is still C1, and is refused because it is now C2.](images/race.svg)
 
 - A **lease** is a ref, such as `refs/locks/deploy-api`. Its commit holds your payload as JSON.
 - Every change is a **compare-and-swap**: "move the ref to my new commit, but only if it still
   points at the commit I read". git's `push --force-with-lease=<ref>:<sha>` does exactly that, and
   the remote checks it. Two workers racing can never both win.
 - The **authority** is the remote everyone pushes to: `origin`, a URL, or a bare repository path.
+
+[How it works, in pictures](./how-it-works.md) walks through each piece.
 
 ## Set up an authority
 
