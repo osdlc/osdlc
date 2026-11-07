@@ -602,8 +602,8 @@ a failed fetch costs the whole repository.
 ### Example: a repository `gh` cannot see
 
 The remote names a repository that was deleted, or that your account cannot
-read. In 0.18 and earlier the repository came back as an error and none of it was
-judged:
+read. In 0.18 and earlier the repository came back as an error, and none of
+it was judged:
 
 ```console
 $ repo-cleaner --remote --offline
@@ -656,8 +656,8 @@ The local branch went; the remote branch stayed. To go on, pick one:
 `--offline` does not fetch, and reads remote branches from the
 remote-tracking refs (`refs/remotes/<remote>/`) instead of asking the remote
 with `git ls-remote`. So judging works with no network and with a remote that
-no longer exists. In 0.18 and earlier it still called `git ls-remote`, and a remote
-that could not be read failed the whole repository:
+no longer exists. In 0.18 and earlier it still called `git ls-remote`, and a
+remote that could not be read failed the whole repository:
 
 ```console
 $ repo-cleaner --remote --offline --provider none     # 0.18 and earlier
