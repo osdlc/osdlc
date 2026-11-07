@@ -29,6 +29,8 @@ Accepted 2026-11-07, in [#656](https://github.com/osdlc/osdlc/pull/656) (issues
   already deleted, or show a tip someone has pushed past. `clean`'s re-check
   reads the remote's tips with `ls-remote`: a branch that is gone, or whose
   tip moved, is skipped, and a spared one refuses the run, as it would online.
+  If that `ls-remote` fails, the run is refused: it does not fall back to the
+  refs it is there to replace.
   A branch deleted between the re-check and the push is reported gone, not a
   failure, and the run summary counts it apart (`Step.gone`).
 - **A note is a sentence on `RepoSweep.notes`.** The text and summary reports
