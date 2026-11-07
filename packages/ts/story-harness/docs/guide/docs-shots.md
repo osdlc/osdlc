@@ -52,7 +52,8 @@ docs/screenshots/
 A story with `parameters.screenshot.narrow` also gets a `--narrow` shot, unless you set
 `viewport`. A story marked `skip` is left out.
 
-`captureStories` resolves `false` when any story failed or the page reported an error. It
+`captureStories` resolves `false` when no story matches, so a mistyped prefix fails, and when
+any story failed or the page reported an error. It
 still writes the failed story's shot, so a set of docs keeps its picture, and logs why.
 
 ## As a command

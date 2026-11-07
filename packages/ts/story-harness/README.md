@@ -194,7 +194,8 @@ const close = await serveStatic('storybook-static', 6107)
 - `captureStories(CaptureOptions)` writes PNGs for docs, with no comparison.
   It serves the build, shoots every story with the id prefix, and names each
   file after the id with the prefix removed. A page error or a failed story
-  fails the run (it resolves `false`) after every story is shot.
+  fails the run (it resolves `false`) after every story is shot. So does a
+  filter that matches no story.
 - `captureCli(CaptureCliDefaults)` is the same as a script: it reads
   `[contains] --prefix --out --port` over the package's defaults, and exits 1
   on a failure.
