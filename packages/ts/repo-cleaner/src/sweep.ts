@@ -194,7 +194,7 @@ export function sweptWith(
 /**
  * Sweep `targets`: checkouts, directories to search for checkouts, or remote
  * URLs (swept through a clone kept in `cacheDir`, remote branches only). No
- * target sweeps the checkout at `cwd`.
+ * targets means `[cwd]`, resolved the same way.
  *
  * Never throws for a repository it cannot read: that one comes back with
  * `error` set, because a fan-out must not end on its first bad entry. Throws a

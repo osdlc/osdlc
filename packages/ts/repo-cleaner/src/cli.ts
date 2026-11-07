@@ -140,7 +140,7 @@ const TARGETS = [
   {
     name: 'target',
     variadic: true,
-    help: 'a checkout, a directory of checkouts, or a remote URL (default: the checkout you are in)',
+    help: 'a checkout, a directory of checkouts, or a remote URL (default: the directory you are in)',
   },
 ] as const
 
