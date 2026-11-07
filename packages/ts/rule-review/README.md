@@ -483,6 +483,8 @@ without running it.
 ### Settings
 
 `DEFAULT_CONFIG` holds the defaults. It is frozen; spread it to change a field.
+A run checks its settings before any agent starts and rejects one out of range,
+naming it.
 
 | Field            | Default      | Meaning                                                                |
 | ---------------- | ------------ | ---------------------------------------------------------------------- |

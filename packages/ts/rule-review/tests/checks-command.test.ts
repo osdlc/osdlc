@@ -5,7 +5,6 @@ import { join } from 'node:path'
 
 import { captureOutput } from './capture-output.ts'
 import { commitAll, makeRepo, writeFile } from './fixture-repo.ts'
-import { SUBPROCESS_TIMEOUT_MS as T } from './subprocess-timeout.ts'
 import { checksMain } from '../src/checks-command.ts'
 
 let scratch: string
@@ -64,7 +63,7 @@ beforeAll(() => {
   s.git.add(['docs/d.md'])
   writeFile(s.root, 'src/a.ts', 'a3\n')
   staged = { root: s.root }
-}, T)
+})
 
 beforeEach(() => {
   rmSync(outDir, { recursive: true, force: true })
@@ -77,185 +76,137 @@ afterAll(() => {
 })
 
 describe('rule-review checks selection', () => {
-  test(
-    '--base <rev> selects by the diff against that revision',
-    async () => {
-      const { code, out } = await runCli(committed.root, '--base', committed.base)
+  test('--base <rev> selects by the diff against that revision', async () => {
+    const { code, out } = await runCli(committed.root, '--base', committed.base)
 
-      expect(code).toBe(0)
-      expect(out).toContain('PASS  1-any')
-      expect(out).toContain('PASS  2-src')
-      expect(out).toContain('SKIP  3-docs - no changed files in scope')
-      expect(out).toContain('PASS  4-several')
-      expect(out).toContain('3 passed, 0 failed, 0 errored, 1 skipped')
-    },
-    T,
-  )
+    expect(code).toBe(0)
+    expect(out).toContain('PASS  1-any')
+    expect(out).toContain('PASS  2-src')
+    expect(out).toContain('SKIP  3-docs - no changed files in scope')
+    expect(out).toContain('PASS  4-several')
+    expect(out).toContain('3 passed, 0 failed, 0 errored, 1 skipped')
+  })
 
-  test(
-    'a selected script reads exactly its in-scope files on stdin and sees CHECK_BASE',
-    async () => {
-      await runCli(committed.root, '--base', committed.base)
+  test('a selected script reads exactly its in-scope files on stdin and sees CHECK_BASE', async () => {
+    await runCli(committed.root, '--base', committed.base)
 
-      expect(seen('any', 'stdin')).toBe('src/a.ts\n')
+    expect(seen('any', 'stdin')).toBe('src/a.ts\n')
+    expect(seen('src', 'stdin')).toBe('src/a.ts\n')
+    expect(seen('src', 'base')).toBe(committed.base)
+  })
+
+  test('--staged selects by the index, not the working tree', async () => {
+    const { out } = await runCli(staged.root, '--staged')
+
+    expect(out).toContain('PASS  1-any')
+    expect(out).toContain('SKIP  2-src - no changed files in scope')
+    expect(out).toContain('PASS  3-docs')
+    expect(seen('any', 'stdin')).toBe('docs/d.md\n')
+    expect(seen('docs', 'stdin')).toBe('docs/d.md\n')
+    expect(seen('docs', 'base')).toBe('HEAD')
+  })
+
+  test('with no flag, uncommitted work is the changeset', async () => {
+    const { out } = await runCli(staged.root)
+
+    expect(out).toContain('PASS  2-src')
+    expect(out).toContain('PASS  3-docs')
+    expect(seen('several', 'stdin')).toBe('docs/d.md\nsrc/a.ts\n')
+    expect(seen('several', 'base')).toBe('HEAD')
+  })
+
+  test('with no flag on a clean tree every script is skipped', async () => {
+    const { code, out } = await runCli(committed.root)
+
+    expect(code).toBe(0)
+    expect(out).toContain('0 passed, 0 failed, 0 errored, 4 skipped')
+  })
+
+  test('--base leaves deleted files off stdin, as --staged does', async () => {
+    const r = makeRepo({ 'src/a.ts': 'a\n', 'src/old.ts': 'old\n' })
+    try {
+      const base = r.git.revParse('HEAD')!
+      writeFile(r.root, 'src/a.ts', 'a2\n')
+      rmSync(join(r.root, 'src/old.ts'))
+      commitAll(r.git, 'edit a, delete old')
+
+      await runCli(r.root, '--base', base)
+
       expect(seen('src', 'stdin')).toBe('src/a.ts\n')
-      expect(seen('src', 'base')).toBe(committed.base)
-    },
-    T,
-  )
+    } finally {
+      rmSync(r.root, { recursive: true, force: true })
+    }
+  })
 
-  test(
-    '--staged selects by the index, not the working tree',
-    async () => {
-      const { out } = await runCli(staged.root, '--staged')
+  test('--all selects by every tracked file, with an empty CHECK_BASE', async () => {
+    const { out } = await runCli(committed.root, '--all')
 
-      expect(out).toContain('PASS  1-any')
-      expect(out).toContain('SKIP  2-src - no changed files in scope')
-      expect(out).toContain('PASS  3-docs')
-      expect(seen('any', 'stdin')).toBe('docs/d.md\n')
-      expect(seen('docs', 'stdin')).toBe('docs/d.md\n')
-      expect(seen('docs', 'base')).toBe('HEAD')
-    },
-    T,
-  )
+    expect(out).toContain('4 passed')
+    expect(seen('docs', 'stdin')).toBe('docs/d.md\n')
+    expect(seen('any', 'stdin')).toBe('README.md\ndocs/d.md\nsrc/a.ts\n')
+    expect(seen('any', 'base')).toBe('')
+  })
 
-  test(
-    'with no flag, uncommitted work is the changeset',
-    async () => {
-      const { out } = await runCli(staged.root)
+  test('a skipped check is in the JSON report with its reason, in prefix order', async () => {
+    const { out } = await runCli(committed.root, '--base', committed.base, '--json')
+    const json = JSON.parse(out)
 
-      expect(out).toContain('PASS  2-src')
-      expect(out).toContain('PASS  3-docs')
-      expect(seen('several', 'stdin')).toBe('docs/d.md\nsrc/a.ts\n')
-      expect(seen('several', 'base')).toBe('HEAD')
-    },
-    T,
-  )
-
-  test(
-    'with no flag on a clean tree every script is skipped',
-    async () => {
-      const { code, out } = await runCli(committed.root)
-
-      expect(code).toBe(0)
-      expect(out).toContain('0 passed, 0 failed, 0 errored, 4 skipped')
-    },
-    T,
-  )
-
-  test(
-    '--base leaves deleted files off stdin, as --staged does',
-    async () => {
-      const r = makeRepo({ 'src/a.ts': 'a\n', 'src/old.ts': 'old\n' })
-      try {
-        const base = r.git.revParse('HEAD')!
-        writeFile(r.root, 'src/a.ts', 'a2\n')
-        rmSync(join(r.root, 'src/old.ts'))
-        commitAll(r.git, 'edit a, delete old')
-
-        await runCli(r.root, '--base', base)
-
-        expect(seen('src', 'stdin')).toBe('src/a.ts\n')
-      } finally {
-        rmSync(r.root, { recursive: true, force: true })
-      }
-    },
-    T,
-  )
-
-  test(
-    '--all selects by every tracked file, with an empty CHECK_BASE',
-    async () => {
-      const { out } = await runCli(committed.root, '--all')
-
-      expect(out).toContain('4 passed')
-      expect(seen('docs', 'stdin')).toBe('docs/d.md\n')
-      expect(seen('any', 'stdin')).toBe('README.md\ndocs/d.md\nsrc/a.ts\n')
-      expect(seen('any', 'base')).toBe('')
-    },
-    T,
-  )
-
-  test(
-    'a skipped check is in the JSON report with its reason, in prefix order',
-    async () => {
-      const { out } = await runCli(committed.root, '--base', committed.base, '--json')
-      const json = JSON.parse(out)
-
-      expect(
-        json.results.map((r: { entry: string; status: string }) => [r.entry, r.status]),
-      ).toEqual([
+    expect(json.results.map((r: { entry: string; status: string }) => [r.entry, r.status])).toEqual(
+      [
         ['1-any', 'PASS'],
         ['2-src', 'PASS'],
         ['3-docs', 'SKIP'],
         ['4-several', 'PASS'],
-      ])
-      expect(json.results[2].reason).toBe('no changed files in scope')
-      expect(json.summary).toEqual({ PASS: 3, FAIL: 0, SKIP: 1, ERROR: 0 })
-    },
-    T,
-  )
+      ],
+    )
+    expect(json.results[2].reason).toBe('no changed files in scope')
+    expect(json.summary).toEqual({ PASS: 3, FAIL: 0, SKIP: 1, ERROR: 0 })
+  })
 
-  test(
-    '--dry-run reflects the selection',
-    async () => {
-      const { out } = await runCli(committed.root, '--base', committed.base, '--dry-run')
+  test('--dry-run reflects the selection', async () => {
+    const { out } = await runCli(committed.root, '--base', committed.base, '--dry-run')
 
-      expect(out).toContain('RUN   2-src')
-      expect(out).toContain('SKIP  3-docs - no changed files in scope')
-      expect(out).toContain('3 would run, 1 skipped.')
-    },
-    T,
-  )
+    expect(out).toContain('RUN   2-src')
+    expect(out).toContain('SKIP  3-docs - no changed files in scope')
+    expect(out).toContain('3 would run, 1 skipped.')
+  })
 
-  test(
-    '--base, --staged and --all are mutually exclusive',
-    async () => {
-      for (const args of [
-        ['--staged', '--all'],
-        ['--base', 'main', '--staged'],
-        ['--all', '--base', 'main'],
-      ]) {
-        const { code, err } = await runCli(committed.root, ...args)
-
-        expect(code).toBe(2)
-        expect(err).toContain('mutually exclusive')
-      }
-    },
-    T,
-  )
-
-  test(
-    'a changeset flag outside a git repository is a usage error',
-    async () => {
-      const { code, err } = await runCli(scratch, '--all')
+  test('--base, --staged and --all are mutually exclusive', async () => {
+    for (const args of [
+      ['--staged', '--all'],
+      ['--base', 'main', '--staged'],
+      ['--all', '--base', 'main'],
+    ]) {
+      const { code, err } = await runCli(committed.root, ...args)
 
       expect(code).toBe(2)
-      expect(err).toContain('not inside a git repository')
-    },
-    T,
-  )
+      expect(err).toContain('mutually exclusive')
+    }
+  })
+
+  test('a changeset flag outside a git repository is a usage error', async () => {
+    const { code, err } = await runCli(scratch, '--all')
+
+    expect(code).toBe(2)
+    expect(err).toContain('not inside a git repository')
+  })
 })
 
 describe('rule-review checks scope errors', () => {
-  test(
-    'an unreadable applies_to pattern is a usage error naming the script',
-    async () => {
-      const bad = mkdtempSync(join(tmpdir(), 'rule-review-badscope-'))
-      try {
-        writeFile(bad, '1-bad', recorder(['src/{1..3}.ts']))
-        chmodSync(join(bad, '1-bad'), 0o755)
+  test('an unreadable applies_to pattern is a usage error naming the script', async () => {
+    const bad = mkdtempSync(join(tmpdir(), 'rule-review-badscope-'))
+    try {
+      writeFile(bad, '1-bad', recorder(['src/{1..3}.ts']))
+      chmodSync(join(bad, '1-bad'), 0o755)
 
-        const { code, err } = await captureOutput(() =>
-          checksMain([bad, '-C', committed.root, '--base', committed.base]),
-        )
+      const { code, err } = await captureOutput(() =>
+        checksMain([bad, '-C', committed.root, '--base', committed.base]),
+      )
 
-        expect(code).toBe(2)
-        expect(err).toContain("scope of '1-bad'")
-      } finally {
-        rmSync(bad, { recursive: true, force: true })
-      }
-    },
-    T,
-  )
+      expect(code).toBe(2)
+      expect(err).toContain("scope of '1-bad'")
+    } finally {
+      rmSync(bad, { recursive: true, force: true })
+    }
+  })
 })

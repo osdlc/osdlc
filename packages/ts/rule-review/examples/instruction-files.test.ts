@@ -23,8 +23,8 @@ test('instructionFiles mints one scoped source per instruction file', async () =
   write(root, 'CLAUDE.md', 'Repo-wide rules.\n')
   write(root, 'src/CLAUDE.md', 'Rules for src.\n')
 
-  // A custom lister instead of gitFileLister, so no git repo is needed. The
-  // default `gitFileLister` asks git for the same paths.
+  // A custom lister, so no git repo is needed. By default the provider asks
+  // git for the same paths.
   const list: FileLister = () => ['CLAUDE.md', 'src/CLAUDE.md']
   const options: InstructionFilesOptions = { list }
   const provider = instructionFiles(options)

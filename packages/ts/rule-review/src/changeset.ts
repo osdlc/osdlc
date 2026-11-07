@@ -6,17 +6,57 @@
  */
 import { Git } from '@osdlc/typed-git'
 
+import type { FileDiff } from './prompt.ts'
+
 /**
  * A repository to read: a typed-git client, or a directory inside the checkout.
- * A directory reads the checkout that holds it.
+ * A directory reads the whole checkout that holds it, whichever subdirectory
+ * it names, and paths come back relative to the checkout's top level.
  */
 export type Repo = Git | string
 
-function asGit(repo: Repo): Git {
-  return typeof repo === 'string' ? new Git(repo) : repo
+/**
+ * Why a changeset could not be read: the directory is not inside a git
+ * checkout (`not-a-repository`), or the base does not resolve (`bad-base`).
+ * `kind` may gain values in a minor release; treat an unknown one as a failure.
+ */
+export class ChangesetError extends Error {
+  override readonly name = 'ChangesetError'
+  constructor(
+    readonly kind: 'not-a-repository' | 'bad-base',
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options)
+  }
 }
 
-import type { FileDiff } from './prompt.ts'
+/**
+ * A client on the checkout's top level. Some git commands answer relative to
+ * the working directory, so a client opened on a subdirectory would list only
+ * part of the change, with paths in two spellings.
+ *
+ * @throws {ChangesetError} `not-a-repository` when `repo` is a directory outside git.
+ */
+export function asGit(repo: Repo): Git {
+  if (typeof repo !== 'string') return repo
+  let top: string | null
+  try {
+    top = new Git(repo).topLevel()
+  } catch (err) {
+    // A missing directory fails the spawn itself rather than reading as "not a repo".
+    throw new ChangesetError('not-a-repository', `${repo}: ${errorText(err)}`, { cause: err })
+  }
+  if (top === null) {
+    throw new ChangesetError('not-a-repository', `${repo} is not inside a git repository`)
+  }
+  return new Git(top)
+}
+
+/** An error's message, or the value as text. */
+export function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
 
 /**
  * What a run is judged against: the changed files and the base they were
@@ -107,12 +147,15 @@ export function resolveBase(repo: Repo, base: string): string {
  * empty tree. That keeps a pre-commit hook from blocking the first commit.
  */
 function forkPoint(git: Git, base: string): string {
-  if (!git.hasHistory()) {
-    const ref = resolveBase(git, base)
-    return git.objectExists(ref) ? ref : emptyTree(git)
-  }
-  const ref = resolveBase(git, base)
-  return git.mergeBase(ref, 'HEAD') ?? ref
+  return forkPointOf(git, resolveBase(git, base))
+}
+
+/** {@link forkPoint} for a base {@link resolveBase} has already resolved. */
+export function forkPointOf(git: Git, resolved: string): string {
+  if (!git.hasHistory()) return git.objectExists(resolved) ? resolved : emptyTree(git)
+  // The fork point of HEAD and itself is HEAD; no need to ask git.
+  if (resolved === 'HEAD') return resolved
+  return git.mergeBase(resolved, 'HEAD') ?? resolved
 }
 
 /** The empty tree's id in this repo's object format (sha1 or sha256). No verb covers it. */
@@ -138,10 +181,15 @@ export function changedFiles(
   opts: { existingOnly?: boolean } = {},
 ): string[] {
   const git = asGit(repo)
+  return filesSince(git, forkPoint(git, base), opts)
+}
+
+/** {@link changedFiles} against a fork point already found. */
+export function filesSince(git: Git, ref: string, opts: { existingOnly?: boolean } = {}): string[] {
   // `noRenames` lists a rename as its deleted old path plus its added new
   // path, so the rules that governed the old path still see the removal.
   const tracked = git
-    .diffNameStatus({ range: forkPoint(git, base), noRenames: true })
+    .diffNameStatus({ range: ref, noRenames: true })
     .filter((e) => opts.existingOnly !== true || 'ACMR'.includes(e.status[0] ?? ''))
     .map((e) => e.path)
   // `git diff` never lists an untracked file, so a brand-new file would go
@@ -177,7 +225,11 @@ export function trackedFiles(repo: Repo): string[] {
  */
 export function fileDiffs(repo: Repo, base: string, files: readonly string[]): FileDiff[] {
   const git = asGit(repo)
-  const ref = forkPoint(git, base)
+  return diffsSince(git, forkPoint(git, base), files)
+}
+
+/** {@link fileDiffs} against a fork point already found. */
+export function diffsSince(git: Git, ref: string, files: readonly string[]): FileDiff[] {
   const out: FileDiff[] = []
   for (const file of files) {
     // `:(literal)` so a path such as `pages/[id].vue` is not read as a glob.

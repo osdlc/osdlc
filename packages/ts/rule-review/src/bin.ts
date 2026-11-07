@@ -12,15 +12,18 @@
 import { runMain } from '@osdlc/cli-tool'
 import { devlinkHook } from '@osdlc/cli-tool/devlink'
 
-import { main } from './cli.ts'
+import { errorText } from './changeset.ts'
 import { DEVLINK_SPEC } from './devlink.ts'
 import { VERSION } from './version.generated.ts'
 
 async function bin(argv: readonly string[]): Promise<number> {
+  // Loaded here, not at the top: `--version` and a hand-off to a linked
+  // checkout never need the review code, and a git hook pays for every load.
+  const { main } = await import('./cli.ts')
   try {
     return await main([...argv])
   } catch (err) {
-    throw new Error(err instanceof Error ? err.message : String(err))
+    throw new Error(errorText(err))
   }
 }
 

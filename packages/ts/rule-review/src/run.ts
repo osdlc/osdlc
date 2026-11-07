@@ -6,9 +6,11 @@
  * cannot conflict with each other. It exists purely so a wide changeset does
  * not open thirty agent processes at once.
  */
-import { adapterFor, BUILTIN_AGENTS, callAgent } from '@osdlc/agent-call'
+import { adapterFor, callAgent } from '@osdlc/agent-call'
 import type { AgentCallSpec, AgentName, AgentResult } from '@osdlc/agent-call'
 
+import { errorText } from './changeset.ts'
+import { validateConfig } from './config.ts'
 import { mergeFindings, parseFindings } from './findings.ts'
 import { planJobs } from './plan.ts'
 import { buildSpec, type FileDiff } from './prompt.ts'
@@ -66,26 +68,13 @@ export type Dispatch = (
 const dispatchViaAgentCall: Dispatch = (spec, config, signal) =>
   callAgent(
     adapterFor(
-      engineName(config.engine),
+      // validateConfig refused any other name before the run started.
+      config.engine as AgentName,
       config.binary !== undefined ? { binary: config.binary } : {},
     ),
     spec,
     { signal },
   )
-
-/**
- * Narrow a configured engine name to one `adapterFor` accepts.
- *
- * `engine` is caller-supplied configuration, so it is an arbitrary string
- * until checked. Failing here names the valid set; letting it through would surface
- * as an opaque adapter error per job instead.
- */
-function engineName(engine: string): AgentName {
-  if (!(BUILTIN_AGENTS as readonly string[]).includes(engine)) {
-    throw new Error(`unknown engine '${engine}' (expected one of: ${BUILTIN_AGENTS.join(', ')})`)
-  }
-  return engine as AgentName
-}
 
 /** Input to {@link review}. The optional fields scope settings per job, skip the agent call, or replace it. */
 export interface ReviewOptions {
@@ -133,9 +122,9 @@ export interface ReviewOptions {
  * checkout.
  *
  * @throws {ScopeError} A source's scope or an `exclude` pattern cannot be read.
- * @throws {Error} An engine name is not one of `BUILTIN_AGENTS`, checked for the
- * run and for every job before any agent starts. A custom `dispatch` skips the
- * check.
+ * @throws {Error} A setting is out of range (see `validateConfig`), checked for
+ * the run and for every job before any agent starts. An unknown engine name is
+ * refused only when no custom `dispatch` is given.
  */
 export async function review(options: ReviewOptions): Promise<ReviewRun> {
   const { jobs, skipped } = planJobs(options.sources, options.changedFiles, options.config)
@@ -149,9 +138,9 @@ export async function review(options: ReviewOptions): Promise<ReviewRun> {
     job,
     config: options.configFor?.(job) ?? options.config,
   }))
-  if (options.dispatch === undefined) {
-    engineName(options.config.engine)
-    for (const c of configured) engineName(c.config.engine)
+  const checkEngine = { engine: options.dispatch === undefined }
+  for (const config of new Set([options.config, ...configured.map((c) => c.config)])) {
+    validateConfig(config, checkEngine)
   }
   const outcomes = dryRun
     ? configured.map((c) => measureJob(prepare(c, options)))
@@ -233,34 +222,45 @@ function prepare({ job, config }: ConfiguredJob, options: ReviewOptions): Prepar
   return { job, config, spec, promptBytes, ...(oversize !== undefined ? { oversize } : {}) }
 }
 
-/** What a job would do, without doing it. */
-function measureJob({ job, promptBytes, oversize }: PreparedJob): JobOutcome {
+/**
+ * An outcome with no findings: a measured job (no `error`) or one that was not
+ * judged. `oversize` is carried either way, so a report can still flag it.
+ */
+function emptyOutcome(
+  { job, promptBytes, oversize }: PreparedJob,
+  durationMs: number,
+  error?: string,
+): JobOutcome {
   return {
     job,
     findings: [],
-    durationMs: 0,
+    ...(error !== undefined ? { error } : {}),
+    durationMs,
     promptBytes,
     ...(oversize !== undefined ? { oversize } : {}),
   }
 }
 
+/** What a job would do, without doing it. */
+function measureJob(prepared: PreparedJob): JobOutcome {
+  return emptyOutcome(prepared, 0)
+}
+
 async function runJob(
-  { job, config, spec, promptBytes, oversize }: PreparedJob,
+  prepared: PreparedJob,
   options: ReviewOptions,
   signal: AbortSignal,
   settle: (outcome: JobOutcome) => void,
 ): Promise<JobOutcome> {
+  const { job, config, spec, promptBytes, oversize } = prepared
   if (signal.aborted) {
     // Starting an agent only to kill it at once would spend a spawn per
     // remaining job; record the job as not judged instead.
-    const outcome: JobOutcome = {
-      job,
-      findings: [],
-      error: 'aborted: the run was aborted before this job was dispatched',
-      durationMs: 0,
-      promptBytes,
-      ...(oversize !== undefined ? { oversize } : {}),
-    }
+    const outcome = emptyOutcome(
+      prepared,
+      0,
+      'aborted: the run was aborted before this job was dispatched',
+    )
     settle(outcome)
     return outcome
   }
@@ -281,14 +281,7 @@ async function runJob(
           : `agent-error: reply did not match the findings schema: ${oneLine(result.text ?? '').slice(0, 200)}`
     outcome =
       error !== undefined
-        ? {
-            job,
-            findings: [],
-            error,
-            durationMs: result.durationMs,
-            promptBytes,
-            ...(oversize !== undefined ? { oversize } : {}),
-          }
+        ? emptyOutcome(prepared, result.durationMs, error)
         : {
             job,
             findings: parseFindings(result.structured, job),
@@ -301,16 +294,9 @@ async function runJob(
             ...(oversize !== undefined ? { oversize } : {}),
           }
   } catch (err) {
-    // Reached only for a failure before the call — an unknown engine name,
-    // most likely.
-    outcome = {
-      job,
-      findings: [],
-      error: err instanceof Error ? err.message : String(err),
-      durationMs: 0,
-      promptBytes,
-      ...(oversize !== undefined ? { oversize } : {}),
-    }
+    // A custom `dispatch` that throws, or `callAgent` failing before it could
+    // report structurally. Settings were checked before the run started.
+    outcome = emptyOutcome(prepared, 0, errorText(err))
   }
 
   settle(outcome)
@@ -343,10 +329,9 @@ async function mapCapped<T, R>(
   fn: (item: T) => Promise<R>,
 ): Promise<R[]> {
   const results: R[] = []
-  // NaN would give no workers at all, and so no results; read it as 1.
-  // Infinity is a real answer, "no cap", and Math.min turns it into the count.
-  const cap = Number.isNaN(limit) ? 1 : limit
-  const width = Math.max(1, Math.min(cap, items.length))
+  // validateConfig allows a positive integer or Infinity ("no cap"), and
+  // Math.min turns Infinity into the count.
+  const width = Math.max(1, Math.min(limit, items.length))
   let next = 0
 
   await Promise.all(

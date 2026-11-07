@@ -13,13 +13,15 @@ const PACKAGE_DIR = join(import.meta.dirname, '..')
 const ENTRY = join(PACKAGE_DIR, 'src', 'index.ts')
 const TIERS = new Set(['experimental', 'beta', 'alpha'])
 
+/** One program over the entry, shared by both tests. */
+const program = ts.createProgram([ENTRY], {
+  allowImportingTsExtensions: true,
+  noEmit: true,
+  types: [],
+})
+
 /** The exports whose TSDoc names a tier other than stable. */
 function taggedExports(): string[] {
-  const program = ts.createProgram([ENTRY], {
-    allowImportingTsExtensions: true,
-    noEmit: true,
-    types: [],
-  })
   const checker = program.getTypeChecker()
   const module = checker.getSymbolAtLocation(program.getSourceFile(ENTRY)!)!
   const tagged: string[] = []
@@ -53,7 +55,6 @@ test('the README lists exactly the exports tagged @experimental', () => {
 })
 
 test('no source file tags anything @deprecated', () => {
-  const program = ts.createProgram([ENTRY], { allowImportingTsExtensions: true, noEmit: true })
   for (const file of program.getSourceFiles()) {
     if (!file.fileName.startsWith(join(PACKAGE_DIR, 'src'))) continue
     expect(file.text, file.fileName).not.toMatch(/@deprecated\b/)

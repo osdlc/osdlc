@@ -7,9 +7,16 @@
  */
 import { resolve } from 'node:path'
 
-import { Git } from '@osdlc/typed-git'
-
-import { changedFiles, fileDiffs, resolveBase } from './changeset.ts'
+import {
+  asGit,
+  ChangesetError,
+  diffsSince,
+  errorText,
+  filesSince,
+  forkPointOf,
+  resolveBase,
+} from './changeset.ts'
+import { planJobs } from './plan.ts'
 import { instructionFiles } from './providers/instruction-files.ts'
 import { discoverSources, review, type ReviewOptions } from './run.ts'
 import {
@@ -20,7 +27,10 @@ import {
 } from './types.ts'
 
 /** Input to {@link reviewChanges}. Every field is optional. */
-export interface ReviewChangesOptions {
+export interface ReviewChangesOptions extends Pick<
+  ReviewOptions,
+  'dryRun' | 'signal' | 'onJobSettled' | 'dispatch'
+> {
   /** A directory inside the checkout. Default: `process.cwd()`. */
   cwd?: string
   /**
@@ -34,19 +44,11 @@ export interface ReviewChangesOptions {
   providers?: readonly RuleSourceProvider[]
   /** Settings over {@link DEFAULT_CONFIG}; only the fields given change. */
   config?: Partial<ReviewConfig>
-  /** Plan and measure without starting an agent. See {@link ReviewOptions.dryRun}. */
-  dryRun?: boolean
-  /** Aborting kills every running agent. See {@link ReviewOptions.signal}. */
-  signal?: AbortSignal
-  /** Called as each judgement settles, for progress output. */
-  onJobSettled?: ReviewOptions['onJobSettled']
-  /** Replace the agent call, as in {@link ReviewOptions.dispatch}. */
-  dispatch?: ReviewOptions['dispatch']
 }
 
 /** What {@link reviewChanges} returns: the run, and the changeset it judged. */
 export interface ReviewChangesResult extends ReviewRun {
-  /** Absolute path of the checkout's top level. */
+  /** Absolute path of the checkout's top level, as git reports it (symlinks resolved). */
   projectRoot: string
   /** The base as given. */
   base: string
@@ -58,62 +60,38 @@ export interface ReviewChangesResult extends ReviewRun {
   config: ReviewConfig
 }
 
-/**
- * Why {@link reviewChanges} could not start: the directory is not inside a git
- * checkout (`not-a-repository`), or the base does not resolve (`bad-base`).
- * `kind` may gain values in a minor release; treat an unknown one as a failure.
- */
-export class ChangesetError extends Error {
-  override readonly name = 'ChangesetError'
-  constructor(
-    readonly kind: 'not-a-repository' | 'bad-base',
-    message: string,
-    options?: ErrorOptions,
-  ) {
-    super(message, options)
-  }
-}
+export { ChangesetError }
 
 /**
  * Review a checkout's changes against the rule files that govern them.
  *
  * Finds the changed files against `base`, discovers the rule sources, and
- * judges each source's files with one agent call. With no changed files it
- * returns an empty run and starts no agent.
+ * judges each source's files with one agent call. Only files some source
+ * governs are diffed. With no changed files it returns an empty run and
+ * starts no agent.
  *
  * @throws {ChangesetError} `cwd` is not inside a git checkout, or `base` does not resolve.
  * @throws {ScopeError} A source's scope or an `exclude` pattern cannot be read.
- * @throws {Error} The engine is not one `@osdlc/agent-call` knows.
+ * @throws {Error} A setting is out of range, such as an engine `@osdlc/agent-call` does not know.
  */
 export async function reviewChanges(
   options: ReviewChangesOptions = {},
 ): Promise<ReviewChangesResult> {
-  const cwd = resolve(options.cwd ?? process.cwd())
-  let root: string | null
-  try {
-    root = new Git(cwd).topLevel()
-  } catch (err) {
-    // A missing directory fails the spawn itself rather than reading as "not a repo".
-    throw new ChangesetError('not-a-repository', `${cwd}: ${message(err)}`, { cause: err })
-  }
-  if (root === null) {
-    throw new ChangesetError('not-a-repository', `${cwd} is not inside a git repository`)
-  }
+  const { cwd, base = 'HEAD', providers, config: overrides, ...pass } = options
+  const git = asGit(resolve(cwd ?? process.cwd()))
+  const projectRoot = git.cwd
+  const config: ReviewConfig = { ...DEFAULT_CONFIG, ...overrides }
 
-  const git = new Git(root)
-  const base = options.base ?? 'HEAD'
-  // Resolved once, then used for the file list, the diffs and the report alike,
-  // so the ref that is judged and the ref that is printed cannot diverge.
+  // Resolved once, then used for the file list, the diffs and the report
+  // alike, so the ref that is judged and the ref that is printed cannot diverge.
   const resolvedBase = resolveBase(git, base)
-  const config: ReviewConfig = { ...DEFAULT_CONFIG, ...options.config }
-
+  let ref: string
   let files: string[]
-  let diffs: ReturnType<typeof fileDiffs>
   try {
-    files = changedFiles(git, resolvedBase)
-    diffs = files.length === 0 ? [] : fileDiffs(git, resolvedBase, files)
+    ref = forkPointOf(git, resolvedBase)
+    files = filesSince(git, ref)
   } catch (err) {
-    throw new ChangesetError('bad-base', `could not diff against '${base}': ${message(err)}`, {
+    throw new ChangesetError('bad-base', `could not diff against '${base}': ${errorText(err)}`, {
       cause: err,
     })
   }
@@ -121,24 +99,21 @@ export async function reviewChanges(
   const sources =
     files.length === 0
       ? []
-      : await discoverSources(options.providers ?? [instructionFiles()], {
-          projectRoot: root,
+      : await discoverSources(providers ?? [instructionFiles()], {
+          projectRoot,
           changedFiles: files,
         })
-  const run = await review({
-    projectRoot: root,
-    sources,
-    changedFiles: files,
-    diffs,
-    config,
-    ...(options.dryRun !== undefined ? { dryRun: options.dryRun } : {}),
-    ...(options.signal !== undefined ? { signal: options.signal } : {}),
-    ...(options.onJobSettled !== undefined ? { onJobSettled: options.onJobSettled } : {}),
-    ...(options.dispatch !== undefined ? { dispatch: options.dispatch } : {}),
-  })
-  return { ...run, projectRoot: root, base, resolvedBase, changedFiles: files, config }
-}
+  // A file no source governs is never sent to a judge, so it is not diffed.
+  const governed = new Set(planJobs(sources, files, config).jobs.flatMap((j) => j.files))
+  let diffs: ReturnType<typeof diffsSince>
+  try {
+    diffs = diffsSince(git, ref, [...governed])
+  } catch (err) {
+    throw new ChangesetError('bad-base', `could not diff against '${base}': ${errorText(err)}`, {
+      cause: err,
+    })
+  }
 
-function message(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
+  const run = await review({ ...pass, projectRoot, sources, changedFiles: files, diffs, config })
+  return { ...run, projectRoot, base, resolvedBase, changedFiles: files, config }
 }

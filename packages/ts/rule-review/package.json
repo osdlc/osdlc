@@ -72,7 +72,8 @@
     "@osdlc/command-seam": "workspace:^",
     "@osdlc/intersect": "workspace:^",
     "@osdlc/path-guard": "workspace:^",
-    "@osdlc/typed-git": "workspace:^"
+    "@osdlc/typed-git": "workspace:^",
+    "@osdlc/ux": "workspace:^"
   },
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",

@@ -166,30 +166,37 @@ describe('readCheckFolder', () => {
     expect(PROMPT_UNSUPPORTED).toContain('not yet supported')
   })
 
+  test('skips a broken symlink with its reason, keeping the rest', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'check-folder-'))
+    try {
+      await writeFile(join(dir, '10-ok'), '#!/bin/sh\n', { mode: 0o755 })
+      await symlink(join(dir, 'missing'), join(dir, '20-broken'))
+
+      const folder = await readCheckFolder(dir)
+
+      expect(folder.checks.map((c) => c.entry)).toEqual(['10-ok'])
+      expect(folder.skipped).toEqual([{ entry: '20-broken', reason: 'broken symlink (ENOENT)' }])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+
   // root reads a mode-0111 file, so the unreadable case cannot be made there.
-  test.skipIf(process.getuid?.() === 0)(
-    'skips a broken symlink and an unreadable script, keeping the rest',
-    async () => {
-      const dir = await mkdtemp(join(tmpdir(), 'check-folder-'))
-      try {
-        await writeFile(join(dir, '10-ok'), '#!/bin/sh\n', { mode: 0o755 })
-        await symlink(join(dir, 'missing'), join(dir, '20-broken'))
-        // Executable but not readable: git cannot store this mode, so it is made here.
-        await writeFile(join(dir, '30-locked'), '#!/bin/sh\n')
-        await chmod(join(dir, '30-locked'), 0o111)
+  test.skipIf(process.getuid?.() === 0)('skips an executable script it cannot read', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'check-folder-'))
+    try {
+      // Executable but not readable: git cannot store this mode, so it is made here.
+      await writeFile(join(dir, '30-locked'), '#!/bin/sh\n')
+      await chmod(join(dir, '30-locked'), 0o111)
 
-        const folder = await readCheckFolder(dir)
+      const folder = await readCheckFolder(dir)
 
-        expect(folder.checks.map((c) => c.entry)).toEqual(['10-ok'])
-        expect(folder.skipped).toEqual([
-          { entry: '20-broken', reason: 'broken symlink (ENOENT)' },
-          { entry: '30-locked', reason: 'unreadable (EACCES)' },
-        ])
-      } finally {
-        await rm(dir, { recursive: true, force: true })
-      }
-    },
-  )
+      expect(folder.checks).toEqual([])
+      expect(folder.skipped).toEqual([{ entry: '30-locked', reason: 'unreadable (EACCES)' }])
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
 
   test('reads the headers of a large script without reading past them', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'check-folder-large-'))

@@ -6,7 +6,9 @@ import { resolve } from 'node:path'
 import { Git } from '@osdlc/typed-git'
 
 import {
-  changedFiles,
+  errorText,
+  filesSince,
+  forkPointOf,
   resolveBase,
   stagedFiles,
   trackedFiles,
@@ -20,10 +22,11 @@ import {
   runChecks,
   runToJson,
 } from './checks.ts'
+import { print, say } from './output.ts'
 import { readCheckFolder } from './providers/check-folder.ts'
 import { ScopeError } from './select.ts'
 
-export const CHECKS_USAGE = `rule-review checks — run a folder of check scripts
+const CHECKS_USAGE = `rule-review checks — run a folder of check scripts
 
 Usage
   rule-review checks <dir> [options]
@@ -137,13 +140,13 @@ function changesetFor(git: Git, opts: ChecksOptions): Changeset {
   if (opts.all) return { files: trackedFiles(git), base: '' }
   const base = resolveBase(git, opts.base ?? 'HEAD')
   // Deleted paths are left out, as `--staged` leaves them out: a script cannot run on them.
-  return { files: changedFiles(git, base, { existingOnly: true }), base }
+  return { files: filesSince(git, forkPointOf(git, base), { existingOnly: true }), base }
 }
 
 /** Print a bad scope pattern as a usage error (exit 2); anything else is a real fault. */
 function reportScopeError(err: unknown): number {
   if (!(err instanceof ScopeError)) throw err
-  process.stderr.write(`rule-review: ${err.message}\n`)
+  say(`rule-review: ${err.message}\n`)
   return 2
 }
 
@@ -152,11 +155,11 @@ export async function checksMain(argv: string[]): Promise<number> {
   try {
     opts = parseChecks(argv)
   } catch (err) {
-    process.stderr.write(`rule-review: ${err instanceof Error ? err.message : String(err)}\n`)
+    say(`rule-review: ${errorText(err)}\n`)
     return 2
   }
   if (opts === 'help') {
-    process.stdout.write(CHECKS_USAGE)
+    print(CHECKS_USAGE)
     return 0
   }
 
@@ -167,9 +170,7 @@ export async function checksMain(argv: string[]): Promise<number> {
   } catch (err) {
     // A missing -C directory fails the spawn itself, which typed-git throws
     // rather than reading as "not a repo". It is still a usage error.
-    process.stderr.write(
-      `rule-review: ${cwd}: ${err instanceof Error ? err.message : String(err)}\n`,
-    )
+    say(`rule-review: ${cwd}: ${errorText(err)}\n`)
     return 2
   }
   const root = topLevel ?? cwd
@@ -179,24 +180,20 @@ export async function checksMain(argv: string[]): Promise<number> {
   try {
     folder = await readCheckFolder(dir)
   } catch (err) {
-    process.stderr.write(
-      `rule-review: cannot read check folder ${dir}: ${err instanceof Error ? err.message : String(err)}\n`,
-    )
+    say(`rule-review: cannot read check folder ${dir}: ${errorText(err)}\n`)
     return 2
   }
 
   const explicit = opts.base !== undefined || opts.staged || opts.all
   if (topLevel === null && explicit) {
-    process.stderr.write(`rule-review: ${cwd} is not inside a git repository\n`)
+    say(`rule-review: ${cwd} is not inside a git repository\n`)
     return 2
   }
   let changeset: Changeset | undefined
   try {
     changeset = topLevel === null ? undefined : changesetFor(new Git(root), opts)
   } catch (err) {
-    process.stderr.write(
-      `rule-review: could not list changed files: ${err instanceof Error ? err.message : String(err)}\n`,
-    )
+    say(`rule-review: could not list changed files: ${errorText(err)}\n`)
     return 2
   }
 
@@ -207,9 +204,7 @@ export async function checksMain(argv: string[]): Promise<number> {
     } catch (err) {
       return reportScopeError(err)
     }
-    process.stdout.write(
-      opts.json ? JSON.stringify({ dryRun: true, ...plan }, null, 2) + '\n' : formatPlan(plan),
-    )
+    print(opts.json ? JSON.stringify({ dryRun: true, ...plan }, null, 2) + '\n' : formatPlan(plan))
     return 0
   }
 
@@ -228,8 +223,6 @@ export async function checksMain(argv: string[]): Promise<number> {
     process.off('SIGINT', onSignal)
     process.off('SIGTERM', onSignal)
   }
-  process.stdout.write(
-    opts.json ? JSON.stringify(runToJson(run), null, 2) + '\n' : formatReport(run),
-  )
+  print(opts.json ? JSON.stringify(runToJson(run), null, 2) + '\n' : formatReport(run))
   return interrupt.signal.aborted ? 130 : checksExitCode(run.results)
 }

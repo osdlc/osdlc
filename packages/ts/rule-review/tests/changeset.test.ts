@@ -6,9 +6,9 @@ import { join } from 'node:path'
 import { Git } from '@osdlc/typed-git'
 
 import { makeRepo, sh as shIn, writeFile as writeIn } from './fixture-repo.ts'
-import { SUBPROCESS_TIMEOUT_MS } from './subprocess-timeout.ts'
 import {
   changedFiles,
+  ChangesetError,
   defaultBase,
   fileDiffs,
   resolveBase,
@@ -64,7 +64,7 @@ beforeAll(() => {
 
   write('base.txt', 'one\ntwo\n')
   write('untracked.txt', 'new\n')
-}, SUBPROCESS_TIMEOUT_MS)
+})
 
 afterAll(() => {
   for (const d of [origin, repo]) rmSync(d, { recursive: true, force: true })
@@ -115,54 +115,34 @@ describe('stagedFiles and trackedFiles', () => {
     // Unstaged edit and untracked file: neither is in the index.
     writeIn(root, 'src/unstaged.ts', 'u\n')
     writeIn(root, 'renamed.txt', 'k\nchanged\n')
-  }, SUBPROCESS_TIMEOUT_MS)
+  })
 
   afterAll(() => rmSync(root, { recursive: true, force: true }))
 
-  test(
-    'stagedFiles lists added, modified and renamed paths, not deletions',
-    () => {
-      expect(stagedFiles(g)).toEqual(['renamed.txt', 'src/old.ts', 'staged-new.txt'])
-    },
-    SUBPROCESS_TIMEOUT_MS,
-  )
+  test('stagedFiles lists added, modified and renamed paths, not deletions', () => {
+    expect(stagedFiles(g)).toEqual(['renamed.txt', 'src/old.ts', 'staged-new.txt'])
+  })
 
-  test(
-    'trackedFiles lists every indexed file, sorted',
-    () => {
-      expect(trackedFiles(g)).toEqual(['renamed.txt', 'src/old.ts', 'staged-new.txt'])
-    },
-    SUBPROCESS_TIMEOUT_MS,
-  )
+  test('trackedFiles lists every indexed file, sorted', () => {
+    expect(trackedFiles(g)).toEqual(['renamed.txt', 'src/old.ts', 'staged-new.txt'])
+  })
 })
 
 describe('defaultBase', () => {
-  test(
-    'follows origin/HEAD, stripped of its remote prefix',
-    () => {
-      expect(defaultBase(git)).toBe('main')
-    },
-    SUBPROCESS_TIMEOUT_MS,
-  )
+  test('follows origin/HEAD, stripped of its remote prefix', () => {
+    expect(defaultBase(git)).toBe('main')
+  })
 
-  test(
-    'falls back to main in a repository with no origin',
-    () => {
-      const { git: local } = makeRepo({ 'a.txt': 'a\n' })
-      expect(defaultBase(local)).toBe('main')
-    },
-    SUBPROCESS_TIMEOUT_MS,
-  )
+  test('falls back to main in a repository with no origin', () => {
+    const { git: local } = makeRepo({ 'a.txt': 'a\n' })
+    expect(defaultBase(local)).toBe('main')
+  })
 
-  test(
-    'falls back to master when only master exists',
-    () => {
-      const { git: local } = makeRepo({ 'a.txt': 'a\n' })
-      sh(local, ['branch', '-m', 'main', 'master'])
-      expect(defaultBase(local)).toBe('master')
-    },
-    SUBPROCESS_TIMEOUT_MS,
-  )
+  test('falls back to master when only master exists', () => {
+    const { git: local } = makeRepo({ 'a.txt': 'a\n' })
+    sh(local, ['branch', '-m', 'main', 'master'])
+    expect(defaultBase(local)).toBe('master')
+  })
 })
 
 describe('fileDiffs', () => {
@@ -337,7 +317,7 @@ describe('resolveBase — branch base ancestry', () => {
     pusher.push('origin', 'diverged')
 
     sh(git2, ['fetch', '-q', 'origin'])
-  }, SUBPROCESS_TIMEOUT_MS)
+  })
 
   afterAll(() => {
     for (const d of [origin2, pusherDir, local]) rmSync(d, { recursive: true, force: true })
@@ -423,7 +403,7 @@ describe('changedFiles — local branch ahead of origin is used as the fork poin
     // fixture's pattern.
     writeFileSync(join(local, 'topic.txt'), 'topic\nmore\n')
     writeFileSync(join(local, 'untracked-topic.txt'), 'new\n')
-  }, SUBPROCESS_TIMEOUT_MS)
+  })
 
   afterAll(() => {
     for (const d of [origin3, pusherDir, local]) rmSync(d, { recursive: true, force: true })
@@ -450,43 +430,31 @@ describe('a repo with no commits yet', () => {
     writeIn(root, 'staged.txt', 'staged\n')
     g.add(['staged.txt'])
     writeIn(root, 'loose.txt', 'loose\n')
-  }, SUBPROCESS_TIMEOUT_MS)
+  })
 
   afterAll(() => rmSync(root, { recursive: true, force: true }))
 
-  test(
-    'changedFiles judges every file as uncommitted work',
-    () => {
-      expect(changedFiles(g, 'HEAD')).toEqual(['loose.txt', 'staged.txt'])
-      expect(changedFiles(g, 'HEAD', { existingOnly: true })).toEqual(['loose.txt', 'staged.txt'])
-    },
-    SUBPROCESS_TIMEOUT_MS,
-  )
+  test('changedFiles judges every file as uncommitted work', () => {
+    expect(changedFiles(g, 'HEAD')).toEqual(['loose.txt', 'staged.txt'])
+    expect(changedFiles(g, 'HEAD', { existingOnly: true })).toEqual(['loose.txt', 'staged.txt'])
+  })
 
-  test(
-    'fileDiffs renders each file as added',
-    () => {
-      const diffs = fileDiffs(g, 'HEAD', ['loose.txt', 'staged.txt'])
+  test('fileDiffs renders each file as added', () => {
+    const diffs = fileDiffs(g, 'HEAD', ['loose.txt', 'staged.txt'])
 
-      expect(diffs.map((d) => d.file)).toEqual(['loose.txt', 'staged.txt'])
-      expect(diffs[0]?.diff).toContain('+loose')
-      expect(diffs[1]?.diff).toContain('+staged')
-    },
-    SUBPROCESS_TIMEOUT_MS,
-  )
+    expect(diffs.map((d) => d.file)).toEqual(['loose.txt', 'staged.txt'])
+    expect(diffs[0]?.diff).toContain('+loose')
+    expect(diffs[1]?.diff).toContain('+staged')
+  })
 
-  test(
-    'a base that does not resolve yet, such as the unborn main, also judges every file as new',
-    () => {
-      // A pre-commit hook running `rule-review checks --base main` must not block the
-      // first commit: no branch exists yet, so there is nothing to compare to.
-      for (const base of ['main', '@{u}']) {
-        expect(changedFiles(g, base)).toEqual(['loose.txt', 'staged.txt'])
-        expect(fileDiffs(g, base, ['staged.txt'])[0]?.diff).toContain('+staged')
-      }
-    },
-    SUBPROCESS_TIMEOUT_MS,
-  )
+  test('a base that does not resolve yet, such as the unborn main, also judges every file as new', () => {
+    // A pre-commit hook running `rule-review checks --base main` must not block the
+    // first commit: no branch exists yet, so there is nothing to compare to.
+    for (const base of ['main', '@{u}']) {
+      expect(changedFiles(g, base)).toEqual(['loose.txt', 'staged.txt'])
+      expect(fileDiffs(g, base, ['staged.txt'])[0]?.diff).toContain('+staged')
+    }
+  })
 })
 
 describe('a renamed file', () => {
@@ -498,36 +466,24 @@ describe('a renamed file', () => {
     mkdirSync(join(root, 'web'))
     shIn(g, ['mv', 'api/foo.ts', 'web/foo.ts'])
     g.commit({ message: 'move' })
-  }, SUBPROCESS_TIMEOUT_MS)
+  })
 
   afterAll(() => rmSync(root, { recursive: true, force: true }))
 
-  test(
-    'changedFiles lists the old path too, so the rules that governed it see the removal',
-    () => {
-      expect(changedFiles(g, 'HEAD~1')).toEqual(['api/foo.ts', 'web/foo.ts'])
-    },
-    SUBPROCESS_TIMEOUT_MS,
-  )
+  test('changedFiles lists the old path too, so the rules that governed it see the removal', () => {
+    expect(changedFiles(g, 'HEAD~1')).toEqual(['api/foo.ts', 'web/foo.ts'])
+  })
 
-  test(
-    'existingOnly keeps only the new path',
-    () => {
-      expect(changedFiles(g, 'HEAD~1', { existingOnly: true })).toEqual(['web/foo.ts'])
-    },
-    SUBPROCESS_TIMEOUT_MS,
-  )
+  test('existingOnly keeps only the new path', () => {
+    expect(changedFiles(g, 'HEAD~1', { existingOnly: true })).toEqual(['web/foo.ts'])
+  })
 
-  test(
-    'fileDiffs gives the old path its deletion diff',
-    () => {
-      const [diff] = fileDiffs(g, 'HEAD~1', ['api/foo.ts'])
+  test('fileDiffs gives the old path its deletion diff', () => {
+    const [diff] = fileDiffs(g, 'HEAD~1', ['api/foo.ts'])
 
-      expect(diff?.diff).toContain('deleted file mode')
-      expect(diff?.diff).toContain('-foo')
-    },
-    SUBPROCESS_TIMEOUT_MS,
-  )
+    expect(diff?.diff).toContain('deleted file mode')
+    expect(diff?.diff).toContain('-foo')
+  })
 })
 
 describe('trackedFiles during a merge conflict', () => {
@@ -546,15 +502,40 @@ describe('trackedFiles during a merge conflict', () => {
     g.commit({ message: 'main' })
     // Exits 1 on the conflict, which is the state under test.
     g.raw(['merge', '-q', 'other'])
-  }, SUBPROCESS_TIMEOUT_MS)
+  })
 
   afterAll(() => rmSync(root, { recursive: true, force: true }))
 
-  test(
-    'lists a conflicted path once, not once per stage',
-    () => {
-      expect(trackedFiles(g)).toEqual(['f.txt'])
-    },
-    SUBPROCESS_TIMEOUT_MS,
-  )
+  test('lists a conflicted path once, not once per stage', () => {
+    expect(trackedFiles(g)).toEqual(['f.txt'])
+  })
+})
+
+describe('a directory path', () => {
+  test('reads the whole checkout from any subdirectory, paths from its top level', () => {
+    const { root } = makeRepo({ 'sub/a.ts': 'a\n', 'b.ts': 'b\n' })
+    writeIn(root, 'sub/a.ts', 'a2\n')
+    writeIn(root, 'sub/new.ts', 'n\n')
+    writeIn(root, 'top.ts', 't\n')
+    try {
+      const sub = join(root, 'sub')
+      expect(changedFiles(sub, 'HEAD')).toEqual(['sub/a.ts', 'sub/new.ts', 'top.ts'])
+      expect(trackedFiles(sub)).toEqual(['b.ts', 'sub/a.ts'])
+      expect(fileDiffs(sub, 'HEAD', ['sub/a.ts', 'top.ts']).map((d) => d.file)).toEqual([
+        'sub/a.ts',
+        'top.ts',
+      ])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('outside git is a ChangesetError', () => {
+    const outside = mkdtempSync(join(tmpdir(), 'rule-review-outside-'))
+    try {
+      expect(() => trackedFiles(outside)).toThrow(ChangesetError)
+    } finally {
+      rmSync(outside, { recursive: true, force: true })
+    }
+  })
 })

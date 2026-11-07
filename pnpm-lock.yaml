@@ -805,6 +805,9 @@ importers:
       '@osdlc/typed-git':
         specifier: workspace:^
         version: link:../typed-git
+      '@osdlc/ux':
+        specifier: workspace:^
+        version: link:../ux
     devDependencies:
       '@osdlc/prettier-config':
         specifier: workspace:^

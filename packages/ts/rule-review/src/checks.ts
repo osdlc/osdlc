@@ -55,7 +55,7 @@ export interface ChecksRun {
 }
 
 /** Reason for a script whose scope matches no changed file. */
-export const NO_FILES_IN_SCOPE = 'no changed files in scope'
+const NO_FILES_IN_SCOPE = 'no changed files in scope'
 
 /**
  * Input to {@link runChecks}.
@@ -105,7 +105,7 @@ export function checkEnv(
  * In-scope files per script entry; a script absent from the map matches no
  * changed file. Without a changeset every script is selected with no files.
  */
-export function selectScripts(
+function selectScripts(
   folder: CheckFolder,
   changeset: Changeset | undefined,
 ): Map<string, string[]> {
@@ -258,7 +258,7 @@ export function checksExitCode(results: CheckResult[]): 0 | 1 {
   return results.some((r) => r.status === 'FAIL' || r.status === 'ERROR') ? 1 : 0
 }
 
-export function formatDuration(ms: number): string {
+function formatDuration(ms: number): string {
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`
 }
 

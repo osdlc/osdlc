@@ -3,7 +3,9 @@
  * they are measured from. `reviewChanges` does all of this itself; these are
  * the pieces, for a caller that builds its own run.
  */
-import { expect, test } from 'vitest'
+import { rmSync } from 'node:fs'
+
+import { afterAll, expect, test } from 'vitest'
 
 import {
   ChangesetError,
@@ -20,7 +22,19 @@ import {
   type Severity,
 } from '@osdlc/rule-review'
 
-import { commitAll, makeRepo, writeFile } from '../tests/fixture-repo.ts'
+import { commitAll, makeRepo as makeTempRepo, writeFile } from '../tests/fixture-repo.ts'
+
+const roots: string[] = []
+afterAll(() => {
+  for (const root of roots) rmSync(root, { recursive: true, force: true })
+})
+
+/** A temp repo, removed after the file's tests. */
+function makeRepo(files: Record<string, string>): ReturnType<typeof makeTempRepo> {
+  const repo = makeTempRepo(files)
+  roots.push(repo.root)
+  return repo
+}
 
 test('the changed files of a branch, their diffs, and the base they are measured from', () => {
   const { root, git } = makeRepo({ 'src/a.ts': 'export const a = 1\n', 'README.md': 'hi\n' })

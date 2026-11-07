@@ -1,15 +1,24 @@
 /**
- * A stand-in `claude` on PATH that answers every judgement with fixed findings,
- * in the JSON envelope the real CLI prints, so a test can run the whole path,
- * process spawn included, without a model.
+ * A stand-in `claude` on PATH, so a test can run the whole path, process spawn
+ * included, without a model.
  */
 import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-/** Write the fake into a new directory and return that directory, for PATH. */
-export function fakeClaude(findings: readonly object[]): string {
+/**
+ * Write a `claude` that runs `script` (sh) into a new directory, and return
+ * the directory, for PATH. `$DIR` in the script is that directory.
+ */
+export function fakeAgent(script: string): string {
   const dir = mkdtempSync(join(tmpdir(), 'rule-review-fake-claude-'))
+  writeFileSync(join(dir, 'claude'), `#!/bin/sh\nDIR='${dir}'\n${script}\n`)
+  chmodSync(join(dir, 'claude'), 0o755)
+  return dir
+}
+
+/** A `claude` that answers every judgement with `findings`, in the CLI's JSON envelope. */
+export function fakeClaude(findings: readonly object[]): string {
   const envelope = {
     type: 'result',
     subtype: 'success',
@@ -17,9 +26,8 @@ export function fakeClaude(findings: readonly object[]): string {
     result: JSON.stringify({ findings }),
     structured_output: { findings },
   }
+  const dir = fakeAgent('cat "$DIR/envelope.json"')
   writeFileSync(join(dir, 'envelope.json'), JSON.stringify(envelope))
-  writeFileSync(join(dir, 'claude'), `#!/bin/sh\ncat "${join(dir, 'envelope.json')}"\n`)
-  chmodSync(join(dir, 'claude'), 0o755)
   return dir
 }
 

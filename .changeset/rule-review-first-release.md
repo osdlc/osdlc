@@ -75,7 +75,9 @@ path-scoped check scripts (experimental). The package was developed, unpublished
   exit 2 instead of a stack trace.
 - A `configFor` that throws rejects the run before any agent starts. A job that rejects aborts
   the jobs still running, and an aborted run starts no more agents.
-- A `concurrency` of `NaN` runs one judgement at a time instead of none.
+- Settings are checked when a run starts: an unknown engine, a `concurrency` that is not a positive integer or `Infinity`, a negative `maxFilesPerJob`, a non-positive `timeoutMs` or an unknown `severityFloor` rejects the run with the setting's name, before any agent starts. A `NaN` concurrency used to start no judgement at all.
+- A directory path given to the changeset readers reads the whole checkout from its top level, whichever subdirectory it names.
+- What the command prints has terminal controls removed, so a finding, an agent error or a check's output cannot move the cursor or recolor the terminal.
 - A check script's headers are read from its first 4 KiB without reading the whole file.
 - After an abort, `runChecks` no longer reports skip rows for files that never had a turn.
 - `--concurrency` and `--max-files` refuse `1.5`, `1e2` and `0x10`.

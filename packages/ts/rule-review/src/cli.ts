@@ -15,12 +15,15 @@
 
 import { BUILTIN_AGENTS } from '@osdlc/agent-call'
 
+import { isEngine, isSeverity } from './config.ts'
+import { say, sayError } from './output.ts'
+
 import { checksMain } from './checks-command.ts'
 import { exitCodeFor } from './findings.ts'
 import { ChangesetError, reviewChanges, type ReviewChangesResult } from './review-changes.ts'
 import { ScopeError } from './select.ts'
 import { estimateTokens, formatTokens, jobLabel } from './tokens.ts'
-import { DEFAULT_CONFIG, type ReviewConfig, type Severity } from './types.ts'
+import { DEFAULT_CONFIG, SEVERITY_ORDER, type ReviewConfig } from './types.ts'
 
 const USAGE = `rule-review — review a changeset against the rule files that govern it
 
@@ -98,7 +101,7 @@ function parse(argv: string[]): Options | 'help' {
     json: false,
     strict: false,
     cwd: process.cwd(),
-    config: { ...DEFAULT_CONFIG, exclude: [] },
+    config: { ...DEFAULT_CONFIG },
   }
   const exclude: string[] = []
 
@@ -128,7 +131,7 @@ function parse(argv: string[]): Options | 'help' {
         break
       case '--engine': {
         const v = value(argv, i++, arg)
-        if (!(BUILTIN_AGENTS as readonly string[]).includes(v)) {
+        if (!isEngine(v)) {
           throw new Error(`--engine expects one of ${BUILTIN_AGENTS.join(', ')} (got '${v}')`)
         }
         opts.config.engine = v
@@ -142,10 +145,10 @@ function parse(argv: string[]): Options | 'help' {
         break
       case '--severity': {
         const v = value(argv, i++, arg)
-        if (v !== 'violation' && v !== 'tension' && v !== 'drift') {
-          throw new Error(`--severity expects violation, tension, or drift (got '${v}')`)
+        if (!isSeverity(v)) {
+          throw new Error(`--severity expects ${SEVERITY_ORDER.join(', ')} (got '${v}')`)
         }
-        opts.config.severityFloor = v as Severity
+        opts.config.severityFloor = v
         break
       }
       case '--concurrency': {
@@ -180,7 +183,7 @@ export async function main(argv: string[]): Promise<number> {
   try {
     opts = parse(argv)
   } catch (err) {
-    process.stderr.write(`rule-review: ${err instanceof Error ? err.message : String(err)}\n`)
+    sayError(err)
     return 2
   }
   if (opts === 'help') {
@@ -196,45 +199,44 @@ export async function main(argv: string[]): Promise<number> {
   process.on('SIGTERM', onSignal)
   let run: ReviewChangesResult
   try {
+    // With no --base, reviewChanges compares against HEAD: uncommitted work.
     run = await reviewChanges({
       cwd: opts.cwd,
-      // Default to uncommitted work: it is the faster run, and mid-change it is
-      // what you are about to be judged on.
-      base: opts.base ?? 'HEAD',
+      ...(opts.base !== undefined ? { base: opts.base } : {}),
       config: opts.config,
       dryRun: opts.dryRun,
       signal: interrupt.signal,
     })
   } catch (err) {
     if (!(err instanceof ScopeError || err instanceof ChangesetError)) throw err
-    process.stderr.write(`rule-review: ${err.message}\n`)
+    sayError(err)
     return 2
   } finally {
     process.off('SIGINT', onSignal)
     process.off('SIGTERM', onSignal)
   }
   if (interrupt.signal.aborted) {
-    process.stderr.write('rule-review: interrupted.\n')
+    sayError('interrupted.')
     return 130
   }
   const files = run.changedFiles
   const baseLabel =
     run.resolvedBase === run.base ? run.base : `${run.base} (resolved to ${run.resolvedBase})`
-  const exit = (): number =>
-    opts.strict && run.degraded ? 2 : exitCodeFor(run.findings, opts.config)
+  const incomplete = opts.strict && run.degraded
+  const exit = incomplete ? 2 : exitCodeFor(run.findings, opts.config)
 
   if (opts.json) {
     process.stdout.write(JSON.stringify(run, null, 2) + '\n')
-    return exit()
+    return exit
   }
 
   if (files.length === 0) {
-    process.stderr.write(`rule-review: no changes against ${baseLabel}.\n`)
+    say(`rule-review: no changes against ${baseLabel}.\n`)
     return 0
   }
 
   if (run.jobs.length === 0) {
-    process.stderr.write(
+    say(
       `rule-review: ${plural(files.length, 'changed file')}, but no CLAUDE.md or AGENTS.md governs any of them.\n`,
     )
     return 0
@@ -243,24 +245,22 @@ export async function main(argv: string[]): Promise<number> {
   if (opts.dryRun) {
     const bytes = run.outcomes.reduce((n, o) => n + o.promptBytes, 0)
     const shards = run.jobs.filter((j) => j.shard !== undefined).length
-    process.stderr.write(
+    say(
       `rule-review --dry-run: would judge ${plural(files.length, 'changed file')} against ${baseLabel} ` +
         `in ${plural(run.jobs.length, 'job')}` +
         (shards > 0 ? ` (${shards} of them shards)` : '') +
         `, ~${formatTokens(estimateTokens(bytes))} tokens of prompt total.\n\n`,
     )
     for (const o of run.outcomes) {
-      process.stderr.write(
+      say(
         `  ${String(o.job.files.length).padStart(3)} ${o.job.files.length === 1 ? 'file ' : 'files'}  ` +
           `${formatTokens(estimateTokens(o.promptBytes)).padStart(6)} tok  ${jobLabel(o.job)}\n`,
       )
     }
     if (run.skipped.length > 0) {
-      process.stderr.write(
-        `\n${plural(run.skipped.length, 'rule source')} not in scope, costing nothing.\n`,
-      )
+      say(`\n${plural(run.skipped.length, 'rule source')} not in scope, costing nothing.\n`)
     }
-    process.stderr.write('\nNothing was dispatched. Drop --dry-run to run it.\n')
+    say('\nNothing was dispatched. Drop --dry-run to run it.\n')
     return 0
   }
 
@@ -269,14 +269,14 @@ export async function main(argv: string[]): Promise<number> {
   // would be counting two different things in one fraction.
   const judged = run.outcomes.filter((o) => o.error === undefined).length
   const sourceCount = new Set(run.jobs.map((j) => j.source.id)).size
-  process.stderr.write(
+  say(
     `rule-review: ${judged}/${run.jobs.length} judgements over ${plural(sourceCount, 'rule source')} ` +
       `covered ${plural(files.length, 'changed file')} against ${baseLabel}.\n`,
   )
   for (const o of run.outcomes) {
-    if (o.error !== undefined) process.stderr.write(`  ! ${jobLabel(o.job)}: ${o.error}\n`)
+    if (o.error !== undefined) say(`  ! ${jobLabel(o.job)}: ${o.error}\n`)
     if (o.oversize !== undefined) {
-      process.stderr.write(
+      say(
         `  ~ ${jobLabel(o.job)}: ~${formatTokens(estimateTokens(o.oversize.bytes))} tokens of prompt — ` +
           'judgements at this scope are less reliable\n',
       )
@@ -284,29 +284,25 @@ export async function main(argv: string[]): Promise<number> {
   }
 
   if (run.findings.length === 0) {
-    process.stderr.write(
-      run.degraded ? '\nNo findings, but the run was incomplete.\n' : '\nNo findings.\n',
-    )
-    return exit()
+    say(run.degraded ? '\nNo findings, but the run was incomplete.\n' : '\nNo findings.\n')
+    return exit
   }
 
   let current = ''
   for (const f of run.findings) {
     if (f.sourceId !== current) {
       current = f.sourceId
-      process.stderr.write(`\n${f.sourcePath}\n`)
+      say(`\n${f.sourcePath}\n`)
     }
     const where = f.line === undefined ? f.file : `${f.file}:${f.line}`
-    process.stderr.write(`  ${f.severity.padEnd(9)}  ${where}\n      ${f.why}\n`)
-    process.stderr.write(`      > ${(f.evidence.split('\n')[0] ?? '').slice(0, 120)}\n`)
+    say(`  ${f.severity.padEnd(9)}  ${where}\n      ${f.why}\n`)
+    say(`      > ${(f.evidence.split('\n')[0] ?? '').slice(0, 120)}\n`)
   }
-  process.stderr.write(
+  say(
     `\n${plural(run.findings.length, 'finding')}` +
       (opts.config.blocking ? '.\n' : ' (advisory — pass --blocking to gate on these).\n'),
   )
 
-  if (opts.strict && run.degraded) {
-    process.stderr.write('The run was incomplete (--strict).\n')
-  }
-  return exit()
+  if (incomplete) say('The run was incomplete (--strict).\n')
+  return exit
 }

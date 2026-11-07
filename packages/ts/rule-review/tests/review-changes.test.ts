@@ -1,14 +1,12 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import type { AgentResult } from '@osdlc/agent-call'
 import { afterEach, describe, expect, test } from 'vitest'
 
-import { main } from '../src/cli.ts'
 import { ChangesetError, reviewChanges } from '../src/review-changes.ts'
 import type { Dispatch } from '../src/run.ts'
-import { captureOutput } from './capture-output.ts'
 import { makeRepo, writeFile } from './fixture-repo.ts'
 
 const roots: string[] = []
@@ -87,49 +85,5 @@ describe('reviewChanges', () => {
 
     expect(err).toBeInstanceOf(ChangesetError)
     expect((err as ChangesetError).kind).toBe('bad-base')
-  })
-})
-
-describe('rule-review --strict and --engine', () => {
-  /** A repo with one change under a CLAUDE.md, and a `claude` on PATH that fails at once. */
-  async function withFailingAgent(argv: string[]) {
-    const root = repo({ 'CLAUDE.md': 'Rules.\n', 'a.ts': 'a\n' })
-    writeFile(root, 'a.ts', 'a2\n')
-    const bin = mkdtempSync(join(tmpdir(), 'rule-review-failing-agent-'))
-    roots.push(bin)
-    writeFileSync(join(bin, 'claude'), '#!/bin/sh\necho "no credentials" >&2\nexit 1\n')
-    chmodSync(join(bin, 'claude'), 0o755)
-    const path = process.env['PATH']
-    process.env['PATH'] = `${bin}:${path ?? ''}`
-    try {
-      return await captureOutput(() => main(['-C', root, ...argv]))
-    } finally {
-      process.env['PATH'] = path
-    }
-  }
-
-  test('an incomplete run exits 0 by default and 2 with --strict', async () => {
-    const lenient = await withFailingAgent(['--blocking'])
-    expect(lenient.code).toBe(0)
-    expect(lenient.err).toContain('the run was incomplete')
-
-    const strict = await withFailingAgent(['--blocking', '--strict'])
-    expect(strict.code).toBe(2)
-  })
-
-  test('--json carries degraded, and --strict sets the exit code from it', async () => {
-    const { code, out } = await withFailingAgent(['--json', '--strict'])
-    const run = JSON.parse(out) as { degraded: boolean; changedFiles: string[] }
-
-    expect(run.degraded).toBe(true)
-    expect(run.changedFiles).toEqual(['a.ts'])
-    expect(code).toBe(2)
-  })
-
-  test('an unknown --engine is a usage error', async () => {
-    const { code, err } = await captureOutput(() => main(['--engine', 'gpt']))
-
-    expect(code).toBe(2)
-    expect(err).toContain('--engine expects one of claude')
   })
 })

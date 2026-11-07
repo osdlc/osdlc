@@ -122,7 +122,7 @@ export function parseTimeoutHeader(source: string): number | undefined {
 }
 
 /** The scope of a script that declares no `# applies_to:` header. */
-export const DEFAULT_SCOPE = ['**']
+const DEFAULT_SCOPE = ['**']
 
 /**
  * The `# applies_to: <glob>` values from a script's leading comment block, in

@@ -5,8 +5,6 @@ import { join } from 'node:path'
 
 import type { AgentResult } from '@osdlc/agent-call'
 
-import { SUBPROCESS_TIMEOUT_MS } from './subprocess-timeout.ts'
-
 import { discoverSources, review, type Dispatch } from '../src/run.ts'
 import { DEFAULT_CONFIG, type RuleSource, type RuleSourceProvider } from '../src/types.ts'
 
@@ -135,7 +133,7 @@ describe('review', () => {
     expect(result.findings).toHaveLength(1)
   })
 
-  test('a NaN concurrency runs the jobs one at a time, and Infinity runs them all at once', async () => {
+  test('Infinity concurrency runs every job at once', async () => {
     let inFlight = 0
     let peak = 0
     const dispatch: Dispatch = async () => {
@@ -146,13 +144,23 @@ describe('review', () => {
       return reply({ findings: [] })
     }
 
-    const one = await run(dispatch, { ...DEFAULT_CONFIG, concurrency: Number.NaN })
-    expect(one.outcomes).toHaveLength(one.jobs.length)
-    expect(peak).toBe(1)
-
-    peak = 0
     const all = await run(dispatch, { ...DEFAULT_CONFIG, concurrency: Number.POSITIVE_INFINITY })
     expect(peak).toBe(all.jobs.length)
+  })
+
+  test('a setting out of range rejects the run, naming the setting', async () => {
+    const never: Dispatch = () => Promise.reject(new Error('no agent should start'))
+    for (const [patch, message] of [
+      [{ concurrency: Number.NaN }, 'concurrency expects a positive integer or Infinity'],
+      [{ concurrency: 0 }, 'concurrency expects'],
+      [{ maxFilesPerJob: -1 }, 'maxFilesPerJob expects'],
+      [{ timeoutMs: 0 }, 'timeoutMs expects'],
+      [{ severityFloor: 'fatal' }, 'severityFloor expects violation, tension, drift'],
+    ] as const) {
+      await expect(
+        run(never, { ...DEFAULT_CONFIG, ...patch } as typeof DEFAULT_CONFIG),
+      ).rejects.toThrow(message)
+    }
   })
 
   test('an unknown engine rejects the run before any agent starts', async () => {
@@ -163,7 +171,7 @@ describe('review', () => {
       diffs: DIFFS,
       config: { ...DEFAULT_CONFIG, engine: 'not-an-agent' },
     }
-    await expect(review(options)).rejects.toThrow("unknown engine 'not-an-agent'")
+    await expect(review(options)).rejects.toThrow('engine expects one of claude')
     // Per job too: a configFor that names an unknown engine is refused up front.
     await expect(
       review({
@@ -171,7 +179,7 @@ describe('review', () => {
         config: DEFAULT_CONFIG,
         configFor: () => ({ ...DEFAULT_CONFIG, engine: 'nope' }),
       }),
-    ).rejects.toThrow("unknown engine 'nope'")
+    ).rejects.toThrow("(got 'nope')")
   })
 
   test('never exceeds the configured concurrency', async () => {
@@ -471,37 +479,33 @@ function alive(pid: number): boolean {
 }
 
 describe('review signal', () => {
-  test(
-    'aborting the signal kills the running agent process',
-    async () => {
-      const dir = mkdtempSync(join(tmpdir(), 'rule-review-abort-'))
-      const pidFile = join(dir, 'pid')
-      const agent = join(dir, 'agent.sh')
-      writeFileSync(agent, `#!/bin/sh\necho $$ > "${pidFile}"\nexec sleep 30\n`)
-      chmodSync(agent, 0o755)
-      const interrupt = new AbortController()
-      try {
-        const pending = review({
-          projectRoot: dir,
-          sources: [source('root', ['**'], 0)],
-          changedFiles: [FILE_A],
-          diffs: DIFFS,
-          config: { ...DEFAULT_CONFIG, binary: agent },
-          signal: interrupt.signal,
-        })
-        await waitFor('the agent to write its pid', () => existsSync(pidFile))
-        const pid = Number(readFileSync(pidFile, 'utf8').trim())
+  test('aborting the signal kills the running agent process', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rule-review-abort-'))
+    const pidFile = join(dir, 'pid')
+    const agent = join(dir, 'agent.sh')
+    writeFileSync(agent, `#!/bin/sh\necho $$ > "${pidFile}"\nexec sleep 30\n`)
+    chmodSync(agent, 0o755)
+    const interrupt = new AbortController()
+    try {
+      const pending = review({
+        projectRoot: dir,
+        sources: [source('root', ['**'], 0)],
+        changedFiles: [FILE_A],
+        diffs: DIFFS,
+        config: { ...DEFAULT_CONFIG, binary: agent },
+        signal: interrupt.signal,
+      })
+      await waitFor('the agent to write its pid', () => existsSync(pidFile))
+      const pid = Number(readFileSync(pidFile, 'utf8').trim())
 
-        interrupt.abort()
-        await waitFor(`agent pid ${pid} to exit`, () => !alive(pid))
+      interrupt.abort()
+      await waitFor(`agent pid ${pid} to exit`, () => !alive(pid))
 
-        expect((await pending).degraded).toBe(true)
-      } finally {
-        rmSync(dir, { recursive: true, force: true })
-      }
-    },
-    SUBPROCESS_TIMEOUT_MS,
-  )
+      expect((await pending).degraded).toBe(true)
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('review — a reply that is not a findings object', () => {
