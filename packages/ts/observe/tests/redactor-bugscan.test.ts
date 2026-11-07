@@ -26,8 +26,8 @@ describe('the redactor cannot be switched off or skewed by the text', () => {
   })
 
   test('a leading byte-order mark does not shift the ranges', async () => {
-    const { text } = await r.redact(`﻿xx ${gh} tail`)
-    expect(text).toBe('﻿xx [REDACTED:github] tail')
+    const { text } = await r.redact(`\uFEFFxx ${gh} tail`)
+    expect(text).toBe('\uFEFFxx [REDACTED:github] tail')
   })
 
   test('a quoted value keeps its own trailing punctuation inside the redaction', async () => {
