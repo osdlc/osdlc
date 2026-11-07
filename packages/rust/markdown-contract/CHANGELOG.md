@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-05
+
+### Changed
+
+- Uses markdown-link 0.8 (was 0.7). markdown-contract uses markdown-link only
+  inside, so its API is unchanged. A crate that also uses markdown-link 0.8
+  now builds one copy instead of two.
+
 ## [0.4.0] - 2026-11-04
 
 The first release on crates.io. 0.3.2 below was never published.

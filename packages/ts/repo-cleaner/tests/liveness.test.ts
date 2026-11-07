@@ -16,8 +16,8 @@ import type { CommandResult, CommandRunner } from '@osdlc/command-seam'
 import { makeBareAndWorker } from '@osdlc/typed-git/testing'
 
 import { sh } from './helpers.ts'
-import { applyPlan } from '../src/apply.ts'
-import { PLAN_VERSION, planRepo, type Plan } from '../src/plan.ts'
+import { check, run, type Preview } from '../src/clean.ts'
+import { plan as planOf, type Plan } from '../src/plan.ts'
 import {
   defaultProcessProbe,
   isIdleShell,
@@ -27,9 +27,9 @@ import {
   type ProcessHolder,
   type ProcessProbe,
 } from '../src/processes.ts'
-import type { Receipt, RowRef } from '../src/receipt.ts'
-import { sweepRepo } from '../src/sweep.ts'
-import type { SweepItem } from '../src/types.ts'
+import type { Receipt } from '../src/receipt.ts'
+import { sweep } from '../src/sweep.ts'
+import type { WorktreeRow } from '../src/types.ts'
 
 const STARTED = '2026-01-01T00:00:00Z'
 const LOCK = `claude agent agent-x (pid 99999 start ${STARTED})`
@@ -107,11 +107,19 @@ function buildFixture(): Fixture {
   return { root, worktree: realpathSync(worktree), gh }
 }
 
-function worktreeItem(fx: Fixture, probe: ProcessProbe): SweepItem {
-  const sweep = sweepRepo(fx.root, { gh: fx.gh, cwd: fx.root, probe, scope: ['worktrees'] })
-  expect(sweep.error).toBeNull()
-  const item = sweep.items.find((it) => it.id === fx.worktree)
+/**
+ * The worktree's row. `remote` (offline) so the canned `gh` is asked for the
+ * merged PR that makes the clean worktree a `delete` row.
+ */
+function worktreeItem(fx: Fixture, probe: ProcessProbe): WorktreeRow {
+  const swept = sweep([fx.root], { remote: true, offline: true, gh: fx.gh, cwd: fx.root, probe })
+  const repo = swept.repos[0]!
+  expect(repo.error).toBeNull()
+  const item = repo.rows.find(
+    (r): r is WorktreeRow => r.kind === 'worktree' && r.name === fx.worktree,
+  )
   expect(item).toBeDefined()
+  expect(item!.id).toBe(`worktree:${fx.worktree}`)
   return item!
 }
 
@@ -125,11 +133,11 @@ describe('lock owner', () => {
     lock(fx, LOCK)
     const probe = fakeProbe({ alive: false })
     const item = worktreeItem(fx, probe)
-    expect(item.classification).toBe('safe-to-delete')
-    expect(item.deletable).toBe(true)
-    expect(item.facts['stale_lock']).toBe(true)
-    expect(item.facts['blockers']).toEqual([])
-    expect(item.facts['lock_owner']).toEqual({ pid: 99999, started_at: STARTED })
+    expect(item.verdict).toBe('delete')
+    expect(item.action).toBe('remove')
+    expect(item.evidence.staleLock).toBe(true)
+    expect(item.blockers).toEqual([])
+    expect(item.evidence.lockOwner).toEqual({ pid: 99999, startedAt: STARTED })
     // The row shows the unlock before the remove that would otherwise refuse.
     expect(item.commands).toHaveLength(2)
     expect(item.commands[0]).toContain('worktree unlock')
@@ -141,10 +149,10 @@ describe('lock owner', () => {
     const fx = buildFixture()
     lock(fx, LOCK)
     const item = worktreeItem(fx, fakeProbe({ alive: true }))
-    expect(item.classification).toBe('needs-investigation')
-    expect(item.facts['blockers']).toEqual(['locked-worktree'])
-    expect(item.facts['stale_lock']).toBeUndefined()
-    expect(item.deletable).toBe(false)
+    expect(item.verdict).toBe('blocked')
+    expect(item.blockers).toEqual(['locked-worktree'])
+    expect(item.evidence.staleLock).toBeUndefined()
+    expect(item.action).toBeNull()
   })
 
   test('AC-3: a free-form lock reason with no pid token still blocks', () => {
@@ -152,7 +160,7 @@ describe('lock owner', () => {
     lock(fx, 'keep this one, the build is running')
     const probe = fakeProbe({ alive: false })
     const item = worktreeItem(fx, probe)
-    expect(item.facts['blockers']).toEqual(['locked-worktree'])
+    expect(item.blockers).toEqual(['locked-worktree'])
     expect(probe.aliveCalls).toEqual([])
   })
 
@@ -160,7 +168,7 @@ describe('lock owner', () => {
     const fx = buildFixture()
     sh(fx.root, ['worktree', 'lock', fx.worktree])
     const item = worktreeItem(fx, fakeProbe({ alive: false }))
-    expect(item.facts['blockers']).toEqual(['locked-worktree'])
+    expect(item.blockers).toEqual(['locked-worktree'])
   })
 
   test('a stale lock does not hide other evidence: an unpushed commit still needs a grant', () => {
@@ -168,9 +176,9 @@ describe('lock owner', () => {
     lock(fx, LOCK)
     sh(fx.worktree, ['commit', '--allow-empty', '-m', 'unpushed'])
     const item = worktreeItem(fx, fakeProbe({ alive: false }))
-    expect(item.facts['stale_lock']).toBe(true)
-    expect(item.classification).toBe('needs-investigation')
-    expect(item.requires).toContain('abandon-unmerged')
+    expect(item.evidence.staleLock).toBe(true)
+    expect(item.verdict).toBe('review')
+    expect(item.risks).toContain('abandon-unmerged')
   })
 })
 
@@ -200,23 +208,23 @@ describe('live processes', () => {
   test('AC-5: a live non-shell holder blocks an unlocked, clean, landed worktree', () => {
     const fx = buildFixture()
     const item = worktreeItem(fx, fakeProbe({ holders: [{ pid: 4242, command: 'node' }] }))
-    expect(item.classification).toBe('needs-investigation')
-    expect(item.facts['blockers']).toEqual(['live-process'])
-    expect(item.facts['live_processes']).toEqual([{ pid: 4242, command: 'node' }])
-    expect(item.deletable).toBe(false)
-    expect(item.investigationParts[0]).toContain('node (pid 4242)')
+    expect(item.verdict).toBe('blocked')
+    expect(item.blockers).toEqual(['live-process'])
+    expect(item.evidence.liveProcesses).toEqual([{ pid: 4242, command: 'node' }])
+    expect(item.action).toBeNull()
+    expect(item.notes[0]).toContain('node (pid 4242)')
   })
 
-  test('AC-5: only shells do not block, and are listed in idle_shells', () => {
+  test('AC-5: only shells do not block, and are listed in idleShells', () => {
     const fx = buildFixture()
     const shells = [
       { pid: 10, command: 'zsh', hasChildren: false },
       { pid: 11, command: '-bash', hasChildren: false },
     ]
     const item = worktreeItem(fx, fakeProbe({ holders: shells }))
-    expect(item.classification).toBe('safe-to-delete')
-    expect(item.facts['blockers']).toEqual([])
-    expect(item.facts['idle_shells']).toEqual(shells)
+    expect(item.verdict).toBe('delete')
+    expect(item.blockers).toEqual([])
+    expect(item.evidence.idleShells).toEqual(shells)
   })
 
   test('a shell beside a real process: the process blocks and both are listed', () => {
@@ -230,8 +238,8 @@ describe('live processes', () => {
         ],
       }),
     )
-    expect(item.facts['blockers']).toEqual(['live-process'])
-    expect(item.facts['idle_shells']).toEqual([{ pid: 10, command: 'fish', hasChildren: false }])
+    expect(item.blockers).toEqual(['live-process'])
+    expect(item.evidence.idleShells).toEqual([{ pid: 10, command: 'fish', hasChildren: false }])
   })
 
   test('a live process blocks a stale-locked worktree too', () => {
@@ -241,8 +249,8 @@ describe('live processes', () => {
       fx,
       fakeProbe({ alive: false, holders: [{ pid: 4242, command: 'node' }] }),
     )
-    expect(item.facts['stale_lock']).toBe(true)
-    expect(item.facts['blockers']).toEqual(['live-process'])
+    expect(item.evidence.staleLock).toBe(true)
+    expect(item.blockers).toEqual(['live-process'])
   })
 
   test('a shell with child processes, or with unknown children, blocks', () => {
@@ -256,8 +264,8 @@ describe('live processes', () => {
         ],
       }),
     )
-    expect(item.facts['blockers']).toEqual(['live-process'])
-    expect(item.facts['idle_shells']).toBeUndefined()
+    expect(item.blockers).toEqual(['live-process'])
+    expect(item.evidence.idleShells).toBeUndefined()
   })
 
   test('a probe that cannot read the process table blocks the worktree', () => {
@@ -269,10 +277,10 @@ describe('live processes', () => {
       },
     }
     const item = worktreeItem(fx, probe)
-    expect(item.facts['process_probe_error']).toBe('lsof did not run')
-    expect(item.facts['blockers']).toEqual(['process-probe-failed'])
-    expect(item.classification).toBe('needs-investigation')
-    expect(item.deletable).toBe(false)
+    expect(item.evidence.processProbeError).toBe('lsof did not run')
+    expect(item.blockers).toEqual(['process-probe-failed'])
+    expect(item.verdict).toBe('blocked')
+    expect(item.action).toBeNull()
   })
 
   test('isIdleShell', () => {
@@ -281,28 +289,27 @@ describe('live processes', () => {
   })
 })
 
-describe('apply', () => {
+describe('run', () => {
   function makePlan(fx: Fixture, probe: ProcessProbe): Plan {
-    const { repo, items } = sweepRepo(fx.root, { gh: fx.gh, cwd: fx.root, probe })
-    return {
-      version: PLAN_VERSION,
-      created_at: new Date().toISOString(),
-      repos: [planRepo(repo!.root, { remote: null, noProvider: false }, items)],
-    }
+    return planOf(sweep([fx.root], { remote: true, offline: true, gh: fx.gh, cwd: fx.root, probe }))
   }
 
-  function apply(fx: Fixture, plan: Plan, probe: ProcessProbe, dryRun = false): Receipt {
-    return applyPlan(plan, [row(fx)], [], {
-      callerCwd: fx.root,
-      dryRun,
+  const pick = (fx: Fixture): string => `worktree:${fx.worktree}`
+
+  function preview(fx: Fixture, plan: Plan, probe: ProcessProbe): Preview {
+    return check(plan, { pick: [pick(fx)] }, { cwd: fx.root, gh: fx.gh, probe })
+  }
+
+  function apply(fx: Fixture, plan: Plan, probe: ProcessProbe): Receipt {
+    return run(preview(fx, plan, probe), {
+      cwd: fx.root,
       receiptPath: join(fx.root, '.receipts', 'test.json'),
-      planPath: 'plan.json',
+      source: 'plan.json',
       gh: fx.gh,
       probe,
     })
   }
 
-  const row = (fx: Fixture): RowRef => ({ category: 'worktree', id: fx.worktree })
   const locked = (fx: Fixture): boolean =>
     sh(fx.root, ['worktree', 'list', '--porcelain']).includes('\nlocked')
 
@@ -311,13 +318,15 @@ describe('apply', () => {
     lock(fx, LOCK)
     const probe = fakeProbe({ alive: false })
     const receipt = apply(fx, makePlan(fx, probe), probe)
+    expect(receipt.version).toBe(2)
+    expect(receipt.plan).toBe('plan.json')
     expect(receipt.dropped).toEqual([])
     expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
       ['unlock-worktree', 'ok'],
       ['remove-worktree', 'ok'],
-      ['prune-worktrees', 'ok'],
     ])
     expect(receipt.steps[0]!.verification).toBe('lock owner dead, unlocked')
+    expect(receipt.steps.slice(0, 2).map((s) => s.row)).toEqual([pick(fx), pick(fx)])
     expect(receipt.status).toBe('complete')
     expect(existsSync(fx.worktree)).toBe(false)
     expect(JSON.parse(readFileSync(join(fx.root, '.receipts', 'test.json'), 'utf-8')).status).toBe(
@@ -329,25 +338,25 @@ describe('apply', () => {
     const fx = buildFixture()
     lock(fx, LOCK)
     const probe = fakeProbe({ alive: false })
-    const receipt = apply(fx, makePlan(fx, probe), probe, true)
-    expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
+    const shown = preview(fx, makePlan(fx, probe), probe)
+    expect(shown.dropped).toEqual([])
+    expect(shown.steps.map((s) => [s.action, s.result])).toEqual([
       ['unlock-worktree', 'would-run'],
       ['remove-worktree', 'would-run'],
-      ['prune-worktrees', 'would-run'],
     ])
     expect(locked(fx)).toBe(true)
     expect(existsSync(fx.worktree)).toBe(true)
   })
 
-  test('AC-6: if the owner is alive at apply time the row is dropped and nothing is touched', () => {
+  test('AC-6: if the owner is alive at run time the row is dropped and nothing is touched', () => {
     const fx = buildFixture()
     lock(fx, LOCK)
     const plan = makePlan(fx, fakeProbe({ alive: false }))
-    expect(plan.repos[0]!.rows.map((r) => r.id)).toContain(fx.worktree)
+    expect(plan.repos[0]!.rows.map((r) => r.id)).toContain(pick(fx))
     const receipt = apply(fx, plan, fakeProbe({ alive: true }))
     expect(receipt.steps).toEqual([])
     expect(receipt.dropped.map((d) => [d.reason, d.detail])).toEqual([
-      ['not-deletable', 'blocked: locked-worktree'],
+      ['blocked', 'blocked: locked-worktree'],
     ])
     expect(locked(fx)).toBe(true)
     expect(existsSync(fx.worktree)).toBe(true)
@@ -357,13 +366,15 @@ describe('apply', () => {
     const fx = buildFixture()
     lock(fx, LOCK)
     const plan = makePlan(fx, fakeProbe({ alive: false }))
-    // Dead for the re-sweep, alive for the check just before the unlock.
-    const probe = fakeProbe({ alive: (call) => call > 1 })
+    // Dead for the re-sweeps (the check's, then the run's), alive for the
+    // check just before the unlock.
+    const probe = fakeProbe({ alive: (call) => call > 2 })
     const receipt = apply(fx, plan, probe)
     expect(receipt.status).toBe('failed')
     expect(receipt.steps[0]!.action).toBe('unlock-worktree')
     expect(receipt.steps[0]!.result).toBe('failed')
     expect(receipt.steps[0]!.error).toContain('pid 99999 is alive')
+    expect(probe.aliveCalls).toHaveLength(3)
     expect(locked(fx)).toBe(true)
     expect(existsSync(fx.worktree)).toBe(true)
   })
@@ -376,7 +387,7 @@ describe('apply', () => {
       alive: () => false,
       holders: (_path, o) => {
         seen.push(o?.fresh)
-        // Quiet for the re-sweep, busy when asked afresh before the remove.
+        // Quiet for the re-sweeps, busy when asked afresh before the remove.
         return o?.fresh === true ? [{ pid: 4242, command: 'node' }] : []
       },
     }
@@ -419,7 +430,6 @@ describe('apply', () => {
     expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
       ['unlock-worktree', 'ok'],
       ['remove-worktree', 'failed'],
-      ['prune-worktrees', 'pending'],
     ])
     expect(receipt.steps[1]!.error).toContain('not restored')
     expect(locked(fx)).toBe(false)
@@ -431,7 +441,7 @@ describe('apply', () => {
     const plan = makePlan(fx, probe)
     lock(fx, LOCK)
     const receipt = apply(fx, plan, probe)
-    expect(receipt.dropped.map((d) => d.reason)).toEqual(['facts-changed'])
+    expect(receipt.dropped.map((d) => [d.row, d.reason])).toEqual([[pick(fx), 'changed']])
     expect(existsSync(fx.worktree)).toBe(true)
   })
 
@@ -444,7 +454,6 @@ describe('apply', () => {
     expect(receipt.steps.map((s) => [s.action, s.result])).toEqual([
       ['unlock-worktree', 'ok'],
       ['prune-worktrees', 'ok'],
-      ['prune-worktrees', 'ok'],
     ])
     expect(sh(fx.root, ['worktree', 'list', '--porcelain'])).not.toContain(fx.worktree)
   })
@@ -453,7 +462,7 @@ describe('apply', () => {
     const fx = buildFixture()
     const probe = fakeProbe()
     const receipt = apply(fx, makePlan(fx, probe), probe)
-    expect(receipt.steps.map((s) => s.action)).toEqual(['remove-worktree', 'prune-worktrees'])
+    expect(receipt.steps.map((s) => s.action)).toEqual(['remove-worktree'])
   })
 })
 
@@ -579,8 +588,8 @@ describe('default probe: ps', () => {
       lsof: canned(() => ({ stdout: '' })),
     })
     const item = worktreeItem(fx, probe)
-    expect(item.facts['blockers']).toEqual(['locked-worktree'])
-    expect(item.facts['stale_lock']).toBeUndefined()
+    expect(item.blockers).toEqual(['locked-worktree'])
+    expect(item.evidence.staleLock).toBeUndefined()
   })
 
   test('a start time given as epoch seconds is compared as one', () => {
