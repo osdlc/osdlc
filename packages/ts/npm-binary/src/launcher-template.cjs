@@ -34,7 +34,7 @@ function binaryPath() {
     throw new Error(
       `${BINARY}: the platform package ${pkg} is not installed. ` +
         `It is an optional dependency of ${LAUNCHER}, so it is skipped when optional dependencies are ` +
-        '(--omit=optional, --no-optional) or when the lockfile was made on another platform. ' +
+        'turned off (--omit=optional, --no-optional) or when the lockfile was made on another platform. ' +
         `Reinstall without those, or add ${pkg} directly.`,
     )
   }

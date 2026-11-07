@@ -116,6 +116,15 @@ console.log(`${platformDirs.length} platform packages and the launcher in ${out}
 [`examples/readme.test.ts`](examples/readme.test.ts) installs those packages
 the way npm lays them out and runs the launcher.
 
+## Guide
+
+- [Getting started](docs/guide/getting-started.md): publish a CLI for five
+  platforms, step by step, with the `package.json` files it writes.
+- [How the launcher works](docs/guide/how-the-launcher-works.md): what runs on
+  the user's machine, signals and exit codes.
+- [Troubleshooting](docs/guide/troubleshooting.md): the errors users can hit,
+  their causes and fixes.
+
 ## How the launcher behaves
 
 `renderLauncher` returns the launcher script. On the user's machine it:
