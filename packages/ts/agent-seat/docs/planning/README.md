@@ -30,6 +30,8 @@ note is `current` until the app changes under it.
   release; `HostName` stays closed in 0.x.
 - [D-06](decisions/D-06-name.md): The package is `@osdlc/agent-seat`.
 - [D-07](decisions/D-07-first-version.md): The first public version is 0.7.1.
+- [D-08](decisions/D-08-companion-wire-names.md): The companions' wire names
+  (`sdlc-host`, `/api/sdlc/`) stay as they are until the companions ship.
 
 ## Research
 
