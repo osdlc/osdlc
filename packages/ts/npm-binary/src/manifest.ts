@@ -65,16 +65,17 @@ export interface LauncherManifestOptions {
  * optional dependency at the same version, built or not. `files` defaults to
  * the launcher and the README; a template's `files` gets the launcher added
  * when it lacks it. `engines.node` defaults to `>=18`. The launcher is
- * CommonJS, so a template with `"type": "module"` is refused.
+ * CommonJS, so a template with `"type": "module"` is refused unless
+ * `launcherPath` ends in `.cjs`.
  */
 export function launcherManifest(
   product: BinaryProduct,
   platforms: readonly NpmPlatform[],
   { version, description, launcherPath, template = {} }: LauncherManifestOptions,
 ): Manifest {
-  if (template.type === 'module') {
+  if (template.type === 'module' && !launcherPath.endsWith('.cjs')) {
     throw new Error(
-      'launcherManifest: the template sets "type": "module", but the launcher is CommonJS; leave "type" out of the launcher template',
+      'launcherManifest: the template sets "type": "module", but the launcher is CommonJS; leave "type" out of the launcher template or give launcherPath a .cjs extension',
     )
   }
   const m = withIdentity(product.launcher, version, description, template)
@@ -106,12 +107,16 @@ function withIdentity(
 }
 
 /**
- * The `files` list with `file` in it: the template's list plus `file` when it
- * is missing, or `file` and `rest` when the template has none.
+ * The `files` list with `file` in it: the template's list, plus `file` when no
+ * entry names it or a directory that holds it; or `file` and `rest` when the
+ * template has no list.
  */
 function withFile(files: unknown, file: string, rest: string[]): unknown[] {
   if (!Array.isArray(files)) return [file, ...rest]
-  return files.includes(file) ? files : [...files, file]
+  const covers = (entry: unknown) =>
+    typeof entry === 'string' &&
+    (entry === file || file.startsWith(`${entry.replace(/\/+$/, '')}/`))
+  return files.some(covers) ? files : [...files, file]
 }
 
 /** Writes `value` as JSON with two-space indent and a final newline, as npm does. */

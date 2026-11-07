@@ -2,7 +2,7 @@
 // out and run through the launcher. Imports the package by name, and its own
 // dependency @osdlc/command-seam to run Node.
 
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
@@ -31,6 +31,7 @@ import {
   platformPackageName,
   publishPackages,
   type PublishOptions,
+  type PublishResult,
   renderLauncher,
   writeJson,
 } from '@osdlc/npm-binary'
@@ -48,9 +49,18 @@ const product: BinaryProduct = {
 const version = '1.0.0'
 
 // A stand-in for each platform's build: a script that prints its arguments and
-// exits 7.
+// exits 7. Given `stop-launcher`, it sends SIGTERM to its parent (the launcher)
+// and waits, so the launcher must forward the signal to end it.
 const built = join(out, 'built-tool')
-writeFileSync(built, '#!/bin/sh\necho "tool got: $*"\nexit 7\n')
+writeFileSync(
+  built,
+  [
+    '#!/bin/sh',
+    'if [ "$1" = stop-launcher ]; then kill -TERM "$PPID"; exec sleep 5; fi',
+    'echo "tool got: $*"',
+    'exit 7',
+  ].join('\n'),
+)
 
 const packageDir = (platform: NpmPlatform) => join(out, 'packages', platformKey(platform))
 
@@ -111,24 +121,62 @@ const host = (() => {
   }
 })()
 
-// Runs the launcher with Node from a node_modules laid out as npm installs it:
-// the launcher plus the one platform package for this host.
-test.skipIf(host === undefined || process.platform === 'win32')(
+const posixHost = host !== undefined && process.platform !== 'win32'
+
+/**
+ * Packs the launcher and this host's platform package with `npm pack`, and
+ * unpacks them into a node_modules laid out as npm installs them. Returns the
+ * launcher script's path. Packing checks `files` and keeps the executable bit
+ * the way a real install does.
+ */
+const install = (() => {
+  let launcherScript: string | undefined
+  return () => {
+    if (launcherScript !== undefined) return launcherScript
+    const tarballs = join(out, 'tarballs')
+    const modules = join(out, 'consumer', 'node_modules', '@acme')
+    mkdirSync(tarballs, { recursive: true })
+    const unpack = (dir: string, dest: string) => {
+      const packed = spawnRunner('npm').run(['pack', '--pack-destination', tarballs, '--json'], {
+        cwd: dir,
+      })
+      expect(packed.exitCode, packed.stderr).toBe(0)
+      const [{ filename }] = JSON.parse(packed.stdout) as [{ filename: string }]
+      mkdirSync(dest, { recursive: true })
+      const tar = spawnRunner('tar').run(
+        ['-xzf', join(tarballs, filename), '-C', dest, '--strip-components=1'],
+        { cwd: out },
+      )
+      expect(tar.exitCode, tar.stderr).toBe(0)
+    }
+    unpack(launcherDir, join(modules, 'tool'))
+    unpack(packageDir(host!), join(modules, `tool-${platformKey(host!)}`))
+    launcherScript = join(modules, 'tool', 'bin', 'tool.js')
+    return launcherScript
+  }
+})()
+
+test.skipIf(!posixHost)(
   'installed, the launcher runs the binary and passes its exit code through',
   () => {
-    const modules = join(out, 'consumer', 'node_modules', '@acme')
-    const platform = host!
-    cpSync(launcherDir, join(modules, 'tool'), { recursive: true })
-    cpSync(packageDir(platform), join(modules, `tool-${platformKey(platform)}`), {
-      recursive: true,
+    const result = spawnRunner(process.execPath).run([install(), 'a', 'b c'], {
+      cwd: out,
+      env: { ...process.env, TOOL_DEBUG: '1' },
     })
-    const result = spawnRunner(process.execPath).run(
-      [join(modules, 'tool', 'bin', 'tool.js'), 'a', 'b c'],
-      { cwd: out, env: { ...process.env, TOOL_DEBUG: '1' } },
-    )
     expect(result.stdout).toBe('tool got: a b c\n')
-    expect(result.stderr).toContain(`package=@acme/tool-${platformKey(platform)}`)
+    expect(result.stderr).toContain(`package=@acme/tool-${platformKey(host!)}`)
     expect(result.exitCode).toBe(7)
+  },
+)
+
+test.skipIf(!posixHost)(
+  'SIGTERM to the launcher reaches the binary, and the launcher dies of it too',
+  () => {
+    const started = Date.now()
+    const result = spawnRunner(process.execPath).run([install(), 'stop-launcher'], { cwd: out })
+    expect(result.signal).toBe('SIGTERM')
+    // The binary would sleep 5 s if the launcher had not forwarded the signal.
+    expect(Date.now() - started).toBeLessThan(4000)
   },
 )
 
@@ -159,6 +207,8 @@ test('publishing goes platform packages first, the launcher last', async () => {
       },
     },
   }
-  await publishPackages(options)
+  const result: PublishResult = await publishPackages(options)
   expect(published).toEqual([...NPM_PLATFORMS.map(platformKey), 'launcher'])
+  expect(result.published.at(-1)).toBe('@acme/tool@1.0.0')
+  expect(result.skipped).toEqual([])
 })

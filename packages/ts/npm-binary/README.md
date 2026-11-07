@@ -53,7 +53,7 @@ package and publishes them. This writes every package for a tool named
 `tool`, with a stand-in for each platform's build:
 
 ```ts
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -89,7 +89,9 @@ const platformDirs = NPM_PLATFORMS.map((platform) => {
     platformManifest(product, platform, {
       version,
       description: `The tool binary for ${platformKey(platform)}.`,
-      template: { license: 'MIT' },
+      // Platform packages are scoped, and npm publishes a new scoped package
+      // as private unless publishConfig.access says public.
+      template: { license: 'MIT', publishConfig: { access: 'public' } },
     }),
   )
   copyExecutable(built, join(dir, binaryPathInPackage(product, platform)))
@@ -111,6 +113,7 @@ writeFileSync(join(launcherDir, 'bin', 'tool.js'), renderLauncher(product, NPM_P
 // Then, logged in to npm:
 // await publishPackages({ platformDirs, launcherDir })
 console.log(`${platformDirs.length} platform packages and the launcher in ${out}`)
+rmSync(out, { recursive: true, force: true })
 ```
 
 [`examples/readme.test.ts`](examples/readme.test.ts) installs those packages
@@ -193,7 +196,8 @@ Publishing and cargo:
   first and skips every `name@version` already published, so a half-finished
   run is safe to run again. `PublishOptions` has `platformDirs`,
   `launcherDir`, `dryRun`, and `viewRunner` and `publishRunner` to replace the
-  `npm` it runs (for tests).
+  `npm` it runs (for tests). It returns a `PublishResult`: the `published` and
+  `skipped` packages as `name@version`.
 - `cargoTargetDir(options)`: cargo's target directory, from
   `cargo metadata --no-deps`, for a release script that builds with cargo.
   `CargoTargetDirOptions` has `cwd`, an optional `manifestPath` for a crate
@@ -210,7 +214,10 @@ platform in the list you pass. What it does not do:
 - fall back to an emulated build. On Windows on Arm, `process.arch` is `arm64`,
   so the launcher reports no build unless your list has `win32-arm64`, even
   though an x64 build would run under emulation.
-- forward SIGHUP on Windows, which has no such signal.
+- forward SIGHUP on Windows. Node raises it there when the console window
+  closes, and the binary gets that close event itself.
+- forward SIGINT on Windows. The binary gets the console's Ctrl-C itself,
+  and Node's `kill` on Windows is a hard kill rather than a signal.
 
 The tests run on Linux and macOS. The launcher's Windows paths (`.exe`, no
 SIGHUP, a signal that cannot be re-raised) are covered by unit tests, not by a

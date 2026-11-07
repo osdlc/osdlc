@@ -63,12 +63,18 @@ if (DEBUG_ENV && process.env[DEBUG_ENV]) {
 // Inherited stdio, so the binary owns the terminal. In a terminal, Ctrl-C already
 // reaches the child through its process group, so SIGINT is forwarded only when
 // no standard stream is a terminal; forwarding it too would read as a second
-// Ctrl-C. SIGTERM and SIGHUP are always forwarded.
-const child = spawn(bin, process.argv.slice(2), { stdio: 'inherit' })
-const forwardSigint = ![process.stdin, process.stdout, process.stderr].some(
-  (stream) => stream.isTTY === true,
-)
+// Ctrl-C. On Windows the child gets the console's Ctrl-C itself and kill() is a
+// hard kill, so SIGINT is never forwarded there. SIGTERM and SIGHUP (not on
+// Windows) are always forwarded.
+//
+// The handlers go in before the spawn: the child starts running inside spawn(),
+// and a signal that arrived before them would end the launcher and orphan it.
+// A handler runs on a later tick, after spawn() has returned and set `child`.
+const forwardSigint =
+  process.platform !== 'win32' &&
+  ![process.stdin, process.stdout, process.stderr].some((stream) => stream.isTTY === true)
 const signals = ['SIGINT', 'SIGTERM', ...(process.platform === 'win32' ? [] : ['SIGHUP'])]
+let child
 for (const signal of signals) {
   process.on(signal, () => {
     if (signal === 'SIGINT' && !forwardSigint) return
@@ -79,6 +85,7 @@ for (const signal of signals) {
     }
   })
 }
+child = spawn(bin, process.argv.slice(2), { stdio: 'inherit' })
 child.on('error', (error) => {
   process.stderr.write(`${BINARY}: could not run ${bin}: ${error.message}\n`)
   process.exit(1)

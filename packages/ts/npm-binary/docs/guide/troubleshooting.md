@@ -48,7 +48,8 @@ import { NPM_PLATFORMS, type NpmPlatform } from '@osdlc/npm-binary'
 const PLATFORMS: NpmPlatform[] = [...NPM_PLATFORMS, { os: 'win32', cpu: 'arm64' }]
 ```
 
-`NpmPlatform` covers `darwin`, `linux` and `win32` on `arm64` and `x64`.
+`NpmPlatform` accepts any `process.platform` and `process.arch` value; the
+common ones are named for editor completion.
 
 ## The binary fails on Alpine Linux
 

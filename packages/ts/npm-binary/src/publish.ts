@@ -14,6 +14,14 @@ import {
   streamRunner,
 } from '@osdlc/command-seam'
 
+/** What {@link publishPackages} did, as `name@version` in publish order. */
+export interface PublishResult {
+  /** Published by this run (or, with `dryRun`, that would be). */
+  published: string[]
+  /** Already on the registry, so not published again. */
+  skipped: string[]
+}
+
 /** Options for {@link publishPackages}. */
 export interface PublishOptions {
   /** The platform package directories, each with its package.json. */
@@ -40,6 +48,7 @@ export interface PublishOptions {
  * lookup fails for any reason but "not found" (E404), and on the first failed
  * publish. npm uses its own login and each package's `publishConfig`, so set
  * `publishConfig.tag` to publish a prerelease under a tag other than `latest`.
+ * Returns which packages were published and which were skipped.
  */
 export async function publishPackages({
   platformDirs,
@@ -47,7 +56,7 @@ export async function publishPackages({
   dryRun = false,
   viewRunner = spawnRunnerAsync('npm'),
   publishRunner = streamRunner('npm'),
-}: PublishOptions): Promise<void> {
+}: PublishOptions): Promise<PublishResult> {
   const packages = await Promise.all(
     [...platformDirs, launcherDir].map(async (dir) => {
       const { name, version, publishConfig } = JSON.parse(
@@ -68,12 +77,15 @@ export async function publishPackages({
     }),
   )
   const argv = ['publish', ...(dryRun ? ['--dry-run'] : [])]
+  const result: PublishResult = { published: [], skipped: [] }
   for (const { dir, name, version, published } of packages) {
     if (published) {
-      console.log(`${name}@${version} is already published; skipping`)
+      result.skipped.push(`${name}@${version}`)
       continue
     }
-    const result = publishRunner.run(argv, { cwd: dir })
-    if (result.exitCode !== 0) throw new Error(`npm ${argv.join(' ')} failed in ${dir}`)
+    const run = publishRunner.run(argv, { cwd: dir })
+    if (run.exitCode !== 0) throw new Error(`npm ${argv.join(' ')} failed in ${dir}`)
+    result.published.push(`${name}@${version}`)
   }
+  return result
 }

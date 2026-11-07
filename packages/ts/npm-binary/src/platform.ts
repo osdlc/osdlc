@@ -2,10 +2,14 @@
  * The platforms a binary ships for, and the names derived from them.
  */
 
-/** A platform as npm sees it: `process.platform` and `process.arch`. */
+/**
+ * A platform as npm sees it: an `os` from `process.platform` and a `cpu` from
+ * `process.arch`. The common values are named for completion; any other value
+ * Node reports, such as `freebsd` or `ia32`, is accepted too.
+ */
 export interface NpmPlatform {
-  readonly os: 'darwin' | 'linux' | 'win32'
-  readonly cpu: 'arm64' | 'x64'
+  readonly os: 'darwin' | 'linux' | 'win32' | (string & {})
+  readonly cpu: 'arm64' | 'x64' | (string & {})
 }
 
 /**
@@ -29,8 +33,13 @@ export interface BinaryProduct {
   readonly binary: string
   /** The launcher package users install. */
   readonly launcher: string
-  /** Platform packages are `<scope>/<platformPrefix>-<os>-<cpu>`; an npm scope such as `@acme`. */
+  /** The npm scope platform packages are published under, such as `@acme`. */
   readonly scope: string
+  /**
+   * Platform packages are `<scope>/<platformPrefix>-<os>-<cpu>`, such as
+   * `@acme/tool-linux-x64`. With `''` they are `<scope>/<os>-<cpu>`, the way
+   * esbuild names them (`@esbuild/linux-x64`).
+   */
   readonly platformPrefix: string
   /** Directory inside a platform package that holds the binary; `''` is the package root. */
   readonly binaryDir: string
@@ -41,14 +50,19 @@ export function platformKey(p: NpmPlatform): string {
   return `${p.os}-${p.cpu}`
 }
 
-/** `<scope>/<platformPrefix>-<os>-<cpu>`, e.g. `@acme/tool-linux-x64`. */
+/**
+ * `<scope>/<platformPrefix>-<os>-<cpu>`, e.g. `@acme/tool-linux-x64`, or
+ * `<scope>/<os>-<cpu>` when `platformPrefix` is `''`. Throws when `scope` is
+ * not an npm scope.
+ */
 export function platformPackageName(product: BinaryProduct, p: NpmPlatform): string {
   if (!/^@[^/@\s]+$/.test(product.scope)) {
     throw new Error(
       `scope must be an npm scope such as "@acme", got ${JSON.stringify(product.scope)}`,
     )
   }
-  return `${product.scope}/${product.platformPrefix}-${platformKey(p)}`
+  const prefix = product.platformPrefix === '' ? '' : `${product.platformPrefix}-`
+  return `${product.scope}/${prefix}${platformKey(p)}`
 }
 
 /** The executable's extension, with its dot: `.exe` on Windows, empty elsewhere. */

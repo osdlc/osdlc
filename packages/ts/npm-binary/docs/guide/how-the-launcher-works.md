@@ -79,8 +79,16 @@ binary, so it decides what to pass on:
 | Signal  | Forwarded to the binary?                                       |
 | ------- | -------------------------------------------------------------- |
 | SIGTERM | Always.                                                        |
-| SIGHUP  | Always (not on Windows, which has no SIGHUP).                  |
-| SIGINT  | Only when none of stdin, stdout and stderr is a terminal.      |
+| SIGHUP  | Always, except on Windows.                                     |
+| SIGINT  | Only when none of stdin, stdout and stderr is a terminal, and never on Windows. |
+
+On Windows, the binary gets the console's Ctrl-C and window-close events
+itself, and Node's `kill` there ends a process outright instead of sending it
+a signal, so forwarding would only cut its cleanup short.
+
+The launcher installs these handlers before it starts the binary, so a signal
+that arrives at startup is still passed on rather than ending the launcher
+and leaving the binary running.
 
 Why SIGINT is special: when you press Ctrl-C in a terminal, the terminal sends
 SIGINT to every process in the foreground job, the launcher and the binary
@@ -102,8 +110,12 @@ Two edge cases follow from this:
 - While a standard stream is a terminal, `kill -INT <launcher pid>` reaches
   the launcher but not the binary, and the launcher keeps waiting, so the
   tool keeps running. A script or task runner that stops the tool with SIGINT
-  aimed at one pid (`timeout -s INT`, some IDE task runners) should send
-  SIGTERM instead.
+  aimed at one pid (`timeout --foreground -s INT`, or a parent process calling
+  `kill(pid, 'SIGINT')` while sharing the terminal) should send SIGTERM
+  instead.
+- Closing a terminal sends SIGHUP to the whole foreground job too, so the
+  binary can get SIGHUP twice: once from the terminal and once forwarded.
+  Treat a repeated SIGHUP like the first.
 - If you run it from a terminal with all three streams redirected
   (`mytool < in > out 2> err`), the launcher cannot tell it is still in the
   terminal's foreground job, so Ctrl-C reaches the binary twice.

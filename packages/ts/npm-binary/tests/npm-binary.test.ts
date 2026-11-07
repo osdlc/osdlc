@@ -38,6 +38,16 @@ describe('names', () => {
     expect(binaryPathInPackage(NESTED, MAC)).toBe('bin/tool')
   })
 
+  test('an empty platformPrefix gives esbuild-style names', () => {
+    expect(platformPackageName({ ...ROOT, platformPrefix: '' }, MAC)).toBe('@acme/darwin-arm64')
+  })
+
+  test('any platform Node reports can be named', () => {
+    const freebsd = { os: 'freebsd', cpu: 'x64' }
+    expect(platformPackageName(ROOT, freebsd)).toBe('@acme/tool-freebsd-x64')
+    expect(binaryPathInPackage(ROOT, freebsd)).toBe('tool')
+  })
+
   test('a scope that is not an npm scope is refused', () => {
     expect(() => platformPackageName({ ...ROOT, scope: '' }, MAC)).toThrow(/npm scope/)
     expect(() => platformPackageName({ ...ROOT, scope: 'acme' }, MAC)).toThrow(/npm scope/)
@@ -129,6 +139,29 @@ describe('template precedence', () => {
     expect(l.files).toEqual(['README.md', 'bin/tool.js'])
   })
 
+  test('a directory entry in files covers the binary inside it', () => {
+    const template = { files: ['bin/', 'README.md'] }
+    const p = platformManifest(NESTED, MAC, { version: '1.0.0', description: 'd', template })
+    expect(p.files).toEqual(['bin/', 'README.md'])
+    const l = launcherManifest(ROOT, NPM_PLATFORMS, {
+      version: '1.0.0',
+      description: 'd',
+      launcherPath: 'bin/tool.js',
+      template: { files: ['bin'] },
+    })
+    expect(l.files).toEqual(['bin'])
+  })
+
+  test('a launcher with a .cjs path may sit in an ESM package', () => {
+    const l = launcherManifest(ROOT, NPM_PLATFORMS, {
+      version: '1.0.0',
+      description: 'd',
+      launcherPath: 'bin/tool.cjs',
+      template: { type: 'module' },
+    })
+    expect(l.type).toBe('module')
+  })
+
   test('a launcher template that makes it ESM is refused', () => {
     expect(() =>
       launcherManifest(ROOT, NPM_PLATFORMS, {
@@ -213,6 +246,10 @@ interface LauncherRun {
   exit?: [number | null, string | null]
   /** Whether re-raising a signal on the launcher throws, as on Windows. */
   selfKillThrows?: boolean
+  /** Whether the binary file exists inside the platform package. */
+  binaryExists?: boolean
+  /** An error the child emits instead of starting. */
+  spawnError?: Error
 }
 
 /**
@@ -230,6 +267,8 @@ function runLauncher({
   signal,
   exit,
   selfKillThrows = false,
+  binaryExists = true,
+  spawnError,
 }: LauncherRun = {}) {
   let stderr = ''
   const exitCodes: number[] = []
@@ -266,7 +305,7 @@ function runLauncher({
   })
   const modules: Record<string, unknown> = {
     'node:child_process': { spawn: () => child },
-    'node:fs': { existsSync: () => true },
+    'node:fs': { existsSync: () => binaryExists },
     'node:os': { constants: { signals: { SIGTERM: 15 } } },
     'node:path': { join: (...p: string[]) => p.join('/'), dirname: () => '/pkg' },
   }
@@ -279,6 +318,7 @@ function runLauncher({
   new Function('require', 'process', launcherBody(ROOT, debugEnv))(req, proc)
   const listening = proc.eventNames().map(String)
   if (signal) proc.emit(signal, signal)
+  if (spawnError) child.emit('error', spawnError)
   if (exit) child.emit('exit', ...exit)
   return { stderr, exitCodes, childKills, selfKills, listening }
 }
@@ -303,6 +343,20 @@ describe('launcher', () => {
     expect(stderr).toBe(
       'tool launcher: platform=darwin-arm64 package=@acme/tool-darwin-arm64 binary=/pkg/tool\n',
     )
+  })
+
+  test('an installed package without its binary says to reinstall', () => {
+    const { stderr, exitCodes } = runLauncher({ binaryExists: false })
+    expect(stderr).toBe(
+      'tool: @acme/tool-darwin-arm64 is installed but its binary /pkg/tool is missing; try reinstalling.\n',
+    )
+    expect(exitCodes[0]).toBe(1)
+  })
+
+  test('a binary that cannot start is reported, exit 1', () => {
+    const { stderr, exitCodes } = runLauncher({ spawnError: new Error('spawn /pkg/tool EACCES') })
+    expect(stderr).toBe('tool: could not run /pkg/tool: spawn /pkg/tool EACCES\n')
+    expect(exitCodes).toEqual([1])
   })
 
   test('the child exit code passes through', () => {
@@ -342,6 +396,10 @@ describe('launcher signal forwarding', () => {
 
   test('SIGINT is forwarded when no standard stream is a terminal', () => {
     expect(runLauncher({ signal: 'SIGINT' }).childKills).toEqual(['SIGINT'])
+  })
+
+  test('SIGINT is never forwarded on Windows: the child gets the console Ctrl-C itself', () => {
+    expect(runLauncher({ platform: 'win32', arch: 'x64', signal: 'SIGINT' }).childKills).toEqual([])
   })
 
   test('SIGTERM is forwarded either way', () => {
@@ -429,8 +487,19 @@ describe('publishPackages', () => {
 
   test('platform packages first, the launcher last, skipping published versions', async () => {
     const { options, runs } = setup(['@acme/tool-darwin-arm64@1.0.0'])
-    await publishPackages(options)
+    const result = await publishPackages(options)
     expect(runs).toEqual(['@acme/tool-linux-x64 publish', '@acme/tool publish'])
+    expect(result).toEqual({
+      published: ['@acme/tool-linux-x64@1.0.0', '@acme/tool@1.0.0'],
+      skipped: ['@acme/tool-darwin-arm64@1.0.0'],
+    })
+  })
+
+  test('a lookup that succeeds with no output is a version not yet published', async () => {
+    const { options, runs } = setup([])
+    const { asyncRunner } = fakeRunner(() => ({ stdout: '' }))
+    await publishPackages({ ...options, viewRunner: asyncRunner })
+    expect(runs).toHaveLength(3)
   })
 
   test('dryRun passes --dry-run', async () => {

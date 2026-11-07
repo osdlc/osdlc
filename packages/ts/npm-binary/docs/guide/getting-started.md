@@ -65,19 +65,23 @@ const product: BinaryProduct = {
 The launcher can be scoped or not. Platform packages are always scoped, so you
 need an npm organisation (here `@mytool`) that you can publish to.
 
-The names derive from it:
+The names derive from it. With
+`const linux = findPlatform(NPM_PLATFORMS, 'linux-x64')` and
+`const windows = findPlatform(NPM_PLATFORMS, 'win32-x64')`:
 
-| Call                                           | Result                       |
-| ---------------------------------------------- | ---------------------------- |
-| `platformKey(linuxX64)`                        | `linux-x64`                  |
-| `platformPackageName(product, linuxX64)`       | `@mytool/cli-linux-x64`      |
-| `binaryFileName(product, windowsX64)`          | `mytool.exe`                 |
-| `binaryPathInPackage(product, windowsX64)`     | `bin/mytool.exe`             |
-| `findPlatform(NPM_PLATFORMS, 'darwin-arm64')`  | `{ os: 'darwin', cpu: 'arm64' }` |
+| Call                                        | Result                  |
+| ------------------------------------------- | ----------------------- |
+| `platformKey(linux)`                        | `linux-x64`             |
+| `platformPackageName(product, linux)`       | `@mytool/cli-linux-x64` |
+| `binaryFileName(product, windows)`          | `mytool.exe`            |
+| `binaryPathInPackage(product, windows)`     | `bin/mytool.exe`        |
+
+Set `platformPrefix: ''` for esbuild-style names: `@mytool/linux-x64`.
 
 `NPM_PLATFORMS` is the default list of five. Pass your own list everywhere if
 you ship for more or fewer, for example with `{ os: 'win32', cpu: 'arm64' }`
-added.
+or `{ os: 'freebsd', cpu: 'x64' }` added: any `process.platform` and
+`process.arch` value works.
 
 ## 2. Build the binaries
 
@@ -126,6 +130,13 @@ import {
 } from '@osdlc/npm-binary'
 
 const version = '1.2.0'
+// Fields every package gets. Platform packages are scoped, and npm publishes a
+// new scoped package as private unless publishConfig.access says public.
+const template = {
+  license: 'MIT',
+  repository: 'github:you/mytool',
+  publishConfig: { access: 'public' },
+}
 const RUST_TARGET: Record<string, string> = {
   'darwin-arm64': 'aarch64-apple-darwin',
   'darwin-x64': 'x86_64-apple-darwin',
@@ -144,7 +155,7 @@ const platformDirs = NPM_PLATFORMS.map((platform) => {
     platformManifest(product, platform, {
       version,
       description: `The mytool binary for ${key}. Install "mytool" instead.`,
-      template: { license: 'MIT', repository: 'github:you/mytool' },
+      template,
     }),
   )
 
@@ -212,7 +223,7 @@ writeJson(
     version,
     description: 'A fast tool.',
     launcherPath: 'bin/mytool.js',
-    template: { license: 'MIT', repository: 'github:you/mytool' },
+    template,
   }),
 )
 writeFileSync(
