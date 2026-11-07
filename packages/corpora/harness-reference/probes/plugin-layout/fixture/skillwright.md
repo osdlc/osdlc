@@ -1,5 +1,8 @@
 ---
 name: probe-market
 description: Layout probe marketplace
-sw-owner: probe-owner
+owner: probe-owner
+build:
+  out: out
+  launcher_path: bin/tool
 ---
