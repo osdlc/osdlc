@@ -66,7 +66,6 @@ export {
   harnessAvailable,
   harnessNativeSend,
   harnessOrNull,
-  KNOWN_HARNESSES,
   hasInteractiveArgv,
   parseRolloutMeta,
   walkRolloutFiles,
@@ -80,12 +79,7 @@ export {
 export { ensureWorkspace } from './open-workspace.ts'
 export { makeCmuxHost } from './hosts/cmux.ts'
 export { makeHerdrHost } from './hosts/herdr.ts'
-export {
-  JETBRAINS_PROTOCOL,
-  jetbrainsRegistryDir,
-  makeJetbrainsHost,
-  type JetbrainsSettings,
-} from './hosts/jetbrains.ts'
+export { JETBRAINS_PROTOCOL, makeJetbrainsHost, type JetbrainsSettings } from './hosts/jetbrains.ts'
 export { ORCA_BUNDLED_CLI, makeOrcaHost } from './hosts/orca.ts'
 export { makeOttyHost } from './hosts/otty.ts'
 export { hostRegistryDir, type HostStateOptions } from './hosts/registry.ts'
@@ -102,7 +96,6 @@ export { makeVscodeHost } from './hosts/vscode.ts'
 export {
   liveWindows,
   subprocessTransport,
-  vscodeRegistryDir,
   type VscodeReply,
   type VscodeTransport,
   type VscodeWindow,

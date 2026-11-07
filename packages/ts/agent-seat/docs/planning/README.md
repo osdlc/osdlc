@@ -24,8 +24,8 @@ note is `current` until the app changes under it.
   under the caller's runtime directory.
 - [D-03](decisions/D-03-one-session-id.md): `sessionId` is the caller's id on
   every request; the harness's own id is `harnessSessionId`.
-- [D-04](decisions/D-04-no-model-catalogue-dependency.md): The package keeps its
-  own table of known harnesses.
+- [D-04](decisions/D-04-harness-ids-from-detect-harness.md): Harness ids come
+  from `@osdlc/detect-harness`; the package keeps no table of its own.
 - [D-05](decisions/D-05-stability-tiers.md): Stability tiers for the first
   release; `HostName` stays closed in 0.x.
 - [D-06](decisions/D-06-name.md): The package is `@osdlc/agent-seat`.

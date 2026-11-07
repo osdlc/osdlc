@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { describe, expect, test } from 'vitest'
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
 
 import {
   shellJoin,
@@ -62,6 +62,19 @@ import {
 import { HostPartMissing, requirePart, supportsPlatform, type Host } from '../src/index.ts'
 import { rolloutFileName } from './fixtures/codex-rollout.ts'
 import { RUNTIME } from './fixtures/runtime.ts'
+
+// A host's `session` part takes no codex home, so `homedir()` points at a temp dir:
+// no test here reads or writes the real `~/.codex`.
+const home = vi.hoisted(() => ({ dir: '' }))
+vi.mock('node:os', async (importOriginal) => {
+  const os = await importOriginal<typeof import('node:os')>()
+  const homedir = () => home.dir
+  return { ...os, homedir, default: { ...os, homedir } }
+})
+beforeAll(() => {
+  home.dir = mkdtempSync(join(tmpdir(), 'hosts-test-home-'))
+})
+afterAll(() => rmSync(home.dir, { recursive: true, force: true }))
 
 const sendReq: SendRequest = { cwd: '/w', text: "feedback: fix it's typo" }
 const findQuery: FindQuery = { cwd: '/w' }
@@ -226,7 +239,7 @@ describe('wrapperSession', () => {
     expect(argv.slice(0, 3)).toEqual(['powershell', '-NoProfile', '-Command'])
     expect(argv).toHaveLength(4)
     expect(argv[3]).toBe(
-      "$env:A = 'o''k'; Remove-Item -ErrorAction SilentlyContinue 'Env:B'; & 'claude' 'it''s'",
+      "$env:A = 'o''k'; Remove-Item -ErrorAction SilentlyContinue 'Env:B'; & claude 'it''s'",
     )
     expect(argv).not.toContain('env')
   })
@@ -278,23 +291,10 @@ describe('a harness can open in more than one host via the same registry (AC-1)'
   })
 
   test('codex harnessSessionId resolves through wrapperSession when opened via the plain terminal host, not a bespoke codex host', () => {
-    // `wrapperSession`'s codex resolver (`harness.ts`'s `SESSION_ID_RESOLVERS`)
-    // calls `findCodexSessionId` with NO injected `codexHome` — that's the
-    // same call a real launch makes, so proving it resolves end to end here
-    // means writing (and cleaning up) a fixture rollout file under the REAL
-    // `codexSessionsDir()`, the one place this exact call path reads from.
-    // (An env override doesn't work for this: `os.homedir()` reads `$HOME`
-    // once at the process/native level, not live from `process.env` — a
-    // runtime `process.env['HOME'] = ...` mutation is silently ignored.) A
-    // freshly minted, never-reused `cwd` is what actually keeps this from
-    // ever matching a real session already on the machine running the test,
-    // regardless of how many other rollout files exist alongside it.
-    // The fixture root is a unique per-run directory (the walk is recursive and
-    // name-agnostic): a fixed `2099/` tree would be shared by two suites running
-    // at once, and each one's cleanup would delete the other's fixture file.
-    mkdirSync(codexSessionsDir(), { recursive: true })
-    const fixtureRoot = mkdtempSync(join(codexSessionsDir(), 'sdlc-test-'))
-    const dayDir = join(fixtureRoot, '2099', '12', '31')
+    // The host's session part injects no `codexHome`, as a real launch does, so the
+    // fixture goes under `codexSessionsDir()`: the mocked home directory above.
+    expect(codexSessionsDir().startsWith(home.dir)).toBe(true)
+    const dayDir = join(codexSessionsDir(), '2099', '12', '31')
     mkdirSync(dayDir, { recursive: true })
     const cwd = mkdtempSync(join(realpathSync(tmpdir()), 'sdlc-wrapper-session-codex-'))
     // Named for now: within the margin of `wrapperSession`'s `sinceMs`, taken moments later.
@@ -313,10 +313,6 @@ describe('a harness can open in more than one host via the same registry (AC-1)'
         })
       })
     } finally {
-      // Removes the whole unique fixture root this test created under the real
-      // `codexSessionsDir()`, not just its `12/31` leaf — otherwise the
-      // empty parent buckets would silently accumulate there on every run.
-      rmSync(fixtureRoot, { recursive: true, force: true })
       rmSync(cwd, { recursive: true, force: true })
     }
   })

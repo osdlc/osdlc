@@ -22,10 +22,15 @@
  * back to another route.
  */
 
-import { createHash } from 'node:crypto'
-
-import { failureText, ran, resolveRunner, type CommandRunner } from '@osdlc/command-seam'
-import { commandString, isRecord, parseJsonOrNull } from '../util.ts'
+import {
+  commandString,
+  failureText,
+  ran,
+  resolveRunner,
+  type CommandRunner,
+} from '@osdlc/command-seam'
+import { BUILTIN_HARNESSES, HARNESS_ALIASES } from '@osdlc/detect-harness'
+import { isRecord, parseJsonOrNull, sessionIdSlug, shortHash } from '../util.ts'
 
 import {
   onPath,
@@ -38,8 +43,7 @@ import {
   type SendReceipt,
   type SendRequest,
 } from '../contract.ts'
-import { KNOWN_HARNESSES, sessionViaTerminal } from '../harness.ts'
-import { sessionIdSlug } from './session-panes.ts'
+import { sessionViaTerminal } from '../harness.ts'
 
 /**
  * A tag appended to the tab title so a later `find` can match it: stable for the
@@ -50,7 +54,7 @@ import { sessionIdSlug } from './session-panes.ts'
  */
 export function ottyTag(cwd: string, sessionId?: string): string {
   if (sessionId !== undefined) return `[sd-i-${sessionIdSlug(sessionId)}]`
-  return `[sd-${createHash('sha256').update(cwd).digest('hex').slice(0, 12)}]`
+  return `[sd-${shortHash(cwd, 12)}]`
 }
 
 /** Argv for `otty tab new` — pure, so a test can pin it. */
@@ -101,8 +105,11 @@ export function ottyCloseArgv(paneId: string): string[] {
 const CWD_KEYS = ['cwd', 'working_directory', 'current_directory']
 /** Pane fields that may name the foreground process (DOCS-ONLY guesses, like the rest). */
 const PROCESS_KEYS = ['foreground_process', 'process', 'running_command', 'command', 'agent']
-/** Executable names that mean an agent is running: each known harness's id and binary (`cursor-agent`). */
-const AGENT_BINS: ReadonlySet<string> = new Set(KNOWN_HARNESSES.flatMap((h) => [h.id, h.binary]))
+/** Executable names that mean an agent is running: each built-in harness id and alias (`cursor-agent`, `agy`). */
+const AGENT_BINS: ReadonlySet<string> = new Set([
+  ...BUILTIN_HARNESSES,
+  ...Object.keys(HARNESS_ALIASES),
+])
 
 /** Whether the pane entry names a known agent as its foreground process. */
 function showsAgent(entry: Record<string, unknown>): boolean {

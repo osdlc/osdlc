@@ -97,6 +97,11 @@ interface SpawnedFile {
   mtimeMs: number
 }
 
+/**
+ * The files of panes this host spawned: the only panes `send` types into. Pane ids restart
+ * from 0 when the GUI/mux restarts, so an id alone proves nothing; the tty recorded at spawn
+ * is the identity (see {@link liveSpawned}).
+ */
 function readSpawnedFiles(dir: string): SpawnedFile[] {
   let names: string[]
   try {
@@ -123,15 +128,6 @@ function readSpawnedFiles(dir: string): SpawnedFile[] {
     out.push({ pane, path, mtimeMs })
   }
   return out
-}
-
-/**
- * Panes this host spawned: the only panes `send` types into. Pane ids restart
- * from 0 when the GUI/mux restarts, so an id alone proves nothing; the tty
- * recorded at spawn is the identity (see {@link liveSpawned}).
- */
-function readSpawned(dir: string): SpawnedPane[] {
-  return readSpawnedFiles(dir).flatMap((f) => (f.pane === null ? [] : [f.pane]))
 }
 
 /** Records `pane` in its own file. A pane that cannot be remembered is simply never sent to. */
@@ -338,8 +334,6 @@ export function makeWeztermHost(
     return out === null ? [] : parseWeztermList(out, cwd, platform, opts.localHost)
   }
 
-  const isBound = (sessionId: string): boolean => recallSessionPane(registryDir, sessionId) !== null
-
   /** Whether the listing shows pane `id` on the tty this host recorded when it spawned it. */
   const spawnedAndLive = (list: { rows: WeztermRow[]; at: number }, id: number): boolean =>
     liveSpawned(registryDir, list.rows, list.at).some((e) => e.paneId === id)
@@ -349,10 +343,13 @@ export function makeWeztermHost(
    * still listed on the tty recorded at spawn (wherever its cwd has moved to) and to nothing
    * otherwise: falling back to the cwd would reach another session's pane. Without a remembered
    * pane it is the pane this host spawned at `cwd`, or undefined; `any` falls back to the first
-   * pane there. One `cli list`.
+   * pane there. One `cli list`. `remembered` is the bound pane when the caller already read it.
    */
-  const paneFor = (target: FindQuery, any: boolean): WeztermPane | undefined => {
-    const remembered = boundPane(registryDir, target)
+  const paneFor = (
+    target: FindQuery,
+    any: boolean,
+    remembered = boundPane(registryDir, target),
+  ): WeztermPane | undefined => {
     if (remembered !== null) {
       const list = listing(target.cwd)
       const id = Number(remembered)
@@ -437,9 +434,9 @@ export function makeWeztermHost(
     },
     find(query: FindQuery): FoundSession[] {
       // The harness is not discoverable and `cli list` has no output-recency field.
-      const bound = query.sessionId !== undefined && isBound(query.sessionId)
-      const one = bound ? paneFor(query, true) : undefined
-      const panes = bound ? (one === undefined ? [] : [one]) : panesAt(query.cwd)
+      const remembered = boundPane(registryDir, query)
+      const one = remembered === null ? undefined : paneFor(query, true, remembered)
+      const panes = remembered === null ? panesAt(query.cwd) : one === undefined ? [] : [one]
       return panes.map((p) => ({
         cwd: query.cwd,
         harness: null,
@@ -480,7 +477,6 @@ export function makeWeztermHost(
       const remembered = recallSessionPane(registryDir, query.sessionId)
       if (remembered === null) return false
       const id = Number(remembered.pane)
-      if (!readSpawned(registryDir).some((e) => e.paneId === id)) return false
       const list = listing(query.cwd)
       if (list === null || !spawnedAndLive(list, id)) return false
       const here = parseWeztermList(list.out, remembered.cwd, platform, opts.localHost)

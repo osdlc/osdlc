@@ -22,8 +22,14 @@
  * null" without throwing; `find` still answers from the hook store.
  */
 
-import { failureText, ran, resolveRunner, type CommandRunner } from '@osdlc/command-seam'
-import { commandString, isRecord, nonEmptyString, parseJsonOrNull, realResolve } from '../util.ts'
+import {
+  commandString,
+  failureText,
+  ran,
+  resolveRunner,
+  type CommandRunner,
+} from '@osdlc/command-seam'
+import { isRecord, nonEmptyString, parseJsonOrNull, realResolve } from '../util.ts'
 
 import {
   onPath,

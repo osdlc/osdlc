@@ -13,9 +13,9 @@
 
 import { streamRunner, type StreamRunner } from '@osdlc/command-seam'
 
-import type { CommandRequest, Host } from '../contract.ts'
+import type { CommandRequest, Host, SessionRequest } from '../contract.ts'
 import { onPath } from '../contract.ts'
-import { sessionViaTerminal } from '../harness.ts'
+import { wrapperSession } from '../harness.ts'
 
 /**
  * The current-terminal host: runs the command right here with inherited stdio and waits for it.
@@ -25,23 +25,21 @@ export function makeTerminalHost(
   opts: { streamRunner?: ((binary: string) => StreamRunner) | undefined } = {},
 ): Host {
   const makeRunner = opts.streamRunner ?? streamRunner
+  const terminal = (req: CommandRequest): number => {
+    const [bin, ...rest] = req.argv
+    if (bin === undefined) throw new Error('empty argv')
+    if (!onPath(bin)) throw new Error(`'${bin}' is not on PATH`)
+    return makeRunner(bin).run(rest, { cwd: req.cwd }).exitCode
+  }
   return {
     name: 'terminal',
     platforms: 'all',
     available() {
       return true
     },
-    terminal(req: CommandRequest) {
-      const [bin, ...rest] = req.argv
-      if (bin === undefined) throw new Error('empty argv')
-      if (!onPath(bin)) throw new Error(`'${bin}' is not on PATH`)
-      return makeRunner(bin).run(rest, { cwd: req.cwd }).exitCode
-    },
-    // Builds the harness's argv, runs it via this host's own (blocking)
-    // `terminal()`, and best-effort resolves a session id — the one body
-    // every wrapper host now shares; see `wrapperSession`'s doc in
-    // `../harness.ts` for what it returns and why.
-    session: sessionViaTerminal,
+    terminal,
+    // `terminal` returns only once the agent exited, so the session-id lookup looks once.
+    session: (req: SessionRequest) => wrapperSession(terminal, req, { hostWaited: true }),
   }
 }
 

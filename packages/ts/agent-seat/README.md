@@ -162,8 +162,8 @@ says why.
 
 - Hosts that need a companion that is not published yet: `makeVscodeHost`,
   `makeJetbrainsHost`, `JetbrainsSettings`, `JETBRAINS_PROTOCOL`,
-  `jetbrainsRegistryDir`, `vscodeRegistryDir`, `liveWindows`,
-  `subprocessTransport`, `VscodeWindow`, `VscodeReply`, `VscodeTransport`.
+  `liveWindows`, `subprocessTransport`, `VscodeWindow`, `VscodeReply`,
+  `VscodeTransport`.
 - tmux attach helpers, to be replaced by an `attach` part: `tmuxSessionName`,
   `tmuxIdSessionName`, `tmuxAttachArgv`, `tmuxSwitchClientArgv`, `insideTmux`.
 - `hostCanWait`, to become a declaration on the host.

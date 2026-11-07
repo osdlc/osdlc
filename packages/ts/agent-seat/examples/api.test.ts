@@ -14,7 +14,6 @@ import {
   ClaudeSessionFlagsSchema,
   HarnessSchema,
   HostNameSchema,
-  KNOWN_HARNESSES,
   ORCA_BUNDLED_CLI,
   claudeHookSettings,
   claudeResumeArgv,
@@ -253,7 +252,7 @@ describe('terminal host', () => {
     )
   })
 
-  test('a session in the terminal host blocks, so the harness session id is not awaited', () => {
+  test("a session in the terminal host runs in the caller's terminal and returns its exit code", () => {
     const runs: string[][] = []
     const host = makeTerminalHost({
       streamRunner: (binary) => ({
@@ -268,12 +267,13 @@ describe('terminal host', () => {
       'session',
     )({
       cwd: '/work/repo',
-      harness: 'codex',
+      harness: 'pi',
       binary: 'node',
       prompt: 'hello',
       title: 't',
     })
     expect(result.exitCode).toBe(0)
+    expect(result.harnessSessionId).toBeNull()
     expect(runs).toEqual([['node', '--', 'hello']])
   })
 
@@ -472,11 +472,12 @@ describe('harness argv and Claude flags', () => {
     )
   })
 
-  test('hasInteractiveArgv, KNOWN_HARNESSES, harnessOrNull and HarnessSchema name the harnesses', () => {
+  test('hasInteractiveArgv, harnessOrNull and HarnessSchema name the harnesses', () => {
     expect(hasInteractiveArgv('claude')).toBe(true)
     expect(hasInteractiveArgv('antigravity')).toBe(false)
-    expect(KNOWN_HARNESSES.find((h) => h.id === 'cursor')?.binary).toBe('cursor-agent')
     expect(harnessOrNull('codex')).toBe('codex')
+    // A binary name or other alias maps to its harness id.
+    expect(harnessOrNull('cursor-agent')).toBe('cursor')
     expect(harnessOrNull('my-own-tool')).toBeNull()
     // A schema accepts any tool id, including one the caller declares.
     expect(HarnessSchema.parse('my-own-tool')).toBe('my-own-tool')

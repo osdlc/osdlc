@@ -15,8 +15,14 @@
 
 import { existsSync } from 'node:fs'
 
-import { failureText, ran, resolveRunner, type CommandRunner } from '@osdlc/command-seam'
-import { commandString, isRecord, parseJsonOrNull } from '../util.ts'
+import {
+  commandString,
+  failureText,
+  ran,
+  resolveRunner,
+  type CommandRunner,
+} from '@osdlc/command-seam'
+import { isRecord, parseJsonOrNull } from '../util.ts'
 
 import {
   onPath,

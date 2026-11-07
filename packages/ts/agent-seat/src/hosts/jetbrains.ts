@@ -62,7 +62,6 @@ import {
 import { sessionViaTerminal } from '../harness.ts'
 import {
   deepestContaining,
-  hostRegistryDir,
   readHostRegistry,
   registryDirOf,
   type HostStateOptions,
@@ -117,15 +116,6 @@ const PING_TIMEOUT_SEC = 1.5
 
 /** How long {@link makeJetbrainsHost} reuses the list of answering IDEs. */
 const IDES_TTL_MS = 5_000
-
-/**
- * Directory the plugin writes `<pid>.json` into, under the caller's runtime directory.
- *
- * @experimental needs the companion JetBrains plugin, which is not published yet.
- */
-export function jetbrainsRegistryDir(runtimeDir: string): string {
-  return hostRegistryDir(runtimeDir, 'jetbrains')
-}
 
 /** Validates one parsed registry file; null when it is not a usable endpoint. */
 export function parseRegistryEntry(parsed: unknown): JetbrainsEndpoint | null {

@@ -17,13 +17,14 @@
  */
 
 import {
+  commandString,
   failureText,
   ran,
   resolveRunner,
   type CommandResult,
   type CommandRunner,
 } from '@osdlc/command-seam'
-import { commandString, isRecord, parseJsonOrNull, realResolve, strOrNull } from '../util.ts'
+import { isRecord, parseJsonOrNull, realResolve, strOrNull } from '../util.ts'
 
 import {
   onPath,
@@ -37,7 +38,7 @@ import {
   type SendRequest,
 } from '../contract.ts'
 import { harnessOrNull, sessionViaTerminal } from '../harness.ts'
-import { recallSessionPane, rememberSessionPane } from './session-panes.ts'
+import { recallSessionPane, rememberSessionPane, type RememberedPane } from './session-panes.ts'
 import { registryDirOf, type HostStateOptions } from './registry.ts'
 
 /** Milliseconds `agent prompt --wait` may wait for the agent to react. */
@@ -215,21 +216,24 @@ export function makeHerdrHost(
   const runner = (): CommandRunner => resolveRunner('herdr', opts.runner)
   const registryDir = registryDirOf('herdr', opts)
 
+  /** The pane remembered for the request's session id, or null. */
+  const recall = (target: FindQuery): RememberedPane | null =>
+    target.sessionId === undefined ? null : recallSessionPane(registryDir, target.sessionId)
+
   /**
    * The panes a request addresses: the pane remembered for its session id if herdr still
    * lists it at the cwd it was opened in (as the pane's or its foreground process's cwd) and
    * none otherwise, else the panes at its cwd. herdr reissues ids after a restart, so the
-   * same id at another cwd is not the pane this session opened.
+   * same id at another cwd is not the pane this session opened. `bound` is the remembered
+   * pane when the caller already read it.
    */
-  const livePanes = (target: FindQuery): HerdrPane[] => {
+  const livePanes = (target: FindQuery, bound = recall(target)): HerdrPane[] => {
     const out = quietRun(runner(), herdrPaneListArgv(opts.session), {
       cwd: target.cwd,
       timeoutMs: 10_000,
     })
     if (out === null) return []
     const panes = parseHerdrPanes(out)
-    const bound =
-      target.sessionId === undefined ? null : recallSessionPane(registryDir, target.sessionId)
     return bound === null
       ? herdrPanesAt(panes, target.cwd)
       : panes.filter(
@@ -281,12 +285,11 @@ export function makeHerdrHost(
         // one pane is left: any pick among several could reach another
         // session. A bound pane is this session's own, so its agent name is
         // not checked (herdr may report one that is no builtin harness).
-        const bound =
-          req.sessionId !== undefined && recallSessionPane(registryDir, req.sessionId) !== null
-        const targets = livePanes(req).filter(
+        const bound = recall(req)
+        const targets = livePanes(req, bound).filter(
           (p) =>
             p.agent !== null &&
-            (bound || req.harness === undefined || harnessOrNull(p.agent) === req.harness),
+            (bound !== null || req.harness === undefined || harnessOrNull(p.agent) === req.harness),
         )
         const target = targets.length === 1 ? targets[0] : undefined
         if (target === undefined) return { accepted: false, ack: false }
@@ -341,8 +344,9 @@ export function makeHerdrHost(
           const agents = livePanes(query).filter((p) => p.agent !== null)
           target = agents.length === 1 ? agents[0] : undefined
         } else {
-          if (recallSessionPane(registryDir, query.sessionId) === null) return false
-          target = livePanes(query)[0]
+          const bound = recall(query)
+          if (bound === null) return false
+          target = livePanes(query, bound)[0]
         }
         if (target === undefined) return false
         return (

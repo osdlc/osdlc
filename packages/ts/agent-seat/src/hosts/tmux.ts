@@ -13,10 +13,8 @@
  * ({@link tmuxSessionName}).
  */
 
-import { createHash } from 'node:crypto'
-
 import { failureText, ran, resolveRunner, shellJoin, type CommandRunner } from '@osdlc/command-seam'
-import { sleepSync } from '../util.ts'
+import { safeName, sessionIdSlug, shortHash, sleepSync } from '../util.ts'
 
 import type {
   CommandRequest,
@@ -28,7 +26,6 @@ import type {
 } from '../contract.ts'
 import { onPath, quietRun, supportsPlatform, WAIT_TIMEOUT_EXIT } from '../contract.ts'
 import { sessionViaTerminal } from '../harness.ts'
-import { sessionIdSlug } from './session-panes.ts'
 
 /**
  * The cwd-derived tmux session name: stable across repeated calls with the same
@@ -48,7 +45,7 @@ import { sessionIdSlug } from './session-panes.ts'
  * @experimental an `attach` part is planned to replace the tmux-specific attach helpers.
  */
 export function tmuxSessionName(cwd: string): string {
-  return `sd-${createHash('sha256').update(cwd).digest('hex').slice(0, 12)}`
+  return `sd-${shortHash(cwd, 12)}`
 }
 
 /**
@@ -74,8 +71,7 @@ export function tmuxIdSessionName(sessionId: string): string {
  * the run id (`tmux ls`).
  */
 export function tmuxRunSessionName(runId: string, sessionId?: string): string {
-  const run = runId.replace(/[^A-Za-z0-9_-]/g, '_')
-  return `sd-${run}${sessionId === undefined ? '' : `-${sessionIdSlug(sessionId)}`}`
+  return `sd-${safeName(runId)}${sessionId === undefined ? '' : `-${sessionIdSlug(sessionId)}`}`
 }
 
 /** Where a request points: a waiting run's name, else its session id's name when it has an id, else the cwd's. */

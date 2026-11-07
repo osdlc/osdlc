@@ -418,7 +418,8 @@ describe('wezterm host', () => {
         localHost: 'me',
       })
       expect(host.close!({ cwd: '/w', sessionId: 's-x' })).toBe(false)
-      expect(c.calls).toEqual([])
+      // Listed, never killed.
+      expect(c.calls.map((argv) => argv[1])).toEqual(['list'])
       rmSync(regDir, { recursive: true, force: true })
     })
 

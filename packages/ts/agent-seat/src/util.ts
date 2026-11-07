@@ -3,10 +3,10 @@
  * package entry.
  */
 
+import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { isAbsolute, resolve } from 'node:path'
 
-import { shellJoin } from '@osdlc/command-seam'
 import { which as whichOn } from '@osdlc/detect-harness'
 import { atomicWrite } from '@osdlc/etag-write'
 import { nodeGuard } from '@osdlc/path-guard/node'
@@ -87,28 +87,25 @@ export function isCompiledBinary(metaUrl: string): boolean {
   return metaUrl.startsWith('file:///$bunfs/') || /^file:\/\/\/[A-Za-z]:\/~BUN\//.test(metaUrl)
 }
 
-/**
- * `argv` as one command line for the platform's shell: POSIX `sh` quoting, or
- * a PowerShell call (`& 'a' 'b'`) on Windows, where a terminal opens PowerShell.
- *
- * Windows limits (not run on Windows): the quoting is right for PowerShell's own
- * parser, but Windows PowerShell 5.1 passes an argument containing `"` to a
- * native program without escaping it, so the program sees it split or with the
- * quotes gone, and it drops an empty argument. PowerShell 7.3+ passes both
- * intact. Run under `powershell -Command`, the program's exit code reaches the
- * caller only as 0 or 1.
- */
-export function commandString(
-  argv: string[],
-  platform: NodeJS.Platform = process.platform,
-): string {
-  if (platform !== 'win32') return shellJoin(argv)
-  return `& ${argv.map(powershellLiteral).join(' ')}`
+/** The first `hexChars` lowercase hex digits of the sha256 of `text`. */
+export function shortHash(text: string, hexChars: number): string {
+  return createHash('sha256').update(text).digest('hex').slice(0, hexChars)
 }
 
-/** `word` as a single-quoted PowerShell literal (see {@link commandString}). */
-export function powershellLiteral(word: string): string {
-  return `'${word.replace(/['‘’‚‛]/g, (q) => q + q)}'`
+/** `text` with anything outside `[A-Za-z0-9_-]` rewritten to `_`. */
+export function safeName(text: string): string {
+  return text.replace(/[^A-Za-z0-9_-]/g, '_')
+}
+
+/**
+ * A collision-free stand-in for a session id where the id itself cannot go (a tmux session
+ * name, a title tag, a file name): the id's first 12 characters through {@link safeName}, for a
+ * person to read, then `-` and the first `hashChars` hex digits of the sha256 of the whole id.
+ * The hash keeps apart ids that share a prefix, differ only in a rewritten character, or differ
+ * only in case.
+ */
+export function sessionIdSlug(sessionId: string, hashChars = 8): string {
+  return `${safeName(sessionId.slice(0, 12))}-${shortHash(sessionId, hashChars)}`
 }
 
 /** `p` made absolute against the cwd. */

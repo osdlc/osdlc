@@ -6,11 +6,8 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, test } from 'vitest'
 
-import {
-  recallSessionPane,
-  rememberSessionPane,
-  sessionIdSlug,
-} from '../src/hosts/session-panes.ts'
+import { recallSessionPane, rememberSessionPane } from '../src/hosts/session-panes.ts'
+import { sessionIdSlug } from '../src/util.ts'
 
 import { startChild } from './fixtures/child.ts'
 

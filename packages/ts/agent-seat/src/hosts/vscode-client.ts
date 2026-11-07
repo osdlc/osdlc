@@ -16,12 +16,7 @@ import { tmpdir } from 'node:os'
 import { failureText, ran, resolveRunner, type CommandRunner } from '@osdlc/command-seam'
 import { isCompiledBinary, isRecord, parseJsonOrNull, pidAlive, which } from '../util.ts'
 
-import {
-  deepestContaining,
-  hostRegistryDir,
-  readHostRegistry,
-  type RegistryTrustOptions,
-} from './registry.ts'
+import { deepestContaining, readHostRegistry, type RegistryTrustOptions } from './registry.ts'
 
 /**
  * One window's registry entry, as the extension wrote it.
@@ -136,15 +131,6 @@ export function parseReply(stdout: string): VscodeReply {
   if (!isRecord(raw)) return { ok: false, error: 'unparseable reply' }
   if (raw['ok'] === true && isRecord(raw['result'])) return { ok: true, result: raw['result'] }
   return { ok: false, error: typeof raw['error'] === 'string' ? raw['error'] : 'request failed' }
-}
-
-/**
- * Where windows register, under the caller's runtime directory: `<runtimeDir>/hosts/vscode`.
- *
- * @experimental needs the `sdlc-host` companion extension, which is not published yet.
- */
-export function vscodeRegistryDir(runtimeDir: string): string {
-  return hostRegistryDir(runtimeDir, 'vscode')
 }
 
 function parseWindow(raw: unknown): VscodeWindow | null {

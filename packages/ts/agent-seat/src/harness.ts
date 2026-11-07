@@ -20,7 +20,7 @@
  * host-level counterpart).
  */
 
-import { type Dirent, readdirSync, readFileSync, statSync } from 'node:fs'
+import { closeSync, type Dirent, openSync, readdirSync, readSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 
@@ -33,10 +33,16 @@ import {
   type ModelChoice,
   type PluginSpec,
 } from '@osdlc/agent-call'
-import { which } from '@osdlc/detect-harness'
+import { harnessId } from '@osdlc/detect-harness'
 
-import { ran, resolveRunner, type CommandRunner, type EnvOverrides } from '@osdlc/command-seam'
-import { commandString, powershellLiteral, sleepSync } from './util.ts'
+import {
+  commandString,
+  ran,
+  resolveRunner,
+  type CommandRunner,
+  type EnvOverrides,
+} from '@osdlc/command-seam'
+import { isRecord, parseJsonOrNull, sleepSync, strOrNull, which } from './util.ts'
 
 // `contract.ts` imports only types from this file (`Harness` for
 // `SessionRequest.harness`), so the value imported back here makes no runtime cycle.
@@ -50,7 +56,7 @@ import {
 
 /**
  * The coding-agent CLI a session runs, by its tool id: a built-in one
- * ({@link KNOWN_HARNESSES}, e.g. `claude`) or one a caller declares. This file
+ * (`BUILTIN_HARNESSES` from `@osdlc/detect-harness`, e.g. `claude`) or one a caller declares. This file
  * builds the interactive argv ({@link INTERACTIVE_ARGV}).
  */
 export type Harness = string
@@ -67,22 +73,12 @@ export const HarnessSchema = z
   .regex(HARNESS_ID_PATTERN, 'must be a tool id: lowercase letters, digits and hyphens')
 
 /**
- * The coding-agent CLIs this package knows by name: each tool's id and the executable it
- * runs as. A host that reports which program runs in a pane (Orca, herdr, cmux, otty)
- * recognises these.
+ * `value` (what a host reports running in a pane) as a built-in harness id, or null when
+ * it names none. An alias or binary name maps to its id (`cursor-agent` → `cursor`), by
+ * `harnessId` from `@osdlc/detect-harness`.
  */
-export const KNOWN_HARNESSES: readonly { readonly id: Harness; readonly binary: string }[] = [
-  { id: 'antigravity', binary: 'agy' },
-  { id: 'claude', binary: 'claude' },
-  { id: 'codex', binary: 'codex' },
-  { id: 'cursor', binary: 'cursor-agent' },
-  { id: 'opencode', binary: 'opencode' },
-  { id: 'pi', binary: 'pi' },
-]
-
-/** `value` as a {@link KNOWN_HARNESSES} id (what a host reports running in a pane), or null when it is not one. */
 export function harnessOrNull(value: unknown): Harness | null {
-  return typeof value === 'string' && KNOWN_HARNESSES.some((h) => h.id === value) ? value : null
+  return typeof value === 'string' ? (harnessId(value) ?? null) : null
 }
 
 /** What an interactive argv builder is handed: the binary, the first message, and the flags around it. */
@@ -317,7 +313,7 @@ export function claudeResumeArgv(id: string, flags: ClaudeSessionFlags = {}): st
  * a session nothing to run.
  */
 export function harnessAvailable(_harness: Harness, binary: string): boolean {
-  return which(binary, process.env) !== null
+  return which(binary) !== null
 }
 
 /** {@link SendReceipt}'s shape, reused here under its own name: both answer "did the message get in", one via a host, one via the harness's own process/daemon directly. */
@@ -439,23 +435,12 @@ export function walkRolloutFiles(dir: string): string[] {
 
 /** The `cwd`/session-id pair recorded in a rollout file's first (`session_meta`) line, or null if unparsable. */
 export function parseRolloutMeta(firstLine: string): { cwd: string; sessionId: string } | null {
-  const trimmed = firstLine.trim()
-  if (trimmed.length === 0) return null
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(trimmed)
-  } catch {
-    return null
-  }
-  if (typeof parsed !== 'object' || parsed === null) return null
-  const payload = (parsed as Record<string, unknown>).payload
-  if (typeof payload !== 'object' || payload === null) return null
-  const p = payload as Record<string, unknown>
-  if (typeof p.cwd !== 'string') return null
-  const sessionId =
-    typeof p.session_id === 'string' ? p.session_id : typeof p.id === 'string' ? p.id : null
-  if (sessionId === null) return null
-  return { cwd: p.cwd, sessionId }
+  const parsed = parseJsonOrNull(firstLine.trim())
+  const payload = isRecord(parsed) ? parsed['payload'] : null
+  if (!isRecord(payload)) return null
+  const cwd = strOrNull(payload['cwd'])
+  const sessionId = strOrNull(payload['session_id']) ?? strOrNull(payload['id'])
+  return cwd === null || sessionId === null ? null : { cwd, sessionId }
 }
 
 /**
@@ -477,19 +462,20 @@ const ROLLOUT_NAME_TIME = /^rollout-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{
 export function rolloutNameTimeMs(path: string): number | null {
   const m = ROLLOUT_NAME_TIME.exec(basename(path))
   if (m === null) return null
-  const [y, mo, d, h, mi, s] = m.slice(1).map(Number) as [
-    number,
-    number,
-    number,
-    number,
-    number,
-    number,
-  ]
+  const fields = m.slice(1)
+  const [y = 0, mo = 0, d = 0, h = 0, mi = 0, s = 0] = fields.map(Number)
   const date = new Date(y, mo - 1, d, h, mi, s)
+  const pad = (n: number, width = 2) => String(n).padStart(width, '0')
+  const back = [
+    pad(date.getFullYear(), 4),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+  ]
   // `Date` rolls an out-of-range field over (month 13, hour 25); such a name has no instant.
-  if (date.getFullYear() !== y || date.getMonth() !== mo - 1 || date.getDate() !== d) return null
-  if (date.getHours() !== h || date.getMinutes() !== mi || date.getSeconds() !== s) return null
-  return date.getTime()
+  return back.join('-') === fields.join('-') ? date.getTime() : null
 }
 
 /**
@@ -530,6 +516,25 @@ export function newestRolloutSessionIdSince(
   return best?.sessionId ?? null
 }
 
+/** The first line of the file at `path` (without its `\n`), read no further than it. */
+function readFirstLine(path: string): string {
+  const fd = openSync(path, 'r')
+  try {
+    let buf = Buffer.alloc(4096)
+    let len = 0
+    for (;;) {
+      const n = readSync(fd, buf, len, buf.length - len, len)
+      const end = buf.indexOf(0x0a, len)
+      len += n
+      if (end !== -1 && end < len) return buf.toString('utf-8', 0, end)
+      if (n === 0) return buf.toString('utf-8', 0, len)
+      if (len === buf.length) buf = Buffer.concat([buf, Buffer.alloc(buf.length)])
+    }
+  } finally {
+    closeSync(fd)
+  }
+}
+
 /** How long, and with which clock, a session-id lookup keeps looking for a file not written yet. */
 export interface SessionIdWaitOptions {
   /** How long to keep looking, ms; 0 (the default) looks once. */
@@ -540,30 +545,46 @@ export interface SessionIdWaitOptions {
   sleep?: ((ms: number) => void) | undefined
   /** The clock, ms; default `Date.now`. */
   now?: (() => number) | undefined
+  /** Codex's home directory; default `~/.codex`. */
+  codexHome?: string | undefined
 }
 
 /**
  * The codex session started in `cwd` at or after `sinceMs`
  * ({@link newestRolloutSessionIdSince}), or null. With `waitMs`, keeps looking
- * that long for a rollout file codex has not written yet. `listFiles` and
+ * that long for a rollout file codex has not written yet; a file ruled out once
+ * (created too early, or another cwd) is not read again. `listFiles` and
  * `codexHome` are injectable so a test needs no real `~/.codex/`.
  */
 export function findCodexSessionId(
   sinceMs: number,
   cwd: string,
-  opts: {
-    codexHome?: string | undefined
-    listFiles?: (() => string[]) | undefined
-  } & SessionIdWaitOptions = {},
+  opts: { listFiles?: (() => string[]) | undefined } & SessionIdWaitOptions = {},
 ): string | null {
   const listFiles = opts.listFiles ?? (() => walkRolloutFiles(codexSessionsDir(opts.codexHome)))
+  const cutoff = sinceMs - ROLLOUT_CREATED_MARGIN_MS
+  const ruledOut = new Set<string>()
   const look = (): string | null => {
     const candidates: { firstLine: string; createdMs: number }[] = []
     for (const path of listFiles()) {
+      if (ruledOut.has(path)) continue
+      // A name time before the cutoff rules the file out unread (see `rolloutCreatedMs`).
+      const named = rolloutNameTimeMs(path)
+      if (named !== null && named < cutoff) {
+        ruledOut.add(path)
+        continue
+      }
       try {
         const createdMs = rolloutCreatedMs(path, statSync(path))
-        const firstLine = readFileSync(path, 'utf-8').split('\n', 1)[0] ?? ''
-        candidates.push({ firstLine, createdMs })
+        if (createdMs < cutoff) {
+          ruledOut.add(path)
+          continue
+        }
+        const firstLine = readFirstLine(path)
+        // A first line not yet complete parses as null and is read again on the next look.
+        const meta = parseRolloutMeta(firstLine)
+        if (meta !== null && meta.cwd !== cwd) ruledOut.add(path)
+        else candidates.push({ firstLine, createdMs })
       } catch {
         // Raced away (deleted) or unreadable — skip, not fatal.
       }
@@ -592,13 +613,13 @@ function pollFor<T>(look: () => T | null, opts: SessionIdWaitOptions): T | null 
 type SessionIdResolver = (sinceMs: number, cwd: string, wait: SessionIdWaitOptions) => string | null
 
 /**
- * Only `codex` has a resolver. `claude` needs none: the launcher presets the
- * session id with `claude --session-id` (`claudeSessionArgv`) and records it
- * as `harnessSessionId` itself (`session/start.ts`). `cursor` has no local
- * session index or rollout file to look an id up in.
+ * Only `codex` has a resolver. `claude` needs none: a caller presets the
+ * session id with `claude --session-id` (`ClaudeLaunchFlags.harnessSessionId`)
+ * and so knows it already. `cursor` has no local session index or rollout file
+ * to look an id up in.
  */
 const SESSION_ID_RESOLVERS: Partial<Record<Harness, SessionIdResolver>> = {
-  codex: (sinceMs, cwd, wait) => findCodexSessionId(sinceMs, cwd, wait),
+  codex: findCodexSessionId,
 }
 
 /** How long {@link wrapperSession} waits for the agent to record its session after a host returned early. */
@@ -613,8 +634,8 @@ export const SESSION_ID_WAIT_MS = 3_000
  * Windows limits (not run on Windows): `powershell` is Windows PowerShell 5.1,
  * which passes an argument containing `"` to a native program without escaping
  * it (the program sees it split, or with the quotes gone) and drops an empty
- * argument; and `-Command` turns the program's exit code into 0 or 1. See
- * {@link commandString}.
+ * argument; and `-Command` turns the program's exit code into 0 or 1. The
+ * command is quoted by `commandString` (`@osdlc/command-seam`).
  */
 export function withEnv(
   argv: string[],
@@ -638,7 +659,7 @@ export function withEnv(
       'powershell',
       '-NoProfile',
       '-Command',
-      `${sets.join('; ')}; ${commandString(argv, platform)}`,
+      `${sets.join('; ')}; ${commandString(argv, { platform })}`,
     ]
   }
   const unset: string[] = []
@@ -648,6 +669,11 @@ export function withEnv(
     else pairs.push(`${k}=${v}`)
   }
   return ['env', ...unset, ...pairs, ...argv]
+}
+
+/** `word` as a single-quoted PowerShell literal, each single quote (typographic ones too) doubled. */
+function powershellLiteral(word: string): string {
+  return `'${word.replace(/['‘’‚‛]/g, (q) => q + q)}'`
 }
 
 /**
@@ -667,14 +693,14 @@ export function wrapperSession(
   req: SessionRequest,
   opts: SessionIdWaitOptions & { hostWaited?: boolean | undefined } = {},
 ): { exitCode: number; harnessSessionId: string | null } {
-  const runTerminal = (r: CommandRequest) => terminal({ ...r, argv: withEnv(r.argv, req.env) })
   const sinceMs = (opts.now ?? Date.now)()
-  const exitCode = runTerminal({
+  const argv = [
+    ...(req.wrap ?? []),
+    ...harnessArgv(req.harness, req.binary, req.prompt, req, req, req.injectedArgv),
+  ]
+  const exitCode = terminal({
     cwd: req.cwd,
-    argv: [
-      ...(req.wrap ?? []),
-      ...harnessArgv(req.harness, req.binary, req.prompt, req, req, req.injectedArgv),
-    ],
+    argv: withEnv(argv, req.env),
     title: req.title,
     sessionId: req.sessionId,
     ...(req.wait !== undefined ? { wait: req.wait } : {}),
@@ -691,8 +717,8 @@ export function wrapperSession(
  * The `session` part of a host whose `terminal` part opens the harness: assign
  * it as `session: sessionViaTerminal`. `this` is the host the part is called on,
  * so the host's own `terminal` runs; a host that has none throws rather than
- * start nothing. The current terminal, and a host honouring `req.wait`, return
- * only once the agent exited, so the session-id lookup does not wait.
+ * start nothing. A host honouring `req.wait` returns only once the agent
+ * exited, so the session-id lookup does not wait.
  */
 export function sessionViaTerminal(
   this: { name?: HostName; terminal?: (req: CommandRequest) => number },
@@ -700,8 +726,6 @@ export function sessionViaTerminal(
 ): { exitCode: number; harnessSessionId: string | null } {
   const terminal = this.terminal
   if (terminal === undefined) throw new Error('host has no terminal part to open a session with')
-  const hostWaited =
-    this.name === 'terminal' ||
-    (req.wait !== undefined && this.name !== undefined && hostCanWait(this.name))
+  const hostWaited = req.wait !== undefined && this.name !== undefined && hostCanWait(this.name)
   return wrapperSession((r) => terminal.call(this, r), req, { hostWaited })
 }

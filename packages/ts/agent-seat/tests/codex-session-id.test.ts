@@ -2,10 +2,11 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, utimesSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import type { SessionRequest } from '../src/contract.ts'
 import {
+  codexSessionsDir,
   findCodexSessionId,
   rolloutCreatedMs,
   rolloutNameTimeMs,
@@ -13,7 +14,21 @@ import {
   sessionViaTerminal,
   wrapperSession,
 } from '../src/harness.ts'
+import { makeTerminalHost } from '../src/hosts/terminal.ts'
 import { rolloutFileName } from './fixtures/codex-rollout.ts'
+
+// A host's `session` part takes no codex home, so `homedir()` points at a temp dir:
+// no test here reads the real `~/.codex`.
+const home = vi.hoisted(() => ({ dir: '' }))
+vi.mock('node:os', async (importOriginal) => {
+  const os = await importOriginal<typeof import('node:os')>()
+  const homedir = () => home.dir
+  return { ...os, homedir, default: { ...os, homedir } }
+})
+beforeAll(() => {
+  home.dir = mkdtempSync(join(tmpdir(), 'codex-sid-home-'))
+})
+afterAll(() => rmSync(home.dir, { recursive: true, force: true }))
 
 /** A clock that only moves when the fake sleep is called, plus a log of the sleeps. */
 function fakeClock(start: number, onSleep: (call: number) => void = () => {}) {
@@ -101,6 +116,34 @@ describe('findCodexSessionId selection and waiting', () => {
     expect(clock.sleeps).toEqual([250, 250, 250])
   })
 
+  test('only the first line is read, however long, with or without its newline', () => {
+    const sinceMs = Date.now()
+    const longCwd = `/work/${'x'.repeat(10_000)}`
+    writeFileSync(
+      join(dayDir, rolloutFileName(sinceMs, 'long')),
+      `${meta('long-id', longCwd)}{"more":1}\n`,
+    )
+    expect(findCodexSessionId(sinceMs, longCwd, { codexHome })).toBe('long-id')
+    writeFileSync(join(dayDir, rolloutFileName(sinceMs, 'bare')), meta('bare-id', cwd).trimEnd())
+    expect(findCodexSessionId(sinceMs, cwd, { codexHome })).toBe('bare-id')
+  })
+
+  test('a rollout ruled out for its cwd is not read again on a later look', () => {
+    const sinceMs = Date.now()
+    const path = join(dayDir, rolloutFileName(sinceMs, 'other'))
+    writeFileSync(path, meta('other-id', '/elsewhere'))
+    const clock = fakeClock(sinceMs, () => writeFileSync(path, meta('other-id', cwd)))
+    const found = findCodexSessionId(sinceMs, cwd, {
+      codexHome,
+      waitMs: 500,
+      pollMs: 250,
+      sleep: clock.sleep,
+      now: clock.now,
+    })
+    expect(found).toBeNull()
+    expect(clock.sleeps).toEqual([250, 250])
+  })
+
   test('none found gives null once the budget is spent', () => {
     const clock = fakeClock(1_000_000)
     expect(
@@ -125,12 +168,16 @@ describe('findCodexSessionId selection and waiting', () => {
 })
 
 describe('wrapperSession waits only when the host returned early', () => {
-  // The resolver reads the real `~/.codex/sessions`; this fresh cwd matches nothing there.
   let cwd: string
+  let codexHome: string
   beforeEach(() => {
     cwd = mkdtempSync(join(realpathSync(tmpdir()), 'codex-sid-cwd-'))
+    codexHome = mkdtempSync(join(tmpdir(), 'codex-sid-home-'))
   })
-  afterEach(() => rmSync(cwd, { recursive: true, force: true }))
+  afterEach(() => {
+    rmSync(cwd, { recursive: true, force: true })
+    rmSync(codexHome, { recursive: true, force: true })
+  })
   const req = (): SessionRequest => ({
     cwd,
     harness: 'codex',
@@ -141,25 +188,38 @@ describe('wrapperSession waits only when the host returned early', () => {
 
   test('a host that returned at once is polled for the default budget', () => {
     const clock = fakeClock(Date.now())
-    const res = wrapperSession(() => 0, req(), { sleep: clock.sleep, now: clock.now })
+    const res = wrapperSession(() => 0, req(), { codexHome, sleep: clock.sleep, now: clock.now })
     expect(res).toEqual({ exitCode: 0, harnessSessionId: null })
     expect(clock.sleeps.reduce((a, b) => a + b, 0)).toBe(SESSION_ID_WAIT_MS)
   })
 
   test('a failed launch, a held launch and a non-codex harness look once', () => {
     const clock = fakeClock(Date.now())
-    const opts = { sleep: clock.sleep, now: clock.now }
+    const opts = { codexHome, sleep: clock.sleep, now: clock.now }
     expect(wrapperSession(() => 3, req(), opts).exitCode).toBe(3)
     expect(wrapperSession(() => 0, req(), { ...opts, hostWaited: true }).exitCode).toBe(0)
     wrapperSession(() => 0, { ...req(), harness: 'claude', binary: 'claude' }, opts)
     expect(clock.sleeps).toEqual([])
   })
 
-  test('the current terminal and a waiting tmux count as held', () => {
+  test('the terminal host and a waiting tmux count as held', () => {
+    expect(codexSessionsDir().startsWith(home.dir)).toBe(true)
     const started = Date.now()
-    const terminal = () => 0
-    sessionViaTerminal.call({ name: 'terminal', terminal }, req())
-    sessionViaTerminal.call({ name: 'tmux', terminal }, { ...req(), wait: {} })
+    const terminalHost = makeTerminalHost({
+      streamRunner: () => ({ run: () => ({ exitCode: 0 }) }),
+    })
+    expect(terminalHost.session!({ ...req(), binary: 'node' }).exitCode).toBe(0)
+    sessionViaTerminal.call({ name: 'tmux', terminal: () => 0 }, { ...req(), wait: {} })
     expect(Date.now() - started).toBeLessThan(SESSION_ID_WAIT_MS)
+  })
+
+  test('a codex home given to wrapperSession is where the rollout is looked up', () => {
+    const dayDir = join(codexHome, 'sessions', '2026', '11', '07')
+    mkdirSync(dayDir, { recursive: true })
+    writeFileSync(join(dayDir, rolloutFileName(Date.now(), 'mine')), meta('mine-id', cwd))
+    expect(wrapperSession(() => 0, req(), { codexHome, hostWaited: true })).toEqual({
+      exitCode: 0,
+      harnessSessionId: 'mine-id',
+    })
   })
 })
