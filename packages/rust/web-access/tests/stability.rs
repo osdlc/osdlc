@@ -8,54 +8,43 @@ const MARKER: &str = "**Experimental.**";
 
 /// The names in the README's Stability list (`- \`Type::item\``), last segment only.
 fn readme_items() -> BTreeSet<String> {
-    // A Windows checkout may hold CRLF line endings.
     let readme = std::fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("README.md"))
-        .expect("README.md")
-        .replace("\r\n", "\n");
-    let section = readme
-        .split("\n## Stability\n")
-        .nth(1)
-        .expect("a Stability section")
-        .split("\n## ")
-        .next()
-        .unwrap_or_default();
-    section
+        .expect("README.md");
+    // `lines()` also strips the `\r` of a CRLF checkout.
+    readme
         .lines()
+        .skip_while(|l| *l != "## Stability")
+        .skip(1)
+        .take_while(|l| !l.starts_with("## "))
         .filter_map(|l| l.strip_prefix("- `")?.split('`').next())
         .map(|item| item.rsplit("::").next().unwrap_or(item).to_owned())
         .collect()
 }
 
-/// The item each marker documents: the next `fn`, `struct`, `enum` or `const`.
+/// The item each marker documents: the name in the next line that is not a doc
+/// comment or an attribute (`pub fn with_label(` gives `with_label`).
 fn marked_items() -> BTreeSet<String> {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut found = BTreeSet::new();
     for entry in std::fs::read_dir(src).expect("src") {
-        let text = std::fs::read_to_string(entry.expect("entry").path())
-            .expect("source")
-            .replace("\r\n", "\n");
-        let mut rest = text.as_str();
-        while let Some(at) = rest.find(MARKER) {
-            rest = &rest[at + MARKER.len()..];
-            // Skip the rest of the marker's own line.
-            let name = rest
-                .lines()
-                .skip(1)
-                .map(str::trim_start)
+        let text = std::fs::read_to_string(entry.expect("entry").path()).expect("source");
+        let lines: Vec<&str> = text.lines().map(str::trim_start).collect();
+        for (i, line) in lines.iter().enumerate() {
+            if !line.contains(MARKER) {
+                continue;
+            }
+            let item = lines[i + 1..]
+                .iter()
                 .find(|l| !l.starts_with("///") && !l.starts_with("#["))
-                .and_then(|l| {
-                    let l = l.trim_start_matches("pub ").trim_start_matches("async ");
-                    let l = ["fn ", "struct ", "enum ", "const "]
-                        .iter()
-                        .find_map(|k| l.strip_prefix(k))?;
-                    Some(
-                        l.split(|c: char| !c.is_alphanumeric() && c != '_')
-                            .next()?
-                            .to_owned(),
-                    )
-                })
                 .expect("an item after the marker");
-            found.insert(name);
+            let name = item
+                .split_whitespace()
+                .find(|w| !matches!(*w, "pub" | "async" | "fn" | "struct" | "enum" | "const"))
+                .expect("an item name");
+            let name = name
+                .split(|c: char| !c.is_alphanumeric() && c != '_')
+                .next();
+            found.insert(name.expect("a name").to_owned());
         }
     }
     found

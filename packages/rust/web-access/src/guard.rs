@@ -48,6 +48,7 @@ use axum::response::Response;
 use subtle::ConstantTimeEq;
 
 use crate::context::{AccessContext, Grant};
+use crate::origin::is_webview_origin;
 use crate::permissions::{RouteRule, normalize_path};
 use crate::response::{json_response, refuse};
 
@@ -410,59 +411,21 @@ fn cookie_values<'a>(req: &'a Request<Body>, name: &'a str) -> impl Iterator<Ite
 }
 
 /// The value of `?token=`, percent-decoded, and the query with that parameter
-/// removed. A value that does not decode is kept as written.
-fn split_token_param(query: &str) -> (Option<String>, String) {
-    let mut token = None;
-    let mut kept = Vec::new();
-    for pair in query.split('&').filter(|p| !p.is_empty()) {
-        match pair.split_once('=') {
-            Some(("token", v)) => {
-                token = Some(percent_decode_query(v).unwrap_or_else(|| v.to_owned()))
-            }
-            None if pair == "token" => token = Some(String::new()),
-            _ => kept.push(pair),
-        }
-    }
-    (token, kept.join("&"))
-}
-
-/// A query value with `%XX` escapes decoded and `+` read as a space. `None`
-/// for a malformed escape or a result that is not UTF-8.
-fn percent_decode_query(v: &str) -> Option<String> {
-    let bytes = v.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'%' => {
-                let hex = std::str::from_utf8(bytes.get(i + 1..i + 3)?).ok()?;
-                if !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
-                    return None;
-                }
-                out.push(u8::from_str_radix(hex, 16).ok()?);
-                i += 3;
-            }
-            b'+' => {
-                out.push(b' ');
-                i += 1;
-            }
-            b => {
-                out.push(b);
-                i += 1;
-            }
-        }
-    }
-    String::from_utf8(out).ok()
-}
-
-/// A desktop webview's own origin (`tauri://localhost`,
-/// `http(s)://tauri.localhost`). No page a browser loads from the network can
-/// present it, so a webview may open a WebSocket to its own app.
-fn is_webview_origin(origin: &str) -> bool {
-    matches!(
-        origin.to_ascii_lowercase().as_str(),
-        "tauri://localhost" | "http://tauri.localhost" | "https://tauri.localhost"
-    )
+/// removed; `None` when the query has no `token` parameter. A value that does
+/// not decode to UTF-8 is kept as written.
+fn split_token_param(query: &str) -> Option<(String, String)> {
+    let is_token = |p: &&str| *p == "token" || p.starts_with("token=");
+    // The last `token` wins, as browsers and form parsers read a repeated key.
+    let raw = query.split('&').rfind(is_token)?;
+    let raw = raw.strip_prefix("token=").unwrap_or("");
+    let token = percent_encoding::percent_decode_str(raw)
+        .decode_utf8()
+        .map_or_else(|_| raw.to_owned(), |t| t.into_owned());
+    let rest: Vec<&str> = query
+        .split('&')
+        .filter(|p| !p.is_empty() && !is_token(p))
+        .collect();
+    Some((token, rest.join("&")))
 }
 
 /// The share-link landing page: set the cookie, then move to `location`.
@@ -491,18 +454,10 @@ fn bounce(location: &str, set_cookie: &str) -> Response {
 
 /// `s` safe inside a double-quoted HTML attribute.
 fn html_attr_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            c => out.push(c),
-        }
-    }
-    out
+    s.replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 fn is_mutating(method: &Method) -> bool {
@@ -588,24 +543,21 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
     // 5. `?token=` bootstrap on GET; a valid one wins over any cookie.
     let mut presented_wrong = false;
     if method == Method::GET
-        && let Some(query) = req.uri().query()
+        && let Some((tok, rest)) = req.uri().query().and_then(split_token_param)
     {
-        let (tok, rest) = split_token_param(query);
-        if let Some(tok) = tok.as_deref() {
-            if state.tokens.grant_for(tok).is_some() {
-                // Exactly one leading slash: browsers read `//host` as a
-                // protocol-relative, off-origin redirect.
-                let safe = format!("/{}", path.trim_start_matches('/'));
-                let location = if rest.is_empty() {
-                    safe
-                } else {
-                    format!("{safe}?{rest}")
-                };
-                let set_cookie = format!("{cookie}={tok}; HttpOnly; SameSite=Strict; Path=/");
-                return bounce(&location, &set_cookie);
-            }
-            presented_wrong = true;
+        if state.tokens.grant_for(&tok).is_some() {
+            // Exactly one leading slash: browsers read `//host` as a
+            // protocol-relative, off-origin redirect.
+            let safe = format!("/{}", path.trim_start_matches('/'));
+            let location = if rest.is_empty() {
+                safe
+            } else {
+                format!("{safe}?{rest}")
+            };
+            let set_cookie = format!("{cookie}={tok}; HttpOnly; SameSite=Strict; Path=/");
+            return bounce(&location, &set_cookie);
         }
+        presented_wrong = true;
     }
 
     // 6. Token: header, then cookie.

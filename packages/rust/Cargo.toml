@@ -38,6 +38,8 @@ getrandom = "0.3"
 globset = { version = "0.4", default-features = false }
 # web-access lists the host's interfaces for its Host allowlist.
 if-addrs = "0.13"
+# web-access percent-encodes share-link tokens. 2.3 is what axum 0.8 needs.
+percent-encoding = "2.3"
 # js-sys 0.3.103 is the release that pairs with wasm-bindgen 0.2.126.
 js-sys = "0.3.103"
 # 1.8 is the first regex that reads the `\/` escape in a contract pattern.

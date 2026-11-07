@@ -1,5 +1,20 @@
 //! Which `Origin` values a local page legitimately presents.
 
+/// A desktop webview's own origin: `tauri://localhost` (macOS) or
+/// `http(s)://tauri.localhost` (Windows, Linux), in any letter case. No page a
+/// browser loads from the network can present it.
+pub(crate) fn is_webview_origin(origin: &str) -> bool {
+    WEBVIEW_ORIGINS
+        .iter()
+        .any(|o| o.eq_ignore_ascii_case(origin))
+}
+
+const WEBVIEW_ORIGINS: [&str; 3] = [
+    "tauri://localhost",
+    "http://tauri.localhost",
+    "https://tauri.localhost",
+];
+
 /// True for origins a local browser or the Tauri webview presents:
 /// `http(s)://localhost`, `127.0.0.1` and `[::1]` (any port), and the
 /// `tauri://` and `http(s)://tauri.localhost` webview origins. A lookalike such
@@ -21,34 +36,25 @@ pub fn is_local_origin(origin: &str) -> bool {
 /// `localhost:3000.evil.com`.
 pub fn is_local_authority(authority: &str) -> bool {
     let authority = authority.to_ascii_lowercase();
-    let (host, port) = if let Some(v6) = authority.strip_prefix('[') {
-        let Some((inner, after)) = v6.split_once(']') else {
-            return false;
-        };
-        if inner != "::1" {
-            return false;
-        }
-        match after.strip_prefix(':') {
-            _ if after.is_empty() => return true,
-            Some(port) => ("[::1]", Some(port)),
-            // Anything else after `]` is not a port.
-            None => return false,
-        }
-    } else {
-        match authority.split_once(':') {
+    // Split off the port. A bracketed IPv6 host may be followed only by
+    // nothing or by `:port`.
+    let (host, port) = match authority.strip_prefix('[') {
+        Some(v6) => match v6.split_once(']') {
+            Some((inner, after)) if after.is_empty() || after.starts_with(':') => {
+                (inner, after.strip_prefix(':'))
+            }
+            _ => return false,
+        },
+        None => match authority.split_once(':') {
             Some((host, port)) => (host, Some(port)),
             None => (authority.as_str(), None),
-        }
+        },
     };
     // A port, when written, is 1 to 5 digits and nothing else, so
     // `localhost:3000.evil.com` is not local.
     let port_ok =
         port.is_none_or(|p| !p.is_empty() && p.len() <= 5 && p.bytes().all(|b| b.is_ascii_digit()));
-    port_ok
-        && matches!(
-            host,
-            "localhost" | "127.0.0.1" | "tauri.localhost" | "[::1]"
-        )
+    port_ok && matches!(host, "localhost" | "127.0.0.1" | "tauri.localhost" | "::1")
 }
 
 #[cfg(test)]

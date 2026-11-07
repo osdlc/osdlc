@@ -35,10 +35,9 @@ pub fn mint() -> io::Result<String> {
 /// Refuse a `file_name` that is not one plain name inside the directory: empty,
 /// `.` or `..`, or holding a path separator.
 fn check_file_name(file_name: &str) -> io::Result<()> {
-    let bare = !file_name.is_empty()
-        && file_name != "."
-        && file_name != ".."
-        && !file_name.contains(['/', '\\'])
+    // `file_name()` is `None` for an empty name and `..`, and differs from the
+    // input for `.` or a name with a `/`; `\` is refused on every platform.
+    let bare = !file_name.contains('\\')
         && Path::new(file_name).file_name() == Some(std::ffi::OsStr::new(file_name));
     if bare {
         Ok(())
