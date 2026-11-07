@@ -42,6 +42,13 @@ When not to use it:
 - The section is async and long. `withLock` blocks the thread while it waits.
   Use `claimLock` and `releaseLock` around async work instead.
 
+## Guide
+
+The [guide](https://github.com/osdlc/osdlc/blob/main/packages/ts/file-lock/docs/guide/getting-started.md) walks through the problem with
+timelines and examples: [getting started](https://github.com/osdlc/osdlc/blob/main/packages/ts/file-lock/docs/guide/getting-started.md),
+[choosing a staleness rule](https://github.com/osdlc/osdlc/blob/main/packages/ts/file-lock/docs/guide/staleness.md) and
+[how it works](https://github.com/osdlc/osdlc/blob/main/packages/ts/file-lock/docs/guide/how-it-works.md) on disk.
+
 ## Install
 
 ```sh
