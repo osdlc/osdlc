@@ -2,7 +2,8 @@
  * Whether a checkout's dependencies are installed, checked before a hand-off
  * to its source. A checkout cloned but never installed would otherwise fail
  * later, inside its own code, with an import error that does not say why.
- * The bash launcher's `need_deps` does the same check.
+ * The bash launcher's `need_deps` does the same check. Node walks
+ * `node_modules` the same way, so the check is the same for both runtimes.
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -30,11 +31,22 @@ export function missingDependency(checkout: string, entry: string): string | nul
   }
 }
 
-/** The line that refuses a hand-off to `checkout`, for what {@link missingDependency} found. */
-export function missingDependencyLine(name: string, checkout: string, missing: string): string {
+/**
+ * The line that refuses a hand-off to `checkout`, for what
+ * {@link missingDependency} found. A bun checkout is told to run
+ * `bun install`; a node one, its package manager's install.
+ */
+export function missingDependencyLine(
+  name: string,
+  checkout: string,
+  missing: string,
+  runtime: 'bun' | 'node' = 'bun',
+): string {
+  const fix =
+    runtime === 'bun' ? "Run 'bun install' there." : "Run its package manager's install there."
   return missing === 'node_modules'
-    ? `${name}: ${checkout} has no node_modules. Run 'bun install' there.`
-    : `${name}: ${checkout} is missing package '${missing}'. Run 'bun install' there.`
+    ? `${name}: ${checkout} has no node_modules. ${fix}`
+    : `${name}: ${checkout} is missing package '${missing}'. ${fix}`
 }
 
 /** The `dependencies` names in the package.json at `file`; none when it is missing or bad. */

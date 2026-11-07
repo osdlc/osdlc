@@ -399,7 +399,10 @@ through `node_modules`, so a link to itself is a no-op. The process it hands
 off to is told so through `TOOL_LAUNCH_LAYER` and runs its own `main`.
 Under Bun the hand-off reuses the running bun. A checkout whose
 `node_modules` is missing or incomplete is refused with exit 1 and a line
-saying to run `bun install` there.
+saying to run `bun install` there. A tool whose source runs under node sets
+`runtime: 'node'` in the spec, and a checkout then runs its `.ts` entry under
+Node 22.18 or later, which strips the types itself; `tool dev link` refuses a
+checkout whose entry that node cannot run.
 
 Outside a link, a project with `@acme/tool` in its `node_modules` runs that
 copy's bin under node, as `npx tool` would, so the project's pinned version

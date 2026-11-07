@@ -21,6 +21,7 @@ import { isAbsolute, join, resolve as resolvePath } from 'node:path'
 import { which } from '@osdlc/command-seam'
 import { atomicWrite } from '@osdlc/etag-write'
 
+import { entryProblem } from './entry.ts'
 import { gitHead } from './git-head.ts'
 import {
   cwdCheckout,
@@ -64,6 +65,12 @@ export interface OpOptions extends ResolveOptions {
   dryRun?: boolean
   /** Injectable clock for deterministic history in tests. */
   now?: () => Date
+  /**
+   * The `node` a `runtime: 'node'` checkout will run under, whose version
+   * `link` and `use` check for a TypeScript entry. Defaults to the one
+   * `execSelection` would pick.
+   */
+  node?: string
 }
 
 /**
@@ -332,6 +339,8 @@ function activate(
   opts: OpOptions,
 ): LinkResult {
   const dryRun = opts.dryRun ?? false
+  const problem = entryProblem(spec, checkout, { env: opts.env, node: opts.node })
+  if (problem !== null) throw new DevlinkError(`cannot run ${checkout}: ${problem}`)
   const previous = readActive(spec, opts)
   const { branch, head } = gitHead(checkout)
   if (!dryRun) {
