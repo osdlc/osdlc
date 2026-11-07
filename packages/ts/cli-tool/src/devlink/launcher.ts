@@ -4,8 +4,9 @@
  * A launcher on PATH runs before any JavaScript runtime is chosen. The
  * canonical install may be a compiled binary, and the linked checkout runs
  * under Bun, or Node when the spec says `runtime: 'node'`. So the resolution
- * checks in `resolve.ts` are written again here in bash. The template is the single source. A tool renders it into its repo,
- * and a test checks that the committed file still matches (`launcherDrift`).
+ * checks in `resolve.ts` are written again here in bash. The template is the
+ * single source. A tool renders it into its repo, and a test checks that the
+ * committed file still matches (`launcherDrift`).
  *
  * The config directory is inlined for the same reason: the launcher cannot
  * call TypeScript code. It matches `@osdlc/tiered-dirs`' `config` home under
@@ -20,20 +21,21 @@
  * committed bundle never hides the source being edited. Under node, a
  * checkout whose path has a `node_modules` folder is an install, never a dev
  * checkout, since `npm i -g` nests its dependencies there. This is the
- * canonical-install shape for a tool that ships built JavaScript. A tool whose canonical install is elsewhere
- * (an npm shim) points `install` at that shim instead and never renders this.
+ * canonical-install shape for a tool that ships built JavaScript. A tool
+ * whose canonical install is elsewhere (an npm shim) points `install` at
+ * that shim instead and never renders this.
  */
 
 import { readFileSync, realpathSync } from 'node:fs'
 import { dirname, posix, relative, resolve as resolvePath } from 'node:path'
 
 import {
+  checkedRuntime,
   cwdDevVar,
   entryOf,
   homeVar,
   launchLayerVar,
   quietVar,
-  runtimeOf,
   stateDirSegments,
   type ToolSpec,
 } from './spec.ts'
@@ -133,13 +135,7 @@ export function renderLauncher(spec: ToolSpec, opts: LauncherOptions = {}): stri
   const suppressorGuard = suppressors.map((v) => `[ -z "\${${v}+x}" ]`).join(' && ')
   const guard = suppressorGuard.length > 0 ? ` && ${suppressorGuard}` : ''
   const built = opts.builtEntry
-  const runtime = runtimeOf(spec)
-  if (!Object.hasOwn(RUNTIMES, runtime)) {
-    throw new Error(
-      `devlink: runtime must be 'bun' or 'node', got ${JSON.stringify(runtime as unknown)}`,
-    )
-  }
-  const rt = RUNTIMES[runtime]
+  const rt = RUNTIMES[checkedRuntime(spec)]
   const layerVar = launchLayerVar(spec)
   const configVar = spec.vendorDirs.envVars.dirs.config
   const rootVar = spec.vendorDirs.envVars.root
