@@ -178,10 +178,11 @@ async function copyGuidePage(lib, page, outDir, url) {
   )
   // A relative image is copied into public/ and shown from there; the link
   // rewrite below would otherwise send it to GitHub's HTML view of the file.
-  // Code fences are left as written, and so are data: URIs and absolute URLs.
+  // Code fences (``` or ~~~, indented or not) are left as written, and so are
+  // data: URIs and absolute URLs.
   const images = new Set()
   text = text
-    .split(/(^```[\s\S]*?^```$)/m)
+    .split(/(^[ \t]*(?:`{3,}|~{3,})[^\n]*\n[\s\S]*?^[ \t]*(?:`{3,}|~{3,})[ \t]*$)/m)
     .map((part, i) =>
       i % 2 === 1
         ? part

@@ -53,12 +53,14 @@ const NOT_FOUND_MARKERS: readonly string[] = [
 ]
 
 /**
- * git's message when another process holds a local ref's lock file:
- * `cannot lock ref '<ref>': Unable to create '<path>.lock': File exists.`
- * Other `cannot lock ref` failures (a directory/file ref clash, a ref that
- * moved) are permanent and not retried.
+ * git's messages when another process in the same ref store got to a local
+ * ref first: it holds the ref's lock file (`cannot lock ref '<ref>': Unable to
+ * create '<path>.lock': File exists.`), or it moved the ref between this
+ * fetch reading it and writing it (`cannot lock ref '<ref>': is at <B> but
+ * expected <A>`). Both clear on a retry. Other `cannot lock ref` failures,
+ * such as a directory/file ref clash, are permanent and not retried.
  */
-const LOCAL_LOCK_MARKERS: readonly string[] = [".lock': file exists"]
+const LOCAL_LOCK_MARKERS: readonly string[] = [".lock': file exists", 'but expected']
 
 const has = (text: string, markers: readonly string[]) => {
   const low = text.toLowerCase()

@@ -11,6 +11,12 @@
  * | `fetchRef` | `fetch +<ref>:<ref>`, then read the payload blob | `RefNotFound`, `PayloadUnreadable` |
  * | `fetchNamespace` | `fetch --prune +<prefix>/*:<prefix>/*` | |
  *
+ * Every ref and namespace must be a path under `refs/` outside `refs/heads`,
+ * `refs/tags` and `refs/remotes`, and every sha a full lowercase object id;
+ * anything else throws a `TypeError` before git runs. A fetch force-updates
+ * the local copy of the refs it reads (and `fetchNamespace` prunes the ones the
+ * authority lacks), so this keeps it away from the caller's own branches.
+ *
  * Any other git failure is a `GitFailed`. Pushes go through typed-git's
  * `push`, which reports each ref's rejection as a value and runs git in the C
  * locale; the fetches run in the C locale too.
@@ -24,6 +30,7 @@
 import { type GitFailure } from '@osdlc/typed-git'
 
 import { fetchFailure, pushOutcome } from './classify.ts'
+import { checkLeaseRef, checkSha } from './refs.ts'
 import { CasFailed, PayloadUnreadable, RefNotFound } from './errors.ts'
 import {
   C_LOCALE,
@@ -54,7 +61,8 @@ export interface MirrorSkip {
 export interface CasOptions extends GitOptions {
   /**
    * Called when the local mirror of the ref could not be brought to the written
-   * state. The write itself succeeded. See {@link casReplace}.
+   * state, because another process had moved it. The write itself succeeded.
+   * The mirror stays as it is until a fetch of the ref; see {@link casReplace}.
    */
   onMirrorSkip?: (skip: MirrorSkip) => void
 }
@@ -73,6 +81,9 @@ function cas(
   opts: CasOptions,
 ): void {
   const label = `CAS-${op.toUpperCase()}`
+  checkLeaseRef(ref, `${label}: ref`)
+  if (expectedSha !== null) checkSha(expectedSha, `${label}: expected sha`)
+  if (newSha !== null) checkSha(newSha, `${label}: new sha`)
   const git = client(opts)
   const pushed = git.try.push(authority, newSha === null ? ref : `${newSha}:${ref}`, {
     forceWithLease: { ref, expect: expectedSha },
@@ -133,9 +144,10 @@ function cas(
  * (for a create, while it does not exist). Worktrees share one ref store, so
  * another process may have moved the mirror between this write landing at the
  * authority and this call. The guard leaves that newer value alone instead of
- * rewinding it; the next write or fetch corrects the mirror. A failed update
- * never fails the write, which has already succeeded: it is reported to
- * `onMirrorSkip`.
+ * rewinding it. A skipped mirror stays as it is until a fetch of the ref
+ * (`fetchRef`, `fetchNamespace`) brings it to the authority's value: later
+ * writes are guarded the same way and skip it too. A failed update never fails
+ * the write, which has already succeeded: it is reported to `onMirrorSkip`.
  */
 function syncLocalMirror(
   git: ReturnType<typeof client>,
@@ -152,7 +164,8 @@ function syncLocalMirror(
     }
     return
   }
-  // The zero oid as the old value means "must not exist".
+  // The zero oid as the old value means "must not exist". typed-git has no
+  // update-ref verb, so this one call is raw.
   const expected = oldSha ?? '0'.repeat(newSha.length)
   if (git.raw(['update-ref', ref, newSha, expected]).exitCode !== 0) {
     opts.onMirrorSkip?.({ ref, expectedSha: expected, newSha })
@@ -167,6 +180,7 @@ function syncLocalMirror(
  *   agrees is the truth.
  * @throws CasFailed when the ref already exists, at any sha.
  * @throws GitFailed for any other git failure.
+ * @throws TypeError for a ref outside your own namespace, or a sha that is not a full object id.
  */
 export function casCreate(
   authority: string,
@@ -184,10 +198,12 @@ export function casCreate(
  * history, but the protocol does not require it.
  *
  * On success the local mirror of the ref moves too, unless another process
- * moved it first; then `opts.onMirrorSkip` is told.
+ * moved it first; then `opts.onMirrorSkip` is told, and the mirror keeps that
+ * other value until a fetch of the ref.
  *
  * @throws CasFailed when the ref is not at `expectedSha`, or is gone.
  * @throws GitFailed for any other git failure.
+ * @throws TypeError for a ref outside your own namespace, or a sha that is not a full object id.
  */
 export function casReplace(
   authority: string,
@@ -204,6 +220,7 @@ export function casReplace(
  *
  * @throws CasFailed when the ref is not at `expectedSha`, or is already gone.
  * @throws GitFailed for any other git failure.
+ * @throws TypeError for a ref outside your own namespace, or a sha that is not a full object id.
  */
 export function casDelete(
   authority: string,
@@ -260,12 +277,14 @@ export interface FetchRefOptions<T> extends GitOptions {
  * @throws RefNotFound when the authority has no such ref.
  * @throws PayloadUnreadable when the commit has no payload file or it is not JSON.
  * @throws GitFailed for any other git failure.
+ * @throws TypeError for a ref outside your own namespace, or a sha that is not a full object id.
  */
 export function fetchRef<T = unknown>(
   authority: string,
   ref: string,
   opts: FetchRefOptions<T> = {},
 ): FetchedRef<T> {
+  checkLeaseRef(ref, 'FETCH-REF: ref')
   const git = client(opts)
   const payloadFile = opts.payloadFile ?? DEFAULT_PAYLOAD_FILE
   const fetched = fetchWithLockRetry(() =>
@@ -317,12 +336,14 @@ export function fetchRef<T = unknown>(
 
 /**
  * Fetch every ref under `prefix` from the authority (`+<prefix>/*:<prefix>/*`,
- * pruning local refs the authority no longer has) and list them. A prefix with
- * no refs gives `{}`.
+ * pruning local refs under it that the authority no longer has) and list them.
+ * A prefix with no refs gives `{}`. Only refs strictly under the prefix are
+ * listed, never a ref at the prefix itself.
  *
  * @param prefix A ref path such as `refs/locks`; a trailing `/` is ignored.
  * @returns Each ref under the prefix, mapped to the sha it points at.
  * @throws GitFailed when git fails.
+ * @throws TypeError for a prefix outside your own namespace.
  */
 export function fetchNamespace(
   authority: string,
@@ -330,6 +351,7 @@ export function fetchNamespace(
   opts: GitOptions = {},
 ): Record<string, string> {
   const base = prefix.replace(/\/+$/, '')
+  checkLeaseRef(base, 'FETCH-NAMESPACE: prefix')
   const git = client(opts)
   const fetched = fetchWithLockRetry(() =>
     git.try.fetch(authority, `+${base}/*:${base}/*`, {
@@ -355,7 +377,7 @@ export function fetchNamespace(
   }
   const result: Record<string, string> = {}
   for (const { ref, sha } of listing.value) {
-    if (ref !== '' && sha !== '') result[ref] = sha
+    if (ref.startsWith(`${base}/`) && sha !== '') result[ref] = sha
   }
   return result
 }

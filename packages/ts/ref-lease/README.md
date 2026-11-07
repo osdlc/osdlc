@@ -99,15 +99,15 @@ test suite runs; `tests/docs-snippets.test.ts` fails when they differ.
 | Lease ref | A ref under a namespace you choose, such as `refs/locks/build-cache`. |
 | Lease commit | The commit a lease ref points at. Its tree holds the payload as canonical JSON (`lease.json` by default) and any extra files you add. |
 | Local repository | The repository the calls run in (`cwd`). It holds the commits a push sends and the mirror refs a fetch writes. |
-| Mirror | The local copy of a lease ref, at the same name. Each write updates it, so a local reader sees the write without a fetch. |
+| Mirror | The local copy of a lease ref, at the same name. Each write updates it, so a local reader sees the write without a fetch. If another process had moved it, the write leaves it alone, and the next fetch of that ref corrects it. |
 
 | Operation | git | Fails with |
 |---|---|---|
 | `casCreate(authority, ref, newSha)` | `push --force-with-lease=<ref>:` | `CasFailed` when the ref exists |
 | `casReplace(authority, ref, expectedSha, newSha)` | `push --force-with-lease=<ref>:<expected>` | `CasFailed` when the ref moved |
-| `casDelete(authority, ref, expectedSha)` | `push --force-with-lease=<ref>:<expected> :<ref>` | `CasFailed` when the ref moved |
+| `casDelete(authority, ref, expectedSha)` | `push --delete --force-with-lease=<ref>:<expected> <ref>` | `CasFailed` when the ref moved or is gone |
 | `fetchRef(authority, ref)` | `fetch +<ref>:<ref>`, then read the payload | `RefNotFound`, `PayloadUnreadable` |
-| `fetchNamespace(authority, prefix)` | `fetch --prune +<prefix>/*:<prefix>/*` | |
+| `fetchNamespace(authority, prefix)` | `fetch --prune +<prefix>/*:<prefix>/*` | `GitFailed` |
 
 Any other git failure, such as an unreachable authority or a declined hook, is a `GitFailed`.
 
@@ -128,7 +128,7 @@ Every item has TSDoc in the source. The entry point is `@osdlc/ref-lease`.
 
 | Item | What it is |
 |---|---|
-| `casCreate`, `casReplace`, `casDelete` | The three compare-and-swap writes. Options: `cwd` or `git`, and `onMirrorSkip`. |
+| `casCreate`, `casReplace`, `casDelete` | The three compare-and-swap writes. Options: `cwd`, `env` and `onMirrorSkip`. |
 | `fetchRef<T>` | Read one lease. Options: `payloadFile`, and `decode` to turn the JSON into your type. |
 | `fetchNamespace` | Every lease ref under a prefix, mapped to its sha. |
 | `buildLeaseCommit` | Write a lease commit. Options: `parentSha`, `extraParentShas`, `payloadFile`, `files`, `identity`, `commitDate`, `message`. |
@@ -137,9 +137,13 @@ Every item has TSDoc in the source. The entry point is `@osdlc/ref-lease`.
 | `canonicalJson` | The payload encoding. |
 | `RefLeaseError` and `CasFailed`, `RefNotFound`, `NamespaceConflict`, `GitFailed`, `PayloadUnreadable` | The errors. Each has a `kind` string. |
 
-Every option object takes `cwd` (default `process.cwd()`) or `git`, a `Git` client from
-[`@osdlc/typed-git`](https://www.npmjs.com/package/@osdlc/typed-git), for a custom runner or
-environment such as `GIT_SSH_COMMAND`.
+Every option object takes `cwd`, the local repository (default `process.cwd()`), and `env`, merged
+over the process environment for each git call, for settings such as `GIT_SSH_COMMAND`.
+
+Refs and namespaces must be paths under `refs/` outside `refs/heads`, `refs/tags` and
+`refs/remotes`, and shas full object ids; anything else throws a `TypeError` before git runs. A
+fetch force-updates your local copy of the refs it reads, and `fetchNamespace` deletes local refs
+under the prefix that the authority no longer has, so a lease namespace must be one of its own.
 
 ### Errors
 
@@ -155,8 +159,8 @@ environment such as `GIT_SSH_COMMAND`.
 Which ones to retry, with an example handler:
 [Errors and retries](./docs/guide/errors-and-retries.md). A `decode` function's own error is not
 wrapped: it propagates as thrown. `buildLeaseCommit` throws a `TypeError` for a payload JSON cannot
-hold or a bad file name, and `@osdlc/typed-git`'s `FailureError` when the local repository cannot
-write objects.
+hold or a bad file name, and a `GitFailed` when the local repository cannot write objects. A
+`GitFailed` keeps the underlying git failure as its `cause`.
 
 git runs in the C locale for every push and fetch, so its messages are read the same way whatever
 language the user's git speaks.
@@ -175,7 +179,8 @@ platform branches. It needs git 2.29 or later, for `fetch --no-write-fetch-head`
 ## Conformance cases
 
 [`tests/conformance/`](./tests/conformance/) holds the protocol's cases as data: what each push
-result and failed fetch means, and the canonical JSON of each value. Another implementation of the
+result (git's status for the ref and its rejection kind, as `@osdlc/typed-git` reads it) and each
+failed fetch means, and the canonical JSON of each value. Another implementation of the
 protocol checks itself against the same files.
 
 ## Alternatives

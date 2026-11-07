@@ -1,5 +1,5 @@
 {
-  "about": "Cases for classifyFetchFailure: what a failed fetch's stderr means. The stderr strings are real git output, trimmed. Every implementation of the protocol maps each case to `expected`.",
+  "about": "Cases for what a failed fetch's stderr means (git runs in the C locale). `lock-contention` is retried. Every implementation of the protocol maps each case to `expected`.",
   "cases": [
     {
       "name": "ref missing at the authority",
@@ -22,9 +22,9 @@
       "expected": "git-failed"
     },
     {
-      "name": "local ref moved under the fetch (not retried)",
+      "name": "local ref moved by a concurrent fetch",
       "stderr": "error: cannot lock ref 'refs/locks/x': is at 9f8e7d6 but expected 1a2b3c4",
-      "expected": "git-failed"
+      "expected": "lock-contention"
     },
     {
       "name": "authority unreachable",

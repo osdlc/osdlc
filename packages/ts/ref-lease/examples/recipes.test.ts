@@ -111,14 +111,20 @@ function renew(
 
 // #region release
 /**
- * Give the lease up, only if it is still the one we hold, then keep its history
- * under an archive ref. The commit is still in the local repository, so the
- * archive can point at it after the delete.
+ * Give the lease up, only if it is still the one we hold, keeping its history
+ * under an archive ref. The archive goes first, so a crash between the two
+ * pushes leaves the history kept; if the delete then finds the lease is no
+ * longer ours, the archive is taken back.
  */
 function release(authority: string, ref: string, sha: string, cwd: string): void {
-  casDelete(authority, ref, sha, { cwd }) // throws CasFailed if it is no longer ours
   const archive = `refs/lease-archive/${ref.replace(/^refs\//, '')}/${sha.slice(0, 12)}`
   casCreate(authority, archive, sha, { cwd })
+  try {
+    casDelete(authority, ref, sha, { cwd }) // only if it is still ours
+  } catch (e) {
+    casDelete(authority, archive, sha, { cwd }) // we released nothing: drop the archive
+    throw e
+  }
 }
 // #endregion release
 
@@ -227,6 +233,10 @@ describe('recipes', () => {
     claim(authority, ref, 'b', { cwd, now: at(11), ttlMinutes: 10 })
     expect(() => release(authority, ref, won.sha, cwd)).toThrow(CasFailed)
     expect(fetchRef(authority, ref, { cwd, decode }).payload.holder).toBe('b')
+    const archive = `refs/lease-archive/${ref.replace(/^refs\//, '')}/${won.sha.slice(0, 12)}`
+    expect(Object.keys(fetchNamespace(authority, 'refs/lease-archive', { cwd }))).not.toContain(
+      archive,
+    )
   })
 
   test('claim: a released lease can be claimed again', () => {

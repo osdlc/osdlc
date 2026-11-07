@@ -6,7 +6,6 @@ import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs
 import { dirname, join } from 'node:path'
 
 import { managedProcessRunner } from '@osdlc/command-seam'
-import { Git } from '@osdlc/typed-git'
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
 import {
@@ -43,15 +42,16 @@ const commit = (over: Record<string, unknown> = {}, parentSha?: string) =>
   buildLeaseCommit(samplePayload(over), { cwd: env.worker, parentSha: parentSha ?? null })
 
 /**
- * Hold `<ref>.lock` in `repo` for ~200ms from another process, as a concurrent
- * fetch would: well inside the fetch's retry budget (25+50+75+100+125ms of
- * backoff), so a fast machine cannot run out of attempts before it is freed.
+ * Hold `<ref>.lock` in `repo` for ~120ms from another process, as a concurrent
+ * fetch would: about a third of the fetch's retry budget (25+50+75+100+125ms
+ * of backoff), so neither a fast machine nor a loaded one runs out of attempts
+ * before it is freed.
  */
 async function holdRefLock(repo: string, ref: string): Promise<{ release: () => void }> {
   const lock = join(repo, '.git', `${ref}.lock`)
   mkdirSync(dirname(lock), { recursive: true })
   const proc = managedProcessRunner('sh').run(
-    ['-c', `touch '${lock}'; sleep 0.2; rm -f '${lock}'`],
+    ['-c', `touch '${lock}'; sleep 0.12; rm -f '${lock}'`],
     { cwd: repo },
   )
   const until = Date.now() + 2000
@@ -99,9 +99,13 @@ describe('compare-and-swap writes', () => {
     expect(authoritySha(REF)).toBe(sha)
   })
 
-  test('a caller-supplied git client is used in place of cwd', () => {
+  test('env is passed to every git call', () => {
+    // GIT_DIR points git at the worker from any cwd: proof the env reached git.
     const sha = commit()
-    casCreate(env.authority, REF, sha, { git: new Git(env.worker), cwd: '/nonexistent' })
+    casCreate(env.authority, REF, sha, {
+      cwd: env.root,
+      env: { GIT_DIR: join(env.worker, '.git') },
+    })
     expect(authoritySha(REF)).toBe(sha)
   })
 
@@ -186,6 +190,13 @@ describe('lost races raise CasFailed', () => {
     const first = commit()
     casCreate(env.authority, REF, first, at(env.worker))
     expect(() => casReplace(env.authority, REF, first, first, at(env.worker))).not.toThrow()
+  })
+
+  test('a delete of a ref that is already gone', () => {
+    const sha = commit()
+    casCreate(env.authority, REF, sha, at(env.worker))
+    casDelete(env.authority, REF, sha, at(env.worker))
+    expect(() => casDelete(env.authority, REF, sha, at(env.worker))).toThrow(CasFailed)
   })
 
   test('a delete from the wrong sha', () => {
@@ -275,6 +286,13 @@ describe('other git failures raise GitFailed, never CasFailed', () => {
     )
   })
 
+  test("a GitFailed keeps typed-git's classified failure as its cause", () => {
+    const e = expectGitFailed(() =>
+      casCreate(join(env.root, 'nowhere'), REF, commit(), at(env.worker)),
+    )
+    expect((e.cause as { kind?: string } | undefined)?.kind).toBeTypeOf('string')
+  })
+
   test('a fetch from an authority that does not exist', () => {
     const e = expectGitFailed(() => fetchRef(join(env.root, 'nowhere'), REF, at(env.worker)))
     expect(e.op).toBe('FETCH-REF')
@@ -354,6 +372,41 @@ describe('fetchRef', () => {
     expect((e as Error).cause).toBeInstanceOf(SyntaxError)
   })
 
+  test('concurrent readers in one ref store all succeed while the lease moves', async () => {
+    // Other processes fetch the same ref into the same repository while the
+    // authority's ref keeps moving: their forced updates collide with ours
+    // ("cannot lock ref ... is at X but expected Y", or a held .lock file),
+    // which the fetch retries.
+    const s1 = commit({ n: 1 })
+    const s2 = commit({ n: 2 })
+    casCreate(env.authority, REF, s1, at(env.worker))
+    env.workerGit.rawChecked(['push', env.authority, `${s2}:refs/scratch/s2`])
+    const reader = env.reader('busy')
+    // Each loop stops at the marker file; waiting for it to exit means no git
+    // child is still writing into the repository when the fixture is removed.
+    const stop = join(env.root, 'stop-loops')
+    const loop = (body: string) =>
+      managedProcessRunner('sh').run(['-c', `while [ ! -e '${stop}' ]; do ${body}; done`], {
+        cwd: env.root,
+      })
+    const loops = [
+      loop(
+        `git -C '${env.authority}' update-ref '${REF}' ${s2}; git -C '${env.authority}' update-ref '${REF}' ${s1}`,
+      ),
+      loop(`git -C '${reader}' fetch -q '${env.authority}' '+${REF}:${REF}' 2>/dev/null`),
+      loop(`git -C '${reader}' fetch -q '${env.authority}' '+${REF}:${REF}' 2>/dev/null`),
+    ]
+    try {
+      await new Promise((r) => setTimeout(r, 100))
+      for (let i = 0; i < 30; i++) {
+        expect([s1, s2]).toContain(fetchRef(env.authority, REF, at(reader)).sha)
+      }
+    } finally {
+      writeFileSync(stop, '')
+      await Promise.all(loops.map((l) => l.exited))
+    }
+  }, 30_000)
+
   test('retries while another process holds the local ref lock', async () => {
     const sha = commit()
     casCreate(env.authority, REF, sha, at(env.worker))
@@ -378,6 +431,13 @@ describe('fetchNamespace', () => {
       [REF]: a,
       'refs/locks/other': b,
     })
+  })
+
+  test('lists only refs under the prefix, not a ref at the prefix itself', () => {
+    const a = commit()
+    casCreate(env.authority, 'refs/locks/b', a, at(env.worker))
+    casCreate(env.authority, 'refs/locks/bc', a, at(env.worker))
+    expect(fetchNamespace(env.authority, 'refs/locks/b', at(env.worker))).toEqual({})
   })
 
   test('ignores a trailing slash on the prefix', () => {

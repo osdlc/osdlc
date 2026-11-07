@@ -17,10 +17,19 @@
  * orders integer-like keys (`"1"`, `"10"`, `"2"`) numerically whatever the
  * insertion order. Objects are therefore written key by key here.
  *
+ * A value with a `toJSON` method is encoded as what it returns, as
+ * `JSON.stringify` does, so a `Date` becomes its ISO string.
+ *
  * @throws TypeError for a value JSON cannot hold: `undefined`, a function, a
- *   symbol or a bigint, at any depth.
+ *   symbol or a bigint, at any depth; an object that is not a plain object or
+ *   an array (a `Map`, a `Set`, a class instance) and has no `toJSON`; or a
+ *   value that contains itself.
  */
 export function canonicalJson(value: unknown): string {
+  return encode(value, new Set())
+}
+
+function encode(value: unknown, path: Set<object>): string {
   if (value === null) return 'null'
   switch (typeof value) {
     case 'boolean':
@@ -28,13 +37,26 @@ export function canonicalJson(value: unknown): string {
     case 'number':
       return JSON.stringify(value)
     case 'object': {
-      if (Array.isArray(value)) return '[' + value.map(canonicalJson).join(',') + ']'
-      const obj = value as Record<string, unknown>
-      const parts: string[] = []
-      for (const key of Object.keys(obj).sort()) {
-        parts.push(JSON.stringify(key) + ':' + canonicalJson(obj[key]))
+      const toJSON = (value as { toJSON?: unknown }).toJSON
+      if (typeof toJSON === 'function') return encode(toJSON.call(value), path)
+      if (path.has(value)) throw new TypeError('canonicalJson: the value contains itself')
+      path.add(value)
+      try {
+        if (Array.isArray(value)) return '[' + value.map((v) => encode(v, path)).join(',') + ']'
+        const proto = Object.getPrototypeOf(value) as unknown
+        if (proto !== Object.prototype && proto !== null) {
+          const kind = (value as object).constructor?.name ?? 'object'
+          throw new TypeError(`canonicalJson: a ${kind} is not a plain object`)
+        }
+        const obj = value as Record<string, unknown>
+        const parts: string[] = []
+        for (const key of Object.keys(obj).sort()) {
+          parts.push(JSON.stringify(key) + ':' + encode(obj[key], path))
+        }
+        return '{' + parts.join(',') + '}'
+      } finally {
+        path.delete(value)
       }
-      return '{' + parts.join(',') + '}'
     }
     default:
       throw new TypeError(`canonicalJson: unsupported value type ${typeof value}`)

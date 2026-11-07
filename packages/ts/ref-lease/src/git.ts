@@ -6,19 +6,18 @@ import { Git, type GitFailure } from '@osdlc/typed-git'
 import { GitFailed } from './errors.ts'
 
 /**
- * Where an operation runs git. Pass `git` to supply a client of your own (a
- * custom runner, extra environment such as `GIT_SSH_COMMAND`); otherwise a
- * client is made for `cwd`, which defaults to `process.cwd()`. The repository
- * is the local side of the protocol: it holds the objects a push sends and the
- * mirror refs a fetch writes.
+ * Where and how an operation runs git. `cwd` is the local repository, by
+ * default `process.cwd()`: it holds the objects a push sends and the mirror
+ * refs a fetch writes. `env` is merged over the process environment for every
+ * git call, for settings such as `GIT_SSH_COMMAND`.
  */
 export interface GitOptions {
   cwd?: string
-  git?: Git
+  env?: Readonly<Record<string, string>>
 }
 
 export function client(opts: GitOptions): Git {
-  return opts.git ?? new Git(opts.cwd ?? process.cwd())
+  return new Git(opts.cwd ?? process.cwd(), opts.env ? { env: { ...opts.env } } : undefined)
 }
 
 /**
