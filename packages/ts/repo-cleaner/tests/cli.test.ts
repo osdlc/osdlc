@@ -966,6 +966,27 @@ describe('clean', () => {
     expect(out.summary).toMatchObject({ deleted: { remote: 1 }, gone: 0 })
   })
 
+  test('offline, the preview asks the remote too: a dry run shows the gone branch skipped', () => {
+    const fx = buildGoneFixture()
+    const res = run(['clean', ...REMOTE, '--only', 'remote', '--dry-run'], fx.root)
+    expect(res.code).toBe(0)
+    expect(res.out).toMatch(new RegExp(`skip +remote:origin/${BRANCH}\\n +gone`))
+    expect(res.out).toContain('would delete: 1 remote branch')
+    expect(res.out).toContain('skipped 1, not deleted: 1 gone')
+  })
+
+  test('offline, a remote that cannot be asked refuses even a dry run, naming the repository', () => {
+    const fx = buildGoneFixture()
+    sh(fx.root, ['config', 'remote.origin.uploadpack', '/bin/false'])
+    for (const mode of ['--dry-run', '--yes']) {
+      const res = run(['clean', ...REMOTE, '--only', 'remote', mode], fx.root)
+      expect(res.code).not.toBe(0)
+      expect(res.err).toContain(realpathSync(fx.root))
+      expect(res.err).toMatch(/`git ls-remote origin` failed .*nothing was run/)
+    }
+    expect(branchRefs(fx.bare)).toContain('feat/t')
+  })
+
   test('offline, a remote branch pushed to since the last fetch is skipped, and the run goes on', () => {
     const fx = buildFixture()
     sh(fx.root, ['branch', 'feat/t', 'main'])

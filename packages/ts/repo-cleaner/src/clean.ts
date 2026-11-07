@@ -107,7 +107,9 @@ interface Shared extends Runners {
 export interface CheckOptions extends Shared {
   /**
    * A sweep made just now, used as the re-check instead of sweeping again: for
-   * a preview straight after a sweep. `run` always sweeps again.
+   * a preview straight after a sweep. A repository whose remote rows it read
+   * from disk (offline) is swept again, asking the remote. `run` always sweeps
+   * again.
    */
   sweep?: Sweep | undefined
   /** Where remote URL clones are kept; a plan repository there must still push only where it fetches from. */
@@ -351,7 +353,11 @@ function resweep(
 ): { rows: Row[]; notes: string[] } {
   const branchScoped = plan.options.branch !== null
   const given = opts.sweep?.repos.find((r) => r.repo?.root === repo.root)
-  if (given !== undefined && given.error === null) {
+  // An offline sweep read remote tips from disk, so it cannot stand in for
+  // the re-check of remote rows: sweep again and ask the remote, so the
+  // preview shows what the run will do.
+  const readFromDisk = kinds.includes('remote') && given?.repo?.fetched !== true
+  if (given !== undefined && given.error === null && !readFromDisk) {
     // Its notes are reported with the rest of that sweep's, by `recheck`.
     return { rows: holdFreedBranches([...given.rows], branchScoped), notes: [] }
   }
@@ -368,7 +374,7 @@ function resweep(
     cwd: opts.cwd ?? process.cwd(),
   })
   if (swept.repo === null || swept.error !== null) {
-    throw new Error(swept.error ?? `could not read repository: ${repo.root}`)
+    throw new Error(`${repo.root}: ${swept.error ?? 'could not read the repository'}`)
   }
   return { rows: swept.rows, notes: swept.notes }
 }
@@ -519,8 +525,19 @@ function recheck(
     accepted: kept,
     dropped,
     verified,
-    notes: opts.sweep === undefined ? notes : [...sweepNotes(opts.sweep), ...notes],
+    notes: opts.sweep === undefined ? notes : uniqueNotes([...sweepNotes(opts.sweep), ...notes]),
   }
+}
+
+/** Notes once each: a repository the given sweep read offline is swept again, and can repeat one. */
+function uniqueNotes(notes: readonly RepoNote[]): RepoNote[] {
+  const seen = new Set<string>()
+  return notes.filter((n) => {
+    const key = `${n.repo}\0${n.note}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 // ── one row per remote branch ──────────────────────────────────────────────
@@ -769,7 +786,9 @@ function checkMirrors(plan: Plan, cacheDir: string): void {
  *
  * @throws RepoCleanerError for an approval that contradicts itself, names a
  *   row the plan does not have or names one ambiguously, or spares a remote
- *   branch that moved. Nothing has been touched.
+ *   branch that moved. A plain `Error`, naming the repository, when the
+ *   re-check cannot read one: a failed fetch, or a remote `ls-remote` cannot
+ *   reach. Nothing has been touched.
  */
 export function check(plan: Plan, approval: Approval, opts: CheckOptions = {}): Preview {
   const cwd = opts.cwd ?? process.cwd()
@@ -959,7 +978,8 @@ function execute(
  * row it dropped stays dropped.
  *
  * @throws RepoCleanerError (`spared-changed`) when a spared remote branch moved
- *   since the preview. Nothing has been touched.
+ *   since the preview, and a plain `Error` when the re-check cannot read a
+ *   repository, as {@link check} does. Nothing has been touched.
  */
 export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   const now = opts.now ?? (() => new Date())
