@@ -5,13 +5,15 @@
  *
  * | Operation | git | Fails with |
  * |---|---|---|
- * | `casCreate` | `push --force-with-lease=<ref>:` | `CasFailed` when the ref exists |
- * | `casReplace` | `push --force-with-lease=<ref>:<expected>` | `CasFailed` when the ref moved |
- * | `casDelete` | `push --force-with-lease=<ref>:<expected> :<ref>` | `CasFailed` when the ref moved |
+ * | `casCreate` | `push --force-with-lease=<ref>: <new>:<ref>` | `CasFailed` when the ref exists |
+ * | `casReplace` | `push --force-with-lease=<ref>:<expected> <new>:<ref>` | `CasFailed` when the ref moved |
+ * | `casDelete` | `push --delete --force-with-lease=<ref>:<expected> <ref>` | `CasFailed` when the ref moved |
  * | `fetchRef` | `fetch +<ref>:<ref>`, then read the payload blob | `RefNotFound`, `PayloadUnreadable` |
  * | `fetchNamespace` | `fetch --prune +<prefix>/*:<prefix>/*` | |
  *
- * Any other git failure is a `GitFailed`.
+ * Any other git failure is a `GitFailed`. Pushes go through typed-git's
+ * `push`, which reports each ref's rejection as a value and runs git in the C
+ * locale; the fetches run in the C locale too.
  *
  * Each call is one attempt. The one retry is local: a fetch that collides with
  * another process on a local ref lock backs off and tries again. Retrying a
@@ -21,14 +23,15 @@
 
 import { type GitFailure } from '@osdlc/typed-git'
 
-import { classifyFetchFailure, classifyPush, hasMarker, LOCAL_LOCK_MARKERS } from './classify.ts'
-import { CasFailed, GitFailed, PayloadUnreadable, RefNotFound } from './errors.ts'
+import { fetchFailure, pushOutcome } from './classify.ts'
+import { CasFailed, PayloadUnreadable, RefNotFound } from './errors.ts'
 import {
+  C_LOCALE,
   client,
   failureResult,
-  failureStderr,
+  gitFailed,
+  gitFailedFrom,
   sleepSync,
-  stderrOrError,
   type GitOptions,
 } from './git.ts'
 
@@ -56,44 +59,66 @@ export interface CasOptions extends GitOptions {
   onMirrorSkip?: (skip: MirrorSkip) => void
 }
 
-function casPush(
+/**
+ * One compare-and-swap: push `newSha` to `ref` (or delete it, when `newSha` is
+ * null) only if the authority holds `expectedSha` there (or, when that is null,
+ * nothing). On success, move the local mirror to match.
+ */
+function cas(
   op: 'create' | 'replace' | 'delete',
-  label: string,
-  argv: string[],
+  authority: string,
   ref: string,
   expectedSha: string | null,
   newSha: string | null,
   opts: CasOptions,
 ): void {
-  const proc = client(opts).raw(argv)
-  switch (classifyPush(op, proc)) {
-    case 'ok':
-      return
+  const label = `CAS-${op.toUpperCase()}`
+  const git = client(opts)
+  const pushed = git.try.push(authority, newSha === null ? ref : `${newSha}:${ref}`, {
+    forceWithLease: { ref, expect: expectedSha },
+    delete: newSha === null,
+  })
+  // A transport failure (unreachable, auth, bad URL) or a local pre-push hook
+  // decline: git printed no result for the ref.
+  if (!pushed.ok) {
+    throw gitFailedFrom(
+      label,
+      `git push failed for ${label} on ${JSON.stringify(ref)}`,
+      pushed.error,
+    )
+  }
+  const { refs, stderr } = pushed.value
+  const result = refs.find((r) => r.dst === ref)
+  if (result === undefined) {
+    throw gitFailed(label, `git push reported no result for ${JSON.stringify(ref)}`, {
+      exitCode: 1,
+      stderr,
+    })
+  }
+  const reason = [result.rawReason, result.detail].filter(Boolean).join('; ')
+  switch (pushOutcome(op, result)) {
     case 'cas-failed': {
-      const detail =
-        proc.exitCode === 0
-          ? `ref already exists at authority with the same sha ${JSON.stringify(newSha)}`
-          : expectedSha === null
-            ? `ref already exists at authority (stderr: ${proc.stderr.trim()})`
-            : `expected_sha=${JSON.stringify(expectedSha)} (stderr: ${proc.stderr.trim()})`
+      const upToDate = result.flag === '='
+      const detail = upToDate
+        ? `ref already exists at authority with the same sha ${JSON.stringify(newSha)}`
+        : expectedSha === null
+          ? `ref already exists at authority (${reason})`
+          : `expected_sha=${JSON.stringify(expectedSha)} (${reason})`
       throw new CasFailed({
         ref,
         expectedSha,
-        actualSha: proc.exitCode === 0 ? newSha : null,
+        actualSha: upToDate ? newSha : null,
         message: `${label} failed on ref ${JSON.stringify(ref)}: ${detail}`,
       })
     }
-    case 'git-failed': {
-      const stderr = stderrOrError(proc)
-      throw new GitFailed({
-        op: label,
-        exitCode: proc.exitCode,
-        stderr,
-        message:
-          `git push failed for ${label} on ${JSON.stringify(ref)}: ` +
-          `exit=${proc.exitCode} stderr=${JSON.stringify(stderr)}`,
-      })
-    }
+    case 'git-failed':
+      throw gitFailed(
+        label,
+        `git push failed for ${label} on ${JSON.stringify(ref)}: ${result.rejection} (${reason})`,
+        { exitCode: 1, stderr },
+      )
+    case 'ok':
+      syncLocalMirror(git, ref, expectedSha, newSha, opts)
   }
 }
 
@@ -102,24 +127,33 @@ function casPush(
  * create) to what the authority now holds, so a reader of local refs sees the
  * write without a fetch. `newSha: null` removes the mirror.
  *
- * The update is guarded: `update-ref <ref> <new> <old>`, or `-d <ref> <old>`.
- * Worktrees share one ref store, so another process may have moved the mirror
- * between this write landing at the authority and this call. The guard leaves
- * that newer value alone instead of rewinding it; the next write or fetch
- * corrects the mirror. A failed update never fails the write, which has
- * already succeeded: it is reported to `onMirrorSkip`.
+ * The update is guarded: it applies only while the mirror still holds `oldSha`
+ * (for a create, while it does not exist). Worktrees share one ref store, so
+ * another process may have moved the mirror between this write landing at the
+ * authority and this call. The guard leaves that newer value alone instead of
+ * rewinding it; the next write or fetch corrects the mirror. A failed update
+ * never fails the write, which has already succeeded: it is reported to
+ * `onMirrorSkip`.
  */
 function syncLocalMirror(
+  git: ReturnType<typeof client>,
   ref: string,
   oldSha: string | null,
   newSha: string | null,
   opts: CasOptions,
 ): void {
-  const zero = '0'.repeat((newSha ?? oldSha ?? '').length || 40)
-  const old = oldSha ?? zero
-  const argv = newSha === null ? ['update-ref', '-d', ref, old] : ['update-ref', ref, newSha, old]
-  if (client(opts).raw(argv).exitCode !== 0) {
-    opts.onMirrorSkip?.({ ref, expectedSha: old, newSha })
+  if (newSha === null) {
+    // A delete always has the sha it expected.
+    const expected = oldSha as string
+    if (!git.try.deleteRef(ref, { expected }).ok) {
+      opts.onMirrorSkip?.({ ref, expectedSha: expected, newSha })
+    }
+    return
+  }
+  // The zero oid as the old value means "must not exist".
+  const expected = oldSha ?? '0'.repeat(newSha.length)
+  if (git.raw(['update-ref', ref, newSha, expected]).exitCode !== 0) {
+    opts.onMirrorSkip?.({ ref, expectedSha: expected, newSha })
   }
 }
 
@@ -138,16 +172,7 @@ export function casCreate(
   newSha: string,
   opts: CasOptions = {},
 ): void {
-  casPush(
-    'create',
-    'CAS-CREATE',
-    ['push', `--force-with-lease=${ref}:`, authority, `${newSha}:${ref}`],
-    ref,
-    null,
-    newSha,
-    opts,
-  )
-  syncLocalMirror(ref, null, newSha, opts)
+  cas('create', authority, ref, null, newSha, opts)
 }
 
 /**
@@ -169,16 +194,7 @@ export function casReplace(
   newSha: string,
   opts: CasOptions = {},
 ): void {
-  casPush(
-    'replace',
-    'CAS-REPLACE',
-    ['push', `--force-with-lease=${ref}:${expectedSha}`, authority, `${newSha}:${ref}`],
-    ref,
-    expectedSha,
-    newSha,
-    opts,
-  )
-  syncLocalMirror(ref, expectedSha, newSha, opts)
+  cas('replace', authority, ref, expectedSha, newSha, opts)
 }
 
 /**
@@ -193,16 +209,7 @@ export function casDelete(
   expectedSha: string,
   opts: CasOptions = {},
 ): void {
-  casPush(
-    'delete',
-    'CAS-DELETE',
-    ['push', `--force-with-lease=${ref}:${expectedSha}`, authority, `:${ref}`],
-    ref,
-    expectedSha,
-    null,
-    opts,
-  )
-  syncLocalMirror(ref, expectedSha, null, opts)
+  cas('delete', authority, ref, expectedSha, null, opts)
 }
 
 /**
@@ -219,7 +226,7 @@ function fetchWithLockRetry<R extends { ok: true } | { ok: false; error: GitFail
   let out = run()
   for (let attempt = 1; attempt < FETCH_LOCK_ATTEMPTS; attempt++) {
     if (out.ok) return out
-    if (!hasMarker(failureResult(out.error).stderr, LOCAL_LOCK_MARKERS)) return out
+    if (fetchFailure(failureResult(out.error).stderr) !== 'lock-contention') return out
     sleepSync(FETCH_LOCK_BACKOFF_MS * attempt)
     out = run()
   }
@@ -260,20 +267,17 @@ export function fetchRef<T = unknown>(
   const git = client(opts)
   const payloadFile = opts.payloadFile ?? DEFAULT_PAYLOAD_FILE
   const fetched = fetchWithLockRetry(() =>
-    git.try.fetch(authority, `+${ref}:${ref}`, { noWriteFetchHead: true }),
+    git.try.fetch(authority, `+${ref}:${ref}`, { noWriteFetchHead: true, ...C_LOCALE }),
   )
   if (!fetched.ok) {
-    const res = failureResult(fetched.error)
-    if (classifyFetchFailure(res.stderr) === 'ref-not-found') throw new RefNotFound({ ref })
-    const stderr = failureStderr(fetched.error)
-    throw new GitFailed({
-      op: 'FETCH-REF',
-      exitCode: res.exitCode,
-      stderr,
-      message:
-        `git fetch failed for FETCH-REF on ${JSON.stringify(ref)}: ` +
-        `exit=${res.exitCode} stderr=${JSON.stringify(stderr)}`,
-    })
+    if (fetchFailure(failureResult(fetched.error).stderr) === 'ref-not-found') {
+      throw new RefNotFound({ ref })
+    }
+    throw gitFailedFrom(
+      'FETCH-REF',
+      `git fetch failed for FETCH-REF on ${JSON.stringify(ref)}`,
+      fetched.error,
+    )
   }
   // The fetch succeeded but left no local ref: treat it as not found.
   const rev = git.try.resolveRef(ref)
@@ -281,12 +285,12 @@ export function fetchRef<T = unknown>(
   const sha = rev.value
   // `showAtRev` declares a missing path absent, so it is null rather than a throw.
   const show = git.try.showAtRev(sha, payloadFile)
-  const raw = show.ok ? show.value : null
-  if (raw === null) {
-    const detail = show.ok
-      ? `no ${payloadFile} in that commit`
-      : `exit=${failureResult(show.error).exitCode} ` +
-        `stderr=${JSON.stringify(failureStderr(show.error))}`
+  if (!show.ok || show.value === null) {
+    const res = show.ok ? null : failureResult(show.error)
+    const detail =
+      res === null
+        ? `no ${payloadFile} in that commit`
+        : `exit=${res.exitCode} stderr=${JSON.stringify(res.stderr)}`
     throw new PayloadUnreadable({
       ref,
       sha,
@@ -295,7 +299,7 @@ export function fetchRef<T = unknown>(
   }
   let parsed: unknown
   try {
-    parsed = JSON.parse(raw)
+    parsed = JSON.parse(show.value)
   } catch (exc) {
     throw new PayloadUnreadable({
       ref,
@@ -326,32 +330,26 @@ export function fetchNamespace(
   const base = prefix.replace(/\/+$/, '')
   const git = client(opts)
   const fetched = fetchWithLockRetry(() =>
-    git.try.fetch(authority, `+${base}/*:${base}/*`, { prune: true, noWriteFetchHead: true }),
+    git.try.fetch(authority, `+${base}/*:${base}/*`, {
+      prune: true,
+      noWriteFetchHead: true,
+      ...C_LOCALE,
+    }),
   )
   if (!fetched.ok) {
-    const res = failureResult(fetched.error)
-    const stderr = failureStderr(fetched.error)
-    throw new GitFailed({
-      op: 'FETCH-NAMESPACE',
-      exitCode: res.exitCode,
-      stderr,
-      message:
-        `git fetch failed for FETCH-NAMESPACE on prefix ${JSON.stringify(base)}: ` +
-        `exit=${res.exitCode} stderr=${JSON.stringify(stderr)}`,
-    })
+    throw gitFailedFrom(
+      'FETCH-NAMESPACE',
+      `git fetch failed for FETCH-NAMESPACE on prefix ${JSON.stringify(base)}`,
+      fetched.error,
+    )
   }
   const listing = git.try.refs(base)
   if (!listing.ok) {
-    const res = failureResult(listing.error)
-    const stderr = failureStderr(listing.error)
-    throw new GitFailed({
-      op: 'FETCH-NAMESPACE',
-      exitCode: res.exitCode,
-      stderr,
-      message:
-        `git for-each-ref failed on prefix ${JSON.stringify(base)}: ` +
-        `exit=${res.exitCode} stderr=${JSON.stringify(stderr)}`,
-    })
+    throw gitFailedFrom(
+      'FETCH-NAMESPACE',
+      `git for-each-ref failed on prefix ${JSON.stringify(base)}`,
+      listing.error,
+    )
   }
   const result: Record<string, string> = {}
   for (const { ref, sha } of listing.value) {

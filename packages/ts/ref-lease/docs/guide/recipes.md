@@ -11,7 +11,7 @@ repository.
 
 The library does not know what is in your lease. These recipes store a holder and an expiry time:
 
-<!-- snippet: examples/recipes.test.ts#lease-type -->
+<!-- snippet: lease-type -->
 ```ts
 /** What this application stores in each lease. The library never reads it. */
 interface Lease {
@@ -37,7 +37,7 @@ const inMinutes = (now: Date, minutes: number) =>
 Three steps. Create the ref if nobody has it. If somebody has it, read their lease. If it has
 expired, replace it, but only if it is still the lease you read.
 
-<!-- snippet: examples/recipes.test.ts#claim -->
+<!-- snippet: claim -->
 ```ts
 type ClaimResult = { won: true; sha: string } | { won: false; holder: string }
 
@@ -93,7 +93,7 @@ between your workers, or have a lease expire only after a grace period.
 The holder pushes the expiry out before it passes. Keep the sha each write returns: the next
 renewal replaces from it.
 
-<!-- snippet: examples/recipes.test.ts#renew -->
+<!-- snippet: renew -->
 ```ts
 /**
  * Push the expiry out. `sha` is the lease commit you last wrote. If the replace
@@ -123,7 +123,7 @@ over). Stop the work it protects.
 Deleting the ref ends the lease. To keep its history, point an archive ref at the last commit
 first.
 
-<!-- snippet: examples/recipes.test.ts#release -->
+<!-- snippet: release -->
 ```ts
 /**
  * Give the lease up, keeping its history under an archive ref. The delete only
@@ -141,7 +141,7 @@ function release(authority: string, ref: string, sha: string, cwd: string): void
 `fetchNamespace` gives every ref under a prefix and its sha; `fetchRef` reads each one. A lease can
 be released between the two calls, so a `RefNotFound` there is not an error.
 
-<!-- snippet: examples/recipes.test.ts#list -->
+<!-- snippet: list -->
 ```ts
 /** Every live lease under `prefix`, with its holder. */
 function listLeases(authority: string, prefix: string, cwd: string): Map<string, Lease> {
@@ -162,7 +162,7 @@ function listLeases(authority: string, prefix: string, cwd: string): Map<string,
 For a change that should win eventually, re-read and try again on `CasFailed`. Each attempt sees
 the latest lease, so the change is applied to what is really there.
 
-<!-- snippet: examples/recipes.test.ts#update-with-retry -->
+<!-- snippet: update-with-retry -->
 ```ts
 /**
  * Change a lease's payload with read-modify-write, retrying when another writer
@@ -203,7 +203,7 @@ If anything on the authority created a literal ref at the namespace path itself 
 cannot create refs under it, and every create fails with an unhelpful git error. Check once at
 startup:
 
-<!-- snippet: examples/namespace-guard.test.ts#guard -->
+<!-- snippet: guard -->
 ```ts
 checkNamespaceConflict(bare.dir, 'refs/locks', { cwd: worker.dir })
 ```

@@ -20,10 +20,6 @@
  *   symbol or a bigint, at any depth, or a non-finite number.
  */
 export function canonicalJson(value: unknown): string {
-  return serialize(value)
-}
-
-function serialize(value: unknown): string {
   if (value === null) return 'null'
   switch (typeof value) {
     case 'boolean':
@@ -35,11 +31,11 @@ function serialize(value: unknown): string {
       }
       return JSON.stringify(value)
     case 'object': {
-      if (Array.isArray(value)) return '[' + value.map(serialize).join(',') + ']'
+      if (Array.isArray(value)) return '[' + value.map(canonicalJson).join(',') + ']'
       const obj = value as Record<string, unknown>
       const parts: string[] = []
       for (const key of Object.keys(obj).sort()) {
-        parts.push(JSON.stringify(key) + ':' + serialize(obj[key]))
+        parts.push(JSON.stringify(key) + ':' + canonicalJson(obj[key]))
       }
       return '{' + parts.join(',') + '}'
     }

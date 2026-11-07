@@ -22,8 +22,8 @@ commit.
   is `ref-lease <ref-lease@local>`.
 - Every operation takes a `git` client in place of `cwd`.
 - The writes take `onMirrorSkip`, called when the local mirror of the ref was left alone.
-- Experimental: `classifyPush`, `classifyFetchFailure` and the marker lists, with the protocol's
-  cases as data in `tests/conformance/`.
+- A `GitFailed` keeps `@osdlc/typed-git`'s classified failure as its `cause`, so a caller can tell
+  an unreachable remote from an authentication failure.
 
 **Changed**
 
@@ -39,3 +39,6 @@ commit.
 - `fetchNamespace` ignores a trailing `/` on the prefix.
 - `buildLeaseCommit` throws `TypeError` for a file name that is not one path segment.
 - Failure details are read through the git client's failure shape. No behaviour change.
+- Pushes go through `@osdlc/typed-git`'s `push`, which reports each ref's rejection as a value, and
+  pushes and fetches run git in the C locale. A lost race is recognised whatever language the
+  user's git speaks; before, a translated git turned it into a git failure.

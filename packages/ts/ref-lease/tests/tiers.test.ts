@@ -30,7 +30,6 @@ function listedInReadme(): string[] {
 }
 
 test('the README lists exactly the items marked @experimental', () => {
-  expect(markedExperimental().length).toBeGreaterThan(0)
   expect(listedInReadme()).toEqual(markedExperimental())
 })
 

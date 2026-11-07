@@ -1,8 +1,9 @@
 /**
- * Every code block in the README and the guides that is marked
- * `<!-- snippet: <file>#<region> -->` equals that region of the example file,
- * so the docs show code the test suite runs. To update a snippet, change the
- * example, then paste the region (dedented) into the block below the marker.
+ * The docs' code is the examples' code. Each ```ts block in the README or a
+ * guide that follows a `<!-- snippet: NAME -->` line must equal the
+ * `// #region NAME` block of a file under `examples/` (dedented), so the docs
+ * show code the test suite runs. To update a snippet, change the example, then
+ * paste the region into the block below the marker.
  */
 
 import { readdirSync, readFileSync } from 'node:fs'
@@ -12,38 +13,44 @@ import { describe, expect, test } from 'vitest'
 
 const root = join(import.meta.dirname, '..')
 
-function region(file: string, name: string): string {
-  const lines = readFileSync(join(root, file), 'utf8').split('\n')
-  const start = lines.findIndex((l) => l.trim() === `// #region ${name}`)
-  const end = lines.findIndex((l) => l.trim() === `// #endregion ${name}`)
-  if (start < 0 || end < start) throw new Error(`no region ${name} in ${file}`)
-  const body = lines.slice(start + 1, end)
-  const indent = Math.min(
-    ...body.filter((l) => l.trim() !== '').map((l) => l.length - l.trimStart().length),
-  )
-  return body
-    .map((l) => l.slice(indent))
-    .join('\n')
-    .trim()
+/** Every `// #region NAME` block of the example files, dedented, by name. */
+function regions(): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const file of readdirSync(join(root, 'examples')).filter((f) => f.endsWith('.ts'))) {
+    const text = readFileSync(join(root, 'examples', file), 'utf8')
+    for (const m of text.matchAll(/^( *)\/\/ #region (\S+)\n([\s\S]*?)^ *\/\/ #endregion \2$/gm)) {
+      const indent = m[1]!.length
+      if (out.has(m[2]!)) throw new Error(`region ${m[2]} is defined twice`)
+      const body = m[3]!.split('\n').map((l) => l.slice(Math.min(indent, l.search(/\S|$/))))
+      out.set(m[2]!, body.join('\n').trim())
+    }
+  }
+  return out
 }
 
 const docs = [
   'README.md',
-  ...readdirSync(join(root, 'docs', 'guide')).map((f) => join('docs', 'guide', f)),
-].filter((f) => f.endsWith('.md'))
+  ...readdirSync(join(root, 'docs', 'guide'))
+    .filter((f) => f.endsWith('.md'))
+    .map((f) => join('docs', 'guide', f)),
+]
 
-const snippets = docs.flatMap((doc) => {
-  const text = readFileSync(join(root, doc), 'utf8')
-  const re = /<!-- snippet: ([^#\s]+)#([\w-]+) -->\n```ts\n([\s\S]*?)```/g
-  return [...text.matchAll(re)].map((m) => ({ doc, file: m[1]!, name: m[2]!, code: m[3]! }))
-})
+const snippets = docs.flatMap((doc) =>
+  [
+    ...readFileSync(join(root, doc), 'utf8').matchAll(
+      /<!-- snippet: (\S+) -->\n```ts\n([\s\S]*?)```/g,
+    ),
+  ].map((m) => ({ doc, name: m[1]!, code: m[2]!.trim() })),
+)
 
 test('the docs carry snippets', () => {
   expect(snippets.length).toBeGreaterThan(5)
 })
 
 describe('each snippet equals its example region', () => {
-  test.each(snippets)('$doc ← $file#$name', ({ file, name, code }) => {
-    expect(code.trim()).toBe(region(file, name))
+  const byName = regions()
+  test.each(snippets)('$doc ← $name', ({ name, code }) => {
+    expect(byName.has(name), `no example region named ${name}`).toBe(true)
+    expect(code).toBe(byName.get(name))
   })
 })

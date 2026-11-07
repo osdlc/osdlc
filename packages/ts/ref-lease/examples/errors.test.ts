@@ -10,7 +10,6 @@ import {
   GitFailed,
   PayloadUnreadable,
   RefLeaseError,
-  type RefLeaseErrorKind,
 } from '@osdlc/ref-lease'
 
 const { bare, worker, cleanup } = makeBareAndWorker()
@@ -38,24 +37,24 @@ function explain(e: unknown): { message: string; retry: boolean } {
 }
 // #endregion handle-errors
 
-function kindOf(fn: () => unknown): RefLeaseErrorKind | undefined {
+/** What `fn` throws, or undefined when it returns. */
+function caught(fn: () => unknown): unknown {
   try {
     fn()
   } catch (e) {
-    if (!(e instanceof RefLeaseError)) throw e
-    return e.kind
+    return e
   }
   return undefined
 }
 
+const kindOf = (fn: () => unknown) => (caught(fn) as RefLeaseError | undefined)?.kind
+
 test('an unreachable authority is a GitFailed carrying git’s stderr', () => {
-  try {
-    fetchRef('/nonexistent/authority.git', 'refs/locks/x', { cwd: worker.dir })
-    expect.unreachable()
-  } catch (e) {
-    expect(e).toBeInstanceOf(GitFailed)
-    expect((e as GitFailed).stderr).toMatch(/does not appear to be a git repository/)
-  }
+  const e = caught(() =>
+    fetchRef('/nonexistent/authority.git', 'refs/locks/x', { cwd: worker.dir }),
+  )
+  expect(e).toBeInstanceOf(GitFailed)
+  expect((e as GitFailed).stderr).toMatch(/does not appear to be a git repository/)
 })
 
 test('a commit without the payload file is PayloadUnreadable', () => {
@@ -76,19 +75,12 @@ test('a missing ref is ref-not-found', () => {
 test('explain: a lost race is worth retrying, a git failure is not', () => {
   const sha = buildLeaseCommit({}, { cwd: worker.dir })
   casCreate(bare.dir, 'refs/locks/raced', sha, { cwd: worker.dir })
-  let lost: unknown
-  try {
-    casCreate(bare.dir, 'refs/locks/raced', sha, { cwd: worker.dir })
-  } catch (e) {
-    lost = e
-  }
-  expect(explain(lost).retry).toBe(true)
-  let broken: unknown
-  try {
-    fetchRef('/nonexistent/authority.git', 'refs/locks/x', { cwd: worker.dir })
-  } catch (e) {
-    broken = e
-  }
-  expect(explain(broken)).toMatchObject({ retry: false })
-  expect(explain(broken).message).toMatch(/^git failed: /)
+  expect(
+    explain(caught(() => casCreate(bare.dir, 'refs/locks/raced', sha, { cwd: worker.dir }))).retry,
+  ).toBe(true)
+  const broken = explain(
+    caught(() => fetchRef('/nonexistent/authority.git', 'refs/locks/x', { cwd: worker.dir })),
+  )
+  expect(broken.retry).toBe(false)
+  expect(broken.message).toMatch(/^git failed: /)
 })

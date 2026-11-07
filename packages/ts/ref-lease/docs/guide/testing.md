@@ -11,7 +11,7 @@ Both are temp directories, so the tests need no network.
 [`@osdlc/typed-git/testing`](https://www.npmjs.com/package/@osdlc/typed-git) makes the pair. From
 [examples/recipes.test.ts](../../examples/recipes.test.ts):
 
-<!-- snippet: examples/recipes.test.ts#test-fixture -->
+<!-- snippet: test-fixture -->
 ```ts
 const { bare, worker, cleanup } = makeBareAndWorker()
 worker.commit('init', { '.gitkeep': '' })
@@ -27,7 +27,7 @@ The working repository needs one commit before it can fetch into itself; `worker
 A commit's sha depends on its date. Pass `DETERMINISTIC_EPOCH` when a test compares shas across
 runs. From [examples/commit-options.test.ts](../../examples/commit-options.test.ts):
 
-<!-- snippet: examples/commit-options.test.ts#deterministic -->
+<!-- snippet: deterministic -->
 ```ts
 const opts = { cwd: repo.dir, commitDate: DETERMINISTIC_EPOCH }
 expect(buildLeaseCommit({ holder: 'a' }, opts)).toBe(buildLeaseCommit({ holder: 'a' }, opts))

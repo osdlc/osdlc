@@ -56,13 +56,11 @@ export interface BuildLeaseCommitOptions extends GitOptions {
   message?: string
 }
 
-function checkFileName(name: string, payloadFile: string): void {
+/** A tree entry's name: one path segment, no control characters. */
+function checkSegment(name: string): void {
   // eslint-disable-next-line no-control-regex
   if (name === '' || name === '.' || name === '..' || /[/\x00-\x1f\x7f]/.test(name)) {
     throw new TypeError(`buildLeaseCommit: ${JSON.stringify(name)} is not a single path segment`)
-  }
-  if (name === payloadFile) {
-    throw new TypeError(`buildLeaseCommit: ${JSON.stringify(name)} is the payload file`)
   }
 }
 
@@ -87,32 +85,44 @@ function nowCommitDate(): string {
  */
 export function buildLeaseCommit(payload: unknown, opts: BuildLeaseCommitOptions = {}): string {
   const payloadFile = opts.payloadFile ?? DEFAULT_PAYLOAD_FILE
-  checkFileName(payloadFile, '')
+  checkSegment(payloadFile)
   const files = opts.files ?? {}
-  for (const name of Object.keys(files)) checkFileName(name, payloadFile)
-  const identity = opts.identity ?? DEFAULT_IDENTITY
-  const identityEnv = {
-    GIT_AUTHOR_NAME: identity.name,
-    GIT_AUTHOR_EMAIL: identity.email,
-    GIT_COMMITTER_NAME: identity.name,
-    GIT_COMMITTER_EMAIL: identity.email,
+  for (const name of Object.keys(files)) {
+    checkSegment(name)
+    if (name === payloadFile) {
+      throw new TypeError(`buildLeaseCommit: ${JSON.stringify(name)} is the payload file`)
+    }
   }
   const git = client(opts)
-  const plumbing = (argv: string[], env: Record<string, string>, input?: string): string =>
-    git.rawChecked(argv, { env, ...(input === undefined ? {} : { input }) }).stdout.trim()
-
-  const blob = (content: string): string =>
-    plumbing(['hash-object', '-w', '--stdin'], identityEnv, content)
+  // hash-object and mktree are plumbing with no typed verb. A failure here is a
+  // broken repository, so rawChecked's throw is what the caller wants.
+  const write = (argv: string[], input: string) => git.rawChecked(argv, { input }).stdout.trim()
+  const blob = (content: string) => write(['hash-object', '-w', '--stdin'], content)
 
   const entries = [`100644 blob ${blob(canonicalJson(payload))}\t${payloadFile}`]
   for (const [name, content] of Object.entries(files)) {
     entries.push(`100644 blob ${blob(content)}\t${name}`)
   }
-  const treeSha = plumbing(['mktree'], identityEnv, entries.join('\n') + '\n')
+  const tree = write(['mktree'], entries.join('\n') + '\n')
 
-  const argv = ['commit-tree', treeSha, '-m', opts.message ?? 'lease']
-  if (opts.parentSha != null) argv.push('-p', opts.parentSha)
-  for (const extra of opts.extraParentShas ?? []) argv.push('-p', extra)
+  const { name, email } = opts.identity ?? DEFAULT_IDENTITY
   const date = opts.commitDate ?? nowCommitDate()
-  return plumbing(argv, { ...identityEnv, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date })
+  const parents = [
+    ...(opts.parentSha == null ? [] : [opts.parentSha]),
+    ...(opts.extraParentShas ?? []),
+  ]
+  return git.commitTree(
+    tree,
+    { parents, message: opts.message ?? 'lease' },
+    {
+      env: {
+        GIT_AUTHOR_NAME: name,
+        GIT_AUTHOR_EMAIL: email,
+        GIT_COMMITTER_NAME: name,
+        GIT_COMMITTER_EMAIL: email,
+        GIT_AUTHOR_DATE: date,
+        GIT_COMMITTER_DATE: date,
+      },
+    },
+  )
 }

@@ -169,7 +169,8 @@ async function listGuide(libRoot) {
 // absolute, links to sibling pages go to their site URLs (under `url`), and
 // any other relative link goes to GitHub.
 async function copyGuidePage(lib, page, outDir, url) {
-  const source = join(packages, '..', lib.dir, 'docs', 'guide', page)
+  const guideDir = join(packages, '..', lib.dir, 'docs', 'guide')
+  const source = join(guideDir, page)
   const pageDir = posix.dirname(page)
   let text = await readFile(source, 'utf8')
   text = text.replace(/^(import .+ from )'(\.{1,2}\/[^']+)'/gm, (m, head, rel) =>
@@ -177,17 +178,17 @@ async function copyGuidePage(lib, page, outDir, url) {
   )
   // A relative image is copied into public/ and shown from there; the link
   // rewrite below would otherwise send it to GitHub's HTML view of the file.
-  const images = []
+  const images = new Set()
   text = text.replace(/!\[([^\]]*)\]\((?!https?:|\/)([^)\s]+)\)/g, (match, alt, href) => {
     const resolved = posix.normalize(posix.join(pageDir, href))
     if (resolved.startsWith('..')) throw new Error(`${lib.dir}/docs/guide/${page}: image ${href} is outside docs/guide`)
-    images.push(resolved)
+    images.add(resolved)
     return `![${alt}](${base}/guides/${lib.dir}/${resolved})`
   })
   for (const image of images) {
     const out = join(guideImages, lib.dir, image)
     await mkdir(dirname(out), { recursive: true })
-    await copyFile(join(packages, '..', lib.dir, 'docs', 'guide', image), out)
+    await copyFile(join(guideDir, image), out)
   }
   text = text.replace(/\]\((?!https?:|#|mailto:|\/)([^)\s]+)\)/g, (match, href) => {
     const [path, anchor] = href.split('#')

@@ -35,7 +35,7 @@ Bun also works. It runs the `git` CLI, which must be on `PATH`.
 
 From [examples/lease-lifecycle.test.ts](./examples/lease-lifecycle.test.ts):
 
-<!-- snippet: examples/lease-lifecycle.test.ts#quick-start -->
+<!-- snippet: quick-start -->
 ```ts
 import {
   buildLeaseCommit,
@@ -136,7 +136,6 @@ Every item has TSDoc in the source. The entry point is `@osdlc/ref-lease`.
 | `checkNamespaceConflict` | Fail early when a literal ref blocks the namespace. |
 | `canonicalJson` | The payload encoding. |
 | `RefLeaseError` and `CasFailed`, `RefNotFound`, `NamespaceConflict`, `GitFailed`, `PayloadUnreadable` | The errors. Each has a `kind` string. |
-| `classifyPush`, `classifyFetchFailure` and the marker lists | How git's output is read. Experimental. |
 
 Every option object takes `cwd` (default `process.cwd()`) or `git`, a `Git` client from
 [`@osdlc/typed-git`](https://www.npmjs.com/package/@osdlc/typed-git), for a custom runner or
@@ -159,26 +158,14 @@ wrapped: it propagates as thrown. `buildLeaseCommit` throws a `TypeError` for a 
 hold or a bad file name, and `@osdlc/typed-git`'s `FailureError` when the local repository cannot
 write objects.
 
-git's messages are matched in English. Under a translated git, a lost race reads as `GitFailed`.
-Run git with `LC_ALL=C` (through a `git` client with that environment) if your users run a
-translated git.
+git runs in the C locale for every push and fetch, so its messages are read the same way whatever
+language the user's git speaks.
 
 ## Stability
 
-0.x: a minor release may break the API. The items below are experimental: they may change in a
-patch release.
-
-- `classifyPush`
-- `classifyFetchFailure`
-- `CAS_REJECTION_MARKERS`
-- `NOT_FOUND_MARKERS`
-- `LOCAL_LOCK_MARKERS`
-- `PushOutcome`
-- `FetchFailure`
-- `GitOutput`
-
-Everything else is stable within a minor line. `tests/tiers.test.ts` checks this list against the
-`@experimental` tags in the source.
+0.x: a minor release may break the API. No item is experimental; every export is stable within a
+minor line. Experimental items, when there are any, are listed here as `- \`name\`` lines, and
+`tests/tiers.test.ts` checks this list against the `@experimental` tags in the source.
 
 ## Platforms
 
@@ -187,9 +174,9 @@ platform branches. It needs git 2.29 or later, for `fetch --no-write-fetch-head`
 
 ## Conformance cases
 
-[`tests/conformance/`](./tests/conformance/) holds the protocol's cases as data: what each push or
-fetch output means, and the canonical JSON of each value. Another implementation of the protocol
-checks itself against the same files.
+[`tests/conformance/`](./tests/conformance/) holds the protocol's cases as data: what each push
+result and failed fetch means, and the canonical JSON of each value. Another implementation of the
+protocol checks itself against the same files.
 
 ## Alternatives
 
