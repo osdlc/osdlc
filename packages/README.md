@@ -234,6 +234,11 @@ Developed here, in this repository:
   that finds the branches, worktrees and remote branches that have been merged
   and can go away, with the evidence and the command for each, and applies an
   approved plan compare-and-swap)
+- `packages/ts/story-harness` (`@osdlc/story-harness` on npm, a component's
+  static Storybook build as its test harness: exact Linux screenshot
+  baselines from a pinned Playwright container, Playwright helpers for
+  interaction and perf specs, an in-page metrics hook and a perf report that
+  parallel workers merge)
 
 The development repository will take each TypeScript library from npm, like
 any other consumer. Today it still keeps its own copies. Open issues and pull

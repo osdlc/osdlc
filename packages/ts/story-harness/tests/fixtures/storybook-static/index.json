@@ -1,0 +1,9 @@
+{
+  "v": 5,
+  "entries": {
+    "demo-card--plain": { "type": "story" },
+    "demo-card--wide": { "type": "story" },
+    "demo-card--docs": { "type": "docs" },
+    "demo-card--perf": { "type": "story" }
+  }
+}
