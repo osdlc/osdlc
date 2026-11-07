@@ -141,9 +141,9 @@ again, and a failure on the abandoned thread is logged. To skip the prompt for a
 under Settings > Build, Execution, Deployment > Trusted Locations.
 
 The host (`jetbrains.ts`) exposes it as the optional contract part `openWorkspace`, which the
-launch policy (`ensureWorkspace`) calls before `session`/`terminal` when `host.open_workspace` is
-`true` (the default). With no reachable IDE holding cwd it picks the only reachable IDE, else the
-one whose product name (`product` in the ping reply) equals `host.jetbrains.ide` ignoring case
+launch policy (`ensureWorkspace`) calls before `session`/`terminal` when its `enabled` argument
+is true. With no reachable IDE holding cwd it picks the only reachable IDE, else the
+one whose product name (`product` in the ping reply) equals `JetbrainsSettings.ide` ignoring case
 (an empty product never matches), else an error listing the IDEs; prints one line to stderr
 ("opening <root> in <product>…", with the trust-prompt note); and opens the git top-level of cwd.
 cwd itself is opened outside a repository, when git fails, or when the top-level is the home

@@ -49,8 +49,7 @@ import { sessionViaTerminal } from '../harness.ts'
  * A tag appended to the tab title so a later `find` can match it: stable for the
  * caller's session id when there is one (`[sd-i-<slug>]`, {@link sessionIdSlug}: the id's first
  * 12 characters, rewritten to `[A-Za-z0-9_-]`, and 8 hex digits of a hash of the whole id, so
- * ids sharing a prefix get different tags; it was the first 12 characters alone), else for
- * `cwd` (`[sd-<hash>]`, the tag every tab carried before ids were tagged).
+ * ids sharing a prefix get different tags), else for `cwd` (`[sd-<hash>]`).
  */
 export function ottyTag(cwd: string, sessionId?: string): string {
   if (sessionId !== undefined) return `[sd-i-${sessionIdSlug(sessionId)}]`
@@ -214,17 +213,24 @@ export function makeOttyHost(
     },
     find(query: FindQuery): FoundSession[] {
       const out = listOutput(query.cwd)
-      const pane =
-        out === null
-          ? null
-          : (parseOttyPanes(out, query.cwd, { sessionId: query.sessionId })[0] ?? null)
-      if (out === null || pane === null) return []
+      if (out === null) return []
+      const pick = { sessionId: query.sessionId }
       // No harness identity and no output-recency signal are documented. A pane
       // is alive only while it shows an agent in the foreground: the tab outlives
-      // the agent, as a shell.
-      const alive =
-        parseOttyPanes(out, query.cwd, { agentOnly: true, sessionId: query.sessionId }).length > 0
-      return [{ cwd: query.cwd, harness: null, alive, lastOutputAt: null, handle: pane }]
+      // the agent, as a shell. The agent pane is returned when there is one, so
+      // `alive` describes the pane whose handle is returned.
+      const agentPane = parseOttyPanes(out, query.cwd, { ...pick, agentOnly: true })[0]
+      const pane = agentPane ?? parseOttyPanes(out, query.cwd, pick)[0]
+      if (pane === undefined) return []
+      return [
+        {
+          cwd: query.cwd,
+          harness: null,
+          alive: agentPane !== undefined,
+          lastOutputAt: null,
+          handle: pane,
+        },
+      ]
     },
     focus(query: FindQuery): boolean {
       const pane = resolvePane(query)
@@ -239,8 +245,17 @@ export function makeOttyHost(
     close(query: FindQuery): boolean {
       // Closing is destructive: with a session id only that session's own tab closes. The
       // cwd-tagged tab may belong to another launch at the same cwd that carried no id.
-      const pane = resolvePane(query, { taggedOnly: true, idOnly: true })
-      if (pane === null) return false
+      // Without an id, every id-less launch at the cwd carries the same tag, so close only
+      // when exactly one tab does: any pick among several could close another session's.
+      const out = listOutput(query.cwd)
+      if (out === null) return false
+      const panes = parseOttyPanes(out, query.cwd, {
+        taggedOnly: true,
+        idOnly: true,
+        sessionId: query.sessionId,
+      })
+      const pane = query.sessionId !== undefined || panes.length === 1 ? panes[0] : undefined
+      if (pane === undefined) return false
       return quietRun(runner(), ottyCloseArgv(pane), { cwd: query.cwd, timeoutMs: 10_000 }) !== null
     },
   }

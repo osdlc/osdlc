@@ -60,7 +60,7 @@ import {
   tmuxSwitchClientArgv,
 } from '../src/hosts/tmux.ts'
 import { HostPartMissing, requirePart, supportsPlatform, type Host } from '../src/index.ts'
-import { rolloutFileName } from './fixtures/codex-rollout.ts'
+import { rolloutDayDir, rolloutFileName } from './fixtures/codex-rollout.ts'
 import { RUNTIME } from './fixtures/runtime.ts'
 
 // A host's `session` part takes no codex home, so `homedir()` points at a temp dir:
@@ -298,7 +298,7 @@ describe('a harness can open in more than one host via the same registry (AC-1)'
     // The host's session part injects no `codexHome`, as a real launch does, so the
     // fixture goes under `codexSessionsDir()`: the mocked home directory above.
     expect(codexSessionsDir().startsWith(home.dir)).toBe(true)
-    const dayDir = join(codexSessionsDir(), '2099', '12', '31')
+    const dayDir = rolloutDayDir(codexSessionsDir(), Date.now())
     mkdirSync(dayDir, { recursive: true })
     const cwd = mkdtempSync(join(realpathSync(tmpdir()), 'sdlc-wrapper-session-codex-'))
     // Named for now: within the margin of `wrapperSession`'s `sinceMs`, taken moments later.
@@ -356,12 +356,28 @@ describe('orca host', () => {
 
   test('a second miss surfaces stderr', () => {
     const { runner } = recorder([
-      { exitCode: 1, stdout: '', stderr: 'nope' },
+      { exitCode: 1, stdout: '', stderr: 'unknown worktree' },
       { exitCode: 0, stdout: '', stderr: '' },
       { exitCode: 1, stdout: '', stderr: 'still nope' },
     ])
     const host = makeOrcaHost({ runtimeDir: RUNTIME, binary: 'orca', runner, repoRoot: '/repo' })
     expect(() => host.terminal!(req)).toThrow(/still nope/)
+  })
+
+  test('any other failure is not retried', () => {
+    const { runner, calls } = recorder([{ exitCode: 1, stdout: '', stderr: 'nope' }])
+    const host = makeOrcaHost({ runtimeDir: RUNTIME, binary: 'orca', runner, repoRoot: '/repo' })
+    expect(() => host.terminal!(req)).toThrow(/nope/)
+    expect(calls.map((c) => c.slice(0, 2))).toEqual([['terminal', 'create']])
+  })
+
+  test('a create that never exited is not retried, even naming a worktree', () => {
+    const { runner, calls } = recorder([
+      { exitCode: 1, neverExited: true, stdout: '', stderr: 'timed out on worktree' },
+    ])
+    const host = makeOrcaHost({ runtimeDir: RUNTIME, binary: 'orca', runner, repoRoot: '/repo' })
+    expect(() => host.terminal!(req)).toThrow(/timed out/)
+    expect(calls.map((c) => c.slice(0, 2))).toEqual([['terminal', 'create']])
   })
 
   test('no binary means unavailable', () => {
@@ -1196,12 +1212,15 @@ describe('codex session-id discovery (harness.ts)', () => {
       const codexHome = mkdtempSync(join(tmpdir(), 'codex-host-test-'))
       try {
         const sinceMs = Date.now()
-        const dayDir = join(codexHome, 'sessions', '2026', '01', '01')
+        const dayDir = rolloutDayDir(codexSessionsDir(codexHome), sinceMs)
         mkdirSync(dayDir, { recursive: true })
         const cwd = '/work/target-repo'
 
-        // Created before the launch — ignored even though its cwd matches.
-        const stalePath = join(dayDir, rolloutFileName(sinceMs - 60_000, 'stale'))
+        // Created a day before the launch — ignored even though its cwd matches.
+        const staleMs = sinceMs - 27 * 3_600_000
+        const staleDir = rolloutDayDir(codexSessionsDir(codexHome), staleMs)
+        mkdirSync(staleDir, { recursive: true })
+        const stalePath = join(staleDir, rolloutFileName(staleMs, 'stale'))
         writeFileSync(stalePath, `${JSON.stringify({ payload: { session_id: 'stale', cwd } })}\n`)
 
         // Created after the launch, matching cwd — the one that should be found.

@@ -228,3 +228,33 @@ describe('otty addressing by session id', () => {
     expect(host.close!({ cwd: '/w' })).toBe(true)
   })
 })
+
+describe('otty find and close without a session id', () => {
+  const cwdTag = ottyTag('/w')
+
+  test('find returns the agent pane, and `alive` describes the pane it returns', () => {
+    const shellFirst = JSON.stringify([
+      { id: 1, title: `T ${cwdTag}`, cwd: '/w', foreground_process: 'zsh' },
+      { id: 2, title: `T ${cwdTag}`, cwd: '/w', foreground_process: 'claude' },
+    ])
+    const agent = makeOttyHost({ runner: scripted(() => ok(shellFirst)).runner })
+    expect(agent.find!({ cwd: '/w' })).toEqual([
+      { cwd: '/w', harness: null, alive: true, lastOutputAt: null, handle: '2' },
+    ])
+    const shellOnly = JSON.stringify([{ id: 1, title: `T ${cwdTag}`, foreground_process: 'zsh' }])
+    const shell = makeOttyHost({ runner: scripted(() => ok(shellOnly)).runner })
+    expect(shell.find!({ cwd: '/w' })).toEqual([
+      { cwd: '/w', harness: null, alive: false, lastOutputAt: null, handle: '1' },
+    ])
+  })
+
+  test('close refuses when several tabs carry the cwd tag', () => {
+    const two = JSON.stringify([
+      { id: 1, title: `A ${cwdTag}`, cwd: '/w' },
+      { id: 2, title: `B ${cwdTag}`, cwd: '/w' },
+    ])
+    const { runner, calls } = scripted((a) => (a[1] === 'list' ? ok(two) : ok()))
+    expect(makeOttyHost({ runner }).close!({ cwd: '/w' })).toBe(false)
+    expect(calls.some((c) => c[1] === 'close')).toBe(false)
+  })
+})

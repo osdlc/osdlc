@@ -2,7 +2,8 @@
  * The caller's side of the companion extension (`sdlc-host`) protocol; design in
  * `docs/planning/research/vscode.md`. The wire types are restated
  * here, not imported, so this package does not depend on the extension
- * package; `tests/vscode-host.test.ts` pins both sides to the same paths.
+ * package; a consumer that ships the extension pins both sides with a parity
+ * test.
  *
  * The host contract is synchronous, and a Node socket is not. The request
  * therefore runs in a tiny one-shot child (`<runtime> -e CLIENT_SOURCE`) that

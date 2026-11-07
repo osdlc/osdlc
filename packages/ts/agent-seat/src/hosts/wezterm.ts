@@ -77,8 +77,7 @@ export function parseSpawnedPane(stdout: string): number | null {
 
 /**
  * `<dir>/spawned/<paneId>.json`: one file per pane this host spawned, so two concurrent spawns
- * never overwrite each other's entry. (It was a single `panes.json` list, rewritten whole and
- * capped at 50; that file is no longer read.)
+ * never overwrite each other's entry.
  */
 function spawnedDir(dir: string): string {
   return join(dir, 'spawned')
@@ -281,6 +280,18 @@ export function parseWeztermRows(
   return out
 }
 
+/** The panes among `rows` whose cwd is `cwd`. */
+function panesIn(rows: WeztermRow[], cwd: string, platform: NodeJS.Platform): WeztermPane[] {
+  const want = normalizePath(cwd, platform)
+  return rows
+    .filter((r) => r.path !== null && normalizePath(r.path, platform) === want)
+    .map((r) => ({
+      paneId: r.paneId,
+      cwd,
+      ...(r.ttyName !== undefined ? { ttyName: r.ttyName } : {}),
+    }))
+}
+
 /** Panes from `cli list --format json` whose cwd is `cwd`; unparseable output yields []. */
 export function parseWeztermList(
   stdout: string,
@@ -288,14 +299,7 @@ export function parseWeztermList(
   platform: NodeJS.Platform = process.platform,
   localHost: string = hostname(),
 ): WeztermPane[] {
-  const want = normalizePath(cwd, platform)
-  return parseWeztermRows(stdout, platform, localHost)
-    .filter((r) => r.path !== null && normalizePath(r.path, platform) === want)
-    .map((r) => ({
-      paneId: r.paneId,
-      cwd,
-      ...(r.ttyName !== undefined ? { ttyName: r.ttyName } : {}),
-    }))
+  return panesIn(parseWeztermRows(stdout, platform, localHost), cwd, platform)
 }
 
 /**
@@ -322,11 +326,11 @@ export function makeWeztermHost(
   const listOutput = (cwd: string): string | null =>
     quietRun(runner(), weztermListArgv(), { cwd, timeoutMs: 10_000 })
 
-  /** A `cli list`: its output, its rows and when it was asked for (epoch ms); null when no GUI/mux answers. */
-  const listing = (cwd: string): { out: string; rows: WeztermRow[]; at: number } | null => {
+  /** A `cli list`: its rows and when it was asked for (epoch ms); null when no GUI/mux answers. */
+  const listing = (cwd: string): { rows: WeztermRow[]; at: number } | null => {
     const at = Date.now()
     const out = listOutput(cwd)
-    return out === null ? null : { out, rows: parseWeztermRows(out, platform, opts.localHost), at }
+    return out === null ? null : { rows: parseWeztermRows(out, platform, opts.localHost), at }
   }
 
   function panesAt(cwd: string): WeztermPane[] {
@@ -368,7 +372,7 @@ export function makeWeztermHost(
   const paneAt = (cwd: string, any: boolean): WeztermPane | undefined => {
     const list = listing(cwd)
     if (list === null) return undefined
-    const panes = parseWeztermList(list.out, cwd, platform, opts.localHost)
+    const panes = panesIn(list.rows, cwd, platform)
     const spawned = new Set(liveSpawned(registryDir, list.rows, list.at).map((e) => e.paneId))
     return panes.find((p) => spawned.has(p.paneId)) ?? (any ? panes[0] : undefined)
   }
@@ -479,7 +483,7 @@ export function makeWeztermHost(
       const id = Number(remembered.pane)
       const list = listing(query.cwd)
       if (list === null || !spawnedAndLive(list, id)) return false
-      const here = parseWeztermList(list.out, remembered.cwd, platform, opts.localHost)
+      const here = panesIn(list.rows, remembered.cwd, platform)
       return here.some((p) => p.paneId === id) && kill(id, query.cwd)
     },
   }

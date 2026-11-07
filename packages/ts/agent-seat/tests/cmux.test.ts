@@ -254,12 +254,29 @@ describe('cmux host', () => {
       true,
     )
     expect(single.calls.at(-1)).toEqual(['workspace', 'close', 'W1'])
-    // sessionsJson has two rows at /w, in two workspaces: any pick could close another session's.
-    const several = scripted((argv) => (argv[0] === 'sessions' ? ok(sessionsJson) : ok()))
+    // Two agent rows at /w, in two workspaces: any pick could close another session's.
+    const two = JSON.stringify({
+      sessions: [
+        { agent: 'claude', cwd: '/w', workspace_id: 'W1', surface_id: 'S1' },
+        { agent: 'codex', cwd: '/w', workspace_id: 'W2', surface_id: 'S2' },
+      ],
+    })
+    const several = scripted((argv) => (argv[0] === 'sessions' ? ok(two) : ok()))
     expect(makeCmuxHost({ runner: several.runner }).close!({ cwd: '/w' })).toBe(false)
     expect(several.calls.some((c) => c[0] === 'workspace' && c[1] === 'close')).toBe(false)
     const none = scripted((argv) => (argv[0] === 'sessions' ? ok('{"sessions":[]}') : denied))
     expect(makeCmuxHost({ runner: none.runner }).close!({ cwd: '/w' })).toBe(false)
+  })
+
+  test('close never closes a workspace found only by cwd (the workspace-list fallback)', () => {
+    const list = JSON.stringify([{ ref: 'workspace:2', cwd: '/w' }])
+    const { runner, calls } = scripted((argv) =>
+      argv[0] === 'sessions' ? ok('{"sessions":[]}') : ok(list),
+    )
+    const host = makeCmuxHost({ runner })
+    expect(host.find!({ cwd: '/w' })).toHaveLength(1)
+    expect(host.close!({ cwd: '/w' })).toBe(false)
+    expect(calls.some((c) => c[0] === 'workspace' && c[1] === 'close')).toBe(false)
   })
 
   test('a session id changes nothing: cmux cannot bind a pane to one, so it resolves by cwd', () => {

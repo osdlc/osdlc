@@ -53,8 +53,7 @@ export function tmuxSessionName(cwd: string): string {
  * id's first 12 characters with anything outside `[A-Za-z0-9_-]` rewritten to `_` (so tmux
  * never rewrites it for us), then `-` and 8 hex digits of the sha256 of the whole id. The hash
  * keeps apart ids that share their first 12 characters (`build-step-001`, `build-step-002`) or
- * differ only in a rewritten character (`a.b`, `a_b`). The name was once the 12 characters
- * alone; a session opened under that name is not found by id.
+ * differ only in a rewritten character (`a.b`, `a_b`).
  *
  * The single source of the name: an attach must call this rather than rebuild it.
  *
@@ -152,18 +151,12 @@ function tmuxBufferName(name: string): string {
 }
 
 /**
- * Argv for `load-buffer`, the first of THREE separate invocations `send` now
- * makes, per `docs/planning/research/tmux.md`'s "Sending input" section
- * (verified): `-` reads the buffer's content from stdin (`req.text`, piped in
- * by the caller via `CommandRunOptions.input`) rather than an argv element —
- * `send-keys -l <text>` (this function's earlier shape) sent every
- * `\n` in `text` as its own literal Enter keypress, per that section's
- * warning that a TUI would see "each embedded newline as its own Enter"; the
- * load-buffer/paste-buffer path is the doc's own verified alternative that
- * preserves embedded newlines. Passing `text` via stdin instead of an argv
- * element also closes the argv-injection concern a `-`-prefixed `text` used
- * to raise for the old `-l` shape: there is no argv element for tmux to ever
- * misparse as a flag.
+ * Argv for `load-buffer`, the first of the three invocations `send` makes, per
+ * `docs/planning/research/tmux.md`'s "Sending input" section (verified): `-`
+ * reads the buffer's content from stdin (`req.text`, passed as
+ * `CommandRunOptions.input`), so embedded newlines survive the paste instead of
+ * each arriving as an Enter, and a `text` starting with `-` is never parsed as
+ * a flag.
  */
 export function tmuxLoadBufferArgv(name: string): string[] {
   return ['load-buffer', '-b', tmuxBufferName(name), '-']
@@ -387,11 +380,10 @@ export function makeTmuxHost(opts: {
       // no app-aware idle/consumption signal exists), so `ack` is
       // always false regardless of how the sends went.
       //
-      // THREE separate invocations, not one: `load-buffer` (text arrives via
-      // stdin — `req.text` never appears in an argv element at all), then
-      // `paste-buffer` (pastes it, preserving embedded newlines — see
-      // `tmuxLoadBufferArgv`'s doc for why this replaced `send-keys -l`),
-      // then a separate `send-keys ... Enter` to submit. Accepted gap: if the
+      // Three invocations: `load-buffer` (text arrives via stdin, never in
+      // argv), then `paste-buffer` (pastes it, preserving embedded newlines;
+      // see `tmuxLoadBufferArgv`), then `send-keys ... Enter` to submit.
+      // Accepted gap: if the
       // paste succeeds but this last Enter call fails or times out, the text
       // is already sitting typed in the pane's input — `accepted: false`
       // here, so a caller tries its next route, and a LATER
@@ -399,8 +391,7 @@ export function makeTmuxHost(opts: {
       // message. Same class of documented limitation as this host's
       // duplicate-session gap above (`tmuxSessionName`'s doc); fixing it
       // would need either a single chained tmux invocation (unverified
-      // against a live server) or a read-back-before-retry check, neither of
-      // which this pass adds.
+      // against a live server) or a read-back-before-retry check.
       const name = liveName(req)
       if (name === null) return { accepted: false, ack: false }
       const load = runner().run(tmuxLoadBufferArgv(name), {

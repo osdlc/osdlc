@@ -123,8 +123,8 @@ for the host's own directory.
 
 `harnessArgv(harness, binary, prompt, claudeFlags?, choice?)` builds the argv
 for an interactive launch: the bare CLI with the first message, plus the model
-and effort flags of a resolved `choice`. `harnessAvailable(harness)` asks
-whether the CLI is installed. `claudeSessionArgv` and `claudeHookSettings` build
+and effort flags of a resolved `choice`. `harnessAvailable(harness, binary)` asks
+whether `binary` is on PATH. `claudeSessionArgv` and `claudeHookSettings` build
 the Claude Code flags a session can carry (plugins, a system prompt, hook
 settings). `findCodexSessionId` finds the id of a codex session from its
 rollout file.

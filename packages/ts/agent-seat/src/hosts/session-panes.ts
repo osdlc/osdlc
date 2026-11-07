@@ -25,8 +25,7 @@ export interface RememberedPane {
 /**
  * `<dir>/sessions/<slug>.json`: one file per session, so concurrent launches never overwrite each
  * other. The name is a slug with a 128-bit hash, not the id itself, so it is unique on
- * case-insensitive file systems and valid on Windows. (It was the URI-encoded id; files under
- * that name are no longer read.)
+ * case-insensitive file systems and valid on Windows.
  */
 function filePath(dir: string, sessionId: string): string {
   return join(dir, 'sessions', `${sessionIdSlug(sessionId, 32)}.json`)

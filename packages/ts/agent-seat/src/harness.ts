@@ -12,12 +12,11 @@
  *
  * This module also carries harness-specific machinery: codex's own on-disk
  * session-index lookup (`codexSessionsDir` et al. — harness-specific, not
- * host-specific, so it belongs on this axis), `wrapperSession`, the one body every wrapper
- * host's `session()` now shares instead of hand-rolling its own copy of
- * "build argv, run it, best-effort resolve a session id", and
- * `harnessNativeSend`, a per-harness message-injection
- * mechanism independent of any host (`contract.ts`'s `Host.send` is the
- * host-level counterpart).
+ * host-specific, so it belongs on this axis), `wrapperSession`, the one body
+ * every wrapper host's `session()` shares ("build argv, run it, best-effort
+ * resolve a session id"), and `harnessNativeSend`, a per-harness
+ * message-injection mechanism independent of any host (`contract.ts`'s
+ * `Host.send` is the host-level counterpart).
  */
 
 import { closeSync, type Dirent, openSync, readdirSync, readSync, statSync } from 'node:fs'
@@ -36,7 +35,7 @@ import {
 import { harnessId } from '@osdlc/detect-harness'
 
 import { ran, resolveRunner, type CommandRunner, type EnvOverrides } from '@osdlc/command-seam'
-import { isRecord, parseJsonOrNull, sleepSync, strOrNull, which } from './util.ts'
+import { isRecord, parseJsonOrNull, realResolve, sleepSync, strOrNull, which } from './util.ts'
 
 // `contract.ts` imports only types from this file (`Harness` for
 // `SessionRequest.harness`), so the value imported back here makes no runtime cycle.
@@ -95,40 +94,23 @@ const guarded = (p: InteractiveParts): string[] => [
 ]
 
 /**
- * The interactive argv builders, keyed by catalogue tool id: the bare CLI with
- * `prompt` as its first message, guarded behind a `--` end-of-options marker,
- * so a prompt starting with `-` (or naming a subcommand) is never read as one.
+ * The interactive argv builders, keyed by tool id: the bare CLI with `prompt`
+ * as its first message, guarded behind a `--` end-of-options marker, so a
+ * prompt starting with `-` (or naming a subcommand) is never read as one.
  * A tool missing here has no interactive launch (antigravity, a declared tool).
  *
- *   - `claude`: confirmed live against the installed `claude` 2.1.283 CLI —
- *     `claude --help`'s formatting (`Usage:`/`Arguments:`/`Options:`
- *     sections, `<value>`-shaped required-option placeholders) is
- *     commander.js's, and commander unconditionally treats `--` as an
- *     end-of-options marker. Its session flags ({@link claudeSessionArgv})
- *     sit before the guard.
- *   - `codex`: confirmed live against the installed codex 0.156.1 binary —
- *     without `--`, a prompt starting with `-` is parsed as a flag (`error:
- *     unexpected argument`) and a prompt that happens to match a subcommand
- *     name (e.g. `login`) is dispatched as that subcommand instead of used
- *     as the session's first message (`codex login` launches the real OAuth
- *     flow; `codex -- login` correctly treats `login` as a literal prompt).
- *     `codex --help`/`codex resume --help` both confirm clap (codex's CLI
- *     framework) honors `--` the same way commander does.
- *   - `cursor-agent`: UNVERIFIED — `cursor-agent` is not installed on this
- *     development machine, and this is taken from Cursor's published CLI
- *     docs (cursor.com/docs/cli), not a live run. Kept consistent with the
- *     other two defensively, on the reasoning that the same
- *     flags-vs-positional ambiguity would apply to any argv-parsing CLI, but
- *     this needs verification once a real install is available.
- *   - `pi`: confirmed against the installed pi 1.1.0 on 2026-10-09 —
- *     `pi --help` gives `pi [options] [--] [@files...] [messages...]`, says
- *     `--` ends option parsing, and shows `pi "<prompt>"` opening the TUI
- *     with that prompt as its first message; a live `pi -p --model
- *     ollama/granite4:latest -- "<prompt>"` ran
- *     (verified).
+ *   - `claude`: its CLI parser (commander.js) treats `--` as the end of
+ *     options. Its session flags ({@link claudeSessionArgv}) sit before the guard.
+ *   - `codex`: its CLI parser (clap) honours `--`; without it a prompt starting
+ *     with `-` is parsed as a flag, and one naming a subcommand (`login`) runs
+ *     that subcommand. Checked against a live codex.
+ *   - `cursor`: taken from Cursor's published CLI docs, not a live run; guarded
+ *     the same way, since any argv-parsing CLI has the same ambiguity.
+ *   - `pi`: `pi --help` documents `pi [options] [--] [@files...] [messages...]`,
+ *     and a live run with `--` opened the session on the prompt.
  *   - `opencode`: its bare positional is the PROJECT directory, so the first
  *     message goes in `--prompt=<message>` (bound with `=` so a message starting
- *     with `-` is not read as a flag); `opencode --help` on 1.1.36.
+ *     with `-` is not read as a flag), per `opencode --help`.
  */
 const INTERACTIVE_ARGV: Readonly<Record<string, (p: InteractiveParts) => string[]>> = {
   claude: (p) => [p.bin, ...p.model, ...claudeSessionArgv(p.claude), ...p.injected, '--', p.prompt],
@@ -144,8 +126,8 @@ export function hasInteractiveArgv(tool: string): boolean {
 }
 
 /**
- * The argv that opens `harness`, run as `binary` (its catalogue row's,
- * `toolBinary`), interactively with `prompt` as its first message
+ * The argv that opens `harness`, run as `binary` (a name on PATH or an
+ * absolute path), interactively with `prompt` as its first message
  * ({@link INTERACTIVE_ARGV}). A resolved `choice` adds its launch mode,
  * model and effort flags (`modelArgs`, `@osdlc/agent-call`) before the `--` guard; a
  * tool with no model or effort flags wired throws on a choice rather than
@@ -173,7 +155,7 @@ export function harnessArgv(
   })
 }
 
-/** Session flags only `claude` takes; also the shape stored on a session record. */
+/** Session flags only `claude` takes; a caller can store them to resume with the same flags. */
 export const ClaudeSessionFlagsSchema = z.object({
   /** Text for `claude --append-system-prompt`. */
   appendSystemPrompt: z.string().optional(),
@@ -220,8 +202,7 @@ interface ClaudeHookSpec {
  * is the hook's own `timeout`). `PreToolUse` is matched to `AskUserQuestion`
  * alone: the question is what puts the agent in `waiting_for_input` there, and
  * a hook on every tool call would cost a process each. `PermissionRequest` and
- * `StopFailure` are the other events `log/adapters/claude-status.ts` maps to a status
- * (a tool-permission prompt, and a turn that ended on an API error).
+ * `StopFailure` mark a tool-permission prompt and a turn that ended on an API error.
  */
 export const CLAUDE_HOOK_EVENTS = {
   SessionStart: { async: true },
@@ -301,10 +282,9 @@ export function claudeResumeArgv(id: string, flags: ClaudeSessionFlags = {}): st
 }
 
 /**
- * Whether `harness`'s CLI, `binary` (its catalogue row's, `toolBinary`), is on
- * PATH. A synchronous lookup that spawns nothing. Only a PATH hit counts: an
- * app bundle (Cursor.app, which `harness detect` reports as an install) gives
- * a session nothing to run.
+ * Whether `harness`'s CLI, `binary` (a name on PATH or an absolute path), is
+ * on PATH. A synchronous lookup that spawns nothing. Only a PATH hit counts: an
+ * installed app bundle (Cursor.app) gives a session nothing to run.
  */
 export function harnessAvailable(_harness: Harness, binary: string): boolean {
   return which(binary) !== null
@@ -379,25 +359,6 @@ export function harnessNativeSend(
   return fn === undefined ? null : fn(sessionId, text, opts)
 }
 
-/**
- * Codex's own on-disk session index, read to resolve the id of a codex session
- * a wrapper host opened ({@link wrapperSession}). It is harness-specific, not
- * host-specific, so any host that opens codex resolves the id the same way.
- *
- * `~/.codex/session_index.jsonl` is NOT used: it only records threads that were
- * given a name. Instead this scans `~/.codex/sessions/**\/rollout-*.jsonl`
- * (bucketed by `yyyy/mm/dd`) for the session created at or after the launch
- * whose first line, a `session_meta` record
- * (`{"type":"session_meta","payload":{"session_id":"<uuid>","cwd":"<path>",…}}`),
- * names the request's `cwd`.
- *
- * Selection is by the rollout's creation instant ({@link rolloutCreatedMs}),
- * not its mtime: another codex session in the same cwd keeps appending to its
- * own rollout, so its mtime would pass a launch-time cutoff. This is still
- * best-effort: two codex sessions launched from the same cwd within a couple of
- * seconds of each other (or one launched in that cwd while a waiting host holds
- * ours) can be mistaken for each other. No local signal tells them apart.
- */
 /** `~/.codex/sessions` (or under an injected `codexHome`, for tests). */
 export function codexSessionsDir(codexHome?: string): string {
   return join(codexHome ?? join(homedir(), '.codex'), 'sessions')
@@ -448,10 +409,17 @@ export const ROLLOUT_CREATED_MARGIN_MS = 2_000
 const ROLLOUT_NAME_TIME = /^rollout-(\d{4})-(\d{2})-(\d{2})T(\d{2})-(\d{2})-(\d{2})-/
 
 /**
+ * How far a rollout's name time can sit from its real creation instant: codex
+ * stamps the name from its own local clock, and two UTC offsets differ by at
+ * most 26 hours (UTC-12 to UTC+14).
+ */
+const ROLLOUT_NAME_ZONE_SLACK_MS = 26 * 3_600_000
+
+/**
  * The instant in a rollout file name, `rollout-<YYYY-MM-DDTHH-MM-SS>-<uuid>.jsonl`,
  * or null when the name has none. Read as LOCAL time: codex stamps the name
- * (and the `yyyy/mm/dd` buckets) from its local clock, so this assumes it ran
- * in the same time zone as this process.
+ * (and the `yyyy/mm/dd` buckets) from its local clock, so this is exact only
+ * when codex ran in the same time zone as this process.
  */
 export function rolloutNameTimeMs(path: string): number | null {
   const m = ROLLOUT_NAME_TIME.exec(basename(path))
@@ -473,26 +441,35 @@ export function rolloutNameTimeMs(path: string): number | null {
 }
 
 /**
- * When a rollout file was created: the time in its name, else its birthtime,
- * else its mtime. A name time later than the file's last write (beyond the
- * margin) cannot be right, so a name written in another time zone falls
- * through to the file's own timestamps. A birthtime of 0 means the filesystem
- * does not record one.
+ * When a rollout file was created: its birthtime when the file system records
+ * one (a birthtime of 0 means it does not), else the time in its name, else its
+ * mtime. The name is read in this process's time zone ({@link rolloutNameTimeMs}),
+ * so it is off by the zone difference when codex ran elsewhere; a name time
+ * later than the file's last write (beyond the margin) cannot be right and
+ * falls through to the mtime.
  */
 export function rolloutCreatedMs(
   path: string,
   stats: { birthtimeMs: number; mtimeMs: number },
 ): number {
+  if (stats.birthtimeMs > 0) return stats.birthtimeMs
   const named = rolloutNameTimeMs(path)
-  if (named !== null && named <= stats.mtimeMs + ROLLOUT_CREATED_MARGIN_MS) return named
-  return stats.birthtimeMs > 0 ? stats.birthtimeMs : stats.mtimeMs
+  return named !== null && named <= stats.mtimeMs + ROLLOUT_CREATED_MARGIN_MS
+    ? named
+    : stats.mtimeMs
+}
+
+/** Whether two paths name the same place once symlinks are resolved. */
+function samePlace(a: string, b: string): boolean {
+  return a === b || realResolve(a) === realResolve(b)
 }
 
 /**
  * The session id of the newest candidate (by creation instant) created no more
  * than {@link ROLLOUT_CREATED_MARGIN_MS} before `sinceMs` whose rollout `cwd`
- * matches `opts.cwd`, or null when none qualifies. Pure, so a test can feed it
- * canned candidates.
+ * names the same directory as `opts.cwd` (compared as real paths, so a cwd
+ * reached through a symlink matches), or null when none qualifies. Takes
+ * canned candidates, so a test needs no rollout files.
  */
 export function newestRolloutSessionIdSince(
   candidates: { firstLine: string; createdMs: number }[],
@@ -503,7 +480,7 @@ export function newestRolloutSessionIdSince(
   for (const c of candidates) {
     if (c.createdMs < cutoff) continue
     const meta = parseRolloutMeta(c.firstLine)
-    if (meta === null || meta.cwd !== opts.cwd) continue
+    if (meta === null || !samePlace(meta.cwd, opts.cwd)) continue
     if (best === null || c.createdMs > best.createdMs)
       best = { sessionId: meta.sessionId, createdMs: c.createdMs }
   }
@@ -544,27 +521,76 @@ export interface SessionIdWaitOptions {
 }
 
 /**
+ * The `yyyy/mm/dd` folders under `sessionsDir` a rollout created between
+ * `fromMs` and `toMs` can sit in. codex names a folder by its own local date,
+ * which can differ from this process's by up to {@link ROLLOUT_NAME_ZONE_SLACK_MS},
+ * so the range is widened by that much on each side (one or two days).
+ */
+export function rolloutDayDirs(sessionsDir: string, fromMs: number, toMs: number): string[] {
+  const from = new Date(fromMs - ROLLOUT_NAME_ZONE_SLACK_MS)
+  const to = new Date(toMs + ROLLOUT_NAME_ZONE_SLACK_MS)
+  const last = new Date(to.getFullYear(), to.getMonth(), to.getDate()).getTime()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const dirs: string[] = []
+  for (
+    let day = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+    day.getTime() <= last;
+    day = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1)
+  ) {
+    dirs.push(
+      join(sessionsDir, String(day.getFullYear()), pad(day.getMonth() + 1), pad(day.getDate())),
+    )
+  }
+  return dirs
+}
+
+/**
  * The codex session started in `cwd` at or after `sinceMs`
- * ({@link newestRolloutSessionIdSince}), or null. With `waitMs`, keeps looking
- * that long for a rollout file codex has not written yet; a file ruled out once
- * (created too early, or another cwd) is not read again. `listFiles` and
- * `codexHome` are injectable so a test needs no real `~/.codex/`.
+ * ({@link newestRolloutSessionIdSince}), or null.
+ *
+ * Reads codex's own on-disk session index. `~/.codex/session_index.jsonl` is
+ * NOT used: it only records threads that were given a name. Instead this scans
+ * the rollout files, `~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-*.jsonl`, in
+ * the date folders from the launch through now ({@link rolloutDayDirs}), for
+ * the session created at or after the launch whose first line, a
+ * `session_meta` record
+ * (`{"type":"session_meta","payload":{"session_id":"<uuid>","cwd":"<path>",…}}`),
+ * names `cwd`. The cwds are compared as real paths: codex records its
+ * process's directory with symlinks resolved.
+ *
+ * Selection is by the rollout's creation instant ({@link rolloutCreatedMs}),
+ * not its mtime: another codex session in the same cwd keeps appending to its
+ * own rollout, so its mtime would pass a launch-time cutoff. This is still
+ * best-effort: two codex sessions launched from the same cwd within a couple of
+ * seconds of each other (or one launched in that cwd while a waiting host holds
+ * ours) can be mistaken for each other. No local signal tells them apart.
+ *
+ * With `waitMs`, keeps looking that long for a rollout file codex has not
+ * written yet; a file ruled out once (created too early, or another cwd) is not
+ * read again. `listFiles` and `codexHome` are injectable so a test needs no
+ * real `~/.codex/`.
  */
 export function findCodexSessionId(
   sinceMs: number,
   cwd: string,
   opts: { listFiles?: (() => string[]) | undefined } & SessionIdWaitOptions = {},
 ): string | null {
-  const listFiles = opts.listFiles ?? (() => walkRolloutFiles(codexSessionsDir(opts.codexHome)))
+  const now = opts.now ?? Date.now
+  const listFiles =
+    opts.listFiles ??
+    (() =>
+      rolloutDayDirs(codexSessionsDir(opts.codexHome), sinceMs, now()).flatMap(walkRolloutFiles))
   const cutoff = sinceMs - ROLLOUT_CREATED_MARGIN_MS
+  const realCwd = realResolve(cwd)
   const ruledOut = new Set<string>()
   const look = (): string | null => {
     const candidates: { firstLine: string; createdMs: number }[] = []
     for (const path of listFiles()) {
       if (ruledOut.has(path)) continue
-      // A name time before the cutoff rules the file out unread (see `rolloutCreatedMs`).
+      // The name time can be off by a time-zone difference (`rolloutCreatedMs`), so
+      // only a name earlier than that rules the file out unread.
       const named = rolloutNameTimeMs(path)
-      if (named !== null && named < cutoff) {
+      if (named !== null && named < cutoff - ROLLOUT_NAME_ZONE_SLACK_MS) {
         ruledOut.add(path)
         continue
       }
@@ -577,13 +603,13 @@ export function findCodexSessionId(
         const firstLine = readFirstLine(path)
         // A first line not yet complete parses as null and is read again on the next look.
         const meta = parseRolloutMeta(firstLine)
-        if (meta !== null && meta.cwd !== cwd) ruledOut.add(path)
+        if (meta !== null && !samePlace(meta.cwd, realCwd)) ruledOut.add(path)
         else candidates.push({ firstLine, createdMs })
       } catch {
         // Raced away (deleted) or unreadable — skip, not fatal.
       }
     }
-    return newestRolloutSessionIdSince(candidates, { sinceMs, cwd })
+    return newestRolloutSessionIdSince(candidates, { sinceMs, cwd: realCwd })
   }
   return pollFor(look, opts)
 }

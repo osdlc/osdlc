@@ -95,7 +95,7 @@ export function cmuxSendEnterArgv(handle: string): string[] {
 }
 
 export function cmuxFocusArgv(handle: string): string[] {
-  return ['workspace', 'select', targetFlags(handle)[1] ?? '']
+  return ['workspace', 'select', handle.split('/')[0] ?? '']
 }
 
 /** `cmux workspace close <workspace>` (per `cmux workspace --help`); closes the whole workspace. */
@@ -250,10 +250,14 @@ export function makeCmuxHost(opts: {
     },
     close(query: FindQuery): boolean {
       try {
-        // No session id can be matched here, so close only when the cwd names one workspace:
-        // with several, any pick could close another session's.
+        // Only a workspace whose saved session names an agent, as in `send`: one found by
+        // cwd alone (the workspace-list fallback) may be one the person opened. No session
+        // id can be matched here, so close only when the cwd names one such workspace: with
+        // several, any pick could close another session's.
         const workspaces = new Set(
-          this.find!(query).flatMap((s) => (s.handle ? [s.handle.split('/')[0]] : [])),
+          this.find!(query).flatMap((s) =>
+            s.harness !== null && s.handle ? [s.handle.split('/')[0]] : [],
+          ),
         )
         const [workspace] = [...workspaces]
         if (workspaces.size !== 1 || workspace === undefined) return false

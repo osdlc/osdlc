@@ -621,9 +621,17 @@ describe('codex session ids', () => {
 
   test('walkRolloutFiles and findCodexSessionId read a fake codex home', () => {
     const codexHome = tempDir('codex')
-    const dayDir = join(codexHome, 'sessions', '2026', '11', '07')
-    mkdirSync(dayDir, { recursive: true })
     const sinceMs = Date.now()
+    // codex files a rollout under its local date, `sessions/<yyyy>/<mm>/<dd>/`.
+    const day = new Date(sinceMs)
+    const p = (n: number) => String(n).padStart(2, '0')
+    const dayDir = join(
+      codexSessionsDir(codexHome),
+      String(day.getFullYear()),
+      p(day.getMonth() + 1),
+      p(day.getDate()),
+    )
+    mkdirSync(dayDir, { recursive: true })
     const ours = join(dayDir, rolloutName(sinceMs, 'ours'))
     const theirs = join(dayDir, rolloutName(sinceMs, 'theirs'))
     writeFileSync(ours, firstLine('our-id', '/work/repo'))

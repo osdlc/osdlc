@@ -232,14 +232,25 @@ describe('herdr host', () => {
     const runFail = recorder([
       ok(WORKSPACE_CREATED),
       fail('{"error":{"code":"pane_not_found"}}'),
-    ]).runner
+      ok(),
+    ])
     expect(() =>
-      makeHerdrHost({ runtimeDir: RUNTIME, runner: runFail }).terminal!({
+      makeHerdrHost({ runtimeDir: RUNTIME, runner: runFail.runner }).terminal!({
         cwd: CWD,
         argv: ['x'],
         title: 't',
       }),
     ).toThrow(/pane run failed/)
+    // The workspace it created is closed before the throw.
+    expect(runFail.calls.at(-1)).toEqual(herdrPaneCloseArgv('w1:p1'))
+  })
+
+  test('send refuses text starting with `-` without running anything', () => {
+    const { runner, calls } = recorder([ok(AGENT_LIST), ok(PROMPTED)])
+    const host = makeHerdrHost({ runtimeDir: RUNTIME, runner })
+    expect(host.send!({ ...sendReq, text: '--help' })).toEqual({ accepted: false, ack: false })
+    expect(host.send!({ ...sendReq, text: '-x hi' })).toEqual({ accepted: false, ack: false })
+    expect(calls).toEqual([])
   })
 
   test('send to a recognised agent: agent prompt, exit 0 is an ack', () => {

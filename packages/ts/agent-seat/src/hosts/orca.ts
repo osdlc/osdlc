@@ -2,15 +2,15 @@
  * Orca (com.stablyai.orca): a terminal tab on `cwd` running a command.
  *
  * Orca knows a worktree by path once its repository is registered, so an
- * unknown-worktree failure is retried after `orca repo add --path <repoRoot>`; a
- * second failure is reported verbatim.
+ * unknown-worktree failure is retried after `orca repo add --path <repoRoot>`; any
+ * other failure, and a second one, is reported verbatim.
  *
  * `terminal create --json` returns the new terminal's handle, which is
  * remembered against the caller's session id (`./session-panes.ts`); a later
  * request for that session targets that terminal among the worktree's, so two
  * sessions in one worktree reach two terminals. A request without a remembered
- * handle (no id, or a terminal opened before handles were remembered) takes the
- * first live agent terminal at the worktree.
+ * handle (no id, or a terminal opened before handles were remembered) targets the
+ * worktree's one live, writable agent terminal, and none when there are several.
  */
 
 import { existsSync } from 'node:fs'
@@ -208,6 +208,15 @@ export function resolveOrcaHandle(
 }
 
 /**
+ * Whether a failed `terminal create` says Orca does not know the worktree. The exact
+ * wording is not recorded (`docs/planning/research/orca.md`), so this matches any
+ * mention of a worktree in its output.
+ */
+function isOrcaUnknownWorktree(res: { stdout: string; stderr: string }): boolean {
+  return /worktree/i.test(res.stderr) || /worktree/i.test(res.stdout)
+}
+
+/**
  * The Orca host: opens terminal tabs in Orca through its CLI, found as `orca` on PATH or the app's bundled CLI.
  * darwin only. Remembers the terminal handle of each session under `runtimeDir`/`registryDir` ({@link HostStateOptions}).
  */
@@ -237,9 +246,15 @@ export function makeOrcaHost(
       const runner = resolveRunner(bin, opts.runner)
       const argv = orcaCreateArgv(req)
       let res = runner.run(argv, { cwd: req.cwd, timeoutMs: 60_000 })
-      // A create that never exited (timed out, killed) may still have opened the terminal, so it
-      // is not retried: a second create would start the agent twice.
-      if (!ran(res) && res.neverExited !== true && opts.repoRoot !== undefined) {
+      // Only an unknown worktree is retried. Any other failure, or a create that never exited
+      // (timed out, killed), may have opened the terminal already: a second create would start
+      // the agent twice.
+      if (
+        !ran(res) &&
+        res.neverExited !== true &&
+        opts.repoRoot !== undefined &&
+        isOrcaUnknownWorktree(res)
+      ) {
         runner.run(['repo', 'add', '--path', opts.repoRoot], { cwd: req.cwd, timeoutMs: 60_000 })
         res = runner.run(argv, { cwd: req.cwd, timeoutMs: 60_000 })
       }

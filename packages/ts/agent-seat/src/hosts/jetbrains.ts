@@ -99,7 +99,7 @@ interface Ide extends JetbrainsEndpoint {
 }
 
 /**
- * The `host.jetbrains` settings.
+ * The JetBrains host's settings: `settings` of {@link makeJetbrainsHost}, `jetbrains` of `hostRegistry`.
  *
  * @experimental needs the companion JetBrains plugin, which is not published yet.
  */
@@ -191,7 +191,7 @@ export function makeJetbrainsHost(
     pidAlive?: ((pid: number) => boolean) | undefined
     /** The clock, in ms, for the answering-IDE cache. */
     now?: (() => number) | undefined
-    /** The resolved `host.jetbrains` settings; none means any IDE. */
+    /** The host's settings ({@link JetbrainsSettings}); none means any IDE. */
     settings?: JetbrainsSettings | undefined
     /** The git top-level of `cwd`, or null outside a repository. Injectable for tests. */
     gitRoot?: ((cwd: string) => string | null) | undefined
@@ -321,7 +321,7 @@ export function makeJetbrainsHost(
         (problems.length > 0 ? ` Skipped: ${problems.join('; ')}.` : ''),
     )
 
-  /** Which reachable IDE should open a workspace: the only one, else the one `host.jetbrains.ide` names. */
+  /** Which reachable IDE should open a workspace: the only one, else the one `JetbrainsSettings.ide` names. */
   const pickIde = (cwd: string, ides: Ide[], problems: string[]): Ide => {
     if (ides.length === 0) {
       throw noIde(
@@ -337,7 +337,7 @@ export function makeJetbrainsHost(
       throw noIde(
         cwd,
         problems,
-        `Several IDEs are running (${list}); set host.jetbrains.ide to the product name of the one to use.`,
+        `Several IDEs are running (${list}); set JetbrainsSettings.ide (makeJetbrainsHost's settings, hostRegistry's jetbrains option) to the product name of the one to use.`,
       )
     }
     // Exact, not substring: "IDEA" must not pick both IntelliJ IDEA and a hypothetical "IDEA Edu".
@@ -346,7 +346,7 @@ export function makeJetbrainsHost(
       throw noIde(
         cwd,
         problems,
-        `host.jetbrains.ide "${opts.settings?.ide}" names ${hits.length === 0 ? 'none' : 'more than one'} of the running IDEs (${list}); it must equal a product name, ignoring case.`,
+        `JetbrainsSettings.ide "${opts.settings?.ide}" names ${hits.length === 0 ? 'none' : 'more than one'} of the running IDEs (${list}); it must equal a product name, ignoring case.`,
       )
     }
     return hits[0]!

@@ -23,7 +23,7 @@ from its documentation, is in [`../planning/research/`](../planning/research/).
 ## `terminal`
 
 Runs the agent in the caller's own terminal and returns when it exits. It is the
-only host that blocks, and the only one with nothing to find or send to
+only host that always blocks, and the only one with nothing to find or send to
 afterwards. Use it for a person running your tool by hand. Do not use it from a
 server process that has no terminal of its own.
 

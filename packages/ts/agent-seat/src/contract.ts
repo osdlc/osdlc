@@ -9,8 +9,6 @@
  * needs through {@link requirePart} and gets a named error when the host
  * lacks it, never a silent fallback to a different host — the person chose
  * this one.
- *
- * `pr review` is the first consumer; nothing here knows what a PR is.
  */
 
 import {
@@ -31,14 +29,13 @@ import type { ClaudeLaunchFlags, Harness } from './harness.ts'
  * (`./harness.ts`) in it, so any host opens any {@link Harness}. `HostName`
  * names WHERE; `Harness` (`./harness.ts`) names WHICH.
  */
-export type HostName =
-  'terminal' | 'orca' | 'cmux' | 'tmux' | 'herdr' | 'otty' | 'wezterm' | 'vscode' | 'jetbrains'
+export type HostName = (typeof HOST_NAMES)[number]
 
 /**
  * Every {@link HostName}, in a fixed order, for building the host registry and the
  * `z.enum` schema below.
  */
-export const HOST_NAMES: readonly HostName[] = [
+export const HOST_NAMES = [
   'terminal',
   'orca',
   'cmux',
@@ -48,15 +45,14 @@ export const HOST_NAMES: readonly HostName[] = [
   'wezterm',
   'vscode',
   'jetbrains',
-]
+] as const
 
 /**
- * `z.enum` over {@link HOST_NAMES} — the one schema every `host:`-shaped
- * config field and CLI flag validates against, so a new host is added in
- * exactly one place rather than re-typed as a literal union at each site
- * (`lib/config/load.ts`, `session/ops/launch.ts`).
+ * `z.enum` over {@link HOST_NAMES}: the one schema a `host`-shaped config
+ * field or CLI flag validates against, so a new host is added in exactly one
+ * place.
  */
-export const HostNameSchema = z.enum(HOST_NAMES as [HostName, ...HostName[]])
+export const HostNameSchema = z.enum(HOST_NAMES)
 
 /**
  * Open an interactive coding-agent session with `prompt` as its first
@@ -66,7 +62,7 @@ export const HostNameSchema = z.enum(HOST_NAMES as [HostName, ...HostName[]])
 export interface SessionRequest extends ClaudeLaunchFlags {
   cwd: string
   harness: Harness
-  /** The harness's executable, as the snapshot names it (`builtinToolBinary`). */
+  /** The harness's executable: a name on PATH or an absolute path. */
   binary: string
   prompt: string
   /** Tab / workspace title for hosts that show one. */
@@ -90,7 +86,7 @@ export interface SessionRequest extends ClaudeLaunchFlags {
   model?: string | undefined
   /** The resolved effort passed as the harness's effort flag (claude, codex, pi; another harness refuses one). */
   effort?: string | undefined
-  /** The launch mode the model needs, as flags before the model flag (codex `--oss --local-provider ollama`; `passedChoice`). */
+  /** The launch mode the model needs, as flags before the model flag (codex `--oss --local-provider ollama`). */
   via?: readonly string[] | undefined
   /** Argv a per-launch observation adds before the prompt (pi: `--session-id`, `-e <extension>`). */
   injectedArgv?: readonly string[] | undefined
@@ -151,7 +147,7 @@ export interface CommandRequest {
 export interface SendRequest extends FindQuery {
   text: string
   /**
-   * The harness of the session being addressed (the session record's `engine`).
+   * The harness of the session being addressed.
    * A host that can attribute terminals to a harness narrows to the one matching
    * terminal and refuses when there is not exactly one, rather than risk typing
    * into a different session.
@@ -224,9 +220,10 @@ export interface SendReceipt {
  * The parts a host may fulfil. `terminal` returns the exit code to report:
  * the process's own for a host that waits on it, 0 for one that hands the
  * work to another app. `session` returns that same exit code alongside
- * `harnessSessionId` — the host's own identifier for the session it just
- * started, when it has one, so a caller can look a launch back up by it; `null` when the host has no
- * such id or could only determine one best-effort and came up empty. `send`
+ * `harnessSessionId`, the harness's own id for the session it just started
+ * when one can be found (`wrapperSession` resolves codex's), so a caller can
+ * look a launch back up by it; `null` when there is no such id or a
+ * best-effort lookup came up empty. `send`
  * delivers into an already-open session — `terminal`/`session`
  * both OPEN something new, `send` never does. `find` answers
  * "what's live at this cwd right now", so a caller can tell whether a
@@ -259,8 +256,8 @@ export interface HostParts {
    * project). Makes sure one containing `query.cwd` is open, opening the cwd's
    * git root when none is; idempotent. Throws `Error` on failure. Not called by
    * `send`/`find`/`focus`, which target sessions that already exist. The one
-   * policy for when to call it is `ensureWorkspace` (`./open-workspace.ts`),
-   * run before `session`/`terminal` when `host.open_workspace` is on.
+   * policy for when to call it is `ensureWorkspace` (`./open-workspace.ts`):
+   * when its `enabled` argument is true, it runs before `session`/`terminal`.
    */
   openWorkspace(query: OpenWorkspaceQuery): OpenedWorkspace
 }
@@ -299,14 +296,7 @@ export interface Host extends Partial<HostParts> {
   available(): boolean
 }
 
-/**
- * Every `HostName` mapped to its `Host`. Defined here (not `index.ts`, its
- * original home) so a module that only needs the type does not import back
- * from `index.ts` — which itself imports the concrete host factories
- * (`hosts/orca.ts` et al.) and would make that a real value-level cycle.
- * `index.ts` re-exports this so every existing import site keeps working
- * unchanged.
- */
+/** Every {@link HostName} mapped to its {@link Host}. */
 export type HostRegistry = Record<HostName, Host>
 
 /** What {@link HostPartMissing}'s message calls each part's action. */
@@ -352,9 +342,8 @@ export function requirePart<P extends HostPart>(host: Host, part: P): HostParts[
 }
 
 /**
- * Whether `bin` is on PATH, through {@link which} (`Bun.which`; PATHEXT-aware
- * on Windows) rather than a POSIX shell (on Windows a terminal opens PowerShell, not a POSIX shell). Lives here, on the leaf
- * every host imports from.
+ * Whether `bin` is on PATH, through {@link which} (`@osdlc/detect-harness`'s
+ * lookup; PATHEXT-aware on Windows). Spawns nothing.
  */
 export function onPath(bin: string): boolean {
   return which(bin) !== null

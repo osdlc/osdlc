@@ -91,8 +91,9 @@ export function herdrPaneListArgv(session?: string): string[] {
  * returns as soon as the agent reacts (about half a second against a live
  * claude) instead of waiting for the whole turn to settle, which is the
  * default and can take minutes. Do not put `--` before `text`: herdr treats it
- * as literal text. Limitation of `send`: `text` is a bare positional argument, so a `text`
- * starting with `-` is read by herdr as a flag rather than sent.
+ * as literal text. `text` is a bare positional argument, so herdr reads one
+ * starting with `-` as a flag (`--help` prints usage and exits 0); `send`
+ * refuses such text without running anything.
  */
 export function herdrAgentPromptArgv(paneId: string, text: string, session?: string): string[] {
   return [
@@ -270,13 +271,23 @@ export function makeHerdrHost(
         cwd: req.cwd,
         timeoutMs: 60_000,
       })
-      if (!ran(run)) throw new Error(`herdr pane run failed: ${failureText(run)}`)
+      if (!ran(run)) {
+        // Best effort: close the new workspace's only pane so a failed launch leaves no
+        // empty workspace behind.
+        quietRun(runner(), herdrPaneCloseArgv(paneId, opts.session), {
+          cwd: req.cwd,
+          timeoutMs: 10_000,
+        })
+        throw new Error(`herdr pane run failed: ${failureText(run)}`)
+      }
       if (req.sessionId !== undefined)
         rememberSessionPane(registryDir, req.sessionId, paneId, req.cwd)
       return 0
     },
     session: sessionViaTerminal,
     send(req: SendRequest): SendReceipt {
+      // herdr would read the text as a flag (see `herdrAgentPromptArgv`) and could exit 0.
+      if (req.text.startsWith('-')) return { accepted: false, ack: false }
       try {
         // Only a pane herdr recognises as an agent receives text. A plain shell
         // (or an agent still starting) would run the message as a command, so

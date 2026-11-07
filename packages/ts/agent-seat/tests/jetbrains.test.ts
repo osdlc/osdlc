@@ -94,6 +94,19 @@ describe('curl argv', () => {
     expect(argv).toContain('\n%{http_code}')
     expect(argv).not.toContain('--fail')
   })
+
+  test('starts with -q and bypasses every proxy', () => {
+    const { argv } = curlRequest(
+      { pid: 1, port: 1, token: 't', protocol: 2, startedAt: '' },
+      '/p',
+      undefined,
+    )
+    // curl reads `-q` (skip .curlrc) only as its first argument.
+    expect(argv[0]).toBe('-q')
+    const at = argv.indexOf('--noproxy')
+    expect(at).toBeGreaterThan(0)
+    expect(argv[at + 1]).toBe('*')
+  })
 })
 
 describe('jetbrains host against a fake IDE process', () => {
@@ -320,7 +333,7 @@ describe('opening a workspace when none contains cwd', () => {
     }
   })
 
-  test('several IDEs: host.jetbrains.ide picks one by product name, ignoring case', () => {
+  test('several IDEs: JetbrainsSettings.ide picks one by product name, ignoring case', () => {
     const f = fakeIdes(
       [
         [1, 'IntelliJ IDEA'],
@@ -349,7 +362,7 @@ describe('opening a workspace when none contains cwd', () => {
     expect(openCalls(f)).toEqual([])
   })
 
-  test('an IDE that reports no product never matches host.jetbrains.ide', () => {
+  test('an IDE that reports no product never matches JetbrainsSettings.ide', () => {
     const f = fakeIdes(
       [
         [1, ''],
