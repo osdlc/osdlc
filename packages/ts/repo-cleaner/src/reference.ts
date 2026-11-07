@@ -66,7 +66,9 @@ const CLEAN = `repo-cleaner clean [target...]
                           spared row is not deleted, even if it is judged delete. A
                           spared remote branch is still checked: if it is gone or its
                           tip moved since the plan, the run stops before deleting
-                          anything. Sparing a worktree also spares its branch.
+                          anything. With --offline, one the remote already deleted
+                          passes as already gone, unless its tracking ref was pruned
+                          after the plan. Sparing a worktree also spares its branch.
                           Repeatable.
   --allow <risk>          Accept this risk for every row that carries it.
   --allow <risk>=<row>    Accept it for that one row only.
@@ -138,7 +140,7 @@ const CONFLICTS = `Refused before anything is deleted (exit 2)
 Refused after the sweep, before deleting (exit 1)
     a picked, spared or allowed row the plan does not have
     a row name that matches rows in more than one repository
-    a spared remote branch that is gone or moved since the plan
+    a spared remote branch that moved since the plan, or that the re-check no longer finds
 
 Allowed, because nothing contradicts
     the same row picked twice: it runs once

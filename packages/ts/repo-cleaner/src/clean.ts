@@ -73,7 +73,9 @@ export interface Allow {
  *   `pick`   work on exactly these rows; a `review` row, or a `keep` row with
  *            an action, runs only when picked. Default: every `delete` row.
  *   `spare`  leave these rows alone; a spared remote branch is still checked,
- *            and the run stops if it is gone or moved since the plan.
+ *            and the run stops if it is gone or moved since the plan. From an
+ *            offline plan, one the remote already deleted passes as already
+ *            gone, unless its tracking ref was pruned after the plan.
  *   `allow`  the risks a row's action may carry.
  */
 export interface Approval {

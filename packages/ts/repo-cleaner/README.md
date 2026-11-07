@@ -240,7 +240,10 @@ the branch on the remote as a backup.
   since the plan, the run stops before deleting anything: you spared it for
   what it held, so if that changed, the rest of the plan rests on a wrong
   assumption. The run's first step checks the tip again with `git ls-remote`,
-  so one that moves after the check stops the run too.
+  so one that moves after the check stops the run too. Under `--offline`, a
+  branch the remote already deleted passes as already gone, since its
+  tracking ref outlived it; one whose tracking ref was pruned after the plan
+  still stops the run.
 - Sparing a worktree also spares its branch, which was only free to delete
   because the worktree was going.
 
@@ -320,7 +323,8 @@ Refused after the sweep, before deleting, with exit 1:
 - a row name that matches rows in more than one repository: sweep or plan
   only the repository it is in (a bare name can also be given as its full id,
   when the matches are of different kinds);
-- a spared remote branch that is gone or moved since the plan.
+- a spared remote branch that moved since the plan, or that the re-check no
+  longer finds.
 
 Allowed, because nothing contradicts:
 
