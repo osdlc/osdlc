@@ -1561,13 +1561,17 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     expect(sw.notes).toEqual([])
   })
 
-  test('another remote named `origin/...` lends origin none of its branches', () => {
+  test('another remote named `origin/...` lends origin none of its branches', (ctx) => {
     const nested = join(parent, 'nested')
     mkdirSync(nested)
     const { checkout: dir, origin } = makeOriginAndCheckout({ parent: nested })
-    // Git allows `/` in a remote's name; its refs sit under refs/remotes/origin/.
-    // Written directly: whether `git fetch` writes them varies by git version.
-    git(['remote', 'add', 'origin/mirror', origin.dir], dir.dir)
+    // Older git allows a remote named `origin/mirror`, whose refs sit under
+    // refs/remotes/origin/. A git that refuses the name cannot get here.
+    const added = new Git(dir.dir).raw(['remote', 'add', 'origin/mirror', origin.dir])
+    if (added.exitCode !== 0) {
+      ctx.skip(`this git refuses the remote name: ${added.stderr.trim()}`)
+      return
+    }
     const head = git(['rev-parse', 'HEAD'], dir.dir).trim()
     git(['update-ref', 'refs/remotes/origin/mirror/main', head], dir.dir)
     const sw = sweepOne(dir.dir, { cwd: dir.dir, remote: true, offline: true, provider: 'none' })
