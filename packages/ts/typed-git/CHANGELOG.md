@@ -1,5 +1,11 @@
 # @osdlc/typed-git
 
+## 0.13.0
+
+### Minor Changes
+
+- 25ccd9e: `submodules()` is a new read verb: the submodules the index records, as `{ path, commit }` rows (`git ls-files --stage -z`, the mode `160000` gitlink entries). It reads the index, not `.gitmodules`, and says nothing of whether a submodule is checked out; its directory holds a `.git` when it is. A path in conflict appears once. `git.soft.submodules()` answers `[]` on failure.
+
 ## 0.12.0
 
 ### Minor Changes

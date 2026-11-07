@@ -1,5 +1,22 @@
 # @osdlc/pr-update
 
+## 0.9.8
+
+### Patch Changes
+
+- Updated dependencies [25ccd9e]
+  - @osdlc/typed-git@0.13.0
+  - @osdlc/code-host@0.7.8
+  - @osdlc/trust-repo@0.5.4
+
+## 0.9.7
+
+### Patch Changes
+
+- Updated dependencies [25c1c72]
+  - @osdlc/cli-tool@0.17.0
+  - @osdlc/code-host@0.7.7
+
 ## 0.9.6
 
 ### Patch Changes

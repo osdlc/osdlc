@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { captureContext } from '@osdlc/cli-tool'
+import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { Gh } from '@osdlc/typed-gh'
 import { makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 
@@ -24,8 +25,13 @@ import {
   gitlabProvider,
   type ProviderStatus,
 } from '../src/providers/index.ts'
-import { sweepRepo } from '../src/sweep.ts'
-import type { RepoInfo, SweepProgress } from '../src/types.ts'
+import { sweep, type SweepOptions } from '../src/sweep.ts'
+import {
+  RepoCleanerError,
+  type BranchRow,
+  type RepoInfo,
+  type SweepProgress,
+} from '../src/types.ts'
 
 const HOOK_TIMEOUT_MS = 60_000
 
@@ -264,6 +270,7 @@ describe('the GitLab provider', () => {
 })
 
 describe('a sweep of a GitLab checkout', () => {
+  const GITLAB_URL = 'git@gitlab.example.com:group/sub/proj.git'
   let parent: string
   let checkout: string
   let tip: string
@@ -275,87 +282,142 @@ describe('a sweep of a GitLab checkout', () => {
     git(['checkout', '-q', '-b', 'feat'], checkout)
     tip = fx.commit('feat: work', { 'feat.txt': 'feat\n' })
     git(['checkout', '-q', 'main'], checkout)
-    // The remote's refs stay on disk; only the URL now names a GitLab project.
-    git(['remote', 'set-url', 'origin', 'git@gitlab.example.com:group/sub/proj.git'], checkout)
   }, HOOK_TIMEOUT_MS)
 
   afterAll(() => rmSync(parent, { recursive: true, force: true }), HOOK_TIMEOUT_MS)
 
-  const localFeat = (opts: Parameters<typeof sweepRepo>[1]) =>
-    sweepRepo(checkout, { cwd: checkout, scope: ['local-branches'], ...opts }).items.find(
-      (item) => item.id === 'feat',
-    )
+  const realGit = spawnRunner('git', { absolutePathOnly: true })
+
+  /**
+   * Real git, except that `remote get-url origin` names a GitLab project. The
+   * remote itself stays the fixture's origin on disk, so listing its branches
+   * (which a sweep with `remote` does) still works offline.
+   */
+  const gitlabUrlGit: CommandRunner = {
+    run(argv, opts) {
+      if (argv.includes('remote') && argv.includes('get-url') && argv.at(-1) === 'origin') {
+        return { exitCode: 0, stdout: `${GITLAB_URL}\n`, stderr: '' }
+      }
+      return realGit.run(argv, opts)
+    },
+  }
+
+  /** A provider is asked only for a sweep with remote branches; nothing is fetched. */
+  const remoteSweep = (opts: SweepOptions = {}) => {
+    const swept = sweep([checkout], {
+      cwd: checkout,
+      remote: true,
+      offline: true,
+      git: gitlabUrlGit,
+      ...opts,
+    }).repos[0]!
+    expect(swept.error).toBeNull()
+    return swept
+  }
+
+  const localFeat = (opts: SweepOptions) =>
+    remoteSweep(opts).rows.find((r): r is BranchRow => r.id === 'branch:feat')
 
   test('picks GitLab by host and deletes a branch whose MR merged at its tip', () => {
     const glab = cannedGlab([{ iid: 12, state: 'merged', source_branch: 'feat', sha: tip }])
     const progress: SweepProgress[] = []
-    const sweep = sweepRepo(checkout, {
-      cwd: checkout,
-      scope: ['local-branches'],
-      glab,
-      onProgress: (p) => progress.push(p),
-    })
-    expect(sweep.error).toBeNull()
-    expect(sweep.repo?.provider).toMatchObject({
+    const swept = remoteSweep({ glab, onProgress: (p) => progress.push(p) })
+    expect(swept.repo?.provider).toMatchObject({
       name: 'gitlab',
       host: 'gitlab.example.com',
       project: 'group/sub/proj',
       authenticated: true,
     })
-    const feat = sweep.items.find((item) => item.id === 'feat')
-    expect(feat?.classification).toBe('safe-to-delete')
-    expect(feat?.facts['pr']).toMatchObject({ number: 12, evidence: 'exact-head' })
+    const feat = swept.rows.find((r): r is BranchRow => r.id === 'branch:feat')
+    expect(feat?.verdict).toBe('delete')
+    expect(feat?.evidence.pr).toMatchObject({ number: 12, proof: 'exact-head' })
     expect(progress.find((p) => p.step === 'prs')?.tool).toBe('glab')
   })
 
   test('without the MR the branch is left for review, and the reason names glab', () => {
     const feat = localFeat({ glab: cannedGlab([]) })
-    expect(feat?.classification).toBe('needs-investigation')
-    expect(feat?.investigationParts.join(' ')).toContain('No merge request found via `glab api`.')
+    expect(feat?.verdict).toBe('review')
+    expect(feat?.notes.join(' ')).toContain('No merge request found via `glab api`.')
   })
 
   test('--provider github overrides the host', () => {
     const glab = cannedGlab([{ iid: 12, state: 'merged', source_branch: 'feat', sha: tip }])
     const gh = cannedGh([])
     const feat = localFeat({ provider: 'github', glab, gh })
-    expect(feat?.classification).toBe('needs-investigation')
+    expect(feat?.verdict).toBe('review')
     expect(glab.calls).toEqual([])
   })
 
-  test('noProvider asks no provider at all', () => {
+  test('a sweep without remote branches asks no provider at all', () => {
     const glab = cannedGlab([{ iid: 12, state: 'merged', source_branch: 'feat', sha: tip }])
-    const sweep = sweepRepo(checkout, { cwd: checkout, noProvider: true, glab })
-    expect(sweep.repo?.provider).toBeNull()
+    const swept = sweep([checkout], { cwd: checkout, git: gitlabUrlGit, glab })
+    expect(swept.options.provider).toBe('none')
+    expect(swept.repos[0]?.repo?.provider).toBeNull()
     expect(glab.calls).toEqual([])
   })
 
-  test('a plan records the provider choice, and an old plan without one reads as auto', () => {
+  test("provider 'none' with remote branches asks no provider either", () => {
+    const glab = cannedGlab([{ iid: 12, state: 'merged', source_branch: 'feat', sha: tip }])
+    const swept = remoteSweep({ provider: 'none', glab })
+    expect(swept.repo?.provider).toBeNull()
+    expect(glab.calls).toEqual([])
+  })
+
+  test('a provider without remote branches is refused, not ignored', () => {
+    const glab = cannedGlab([])
+    const refused = (opts: SweepOptions) => {
+      try {
+        sweep([checkout], { cwd: checkout, git: gitlabUrlGit, glab, ...opts })
+      } catch (err) {
+        return err
+      }
+      return null
+    }
+    for (const opts of [{ provider: 'gitlab' }, { provider: 'none', only: ['branch'] }] as const) {
+      const err = refused(opts)
+      expect(err, JSON.stringify(opts)).toBeInstanceOf(RepoCleanerError)
+      expect((err as RepoCleanerError).code).toBe('conflict')
+    }
+    expect(glab.calls).toEqual([])
+  })
+
+  test('a plan records the provider choice in its options, and a plan without one is refused', () => {
     const ctx = captureContext({ cwd: checkout })
     const code = main(
-      ['plan', '--provider', 'gitlab', '--only', 'branches', '--no-fetch', '--no-progress'],
+      ['plan', '--remote', '--offline', '--provider', 'gitlab', '--no-progress'],
       ctx,
       {},
     )
     expect(ctx.io.err).not.toContain('unreadable')
     expect(code).toBe(0)
     const plan = parsePlan(ctx.io.out, 'stdout')
-    expect(plan.repos[0]?.provider).toBe('gitlab')
-    const { provider: _, ...old } = plan.repos[0]!
-    expect(parsePlan(JSON.stringify({ ...plan, repos: [old] }), 'old').repos[0]?.provider).toBe(
-      undefined,
+    expect(plan.options.provider).toBe('gitlab')
+    expect(plan.options.remote).toBe(true)
+    const { provider: _, ...old } = plan.options
+    expect(() => parsePlan(JSON.stringify({ ...plan, options: old }), 'old')).toThrow(
+      expect.objectContaining({ code: 'bad-plan' }),
     )
   })
 
-  test('without --remotes the plan records that no provider was asked', () => {
+  test('without --remote the plan records that no provider was asked', () => {
     const ctx = captureContext({ cwd: checkout })
-    const code = main(['plan', '--provider', 'gitlab', '--no-progress'], ctx, {})
-    expect(code).toBe(0)
-    expect(parsePlan(ctx.io.out, 'stdout').repos[0]?.no_gh).toBe(true)
+    expect(main(['plan', '--no-progress'], ctx, {})).toBe(0)
+    const plan = parsePlan(ctx.io.out, 'stdout')
+    expect(plan.options.remote).toBe(false)
+    expect(plan.options.provider).toBe('none')
+    expect(plan.options.only).toEqual(['worktree', 'branch'])
+    // Branch fingerprints carry no PR, since none was looked up.
+    const feat = plan.repos[0]?.rows.find((r) => r.id === 'branch:feat')
+    expect(feat?.fingerprint).toEqual({ sha: tip, prNumber: null, prState: null })
+
+    const refused = captureContext({ cwd: checkout })
+    expect(main(['plan', '--provider', 'gitlab', '--no-progress'], refused, {})).toBe(2)
+    expect(refused.io.err).toContain('--provider has no effect without --remote')
   })
 
   test('--no-gh is gone: --provider none does the same', () => {
     const ctx = captureContext({ cwd: checkout })
-    const code = main(['status', '--no-gh'], ctx, { confirm: () => null })
+    const code = main(['--no-gh'], ctx, { confirm: () => null })
     expect(code).toBe(2)
     expect(ctx.io.err).toContain("unknown option '--no-gh'")
   })
