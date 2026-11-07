@@ -51,8 +51,6 @@ export interface PerfReport {
 export interface PerfRecorderOptions {
   outFile?: string
   env?: Record<string, string | undefined>
-  /** Default `STORY_PERF_RUN`, else `process.ppid`: workers of one run share their parent. */
-  runId?: string | number
   /** How long a write waits for the report's lock before it throws. Default 30 s. */
   lockDeadlineMs?: number
 }
@@ -177,41 +175,42 @@ export function createPerfRecorder(options: PerfRecorderOptions = {}) {
   if (!(slack > 0))
     throw new Error(`PW_PERF_SLACK must be a positive number, got ${env.PW_PERF_SLACK}`)
 
-  const runId = String(options.runId ?? env.STORY_PERF_RUN ?? process.ppid)
+  const runId = env.STORY_PERF_RUN ?? String(process.ppid)
   const lockDeadlineMs = options.lockDeadlineMs ?? LOCK_DEADLINE_MS
-  const earlier = readReport(outFile)
-  const report: PerfReport =
-    earlier?.runId === runId
-      ? earlier
-      : {
-          runId,
-          mode: assert ? 'assert' : 'record',
-          date: new Date().toISOString(),
-          userAgent: '',
-          cpu: cpus()[0]?.model ?? 'unknown',
-          loadBefore: load(),
-          loadAfter: [],
-          values: {},
-          verdicts: {},
-        }
-
-  // What this recorder set; it wins over the disk copy on a merge.
-  const own = { values: {} as PerfReport['values'], verdicts: {} as PerfReport['verdicts'] }
+  // The header this worker writes when it is the run's first writer.
+  const header = {
+    runId,
+    mode: assert ? 'assert' : 'record',
+    date: new Date().toISOString(),
+    cpu: cpus()[0]?.model ?? 'unknown',
+    loadBefore: load(),
+  } as const
+  // What this worker recorded; it wins over the disk copy on a merge.
+  const own: Pick<PerfReport, 'userAgent' | 'values' | 'verdicts'> = {
+    userAgent: '',
+    values: {},
+    verdicts: {},
+  }
+  mkdirSync(dirname(outFile), { recursive: true })
 
   const write = () => {
-    mkdirSync(dirname(outFile), { recursive: true })
     withLock(outFile, lockDeadlineMs, () => {
       const disk = readReport(outFile)
-      if (disk?.runId === runId) {
-        report.values = { ...disk.values, ...own.values }
-        report.verdicts = { ...disk.verdicts, ...own.verdicts }
-        report.userAgent ||= disk.userAgent
+      const sameRun = disk?.runId === runId ? disk : undefined
+      const report: PerfReport = {
         // The run's first writer set the header; later workers keep it.
-        report.date = disk.date
-        report.cpu = disk.cpu
-        report.loadBefore = disk.loadBefore
+        ...header,
+        ...(sameRun && {
+          mode: sameRun.mode,
+          date: sameRun.date,
+          cpu: sameRun.cpu,
+          loadBefore: sameRun.loadBefore,
+        }),
+        userAgent: own.userAgent || sameRun?.userAgent || '',
+        loadAfter: load(),
+        values: { ...sameRun?.values, ...own.values },
+        verdicts: { ...sameRun?.verdicts, ...own.verdicts },
       }
-      report.loadAfter = load()
       // Write then rename, so a reader outside the lock never sees a half-written report.
       const tmp = `${outFile}.${process.pid}.tmp`
       writeFileSync(tmp, `${JSON.stringify(report, null, 2)}\n`)
@@ -220,11 +219,9 @@ export function createPerfRecorder(options: PerfRecorderOptions = {}) {
   }
 
   return {
-    report,
     /** Record a value with no budget. */
     record(name: string, value: unknown): void {
       own.values[name] = value
-      report.values[name] = value
       write()
     },
     /** Record `value` against `limit` (pass when `value <= limit × slack`); assert it under `PW_PERF_ASSERT=1`. */
@@ -232,8 +229,6 @@ export function createPerfRecorder(options: PerfRecorderOptions = {}) {
       const pass = value <= limit * slack
       own.values[name] = value
       own.verdicts[name] = { value, limit, slack, pass }
-      report.values[name] = value
-      report.verdicts[name] = own.verdicts[name]
       write()
       if (assert) {
         expect(
@@ -244,7 +239,7 @@ export function createPerfRecorder(options: PerfRecorderOptions = {}) {
     },
     /** The browser that ran the measurements, e.g. `navigator.userAgent`. */
     setUserAgent(userAgent: string): void {
-      report.userAgent = userAgent
+      own.userAgent = userAgent
       write()
     },
   }

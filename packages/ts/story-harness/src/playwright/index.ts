@@ -7,7 +7,7 @@
 import { setTimeout as sleep } from 'node:timers/promises'
 import type { Page } from '@playwright/test'
 import { createPerfRecorder, type PerfRecorder } from './budget.ts'
-import { openStory } from '../runner/story.ts'
+import { openStory, storyErrors } from '../runner/story.ts'
 
 export {
   DEFAULT_SETTLE_MS,
@@ -154,18 +154,23 @@ export async function scrollSteps(
   steps: number,
   px: number,
 ): Promise<void> {
-  for (let i = 0; i < steps; i++) {
-    await page.evaluate(
-      ([sel, by]) =>
-        new Promise<void>((resolve) => {
-          const el = document.querySelector(sel)
-          if (!el) throw new Error(`no element matches ${sel}`)
+  if (steps <= 0) return
+  // One call for every step, so the steps are one frame apart, not one round trip.
+  await page.evaluate(
+    ([sel, count, by]) =>
+      new Promise<void>((resolve, reject) => {
+        const el = document.querySelector(sel)
+        if (!el) return reject(new Error(`no element matches ${sel}`))
+        let done = 0
+        const step = () => {
+          if (done++ === count) return resolve()
           el.scrollBy(0, by)
-          requestAnimationFrame(() => resolve())
-        }),
-      [selector, px] as const,
-    )
-  }
+          requestAnimationFrame(step)
+        }
+        step()
+      }),
+    [selector, steps, px] as const,
+  )
 }
 
 /**
@@ -244,38 +249,32 @@ export async function openPerfStory(
   timeoutMs = 30_000,
 ): Promise<void> {
   await openStory(page, baseURL, id, 'light')
-  const errors = await page.evaluate(() => (window as any).__STORY_SHOTS_ERRORS__ as string[])
+  const errors = await storyErrors(page)
   if (errors.length > 0)
     throw new Error(`story ${id} is not ready, it failed:\n${errors.join('\n')}`)
-  const ready = await page.evaluate(
-    (ms) =>
-      new Promise<boolean>((resolve) => {
-        const end = Date.now() + ms
-        const timer = setTimeout(() => resolve(false), ms)
+  try {
+    await page.waitForFunction(
+      () => {
         // A story that re-renders calls storyMetrics again, and the earlier
-        // hook's `ready` never settles, so follow whichever hook is current.
-        let waitingOn: unknown
-        let done = false
-        const poll = () => {
-          if (done) return
-          const hook = (window as any).__storyHarness
-          if (hook && hook !== waitingOn) {
-            waitingOn = hook
-            void hook.ready.then(() => {
-              if ((window as any).__storyHarness !== hook) return
-              done = true
-              clearTimeout(timer)
-              resolve(true)
-            })
-          }
-          if (Date.now() < end) setTimeout(poll, 50)
+        // hook's `ready` never settles, so watch whichever hook is current.
+        const w = window as any
+        const hook = w.__storyHarness
+        if (!hook) return false
+        w.__storyHarnessSettled ??= new WeakSet()
+        w.__storyHarnessWatched ??= new WeakSet()
+        if (!w.__storyHarnessWatched.has(hook)) {
+          w.__storyHarnessWatched.add(hook)
+          void hook.ready.then(() => w.__storyHarnessSettled.add(hook))
         }
-        poll()
-      }),
-    timeoutMs,
-  )
-  if (!ready)
+        return w.__storyHarnessSettled.has(hook)
+      },
+      undefined,
+      { timeout: timeoutMs, polling: 50 },
+    )
+  } catch (err) {
+    if ((err as Error).name !== 'TimeoutError') throw err
     throw new Error(`story ${id} is not ready: no story:first-rows within ${timeoutMs / 1000} s`)
+  }
 }
 
 /**

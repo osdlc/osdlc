@@ -1,26 +1,26 @@
 /**
  * Playwright config for the story baseline check. Read inside the Linux
- * container by the `story-shots` command (`story-shots.sh`), which sets:
+ * container by the `story-shots` command (`story-shots.sh`), from the built
+ * runner folder, which holds JavaScript. The command sets:
  *
  * - `STORYBOOK_DIR`: the mounted `storybook-static`;
  * - `BASELINE_DIR`: where the baseline PNGs are read and written;
  * - `ARTIFACTS_DIR`: where expected/actual/diff images of a failure go;
  * - `STORY_INCLUDE` / `STORY_EXCLUDE`: comma-separated story id prefixes;
- * - `SETTLE_MS`: wait after each story's `play`; unset or empty, the default;
+ * - `SETTLE_MS`: wait after each story's `play`; empty for the default;
+ * - `SHOT_WORKERS`: Playwright workers, default 6.
  */
 import { defineConfig } from '@playwright/test'
 import { VIEWPORT } from './story.ts'
 
 // Inside the container only, so it cannot clash with a port on the host.
 const PORT = 14759
-// The folder runs as TypeScript from source and as JavaScript once built.
-const ext = import.meta.url.endsWith('.ts') ? 'ts' : 'js'
 const storybookDir = process.env.STORYBOOK_DIR ?? ''
 const baselineDir = process.env.BASELINE_DIR ?? './baselines'
 
 export default defineConfig({
   testDir: '.',
-  testMatch: /story-shots\.e2e\.[jt]s$/,
+  testMatch: 'story-shots.e2e.js',
   outputDir: process.env.ARTIFACTS_DIR ?? './test-results',
   snapshotPathTemplate: `${baselineDir}/{arg}{ext}`,
   fullyParallel: true,
@@ -54,7 +54,7 @@ export default defineConfig({
     },
   },
   webServer: {
-    command: `node serve-static.${ext} ${JSON.stringify(storybookDir)} ${PORT}`,
+    command: `node serve-static.js ${JSON.stringify(storybookDir)} ${PORT}`,
     url: `http://127.0.0.1:${PORT}/index.json`,
     reuseExistingServer: false,
   },

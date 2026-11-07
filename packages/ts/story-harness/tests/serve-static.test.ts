@@ -1,27 +1,15 @@
 import { spawn } from 'node:child_process'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { get } from 'node:http'
-import { createServer } from 'node:net'
 import { networkInterfaces, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { freePort } from './support.ts'
 import { serveStatic } from '../src/runner/serve-static.ts'
 
 let root: string
 let sb: string
 let close: (() => void) | undefined
-
-/** Ask the OS for a free port. */
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const srv = createServer()
-    srv.once('error', reject)
-    srv.listen(0, () => {
-      const { port } = srv.address() as { port: number }
-      srv.close(() => resolve(port))
-    })
-  })
-}
 
 /** A raw GET: `path` is sent as written, with no client-side normalisation. */
 function fetchRaw(host: string, port: number, path: string) {
