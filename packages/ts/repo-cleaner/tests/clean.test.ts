@@ -227,6 +227,29 @@ describe('check and run fetch as the plan did', () => {
   })
 })
 
+describe('a remote branch deleted between the re-check and the push', () => {
+  test('is reported as gone, not deleted, and its tracking ref goes too', () => {
+    const fx = buildFixture()
+    const id = 'remote:origin/merged-a'
+    const preview = check(makePlan(fx.root), { pick: [id] }, { cwd: fx.root })
+    const receipt = run(preview, {
+      cwd: fx.root,
+      source: 'plan.json',
+      // The re-check has seen the branch; someone deletes it before the push.
+      onStart: () => sh(fx.bare, ['update-ref', '-d', 'refs/heads/merged-a']),
+    })
+    expect(receipt.status).toBe('complete')
+    const step = receipt.steps.find((s) => s.row === id)!
+    expect([step.action, step.result, step.gone]).toEqual(['delete-remote', 'ok', true])
+    expect(step.verification).toBe('already gone from origin')
+    expect(refs(fx.root)).not.toContain('refs/remotes/origin/merged-a ')
+    expect(summarizeRun(receipt)).toMatchObject({
+      deleted: { worktree: 0, branch: 0, remote: 0 },
+      gone: 1,
+    })
+  })
+})
+
 describe('sparing a remote branch (#583)', () => {
   const SPARE = 'remote:origin/merged-a'
   const LOCAL = 'branch:merged-a'
