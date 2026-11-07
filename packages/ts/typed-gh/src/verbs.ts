@@ -888,14 +888,21 @@ export function graphql(
   }
   argv.push('-f', `query=${query}`)
   if (opts.partial === true) {
+    // `settle` calls `absent` and then `parse` on the same result, so each
+    // result's output is parsed once and kept here.
+    const read = new WeakMap<CommandResult, GraphqlPage[] | null>()
+    const pagesOf = (r: CommandResult): GraphqlPage[] | null => {
+      if (!read.has(r)) read.set(r, readPartialPages(r, paginate))
+      return read.get(r) ?? null
+    }
     return {
       argv,
       checked: false,
       readOnly: true,
       // A response with errors exits 1. When it still holds the pages, it is
       // the answer, not a failure.
-      absent: (r) => readPartialPages(r, paginate) !== null,
-      parse: (r) => readPartialPages(r, paginate),
+      absent: (r) => pagesOf(r) !== null,
+      parse: pagesOf,
     }
   }
   return {

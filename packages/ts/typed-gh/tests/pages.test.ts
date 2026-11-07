@@ -378,6 +378,21 @@ describe('graphql with partial, through the clients', () => {
     expect(gh.soft.graphql(Q)).toBeNull()
   })
 
+  test('the output of an exit 1 answer is read once', () => {
+    const errored = ghErrored(BATCH)
+    let reads = 0
+    const r: CommandResult = {
+      ...errored,
+      get stdout() {
+        reads += 1
+        return errored.stdout
+      },
+    }
+    const gh = new Gh('/repo', { runner: answering(r) })
+    expect(gh.graphql(Q, {}, { partial: true })[0]?.errors).toHaveLength(1)
+    expect(reads).toBe(1)
+  })
+
   test('try and soft keep the partial form and its type', () => {
     const gh = new Gh('/repo', { runner: answering(ghErrored(BATCH)) })
     const tried = gh.try.graphql(Q, undefined, { partial: true })
