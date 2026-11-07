@@ -20,11 +20,14 @@ import { basename, dirname, resolve } from 'node:path'
 
 import {
   spawnRunner,
+  spawnRunnerBytes,
+  type BytesCommandRunner,
   type CommandResult,
   type CommandRunner,
   type CommandRunOptions,
 } from '@osdlc/command-seam'
 
+import { UnsupportedRequest } from './failure.ts'
 import { versionedVerb } from './features.ts'
 import { pinnedGitVersion, probeGitVersion, type GitVersion } from './git-version.ts'
 import { softSync, triedSync, type Soft, type TriedSync } from './outcome.ts'
@@ -32,7 +35,9 @@ import { parseRemoteUrl, type RemoteCoordinate } from './remote-url.ts'
 import { SOFT_TABLE } from './soft.ts'
 import * as v from './verbs.ts'
 import {
+  bytesRunnerFor,
   gate,
+  gateBytes,
   mergeEnv,
   parseRefRows,
   repoPrefix,
@@ -80,6 +85,7 @@ import {
   type CleanOptions,
   type DiffCheckOptions,
   type DiffCheckResult,
+  type StatusEntriesOptions,
   type StatusEntry,
   type StatusPorcelainOptions,
   type TreeEntry,
@@ -121,6 +127,7 @@ export interface GitSyncCallOptions {
 export class Git {
   readonly cwd: string
   private readonly runner: CommandRunner
+  private readonly bytesRunner: BytesCommandRunner | undefined
   private readonly boundGitDir: string | undefined
   private readonly workTree: string | undefined
   private readonly env: Record<string, string> | undefined
@@ -158,11 +165,19 @@ export class Git {
    * `git --version`, and {@link Git.version} returns it. Set it with a fake
    * runner, so the fake answers only the verbs under test. An unparsable
    * value throws a `RangeError` here.
+   *
+   * `bytesRunner` runs {@link Git.rawBytes} and {@link Git.rawBytesChecked},
+   * which keep stdout as bytes. Without `runner` it defaults to
+   * `spawnRunnerBytes` with the same `PATH` rule. A client given a `runner`
+   * and no `bytesRunner` throws `UnsupportedRequest` from those two, so a
+   * fake or a supervised runner is never bypassed by a default spawn. It is
+   * experimental, as command-seam's bytes runners are.
    */
   constructor(
     cwd: string,
     opts: {
       runner?: CommandRunner | undefined
+      bytesRunner?: BytesCommandRunner | undefined
       gitDir?: string | undefined
       workTree?: string | undefined
       env?: Record<string, string> | undefined
@@ -173,18 +188,22 @@ export class Git {
     this.gitVersionOption = opts.gitVersion
     this.pinnedVersion = pinnedGitVersion(opts.gitVersion)
     this.runner = opts.runner ?? spawnRunner('git', { absolutePathOnly: true })
+    this.bytesRunner = bytesRunnerFor(opts, () =>
+      spawnRunnerBytes('git', { absolutePathOnly: true }),
+    )
     this.boundGitDir = opts.gitDir
     this.workTree = opts.workTree
     this.env = opts.env
   }
 
   /**
-   * The same client in a different directory, with the same runner,
+   * The same client in a different directory, with the same runners,
    * repository options, client-level `env` and `gitVersion`.
    */
   at(cwd: string): Git {
     return new Git(cwd, {
       runner: this.runner,
+      bytesRunner: this.bytesRunner,
       gitDir: this.boundGitDir,
       workTree: this.workTree,
       env: this.env,
@@ -198,9 +217,9 @@ export class Git {
    * or `{ ok: false, error }` with a classified {@link GitFailure}.
    * A declared absence is `ok: true`. See `./outcome.ts`.
    *
-   * The type leaves out `raw`, `rawChecked` and `at`, but at runtime the proxy
-   * wraps them too: `git.try.raw(argv)` returns `{ ok: true, value }`. Call
-   * those three on the client itself.
+   * The type leaves out `raw`, `rawChecked`, `rawBytes`, `rawBytesChecked`
+   * and `at`, but at runtime the proxy wraps them too: `git.try.raw(argv)`
+   * returns `{ ok: true, value }`. Call those on the client itself.
    */
   get try(): TriedSync<Git> {
     return (this.tried ??= triedSync(this))
@@ -213,7 +232,7 @@ export class Git {
    * `null` both for a missing ref and for a broken repo. Use `try` when the
    * failure itself matters.
    *
-   * As with `try`, the proxy also wraps `raw`, `rawChecked` and `at` at
+   * As with `try`, the proxy also wraps the `raw*` methods and `at` at
    * runtime, though the type leaves them out.
    */
   get soft(): Soft<Git> {
@@ -248,6 +267,45 @@ export class Git {
     const verb: GitVerb<CommandResult> = { argv, absent: [], parse: (r) => r }
     if (opts.input !== undefined) verb.input = opts.input
     return this.exec(verb, opts)
+  }
+
+  /**
+   * {@link Git.raw} with stdout as the bytes git wrote, never decoded: for
+   * output that is hashed or replayed, such as a blob, `status -z` with
+   * names that are not UTF-8, or `diff --binary` of a file that is not
+   * UTF-8. Stderr is still text. Runs on the `bytesRunner`; a client given a
+   * `runner` and no `bytesRunner` throws `UnsupportedRequest`.
+   *
+   * @experimental command-seam's bytes runners are experimental.
+   */
+  rawBytes(
+    argv: string[],
+    opts: GitSyncCallOptions & { input?: string | undefined } = {},
+  ): CommandResult<Buffer> {
+    return this.bytes().run(this.argv(argv), this.runOpts(opts))
+  }
+
+  /**
+   * {@link Git.rawBytes} that throws the classified failure on a non-zero
+   * exit, or on output cut short at the output cap or a timeout, as
+   * {@link Git.rawChecked} does. The failure's `cause.result.stdout` is the
+   * stdout decoded as UTF-8.
+   *
+   * @experimental command-seam's bytes runners are experimental.
+   */
+  rawBytesChecked(
+    argv: string[],
+    opts: GitSyncCallOptions & { input?: string | undefined } = {},
+  ): CommandResult<Buffer> {
+    const ran = this.argv(argv)
+    return gateBytes(this.bytes().run(ran, this.runOpts(opts)), ran)
+  }
+
+  private bytes(): BytesCommandRunner {
+    if (this.bytesRunner === undefined) {
+      throw new UnsupportedRequest('rawBytes', 'Git with a runner and no bytesRunner')
+    }
+    return this.bytesRunner
   }
 
   /** The verb's argv, after this client's `--git-dir` / `--work-tree` flags. */
@@ -434,9 +492,12 @@ export class Git {
     return this.exec(v.statusPorcelain(opts), opts)
   }
 
-  /** Every changed or untracked file, from `status --porcelain -z`. */
-  statusEntries(opts: GitSyncCallOptions = {}): StatusEntry[] {
-    return this.exec(v.statusEntries(), opts)
+  /**
+   * Every changed or untracked file, from `status --porcelain -z`.
+   * `ignored` adds the ignored files, as `!` entries.
+   */
+  statusEntries(opts: GitSyncCallOptions & StatusEntriesOptions = {}): StatusEntry[] {
+    return this.exec(v.statusEntries(opts), opts)
   }
 
   /**

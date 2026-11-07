@@ -105,6 +105,38 @@ export function gate<T>(verb: GitVerb<T>, result: CommandResult, argv?: string[]
 }
 
 /**
+ * {@link gate} for a bytes runner's result, as `rawBytesChecked` reads it:
+ * the result itself, or a thrown `FailureError` carrying the classified
+ * `GitFailure`. No exit code is an answer, and a `neverExited` or
+ * `outputIncomplete` result fails, as in `gate`. The `CommandFailed` in
+ * `failure.cause` holds stdout decoded as UTF-8, so the failure reads like
+ * any other.
+ */
+export function gateBytes(result: CommandResult<Buffer>, argv: string[]): CommandResult<Buffer> {
+  try {
+    if (runFailed(result)) throw new CommandFailed(argv, result)
+    return result
+  } catch (error) {
+    throw gitFailureError(error)
+  }
+}
+
+/**
+ * The bytes runner a client runs `rawBytes` on: the `bytesRunner` passed,
+ * else the default spawn, but only when no `runner` was passed either. A
+ * client given a `runner` and no `bytesRunner` gets `undefined` and throws
+ * `UnsupportedRequest` from its bytes calls, so a fake or a supervised runner
+ * is never bypassed by a default spawn. `Git` and `cliBackend` both call it,
+ * so the rule lives here once.
+ */
+export function bytesRunnerFor<B>(
+  opts: { runner?: unknown; bytesRunner?: B | undefined },
+  spawnDefault: () => B,
+): B | undefined {
+  return opts.bytesRunner ?? (opts.runner === undefined ? spawnDefault() : undefined)
+}
+
+/**
  * A client-level environment bag under a per-call one, or `undefined` when
  * neither is set (so the runner inherits the parent environment untouched
  * rather than being handed an empty object).
@@ -533,16 +565,31 @@ export interface StatusEntry {
   path: string
 }
 
+/** Options for {@link statusEntries}. */
+export interface StatusEntriesOptions {
+  /**
+   * `--ignored`: report ignored files too, as entries whose `x` and `y` are
+   * both `'!'`. This verb always passes `--untracked-files=all`, so each
+   * ignored file is its own entry, inside an ignored directory too.
+   */
+  ignored?: boolean | undefined
+}
+
 /**
  * Every changed or untracked file as a {@link StatusEntry}
- * (`git status --porcelain -z --untracked-files=all`). Untracked directories
- * are expanded to their files. Paths are verbatim, never quoted, and a rename
- * or copy yields one entry (its source path is dropped). Empty on a clean
- * tree; throws outside a repository.
+ * (`git status --porcelain -z --untracked-files=all`, plus `--ignored` with
+ * `ignored`). Untracked directories are expanded to their files. Paths are
+ * verbatim, never quoted, and a rename or copy yields one entry (its source
+ * path is dropped). Empty on a clean tree; throws outside a repository.
+ *
+ * Paths are decoded as UTF-8, so a name that is not valid UTF-8 comes back
+ * with U+FFFD in it. Read such names through `rawBytesChecked`.
  */
-export function statusEntries(): GitVerb<StatusEntry[]> {
+export function statusEntries(opts: StatusEntriesOptions = {}): GitVerb<StatusEntry[]> {
+  const argv = ['status', '--porcelain', '-z', '--untracked-files=all']
+  if (opts.ignored === true) argv.push('--ignored')
   return {
-    argv: ['status', '--porcelain', '-z', '--untracked-files=all'],
+    argv,
     absent: NONE,
     parse(r) {
       const fields = nulFields(r)
@@ -1319,14 +1366,25 @@ export interface DiffTreeOptions {
 export interface DiffTextOptions {
   /** `--cached` — diff the index against `rev` (or HEAD) rather than the worktree. */
   staged?: boolean | undefined
+  /**
+   * `--binary`: write a binary file's change as a `GIT binary patch` that
+   * `git apply` can replay, instead of the one line `Binary files … differ`.
+   * The patch is ASCII (base85), so the decode to a string keeps it intact.
+   */
+  binary?: boolean | undefined
   /** Pathspecs, passed after `--`. */
   paths?: string[] | undefined
 }
 
 /**
- * The unified diff text (`git diff [--cached] [rev] [-- paths]`), for the same
- * rev and staged shape {@link diffNameOnly} selects paths for. Empty when
- * nothing differs.
+ * The unified diff text (`git diff [--cached] [--binary] [rev] [-- paths]`),
+ * for the same rev and staged shape {@link diffNameOnly} selects paths for.
+ * Empty when nothing differs.
+ *
+ * The text is decoded as UTF-8. A text file whose lines are not valid UTF-8
+ * comes back with U+FFFD in them, and the patch no longer applies. For a
+ * patch that must replay byte for byte, run the same argv through
+ * `rawBytesChecked`.
  *
  * `absent: []`. A rev that does not resolve exits 128, and outside a
  * repository `git diff` exits 129. Both throw, so "git failed" never reads as
@@ -1335,6 +1393,7 @@ export interface DiffTextOptions {
 export function diffText(rev?: string | undefined, opts: DiffTextOptions = {}): GitVerb<string> {
   const argv = ['diff']
   if (opts.staged === true) argv.push('--cached')
+  if (opts.binary === true) argv.push('--binary')
   const from = optionalPositional('diffText', 'rev', rev)
   if (from !== undefined) argv.push(from)
   if (opts.paths !== undefined && opts.paths.length > 0) argv.push('--', ...opts.paths)

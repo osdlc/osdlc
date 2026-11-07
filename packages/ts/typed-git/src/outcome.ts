@@ -24,13 +24,17 @@ import type { Result } from '@osdlc/result'
 import { thrownGitFailure, type GitFailure } from './failure.ts'
 
 /**
- * The methods `try` mirrors: everything except `raw`, `rawChecked`, `at`,
- * and `try` itself. `raw` already returns a `CommandResult` and never throws.
- * `rawChecked` exists to throw. `at(cwd)` returns a new client that has its
- * own `.try`. The types leave them out, but the runtime proxy wraps every
- * function property, these included.
+ * The methods `try` mirrors: everything except the `raw*` methods, `at`,
+ * and `try` itself. `raw` and `rawBytes` already return a `CommandResult`
+ * and never throw for a failed git. `rawChecked` and `rawBytesChecked` exist
+ * to throw. `at(cwd)` returns a new client that has its own `.try`. The
+ * types leave them out, but the runtime proxy wraps every function property,
+ * these included.
  */
-type Triable<C> = Omit<C, 'raw' | 'rawChecked' | 'at' | 'try' | 'soft' | 'cwd'>
+type Triable<C> = Omit<
+  C,
+  'raw' | 'rawChecked' | 'rawBytes' | 'rawBytesChecked' | 'at' | 'try' | 'soft' | 'cwd'
+>
 
 /** Every synchronous client method, returning a `Result<T, GitFailure>`. */
 export type TriedSync<C> = {
