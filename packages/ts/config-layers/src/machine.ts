@@ -16,10 +16,10 @@
  * the same way.
  */
 
-import { copyFileSync, existsSync, readFileSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { atomicWrite, etag, etagOfFile, WriteConflictError, writeCas } from '@osdlc/etag-write'
+import { atomicWrite, etag, WriteConflictError, writeCas } from '@osdlc/etag-write'
 import type { z } from 'zod'
 
 import { rewriteMigrated } from './edit.ts'
@@ -176,6 +176,8 @@ export interface MachineConfigFile<S extends z.ZodTypeAny> {
    * nothing, when `text` is not a YAML mapping or {@link check} finds a new
    * issue, and, given `etag`, when the file changed since it was read. Copies
    * the old file to `<path>.bak`, writes atomically and clears the cache.
+   * Given `etag`, the copy is made only once the swap went through, so a
+   * conflict leaves the old `.bak` as it was.
    */
   write(text: string, opts?: MachineWriteOptions): string
   /**
@@ -272,13 +274,8 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
   }
 
   const read = (): { text: string; etag: string } | null => {
-    let bytes: Buffer
-    try {
-      bytes = readFileSync(path())
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
-      throw err
-    }
+    const bytes = readOrNull(path())
+    if (bytes === null) return null
     // The etag is of the bytes, so text that does not round-trip through UTF-8 still matches.
     return { text: bytes.toString('utf-8'), etag: etag(bytes) }
   }
@@ -292,20 +289,23 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
       const lines = added.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
       throw new Error(`refusing to write ${file}:\n  ${lines.join('\n  ')}`)
     }
-    const cas = o.etag !== undefined
-    // Checked before the backup too, so a refused write leaves the old `.bak` alone.
-    // `writeCas` checks again, just before the rename.
-    if (cas) {
-      const onDisk = etagOfFile(file)
-      if (onDisk !== null && onDisk !== o.etag) {
-        throw new WriteConflictError(file, o.etag === null ? 'exists-without-etag' : 'changed')
-      }
+    if (o.etag === undefined) {
+      if (existsSync(file)) copyFileSync(file, `${file}.bak`)
+      cache = null
+      atomicWrite(file, text)
+      return etag(text)
     }
-    if (existsSync(file)) copyFileSync(file, `${file}.bak`)
+    // The backup is taken only once the swap went through, so a conflict, however late it
+    // lands, leaves the old `.bak` alone. It is made from these bytes: they match the etag
+    // `writeCas` checked, so they are what the swap replaced.
+    const before = readOrNull(file)
+    if (before !== null && etag(before) !== o.etag) {
+      throw new WriteConflictError(file, o.etag === null ? 'exists-without-etag' : 'changed')
+    }
     cache = null
-    if (cas) return writeCas(file, text, o.etag ?? null)
-    atomicWrite(file, text)
-    return etag(text)
+    const next = writeCas(file, text, o.etag)
+    if (before !== null) atomicWrite(`${file}.bak`, before, { mode: statSync(file).mode & 0o777 })
+    return next
   }
 
   const migrate = (o: { dryRun?: boolean } = {}): MachineMigrateResult => {
@@ -353,6 +353,16 @@ export function machineConfigFile<S extends z.ZodTypeAny>(
     check,
     write,
     migrate,
+  }
+}
+
+/** The file's bytes, or `null` when it does not exist. Any other read error is thrown. */
+function readOrNull(file: string): Buffer | null {
+  try {
+    return readFileSync(file)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw err
   }
 }
 
