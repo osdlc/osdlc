@@ -1723,6 +1723,25 @@ describe('a pull request listing that fails (#653)', () => {
     })
   })
 
+  test('with gh signed out, a remote branch is not deleted without confirm-open-pr', () => {
+    const fx = buildFixture()
+    // Installed, but every other call, `auth status` included, fails.
+    withGh('#!/bin/sh\ncase "$1" in --version) exit 0;; esac\nexit 1\n', () => {
+      const res = run(['clean', ...GH, '--yes', '--format', 'json'], fx.root)
+      expect(res.code).toBe(0)
+      expect(res.err).toContain('Could not check for open PRs: `gh` is not signed in')
+      const out = JSON.parse(res.out) as { receipt: Receipt }
+      expect(out.receipt.dropped).toContainEqual(
+        expect.objectContaining({
+          row: `remote:origin/${BRANCH}`,
+          reason: 'not-allowed',
+          detail: 'needs confirm-open-pr',
+        }),
+      )
+      expect(sh(fx.root, ['ls-remote', '--heads', 'origin', BRANCH])).not.toBe('')
+    })
+  })
+
   test('a remote branch with no known PR is not deleted without confirm-open-pr', () => {
     const fx = buildFixture()
     withFailingGh(STDERR, () => {

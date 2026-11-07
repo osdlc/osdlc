@@ -660,9 +660,13 @@ asked, so nothing can rule out an open pull request:
 ```console
 $ repo-cleaner --remote --offline
 ~/work/app  (acme/app, default main, origin, not fetched)
-  note: Could not check for open PRs: `gh` is not installed. Deleting a remote branch needs confirm-open-pr; pass `--provider none` if this remote has no forge.
+  note: Could not check for open PRs: `gh` is not installed, so deleting a remote branch needs confirm-open-pr. Install `gh`, or pass `--allow confirm-open-pr` once you have checked.
   branch  feat/login         delete   fully merged into origin/main
+          git update-ref -d refs/heads/feat/login 255acd56…
   remote  origin/feat/login  delete   fully merged into origin/main; needs --allow confirm-open-pr
+          git push --force-with-lease=refs/heads/feat/login:255acd56… origin :refs/heads/feat/login
+
+2 to delete, 0 to review, across 1 repository.
 ```
 
 `--provider none` is how you say the remote has no forge: then there is no
@@ -950,8 +954,11 @@ Not done yet:
 
 ## Runtime dependencies
 
-`git` on `PATH`, and `gh` (or `glab` for GitLab) when PR state should count.
-Authentication is the CLI's own — this package reads no token.
+`git` on `PATH`, and `gh` (or `glab` for GitLab) for pull request evidence.
+Without it, deleting a remote branch needs `--allow confirm-open-pr`, or
+`--provider none` for a remote with no forge (see
+[When a lookup fails](#when-a-lookup-fails)). Authentication is the CLI's
+own — this package reads no token.
 
 ## Running from a checkout
 

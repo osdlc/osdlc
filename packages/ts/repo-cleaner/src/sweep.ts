@@ -371,25 +371,31 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
     if (status !== null) {
       const looked = lookupPrs(repo, known[status.name], only)
       prs = looked.prs
+      // A local remote names no forge, and `auto` asks GitHub for any host
+      // that is not GitLab's, so a host that is not a forge lands here too.
+      // github.com is a forge: there the cause is access, not the provider.
+      const hint =
+        status.host === null ||
+        (opts.provider === 'auto' && status.name === 'github' && status.host !== 'github.com')
+          ? ' Pass `--provider none` if this remote has no forge.'
+          : ''
       if (looked.error !== null) {
         repo = { ...repo, provider: { ...status, listError: looked.error } }
-        // A local remote names no forge, and `auto` asks GitHub for any host
-        // that is not GitLab's, so a host that is not a forge lands here too.
-        // github.com is a forge: there the cause is access, not the provider.
-        const hint =
-          status.host === null ||
-          (opts.provider === 'auto' && status.name === 'github' && status.host !== 'github.com')
-            ? ' Pass `--provider none` if this remote has no forge.'
-            : ''
         notes.push(
           `Listing ${status.noun}s with \`${status.listing}\` failed (${looked.error}); judged on git evidence alone.${hint}`,
         )
-      } else if (!status.authenticated) {
-        // Never asked, so an open PR cannot be ruled out: say why remote
-        // branches need confirm-open-pr, and how to say there is no forge.
-        notes.push(
-          `Could not check for open ${status.noun}s: ${prsUnchecked(status)}. Deleting a remote branch needs confirm-open-pr; pass \`--provider none\` if this remote has no forge.`,
-        )
+      } else if (repo.remote !== null && kinds.has('remote')) {
+        // Never asked, so an open PR cannot be ruled out on a remote branch:
+        // say why deleting one asks first, and what would let it check.
+        const why = prsUnchecked(status)
+        if (why !== null) {
+          const fix = status.available
+            ? `Sign in to \`${status.tool}\``
+            : `Install \`${status.tool}\``
+          notes.push(
+            `Could not check for open ${status.noun}s: ${why}, so deleting a remote branch needs confirm-open-pr. ${fix}, or pass \`--allow confirm-open-pr\` once you have checked.${hint}`,
+          )
+        }
       }
     }
     const rows: Row[] = []

@@ -1559,27 +1559,46 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
         return { exitCode: 0, stdout: argv[0] === 'pr' ? '[]' : '', stderr: '' }
       },
     })
-    for (const [failing, reason] of [
-      ['--version', '`gh` is not installed'],
-      ['auth', '`gh` is not signed in'],
-    ] as const) {
-      const sw = sweepOne(checkout, {
-        cwd: checkout,
-        remote: true,
-        offline: true,
-        provider: 'github',
-        gh: without(failing),
-      })
-      // Merged by ancestry, so it is still a delete; it now asks first.
-      const merged = rowsOf(sw.rows, 'remote').get('origin/merged')
-      expect(merged?.verdict).toBe('delete')
-      expect(merged?.risks).toContain('confirm-open-pr')
-      // Deleting a local branch closes no PR.
-      expect(rowsOf(sw.rows, 'branch').get('merged')?.risks ?? []).not.toContain('confirm-open-pr')
-      expect(sw.notes).toEqual([
-        `Could not check for open PRs: ${reason}. Deleting a remote branch needs confirm-open-pr; pass \`--provider none\` if this remote has no forge.`,
-      ])
+    // The fixture's remote is a local path, which names no forge, so the
+    // note also says how to stop asking.
+    const hint = ' Pass `--provider none` if this remote has no forge.'
+    for (const provider of ['auto', 'github'] as const) {
+      for (const [failing, reason, fix] of [
+        ['--version', '`gh` is not installed', 'Install `gh`'],
+        ['auth', '`gh` is not signed in', 'Sign in to `gh`'],
+      ] as const) {
+        const sw = sweepOne(checkout, {
+          cwd: checkout,
+          remote: true,
+          offline: true,
+          provider,
+          gh: without(failing),
+        })
+        // Merged by ancestry, so still a delete, but it asks first.
+        const merged = rowsOf(sw.rows, 'remote').get('origin/merged')
+        expect(merged?.verdict).toBe('delete')
+        expect(merged?.risks).toContain('confirm-open-pr')
+        // Deleting a local branch closes no PR.
+        expect(rowsOf(sw.rows, 'branch').get('merged')?.risks ?? []).not.toContain(
+          'confirm-open-pr',
+        )
+        expect(sw.notes).toEqual([
+          `Could not check for open PRs: ${reason}, so deleting a remote branch needs confirm-open-pr. ${fix}, or pass \`--allow confirm-open-pr\` once you have checked.${hint}`,
+        ])
+      }
     }
+    // GitLab says it in its own words.
+    const gitlab = sweepOne(checkout, {
+      cwd: checkout,
+      remote: true,
+      offline: true,
+      provider: 'gitlab',
+      glab: without('--version'),
+    })
+    expect(rowsOf(gitlab.rows, 'remote').get('origin/merged')?.risks).toContain('confirm-open-pr')
+    expect(gitlab.notes[0]).toMatch(
+      /^Could not check for open merge requests: `glab` is not installed, .* Install `glab`,/,
+    )
     // `--provider none` says this remote has no forge: nothing to ask about.
     const none = sweepOne(checkout, {
       cwd: checkout,
@@ -1589,5 +1608,21 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     })
     expect(rowsOf(none.rows, 'remote').get('origin/merged')?.risks).not.toContain('confirm-open-pr')
     expect(none.notes).toEqual([])
+  })
+
+  test('a repository with no remote has no remote branch to ask about, so no note', () => {
+    const dir = join(parent, 'no-remote')
+    mkdirSync(dir)
+    makeGitFixture({ dir, initialBranch: 'main' })
+    commit(dir, 'initial commit')
+    const sw = sweepOne(dir, {
+      cwd: dir,
+      remote: true,
+      offline: true,
+      provider: 'github',
+      gh: { run: () => ({ exitCode: 1, stdout: '', stderr: 'not installed' }) },
+    })
+    expect(sw.error).toBeNull()
+    expect(sw.notes).toEqual([])
   })
 })
