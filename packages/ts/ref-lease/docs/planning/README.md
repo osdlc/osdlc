@@ -1,8 +1,7 @@
 # ref-lease planning
 
 Why `@osdlc/ref-lease` has the shape it has. The [README](../../README.md) says how to use the
-package. This folder says why. [git-mechanics.md](../guide/git-mechanics.md) explains the git model the
-protocol rests on, for readers new to refs.
+package and the [guides](../guide/README.md) show it in use. This folder says why.
 
 ## Layout
 
