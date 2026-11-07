@@ -23,7 +23,7 @@ import {
 import { discoverRepo } from './discover.ts'
 import type { Annotate } from './hooks.ts'
 import { defaultProcessProbe, type ProcessProbe } from './processes.ts'
-import { lookupPrs } from './prs.ts'
+import { lookupPrs, prsUnchecked } from './prs.ts'
 import { PROVIDER_CHOICES, providers, type ProviderChoice } from './providers/index.ts'
 import { defaultCacheDir, ensureMirror, isRemoteUrl, redactUrl } from './remote-mirror.ts'
 import { expandTilde, resolveEntries } from './resolve.ts'
@@ -383,6 +383,12 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
             : ''
         notes.push(
           `Listing ${status.noun}s with \`${status.listing}\` failed (${looked.error}); judged on git evidence alone.${hint}`,
+        )
+      } else if (!status.authenticated) {
+        // Never asked, so an open PR cannot be ruled out: say why remote
+        // branches need confirm-open-pr, and how to say there is no forge.
+        notes.push(
+          `Could not check for open ${status.noun}s: ${prsUnchecked(status)}. Deleting a remote branch needs confirm-open-pr; pass \`--provider none\` if this remote has no forge.`,
         )
       }
     }

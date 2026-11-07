@@ -1519,23 +1519,24 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
         return { exitCode: 0, stdout: '[]', stderr: '' }
       },
     })
-    const notesOf = (gh: CommandRunner, kind: 'branch' | 'remote', name: string) =>
-      rowsOf(
-        sweepOne(checkout, { cwd: checkout, remote: true, offline: true, provider: 'github', gh })
-          .rows,
-        kind,
-      ).get(name)?.notes
-    // A local branch and a remote branch, both left at review, give the same reason.
-    for (const [kind, name] of [
-      ['branch', 'live'],
-      ['remote', 'origin/feature'],
-    ] as const) {
-      expect(notesOf(answering('--version'), kind, name)).toContain(
-        'No PR lookup (`gh` not installed).',
-      )
-      expect(notesOf(answering('auth'), kind, name)).toContain('No PR lookup (`gh` not signed in).')
-      expect(notesOf(answering('none'), kind, name)).toContain('No PR found via `gh pr list`.')
-    }
+    const swept = (gh: CommandRunner) =>
+      sweepOne(checkout, { cwd: checkout, remote: true, offline: true, provider: 'github', gh })
+    const localNotes = (gh: CommandRunner) => rowsOf(swept(gh).rows, 'branch').get('live')?.notes
+    expect(localNotes(answering('--version'))).toContain('No PR lookup (`gh` not installed).')
+    expect(localNotes(answering('auth'))).toContain('No PR lookup (`gh` not signed in).')
+    expect(localNotes(answering('none'))).toContain('No PR found via `gh pr list`.')
+
+    // A remote branch names the same reason as why an open PR cannot be ruled out.
+    const remoteNotes = (gh: CommandRunner) =>
+      rowsOf(swept(gh).rows, 'remote').get('origin/feature')?.notes
+    expect(remoteNotes(answering('--version'))).toContain(
+      'Whether it has an open PR is unknown (`gh` is not installed), so deleting it needs confirm-open-pr.',
+    )
+    expect(remoteNotes(answering('auth'))).toContain(
+      'Whether it has an open PR is unknown (`gh` is not signed in), so deleting it needs confirm-open-pr.',
+    )
+    expect(remoteNotes(answering('none'))).toContain('No PR found via `gh pr list`.')
+
     // With no provider at all, both say so rather than that none was found.
     const unasked = sweepOne(checkout, {
       cwd: checkout,
@@ -1549,5 +1550,44 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     expect(rowsOf(unasked.rows, 'remote').get('origin/feature')?.notes).toContain(
       'No PR lookup (no provider).',
     )
+  })
+
+  test('a gh that is missing or signed out gates remote deletes, as a failed listing does', () => {
+    const without = (failing: string): CommandRunner => ({
+      run(argv) {
+        if (argv[0] === failing) return { exitCode: 1, stdout: '', stderr: 'no' }
+        return { exitCode: 0, stdout: argv[0] === 'pr' ? '[]' : '', stderr: '' }
+      },
+    })
+    for (const [failing, reason] of [
+      ['--version', '`gh` is not installed'],
+      ['auth', '`gh` is not signed in'],
+    ] as const) {
+      const sw = sweepOne(checkout, {
+        cwd: checkout,
+        remote: true,
+        offline: true,
+        provider: 'github',
+        gh: without(failing),
+      })
+      // Merged by ancestry, so it is still a delete; it now asks first.
+      const merged = rowsOf(sw.rows, 'remote').get('origin/merged')
+      expect(merged?.verdict).toBe('delete')
+      expect(merged?.risks).toContain('confirm-open-pr')
+      // Deleting a local branch closes no PR.
+      expect(rowsOf(sw.rows, 'branch').get('merged')?.risks ?? []).not.toContain('confirm-open-pr')
+      expect(sw.notes).toEqual([
+        `Could not check for open PRs: ${reason}. Deleting a remote branch needs confirm-open-pr; pass \`--provider none\` if this remote has no forge.`,
+      ])
+    }
+    // `--provider none` says this remote has no forge: nothing to ask about.
+    const none = sweepOne(checkout, {
+      cwd: checkout,
+      remote: true,
+      offline: true,
+      provider: 'none',
+    })
+    expect(rowsOf(none.rows, 'remote').get('origin/merged')?.risks).not.toContain('confirm-open-pr')
+    expect(none.notes).toEqual([])
   })
 })

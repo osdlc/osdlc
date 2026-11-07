@@ -112,8 +112,9 @@ Risks (approve each by name with --allow)
                      (or its submodules') commits and stashes that no remote has.
   discard-changes    Uncommitted or untracked files in the worktree or any of its
                      submodules.
-  confirm-open-pr    The branch has an open pull request, or its listing failed so
-                     one cannot be ruled out; deleting the remote branch closes it.
+  confirm-open-pr    The branch has an open pull request, or open pull requests could
+                     not be checked (the CLI is missing or signed out, or the listing
+                     failed); deleting the remote branch closes it.
   A worktree's submodules are part of it: one --allow on the worktree row covers
   the same risk in every submodule.`
 

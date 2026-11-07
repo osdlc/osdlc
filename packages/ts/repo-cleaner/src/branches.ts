@@ -37,6 +37,7 @@ import {
   type Risk,
   type RowFields,
 } from './types.ts'
+import { prsUnchecked } from './prs.ts'
 import { errorText } from './util.ts'
 
 /**
@@ -114,9 +115,10 @@ export function mergedFact(e: {
 /**
  * What deleting a branch needs: its unlanded commits, and its open PR.
  *
- * @param prUnknown The PR listing failed and none is known for the branch. A
- *   remote branch is then treated as having an open PR: deleting a PR's head
- *   branch closes the PR, and nothing here can say there is none.
+ * @param prUnknown No PR is known for the branch, and open PRs could not be
+ *   checked: the provider's CLI is missing or signed out, or its listing
+ *   failed. A remote branch is then treated as having an open PR: deleting a
+ *   PR's head branch closes the PR, and nothing here can say there is none.
  */
 function branchRisks(unmerged: boolean, pr: PRInfo | undefined, prUnknown = false): Risk[] {
   return risksFor({
@@ -434,14 +436,18 @@ function classifyRemoteBranch(opts: {
     evidence.uniqueCommits = counted.ok ? counted.value.ahead : null
   }
   const status = repo.provider
-  const prUnknown = status !== null && status.listError !== undefined && pr === undefined
+  // `--provider none` is a choice that this remote has no forge; anything else
+  // that left PRs unchecked means one could be open.
+  const unchecked = status === null || pr !== undefined ? null : prsUnchecked(status)
+  const prUnknown = unchecked !== null
   const risks = branchRisks(unmerged, pr, prUnknown)
   const commands = repo.remote === null ? [] : [remoteDeleteCommand(repo.remote, branch, sha)]
-  const unknownPr = prUnknown
-    ? [
-        `Whether it has an open PR is unknown (\`${status.listing}\` failed), so deleting it needs confirm-open-pr.`,
-      ]
-    : []
+  const unknownPr =
+    unchecked !== null && status !== null
+      ? [
+          `Whether it has an open ${status.noun} is unknown (${unchecked}), so deleting it needs confirm-open-pr.`,
+        ]
+      : []
   const deletes = (why: string): RemoteRow =>
     row({ verdict: 'delete', action: 'delete', why, commands, risks, notes: unknownPr })
 

@@ -16,6 +16,7 @@ Accepted 2026-11-07, in [#656](https://github.com/osdlc/osdlc/pull/656) (issues
 | Failure                                             | Result                                                                                                                                                 |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | The pull request listing (`gh pr list`, `glab api`) | No PR evidence. Rows are judged on git evidence, and the repository carries a note. Deleting a remote branch with no known PR needs `confirm-open-pr`. |
+| The provider's CLI missing or signed out            | Never asked, so the same as a failed listing: a note, and `confirm-open-pr` on remote branches with no known PR.                                       |
 | `git ls-remote` after a successful fetch            | Remote tips come from the refs that fetch just wrote. The repository and each remote row carry a note.                                                 |
 | The fetch                                           | The repository is an error with no rows, as before.                                                                                                    |
 

@@ -71,9 +71,10 @@ export type Action = (typeof ACTIONS)[number]
  *                       (or its submodules') commits and stashes no remote has
  *   `discard-changes`   drops modified, staged or untracked files in a worktree
  *                       or any of its submodules
- *   `confirm-open-pr`   the branch has an open pull request, or its listing
- *                       failed so one cannot be ruled out; deleting the
- *                       remote branch closes it
+ *   `confirm-open-pr`   the branch has an open pull request, or open pull
+ *                       requests could not be checked (the CLI is missing or
+ *                       signed out, or the listing failed) so one cannot be
+ *                       ruled out; deleting the remote branch closes it
  */
 export const RISKS = ['abandon-unmerged', 'discard-changes', 'confirm-open-pr'] as const
 
@@ -357,8 +358,9 @@ export interface RepoSweep {
   /**
    * What the sweep could not look up for this repository and judged without,
    * one sentence each: a remote branch listing or a pull request listing that
-   * failed. The rows stand on the evidence that was left. Empty when nothing
-   * was missing.
+   * failed, or a pull request lookup the provider's CLI could not make
+   * (missing or signed out). The rows stand on the evidence that was left.
+   * Empty when nothing was missing.
    */
   notes: string[]
   /** Why this repository produced no rows. Null on success. */

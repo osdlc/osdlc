@@ -8,8 +8,22 @@
  */
 
 import type { PrProvider } from './providers/index.ts'
+import type { ProviderStatus } from './providers/types.ts'
 import type { PRInfo, RepoInfo } from './types.ts'
 import { errorText } from './util.ts'
+
+/**
+ * Why open pull requests cannot be ruled out for this repository, or null
+ * when the provider answered. A missing or signed-out CLI was never asked, and
+ * a failed listing answered nothing; either way a remote branch with no known
+ * PR may still have an open one.
+ */
+export function prsUnchecked(status: ProviderStatus): string | null {
+  if (!status.available) return `\`${status.tool}\` is not installed`
+  if (!status.authenticated) return `\`${status.tool}\` is not signed in`
+  if (status.listError !== undefined) return `\`${status.listing}\` failed`
+  return null
+}
 
 /** Open outranks merged outranks closed, and a newer PR outranks an older. */
 function priority(state: string): number {

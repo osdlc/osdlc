@@ -277,7 +277,7 @@ you approve them by name with `--allow`:
 | --- | --- |
 | `abandon-unmerged` | Commits not on the default branch and not captured by an exact-head merged PR, or a worktree's (or its submodules') commits and stashes that no remote has. `evidence.uniqueCommits` counts the commits. |
 | `discard-changes` | Uncommitted or untracked files in the worktree or any of its submodules. |
-| `confirm-open-pr` | The branch has an open pull request, or its listing failed so one cannot be ruled out; deleting the remote branch closes it. |
+| `confirm-open-pr` | The branch has an open pull request, or open pull requests could not be checked (the CLI is missing or signed out, or the listing failed) so one cannot be ruled out; deleting the remote branch closes it. |
 
 A worktree's submodules are part of it: one `--allow` on the worktree row
 covers the same risk in every submodule. A stash in the worktree itself is
@@ -595,7 +595,7 @@ a failed fetch costs the whole repository.
 | What failed | What you get |
 | --- | --- |
 | `gh pr list` / `glab api` (the PR listing) | Every row is judged on git evidence. Remote branches with no known PR need `--allow confirm-open-pr` to delete. One note on the repository. |
-| `gh` / `glab` not installed or not signed in | Every row is judged on git evidence. The provider was never asked, so there is no note on the repository and no `confirm-open-pr` gate. A branch left at `review` gives the reason in its `notes` (`--format json`): "No PR lookup (`gh` not installed)." or "(`gh` not signed in)." Pass `--provider none` to skip the lookup outright. |
+| `gh` / `glab` not installed or not signed in | The provider is never asked, so this is treated like a failed listing: every row is judged on git evidence, remote branches with no known PR need `--allow confirm-open-pr` to delete, and a note on the repository says why. Pass `--provider none` if the remote has no forge, so there is nothing to check. |
 | `git ls-remote`, after a fetch that worked | Remote branches are read from the refs that fetch just wrote. A note on the repository and on each remote row. |
 | `git fetch` | The repository is an error with no rows. Every row would otherwise be judged against an older default branch than the one you asked for. |
 
@@ -633,7 +633,8 @@ $ repo-cleaner --remote --offline
 
 Deleting the head branch of an open pull request closes that pull request.
 When the listing works, `repo-cleaner` knows which branches have one. When it
-failed, it cannot tell, so it does not delete a remote branch on its own say:
+failed, or could not run because `gh` is missing or signed out, it cannot
+tell, so it does not delete a remote branch on its own say:
 
 ```console
 $ repo-cleaner clean --remote --offline --yes
@@ -648,10 +649,24 @@ status: complete
 
 The local branch went; the remote branch stayed. To go on, pick one:
 
-- Fix the lookup (sign in, check the remote URL) and run again.
+- Fix the lookup (install `gh`, sign in, check the remote URL) and run again.
 - Pass `--provider none` if this remote has no forge at all, so there is no
   pull request to lose.
 - Check for open pull requests yourself, then pass `--allow confirm-open-pr`.
+
+The same happens when `gh` is not installed or not signed in. Nothing was
+asked, so nothing can rule out an open pull request:
+
+```console
+$ repo-cleaner --remote --offline
+~/work/app  (acme/app, default main, origin, not fetched)
+  note: Could not check for open PRs: `gh` is not installed. Deleting a remote branch needs confirm-open-pr; pass `--provider none` if this remote has no forge.
+  branch  feat/login         delete   fully merged into origin/main
+  remote  origin/feat/login  delete   fully merged into origin/main; needs --allow confirm-open-pr
+```
+
+`--provider none` is how you say the remote has no forge: then there is no
+lookup, no note and no gate.
 
 ### `--offline` reads what is already on disk
 
@@ -923,8 +938,8 @@ Not done yet:
 - Auth edge cases. A token without API scope, or a rate limit, is a failed
   listing: the rows are judged on git evidence with a note (see
   [When a lookup fails](#when-a-lookup-fails)). `glab` signed in only to a
-  different host than the remote's reads as not signed in for that host: no
-  note, and no `confirm-open-pr` gate.
+  different host than the remote's reads as not signed in for that host,
+  which gates remote deletes the same way.
 - Squash metadata. GitLab reports `squash_commit_sha`; it is not used, so a
   squashed MR proves landing only by its head commit, as on GitHub.
 - GitLab under a sub-path (`https://host/gitlab/group/proj`). The URL does not
