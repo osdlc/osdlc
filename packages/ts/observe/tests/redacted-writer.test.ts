@@ -93,9 +93,9 @@ describe('appendRedactedJsonl', () => {
     if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600)
   })
 
-  test('a top-level toJSON does not replace the line', async () => {
+  test('a top-level toJSON is called before the pass, and what it returns is redacted', async () => {
     await appendRedactedJsonl(file, { kind: 'x', toJSON: () => ({ secret: ghp }) }, r)
-    expect(readJsonl(file)).toEqual([{ kind: 'x' }])
+    expect(readJsonl(file)).toEqual([{ kind: 'x', secret: '[REDACTED:assigned-secret]' }])
   })
 
   test('an envelope key holding a function or a BigInt is not written as is', async () => {
@@ -111,4 +111,23 @@ describe('appendRedactedJsonl', () => {
     expect(lines[0]!['message']).toBe('failed with [REDACTED:github]')
     expect(lines[1]).toEqual({ prompt: 'hi' })
   })
+})
+
+test('free text in an envelope field passes the text filter; ids are unchanged', async () => {
+  const dir2 = mkdtempSync(join(tmpdir(), 'observe-redacted-envelope-'))
+  try {
+    const out = join(dir2, 'log.jsonl')
+    const redactions = await appendRedactedJsonl(
+      out,
+      { ...envelope, subject: `curl -H "Authorization: Bearer ${ghp}"` },
+      r,
+    )
+    const [line] = readJsonl(out) as Record<string, unknown>[]
+    expect(line!['subject']).toBe('curl -H "Authorization: Bearer [REDACTED:github]"')
+    expect(line!['session']).toBe(envelope.session)
+    expect(line!['run']).toBe(envelope.run)
+    expect(redactions).toEqual({ github: 1 })
+  } finally {
+    rmSync(dir2, { recursive: true, force: true })
+  }
 })

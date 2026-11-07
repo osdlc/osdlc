@@ -8,6 +8,8 @@ describe('redactPatternProblem', () => {
     '(a*)*',
     '(a+)*',
     '(a+){2,}',
+    '(?:a+){3}b',
+    '(.*a){2}',
     '(a|a)+',
     '(a|aa)*$',
     '(?:foo|foo)+x',

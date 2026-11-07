@@ -45,12 +45,17 @@ describe('the redactor cannot be switched off or skewed by the text', () => {
 })
 
 describe('redactJson leaves nothing to run or lose at write time', () => {
-  test('an own toJSON, and any function, is dropped', async () => {
-    const { value } = await r.redactJson({
-      data: { toJSON: () => ({ leaked: gh }) },
-      f: [() => gh],
-    })
-    expect(JSON.stringify(value)).toBe('{"data":{},"f":[null]}')
+  test('a toJSON runs before the pass and its result is redacted; other functions are dropped', async () => {
+    let calls = 0
+    const data = {
+      toJSON: () => {
+        calls++
+        return { leaked: gh }
+      },
+    }
+    const { value } = await r.redactJson({ data, f: [() => gh] })
+    expect(JSON.stringify(value)).toBe('{"data":{"leaked":"[REDACTED:github]"},"f":[null]}')
+    expect(calls).toBe(1) // JSON.stringify above found no toJSON left to call
   })
 
   test("an Error's name is redacted", async () => {
@@ -83,5 +88,75 @@ describe('a lint pass that throws', () => {
     expect((await flaky.redact('hello')).text).toBe('[REDACTED:redactor-error]')
     fail = false
     expect((await flaky.redact('hello')).text).toBe('hello')
+  })
+})
+
+describe('found by code review', () => {
+  test('a PGP private key block is redacted', async () => {
+    const pgp = `-----BEGIN PGP PRIVATE KEY BLOCK-----\nlQOYBGVhZXhhbXBsZQ\n-----END PGP PRIVATE KEY BLOCK-----`
+    expect((await r.redact(`key:\n${pgp}\nend`)).text).toBe('key:\n[REDACTED:private-key]\nend')
+  })
+
+  test('a quoted value with an escaped quote is redacted to its real end', async () => {
+    const { text } = await r.redact('{"password":"ab\\"cdTAILSECRET"}')
+    expect(text).toBe('{"password":"[REDACTED:assigned-secret]"}')
+  })
+
+  test('a quoted passphrase longer than 200 characters is redacted', async () => {
+    const phrase = 'correct horse battery staple '.repeat(8)
+    const { text } = await r.redact(`password: "${phrase}"`)
+    expect(text).toBe('password: "[REDACTED:assigned-secret]"')
+  })
+
+  test('a number under a secret-named key is blanked; a count under a token key is kept', async () => {
+    const { value } = await r.redactJson({
+      password: 123456,
+      pin_secret: 42,
+      token_count: 100,
+      ok: true,
+    })
+    expect(value).toEqual({
+      password: '[REDACTED:assigned-secret]',
+      pin_secret: '[REDACTED:assigned-secret]',
+      token_count: 100,
+      ok: true,
+    })
+  })
+
+  test('a password starting with $ is redacted; a shell variable reference is not', async () => {
+    expect((await r.redact('password=$ecretPa55')).text).toBe('password=[REDACTED:assigned-secret]')
+    expect((await r.redact('password=$DB_PASSWORD')).text).toBe('password=$DB_PASSWORD')
+    expect((await r.redact('password=${DB_PASSWORD}')).text).toBe('password=${DB_PASSWORD}')
+  })
+
+  test('usage details, a tokenizer name and the working directory are not secrets', async () => {
+    const usage = { completion_tokens_details: { reasoning_tokens: 0 } }
+    expect((await r.redactJson(usage)).value).toEqual(usage)
+    expect((await r.redact('tokenizer_name=cl100k_base')).text).toBe('tokenizer_name=cl100k_base')
+    expect((await r.redact('PWD=/home/ada/app OLDPWD=~/src')).text).toBe(
+      'PWD=/home/ada/app OLDPWD=~/src',
+    )
+    expect((await r.redact('pwd=hunter2hunter2')).text).toBe('pwd=[REDACTED:assigned-secret]')
+  })
+
+  test('a URL and a Buffer are written as JSON would write them', async () => {
+    const { value } = await r.redactJson({
+      url: new URL('https://example.com/x'),
+      buf: Buffer.from('hi'),
+    })
+    expect(value).toEqual({
+      url: 'https://example.com/x',
+      buf: { type: 'Buffer', data: [104, 105] },
+    })
+  })
+
+  test('an Error keeps its own fields and cause, redacted', async () => {
+    const cause = new Error(`token=${gh}`)
+    const e = Object.assign(new Error('open failed', { cause }), { code: 'ENOENT' })
+    const { value } = await r.redactJson(e)
+    const out = value as Record<string, unknown>
+    expect(out['code']).toBe('ENOENT')
+    expect((out['cause'] as Record<string, unknown>)['message']).toBe('token=[REDACTED:github]')
+    expect(JSON.stringify(value)).not.toContain(gh)
   })
 })
