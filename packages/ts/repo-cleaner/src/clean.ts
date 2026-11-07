@@ -135,6 +135,8 @@ export interface Preview {
   dropped: Dropped[]
   /** Allowed risks no row that runs carries. Not an error: what a row carries can change between runs. */
   unusedAllows: { risk: Risk; row: RowId | null }[]
+  /** Each re-swept repository's `RepoSweep.notes`, with its root: what the re-check judged without. */
+  notes: { repo: string; note: string }[]
 }
 
 // ── resolving an approval ──────────────────────────────────────────────────
@@ -324,12 +326,20 @@ function allowed(allow: ResolvedApproval['allow'], at: Resolved, risk: Risk): bo
   return allow.some((a) => a.risk === risk && (a.row === null || same(a.row, at)))
 }
 
-/** The plan repository's rows as they stand now, annotated as the sweep annotated them. */
-function resweep(repo: PlanRepo, plan: Plan, kinds: readonly Kind[], opts: CheckOptions): Row[] {
+/**
+ * The plan repository's rows as they stand now, annotated as the sweep
+ * annotated them, and the sweep's notes on what it judged without.
+ */
+function resweep(
+  repo: PlanRepo,
+  plan: Plan,
+  kinds: readonly Kind[],
+  opts: CheckOptions,
+): { rows: Row[]; notes: string[] } {
   const branchScoped = plan.options.branch !== null
   const given = opts.sweep?.repos.find((r) => r.repo?.root === repo.root)
   if (given !== undefined && given.error === null) {
-    return holdFreedBranches([...given.rows], branchScoped)
+    return { rows: holdFreedBranches([...given.rows], branchScoped), notes: given.notes }
   }
   const swept = sweepRepo(repo.root, {
     ...opts,
@@ -343,7 +353,7 @@ function resweep(repo: PlanRepo, plan: Plan, kinds: readonly Kind[], opts: Check
   if (swept.repo === null || swept.error !== null) {
     throw new Error(swept.error ?? `could not read repository: ${repo.root}`)
   }
-  return swept.rows
+  return { rows: swept.rows, notes: swept.notes }
 }
 
 interface Rechecked {
@@ -351,6 +361,7 @@ interface Rechecked {
   dropped: Dropped[]
   /** Spared remote branches whose tips the run checks first. */
   verified: Accepted[]
+  notes: Preview['notes']
 }
 
 /**
@@ -387,20 +398,21 @@ function recheck(
     kindsIn.set(s.repo, kinds)
   }
   const currentRows = new Map<string, Row>()
+  const notes: Preview['notes'] = []
   for (const [root, wanted] of kindsIn) {
     const repo = plan.repos.find((r) => r.root === root)!
     // Only the kinds the selection is in: a plan of local rows need not
     // compare every remote branch again. A branch brings its worktrees, which
     // decide whether it is free to go or held.
     if (wanted.has('branch') && plan.options.only.includes('worktree')) wanted.add('worktree')
-    for (const row of resweep(
+    const now = resweep(
       repo,
       plan,
       KINDS.filter((k) => wanted.has(k)),
       opts,
-    )) {
-      currentRows.set(keyOf({ repo: root, id: row.id }), row)
-    }
+    )
+    for (const row of now.rows) currentRows.set(keyOf({ repo: root, id: row.id }), row)
+    for (const note of now.notes) notes.push({ repo: root, note })
   }
   const planned = (s: Resolved) => plannedRows.get(keyOf(s))!
   const current = (s: Resolved): Row | undefined => currentRows.get(keyOf(s))
@@ -479,7 +491,7 @@ function recheck(
       detail: `checked out in ${worktree}, which this run does not remove`,
     })
   }
-  return { accepted: kept, dropped, verified }
+  return { accepted: kept, dropped, verified, notes }
 }
 
 // ── one row per remote branch ──────────────────────────────────────────────
@@ -650,6 +662,7 @@ interface Planned {
   accepted: Accepted[]
   /** Worktrees this run removes or prunes, by resolved path. */
   removedHere: Set<string>
+  notes: Preview['notes']
 }
 
 function planSteps(
@@ -691,7 +704,7 @@ function planSteps(
     ...rechecked.verified.map((a): [Step, Accepted | null] => [verifyStep(a), a]),
     ...ordered.flatMap((a) => stepsFor(a).map((step): [Step, Accepted | null] => [step, a])),
   ]
-  return { steps, dropped, accepted: ordered, removedHere }
+  return { steps, dropped, accepted: ordered, removedHere, notes: rechecked.notes }
 }
 
 /** A worktree row whose deletion takes the repository-wide prune: its directory is left without its `.git`. */
@@ -733,7 +746,12 @@ export function check(plan: Plan, approval: Approval, opts: CheckOptions = {}): 
   const cwd = opts.cwd ?? process.cwd()
   checkMirrors(plan, opts.cacheDir ?? defaultCacheDir())
   const resolved = resolveApproval(plan, approval, cwd)
-  const { steps, dropped, accepted } = planSteps(plan, resolved, opts, resolved.pick.length === 0)
+  const { steps, dropped, accepted, notes } = planSteps(
+    plan,
+    resolved,
+    opts,
+    resolved.pick.length === 0,
+  )
   for (const [step] of steps) step.result = 'would-run'
   const unusedAllows = resolved.allow
     .filter(
@@ -745,7 +763,7 @@ export function check(plan: Plan, approval: Approval, opts: CheckOptions = {}): 
         ),
     )
     .map((a) => ({ risk: a.risk, row: a.row?.id ?? null }))
-  return { plan, approval: resolved, steps: steps.map(([s]) => s), dropped, unusedAllows }
+  return { plan, approval: resolved, steps: steps.map(([s]) => s), dropped, unusedAllows, notes }
 }
 
 // ── the run ────────────────────────────────────────────────────────────────

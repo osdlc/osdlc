@@ -134,7 +134,7 @@ The report, `plan` and `clean` take these:
 | Option | Meaning |
 | --- | --- |
 | `--remote` | Also judge remote branches. Turns on the network: fetches each remote first and asks GitHub or GitLab about pull requests. Slower. |
-| `--offline` | With `--remote`: do not fetch; judge against the remote-tracking refs already on disk. Remote branches are read from those refs too, so the remote is never contacted. |
+| `--offline` | With `--remote`: do not fetch; judge against the remote-tracking refs already on disk. Remote branches are read from those refs too, so git does not contact the remote. Pull requests are still looked up; add `--provider none` for no network at all. |
 | `--only <kinds>` | Only these kinds of row: `worktree`, `branch`, `remote`, comma-separated. Default: `worktree,branch`, plus `remote` with `--remote`. Naming `remote` implies `--remote`. |
 | `--branch <name\|HEAD>` | Only the rows of one branch: its worktree, its local branch, and its remote branch with `--remote`. `HEAD` is the branch checked out at the target. Never the default branch. |
 | `--against <remote>` | The remote whose default branch counts as "merged into". Default: `origin`, then the first remote. |

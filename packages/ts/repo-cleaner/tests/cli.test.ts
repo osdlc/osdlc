@@ -1531,3 +1531,77 @@ describe('branch mode', () => {
     expect(res.err).toContain('default branch')
   })
 })
+
+describe('a pull request listing that fails (#653)', () => {
+  /**
+   * Put a `gh` on PATH that is installed and signed in, but whose every
+   * listing fails with `stderr`, for the duration of `fn`.
+   */
+  function withFailingGh<T>(stderr: string, fn: () => T): T {
+    const bin = tempDir()
+    const gh = join(bin, 'gh')
+    writeFileSync(
+      gh,
+      `#!/bin/sh\ncase "$1" in --version|auth) exit 0;; esac\nprintf '%b' '${stderr}' >&2\nexit 1\n`,
+    )
+    chmodSync(gh, 0o755)
+    const before = process.env['PATH']
+    process.env['PATH'] = `${bin}:${before ?? ''}`
+    try {
+      return fn()
+    } finally {
+      process.env['PATH'] = before
+    }
+  }
+  const GH = ['--remote', '--offline', '--provider', 'github', '--no-progress']
+  // An escape sequence in the provider's output must not reach the terminal.
+  const STDERR = '\\033[31mboom: no such repository\\n'
+
+  test('every output names the failure, with terminal controls stripped', () => {
+    const fx = buildFixture()
+    withFailingGh(STDERR, () => {
+      const commands = run([...GH, '--format', 'commands'], fx.root)
+      expect(commands.code).toBe(0)
+      expect(commands.err).toMatch(
+        new RegExp(
+          `^repo-cleaner: ${fx.root}: Listing PRs with \`gh pr list\` failed \\(.*boom`,
+          'm',
+        ),
+      )
+      expect(commands.err).not.toContain('\x1b')
+
+      const summary = run([...GH, '--format', 'summary'], fx.root)
+      expect(summary.out).toContain('note: Listing PRs with `gh pr list` failed')
+
+      const planFile = join(tempDir(), 'p.json')
+      const plan = run(['plan', ...GH, '-o', planFile], fx.root)
+      expect(plan.code).toBe(0)
+      expect(plan.err).toContain('repo-cleaner plan: ')
+      expect(plan.err).toContain('Listing PRs with `gh pr list` failed')
+
+      // A saved plan's re-check sweeps again, and says what it judged without.
+      const dry = run(['clean', '--plan', planFile, '--dry-run'], fx.root)
+      expect(dry.code).toBe(0)
+      expect(dry.err).toContain('repo-cleaner clean: ')
+      expect(dry.err).toContain('Listing PRs with `gh pr list` failed')
+      expect(dry.err).not.toContain('\x1b')
+    })
+  })
+
+  test('a remote branch with no known PR is not deleted without confirm-open-pr', () => {
+    const fx = buildFixture()
+    withFailingGh(STDERR, () => {
+      const res = run(['clean', ...GH, '--yes', '--format', 'json'], fx.root)
+      expect(res.code).toBe(0)
+      const out = JSON.parse(res.out) as { receipt: Receipt }
+      expect(out.receipt.dropped).toContainEqual(
+        expect.objectContaining({
+          row: `remote:origin/${BRANCH}`,
+          reason: 'not-allowed',
+          detail: 'needs confirm-open-pr',
+        }),
+      )
+      expect(sh(fx.root, ['ls-remote', '--heads', 'origin', BRANCH])).not.toBe('')
+    })
+  })
+})

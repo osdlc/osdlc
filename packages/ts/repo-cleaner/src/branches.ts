@@ -48,7 +48,7 @@ const LOCAL_FORMAT =
 
 /**
  * True when merged `pr` proves `tip` landed: it targeted the default branch
- * and its head commit is `tip`. Fork PRs never reach here; `fetchPrs` drops
+ * and its head commit is `tip`. Fork PRs never reach here; the provider drops
  * them. A PR with no reported head counts as `head-moved`.
  */
 function prCapturesTip(pr: PRInfo, tip: string, repo: RepoInfo): true | PrEvidenceGap {
@@ -111,11 +111,16 @@ export function mergedFact(e: {
   return e.landed || e.ancestor || e.patchLanded
 }
 
-/** What deleting a branch needs: its unlanded commits, and its open PR. */
-function branchRisks(unmerged: boolean, pr: PRInfo | undefined): Risk[] {
+/**
+ * What deleting a branch needs: its unlanded commits, and its open PR. With
+ * `prUnknown`, a listing that failed, a remote branch is treated as having an
+ * open PR: deleting a PR's head branch closes the PR, and nothing here can say
+ * there is none.
+ */
+function branchRisks(unmerged: boolean, pr: PRInfo | undefined, prUnknown = false): Risk[] {
   return risksFor({
     'abandon-unmerged': unmerged,
-    'confirm-open-pr': pr?.state === 'OPEN',
+    'confirm-open-pr': pr?.state === 'OPEN' || (pr === undefined && prUnknown),
   })
 }
 
@@ -427,10 +432,18 @@ function classifyRemoteBranch(opts: {
     const counted = git.at(repo.root).try.aheadBehind(remoteMain, sha)
     evidence.uniqueCommits = counted.ok ? counted.value.ahead : null
   }
-  const risks = branchRisks(unmerged, pr)
+  const listError = repo.provider?.listError
+  const risks = branchRisks(unmerged, pr, listError !== undefined)
   const commands = repo.remote === null ? [] : [remoteDeleteCommand(repo.remote, branch, sha)]
+  // Without the listing, an open PR cannot be ruled out; the risk says so.
+  const unknownPr =
+    listError !== undefined && pr === undefined
+      ? [
+          `Whether it has an open PR is unknown (\`${repo.provider!.listing}\` failed), so deleting it needs confirm-open-pr.`,
+        ]
+      : []
   const deletes = (why: string): RemoteRow =>
-    row({ verdict: 'delete', action: 'delete', why, commands, risks })
+    row({ verdict: 'delete', action: 'delete', why, commands, risks, notes: unknownPr })
 
   if (pr && landed) return deletes(`PR #${pr.number} merged (auto-delete didn't fire)`)
   if (isAncestor) return deletes(`fully merged into ${remoteMain}`)
@@ -444,7 +457,7 @@ function classifyRemoteBranch(opts: {
   }
 
   const notes = [`Remote branch \`${name}\` is not an ancestor of \`${remoteMain}\`.`]
-  notes.push(pr ? `Associated PR #${pr.number} is ${pr.state}.` : 'No PR found.')
+  notes.push(pr ? `Associated PR #${pr.number} is ${pr.state}.` : (unknownPr[0] ?? 'No PR found.'))
   if (pr && gap) notes.push(gapSentence(pr, gap, repo))
   const unmatched = patch === null ? null : unmatchedSentence(patch, repo)
   if (unmatched !== null) notes.push(unmatched)

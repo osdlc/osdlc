@@ -1351,6 +1351,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
     const pair = makeOriginAndCheckout({ parent })
     checkout = pair.checkout.dir
     git(['branch', 'merged'], checkout)
+    git(['push', '-q', 'origin', 'merged'], checkout)
     git(['checkout', '-q', '-b', 'feature'], checkout)
     featureSha = pair.checkout.commit('feature: work', { 'feature.txt': 'feature\n' })
     git(['push', '-q', 'origin', 'feature'], checkout)
@@ -1381,7 +1382,7 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
       const remotes = rowsOf(swept.rows, 'remote')
       expect(remotes.get('origin/feature')?.evidence.sha).toBe(featureSha)
       // The symbolic `origin/HEAD` is not a branch.
-      expect([...remotes.keys()].sort()).toEqual(['origin/feature', 'origin/main'])
+      expect([...remotes.keys()].sort()).toEqual(['origin/feature', 'origin/main', 'origin/merged'])
       expect(rowsOf(swept.rows, 'branch').get('merged')?.verdict).toBe('delete')
     } finally {
       git(['remote', 'set-url', 'origin', before], checkout)
@@ -1456,5 +1457,46 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
         ),
       ).repos[0].notes,
     ).toEqual(swept.notes)
+  })
+
+  test('while the listing has failed, deleting a remote branch needs confirm-open-pr', () => {
+    const swept = sweepOne(checkout, {
+      cwd: checkout,
+      remote: true,
+      offline: true,
+      provider: 'github',
+      gh: unseeingGh,
+    })
+    const remotes = rowsOf(swept.rows, 'remote')
+    const merged = remotes.get('origin/merged')
+    expect(merged?.verdict).toBe('delete')
+    expect(merged?.risks).toEqual(['confirm-open-pr'])
+    expect(merged?.notes).toContainEqual(expect.stringMatching(/open PR is unknown/))
+    expect(remotes.get('origin/feature')?.risks).toContain('confirm-open-pr')
+    // A local branch delete leaves any PR alone.
+    expect(rowsOf(swept.rows, 'branch').get('merged')?.risks).toEqual([])
+    // The default branch is never deleted, so it carries nothing.
+    expect(remotes.get('origin/main')?.risks).toEqual([])
+  })
+
+  test('a gh that is missing or signed out is named as the reason, not as no PR found', () => {
+    const answering = (failing: string): CommandRunner => ({
+      run(argv) {
+        if (argv[0] === failing) return { exitCode: 1, stdout: '', stderr: 'no' }
+        if (argv[0] === '--version' || argv[0] === 'auth') {
+          return { exitCode: 0, stdout: '', stderr: '' }
+        }
+        return { exitCode: 0, stdout: '[]', stderr: '' }
+      },
+    })
+    const liveNote = (gh: CommandRunner): string[] | undefined =>
+      rowsOf(
+        sweepOne(checkout, { cwd: checkout, remote: true, offline: true, provider: 'github', gh })
+          .rows,
+        'branch',
+      ).get('live')?.notes
+    expect(liveNote(answering('--version'))).toContain('No PR lookup (`gh` not installed).')
+    expect(liveNote(answering('auth'))).toContain('No PR lookup (`gh` not signed in).')
+    expect(liveNote(answering('none'))).toContain('No PR found via `gh pr list`.')
   })
 })

@@ -28,38 +28,26 @@ export interface PrLookup {
 }
 
 /**
- * Every same-repository pull request, keyed by head branch. Fork PRs are
- * dropped by the provider: a fork branch that shares a name proves nothing
- * about ours.
+ * Every same-repository pull request, keyed by head branch, and why there are
+ * none when the listing failed. Fork PRs are dropped by the provider: a fork
+ * branch that shares a name proves nothing about ours.
  *
  * A branch can carry several PRs over its life. The one that decides a
  * verdict is the most live: an open PR means keep whatever else happened, and
  * a merged one means the work landed. Ties go to the higher number, so two
  * runs over unchanged state agree.
  *
- * An empty map is the honest answer when the provider's CLI is missing,
- * unauthenticated or failing, or when there is no provider. Classification
- * degrades to git evidence; {@link lookupPrs} also says why.
+ * The map is empty when the provider's CLI is missing or unauthenticated, when
+ * there is no provider, and when the listing fails. A provider that answers
+ * null or throws has failed (a repository the signed-in account cannot see, a
+ * forge that is down, output that cannot be read), and `error` says why.
+ * Classification then degrades to git evidence, and the sweep notes it rather
+ * than losing every row to one listing.
  *
  * @param provider The provider to ask. It is asked only when it is the one
  *   `repo.provider` names and that probe found it signed in.
  * @param branch Ask only for PRs whose head is exactly this branch; rows
  *   for any other head are dropped here too.
- */
-export function fetchPrs(
-  repo: RepoInfo,
-  provider: PrProvider,
-  branch?: string,
-): Map<string, PRInfo> {
-  return lookupPrs(repo, provider, branch).prs
-}
-
-/**
- * {@link fetchPrs}, with the reason when the listing failed. A provider that
- * answers null or throws has failed: a repository the signed-in account cannot
- * see, a forge that is down, output that cannot be read. Either way the map is
- * empty and `error` says why, so the sweep judges the repository on git
- * evidence and notes it, rather than losing every row to one listing.
  */
 export function lookupPrs(repo: RepoInfo, provider: PrProvider, branch?: string): PrLookup {
   const byHead = new Map<string, PRInfo>()
@@ -74,7 +62,7 @@ export function lookupPrs(repo: RepoInfo, provider: PrProvider, branch?: string)
   } catch (err) {
     return { prs: byHead, error: errorText(err) }
   }
-  if (rows === null) return { prs: byHead, error: `\`${status.listing}\` failed` }
+  if (rows === null) return { prs: byHead, error: 'the provider gave no reason' }
 
   for (const info of rows) {
     const head = info.headRef

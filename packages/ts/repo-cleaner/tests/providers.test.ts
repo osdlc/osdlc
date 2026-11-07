@@ -17,7 +17,7 @@ import { makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 import { cannedGh, cannedGlab, git } from './helpers.ts'
 import { main } from '../src/cli.ts'
 import { parsePlan } from '../src/plan.ts'
-import { fetchPrs, lookupPrs } from '../src/prs.ts'
+import { lookupPrs } from '../src/prs.ts'
 import {
   chooseProvider,
   forgeTarget,
@@ -107,7 +107,7 @@ describe('the GitLab provider', () => {
       { iid: 5, state: 'opened', source_branch: 'feat/b', sha: 'bbb', target_branch: 'dev' },
       { iid: 6, state: 'merged', source_branch: 'feat/c', sha: 'ccc', source_project_id: 99 },
     ])
-    const prs = fetchPrs(repoWith(GITLAB), gitlabProvider(glab))
+    const prs = lookupPrs(repoWith(GITLAB), gitlabProvider(glab)).prs
     expect([...prs.keys()].sort()).toEqual(['feat/a', 'feat/b'])
     expect(prs.get('feat/a')).toEqual({
       number: 4,
@@ -124,7 +124,7 @@ describe('the GitLab provider', () => {
 
   test('asks the host and the full project path the remote names', () => {
     const glab = cannedGlab([])
-    fetchPrs(repoWith(GITLAB), gitlabProvider(glab))
+    lookupPrs(repoWith(GITLAB), gitlabProvider(glab))
     const api = glab.calls.find((argv) => argv[0] === 'api')!
     expect(api.slice(0, 3)).toEqual(['api', '--hostname', 'gitlab.example.com'])
     expect(api[3]).toMatch(/^projects\/group%2Fsub%2Fproj\/merge_requests\?/)
@@ -140,7 +140,7 @@ describe('the GitLab provider', () => {
       { iid: 7, state: 'closed', source_branch: 'y', sha: 'e' },
       { iid: 8, state: 'locked', source_branch: 'z', sha: 'f' },
     ])
-    const prs = fetchPrs(repoWith(GITLAB), gitlabProvider(glab))
+    const prs = lookupPrs(repoWith(GITLAB), gitlabProvider(glab)).prs
     expect(prs.get('x')?.number).toBe(2)
     expect(prs.get('y')?.number).toBe(7)
     expect(prs.get('z')?.state).toBe('OPEN')
@@ -154,7 +154,7 @@ describe('the GitLab provider', () => {
       sha: 's',
     }))
     const glab = cannedGlab(many)
-    const prs = fetchPrs(repoWith(GITLAB), gitlabProvider(glab))
+    const prs = lookupPrs(repoWith(GITLAB), gitlabProvider(glab)).prs
     expect(prs.size).toBe(300)
     expect(glab.calls.filter((argv) => argv[0] === 'api')).toHaveLength(3)
   })
@@ -164,7 +164,7 @@ describe('the GitLab provider', () => {
       { iid: 1, state: 'merged', source_branch: 'feat', sha: 'a' },
       { iid: 2, state: 'merged', source_branch: 'feat-2', sha: 'b' },
     ])
-    const prs = fetchPrs(repoWith(GITLAB), gitlabProvider(glab), 'feat')
+    const prs = lookupPrs(repoWith(GITLAB), gitlabProvider(glab), 'feat').prs
     expect([...prs.keys()]).toEqual(['feat'])
     expect(glab.calls.find((argv) => argv[0] === 'api')?.[3]).toMatch(/[?&]source_branch=feat(&|$)/)
   })
@@ -190,7 +190,7 @@ describe('the GitLab provider', () => {
       noun: 'PR',
       listing: 'gh pr list',
     }
-    const prs = fetchPrs(repoWith(github), githubProvider(gh), 'feat')
+    const prs = lookupPrs(repoWith(github), githubProvider(gh), 'feat').prs
     expect([...prs.keys()]).toEqual(['feat'])
     const list = calls.find((argv) => argv[1] === 'list')!
     expect(list[list.indexOf('--head') + 1]).toBe('feat')
@@ -201,7 +201,7 @@ describe('the GitLab provider', () => {
     const failing = {
       run: () => ({ exitCode: 1, stdout: '', stderr: '401 Unauthorized' }),
     }
-    expect(fetchPrs(repoWith(GITLAB), gitlabProvider(failing)).size).toBe(0)
+    expect(lookupPrs(repoWith(GITLAB), gitlabProvider(failing)).prs.size).toBe(0)
   })
 
   test('a failed listing says why, whether the provider answers null or throws', () => {
@@ -210,8 +210,10 @@ describe('the GitLab provider', () => {
     }
     expect(lookupPrs(repoWith(GITLAB), gitlabProvider(failing))).toEqual({
       prs: new Map(),
-      error: '`glab api` failed',
+      error: '401 Unauthorized',
     })
+    const silent: PrProvider = { ...gitlabProvider(failing), listPrs: () => null }
+    expect(lookupPrs(repoWith(GITLAB), silent).error).toBe('the provider gave no reason')
     const throwing: PrProvider = {
       ...gitlabProvider(failing),
       listPrs: () => {
@@ -241,7 +243,10 @@ describe('the GitLab provider', () => {
       },
     ])
     const cut = { run: () => ({ exitCode: 0, stdout: page, stderr: '', outputIncomplete: true }) }
-    expect(fetchPrs(repoWith(GITLAB), gitlabProvider(cut)).size).toBe(0)
+    expect(lookupPrs(repoWith(GITLAB), gitlabProvider(cut))).toEqual({
+      prs: new Map(),
+      error: 'page 1 was cut short',
+    })
   })
 
   test('a merge request with a mistyped field is skipped', () => {
@@ -267,15 +272,17 @@ describe('the GitLab provider', () => {
       },
     ])
     const glab = { run: () => ({ exitCode: 0, stdout: page, stderr: '' }) }
-    expect([...fetchPrs(repoWith(GITLAB), gitlabProvider(glab)).keys()]).toEqual(['ok'])
+    expect([...lookupPrs(repoWith(GITLAB), gitlabProvider(glab)).prs.keys()]).toEqual(['ok'])
   })
 
   test('the provider is not asked when unauthenticated, absent or a different one', () => {
     const glab = cannedGlab([{ iid: 1, state: 'merged', source_branch: 'x', sha: 'a' }])
     const provider = gitlabProvider(glab)
-    expect(fetchPrs(repoWith({ ...GITLAB, authenticated: false }), provider).size).toBe(0)
-    expect(fetchPrs(repoWith(null), provider).size).toBe(0)
-    expect(fetchPrs(repoWith({ ...GITLAB, name: 'github', tool: 'gh' }), provider).size).toBe(0)
+    expect(lookupPrs(repoWith({ ...GITLAB, authenticated: false }), provider).prs.size).toBe(0)
+    expect(lookupPrs(repoWith(null), provider).prs.size).toBe(0)
+    expect(lookupPrs(repoWith({ ...GITLAB, name: 'github', tool: 'gh' }), provider).prs.size).toBe(
+      0,
+    )
     expect(glab.calls.filter((argv) => argv[0] === 'api')).toEqual([])
   })
 

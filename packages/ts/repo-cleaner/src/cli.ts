@@ -429,21 +429,28 @@ function doSweep(
  * repository off as an empty one.
  */
 function reportUnreadable(ctx: CliContext, name: string, s: Sweep): boolean {
-  reportNotes(ctx, name, s)
   const failed = s.repos.filter((r) => r.error !== null)
   for (const r of failed) ctx.io.stderr(`${name}: ${r.repo?.root ?? r.path}: ${r.error}\n`)
   return failed.length > 0
 }
 
-/**
- * Each repository's notes on what the sweep judged without (a failed fetch,
- * remote listing or pull request lookup), on stderr, for the outputs that do
- * not carry them.
- */
+/** Each repository's `RepoSweep.notes`, on stderr, for the outputs that do not carry them. */
 function reportNotes(ctx: CliContext, name: string, s: Sweep): void {
-  for (const r of s.repos) {
-    for (const note of r.notes) ctx.io.stderr(`${name}: ${r.repo?.root ?? r.path}: ${note}\n`)
-  }
+  writeNotes(
+    ctx,
+    name,
+    s.repos.flatMap((r) => r.notes.map((note) => ({ repo: r.repo?.root ?? r.path, note }))),
+  )
+}
+
+/** Notes as `<name>: <repo>: <note>` lines on stderr. A note quotes git's and the provider's output, so controls are stripped. */
+function writeNotes(
+  ctx: CliContext,
+  name: string,
+  notes: readonly { repo: string; note: string }[],
+): void {
+  for (const { repo, note } of notes)
+    ctx.io.stderr(stripControls(`${name}: ${repo}: ${note}`) + '\n')
 }
 
 function runReport(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
@@ -486,6 +493,7 @@ function runPlan(argv: readonly string[], ctx: CliContext, status: StatusLine): 
     return EXIT_NOTHING_TO_SWEEP
   }
   const plan = planOf(swept.sweep)
+  reportNotes(ctx, name, swept.sweep)
   const unreadable = reportUnreadable(ctx, name, swept.sweep)
   const style = styleFor(ctx, 'stderr')
   ctx.io.stderr(renderTotals(swept.sweep, style) + '\n' + remoteNote(swept.sweep, style))
@@ -651,11 +659,13 @@ function runClean(
     return refusal(ctx, name, err)
   }
   status.clear()
+  // The re-check's notes: from the sweep just made, or from sweeping a saved plan's repositories again.
+  writeNotes(ctx, name, preview.notes)
 
   const showPreview = (): void => {
     if (v.format === 'json') {
       ctx.io.stdout(
-        `${JSON.stringify({ dryRun: v.dryRun, summary: summarizeRun(preview), steps: preview.steps, dropped: preview.dropped, unusedAllows: preview.unusedAllows }, null, 2)}\n`,
+        `${JSON.stringify({ dryRun: v.dryRun, summary: summarizeRun(preview), steps: preview.steps, dropped: preview.dropped, unusedAllows: preview.unusedAllows, notes: preview.notes }, null, 2)}\n`,
       )
     } else {
       ctx.io.stdout(renderPreview(preview, style))
