@@ -12,13 +12,13 @@ repo-cleaner 0.18. Builds on
   ([#501](https://github.com/osdlc/osdlc/pull/501)) have landed; the rest are
   in the Work table.
 
-  | Gap                       | Change                                                                                                                                           |
-  | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-  | Lock liveness             | A lock whose reason names a dead pid stops blocking; any process but an idle shell inside a worktree blocks, as does an unreadable process table |
-  | Patch equivalence         | A branch whose commits, one by one or squashed, are on the landed ref counts as landed                                                           |
-  | Remote-contained worktree | A clean worktree whose HEAD is on a remote branch is removable unless a PR is open                                                               |
-  | Sizes                     | Worktree rows carry their disk size when asked; the report ranks by size                                                                         |
-  | Archive before delete     | `clean` can push unlanded work to an archive ref, verify it, then delete                                                                         |
+  | Gap                       | Change                                                                                                                                                                                       |
+  | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | Lock liveness             | A lock whose reason names a dead pid stops blocking; any process but an idle shell inside a worktree blocks, as does an unreadable process table                                             |
+  | Patch equivalence         | A branch whose commits, one by one or squashed, are on the landed ref counts as landed; unless `git merge-tree` confirms the content, deleting it still needs abandon-unmerged               |
+  | Remote-contained worktree | A clean, used worktree whose HEAD is on a fetched remote branch other than the default is removable unless a PR is open; it needs abandon-unmerged again if the same run deletes that branch |
+  | Sizes                     | Worktree rows carry their disk size when asked; the report ranks by size                                                                                                                     |
+  | Archive before delete     | `clean` can push unlanded work to an archive ref, verify it, then delete                                                                                                                     |
 
 - **Process liveness is engine, through a probe port.** repo-cleaner reads a
   generic `pid <N>` token in a lock reason, with an optional start time
@@ -136,7 +136,7 @@ Tracked in [#669](https://github.com/osdlc/osdlc/issues/669).
 ## Out of scope
 
 - Linux and Windows schedulers.
-- Clearing stale `index.lock` files. They stay blockers.
+- Clearing stale `index.lock` files.
 
 ## Open questions
 

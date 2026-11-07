@@ -19,12 +19,14 @@ task files, stays with sdlc, in
 
 - **The sweep is its own package.** `@osdlc/repo-cleaner`, binary
   `repo-cleaner`, judges worktrees, local branches and remote branches on
-  git evidence and, with `--remote`, a forge's pull requests. Nothing else.
+  git evidence, the process table (whether anything runs in a worktree) and,
+  with `--remote`, the code host's pull requests. Nothing else.
 - **It reads no host configuration.** The library takes targets, and the
   CLI takes them as arguments. A host resolves its own list of repositories
   and passes paths in.
-- **A bare invocation sweeps one repository.** No target sweeps the checkout
-  the caller stands in. Fan-out happens only when the caller names targets.
+- **A bare invocation sweeps where the caller stands.** No target is the same
+  as naming the current directory: in a checkout that sweeps its repository,
+  and in a directory of checkouts it fans out over them.
 - **A target is a path or a remote URL.** A checkout names that repository.
   Any other directory is searched for the checkouts under it. Linked
   worktrees collapse into their repository and appear as its rows. A remote
@@ -45,7 +47,8 @@ code depended on the host for only one function, the task linkage, so the
 boundary was already drawn.
 
 A git-derived `delete` rarely needs overruling, so a host usually only
-sharpens rows the sweep left at `review`, `keep` or `blocked`. When one does
+sharpens rows the sweep left at `review` or `keep`. A `blocked` row has no
+action to take, so re-ranking it changes nothing. When a host does
 hold a `delete` back, the sweep keeps that worktree's branch too.
 Post-processing does all of this with a smaller surface than a hook inside
 classification.
@@ -65,9 +68,11 @@ classification.
 - Rows carry complete evidence, including rows whose verdict was obvious,
   and `notes` is a list of sentences. A host composes its own sentence
   rather than parsing a joined string.
-- Every refusal is a `RepoCleanerError` with a `code`, so a host can tell
-  "you asked for something contradictory" from "a repository could not be
-  read".
+- Bad or contradictory input is refused with a `RepoCleanerError` carrying a
+  `code`, so a host can tell "you asked for something contradictory" from
+  "no such row". A repository that cannot be read is not an input error: a
+  sweep returns it with `error` set, and a run that cannot re-read it throws
+  a plain `Error`.
 
 ## Reopen if
 
