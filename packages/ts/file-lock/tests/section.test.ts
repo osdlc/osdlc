@@ -14,9 +14,9 @@ import { promisify } from 'node:util'
 
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 
-import { LockTimeoutError, withLock } from '../src/index.ts'
+import { holderGone, LockTimeoutError, withLock } from '../src/index.ts'
 
-import { afterMarkersExpire, age, markerFor } from './helpers.ts'
+import { afterMarkersExpire, age, DEAD_PID, markerFor } from './helpers.ts'
 
 const run = promisify(execFile)
 const CHILD = join(import.meta.dirname, 'section.child.ts')
@@ -131,4 +131,22 @@ describe('withLock', () => {
     expect(readFileSync(counter, 'utf-8')).toBe('30')
     expect(readdirSync(dir)).toEqual(['counter'])
   }, 60_000)
+})
+
+describe('withLock with isStale', () => {
+  test('a holder-gone rule waits out a live holder however old its lock', () => {
+    const lock = join(dir, 'x.lock')
+    writeFileSync(lock, JSON.stringify({ pid: process.ppid, token: 'live' }))
+    age(lock)
+    expect(() =>
+      withLock(lock, () => 0, { isStale: holderGone((h) => [h.pid]), timeoutMs: 50 }),
+    ).toThrow('timed out')
+    expect(JSON.parse(readFileSync(lock, 'utf-8')).token).toBe('live')
+  })
+
+  test('a holder-gone rule takes over a dead holder however fresh its lock', () => {
+    const lock = join(dir, 'x.lock')
+    writeFileSync(lock, JSON.stringify({ pid: DEAD_PID, token: 'dead' }))
+    expect(withLock(lock, () => 'ran', { isStale: holderGone((h) => [h.pid]) })).toBe('ran')
+  })
 })

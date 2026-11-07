@@ -26,6 +26,7 @@ import {
   type LockClaim,
   type LockContent,
   type LockOptions,
+  type SectionHolder,
   type StaleRule,
 } from '@osdlc/file-lock'
 
@@ -48,6 +49,12 @@ test('a short section: read, change and write back one file', () => {
   bump()
   bump()
   expect(readFileSync(counter, 'utf8')).toBe('2')
+})
+
+test('a long section judged by its holder process, not by age', () => {
+  const lock = join(dir, 'merge.lock')
+  const isStale: StaleRule<SectionHolder> = holderGone<SectionHolder>((h) => [h.pid])
+  expect(withLock(lock, () => 'merged', { isStale, timeoutMs: 1_000 })).toBe('merged')
 })
 
 test('a section that cannot get the lock in time', () => {

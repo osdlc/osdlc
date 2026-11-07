@@ -150,16 +150,17 @@ The types are `LockContent`, `HeldLock`, `LockClaim`, `ClaimOptions` and
 
 ## The short section
 
-`withLock(path, fn, { staleMs?, timeoutMs?, retryMs? })` runs
+`withLock(path, fn, { staleMs?, timeoutMs?, retryMs?, isStale? })` runs
 `fn` holding the lock at `path` and releases it when `fn` returns or throws.
-The lock records this process's `pid`, and its rule is
-`untouchedFor(staleMs)`.
+The lock records this process's `pid` (`SectionHolder`), and its rule is
+`untouchedFor(staleMs)` unless you pass `isStale`.
 
 | option | default | meaning |
 |---|---|---|
 | `staleMs` | 10 s | a lock untouched for longer is a killed holder's |
 | `timeoutMs` | 30 s | give up after waiting this long; 0 tries once |
 | `retryMs` | 5 ms | pause between attempts |
+| `isStale` | `untouchedFor(staleMs)` | replaces the age rule, for example `holderGone((h) => [h.pid])` for a section that may run long |
 
 When the lock stays held, it throws `LockTimeoutError`, whose message is
 `timed out waiting for lock <path>`, with the `path` and the last `holder`

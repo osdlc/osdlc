@@ -3,13 +3,24 @@
  * function, such as a re-read, validate and rewrite of one file.
  */
 
-import { type HeldLock, prepareClaim, releaseLock } from './held.ts'
+import { type HeldLock, prepareClaim, releaseLock, type StaleRule } from './held.ts'
 import { untouchedFor } from './rules.ts'
+
+/** What a {@link withLock} lock records: the holder's pid. */
+export interface SectionHolder {
+  pid?: number
+}
 
 /** Options for {@link withLock}. */
 export interface LockOptions {
   /** A lock untouched for longer than this, in milliseconds, is a dead holder's and is taken over. Default 10 s. */
   staleMs?: number | undefined
+  /**
+   * Replaces the age rule: when a held lock may be taken over. For a section
+   * that can legitimately run long, `holderGone((h) => [h.pid])` waits for the
+   * holder process to exit instead of guessing by age. `staleMs` is then unused.
+   */
+  isStale?: StaleRule<SectionHolder> | undefined
   /** Give up and throw {@link LockTimeoutError} after waiting this long. 0 tries once. Default 30 s. */
   timeoutMs?: number | undefined
   /** Pause between attempts, in milliseconds. Default 5. */
@@ -21,9 +32,9 @@ export class LockTimeoutError extends Error {
   /** The lock that stayed held. */
   readonly path: string
   /** The holder seen last, or null when the lock kept changing. */
-  readonly holder: HeldLock | null
+  readonly holder: HeldLock<SectionHolder> | null
 
-  constructor(path: string, holder: HeldLock | null) {
+  constructor(path: string, holder: HeldLock<SectionHolder> | null) {
     super(`timed out waiting for lock ${path}`)
     this.name = 'LockTimeoutError'
     this.path = path
@@ -51,9 +62,10 @@ function sleepSync(ms: number): void {
  */
 export function withLock<T>(path: string, fn: () => T, options: LockOptions = {}): T {
   const { staleMs = 10_000, timeoutMs = 30_000, retryMs = 5 } = options
+  const isStale = options.isStale ?? untouchedFor<SectionHolder>(staleMs)
   const deadline = Date.now() + timeoutMs
   // The temp file is written once; each retry only tries the link again.
-  const prepared = prepareClaim(path, { pid: process.pid }, { isStale: untouchedFor(staleMs) })
+  const prepared = prepareClaim<SectionHolder>(path, { pid: process.pid }, { isStale })
   let claim = prepared.attempt()
   try {
     while (!claim.ok) {

@@ -17,4 +17,4 @@ export {
   type StaleRule,
 } from './held.ts'
 export { holderGone, pidAlive, untouchedFor, type HolderGoneOptions } from './rules.ts'
-export { LockTimeoutError, withLock, type LockOptions } from './section.ts'
+export { LockTimeoutError, withLock, type LockOptions, type SectionHolder } from './section.ts'
