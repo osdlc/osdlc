@@ -33,9 +33,11 @@ contexts, a route permission table, and a server that can be stopped.
 - Breaking: a protocol upgrade (such as a WebSocket handshake) with a foreign
   `Origin` is refused with 403, as a mutating request is. A desktop webview's
   own origin (`tauri://localhost`, `http(s)://tauri.localhost`) may upgrade.
-- Breaking: a read-safe rule applies only when the request path is already in
-  normalised form. `POST /api/search/` or `/api/%73earch` no longer counts as a
-  read-safe `/api/search`, because the router may send it to another handler.
+- Breaking: a read-safe rule is matched against the raw request path, the one
+  the router routes. `POST /api/search/` or `/api/%73earch` no longer counts as
+  a read-safe `/api/search`, because the router may send it to another
+  handler. Below a `/*` rule, an encoded name such as `my%20note` still
+  matches.
 - Breaking: `Listen`, `AccessContext`, `Grant`, `DenialReason`, `ServeError`,
   `RuntimeError`, `Denial`, `InterfaceAddr`, `ShareUrls` and
   `WebAccessStatus` are `#[non_exhaustive]`. A `match` needs a wildcard arm;
@@ -49,8 +51,9 @@ contexts, a route permission table, and a server that can be stopped.
 - `is_local_authority` and `is_local_origin` accept any letter case and refuse
   a port that is not 1 to 5 digits, so `localhost:3000.evil.com` and
   `[::1].evil.com` are not local.
-- `share_url` percent-encodes characters of the token outside
-  `A-Z a-z 0-9 - . _ ~`, and the guard decodes the `?token=` value.
+- `share_url` and the share cookie percent-encode characters of the token
+  outside `A-Z a-z 0-9 - . _ ~`, and the guard decodes them, so a token with
+  `;` or a space works. A minted token has no such character.
 - `ServerHandle::stop` waits one grace period in total, not one per listener.
 
 ### Removed

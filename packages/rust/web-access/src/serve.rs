@@ -43,16 +43,8 @@ pub enum ServeError {
 /// character of the token outside `A-Z a-z 0-9 - . _ ~` is percent-encoded
 /// (a minted token has none).
 pub fn share_url(addr: SocketAddr, token: &str) -> String {
-    let token = percent_encoding::utf8_percent_encode(token, TOKEN_ESCAPES);
-    format!("http://{addr}/?token={token}")
+    format!("http://{addr}/?token={}", crate::guard::encode_token(token))
 }
-
-/// Everything but the URL-unreserved characters `A-Z a-z 0-9 - . _ ~`.
-const TOKEN_ESCAPES: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
-    .remove(b'-')
-    .remove(b'.')
-    .remove(b'_')
-    .remove(b'~');
 
 /// A running server. Dropping it without `stop` leaves the server running
 /// until the runtime shuts down.

@@ -325,18 +325,20 @@ impl GuardState {
     async fn admit(
         &self,
         mut req: Request<Body>,
-        path: &str,
         context: AccessContext,
         grant: Grant,
         next: Next,
     ) -> Response {
-        // A read-safe rule is an exemption, so it applies only when the router
-        // will see the same path the rule matched: axum routes the raw path,
-        // and `/api/search/` or `/api/%73earch` may reach another handler.
+        // A read-safe rule is an exemption, so it is matched against the raw
+        // path, the one axum routes: `/api/search/` or `/api/%73earch` may
+        // reach another handler than `/api/search`. Below a `/*` prefix, an
+        // encoded character (`/api/notes/my%20note`) still matches.
         let read_only = grant == Grant::Read
             && is_mutating(req.method())
-            && !(req.uri().path() == path
-                && self.read_safe.iter().any(|r| r.matches(req.method(), path)));
+            && !self
+                .read_safe
+                .iter()
+                .any(|r| r.matches(req.method(), req.uri().path()));
         if read_only {
             let body = serde_json::json!({ "error": "read_only" });
             return json_response(StatusCode::FORBIDDEN, &body);
@@ -391,23 +393,47 @@ fn origin_authority(origin: &str) -> Option<String> {
 /// True when `origin` names the same authority as the request's `Host`, both
 /// normalised exactly as the guard normalises them (lowercased, scheme or
 /// port-80 default filled in). `null`, an unparseable origin and a differing
-/// authority are false. For a handler that must refuse a cross-origin GET the
-/// guard's own Origin check (mutating methods only) lets through, such as a
-/// WebSocket upgrade.
+/// authority are false. For a handler that must refuse a cross-origin GET,
+/// which the guard's own Origin check (mutating methods and upgrades) lets
+/// through.
 pub fn origin_matches_host(origin: &str, host: &str) -> bool {
     origin_authority(origin).is_some_and(|o| o == normalize_authority(host, 80))
 }
 
-/// Every cookie named `name`: another app on the same host can set a stale one
-/// (cookies are not port-isolated), so the first must not shadow a valid one.
-fn cookie_values<'a>(req: &'a Request<Body>, name: &'a str) -> impl Iterator<Item = &'a str> {
+/// Every cookie named `name`, decoded (see [`encode_token`]): another app on
+/// the same host can set a stale one (cookies are not port-isolated), so the
+/// first must not shadow a valid one.
+fn cookie_values<'a>(req: &'a Request<Body>, name: &'a str) -> impl Iterator<Item = String> + 'a {
     req.headers()
         .get_all(header::COOKIE)
         .iter()
         .filter_map(|v| v.to_str().ok())
         .flat_map(|v| v.split(';'))
         .filter_map(|pair| pair.trim().split_once('='))
-        .filter_map(move |(k, v)| (k == name).then_some(v))
+        .filter(move |(k, _)| *k == name)
+        .map(|(_, v)| decode_token(v))
+}
+
+/// Everything but the URL-unreserved characters `A-Z a-z 0-9 - . _ ~`.
+const TOKEN_ESCAPES: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
+    .remove(b'-')
+    .remove(b'.')
+    .remove(b'_')
+    .remove(b'~');
+
+/// `token` with every character outside `A-Z a-z 0-9 - . _ ~` percent-encoded,
+/// so it is safe in a URL query and in a cookie value. A minted token has no
+/// such character, so it is unchanged.
+pub(crate) fn encode_token(token: &str) -> String {
+    percent_encoding::utf8_percent_encode(token, TOKEN_ESCAPES).to_string()
+}
+
+/// [`encode_token`] reversed. A value that does not decode to UTF-8 is kept as
+/// written.
+fn decode_token(raw: &str) -> String {
+    percent_encoding::percent_decode_str(raw)
+        .decode_utf8()
+        .map_or_else(|_| raw.to_owned(), |t| t.into_owned())
 }
 
 /// The value of `?token=`, percent-decoded, and the query with that parameter
@@ -417,10 +443,7 @@ fn split_token_param(query: &str) -> Option<(String, String)> {
     let is_token = |p: &&str| *p == "token" || p.starts_with("token=");
     // The last `token` wins, as browsers and form parsers read a repeated key.
     let raw = query.split('&').rfind(is_token)?;
-    let raw = raw.strip_prefix("token=").unwrap_or("");
-    let token = percent_encoding::percent_decode_str(raw)
-        .decode_utf8()
-        .map_or_else(|_| raw.to_owned(), |t| t.into_owned());
+    let token = decode_token(raw.strip_prefix("token=").unwrap_or(""));
     let rest: Vec<&str> = query
         .split('&')
         .filter(|p| !p.is_empty() && !is_token(p))
@@ -531,13 +554,13 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
     }
 
     // 3. Normalisable path.
-    let Some(norm) = normalize_path(&path) else {
+    if normalize_path(&path).is_none() {
         return refuse(StatusCode::BAD_REQUEST, "bad path");
-    };
+    }
 
     // 4. Loopback peer without a token.
     if state.policy.loopback_open && context == AccessContext::WebLocal {
-        return state.admit(req, &norm, context, Grant::Full, next).await;
+        return state.admit(req, context, Grant::Full, next).await;
     }
 
     // 5. `?token=` bootstrap on GET; a valid one wins over any cookie.
@@ -554,7 +577,10 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
             } else {
                 format!("{safe}?{rest}")
             };
-            let set_cookie = format!("{cookie}={tok}; HttpOnly; SameSite=Strict; Path=/");
+            // Encoded, so a token with `;` or a control character cannot break
+            // the header; `cookie_values` decodes it.
+            let value = encode_token(&tok);
+            let set_cookie = format!("{cookie}={value}; HttpOnly; SameSite=Strict; Path=/");
             return bounce(&location, &set_cookie);
         }
         presented_wrong = true;
@@ -568,10 +594,10 @@ async fn check(state: &GuardState, req: Request<Body>, next: Next) -> Response {
     let mut grant = header_tok.and_then(|t| state.tokens.grant_for(t));
     for t in cookie_values(&req, &cookie) {
         presented_wrong = true;
-        grant = grant.max(state.tokens.grant_for(t));
+        grant = grant.max(state.tokens.grant_for(&t));
     }
     if let Some(grant) = grant {
-        return state.admit(req, &norm, context, grant, next).await;
+        return state.admit(req, context, grant, next).await;
     }
     presented_wrong |= header_tok.is_some();
 
@@ -1341,5 +1367,45 @@ mod tests {
         assert_eq!(path_and_query, "/?token=a%26b%23c%20d");
         let res = status(app, req("GET", path_and_query, LAN, &[])).await;
         assert_eq!(bounce_target(&res), "/");
+    }
+
+    #[tokio::test]
+    async fn a_wildcard_read_safe_rule_matches_an_encoded_name_below_it() {
+        let state = GuardState::new(
+            Tokens::none().with(READ_TOKEN, Grant::Read),
+            [HOST.to_owned()],
+            GuardPolicy::default(),
+        )
+        .with_read_safe([RouteRule::new(Some(Method::POST), "/notes/*", ())]);
+        let app = Router::new()
+            .route("/notes/{*name}", post(|| async { "read" }))
+            .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard));
+        let h = [(TOKEN_HEADER, READ_TOKEN)];
+        let res = status(app.clone(), req("POST", "/notes/my%20note", LAN, &h)).await;
+        assert_eq!(res.status(), StatusCode::OK);
+        // The prefix itself must be spelled as the rule spells it.
+        let res = status(app, req("POST", "/n%6ftes/a", LAN, &h)).await;
+        assert_eq!(res.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn a_token_with_cookie_breaking_characters_round_trips_through_the_cookie() {
+        let token = "ab;c d\u{7f}";
+        let state = GuardState::new(
+            Tokens::full_only(token.to_owned()),
+            [HOST.to_owned()],
+            GuardPolicy::default(),
+        );
+        let app = Router::new()
+            .route("/", get(|| async { "ok" }))
+            .layer(axum::middleware::from_fn_with_state(Arc::new(state), guard));
+        let link = crate::share_url("192.168.1.5:3000".parse().unwrap(), token);
+        let path = link.strip_prefix("http://192.168.1.5:3000").unwrap();
+        let res = status(app.clone(), req("GET", path, LAN, &[])).await;
+        let set = res.headers()[header::SET_COOKIE].to_str().unwrap();
+        let pair = set.split(';').next().unwrap();
+        assert_eq!(pair, "web_access_3000=ab%3Bc%20d%7F");
+        let res = status(app, req("GET", "/", LAN, &[("cookie", pair)])).await;
+        assert_eq!(res.status(), StatusCode::OK);
     }
 }

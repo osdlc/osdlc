@@ -134,6 +134,7 @@ Some examples, with `Host: 192.168.1.5:20015` unless shown:
 | `POST /api/save` with a `read` token | 403 `read_only` |
 | `POST /api/search` with a `read` token, `/api/search` listed as read-safe | passes |
 | `POST /api/search/` (trailing slash) with a `read` token | 403 `read_only`, because the router may send that path to another handler |
+| `POST /api/notes/my%20note` with a `read` token, `/api/notes/*` listed as read-safe | passes |
 
 ## Grants and contexts
 

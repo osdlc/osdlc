@@ -40,8 +40,9 @@ pub fn is_local_authority(authority: &str) -> bool {
     // nothing or by `:port`.
     let (host, port) = match authority.strip_prefix('[') {
         Some(v6) => match v6.split_once(']') {
-            Some((inner, after)) if after.is_empty() || after.starts_with(':') => {
-                (inner, after.strip_prefix(':'))
+            // Only `::1` may be bracketed: `[localhost]` is not an authority.
+            Some(("::1", after)) if after.is_empty() || after.starts_with(':') => {
+                ("::1", after.strip_prefix(':'))
             }
             _ => return false,
         },
@@ -108,6 +109,8 @@ mod tests {
             "localhost:",
             "localhost:123456",
             "[::1].evil.com",
+            "[localhost]:3000",
+            "[127.0.0.1]",
             "[::1]evil.com:80",
             "localhost:x@evil.com",
             "[::2]",

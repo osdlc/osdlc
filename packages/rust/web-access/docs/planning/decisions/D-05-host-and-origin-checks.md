@@ -20,8 +20,8 @@ created: 2026-11-07
 - A plain `GET` with a foreign `Origin` is left to the browser's CORS rules.
   `origin_matches_host` is there for a handler that must refuse one.
 - The path must normalise, else 400. Deny rules match the normalised path. A
-  read-safe rule, which lets a `read` grant use a non-safe method, applies
-  only when the raw path is already normalised.
+  read-safe rule, which lets a `read` grant use a non-safe method, matches the
+  raw path instead.
 
 ## Why
 
@@ -34,7 +34,8 @@ created: 2026-11-07
   loads from the network can present those origins.
 - The router routes the raw path. An exemption matched against the
   normalised path could let `/api/search/` reach a different handler than
-  `/api/search`. A deny rule matched that way only refuses more.
+  `/api/search`, so an exemption matches what the router sees. A deny rule
+  matched against the normalised path only refuses more.
 
 ## Consequences
 

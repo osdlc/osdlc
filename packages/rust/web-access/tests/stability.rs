@@ -24,17 +24,17 @@ fn readme_items() -> BTreeSet<String> {
 /// The item each marker documents: the name in the next line that is not a doc
 /// comment or an attribute (`pub fn with_label(` gives `with_label`).
 fn marked_items() -> BTreeSet<String> {
-    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut found = BTreeSet::new();
-    for entry in std::fs::read_dir(src).expect("src") {
-        let text = std::fs::read_to_string(entry.expect("entry").path()).expect("source");
+    for file in rust_files(&Path::new(env!("CARGO_MANIFEST_DIR")).join("src")) {
+        let text = std::fs::read_to_string(file).expect("source");
         let lines: Vec<&str> = text.lines().map(str::trim_start).collect();
         for (i, line) in lines.iter().enumerate() {
             if !line.contains(MARKER) {
                 continue;
             }
-            let item = lines[i + 1..]
+            let item = lines
                 .iter()
+                .skip(i + 1)
                 .find(|l| !l.starts_with("///") && !l.starts_with("#["))
                 .expect("an item after the marker");
             let name = item
@@ -48,6 +48,20 @@ fn marked_items() -> BTreeSet<String> {
         }
     }
     found
+}
+
+/// Every `.rs` file under `dir`, submodules included.
+fn rust_files(dir: &Path) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(dir).expect("source dir") {
+        let path = entry.expect("entry").path();
+        if path.is_dir() {
+            files.extend(rust_files(&path));
+        } else if path.extension().is_some_and(|e| e == "rs") {
+            files.push(path);
+        }
+    }
+    files
 }
 
 #[test]

@@ -49,9 +49,9 @@ fn check_file_name(file_name: &str) -> io::Result<()> {
     }
 }
 
+/// Write `token` to `dir/file_name`. Callers have checked `file_name`.
 fn persist(dir: &Path, file_name: &str, token: &str) -> io::Result<()> {
     use std::io::Write;
-    check_file_name(file_name)?;
     #[cfg(unix)]
     let created_dir = !dir.exists();
     std::fs::create_dir_all(dir)?;
@@ -223,6 +223,7 @@ pub fn rotate_admin(dir: &Path) -> io::Result<String> {
 /// An I/O error when the token directory or file cannot be created, read or written.
 /// `InvalidInput` when `file_name` is not a bare file name.
 pub fn rotate_named(dir: &Path, file_name: &str) -> io::Result<String> {
+    check_file_name(file_name)?;
     let token = mint()?;
     persist(dir, file_name, &token)?;
     Ok(token)
