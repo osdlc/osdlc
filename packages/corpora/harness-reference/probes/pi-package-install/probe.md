@@ -15,6 +15,7 @@ record:
   - The harness version.
   - Whether each package appears in `pi list`, and under what name.
   - Which settings file the install was recorded in.
+  - The `packages` entry each install wrote, as written, and whether it is relative.
 safety:
   - "`pi install` without `-l` records the package in the user's agent settings, which every pi session reads. Run it against a throwaway agent folder, or remove the packages afterwards."
 ---
