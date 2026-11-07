@@ -29,7 +29,8 @@ export interface ShotParameters {
   settleMs?: number
 }
 
-interface StoryIndex {
+/** The part of a built Storybook's `index.json` that story selection reads. */
+export interface StoryIndex {
   entries: Record<string, { type: string }>
 }
 
@@ -42,7 +43,10 @@ export interface StoryFilter {
   contains?: string | undefined
 }
 
-/** Story ids from a built `index.json`, in index order. Docs entries are dropped. */
+/**
+ * Story ids from a built `index.json`, in index order. Docs entries are
+ * dropped, then `include`, `exclude` and `contains` apply in that order.
+ */
 export function selectStories(index: StoryIndex, filter: StoryFilter = {}): string[] {
   const include = filter.include ?? []
   const exclude = filter.exclude ?? []

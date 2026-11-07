@@ -186,6 +186,9 @@ const close = await serveStatic('storybook-static', 6107)
 - `captureCli(CaptureCliDefaults)` is the same as a script: it reads
   `[contains] --prefix --out --port` over the package's defaults, and exits 1
   on a failure.
+- `selectStories(StoryIndex, StoryFilter)` lists the story ids of a built
+  `index.json`, in index order, with docs entries dropped: `include` and
+  `exclude` take id prefixes, and `contains` a substring.
 - `serveStatic(dir, port)` serves a static build on `127.0.0.1` only. A path
   outside `dir` is a 404, and a path with no file falls back to `index.html`.
   It rejects when the port is taken, and resolves to a function that stops
