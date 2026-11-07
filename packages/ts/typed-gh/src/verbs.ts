@@ -969,7 +969,9 @@ export function nodesAt(
       if (page === null || typeof page !== 'object') return null
       const { data, errors: pageErrors } = page as Partial<GraphqlPage>
       if (!Array.isArray(pageErrors)) return null
-      errors.push(...(pageErrors as GraphqlError[]))
+      // Read each entry as `graphql` does, so a hand-built page cannot pass
+      // a malformed error through as a GraphqlError.
+      errors.push(...(pageErrors as unknown[]).map(readGraphqlError))
       at = data
     }
     for (const key of path) {

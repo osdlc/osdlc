@@ -487,6 +487,17 @@ describe('nodesAt with partial', () => {
     expect(nodesAt(noErrors, ['repo', 'prs'], partial)).toBeNull()
   })
 
+  test('reads each error entry leniently, as graphql does', () => {
+    const entries = ['boom', null, { message: 1, type: 2, path: 'repo' }, gone]
+    const pages = [{ data: page([1]).data, errors: entries }] as unknown as GraphqlPage[]
+    expect(nodesAt(pages, ['repo', 'prs'], partial)?.errors).toEqual([
+      { message: 'boom', type: null, path: [] },
+      { message: '', type: null, path: [] },
+      { message: '', type: null, path: [] },
+      gone,
+    ])
+  })
+
   test('reads the pages of a partial graphql call', () => {
     const verb = graphql('query($endCursor: String) { a }', {}, { paginate: true, partial: true })
     const pages = verb.parse(
