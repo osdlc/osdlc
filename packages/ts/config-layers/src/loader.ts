@@ -416,7 +416,10 @@ export interface ConfigHandle<S extends readonly ConfigSection[]> {
    * the values that changed are edited, so comments elsewhere are kept. Each
    * write is a compare-and-swap against the text the migration read: an edit
    * saved in between throws `WriteConflictError` (`@osdlc/etag-write`) and
-   * leaves that file as it is. Throws {@link ConfigInvalidError}, writing
+   * leaves that file as it is. The project file is written first, so a
+   * conflict on the overlay leaves the project file migrated. Each file carries
+   * its own version, so the pair loads as before and a second run migrates the
+   * overlay. Throws {@link ConfigInvalidError}, writing
    * nothing, when a file cannot be read or parsed, is not a mapping or has an
    * invalid `version`. The result is not validated against the schema: it
    * reads back as what {@link load} already reads in memory. Without

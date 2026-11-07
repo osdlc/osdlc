@@ -824,6 +824,36 @@ version: 2
     expect(readFileSync(path, 'utf-8')).toBe('docs_site: edited\n')
   })
 
+  test('a conflict on the overlay leaves the project file migrated; a second run finishes', () => {
+    let edit: (() => void) | null = null
+    const racy = assembleConfig({
+      file: CONFIG_FILE,
+      sections: [docs, limits],
+      unknownTopLevel: 'reject',
+      resolve: NO_ENV,
+      migrations: defineMigrations([
+        {
+          to: 2,
+          run: (raw) => {
+            // The overlay is migrated second: save an edit to it while that runs.
+            if (raw.docs_site === 'mine') edit?.()
+            return raw
+          },
+        },
+      ]),
+    })
+    const project = write('tooly.yaml', 'docs_site: old\n')
+    const local = write('tooly.local.yaml', 'docs_site: mine\n')
+    edit = () => writeFileSync(local, 'docs_site: mine\n# edited\n')
+    expect(() => racy.migrate(root)).toThrow(WriteConflictError)
+    expect(readFileSync(project, 'utf-8')).toBe('docs_site: old\nversion: 2\n')
+    expect(readFileSync(local, 'utf-8')).toBe('docs_site: mine\n# edited\n')
+    expect(racy.load(root).docs_site).toBe('mine')
+    edit = null
+    expect(racy.migrate(root).map((r) => r.written)).toEqual([false, true])
+    expect(readFileSync(local, 'utf-8')).toBe('docs_site: mine\n# edited\nversion: 2\n')
+  })
+
   test('without migrations, migrate applies nothing and writes nothing', () => {
     const path = write('tooly.yaml', 'docs_site: x\n')
     const plain = assembleConfig({

@@ -117,7 +117,7 @@ unmet need.
 | `clearCache()` | drop the memoised value (tests) |
 | `check(raw)` | the load issues `raw` would have that the file on disk does not |
 | `read()` | `{ text, etag }` of the file, or `null` when there is none |
-| `write(text, { etag? })` | replace the file atomically, keep the old one as `<file>.bak` and return the new etag. Throws, writing nothing, if `text` is not a mapping or `check` finds a new issue. Given the `etag` that `read()` returned (or `null` for no file), the write is a compare-and-swap: a file changed since throws `WriteConflictError` from `@osdlc/etag-write` and is left as it is, `.bak` included |
+| `write(text, { etag? })` | replace the file atomically, keep the old one as `<file>.bak` and return the new etag. Throws, writing nothing, if `text` is not a mapping or `check` finds a new issue. Given the `etag` that `read()` returned (or `null` for no file), the write is a compare-and-swap: a file changed since throws `WriteConflictError` from `@osdlc/etag-write` and is left as it is, `.bak` included, because the `.bak` is written from the replaced bytes only once the swap went through |
 | `migrate({ dryRun? })` | run the migrations on the file and return `{ path, from, to, applied, warnings, written, rewrite, text }`. Writes only when a step applied |
 | `currentVersion` | the last migration's `to`, or 1 |
 | `env` | the override variable's name |
@@ -134,7 +134,8 @@ directories are resolved (a test passes a rooted one).
 
 Option `migrations` is an ordered `ConfigMigration[]` (`{ from, to, run(raw, warn) }`), usually
 built by `defineMigrations` (see [Migrations](#migrations)). The schema should declare an optional
-integer `version`. A file without one is version 1. The loader runs every step from the file's
+integer `version`. A file without one, or with one that is not an integer, is version 1; unlike
+the project file's, the version is never refused. The loader runs every step from the file's
 version on, in memory, before validation. A file newer than the last step is read as-is with a
 `newer_version` issue. `migrate()` saves the result through `write`, as a compare-and-swap against
 the text it read, so an edit saved while it ran is not overwritten. The rewrite edits only the
@@ -235,7 +236,9 @@ step yet). Then:
 - `migrate(root, { dryRun? })` rewrites each layer file that a step applies to, with
   `reconcileYaml`, and returns one `{ layer, path, from, to, applied, warnings, written, rewrite,
   text }` per file that exists. Each write is a compare-and-swap against the text it read: an edit
-  saved in between throws `WriteConflictError` and that file is left as it is. A file that cannot
+  saved in between throws `WriteConflictError` and that file is left as it is. The project file is
+  written first, so a conflict on the overlay leaves the project file migrated; each file carries
+  its own version, so the pair loads as before and a second run migrates the overlay. A file that cannot
   be read or parsed, is not a mapping or has a bad `version` throws `ConfigInvalidError` before
   anything is written. It keeps no `.bak`; the project file is in version control.
 

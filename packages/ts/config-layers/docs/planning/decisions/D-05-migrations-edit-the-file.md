@@ -33,8 +33,11 @@ the file instead of rendering it again.
   migration read, through `@osdlc/etag-write`'s `writeCas`. `write(text,
   { etag })` on the machine file offers the same to a tool's `config set`.
   `write(text)` without an etag still replaces the file whatever is on disk.
+  With an etag, the machine file's `.bak` is written after the swap, from the
+  bytes whose etag matched, never before it.
 - **A project file's `version` is checked.** It must be an integer of at
-  least 1. The machine file reads anything else as version 1, as before.
+  least 1. The machine file is not checked, as before: a non-integer reads as
+  version 1 and runs every step, an integer below 1 runs none.
 
 ## Why
 
@@ -56,6 +59,10 @@ the file instead of rendering it again.
 - A `config set` or `migrate` that overwrites an edit saved in an editor
   between its read and its write loses that edit silently. The etag check
   turns that into an error the user can act on: run the command again.
+- A `.bak` copied before the swap is overwritten by a conflict that lands
+  after the copy, so a refused write would still lose the older backup. Taking
+  it after the swap means a conflict, however late, leaves it alone. The cost:
+  a crash between the swap and the backup leaves the older `.bak` in place.
 - A rewrite that cannot be done as edits is rare (a nested change under a
   `<<: *anchor` defined elsewhere). Refusing to migrate would leave the tool
   unable to upgrade the file, so it renders the document again, keeps the
