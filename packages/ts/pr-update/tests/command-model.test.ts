@@ -16,6 +16,7 @@ import { CONFIG_INVALID_EXIT, overlayPath } from '@osdlc/config-layers'
 import { makeGitFixture } from '@osdlc/typed-git/testing'
 
 import { PR_UPDATE_CONFIG_FILE, createApp, expandBareBranch, main } from '../src/cli.ts'
+import { updateCommand } from '../src/commands.ts'
 import { FIXTURE_REMOTE, fakeTools } from './support.ts'
 
 const dirs: string[] = []
@@ -232,6 +233,32 @@ describe('the declarations an adapter reads', () => {
   })
 })
 
+describe("update's exposureOf", () => {
+  const command = updateCommand(fakeTools)
+  type Input = Parameters<NonNullable<typeof command.exposureOf>>[0]
+  /** Only the flags `exposureOf` reads matter; the rest are left out. */
+  type Flags = Partial<Input['flags']>
+  const exposure = (flags: Flags) =>
+    command.exposureOf!({ flags, globals: {}, positionals: [], rest: [] } as Input)
+
+  test.each<[string, Flags]>([
+    ['trust', { trust: true }],
+    ['repairAgent', { repairAgent: 'claude' }],
+    ['repairCommand', { repairCommand: 'true' }],
+    ['report', { report: 'out.json' }],
+  ])('%s makes the call cli-only', (_, flags) => {
+    expect(exposure(flags)).toBe('cli-only')
+  })
+
+  test.each<[string, Flags]>([
+    ['no consent flags', {}],
+    ['trust: false', { trust: false }],
+    ['an ordinary apply run', { apply: true, confirmPush: true, strategy: 'rebase', pr: ['12'] }],
+  ])('%s leaves the call open to every surface', (_, flags) => {
+    expect(exposure(flags)).toBe('all')
+  })
+})
+
 describe('expandBareBranch', () => {
   test.each([
     [
@@ -254,12 +281,31 @@ describe('expandBareBranch', () => {
       ['--json', 'survey', '--branch'],
       ['--json', 'survey', '--current-branch'],
     ],
+    [
+      ['update', '--apply', '--branch'],
+      ['update', '--apply', '--current-branch'],
+    ],
+    [
+      ['update', '--apply', '--branch', '--strategy', 'rebase'],
+      ['update', '--apply', '--current-branch', '--strategy', 'rebase'],
+    ],
+    [
+      ['survey', '--branch=main', '--branch'],
+      ['survey', '--branch=main', '--current-branch'],
+    ],
+    [
+      ['survey', '--branch', '--', '--branch'],
+      ['survey', '--current-branch', '--', '--branch'],
+    ],
   ])('%j becomes %j', (argv, want) => {
     expect(expandBareBranch(argv)).toEqual(want)
   })
 
   test.each([
     [['survey', '--branch', 'main']],
+    [['update', '--branch', 'feature', '--apply']],
+    [['survey', '--branch=main']],
+    [['update', '--branch=']],
     [['update', '--', '--branch']],
     [['config', 'get', '--branch']],
     [['--branch']],
