@@ -105,7 +105,6 @@ const ENV_SECRET_SEGMENTS = new Set([
   'CREDENTIALS',
   'AUTH',
   'PRIVATE',
-  'APIKEY',
 ])
 /** Names that look secret but hold a path or socket, not a secret. */
 const ENV_DENY_NAMES = new Set(['SSH_AUTH_SOCK', 'GPG_AGENT_INFO'])
@@ -131,14 +130,18 @@ function loadSecretlint(): Promise<Lint> {
   secretlint ??= Promise.all([
     import('@secretlint/core'),
     import('@secretlint/secretlint-rule-preset-recommend'),
-  ]).then(([{ lintSource }, { creator }]) => {
+  ]).then(([{ lintSource }, { rules }]) => {
+    // The preset's rules one by one, as the preset itself registers them, minus its comment
+    // filter: a `secretlint-disable` comment in the text being logged must not switch a rule off.
     const config = {
-      rules: [{ id: '@secretlint/secretlint-rule-preset-recommend', rule: creator }],
+      rules: rules
+        .filter((rule) => rule.meta.id !== LINT_COMMENT_FILTER)
+        .map((rule) => ({ id: rule.meta.id, rule })),
     }
     return async (text: string) => {
       const result = await lintSource({
         source: {
-          content: lintInput(text),
+          content: sameOffsets(text),
           filePath: '/log.txt',
           ext: '.txt',
           contentType: 'text',
@@ -159,17 +162,15 @@ function loadSecretlint(): Promise<Lint> {
   return secretlint
 }
 
-/** A `secretlint-disable` / `-enable` directive, which the preset's comment filter obeys. */
-const LINT_DIRECTIVE = /secretlint-(?=disable|enable)/gi
+/** The preset's rule that obeys `secretlint-disable` comments. Left out of the config. */
+export const LINT_COMMENT_FILTER = '@secretlint/secretlint-rule-filter-comments'
 
 /**
- * The text secretlint sees, the same length as `text` so its ranges index the original.
- * Directives in the logged text are defanged: text being logged must not switch a rule off.
- * A leading byte-order mark becomes a space: secretlint drops it before it counts offsets.
+ * `text` with a leading byte-order mark turned into a space, so secretlint's ranges index the
+ * original: secretlint drops the mark before it counts offsets.
  */
-function lintInput(text: string): string {
-  const defanged = text.replace(LINT_DIRECTIVE, 'xecretlint-')
-  return defanged.startsWith('\uFEFF') ? ` ${defanged.slice(1)}` : defanged
+function sameOffsets(text: string): string {
+  return text.startsWith('\uFEFF') ? ` ${text.slice(1)}` : text
 }
 
 /**
@@ -423,7 +424,8 @@ function envRanges(text: string, values: [string, string][]): RedactionRange[] {
 
 /** Merge overlapping or adjacent ranges; the earliest start keeps its rule. */
 function mergeRanges(ranges: RedactionRange[]): RedactionRange[] {
-  const sorted = [...ranges].sort((a, b) => a[0] - b[0] || b[1] - a[1])
+  // Sorts in place: the caller's array is built fresh for each text.
+  const sorted = ranges.sort((a, b) => a[0] - b[0] || b[1] - a[1])
   const merged: [number, number, string][] = []
   for (const [start, end, rule] of sorted) {
     const last = merged[merged.length - 1]
@@ -443,7 +445,7 @@ function splice(
   for (const [start, end, rule] of merged) {
     pieces.push(text.slice(at, start), `[REDACTED:${rule}]`)
     at = end
-    redactions[rule] = (redactions[rule] ?? 0) + 1
+    count(redactions, rule)
   }
   pieces.push(text.slice(at))
   return { text: pieces.join(''), redactions }
@@ -460,9 +462,14 @@ function uniqueKey(out: object, key: string): string {
   return `${key}#${n}`
 }
 
+/** Add `n` replacements by `rule` to `into`. */
+function count(into: Redactions, rule: string, n = 1): void {
+  into[rule] = (into[rule] ?? 0) + n
+}
+
 /** Add the per-rule counts in `from` into `into`, for a caller that redacts several values into one line. */
 export function mergeRedactions(into: Redactions, from: Readonly<Redactions>): void {
-  for (const [rule, n] of Object.entries(from)) into[rule] = (into[rule] ?? 0) + n
+  for (const [rule, n] of Object.entries(from)) count(into, rule, n)
 }
 
 // ── factory ─────────────────────────────────────────────────────────────────
@@ -484,9 +491,11 @@ export function createRedactor(opts: RedactorOptions = {}): Redactor {
 
   async function redact(text: string) {
     try {
-      // Copy: the lint seam's array is not ours to mutate.
-      const ranges: RedactionRange[] = [...(await lint(text))]
-      ranges.push(...builtinRanges(text), ...envRanges(text, envValues))
+      const ranges: RedactionRange[] = [
+        ...(await lint(text)),
+        ...builtinRanges(text),
+        ...envRanges(text, envValues),
+      ]
       // A custom pattern runs unbounded: V8 has no backtracking step limit, so a bad match
       // blocks until it ends. Only the check in createRedactor guards it.
       for (const { rule, re } of custom) {
@@ -494,8 +503,10 @@ export function createRedactor(opts: RedactorOptions = {}): Redactor {
           if (m[0].length > 0) ranges.push([m.index, m.index + m[0].length, rule])
         }
       }
-      const spliced = splice(text, mergeRanges(ranges))
-      return { text: spliced.text as Redacted, redactions: spliced.redactions }
+      // Most lines hold no secret: skip the merge and the splice.
+      if (ranges.length === 0) return { text: text as Redacted, redactions: {} }
+      const { text: out, redactions } = splice(text, mergeRanges(ranges))
+      return { text: out as Redacted, redactions }
     } catch {
       return { text: FAILED_CLOSED as Redacted, redactions: { 'redactor-error': 1 } }
     }
@@ -548,9 +559,8 @@ export function createRedactor(opts: RedactorOptions = {}): Redactor {
               ((typeof item === 'string' && item.length > 0) ||
                 (item !== null && typeof item === 'object'))) ||
             (SECRET_STRING_KEY.test(k) && typeof item === 'string' && item.length > 0)
-          let value: unknown = '[REDACTED:assigned-secret]'
-          if (blank) mergeRedactions(redactions, { 'assigned-secret': 1 })
-          else value = await walk(item, depth + 1)
+          if (blank) count(redactions, 'assigned-secret')
+          const value = blank ? '[REDACTED:assigned-secret]' : await walk(item, depth + 1)
           // defineProperty: a plain `out['__proto__'] = ...` would set the prototype, not a key.
           Object.defineProperty(out, key, {
             value,

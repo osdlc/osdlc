@@ -175,7 +175,7 @@ export function isPermissionNotification(notificationType: string | undefined): 
  * @experimental
  */
 export function rawString(envelope: HookEnvelope, key: string): string | undefined {
-  const value = ownField(envelope, key)
+  const value = rawValue(envelope, key)
   return typeof value === 'string' ? value : undefined
 }
 
@@ -185,7 +185,7 @@ export function rawString(envelope: HookEnvelope, key: string): string | undefin
  * @experimental
  */
 export function rawNumber(envelope: HookEnvelope, key: string): number | undefined {
-  const value = ownField(envelope, key)
+  const value = rawValue(envelope, key)
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
 
@@ -195,11 +195,7 @@ export function rawNumber(envelope: HookEnvelope, key: string): number | undefin
  * @experimental
  */
 export function rawValue(envelope: HookEnvelope, key: string): unknown {
-  return ownField(envelope, key)
-}
-
-/** The body's own field `key`: an inherited one (`constructor`, `toString`) is absent. */
-function ownField(envelope: HookEnvelope, key: string): unknown {
+  // Own fields only: an inherited one (`constructor`, `toString`) is absent.
   const raw = envelope.raw
   return raw !== null && Object.hasOwn(raw, key) ? raw[key] : undefined
 }

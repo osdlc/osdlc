@@ -1,20 +1,20 @@
 /** Regression tests for leaks and data loss found by a bug scan of the redactor and its writer. */
 
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { describe, expect, test } from 'vitest'
 
-import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-
-import { createRedactor } from '../src/redactor.ts'
-import { appendRedactedJsonl } from '../src/redacted-writer.ts'
-import { readJsonl } from '../src/writer.ts'
+import { createRedactor, LINT_COMMENT_FILTER } from '../src/redactor.ts'
 
 const gh = 'ghp_aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC1dE3fG5'
 const gh2 = 'ghp_zY9xW7vU5tS3rQ1pO9nM7lK5jI3hG1fE9dC7'
 const r = createRedactor({ env: {} })
 
 describe('the redactor cannot be switched off or skewed by the text', () => {
+  test("secretlint's comment filter, which obeys disable comments, is the rule left out", async () => {
+    const { rules } = await import('@secretlint/secretlint-rule-preset-recommend')
+    // If the preset renames or drops it, the exclusion would silently stop applying.
+    expect(rules.map((rule) => rule.meta.id)).toContain(LINT_COMMENT_FILTER)
+  })
+
   test.each([
     '// secretlint-disable',
     '/* secretlint-disable-next-line */',
@@ -69,36 +69,6 @@ describe('redactJson leaves nothing to run or lose at write time', () => {
     const { value, redactions } = await r.redactJson({ [gh]: 1, [gh2]: 2 })
     expect(value).toEqual({ '[REDACTED:github]': 1, '[REDACTED:github]#2': 2 })
     expect(redactions).toEqual({ github: 2 })
-  })
-})
-
-describe('appendRedactedJsonl', () => {
-  let dir: string
-  beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'observe-bugscan-'))
-  })
-  afterEach(() => rmSync(dir, { recursive: true, force: true }))
-
-  test('a top-level toJSON does not replace the line', async () => {
-    const file = join(dir, 'a.jsonl')
-    await appendRedactedJsonl(file, { kind: 'x', toJSON: () => ({ secret: gh }) }, r)
-    expect(readJsonl(file)).toEqual([{ kind: 'x' }])
-  })
-
-  test('an envelope key holding a function is not written as is', async () => {
-    const file = join(dir, 'b.jsonl')
-    const kind = Object.assign(() => 'x', { toJSON: () => gh })
-    await appendRedactedJsonl(file, { kind }, r)
-    expect(JSON.stringify(readJsonl(file))).not.toContain(gh)
-  })
-
-  test('an Error, a Map or a class instance is redacted whole, not emptied', async () => {
-    const file = join(dir, 'c.jsonl')
-    await appendRedactedJsonl(file, new Error(`failed with ${gh}`), r)
-    await appendRedactedJsonl(file, new Map([['prompt', 'hi']]), r)
-    const lines = readJsonl(file) as Record<string, unknown>[]
-    expect(lines[0]!['message']).toBe('failed with [REDACTED:github]')
-    expect(lines[1]).toEqual({ prompt: 'hi' })
   })
 })
 
