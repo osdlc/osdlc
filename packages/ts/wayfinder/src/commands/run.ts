@@ -1,17 +1,36 @@
 /**
  * `way run <id> [-- args]`: run one task by id, with the argument rules the
- * terminal UI and the web view use.
+ * terminal UI and the web view use. With `--agent`, hand an agent skill to
+ * an agent's CLI instead.
  */
 
 import { CommandError, UsageError, outcome } from '@osdlc/cli-tool/command'
 import { commandString } from '@osdlc/command-seam'
 
+import { BIN } from '../app.ts'
 import { handOff } from '../core/run.ts'
 import { SessionError, type RunPlan } from '../core/session.ts'
+import { HANDOFF_HARNESSES, skillLine } from '../core/skills.ts'
 import { RunOutput, type RunDocumentBody } from '../documents.ts'
+import { agentClis, planSkillHandOff, SkillHandOffError, type SkillHandOffPlan } from '../skills.ts'
 import { terminalSafe } from '../terminal-text.ts'
 import { parametersUnknownLabel } from '../vocabulary.ts'
 import { kit, openSession } from './shared.ts'
+
+/** The run document for a skill handed to an agent: `task` is the skill's id. */
+function skillDocument(plan: SkillHandOffPlan, ran: boolean, exit: number | null): RunDocumentBody {
+  return {
+    task: plan.skill.id,
+    display: skillLine(plan.skill),
+    argv: plan.argv,
+    command: commandString(plan.argv),
+    cwd: plan.cwd,
+    env: plan.env,
+    ran,
+    exit,
+    unknowns: [],
+  }
+}
 
 function runDocument(
   plan: RunPlan,
@@ -43,7 +62,11 @@ export function runCommand(home: string) {
       'just x a). The same rules as Enter in the terminal UI and Run in the web view. Exits ' +
       "with the task's exit code. --dry-run prints what would run instead; with --json it is " +
       'the run document. A task that uses an editor variable is not run, and neither is an ' +
-      'agent skill: type its /<name> in the agent.',
+      'agent skill: type its /<name> in the agent. --agent hands a skill to an agent CLI ' +
+      'instead, starting an interactive session in this terminal with the skill as its first ' +
+      'prompt (claude "/review 123"); the words after -- follow the name, as its argument hint ' +
+      'asks. It starts the first of claude, codex and cursor-agent on PATH that reads the ' +
+      'skill, or the one --harness names.',
     positionals: [
       {
         name: 'id',
@@ -63,6 +86,16 @@ export function runCommand(home: string) {
         hidden: true,
         help: "with --cached --dry-run, probe the task's runner again as a run does",
       },
+      agent: {
+        kind: 'boolean',
+        help: 'on an agent skill: start an agent CLI with it as the first prompt',
+      },
+      harness: {
+        kind: 'enum',
+        choices: HANDOFF_HARNESSES,
+        valueName: 'H',
+        help: 'with --agent, the agent to start (default: the first on PATH that reads the skill)',
+      },
     },
     output: RunOutput,
     kind: 'run',
@@ -70,6 +103,7 @@ export function runCommand(home: string) {
       'run just:justfile:build',
       'run node-scripts:package.json:test -- --watch',
       'run x --dry-run --json',
+      'run /review --agent -- 123',
     ],
     // Running a task is the command line's; an adapter may only ask what would run.
     exposureOf: (input) => (input.flags.dryRun === true ? 'all' : 'cli-only'),
@@ -79,17 +113,53 @@ export function runCommand(home: string) {
       }
       const session = await openSession(globals, ctx, home)
       const snapshot = await session.catalog({ cached: flags.cached })
+      const id = positionals[0]!
+      const skill = snapshot.skills.find((s) => s.id === id || s.invoke === id)
+      if (flags.agent || flags.harness !== undefined) {
+        if (skill === undefined) {
+          throw new UsageError(`--agent starts an agent skill, and ${terminalSafe(id)} is not one`)
+        }
+        let started: SkillHandOffPlan
+        try {
+          started = planSkillHandOff(skill, {
+            root: session.root,
+            env: session.env,
+            args: rest.join(' '),
+            harness: flags.harness,
+          })
+        } catch (err) {
+          if (err instanceof SkillHandOffError) {
+            throw new CommandError(err.message, {
+              code: 'not-runnable',
+              ...(err.hint !== undefined ? { hint: err.hint } : {}),
+            })
+          }
+          throw err
+        }
+        if (skill.argumentHint !== null && rest.length === 0) {
+          ctx.note(terminalSafe(`${skill.invoke} takes ${skill.argumentHint}; none given`))
+        }
+        if (flags.dryRun) return skillDocument(started, false, null)
+        ctx.io.stderr(`$ ${terminalSafe(commandString(started.argv))}\n`)
+        const ended = handOff(started)
+        if (ended.error !== undefined) {
+          throw new CommandError(`${started.argv[0]}: ${ended.error}`, { code: 'spawn' })
+        }
+        return outcome(skillDocument(started, true, ended.exit), ended.exit)
+      }
       let plan: RunPlan
       try {
-        plan = session.resolveRun(snapshot.catalog, positionals[0]!, rest)
+        plan = session.resolveRun(snapshot.catalog, id, rest)
       } catch (err) {
-        const skill = snapshot.skills.find(
-          (s) => s.id === positionals[0] || s.invoke === positionals[0],
-        )
         if (err instanceof SessionError && err.code === 'task-not-found' && skill !== undefined) {
-          throw new CommandError(`${skill.invoke}: a skill runs in an agent, not here`, {
+          const shown = terminalSafe(skill.invoke)
+          const readers = terminalSafe(skill.harnesses.join(', '))
+          const startable = agentClis(skill, session.env).length > 0
+          throw new CommandError(`${shown}: a skill runs in an agent, not here`, {
             code: 'not-runnable',
-            hint: `type ${skill.invoke} in ${skill.harnesses.join(', ')}`,
+            hint: startable
+              ? `type ${shown} in ${readers}, or start one with it: ${BIN} run ${shown} --agent`
+              : `type ${shown} in ${readers}`,
           })
         }
         if (err instanceof SessionError) {

@@ -29,7 +29,11 @@ export interface KeyBinding {
   action: string
   /** The footer's short form, such as `^y copy`. Absent: help only. */
   hint?: string | undefined
-  /** The footer's form while a skill row is selected, when the key does something else there. */
+  /**
+   * The footer's form while a skill row is selected, when the key does
+   * something else there. A key with this and no `hint` is shown on skill
+   * rows only.
+   */
   skillHint?: string | undefined
   /** The footer shows it at every width. */
   always?: boolean | undefined
@@ -56,6 +60,14 @@ export const KEY_TABLE: readonly KeyBinding[] = Object.freeze([
     keys: ['^y'],
     action: "copy the selected task's command line, or a skill's /name",
     hint: '^y copy',
+    rank: 2,
+  },
+  {
+    surface: 'tui',
+    view: 'list',
+    keys: ['^g'],
+    action: 'on a skill: start an agent CLI with it, asking first for what its hint names',
+    skillHint: '^g agent',
     rank: 2,
   },
   {
@@ -281,8 +293,8 @@ export function footerHints(
   row: 'task' | 'skill' = 'task',
 ): string {
   const hinted = bindings
-    .filter((k) => k.hint !== undefined)
     .map((k) => (row === 'skill' && k.skillHint !== undefined ? { ...k, hint: k.skillHint } : k))
+    .filter((k) => k.hint !== undefined)
   const kept = new Set(hinted.filter((k) => k.always === true))
   const widthOf = (set: Set<KeyBinding>): number =>
     [...set].reduce((n, k) => n + k.hint!.length, 0) + Math.max(0, set.size - 1) * separator.length

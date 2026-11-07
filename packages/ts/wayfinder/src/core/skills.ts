@@ -2,6 +2,8 @@
  * Agent skills as catalog rows: the Skills group. A skill is not a task. It
  * has no command line; an agent runs it when a person types `/<name>`. So
  * the run action copies {@link SkillRow.invoke} and nothing is spawned.
+ * Handing a skill to an agent's CLI is a separate action, asked for
+ * explicitly; {@link skillPrompt} is the prompt it starts with.
  *
  * Skill names, descriptions and hints come from files in the repository or
  * the user's config. Filter them like any repository text before printing.
@@ -54,6 +56,44 @@ export interface SkillHit {
 /** The text a surface shows for a skill: `/review [pr-number]`. */
 export function skillLine(skill: Pick<SkillRow, 'invoke' | 'argumentHint'>): string {
   return skill.argumentHint === null ? skill.invoke : `${skill.invoke} ${skill.argumentHint}`
+}
+
+/**
+ * The harnesses a skill can be handed off to, in the order one is chosen
+ * when several read the skill: the order `@osdlc/detect-harness` reports
+ * them in. Each one's CLI starts an interactive session with a first prompt
+ * given as its one argument.
+ */
+export const HANDOFF_HARNESSES = ['claude', 'codex', 'cursor'] as const
+
+/** One of {@link HANDOFF_HARNESSES}. */
+export type HandOffHarness = (typeof HANDOFF_HARNESSES)[number]
+
+/**
+ * What names a skill in each harness's prompt. Claude Code and Cursor run
+ * `/<name>`; Codex mentions a skill as `$<name>`.
+ */
+const MENTION: Readonly<Record<HandOffHarness, string>> = { claude: '/', codex: '$', cursor: '/' }
+
+/** Whether `harness` is one of {@link HANDOFF_HARNESSES}. */
+export function isHandOffHarness(harness: string): harness is HandOffHarness {
+  return (HANDOFF_HARNESSES as readonly string[]).includes(harness)
+}
+
+/**
+ * The first prompt that runs `skill` in `harness`: its mention, such as
+ * `/review`, then `args` after a space when there are any. `args` is what
+ * the skill's `argument-hint` asks for, as typed; it is prompt text, not
+ * argv, so it is sent as one string.
+ */
+export function skillPrompt(
+  skill: Pick<SkillRow, 'name'>,
+  harness: HandOffHarness,
+  args = '',
+): string {
+  const rest = args.trim()
+  const mention = `${MENTION[harness]}${skill.name}`
+  return rest === '' ? mention : `${mention} ${rest}`
 }
 
 /** Whether `skill` passes the parts of `filter` a skill has. */
