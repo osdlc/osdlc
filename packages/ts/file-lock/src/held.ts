@@ -12,9 +12,10 @@
  *    (the content can be longer than a file name may be), exclusively, so one
  *    reaper wins. The winner removes the lock only if its content is still
  *    what was judged, removes the marker, and claims again. A loser claims
- *    again too. A reaper killed mid-takeover leaves its marker behind; a
- *    marker older than {@link MARKER_STALE_MS} is a dead reaper's and is
- *    removed.
+ *    again too. A reaper killed mid-takeover leaves its marker behind. While
+ *    the stale lock is still there, the next claimant removes a marker older
+ *    than {@link MARKER_STALE_MS}. A marker left after its lock was removed
+ *    matches no later lock, so it blocks nothing; it is litter, safe to delete.
  *  - Release, touch and rewrite act only while the lock still holds this
  *    claim's token, so an owner whose lock was taken over never disturbs the
  *    taker's.
@@ -114,7 +115,8 @@ function serialize(content: object, token: string): string {
   return `${JSON.stringify({ ...content, token }, null, 2)}\n`
 }
 
-function markerFor(path: string, raw: string): string {
+/** The takeover marker's name for a lock whose text is `raw`. Internal: exported for the tests. */
+export function markerFor(path: string, raw: string): string {
   return `${path}.stale-${createHash('sha256').update(raw).digest('hex').slice(0, 24)}`
 }
 
@@ -223,9 +225,15 @@ function clearDeadMarker(marker: string): void {
   }
 }
 
+/** True for "the file is not there": the one error the token calls report as `false` rather than throw. */
+function isGone(err: unknown): boolean {
+  return (err as NodeJS.ErrnoException).code === 'ENOENT'
+}
+
 /**
  * Refresh the lock's mtime while it still holds `token`: the holder's sign of
- * life, for a rule such as `untouchedFor`. Returns whether it touched.
+ * life, for a rule such as `untouchedFor`. Returns false when the lock is gone
+ * or holds another token. Any other error (`EACCES`, `EIO`) is thrown.
  */
 export function touchLock(path: string, token: string): boolean {
   try {
@@ -233,8 +241,9 @@ export function touchLock(path: string, token: string): boolean {
     const now = new Date()
     utimesSync(path, now, now)
     return true
-  } catch {
-    return false // gone: the owner is finishing, or its lock was taken over
+  } catch (err) {
+    if (isGone(err)) return false // the owner is finishing, or its lock was taken over
+    throw err
   }
 }
 
@@ -242,8 +251,9 @@ export function touchLock(path: string, token: string): boolean {
  * Replace the content of the lock while it still holds `token`. `update` gets
  * the current content and returns the new fields; the token is kept. The new
  * content is written to a temp file and renamed over the lock, so a reader
- * never sees it half written. Returns whether it rewrote. An error thrown by
- * `update` is thrown to the caller.
+ * never sees it half written. Returns false when the lock is gone or holds
+ * another token, and leaves it as it was. An error thrown by `update`, or any
+ * error other than "gone" (`ENOSPC`, `EACCES`), is thrown.
  *
  * The token check and the rename are two steps: a takeover that lands between
  * them is overwritten. A rule that never judges a live holder stale, such as
@@ -257,25 +267,28 @@ export function updateLock<F extends object>(
   let content: LockContent<F> | null
   try {
     content = parse<F>(readFileSync(path, 'utf-8'))
-  } catch {
-    return false // gone: the lock was released or taken over
+  } catch (err) {
+    if (isGone(err)) return false // released or taken over
+    throw err
   }
   if (content === null || content.token !== token) return false
-  const next = serialize(update(content), token) // outside any catch, so the caller sees its own error
+  const next = serialize(update(content), token)
   const tmp = `${path}.new-${randomUUID()}`
   try {
     writeFileSync(tmp, next)
     renameSync(tmp, path)
     return true
-  } catch {
+  } catch (err) {
     rmSync(tmp, { force: true })
-    return false // the directory went away meanwhile: the lock stays as it was
+    if (isGone(err)) return false // the directory went away meanwhile
+    throw err
   }
 }
 
 /**
  * Remove the lock only while it holds `token`: an owner whose lock was taken
- * over must not delete the taker's. Returns whether it removed it.
+ * over must not delete the taker's. Returns whether it removed it: false when
+ * the lock is gone or holds another token. Any other error is thrown.
  *
  * The lock is renamed aside, which is atomic, and its token checked there, so
  * the file removed is exactly the file checked. The cheap check first means a
@@ -288,16 +301,19 @@ export function releaseLock(path: string, token: string): boolean {
   try {
     if (tokenOf(path) !== token) return false
     renameSync(path, aside)
-  } catch {
-    return false // already gone
+  } catch (err) {
+    if (isGone(err)) return false // already released, or taken over and released
+    throw err
   }
   try {
     if (tokenOf(aside) === token) return true
-    linkSync(aside, path)
-  } catch {
-    // Unreadable, or a new claim landed while the lock was aside: that claimant holds it now.
+    linkSync(aside, path) // not ours: put the taker's lock back
+    return false
+  } catch (err) {
+    // EEXIST: a new claim landed while the lock was aside, and that claimant holds it now.
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return false
+    throw err
   } finally {
     rmSync(aside, { force: true })
   }
-  return false
 }

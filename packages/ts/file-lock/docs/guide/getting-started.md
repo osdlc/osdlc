@@ -43,7 +43,7 @@ The package gives you the lock in two shapes. Pick by how long you hold it.
 
 | You want to... | Use | Held for | Stale when |
 |---|---|---|---|
-| Update one file safely | `withLock(path, fn)` | one synchronous function | untouched for `staleMs` (default 10 s) |
+| Update one file safely | `withLock(path, fn)` | one synchronous function | untouched for `staleMs` (default 10 s), unless you pass `isStale` |
 | Own something while your process runs (a port, a job, a session) | `claimLock(path, content, { isStale })` | until you call `releaseLock` | the rule you pass, such as `holderGone` or `untouchedFor` |
 
 ## A first `withLock`

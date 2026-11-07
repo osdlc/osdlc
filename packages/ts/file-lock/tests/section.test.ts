@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import {
   existsSync,
   linkSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -148,5 +149,37 @@ describe('withLock with isStale', () => {
     const lock = join(dir, 'x.lock')
     writeFileSync(lock, JSON.stringify({ pid: DEAD_PID, token: 'dead' }))
     expect(withLock(lock, () => 'ran', { isStale: holderGone((h) => [h.pid]) })).toBe('ran')
+  })
+})
+
+describe('withLock refuses and cleans up', () => {
+  test('a rule that throws leaves no temp file beside the lock', () => {
+    const lock = join(dir, 'x.lock')
+    writeFileSync(lock, JSON.stringify({ pid: 1, token: 't' }))
+    expect(() =>
+      withLock(lock, () => 0, {
+        isStale: () => {
+          throw new Error('rule')
+        },
+      }),
+    ).toThrow('rule')
+    expect(readdirSync(dir)).toEqual(['x.lock'])
+  })
+
+  test('an async fn is refused, and the lock is released', () => {
+    const lock = join(dir, 'x.lock')
+    expect(() => withLock(lock, async () => 1)).toThrow(TypeError)
+    expect(readdirSync(dir)).toEqual([])
+  })
+
+  test("a section's own error wins over a failing release", () => {
+    const lock = join(dir, 'x.lock')
+    expect(() =>
+      withLock(lock, () => {
+        rmSync(lock)
+        mkdirSync(lock) // the release will fail with EISDIR
+        throw new Error('section')
+      }),
+    ).toThrow('section')
   })
 })

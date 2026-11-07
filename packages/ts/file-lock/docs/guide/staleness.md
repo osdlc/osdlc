@@ -83,8 +83,10 @@ The risk is the opposite of `holderGone`'s: a holder that is alive but slow,
 and does not touch the lock, loses it after `ms`. Then two processes run at
 once. Keep `ms` far above the longest hold, or touch the lock as you go.
 
-`withLock` uses `untouchedFor(staleMs)`. Its sections are short, so the
-default 10 s is plenty. A long section needs a larger `staleMs`.
+`withLock` uses `untouchedFor(staleMs)` unless you pass `isStale`. Its sections
+are usually short, so the default 10 s is plenty. A long section needs a larger
+`staleMs`, or `isStale: holderGone((h) => [h.pid])`, which waits for the holder
+process to exit however long it runs.
 
 ## Your own rule
 
@@ -99,7 +101,8 @@ type Owner = { pid?: number; started_at?: string }
 // Stale when the pid is gone, or now belongs to a different process.
 function ownerGone(held: HeldLock<Owner>): boolean {
   const owner = held.content
-  if (owner === null || typeof owner.pid !== 'number') return true
+  if (owner === null) return false // not JSON: another program's file, leave it alone
+  if (typeof owner.pid !== 'number') return true
   if (!pidAlive(owner.pid)) return true
   return owner.started_at !== undefined && owner.started_at !== startTimeOf(owner.pid)
 }

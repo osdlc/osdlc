@@ -96,8 +96,9 @@ claim file once and only retries the link:
 ```text
 write x.lock.new-<token> once
 until timeoutMs has passed:
-  try the claim (link, or judge the holder with untouchedFor(staleMs))
+  try the claim (link, or judge the holder with isStale, by default untouchedFor(staleMs))
   ok    → run fn, then releaseLock (also when fn throws), return fn's result
+          (a promise from fn is refused with a TypeError)
   held  → sleep retryMs (Atomics.wait, which blocks the thread without spinning)
 then throw LockTimeoutError(path, last holder seen)
 ```
@@ -108,7 +109,7 @@ then throw LockTimeoutError(path, last holder seen)
 |---|---|---|
 | `x.lock` | while held | yes, and taken over once the rule says stale |
 | `x.lock.new-<uuid>` | during a claim or an update | rarely; harmless, safe to delete |
-| `x.lock.stale-<24 hex>` | microseconds, during a takeover | rarely; cleared after 10 s |
+| `x.lock.stale-<24 hex>` | microseconds, during a takeover | rarely; cleared after 10 s while its lock is still there. One left after its lock was removed blocks nothing and is safe to delete |
 | `x.lock.release-<uuid>` | microseconds, during a release | rarely; harmless, safe to delete |
 
 ## Limits

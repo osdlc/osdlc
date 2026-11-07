@@ -3,7 +3,7 @@
  * function, such as a re-read, validate and rewrite of one file.
  */
 
-import { type HeldLock, prepareClaim, releaseLock, type StaleRule } from './held.ts'
+import { type HeldLock, type LockClaim, prepareClaim, releaseLock, type StaleRule } from './held.ts'
 import { untouchedFor } from './rules.ts'
 
 /** What a {@link withLock} lock records: the holder's pid. */
@@ -53,12 +53,16 @@ function sleepSync(ms: number): void {
 /**
  * Run `fn` holding the lock at `path`, and release it when `fn` returns or
  * throws. The lock records this process's pid. Waiting blocks the thread, so
- * keep the section short.
+ * keep the section short. `fn` must be synchronous: one that returns a promise
+ * is refused with a `TypeError`, because the lock would be released before the
+ * awaited work ran. Use `claimLock` and `releaseLock` around async work.
  *
- * A lock untouched for `staleMs` is taken to be a killed holder's. That is a
- * guess: a live holder whose section outlasts `staleMs` loses its lock to the
- * next waiter, and both then run (the first one's release leaves the taker's
- * lock alone). Keep `staleMs` far above the longest section.
+ * By default a lock untouched for `staleMs` is taken to be a killed holder's.
+ * That is a guess: a live holder whose section outlasts `staleMs` loses its
+ * lock to the next waiter, and both then run. The first one's release leaves
+ * the taker's lock alone, and that loss is not reported. Keep `staleMs` far
+ * above the longest section, or pass an `isStale` rule that does not guess by
+ * age, such as `holderGone`.
  */
 export function withLock<T>(path: string, fn: () => T, options: LockOptions = {}): T {
   const { staleMs = 10_000, timeoutMs = 30_000, retryMs = 5 } = options
@@ -66,8 +70,9 @@ export function withLock<T>(path: string, fn: () => T, options: LockOptions = {}
   const deadline = Date.now() + timeoutMs
   // The temp file is written once; each retry only tries the link again.
   const prepared = prepareClaim<SectionHolder>(path, { pid: process.pid }, { isStale })
-  let claim = prepared.attempt()
+  let claim: LockClaim<SectionHolder>
   try {
+    claim = prepared.attempt()
     while (!claim.ok) {
       if (Date.now() >= deadline) throw new LockTimeoutError(path, claim.holder)
       sleepSync(Math.min(retryMs, deadline - Date.now()))
@@ -77,9 +82,22 @@ export function withLock<T>(path: string, fn: () => T, options: LockOptions = {}
     prepared.dispose()
   }
   const { token } = claim
+  let result: T
   try {
-    return fn()
-  } finally {
-    releaseLock(path, token)
+    result = fn()
+  } catch (err) {
+    try {
+      releaseLock(path, token)
+    } catch {
+      // The section's own error is the one to report.
+    }
+    throw err
   }
+  releaseLock(path, token)
+  if (typeof (result as { then?: unknown } | null | undefined)?.then === 'function') {
+    throw new TypeError(
+      `withLock(${path}): fn returned a promise, so its awaited work ran after the lock was released; use claimLock and releaseLock around async work`,
+    )
+  }
+  return result
 }

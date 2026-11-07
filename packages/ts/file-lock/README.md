@@ -128,8 +128,9 @@ With the token in hand:
   file it checked.
 
 Each acts only while the lock still holds `token`, and returns whether it did
-anything. An owner whose lock was taken over gets `false` and leaves the new
-holder's lock alone.
+anything. An owner whose lock was taken over, or whose lock is gone, gets
+`false` and leaves the new holder's lock alone. Any other error, such as
+`EACCES` or `ENOSPC`, is thrown rather than reported as a lost lock.
 
 The types are `LockContent`, `HeldLock`, `LockClaim`, `ClaimOptions` and
 `StaleRule`.
@@ -168,7 +169,10 @@ seen. `LockOptions` is the options type.
 
 Waiting blocks the thread with `Atomics.wait`, so the section is for short,
 synchronous work. `fn` must not be async: the lock would be released when it
-returns its promise.
+returns its promise, so a `fn` that returns one is refused with a `TypeError`.
+If a section outlasts `staleMs` and another waiter takes the lock over, the
+section still returns normally; pass a `holderGone` rule as `isStale` when a
+section may run long.
 
 ## Read-modify-write with `@osdlc/etag-write`
 
@@ -205,10 +209,11 @@ withLock(`${path}.lock`, () => {
 - **Files beside the lock.** A claim writes `<path>.new-<uuid>` and removes it
   before returning (`withLock` writes it once and keeps it while it waits). A
   release renames the lock to `<path>.release-<uuid>` for microseconds. A
-  takeover creates `<path>.stale-<24 hex digits>` for microseconds. A process killed in between can leave either behind. A stale
-  marker blocks the takeover of that one lock content until it is
-  `MARKER_STALE_MS` (10 s) old, judged by the inode's ctime; then the next
-  claimant removes it.
+  takeover creates `<path>.stale-<24 hex digits>` for microseconds. A process
+  killed in between can leave any of them behind. A marker whose lock is still
+  there blocks the takeover of that lock until it is `MARKER_STALE_MS` (10 s)
+  old, judged by the inode's ctime; then the next claimant removes it. A
+  marker left after its lock was removed blocks nothing and is safe to delete.
 - **The content is pretty-printed JSON** with a trailing newline, and the
   `token` field last.
 - **`updateLock` checks the token, then renames.** A takeover that lands

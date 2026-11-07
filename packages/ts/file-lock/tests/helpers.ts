@@ -1,18 +1,15 @@
 /** Shared test helpers. Not a test file itself. */
-import { createHash } from 'node:crypto'
 import { utimesSync } from 'node:fs'
 
 import { vi } from 'vitest'
 
+import { markerFor } from '../src/held.ts'
 import { MARKER_STALE_MS } from '../src/index.ts'
+
+export { markerFor }
 
 /** Above every platform's pid_max, so it can never name a live process. */
 export const DEAD_PID = 2147483646
-
-/** The takeover marker a reaper creates for a lock whose text is `raw`, named as held.ts names it. */
-export function markerFor(lock: string, raw: string): string {
-  return `${lock}.stale-${createHash('sha256').update(raw).digest('hex').slice(0, 24)}`
-}
 
 /** Set `path`'s mtime `ms` into the past: a lock nobody has touched for that long. */
 export function age(path: string, ms = 60_000): void {

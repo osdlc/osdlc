@@ -15,7 +15,8 @@ created: 2026-11-07
   release) only while it holds the claim's token.
 - It exposes it in two shapes: the held lock (`claimLock` and its token
   calls), whose caller chooses the staleness rule, and the short critical
-  section (`withLock`), whose rule is the lock's age.
+  section (`withLock`), whose rule is the lock's age unless the caller passes
+  `isStale`.
 - The section is synchronous only. An async variant is added when a user
   needs one; until then, async work uses `claimLock` and `releaseLock`.
 - There is no Rust twin. Rust has `File::lock` in the standard library since
@@ -42,5 +43,6 @@ created: 2026-11-07
 
 - A lock file is JSON with a `token` field. A lock written by another program
   without one reaches the rule with its fields, but nothing releases it.
-- `withLock` cannot tell a slow holder from a dead one. Callers keep
-  `staleMs` far above their longest section.
+- With its default rule, `withLock` cannot tell a slow holder from a dead
+  one. Callers keep `staleMs` far above their longest section, or pass an
+  `isStale` rule such as `holderGone`.

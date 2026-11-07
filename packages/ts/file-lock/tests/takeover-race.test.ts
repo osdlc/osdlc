@@ -3,13 +3,13 @@
  * lock; here the first reaper's read runs a second claim to completion before
  * the first continues.
  */
-import { mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-import { claimLock, holderGone, untouchedFor, withLock } from '../src/index.ts'
+import { claimLock, holderGone, releaseLock, untouchedFor, withLock } from '../src/index.ts'
 
 import { age, DEAD_PID } from './helpers.ts'
 
@@ -129,5 +129,23 @@ test('withLock writes its claim file once however long it waits', () => {
   hooks.writes.length = 0
   expect(() => withLock(lock, () => 0, { timeoutMs: 60, retryMs: 1 })).toThrow('timed out')
   expect(hooks.writes.filter((p) => p.startsWith(`${lock}.new-`))).toHaveLength(1)
+  expect(readdirSync(dir)).toEqual(['x.lock'])
+})
+
+test('a lock taken over between the token check and the rename is put back', () => {
+  const first = claimLock(lock, {}, { isStale: () => false })
+  if (!first.ok) throw new Error('expected a free lock')
+
+  // releaseLock's first read sees our token; before its rename, a taker replaces the lock.
+  let taker: string | undefined
+  onFirstRead(() => {
+    rmSync(lock)
+    const r = claimLock(lock, {}, { isStale: () => true })
+    if (r.ok) taker = r.token
+  })
+  expect(releaseLock(lock, first.token)).toBe(false)
+
+  expect(taker).toBeDefined()
+  expect(JSON.parse(readFileSync(lock, 'utf-8')).token).toBe(taker)
   expect(readdirSync(dir)).toEqual(['x.lock'])
 })

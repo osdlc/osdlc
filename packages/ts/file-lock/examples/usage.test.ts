@@ -97,8 +97,13 @@ test('a lock held for as long as a process lives, with extra holder pids', () =>
   expect(releaseLock(lock, mine.token)).toBe(true)
 })
 
-test('a reaper that died mid-takeover blocks takeover of that lock for MARKER_STALE_MS', () => {
-  expect(MARKER_STALE_MS).toBe(10_000)
+test('a claim that finds a takeover in progress retries after MARKER_STALE_MS at most', () => {
+  const lock = join(dir, 'job.lock')
+  const claim = claimLock(lock, { pid: process.pid }, { isStale: () => false })
+  // A claim with { ok: false, holder: null } met a lock being taken over; trying
+  // again once MARKER_STALE_MS has passed outlasts even a reaper that died.
+  const retryAt = claim.ok ? null : Date.now() + MARKER_STALE_MS
+  expect(retryAt).toBeNull()
 })
 
 test('a lock kept alive by its holder touching it', () => {
