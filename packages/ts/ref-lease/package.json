@@ -57,7 +57,7 @@
   },
   "dependencies": {
     "@osdlc/command-seam": "workspace:^",
-    "@osdlc/typed-git": "workspace:^"
+    "@osdlc/typed-git": "workspace:^0.12.0 || ^0.13.0"
   },
   "devDependencies": {
     "@osdlc/prettier-config": "workspace:^",
