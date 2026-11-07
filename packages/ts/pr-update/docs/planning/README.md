@@ -21,6 +21,8 @@ They are never reused.
 
 - [D-0001](decisions/D-0001-engine-hosts-and-one-judgement-seam.md): pr-update
   is a host-neutral update engine with one judgement seam
+- [D-0002](decisions/D-0002-survey-and-update-on-the-command-model.md): survey
+  and update run on cli-tool's command model
 
 ## Backlog
 
