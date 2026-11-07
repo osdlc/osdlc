@@ -210,8 +210,9 @@ A cast (`rawOutput as Redacted`) still gets past it, so treat a cast to
   first time a text could hold a secret.
 - Text with no run of 16 or more non-space characters, no `://` and no `-----`
   skips secretlint, which is most of a chat transcript.
-- Every built-in rule is bounded. Each has a test that feeds it 100 KiB of
-  input built to make it backtrack and requires it to finish quickly.
+- No built-in rule nests an unbounded quantifier. Each has a test that feeds
+  it 100 KiB of input built to make it backtrack and requires it to finish
+  quickly.
 
 ## Reference
 

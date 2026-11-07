@@ -93,9 +93,9 @@ describe('appendRedactedJsonl', () => {
     if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600)
   })
 
-  test('a top-level toJSON is called before the pass, and what it returns is redacted', async () => {
+  test('a line with a toJSON is replaced by what it returns, then redacted, as JSON would write it', async () => {
     await appendRedactedJsonl(file, { kind: 'x', toJSON: () => ({ secret: ghp }) }, r)
-    expect(readJsonl(file)).toEqual([{ kind: 'x', secret: '[REDACTED:assigned-secret]' }])
+    expect(readJsonl(file)).toEqual([{ secret: '[REDACTED:assigned-secret]' }])
   })
 
   test('an envelope key holding a function or a BigInt is not written as is', async () => {
@@ -127,6 +127,30 @@ test('free text in an envelope field passes the text filter; ids are unchanged',
     expect(line!['session']).toBe(envelope.session)
     expect(line!['run']).toBe(envelope.run)
     expect(redactions).toEqual({ github: 1 })
+  } finally {
+    rmSync(dir2, { recursive: true, force: true })
+  }
+})
+
+test('a class-instance line keeps its envelope fields, as a literal does', async () => {
+  class Line {
+    v = 1
+    kind = 'tool.output'
+    session = 's-01JABCDEFGHJKMNPQRSTVWXYZ0'
+    output = `pushed with ${ghp}`
+  }
+  const dir2 = mkdtempSync(join(tmpdir(), 'observe-redacted-class-'))
+  try {
+    const out = join(dir2, 'log.jsonl')
+    await appendRedactedJsonl(out, new Line(), r)
+    expect(readJsonl(out)).toEqual([
+      {
+        v: 1,
+        kind: 'tool.output',
+        session: 's-01JABCDEFGHJKMNPQRSTVWXYZ0',
+        output: 'pushed with [REDACTED:github]',
+      },
+    ])
   } finally {
     rmSync(dir2, { recursive: true, force: true })
   }

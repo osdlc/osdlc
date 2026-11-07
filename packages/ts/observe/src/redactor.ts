@@ -17,10 +17,10 @@
  * of the earliest start) and each is replaced with `[REDACTED:<rule>]`.
  *
  * The matched text is never logged or returned: callers get only per-rule
- * counts. Every built-in regex is bounded (no nested unbounded groups, bounded
- * quantifiers where a start position could rescan a long run), and the PEM
- * rule is a linear `indexOf` scan, so a hostile 100 KiB input cannot stall a
- * writer. If secretlint throws, the whole text is replaced: failing closed
+ * counts. No built-in regex nests an unbounded quantifier, quantifiers are
+ * bounded where a start position could rescan a long run, and the PEM rule is a
+ * linear `indexOf` scan. Each rule has a test that it finishes a hostile 100 KiB
+ * input quickly. If secretlint throws, the whole text is replaced: failing closed
  * beats failing open. The same applies to any other error inside a pass.
  *
  * Known limits, accepted: a context-free 40-character AWS secret key (no key
@@ -178,7 +178,7 @@ function sameOffsets(text: string): string {
 /**
  * Whether secretlint can find anything in `text`. Every shape in its recommended preset is a
  * contiguous token of 16+ characters, a `://` connection string or a `-----BEGIN` block, so
- * short keys and prose of short words (most of a transcript line) skip the ~7 ms lint call.
+ * short keys and prose of short words (most of a transcript line) skip the lint call.
  */
 const LINT_CANDIDATE = /\S{16}|:\/\/|-----/
 
@@ -265,6 +265,9 @@ const PASSWORD_LIKE_KEY = /^[A-Za-z0-9_-]*(?:password|passwd|pwd|secret)/i
 /** The key is exactly `pwd` (the shell's working directory variable), whose path value is no secret. */
 const PWD_PATH_KEY = /^["']?pwd["']?\s*[:=]/i
 
+/** A key whose number is a count or a limit, not a secret: `token_count`, `token_limit`. */
+const COUNT_KEY = /count|limit|budget|total|max|min/i
+
 /** A key that counts tokens (`input_tokens`, `cache_read_tokens`), whose number is not a secret. */
 const TOKEN_COUNT_KEY = /^[A-Za-z0-9_-]*tokens["']?\s*[:=]/i
 
@@ -316,16 +319,16 @@ const CODE_RECEIVERS = new Set([
 ])
 
 /**
- * An unquoted value that is code, not a secret: a call, member chain off a known receiver
- * ({@link CODE_RECEIVERS}), type name or variable reference. `referencesOnly` (a password-like
- * key) keeps just the last two: a dotted word run under `password=` is a passphrase.
- */
-/**
  * A shell variable reference (`$API_TOKEN`, `${API_TOKEN}`), not a value: an env var name is
  * upper-case. The closing brace is optional because the trailing-punctuation trim takes it.
  */
 const SHELL_VAR = /^\$(?:[A-Z_][A-Z0-9_]*|\{[A-Za-z_][A-Za-z0-9_]*\}?)$/
 
+/**
+ * An unquoted value that is code, not a secret: a call, member chain off a known receiver
+ * ({@link CODE_RECEIVERS}), type name or variable reference. `referencesOnly` (a password-like
+ * key) keeps just the last two: a dotted word run under `password=` is a passphrase.
+ */
 function looksLikeCode(v: string, referencesOnly = false): boolean {
   if (SHELL_VAR.test(v) || v.startsWith('process.env.')) return true
   if (TYPE_WORDS.test(v)) return true
@@ -559,6 +562,15 @@ export function createRedactor(opts: RedactorOptions = {}): Redactor {
       if (typeof v === 'bigint') return v.toString()
       if (typeof v === 'function' || typeof v === 'symbol') return undefined
       if (v === null || typeof v !== 'object') return v
+      // A boxed primitive (`new String(secret)`) would otherwise be walked one character per key.
+      if (
+        v instanceof String ||
+        v instanceof Number ||
+        v instanceof Boolean ||
+        v instanceof BigInt
+      ) {
+        return walk(v.valueOf(), depth)
+      }
       if (depth >= MAX_JSON_DEPTH) return '[MaxDepth]'
       if (ancestors.has(v)) return '[Circular]'
       if (v instanceof Date) return Number.isNaN(v.getTime()) ? 'Invalid Date' : v.toISOString()
@@ -588,13 +600,13 @@ export function createRedactor(opts: RedactorOptions = {}): Redactor {
           const key = uniqueKey(out, await str(k))
           // A secret-named key carries its value's context, which a per-string
           // pass cannot see: `{ "password": "hunter22" }`. A number is blanked too
-          // (`{ "pin": ... }` under `password`), except under a token key, where it is
-          // a count (`token_count: 100`). Booleans are kept.
+          // (`otp_token: 482913`), except under a key that reads as a count or limit
+          // (`token_count: 100`). Booleans are kept.
           const blank =
             (SECRET_KEY.test(k) &&
               ((typeof item === 'string' && item.length > 0) ||
                 (item !== null && typeof item === 'object') ||
-                (typeof item === 'number' && !/token/i.test(k)))) ||
+                (typeof item === 'number' && !COUNT_KEY.test(k)))) ||
             (SECRET_STRING_KEY.test(k) && typeof item === 'string' && item.length > 0)
           if (blank) count(redactions, 'assigned-secret')
           const value = blank ? '[REDACTED:assigned-secret]' : await walk(item, depth + 1)

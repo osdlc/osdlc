@@ -18,25 +18,35 @@ const ENVELOPE_KEYS: ReadonlySet<string> = new Set(Object.keys(LogEnvelopeSchema
 /** The value types an envelope key keeps its key for; anything else goes through `redactJson`. */
 const KEPT_TYPES: ReadonlySet<string> = new Set(['string', 'number', 'boolean'])
 
-/** An object literal or `Object.create(null)`: not an array, `Map`, `Error`, `Date` or class instance. */
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  if (v === null || typeof v !== 'object') return false
-  const proto: unknown = Object.getPrototypeOf(v)
-  return proto === Object.prototype || proto === null
+/**
+ * A line JSON would write as its own fields: an object literal or a class instance, but not
+ * an array, a collection, an `Error`, a `Date`, a boxed primitive or a value with a `toJSON`,
+ * which {@link Redactor.redactJson} converts first.
+ */
+function isFieldRecord(v: unknown): v is Record<string, unknown> {
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) return false
+  if (typeof (v as { toJSON?: unknown }).toJSON === 'function') return false
+  return !CONVERTED.some((type) => v instanceof type)
 }
+
+const CONVERTED = [Map, Set, Error, Date, String, Number, Boolean, BigInt]
 
 /**
  * Redact `line` with `redactor`, then append it to `path` as one JSON line,
  * as `appendJsonl` does. The envelope's own top-level keys (ids and
- * structure) keep their place when they hold a string, number, boolean or
- * null: a string passes {@link Redactor.redact}, which leaves an id as it is,
- * so the `session` id is not blanked as a secret-named key would be. Every
- * other key and its value pass {@link Redactor.redactJson}. If that pass fails, the line keeps the
- * envelope keys alone and the result counts `redactor-error`. A `line` that is
- * not a plain object (an array, a `Map`, an `Error`, a class instance) is
- * redacted whole, as {@link Redactor.redactJson} converts it. Returns what
- * was replaced, by rule, so the caller can count or report it; the matched
- * text is never returned.
+ * structure) are written first, as they are, when they hold a string,
+ * number, boolean or null; a string passes {@link Redactor.redact}, which
+ * leaves an id as it is, so the `session` id is not blanked as a
+ * secret-named key would be. Every other key and its value pass
+ * {@link Redactor.redactJson}. If that pass fails, the line keeps the
+ * envelope keys alone and the result counts `redactor-error`. A `line` that
+ * is an array, a `Map`, an `Error` or has a `toJSON` is redacted whole, as
+ * {@link Redactor.redactJson} converts it. Returns what was replaced, by rule,
+ * so the caller can count or report it; the matched text is never returned.
+ *
+ * Await each call before the next to the same file: redaction takes longer
+ * for some lines than others, so calls left running together can append
+ * their lines in a different order from the calls.
  *
  * @throws The file system's error when the directory or file cannot be created
  * or written. The redactor itself never throws.
@@ -47,7 +57,7 @@ export async function appendRedactedJsonl(
   redactor: Redactor,
   options: AppendOptions = {},
 ): Promise<Redactions> {
-  if (!isPlainObject(line)) {
+  if (!isFieldRecord(line)) {
     const { value, redactions } = await redactor.redactJson(line)
     appendJsonl(path, value, options)
     return redactions

@@ -216,17 +216,12 @@ function endsInSeparator(body: string): boolean {
 }
 
 /**
- * Whether some group is repeated in a way that can blow up: an unbounded repeat
- * of a group that holds an unbounded quantifier (`(x+)+`), a variable-width
- * bounded quantifier (`(a{1,2})+`, `(a?a?)+`), or an alternation
- * whose branches can start alike (`(a|a)+`, `(a|aa)*`, `(\w|\d)+`; `(a|b)+` is
- * fine), a repeat of two or more of a group that holds an unbounded quantifier
- * (`(?:a+){3}b`, `(.*a){10}`), or a repeat of more than
- * {@link SMALL_REPEAT_MAX} of a group that holds a variable-width quantifier
- * (`(a{1,2}){20}`).
- * A group that {@link endsInSeparator} is allowed any repeat
- * (`(?:[0-9a-f]{1,4}:){7}`), though its quantifiers still count against the
- * groups around it. Escapes and character classes count as one atom.
+ * Whether some group is repeated in a way that can blow up: the shapes
+ * {@link redactPatternProblem} lists. The thresholds are {@link SMALL_REPEAT_MAX}
+ * for a variable-width inner quantifier and one repeat for an unbounded one. A
+ * group that {@link endsInSeparator} is allowed any repeat, though its
+ * quantifiers still count against the groups around it. Escapes and character
+ * classes count as one atom.
  *
  * An inline modifier group (`(?i:`, `(?-s:`) can make `[a-z]` match `Z`, so
  * when the pattern has one the separator rule is off and branch starts compare
