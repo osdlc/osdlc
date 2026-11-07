@@ -163,7 +163,7 @@ export async function scrollSteps(
         if (!el) return reject(new Error(`no element matches ${sel}`))
         let done = 0
         const step = () => {
-          if (done++ === count) return resolve()
+          if (done++ >= count) return resolve()
           el.scrollBy(0, by)
           requestAnimationFrame(step)
         }

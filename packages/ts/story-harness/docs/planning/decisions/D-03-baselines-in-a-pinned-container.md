@@ -13,7 +13,8 @@ created: 2026-11-07
   as `linux/amd64`, at zero pixel tolerance past a 0.02 colour distance.
 - The runner folder is copied into the container as one flat folder, and
   imports only Node and Playwright.
-- A change to the pinned image is a minor release.
+- A change that can change a shot is a minor release: the pinned image, or
+  how a story is opened, settled or shot. A patch release never moves a pixel.
 
 ## Why
 
@@ -27,4 +28,5 @@ created: 2026-11-07
 
 - The check needs Docker. On Apple silicon the image runs emulated, which is
   slower but matches CI.
-- A new image can move pixels, so consumers re-baseline when they take it.
+- Consumers take patches without re-baselining, and re-baseline once when
+  they take a minor version.

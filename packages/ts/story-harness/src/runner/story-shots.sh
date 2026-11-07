@@ -119,7 +119,11 @@ pull_image() {
   rm -rf "$config"
   return $status
 }
-docker image inspect "$IMAGE" >/dev/null 2>&1 || pull_image
+# Pull when the image is missing, or cached for another platform (a native
+# arm64 copy on Apple silicon, say), which docker run would otherwise pull with
+# the user's config.
+[[ "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE" 2>/dev/null || true)" == "$PLATFORM" ]] ||
+  pull_image
 
 mkdir -p "$BASELINES"
 rm -rf "$RESULTS"
@@ -153,21 +157,27 @@ docker run --rm --platform "$PLATFORM" --ipc=host \
     npm init -y >/dev/null 2>&1
     npm pkg set type=module >/dev/null 2>&1
     npm install --silent --no-audit --no-fund --prefer-offline "@playwright/test@$PLAYWRIGHT_VERSION"
+    # Both modes start from the committed baselines. --update rewrites only a
+    # shot that no longer matches, or is missing, so an untouched story keeps
+    # its file byte for byte.
+    cp -r /baselines/. /work/baselines/
     if [[ "$MODE" == "check" ]]; then
-      cp -r /baselines/. /work/baselines/
       UPDATE="--update-snapshots=none"
     else
-      UPDATE="--update-snapshots=all"
+      UPDATE="--update-snapshots=changed"
     fi
+    : > /work/shots.txt
     set +e
-    STORYBOOK_DIR=/storybook BASELINE_DIR=/work/baselines ARTIFACTS_DIR=/work/test-results \
+    STORYBOOK_DIR=/storybook BASELINE_DIR=/work/baselines ARTIFACTS_DIR=/work/test-results SHOTS_LIST=/work/shots.txt \
       npx playwright test -c playwright.config.js $UPDATE
     status=$?
     set -e
     if [[ "$MODE" == "update" ]]; then
-      # A passing run replaces the baselines its filter covers, which prunes
-      # deleted stories; baselines outside the filter are left alone. A failed
-      # run keeps what it did write and deletes nothing.
+      cp -r /work/baselines/. /baselines/
+      # A passing run deletes the baselines its filter covers that it did not
+      # shoot: stories that are gone, or now skipped. Baselines outside the
+      # filter are left alone. A failed run keeps what it wrote and deletes
+      # nothing.
       if [[ $status -eq 0 ]]; then
         IFS=, read -ra includes <<< "$STORY_INCLUDE"
         IFS=, read -ra excludes <<< "$STORY_EXCLUDE"
@@ -177,10 +187,9 @@ docker run --rm --platform "$PLATFORM" --ipc=host \
           covered=$(( ${#includes[@]} == 0 ))
           for p in "${includes[@]+"${includes[@]}"}"; do [[ "$name" == "$p"* ]] && covered=1; done
           for p in "${excludes[@]+"${excludes[@]}"}"; do [[ "$name" == "$p"* ]] && covered=0; done
-          if [[ $covered -eq 1 ]]; then rm -f "$file"; fi
+          if [[ $covered -eq 1 ]] && ! grep -qxF "$name" /work/shots.txt; then rm -f "$file"; fi
         done
       fi
-      cp -r /work/baselines/. /baselines/
     fi
     cp -r /work/test-results/. /artifacts/ 2>/dev/null || true
     # The container runs as root. Give what it wrote to the owner of the

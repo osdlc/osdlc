@@ -63,15 +63,20 @@ defaults:
 
 ```ts
 // scripts/capture-docs.ts
+import { fileURLToPath } from 'node:url'
+
 import { captureCli } from '@osdlc/story-harness/runner'
 
 await captureCli({
-  packageDir: new URL('..', import.meta.url).pathname,
+  packageDir: fileURLToPath(new URL('..', import.meta.url)),
   prefix: 'my-button--',
   out: 'docs/screenshots',
   port: 6107,
 })
 ```
+
+Node 22.18 or later runs a `.ts` file directly; on an older Node 22, add
+`--experimental-strip-types`.
 
 ```sh
 node scripts/capture-docs.ts            # every my-button story

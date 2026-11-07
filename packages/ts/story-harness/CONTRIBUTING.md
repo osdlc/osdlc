@@ -61,8 +61,9 @@ pnpm run format:check
 - `src/runner/` is copied into the container as one flat folder that has only
   Node and Playwright, so its files import nothing else and stay in one
   folder.
-- A change to the pinned Playwright image can move pixels, so it is a minor
-  release.
+- A change that can change a shot is a minor release: the pinned Playwright
+  image, or how a story is opened, settled or shot. Consumers take patch
+  releases without looking, so a patch must never move a pixel.
 - For a change users can see, add a changeset: run `pnpm changeset` at the
   repository root. Start a breaking change's summary with `**Breaking:**`.
   Do not edit `CHANGELOG.md` or `version` by hand. The release writes them.

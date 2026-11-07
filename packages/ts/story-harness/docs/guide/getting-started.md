@@ -26,7 +26,7 @@ otherwise meet one at a time:
 |---|---|---|
 | Fonts rasterise differently per OS | Baselines made on a Mac fail on Linux CI, so people raise the pixel tolerance until the check catches nothing | Shoots every baseline inside one pinned Linux container, so a laptop and CI produce the same pixels |
 | A story's `play` throws, but Storybook still reports `success` | The check screenshots a broken story and passes | Listens for Storybook's error events and fails the story |
-| Dates, random data and animations differ per run | Shots flicker between runs | Fixes the clock, seeds `Math.random`, waits for fonts and the network, then settles |
+| Dates, random data and animations differ per run | Shots flicker between runs | Starts the clock at a fixed time, seeds `Math.random`, waits for fonts and the network, then settles |
 | Parallel Playwright workers each write perf numbers | Workers overwrite each other's results | Every write merges into one report under a lock |
 
 ## The three parts
