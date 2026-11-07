@@ -43,6 +43,10 @@ created: 2026-10-19
   `readNativeTranscript` and `nativeConversation`. An adapter without them
   reports `unavailable` with no files. The first release covers claude and
   codex.
+- `TranscriptCoverage` mirrors observe's closed list of the same name (observe
+  D-09), which owns it on disk. The values and their order (`unavailable` <
+  `partial` < `complete`) are pinned in both packages' tests, so a caller can
+  pass the value to observe unchanged.
 - `lines` holds complete lines only. A cut-off last line sets `torn` and makes
   the coverage `partial`. `running: true` also makes it `partial`. No log found
   makes it `unavailable`. `notes` says why the coverage is below `complete`.

@@ -33,4 +33,4 @@ that replaces it.
 - [D-08](decisions/D-08-licence.md): Licence
 - [D-09](decisions/D-09-more-built-in-agents.md): More built-in agents
 - [D-10](decisions/D-10-native-transcripts.md): Reading an agent's own
-  transcript (proposed)
+  transcript (proposed; experimental exports)
