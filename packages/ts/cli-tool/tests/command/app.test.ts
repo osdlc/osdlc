@@ -11,6 +11,7 @@ import {
   outcome,
 } from '../../src/command/index.ts'
 import { captureContext } from '../../src/io.ts'
+import { NotInteractiveError } from '../../src/prompt.ts'
 import { runApp } from '../../src/testing.ts'
 
 const GLOBALS = {
@@ -256,6 +257,37 @@ describe('errors', () => {
   test('a CommandError prints its message and hint and exits with its code', async () => {
     const r = await runApp(app, ['fails'])
     expect(r).toMatchObject({ exit: 12, out: '', err: 'tooly: it broke\ntry again\n' })
+  })
+
+  test('a prompt nobody can answer is its own line, exit and error code', async () => {
+    const asks = defineApp({
+      name: 'asks',
+      version: '0',
+      summary: 's',
+      commands: {
+        go: defineCommand({
+          summary: 'needs an answer',
+          flags: { ended: { kind: 'boolean', help: 'the input ended' } },
+          output: z.object({}),
+          run({ flags }) {
+            throw new NotInteractiveError(flags.ended ? 'end-of-input' : 'no-terminal', {
+              flag: '--yes',
+            })
+          },
+        }),
+      },
+    })
+    const text = await runApp(asks, ['go'])
+    expect(text).toMatchObject({
+      exit: 2,
+      out: '',
+      err: 'asks: cannot ask: there is no terminal to answer on. Pass --yes instead.\n',
+    })
+    const json = await runApp(asks, ['go', '--json'])
+    expect(json.json()).toMatchObject({ kind: 'error', code: 'not-interactive', exit: 2 })
+    const ended = await runApp(asks, ['go', '--ended', '--json'])
+    expect(ended.exit).toBe(1)
+    expect(ended.json()).toMatchObject({ code: 'not-interactive', exit: 1 })
   })
 
   test('a UsageError from run is exit 2', async () => {

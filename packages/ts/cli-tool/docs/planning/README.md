@@ -24,6 +24,8 @@ They are never reused. Each decision has a `state`: `accepted` or
   share one message form and one exit table
 - [D-02](decisions/D-02-devlink-state-dir-is-a-home-path.md): A devlink
   spec's own state directory is a path under the home
+- [D-04](decisions/D-04-prompts-fail-instead-of-guessing.md): Prompts fail
+  instead of guessing, and reach the terminal only when asked
 
 ## Backlog
 
