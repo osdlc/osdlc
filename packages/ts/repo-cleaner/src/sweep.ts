@@ -23,7 +23,7 @@ import {
 import { discoverRepo } from './discover.ts'
 import type { Annotate } from './hooks.ts'
 import { defaultProcessProbe, type ProcessProbe } from './processes.ts'
-import { fetchPrs } from './prs.ts'
+import { lookupPrs } from './prs.ts'
 import { PROVIDER_CHOICES, providers, type ProviderChoice } from './providers/index.ts'
 import { defaultCacheDir, ensureMirror, isRemoteUrl, redactUrl } from './remote-mirror.ts'
 import { expandTilde, resolveEntries } from './resolve.ts'
@@ -42,6 +42,7 @@ import {
   type SweptWith,
   type WorktreeRow,
 } from './types.ts'
+import { errorText } from './util.ts'
 import { gatherWorktrees } from './worktrees.ts'
 
 /** Runners and the process probe: what a test or a host injects. */
@@ -263,6 +264,7 @@ function errorSweep(path: string, err: unknown): RepoSweep {
     repo: null,
     rows: [],
     counts: countRows([]),
+    notes: [],
     error: err instanceof Error ? err.message : String(err),
   }
 }
@@ -287,6 +289,12 @@ interface RepoSweepOptions extends Runners {
  * {@link sweep} does for each. The engine `check` and `run` re-sweep with.
  * Never throws for a repository it cannot read; throws a `conflict` for a
  * `branch` that is the default branch.
+ *
+ * A failed fetch fails the repository. A lookup that only adds evidence does
+ * not: a remote whose branches `ls-remote` cannot list is read from the
+ * remote-tracking refs the fetch just wrote, and a provider whose listing
+ * fails leaves no pull request evidence. Each is a sentence in `notes`, and
+ * every row is judged on the evidence that is left.
  */
 export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
   const kinds = new Set<Kind>(opts.only)
@@ -343,23 +351,33 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
     const fetched = git
       .at(repo.root)
       .try.fetch(repo.remote, undefined, { prune: true, quiet: true, noWriteFetchHead: true })
+    // Unlike the lookups below, a failed fetch fails the repository: every
+    // row, local ones included, would be judged against a default branch
+    // older than the one asked for.
     if (!fetched.ok) {
       return {
-        ...errorSweep(
-          path,
-          new Error(`fetch failed: ${fetched.error.detail || fetched.error.message}`),
-        ),
+        ...errorSweep(path, new Error(`fetch failed: ${errorText(fetched.error)}`)),
         repo,
       }
     }
     repo = { ...repo, fetched: true }
   }
 
+  const notes: string[] = []
   try {
     const status = repo.provider ?? null
     if (status?.authenticated === true) report('prs', undefined, undefined, status.tool)
-    const prs =
-      status === null ? new Map<string, PRInfo>() : fetchPrs(repo, known[status.name], only)
+    let prs = new Map<string, PRInfo>()
+    if (status !== null) {
+      const looked = lookupPrs(repo, known[status.name], only)
+      prs = looked.prs
+      if (looked.error !== null) {
+        repo = { ...repo, provider: { ...status, listError: looked.error } }
+        notes.push(
+          `Listing ${status.noun}s with \`${status.listing}\` failed (${looked.error}); judged on git evidence alone.`,
+        )
+      }
+    }
     const rows: Row[] = []
 
     // Worktrees are gathered whenever local branches are, even if they are not
@@ -402,17 +420,23 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
     }
 
     if (kinds.has('remote')) {
-      rows.push(...gatherRemoteBranches(repo, prs, localBranchNames, git, only, ticker('remote')))
+      const remote = gatherRemoteBranches(repo, prs, localBranchNames, git, {
+        live: repo.fetched,
+        only,
+        tick: ticker('remote'),
+      })
+      rows.push(...remote.rows)
+      if (remote.note !== null) notes.push(remote.note)
     }
 
     const annotated =
       opts.annotate === undefined
         ? rows
         : holdFreedBranches(opts.annotate(repo, rows).map(blockedHasNoAction), only !== undefined)
-    return { path, repo, rows: annotated, counts: countRows(annotated), error: null }
+    return { path, repo, rows: annotated, counts: countRows(annotated), notes, error: null }
   } catch (err) {
     if (err instanceof RepoCleanerError) throw err
-    return { ...errorSweep(path, err), repo }
+    return { ...errorSweep(path, err), repo, notes }
   }
 }
 

@@ -353,6 +353,13 @@ export interface RepoSweep {
   repo: RepoInfo | null
   rows: Row[]
   counts: Counts
+  /**
+   * What the sweep could not look up for this repository and judged without,
+   * one sentence each: a remote branch listing or a pull request listing that
+   * failed. The rows stand on the evidence that was left. Empty when nothing
+   * was missing.
+   */
+  notes: string[]
   /** Why this repository produced no rows. Null on success. */
   error: string | null
 }

@@ -9,10 +9,22 @@
 
 import type { PrProvider } from './providers/index.ts'
 import type { PRInfo, RepoInfo } from './types.ts'
+import { errorText } from './util.ts'
 
 /** Open outranks merged outranks closed, and a newer PR outranks an older. */
 function priority(state: string): number {
   return ({ OPEN: 3, MERGED: 2, CLOSED: 1 } as Record<string, number>)[state] ?? 0
+}
+
+/** A provider's answer for one repository: its pull requests, or why there are none to read. */
+export interface PrLookup {
+  /** Pull requests keyed by head branch; empty when the lookup failed or was not made. */
+  prs: Map<string, PRInfo>
+  /**
+   * Why the listing failed, in the provider's own words where it gave any;
+   * null when it answered, or when it was not asked at all.
+   */
+  error: string | null
 }
 
 /**
@@ -27,7 +39,7 @@ function priority(state: string): number {
  *
  * An empty map is the honest answer when the provider's CLI is missing,
  * unauthenticated or failing, or when there is no provider. Classification
- * degrades to git evidence and the report says so.
+ * degrades to git evidence; {@link lookupPrs} also says why.
  *
  * @param provider The provider to ask. It is asked only when it is the one
  *   `repo.provider` names and that probe found it signed in.
@@ -39,12 +51,30 @@ export function fetchPrs(
   provider: PrProvider,
   branch?: string,
 ): Map<string, PRInfo> {
+  return lookupPrs(repo, provider, branch).prs
+}
+
+/**
+ * {@link fetchPrs}, with the reason when the listing failed. A provider that
+ * answers null or throws has failed: a repository the signed-in account cannot
+ * see, a forge that is down, output that cannot be read. Either way the map is
+ * empty and `error` says why, so the sweep judges the repository on git
+ * evidence and notes it, rather than losing every row to one listing.
+ */
+export function lookupPrs(repo: RepoInfo, provider: PrProvider, branch?: string): PrLookup {
   const byHead = new Map<string, PRInfo>()
   const status = repo.provider
-  if (status === null || status.name !== provider.name || !status.authenticated) return byHead
+  if (status === null || status.name !== provider.name || !status.authenticated) {
+    return { prs: byHead, error: null }
+  }
 
-  const rows = provider.listPrs(repo.root, status, branch)
-  if (rows === null) return byHead
+  let rows: PRInfo[] | null
+  try {
+    rows = provider.listPrs(repo.root, status, branch)
+  } catch (err) {
+    return { prs: byHead, error: errorText(err) }
+  }
+  if (rows === null) return { prs: byHead, error: `\`${status.listing}\` failed` }
 
   for (const info of rows) {
     const head = info.headRef
@@ -61,5 +91,5 @@ export function fetchPrs(
       byHead.set(head, info)
     }
   }
-  return byHead
+  return { prs: byHead, error: null }
 }

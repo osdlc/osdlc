@@ -17,12 +17,13 @@ import { makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 import { cannedGh, cannedGlab, git } from './helpers.ts'
 import { main } from '../src/cli.ts'
 import { parsePlan } from '../src/plan.ts'
-import { fetchPrs } from '../src/prs.ts'
+import { fetchPrs, lookupPrs } from '../src/prs.ts'
 import {
   chooseProvider,
   forgeTarget,
   githubProvider,
   gitlabProvider,
+  type PrProvider,
   type ProviderStatus,
 } from '../src/providers/index.ts'
 import { sweep, type SweepOptions } from '../src/sweep.ts'
@@ -203,6 +204,30 @@ describe('the GitLab provider', () => {
     expect(fetchPrs(repoWith(GITLAB), gitlabProvider(failing)).size).toBe(0)
   })
 
+  test('a failed listing says why, whether the provider answers null or throws', () => {
+    const failing = {
+      run: () => ({ exitCode: 1, stdout: '', stderr: '401 Unauthorized' }),
+    }
+    expect(lookupPrs(repoWith(GITLAB), gitlabProvider(failing))).toEqual({
+      prs: new Map(),
+      error: '`glab api` failed',
+    })
+    const throwing: PrProvider = {
+      ...gitlabProvider(failing),
+      listPrs: () => {
+        throw new Error(
+          'GitHub has no such pull request, issue or repository, or you cannot see it.',
+        )
+      },
+    }
+    expect(lookupPrs(repoWith(GITLAB), throwing)).toEqual({
+      prs: new Map(),
+      error: 'GitHub has no such pull request, issue or repository, or you cannot see it.',
+    })
+    const unasked = lookupPrs(repoWith({ ...GITLAB, authenticated: false }), throwing)
+    expect(unasked.error).toBeNull()
+  })
+
   test('a page whose output was cut short is no evidence', () => {
     const page = JSON.stringify([
       {
@@ -290,8 +315,8 @@ describe('a sweep of a GitLab checkout', () => {
 
   /**
    * Real git, except that `remote get-url origin` names a GitLab project. The
-   * remote itself stays the fixture's origin on disk, so listing its branches
-   * (which a sweep with `remote` does) still works offline.
+   * remote itself stays the fixture's origin on disk, and an offline sweep
+   * reads its branches from the remote-tracking refs.
    */
   const gitlabUrlGit: CommandRunner = {
     run(argv, opts) {

@@ -429,9 +429,21 @@ function doSweep(
  * repository off as an empty one.
  */
 function reportUnreadable(ctx: CliContext, name: string, s: Sweep): boolean {
+  reportNotes(ctx, name, s)
   const failed = s.repos.filter((r) => r.error !== null)
   for (const r of failed) ctx.io.stderr(`${name}: ${r.repo?.root ?? r.path}: ${r.error}\n`)
   return failed.length > 0
+}
+
+/**
+ * Each repository's notes on what the sweep judged without (a failed fetch,
+ * remote listing or pull request lookup), on stderr, for the outputs that do
+ * not carry them.
+ */
+function reportNotes(ctx: CliContext, name: string, s: Sweep): void {
+  for (const r of s.repos) {
+    for (const note of r.notes) ctx.io.stderr(`${name}: ${r.repo?.root ?? r.path}: ${note}\n`)
+  }
 }
 
 function runReport(argv: readonly string[], ctx: CliContext, status: StatusLine): number {
@@ -452,6 +464,7 @@ function runReport(argv: readonly string[], ctx: CliContext, status: StatusLine)
   if (v.format === 'json') ctx.io.stdout(renderJson(s))
   else if (v.format === 'summary') ctx.io.stdout(renderSummary(s, style) + remoteNote(s, style))
   else if (v.format === 'commands') {
+    reportNotes(ctx, NAME, s)
     const commands = renderCommands(s)
     if (commands.length > 0) ctx.io.stdout(commands.join('\n') + '\n')
   } else {

@@ -13,10 +13,25 @@ export function isDir(path: string): boolean {
   }
 }
 
-/** An error as one line for a person: a failed git call's own output, or the message. */
+/**
+ * An error as one line for a person: a failed git call's own output, or the
+ * message. Takes a thrown error or a `try` door's failure (`{ message, detail }`,
+ * not an `Error`).
+ */
 export function errorText(err: unknown): string {
   if (err instanceof CommandFailed) return err.detail.trim() || err.message
-  return err instanceof Error ? err.message : String(err)
+  if (err instanceof Error) return err.message
+  if (isFailure(err)) return err.detail?.trim() || err.message
+  return String(err)
+}
+
+function isFailure(value: unknown): value is { message: string; detail?: string } {
+  if (typeof value !== 'object' || value === null) return false
+  const v = value as Record<string, unknown>
+  return (
+    typeof v['message'] === 'string' &&
+    (v['detail'] === undefined || typeof v['detail'] === 'string')
+  )
 }
 
 /** `1 commit`, `3 commits`. */

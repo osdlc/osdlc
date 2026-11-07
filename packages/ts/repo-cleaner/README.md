@@ -134,7 +134,7 @@ The report, `plan` and `clean` take these:
 | Option | Meaning |
 | --- | --- |
 | `--remote` | Also judge remote branches. Turns on the network: fetches each remote first and asks GitHub or GitLab about pull requests. Slower. |
-| `--offline` | With `--remote`: do not fetch; judge against the remote-tracking refs already on disk. |
+| `--offline` | With `--remote`: do not fetch; judge against the remote-tracking refs already on disk. Remote branches are read from those refs too, so the remote is never contacted. |
 | `--only <kinds>` | Only these kinds of row: `worktree`, `branch`, `remote`, comma-separated. Default: `worktree,branch`, plus `remote` with `--remote`. Naming `remote` implies `--remote`. |
 | `--branch <name\|HEAD>` | Only the rows of one branch: its worktree, its local branch, and its remote branch with `--remote`. `HEAD` is the branch checked out at the target. Never the default branch. |
 | `--against <remote>` | The remote whose default branch counts as "merged into". Default: `origin`, then the first remote. |
@@ -570,7 +570,13 @@ Nothing is ever killed.
 
 Without the provider's CLI (`gh`, or `glab` for GitLab), or without
 authentication, classification proceeds on git evidence alone and the report
-says so. See [Providers (prototype)](#providers-prototype).
+says so. A listing that fails, such as one for a repository the signed-in
+account cannot see, does the same: the repository is judged on git evidence
+and carries a `note` saying why. A remote whose branches `git ls-remote`
+cannot list after the fetch is read from the remote-tracking refs the fetch
+just wrote, also with a note. A failed fetch is different: every row would be
+measured against an older default branch than the one asked for, so the
+repository is an error. See [Providers (prototype)](#providers-prototype).
 
 Every branch delete names the full sha the sweep judged. `update-ref -d` and
 the pinned `--force-with-lease` push both refuse when the branch has moved
@@ -688,7 +694,10 @@ a branch's `sha`, `upstream`, `track`; every kind's `merged`, `pr`,
 `uniqueCommits` and landing evidence.
 
 `sweep` never throws for a repository it cannot read: that one comes back
-with `error` set, because a fan-out must not end on its first bad entry. It
+with `error` set, because a fan-out must not end on its first bad entry. A
+lookup that only adds evidence (a pull request listing, or `ls-remote` after
+the fetch) costs that evidence and not the repository: its rows are judged
+without it, and the repository's `notes` say what was missing. It
 throws a `RepoCleanerError` for options that contradict each other, as the
 command line refuses them, before reading anything. `check` throws for an
 approval that contradicts itself, names a row the plan does not have, or

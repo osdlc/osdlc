@@ -122,6 +122,11 @@ function repoHeader(sweep: RepoSweep): string {
   return `${name}  (${bits.filter((b) => b !== null).join(', ')})`
 }
 
+/** A repository's notes on what the sweep judged without, one line each under its header. */
+function noteLines(sweep: RepoSweep, style: Style): string[] {
+  return sweep.notes.map((note) => `  ${style.review('note')}: ${stripControls(note)}`)
+}
+
 /** The word a report shows for a row: its verdict, or `prune` for a `delete` that only prunes. */
 function verdictWord(row: Pick<Row, 'verdict' | 'action'>): string {
   return isPrune(row) ? 'prune' : row.verdict
@@ -138,7 +143,7 @@ function wordStyle(style: Style, word: string): (text: string) => string {
 /** One repository's rows, indented under its header. `all` shows `keep` rows too. */
 export function renderRepo(sweep: RepoSweep, opts: { all?: boolean; style?: Style } = {}): string {
   const style = opts.style ?? PLAIN
-  const lines = [style.strong(repoHeader(sweep))]
+  const lines = [style.strong(repoHeader(sweep)), ...noteLines(sweep, style)]
   if (sweep.error !== null) {
     lines.push(`  ${style.delete('error')}: ${sweep.error}`)
     return lines.join('\n')
@@ -250,7 +255,7 @@ function report(blocks: string[], sweep: Sweep, style: Style): string {
 /** The sweep as counts (`--format summary`): a table per repository, then the totals line. */
 export function renderSummary(sweep: Sweep, style: Style = PLAIN): string {
   const blocks = sweep.repos.map((r) => {
-    const lines = [repoHeader(r)]
+    const lines = [repoHeader(r), ...noteLines(r, style)]
     if (r.error !== null) {
       lines.push(`  error: ${r.error}`)
       return lines.join('\n')

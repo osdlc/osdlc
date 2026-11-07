@@ -18,7 +18,8 @@ const SWEEP = `Sweep options (the report, plan and clean)
                           each remote first and asks GitHub or GitLab about pull
                           requests. Slower.
   --offline               With --remote: do not fetch; judge against the
-                          remote-tracking refs already on disk.
+                          remote-tracking refs already on disk, remote branches
+                          included. The remote is not contacted.
   --only <kinds>          Only these kinds of row: worktree, branch, remote,
                           comma-separated. Default: worktree,branch, plus remote with
                           --remote. Naming remote implies --remote.

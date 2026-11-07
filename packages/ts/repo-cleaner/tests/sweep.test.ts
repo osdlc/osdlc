@@ -23,7 +23,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { CommandRunner } from '@osdlc/command-seam'
+import { spawnRunner, type CommandRunner } from '@osdlc/command-seam'
 import { Git } from '@osdlc/typed-git'
 import { IDENTITY, makeGitFixture, makeOriginAndCheckout } from '@osdlc/typed-git/testing'
 
@@ -1306,5 +1306,155 @@ describe('a clean worktree merged by ancestry alone (#582)', () => {
     const row = worktreeRow(root, wt)
     expect(row?.verdict).toBe('delete')
     expect(row?.evidence.branchUsed).toBe('upstream')
+  })
+})
+
+describe('a lookup that fails costs its evidence, not the repository (#653, #655)', () => {
+  let parent: string
+  let checkout: string
+  let featureSha: string
+  const realGit = spawnRunner('git', { absolutePathOnly: true })
+
+  /** Real git that counts its `ls-remote` calls and, when `fail` is set, fails them. */
+  function lsRemoteGit(fail: boolean): { runner: CommandRunner; calls: () => number } {
+    let calls = 0
+    return {
+      calls: () => calls,
+      runner: {
+        run(argv, opts) {
+          if (argv.includes('ls-remote')) {
+            calls += 1
+            if (fail) return { exitCode: 128, stdout: '', stderr: 'fatal: unreachable\n' }
+          }
+          return realGit.run(argv, opts)
+        },
+      },
+    }
+  }
+
+  /** A signed-in `gh` whose `pr list` fails as it does for a repository the account cannot see. */
+  const unseeingGh: CommandRunner = {
+    run(argv) {
+      if (argv[0] === '--version' || argv[0] === 'auth') {
+        return { exitCode: 0, stdout: '', stderr: '' }
+      }
+      return {
+        exitCode: 1,
+        stdout: '',
+        stderr: "GraphQL: Could not resolve to a Repository with the name 'acme/gone'.\n",
+      }
+    },
+  }
+
+  beforeAll(() => {
+    parent = realpathSync(mkdtempSync(join(tmpdir(), 'repo-cleaner-lookups-')))
+    const pair = makeOriginAndCheckout({ parent })
+    checkout = pair.checkout.dir
+    git(['branch', 'merged'], checkout)
+    git(['checkout', '-q', '-b', 'feature'], checkout)
+    featureSha = pair.checkout.commit('feature: work', { 'feature.txt': 'feature\n' })
+    git(['push', '-q', 'origin', 'feature'], checkout)
+    git(['checkout', '-q', '-b', 'live', 'main'], checkout)
+    pair.checkout.commit('live: work', { 'live.txt': 'live\n' })
+    git(['checkout', '-q', 'main'], checkout)
+  }, HOOK_TIMEOUT_MS)
+
+  afterAll(() => {
+    rmSync(parent, { recursive: true, force: true })
+  }, HOOK_TIMEOUT_MS)
+
+  test('offline reads remote branches from the remote-tracking refs, never the remote', () => {
+    const counted = lsRemoteGit(false)
+    const before = git(['remote', 'get-url', 'origin'], checkout)
+    git(['remote', 'set-url', 'origin', join(parent, 'gone.git')], checkout)
+    try {
+      const swept = sweepOne(checkout, {
+        cwd: checkout,
+        remote: true,
+        offline: true,
+        provider: 'none',
+        git: counted.runner,
+      })
+      expect(swept.error).toBeNull()
+      expect(swept.notes).toEqual([])
+      expect(counted.calls()).toBe(0)
+      const remotes = rowsOf(swept.rows, 'remote')
+      expect(remotes.get('origin/feature')?.evidence.sha).toBe(featureSha)
+      // The symbolic `origin/HEAD` is not a branch.
+      expect([...remotes.keys()].sort()).toEqual(['origin/feature', 'origin/main'])
+      expect(rowsOf(swept.rows, 'branch').get('merged')?.verdict).toBe('delete')
+    } finally {
+      git(['remote', 'set-url', 'origin', before], checkout)
+    }
+  })
+
+  test('offline with --branch reads only that branch', () => {
+    const swept = sweepOne(checkout, {
+      cwd: checkout,
+      remote: true,
+      offline: true,
+      provider: 'none',
+      branch: 'feature',
+    })
+    expect(swept.rows.filter((r) => r.kind === 'remote').map((r) => r.name)).toEqual([
+      'origin/feature',
+    ])
+  })
+
+  test('a failed ls-remote after a fetch is a note on the rows, not an error', () => {
+    const failing = lsRemoteGit(true)
+    const swept = sweepOne(checkout, {
+      cwd: checkout,
+      remote: true,
+      provider: 'none',
+      git: failing.runner,
+    })
+    expect(swept.error).toBeNull()
+    expect(swept.repo?.fetched).toBe(true)
+    expect(failing.calls()).toBe(1)
+    expect(swept.notes).toHaveLength(1)
+    expect(swept.notes[0]).toContain('`git ls-remote origin` failed (fatal: unreachable)')
+    const feature = rowsOf(swept.rows, 'remote').get('origin/feature')
+    expect(feature?.evidence.sha).toBe(featureSha)
+    expect(feature?.notes.at(-1)).toContain('`refs/remotes/origin/feature` on disk')
+    expect(rowsOf(swept.rows, 'branch').get('merged')?.verdict).toBe('delete')
+    expect(renderRepo(swept)).toContain('note: `git ls-remote origin` failed')
+  })
+
+  test('a pull request listing that fails leaves the rows on git evidence, with a note', () => {
+    const swept = sweepOne(checkout, {
+      cwd: checkout,
+      remote: true,
+      offline: true,
+      provider: 'github',
+      gh: unseeingGh,
+    })
+    expect(swept.error).toBeNull()
+    expect(swept.repo?.provider?.listError).toContain('you cannot see it')
+    expect(swept.notes).toHaveLength(1)
+    expect(swept.notes[0]).toMatch(
+      /^Listing PRs with `gh pr list` failed \(.*you cannot see it.*\); judged on git evidence alone\.$/,
+    )
+    const branches = rowsOf(swept.rows, 'branch')
+    expect(branches.get('merged')?.verdict).toBe('delete')
+    expect(branches.get('live')?.verdict).toBe('review')
+    expect(branches.get('live')?.notes).toContainEqual(
+      expect.stringMatching(/^No PR lookup: `gh pr list` failed \(/),
+    )
+    expect(rowsOf(swept.rows, 'remote').has('origin/feature')).toBe(true)
+    expect(renderRepo(swept)).toContain('note: Listing PRs with `gh pr list` failed')
+    expect(
+      JSON.parse(
+        renderJson(
+          sweep([checkout], {
+            cwd: checkout,
+            remote: true,
+            offline: true,
+            provider: 'github',
+            gh: unseeingGh,
+          }),
+        ),
+      ).repos[0].notes,
+    ).toEqual(swept.notes)
   })
 })

@@ -37,6 +37,7 @@ import {
   type Risk,
   type RowFields,
 } from './types.ts'
+import { errorText } from './util.ts'
 
 /**
  * Five fields in one pass, so a repository costs one `for-each-ref`. The full
@@ -76,10 +77,17 @@ export function recordPr(
   return verdict === true ? { landed: true, gap: null } : { landed: false, gap: verdict }
 }
 
-/** Why a branch has no PR, naming where the sweep looked. */
+/** Why a branch has no PR, naming where the sweep looked, or why it could not. */
 function noPrSentence(repo: RepoInfo): string {
   const provider = repo.provider
   if (provider === null) return 'No PR lookup (no provider).'
+  if (!provider.available) return `No ${provider.noun} lookup (\`${provider.tool}\` not installed).`
+  if (!provider.authenticated) {
+    return `No ${provider.noun} lookup (\`${provider.tool}\` not signed in).`
+  }
+  if (provider.listError !== undefined) {
+    return `No ${provider.noun} lookup: \`${provider.listing}\` failed (${provider.listError}).`
+  }
   return `No ${provider.noun} found via \`${provider.listing}\`.`
 }
 
@@ -288,28 +296,91 @@ function classifyLocalBranch(opts: {
 
 // ── remote branches ────────────────────────────────────────────────────────
 
+/** Remote branch rows, and the repository note when their tips had to come from disk. */
+export interface RemoteBranches {
+  rows: RemoteRow[]
+  /**
+   * Why the tips are the remote-tracking refs on disk though the remote's own
+   * were asked for; null otherwise.
+   */
+  note: string | null
+}
+
+/**
+ * Remote branches, judged. With `live`, after a fetch, the tips are the
+ * remote's own, read with `ls-remote`, which also sees branches a narrowed
+ * fetch refspec leaves out. Without it, as `--offline` asks, they are the
+ * remote-tracking refs on disk (`refs/remotes/<remote>/`), and the remote is
+ * not contacted.
+ *
+ * A live listing that fails is not "the remote has no branches" and not a
+ * reason to lose the repository's other rows: the tips come from disk
+ * instead, and each row and the returned note say so.
+ */
 export function gatherRemoteBranches(
   repo: RepoInfo,
   prs: Map<string, PRInfo>,
   localBranchNames: ReadonlySet<string>,
   git: Git,
-  only?: string,
-  tick?: (done: number, total: number) => void,
-): RemoteRow[] {
-  if (repo.remote === null) return []
-  // Default door: an unreachable remote throws rather than rendering as "the
-  // remote has no branches". `[]` here means the remote really has none.
-  const pattern = only === undefined ? undefined : `refs/heads/${only}`
-  const rows = git.at(repo.root).lsRemote(repo.remote, pattern, { heads: true })
-  const items: RemoteRow[] = []
-  for (const [i, { sha, ref }] of rows.entries()) {
-    tick?.(i, rows.length)
-    if (!ref.startsWith('refs/heads/')) continue
-    const name = ref.slice('refs/heads/'.length)
-    if (only !== undefined && name !== only) continue
-    items.push(classifyRemoteBranch({ name, sha, repo, prs, localBranchNames, git }))
+  opts: {
+    live: boolean
+    only?: string | undefined
+    tick?: ((done: number, total: number) => void) | undefined
+  },
+): RemoteBranches {
+  const remote = repo.remote
+  if (remote === null) return { rows: [], note: null }
+  const { only, tick } = opts
+  let tips: Array<{ name: string; sha: string }> | null = null
+  let note: string | null = null
+  if (opts.live) {
+    const pattern = only === undefined ? undefined : `refs/heads/${only}`
+    const listed = git.at(repo.root).try.lsRemote(remote, pattern, { heads: true })
+    if (listed.ok) {
+      tips = listed.value.flatMap(({ sha, ref }) =>
+        ref.startsWith('refs/heads/') ? [{ name: ref.slice('refs/heads/'.length), sha }] : [],
+      )
+    } else {
+      note = `\`git ls-remote ${remote}\` failed (${errorText(listed.error)}); remote branches are read from the remote-tracking refs on disk.`
+    }
   }
-  return items
+  if (tips === null) tips = trackingTips(repo.root, remote, git, only)
+
+  const items: RemoteRow[] = []
+  for (const [i, { name, sha }] of tips.entries()) {
+    tick?.(i, tips.length)
+    if (only !== undefined && name !== only) continue
+    const row = classifyRemoteBranch({ name, sha, repo, prs, localBranchNames, git })
+    if (note !== null) {
+      row.notes.push(
+        `Tip read from \`refs/remotes/${remote}/${name}\` on disk: \`git ls-remote\` failed.`,
+      )
+    }
+    items.push(row)
+  }
+  return { rows: items, note }
+}
+
+/**
+ * `remote`'s branches as its remote-tracking refs on disk record them, under
+ * the default `refs/remotes/<remote>/` layout. The symbolic `HEAD` is not a
+ * branch.
+ */
+function trackingTips(
+  root: string,
+  remote: string,
+  git: Git,
+  only: string | undefined,
+): Array<{ name: string; sha: string }> {
+  const prefix = `refs/remotes/${remote}/`
+  return git
+    .at(root)
+    .refs(only === undefined ? prefix : `${prefix}${only}`)
+    .flatMap(({ sha, ref }) => {
+      if (!ref.startsWith(prefix)) return []
+      const name = ref.slice(prefix.length)
+      return name === 'HEAD' ? [] : [{ name, sha }]
+    })
 }
 
 function classifyRemoteBranch(opts: {
@@ -336,16 +407,16 @@ function classifyRemoteBranch(opts: {
     return row({ verdict: 'keep', action: null, why: 'default branch' })
 
   const remoteMain = landedRef(repo)
-  // `soft`: `sha` comes from `ls-remote`, so the clone may never have fetched
-  // it, and `remoteMain` may not exist either. Both exit 128; this row renders
-  // "cannot tell" as false.
+  // `soft`: `sha` may come from `ls-remote`, so the clone may never have
+  // fetched it, and `remoteMain` may not exist either. Both exit 128; this row
+  // renders "cannot tell" as false.
   const isAncestor = git.at(repo.root).soft.isAncestor(sha, remoteMain)
   evidence.ancestorOfRemoteMain = isAncestor
 
   const pr = prs.get(branch)
   const { landed, gap } = recordPr(evidence, pr, sha, repo)
-  // `sha` came from `ls-remote` and may not be in this clone; the check then
-  // finds nothing and the branch stays unlanded.
+  // A `sha` from `ls-remote` may not be in this clone; the check then finds
+  // nothing and the branch stays unlanded.
   const patch: Landing | null = landed || isAncestor ? null : judgeLanding(repo, sha, pr, gap, git)
   if (patch !== null) recordLanding(evidence, patch)
   const patchLanded = patch !== null && patch.check !== null
