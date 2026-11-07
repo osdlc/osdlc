@@ -146,9 +146,16 @@ export interface ReviewRun {
   outcomes: JobOutcome[]
   /** Every outcome's findings, merged and ordered broad-to-specific. */
   findings: Finding[]
-  /** Sources discovered but dropped for not intersecting the changeset. */
+  /**
+   * Sources a provider returned that matched no changed file. The built-in
+   * provider does not return instruction files outside the change.
+   */
   skipped: { id: string; label: string }[]
-  /** True when any job errored — the run is incomplete, not necessarily clean. */
+  /**
+   * True when any job produced no judgement: the run is incomplete, not
+   * necessarily clean. In a dry run, true when some job would not be
+   * dispatched (none of its files has a diff).
+   */
   degraded: boolean
   /** True when the run was planned and measured but never dispatched. */
   dryRun: boolean

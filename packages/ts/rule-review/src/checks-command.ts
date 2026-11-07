@@ -1,5 +1,5 @@
 /**
- * `rule-review checks <dir>`: run a folder of numbered check scripts.
+ * `rule-review checks <folder>`: run a folder of numbered check scripts.
  */
 import { resolve } from 'node:path'
 
@@ -23,7 +23,16 @@ import {
   runChecks,
   runToJson,
 } from './checks.ts'
-import { EXIT_CODE, fail, flagAsValue, interrupted, usage, withInterrupt } from './exit.ts'
+import {
+  classify,
+  EXIT_CODE,
+  fail,
+  flagAsValue,
+  helpAsked,
+  interrupted,
+  usage,
+  withInterrupt,
+} from './exit.ts'
 import { print } from './output.ts'
 import { readCheckFolder } from './providers/check-folder.ts'
 
@@ -31,10 +40,10 @@ const CLI = defineCli({
   name: 'rule-review checks',
   summary: `Run a folder of check scripts.
 
-Each executable file named <number>-<name> in <dir> is a check. Checks run one
+Each executable file named <number>-<name> in <folder> is a check. Checks run one
 at a time in number order, with the project root as cwd. A .md file is a prompt
 check and is reported as skipped. Anything else is skipped with its reason.`,
-  positionals: [{ name: 'dir', required: true, help: 'the folder of check scripts' }],
+  positionals: [{ name: 'folder', required: true, help: 'the folder of check scripts' }],
   flags: {
     base: {
       kind: 'string',
@@ -66,7 +75,7 @@ Environment of each script
   CHECK_ROOT   absolute project root
   CHECK_NAME   the name after the number prefix, extension kept
   CHECK_ORDER  the number prefix
-  CHECK_DIR    absolute path of <dir>
+  CHECK_DIR    absolute path of <folder>
   CHECK_BASE   the commit the changeset was measured from: HEAD with no flag
                or --staged, the fork point of <rev> and HEAD with --base (so
                'git diff "$CHECK_BASE"' shows the same change), empty with --all
@@ -85,6 +94,7 @@ Exit codes
   2    the command line cannot run as typed
   10   the run could not complete: the folder cannot be read, the changed
        files cannot be listed, a scope pattern cannot be read
+  22   git is not installed
   24   the directory does not exist, or a changeset flag was given outside git
   130  interrupted by SIGINT or SIGTERM; the running check is killed
 
@@ -105,6 +115,10 @@ interface ChecksOptions {
 }
 
 function parseChecks(argv: string[]): ChecksOptions | 'help' | { error: string } {
+  if (helpAsked(argv)) {
+    print(CLI.help())
+    return 'help'
+  }
   const parsed = CLI.parse(argv, processIo)
   if (parsed.status === 'help') return 'help'
   if (parsed.status === 'error') return { error: parsed.message }
@@ -156,8 +170,11 @@ export async function checksMain(argv: string[]): Promise<number> {
   try {
     topLevel = new Git(cwd).topLevel()
   } catch (err) {
-    // A missing -C directory fails the spawn itself rather than reading as "not a repo".
-    return fail(`${cwd}: ${errorText(err)}`, opts.json, noRepository)
+    // A missing -C directory fails the spawn itself rather than reading as
+    // "not a repo"; git that is not installed keeps its own code.
+    const classified = classify(err)
+    const known = classified.exit === EXIT_CODE.missingTool ? classified : noRepository
+    return fail(`${cwd}: ${errorText(err)}`, opts.json, known)
   }
   const root = topLevel ?? cwd
   const dir = resolve(cwd, opts.dir)
@@ -201,9 +218,13 @@ export async function checksMain(argv: string[]): Promise<number> {
     return fail(err, opts.json)
   }
   const run = result.value
+  // Interrupted, --json prints the error document instead of partial results,
+  // as any other failure does; the text report still shows what ran.
+  if (result.interrupted) {
+    if (!opts.json) print(formatReport(run))
+    return interrupted(opts.json, 'the running check was')
+  }
   if (opts.json) printDoc(KIND.run, runToJson(run))
   else print(formatReport(run))
-  // Under --json the results are already printed; the interruption goes to stderr only.
-  if (result.interrupted) return interrupted(false, 'the running check was')
   return checksExitCode(run.results)
 }

@@ -42,7 +42,7 @@ The result is the run plus the changeset it judged:
 | `findings` | Every finding, repository-wide rules first, worst first under each. |
 | `jobs`, `outcomes` | One per judgement: its rule source and files, then its findings, error, duration, cost and prompt size. |
 | `skipped` | Rule sources a provider returned that matched no changed file. The built-in provider does not return instruction files outside the change, so with it this holds only sources `exclude` emptied. |
-| `degraded` | `true` when any judgement failed. |
+| `degraded` | `true` when any judgement failed. In a dry run, `true` when a job would not be dispatched because none of its files has a diff. |
 | `changedFiles`, `base`, `resolvedBase`, `projectRoot`, `config` | What was judged, and how. |
 
 It throws `ChangesetError` when it cannot start (`kind` is `not-a-repository`

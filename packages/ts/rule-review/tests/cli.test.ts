@@ -77,6 +77,36 @@ describe('rule-review argument handling', () => {
     expect(checks.err).toContain(`rule-review: ${missing}`)
   })
 
+  test('--help wins over a flag that would fail, for both commands', async () => {
+    // Commander checks values before it acts on help.
+    for (const argv of [
+      ['--help', '--base'],
+      ['--help', '--severity', 'bogus'],
+      ['checks', '--help', '--base'],
+    ]) {
+      const { code, out } = await run(argv)
+      expect(code, argv.join(' ')).toBe(0)
+      expect(out).toContain('Usage: rule-review')
+    }
+  })
+
+  test('git that is not installed exits 22, not 24', async () => {
+    const empty = await mkdtemp(join(tmpdir(), 'rule-review-nogit-'))
+    const path = process.env['PATH']
+    process.env['PATH'] = empty
+    try {
+      const reviewed = await run(['-C', tmpdir(), '--dry-run', '--json'])
+      expect(reviewed.code).toBe(22)
+      expect(JSON.parse(reviewed.out)).toMatchObject({ kind: 'error', code: 'not-installed' })
+
+      const checks = await run(['checks', 'chk', '-C', tmpdir()])
+      expect(checks.code).toBe(22)
+    } finally {
+      process.env['PATH'] = path
+      rmSync(empty, { recursive: true, force: true })
+    }
+  })
+
   test('a directory outside a git repo exits 24 (no repository)', async () => {
     const { code, err } = await run(['-C', '/'])
 
@@ -190,6 +220,14 @@ describe('rule-review --strict and --engine', () => {
     expect(result).toMatchObject({ schemaVersion: 1, kind: 'review', degraded: true })
     expect(result.changedFiles).toEqual(['a.ts'])
     expect(code).toBe(11)
+  })
+
+  test('a dry run exits 0 with --strict, with and without --json', async () => {
+    // Nothing is judged in a dry run, so nothing can make it fail.
+    for (const extra of [[], ['--json']]) {
+      const { code } = await failing(['--dry-run', '--strict', '--blocking', ...extra])
+      expect(code, extra.join(' ')).toBe(0)
+    }
   })
 
   test('a finding is printed with terminal controls removed', async () => {
@@ -310,6 +348,26 @@ describe('rule-review checks', () => {
     expect(json.summary).toEqual({ PASS: 1, FAIL: 1, SKIP: 0, ERROR: 0 })
   })
 
+  test('interrupted under --json, it prints the error document instead of partial results', async () => {
+    const pidFile = join(tmpdir(), `rule-review-chk-pid-${process.pid}-${Date.now()}`)
+    const dir = await folderWith({ '1-slow': `#!/bin/sh\necho $$ > ${pidFile}\nexec sleep 30\n` })
+    const before = new Set(process.listeners('SIGTERM'))
+    try {
+      const pending = run(['checks', dir, '--json', '-C', dir])
+      await waitFor('the check to write its pid', () => existsSync(pidFile))
+      for (const l of process.listeners('SIGTERM').filter((x) => !before.has(x))) {
+        ;(l as (s: NodeJS.Signals) => void)('SIGTERM')
+      }
+      const { code, out } = await pending
+
+      expect(code).toBe(130)
+      expect(JSON.parse(out)).toMatchObject({ kind: 'error', code: 'interrupted', exit: 130 })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+      rmSync(pidFile, { force: true })
+    }
+  })
+
   test('--dry-run lists the plan and runs nothing', async () => {
     const marker = join(tmpdir(), `rule-review-dry-${process.pid}-${Date.now()}`)
     const dir = await folderWith({ '1-touch': `#!/bin/sh\ntouch ${marker}\n`, '.hid': 'x\n' })
@@ -345,7 +403,7 @@ describe('rule-review checks', () => {
     const { code, err } = await run(['checks'])
 
     expect(code).toBe(2)
-    expect(err).toContain("missing required argument 'dir'")
+    expect(err).toContain("missing required argument 'folder'")
     expect(err).toContain("See 'rule-review checks --help'.")
   })
 
@@ -386,9 +444,9 @@ describe('rule-review checks', () => {
     const main = await run(['--help'])
 
     expect(checks.code).toBe(0)
-    expect(checks.out).toContain('Usage: rule-review checks [options] <dir>')
+    expect(checks.out).toContain('Usage: rule-review checks [options] <folder>')
     expect(main.out).toContain('Commands')
-    expect(main.out).toContain('checks <dir>')
+    expect(main.out).toContain('checks <folder>')
   })
 })
 

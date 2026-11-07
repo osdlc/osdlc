@@ -44,6 +44,8 @@ export function asGit(repo: Repo): Git {
   try {
     top = new Git(repo).topLevel()
   } catch (err) {
+    // git that is not installed is not a missing repository: let its classified failure through.
+    if (isMissingProgram(err)) throw err
     // A missing directory fails the spawn itself rather than reading as "not a repo".
     throw new ChangesetError('not-a-repository', `${repo}: ${errorText(err)}`, { cause: err })
   }
@@ -51,6 +53,12 @@ export function asGit(repo: Repo): Git {
     throw new ChangesetError('not-a-repository', `${repo} is not inside a git repository`)
   }
   return new Git(top)
+}
+
+/** Whether `err` is typed-git's classified "git is not installed / cannot run" failure. */
+function isMissingProgram(err: unknown): boolean {
+  const kind = (err as { failure?: { kind?: unknown } } | null)?.failure?.kind
+  return kind === 'not-installed' || kind === 'not-executable'
 }
 
 /** An error's message, or the value as text. */

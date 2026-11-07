@@ -7,8 +7,7 @@
  * 24 is the shared "no repository" code, and 10 and 11 are this tool's own
  * outcomes, inside the band the standard leaves to a tool.
  */
-import { EXIT, EXIT_FAILURE } from '@osdlc/cli-tool'
-import { errorDocument } from '@osdlc/cli-tool/command'
+import { EXIT, EXIT_FAILURE, exitCodeFor, failureOf } from '@osdlc/cli-tool'
 
 import { ChangesetError, errorText } from './changeset.ts'
 import { print, say } from './output.ts'
@@ -26,6 +25,8 @@ export const EXIT_CODE = {
   notRun: 10,
   /** With `--strict`: a judgement did not complete. */
   incomplete: 11,
+  /** `git` is not installed, or cannot be run. */
+  missingTool: EXIT_FAILURE.missingTool,
   /** The directory is not inside a git repository, or does not exist. */
   noRepository: EXIT_FAILURE.repository,
   /** SIGINT or SIGTERM: the running agents or check were killed. 128 + SIGINT, as a shell reports it. */
@@ -33,7 +34,12 @@ export const EXIT_CODE = {
 } as const
 
 /** What an error that stops a run is called in an error document, and its exit code. */
-function classify(err: unknown): { code: string; exit: number } {
+export function classify(err: unknown): { code: string; exit: number } {
+  // A program that is not installed (git) carries a classified failure.
+  const failure = failureOf(err)
+  if (failure !== null && exitCodeFor(failure) === EXIT_CODE.missingTool) {
+    return { code: failure.kind, exit: EXIT_CODE.missingTool }
+  }
   if (err instanceof ChangesetError) {
     return err.kind === 'not-a-repository'
       ? { code: err.kind, exit: EXIT_CODE.noRepository }
@@ -46,7 +52,8 @@ function classify(err: unknown): { code: string; exit: number } {
 /**
  * Report a failure and return its exit code: `rule-review: <message>` on
  * stderr and, under `--json`, the standard error document on stdout, where
- * a caller reads data.
+ * a caller reads data. The document is the shape `@osdlc/cli-tool/command`
+ * defines, written here so a run does not load that entry and its `zod`.
  */
 export function fail(
   err: unknown,
@@ -57,7 +64,10 @@ export function fail(
   const message = errorText(err)
   say(`rule-review: ${message}\n`)
   if (known?.hint !== undefined) say(`${known.hint}\n`)
-  if (json) print(JSON.stringify(errorDocument(code, message, exit, known?.hint)) + '\n')
+  if (json) {
+    const doc = { schemaVersion: 1, kind: 'error', code, message, exit }
+    print(JSON.stringify(known?.hint === undefined ? doc : { ...doc, hint: known.hint }) + '\n')
+  }
   return exit
 }
 
@@ -83,6 +93,19 @@ export function flagAsValue(values: Record<string, unknown>, flags: string[]): s
     }
   }
   return undefined
+}
+
+/**
+ * Whether `-h` or `--help` comes before any `--`. Commander checks every
+ * flag's value before it acts on help, so `--help --base` would fail instead
+ * of printing the help.
+ */
+export function helpAsked(argv: readonly string[]): boolean {
+  for (const arg of argv) {
+    if (arg === '--') return false
+    if (arg === '-h' || arg === '--help') return true
+  }
+  return false
 }
 
 /** Interrupted: `what` (the running agents, or the running check) was killed. */

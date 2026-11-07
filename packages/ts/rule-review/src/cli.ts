@@ -17,7 +17,15 @@ import { BUILTIN_AGENTS } from '@osdlc/agent-call'
 import { defineCli, processIo } from '@osdlc/cli-tool'
 
 import { checksMain } from './checks-command.ts'
-import { EXIT_CODE, fail, flagAsValue, interrupted, usage, withInterrupt } from './exit.ts'
+import {
+  EXIT_CODE,
+  fail,
+  flagAsValue,
+  helpAsked,
+  interrupted,
+  usage,
+  withInterrupt,
+} from './exit.ts'
 import { exitCodeFor } from './findings.ts'
 import { print, say } from './output.ts'
 import { reviewChanges } from './review-changes.ts'
@@ -95,7 +103,7 @@ separately, over only the files it governs.`,
     },
   },
   epilogue: `Commands
-  checks <dir>  Run a folder of numbered check scripts. See 'rule-review checks --help'.
+  checks <folder>  Run a folder of numbered check scripts. See 'rule-review checks --help'.
 
 Exit codes
   0    clean, or advisory (the default: findings are reported, not enforced)
@@ -104,8 +112,11 @@ Exit codes
   10   the run could not complete: a base that does not resolve, an unreadable
        pattern, a failing rule source provider
   11   a judgement did not complete, with --strict
-  24   the directory is not inside a git repository
+  22   git is not installed
+  24   the directory is not inside a git repository, or does not exist
   130  interrupted by SIGINT or SIGTERM; running agents are killed
+
+rule-review --version prints the version.
 
 Under --json a failure prints {"schemaVersion":1,"kind":"error",...} on stdout.`,
 })
@@ -134,6 +145,10 @@ interface Options {
 
 /** Read the command line into options, an error message, or `help` (already printed). */
 function parse(argv: string[]): Options | 'help' | { error: string } {
+  if (helpAsked(argv)) {
+    print(CLI.help())
+    return 'help'
+  }
   const parsed = CLI.parse(argv, processIo)
   if (parsed.status === 'help') return 'help'
   if (parsed.status === 'error') return { error: parsed.message }
@@ -204,7 +219,12 @@ export async function main(argv: string[]): Promise<number> {
   const baseLabel =
     run.resolvedBase === run.base ? run.base : `${run.base} (resolved to ${run.resolvedBase})`
   const incomplete = opts.strict && run.degraded
-  const exit = incomplete ? EXIT_CODE.incomplete : exitCodeFor(run.findings, opts.config)
+  // A dry run judges nothing, so it exits 0 whatever it would find.
+  const exit = opts.dryRun
+    ? EXIT_CODE.ok
+    : incomplete
+      ? EXIT_CODE.incomplete
+      : exitCodeFor(run.findings, opts.config)
 
   if (opts.json) {
     const doc = { schemaVersion: SCHEMA_VERSION, kind: REVIEW_KIND, ...run }

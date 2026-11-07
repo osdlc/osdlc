@@ -9,7 +9,7 @@ created: 2026-11-07
 
 ## Decision
 
-- `rule-review checks <dir>` runs a folder of check files. A file named
+- `rule-review checks <folder>` runs a folder of check files. A file named
   `<number>-<name>` is a check; the number sets the order, as in `rc.d`.
   Adding a check means adding a file.
 - A script check is an executable file whose exit code is its verdict. A

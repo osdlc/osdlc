@@ -4,7 +4,7 @@
 
 **Breaking:** first public release, as `@osdlc/rule-review` with the command `rule-review`. Review a change
 against the `CLAUDE.md` and `AGENTS.md` files that govern it: one headless agent judgement per
-rule file, over only the files it governs. `rule-review checks <dir>` runs a folder of
+rule file, over only the files it governs. `rule-review checks <folder>` runs a folder of
 path-scoped check scripts (experimental). The package was developed, unpublished, as
 `@osdlc/agent-dev` with the command `dfv`; neither name stays as an alias.
 
@@ -31,13 +31,13 @@ path-scoped check scripts (experimental). The package was developed, unpublished
 - The command line follows the osdlc CLI standard. Exit codes: 0 clean or advisory, 1 findings
   at or above the floor with `--blocking` (a failed check for `checks`), 2 a command line that
   cannot run as typed, 10 a run that could not complete, 11 an incomplete run with `--strict`,
-  24 no repository, 130 interrupted. `--json` prints one document that starts with
+  22 `git` not installed, 24 no repository, 130 interrupted. `--json` prints one document that starts with
   `schemaVersion: 1` and `kind` (`review`, `checks`, `checks-plan`); a failure under `--json`
   prints the standard error document. Flags and help are declared with `defineCli` from
   `@osdlc/cli-tool`, so `-C` is also `--dir`.
 - `rule-review --version` prints the version. `rule-review dev` and `RULE_REVIEW_HOME` run the
   command from a development checkout.
-- `rule-review checks <dir>`, and the experimental check-folder exports, run a folder of numbered
+- `rule-review checks <folder>`, and the experimental check-folder exports, run a folder of numbered
   check scripts selected by the changeset.
 
 **Changed**

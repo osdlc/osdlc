@@ -124,12 +124,16 @@ checkout does not pull merged commits into the change. `@{u}`, a sha or
 | 2    | The command line cannot run as typed                                          |
 | 10   | The run could not complete: a base that does not resolve, an unreadable glob  |
 | 11   | With `--strict`, a judgement did not complete                                 |
-| 24   | The directory is not inside a git repository                                  |
+| 22   | `git` is not installed                                                        |
+| 24   | The directory is not inside a git repository, or does not exist              |
 | 130  | Interrupted by SIGINT or SIGTERM; running agents are killed                   |
+
+`rule-review --version` prints the version.
 
 The codes follow the osdlc [CLI standard](https://github.com/osdlc/osdlc/blob/main/standards/cli-interface.md):
 0, 1 and 2 mean the same in every osdlc tool, 24 is the shared "no repository"
-code, and 10 and 11 are this tool's own.
+code, 22 the shared "a program it needs is not installed" code, and 10 and
+11 are this tool's own.
 
 A judgement that fails (the agent is missing, signed out, times out, or replies
 with something other than findings) is reported and marks the run incomplete.
@@ -310,7 +314,7 @@ repos:
 
 ## Check folders: `rule-review checks`
 
-`rule-review checks <dir>` runs a folder of numbered check scripts, each only
+`rule-review checks <folder>` runs a folder of numbered check scripts, each only
 when the changeset touches its scope. It is the deterministic half of a review:
 scripts for what a command can check, rule files for what it cannot. This
 command is [experimental](#stability).
@@ -384,6 +388,7 @@ exit $status
 | 1    | A check failed or errored                   |
 | 2    | The command line cannot run as typed        |
 | 10   | The folder or the changed files cannot be read |
+| 22   | `git` is not installed                      |
 | 24   | The directory does not exist, or a changeset flag was given outside git |
 | 130  | Interrupted; the running check is killed    |
 
@@ -411,7 +416,7 @@ The run holds `findings` (merged, ordered from repository-wide rules to local
 ones, worst first under each), `jobs` and `outcomes` (one per judgement, with
 its error, duration, cost and prompt size), `skipped` (sources a provider
 returned that matched no changed file; the built-in provider does not return
-instruction files outside the change), `degraded` (a judgement failed) and the changeset it
+instruction files outside the change), `degraded` (a judgement failed, or in a dry run would not be dispatched) and the changeset it
 judged. Pass `dryRun: true` to plan without starting an agent, `config` to
 change any [setting](#settings), and `signal` to stop the run: aborting kills
 every running agent.
