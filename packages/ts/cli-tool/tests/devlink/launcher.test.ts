@@ -6,12 +6,13 @@
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { spawnSync } from 'node:child_process'
-import { chmodSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { launcherCheckout, launcherDrift, renderLauncher } from '../../src/devlink/launcher.ts'
 import { resolve } from '../../src/devlink/resolve.ts'
-import { homePath, writeActive } from '../../src/devlink/state.ts'
+import type { ToolSpec } from '../../src/devlink/spec.ts'
+import { homePath, readActive, writeActive } from '../../src/devlink/state.ts'
 import { SPEC, sandbox, seedCheckout, type Sandbox } from './support.ts'
 
 /** What the fake bun prints for a run: the flags that keep Bun off the cwd's config. */
@@ -29,11 +30,11 @@ beforeEach(() => {
 })
 afterEach(() => sb.dispose())
 
-/** A checkout whose launcher is the real render. */
-function checkoutWithLauncher(dir: string): string {
-  seedCheckout(dir)
-  writeFileSync(join(dir, SPEC.launcher), renderLauncher(SPEC))
-  chmodSync(join(dir, SPEC.launcher), 0o755)
+/** A checkout whose launcher is the real render of `spec`. */
+function checkoutWithLauncher(dir: string, spec: ToolSpec = SPEC): string {
+  seedCheckout(dir, spec)
+  writeFileSync(join(dir, spec.launcher), renderLauncher(spec))
+  chmodSync(join(dir, spec.launcher), 0o755)
   return dir
 }
 
@@ -53,6 +54,20 @@ describe('renderLauncher', () => {
     const r = spawnSync('bash', ['-n', path], { encoding: 'utf-8' })
     expect(r.status).toBe(0)
   })
+
+  test('is valid bash with a stateDir', () => {
+    const path = join(sb.root, 'launcher.sh')
+    writeFileSync(path, renderLauncher({ ...SPEC, stateDir: '~/.tooly' }))
+    const r = spawnSync('bash', ['-n', path], { encoding: 'utf-8' })
+    expect(r.status).toBe(0)
+  })
+
+  test.each(['~/x"$(id)', '~/$HOME', '~/a b', '/etc/tooly', '~/../x'])(
+    'refuses the stateDir %j without validateSpec, since it would land in bash',
+    (stateDir) => {
+      expect(() => renderLauncher({ ...SPEC, stateDir })).toThrow(/stateDir/)
+    },
+  )
 
   test('launcherDrift is null for a committed render and names a stale one', () => {
     const a = checkoutWithLauncher(join(sb.root, 'a'))
@@ -264,6 +279,98 @@ describe('bash launcher agrees with resolve()', () => {
       writeFileSync(join(sb.root, 'xdg', 'tooly', 'home'), `${b}\n`)
       const r = runLinux(join(a, SPEC.launcher), sb.home, { XDG_CONFIG_HOME: join(sb.root, 'xdg') })
       expect(r.out).toBe(`${BUN_RUN} ${b}/src/cli.ts`)
+    })
+
+    describe('with a stateDir in the spec', () => {
+      const STATE_SPEC: ToolSpec = { ...SPEC, stateDir: '~/.tooly/state' }
+
+      /**
+       * Stubs the process environment as the launcher's is set. HOME is the
+       * sandbox's, so tiered-dirs applies no test root, as in a real run.
+       */
+      function stubShellEnv(env: Record<string, string>): void {
+        vi.unstubAllEnvs()
+        vi.stubEnv('HOME', sb.home)
+        for (const name of ['TOOLY_CONFIG_DIR', 'TOOLY_ROOT', 'XDG_CONFIG_HOME']) {
+          vi.stubEnv(name, env[name] ?? '')
+        }
+      }
+      afterEach(() => vi.unstubAllEnvs())
+
+      test('stateDir moves the default link in dev link and in bash alike; TOOLY_CONFIG_DIR and TOOLY_ROOT still win', () => {
+        const a = checkoutWithLauncher(join(sb.root, 'a'), STATE_SPEC)
+        const b = seedCheckout(join(sb.root, 'b'))
+        const underHome = join(sb.home, '.tooly', 'state', 'home')
+        const cases: [string, Record<string, string>, string][] = [
+          ['the default', {}, underHome],
+          // XDG_CONFIG_HOME belongs to the xdg default, which stateDir replaces.
+          ['XDG_CONFIG_HOME set', { XDG_CONFIG_HOME: join(sb.root, 'xdg') }, underHome],
+          [
+            'config dir',
+            { TOOLY_CONFIG_DIR: join(sb.root, 'cfg') },
+            join(sb.root, 'cfg', 'tooly', 'home'),
+          ],
+          [
+            'root',
+            { TOOLY_ROOT: join(sb.root, 'vroot') },
+            join(sb.root, 'vroot', 'config', 'tooly', 'home'),
+          ],
+          [
+            'empty config dir, then root',
+            { TOOLY_CONFIG_DIR: '', TOOLY_ROOT: join(sb.root, 'r2') },
+            join(sb.root, 'r2', 'config', 'tooly', 'home'),
+          ],
+          [
+            'config dir over root',
+            { TOOLY_CONFIG_DIR: join(sb.root, 'c2'), TOOLY_ROOT: '/nope' },
+            join(sb.root, 'c2', 'tooly', 'home'),
+          ],
+        ]
+        for (const [what, env, expected] of cases) {
+          stubShellEnv(env)
+          // Where `dev link` writes, resolved as the tool resolves it.
+          expect(homePath(STATE_SPEC), what).toBe(expected)
+          writeActive(STATE_SPEC, b)
+          // Bash gets the same values, empty ones included.
+          const shellEnv = { TOOLY_CONFIG_DIR: '', TOOLY_ROOT: '', ...env }
+          const r = runLinux(join(a, STATE_SPEC.launcher), sb.home, shellEnv)
+          expect(r.out, what).toBe(`${BUN_RUN} ${b}/src/cli.ts`)
+          // So the next case cannot pass by reading this one's file.
+          rmSync(expected)
+        }
+      })
+
+      test('a link at the xdg default is read by neither side', () => {
+        const a = checkoutWithLauncher(join(sb.root, 'a'), STATE_SPEC)
+        const b = seedCheckout(join(sb.root, 'b'))
+        mkdirSync(join(sb.home, '.config', 'tooly'), { recursive: true })
+        writeFileSync(join(sb.home, '.config', 'tooly', 'home'), `${b}\n`)
+        stubShellEnv({})
+        expect(readActive(STATE_SPEC)).toBeNull()
+        const r = runLinux(join(a, STATE_SPEC.launcher), sb.home, {})
+        expect(r.out).toBe(`${BUN_RUN} ${a}/src/cli.ts`)
+      })
+
+      test('a relative HOME never reads a stateDir under the cwd', () => {
+        const a = checkoutWithLauncher(join(sb.root, 'a'), STATE_SPEC)
+        const b = seedCheckout(join(sb.root, 'b'))
+        // A link file a repository could ship, found from the cwd with HOME=.
+        mkdirSync(join(sb.root, '.tooly', 'state'), { recursive: true })
+        writeFileSync(join(sb.root, '.tooly', 'state', 'home'), `${b}\n`)
+        const r = runLinux(join(a, STATE_SPEC.launcher), '.', {})
+        expect(r.out).toBe(`${BUN_RUN} ${a}/src/cli.ts`)
+      })
+
+      test('a relative TOOLY_CONFIG_DIR reads no link, not even the stateDir one', () => {
+        const a = checkoutWithLauncher(join(sb.root, 'a'), STATE_SPEC)
+        const b = seedCheckout(join(sb.root, 'b'))
+        mkdirSync(join(sb.home, '.tooly', 'state'), { recursive: true })
+        writeFileSync(join(sb.home, '.tooly', 'state', 'home'), `${b}\n`)
+        stubShellEnv({ TOOLY_CONFIG_DIR: 'rel' })
+        expect(readActive(STATE_SPEC)).toBeNull()
+        const r = runLinux(join(a, STATE_SPEC.launcher), sb.home, { TOOLY_CONFIG_DIR: 'rel' })
+        expect(r.out).toBe(`${BUN_RUN} ${a}/src/cli.ts`)
+      })
     })
   })
 
