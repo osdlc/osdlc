@@ -297,9 +297,10 @@ impl GuardState {
         }
     }
 
-    /// Routes a [`Grant::Read`] request may use with a non-safe method (a POST
-    /// that only reads). Any other non-safe method from a `Read` grant is
-    /// refused 403 `read_only`.
+    /// Routes a [`Grant::Read`] request may use with a non-safe method or a
+    /// protocol upgrade (a POST that only reads, a read-only WebSocket). They
+    /// match the raw request path. Any other non-safe method or upgrade from a
+    /// `Read` grant is refused 403 `read_only`.
     pub fn with_read_safe(mut self, rules: impl IntoIterator<Item = RouteRule<()>>) -> Self {
         self.read_safe.extend(rules);
         self

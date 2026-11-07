@@ -18,9 +18,11 @@ use crate::response::{json_response, refuse};
 
 /// A route and what it needs. `path` is exact, or a prefix when it ends in
 /// `/*` (`/api/files/*` matches below `/api/files` only, never `/api/files`
-/// itself). It is matched against the [`normalize_path`]d request path, so
-/// write it in that form (no `//`, no trailing `/`). A `GET` rule also matches
-/// `HEAD`, which axum serves from the `GET` handler.
+/// itself). Write it normalised (no `//`, no trailing `/`, no escapes). A
+/// [`HostPolicy`] matches it against the [`normalize_path`]d request path; a
+/// read-safe rule ([`crate::GuardState::with_read_safe`]) matches it against
+/// the raw path, the one the router routes. A `GET` rule also matches `HEAD`,
+/// which axum serves from the `GET` handler.
 #[derive(Debug, Clone)]
 pub struct RouteRule<P> {
     /// `None` matches every method.
@@ -41,7 +43,8 @@ impl<P> RouteRule<P> {
         }
     }
 
-    /// `path` must already be normalised.
+    /// Whether this rule covers `method` on `path`. `path` is compared as
+    /// given; see the type's docs for which path each caller passes.
     pub fn matches(&self, method: &Method, path: &str) -> bool {
         let method_ok = self
             .method
