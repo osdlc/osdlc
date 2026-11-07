@@ -113,8 +113,10 @@ A target is what to sweep:
 | a directory | every checkout found under it, three levels deep at most |
 | a remote URL (`https://`, `ssh://`, `file://`, `user@host:path`) | its remote branches only, through a clone kept in the cache directory (see [A remote with no checkout](#a-remote-with-no-checkout)) |
 
-No target is the same as naming the current directory: in a checkout it
-sweeps that repository, and in a directory of checkouts it sweeps each one.
+No target is the same as naming the current directory: at a checkout's root
+it sweeps that repository, and in a directory of checkouts it sweeps each
+one. In a subdirectory of a checkout it searches below that subdirectory,
+like any other directory, so name the checkout instead.
 What a target names is read off the disk rather than from how it is written:
 a path that is itself a checkout names that repository, and a path that is
 not is searched for the checkouts under it, descending through directories
