@@ -25,8 +25,8 @@ task files, stays with sdlc, in
   CLI takes them as arguments. A host resolves its own list of repositories
   and passes paths in.
 - **A bare invocation sweeps where the caller stands.** No target is the same
-  as naming the current directory: in a checkout that sweeps its repository,
-  and in a directory of checkouts it fans out over them.
+  as naming the current directory: at a checkout's root that sweeps its
+  repository, and in a directory of checkouts it fans out over them.
 - **A target is a path or a remote URL.** A checkout names that repository.
   Any other directory is searched for the checkouts under it. Linked
   worktrees collapse into their repository and appear as its rows. A remote
@@ -65,8 +65,9 @@ classification.
 
 ## Consequences
 
-- Rows carry complete evidence, including rows whose verdict was obvious,
-  and `notes` is a list of sentences. A host composes its own sentence
+- Rows carry typed evidence, filled as far as classification went (a row
+  that returns early, such as the default branch, carries less), and `notes`
+  is a list of sentences. A host composes its own sentence
   rather than parsing a joined string.
 - Bad or contradictory input is refused with a `RepoCleanerError` carrying a
   `code`, so a host can tell "you asked for something contradictory" from

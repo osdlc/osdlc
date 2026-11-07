@@ -12,13 +12,13 @@ repo-cleaner 0.18. Builds on
   ([#501](https://github.com/osdlc/osdlc/pull/501)) have landed; the rest are
   in the Work table.
 
-  | Gap                       | Change                                                                                                                                                                                       |
-  | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | Lock liveness             | A lock whose reason names a dead pid stops blocking; any process but an idle shell inside a worktree blocks, as does an unreadable process table                                             |
-  | Patch equivalence         | A branch whose commits, one by one or squashed, are on the landed ref counts as landed; unless `git merge-tree` confirms the content, deleting it still needs abandon-unmerged               |
-  | Remote-contained worktree | A clean, used worktree whose HEAD is on a fetched remote branch other than the default is removable unless a PR is open; it needs abandon-unmerged again if the same run deletes that branch |
-  | Sizes                     | Worktree rows carry their disk size when asked; the report ranks by size                                                                                                                     |
-  | Archive before delete     | `clean` can push unlanded work to an archive ref, verify it, then delete                                                                                                                     |
+  | Gap                       | Change                                                                                                                                                                                                             |
+  | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | Lock liveness             | A lock whose reason names a dead pid stops blocking; any process but an idle shell inside a worktree blocks, as does an unreadable process table                                                                   |
+  | Patch equivalence         | A branch whose commits, one by one or squashed, are on the landed ref counts as landed; unless `git merge-tree` confirms the content, deleting it still needs abandon-unmerged                                     |
+  | Remote-contained worktree | A clean, used worktree whose HEAD is on a fetched remote branch other than the default is removable unless a PR is open; it needs abandon-unmerged again if the same run deletes every remote branch that holds it |
+  | Sizes                     | Worktree rows carry their disk size when asked; the report ranks by size                                                                                                                                           |
+  | Archive before delete     | `clean` can push unlanded work to an archive ref, verify it, then delete                                                                                                                                           |
 
 - **Process liveness is engine, through a probe port.** repo-cleaner reads a
   generic `pid <N>` token in a lock reason, with an optional start time
@@ -62,6 +62,11 @@ interface HostAdapter {
 }
 ```
 
+The contract has no hook that runs before the sweep yet. The first adapter
+that finds repositories on its own, Orca's `orca repo list`
+([#664](https://github.com/osdlc/osdlc/issues/664)), adds one that returns
+extra targets for the sweep.
+
 - `--adapter` and `--no-adapter` select adapters by name. An undetected
   adapter adds nothing, and the report says it was skipped.
 - Adapters' `annotate` functions chain, in run order, into repo-cleaner's
@@ -80,8 +85,8 @@ interface HostAdapter {
 
 `--auto` applies only:
 
-- a build artifact idle for more than 24 hours, with no build running in its
-  checkout;
+- a build artifact idle for longer than its threshold (24 hours by default),
+  with no build running in its checkout;
 - a worktree row that is `delete` and carries no risk.
 
 ## Why
@@ -115,8 +120,8 @@ interface HostAdapter {
   `annotate` can set, an exported fingerprint comparison, the
   `discard-archived` risk and an archive step, each described in its README
   and CHANGELOG.
-- host-cleaner's dependencies are all released packages in this workspace,
-  so the package can be built now.
+- host-cleaner depends on its sibling packages as `workspace:^`, as
+  repo-cleaner does, so nothing has to be released before it is built.
 
 ## Work
 
@@ -149,4 +154,5 @@ Tracked in [#669](https://github.com/osdlc/osdlc/issues/669).
 ## Reopen if
 
 A host integration cannot fit the adapter contract, for example one that
-needs to run before repo-cleaner's sweep rather than after it.
+must change how repo-cleaner classifies a row rather than re-rank it
+afterwards.
