@@ -4,8 +4,13 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { launcherTable } from './manifest.ts'
-import type { BinaryProduct, NpmPlatform } from './platform.ts'
+import {
+  type BinaryProduct,
+  binaryPathInPackage,
+  type NpmPlatform,
+  platformKey,
+  platformPackageName,
+} from './platform.ts'
 
 const TEMPLATE = fileURLToPath(new URL('./launcher-template.cjs', import.meta.url))
 
@@ -46,7 +51,22 @@ export function renderLauncher(
   // The template holds each placeholder as a quoted string, `'{{name}}'`, so it
   // stays valid JavaScript. The whole quoted token becomes a JSON string
   // literal, which is also a valid JavaScript string literal.
-  return readFileSync(TEMPLATE, 'utf8').replace(/'\{\{(\w+)\}\}'/g, (whole, key: string) =>
-    key in values ? JSON.stringify(values[key]) : whole,
+  return readFileSync(TEMPLATE, 'utf8').replace(/'\{\{(\w+)\}\}'/g, (_, key: string) => {
+    const value = values[key]
+    if (value === undefined) throw new Error(`launcher template has an unknown placeholder: ${key}`)
+    return JSON.stringify(value)
+  })
+}
+
+/** The launcher's lookup table: platform key to package and binary path. */
+function launcherTable(
+  product: BinaryProduct,
+  platforms: readonly NpmPlatform[],
+): Record<string, { package: string; binary: string }> {
+  return Object.fromEntries(
+    platforms.map((p) => [
+      platformKey(p),
+      { package: platformPackageName(product, p), binary: binaryPathInPackage(product, p) },
+    ]),
   )
 }

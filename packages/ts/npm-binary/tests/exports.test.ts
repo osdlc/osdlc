@@ -48,6 +48,15 @@ test('the entry point exports something', () => {
   expect(EXPORTS.size).toBeGreaterThan(0)
 })
 
+test("the README's Stability section names exactly the `@experimental` exports", () => {
+  const section = /^## Stability\n([\s\S]*?)(?=^## )/m.exec(README)?.[1] ?? ''
+  const listed = [...section.matchAll(/`([A-Za-z_$][\w$]*)`/g)]
+    .map((m) => m[1]!)
+    .filter((name) => EXPORTS.has(name))
+  const tagged = [...EXPORTS].filter(([, experimental]) => experimental).map(([name]) => name)
+  expect(listed.sort()).toEqual(tagged.sort())
+})
+
 test('every export is used by examples/, which imports the package name and its dependencies only', () => {
   const dir = join(PACKAGE_DIR, 'examples')
   const sources = readdirSync(dir)

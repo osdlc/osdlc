@@ -35,7 +35,7 @@ export interface BinaryProduct {
 }
 
 /** `darwin-arm64`: the key a platform goes by in directories and in the launcher. */
-export function platformKey(p: Pick<NpmPlatform, 'os' | 'cpu'>): string {
+export function platformKey(p: NpmPlatform): string {
   return `${p.os}-${p.cpu}`
 }
 

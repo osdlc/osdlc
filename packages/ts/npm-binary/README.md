@@ -127,31 +127,15 @@ the way npm lays them out and runs the launcher.
 
 ## How the launcher behaves
 
-`renderLauncher` returns the launcher script. On the user's machine it:
+`renderLauncher` returns the launcher script. On the user's machine it finds
+the platform package npm installed for that host, runs its binary with the
+same arguments and the terminal, passes signals through, and exits with the
+binary's exit code. A host with no build, or a missing platform package, gets
+an error that names the cause. Every name is written into the script as a
+JavaScript string literal, so quotes and backslashes in names are safe.
 
-- picks the entry for `process.platform`-`process.arch`, and on a host with no
-  build prints the supported platforms and exits 1;
-- resolves `<platform package>/package.json`, so an `exports` map in that
-  package never blocks it, and runs the binary next to it;
-- explains a missing platform package: npm skips optional dependencies under
-  `--omit=optional` or `--no-optional`, and when the lockfile was made on
-  another platform;
-- runs the binary with inherited stdio, so it owns the terminal;
-- forwards SIGTERM and SIGHUP to the binary. It forwards SIGINT only when no
-  standard stream is a terminal: in a terminal, Ctrl-C already reaches the
-  binary through its process group, and a second copy would read as a second
-  Ctrl-C. So while a standard stream is a terminal, `kill -INT <launcher pid>`
-  does not reach the binary; send SIGTERM. A run in a terminal with all three
-  streams redirected still gets one Ctrl-C twice, since the launcher cannot
-  see its process group;
-- exits with the binary's exit code. When the binary dies of a signal, it
-  re-raises that signal on itself, and if Node ignores it (SIGPIPE) exits
-  `128 + signal number`, as a shell does;
-- with `debugEnv` set to a variable name, prints the platform, package and
-  binary it resolved to stderr when that variable is set.
-
-Every name is written into the script as a JavaScript string literal, so
-quotes and backslashes in names are safe.
+[How the launcher works](docs/guide/how-the-launcher-works.md) has the
+details: the lookup, when Ctrl-C is and is not forwarded, and the exit codes.
 
 ## API
 
@@ -205,7 +189,8 @@ Publishing and cargo:
   the launcher's, with the npm on `PATH` and its login. It asks the registry
   first and skips every `name@version` already published, so a half-finished
   run is safe to run again. `PublishOptions` has `platformDirs`,
-  `launcherDir` and `dryRun`.
+  `launcherDir`, `dryRun`, and `viewRunner` and `publishRunner` to replace the
+  `npm` it runs (for tests).
 - `cargoTargetDir(options)`: cargo's target directory, from
   `cargo metadata --no-deps`, for a release script that builds with cargo.
   `CargoTargetDirOptions` has `cwd`, an optional `manifestPath` for a crate

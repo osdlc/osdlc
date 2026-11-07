@@ -7,7 +7,12 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { spawnRunnerAsync, streamRunner } from '@osdlc/command-seam'
+import {
+  type AsyncCommandRunner,
+  spawnRunnerAsync,
+  type StreamRunner,
+  streamRunner,
+} from '@osdlc/command-seam'
 
 /** Options for {@link publishPackages}. */
 export interface PublishOptions {
@@ -17,44 +22,49 @@ export interface PublishOptions {
   launcherDir: string
   /** Runs `npm publish --dry-run` instead. */
   dryRun?: boolean
+  /** Runs `npm view`. Defaults to the `npm` on `PATH`; a test passes a fake. */
+  viewRunner?: AsyncCommandRunner
+  /**
+   * Runs `npm publish` with npm's output shown live. Defaults to the `npm` on
+   * `PATH`; a test passes a fake.
+   */
+  publishRunner?: StreamRunner
 }
 
 /**
  * Publishes each package with `npm publish` from its directory, the platform
  * packages in order and the launcher last. It first asks the registry
  * (`npm view <name>@<version> version`) for every package at once, and skips
- * the ones already there. Uses the `npm` on `PATH`, with its own login,
- * registry and each package's `publishConfig`. Throws on the first failed
- * publish.
+ * the ones already there. npm uses its own login, registry and each package's
+ * `publishConfig`. Throws on the first failed publish.
  */
 export async function publishPackages({
   platformDirs,
   launcherDir,
   dryRun = false,
+  viewRunner = spawnRunnerAsync('npm'),
+  publishRunner = streamRunner('npm'),
 }: PublishOptions): Promise<void> {
-  const packages = [...platformDirs, launcherDir].map((dir) => ({
-    dir,
-    ...(JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
-      name: string
-      version: string
-    }),
-  }))
-  const published = await Promise.all(
-    packages.map(async ({ dir, name, version }) => {
-      const existing = await spawnRunnerAsync('npm').run(
-        ['view', `${name}@${version}`, 'version'],
-        { cwd: dir },
-      )
-      return existing.exitCode === 0 && existing.stdout.trim() === version
+  const packages = await Promise.all(
+    [...platformDirs, launcherDir].map(async (dir) => {
+      const { name, version } = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')) as {
+        name: string
+        version: string
+      }
+      const existing = await viewRunner.run(['view', `${name}@${version}`, 'version'], {
+        cwd: dir,
+      })
+      const published = existing.exitCode === 0 && existing.stdout.trim() === version
+      return { dir, name, version, published }
     }),
   )
-  for (const [i, { dir, name, version }] of packages.entries()) {
-    if (published[i]) {
+  const argv = ['publish', ...(dryRun ? ['--dry-run'] : [])]
+  for (const { dir, name, version, published } of packages) {
+    if (published) {
       console.log(`${name}@${version} is already published; skipping`)
       continue
     }
-    const argv = ['publish', ...(dryRun ? ['--dry-run'] : [])]
-    const result = streamRunner('npm').run(argv, { cwd: dir })
+    const result = publishRunner.run(argv, { cwd: dir })
     if (result.exitCode !== 0) throw new Error(`npm ${argv.join(' ')} failed in ${dir}`)
   }
 }

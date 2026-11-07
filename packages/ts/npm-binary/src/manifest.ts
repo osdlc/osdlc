@@ -11,7 +11,6 @@ import {
   type BinaryProduct,
   binaryPathInPackage,
   type NpmPlatform,
-  platformKey,
   platformPackageName,
 } from './platform.ts'
 
@@ -81,9 +80,9 @@ export function launcherManifest(
 }
 
 /**
- * `name`, `version` and `description` first, then the template's fields. A
- * template that names one of the three keeps its position, but the argument's
- * value wins.
+ * The template's fields in order, with `name`, `version` and `description`
+ * set from the arguments. An identity field the template names keeps the
+ * template's position; one it does not name goes first.
  */
 function withIdentity(
   name: string,
@@ -91,28 +90,11 @@ function withIdentity(
   description: string,
   template: Manifest,
 ): Manifest {
-  const m: Manifest = { name, version, description }
-  Object.assign(m, template)
-  m.name = name
-  m.version = version
-  m.description = description
-  return m
-}
-
-/**
- * The launcher's lookup table: platform key to package and binary path.
- * Internal: `renderLauncher` writes it into the launcher.
- */
-export function launcherTable(
-  product: BinaryProduct,
-  platforms: readonly NpmPlatform[],
-): Record<string, { package: string; binary: string }> {
-  return Object.fromEntries(
-    platforms.map((p) => [
-      platformKey(p),
-      { package: platformPackageName(product, p), binary: binaryPathInPackage(product, p) },
-    ]),
+  const identity = { name, version, description }
+  const first = Object.fromEntries(
+    Object.entries(identity).filter(([key]) => !Object.hasOwn(template, key)),
   )
+  return Object.assign(first, template, identity)
 }
 
 /** Writes `value` as JSON with two-space indent and a final newline, as npm does. */

@@ -1,17 +1,10 @@
 // The README's example, then the same packages installed the way npm lays them
-// out and run through the launcher. Imports the package by name only.
+// out and run through the launcher. Imports the package by name, and its own
+// dependency @osdlc/command-seam to run Node.
 
-import {
-  chmodSync,
-  cpSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { delimiter, join } from 'node:path'
+import { basename, join } from 'node:path'
 
 import { spawnRunner } from '@osdlc/command-seam'
 import { afterAll, expect, test } from 'vitest'
@@ -59,9 +52,11 @@ const version = '1.0.0'
 const built = join(out, 'built-tool')
 writeFileSync(built, '#!/bin/sh\necho "tool got: $*"\nexit 7\n')
 
+const packageDir = (platform: NpmPlatform) => join(out, 'packages', platformKey(platform))
+
 /** One package per platform, each holding that platform's build. */
 function writePlatformPackage(platform: NpmPlatform): string {
-  const dir = join(out, 'packages', platformKey(platform))
+  const dir = packageDir(platform)
   mkdirSync(join(dir, product.binaryDir), { recursive: true })
   const options: PlatformManifestOptions = {
     version,
@@ -124,13 +119,9 @@ test.skipIf(host === undefined || process.platform === 'win32')(
     const modules = join(out, 'consumer', 'node_modules', '@acme')
     const platform = host!
     cpSync(launcherDir, join(modules, 'tool'), { recursive: true })
-    cpSync(
-      platformDirs[NPM_PLATFORMS.indexOf(platform)]!,
-      join(modules, `tool-${platformKey(platform)}`),
-      {
-        recursive: true,
-      },
-    )
+    cpSync(packageDir(platform), join(modules, `tool-${platformKey(platform)}`), {
+      recursive: true,
+    })
     const result = spawnRunner(process.execPath).run(
       [join(modules, 'tool', 'bin', 'tool.js'), 'a', 'b c'],
       { cwd: out, env: { ...process.env, TOOL_DEBUG: '1' } },
@@ -152,30 +143,22 @@ test("cargo's target directory comes from cargo metadata", () => {
   expect(cargoTargetDir(options)).toBe('/w/target')
 })
 
-// publishPackages runs the npm on PATH. Here a stand-in npm that has nothing
-// published and records each publish.
-test.skipIf(process.platform === 'win32')(
-  'publishing goes platform packages first, the launcher last',
-  async () => {
-    const bin = join(out, 'fake-bin')
-    const log = join(out, 'publish.log')
-    mkdirSync(bin)
-    writeFileSync(
-      join(bin, 'npm'),
-      `#!/bin/sh\n[ "$1" = view ] && exit 1\nbasename "$PWD" >> ${JSON.stringify(log)}\n`,
-    )
-    chmodSync(join(bin, 'npm'), 0o755)
-    const path = process.env.PATH
-    process.env.PATH = `${bin}${delimiter}${path}`
-    try {
-      const options: PublishOptions = { platformDirs, launcherDir, dryRun: true }
-      await publishPackages(options)
-    } finally {
-      process.env.PATH = path
-    }
-    expect(readFileSync(log, 'utf8').trim().split('\n')).toEqual([
-      ...NPM_PLATFORMS.map(platformKey),
-      'launcher',
-    ])
-  },
-)
+// publishPackages runs the npm on PATH. Here two stand-in runners: an
+// `npm view` that finds nothing published, and an `npm publish` that records
+// each package directory it runs in.
+test('publishing goes platform packages first, the launcher last', async () => {
+  const published: string[] = []
+  const options: PublishOptions = {
+    platformDirs,
+    launcherDir,
+    viewRunner: { run: async () => ({ exitCode: 1, stdout: '', stderr: '' }) },
+    publishRunner: {
+      run: (_argv, { cwd }) => {
+        published.push(basename(cwd))
+        return { exitCode: 0 }
+      },
+    },
+  }
+  await publishPackages(options)
+  expect(published).toEqual([...NPM_PLATFORMS.map(platformKey), 'launcher'])
+})

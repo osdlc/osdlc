@@ -1,8 +1,10 @@
 import { EventEmitter } from 'node:events'
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { delimiter, join } from 'node:path'
+import { join } from 'node:path'
 
+import type { StreamRunner } from '@osdlc/command-seam'
+import { fakeRunner } from '@osdlc/command-seam/testing'
 import { afterEach, describe, expect, test } from 'vitest'
 
 import {
@@ -77,10 +79,11 @@ describe('platformManifest', () => {
 })
 
 describe('template precedence', () => {
+  const template = { description: 'old', license: 'MIT', name: 'wrong', version: '0.0.0' }
+
   test('a template name, version or description keeps its position, but the argument wins', () => {
-    const template = { description: 'old', license: 'MIT', name: 'wrong', version: '0.0.0' }
     const p = platformManifest(ROOT, MAC, { version: '1.0.0', description: 'd', template })
-    expect(Object.keys(p).slice(0, 5)).toEqual(['name', 'version', 'description', 'license', 'os'])
+    expect(Object.keys(p).slice(0, 4)).toEqual(['description', 'license', 'name', 'version'])
     expect([p.name, p.version, p.description]).toEqual(['@acme/tool-darwin-arm64', '1.0.0', 'd'])
     const l = launcherManifest(ROOT, NPM_PLATFORMS, {
       version: '1.0.0',
@@ -91,10 +94,19 @@ describe('template precedence', () => {
     expect([l.name, l.version, l.description]).toEqual(['@acme/tool', '1.0.0', 'd'])
   })
 
+  test('identity fields the template does not name go first', () => {
+    const p = platformManifest(ROOT, MAC, {
+      version: '1.0.0',
+      description: 'd',
+      template: { license: 'MIT', version: '0.0.0' },
+    })
+    expect(Object.keys(p).slice(0, 4)).toEqual(['name', 'description', 'license', 'version'])
+  })
+
   test('the template is not changed', () => {
-    const template = { name: 'wrong', files: ['bin'] }
-    platformManifest(ROOT, MAC, { version: '1.0.0', description: 'd', template })
-    expect(template).toEqual({ name: 'wrong', files: ['bin'] })
+    const own = { name: 'wrong', files: ['bin'] }
+    platformManifest(ROOT, MAC, { version: '1.0.0', description: 'd', template: own })
+    expect(own).toEqual({ name: 'wrong', files: ['bin'] })
   })
 })
 
@@ -119,58 +131,19 @@ describe('launcherManifest', () => {
   })
 })
 
+/** The rendered launcher without its shebang, ready for `new Function`. */
+function launcherBody(product: BinaryProduct, debugEnv = ''): string {
+  return renderLauncher(product, NPM_PLATFORMS, { debugEnv }).replace(/^#!.*\n/, '')
+}
+
 describe('renderLauncher', () => {
   test('fills every placeholder', () => {
     const js = renderLauncher(NESTED, NPM_PLATFORMS, { debugEnv: 'TOOL_DEBUG' })
     expect(js).not.toMatch(/\{\{\w+\}\}/)
     expect(js).toContain(`const DEBUG_ENV = "TOOL_DEBUG"`)
-    expect(js).toContain('\\"binary\\":\\"bin/tool.exe\\"')
+    expect(js).toContain(`const BINARY = "tool"`)
   })
-})
 
-/** Which of the launcher's standard streams are a terminal. */
-interface Ttys {
-  stdin?: boolean
-  stdout?: boolean
-  stderr?: boolean
-}
-
-/**
- * Runs the rendered launcher against a stub `process`, `require` and `spawn`,
- * then delivers `signal` to the launcher. Returns the signals it passed to the child.
- */
-function forwardedOnSignal(signal: NodeJS.Signals, ttys: Ttys): string[] {
-  const js = renderLauncher(ROOT, NPM_PLATFORMS).replace(/^#!.*\n/, '')
-  const kills: string[] = []
-  const child = new EventEmitter() as EventEmitter & { kill: (s: string) => void }
-  child.kill = (s) => {
-    kills.push(s)
-  }
-  const proc = Object.assign(new EventEmitter(), {
-    platform: 'darwin',
-    arch: 'arm64',
-    argv: ['node', 'launcher.js'],
-    env: {},
-    pid: 1,
-    stdin: { isTTY: ttys.stdin === true },
-    stdout: { isTTY: ttys.stdout === true },
-    stderr: { isTTY: ttys.stderr === true, write: () => true },
-    exit: () => {},
-    kill: () => {},
-  })
-  const modules: Record<string, unknown> = {
-    'node:child_process': { spawn: () => child },
-    'node:fs': { existsSync: () => true },
-    'node:os': { constants: { signals: {} } },
-    'node:path': { join: (...p: string[]) => p.join('/'), dirname: () => '/pkg' },
-  }
-  const req = Object.assign((id: string) => modules[id], { resolve: () => '/pkg/package.json' })
-  new Function('require', 'process', js)(req, proc)
-  proc.emit(signal, signal)
-  return kills
-}
-
-describe('launcher values', () => {
   test('quotes and backslashes in names reach the launcher unchanged', () => {
     const odd: BinaryProduct = {
       binary: `it's\\a"tool`,
@@ -179,86 +152,74 @@ describe('launcher values', () => {
       platformPrefix: `p\\q`,
       binaryDir: '',
     }
-    const js = renderLauncher(odd, NPM_PLATFORMS, { debugEnv: `X'Y` }).replace(/^#!.*\n/, '')
-    const consts = new Function(
+    const js = launcherBody(odd, `X'Y`)
+    const constants = new Function(
+      'require',
       `${js.slice(0, js.indexOf('function binaryPath'))}; return { PLATFORM_PACKAGES, BINARY, LAUNCHER, DEBUG_ENV }`,
-    )
-    const fakeRequire = () => ({})
-    expect(new Function('require', `return (${consts.toString()})()`)(fakeRequire)).toEqual({
-      PLATFORM_PACKAGES: {
-        'darwin-arm64': { package: `@acme/p\\q-darwin-arm64`, binary: `it's\\a"tool` },
-        'darwin-x64': { package: `@acme/p\\q-darwin-x64`, binary: `it's\\a"tool` },
-        'linux-x64': { package: `@acme/p\\q-linux-x64`, binary: `it's\\a"tool` },
-        'linux-arm64': { package: `@acme/p\\q-linux-arm64`, binary: `it's\\a"tool` },
-        'win32-x64': { package: `@acme/p\\q-win32-x64`, binary: `it's\\a"tool.exe` },
-      },
-      BINARY: `it's\\a"tool`,
-      LAUNCHER: `@acme/it's`,
-      DEBUG_ENV: `X'Y`,
+    )(() => ({}))
+    expect(constants.BINARY).toBe(`it's\\a"tool`)
+    expect(constants.LAUNCHER).toBe(`@acme/it's`)
+    expect(constants.DEBUG_ENV).toBe(`X'Y`)
+    expect(constants.PLATFORM_PACKAGES['win32-x64']).toEqual({
+      package: `@acme/p\\q-win32-x64`,
+      binary: `it's\\a"tool.exe`,
     })
-  })
-
-  test('a host with no build gets an error naming the supported platforms', () => {
-    const { stderr, exitCodes } = runLauncher({ platform: 'sunos', arch: 'x64' })
-    expect(stderr).toBe(
-      'tool has no build for sunos-x64. Supported: darwin-arm64, darwin-x64, linux-x64, linux-arm64, win32-x64.\n',
-    )
-    expect(exitCodes[0]).toBe(1)
-  })
-
-  test('a missing platform package names it and the optional-dependency causes', () => {
-    const { stderr } = runLauncher({ resolves: false })
-    expect(stderr).toMatch(/the platform package @acme\/tool-darwin-arm64 is not installed/)
-    expect(stderr).toMatch(/--omit=optional/)
-  })
-
-  test('the debug variable prints what was resolved', () => {
-    const { stderr } = runLauncher({ debugEnv: 'TOOL_DEBUG', env: { TOOL_DEBUG: '1' } })
-    expect(stderr).toBe(
-      'tool launcher: platform=darwin-arm64 package=@acme/tool-darwin-arm64 binary=/pkg/tool\n',
-    )
-  })
-
-  test('the child exit code and signal pass through', () => {
-    expect(runLauncher({ exit: [3, null] }).exitCodes).toEqual([3])
-    const killed = runLauncher({ exit: [null, 'SIGTERM'] })
-    expect(killed.selfKills).toEqual(['SIGTERM'])
   })
 })
 
 interface LauncherRun {
   platform?: string
   arch?: string
+  /** Whether the platform package resolves. */
   resolves?: boolean
   debugEnv?: string
   env?: Record<string, string>
+  /** Which standard streams are a terminal. */
+  ttys?: { stdin?: boolean; stdout?: boolean; stderr?: boolean }
+  /** A signal delivered to the launcher after it starts the child. */
+  signal?: NodeJS.Signals
+  /** How the child ends: exit code and signal. */
   exit?: [number | null, string | null]
+  /** Whether re-raising a signal on the launcher throws, as on Windows. */
+  selfKillThrows?: boolean
 }
 
-/** Runs the rendered launcher against stubs, then ends the child as `exit` says. */
+/**
+ * Runs the rendered launcher against a stub `process`, `require` and `spawn`.
+ * Returns what it wrote, the exit codes it asked for, the signals it sent to
+ * the child, the signals it raised on itself, and the signals it listens to.
+ */
 function runLauncher({
   platform = 'darwin',
   arch = 'arm64',
   resolves = true,
   debugEnv = '',
   env = {},
+  ttys = {},
+  signal,
   exit,
-}: LauncherRun): { stderr: string; exitCodes: number[]; selfKills: string[] } {
-  const js = renderLauncher(ROOT, NPM_PLATFORMS, { debugEnv }).replace(/^#!.*\n/, '')
+  selfKillThrows = false,
+}: LauncherRun = {}) {
   let stderr = ''
   const exitCodes: number[] = []
+  const childKills: string[] = []
   const selfKills: string[] = []
-  const child = Object.assign(new EventEmitter(), { kill: () => {} })
+  const child = Object.assign(new EventEmitter(), {
+    kill: (s: string) => {
+      childKills.push(s)
+    },
+  })
+  const stream = (isTTY: boolean | undefined) => ({ isTTY: isTTY === true })
   const proc = Object.assign(new EventEmitter(), {
     platform,
     arch,
     argv: ['node', 'launcher.js'],
     env,
     pid: 1,
-    stdin: { isTTY: false },
-    stdout: { isTTY: false },
+    stdin: stream(ttys.stdin),
+    stdout: stream(ttys.stdout),
     stderr: {
-      isTTY: false,
+      ...stream(ttys.stderr),
       write: (s: string) => {
         stderr += s
         return true
@@ -267,8 +228,9 @@ function runLauncher({
     exit: (code: number) => {
       exitCodes.push(code)
     },
-    kill: (_pid: number, signal: string) => {
-      selfKills.push(signal)
+    kill: (_pid: number, s: string) => {
+      if (selfKillThrows) throw new Error('not supported')
+      selfKills.push(s)
     },
   })
   const modules: Record<string, unknown> = {
@@ -283,127 +245,163 @@ function runLauncher({
       return '/pkg/package.json'
     },
   })
-  new Function('require', 'process', js)(req, proc)
+  new Function('require', 'process', launcherBody(ROOT, debugEnv))(req, proc)
+  const listening = proc.eventNames().map(String)
+  if (signal) proc.emit(signal, signal)
   if (exit) child.emit('exit', ...exit)
-  return { stderr, exitCodes, selfKills }
+  return { stderr, exitCodes, childKills, selfKills, listening }
 }
 
+describe('launcher', () => {
+  test('a host with no build gets an error naming the supported platforms', () => {
+    const { stderr, exitCodes } = runLauncher({ platform: 'sunos', arch: 'x64' })
+    expect(stderr).toBe(
+      'tool has no build for sunos-x64. Supported: darwin-arm64, darwin-x64, linux-x64, linux-arm64, win32-x64.\n',
+    )
+    expect(exitCodes[0]).toBe(1)
+  })
+
+  test('a missing platform package names it and the optional-dependency causes', () => {
+    const { stderr } = runLauncher({ resolves: false })
+    expect(stderr).toMatch(/the platform package @acme\/tool-darwin-arm64 is not installed/)
+    expect(stderr).toMatch(/turned off \(--omit=optional/)
+  })
+
+  test('the debug variable prints what was resolved', () => {
+    const { stderr } = runLauncher({ debugEnv: 'TOOL_DEBUG', env: { TOOL_DEBUG: '1' } })
+    expect(stderr).toBe(
+      'tool launcher: platform=darwin-arm64 package=@acme/tool-darwin-arm64 binary=/pkg/tool\n',
+    )
+  })
+
+  test('the child exit code passes through', () => {
+    expect(runLauncher({ exit: [3, null] }).exitCodes).toEqual([3])
+  })
+
+  test("the child's signal is re-raised on the launcher", () => {
+    expect(runLauncher({ exit: [null, 'SIGTERM'] }).selfKills).toEqual(['SIGTERM'])
+  })
+
+  test('a signal that cannot be re-raised (Windows) exits 128 + signal number', () => {
+    const { selfKills, exitCodes } = runLauncher({
+      platform: 'win32',
+      arch: 'x64',
+      exit: [null, 'SIGTERM'],
+      selfKillThrows: true,
+    })
+    expect(selfKills).toEqual([])
+    // The stub exit returns, so later calls also record; the first one is the real exit.
+    expect(exitCodes[0]).toBe(143)
+  })
+})
+
 describe('launcher signal forwarding', () => {
+  const allTty = { stdin: true, stdout: true, stderr: true }
+
   test('a terminal Ctrl-C is not forwarded: the child already has it from its process group', () => {
-    expect(forwardedOnSignal('SIGINT', { stdin: true, stdout: true, stderr: true })).toEqual([])
+    expect(runLauncher({ signal: 'SIGINT', ttys: allTty }).childKills).toEqual([])
   })
 
   test('a Ctrl-C is not forwarded when only stdout or stderr is a terminal (`echo x | bin`)', () => {
-    expect(forwardedOnSignal('SIGINT', { stdout: true, stderr: true })).toEqual([])
-    expect(forwardedOnSignal('SIGINT', { stderr: true })).toEqual([])
+    expect(
+      runLauncher({ signal: 'SIGINT', ttys: { stdout: true, stderr: true } }).childKills,
+    ).toEqual([])
+    expect(runLauncher({ signal: 'SIGINT', ttys: { stderr: true } }).childKills).toEqual([])
   })
 
   test('SIGINT is forwarded when no standard stream is a terminal', () => {
-    expect(forwardedOnSignal('SIGINT', {})).toEqual(['SIGINT'])
+    expect(runLauncher({ signal: 'SIGINT' }).childKills).toEqual(['SIGINT'])
   })
 
   test('SIGTERM is forwarded either way', () => {
-    expect(forwardedOnSignal('SIGTERM', { stdin: true, stdout: true, stderr: true })).toEqual([
-      'SIGTERM',
-    ])
-    expect(forwardedOnSignal('SIGTERM', {})).toEqual(['SIGTERM'])
+    expect(runLauncher({ signal: 'SIGTERM', ttys: allTty }).childKills).toEqual(['SIGTERM'])
+    expect(runLauncher({ signal: 'SIGTERM' }).childKills).toEqual(['SIGTERM'])
+  })
+
+  test('SIGHUP is handled except on Windows, which has none', () => {
+    expect(runLauncher().listening).toContain('SIGHUP')
+    expect(runLauncher({ platform: 'win32', arch: 'x64' }).listening).not.toContain('SIGHUP')
   })
 })
 
 describe('cargoTargetDir', () => {
   test('passes the manifest path and reads target_directory', () => {
-    const calls: string[][] = []
-    const dir = cargoTargetDir({
-      cwd: '/repo',
-      manifestPath: '/repo/app/Cargo.toml',
-      runner: {
-        run: (args) => {
-          calls.push(args)
-          return { exitCode: 0, stdout: '{"target_directory":"/repo/target"}', stderr: '' }
-        },
+    const { runner, calls } = fakeRunner({
+      'metadata --no-deps --format-version 1 --manifest-path /repo/app/Cargo.toml': {
+        stdout: '{"target_directory":"/repo/target"}',
       },
     })
+    const dir = cargoTargetDir({ cwd: '/repo', manifestPath: '/repo/app/Cargo.toml', runner })
     expect(dir).toBe('/repo/target')
-    expect(calls[0]).toContain('--manifest-path')
+    expect(calls[0]?.opts.cwd).toBe('/repo')
   })
 
   test('output with no target_directory is an error', () => {
-    expect(() =>
-      cargoTargetDir({
-        cwd: '/repo',
-        runner: { run: () => ({ exitCode: 0, stdout: '{}', stderr: '' }) },
-      }),
-    ).toThrow(/no target_directory/)
+    const { runner } = fakeRunner({ 'metadata --no-deps --format-version 1': { stdout: '{}' } })
+    expect(() => cargoTargetDir({ cwd: '/repo', runner })).toThrow(/no target_directory/)
   })
 
   test('a failed cargo run throws', () => {
-    expect(() =>
-      cargoTargetDir({
-        cwd: '/repo',
-        runner: { run: () => ({ exitCode: 101, stdout: '', stderr: 'no Cargo.toml' }) },
-      }),
-    ).toThrow()
+    const { runner } = fakeRunner({
+      'metadata --no-deps --format-version 1': { exitCode: 101, stderr: 'no Cargo.toml' },
+    })
+    expect(() => cargoTargetDir({ cwd: '/repo', runner })).toThrow()
   })
 })
 
-describe.skipIf(process.platform === 'win32')('publishPackages', () => {
+describe('publishPackages', () => {
   const dirs: string[] = []
-  const originalPath = process.env.PATH
   afterEach(() => {
-    process.env.PATH = originalPath
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
   })
 
   /**
-   * A fake `npm` on PATH: `view` answers from `published`, `publish` logs its
-   * cwd and argv and fails for a package named in `failing`.
+   * Three package directories, an `npm view` that knows the `published`
+   * versions, and an `npm publish` that records each run and fails for the
+   * directory named in `failing`.
    */
-  function setup(published: string[], failing: string[] = []) {
+  function setup(published: string[], failing?: string) {
     const root = mkdtempSync(join(tmpdir(), 'npm-binary-publish-'))
     dirs.push(root)
-    const log = join(root, 'log')
-    writeFileSync(log, '')
-    const bin = join(root, 'bin')
-    mkdirSync(bin)
-    const npm = join(bin, 'npm')
-    writeFileSync(
-      npm,
-      [
-        '#!/bin/sh',
-        'if [ "$1" = view ]; then',
-        ...published.map((p) => `  [ "$2" = "${p}" ] && { echo "${p.split('@').pop()}"; exit 0; }`),
-        '  exit 1',
-        'fi',
-        `name=$(node -p "require('./package.json').name")`,
-        ...failing.map((f) => `[ "$name" = "${f}" ] && exit 1`),
-        `echo "$name $*" >> ${JSON.stringify(log)}`,
-      ].join('\n'),
-    )
-    chmodSync(npm, 0o755)
-    process.env.PATH = `${bin}${delimiter}${originalPath}`
     const pkg = (name: string) => {
       const dir = join(root, name.replace('/', '__'))
       mkdirSync(dir)
       writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, version: '1.0.0' }))
       return dir
     }
+    const { asyncRunner: viewRunner } = fakeRunner((argv) =>
+      published.includes(argv[1]!) ? { stdout: '1.0.0\n' } : { exitCode: 1 },
+    )
+    const runs: string[] = []
+    const publishRunner: StreamRunner = {
+      run: (argv, { cwd }) => {
+        const name = cwd.slice(root.length + 1).replace('__', '/')
+        if (name === failing) return { exitCode: 1 }
+        runs.push([name, ...argv].join(' '))
+        return { exitCode: 0 }
+      },
+    }
     return {
-      platformDirs: [pkg('@acme/tool-linux-x64'), pkg('@acme/tool-darwin-arm64')],
-      launcherDir: pkg('@acme/tool'),
-      published: () => readFileSync(log, 'utf8').trim().split('\n').filter(Boolean),
+      options: {
+        platformDirs: [pkg('@acme/tool-linux-x64'), pkg('@acme/tool-darwin-arm64')],
+        launcherDir: pkg('@acme/tool'),
+        viewRunner,
+        publishRunner,
+      },
+      runs,
     }
   }
 
   test('platform packages first, the launcher last, skipping published versions', async () => {
-    const s = setup(['@acme/tool-darwin-arm64@1.0.0'])
-    await publishPackages({ platformDirs: s.platformDirs, launcherDir: s.launcherDir })
-    expect(s.published()).toEqual(['@acme/tool-linux-x64 publish', '@acme/tool publish'])
+    const { options, runs } = setup(['@acme/tool-darwin-arm64@1.0.0'])
+    await publishPackages(options)
+    expect(runs).toEqual(['@acme/tool-linux-x64 publish', '@acme/tool publish'])
   })
 
   test('dryRun passes --dry-run', async () => {
-    const s = setup([])
-    await publishPackages({ ...s, dryRun: true })
-    expect(s.published()).toEqual([
+    const { options, runs } = setup([])
+    await publishPackages({ ...options, dryRun: true })
+    expect(runs).toEqual([
       '@acme/tool-linux-x64 publish --dry-run',
       '@acme/tool-darwin-arm64 publish --dry-run',
       '@acme/tool publish --dry-run',
@@ -411,8 +409,8 @@ describe.skipIf(process.platform === 'win32')('publishPackages', () => {
   })
 
   test('a failed publish stops the run before the launcher', async () => {
-    const s = setup([], ['@acme/tool-linux-x64'])
-    await expect(publishPackages(s)).rejects.toThrow(/npm publish failed/)
-    expect(s.published()).toEqual([])
+    const { options, runs } = setup([], '@acme/tool-linux-x64')
+    await expect(publishPackages(options)).rejects.toThrow(/npm publish failed/)
+    expect(runs).toEqual([])
   })
 })

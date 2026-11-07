@@ -116,6 +116,7 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
+  binaryFileName,
   binaryPathInPackage,
   copyExecutable,
   NPM_PLATFORMS,
@@ -149,9 +150,8 @@ const platformDirs = NPM_PLATFORMS.map((platform) => {
 
   const triple = RUST_TARGET[key]
   if (triple === undefined) throw new Error(`no Rust target for ${key}`)
-  const file = platform.os === 'win32' ? 'mytool.exe' : 'mytool'
   copyExecutable(
-    join('target', triple, 'release', file),
+    join('target', triple, 'release', binaryFileName(product, platform)),
     join(dir, binaryPathInPackage(product, platform)),
   )
   return dir

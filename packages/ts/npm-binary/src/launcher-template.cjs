@@ -60,15 +60,11 @@ if (DEBUG_ENV && process.env[DEBUG_ENV]) {
   )
 }
 
-// Inherited stdio, so the binary owns the terminal; exit code and signal pass through.
-// A terminal's Ctrl-C reaches the child directly (same process group), so when
-// any standard stream is a terminal SIGINT is not forwarded: a second copy would
-// read as a second Ctrl-C. Checking all three covers `echo x | bin`, which still
-// runs in the terminal's foreground group. The launcher ignores that SIGINT and
-// waits for the child. SIGTERM and SIGHUP are always forwarded, and SIGINT is too
-// when no standard stream is a terminal. A run in a terminal with all three
-// redirected still gets a Ctrl-C twice: the launcher cannot see its process group.
-const child = spawn(bin, process.argv.slice(2), { stdio: 'inherit', windowsHide: false })
+// Inherited stdio, so the binary owns the terminal. In a terminal, Ctrl-C already
+// reaches the child through its process group, so SIGINT is forwarded only when
+// no standard stream is a terminal; forwarding it too would read as a second
+// Ctrl-C. SIGTERM and SIGHUP are always forwarded.
+const child = spawn(bin, process.argv.slice(2), { stdio: 'inherit' })
 const forwardSigint = ![process.stdin, process.stdout, process.stderr].some(
   (stream) => stream.isTTY === true,
 )
