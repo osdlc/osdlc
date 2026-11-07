@@ -1,0 +1,40 @@
+[package]
+name = "web-access"
+version = "0.4.1"
+edition.workspace = true
+rust-version.workspace = true
+description = "Put an axum app on the local network safely: listen settings, minted tokens, a request guard with grants and access contexts, a route permission table and a server that can be stopped."
+license.workspace = true
+repository.workspace = true
+homepage = "https://github.com/osdlc/osdlc/tree/main/packages/rust/web-access"
+readme = "README.md"
+keywords = ["axum", "lan", "token", "guard", "sharing"]
+categories = ["web-programming::http-server", "authentication", "network-programming"]
+include = [
+  "src/**/*.rs",
+  "examples/**/*.rs",
+  "tests/**/*.rs",
+  "README.md",
+  "CHANGELOG.md",
+  "LICENSE-MIT",
+  "LICENSE-APACHE",
+]
+
+[dependencies]
+axum = { workspace = true }
+base64 = { workspace = true }
+getrandom = { workspace = true }
+if-addrs = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+subtle = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["net", "rt", "sync", "time"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "macros", "rt-multi-thread"] }
+tower = { workspace = true }
+
+[lints]
+workspace = true

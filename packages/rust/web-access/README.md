@@ -1,0 +1,215 @@
+# web-access
+
+Put an [axum](https://crates.io/crates/axum) app on your local network safely:
+listen settings, a minted token, a request guard and a server you can stop.
+
+A desktop or local web app often serves its UI over HTTP on loopback. Opening it
+to a phone or another computer on the same network takes more than binding
+`0.0.0.0`. Anything on the network can then reach it, and so can any web page
+the user visits, through DNS rebinding or a cross-site request. web-access gives
+the app one settings shape (on or off, which interfaces, which port), a random
+token that travels in a share link, and a guard that checks every request
+before the app's own handlers see it.
+
+- **Config.** `WebAccessConfig { enabled, listen, port, admin }`, serde
+  camelCase, off and on loopback by default.
+- **Tokens.** 32 random bytes, base64url, kept in a directory you choose (file
+  mode 0600 on Unix). A full token, a view-only token, and an admin token that
+  exists only while admin access is on.
+- **Guard.** An axum middleware: `Host` allowlist, `Origin` check, path
+  normalisation, token from a cookie, a header or a share link, and a grant
+  (`read`, `full` or `admin`) and an access context (local or remote) on every
+  request that passes.
+- **Permissions.** Your table of routes and what each needs, checked against the
+  context and the grant.
+- **Server.** `serve` binds every address the config names, wraps your router in
+  the guard and returns a handle with the share links and `stop()`.
+- **Sharing runtime.** `SharingRuntime` applies a stored config, restarts the
+  server when it changes, rotates tokens and reports a status for a settings
+  page.
+
+## Who it is for
+
+Apps built on axum that run on the user's own machine and want to be reached
+from their other devices: a desktop app with a web UI, a local dashboard, a dev
+tool's browser view. The crate has no dependency on any desktop framework.
+
+## When not to use it
+
+- **On an untrusted network.** The token travels over plain HTTP, so anyone who
+  can read the traffic can take it. Put the app behind TLS or a VPN, or do not
+  share it.
+- **Behind a reverse proxy on the same machine.** The access context comes from
+  the peer address, so every proxied request looks local.
+- **For user accounts.** There are no users, passwords or sessions, only tokens
+  with a grant. Use a session or login crate such as `tower-sessions` or
+  `axum-login`.
+- **For a public server.** This is for a machine's own network, not the
+  internet.
+
+## How it compares
+
+Each crate below covers one part of the job; none covers the whole of it.
+
+| Crate | What it does | What web-access adds |
+|---|---|---|
+| `tower-http` | General middleware, including header-based auth checks | The share link, the `Host` and `Origin` checks, grants and the server |
+| `axum-extra` | Cookies and typed headers | The guard built on them |
+| `axum-token-auth` | Token authentication middleware | `Host` and `Origin` checks, grants, minted token files, the server |
+| `axum_csrf` | A CSRF token for forms | web-access checks `Origin` against `Host` instead, with no form token |
+| `tower-sessions`, `axum-login` | Sessions and user login | A different model: no users, only tokens with a grant |
+
+web-access exists because sharing a local app needs all of these at once, in the
+right order, with safe defaults.
+
+## Install
+
+```sh
+cargo add web-access
+```
+
+The guard and the server run on Tokio, through axum.
+
+## Quick start
+
+Serve a router on loopback behind a token. `serve` refuses to listen beyond
+loopback without one.
+
+```rust
+use axum::{Router, routing::get};
+use web_access::{Listen, Tokens, WebAccessConfig, serve, token};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let app = Router::new().route("/", get(|| async { "hello" }));
+
+    let config = WebAccessConfig {
+        enabled: true,
+        listen: Listen::Loopback, // or Listen::AllInterfaces to share on the network
+        port: 0,                  // 0 asks the OS for a free port
+        admin: false,
+    };
+    // Or token::load_or_mint(dir) to keep the token across restarts.
+    let secret = token::mint()?;
+    let server = serve(app, &config, Tokens::full_only(secret)).await?;
+
+    // Hand this link to another device: http://<ip>:<port>/?token=<token>
+    println!("{}", server.share_urls()[0]);
+
+    server.stop().await;
+    Ok(())
+}
+```
+
+The examples run with `cargo run --example <name>`:
+
+- [`serve_with_token`](examples/serve_with_token.rs): serve with a token, and
+  what the guard does with no token, the share link and the cookie.
+- [`guard_and_policy`](examples/guard_and_policy.rs): the guard and a route
+  permission table in front of your own router, and what each grant may do.
+- [`tokens_on_disk`](examples/tokens_on_disk.rs): token files, rotation and an
+  override.
+- [`sharing_runtime`](examples/sharing_runtime.rs): a settings page's view of
+  sharing: turn it on, rotate a token, turn it off.
+- [`local_origins`](examples/local_origins.rs): the local-origin helpers and
+  the interface list.
+
+## What the guard checks
+
+Every request, whatever its method, passes these checks in order:
+
+1. The `Host` header is on the allowlist, else 421. This holds for loopback
+   peers too: it is what stops a DNS-rebinding page from reading the app.
+2. A mutating request, or a protocol upgrade such as a WebSocket handshake,
+   that carries an `Origin` header has an allowed origin, else 403. An upgrade
+   may also come from a desktop webview's own origin (`tauri://localhost`,
+   `http(s)://tauri.localhost`).
+3. The path normalises, else 400: no `.` or `..` segment, no `\` and no
+   encoded `/`.
+4. A loopback peer passes with the `full` grant when the policy's
+   `loopback_open` is set. `serve` sets it only when there are no tokens.
+5. A `GET` with a valid `?token=` sets the cookie and answers with a small
+   page that moves to the same URL without the token, so the token does not
+   stay in the address bar, the history or a `Referer`.
+6. Otherwise the `web_access_<port>` cookie or the `x-web-access-token` header
+   must hold one of the tokens, else 401.
+7. A `read` grant may not use a method other than `GET`, `HEAD` or `OPTIONS`,
+   else 403 `{"error":"read_only"}`, unless a read-safe rule names the route.
+
+A request that passes carries its `AccessContext` (`webLocal` or `webRemote`)
+and its `Grant` in the request extensions. Both are axum extractors, and both
+fail closed: with no guard in front, a handler sees `webRemote` and `read`.
+
+Every response carries `Referrer-Policy: no-referrer` and
+`X-Content-Type-Options: nosniff`. Wrong tokens, bad `Host` headers and foreign
+origins can be reported to a callback (`GuardState::with_on_denied`), at most
+30 a minute.
+
+## Grants and contexts
+
+- `read` may look but not change anything; `full` may do what the context
+  allows; `admin` is for what hands a peer a shell on the host. They rank in
+  that order.
+- The admin token exists only while `WebAccessConfig::admin` is on. While it is
+  off, the guard does not hold it, so presenting it grants nothing, and turning
+  admin off deletes the file.
+- `AccessContext::Desktop` is for your own app's in-process calls (IPC). HTTP
+  never produces it.
+- What each grant may do in each context is your app's choice: write a
+  `HostPolicy` with a route table and an `allows` function, and install
+  `host_policy_layer` inside the guard.
+
+## Security notes
+
+- The token travels over plain HTTP. Use the crate on networks you trust.
+- Browsers do not keep cookies apart by port. The `web_access_<port>` cookie
+  goes to every server on the same host name or address, so another server
+  there can read the token. The port in the name only keeps two servers from
+  overwriting each other's cookie. Do not run untrusted servers on the same
+  address as a shared app, above all with admin access on.
+- Turning sharing off, turning admin off or rotating a token stops new
+  requests, but a connection that is already open (a stream or a WebSocket)
+  keeps running until it closes. Close long-lived connections yourself when the
+  grant they were opened with is withdrawn.
+- On Windows, token files get no owner-only mode. Keep the token directory in
+  the user's own profile (for example under `%LOCALAPPDATA%`), where the
+  default permissions keep other users out.
+- See [SECURITY.md](SECURITY.md) to report a vulnerability.
+
+## Supported versions
+
+Rust 1.89 or newer.
+
+## Platforms
+
+Linux, macOS and Windows. The one platform difference is the token file mode
+described above.
+
+## Stability
+
+This is a 0.x crate. Breaking changes are possible between minor versions and
+are listed in the [changelog](CHANGELOG.md).
+
+Every public item is stable within the 0.4 line, except these, which are
+experimental and may change in a patch release:
+
+- `Tokens::with_label`
+
+## Design decisions
+
+Short notes on settled design choices are in
+[docs/planning/decisions](https://github.com/osdlc/osdlc/tree/main/packages/rust/web-access/docs/planning/decisions).
+
+## Source
+
+The crate lives in the [osdlc/osdlc](https://github.com/osdlc/osdlc)
+repository, in `packages/rust/web-access`.
+
+## License
+
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
+[MIT license](LICENSE-MIT) at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in this crate by you, as defined in the Apache-2.0 license, shall
+be dual licensed as above, without any additional terms or conditions.
