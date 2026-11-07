@@ -19,9 +19,14 @@ Accepted 2026-11-07, in [#656](https://github.com/osdlc/osdlc/pull/656) (issues
 | `git ls-remote` after a successful fetch            | Remote tips come from the refs that fetch just wrote. The repository and each remote row carry a note.                                                 |
 | The fetch                                           | The repository is an error with no rows, as before.                                                                                                    |
 
-- **`--offline` never runs `ls-remote`.** It reads remote branches from
-  `refs/remotes/<remote>/`, so git does not contact the remote. Pull
-  requests are still looked up, unless `--provider none` is given.
+- **`--offline` never runs `ls-remote` to judge.** It reads remote branches
+  from `refs/remotes/<remote>/`, so judging does not contact the remote;
+  `clean`'s remote steps still do. Pull requests are still looked up, unless
+  `--provider none` is given.
+- **A branch the remote already deleted is gone, not a failure.** Its tracking
+  ref stays until a prune, so an offline plan can name it. When `clean`'s
+  lease push is refused and `ls-remote` no longer lists the ref, the step
+  reports it gone and drops the tracking ref.
 - **A note is a sentence on `RepoSweep.notes`.** The text and summary reports
   print notes under the repository's header, and the JSON carries them.
   `--format commands`, `plan` and `clean` print them on stderr, `clean` from
