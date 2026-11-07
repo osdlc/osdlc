@@ -15,9 +15,12 @@ include = [
   "examples/**/*.rs",
   "tests/**/*.rs",
   "README.md",
+  "docs/guide.md",
   "CHANGELOG.md",
   "LICENSE-MIT",
   "LICENSE-APACHE",
+  # `README.md` above matches at any depth; the planning notes do not ship.
+  "!docs/planning/**",
 ]
 
 [dependencies]

@@ -101,6 +101,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+The [guide](https://github.com/osdlc/osdlc/blob/main/packages/rust/web-access/docs/guide.md)
+walks through a share link request by request, each guard check with example requests, the
+permission table, tokens, the sharing runtime, what each refusal means, and the security model.
+
 The examples run with `cargo run --example <name>`:
 
 - [`serve_with_token`](examples/serve_with_token.rs): serve with a token, and

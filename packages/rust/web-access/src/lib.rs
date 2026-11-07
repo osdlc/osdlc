@@ -27,7 +27,11 @@ pub use permissions::{HostPolicy, RouteRule, host_policy_layer};
 pub use runtime::{ConfigStore, RuntimeError, ShareUrls, SharingRuntime, WebAccessStatus};
 pub use serve::{ServeError, ServeOptions, ServerHandle, serve, serve_opts, share_url};
 
-// Runs the README's code blocks as doc-tests, so its quick start stays true.
+// Runs the README's and the guide's code blocks as doc-tests, so they stay true.
 #[doc = include_str!("../README.md")]
 #[cfg(doctest)]
 pub struct ReadmeDoctests;
+
+#[doc = include_str!("../docs/guide.md")]
+#[cfg(doctest)]
+pub struct GuideDoctests;
