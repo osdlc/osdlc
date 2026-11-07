@@ -1,13 +1,19 @@
 # @osdlc/ref-lease
 
-Compare-and-swap leases on git refs. A lease is a ref whose commit holds a JSON payload. Every
-write is a `git push --force-with-lease` to one git remote, the authority, so the authority decides
-who wins a race. Nothing else needs to run: no lock server, no database, no network service beyond
-the git host you already have.
+A lock that lives in a git remote. Several workers (CI jobs, agents, cron hosts) that all push to
+one repository can use it to make sure only one of them does a job at a time, with no lock server
+and no database.
 
-It is for tools that coordinate several workers, machines or CI jobs through a repository they all
-push to: claiming a task, holding a deploy slot, electing one writer. The payload is yours; the
-library stores, reads and swaps it.
+```text
+worker A: read refs/locks/deploy (commit C1) ── push C2 "only if still C1" ── ✔ A holds the lease
+worker B: read refs/locks/deploy (commit C1) ── push C3 "only if still C1" ── ✘ CasFailed: A got there first
+```
+
+A **lease** is a git ref whose commit holds a JSON payload you choose, such as who holds it and
+until when. Every change is a compare-and-swap: `git push --force-with-lease=<ref>:<sha-you-read>`.
+The remote, the **authority**, accepts exactly one of two racing writers. The library builds the
+commits, runs the pushes and fetches, and tells a lost race (`CasFailed`) apart from a broken push
+(`GitFailed`).
 
 Do not use it when:
 
@@ -29,6 +35,7 @@ Bun also works. It runs the `git` CLI, which must be on `PATH`.
 
 From [examples/lease-lifecycle.test.ts](./examples/lease-lifecycle.test.ts):
 
+<!-- snippet: examples/lease-lifecycle.test.ts#quick-start -->
 ```ts
 import {
   buildLeaseCommit,
@@ -69,6 +76,19 @@ function claim(authority: string, ref: string, holder: string, cwd: string): str
 
 The same file renews a lease with `casReplace`, lists leases with `fetchNamespace` and releases one
 with `casDelete`.
+
+## Guides
+
+| Guide | Read it when |
+|---|---|
+| [Getting started](./docs/guide/getting-started.md) | You want the idea explained and a first lease taken, step by step. |
+| [Recipes](./docs/guide/recipes.md) | You need claim with expiry, renew, release, list, or an update that retries. |
+| [Errors and retries](./docs/guide/errors-and-retries.md) | A call threw and you want to know whether to try again. |
+| [Testing](./docs/guide/testing.md) | You are testing code that takes leases. |
+| [Git mechanics](./docs/guide/git-mechanics.md) | You want to know what git does underneath. |
+
+Every code block in the README and the guides is a region of a file under `examples/`, which the
+test suite runs; `tests/docs-snippets.test.ts` fails when they differ.
 
 ## How it works
 
@@ -132,9 +152,11 @@ environment such as `GIT_SSH_COMMAND`.
 | `GitFailed` | `git-failed` | Any other git failure. It carries `op`, `exitCode` and `stderr`. |
 | `RefLeaseError` | `other` | The base class. Your own lease errors may extend it. |
 
-A `decode` function's own error is not wrapped: it propagates as thrown. `buildLeaseCommit` throws
-a `TypeError` for a payload JSON cannot hold or a bad file name, and `@osdlc/typed-git`'s
-`FailureError` when the local repository cannot write objects.
+Which ones to retry, with an example handler:
+[Errors and retries](./docs/guide/errors-and-retries.md). A `decode` function's own error is not
+wrapped: it propagates as thrown. `buildLeaseCommit` throws a `TypeError` for a payload JSON cannot
+hold or a bad file name, and `@osdlc/typed-git`'s `FailureError` when the local repository cannot
+write objects.
 
 git's messages are matched in English. Under a translated git, a lost race reads as `GitFailed`.
 Run git with `LC_ALL=C` (through a `git` client with that environment) if your users run a
@@ -183,8 +205,7 @@ This library needs nothing but a git remote every participant can push to.
 ## Design
 
 [docs/planning/](./docs/planning/README.md) records why the package has the shape it has, one
-decision per topic. [docs/guide/git-mechanics.md](./docs/guide/git-mechanics.md) explains the git model for
-readers new to refs.
+decision per topic.
 
 ## Licence
 

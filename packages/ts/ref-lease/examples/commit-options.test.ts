@@ -20,8 +20,10 @@ test('the defaults', () => {
 })
 
 test('a fixed date gives the same sha on every run and every host', () => {
+  // #region deterministic
   const opts = { cwd: repo.dir, commitDate: DETERMINISTIC_EPOCH }
   expect(buildLeaseCommit({ holder: 'a' }, opts)).toBe(buildLeaseCommit({ holder: 'a' }, opts))
+  // #endregion deterministic
 })
 
 test('your own identity, payload file and extra files', () => {

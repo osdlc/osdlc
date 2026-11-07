@@ -10,7 +10,9 @@ const sha = worker.commit('init', { '.gitkeep': '' })
 afterAll(cleanup)
 
 test('a literal refs/locks blocks refs/locks/...', () => {
+  // #region guard
   checkNamespaceConflict(bare.dir, 'refs/locks', { cwd: worker.dir })
+  // #endregion guard
 
   // A literal refs/locks, made at the authority (git refuses to push one).
   worker.git.rawChecked(['push', bare.dir, `${sha}:refs/scratch/seed`])
