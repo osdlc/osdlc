@@ -38,7 +38,12 @@ created: 2026-11-05
   what to type and asks again when the input is a terminal. When it is not,
   it throws a plain `Error` naming the answer and the choices: nobody reads
   the re-ask, `yes | tool` would loop forever, and each re-read would eat a
-  line meant for the next question. End of input gives the default, and with no
+  line meant for the next question. It is not `NotInteractiveError`: that
+  error means nobody could answer, and with `required` set a pipe never gets
+  this far (it fails `no-terminal` first). Here the caller let input that is
+  not a terminal answer, and the input gave something that is not a choice,
+  which is a bad answer (exit 1, code `error`), not a missing person.
+  End of input gives the default, and with no
   default throws `end-of-input` even when not required: there is nothing to
   return. An empty list, a choice listed twice, or a default that is not a
   choice throws a plain `Error` before anything is written.

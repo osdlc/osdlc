@@ -430,10 +430,15 @@ function choiceFor<T extends string>(answer: string, choices: readonly T[]): T |
 /**
  * Write `question` and the choices as a numbered list, then read one line
  * and return the choice it names: its number, or its text (in any case, when
- * only one choice matches). An empty answer gives `default`. Any other
+ * only one choice matches). A number in range is read as a position first,
+ * since the list shows numbers: with choices `['2', '1']`, `2` picks `'1'`.
+ * An empty answer gives `default`. Any other
  * answer, or an empty one with no default, says what to type and asks again
  * when `fd` is a terminal. When it is not (a pipe, a file), nobody reads the
- * re-ask and the next line belongs to whatever reads next, so it throws.
+ * re-ask and the next line belongs to whatever reads next, so it throws a
+ * plain `Error`, not {@link NotInteractiveError}: input was there and gave an
+ * answer, just not a choice, so it fails as a bad answer does (exit 1, code
+ * `error` under `--json`).
  *
  * End of input gives `default`. With no default there is nothing to give,
  * so it throws.

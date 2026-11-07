@@ -439,7 +439,8 @@ a key pressed while a long step ran cannot answer it.
   gives the default, shown in brackets, or the empty string.
 - `askChoice(question, choices, { default })` prints the choices as a numbered
   list and returns the one named by its number or its text (in any case, when
-  only one choice matches). On a terminal, anything else says what to type
+  only one choice matches). A number in range is read as a position first.
+  On a terminal, anything else says what to type
   and asks again. When stdin is not a terminal it throws instead, so
   `yes | tooly` cannot loop and a bad line does not eat the next question's
   answer.

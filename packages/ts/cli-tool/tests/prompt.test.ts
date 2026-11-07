@@ -393,6 +393,8 @@ describe('askChoice', () => {
   test('a number in range picks by position; out of range, a choice with that text still matches', () => {
     expect(choose('1\n', ['10', '20']).chosen).toBe('10')
     expect(choose('20\n', ['10', '20']).chosen).toBe('20')
+    // A number in range is a position even when another choice has that text.
+    expect(choose('2\n', ['2', '1']).chosen).toBe('1')
   })
 
   test('end of input gives the default, or throws with no default', () => {
