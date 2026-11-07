@@ -1,0 +1,88 @@
+{
+  "name": "@osdlc/story-harness",
+  "version": "0.3.4",
+  "description": "A static Storybook build as a component test harness: exact Linux screenshot baselines shot in a pinned Playwright container, Playwright helpers for interaction and perf specs against the build, an in-page metrics hook and a seeded PRNG for stories, and a perf report that parallel workers merge.",
+  "license": "MIT OR Apache-2.0",
+  "author": "sksizer",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/osdlc/osdlc.git",
+    "directory": "packages/ts/story-harness"
+  },
+  "homepage": "https://github.com/osdlc/osdlc/tree/main/packages/ts/story-harness#readme",
+  "bugs": "https://github.com/osdlc/osdlc/issues",
+  "keywords": [
+    "storybook",
+    "playwright",
+    "visual-regression",
+    "screenshot-testing",
+    "performance",
+    "long-tasks",
+    "e2e",
+    "docker"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "default": "./dist/browser/index.js"
+    },
+    "./playwright": {
+      "types": "./dist/playwright/index.d.ts",
+      "default": "./dist/playwright/index.js"
+    },
+    "./runner": {
+      "types": "./dist/runner/index.d.ts",
+      "default": "./dist/runner/index.js"
+    }
+  },
+  "bin": {
+    "story-shots": "./bin/story-shots.js"
+  },
+  "files": [
+    "dist/",
+    "bin/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE-MIT",
+    "LICENSE-APACHE",
+    "SECURITY.md",
+    "CONTRIBUTING.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-runner.mjs",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "test": "vitest run",
+    "test:browser": "STORY_HARNESS_BROWSER=1 vitest run && playwright test -c tests/playwright.config.ts",
+    "test:shots": "bash tests/story-shots.sh",
+    "coverage": "vitest run --coverage",
+    "smoke": "node tests/smoke.mjs",
+    "prepublishOnly": "npm run clean && npm run build",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint .",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.build.json --noEmit"
+  },
+  "peerDependencies": {
+    "@playwright/test": "^1.45.0"
+  },
+  "devDependencies": {
+    "@osdlc/prettier-config": "workspace:^",
+    "@osdlc/tsconfig": "workspace:^",
+    "@playwright/test": "1.63.0",
+    "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
+    "jsdom": "^26.1.0",
+    "oxlint": "catalog:",
+    "prettier": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
