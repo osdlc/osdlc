@@ -60,9 +60,10 @@ as `[REDACTED:<rule>]`.
      key-like word, so git SHAs and UUIDs in prose pass.
 3. **Environment values.** The exact values, 8 characters or longer, of
    environment variables whose names have a secret-like part (`KEY`, `TOKEN`,
-   `SECRET`, `PASSWORD`, `PASS`, `CREDENTIAL`, `AUTH`, `PRIVATE`, `APIKEY`),
-   except paths and sockets (`SSH_AUTH_SOCK`, `*_PATH`, `*_FILE`), plus the
-   names in `envNames`.
+   `SECRET`, `PASSWORD`, `PASSWD`, `PASS`, `CREDENTIAL`, `CREDENTIALS`,
+   `AUTH`, `PRIVATE`, or `APIKEY` anywhere in the name), except paths and
+   sockets (`SSH_AUTH_SOCK`, `GPG_AGENT_INFO`, and names ending `_PATH`,
+   `_FILE`, `_SOCK` or `_DIR`), plus the names in `envNames`.
 4. **Extra patterns** from `extraPatterns`, reported as `custom:<id>`.
    `redactPatternProblem` refuses the common catastrophic shapes when the
    redactor is built.

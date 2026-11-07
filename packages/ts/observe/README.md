@@ -504,8 +504,8 @@ const result = await runHeadlessSession(ports, async (onSpawn) => {
 - Commands (`ps`, `ioreg`, `reg`, `git`) run with argument arrays and no shell.
 - The redactor never returns or logs what it matched, only counts. It fails
   closed: if secretlint cannot load or a pass throws, the whole value is
-  replaced. Every built-in regex is bounded, so a hostile 100 KiB input does not
-  stall a writer. An `extraPatterns` regex is checked for the common
+  replaced. No built-in regex nests an unbounded quantifier, and each is tested
+  to finish a hostile 100 KiB input quickly. An `extraPatterns` regex is checked for the common
   catastrophic shapes when the redactor is built, but it is yours and runs
   unbounded. Redaction lowers the chance a secret reaches a log; it is not a
   guarantee, so keep logs as private as their sources.

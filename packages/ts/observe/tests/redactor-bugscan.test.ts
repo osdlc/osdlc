@@ -159,4 +159,15 @@ describe('found by code review', () => {
     expect((out['cause'] as Record<string, unknown>)['message']).toBe('token=[REDACTED:github]')
     expect(JSON.stringify(value)).not.toContain(gh)
   })
+
+  test('a boxed string is redacted as the string it holds', async () => {
+    // eslint-disable-next-line no-new-wrappers -- the case under test
+    const { value } = await r.redactJson({ note: new String(`token=${gh}`), n: new Number(3) })
+    expect(value).toEqual({ note: 'token=[REDACTED:github]', n: 3 })
+  })
+
+  test('a number under a secret-named key is kept only when the key reads as a count', async () => {
+    const { value } = await r.redactJson({ otp_token: 482913, token_limit: 4096 })
+    expect(value).toEqual({ otp_token: '[REDACTED:assigned-secret]', token_limit: 4096 })
+  })
 })
