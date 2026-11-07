@@ -48,6 +48,18 @@ npm install --save-dev @osdlc/story-harness @playwright/test
 `@playwright/test` is a peer dependency (1.62 or later), so your specs and the
 helpers share one copy. Node 22 or later. ESM only.
 
+## Guide
+
+Step-by-step pages with worked examples, in [`docs/guide/`](./docs/guide/):
+
+| Page | Covers |
+|---|---|
+| [Getting started](./docs/guide/getting-started.md) | What each part is for, and setting up one component package |
+| [Screenshot baselines](./docs/guide/screenshot-baselines.md) | `story-shots`, story parameters, CI, and reading a failed check |
+| [Interaction specs](./docs/guide/interaction-specs.md) | Driving a story from a Playwright test |
+| [Perf scenes](./docs/guide/perf-scenes.md) | Measuring a big story, budgets, and the report |
+| [Shots for documentation](./docs/guide/docs-shots.md) | PNGs for a README, with no comparison |
+
 ## Screenshot baselines: `story-shots`
 
 ```sh
