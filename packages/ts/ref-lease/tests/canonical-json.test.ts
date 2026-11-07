@@ -17,11 +17,13 @@ describe('values JSON cannot hold', () => {
     ['a function', () => 1],
     ['a symbol', Symbol('s')],
     ['a bigint', 1n],
-    ['NaN', Number.NaN],
-    ['Infinity', Number.POSITIVE_INFINITY],
   ])('%s throws TypeError', (_name, value) => {
     expect(() => canonicalJson(value)).toThrow(TypeError)
   })
+})
+
+test('NaN, Infinity and -0 are written as JSON.stringify writes them', () => {
+  expect(canonicalJson([Number.NaN, Number.POSITIVE_INFINITY, -0])).toBe('[null,null,0]')
 })
 
 test('integer-like keys sort as strings, not numerically', () => {

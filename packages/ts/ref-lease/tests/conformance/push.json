@@ -1,11 +1,12 @@
 {
-  "about": "Cases for the push outcome: what a compare-and-swap push's per-ref result means. `flag` is git push --porcelain's status character for the ref; `rejection` is the reason kind @osdlc/typed-git reads from git's reason text (null unless flag is '!'). Every implementation of the protocol maps each case to `expected`.",
+  "about": "Cases for the push outcome: what a compare-and-swap push's per-ref result means. `flag` is git push --porcelain's status character for the ref; `rejection` is the reason kind @osdlc/typed-git reads from git's reason text (null unless flag is '!'); `keepsSha` is true when the write expected the sha it pushes. Every implementation of the protocol maps each case to `expected`. `op` is for reading only.",
   "cases": [
     {
       "name": "create succeeds",
       "op": "create",
       "flag": "*",
       "rejection": null,
+      "keepsSha": false,
       "expected": "ok"
     },
     {
@@ -13,6 +14,7 @@
       "op": "replace",
       "flag": "+",
       "rejection": null,
+      "keepsSha": false,
       "expected": "ok"
     },
     {
@@ -20,6 +22,7 @@
       "op": "replace",
       "flag": " ",
       "rejection": null,
+      "keepsSha": false,
       "expected": "ok"
     },
     {
@@ -27,6 +30,7 @@
       "op": "delete",
       "flag": "-",
       "rejection": null,
+      "keepsSha": false,
       "expected": "ok"
     },
     {
@@ -34,20 +38,31 @@
       "op": "create",
       "flag": "=",
       "rejection": null,
+      "keepsSha": false,
       "expected": "cas-failed"
     },
     {
-      "name": "replace to the sha the ref already holds",
+      "name": "replace that keeps the sha it expected",
       "op": "replace",
       "flag": "=",
       "rejection": null,
+      "keepsSha": true,
       "expected": "ok"
+    },
+    {
+      "name": "replace from a wrong sha to the sha the ref already holds",
+      "op": "replace",
+      "flag": "=",
+      "rejection": null,
+      "keepsSha": false,
+      "expected": "cas-failed"
     },
     {
       "name": "lease check lost before anything was sent",
       "op": "replace",
       "flag": "!",
       "rejection": "stale",
+      "keepsSha": false,
       "expected": "cas-failed"
     },
     {
@@ -55,6 +70,7 @@
       "op": "create",
       "flag": "!",
       "rejection": "stale",
+      "keepsSha": false,
       "expected": "cas-failed"
     },
     {
@@ -62,6 +78,7 @@
       "op": "create",
       "flag": "!",
       "rejection": "already-exists",
+      "keepsSha": false,
       "expected": "cas-failed"
     },
     {
@@ -69,6 +86,7 @@
       "op": "replace",
       "flag": "!",
       "rejection": "lock-failed",
+      "keepsSha": false,
       "expected": "cas-failed"
     },
     {
@@ -76,6 +94,7 @@
       "op": "delete",
       "flag": "!",
       "rejection": "lock-failed",
+      "keepsSha": false,
       "expected": "cas-failed"
     },
     {
@@ -83,6 +102,7 @@
       "op": "replace",
       "flag": "!",
       "rejection": "non-fast-forward",
+      "keepsSha": false,
       "expected": "cas-failed"
     },
     {
@@ -90,6 +110,7 @@
       "op": "create",
       "flag": "!",
       "rejection": "hook-declined",
+      "keepsSha": false,
       "expected": "git-failed"
     },
     {
@@ -97,6 +118,7 @@
       "op": "create",
       "flag": "!",
       "rejection": "ref-conflict",
+      "keepsSha": false,
       "expected": "git-failed"
     },
     {
@@ -104,6 +126,7 @@
       "op": "create",
       "flag": "!",
       "rejection": "tag-exists",
+      "keepsSha": false,
       "expected": "git-failed"
     },
     {
@@ -111,6 +134,7 @@
       "op": "replace",
       "flag": "!",
       "rejection": "atomic-failed",
+      "keepsSha": false,
       "expected": "git-failed"
     },
     {
@@ -118,6 +142,7 @@
       "op": "replace",
       "flag": "!",
       "rejection": "other",
+      "keepsSha": false,
       "expected": "git-failed"
     }
   ]

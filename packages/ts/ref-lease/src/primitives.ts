@@ -96,11 +96,13 @@ function cas(
     })
   }
   const reason = [result.rawReason, result.detail].filter(Boolean).join('; ')
-  switch (pushOutcome(op, result)) {
+  switch (pushOutcome(result, expectedSha !== null && expectedSha === newSha)) {
     case 'cas-failed': {
       const upToDate = result.flag === '='
       const detail = upToDate
-        ? `ref already exists at authority with the same sha ${JSON.stringify(newSha)}`
+        ? expectedSha === null
+          ? `ref already exists at authority with the same sha ${JSON.stringify(newSha)}`
+          : `ref is already at ${JSON.stringify(newSha)}, not at expected_sha=${JSON.stringify(expectedSha)}`
         : expectedSha === null
           ? `ref already exists at authority (${reason})`
           : `expected_sha=${JSON.stringify(expectedSha)} (${reason})`

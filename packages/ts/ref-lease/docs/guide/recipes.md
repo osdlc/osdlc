@@ -35,7 +35,8 @@ const inMinutes = (now: Date, minutes: number) =>
 ## Claim, or take over an expired lease
 
 Three steps. Create the ref if nobody has it. If somebody has it, read their lease. If it has
-expired, replace it, but only if it is still the lease you read.
+expired, replace it, but only if it is still the lease you read. The lease can change between any
+two of these calls, so the function looks again a few times before it gives up.
 
 <!-- snippet: claim -->
 ```ts
@@ -54,31 +55,40 @@ function claim(
   const { cwd, now } = opts
   const payload: Lease = { holder, expiresAt: inMinutes(now, opts.ttlMinutes) }
 
-  // 1. Nobody holds it: create the ref. Exactly one concurrent caller wins.
-  try {
-    const sha = buildLeaseCommit(payload, { cwd })
-    casCreate(authority, ref, sha, { cwd })
-    return { won: true, sha }
-  } catch (e) {
-    if (!(e instanceof CasFailed)) throw e
-  }
+  // The lease can change between any two calls: created, taken over, released.
+  // Each pass looks again, so a few passes settle every such race.
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    // 1. Nobody holds it: create the ref. Exactly one concurrent caller wins.
+    try {
+      const sha = buildLeaseCommit(payload, { cwd })
+      casCreate(authority, ref, sha, { cwd })
+      return { won: true, sha }
+    } catch (e) {
+      if (!(e instanceof CasFailed)) throw e
+    }
 
-  // 2. Somebody holds it. Read the lease and the sha it sits at.
-  const current = fetchRef(authority, ref, { cwd, decode })
-  if (new Date(current.payload.expiresAt) > now) {
-    return { won: false, holder: current.payload.holder }
-  }
+    // 2. Somebody holds it. Read the lease and the sha it sits at.
+    let current
+    try {
+      current = fetchRef(authority, ref, { cwd, decode })
+    } catch (e) {
+      if (e instanceof RefNotFound) continue // released meanwhile: try the create again
+      throw e
+    }
+    if (new Date(current.payload.expiresAt) > now) {
+      return { won: false, holder: current.payload.holder }
+    }
 
-  // 3. It has expired: replace it, but only if it is still the lease we read.
-  //    If another worker took it over first, our replace fails and we report them.
-  try {
-    const sha = buildLeaseCommit(payload, { cwd, parentSha: current.sha })
-    casReplace(authority, ref, current.sha, sha, { cwd })
-    return { won: true, sha }
-  } catch (e) {
-    if (!(e instanceof CasFailed)) throw e
-    return { won: false, holder: fetchRef(authority, ref, { cwd, decode }).payload.holder }
+    // 3. It has expired: replace it, but only if it is still the lease we read.
+    try {
+      const sha = buildLeaseCommit(payload, { cwd, parentSha: current.sha })
+      casReplace(authority, ref, current.sha, sha, { cwd })
+      return { won: true, sha }
+    } catch (e) {
+      if (!(e instanceof CasFailed)) throw e // someone else moved first: look again
+    }
   }
+  throw new Error(`the lease at ${ref} keeps changing; try again later`)
 }
 ```
 
@@ -120,19 +130,20 @@ over). Stop the work it protects.
 
 ## Release, keeping the history
 
-Deleting the ref ends the lease. To keep its history, point an archive ref at the last commit
-first.
+Deleting the ref ends the lease, and only if it is still yours. Afterwards, an archive ref keeps
+its history; the commit is still in your local repository, so the push can send it.
 
 <!-- snippet: release -->
 ```ts
 /**
- * Give the lease up, keeping its history under an archive ref. The delete only
- * happens if the lease is still the one we hold.
+ * Give the lease up, only if it is still the one we hold, then keep its history
+ * under an archive ref. The commit is still in the local repository, so the
+ * archive can point at it after the delete.
  */
 function release(authority: string, ref: string, sha: string, cwd: string): void {
-  const archive = ref.replace(/^refs\/locks\//, 'refs/locks-archive/') + `/${sha.slice(0, 12)}`
+  casDelete(authority, ref, sha, { cwd }) // throws CasFailed if it is no longer ours
+  const archive = `refs/lease-archive/${ref.replace(/^refs\//, '')}/${sha.slice(0, 12)}`
   casCreate(authority, archive, sha, { cwd })
-  casDelete(authority, ref, sha, { cwd })
 }
 ```
 

@@ -17,7 +17,7 @@ Every error the library throws is a `RefLeaseError`. Branch on the class, or on 
 | `other` | `RefLeaseError` | Your own code's lease error, if you extend the base class. | Your call. |
 
 A `decode` function's own error is passed through unchanged, and `buildLeaseCommit` throws a
-`TypeError` for a payload that is not JSON (`undefined`, a function, `NaN`).
+`TypeError` for a payload that is not JSON (`undefined`, a function, a bigint).
 
 ## Handling them
 

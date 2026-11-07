@@ -51,31 +51,40 @@ function claim(
   const { cwd, now } = opts
   const payload: Lease = { holder, expiresAt: inMinutes(now, opts.ttlMinutes) }
 
-  // 1. Nobody holds it: create the ref. Exactly one concurrent caller wins.
-  try {
-    const sha = buildLeaseCommit(payload, { cwd })
-    casCreate(authority, ref, sha, { cwd })
-    return { won: true, sha }
-  } catch (e) {
-    if (!(e instanceof CasFailed)) throw e
-  }
+  // The lease can change between any two calls: created, taken over, released.
+  // Each pass looks again, so a few passes settle every such race.
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    // 1. Nobody holds it: create the ref. Exactly one concurrent caller wins.
+    try {
+      const sha = buildLeaseCommit(payload, { cwd })
+      casCreate(authority, ref, sha, { cwd })
+      return { won: true, sha }
+    } catch (e) {
+      if (!(e instanceof CasFailed)) throw e
+    }
 
-  // 2. Somebody holds it. Read the lease and the sha it sits at.
-  const current = fetchRef(authority, ref, { cwd, decode })
-  if (new Date(current.payload.expiresAt) > now) {
-    return { won: false, holder: current.payload.holder }
-  }
+    // 2. Somebody holds it. Read the lease and the sha it sits at.
+    let current
+    try {
+      current = fetchRef(authority, ref, { cwd, decode })
+    } catch (e) {
+      if (e instanceof RefNotFound) continue // released meanwhile: try the create again
+      throw e
+    }
+    if (new Date(current.payload.expiresAt) > now) {
+      return { won: false, holder: current.payload.holder }
+    }
 
-  // 3. It has expired: replace it, but only if it is still the lease we read.
-  //    If another worker took it over first, our replace fails and we report them.
-  try {
-    const sha = buildLeaseCommit(payload, { cwd, parentSha: current.sha })
-    casReplace(authority, ref, current.sha, sha, { cwd })
-    return { won: true, sha }
-  } catch (e) {
-    if (!(e instanceof CasFailed)) throw e
-    return { won: false, holder: fetchRef(authority, ref, { cwd, decode }).payload.holder }
+    // 3. It has expired: replace it, but only if it is still the lease we read.
+    try {
+      const sha = buildLeaseCommit(payload, { cwd, parentSha: current.sha })
+      casReplace(authority, ref, current.sha, sha, { cwd })
+      return { won: true, sha }
+    } catch (e) {
+      if (!(e instanceof CasFailed)) throw e // someone else moved first: look again
+    }
   }
+  throw new Error(`the lease at ${ref} keeps changing; try again later`)
 }
 // #endregion claim
 
@@ -102,13 +111,14 @@ function renew(
 
 // #region release
 /**
- * Give the lease up, keeping its history under an archive ref. The delete only
- * happens if the lease is still the one we hold.
+ * Give the lease up, only if it is still the one we hold, then keep its history
+ * under an archive ref. The commit is still in the local repository, so the
+ * archive can point at it after the delete.
  */
 function release(authority: string, ref: string, sha: string, cwd: string): void {
-  const archive = ref.replace(/^refs\/locks\//, 'refs/locks-archive/') + `/${sha.slice(0, 12)}`
+  casDelete(authority, ref, sha, { cwd }) // throws CasFailed if it is no longer ours
+  const archive = `refs/lease-archive/${ref.replace(/^refs\//, '')}/${sha.slice(0, 12)}`
   casCreate(authority, archive, sha, { cwd })
-  casDelete(authority, ref, sha, { cwd })
 }
 // #endregion release
 
@@ -207,8 +217,23 @@ describe('recipes', () => {
     if (!won.won) throw new Error('expected to win')
     release(authority, ref, won.sha, cwd)
     expect(() => fetchRef(authority, ref, { cwd })).toThrow(RefNotFound)
-    const archived = fetchNamespace(authority, 'refs/locks-archive', { cwd })
+    const archived = fetchNamespace(authority, 'refs/lease-archive', { cwd })
     expect(Object.values(archived)).toContain(won.sha)
+  })
+
+  test('release: a lease someone else took over is not deleted or archived', () => {
+    const won = claim(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
+    if (!won.won) throw new Error('expected to win')
+    claim(authority, ref, 'b', { cwd, now: at(11), ttlMinutes: 10 })
+    expect(() => release(authority, ref, won.sha, cwd)).toThrow(CasFailed)
+    expect(fetchRef(authority, ref, { cwd, decode }).payload.holder).toBe('b')
+  })
+
+  test('claim: a released lease can be claimed again', () => {
+    const won = claim(authority, ref, 'a', { cwd, now: t0, ttlMinutes: 10 })
+    if (!won.won) throw new Error('expected to win')
+    release(authority, ref, won.sha, cwd)
+    expect(claim(authority, ref, 'b', { cwd, now: at(1), ttlMinutes: 10 }).won).toBe(true)
   })
 
   test('list: every live lease with its holder', () => {

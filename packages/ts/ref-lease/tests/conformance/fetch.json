@@ -17,6 +17,16 @@
       "expected": "lock-contention"
     },
     {
+      "name": "local directory/file ref clash (permanent, not retried)",
+      "stderr": "error: cannot lock ref 'refs/locks/x': 'refs/locks' exists; cannot create 'refs/locks/x'",
+      "expected": "git-failed"
+    },
+    {
+      "name": "local ref moved under the fetch (not retried)",
+      "stderr": "error: cannot lock ref 'refs/locks/x': is at 9f8e7d6 but expected 1a2b3c4",
+      "expected": "git-failed"
+    },
+    {
       "name": "authority unreachable",
       "stderr": "fatal: '/tmp/nowhere' does not appear to be a git repository\nfatal: Could not read from remote repository.",
       "expected": "git-failed"

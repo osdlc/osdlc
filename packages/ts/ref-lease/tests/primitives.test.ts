@@ -42,12 +42,16 @@ const localSha = (ref: string) => env.workerGit.resolveRef(ref)
 const commit = (over: Record<string, unknown> = {}, parentSha?: string) =>
   buildLeaseCommit(samplePayload(over), { cwd: env.worker, parentSha: parentSha ?? null })
 
-/** Hold `<ref>.lock` in `repo` for ~450ms from another process, as a concurrent fetch would. */
+/**
+ * Hold `<ref>.lock` in `repo` for ~200ms from another process, as a concurrent
+ * fetch would: well inside the fetch's retry budget (25+50+75+100+125ms of
+ * backoff), so a fast machine cannot run out of attempts before it is freed.
+ */
 async function holdRefLock(repo: string, ref: string): Promise<{ release: () => void }> {
   const lock = join(repo, '.git', `${ref}.lock`)
   mkdirSync(dirname(lock), { recursive: true })
   const proc = managedProcessRunner('sh').run(
-    ['-c', `touch '${lock}'; sleep 0.45; rm -f '${lock}'`],
+    ['-c', `touch '${lock}'; sleep 0.2; rm -f '${lock}'`],
     { cwd: repo },
   )
   const until = Date.now() + 2000
@@ -165,6 +169,23 @@ describe('lost races raise CasFailed', () => {
     expect(e).toBeInstanceOf(CasFailed)
     expect((e as CasFailed).expectedSha).toBe('f'.repeat(40))
     expect((e as Error).message).toContain('stale info')
+  })
+
+  test('a replace from the wrong sha to the sha the ref already holds', () => {
+    // git answers "up to date" before it checks the lease, so this must not pass as a success.
+    const first = commit()
+    casCreate(env.authority, REF, first, at(env.worker))
+    const second = commit({ s: 1 }, first)
+    casReplace(env.authority, REF, first, second, at(env.worker))
+    const e = thrownBy(() => casReplace(env.authority, REF, 'f'.repeat(40), second, at(env.worker)))
+    expect(e).toBeInstanceOf(CasFailed)
+    expect((e as CasFailed).actualSha).toBe(second)
+  })
+
+  test('a replace that keeps the sha it expected succeeds', () => {
+    const first = commit()
+    casCreate(env.authority, REF, first, at(env.worker))
+    expect(() => casReplace(env.authority, REF, first, first, at(env.worker))).not.toThrow()
   })
 
   test('a delete from the wrong sha', () => {

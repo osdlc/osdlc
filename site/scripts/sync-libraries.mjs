@@ -178,13 +178,22 @@ async function copyGuidePage(lib, page, outDir, url) {
   )
   // A relative image is copied into public/ and shown from there; the link
   // rewrite below would otherwise send it to GitHub's HTML view of the file.
+  // Code fences are left as written, and so are data: URIs and absolute URLs.
   const images = new Set()
-  text = text.replace(/!\[([^\]]*)\]\((?!https?:|\/)([^)\s]+)\)/g, (match, alt, href) => {
-    const resolved = posix.normalize(posix.join(pageDir, href))
-    if (resolved.startsWith('..')) throw new Error(`${lib.dir}/docs/guide/${page}: image ${href} is outside docs/guide`)
-    images.add(resolved)
-    return `![${alt}](${base}/guides/${lib.dir}/${resolved})`
-  })
+  text = text
+    .split(/(^```[\s\S]*?^```$)/m)
+    .map((part, i) =>
+      i % 2 === 1
+        ? part
+        : part.replace(/!\[([^\]]*)\]\((?!https?:|\/|data:)([^)\s]+)\)/g, (match, alt, href) => {
+            const [file, suffix] = /^([^?#]*)(.*)$/.exec(href).slice(1)
+            const resolved = posix.normalize(posix.join(pageDir, file))
+            if (resolved.startsWith('..')) throw new Error(`${lib.dir}/docs/guide/${page}: image ${href} is outside docs/guide`)
+            images.add(resolved)
+            return `![${alt}](${base}/guides/${lib.dir}/${resolved}${suffix})`
+          }),
+    )
+    .join('')
   for (const image of images) {
     const out = join(guideImages, lib.dir, image)
     await mkdir(dirname(out), { recursive: true })
