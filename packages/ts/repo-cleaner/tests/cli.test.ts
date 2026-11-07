@@ -1532,6 +1532,11 @@ describe('branch mode', () => {
   })
 })
 
+/** `text` as a literal inside a regular expression. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 describe('a pull request listing that fails (#653)', () => {
   /**
    * Put a `gh` on PATH that is installed and signed in, but whose every
@@ -1563,8 +1568,9 @@ describe('a pull request listing that fails (#653)', () => {
       const commands = run([...GH, '--format', 'commands'], fx.root)
       expect(commands.code).toBe(0)
       expect(commands.err).toMatch(
+        // The sweep names the repository by its real path (macOS: /var is /private/var).
         new RegExp(
-          `^repo-cleaner: ${fx.root}: Listing PRs with \`gh pr list\` failed \\(.*boom`,
+          `^repo-cleaner: ${escapeRegExp(realpathSync(fx.root))}: Listing PRs with \`gh pr list\` failed \\(.*boom`,
           'm',
         ),
       )
