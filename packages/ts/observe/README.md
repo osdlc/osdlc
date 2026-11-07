@@ -87,6 +87,13 @@ wrote.
   reads their configuration. Its harness ids are the ones the hook envelope
   uses, so a hook event joins a harness report by id.
 
+## Guides
+
+- [Keeping secrets out of logs](./docs/guide/redaction.md): what the redactor
+  does to a line, what it catches and misses, and how to wire it into a writer.
+- [Reading hook payloads](./docs/guide/hook-payloads.md): one envelope for the
+  JSON each agent harness sends to a hook, with examples per harness.
+
 ## Install
 
 ```sh
