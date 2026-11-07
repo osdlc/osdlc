@@ -267,3 +267,18 @@ test('openPerfStory throws when no story:first-rows lands in time', async ({ pag
     /no story:first-rows within 1 s/,
   )
 })
+
+test('openPerfStory throws when the story reported an error', async ({ page }) => {
+  await page.route('http://story-harness.test/iframe.html*', (route) =>
+    route.fulfill({
+      contentType: 'text/html',
+      body: PERF_STORY.replace(
+        'window.__storyHarness = {',
+        ";(listeners.storyErrored ?? []).forEach((f) => f({ message: 'boom' }))\nwindow.__storyHarness = {",
+      ),
+    }),
+  )
+  await expect(openPerfStory(page, 'http://story-harness.test', 'x--perf', 2_000)).rejects.toThrow(
+    /story x--perf is not ready, it failed:\nstoryErrored: .*boom/,
+  )
+})

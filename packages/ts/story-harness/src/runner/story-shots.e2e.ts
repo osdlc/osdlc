@@ -7,9 +7,9 @@
  * made in the Playwright container, and the script sets the environment this
  * file reads.
  */
-import { readFileSync } from 'node:fs'
+import { appendFileSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import {
   isNarrowOnly,
   NARROW_VIEWPORT,
@@ -34,6 +34,15 @@ const ids = selectStories(index, {
   exclude: splitList(process.env.STORY_EXCLUDE),
 })
 
+// Each baseline this run shoots, one name per line, so --update can delete the
+// baselines of stories that are gone. Workers append short lines, which do not
+// interleave.
+const shotsList = process.env.SHOTS_LIST
+const shoot = async (page: Page, name: string) => {
+  await expect(page).toHaveScreenshot(name)
+  if (shotsList) appendFileSync(shotsList, `${name}\n`)
+}
+
 for (const id of ids) {
   for (const theme of THEMES) {
     test(`${id} ${theme}`, async ({ page, baseURL }) => {
@@ -47,13 +56,13 @@ for (const id of ids) {
       // A shot of a crashed story is worse than none, and in update mode the
       // shot would already be written as a baseline.
       expect(pageErrors, 'page errors').toEqual([])
-      await expect(page).toHaveScreenshot(`${id}--${theme}.png`)
+      await shoot(page, `${id}--${theme}.png`)
 
       if (params.narrow && !isNarrowOnly(id)) {
         await page.setViewportSize(NARROW_VIEWPORT)
         await openStory(page, baseURL!, id, theme, openOptions)
         expect(pageErrors, 'page errors').toEqual([])
-        await expect(page).toHaveScreenshot(`${id}--${theme}--narrow.png`)
+        await shoot(page, `${id}--${theme}--narrow.png`)
       }
     })
   }

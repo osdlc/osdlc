@@ -14,7 +14,8 @@ a broken story without noticing.
 
 - `story-shots` shoots every story in light and dark inside the pinned
   Playwright image, always as `linux/amd64`, and compares each shot with a
-  committed baseline at zero pixel tolerance. The same command gives the same
+  committed baseline: no pixel may differ by more than a small colour distance
+  (0.02), which absorbs antialiasing noise. The same command gives the same
   answer on a laptop and in CI.
 - `preparePage` and `openStory` make a page deterministic (fixed clock, seeded
   `Math.random`) and wait until a story is ready to shoot. They fail the story
@@ -100,10 +101,16 @@ A story id that ends in `-narrow` is shot at the narrow viewport only.
 | `SHOT_WORKERS` | Playwright workers in the container. Default 6. |
 | `STORY_SHOTS_PLATFORM` | The container platform. Default `linux/amd64`, as on CI runners; on Apple silicon Docker emulates it. |
 
-The command needs a running Docker engine and bash. It pulls the image
-anonymously, mounts the build and the runner read-only, and writes only the
-baselines and the results folders. A change to the pinned image is released
-as a minor version, because it can move pixels.
+The command needs a running Docker engine and bash. It mounts the build and
+the runner read-only, and writes only the baselines and the results folders,
+plus a Docker volume, `story-shots-npm-cache`, that keeps the container's npm
+cache between runs (`docker volume rm story-shots-npm-cache` removes it). The
+first run pulls the image without your Docker credentials, so Docker
+Desktop's credential helper is never asked; with a remote Docker context it
+uses your config. `--update` rewrites only the shots that no longer match, so
+an untouched story keeps its file byte for byte, and deletes the baselines of
+stories it did not shoot. A change that can change a shot (the pinned image, or how a story is opened, settled or shot) is released as a minor version, so a patch release never moves a
+pixel.
 
 ## Stories: `@osdlc/story-harness/browser`
 
@@ -144,7 +151,10 @@ export default defineStoryConfig({ port: 6106, mode: 'perf' })
 `storybook-static`) on `127.0.0.1:<port>`, runs `*.e2e.ts` in parallel
 (`mode: 'e2e'`) or `*.perf.ts` on one worker (`mode: 'perf'`) from `testDir`
 (default `tests-stories`), with no retries. It sets `STORY_PERF_FILE` to
-`<configDir>/test-results/story-perf.json` unless it is set already.
+`<configDir>/test-results/story-perf.json` unless it is set already, and
+`STORY_PERF_RUN` to a new id, which keeps one run's report apart from the
+last. In `playwright test --ui` or watch mode the runner process stays up, so
+its reruns share one id and one report.
 
 A perf spec, from [examples/perf.spec.ts](./examples/perf.spec.ts):
 

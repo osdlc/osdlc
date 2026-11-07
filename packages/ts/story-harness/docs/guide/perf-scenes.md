@@ -134,7 +134,7 @@ Every run writes one report, `test-results/story-perf.json`:
 
 ```json
 {
-  "runId": 81234,
+  "runId": "5f0c2a8e-3b1d-4c6e-9a7f-2d4b8e1c0a93",
   "mode": "record",
   "date": "2026-11-07T10:00:00.000Z",
   "userAgent": "Mozilla/5.0 … HeadlessChrome/140.0 …",
@@ -154,6 +154,8 @@ Every run writes one report, `test-results/story-perf.json`:
 
 The CPU model and the load averages before and after tell you whether the machine was busy.
 Several workers and a worker restarted after a failure all merge into the same file, under a
-lock. `STORY_PERF_FILE` moves it.
+lock. `STORY_PERF_FILE` moves it. `runId` is `STORY_PERF_RUN`, a new id that
+`defineStoryConfig` sets for each run, so a new run replaces the last run's report. In
+`playwright test --ui` or watch mode the runner stays up, so its reruns share one report.
 
 Measure on a host browser, never inside the baseline container, which may be emulated.

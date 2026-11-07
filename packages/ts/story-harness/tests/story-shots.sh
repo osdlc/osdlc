@@ -31,6 +31,16 @@ if [[ -n "$(find "$WORK/.storybook/baselines" "$WORK/test-results" ! -user "$(id
   exit 1
 fi
 
+# A second --update rewrites nothing that still matches, and deletes the
+# baseline of a story that is gone.
+sum_before="$(cat "$WORK/.storybook/baselines/demo-card--plain--light.png" | cksum)"
+cp "$WORK/.storybook/baselines/demo-card--plain--light.png" "$WORK/.storybook/baselines/demo-card--gone--light.png"
+node "$BIN" "$WORK" --update
+[[ "$(cat "$WORK/.storybook/baselines/demo-card--plain--light.png" | cksum)" == "$sum_before" ]] ||
+  { echo "--update rewrote a baseline that still matched" >&2; exit 1; }
+[[ ! -e "$WORK/.storybook/baselines/demo-card--gone--light.png" ]] ||
+  { echo "--update kept the baseline of a story that is gone" >&2; exit 1; }
+
 # The prune covers only what the filter covers, with items trimmed as the
 # shooting side trims them: --update with an excluded story keeps its baselines.
 node "$BIN" "$WORK" --update --exclude "demo-card--perf, demo-card--wide"

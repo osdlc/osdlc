@@ -6,7 +6,8 @@ description: The story-shots command, story parameters, CI, and reading a failed
 ---
 
 `story-shots` compares every story of a built Storybook with a committed PNG, in light and
-dark, at zero pixel tolerance.
+dark. No pixel may differ by more than a small colour distance (0.02), which absorbs
+antialiasing noise and nothing larger.
 
 ```sh
 story-shots <package dir> [--update] [--include p1,p2] [--exclude p3] [--settle-ms N]
@@ -18,7 +19,7 @@ story-shots <package dir> [--update] [--include p1,p2] [--exclude p3] [--settle-
 | `--update` | Write the baselines instead of comparing. Also deletes the baselines of stories that no longer exist, among those the filter covers. |
 | `--include p1,p2` | Only stories whose id starts with one of these prefixes. |
 | `--exclude p3` | Leave out stories whose id starts with these prefixes. Applied after `--include`. |
-| `--settle-ms N` | Wait this long after a story's `play` finishes. Default 1500. |
+| `--settle-ms N` | Wait this long after a story's `play` finishes. Default 1500. A story's own `parameters.screenshot.settleMs` wins over it. |
 
 `<package dir>` must hold the built `storybook-static/`. The baselines live in
 `<package dir>/.storybook/baselines/`.
@@ -38,7 +39,8 @@ This is also why the check can use zero tolerance. The only slack is a colour di
 For each story id and theme, the check:
 
 1. opens `iframe.html?id=<id>&viewMode=story&globals=theme:<theme>` at 1440x900;
-2. fixes the clock at 2026-09-28 12:00 UTC and seeds `Math.random`, so relative dates and
+2. starts the clock at 2026-09-28 12:00 UTC (it keeps running) and seeds `Math.random`, so
+   relative dates and
    generated data are the same every run;
 3. waits for Storybook to say the story (and its `play`) finished, then for fonts, the
    network, and the settle time;
@@ -131,6 +133,12 @@ On a smaller VM, run `SHOT_WORKERS=3 npm run storybook:check`.
 
 ## Upgrading the package
 
-A new version of this package can pin a newer Playwright image, which can move pixels. That
-is always released as a minor version, and its changelog says so. After such an upgrade, run
-`storybook:baseline` once and commit the result as its own change.
+A patch release never moves a pixel. A change that can (a newer pinned Playwright image, or a
+change to how a story is opened, settled or shot) is always a minor version, and its
+changelog says so. After such an upgrade, run `storybook:baseline` once and commit the result
+as its own change.
+
+`--update` rewrites only the shots that no longer match, so a story you did not touch keeps its
+file byte for byte. It also deletes the baselines of stories it did not shoot: stories that are
+gone, or now skipped. The npm cache the container uses is the Docker volume
+`story-shots-npm-cache`; `docker volume rm story-shots-npm-cache` removes it.
