@@ -24,6 +24,12 @@ npx @osdlc/rule-review --dry-run --base main   # what would be judged, and the p
 npx @osdlc/rule-review --base main             # judge the branch
 ```
 
+The [guide](./docs/guide/getting-started.md) walks through it: [getting
+started](./docs/guide/getting-started.md), [writing rule
+files](./docs/guide/writing-rules.md), [CI and git hooks](./docs/guide/ci-and-hooks.md),
+[using the library](./docs/guide/library.md), [check folders](./docs/guide/check-folders.md)
+and [how it works](./docs/guide/how-it-works.md).
+
 ## Install
 
 ```sh
