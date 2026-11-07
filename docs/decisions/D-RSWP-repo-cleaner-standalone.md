@@ -1,0 +1,62 @@
+# D-RSWP: repo-cleaner is a standalone tool; a host adds what it knows through `annotate`
+
+Accepted 2026-09-11 in sksizer/dev, where repo-cleaner began as part of
+`sdlc project cleanup`. Moved here with the package on 2026-11-07, restated
+for 0.18. The sdlc side of the decision, how `sdlc` picks repositories and
+links rows to task files, stays with sdlc.
+
+## Decision
+
+- **The sweep is its own package.** `@osdlc/repo-cleaner`, binary
+  `repo-cleaner`, judges worktrees, local branches and remote branches on
+  git evidence and, with `--remote`, a forge's pull requests. Nothing else.
+- **It reads no host configuration.** The library takes targets, and the
+  CLI takes them as arguments. A host resolves its own list of repositories
+  and passes paths in.
+- **A bare invocation sweeps one repository.** No target sweeps the checkout
+  the caller stands in. Fan-out happens only when the caller names targets.
+- **A target is read off the disk.** A checkout names that repository. Any
+  other directory is searched for the checkouts under it. Linked worktrees
+  collapse into their repository and appear as its rows. A target that
+  resolves to nothing is reported, not dropped.
+- **A host re-ranks rows after classification.** `annotate(repo, rows)` may
+  change a verdict, add a note or drop a row. It never reaches into
+  classification, and the same hook runs in every re-check, so a run checks
+  the rows the host planned from.
+- **One unreadable repository never ends a fan-out.** It comes back with
+  `error` set, and the sweep goes on.
+
+## Why
+
+Finding what has landed is not specific to any one product. The original
+code depended on the host for only one function, the task linkage, so the
+boundary was already drawn.
+
+Every git-derived `delete` outranks anything a host knows about tasks, so a
+host never needs to veto classification. It only sharpens rows the sweep left
+at `review` or `keep`. Post-processing does that with a smaller surface than
+a hook inside classification.
+
+## Options rejected
+
+- **Leave the sweep inside the host product.** Cheapest, but the part most
+  worth reusing has no host content in it.
+- **A hook inside classification** that lets a host override a verdict as it
+  is reached. Nothing needs it; `annotate` over the output is enough.
+- **A configuration file of repositories to sweep.** Earlier versions read
+  one. Targets on the command line, or from the host, are one list instead
+  of two to keep in step.
+
+## Consequences
+
+- Rows carry complete evidence, including rows whose verdict was obvious,
+  and `notes` is a list of sentences. A host composes its own sentence
+  rather than parsing a joined string.
+- Every refusal is a `RepoCleanerError` with a `code`, so a host can tell
+  "you asked for something contradictory" from "a repository could not be
+  read".
+
+## Reopen if
+
+A host needs to change a verdict mid-classification, for example to stop a
+patch-equivalence check that is too slow on a repository it knows.
