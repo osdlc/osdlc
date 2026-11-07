@@ -21,3 +21,5 @@ one that replaces it.
 - [D-04](decisions/D-04-payload-is-the-callers.md): The payload is the caller's
 - [D-05](decisions/D-05-errors-carry-a-kind.md): Errors are classes with a stable `kind`
 - [D-06](decisions/D-06-namespace-guard.md): The namespace guard
+- [D-07](decisions/D-07-first-version-continues-the-history.md): The first public version continues
+  the history
