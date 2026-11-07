@@ -305,7 +305,7 @@ export function surveyCommand(seams: CliSeams) {
       const failed = reportRepoFailures(ctx, report)
       return failed === null ? report : outcome(report, failed)
     },
-    text: (report) => renderSurveyText(report as Parameters<typeof renderSurveyText>[0]),
+    text: (report) => renderSurveyText(report),
   })
 }
 
@@ -519,6 +519,6 @@ export function updateCommand(seams: CliSeams) {
         listingFailure ?? (out.counts.conflict > 0 || out.counts.failed > 0 ? EXIT.error : EXIT.ok)
       return exit === EXIT.ok ? out : outcome(out, exit)
     },
-    text: (out) => renderUpdateText(out as UpdateOutput),
+    text: (out) => renderUpdateText(out),
   })
 }
