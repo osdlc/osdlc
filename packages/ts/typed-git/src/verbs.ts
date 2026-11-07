@@ -1561,15 +1561,203 @@ export function commitTree(tree: string, opts: CommitTreeOptions): GitVerb<strin
     argv.push('-p', positional('commitTree', 'parent', parent))
   }
   argv.push('-m', opts.message)
-  return {
-    argv,
-    absent: NONE,
-    parse(r, ranArgv) {
-      const sha = r.stdout.trim()
-      if (!/^([0-9a-f]{40}|[0-9a-f]{64})$/.test(sha)) throw new CommandFailed(ranArgv, r)
-      return sha
-    },
+  return { argv, absent: NONE, parse: shaReply }
+}
+
+/** A full object id in either hash format: 40 hex digits (SHA-1) or 64 (SHA-256). */
+const FULL_SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
+
+/** The one sha a plumbing verb prints. Anything else throws rather than reading as an id. */
+function shaReply(r: CommandResult, ranArgv: string[]): string {
+  const sha = r.stdout.trim()
+  if (!FULL_SHA.test(sha)) throw new CommandFailed(ranArgv, r)
+  return sha
+}
+
+/** Options for {@link hashObject}. */
+export interface HashObjectOptions {
+  /**
+   * `-w` — write the blob into the object store. Without it git only
+   * computes the sha, as `git hash-object` does.
+   */
+  write?: boolean | undefined
+}
+
+/**
+ * The blob sha of `content`, and with `{ write: true }` the blob itself
+ * written to the object store (`git hash-object [-w] --stdin`).
+ *
+ * `content` goes to git on stdin as UTF-8, so the blob holds exactly those
+ * bytes: input from stdin skips the clean filters and line-ending
+ * conversion that `.gitattributes` would apply to a file. A string cannot
+ * carry arbitrary bytes, so binary content is not supported yet.
+ *
+ * `absent: []`, and a reply that is not a sha throws.
+ */
+export function hashObject(content: string, opts: HashObjectOptions = {}): GitVerb<string> {
+  const argv = ['hash-object']
+  if (opts.write) argv.push('-w')
+  argv.push('--stdin')
+  return { argv, input: content, absent: NONE, parse: shaReply }
+}
+
+/**
+ * One entry of a tree written by {@link mktree}: a name in that tree, not a
+ * path through it. A row of {@link lsTree} without `recursive` has this shape,
+ * so `mktree(lsTree(rev))` writes the same tree back.
+ */
+export interface MktreeEntry {
+  /**
+   * `100644` (file), `100755` (executable), `120000` (symlink), `040000`
+   * (tree) or `160000` (submodule commit). Any other mode throws.
+   */
+  mode: string
+  /**
+   * The object type. Each mode has one, so it may be left out; when given,
+   * it must be the mode's type.
+   */
+  type?: 'blob' | 'tree' | 'commit' | undefined
+  /** The full sha of an object already in the store. */
+  sha: string
+  /**
+   * The entry's name: no `/`, no NUL, not empty, `.`, `..`, or a name git
+   * reads as `.git` (see {@link mktree}).
+   */
+  path: string
+}
+
+/** The object type each tree mode git writes stands for. */
+const TREE_MODE_TYPES: Readonly<Record<string, NonNullable<MktreeEntry['type']>>> = {
+  '100644': 'blob',
+  '100755': 'blob',
+  '120000': 'blob',
+  '040000': 'tree',
+  '160000': 'commit',
+}
+
+/** Code points HFS+ ignores in a name (git's `next_hfs_char`). */
+const HFS_IGNORED = /[‌-‏‪-‮⁪-⁯﻿]/gu
+
+/** Lower-case the ASCII letters only, as git does against its ASCII needles. */
+const asciiLower = (s: string): string => s.replace(/[A-Z]/g, (c) => c.toLowerCase())
+
+/**
+ * HFS+ reads `name` as `.<needle>` (git's `is_hfs_dot_generic`): equal to it
+ * in ASCII letter case once the ignorable code points are dropped.
+ */
+function hfsReadsAs(name: string, needle: string): boolean {
+  return asciiLower(name.replace(HFS_IGNORED, '')) === `.${needle}`
+}
+
+/**
+ * NTFS drops trailing dots and spaces, and a `:` starts an alternate data
+ * stream. True when `rest` holds only dots and spaces before its end, a `:`,
+ * or, with `backslash`, a `\` (git checks that one for `.git` only).
+ */
+function ntfsTailIsEmpty(rest: string, backslash: boolean): boolean {
+  return (backslash ? /^[. ]*(?:$|[:\\])/ : /^[. ]*(?:$|:)/).test(rest)
+}
+
+/**
+ * A name git's fsck reports as `hasDotgit` (git's `is_hfs_dotgit` and
+ * `is_ntfs_dotgit`), and checkout refuses on every platform.
+ */
+function readsAsDotGit(name: string): boolean {
+  if (hfsReadsAs(name, 'git')) return true
+  const lower = asciiLower(name)
+  if (lower.startsWith('.git')) return ntfsTailIsEmpty(name.slice(4), true)
+  if (lower.startsWith('git~1')) return ntfsTailIsEmpty(name.slice(5), true)
+  return false
+}
+
+/**
+ * A name git's fsck treats as `.gitmodules` (git's `is_hfs_dotgitmodules`
+ * and `is_ntfs_dotgitmodules`): the HFS+ and NTFS spellings, the short names
+ * `gitmod~1` to `~4`, and the 8.3 fallback short name, whose prefix
+ * `gi7eba` git took from a hash of the long name.
+ */
+function readsAsDotGitmodules(name: string): boolean {
+  if (hfsReadsAs(name, 'gitmodules')) return true
+  const lower = asciiLower(name)
+  if (lower.startsWith('.gitmodules')) return ntfsTailIsEmpty(name.slice(11), false)
+  if (/^gitmod~[1-4]/.test(lower)) return ntfsTailIsEmpty(name.slice(8), false)
+  // The fallback: a leading part of `gi7eba` (at most six characters), `~`,
+  // a digit 1-9, then digits up to eight characters. This follows git's loop
+  // step for step, so a `~` at index 7 reads one character past eight.
+  const prefix = 'gi7eba'
+  let sawTilde = false
+  let i = 0
+  for (; i < 8; i++) {
+    const c = lower[i]
+    if (c === undefined) return false
+    if (sawTilde) {
+      if (c < '0' || c > '9') return false
+    } else if (c === '~') {
+      i++
+      const d = lower[i]
+      if (d === undefined || d < '1' || d > '9') return false
+      sawTilde = true
+    } else if (i >= 6 || c !== prefix[i]) {
+      return false
+    }
   }
+  return ntfsTailIsEmpty(name.slice(i), false)
+}
+
+/**
+ * Write a tree object holding `entries` and return its sha (`git mktree -z`).
+ * No entries writes the empty tree.
+ *
+ * The entries go to git on stdin, NUL-terminated, so a name may hold spaces,
+ * tabs or newlines. git sorts them into tree order itself. It refuses a
+ * name with `/`, but it would write a duplicate name, an empty name, `.`,
+ * `..`, a name git reads as `.git`, a `.gitmodules` that is not a file, or
+ * a mode such as `100664`, each of which `git fsck --strict` reports. Each
+ * of those throws a `TypeError` here, before git runs, as do a name with
+ * `/` or NUL, a sha that is not a full sha, and a type that does not match
+ * the mode.
+ *
+ * A name git reads as `.git` is one git's fsck reports as `hasDotgit`:
+ * `.git` in any letter case; the NTFS spellings, which are `.git` or
+ * `git~1` followed only by dots and spaces, or by anything from a `:` or
+ * `\` on (`.git.`, `.git ` and `.git::$INDEX_ALLOCATION`); and the HFS+
+ * ones, which are `.git` with an ignorable code point such as U+200C
+ * anywhere in it. The same spellings of `.gitmodules`, with the short names
+ * `gitmod~1` to `~4` and the 8.3 fallback `gi7eba~1`, must be a file, mode
+ * `100644` or `100755`: git fsck reports a symlink, a tree or a submodule
+ * there even without `--strict`.
+ *
+ * Every sha must name an object already in the store, of the entry's type,
+ * except a submodule (`160000`) commit, which git does not check; otherwise
+ * git exits 128 and this throws. `absent: []`, and a reply that is not a
+ * sha throws.
+ */
+export function mktree(entries: readonly MktreeEntry[]): GitVerb<string> {
+  const names = new Set<string>()
+  const records: string[] = []
+  for (const { mode, type: given, sha, path } of entries) {
+    const bad = (why: string) =>
+      new TypeError(`typed-git: mktree: entry ${JSON.stringify(path)} ${why}`)
+    const type = TREE_MODE_TYPES[mode]
+    if (type === undefined) throw bad(`has mode ${JSON.stringify(mode)}, which git does not write`)
+    if (given !== undefined && given !== type) {
+      throw bad(`has type ${JSON.stringify(given)}, but mode ${mode} is a ${type}`)
+    }
+    if (!FULL_SHA.test(sha)) throw bad(`needs a full sha (got ${JSON.stringify(sha)})`)
+    if (path === '' || path === '.' || path === '..' || readsAsDotGit(path)) {
+      throw bad('is not a name git allows in a tree')
+    }
+    if (path.includes('/') || path.includes('\x00')) {
+      throw bad('must be one name, without "/" or NUL')
+    }
+    if (mode !== '100644' && mode !== '100755' && readsAsDotGitmodules(path)) {
+      throw bad(`is read by git as .gitmodules, which must be a file (got mode ${mode})`)
+    }
+    if (names.has(path)) throw bad('appears twice')
+    names.add(path)
+    records.push(`${mode} ${type} ${sha}\t${path}\x00`)
+  }
+  return { argv: ['mktree', '-z'], input: records.join(''), absent: NONE, parse: shaReply }
 }
 
 /**
@@ -2380,6 +2568,66 @@ export function deleteRef(ref: string, opts: { expected: string }): GitVerb<void
     absent: NONE,
     parse: nothing,
   }
+}
+
+/** Options for {@link updateRef}. */
+export interface UpdateRefOptions {
+  /**
+   * The sha `ref` must hold now, or `null` when `ref` must not exist yet.
+   * Required: git checks it and moves the ref in one step, so a commit
+   * another writer put on the ref after the caller looked is never lost.
+   * It must be a full sha: a ref name here would resolve at the moment of
+   * the check and always match.
+   */
+  oldSha: string | null
+  /** `-m <reason>` — the message the reflog records for this update. */
+  reason?: string | undefined
+}
+
+/**
+ * `git update-ref [-m <reason>] <ref> <sha> <oldSha>`: point `ref` at `sha`,
+ * only while `ref` still holds `oldSha` (`null`: only while it does not
+ * exist). It writes no object and leaves the index and working tree alone.
+ *
+ * `ref` must be `HEAD` or a full name under `refs/`. git does not expand a
+ * short name here: `update-ref main` would write a new top-level ref named
+ * `main` beside `refs/heads/main`, so a name that is neither throws a
+ * `TypeError` before git runs. `HEAD` on a branch moves that branch.
+ *
+ * When `ref` is not where `oldSha` says, git exits 128 and this throws,
+ * like any other failure: `reference already exists`, `is at <sha> but
+ * expected <oldSha>`, or `unable to resolve reference`. Re-read the ref with
+ * `resolveRef` to decide whether to retry. git also refuses a `sha` that
+ * names no object, a non-commit on a branch, and a malformed ref name.
+ */
+export function updateRef(ref: string, sha: string, opts: UpdateRefOptions): GitVerb<void> {
+  const name = positional('updateRef', 'ref', ref)
+  if (name !== 'HEAD' && !name.startsWith('refs/')) {
+    throw new TypeError(
+      `typed-git: updateRef: ref must be HEAD or start with "refs/" (got ${JSON.stringify(ref)})`,
+    )
+  }
+  const argv = ['update-ref']
+  if (opts.reason !== undefined) argv.push('-m', opts.reason)
+  argv.push(name, positional('updateRef', 'sha', sha))
+  if (opts.oldSha === null) {
+    // An empty old value is git's "must not exist", in either hash format.
+    argv.push('')
+  } else if (opts.oldSha === undefined) {
+    // The type requires it. A caller without types learns that, not that `undefined` is a bad sha.
+    throw new TypeError(
+      'typed-git: updateRef: oldSha is required: the sha the ref holds now, or null for "must not exist"',
+    )
+  } else {
+    const old = positional('updateRef', 'oldSha', opts.oldSha)
+    if (!FULL_SHA.test(old)) {
+      throw new TypeError(
+        `typed-git: updateRef: oldSha must be a full sha, or null for "must not exist" (got ${JSON.stringify(old)})`,
+      )
+    }
+    argv.push(old)
+  }
+  return { argv, absent: NONE, parse: nothing }
 }
 
 /** Options for {@link worktreeAdd}. */
