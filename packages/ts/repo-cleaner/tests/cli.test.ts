@@ -957,6 +957,50 @@ describe('clean', () => {
     )
     expect(branchRefs(fx.bare)).not.toContain('feat/t')
     expect(sh(fx.root, ['for-each-ref', `refs/remotes/origin/${BRANCH}`])).toBe('')
+    // The run deleted one branch; the other was gone before it started.
+    expect((JSON.parse(res.out) as { summary: unknown }).summary).toMatchObject({
+      deleted: { remote: 1 },
+      gone: 1,
+    })
+  })
+
+  test('offline, a spared remote branch the remote already deleted does not stop the run', () => {
+    const fx = buildFixture()
+    sh(fx.root, ['branch', 'feat/t', 'main'])
+    sh(fx.root, ['push', '-q', 'origin', 'feat/t'])
+    sh(fx.bare, ['update-ref', '-d', `refs/heads/${BRANCH}`])
+    const spare = `remote:origin/${BRANCH}`
+    const res = run(
+      ['clean', ...REMOTE, '--only', 'remote', '--yes', '--spare', spare, '--format', 'json'],
+      fx.root,
+    )
+    expect(res.code).toBe(0)
+    const out = JSON.parse(res.out) as { receipt: Receipt }
+    expect(out.receipt.status).toBe('complete')
+    expect(out.receipt.steps).toContainEqual(
+      expect.objectContaining({
+        row: spare,
+        action: 'verify-remote',
+        result: 'ok',
+        verification: 'already gone from origin; spared',
+      }),
+    )
+    expect(branchRefs(fx.bare)).not.toContain('feat/t')
+  })
+
+  test('online, a spared remote branch that is gone at the run still refuses it', () => {
+    const fx = buildFixture()
+    const spare = `remote:origin/${BRANCH}`
+    const plan = join(tempDir(), 'p.json')
+    // Planned live, after a fetch; the branch is then deleted before the run.
+    expect(
+      run(['plan', '--remote', '--provider', 'none', '--only', 'remote', '-o', plan], fx.root).code,
+    ).toBe(0)
+    sh(fx.bare, ['update-ref', '-d', `refs/heads/${BRANCH}`])
+    const res = run(['clean', '--plan', plan, '--yes', '--spare', spare], fx.root)
+    // The run's re-check, a live sweep, already sees it gone, before any step.
+    expect(res.code).not.toBe(0)
+    expect(res.err).toContain(`spared ${spare} is no longer on the remote; refusing to run`)
   })
 
   test('a row that turns into a review row while the question waits is dropped, not run', () => {

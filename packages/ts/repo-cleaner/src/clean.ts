@@ -35,7 +35,7 @@ import { localDeleteCommand, remoteDeleteCommand } from './branches.ts'
 import type { Annotate } from './hooks.ts'
 import { fingerprint, runnable, sameFingerprint, type Plan, type PlanRepo } from './plan.ts'
 import { busyHolders, defaultProcessProbe, parseLockOwner, type ProcessProbe } from './processes.ts'
-import { RECEIPT_VERSION, type Dropped, type Receipt, type Step } from './receipt.ts'
+import { ALREADY_GONE, RECEIPT_VERSION, type Dropped, type Receipt, type Step } from './receipt.ts'
 import { defaultCacheDir, mirrorProblem } from './remote-mirror.ts'
 import { inspectSubmodules, submoduleHazards } from './submodules.ts'
 import { holdFreedBranches, sweepRepo, type Runners } from './sweep.ts'
@@ -825,13 +825,19 @@ function assertSafeToForce(path: string, git: Git, a: Accepted): void {
   if (reasons.length > 0) throw new Error(`refused: ${reasons.join('; ')}`)
 }
 
-/** Run one step, then confirm it took. Throws with the reason on failure. */
+/**
+ * Run one step, then confirm it took. Throws with the reason on failure.
+ *
+ * @param offline the plan was made `--offline`, from tracking refs that can
+ *   name a branch the remote already deleted.
+ */
 function execute(
   step: Step,
   a: Accepted | null,
   git: Git,
   probe: ProcessProbe,
   removedHere: ReadonlySet<string>,
+  offline: boolean,
 ): string {
   const at = git.at(step.repo)
   const registered = (path: string): boolean =>
@@ -898,6 +904,9 @@ function execute(
       if (row?.kind !== 'remote') throw new Error('verify-remote without a remote branch')
       const ref = `refs/heads/${row.evidence.branch}`
       const tip = at.lsRemote(row.evidence.remote, ref).find((r) => r.ref === ref)
+      // Offline, the plan read a tracking ref, which outlives a branch the
+      // remote deleted; online, the tip was read live, so its loss is a change.
+      if (tip === undefined && offline) return `${ALREADY_GONE}${row.evidence.remote}; spared`
       if (tip === undefined)
         throw new Error(`refused: spared ${ref} is gone from ${row.evidence.remote}`)
       if (tip.sha !== step.expectedSha) {
@@ -922,7 +931,7 @@ function execute(
           const tracking = `refs/remotes/${remote}/${row.evidence.branch}`
           if (at.resolveRef(tracking) === step.expectedSha)
             at.deleteRef(tracking, { expected: step.expectedSha! })
-          return `already gone from ${remote}`
+          return `${ALREADY_GONE}${remote}`
         }
         const why = refused.rawReason === null ? '' : ` (${refused.rawReason})`
         throw new Error(`${refused.summary}${why}: ${PUSH_REJECTIONS[refused.rejection].message}`)
@@ -1001,7 +1010,7 @@ export function run(preview: Preview, opts: RunOptions = {}): Receipt {
   for (const [i, [step, a]] of plannedSteps.entries()) {
     opts.onStep?.(i, plannedSteps.length, step)
     try {
-      step.verification = execute(step, a, git, probe, removedHere)
+      step.verification = execute(step, a, git, probe, removedHere, preview.plan.options.offline)
       step.result = 'ok'
       if (step.action === 'unlock-worktree') unlocked.add(a!.row.name)
     } catch (err) {

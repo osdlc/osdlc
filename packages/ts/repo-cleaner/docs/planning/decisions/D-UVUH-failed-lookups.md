@@ -26,7 +26,10 @@ Accepted 2026-11-07, in [#656](https://github.com/osdlc/osdlc/pull/656) (issues
 - **A branch the remote already deleted is gone, not a failure.** Its tracking
   ref stays until a prune, so an offline plan can name it. When `clean`'s
   lease push is refused and `ls-remote` no longer lists the ref, the step
-  reports it gone and drops the tracking ref.
+  reports it gone and drops the tracking ref. A spared branch that is gone
+  passes its tip check under an offline plan. The run summary counts these
+  apart from branches it deleted. Online, the tips were read live, so a
+  spared branch that has since gone still refuses the run.
 - **A note is a sentence on `RepoSweep.notes`.** The text and summary reports
   print notes under the repository's header, and the JSON carries them.
   `--format commands`, `plan` and `clean` print them on stderr, `clean` from
