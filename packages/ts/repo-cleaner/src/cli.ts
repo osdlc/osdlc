@@ -663,7 +663,7 @@ function runClean(
   // plan's repositories again. The run re-checks once more; only a note that
   // is new by then is printed again.
   const noted = new Set<string>()
-  const notesOnce = (notes: Preview['notes']): void =>
+  const notesOnce = (notes: readonly RepoNote[]): void =>
     writeNotes(
       ctx,
       name,

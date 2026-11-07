@@ -131,7 +131,7 @@ export interface RunOptions extends Shared {
    * without. The re-check may differ from the preview's, for example when a
    * listing fails only at the run.
    */
-  onNotes?: ((notes: Preview['notes']) => void) | undefined
+  onNotes?: ((notes: RepoNote[]) => void) | undefined
 }
 
 /** What a run would do, for a person to approve: the steps, and the rows dropped and why. */
@@ -373,7 +373,7 @@ interface Rechecked {
   dropped: Dropped[]
   /** Spared remote branches whose tips the run checks first. */
   verified: Accepted[]
-  notes: Preview['notes']
+  notes: RepoNote[]
 }
 
 /**
@@ -410,7 +410,7 @@ function recheck(
     kindsIn.set(s.repo, kinds)
   }
   const currentRows = new Map<string, Row>()
-  const notes: Preview['notes'] = []
+  const notes: RepoNote[] = []
   for (const [root, wanted] of kindsIn) {
     const repo = plan.repos.find((r) => r.root === root)!
     // Only the kinds the selection is in: a plan of local rows need not
@@ -681,7 +681,7 @@ interface Planned {
   accepted: Accepted[]
   /** Worktrees this run removes or prunes, by resolved path. */
   removedHere: Set<string>
-  notes: Preview['notes']
+  notes: RepoNote[]
 }
 
 function planSteps(

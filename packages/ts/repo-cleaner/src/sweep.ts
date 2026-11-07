@@ -373,10 +373,12 @@ export function sweepRepo(path: string, opts: RepoSweepOptions): RepoSweep {
       prs = looked.prs
       if (looked.error !== null) {
         repo = { ...repo, provider: { ...status, listError: looked.error } }
-        // `auto` asks GitHub for any host that is not GitLab's, so a local
-        // remote, or one on a host that is not a forge, lands here too.
+        // A local remote names no forge, and `auto` asks GitHub for any host
+        // that is not GitLab's, so a host that is not a forge lands here too.
+        // github.com is a forge: there the cause is access, not the provider.
         const hint =
-          opts.provider === 'auto' || status.host === null
+          status.host === null ||
+          (opts.provider === 'auto' && status.name === 'github' && status.host !== 'github.com')
             ? ' Pass `--provider none` if this remote has no forge.'
             : ''
         notes.push(

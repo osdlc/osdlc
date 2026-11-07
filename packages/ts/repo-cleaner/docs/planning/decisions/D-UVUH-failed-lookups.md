@@ -1,3 +1,10 @@
+---
+id: D-UVUH
+type: decision
+state: accepted
+created: 2026-11-07
+---
+
 # D-UVUH: In repo-cleaner, a failed lookup costs its evidence; a failed fetch costs the repository
 
 Accepted 2026-11-07, in [#656](https://github.com/osdlc/osdlc/pull/656) (issues

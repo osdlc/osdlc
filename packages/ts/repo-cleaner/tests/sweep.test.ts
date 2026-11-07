@@ -1481,27 +1481,32 @@ describe('a lookup that fails costs its evidence, not the repository (#653, #655
 
   test('the --provider none hint follows auto, not only a remote with no host', () => {
     // Real git, except that `origin` reads as a host that `auto` sends to GitHub.
-    const hosted: CommandRunner = {
+    const hostedAt = (url: string): CommandRunner => ({
       run(argv, opts) {
         if (argv.includes('remote') && argv.includes('get-url') && argv.at(-1) === 'origin') {
-          return { exitCode: 0, stdout: 'https://git.example.com/acme/app.git\n', stderr: '' }
+          return { exitCode: 0, stdout: `${url}\n`, stderr: '' }
         }
         return realGit.run(argv, opts)
       },
-    }
-    const noteOf = (provider: 'auto' | 'github'): string | undefined =>
+    })
+    const noteOf = (
+      provider: 'auto' | 'github',
+      url = 'https://git.example.com/acme/app.git',
+    ): string | undefined =>
       sweepOne(checkout, {
         cwd: checkout,
         remote: true,
         offline: true,
         provider,
         gh: unseeingGh,
-        git: hosted,
+        git: hostedAt(url),
       }).notes[0]
     const hint = 'Pass `--provider none` if this remote has no forge.'
     expect(noteOf('auto')).toContain(hint)
-    // Named outright, the provider is the person's choice: no hint.
+    // Named outright for a hosted remote, the provider is the person's choice: no hint.
     expect(noteOf('github')).not.toContain(hint)
+    // github.com is a forge: a failed listing there is about access (#653), not the provider.
+    expect(noteOf('auto', 'https://github.com/acme/gone.git')).not.toContain(hint)
   })
 
   test('a gh that is missing or signed out is named as the reason, not as no PR found', () => {

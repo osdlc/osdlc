@@ -1619,6 +1619,38 @@ describe('a pull request listing that fails (#653)', () => {
     })
   })
 
+  test("clean prints a listing failure that only the run's own re-check meets", () => {
+    const fx = buildFixture()
+    // A gh whose first listing (the sweep's) answers and every later one fails.
+    const bin = tempDir()
+    const count = join(bin, 'listings')
+    writeFileSync(
+      join(bin, 'gh'),
+      [
+        '#!/bin/sh',
+        'case "$1" in --version|auth) exit 0;; esac',
+        `n=$(cat '${count}' 2>/dev/null || echo 0); n=$((n + 1)); echo $n > '${count}'`,
+        `if [ "$n" -eq 1 ]; then echo '[]'; exit 0; fi`,
+        "echo 'boom: rate limited' >&2",
+        'exit 1',
+        '',
+      ].join('\n'),
+    )
+    chmodSync(join(bin, 'gh'), 0o755)
+    const before = process.env['PATH']
+    process.env['PATH'] = `${bin}:${before ?? ''}`
+    try {
+      const res = run(['clean', ...GH, '--yes', '--format', 'json'], fx.root)
+      expect(res.code).toBe(0)
+      expect(Number(readFileSync(count, 'utf-8'))).toBeGreaterThan(1)
+      const lines = res.err.split('\n').filter((l) => l.includes('Listing PRs'))
+      expect(lines).toHaveLength(1)
+      expect(lines[0]).toContain('rate limited')
+    } finally {
+      process.env['PATH'] = before
+    }
+  })
+
   test('a remote branch with no known PR is not deleted without confirm-open-pr', () => {
     const fx = buildFixture()
     withFailingGh(STDERR, () => {
