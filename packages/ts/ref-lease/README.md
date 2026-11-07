@@ -81,7 +81,8 @@ with `casDelete`.
 
 | Guide | Read it when |
 |---|---|
-| [Getting started](./docs/guide/getting-started.md) | You want the idea explained and a first lease taken, step by step. |
+| [How it works, in pictures](./docs/guide/how-it-works.md) | You want the idea explained with diagrams, no git knowledge needed. |
+| [Getting started](./docs/guide/getting-started.md) | You want to take a first lease, step by step. |
 | [Recipes](./docs/guide/recipes.md) | You need claim with expiry, renew, release, list, or an update that retries. |
 | [Errors and retries](./docs/guide/errors-and-retries.md) | A call threw and you want to know whether to try again. |
 | [Testing](./docs/guide/testing.md) | You are testing code that takes leases. |
