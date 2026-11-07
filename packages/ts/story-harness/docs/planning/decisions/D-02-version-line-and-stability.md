@@ -10,7 +10,9 @@ created: 2026-11-07
 ## Decision
 
 - The first published version is `0.3.5`, the version the history reaches
-  when every change before the first release is counted under semver.
+  when every change up to the move is counted under semver. The changes made
+  to get ready for the first release, breaking ones included, belong to that
+  version and cost no bump, because no version with the old API was public.
 - The line stays 0.x. A minor version may break the API, and its changelog
   says what to change.
 - `openPerfStory`, `noLongTasks`, `paintedAt` and `responseEnd` are

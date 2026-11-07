@@ -13,6 +13,11 @@
       card.style.background = dark ? '#335' : '#cde'
       card.style.color = dark ? '#fff' : '#000'
       if (id.endsWith('--wide')) card.style.width = '800px'
+      // A story that crashes after it renders, as a broken component would.
+      if (id.endsWith('--crash'))
+        setTimeout(() => {
+          throw new Error('the story crashed')
+        }, 0)
       const screenshot = id.endsWith('--perf') ? { skip: 'a perf scene' } : { settleMs: 0 }
       const listeners = {}
       window.__STORYBOOK_PREVIEW__ = {

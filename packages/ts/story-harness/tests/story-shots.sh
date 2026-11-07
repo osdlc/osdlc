@@ -24,6 +24,34 @@ fi
 
 node "$BIN" "$WORK"
 
+# Everything the container wrote belongs to the host user, so a later run and
+# git can replace it.
+if [[ -n "$(find "$WORK/.storybook/baselines" "$WORK/test-results" ! -user "$(id -u)" -print -quit)" ]]; then
+  echo "the container left files the host user does not own" >&2
+  exit 1
+fi
+
+# The prune covers only what the filter covers, with items trimmed as the
+# shooting side trims them: --update with an excluded story keeps its baselines.
+node "$BIN" "$WORK" --update --exclude "demo-card--perf, demo-card--wide"
+for shot in demo-card--wide--light demo-card--wide--dark; do
+  [[ -f "$WORK/.storybook/baselines/$shot.png" ]] || { echo "the prune deleted excluded $shot" >&2; exit 1; }
+done
+
+# A story that crashes fails --update and gets no baseline.
+CRASH="$WORK/crash"
+mkdir -p "$CRASH/storybook-static"
+cp "$HERE/fixtures/storybook-static/iframe.html" "$CRASH/storybook-static/"
+printf '{"v":5,"entries":{"demo-card--crash":{"type":"story"}}}' > "$CRASH/storybook-static/index.json"
+if node "$BIN" "$CRASH" --update; then
+  echo "--update passed on a crashing story" >&2
+  exit 1
+fi
+if ls "$CRASH/.storybook/baselines" | grep -q crash; then
+  echo "--update wrote a baseline for a crashing story" >&2
+  exit 1
+fi
+
 # A changed story fails the check.
 sed -i.bak 's/#cde/#cdf/' "$WORK/storybook-static/iframe.html"
 if node "$BIN" "$WORK" --include demo-card--plain; then

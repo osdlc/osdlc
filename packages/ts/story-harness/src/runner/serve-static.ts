@@ -44,7 +44,8 @@ const MIME: Record<string, string> = {
  * stops the server.
  *
  * @param dir - The static build to serve, such as `storybook-static`.
- * @param port - The port to listen on. `0` picks a free one.
+ * @param port - The port to listen on. The caller builds its URLs from it, so pass a
+ *   fixed port.
  */
 export async function serveStatic(dir: string, port: number): Promise<() => void> {
   const root = resolve(dir)

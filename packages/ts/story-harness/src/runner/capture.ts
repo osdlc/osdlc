@@ -95,7 +95,6 @@ export async function captureStories(opts: CaptureOptions): Promise<boolean> {
           ok = false
           console.error(`  [${id}] ${message}`)
         }
-        // Write one shot (creating the by-theme folder first) and log it.
         const shoot = async (theme: Theme, suffix: string) => {
           const byTheme = opts.outLayout === 'by-theme'
           if (byTheme) await mkdir(join(opts.outDir, name), { recursive: true })

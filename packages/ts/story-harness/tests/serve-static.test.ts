@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { get } from 'node:http'
 import { createServer } from 'node:net'
 import { networkInterfaces, tmpdir } from 'node:os'
@@ -98,6 +99,33 @@ describe('serveStatic', () => {
       }).on('error', reject)
     })
     expect(type).toBe('application/wasm')
+  })
+
+  it('serves a build at the filesystem root', async () => {
+    const port = await serve('/')
+    const res = await fetchRaw('127.0.0.1', port, join(sb, 'app.js'))
+    expect(res).toEqual({ status: 200, body: 'console.log(1)' })
+  })
+
+  it('runs as a script when started through a symlink', async () => {
+    const script = join(import.meta.dirname, '..', 'src', 'runner', 'serve-static.ts')
+    const link = join(root, 'serve-static-link.ts')
+    await symlink(script, link)
+    const port = await freePort()
+    const child = spawn(process.execPath, [link, sb, String(port)], {
+      stdio: ['ignore', 'pipe', 'inherit'],
+    })
+    try {
+      await new Promise<void>((resolve, reject) => {
+        child.stdout!.on('data', (chunk: Buffer) => {
+          if (chunk.toString().includes('serving')) resolve()
+        })
+        child.once('exit', (code) => reject(new Error(`exited ${code} without serving`)))
+      })
+      expect((await fetchRaw('127.0.0.1', port, '/app.js')).body).toBe('console.log(1)')
+    } finally {
+      child.kill()
+    }
   })
 
   it.skipIf(!lanAddress)('listens on loopback only', async () => {

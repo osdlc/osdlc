@@ -108,8 +108,6 @@ docker run --rm --platform "$PLATFORM" --ipc=host \
   ${SHOT_WORKERS:+-e "SHOT_WORKERS=$SHOT_WORKERS"} \
   -e "PLAYWRIGHT_VERSION=$PLAYWRIGHT_VERSION" \
   -e "CONFIG=$CONFIG" \
-  -e "HOST_UID=$(id -u)" \
-  -e "HOST_GID=$(id -g)" \
   -e CI=1 \
   "$IMAGE" \
   bash -c '
@@ -162,9 +160,13 @@ docker run --rm --platform "$PLATFORM" --ipc=host \
       cp -r /work/baselines/. /baselines/
     fi
     cp -r /work/test-results/. /artifacts/ 2>/dev/null || true
-    # The container runs as root. Hand what it wrote back to the host user, so
-    # the next run can replace it on a Linux host (Docker Desktop remaps this).
-    chown -R "$HOST_UID:$HOST_GID" /baselines /artifacts 2>/dev/null || true
+    # The container runs as root. Give what it wrote to the owner of the
+    # mounted baselines folder as the container sees it, so the next run can
+    # replace it: that is the host user under rootful Docker, and root, which
+    # maps to the host user, under a rootless engine. Docker Desktop remaps it
+    # anyway.
+    owner="$(stat -c "%u:%g" /baselines)"
+    chown -R "$owner" /baselines /artifacts 2>/dev/null || true
     exit $status
   '
 

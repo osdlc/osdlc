@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPerfRecorder, removeStaleLock, type PerfReport } from '../src/playwright/budget.ts'
@@ -186,6 +186,18 @@ describe('recorder options', () => {
     const file = join(dir, 'elsewhere', 'perf.json')
     createPerfRecorder({ env: { STORY_PERF_FILE: file } }).record('x', 1)
     expect(JSON.parse(readFileSync(file, 'utf8')).values).toEqual({ x: 1 })
+  })
+})
+
+describe('lock deadline', () => {
+  it('throws, naming the lock, when a live lock is held past the deadline', () => {
+    const recorder = createPerfRecorder({ outFile, env: {}, runId: 7, lockDeadlineMs: 50 })
+    mkdirSync(dirname(outFile), { recursive: true })
+    // A fresh lock, so it is not stale: someone holds it.
+    writeFileSync(`${outFile}.lock`, '')
+    expect(() => recorder.record('x', 1)).toThrow(
+      /could not take .*story-perf\.json\.lock within 0\.05 s/,
+    )
   })
 })
 
