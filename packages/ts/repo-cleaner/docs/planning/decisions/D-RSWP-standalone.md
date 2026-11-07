@@ -1,9 +1,18 @@
+---
+id: D-RSWP
+type: decision
+state: accepted
+created: 2026-09-11
+---
+
 # D-RSWP: repo-cleaner is a standalone tool; a host adds what it knows through `annotate`
 
 Accepted 2026-09-11 in sksizer/dev, where repo-cleaner began as part of
-`sdlc project cleanup`. Moved here with the package on 2026-11-07, restated
-for 0.18. The sdlc side of the decision, how `sdlc` picks repositories and
-links rows to task files, stays with sdlc.
+`sdlc project cleanup`. Moved here on 2026-11-07, after the package came over
+in [#497](https://github.com/osdlc/osdlc/pull/497), and restated for 0.18.
+The sdlc side of the decision, how `sdlc` picks repositories and links rows to
+task files, stays with sdlc, in
+[sksizer/dev's D-RSWP](https://github.com/sksizer/dev/blob/main/docs/planning/decisions/D-RSWP-standalone-repo-sweep-tool.md).
 
 ## Decision
 
@@ -17,8 +26,10 @@ links rows to task files, stays with sdlc.
   the caller stands in. Fan-out happens only when the caller names targets.
 - **A target is read off the disk.** A checkout names that repository. Any
   other directory is searched for the checkouts under it. Linked worktrees
-  collapse into their repository and appear as its rows. A target that
-  resolves to nothing is reported, not dropped.
+  collapse into their repository and appear as its rows. A remote URL that
+  names no path on disk is cloned into a cache and swept for its remote
+  branches only, apart from any checkouts. A target that resolves to nothing
+  is reported, not dropped.
 - **A host re-ranks rows after classification.** `annotate(repo, rows)` may
   change a verdict, add a note or drop a row. It never reaches into
   classification, and the same hook runs in every re-check, so a run checks
@@ -32,10 +43,10 @@ Finding what has landed is not specific to any one product. The original
 code depended on the host for only one function, the task linkage, so the
 boundary was already drawn.
 
-Every git-derived `delete` outranks anything a host knows about tasks, so a
-host never needs to veto classification. It only sharpens rows the sweep left
-at `review` or `keep`. Post-processing does that with a smaller surface than
-a hook inside classification.
+A git-derived `delete` rarely needs overruling, so a host usually only
+sharpens rows the sweep left at `review`, `keep` or `blocked`. When one does
+hold a `delete` back, the sweep keeps that worktree's branch too. Post-processing
+does all of this with a smaller surface than a hook inside classification.
 
 ## Options rejected
 

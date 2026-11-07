@@ -1,20 +1,23 @@
 # D-L7N5: Machine cleanup is a `host-cleaner` package over repo-cleaner, with optional detected adapters
 
 Accepted 2026-10-07 in sksizer/dev. Moved here on 2026-11-07, restated for
-repo-cleaner 0.18. Builds on [D-RSWP](D-RSWP-repo-cleaner-standalone.md).
+repo-cleaner 0.18. Builds on [D-RSWP](../../packages/ts/repo-cleaner/docs/planning/decisions/D-RSWP-standalone.md).
 
 ## Decision
 
 - **Git and forge gaps go into repo-cleaner.** They are general facts any
-  user of the sweep wants:
+  user of the sweep wants. Lock liveness
+  ([#499](https://github.com/osdlc/osdlc/pull/499)) and patch equivalence
+  ([#501](https://github.com/osdlc/osdlc/pull/501)) have landed; the rest are
+  in the Work table.
 
-  | Gap                       | Change                                                                                                 | State                                                   |
-  | ------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
-  | Lock liveness             | A lock whose reason names a dead pid stops blocking; a live non-shell process inside a worktree blocks | Done in [#499](https://github.com/osdlc/osdlc/pull/499) |
-  | Patch equivalence         | A branch whose commits, one by one or squashed, are on the landed ref counts as landed                 | Done in [#501](https://github.com/osdlc/osdlc/pull/501) |
-  | Remote-contained worktree | A clean worktree whose HEAD is on a remote branch is removable unless a PR is open                     | [#659](https://github.com/osdlc/osdlc/issues/659)       |
-  | Sizes                     | Worktree rows carry their disk size when asked; the report ranks by size                               | [#660](https://github.com/osdlc/osdlc/issues/660)       |
-  | Archive before delete     | `clean` can push unlanded work to an archive ref, verify it, then delete                               | [#661](https://github.com/osdlc/osdlc/issues/661)       |
+  | Gap                       | Change                                                                                                 |
+  | ------------------------- | ------------------------------------------------------------------------------------------------------ |
+  | Lock liveness             | A lock whose reason names a dead pid stops blocking; a live non-shell process inside a worktree blocks |
+  | Patch equivalence         | A branch whose commits, one by one or squashed, are on the landed ref counts as landed                 |
+  | Remote-contained worktree | A clean worktree whose HEAD is on a remote branch is removable unless a PR is open                     |
+  | Sizes                     | Worktree rows carry their disk size when asked; the report ranks by size                               |
+  | Archive before delete     | `clean` can push unlanded work to an archive ref, verify it, then delete                               |
 
 - **Process liveness is engine, through a probe port.** repo-cleaner reads a
   generic `pid <N>` token in a lock reason, with an optional start time
@@ -65,10 +68,10 @@ interface HostAdapter {
 
 ### Risks and the unattended subset
 
-| Risk               | Lives in     | Covers                                                                                                                                                                                                               |
-| ------------------ | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `discard-archived` | repo-cleaner | Delete a row's unlanded work after a verified archive push holds it. Stands in for `abandon-unmerged` and `discard-changes`. A file the archive leaves out, such as `.env*` or a key, still needs `discard-changes`. |
-| `close-session`    | host-cleaner | Send SIGTERM to a coding-agent session.                                                                                                                                                                              |
+| Risk               | Lives in     | Covers                                                                                                                                                                                                                                                                                                  |
+| ------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `discard-archived` | repo-cleaner | Delete a row's unlanded work after a verified archive push holds it. Stands in for `abandon-unmerged` and `discard-changes`. A file the archive leaves out, such as `.env*` or a key, still needs `discard-changes`. A worktree's submodule work, which the archive does not hold, keeps its own risks. |
+| `close-session`    | host-cleaner | Send SIGTERM to a coding-agent session.                                                                                                                                                                                                                                                                 |
 
 `--auto` applies only:
 
@@ -104,7 +107,8 @@ interface HostAdapter {
 
 ## Consequences
 
-- repo-cleaner gains a `removeWorktree` hook, the `discard-archived` risk and
+- repo-cleaner gains a `removeWorktree` hook, a host-named blocker that
+  `annotate` can set, the `discard-archived` risk and
   an archive step, each described in its README and CHANGELOG.
 - host-cleaner's dependencies (repo-cleaner, typed-git, detect-harness,
   command-seam, path-guard, tiered-dirs) are all released, so the package can

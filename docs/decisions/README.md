@@ -10,7 +10,9 @@ random keys, so parallel branches do not collide.
 | [D-JPYM](D-JPYM-vfs-seam.md)                             | All file access goes through `vfs-seam`                                                        |
 | [D-DUFX](D-DUFX-vfs-walk-and-vault-layer.md)             | A general walk in `vfs-walk`, vault rules in `markdown-vault-fs`                               |
 | [D-ODPP](D-ODPP-markdown-corpus.md)                      | `markdown-corpus` is the one corpus model                                                      |
-| [D-RSWP](D-RSWP-repo-cleaner-standalone.md)              | repo-cleaner is a standalone tool; a host adds what it knows through `annotate`                |
 | [D-L7N5](D-L7N5-host-cleaner.md)                         | Machine cleanup is a `host-cleaner` package over repo-cleaner, with optional detected adapters |
+
+Decisions about one package live in that package's `docs/planning/decisions/`, such as
+[repo-cleaner's](../../packages/ts/repo-cleaner/docs/planning/README.md).
 
 Terms are defined in [../terms](../terms/README.md).
