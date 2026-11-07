@@ -35,6 +35,7 @@ import { parseRemoteUrl, type RemoteCoordinate } from './remote-url.ts'
 import { SOFT_TABLE } from './soft.ts'
 import * as v from './verbs.ts'
 import {
+  bytesRunnerFor,
   gate,
   gateBytes,
   mergeEnv,
@@ -187,9 +188,9 @@ export class Git {
     this.gitVersionOption = opts.gitVersion
     this.pinnedVersion = pinnedGitVersion(opts.gitVersion)
     this.runner = opts.runner ?? spawnRunner('git', { absolutePathOnly: true })
-    this.bytesRunner =
-      opts.bytesRunner ??
-      (opts.runner === undefined ? spawnRunnerBytes('git', { absolutePathOnly: true }) : undefined)
+    this.bytesRunner = bytesRunnerFor(opts, () =>
+      spawnRunnerBytes('git', { absolutePathOnly: true }),
+    )
     this.boundGitDir = opts.gitDir
     this.workTree = opts.workTree
     this.env = opts.env

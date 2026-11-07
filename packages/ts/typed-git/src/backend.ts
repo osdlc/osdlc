@@ -36,6 +36,7 @@ import {
 } from './git-version.ts'
 import * as v from './verbs.ts'
 import {
+  bytesRunnerFor,
   gate,
   gateBytes,
   mergeEnv,
@@ -574,11 +575,9 @@ export function cliBackend(
   } = {},
 ): GitBackend {
   const runner = opts.runner ?? spawnRunnerAsync('git', { absolutePathOnly: true })
-  const bytesRunner =
-    opts.bytesRunner ??
-    (opts.runner === undefined
-      ? spawnRunnerBytesAsync('git', { absolutePathOnly: true })
-      : undefined)
+  const bytesRunner = bytesRunnerFor(opts, () =>
+    spawnRunnerBytesAsync('git', { absolutePathOnly: true }),
+  )
   const pinned = pinnedGitVersion(opts.gitVersion)
   // A failed probe names `report`: the gated verb's argv, so a missing git
   // reads `git worktree: …` rather than `git --version: …`.

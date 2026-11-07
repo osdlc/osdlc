@@ -122,6 +122,21 @@ export function gateBytes(result: CommandResult<Buffer>, argv: string[]): Comman
 }
 
 /**
+ * The bytes runner a client runs `rawBytes` on: the `bytesRunner` passed,
+ * else the default spawn, but only when no `runner` was passed either. A
+ * client given a `runner` and no `bytesRunner` gets `undefined` and throws
+ * `UnsupportedRequest` from its bytes calls, so a fake or a supervised runner
+ * is never bypassed by a default spawn. `Git` and `cliBackend` both call it,
+ * so the rule lives here once.
+ */
+export function bytesRunnerFor<B>(
+  opts: { runner?: unknown; bytesRunner?: B | undefined },
+  spawnDefault: () => B,
+): B | undefined {
+  return opts.bytesRunner ?? (opts.runner === undefined ? spawnDefault() : undefined)
+}
+
+/**
  * A client-level environment bag under a per-call one, or `undefined` when
  * neither is set (so the runner inherits the parent environment untouched
  * rather than being handed an empty object).
