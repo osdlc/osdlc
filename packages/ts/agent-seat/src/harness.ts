@@ -35,13 +35,7 @@ import {
 } from '@osdlc/agent-call'
 import { harnessId } from '@osdlc/detect-harness'
 
-import {
-  commandString,
-  ran,
-  resolveRunner,
-  type CommandRunner,
-  type EnvOverrides,
-} from '@osdlc/command-seam'
+import { ran, resolveRunner, type CommandRunner, type EnvOverrides } from '@osdlc/command-seam'
 import { isRecord, parseJsonOrNull, sleepSync, strOrNull, which } from './util.ts'
 
 // `contract.ts` imports only types from this file (`Harness` for
@@ -381,7 +375,7 @@ export function harnessNativeSend(
   text: string,
   opts: { runner?: CommandRunner | undefined } = {},
 ): NativeSendResult | null {
-  const fn = NATIVE_SEND[harness]
+  const fn = Object.hasOwn(NATIVE_SEND, harness) ? NATIVE_SEND[harness] : undefined
   return fn === undefined ? null : fn(sessionId, text, opts)
 }
 
@@ -634,8 +628,10 @@ export const SESSION_ID_WAIT_MS = 3_000
  * Windows limits (not run on Windows): `powershell` is Windows PowerShell 5.1,
  * which passes an argument containing `"` to a native program without escaping
  * it (the program sees it split, or with the quotes gone) and drops an empty
- * argument; and `-Command` turns the program's exit code into 0 or 1. The
- * command is quoted by `commandString` (`@osdlc/command-seam`).
+ * argument; and `-Command` turns the program's exit code into 0 or 1. Every
+ * word of the command is single-quoted, even one that needs no quoting: Windows
+ * PowerShell 5.1 drops a bare `--` (the guard `harnessArgv` puts before the
+ * prompt) and splits a bare `-name.value`, which a quoted word avoids.
  */
 export function withEnv(
   argv: string[],
@@ -659,7 +655,7 @@ export function withEnv(
       'powershell',
       '-NoProfile',
       '-Command',
-      `${sets.join('; ')}; ${commandString(argv, { platform })}`,
+      `${sets.join('; ')}; & ${argv.map(powershellLiteral).join(' ')}`,
     ]
   }
   const unset: string[] = []
@@ -705,7 +701,9 @@ export function wrapperSession(
     sessionId: req.sessionId,
     ...(req.wait !== undefined ? { wait: req.wait } : {}),
   })
-  const resolver = SESSION_ID_RESOLVERS[req.harness]
+  const resolver = Object.hasOwn(SESSION_ID_RESOLVERS, req.harness)
+    ? SESSION_ID_RESOLVERS[req.harness]
+    : undefined
   if (resolver === undefined) return { exitCode, harnessSessionId: null }
   // A failed launch started no agent, and a held one has written its file: look once.
   const waitMs =

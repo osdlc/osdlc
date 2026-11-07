@@ -218,4 +218,13 @@ describe('otty addressing by session id', () => {
     expect(makeOttyHost({ runner }).close!({ cwd: '/w', sessionId: idA })).toBe(false)
     expect(calls.some((c) => c[1] === 'close')).toBe(false)
   })
+
+  test('close with a session id never closes the cwd-tagged tab of a launch that had no id', () => {
+    const cwdTagged = JSON.stringify([{ id: 7, title: `T ${ottyTag('/w')}`, cwd: '/w' }])
+    const { runner, calls } = scripted((a) => (a[1] === 'list' ? ok(cwdTagged) : ok()))
+    const host = makeOttyHost({ runner })
+    expect(host.close!({ cwd: '/w', sessionId: idA })).toBe(false)
+    expect(calls.some((c) => c[1] === 'close')).toBe(false)
+    expect(host.close!({ cwd: '/w' })).toBe(true)
+  })
 })

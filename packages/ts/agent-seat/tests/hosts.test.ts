@@ -239,9 +239,13 @@ describe('wrapperSession', () => {
     expect(argv.slice(0, 3)).toEqual(['powershell', '-NoProfile', '-Command'])
     expect(argv).toHaveLength(4)
     expect(argv[3]).toBe(
-      "$env:A = 'o''k'; Remove-Item -ErrorAction SilentlyContinue 'Env:B'; & claude 'it''s'",
+      "$env:A = 'o''k'; Remove-Item -ErrorAction SilentlyContinue 'Env:B'; & 'claude' 'it''s'",
     )
     expect(argv).not.toContain('env')
+  })
+  test('withEnv on win32 quotes every word, so Windows PowerShell 5.1 keeps `--` and `-a.b`', () => {
+    const argv = withEnv(['claude', '-a.b', '--', '-p'], { A: '1' }, 'win32')
+    expect(argv[3]).toBe("$env:A = '1'; & 'claude' '-a.b' '--' '-p'")
   })
   test('withEnv on win32 refuses a variable name that is not a plain identifier', () => {
     expect(() => withEnv(['claude'], { 'A; calc': '1' }, 'win32')).toThrow(/invalid environment/)
@@ -1030,6 +1034,8 @@ describe('harnessNativeSend (AC-3): a harness-level native send, callable indepe
     expect(harnessNativeSend('claude', 'x', 'hi')).toBeNull()
     expect(harnessNativeSend('cursor', 'x', 'hi')).toBeNull()
     expect(harnessNativeSend('pi', 'x', 'hi')).toBeNull()
+    // A tool id that names an `Object.prototype` member is no harness either.
+    expect(harnessNativeSend('constructor', 'x', 'hi')).toBeNull()
   })
 })
 

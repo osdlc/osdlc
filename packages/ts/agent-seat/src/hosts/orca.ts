@@ -184,7 +184,6 @@ function listOrcaTerminals(runner: CommandRunner, cwd: string): OrcaTerminal[] {
 }
 
 /**
-/**
  * The handle of the terminal for `cwd` to act on, or null. With a remembered handle
  * (`bound`) that is that terminal if Orca still lists it live and writable, and nothing
  * otherwise: another session's terminal at the same worktree is not this one's. Without

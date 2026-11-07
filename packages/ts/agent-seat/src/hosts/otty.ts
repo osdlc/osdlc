@@ -131,7 +131,13 @@ function showsAgent(entry: Record<string, unknown>): boolean {
 export function parseOttyPanes(
   stdout: string,
   cwd: string,
-  opts: { taggedOnly?: boolean; agentOnly?: boolean; sessionId?: string | undefined } = {},
+  opts: {
+    taggedOnly?: boolean
+    agentOnly?: boolean
+    sessionId?: string | undefined
+    /** With a session id, only its own tab: never the cwd-tagged fallback. */
+    idOnly?: boolean
+  } = {},
 ): string[] {
   const parsed = parseJsonOrNull(stdout)
   const entries = Array.isArray(parsed) ? parsed : isRecord(parsed) ? parsed['panes'] : null
@@ -154,7 +160,7 @@ export function parseOttyPanes(
   }
   // With a session id: its own tab, else (a tab opened before ids were tagged) the cwd's tag.
   // A bare cwd field never counts there: it could be another session's tab or a plain shell.
-  if (idTag !== null) return byIdTag.length > 0 ? byIdTag : byCwdTag
+  if (idTag !== null) return byIdTag.length > 0 || opts.idOnly === true ? byIdTag : byCwdTag
   return opts.taggedOnly === true ? byCwdTag : [...byCwdTag, ...byBareCwd]
 }
 
@@ -175,7 +181,7 @@ export function makeOttyHost(
   /** The first pane for the request (tagged ones only when `taggedOnly`), or null. */
   const resolvePane = (
     target: FindQuery,
-    pick: { taggedOnly?: boolean; agentOnly?: boolean } = {},
+    pick: { taggedOnly?: boolean; agentOnly?: boolean; idOnly?: boolean } = {},
   ): string | null => {
     const out = listOutput(target.cwd)
     return out === null
@@ -231,7 +237,9 @@ export function makeOttyHost(
       return quietRun(runner(), ottyCaptureArgv(pane), { cwd: query.cwd, timeoutMs: 10_000 })
     },
     close(query: FindQuery): boolean {
-      const pane = resolvePane(query, { taggedOnly: true })
+      // Closing is destructive: with a session id only that session's own tab closes. The
+      // cwd-tagged tab may belong to another launch at the same cwd that carried no id.
+      const pane = resolvePane(query, { taggedOnly: true, idOnly: true })
       if (pane === null) return false
       return quietRun(runner(), ottyCloseArgv(pane), { cwd: query.cwd, timeoutMs: 10_000 }) !== null
     },

@@ -38,8 +38,13 @@ export function makeTerminalHost(
       return true
     },
     terminal,
-    // `terminal` returns only once the agent exited, so the session-id lookup looks once.
-    session: (req: SessionRequest) => wrapperSession(terminal, req, { hostWaited: true }),
+    // `terminal` returns only once the agent exited, so the session-id lookup looks once. The
+    // host's own `terminal` part runs, so a host spread from this one with another
+    // `terminal` opens the session through that one.
+    session(req: SessionRequest) {
+      const run = this.terminal ?? terminal
+      return wrapperSession((r) => run.call(this, r), req, { hostWaited: true })
+    },
   }
 }
 

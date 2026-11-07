@@ -246,6 +246,8 @@ export function tmuxKillSessionArgv(name: string): string[] {
 
 /** How long the wait poll pauses between looks at the pane. */
 const POLL_MS = 500
+/** Status polls in a row that may fail while the session still exists before a waiting launch gives up. */
+const MAX_FAILED_POLLS = 3
 
 /**
  * Whether this process runs inside a tmux client (the `TMUX` environment variable is set).
@@ -326,17 +328,35 @@ export function makeTmuxHost(opts: {
   const waitForExit = (name: string, req: CommandRequest): number => {
     const limit = req.wait?.timeoutMs
     const deadline = limit === undefined ? undefined : now() + limit
+    const kill = (): void => {
+      runner().run(tmuxKillSessionArgv(name), { cwd: req.cwd, timeoutMs: 10_000 })
+    }
+    let failedPolls = 0
     for (;;) {
       const res = runner().run(tmuxPaneStatusArgv(name), { cwd: req.cwd, timeoutMs: 10_000 })
-      if (!ran(res)) return 1
+      if (!ran(res)) {
+        // A session someone closed reports 1. A poll that failed while the session still exists
+        // (a slow tmux under load) is retried; after MAX_FAILED_POLLS in a row the session is
+        // killed rather than left running unwatched.
+        if (!ran(runner().run(tmuxHasSessionArgv(name), { cwd: req.cwd, timeoutMs: 10_000 }))) {
+          return 1
+        }
+        if (++failedPolls >= MAX_FAILED_POLLS) {
+          kill()
+          return 1
+        }
+        sleep(POLL_MS)
+        continue
+      }
+      failedPolls = 0
       const [dead, status] = res.stdout.trim().split(/\s+/)
       if (dead === '1') {
-        runner().run(tmuxKillSessionArgv(name), { cwd: req.cwd, timeoutMs: 10_000 })
+        kill()
         const code = Number(status)
         return Number.isFinite(code) ? code : 1
       }
       if (deadline !== undefined && now() >= deadline) {
-        runner().run(tmuxKillSessionArgv(name), { cwd: req.cwd, timeoutMs: 10_000 })
+        kill()
         req.wait?.onDeadline?.()
         return WAIT_TIMEOUT_EXIT
       }

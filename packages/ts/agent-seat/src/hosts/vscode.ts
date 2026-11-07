@@ -62,7 +62,9 @@ export function makeVscodeHost(
 ): Host {
   const registryDir = registryDirOf('vscode', opts)
   const windows = () => (opts.windows ?? (() => liveWindows(registryDir)))()
-  const transport = (): VscodeTransport => opts.transport ?? subprocessTransport()
+  let defaultTransport: VscodeTransport | undefined
+  const transport = (): VscodeTransport =>
+    opts.transport ?? (defaultTransport ??= subprocessTransport())
 
   return {
     name: 'vscode',

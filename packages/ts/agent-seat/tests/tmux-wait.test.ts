@@ -109,10 +109,40 @@ describe('tmux visible launch', () => {
   })
 
   test('a session closed from outside reports failure instead of hanging', () => {
+    const calls: string[][] = []
     const runner: CommandRunner = {
-      run: (argv) =>
-        argv[0] === 'display-message' ? { exitCode: 1, stdout: '', stderr: 'no session' } : ok(),
+      run: (argv) => {
+        calls.push(argv)
+        return argv[0] === 'display-message' || argv[0] === 'has-session'
+          ? { exitCode: 1, stdout: '', stderr: 'no session' }
+          : ok()
+      },
     }
     expect(makeTmuxHost({ runner, sleep: () => {} }).terminal!(waiting())).toBe(1)
+    // Gone already: nothing to kill.
+    expect(calls.some((c) => c[0] === 'kill-session')).toBe(false)
+  })
+
+  test('a status poll that fails while the session lives is retried, and the real status wins', () => {
+    const replies: CommandResult[] = [{ exitCode: 1, stdout: '', stderr: 'timed out' }, ok('1 7\n')]
+    const runner: CommandRunner = {
+      run: (argv) => (argv[0] === 'display-message' ? replies.shift()! : ok()),
+    }
+    expect(makeTmuxHost({ runner, sleep: () => {} }).terminal!(waiting())).toBe(7)
+  })
+
+  test('status polls that keep failing while the session lives give up and kill it', () => {
+    const calls: string[][] = []
+    const runner: CommandRunner = {
+      run: (argv) => {
+        calls.push(argv)
+        return argv[0] === 'display-message'
+          ? { exitCode: 1, stdout: '', stderr: 'timed out' }
+          : ok()
+      },
+    }
+    expect(makeTmuxHost({ runner, sleep: () => {} }).terminal!(waiting())).toBe(1)
+    expect(calls.filter((c) => c[0] === 'display-message')).toHaveLength(3)
+    expect(calls.at(-1)?.[0]).toBe('kill-session')
   })
 })
