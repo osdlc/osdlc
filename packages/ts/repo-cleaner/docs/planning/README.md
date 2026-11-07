@@ -11,8 +11,8 @@ are in the root [`docs/decisions/`](../../../../../docs/decisions/README.md).
 
 ## Layout
 
-| Folder                     | Holds                                         | Ids               |
-| -------------------------- | --------------------------------------------- | ----------------- |
+| Folder                     | Holds                                         | Ids              |
+| -------------------------- | --------------------------------------------- | ---------------- |
 | [`decisions/`](decisions/) | Choices that shape the package, one per topic | random, `D-XXXX` |
 
 Ids are random keys, so parallel branches do not collide. A record that
@@ -24,3 +24,5 @@ it.
 
 - [D-RSWP](decisions/D-RSWP-standalone.md): repo-cleaner is a standalone tool;
   a host adds what it knows through `annotate`
+- [D-UVUH](decisions/D-UVUH-failed-lookups.md): a failed lookup costs its
+  evidence; a failed fetch costs the repository

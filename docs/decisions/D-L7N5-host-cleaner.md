@@ -1,7 +1,8 @@
 # D-L7N5: Machine cleanup is a `host-cleaner` package over repo-cleaner, with optional detected adapters
 
 Accepted 2026-10-07 in sksizer/dev. Moved here on 2026-11-07, restated for
-repo-cleaner 0.18. Builds on [D-RSWP](../../packages/ts/repo-cleaner/docs/planning/decisions/D-RSWP-standalone.md).
+repo-cleaner 0.18. Builds on
+[D-RSWP](../../packages/ts/repo-cleaner/docs/planning/decisions/D-RSWP-standalone.md).
 
 ## Decision
 
@@ -11,13 +12,13 @@ repo-cleaner 0.18. Builds on [D-RSWP](../../packages/ts/repo-cleaner/docs/planni
   ([#501](https://github.com/osdlc/osdlc/pull/501)) have landed; the rest are
   in the Work table.
 
-  | Gap                       | Change                                                                                                 |
-  | ------------------------- | ------------------------------------------------------------------------------------------------------ |
-  | Lock liveness             | A lock whose reason names a dead pid stops blocking; a live non-shell process inside a worktree blocks |
-  | Patch equivalence         | A branch whose commits, one by one or squashed, are on the landed ref counts as landed                 |
-  | Remote-contained worktree | A clean worktree whose HEAD is on a remote branch is removable unless a PR is open                     |
-  | Sizes                     | Worktree rows carry their disk size when asked; the report ranks by size                               |
-  | Archive before delete     | `clean` can push unlanded work to an archive ref, verify it, then delete                               |
+  | Gap                       | Change                                                                                                                                           |
+  | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | Lock liveness             | A lock whose reason names a dead pid stops blocking; any process but an idle shell inside a worktree blocks, as does an unreadable process table |
+  | Patch equivalence         | A branch whose commits, one by one or squashed, are on the landed ref counts as landed                                                           |
+  | Remote-contained worktree | A clean worktree whose HEAD is on a remote branch is removable unless a PR is open                                                               |
+  | Sizes                     | Worktree rows carry their disk size when asked; the report ranks by size                                                                         |
+  | Archive before delete     | `clean` can push unlanded work to an archive ref, verify it, then delete                                                                         |
 
 - **Process liveness is engine, through a probe port.** repo-cleaner reads a
   generic `pid <N>` token in a lock reason, with an optional start time
@@ -31,8 +32,11 @@ repo-cleaner 0.18. Builds on [D-RSWP](../../packages/ts/repo-cleaner/docs/planni
 - **Each host integration is an optional adapter** behind one contract.
   Each detects itself and is skipped when absent. The first adapters, in
   run order, are `orca`, `claude-code`, `cargo` and `node`.
-- **One safety model.** Host rows reuse repo-cleaner's plan, fingerprint,
-  re-check, risks granted by name, and receipt.
+- **One safety model.** Host rows follow repo-cleaner's: a fingerprint
+  compared with repo-cleaner's exported comparison, a re-check before each
+  step, risks granted by name, and a verified step in the receipt.
+  repo-cleaner's plan and receipt keep only their own row kinds; host-cleaner
+  holds its host rows beside them in one plan file and one receipt.
 - **An unattended run grants no risk.** `--auto` applies only a fixed safe
   subset; everything else stays in the report for a person.
 - **Scheduling is a launchd user agent** until a general trigger service
@@ -51,7 +55,7 @@ interface HostAdapter {
   annotate?: Annotate;
   /** Rows this host owns: build artifacts, sessions. */
   gather?(ctx: HostContext): HostRow[];
-  /** Run one approved step for a row this adapter owns, then verify it. */
+  /** Run one approved step for a row this adapter owns, then verify it. Returns the detail the receipt records. */
   execute?(step: HostStep, ctx: HostContext): string;
   /** Replace repo-cleaner's worktree removal for worktrees this host manages. */
   removeWorktree?: RemoveWorktree;
@@ -62,9 +66,10 @@ interface HostAdapter {
   adapter adds nothing, and the report says it was skipped.
 - Adapters' `annotate` functions chain, in run order, into repo-cleaner's
   `annotate`, so their verdicts survive every re-check.
-- `removeWorktree` is a new repo-cleaner hook. `clean` still verifies
-  afterwards that the directory is gone and git no longer lists the
-  worktree.
+- `removeWorktree` is a new repo-cleaner hook that replaces only the
+  `git worktree remove` call. `clean` still runs its live-process and
+  forced-remove checks before it, and verifies afterwards that the directory
+  is gone and git no longer lists the worktree.
 
 ### Risks and the unattended subset
 
@@ -77,8 +82,7 @@ interface HostAdapter {
 
 - a build artifact idle for more than 24 hours, with no build running in its
   checkout;
-- a worktree row that is `delete`, carries no risk, and has no live process
-  inside it.
+- a worktree row that is `delete` and carries no risk.
 
 ## Why
 
@@ -108,8 +112,9 @@ interface HostAdapter {
 ## Consequences
 
 - repo-cleaner gains a `removeWorktree` hook, a host-named blocker that
-  `annotate` can set, the `discard-archived` risk and
-  an archive step, each described in its README and CHANGELOG.
+  `annotate` can set, an exported fingerprint comparison, the
+  `discard-archived` risk and an archive step, each described in its README
+  and CHANGELOG.
 - host-cleaner's dependencies (repo-cleaner, typed-git, detect-harness,
   command-seam, path-guard, tiered-dirs) are all released, so the package can
   be built now.
