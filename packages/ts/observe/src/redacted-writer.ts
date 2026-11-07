@@ -15,6 +15,9 @@ import { appendJsonl, type AppendOptions } from './writer.ts'
  */
 const ENVELOPE_KEYS: ReadonlySet<string> = new Set(Object.keys(LogEnvelopeSchema.shape))
 
+/** The value types an envelope key is written with as is; anything else is redacted. */
+const KEPT_TYPES: ReadonlySet<string> = new Set(['string', 'number', 'boolean'])
+
 /** An object literal or `Object.create(null)`: not an array, `Map`, `Error`, `Date` or class instance. */
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   if (v === null || typeof v !== 'object') return false
@@ -30,8 +33,9 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
  * {@link Redactor.redactJson}. If that pass fails, the line keeps the
  * envelope keys alone and the result counts `redactor-error`. A `line` that is
  * not a plain object (an array, a `Map`, an `Error`, a class instance) is
- * redacted whole, as {@link Redactor.redactJson} converts it. Returns what was replaced, by rule, so the caller can count
- * or report it; the matched text is never returned.
+ * redacted whole, as {@link Redactor.redactJson} converts it. Returns what
+ * was replaced, by rule, so the caller can count or report it; the matched
+ * text is never returned.
  *
  * @throws The file system's error when the directory or file cannot be created
  * or written. The redactor itself never throws.
@@ -52,9 +56,7 @@ export async function appendRedactedJsonl(
   const rest: [string, unknown][] = []
   for (const entry of Object.entries(line)) {
     const [key, value] = entry
-    const kept =
-      ENVELOPE_KEYS.has(key) &&
-      (value === null || ['string', 'number', 'boolean'].includes(typeof value))
+    const kept = ENVELOPE_KEYS.has(key) && (value === null || KEPT_TYPES.has(typeof value))
     ;(kept ? envelope : rest).push(entry)
   }
   const { value, redactions } = await redactor.redactJson(Object.fromEntries(rest))

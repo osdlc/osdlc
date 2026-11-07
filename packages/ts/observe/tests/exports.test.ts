@@ -401,8 +401,17 @@ describe('what the package ships', () => {
     // Harness names belong to the hook module, which reads their payloads, and to
     // the documents that describe it. Everywhere else the vocabulary is the caller's.
     const harnessTerms = new RegExp(['\\bcla' + 'ude\\b', '\\bco' + 'dex\\b'].join('|'), 'i')
-    const namesHarnesses = (file: string): boolean =>
-      /hook(-payload)?(\.test)?\.ts$|\.md$/.test(file)
+    const harnessFiles = new Set(
+      [
+        'src/hook.ts',
+        'src/hook-payload.ts',
+        'tests/hook-payload.test.ts',
+        'examples/hook.test.ts',
+        'README.md',
+        'CHANGELOG.md',
+      ].map((f) => join(PACKAGE_DIR, f)),
+    )
+    const namesHarnesses = (file: string): boolean => harnessFiles.has(file)
     for (const file of files) {
       const text = readFileSync(file, 'utf-8').replace(wireNames, '')
       expect([file, text.match(hostTerms)?.[0]]).toEqual([file, undefined])

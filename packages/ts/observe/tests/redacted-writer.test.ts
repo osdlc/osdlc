@@ -92,4 +92,23 @@ describe('appendRedactedJsonl', () => {
     await appendRedactedJsonl(file, envelope, r, { sync: false })
     if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600)
   })
+
+  test('a top-level toJSON does not replace the line', async () => {
+    await appendRedactedJsonl(file, { kind: 'x', toJSON: () => ({ secret: ghp }) }, r)
+    expect(readJsonl(file)).toEqual([{ kind: 'x' }])
+  })
+
+  test('an envelope key holding a function or a BigInt is not written as is', async () => {
+    const kind = Object.assign(() => 'x', { toJSON: () => ghp })
+    await appendRedactedJsonl(file, { kind, run: 12n }, r)
+    expect(readJsonl(file)).toEqual([{ run: '12' }])
+  })
+
+  test('an Error, a Map or a class instance is redacted whole, not emptied', async () => {
+    await appendRedactedJsonl(file, new Error(`failed with ${ghp}`), r)
+    await appendRedactedJsonl(file, new Map([['prompt', 'hi']]), r)
+    const lines = readJsonl(file) as Record<string, unknown>[]
+    expect(lines[0]!['message']).toBe('failed with [REDACTED:github]')
+    expect(lines[1]).toEqual({ prompt: 'hi' })
+  })
 })

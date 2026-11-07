@@ -37,9 +37,9 @@ right to left as `[REDACTED:<rule>]`.
 1. **secretlint.** `@secretlint/core` with
    `@secretlint/secretlint-rule-preset-recommend`. It covers cloud, chat,
    package-registry and payment provider keys, private keys, basic-auth URLs
-   and database connection strings. A `secretlint-disable` comment in the
-   logged text is defanged before the pass, so the text cannot switch the
-   preset off.
+   and database connection strings. The preset's rules are registered one
+   by one, without its comment filter, so a `secretlint-disable` comment in
+   the logged text cannot switch a rule off.
 2. **Built-in rules.**
    - JWTs, and provider API keys the preset's strict shapes miss.
    - PEM private key blocks, by a linear scan, which the preset misses on
