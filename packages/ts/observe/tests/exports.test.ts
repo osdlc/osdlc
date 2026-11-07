@@ -1,5 +1,5 @@
 /**
- * Checks on the package's public exports. Every export of both entry points is
+ * Checks on the package's public exports. Every export of every entry point is
  * used in examples/, is documented, and has the stability tier the README lists.
  * The functions that can throw say so. The README's code blocks come from
  * examples/. The shipped files stay clean.
@@ -11,7 +11,9 @@ import { join } from 'node:path'
 import ts from 'typescript'
 import { describe, expect, test } from 'vitest'
 
+import * as hook from '../src/hook.ts'
 import * as core from '../src/index.ts'
+import * as redact from '../src/redact.ts'
 import * as session from '../src/session.ts'
 
 const PACKAGE_DIR = join(import.meta.dirname, '..')
@@ -55,7 +57,10 @@ function exportInfo(entry: string): Map<string, ExportInfo> {
 
 const CORE = exportInfo(join(PACKAGE_DIR, 'src', 'index.ts'))
 const SESSION = exportInfo(join(PACKAGE_DIR, 'src', 'session.ts'))
-const EXPORTS = new Map([...CORE, ...SESSION])
+const REDACT = exportInfo(join(PACKAGE_DIR, 'src', 'redact.ts'))
+const HOOK = exportInfo(join(PACKAGE_DIR, 'src', 'hook.ts'))
+const ENTRIES = { '': CORE, '/session': SESSION, '/redact': REDACT, '/hook': HOOK }
+const EXPORTS = new Map([...CORE, ...SESSION, ...REDACT, ...HOOK])
 
 /** Whitespace, line comments and trailing commas removed, so reflowed code compares equal. */
 function squash(code: string): string {
@@ -77,9 +82,9 @@ function readmeBlocks(): string[] {
   return [...README.matchAll(/```ts\n([\s\S]*?)```/g)].map((m) => m[1]!)
 }
 
-test('the two entry points export 30 and 82 names, and share none', () => {
-  expect([CORE.size, SESSION.size]).toEqual([30, 82])
-  expect([...CORE.keys()].filter((name) => SESSION.has(name))).toEqual([])
+test('the four entry points export 30, 82, 9 and 12 names, and share none', () => {
+  expect([CORE.size, SESSION.size, REDACT.size, HOOK.size]).toEqual([30, 82, 9, 12])
+  expect(EXPORTS.size).toBe(CORE.size + SESSION.size + REDACT.size + HOOK.size)
 })
 
 test('the runtime exports of the core entry are its functions and constants, no more', () => {
@@ -161,7 +166,36 @@ test('the runtime exports of the session entry are its functions and constants, 
   )
 })
 
-test('the internal helpers are not exported from either entry', () => {
+test('the runtime exports of the redact entry are its functions, no more', () => {
+  expect(Object.keys(redact).sort()).toEqual(
+    ['appendRedactedJsonl', 'createRedactor', 'mergeRedactions', 'redactPatternProblem'].sort(),
+  )
+})
+
+test('the runtime exports of the hook entry are its functions and constants, no more', () => {
+  expect(Object.keys(hook).sort()).toEqual(
+    [
+      'HOOK_ENVELOPE_FIELDS',
+      'HOOK_HARNESSES',
+      'HookEnvelopeSchema',
+      'isPermissionNotification',
+      'normalizeHook',
+      'normalizeHookText',
+      'rawNumber',
+      'rawString',
+      'rawValue',
+    ].sort(),
+  )
+})
+
+test('importing the redact entry does not load secretlint', async () => {
+  // The lazy load is what keeps `@osdlc/observe/redact` cheap for a config loader.
+  const source = readFileSync(join(PACKAGE_DIR, 'src', 'redactor.ts'), 'utf-8')
+  expect(source).not.toMatch(/^import [^\n]*'@secretlint\//m)
+  expect(source).toContain("import('@secretlint/core')")
+})
+
+test('the internal helpers are not exported from any entry', () => {
   const hidden = [
     'reconcileCause',
     'parseJsonlLines',
@@ -172,20 +206,25 @@ test('the internal helpers are not exported from either entry', () => {
     'withLegacyNames',
     'LOST_HOOK_NOTE',
     'types',
+    'hasCatastrophicRepeat',
+    'loadSecretlint',
+    'isRecord',
+    'nonEmptyString',
   ]
   expect(hidden.filter((name) => EXPORTS.has(name))).toEqual([])
 })
 
 test('every export is used by examples/, which imports the package names only', () => {
   const allowed = new Set([
-    PACKAGE_NAME,
-    `${PACKAGE_NAME}/session`,
+    ...Object.keys(ENTRIES).map((sub) => `${PACKAGE_NAME}${sub}`),
     'vitest',
     'zod',
     '@osdlc/command-seam',
   ])
   const dir = join(PACKAGE_DIR, 'examples')
-  const imported = { [PACKAGE_NAME]: new Set<string>(), [`${PACKAGE_NAME}/session`]: new Set() }
+  const imported: Record<string, Set<string>> = Object.fromEntries(
+    Object.keys(ENTRIES).map((sub) => [`${PACKAGE_NAME}${sub}`, new Set<string>()]),
+  )
   const specifiers = new Set<string>()
   for (const file of sourceFiles(dir)) {
     const sf = ts.createSourceFile(file, readFileSync(file, 'utf-8'), ts.ScriptTarget.Latest)
@@ -200,10 +239,10 @@ test('every export is used by examples/, which imports the package names only', 
     }
   }
   expect([...specifiers].filter((s) => !allowed.has(s) && !s.startsWith('node:'))).toEqual([])
-  expect([...CORE.keys()].filter((name) => !imported[PACKAGE_NAME]!.has(name))).toEqual([])
-  expect(
-    [...SESSION.keys()].filter((name) => !imported[`${PACKAGE_NAME}/session`]!.has(name)),
-  ).toEqual([])
+  for (const [sub, entry] of Object.entries(ENTRIES)) {
+    const used = imported[`${PACKAGE_NAME}${sub}`]!
+    expect([sub, [...entry.keys()].filter((name) => !used.has(name))]).toEqual([sub, []])
+  }
 })
 
 test('every export has TSDoc', () => {
@@ -220,6 +259,7 @@ test('the README experimental list matches the @experimental tags', () => {
   expect(listed.filter((name) => !EXPORTS.has(name))).toEqual([])
   expect([...listed].sort()).toEqual([...tagged].sort())
   expect([...CORE].filter(([, info]) => info.experimental)).toEqual([])
+  expect([...REDACT].filter(([, info]) => info.experimental)).toEqual([])
   expect([...tagged].sort()).toEqual(
     [
       // the reconcile run
@@ -241,6 +281,8 @@ test('the README experimental list matches the @experimental tags', () => {
       'RunContext',
       'runHeadlessSession',
       'runInteractiveSession',
+      // the hook entry, while the hook contract is open
+      ...HOOK.keys(),
     ].sort(),
   )
 })
@@ -248,7 +290,14 @@ test('the README experimental list matches the @experimental tags', () => {
 test('the functions that can throw say so with @throws, and no others do', () => {
   const throwing = [...EXPORTS].filter(([, info]) => info.throws).map(([name]) => name)
   expect(throwing.sort()).toEqual(
-    ['appendJsonl', 'readJsonl', 'runHeadlessSession', 'runInteractiveSession'].sort(),
+    [
+      'appendJsonl',
+      'appendRedactedJsonl',
+      'createRedactor',
+      'readJsonl',
+      'runHeadlessSession',
+      'runInteractiveSession',
+    ].sort(),
   )
 })
 
@@ -281,13 +330,17 @@ test('the README imports the published names', () => {
   const blocks = readmeBlocks().join('\n')
   expect(blocks).toContain(`from '${PACKAGE_NAME}'`)
   expect(blocks).toContain(`from '${PACKAGE_NAME}/session'`)
+  expect(blocks).toContain(`from '${PACKAGE_NAME}/redact'`)
+  expect(blocks).toContain(`from '${PACKAGE_NAME}/hook'`)
 })
 
-test('zod is a peer dependency; command-seam, etag-write and tiered-dirs are runtime ones', () => {
+test('zod is a peer dependency; command-seam, etag-write, tiered-dirs and secretlint are runtime ones', () => {
   expect(Object.keys((MANIFEST['dependencies'] as object | undefined) ?? {})).toEqual([
     '@osdlc/command-seam',
     '@osdlc/etag-write',
     '@osdlc/tiered-dirs',
+    '@secretlint/core',
+    '@secretlint/secretlint-rule-preset-recommend',
   ])
   expect(MANIFEST['peerDependencies']).toEqual({ zod: '^4' })
   expect(MANIFEST['optionalDependencies']).toBeUndefined()
@@ -312,8 +365,7 @@ describe('what the package ships', () => {
       const specs = [...text.matchAll(/@osdlc\/[\w-]+(\/[\w-]+)?/g)].map((m) => m[0])
       for (const spec of specs) {
         expect([
-          PACKAGE_NAME,
-          `${PACKAGE_NAME}/session`,
+          ...Object.keys(ENTRIES).map((sub) => `${PACKAGE_NAME}${sub}`),
           '@osdlc/command-seam',
           '@osdlc/etag-write',
           '@osdlc/tiered-dirs',
@@ -332,8 +384,6 @@ describe('what the package ships', () => {
         'ontolo' + 'gical',
         'way' + 'post',
         'detect-' + 'runners',
-        '\\bcla' + 'ude\\b',
-        '\\bco' + 'dex\\b',
         'log\\.' + 'capture',
         'docs/' + 'planning',
         'mono' + 'repo',
@@ -348,9 +398,17 @@ describe('what the package ships', () => {
       ...sourceFiles(join(PACKAGE_DIR, 'tests')),
       ...sourceFiles(join(PACKAGE_DIR, 'examples')),
     ].filter((f) => !f.endsWith('exports.test.ts'))
+    // Harness names belong to the hook module, which reads their payloads, and to
+    // the documents that describe it. Everywhere else the vocabulary is the caller's.
+    const harnessTerms = new RegExp(['\\bcla' + 'ude\\b', '\\bco' + 'dex\\b'].join('|'), 'i')
+    const namesHarnesses = (file: string): boolean =>
+      /hook(-payload)?(\.test)?\.ts$|\.md$/.test(file)
     for (const file of files) {
       const text = readFileSync(file, 'utf-8').replace(wireNames, '')
       expect([file, text.match(hostTerms)?.[0]]).toEqual([file, undefined])
+      if (!namesHarnesses(file)) {
+        expect([file, text.match(harnessTerms)?.[0]]).toEqual([file, undefined])
+      }
     }
   })
 

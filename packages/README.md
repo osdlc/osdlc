@@ -173,7 +173,8 @@ Developed here, in this repository:
 - `packages/ts/agent-call` (`@osdlc/agent-call` on npm, one call spec for
   headless coding-agent CLIs)
 - `packages/ts/observe` (`@osdlc/observe` on npm, a JSONL log envelope with
-  correlation ids, agent session records, a process scan and reconcile)
+  correlation ids, a secret redactor in front of the writer, one envelope for
+  agent hook payloads, agent session records, a process scan and reconcile)
 - `packages/ts/tiered-dirs` (`@osdlc/tiered-dirs` on npm, machine-local
   directories by tier and home, the TypeScript implementation of the `tiered-dirs` crate)
 - `packages/ts/markdown-contract` (`@osdlc/markdown-contract` on npm,
